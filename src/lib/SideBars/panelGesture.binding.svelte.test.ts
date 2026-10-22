@@ -678,12 +678,15 @@ describe('Android Back hook', () => {
         expect(window.__risuTaniumBack?.()).toBe(false)
     })
 
-    test('open overlay with an alert: not consumed, overlay untouched', () => {
+    test('open overlay with an alert: the alert is closed, the overlay untouched, the next Back reaches the overlay', () => {
         mountSidebar()
         sideBarStore.set(true)
         alertStore.set({ type: 'normal', msg: 'hello' } as alertData)
-        expect(window.__risuTaniumBack?.()).toBe(false)
+        expect(window.__risuTaniumBack?.()).toBe(true)
+        expect(get(alertStore).type).toBe('none')
         expect(get(sideBarClosing)).toBe(false)
+        expect(window.__risuTaniumBack?.()).toBe(true)
+        expect(get(sideBarClosing)).toBe(true)
     })
 
     test('open overlay with a toast up: still consumed, the toast does not cover the page', () => {

@@ -46,6 +46,29 @@ Lane E's records, kept on branch `worktree-Lane-E` and folded into the shared fi
 
 1. **"Commit + merge (Recommended)".** Commit the 8 named CHORE-187 paths and the lane E records pass on `worktree-Lane-E` after merging main, then send the tip to lane A for merge.
 
+### MC-458 — Lane E, 2026-10-22: commit and merge CHORE-181
+
+- **Tag:** decision (AskUserQuestion answer relayed by lane A, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answer. Input: lane E's request for commit approval after CHORE-181 Gate 2 round 2 (row 3560).
+- **Related:** `MC-346`, `MC-455`; CHORE-181.
+
+1. **"Commit + merge (Recommended)", conditional on the records check passing.** The records check (row 3561) found no required corrections. Commit the 11 named CHORE-181 paths and the lane E records on `worktree-Lane-E` after merging main; the hand-back names the hash of `src/ts/alertPrompts.ts` at the tip and confirms it equals the copy Gate 2 reviewed (the file a shell mutant touched, row 3558). Lane A runs the six-cell phone check on phone 2 after merging.
+
+### MC-455 — Lane E, 2026-10-22: CHORE-181 Back with a dialog open (scope and behaviour)
+
+- **Tag:** decision (AskUserQuestion answers relayed by lane A, 2026-10-22; Q4 to Q6 asked as one question)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answers. Input: lane E's questions Q1 to Q6 from the CHORE-181 investigation (`%TEMP%\risu-lane-e\a3\181\packet.md`, verified in `verify.md`).
+- **Related:** `MC-346` (CHORE-181 "Close the dialog"), `MC-279` item 8, `MC-345` (item A3); CHORE-181, CHORE-153, CHORE-351, CHORE-352.
+
+1. **Q1 scope: "Pop-up dialogs only (Recommended)".** Back closes only the dialogs shown through `alertStore` (alerts, confirms, selects, inputs, waits). Settings, the Realm frame, popups and panels keep toast-then-quit; filed as CHORE-352.
+2. **Q2 select and input: "Nothing for now, ticket it (Recommended)".** Back neither quits nor closes while a select or input prompt is open; a real cancel is filed as CHORE-351 (about 50 external `alertSelect`/`alertInput` call sites, the verifier's count).
+3. **Q3 dialogs with no cancel (`tos`, `staleAccountNotice`, `progress`, a `wait` without cancel): "Nothing (Recommended)".** Back is ignored and never quits through them.
+4. **Q4 to Q6: "Accept all three (Recommended)".** After Back closes a dialog, the next Back starts the quit guard fresh (toast first, then a second Back within 2 s quits). Back closes a dialog even inside the 400 ms misclick guard. Unsaved edits are flushed on the first Back press, only when there are unsaved edits; whether the in-flight-chat branch of the hide flush is included is the orchestrator's technical choice.
+
 ## CHORE entries
 
 ### CHORE-193 (changed) — status line to add at fold-in
@@ -97,6 +120,18 @@ Lane E's records, kept on branch `worktree-Lane-E` and folded into the shared fi
 - Realm share: `shareRealmCardData` returns `null` on a failed export and leaves the error alert visible (before: a partial or empty buffer was posted and the alert store was cleared). `RealmFrame.svelte` closes without posting on `null`; a rejected share shows the error and closes instead of leaving the spinner (same-cause fold-in, row 3544).
 - Not changed: a failed module export leaves the truncated file the person chose (`LocalWriter` has no abort); the writer handle after a mid-export failure is not closed. The Tauri cancel is tested only with a mocked `init` returning false, not a native dialog.
 
+### CHORE-351 (new) — select and input prompts have no cancel, so Back cannot close them (MC-455 Q2)
+
+`alertSelect` and `alertInput` prompts have no cancel button and no cancel value; about 50 external call sites read their answer (the verifier's count, which misses calls through a reference). Under MC-455, Android Back does nothing while one is open. A real cancel needs a cancel value and a caller audit. (The `selectModule` prompt is not part of this ticket: its X button answers `''`, which its only caller treats as a cancel, so Back answers it the same way under CHORE-181.)
+
+**Status (2026-10-22): open, not scheduled.** Filed per MC-455 Q2 ("Nothing for now, ticket it").
+
+### CHORE-352 (new) — Back does not close Settings, the Realm frame, popups or panels (MC-455 Q1)
+
+Overlays outside `alertStore` (Settings, the Realm frame, the bookmark list, `popupStore`, the easy panel, the popup editor, the loadout modal, iris, the custom sidebar config dialog) have no Back handler: with one open, Android Back takes the toast-then-quit guard. MC-455 kept that behaviour for CHORE-181. The phone sidebar and Grid edit mode already have Back handlers.
+
+**Status (2026-10-22): open, not scheduled.** Filed per MC-455 Q1 ("Pop-up dialogs only").
+
 ### CHORE-350 (new) — a value that cannot be stored retries every save pass (MC-346 Q-A)
 
 A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a module, preset, settings or plugin data still makes the store2 save loop retry every second with one toast, then an alert on every pass from the fifth attempt, and blocks saves for every character.
@@ -104,6 +139,15 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 **Status (2026-10-22): open, not scheduled.** Filed per MC-346 Q-A ("Leave as today, ticket it"). Source: the A1' audit (CHORE-117 stage 2 row) and doc-verifier correction 10 (foldBack re-marks everything).
 
 ### CHORE-181 (changed) — "Close the dialog" (MC-346)
+
+**Status (2026-10-22, lane E item A3): fixed on `worktree-Lane-E` (base main `b87e457f9`); technically accepted (rows 3551 to 3560; records checked in row 3561); the maintainer approved the commit and merge (`MC-458`); committed over main `0d905815b` and sent to lane A; then lane A's merge, full checks and the phone check.** Decisions: MC-346, MC-455 and MC-458.
+
+- With an `alertStore` dialog covering the page, Android Back no longer reaches the default Back: it closes the dialog with the answer that dialog's own cancel or close control gives (`ask`/`pluginconfirm` `'no'`; `selectChar` and `selectModule` `''`; `cardexport` the cancel JSON with an empty `type2`; `addchar`/`chatOptions` `'cancel'`; a `wait` with `onCancel` runs it, as Escape does; notices close), or does nothing for `select`, `input`, `tos`, `staleAccountNotice`, `progress` and a `wait` without `onCancel` (`toast` and `none` do not cover the page and are held too). Either way the press is consumed and the quit guard starts fresh. A total table in `src/ts/alertBack.ts` makes a new alert type fail the type check.
+- Back answers a prompt even inside the 400 ms answer guard, only when the store holds exactly that prompt's data (`answerShownPrompt` in `alertPrompts.ts`); a rapid double Back cancels two queued prompts in a row.
+- The Back-guard flush (assigned from CHORE-153): the press that shows the quit toast, and the press whose toast fails (which quits), request a save with the hide flush's rule (a chat reply in flight is saved; otherwise only unsaved edits; a clean page is never made dirty). The request runs in a new task after the answer to the host, so save work cannot delay that answer. Best effort: the write may not finish if the process dies at once.
+- Not a claim that Back never quits: the host still runs the default Back when the page does not answer within 1 s (for example while an import keeps the page busy). Kotlin is unchanged.
+- Phone check for lane A: Back with a confirm open closes it; Back with a select open does nothing; Back during an import progress bar; with an unsaved edit, Back (toast) then Back (quit), relaunch, the edit is kept; the first Back shows the toast with a large profile and an unsaved edit; whether `visibilitychange`/`pagehide` fires on the Back quit (record it).
+- Out of scope, ticketed: select/input cancel (CHORE-351); Back for Settings, Realm, popups and panels (CHORE-352).
 
 **Status (2026-10-22): product decision MC-346 "Close the dialog": with a dialog open, Back closes or cancels the dialog, then a second Back follows the 2 s quit guard. This amends the MC-279 8 rule for the dialog case. Lane D's S4-5 merge landed in `3a0f2cf0c` (before base `389f461de`); not yet scheduled.**
 
@@ -162,6 +206,17 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 | 3548 | 2026-10-22 | Orchestrator nit fix | orchestrator | n/a | no | Restored the four trailing spaces of the one blank line the coder had emptied in `characterCards.ts` (first json branch only; no BOM, as at HEAD; CR 2490 = LF 2490). 4 card test files 48 passed. |
 | 3549 | 2026-10-22 | Independent check of the CHORE-187 records and commit message | doc-verifier | 41,382 (subagent usage) | no | All claims CONFIRMED against the diff and the Gate 1, implementation and Gate 2 files; row 3548's diff has exactly the intended hunks. Applied: row 3547 now says Gate 2 ran 8 `modules.*` files. Noted: the Roadmap entry is updated at fold-in. Its trailer remark was not taken (the trailer names the committing model). |
 | 3550 | 2026-10-22 | CHORE-187 commit | orchestrator | n/a | no | Lane A relayed `MC-454`. Fast-forwarded to main `1f4771ca7` (no overlap); 155 passed over the same files as row 3546; `pnpm check` 0/0. The 8 named paths and this records file committed together on `worktree-Lane-E` (hash in the hand-off message to lane A). |
+| 3551 | 2026-10-22 | CHORE-181 investigation (`a3\181\packet.md`) | investigator | 95,271 (subagent usage) | no | Source reading only. `dispatchBack` returns `false` when `pageCovered()`, so any `alertStore` dialog lets the host quit at once; per-type cancel paths; prompts answered only through the raw store, and the 400 ms answer guard; no Android code ties Back to a hide event. Six product questions (answered in `MC-455`). |
+| 3552 | 2026-10-22 | Independent check of row 3551 (`a3\181\verify.md`) | doc-verifier | 67,636 (subagent usage) | no | Core findings CONFIRMED. CORRECTED: about 50 external `alertSelect`/`alertInput` call sites, not 66; the `saveOnHide.ts` path and its two-branch rule; missed `pageCovered()` users (hotkey `keysBlocked`, panel gesture start); line citations. |
+| 3553 | 2026-10-22 | CHORE-181 plan (`a3\181\plan.md`) | orchestrator | n/a | no | Covered page consumes Back and closes or holds per a total type table; a prompt-answer function past the answer guard; the hide flush extracted and passed to the guard as `flush`. |
+| 3554 | 2026-10-22 | CHORE-181 Gate 1 (`a3\181\g1\verdict.md`) | opus-reviewer | 148,568 (subagent usage) | no | `[APPROVE WITH AMENDMENTS]`, A1 to A7. A1: `selectModule` has a cancel (its X answers `''`, its only caller returns on it); the orchestrator confirmed it in source and corrected CHORE-351. A2 identity check on the shown prompt; A3 tests; A4 `cardexport` `type2:''`; A5 flush also on the press whose toast throws; A6 no claim that Back never quits (1 s host timeout); A7 try/catch around the close. Executed: the 5 existing test files, 138 passed. |
+| 3555 | 2026-10-22 | CHORE-181 implementation (`a3\181\impl\handback.md`) | sonnet-coder | 133,965 (subagent usage: 24,960 READY stop + 109,005) | no | Exact grant for 11 files, revoked after the hand-back. New `alertBack.ts` and `alertBack.test.ts`; `answerShownPrompt`; the guard's covered branch and `flush` option; `flushBeforeLeaving` extracted. With only the new helpers added to a base copy, 19 of 20 `alertBack` tests failed on the covered early return. 9 mutants killed. 13 files 425 passed; `pnpm check` 0/0; CRLF. |
+| 3556 | 2026-10-22 | Orchestrator verification after row 3555 | orchestrator | n/a | no | Grant revoked. `pnpm check` 0/0. 25 test files that touch the Back handler, alert prompts, the Escape table or the hide flush: 946 passed. |
+| 3557 | 2026-10-22 | CHORE-181 Gate 2, round 1 (`a3\181\g2\verdict.md`) | opus-reviewer (effort xhigh) | 198,294 (subagent usage) | no | `[EDITORIAL]`. Plan items and A1 to A7 met; all 24 types match their own controls; the hold set is MC-455's; adding a type fails the type check (executed). Base red: 33 failed, 136 passed. 40 mutants, killed except an equivalent and S4, S5, P3, P4. 27 files 1001 passed. Wording: three comments overstated the flush. Optional: production flush wiring and a same-type identity test. Finding 7 (reasoning): synchronous save work started by the flush could delay the answer past the host's 1 s limit. |
+| 3558 | 2026-10-22 | Gate 2 round 1 remediation (`a3\181\rem\handback.md`) | sonnet-coder | 91,529 (subagent usage: 24,623 READY stop + 66,906) | no | Exact grant for 5 files, revoked. Wording fixed; the flush is scheduled with `setTimeout(..., 0)` (orchestrator decision on finding 7); wiring tests kill S4 and S5; an ask-over-ask test kills P3; an inline-flush mutant is killed. Against the brief, it ran its mutants by text-replacing worktree files with PowerShell and restoring them, including `alertPrompts.ts`, which was outside its grant; the write guard did not refuse it. |
+| 3559 | 2026-10-22 | Orchestrator verification after row 3558 | orchestrator | n/a | no | Grant revoked. `alertPrompts.ts` hash equals the Gate 2 reviewer's copy of the implemented file; CR = LF in all changed files. `pnpm check` 0/0; 27 test files 1005 passed. Lane A told of the guard gap (awareness only, at the maintainer's request). |
+| 3560 | 2026-10-22 | CHORE-181 Gate 2, round 2 (`a3\181\g2r2\verdict.md`) | opus-reviewer | 66,004 (subagent usage) | no | `[APPROVE]`. The flush never runs in `dispatchBack`'s own turn; once on the toast press and on the press whose toast throws, never on the quitting press; `dispatchBack` otherwise byte-identical to round 1; its own mutants killed; I1, S4, S5, S6, P3 killed. Reasoned, not run on a device: the 0 ms timer runs after the host's callback, and a late one is covered by the hide flush. `alertPrompts.ts` unchanged. 6 files 173 passed; `pnpm check` 0/0; CRLF. |
+| 3561 | 2026-10-22 | Independent check of the CHORE-181 records (MC-455, CHORE-351, CHORE-352, the CHORE-181 status, rows 3551 to 3560) | doc-verifier | 46,662 (subagent usage) | no | No required corrections; code-describing bullets CONFIRMED against the diff. Applied: `toast` and `none` named in the hold list. Not covered by it: the CHORE-352 overlay list (from rows 3551 and 3552) and the per-row quotes of the verdict files; the `selectModule` caller (`applyModule` returns on `''`) was checked by the orchestrator. |
 
 ## Handoff
 
@@ -180,3 +235,5 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 **2026-10-22, CHORE-117 stage 2.** Technically accepted (rows 3533 to 3541; records checked in row 3542); the maintainer approved the commit (`MC-453`); the 20 named paths and these records are committed together on `worktree-Lane-E` over main `eb5e10bec` and sent to lane A for merge. Both writer grants (rows 3533, 3537) were revoked after their hand-backs. Not done in this lane: a full `pnpm test` and build (lane A's, on merged main). Next: CHORE-187 with normal gates, then CHORE-181. Next free IDs: MC-454, CHORE-351, row 3543.
 
 **2026-10-22, CHORE-187.** Technically accepted (rows 3543 to 3548; records checked in row 3549); the maintainer approved the commit and merge (`MC-454`); committed with these records on `worktree-Lane-E` over main `1f4771ca7` (row 3550) and sent to lane A. Its writer grant (row 3545) was revoked after the hand-back. Next: CHORE-181; its read-only investigation packet is `%TEMP%\risu-lane-e\a3\181\packet.md` (not yet verified; six product questions for the maintainer). Next free IDs: MC-455, CHORE-351, row 3551.
+
+**2026-10-22, CHORE-181.** The maintainer answered the six questions (`MC-455`); CHORE-351 and CHORE-352 filed. Technically accepted (rows 3551 to 3560) on `worktree-Lane-E` over main `b87e457f9`; commit pending the maintainer's approval; then lane A's merge, full checks and the phone check listed under CHORE-181. Both writer grants revoked. A3's four items (CHORE-153, CHORE-117 stage 2, CHORE-187, CHORE-181) are then all with lane A. The guard gap of row 3558: the maintainer kept lane E's interim measures (no temporary repository edits by any tool, mutants in scratch only, a hash check after any "restored" hand-back) and asked for a ticket, revisited if a similar bypass happens again; lane A files it as MC-457 and CHORE-353. Records checked in row 3561. The maintainer approved the commit and merge (`MC-458`); committed with these records over main `0d905815b` and sent to lane A. Next free IDs: MC-459, CHORE-354, row 3562.

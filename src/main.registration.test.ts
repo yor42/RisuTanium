@@ -14,6 +14,8 @@ const seen = vi.hoisted(() => ({
     ui: { marker: 'the production port' },
     readSeam: null as null | (() => boolean),
     loadBackupAtBoot: vi.fn(async (_target: unknown) => ({ kind: 'cancelled' as const })),
+    flushPage: vi.fn(),
+    installBackGuard: vi.fn(),
 }))
 
 vi.mock('./ts/polyfill', () => ({}))
@@ -29,9 +31,9 @@ vi.mock('./ts/bootstrap', () => ({
 vi.mock('./ts/hotkey', () => ({ initHotkey: vi.fn() }))
 vi.mock('./preload', () => ({ preLoadCheck: vi.fn() }))
 vi.mock('./ts/android/keepAliveService', () => ({ startKeepAliveService: vi.fn() }))
-vi.mock('./ts/process/saveOnHide', () => ({ startSaveOnHide: vi.fn() }))
+vi.mock('./ts/process/saveOnHide', () => ({ startSaveOnHide: vi.fn(), flushPageBeforeLeaving: seen.flushPage }))
 vi.mock('svelte', () => ({ mount: vi.fn(() => ({})) }))
-vi.mock('./ts/backHandlers', () => ({ installBackGuard: vi.fn() }))
+vi.mock('./ts/backHandlers', () => ({ installBackGuard: seen.installBackGuard }))
 vi.mock('./ts/alert', () => ({ alertToast: vi.fn() }))
 vi.mock('./lang', () => ({ language: { alerts: { pressBackAgainToQuit: 'press back again' } } }))
 vi.mock('./ts/storage/store2/bootDispatch', () => ({
@@ -47,6 +49,7 @@ beforeEach(() => {
     seen.loadDataCalls = 0
     seen.registeredAtLoadData = []
     seen.dispatch.mockClear()
+    seen.installBackGuard.mockClear()
     document.body.innerHTML = '<div id="app"></div><div id="preloading"></div>'
 })
 
@@ -83,6 +86,15 @@ describe('new behaviour: the entry module registers the store2 boot', () => {
         const target = { install: vi.fn(), readColdStorageItem: vi.fn() }
         await expect(deps.importBackup(target)).resolves.toEqual({ kind: 'cancelled' })
         expect(seen.loadBackupAtBoot).toHaveBeenCalledWith(target)
+    })
+
+    test('the Back guard is installed with the page flush, so the first Back press saves unsaved edits', async () => {
+        await loadEntry()
+        expect(seen.installBackGuard).toHaveBeenCalledTimes(1)
+        expect(seen.installBackGuard).toHaveBeenCalledWith({
+            showToast: expect.any(Function),
+            flush: seen.flushPage,
+        })
     })
 
     test('guard: nothing is registered before the entry module has run', async () => {

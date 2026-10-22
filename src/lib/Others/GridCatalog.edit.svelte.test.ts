@@ -23,7 +23,7 @@
  * timers; a device behaves differently in ways no jsdom-like run shows.
  */
 import { flushSync, mount, unmount } from 'svelte'
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database, folder } from '../../ts/storage/database.svelte'
 import type { RisuEnvironmentLabel } from '../../ts/platform'
@@ -445,17 +445,20 @@ describe('Grid edit mode: entering and leaving', () => {
         })
     })
 
-    test('(F) Back does not leave edit mode while a dialog covers the page', async () => {
+    test('(F) Back closes a dialog that covers the page and does not leave edit mode; the next Back does', async () => {
         fixture()
         await withMounted(async (target) => {
             await enter(target)
             await tap(target, 'Char A')
             alertStore.set({ type: 'normal', msg: 'hello' } as alertData)
-            expect(dispatchBack()).toBe(false)
+            expect(dispatchBack()).toBe(true)
             await settle()
+            expect(get(alertStore).type).toBe('none')
             expect(isEditing(target)).toBe(true)
             expect(picked(target)).toBe(1)
-            alertStore.set({ type: 'none', msg: '' })
+            expect(dispatchBack()).toBe(true)
+            await settle()
+            expect(isEditing(target)).toBe(false)
         })
     })
 
