@@ -2217,8 +2217,10 @@ export const languageChinese = {
     "store2RestoreOldRow": (when: string) => `旧版：${when}`,
     "store2ImportSizeWarning": (megabytes: number) =>
         `此备份中的数据（不含图片和其他文件）约为 ${megabytes} MB。读取它需要数倍于此的内存，因此手机或其他小型设备可能会内存不足而停止运行。在导入完成之前，您已保存的数据不会被更改。要继续吗？`,
-    "store2ImportTimeWarning": (entries: number, minutes: number, neededGigabytes: number, databaseMegabytes: number | null) =>
-        `此备份包含 ${entries} 个文件。从现在开始，在这部手机上导入它可能需要约 ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} 小时` : `${minutes} 分钟`}，甚至更久。这是基于中端手机得出的估计，您的手机可能更快或更慢，低端手机可能慢得多。请在导入完成前保持应用打开。\n\n导入需要这部手机上约 ${neededGigabytes} GB 的可用空间。应用无法检查当前有多少可用空间。${databaseMegabytes === null ? '' : `此备份中的数据（不含图片和其他文件）约为 ${databaseMegabytes} MB，读取它需要数倍于此的内存，因此手机可能会内存不足而停止运行。`}文件复制完成后，最后可能仍会出现一个询问。在导入完成之前，您已保存的数据不会被更改。要继续吗？`,
+    "store2ImportTimeWarning": (entries: number, minutes: number, neededGigabytes: number, databaseMegabytes: number | null, freeGigabytes: number | null = null, short = false) =>
+        `此备份包含 ${entries} 个文件。从现在开始，在这部手机上导入它可能需要约 ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} 小时` : `${minutes} 分钟`}，甚至更久。这是基于中端手机得出的估计，您的手机可能更快或更慢，低端手机可能慢得多。请在导入完成前保持应用打开。\n\n导入需要这部手机上约 ${neededGigabytes} GB 的可用空间。${freeGigabytes === null ? '应用无法检查当前有多少可用空间。' : short ? `目前仅约有 ${freeGigabytes} GB 可用，如果手机空间耗尽，导入将停止。` : `目前约有 ${freeGigabytes} GB 可用。`}${databaseMegabytes === null ? '' : `此备份中的数据（不含图片和其他文件）约为 ${databaseMegabytes} MB，读取它需要数倍于此的内存，因此手机可能会内存不足而停止运行。`}文件复制完成后，最后可能仍会出现一个询问。在导入完成之前，您已保存的数据不会被更改。要继续吗？`,
+    "store2ImportSpaceWarning": (neededGigabytes: number, freeGigabytes: number, databaseMegabytes: number | null) =>
+        `导入需要这部手机上约 ${neededGigabytes} GB 的可用空间，但目前仅约有 ${freeGigabytes} GB 可用。如果手机空间耗尽，导入将停止。${databaseMegabytes === null ? '' : `此备份中的数据（不含图片和其他文件）约为 ${databaseMegabytes} MB，读取它需要数倍于此的内存，因此手机可能会内存不足而停止运行。`}在导入完成之前，您已保存的数据不会被更改。要继续吗？`,
     "store2ImportIncompleteConfirm": (items: string) =>
         `此备份中的部分数据无法完整导入：\n\n${items}\n\n导入后，这些部分将为空或缺失。您当前的数据会保留在更早保存的版本列表中。仍要导入吗？`,
     "store2ImportReadFailed": "备份的一部分或您已保存数据的一部分无法读取，因此没有导入任何内容。您当前的数据没有更改。",

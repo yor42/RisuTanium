@@ -50,6 +50,22 @@ export function importGigabytesText(bytes: number): number {
     return Math.ceil(bytes / 1e9 * 10) / 10
 }
 
+/** Decimal gigabytes of free space, one decimal, rounded down: the shown free figure never overstates what is there. */
+export function importFreeGigabytesText(bytes: number): number {
+    return Math.floor(bytes / 1e9 * 10) / 10
+}
+
+/**
+ * Whether the free bytes cover the need, compared in bytes and never in the rounded text. `null` is a read that failed:
+ * the import then goes on as it did before the check existed.
+ */
+export function importSpaceVerdict(freeBytes: number | null, needBytes: number): 'enough' | 'short' | 'unknown' {
+    if (freeBytes === null) {
+        return 'unknown'
+    }
+    return freeBytes >= needBytes ? 'enough' : 'short'
+}
+
 /** The non-database bytes of a file (assets and unit entries): what is not the database entry. Never negative. */
 export function importAssetBytes(fileSize: number, databaseEntryBytes: number): number {
     return Math.max(0, fileSize - databaseEntryBytes)
