@@ -16,8 +16,8 @@ import { DEFAULT_MAX_INLAY_BODY_BYTES, type ListParams } from './params'
  * `hexStemToBase64url`, the default cap or the list body shape must bump
  * `ASSET_REF_V` / `IL_REF_V`; the bump makes a stored list stale, so it is
  * derived again instead of carried. The module list golden test catches only
- * the changes its one fixture shows; reading a new module field without a bump
- * passes it, so the bump is the author's duty.
+ * the changes its one fixture shows; the derivation pin test fails when the
+ * module fields read change. Neither forces the bump: that is the author's duty.
  */
 export function createListDerivation(params?: Partial<ListParams>): ListDerivation {
     const defaultCap = (params?.maxInlayBodyBytes ?? DEFAULT_MAX_INLAY_BODY_BYTES) === DEFAULT_MAX_INLAY_BODY_BYTES

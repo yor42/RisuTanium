@@ -35,7 +35,7 @@ export interface SavePassRequest {
      * has no body to rewrite.
      */
     rewriteAll?: boolean
-    /** Called after each character that was encoded, so a long pass hands control back between characters. */
+    /** Called after each module and each character that was encoded, so a long pass hands control back between them. */
     yield?: () => Promise<void>
 }
 

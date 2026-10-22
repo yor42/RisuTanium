@@ -269,21 +269,23 @@ describe('new behaviour: whole-resident mode, the idle net and the new-character
         expect(pass.written).toEqual(unitsToWrite(full).map(unit => unit.identity).sort())
     })
 
-    test('whole-resident mode yields once after each resident character that it encodes, a stub excluded', async () => {
+    test('whole-resident mode yields once after each module and each resident character that it encodes, a stub excluded', async () => {
         const db = buildSmall(5)
         const previous = previousFrom(encodeWith(db))
         const lists = countingLists()
         let yields = 0
         const stubChaId = chaIdOf(db, 2)
         const next = withStub(db, stubChaId, undefined)
+        // The module set yields once per module before any character is encoded.
+        const moduleCount = next.modules.length
         await encoderOf(previous, lists.lists).plan(next, request({
             whole: true,
             yield: async () => {
                 yields++
-                expect(yields).toBe(lists.encoded.length)
+                expect(lists.encoded.length).toBe(Math.max(0, yields - moduleCount))
             },
         }))
-        expect(yields).toBe(4)
+        expect(yields).toBe(4 + moduleCount)
         expect(lists.encoded).not.toContain(stubChaId)
     })
 

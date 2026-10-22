@@ -9,7 +9,7 @@ import type { BuildContext, BuiltCommit, KeyMint } from '../commit'
 import { defineOwn } from './normalize'
 import { isUnchanged, unitDigest, UnitNotReusedError, UnitSink, type UnitKeyKind } from './reuse'
 import {
-    checkDatabase, emitCharacter, encodeCharacter, encodeFront, encodeModuleSet, Encoder, finishTree, IDENTITY,
+    checkDatabase, emitCharacter, encodeCharacter, encodeFront, encodeModuleSetYielding, Encoder, finishTree, IDENTITY,
     normalizeCharacter, type ModuleSet, type NormalizedCharacter,
 } from './split'
 import { isColdStub } from './stub'
@@ -38,7 +38,7 @@ export interface EncodeScope {
      * non-stub character. A resident character not named is carried from `previous`; a stub is never encoded.
      */
     characters: ReadonlySet<string> | 'all'
-    /** Called once after each character that was encoded, so a long pass hands control back between characters. */
+    /** Called once after each module and each character that was encoded, so a long pass hands control back between them. */
     yield?: () => Promise<void>
     /**
      * A named character whose data cannot be read as plain JSON is skipped instead of failing the pass: carried from
@@ -236,8 +236,17 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
     checkDatabase(db, options)
     const previous = options.previous ?? null
     const encoder = new Encoder(options, previous)
+    // One consistent character list per pass: `db.characters` is read here, before any await, and never again. The
+    // module encode below yields, so this copy (and the shared-id scan over it) must precede it: `scopeOf` named its
+    // characters from the list as it stood when this pass began, and a character added during any yield is not among
+    // them, so it would meet `carriedEntry` and fail the save. It reaches the next pass through the new-character rule.
+    // A list edit during a yield (splice, reassign, unshift) likewise reaches the next pass, so the committed tree holds
+    // exactly this list. Each slot is encoded synchronously on its turn; an edit inside a slot after its turn is the
+    // next pass's. `finishTree` takes its characters from `entries` and `configFields` leaves the field out.
+    const characters: readonly Slot[] = [...db.characters]
+    const ambiguous = ambiguousChaIds(characters, previous)
     const front = encodeFront(db, encoder)
-    const moduleSet = scope.modules ? encodeModuleSet(db, encoder) : carriedModuleSet(previous)
+    const moduleSet = scope.modules ? await encodeModuleSetYielding(db, encoder, scope.yield) : carriedModuleSet(previous)
 
     let previousEntries: Map<string, ShardEntry> | null = null
     const entriesOfPrevious = (): Map<string, ShardEntry> => {
@@ -248,12 +257,6 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
     const carriedOwners = new Set<string>()
     const skipped: SkippedCharacter[] = []
     const encoded: string[] = []
-    // One consistent character list per pass: `db.characters` is read here, before any await, and never again. A
-    // list edit during a yield (splice, reassign, unshift) reaches the next pass, so the committed tree holds exactly
-    // this list. Each slot is encoded synchronously on its turn; an edit inside a slot after its turn is the next
-    // pass's. `finishTree` takes its characters from `entries` and `configFields` leaves the field out.
-    const characters: readonly Slot[] = [...db.characters]
-    const ambiguous = ambiguousChaIds(characters, previous)
     for (let position = 0; position < characters.length; position++) {
         const slot = characters[position]
         if (typeof slot !== 'object' || slot === null) {
