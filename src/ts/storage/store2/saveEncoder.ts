@@ -5,6 +5,8 @@ import {
     type EncodedTree, type EncodeScope, type ListDerivation, type PreviousEncoding, type ReusableUnit, type SkippedCharacter,
 } from './codec'
 import { defaultKeyEnv, type KeyEnv } from './format'
+import { MEASURE } from '../../process/memory/measureFlag'
+import { finishSavePass, noteSavePassCommit, startSavePass } from './savePassMeter'
 
 /**
  * The save encoder layer: between the mark tracker and `committer.commit`. It holds the encoding the store last
@@ -168,11 +170,16 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
     return {
         async plan(db, request) {
             const base = previous
+            const measuredAt = MEASURE ? startSavePass() : null
+            const scope = scopeOf(db, base, request)
             const scoped = await planScopedEncode(
                 db,
                 { env, lists: options.lists, seq: 0, createdAt: now(), previous: request.rewriteAll === true ? withoutDigests(base) : base },
-                scopeOf(db, base, request),
+                scope,
             )
+            if (MEASURE) {
+                finishSavePass(measuredAt, request, scope.modules, scoped.encoded.length)
+            }
             let built: EncodedTree | null = null
             return {
                 newUnits: scoped.newUnits,
@@ -195,6 +202,9 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
                     }
                     previous = previousFrom(built)
                     pending = null
+                    if (MEASURE) {
+                        noteSavePassCommit(request, built.units)
+                    }
                 },
                 keepAsPending: () => {
                     if (built === null) {
