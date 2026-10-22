@@ -8,7 +8,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { extname, join } from 'node:path'
 
-const FORBIDDEN_MARKERS = ['__risuPutBackMeasure', 'risu-measure-putback', 'risu-measure-tripwire', 'risu-measure-import', '__risuSweepDryRun', '__risuGcNow', '__risuCommitMeter', 'risu-measure-commit', '__risuImportPhases', '__risuChatPhases', '__risuImportBench', 'risu-measure-copy', 'writeSyncMs=', 'writeList=', 'stubEncodeMs=', 'rangeWallMs=', 'writeVia=', ' encodeMs=', ' closeMs=', 'stubAhead=', 'stubHeldMax=', 'appendSynced=']
+const FORBIDDEN_MARKERS = ['__risuPutBackMeasure', 'risu-measure-putback', 'risu-measure-tripwire', 'risu-measure-import', '__risuSweepDryRun', '__risuGcNow', '__risuCommitMeter', 'risu-measure-commit', '__risuImportPhases', '__risuChatPhases', '__risuImportBench', 'risu-measure-copy', 'writeSyncMs=', 'writeList=', 'stubEncodeMs=', 'rangeWallMs=', 'writeVia=', ' encodeMs=', ' closeMs=', 'stubAhead=', 'stubHeldMax=', 'appendSynced=', 'gcMarkMs=']
 const SCANNED_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.html', '.css'])
 
 const root = process.argv[2] ?? 'dist'

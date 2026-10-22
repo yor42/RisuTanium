@@ -7,12 +7,14 @@ import { getStore2BootSession } from './bootActive'
 import { batchPaceOf, runOldDataDeletion } from './oldData/delete'
 import type { Store2Session } from './session'
 import { installImportBench } from '../../drive/importBench'
+import { runAutoGc, type AutoGcFacts } from './gc/autoGc'
 import { installGcMeasure } from './gc/gcMeasure'
 import { installSweepDryRunMeasure } from './sweep/dryRunMeasure'
 
 /**
  * The deleters a store2 page runs on its own, one at a time, after the page has been quiet. Today that is the cutover
- * deletion of old-format files (`oldData/delete.ts`).
+ * deletion of old-format files (`oldData/delete.ts`), followed on the app by one collector pass over the store2 leftovers
+ * (`gc/autoGc.ts`).
  *
  * - It runs only on a page whose own boot found a normal store2 profile (the "commit key parses with a readable tree" row),
  *   so the converted tree has been opened cold once before anything irreversible is deleted. The runner starts only on a
@@ -40,6 +42,8 @@ export interface MaintenanceSeams {
     session?: () => Store2Session | null
     startTrigger?: (run: () => void) => QuietTrigger
     deletion?: typeof runOldDataDeletion
+    /** Replaces the live page's facts for the clean-up pass; the default loads the page's own modules on first use. */
+    gcPageFacts?: AutoGcFacts
 }
 
 let stepActive = false
@@ -50,18 +54,26 @@ export function bootDidNotInstall(session: Store2Session): boolean {
     return decision.row === 5 && decision.mode === 'normal'
 }
 
-async function runStep(env: MaintenanceEnv, session: Store2Session, deletion: typeof runOldDataDeletion): Promise<void> {
+async function runStep(env: MaintenanceEnv, session: Store2Session, deletion: typeof runOldDataDeletion, gcPageFacts?: AutoGcFacts): Promise<void> {
     if (stepActive) {
         return
     }
     stepActive = true
     const step = (async () => {
         try {
-            // A Node server draws every request on one budget: its batches keep the floor between them.
-            const pace = session.kind === 'node' ? batchPaceOf('node') : undefined
-            await deletion(session, { store: await env.store(), listBackupTimes: env.listBackupTimes, pace })
-        } catch (error) {
-            console.error(error)
+            try {
+                // A Node server draws every request on one budget: its batches keep the floor between them.
+                const pace = session.kind === 'node' ? batchPaceOf('node') : undefined
+                await deletion(session, { store: await env.store(), listBackupTimes: env.listBackupTimes, pace })
+            } catch (error) {
+                console.error(error)
+            }
+            // After the deletion settled, even a refused or failed one, and on its own: a thrown pass is logged and swallowed.
+            try {
+                await runAutoGc(session, gcPageFacts)
+            } catch (error) {
+                console.error(error)
+            }
         } finally {
             stepActive = false
         }
@@ -93,7 +105,7 @@ export function startStore2Maintenance(env: MaintenanceEnv, seams: MaintenanceSe
         const deletion = seams.deletion ?? runOldDataDeletion
         const trigger = (seams.startTrigger ?? startQuietTrigger)(() => {
             trigger.stop()
-            void runStep(env, session, deletion)
+            void runStep(env, session, deletion, seams.gcPageFacts)
         })
         trigger.arm()
         return trigger
