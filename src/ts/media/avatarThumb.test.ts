@@ -87,6 +87,7 @@ vi.mock(
 
 import {
     __avatarThumbTestHooks,
+    THUMB_ABORTED,
     THUMB_VERSION,
     buildThumbKeepSet,
     classifyImage,
@@ -479,7 +480,7 @@ describe('T5b: per-task timeout frees the slot; a late result is discarded (fake
 })
 
 describe('T5c: the queue serves the most recently queued loc first (LIFO)', () => {
-    test('with both slots busy, a later-queued loc starts before an earlier-queued one once a slot frees', async () => {
+    test('among equally visible tasks (callers without options), a later-queued loc starts before an earlier-queued one once a slot frees', async () => {
         __avatarThumbTestHooks.setStore(makeMissStore() as never)
         const startOrder: string[] = []
         const releases = new Map<string, () => void>()
@@ -517,6 +518,346 @@ describe('T5c: the queue serves the most recently queued loc first (LIFO)', () =
         releases.get('assets/D.png')!()
         releases.get('assets/C.png')!()
         await Promise.all([pA, pB, pC, pD])
+    })
+})
+
+describe('T5f: visible tasks first, and a task nobody waits for any more is dropped', () => {
+    interface Held {
+        startOrder: string[]
+        releases: Map<string, () => void>
+        holder: Promise<string | null | typeof THUMB_ABORTED>
+    }
+
+    // One slot, held by a running task, so every later lookup queues behind it.
+    async function holdTheSlot(holderOptions?: { signal?: AbortSignal }): Promise<Held> {
+        __avatarThumbTestHooks.setStore(makeMissStore() as never)
+        __avatarThumbTestHooks.setLimits({ concurrency: 1 })
+        const startOrder: string[] = []
+        const releases = new Map<string, () => void>()
+        __avatarThumbTestHooks.setGenerator(
+            (loc) =>
+                new Promise((resolve) => {
+                    startOrder.push(loc)
+                    releases.set(loc, () => resolve({ src: `src-for-${loc}` }))
+                }),
+        )
+        const holder = holderOptions ? getAvatarThumbSrc('assets/hold.png', holderOptions) : getAvatarThumbSrc('assets/hold.png')
+        await flushMicrotasks()
+        expect(startOrder).toEqual(['assets/hold.png'])
+        return { startOrder, releases, holder }
+    }
+
+    async function queueLookup(loc: string, options?: { signal?: AbortSignal, visible?: () => boolean }) {
+        const promise = options ? getAvatarThumbSrc(loc, options) : getAvatarThumbSrc(loc)
+        await flushMicrotasks()
+        return promise
+    }
+
+    // Releases every started task until nothing is left running.
+    async function releaseAll(held: Held): Promise<void> {
+        for (let i = 0; i < 10; i++) {
+            for (const release of held.releases.values()) {
+                release()
+            }
+            await flushMicrotasks()
+        }
+    }
+
+    // REPRODUCER (red on the base: it pops the newest task whatever its callers can see).
+    test('with only the oldest queued task visible, it starts first although newer tasks are queued', async () => {
+        const held = await holdTheSlot()
+        void queueLookup('assets/A.png', { visible: () => true })
+        void queueLookup('assets/B.png', { visible: () => false })
+        void queueLookup('assets/C.png', { visible: () => false })
+        await flushMicrotasks()
+
+        held.releases.get('assets/hold.png')!()
+        await flushMicrotasks()
+        expect(held.startOrder).toEqual(['assets/hold.png', 'assets/A.png'])
+        await releaseAll(held)
+    })
+
+    // REPRODUCER for the live read: the flipped task is not the newest, so a visibility read at enqueue time
+    // or a plain newest-first pop both start another task.
+    test('visibility is read when the queue picks, not when the task was queued', async () => {
+        const held = await holdTheSlot()
+        const seen = { A: false, B: false, C: false }
+        void queueLookup('assets/A.png', { visible: () => seen.A })
+        void queueLookup('assets/B.png', { visible: () => seen.B })
+        void queueLookup('assets/C.png', { visible: () => seen.C })
+        await flushMicrotasks()
+        seen.A = true
+
+        held.releases.get('assets/hold.png')!()
+        await flushMicrotasks()
+        expect(held.startOrder[1]).toBe('assets/A.png')
+        await releaseAll(held)
+    })
+
+    // GUARD: nothing is visible, so the order is the old newest-first one.
+    test('with no visible task the newest queued task starts first', async () => {
+        const held = await holdTheSlot()
+        void queueLookup('assets/A.png', { visible: () => false })
+        void queueLookup('assets/B.png', { visible: () => false })
+        await flushMicrotasks()
+
+        held.releases.get('assets/hold.png')!()
+        await flushMicrotasks()
+        expect(held.startOrder[1]).toBe('assets/B.png')
+        await releaseAll(held)
+    })
+
+    // REPRODUCER (red on the base): a caller without options is visible, as every caller was before.
+    test('a queued task whose caller passed no visibility starts before a newer task that is not visible', async () => {
+        const held = await holdTheSlot()
+        void queueLookup('assets/A.png')
+        void queueLookup('assets/B.png', { visible: () => false })
+        await flushMicrotasks()
+
+        held.releases.get('assets/hold.png')!()
+        await flushMicrotasks()
+        expect(held.startOrder[1]).toBe('assets/A.png')
+        await releaseAll(held)
+    })
+
+    // GUARD (a throw cannot stall the pump that runs from a slot release).
+    test('a visibility function that throws counts as visible, and the queue keeps running', async () => {
+        const held = await holdTheSlot()
+        void queueLookup('assets/A.png', { visible: () => { throw new Error('broken getter') } })
+        void queueLookup('assets/B.png', { visible: () => false })
+        await flushMicrotasks()
+
+        held.releases.get('assets/hold.png')!()
+        await flushMicrotasks()
+        expect(held.startOrder[1]).toBe('assets/A.png')
+        await releaseAll(held)
+        expect(held.startOrder).toEqual(['assets/hold.png', 'assets/A.png', 'assets/B.png'])
+    })
+
+    // GUARD (the base is green): creating or joining a lookup reads nothing reactive, so no visibility
+    // function runs in the synchronous prefix.
+    test('a lookup calls no visibility function before its first await', async () => {
+        __avatarThumbTestHooks.setStore(makeMissStore() as never)
+        __avatarThumbTestHooks.setGenerator(async (loc) => ({ src: `src-for-${loc}` }))
+        const visible = vi.fn(() => true)
+        const first = getAvatarThumbSrc('assets/a.png', { visible })
+        const joined = getAvatarThumbSrc('assets/a.png', { visible })
+        expect(visible).not.toHaveBeenCalled()
+        await Promise.all([first, joined])
+    })
+
+    // REPRODUCER (red on the base: the extra argument is ignored and the generator runs for the gone caller).
+    test('aborting every waiter of a queued task removes it at once, and its generator never runs', async () => {
+        const held = await holdTheSlot()
+        const controller = new AbortController()
+        const lookup = queueLookup('assets/A.png', { signal: controller.signal })
+        await flushMicrotasks()
+        expect(__avatarThumbTestHooks.stats().queued).toBe(1)
+
+        controller.abort()
+        expect(__avatarThumbTestHooks.stats().queued).toBe(0)
+        expect(__avatarThumbTestHooks.stats().inFlight).toBe(1)
+        expect(await lookup).toBe(THUMB_ABORTED)
+
+        await releaseAll(held)
+        expect(held.startOrder).toEqual(['assets/hold.png'])
+        expect(__avatarThumbTestHooks.stats().memoEntries).toBe(1)
+    })
+
+    // GUARD: one waiter's abort settles only that waiter; the task stays for the other.
+    test('one of two waiters aborting keeps the task for the other', async () => {
+        const held = await holdTheSlot()
+        const first = new AbortController()
+        const second = new AbortController()
+        const a1 = queueLookup('assets/A.png', { signal: first.signal })
+        const a2 = queueLookup('assets/A.png', { signal: second.signal })
+        await flushMicrotasks()
+
+        first.abort()
+        expect(__avatarThumbTestHooks.stats().queued).toBe(1)
+        expect(await a1).toBe(THUMB_ABORTED)
+        await releaseAll(held)
+        expect(await a2).toBe('src-for-assets/A.png')
+        expect(held.startOrder).toEqual(['assets/hold.png', 'assets/A.png'])
+    })
+
+    // GUARD: a caller that cannot abort (a folder picture, the sidebar) keeps the task alive.
+    test('a waiter without a signal keeps the task when the other waiter aborts', async () => {
+        const held = await holdTheSlot()
+        const controller = new AbortController()
+        const aborting = queueLookup('assets/A.png', { signal: controller.signal })
+        const staying = queueLookup('assets/A.png')
+        await flushMicrotasks()
+
+        controller.abort()
+        expect(__avatarThumbTestHooks.stats().queued).toBe(1)
+        expect(await aborting).toBe(THUMB_ABORTED)
+        await releaseAll(held)
+        expect(await staying).toBe('src-for-assets/A.png')
+    })
+
+    // GUARD: a started task is never abandoned half-way; it is memoized and persisted as before.
+    test('a waiter that aborts while the task runs settles at once, the other gets the value and the memo is set', async () => {
+        const controller = new AbortController()
+        const held = await holdTheSlot({ signal: controller.signal })
+        const staying = queueLookup('assets/hold.png')
+        await flushMicrotasks()
+
+        controller.abort()
+        expect(await held.holder).toBe(THUMB_ABORTED)
+        expect(__avatarThumbTestHooks.stats().running).toBe(1)
+        expect(__avatarThumbTestHooks.stats().inFlight).toBe(1)
+
+        await releaseAll(held)
+        expect(await staying).toBe('src-for-assets/hold.png')
+        expect(__avatarThumbTestHooks.stats().memoEntries).toBe(1)
+        expect(held.startOrder).toEqual(['assets/hold.png'])
+    })
+
+    test('the last waiter aborting while the task runs leaves it to finish and be memoized', async () => {
+        const controller = new AbortController()
+        const held = await holdTheSlot({ signal: controller.signal })
+        controller.abort()
+        expect(await held.holder).toBe(THUMB_ABORTED)
+        expect(__avatarThumbTestHooks.stats().inFlight).toBe(1)
+
+        // A caller that arrives while the task still runs joins it instead of starting a second one.
+        const joiner = queueLookup('assets/hold.png')
+        await releaseAll(held)
+        expect(await joiner).toBe('src-for-assets/hold.png')
+        expect(__avatarThumbTestHooks.stats().memoEntries).toBe(1)
+        expect(__avatarThumbTestHooks.stats().inFlight).toBe(0)
+        expect(await getAvatarThumbSrc('assets/hold.png')).toBe('src-for-assets/hold.png')
+        expect(held.startOrder).toEqual(['assets/hold.png'])
+    })
+
+    // REPRODUCER (red on the base: the read finishes and enqueues for a caller that is gone).
+    test('an abort during the store read does not enqueue, and the lookup is forgotten at once', async () => {
+        const store = makeMissStore()
+        let finishRead: (value: unknown) => void = () => {}
+        store.getItem = vi.fn(() => new Promise((resolve) => { finishRead = resolve }))
+        __avatarThumbTestHooks.setStore(store as never)
+        const generator = vi.fn(async (loc: string) => ({ src: `src-for-${loc}` }))
+        __avatarThumbTestHooks.setGenerator(generator)
+
+        const controller = new AbortController()
+        const lookup = getAvatarThumbSrc('assets/a.png', { signal: controller.signal })
+        await flushMicrotasks()
+        controller.abort()
+        expect(await lookup).toBe(THUMB_ABORTED)
+        expect(__avatarThumbTestHooks.stats().inFlight).toBe(0)
+
+        finishRead(null)
+        await flushMicrotasks()
+        expect(generator).not.toHaveBeenCalled()
+        expect(__avatarThumbTestHooks.stats().queued).toBe(0)
+        expect(__avatarThumbTestHooks.stats().inFlight).toBe(0)
+    })
+
+    // REPRODUCER for the identity-checked deletion, read phase: the dropped read settles after a newer lookup
+    // for the same loc was registered, and must not remove it.
+    test('a dropped read that settles late does not remove the newer lookup of the same loc', async () => {
+        const store = makeMissStore()
+        const finishers: Array<(value: unknown) => void> = []
+        store.getItem = vi.fn(() => new Promise((resolve) => { finishers.push(resolve) }))
+        __avatarThumbTestHooks.setStore(store as never)
+        const generator = vi.fn(async (loc: string) => ({ src: `src-for-${loc}` }))
+        __avatarThumbTestHooks.setGenerator(generator)
+
+        const controller = new AbortController()
+        void getAvatarThumbSrc('assets/a.png', { signal: controller.signal })
+        await flushMicrotasks()
+        controller.abort()
+        const fresh = getAvatarThumbSrc('assets/a.png')
+        await flushMicrotasks()
+        expect(store.getItem).toHaveBeenCalledTimes(2)
+
+        finishers[0](null)
+        await flushMicrotasks()
+        const joiner = getAvatarThumbSrc('assets/a.png')
+        await flushMicrotasks()
+        expect(store.getItem).toHaveBeenCalledTimes(2)
+
+        finishers[1](null)
+        expect(await fresh).toBe('src-for-assets/a.png')
+        expect(await joiner).toBe('src-for-assets/a.png')
+        expect(generator).toHaveBeenCalledTimes(1)
+    })
+
+    // REPRODUCER for the identity-checked deletion, queue phase, and for the fresh start after a drop.
+    test('after the last abort a new caller starts a fresh task that later callers join, once', async () => {
+        const held = await holdTheSlot()
+        const controller = new AbortController()
+        void queueLookup('assets/A.png', { signal: controller.signal })
+        await flushMicrotasks()
+        controller.abort()
+
+        const fresh = queueLookup('assets/A.png')
+        await flushMicrotasks()
+        const joiner = queueLookup('assets/A.png')
+        await flushMicrotasks()
+        expect(__avatarThumbTestHooks.stats().queued).toBe(1)
+
+        await releaseAll(held)
+        expect(await fresh).toBe('src-for-assets/A.png')
+        expect(await joiner).toBe('src-for-assets/A.png')
+        expect(held.startOrder.filter((loc) => loc === 'assets/A.png')).toHaveLength(1)
+    })
+
+    // REPRODUCER (red on the base: the lookup is not recognised as aborted and reads the store).
+    test('a signal that is already aborted returns the aborted outcome without a store read or an in-flight entry', async () => {
+        const store = makeMissStore()
+        __avatarThumbTestHooks.setStore(store as never)
+        const controller = new AbortController()
+        controller.abort()
+
+        expect(await getAvatarThumbSrc('assets/a.png', { signal: controller.signal })).toBe(THUMB_ABORTED)
+        expect(store.getItem).not.toHaveBeenCalled()
+        expect(__avatarThumbTestHooks.stats().inFlight).toBe(0)
+    })
+
+    // GUARD: the aborted waiter is removed from its task, so the queue never calls its getter again.
+    test('a visibility function is not called again once its waiter aborted', async () => {
+        const held = await holdTheSlot()
+        const controller = new AbortController()
+        const abortedVisible = vi.fn(() => false)
+        void queueLookup('assets/A.png', { signal: controller.signal, visible: abortedVisible })
+        void queueLookup('assets/A.png', { visible: () => true })
+        void queueLookup('assets/B.png', { visible: () => false })
+        await flushMicrotasks()
+
+        controller.abort()
+        const callsAtAbort = abortedVisible.mock.calls.length
+        held.releases.get('assets/hold.png')!()
+        await flushMicrotasks()
+        await releaseAll(held)
+        expect(held.startOrder).toContain('assets/A.png')
+        expect(abortedVisible.mock.calls.length).toBe(callsAtAbort)
+    })
+
+    test('listeners are removed when the lookup settles, and registered once', async () => {
+        __avatarThumbTestHooks.setStore(makeMissStore() as never)
+        __avatarThumbTestHooks.setGenerator(async (loc) => ({ src: `src-for-${loc}` }))
+        const controller = new AbortController()
+        const added = vi.spyOn(controller.signal, 'addEventListener')
+        const removed = vi.spyOn(controller.signal, 'removeEventListener')
+
+        expect(await getAvatarThumbSrc('assets/a.png', { signal: controller.signal })).toBe('src-for-assets/a.png')
+        expect(added).toHaveBeenCalledWith('abort', expect.any(Function), { once: true })
+        expect(removed).toHaveBeenCalledWith('abort', added.mock.calls[0][1])
+    })
+
+    test('stats count the waiters of every lookup in flight, and reset clears them', async () => {
+        const held = await holdTheSlot()
+        void queueLookup('assets/A.png')
+        void queueLookup('assets/A.png')
+        await flushMicrotasks()
+        expect(__avatarThumbTestHooks.stats().waiters).toBe(3)
+
+        __avatarThumbTestHooks.reset()
+        expect(__avatarThumbTestHooks.stats().waiters).toBe(0)
+        expect(__avatarThumbTestHooks.stats().inFlight).toBe(0)
+        expect(held.releases.size).toBe(1)
     })
 })
 

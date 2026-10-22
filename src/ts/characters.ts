@@ -14,7 +14,7 @@ import { doingChat } from "./process/index.svelte";
 import { importCharacter } from "./characterCards";
 import { PngChunk } from "./pngChunk";
 import { findChaIdHolders, restoreColdCharacter } from "./process/coldCharacterRestore";
-import { getAvatarThumbSrc, isThumbEligible } from "./media/avatarThumb";
+import { getAvatarThumbSrc, isThumbEligible, THUMB_ABORTED, type ThumbAborted, type ThumbRequestOptions } from "./media/avatarThumb";
 import { markCharacterForSave } from "./storage/characterSaveMarks";
 import { applyCharacterDefaults } from "./storage/characterDefaults";
 import { hasWorkIn, stopWorkIn } from "./process/chatOrigin";
@@ -94,7 +94,15 @@ export function createNewChat(cha: character | groupChat): number {
     return 0
 }
 
-export async function getCharImage(loc:string, type:'plain'|'css'|'contain'|'lgcss'|'thumb'|'thumbcss') {
+/**
+ * With `options` (only the list avatars pass them) the lookup may be abandoned
+ * through its signal; it then resolves to `THUMB_ABORTED`, a value that is
+ * neither `null` nor a style, after touching nothing further. Without options
+ * the result is exactly what it always was.
+ */
+export async function getCharImage(loc:string, type:'plain'|'css'|'contain'|'lgcss'|'thumb'|'thumbcss'): Promise<string|null>
+export async function getCharImage(loc:string, type:'plain'|'css'|'contain'|'lgcss'|'thumb'|'thumbcss', options:ThumbRequestOptions): Promise<string|null|ThumbAborted>
+export async function getCharImage(loc:string, type:'plain'|'css'|'contain'|'lgcss'|'thumb'|'thumbcss', options?:ThumbRequestOptions): Promise<string|null|ThumbAborted> {
     const db = DBState.db
 
     // 'thumb'/'thumbcss' only change how the src is resolved below; every
@@ -117,7 +125,20 @@ export async function getCharImage(loc:string, type:'plain'|'css'|'contain'|'lgc
         }
         return null
     }
-    const filesrc = (thumb && isThumbEligible(loc) ? await getAvatarThumbSrc(loc) : null) ?? await getFileSrc(loc)
+    let thumbSrc: string | null = null
+    if(thumb && isThumbEligible(loc)){
+        const found = options ? await getAvatarThumbSrc(loc, options) : await getAvatarThumbSrc(loc)
+        if(found === THUMB_ABORTED){
+            return THUMB_ABORTED
+        }
+        thumbSrc = found
+    }
+    // The signal can fire while the thumbnail lookup settles with a value (a
+    // skipped or failed thumbnail), so the full-size read is gated here too.
+    if(options?.signal?.aborted){
+        return THUMB_ABORTED
+    }
+    const filesrc = thumbSrc ?? await getFileSrc(loc)
     if(wrapType === 'plain'){
         return filesrc
     }

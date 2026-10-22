@@ -340,4 +340,90 @@ describe('CharListAvatar', () => {
         await settle()
         expect(getCharImageMock).toHaveBeenCalledTimes(1)
     })
+
+    // Abort siblings of the lookup tests above: the avatar abandons a lookup it no longer needs and leaves
+    // no trace of it. The mock returns whatever the test settles, so it can model both the abort sentinel
+    // and a plain string arriving after the abort.
+    function signalOf(call: number): AbortSignal {
+        return (getCharImageMock.mock.calls[call][2] as { signal: AbortSignal }).signal
+    }
+
+    test('the lookup carries an abort signal that is aborted when the tile goes away', async () => {
+        mountAvatar({ src: 'assets/a.png' })
+        expect(getCharImageMock.mock.calls[0][1]).toBe('thumbcss')
+        expect(signalOf(0).aborted).toBe(false)
+
+        await unmount(mounted!.app as never)
+        mounted!.target.remove()
+        mounted = null
+        expect(signalOf(0).aborted).toBe(true)
+    })
+
+    test('a location change aborts the previous location lookup only', async () => {
+        const props = $state({ src: 'assets/a.png' })
+        mountAvatar(props)
+        props.src = 'assets/b.png'
+        flushSync()
+        await settle()
+
+        expect(signalOf(0).aborted).toBe(true)
+        expect(signalOf(1).aborted).toBe(false)
+    })
+
+    test('a lookup abandoned by an unmount is not remembered even if a style still arrives', async () => {
+        mountAvatar({ src: 'assets/a.png' })
+        await unmount(mounted!.app as never)
+        mounted!.target.remove()
+        mounted = null
+
+        pending[0].resolve('background: url("data:late");')
+        await settle()
+        expect(await lookupsOnRemount('assets/a.png')).toBe(1)
+    })
+
+    test('the aborted outcome is neither painted nor remembered nor logged', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        const aborted = Symbol('aborted')
+        getCharImageMock.mockImplementationOnce(() => Promise.resolve(aborted))
+        const target = mountAvatar({ src: 'assets/a.png' })
+        await settle()
+
+        expect(styleOf(target.querySelector('.ico')!)).toBe('')
+        expect(warn).not.toHaveBeenCalled()
+        expect(await remountAndCountLookups('assets/a.png')).toBe(1)
+    })
+
+    test('a rejection that arrives after the abort is not logged', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        mountAvatar({ src: 'assets/a.png' })
+        await unmount(mounted!.app as never)
+        mounted!.target.remove()
+        mounted = null
+
+        pending[0].reject(new Error('gone'))
+        await settle()
+        expect(warn).not.toHaveBeenCalled()
+    })
+
+    test('the visibility prop reaches the lookup as a live function and a change of it looks nothing up again', async () => {
+        let onScreen = false
+        const props = $state({ src: 'assets/a.png', visible: () => onScreen })
+        mountAvatar(props)
+        const passed = (getCharImageMock.mock.calls[0][2] as { visible: () => boolean }).visible
+        expect(passed()).toBe(false)
+        onScreen = true
+        expect(passed()).toBe(true)
+
+        props.visible = () => false
+        flushSync()
+        await settle()
+        expect(getCharImageMock).toHaveBeenCalledTimes(1)
+        expect(passed()).toBe(false)
+    })
+
+    test('without a visibility prop the lookup counts as visible', () => {
+        mountAvatar({ src: 'assets/a.png' })
+        const passed = (getCharImageMock.mock.calls[0][2] as { visible: () => boolean }).visible
+        expect(passed()).toBe(true)
+    })
 })
