@@ -6916,17 +6916,20 @@ with index -1.
 
 - **Verified:** the asset copy took 316.0 s (3.85 MiB/s, run a1) and 334.6 s (3.64 MiB/s, a2) for 1,216.7 MiB, on a debug MEASURE build with debug Rust, on one Note 9 with a sampler adding load.
 - **MEASURED during the copy window:** the flash was 10 to 12% utilised and the busiest thread about 25% (renderer main thread 25.3 to 25.5%).
-- **Next:** the same imports on a release MEASURE build, batched with lane B's Note 9 request (`%TEMP%\risu-lane-b\device-requests\2026-10-22-stage1-stub-import-calibration.md`, scratch; CHORE-220).
+- **Next (done 2026-10-22, see the status below):** the same imports on a release MEASURE build, batched with lane B's Note 9 request (`%TEMP%\risu-lane-b\device-requests\2026-10-22-stage1-stub-import-calibration.md`, scratch; CHORE-220).
+- **Status (2026-10-22, later): measured on release, not settled.** On phone 2 the release build copied the m2-mix18k assets in 216 s (mean of 212.2 and 219.4 s) against debug's 325 s, 1.51x. The two runs differ in commit (`74b28ddd1` against `42993e408`, and the copy path changed between them: `assetBatchPipeline.ts`, `backuplocal.ts`, `storeImport.ts`), in start state (debug from `base1`, release from `pm clear` plus the wizard) and in collectors (the debug runs were heavier), so the build-type share is not isolated. INFERRED: one parallel lift (the lane B stage 3 knob at 4 streams, 4 flights, 70.9 s) fits a latency-bound chain, but no CPU or disk counters were taken. Next: a same-commit debug/release pair, if it still matters after lane B picks its CHORE-222 defaults. Ledger rows 2122 and 2123.
 - **Related:** `MC-336`, `MC-330`; CHORE-202, CHORE-220.
 
 ### CHORE-204 — Device-script follow-ups (lane A)
 
-**Status (2026-10-22): open, queued until both phone agents finish, because the scripts are live while they run.** The work goes through one gated batch: a `sonnet-coder` in a scratch copy, a fresh `adversarial-reviewer`, one Copy-Item pass, then a byte-compare. Source: the maintainer's instruction of 2026-10-22, as relayed by the orchestrator.
+**Status (2026-10-22): open, in progress (both phone agents have finished; items (d) and (e) were added after their runs).** The work goes through one gated batch: a `sonnet-coder` in a scratch copy, a fresh `adversarial-reviewer`, one Copy-Item pass, then a byte-compare. Source: the maintainer's instruction of 2026-10-22, as relayed by the orchestrator.
 
 - **(a)** The defaults `-PortMin 9500 -PortMax 9599` in `cold-start.ps1` and `import-bin.ps1` are outside every reservation in `Agents/Lanes/README.md` (lane A 6000 to 6399, B 6400 to 6419, D 6420 to 6439, C 6440 to 6459, E 6460 to 6479); the final Gate 2 found no collision (ledger row 2114).
 - **(b)** `import-bin.ps1` does not dismiss the first-run startup notice that appears after the import commit. The gap sweep hit the 900 s cap on it, and the agent tapped OK by hand (ledger row 2117).
 - **(c)** The stale-lock replace race from the final Gate 2 (two waiters that both judge a lock stale can each remove it and create their own, so the second deletes the first's fresh lock; narrow, low, no executed repro): fix it, or keep it as a documented limit (ledger row 2114).
-- **Related:** `MC-330` 7, rows 2114 and 2117.
+- **(d)** `restore-snapshot.ps1` fails after an uninstall and reinstall (a debug/release swap), because the app uid changes and `tar` cannot chown to the old uid. A `tar --no-same-owner -xf` scratch copy of the script restored correctly on phone 1; phone 2 was restored by hand the same way. Hit on both phones on 2026-10-22 (rows 2122 and 2124).
+- **(e)** `build-apk.ps1 -RepoRoot` on a `git archive` tree: the generated, gitignored `src-tauri/gen/android/.../TauriActivity.kt` and `proguard-tauri.pro` are missing, and a release build failed with `Unresolved reference: TauriActivity` (row 2124). Fix with a clear preflight failure, or a documented copy step.
+- **Related:** `MC-330` 7, rows 2114, 2117, 2122 and 2124.
 
 ### CHORE-220 — The import size warning sums compressed database bytes with uncompressed unit bytes, so a stub-form file warns earlier and shows a larger number
 
