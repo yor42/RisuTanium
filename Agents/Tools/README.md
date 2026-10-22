@@ -220,3 +220,7 @@ settings UI closed. Trap 3 left a real `Module 2 (giant)w` behind once; it was o
 restoration was checked, not assumed.
 
 **Report the hardware.** These figures came from an i9-13900K and are a lower bound on latency.
+
+## `device/` - device-check scripts
+
+PowerShell scripts that run one capped phone check and write `result.json`: see [device/README.md](device/README.md).
