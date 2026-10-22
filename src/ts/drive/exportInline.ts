@@ -7,6 +7,7 @@ import { getResidency, isEntityUnitKey } from '../storage/store2/residencyActive
 import { coldUnitCharacter } from '../process/coldCharacter'
 import { isCharacterEntry, isUsableCharacterId } from '../storage/characterIds'
 import { v4 as uuidv4 } from 'uuid'
+import { MEASURE } from '../process/memory/measureFlag'
 
 /**
  * A `.bin` carries each character whole, or as an upstream-shaped stub with a unit payload. A store2 page may hold a
@@ -90,6 +91,54 @@ export interface StubsForExport {
     failedKeys: string[]
 }
 
+/** Where the stub reads of one export spent their time, as a measurement build records it. */
+export interface StubReadStats {
+    /** Stubs whose entity was read, whatever the read gave. */
+    characters: number
+    /** Milliseconds awaiting `readColdCharacterCopy`: the store reads and the character's decode. Retry pauses are not counted. */
+    readMs: number
+    /** Milliseconds in `stubUnitEntry`: the JSON text and its UTF-8 encode. */
+    encodeMs: number
+}
+
+let stubStats: StubReadStats = { characters: 0, readMs: 0, encodeMs: 0 }
+let stubClock: () => number = () => performance.now()
+
+/** Test seam: replaces the clock the recorder reads; `null` restores it. */
+export function setStubReadClockForTest(clock: (() => number) | null): void {
+    stubClock = clock ?? (() => performance.now())
+}
+
+/**
+ * Measurement builds only (`MEASURE`): the stub read stats since `readStubsForExport` began, which also clears them;
+ * `null` otherwise. Recording never throws into the export and never changes what is read or encoded.
+ */
+export function takeStubReadStats(): StubReadStats | null {
+    if (!MEASURE) {
+        return null
+    }
+    const stats = stubStats
+    stubStats = { characters: 0, readMs: 0, encodeMs: 0 }
+    return stats
+}
+
+function stubMark(): number {
+    try {
+        return stubClock()
+    } catch {
+        return Number.NaN
+    }
+}
+
+function stubElapsed(startedAt: number): number {
+    try {
+        const elapsed = stubClock() - startedAt
+        return Number.isFinite(elapsed) ? elapsed : 0
+    } catch {
+        return 0
+    }
+}
+
 /** The unit entry of `character`: `{ character }` without the trash time, which only the stub carries. */
 function stubUnitEntry(character: Slot): MintedStubEntry | null {
     let encoded: Uint8Array
@@ -119,6 +168,10 @@ function hasColdRoots(character: Slot): boolean {
  * mode.
  */
 export async function readStubsForExport(db: Pick<Database, 'characters'>, options: ExportCollectionOptions = {}): Promise<StubsForExport> {
+    if (MEASURE) {
+        // The partial export reads stubs too, so each read of the stubs starts its own stats.
+        stubStats = { characters: 0, readMs: 0, encodeMs: 0 }
+    }
     const mode = (options.mode ?? EXPORT_UNLOADED_CHARACTERS) === 'stub' && !characterListNeedsRepair(db.characters) ? 'stub' : 'inline'
     const retry: ReadRetryPolicy = { ...DEFAULT_READ_RETRY, ...options.readRetry }
     const inlined = new Map<string, Slot>()
@@ -140,7 +193,12 @@ export async function readStubsForExport(db: Pick<Database, 'characters'>, optio
         if (inlined.has(key) || stubEntries.has(key)) {
             continue
         }
+        const firstReadAt = MEASURE ? stubMark() : 0
         let copy = await readColdCharacterCopy(slot)
+        if (MEASURE) {
+            stubStats.characters += 1
+            stubStats.readMs += stubElapsed(firstReadAt)
+        }
         // A read that failed without a kind of its own may succeed a moment later; a missing or damaged unit never will.
         for (const pause of retry.pausesMs) {
             if (copy.status !== 'unreadable' || copy.kind !== undefined || waitedMs + pause > retry.budgetMs || retries >= retry.maxRetries) {
@@ -149,7 +207,11 @@ export async function readStubsForExport(db: Pick<Database, 'characters'>, optio
             waitedMs += pause
             retries++
             await retry.pause(pause)
+            const retryReadAt = MEASURE ? stubMark() : 0
             copy = await readColdCharacterCopy(slot)
+            if (MEASURE) {
+                stubStats.readMs += stubElapsed(retryReadAt)
+            }
         }
         if (copy.status !== 'ok') {
             if (!failedKeys.includes(u)) {
@@ -158,7 +220,11 @@ export async function readStubsForExport(db: Pick<Database, 'characters'>, optio
             continue
         }
         const asStub = mode === 'stub' && !slot.trashTime && !hasColdRoots(copy.character)
+        const encodeAt = MEASURE && asStub ? stubMark() : 0
         const entry = asStub ? stubUnitEntry(copy.character) : null
+        if (MEASURE && asStub) {
+            stubStats.encodeMs += stubElapsed(encodeAt)
+        }
         if (entry === null) {
             inlined.set(key, copy.character)
         } else {

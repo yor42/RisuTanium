@@ -5,7 +5,7 @@
  * `src-tauri/src/chunked_io.rs`; a pass here is not evidence about it or about
  * the native bridge.
  */
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const h = await vi.hoisted(async () => {
     const fs = (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true })
@@ -36,6 +36,8 @@ import {
     RangeReadChangedError,
     READ_PIECE_BYTES,
     readRanged,
+    setRangeReadClockForTest,
+    takeRangeReadStats,
     WRITE_CHUNK_BYTES,
     writeChunked,
 } from 'src/ts/storage/tauriByteTransport'
@@ -519,5 +521,121 @@ describe('the flush status of a durable chunked write', () => {
         h.fs.reset()
         h.chunk.failFlushes((call) => call.last)
         expect(await writeChunked(KEY, patterned(10), true, 4)).toBe(false)
+    })
+})
+
+// New behaviour of a measurement build (vitest runs as one): the counter of `read_range` invokes the export notes report.
+// The clock is the test's own, so every figure below is exact.
+describe('takeRangeReadStats', () => {
+    let now = 0
+
+    /** An invoke whose answer the test releases: a 3-byte file in one piece. */
+    function heldReads(): { release: (index: number) => void, reject: (index: number, reason: unknown) => void } {
+        const pending: Array<{ resolve: (value: unknown) => void, reject: (reason: unknown) => void }> = []
+        h.state.override = () => new Promise((resolve, reject) => { pending.push({ resolve, reject }) })
+        const reply = () => {
+            const out = new Uint8Array(3 + 56)
+            out.set([7, 8, 9], 0)
+            new DataView(out.buffer, 3).setBigUint64(0, 3n, true)
+            return out.buffer
+        }
+        return {
+            release: (index) => pending[index].resolve(reply()),
+            reject: (index, reason) => pending[index].reject(reason),
+        }
+    }
+
+    beforeEach(() => {
+        now = 0
+        setRangeReadClockForTest(() => now)
+    })
+
+    afterEach(() => {
+        setRangeReadClockForTest(null)
+    })
+
+    test('counts every invoke of a ranged read and adds up their milliseconds, with the wall time of serial reads equal to the sum', async () => {
+        h.fs.plant('assets/x', patterned(25))
+        setRangeReadClockForTest(() => (now += 5))
+
+        const read = await readRanged('assets/x', 10)
+
+        expect(read.length).toBe(25)
+        expect(takeRangeReadStats()).toEqual({ reads: 3, ms: 15, wallMs: 15, store2Reads: 0, store2Ms: 0 })
+    })
+
+    test('invokes in flight together add up to more than the wall time, and a store2 key is counted on its own', async () => {
+        const held = heldReads()
+
+        now = 0
+        const first = readRanged('store2/a/x', 10)
+        now = 10
+        const second = readRanged('assets/y', 10)
+        await Promise.resolve()
+        now = 30
+        held.release(0)
+        await first
+        now = 50
+        held.release(1)
+        await second
+
+        // First: 0 to 30. Second: 10 to 50. At least one was in flight from 0 to 50.
+        expect(takeRangeReadStats()).toEqual({ reads: 2, ms: 70, wallMs: 50, store2Reads: 1, store2Ms: 30 })
+    })
+
+    test('a take clears the counts, and an invoke in flight across it counts its wall time on both sides', async () => {
+        const held = heldReads()
+
+        now = 0
+        const read = readRanged('assets/x', 10)
+        await Promise.resolve()
+        now = 40
+        expect(takeRangeReadStats()).toEqual({ reads: 0, ms: 0, wallMs: 40, store2Reads: 0, store2Ms: 0 })
+        now = 100
+        held.release(0)
+        await read
+
+        expect(takeRangeReadStats()).toEqual({ reads: 1, ms: 100, wallMs: 60, store2Reads: 0, store2Ms: 0 })
+        expect(takeRangeReadStats()).toEqual({ reads: 0, ms: 0, wallMs: 0, store2Reads: 0, store2Ms: 0 })
+    })
+
+    test('a rejected invoke is counted and its rejection reaches the caller unchanged', async () => {
+        const held = heldReads()
+
+        now = 0
+        const read = readRanged('store2/a/x', 10)
+        await Promise.resolve()
+        now = 7
+        held.reject(0, 'the command failed (os error 5)')
+
+        await expect(read).rejects.toBe('the command failed (os error 5)')
+        expect(takeRangeReadStats()).toEqual({ reads: 1, ms: 7, wallMs: 7, store2Reads: 1, store2Ms: 7 })
+    })
+
+    test('a clock that throws loses the figures and nothing else: the read returns its bytes and later takes still answer', async () => {
+        h.fs.plant('assets/x', patterned(25))
+        setRangeReadClockForTest(() => { throw new Error('the clock failed') })
+
+        const read = await readRanged('assets/x', 10)
+
+        expect(Array.from(read)).toEqual(Array.from(patterned(25)))
+        expect(takeRangeReadStats()).toEqual({ reads: 0, ms: 0, wallMs: 0, store2Reads: 0, store2Ms: 0 })
+        expect(takeRangeReadStats()).toEqual({ reads: 0, ms: 0, wallMs: 0, store2Reads: 0, store2Ms: 0 })
+    })
+
+    test('a clock that fails only when the invoke ends loses that record and nothing else: the bytes arrive and nothing is left in flight', async () => {
+        h.fs.plant('assets/x', patterned(3))
+        let reading = 0
+        setRangeReadClockForTest(() => {
+            if (++reading === 2) {
+                throw new Error('the clock failed')
+            }
+            return reading
+        })
+
+        const read = await readRanged('assets/x', 10)
+
+        expect(Array.from(read)).toEqual(Array.from(patterned(3)))
+        expect(takeRangeReadStats()).toEqual({ reads: 0, ms: 0, wallMs: 0, store2Reads: 0, store2Ms: 0 })
     })
 })

@@ -1,6 +1,6 @@
 import { alertError, alertNormal, alertNormalWait, alertStore, alertWait, alertMd, alertConfirm } from "../alert";
 import { remove } from "@tauri-apps/plugin-fs";
-import type { ExportByteWriter } from "../exportWriters";
+import { takeExportWriteStats, type ExportByteWriter, type ExportWriteCall } from "../exportWriters";
 import { localBackupFileName } from "./backupFileName";
 import { LocalWriter, TauriWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
@@ -11,7 +11,7 @@ import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
 import { StoreInvalidKeyError } from "../storage/store/errors";
 import { assetBatchWriteMode, isAssetBatchAvailable, isAssetBatchReadAvailable, listAssetsSized, readAssetBatch, writeAssetBatch, writeAssetBatchB64, type AssetBatchWriteMode, type AssetPutEntry, type AssetPutResult, type SizedAssetKey } from "../storage/tauriAssetBatch";
-import { CHUNK_MAX, createChunkedWriter, isDesktopTransport, readRangedPieces, transportKind, WRITE_CHUNK_BYTES, type RangedPiece } from "../storage/tauriByteTransport";
+import { CHUNK_MAX, createChunkedWriter, isDesktopTransport, readRangedPieces, takeRangeReadStats, transportKind, WRITE_CHUNK_BYTES, type RangedPiece } from "../storage/tauriByteTransport";
 import { tauriAddressableViolation, tauriCreatableViolation } from "../storage/store/keyRules";
 import { ASSET_BATCH_MAX_ENTRIES, ASSET_MAX_STREAMS, ExportAssetReader, RestoreAssetPipeline, parseCopyMeasureKnob, streamAssetEntry, type AssetBatchLimits, type StreamedAssetEntry } from "./assetBatchPipeline";
 import { MEASURE } from "../process/memory/measureFlag";
@@ -27,8 +27,8 @@ import { isCharacterEntry, isUsableCharacterId } from "../storage/characterIds";
 import { repairDatabaseIds } from "../process/chatIds";
 import { reloadAfterRestore } from "./restoreReload";
 import { language } from "src/lang";
-import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
-import { characterListNeedsRepair, collectBackupColdStorage, inlinedCharacter, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
+import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection, type ColdStorageBackupPayload } from "../process/coldstorage.svelte";
+import { characterListNeedsRepair, collectBackupColdStorage, inlinedCharacter, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, takeStubReadStats, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
 import { convertPluginStorageIndex } from "../process/pluginStorageIndex";
 import { v4 } from "uuid";
@@ -91,6 +91,73 @@ async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdS
     })
     const late = mergePluginStorage(lateCollected, plugin)
     return { dbData, late, repairNotice, stubPayloads }
+}
+
+/**
+ * Writes the stub unit entries `encodeDatabaseWithLateColdStorage` returned and lets go of each one once it is written.
+ * It runs only after that call has returned: the encode reads `cold.stubEntries` to put the minted keys on the stubs,
+ * and no later step reads them, so the map is replaced at once and the array is emptied one entry per write. Only
+ * references are dropped, never the bytes: a writer may hold the very body until it closes. The total is taken first,
+ * because the array shrinks while the loop runs. A write that fails leaves the unwritten entries in place.
+ */
+async function writeStubPayloadsAndRelease(
+    writer: Pick<LocalWriter, 'writeBackup'>,
+    cold: BackupColdStorage,
+    stubPayloads: ColdStorageBackupPayload[],
+    progressPrefix: string,
+): Promise<void> {
+    cold.stubEntries = new Map()
+    const total = stubPayloads.length
+    for (let i = 0; i < total; i++) {
+        alertWait(`${progressPrefix} (${i + 1} / ${total})`)
+        await writer.writeBackup(stubPayloads[0].backupName, stubPayloads[0].encoded)
+        stubPayloads.shift()
+    }
+}
+
+/** Measurement builds only: the stub read and `read_range` counts since the export began, as phase-note fields. */
+function describeReadMeasure(): string {
+    try {
+        const stubs = takeStubReadStats()
+        const ranges = takeRangeReadStats()
+        const parts: string[] = []
+        if (stubs) {
+            parts.push(`stubChars=${stubs.characters} stubReadMs=${Math.round(stubs.readMs)} stubEncodeMs=${Math.round(stubs.encodeMs)}`)
+        }
+        if (ranges) {
+            parts.push(`rangeReads=${ranges.reads} rangeMs=${Math.round(ranges.ms)} rangeWallMs=${Math.round(ranges.wallMs)} store2Reads=${ranges.store2Reads} store2Ms=${Math.round(ranges.store2Ms)}`)
+        }
+        return parts.join(' ')
+    } catch {
+        return ''
+    }
+}
+
+/** The most calls a phase note lists one by one; past it, only the cheapest and the dearest call are listed. */
+const WRITE_CALLS_LISTED = 25
+
+/** Measurement builds only: the `writeFile` calls since the last take, as phase-note fields. */
+function describeWriteMeasure(): string {
+    try {
+        const stats = takeExportWriteStats()
+        if (stats === null) {
+            return ''
+        }
+        const round = (ms: number) => Math.round(ms * 10) / 10
+        const label = (call: ExportWriteCall) => `${call.bytes}:${round(call.syncMs)}:${round(call.waitMs)}${call.append ? '' : ':new'}`
+        let calls: string
+        if (stats.records.length <= WRITE_CALLS_LISTED) {
+            calls = `writeList=${stats.records.map(label).join(',')}`
+        } else {
+            const total = (call: ExportWriteCall) => call.syncMs + call.waitMs
+            const cheapest = stats.records.reduce((low, call) => total(call) < total(low) ? call : low)
+            const dearest = stats.records.reduce((high, call) => total(call) > total(high) ? call : high)
+            calls = `writeLow=${label(cheapest)} writeHigh=${label(dearest)}`
+        }
+        return `writeCalls=${stats.calls} writeBytes=${stats.bytes} writeSyncMs=${round(stats.syncMs)} writeWaitMs=${round(stats.waitMs)} writeCreates=${stats.creates} ${calls}`
+    } catch {
+        return ''
+    }
 }
 
 /**
@@ -511,9 +578,14 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
     alertWait("Saving local backup...")
     // The export notes share the import's measurement hook and ring (`noteImportPhase`), under an `export ` prefix.
     noteImportPhase('export start')
+    if (MEASURE) {
+        // The counts of the notes below cover this export only.
+        takeRangeReadStats()
+        takeExportWriteStats()
+    }
     const db = getDatabase()
     let cold = await collectBackupColdStorage(db, options)
-    noteImportPhase('export cold collected')
+    noteImportPhase(MEASURE ? `export cold collected ${describeReadMeasure()}` : 'export cold collected')
     if(!await confirmIncompleteColdStorageOperation(db, cold.unavailableKeys, 'backup', cold.collected.owners)){
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
@@ -682,26 +754,26 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
     }
     noteImportPhase('export cold payloads done')
 
+    if (MEASURE) {
+        // The write counts of the notes below start here, so they hold the stub, late and database writes only.
+        takeExportWriteStats()
+    }
     const { dbData, late, repairNotice, stubPayloads } = await encodeDatabaseWithLateColdStorage(db, cold)
     noteImportPhase('export database encoded')
-    for(let i=0;i<stubPayloads.length;i++){
-        const payload = stubPayloads[i]
-        alertWait(`Saving local Backup Cold data... (${i + 1} / ${stubPayloads.length})`)
-        await writer.writeBackup(payload.backupName, payload.encoded)
-    }
+    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving local Backup Cold data...')
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
         alertWait(`Saving local Backup Cold data... (${i + 1} / ${late.payloads.length})`)
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
-    noteImportPhase('export stub and late payloads done')
+    noteImportPhase(MEASURE ? `export stub and late payloads done ${describeWriteMeasure()}` : 'export stub and late payloads done')
 
     alertWait(`Saving local Backup... (Saving database)`)
 
     await writer.writeBackup('database.risudat', dbData)
-    noteImportPhase('export database written')
+    noteImportPhase(MEASURE ? `export database written ${describeWriteMeasure()}` : 'export database written')
     await writer.close()
-    noteImportPhase('export closed')
+    noteImportPhase(MEASURE ? `export closed ${describeWriteMeasure()}` : 'export closed')
 
     const lateColdStorageReport = describeLateColdStorageKeys(late)
     const leftOutInlayNames = inlayResult.leftOut.map((left) => left.id)
@@ -929,11 +1001,7 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
     }
 
     const { dbData, late, repairNotice, stubPayloads } = await encodeDatabaseWithLateColdStorage(db, cold)
-    for(let i=0;i<stubPayloads.length;i++){
-        const payload = stubPayloads[i]
-        alertWait(`Saving partial local Backup Cold data... (${i + 1} / ${stubPayloads.length})`)
-        await writer.writeBackup(payload.backupName, payload.encoded)
-    }
+    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving partial local Backup Cold data...')
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
         alertWait(`Saving partial local Backup Cold data... (${i + 1} / ${late.payloads.length})`)

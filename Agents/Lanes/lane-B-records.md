@@ -169,6 +169,31 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 - The phone runs are n=1 per combination on one Note 9, screen on. Completion was not established in them; the prerequisites above exist for that reason.
 - Nothing here authorizes application-code edits, commits or pushes.
 
+### MC-362 — Lane B, 2026-10-22: CHORE-223 answers (measure the slow export steps first; release each character's data once it is written)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs:
+  - lane A's Note 9 release run of the stage 4 export (`%TEMP%\risu-b715\phone1-s4\report.md`, with its corrections; row 2337);
+  - `%TEMP%\risu-lane-b\c223\packet.md` (investigator), superseded where they differ by `packet-verify.md` (`doc-verifier`: 19 of 24 verified, corrections 1 to 4).
+- **Related:** `MC-359`, `MC-328` 2; CHORE-223.
+
+1. **Next step: "Measure first (Recommended)".** Add timing marks that are compiled out of normal builds: each file-write call's bytes and milliseconds, and step A split into reading and encoding. Then one Note 9 export run. The change makes no behaviour change apart from item 2. The run should tell whether the write slowness comes from the save-dialog path or the storage, and whether step A waits on reads or on the phone's CPU. A targeted fix follows the run.
+   - The question stated:
+     - an Android export of 500 characters and 3,000 assets took about 112 to 119 s from Save to complete on the Note 9 release build;
+     - three slow parts lie outside the 10 s asset copy: (A) about 82 s before the save dialog, reading the 500 characters one at a time; (B) about 80 to 90 s writing 71 MB of character data; (C) about 14 s writing the 10 MB database;
+     - B and C run under 1 MB/s through the app's file-write call, cause unknown.
+   
+   Not chosen: "Fix step A now" (read 2 to 4 characters ahead) and "Record only".
+2. **Memory: "Include it (Recommended)".** Free each character's data as soon as it is written. It ships with the item 1 change, and the same phone run shows whether the memory peak drops. The question stated that the export holds all 71 MB of character data until it finishes, that the 1,337 MiB peak fell during that writing step, and that the link to the peak is likely but not measured. Not chosen: "Not now".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- **Corrections to the question's figures** (`packet-verify.md`): step C is four or more `writeFile` calls, not three; `late.payloads` being empty is inferred from the entry count and the fixture.
+- The phone figures are n=2 on one Note 9 (row 2337); run 1 had lmkd reclaiming system processes, and run 2 was warm.
+- Nothing here authorizes application-code edits, commits or pushes.
+
 ## CHORE entries
 
 ### CHORE-194 (changed) — The import size and time warning is keyed on the database entry, which comes out low for stub-form files
@@ -225,6 +250,10 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 
 ### CHORE-222 — Parallel large-entry streams: pick the defaults on the Note 9, then raise them
 
+**Status (2026-10-22, latest): fixed.** Lane A's Note 9 debug-build check of `af735c916` passed (`%TEMP%\risu-lane-b\device-requests\2026-10-22-chore222-android-defaults.result.md`): from a fresh profile at the default, `m2-mix18k.bin` restored 18,000 of 18,000 assets with every name, sha256 and size matching (1,275,826,695 B); `assets/` has no `risu-write-*` or `.tmp` files (the rest of app data was not listed); no crash or ANR. The maintainer accepted it as meeting `MC-361` 1 (relayed by lane A, 2026-10-22). Lane A is to record it as `MC-342` (relayed; not in this checkout), with its own run and verification rows. Two recorded limits:
+- "import committed" was not observed; the commit is inferred from store2 growing by exactly the 6,442 planned units and the page reloading after the commit began;
+- "Finishing copying files..." was not seen in any of 275 polls, so the phone did not exercise it. The unobserved window was at most about 3.7 s; a drain of a few seconds or none fits. The PC tests (T4) cover the message.
+
 **Status (2026-10-22, later, `MC-361`): in progress.** The Note 9 run is done (row 2336), and the maintainer chose:
 - 2 streams with 4 flights on Android;
 - the desktop stays at 1;
@@ -271,6 +300,23 @@ The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer). The de
 - **Related:** `MC-358`, `MC-328` 2, `MC-197` 9.
 
 ### CHORE-223 — An Android stub export spends most of its time in two steps outside the asset loop ('export start' to 'export cold collected'; 'export database encoded' to 'export stub and late payloads done')
+
+**Status (2026-10-22, `MC-362`): in progress. The measurement and the memory release are implemented on `worktree-Lane-B` and technically accepted on the PC (Gate 2 `[APPROVE]`); uncommitted until the maintainer approves. The Note 9 run is pending.** Ledger rows 2337 and 2349 to 2356.
+- **Mechanism, verified** (`c223\packet.md` with `packet-verify.md`):
+  - step A, 'export start' to 'export cold collected': `readStubsForExport` reads the 500 characters one at a time; `readUnits` reads each character's pieces with 8 workers, one `read_range` call per piece; each character is re-encoded as JSON;
+  - steps B and C: the writes run at about 0.7 to 0.9 MB/s through plugin-fs `writeFile` in append mode with a 4 MiB buffer. That the per-call write cost causes B and C is inferred, not measured;
+  - `get_assets_batch` refuses keys outside `assets/`, so batching step A needs Rust.
+- **What changed:**
+  - **Measurement** (MEASURE builds only, `import.meta.env.DEV || VITE_RISU_MEASURE==='1'`; folded out of release builds). It is appended to the existing export notes in `src/ts/drive/backuplocal.ts`:
+    - 'export cold collected' carries the stub read and encode times (`readStubsForExport`, `src/ts/drive/exportInline.ts`) and the `read_range` calls, total time, wall time with any call in flight, and the `store2/` share (`src/ts/storage/tauriByteTransport.ts`);
+    - 'export stub and late payloads done', 'export database written' and 'export closed' carry each `writeFile` call's bytes, the time until the call returns its promise, and the wait (`TauriWriter.put`, `src/ts/exportWriters.ts`). Up to 25 calls are listed, otherwise the cheapest and dearest.
+    - A failing clock never fails an export or a read. `util/checkReleaseDist.mjs` gains four field markers.
+  - **Memory release:** `writeStubPayloadsAndRelease` writes each stub payload and then drops it from the returned array, and clears `cold.stubEntries` once, only after `encodeDatabaseWithLateColdStorage` returns, in both the full and the partial export. Only references are dropped. Leftover: a partial export that leaves out an oversize item keeps the original map alive through `collected`.
+  - The backup file is unchanged; in a MEASURE build it is byte-identical with the measurement key on and off (tests).
+- **Not proved:** the native writer, the Android bridge, and any phone timing or memory effect. The PC harness mocks Tauri fs.
+- **Open:**
+  - **The Note 9 run:** a release `VITE_RISU_MEASURE=1` export of `m2-stub500.bin`, n=2, with the new fields, a CDP `write_file` timing to an `$APPDATA` scratch path, and the PSS during steps B and C by process. Routed through the maintainer once committed.
+  - **Untested, measurement only** (Gate 2 N1, N2): the write-stats reset before 'export database encoded' and the retry-read timing survive mutants. N3 to N5 (row 2355) are low-impact and not done.
 
 **Status (2026-10-22): open, candidate; not scheduled.** Source: lane A's Note 9 run of the stage 4 export (`%TEMP%\risu-b715\phone1-s4\report.md`, with its corrections). That run was a release build of `18156c972`, with `m2-stub500.bin`. It was imported inline and exported as 500 stub characters with 3,000 assets. n=2: lmkd reclaimed system processes during run 1's asset loop, and run 2 was warm on the same page.
 
@@ -352,6 +398,14 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 | 2346 | 2026-10-22 | CHORE-222 implementation | sonnet-coder | 182,909 | no | `c222\impl\report.md` (saved by the orchestrator) and the logs.<br>**Code:** `ANDROID_ASSET_MAX_STREAMS` 2 and `maxFlights` 4; `outstanding`; the finishing message under the B1 condition; the tail `Loading backup...`.<br>**Tests:** B3 (a) to (c) rewritten; T1, T2, T3, T4 and T6 added.<br>**Red on base:** 10 of 238 (6 behavioural; 4 for the missing `outstanding` property, which do not count as reproducers). Guards are labelled.<br>**Mutants:** m1 to m12 killed; m9b survived.<br>**Checks:** `pnpm check` 0/0. Full `pnpm test`: run 1 had 2 failures in unrelated files, which pass alone; run 2 had 903 files passed, 1 skipped, and 20,335 tests passed, 23 skipped. The first drive run lost a worker, unexplained, and 4 reruns were clean. `pnpm build` and `check:dist` OK. The snapshot line-ending rewrite was restored. |
 | 2347 | 2026-10-22 | CHORE-222 Gate 2 r1 | opus-reviewer | 187,350 | no | `c222\gate2-r1.md`, `c222\gate2\`. `[EDITORIAL]`.<br>**Safety:** no loss, reorder or early install. B1 to B7 are met after E1 and E2; B8 belongs to the device brief.<br>**Executed:**<br>- red on base 10 of 238;<br>- its own mutants g1 to g4, g8 to g10 killed;<br>- g5 and g6 survive, and so does m9b. A 30 ms database-read probe shows m9b's window is real outside happy-dom; the effect is a cosmetic flash before the correct error.<br>**Runs:** drive 1320/1320 with no worker loss; the two unrelated tests pass alone; `pnpm check` 0/0. No link to the flaky signals: every hold is released in afterEach.<br>**E1:** the T4 source-stop comment named only one term.<br>**E2:** the class-doc bound is `(maxFlights + 1) x batchBytes` at most `budgetBytes`, shown by a probe.<br>The orchestrator applied both; afterwards the 3 affected test files passed 108/108, and line endings are unchanged.<br>Non-binding, not done: tests for g5, g6 and m9b; labelling the `outstanding` unit tests; the T6 comment wording; B3(c) is killed by neither mutant (covered elsewhere). The full suite was not re-run (`MC-329` 4). |
 | 2348 | 2026-10-22 | Verify the CHORE-222 records, commit message and device request | doc-verifier | 86,809 | no | About 55 claim groups: 49 verified, 2 overstated (one issue), 0 wrong, 4 unverifiable (tokens, the orchestrator's 108/108 rerun, the trailer). Corrected: row 2347 now says "B1 to B7 after E1 and E2; B8 is the device brief"; row 2345's 1316 of 1317 is the scratch run before B3a. It confirmed the device request covers every B8 item, and the fixture facts by `walk.js`: 1,331,537,701 B; 18,000 assets, 173 of them above 1 MiB. |
+| 2349 | 2026-10-22 | CHORE-223: what are the slow export steps outside the asset loop? | investigator | 138,290 | no | `c223\packet.md`. Step A: serial `readStubsForExport`, `readUnits` with 8 workers, one `read_range` per unit, JSON re-encode. Steps B and C: about 0.7 to 0.9 MB/s through plugin-fs `writeFile` append. `get_assets_batch` refuses non-`assets/` keys. `cold.stubEntries` is held to the end. |
+| 2350 | 2026-10-22 | Verify the CHORE-223 packet | doc-verifier | 68,514 | no | `c223\packet-verify.md` (saved by the orchestrator). 24 sub-claims: 19 verified, 2 overstated, 1 wrong (minor), 2 inferred and reasonable. Corrected: `late.payloads` empty is inferred; step C is four or more calls; the release must drop `stubPayloads` too; `readUnits` is not export-local. It fed `MC-362`. |
+| 2351 | 2026-10-22 | CHORE-223 plan | orchestrator | not recorded | no | `c223\plan.md`. C1 writer timing, C2 stub and range read timing, C3 the notes, C4 the release; tests T1 to T4; the Note 9 step. Revised as r2 after Gate 1 r1; its top section is binding. |
+| 2352 | 2026-10-22 | CHORE-223 Gate 1 r1 | opus-reviewer | 183,159 | no | `c223\gate1-r1.md`, `c223\gate1\`. `[REJECT]`, 3 binding items. B1: the release mechanism (shift on the returned array, not a copy; one `cold.stubEntries = new Map()`, never re-pointing the local; strictly after the encode, or a stub is silently written without its unit; the loop total taken first; references only; one helper). B2: the tests and mutants. B3: the measurement (each write call's time to return its promise and its wait; the range reads' in-flight wall time and `store2/` share; a device write timing and a memory comparison). Diagnostic: `gate1\retain.mjs` in Node (A to E). |
+| 2353 | 2026-10-22 | CHORE-223 Gate 1 r2, a targeted re-check of the revised plan section | opus-reviewer (the same instance, resumed) | 192,943 cumulative with r1 | no | `c223\gate1-r2.md`. `[APPROVE]`. B1 to B3 met in the r2 top section; no source or tests re-run. This is the second round, not a third rejection. |
+| 2354 | 2026-10-22 | CHORE-223 implementation | sonnet-coder | 241,059 | no | `c223\impl\report.md` (saved by the orchestrator), `report-addendum.md` and the logs.<br>**Code:** `takeExportWriteStats`, `takeStubReadStats`, `takeRangeReadStats` and their test seams; `writeStubPayloadsAndRelease`; the note fields; four dist markers.<br>**Tests:** new `exportStubRelease.test.ts` (6) and `exportMeasure.test.ts` (6); +5 in `exportWriters.test.ts`, +6 in `tauriByteTransport.test.ts`.<br>**Red on base** (scratch load hook): `exportStubRelease` 4 of 6, both reproducers for the full and partial export; 2 guards pass. `exportMeasure` cannot run on base (new seams), so it is not a reproducer.<br>**Mutants:** m1 to m6 and 15 measurement mutants killed.<br>**Amendment:** the first full run failed 1 test, `backuplocalExportAndroid.test.ts`, which compared the whole phase list; the grant was amended to that file, and the appended fields are stripped before the comparison, with their presence asserted.<br>**Checks:** `pnpm check` 0/0; full `pnpm test` 912 files passed, 1 skipped; 20,570 tests passed, 23 skipped; `pnpm build` and `check:dist` OK (before the test-only amendment); no new field name in `dist`. The snapshot line-ending rewrite was restored. |
+| 2355 | 2026-10-22 | CHORE-223 Gate 2 r1 | opus-reviewer | 160,291 | no | `c223\gate2-r1.md`, `c223\gate2\`. `[APPROVE]`, no binding items. The helper runs only after the encode, at both callers; nothing reads `stubEntries` afterwards. `put` keeps create, append and rethrow. The existing `dist` folds the stats to no-ops; `check:dist` re-run OK. Red on base 4 of 6 for the intended reasons. Its own 9 mutants were killed. Targeted 264 + 142 passed; `pnpm check` 0/0. All 10 files CRLF. Non-binding, not done: N1 the pre-encode write-stats reset is untested (g5 survives); N2 the retry-read timing is untested (g9); N3 a reproducer title also holds on base; N4 a taken in-flight window can count twice when the clock throws; N5 two export names stay in the dist chunk with no-op bodies. The full suite was not re-run (`MC-329` 4). |
+| 2356 | 2026-10-22 | Verify the CHORE-223 records and commit message, and the CHORE-222 status | doc-verifier | 70,446 | no | About 60 claim groups: 54 verified, 2 overstated, 4 unverifiable (tokens, the trailer, lane A's `MC-342`), 0 wrong. Corrected in CHORE-222's status: the temp-file check covers `assets/` only; the 3.7 s is the longest unobserved window, not the poll spacing; `MC-342` is relayed and not in this checkout. Also applied: N3 to N5 named in CHORE-223's open list. Its trailer note was settled by the session's own attribution reminder (Opus 5.5). |
 
 ## Handoff
 
@@ -387,3 +441,9 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 2026-10-22, CHORE-222:
 - **CHORE-222:** Gate 1 `[REJECT]` and then `[APPROVE]` in round 2; implemented; Gate 2 `[EDITORIAL]`, E1 and E2 applied (rows 2344 to 2348). It is merged (folded into the shared files by lane A on 2026-10-22, merged in `af735c916`); the Note 9 check is pending.
 - **After the commit:** the Note 9 debug-build check of the restored assets, routed through the maintainer.
+
+2026-10-22, CHORE-223:
+- **CHORE-222** is fixed: the Note 9 check passed and the maintainer accepted it (lane A's `MC-342`).
+- **CHORE-223:** decisions `MC-362`. Gate 1 `[REJECT]` and then `[APPROVE]` in round 2; implemented; Gate 2 `[APPROVE]` (rows 2349 to 2356). It awaits the maintainer's commit approval.
+- **After the commit:** the Note 9 release MEASURE export run, routed through the maintainer. A targeted fix of steps A to C follows its figures.
+- **CHORE-221** remains an unscheduled candidate.

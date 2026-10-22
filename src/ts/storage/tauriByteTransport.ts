@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { type as osType } from '@tauri-apps/plugin-os'
 import { StoreInvalidKeyError } from './store/errors'
 import { tauriAddressableViolation, tauriCreatableViolation } from './store/keyRules'
+import { MEASURE } from '../process/memory/measureFlag'
 
 /**
  * Byte transport between the page and the Rust side for files that do not fit
@@ -509,8 +510,106 @@ function responseBytes(response: RangeResponse): Uint8Array {
     return bytes
 }
 
+/** The `read_range` invokes since the last `takeRangeReadStats`, as a measurement build counts them. */
+export interface RangeReadStats {
+    /** Invokes made by any reader on the page, so an upper bound for one export's reads. */
+    reads: number
+    /** The invokes' own milliseconds added up; invokes run at once, so this exceeds the wall time. */
+    ms: number
+    /** Milliseconds during which at least one invoke was in flight. */
+    wallMs: number
+    /** The share of `reads` and `ms` that named a `store2/` key. */
+    store2Reads: number
+    store2Ms: number
+}
+
+interface RangeReadMark {
+    startedAt: number
+    store2: boolean
+}
+
+function emptyRangeStats(): RangeReadStats {
+    return { reads: 0, ms: 0, wallMs: 0, store2Reads: 0, store2Ms: 0 }
+}
+
+let rangeStats: RangeReadStats = emptyRangeStats()
+let rangeInFlight = 0
+let rangeBusySince = 0
+let rangeClock: () => number = () => performance.now()
+
+/** Test seam: replaces the clock the counter reads and forgets the counts; `null` restores the clock. */
+export function setRangeReadClockForTest(clock: (() => number) | null): void {
+    rangeClock = clock ?? (() => performance.now())
+    rangeStats = emptyRangeStats()
+    rangeInFlight = 0
+    rangeBusySince = 0
+}
+
+/**
+ * Measurement builds only (`MEASURE`): the `read_range` invokes counted since the last take, which also clears the
+ * counts; `null` otherwise. An invoke still in flight counts its wall time up to now and carries on from now.
+ */
+export function takeRangeReadStats(): RangeReadStats | null {
+    if (!MEASURE) {
+        return null
+    }
+    const stats = rangeStats
+    rangeStats = emptyRangeStats()
+    if (rangeInFlight > 0) {
+        try {
+            const now = rangeClock()
+            stats.wallMs += now - rangeBusySince
+            rangeBusySince = now
+        } catch {
+            // A failing clock loses this window's wall time and nothing else.
+        }
+    }
+    return stats
+}
+
+function beginRangeRead(key: string): RangeReadMark | null {
+    try {
+        const startedAt = rangeClock()
+        if (rangeInFlight === 0) {
+            rangeBusySince = startedAt
+        }
+        rangeInFlight += 1
+        return { startedAt, store2: key.startsWith('store2/') }
+    } catch {
+        return null
+    }
+}
+
+function endRangeRead(mark: RangeReadMark): void {
+    rangeInFlight -= 1
+    try {
+        const now = rangeClock()
+        const ms = now - mark.startedAt
+        rangeStats.reads += 1
+        rangeStats.ms += ms
+        if (mark.store2) {
+            rangeStats.store2Reads += 1
+            rangeStats.store2Ms += ms
+        }
+        if (rangeInFlight === 0) {
+            rangeStats.wallMs += now - rangeBusySince
+        }
+    } catch {
+        // A failing clock loses this invoke's record and nothing else.
+    }
+}
+
 async function requestPiece(key: string, offset: number, len: number): Promise<RangePiece> {
-    const response = responseBytes(await invoke<RangeResponse>(READ_RANGE_COMMAND, { key, offset, len }))
+    const mark = MEASURE ? beginRangeRead(key) : null
+    let reply: RangeResponse
+    try {
+        reply = await invoke<RangeResponse>(READ_RANGE_COMMAND, { key, offset, len })
+    } finally {
+        if (mark !== null) {
+            endRangeRead(mark)
+        }
+    }
+    const response = responseBytes(reply)
     if (response.length < RANGE_TRAILER_BYTES) {
         throw new Error(`the range read of ${key} answered ${response.length} bytes, fewer than its trailer`)
     }
