@@ -833,16 +833,29 @@ let saveMarkCount = 0
 let snapshotMarkCount = 0
 let lastIterationCommitted = false
 let saveLoopPending: (() => boolean) | null = null
+let saveLoopUnsaved: (() => boolean) | null = null
 let requestSaveNowImpl: (() => void) | null = null
 
 /**
  * Asks the save loop to save what is marked without waiting out the debounce.
  * Does nothing in a read-only page and before the loop's real scheduler is
- * live; marks made then are saved by the ordinary debounce. A loop parked or
- * holding keeps its state: the request only counts as a mark.
+ * live; marks made then are saved by the ordinary debounce. The request counts
+ * as a mark and marks the page dirty, so the hide path asks only while
+ * `hasUnsavedSaveMarks()` is true or a chat is in flight. A loop parked or holding keeps its state
+ * apart from that mark.
  */
 export function requestSaveNow(): void {
     requestSaveNowImpl?.()
+}
+
+/**
+ * True from an edit's mark until the snapshot of the pass that took it, and
+ * false after a snapshot that took every edit. A debounce running or a change
+ * flag with no edit behind them do not count. It reads loop state only, and is
+ * false before `saveDb()` starts and in a read-only page.
+ */
+export function hasUnsavedSaveMarks(): boolean {
+    return saveLoopUnsaved?.() ?? false
 }
 
 const nextCommitCallbacks = new Set<() => void>()
@@ -1585,6 +1598,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         },
     })
     saveLoopPending = () => changed || scheduler.debouncePending() || dirtySinceLastSave
+    saveLoopUnsaved = () => dirtySinceLastSave
     function saveTimeoutExecute(markDirty = true) {
         scheduler.schedule(markDirty)
     }
@@ -1795,6 +1809,7 @@ export async function saveDb() {
         },
     })
     saveLoopPending = () => changed || scheduler.debouncePending() || dirtySinceLastSave
+    saveLoopUnsaved = () => dirtySinceLastSave
 
     function saveTimeoutExecute(markDirty = true) {
         scheduler.schedule(markDirty)

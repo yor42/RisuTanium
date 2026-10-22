@@ -259,6 +259,7 @@ describe('new behaviour: the hide path saves the last edit', () => {
             win,
             kinds: () => ['chat'],
             streams: () => streams,
+            unsaved: page.w.api.hasUnsavedSaveMarks,
             mark: page.w.marks.markCharacterForSave,
             saveNow: page.w.api.requestSaveNow,
         })
@@ -273,6 +274,140 @@ describe('new behaviour: the hide path saves the last edit', () => {
         expect(page.k.writtenSince(mark)).toEqual(['characterCore', 'manifest', 'shard'])
     })
 })
+
+/** Makes `document.visibilityState` read `hidden` until the returned function is called. */
+function hideDocument(): () => void {
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+    return () => { delete (document as { visibilityState?: unknown }).visibilityState }
+}
+
+describe('new behaviour: the page hide saves an unsaved edit with no chat in flight', () => {
+    test('reproducer: an edit marked just before pagehide is saved inside the debounce', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        // Installed before the edit: nothing awaits between the mark and the hide, so the debounce cannot run first.
+        const { startSaveOnHide } = await import('src/ts/process/saveOnHide')
+        const stop = startSaveOnHide()
+        try {
+            characters(page.db)[2].personality = 'hidden edit'
+            page.w.marks.markCharacterForSave(characters(page.db)[2].chaId)
+            page.flush()
+            window.dispatchEvent(new Event('pagehide'))
+            // Well inside the 500 ms debounce.
+            await until(async () => ((await page.k.saved()).characters[2] as unknown as Entry).personality === 'hidden edit', 'the pass at hide', 300)
+        } finally {
+            stop()
+        }
+    })
+
+    test('guard: a hide with nothing unsaved leaves the mark count and the store alone', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        const { startSaveOnHide } = await import('src/ts/process/saveOnHide')
+        const stop = startSaveOnHide()
+        try {
+            const marks = page.w.api.getSaveMarkCount()
+            const writes = page.k.counted.writeCalls()
+            window.dispatchEvent(new Event('pagehide'))
+            await sleepReal(200)
+            expect(page.w.api.getSaveMarkCount()).toBe(marks)
+            expect(page.w.api.isSaveClean()).toBe(true)
+            expect(page.k.counted.writeCalls()).toBe(writes)
+        } finally {
+            stop()
+        }
+    })
+
+    test('guard: a hide while only the first-run debounce is pending does not count as a save request', async () => {
+        // The page's first-run effects start a debounce that marks nothing dirty; the hide must not turn it into one.
+        const page = await startPage(small())
+        const { startSaveOnHide } = await import('src/ts/process/saveOnHide')
+        const stop = startSaveOnHide()
+        try {
+            expect(page.w.api.hasUnsavedSaveMarks()).toBe(false)
+            expect(page.w.api.isSaveClean()).toBe(false)
+            const marks = page.w.api.getSaveMarkCount()
+            window.dispatchEvent(new Event('pagehide'))
+            expect(page.w.api.getSaveMarkCount()).toBe(marks)
+        } finally {
+            stop()
+        }
+    })
+
+    test('visibilitychange then pagehide with one edit make one commit that carries it, and nothing is written after', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        const { startSaveOnHide } = await import('src/ts/process/saveOnHide')
+        const stop = startSaveOnHide()
+        const show = hideDocument()
+        try {
+            const before = page.k.counted.writes.length
+            characters(page.db)[2].personality = 'twice hidden'
+            page.w.marks.markCharacterForSave(characters(page.db)[2].chaId)
+            page.flush()
+            document.dispatchEvent(new Event('visibilitychange'))
+            window.dispatchEvent(new Event('pagehide'))
+            await until(async () => ((await page.k.saved()).characters[2] as unknown as Entry).personality === 'twice hidden', 'the pass at hide', 300)
+            await settled(page.w)
+            const afterCommit = page.k.counted.writes.length
+            await sleepReal(700)
+            const { COMMIT_KEY } = await import('src/ts/storage/store2/format/keys')
+            const commits = page.k.counted.writes.slice(before).filter(write => write.key === COMMIT_KEY)
+            expect(commits).toHaveLength(1)
+            expect(page.k.counted.writes.length).toBe(afterCommit)
+        } finally {
+            show()
+            stop()
+        }
+    })
+
+    test('guard: the unsaved state is false before the loop starts, true from a mark until the snapshot that took it, and false after', async () => {
+        h.db = makeDb('base', ['alpha', 'beta'])
+        const w = await worlds.startWorld({ startLoop: false })
+        expect(w.api.hasUnsavedSaveMarks()).toBe(false)
+        worlds.parkAll()
+
+        const page = await startPage(small())
+        await settled(page.w)
+        expect(page.w.api.hasUnsavedSaveMarks()).toBe(false)
+        await nextCommit(page.w, () => {
+            characters(page.db)[2].personality = 'unsaved then saved'
+            page.w.marks.markCharacterForSave(characters(page.db)[2].chaId)
+            expect(page.w.api.hasUnsavedSaveMarks()).toBe(true)
+        })
+        expect(page.w.api.hasUnsavedSaveMarks()).toBe(false)
+    })
+
+    test('guard: a read-only page never reports unsaved edits', async () => {
+        h.db = makeDb('base', ['alpha', 'beta'])
+        const w = await worlds.startWorld({ kind: 'opfs-transitional' })
+        h.db!.mainPrompt = 'edited'
+        w.marks.markCharacterForSave('alpha')
+        expect(w.api.hasUnsavedSaveMarks()).toBe(false)
+    })
+
+    test('the block (legacy) loop saves a marked edit at hide, and a hide with nothing marked writes nothing', async () => {
+        h.db = makeDb('base', ['alpha', 'beta'])
+        const w = await worlds.startWorld()
+        await settled(w)
+        const { startSaveOnHide } = await import('src/ts/process/saveOnHide')
+        const stop = startSaveOnHide()
+        try {
+            const idle = rootWrites(w.store).length
+            window.dispatchEvent(new Event('pagehide'))
+            await sleepReal(200)
+            expect(rootWrites(w.store).length).toBe(idle)
+
+            h.db!.mainPrompt = 'legacy hidden edit'
+            w.marks.markCharacterForSave('alpha')
+            window.dispatchEvent(new Event('pagehide'))
+            await until(() => rootWrites(w.store).length > idle, 'the legacy pass at hide', 300)
+        } finally {
+            stop()
+        }
+    })
+})
+
 describe('new behaviour: a no-change pass writes nothing', () => {
     test('a mark with no edit commits no unit and no commit key, and callbacks still fire', async () => {
         const page = await startPage(small())
