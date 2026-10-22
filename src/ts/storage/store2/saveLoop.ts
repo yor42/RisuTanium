@@ -3,6 +3,8 @@ import type { toSaveType } from '../risuSave'
 import { createYieldBudget } from '../saveYield'
 import { Store2StalePageError } from './backend/errors'
 import type { Store2Read } from './backend/types'
+import { MEASURE } from '../../process/memory/measureFlag'
+import { netHeldNow, noteNetHeldTick, noteNetPassTick } from '../measureExportHold'
 import { isColdStub, SharedChaIdStubError, StubRefusedError } from './codec'
 import type { AbandonResult, CommitResult, Committer } from './commit'
 import { classifyCommitRead } from './commitKey'
@@ -730,7 +732,15 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
             if (netMs !== null && port.now() - lastNetAt >= netMs) {
                 lastNetAt = port.now()
-                await pass(true)
+                if (MEASURE && netHeldNow()) {
+                    noteNetHeldTick()
+                } else if (MEASURE) {
+                    const tickStartedAt = port.now()
+                    await pass(true)
+                    noteNetPassTick(port.now() - tickStartedAt)
+                } else {
+                    await pass(true)
+                }
             }
             await port.wait(500)
         }

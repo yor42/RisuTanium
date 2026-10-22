@@ -321,6 +321,51 @@ Round 2:
 - "The app" means the `tauri` session kind (Android and desktop); the `node` and `indexeddb` kinds run no automatic pass in 5a.
 - Nothing here authorizes application-code edits, commits or pushes.
 
+### MC-370 — Lane B, 2026-10-22: the export cold-collect regression is measured before it is fixed (measurement-only switches, then a 2x2 phone session)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: `%TEMP%\risu-lane-b\c223\coldcollect\report.md` (perf-analyzer, with the independent verifier's corrections appended: 17 claims, 12 verified, 3 overstated, 2 unverifiable, 0 wrong). Lane A's phone 1 run report: `%TEMP%\risu-b715\phone1-fresh\report.md`, step 7.
+- **Related:** `MC-365`, `MC-367`; CHORE-223, CHORE-225.
+
+1. **"Measure first (Recommended)".**
+   - Add two measurement-build-only settings: the read-ahead (0 to 3) and a hold on the save loop's idle-net ticks during an export. Each is small and reviewed, and normal builds do not change.
+   - Then run a phone session of four exports: read-ahead on and off, crossed with the net held and not held.
+   - Fix according to the result.
+   - The result also shapes stage B.
+   
+   Not chosen: "Turn read-ahead off on Android now" and "Wait for the planner fix".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The question stated that the cold collect went from about 100 s to 358 s with the same read counts, that read-ahead concurrency is the leading suspect, and that save-step contention is plausible.
+- The plan adds a third measurement, the peak number of reads in flight. Lane A schedules the session after A9. The net-held arm also serves as CHORE-225's baseline.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-371 — Lane B, 2026-10-22: the store2 save-planning stall is cut by changes meant to leave what is saved and when unchanged (CHORE-225 stages A and B first; the idle-net cadence is decided after)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: `%TEMP%\risu-lane-b\c225\sizing.md` (investigator) with `c225\sizing-verify.md` (doc-verifier: 6 claim groups, 5 verified (2 of them in part), 1 overstated, 0 wrong).
+- **Related:** `MC-370`; CHORE-225, CHORE-223.
+
+1. **"A+B first, decide after (Recommended)".**
+   - Stage A: skip the list derivation for a module whose unit is reused, and make the hex-to-base64url step faster. The bytes stay the same.
+   - Stage B: yield between modules so that no single task holds the page.
+   - Whether the idle net keeps checking modules every tick is decided after the phone measurements of A and B.
+   
+   Not chosen: "Also slow the net now" (check modules less often, so an unmarked module edit is saved later) and "Also drop the module net" (an unmarked module edit would never be saved).
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The question stated the following:
+  - With 0 or 1 characters resident, the idle net re-encodes every module on every 2 s tick, which takes 6 to 15 s on the Note 9. That range is the coordinator's figure; the sizing did not re-measure it.
+  - List derivation is about 70% of that cost cold.
+  - Neither stage A nor stage B is meant to change what is saved or when. For stage A that holds only if the differential test passes.
+- Nothing here authorizes application-code edits, commits or pushes.
+
 ## CHORE entries
 
 ### CHORE-194 (changed) — The import size and time warning is keyed on the database entry, which comes out low for stub-form files
@@ -428,6 +473,19 @@ The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer). The de
 
 ### CHORE-223 — An Android stub export spends most of its time in two steps outside the asset loop ('export start' to 'export cold collected'; 'export database encoded' to 'export stub and late payloads done')
 
+**Status (2026-10-22, `MC-370`): in progress; the measurement switches are through Gate 2 and the final checks, awaiting the commit and then the phone session.** Ledger rows 2396 to 2401.
+- **Phone 1, stage A Part 1:**
+  - The export total fell to 932 s from 1170 s, and the asset loop to 324 s from 686 s.
+  - The cold collect rose to 358 s from 100 s.
+  - The diagnosis ranks stage A's read-ahead concurrency first and idle-net contention as plausible.
+- **Switches** (measurement builds only; release builds unchanged, checked by `checkReleaseDist`):
+  - localStorage `risu-measure-export-readahead` = 0 to 3;
+  - `risu-measure-export-holdnet=on`, which skips idle-net ticks while `backupSave` is busy;
+  - the peak number of `read_range` calls in flight.
+  
+  The export note gains `rangeMaxInFlight=`, `netHeld=`, `netTicks=`, `netTickMs=` and `residentsAtStart=`.
+- **Next:** the 2x2 phone session through lane A, run in this order: (3, net on), (0, on), (3, held), (0, held), then (3, on) again. The B6 conditions and the Gate 2 device-brief check apply. Stage B (the Rust batch read) is designed after that result.
+
 **Status (2026-10-22, lane A fold-in): stage A merged in `eb5e10bec` (no-ff of `4b04514b0`; `MC-365`, `MC-367`); technically accepted; not COMPLETE: stage A Part 1 is owed.** Part 2 ran on phone 2 (test profile, n=1; after a settled commit `__risuGcNow.run({confirm:true})` returned done, deleted 9; after a restart, done, deleted 0). Part 2 unblocks stage 5a coding. Part 1 was not run: A1's throwaway key is deleted, and `MC-456` 4 chose a fixed test key with a phone 1 wipe and re-import (the tool change is in progress, uncommitted). Ledger rows 2161 to 2170 (lane A) and 2379 to 2388 (this lane's rows, folded in after row 2378). Report: `%TEMP%\risu-b715\c223a-runs\report.md`, with its doc-verifier corrections.
 
 **Status (2026-10-22, latest, `MC-365`, `MC-367`): in progress; stage A planned and through Gate 1.** The stage 0 probes ran on lane A's phone 2 (lane A's rows; the result with its verifier corrections is `device-requests\2026-10-22-chore223-stage0-probes.result.md`): the per-call `write_file` cost of about 1.5 to 2.2 MiB/s reproduced (the page-side number-array attribution is inferred, not timed), the ~2.9 s per-call wait did not, and reads scaled with concurrency on warm small files. Stage A is a base64 append command for Android save-dialog files plus reading 3 stub characters ahead (`c223\planA.md`, rows 2366 to 2370); a failed Android export keeps today's "kept" message (`MC-367` 1). Stage B, the Rust batch read, follows stage A's phone run.
@@ -510,6 +568,33 @@ The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer). The de
   - Exports read through `readColdCharacterCopy` stay verbatim.
 - **Open:** whether real upstream backups can lack the fields; whether the defaulted character is saved, which depends on the path (on the store2 path probably memory-only until a later edit; harmless, since every open re-applies them) and goes to opus-reviewer with the store2 digest interplay.
 - **Related:** `MC-363`; CHORE-223.
+
+### CHORE-225 — Store2 save planning re-encodes every module on each idle-net tick, blocking the page for 6 to 15 s on the Note 9
+
+**Status (2026-10-22, `MC-371`): open; sized and verified.** Stages A and B are to be planned. Coding starts after the measurement switches (the CHORE-223 follow-up) are committed, because a checkout has one writer.
+- **Source:**
+  - lane A's phone 1 traces (select, select-cold, edit);
+  - lane D's trace;
+  - lane E's grid trace: 11 main-thread tasks over 1 s in 100 s (lane E's figure, not verified here).
+- **Mechanism** (`c225\sizing.md`, verified in `c225\sizing-verify.md`):
+  - `requestOf` (`src/ts/storage/store2/saveLoop.ts`) scopes modules into the idle net on every tick when 0 or 1 characters are resident, and once per N ticks with N residents.
+  - `encodeModules` (`split.ts`) derives each module's asset and inlay lists even when the module unit is reused.
+  - List derivation is about 70% of the module-set encode cold, 66% warm and 54% on an edit. SHA-256 is 8 to 9.5%. `hexStemToBase64url` is 19% to 35% cold.
+  - A tick whose plan is unchanged writes nothing; the cost is all in planning.
+- **The idle net is the backstop** for a module edit that raised no mark. The tests `saveLoop.test.ts` "the idle net writes what no mark named" and its neighbours pin it.
+- **Plan inputs, from the verifier (before the plan):**
+  - A reused list may be a merged superset from `mergeInlayLists`.
+  - The differential test must include values that are not plain JSON.
+  - Identical bytes hold only if the differential passes.
+- **The plan's answers** (`c225\plan.md`, row 2404; not yet reviewed):
+  - `mergeInlayLists` has no production caller.
+  - The lists are derived from the same `plainObject(raw)` value that is digested, so the non-JSON cases stay in the differential as proof.
+  - Stage B hazard: a character added during a yield would make the save throw unless the character list is copied before the module encode.
+- **Open:**
+  - the 33,142 B unit that repeats in three commits (its identity is not logged);
+  - the cold `Ot` self time;
+  - the idle-net cadence (stage C, the maintainer's call after the measurements).
+- **Related:** `MC-371`, `MC-370`; CHORE-223.
 
 ### CHORE-129 (changed) — Warn before an upstream-compatible export when data exceeds upstream's size limits, and leave that data out
 
@@ -627,6 +712,16 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 | 2393 | 2026-10-22 | Store2 stage 5a Gate 2 r1 | opus-reviewer | 226,905 | yes (`MC-345` A2) | `s5a\gate2-r1.md`, on the final state. `[EDITORIAL]`: no I1, silent-loss, logic or test defect.<br>- I1 traced from source; A3 and A7' run.<br>- 369 tests passed in 10 related files.<br>- Its own mutants: 5 of 6 killed. The survivor (`shouldStop` checked before the pace instead of after it) is correct code.<br>- The release build has no measurement code (244 files versus 242). The +2 are orphan stubs, and `storeImport` moved into its own chunk, which adds one module request at boot for the same bytes. The coder's "no new chunk" claim was false.<br>- The real-module note path reaches the ring for `refused: idle`.<br>- Not acted on: N2 (no mutant proves the facts are resolved after the synchronous checks).<br>The orchestrator applied the three editorial items: the whitespace in an existing test and two header sentences in `autoGc.ts`. |
 | 2394 | 2026-10-22 | Final checks on stage 5a | orchestrator | not recorded | no | Final snapshot: `0390721dc` plus 5a, after the editorial edits. Results:<br>- `pnpm check`: 0/0.<br>- Full `pnpm test`: 926 files passed, 1 skipped; 20,927 tests passed, 23 skipped, 0 failed (`s5a\final-full.log`).<br>- The eol-only `modules.test.ts.snap` rewrite was restored.<br>- `pnpm build` then `checkReleaseDist`: "OK, 244 files scanned under dist, no measurement markers".<br>The check, build and marker runs were in-session; their console output is in the session transcript. |
 | 2395 | 2026-10-22 | Verify the stage 5a records and commit message | doc-verifier | 84,274 | no | Read-only. 12 claim groups: 7 verified, 3 overstated, 0 wrong, 2 unverifiable; 3 omissions; 1 ordering fault. Corrections applied: row 2389 (the phone reading is "consistent with" a confirmed flush; the report's attribution; the dev pass; the build commit is the agent's statement); row 2391 (three test files and a helper; the coder's first full run); row 2393 (N2); stale handoff bullets; row 2388 moved back into order; the commit message's Device line. The trailer stays Opus 5.5, the orchestrator's model. |
+| 2396 | 2026-10-22 | Why the phone 1 export cold collect took 358 s (against 100 s) | perf-analyzer | not recorded | no | Report: `c223\coldcollect\report.md`, from lane A's phone 1 run (`%TEMP%\risu-b715\phone1-fresh\report.md`, step 7).<br>Ranking:<br>- leading: stage A's read-ahead concurrency. The mean in flight was 15.7 against 4.3, and the per-invoke time was about 14 times longer, with the same read counts;<br>- plausible: contention from the idle net's module passes.<br>Diagnosis only; nothing is fixed. |
+| 2397 | 2026-10-22 | Verify the cold-collect diagnosis | doc-verifier | not recorded | no | Read-only. 17 claims: 12 verified, 3 overstated, 2 unverifiable, 0 wrong. The corrections are appended to the report. Input to `MC-370`. |
+| 2398 | 2026-10-22 | Measurement switch plan, Gate 1 r1 | opus-reviewer | not recorded | no | `c223\knobs\gate1-r1.md`: `[APPROVE]` of `c223\knobs\plan.md`, with binding items:<br>- B1 to B5: implementation conditions, among them that a throwing hold check means "not held";<br>- B6: the device-run conditions (a time limit per run, a decision rule registered before the run, the same poll cadence). |
+| 2399 | 2026-10-22 | Implement the measurement switches | sonnet-coder | not recorded | no | Report: `c223\knobs\impl\report.md` (saved by the orchestrator).<br>Files: new `measureExportHold.ts`; `saveLoop.ts`, `globalApi.svelte.ts`, `tauriByteTransport.ts`, `exportInline.ts`, `backuplocal.ts`, `checkReleaseDist.mjs` (7 markers); three new test files and an extended `tauriByteTransport.test.ts`.<br>Red on base: 16 failed, 1 of them only a missing export.<br>Mutants: 12 of 12 killed.<br>Incident: the coder's mutant run without a test path ran the full suite. The coder stopped it. It left an eol-only snapshot rewrite, which the orchestrator restored. |
+| 2400 | 2026-10-22 | Measurement switches, Gate 2 r1 | opus-reviewer | 125,015 | no | `c223\knobs\gate2-r1.md`: `[EDITORIAL]`.<br>- The reviewer's own release bundle has the same save-loop tail as the base and no `installNetHold` call. K1 folds to the default.<br>- `checkReleaseDist` is clean on the release build; the measurement build hits all 7 markers.<br>- 220 targeted tests passed; `pnpm check` 0/0.<br>- Its own mutants: 4 of 5 killed. The survivor (removing the counter reset in `backuplocal.ts`) is the admitted untested note wiring. Ruled non-binding, with a device-brief check: `netHeld` is 0 in the net-on arms, and a second export does not carry the first one's counts.<br>- E1, a test name that claimed more than it checks, was renamed by the orchestrator (wording only), and the report's "resume" claim was corrected. |
+| 2401 | 2026-10-22 | Final checks on the measurement switches | orchestrator | not recorded | no | Final snapshot: `67273e799` plus the switches, after E1. Results:<br>- full `pnpm test`: 929 files passed, 1 skipped; 20,966 tests passed, 23 skipped, 0 failed (`c223\knobs\final\full.log`);<br>- the eol-only `modules.test.ts.snap` rewrite was restored;<br>- `pnpm check`: 0/0;<br>- `pnpm build` (`final\build.log`), then `checkReleaseDist`: "OK, 244 files scanned under "dist", no measurement markers".<br>The check and marker runs were in-session on the final snapshot; their console output is in the session transcript. Equivalent runs on the Gate 2 snapshot are in `c223\knobs\gate2\`. |
+| 2402 | 2026-10-22 | Size the store2 save-planning stall (CHORE-225) | investigator | not recorded | no | `c225\sizing.md`, read-only. With 0 or 1 residents, the idle net re-encodes every module on each tick. List derivation is about 70% of that cost cold. Five candidates are sized. Recommended: stage A (reuse the lists, plus a faster `hexStemToBase64url`) and stage B (yield between modules), which leave the save behaviour unchanged. The cadence is the maintainer's call. |
+| 2403 | 2026-10-22 | Verify the CHORE-225 sizing | doc-verifier | not recorded | no | `c225\sizing-verify.md`: 6 claim groups, 5 verified, 1 overstated (the `hexStemToBase64url` share is 19% to 35% cold), 0 wrong. Option (iii) safety conditions added: merged supersets, values that are not plain JSON, and identical bytes only if the differential passes. Input to `MC-371`. |
+| 2404 | 2026-10-22 | Draft the CHORE-225 stage A and B plan | investigator | 172,693 | no | `c225\plan.md`, read-only. It refutes two verifier worries by source:<br>- the lists are derived from `plainObject(raw)`, the same value that is digested;<br>- `mergeInlayLists` has no production caller. The orchestrator confirmed this with an in-session search of `src`: the only callers are in `listsInlay.test.ts`.<br>It finds a stage B hazard: a character added during a yield would make the save throw. The fix is to copy the character list before the module encode.<br>Suggested staging: three commits (the MEASURE save-pass meter, then A, then B). No product question found. Its Gate 1 (opus-reviewer) is running and gets its own row. |
+| 2405 | 2026-10-22 | Verify the measurement-switch records and commit message | doc-verifier | 57,227 | no | Read-only. Results:<br>- `MC-371` and CHORE-225: overstated;<br>- CHORE-223 status and the commit message: verified;<br>- rows 2396 to 2404: verified, apart from three fixes.<br>Corrections applied:<br>- `MC-371`: "meant to" leave saving unchanged, holding only if the differential passes; the 6 to 15 s range attributed; "5 verified (2 in part)";<br>- CHORE-225: the plan's answers and the stage B hazard added; lane E's figure marked unverified;<br>- rows 2397 and `MC-370`: 2 unverifiable claims added;<br>- row 2401: the in-session runs attributed;<br>- row 2404: the grep attributed; Gate 1 marked as running.<br>Not applied: its note that the trailer should say Sonnet 5.5. The session's attribution instruction names Opus 5.5. |
 
 ## Handoff
 

@@ -77,6 +77,25 @@ export interface ExportCollectionOptions {
     readAhead?: number
 }
 
+const READ_AHEAD_KNOB_KEY = 'risu-measure-export-readahead'
+
+/** The read-ahead a stored knob value names: an integer 0 to 3 as written; anything else is no knob. */
+export function parseReadAheadKnob(raw: string | null): number | undefined {
+    return raw !== null && /^[0-3]$/.test(raw) ? Number(raw) : undefined
+}
+
+/**
+ * Measurement builds only (`MEASURE`): the read-ahead the stored knob names, read each time a stub collection starts, so
+ * once per export; `undefined` when the knob is absent, invalid or unreadable. An explicit `readAhead` option wins over it.
+ */
+function readAheadKnob(): number | undefined {
+    try {
+        return parseReadAheadKnob(typeof localStorage === 'undefined' ? null : localStorage.getItem(READ_AHEAD_KNOB_KEY))
+    } catch {
+        return undefined
+    }
+}
+
 /** The identity of a stub in an export: its entity and its `chaId`, never the object, which a page may replace while the export runs. */
 export function inlineKeyOf(u: string, chaId: unknown): string {
     return `${u}\u0000${String(chaId ?? '')}`
@@ -213,7 +232,7 @@ function startSettledRead(slot: Slot): Promise<SettledRead> {
  * mode.
  */
 export async function readStubsForExport(db: Pick<Database, 'characters'>, options: ExportCollectionOptions = {}): Promise<StubsForExport> {
-    const requestedAhead = options.readAhead ?? STUB_READ_AHEAD
+    const requestedAhead = options.readAhead ?? (MEASURE ? readAheadKnob() : undefined) ?? STUB_READ_AHEAD
     const ahead = Number.isFinite(requestedAhead) ? Math.max(0, Math.floor(requestedAhead)) : STUB_READ_AHEAD
     if (MEASURE) {
         // The partial export reads stubs too, so each read of the stubs starts its own stats.

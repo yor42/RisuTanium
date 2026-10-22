@@ -15,6 +15,7 @@ import { CHUNK_MAX, createChunkedWriter, isDesktopTransport, readRangedPieces, t
 import { tauriAddressableViolation, tauriCreatableViolation } from "../storage/store/keyRules";
 import { ASSET_BATCH_MAX_ENTRIES, ASSET_MAX_STREAMS, ExportAssetReader, RestoreAssetPipeline, parseCopyMeasureKnob, streamAssetEntry, type AssetBatchLimits, type StreamedAssetEntry } from "./assetBatchPipeline";
 import { MEASURE } from "../process/memory/measureFlag";
+import { peekNetTickStats, residentCharacterCount, resetNetTickStats } from "../storage/measureExportHold";
 import { NodeHttpError } from "../storage/store/nodeHttpStore";
 import { NODE_BODY_LIMIT_BYTES } from "../storage/nodeBodyLimit";
 import { createYieldBudget, yieldToEventLoop } from "../storage/saveYield";
@@ -125,13 +126,25 @@ function describeReadMeasure(): string {
             parts.push(`stubChars=${stubs.characters} stubReadMs=${Math.round(stubs.readMs)} stubEncodeMs=${Math.round(stubs.encodeMs)} stubAhead=${stubs.ahead} stubHeldMax=${stubs.heldMax} stubRetries=${stubs.retries} stubFailed=${stubs.failed}`)
         }
         if (ranges) {
-            parts.push(`rangeReads=${ranges.reads} rangeMs=${Math.round(ranges.ms)} rangeWallMs=${Math.round(ranges.wallMs)} store2Reads=${ranges.store2Reads} store2Ms=${Math.round(ranges.store2Ms)}`)
+            parts.push(`rangeReads=${ranges.reads} rangeMs=${Math.round(ranges.ms)} rangeWallMs=${Math.round(ranges.wallMs)} store2Reads=${ranges.store2Reads} store2Ms=${Math.round(ranges.store2Ms)} rangeMaxInFlight=${ranges.maxInFlight}`)
         }
         return parts.join(' ')
     } catch {
         return ''
     }
 }
+
+/** Measurement builds only: the idle-net ticks held and run since the export began, and the residents it began with. */
+function describeNetMeasure(): string {
+    try {
+        const net = peekNetTickStats()
+        return ` netHeld=${net.held} netTicks=${net.ticks} netTickMs=${Math.round(net.tickMs)} residentsAtStart=${exportResidentsAtStart}`
+    } catch {
+        return ''
+    }
+}
+
+let exportResidentsAtStart = 0
 
 /** The most calls a phase note lists one by one; past it, only the cheapest and the dearest call are listed. */
 const WRITE_CALLS_LISTED = 25
@@ -583,10 +596,14 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
         // The counts of the notes below cover this export only.
         takeRangeReadStats()
         takeExportWriteStats()
+        resetNetTickStats()
     }
     const db = getDatabase()
+    if (MEASURE) {
+        exportResidentsAtStart = residentCharacterCount(db.characters)
+    }
     let cold = await collectBackupColdStorage(db, options)
-    noteImportPhase(MEASURE ? `export cold collected ${describeReadMeasure()}` : 'export cold collected')
+    noteImportPhase(MEASURE ? `export cold collected ${describeReadMeasure()}${describeNetMeasure()}` : 'export cold collected')
     if(!await confirmIncompleteColdStorageOperation(db, cold.unavailableKeys, 'backup', cold.collected.owners)){
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
@@ -774,7 +791,7 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
     await writer.writeBackup('database.risudat', dbData)
     noteImportPhase(MEASURE ? `export database written ${describeWriteMeasure()}` : 'export database written')
     await writer.close()
-    noteImportPhase(MEASURE ? `export closed ${describeWriteMeasure()}` : 'export closed')
+    noteImportPhase(MEASURE ? `export closed ${describeWriteMeasure()}${describeNetMeasure()}` : 'export closed')
 
     const lateColdStorageReport = describeLateColdStorageKeys(late)
     const leftOutInlayNames = inlayResult.leftOut.map((left) => left.id)
