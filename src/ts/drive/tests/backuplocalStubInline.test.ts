@@ -805,7 +805,9 @@ describe.each([
         remainingFailures = 1
         const pauses: number[] = []
 
-        await run({ readRetry: { pause: async (ms) => { pauses.push(ms) } } })
+        // This fake counts failures by call index, and a read made ahead that fails is read again at its own turn without
+        // a pause, so the retry counted here is that of the serial read.
+        await run({ readAhead: 0, readRetry: { pause: async (ms) => { pauses.push(ms) } } })
 
         expect(pauses).toHaveLength(1)
         expect(backupPrompts()).toEqual([])
@@ -841,7 +843,9 @@ describe.each([
         remainingFailures = 3
         const pauses: number[] = []
 
-        await run({ readRetry: { pausesMs: [10, 20], budgetMs: 1000, pause: async (ms) => { pauses.push(ms) } } })
+        // This fake counts failures by call index, and a read made ahead that fails is read again at its own turn without
+        // a pause, so the retries counted here are those of the serial read.
+        await run({ readAhead: 0, readRetry: { pausesMs: [10, 20], budgetMs: 1000, pause: async (ms) => { pauses.push(ms) } } })
 
         const failedKey = page.entries[1].u
         expect(pauses).toEqual([10, 20])

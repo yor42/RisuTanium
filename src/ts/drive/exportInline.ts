@@ -1,6 +1,6 @@
 import type { Database, character, groupChat } from '../storage/database.svelte'
 import { applyStubStateOnRestore } from '../process/coldCharacter'
-import { readColdCharacterCopy } from '../process/coldCharacterRestore'
+import { readColdCharacterCopy, type ColdCopyOutcome } from '../process/coldCharacterRestore'
 import { collectColdStorageBackupPayloads, type ColdStorageBackupCollection, type ColdStorageBackupPayload } from '../process/coldstorage.svelte'
 import { getColdStorageBackupName, listColdBackupRoots, listColdPluginStorageKeys } from '../process/coldstorageData'
 import { getResidency, isEntityUnitKey } from '../storage/store2/residencyActive'
@@ -64,9 +64,17 @@ export function characterListNeedsRepair(list: unknown): boolean {
     return Array.isArray(list) && !list.every((entry) => isCharacterEntry(entry) && isUsableCharacterId(entry.chaId))
 }
 
+/**
+ * How many stubs beyond the one being consumed have their first read started. Reads are consumed in list order, so the
+ * collection holds at most this many plus one characters that were read and not yet consumed.
+ */
+export const STUB_READ_AHEAD = 3
+
 export interface ExportCollectionOptions {
     mode?: UnloadedCharacterMode
     readRetry?: Partial<ReadRetryPolicy>
+    /** Test seam: the read-ahead in place of `STUB_READ_AHEAD`; 0 reads one stub at a time. */
+    readAhead?: number
 }
 
 /** The identity of a stub in an export: its entity and its `chaId`, never the object, which a page may replace while the export runs. */
@@ -95,13 +103,25 @@ export interface StubsForExport {
 export interface StubReadStats {
     /** Stubs whose entity was read, whatever the read gave. */
     characters: number
-    /** Milliseconds awaiting `readColdCharacterCopy`: the store reads and the character's decode. Retry pauses are not counted. */
+    /** Milliseconds the consumer waited on `readColdCharacterCopy`: the store reads and the character's decode, less what the read-ahead already did. Retry pauses are not counted. */
     readMs: number
     /** Milliseconds in `stubUnitEntry`: the JSON text and its UTF-8 encode. */
     encodeMs: number
+    /** The read-ahead in force. */
+    ahead: number
+    /** The most characters that were read (or being read) and not yet consumed at one time. */
+    heldMax: number
+    /** Retry reads made after a read that failed without a kind. */
+    retries: number
+    /** Entities whose read did not give a character. */
+    failed: number
 }
 
-let stubStats: StubReadStats = { characters: 0, readMs: 0, encodeMs: 0 }
+function emptyStubStats(): StubReadStats {
+    return { characters: 0, readMs: 0, encodeMs: 0, ahead: 0, heldMax: 0, retries: 0, failed: 0 }
+}
+
+let stubStats: StubReadStats = emptyStubStats()
 let stubClock: () => number = () => performance.now()
 
 /** Test seam: replaces the clock the recorder reads; `null` restores it. */
@@ -118,7 +138,7 @@ export function takeStubReadStats(): StubReadStats | null {
         return null
     }
     const stats = stubStats
-    stubStats = { characters: 0, readMs: 0, encodeMs: 0 }
+    stubStats = emptyStubStats()
     return stats
 }
 
@@ -160,17 +180,45 @@ function hasColdRoots(character: Slot): boolean {
     return listColdBackupRoots({ characters: [character], pluginCustomStorage: {} }).length > 0
 }
 
+/** The entity a slot names and its identity in an export, or `null` when the slot is not a stub of a store2 entity. */
+function stubTarget(slot: Slot): { u: string, key: string } | null {
+    const u = typeof slot === 'object' && slot !== null ? slot.coldstorage : undefined
+    if (typeof u !== 'string' || !isEntityUnitKey(u)) {
+        return null
+    }
+    return { u, key: inlineKeyOf(u, slot.chaId) }
+}
+
+/** A first read of a stub, settled either way: a failure waits for the consumer of its slot instead of becoming an unhandled rejection. */
+type SettledRead = { copy: ColdCopyOutcome } | { error: unknown }
+
+function startSettledRead(slot: Slot): Promise<SettledRead> {
+    let read: Promise<ColdCopyOutcome>
+    try {
+        read = readColdCharacterCopy(slot)
+    } catch (error) {
+        read = Promise.reject(error)
+    }
+    return read.then((copy): SettledRead => ({ copy }), (error: unknown): SettledRead => ({ error }))
+}
+
 /**
- * Reads, one at a time, the character of every stub of `db` that names a store2 entity. Installs nothing and marks nothing.
+ * Reads the character of every stub of `db` that names a store2 entity. Installs nothing and marks nothing.
+ * The first read of up to `STUB_READ_AHEAD` stubs after the one being consumed is already running, but the stubs are
+ * consumed one at a time in list order, so the result maps and `failedKeys` have the order a serial read gives; a
+ * retry read is made by the consumer, one at a time.
  * In `stub` mode a stub is kept as a stub and only its unit entry is held, unless the list needs the id repair
  * (`characterListNeedsRepair`): then every stub is inlined, so no unit body is minted with ids the repair will change.
  * A trashed stub (a truthy `trashTime` on the page's stub) and a character with a cold-storage root are inlined in every
  * mode.
  */
 export async function readStubsForExport(db: Pick<Database, 'characters'>, options: ExportCollectionOptions = {}): Promise<StubsForExport> {
+    const requestedAhead = options.readAhead ?? STUB_READ_AHEAD
+    const ahead = Number.isFinite(requestedAhead) ? Math.max(0, Math.floor(requestedAhead)) : STUB_READ_AHEAD
     if (MEASURE) {
         // The partial export reads stubs too, so each read of the stubs starts its own stats.
-        stubStats = { characters: 0, readMs: 0, encodeMs: 0 }
+        stubStats = emptyStubStats()
+        stubStats.ahead = ahead
     }
     const mode = (options.mode ?? EXPORT_UNLOADED_CHARACTERS) === 'stub' && !characterListNeedsRepair(db.characters) ? 'stub' : 'inline'
     const retry: ReadRetryPolicy = { ...DEFAULT_READ_RETRY, ...options.readRetry }
@@ -184,17 +232,54 @@ export async function readStubsForExport(db: Pick<Database, 'characters'>, optio
     let waitedMs = 0
     let retries = 0
     // A copy: the list is the page's own and may change across the awaits below, which must not make a stub skipped.
-    for (const slot of [...(list as Slot[])]) {
-        const u = typeof slot === 'object' && slot !== null ? slot.coldstorage : undefined
-        if (typeof u !== 'string' || !isEntityUnitKey(u)) {
+    const slots = [...(list as Slot[])]
+    // The started first reads by slot index, until their slot is consumed.
+    const firstReads = new Map<number, { key: string, settled: Promise<SettledRead>, ahead: boolean }>()
+    const startAhead = (from: number) => {
+        const last = Math.min(from + ahead, slots.length - 1)
+        for (let index = from; index <= last; index++) {
+            if (firstReads.has(index)) {
+                continue
+            }
+            const target = stubTarget(slots[index])
+            // A stub whose entity is read, or being read, for an earlier slot waits for that slot's outcome.
+            if (target === null || inlined.has(target.key) || stubEntries.has(target.key) || [...firstReads.values()].some((started) => started.key === target.key)) {
+                continue
+            }
+            firstReads.set(index, { key: target.key, settled: startSettledRead(slots[index]), ahead: index > from })
+            if (MEASURE) {
+                stubStats.heldMax = Math.max(stubStats.heldMax, firstReads.size)
+            }
+        }
+    }
+    for (let index = 0; index < slots.length; index++) {
+        startAhead(index)
+        const slot = slots[index]
+        const target = stubTarget(slot)
+        const started = firstReads.get(index)
+        firstReads.delete(index)
+        if (target === null) {
             continue
         }
-        const key = inlineKeyOf(u, slot.chaId)
+        const { u, key } = target
         if (inlined.has(key) || stubEntries.has(key)) {
             continue
         }
+        // The slot may have changed since its read started; a read of another entity or character is not this slot's.
+        const prefetched = started !== undefined && started.key === key
+        const firstRead = prefetched ? started.settled : startSettledRead(slot)
         const firstReadAt = MEASURE ? stubMark() : 0
-        let copy = await readColdCharacterCopy(slot)
+        let settled = await firstRead
+        // A store failure that hit several concurrent reads together must not be charged once per read: a read made
+        // ahead that failed without a kind is made again at its slot's own turn, outside the retry budget. The read
+        // made ahead is a free extra attempt, and a shared failure is charged once, at the slot's own turn.
+        if (prefetched && started.ahead && 'copy' in settled && settled.copy.status === 'unreadable' && settled.copy.kind === undefined) {
+            settled = await startSettledRead(slot)
+        }
+        if ('error' in settled) {
+            throw settled.error
+        }
+        let copy = settled.copy
         if (MEASURE) {
             stubStats.characters += 1
             stubStats.readMs += stubElapsed(firstReadAt)
@@ -206,6 +291,9 @@ export async function readStubsForExport(db: Pick<Database, 'characters'>, optio
             }
             waitedMs += pause
             retries++
+            if (MEASURE) {
+                stubStats.retries += 1
+            }
             await retry.pause(pause)
             const retryReadAt = MEASURE ? stubMark() : 0
             copy = await readColdCharacterCopy(slot)
@@ -214,6 +302,9 @@ export async function readStubsForExport(db: Pick<Database, 'characters'>, optio
             }
         }
         if (copy.status !== 'ok') {
+            if (MEASURE) {
+                stubStats.failed += 1
+            }
             if (!failedKeys.includes(u)) {
                 failedKeys.push(u)
             }
