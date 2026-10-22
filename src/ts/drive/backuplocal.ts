@@ -10,7 +10,7 @@ import { writeRisuSaveV0 } from "../storage/risuSaveV0";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
 import { StoreInvalidKeyError } from "../storage/store/errors";
-import { assetBatchWriteMode, isAssetBatchAvailable, listAssetsSized, readAssetBatch, writeAssetBatch, writeAssetBatchB64, type AssetBatchWriteMode, type AssetPutEntry, type AssetPutResult, type SizedAssetKey } from "../storage/tauriAssetBatch";
+import { assetBatchWriteMode, isAssetBatchAvailable, isAssetBatchReadAvailable, listAssetsSized, readAssetBatch, writeAssetBatch, writeAssetBatchB64, type AssetBatchWriteMode, type AssetPutEntry, type AssetPutResult, type SizedAssetKey } from "../storage/tauriAssetBatch";
 import { CHUNK_MAX, createChunkedWriter, isDesktopTransport, readRangedPieces, transportKind, WRITE_CHUNK_BYTES, type RangedPiece } from "../storage/tauriByteTransport";
 import { tauriAddressableViolation, tauriCreatableViolation } from "../storage/store/keyRules";
 import { ASSET_BATCH_MAX_ENTRIES, ASSET_MAX_STREAMS, ExportAssetReader, RestoreAssetPipeline, parseCopyMeasureKnob, streamAssetEntry, type AssetBatchLimits, type StreamedAssetEntry } from "./assetBatchPipeline";
@@ -138,12 +138,12 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
 }
 
 /**
- * Whether asset writes and reads may bypass the store's per-key calls: the
- * desktop commands exist and the page's store is the desktop files store they
- * address.
+ * Whether an export's asset listing and reads may bypass the store's per-key
+ * calls: the batched read and sized listing commands exist (the desktop and
+ * Android apps) and the page's store is the files store they address.
  */
-async function assetBatchUsable(): Promise<boolean> {
-    if (!isAssetBatchAvailable()) {
+async function assetBatchReadUsable(): Promise<boolean> {
+    if (!isAssetBatchReadAvailable()) {
         return false
     }
     try {
@@ -154,12 +154,12 @@ async function assetBatchUsable(): Promise<boolean> {
 }
 
 /**
- * The asset keys of a full backup and, where the desktop listing command
- * answers, their sizes in the same order. Any failure of that command falls
- * back to the store's own listing.
+ * The asset keys of a full backup and, where the sized listing command
+ * answers (the desktop and Android apps), their sizes in the same order. Any
+ * failure of that command falls back to the store's own listing.
  */
 async function listAssetsForBackup(store: ByteStore): Promise<{ keys: string[]; sized: SizedAssetKey[] | null }> {
-    if (await assetBatchUsable()) {
+    if (await assetBatchReadUsable()) {
         try {
             const sized = await listAssetsSized()
             return { keys: sized.map((item) => item.key), sized }
@@ -202,6 +202,17 @@ const ANDROID_ASSET_BATCH_LIMITS: AssetBatchLimits = {
     streamSliceBytes: WRITE_CHUNK_BYTES,
 }
 
+/**
+ * The Android export reader's limits, over the desktop defaults: a reply may
+ * arrive through the bridge as a number array, so what is read ahead stays
+ * within one 8 MiB piece of a ranged read, in two calls at most. The batch size
+ * stays the desktop's.
+ */
+const ANDROID_EXPORT_READER_LIMITS: Partial<AssetBatchLimits> = {
+    budgetBytes: 8 * 1024 * 1024,
+    maxFlights: 2,
+}
+
 const COPY_MEASURE_KEY = 'risu-measure-copy'
 
 /**
@@ -223,7 +234,8 @@ function copyMeasureLimits(): Partial<AssetBatchLimits> {
 
 /** The restore's asset writer on the desktop and on Android, or `null` where every asset goes through the store one call at a time. */
 async function createRestoreAssetPipeline(): Promise<RestoreAssetPipeline | null> {
-    // The raw mode is `isAssetBatchAvailable()` (the same test the export readers use); the base64 mode is Android's alone.
+    // The raw mode is `isAssetBatchAvailable()` (the desktop's raw-body write); the base64 mode is Android's alone. The
+    // export's reads use `isAssetBatchReadAvailable()`, which both apps satisfy.
     const mode: AssetBatchWriteMode = isAssetBatchAvailable() ? 'raw' : assetBatchWriteMode() === 'b64' ? 'b64' : 'none'
     if (mode === 'none') {
         return null
@@ -493,8 +505,11 @@ export function SaveLocalBackup(options: BackupExportOptions = {}): Promise<Expo
 
 async function writeLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
     alertWait("Saving local backup...")
+    // The export notes share the import's measurement hook and ring (`noteImportPhase`), under an `export ` prefix.
+    noteImportPhase('export start')
     const db = getDatabase()
     let cold = await collectBackupColdStorage(db, options)
+    noteImportPhase('export cold collected')
     if(!await confirmIncompleteColdStorageOperation(db, cold.unavailableKeys, 'backup', cold.collected.owners)){
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
@@ -542,16 +557,17 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
     }
     const missingAssets: string[] = []
 
-    // The store lists only keys that hold an entry. On the desktop that includes
-    // a symbolic link that resolves (a link to a directory is listed too and is
-    // reported as missing when its read fails), and never the temp file of an
-    // atomic write; a dangling link is not listed. A key that reads as absent or
-    // fails to read is reported as missing and the backup goes on.
+    // The store lists only keys that hold an entry. On the desktop and Android
+    // that includes a symbolic link that resolves (a link to a directory is
+    // listed too and is reported as missing when its read fails), and never the
+    // temp file of an atomic write; a dangling link is not listed. A key that
+    // reads as absent or fails to read is reported as missing and the backup goes on.
     const store = await getAppStore()
     let listing = await listAssetsForBackup(store)
+    noteImportPhase(`export listed, ${listing.keys.length} assets`)
 
     // Before the writer opens, name everything a backup entry cannot hold and ask. Assets are sized only where the
-    // desktop listing gives sizes; the units and stub entries are sized from the bytes already in memory. Declining
+    // sized listing answers (the desktop and Android apps); the units and stub entries are sized from the bytes already in memory. Declining
     // writes nothing. Continuing leaves the items out, and the asset keys and sizes are filtered in one step because the
     // batch reader below finds an asset by its index in the sized list.
     const limitBytes = options.limitBytes ?? UPSTREAM_HARD_LIMIT_BYTES
@@ -575,16 +591,24 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
         return { status: 'declined', cause: 'save-dialog-cancelled' }
     }
     session.writer = writer
+    noteImportPhase('export writer opened')
 
     const assetKeys = listing.keys
-    // On the desktop the assets are read ahead of the writer in batches, and any
-    // asset a batch did not deliver whole (or every asset, when there is no
-    // batch) is written from the ranged reader. Every exit of the loop below,
-    // thrown or not, waits for the reads still outstanding.
+    // Where the listing is sized (the desktop and Android apps) the assets are read ahead of the writer in batches, and
+    // any asset a batch did not deliver whole (or every asset, when there is no batch) is written from the ranged
+    // reader. Every exit of the loop below, thrown or not, waits for the reads still outstanding.
+    let numberArrayReplies = 0
+    const noteReply = MEASURE ? (asNumberArray: boolean) => { if (asNumberArray) numberArrayReplies += 1 } : undefined
     const assetReader = listing.sized
-        ? new ExportAssetReader({ readBatch: readAssetBatch }, listing.sized)
+        ? new ExportAssetReader(
+            { readBatch: (keys) => readAssetBatch(keys, noteReply) },
+            listing.sized,
+            assetBatchWriteMode() === 'b64' ? ANDROID_EXPORT_READER_LIMITS : {},
+        )
         : null
     const streamAssets = await desktopStreamingUsable()
+    let batchedAssets = 0
+    let fallbackAssets = 0
     try {
         for(let i=0;i<assetKeys.length;i++){
             const key = assetKeys[i]
@@ -600,7 +624,11 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
 
             let outcome: 'written' | 'missing'
             const taken = assetReader ? await assetReader.take(i) : null
+            if (taken?.kind !== 'bytes' && taken?.kind !== 'missing') {
+                fallbackAssets += 1
+            }
             if (taken?.kind === 'bytes') {
+                batchedAssets += 1
                 await writer.writeBackup(key, taken.bytes)
                 outcome = 'written'
             } else if (taken?.kind === 'missing') {
@@ -624,16 +652,23 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
             if (outcome === 'missing') {
                 missingAssets.push(key)
             }
+            if ((i + 1) % IMPORT_COPY_PHASE_EVERY === 0) {
+                noteImportPhase(`export assets ${i + 1} of ${assetKeys.length}`)
+            }
         }
     } finally {
         await assetReader?.close()
     }
+    // Counts: keys a batch delivered, keys that went to the per-entry reader (a key it then failed to read is also
+    // missing), keys reported missing, and batch replies that came as a number array.
+    noteImportPhase(`export assets done, batched=${batchedAssets} fallback=${fallbackAssets} missing=${missingAssets.length} numberArrayReplies=${numberArrayReplies}`)
 
     // Inlays follow the assets and stay ahead of the database, which is last.
     const inlayResult = await writeInlaysToBackup(writer, store, {
         streaming: streamAssets,
         onProgress: (done, total) => alertWait(`Saving local Backup Inlays... (${done} / ${total})`),
     })
+    noteImportPhase('export inlays done')
 
     for(let i=0;i<coldStoragePayloads.payloads.length;i++){
         const payload = coldStoragePayloads.payloads[i]
@@ -641,8 +676,10 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
         alertWait(message)
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
+    noteImportPhase('export cold payloads done')
 
     const { dbData, late, repairNotice, stubPayloads } = await encodeDatabaseWithLateColdStorage(db, cold)
+    noteImportPhase('export database encoded')
     for(let i=0;i<stubPayloads.length;i++){
         const payload = stubPayloads[i]
         alertWait(`Saving local Backup Cold data... (${i + 1} / ${stubPayloads.length})`)
@@ -653,11 +690,14 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
         alertWait(`Saving local Backup Cold data... (${i + 1} / ${late.payloads.length})`)
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
+    noteImportPhase('export stub and late payloads done')
 
     alertWait(`Saving local Backup... (Saving database)`)
 
     await writer.writeBackup('database.risudat', dbData)
+    noteImportPhase('export database written')
     await writer.close()
+    noteImportPhase('export closed')
 
     const lateColdStorageReport = describeLateColdStorageKeys(late)
     const leftOutInlayNames = inlayResult.leftOut.map((left) => left.id)

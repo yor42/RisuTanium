@@ -752,6 +752,7 @@ describe('the refusal fires before any write, wherever the marker sits and whate
             ...(await importOriginal()),
             ...batchCommands,
             isAssetBatchAvailable: () => batched,
+            isAssetBatchReadAvailable: () => batched,
         }) as unknown as typeof import('../../storage/tauriAssetBatch'))
         vi.resetModules()
 

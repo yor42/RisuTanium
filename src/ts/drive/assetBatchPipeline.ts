@@ -4,7 +4,8 @@ import { CHUNK_MAX, type ChunkedWriter } from '../storage/tauriByteTransport'
 
 /**
  * Batching and pipelining of the asset writes of a restore and the asset reads
- * of an export, over the desktop commands of `tauriAssetBatch.ts`.
+ * of an export, over the batch commands of `tauriAssetBatch.ts` (the desktop
+ * and Android apps).
  *
  * The bytes a pipeline holds at once (entries being assembled, in flight, or
  * read and not yet handed on) are bounded by a byte budget, never by an entry

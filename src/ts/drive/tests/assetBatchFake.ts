@@ -41,7 +41,7 @@ export interface FakeCall {
 export function createAssetBatchFake() {
     let getStore: (() => Promise<ByteStore>) | null = null
     const ctl = {
-        /** What `isAssetBatchAvailable` answers. */
+        /** What `isAssetBatchAvailable` and `isAssetBatchReadAvailable` answer. */
         available: false,
         calls: [] as FakeCall[],
         inFlight: 0,
@@ -105,6 +105,8 @@ export function createAssetBatchFake() {
 
     const transport = {
         isAssetBatchAvailable: () => ctl.available,
+        /** The export's read test follows the same control, so a suite that turns batching on covers the reads too. */
+        isAssetBatchReadAvailable: () => ctl.available,
         markAssetBatchUnavailable: () => { ctl.available = false },
         writeAssetBatch: (entries: readonly FakePutEntry[]) => track('batch', entries.map((e) => e.key), 'beforeWrite', async () => {
             const results: FakePutResult[] = []
