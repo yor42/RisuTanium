@@ -50,6 +50,12 @@ const wire = vi.hoisted(() => ({
     rangeErrors: [] as unknown[],
     /** Stand-in batch calls running now; chunk calls made inside one are not the page's own. */
     inBatch: 0,
+    /** Batch calls made and not yet answered, the most at once, and a hold every call waits at before it is recorded. */
+    batchOutstanding: 0,
+    maxBatchOutstanding: 0,
+    batchHold: null as Promise<void> | null,
+    /** How many batch calls had started a tick after the first failing call answered; no call may start after that. */
+    failureSeen: null as number | null,
 }))
 /** The chunk writes of the page's large-entry streams (keys `assets/l*`): the write ids open now, the most open at once, and a hold on every stream's first chunk. */
 const streamTrack = vi.hoisted(() => ({
@@ -58,6 +64,8 @@ const streamTrack = vi.hoisted(() => ({
     /** The keys whose first chunk write is waiting at `hold`. */
     held: new Set<string>(),
     hold: null as Promise<void> | null,
+    /** When set, only the stream of this key waits at `hold`. */
+    holdOnly: null as string | null,
     /** Lets the held writes go; the cleanup of a test whose restore is still held. */
     release: null as (() => void) | null,
 }))
@@ -114,6 +122,23 @@ vi.mock('src/ts/storage/tauriAssetBatch', async (importOriginal) => {
     const original = await importOriginal<typeof import('src/ts/storage/tauriAssetBatch')>()
     const { getAppStore } = await import('src/ts/storage/store/appStore')
     const { StoreInvalidKeyError } = await import('src/ts/storage/store/errors')
+    function noteFailureAnswered(): void {
+        // A macrotask later every consequence of the answer has run, so a call counted after this one started after the failure settled.
+        setTimeout(() => { wire.failureSeen ??= wire.batches.length }, 0)
+    }
+    /** Counts the calls outstanding at once, and holds each at `wire.batchHold` before it is recorded. */
+    async function counted(command: WireBatch['command'], entries: readonly { key: string, data: Uint8Array }[], maxEntryBytes: number | undefined) {
+        wire.batchOutstanding += 1
+        wire.maxBatchOutstanding = Math.max(wire.maxBatchOutstanding, wire.batchOutstanding)
+        try {
+            if (wire.batchHold !== null) {
+                await wire.batchHold
+            }
+            return await run(command, entries, maxEntryBytes)
+        } finally {
+            wire.batchOutstanding -= 1
+        }
+    }
     async function run(command: WireBatch['command'], entries: readonly { key: string, data: Uint8Array }[], maxEntryBytes: number | undefined) {
         const callIndex = wire.batches.length
         try {
@@ -130,6 +155,7 @@ vi.mock('src/ts/storage/tauriAssetBatch', async (importOriginal) => {
         })
         await Promise.resolve()
         if (callIndex === wire.rejectCall) {
+            noteFailureAnswered()
             throw new Error('scratch: the bridge went away')
         }
         const store = await getAppStore()
@@ -140,6 +166,7 @@ vi.mock('src/ts/storage/tauriAssetBatch', async (importOriginal) => {
             for (const entry of entries) {
                 if (entry.key === wire.errorKey) {
                     results.push({ k: 'error', message: 'scratch: disk full' })
+                    noteFailureAnswered()
                     continue
                 }
                 try {
@@ -160,8 +187,8 @@ vi.mock('src/ts/storage/tauriAssetBatch', async (importOriginal) => {
     }
     return {
         ...original,
-        writeAssetBatch: (entries: readonly { key: string, data: Uint8Array }[], maxEntryBytes?: number) => run('put_assets_batch', entries, maxEntryBytes),
-        writeAssetBatchB64: (entries: readonly { key: string, data: Uint8Array }[], maxEntryBytes: number) => run('put_assets_batch_b64', entries, maxEntryBytes),
+        writeAssetBatch: (entries: readonly { key: string, data: Uint8Array }[], maxEntryBytes?: number) => counted('put_assets_batch', entries, maxEntryBytes),
+        writeAssetBatchB64: (entries: readonly { key: string, data: Uint8Array }[], maxEntryBytes: number) => counted('put_assets_batch_b64', entries, maxEntryBytes),
     }
 })
 
@@ -223,7 +250,7 @@ vi.mock('@tauri-apps/api/core', () => ({
         if (isStream) {
             streamTrack.open.add(chunk.id)
             streamTrack.maxOpen = Math.max(streamTrack.maxOpen, streamTrack.open.size)
-            if (streamTrack.hold !== null && chunk.offset === 0) {
+            if (streamTrack.hold !== null && chunk.offset === 0 && (streamTrack.holdOnly === null || streamTrack.holdOnly === chunk.key)) {
                 streamTrack.held.add(chunk.key)
                 await streamTrack.hold
             }
@@ -481,10 +508,15 @@ beforeEach(() => {
     wire.rejectCall = -1
     wire.rangeErrors.length = 0
     wire.inBatch = 0
+    wire.batchOutstanding = 0
+    wire.maxBatchOutstanding = 0
+    wire.batchHold = null
+    wire.failureSeen = null
     streamTrack.open.clear()
     streamTrack.maxOpen = 0
     streamTrack.held.clear()
     streamTrack.hold = null
+    streamTrack.holdOnly = null
     streamTrack.release = null
     resetByteTransportForTests()
     resetAssetBatchAvailabilityForTests()
@@ -613,8 +645,10 @@ describe('a restore on an Android page', () => {
         expect(storedBytes('e0.png')).toBeDefined()
         expect(storedBytes('e2.png')).toBeDefined()
         expect(storedBytes('e1.png')).toBeUndefined()
-        // Nothing is sent after the failure was seen: at most the call in flight beside the first.
-        expect(wire.batches.length).toBeLessThanOrEqual(2)
+        // Nothing is sent after the failure was seen: no batch call starts once the failing call has settled.
+        await settleTimers()
+        expect(wire.failureSeen).not.toBeNull()
+        expect(wire.batches.length).toBe(wire.failureSeen)
     })
 
     test('a call that rejects as a whole stops the restore the same way', async () => {
@@ -627,7 +661,9 @@ describe('a restore on an Android page', () => {
         expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
         expect(setDatabaseMock).not.toHaveBeenCalled()
         expect(fakeFs.files.has('blocks/head')).toBe(false)
-        expect(wire.batches.length).toBeLessThanOrEqual(2)
+        await settleTimers()
+        expect(wire.failureSeen).not.toBeNull()
+        expect(wire.batches.length).toBe(wire.failureSeen)
     })
 
     test('a name the store refuses is named in the skip notice and the restore goes on', async () => {
@@ -771,15 +807,200 @@ describe('a restore on an Android page with several large-entry streams at once'
         expect(setDatabaseMock).toHaveBeenCalledTimes(1)
     })
 
-    // Guard: the default is one stream at a time, so this passes before and after.
-    test('guard: without the knob the same backup restores byte-exact with one stream at a time', async () => {
+    // Guard: passes before and after. Natural timing may run one stream or two, never more than the Android cap of two;
+    // the test below holds the streams and proves the cap is reached.
+    test('guard: without the knob the same backup restores byte-exact with at most two streams at a time', async () => {
         await restoreBytes(backupFor(LARGE_NAMES))
 
-        expect(streamTrack.maxOpen).toBe(1)
+        expect(streamTrack.maxOpen).toBeLessThanOrEqual(2)
         expectEveryAssetRestored(LARGE_NAMES)
         expect(tempFiles()).toEqual([])
         expect(alertErrorMock).not.toHaveBeenCalled()
         expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+    })
+
+    // Regression of the default (red on the base, where the Android default is one stream; not a defect reproducer).
+    test('without the knob two large entries stream at once and a third waits for a free slot', async () => {
+        const release = gate()
+        streamTrack.hold = release.promise
+        streamTrack.release = release.release
+
+        const restoring = restoreBytes(backupFor(LARGE_NAMES))
+        await waitForProgress(() => { expect(streamTrack.held.size).toBe(2) })
+        await settleTimers()
+
+        expect(streamTrack.held.size).toBe(2)
+        expect(streamTrack.open.size).toBe(2)
+        release.release()
+        await restoring
+
+        expect(streamTrack.maxOpen).toBe(2)
+        expectEveryAssetRestored(LARGE_NAMES)
+        expect(tempFiles()).toEqual([])
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+    })
+
+    // Regression of the default (red on the base, where two batch calls are the most in flight; not a defect reproducer).
+    test('without the knob four batch calls are outstanding at once and a fifth waits for one to settle', async () => {
+        const names = Array.from({ length: 24 }, (_, index) => `m${index}.png`)
+        const hold = gate()
+        wire.batchHold = hold.promise
+
+        const restoring = restoreBytes(backupOf(names.map((name, index): [string, Uint8Array] => [name, filled(300 * 1024, index + 1)])))
+        await waitForProgress(() => { expect(wire.batchOutstanding).toBe(4) })
+        await settleTimers()
+
+        expect(wire.batchOutstanding).toBe(4)
+        expect(wire.maxBatchOutstanding).toBe(4)
+        hold.release()
+        await restoring
+
+        expect(wire.maxBatchOutstanding).toBe(4)
+        for (const [index, name] of names.entries()) {
+            expect(sameBytes(storedBytes(name), filled(300 * 1024, index + 1))).toBe(true)
+        }
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+    })
+
+    function seededRandom(seed: number): () => number {
+        let state = seed >>> 0
+        return () => {
+            state = (state + 0x6D2B79F5) >>> 0
+            let t = state
+            t = Math.imul(t ^ (t >>> 15), t | 1)
+            t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+        }
+    }
+
+    const MIX_COUNT = 60
+    const MIX_FORCED_LARGE = [4, 11, 17, 26, MIX_COUNT - 1]
+
+    /**
+     * A phone-like mix built entry by entry: most entries a few KiB, about one in ten between 1 and 4 MiB spread through the
+     * file, the last entry before the database a large one, and every body distinct.
+     */
+    function phoneMix(): { entries: [string, Uint8Array][], largeCount: number } {
+        const random = seededRandom(20261022)
+        const entries: [string, Uint8Array][] = []
+        let largeCount = 0
+        for (let index = 0; index < MIX_COUNT; index++) {
+            const large = MIX_FORCED_LARGE.includes(index) || random() < 0.08
+            if (large) {
+                largeCount++
+                entries.push([`l${index}.bin`, patterned(MIB + 1 + Math.floor(random() * 3 * MIB - 1), index + 1)])
+            } else {
+                entries.push([`s${index}.png`, patterned(1024 + Math.floor(random() * 8 * 1024), index + 1)])
+            }
+        }
+        return { entries, largeCount }
+    }
+
+    // Guard at the knob values, which the base honours as well; red on the base with no knob, where the held streams never reach two.
+    test.each([
+        { knob: '2,4', streams: 2 },
+        { knob: '4,4', streams: 4 },
+        { knob: null, streams: 2 },
+    ])('a phone-like mix restores byte-exact with $streams streams at once (knob $knob), complete when the database is installed', async ({ knob, streams }) => {
+        if (knob !== null) {
+            localStorage.setItem(KNOB, knob)
+        }
+        const mix = phoneMix()
+        expect(mix.largeCount).toBeGreaterThan(streams)
+        expect(mix.entries[mix.entries.length - 1][0]).toMatch(/^l/)
+        const release = gate()
+        streamTrack.hold = release.promise
+        streamTrack.release = release.release
+        let completeAtInstall: boolean | null = null
+        setDatabaseMock.mockImplementation(() => {
+            completeAtInstall = mix.entries.every(([name, body]) => sameBytes(storedBytes(name), body))
+        })
+
+        const restoring = restoreBytes(backupOf(mix.entries))
+        await waitForProgress(() => { expect(streamTrack.held.size).toBe(streams) })
+        await settleTimers()
+
+        expect(streamTrack.held.size).toBe(streams)
+        expect(streamTrack.open.size).toBe(streams)
+        // The last entry's stream is held at a second gate once the first streams are let go: the database must wait for it.
+        const lastKey = `assets/${mix.entries[mix.entries.length - 1][0]}`
+        const releaseLast = gate()
+        streamTrack.holdOnly = lastKey
+        streamTrack.hold = releaseLast.promise
+        streamTrack.release = releaseLast.release
+        release.release()
+        await waitForProgress(() => { expect(streamTrack.held.has(lastKey)).toBe(true) })
+        await settleTimers()
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+        releaseLast.release()
+        await restoring
+
+        expect(streamTrack.maxOpen).toBe(streams)
+        for (const [name, body] of mix.entries) {
+            expect(sameBytes(storedBytes(name), body)).toBe(true)
+        }
+        expect(completeAtInstall).toBe(true)
+        expect(tempFiles()).toEqual([])
+        expect(wire.rangeErrors).toEqual([])
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(alertNormalWaitMock).not.toHaveBeenCalled()
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+    })
+
+    // Guard on the base, where the serial path records the refused name as well. At the default the beside path runs it, and the
+    // mutant that drops the refused name on that path turns it red, as it does the streamed refused-name test of the first group.
+    test('guard: a large entry whose name the store refuses is skipped and its large neighbours land byte-exact', async () => {
+        const first = patterned(LARGE_SIZE, 1)
+        const second = patterned(LARGE_SIZE, 2)
+
+        await restoreBytes(backupOf([['l1.bin', first], ['.bad1', filled(MIB + 1, 7)], ['l2.bin', second], ['s1.png', filled(40, 3)]]))
+
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(alertNormalWaitMock).toHaveBeenCalledWith(language.restoreAssetsSkipped(1, ['.bad1']))
+        expect(storedBytes('.bad1')).toBeUndefined()
+        expect(sameBytes(storedBytes('l1.bin'), first)).toBe(true)
+        expect(sameBytes(storedBytes('l2.bin'), second)).toBe(true)
+        expect(sameBytes(storedBytes('s1.png'), filled(40, 3))).toBe(true)
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+    })
+
+    // Regression of the default: a throw in the loop while a large stream is active stops that stream at its next chunk.
+    // Red on the base because the base runs one stream, which finishes before the throw; not a defect reproducer. The mutant
+    // that skips `stopStreams` on a thrown pass turns it red at the default.
+    test('a throw in the loop while a large stream is active shows the failure, installs nothing and leaves no bytes or temp file of that stream', async () => {
+        const release = gate()
+        streamTrack.hold = release.promise
+        streamTrack.release = release.release
+        const inlayName = `risu-inlay-${'a'.repeat(64)}-0.part`
+        const bytes = backupOf([['l1.bin', patterned(LARGE_SIZE, 1)], [inlayName, filled(77, 3)], ['s1.png', filled(40, 1)]])
+        const base = new File([bytes as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')
+        // The inlay part is read with a slice of exactly its size, outside any handler of the entry loop.
+        const file = new Proxy(base, {
+            get(target, prop, receiver) {
+                if (prop === 'slice') {
+                    return (start = 0, end = target.size) => {
+                        if (end - start === 77) {
+                            throw new Error('scratch: slice threw')
+                        }
+                        return target.slice(start, end)
+                    }
+                }
+                return Reflect.get(target, prop, receiver)
+            },
+        })
+
+        const restoring = restoreFile(file)
+        await waitForProgress(() => { expect(streamTrack.held.size).toBe(1) })
+        await settleTimers()
+        release.release()
+        await restoring
+
+        expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
+        expect(storedBytes('l1.bin')).toBeUndefined()
+        expect(tempFiles()).toEqual([])
+        expect(setDatabaseMock).not.toHaveBeenCalled()
     })
 
     test('a stream whose source cannot be read stops the others at their next chunk: the changed-file message after every stream settled, nothing finished, nothing installed', async () => {
@@ -805,6 +1026,113 @@ describe('a restore on an Android page with several large-entry streams at once'
         expect(tempFiles()).toEqual([])
         expect(setDatabaseMock).not.toHaveBeenCalled()
         expect(fakeFs.files.has('blocks/head')).toBe(false)
+    })
+})
+
+describe('the message while the copies finish on an Android page', () => {
+    const FINISHING = 'Finishing copying files...'
+    const PROGRESS = 'Loading local Backup...'
+    const LARGE_SIZE = MIB + MIB / 2
+
+    function waitTexts(): string[] {
+        return vi.mocked(alertWait).mock.calls.map((call) => String(call[0]))
+    }
+
+    function lastProgressPercent(): number {
+        const texts = waitTexts().filter((text) => text.startsWith(PROGRESS))
+        const match = /\((\d+\.\d+)%\)/.exec(texts[texts.length - 1] ?? '')
+        return match === null ? Number.NaN : Number(match[1])
+    }
+
+    function lastIndexWhere(texts: string[], matches: (text: string) => boolean): number {
+        for (let index = texts.length - 1; index >= 0; index--) {
+            if (matches(texts[index])) {
+                return index
+            }
+        }
+        return -1
+    }
+
+    // Regression: the base keeps the last percentage until the commit and never shows the message, so the wait times out.
+    test.each([
+        { label: 'small entries and large entries', entries: [['s1.png', filled(40, 1)], ['l1.bin', patterned(LARGE_SIZE, 1)], ['l2.bin', patterned(LARGE_SIZE, 2)]] as [string, Uint8Array][] },
+        { label: 'large entries only, so only a stream is outstanding', entries: [['l1.bin', patterned(LARGE_SIZE, 1)], ['l2.bin', patterned(LARGE_SIZE, 2)]] as [string, Uint8Array][] },
+    ])('shows the finishing message once every entry is read, while $label are still being copied, and ends it when the copies end', async ({ entries }) => {
+        const release = gate()
+        streamTrack.hold = release.promise
+        streamTrack.release = release.release
+
+        const restoring = restoreBytes(backupOf(entries))
+        await waitForProgress(() => { expect(waitTexts()).toContain(FINISHING) })
+        await settleTimers()
+
+        const held = waitTexts()
+        expect(held[held.length - 1]).toBe(FINISHING)
+        expect(held.filter((text) => text === FINISHING)).toHaveLength(1)
+        // After the last entry was shown, not inside the loop.
+        expect(held.indexOf(FINISHING)).toBeGreaterThan(lastIndexWhere(held, (text) => text.startsWith(PROGRESS)))
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+        release.release()
+        await restoring
+
+        const all = waitTexts()
+        expect(all.filter((text) => text === FINISHING)).toHaveLength(1)
+        expect(all[all.length - 1]).toBe('Loading backup...')
+        expect(all.indexOf(FINISHING)).toBeLessThan(all.lastIndexOf('Loading backup...'))
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+    })
+
+    // Guard on the base: nothing is outstanding, so the base shows no message either. The replacement text is asserted above.
+    test('shows no finishing message for a backup without assets', async () => {
+        await restoreBytes(backupOf([]))
+
+        expect(waitTexts()).not.toContain(FINISHING)
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+    })
+
+    // Guard on the base, which never shows the message; the mutant that drops the failure term turns it red.
+    test('shows no finishing message when a failed batch stopped the restore before the end', async () => {
+        const names = Array.from({ length: 60 }, (_, index) => `e${index}.png`)
+        wire.errorKey = 'assets/e1.png'
+
+        await restoreBytes(backupOf(names.map((name, index): [string, Uint8Array] => [name, filled(300 * 1024, index + 1)])))
+
+        expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
+        expect(waitTexts()).not.toContain(FINISHING)
+        expect(lastProgressPercent()).toBeLessThan(100)
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+    })
+
+    // Guard on the base, which never shows the message. A stream's source failure is seen at the top of the loop, which sets the
+    // stop message, and the source is marked changed: either the stop-message term or the changed-source term keeps the message away.
+    test('shows no finishing message when a stream found the file changed before the end', async () => {
+        overrideBackupWindowBytes({ walk: 65536, copy: 65536 })
+        const small = Array.from({ length: 60 }, (_, index): [string, Uint8Array] => [`s${index}.png`, filled(20 * 1024, index + 1)])
+        const bytes = backupOf([['l1.bin', patterned(LARGE_SIZE, 1)], ...small])
+        const base = new File([bytes as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')
+        // The stream's first slice, the only read of the writer chunk size or more, cannot be read.
+        const file = new Proxy(base, {
+            get(target, prop, receiver) {
+                if (prop === 'slice') {
+                    return (start = 0, end = target.size) => {
+                        if (end - start >= WRITE_CHUNK_BYTES) {
+                            return { arrayBuffer: async () => { throw new Error('scratch: unreadable region') } } as unknown as Blob
+                        }
+                        return target.slice(start, end)
+                    }
+                }
+                return Reflect.get(target, prop, receiver)
+            },
+        })
+
+        await restoreFile(file)
+
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
+        expect(waitTexts()).not.toContain(FINISHING)
+        expect(lastProgressPercent()).toBeLessThan(100)
+        expect(setDatabaseMock).not.toHaveBeenCalled()
     })
 })
 

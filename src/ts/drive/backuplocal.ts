@@ -185,19 +185,23 @@ async function desktopStreamingUsable(): Promise<boolean> {
     }
 }
 
-/** Large-entry streams at once on Android; one until a measurement on a device sets it. */
-const ANDROID_ASSET_MAX_STREAMS = 1
+/** Large-entry streams at once on Android; the desktop stays at one, where the literal path runs. */
+const ANDROID_ASSET_MAX_STREAMS = 2
 
 /**
  * The Android pipeline's limits. A call carries at most one Android chunk of
- * entry bytes as base64 text through the JSON bridge, and two calls overlap. A
- * stream, when more than one may run, reads slices of the writer's chunk size.
+ * entry bytes as base64 text through the JSON bridge, and four calls overlap
+ * beside two streams. A stream reads slices of the writer's chunk size. What is
+ * held at once is entry bytes within `budgetBytes` (four calls of one chunk
+ * never reach it), plus per call its base64 body and the bridge copy, plus per
+ * stream one slice, the chunk the writer holds back, its encoding and the bridge
+ * copy.
  */
 const ANDROID_ASSET_BATCH_LIMITS: AssetBatchLimits = {
     batchBytes: WRITE_CHUNK_BYTES,
     budgetBytes: 8 * 1024 * 1024,
     maxEntries: ASSET_BATCH_MAX_ENTRIES,
-    maxFlights: 2,
+    maxFlights: 4,
     maxStreams: ANDROID_ASSET_MAX_STREAMS,
     streamSliceBytes: WRITE_CHUNK_BYTES,
 }
@@ -1629,6 +1633,11 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                         // The loop ended for its own reason: streams still writing stop at their next chunk instead of finishing whole entries.
                         assetPipeline.stopStreams();
                     }
+                    if (stopMessage === null && passFailure === null && assetPipeline.failure === null
+                            && !assetPipeline.sourceChanged && assetPipeline.outstanding) {
+                        // Every entry has been read; the percentage stays at its last value until the copies end.
+                        alertWait('Finishing copying files...');
+                    }
                     await assetPipeline.drain();
                     if (assetPipeline.sourceChanged && stopMessage === null) {
                         stopMessage = language.backupFileChangedWhileReading;
@@ -1739,6 +1748,8 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                     }
                 }
 
+                // The block-era tail: the finishing message ends with the copies, and the decode and replace run under this one.
+                alertWait('Loading backup...');
                 if(!pendingDatabase){
                     alertError('Failed, Is file corrupted?')
                     return refused()

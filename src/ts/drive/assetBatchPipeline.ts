@@ -12,7 +12,7 @@ import { CHUNK_MAX, type ChunkedWriter } from '../storage/tauriByteTransport'
  * count alone, and one call never carries more than `CHUNK_MAX` bytes of
  * entries. A restore entry above that size never enters a batch: it is
  * streamed through a chunked write, alone with nothing else in flight at one
- * stream (the default), or beside batches and other streams above one (see
+ * stream (the desktop default), or beside batches and other streams above one (see
  * `RestoreAssetPipeline`). A pipeline never leaves a call outstanding behind its caller's back: `drain`
  * and `close` settle everything, and every call's promise is handled where it
  * is created, so none can end as an unhandled rejection.
@@ -256,9 +256,13 @@ function errorOf(message: string): Error {
  *   leaves its loop for a reason of its own.
  * - A stream reads and writes slices of `streamSliceBytes`, the writer's chunk
  *   size, so a stop is seen between chunks. Streams are not charged to
- *   `budgetBytes`: the bytes held are bounded by
- *   `budgetBytes + maxStreams x (one slice, the chunk the writer holds back, its
- *   encoding and the copy that crosses the bridge)`.
+ *   `budgetBytes`: the bytes held are bounded by the entry bytes within
+ *   `budgetBytes`, plus per call in flight the encoding of its body and the copy
+ *   that crosses the bridge, plus `maxStreams x (one slice, the chunk the writer
+ *   holds back, its encoding and the copy that crosses the bridge)`. A call
+ *   carries at most `batchBytes`, and the budget charges the calls in flight
+ *   plus the batch being assembled, so with `(maxFlights + 1) x batchBytes` at
+ *   most `budgetBytes` the budget is never the binding limit.
  * - A call refused because raw bodies do not reach the command is not a failure:
  *   its entries, and every later one, go through `writeEntry`.
  * - `drain` sends the batch being assembled (unless a failure or a change of
@@ -296,6 +300,11 @@ export class RestoreAssetPipeline {
     /** Whether a stream found its source unreadable or short: the source is not what it was when it was indexed. */
     get sourceChanged(): boolean {
         return this.sourceFailed !== null
+    }
+
+    /** Whether a stream or a call is active, or an assembled entry is not yet sent: `drain` still has work to wait for or send. */
+    get outstanding(): boolean {
+        return this.streams.size > 0 || this.flights.size > 0 || this.assembling.length > 0
     }
 
     /** Whether nothing further is to be sent: a failure was seen, or the source changed. */
