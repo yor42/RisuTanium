@@ -158,6 +158,11 @@ export class Encoder {
         return this.claimU(chaId, true)
     }
 
+    /** Whether the previous encoding holds the first holder of this id: a read only, nothing is claimed. */
+    holdsCharacter(chaId: string): boolean {
+        return this.previous?.entities.has(handleOf(chaId, 0)) === true
+    }
+
     /** The entity id the previous encoding holds for this character; a character it does not hold cannot be carried. */
     carriedU(chaId: string): string {
         return this.claimU(chaId, false)
@@ -199,7 +204,27 @@ function chatHandle(chat: JsonObject, index: number, used: Set<string>, idCounts
     return { cid, stable: stable && cid === chat.id }
 }
 
-export function encodeCharacter(slot: Slot, position: number, encoder: Encoder): ShardEntry {
+/**
+ * A character read out of the live object: plain JSON, with its chats split. Every read of live user data that can
+ * throw happens in `normalizeCharacter`, and nothing in this step touches an `Encoder`.
+ */
+export interface NormalizedCharacter {
+    readonly slot: Slot
+    readonly chaId: string
+    readonly owner: JsonObject
+    readonly chatObjects: readonly JsonObject[]
+    readonly split: readonly SplitChat[]
+    readonly listOwner: JsonObject
+}
+
+type SplitChat = ReturnType<typeof splitChat>
+
+/**
+ * The part of `encodeCharacter` that reads the live character: a value that is not plain JSON (a cycle, a BigInt, a
+ * `toJSON` or getter that throws, nesting too deep) or a malformed chat fails here, before the encoder has claimed
+ * an entity id or stored a unit. A `StubRefusedError` for a stub or a chat pointer also comes from here.
+ */
+export function normalizeCharacter(slot: Slot, position: number): NormalizedCharacter {
     const where = `characters[${position}]`
     if (typeof slot !== 'object' || slot === null) {
         throw new CodecInputError(`${where} is not an object.`)
@@ -217,7 +242,19 @@ export function encodeCharacter(slot: Slot, position: number, encoder: Encoder):
     })
     const split = chatObjects.map((chat, index) => splitChat(chat, `${where}.chats[${index}]`))
     const listOwner: JsonObject = { ...owner, chats: split.map((one, index) => assembleChat(one.core, one.chunks, `${where}.chats[${index}]`)) }
+    return { slot, chaId, owner, chatObjects, split, listOwner }
+}
 
+export function encodeCharacter(slot: Slot, position: number, encoder: Encoder): ShardEntry {
+    return emitCharacter(normalizeCharacter(slot, position), encoder)
+}
+
+/**
+ * The part of `encodeCharacter` that writes: it claims the entity id and stores the units. A fault here is an
+ * internal inconsistency, never a property of the user's data, so it is not skippable.
+ */
+export function emitCharacter(normalized: NormalizedCharacter, encoder: Encoder): ShardEntry {
+    const { slot, chaId, owner, chatObjects, split, listOwner } = normalized
     const u = encoder.mintU(chaId)
     const { rest, moved, absent } = splitMovedFields(characterCoreFields(owner))
     const coreBody: CharacterCoreBody = { v: 1, f: rest }

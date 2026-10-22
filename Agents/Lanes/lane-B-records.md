@@ -428,6 +428,8 @@ The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer). The de
 
 ### CHORE-223 — An Android stub export spends most of its time in two steps outside the asset loop ('export start' to 'export cold collected'; 'export database encoded' to 'export stub and late payloads done')
 
+**Status (2026-10-22, lane A fold-in): stage A merged in `eb5e10bec` (no-ff of `4b04514b0`; `MC-365`, `MC-367`); technically accepted; not COMPLETE: stage A Part 1 is owed.** Part 2 ran on phone 2 (test profile, n=1; after a settled commit `__risuGcNow.run({confirm:true})` returned done, deleted 9; after a restart, done, deleted 0). Part 2 unblocks stage 5a coding. Part 1 was not run: A1's throwaway key is deleted, and `MC-456` 4 chose a fixed test key with a phone 1 wipe and re-import (the tool change is in progress, uncommitted). Ledger rows 2161 to 2170 (lane A) and 2379 to 2388 (this lane's rows, folded in after row 2378). Report: `%TEMP%\risu-b715\c223a-runs\report.md`, with its doc-verifier corrections.
+
 **Status (2026-10-22, latest, `MC-365`, `MC-367`): in progress; stage A planned and through Gate 1.** The stage 0 probes ran on lane A's phone 2 (lane A's rows; the result with its verifier corrections is `device-requests\2026-10-22-chore223-stage0-probes.result.md`): the per-call `write_file` cost of about 1.5 to 2.2 MiB/s reproduced (the page-side number-array attribution is inferred, not timed), the ~2.9 s per-call wait did not, and reads scaled with concurrency on warm small files. Stage A is a base64 append command for Android save-dialog files plus reading 3 stub characters ahead (`c223\planA.md`, rows 2366 to 2370); a failed Android export keeps today's "kept" message (`MC-367` 1). Stage B, the Rust batch read, follows stage A's phone run.
 
 **Status (2026-10-22, stage A implemented): in progress; stage A through Gate 2, awaiting the commit and then a phone run.**
@@ -483,6 +485,8 @@ The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer). The de
 - **Related:** `MC-359`, `MC-334`, `MC-328` 2.
 
 ### CHORE-224 — Opening a stored character does not apply the character defaults, so a character without `globalLore` throws on open
+
+**Status (2026-10-22, lane A fold-in): merged in `600a13d1a` (no-ff merge of `worktree-Lane-B` at `85a218885`, on top of `c5c6897f5`); technically accepted; not COMPLETE while the Gate 2 notes below are open.** Full checks on `600a13d1a` (`%TEMP%\risu-b715\records-b224\`): `pnpm test` 2 failed, 20,737 passed, 23 skipped (the two failures are load timeouts; nodeRetire.test.ts and nodeServerFixture.test.ts reproducer 5; both files pass 22 of 22 alone); `pnpm check` 0/0; `pnpm build` passed. Ledger rows 2357 to 2378 folded into the shared ledger; rows 2359 to 2365 are the CHORE-224 rows.
 
 **Status (2026-10-22, later, `MC-363` 4, `MC-364`): fixed on `worktree-Lane-B`; technically accepted, Gate 1 `[REJECT]` then `[APPROVE]`, Gate 2 `[APPROVE]`; uncommitted until the maintainer approves.** Ledger rows 2359 to 2365.
 - **What changed:**

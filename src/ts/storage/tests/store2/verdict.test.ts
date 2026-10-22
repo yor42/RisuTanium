@@ -282,3 +282,35 @@ describe('new behaviour: a loaded character is clean once its units are hydrated
         }
     })
 })
+
+describe('a character whose data cannot be read has no verdict', () => {
+    const first = encodeWith(buildSmall(4))
+    const previous = previousFrom(first)
+
+    test('reproducer: a toJSON that throws gives unknown instead of escaping the put-back check', () => {
+        const slot = assembledOf(first)[1]
+        slot.personality = { toJSON() { throw new Error('toJSON fault') } }
+        expect(verdictOf(slot, previous)).toBe('unknown')
+    })
+
+    test('guard (passes before and after): a cycle gives unknown', () => {
+        const slot = assembledOf(first)[1]
+        const value: Obj = {}
+        value.self = value
+        slot.personality = value
+        expect(verdictOf(slot, previous)).toBe('unknown')
+    })
+
+    test('guard (passes before and after): a BigInt gives unknown', () => {
+        const slot = assembledOf(first)[1]
+        slot.personality = BigInt(1)
+        expect(verdictOf(slot, previous)).toBe('unknown')
+    })
+
+    test('a fault after the encoder started is not hidden as unknown', () => {
+        const fault = new Error('list derivation fault')
+        const lists = { ...fakeLists, characterAssets: () => { throw fault } }
+        const slot = assembledOf(first)[1]
+        expect(() => characterMatchesAcknowledged(slot as unknown as character, { env: seededEnv(5), lists, previous })).toThrow(fault)
+    })
+})

@@ -33,10 +33,12 @@ const downloadPresetSpy = vi.hoisted(() => vi.fn(async () => ({
     data: { name: 'preset' } as unknown as Record<string, unknown>,
 })))
 const alertMdSpy = vi.hoisted(() => vi.fn())
+const alertErrorSpy = vi.hoisted(() => vi.fn())
 const getRealmUploadUrlSpy = vi.hoisted(() => vi.fn(() => 'https://realm.risuai.net/upload'))
 
 vi.mock(import('src/ts/alert'), () => ({
     alertMd: alertMdSpy,
+    alertError: alertErrorSpy,
 }) as unknown as typeof import('src/ts/alert'))
 
 vi.mock(import('src/ts/realm'), () => ({
@@ -71,7 +73,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 //#endregion
 
 import RealmFrame from './RealmFrame.svelte'
-import { ShowRealmFrameStore } from 'src/ts/stores.svelte'
+import { ShowRealmFrameStore, alertStore } from 'src/ts/stores.svelte'
 
 const mountedTargets: HTMLElement[] = []
 const mountedInstances: unknown[] = []
@@ -205,5 +207,46 @@ describe('RealmFrame.svelte: the upload iframe never starts before acceptance', 
         expect(iframe).toBeTruthy()
         expect(iframe?.getAttribute('src')).toBe('https://realm.risuai.net/upload')
         expect(shareRealmCardDataSpy).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('RealmFrame.svelte: a failed card export never reaches the upload iframe', () => {
+    function acceptUpstream(): void {
+        localStorage.setItem(UPSTREAM_AGREEMENT_KEY, 'accepted')
+        resetUpstreamAgreementForTests()
+    }
+
+    test('when the share returns null, nothing is posted, the frame closes and the alert stays', async () => {
+        acceptUpstream()
+        const failure = { type: 'error', msg: 'synthetic export failure' } as const
+        alertStore.set(failure)
+        shareRealmCardDataSpy.mockResolvedValueOnce(null as never)
+
+        const target = mountRealmFrame()
+        const postMessage = vi.fn()
+        const iframe = target.querySelector('iframe')
+        Object.defineProperty(iframe, 'contentWindow', { configurable: true, value: { postMessage } })
+        await settle()
+
+        expect(shareRealmCardDataSpy).toHaveBeenCalledTimes(1)
+        expect(postMessage).not.toHaveBeenCalled()
+        expect(get(ShowRealmFrameStore)).toBe('')
+        expect(get(alertStore)).toEqual(failure)
+    })
+
+    test('when the share rejects, the error is shown, nothing is posted and the frame closes', async () => {
+        acceptUpstream()
+        const failure = new Error('synthetic image read failure')
+        shareRealmCardDataSpy.mockRejectedValueOnce(failure)
+
+        const target = mountRealmFrame()
+        const postMessage = vi.fn()
+        const iframe = target.querySelector('iframe')
+        Object.defineProperty(iframe, 'contentWindow', { configurable: true, value: { postMessage } })
+        await settle()
+
+        expect(alertErrorSpy).toHaveBeenCalledWith(failure)
+        expect(postMessage).not.toHaveBeenCalled()
+        expect(get(ShowRealmFrameStore)).toBe('')
     })
 })

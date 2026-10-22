@@ -2,7 +2,7 @@ import type { Database } from '../database.svelte'
 import type { CommitRequest } from './commit'
 import {
     builtCommitOf, CodecInputError, isColdStub, planScopedEncode, previousFrom,
-    type EncodedTree, type EncodeScope, type ListDerivation, type PreviousEncoding, type ReusableUnit,
+    type EncodedTree, type EncodeScope, type ListDerivation, type PreviousEncoding, type ReusableUnit, type SkippedCharacter,
 } from './codec'
 import { defaultKeyEnv, type KeyEnv } from './format'
 
@@ -47,6 +47,13 @@ export interface SavePlan {
      * the store's, so its acknowledgement throws instead of the pass being skipped.
      */
     readonly unchanged: boolean
+    /**
+     * The named characters this pass could not read and went on without: carried from the acknowledged encoding when it
+     * holds them, left out when it does not. They count for nothing in `unchanged`.
+     */
+    readonly skipped: readonly SkippedCharacter[]
+    /** The `chaId` of every character this pass encoded. */
+    readonly encoded: readonly string[]
     /** The commit request of this plan; its build runs `finalize` under the attempt's own mint and keeps that tree. */
     commitRequest(): CommitRequest
     /**
@@ -138,7 +145,7 @@ function scopeOf(db: Database, previous: PreviousEncoding, request: SavePassRequ
     const everything = request.whole || request.rewriteAll === true
     const modules = everything || request.modules || request.net?.modules === true
     if (everything) {
-        return { modules, characters: 'all', yield: request.yield }
+        return { modules, characters: 'all', yield: request.yield, skipUnsavableCharacters: true }
     }
     const characters = new Set<string>(request.marked)
     const netChaId = request.net?.chaId
@@ -148,7 +155,7 @@ function scopeOf(db: Database, previous: PreviousEncoding, request: SavePassRequ
     for (const chaId of unheldChaIds(db, previous)) {
         characters.add(chaId)
     }
-    return { modules, characters, yield: request.yield }
+    return { modules, characters, yield: request.yield, skipUnsavableCharacters: true }
 }
 
 export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
@@ -170,6 +177,8 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
             return {
                 newUnits: scoped.newUnits,
                 unchanged: scoped.unchanged && pending === null && previous === base,
+                skipped: scoped.skipped,
+                encoded: scoped.encoded,
                 commitRequest: () => ({
                     newUnits: scoped.newUnits,
                     build: (context) => {
