@@ -1,6 +1,6 @@
 # CHORE-202 rerun plan: why the Note 9 import copy stalls with the screen off
 
-Lane C, 2026-10-22. This is a plan, not a run and not code. Lane A runs it on a phone. Status: checked by doc-verifier 2026-10-22, PASS WITH CORRECTIONS; corrections applied; re-check PASS. The data-ceiling exception is approved (`MC-430`, lane C records).
+Lane C, 2026-10-22. This is a plan, not a run and not code. Lane A runs it on a phone. Status: checked by doc-verifier 2026-10-22, PASS WITH CORRECTIONS; corrections applied; re-check PASS. The data-ceiling exception is approved (`MC-430`, lane C records). The maintainer approved running the plan after CHORE-204 (relayed by lane A, 2026-10-22).
 
 Evidence labels: VERIFIED = read in the cited file. INFERRED = reasoning. [X] = Android or Chromium behaviour not in the repository or the crate registry (unverified). The two evidence packets (`tooling.md`, `mechanism.md`) are AI-authored and not independently verified. This plan does not raise their confidence.
 
