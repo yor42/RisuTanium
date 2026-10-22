@@ -65,11 +65,18 @@ async function writeModuleCard(module:RisuModule, arg:{
         char.extentions['moduleNoneImage'] = true
     }
     const writer = new LocalWriter()
-    await writer.init(module.name + '.module', ['charx'])
-    await exportCharacterCard(char, 'charx', {
+    if(!(await writer.init(module.name + '.module', ['charx']))){
+        //the person cancelled the save dialog
+        return
+    }
+    const exported = await exportCharacterCard(char, 'charx', {
         spec: 'v3',
         writer
     })
+    if(!exported){
+        //the export already showed its error; a success alert would hide it
+        return
+    }
     if(alertEnd){
         alertNormal(language.successExport)
     }

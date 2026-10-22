@@ -93,7 +93,11 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
     }
     return {
         AppendableBuffer,
-        BlankWriter: class { },
+        BlankWriter: class {
+            async init() { }
+            async write() { }
+            async end() { }
+        },
         LocalWriter,
         VirtualWriter: class { },
         checkCharOrder: vi.fn(),
@@ -266,6 +270,35 @@ describe('Export portrait: placeholder only for an absent image', () => {
         expect(h.errors).toEqual([])
         expect(fetchMock).not.toHaveBeenCalled()
         expect(h.recorded).toEqual([])
+    })
+})
+
+describe('exportCharacterCard result for a caller that supplies its own writer', () => {
+    test('(R) a failure inside the export shows the error and resolves false', async () => {
+        h.failCall = () => true
+        const result = await exportCharacterCard(syntheticCharacter(), 'charx', { spec: 'v3', writer: new LocalWriter() })
+        expect(result).toBe(false)
+        expect(h.errors).toEqual(['synthetic write failure'])
+    })
+
+    test('(R) a failing png export has shown its error when the false result arrives', async () => {
+        h.failCall = () => true
+        const result = await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3', writer: new LocalWriter() })
+        expect(result).toBe(false)
+        expect(h.log).toEqual(['error:synthetic write failure'])
+    })
+
+    test('(R) a completed png export resolves true, with and without a supplied writer', async () => {
+        expect(await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3', writer: new LocalWriter() })).toBe(true)
+        expect(await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })).toBe(true)
+        expect(h.errors).toEqual([])
+    })
+
+    test('(R) a completed json export resolves true for both card specs', async () => {
+        expect(await exportCharacterCard(syntheticCharacter(), 'json', { spec: 'v2' })).toBe(true)
+        expect(await exportCharacterCard(syntheticCharacter(), 'json', { spec: 'v3' })).toBe(true)
+        expect(h.errors).toEqual([])
+        expect(h.log).toEqual(['normal:' + language.successExport, 'normal:' + language.successExport])
     })
 })
 
