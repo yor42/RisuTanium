@@ -170,6 +170,34 @@ export function groupPlan(
     return { ok: true, sources: kept }
 }
 
+export type MenuPlan =
+    | { kind: 'folder', ref: FolderRef, id: string, name: string }
+    | { kind: 'bulk' }
+
+/**
+ * Which menu a hold, a right-click or the context-menu key on a tile opens, from the live picks. A
+ * stale pick is skipped. The folder menu opens only when exactly one live pick is left and it is a
+ * folder tile; everything else (a character, several tiles, a folder with any other tile, a folder with
+ * one of its own members) is the bulk menu. The folder is named and referenced by its current tile,
+ * never by the pick. Nothing is written.
+ */
+export function menuPlan(
+    selection: ReadonlyMap<string, Picked>,
+    entryByKey: ReadonlyMap<string, GridEntry>,
+    characters: readonly (character | groupChat)[],
+    order: readonly OrderEntry[] | undefined,
+): MenuPlan {
+    const stale = new Set(stalePickedKeys(selection, entryByKey, characters, order))
+    const live = [...selection.keys()].filter((key) => !stale.has(key))
+    if (live.length === 1) {
+        const entry = entryByKey.get(live[0])
+        if (entry?.kind === 'folder') {
+            return { kind: 'folder', ref: entry.ref, id: entry.id, name: entry.name }
+        }
+    }
+    return { kind: 'bulk' }
+}
+
 export type DragPlan =
     | { ok: true, sources: ItemRef[], keys: ReadonlySet<string>, count: number }
     | { ok: false, reason: 'stale' | 'unlisted' }
