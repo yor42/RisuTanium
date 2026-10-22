@@ -324,6 +324,7 @@ describe('the hide trigger over the real save loop', () => {
             win: new EventTarget() as unknown as Pick<Window, 'addEventListener' | 'removeEventListener'>,
             kinds: () => ['chat'],
             streams: activeStreams,
+            unsaved: w.api.hasUnsavedSaveMarks,
             mark: w.marks.markCharacterForSave,
             saveNow: w.api.requestSaveNow,
         })

@@ -1,13 +1,13 @@
 import { describe, expect, test, vi } from 'vitest'
 
 // The installer takes its collaborators as arguments; this keeps the page's save loop out of the module graph.
-vi.mock('src/ts/globalApi.svelte', () => ({ requestSaveNow: vi.fn() }))
+vi.mock('src/ts/globalApi.svelte', () => ({ requestSaveNow: vi.fn(), hasUnsavedSaveMarks: vi.fn(() => false) }))
 
 import { installSaveOnHide, type SaveOnHideDeps } from 'src/ts/process/saveOnHide'
 import type { InFlightKind } from 'src/ts/process/inFlightWork'
 import type { ActiveStream } from 'src/ts/process/activeStreams'
 
-function setup(options: { kinds?: InFlightKind[], streams?: ActiveStream[], visibility?: 'visible' | 'hidden' } = {}) {
+function setup(options: { kinds?: InFlightKind[], streams?: ActiveStream[], visibility?: 'visible' | 'hidden', unsaved?: boolean } = {}) {
     const doc = new EventTarget() as EventTarget & { visibilityState: 'visible' | 'hidden' }
     doc.visibilityState = options.visibility ?? 'hidden'
     const win = new EventTarget()
@@ -17,6 +17,7 @@ function setup(options: { kinds?: InFlightKind[], streams?: ActiveStream[], visi
         win: win as unknown as SaveOnHideDeps['win'],
         kinds: () => options.kinds ?? ['chat'],
         streams: () => options.streams ?? [],
+        unsaved: () => options.unsaved ?? false,
         mark: vi.fn((chaId: string | undefined) => { calls.push(`mark:${chaId}`) }),
         saveNow: vi.fn(() => { calls.push('saveNow') }),
     }
@@ -54,7 +55,7 @@ describe('the hide trigger', () => {
         expect(deps.mark).not.toHaveBeenCalled()
     })
 
-    test.each([[[]], [['tts', 'image']], [['request', 'busy']]] as const)('does nothing without a chat in flight (%j)', (kinds) => {
+    test.each([[[]], [['tts', 'image']], [['request', 'busy']]] as const)('does nothing without a chat in flight and without an unsaved edit (%j)', (kinds) => {
         const { doc, win, deps } = setup({ kinds: [...kinds], streams: [{ chaId: 'a', replyChatId: 'r1' }] })
 
         doc.dispatchEvent(new Event('visibilitychange'))
@@ -80,6 +81,59 @@ describe('the hide trigger', () => {
         win.dispatchEvent(new Event('pagehide'))
 
         expect(deps.saveNow).toHaveBeenCalledTimes(2)
+    })
+
+    test('with no chat in flight, an unsaved edit is saved at once on visibilitychange and marks nothing (reproducer)', () => {
+        const { doc, deps } = setup({ kinds: [], unsaved: true })
+
+        doc.dispatchEvent(new Event('visibilitychange'))
+
+        expect(deps.saveNow).toHaveBeenCalledTimes(1)
+        expect(deps.mark).not.toHaveBeenCalled()
+    })
+
+    test('with no chat in flight, an unsaved edit is saved at once on pagehide and marks nothing (reproducer)', () => {
+        const { win, deps } = setup({ kinds: [], unsaved: true })
+
+        win.dispatchEvent(new Event('pagehide'))
+
+        expect(deps.saveNow).toHaveBeenCalledTimes(1)
+        expect(deps.mark).not.toHaveBeenCalled()
+    })
+
+    test('with no chat in flight and no unsaved edit, neither event asks for a save (guard)', () => {
+        const { doc, win, deps } = setup({ kinds: [], unsaved: false })
+
+        doc.dispatchEvent(new Event('visibilitychange'))
+        win.dispatchEvent(new Event('pagehide'))
+
+        expect(deps.saveNow).not.toHaveBeenCalled()
+        expect(deps.mark).not.toHaveBeenCalled()
+    })
+
+    test('with an unsaved edit but the page becoming visible, nothing is requested (guard)', () => {
+        const { doc, deps } = setup({ kinds: [], unsaved: true, visibility: 'visible' })
+
+        doc.dispatchEvent(new Event('visibilitychange'))
+
+        expect(deps.saveNow).not.toHaveBeenCalled()
+    })
+
+    test('a chat in flight keeps its own branch whether or not an edit is unsaved (guard)', () => {
+        const { doc, deps } = setup({ kinds: ['chat'], unsaved: false, streams: [{ chaId: 'a', replyChatId: 'r1' }] })
+
+        doc.dispatchEvent(new Event('visibilitychange'))
+
+        expect(deps.mark).toHaveBeenCalledWith('a')
+        expect(deps.saveNow).toHaveBeenCalledTimes(1)
+    })
+
+    test('a chat in flight on a page with an unsaved edit still marks its streams before the request (guard)', () => {
+        const { doc, calls } = setup({ kinds: ['chat'], unsaved: true, streams: [{ chaId: 'a', replyChatId: 'r1' }] })
+
+        doc.dispatchEvent(new Event('visibilitychange'))
+
+        expect(calls).toEqual(['mark:a', 'mark:undefined', 'saveNow'])
     })
 
     test('the returned function removes both listeners', () => {
