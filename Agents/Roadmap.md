@@ -6277,6 +6277,13 @@ with index -1.
 
 ### CHORE-129 — Warn before an upstream-compatible export when data exceeds upstream's size limits, and leave that data out
 
+**Status (2026-10-22, lane B stage 4, `MC-359`): RESIDUAL ACCEPTED UNTIL STAGE 0b for web and Node; Android assets are now checked; merged in `dd9c04679` (lane B stage 4, `18156c972`, `MC-359`).** Ledger rows 2326 to 2335. The earlier statuses in the Roadmap entry stand.
+
+- **What changed:** an Android export now gets the sized asset listing (`list_assets_sized`). So the `MC-223` hard-limit question names each asset at or above the upstream limit before the export starts, as it does on the desktop. On confirm, those assets are left out and listed in `omitted.oversize`; on cancel, nothing is written. The text, flow and filtering are the desktop's.
+- **Still blind:** if the sized listing fails, the export falls back to the unsized listing and writes every asset without the question, as on the desktop (test T4d). Web and Node exports keep the residual.
+- **Unchanged:** no 500 MB soft limit on any platform.
+- **Related:** `MC-359`, `MC-322` 2, `MC-223`.
+
 **Status (2026-10-20, `MC-322` 2): RESIDUAL ACCEPTED UNTIL STAGE 0b.** The desktop hard limit stays as built; on web, Node and Android an oversized export has no size check before writing and fails loudly partway through (the stage 4b Gate 1 C7 carry). No 500 MB soft limit. The earlier status follows.
 
 **Status (2026-10-06): open, not scheduled.** Type: feature. Filed from the maintainer's relaxation of the compatibility invariant (`MC-223`; `AGENTS.md` carries the amendment). It replaces the whole-export failure that `bc631526` gives for an asset of 4 GiB or more (`backupFailedAssetTooLarge`).

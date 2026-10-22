@@ -10925,3 +10925,26 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - The emulated figures come from one Note 9 release build of an older main (c428a0234) on a 96 MiB sample. The split of the gain between the stream count and the batch count is unmeasured.
 - `MC-197` 9 (per-file sync) stays in force. More streams mean more concurrent syncs.
 - Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-359 — Lane B, 2026-10-22: stage 4 turns on the existing batched asset reader and sized listing for Android exports in the page only, accepting both bridge reply forms, and adds a measurement-only export phase timer
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs: `%TEMP%\risu-lane-b\s4\sizing.md` (investigator) with `sizing-verify.md` (`doc-verifier`, 9 claims verified, one with a caveat; it supersedes the packet where they differ).
+- **Related:** `MC-328` 2 (fit-map E1), `MC-223`, `MC-322` 2, `MC-175`, `MC-197`; CHORE-129.
+
+1. **Approach: "Page-only, both forms (Recommended)".** The option text:
+   - On Android, export uses the batched read and sized-listing commands the app already registers.
+   - The reply parser accepts both forms the bridge can deliver (raw bytes or a number array), as the single-file reader already does.
+   - No Rust change.
+   - A phone run shows the speed. A Rust command that replies in base64 comes back to the maintainer only if the number-array form proves too slow.
+
+   Not chosen: a Rust base64 reply command now, and measuring before any code.
+2. **Phase timer: "Yes, measurement-only (Recommended)".** An export phase timer following the import ring's pattern. Release builds that are not MEASURE builds compile out its ring and key and record nothing. Not chosen: no timer.
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator from the sizing packet and its verification.
+- A side effect of item 1, which the plan names: the sized listing also feeds the `MC-223` oversize question. Android exports then get the desktop's hard-limit question for assets. That closes the Android part of the `MC-322` 2 residual (CHORE-129) when the sized listing succeeds. If `list_assets_sized` fails, the pre-flight is still blind, as on the desktop (stage 4 Gate 1). Web and Node keep that residual.
+- The `MC-223` soft limit (about 500 MB) stays out on every platform, as the maintainer decided earlier (CHORE-129, "No 500 MB soft limit").
+- Nothing here authorizes application-code edits, commits or pushes.

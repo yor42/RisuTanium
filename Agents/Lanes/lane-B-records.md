@@ -11,7 +11,7 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 | 1 | CHORE-194: import warning and estimate keyed on the database entry | COMPLETE; folded into the shared files by lane A on 2026-10-22, merged as `953f63241` |
 | 2 | Read the `.bin` once, decode the database once (`MC-328` 2, `MC-323` lead 6, CHORE-103), replaced by the slim stage (`MC-357`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, E1 applied; records verified (row 2318); rows 2307 to 2318; COMPLETE; folded into the shared files by lane A on 2026-10-22, merged as `165dcf10f` |
 | 3 | Parallel large entries (`MC-328` 2), desktop and Android only (`MC-358`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, items applied; defaults stay at 1 stream until the Note 9 run (CHORE-222); rows 2319 to 2325; COMPLETE; folded into the shared files by lane A on 2026-10-22, merged as `42993e408` |
-| 4 | Android batched asset reader for export (fit-map E1), and an export phase timer (`MC-359`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, E1 applied; rows 2326 to 2335; technically accepted, awaiting the maintainer's commit approval; the Note 9 export run follows the commit |
+| 4 | Android batched asset reader for export (fit-map E1), and an export phase timer (`MC-359`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, E1 applied; rows 2326 to 2335; technically accepted; the Note 9 export run is running on phone 1; COMPLETE; folded into the shared files by lane A on 2026-10-22, merged in `dd9c04679` |
 
 ## MC entries
 
