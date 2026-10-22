@@ -2,6 +2,8 @@
 
 Lane rules: [README.md](README.md) and [lane-C-brief.md](lane-C-brief.md). Branch `worktree-Lane-C`, started from `b2a1cfcab`. IDs: MC-430 to MC-449, CHORE-330 to CHORE-349, ledger rows 3300 to 3499; no overflow block (provisional IDs on exhaustion, README step 2). Scratch: `%TEMP%\risu-lane-c\`. Ports: 6440 to 6459.
 
+**Status (2026-10-22, lane C): CHORE-182 merged (folded into the shared files by lane A on 2026-10-22, merged in `f8d5ec5f3`); not COMPLETE: lane C's design work is conditional on A1.**
+
 A step here is at most "technically accepted"; it becomes COMPLETE only after lane A folds these records into the shared files.
 
 ## Steps
