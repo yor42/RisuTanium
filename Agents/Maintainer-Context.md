@@ -10948,3 +10948,53 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - A side effect of item 1, which the plan names: the sized listing also feeds the `MC-223` oversize question. Android exports then get the desktop's hard-limit question for assets. That closes the Android part of the `MC-322` 2 residual (CHORE-129) when the sized listing succeeds. If `list_assets_sized` fails, the pre-flight is still blind, as on the desktop (stage 4 Gate 1). Web and Node keep that residual.
 - The `MC-223` soft limit (about 500 MB) stays out on every platform, as the maintainer decided earlier (CHORE-129, "No 500 MB soft limit").
 - Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-337 — Lane A, 2026-10-22: merges, device runs, records commits and lane hand-offs
+
+- **Tag:** decisions (`AskUserQuestion` answers and maintainer messages, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the session transcript (orchestrator-recorded: the quoted option texts and the maintainer messages below come from it, not from a repository file); git `ae08fbf07`, `11f3699fd`, `92f7d900a`, `20b1e4b76`, `dd9c04679`, `b7f2be85d`, `b2a1cfcab`, `af836c750`, `be1655b18`; ledger rows 2109 to 2125.
+- **Related:** `MC-330`, `MC-336`, `MC-357`, `MC-358`, `MC-359`, `MC-430`; CHORE-193, CHORE-195, CHORE-202, CHORE-203, CHORE-204, CHORE-220, CHORE-222.
+
+1. **Lane B stage 2: "Merge stage 2 now (Recommended)".** Merged as `165dcf10f`; records `ae08fbf07`.
+2. **Lane D S4-4b device pass: "Run on phone 1 now (Recommended)".** Lane D's request cited its `MC-379` ("Commit now, device pass after"); the orchestrator still confirmed the pass with the maintainer first.
+   - When the test profile turned out empty: "Import rail-1000-chars.bin (Recommended)".
+   - The follow-up gap sweep: "Run it now (Recommended)".
+   - Rows 2116 and 2117.
+3. **Lane B stage 3: "Merge stage 3 now (Recommended)".**
+   - The phone 2 release MEASURE session (CHORE-220, CHORE-222, CHORE-203): "Run after merge (Recommended)".
+   - Lane B's test-isolation fix `92f7d900a`: "Include it and push (Recommended)". Records `11f3699fd`.
+4. **Device-check scripts' first commit: "Commit + push (Recommended)".** Committed as `20b1e4b76` (`MC-330` 7).
+5. **Lane B stage 4: "Merge stage 4 now (Recommended)".** Merged as `dd9c04679`; records `b7f2be85d`. Its Note 9 export measurement: "On phone 1 now" (row 2124).
+6. **The maintainer's plan message for idle time** (free text, 2026-10-22):
+   - a lane A records pass, without phone 2's results, with a short follow-up afterwards;
+   - `.gitattributes` `Agents/Tools/device/** text eol=lf`;
+   - the device-script follow-ups queued until both phone agents finish (CHORE-204);
+   - CHORE-193 triage handed to a new lane or to lane B between stages (lane E);
+   - CHORE-202 rerun planning as lane C's first step;
+   - CHORE-195 left with lane D.
+   - Commit approvals: "Commit + push both (Recommended)" (`b2a1cfcab`) and "Commit + push (Recommended)" (`af836c750`).
+   - The maintainer later reported that lanes C and E are running in their own worktrees, and that lane D is on a records pass (messages, 2026-10-22).
+7. **Lane C's CHORE-202 rerun plan: "Approve, run after CHORE-204 (Recommended)".** Phone runs R1 to R4 wait until the CHORE-204 restore fix is reviewed and copied in. The PC-side tooling and R0 may start before then (per lane C's handoff, lane A's sequence).
+8. **Lane C merge: "Merge + fold in (Recommended)".** Merged as `be1655b18`, with this fold-in.
+
+- Notes, not the maintainer's words:
+  - The option texts were written by the orchestrator.
+  - Nothing here authorizes a merge of lane D's or lane E's branches, or any push of a lane branch.
+
+### MC-430 — Lane C, 2026-10-22: the CHORE-202 rerun may use the 1.25 GiB b1 fixture (an exception to `MC-330` 1); commit the plan on the lane branch
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane C session transcript. Input: [lane-C-chore202-rerun-plan.md](Lanes/lane-C-chore202-rerun-plan.md), checked by `doc-verifier` (rows 3303 and 3304).
+- **Related:** `MC-330` 1, `MC-326` 4; CHORE-202.
+
+1. **Data ceiling: "Approve 1.25 GiB (Recommended)".** The rerun reuses the measure2 fixture `m2-mix18k.bin` (1.24 GiB, assets 1,216.7 MiB), with a 1.25 GiB cap. This is above `MC-330` 1's 200 to 500 MB guidance. The option text gave the reason: the stall appeared only about 61 s into a screen-off copy, so a smaller set may finish first. Not chosen: "Smaller fixture", where lane A would have had to show that the copy still runs 120 s after screen-off.
+2. **Commit: "Commit, no push (Recommended)".** The plan and the lane C records are committed on `worktree-Lane-C`, with only those two files staged. Not chosen: "Commit and push branch", "Not yet".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator; the summaries above repeat them.
+- Item 1 covers this rerun only; it does not change `MC-330` 1 for other device checks.
+- Nothing here authorizes a push, a merge, or a special build.

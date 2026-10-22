@@ -8,7 +8,7 @@ A step here is at most "technically accepted"; it becomes COMPLETE only after la
 
 | Step | Item | State |
 |---|---|---|
-| 1 | CHORE-202 rerun plan (plan only; lane A runs it on a phone): [lane-C-chore202-rerun-plan.md](lane-C-chore202-rerun-plan.md) | Plan verified (row 3303 PASS WITH CORRECTIONS, corrections applied; row 3304 PASS); rows 3300 to 3305; data-ceiling exception and commit approved (`MC-430`); committed on the lane branch, not pushed; plan approved to run after CHORE-204 (lane A's relay); records verified (row 3305); technically accepted; COMPLETE after lane A's fold-in |
+| 1 | CHORE-202 rerun plan (plan only; lane A runs it on a phone): [lane-C-chore202-rerun-plan.md](lane-C-chore202-rerun-plan.md) | Plan verified (row 3303 PASS WITH CORRECTIONS, corrections applied; row 3304 PASS); rows 3300 to 3305; data-ceiling exception and commit approved (`MC-430`); committed on the lane branch, not pushed; plan approved to run after CHORE-204 (lane A's relay); records verified (row 3305); technically accepted; COMPLETE (folded into the shared files by lane A on 2026-10-22, merged in `be1655b18`) |
 
 ## MC entries
 

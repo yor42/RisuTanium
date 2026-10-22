@@ -6901,11 +6901,17 @@ with index -1.
 
 ### CHORE-202 — The Note 9 screen-off import stall has an unknown cause
 
+**Status (2026-10-22, lane C step 1): rerun plan written ([lane-C-chore202-rerun-plan.md](Lanes/lane-C-chore202-rerun-plan.md)) and merged in `be1655b18` (lane C); the maintainer approved running it after CHORE-204. Cause still UNKNOWN.** Ledger rows 3300 to 3305. The earlier statuses and the body below stand, except as corrected here.
+
+- **Corrected facts (lane C, row 3303):** the copy did not slow at screen-off. After `KEYCODE_SLEEP` (20:57:42) it wrote at full rate for about 61 s; the writes fell at 20:58:43 to 46, and the Tauri `getDataDir` bridge calls stopped at 20:58:43 and resumed at 21:07:44, one second after the wake. During the stall almost all sampled app and renderer threads were in state S and none in D (21 sporadic R samples among about 38,900). b1's `power.txt` blocks 2 to 24 are empty from the poll at 20:57:25, before the sleep, so the empty polls are a poller fault, not screen-off behaviour. The "about 90 s" and "all 21 screen-off polls" wording below is replaced by this.
+- **Plan:** no special build; page-side ring over CDP plus an on-device sampler; runs R0 (PC), R1 baseline screen-off, R2 backgrounded screen on, R3 screen-off whitelisted, R4 runtime `scheduler.yield` override; fixture ceiling 1.25 GiB (`MC-430` 1, an exception to `MC-330` 1 for this rerun only).
+- Plan approved by the maintainer to run after CHORE-204 (`MC-337` 7); lane A builds the tooling and runs R0 first.
+
 **Status (2026-10-22): open, not scheduled.** Source: the corrected measurement-day report (`measure2\report.md`, only its "Corrections from doc-verifier" section and the statements it leaves standing) and `measure2\verify.md` (scratch). Debug MEASURE build, second Note 9, runs b1 and b2; each is one run.
 
-- **MEASURED:** with the screen off, the copy stalls. In b1, `ths.log` shows 0.03 to 0.04 MiB/s with the renderer main thread at 0.9%, after about 90 s of disk writes at roughly the screen-on rate (disk-write figures, not copy rates). The "copy 5000" marks came 617 s (b1) and 554 s (b2) after "database decoded", against 80 s with the screen on. Neither run finished with the screen off in 9 to 10 minutes.
+- **MEASURED:** with the screen off, the copy stalls. In b1, `ths.log` shows 0.03 to 0.04 MiB/s with the renderer main thread at 0.9%, after about 90 s of disk writes at roughly the screen-on rate (disk-write figures, not copy rates). The "copy 5000" marks came 617 s (b1) and 554 s (b2) after "database decoded", against 80 s with the screen on. Neither run finished with the screen off in 9 to 10 minutes. (superseded by the status above)
 - **WITHDRAWN:** background timer throttling as the mechanism. The copy loop in `backuplocal.ts` yields through `yieldToEventLoop` in `src/ts/storage/saveYield.ts`, which prefers `scheduler.yield()`, then `MessageChannel`, and uses `setTimeout(0)` only as a last resort.
-- **MISSING:** power evidence. b1's `power.txt` has one populated sample, taken with the screen on, and all 21 screen-off polls are empty. b2 has no power or diskstats file. The Doze and wake-lock claims in the unverified report text have no raw source.
+- **MISSING:** power evidence. b1's `power.txt` has one populated sample, taken with the screen on, and all 21 screen-off polls are empty. b2 has no power or diskstats file. The Doze and wake-lock claims in the unverified report text have no raw source. (superseded by the status above)
 - **Next:** rerun with working power polling and a trace or a no-yield build. `MC-326` 4 (the import keeps running with the screen off) is affected; until the cause is traced, how much is an open question.
 - **Status (2026-10-22, later):** rerun planning goes to lane C as its first step (`Agents/Lanes/lane-C-brief.md`). It produces a plan only; lane A runs it on a phone.
 - **Related:** `MC-326` 4, `MC-336`; CHORE-203.
