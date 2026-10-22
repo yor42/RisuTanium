@@ -473,6 +473,8 @@ The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer). The de
 
 ### CHORE-224 — Opening a stored character does not apply the character defaults, so a character without `globalLore` throws on open
 
+**Status (2026-10-22, lane A fold-in): merged in `600a13d1a` (no-ff merge of `worktree-Lane-B` at `85a218885`, on top of `c5c6897f5`); technically accepted; not COMPLETE while the Gate 2 notes below are open.** Full checks on `600a13d1a` (`%TEMP%\risu-b715\records-b224\`): `pnpm test` 2 failed, 20,737 passed, 23 skipped (the two failures are load timeouts; nodeRetire.test.ts and nodeServerFixture.test.ts reproducer 5; both files pass 22 of 22 alone); `pnpm check` 0/0; `pnpm build` passed. Ledger rows 2357 to 2378 folded into the shared ledger; rows 2359 to 2365 are the CHORE-224 rows.
+
 **Status (2026-10-22, later, `MC-363` 4, `MC-364`): fixed on `worktree-Lane-B`; technically accepted, Gate 1 `[REJECT]` then `[APPROVE]`, Gate 2 `[APPROVE]`; uncommitted until the maintainer approves.** Ledger rows 2359 to 2365.
 - **What changed:**
   - `applyCharacterDefaults` (`src/ts/storage/characterDefaults.ts`) gives a group without members an empty `characters` list (`??=`; a group with members is unchanged).

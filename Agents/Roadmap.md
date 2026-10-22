@@ -6416,6 +6416,8 @@ with index -1.
 
 ### CHORE-117 — Save-time validation: a committed generation must always load
 
+**Status update (2026-10-22, lane A, third): CHORE-153 merged in `c5c6897f5`; stage 2 implementation starts after that commit (lane E).** The stage 2 plan passed Gate 1 `[APPROVE WITH AMENDMENTS]` (row 3529; advisor row 3526; plan revision row 3528). Q-A is filed as CHORE-350 (open, not scheduled). Stage 2 is not COMPLETE; stage 1b stays open. Lane E's rows 3516 to 3532 are folded into the ledger.
+
 **Status update (2026-10-22, lane A, second): Stage 2 follow-up answers recorded in `MC-347` (Q-F, Q-G, Q-H).** While a character cannot be saved the page does not count as fully saved (other characters stay loaded, a numbered-backup restore waits its full timeout, inlay cleanup does not run); the quiet retry follows the normal schedule (on edit, on whole saves, and when the idle check reaches it, about 2 s per character); the memory put-back check's crash on the same broken value is fixed in this stage. Lane E's A3 plan (`%TEMP%\risu-lane-e\a3\`) carries the mechanism; lane E owns it. TODO(evidence): the A3 plan's gate state and any implementation were not read by this pass.
 
 **Status update (2026-10-22, lane A): Stage 2 behaviour decided (`MC-346` 1); not planned or implemented.** A saved value that cannot be encoded no longer stops every save: that character is skipped, everything else saves normally, one notice names the character, and that one is retried quietly. Lane E's audit (ledger rows 2144 and 2145) reads stage 2 as STILL PRESENT on store2 (the pass catch folds back and retries every second with no park, and one bad value blocks saves for every character) and stage 1b as STILL PRESENT but narrowed, with its expected outcome needing a maintainer decision; both are source readings, not executed. Lane E owns the fix (`MC-345` A3).
@@ -6594,6 +6596,8 @@ with index -1.
 - On the upstream-merge snapshot (`merge\test.txt`, session scratch) the full `pnpm test` run failed once: the test "reproducer: a plain-HTTP page gets the content-hash key, the same key crypto.subtle gives" timed out at 5,000 ms (593 files, 12,139 passed, 1 failed, 6 skipped; duration 132 s). The Orchestrator reports all 23 tests in the file pass when it is run alone and that the file takes about 61 s. The earlier batch run (`batch\final\test.txt`, 12,140 passed) did not fail. Cause not investigated.
 
 ### CHORE-153 — Observation: a Light-scheme change can be lost if the app is force-stopped about 15 s after the tap
+
+**Status update (2026-10-22, lane A, third): merged in `c5c6897f5` (no-ff merge of `worktree-Lane-E` at `ea2e46447`, fix `846008435`); technically accepted; the phone 2 check passed and is doc-verified (ledger rows 2157 to 2159).** Full checks on `c5c6897f5` (`%TEMP%\risu-b715\records-e153\`): `pnpm test` 916 files passed, 1 skipped (20,724 tests passed, 23 skipped); `pnpm check` 0 errors and 0 warnings; `pnpm build` passed; `cargo test` not run (no Rust change). Phone 2 (debug build, small profile, scripted Home, `am force-stop` only), per the doc-verifier corrections: 7 of 7 Home runs at a hide-to-kill gap of 0.23 s or more persisted; the 20 ms case (colour only) did not persist; the H0.3 rows persisted before the 500 ms debounce could fire. The no-Home rows are a visible-page, debounce-only baseline, not a pre-fix control. Owed: the debounce cap (Q-C, deferred); the Back-guard flush moves to CHORE-181.
 
 **Status update (2026-10-22, lane A): fix now, phone check after (`MC-346` 3); not yet planned or implemented.** The unit tests must fail before and pass after the fix, then one short phone run confirms. Lane E's audit (rows 2144 and 2145; source reading, not executed) finds the code window STILL PRESENT (nothing saves on hide, pause or stop for settings or edits; `saveOnHide` flushes only while a chat generation is in flight) and the old 15 s observation UNCERTAIN, because a 15 s loss does not fit the traced window; the pass time P on the Note 9 is unmeasured. Lane E owns the fix (`MC-345` A3).
 
@@ -6829,6 +6833,8 @@ with index -1.
 - **Not decided:** whether these pages should close on Back.
 
 ### CHORE-181 — Back with a dialog or alert open quits the Android app with no toast and does not close the dialog
+
+**Status update (2026-10-22, lane A, third): the Back-guard flush deferred by CHORE-153 is recorded here (lane E).** The CHORE-153 commit (`c5c6897f5`) leaves the Back-guard flush open, and it is tracked under this item. Not scheduled. Lane E's plan puts this item after CHORE-117 stage 2, with normal gates; S4-5 is merged in `3a0f2cf0c`.
 
 **Status update (2026-10-22, lane A): behaviour decided (`MC-346` 2), amending `MC-279` 8 for the dialog case; not yet planned or implemented.** With a dialog open, Back closes or cancels that dialog; a second Back then follows the normal 2 s quit guard. Lane E's audit (rows 2144 and 2145; source reading, not executed) finds the ticket STILL PRESENT: with a dialog open `dispatchBack` returns false and the Activity runs the default Back at once, so the 2 s guard does not apply. Lane E owns the fix, with the debounce test, after S4-5 (now merged, `3a0f2cf0c`; `GridCatalog.svelte` overlaps) (`MC-345` A3).
 
@@ -7076,6 +7082,8 @@ The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer); the im
 
 ### CHORE-223 — An Android stub export spends most of its time in two steps outside the asset loop ('export start' to 'export cold collected'; 'export database encoded' to 'export stub and late payloads done')
 
+**Status update (2026-10-22, lane A): MVP scope and lane B's follow-ups (`MC-452` item 2; `MC-363` to `MC-369`).** The slow export is MVP scope (`MC-452`). Lane B reports that CHORE-223 stage A covers the write path and stub read-ahead, not the 686 s asset loop, which may need its own item (not filed; no CHORE number assigned). Store2 stage 5a runs automatic clean-up only in the Tauri app; the self-hosted server and web versions keep today's behaviour until 5b (`MC-369`). The stored-character defaults are CHORE-224 (`MC-363` 4).
+
 **Status (2026-10-22, Note 9 measurement done; phone 1, n=2, one device; ledger rows 2136 and 2137):** step A waits on `read_range` (the stub read is 99.4% of step A in run 1; encode 0.5%). Steps B and C are the `writeFile` calls (sync plus wait is 99.8% of B in run 1); the wait is about 2.9 s per call and the sync part scales with bytes (INFERRED from 21 calls per run; cause of the wait not traced). No PSS drop was measured: the step B peak was 1,349.0 and 1,357.1 MiB against row 2337's 1,336.9 MiB (not the same commit or profile; no same-commit before and after). Save to complete was 118.5 and 120.5 s. The exports hold 3,500 entries, not the expected 3,501: 3,000 assets, 499 stub units, 1 database; the one whole character is the character a stray tap opened, which the export writes whole with no unit entry (INFERRED and plausible, no re-run; `doc-verifier` correction 2). Not a ship gate (`MC-343` 2). Report: `%TEMP%\risu-b715\c223-phone1\report.md` (with its "Corrections from doc-verifier").
 
 **Status (2026-10-22, `MC-362`, `MC-343` 1) (superseded by the status above): in progress; merged in `cbd256917` (lane B; code `a7e39a82f`). The measurement and the memory release are technically accepted on the PC (Gate 2 `[APPROVE]`). Note 9 export measurement (lane B's device request): dispatched on phone 1 (`MC-343` 2); the result is pending.** Ledger rows 2337 and 2349 to 2356.
@@ -7105,6 +7113,21 @@ The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer); the im
 - **Not examined:** the mechanism of either long step. The ring has no finer marks inside them.
 - **Next, if scheduled:** a sizing of both steps (cold collection of 500 units, then re-reading and writing the stub and late payloads). It needs the maintainer's go-ahead.
 - **Related:** `MC-359`, `MC-334`, `MC-328` 2.
+
+### CHORE-224 — Opening a stored character does not apply the character defaults, so a character without `globalLore` throws on open
+
+**Status (2026-10-22, lane A fold-in): merged in `600a13d1a` (no-ff merge of `worktree-Lane-B` at `85a218885`, on top of `c5c6897f5`); technically accepted (`MC-363` 4, `MC-364`); ledger rows 2357 to 2378 folded in from lane B's records.** Gate 1 `[REJECT]` then `[APPROVE]`; Gate 2 `[APPROVE]`. Full checks on `600a13d1a` (`%TEMP%\risu-b715\records-b224\`): `pnpm test` 2 failed, 20,737 passed, 23 skipped; the two failures are timeouts under concurrent machine load (nodeRetire.test.ts, "(a) a snapshot without the key plus a bump and then a delete reads 0"; nodeServerFixture.test.ts, reproducer 5), and both files pass 22 of 22 when run alone. `pnpm check` 0 errors and 0 warnings; `pnpm build` passed.
+
+- **What changed (lane B's records):** `applyCharacterDefaults` gives a group without members an empty member list; `characterFormatUpdate` applies the defaults before any field use; plugins and MCP get the defaults on the write path and on the copy they read; `restoreAllColdCharacters` applies them to each restored character. Exports stay verbatim (`MC-175`); no forced save.
+- **Side effect (Gate 2, by source):** a card without `chats` or `globalLore` used to make the formatter throw, so it was added live without formatting and crashed when opened. It now archives like any other card under the archive setting. Whether any importer produces such a card is unchecked.
+- **Not done (lane B's Gate 2 notes):** no test pins the C3 write's order after the placeholder check (N1); two comment clarifications (N2, N3). **Known gap:** a restore that joins one already running is never formatted.
+- **Not attributed to this change:** the four other timeouts in lane B's own run (inlays, inlayCleanup, nodeLiveServer) did not recur. Owed by lane A, not yet filed: a flake ticket for node server fixture tests that time out under concurrent load (nodeRetire, nodeServerFixture; lane B's inlays, inlayCleanup and nodeLiveServer timeouts are candidates for the same ticket).
+
+### CHORE-350 — a value that cannot be stored retries every save pass (MC-346 Q-A)
+
+A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a module, preset, settings or plugin data still makes the store2 save loop retry every second with one toast, then an alert on every pass from the fifth attempt, and blocks saves for every character.
+
+**Status (2026-10-22): open, not scheduled.** Filed per `MC-346` Q-A ("Leave as today, ticket it"). Source: the A1' audit (CHORE-117 stage 2 row) and doc-verifier correction 10 (foldBack re-marks everything).
 
 ### CHORE-240 — A full `pnpm test` rewrites `modules.test.ts.snap` with LF line endings
 

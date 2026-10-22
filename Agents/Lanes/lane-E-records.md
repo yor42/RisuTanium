@@ -36,6 +36,8 @@ Lane E's records, kept on branch `worktree-Lane-E` and folded into the shared fi
 
 ### CHORE-153 (changed) — "Fix now, phone check after" (MC-346)
 
+**Status (2026-10-22, lane A fold-in): merged in `c5c6897f5` (no-ff merge of `worktree-Lane-E` at `ea2e46447`); full checks and the phone 2 check passed; the phone check is doc-verified (ledger rows 3516 to 3532 folded into the shared ledger; rows 2157 to 2159 are lane A's).** Merged and technically accepted, not COMPLETE while the open items below remain. Open items unchanged: the debounce cap (Q-C, deferred) and the Back-guard flush (CHORE-181).
+
 **Status (2026-10-22, lane E item A3): fixed on `worktree-Lane-E` as `846008435` (base main `389f461de`); technically accepted (rows 3524 to 3532); awaiting lane A's merge, full checks and the phone check.** Gate 1 `[APPROVE WITH AMENDMENTS]` (row 3525, 6 binding amendments); Gate 2 `[APPROVE WITH AMENDMENTS]` (row 3530), with one required test-only amendment applied in row 3531 and the orchestrator's verification and commit in row 3532.
 
 - The phone check uses the Home/background-then-kill cells. A force-stop with no hide event first has no hook, so it is not covered by the fix.
@@ -108,3 +110,5 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 **2026-10-22, leftovers (`MC-451`).** Lane A merged lane E as `bdba81fd6` and its records as `c1473005c` (both on `origin/main`). The branch was fast-forwarded to `origin/main` at `69f376c23`. Step 4 (fixture identity check, restart retry, repository guard) technically accepted (rows 3508, 3510, 3512, 3513). Step 5 (`storeImportBoot` notice waits and flow cleanup) technically accepted (rows 3509, 3511, 3514, 3515). All writer grants registered and revoked. Records verified by `doc-verifier` (one count corrected). The maintainer approved one commit of steps 4 and 5 on `worktree-Lane-E` (no push). Not done in this lane: a full `pnpm test`. Next: the merge into `main`, with the maintainer's approval, by lane A per the README.
 
 **2026-10-22, lane E item A3.** CHORE-153 committed as `846008435` on `worktree-Lane-E` (base main `389f461de`), sent to lane A for merge. CHORE-117 stage 2: plan Gate 1 passed; implementation is next. CHORE-187: after stage 2, with normal gates. CHORE-181: next after stage 2 (S4-5 already merged in `3a0f2cf0c`). Next free IDs: MC-452, CHORE-351, row 3533.
+
+**2026-10-22, fold-in after the CHORE-153 merge.** Lane A merged lane E's CHORE-153 as `c5c6897f5` (no-ff, on `389f461de`). Full checks and the phone 2 check passed; the phone check is doc-verified. CHORE-117 stage 2: implementation starts after the CHORE-153 merge (plan Gate 1 passed). CHORE-350 is filed (open, not scheduled). CHORE-181 gains the Back-guard flush. Next free IDs: MC-453 (lane E), CHORE-351, row 3533.
