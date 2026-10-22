@@ -2497,6 +2497,14 @@ export const languageVietnamese = {
         editSelectedCount: (count: number) => `Đã chọn ${count}`,
         editFolderToggle: "Mở hoặc đóng thư mục",
         editTrashConfirm: (count: number) => `Chuyển ${count} nhân vật vào thùng rác?`,
+        editMoved: (n: number) => `Đã di chuyển ${n} mục`,
+        editFolderRemoveConfirm: (names: string[]) => {
+            const q = names.map((n) => `"${n}"`)
+            const list = q.length === 1 ? q[0]
+                : q.length <= 3 ? q.slice(0, -1).join(', ') + ' và ' + q[q.length - 1]
+                : q.slice(0, 3).join(', ') + ` và ${q.length - 3} thư mục khác`
+            return `Xóa thư mục ${list} và chuyển các nhân vật trong đó đến đây? Tên, màu sắc và hình ảnh của thư mục sẽ không được giữ lại.`
+        },
         noCustomSidebarItems: "Chưa cấu hình mục thanh bên tùy chỉnh nào",
         addItem: "Thêm mục",
         backToList: "Quay lại danh sách",

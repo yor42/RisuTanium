@@ -2497,6 +2497,14 @@ export const languageChinese = {
         "editSelectedCount": (count: number) => `已选择 ${count} 个`,
         "editFolderToggle": "打开或关闭文件夹",
         "editTrashConfirm": (count: number) => `将 ${count} 个角色移至垃圾桶吗？`,
+        "editMoved": (n: number) => `已移动 ${n} 项`,
+        "editFolderRemoveConfirm": (names: string[]) => {
+            const q = names.map((n) => `“${n}”`)
+            const list = q.length === 1 ? q[0]
+                : q.length <= 3 ? q.slice(0, -1).join('、') + '和' + q[q.length - 1]
+                : q.slice(0, 3).join('、') + `等 ${q.length} 个`
+            return `要移除文件夹 ${list}，并将其中的角色移到此处吗？文件夹的名称、颜色和图片不会保留。`
+        },
         "noCustomSidebarItems": "尚未配置自定义侧边栏项目",
         "addItem": "添加项目",
         "backToList": "返回列表",

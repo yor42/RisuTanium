@@ -2499,6 +2499,16 @@ export const languageSpanish = {
         editSelectedCount: (count: number) => count === 1 ? `1 seleccionado` : `${count} seleccionados`,
         editFolderToggle: "Abrir o cerrar la carpeta",
         editTrashConfirm: (count: number) => count === 1 ? `¿Mover 1 personaje a la papelera?` : `¿Mover ${count} personajes a la papelera?`,
+        editMoved: (n: number) => n === 1 ? `1 elemento movido` : `${n} elementos movidos`,
+        editFolderRemoveConfirm: (names: string[]) => {
+            const q = names.map((n) => `“${n}”`)
+            const list = q.length === 1 ? q[0]
+                : q.length <= 3 ? q.slice(0, -1).join(', ') + ' y ' + q[q.length - 1]
+                : q.slice(0, 3).join(', ') + ` y ${q.length - 3} más`
+            return q.length === 1
+                ? `¿Eliminar la carpeta ${list} y mover sus personajes aquí? Su nombre, color e imagen no se conservan.`
+                : `¿Eliminar las carpetas ${list} y mover sus personajes aquí? Sus nombres, colores e imágenes no se conservan.`
+        },
         noCustomSidebarItems: "No hay elementos personalizados configurados en la barra lateral",
         addItem: "Añadir Elemento",
         backToList: "Volver a la Lista",
