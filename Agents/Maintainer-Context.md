@@ -11651,3 +11651,94 @@ Round 2:
     - Lane B is told the export is in MVP scope. Lane B notes that CHORE-223 stage A covers the Android write path and the stub read-ahead, not the 686 s asset loop, which may need its own item.
   - These answers set scope only. Each fix still goes through its own Gate 1 and Gate 2.
   - No historical decision text is rewritten.
+
+### MC-453 — Lane E, 2026-10-22: commit CHORE-117 stage 2 after the final review; keep the toast wording
+
+- **Tag:** decision (AskUserQuestion answers relayed by lane A, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answers. Input: lane E's request for commit approval after Gate 2 round 2 (row 3539).
+- **Related:** `MC-346`, `MC-347`; CHORE-117.
+
+1. **Commit: "Commit after final review (Recommended)".** Commit the 20 named paths and the lane E records pass only after the small opus review of the orchestrator's editorial hunk in `saveLoop.ts` passes; if that review finds anything substantive, stop and tell lane A. That review returned `[APPROVE]` (row 3540).
+2. **Toast wording: "Keep as is for now (Recommended)".** The maintainer's draft wording of `saveCharacterUnsavedNotice` and `saveCharacterNeverSavedNotice`, which says "tab", stays unchanged, although "tab" reads oddly in the Android app.
+3. Lane A also said that CHORE-62 stays unaudited against store2 for now (it was outside the A1' audit's scope); lane A decides when it becomes relevant.
+
+### MC-454 — Lane E, 2026-10-22: commit and merge CHORE-187
+
+- **Tag:** decision (AskUserQuestion answer relayed by lane A, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answer. Input: lane E's request for commit approval after CHORE-187 Gate 2 (row 3547).
+- **Related:** `MC-345` (item A3); CHORE-187.
+
+1. **"Commit + merge (Recommended)".** Commit the 8 named CHORE-187 paths and the lane E records pass on `worktree-Lane-E` after merging main, then send the tip to lane A for merge.
+
+### MC-386 — Lane D, 2026-10-22: MVP chat-open and edit stalls, S0 to S2 answers
+
+- **Tag:** decision (`AskUserQuestion` answers by option label, relayed by lane A)
+- **Date:** 2026-10-22
+- **Sweep ref:** none (relayed by lane A the same day)
+- **Source:** lane A's cross-session message to lane D relaying the maintainer's answers to the four questions of the lane D Gate 1 plan (`%TEMP%\risu-lane-d\stall\gate1-plan.md`, "Questions for the maintainer"); ledger rows 2567 to 2570. The work is in MVP scope (`MC-345`; lane A records the pull into the MVP as `MC-452`).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** not relayed (lane A sent only the chosen labels).
+- **Related:** `MC-345`, `MC-175`, `MC-257`; CHORE-154 to CHORE-157 (each 7% or less of the measured cold render, or off the path).
+
+**What was decided:**
+1. **"Yes, fork-only S1 (Recommended)".** S1, the early rejection of a leading-lazy-dot regex that cannot match, is fork-only code that must leave every script output unchanged (`MC-175` kept), under the Gate 1 conditions.
+2. **"Dev/measure only (Recommended)".** The hot-path console logs in S2 (per-parse "Trigger time", "Updating Chats", the Lua engine creation notice and full Lua source) stop printing in normal builds; dev and measure builds keep them. Correction to the question's premise (found during S0): every `vite build`, measure builds included, already strips `console.*`, so S2 was dropped as a no-op and measure builds do not print them either (CHORE-241; lane A informed).
+3. **"Yes, after S0-S2 (Recommended)".** One phone 1 session after S0 to S2 are committed: a profiler capture across a chat select and an edit with the pollers off, plus synthetic regex scaling on WebView 155. Lane D sends the device request to lane A; phone 1 holds the maintainer's real soak profile, so the request names no personal content.
+4. **"Decide later (Recommended)".** The fallback if S1 is not enough (a regex run budget, a smaller first window, or a card-side regex edit) is asked again with numbers after the phone run.
+
+### MC-387 — Lane D, 2026-10-22: commit and merge CHORE-241 S1 and S0
+
+- **Tag:** decision (`AskUserQuestion` answer by option label, relayed by lane A)
+- **Date:** 2026-10-22
+- **Sweep ref:** none (relayed by lane A the same day)
+- **Source:** lane A's cross-session message relaying the maintainer's answer to lane D's commit-approval request (ledger row 2580).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** not relayed.
+- **Related:** `MC-386`; CHORE-241.
+
+**What was decided:**
+1. **"Commit + merge (Recommended)".** Lane D makes the two proposed commits on `worktree-Lane-D` (the S1 and S0 code with its tests; then this records file), staging only the named paths; merges `main` (`b87e457f9`) into the lane branch; re-runs the targeted tests and `pnpm check`; then gives lane A the tip and the phone 1 capture request. Phone 1 is wiped and re-imported from the same partial backup under a new fixed test key before the capture.
+
+### MC-456 — Lane A, 2026-10-22: CHORE-223 stage A merge and phone runs, the signing tools commit, and a fixed test key for the test phones
+
+- Tag: decisions (`AskUserQuestion` answers by option label, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript, 2026-10-22. The option labels are the maintainer's answers. The question texts below are lane A's paraphrase, and the option text is the orchestrator's, recorded as shown.
+- Related: `MC-345` (the MVP work order and the signing and upgrade constraint), `MC-365` and `MC-367` (CHORE-223 stage A), `MC-366` and `MC-369` (store2 stage 5a), `MC-386` (CHORE-241 phone capture), `MC-452` (the export is in MVP scope); CHORE-223; ledger rows from 2161.
+
+**The `AskUserQuestion` answers (orchestrator-recorded option text):**
+- **CHORE-223 stage A merge.**
+  - Question (paraphrased): merge lane B's stage A (`4b04514b0`), the Android export append command and the 3-ahead stub reads?
+  - Answer: "Merge + fold in (Recommended)".
+  - Option text: merge, run the full checks plus the cargo tests, update the shared records, push.
+- **Lane B's device request.**
+  - Question (paraphrased): schedule Part 1 (the A1 export again on phone 1's real profile with a MEASURE build of stage A) and Part 2 (one store2 clean-up run on a test-only profile on phone 2, to learn whether Android confirms the save flush)?
+  - Answer: "Both, after merge (Recommended)".
+  - Option text: Part 2 on phone 2 right away, on a test profile; Part 1 on phone 1 after the merge.
+- **Signing tools commit.**
+  - Question (paraphrased): commit the five signing files (sign-release.ps1, SIGNING.md, the build.gradle.kts signing change, the README row and the tests) to main? Two review rounds are done, 365/365 tests pass, and there has been no real vault or real signed build yet.
+  - Answer: "Commit + push (Recommended)".
+  - Option text: commit the five named paths only; the maintainer's first real signed build, run from a normal PowerShell window, is the live test, followed by a `Get-Process java` check.
+- **Phone 1 signing blocker.**
+  - Question (paraphrased): the A1 install on phone 1 was signed with a throwaway key that was then deleted, so no new build can update it in place without wiping the profile. How should stage A get onto phone 1?
+  - Answer: "Fixed test key, re-import (Recommended)".
+  - Option text: sign-install.ps1 keeps one fixed test key for the test phones from now on; phone 1 is wiped once and re-imports Backup_partial.bin (about 3 min plus setup), then the export runs; later test builds update in place.
+  - Not chosen: "Use phone 2 instead" and "Your real key via sign-release".
+
+**What was decided (maintainer):**
+1. **Stage A merge.** Merge lane B's CHORE-223 stage A into `main` and fold in the records.
+2. **Device runs.** Run both parts of lane B's request: Part 2 on phone 2 with a test profile, and Part 1 on phone 1 after the merge.
+3. **Signing tools.** Commit the release-signing tools to `main`. The first real signed build is the maintainer's, from an ordinary terminal.
+4. **Fixed test key.**
+   - The test phones use one fixed test signing key from now on, so later test builds update in place.
+   - Phone 1 is wiped once and re-imports `Backup_partial.bin` before the stage A export.
+
+- Notes, not the maintainer's words:
+  - The fixed test key is a test key for the spare phones, never the release key. Release signing stays with sign-release.ps1 and the vault (`MC-345` signing constraint).
+  - Part 2 ran on phone 2. After a settled commit the clean-up returned `done`; per the doc-verifier, that means the last tracked store2-commit write reported `flushed === true` (n=1, tiny profile; the refused-idle path was not exercised).
+  - Part 1 did not run, because of the key blocker this answer resolves.
+  - Lane D's CHORE-241 phone 1 capture (`MC-386` 3) runs in the same phone 1 session on the fresh import.
+  - No historical decision text is rewritten.

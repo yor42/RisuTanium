@@ -218,6 +218,8 @@ Lane D (UI lists and small items), branch `worktree-Lane-D`. Rules: [README.md](
 
 ### CHORE-241 — MVP chat-open and edit stalls: a quadratic display regex, and chat-phase measurement
 
+**Status (2026-10-22, lane A fold-in): merged in `1d2272b7d` (no-ff of `a29c58871`; `MC-386`, `MC-387`); technically accepted; not COMPLETE: S3 and S4 wait for the phone 1 capture.** Ledger rows 2567 to 2580 folded in after row 2566.
+
 **Status (2026-10-22, lane D): S1 and S0 fixed, technically accepted and committed on `worktree-Lane-D` on the maintainer's approval (`MC-387`), not pushed; S2 dropped; S3 and S4 deferred until the phone capture.** Decision `MC-386`; ledger rows 2567 to 2579. Plan and binding Gate 1 conditions: `%TEMP%\risu-lane-d\stall\gate1-plan.md`.
 
 - **Problem (Note 9, release build, real 500-character profile; inferred from CDP poll timeouts):** selecting a 62-message chat blocked the page about 20 s; an edit took 9.8 to 10.8 s to its first store2 commit (the commit itself 80.8 ms).

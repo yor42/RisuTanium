@@ -4824,7 +4824,9 @@ CHORE-76/77, not yet investigated.
 
 ### CHORE-60 — Release identity: the desktop build still carries upstream's identity
 
-**Status (2026-10-22): the package-id and signing part is in the MVP (MC-345).** The MVP APK needs the final package id and the maintainer's real signing key so later APKs install over it without data loss; the rest of this ticket (release identity) stays a release item.
+**Status update (2026-10-22, lane A): the release-signing tools are committed as `1f4771ca7`** (`sign-release.ps1`, `SIGNING.md`, the `build.gradle.kts` signing precedence, a README row and Test-Runner tests; ledger rows 2156 and 2163 to 2165). They have not yet been run against a real vault or used for a real signed build; the first signed build is the maintainer's (`MC-456` 3). The fixed test key for the test phones (`MC-456` 4) is separate and is not the release key.
+
+**Status (2026-10-22) (superseded by the status above): the package-id and signing part is in the MVP (MC-345).** The MVP APK needs the final package id and the maintainer's real signing key so later APKs install over it without data loss; the rest of this ticket (release identity) stays a release item.
 
 **Status (2026-10-01) (superseded by the status above):** open, **not scheduled**; a release blocker under `MC-089` and `MC-011` (nothing ships
 until every open ticket clears). The maintainer decided the updater part (`MC-154` 7: the updater is disabled
@@ -6416,6 +6418,8 @@ with index -1.
 
 ### CHORE-117 — Save-time validation: a committed generation must always load
 
+**Status update (2026-10-22, lane A, fourth): stage 2 merged in `e4413ffbd` (no-ff merge of `cc2128d60`; `MC-346`, `MC-347`, `MC-453`); technically accepted; not COMPLETE: stage 1b is still open, narrowed by the audit, and its expected outcome needs a maintainer decision.** Lane E's rows 3533 to 3542 are folded into the ledger (after row 3532). Full checks on `e4413ffbd` (`%TEMP%\risu-b715\records-e117\`): `pnpm test` 917 files passed, 1 skipped (20,824 tests passed, 23 skipped); `pnpm check` 0/0; `pnpm build` passed. The `modules.test.ts.snap` LF rewrite did not occur. The Q-A value-cannot-be-stored item is CHORE-350 (open, not scheduled).
+
 **Status update (2026-10-22, lane A, third): CHORE-153 merged in `c5c6897f5`; stage 2 implementation starts after that commit (lane E).** The stage 2 plan passed Gate 1 `[APPROVE WITH AMENDMENTS]` (row 3529; advisor row 3526; plan revision row 3528). Q-A is filed as CHORE-350 (open, not scheduled). Stage 2 is not COMPLETE; stage 1b stays open. Lane E's rows 3516 to 3532 are folded into the ledger.
 
 **Status update (2026-10-22, lane A, second): Stage 2 follow-up answers recorded in `MC-347` (Q-F, Q-G, Q-H).** While a character cannot be saved the page does not count as fully saved (other characters stay loaded, a numbered-backup restore waits its full timeout, inlay cleanup does not run); the quiet retry follows the normal schedule (on edit, on whole saves, and when the idle check reaches it, about 2 s per character); the memory put-back check's crash on the same broken value is fixed in this stage. Lane E's A3 plan (`%TEMP%\risu-lane-e\a3\`) carries the mechanism; lane E owns it. TODO(evidence): the A3 plan's gate state and any implementation were not read by this pass.
@@ -6834,6 +6838,8 @@ with index -1.
 
 ### CHORE-181 — Back with a dialog or alert open quits the Android app with no toast and does not close the dialog
 
+**Status update (2026-10-22, lane A, fourth): answers relayed, MC-455 pending in lane E records.**
+
 **Status update (2026-10-22, lane A, third): the Back-guard flush deferred by CHORE-153 is recorded here (lane E).** The CHORE-153 commit (`c5c6897f5`) leaves the Back-guard flush open, and it is tracked under this item. Not scheduled. Lane E's plan puts this item after CHORE-117 stage 2, with normal gates; S4-5 is merged in `3a0f2cf0c`.
 
 **Status update (2026-10-22, lane A): behaviour decided (`MC-346` 2), amending `MC-279` 8 for the dialog case; not yet planned or implemented.** With a dialog open, Back closes or cancels that dialog; a second Back then follows the normal 2 s quit guard. Lane E's audit (rows 2144 and 2145; source reading, not executed) finds the ticket STILL PRESENT: with a dialog open `dispatchBack` returns false and the Activity runs the default Back at once, so the 2 s guard does not apply. Lane E owns the fix, with the debounce test, after S4-5 (now merged, `3a0f2cf0c`; `GridCatalog.svelte` overlaps) (`MC-345` A3).
@@ -6874,10 +6880,12 @@ with index -1.
 
 ### CHORE-187 — `writeModuleCard` and `shareRealmCardData` hide errors raised inside `writeCharacterCard`'s try (pre-existing)
 
+**Status update (2026-10-22, lane A, fourth): fixed and merged in `b87e457f9` (no-ff of `dcbf1ad0f`, lane E; `MC-454`); technically accepted; lane E's rows 3543 to 3550 are folded into the ledger.** Full checks on `b87e457f9` (`%TEMP%\risu-b715\records-e187\`): `pnpm test` 919 files passed, 1 skipped; 20,836 tests passed, 23 skipped; `pnpm check` 0/0; `pnpm build` passed. A failed export now reports failure: a module export with a failing asset shows no success alert, a cancelled Tauri save dialog is silent, and a Realm share posts nothing and closes the frame. Not changed: a failed module export leaves the truncated file the person chose (`LocalWriter` has no abort).
+
 **Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Source: N1 in the U0 Gate 2 round 2 and 3 verdicts (`upstream-e773240\u0\g2r2-verdict.md`, `g2r3-verdict.md`). Not caused by the merge; the same masking existed on `main`.
 
 - **Problem:** callers that pass a writer hide every failure raised inside `writeCharacterCard`'s try (v3 asset `readImage`, `compressImage`, the writer's `write` and `end`, and others). The verdict says a module export of a module with a failing asset reports success over a truncated file and a Realm share posts a partial buffer; the closeout notes say an empty file and an empty buffer. Only the image read before the try rejects (to the global handler); these in-try errors were hidden on `main` too.
-- **Not decided:** the verdict's alternative is to rethrow after `alertError` when `arg.writer` is supplied; it goes beyond the merge and needs an orchestrator or maintainer decision (`MC-091`).
+- **Decided at implementation (lane E; the orchestrator chose a boolean result, Gate 1 agreed; the maintainer approved the commit under `MC-454`):** `exportCharacterCard` and `writeCharacterCard` return a boolean, and `shareRealmCardData` returns `null` on a failed export. Rethrowing after `alertError` when `arg.writer` is supplied is rejected: the unawaited `exportModule` call would reach the global rejection handler and alert twice.
 - **Related:** the card export image fallback in the merge (`76a36fac5` reads the card image before the try, so that one error rejects).
 
 ### CHORE-188 — The import warning says "Your saved data is not changed until the import has finished", which is false when a same-name asset has different bytes
@@ -7082,6 +7090,8 @@ The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer); the im
 
 ### CHORE-223 — An Android stub export spends most of its time in two steps outside the asset loop ('export start' to 'export cold collected'; 'export database encoded' to 'export stub and late payloads done')
 
+**Status update (2026-10-22, lane A, fourth): stage A merged in `eb5e10bec` (no-ff of `4b04514b0`; `MC-365`, `MC-367`); not COMPLETE: stage A Part 1 is owed.** Full checks on `eb5e10bec` (`%TEMP%\risu-b715\records-b223a\`): `pnpm test` 917 files passed, 1 skipped (20,772 tests passed, 23 skipped); `pnpm check` 0/0; `pnpm build` passed; `cargo test --lib` 202 passed. Phone 2, Part 2, on a test profile: after a settled commit, `__risuGcNow.run({confirm:true})` returned done (deleted 9); after a restart it returned done (deleted 0). Per the doc-verifier, done after a tracked commit means the last store2-commit write reported `flushed === true`; n=1, tiny profile, the refused-idle path was not exercised. Part 1 was not run: A1's throwaway key is deleted; `MC-456` 4 chose a fixed test key with a phone 1 wipe and re-import (the tool change is in progress; ledger row 2170). Part 2 unblocks lane B's stage 5a coding (`MC-345` A2). Ledger rows 2161 to 2170 and 2379 to 2388.
+
 **Status update (2026-10-22, lane A): MVP scope and lane B's follow-ups (`MC-452` item 2; `MC-363` to `MC-369`).** The slow export is MVP scope (`MC-452`). Lane B reports that CHORE-223 stage A covers the write path and stub read-ahead, not the 686 s asset loop, which may need its own item (not filed; no CHORE number assigned). Store2 stage 5a runs automatic clean-up only in the Tauri app; the self-hosted server and web versions keep today's behaviour until 5b (`MC-369`). The stored-character defaults are CHORE-224 (`MC-363` 4).
 
 **Status (2026-10-22, Note 9 measurement done; phone 1, n=2, one device; ledger rows 2136 and 2137):** step A waits on `read_range` (the stub read is 99.4% of step A in run 1; encode 0.5%). Steps B and C are the `writeFile` calls (sync plus wait is 99.8% of B in run 1); the wait is about 2.9 s per call and the sync part scales with bytes (INFERRED from 21 calls per run; cause of the wait not traced). No PSS drop was measured: the step B peak was 1,349.0 and 1,357.1 MiB against row 2337's 1,336.9 MiB (not the same commit or profile; no same-commit before and after). Save to complete was 118.5 and 120.5 s. The exports hold 3,500 entries, not the expected 3,501: 3,000 assets, 499 stub units, 1 database; the one whole character is the character a stray tap opened, which the export writes whole with no unit entry (INFERRED and plausible, no re-run; `doc-verifier` correction 2). Not a ship gate (`MC-343` 2). Report: `%TEMP%\risu-b715\c223-phone1\report.md` (with its "Corrections from doc-verifier").
@@ -7136,6 +7146,10 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 - **Problem:** after a full `pnpm test`, `src/ts/process/mcp/risuaccess/tests/__snapshots__/modules.test.ts.snap` shows as modified. `git diff --ignore-cr-at-eol` showed no content change, so the difference was line endings only. The committed blob is LF and the checkout is CRLF (`core.autocrlf=true`; `git ls-files --eol` shows i/lf w/crlf). Captured after the S4-4b full run (row 2521): the working file was LF only (73 LF, 0 CR; `i/lf w/lf`), so Vitest rewrites the CRLF checkout as LF and Git sees the line-ending change. Why Vitest rewrites a snapshot whose content matches is not established (inferred: it compares the serialized LF text with the CRLF file). Seen after 6 full runs in lane D, each time restored from the index or to CRLF: the CHORE-192, S4-4a, S4-4b and S4-4c trees (rows 2504, 2515, 2521, 2536) and both completed runs on the `MC-382` tree (row 2543).
 - **Not established:** why Vitest rewrites this snapshot (an obsolete or reordered entry would also trigger a write), and whether other snapshot files are affected on other runs. Only one `.snap` file is tracked, and `.gitattributes` holds only `-text` entries for archive snapshots (row 2523).
 - **Smallest coherent correction (draft):** find what makes Vitest write the file; a `.gitattributes` rule `*.snap text eol=lf` so the checkout is LF like the blob and what Vitest writes; check which other `.snap` files exist and whether any is committed CRLF before adding it. Acceptance: two consecutive full runs leave the tree clean.
+
+### CHORE-241 — MVP chat-open and edit stalls: a quadratic display regex, and chat-phase measurement
+
+**Status (2026-10-22, lane A fold-in): S1 and S0 merged in `1d2272b7d` (no-ff of `a29c58871`, lane D; `MC-386`, `MC-387`); technically accepted; not COMPLETE: S3 and S4 wait for the phone 1 capture.** S2 was dropped: every `vite` build already strips `console.*`. Full checks on `1d2272b7d` (`%TEMP%\risu-b715\records-d241\`): `pnpm test` 923 files passed, 1 skipped; 20,882 tests passed, 23 skipped; `pnpm check` 0/0; `pnpm build` passed; `checkReleaseDist` OK (242 files, no measurement markers). Lane D's ledger rows 2567 to 2580 are folded in after row 2566; the mechanism, the S1 and S0 detail and the Gate 1 and Gate 2 rounds are in `Agents/Lanes/lane-D-records.md`.
 
 ### CHORE-200 — On a Node server, a cold-storage unit over the request body limit fails only after the upload (fixed in stage 2a; the boot-pass strike for an oversize unit remains open as a proposed follow-up)
 

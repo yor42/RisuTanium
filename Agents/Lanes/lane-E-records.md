@@ -68,6 +68,8 @@ Lane E's records, kept on branch `worktree-Lane-E` and folded into the shared fi
 
 ### CHORE-117 (changed) — stage 2 "Skip that character, warn once" (MC-346, MC-347)
 
+**Status (2026-10-22, lane A fold-in): merged in `e4413ffbd` (no-ff of `cc2128d60`; `MC-346`, `MC-347`, `MC-453`); technically accepted; not COMPLETE: stage 1b is still open.** Ledger rows 3533 to 3542 folded in after row 3532.
+
 **Status (2026-10-22, lane E item A3): stage 2 fixed on `worktree-Lane-E` (base main `eb5e10bec`); technically accepted (rows 3533 to 3541); the maintainer approved the commit (`MC-453`); awaiting lane A's merge and full checks.** Gate 2 round 1 `[REJECT]` (row 3536, rejection streak 1), round 2 `[EDITORIAL]` (row 3539), and a round 3 `[APPROVE]` of the orchestrator's editorial hunk (row 3540).
 
 - A save pass encodes every character except one whose data cannot be stored (a cycle, a BigInt, a throwing `toJSON`, too deep): its last saved copy is carried, a never-saved one is left out, and one toast names it. The store2 save loop only (an opt-in scope flag); `importTree` and `install` still fail loudly (MC-175).
@@ -85,6 +87,8 @@ Lane E's records, kept on branch `worktree-Lane-E` and folded into the shared fi
 - Follow-ups from MC-347: Q-F ("Not fully saved"), Q-G ("Normal schedule") and Q-H ("Fold into this stage").
 
 ### CHORE-187 (changed) — hidden export failures (MC-345 A3)
+
+**Status (2026-10-22, lane A fold-in): merged in `b87e457f9` (no-ff of `dcbf1ad0f`; `MC-454`); technically accepted; the Roadmap entry is updated at this fold-in.** Ledger rows 3543 to 3550 folded in after row 3542.
 
 **Status (2026-10-22, lane E item A3): fixed on `worktree-Lane-E` (base `cc2128d60`); technically accepted (rows 3543 to 3548; records checked in row 3549); the maintainer approved the commit and merge (`MC-454`); committed over main `1f4771ca7` and sent to lane A for merge. The Roadmap entry's "Not decided" note and status are updated at lane A's fold-in.** This settles the ticket's "Not decided" mechanism: the orchestrator chose a boolean result over a rethrow (Gate 1 agreed), because the unawaited `exportModule` call would otherwise reach the global rejection handler and alert twice.
 
