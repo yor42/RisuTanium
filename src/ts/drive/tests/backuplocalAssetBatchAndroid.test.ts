@@ -51,6 +51,16 @@ const wire = vi.hoisted(() => ({
     /** Stand-in batch calls running now; chunk calls made inside one are not the page's own. */
     inBatch: 0,
 }))
+/** The chunk writes of the page's large-entry streams (keys `assets/l*`): the write ids open now, the most open at once, and a hold on every stream's first chunk. */
+const streamTrack = vi.hoisted(() => ({
+    open: new Set<string>(),
+    maxOpen: 0,
+    /** The keys whose first chunk write is waiting at `hold`. */
+    held: new Set<string>(),
+    hold: null as Promise<void> | null,
+    /** Lets the held writes go; the cleanup of a test whose restore is still held. */
+    release: null as (() => void) | null,
+}))
 const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as unknown as Database))
 const setDatabaseMock = vi.hoisted(() => vi.fn())
 const alertErrorMock = vi.hoisted(() => vi.fn())
@@ -208,7 +218,24 @@ vi.mock('@tauri-apps/api/core', () => ({
         if (command === 'write_chunk' && wire.inBatch === 0) {
             wire.chunkKeys.push((args as { key: string }).key)
         }
-        return (desktop.invoke as (command: string, args?: unknown, options?: unknown) => Promise<unknown>)(command, args, options)
+        const chunk = command === 'write_chunk' ? args as { key: string, id: string, offset: number, last: boolean } : undefined
+        const isStream = chunk !== undefined && chunk.key.startsWith('assets/l')
+        if (isStream) {
+            streamTrack.open.add(chunk.id)
+            streamTrack.maxOpen = Math.max(streamTrack.maxOpen, streamTrack.open.size)
+            if (streamTrack.hold !== null && chunk.offset === 0) {
+                streamTrack.held.add(chunk.key)
+                await streamTrack.hold
+            }
+        }
+        const reply = await (desktop.invoke as (command: string, args?: unknown, options?: unknown) => Promise<unknown>)(command, args, options)
+        if (isStream && chunk.last) {
+            streamTrack.open.delete(chunk.id)
+        }
+        if (command === 'abort_chunked') {
+            streamTrack.open.delete(String((args as { id?: string } | undefined)?.id))
+        }
+        return reply
     },
 }))
 
@@ -321,6 +348,7 @@ import { injectRestoreStore } from './restoreSupport'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { CHUNK_MAX, resetByteTransportForTests, WRITE_CHUNK_BYTES } from 'src/ts/storage/tauriByteTransport'
 import { resetAssetBatchAvailabilityForTests } from 'src/ts/storage/tauriAssetBatch'
+import { overrideBackupWindowBytes } from 'src/ts/drive/backupContainer'
 
 //#region helpers
 
@@ -378,14 +406,44 @@ let capturedInput: HTMLInputElement | null = null
 let createElementSpy: ReturnType<typeof vi.spyOn>
 let dbWriteLockSpy: ReturnType<typeof vi.spyOn>
 
-function restoreBytes(bytes: Uint8Array): Promise<void> {
+let lastRestore: Promise<void> | null = null
+
+function restoreFile(file: File): Promise<void> {
     LoadLocalBackup()
     const input = capturedInput
     if (!input) {
         throw new Error('LoadLocalBackup did not create a file input')
     }
-    Object.defineProperty(input, 'files', { value: [new File([bytes as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')], configurable: true })
-    return (input.onchange as unknown as (ev: Event) => Promise<void>).call(input, new Event('change'))
+    Object.defineProperty(input, 'files', { value: [file], configurable: true })
+    lastRestore = (input.onchange as unknown as (ev: Event) => Promise<void>).call(input, new Event('change'))
+    return lastRestore
+}
+
+function restoreBytes(bytes: Uint8Array): Promise<void> {
+    return restoreFile(new File([bytes as unknown as Uint8Array<ArrayBuffer>], 'backup.bin'))
+}
+
+function patterned(size: number, seed: number): Uint8Array {
+    const out = new Uint8Array(size)
+    for (let i = 0; i < size; i++) {
+        out[i] = (i * 13 + seed) % 251
+    }
+    return out
+}
+
+interface Gate {
+    promise: Promise<void>
+    release(): void
+}
+
+function gate(): Gate {
+    let release: () => void = () => { }
+    const promise = new Promise<void>((resolve) => { release = resolve })
+    return { promise, release }
+}
+
+async function settleTimers(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 25))
 }
 
 /** The asset keys written by a per-asset `write_chunk`, as the Android store does without a batch. */
@@ -405,6 +463,11 @@ beforeEach(() => {
     wire.rejectCall = -1
     wire.rangeErrors.length = 0
     wire.inBatch = 0
+    streamTrack.open.clear()
+    streamTrack.maxOpen = 0
+    streamTrack.held.clear()
+    streamTrack.hold = null
+    streamTrack.release = null
     resetByteTransportForTests()
     resetAssetBatchAvailabilityForTests()
     fakeFs.reset()
@@ -429,7 +492,14 @@ beforeEach(() => {
     })
 })
 
-afterEach(() => {
+afterEach(async () => {
+    if (streamTrack.release !== null) {
+        // A test that failed before releasing leaves its restore held, and the next test's restore would be refused as busy.
+        streamTrack.release()
+        await lastRestore?.catch(() => { })
+    }
+    overrideBackupWindowBytes(null)
+    localStorage.removeItem('risu-measure-copy')
     vi.mocked(alertWait).mockReset()
     createElementSpy.mockRestore()
     dbWriteLockSpy.mockRestore()
@@ -552,6 +622,155 @@ describe('a restore on an Android page', () => {
 
         expect(wire.batches).toHaveLength(1)
         expect(wire.batches[0].keys).toEqual(['assets/one.png', 'assets/two.png', 'assets/three.png'])
+    })
+})
+
+// The backups here are built entry by entry (`buildChunk`) rather than exported: this harness has no export path, and the
+// layout of one entry is the container's own, the same one the desktop harness's exported backups end up in.
+describe('a restore on an Android page with several large-entry streams at once', () => {
+    const KNOB = 'risu-measure-copy'
+    const LARGE_SIZE = MIB + MIB / 2
+    const LARGE_NAMES = ['l1.bin', 'l2.bin', 'l3.bin', 'l4.bin', 'l5.bin']
+    const SMALL_NAMES = ['s1.png', 's2.png', 's3.png']
+
+    function tempFiles(): string[] {
+        return [...fakeFs.files.keys()].filter((path) => path.includes('risu-write'))
+    }
+
+    function largeBody(name: string): Uint8Array {
+        return patterned(LARGE_SIZE, LARGE_NAMES.indexOf(name) + 1)
+    }
+
+    function smallBody(name: string): Uint8Array {
+        return filled(40, SMALL_NAMES.indexOf(name) + 1)
+    }
+
+    function backupFor(largeNames: string[]): Uint8Array {
+        return backupOf([
+            ...SMALL_NAMES.map((name): [string, Uint8Array] => [name, smallBody(name)]),
+            ...largeNames.map((name): [string, Uint8Array] => [name, largeBody(name)]),
+        ])
+    }
+
+    function expectEveryAssetRestored(largeNames: string[]): void {
+        for (const name of largeNames) {
+            expect(sameBytes(storedBytes(name), largeBody(name))).toBe(true)
+        }
+        for (const name of SMALL_NAMES) {
+            expect(sameBytes(storedBytes(name), smallBody(name))).toBe(true)
+        }
+    }
+
+    /** A file whose slice of exactly WRITE_CHUNK_BYTES that is the `nth` (from 0) of that size rejects once `until` holds. */
+    function fileWithLateFailingSlice(bytes: Uint8Array, nth: number, until: () => boolean): File {
+        const base = new File([bytes as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')
+        let seen = 0
+        return new Proxy(base, {
+            get(target, prop, receiver) {
+                if (prop === 'slice') {
+                    return (start = 0, end = target.size) => {
+                        if (end - start === WRITE_CHUNK_BYTES && seen++ === nth) {
+                            return {
+                                arrayBuffer: async () => {
+                                    while (!until()) {
+                                        await new Promise((resolve) => setTimeout(resolve, 1))
+                                    }
+                                    throw new Error('scratch: unreadable region')
+                                },
+                            } as unknown as Blob
+                        }
+                        return target.slice(start, end)
+                    }
+                }
+                return Reflect.get(target, prop, receiver)
+            },
+        })
+    }
+
+    test('five large entries restore byte-exact with three streams at once and never more, in chunks of at most WRITE_CHUNK_BYTES', async () => {
+        localStorage.setItem(KNOB, '3,2')
+        const release = gate()
+        streamTrack.hold = release.promise
+        streamTrack.release = release.release
+
+        const restoring = restoreBytes(backupFor(LARGE_NAMES))
+        await vi.waitFor(() => { expect(streamTrack.held.size).toBe(3) })
+        await settleTimers()
+
+        expect(streamTrack.held.size).toBe(3)
+        expect(streamTrack.open.size).toBe(3)
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+        release.release()
+        await restoring
+
+        expect(streamTrack.maxOpen).toBe(3)
+        expectEveryAssetRestored(LARGE_NAMES)
+        expect(Math.max(...desktop.chunk.chunkSizes)).toBeLessThanOrEqual(WRITE_CHUNK_BYTES)
+        expect(tempFiles()).toEqual([])
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('the database is not installed while a stream is still writing, and every asset is complete when it is', async () => {
+        const largeNames = LARGE_NAMES.slice(0, 3)
+        localStorage.setItem(KNOB, '3,2')
+        const release = gate()
+        streamTrack.hold = release.promise
+        streamTrack.release = release.release
+        let completeAtInstall: boolean | null = null
+        setDatabaseMock.mockImplementation(() => {
+            completeAtInstall = largeNames.every((name) => sameBytes(storedBytes(name), largeBody(name)))
+                && SMALL_NAMES.every((name) => sameBytes(storedBytes(name), smallBody(name)))
+        })
+
+        const restoring = restoreBytes(backupFor(largeNames))
+        await vi.waitFor(() => { expect(streamTrack.held.size).toBe(3) })
+        await settleTimers()
+
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expect(largeNames.some((name) => storedBytes(name) !== undefined)).toBe(false)
+        release.release()
+        await restoring
+
+        expect(completeAtInstall).toBe(true)
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+    })
+
+    // Guard: the default is one stream at a time, so this passes before and after.
+    test('guard: without the knob the same backup restores byte-exact with one stream at a time', async () => {
+        await restoreBytes(backupFor(LARGE_NAMES))
+
+        expect(streamTrack.maxOpen).toBe(1)
+        expectEveryAssetRestored(LARGE_NAMES)
+        expect(tempFiles()).toEqual([])
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('a stream whose source cannot be read stops the others at their next chunk: the changed-file message after every stream settled, nothing finished, nothing installed', async () => {
+        const largeNames = LARGE_NAMES.slice(0, 3)
+        localStorage.setItem(KNOB, '3,2')
+        const release = gate()
+        streamTrack.hold = release.promise
+        streamTrack.release = release.release
+        // Windows of 64 KiB, so the slices of WRITE_CHUNK_BYTES bytes are the streams' own; the third stream's first read fails once the other two are held.
+        overrideBackupWindowBytes({ walk: 65536, copy: 65536 })
+        const file = fileWithLateFailingSlice(backupFor(largeNames), 2, () => streamTrack.held.size >= 2)
+
+        const restoring = restoreFile(file)
+        await vi.waitFor(() => { expect(streamTrack.held.size).toBe(2) })
+        await settleTimers()
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        release.release()
+        await restoring
+
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
+        expect(largeNames.some((name) => storedBytes(name) !== undefined)).toBe(false)
+        expect(tempFiles()).toEqual([])
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(fakeFs.files.has('blocks/head')).toBe(false)
     })
 })
 

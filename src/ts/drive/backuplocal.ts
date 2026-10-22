@@ -13,7 +13,8 @@ import { StoreInvalidKeyError } from "../storage/store/errors";
 import { assetBatchWriteMode, isAssetBatchAvailable, listAssetsSized, readAssetBatch, writeAssetBatch, writeAssetBatchB64, type AssetBatchWriteMode, type AssetPutEntry, type AssetPutResult, type SizedAssetKey } from "../storage/tauriAssetBatch";
 import { CHUNK_MAX, createChunkedWriter, isDesktopTransport, readRangedPieces, transportKind, WRITE_CHUNK_BYTES, type RangedPiece } from "../storage/tauriByteTransport";
 import { tauriAddressableViolation, tauriCreatableViolation } from "../storage/store/keyRules";
-import { ASSET_BATCH_MAX_ENTRIES, ExportAssetReader, RestoreAssetPipeline, streamAssetEntry, type StreamedAssetEntry } from "./assetBatchPipeline";
+import { ASSET_BATCH_MAX_ENTRIES, ASSET_MAX_STREAMS, ExportAssetReader, RestoreAssetPipeline, parseCopyMeasureKnob, streamAssetEntry, type AssetBatchLimits, type StreamedAssetEntry } from "./assetBatchPipeline";
+import { MEASURE } from "../process/memory/measureFlag";
 import { NodeHttpError } from "../storage/store/nodeHttpStore";
 import { NODE_BODY_LIMIT_BYTES } from "../storage/nodeBodyLimit";
 import { createYieldBudget, yieldToEventLoop } from "../storage/saveYield";
@@ -184,15 +185,40 @@ async function desktopStreamingUsable(): Promise<boolean> {
     }
 }
 
+/** Large-entry streams at once on Android; one until a measurement on a device sets it. */
+const ANDROID_ASSET_MAX_STREAMS = 1
+
 /**
  * The Android pipeline's limits. A call carries at most one Android chunk of
- * entry bytes as base64 text through the JSON bridge, and two calls overlap.
+ * entry bytes as base64 text through the JSON bridge, and two calls overlap. A
+ * stream, when more than one may run, reads slices of the writer's chunk size.
  */
-const ANDROID_ASSET_BATCH_LIMITS = {
+const ANDROID_ASSET_BATCH_LIMITS: AssetBatchLimits = {
     batchBytes: WRITE_CHUNK_BYTES,
     budgetBytes: 8 * 1024 * 1024,
     maxEntries: ASSET_BATCH_MAX_ENTRIES,
     maxFlights: 2,
+    maxStreams: ANDROID_ASSET_MAX_STREAMS,
+    streamSliceBytes: WRITE_CHUNK_BYTES,
+}
+
+const COPY_MEASURE_KEY = 'risu-measure-copy'
+
+/**
+ * Measurement builds only (`MEASURE`): the limits the stored value under
+ * `risu-measure-copy` asks for (`<streams>`, `<streams>,<flights>` or
+ * `<streams>,<flights>,<sliceKiB>`), read for each restore. A normal build folds
+ * the condition away and reads nothing; a malformed value changes nothing.
+ */
+function copyMeasureLimits(): Partial<AssetBatchLimits> {
+    if (!MEASURE) {
+        return {}
+    }
+    try {
+        return parseCopyMeasureKnob(true, typeof localStorage === 'undefined' ? null : localStorage.getItem(COPY_MEASURE_KEY))
+    } catch {
+        return {}
+    }
 }
 
 /** The restore's asset writer on the desktop and on Android, or `null` where every asset goes through the store one call at a time. */
@@ -222,7 +248,7 @@ async function createRestoreAssetPipeline(): Promise<RestoreAssetPipeline | null
         }
     }
     if (mode === 'b64') {
-        const limits = ANDROID_ASSET_BATCH_LIMITS
+        const limits = { ...ANDROID_ASSET_BATCH_LIMITS, ...copyMeasureLimits() }
         return new RestoreAssetPipeline({
             writeBatch: (entries) => writeAssetBatchB64(entries, limits.batchBytes),
             writeEntry,
@@ -233,7 +259,7 @@ async function createRestoreAssetPipeline(): Promise<RestoreAssetPipeline | null
         writeBatch: (entries) => writeAssetBatch(entries, CHUNK_MAX),
         writeEntry,
         openStream: openAssetStream,
-    })
+    }, { maxStreams: ASSET_MAX_STREAMS, streamSliceBytes: CHUNK_MAX, ...copyMeasureLimits() })
 }
 
 /**
@@ -1346,6 +1372,11 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                         if (assetPipeline?.failure) {
                             break;
                         }
+                        // A stream running beside this loop found its source changed: nothing read from here on can be written.
+                        if (assetPipeline?.sourceChanged) {
+                            stopMessage = language.backupFileChangedWhileReading;
+                            break;
+                        }
                         visitedEntries++;
                         if (visitedEntries % IMPORT_COPY_PHASE_EVERY === 0) {
                             noteImportPhase(`copy ${visitedEntries} of ${backupEntries.length} entries`);
@@ -1447,6 +1478,10 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                                 assetsSubmitted++;
                             } else {
                                 const outcome = await streamAssetEntry(streamed, openAssetStream);
+                                if (outcome.k === 'stopped') {
+                                    // No stop condition is passed here, so this cannot happen; it must not count as written.
+                                    throw new Error('a stream stopped without a stop condition');
+                                }
                                 if (outcome.k === 'source') {
                                     console.error(outcome.error);
                                     stopMessage = language.backupFileChangedWhileReading;
@@ -1550,7 +1585,14 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                     passFailure = { error };
                 }
                 if (assetPipeline) {
+                    if (stopMessage !== null || passFailure !== null) {
+                        // The loop ended for its own reason: streams still writing stop at their next chunk instead of finishing whole entries.
+                        assetPipeline.stopStreams();
+                    }
                     await assetPipeline.drain();
+                    if (assetPipeline.sourceChanged && stopMessage === null) {
+                        stopMessage = language.backupFileChangedWhileReading;
+                    }
                 }
                 if (passFailure) {
                     throw passFailure.error;

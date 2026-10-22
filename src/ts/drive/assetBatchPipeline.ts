@@ -10,8 +10,9 @@ import { CHUNK_MAX, type ChunkedWriter } from '../storage/tauriByteTransport'
  * read and not yet handed on) are bounded by a byte budget, never by an entry
  * count alone, and one call never carries more than `CHUNK_MAX` bytes of
  * entries. A restore entry above that size never enters a batch: it is
- * streamed through a chunked write, alone, with nothing else in flight. A
- * pipeline never leaves a call outstanding behind its caller's back: `drain`
+ * streamed through a chunked write, alone with nothing else in flight at one
+ * stream (the default), or beside batches and other streams above one (see
+ * `RestoreAssetPipeline`). A pipeline never leaves a call outstanding behind its caller's back: `drain`
  * and `close` settle everything, and every call's promise is handled where it
  * is created, so none can end as an unhandled rejection.
  */
@@ -24,12 +25,22 @@ export const ASSET_BUDGET_BYTES = 16 * 1024 * 1024
 export const ASSET_BATCH_MAX_ENTRIES = 256
 /** Calls in flight at once. */
 export const ASSET_MAX_FLIGHTS = 4
+/** Large-entry streams at once; at 1 a stream runs alone. */
+export const ASSET_MAX_STREAMS = 1
 
 export interface AssetBatchLimits {
     batchBytes: number
     budgetBytes: number
     maxEntries: number
     maxFlights: number
+    /** Large-entry streams at once; at 1 a stream runs alone. */
+    maxStreams: number
+    /**
+     * The slice a restore reads and writes per step when `maxStreams` is above 1:
+     * the writer's chunk size, so a stop is seen between chunks. At 1 a stream
+     * reads `CHUNK_MAX` slices whatever this says.
+     */
+    streamSliceBytes: number
 }
 
 const DEFAULT_LIMITS: AssetBatchLimits = {
@@ -37,6 +48,48 @@ const DEFAULT_LIMITS: AssetBatchLimits = {
     budgetBytes: ASSET_BUDGET_BYTES,
     maxEntries: ASSET_BATCH_MAX_ENTRIES,
     maxFlights: ASSET_MAX_FLIGHTS,
+    maxStreams: ASSET_MAX_STREAMS,
+    streamSliceBytes: CHUNK_MAX,
+}
+
+const KNOB_COUNT_MAX = 8
+const KNOB_SLICE_KIB_MIN = 64
+const KNOB_SLICE_KIB_MAX = CHUNK_MAX / 1024
+
+function knobInteger(text: string, min: number, max: number): number | null {
+    if (!/^\d{1,5}$/.test(text)) {
+        return null
+    }
+    const value = Number(text)
+    return value >= min && value <= max ? value : null
+}
+
+/**
+ * The measurement override of a restore's limits, from the text of the
+ * measurement knob: `<streams>`, `<streams>,<flights>` or
+ * `<streams>,<flights>,<sliceKiB>`, the counts 1 to 8 and the slice from 64 to
+ * `CHUNK_MAX` KiB. Anything else, and every value outside a measurement build
+ * (`measure` false), gives no override at all.
+ */
+export function parseCopyMeasureKnob(measure: boolean, raw: string | null): Partial<AssetBatchLimits> {
+    if (!measure || raw === null) {
+        return {}
+    }
+    const parts = raw.split(',').map((part) => part.trim())
+    if (parts.length < 1 || parts.length > 3) {
+        return {}
+    }
+    const streams = knobInteger(parts[0], 1, KNOB_COUNT_MAX)
+    const flights = parts.length > 1 ? knobInteger(parts[1], 1, KNOB_COUNT_MAX) : undefined
+    const sliceKiB = parts.length > 2 ? knobInteger(parts[2], KNOB_SLICE_KIB_MIN, KNOB_SLICE_KIB_MAX) : undefined
+    if (streams === null || flights === null || sliceKiB === null) {
+        return {}
+    }
+    return {
+        maxStreams: streams,
+        ...(flights === undefined ? {} : { maxFlights: flights }),
+        ...(sliceKiB === undefined ? {} : { streamSliceBytes: sliceKiB * 1024 }),
+    }
 }
 
 /**
@@ -85,28 +138,33 @@ export interface StreamedAssetEntry {
 /**
  * How a streamed write ended. `invalid`: the store refuses the name, nothing
  * was written. `source`: reading the body failed or came back short, so the
- * source is not what it was when it was indexed. `sink`: the write failed. In
- * `source` and `sink` the write has been aborted by the time this is returned;
- * removing its temp file is best effort, and the startup sweep removes what
- * remains.
+ * source is not what it was when it was indexed. `sink`: the write failed.
+ * `stopped`: the caller's stop condition held between two chunks, so the write
+ * was abandoned and nothing was written to the key. In `source`, `sink` and
+ * `stopped` the write has been aborted by the time this is returned; removing
+ * its temp file is best effort, and the startup sweep removes what remains.
  */
 export type StreamOutcome =
     | { k: 'ok' }
     | { k: 'invalid'; reason: string }
     | { k: 'source'; error: unknown }
     | { k: 'sink'; error: unknown }
+    | { k: 'stopped' }
 
 /**
  * Copies one entry's body into a chunked write, in slices of `sliceBytes` read
  * and written one after another, so no more than a slice (plus the one chunk the
  * writer holds back) is in memory. A slice that cannot be read, or that comes
  * back with the wrong length, ends the write as `source`; a failing write ends it
- * as `sink`. The write is aborted before this resolves.
+ * as `sink`. `shouldStop` is asked before each slice is read and before the
+ * write is finished; when it holds, the write is aborted, nothing is recorded
+ * and the outcome is `stopped`. The write is aborted before this resolves.
  */
 export async function streamAssetEntry(
     entry: StreamedAssetEntry,
     openStream: (key: string) => ChunkedWriter,
     sliceBytes: number = CHUNK_MAX,
+    shouldStop?: () => boolean,
 ): Promise<StreamOutcome> {
     const sinkOutcome = (error: unknown): StreamOutcome =>
         error instanceof StoreInvalidKeyError ? { k: 'invalid', reason: error.message } : { k: 'sink', error }
@@ -117,6 +175,10 @@ export async function streamAssetEntry(
         return sinkOutcome(error)
     }
     for (let start = 0; start < entry.size; start += sliceBytes) {
+        if (shouldStop?.()) {
+            await writer.abort()
+            return { k: 'stopped' }
+        }
         const end = Math.min(start + sliceBytes, entry.size)
         let bytes: Uint8Array
         try {
@@ -135,6 +197,10 @@ export async function streamAssetEntry(
             return sinkOutcome(error)
         }
     }
+    if (shouldStop?.()) {
+        await writer.abort()
+        return { k: 'stopped' }
+    }
     try {
         await writer.finish()
     } catch (error) {
@@ -151,6 +217,12 @@ interface Flight {
     settled: Promise<void>
 }
 
+/** A large-entry stream running beside the pipeline's calls; it holds no budget bytes. */
+interface ActiveStream extends Flight {
+    /** Set by `stopStreams`: the stream stops at its next check. */
+    stop: boolean
+}
+
 function errorOf(message: string): Error {
     return new Error(message)
 }
@@ -160,18 +232,38 @@ function errorOf(message: string): Error {
  * once.
  *
  * - `add` takes an entry of at most `batchBytes`; a larger one is given to
- *   `addStreamed`, which waits for every call in flight, then writes it alone.
+ *   `addStreamed`. At `maxStreams` 1 that waits for every call in flight, then
+ *   writes the entry alone, and resolves when the write has ended. Above 1 the
+ *   entry is a stream that runs beside the batches and the other streams, at
+ *   most `maxStreams` at once, and `addStreamed` resolves as soon as the stream
+ *   has started; `drain` is where the caller learns that every stream ended.
  * - An entry whose folded key is in the batch being assembled sends that batch
- *   first; if its key is in any batch in flight it then waits for that batch to
- *   settle, so the last entry in file order is what ends up on disk. The wait
- *   is only ever on a batch that has been sent.
- * - After the first `error` result or rejected call nothing further is sent and
- *   `add` returns at once; `failure` says what happened.
+ *   first; if its key is in any batch or stream in flight it then waits for
+ *   that one to settle, so the last entry in file order is what ends up on
+ *   disk. The wait is only ever on a batch that has been sent or a stream that
+ *   has started, and it holds for a stream and a batch alike, in either order.
+ * - After the first `error` result or rejected call or failed stream write
+ *   nothing further is sent and `add` returns at once; `failure` says what
+ *   happened. Every active stream stops at its next chunk and aborts its write.
+ * - A stream whose source cannot be read ends as a change of the source, not a
+ *   failure: `sourceChanged` holds, nothing further is sent, every other stream
+ *   stops at its next chunk, and `addStreamed` resolves `true`. When a
+ *   `sourceChanged` and a `failure` coincide the caller shows the source
+ *   message, as it does for a stop of its own.
+ * - `stopStreams` makes every active stream stop at its next chunk as a failure
+ *   would, and changes nothing else; the caller uses it before `drain` when it
+ *   leaves its loop for a reason of its own.
+ * - A stream reads and writes slices of `streamSliceBytes`, the writer's chunk
+ *   size, so a stop is seen between chunks. Streams are not charged to
+ *   `budgetBytes`: the bytes held are bounded by
+ *   `budgetBytes + maxStreams x (one slice, the chunk the writer holds back, its
+ *   encoding and the copy that crosses the bridge)`.
  * - A call refused because raw bodies do not reach the command is not a failure:
  *   its entries, and every later one, go through `writeEntry`.
- * - `drain` sends the batch being assembled (unless a failure was seen) and
- *   waits for every call in flight to settle. It is the one point every exit of
- *   the caller's loop passes through before it shows a message or moves on.
+ * - `drain` sends the batch being assembled (unless a failure or a change of
+ *   the source was seen) and waits for every call in flight and every stream to
+ *   settle. It is the one point every exit of the caller's loop passes through
+ *   before it shows a message or moves on.
  */
 export class RestoreAssetPipeline {
     private readonly limits: AssetBatchLimits
@@ -180,8 +272,10 @@ export class RestoreAssetPipeline {
     private assemblingKeys = new Set<string>()
     private readonly flights = new Set<Flight>()
     private flightBytes = 0
+    private readonly streams = new Set<ActiveStream>()
     private perEntry = false
     private failed: { error: unknown } | null = null
+    private sourceFailed: { error: unknown } | null = null
     private readonly invalidNames: { index: number; name: string }[] = []
 
     constructor(private readonly deps: RestoreAssetDeps, limits: Partial<AssetBatchLimits> = {}) {
@@ -198,6 +292,23 @@ export class RestoreAssetPipeline {
         return this.failed
     }
 
+    /** Whether a stream found its source unreadable or short: the source is not what it was when it was indexed. */
+    get sourceChanged(): boolean {
+        return this.sourceFailed !== null
+    }
+
+    /** Whether nothing further is to be sent: a failure was seen, or the source changed. */
+    private get halted(): boolean {
+        return this.failed !== null || this.sourceFailed !== null
+    }
+
+    /** Makes every active stream stop at its next chunk, as a failure would. Changes nothing else; does nothing where no stream is active. */
+    stopStreams(): void {
+        for (const stream of this.streams) {
+            stream.stop = true
+        }
+    }
+
     /** The names the store refused, in backup-file order whatever order the calls settled in. */
     invalidAssets(): { index: number; name: string }[] {
         return [...this.invalidNames].sort((a, b) => a.index - b.index)
@@ -208,7 +319,7 @@ export class RestoreAssetPipeline {
         if (entry.data.length > this.limits.batchBytes) {
             throw new RangeError(`an entry of ${entry.data.length} bytes cannot share a batch of at most ${this.limits.batchBytes}`)
         }
-        if (this.failed) {
+        if (this.halted) {
             return
         }
         const folded = foldAssetKey(entry.key)
@@ -217,7 +328,7 @@ export class RestoreAssetPipeline {
         }
         for (let flight = this.flightHolding(folded); flight !== undefined; flight = this.flightHolding(folded)) {
             await flight.settled
-            if (this.failed) {
+            if (this.halted) {
                 return
             }
         }
@@ -228,11 +339,11 @@ export class RestoreAssetPipeline {
         }
         while (this.flights.size > 0 && this.flightBytes + this.assemblingBytes + entry.data.length > this.limits.budgetBytes) {
             await this.anyFlightSettled()
-            if (this.failed) {
+            if (this.halted) {
                 return
             }
         }
-        if (this.failed) {
+        if (this.halted) {
             return
         }
         this.assembling.push(entry)
@@ -243,16 +354,17 @@ export class RestoreAssetPipeline {
         }
     }
 
-    /** Sends what is being assembled and waits for every call in flight to settle. Never rejects. */
+    /** Sends what is being assembled and waits for every call in flight and every stream to settle. Never rejects. */
     async drain(): Promise<void> {
         await this.flush()
-        while (this.flights.size > 0) {
-            await Promise.all([...this.flights].map((flight) => flight.settled))
+        while (this.flights.size > 0 || this.streams.size > 0) {
+            await Promise.all([...this.flights, ...this.streams].map((flight) => flight.settled))
         }
     }
 
+    /** The call or stream in flight that holds a key folding to `folded`, if any. */
     private flightHolding(folded: string): Flight | undefined {
-        for (const flight of this.flights) {
+        for (const flight of [...this.flights, ...this.streams]) {
             if (flight.folded.has(folded)) {
                 return flight
             }
@@ -265,15 +377,27 @@ export class RestoreAssetPipeline {
     }
 
     /**
-     * Writes one entry that is too large for a batch, alone: what was being
-     * assembled is sent and every call in flight settles first, and nothing else
-     * is sent until this write has ended. A name the store refuses is reported by
-     * `invalidAssets`, a failing write is a `failure`, and neither stops the
-     * entries around it. Resolves `true` when reading the entry's source failed:
-     * the write was aborted, nothing further is sent, and the caller stops its
-     * pass. Does nothing, and resolves `false`, after a failure.
+     * Writes one entry that is too large for a batch. A name the store refuses
+     * is reported by `invalidAssets`, a failing write is a `failure`, and
+     * neither stops the entries around it. Resolves `true` when reading an
+     * entry's source failed: the write was aborted, nothing further is sent, and
+     * the caller stops its pass. Does nothing, and resolves `false`, after a
+     * failure.
+     *
+     * At `maxStreams` 1 the entry is written alone: what was being assembled is
+     * sent and every call in flight settles first, nothing else is sent until
+     * this write has ended, and this resolves when it has. Above 1 this resolves
+     * once the stream has started, which first waits for a free slot and for any
+     * call or stream holding the entry's folded key, and the outcome of the
+     * write is seen by `failure`, `sourceChanged` and `invalidAssets` once
+     * `drain` has resolved.
      */
     async addStreamed(entry: StreamedAssetEntry): Promise<boolean> {
+        return this.limits.maxStreams <= 1 ? await this.streamAlone(entry) : await this.streamBeside(entry)
+    }
+
+    /** The stream of `maxStreams` 1: runs alone and ends before it resolves. */
+    private async streamAlone(entry: StreamedAssetEntry): Promise<boolean> {
         if (this.failed) {
             return false
         }
@@ -301,16 +425,77 @@ export class RestoreAssetPipeline {
         }
     }
 
-    /** Sends the batch being assembled, once there is room for it. A failure drops it unsent. */
+    /**
+     * The stream of `maxStreams` above 1: starts beside the calls in flight and
+     * resolves without waiting for the write. After every wait the stop
+     * conditions are looked at again, as `add` does.
+     */
+    private async streamBeside(entry: StreamedAssetEntry): Promise<boolean> {
+        const folded = foldAssetKey(entry.key)
+        for (;;) {
+            if (this.sourceFailed) {
+                return true
+            }
+            if (this.failed) {
+                return false
+            }
+            if (this.assemblingKeys.has(folded)) {
+                await this.flush()
+                continue
+            }
+            const holder = this.flightHolding(folded)
+            if (holder !== undefined) {
+                await holder.settled
+                continue
+            }
+            if (this.streams.size >= this.limits.maxStreams) {
+                await Promise.race([...this.streams].map((stream) => stream.settled))
+                continue
+            }
+            break
+        }
+        const stream: ActiveStream = { folded: new Set([folded]), bytes: 0, settled: Promise.resolve(), stop: false }
+        this.streams.add(stream)
+        stream.settled = this.runStream(stream, entry)
+        return this.sourceFailed !== null
+    }
+
+    /** Performs one stream and records its outcome. Handles every rejection itself. */
+    private async runStream(stream: ActiveStream, entry: StreamedAssetEntry): Promise<void> {
+        try {
+            const outcome = await streamAssetEntry(entry, this.deps.openStream, this.limits.streamSliceBytes, () => stream.stop || this.halted)
+            switch (outcome.k) {
+                case 'invalid':
+                    console.error(`asset ${entry.key} was refused: ${outcome.reason}`)
+                    this.invalidNames.push({ index: entry.index, name: entry.name })
+                    break
+                case 'sink':
+                    this.fail(outcome.error)
+                    break
+                case 'source':
+                    console.error(outcome.error)
+                    this.sourceFailed ??= { error: outcome.error }
+                    break
+                default:
+                    break
+            }
+        } catch (error) {
+            this.fail(error)
+        } finally {
+            this.streams.delete(stream)
+        }
+    }
+
+    /** Sends the batch being assembled, once there is room for it. A failure or a change of the source drops it unsent. */
     private async flush(): Promise<void> {
         if (this.assembling.length === 0) {
             return
         }
-        while (!this.failed && this.flights.size > 0
+        while (!this.halted && this.flights.size > 0
                 && (this.flights.size >= this.limits.maxFlights || this.flightBytes + this.assemblingBytes > this.limits.budgetBytes)) {
             await this.anyFlightSettled()
         }
-        if (this.failed) {
+        if (this.halted) {
             return
         }
         const entries = this.assembling

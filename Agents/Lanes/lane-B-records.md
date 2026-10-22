@@ -10,7 +10,7 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 |---|---|---|
 | 1 | CHORE-194: import warning and estimate keyed on the database entry | COMPLETE; folded into the shared files by lane A on 2026-10-22, merged as `953f63241` |
 | 2 | Read the `.bin` once, decode the database once (`MC-328` 2, `MC-323` lead 6, CHORE-103), replaced by the slim stage (`MC-357`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, E1 applied; records verified (row 2318); rows 2307 to 2318; COMPLETE; folded into the shared files by lane A on 2026-10-22, merged as `165dcf10f` |
-| 3 | Parallel large entries (`MC-328` 2) | not started |
+| 3 | Parallel large entries (`MC-328` 2), desktop and Android only (`MC-358`) | Gate 1 `[APPROVE WITH AMENDMENTS]`; Gate 2 `[EDITORIAL]`, items applied; defaults stay at 1 stream until the Note 9 run (CHORE-222); awaiting records verification and the maintainer's commit approval (rows 2319 to 2325) |
 | 4 | Android batched asset reader for export (fit-map E1) | not started |
 
 ## MC entries
@@ -63,6 +63,25 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 - The figures are from one debug build on one Note 9 with a synthetic fixture; PSS sampled every 5 s, so peaks are lower bounds.
 - Nothing here authorizes application-code edits, commits or pushes.
 
+### MC-358 — Lane B, 2026-10-22: stage 3 (parallel large entries) is built with tunable counts and tuned on the Note 9; a failure stops the other streams at their next chunk; desktop and Android only (amends the "platform-neutral" wording of `MC-328` 2 for this item)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs: `%TEMP%\risu-lane-b\s3\sizing.md` (investigator) with `sizing-verify.md` (`doc-verifier`; it corrects the lock claim, the second desktop copy path and the expected gain, and supersedes the packet where they differ).
+- **Related:** `MC-328` 2, `MC-197` 9, `MC-330` 3; lane B stage 3.
+
+1. **Approach: "Build, tune on phone (Recommended)".** The option text: implement parallel streams with the stream count and the Android batch count as constants (1 = today's behaviour); prove ordering, failure and memory on the PC; then one Note 9 release run picks the defaults; desktop and Android only. The question stated: the gain is modest and unmeasured on the current build. In a phone emulation, parallel large-file streams added about +25% (2 streams) to +50% (4 streams, plus 4 batches in flight instead of Android's 2), over a base that had already doubled with the faster base64. Not chosen: "Measure first" (an emulation run on the Note 9 before any product code) and "Skip to stage 4".
+2. **On failure: "Stop at next chunk (Recommended)".** When one large-file copy fails while others are in flight, each stream checks for the failure between chunks and stops. The import is refused, and nothing is committed either way. Not chosen: "Finish current file".
+3. **Scope: "Desktop and Android only (Recommended)".** Stage 3 is recorded as Tauri-only. Web and Node batching stays the separate, later `MC-328` 2 item (Node endpoints and web batching). Not chosen: "Keep it general".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator from the sizing packet and its verification.
+- The question's "already doubled with the faster base64" overstated: `sizing-verify.md` gives about +65% in three runs and +124% in one (mean +81%, spread unexplained).
+- The emulated figures come from one Note 9 release build of an older main (c428a0234) on a 96 MiB sample. The split of the gain between the stream count and the batch count is unmeasured.
+- `MC-197` 9 (per-file sync) stays in force. More streams mean more concurrent syncs.
+- Nothing here authorizes application-code edits, commits or pushes.
+
 ## CHORE entries
 
 ### CHORE-194 (changed) — The import size and time warning is keyed on the database entry, which comes out low for stub-form files
@@ -104,6 +123,28 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 - **Possible fix named by the reviewer:** refuse as a changed file when the commit's left-out names are not a subset of the confirmed `facts.omitted`.
 - **Related:** `MC-183`, `MC-357`; CHORE-103.
 
+### CHORE-222 — Parallel large-entry streams: pick the defaults on the Note 9, then raise them
+
+**Status (2026-10-22): open.** The lane B stage 3 code is on `worktree-Lane-B`, uncommitted until the maintainer approves. Both defaults are 1 (today's behaviour). Source: `MC-358` 1, the stage 3 gates (`%TEMP%\risu-lane-b\s3\gate1-r1.md`, `gate2-r1.md`).
+
+- **What exists:**
+  - `RestoreAssetPipeline` (`src/ts/drive/assetBatchPipeline.ts`) takes `maxStreams` and `streamSliceBytes`.
+  - At `maxStreams` 1, the copy runs today's literal path (`streamAlone`).
+  - Above 1, large entries stream beside each other and beside batches:
+    - the last entry in file order wins for keys that fold equal;
+    - a sink, batch or source failure stops the other streams before their next chunk (`MC-358` 2);
+    - Android streams read one writer chunk (1 MiB) per slice.
+  - **The knob.** A MEASURE-only knob, `localStorage['risu-measure-copy'] = "<streams>[,<flights>[,<sliceKiB>]]"`, is read in `backuplocal.ts` `copyMeasureLimits` on every import. `risu-measure-copy` is in `util/checkReleaseDist.mjs` `FORBIDDEN_MARKERS`.
+- **Next:**
+  1. A Note 9 run: a `VITE_RISU_MEASURE=1` release build, a large `.bin` such as `m2-mix18k.bin` (34.4% of its bytes in entries above 1 MiB). Streams x flights in {1,2,4} x {2,4}, and the slice size where it matters. Record the copy rate (`__risuImportPhases`) and the renderer and app PSS peak. A device request goes to lane A once this stage is committed.
+  2. Before raising a default above 1:
+     - (a) a test at more than 1 stream that a refused stream name is reported in the import's skipped list (Gate 2 mutant r7 survived; today it is reachable only through the knob);
+     - (b) the maintainer settles the progress text during a long drain (the percentage counts bytes read and can sit at 100% while streams finish);
+     - (c) decide whether the literal `maxStreams` 1 path is deleted (the new path at 1 is not identical: batches would overlap the stream).
+  3. A one-line change sets `ANDROID_ASSET_MAX_STREAMS`, the desktop `ASSET_MAX_STREAMS` and, if measured, the Android flight count.
+- **Known, accepted:** when the loop throws, the caller skips `stopStreams` (Gate 2 mutant r3 survived). The only effect is a delay before the error shows.
+- **Related:** `MC-358`, `MC-328` 2, `MC-197` 9.
+
 ## Ledger rows
 
 All scratch paths are under `%TEMP%\risu-lane-b\`, outside the repository.
@@ -134,6 +175,13 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 | 2316 | 2026-10-22 | Stage 2 Gate 2 r1 | opus-reviewer | 155,278 | no | `s2\gate2-r1.md`, `s2\gate2\` logs. `[EDITORIAL]`. Mutants 4a to 4c, 5a to 5c, 7, 1' and the spot checks 2 and 8 were each red; the import-only control survived. A base-like run showed T2's page cases land and boot cases fail without the fix. Targeted 57/57 and adjacent 412/412 passed; `pnpm check` 0/0. E1, the T2/T3 header comment, was applied by the orchestrator, who also wrapped the A1 comment in `risuSave.ts` (same words). The full suite was not re-run (`MC-329` 4). |
 | 2317 | 2026-10-22 | Stage 1 checks on the bumped toolchain (vite 8.1.6, markdown-it 14.3.3) | orchestrator | not recorded | no | `s1\recheck\`. `pnpm test` 899 files passed, 1 skipped; 20,196 tests passed, 23 skipped; `pnpm check` 0/0; `pnpm build` exit 0; the same counts as before the bump. |
 | 2318 | 2026-10-22 | Verify the stage 2 records and commit message | doc-verifier | 63,166 | no | 14 claim groups: 11 verified, 1 wrong (row 2315's refusal red count: 8, not 10; corrected), 1 overstated (the commit message's round-trip sentence; reworded to what the logs show), token counts unverifiable. Its proposed trailer change was rejected: the session's required attribution is "Claude Opus 5.5". |
+| 2319 | 2026-10-22 | Stage 3 sizing: what is "parallel large entries"? | investigator | 125,657 | no | `s3\sizing.md`. Import only, desktop and Android only. The idea overlaps large-entry streams. Two gaps: no stop check in `streamAssetEntry`, and no folded-key check for streams. Emulated gain about +25 to 50%. |
+| 2320 | 2026-10-22 | Verify the stage 3 sizing | doc-verifier | 61,586 | no | `s3\sizing-verify.md` (saved by the orchestrator). Core verified. Corrected: no lock during the Tauri copy; the pipeline-less desktop streaming path; the gain split (streams alone about +25%; F=4 is part of the larger figure); the base64 result spread (+65% in three runs, +124% in one). Fed `MC-358`. |
+| 2321 | 2026-10-22 | Stage 3 plan | orchestrator | not recorded | no | `s3\plan.md`. Gate 1 amendments folded in; amendment 5 resolved as option (a), chunk-sized slices on the parallel path. |
+| 2322 | 2026-10-22 | Stage 3 Gate 1 r1 | opus-reviewer | 118,659 | no | `s3\gate1-r1.md`. `[APPROVE WITH AMENDMENTS]`, 7 binding: the loop-top source check, `stopStreams`, re-checks after awaits, a `'stopped'` throw on the pipeline-less path, the stop granularity, the forbidden-marker list, tests (a) to (f). |
+| 2323 | 2026-10-22 | Stage 3 implementation | sonnet-coder | 260,416 | no | `s3\impl\` logs. Red on base through a swap config serving HEAD sources: 28 of 33 unit tests, of which 22 are only missing exports (`parseCopyMeasureKnob` x19, `stopStreams` x2, `ASSET_MAX_STREAMS` x1; not reproducers under gates.md), so 6 behavioural unit reds; and 7 harness reds. Guards that pass on base and are evidenced only by mutants: T3a to T3d, the T1 pin, and three harness tests. Mutants m01 to m15 killed. `pnpm check` 0/0; `pnpm test` 902 files passed, 1 skipped; 20,276 tests passed, 23 skipped; `pnpm build` and `pnpm check:dist` exit 0. The snapshot line-ending rewrite was restored. |
+| 2324 | 2026-10-22 | Stage 3 Gate 2 r1 | opus-reviewer | 173,117 | no | `s3\gate2-r1.md`, `s3\gate2\`. `[EDITORIAL]`. `streamAlone` is HEAD's `addStreamed` body line for line. Targeted 160/160; `pnpm check` 0/0. `check:dist` catches a planted marker, and the built `dist/` holds no knob. Mutants m02, m04, m06, m09 and m11 re-run, plus r1, r2 and r4, all killed. r3 and r7 survived (CHORE-222). Items 1 to 3 (two test titles and one doc comment) were applied by the orchestrator, with line endings unchanged (CRLF). Item 4 is the red-count wording in row 2323. The full suite was not re-run (`MC-329` 4). |
+| 2325 | 2026-10-22 | Verify the stage 3 records and commit message | doc-verifier | 65,779 | no | About 30 claim groups: 24 verified, tokens unverifiable. Corrected: row 2325 was missing (added); `MC-358`'s question overstated the base64 gain (a note added; the recorded question text is kept); the commit message's count of restore guards (five, named). The trailer question was settled by the orchestrator's own attribution reminder (Opus 5.5). |
 
 ## Handoff
 
@@ -146,3 +194,10 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 - **Stage 2** is implemented and through both gates, and its records are verified (rows 2307 to 2318). It awaits the maintainer's commit approval.
 - **The Note 9 calibration request** for `MC-355` 2 and CHORE-220 is in `device-requests\2026-10-22-stage1-stub-import-calibration.md`. Lane A queued it with CHORE-203 for one release MEASURE session on the second Note 9.
 - **Next:** stage 3, parallel large entries (`MC-328` 2).
+
+2026-10-22, stage 3:
+- **Stage 2** is COMPLETE (lane A fold-in `ae08fbf07`).
+- **Stage 3:** decisions `MC-358`. It is implemented and through both gates (rows 2319 to 2325), with the defaults at 1 stream.
+  - It awaits the maintainer's commit approval.
+  - After the commit: the Note 9 device request for the stream and flight counts (CHORE-222).
+- **Then** stage 4: the Android batched asset reader for export.
