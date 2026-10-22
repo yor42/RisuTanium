@@ -6908,11 +6908,15 @@ with index -1.
 
 ### CHORE-202 — The Note 9 screen-off import stall has an unknown cause
 
+**Status (2026-10-22, plan amended): lane A built the tooling and ran R0 on the PC; it passed (rows 2128 and 2129). Lane C amended the plan from R0, merged in `085c58f5b` (row 3306). Changes: the CDP-answers-so-not-frozen inference is withdrawn (a frozen desktop Chrome 155 page still answered `Runtime.evaluate`; WebView unknown); the renderer wchan is read through the shell uid or recorded as missing; the `pre` dump comes before the file pick; the destination asset directory and the time budget are filled. Phone 2 runs R1 to R4 after CHORE-204 (d): restore `base1`, launch once, snapshot, then run.**
+
 **Status (2026-10-22, lane C step 1): rerun plan written ([lane-C-chore202-rerun-plan.md](Lanes/lane-C-chore202-rerun-plan.md)) and merged in `be1655b18` (lane C); the maintainer approved running it after CHORE-204. Cause still UNKNOWN.** Ledger rows 3300 to 3305. The earlier statuses and the body below stand, except as corrected here.
 
 - **Corrected facts (lane C, row 3303):** the copy did not slow at screen-off. After `KEYCODE_SLEEP` (20:57:42) it wrote at full rate for about 61 s; the writes fell at 20:58:43 to 46, and the Tauri `getDataDir` bridge calls stopped at 20:58:43 and resumed at 21:07:44, one second after the wake. During the stall almost all sampled app and renderer threads were in state S and none in D (21 sporadic R samples among about 38,900). b1's `power.txt` blocks 2 to 24 are empty from the poll at 20:57:25, before the sleep, so the empty polls are a poller fault, not screen-off behaviour. The "about 90 s" and "all 21 screen-off polls" wording below is replaced by this.
+- **Copy path on Android (source read, tauri 2.12.1 / wry 0.57.0 per the main checkout's `Cargo.lock`; the APK's linked version is not confirmed):** each asset batch is an `invoke` sent through `window.ipc.postMessage`. Each Rust command resolves `app_data_dir()` through a blocking UI-thread hop (`PathPlugin.getDataDir`), and its reply is delivered by `evaluateJavascript` on the UI thread. `WryActivity.onPause` calls `WebView.onPause()`. `KeepAliveService` is a `dataSync` foreground service with no wake lock, and the manifest has no `WAKE_LOCK` permission.
 - **Plan:** no special build; page-side ring over CDP plus an on-device sampler; runs R0 (PC), R1 baseline screen-off, R2 backgrounded screen on, R3 screen-off whitelisted, R4 runtime `scheduler.yield` override; fixture ceiling 1.25 GiB (`MC-430` 1, an exception to `MC-330` 1 for this rerun only).
-- Plan approved by the maintainer to run after CHORE-204 (`MC-337` 7); lane A builds the tooling and runs R0 first.
+- Plan approved by the maintainer to run after CHORE-204 (`MC-337` 7); lane A built the tooling and ran R0 first (see the first status).
+- **Related:** `MC-326` 4, `MC-330`, `MC-336`, `MC-430`; CHORE-203.
 
 **Status (2026-10-22): open, not scheduled.** Source: the corrected measurement-day report (`measure2\report.md`, only its "Corrections from doc-verifier" section and the statements it leaves standing) and `measure2\verify.md` (scratch). Debug MEASURE build, second Note 9, runs b1 and b2; each is one run.
 

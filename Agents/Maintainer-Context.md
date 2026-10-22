@@ -11214,3 +11214,11 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 2. **"No, edit mode only (Recommended)".** Outside edit mode the browser's own menu stays and a hold enters edit mode, as for character tiles.
 3. **"No confirm, like sidebar (Recommended)".** Ungroup and Delete then Keep run without a confirmation in the Grid, as in the sidebar.
 4. **"Accept all three (Recommended)".** The folder stays selected after a rename, colour or picture edit; with duplicate folder ids the folder menu is a silent no-op, as in the sidebar; no screen-reader announcement for folder edits. Clarification (orchestrator, from the S4-5 Gate 1 round 1 review, row 2547): "as in the sidebar" governs; in the sidebar only rename, colour and picture are no-ops for a duplicate id, while Ungroup and Delete act on the held folder by reference.
+
+### MC-340 — Lane A, 2026-10-22: lane C plan amendment merge
+
+- Tag: decisions (`AskUserQuestion` answer, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript (orchestrator-recorded option text); git `f833d59fc`, `085c58f5b`.
+- Related: `MC-430`, `MC-337`; CHORE-202.
+1. **Lane C's CHORE-202 plan amendment: "Merge + fold in (Recommended)".** Merged as `085c58f5b`, with this fold-in.
+- Notes, not the maintainer's words: the option text was written by the orchestrator; the phone runs R1 to R4 still wait for CHORE-204 (`MC-337` 7).
