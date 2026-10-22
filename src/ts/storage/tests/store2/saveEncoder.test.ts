@@ -721,3 +721,122 @@ describe('new behaviour: a pending attempt keeps the next plan from reporting un
         expect(() => straddled.acknowledge()).toThrow(SavePlanError)
     })
 })
+
+describe('a character whose data cannot be read is skipped by every save pass', () => {
+    function cyclic(): Obj {
+        const value: Obj = {}
+        value.self = value
+        return value
+    }
+
+    function slotOf(db: Database, index: number): Obj {
+        return db.characters[index] as unknown as Obj
+    }
+
+    /** A saved character (index 1) that now holds an unreadable value, and the previous encoding that holds it. */
+    function savedOffender(): { db: Database, previous: PreviousEncoding, id1: string, id2: string } {
+        const db = buildSmall(4)
+        const previous = previousFrom(encodeWith(db))
+        slotOf(db, 1).personality = cyclic()
+        return { db, previous, id1: chaIdOf(db, 1), id2: chaIdOf(db, 2) }
+    }
+
+    test('reproducer: a pass that names only the unreadable saved character changes nothing', async () => {
+        const { db, previous, id1 } = savedOffender()
+        const plan = await encoderOf(previous).plan(db, request({ marked: new Set([id1]) }))
+        expect(plan.unchanged).toBe(true)
+        expect(plan.skipped.map(({ chaId, saved }) => ({ chaId, saved }))).toEqual([{ chaId: id1, saved: true }])
+        expect(plan.encoded).toEqual([])
+    })
+
+    test('reproducer: an unreadable character that was never saved is named by the new-character rule and left out', async () => {
+        const db = buildSmall(4)
+        const previous = previousFrom(encodeWith(db))
+        const fresh = { ...JSON.parse(JSON.stringify(slotOf(db, 0))) as Obj, chaId: 'never-saved-character', name: 'Never saved', personality: cyclic() }
+        ;(db.characters as unknown as Obj[]).push(fresh)
+        const encoder = encoderOf(previous)
+        const plan = await encoder.plan(db, request())
+        expect(plan.unchanged).toBe(true)
+        expect(plan.skipped.map(({ chaId, saved }) => ({ chaId, saved }))).toEqual([{ chaId: 'never-saved-character', saved: false }])
+        expect(plan.encoded).toEqual([])
+    })
+
+    test.each([
+        ['a marked pass', (id1: string, id2: string) => request({ marked: new Set([id1, id2]) })],
+        ['a whole pass', () => request({ whole: true })],
+        ['a Save mine pass', () => request({ rewriteAll: true })],
+        ['an idle net tick', (id1: string, id2: string) => request({ marked: new Set([id2]), net: { chaId: id1, modules: false } })],
+    ])('reproducer: %s skips the unreadable saved character instead of failing', async (_label, make) => {
+        const { db, previous, id1, id2 } = savedOffender()
+        slotOf(db, 2).personality = 'edited next to it'
+        const plan = await encoderOf(previous).plan(db, make(id1, id2))
+        expect(plan.skipped.map(({ chaId }) => chaId)).toEqual([id1])
+        expect(plan.encoded).toContain(id2)
+    })
+
+    test('reproducer: Save mine carries the unreadable saved character under its previous unit keys and rewrites the rest', async () => {
+        const { db, previous, id1 } = savedOffender()
+        const u = previous.entities.get(`${id1}#0`) as string
+        const encoder = encoderOf(previous)
+        const pass = await commitPass(encoder, db, { rewriteAll: true })
+        const owned = (identity: string): boolean => identity.includes(u)
+        expect(pass.plan.skipped.map(({ chaId }) => chaId)).toEqual([id1])
+        expect(pass.written.some(owned)).toBe(false)
+        const acknowledged = encoder.acknowledged()
+        expect(acknowledged.entities.get(`${id1}#0`)).toBe(u)
+        for (const [identity, unit] of acknowledged.units) {
+            if (owned(identity)) {
+                expect(unit.key, identity).toBe(previous.units.get(identity)?.key)
+            } else if (identity.startsWith(IDENTITY.char)) {
+                expect(unit.key, identity).not.toBe(previous.units.get(identity)?.key)
+            }
+        }
+    })
+
+    test('the acknowledged encoding keeps holding a skipped saved character, pass after pass', async () => {
+        const { db, previous, id1 } = savedOffender()
+        const encoder = encoderOf(previous)
+        await commitPass(encoder, db, { marked: new Set([id1, chaIdOf(db, 2)]) }, 1)
+        slotOf(db, 2).personality = 'a later edit'
+        const second = await commitPass(encoder, db, { marked: new Set([id1, chaIdOf(db, 2)]) }, 2)
+        expect(second.plan.skipped.map(({ chaId }) => chaId)).toEqual([id1])
+        expect(encoder.acknowledged().entities.get(`${id1}#0`)).toBe(previous.entities.get(`${id1}#0`))
+    })
+
+    describe('what a pass that does not name the character costs', () => {
+        test('a saved character is not read again by a pass that names another character', async () => {
+            const { db, previous, id2 } = savedOffender()
+            let reads = 0
+            slotOf(db, 1).personality = { toJSON() { reads++; throw new Error('toJSON fault') } }
+            const encoder = encoderOf(previous)
+            await encoder.plan(db, request({ net: { chaId: id2, modules: false } }))
+            await encoder.plan(db, request({ net: { chaId: id2, modules: false } }))
+            expect(reads).toBe(0)
+        })
+
+        test('a never-saved character is named by the new-character rule, so each pass reads it once up to its first bad value', async () => {
+            const db = buildSmall(4)
+            const previous = previousFrom(encodeWith(db))
+            let reads = 0
+            const fresh: Obj = { ...JSON.parse(JSON.stringify(slotOf(db, 0))) as Obj, chaId: 'never-saved-character', name: 'Never saved' }
+            fresh.personality = { toJSON() { reads++; throw new Error('toJSON fault') } }
+            ;(db.characters as unknown as Obj[]).push(fresh)
+            const encoder = encoderOf(previous)
+            const id2 = chaIdOf(db, 2)
+            for (let pass = 1; pass <= 3; pass++) {
+                await encoder.plan(db, request({ net: { chaId: id2, modules: false } }))
+                expect(reads).toBe(pass)
+            }
+        })
+    })
+
+    test('new behaviour: a character the pass rewrote is no longer listed, and one fixed afterwards is encoded again', async () => {
+        const { db, previous, id1 } = savedOffender()
+        const encoder = encoderOf(previous)
+        await commitPass(encoder, db, { marked: new Set([id1]) }, 1)
+        slotOf(db, 1).personality = 'fixed'
+        const fixed = await commitPass(encoder, db, { marked: new Set([id1]) }, 2)
+        expect(fixed.plan.skipped).toEqual([])
+        expect(fixed.plan.encoded).toEqual([id1])
+    })
+})

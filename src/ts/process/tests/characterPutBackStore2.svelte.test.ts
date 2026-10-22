@@ -60,6 +60,8 @@ import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/t
 import type { Residency } from 'src/ts/storage/store2/residency'
 import { registerResidency, resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
 import type { toSaveType } from 'src/ts/storage/risuSave'
+import { characterMatchesAcknowledged, encodeDatabase, previousFrom } from 'src/ts/storage/store2/codec'
+import { dbWithCharacters, fakeLists, seededEnv, type Obj } from 'src/ts/storage/tests/store2/codecFixtures'
 
 type Slot = Database['characters'][number]
 
@@ -905,5 +907,44 @@ describe('the subscription', () => {
         flushSync()
 
         expect(runs).toBe(1)
+    })
+})
+
+describe('the real verdict over a character whose data cannot be read', () => {
+    test('acceptance: the character stays loaded, the others are still judged, and the put-back is armed again', () => {
+        const sources = ['A', 'B', 'C', 'D', 'E'].map((id) => fullCharacter(id))
+        const previous = previousFrom(encodeDatabase(
+            dbWithCharacters(sources as unknown as Obj[]),
+            { env: seededEnv(1), lists: fakeLists, seq: 1, createdAt: 1_700_000_000_000 },
+        ))
+        resetResidencyForTest()
+        registerResidency({
+            ...residency,
+            verdict: (character) => characterMatchesAcknowledged(character, { env: seededEnv(5), lists: fakeLists, previous }),
+        })
+        archiveAll(sources)
+        begin()
+        for (const id of ['A', 'B', 'C', 'D', 'E']) {
+            open(id)
+        }
+        // A plugin left a value in the first candidate that cannot be read as JSON.
+        ;(slot('A') as unknown as Record<string, unknown>).personality = { toJSON() { throw new Error('toJSON fault') } }
+
+        // What the save loop does after a commit: a throwing callback is logged and the others still run.
+        const thrown: unknown[] = []
+        for (const callback of h.commits.splice(0)) {
+            try {
+                callback()
+            } catch (error) {
+                thrown.push(error)
+            }
+        }
+
+        expect(thrown).toEqual([])
+        expect(isStub('A')).toBe(false)
+        expect(isStub('B')).toBe(true)
+        expect(isStub('C')).toBe(false)
+        // The put-back waits for the next commit, so the third candidate is judged then.
+        expect(h.commits.length).toBe(1)
     })
 })

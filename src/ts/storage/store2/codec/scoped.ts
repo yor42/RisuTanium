@@ -9,13 +9,13 @@ import type { BuildContext, BuiltCommit, KeyMint } from '../commit'
 import { defineOwn } from './normalize'
 import { isUnchanged, unitDigest, UnitNotReusedError, UnitSink, type UnitKeyKind } from './reuse'
 import {
-    checkDatabase, encodeCharacter, encodeFront, encodeModuleSet, Encoder, finishTree, IDENTITY,
-    type ModuleSet,
+    checkDatabase, emitCharacter, encodeCharacter, encodeFront, encodeModuleSet, Encoder, finishTree, IDENTITY,
+    normalizeCharacter, type ModuleSet, type NormalizedCharacter,
 } from './split'
 import { isColdStub } from './stub'
 import {
-    CodecError, CodecInputError, SharedChaIdStubError, StubRefusedError, type EncodedTree, type EncodedUnit, type EncodeOptions,
-    type ListDerivation, type PreviousEncoding, type ReusableUnit,
+    CodecAssembleError, CodecError, CodecInputError, SharedChaIdStubError, StubRefusedError, type EncodedTree, type EncodedUnit,
+    type EncodeOptions, type ListDerivation, type PreviousEncoding, type ReusableUnit,
 } from './types'
 
 /**
@@ -40,6 +40,30 @@ export interface EncodeScope {
     characters: ReadonlySet<string> | 'all'
     /** Called once after each character that was encoded, so a long pass hands control back between characters. */
     yield?: () => Promise<void>
+    /**
+     * A named character whose data cannot be read as plain JSON is skipped instead of failing the pass: carried from
+     * `previous` when that holds it, left out when it does not, and reported in `skipped`. Only the save encoder sets
+     * it; an import or an install, which have no earlier copy to fall back on, fail on such a character.
+     */
+    skipUnsavableCharacters?: boolean
+}
+
+/** A character a pass could not encode and went on without. */
+export interface SkippedCharacter {
+    chaId: string
+    /** The previous encoding held the character, so its last saved copy is carried; false means it is left out of the tree. */
+    saved: boolean
+    /** The failure of the read, for the log. */
+    cause: unknown
+}
+
+/**
+ * Whether a failure of `normalizeCharacter` is a fault of the character's data, which a pass may go on without. A
+ * stub refusal is a request to load the stub, and an assemble error is an invariant that `splitChat` guarantees: both
+ * must reach the caller.
+ */
+export function isSkippableCharacterFault(error: unknown): boolean {
+    return !(error instanceof StubRefusedError || error instanceof CodecAssembleError)
 }
 
 interface ParentBody {
@@ -199,7 +223,16 @@ function ambiguousChaIds(characters: readonly Slot[], previous: PreviousEncoding
     return ambiguous
 }
 
-async function encodeScopedParts(db: Database, options: EncodeOptions, scope: EncodeScope): Promise<{ tree: EncodedTree, parents: ReadonlyMap<string, ParentBody> }> {
+interface ScopedParts {
+    tree: EncodedTree
+    parents: ReadonlyMap<string, ParentBody>
+    /** The named characters the pass went on without. */
+    skipped: SkippedCharacter[]
+    /** The `chaId` of every character the pass encoded. */
+    encoded: string[]
+}
+
+async function encodeScopedParts(db: Database, options: EncodeOptions, scope: EncodeScope): Promise<ScopedParts> {
     checkDatabase(db, options)
     const previous = options.previous ?? null
     const encoder = new Encoder(options, previous)
@@ -213,6 +246,8 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
     }
     const entries: ShardEntry[] = []
     const carriedOwners = new Set<string>()
+    const skipped: SkippedCharacter[] = []
+    const encoded: string[] = []
     // One consistent character list per pass: `db.characters` is read here, before any await, and never again. A
     // list edit during a yield (splice, reassign, unshift) reaches the next pass, so the committed tree holds exactly
     // this list. Each slot is encoded synchronously on its turn; an edit inside a slot after its turn is the next
@@ -232,7 +267,29 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
         // A shared id is never carried: which previous entry belongs to which holder cannot be told from the id.
         const named = !stub && (scope.characters === 'all' || scope.characters.has(chaId) || ambiguous.has(chaId))
         if (named) {
-            entries.push(encodeCharacter(slot, position, encoder))
+            let normalized: NormalizedCharacter | null = null
+            if (scope.skipUnsavableCharacters === true && !ambiguous.has(chaId)) {
+                // Only the read of the live character is guarded: it fails before the encoder has claimed anything, so
+                // a skip leaves the encoder as if the character had not been named. A shared id is never skipped.
+                try {
+                    normalized = normalizeCharacter(slot, position)
+                } catch (error) {
+                    if (!isSkippableCharacterFault(error)) {
+                        throw error
+                    }
+                    const saved = encoder.holdsCharacter(chaId)
+                    skipped.push({ chaId, saved, cause: error })
+                    if (saved) {
+                        const entry = carriedEntry(slot, chaId, encoder, entriesOfPrevious)
+                        carriedOwners.add(entry.u)
+                        entries.push(entry)
+                    }
+                    await scope.yield?.()
+                    continue
+                }
+            }
+            entries.push(normalized === null ? encodeCharacter(slot, position, encoder) : emitCharacter(normalized, encoder))
+            encoded.push(chaId)
             await scope.yield?.()
         } else {
             const entry = carriedEntry(slot, chaId, encoder, entriesOfPrevious)
@@ -241,7 +298,7 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
         }
     }
     const carried = carriedUnits(previous, carriedOwners, !scope.modules)
-    return { tree: finishTree(db, encoder, front, moduleSet, entries, carried), parents: encoder.parents }
+    return { tree: finishTree(db, encoder, front, moduleSet, entries, carried), parents: encoder.parents, skipped, encoded }
 }
 
 /**
@@ -379,6 +436,10 @@ export interface ScopedPlan {
     newUnits: number
     /** True iff the only unit the commit would write is the manifest: nothing changed, and the caller can skip the commit. */
     unchanged: boolean
+    /** The named characters the pass could not read and went on without (only under `skipUnsavableCharacters`). */
+    skipped: readonly SkippedCharacter[]
+    /** The `chaId` of every character the pass encoded. */
+    encoded: readonly string[]
     /**
      * The tree under the keys of `context.mint`, its manifest carrying `context.seq` and `context.now`. Pure over the
      * plan: a commit that builds again on a retry calls it again with the retry's own context, and every call gives a
@@ -397,10 +458,12 @@ export interface ScopedPlan {
  * is ignored: the plan owns the keys.
  */
 export async function planScopedEncode(db: Database, options: EncodeOptions, scope: EncodeScope): Promise<ScopedPlan> {
-    const { tree, parents } = await encodeScopedParts(db, { ...options, keys: placeholderMint() }, scope)
+    const { tree, parents, skipped, encoded } = await encodeScopedParts(db, { ...options, keys: placeholderMint() }, scope)
     return {
         newUnits: tree.units.filter(unit => !unit.reused).length,
         unchanged: isUnchanged(tree),
+        skipped,
+        encoded,
         finalize: context => rekey(tree, parents, context),
     }
 }
@@ -532,8 +595,16 @@ export function characterMatchesAcknowledged(slot: Slot, options: VerdictOptions
         }
     }
     const encodeOptions: EncodeOptions = { env: options.env, lists: options.lists, seq: 0, createdAt: 0, previous }
+    // Reading the live character can throw anything a `toJSON` or a getter throws; whatever it is, the acknowledged
+    // encoding cannot answer, and the put-back leaves the character loaded.
+    let normalized: NormalizedCharacter
     try {
-        const fresh = encodeCharacter(slot, 0, new ReuseOnlyEncoder(encodeOptions, previous))
+        normalized = normalizeCharacter(slot, 0)
+    } catch {
+        return 'unknown'
+    }
+    try {
+        const fresh = emitCharacter(normalized, new ReuseOnlyEncoder(encodeOptions, previous))
         return sameKnownFields(fresh, acknowledged) ? 'clean' : 'dirty'
     } catch (error) {
         if (error instanceof UnitNotReusedError) {

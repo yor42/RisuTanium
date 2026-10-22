@@ -676,6 +676,7 @@ describeLimited(CURRENT_BUILD_UNAVAILABLE === null ? 'a real 429 on the write si
             endIteration() {},
             snapshotTaken() { state.dirty = false },
             requestPass() { state.dirty = true; state.due = true },
+            unsavable() {},
             saved() { state.saved += 1 },
             broadcast() {},
             peerHeard: () => false,

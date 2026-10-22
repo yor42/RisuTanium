@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'vitest'
 import {
-    assembleDatabase, bucketOfKey, CodecInputError, encodeScoped, IDENTITY, previousFrom, shardOfU, SharedChaIdStubError, StubRefusedError,
-    unitsToWrite,
+    assembleDatabase, bucketOfKey, CodecAssembleError, CodecInputError, COLD_POINTER_HEADER, emitCharacter, encodeCharacter,
+    Encoder, encodeScoped, IDENTITY, isSkippableCharacterFault, normalizeCharacter, planScopedEncode, previousFrom, shardOfU,
+    SharedChaIdStubError, StubRefusedError, unitsToWrite,
     type EncodedTree, type EncodeOptions, type EncodeScope, type ListDerivation,
 } from '../../store2/codec'
+import { planWholeTreeInstall } from '../../store2/legacy/install'
 import { buildColdStub } from '../../../process/coldCharacter'
 import type { character, Database } from '../../database.svelte'
 import { UNIT_TYPE, type ShardEntry } from '../../store2/format'
@@ -512,5 +514,202 @@ describe('a shared chaId is never carried (reproducers of the duplicate-holder l
         const lists = counting()
         await encodeScoped(db, scopedOptions(2, first, lists.lists), { modules: false, characters: new Set() })
         expect(lists.encoded.filter(chaId => chaId === chaIdOf(db, 0)).length).toBe(2)
+    })
+})
+
+describe('skipping a character whose data cannot be read', () => {
+    const cycle = (): Obj => {
+        const value: Obj = {}
+        value.self = value
+        return value
+    }
+    const tooDeep = (): unknown => {
+        let value: unknown[] = []
+        for (let i = 0; i < 200_000; i++) {
+            value = [value]
+        }
+        return value
+    }
+    const OFFENDERS: Array<[string, () => unknown]> = [
+        ['a cycle', cycle],
+        ['a BigInt', () => BigInt(1)],
+        ['a toJSON that throws', () => ({ toJSON() { throw new Error('toJSON fault') } })],
+        ['nesting too deep', tooDeep],
+    ]
+    const SKIPPING: Pick<EncodeScope, 'skipUnsavableCharacters'> = { skipUnsavableCharacters: true }
+
+    function unitsOf(...trees: EncodedTree[]): { get(key: string): Uint8Array | undefined } {
+        const units = new Map(trees.flatMap(tree => tree.units).map(unit => [unit.key, unit.bytes] as const))
+        return { get: key => units.get(key) }
+    }
+
+    function assembledCharacters(...trees: EncodedTree[]): Obj[] {
+        const last = trees[trees.length - 1]
+        return assembleDatabase(last.manifest, unitsOf(...trees)).characters as unknown as Obj[]
+    }
+
+    /** `buildSmall(4)` encoded once; the next database is a copy whose character 1 carries the offender and character 2 an edit. */
+    function offending(make: () => unknown): { db: Database, first: EncodedTree, next: Database, id1: string, id2: string } {
+        const db = buildSmall(4)
+        const first = encodeWith(db)
+        const copy = clone(db)
+        const characters = copy.characters as Obj[]
+        characters[1].personality = make()
+        characters[2].personality = 'edited while the neighbour is unsavable'
+        return { db, first, next: asDatabase(copy), id1: chaIdOf(db, 1), id2: chaIdOf(db, 2) }
+    }
+
+    describe('a character the previous encoding holds is carried', () => {
+        test.each(OFFENDERS)('reproducer: %s is skipped, its last saved copy is kept and the other edit lands', async (_label, make) => {
+            const { db, first, next, id1, id2 } = offending(make)
+            const scope: EncodeScope = { modules: false, characters: new Set([id1, id2]), ...SKIPPING }
+            const plan = await planScopedEncode(next, scopedOptions(2, first), scope)
+            expect(plan.skipped.map(({ chaId, saved }) => ({ chaId, saved }))).toEqual([{ chaId: id1, saved: true }])
+            expect(plan.encoded).toEqual([id2])
+
+            const tree = await encodeScoped(next, scopedOptions(2, first), scope)
+            // The entry and every unit of the skipped character are the previous ones, and its handle is still held.
+            expect(tree.index.entities.get(`${id1}#0`)).toBe(first.index.entities.get(`${id1}#0`))
+            expect(indexEntry(tree, id1)).toEqual(indexEntry(first, id1))
+            for (const [identity, unit] of first.index.units) {
+                if (identity.includes(indexEntry(first, id1).u)) {
+                    expect(tree.index.units.get(identity)?.key, identity).toBe(unit.key)
+                }
+            }
+            const stored = assembledCharacters(first, tree)
+            expect(stored[2].personality).toBe('edited while the neighbour is unsavable')
+            expect(stored[1].personality).toBe((db.characters[1] as unknown as Obj).personality)
+
+            // A second pass over the tree that committed still holds the skipped character: its last copy survives a chain of skips.
+            const again = await encodeScoped(next, scopedOptions(3, tree), scope)
+            expect(again.index.entities.get(`${id1}#0`)).toBe(first.index.entities.get(`${id1}#0`))
+            expect(indexEntry(again, id1)).toEqual(indexEntry(first, id1))
+            expect(assembledCharacters(first, tree, again)[1].personality).toBe((db.characters[1] as unknown as Obj).personality)
+        })
+    })
+
+    describe('a character the previous encoding does not hold is left out', () => {
+        function appended(make: () => unknown): { db: Database, first: EncodedTree, next: Database, id2: string, fresh: string, changed: Obj[] } {
+            const db = buildSmall(4)
+            const first = encodeWith(db)
+            const copy = clone(db)
+            const characters = copy.characters as Obj[]
+            characters[2].personality = 'edited while the new character is unsavable'
+            characters.push({ ...JSON.parse(JSON.stringify(characters[0])) as Obj, chaId: 'never-saved-character', name: 'Never saved', personality: make() })
+            return { db, first, next: asDatabase(copy), id2: chaIdOf(db, 2), fresh: 'never-saved-character', changed: characters }
+        }
+
+        test.each(OFFENDERS)('reproducer: %s is omitted with no entity id, and a later fix gives it one', async (_label, make) => {
+            const { first, next, id2, fresh, changed } = appended(make)
+            const scope: EncodeScope = { modules: false, characters: new Set([id2, fresh]), ...SKIPPING }
+            const plan = await planScopedEncode(next, scopedOptions(2, first), scope)
+            expect(plan.skipped.map(({ chaId, saved }) => ({ chaId, saved }))).toEqual([{ chaId: fresh, saved: false }])
+            expect(plan.encoded).toEqual([id2])
+
+            const tree = await encodeScoped(next, scopedOptions(2, first), scope)
+            expect(tree.index.entities.has(`${fresh}#0`)).toBe(false)
+            expect(() => indexEntry(tree, fresh)).toThrow()
+            const stored = assembledCharacters(first, tree)
+            expect(stored.length).toBe(4)
+            expect(stored[2].personality).toBe('edited while the new character is unsavable')
+
+            // `next` is the same object as the copy `changed` belongs to.
+            changed[4].personality = 'fixed'
+            const fixed = await encodeScoped(next, scopedOptions(3, tree), scope)
+            expect(fixed.index.entities.has(`${fresh}#0`)).toBe(true)
+            expect(indexEntry(fixed, fresh).chaId).toBe(fresh)
+        })
+    })
+
+    describe('guard: what is not a fault of the character\'s data still fails the pass', () => {
+        const fault = new Error('list derivation fault')
+        const failing = (which: 'characterAssets' | 'characterInlays'): ListDerivation => ({
+            ...fakeLists,
+            [which]: () => { throw fault },
+        })
+
+        test.each(['characterAssets', 'characterInlays'] as const)('a %s fault after the encoder started rejects with that error for a saved character', async (which) => {
+            const { first, next, id1 } = offending(() => 'fine')
+            const attempt = encodeScoped(next, scopedOptions(2, first, failing(which)), { modules: false, characters: new Set([id1]), ...SKIPPING })
+            await expect(attempt).rejects.toBe(fault)
+        })
+
+        test.each(['characterAssets', 'characterInlays'] as const)('a %s fault after the encoder started rejects with that error for a character never saved', async (which) => {
+            const db = buildSmall(4)
+            const first = encodeWith(db)
+            const copy = clone(db)
+            const characters = copy.characters as Obj[]
+            characters.push({ ...JSON.parse(JSON.stringify(characters[0])) as Obj, chaId: 'never-saved-character', name: 'Never saved' })
+            const attempt = encodeScoped(asDatabase(copy), scopedOptions(2, first, failing(which)), {
+                modules: false, characters: new Set(['never-saved-character']), ...SKIPPING,
+            })
+            await expect(attempt).rejects.toBe(fault)
+        })
+
+        test('a shared chaId is not skipped', async () => {
+            const base = clone(buildSmall(3))
+            const characters = base.characters as Obj[]
+            characters[1] = { ...characters[1], chaId: characters[0].chaId as string }
+            const first = encodeWith(asDatabase(JSON.parse(JSON.stringify(base)) as Obj))
+            characters[1].personality = cycle()
+            const attempt = encodeScoped(asDatabase(base), scopedOptions(2, first), {
+                modules: false, characters: new Set([characters[0].chaId as string]), ...SKIPPING,
+            })
+            await expect(attempt).rejects.toBeInstanceOf(CodecInputError)
+        })
+
+        test('a chat that is still a cold-storage pointer refuses with the stub error, unwrapped', async () => {
+            const { first, next, id1 } = offending(() => 'fine')
+            const slot = (next.characters as unknown as Obj[])[1]
+            slot.chats = [{ id: 'pointer', message: [{ data: `${COLD_POINTER_HEADER}key`, role: 'char' }] }]
+            const attempt = encodeScoped(next, scopedOptions(2, first), { modules: false, characters: new Set([id1]), ...SKIPPING })
+            await expect(attempt).rejects.toBeInstanceOf(StubRefusedError)
+        })
+    })
+
+    describe('the skip predicate', () => {
+        test('data faults are skippable', () => {
+            expect(isSkippableCharacterFault(new CodecInputError('not plain'))).toBe(true)
+            expect(isSkippableCharacterFault(new Error('toJSON'))).toBe(true)
+            expect(isSkippableCharacterFault(new RangeError('too deep'))).toBe(true)
+            expect(isSkippableCharacterFault('a string thrown by a getter')).toBe(true)
+        })
+
+        test('an assemble invariant and a stub refusal are not skippable', () => {
+            expect(isSkippableCharacterFault(new CodecAssembleError('has no chunk'))).toBe(false)
+            expect(isSkippableCharacterFault(new StubRefusedError('chat', 'c', 0))).toBe(false)
+        })
+    })
+
+    describe('guard: the flag is opt-in, so an import or an install still fails whole', () => {
+        test('a pass that does not set the flag rejects a named character that cannot be read', async () => {
+            const { first, next } = offending(cycle)
+            await expect(encodeScoped(next, scopedOptions(2, first), EVERYTHING)).rejects.toBeInstanceOf(CodecInputError)
+            await expect(planScopedEncode(next, scopedOptions(2, first), EVERYTHING)).rejects.toBeInstanceOf(CodecInputError)
+        })
+
+        test('a first encode with every character named and no previous rejects without the flag, and produces no skipped list', async () => {
+            const { next } = offending(cycle)
+            await expect(planScopedEncode(next, { env: seededEnv(1), lists: fakeLists, seq: 1, createdAt: NOW }, EVERYTHING)).rejects.toBeInstanceOf(CodecInputError)
+        })
+
+        test('the whole-tree install refuses the character', async () => {
+            const { next } = offending(cycle)
+            await expect(planWholeTreeInstall(next, { lists: fakeLists, env: seededEnv(1), convertedFrom: 'test' })).rejects.toBeInstanceOf(CodecInputError)
+        })
+    })
+
+    describe('equivalence: the split of encodeCharacter changes nothing', () => {
+        test('the composition of the two halves gives the entry and entity ids of encodeCharacter', () => {
+            const db = buildSmall(4)
+            const options: EncodeOptions = { env: seededEnv(1), lists: fakeLists, seq: 1, createdAt: NOW }
+            const whole = new Encoder(options, null)
+            const halves = new Encoder({ ...options, env: seededEnv(1) }, null)
+            for (let position = 0; position < db.characters.length; position++) {
+                const slot = db.characters[position]
+                expect(emitCharacter(normalizeCharacter(slot, position), halves)).toEqual(encodeCharacter(slot, position, whole))
+            }
+            expect([...halves.entities]).toEqual([...whole.entities])
+        })
     })
 })

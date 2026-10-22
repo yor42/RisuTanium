@@ -106,6 +106,14 @@ export interface Store2Snapshot {
     whole: boolean
 }
 
+/** A character the loop's passes cannot save: the pass went on without it. */
+export interface UnsavableCharacter {
+    chaId: string
+    /** A last saved copy exists and is kept; false means the character has never been saved. */
+    saved: boolean
+    cause: unknown
+}
+
 /** What the loop needs from the page: the shared marks and flags, the page's own state and effects. `saveDbStore2` builds it. */
 export interface Store2LoopPort {
     /** The live tracker the mark paths write into. */
@@ -132,6 +140,12 @@ export interface Store2LoopPort {
     snapshotTaken(): void
     /** Marks the page dirty and asks for another pass. */
     requestPass(): void
+    /**
+     * After an attempt whose commit landed (saved, or landed without a flush), before `saved()`: every character that cannot be saved now (`current`) and those
+     * that newly cannot (`newly`: not in the set before this attempt, still present after it). Called only when the
+     * set changed or `newly` is not empty. It must not report a failure; a throw is logged and ignored.
+     */
+    unsavable(current: readonly UnsavableCharacter[], newly: readonly UnsavableCharacter[]): void
     /** The pass's data is in the store (or the store already held it): next-commit callbacks fire. */
     saved(): void
     /** Tells the other tabs a commit landed. */
@@ -277,6 +291,11 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let peerSignal = false
     let netIndex = 0
     let lastNetAt = port.now()
+    /**
+     * The characters the latest attempts whose commit landed could not encode. A character leaves it when a pass encodes
+     * it, or when it is no longer in the database; an attempt whose commit did not land changes nothing here.
+     */
+    const unsavable = new Map<string, UnsavableCharacter>()
 
     function namedByBase(key: CommitKey): boolean {
         const mine = encoder.manifestKey
@@ -529,7 +548,42 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
     }
 
-    async function attemptOf(run: { snapshot: Store2Snapshot | null, landed: boolean }, tick: boolean): Promise<Outcome> {
+    /**
+     * Folds the plan of an attempt whose commit landed into `unsavable` and tells the port when the set changed. `newly` is read
+     * from the final set, so a character deleted while the pass committed gets no notice.
+     */
+    function settleUnsavable(plan: SavePlan): void {
+        if (unsavable.size === 0 && plan.skipped.length === 0) {
+            return
+        }
+        const before = new Set(unsavable.keys())
+        for (const skipped of plan.skipped) {
+            unsavable.set(skipped.chaId, skipped)
+        }
+        for (const chaId of plan.encoded) {
+            unsavable.delete(chaId)
+        }
+        const present = presentChaIds(port.getDatabase())
+        for (const chaId of [...unsavable.keys()]) {
+            if (!present.has(chaId)) {
+                unsavable.delete(chaId)
+            }
+        }
+        const current = [...unsavable.values()]
+        const newly = plan.skipped.filter(skipped => !before.has(skipped.chaId) && unsavable.has(skipped.chaId))
+        const changed = before.size !== unsavable.size || current.some(entry => !before.has(entry.chaId))
+        if (!changed && newly.length === 0) {
+            return
+        }
+        try {
+            port.unsavable(current, newly)
+        } catch (error) {
+            // A notice that fails must not turn a pass that saved into a failed one.
+            console.error(error)
+        }
+    }
+
+    async function attemptOf(run: { snapshot: Store2Snapshot | null, landed: boolean, plan: SavePlan | null }, tick: boolean): Promise<Outcome> {
         run.snapshot = tick ? null : takeStore2Snapshot(port)
         const read = await committer.readCommit()
         peerSignal = false
@@ -543,6 +597,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
         const db = port.getDatabase()
         const plan = await planOf(db, requestOf(run.snapshot, db, saveMine))
+        run.plan = plan
         // A page that is asked to overwrite a peer's commit has something to write even when it changed nothing.
         if (plan.unchanged && !forced && !saveMine) {
             return { kind: 'saved', wrote: false }
@@ -572,7 +627,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     }
 
     async function pass(tick: boolean): Promise<void> {
-        const run: { snapshot: Store2Snapshot | null, landed: boolean } = { snapshot: null, landed: false }
+        const run: { snapshot: Store2Snapshot | null, landed: boolean, plan: SavePlan | null } = { snapshot: null, landed: false, plan: null }
         if (!tick) {
             port.beginIteration()
         }
@@ -581,6 +636,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             switch (outcome.kind) {
                 case 'saved':
                     retries = 0
+                    if (run.plan !== null) {
+                        settleUnsavable(run.plan)
+                    }
                     if (!tick || outcome.wrote) {
                         port.saved()
                     }
@@ -602,10 +660,15 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     setPark(outcome.park)
                     break
                 case 'not-flushed':
-                    // The snapshot's data is in the store: nothing is folded back, and the next pass writes again.
+                    // The snapshot's data is in the store: nothing is folded back, and the next pass writes again. The
+                    // commit landed and is acknowledged, so what it skipped is settled now: the next pass does not
+                    // necessarily name a skipped saved character. The retry is arranged first, so a settle cannot drop it.
                     forced = true
                     savetrys += 1
                     port.requestPass()
+                    if (run.plan !== null) {
+                        settleUnsavable(run.plan)
+                    }
                     await port.sleep(backedOffWait(port.reportFailure(new Store2NotFlushedError(), savetrys), savetrys))
                     break
             }

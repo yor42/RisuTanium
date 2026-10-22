@@ -2161,6 +2161,10 @@ export const languageSpanish = {
         `El guardado está esperando a ${names}: su id cambió mientras se guardaba, así que ese intento se descartó y se volverá a intentar. No se escribe nada hasta que deje de cambiar. Los cambios hechos mientras tanto se conservan en esta pestaña, pero se perderán si la cierras.`,
     saveRepairedEntriesNotice: (dropped: number, filled: number) =>
         `RisuAI reparó la lista de personajes: ${dropped > 0 ? `${dropped} ${dropped === 1 ? 'entrada que no es un personaje se omitió' : 'entradas que no son personajes se omitieron'}` : ''}${dropped > 0 && filled > 0 ? ', y ' : ''}${filled > 0 ? `se asignó un id nuevo a ${filled} ${filled === 1 ? 'personaje cuyo id faltaba o no se podía guardar' : 'personajes cuyo id faltaba o no se podía guardar'}` : ''}.${dropped > 0 ? ' Puede que un plugin haya escrito las entradas omitidas.' : ''}`,
+    saveCharacterUnsavedNotice: (name: string) =>
+        `RisuAI no puede guardar a ${name} ahora mismo: sus datos no son válidos y puede que un plugin los haya cambiado. Tus últimos cambios en este personaje no se están guardando y se perderán si la pestaña se cierra o se recarga antes de que se solucione. Se conserva la última copia guardada, todo lo demás se sigue guardando y RisuAI sigue intentándolo en silencio.`,
+    saveCharacterNeverSavedNotice: (name: string) =>
+        `RisuAI no puede guardar a ${name} en absoluto: nunca se ha guardado y sus datos no son válidos (puede que un plugin los haya cambiado). No se está guardando, así que se perderá si la pestaña se cierra o se recarga antes de que se solucione. Todo lo demás se sigue guardando y RisuAI sigue intentándolo en silencio.`,
     personasRepairedNotice: (count: number) =>
         `RisuAI omitió ${count} ${count === 1 ? 'persona que no era un dato válido' : 'personas que no eran datos válidos'}. Puede que un plugin ${count === 1 ? 'la' : 'las'} haya escrito.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
