@@ -30,6 +30,8 @@ export type GcStopReason =
     | 'backend-failure'
     /** A batch's outcome is unknown: the pass ends and nothing further is attempted. */
     | 'unknown-outcome'
+    /** The caller's `shouldStop` turned true; every batch applied so far is whole. */
+    | 'yielded'
     /** The rebuild round after earlier deletions was refused; the done result's refusal says why. */
     | 'refused'
 
@@ -56,6 +58,11 @@ export interface GcDeps {
     probe?: () => Promise<GuardedCapabilities>
     /** Awaited between batches; none by default. */
     pace?: () => Promise<void>
+    /**
+     * Asked at the start of each round and before every batch, the first included; `true` ends the pass with
+     * `stopped: 'yielded'` and the counts so far. Nothing is retried: every applied batch is whole.
+     */
+    shouldStop?: () => boolean
 }
 
 type Attempt =
@@ -121,6 +128,9 @@ async function attemptPass(deps: GcDeps): Promise<Attempt> {
         if (batches > 0 && deps.pace !== undefined) {
             await deps.pace()
         }
+        if (deps.shouldStop?.() === true) {
+            return { status: 'done', deleted, batches, stopped: 'yielded' }
+        }
         const batch = candidates.slice(at, at + REMOVE_BATCH_MAX)
         try {
             await backend.removeBatch(batch, gate.commitToken, gate.fenceToken)
@@ -183,6 +193,9 @@ export async function gcPass(deps: GcDeps): Promise<GcResult> {
     let deleted = 0
     let batches = 0
     for (let round = 0; round < 2; round++) {
+        if (deps.shouldStop?.() === true) {
+            return { status: 'done', deleted, batches, stopped: 'yielded' }
+        }
         const result = await attemptPass(deps)
         if (result.status === 'refused') {
             return deleted === 0 && batches === 0
