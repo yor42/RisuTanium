@@ -13,6 +13,12 @@ export const MOUSE_DRAG_THRESHOLD_PX = 5
 export const CENTRE_ZONE_FRACTION = 0.5
 /** Time the pointer rests in a character's centre zone before dropping merges. */
 export const MERGE_DWELL_MS = 400
+/**
+ * Merge dwell of a touch or pen drag in the Grid. A finger covers the tile and moves less
+ * precisely than a mouse, so a merge needs a longer rest than MERGE_DWELL_MS; a Grid mouse
+ * drag and the sidebar rail keep MERGE_DWELL_MS.
+ */
+export const GRID_TOUCH_MERGE_DWELL_MS = 700
 /** Time the pointer rests in a closed folder's centre zone before the folder opens. */
 export const SPRING_OPEN_MS = 700
 export const EDGE_BAND_MAX_PX = 48

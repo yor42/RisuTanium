@@ -5,6 +5,7 @@ import {
     AUTO_SCROLL_MAX_PX_PER_S,
     CLICK_SUPPRESS_MS,
     LONG_PRESS_MS,
+    GRID_TOUCH_MERGE_DWELL_MS,
     MERGE_DWELL_MS,
     MOUSE_DRAG_THRESHOLD_PX,
     OUTSIDE_MARGIN_PX,
@@ -14,7 +15,7 @@ import {
     edgeBandPx,
 } from './railConstants'
 import { computeLayout, type Layout } from './railLayout'
-import { RailDrag, type PointerInfo, type RailEnv, type RailHost } from './railDrag'
+import { RailDrag, type PointerInfo, type RailDragOptions, type RailEnv, type RailHost } from './railDrag'
 import type { Target } from './railTarget'
 import { charKey, contentY, folderKey, memberKey, outsideZonePoint, railItems, zonePoint } from './railTestKit'
 import type { FolderRef, ItemRef } from './sidebarOrder'
@@ -57,7 +58,7 @@ class Rig {
     order: Array<string | folder> = []
     open: string[] = []
 
-    constructor(order: Array<string | folder>, open: string[] = []) {
+    constructor(order: Array<string | folder>, open: string[] = [], options?: RailDragOptions) {
         this.setOrder(order, open, false)
         const env: RailEnv = {
             now: () => this.now,
@@ -112,7 +113,7 @@ class Rig {
             onTouchMenu: (f) => this.touchMenus.push(f),
         }
         this.host = host
-        this.machine = new RailDrag(host, env)
+        this.machine = new RailDrag(host, env, undefined, options)
     }
 
     setOrder(order: Array<string | folder>, open: string[] = this.open, notify = true): void {
@@ -439,6 +440,60 @@ describe('merge dwell', () => {
         rig.move(rig.zone(B))
         rig.advance(MERGE_DWELL_MS)
         expect(rig.target.kind).toBe('merge')
+    })
+})
+
+describe('touch merge dwell option', () => {
+    const touch = { pointerType: 'touch' }
+    const options: RailDragOptions = { touchMergeDwellMs: GRID_TOUCH_MERGE_DWELL_MS }
+
+    test('the Grid touch dwell is longer than the default merge dwell', () => {
+        expect(GRID_TOUCH_MERGE_DWELL_MS).toBe(700)
+        expect(GRID_TOUCH_MERGE_DWELL_MS).toBeGreaterThan(MERGE_DWELL_MS)
+    })
+
+    // Regression reproducer: fails while a touch drag arms at MERGE_DWELL_MS regardless of the option.
+    test('with the option, a touch drag does not arm at 699 ms and arms at 700 ms', () => {
+        rig = new Rig(['A', 'B', 'C', 'D'], [], options)
+        rig.touchLift(C)
+        rig.move(rig.zone(B), touch)
+        rig.advance(GRID_TOUCH_MERGE_DWELL_MS - 1)
+        expect(rig.target.kind).toBe('gap')
+        rig.advance(1)
+        expect(rig.target).toMatchObject({ kind: 'merge', key: B })
+    })
+
+    // Regression reproducer: a release before the touch dwell must not merge.
+    test('with the option, a touch release after the default dwell but before the touch dwell does not merge', () => {
+        rig = new Rig(['A', 'B', 'C', 'D'], [], options)
+        rig.touchLift(C)
+        rig.move(rig.zone(B), touch)
+        rig.advance(MERGE_DWELL_MS + 50)
+        rig.release(rig.zone(B), touch)
+        expect(rig.drops).toHaveLength(1)
+        expect(rig.drops[0].target.kind).toBe('gap')
+    })
+
+    // Compatibility guard: passes before and after; the option never slows a mouse.
+    test('with the option, a mouse drag still arms at the default dwell', () => {
+        rig = new Rig(['A', 'B', 'C', 'D'], [], options)
+        rig.mouseDrag(C)
+        rig.move(rig.zone(B))
+        rig.advance(MERGE_DWELL_MS - 1)
+        expect(rig.target.kind).toBe('gap')
+        rig.advance(1)
+        expect(rig.target).toMatchObject({ kind: 'merge', key: B })
+    })
+
+    // Compatibility guard: passes before and after; without the option touch keeps the default dwell.
+    test('without the option, a touch drag arms at the default dwell', () => {
+        rig = new Rig(['A', 'B', 'C', 'D'])
+        rig.touchLift(C)
+        rig.move(rig.zone(B), touch)
+        rig.advance(MERGE_DWELL_MS - 1)
+        expect(rig.target.kind).toBe('gap')
+        rig.advance(1)
+        expect(rig.target).toMatchObject({ kind: 'merge', key: B })
     })
 })
 

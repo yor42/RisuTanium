@@ -3,7 +3,7 @@
 /**
  * `GridCatalog.svelte`, Grid tab: dragging tiles in edit mode. A touch hold of 500 ms lifts a tile
  * (a mouse drag starts after 5 px), the finger or mouse moves, and the release writes the saved order
- * once: a gap move, an append onto a folder tile, or a 400 ms dwell merge into a new folder. A dragged
+ * once: a gap move, an append onto a folder tile, or a dwell merge into a new folder (400 ms mouse, 700 ms touch or pen). A dragged
  * folder that the drop would remove asks first (`alertConfirm`). The only write stays the assignment
  * of `characterOrder` followed by `checkCharOrder`, here a spy.
  *
@@ -169,6 +169,7 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 import { DBState } from '../../ts/stores.svelte'
 import { language } from '../../lang'
 import { registerDbChangeEffects } from '../../ts/storage/dbChangeEffects.svelte'
+import { GRID_TOUCH_MERGE_DWELL_MS, MERGE_DWELL_MS } from '../SideBars/railConstants'
 import { OPEN_FOLDERS_KEY } from '../SideBars/railMemory'
 import GridCatalog from './GridCatalog.svelte'
 
@@ -614,10 +615,10 @@ describe('Grid drag: onto a folder tile and the dwell merge', () => {
         })
     })
 
-    test('(R) B-4 a 400 ms dwell on a character makes one new folder at its slot with it and every dragged tile', async () => {
+    test('(R) B-4 a 400 ms mouse dwell on a character makes one new folder at its slot with it and every dragged tile', async () => {
         flat()
         await withGrid({}, async (rig) => {
-            await gesture(rig, { from: centre(0, 0), to: centre(1, 0), dwell: 400 })
+            await gesture(rig, { from: centre(0, 0), to: centre(1, 0), type: 'mouse', dwell: 400 })
             expect(shape()).toEqual(['B', 'C', 'D', `${NEW_FOLDER}[A,E]`, 'F', 'G', 'H'])
             expect(alertConfirmSpy).not.toHaveBeenCalled()
             // The new folder starts closed.
@@ -628,8 +629,37 @@ describe('Grid drag: onto a folder tile and the dwell merge', () => {
     test('(R) B-4 released at 399 ms the same drag is a gap move, not a merge', async () => {
         flat()
         await withGrid({}, async (rig) => {
-            await gesture(rig, { from: centre(0, 0), to: centre(1, 0), dwell: 399 })
+            await gesture(rig, { from: centre(0, 0), to: centre(1, 0), type: 'mouse', dwell: 399 })
             expect(shape()).toEqual(['B', 'C', 'D', 'E', 'A', 'F', 'G', 'H'])
+        })
+    })
+
+    test('(R) MC-382 a touch drag resting only the mouse dwell plus 50 ms does not merge; it is a gap move', async () => {
+        flat()
+        await withGrid({}, async (rig) => {
+            await gesture(rig, { from: centre(0, 0), to: centre(1, 0), dwell: MERGE_DWELL_MS + 50 })
+            expect(shape()).toEqual(['B', 'C', 'D', 'E', 'A', 'F', 'G', 'H'])
+        })
+    })
+
+    test('(R) MC-382 a touch drag released at 699 ms is a gap move and at 700 ms merges', async () => {
+        flat()
+        await withGrid({}, async (rig) => {
+            await gesture(rig, { from: centre(0, 0), to: centre(1, 0), dwell: GRID_TOUCH_MERGE_DWELL_MS - 1 })
+            expect(shape()).toEqual(['B', 'C', 'D', 'E', 'A', 'F', 'G', 'H'])
+        })
+        flat()
+        await withGrid({}, async (rig) => {
+            await gesture(rig, { from: centre(0, 0), to: centre(1, 0), dwell: GRID_TOUCH_MERGE_DWELL_MS })
+            expect(shape()).toEqual(['B', 'C', 'D', `${NEW_FOLDER}[A,E]`, 'F', 'G', 'H'])
+        })
+    })
+
+    test('(F) MC-382 a mouse drag still merges after MERGE_DWELL_MS plus 50 ms', async () => {
+        flat()
+        await withGrid({}, async (rig) => {
+            await gesture(rig, { from: centre(0, 0), to: centre(1, 0), type: 'mouse', dwell: MERGE_DWELL_MS + 50 })
+            expect(shape()).toEqual(['B', 'C', 'D', `${NEW_FOLDER}[A,E]`, 'F', 'G', 'H'])
         })
     })
 
@@ -757,13 +787,13 @@ describe('Grid drag: the dragged tiles', () => {
         world(['A', 'B', 'C', 'D', 'E'], ['A', makeFolder('f1', 'F1', ['B', 'C']), makeFolder('f2', 'F2', ['D', 'E'])])
         const before = DBState.db.characterOrder
         await withGrid({}, async (rig) => {
-            // A character: moves 12 px inside its own centre zone and rests past the 400 ms dwell.
-            await gesture(rig, { from: centre(0, 0, 3), to: { x: centre(0, 0, 3).x + 12, y: 28 }, dwell: 450, release: false })
+            // A character: moves 12 px inside its own centre zone and rests past the touch merge dwell.
+            await gesture(rig, { from: centre(0, 0, 3), to: { x: centre(0, 0, 3).x + 12, y: 28 }, dwell: GRID_TOUCH_MERGE_DWELL_MS + 50, release: false })
             expect(dropRings(rig.target)).toBe(0)
             firePointer('pointerup', window, { x: centre(0, 0, 3).x + 12, y: 28 })
             await settle()
             // A folder tile: the same on its own centre zone.
-            await gesture(rig, { from: centre(0, 1, 3), to: { x: centre(0, 1, 3).x + 12, y: 28 }, dwell: 450, release: false })
+            await gesture(rig, { from: centre(0, 1, 3), to: { x: centre(0, 1, 3).x + 12, y: 28 }, dwell: GRID_TOUCH_MERGE_DWELL_MS + 50, release: false })
             expect(dropRings(rig.target)).toBe(0)
             firePointer('pointerup', window, { x: centre(0, 1, 3).x + 12, y: 28 })
             await settle()
@@ -1017,7 +1047,7 @@ describe('Grid drag: the confirmation before a dragged folder is removed', () =>
         await withGrid({}, async (rig) => {
             await tap(rig.target, 'Char A')
             await tap(rig.target, 'F1')
-            await gesture(rig, { from: centre(0, 1), to: centre(0, 2), dwell: 400 })
+            await gesture(rig, { from: centre(0, 1), to: centre(0, 2), dwell: GRID_TOUCH_MERGE_DWELL_MS })
             expect(alertConfirmSpy).toHaveBeenCalledTimes(1)
             expect(alertConfirmSpy.mock.calls[0][0]).toBe(language.othersUi.editFolderRemoveConfirm(['F1']))
             await answerConfirm(true)
@@ -1669,7 +1699,7 @@ describe('Grid drag: what the drag looks like', () => {
             // A dwell on a character shows the ring instead of the bar.
             firePointer('pointermove', window, centre(1, 3))
             await settle()
-            vi.advanceTimersByTime(400)
+            vi.advanceTimersByTime(GRID_TOUCH_MERGE_DWELL_MS)
             flushSync()
             await settle()
             expect(dropRings(rig.target)).toBe(1)
@@ -1706,7 +1736,7 @@ describe('Grid drag: the selection after a merge', () => {
             // Rows: [F1 A C D]. F1 is picked; the dragged character A is not.
             await tap(rig.target, 'F1')
             expect(pressedOf(rig.target, 'F1')).toBe('true')
-            await gesture(rig, { from: centre(0, 1), to: centre(0, 2), dwell: 400 })
+            await gesture(rig, { from: centre(0, 1), to: centre(0, 2), dwell: GRID_TOUCH_MERGE_DWELL_MS })
             expect(shape()).toEqual(['F1[B]', `${NEW_FOLDER}[A,C]`, 'D'])
             expect(alertConfirmSpy).not.toHaveBeenCalled()
             expect(picked(rig.target)).toBe(0)

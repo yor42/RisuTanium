@@ -145,6 +145,7 @@ import Sidebar from './Sidebar.svelte'
 import {
     AUTO_SCROLL_MAX_PX_PER_S,
     CLICK_SUPPRESS_MS,
+    GRID_TOUCH_MERGE_DWELL_MS,
     LONG_PRESS_MS,
     MERGE_DWELL_MS,
     OUTSIDE_MARGIN_PX,
@@ -430,6 +431,24 @@ describe('merge by dwell', () => {
         await settle()
         expect(orderNow()).toEqual(['NEW[C,A]', 'B'])
         expect(($state.snapshot(DBState.db.characterOrder) as unknown as FolderFixture[])[0].name).toBe('New Folder')
+    })
+
+    // Compatibility guard (passes before and after the Grid touch dwell): only the Grid takes the
+    // longer touch merge dwell; the rail keeps MERGE_DWELL_MS for touch as well as for the mouse.
+    test('guard: a touch-lifted row merges after the same dwell as the mouse, not the longer Grid touch dwell', async () => {
+        useFakeTime()
+        expect(MERGE_DWELL_MS + 50).toBeLessThan(GRID_TOUCH_MERGE_DWELL_MS)
+        setDb(['A', 'B', 'C'])
+        const t = await mountSidebar()
+        const a = charRow(t, 'A')
+        await liftWithTouch(charRow(t, 'C'))
+        await moveTo(zoneClientY(t, a), { pointerType: 'touch' })
+        expect(highlighted()).toEqual([])
+        await rest(MERGE_DWELL_MS + 50)
+        expect(highlighted()).toEqual([a])
+        up(zoneClientY(t, a), { pointerType: 'touch' })
+        await settle()
+        expect(orderNow()).toEqual(['NEW[C,A]', 'B'])
     })
 
     test('leaving the zone and returning restarts the dwell', async () => {

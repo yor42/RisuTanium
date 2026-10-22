@@ -28,7 +28,7 @@
     import { folderEntryAt, foldersDissolvedBy, groupIntoFolder, moveManyToGap, refKey, type DissolvedFolder, type FolderRef, type Gap, type ItemRef, type OrderEntry } from "../SideBars/sidebarOrder";
     import { RailDrag, type RailHost } from "../SideBars/railDrag";
     import { bindRail, type RailBinding } from "../SideBars/railBinding";
-    import { TOUCH_SLOP_PX } from "../SideBars/railConstants";
+    import { GRID_TOUCH_MERGE_DWELL_MS, TOUCH_SLOP_PX } from "../SideBars/railConstants";
     import { computeLayout, type LayoutItem } from "../SideBars/railLayout";
     import type { RailGeometry } from "../SideBars/railResolver";
     import { NO_TARGET, type Target } from "../SideBars/railTarget";
@@ -1151,7 +1151,7 @@
         },
     }
 
-    const machine = new RailDrag(host, undefined, gridGeometry)
+    const machine = new RailDrag(host, undefined, gridGeometry, { touchMergeDwellMs: GRID_TOUCH_MERGE_DWELL_MS })
 
     // A press whose tile left the entries ends without effect, except a hold that already entered edit
     // mode (see holdEnteredEdit).
