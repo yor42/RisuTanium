@@ -9,6 +9,8 @@
     import { getModelInfo } from "src/ts/model/modellist"
     import { runLuaButtonTrigger, runLuaInteractionTrigger } from 'src/ts/process/scriptings'
     import { risuChatParser } from "src/ts/process/scripts"
+    import { MEASURE } from "src/ts/process/memory/measureFlag"
+    import { noteEditConfirm } from "src/ts/process/chatPhaseRing"
     import { runTrigger } from 'src/ts/process/triggers'
     import { beginWork, originStatus } from 'src/ts/process/chatOrigin'
     import { sayTTS } from "src/ts/process/tts"
@@ -370,8 +372,12 @@
         if (originalEditControlDisabled) return
 
         if (editMode) {
+            const confirmStartT = MEASURE ? performance.now() : 0
             editMode = false
             edit()
+            if (MEASURE) {
+                noteEditConfirm(confirmStartT)
+            }
         } else {
             startOriginalEdit()
         }
