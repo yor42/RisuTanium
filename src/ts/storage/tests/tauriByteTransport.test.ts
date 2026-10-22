@@ -561,7 +561,7 @@ describe('takeRangeReadStats', () => {
         const read = await readRanged('assets/x', 10)
 
         expect(read.length).toBe(25)
-        expect(takeRangeReadStats()).toEqual({ reads: 3, ms: 15, wallMs: 15, store2Reads: 0, store2Ms: 0 })
+        expect(takeRangeReadStats()).toEqual({ reads: 3, ms: 15, wallMs: 15, store2Reads: 0, store2Ms: 0, maxInFlight: 1 })
     })
 
     test('invokes in flight together add up to more than the wall time, and a store2 key is counted on its own', async () => {
@@ -580,7 +580,7 @@ describe('takeRangeReadStats', () => {
         await second
 
         // First: 0 to 30. Second: 10 to 50. At least one was in flight from 0 to 50.
-        expect(takeRangeReadStats()).toEqual({ reads: 2, ms: 70, wallMs: 50, store2Reads: 1, store2Ms: 30 })
+        expect(takeRangeReadStats()).toEqual({ reads: 2, ms: 70, wallMs: 50, store2Reads: 1, store2Ms: 30, maxInFlight: 2 })
     })
 
     test('a take clears the counts, and an invoke in flight across it counts its wall time on both sides', async () => {
@@ -590,13 +590,13 @@ describe('takeRangeReadStats', () => {
         const read = readRanged('assets/x', 10)
         await Promise.resolve()
         now = 40
-        expect(takeRangeReadStats()).toEqual({ reads: 0, ms: 0, wallMs: 40, store2Reads: 0, store2Ms: 0 })
+        expect(takeRangeReadStats()).toEqual({ reads: 0, ms: 0, wallMs: 40, store2Reads: 0, store2Ms: 0, maxInFlight: 1 })
         now = 100
         held.release(0)
         await read
 
-        expect(takeRangeReadStats()).toEqual({ reads: 1, ms: 100, wallMs: 60, store2Reads: 0, store2Ms: 0 })
-        expect(takeRangeReadStats()).toEqual({ reads: 0, ms: 0, wallMs: 0, store2Reads: 0, store2Ms: 0 })
+        expect(takeRangeReadStats()).toEqual({ reads: 1, ms: 100, wallMs: 60, store2Reads: 0, store2Ms: 0, maxInFlight: 1 })
+        expect(takeRangeReadStats()).toEqual({ reads: 0, ms: 0, wallMs: 0, store2Reads: 0, store2Ms: 0, maxInFlight: 0 })
     })
 
     test('a rejected invoke is counted and its rejection reaches the caller unchanged', async () => {
@@ -609,7 +609,7 @@ describe('takeRangeReadStats', () => {
         held.reject(0, 'the command failed (os error 5)')
 
         await expect(read).rejects.toBe('the command failed (os error 5)')
-        expect(takeRangeReadStats()).toEqual({ reads: 1, ms: 7, wallMs: 7, store2Reads: 1, store2Ms: 7 })
+        expect(takeRangeReadStats()).toEqual({ reads: 1, ms: 7, wallMs: 7, store2Reads: 1, store2Ms: 7, maxInFlight: 1 })
     })
 
     test('a clock that throws loses the figures and nothing else: the read returns its bytes and later takes still answer', async () => {
@@ -619,8 +619,8 @@ describe('takeRangeReadStats', () => {
         const read = await readRanged('assets/x', 10)
 
         expect(Array.from(read)).toEqual(Array.from(patterned(25)))
-        expect(takeRangeReadStats()).toEqual({ reads: 0, ms: 0, wallMs: 0, store2Reads: 0, store2Ms: 0 })
-        expect(takeRangeReadStats()).toEqual({ reads: 0, ms: 0, wallMs: 0, store2Reads: 0, store2Ms: 0 })
+        expect(takeRangeReadStats()).toEqual({ reads: 0, ms: 0, wallMs: 0, store2Reads: 0, store2Ms: 0, maxInFlight: 0 })
+        expect(takeRangeReadStats()).toEqual({ reads: 0, ms: 0, wallMs: 0, store2Reads: 0, store2Ms: 0, maxInFlight: 0 })
     })
 
     test('a clock that fails only when the invoke ends loses that record and nothing else: the bytes arrive and nothing is left in flight', async () => {
@@ -636,6 +636,43 @@ describe('takeRangeReadStats', () => {
         const read = await readRanged('assets/x', 10)
 
         expect(Array.from(read)).toEqual(Array.from(patterned(3)))
-        expect(takeRangeReadStats()).toEqual({ reads: 0, ms: 0, wallMs: 0, store2Reads: 0, store2Ms: 0 })
+        expect(takeRangeReadStats()).toEqual({ reads: 0, ms: 0, wallMs: 0, store2Reads: 0, store2Ms: 0, maxInFlight: 1 })
+    })
+
+    // New behaviour: the peak of invokes in flight, which the export note prints as `rangeMaxInFlight`.
+    test('maxInFlight is the true peak of overlapping invokes, not their total', async () => {
+        const held = heldReads()
+
+        const first = readRanged('assets/a', 10)
+        await Promise.resolve()
+        held.release(0)
+        await first
+        const second = readRanged('assets/b', 10)
+        const third = readRanged('assets/c', 10)
+        await Promise.resolve()
+        held.release(1)
+        held.release(2)
+        await Promise.all([second, third])
+
+        // Three invokes ran in all, never more than two at once.
+        expect(takeRangeReadStats()).toMatchObject({ reads: 3, maxInFlight: 2 })
+    })
+
+    test('the peak survives a take: an invoke in flight across it counts in the next window, and a second overlap reports 2', async () => {
+        const held = heldReads()
+
+        const first = readRanged('assets/a', 10)
+        await Promise.resolve()
+        expect(takeRangeReadStats()).toMatchObject({ maxInFlight: 1 })
+        // The window after the take starts at the invoke still in flight, not at zero.
+        expect(takeRangeReadStats()).toMatchObject({ reads: 0, maxInFlight: 1 })
+        const second = readRanged('assets/b', 10)
+        await Promise.resolve()
+        held.release(0)
+        held.release(1)
+        await Promise.all([first, second])
+
+        expect(takeRangeReadStats()).toMatchObject({ reads: 2, maxInFlight: 2 })
+        expect(takeRangeReadStats()).toMatchObject({ maxInFlight: 0 })
     })
 })

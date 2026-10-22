@@ -521,6 +521,8 @@ export interface RangeReadStats {
     /** The share of `reads` and `ms` that named a `store2/` key. */
     store2Reads: number
     store2Ms: number
+    /** The most invokes in flight at once since the last take; a take starts it at the count in flight then. */
+    maxInFlight: number
 }
 
 interface RangeReadMark {
@@ -529,7 +531,7 @@ interface RangeReadMark {
 }
 
 function emptyRangeStats(): RangeReadStats {
-    return { reads: 0, ms: 0, wallMs: 0, store2Reads: 0, store2Ms: 0 }
+    return { reads: 0, ms: 0, wallMs: 0, store2Reads: 0, store2Ms: 0, maxInFlight: 0 }
 }
 
 let rangeStats: RangeReadStats = emptyRangeStats()
@@ -555,6 +557,8 @@ export function takeRangeReadStats(): RangeReadStats | null {
     }
     const stats = rangeStats
     rangeStats = emptyRangeStats()
+    // Invokes still in flight belong to the next window's peak too.
+    rangeStats.maxInFlight = rangeInFlight
     if (rangeInFlight > 0) {
         try {
             const now = rangeClock()
@@ -574,6 +578,9 @@ function beginRangeRead(key: string): RangeReadMark | null {
             rangeBusySince = startedAt
         }
         rangeInFlight += 1
+        if (rangeInFlight > rangeStats.maxInFlight) {
+            rangeStats.maxInFlight = rangeInFlight
+        }
         return { startedAt, store2: key.startsWith('store2/') }
     } catch {
         return null

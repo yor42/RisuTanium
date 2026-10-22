@@ -68,7 +68,8 @@ import { getNodeServerProxyAuth } from "./storage/nodeStorage";
 import { assertNoSecretRef, redactResolved } from "./secretRef";
 import { getMultiTabAction, isRevisionAwareBackend, nextAutoReloadHistory, resolvePromptChoice, resolveRevisionAwarePromptChoice, readAutoReloadHistory, writeAutoReloadHistory, shouldRetainOtherTabSavedSignal, type AutoReloadHistory } from "./storage/multiTabReload";
 import { hasLocalDrafts } from "./localDrafts";
-import { beginChokePoint } from "./process/memory/busyActions";
+import { beginChokePoint, busyKinds } from "./process/memory/busyActions";
+import { installNetHold } from "./storage/measureExportHold";
 import { MEASURE } from "./process/memory/measureFlag";
 import { noteChatSelect } from "./process/chatPhaseRing";
 import { draftContentOrphanGate } from "./draftContentOrphanGate";
@@ -1749,6 +1750,10 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         sleep,
         sleepForever,
         now: () => Date.now(),
+    }
+    if (MEASURE) {
+        // A measurement build can hold the idle net while an export runs; dirty passes are not affected.
+        installNetHold(busyKinds)
     }
     return await runStore2SaveLoop(active, port)
 }
