@@ -2,31 +2,23 @@
   import { onDestroy, tick, untrack } from "svelte";
   import { DBState, selectedCharID } from "src/ts/stores.svelte";
   import { FolderIcon, FolderOpenIcon } from "@lucide/svelte";
-  import { addCharacter, changeChar, getCharImage, trashFolderMembers, untrashedMembersOf, visibleCharacterIds } from "../../ts/characters";
+  import { addCharacter, changeChar, getCharImage, visibleCharacterIds } from "../../ts/characters";
   import { language } from "../../lang";
   import isEqual from "lodash/isEqual";
   import SidebarAvatar from "./SidebarAvatar.svelte";
   import SidebarIndicator from "./SidebarIndicator.svelte";
   import BaseRoundedButton from "../UI/BaseRoundedButton.svelte";
-  import { getCharacterIndexObject, selectSingleFile } from "src/ts/util";
+  import { getCharacterIndexObject } from "src/ts/util";
   import { v4 } from "uuid";
-  import { checkCharOrder, saveAsset } from "src/ts/globalApi.svelte";
-  import { applyFolderImage } from "./folderImage";
-  import { beginBusy } from "src/ts/process/memory/busyActions";
-  import { alertInput, alertSelect } from "src/ts/alert";
-  import { getFolderColorLabels, getFolderColorValue } from "./folderColors";
+  import { checkCharOrder } from "src/ts/globalApi.svelte";
+  import { runFolderMenu } from "./folderMenu";
   import { setRailTooltipsSuppressed, tooltipRail } from "src/ts/gui/tooltip";
   import { keyEventBlocked, keysBlockedNow } from "src/ts/keyEventBlocked";
-  import type { folder } from "src/ts/storage/database.svelte";
   import {
-    editFolder,
     dropOnItem,
-    folderEntryAt,
-    folderMemberIds,
     listRows,
     moveToGap,
     refKey,
-    ungroupFolder,
     type CharRef,
     type FolderRef,
     type Gap,
@@ -224,17 +216,6 @@
     }))
   }
 
-  // Finds the folder by id at the moment of writing, so an edit that waited
-  // on a dialog or a file picker never lands on a different entry.
-  const editFolderById = (id:string, edit:(copy:folder) => void) => {
-    const next = editFolder(DBState.db.characterOrder, id, edit)
-    if(next){
-      DBState.db.characterOrder = next
-    }
-  }
-
-  const folderExists = (id:string) => editFolder(DBState.db.characterOrder, id, () => {}) !== null
-
   const closeFolder = (id:string) => {
     const at = openFolders.indexOf(id)
     if(at >= 0){
@@ -242,103 +223,12 @@
     }
   }
 
-  // The folder's own entry goes and its members take its place. Resolved against the live
-  // order by the menu's ref at the moment of the choice; a folder that is gone changes nothing.
-  const ungroup = (ref:FolderRef) => {
-    let changed = false
-    applyOrderChange((order) => {
-      const next = ungroupFolder(order, ref)
-      changed = next !== null
-      return next ?? order
-    })
-    if(changed){
-      closeFolder(ref.id)
-    }
-  }
+  // The folder menu lives in folderMenu.ts; this rail passes no optional hooks, so a field edit is a
+  // plain assignment and the file chooser opens without further preparation.
+  const folderMenuHost = { applyOrderChange, closeFolder }
 
-  async function deleteFolderMenu(ref:FolderRef, folderName:string) {
-    const before = folderMemberIds(DBState.db.characterOrder, ref)
-    if(before === null){
-      return
-    }
-    // Only visible members count: a hidden character is never offered for the trash.
-    const isVisible = visibilityNow()
-    const count = untrashedMembersOf(before.filter(isVisible)).length
-    const labels = count > 0
-      ? [language.deleteFolderKeep, language.deleteFolderTrash(count), language.cancel]
-      : [language.deleteFolderKeep, language.cancel]
-    const sel = parseInt(await alertSelect(labels))
-    if(sel === 0){
-      ungroup(ref)
-    }
-    else if(sel === 1 && count > 0){
-      // The folder as it is now: it may have changed while the choice was open. The order's own
-      // object is passed, so the trash finds the same entry again and not a same-id twin.
-      const entry = folderEntryAt(DBState.db.characterOrder, ref)
-      if(entry !== null){
-        await trashFolderMembers(entry, folderName)
-      }
-    }
-  }
-
-  async function openFolderMenu(ref:FolderRef, folderId:string, folderName:string) {
-    const sel = parseInt(await alertSelect([language.renameFolder,language.changeFolderColor,language.changeFolderImage,language.ungroupFolder,language.deleteFolder,language.cancel]))
-    if(sel === 3){
-      ungroup(ref)
-    }
-    else if(sel === 4){
-      await deleteFolderMenu(ref, folderName)
-    }
-    else if(sel === 0){
-      const v = await alertInput(language.changeFolderName, [], folderName)
-      if(v){
-        editFolderById(folderId, (entry) => { entry.name = v })
-      }
-    }
-    else if(sel === 1){
-      const sel = parseInt(await alertSelect(getFolderColorLabels()))
-      const colorValue = getFolderColorValue(sel)
-      if(colorValue === undefined){
-        return
-      }
-      editFolderById(folderId, (entry) => { entry.color = colorValue })
-    }
-    else if(sel === 2) {
-      const sel = parseInt(await alertSelect([language.alerts.resetToDefaultImage, language.alerts.selectImageFile]))
-
-      switch (sel) {
-        case 0:
-          editFolderById(folderId, (entry) => { applyFolderImage(entry, null) })
-          break;
-
-        case 1:
-          const folderImage = await selectSingleFile([
-            'png',
-            'jpg',
-            'webp',
-          ])
-
-          if(!folderImage) {
-            return
-          }
-
-          // A folder that is gone, or whose id is not unique, has no safe target: no asset is saved for it.
-          if(!folderExists(folderId)) {
-            return
-          }
-
-          const busy = beginBusy('imageAdd')
-          try {
-            const folderImageData = await saveAsset(folderImage.data)
-
-            editFolderById(folderId, (entry) => { applyFolderImage(entry, folderImageData) })
-          } finally {
-            busy.end()
-          }
-          break;
-      }
-    }
-  }
+  const openFolderMenu = (ref:FolderRef, folderId:string, folderName:string) =>
+    runFolderMenu({ ref, id: folderId, name: folderName }, folderMenuHost)
 
   //#region geometry
 
