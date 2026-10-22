@@ -14,6 +14,7 @@
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { AssetPutResult } from 'src/ts/storage/tauriAssetBatch'
+import { StoreInvalidKeyError } from 'src/ts/storage/store/errors'
 import type { ChunkedWriter } from 'src/ts/storage/tauriByteTransport'
 import {
     ASSET_MAX_STREAMS,
@@ -135,8 +136,13 @@ function createWorld() {
         failWrite: null as ((key: string, index: number) => boolean) | null,
         /** Runs when a batch call starts; may wait, or throw to reject the call. */
         beforeBatch: null as ((index: number) => Promise<void> | undefined) | null,
+        /** Whether opening a write of `key` throws, as the store does for a name it refuses. */
+        refuseKey: null as ((key: string) => boolean) | null,
     }
     const openStream = (key: string): ChunkedWriter => {
+        if (ctl.refuseKey?.(key)) {
+            throw new StoreInvalidKeyError(key, 'refused by the test store')
+        }
         const record: WriterRecord = { key, chunks: [], finished: false, aborted: false }
         writers.push(record)
         active += 1
@@ -304,6 +310,100 @@ describe('overlapping streams', () => {
         expect(finishedAtDrain).toBe(true)
         expect(same(world.files.get('assets/a'), first.bytes)).toBe(true)
         expect(same(world.files.get('assets/b'), second.bytes)).toBe(true)
+    })
+})
+
+describe('a stream whose name the store refuses', () => {
+    // Guard on the serial pipeline, which records the refused name as well; the mutant that drops the name on the beside path turns it red.
+    test('guard: the refused name is reported, is not a failure, and the streams around it land byte-exact beside batches', async () => {
+        const world = createWorld()
+        const pipeline = new RestoreAssetPipeline(world.deps, STREAM_LIMITS)
+        world.ctl.refuseKey = (key) => key === 'assets/.bad'
+        const hold = gate()
+        world.ctl.beforeWrite = () => hold.promise
+        const a = streamed('a', LARGE, 1)
+        const bad = streamed('.bad', LARGE, 2)
+        const b = streamed('b', LARGE, 3)
+        const driver = (async () => {
+            await pipeline.addStreamed(a.item)
+            await pipeline.add(batched('s0', 10, 90))
+            await pipeline.addStreamed(bad.item)
+            await pipeline.addStreamed(b.item)
+        })()
+        await flushMicrotasks()
+
+        // a and b write at once while the refused name opened nothing.
+        expect(world.active()).toBe(2)
+        hold.release()
+        await driver
+        await pipeline.drain()
+
+        expect(pipeline.invalidAssets().map((asset) => asset.name)).toEqual(['.bad'])
+        expect(pipeline.failure).toBeNull()
+        expect(pipeline.sourceChanged).toBe(false)
+        expect(bad.reads).toEqual([])
+        expect(world.writers.map((writer) => writer.key)).toEqual(['assets/a', 'assets/b'])
+        expect(same(world.files.get('assets/a'), a.bytes)).toBe(true)
+        expect(same(world.files.get('assets/b'), b.bytes)).toBe(true)
+        expect(same(world.files.get('assets/s0'), sourceBytes(10, 90))).toBe(true)
+        expect(unhandled).toEqual([])
+    })
+})
+
+describe('outstanding', () => {
+    test('is false for a new pipeline and after a drain', async () => {
+        const world = createWorld()
+        const pipeline = new RestoreAssetPipeline(world.deps, STREAM_LIMITS)
+
+        expect(pipeline.outstanding).toBe(false)
+        await pipeline.add(batched('s0', 4, 1))
+        await pipeline.addStreamed(streamed('a', LARGE, 2).item)
+        await pipeline.drain()
+
+        expect(pipeline.outstanding).toBe(false)
+    })
+
+    test('is true for an entry assembled and not yet sent', async () => {
+        const world = createWorld()
+        const pipeline = new RestoreAssetPipeline(world.deps, STREAM_LIMITS)
+
+        await pipeline.add(batched('s0', 4, 1))
+
+        expect(world.batchCalls).toEqual([])
+        expect(pipeline.outstanding).toBe(true)
+        await pipeline.drain()
+    })
+
+    test('is true while a call is in flight and nothing is assembled', async () => {
+        const world = createWorld()
+        const pipeline = new RestoreAssetPipeline(world.deps, STREAM_LIMITS)
+        const hold = gate()
+        world.ctl.beforeBatch = () => hold.promise
+
+        await pipeline.add(batched('s0', 10, 1))
+        await flushMicrotasks()
+
+        expect(world.batchCalls).toHaveLength(1)
+        expect(pipeline.outstanding).toBe(true)
+        hold.release()
+        await pipeline.drain()
+        expect(pipeline.outstanding).toBe(false)
+    })
+
+    test('is true while only a stream is active', async () => {
+        const world = createWorld()
+        const pipeline = new RestoreAssetPipeline(world.deps, STREAM_LIMITS)
+        const hold = gate()
+        world.ctl.beforeWrite = () => hold.promise
+
+        await pipeline.addStreamed(streamed('a', LARGE, 1).item)
+        await flushMicrotasks()
+
+        expect(world.active()).toBe(1)
+        expect(pipeline.outstanding).toBe(true)
+        hold.release()
+        await pipeline.drain()
+        expect(pipeline.outstanding).toBe(false)
     })
 })
 
