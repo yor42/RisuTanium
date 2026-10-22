@@ -301,7 +301,7 @@ The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer). The de
 
 ### CHORE-223 — An Android stub export spends most of its time in two steps outside the asset loop ('export start' to 'export cold collected'; 'export database encoded' to 'export stub and late payloads done')
 
-**Status (2026-10-22, `MC-362`): in progress. The measurement and the memory release are implemented on `worktree-Lane-B` and technically accepted on the PC (Gate 2 `[APPROVE]`); uncommitted until the maintainer approves. The Note 9 run is pending.** Ledger rows 2337 and 2349 to 2356.
+**Status (2026-10-22, `MC-362`): in progress. The measurement and the memory release are implemented on `worktree-Lane-B` and technically accepted on the PC (Gate 2 `[APPROVE]`); merged (folded into the shared files by lane A on 2026-10-22, merged in `cbd256917`); the Note 9 measurement is pending.** Ledger rows 2337 and 2349 to 2356.
 - **Mechanism, verified** (`c223\packet.md` with `packet-verify.md`):
   - step A, 'export start' to 'export cold collected': `readStubsForExport` reads the 500 characters one at a time; `readUnits` reads each character's pieces with 8 workers, one `read_range` call per piece; each character is re-encoded as JSON;
   - steps B and C: the writes run at about 0.7 to 0.9 MB/s through plugin-fs `writeFile` in append mode with a 4 MiB buffer. That the per-call write cost causes B and C is inferred, not measured;
@@ -444,6 +444,6 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 
 2026-10-22, CHORE-223:
 - **CHORE-222** is fixed: the Note 9 check passed and the maintainer accepted it (lane A's `MC-342`).
-- **CHORE-223:** decisions `MC-362`. Gate 1 `[REJECT]` and then `[APPROVE]` in round 2; implemented; Gate 2 `[APPROVE]` (rows 2349 to 2356). It awaits the maintainer's commit approval.
-- **After the commit:** the Note 9 release MEASURE export run, routed through the maintainer. A targeted fix of steps A to C follows its figures.
+- **CHORE-223:** decisions `MC-362`. Gate 1 `[REJECT]` and then `[APPROVE]` in round 2; implemented; Gate 2 `[APPROVE]` (rows 2349 to 2356). It is merged (folded into the shared files by lane A on 2026-10-22, merged in `cbd256917`); the Note 9 measurement is pending.
+- **Next:** the Note 9 release MEASURE export run, dispatched on phone 1 by lane A (`MC-343` 2); the result is pending. A targeted fix of steps A to C follows its figures.
 - **CHORE-221** remains an unscheduled candidate.

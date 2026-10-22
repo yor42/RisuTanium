@@ -368,3 +368,5 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-341](Maintainer-Context.md#mc-341--lane-a-2026-10-22-lane-b-chore-222-merge-and-its-note-9-check) | Lane A, 2026-10-22: lane B CHORE-222 merge and its Note 9 check |
 | [MC-451](Maintainer-Context.md#mc-451--lane-e-2026-10-22-lane-e-finishes-the-chore-193-leftovers-and-wraps-up) | Lane E, 2026-10-22: lane E finishes the CHORE-193 leftovers and wraps up |
 | [MC-342](Maintainer-Context.md#mc-342--lane-a-2026-10-22-chore-222-note-9-check-accepted-lane-e-leftovers-merge) | Lane A, 2026-10-22: CHORE-222 Note 9 check accepted; lane E leftovers merge |
+| [MC-362](Maintainer-Context.md#mc-362--lane-b-2026-10-22-chore-223-answers-measure-the-slow-export-steps-first-release-each-characters-data-once-it-is-written) | Lane B, 2026-10-22: CHORE-223 answers (measure the slow export steps first; release each character's data once it is written) |
+| [MC-343](Maintainer-Context.md#mc-343--lane-a-2026-10-22-lane-b-chore-223-merge-and-its-note-9-measurement) | Lane A, 2026-10-22: lane B CHORE-223 merge and its Note 9 measurement |

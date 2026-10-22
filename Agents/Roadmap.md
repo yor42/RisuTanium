@@ -7026,7 +7026,24 @@ The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer); the im
 
 ### CHORE-223 — An Android stub export spends most of its time in two steps outside the asset loop ('export start' to 'export cold collected'; 'export database encoded' to 'export stub and late payloads done')
 
-**Status (2026-10-22): open, candidate; not scheduled.** Source: lane A's Note 9 run of the stage 4 export (`%TEMP%\risu-b715\phone1-s4\report.md`, with its corrections). That run was a release build of `18156c972`, with `m2-stub500.bin`. It was imported inline and exported as 500 stub characters with 3,000 assets. n=2: lmkd reclaimed system processes during run 1's asset loop, and run 2 was warm on the same page.
+**Status (2026-10-22, `MC-362`, `MC-343` 1): in progress; merged in `cbd256917` (lane B; code `a7e39a82f`). The measurement and the memory release are technically accepted on the PC (Gate 2 `[APPROVE]`). Note 9 export measurement (lane B's device request): dispatched on phone 1 (`MC-343` 2); the result is pending.** Ledger rows 2337 and 2349 to 2356.
+- **Mechanism, verified** (`%TEMP%\risu-lane-b\c223\packet.md` with `packet-verify.md`):
+  - step A, 'export start' to 'export cold collected': `readStubsForExport` reads the 500 characters one at a time; `readUnits` reads each character's pieces with 8 workers, one `read_range` call per piece; each character is re-encoded as JSON;
+  - steps B and C: the writes run at about 0.7 to 0.9 MB/s through plugin-fs `writeFile` in append mode with a 4 MiB buffer. That the per-call write cost causes B and C is inferred, not measured;
+  - `get_assets_batch` refuses keys outside `assets/`, so batching step A needs Rust.
+- **What changed:**
+  - **Measurement** (MEASURE builds only, `import.meta.env.DEV || VITE_RISU_MEASURE==='1'`; folded out of release builds). It is appended to the existing export notes in `src/ts/drive/backuplocal.ts`:
+    - 'export cold collected' carries the stub read and encode times (`readStubsForExport`, `src/ts/drive/exportInline.ts`) and the `read_range` calls, total time, wall time with any call in flight, and the `store2/` share (`src/ts/storage/tauriByteTransport.ts`);
+    - 'export stub and late payloads done', 'export database written' and 'export closed' carry each `writeFile` call's bytes, the time until the call returns its promise, and the wait (`TauriWriter.put`, `src/ts/exportWriters.ts`). Up to 25 calls are listed, otherwise the cheapest and dearest.
+    - A failing clock never fails an export or a read. `util/checkReleaseDist.mjs` gains four field markers.
+  - **Memory release:** `writeStubPayloadsAndRelease` writes each stub payload and then drops it from the returned array, and clears `cold.stubEntries` once, only after `encodeDatabaseWithLateColdStorage` returns, in both the full and the partial export. Only references are dropped. Leftover: a partial export that leaves out an oversize item keeps the original map alive through `collected`.
+  - The backup file is unchanged; in a MEASURE build it is byte-identical with the measurement key on and off (tests).
+- **Not proved:** the native writer, the Android bridge, and any phone timing or memory effect. The PC harness mocks Tauri fs.
+- **Open:**
+  - **The Note 9 run:** a release `VITE_RISU_MEASURE=1` export of `m2-stub500.bin`, n=2, with the new fields, a CDP `write_file` timing to an `$APPDATA` scratch path, and the PSS during steps B and C by process. Dispatched on phone 1 (`MC-343` 2); the result is pending. A targeted fix of steps A to C follows its figures.
+  - **Untested, measurement only** (Gate 2 N1, N2): the write-stats reset before 'export database encoded' and the retry-read timing survive mutants. N3 to N5 (row 2355) are low-impact and not done.
+
+**Status (2026-10-22; superseded by the status above): open, candidate; not scheduled.** Source: lane A's Note 9 run of the stage 4 export (`%TEMP%\risu-b715\phone1-s4\report.md`, with its corrections). That run was a release build of `18156c972`, with `m2-stub500.bin`. It was imported inline and exported as 500 stub characters with 3,000 assets. n=2: lmkd reclaimed system processes during run 1's asset loop, and run 2 was warm on the same page.
 
 - **Measured** (from the export phase ring):
   - confirm to the save dialog: about 83.5 s, nearly all of it 'export start' to 'export cold collected' (81.8 and 82.2 s);

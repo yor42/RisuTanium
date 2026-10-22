@@ -11250,3 +11250,37 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 1. **CHORE-222's Note 9 integrity check: "Accept, mark fixed (Recommended)".** The check meets `MC-361`'s condition for the Android default (2 streams, 4 flights); CHORE-222 is fixed. Limits noted with it: the "import committed" mark was not observed (the commit is inferred from store2 growth of exactly the planned units), and the "Finishing copying files..." message was not seen (inconclusive: 0 of 275 polls, with at most about 3.7 s unobserved). The 2-stream, 4-flight default rests on the copy knob reading null over CDP before the import; no artifact of that read was saved.
 2. **Lane E's CHORE-193 leftovers**: "lane E finished the leftovers and is ready to merge." (the maintainer's own message). Merged as `344b715bd`, with this fold-in.
 - Notes, not the maintainer's words: item 1's option text was written by the orchestrator. Nothing here authorizes pushing a lane branch.
+
+### MC-362 — Lane B, 2026-10-22: CHORE-223 answers (measure the slow export steps first; release each character's data once it is written)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs:
+  - lane A's Note 9 release run of the stage 4 export (`%TEMP%\risu-b715\phone1-s4\report.md`, with its corrections; row 2337);
+  - `%TEMP%\risu-lane-b\c223\packet.md` (investigator), superseded where they differ by `packet-verify.md` (`doc-verifier`: 19 of 24 verified, corrections 1 to 4).
+- **Related:** `MC-359`, `MC-328` 2; CHORE-223.
+
+1. **Next step: "Measure first (Recommended)".** Add timing marks that are compiled out of normal builds: each file-write call's bytes and milliseconds, and step A split into reading and encoding. Then one Note 9 export run. The change makes no behaviour change apart from item 2. The run should tell whether the write slowness comes from the save-dialog path or the storage, and whether step A waits on reads or on the phone's CPU. A targeted fix follows the run.
+   - The question stated:
+     - an Android export of 500 characters and 3,000 assets took about 112 to 119 s from Save to complete on the Note 9 release build;
+     - three slow parts lie outside the 10 s asset copy: (A) about 82 s before the save dialog, reading the 500 characters one at a time; (B) about 80 to 90 s writing 71 MB of character data; (C) about 14 s writing the 10 MB database;
+     - B and C run under 1 MB/s through the app's file-write call, cause unknown.
+   
+   Not chosen: "Fix step A now" (read 2 to 4 characters ahead) and "Record only".
+2. **Memory: "Include it (Recommended)".** Free each character's data as soon as it is written. It ships with the item 1 change, and the same phone run shows whether the memory peak drops. The question stated that the export holds all 71 MB of character data until it finishes, that the 1,337 MiB peak fell during that writing step, and that the link to the peak is likely but not measured. Not chosen: "Not now".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- **Corrections to the question's figures** (`packet-verify.md`): step C is four or more `writeFile` calls, not three; `late.payloads` being empty is inferred from the entry count and the fixture.
+- The phone figures are n=2 on one Note 9 (row 2337); run 1 had lmkd reclaiming system processes, and run 2 was warm.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-343 — Lane A, 2026-10-22: lane B CHORE-223 merge and its Note 9 measurement
+
+- Tag: decisions (`AskUserQuestion` answers, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript (orchestrator-recorded option text); git `a7e39a82f`, `cbd256917`.
+- Related: `MC-362`; CHORE-223.
+1. **Lane B CHORE-223: "Merge + fold in (Recommended)".** Merged as `cbd256917`, with this fold-in.
+2. **Lane B's Note 9 export measurement: "Phone 1 after merge (Recommended)".** A measurement, not a ship gate; run on phone 1.
+- Notes, not the maintainer's words: the option texts were written by the orchestrator.
