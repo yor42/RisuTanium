@@ -11070,3 +11070,22 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - Related: `MC-360`, `MC-361`, `MC-337`; CHORE-220, CHORE-222, CHORE-223.
 1. **Lane B CHORE-220: "Merge + fold in (Recommended)".** Merged as `888c20283`, with this fold-in. Lane B's records file is unfrozen once this fold-in is committed.
 - Notes, not the maintainer's words: the option text was written by the orchestrator; nothing here authorizes CHORE-222's merge or a device run.
+
+### MC-450 — Lane E, 2026-10-22: the `firstLife` EADDRINUSE fix may change the shared test fixture `nodeServerFixture.ts`, as its own gated step
+
+- **Tag:** decision (chat reply, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane E session transcript. Input: the investigator's triage report `%TEMP%\risu-lane-e\triage\report.md` (section 7; independent verification pending at the time of the decision; `verify.md` later confirmed the 18 files and corrected the report's occurrence count to 44 matching lines).
+- **Related:** `MC-329`, `MC-091`; CHORE-193.
+
+1. **Scope amendment: "yes, you can fix firstLife as its own gated step."** The orchestrator asked whether the proposed fix may change `src/ts/storage/tests/nodeServerFixture.ts`, the test helper that starts a Node server on a port it probed and released (shared by 18 test files per the report's raw count). The lane E brief puts tests outside its eight files out of scope without the maintainer's approval. The maintainer approved the change as its own gated step. The brief and `MC-329` require a red-before-green reproducer for it. The proposed mechanism in the report is a bounded retry with a new port when the server exits on EADDRINUSE; the mechanism itself is settled at that step's Gate 1. Application code (`server/node/server.cjs`) stays out of scope under the brief; the reply did not change that.
+
+### MC-339 — Lane A, 2026-10-22: lane D and lane E merge approvals
+
+- Tag: decisions (maintainer messages, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript, orchestrator-recorded; git `eb7fa1366`, `bdba81fd6`.
+- Related: `MC-450`, `MC-338`; CHORE-193.
+1. **Lane D: "merge lane D when record pass is done."** Lane A merges lane D's branch after lane D's records pass is committed, with a records fold-in.
+2. **Lane E: "Lane E also seems to be ready for merge. message the lane E for coordination. the merge has my approval."** Merged as `bdba81fd6`, with this fold-in.
+- Notes, not the maintainer's words: these quotes are the maintainer's own free-text messages. Nothing here authorizes pushing a lane branch.
