@@ -11292,3 +11292,55 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - Related: `MC-330`, `MC-337`; CHORE-204, CHORE-202.
 1. **CHORE-204 device-script batch: "Commit + push with records (Recommended)".** Committed with this records pass and pushed. Phone 2's CHORE-202 setup (restore `base1`, launch once, snapshot) and R1 to R4 follow (`MC-337` 7).
 - Notes, not the maintainer's words: the option text was written by the orchestrator.
+
+### MC-345 — Lane A, 2026-10-22: personal Android MVP work order (amends MC-321 1)
+
+- Tag: decisions (maintainer messages and `AskUserQuestion` answers, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript, 2026-10-22 (the maintainer's words quoted verbatim; the option texts are the orchestrator's, recorded as shown); the work order draft `%TEMP%\risu-b715\workorder\workorder-v2.md` (with the `senior-advisor` verdict `[APPROVE WITH AMENDMENTS]` and its addendum, amendments applied); the lane E survey `%TEMP%\risu-lane-e\workorder-survey\survey.md` and `chores.md` (with the `doc-verifier` corrections appended); ledger rows 2136 to 2143.
+- Related: `MC-321` 1 (amended by items 2 and 3), `MC-279` 8, `MC-326`, `MC-327` 12, `MC-336`, `MC-337`, `MC-343`, `MC-344`, `MC-362`, `MC-011`, `MC-047`, `MC-091`; CHORE-60, CHORE-115, CHORE-128, CHORE-148, CHORE-181, CHORE-182, CHORE-202, CHORE-223.
+- Amends: `MC-321` 1 (the work order: its Steps 3 to 5 become the parked list in item 3). No historical decision text is rewritten.
+
+**The maintainer's words:**
+- "roadmap seems stale, and I think we were deviated from original work order quite a bit. I think we should clear those up and re-organize the new work order to maximize both speed and cost efficiency soon."
+- "I'd like to have MVP that I can use(not release, for me alone) before major UI overhaul that is likely to take long time."
+- "for MVP, android apk will probably be the only platform that I need it functional as it is my main platform."
+- "chore-115 can be optional, as animated asset is rare in my save data."
+
+**The `AskUserQuestion` answers (orchestrator-recorded option text):**
+- Survey: "Survey now via Lane E (Recommended)".
+- A1 data: "Real partial, then full (Recommended)".
+- Library: "Full library, one long import".
+- Backup, free text: "Without assets is okay if I can carry on the current data into the later version that can export assets via apk update."
+- Stage 5: "Split: 5a now, 5b later (Recommended)".
+- Signing: "Yes, constraint (Recommended)". The question stated that the MVP install must take later APK updates without data loss, so it needs the final package id and the maintainer's real signing key, and throwaway-signed builds cannot be the daily install; the package-id and signing part of CHORE-60 moves into the MVP.
+- Order: "Confirm + commit A0 (Recommended)".
+- A1 start, free text: "both are in C:/Risubackup. partial is ready, but full backup is currently being exported."
+
+**What was decided (maintainer):**
+1. **The MVP goal and its platform.** A personal MVP, not a release, usable by the maintainer alone, before the major UI overhaul. The maintainer expects the Android APK to be the only platform that has to work for it ("android apk will probably be the only platform that I need it functional"); the work order sets no MVP gate for desktop or the hosted web build, which the maintainer did not address.
+2. **The order A0 to A5** (the work order as confirmed by "Confirm + commit A0 (Recommended)"):
+   - **A0 (lane A, docs):** this entry (it amends `MC-321` 1); a "Current work order" block at the top of the Roadmap; the `MC-256` queue and the Sequencing Summary marked superseded; Live-State rewritten to current state only; the pending ledger rows folded in. No corpus-wide status sweep (`docs/workflow/records.md`).
+   - **A1 (lane A, phone 1):** a real-library feasibility run on a release-profile APK, with the Android generated files regenerated first (CHORE-148). The partial backup first, then the full `.bin` (both in `C:/Risubackup`; the full export was still running when this was recorded). Screen on, app in the foreground, charging, "Stay awake" on. Phone 1 has 98 GB free and about 75 GB is needed. Measure wall time, PSS peak and free space before and after; boot time, Grid scrolling with 500+ avatars, and the largest character and longest chat; one send, and a stub export. Keep the resulting profile as the real-shape soak profile.
+   - **In parallel with A1:**
+     - **Lane E:** a trimmed store2 supersession audit. Verdicts: superseded; still present (with a repro plan); not applicable on Android. A `code-searcher` checks presence first; an `investigator` handles only the "still present" items. The audit list:
+       - still-present candidates: CHORE-174, 221, 29, 32, 30 (plugins only), 187;
+       - likely superseded, to verify: CHORE-70, 07, 31, 55, 117 1b and 2, 61 (for CHORE-61, check whether `encodeRisuSaveLegacy` shares the keyed-block object);
+       - Android-specific: CHORE-153 and 181 (is an edit lost when Back is pressed within the 0.5 s debounce?), CHORE-159 (does a store2 restore still write `dbbackup-*.bin` copies?), and the owed unload-2 device and Tauri checks;
+       - dropped (Node only): CHORE-49, 62, 46, 175 and the CHORE-200 residual.
+     - **Lane C:** the CHORE-182 free-space check. Then **E1** with lane A on phone 2, after the CHORE-202 verifier: in `MainActivity.kt`, call `onResume()` on the WebView while a transfer is in flight, then repeat R2. If there is no freeze, the cause is `WebView.onPause()` and a bounded Kotlin fix goes into the MVP. If it still freezes, the native task is post-MVP.
+     - **Lane D:** merge S4-5 (needs the maintainer's approval), then clear.
+   - **A2 (lane B):** stage 5a, automatic GC with no UI. The plan needs a `senior-advisor` challenge, and Gates 1 and 2 go to `opus-reviewer`. The Note 9 "mark under 1 s" check runs on A1's real-shape profile.
+   - **A3:** the fixes the audit confirms. Lane B takes the storage fixes, after 5a. Lane E takes the others: CHORE-174, CHORE-181 plus the debounce test (after S4-5 merges, because `GridCatalog.svelte` overlaps) and CHORE-187.
+   - **A4 (only if A1 says so):** lane C's role-play-first design and CHORE-103, if the full import fails; stages 6 and 7, if memory is a problem; CHORE-154 to CHORE-157, if long chats are slow.
+   - **A5:** the MVP checkpoint. Full `pnpm test` and `pnpm check`, plus an Android build of the merged `main`. The maintainer installs the release-signed APK and imports.
+3. **The parked list.** Until after A5: stage 5b (the clean-up UI, the quota path, C3/Q3, Q9), CHORE-128, CHORE-115, the Node items (CHORE-49, 62, 46, 0b and the CHORE-129 web/Node residual), list windowing, S4-6, CHORE-147, the old Step 3 re-measure, WF-6 and WF-10, the old Step 4 UI-overhaul checkpoint, and the release (R). This list replaces `MC-321` 1 Steps 3 to 5; the old Step 3 re-measure, WF-6 and WF-10 and the Step 4 UI checkpoint all move to after the A5 checkpoint. The old Step 3 store2 supersession audit is not in the parked list: its trimmed form runs in item 2 (the work order's reading, not a separate maintainer answer).
+4. **The backup and signing constraint.** The backup taken from the phone may leave out assets, on the condition that the current data can be carried into a later version that exports assets, delivered as an APK update. So the MVP install must be upgradable in place: every later APK installs over it without wiping data, with the same `applicationId` and the same signing key. The maintainer signs the MVP APK with their real key. The package-id and signing part of CHORE-60 is pulled into the MVP; the rest of CHORE-60 (release identity) stays a release item. Store2 `fmt = 1` is frozen, so later builds read the profile. The device scripts' throwaway re-signed builds cannot be the daily install.
+5. **The restore discipline.** Until stage 5a and the A3 fixes land, the maintainer keeps the pre-cutover upstream-readable `.bin` on the PC as the only restore. The debug MEASURE build is never the daily APK. The library is imported in one long import (foreground, screen on, charging).
+6. **The records cost rule.** Records are folded once per merge, or once per day. MC entries for maintainer answers and the next-free-ID lines are written at once and never batched. One `doc-writer` and one `doc-verifier` per pass.
+7. **CHORE-115 is post-MVP.** Animated assets are rare in the maintainer's save data, so the Android asset-video fix (waiting on a wry release) is optional and parked.
+- Notes, not the maintainer's words:
+  - The option texts, and the signing question's text, were written by the orchestrator. The work order draft's own "(to confirm)" on the signing constraint is closed by the "Yes, constraint (Recommended)" answer.
+  - The `senior-advisor` challenge (verdict `[APPROVE WITH AMENDMENTS]`, with an addendum) and the lane E survey are AI-authored. The survey's `doc-verifier` check found its UNCLEAR column unreliable (3 of 13 sampled rows wrong) and its OPEN column reliable (0 of 14 wrong); CHORE-221 rests on a reviewer reading only and should be verified before it is ranked.
+  - Still unknown: the maintainer's daily phone (model, RAM, Android and WebView version, free storage), and whether to change the Back-quits rule kept in `MC-279` 8 (CHORE-181) if the debounce test shows an edit is lost.
+  - The CHORE-202 phone 2 runs R1 to R3 reproduce a Page Lifecycle freeze at hidden plus 60 s; the cause is not shown to be `WebView.onPause()`, which is what E1 tests. Nothing here says a fix was found.
+  - Nothing here authorizes application-code edits, a merge of S4-5, or a push of a lane branch; lane A commits and pushes this records pass.

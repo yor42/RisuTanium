@@ -371,3 +371,4 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-362](Maintainer-Context.md#mc-362--lane-b-2026-10-22-chore-223-answers-measure-the-slow-export-steps-first-release-each-characters-data-once-it-is-written) | Lane B, 2026-10-22: CHORE-223 answers (measure the slow export steps first; release each character's data once it is written) |
 | [MC-343](Maintainer-Context.md#mc-343--lane-a-2026-10-22-lane-b-chore-223-merge-and-its-note-9-measurement) | Lane A, 2026-10-22: lane B CHORE-223 merge and its Note 9 measurement |
 | [MC-344](Maintainer-Context.md#mc-344--lane-a-2026-10-22-chore-204-commit) | Lane A, 2026-10-22: CHORE-204 commit |
+| [MC-345](Maintainer-Context.md#mc-345--lane-a-2026-10-22-personal-android-mvp-work-order-amends-mc-321-1) | Lane A, 2026-10-22: personal Android MVP work order (amends MC-321 1) |
