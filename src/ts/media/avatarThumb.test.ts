@@ -2,7 +2,7 @@
 
 /**
  * Tests for AV-4 (`avatarThumb.ts`), covering T1-T8, T11, T13, plus T3b,
- * T5d, T5e, T7b and T14 for the store-read/write race and cancellation
+ * T5d, T5e, T7b, T7c and T14 for the store-read/write race and cancellation
  * behaviour. T5e and T14 are regression guards: they hold regardless of that
  * race/cancellation hardening (timer-driven cleanup, and the
  * `isThumbEligible` body, respectively).
@@ -724,7 +724,7 @@ describe('T13: the canvas readback guard', () => {
     })
 })
 
-//#region store-read/write race and cancellation (T3b, T5d, T5e, T7b, T14)
+//#region store-read/write race and cancellation (T3b, T5d, T5e, T7b, T7c, T14)
 // Everything below targets the store-read/write race and cancellation
 // plumbing (`isCancelled`/`setCleanup`/`withStoreTimeout`) in
 // `avatarThumb.ts`: a store read/write with a timeout, and a `realGenerate`
@@ -862,10 +862,10 @@ describe("T5e: a per-task timeout runs the real generator's cleanup immediately,
     })
 })
 
-describe('T7b: a store write that never settles still frees the task slot once storeTimeoutMs elapses (fake timers)', () => {
-    test('the generated src is returned, and a queued second loc starts once the slot frees', async () => {
+describe('T7b: a store write that never settles stops counting as pending once storeTimeoutMs elapses (fake timers)', () => {
+    test('the generated src is returned, and a queued second loc starts once the write times out', async () => {
         vi.useFakeTimers()
-        __avatarThumbTestHooks.setLimits({ concurrency: 1, storeTimeoutMs: 100 })
+        __avatarThumbTestHooks.setLimits({ concurrency: 1, storeTimeoutMs: 100, maxPendingWrites: 1 })
         __avatarThumbTestHooks.setStore({
             getItem: vi.fn(async () => null),
             setItem: vi.fn(() => new Promise(() => {})), // never settles
@@ -886,9 +886,12 @@ describe('T7b: a store write that never settles still frees the task slot once s
         // concurrency 1: only A has started; B is queued behind it.
         expect(generatorCalls).toEqual(['assets/a.png'])
 
-        // A's generation finished; its write to the store hangs. The
-        // concurrency slot must still free once storeTimeoutMs elapses,
-        // rather than staying held for a write that never settles.
+        // A's generation finished and its caller has its src, but its write
+        // to the store hangs and the pending-write cap is 1. Generation must
+        // resume once storeTimeoutMs elapses, rather than stay gated by a
+        // write that never settles.
+        expect(await pA).toBe('src-for-assets/a.png')
+        expect(generatorCalls).toEqual(['assets/a.png'])
         await vi.advanceTimersByTimeAsync(100)
         expect(await pA).toBe('src-for-assets/a.png')
         expect(generatorCalls).toEqual(['assets/a.png', 'assets/b.png'])
@@ -897,6 +900,172 @@ describe('T7b: a store write that never settles still frees the task slot once s
         // left pending when the test ends.
         await vi.advanceTimersByTimeAsync(100)
         expect(await pB).toBe('src-for-assets/b.png')
+    })
+})
+
+describe('T7c: the store write runs outside the concurrency slot, bounded by a pending-write cap', () => {
+    interface HeldWrite {
+        key: string
+        resolve: () => void
+        reject: (err: Error) => void
+    }
+
+    /** `setItem` calls stay pending until the test settles them. */
+    function makeHeldWriteStore(): { store: FakeStore, writes: HeldWrite[] } {
+        const writes: HeldWrite[] = []
+        const store = makeMissStore()
+        store.setItem = vi.fn((key: string) => new Promise<void>((resolve, reject) => {
+            writes.push({ key, resolve: () => resolve(), reject })
+        }))
+        return { store, writes }
+    }
+
+    test('with the first write held, a second task still starts (concurrency 1)', async () => {
+        __avatarThumbTestHooks.setLimits({ concurrency: 1 })
+        const { store, writes } = makeHeldWriteStore()
+        __avatarThumbTestHooks.setStore(store as never)
+        const generatorCalls: string[] = []
+        __avatarThumbTestHooks.setGenerator(async (loc) => {
+            generatorCalls.push(loc)
+            return { src: `src-for-${loc}` }
+        })
+
+        const pA = getAvatarThumbSrc('assets/a.png')
+        const pB = getAvatarThumbSrc('assets/b.png')
+        await flushMicrotasks()
+
+        expect(writes.length).toBe(2)
+        expect(generatorCalls.length).toBe(2)
+        expect(await pA).toBeTypeOf('string')
+        expect(await pB).toBeTypeOf('string')
+        expect(__avatarThumbTestHooks.stats().running).toBe(0)
+        expect(__avatarThumbTestHooks.stats().pendingWrites).toBe(2)
+    })
+
+    test('a skip record frees the slot before its write settles', async () => {
+        __avatarThumbTestHooks.setLimits({ concurrency: 1 })
+        const { store } = makeHeldWriteStore()
+        __avatarThumbTestHooks.setStore(store as never)
+        const generatorCalls: string[] = []
+        __avatarThumbTestHooks.setGenerator(async (loc) => {
+            generatorCalls.push(loc)
+            return loc === 'assets/a.png' ? { skip: true } : { src: `src-for-${loc}` }
+        })
+
+        const pA = getAvatarThumbSrc('assets/a.png')
+        const pB = getAvatarThumbSrc('assets/b.png')
+        await flushMicrotasks()
+
+        expect(generatorCalls.length).toBe(2)
+        expect(await pA).toBeNull()
+        expect(await pB).toBe('src-for-assets/b.png')
+    })
+
+    test('a repeat request while the write is pending is a memo hit, not a second generation', async () => {
+        const { store } = makeHeldWriteStore()
+        __avatarThumbTestHooks.setStore(store as never)
+        const generator = vi.fn(async (loc: string) => ({ src: `src-for-${loc}` }))
+        __avatarThumbTestHooks.setGenerator(generator)
+
+        const first = await getAvatarThumbSrc('assets/a.png')
+        expect(__avatarThumbTestHooks.stats().pendingWrites).toBe(1)
+        const second = await getAvatarThumbSrc('assets/a.png')
+
+        expect(second).toBe(first)
+        expect(generator).toHaveBeenCalledTimes(1)
+        expect(store.getItem).toHaveBeenCalledTimes(1)
+    })
+
+    test('at concurrency 1, at most the cap of writes are outstanding; the next generation waits until one settles', async () => {
+        __avatarThumbTestHooks.setLimits({ concurrency: 1 })
+        const { store, writes } = makeHeldWriteStore()
+        __avatarThumbTestHooks.setStore(store as never)
+        const generatorCalls: string[] = []
+        __avatarThumbTestHooks.setGenerator(async (loc) => {
+            generatorCalls.push(loc)
+            return { src: `src-for-${loc}` }
+        })
+
+        const results = ['a', 'b', 'c', 'd', 'e'].map((n) => getAvatarThumbSrc(`assets/${n}.png`))
+        await flushMicrotasks()
+
+        // The default cap is 4: four generations ran and four writes are
+        // held, so the fifth task stays queued.
+        expect(generatorCalls.length).toBe(4)
+        expect(writes.length).toBe(4)
+        expect(__avatarThumbTestHooks.stats().pendingWrites).toBe(4)
+        expect(__avatarThumbTestHooks.stats().queued).toBe(1)
+
+        writes[0].resolve()
+        await flushMicrotasks()
+
+        expect(generatorCalls.length).toBe(5)
+        expect(__avatarThumbTestHooks.stats().queued).toBe(0)
+
+        for (const write of writes.slice(1)) {
+            write.resolve()
+        }
+        await Promise.all(results)
+        await flushMicrotasks()
+        expect(__avatarThumbTestHooks.stats().pendingWrites).toBe(0)
+    })
+
+    test('a held write that later rejects leaves the memo and the result unchanged and logs nothing', async () => {
+        const spies = [
+            vi.spyOn(console, 'log').mockImplementation(() => {}),
+            vi.spyOn(console, 'info').mockImplementation(() => {}),
+            vi.spyOn(console, 'warn').mockImplementation(() => {}),
+            vi.spyOn(console, 'error').mockImplementation(() => {}),
+        ]
+        try {
+            const { store, writes } = makeHeldWriteStore()
+            __avatarThumbTestHooks.setStore(store as never)
+            const generator = vi.fn(async (loc: string) => ({ src: `src-for-${loc}` }))
+            __avatarThumbTestHooks.setGenerator(generator)
+
+            const first = await getAvatarThumbSrc('assets/a.png')
+            expect(first).toBe('src-for-assets/a.png')
+            expect(__avatarThumbTestHooks.stats().memoEntries).toBe(1)
+
+            writes[0].reject(new Error('quota exceeded'))
+            await flushMicrotasks()
+
+            expect(__avatarThumbTestHooks.stats().memoEntries).toBe(1)
+            expect(__avatarThumbTestHooks.stats().pendingWrites).toBe(0)
+            expect(await getAvatarThumbSrc('assets/a.png')).toBe(first)
+            expect(generator).toHaveBeenCalledTimes(1)
+            for (const spy of spies) {
+                expect(spy).not.toHaveBeenCalled()
+            }
+        } finally {
+            vi.restoreAllMocks()
+        }
+    })
+
+    test('reset clears pending writes; a late settle of an earlier write neither lands in a later store nor changes the later count', async () => {
+        const first = makeHeldWriteStore()
+        __avatarThumbTestHooks.setStore(first.store as never)
+        __avatarThumbTestHooks.setGenerator(async (loc) => ({ src: `src-for-${loc}` }))
+        await getAvatarThumbSrc('assets/a.png')
+        expect(__avatarThumbTestHooks.stats().pendingWrites).toBe(1)
+
+        __avatarThumbTestHooks.reset()
+        expect(__avatarThumbTestHooks.stats().pendingWrites).toBe(0)
+
+        const second = makeHeldWriteStore()
+        __avatarThumbTestHooks.setReadbackCheck(() => true)
+        __avatarThumbTestHooks.setStore(second.store as never)
+        __avatarThumbTestHooks.setGenerator(async (loc) => ({ src: `src-for-${loc}` }))
+        await getAvatarThumbSrc('assets/b.png')
+        expect(__avatarThumbTestHooks.stats().pendingWrites).toBe(1)
+
+        first.writes[0].resolve()
+        await flushMicrotasks()
+
+        expect(__avatarThumbTestHooks.stats().pendingWrites).toBe(1)
+        expect(second.store.setItem).toHaveBeenCalledTimes(1)
+        expect(second.writes.map((w) => w.key)).toEqual(['assets/b.png'])
+        expect(first.store.setItem).toHaveBeenCalledTimes(1)
     })
 })
 

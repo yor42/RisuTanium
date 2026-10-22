@@ -57,15 +57,21 @@ const DEFAULT_MEMO_MAX_ENTRIES = 1000
 const DEFAULT_MEMO_MAX_BYTES = 16 * 1024 * 1024
 /** Bounds a single `getItem`/`setItem` call, separate from `timeoutMs`
  *  (which bounds the whole read-decode-draw pipeline), so a hung IndexedDB
- *  open or transaction can't hold a store call - or the concurrency slot
- *  `persistRecord` is awaited under - open indefinitely. */
+ *  open or transaction can't hold a store call - or the pending-write count
+ *  that gates generation - open indefinitely. */
 const DEFAULT_STORE_TIMEOUT_MS = 5000
+/** Unsettled writes (running or waiting on the store) at which no new task
+ *  starts, so a slow store slows the first pass down instead of letting
+ *  generated data URIs pile up in memory. Tasks already running still add
+ *  their writes, so the peak is this count plus the concurrency minus one. */
+const DEFAULT_MAX_PENDING_WRITES = 4
 
 let concurrency = DEFAULT_CONCURRENCY
 let timeoutMs = DEFAULT_TIMEOUT_MS
 let memoMaxEntries = DEFAULT_MEMO_MAX_ENTRIES
 let memoMaxBytes = DEFAULT_MEMO_MAX_BYTES
 let storeTimeoutMs = DEFAULT_STORE_TIMEOUT_MS
+let maxPendingWrites = DEFAULT_MAX_PENDING_WRITES
 
 /** Sentinel returned by `withStoreTimeout` when the timeout wins the race;
  *  a rejection from the underlying call still propagates normally. */
@@ -147,11 +153,7 @@ async function readStoreRecord(loc: string): Promise<{ kind: 'src', src: string 
     return { kind: 'miss' }
 }
 
-async function persistRecord(loc: string, record: ThumbRecord): Promise<void> {
-    const store = getStore()
-    if (!store) {
-        return
-    }
+async function persistRecord(store: ThumbStoreLike, loc: string, record: ThumbRecord): Promise<void> {
     try {
         // A timeout (like a rejection) is simply ignored here: the caller
         // already has the generated src regardless of whether this write
@@ -161,6 +163,32 @@ async function persistRecord(loc: string, record: ThumbRecord): Promise<void> {
         // Best-effort: a full quota or a broken store must not take away the
         // thumbnail already generated for this call.
     }
+}
+
+/** Writes in flight, counted from the moment one starts until the store call
+ *  settles or times out. */
+let pendingWrites = 0
+/** Bumped by the test reset, so a write that was started before it neither
+ *  changes the count nor re-pumps afterwards. */
+let writeEpoch = 0
+
+/** Starts the write outside the concurrency slot and returns at once. The
+ *  store is captured here, so a write still pending never lands in a store
+ *  installed later. The write's outcome never reaches the memo or the caller. */
+function schedulePersist(loc: string, record: ThumbRecord) {
+    const store = getStore()
+    if (!store) {
+        return
+    }
+    const epoch = writeEpoch
+    pendingWrites++
+    void persistRecord(store, loc, record).then(() => {
+        if (epoch !== writeEpoch) {
+            return
+        }
+        pendingWrites--
+        pump()
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -206,7 +234,7 @@ const queue: QueueTask[] = []
 let running = 0
 
 function pump() {
-    while (running < concurrency && queue.length > 0) {
+    while (running < concurrency && pendingWrites < maxPendingWrites && queue.length > 0) {
         const task = queue.pop()
         if (!task) {
             break
@@ -277,13 +305,17 @@ async function runTask(task: QueueTask) {
             finishAndFree(null)
         }
         else if ('skip' in result) {
-            await persistRecord(task.loc, { v: THUMB_VERSION, skip: true })
+            // Memoize and free the slot first: the store write is not
+            // awaited, so a slow store cannot hold generation back. The
+            // write is counted before the slot frees so the pump that
+            // follows already sees it.
             memoize(task.loc, null)
+            schedulePersist(task.loc, { v: THUMB_VERSION, skip: true })
             finishAndFree(null)
         }
         else {
-            await persistRecord(task.loc, { v: THUMB_VERSION, src: result.src })
             memoize(task.loc, result.src)
+            schedulePersist(task.loc, { v: THUMB_VERSION, src: result.src })
             finishAndFree(result.src)
         }
     } catch {
@@ -963,7 +995,10 @@ export const __avatarThumbTestHooks = {
         readbackCheckFn = fn
         readbackChecked = false
     },
-    setLimits(limits: { concurrency?: number, timeoutMs?: number, storeTimeoutMs?: number, memoMaxEntries?: number, memoMaxBytes?: number }) {
+    setLimits(limits: { concurrency?: number, timeoutMs?: number, storeTimeoutMs?: number, memoMaxEntries?: number, memoMaxBytes?: number, maxPendingWrites?: number }) {
+        if (limits.maxPendingWrites !== undefined) {
+            maxPendingWrites = limits.maxPendingWrites
+        }
         if (limits.concurrency !== undefined) {
             concurrency = limits.concurrency
         }
@@ -986,6 +1021,9 @@ export const __avatarThumbTestHooks = {
         inFlight.clear()
         queue.length = 0
         running = 0
+        pendingWrites = 0
+        writeEpoch++
+        maxPendingWrites = DEFAULT_MAX_PENDING_WRITES
         readbackChecked = false
         readbackAllowed = true
         readbackCheckFn = defaultReadbackCheck
@@ -1006,6 +1044,7 @@ export const __avatarThumbTestHooks = {
             memoBytes,
             inFlight: inFlight.size,
             running,
+            pendingWrites,
             queued: queue.length
         }
     }
