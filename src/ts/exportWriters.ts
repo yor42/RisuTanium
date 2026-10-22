@@ -2,6 +2,7 @@ import { writeFile } from "@tauri-apps/plugin-fs"
 import { language } from "src/lang"
 import { alertNormalWait } from "./alert"
 import streamSaver from "./vendor/streamSaver"
+import { MEASURE } from "./process/memory/measureFlag"
 
 /** Smallest unit the exporters hand to a writer that can take a byte array. */
 export interface ByteWriter {
@@ -63,6 +64,95 @@ export function encodeBackupEntryHeader(encodedName: Uint8Array, dataLength: num
 /** Bytes a `TauriWriter` collects before it hands them to the file system in one call; no call carries more. */
 export const TAURI_WRITE_CHUNK_BYTES = 4 * 1024 * 1024
 
+/** One `writeFile` call of a `TauriWriter`, as a measurement build records it. */
+export interface ExportWriteCall {
+    bytes: number
+    /** Milliseconds until `writeFile` returned its promise; the page-side work that runs before the call is handed on. */
+    syncMs: number
+    /** Milliseconds from then until the promise settled. */
+    waitMs: number
+    /** False for the call that created the file. */
+    append: boolean
+}
+
+/** The `writeFile` calls since the last `takeExportWriteStats`. */
+export interface ExportWriteStats {
+    calls: number
+    bytes: number
+    syncMs: number
+    waitMs: number
+    creates: number
+    /** Every call, in order. */
+    records: ExportWriteCall[]
+}
+
+let writeRecords: ExportWriteCall[] = []
+let measureClock: () => number = () => performance.now()
+
+/** Test seam: replaces the clock the recorder reads; `null` restores it. */
+export function setExportWriteClockForTest(clock: (() => number) | null): void {
+    measureClock = clock ?? (() => performance.now())
+}
+
+/** Test seam: forgets the recorded calls. */
+export function resetExportWriteStatsForTest(): void {
+    writeRecords = []
+}
+
+/**
+ * Measurement builds only (`MEASURE`): the `writeFile` calls recorded since the last take, which also clears them;
+ * `null` otherwise. Recording never throws into a write and never changes what is written.
+ */
+export function takeExportWriteStats(): ExportWriteStats | null {
+    if (!MEASURE) {
+        return null
+    }
+    const records = writeRecords
+    writeRecords = []
+    const stats: ExportWriteStats = { calls: records.length, bytes: 0, syncMs: 0, waitMs: 0, creates: 0, records }
+    for (const record of records) {
+        stats.bytes += record.bytes
+        stats.syncMs += record.syncMs
+        stats.waitMs += record.waitMs
+        if (!record.append) {
+            stats.creates += 1
+        }
+    }
+    return stats
+}
+
+/** The timing of one call: `returned` when `writeFile` handed back its promise, `settled` when that promise resolved. */
+interface WriteTiming {
+    returned(): void
+    settled(): void
+}
+
+function startWriteTiming(bytes: number, append: boolean): WriteTiming | null {
+    try {
+        const startedAt = measureClock()
+        let returnedAt = startedAt
+        return {
+            returned() {
+                try {
+                    returnedAt = measureClock()
+                } catch {
+                    // A failing clock loses this call's timing and nothing else.
+                }
+            },
+            settled() {
+                try {
+                    const settledAt = measureClock()
+                    writeRecords.push({ bytes, syncMs: returnedAt - startedAt, waitMs: settledAt - returnedAt, append })
+                } catch {
+                    // A failing clock loses this call's record and nothing else.
+                }
+            },
+        }
+    } catch {
+        return null
+    }
+}
+
 /**
  * A writer for the Tauri environment. Small writes are collected and written with one `writeFile` call when
  * `TAURI_WRITE_CHUNK_BYTES` have gathered, or on `close`; a write larger than that is passed on right after the
@@ -97,10 +187,15 @@ export class TauriWriter {
 
     private async put(data: Uint8Array) {
         this.attempted = true
+        const append = !this.firstWrite
+        const timing = MEASURE ? startWriteTiming(data.byteLength, append) : null
         try {
-            await writeFile(this.path, data, {
-                append: !this.firstWrite
+            const written = writeFile(this.path, data, {
+                append
             })
+            timing?.returned()
+            await written
+            timing?.settled()
         } catch (error) {
             this.failed = true
             this.failure = error

@@ -8,7 +8,7 @@
  * chunk at once with a `close` that does nothing, a chunk writer whose `end` does not await `close`, or a
  * `writeBackupEntry` that issues the four-write layout); (G) is a guard that passes with or without the change.
  */
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { PngChunk } from 'src/ts/pngChunk'
 import {
     BlobDownloadWriter,
@@ -16,6 +16,9 @@ import {
     TAURI_WRITE_CHUNK_BYTES,
     TauriWriter,
     encodeBackupEntryHeader,
+    resetExportWriteStatsForTest,
+    setExportWriteClockForTest,
+    takeExportWriteStats,
     writeBackupEntry,
     type ByteWriter,
 } from 'src/ts/exportWriters'
@@ -354,5 +357,79 @@ describe('the PNG chunk writer', () => {
         await chunkWriter.end()
         expectBytes(fs.files.get(PATH)!, concat(recorded))
         expect(fs.calls).toHaveLength(1)
+    })
+})
+
+// New behaviour of a measurement build (vitest runs as one): the per-call record the export notes report. The clock is
+// the test's own, three readings per call (start, `writeFile` returned, promise settled), so every figure is exact.
+describe('TauriWriter write timing', () => {
+    function ticks(...values: number[]): () => number {
+        let at = 0
+        return () => values[Math.min(at++, values.length - 1)]
+    }
+
+    beforeEach(() => {
+        resetExportWriteStatsForTest()
+    })
+
+    afterEach(() => {
+        setExportWriteClockForTest(null)
+        resetExportWriteStatsForTest()
+    })
+
+    test('records each file-system call with its bytes, the time until writeFile returned, the rest of the wait, and whether it appended', async () => {
+        setExportWriteClockForTest(ticks(0, 2, 9, 10, 11, 15, 20, 26, 27))
+        const writer = new TauriWriter(PATH)
+
+        // A body over the chunk size goes out as consecutive calls of at most that size.
+        await writer.write(body(2 * TAURI_WRITE_CHUNK_BYTES + TAURI_WRITE_CHUNK_BYTES / 2, 9))
+
+        expect(takeExportWriteStats()).toEqual({
+            calls: 3,
+            bytes: 2 * TAURI_WRITE_CHUNK_BYTES + TAURI_WRITE_CHUNK_BYTES / 2,
+            syncMs: 2 + 1 + 6,
+            waitMs: 7 + 4 + 1,
+            creates: 1,
+            records: [
+                { bytes: TAURI_WRITE_CHUNK_BYTES, syncMs: 2, waitMs: 7, append: false },
+                { bytes: TAURI_WRITE_CHUNK_BYTES, syncMs: 1, waitMs: 4, append: true },
+                { bytes: TAURI_WRITE_CHUNK_BYTES / 2, syncMs: 6, waitMs: 1, append: true },
+            ],
+        })
+        expect(takeExportWriteStats()).toEqual({ calls: 0, bytes: 0, syncMs: 0, waitMs: 0, creates: 0, records: [] })
+    })
+
+    test('a rejected call is not recorded, its error reaches the caller, and the writer still refuses every later write', async () => {
+        setExportWriteClockForTest(ticks(0, 1, 2))
+        fs.failCall = () => true
+        const writer = new TauriWriter(PATH)
+
+        await expect(writer.write(body(TAURI_WRITE_CHUNK_BYTES + 1, 4))).rejects.toThrow('synthetic write failure')
+
+        expect(takeExportWriteStats()?.calls).toBe(0)
+        expect(writer.firstWrite).toBe(true)
+        await expect(writer.write(body(1, 5))).rejects.toThrow('synthetic write failure')
+        await expect(writer.close()).rejects.toThrow('synthetic write failure')
+    })
+
+    // Which of the three readings fails: the call starts, writeFile returns, or the promise settles.
+    test.each([0, 1, 2])('a clock that throws on reading %i loses the record and nothing else: the file is the same and the second call appends', async (failing) => {
+        let reading = 0
+        setExportWriteClockForTest(() => {
+            if (reading++ % 3 === failing) {
+                throw new Error('the clock failed')
+            }
+            return reading
+        })
+        const writer = new TauriWriter(PATH)
+        const data = body(TAURI_WRITE_CHUNK_BYTES + 100, 6)
+
+        await writer.write(data)
+        expect(writer.firstWrite).toBe(false)
+        await writer.close()
+
+        expect(fs.calls.map((call) => call.append)).toEqual([false, true])
+        expectBytes(fs.files.get(PATH)!, data)
+        expect(() => takeExportWriteStats()).not.toThrow()
     })
 })

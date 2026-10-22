@@ -656,7 +656,11 @@ describe('the export phases', () => {
         const outcome = await SaveLocalBackup()
 
         expect(outcome.status).toBe('saved')
-        const phases = (ring()?.snapshot() ?? []).map((record) => record.phase)
+        const recorded = (ring()?.snapshot() ?? []).map((record) => record.phase)
+        // The measurement figures a note appends are checked in exportMeasure.test.ts; here only the order and the delivery counts.
+        expect(recorded.find((phase) => phase.startsWith('export cold collected'))).toContain('stubChars=')
+        expect(recorded.find((phase) => phase.startsWith('export closed'))).toContain('writeCalls=')
+        const phases = recorded.map((phase) => phase.replace(/ (?:stubChars|writeCalls)=.*$/, ''))
         expect(phases).toEqual([
             ...FIRST_FIXED,
             `export listed, ${small.length + 1} assets`,
