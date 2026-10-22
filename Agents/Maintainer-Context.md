@@ -11089,3 +11089,128 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 1. **Lane D: "merge lane D when record pass is done."** Lane A merges lane D's branch after lane D's records pass is committed, with a records fold-in.
 2. **Lane E: "Lane E also seems to be ready for merge. message the lane E for coordination. the merge has my approval."** Merged as `bdba81fd6`, with this fold-in.
 - Notes, not the maintainer's words: these quotes are the maintainer's own free-text messages. Nothing here authorizes pushing a lane branch.
+
+### MC-375 — Lane D, 2026-10-21: S4-4 Grid drag plan answers (Q1 to Q12) and the folder-removal confirmation
+
+- **Tag:** decisions (`AskUserQuestion` answers by option label, with the maintainer's own text where given)
+- **Date:** 2026-10-21
+- **Sweep ref:** none (stated directly this session)
+- **Source:** this lane D session's two `AskUserQuestion` rounds on the S4-4 plan (`%TEMP%\risu-lane-d\s4-4\plan-s4-4.md`, section 4, Q1 to Q12).
+- **Reasoning:** none stated, except the maintainer's own text in item 2.
+- **Alternatives rejected:** the unchosen option labels, per item below.
+- **Related:** `MC-277` 10, 11, 15 and 16, `MC-278` 8, `MC-279`.
+
+**What was decided:**
+1. **Q1, the long press that enters edit mode: "Let go, then hold again (Recommended)".** The entering press only enters edit mode; a second 500 ms hold lifts. Alternative: "Same press can drag".
+2. **Q6, a dragged selection that includes a folder tile, dropped into an open folder or onto a folder tile:** the maintainer chose "Other" and wrote: "Folder's characters join, but with confirmation prompt. as it will delete the existing folder." Options offered: "No target there (Recommended)", "Folder's characters join".
+3. **Follow-up to item 2, the dwell merge (`MC-277` 16) with a dragged folder: "Yes, same prompt (Recommended)".** Option text: "Any drop that would remove a dragged folder (append into a folder or dwell-merge onto a character) asks first, naming the folder(s). Drops without a folder in the drag never ask. Group into new folder (S4-3) stays as shipped, no prompt." Alternative: "Only into-folder drops".
+4. **Q7, the selection after a drop: "Keep after move, clear after merge (Recommended)".** Edit mode stays in every case. Alternatives: "Always clear", "Always keep".
+5. **Q2 to Q5 and Q8 to Q12: "Accept all (Recommended)".** The option was summarised to the maintainer as follows: mouse drag in edit mode only; the rail's drop look (faded tiles, a ghost with a count badge, a 3 px bar, a ring on the target); the ring only once the 400 ms dwell arms; closed and open folder tiles both append at the end, with no spring-open; a drop between open-folder members inserts there; "Moved 1 item" / "Moved N items" for drops and the rail's existing move wording for Alt+Left/Right; no-op drops are silent; dragged tiles are not merge targets; the edge-scroll speed is unchanged. The full recommendation texts are in the plan, section 4. Alternative: "I'll go through them".
+
+### MC-376 — Lane D, 2026-10-21: the CHORE-192 commit on the lane branch and the S4-4 folder-removal confirmation wording
+
+- **Tag:** decisions (`AskUserQuestion` answers by option label)
+- **Date:** 2026-10-21
+- **Sweep ref:** none (stated directly this session)
+- **Source:** this lane D session's `AskUserQuestion` round after the CHORE-192 checks and records verification (ledger rows 2501 to 2505).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** the unchosen option labels, per item below.
+- **Related:** `MC-375` 2 and 3, CHORE-192, `MC-058` (translations).
+
+**What was decided:**
+1. **The CHORE-192 commit: "Commit on the lane branch (Recommended)".** Option text: stage only `src/ts/plugins/apiV3/risuai.d.ts`, `src/ts/plugins/apiV3/tests/v3DeclarationDocs.test.ts` and `Agents/Lanes/lane-D-records.md`, commit on `worktree-Lane-D`, nothing pushed. Alternatives: "Show me the message first", "Hold until S4-4".
+2. **The English text of `othersUi.editFolderRemoveConfirm` (S4-4b): "Short + what's lost (Recommended)".** Preview shown: one folder: `Remove the folder "Alpha" and move its characters here? Its name, colour and picture are not kept.`; two or three folders: `Remove the folders "Alpha" and "Beta" and move their characters here? Their names, colours and pictures are not kept.`; four or more: `Remove the folders "Alpha", "Beta", "Gamma" and 2 more, and move their characters here? Their names, colours and pictures are not kept.` Alternative: "Short" (the same without the second sentence). The translator fills the six other locales (`MC-058`).
+
+### MC-377 — Lane D, 2026-10-22: S4-4 lift feedback (plan revision 3, OQ-1)
+
+- **Tag:** decision (`AskUserQuestion` answer by option label)
+- **Date:** 2026-10-22
+- **Sweep ref:** none (stated directly this session)
+- **Source:** this lane D session's `AskUserQuestion` on the plan revision 3 open question OQ-1 (`%TEMP%\risu-lane-d\s4-4\plan-s4-4.md`).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** "Nothing until it moves".
+- **Related:** `MC-375` 1 and 5, ledger rows 2506, 2507 and 2509.
+
+**What was decided:**
+1. **"Haptic at lift (Recommended)".** Option text: "A short vibration when the hold lifts the tile, like the long press that enters edit mode already does. The look still starts after 10 px of movement. Touch only; nothing on desktop." The question said the ghost, dimming and drop ring appear only once the finger has moved about 10 px (the Gate 1 amendment A1 travel gate).
+
+### MC-378 — Lane D, 2026-10-22: the S4-4a commit on the lane branch
+
+- **Tag:** decision (`AskUserQuestion` answer by option label)
+- **Date:** 2026-10-22
+- **Sweep ref:** none (stated directly this session)
+- **Source:** this lane D session's `AskUserQuestion` after the S4-4a gates, full checks and records verification (ledger rows 2511 to 2516).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** "Hold for S4-4b".
+- **Related:** `MC-375`, `MC-376`, `MC-377`.
+
+**What was decided:**
+1. **"Commit on the lane branch (Recommended)".** Option text: stage only the 7 named files (`sidebarOrder.ts`, `sidebarOrder.moveMany.test.ts`, `charListEdit.ts`, `charListEdit.test.ts`, `gridDrop.ts`, `gridDrop.test.ts`, `Agents/Lanes/lane-D-records.md`), message "feat(charlist): S4-4a order operations and Grid drop resolver for drag (MC-375)", nothing pushed.
+
+### MC-379 — Lane D, 2026-10-22: the S4-4b commit before the device pass
+
+- **Tag:** decision (`AskUserQuestion` answer by option label)
+- **Date:** 2026-10-22
+- **Sweep ref:** none (stated directly this session)
+- **Source:** this lane D session's `AskUserQuestion` after the S4-4b gates, full checks and records verification (ledger rows 2517 to 2523).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** "Device pass first".
+- **Related:** `MC-375` to `MC-378`; README "Phones" (only lane A drives the Note 9s).
+
+**What was decided:**
+1. **"Commit now, device pass after (Recommended)".** Option text: "Stage only GridCatalog.svelte, the two new test files, GridCatalog.edit.svelte.test.ts, en.ts, the six locales and lane-D-records.md (12 files). Then ask lane A for a Note 9 pass and run a desktop mouse pass in the preview on port 6420+. Fixes from those passes become follow-up commits." Nothing pushed.
+
+### MC-380 — Lane D, 2026-10-22: the S4-4b desktop mouse pass in Chrome on localhost
+
+- **Tag:** decision (`AskUserQuestion` answer by option label)
+- **Date:** 2026-10-22
+- **Sweep ref:** none (stated directly this session)
+- **Source:** this lane D session's `AskUserQuestion` after the S4-4b commit; the session has no built-in preview pane, only the Claude-in-Chrome extension (`docs/workflow/live-checks.md`, "Chrome fallback").
+- **Reasoning:** none stated.
+- **Alternatives rejected:** "You run it", "Skip until a pane".
+- **Related:** `MC-379`.
+
+**What was decided:**
+1. **"Chrome on localhost:6420 (Recommended)".** Option text: "I start a dev server from the lane worktree on port 6420 and drive it in a new Chrome tab. localhost:6420 is its own origin, so its storage is separate from your real data. Test characters are created through the app's own import of synthetic cards only, never by editing app state."
+
+### MC-381 — Lane D, 2026-10-22: CHORE-195, take the `@hono/node-server` 2.x major bump now
+
+- **Tag:** decision (`AskUserQuestion` answer by option label)
+- **Date:** 2026-10-22
+- **Sweep ref:** none (stated directly this session)
+- **Source:** this lane D session's `AskUserQuestion` after the verified CHORE-195 assessment (ledger rows 2524 and 2525).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** "Stay on 1.x, record it".
+- **Related:** CHORE-195; the lane D brief ("ask the maintainer before taking it").
+
+**What was decided:**
+1. **"Bump to 2.x now (Recommended)".** Option text: "Set @hono/node-server to ^2.1.5 (latest) in server/hono, regenerate its lockfile, run tsc and a manual start-and-fetch smoke test. One commit, with the @hono/bun switch alongside. Static files with % in the name would need allowPercentInPath." The question stated: every 1.x release is affected by GHSA-rmxm-3fg6-px4f, the only fix is 2.1.3 or newer, 2.x keeps the API used by `node.ts`, needs Node 20 or newer (CI uses 24), and nothing in `server/hono` is exploitable today.
+
+### MC-382 — Lane D, 2026-10-22: Grid touch merge needs a longer rest
+
+- **Tag:** decision (`AskUserQuestion` answer by option label)
+- **Date:** 2026-10-22
+- **Sweep ref:** none (stated directly this session)
+- **Source:** this lane D session's `AskUserQuestion` after lane A's Note 9 gap sweep (ledger rows 2530 and 2531).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** "Smaller zone on touch", "Both", "Keep as is".
+- **Related:** `MC-375`, `MC-377`; S4-4b; `MERGE_DWELL_MS` and `CENTRE_ZONE_FRACTION` in `railConstants.ts` (shared with the sidebar rail).
+
+**What was decided:**
+1. **"Longer hold on touch (Recommended)".** Option text: "Keep the zone; touch needs about 0.7 s of rest before a folder arms (mouse stays 0.4 s). A finger pausing before lift rarely waits that long, and the ring still shows when it arms. Lane A's merge check already used a 0.7 s hold." The question stated that the options change the Grid only; the sidebar rail keeps its values.
+
+### MC-383 — Lane D, 2026-10-22: S4-5 Grid folder menu answers
+
+- **Tag:** decision (`AskUserQuestion` answers by option label)
+- **Date:** 2026-10-22
+- **Sweep ref:** none (stated directly this session)
+- **Source:** this lane D session's `AskUserQuestion` on the S4-5 plan's product questions (ledger row 2545; plan `%TEMP%\risu-lane-d\s4-5\plan-s4-5.md` section 5).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** item 1 "Always the folder menu"; item 2 "Yes, also outside edit"; item 3 "Confirm in the Grid only", "Confirm in both"; item 4 "Discuss them".
+- **Related:** `MC-375`; `MC-279` and the 2026-10-11 S4-3 Q3 answer "Accept until S4-5" (rename only in the sidebar until the Grid folder menu).
+
+**What was decided:**
+1. **"Folder menu only if alone (Recommended)".** In Grid edit mode a hold-release or right-click on a folder tile opens the folder menu (rename, colour, image, ungroup, delete) when the folder is the whole selection or nothing else is selected; with other tiles selected, the existing bulk menu opens instead.
+2. **"No, edit mode only (Recommended)".** Outside edit mode the browser's own menu stays and a hold enters edit mode, as for character tiles.
+3. **"No confirm, like sidebar (Recommended)".** Ungroup and Delete then Keep run without a confirmation in the Grid, as in the sidebar.
+4. **"Accept all three (Recommended)".** The folder stays selected after a rename, colour or picture edit; with duplicate folder ids the folder menu is a silent no-op, as in the sidebar; no screen-reader announcement for folder edits. Clarification (orchestrator, from the S4-5 Gate 1 round 1 review, row 2547): "as in the sidebar" governs; in the sidebar only rename, colour and picture are no-ops for a duplicate id, while Ungroup and Delete act on the held folder by reference.

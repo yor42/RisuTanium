@@ -355,3 +355,12 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-338](Maintainer-Context.md#mc-338--lane-a-2026-10-22-lane-b-chore-220-merge) | Lane A, 2026-10-22: lane B CHORE-220 merge |
 | [MC-450](Maintainer-Context.md#mc-450--lane-e-2026-10-22-the-firstlife-eaddrinuse-fix-may-change-the-shared-test-fixture-nodeserverfixturets-as-its-own-gated-step) | Lane E, 2026-10-22: the `firstLife` EADDRINUSE fix may change the shared test fixture `nodeServerFixture.ts`, as its own gated step |
 | [MC-339](Maintainer-Context.md#mc-339--lane-a-2026-10-22-lane-d-and-lane-e-merge-approvals) | Lane A, 2026-10-22: lane D and lane E merge approvals |
+| [MC-375](Maintainer-Context.md#mc-375--lane-d-2026-10-21-s4-4-grid-drag-plan-answers-q1-to-q12-and-the-folder-removal-confirmation) | Lane D, 2026-10-21: S4-4 Grid drag plan answers (Q1 to Q12) and the folder-removal confirmation |
+| [MC-376](Maintainer-Context.md#mc-376--lane-d-2026-10-21-the-chore-192-commit-on-the-lane-branch-and-the-s4-4-folder-removal-confirmation-wording) | Lane D, 2026-10-21: the CHORE-192 commit on the lane branch and the S4-4 folder-removal confirmation wording |
+| [MC-377](Maintainer-Context.md#mc-377--lane-d-2026-10-22-s4-4-lift-feedback-plan-revision-3-oq-1) | Lane D, 2026-10-22: S4-4 lift feedback (plan revision 3, OQ-1) |
+| [MC-378](Maintainer-Context.md#mc-378--lane-d-2026-10-22-the-s4-4a-commit-on-the-lane-branch) | Lane D, 2026-10-22: the S4-4a commit on the lane branch |
+| [MC-379](Maintainer-Context.md#mc-379--lane-d-2026-10-22-the-s4-4b-commit-before-the-device-pass) | Lane D, 2026-10-22: the S4-4b commit before the device pass |
+| [MC-380](Maintainer-Context.md#mc-380--lane-d-2026-10-22-the-s4-4b-desktop-mouse-pass-in-chrome-on-localhost) | Lane D, 2026-10-22: the S4-4b desktop mouse pass in Chrome on localhost |
+| [MC-381](Maintainer-Context.md#mc-381--lane-d-2026-10-22-chore-195-take-the-hononode-server-2x-major-bump-now) | Lane D, 2026-10-22: CHORE-195, take the `@hono/node-server` 2.x major bump now |
+| [MC-382](Maintainer-Context.md#mc-382--lane-d-2026-10-22-grid-touch-merge-needs-a-longer-rest) | Lane D, 2026-10-22: Grid touch merge needs a longer rest |
+| [MC-383](Maintainer-Context.md#mc-383--lane-d-2026-10-22-s4-5-grid-folder-menu-answers) | Lane D, 2026-10-22: S4-5 Grid folder menu answers |
