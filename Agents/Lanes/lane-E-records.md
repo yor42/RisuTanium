@@ -184,6 +184,16 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 
 **Status (2026-10-22): open, not scheduled.** Filed per MC-346 Q-A ("Leave as today, ticket it"). Source: the A1' audit (CHORE-117 stage 2 row) and doc-verifier correction 10 (foldBack re-marks everything).
 
+### CHORE-354 (new) — on a large profile the page does not answer Back within 1 s after the first Back, and no hide event fires on the quit
+
+On phone 2 with the large profile `m2-mix18k` (CHORE-181 cell 5), after the first Android Back showed the quit toast the page logged nothing further and the toast never cleared; the second Back quit only through the host's 1 s timeout (1.018 s, against 16 to 30 ms on the small profile). The edits persisted. On both large-profile quits no `visibilitychange` to hidden fired (0 of 2, against 5 of 5 on the small profile; `pagehide` 0 of 7 overall), so save-on-hide (CHORE-153) did not run and the Back-guard flush (CHORE-181) was the only save request before the quit.
+
+- Candidate causes (neither shown): (a) the Back-guard flush's save, only if `hasUnsavedSaveMarks()` was true at the first Back (in run r1 the edit was 3.4 s old, so the flush was probably a no-op; only run r2-fast could involve it); (b) the debounced save or other large-profile main-thread work. Not shown to be a CHORE-181 regression.
+- Evidence needed: a page CPU profile across the first and second Back on `m2-mix18k`; a matched large-profile run with the flush disabled and the edit within about 100 ms of the first Back. Removing or deferring the flush is not supported without that run, since it is the only pre-quit save request when no hide event fires.
+- Cost bounded: the second Back still quits through the host timeout; no edit was lost in the runs.
+
+**Status (2026-10-22): open, low priority, not scheduled.** Filed at lane A's request from the verified CHORE-181 phone report (`%TEMP%\risu-b715\c181-phone\report.md`, corrections appended). Lane A folds it in.
+
 ### CHORE-181 (changed) — "Close the dialog" (MC-346)
 
 **Status (2026-10-22, lane E item A3): fixed on `worktree-Lane-E` (base main `b87e457f9`); technically accepted (rows 3551 to 3560; records checked in row 3561); the maintainer approved the commit and merge (`MC-458`); committed over main `0d905815b` and sent to lane A; then lane A's merge, full checks and the phone check.** Decisions: MC-346, MC-455 and MC-458.
@@ -306,3 +316,5 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 **2026-10-22, CHORE-181.** The maintainer answered the six questions (`MC-455`); CHORE-351 and CHORE-352 filed. Technically accepted (rows 3551 to 3560) on `worktree-Lane-E` over main `b87e457f9`; commit pending the maintainer's approval; then lane A's merge, full checks and the phone check listed under CHORE-181. Both writer grants revoked. A3's four items (CHORE-153, CHORE-117 stage 2, CHORE-187, CHORE-181) are then all with lane A. The guard gap of row 3558: the maintainer kept lane E's interim measures (no temporary repository edits by any tool, mutants in scratch only, a hash check after any "restored" hand-back) and asked for a ticket, revisited if a similar bypass happens again; lane A files it as MC-457 and CHORE-353. Records checked in row 3561. The maintainer approved the commit and merge (`MC-458`); committed with these records over main `0d905815b` and sent to lane A. Next free IDs: MC-459, CHORE-354, row 3562.
 
 **2026-10-22, grid avatars stage A.** Lane E took grid avatar loading from lane D (`MC-459`); the maintainer answered the product questions (`MC-460`, `MC-461`). Stage A (A1 only) technically accepted on `worktree-Lane-E` over `c4dc06dbc` (rows 3562 to 3569; records checked in row 3570); its writer grant was revoked after the hand-back. The maintainer approved the commit and merge (`MC-462`); committed with these records over main `d42bfeb63` and sent to lane A. A2 not shipped (row 3566). Next: lane A's phone capture per `%TEMP%\risu-lane-e\grid\phone-request.md`, then a stage B plan from the Gate 1 amendments and the phone data, and a decision on A2 and on background generation (MC-460 Q3). Next free IDs: MC-463, CHORE-354, row 3571.
+
+**2026-10-22, after the stage A merge.** Lane A merged stage A as `771ec2b30` (full checks running there). CHORE-354 filed at lane A's request from the verified CHORE-181 phone report (open, low priority). Lane E has no other work until lane A's phone 1 grid capture lands. Next free IDs: MC-463, CHORE-355, row 3571.
