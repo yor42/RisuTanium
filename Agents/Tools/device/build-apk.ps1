@@ -3,7 +3,7 @@
 # One build per kind at a time: a held lock refuses the run instead of waiting on Cargo's own file lock.
 # A preflight fails early, naming the files, when the gitignored generated Android project files are missing from -RepoRoot.
 # Reads no signing material. A release build signs with src-tauri/gen/android/keystore.properties when that file exists
-# (existence is reported, the content is never read); sign-install.ps1 re-signs release output with a throwaway key.
+# (existence is reported, the content is never read); sign-install.ps1 re-signs release output with the persistent test key.
 param(
     [Parameter(Mandatory)][string]$OutDir,
     [ValidateSet('debug', 'release')][string]$Kind = 'debug',
