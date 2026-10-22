@@ -43,7 +43,7 @@ export function moduleEntryFields(module: JsonObject): Omit<ModuleEntry, 'unit' 
 }
 
 /** Module handle: the id, told apart from a repeated id by occurrence (the same handle the units are named by). */
-function moduleHandles(entries: readonly ModuleEntry[]): string[] {
+export function moduleHandles(entries: readonly ModuleEntry[]): string[] {
     const seen = new Map<string, number>()
     return entries.map((entry) => {
         const occurrence = seen.get(entry.id) ?? 0

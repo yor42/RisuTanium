@@ -144,6 +144,17 @@ export interface ListDerivation {
     characterInlays(character: JsonObject): InlayList | null
     moduleAssets(module: JsonObject): AssetList
     moduleInlays(module: JsonObject): InlayList | null
+    /**
+     * Opt-in to carrying a module's previous list units. Set only by a derivation whose module lists are a pure
+     * function of the module unit's bytes and whose list versions are these: when a module's unit is reused and the
+     * previous index entry names list units of exactly these versions, the encode keeps those units instead of
+     * deriving the lists again. Absent, every module's lists are derived on every encode.
+     *
+     * "A carried list equals a fresh derivation" holds only while the writer invariant holds (every module list unit
+     * a previous index entry names was derived from the module unit that entry names) and while any change to the
+     * module list derivation bumps the matching version. A derivation that changes without a bump is carried stale.
+     */
+    readonly moduleListVersions?: { readonly asset: number, readonly inlay: number }
 }
 
 export interface EncodeOptions {

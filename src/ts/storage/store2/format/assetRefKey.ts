@@ -1,6 +1,16 @@
 const HASH_NAME = /^([0-9a-f]{64})\..*$/i
 
 const HEX_STEM = /^[0-9a-f]{64}$/i
+const BASE64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+/** Value of an ASCII hex digit by char code, either case; other entries are unused (`HEX_STEM` refuses them first). */
+const NIBBLE = new Uint8Array(128)
+for (let digit = 0; digit < 10; digit++) {
+    NIBBLE[48 + digit] = digit
+}
+for (let letter = 0; letter < 6; letter++) {
+    NIBBLE[65 + letter] = 10 + letter
+    NIBBLE[97 + letter] = 10 + letter
+}
 /**
  * Whole stems of 43 base64url characters. The last character of a stem carries
  * only 4 payload bits, so it is one of `AEIMQUYcgkosw048`: any other value is a
@@ -33,11 +43,17 @@ export function hexStemToBase64url(hex: string): string {
     if (!HEX_STEM.test(hex)) {
         throw new RangeError('A hash stem is 64 hex digits.')
     }
-    let binary = ''
-    for (let i = 0; i < 64; i += 2) {
-        binary += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16))
+    // The pattern admits only ASCII hex digits, so every `charCodeAt` indexes the table. Ten groups of six hex digits
+    // (24 bits) give four characters each; the last four digits (16 bits plus two zero pad bits) give three. No branch
+    // depends on the position, so the 24-bit group and 16-bit tail mappings are exhaustively checkable.
+    let out = ''
+    for (let i = 0; i < 60; i += 6) {
+        const group = (NIBBLE[hex.charCodeAt(i)] << 20) | (NIBBLE[hex.charCodeAt(i + 1)] << 16) | (NIBBLE[hex.charCodeAt(i + 2)] << 12)
+            | (NIBBLE[hex.charCodeAt(i + 3)] << 8) | (NIBBLE[hex.charCodeAt(i + 4)] << 4) | NIBBLE[hex.charCodeAt(i + 5)]
+        out += BASE64URL[group >>> 18] + BASE64URL[(group >>> 12) & 63] + BASE64URL[(group >>> 6) & 63] + BASE64URL[group & 63]
     }
-    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    const tail = (NIBBLE[hex.charCodeAt(60)] << 12) | (NIBBLE[hex.charCodeAt(61)] << 8) | (NIBBLE[hex.charCodeAt(62)] << 4) | NIBBLE[hex.charCodeAt(63)]
+    return out + BASE64URL[tail >>> 10] + BASE64URL[(tail >>> 4) & 63] + BASE64URL[(tail << 2) & 63]
 }
 
 /**
