@@ -2298,6 +2298,10 @@ export const languageEnglish = {
         `Saving is waiting on ${names}: its id changed while it was being saved, so that attempt was thrown away and is tried again. Nothing is written until it stops changing. Changes made in the meantime are kept in this tab but are lost if you close it.`,
     saveRepairedEntriesNotice: (dropped: number, filled: number) =>
         `RisuAI repaired the character list: ${dropped > 0 ? `${dropped} entr${dropped === 1 ? 'y that is' : 'ies that are'} not a character ${dropped === 1 ? 'was' : 'were'} left out` : ''}${dropped > 0 && filled > 0 ? ', and ' : ''}${filled > 0 ? `${filled} character${filled === 1 ? '' : 's'} whose id was missing or could not be saved ${filled === 1 ? 'was' : 'were'} given a new one` : ''}.${dropped > 0 ? ' A plugin may have written the entries that were left out.' : ''}`,
+    saveCharacterUnsavedNotice: (name: string) =>
+        `RisuAI cannot save ${name} right now: its data is not valid, and a plugin may have changed it. Your latest changes to it are not being saved, and they will be lost if the tab closes or reloads before it is fixed. The last saved copy is kept, everything else is still saved, and RisuAI keeps trying quietly.`,
+    saveCharacterNeverSavedNotice: (name: string) =>
+        `RisuAI cannot save ${name} at all: it has never been saved, and its data is not valid (a plugin may have changed it). It is not being saved, so it will be lost if the tab closes or reloads before it is fixed. Everything else is still saved, and RisuAI keeps trying quietly.`,
     personasRepairedNotice: (count: number) =>
         `RisuAI left out ${count} persona${count === 1 ? '' : 's'} that ${count === 1 ? 'was' : 'were'} not valid data. A plugin may have written ${count === 1 ? 'it' : 'them'}.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>

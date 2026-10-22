@@ -662,3 +662,178 @@ describe('new behaviour: a peer\'s commit parks the page and the person decides'
         expect(page.k.peer.asked[0].offers).toEqual(['reload', 'export-first'])
     })
 })
+
+describe('new behaviour: a character that cannot be saved is skipped, noticed once, and keeps the page not clean', () => {
+    const unreadable = (): Entry => ({ toJSON() { throw new Error('toJSON fault') } })
+
+    async function toastsOf(message: string): Promise<number> {
+        const { alertToast } = await import('src/ts/alert')
+        return vi.mocked(alertToast).mock.calls.filter(([shown]) => shown === message).length
+    }
+
+    test('reproducer: the rest is saved, one notice says the latest changes are lost on close, the page is not clean until it is fixed', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        const { alertError } = await import('src/ts/alert')
+        const offender = characters(page.db)[1]
+        const saved = String(characters(page.db)[1].personality)
+
+        await nextCommit(page.w, () => {
+            offender.personality = unreadable()
+            characters(page.db)[2].personality = 'edited next to the unsavable one'
+            page.w.marks.markCharacterForSave(String(offender.chaId))
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            page.flush()
+        }, false)
+        const { language } = await import('src/lang')
+        const notice = language.saveCharacterUnsavedNotice(`"${String(offender.name)}"`)
+        await until(async () => (await toastsOf(notice)) >= 1, 'the notice', 4000)
+        expect((await page.k.saved()).characters[2]).toMatchObject({ personality: 'edited next to the unsavable one' })
+        expect((await page.k.saved()).characters[1]).toMatchObject({ personality: saved })
+
+        // Passes that retry the character stay quiet, and the page does not count as saved.
+        await sleepReal(400)
+        expect(await toastsOf(notice)).toBe(1)
+        expect(vi.mocked(alertError)).not.toHaveBeenCalled()
+        expect(page.w.api.isSaveClean()).toBe(false)
+        expect(page.w.api.hasUnsavedSaveMarks()).toBe(false)
+        expect(notice).toContain('lost if the tab closes or reloads')
+
+        // Fixing it saves it and the page is clean again.
+        await nextCommit(page.w, () => {
+            offender.personality = 'fixed'
+            page.w.marks.markCharacterForSave(String(offender.chaId))
+            page.flush()
+        }, false)
+        await until(() => page.w.api.isSaveClean(), 'a clean page after the fix', 6000)
+        expect((await page.k.saved()).characters[1]).toMatchObject({ personality: 'fixed' })
+        expect(await toastsOf(notice)).toBe(1)
+    })
+
+    test('reproducer: a character never saved says it is not being saved, and its place in the order is cleaned the way a deleted character\'s is', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        const fresh = { ...(JSON.parse(JSON.stringify(characters(page.db)[0])) as Entry), chaId: 'never-saved-character', name: 'Never saved', personality: unreadable() }
+
+        await nextCommit(page.w, () => {
+            characters(page.db).push(fresh)
+            ;(page.db.characterOrder as unknown[]).push('never-saved-character', { id: 'folder-of-one', name: 'Folder', data: ['never-saved-character'] })
+            characters(page.db)[2].personality = 'edited next to the new one'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            page.flush()
+        }, false)
+        const { language } = await import('src/lang')
+        const notice = language.saveCharacterNeverSavedNotice('"Never saved"')
+        await until(async () => (await toastsOf(notice)) >= 1, 'the notice', 4000)
+        expect(notice).toContain('is not being saved')
+        const saved = await page.k.saved()
+        expect(saved.characters).toHaveLength(4)
+        expect(saved.characters[2]).toMatchObject({ personality: 'edited next to the new one' })
+        expect(page.w.api.isSaveClean()).toBe(false)
+
+        // The saved order still names the character; boot's repair removes it, and its folder once the folder is empty.
+        const order = saved.characterOrder as unknown[]
+        expect(order).toContain('never-saved-character')
+        page.w.api.checkCharOrder(saved)
+        page.w.api.checkCharOrder(saved)
+        expect(saved.characterOrder).not.toContain('never-saved-character')
+        expect((saved.characterOrder as unknown[]).some(entry => typeof entry === 'object' && entry !== null)).toBe(false)
+    })
+
+    test('new behaviour: deleting the unsavable character makes the page clean again', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        const offender = characters(page.db)[1]
+        const { language } = await import('src/lang')
+        const notice = language.saveCharacterUnsavedNotice(`"${String(offender.name)}"`)
+
+        await nextCommit(page.w, () => {
+            offender.personality = unreadable()
+            characters(page.db)[2].personality = 'edited next to the unsavable one'
+            page.w.marks.markCharacterForSave(String(offender.chaId))
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            page.flush()
+        }, false)
+        await until(async () => (await toastsOf(notice)) >= 1, 'the notice', 4000)
+        expect(page.w.api.isSaveClean()).toBe(false)
+
+        await nextCommit(page.w, () => {
+            characters(page.db).splice(1, 1)
+            characters(page.db)[1].personality = 'edited after the deletion'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[1].chaId))
+            page.flush()
+        }, false)
+        await until(() => page.w.api.isSaveClean(), 'a clean page after the deletion', 6000)
+    })
+
+    test('new behaviour: with two unsavable characters the page stays not clean until both are fixed', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        const first = characters(page.db)[1]
+        const second = characters(page.db)[3]
+        const { language } = await import('src/lang')
+        const firstNotice = language.saveCharacterUnsavedNotice(`"${String(first.name)}"`)
+        const secondNotice = language.saveCharacterUnsavedNotice(`"${String(second.name)}"`)
+
+        await nextCommit(page.w, () => {
+            first.personality = unreadable()
+            second.personality = unreadable()
+            characters(page.db)[2].personality = 'edited between the unsavable ones'
+            page.w.marks.markCharacterForSave(String(first.chaId))
+            page.w.marks.markCharacterForSave(String(second.chaId))
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            page.flush()
+        }, false)
+        await until(async () => (await toastsOf(firstNotice)) >= 1 && (await toastsOf(secondNotice)) >= 1, 'both notices', 4000)
+        expect(page.w.api.isSaveClean()).toBe(false)
+
+        // Only the second one is still unsavable: the count follows the whole set, not the characters named this time.
+        await nextCommit(page.w, () => {
+            first.personality = 'fixed'
+            page.w.marks.markCharacterForSave(String(first.chaId))
+            page.flush()
+        }, false)
+        await sleepReal(400)
+        expect(page.w.api.isSaveClean()).toBe(false)
+
+        await nextCommit(page.w, () => {
+            second.personality = 'fixed too'
+            page.w.marks.markCharacterForSave(String(second.chaId))
+            page.flush()
+        }, false)
+        await until(() => page.w.api.isSaveClean(), 'a clean page after both fixes', 6000)
+    })
+
+    test('a character whose name cannot be read is still named in the notice, by its id', async () => {
+        const live = small()
+        let armed = false
+        const slot = live.characters[1] as unknown as Entry
+        const name = slot.name
+        Object.defineProperty(slot, 'name', {
+            configurable: true,
+            enumerable: true,
+            get() {
+                if (armed) {
+                    throw new Error('name getter fault')
+                }
+                return name
+            },
+        })
+        const page = await startPage(small(), { live })
+        await settled(page.w)
+        const { language } = await import('src/lang')
+        const chaId = String(characters(page.db)[1].chaId)
+        const { alertError } = await import('src/ts/alert')
+
+        armed = true
+        await nextCommit(page.w, () => {
+            characters(page.db)[2].personality = 'edited beside the unreadable name'
+            page.w.marks.markCharacterForSave(chaId)
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            page.flush()
+        }, false)
+        await until(async () => (await toastsOf(language.saveCharacterUnsavedNotice(`"${chaId}"`))) >= 1, 'the notice by id', 4000)
+        expect(vi.mocked(alertError)).not.toHaveBeenCalled()
+        expect((await page.k.saved()).characters[2]).toMatchObject({ personality: 'edited beside the unreadable name' })
+    })
+})

@@ -508,6 +508,20 @@ describe('new behaviour: a tree the codec cannot hold writes nothing', () => {
         expect([...test.memory.snapshot().keys()].sort()).toEqual([...before.keys()].sort())
         expect(test.wrapped.count('commitOrdinary') + test.wrapped.count('casCommit')).toBe(0)
     })
+
+    // Guard (passes before and after the save loop learned to skip an unreadable character): an import has no earlier copy
+    // to fall back on, so a character the codec cannot read refuses the whole import instead of being left out.
+    test('a character whose data cannot be read refuses the import and is never left out', async () => {
+        const test = await rig()
+        const cycle: Record<string, unknown> = {}
+        cycle.self = cycle
+        const tree = dbWithCharacters([{ chaId: 'c1', name: 'Cyclic', type: 'character', chats: [], personality: cycle }])
+        const before = test.memory.snapshot()
+        const outcome = await importLegacyTree(test.request({ tree, units: new Map() }), accept)
+        expect(outcome.status).toBe('unsavable')
+        expect([...test.memory.snapshot().keys()].sort()).toEqual([...before.keys()].sort())
+        expect(test.wrapped.count('commitOrdinary') + test.wrapped.count('casCommit')).toBe(0)
+    })
 })
 
 describe('new behaviour: the commit outcomes are typed', () => {
