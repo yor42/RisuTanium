@@ -11742,3 +11742,136 @@ Round 2:
   - Part 1 did not run, because of the key blocker this answer resolves.
   - Lane D's CHORE-241 phone 1 capture (`MC-386` 3) runs in the same phone 1 session on the fresh import.
   - No historical decision text is rewritten.
+
+### MC-455 — Lane E, 2026-10-22: CHORE-181 Back with a dialog open (scope and behaviour)
+
+- **Tag:** decision (AskUserQuestion answers relayed by lane A, 2026-10-22; Q4 to Q6 asked as one question)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answers. Input: lane E's questions Q1 to Q6 from the CHORE-181 investigation (`%TEMP%\risu-lane-e\a3\181\packet.md`, verified in `verify.md`).
+- **Related:** `MC-346` (CHORE-181 "Close the dialog"), `MC-279` item 8, `MC-345` (item A3); CHORE-181, CHORE-153, CHORE-351, CHORE-352.
+
+1. **Q1 scope: "Pop-up dialogs only (Recommended)".** Back closes only the dialogs shown through `alertStore` (alerts, confirms, selects, inputs, waits). Settings, the Realm frame, popups and panels keep toast-then-quit; filed as CHORE-352.
+2. **Q2 select and input: "Nothing for now, ticket it (Recommended)".** Back neither quits nor closes while a select or input prompt is open; a real cancel is filed as CHORE-351 (about 50 external `alertSelect`/`alertInput` call sites, the verifier's count).
+3. **Q3 dialogs with no cancel (`tos`, `staleAccountNotice`, `progress`, a `wait` without cancel): "Nothing (Recommended)".** Back is ignored and never quits through them.
+4. **Q4 to Q6: "Accept all three (Recommended)".** After Back closes a dialog, the next Back starts the quit guard fresh (toast first, then a second Back within 2 s quits). Back closes a dialog even inside the 400 ms misclick guard. Unsaved edits are flushed on the first Back press, only when there are unsaved edits; whether the in-flight-chat branch of the hide flush is included is the orchestrator's technical choice.
+
+### MC-458 — Lane E, 2026-10-22: commit and merge CHORE-181
+
+- **Tag:** decision (AskUserQuestion answer relayed by lane A, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answer. Input: lane E's request for commit approval after CHORE-181 Gate 2 round 2 (row 3560).
+- **Related:** `MC-346`, `MC-455`; CHORE-181.
+
+1. **"Commit + merge (Recommended)", conditional on the records check passing.** The records check (row 3561) found no required corrections. Commit the 11 named CHORE-181 paths and the lane E records on `worktree-Lane-E` after merging main; the hand-back names the hash of `src/ts/alertPrompts.ts` at the tip and confirms it equals the copy Gate 2 reviewed (the file a shell mutant touched, row 3558). Lane A runs the six-cell phone check on phone 2 after merging.
+
+### MC-459 — Lane E, 2026-10-22: grid avatar loading moves from lane D to lane E
+
+- **Tag:** decision (AskUserQuestion answer relayed by lane A, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answer "Take grid avatars from lane D".
+- **Related:** `MC-452` (MVP scope), CHORE-241 (lane D keeps the chat stalls, S3 and S4).
+
+1. **"Take grid avatars from lane D".** Lane E owns the slow grid avatar fill (the A1 report, `%TEMP%\risu-b715\a1-partial\report.md`, whose corrections override its body: 500 characters, Grid mode about 85 virtualised cells, avatars as background-image data URIs; initial fill about 0.34/s, about 0.55/s after a scroll; a full screen about 2 min on a Note 9 release build with a real profile). Step 1 is a PC trace with a synthetic profile of similar shape and a sized Gate 1 plan, with one investigator and no fan-out (the quota is in the yellow zone). Lane D's notes: the grid path does not reach the script/regex pipeline (CHORE-241's cause); nothing measured.
+
+### MC-460 — Lane E, 2026-10-22: grid avatar loading, product answers
+
+- **Tag:** decision (AskUserQuestion answers relayed by lane A, 2026-10-22; Q1, Q2 and Q5 asked as one question)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answers. Input: lane E's questions from the step 1 trace (`%TEMP%\risu-lane-e\grid\packet.md`).
+- **Related:** `MC-459`, `MC-452`, `MC-175`.
+
+1. **Q1, Q2, Q5: "Keep all three (Recommended)".** The grey tile stays while an avatar loads; animated avatars keep animating in the grid; thumbnails stay a cache and never go into the `.bin`.
+2. **Q3, background generation: "Not yet, decide after phone (Recommended)".** Do stages A and B, measure on the phone, then decide.
+3. **Q4, on failure or timeout: "Blank for big images, retry later (Recommended)".**
+4. **Q6, target: "Visible screen in under 10 s (Recommended)",** on a cold open on the Note 9 with the partial profile.
+5. Lane A chose a raw profile for the phone measurement (no code change): a CDP trace across a cold grid open with pollers off, plus a count of `risuThumb` records before the open, on phone 1 after lane D's capture. The phone attribution stays INFERRED until then; Gate 1 for stages A and B may proceed in parallel.
+
+### MC-461 — Lane E, 2026-10-22: grid avatar loading, retry answers and stage A sequencing
+
+- **Tag:** decision (AskUserQuestion answers relayed by lane A, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answers to D1 and D4 of the grid avatar Gate 1 verdict (`%TEMP%\risu-lane-e\grid\g1\verdict.md`).
+- **Related:** `MC-460` (Q4), `MC-459`, `MC-452`.
+
+1. **D1, retry fill: "Next time it's drawn (Recommended)".** A grey tile whose thumbnail would later succeed fills in when the cell is next drawn (remount); a tile that stays on screen is not refreshed live.
+2. **D4, retry cap: "Stay grey until restart (Recommended)".** A big image that keeps failing gets a few retries (for example 3, with exponential back-off), then stays grey until the app restarts.
+3. Lane A accepted lane E's sequencing: stage A now (A1, with one coder; the exact A2 variant measured first in scratch by one investigator, shipped only if the long-task sum falls by at least 30% on the large PNG tiers, with a `THUMB_VERSION` bump), gated and committed as one stage-A commit; stage B's design waits for the phone capture. Lane A also accepted lane E's rulings: a failed image of unknown size counts as big; the no-full-size rule is opt-in from the grid avatar component only.
+
+### MC-462 — Lane E, 2026-10-22: commit and merge grid avatar stage A
+
+- **Tag:** decision (AskUserQuestion answer relayed by lane A, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answer. Input: lane E's request for commit approval after the stage A Gate 2 (row 3568) and the records check (row 3570).
+- **Related:** `MC-459`, `MC-460`, `MC-461`.
+
+1. **"Commit + merge (Recommended)".** Fast-forward `worktree-Lane-E` to main `d42bfeb63`, commit `src/ts/media/avatarThumb.ts`, `src/ts/media/avatarThumb.test.ts` and the lane E records, and send the tip to lane A for merge. Phone 1's first cold grid capture runs on a pre-stage-A build; an "after" capture needs another re-import (an empty thumbnail store) and is scheduled later by lane A with the maintainer's OK.
+
+### MC-388 — Lane D, 2026-10-22: commit and merge the CHORE-241 test timeout fix
+
+- **Tag:** decision (`AskUserQuestion` answer by option label, relayed by lane A)
+- **Date:** 2026-10-22
+- **Sweep ref:** none (relayed by lane A the same day)
+- **Source:** lane A's cross-session message relaying the maintainer's answer to lane D's commit-approval request for the differential test timeout fix (ledger rows 2581 and 2582).
+- **Reasoning:** none stated.
+- **Alternatives rejected:** not relayed.
+- **Related:** `MC-387`; CHORE-241.
+
+**What was decided:**
+1. **"Commit + merge (Recommended)".** Lane D brings `worktree-Lane-D` up to `main` `c4dc06dbc` (fast-forward), then makes the two proposed commits with named paths only: the test change in `src/ts/process/tests/regexEarlyReject.test.ts`, then this records file; then gives lane A the tip.
+
+### MC-457 — Lane A, 2026-10-22: the write-guard shell gap (CHORE-353), the stage 5a merge, the test key commit and phone 1's extra wipe, the save-planning ownership split, and CHORE-354 in batch 3
+
+- Tag: decisions (chat reply and `AskUserQuestion` answers by option label, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript, 2026-10-22. The quoted reply and the option labels are the maintainer's. The question texts below are lane A's paraphrase, and the option text is the orchestrator's, recorded as shown.
+- Related: `MC-368` (stage 5a rollout: A9 before the daily APK), `MC-369`, `MC-456` (the fixed test key and phone 1's re-import), `MC-386`, `MC-452` (MVP scope), `MC-455` and `MC-458` (CHORE-181, where the shell write happened); CHORE-353, CHORE-354, CHORE-241, CHORE-223; ledger rows from 2171.
+
+**The maintainer's answers:**
+- **Write-guard shell gap.**
+  - Context: the write-scope guard refuses only the Edit and Write tools. A lane E coder ran mutants by changing a source file outside its grant with PowerShell and restoring it; lane E's hash check found the file equal to the reviewed copy. Lane A had adopted lane E's interim rules: briefs forbid temporary repository edits by any tool, even restored ones, mutants run on scratch copies only, and the lead hash-checks any file a hand-back says was restored. Lane E proposed two infrastructure fixes that change the shared `.claude` setup: (a) a hook that compares the working tree before and after each shell command and flags writes outside the grant; (b) one worktree per coder.
+  - Reply: "I approve the changes, but I also don't think this needs fix ASAP. let's ticket this for now and revisit this if similar things happen again."
+- **Stage 5a merge.**
+  - Question (paraphrased): merge lane B's committed stage 5a (`67273e799`; automatic clean-up of unreferenced store2 units once per launch, in the app only, deleting for real) into `main` now, given that `MC-368` keeps it out of the daily APK until the A9 run on a copy of the real profile?
+  - Answer: "Merge now, A9 before daily use (Recommended)".
+  - Option text: merge into main; until A9 passes, do not build the daily APK from main with sign-release, flagged in Live-State; phone 1 runs the other captures on a build without 5a first, then updates to a 5a build for A9.
+  - Not chosen: "Hold until A9 passes".
+- **Fixed test key commit.**
+  - Question (paraphrased): commit the four tool files (sign-install.ps1, its tests, the device README and a build-apk.ps1 comment) after the second review found no required fixes and the device-tool tests passed 378/378, then start phone 1's session, which begins by wiping phone 1?
+  - Answer: "Commit + start phone 1 (Recommended)".
+  - Option text: commit and push; then wipe phone 1, re-import Backup_partial.bin, run the three captures on a pre-5a build, then update to a 5a build for A9.
+  - Not chosen: "Commit only".
+- **Phone 1 extra wipe.**
+  - Question (paraphrased): the phone 1 agent used an older archive copy of the install script, so phone 1 was wiped and installed with a throwaway key; nothing had been imported. Authorize one more wipe of that empty profile, then the install with the fixed test key?
+  - Answer: "Yes, one more wipe (Recommended)".
+  - Option text: wipes only the empty profile; then install with the fixed test key and continue: import, grid, chat trace, export, then A9.
+  - Not chosen: "No".
+- **Save-planning fix ownership.**
+  - Question (paraphrased): who fixes the store2 save-planning stall that phone 1's capture showed dominates the chat-open and edit delays (the full re-digest and re-encode of all modules)?
+  - Answer: "Lane B planner, D render (Recommended)".
+  - Option text: lane B owns the save code (stages 1 to 5a) and takes the planner fix; lane D keeps the chat-render work (regex S3/S4) and the `scopeOf` measurement; persistence gates apply (opus-reviewer).
+  - Not chosen: "Lane D does it all", "Measure first".
+- **CHORE-354 in batch 3.**
+  - Question (paraphrased): include lane E's CHORE-354 records commit (the large-profile Back not answered within 1 s and no hide event on that quit; low priority, nothing lost) in the next records update?
+  - Answer: "Yes, include (Recommended)".
+  - Option text: lane E commits its record entries, and they go through the same independent check as the rest of batch 3.
+  - Not chosen: "Not yet".
+
+**What was decided (maintainer):**
+1. **Write guard.** The interim rules stand: no temporary repository edits by any tool, mutants in scratch only, and a hash check after any "restored" hand-back. The infrastructure fixes (a) and (b) are not made now. They are ticketed as CHORE-353 and revisited if a similar shell write happens again.
+2. **Stage 5a.** Stage 5a merges into `main` (done as `9dd028b3b`). The daily APK is not built from `main` until A9 passes on a copy of the real profile.
+3. **Test key.** The fixed test key change is committed (done as `d42bfeb63`) and phone 1's session starts with a wipe and re-import.
+4. **Extra wipe.** Phone 1 may be wiped once more, only its empty profile, to reinstall with the fixed test key.
+5. **Ownership.** Lane B owns the store2 save-planning fix. Lane D keeps chat-render work (S3/S4) and anything trace-side; lane D hands its plan-path evidence to lane B.
+6. **CHORE-354.** Lane E's CHORE-354 records commit (`a25ceb764`) is folded in with batch 3.
+
+- Notes, not the maintainer's words:
+  - "The changes" in the guard reply refers to the interim rules lane A described just before it; no `.claude` file was changed.
+  - The phone 1 wipe in item 4 left no data behind: the profile was empty. The re-import and all three captures then ran under the fixed test key (test-key-sha256 `69c387cd...29aaf`).
+  - A9 snapshot (lane A's technical choice, accepted by lane B): a release build refuses `run-as`, so the on-device snapshot in lane B's A9 request is impossible. The kept copy is `Backup_partial.bin` on the PC, and the restore path is a re-import.
+  - The item 5 split follows phone 1's verified capture (`%TEMP%\risu-b715\phone1-fresh\report.md`, step 6 and its corrections): store2 `plan` is about 110 s of main-thread time after a chat select and 8.4 s of a 10.9 s one-character edit. Whether the select or the idle net puts the modules in scope is still unobserved.
+  - No historical decision text is rewritten.

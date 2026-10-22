@@ -393,3 +393,11 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-386](Maintainer-Context.md#mc-386--lane-d-2026-10-22-mvp-chat-open-and-edit-stalls-s0-to-s2-answers) | Lane D, 2026-10-22: MVP chat-open and edit stalls, S0 to S2 answers |
 | [MC-387](Maintainer-Context.md#mc-387--lane-d-2026-10-22-commit-and-merge-chore-241-s1-and-s0) | Lane D, 2026-10-22: commit and merge CHORE-241 S1 and S0 |
 | [MC-456](Maintainer-Context.md#mc-456--lane-a-2026-10-22-chore-223-stage-a-merge-and-phone-runs-the-signing-tools-commit-and-a-fixed-test-key-for-the-test-phones) | Lane A, 2026-10-22: CHORE-223 stage A merge and phone runs, the signing tools commit, and a fixed test key for the test phones |
+| [MC-455](Maintainer-Context.md#mc-455--lane-e-2026-10-22-chore-181-back-with-a-dialog-open-scope-and-behaviour) | Lane E, 2026-10-22: CHORE-181 Back with a dialog open (scope and behaviour) |
+| [MC-458](Maintainer-Context.md#mc-458--lane-e-2026-10-22-commit-and-merge-chore-181) | Lane E, 2026-10-22: commit and merge CHORE-181 |
+| [MC-459](Maintainer-Context.md#mc-459--lane-e-2026-10-22-grid-avatar-loading-moves-from-lane-d-to-lane-e) | Lane E, 2026-10-22: grid avatar loading moves from lane D to lane E |
+| [MC-460](Maintainer-Context.md#mc-460--lane-e-2026-10-22-grid-avatar-loading-product-answers) | Lane E, 2026-10-22: grid avatar loading, product answers |
+| [MC-461](Maintainer-Context.md#mc-461--lane-e-2026-10-22-grid-avatar-loading-retry-answers-and-stage-a-sequencing) | Lane E, 2026-10-22: grid avatar loading, retry answers and stage A sequencing |
+| [MC-462](Maintainer-Context.md#mc-462--lane-e-2026-10-22-commit-and-merge-grid-avatar-stage-a) | Lane E, 2026-10-22: commit and merge grid avatar stage A |
+| [MC-388](Maintainer-Context.md#mc-388--lane-d-2026-10-22-commit-and-merge-the-chore-241-test-timeout-fix) | Lane D, 2026-10-22: commit and merge the CHORE-241 test timeout fix |
+| [MC-457](Maintainer-Context.md#mc-457--lane-a-2026-10-22-the-write-guard-shell-gap-chore-353-the-stage-5a-merge-the-test-key-commit-and-phone-1s-extra-wipe-the-save-planning-ownership-split-and-chore-354-in-batch-3) | Lane A, 2026-10-22: the write-guard shell gap (CHORE-353), the stage 5a merge, the test key commit and phone 1's extra wipe, the save-planning ownership split, and CHORE-354 in batch 3 |

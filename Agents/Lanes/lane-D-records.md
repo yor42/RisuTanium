@@ -231,6 +231,8 @@ Lane D (UI lists and small items), branch `worktree-Lane-D`. Rules: [README.md](
 
 ### CHORE-241 — MVP chat-open and edit stalls: a quadratic display regex, and chat-phase measurement
 
+**Folded in by lane A on 2026-10-22, merged in `e63a3eea8`** (no-ff of `f986f9abf`; `MC-388`): the 60 s describe timeout on the differential block of `regexEarlyReject.test.ts`. Ledger rows 2581 and 2582 are folded in after row 2580.
+
 **Status (2026-10-22, lane A fold-in): merged in `1d2272b7d` (no-ff of `a29c58871`; `MC-386`, `MC-387`); technically accepted; not COMPLETE: S3 and S4 wait for the phone 1 capture.** Ledger rows 2567 to 2580 folded in after row 2566.
 
 **Status (2026-10-22, lane D): S1 and S0 fixed, technically accepted and committed on `worktree-Lane-D` on the maintainer's approval (`MC-387`), not pushed; S2 dropped; S3 and S4 deferred until the phone capture.** Decision `MC-386`; ledger rows 2567 to 2579. Plan and binding Gate 1 conditions: `%TEMP%\risu-lane-d\stall\gate1-plan.md`.

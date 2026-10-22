@@ -196,6 +196,8 @@ On phone 2 with the large profile `m2-mix18k` (CHORE-181 cell 5), after the firs
 
 ### CHORE-181 (changed) — "Close the dialog" (MC-346)
 
+**Folded in by lane A on 2026-10-22, merged in `c4dc06dbc`** (no-ff of `00ae53c77`; `MC-346`, `MC-455`, `MC-458`). Ledger rows 3551 to 3561 are folded in after row 3550.
+
 **Status (2026-10-22, lane E item A3): fixed on `worktree-Lane-E` (base main `b87e457f9`); technically accepted (rows 3551 to 3560; records checked in row 3561); the maintainer approved the commit and merge (`MC-458`); committed over main `0d905815b` and sent to lane A; then lane A's merge, full checks and the phone check.** Decisions: MC-346, MC-455 and MC-458.
 
 - With an `alertStore` dialog covering the page, Android Back no longer reaches the default Back: it closes the dialog with the answer that dialog's own cancel or close control gives (`ask`/`pluginconfirm` `'no'`; `selectChar` and `selectModule` `''`; `cardexport` the cancel JSON with an empty `type2`; `addchar`/`chatOptions` `'cancel'`; a `wait` with `onCancel` runs it, as Escape does; notices close), or does nothing for `select`, `input`, `tos`, `staleAccountNotice`, `progress` and a `wait` without `onCancel` (`toast` and `none` do not cover the page and are held too). Either way the press is consumed and the quit guard starts fresh. A total table in `src/ts/alertBack.ts` makes a new alert type fail the type check.
@@ -208,6 +210,8 @@ On phone 2 with the large profile `m2-mix18k` (CHORE-181 cell 5), after the firs
 **Status (2026-10-22): product decision MC-346 "Close the dialog": with a dialog open, Back closes or cancels the dialog, then a second Back follows the 2 s quit guard. This amends the MC-279 8 rule for the dialog case. Lane D's S4-5 merge landed in `3a0f2cf0c` (before base `389f461de`); not yet scheduled.**
 
 ### Grid avatar loading (MC-452, MC-459) — stage A, the thumbnail write leaves the generation slot (no CHORE number)
+
+**Folded in by lane A on 2026-10-22, merged in `771ec2b30`** (no-ff of `cd4546b8e`; `MC-459` to `MC-462`). Ledger rows 3562 to 3570 are folded in with rows 3551 to 3561, after row 3550.
 
 **Status (2026-10-22, lane E): stage A fixed on `worktree-Lane-E` (base `c4dc06dbc`); technically accepted (rows 3562 to 3569; records checked in row 3570); the maintainer approved the commit and merge (`MC-462`); committed over main `d42bfeb63` and sent to lane A. Stage B waits for lane A's phone capture (`%TEMP%\risu-lane-e\grid\phone-request.md`).** Decisions: MC-459, MC-460 and MC-461.
 
