@@ -6927,6 +6927,28 @@ with index -1.
 - **Possible fix named by the reviewer:** refuse as a changed file when the commit's left-out names are not a subset of the confirmed `facts.omitted`.
 - **Related:** `MC-183`, `MC-357`; CHORE-103.
 
+### CHORE-222 — Parallel large-entry streams: pick the defaults on the Note 9, then raise them
+
+**Status (2026-10-22): open.** The lane B stage 3 code is merged as `42993e408`. Both defaults are 1 (today's behaviour). Source: `MC-358` 1, the stage 3 gates (`%TEMP%\risu-lane-b\s3\gate1-r1.md`, `gate2-r1.md`).
+
+- **What exists:**
+  - `RestoreAssetPipeline` (`src/ts/drive/assetBatchPipeline.ts`) takes `maxStreams` and `streamSliceBytes`.
+  - At `maxStreams` 1, the copy runs today's literal path (`streamAlone`).
+  - Above 1, large entries stream beside each other and beside batches:
+    - the last entry in file order wins for keys that fold equal;
+    - a sink, batch or source failure stops the other streams before their next chunk (`MC-358` 2);
+    - Android streams read one writer chunk (1 MiB) per slice.
+  - **The knob.** A MEASURE-only knob, `localStorage['risu-measure-copy'] = "<streams>[,<flights>[,<sliceKiB>]]"`, is read in `backuplocal.ts` `copyMeasureLimits` on every import. `risu-measure-copy` is in `util/checkReleaseDist.mjs` `FORBIDDEN_MARKERS`.
+- **Next:**
+  1. A Note 9 run: a `VITE_RISU_MEASURE=1` release build, a large `.bin` such as `m2-mix18k.bin` (34.4% of its bytes in entries above 1 MiB). Streams x flights in {1,2,4} x {2,4}, and the slice size where it matters. Record the copy rate (`__risuImportPhases`) and the renderer and app PSS peak. A device request goes to lane A once this stage is committed.
+  2. Before raising a default above 1:
+     - (a) a test at more than 1 stream that a refused stream name is reported in the import's skipped list (Gate 2 mutant r7 survived; today it is reachable only through the knob);
+     - (b) the maintainer settles the progress text during a long drain (the percentage counts bytes read and can sit at 100% while streams finish);
+     - (c) decide whether the literal `maxStreams` 1 path is deleted (the new path at 1 is not identical: batches would overlap the stream).
+  3. A one-line change sets `ANDROID_ASSET_MAX_STREAMS`, the desktop `ASSET_MAX_STREAMS` and, if measured, the Android flight count.
+- **Known, accepted:** when the loop throws, the caller skips `stopStreams` (Gate 2 mutant r3 survived). The only effect is a delay before the error shows.
+- **Related:** `MC-358`, `MC-328` 2, `MC-197` 9.
+
 ### CHORE-200 — On a Node server, a cold-storage unit over the request body limit fails only after the upload (fixed in stage 2a; the boot-pass strike for an oversize unit remains open as a proposed follow-up)
 
 **Status (2026-10-12): fixed in stage 2a (`bd02c04d4`, merged in `2e065403a`; ledger rows 2024, 2027 to 2030); the boot-pass strike for an oversize unit remains open as a proposed follow-up, not scheduled.**

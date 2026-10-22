@@ -10906,3 +10906,22 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - `MC-328` 2 is not rewritten: its order stands; this entry replaces only the content of the "platform-neutral page fixes" step for decode-once, tail-locate and read-once. Faster base64 is already done (`ac5b4e105`); parallel large entries stay as lane B stage 3.
 - The figures are from one debug build on one Note 9 with a synthetic fixture; PSS sampled every 5 s, so peaks are lower bounds.
 - Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-358 — Lane B, 2026-10-22: stage 3 (parallel large entries) is built with tunable counts and tuned on the Note 9; a failure stops the other streams at their next chunk; desktop and Android only (amends the "platform-neutral" wording of `MC-328` 2 for this item)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs: `%TEMP%\risu-lane-b\s3\sizing.md` (investigator) with `sizing-verify.md` (`doc-verifier`; it corrects the lock claim, the second desktop copy path and the expected gain, and supersedes the packet where they differ).
+- **Related:** `MC-328` 2, `MC-197` 9, `MC-330` 3; lane B stage 3.
+
+1. **Approach: "Build, tune on phone (Recommended)".** The option text: implement parallel streams with the stream count and the Android batch count as constants (1 = today's behaviour); prove ordering, failure and memory on the PC; then one Note 9 release run picks the defaults; desktop and Android only. The question stated: the gain is modest and unmeasured on the current build. In a phone emulation, parallel large-file streams added about +25% (2 streams) to +50% (4 streams, plus 4 batches in flight instead of Android's 2), over a base that had already doubled with the faster base64. Not chosen: "Measure first" (an emulation run on the Note 9 before any product code) and "Skip to stage 4".
+2. **On failure: "Stop at next chunk (Recommended)".** When one large-file copy fails while others are in flight, each stream checks for the failure between chunks and stops. The import is refused, and nothing is committed either way. Not chosen: "Finish current file".
+3. **Scope: "Desktop and Android only (Recommended)".** Stage 3 is recorded as Tauri-only. Web and Node batching stays the separate, later `MC-328` 2 item (Node endpoints and web batching). Not chosen: "Keep it general".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator from the sizing packet and its verification.
+- The question's "already doubled with the faster base64" overstated: `sizing-verify.md` gives about +65% in three runs and +124% in one (mean +81%, spread unexplained).
+- The emulated figures come from one Note 9 release build of an older main (c428a0234) on a 96 MiB sample. The split of the gain between the stream count and the batch count is unmeasured.
+- `MC-197` 9 (per-file sync) stays in force. More streams mean more concurrent syncs.
+- Nothing here authorizes application-code edits, commits or pushes.
