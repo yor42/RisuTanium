@@ -6981,13 +6981,24 @@ with index -1.
 
 ### CHORE-222 — Parallel large-entry streams: pick the defaults on the Note 9, then raise them
 
-**Status (2026-10-22, later, `MC-361`): in progress.** The Note 9 run is done (row 2336), and the maintainer chose:
+**Status (2026-10-22, implemented; merged in `af735c916` (lane B); `MC-361`, `MC-341` 1): technically accepted on the PC, pending the Note 9 debug-build check.** Gate 1 `[REJECT]` and then `[APPROVE]` in round 2; Gate 2 `[EDITORIAL]`, E1 and E2 applied. Ledger rows 2344 to 2348. `MC-361`'s condition holds: the default does not ship before that check (main is not a release).
+- **The defaults** (`src/ts/drive/backuplocal.ts`): `ANDROID_ASSET_MAX_STREAMS` 2 and Android `maxFlights` 4. The desktop keeps `ASSET_MAX_STREAMS` 1 and the literal `streamAlone` path. The MEASURE knob still overrides both.
+- **The finishing message:** "Finishing copying files..." shows immediately before the drain, only when nothing stopped or failed, the source is unchanged, and the pipeline has work outstanding (`RestoreAssetPipeline.outstanding`).
+  - On the tail without store2, `Loading backup...` replaces it before the commit.
+  - Web and Node pages without store2 now show `Loading backup...` during the decode instead of the last percentage. This is cosmetic.
+- **The PC prerequisites are met:**
+  - a phone-like 60-entry mix restores byte-exact at 2,4, at 4,4 and at the default;
+  - a refused name above 1 stream is reported (the stage 3 survivors r3 and r7 are now killed).
+- **Note 9 debug integrity check** (lane B's device request): chosen for phone 1 (`MC-341` 2) and dispatched on 2026-10-22; the result is pending.
+- **Open, optional:** removing `!sourceChanged` (m9b), `stopMessage === null` (g5) or `passFailure === null` (g6) from the message condition leaves every test passing. The consequence is a "Finishing copying files..." flash before the correct error, with nothing installed. Tests for these were named by Gate 2 and are not added.
+
+**Status (2026-10-22, later, `MC-361`): in progress; superseded by the status above.** The Note 9 run is done (row 2336), and the maintainer chose:
 - 2 streams with 4 flights on Android;
 - the desktop stays at 1;
 - a finishing message during the drain;
 - the literal path is kept.
 
-The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer); the implementation is in progress, uncommitted, in lane B's worktree. The default does not ship before the PC completion test, the refused-name test above 1 stream, and a Note 9 debug-build check of the restored assets.
+The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer); the implementation is in progress, uncommitted, in lane B's worktree (dated history: implemented and merged since, see the status above). The default does not ship before the PC completion test, the refused-name test above 1 stream, and a Note 9 debug-build check of the restored assets.
 
 **Status (2026-10-22): open.** The lane B stage 3 code is merged as `42993e408`. Both defaults are 1 (today's behaviour). Source: `MC-358` 1, the stage 3 gates (`%TEMP%\risu-lane-b\s3\gate1-r1.md`, `gate2-r1.md`).
 

@@ -365,3 +365,4 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-382](Maintainer-Context.md#mc-382--lane-d-2026-10-22-grid-touch-merge-needs-a-longer-rest) | Lane D, 2026-10-22: Grid touch merge needs a longer rest |
 | [MC-383](Maintainer-Context.md#mc-383--lane-d-2026-10-22-s4-5-grid-folder-menu-answers) | Lane D, 2026-10-22: S4-5 Grid folder menu answers |
 | [MC-340](Maintainer-Context.md#mc-340--lane-a-2026-10-22-lane-c-plan-amendment-merge) | Lane A, 2026-10-22: lane C plan amendment merge |
+| [MC-341](Maintainer-Context.md#mc-341--lane-a-2026-10-22-lane-b-chore-222-merge-and-its-note-9-check) | Lane A, 2026-10-22: lane B CHORE-222 merge and its Note 9 check |

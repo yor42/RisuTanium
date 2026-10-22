@@ -11222,3 +11222,12 @@ other forks like pocketRisu and haejeokrisu appeard as node and heavy save data 
 - Related: `MC-430`, `MC-337`; CHORE-202.
 1. **Lane C's CHORE-202 plan amendment: "Merge + fold in (Recommended)".** Merged as `085c58f5b`, with this fold-in.
 - Notes, not the maintainer's words: the option text was written by the orchestrator; the phone runs R1 to R4 still wait for CHORE-204 (`MC-337` 7).
+
+### MC-341 — Lane A, 2026-10-22: lane B CHORE-222 merge and its Note 9 check
+
+- Tag: decisions (`AskUserQuestion` answers, 2026-10-22). Date: 2026-10-22. Sweep ref: none.
+- Source: the session transcript (orchestrator-recorded option text); git `23fb6694e`, `af735c916`.
+- Related: `MC-361`, `MC-338`; CHORE-222.
+1. **Lane B CHORE-222: "Merge + fold in now (Recommended)".** Merged as `af735c916`, with this fold-in. CHORE-222 stays pending the Note 9 check; `MC-361`'s condition that the default does not ship before that check still holds (main is not a release).
+2. **Lane B's Note 9 integrity check: "Phone 1 now (Recommended)".** Run on phone 1 (the option text allowed it alongside phone 2's CHORE-202 runs).
+- Notes, not the maintainer's words: the option texts were written by the orchestrator.

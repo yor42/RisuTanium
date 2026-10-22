@@ -233,7 +233,7 @@ A stage here is at most "technically accepted"; it becomes COMPLETE only after l
 
 The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer). The default does not ship before the PC completion test, the refused-name test above 1 stream, and a Note 9 debug-build check of the restored assets.
 
-**Status (2026-10-22, implemented): technically accepted on the PC, pending the Note 9 debug-build check (`MC-361` 1).** The change is on `worktree-Lane-B` and is uncommitted until the maintainer approves. Ledger rows 2344 to 2348.
+**Status (2026-10-22, implemented): technically accepted on the PC, pending the Note 9 debug-build check (`MC-361` 1).** The change is merged (folded into the shared files by lane A on 2026-10-22, merged in `af735c916`); the Note 9 check is pending. Ledger rows 2344 to 2348.
 - **The defaults** (`src/ts/drive/backuplocal.ts`): `ANDROID_ASSET_MAX_STREAMS` 2 and Android `maxFlights` 4. The desktop keeps `ASSET_MAX_STREAMS` 1 and the literal `streamAlone` path. The MEASURE knob still overrides both.
 - **The finishing message:** "Finishing copying files..." shows immediately before the drain, only when nothing stopped or failed, the source is unchanged, and the pipeline has work outstanding (`RestoreAssetPipeline.outstanding`: streams, calls or an unsent batch).
   - On the tail without store2, `Loading backup...` replaces it before the commit.
@@ -385,5 +385,5 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 - **CHORE-222:** decisions `MC-361` (rows 2336 and 2338 to 2340). Its plan is at Gate 1, and the implementation starts after the CHORE-220 commit (one writer per checkout). After that commit, a Note 9 debug-build device request checks the restored assets with run-as. (Superseded below.)
 
 2026-10-22, CHORE-222:
-- **CHORE-222:** Gate 1 `[REJECT]` and then `[APPROVE]` in round 2; implemented; Gate 2 `[EDITORIAL]`, E1 and E2 applied (rows 2344 to 2348). It awaits the maintainer's commit approval.
+- **CHORE-222:** Gate 1 `[REJECT]` and then `[APPROVE]` in round 2; implemented; Gate 2 `[EDITORIAL]`, E1 and E2 applied (rows 2344 to 2348). It is merged (folded into the shared files by lane A on 2026-10-22, merged in `af735c916`); the Note 9 check is pending.
 - **After the commit:** the Note 9 debug-build check of the restored assets, routed through the maintainer.
