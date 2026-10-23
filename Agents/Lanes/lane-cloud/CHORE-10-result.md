@@ -1,6 +1,6 @@
 # CHORE-10 result (Phase 2): 21 long-term-memory items traced or reproduced, reproducers in ten test files
 
-**Status:** proposed status for lane A to apply: all 21 items investigated with maintainer decisions (`MC-711` to `MC-715`; `MC-712` item 1 is superseded by `MC-714`). 19 items have `it.fails` / `test.fails` reproducers (HAN-1, HAN-2, V2-1 to V2-4, SHARED-2, SUPA-1 to SUPA-5, V3-1 to V3-5, TOK-1, and UI-1 for its label half only), and two items have no test (V2-5, SHARED-1). No application code changed. The reproducers are in ten new, untracked test files. Gate 2 ended `[APPROVE]` in round 3 after two substantive `[REJECT]` rounds. Short entry: [lane-cloud-records.md](../lane-cloud-records.md) (`MC-711` to `MC-715`, ledger rows 5018 to 5036, "For lane A: Phase 2 saved-data risks").
+**Status:** proposed status for lane A to apply: all 21 items investigated with maintainer decisions (`MC-711` to `MC-715`; `MC-712` item 1 is superseded by `MC-714`). 19 items have `it.fails` / `test.fails` reproducers (HAN-1, HAN-2, V2-1 to V2-4, SHARED-2, SUPA-1 to SUPA-5, V3-1 to V3-5, TOK-1, and UI-1 for its label half only), and two items have no test (V2-5, SHARED-1). No application code changed. The reproducers are in ten new, untracked test files. Gate 2 ended `[APPROVE]` in round 3 after two substantive `[REJECT]` rounds. Short entry: [lane-cloud-records.md](../lane-cloud-records.md) (`MC-711` to `MC-715`, ledger rows 5018 to 5023 and 5028 to 5037, "For lane A: Phase 2 saved-data risks").
 
 ## Question / ticket ask
 
@@ -8,7 +8,7 @@
 
 ## Environment
 
-- Fork: `/home/user/RisuTanium`, branch `lane-cloud`. The investigations ran at HEAD `9ded0aa`; the tests and Gate 2 ran at HEAD `04126b6`. `git diff --stat 9ded0aa 04126b6` lists four files (the records file, `CHORE-09-result.md` and two CHORE-09 test files), so no application source differs between the two snapshots, and the investigation citations are taken as valid at `04126b6`. `git diff --stat -- src` is empty and `git status --short` shows only the ten untracked test files plus the modified records file, which carries this work's `MC-711` to `MC-715`, the "For lane A" section and ledger rows 5018 to 5036.
+- Fork: `/home/user/RisuTanium`, branch `lane-cloud`. The investigations ran at HEAD `9ded0aa`; the tests and Gate 2 ran at HEAD `04126b6`. `git diff --stat 9ded0aa 04126b6` lists four files (the records file, `CHORE-09-result.md` and two CHORE-09 test files), so no application source differs between the two snapshots, and the investigation citations are taken as valid at `04126b6`. `git diff --stat -- src` is empty and `git status --short` shows only the ten untracked test files plus the modified records file, which carries this work's `MC-711` to `MC-715`, the "For lane A" section and the CHORE-10 ledger rows.
 - Upstream: read-only clone of `kwaroran/risuai` at `f50b594`, outside the repository (`MC-069`).
 - Linux container, Node v22.22.0 (investigations), Vitest 4.1.11, default `vitest.config.ts` (happy-dom). Mocks stub the database, tokenizer (character or constant counts), summarizer, embeddings and stores; results show control flow and logic, not full-app or provider behaviour.
 - Sources (session scratchpad `p2/`, not repository paths):
@@ -330,8 +330,9 @@ Related: `MC-708` ("go ahead with Phase 2"), `MC-069` (upstream comparison), `MC
 This section takes precedence over the body above. Independent doc-verifier pass, 2026-10-23 (scratchpad `p2/c10d/dv/result.md`): ten files rerun (40 passed, 32 expected fail), test titles, decision quotes, REPRODUCED citations and an upstream sample verified; four required corrections, applied in the body by the Orchestrator:
 
 1. `maxSupaChunkSize` UI minimum: the fork line is `src/lib/Setting/Pages/OtherBotSettings.svelte:1279` (`:1268` is blank in the fork; it is the upstream line). The packet was right; the earlier "stale citation" label was wrong.
-2. Ledger rows for CHORE-10 are 5018 to 5036 (5016 and 5017 are CHORE-09).
+2. Ledger rows for CHORE-10 are 5018 to 5023 and 5028 to 5036 at the time of this pass (5016, 5017 and 5024 to 5027 are CHORE-09).
 3. Records file: an earlier draft of the "For lane A" section named `MC-712` 1 for SUPA-3, gave the range `MC-710` to `MC-713`, and called V2-2 "a diagnostic". The Orchestrator corrected it; it now cites `MC-714`/`MC-715` for SUPA-3, `MC-710` to `MC-715`, and V2-2 as failing assertions including the stored-null case, so the report and the records agree.
 4. The modified records file is part of this work (it carries `MC-711` to `MC-715`, the "For lane A" section and the CHORE-10 ledger rows); the environment line is reworded.
 
 Optional, noted: the V3-4 citation `index.svelte.ts:1295,1342,1359` is loose; only `:1295` is the `splitSentMessages` call, `:1342` is the `makeMs` call and `:1359` the message loop.
+5. Phase 2 close check (scratchpad `p2/close/dv/result.md`): ledger rows for CHORE-10 are 5018 to 5023 and 5028 to 5037. The range "5018 to 5036" in an earlier version of item 2 and the commit message's "5018-5037" also span the CHORE-09 rows 5024 to 5027; the records file lists the exact rows. The commit message of `ae9edbf` is not amended.
