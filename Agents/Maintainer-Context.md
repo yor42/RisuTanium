@@ -12197,3 +12197,71 @@ Round 2:
 - Notes, not the maintainer's words:
   - The merge is `19625c694`. The reviewer's other findings are verification records with no action.
   - The confirm dialog and the comment correction are not yet ticketed or scheduled.
+  - **Scope correction (doc-verifier, 2026-10-24, from source).** Item 4's question overstated the sweep. Only a plugin-API `setDatabase` or `setDatabaseLite` write that carries `characters` clears every character's empty chats (`writeSetterKeys`, plugins.svelte.ts). The storage `setDatabaseLite` that `setChar` calls internally does not sweep. The narrower setters clear less:
+    - `setChatToIndex` clears that chat;
+    - `setCharacterToIndex` clears that character's chats;
+    - V2 `setChar` and V3 `setCharacter` clear the selected character's chats.
+    The maintainer's answer, to leave the behaviour as it is, is unaffected.
+
+---
+
+### MC-352 — Lane A, 2026-10-24: triage of lane Cloud's follow-ups (CHORE-500 to CHORE-503, CHORE-09 item 7)
+
+- Tag: decisions (chat message and `AskUserQuestion` answers by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source:
+  - the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6`. The option labels and the quoted message are the maintainer's; the question texts are lane A's paraphrase and the option descriptions are the orchestrator's;
+  - the triage `%TEMP%\risu-b715\cloud-triage\result.md` (investigator), with the doc-verifier's "Corrections" section, which takes precedence.
+- Related: `MC-350`, `MC-351`, `MC-724`, `MC-069`; CHORE-09, CHORE-500, CHORE-501, CHORE-502, CHORE-503.
+
+**The maintainer's words:**
+- "I think some of it can run in parallel with lane B, especially wiki and triage."
+- **CHORE-502:** "Scan backup, then decide (Recommended)". The option said:
+  - a read-only script counts the old-format HypaV2 chats in `Backup_partial.bin` on the PC: counts only, no content;
+  - if there are none, park post-MVP; if there are some, fix before the maintainer uses HypaV2 on them in the MVP.
+- **CHORE-09 item 7:** "Small guard in batch (Recommended)". The option said:
+  - in the legacy branch, write only when the target really is the selected chat and the index exists; otherwise do nothing;
+  - selected-chat behaviour is unchanged;
+  - it is tiny, with tests and `opus-reviewer`, and goes in the small batch with the Reset confirm dialog.
+- **The other three:** "Park 500/501, close 503 (Recommended)". CHORE-500 and CHORE-501 have no data risk and go to the post-MVP list. CHORE-503 closes as accepted per `MC-724`.
+
+**What was decided (maintainer):**
+1. Wiki work and triage may run in parallel with lane B.
+2. CHORE-502 waits on a read-only count of old-format HypaV2 chats in the partial backup. Then:
+   - none found: it is parked post-MVP;
+   - some found: it is fixed before HypaV2 is used on those chats in the MVP.
+3. CHORE-09 item 7 gets a guard in the small batch: the legacy `@@inject` write happens only when its target is the selected character's current chat and the message index exists. Selected-chat behaviour is unchanged.
+4. CHORE-500 and CHORE-501 are parked post-MVP. CHORE-503 is closed as accepted (`MC-724`).
+
+- Notes, not the maintainer's words:
+  - **The guard must cover all four subject-less callers:** parser.svelte.ts, translator.ts, HypaV3Modal/utils.ts and v3.svelte.ts (`editprocess`). The fourth was found by the verifier.
+  - **Not decided:** whether the `@@repeat_back` `selectedCharID` read gets the same guard. The verifier raised it.
+  - **What the guard changes** (Gate 2 `opus-reviewer`, 2026-10-24, `%TEMP%\risu-b715\small-batch-review\result.md`; confirmed by mutant execution).
+    - Before the guard, a missing target already wrote nothing: the write threw, and the per-script try/catch logged it. The guard turns that logged TypeError into a silent no-op. It does not prevent any stored-data change.
+    - **Residual (pre-existing upstream):** no caller passes an index from another chat. The realistic wrong-chat case is the selection changing while the script pass is in flight, for example during a network translation. The pass then writes message N of the newly selected chat, and that write is saved.
+  - **Persistence risk is real for CHORE-502.** The converted data replaces the old data (index.svelte.ts), so the dropped summaries are lost for good once saved.
+  - **Outcome of item 2** (2026-10-24, scan `%TEMP%\risu-b715\c502-scan\result.md`, doc-verified):
+    - The partial backup has 0 chats with `hypaV2Data` (771 chats scanned), and `db.hypav2` is off. So CHORE-502 is parked post-MVP.
+    - Limit: only the partial backup was scanned.
+
+---
+
+### MC-353 — Lane A, 2026-10-24: the `@@inject` mid-pass selection residual is accepted; the small batch, wiki and records are committed
+
+- Tag: decisions (`AskUserQuestion` answers by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6`. The option labels are the maintainer's; the question texts are lane A's paraphrase and the option descriptions are the orchestrator's. Review: `%TEMP%\risu-b715\small-batch-review\result.md` (`opus-reviewer`, `[EDITORIAL]`, accepted once the test-header wording is fixed).
+- Related: `MC-351` 3 and 4, `MC-352` 3; CHORE-09.
+
+**The answers:**
+1. **The remaining `@@inject` case.** A card with an `@@inject` display script can write into message N of the chat the maintainer switched to, if they switch chats while the script pass is in flight (for example, during a network translation). Upstream behaves the same.
+   - Answer: "Accept as residual (Recommended)".
+   - The option's description: record it as a known residual shared with upstream, and close CHORE-09 item 7 with the small guard. The trigger is narrow: it needs an inject card plus a chat switch mid-translation.
+2. **Commits.** Answer: "Yes, 3 commits + push (Recommended)". The steps:
+   - full `pnpm test`, `pnpm check`, build and the dist check on the snapshot;
+   - commit 1: the small batch (the Reset confirm, the `@@inject` guard, the test header, the new tests and the 6 locales);
+   - commit 2: the 11 wiki pages;
+   - commit 3: the records;
+   - push main.
+
+- Notes, not the maintainer's words:
+  - CHORE-09 item 7 is closed with the guard and this accepted residual.
+  - The guard turns a logged TypeError into a no-op and changes no stored data (`MC-352` notes). Commit messages and status records must not say it prevents corruption.
