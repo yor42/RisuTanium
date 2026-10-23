@@ -1320,6 +1320,7 @@ export const languageEnglish = {
     Speech: "Speech",
     ToggleSuperMemory: "Toggle SupaMemory",
     SuperMemory: "SupaMemory",
+    resetSupaMemory: "Reset SupaMemory data",
     useExperimental: "Enable Experimental Features",
     showMemoryLimit: "Show Memory Limit",
     showFirstMessagePages: "Show First Message Pages",

@@ -18,6 +18,7 @@ import { runScripted } from "./scriptings";
 import { calcString } from "./infunctions";
 import { createRunSubject, type Origin } from "./chatOrigin";
 import { LOW_LEVEL_NESTED_TRIGGER_LIMIT, NORMAL_NESTED_TRIGGER_LIMIT } from "./triggerLimits";
+import { withSupaRepoint } from "./memory/supaResume";
 
 
 export interface triggerscript{
@@ -1574,7 +1575,9 @@ export async function runTrigger(char:character,mode:triggerMode, arg: RunTrigge
                 case 'cutchat':{
                     const start = Number(risuChatParser(effect.start,{chara:char, subject}))
                     const end = Number(risuChatParser(effect.end,{chara:char, subject}))
-                    chat.message = chat.message.slice(start,end)
+                    withSupaRepoint(chat, () => {
+                        chat.message = chat.message.slice(start,end)
+                    })
                     markWrite()
                     break
                 }
@@ -2007,7 +2010,9 @@ export async function runTrigger(char:character,mode:triggerMode, arg: RunTrigge
                         end = chat.message.length
                     }
 
-                    chat.message = chat.message.slice(start,end)
+                    withSupaRepoint(chat, () => {
+                        chat.message = chat.message.slice(start,end)
+                    })
                     markWrite()
                     break
                 }

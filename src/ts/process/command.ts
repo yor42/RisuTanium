@@ -10,6 +10,7 @@ import { createRunSubject, createSendSubject, registerWork, type Origin, type Or
 import { isComposerWindowOpen } from "./generationOwnership.svelte";
 import { LOW_LEVEL_NESTED_TRIGGER_LIMIT, NORMAL_NESTED_TRIGGER_LIMIT } from "./triggerLimits";
 import { language } from "src/lang";
+import { clearSupaMemoryIfEmpty, withSupaRepoint } from "./memory/supaResume";
 
 /**
  * What a command line runs against. Every field is fixed when the line
@@ -218,14 +219,18 @@ async function processCommand(command:string, pipe:string, ctx:CommandContext, s
                     index += chat.message.length
                 }
                 if(index >= 0 && index < chat.message.length){
-                    chat.message = chat.message.filter((_, i) => i !== index)
+                    withSupaRepoint(chat, () => {
+                        chat.message = chat.message.filter((_, i) => i !== index)
+                    })
                     subject.mark()
                 }
             }
             else if(/^\d+\s*-\s*\d+$/.test(spec)){
                 const [start, end] = spec.split('-').map((part) => parseInt(part.trim(), 10))
                 if(start < end){
-                    chat.message = chat.message.filter((_, i) => i < start || i >= end)
+                    withSupaRepoint(chat, () => {
+                        chat.message = chat.message.filter((_, i) => i < start || i >= end)
+                    })
                     subject.mark()
                 }
             }
@@ -233,7 +238,9 @@ async function processCommand(command:string, pipe:string, ctx:CommandContext, s
                 const id = spec
                 const kept = chat.message.filter((e)=>e.chatId !== id)
                 if(kept.length !== chat.message.length){
-                    chat.message = kept
+                    withSupaRepoint(chat, () => {
+                        chat.message = kept
+                    })
                     subject.mark()
                 }
             }
@@ -245,7 +252,9 @@ async function processCommand(command:string, pipe:string, ctx:CommandContext, s
             if(/^\d+$/.test(spec)){
                 const size = parseInt(spec, 10)
                 if(size > 0){
-                    chat.message = chat.message.slice(0, Math.max(0, chat.message.length - size))
+                    withSupaRepoint(chat, () => {
+                        chat.message = chat.message.slice(0, Math.max(0, chat.message.length - size))
+                    })
                     subject.mark()
                 }
             }
@@ -284,6 +293,7 @@ async function processCommand(command:string, pipe:string, ctx:CommandContext, s
                 }
                 if(clearMode){
                     target.chat.message = []
+                    clearSupaMemoryIfEmpty(target.chat)
                 }
                 target.chat.message.push({
                     role: 'user',

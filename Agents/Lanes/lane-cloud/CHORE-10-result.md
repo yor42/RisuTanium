@@ -990,6 +990,203 @@ Not run: the full `pnpm test` and the build on this snapshot (pending at phase c
 - The inherited residuals from A3 and C3 (`MC-723` bounded duplicate greeting summary, upstream `trimStartNewChat` without examples, examples removed after an example-only summary, messages unhidden after being summarised around) are unchanged by this stage; see those sections.
 - The `it.fails` rows for the hidden message are flipped in V2 and V3. A separate `it.fails` in `supaMemory.test.ts` belongs to C4.
 
+## Phase 3 — stage C4 fix
+
+Scope: SUPA-3, SupaMemory resume pointer survives deletes (2026-10-23). Decisions: `MC-714`, `MC-715`, `MC-720` to `MC-722` and `MC-724` in [lane-cloud-records.md](../lane-cloud-records.md); `MC-175` and `MC-223` for compatibility. Evidence is the scratchpad `p3/c10/` tree: `C/plan.md` (section "C4 SUPA-3 ... [R4]", "Gate 1 round 4", "Risks for opus-reviewer"), `C/advisor/result.md`, `C/advisor3/result.md`, `C/g1r3/result.md`, `C/g1r4/result.md`, `C4/impl1/result.md`, `C4/impl2/result.md`, `C4/rem1/result.md` (with their logs), `C4/g2/result.md` (round 1) and `C4/g2r2/result.md` (round 2); the `git status` and `git diff` of the 23 changed paths; the records file; and upstream read-only at `/home/user/kwaroran/risuai` f50b594. Line numbers are the current working tree (branch `lane-cloud`, HEAD 048cb24 plus uncommitted edits). Nothing was committed by this pass. Gate 1 for C4 was `[EDITORIAL]` in round 4, after `[REJECT]` in the earlier rounds (round 3 the third consecutive, so the plan was rewritten as [R4] after `advisor3`). Gate 2 round 1 was `[REJECT]` (F1); round 2 was `[EDITORIAL]`. The Orchestrator applied ED1 and O1 after round 2; afterwards `supaMemory.test.ts` plus `supaResume.test.ts` ran 46 passed (row 5119). No gate round followed those two edits.
+
+### Files
+
+Application code (11 modified, 1 new):
+
+- New `src/ts/process/memory/supaResume.ts` (159 lines).
+- `src/ts/process/memory/supaMemory.ts`, `src/ts/process/index.svelte.ts`, `src/ts/storage/database.svelte.ts`, `src/lang/en.ts`, `src/lib/SideBars/CharConfig.svelte`, `src/lib/ChatScreens/Chat.svelte`, `src/ts/process/command.ts`, `src/ts/process/scriptings.ts`, `src/ts/process/triggers.ts`, `src/ts/plugins/plugins.svelte.ts`, `src/ts/plugins/apiV3/v3.svelte.ts`.
+
+Tests (2 modified, 7 new): `src/ts/process/memory/supaMemory.test.ts` and `src/ts/process/command.supaResume.test.ts` (modified); new `src/ts/process/memory/supaResume.test.ts`, `src/ts/process/supaResume.sites.svelte.test.ts`, `src/lib/ChatScreens/Chat.supaResume.svelte.test.ts`, `src/ts/plugins/apiV3/tests/pluginSupaEmptyChat.svelte.test.ts`, `src/ts/storage/tests/databaseSupaEmptyChat.test.ts`, `src/ts/storage/tests/store2/codecSupaCoveredId.test.ts` and `src/ts/storage/tests/store2/codecSupaCoveredId.bin.test.ts`.
+
+Records: this report and `Agents/Lanes/lane-cloud-records.md`. The records file carries `MC-724`, CHORE-503, the C4 status line and ledger rows 5115 to 5121; rows 5115 to 5121 are present (5120 this report, 5121 its independent check). That makes 23 paths in `git status` (15 modified, 8 untracked). Line endings are LF in the edited sources (implementer 2 checked 0 CR in every edited source).
+
+### What changed
+
+**The invariant and the module (`supaResume.ts`).** The module comment states the invariant, and the resolver and `repointSupaMemory` repeat it. Coverage is defined on `chat.message` order, hidden messages included. With first line P and covered-ID field c (c is true iff `supaMemoryCoveredId === P`), the covered set is every message before P in that order, plus P when c. The pointer moves to an entry Q only (1) in a write whose summariser input holds every sent entry between the old resume point and Q (the summarisation loop), (2) in a delete that removed the old pointer message (`repointSupaMemory`), or (3) when the end-of-chat pair is written. The send-time resolver never writes a resume id other than the stored one. Reset and the empty-chat rule empty the set. The module imports only `uuid` and type-only `Chat`/`Message`. Exports:
+
+- `repointSupaMemory(chat, previousMessages)` (`:59`): if the pointer's message was in `previousMessages` and is gone from `chat.message`, then (MC-714) the pointer takes the first survivor after it in `chat.message` order, hidden survivors included, the summary text is unchanged and a stale covered field is deleted; or (MC-715, no survivor follows) the last survivor becomes the pointer and `supaMemoryCoveredId` names it. Survivors are found by object identity, then by `chatId`; a survivor without a `chatId` is stamped with a new v4. Nothing survives, or the pointer was not in `previousMessages`: no change. `hypa:` data and empty data are never repointed.
+- `clearSupaMemoryIfEmpty(chat)` (`:96`) and `clearSupaMemoryIfEmptyIn(chars)` (`:110`): a chat whose `message` is an empty array gets `supaMemoryData = ""` and its covered field deleted, for plain and `hypa:` data. A falsy chat or a non-array `message` is left alone (hardening beyond the plan: plugin writes reach it unvalidated).
+- `withSupaRepoint(chat, mutate)` (`:126`): snapshots `chat.message.slice()` (skipped when there is no `supaMemoryData`), runs the removal, then applies the empty-chat rule first and otherwise repoints (not for `hypa:` data).
+- `writeSupaMemoryData(chat, memory)` (`:152`): the send writer, extracted so it can be tested (a fifth export beyond the plan; `sendChat` is not testable in isolation). After the F1 remediation it keeps the covered field only if the field was valid before the write (it equalled the old first line) and still equals the new first line; otherwise it deletes the field.
+
+**The resolver (`supaMemory.ts`, plain branch).** The `while(true)` memo scan is replaced by one loop (`:128` onward). `p` is the position of the first line in `room.message ?? []` (hidden included). When `p !== -1`: entries are dropped from the front of `chats` while the entry is a head entry (memo `undefined`, or any memo that is not a `chatId` in `room.message`, such as the markers), or its position is before `p`, or the field is covered and its position equals `p`; tokens are subtracted per dropped entry; `lastId = id` is the only assignment; an empty remainder is not an error. For a visible uncovered pointer the loop stops at the pointer itself, as the old scan did. When `p === -1`: the old memo scan runs unchanged and, if it empties `chats`, returns the new error (below). The in-place `chats.splice` is kept.
+
+**The covered-ID field and writer.** `Chat.supaMemoryCoveredId?: string` (`database.svelte.ts:1888`), valid only while it equals the first line of `supaMemoryData`; set only in the MC-715 branch; deleted by the MC-714 branch, by the send writer (`index.svelte.ts:1604`, `writeSupaMemoryData(memoryCtx.chat, sp.memory)` replacing the inline assignment), by Reset and by the empty-chat rule. Not set for `hypa:` data. The field doc comment says a send write deletes a stale value and that memory rewritten outside the fork to the same first line is still read as covered (ED1, R1 below).
+
+**Delete sites** (each wraps the removal in `withSupaRepoint` before the existing mark/save):
+
+- `Chat.svelte`: shift-click "remove from here" (`:261`, no mark today, pre-existing); the trash/remove-from-here splices in one wrapper (`:302`); the branch (`:1312`), where `newChat` is repointed against the full pre-slice list and the hidden comment is pushed afterwards (a pointer beyond the branch point takes the MC-715 pair on the branch-point message; a pointer within the kept range is untouched).
+- `command.ts`: `/cut` index, range and chatId, and `/del N` (`:222`, `:231`, `:241`, `:255`).
+- `scriptings.ts`: `cutChat` (`:349`) and `removeChat` (`:361`).
+- `triggers.ts`: `cutchat` (`:1578`) and `v2CutChat` (`:2013`).
+
+**Empty-chat sites.** `command.ts` `/multisend` clear mode calls `clearSupaMemoryIfEmpty(target.chat)` right after `target.chat.message = []` (`:296`). `scriptings.ts` `setFullChatMain` calls `clearSupaMemoryIfEmpty(target)` after the assignment (`:443`); for a non-empty list it is a no-op (no repoint, MC-720 3).
+
+**Plugin sites** (each after the assignment and before the mark; the rule clears only what the plugin wrote):
+
+- (a) `writeSetterKeys` (`plugins.svelte.ts`, after the key loop): `clearSupaMemoryIfEmptyIn(db.characters)` when the write carried a `characters` array. Serves the V2 `setDatabaseLite`/`setDatabase` and, by delegation, the V3 `setDatabaseLite`/`setDatabase`. It clears through the live list, because the reactive proxy's set trap does not write to the raw object; the comment says so (E1). Because it loops the whole stored list, it also clears already-empty legacy chats of characters the plugin did not change (implementer doubt 1).
+- (b) V2 `setChar`: `clearSupaMemoryIfEmptyIn([db.characters[charid]])` before the internal `setDatabaseLite(db)`. The V3 `setChar`/`setCharacter` reach it through `setSelectedCharacter`.
+- (c) `setChatToIndexImpl` (`v3.svelte.ts`): clears `DBState.db.characters[charId].chats[chatIndex]` before the mark. Serves `setChatToIndex` and its archived variant.
+- (d) V3 `setCharacterToIndex`: clears `[DBState.db.characters[charId]]`.
+
+Not touched: internal `setDatabase`/`setDatabaseLite` (boot, restore, import), the encoder, load, the reroll swap and cut, and `setFullChatMain` with a non-empty list. The implementer's sweep of the removal regex found no extra delete site; `characters.ts:535` and `:687` are default-chat creation, not deletes. Gate 2 swept the aliasing forms (`.pop/.shift/.splice/.length =`, spread, `Object.assign` chat writers) and found every removal site wrapped (COMPLETE for those forms, not for arrays aliased through other functions); it also found no path that presents a non-empty chat as empty, because cold and store2/legacy stubs carry one placeholder message.
+
+**The Reset button and the key.** `CharConfig.svelte`: a `Button` under the SuperMemory text area in both blocks (button labels at `:1260` and `:1297`, one per block), class `mt-2`, no confirmation, which sets `chat.supaMemoryData = ''` and `delete chat.supaMemoryCoveredId` on the same bound field. `en.ts:1323`: `resetSupaMemory: "Reset SupaMemory data"` next to `SuperMemory`. Other locales are untouched.
+
+**The new error text** (`supaMemory.ts:149`, returned when the old scan empties `chats`): `SupaMemory: the saved resume point (a message that no longer exists) cannot be found. Press 'Reset SupaMemory data' in the character's chat memory settings to continue.` It replaces `SupaMemory: chat ID not found` for the plain branch. It is hardcoded English, like the surrounding SupaMemory errors, and names the English button label, which will not match a translated one.
+
+### Decisions
+
+- `MC-714` 1: "Question (paraphrased): "resume at the next survivor" cannot be computed at send time (SupaMemory saves only the resume ID and the summary; once the message is deleted nothing records where it stood), and existing dangling data (for example upstream backups) must still load. Answer: **"Repoint + reset fallback (Recommended)"**. The option said: deleting the resume message repoints SupaMemory to the next message (summary kept); for data that is already dangling, a clear error naming the problem, with a one-click reset of SupaMemory data."
+- `MC-715` 1: "Answer: **"Point past the end (Recommended)"**. The option said: treat everything left as already summarised; the next new message becomes the resume point; no error, nothing re-summarised."
+- `MC-720` 1: "Answer: **"ID plus fork-only flag (Recommended)"**. The option said: point at the last remaining message, and add a fork-only chat field meaning "that message is already summarised too". Upstream ignores the field and sees a valid ID, so a backup opened there works but re-summarises that one message. It adds a saved field, so the save-data reviewers check it first."
+- `MC-720` 2: "Answer: **"Yes, resolve at send (Recommended)"**. The option said: when sending, look the resume message up among all messages, hidden included, and resume from the next visible message. Same-cause scope amendment (`MC-091`); no format change."
+- `MC-720` 3: "Answer: **"Error and reset (Recommended)"**. The option said: do not repoint; if the resume message is gone, the send shows the new SupaMemory error, which offers the Reset control." `MC-720` 4: "Answer: **"Clear the memory (Recommended)"**. The option said: every message the summary covered is gone, so clear the chat's SupaMemory data, as HypaV3 drops summaries whose messages were deleted; the next long chat starts a new summary; no error."
+- `MC-721` 1: "Answer: **"Clear the memory (Recommended)"**. The option said: if the chat ends up with no messages, clear the SupaMemory data as for deleting every message (`MC-720` 4); the error and reset path stays for replacements that leave other messages, such as setFullChat and the reroll swap." `MC-721` 2: "Answer: **"Button in settings (Recommended)"**. The option said: the error names the problem and says to press "Reset SupaMemory" in the character's chat memory settings, where the summary text box is; one place to maintain."
+- `MC-722` 2: "Answer: **"Clear it too (Recommended)"**. The option said: an empty chat clears the field whatever its kind; v1's summaries describe messages that no longer exist." Its "What was decided" adds that a duplicate summary is acceptable, a silent drop is not.
+- `MC-724` 1: "The remaining silent-drop path after the C4 writer fix (R1) ... Answer: **"Record it, commit C4 (Recommended)"**. The option said: report it as a known residual and propose a follow-up ticket; C4 is committed as it is now; the chance is very low, and the message is still in the chat."
+
+Interpretations not decided anew by the maintainer: the plugin-setter scope covers chats the plugin wrote (a technical reading of `MC-721` 1, accepted by the Orchestrator in the plan; site (a) loops the whole stored list as described above); the Reset button has no confirmation (plan F6, from the "one-click" wording of `MC-714`); the empty-chat rule also applies to `hypa:` data (`MC-722` 2).
+
+### Tests
+
+Run labels: reproducer = fails at the pre-fix base; guard = may pass before and after. Per-file figures: "implementer" = the implementer's executed run on pre-fix code; "Gate 2" = the independent run of `C4/g2` on `head/` (`git archive HEAD` plus the new pure module `supaResume.ts` and the new and changed test files; `red-head.log`: 86 of 159 failed, all on `AssertionError`, none on import or setup). Gate 2 round 1 ran the real red at HEAD for the plugin rows, which the implementer could not (the plugin sites were edited before their test file existed).
+
+| File | Rows now | Label | HEAD result |
+|---|---|---|---|
+| `memory/supaMemory.test.ts` (modified) | 23 | resolver reproducers T2, T3, T4, (1) to (7) (the dangling-ID row flipped from `it.fails`); guards T1, T5 and the existing `roomWith` rows; F1 reproducer (stale field, fresh summary ends on it) added in remediation | 11 of 22 failed at HEAD (implementer, Gate 2 the same 11); the F1 row is new in rem1 and fails on the old writer only |
+| `memory/supaResume.test.ts` (new) | 23 | unit rows for repoint, `withSupaRepoint`, the empty rule, stamping and `writeSupaMemoryData` (including the stale-writer row added in rem1) | new module, so no pre-fix run for the implementer; Gate 2 lists it among the rows that pass at HEAD because the module was copied into its HEAD tree |
+| `command.supaResume.test.ts` (modified) | 23 | 17 reproducers (the `test.fails` row flipped; `/cut` index, negative index, range, chatId, `/del`, pair, hidden target, stale field, stamping, T4 end to end, empties, `/multisend` clear plain and `hypa:`); 6 guards | 17 of 23 fail at HEAD (implementer; Gate 2 17) |
+| `Chat.supaResume.svelte.test.ts` (new) | 21 | 12 reproducers (trash, remove-from-here, shift-click, empties, branch (a) and (c)); 9 guards, of which five rows were first labelled reproducers and were relabelled `guard:` after Gate 2 E2 (both "cutting after the pointer ... untouched" rows, branch (b) x2, branch (d)) | 12 of 21 fail at HEAD (implementer; Gate 2 12) |
+| `supaResume.sites.svelte.test.ts` (new; real `runTrigger` and real Lua) | 38 | reproducers over trigger `cutchat` and `v2CutChat`, Lua `cutChat`/`removeChat`, T4 end to end and `setFullChat` empty; guards: `setFullChat` non-empty, reroll cut | 25 of 38 (implementer); 26 of 38 (Gate 2, the extra one is the `setFullChat` non-empty guard asserting the new Reset error text, which pure HEAD lacks) |
+| `apiV3/tests/pluginSupaEmptyChat.svelte.test.ts` (new; real v3 and real plugins) | 25 | 20 emptying reproducers (V2 `setChar`, `setDatabaseLite`, `setDatabase`; V3 `setChar`, `setCharacter`, `setChatToIndex`, archived `setChatToIndex`, `setCharacterToIndex`, `setDatabaseLite`, `setDatabase`; each plain and `hypa:`); guards: non-empty replacements lacking the pointer, V2 `getDatabase()` Proxy residual | implementer: no pre-fix run (four skip mutants p1 to p4 together fail all 20 emptying rows); **Gate 2 round 1: real run at HEAD, all 20 emptying rows fail, the non-empty and Proxy rows pass** |
+| `storage/tests/databaseSupaEmptyChat.test.ts` (new) | 4 | guard: internal `setDatabase`/`setDatabaseLite` keep an empty chat's data | passes with and without the change; fails the p5 mutant (2 rows) |
+| `storage/tests/store2/codecSupaCoveredId.test.ts` (new) | 2 | compatibility guards: the field travels in the chat core beside `supaMemoryData` and comes back whole; a chat without it stays without it | passes before and after (the codec knows nothing of the field) |
+| `storage/tests/store2/codecSupaCoveredId.bin.test.ts` (new) | 2 | compatibility guards: field and data survive `encodeRisuSaveLegacy`/`decodeRisuSave` | passes before and after; container level only (implementer doubt 2) |
+
+Row counts: 23 + 23 + 23 + 21 + 38 + 25 + 4 + 2 + 2 = 161, equal to the executed run of the nine files by rem1 and by Gate 2 round 2 (9 files, 161 passed). Gate 2 round 1's 159 rows predate the two rows added in remediation. Gate 2's red total: supaMemory 11 + command 17 + Chat 12 + sites 26 + plugin 20 = 86. In this pass the four small files (`supaResume`, `supaMemory`, both codec files) were rerun: 50 passed.
+
+### Mutants
+
+Method: vitest transform substitution via a config and JSON edits, on scratch copies; no repository file was touched. Implementer 1 (`C4/impl1/mut/`), resolver, writer and module:
+
+| Mutant | Result |
+|---|---|
+| m1 no covered rule | T2, T3, T4 fail |
+| m2 covered check after the memo scan | (1), (2), (3), (4), (6), (7) fail; T2 to T4 stay green (the order is equivalent for a visible pointer) |
+| m3 `lastId` = first remaining entry | T2, T1, (1), (2), (6), (7) fail |
+| m4 drop the `p === -1` fallback | the surviving-resume guard, both dangling rows and (5) fail |
+| m5 MC-714/715 branch swap (always pair) | 4 `supaResume` rows fail |
+| m6 empty rule skipped for `hypa:` | "clears hypa: data" fails |
+| m7 writer never clears the field | writer row and T3 fail |
+| m8 MC-714 keeps a stale field | 2 rows fail |
+| m9 empty rule keeps the covered field | 3 rows fail |
+| m10 no `chatId` stamping | 2 stamping rows fail |
+
+All ten caught. The plan's expectation for m2 (T2 to T4 fail) did not hold for the implementer's mutant form; reported by the implementer.
+
+Implementer 2 (`C4/impl2/mut/summary.txt`), sites; each skips the wrapper or call at one site:
+
+| Mutant | Failing rows |
+|---|---|
+| c1 shift-click wrapper skipped | 3 |
+| c2a remove-from-here splice unwrapped | 3 |
+| c2b single splice unwrapped | 5 |
+| c3 branch wrapper skipped | 3 |
+| c4 branch repointed against the sliced list | 2 (branch (a) and (c)) |
+| k1 `/cut` index | 2 |
+| k2 `/cut` range | 3 |
+| k3 `/cut` chatId | 5 |
+| k4 `/del` | 5 |
+| k5 `/multisend` clear | 2 |
+| s1 `cutChat` | 6 |
+| s2 `removeChat` | 4 |
+| s3 `setFullChatMain` clear | 2 |
+| t1 trigger `cutchat` | 10 |
+| t2 trigger `v2CutChat` | 6 |
+| p1 plugin site (a) | 8 |
+| p2 plugin site (b) | 6 |
+| p3 plugin site (c) | 4 |
+| p4 plugin site (d) | 2 |
+| p5 rule placed in internal `setDatabase` | 2 (`databaseSupaEmptyChat` rows) |
+
+All 20 caught, none impractical. Component mutants work because the transform plugin edits the `.svelte` source before compile.
+
+Remediation (`C4/rem1`): the old writer (keeps the field whenever it equals the new first line) substituted on a scratch copy fails exactly the two new rows (the F1 reproducer and the stale-writer row), 44 passed; both pass on the fixed tree.
+
+Gate 2 round 1 (`C4/g2`): re-ran c4 (2 fail) and p3 (4 fail), matching the implementer. Own mutant M6 ("memo not in room" no longer counts as a head entry): (1), (2) and (3) fail, killed. Own mutants M7 (sites (c) and (d) clear the plugin's raw `chat`/`char`) and M8 (site (a) clears `newDb.characters`) **survived**; the reviewer judged them equivalent, because before any proxy read the raw target is still visible through lazily created sources, and not a defect. Its E1 comment fix followed from this.
+
+Gate 2 round 2 (`C4/g2r2`): the old writer (`g2/supaResume.orig.ts`) substituted: exactly the two new rows fail, 44 pass (`mutant-old-writer.log`). With the reproducer's intermediate `expect(room.supaMemoryCoveredId).toBeUndefined()` removed in scratch, the end-to-end assertion (`memos.includes('X') || summarisedX`) also fails on the old writer (`mutant-old-writer-e2e.log`), so the reproducer reproduces the loss itself, not only the field state.
+
+### Gate history
+
+- **Gate 1.** Round 3 was the third consecutive C4 `[REJECT]` (plan heading for round 3), and the plan went to the senior-advisor (`C/advisor3/result.md`), which traced both open defects to one cause (the advisor's own read rule set `lastId` to a message nothing summarised), withdrew that sentence and gave the invariant and the single loop above. Round 4 was `[EDITORIAL]` (`C/g1r4/result.md`; the unified loop was executed there and passes all 16 rows, per the plan), folded in by the Orchestrator: the "drop `pos < p` only when covered" mutant wording was removed (T5, P8 and (1) to (4) catch it, not T2); tests (1), (2) and (4) assert the stored first line after the writer because the under-budget return at `supaMemory.ts` gives no `memory`; V3 `setDatabaseLite`/`setDatabase` plugin rows added; reroll cut and "unhidden after summarisation" residuals added. The original field spec (`C/advisor/result.md`) was a senior-advisor challenge of the save-format addition before implementation.
+- **Gate 2 round 1: `[REJECT]` (substantive 1), F1.** `writeSupaMemoryData` removed the covered field only when it differed from the new first line, so a stale field was revalidated whenever a fresh summary ended on that message. Stale fields arise when `supaMemoryData` is rewritten by anything other than the fork's pointer code: the user clears or edits the text box by hand (the habitual way to clear memory in upstream, which has no Reset), a plugin writes a chat copy keeping the field, or an upstream round trip. Probe P1 (executed, room [a, b, X, Y, Z], data `''`, stale field `X`): the first send summarised only a and b with first line `X` and the field stayed; the second send's memos were `[supaMemory, Y, Z, Q]`, so X was neither in the prompt nor summarised. The Orchestrator confirmed it from the source. The reviewer checked a scratch fix (keep only when valid before and after the write): P1 and 131 C4 tests passed. Editorial: E1 (the `writeSetterKeys` comment overstated the proxy mechanism), E2 (five Chat rows labelled reproducers passed at HEAD), E3 (the sites test harness uses `any`, copied from the existing trigger-test harness; noted as acceptable, not changed).
+- **Remediation `C4/rem1`.** F1 fixed as above, with the writer and field comments updated; reproducer and two writer rows added; E1 comment and E2 labels applied. Nine files 161 passed; `pnpm check` 0 errors, 0 warnings (the first run had 5 type errors in the new row's arguments, fixed and rerun).
+- **Gate 2 round 2: `[EDITORIAL]`** (fresh reviewer seeded with the round 1 verdict; ledger row 5119 says its usage is not recoverable after a container restart and the verdict was read from the hand-back message; `C4/g2r2/result.md` exists and was read for this section). By byte diff against the round 1 copy, only `supaResume.ts`, the field doc comment, the E1 comment and three test files changed since round 1; the reviewer did not redo the round 1 evidence for the unchanged files. F1 is fixed at its fork-side root: P1 passes with the new writer and fails with the old; other revalidation paths checked (fork send writer, repoint, branch, manual UUID typing, plugin copy) found none that is realistic. ED1: the field doc and the writer comment overclaimed ("never revalidated", "is not revalidated as covered"); applied by the Orchestrator ("a send write deletes a stale value", "by this write"). O1: test comments for T1 and (7) named a "mutant"; applied. R1 (below) was raised for disposition and decided in `MC-724`. Executed in round 2: nine C4 files 161 passed; 79 related files 1553 passed (repository tests; 80 files, 1557 passed, 2 failed including the reviewer's own two expected-fail probe rows); `pnpm check` 0 errors, 0 warnings.
+
+### Visible effects
+
+- **Deleting the resume message no longer breaks SupaMemory.** Before the change the next overflowing send failed with `SupaMemory: chat ID not found` until the user cleared the summary by hand. Now the summary is kept and the pointer moves to the next surviving message (MC-714), hidden messages counted. With no later message, the last surviving message becomes the pointer and is marked covered, so nothing is summarised again and the next new message is the resume point (MC-715). Deleting any other message leaves the pointer as it is.
+- **A hidden resume message resolves at send** (MC-720 2): the pointer is found among all messages, hidden included; an end-of-chat pair is not re-fed; a message unhidden after a compression-only send is still sent (T1, (7)).
+- **A dangling pointer shows a new error that names the Reset button.** For data whose pointer message exists nowhere (an upstream backup, `setFullChat` or a `/send` replacement that left other messages, a reroll cut), the send returns the new text above and the user can press "Reset SupaMemory data" in the character's chat memory settings: it clears the summary text and the covered field in one click, with no confirmation.
+- **An emptied chat clears its memory.** A chat left with zero messages by a delete, `/cut`, `/del`, `/multisend` clear, trigger or Lua cut, or `setFullChat([])` gets `supaMemoryData = ""` and no covered field, plain or `hypa:`, with no error.
+- **Plugin writes that empty a chat clear its memory.** V2 and V3 setters (sites (a) to (d)) clear the chats they wrote; a non-empty replacement that lacks the pointer is not touched and the next send shows the error and the Reset path (MC-720 3).
+- **Reset also removes a stale covered field**; and every send that reaches the writer deletes a stale field, even when it returns no memory (round 2 probe P4).
+
+### Saved data and compatibility
+
+- **New fork-only field `supaMemoryCoveredId` on `Chat`**, a plain string. It is written only in the MC-715 branch (pointer = last survivor, field = the same id) and deleted by the paths above. This is a saved-format addition.
+- **store2:** the codecs carry it as an ordinary chat key in the chat core beside `supaMemoryData` (`codecSupaCoveredId.test.ts`, executed: one core holds the pair, the assembled chat has both, a second round trip yields the same unit identities).
+- **.bin:** the field travels inside the database entry of a legacy `.bin` and survives `encodeRisuSaveLegacy`/`decodeRisuSave` (`codecSupaCoveredId.bin.test.ts`, executed). This is a container-level test with mocks; no binary fixture was added, the committed `.bin` goldens are unchanged, and a full `SaveLocalBackup` export with the field is not covered.
+- **Upstream reading fork data:** ignores the field (reasoning from upstream source, Gate 2: upstream keeps unknown chat keys and its only `supaMemoryData` writers are `index.svelte.ts:1133` and the text box). The pointer line is a plain chat ID, so a backup opens there. For an MC-715 pair, upstream sees the last survivor as unsummarised and re-summarises that one message (`MC-720` 1 text). A repointed ID is an ordinary valid ID. Upstream-to-fork always loads: dangling upstream data gets the new Reset-naming error instead of `chat ID not found`; upstream data without the field behaves as the plain pointer.
+- **Upstream behaviour on the same data:** upstream has the same defect for deletes (see "Upstream status"), so an upstream chat whose resume message was deleted fails there with `chat ID not found`; that is the dangling data the fork now reports with the Reset error. Fork data with a repointed ID is read there as an ordinary pointer.
+- **MC-175 and MC-223:** upstream-compatible data is read as before or more tolerantly; the field is a short ID string, so no size exception is involved (inference: no size limit was examined). The residual R1 is an upstream round trip that can make the field read as valid (`MC-724`).
+
+### Upstream status
+
+Checked at f50b594: the same SUPA-3 defect. `src/ts/process/memory/supaMemory.ts:110-126` is the old memo scan that drops chats until `chats[0].memo === id` and returns `SupaMemory: chat ID not found` when the list is empty. A grep of upstream `src` finds no `supaMemoryCoveredId` and no Reset control; the only `supaMemoryData` writers found are `index.svelte.ts:1133-1134` and the `CharConfig.svelte` text boxes (`:1253`, `:1280`). The upstream delete sites were not individually re-read in this pass (TODO(evidence): per-site check at f50b594 if the report must claim every upstream delete path is unwrapped). The fix is fork-only; no upstream change was proposed here.
+
+### Verification
+
+| Run | Who | Result |
+|---|---|---|
+| Resolver red-first against pre-fix source (executed, `red-supaMemory.log`) | implementer 1 | 11 failed, 11 passed of 22 |
+| 53 test files that mention `supaMemory`/`supaResume` plus `store2/codec*.test.ts` and `binGoldens.test.ts` (executed) | implementer 1 | 72 files, 1423 passed, 1 expected fail (the `command.supaResume` `test.fails`, later flipped) |
+| Sites red-first on pre-fix site code (executed) | implementer 2 | command 17/23, Chat 12/21, sites 25/38 failed on intended assertions; no plugin pre-fix run |
+| 18 new/changed + memory + codec files (executed, `green-new.log`) | implementer 2 | 297 passed |
+| `vitest related` over the seven edited sources, `**/store2/replay/**` excluded (executed, `green-related.log`) | implementer 2 | 682 files, 13,207 passed, 11 skipped. It ran before one test-file type fix, re-covered by `green-new.log`. Without the exclusion `store2/replay/actors.test.ts` took 512 s with 9 timeouts (5 s each) under load; not investigated |
+| Real red at HEAD, nine files (executed) | Gate 2 round 1 | 86 of 159 failed on `AssertionError`, 73 passed |
+| Ten files on the working tree (executed, `green-wt.log`) | Gate 2 round 1 | 185 of 185 passed |
+| Nine C4 files after the F1 fix (executed) | rem1; Gate 2 round 2 | 161 of 161 passed |
+| Related set (executed, `related2.log`) | Gate 2 round 2 | 80 files, 1557 passed, 2 failed (the reviewer's own expected-fail probe rows); repository tests alone 79 files, 1553 passed. The first, wider `vitest related` run was stopped; under load it pulled in the `store2/replay` suites, which timed out, and one `saveLoop` row failed there; `saveLoop` alone passed 78 of 78 (`saveLoop.log`), which the reviewer counted as a flake under load |
+| `NODE_OPTIONS=--max-old-space-size=8192 pnpm check` (executed) | implementer 1, implementer 2 (after fixing one missing import), rem1, Gate 2 round 1 and round 2 | 0 errors, 0 warnings each time |
+| `supaResume`, `supaMemory`, both codec files (executed in this pass) | doc-writer | 4 files, 50 passed; `supaResume` and `supaMemory` 23 each |
+
+Not run: the full `pnpm test` and the relevant build on this snapshot (pending at phase close). The nine-file and related sets are subsets. The `pnpm check` runs were before ED1 and O1, which changed comments only.
+
+### Residuals
+
+- **R1, CHORE-503 (`MC-724`).** The covered field is valid while it equals the first line of `supaMemoryData`. If the fork holds the MC-715 pair on the last message X, the chat goes to upstream, the memory is cleared there, upstream re-summarises and its new resume point lands exactly on X, then back in the fork the resolver reads X as covered and leaves it out of both the prompt and the summary (the stored message is kept). Executed as probe P2 (round 2; memos `[supaMemory, Y, Z, Q]`, X not summarised). Reach: it needs the MC-715 pair, a fork to upstream to fork move, a manual clear in upstream and the upstream boundary landing exactly on X at export time. The reviewer attributed it to the Gate 1 read rule (`MC-720` 1 design), not to the C4 code. Closing it needs a covered-field design tied to the whole memory text and a reopened Gate 1 with the senior-advisor. Not fixed; the maintainer chose to record it and commit C4 (`MC-724`).
+- **V2 `getDatabase()` Proxy in-place edit.** A chat emptied in place through the V2 live `getDatabase()` Proxy without a setter call keeps its data until Reset; the MC-714 error still shows on overflow. A guard row documents the limit.
+- **Oversized-entry duplication.** An entry larger than `maxChunkSize` is summarised alone and `lastId` is set to its own memo, so the pointer does not advance past a summarised message. Pre-existing and upstream-identical per `advisor3` (plan citation `supaMemory.ts` at the then-current lines; TODO(evidence): not re-read in this pass).
+- **In-flight send race.** A delete-repoint made while a send is in flight is overwritten when that send writes `supaMemoryData` (the writer also clears the covered field); worst case is the MC-714 error and Reset. Round 2 probe P3 (data cleared by hand during a send) showed the writer restores the memory from the send start and deletes the field, so X is sent again: the safe direction, a duplicate not a loss.
+- **`hypa:` data in a non-empty chat is not repointed.** HypaMemory v1 keeps its own fallback; only the empty-chat rule applies to it.
+- **Non-empty plugin and `setFullChat` replacements** lacking the pointer are not repointed (`MC-720` 3); the next send shows the error and the Reset path. Likewise a reroll (`beginRegeneration`) that cuts a pointer in the reroll tail shows the MC-714 error on that send (rare, pre-existing, Gate 1 round 4).
+- **Shift-click "remove from here" has no explicit save mark.** Pre-existing; Gate 2 noted the selected-character tracker covers it. The repoint was added to the same statement only.
+- **Translator.** The other locales owe `resetSupaMemory` (`MC-058`); only `en.ts` was edited.
+- **The error text is English-only** and names the English button label.
+- **The Reset button has no automated test** (UI; the plan says "manual check noted"). TODO(evidence): no manual check of the button is recorded in the evidence read for this section. Gate 2 round 1 read the code path (it sets `''`, deletes the field, and the selected-character tracker snapshots chat keys and values so the save fires).
+- **The store2 replay suites timed out under load** in two runs (the implementer's unfiltered `vitest related` and the reviewer's round 2 `vitest related`); the suites were excluded or not relied on, and not investigated.
+- **Full suite pending.** `pnpm test` and the relevant build have not been run on the final snapshot.
+- Rows of the earlier residual list (`MC-723` greeting duplicate; upstream `trimStartNewChat` without examples; examples removed after an example-only summary; messages unhidden after surrounding summarisation) are reported with C3 and C2; Gate 1 round 4 added that the last applies to SupaMemory too.
+- Beyond the plan, flagged by the implementers: the fifth export `writeSupaMemoryData`; the non-array hardening in the clear helpers; the .bin test being container level; test fixtures that need a leading over-budget entry before the pointer, because `supaMemory` returns early unless the incoming count already exceeds the limit.
+
 ## Corrections from doc-verifier
 
 This section takes precedence over the body above. Independent doc-verifier pass, 2026-10-23 (scratchpad `p2/c10d/dv/result.md`): ten files rerun (40 passed, 32 expected fail), test titles, decision quotes, REPRODUCED citations and an upstream sample verified; four required corrections, applied in the body by the Orchestrator:
@@ -1053,3 +1250,12 @@ Independent doc-verifier check, 2026-10-23 (scratchpad `p3/c10/C2/dv/result.md`;
 2. The probe "8 of 8 passed" figure is in `g2/probe.log`; `g2/probe-out.txt` holds only the two legacy-conversion output lines.
 
 The verifier read the F4 trace and the logs without rerunning them and did not check E1, E2 and O1 against Gate 2's text.
+
+### Stage C4 (Phase 3)
+
+Independent doc-verifier check, 2026-10-23 (scratchpad `p3/c10/C4/dv/result.md`; ledger row 5121). About 40 claim groups checked; the nine C4 test files were rerun (161 passed). These corrections take precedence over the text above and have been applied to it:
+
+1. `git status` lists 23 paths (15 modified, 8 untracked), not 22 (14 modified).
+2. Ledger rows 5115 to 5121 are all present; the note that the Orchestrator would add 5120 and 5121 was stale.
+
+The verifier did not re-read each upstream delete site (left as TODO(evidence) above) or rerun the mutant substitutions (checked against the logs).
