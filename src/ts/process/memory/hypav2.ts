@@ -8,6 +8,7 @@ import {
 import type { OpenAIChat } from "../index.svelte";
 import type { RunSubject } from "../chatOrigin";
 import type { ChatTokenizer } from "src/ts/tokenizer";
+import { findResumeIndex, isSkipEligibleChat } from "./hypaResume";
 import { requestChatData } from "../request/request";
 import { HypaProcesser } from "./hypamemory";
 import { globalFetch } from "src/ts/globalApi.svelte";
@@ -333,7 +334,10 @@ function toHypaV2Data(data: SerializableHypaV2Data): HypaV2Data {
         ...data,
         mainChunks: data.mainChunks.map(mainChunk => ({
             ...mainChunk,
-            chatMemos: new Set(mainChunk.chatMemos),
+            // Convert null back to undefined (JSON serialization converts undefined to null)
+            chatMemos: new Set(
+                mainChunk.chatMemos.map((memo) => (memo === null ? undefined : memo))
+            ),
         })),
     };
 }
@@ -383,9 +387,10 @@ export async function hypaMemoryV2(
     // Find the index to start summarizing from
     let idx = 0;
     if (data.mainChunks.length > 0) {
-        const lastMainChunk = data.mainChunks[data.mainChunks.length - 1];
-        const lastChatMemo = lastMainChunk.lastChatMemo;
-        const lastChatIndex = chats.findIndex(chat => chat.memo === lastChatMemo);
+        const lastChatIndex = findResumeIndex(
+            chats,
+            data.mainChunks.map((mainChunk) => mainChunk.chatMemos)
+        );
         if (lastChatIndex !== -1) {
             idx = lastChatIndex + 1;
 
@@ -404,6 +409,9 @@ export async function hypaMemoryV2(
         let halfDataTokens = 0;
 
         const startIdx = idx;
+        // Tokens of skipped chats passed in this iteration; counted only once the
+        // iteration succeeds, because a failed one is re-walked from startIdx.
+        let skippedTokens = 0;
 
         console.log(
             "[HypaV2] Starting summarization iteration:",
@@ -431,16 +439,10 @@ export async function hypaMemoryV2(
                 "\nWould adding this exceed chunkSize?", (halfDataTokens + chatTokens > chunkSize)
             );
 
-            // Skip index 0 ([Start a new chat])
-            if (idx === 0) {
-                console.log("[HypaV2] Skipping index 0");
-                idx++;
-                continue;
-            }
-
-            // Skip if the content of this chat is empty
-            if (!chat.content.trim()) {
-                console.log(`[HypaV2] Skipping empty content of index ${idx}`);
+            // Skip example turns, new-chat markers and blank messages
+            if (isSkipEligibleChat(chat)) {
+                console.log(`[HypaV2] Skipping index ${idx}`);
+                skippedTokens += chatTokens;
                 idx++;
                 continue;
             }
@@ -514,7 +516,8 @@ export async function hypaMemoryV2(
                     error: "[HypaV2] Summarization failed multiple times. Aborting to prevent infinite loop.",
                 };
             }
-            // If summarization fails, try again in next iteration
+            // Retry the same batch: nothing was summarised, so nothing is passed over
+            idx = startIdx;
             continue;
         }
 
@@ -565,7 +568,7 @@ export async function hypaMemoryV2(
             "\nUpdated chunks count:", data.chunks.length
         );
 
-        currentTokens -= halfDataTokens;
+        currentTokens -= halfDataTokens + skippedTokens;
         console.log("[HypaV2] tokens after summarization deduction:", currentTokens);
     }
 
