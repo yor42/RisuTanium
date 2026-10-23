@@ -225,7 +225,7 @@ export class HypaProcesser{
                     similarity: sim(query, vector.embedding),
                     index,
                 }))
-                .sort((a, b) => (a.similarity > b.similarity ? -1 : 0))
+                .sort((a, b) => b.similarity - a.similarity)
       
           const result: [string, number][] = searches.map((search) => [
               memoryVectors[search.index].content,

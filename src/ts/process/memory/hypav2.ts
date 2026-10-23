@@ -311,15 +311,6 @@ function cleanInvalidChunks(
     }
 }
 
-export function regenerateSummary(
-    chats: OpenAIChat[],
-    data: HypaV2Data,
-    mainChunkIndex: number
-) : void {
-    const targetMainChunk = data.mainChunks[mainChunkIndex];
-
-}
-
 function toSerializableHypaV2Data(data: HypaV2Data): SerializableHypaV2Data {
     return {
         ...data,
@@ -581,14 +572,18 @@ export async function hypaMemoryV2(
     // Construct the mainPrompt from mainChunks
     mainPrompt = "";
     let mainPromptTokens = 0;
-    for (const chunk of data.mainChunks) {
+    const selectedMainChunks: string[] = [];
+    for (const chunk of data.mainChunks.slice().reverse()) {
         const chunkTokens = await tokenizer.tokenizeChat({
             role: "system",
             content: chunk.text,
         });
         if (mainPromptTokens + chunkTokens > allocatedTokens / 2) break;
-        mainPrompt += `\n\n${chunk.text}`;
+        selectedMainChunks.push(chunk.text);
         mainPromptTokens += chunkTokens;
+    }
+    for (const text of selectedMainChunks.reverse()) {
+        mainPrompt += `\n\n${text}`;
     }
 
     // Fetch additional memory from chunks

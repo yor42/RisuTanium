@@ -248,7 +248,7 @@ describe('hypaMemoryV3 orphaned summaries', () => {
 
 describe('hypaMemoryV3 random memory selection', () => {
     // regression reproducer: CHORE-10 V3-5, MC-711 4
-    it.fails('every unselected summary is equally likely to be picked', async () => {
+    it('every unselected summary is equally likely to be picked', async () => {
         const frequencies = await pickFrequencies(6000)
         for (const frequency of frequencies) expect(Math.abs(frequency - 1 / 3)).toBeLessThan(0.03)
     })
@@ -324,7 +324,7 @@ describe('hypaMemoryV3 experimental implementation', () => {
     })
 
     // regression reproducer: CHORE-10 V3-5 (experimental path), MC-711 4
-    it.fails('every unselected summary is equally likely to be picked', async () => {
+    it('every unselected summary is equally likely to be picked', async () => {
         const frequencies = await pickFrequencies(6000, experimental)
         for (const frequency of frequencies) expect(Math.abs(frequency - 1 / 3)).toBeLessThan(0.03)
     })

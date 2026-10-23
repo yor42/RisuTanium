@@ -120,6 +120,16 @@ function splitBySeparator(text: string, separator: string): string[] {
     }
 }
 
+/** Fisher-Yates over a copy: every permutation is equally likely. */
+function shuffle<T>(items: T[]): T[] {
+    const shuffled = items.slice();
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+}
+
 export async function hypaMemoryV3(
     chats: OpenAIChat[],
     currentTokens: number,
@@ -836,9 +846,9 @@ async function hypaMemoryV3MainExp(
         );
 
         // Target only summaries that haven't been selected yet
-        const unusedSummaries = data.summaries
-            .filter((e) => !selectedSummaries.includes(e))
-            .sort(() => Math.random() - 0.5); // Random shuffle
+        const unusedSummaries = shuffle(
+            data.summaries.filter((e) => !selectedSummaries.includes(e))
+        );
 
         for (const summary of unusedSummaries) {
             const summaryTokens = await tokenizer.tokenizeChat({
@@ -1497,9 +1507,9 @@ async function hypaMemoryV3Main(
         );
 
         // Target only summaries that haven't been selected yet
-        const unusedSummaries = data.summaries
-            .filter((e) => !selectedSummaries.includes(e))
-            .sort(() => Math.random() - 0.5); // Random shuffle
+        const unusedSummaries = shuffle(
+            data.summaries.filter((e) => !selectedSummaries.includes(e))
+        );
 
         for (const summary of unusedSummaries) {
             const summaryTokens = await tokenizer.tokenizeChat({

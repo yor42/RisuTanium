@@ -53,6 +53,13 @@ describe('HypaProcesser ranking', () => {
         expect(await ranking('unit', { far, close })).toEqual(['close', 'far'])
     })
 
+    // compatibility guard: CHORE-10 SHARED-1. A mis-sorting comparator does not fail on V8, so this passes before and after the fix.
+    it('guard: results are ordered by descending score and tied documents keep insertion order', async () => {
+        const mid = [0.7, Math.sqrt(1 - 0.49)]
+        const order = await ranking('order', { low: far, tieA: mid, high: close, tieB: mid })
+        expect(order).toEqual(['high', 'tieA', 'tieB', 'low'])
+    })
+
     // regression reproducer: CHORE-10 SHARED-2, MC-713 6
     it.fails('ranks a document the same when its vector is scaled by 10 (cosine)', async () => {
         const scaledFar = far.map((x) => x * 10)

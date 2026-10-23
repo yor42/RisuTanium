@@ -189,7 +189,7 @@ describe('hypaMemoryV2 summary section', () => {
     })
 
     // regression reproducer: CHORE-10 V2-3, MC-713 3
-    it.fails('shows the newest summary when the summaries exceed half the allocation', async () => {
+    it('shows the newest summary when the summaries exceed half the allocation', async () => {
         expect(shown(await memoryBlock(8))).toContain(8)
     })
 })

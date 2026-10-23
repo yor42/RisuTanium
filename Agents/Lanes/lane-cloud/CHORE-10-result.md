@@ -411,6 +411,87 @@ No saved-data change: none of the six edits writes, migrates or reads a new fiel
 - Round 2 residual for SUPA-4 (summary discarded on the shrunken-chunk early return) is reasoned, not run.
 - Batch B ledger rows are 5069, 5071, 5074, 5076, 5079 and 5080 in the records file (rows 5070, 5072, 5073, 5075, 5077 and 5078 in the same run are batch A and C). Token figures are the subagent usage in the rows; row 5079 has none recorded.
 
+## Phase 3 — stage A1 fixes
+
+Scope: HAN-1, HAN-2, V2-3, V2-5, SHARED-1, V3-5 (2026-10-23). Decisions: `MC-711` 4 and `MC-713` 3 to 6 in [lane-cloud-records.md](../lane-cloud-records.md). Evidence is the scratchpad `p3/c10/` tree (`A/plan.md`, `A/g1/`, `A1/impl/`, `A1/g2/`); line numbers below are the current working tree (HEAD `10a4adf` plus uncommitted edits; the plan was written at `e34be1c`). Nothing was committed by this pass. Stage A1 is the first of three stages the plan split batch A into (A2 SHARED-2, A3 V3-2 and V3-3 are not in this section).
+
+### Files
+
+Eight tracked files, `+118/-30` (`A1/impl/diffstat.txt`):
+
+- Source (4): `src/ts/process/memory/hanuraiMemory.ts`, `hypav2.ts`, `hypamemory.ts`, `hypav3.ts`.
+- Tests (4): `hanuraiMemory.test.ts`, `hypav2.test.ts`, `hypamemory.similarity.test.ts`, `hypav3.test.ts`.
+
+The records file `Agents/Lanes/lane-cloud-records.md` and this report are also modified and are listed in the commit (the records file carries `MC-722`, the stage A1 status line and ledger rows 5083 to 5087; row 5083 is the batch C Gate 1 round 2 review that led to `MC-722`, rows 5084 to 5087 are stage A1).
+
+### HAN-1: Hanurai prefix off by one (`MC-713` 4)
+
+- **Change:** `hanuraiMemory.ts:9` adds `const documentPrefix = 'search_document: '` (17 characters); it is used at the two push sites (`:35`, `:39`) and as `substring(documentPrefix.length)` at `:95` (the old code used `substring(16)` at three sites, leaving a leading space, so `chat.content === text` never matched). The prompt is now described by a `promptTexts` set built at `:76-91` from the final `chats`: trimmed content, plus every trimmed non-empty `\n\n` paragraph when `db.hanuraiSplit` is on. A retrieved hit whose text is in the set is skipped (`:96`). The single caller is the memory dispatch in `index.svelte.ts` (plan, traced); the return shape is unchanged.
+- **Decision:** "Fix HAN-1; cap at Chunk Size (Recommended)". The option said: fix the prefix and compare trimmed text, so in-prompt messages are not duplicated; and bound retrieval by Chunk Size.
+- **Tests flipped** (`it.fails` to `it`): `does not insert a message the prompt still holds`; `inserted text carries no leading space from the document prefix`. **New** (split mode and whitespace were untested): `does not insert a paragraph of a multi-paragraph message the prompt still holds`; `does not insert a message the prompt holds with surrounding whitespace`; `guard: paragraphs of a message trimmed out of the prompt are retrieved` (the positive control the Gate 1 review required, so the in-prompt reproducers cannot pass vacuously).
+- **Mutants:** `substring(16)`: 4 tests fail. In-prompt check removed: 3 fail. Gate 2's own mutant, `promptTexts` built from the retrieved set: 6 fail, including both positive controls; a mutant without the split branch: 1 fail.
+- **Visible effect:** Hanurai no longer repeats, in its memory block, a message that is already in the prompt, and the block text no longer starts with a stray space.
+
+### HAN-2: Chunk Size is a cap (`MC-713` 4)
+
+- **Change:** `hanuraiMemory.ts:93` tracks `blockTokens`; `:104-106` `continue` when `blockTokens + tokenized > db.hanuraiTokens` (the "Chunk Size" setting), and `:112` adds to `blockTokens` after the check. The existing `tokens >= maxContextTokens` exit keeps `break` (the cap check sits before the token add, so that exit is unaffected, per Gate 2). The reservation `currentTokens + hanuraiTokens` is unchanged. The per-item `+2` overhead makes the cap slightly conservative against the joined block (noted in the split-mode test comment).
+- **Decision:** same as HAN-1 (`MC-713` 4). Gate 1 round 1 was `[REJECT]` on a `break` for the cap: an oversize top hit would empty the block although smaller lower-ranked hits fit. The plan changed to `continue`; round 2 was `[EDITORIAL]` (`A/g1/result-r2.md`) and called this adequate.
+- **Tests flipped:** `bounds the retrieved text by the Chunk Size setting` (pre-fix: 93 tokens against a cap of 30). **New:** the same name in the split-mode describe block; `skips a retrieved text larger than the Chunk Size and still retrieves a smaller one`.
+- **Mutants:** `break` instead of `continue`: 1 fails (the oversize-skip test). Gate 2: cap removed: 3 fail.
+- **Visible effect:** retrieval is capped at Chunk Size and a hit larger than Chunk Size is skipped, so smaller hits can still be used. The block can be shorter than before (intended). A block can still be empty when nothing fits; the existing empty system message in that case is not in scope and its frequency is not measured (plan: "do not make it more frequent without saying so"; TODO(evidence): frequency not measured).
+
+### V2-3: V2 shows the newest summaries (`MC-713` 3)
+
+- **Change:** `hypav2.ts:575-587`: the loop walks `data.mainChunks.slice().reverse()` (newest first), stops at the first chunk that does not fit in `allocatedTokens / 2`, then renders the selected texts in oldest-to-newest order (`reverse()` at `:585`). `mainPromptTokens` keeps its meaning for the later detail budget. The data is not mutated.
+- **Decision:** "Newest-first (Recommended)". The option said: select newest summaries first, render them oldest-to-newest.
+- **Test flipped:** `shows the newest summary when the summaries exceed half the allocation` (pre-fix: the shown set `[1..5]` lacked 8). Existing guards (all fit, in order; order kept when not all fit) stay green and police the final `reverse()`.
+- **Mutant:** without the `reverse()`: 1 fails.
+- **Visible effect:** when the summaries exceed half the allocation, V2 shows the newest ones. If the newest summary alone exceeds half the allocation, the summary section is empty; before the fix the same happened for the oldest summary. No test pins the empty-section case (the plan asked for a note or a one-line test; only the note is made here).
+
+### V2-5: dead `regenerateSummary` stub removed (`MC-713` 5)
+
+- **Change:** `hypav2.ts` no longer exports `regenerateSummary` (a body that only read a local variable). Gate 2: no referrer in `src` (only `Agents/` documents mention it). Proof is `pnpm check`: 0 errors, 0 warnings (`A1/impl/check.txt`, `A1/g2/check.txt`). No test.
+- **Decision:** "Fix count; delete stub (Recommended)". The option said: deduct skipped entries' tokens; delete the dead `regenerateSummary`. Only the stub half is in A1; the count half (V2-4) moved to batch C by the Orchestrator.
+- **Visible effect:** none.
+
+### SHARED-1: sort comparator (`MC-713` 6)
+
+- **Change:** `hypamemory.ts:228` is `(a, b) => b.similarity - a.similarity` (was `a.similarity > b.similarity ? -1 : 0`). The cosine half of `MC-713` 6 is SHARED-2, stage A2, not in this section.
+- **Decision:** "Fix comparator; cosine (Recommended)". The option said: use a correct comparator (b - a), and switch to cosine similarity; for unit vectors the ranking is unchanged.
+- **Test:** new `guard: results are ordered by descending score and tied documents keep insertion order`. It is a compatibility guard only and has no red-first test: the old comparator never mis-sorted on V8 (the plan's executed probe: 0 mis-sorts in 2000 random trials per size for n = 3 to 300, Node v22.22.0; `A/g1/cmp.js`).
+- **Mutant:** the old comparator: 0 tests fail, as planned.
+- **Visible effect:** none observed; this is a robustness change.
+
+### V3-5: uniform shuffle (`MC-711` 4)
+
+- **Change:** `hypav3.ts:123-131` adds `shuffle<T>` (Fisher-Yates on a copy, `Math.random` only); `:849` (experimental path) and `:1510` (standard path) replace `.sort(() => Math.random() - 0.5)` with `shuffle(...)` over the same filtered copy.
+- **Decision:** "Uniform shuffle (Recommended)". The option said: replace it with a Fisher–Yates shuffle.
+- **Tests flipped (2):** `every unselected summary is equally likely to be picked`, standard and experimental (pre-fix: frequency deviation 0.1055 against 0.03). The seeded `Math.random` makes them deterministic.
+- **Mutant:** the biased index: 2 fail.
+- **Visible effect:** the random-memory summaries picked each turn are uniform over the unselected ones, not biased toward some positions.
+
+### Upstream status
+
+Upstream has the same defects (Phase 2 UPSTREAM-SAME labels, `MC-069`), so this is a fork-only fix. No format, plugin or `.bin` contract is touched (`MC-175`).
+
+### Saved data
+
+No saved data changes: every item alters per-request selection or prompt text only; `hypaV2Data`, `hypaV3Data`, embedding caches and settings keep their shape and meaning (plan; Gate 2 diff read, REASONED from source).
+
+### Verification run
+
+- **Red-first (executed, implementer):** unmodified source with the flipped and new tests: 10 failed, 23 passed, 11 expected fail (`A1/impl/redfirst.txt`). Failing assertions: HAN-1 (inserted duplicates, leading space, split multi-paragraph, untrimmed), HAN-2 (93 above the cap of 30, oversize text present; the 93-above-30 failure occurs in both the plain and the split-mode describe block), V2-3, V3-5 (both paths). Gate 2 repeated the run on HEAD sources with the same counts, then restored the files (md5 matched).
+- **Green (executed):** five files (`hanuraiMemory`, `hypav2`, `hypav2.tokenAccounting`, `hypav3`, `hypamemory.similarity`): 37 passed, 12 expected fail, 0 failed (`A1/impl/green.txt`). Gate 2: the memory directory plus three importers, 12 files, 127 passed, 13 expected fail. `pnpm check`: 0 errors, 0 warnings (both).
+- **Mutants:** six by the implementer (listed per item above, restored, `cmp` verified) and three by Gate 2.
+- **Gate 2:** `[APPROVE]` (`A1/g2/result.md`). Gate 1 for batch A: round 1 `[REJECT]` (the V3-2 and HAN-2 items; HAN-2 is covered above), round 2 `[EDITORIAL]`.
+
+### Residuals
+
+- About 60 importer tests that mock these modules were not run.
+- The full `pnpm test` and the relevant build have not been run on this snapshot; they are pending at phase close.
+- The embedder, tokenizer and database are mocked; results show control flow, not provider behaviour.
+- The empty-section behaviour of V2-3 and the empty-block case of HAN-2 are stated but not pinned by a test.
+
 ## Corrections from doc-verifier
 
 This section takes precedence over the body above. Independent doc-verifier pass, 2026-10-23 (scratchpad `p2/c10d/dv/result.md`): ten files rerun (40 passed, 32 expected fail), test titles, decision quotes, REPRODUCED citations and an upstream sample verified; four required corrections, applied in the body by the Orchestrator:
@@ -426,3 +507,7 @@ Optional, noted: the V3-4 citation `index.svelte.ts:1295,1342,1359` is loose; on
 ### Batch B (Phase 3)
 
 Independent doc-verifier pass, 2026-10-23 (scratchpad `p3/c10/B/dv/result.md`): about 46 claims checked; six test files rerun (48 passed, 8 expected fail); file:line cites, test titles, decision quotes and upstream status checked. Corrections, applied in the body above: (1) the diff figures are 11 tracked files, 79 insertions, 35 deletions plus a 157-line untracked test; (2) the V3-1 visible effect applies to the experimental HypaV3 implementation only; (3) the SUPA-1 underflow cause is from the plan, not Gate 1; (4) the ledger-row note named the batch B rows. `pnpm check` and the full suite were not rerun by this pass.
+
+### Stage A1 (Phase 3)
+
+Independent doc-verifier pass, 2026-10-23 (scratchpad `p3/c10/A1/dv/result.md`): about 40 claims in the stage A1 section plus `MC-722`, the status line, rows 5083 to 5086 and the commit draft. Five test files rerun: 37 passed, 12 expected fail. File:line cites, test titles, counts, decision quotes and upstream status (f50b594) verified. Corrections, applied in the body above: (1) the records-file sentence in Files; (2) "table above" reworded; (3) red-first failure breakdown. `pnpm check` and the full suite were not rerun by this pass.

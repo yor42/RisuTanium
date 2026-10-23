@@ -81,7 +81,7 @@ describe('hanuraiMemory retrieval', () => {
     })
 
     // regression reproducer: CHORE-10 HAN-1, MC-713 4
-    it.fails('does not insert a message the prompt still holds', async () => {
+    it('does not insert a message the prompt still holds', async () => {
         dbState.hanuraiTokens = 100
         const { block, prompt } = await run(story(8), 40, 100000)
         expect(prompt).toHaveLength(8)
@@ -90,7 +90,7 @@ describe('hanuraiMemory retrieval', () => {
     })
 
     // regression reproducer: CHORE-10 HAN-1, MC-713 4
-    it.fails('inserted text carries no leading space from the document prefix', async () => {
+    it('inserted text carries no leading space from the document prefix', async () => {
         dbState.hanuraiTokens = 30
         const { block } = await trimmedRun()
         expect(block.length).toBeGreaterThan(0)
@@ -99,10 +99,63 @@ describe('hanuraiMemory retrieval', () => {
     })
 
     // regression reproducer: CHORE-10 HAN-2, MC-713 4
-    it.fails('bounds the retrieved text by the Chunk Size setting', async () => {
+    it('bounds the retrieved text by the Chunk Size setting', async () => {
         dbState.hanuraiTokens = 30
         const { block } = await trimmedRun()
         expect(block.length).toBeGreaterThan(0)
         expect(await tokenizer.tokenizeChat({ role: 'system', memo: 'supaMemory', content: block })).toBeLessThanOrEqual(30)
+    })
+})
+
+describe('hanuraiMemory retrieval with paragraph splitting', () => {
+    const paragraphs = (index: number) => `alpha ${index}\n\nbeta ${index}`
+    const storyWith = (first: string): OpenAIChat[] => {
+        const chats = story(8)
+        chats[0] = { role: 'user', content: first }
+        return chats
+    }
+
+    // regression reproducer: CHORE-10 HAN-1, MC-713 4
+    it('does not insert a paragraph of a multi-paragraph message the prompt still holds', async () => {
+        dbState.hanuraiSplit = true
+        const { block, prompt } = await run(storyWith(paragraphs(0)), 40, 100000)
+        expect(prompt[0]).toBe(paragraphs(0))
+        expect(block).not.toMatch(/alpha 0|beta 0/)
+    })
+
+    // regression reproducer: CHORE-10 HAN-1, MC-713 4
+    it('does not insert a message the prompt holds with surrounding whitespace', async () => {
+        const { block, prompt } = await run(storyWith('  padded message  '), 40, 100000)
+        expect(prompt[0]).toBe('  padded message  ')
+        expect(block).not.toContain('padded message')
+    })
+
+    // The positive control: the in-prompt check must not suppress retrieval of trimmed-out paragraphs.
+    it('guard: paragraphs of a message trimmed out of the prompt are retrieved', async () => {
+        dbState.hanuraiSplit = true
+        dbState.hanuraiTokens = 100
+        const { block, prompt } = await run(storyWith(paragraphs(0)), 800, 500)
+        expect(prompt).toEqual(['message number 4', 'message number 5', 'message number 6', 'message number 7'])
+        expect(block).toContain('alpha 0')
+        expect(block).toContain('beta 0')
+    })
+
+    // regression reproducer: CHORE-10 HAN-2, MC-713 4
+    // Each retrieved paragraph is counted with the +2 per-item overhead, so the cap is slightly conservative against the joined block.
+    it('bounds the retrieved text by the Chunk Size setting', async () => {
+        dbState.hanuraiSplit = true
+        dbState.hanuraiTokens = 30
+        const chats = story(8).map((chat, i) => ({ ...chat, content: paragraphs(i) }))
+        const { block } = await run(chats, 800, 500)
+        expect(block.length).toBeGreaterThan(0)
+        expect(await tokenizer.tokenizeChat({ role: 'system', memo: 'supaMemory', content: block })).toBeLessThanOrEqual(30)
+    })
+
+    // regression reproducer: CHORE-10 HAN-2, MC-713 4
+    it('skips a retrieved text larger than the Chunk Size and still retrieves a smaller one', async () => {
+        dbState.hanuraiTokens = 30
+        const { block } = await run(storyWith('x'.repeat(60)), 800, 500)
+        expect(block).not.toContain('xxxx')
+        expect(block).toContain('message number 1')
     })
 })
