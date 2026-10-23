@@ -11,7 +11,7 @@ import { classifyCommitRead } from './commitKey'
 import type { CommitKey } from './format'
 import type { Store2SaveContext } from './saveActive'
 import { createSaveEncoder, type SavePassRequest, type SavePlan } from './saveEncoder'
-import { peekSaveMarks } from './savePassMeter'
+import { noteNetSlotEnd, noteNetSlotMs, noteNetSlotPassMs, peekSaveMarks } from './savePassMeter'
 import { startYieldGaps, type YieldGapRecorder } from './saveYieldMeter'
 
 /**
@@ -305,6 +305,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let lastModuleNetAt = port.now()
     /** The gap recorder of the attempt in flight, a measurement build only; one attempt runs at a time under the write lock. */
     let activeGaps: YieldGapRecorder | null = null
+    /** Whether the current idle-net slot's base read and judgement finished, a measurement build only; it tells a failed read from a later fault. */
+    let netReadDone = false
     /**
      * The characters the latest attempts whose commit landed could not encode. A character leaves it when a pass encodes
      * it, or when it is no longer in the database; an attempt whose commit did not land changes nothing here.
@@ -790,50 +792,86 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
      * it falls back to reads again and reports the failure itself.
      */
     async function netDecision(): Promise<NetDecision> {
-        if (port.now() - lastModuleNetAt >= moduleMs || consent !== null) {
+        const modulesDue = port.now() - lastModuleNetAt >= moduleMs
+        if (modulesDue || consent !== null) {
+            if (MEASURE) {
+                noteNetSlotEnd(modulesDue ? 'modulesDue' : 'consent')
+            }
             return { kind: 'full' }
         }
         const read = await port.withWriteLock(() => committer.readCommit())
         const judged = judge(read)
+        if (MEASURE) {
+            netReadDone = true
+        }
         if (judged.kind === 'stop') {
             setPark(parkOf(judged))
+            if (MEASURE) {
+                noteNetSlotEnd('parked')
+            }
             return { kind: 'none' }
         }
         if (port.isDue()) {
+            if (MEASURE) {
+                noteNetSlotEnd('dueAfterRead')
+            }
             return { kind: 'none' }
         }
         if (encoder.pendingKey !== null) {
+            if (MEASURE) {
+                noteNetSlotEnd('pending')
+            }
             return { kind: 'full' }
         }
         const db = port.getDatabase()
-        if (encoder.unheldChaIds(db).length > 0 || encoder.stubsNeedFullPass(db)) {
+        const unheld = encoder.unheldChaIds(db).length > 0
+        if (unheld || encoder.stubsNeedFullPass(db)) {
+            if (MEASURE) {
+                noteNetSlotEnd(unheld ? 'unheld' : 'stub')
+            }
             return { kind: 'full' }
         }
         if (unsavable.size > 0) {
             const present = presentChaIds(db)
             for (const chaId of unsavable.keys()) {
                 if (!present.has(chaId)) {
+                    if (MEASURE) {
+                        noteNetSlotEnd('unsavableAbsent')
+                    }
                     return { kind: 'full' }
                 }
             }
         }
         const residents = residentChaIds(db)
         if (residents.length === 0) {
+            if (MEASURE) {
+                noteNetSlotEnd('noResident')
+            }
             return { kind: 'none' }
         }
         const index = netIndex % residents.length
         netIndex = (index + 1) % residents.length
         const chaId = residents[index]
         if (unsavable.has(chaId)) {
+            if (MEASURE) {
+                noteNetSlotEnd('verdictUnknown', 'unknown')
+            }
             return { kind: 'character', chaId }
         }
         const slot = (db.characters as Array<character | groupChat | null>).find(
             (candidate): candidate is character | groupChat => typeof candidate === 'object' && candidate !== null && !isColdStub(candidate)
                 && String((candidate as { chaId?: unknown }).chaId ?? '') === chaId)
         if (slot === undefined) {
+            if (MEASURE) {
+                noteNetSlotEnd('slotMissing')
+            }
             return { kind: 'full' }
         }
-        return encoder.verdictOf(slot) === 'clean' ? { kind: 'none' } : { kind: 'character', chaId }
+        const verdict = encoder.verdictOf(slot)
+        if (MEASURE) {
+            noteNetSlotEnd(verdict === 'clean' ? 'verdictClean' : verdict === 'dirty' ? 'verdictDirty' : 'verdictUnknown', verdict)
+        }
+        return verdict === 'clean' ? { kind: 'none' } : { kind: 'character', chaId }
     }
 
     /**
@@ -843,16 +881,30 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
      */
     async function netSlot(): Promise<void> {
         let decision: NetDecision
+        const decisionStartedAt = MEASURE ? performance.now() : 0
+        if (MEASURE) {
+            netReadDone = false
+        }
         try {
             decision = await netDecision()
         } catch (error) {
             console.error(error)
+            if (MEASURE) {
+                noteNetSlotEnd(netReadDone ? 'guardThrow' : 'readFailed')
+            }
             decision = { kind: 'full' }
         }
+        if (MEASURE) {
+            noteNetSlotMs(performance.now() - decisionStartedAt)
+        }
+        const passStartedAt = MEASURE ? performance.now() : 0
         if (decision.kind === 'full') {
             await pass(true)
         } else if (decision.kind === 'character') {
             await pass(true, decision.chaId)
+        }
+        if (MEASURE && decision.kind !== 'none') {
+            noteNetSlotPassMs(performance.now() - passStartedAt)
         }
     }
 

@@ -61,6 +61,13 @@ import type { SplitMsField, SplitPutSection, SplitRecorder } from './codec/types
  * their own kind (moved fields and stub overlays rewrite a shard without a body change). `ticks` counts every tick
  * plan, `ticksCommitted` the ones that were acknowledged. A tick that ends `unknown` and is later adopted is not
  * counted (its plan is never acknowledged).
+ *
+ * Verdict tally (`verdicts()`, CHORE-205 stage 1c): the idle net's slot ends in exactly one way, counted in `slotEnds`
+ * (their sum is `slots`); a slot that reached a verdict also counts in `outcomes`. `unknown` there includes a
+ * resident in the unsavable set and a `verdictOf` that threw, which the encoder logs and returns as `unknown`, so a
+ * throw is not told apart from a primitive `unknown`. Every pass an idle-net slot runs, a full-tick fallback or a
+ * verdict-named silent pass, is a stage 0 `tick`; `slotEnds` tells which reason sent it. `decisionMs` is the wall
+ * time of each slot's decision part; `slotPassMs` the pass a slot went on to run.
  */
 
 export type SavePassKind = 'rewriteAll' | 'whole' | 'tick' | 'edit'
@@ -222,7 +229,28 @@ export interface SavePassMeterHandle {
     all(): SavePassRecord[]
     units(): SavePassCommitRecord[]
     netFound(): NetFoundSummary
+    verdicts(): NetVerdictSummary
     reset(): void
+}
+
+/** What one idle-net slot ended in; every slot has exactly one. */
+export type NetSlotReason =
+    | 'modulesDue' | 'consent' | 'readFailed' | 'parked' | 'dueAfterRead' | 'pending' | 'unheld' | 'stub' | 'unsavableAbsent'
+    | 'verdictClean' | 'verdictDirty' | 'verdictUnknown' | 'slotMissing' | 'guardThrow' | 'noResident'
+
+/** What the judged character's verdict said. A `verdictOf` that threw reads as `unknown`: the encoder logs the throw and returns it. */
+export type NetVerdictOutcome = 'clean' | 'dirty' | 'unknown'
+
+export interface NetVerdictSummary {
+    /** Every slot the tally saw; the sum of `slotEnds`. */
+    slots: number
+    slotEnds: Record<NetSlotReason, number>
+    /** The slots that reached a verdict, by what it said (`unknown` includes an unsavable resident and a throw). */
+    outcomes: Record<NetVerdictOutcome, number>
+    /** Wall time of the decision part of each slot, newest last, at most 1000. */
+    decisionMs: number[]
+    /** Wall time of the pass a slot went on to run, newest last, at most 1000; slots that ran no pass add none. */
+    slotPassMs: number[]
 }
 
 /** The part of a save request that decides the kind. */
@@ -307,6 +335,82 @@ function netFoundNow(): NetFoundState {
     netFoundStore ??= freshNetFound()
     return netFoundStore
 }
+
+const NET_SLOT_REASONS: readonly NetSlotReason[] = [
+    'modulesDue', 'consent', 'readFailed', 'parked', 'dueAfterRead', 'pending', 'unheld', 'stub', 'unsavableAbsent',
+    'verdictClean', 'verdictDirty', 'verdictUnknown', 'slotMissing', 'guardThrow', 'noResident',
+]
+
+interface NetVerdictState {
+    slotEnds: Record<NetSlotReason, number>
+    outcomes: Record<NetVerdictOutcome, number>
+    decisionMs: number[]
+    slotPassMs: number[]
+}
+
+function freshVerdicts(): NetVerdictState {
+    const slotEnds = {} as Record<NetSlotReason, number>
+    for (const reason of NET_SLOT_REASONS) {
+        slotEnds[reason] = 0
+    }
+    return { slotEnds, outcomes: { clean: 0, dirty: 0, unknown: 0 }, decisionMs: [], slotPassMs: [] }
+}
+
+// Created on first use, for the same reason as the net-found state.
+let verdictStore: NetVerdictState | null = null
+
+function verdictsNow(): NetVerdictState {
+    verdictStore ??= freshVerdicts()
+    return verdictStore
+}
+
+function verdictSummary(): NetVerdictSummary {
+    const state = verdictsNow()
+    let slots = 0
+    for (const reason of NET_SLOT_REASONS) {
+        slots += state.slotEnds[reason]
+    }
+    return { slots, slotEnds: { ...state.slotEnds }, outcomes: { ...state.outcomes }, decisionMs: [...state.decisionMs], slotPassMs: [...state.slotPassMs] }
+}
+
+/** The idle net calls this once per slot, with the way the slot ended and, for a slot that reached a verdict, what it said. */
+export function noteNetSlotEnd(reason: NetSlotReason, outcome: NetVerdictOutcome | null = null): void {
+    try {
+        if (!switchedOn()) {
+            return
+        }
+        installGlobal(globalThis)
+        verdictsNow().slotEnds[reason]++
+        if (outcome !== null) {
+            verdictsNow().outcomes[outcome]++
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+/** The wall time of one slot's decision part. */
+export function noteNetSlotMs(ms: number): void {
+    try {
+        if (switchedOn()) {
+            pushLimited(verdictsNow().decisionMs, ms)
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+/** The wall time of the pass a slot went on to run. */
+export function noteNetSlotPassMs(ms: number): void {
+    try {
+        if (switchedOn()) {
+            pushLimited(verdictsNow().slotPassMs, ms)
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
 let passSeq = 0
 let splitClock: (() => number) | null = null
 
@@ -345,7 +449,9 @@ const handle: SavePassMeterHandle = {
     all: () => [...passes],
     units: () => [...commits],
     netFound: netFoundSummary,
+    verdicts: verdictSummary,
     reset: () => {
+        verdictStore = null
         passes.length = 0
         commits.length = 0
         netFoundStore = null
