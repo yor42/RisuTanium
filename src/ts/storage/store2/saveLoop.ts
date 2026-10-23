@@ -11,7 +11,7 @@ import { classifyCommitRead } from './commitKey'
 import type { CommitKey } from './format'
 import type { Store2SaveContext } from './saveActive'
 import { createSaveEncoder, type SavePassRequest, type SavePlan } from './saveEncoder'
-import { noteNetSlotEnd, noteNetSlotMs, noteNetSlotPassMs, peekSaveMarks } from './savePassMeter'
+import { noteNetSlotBegin, noteNetSlotEnd, noteNetSlotMs, noteNetSlotPart, noteNetSlotPassMs, peekSaveMarks } from './savePassMeter'
 import { startYieldGaps, type YieldGapRecorder } from './saveYieldMeter'
 
 /**
@@ -799,9 +799,24 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
             return { kind: 'full' }
         }
-        const read = await port.withWriteLock(() => committer.readCommit())
+        const lockRequestedAt = MEASURE ? performance.now() : 0
+        // The measured read notes the lock wait when the lock is granted and the read time even when the read throws.
+        const readUnderLock = MEASURE
+            ? async () => {
+                const lockedAt = performance.now()
+                noteNetSlotPart('lockWaitMs', lockedAt - lockRequestedAt)
+                try {
+                    return await committer.readCommit()
+                } finally {
+                    noteNetSlotPart('readMs', performance.now() - lockedAt)
+                }
+            }
+            : () => committer.readCommit()
+        const read = await port.withWriteLock(readUnderLock)
+        const judgeStartedAt = MEASURE ? performance.now() : 0
         const judged = judge(read)
         if (MEASURE) {
+            noteNetSlotPart('judgeMs', performance.now() - judgeStartedAt)
             netReadDone = true
         }
         if (judged.kind === 'stop') {
@@ -824,9 +839,11 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             return { kind: 'full' }
         }
         const db = port.getDatabase()
+        const checksStartedAt = MEASURE ? performance.now() : 0
         const unheld = encoder.unheldChaIds(db).length > 0
         if (unheld || encoder.stubsNeedFullPass(db)) {
             if (MEASURE) {
+                noteNetSlotPart('checksMs', performance.now() - checksStartedAt)
                 noteNetSlotEnd(unheld ? 'unheld' : 'stub')
             }
             return { kind: 'full' }
@@ -836,6 +853,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             for (const chaId of unsavable.keys()) {
                 if (!present.has(chaId)) {
                     if (MEASURE) {
+                        noteNetSlotPart('checksMs', performance.now() - checksStartedAt)
                         noteNetSlotEnd('unsavableAbsent')
                     }
                     return { kind: 'full' }
@@ -845,6 +863,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         const residents = residentChaIds(db)
         if (residents.length === 0) {
             if (MEASURE) {
+                noteNetSlotPart('checksMs', performance.now() - checksStartedAt)
                 noteNetSlotEnd('noResident')
             }
             return { kind: 'none' }
@@ -854,6 +873,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         const chaId = residents[index]
         if (unsavable.has(chaId)) {
             if (MEASURE) {
+                noteNetSlotPart('checksMs', performance.now() - checksStartedAt)
                 noteNetSlotEnd('verdictUnknown', 'unknown')
             }
             return { kind: 'character', chaId }
@@ -861,14 +881,19 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         const slot = (db.characters as Array<character | groupChat | null>).find(
             (candidate): candidate is character | groupChat => typeof candidate === 'object' && candidate !== null && !isColdStub(candidate)
                 && String((candidate as { chaId?: unknown }).chaId ?? '') === chaId)
+        if (MEASURE) {
+            noteNetSlotPart('checksMs', performance.now() - checksStartedAt)
+        }
         if (slot === undefined) {
             if (MEASURE) {
                 noteNetSlotEnd('slotMissing')
             }
             return { kind: 'full' }
         }
+        const verdictStartedAt = MEASURE ? performance.now() : 0
         const verdict = encoder.verdictOf(slot)
         if (MEASURE) {
+            noteNetSlotPart('verdictMs', performance.now() - verdictStartedAt)
             noteNetSlotEnd(verdict === 'clean' ? 'verdictClean' : verdict === 'dirty' ? 'verdictDirty' : 'verdictUnknown', verdict)
         }
         return verdict === 'clean' ? { kind: 'none' } : { kind: 'character', chaId }
@@ -884,6 +909,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         const decisionStartedAt = MEASURE ? performance.now() : 0
         if (MEASURE) {
             netReadDone = false
+            noteNetSlotBegin()
         }
         try {
             decision = await netDecision()
