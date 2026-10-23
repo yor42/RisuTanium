@@ -840,30 +840,63 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
         const db = port.getDatabase()
         const checksStartedAt = MEASURE ? performance.now() : 0
+        // Each check's sub-part runs from the previous check's end, and an exit closes `checksMs` at the same clock read as
+        // its last sub-part, so the sub-parts sum to `checksMs`; a check the slot did not run leaves its sub-part null.
+        let checkLapAt = checksStartedAt
         const unheld = encoder.unheldChaIds(db).length > 0
+        if (MEASURE) {
+            const unheldDoneAt = performance.now()
+            noteNetSlotPart('unheldMs', unheldDoneAt - checkLapAt)
+            checkLapAt = unheldDoneAt
+        }
         if (unheld || encoder.stubsNeedFullPass(db)) {
             if (MEASURE) {
-                noteNetSlotPart('checksMs', performance.now() - checksStartedAt)
+                // An unheld exit ran no stub check, so its `checksMs` closes at the unheld lap with no further clock read.
+                const checksDoneAt = unheld ? checkLapAt : performance.now()
+                if (!unheld) {
+                    noteNetSlotPart('stubsMs', checksDoneAt - checkLapAt)
+                }
+                noteNetSlotPart('checksMs', checksDoneAt - checksStartedAt)
                 noteNetSlotEnd(unheld ? 'unheld' : 'stub')
             }
             return { kind: 'full' }
+        }
+        if (MEASURE) {
+            const stubsDoneAt = performance.now()
+            noteNetSlotPart('stubsMs', stubsDoneAt - checkLapAt)
+            checkLapAt = stubsDoneAt
         }
         if (unsavable.size > 0) {
             const present = presentChaIds(db)
             for (const chaId of unsavable.keys()) {
                 if (!present.has(chaId)) {
                     if (MEASURE) {
-                        noteNetSlotPart('checksMs', performance.now() - checksStartedAt)
+                        const checksDoneAt = performance.now()
+                        noteNetSlotPart('unsavableMs', checksDoneAt - checkLapAt)
+                        noteNetSlotPart('checksMs', checksDoneAt - checksStartedAt)
                         noteNetSlotEnd('unsavableAbsent')
                     }
                     return { kind: 'full' }
                 }
             }
+            if (MEASURE) {
+                const unsavableDoneAt = performance.now()
+                noteNetSlotPart('unsavableMs', unsavableDoneAt - checkLapAt)
+                checkLapAt = unsavableDoneAt
+            }
         }
         const residents = residentChaIds(db)
+        // Before any early return: a slot that ends here with no resident left must still release the shadow of a character
+        // that was put back. Inside the `residentsMs` lap, so the sub-parts still sum to `checksMs`.
+        encoder.pruneShadows(new Set(residents))
+        if (MEASURE) {
+            const residentsDoneAt = performance.now()
+            noteNetSlotPart('residentsMs', residentsDoneAt - checkLapAt)
+            checkLapAt = residentsDoneAt
+        }
         if (residents.length === 0) {
             if (MEASURE) {
-                noteNetSlotPart('checksMs', performance.now() - checksStartedAt)
+                noteNetSlotPart('checksMs', checkLapAt - checksStartedAt)
                 noteNetSlotEnd('noResident')
             }
             return { kind: 'none' }
@@ -873,7 +906,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         const chaId = residents[index]
         if (unsavable.has(chaId)) {
             if (MEASURE) {
-                noteNetSlotPart('checksMs', performance.now() - checksStartedAt)
+                noteNetSlotPart('checksMs', checkLapAt - checksStartedAt)
                 noteNetSlotEnd('verdictUnknown', 'unknown')
             }
             return { kind: 'character', chaId }
@@ -882,7 +915,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             (candidate): candidate is character | groupChat => typeof candidate === 'object' && candidate !== null && !isColdStub(candidate)
                 && String((candidate as { chaId?: unknown }).chaId ?? '') === chaId)
         if (MEASURE) {
-            noteNetSlotPart('checksMs', performance.now() - checksStartedAt)
+            const checksDoneAt = performance.now()
+            noteNetSlotPart('findMs', checksDoneAt - checkLapAt)
+            noteNetSlotPart('checksMs', checksDoneAt - checksStartedAt)
         }
         if (slot === undefined) {
             if (MEASURE) {

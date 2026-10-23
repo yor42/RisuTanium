@@ -10,7 +10,7 @@ import { defineOwn } from './normalize'
 import { isUnchanged, unitDigest, UnitNotReusedError, UnitSink, type UnitKeyKind } from './reuse'
 import {
     checkDatabase, emitCharacter, encodeCharacter, encodeFront, encodeModuleSetYielding, Encoder, finishTree, IDENTITY,
-    normalizeCharacter, type ModuleSet, type NormalizedCharacter,
+    normalizeCharacter, normalizeCharacterFromPlain, type ModuleSet, type NormalizedCharacter,
 } from './split'
 import { isColdStub } from './stub'
 import {
@@ -653,25 +653,10 @@ function sameKnownFields(fresh: ShardEntry, acknowledged: ShardEntry): boolean {
  * reused, so an unhydrated character must not look clean), or the character cannot be encoded.
  */
 export function characterMatchesAcknowledged(slot: Slot, options: VerdictOptions): AcknowledgedVerdict {
-    const { previous } = options
-    if (typeof slot !== 'object' || slot === null || isColdStub(slot)) {
+    const base = verdictBaseOf(slot, options.previous)
+    if (base === null) {
         return 'unknown'
     }
-    const chaId = String((slot as { chaId?: unknown }).chaId ?? '')
-    const u = previous.entities.get(`${chaId}#0`)
-    if (previous.entities.has(`${chaId}#1`) || u === undefined) {
-        return 'unknown'
-    }
-    const acknowledged = previousEntryOf(previous, u)
-    if (acknowledged === undefined) {
-        return 'unknown'
-    }
-    for (const identity of identitiesOf(acknowledged)) {
-        if (previous.units.get(identity)?.digest === undefined) {
-            return 'unknown'
-        }
-    }
-    const encodeOptions: EncodeOptions = { env: options.env, lists: options.lists, seq: 0, createdAt: 0, previous }
     // Reading the live character can throw anything a `toJSON` or a getter throws; whatever it is, the acknowledged
     // encoding cannot answer, and the put-back leaves the character loaded.
     let normalized: NormalizedCharacter
@@ -680,9 +665,73 @@ export function characterMatchesAcknowledged(slot: Slot, options: VerdictOptions
     } catch {
         return 'unknown'
     }
+    return verdictOfNormalized(normalized, base, options)
+}
+
+/** What the verdict's prologue found: the character's `chaId` and the acknowledged entry it is judged against. */
+export interface VerdictBase {
+    chaId: string
+    acknowledged: ShardEntry
+}
+
+/**
+ * The prologue of the verdict, shared by `characterMatchesAcknowledged` and the pre-read entry point. Null when the
+ * acknowledged encoding cannot answer: the slot is not an object or is a cold stub, its id is shared (`#1` is held) or
+ * unknown, its entry is missing, or one of the entry's units has no digest (a unit with no digest is never reused, so
+ * an unhydrated character must not look clean).
+ */
+export function verdictBaseOf(slot: Slot, previous: PreviousEncoding): VerdictBase | null {
+    if (typeof slot !== 'object' || slot === null || isColdStub(slot)) {
+        return null
+    }
+    const chaId = String((slot as { chaId?: unknown }).chaId ?? '')
+    const u = previous.entities.get(`${chaId}#0`)
+    if (previous.entities.has(`${chaId}#1`) || u === undefined) {
+        return null
+    }
+    const acknowledged = previousEntryOf(previous, u)
+    if (acknowledged === undefined) {
+        return null
+    }
+    for (const identity of identitiesOf(acknowledged)) {
+        if (previous.units.get(identity)?.digest === undefined) {
+            return null
+        }
+    }
+    return { chaId, acknowledged }
+}
+
+/** The framed bytes of every unit the entry names, as the acknowledged encoding holds them. */
+export function acknowledgedBytesOf(previous: PreviousEncoding, entry: ShardEntry): number {
+    let bytes = 0
+    for (const identity of identitiesOf(entry)) {
+        bytes += previous.units.get(identity)?.ref[1] ?? 0
+    }
+    return bytes
+}
+
+/**
+ * `characterMatchesAcknowledged` over a character whose plain JSON the caller already read (`plainObject(slot, ...)`)
+ * and whose prologue it already passed (`verdictBaseOf`). It never writes into `plain`. The entry fields that do not
+ * come from the plain tree (`type`, `characters`, the tags and the creator) are still read from the live `slot` by
+ * `emitCharacter`, so the answer is the wrapper's for the same slot: a fault of the split is `unknown`, silently.
+ */
+export function characterMatchesAcknowledgedPlain(slot: Slot, plain: JsonObject, base: VerdictBase, options: VerdictOptions): AcknowledgedVerdict {
+    let normalized: NormalizedCharacter
+    try {
+        normalized = normalizeCharacterFromPlain(slot, base.chaId, plain, 0)
+    } catch {
+        return 'unknown'
+    }
+    return verdictOfNormalized(normalized, base, options)
+}
+
+function verdictOfNormalized(normalized: NormalizedCharacter, base: VerdictBase, options: VerdictOptions): AcknowledgedVerdict {
+    const { previous } = options
+    const encodeOptions: EncodeOptions = { env: options.env, lists: options.lists, seq: 0, createdAt: 0, previous }
     try {
         const fresh = emitCharacter(normalized, new ReuseOnlyEncoder(encodeOptions, previous))
-        return sameKnownFields(fresh, acknowledged) ? 'clean' : 'dirty'
+        return sameKnownFields(fresh, base.acknowledged) ? 'clean' : 'dirty'
     } catch (error) {
         if (error instanceof UnitNotReusedError) {
             return 'dirty'

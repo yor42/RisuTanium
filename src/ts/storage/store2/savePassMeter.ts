@@ -70,6 +70,12 @@ import type { SplitMsField, SplitPutSection, SplitRecorder } from './codec/types
  * time of each slot's decision part; `slotPassMs` the pass a slot went on to run. `slotTimings` (CHORE-205 stage 1d) holds
  * one record per slot, aligned with `decisionMs`, with the slot's end reason and where its decision time went (see
  * `NetSlotTiming`).
+ *
+ * Verdict shadow (`shadowTally()` and `shadowSlots()`, CHORE-205 stage 2b): the encoder keeps a value shadow of each
+ * clean resident (see `SaveEncoder.verdictOf`). `shadowTally()` counts hits, misses, refusals, drops and the tripwire's
+ * runs and disagreements; `shadowSlots()` holds one record per slot, aligned with `slotTimings`, with the slot's tag and
+ * its tripwire time. The tripwire re-judges every eighth hit with the full primitive on the live character; the phone
+ * run requires zero disagreements. All of it records only while the `risu-measure-savepass` switch is on.
  */
 
 export type SavePassKind = 'rewriteAll' | 'whole' | 'tick' | 'edit'
@@ -232,7 +238,32 @@ export interface SavePassMeterHandle {
     units(): SavePassCommitRecord[]
     netFound(): NetFoundSummary
     verdicts(): NetVerdictSummary
+    shadowTally(): NetShadowTally
+    shadowSlots(): NetShadowSlot[]
     reset(): void
+}
+
+/**
+ * Whether a slot's verdict came from the encoder's value shadow: `hit` the live character equalled the shadow and the
+ * primitive was not run, `miss` the primitive ran on the character, `none` the prologue or a fault answered before the
+ * shadow was consulted.
+ */
+export type NetShadowTag = 'hit' | 'miss' | 'none'
+
+/**
+ * The shadow's counters since the page started or the last `reset()`, counted only while the switch is on. `shadowHits`
+ * and `shadowMisses` count verdicts by tag; a tripwire slot is a hit. `shadowRefused` counts clean characters that
+ * admission turned away, `shadowClears` the shadows dropped (a commit, an adoption, a pending attempt, a put-back, a
+ * non-clean verdict or a fault), `shadowTripwireRuns` the hits that were re-judged by the full primitive and
+ * `shadowDisagreements` those where it did not say clean.
+ */
+export interface NetShadowTally {
+    shadowHits: number
+    shadowMisses: number
+    shadowRefused: number
+    shadowClears: number
+    shadowTripwireRuns: number
+    shadowDisagreements: number
 }
 
 /** What one idle-net slot ended in; every slot has exactly one. */
@@ -258,14 +289,21 @@ export interface NetVerdictSummary {
 }
 
 /** The parts of one slot's decision that are timed apart; a part the slot's path did not take stays null. */
-export type NetSlotPart = 'lockWaitMs' | 'readMs' | 'judgeMs' | 'checksMs' | 'verdictMs' | 'primitiveMs' | 'movedMs'
+export type NetSlotPart = 'lockWaitMs' | 'readMs' | 'judgeMs' | 'checksMs' | 'unheldMs' | 'stubsMs' | 'unsavableMs' | 'residentsMs' | 'findMs' | 'verdictMs' | 'primitiveMs' | 'movedMs'
 
 /**
  * Where one slot's `decisionMs` went. `lockWaitMs` is the wait for the write lock and `readMs` the `readCommit` inside
  * it (recorded also when the read throws). `judgeMs` is `judge`. `checksMs` is everything between `judge` and the verdict:
- * `unheldChaIds`, `stubsNeedFullPass`, the unsavable and resident lookups; a check that throws leaves it null.
- * `verdictMs` is `verdictOf` as a whole, split into `primitiveMs` (`characterMatchesAcknowledged`) and `movedMs` (the
- * moved-field compare, only after a `clean` primitive). `reason` is how the slot ended. The switch is read on every
+ * `unheldChaIds`, `stubsNeedFullPass`, the unsavable and resident lookups; a check that throws leaves it null. Its
+ * sub-parts are `unheldMs` (`unheldChaIds`), `stubsMs` (`stubsNeedFullPass`), `unsavableMs` (the unsavable-absent scan,
+ * run only when something is unsavable), `residentsMs` (`residentChaIds` and the shadow prune that follows it) and
+ * `findMs` (the final resident lookup);
+ * each is null when the slot did not run it, and those it ran sum to `checksMs`. When a check throws, the sub-parts
+ * finished before it are recorded while `checksMs` stays null.
+ * `verdictMs` is `verdictOf` as a whole, split into `primitiveMs` (the prologue, the plain read, and either the shadow
+ * compare or the plain-entry primitive) and `movedMs` (the moved-field compare, only after a `clean` verdict). On a
+ * tripwire slot `verdictMs` and `decisionMs` also include `shadowTripwireMs` (see `NetShadowSlot`), which `primitiveMs`
+ * leaves out. `reason` is how the slot ended. The switch is read on every
  * call: a slot begun with the switch off and ended with it on is recorded with `reason` null and every part null, and a
  * slot begun with it on and ended with it off is not recorded at all.
  */
@@ -276,9 +314,26 @@ export interface NetSlotTiming {
     readMs: number | null
     judgeMs: number | null
     checksMs: number | null
+    unheldMs: number | null
+    stubsMs: number | null
+    unsavableMs: number | null
+    residentsMs: number | null
+    findMs: number | null
     verdictMs: number | null
     primitiveMs: number | null
     movedMs: number | null
+}
+
+/**
+ * The shadow's record of one slot, in `shadowSlots()`, aligned with `slotTimings` (same length, same order). `verdictShadow`
+ * is null for a slot that did not reach `verdictOf`. `shadowTripwire` marks a hit that the full primitive re-judged and
+ * `shadowTripwireMs` is the time of that re-judging, kept apart from `primitiveMs`. Such a slot counts as a hit, and a
+ * timing median leaves it out: its `verdictMs` and `decisionMs` include the re-judging.
+ */
+export interface NetShadowSlot {
+    verdictShadow: NetShadowTag | null
+    shadowTripwire: boolean
+    shadowTripwireMs: number | null
 }
 
 /** The part of a save request that decides the kind. */
@@ -430,9 +485,12 @@ export function noteNetSlotEnd(reason: NetSlotReason, outcome: NetVerdictOutcome
 export function noteNetSlotBegin(): void {
     try {
         slotInFlight = null
+        shadowSlotInFlight = null
         if (switchedOn()) {
+            shadowSlotInFlight = blankShadowSlot()
             slotInFlight = {
                 reason: null, decisionMs: 0, lockWaitMs: null, readMs: null, judgeMs: null, checksMs: null,
+                unheldMs: null, stubsMs: null, unsavableMs: null, residentsMs: null, findMs: null,
                 verdictMs: null, primitiveMs: null, movedMs: null,
             }
         }
@@ -456,10 +514,14 @@ export function noteNetSlotPart(part: NetSlotPart, ms: number): void {
 export function noteNetSlotMs(ms: number): void {
     try {
         const timing = slotInFlight
+        const shadowSlot = shadowSlotInFlight
         slotInFlight = null
+        shadowSlotInFlight = null
         if (switchedOn()) {
+            shadowSlotStore ??= []
+            pushLimited(shadowSlotStore, shadowSlot ?? blankShadowSlot())
             pushLimited(verdictsNow().decisionMs, ms)
-            pushLimited(verdictsNow().slotTimings, { ...(timing ?? { reason: null, lockWaitMs: null, readMs: null, judgeMs: null, checksMs: null, verdictMs: null, primitiveMs: null, movedMs: null }), decisionMs: ms })
+            pushLimited(verdictsNow().slotTimings, { ...(timing ?? { reason: null, lockWaitMs: null, readMs: null, judgeMs: null, checksMs: null, unheldMs: null, stubsMs: null, unsavableMs: null, residentsMs: null, findMs: null, verdictMs: null, primitiveMs: null, movedMs: null }), decisionMs: ms })
         }
     } catch {
         // A measurement failure never reaches the save.
@@ -471,6 +533,84 @@ export function noteNetSlotPassMs(ms: number): void {
     try {
         if (switchedOn()) {
             pushLimited(verdictsNow().slotPassMs, ms)
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+// Created on first use, for the same reason as the net-found state.
+let shadowStore: NetShadowTally | null = null
+let shadowSlotStore: NetShadowSlot[] | null = null
+// The shadow record of the slot in flight, begun and closed with `slotInFlight`.
+let shadowSlotInFlight: NetShadowSlot | null = null
+
+function shadowNow(): NetShadowTally {
+    shadowStore ??= { shadowHits: 0, shadowMisses: 0, shadowRefused: 0, shadowClears: 0, shadowTripwireRuns: 0, shadowDisagreements: 0 }
+    return shadowStore
+}
+
+function blankShadowSlot(): NetShadowSlot {
+    return { verdictShadow: null, shadowTripwire: false, shadowTripwireMs: null }
+}
+
+/** Every this many shadow hits, one is re-judged by the full primitive. */
+const SHADOW_TRIPWIRE_EVERY = 8
+
+/**
+ * The encoder calls this once per `verdictOf` that got past the pending guard, with where the verdict came from. The
+ * result is true for every eighth hit since the tally started: the caller then re-judges that hit with the full
+ * primitive. False with the switch off, so the tripwire never runs unless the meter records it.
+ */
+export function noteNetShadow(tag: NetShadowTag): boolean {
+    try {
+        if (!switchedOn()) {
+            return false
+        }
+        installGlobal(globalThis)
+        if (shadowSlotInFlight !== null) {
+            shadowSlotInFlight.verdictShadow = tag
+        }
+        if (tag === 'miss') {
+            shadowNow().shadowMisses++
+        } else if (tag === 'hit') {
+            shadowNow().shadowHits++
+            return shadowNow().shadowHits % SHADOW_TRIPWIRE_EVERY === 0
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+    return false
+}
+
+/** One tripwire re-judging: its time on the slot in flight, which it tags. */
+export function noteNetShadowTripwire(ms: number): void {
+    try {
+        if (switchedOn()) {
+            shadowNow().shadowTripwireRuns++
+            if (shadowSlotInFlight !== null) {
+                shadowSlotInFlight.shadowTripwire = true
+                shadowSlotInFlight.shadowTripwireMs = ms
+            }
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+/** A shadow event other than a verdict tag: `count` shadows dropped, a clean character refused admission, or a tripwire disagreement. */
+export function noteNetShadowEvent(event: 'cleared' | 'refused' | 'disagreed', count: number = 1): void {
+    try {
+        if (switchedOn()) {
+            installGlobal(globalThis)
+            const tally = shadowNow()
+            if (event === 'cleared') {
+                tally.shadowClears += count
+            } else if (event === 'refused') {
+                tally.shadowRefused += count
+            } else {
+                tally.shadowDisagreements += count
+            }
         }
     } catch {
         // A measurement failure never reaches the save.
@@ -516,8 +656,13 @@ const handle: SavePassMeterHandle = {
     units: () => [...commits],
     netFound: netFoundSummary,
     verdicts: verdictSummary,
+    shadowTally: () => ({ ...shadowNow() }),
+    shadowSlots: () => (shadowSlotStore ?? []).map(slot => ({ ...slot })),
     reset: () => {
         verdictStore = null
+        shadowStore = null
+        shadowSlotStore = null
+        shadowSlotInFlight = null
         slotInFlight = null
         passes.length = 0
         commits.length = 0

@@ -240,7 +240,17 @@ export function normalizeCharacter(slot: Slot, position: number): NormalizedChar
     }
     const chaId = String((slot as { chaId?: unknown }).chaId ?? '')
     assertNotStub(slot, chaId)
-    const owner = omitFields(plainObject(slot, where), [...DERIVED_COLD_FIELDS, ...VOLATILE_CHARACTER_FIELDS])
+    return normalizeCharacterFromPlain(slot, chaId, plainObject(slot, where), position)
+}
+
+/**
+ * The part of `normalizeCharacter` after the live read: the character's plain JSON object, already read from `slot`,
+ * is split into its chats. It reads nothing from `slot` and never writes into `plain` (or any container of it), so a
+ * caller may hand in a tree it keeps and compares later.
+ */
+export function normalizeCharacterFromPlain(slot: Slot, chaId: string, plain: JsonObject, position: number): NormalizedCharacter {
+    const where = `characters[${position}]`
+    const owner = omitFields(plain, [...DERIVED_COLD_FIELDS, ...VOLATILE_CHARACTER_FIELDS])
     const rawChats = listOrEmpty(owner.chats, `${where}.chats`) as JsonValue[]
     const chatObjects = rawChats.map((chat, index) => {
         if (typeof chat !== 'object' || chat === null || Array.isArray(chat)) {
