@@ -70,7 +70,7 @@ export function characterCoreFields(owner: JsonObject): JsonObject {
     return omitFields(owner, ['chats', ...LORE_FIELDS, ...SCRIPT_FIELDS])
 }
 
-function movable(name: string, value: JsonValue): boolean {
+export function movable(name: string, value: JsonValue): boolean {
     if (name === 'lastInteraction' || name === 'trashTime') {
         return typeof value === 'number'
     }

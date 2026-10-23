@@ -79,7 +79,7 @@ interface ParentBody {
     body: object
 }
 
-function previousEntriesOf(previous: PreviousEncoding | null): Map<string, ShardEntry> {
+export function previousEntriesOf(previous: PreviousEncoding | null): Map<string, ShardEntry> {
     const shards = previous?.objects?.shards
     if (shards === undefined) {
         throw new CodecInputError('A carried character needs the previous encoding\'s shards, which it does not hold.')
@@ -579,7 +579,7 @@ class ReuseOnlyEncoder extends Encoder {
     }
 }
 
-function previousEntryOf(previous: PreviousEncoding, u: string): ShardEntry | undefined {
+export function previousEntryOf(previous: PreviousEncoding, u: string): ShardEntry | undefined {
     for (const shard of previous.objects?.shards ?? []) {
         const entry = shard.entries.find(candidate => candidate.u === u)
         if (entry !== undefined) {

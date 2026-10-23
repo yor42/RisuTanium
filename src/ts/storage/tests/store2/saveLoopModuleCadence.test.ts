@@ -14,10 +14,19 @@ import { buildSmall } from './codecFixtures'
  * default), whatever the number of resident characters. The loop runs over a real memory backend and committer with a
  * hand-built port whose clock the test sets, so a 30 s interval is crossed without waiting. The effective module scope
  * of a pass is read from the request the encoder is given: `modules` or `net.modules`, which the encoder ORs.
+ * An ordinary slot judges one resident (a `verdictOf` call) or reads the peer and plans nothing (no resident), so a
+ * slot is observed through its `readCommit` and its verdict call, and a full slot also through its plan.
  * Labels: reproducer (fails against the base), guard (passes before and after).
  */
 
 type Entry = Record<string, unknown>
+
+/** What one idle-net slot did: the base reads it made, the residents it judged and the plans that reached the encoder. */
+interface Slot {
+    reads: number
+    verdicts: string[]
+    requests: SavePassRequest[]
+}
 
 interface Run {
     kit: Store2Kit
@@ -27,11 +36,15 @@ interface Run {
     start: number
     /** Every request that reached the encoder, in order. */
     requests: SavePassRequest[]
+    /** The chaId of every resident the verdict was asked about, in order. */
+    verdicts: string[]
     state: { due: boolean, dirty: boolean, saved: number }
     failures: unknown[]
     crashed: unknown[]
-    /** Moves the clock to `offset` ms after the loop's start and waits for the tick that follows to reach the encoder. */
+    /** Moves the clock to `offset` ms after the loop's start and waits for the full tick that follows to reach the encoder. */
     tickAt(offset: number): Promise<SavePassRequest>
+    /** Moves the clock to `offset` ms after the loop's start and waits for the slot that follows to end, whatever it did. */
+    slotAt(offset: number): Promise<Slot>
     stop(): void
 }
 
@@ -75,14 +88,31 @@ async function startRun(db: Database, idleNet: { intervalMs: number, moduleInter
         requests.push(request)
         return inner.plan(planDb, request)
     }
+    const verdicts: string[] = []
+    encoder.verdictOf = (slot) => {
+        verdicts.push(String((slot as { chaId?: unknown }).chaId))
+        return inner.verdictOf(slot)
+    }
     kit.context.encoder = encoder
     edit(kit)
+    const counted = { reads: 0, sweeps: 0 }
+    const wrapped = kit.context.session.committer
+    if (wrapped !== null) {
+        const counting: Committer = {
+            ...wrapped,
+            async readCommit() {
+                counted.reads += 1
+                return wrapped.readCommit()
+            },
+        }
+        kit.context.session = { ...kit.context.session, committer: counting }
+    }
     let stopped = false
     let tail: Promise<void> = Promise.resolve()
     const clock = { now: 1_800_000_000_000 }
     const tracker: toSaveType = { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
     const run: Run = {
-        kit, db, tracker, clock, start: clock.now, requests,
+        kit, db, tracker, clock, start: clock.now, requests, verdicts,
         state: { due: false, dirty: false, saved: 0 },
         failures: [],
         crashed: [],
@@ -91,6 +121,17 @@ async function startRun(db: Database, idleNet: { intervalMs: number, moduleInter
             clock.now = run.start + offset
             await until(() => requests.length > before, `the tick at +${offset} ms`, 4000)
             return requests[requests.length - 1]
+        },
+        async slotAt(offset) {
+            const reads = counted.reads
+            const judged = verdicts.length
+            const planned = requests.length
+            clock.now = run.start + offset
+            await until(() => counted.reads > reads, `the slot at +${offset} ms to read the base`, 4000)
+            // The loop reaches its next iteration only once the slot has ended.
+            const sweeps = counted.sweeps
+            await until(() => counted.sweeps > sweeps, `the slot at +${offset} ms to end`, 4000)
+            return { reads: counted.reads - reads, verdicts: verdicts.slice(judged), requests: requests.slice(planned) }
         },
         stop() {
             stopped = true
@@ -109,7 +150,9 @@ async function startRun(db: Database, idleNet: { intervalMs: number, moduleInter
             live.modules ||= snapshot.modules
         },
         liveCheck: () => {},
-        sweep: () => {},
+        sweep() {
+            counted.sweeps += 1
+        },
         isDue: () => run.state.due,
         isDirty: () => run.state.dirty,
         hasDrafts: () => false,
@@ -169,6 +212,29 @@ async function savedModuleDescription(run: Run): Promise<unknown> {
     return (modulesOf(await run.kit.saved())[1]).description
 }
 
+async function savedTemperature(run: Run): Promise<unknown> {
+    return ((await run.kit.saved()).botPresets as unknown as Entry[])[0].temperature
+}
+
+/** What a slot did with module scope: planned nothing, or planned a pass with or without it. */
+function moduleScopeOf(slot: Slot): 'no plan' | 'modules' | 'no modules' {
+    if (slot.requests.length === 0) {
+        return 'no plan'
+    }
+    return slot.requests.some(effectiveModules) ? 'modules' : 'no modules'
+}
+
+/** The resident a slot visited: the one judged, or the one a full pass named. */
+function visitedOf(slot: Slot): string | null | undefined {
+    return slot.verdicts.length > 0 ? slot.verdicts[0] : slot.requests[0]?.net?.chaId
+}
+
+/** An ordinary slot reads the base once, judges at most one resident and plans nothing when that resident is clean. */
+function expectQuietSlot(slot: Slot): void {
+    expect(slot.reads).toBe(1)
+    expect(slot.requests).toEqual([])
+}
+
 describe('the idle net takes module scope at most once per interval', () => {
     test('reproducer: the default interval is 30 s', () => {
         // Pins the constant the product statement names (MC-372 1); it fails on the base because the constant does not exist.
@@ -176,20 +242,25 @@ describe('the idle net takes module scope at most once per interval', () => {
     })
 
     test('reproducer: with no resident character, module scope is not taken until 30 s, then once, then not again until 60 s', async () => {
+        // An ordinary slot with no resident reads the peer and plans nothing; only a due slot or a fallback plans.
         const run = await startRun(clone(buildSmall(0)), TICKING)
-        const scoped: Array<[number, boolean]> = []
+        const scoped: Array<[number, string]> = []
         for (const offset of [2_000, 29_999, 30_000, 31_000, 59_999, 60_000]) {
-            scoped.push([offset, effectiveModules(await run.tickAt(offset))])
+            const slot = await run.slotAt(offset)
+            scoped.push([offset, moduleScopeOf(slot)])
+            if (moduleScopeOf(slot) === 'no plan') {
+                expectQuietSlot(slot)
+            }
         }
-        expect(scoped).toEqual([[2_000, false], [29_999, false], [30_000, true], [31_000, false], [59_999, false], [60_000, true]])
+        expect(scoped).toEqual([
+            [2_000, 'no plan'], [29_999, 'no plan'], [30_000, 'modules'], [31_000, 'no plan'], [59_999, 'no plan'], [60_000, 'modules'],
+        ])
         expect(run.crashed).toEqual([])
     })
 
-    test('reproducer: with no resident character, both request fields carry the gate, not only the net field', async () => {
+    test('reproducer: with no resident character, a quiet slot plans nothing and the due slot carries the gate in both request fields', async () => {
         const run = await startRun(clone(buildSmall(0)), TICKING)
-        const early = await run.tickAt(2_000)
-        expect(early.modules).toBe(false)
-        expect(early.net).toEqual({ chaId: null, modules: false })
+        expectQuietSlot(await run.slotAt(2_000))
         const due = await run.tickAt(30_000)
         expect(due.modules).toBe(true)
         expect(due.net).toEqual({ chaId: null, modules: true })
@@ -201,9 +272,11 @@ describe('the idle net takes module scope at most once per interval', () => {
         const ids = chars(db).map(entry => String(entry.chaId))
         const ticks: Array<[number, string | null | undefined, boolean]> = []
         for (const offset of [2_000, 4_000, 6_000, 30_000, 32_000]) {
-            const request = await run.tickAt(offset)
-            expect(request.modules).toBe(false)
-            ticks.push([offset, request.net?.chaId, effectiveModules(request)])
+            const slot = await run.slotAt(offset)
+            for (const request of slot.requests) {
+                expect(request.modules).toBe(false)
+            }
+            ticks.push([offset, visitedOf(slot), slot.requests.some(effectiveModules)])
         }
         // Index 0 does not take module scope before 30 s; the first tick after 30 s does, on index 3; the next, on index 0, does not.
         expect(ticks).toEqual([
@@ -215,8 +288,8 @@ describe('the idle net takes module scope at most once per interval', () => {
         const db = clone(buildSmall(4))
         const run = await startRun(db, TICKING)
         modulesOf(db)[1].description = 'unflagged module edit'
-        await run.tickAt(2_000)
-        await run.tickAt(29_999)
+        await run.slotAt(2_000)
+        await run.slotAt(29_999)
         await pause(60)
         expect(await savedModuleDescription(run)).not.toBe('unflagged module edit')
         await run.tickAt(30_000)
@@ -226,10 +299,10 @@ describe('the idle net takes module scope at most once per interval', () => {
 
     test('reproducer: a configured moduleIntervalMs replaces the default', async () => {
         const run = await startRun(clone(buildSmall(0)), { intervalMs: 1, moduleIntervalMs: 5_000 })
-        expect(effectiveModules(await run.tickAt(4_999))).toBe(false)
-        expect(effectiveModules(await run.tickAt(5_000))).toBe(true)
-        expect(effectiveModules(await run.tickAt(9_999))).toBe(false)
-        expect(effectiveModules(await run.tickAt(10_000))).toBe(true)
+        expect(moduleScopeOf(await run.slotAt(4_999))).toBe('no plan')
+        expect(moduleScopeOf(await run.slotAt(5_000))).toBe('modules')
+        expect(moduleScopeOf(await run.slotAt(9_999))).toBe('no plan')
+        expect(moduleScopeOf(await run.slotAt(10_000))).toBe('modules')
     })
 
     test('guard: a marked module edit is written by its own pass without waiting for the interval', async () => {
@@ -250,7 +323,7 @@ describe('the idle net takes module scope at most once per interval', () => {
         const ids = chars(db).map(entry => String(entry.chaId))
         const seen: Array<string | null | undefined> = []
         for (const offset of [2_000, 4_000, 30_000, 32_000, 34_000, 36_000]) {
-            seen.push((await run.tickAt(offset)).net?.chaId)
+            seen.push(visitedOf(await run.slotAt(offset)))
         }
         expect(seen).toEqual([ids[0], ids[1], ids[2], ids[3], ids[0], ids[1]])
     })
@@ -285,8 +358,8 @@ describe('the module slot is consumed only by a tick that plans modules', () => 
         modulesOf(db)[1].description = 'unflagged module edit'
         expect(effectiveModules(await run.tickAt(30_000))).toBe(true)
         await until(() => run.failures.length === 1, 'the refused module tick to be reported', 4000)
-        expect(effectiveModules(await run.tickAt(30_001))).toBe(false)
-        expect(effectiveModules(await run.tickAt(59_999))).toBe(false)
+        expect(moduleScopeOf(await run.slotAt(30_001))).toBe('no plan')
+        expect(moduleScopeOf(await run.slotAt(59_999))).toBe('no plan')
         await pause(60)
         expect(await savedModuleDescription(run)).not.toBe('unflagged module edit')
         expect(effectiveModules(await run.tickAt(60_000))).toBe(true)
@@ -317,23 +390,29 @@ describe('the module slot is consumed only by a tick that plans modules', () => 
     })
 })
 
-describe('with no resident character and modules not due, the tick still runs', () => {
-    test('guard: an unmarked fixed-group edit is written by a tick', async () => {
+describe('with no resident character and modules not due, the slot reads the peer and plans nothing', () => {
+    test('guard: an unmarked fixed-group edit is written by the 30 s full tick, not before it (the bound of MC-374 1)', async () => {
         const db = clone(buildSmall(0))
         const run = await startRun(db, TICKING)
         ;(db.botPresets as unknown as Entry[])[0].temperature = 0.1234
-        await run.tickAt(2_000)
-        await until(async () => ((await run.kit.saved()).botPresets as unknown as Entry[])[0].temperature === 0.1234, 'the tick to write the preset edit', 4000)
+        expectQuietSlot(await run.slotAt(2_000))
+        expectQuietSlot(await run.slotAt(29_999))
+        await pause(60)
+        expect(await savedTemperature(run)).not.toBe(0.1234)
+        await run.tickAt(30_000)
+        await until(async () => await savedTemperature(run) === 0.1234, 'the 30 s full tick to write the preset edit', 4000)
         expect(run.crashed).toEqual([])
     })
 
-    test('reproducer: the same tick leaves an unmarked module edit unwritten until the modules are due', async () => {
+    test('guard: a pass that does not carry modules leaves an unmarked module edit unwritten until the modules are due', async () => {
         const db = clone(buildSmall(0))
         const run = await startRun(db, TICKING)
         ;(db.botPresets as unknown as Entry[])[0].temperature = 0.1234
         modulesOf(db)[1].description = 'unflagged module edit'
-        await run.tickAt(2_000)
-        await until(async () => ((await run.kit.saved()).botPresets as unknown as Entry[])[0].temperature === 0.1234, 'the tick to write the preset edit', 4000)
+        // A marked pass with nothing marked encodes the fixed group and carries the modules.
+        run.state.due = true
+        run.state.dirty = true
+        await until(async () => await savedTemperature(run) === 0.1234, 'the marked pass to write the preset edit', 4000)
         expect(await savedModuleDescription(run)).not.toBe('unflagged module edit')
         await run.tickAt(30_000)
         await until(async () => await savedModuleDescription(run) === 'unflagged module edit', 'the due tick to write the module edit', 4000)

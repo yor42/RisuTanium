@@ -1,10 +1,12 @@
-import type { Database } from '../database.svelte'
+import type { Database, character, groupChat } from '../database.svelte'
 import type { CommitRequest } from './commit'
 import {
-    builtCommitOf, CodecInputError, isColdStub, planScopedEncode, previousFrom,
-    type EncodedTree, type EncodeScope, type ListDerivation, type PreviousEncoding, type ReusableUnit, type SkippedCharacter,
+    builtCommitOf, characterMatchesAcknowledged, CodecInputError, isColdStub, movable, overlayStub, planScopedEncode, previousEntriesOf,
+    previousEntryOf, previousFrom,
+    type AcknowledgedVerdict, type EncodedTree, type EncodeScope, type ListDerivation, type PreviousEncoding, type ReusableUnit,
+    type SkippedCharacter,
 } from './codec'
-import { defaultKeyEnv, type KeyEnv } from './format'
+import { defaultKeyEnv, type KeyEnv, type ShardEntry } from './format'
 import { MEASURE } from '../../process/memory/measureFlag'
 import {
     finishSavePass, noteSavePassCommit, startSavePass, startSplit, type SaveMarkPeek, type SavePassSplitRecorder,
@@ -99,6 +101,21 @@ export interface SaveEncoder {
     /** The acknowledged encoding, read only: the loop compares a later put-back against the latest committed tree. */
     acknowledged(): PreviousEncoding
     hasStubs(db: Database): boolean
+    /**
+     * Whether a resident character is what the acknowledged encoding holds: `characterMatchesAcknowledged` plus the
+     * `lastInteraction` and `trashTime` entry fields, which that primitive leaves to the stub overlay. `clean` means a
+     * pass naming the character plans nothing for it. `unknown` while an attempt is pending, and for any fault of the
+     * read (logged): only a full pass can answer then. Pure: it changes no state.
+     */
+    verdictOf(slot: character | groupChat): AcknowledgedVerdict
+    /**
+     * Whether a cold stub would make a full pass refuse it, load it or write it: its handle is not held, it names a
+     * unit other than the entry's, its id is shared, its entry is missing or its overlaid entry differs from the
+     * acknowledged one. Pure: it changes no state.
+     */
+    stubsNeedFullPass(db: Database): boolean
+    /** The chaIds of the resident characters the acknowledged encoding cannot carry: the new-character rule of `plan`. */
+    unheldChaIds(db: Database): string[]
 }
 
 export interface SaveEncoderOptions {
@@ -144,6 +161,69 @@ function unheldChaIds(db: Database, previous: PreviousEncoding): string[] {
         }
     }
     return out
+}
+
+const MOVED_ENTRY_FIELDS = ['lastInteraction', 'trashTime'] as const
+
+/**
+ * Whether the live `lastInteraction` and `trashTime` are what the entry holds. A pass writes a field to the entry only
+ * when the codec would move it (`movable`), so an unmovable or removed value expects the entry without the field.
+ */
+function movedFieldsMatch(slot: character | groupChat, entry: ShardEntry): boolean {
+    for (const name of MOVED_ENTRY_FIELDS) {
+        const live = slot[name]
+        const expected = live !== undefined && movable(name, live)
+        if (expected !== Object.hasOwn(entry, name) || (expected && !Object.is(live, entry[name]))) {
+            return false
+        }
+    }
+    return true
+}
+
+function sameJsonValue(a: unknown, b: unknown): boolean {
+    if (Object.is(a, b)) {
+        return true
+    }
+    if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null || Array.isArray(a) !== Array.isArray(b)) {
+        return false
+    }
+    const left = a as Record<string, unknown>
+    const right = b as Record<string, unknown>
+    const keys = Object.keys(left)
+    return keys.length === Object.keys(right).length && keys.every(key => Object.hasOwn(right, key) && sameJsonValue(left[key], right[key]))
+}
+
+function stubsNeedFullPassOver(db: Database, previous: PreviousEncoding): boolean {
+    if (!Array.isArray(db.characters)) {
+        return false
+    }
+    const slots = db.characters.filter((slot): slot is character | groupChat => typeof slot === 'object' && slot !== null)
+    const holders = new Map<string, number>()
+    for (const slot of slots) {
+        const chaId = String((slot as { chaId?: unknown }).chaId ?? '')
+        holders.set(chaId, (holders.get(chaId) ?? 0) + 1)
+    }
+    let entries: Map<string, ShardEntry> | null = null
+    const seen = new Map<string, number>()
+    for (const slot of slots) {
+        const chaId = String((slot as { chaId?: unknown }).chaId ?? '')
+        const occurrence = seen.get(chaId) ?? 0
+        seen.set(chaId, occurrence + 1)
+        if (!isColdStub(slot)) {
+            continue
+        }
+        const u = previous.entities.get(`${chaId}#${occurrence}`)
+        if (u === undefined || (slot as { coldstorage?: unknown }).coldstorage !== u
+            || (holders.get(chaId) ?? 0) > 1 || previous.entities.has(`${chaId}#1`)) {
+            return true
+        }
+        entries ??= previousEntriesOf(previous)
+        const before = entries.get(u)
+        if (before === undefined || !sameJsonValue(overlayStub(before, slot), before)) {
+            return true
+        }
+    }
+    return false
 }
 
 /** The encoding with no digest on any unit: nothing in it can be reused, while every key stays taken and every identity stays known. */
@@ -257,5 +337,32 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
         },
         acknowledged: () => previous,
         hasStubs: db => Array.isArray(db.characters) && db.characters.some(slot => typeof slot === 'object' && slot !== null && isColdStub(slot)),
+        verdictOf(slot) {
+            if (pending !== null) {
+                return 'unknown'
+            }
+            try {
+                const verdict = characterMatchesAcknowledged(slot, { env, lists: options.lists, previous })
+                if (verdict !== 'clean') {
+                    return verdict
+                }
+                const chaId = String((slot as { chaId?: unknown }).chaId ?? '')
+                const u = previous.entities.get(`${chaId}#0`)
+                const entry = u === undefined ? undefined : previousEntryOf(previous, u)
+                return entry !== undefined && movedFieldsMatch(slot, entry) ? 'clean' : 'dirty'
+            } catch (error) {
+                console.error('The verdict of a resident character could not be read; a full pass will decide.', error)
+                return 'unknown'
+            }
+        },
+        stubsNeedFullPass(db) {
+            try {
+                return stubsNeedFullPassOver(db, previous)
+            } catch (error) {
+                console.error('The cold stubs could not be checked against the acknowledged encoding; a full pass will decide.', error)
+                return true
+            }
+        },
+        unheldChaIds: db => unheldChaIds(db, previous),
     }
 }

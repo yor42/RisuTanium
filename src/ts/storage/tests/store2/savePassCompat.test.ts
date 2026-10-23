@@ -351,7 +351,8 @@ describe('the peek of the tracker only reads', () => {
         const loop = await startTickLoop(db, tracker)
         try {
             ;(db.botPresets as unknown as Obj[])[0].temperature = 0.1234
-            await loop.tickAt(2_000)
+            // The fixed-group edit is taken by the 30 s full tick: an ordinary slot only judges a resident and plans nothing.
+            await loop.tickAt(30_000)
             await until(() => (meterOf()?.units().length ?? 0) > 0, 'the tick to commit', 4000)
             expect(loop.requests[0].peekMarks).toBeTypeOf('function')
             expect(tracker).toEqual(before)
