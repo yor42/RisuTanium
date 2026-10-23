@@ -12139,3 +12139,61 @@ Round 2:
   - Open for the maintainer, as UI questions: a notice at boot, the toggle, the localized refusal text, and what to do with the dead `PluginAlertModal` (nothing opens it).
   - The implementation is CHORE-206, post-MVP.
   - No historical decision text is rewritten.
+
+---
+
+### MC-350 — Lane A, 2026-10-24: data saved by the release-signed Android MVP carries forward into every later build (refines `MC-345` 4; limits `MC-011` for this data)
+
+- Tag: decisions (chat message and `AskUserQuestion` answers by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6`. The quoted messages and option labels are the maintainer's; the question texts are lane A's paraphrase and the option descriptions are the orchestrator's.
+- Related: `MC-345` 4 (the MVP install updates in place: same `applicationId`, same signing key; store2 `fmt = 1` frozen), `MC-011` (no fork userbase), `MC-175` and `MC-223` (`.bin` compatibility, unchanged), `MC-047`; CHORE-60.
+
+**The maintainer's words:**
+- Asking about signing (chat message): "this is the same keystore with github CI that currently sitting dormant. since there is no major datastructure changes in the future, should I be able to update and keep my data when our work is ready to be released?"
+- After lane A explained that the signature keeps Android from wiping the data, but whether a later build reads it is a code question that `MC-011` does not protect, and offered to record a carry-forward decision: "yes, let's do the carry forward decisions now."
+- **Scope.** Question (paraphrased): from when, and on which platforms, must every later build read the saved data in place without loss? Answer: "Android, from MVP install (Recommended)".
+- **Migration.** Question (paraphrased): when a later build changes the storage format, how does it carry the data forward? Answer: "Auto migrate, no downgrade (Recommended)".
+- **Unreadable data.** Question (paraphrased): if a later build finds MVP data it cannot fully read, what happens? Answer: "Stop and keep it (Recommended)".
+
+**What was decided (maintainer):**
+1. **Scope.** The scope is Android only. It starts with the first release-signed MVP APK the maintainer installs (`MC-345` 4). From that install on, every later Android build, including the release, must read the app's saved data in place and without loss; that wording is lane A's reading of the scope question. Pre-MVP test builds on the maintainer's phone are not covered. Their data moves to the MVP through a `.bin` export and re-import. Desktop (Tauri) and the hosted or web build are not covered by this entry.
+2. **Format changes migrate automatically.** A later build that changes the on-device storage format converts the existing data automatically on first launch, with no loss. A downgrade (an older APK installed over the migrated data) is not supported.
+   - The two rejected options were "Read old formats forever" and "Export/import is enough". The second one's text said "an Android .bin may leave out assets (MC-345 4), so assets could be lost."
+   - Lane A's inference from that rejection: a `.bin` export and re-import does not replace the in-place migration.
+3. **Unreadable data is kept, not overwritten.** If a later build cannot fully read some of this data (a bug or a corrupted unit), it does not overwrite or delete it. It shows an error naming the item and keeps the original bytes, so a fixed build or a `.bin` export can still recover it. No recovery tooling is designed for already-corrupted data (AGENTS.md, `MC-011`).
+
+- Notes, not the maintainer's words:
+  - Effect on `MC-011`: "fork-local behaviour is not a reason to preserve a defect" still holds for behaviour. From the MVP install on, this Android data is no longer disposable fork-local state. Every storage-format change must ship its forward migration, with a test that reads data written by the earlier format.
+  - Android itself keeps app data across an update only when three things hold:
+    - the same `applicationId` (`io.github.yor42.risutanium`, `MC-345` 4);
+    - the same signing certificate (`MC-345` 4; `Agents/Tools/device/SIGNING.md`);
+    - a `versionCode` that does not decrease. This is Android platform behaviour, as lane A stated it to the maintainer; `build.gradle.kts` reads it from `tauri.android.versionCode`.
+
+    This entry covers what the app does with the data once Android keeps it.
+  - The maintainer's belief that there are "no major datastructure changes in the future" is recorded as theirs. This entry applies whether or not it holds.
+  - `.bin` compatibility (`MC-175`, `MC-223`) is unchanged.
+  - Glosses by lane A in item 3: "(a bug or a corrupted unit)" and "original bytes"; the option text says "original data".
+  - AGENTS.md carries a one-sentence pointer to this entry (`MC-351` 5).
+  - The maintainer said on 2026-10-24: "I haven't installed MVP yet - I will let you know once it happens." The start point in item 1 is recorded when they report the install.
+
+---
+
+### MC-351 — Lane A, 2026-10-24: the lane Cloud phases 1-3 merge, two of its product questions, and the AGENTS.md pointer to `MC-350`
+
+- Tag: decisions (`AskUserQuestion` answers by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6`. The option labels are the maintainer's; the question texts are lane A's paraphrase and the option descriptions are the orchestrator's. Review: `%TEMP%\risu-b715\cloud-merge\result.md` (`opus-reviewer`, `[ACCEPT]`).
+- Related: `MC-350`; lane Cloud's records `Agents/Lanes/lane-cloud-records.md` (`MC-700` to `MC-749`, including `MC-721`, `MC-722`, `MC-724`); CHORE-09, CHORE-10, CHORE-133, CHORE-138, CHORE-139, CHORE-142, CHORE-143, CHORE-144, CHORE-152, CHORE-67.
+
+**The answers:**
+1. **How to land lane Cloud's branch** (`lane-cloud` at `47a1231ff`). Answer: "Review, then merge (Recommended)". The option was described as follows:
+   - A fresh `opus-reviewer` looks at only the save-adjacent parts.
+   - Then a `--no-ff` merge, and the translator adds the three keys.
+   - Then full checks on Windows, two commits and a push.
+2. **Lane Cloud next.** Answer: "Stop for now (Recommended)". Lane Cloud's work is landed first; lane A triages CHORE-500 to CHORE-503 and CHORE-09 item 7 afterwards, and the next batch is chosen with main as the base.
+3. **The "Reset SupaMemory data" button.** The reviewer found it clears the data on one tap, with no confirmation and no undo. Answer: "Add a confirm dialog (Recommended)": one tap opens the app's usual yes/no confirm, and only Yes clears. This is a small UI fix with one locale string, in the next small batch.
+4. **The plugin-setter sweep.** A plugin write of characters clears SupaMemory data from every empty chat in the database, not only the chats that write emptied. Answer: "Leave it (Recommended)". Nothing usable is lost, and the behaviour matches the `MC-721` and `MC-722` wording. Only the test file's header comment, which describes a narrower rule, gets corrected.
+5. **The AGENTS.md pointer to `MC-350`.** Answer: "Add the pointer (Recommended)": one sentence in the compatibility section.
+
+- Notes, not the maintainer's words:
+  - The merge is `19625c694`. The reviewer's other findings are verification records with no action.
+  - The confirm dialog and the comment correction are not yet ticketed or scheduled.
