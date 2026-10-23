@@ -79,7 +79,41 @@ Baseline full `pnpm test` on unmodified `9a6127354` (Linux, Node 22.22.0, 4 CPUs
 
 **Notes, not the maintainer's words:** this covers the CHORE-152 commit only. Any other verdict than `[APPROVE]` goes back to the maintainer.
 
+### MC-705 — Lane Cloud, 2026-10-23: CHORE-67, move the two preservation tests to jsdom
+
+- **Tag:** decision (`AskUserQuestion` answer, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript. Input: the investigator survey (row 5008) and its verification (row 5009).
+- **Related:** `MC-238` 4, `MC-239` 1; CHORE-67.
+
+1. Question (paraphrased): no test relies on a DOMPurify removal under happy-dom, and the earlier `MC-239` fix holds. Two happy-dom tests (`GridCatalog.coldStub.svelte.test.ts`, `parserTarget.svelte.test.ts`) assert that plain text survives sanitizing, which `MC-239` says is not evidence under happy-dom; both pass under jsdom with no app change; an identity sanitizer cannot falsify them, while an empty-output stub does fail them. What should be done? Answer: **"Move the two to jsdom (Recommended)"**. The option said: add `// @vitest-environment jsdom` to those two test files only (test-only); prove an empty-output stub fails the named tests under jsdom; Gate 2; then close CHORE-67. GridCatalog's test is in the UI-list area other lanes use.
+
+### MC-706 — Lane Cloud, 2026-10-23: commit CHORE-67 with the records after Gate 2, without asking again
+
+- **Tag:** decision (`AskUserQuestion` answer, 2026-10-23, asked under `MC-701` after the stop hook asked for a commit)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-701`, `MC-704`, `MC-705`; CHORE-67.
+
+1. Question (paraphrased): uncommitted are the records file (decided and verified) and the CHORE-67 pragma edits in progress. What should be committed? Answer: **"CHORE-67 after Gate 2, no re-ask (Recommended)"**. The option said: commit the records and the two test files together once Gate 2 returns `[APPROVE]` and the message is checked; ask again only on any other verdict.
+
 ## CHORE entries (proposed status changes)
+
+### CHORE-67 — Existing tests that run DOMPurify under happy-dom may pass for the wrong reason
+
+**Proposed status (2026-10-23, lane Cloud): CLOSED (`MC-705`); the two residual tests were moved to jsdom on `lane-cloud`; technically accepted (Gate 2, row 5011).** The Roadmap's "open, not scheduled" status (2026-10-02) was stale: the main fix was made under `MC-238` 4 and `MC-239` (six files moved to jsdom in `76af9bba`, per `MC-239`), and the residual survey below confirms it holds.
+
+- **Survey (rows 5008 and 5009, verified by rerun):** in a scratch run with `dompurify` aliased to a recording stub over the real library, 40 test files call the sanitizer (17 jsdom, 23 happy-dom; "call" means a `sanitize` or factory call, not an import). With an identity stub, 28 tests in 10 files fail, and all 10 files run under jsdom. No happy-dom file depends on a sanitizer removal. Under happy-dom, DOMPurify reported a removal on every call (an observation; the cause is not established).
+- **Residual fixed (`MC-705`):** two happy-dom tests read sanitized text. They are `src/lib/Others/GridCatalog.coldStub.svelte.test.ts` ("the list layout still shows the en section when a long text precedes it in the description", `[data-description]` filled through `{@html}`) and `src/ts/parser/tests/parserTarget.svelte.test.ts` ("ParseMarkdown of a message with {{getvar}} reads the selected chat's variable"). Both now carry `// @vitest-environment jsdom`, and the second file's header comment says why. No other line changed.
+- **Evidence:**
+  - With the real DOMPurify under jsdom, both files pass 26 of 26 (implementer twice, reviewer once).
+  - With an empty-output stub under jsdom, exactly the two named tests fail (`expected '' to be 'English description'`, `expected '' to contain 'a-value'`) and 24 pass. An identity stub cannot falsify these preservation tests, and it passes them 26 of 26.
+  - Every one of the 26 tests has the same outcome under happy-dom (HEAD copy) and jsdom.
+  - `GridCatalog.coldStub`'s only happy-dom-specific code is a `clientWidth` override, which still applies under jsdom (no layout in either). This is from the Gate 2 reviewer's hand-back message, not its result file, and the doc-verifier confirmed it from source (row 5012).
+  - `pnpm check` 0/0, with an 8 GiB heap.
+- **Not done:** the other 21 happy-dom files that call the sanitizer pass under an empty-output stub, so their assertions do not read sanitized content; they stay on happy-dom. Moving all 23 would fail 6 tests in 3 files (`AlertComp.focusBox`, `charlistAvatarLazy`, `charlistAvatarLookups`; focus and inert differences, not diagnosed). Seven jsdom files that call the sanitizer pass under the identity stub (they assert no removal); that is a test-quality question outside this ticket.
 
 ### CHORE-142 — `Agents/Tools/save-gen/generate-and-verify.harness.ts` is broken
 
@@ -124,6 +158,11 @@ Baseline full `pnpm test` on unmodified `9a6127354` (Linux, Node 22.22.0, 4 CPUs
 | 5005 | 2026-10-23 | CHORE-152: fix the slow decode in `src/ts/storage/tests/tauriChunkFake.ts` only, keeping `atob` (scratchpad `c152/result.md`) | test-warrior | 33,058 (subagent usage) | no | `decodeBase64` helper with an index loop at both sites; equivalence 2003 valid and 13 edge inputs, 0 mismatches; a lenient-decoder scratch mutant was noticed by no repository test; 31 of 31 reaching files and 964 of 964 tests passed; `assetPieceSave` alone 23 of 23 in about 10 s; `pnpm check` 0/0 with an 8 GiB heap. |
 | 5006 | 2026-10-23 | CHORE-152 Gate 2 (scratchpad `c152/g2/result.md`) | adversarial-reviewer | 25,994 (subagent usage) | no | `[APPROVE]`, no findings. Equivalence by reasoning and by rerun (the `atob` output is Latin-1; the throw position is unchanged); 31 of 31 files and 964 of 964 tests; `assetPieceSave` alone 23 of 23 in about 10.7 s; `pnpm check` 0/0; the file count of 31 rechecked. Nit, no change needed: `atob` also tolerates missing padding. |
 | 5007 | 2026-10-23 | Check the CHORE-152 commit message and records before the MC-704 commit (scratchpad `c152/cv/result.md`) | doc-verifier | 35,933 (subagent usage) | no | 16 claims, 12 VERIFIED; spot run `assetPieceSave` alone 23 of 23 in 10.17 s. Applied: the commit message no longer claims a CHORE-144 entry (that was in `8224c8b`); the timings cite logged runs only; the heap out-of-memory note is marked as the implementer's report with no kept log. UNVERIFIABLE: token figures and the provenance of the maintainer's option text. |
+| 5008 | 2026-10-23 | CHORE-67: which tests still trust DOMPurify output under happy-dom (scratch recording and identity stubs; scratchpad `c67/result.md`) | investigator | 67,144 (subagent usage) | no | Verified with corrections in row 5009. 40 test files call the real sanitizer (17 jsdom, 23 happy-dom); the identity stub fails 28 tests in 10 files, all jsdom; no happy-dom file depends on a removal. Two happy-dom tests assert that sanitized text survives (`GridCatalog.coldStub.svelte.test.ts`, `parserTarget.svelte.test.ts`); an empty-output stub fails them; under jsdom (scratch copy) they pass 18 of 18 and 8 of 8. Moving all 23 happy-dom files fails 6 tests in 3 files (focus and inert differences, not diagnosed). No repository edits. |
+| 5009 | 2026-10-23 | Independent check of row 5008 (scratchpad `c67/verify/result.md`) | doc-verifier | 47,345 (subagent usage) | no | Reruns: the identity stub on the 23 happy-dom files passed 453 of 453; 50 files gave 676 tests with 28 failed in 10 files, all jsdom; the jsdom copy of the two files passed 26 of 26. Both assertions read the sanitized string (`ParseMarkdown`'s return; `[data-description]` filled by `{@html}` from the sanitize path). Corrections: "reach" means a `sanitize` or factory call, not an import; the excluded `actors` and `saveLoop` files do import the parser transitively, but a recording run showed zero sanitizer calls. |
+| 5010 | 2026-10-23 | CHORE-67: add the jsdom pragma to the two residual tests only (scratchpad `c67/impl/result.md`) | test-warrior | 32,310 (subagent usage) | no | Two pragma lines; the real DOMPurify under jsdom 26 of 26 twice; the empty-output stub fails exactly the two named tests (24 pass); the identity stub 26 of 26; `pnpm check` 0/0 with an 8 GiB heap. |
+| 5011 | 2026-10-23 | CHORE-67 Gate 2, and its editorial closure (scratchpad `c67/g2/result.md`) | adversarial-reviewer | 35,561 + 38,000 (subagent usage, two invocations) | no | `[EDITORIAL]`: behaviour accepted. Reruns: real 26 of 26, empty stub 2 failed and 24 passed; per-test outcomes identical under happy-dom (HEAD copy) and jsdom; `GridCatalog.coldStub`'s `clientWidth` override still applies; `pnpm check` 0/0. Finding: `parserTarget`'s header comment still said it ran under happy-dom. The `clientWidth` point is from the reviewer's hand-back message only. The orchestrator reworded the comment only; its 8 of 8 rerun has no kept log, and the doc-verifier's run after the rewording passed both files, 26 of 26 (row 5012). The same reviewer, resumed, closed it `[APPROVE]` after checking the new claims against the cited files. |
+| 5012 | 2026-10-23 | Check the CHORE-67 commit message and records before the MC-706 commit (scratchpad `c67/cv/result.md`) | doc-verifier | 49,542 (subagent usage) | no | 26 claims: 23 VERIFIED, 2 INCOMPLETE, 1 UNVERIFIABLE (token figures). Spot run after the rewording: both files, 26 of 26. Applied: the post-rewording rerun now cites this run; the `clientWidth` claim is attributed to the reviewer's hand-back message and the source reading. |
 
 ## Handoff
 

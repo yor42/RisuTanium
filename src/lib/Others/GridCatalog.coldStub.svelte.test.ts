@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom
+// @vitest-environment jsdom
 
 /**
  * What the character lists show for an archived character (the "stub": the
