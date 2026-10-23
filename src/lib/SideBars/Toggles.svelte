@@ -189,9 +189,9 @@
         {/if}
 
         {@render toggles(groupedToggles, true)}
-        {#if chara && (DBState.db.supaModelType !== 'none' || DBState.db.hanuraiEnable || DBState.db.hypaV3)}
+        {#if chara && (DBState.db.supaModelType !== 'none' || DBState.db.hanuraiEnable || DBState.db.hypav2 || DBState.db.hypaV3)}
             <div class="flex mt-2 items-center w-full" class:justify-end={$MobileGUI}>
-                <CheckInput bind:check={chara.supaMemory} reverse name={DBState.db.hypaV3 ? language.ToggleHypaMemory : DBState.db.hanuraiEnable ? language.hanuraiMemory : DBState.db.hypaMemory ? language.ToggleHypaMemory : language.ToggleSuperMemory}/>
+                <CheckInput bind:check={chara.supaMemory} reverse name={DBState.db.hanuraiEnable ? language.hanuraiMemory : (DBState.db.hypav2 || DBState.db.hypaV3 || DBState.db.hypaMemory) ? language.ToggleHypaMemory : language.ToggleSuperMemory}/>
             </div>
         {/if}
     </div>
@@ -204,9 +204,9 @@
         </div>
     {/if}
     {@render toggles(groupedToggles)}
-    {#if chara && (DBState.db.supaModelType !== 'none' || DBState.db.hanuraiEnable || DBState.db.hypaV3)}
+    {#if chara && (DBState.db.supaModelType !== 'none' || DBState.db.hanuraiEnable || DBState.db.hypav2 || DBState.db.hypaV3)}
         <div class="flex mt-2 items-center">
-            <CheckInput bind:check={chara.supaMemory} name={DBState.db.hypaV3 ? language.ToggleHypaMemory : DBState.db.hanuraiEnable ? language.hanuraiMemory : DBState.db.hypaMemory ? language.ToggleHypaMemory : language.ToggleSuperMemory}/>
+            <CheckInput bind:check={chara.supaMemory} name={DBState.db.hanuraiEnable ? language.hanuraiMemory : (DBState.db.hypav2 || DBState.db.hypaV3 || DBState.db.hypaMemory) ? language.ToggleHypaMemory : language.ToggleSuperMemory}/>
         </div>
     {/if}
     

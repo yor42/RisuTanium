@@ -368,11 +368,6 @@ export async function hypaMemoryV2(
         mainChunks: [],
     };
 
-    // Subtract maxResponse from currentTokens to fix the token calculation issue.
-    // This is not a fundamental solution but rather a temporary fix.
-    // It is designed to minimize impact on other code.
-    currentTokens -= db.maxResponse;
-
     if (room.hypaV2Data) {
         if (isOldHypaV2Data(room.hypaV2Data)) {
         console.log("Old HypaV2 data detected. Converting to new format...");

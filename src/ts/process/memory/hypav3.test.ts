@@ -260,7 +260,7 @@ describe('hypaMemoryV3 random memory selection', () => {
 
 describe('hypaMemoryV3 response reservation', () => {
     // regression reproducer: CHORE-10 TOK-1, MC-712 3
-    it.fails('the returned token count keeps the response reservation of the input count', async () => {
+    it('the returned token count keeps the response reservation of the input count', async () => {
         state.maxResponse = 100
         // sendChat starts its count at maxResponse plus the prompt; nothing here needs summarising.
         const inputTokens = 150
@@ -330,7 +330,7 @@ describe('hypaMemoryV3 experimental implementation', () => {
     })
 
     // regression reproducer: CHORE-10 TOK-1 (experimental path), MC-712 3
-    it.fails('the returned token count keeps the response reservation of the input count', async () => {
+    it('the returned token count keeps the response reservation of the input count', async () => {
         useExperimental()
         state.maxResponse = 100
         const inputTokens = 150

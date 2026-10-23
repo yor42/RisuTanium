@@ -7,8 +7,8 @@
  * toggle source, chat-variable access, the pin icon and the custom sidebar are stubbed because none of
  * them take part in the memory toggle. The label is written at two sites: the plain layout and the
  * container layout used when more than four toggles are listed; both are pinned. The settings
- * page's Type dropdown precedence (UI-1) lives in the large `OtherBotSettings.svelte` and is not
- * covered here.
+ * page's Type dropdown precedence lives in `OtherBotSettings.svelte` and is covered by
+ * `OtherBotSettings.memoryType.svelte.test.ts`.
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
@@ -82,9 +82,23 @@ describe.each([
     })
 
     // regression reproducer: CHORE-10 UI-1 (label part), MC-712 8
-    test.fails('HypaMemory V2 shows the Hypa label', () => {
+    test('HypaMemory V2 shows the Hypa label', () => {
         // V2 is selected with supaModelType 'distilbart' and the hypav2 flag; hypaMemory stays false.
         expect(labelFor({ hypav2: true, supaModelType: 'distilbart' }, toggleCount)).toContain('ToggleHypaMemory')
+    })
+
+    // regression reproducer: CHORE-10 UI-1 (label part), MC-719 2
+    test('Hanurai together with HypaMemory V3 shows the Hanurai label', () => {
+        expect(labelFor({ hanuraiEnable: true, hypaV3: true }, toggleCount)).toContain('hanuraiMemory')
+    })
+
+    // regression reproducer: CHORE-10 UI-1 (visibility part), MC-719 3
+    test('a HypaMemory V2 database without a SupaMemory model still shows the memory toggle', () => {
+        expect(labelFor({ hypav2: true }, toggleCount)).toContain('ToggleHypaMemory')
+    })
+
+    test('guard: Hanurai alone shows the Hanurai label', () => {
+        expect(labelFor({ hanuraiEnable: true }, toggleCount)).toContain('hanuraiMemory')
     })
 })
 

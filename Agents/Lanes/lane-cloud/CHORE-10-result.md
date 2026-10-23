@@ -325,6 +325,92 @@ Related: `MC-708` ("go ahead with Phase 2"), `MC-069` (upstream comparison), `MC
 - **V3-4 pair:** Gate 2 batch 1 flagged the identical-input pair as advisory (approved); batch-2 round 1 rejected the same flaw as substantive (it also applied to the batch-1 V2 half, per ledger row 5031). The two gate verdicts differ on the same flaw.
 - **Hanurai and similarity test files:** batch-2 round 1 states they were not reviewed; they were reviewed only by batch-1 Gate 2 (`[APPROVE]`). Whether those two files changed after that review is UNVERIFIED (no diff against the reviewed copy was taken); round 3 re-ran their counts only (1|3 and 1|1).
 
+## Phase 3 — batch B fixes
+
+Scope: SUPA-1, SUPA-2, SUPA-4, V3-1, TOK-1, UI-1 (2026-10-23). Decisions: `MC-712` 2 to 6 and 8, and `MC-719` 2 and 3 in [lane-cloud-records.md](../lane-cloud-records.md); `MC-719` 1 (SHARED-2 scope) is a batch A note. Evidence is the scratchpad `p3/c10/B/` tree (`plan.md`, `g1/`, `impl/`, `g2/`); line numbers below are the current working tree (HEAD `299ca20` plus uncommitted batch B edits; the plan was written at `e34be1c`). Nothing was committed by this pass.
+
+### Files
+
+Eleven tracked files modified and one untracked new test (`git diff --stat HEAD -- src`: 11 files, 79 insertions, 35 deletions; the untracked test adds 157 lines). The records file and this report are also modified and are listed in the commit:
+
+- Source (6): `src/ts/process/memory/supaMemory.ts`, `taskRateLimiter.ts`, `hypav2.ts`, `hypav3.ts`; `src/lib/Setting/Pages/OtherBotSettings.svelte`; `src/lib/SideBars/Toggles.svelte`.
+- Tests (5 edited): `supaMemory.test.ts`, `taskRateLimiter.test.ts`, `hypav2.tokenAccounting.test.ts`, `hypav3.test.ts`, `src/lib/SideBars/Toggles.memoryLabel.svelte.test.ts`.
+- Test (1 new, untracked): `src/lib/Setting/Pages/OtherBotSettings.memoryType.svelte.test.ts` (seven tests).
+
+No `en.ts` or other locale change: SUPA-4 reuses the existing hard-coded English literal.
+
+### SUPA-1: HypaMemory v1 counts the loaded summary (`MC-712` 4)
+
+- **Change:** `supaMemory.ts:109` adds `currentTokens += await tokenize(supaMemory)` after the hypa branch loads the summary, mirroring the plain branch (`:137`). Single caller: `index.svelte.ts` `supaMemory(...)`.
+- **Decision:** "Count it (Recommended)". The option said: add the loaded summary's tokens on the v1 path as the plain path does.
+- **Test flipped** (`it.fails` to `it`): `the returned token count includes the loaded summary`. Pre-fix failure in `impl/red.txt`: `expected 441 to be greater than or equal to 821`.
+- **Mutant:** skip the add; the flipped test fails (`impl/mut1.txt`).
+- **Visible effect:** with HypaMemory v1 and a stored summary, the returned token count is larger by the summary size, so summarising starts sooner when over the limit. The previous underflow (later subtraction of tokens never added, `supaMemory.ts:338`) is the traced cause (plan.md, REASONED from source; Gate 1 checked the single caller and the hypa-branch placement).
+
+### SUPA-2: results joined with newlines (`MC-712` 5)
+
+- **Change:** `supaMemory.ts:165` `s.slice(0,3).join('\n')`. The oldest-four query is unchanged by decision.
+- **Decision:** "Keep query, fix the join". The option said: treat the oldest-4 query as intended; join the results with newlines instead of commas.
+- **Test flipped:** `retrieved results are joined with newlines` (pre-fix: `expected 'past events: a,b,c' to contain 'a\nb\nc'`). Existing guard (oldest four queried, three kept) stays green.
+- **Mutant:** `join(',')`; the flipped test fails.
+- **Visible effect:** the model sees newline-separated retrieved items in the "past events" block instead of a comma run.
+
+### SUPA-4: error instead of an endless loop (`MC-712` 6)
+
+- **Change:** `supaMemory.ts:358-364`, inside the `(chunkSize + tokens) > maxChunkSize` branch where `stringlizedChat === ''`: when the leading entry's role is `system` or `function` (nothing can be taken), return `{ currentTokens, chats, error: "Not Enough Tokens to summarize in SupaMemory" }`, the same literal as the existing returns at `:327`. The caller already throws on `error` and aborts the send.
+- **Decision:** "Exit with an error (Recommended)". The option said: when an iteration makes no progress, stop and return the existing "Not Enough Tokens to summarize" style error instead of looping.
+- **Plan history:** Gate 1 round 1 was `[REJECT]` on the plan's post-loop guard (`spiceLen === 0 && stringlizedChat === ''`): the `!cont` path that summarises an oversized loaded summary alone also leaves both at their reset values and then legitimately ends the pass, so the post-loop guard would fail sends that succeed today. The plan was changed to the in-branch return; round 2 was `[APPROVE]` (`g1/result-r2.md`). Round 2 noted a residual: when `maxChunkSize` has shrunk after a summary-only pass, the summary produced in that pass is discarded by the early return; the caller aborts and nothing is persisted because the memory is not returned (REASONED by the reviewer, not run).
+- **Test flipped:** `a leading system entry larger than the chunk size returns an error instead of looping` (pre-fix: `expected true to be false`, i.e. the looping tokenizer guard tripped). **New guards** (pass before and after; compatibility guards, not reproducers): `guard: an oversized leading user message is still summarised alone`; `guard: summarising an oversized loaded summary alone brings the count under the limit without an error`.
+- **Mutants:** guard removed, flipped test fails. Guard moved after the loop: flipped test fails (`mut1.txt`), and in a combined run the loaded-summary guard fails plus the three hypa tests (`mut1.txt`, `g2/mutpost.txt` per Gate 2). Gate 2 notes the coupling is real, not isolation: with SUPA-1 applied the hypa fixtures exceed the limit and take the summarise-summary-alone path that the misplaced guard wrongly errors on.
+- **Visible effect (new error case):** a system or function entry at the head of the remaining chat that alone exceeds the summarisation chunk size now fails the send with "Not Enough Tokens to summarize in SupaMemory" (hard-coded English, not an `en.ts` key) rather than hanging. Reachability stays low (tiny chunk size setting), as recorded in Phase 2.
+
+### V3-1: rate limiter accepts concurrency above RPM (`MC-712` 2)
+
+- **Change:** `taskRateLimiter.ts` constructor (now `:31-38`): the `maxConcurrentTasks > tasksPerMinute` throw is deleted. The queue still enforces both caps independently (Gate 1, REASONED; confirmed by the new RPM test).
+- **Decision:** "Allow it (Recommended)". The option said: drop the check; the RPM window already gates task starts; no UI change.
+- **Tests flipped:** `a concurrency cap above the per-minute count constructs without throwing`; `tasks run to completion when the concurrency cap is above the per-minute count` (pre-fix: `maxConcurrentTasks must be less than tasksPerMinute`). **New:** `the per-minute count still gates task starts` (fake timers, RPM 1 and concurrency 10: one start at 30 s, second after 61 s); it throws at construction before the fix, so it is both a reproducer and an RPM guard.
+- **Mutants:** restore the throw (all three tests fail); delete the RPM timestamps check (the new test fails) (`mut1.txt`).
+- **Visible effect:** in the experimental HypaV3 implementation, a setup whose summarisation (sub-model only) or embedding (when Similar Memory Ratio is above 0) concurrency exceeds its requests per minute no longer fails with the `[HypaV3]`-prefixed constructor error; RPM becomes the binding limit. The standard implementation never passed the UI values to the limiter. Callers: `hypav3.ts` (two sites, both in the experimental function) and `hypamemoryv2.ts` defaults.
+
+### TOK-1: V2/V3 keep the response reservation (`MC-712` 3)
+
+- **Change:** deleted `currentTokens -= db.maxResponse` in `hypav2.ts` (after the `mainChunks: []` initialiser, former `:371-374` with its "temporary fix" comment) and the "Initial token correction" subtraction at both `hypav3.ts` sites (experimental and standard paths). `grep maxResponse` in `hypav2.ts` and `hypav3.ts` now returns no match; `index.svelte.ts` still seeds `currentTokens` with `maxResponse + 50` (Gate 2, read).
+- **Decision:** "Input + response (Recommended)". The option said: V2/V3 stop subtracting Max Response, matching the other memory systems and the no-memory path; their prompts get Max Response tokens shorter.
+- **Tests flipped (3):** `the returned token count keeps the response reservation of the input count` in `hypav2.tokenAccounting.test.ts` and, for both the standard and experimental paths, in `hypav3.test.ts` (pre-fix: `expected 60/50 >= 150` x3). No exact-budget assertion needed re-baselining: the other tests in those files were unchanged and still pass (`impl/final.txt`).
+- **Mutants:** restore the subtraction at the V2 site, V3 site 1 and V3 site 2; each makes its flipped test fail (`mut1.txt`, `mut2.txt`).
+- **Visible effect:** V2 and V3 now target input plus response within Max Context, like SupaMemory, Hanurai and the no-memory path. Their prompts are up to Max Response tokens shorter, and summarisation and V3's ratio budgets start earlier. Whether a provider behaves differently with the shorter prompt was not tested.
+
+### UI-1: dropdown order and toggle label and visibility (`MC-712` 8; `MC-719` 2, 3)
+
+- **Change:** `OtherBotSettings.svelte:1015-1019`: dropdown value is Hanurai, then V2, then V3, then Supa, else none (runtime order). `Toggles.svelte:192` and `:207` (visibility) add `DBState.db.hypav2`; `:194` and `:209` (label) become `hanuraiEnable ? hanuraiMemory : (hypav2 || hypaV3 || hypaMemory) ? ToggleHypaMemory : ToggleSuperMemory`.
+- **Decisions:** `MC-712` 8, "Dropdown follows runtime (Recommended)": align the dropdown expression to the runtime order, and give V2 the Hypa toggle label; no saved data changes. `MC-719` 2, "Follow runtime order (Recommended)": order the label checks as the runtime does (Hanurai, then Hypa V2/V3, then Supa); with Hanurai+V3 on, the label says Hanurai. `MC-719` 3, "Yes, show it (Recommended)": add V2 to the toggle's visibility condition at the same two render sites; no saved data changes (a same-cause scope amendment, `MC-091`).
+- **Tests flipped:** `HypaMemory V2 shows the Hypa label` (`test.fails` to `test`, per layout). **New in `Toggles.memoryLabel.svelte.test.ts`, per layout (plain and container):** `Hanurai together with HypaMemory V3 shows the Hanurai label` and `a HypaMemory V2 database without a SupaMemory model still shows the memory toggle` (reproducers); `guard: Hanurai alone shows the Hanurai label`. **New file, `OtherBotSettings.memoryType.svelte.test.ts`:** four reproducers (Hanurai+V3, Hanurai+V2, V2+V3, Hanurai+Supa) and three guards (V3+Supa shows V3, Supa alone, none). This closes the Phase 2 residual that the dropdown half was untested. Pre-fix failures included `expected hypaV3 to be hanuraiMemory/hypaV2`.
+- **Mutants:** dropdown original order (4 dropdown tests fail); label without `hypav2` (4 Toggles tests fail); visibility without `hypav2` (1 test fails); label original order (2 tests fail) (`mut2.txt`).
+- **Visible effect:** Hanurai+V3 now shows "Hanurai" instead of the Hypa label; a V2-only setup with summarizer type `none` now shows the toggle (labelled Hypa); the Type dropdown shows what the runtime runs when several flags are set. The dropdown `onchange` is untouched, so multi-flag states still arise only from imported or older databases (INFERRED in Phase 2, no writer traced).
+
+### Upstream status
+
+All six defects are present upstream as well (Phase 2 UPSTREAM-SAME labels, `MC-069`), so these are fork-only fixes. No format, plugin or `.bin` contract is touched (`MC-175`); upstream backups open unchanged.
+
+### Saved data
+
+No saved-data change: none of the six edits writes, migrates or reads a new field (Gate 1 and Gate 2, REASONED from source). Existing HypaV3 summaries are untouched; TOK-1 and SUPA-1 only change when new summaries are triggered.
+
+### Verification run
+
+- **Red-first (executed):** unmodified source with the flipped and new tests: 19 failed, 29 passed, 8 expected fail across 6 files, each failure on its intended assertion (`impl/red.txt`). Gate 2 repeated the source-reverted run: 19 failed, then restored (md5 verified).
+- **After the fix (executed):** `pnpm vitest run` over `src/ts/process/memory`, `src/lib/SideBars`, `src/lib/Setting`: 79 files, 1077 passed, 19 expected fail (`impl/final.txt`; the expected fails are other items, such as SUPA-3). Importer run: 174 files, 4361 passed, 1 skipped (`impl/importers.txt`). Gate 2's targeted run: 6 files, 48 passed, 8 expected fail. `pnpm check`: 0 errors, 0 warnings (`impl/check.txt`, `g2/check.txt`).
+- **Gates:** Gate 1 round 1 `[REJECT]` (SUPA-4), round 2 `[APPROVE]`; Gate 2 `[APPROVE]`, with its own post-loop mutant. Line endings kept (CR counts equal HEAD, Gate 2).
+
+### Residuals
+
+- The Toggles and Type-dropdown tests run under happy-dom (component mount, no real browser).
+- The full `pnpm test` and the relevant build have not been run on this snapshot; they are pending at phase close.
+- No real-device check (desktop or mobile) of the toggle, dropdown, rate limiter or prompt sizes.
+- The summariser, embeddings, database and tokenizer are mocked in the memory tests; results show control flow, not provider behaviour.
+- Round 2 residual for SUPA-4 (summary discarded on the shrunken-chunk early return) is reasoned, not run.
+- Batch B ledger rows are 5069, 5071, 5074, 5076, 5079 and 5080 in the records file (rows 5070, 5072, 5073, 5075, 5077 and 5078 in the same run are batch A and C). Token figures are the subagent usage in the rows; row 5079 has none recorded.
+
 ## Corrections from doc-verifier
 
 This section takes precedence over the body above. Independent doc-verifier pass, 2026-10-23 (scratchpad `p2/c10d/dv/result.md`): ten files rerun (40 passed, 32 expected fail), test titles, decision quotes, REPRODUCED citations and an upstream sample verified; four required corrections, applied in the body by the Orchestrator:
@@ -336,3 +422,7 @@ This section takes precedence over the body above. Independent doc-verifier pass
 
 Optional, noted: the V3-4 citation `index.svelte.ts:1295,1342,1359` is loose; only `:1295` is the `splitSentMessages` call, `:1342` is the `makeMs` call and `:1359` the message loop.
 5. Phase 2 close check (scratchpad `p2/close/dv/result.md`): ledger rows for CHORE-10 are 5018 to 5023 and 5028 to 5037. The range "5018 to 5036" in an earlier version of item 2 and the commit message's "5018-5037" also span the CHORE-09 rows 5024 to 5027; the records file lists the exact rows. The commit message of `ae9edbf` is not amended.
+
+### Batch B (Phase 3)
+
+Independent doc-verifier pass, 2026-10-23 (scratchpad `p3/c10/B/dv/result.md`): about 46 claims checked; six test files rerun (48 passed, 8 expected fail); file:line cites, test titles, decision quotes and upstream status checked. Corrections, applied in the body above: (1) the diff figures are 11 tracked files, 79 insertions, 35 deletions plus a 157-line untracked test; (2) the V3-1 visible effect applies to the experimental HypaV3 implementation only; (3) the SUPA-1 underflow cause is from the plan, not Gate 1; (4) the ledger-row note named the batch B rows. `pnpm check` and the full suite were not rerun by this pass.

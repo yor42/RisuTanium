@@ -131,12 +131,28 @@ describe('supaMemory no-progress guard', () => {
     })
 
     // regression reproducer: CHORE-10 SUPA-4, MC-712 6
-    it.fails('a leading system entry larger than the chunk size returns an error instead of looping', async () => {
+    it('a leading system entry larger than the chunk size returns an error instead of looping', async () => {
         state.db.maxSupaChunkSize = 20
         const { tokenizer } = guardedTokenizer(5000, (chat) => (chat.memo === 'NewChat' ? 50 : 10))
         const outcome = await run(tokenizer, [msg('NewChat', 5, 'system'), msg('a', 5), msg('b', 5)])
         expect(outcome.looped).toBe(false)
         expect(typeof outcome.result?.error).toBe('string')
+    })
+
+    // compatibility guard: passes before and after; an oversized leading user message is taken alone, not an error
+    it('guard: an oversized leading user message is still summarised alone', async () => {
+        state.db.maxSupaChunkSize = 20
+        const result = await supaMemory([msg('big', 150), msg('a', 10)], 400, 300, roomWith(''), char, lengthTokenizer)
+        expect(result.error).toBeUndefined()
+        expect(result.chats.map((chat) => chat.memo)).not.toContain('big')
+    })
+
+    // compatibility guard: passes before and after; summarising the loaded summary alone can end the pass
+    // without taking any message, which is progress and must not be reported as an error
+    it('guard: summarising an oversized loaded summary alone brings the count under the limit without an error', async () => {
+        const result = await supaMemory([msg('m0', 100), msg('m1', 10), msg('m2', 10)], 570, 500, roomWith('m1\n' + 'S'.repeat(4000)), char, lengthTokenizer)
+        expect(result.error).toBeUndefined()
+        expect(result.currentTokens).toBeLessThanOrEqual(500)
     })
 })
 
@@ -157,7 +173,7 @@ describe('supaMemory HypaMemory v1 path', () => {
     }
 
     // regression reproducer: CHORE-10 SUPA-1, MC-712 4
-    it.fails('the returned token count includes the loaded summary', async () => {
+    it('the returned token count includes the loaded summary', async () => {
         const result = await call()
         expect(result.error).toBeUndefined()
         const held = result.chats.reduce(
@@ -168,7 +184,7 @@ describe('supaMemory HypaMemory v1 path', () => {
     })
 
     // regression reproducer: CHORE-10 SUPA-2, MC-712 5
-    it.fails('retrieved results are joined with newlines', async () => {
+    it('retrieved results are joined with newlines', async () => {
         const result = await call()
         const retrieved = result.chats.find((chat) => chat.memo === 'hypaMemory')
         expect(retrieved?.content).toContain('a\nb\nc')

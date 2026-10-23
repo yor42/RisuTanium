@@ -202,9 +202,6 @@ async function hypaMemoryV3MainExp(
         };
     }
 
-    // Initial token correction
-    currentTokens -= db.maxResponse;
-
     // Load existing hypa data if available
     const data: HypaV3Data = room.hypaV3Data
         ? toHypaV3Data(room.hypaV3Data)
@@ -981,9 +978,6 @@ async function hypaMemoryV3Main(
             error: `${logPrefix} The sum of Recent Memory Ratio and Similar Memory Ratio is greater than 1.`,
         };
     }
-
-    // Initial token correction
-    currentTokens -= db.maxResponse;
 
     // Load existing hypa data if available
     const data: HypaV3Data = room.hypaV3Data

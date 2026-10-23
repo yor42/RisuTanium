@@ -296,7 +296,36 @@ Found in Phase 2 (CHORE-09, CHORE-10), all upstream behaviour too (`MC-069`). Ea
 2. UI-1 toggle label order (Hanurai and HypaV3 both on: the label says Hypa, the runtime runs Hanurai). Answer: **"Follow runtime order (Recommended)"**. The option said: order the label checks as the runtime does (Hanurai, then Hypa V2/V3, then Supa); with Hanurai+V3 on, the label says Hanurai.
 3. UI-1 toggle visibility (a V2-only setup with summarizer type `none` shows no toggle, although the runtime runs V2). Answer: **"Yes, show it (Recommended)"**. The option said: add V2 to the toggle's visibility condition at the same two render sites; no saved data changes.
 
-**What was decided.** `MC-713` 6 applies to the shared retriever only. The UI-1 fix orders the toggle label by runtime precedence and shows the toggle for V2-only setups; item 3 is a same-cause scope amendment (`MC-091`).
+**What was decided.** `MC-713` 6 applies to the shared retriever only. Correction to the option text of answer 1 (Gate 1 review, scratchpad `p3/c10/A/g1/result.md`): the shared retriever's scores also reach the emotion-image code. For a non-normalised Custom Server embedding model, emotion selection can change, because the fixed penalties act on a cosine scale. "No effect on emotion scoring" holds only for normalised embeddings. The other option would have had the same effect (orchestrator reasoning: both options switch the shared retriever). The UI-1 fix orders the toggle label by runtime precedence and shows the toggle for V2-only setups; item 3 is a same-cause scope amendment (`MC-091`).
+
+### MC-720 — Lane Cloud, 2026-10-23: CHORE-10 SUPA-3 storage, hidden resume and whole-list replacement
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23, after the CHORE-10 batch C fix plan)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-714`, `MC-715`, `MC-175`, `MC-223`, `MC-091`; CHORE-10.
+
+1. How to store `MC-715` "point past the end" (the resume point is a message ID and the next message does not exist yet). Answer: **"ID plus fork-only flag (Recommended)"**. The option said: point at the last remaining message, and add a fork-only chat field meaning "that message is already summarised too". Upstream ignores the field and sees a valid ID, so a backup opened there works but re-summarises that one message. It adds a saved field, so the save-data reviewers check it first.
+2. A hidden resume message (hiding it, or a branch that hides messages, makes every overflowing send fail with "chat ID not found"). Answer: **"Yes, resolve at send (Recommended)"**. The option said: when sending, look the resume message up among all messages, hidden included, and resume from the next visible message. Same-cause scope amendment (`MC-091`); no format change.
+3. Whole-list replacement (`/send` clear mode, `setFullChat`, the reroll history swap). Answer: **"Error and reset (Recommended)"**. The option said: do not repoint; if the resume message is gone, the send shows the new SupaMemory error, which offers the Reset control.
+
+4. Every message of a chat that has a SupaMemory summary is deleted (no message ID is left to point at). Answer: **"Clear the memory (Recommended)"**. The option said: every message the summary covered is gone, so clear the chat's SupaMemory data, as HypaV3 drops summaries whose messages were deleted; the next long chat starts a new summary; no error.
+
+**What was decided.** The `MC-715` case keeps an upstream-readable resume ID and adds one fork-only chat field. The field is a save-format addition subject to opus-reviewer and a senior-advisor plan challenge. Upstream degrades to re-summarising one message. A hidden resume message resolves at send time. Whole-list replacement falls back to the `MC-714` error and reset path. Deleting every message clears `supaMemoryData` (answer 4, asked after the senior-advisor challenge).
+
+### MC-721 — Lane Cloud, 2026-10-23: CHORE-10 SupaMemory clear mode and reset placement
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23, after the batch C Gate 1 review, scratchpad `p3/c10/C/g1/result.md`)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-714`, `MC-720` 3 and 4; CHORE-10.
+
+1. `/send` in clear mode empties the whole chat (`MC-720` 3 and 4 point two ways). Answer: **"Clear the memory (Recommended)"**. The option said: if the chat ends up with no messages, clear the SupaMemory data as for deleting every message (`MC-720` 4); the error and reset path stays for replacements that leave other messages, such as setFullChat and the reroll swap.
+2. Where the reset is offered when the saved resume point is already broken. Answer: **"Button in settings (Recommended)"**. The option said: the error names the problem and says to press "Reset SupaMemory" in the character's chat memory settings, where the summary text box is; one place to maintain.
+
+**What was decided.** A chat left with no messages, whatever emptied it, clears `supaMemoryData` (and the covered-ID field). The `MC-720` 3 "offers the Reset control" is met by the error naming the settings button.
 ### CHORE-67 — Existing tests that run DOMPurify under happy-dom may pass for the wrong reason
 
 **Proposed status (2026-10-23, lane Cloud): CLOSED (`MC-705`); the two residual tests were moved to jsdom on `lane-cloud`; technically accepted (Gate 2, row 5011).** The Roadmap's "open, not scheduled" status (2026-10-02) was stale: the main fix was made under `MC-238` 4 and `MC-239` (six files moved to jsdom in `76af9bba`, per `MC-239`), and the residual survey below confirms it holds.
@@ -357,7 +386,8 @@ Found in Phase 2 (CHORE-09, CHORE-10), all upstream behaviour too (`MC-069`). Ea
 - **Reproducers:** ten new test files under `src/ts/process/memory/`, `src/ts/storage/tests/`, `src/lib/SideBars/` and `src/ts/process/`; 40 guards pass and 32 reproducers are expected failures. Gate 2: batch 1 `[APPROVE]`; batch 2 `[REJECT]`, `[REJECT]`, then `[APPROVE]` in round 3.
 - **Upstream (`MC-069`):** every item is upstream behaviour too.
 - **Saved-data risks:** handed to lane A in "For lane A: Phase 2 saved-data risks" above (V3-4, V2-1, V2-2, SUPA-3, SUPA-5).
-- **Residuals:** UI-1 dropdown order untested; SHARED-1 and V2-5 untested; Hanurai split mode untested; the experimental V3 path is not tested for similar-memory retrieval; the SUPA-3 fix must repoint on every delete path (Chat.svelte remove, `/cut`, `/del`, `cutChat`/`removeChat` in scriptings, trigger cuts) and implement `MC-715`, which no test pins.
+- **Phase 3 batch B (2026-10-23, proposed): SUPA-1, SUPA-2, SUPA-4, V3-1, TOK-1 and UI-1 fixed on `lane-cloud`** to `MC-712` 2-6 and 8 and `MC-719` 2-3. Gate 1 round 1 `[REJECT]` (row 5071) and round 2 `[APPROVE]` (row 5074); Gate 2 `[APPROVE]` (row 5079). No saved data changes; fork-only. Remaining: batch A (`MC-719` 1, rows 5070, 5072, 5075) and batch C, the saved-memory items (`MC-720`, `MC-721`; rows 5073, 5077, 5078). Report section: [CHORE-10-result.md](lane-cloud/CHORE-10-result.md) "Phase 3 — batch B fixes".
+- **Residuals:** SHARED-1 and V2-5 untested; Hanurai split mode untested; the experimental V3 path is not tested for similar-memory retrieval; the SUPA-3 fix must repoint on every delete path (Chat.svelte remove, `/cut`, `/del`, `cutChat`/`removeChat` in scriptings, trigger cuts) and implement `MC-715`, which no test pins.
 
 ### CHORE-138 — The triple-touch counter has no `touchcancel`
 
@@ -456,6 +486,20 @@ Found in Phase 2 (CHORE-09, CHORE-10), all upstream behaviour too (`MC-069`). Ea
 | 5066 | 2026-10-23 | CHORE-139 round-2 editorial applied (`GridCatalog.svelte` comment: "repairs it once") | orchestrator | not measured | no | Comment-only change; no re-review needed per the verdict. |
 | 5067 | 2026-10-23 | CHORE-139 report and commit-message draft (`Agents/Lanes/lane-cloud/CHORE-139-result.md`; scratchpad `p3/c139/commit-msg.txt`) | doc-writer | not reported | no | Notes the refuted implementation claims and the investigation's `4455c00` line numbers. Checked in row 5068; corrections applied. |
 | 5068 | 2026-10-23 | Independent check of row 5067 and the CHORE-139 records entry and commit draft (scratchpad `p3/c139/dv/result.md`) | doc-verifier | 46,405 (subagent usage) | no | About 24 claims: 20 VERIFIED, 1 WRONG (bootstrap does not pass `db`), 3 STALE (line numbers, pending notes), 1 INCOMPLETE (Gate 1 basis). Reran targeted tests: 47 and 29 passed. Corrections applied by the orchestrator. |
+| 5069 | 2026-10-23 | CHORE-10 batch B fix plan (scratchpad `p3/c10/B/plan.md`) | investigator | 58,731 (subagent usage) | no | SUPA-1, SUPA-2, SUPA-4, V3-1, TOK-1, UI-1; no saved data. Raised the UI-1 label order and V2 toggle visibility questions (`MC-719` 2-3). |
+| 5070 | 2026-10-23 | CHORE-10 batch A fix plan (scratchpad `p3/c10/A/plan.md`) | investigator | 78,338 (subagent usage) | no | HAN, V2-3 to V2-5, SHARED, V3-2, V3-3, V3-5; raised the V3 cosine question (`MC-719` 1). V2-4 moved to batch C by the orchestrator. |
+| 5071 | 2026-10-23 | CHORE-10 batch B Gate 1, round 1 (scratchpad `p3/c10/B/g1/result.md`) | adversarial-reviewer | 49,182 (subagent usage) | no | `[REJECT]` (substantive round 1): the post-loop SUPA-4 guard misfires on the summarise-summary-alone path (orchestrator confirmed in source). Other five items sound. |
+| 5072 | 2026-10-23 | CHORE-10 batch A Gate 1, round 1 (scratchpad `p3/c10/A/g1/result.md`) | adversarial-reviewer | 78,527 (subagent usage) | no | `[REJECT]` (substantive round 1): V3-2 must keep `findIndex` semantics for `undefined` memos (orchestrator confirmed); HAN-2 cap must `continue`, not `break`. Emotion-scoring disclosure for `MC-719` 1; SHARED-1 cannot be red-first (0 mis-sorts in Node 22). |
+| 5073 | 2026-10-23 | CHORE-10 batch C fix plan (scratchpad `p3/c10/C/plan.md`) | investigator | 114,017 (subagent usage) | no | Saved-memory items staged C1 to C4. Found that V3-4 alone causes resume duplication, that hidden resume pointers fail, and that `MC-715` needs a format addition; raised F1 to F6; F1 to F3 went to the maintainer (`MC-720` 1 to 3). |
+| 5074 | 2026-10-23 | CHORE-10 batch B Gate 1, round 2 (resumed reviewer; scratchpad `p3/c10/B/g1/result-r2.md`) | adversarial-reviewer | 52,443 (cumulative with row 5071) | no | `[APPROVE]`: the in-branch SUPA-4 return fires only with no progress; the summary-then-break path is untouched. |
+| 5075 | 2026-10-23 | CHORE-10 batch A Gate 1, round 2 (resumed reviewer; scratchpad `p3/c10/A/g1/result-r2.md`) | adversarial-reviewer | 84,786 (cumulative with row 5072) | no | `[EDITORIAL]`: the resume index is the maximum over all memos; the greeting test must make the skip-`undefined` mutant fail; the chronological-data wording is corrected. Folded into the plan. |
+| 5076 | 2026-10-23 | CHORE-10 batch B implementation (scratchpad `p3/c10/B/impl/result.md`) | sonnet-coder | 81,601 (subagent usage) | no | Six items; 19 red-first failures on intended assertions; 13 mutants each caught; targeted runs passed; `pnpm check` 0/0. |
+| 5077 | 2026-10-23 | CHORE-10 batch C Gate 1, round 1 (scratchpad `p3/c10/C/g1/result.md`) | opus-reviewer | 205,942 (subagent usage) | no | C1 `[APPROVE]`; C3, C2, C4 `[REJECT]` (substantive round 1). New: HypaV2 loses the greeting-covering summary after a store2 reload (`null` memos); probe P1 fails at HEAD, rerun by the orchestrator. Field persistence confirmed by scratch tests (store2 core, .bin encode and decode). |
+| 5078 | 2026-10-23 | SUPA-3 covered-ID field challenge (scratchpad `p3/c10/C/advisor/result.md`) | senior-advisor | 97,292 (subagent usage) | no | No simpler encoding exists; spec `supaMemoryCoveredId`, valid only while it equals the resume line; no boolean; no codec change. Raised F7 (`MC-720` 4). |
+| 5079 | 2026-10-23 | CHORE-10 batch B Gate 2 (scratchpad `p3/c10/B/g2/result.md`) | adversarial-reviewer | not recorded (result delivered after a container restart) | no | `[APPROVE]`. Reverted-source run 19 failed (intended); own post-loop mutant caught; coupling to the hypa tests is real, not isolation. `pnpm check` 0/0. Tree restored (md5 verified by the reviewer; the orchestrator re-ran `md5sum -c` against the reviewer's hashes: all OK). |
+| 5080 | 2026-10-23 | CHORE-10 batch B report section and commit draft (`Agents/Lanes/lane-cloud/CHORE-10-result.md`; scratchpad `p3/c10/B/commit-msg.txt`) | doc-writer | 69,680 (subagent usage) | no | Checked in row 5081; corrections applied. |
+| 5081 | 2026-10-23 | Independent check of row 5080, `MC-719` to `MC-721`, rows 5069 to 5080 and the batch B commit draft (scratchpad `p3/c10/B/dv/result.md`) | doc-verifier | 122,997 (subagent usage) | no | About 46 claims: about 36 verified; 4 wrong or stale, 3 overstated or incomplete (diff figures, V3-1 scope, SUPA-1 attribution, stale notes, row 5073 and 5079 wording). Six test files rerun: 48 passed, 8 expected fail. Corrections applied by the orchestrator. |
+| 5082 | 2026-10-23 | CHORE-10 batch C plan revision, round 2 (scratchpad `p3/c10/C/plan.md`, `[R2]` tags) | investigator | 92,202 (subagent usage) | no | All round-1 required changes addressed; V2 `null` loader at `toHypaV2Data`; hidden-resume resolver spec; three questions answered by the orchestrator from `MC-721`. Under Gate 1 round 2. |
 
 ## Handoff
 

@@ -41,7 +41,7 @@ const tokenizer = { tokenizeChat: async () => 10 } as unknown as ChatTokenizer
 
 describe('hypaMemoryV2 response reservation', () => {
     // regression reproducer: CHORE-10 TOK-1, MC-712 3
-    it.fails('the returned token count keeps the response reservation of the input count', async () => {
+    it('the returned token count keeps the response reservation of the input count', async () => {
         const chats: OpenAIChat[] = [
             { role: 'user', content: 'one', memo: 'id1' },
             { role: 'assistant', content: 'two', memo: 'id2' },

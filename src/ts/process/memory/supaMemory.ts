@@ -106,6 +106,7 @@ export async function supaMemory(
                     }
 
                     supaMemory = HypaData[indexSelected].supa
+                    currentTokens += await tokenize(supaMemory)
                     hypaChunks = HypaData[indexSelected].hypa
 
                 }
@@ -161,7 +162,7 @@ export async function supaMemory(
                 const s = await hypa.similaritySearch(stringlizeChat(filteredChat.slice(0, 4), char?.name ?? '', false))
                 hypaResult = ''
                 if(s.length > 0){
-                    hypaResult = "past events: " + s.slice(0,3)
+                    hypaResult = "past events: " + s.slice(0,3).join('\n')
                     currentTokens += await tokenizer.tokenizeChat({
                         role: "assistant",
                         content: hypaResult,
@@ -353,6 +354,13 @@ export async function supaMemory(
                             spiceLen += 1
                             currentTokens -= tokens
                             chunkSize += tokens
+                        }
+                        else{
+                            return {
+                                currentTokens: currentTokens,
+                                chats: chats,
+                                error: "Not Enough Tokens to summarize in SupaMemory"
+                            }
                         }
                     }
                     lastId = cont.memo
