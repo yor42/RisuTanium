@@ -108,6 +108,10 @@ function carriedModuleSet(previous: PreviousEncoding | null): ModuleSet {
  * since then. The stub's own `chatPage` and `firstMsgIndex` are placeholders
  * and its chats are a pointer, so the previous entry's values stay; no body of
  * the stub is encoded.
+ *
+ * INVARIANT: the idle net's `netScan` (saveEncoder.ts) reads this overlay's fields in place instead of calling it.
+ * A field added, removed or normalised differently here must change `netScan`'s `overlayLeavesEntry` alike, or a
+ * change to that field reads as clean there.
  */
 export function overlayStub(before: ShardEntry, slot: Slot): ShardEntry {
     const entry: ShardEntry = { ...before }

@@ -8,6 +8,7 @@ import {
     type SkippedCharacter, type VerdictBase,
 } from './codec'
 import { defaultKeyEnv, type KeyEnv, type ShardEntry } from './format'
+import { stubDescription } from '../../process/coldCharacter'
 import { MEASURE } from '../../process/memory/measureFlag'
 import {
     finishSavePass, noteNetShadow, noteNetShadowEvent, noteNetShadowTripwire, noteNetSlotPart, noteSavePassCommit, startSavePass,
@@ -127,11 +128,28 @@ export interface SaveEncoder {
     /**
      * Whether a cold stub would make a full pass refuse it, load it or write it: its handle is not held, it names a
      * unit other than the entry's, its id is shared, its entry is missing or its overlaid entry differs from the
-     * acknowledged one. Pure: it changes no state.
+     * acknowledged one. Pure: it changes no state. The idle net does not call it: it uses `netScan`, and this is
+     * `netScan`'s reference predicate (the two answer alike).
      */
     stubsNeedFullPass(db: Database): boolean
     /** The chaIds of the resident characters the acknowledged encoding cannot carry: the new-character rule of `plan`. */
     unheldChaIds(db: Database): string[]
+    /**
+     * The idle net's checks in one pass over `db.characters`, with every character's `chaId` and `coldstorage` read
+     * once. Against `unheldChaIds`, `stubsNeedFullPass` and the resident list, as the net decides over them: `unheld`
+     * equals `unheldChaIds(db).length > 0`; `stubsNeedFull` equals `stubsNeedFullPass(db)`, a fault of the stub part
+     * answering `true` as there; `residents` are the `chaId`s of the non-stub object slots in list order (what
+     * `residentChaIds` returns). A fault reading a slot's `chaId` or `coldstorage` propagates, as it does from
+     * `unheldChaIds`. The pass never stops early, so a later fault still propagates. Pure: it changes no state.
+     */
+    netScan(db: Database): NetScan
+}
+
+/** What `SaveEncoder.netScan` answers. */
+export interface NetScan {
+    unheld: boolean
+    stubsNeedFull: boolean
+    residents: string[]
 }
 
 export interface SaveEncoderOptions {
@@ -280,6 +298,164 @@ function stubsNeedFullPassOver(db: Database, previous: PreviousEncoding): boolea
         }
     }
     return false
+}
+
+/** The fields of a slot that `overlayStub` reads, as `netScan` reads them. */
+interface OverlaidFields {
+    name?: unknown
+    creatorNotes?: unknown
+    image?: unknown
+    lastInteraction?: unknown
+    trashTime?: unknown
+    type?: unknown
+    characters?: unknown
+    tags?: unknown
+    creator?: unknown
+    additionalData?: { creator?: unknown } | null
+}
+
+/**
+ * What `stubDescription` gave an entry's slot notes. The description is a pure function of the notes string, so the
+ * memo is keyed by the entry only to bound its lifetime and holds the notes it was made from: a different value
+ * computes again. The comparison with the entry's own `creatorNotes` is never memoised.
+ */
+const stubDescriptions = new WeakMap<ShardEntry, { notes: string, description: string }>()
+
+function descriptionOf(entry: ShardEntry, notes: unknown): string {
+    if (typeof notes !== 'string') {
+        return stubDescription(notes)
+    }
+    const memo = stubDescriptions.get(entry)
+    if (memo !== undefined && Object.is(memo.notes, notes)) {
+        return memo.description
+    }
+    const description = stubDescription(notes)
+    stubDescriptions.set(entry, { notes, description })
+    return description
+}
+
+/** The strings of `live` in order (holes and non-strings dropped, as `stubTags` and a group's member filter do) are exactly `held`. */
+function sameStringList(live: unknown, held: unknown): boolean {
+    if (!Array.isArray(held)) {
+        return false
+    }
+    let next = 0
+    if (Array.isArray(live)) {
+        for (let index = 0; index < live.length; index++) {
+            const item: unknown = live[index]
+            if (typeof item === 'string') {
+                if (next >= held.length || !Object.is(item, held[next])) {
+                    return false
+                }
+                next++
+            }
+        }
+    }
+    return next === held.length
+}
+
+/**
+ * Whether `overlayStub(before, slot)` equals `before` under `sameJsonValue`, read in place. The overlay leaves the
+ * fields it does not touch as the same references, so only its own fields can differ. An overlaid key that `before`
+ * lacks adds a key (different), and a key the overlay deletes that `before` holds removes one (different).
+ * INVARIANT: this inlines the fields `overlayStub` reads. A field added to the overlay must be added here, or a change
+ * to it would read as clean; the `netScan` drift test perturbs every key of `stubFromEntry`.
+ */
+function overlayLeavesEntry(slot: OverlaidFields, before: ShardEntry): boolean {
+    const held = (key: keyof ShardEntry): boolean => Object.hasOwn(before, key)
+    const name = slot.name
+    if (typeof name === 'string' ? !(held('name') && Object.is(name, before.name)) : !held('name')) {
+        return false
+    }
+    if (!(held('creatorNotes') && Object.is(descriptionOf(before, slot.creatorNotes), before.creatorNotes))) {
+        return false
+    }
+    const image = slot.image
+    if (typeof image === 'string' ? !(held('image') && Object.is(image, before.image)) : held('image')) {
+        return false
+    }
+    const lastInteraction = slot.lastInteraction
+    if (typeof lastInteraction === 'number' ? !(held('lastInteraction') && Object.is(lastInteraction, before.lastInteraction)) : held('lastInteraction')) {
+        return false
+    }
+    const trashTime = slot.trashTime
+    if (typeof trashTime === 'number' ? !(held('trashTime') && Object.is(trashTime, before.trashTime)) : held('trashTime')) {
+        return false
+    }
+    if (slot.type === 'group') {
+        return held('characters') && sameStringList(slot.characters, before.characters)
+    }
+    if (!(held('tags') && sameStringList(slot.tags, before.tags))) {
+        return false
+    }
+    const edited = slot.additionalData?.creator
+    let creator = ''
+    if (typeof edited === 'string' && edited.length > 0) {
+        creator = edited
+    } else if (typeof slot.creator === 'string') {
+        creator = slot.creator
+    }
+    return held('creator') && Object.is(creator, before.creator)
+}
+
+/** See `SaveEncoder.netScan`. */
+function netScanOver(db: Database, previous: PreviousEncoding): NetScan {
+    const characters = db.characters
+    if (!Array.isArray(characters)) {
+        return { unheld: false, stubsNeedFull: false, residents: [] }
+    }
+    // The count of object slots per id: a slot's occurrence is the count before it, and the final count is the id's holders.
+    const holders = new Map<string, number>()
+    const residents: string[] = []
+    const candidates: Array<{ chaId: string, u: string, slot: OverlaidFields }> = []
+    let unheld = false
+    let stubsNeedFull = false
+    for (const slot of characters) {
+        if (typeof slot !== 'object' || slot === null) {
+            continue
+        }
+        const chaId = String((slot as { chaId?: unknown }).chaId ?? '')
+        const coldstorage = (slot as { coldstorage?: unknown }).coldstorage
+        const occurrence = holders.get(chaId) ?? 0
+        holders.set(chaId, occurrence + 1)
+        if (!coldstorage) {
+            if (!previous.entities.has(`${chaId}#${occurrence}`)) {
+                unheld = true
+            }
+            residents.push(chaId)
+            continue
+        }
+        if (stubsNeedFull) {
+            continue
+        }
+        const u = previous.entities.get(`${chaId}#${occurrence}`)
+        if (u === undefined || coldstorage !== u || previous.entities.has(`${chaId}#1`)) {
+            stubsNeedFull = true
+            continue
+        }
+        candidates.push({ chaId, u, slot: slot as OverlaidFields })
+    }
+    if (!stubsNeedFull && candidates.length > 0) {
+        try {
+            // Every holder count is final here, so a shared id is known before any entry is looked up.
+            if (candidates.some(candidate => (holders.get(candidate.chaId) ?? 0) > 1)) {
+                stubsNeedFull = true
+            } else {
+                const entries = previousEntriesOf(previous)
+                for (const candidate of candidates) {
+                    const before = entries.get(candidate.u)
+                    if (before === undefined || !overlayLeavesEntry(candidate.slot, before)) {
+                        stubsNeedFull = true
+                        break
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('The cold stubs could not be checked against the acknowledged encoding; a full pass will decide.', error)
+            stubsNeedFull = true
+        }
+    }
+    return { unheld, stubsNeedFull, residents }
 }
 
 /** The encoding with no digest on any unit: nothing in it can be reused, while every key stays taken and every identity stays known. */
@@ -535,5 +711,6 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
             }
         },
         unheldChaIds: db => unheldChaIds(db, previous),
+        netScan: db => netScanOver(db, previous),
     }
 }

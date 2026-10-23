@@ -18,7 +18,8 @@ import {
     noteNetSlotBegin, noteNetSlotEnd, noteNetSlotMs, noteNetSlotPart, startSavePass,
     type NetSlotPart, type NetSlotReason, type NetSlotTiming, type NetVerdictSummary, type SavePassMeterHandle,
 } from '../../store2/savePassMeter'
-import { runStore2SaveLoop, type Store2LoopPort } from '../../store2/saveLoop'
+import type { ShardEntry } from '../../store2/format'
+import { residentChaIds, runStore2SaveLoop, type Store2LoopPort } from '../../store2/saveLoop'
 import type { Database } from '../../database.svelte'
 import type { toSaveType } from '../../risuSave'
 import { until } from '../saveLoopWorld'
@@ -338,7 +339,7 @@ describe('every slot ends in exactly one counted way', () => {
     test('guardThrow: a fault in a check after the read ends the slot in a full tick', async () => {
         const world = await startWorld(clone(buildSmall(3)))
         vi.spyOn(console, 'error').mockImplementation(() => {})
-        world.encoder.unheldChaIds = () => {
+        world.encoder.netScan = () => {
             throw new Error('the check fault')
         }
         await world.slotAt(2_000)
@@ -455,12 +456,12 @@ describe('every slot ends in exactly one counted way', () => {
 })
 
 const ALL_PARTS: readonly NetSlotPart[] = [
-    'lockWaitMs', 'readMs', 'judgeMs', 'checksMs', 'unheldMs', 'stubsMs', 'unsavableMs', 'residentsMs', 'findMs', 'verdictMs', 'primitiveMs', 'movedMs',
+    'lockWaitMs', 'readMs', 'judgeMs', 'checksMs', 'scanMs', 'unsavableMs', 'pruneMs', 'findMs', 'verdictMs', 'primitiveMs', 'movedMs',
 ]
 
 const READ: readonly NetSlotPart[] = ['lockWaitMs', 'readMs', 'judgeMs']
 // The checks a slot ran when it reached a resident lookup with no unsavable character to scan.
-const CHECKS: readonly NetSlotPart[] = ['checksMs', 'unheldMs', 'stubsMs', 'residentsMs']
+const CHECKS: readonly NetSlotPart[] = ['checksMs', 'scanMs', 'pruneMs']
 
 /** The single slot's timing record: the parts named in `taken` are finite non-negative numbers, every other part is null. */
 function expectTiming(reason: NetSlotReason, taken: readonly NetSlotPart[]): NetSlotTiming {
@@ -540,7 +541,7 @@ describe('the sub-timings of a slot decision', () => {
         chars(db).push({ ...clone(chars(db)[0]), chaId: 'brand-new-character', name: 'Brand new' })
         ;(db as unknown as Entry).characterOrder = chars(db).map(slot => slot.chaId)
         await world.slotAt(2_000)
-        expectTiming('unheld', [...READ, 'checksMs', 'unheldMs'])
+        expectTiming('unheld', [...READ, 'checksMs', 'scanMs'])
     })
 
     test('modulesDue: no read, no judge, no checks', async () => {
@@ -643,8 +644,8 @@ describe('the sub-timings of a slot decision', () => {
         const tally = meterOf().verdicts()
         expect(tally.slotTimings).toEqual([
             {
-                reason: null, decisionMs: 3, lockWaitMs: null, readMs: null, judgeMs: null, checksMs: null, unheldMs: null, stubsMs: null,
-                unsavableMs: null, residentsMs: null, findMs: null, verdictMs: null, primitiveMs: null, movedMs: null,
+                reason: null, decisionMs: 3, lockWaitMs: null, readMs: null, judgeMs: null, checksMs: null, scanMs: null,
+                unsavableMs: null, pruneMs: null, findMs: null, verdictMs: null, primitiveMs: null, movedMs: null,
             },
         ])
         expect(tally.decisionMs).toEqual([3])
@@ -687,7 +688,7 @@ function installHandClock(): { now: number } {
 describe('each part carries the time spent inside it', () => {
     // `unsavableMs` is null unless the slot scanned an unsavable character; every other part of a clean slot is a number.
     const NONE: Partial<Record<NetSlotPart, number | null>> = {
-        lockWaitMs: 0, readMs: 0, judgeMs: 0, checksMs: 0, unheldMs: 0, stubsMs: 0, unsavableMs: null, residentsMs: 0, findMs: 0,
+        lockWaitMs: 0, readMs: 0, judgeMs: 0, checksMs: 0, scanMs: 0, unsavableMs: null, pruneMs: 0, findMs: 0,
         verdictMs: 0, primitiveMs: 0, movedMs: 0,
     }
 
@@ -799,32 +800,45 @@ describe('each part carries the time spent inside it', () => {
         expectParts({ movedMs: 15, primitiveMs: timing.primitiveMs as number, verdictMs: (timing.primitiveMs as number) + 15 }, (timing.primitiveMs as number) + 15)
     })
 
-    test('a slow check lands in unheldMs and checksMs and not in verdictMs', async () => {
+    /** Wraps the encoder's `netScan` so it answers as the real one does and takes `ms` more of the hand clock. */
+    function slowScan(encoder: Pick<SaveEncoder, 'netScan'>, hand: { now: number }, ms: number): void {
+        const real = encoder.netScan
+        encoder.netScan = (checked) => {
+            const scan = real(checked)
+            hand.now += ms
+            return scan
+        }
+    }
+
+    /** Wraps the encoder's `pruneShadows` so it prunes as the real one does and takes `ms` more of the hand clock. */
+    function slowPrune(encoder: Pick<SaveEncoder, 'pruneShadows'>, hand: { now: number }, ms: number): void {
+        const real = encoder.pruneShadows
+        encoder.pruneShadows = (residents) => {
+            real(residents)
+            hand.now += ms
+        }
+    }
+
+    test('a slow scan lands in scanMs and checksMs and not in verdictMs', async () => {
         const world = await startWorld(clone(buildSmall(3)))
         const hand = installHandClock()
-        world.encoder.unheldChaIds = () => {
-            hand.now += 7
-            return []
-        }
+        slowScan(world.encoder, hand, 7)
         await world.slotAt(2_000)
-        expectParts({ checksMs: 7, unheldMs: 7 }, 7)
+        expectParts({ checksMs: 7, scanMs: 7 }, 7)
     })
 
-    test('a slow stub check lands in stubsMs and checksMs', async () => {
+    test('a slow shadow prune lands in pruneMs and checksMs only', async () => {
         const world = await startWorld(clone(buildSmall(3)))
         const hand = installHandClock()
-        world.encoder.stubsNeedFullPass = () => {
-            hand.now += 9
-            return false
-        }
+        slowPrune(world.encoder, hand, 9)
         await world.slotAt(2_000)
-        expectParts({ checksMs: 9, stubsMs: 9 }, 9)
+        expectParts({ checksMs: 9, pruneMs: 9 }, 9)
     })
 
     /**
      * Makes every read of `db.characters` advance the hand clock by the next entry of `steps` (reads past the end add
-     * nothing). `residentChaIds` and `presentChaIds` read it twice each and the final lookup once, so the entries place
-     * time inside one of them. The encoder checks that also read it are stubbed out by the caller.
+     * nothing). `netScan` reads it once, `presentChaIds` twice and the final lookup once, so the entries place time
+     * inside one of them.
      */
     function slowCharactersReads(db: object, hand: { now: number }, steps: readonly number[]): void {
         let stored = (db as { characters: unknown }).characters
@@ -843,35 +857,21 @@ describe('each part carries the time spent inside it', () => {
         })
     }
 
-    /** Replaces the two encoder checks that precede the lookups with ones that find nothing to do and take the given time. */
-    function quietChecks(encoder: Pick<SaveEncoder, 'unheldChaIds' | 'stubsNeedFullPass'>, hand: { now: number }, unheldMs = 0, stubsMs = 0): void {
-        encoder.unheldChaIds = () => {
-            hand.now += unheldMs
-            return []
-        }
-        encoder.stubsNeedFullPass = () => {
-            hand.now += stubsMs
-            return false
-        }
-    }
-
-    test('a slow resident list lands in residentsMs and checksMs only', async () => {
+    test('a slow read of the character list inside the scan lands in scanMs and checksMs only', async () => {
         const db = clone(buildSmall(3))
         const world = await startWorld(db)
         const hand = installHandClock()
-        quietChecks(world.encoder, hand)
-        // The two reads inside residentChaIds; the final lookup is the third read and stays fast.
-        slowCharactersReads(db, hand, [5, 5])
+        // The scan's one read; the final lookup is the second read and stays fast.
+        slowCharactersReads(db, hand, [5])
         await world.slotAt(2_000)
-        expectParts({ residentsMs: 10, checksMs: 10 }, 10)
+        expectParts({ scanMs: 5, checksMs: 5 }, 5)
     })
 
     test('a slow final lookup lands in findMs and checksMs only', async () => {
         const db = clone(buildSmall(3))
         const world = await startWorld(db)
         const hand = installHandClock()
-        quietChecks(world.encoder, hand)
-        slowCharactersReads(db, hand, [0, 0, 13])
+        slowCharactersReads(db, hand, [0, 13])
         await world.slotAt(2_000)
         expectParts({ findMs: 13, checksMs: 13 }, 13)
     })
@@ -886,9 +886,8 @@ describe('each part carries the time spent inside it', () => {
         await until(() => world.notices >= 1, 'the notice of the break', 4000)
         chars(db)[1].personality = 'restored'
         const hand = installHandClock()
-        quietChecks(world.encoder, hand)
-        // The two reads inside presentChaIds come first; the resident list and the lookup follow and stay fast.
-        slowCharactersReads(db, hand, [4, 4])
+        // The scan's read comes first and stays fast; the two reads inside presentChaIds follow, then the lookup.
+        slowCharactersReads(db, hand, [0, 4, 4])
         await world.slotAt(2_000)
         expectParts({ unsavableMs: 8, checksMs: 8 }, 8)
     })
@@ -903,14 +902,13 @@ describe('each part carries the time spent inside it', () => {
         await until(() => world.notices >= 1, 'the notice of the break', 4000)
         chars(db)[1].personality = 'restored'
         const hand = installHandClock()
-        quietChecks(world.encoder, hand, 3, 4)
-        // presentChaIds (two reads), residentChaIds (two reads), then the final lookup.
-        slowCharactersReads(db, hand, [5, 5, 2, 2, 6])
+        slowPrune(world.encoder, hand, 4)
+        // The scan (one read), presentChaIds (two reads), then the final lookup.
+        slowCharactersReads(db, hand, [3, 5, 5, 6])
         await world.slotAt(2_000)
-        expectParts({ unheldMs: 3, stubsMs: 4, unsavableMs: 10, residentsMs: 4, findMs: 6, checksMs: 27 }, 27)
+        expectParts({ scanMs: 3, unsavableMs: 10, pruneMs: 4, findMs: 6, checksMs: 23 }, 23)
         const timing = meterOf().verdicts().slotTimings[0]
-        const sum = (timing.unheldMs as number) + (timing.stubsMs as number) + (timing.unsavableMs as number)
-            + (timing.residentsMs as number) + (timing.findMs as number)
+        const sum = (timing.scanMs as number) + (timing.unsavableMs as number) + (timing.pruneMs as number) + (timing.findMs as number)
         expect(sum).toBe(timing.checksMs)
     })
 
@@ -921,31 +919,49 @@ describe('each part carries the time spent inside it', () => {
         expect(timing.unsavableMs).toBeNull()
     })
 
-    test('an unheld character ends the checks before the stub check runs, and stubsMs stays null', async () => {
+    test('the scan runs once per slot that reaches the checks, and an unheld character ends them at scanMs', async () => {
         const db = clone(buildSmall(3))
         const world = await startWorld(db)
-        let stubCalls = 0
-        world.encoder.stubsNeedFullPass = () => {
-            stubCalls += 1
-            return false
+        const real = world.encoder.netScan
+        let scans = 0
+        world.encoder.netScan = (checked) => {
+            scans += 1
+            return real(checked)
         }
         chars(db).push({ ...clone(chars(db)[0]), chaId: 'brand-new-character', name: 'Brand new' })
         ;(db as unknown as Entry).characterOrder = chars(db).map(slot => slot.chaId)
         await world.slotAt(2_000)
-        expect(stubCalls).toBe(0)
-        expect(expectTiming('unheld', [...READ, 'checksMs', 'unheldMs']).stubsMs).toBeNull()
+        expect(scans).toBe(1)
+        const timing = expectTiming('unheld', [...READ, 'checksMs', 'scanMs'])
+        expect(timing.pruneMs).toBeNull()
     })
 
-    test('a stub that needs a full pass ends the checks after stubsMs', async () => {
+    test('a stub that needs a full pass before an unheld character still ends the slot as unheld', async () => {
+        const db = clone(buildSmall(3))
+        const world = await startWorld(db)
+        const entries = (world.kit.context.previous.objects?.shards ?? []).flatMap(shard => shard.entries)
+        const entry = entries.find(candidate => candidate.chaId === idOf(db, 1))
+        const stub = stubFromEntry(entry as NonNullable<typeof entry>) as unknown as Entry
+        stub.name = 'Renamed stub'
+        chars(db)[1] = stub
+        chars(db).push({ ...clone(chars(db)[0]), chaId: 'brand-new-character', name: 'Brand new' })
+        ;(db as unknown as Entry).characterOrder = chars(db).map(slot => slot.chaId)
+        await world.slotAt(2_000)
+        expectEnds(1, { unheld: 1 })
+        expectTiming('unheld', [...READ, 'checksMs', 'scanMs'])
+    })
+
+    test('a stub that needs a full pass ends the checks at scanMs', async () => {
         const world = await startWorld(clone(buildSmall(3)))
         const hand = installHandClock()
-        world.encoder.stubsNeedFullPass = () => {
+        // The scan answers a stub that needs a full pass; the slot exits there, so no resident lookup depends on it.
+        world.encoder.netScan = () => {
             hand.now += 9
-            return true
+            return { unheld: false, stubsNeedFull: true, residents: [] }
         }
         await world.slotAt(2_000)
-        const timing = expectTiming('stub', [...READ, 'checksMs', 'unheldMs', 'stubsMs'])
-        expect(timing.stubsMs).toBe(9)
+        const timing = expectTiming('stub', [...READ, 'checksMs', 'scanMs'])
+        expect(timing.scanMs).toBe(9)
         expect(timing.checksMs).toBe(9)
     })
 
@@ -959,7 +975,7 @@ describe('each part carries the time spent inside it', () => {
         await until(() => world.notices >= 1, 'the notice of the break', 4000)
         chars(db).splice(1, 1)
         await world.slotAt(2_000)
-        expectTiming('unsavableAbsent', [...READ, 'checksMs', 'unheldMs', 'stubsMs', 'unsavableMs'])
+        expectTiming('unsavableAbsent', [...READ, 'checksMs', 'scanMs', 'unsavableMs'])
     })
 })
 
@@ -978,7 +994,7 @@ function lastSlotChecks(): { reason: NetSlotReason | null, ran: NetSlotPart[], r
     const timing = timings[timings.length - 1]
     const ran: NetSlotPart[] = []
     let sum = 0
-    for (const part of ['unheldMs', 'stubsMs', 'unsavableMs', 'residentsMs', 'findMs'] as const) {
+    for (const part of ['scanMs', 'unsavableMs', 'pruneMs', 'findMs'] as const) {
         const value = timing[part]
         if (value !== null) {
             ran.push(part)
@@ -1008,15 +1024,15 @@ describe('the sub-parts sum exactly to checksMs on every exit', () => {
         ;(db as unknown as Entry).characterOrder = chars(db).map(slot => slot.chaId)
         installTickingClock()
         await world.slotAt(2_000)
-        expect(lastSlotChecks()).toEqual({ reason: 'unheld', ran: ['unheldMs'], residual: 0 })
+        expect(lastSlotChecks()).toEqual({ reason: 'unheld', ran: ['scanMs'], residual: 0 })
     })
 
     test('stub exit', async () => {
         const world = await startWorld(clone(buildSmall(3)))
-        world.encoder.stubsNeedFullPass = () => true
+        world.encoder.netScan = () => ({ unheld: false, stubsNeedFull: true, residents: [] })
         installTickingClock()
         await world.slotAt(2_000)
-        expect(lastSlotChecks()).toEqual({ reason: 'stub', ran: ['unheldMs', 'stubsMs'], residual: 0 })
+        expect(lastSlotChecks()).toEqual({ reason: 'stub', ran: ['scanMs'], residual: 0 })
     })
 
     test('absent unsavable exit', async () => {
@@ -1024,7 +1040,7 @@ describe('the sub-parts sum exactly to checksMs on every exit', () => {
         chars(db).splice(1, 1)
         installTickingClock()
         await world.slotAt(2_000)
-        expect(lastSlotChecks()).toEqual({ reason: 'unsavableAbsent', ran: ['unheldMs', 'stubsMs', 'unsavableMs'], residual: 0 })
+        expect(lastSlotChecks()).toEqual({ reason: 'unsavableAbsent', ran: ['scanMs', 'unsavableMs'], residual: 0 })
     })
 
     test('unsavable resident on its turn', async () => {
@@ -1040,21 +1056,21 @@ describe('the sub-parts sum exactly to checksMs on every exit', () => {
         installTickingClock()
         await world.slotAt(2_000)
         await world.slotAt(4_000)
-        expect(lastSlotChecks()).toEqual({ reason: 'verdictUnknown', ran: ['unheldMs', 'stubsMs', 'unsavableMs', 'residentsMs'], residual: 0 })
+        expect(lastSlotChecks()).toEqual({ reason: 'verdictUnknown', ran: ['scanMs', 'unsavableMs', 'pruneMs'], residual: 0 })
     })
 
     test('no resident exit', async () => {
         const world = await startWorld(clone(buildSmall(0)))
         installTickingClock()
         await world.slotAt(2_000)
-        expect(lastSlotChecks()).toEqual({ reason: 'noResident', ran: ['unheldMs', 'stubsMs', 'residentsMs'], residual: 0 })
+        expect(lastSlotChecks()).toEqual({ reason: 'noResident', ran: ['scanMs', 'pruneMs'], residual: 0 })
     })
 
     test('verdict exit with no unsavable character', async () => {
         const world = await startWorld(clone(buildSmall(3)))
         installTickingClock()
         await world.slotAt(2_000)
-        expect(lastSlotChecks()).toEqual({ reason: 'verdictClean', ran: ['unheldMs', 'stubsMs', 'residentsMs', 'findMs'], residual: 0 })
+        expect(lastSlotChecks()).toEqual({ reason: 'verdictClean', ran: ['scanMs', 'pruneMs', 'findMs'], residual: 0 })
     })
 
     test('verdict exit after an unsavable scan', async () => {
@@ -1062,7 +1078,94 @@ describe('the sub-parts sum exactly to checksMs on every exit', () => {
         chars(db)[1].personality = 'restored'
         installTickingClock()
         await world.slotAt(2_000)
-        expect(lastSlotChecks()).toEqual({ reason: 'verdictClean', ran: ['unheldMs', 'stubsMs', 'unsavableMs', 'residentsMs', 'findMs'], residual: 0 })
+        expect(lastSlotChecks()).toEqual({ reason: 'verdictClean', ran: ['scanMs', 'unsavableMs', 'pruneMs', 'findMs'], residual: 0 })
+    })
+})
+
+/**
+ * D2 (CHORE-205 stage 2c): the real loop decides each slot as the three old calls did. The expected decision is computed
+ * from `unheldChaIds`, `stubsNeedFullPass` and `residentChaIds` over the same database, and observed through the slot's
+ * counted reason and the character `verdictOf` is asked about (the first resident, as the net starts at index 0).
+ */
+describe('the slot decides as the three old calls did (D2)', () => {
+    type Mutate = (db: Database, entries: ShardEntry[]) => void
+
+    function stubOf(entries: ShardEntry[], db: Database, index: number, edit: (stub: Entry) => void = () => {}): Entry {
+        const entry = entries.find(candidate => candidate.chaId === idOf(db, index))
+        expect(entry).toBeDefined()
+        const stub = stubFromEntry(entry as NonNullable<typeof entry>) as unknown as Entry
+        edit(stub)
+        return stub
+    }
+
+    function newcomer(db: Database): Entry {
+        return { ...clone(chars(db)[0]), chaId: 'brand-new-character', name: 'Brand new' }
+    }
+
+    function throwing(slot: Entry, field: string): void {
+        Object.defineProperty(slot, field, { configurable: true, enumerable: true, get() { throw new Error(`getter ${field}`) } })
+    }
+
+    const cases: Array<{ name: string, mutate: Mutate }> = [
+        { name: 'an untouched page', mutate: () => {} },
+        { name: 'a new character', mutate: (db) => { chars(db).push(newcomer(db)) } },
+        { name: 'every character a clean stub', mutate: (db, entries) => { for (let i = 0; i < 3; i++) { chars(db)[i] = stubOf(entries, db, i) } } },
+        { name: 'a clean stub beside residents', mutate: (db, entries) => { chars(db)[0] = stubOf(entries, db, 0) } },
+        { name: 'a renamed stub', mutate: (db, entries) => { chars(db)[1] = stubOf(entries, db, 1, (s) => { s.name = 'Renamed stub' }) } },
+        { name: 'a stub with edited tags', mutate: (db, entries) => { chars(db)[1] = stubOf(entries, db, 1, (s) => { s.tags = ['edited'] }) } },
+        { name: 'a stub that names another unit', mutate: (db, entries) => { chars(db)[2] = stubOf(entries, db, 2, (s) => { s.coldstorage = 'another-unit' }) } },
+        { name: 'a stub that needs a full pass before a new character', mutate: (db, entries) => { chars(db)[0] = stubOf(entries, db, 0, (s) => { s.name = 'x' }); chars(db).push(newcomer(db)) } },
+        { name: 'a new character before a stub that needs a full pass', mutate: (db, entries) => { chars(db)[2] = stubOf(entries, db, 2, (s) => { s.name = 'x' }); chars(db).unshift(newcomer(db)) } },
+        { name: 'holes in the list', mutate: (db) => { chars(db).splice(1, 0, null as unknown as Entry, 7 as unknown as Entry) } },
+        { name: 'an array slot', mutate: (db) => { chars(db).splice(1, 0, [] as unknown as Entry) } },
+        { name: 'a duplicate of an id', mutate: (db) => { chars(db).push({ ...clone(chars(db)[0]) }) } },
+        { name: 'a stub before its own duplicate', mutate: (db, entries) => { const stub = stubOf(entries, db, 0); chars(db).splice(0, 1, stub, { ...clone(chars(db)[0]) }) } },
+        { name: 'no character', mutate: (db) => { chars(db).length = 0 } },
+        { name: 'a getter that throws on a resident id', mutate: (db) => { throwing(chars(db)[1], 'chaId') } },
+        { name: 'a getter that throws on a stub name', mutate: (db, entries) => { chars(db)[1] = stubOf(entries, db, 1); throwing(chars(db)[1], 'name') } },
+        { name: 'a throwing getter after a new character', mutate: (db) => { chars(db).unshift(newcomer(db)); throwing(chars(db)[2], 'coldstorage') } },
+    ]
+
+    test.each(cases)('$name', async ({ mutate }) => {
+        const db = clone(buildSmall(3))
+        const world = await startWorld(db)
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+        const entries = (world.kit.context.previous.objects?.shards ?? []).flatMap(shard => shard.entries)
+        mutate(db, entries)
+        const judged: string[] = []
+        const real = world.encoder.verdictOf
+        world.encoder.verdictOf = (slot) => {
+            judged.push(String((slot as { chaId?: unknown }).chaId))
+            return real(slot)
+        }
+        let expected: NetSlotReason | 'verdict'
+        let first: string | null = null
+        try {
+            const unheld = world.encoder.unheldChaIds(db).length > 0
+            if (unheld) {
+                expected = 'unheld'
+            } else if (world.encoder.stubsNeedFullPass(db)) {
+                expected = 'stub'
+            } else {
+                const residents = residentChaIds(db)
+                first = residents[0] ?? null
+                expected = residents.length === 0 ? 'noResident' : 'verdict'
+            }
+        } catch {
+            expected = 'guardThrow'
+        }
+        await world.slotAt(2_000)
+        const ends = Object.entries(meterOf().verdicts().slotEnds).filter(([, count]) => count > 0)
+        expect(ends).toHaveLength(1)
+        const reason = ends[0][0] as NetSlotReason
+        if (expected === 'verdict') {
+            expect(['verdictClean', 'verdictDirty', 'verdictUnknown']).toContain(reason)
+            expect(judged).toEqual([first])
+        } else {
+            expect(reason).toBe(expected)
+            expect(judged).toEqual([])
+        }
+        expect(world.crashed).toEqual([])
     })
 })
 

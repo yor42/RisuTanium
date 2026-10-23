@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { proxy } from 'svelte/internal/client'
 import type { Committer } from '../../store2/commit'
 import { createKeyMint, type BuildContext } from '../../store2/commit'
 import type { ListDerivation } from '../../store2/codec'
@@ -261,6 +262,88 @@ describe('R1 and R2: an ordinary slot over a clean page plans no full pass', () 
     })
 })
 
+describe('R1 (CHORE-205 stage 2c): the checks of an idle-net slot read each character once', () => {
+    interface ReadCounts {
+        chaId: number[]
+        coldstorage: number[]
+    }
+
+    /**
+     * Makes every character's `chaId` and `coldstorage` an accessor that counts its reads, then puts the list behind a real
+     * Svelte proxy, as the page's database is. The counts are per list index.
+     */
+    function countReads(db: Database): { counts: ReadCounts, reset(): void } {
+        const list = chars(db)
+        const counts: ReadCounts = { chaId: list.map(() => 0), coldstorage: list.map(() => 0) }
+        list.forEach((slot, index) => {
+            for (const key of ['chaId', 'coldstorage'] as const) {
+                let value = slot[key]
+                Object.defineProperty(slot, key, {
+                    configurable: true,
+                    enumerable: true,
+                    get() {
+                        counts[key][index] += 1
+                        return value
+                    },
+                    set(next: unknown) {
+                        value = next
+                    },
+                })
+            }
+        })
+        ;(db as unknown as Entry).characters = proxy(list)
+        return {
+            counts,
+            reset() {
+                counts.chaId.fill(0)
+                counts.coldstorage.fill(0)
+            },
+        }
+    }
+
+    /**
+     * Mechanism guard for the read counts, not a coverage reproducer: it fails on the base that ran three scans (a
+     * character's `chaId` was read three to four times, its `coldstorage` three to four) and passes with the fused scan.
+     * The window opens when the counters are reset after the world is up, with no full pass pending, and closes when
+     * `verdictOf` is entered. The chosen resident is index 0 (the net starts there) and the final lookup reads it a second
+     * time, so its counts are 2 and every other character's are 1.
+     */
+    test('reproducer (read counts): with residents, the scan and the lookup read each character once, the chosen one twice', async () => {
+        const db = clone(buildSmall(3))
+        const world = await startWorld(db)
+        const reads = countReads(db)
+        const real = world.encoder.verdictOf
+        let atVerdict: ReadCounts | null = null
+        world.encoder.verdictOf = (slot) => {
+            atVerdict = { chaId: [...reads.counts.chaId], coldstorage: [...reads.counts.coldstorage] }
+            return real(slot)
+        }
+        reads.reset()
+        const slot = await world.slotAt(2_000)
+        expect(slot.verdicts).toEqual([idOf(db, 0)])
+        expect(atVerdict).toEqual({ chaId: [2, 1, 1], coldstorage: [2, 1, 1] })
+        expect(world.crashed).toEqual([])
+    })
+
+    test('reproducer (read counts): with only stubs the slot ends at noResident after one read of each field per character', async () => {
+        const db = clone(buildSmall(3))
+        const world = await startWorld(db)
+        const entries = (world.kit.context.previous.objects?.shards ?? []).flatMap(shard => shard.entries)
+        chars(db).forEach((slot, index) => {
+            const entry = entries.find(candidate => candidate.chaId === slot.chaId)
+            expect(entry).toBeDefined()
+            chars(db)[index] = stubFromEntry(entry as NonNullable<typeof entry>) as unknown as Entry
+        })
+        const reads = countReads(db)
+        reads.reset()
+        const slot = await world.slotAt(2_000)
+        expect(slot.verdicts).toEqual([])
+        expect(slot.requests).toEqual([])
+        expect(reads.counts).toEqual({ chaId: [1, 1, 1], coldstorage: [1, 1, 1] })
+        expect(world.crashed).toEqual([])
+    })
+})
+
 describe('an edit nothing marked reaches the disk through the verdict', () => {
     test('reproducer: an unmarked in-place edit of a non-selected resident is saved by the slot of its turn, silently', async () => {
         const db = clone(buildSmall(4))
@@ -383,9 +466,9 @@ describe('the fallbacks to a full pass', () => {
         const db = clone(buildSmall(3))
         const world = await startWorld(db)
         const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
-        const real = world.encoder.unheldChaIds
+        const real = world.encoder.netScan
         let throws = 1
-        world.encoder.unheldChaIds = (checked) => {
+        world.encoder.netScan = (checked) => {
             if (throws > 0) {
                 throws -= 1
                 throw new Error('the check fault')

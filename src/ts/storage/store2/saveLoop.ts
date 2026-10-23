@@ -206,7 +206,7 @@ export function takeStore2Snapshot(port: Pick<Store2LoopPort, 'tracker' | 'reloa
 }
 
 /** The chaIds of the resident, non-stub characters in list order. */
-function residentChaIds(db: Database): string[] {
+export function residentChaIds(db: Database): string[] {
     if (!Array.isArray(db.characters)) {
         return []
     }
@@ -843,28 +843,19 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         // Each check's sub-part runs from the previous check's end, and an exit closes `checksMs` at the same clock read as
         // its last sub-part, so the sub-parts sum to `checksMs`; a check the slot did not run leaves its sub-part null.
         let checkLapAt = checksStartedAt
-        const unheld = encoder.unheldChaIds(db).length > 0
+        // One pass answers the unheld, stub and resident checks; unheld is the first exit, as when they ran apart.
+        const scan = encoder.netScan(db)
         if (MEASURE) {
-            const unheldDoneAt = performance.now()
-            noteNetSlotPart('unheldMs', unheldDoneAt - checkLapAt)
-            checkLapAt = unheldDoneAt
+            const scanDoneAt = performance.now()
+            noteNetSlotPart('scanMs', scanDoneAt - checkLapAt)
+            checkLapAt = scanDoneAt
         }
-        if (unheld || encoder.stubsNeedFullPass(db)) {
+        if (scan.unheld || scan.stubsNeedFull) {
             if (MEASURE) {
-                // An unheld exit ran no stub check, so its `checksMs` closes at the unheld lap with no further clock read.
-                const checksDoneAt = unheld ? checkLapAt : performance.now()
-                if (!unheld) {
-                    noteNetSlotPart('stubsMs', checksDoneAt - checkLapAt)
-                }
-                noteNetSlotPart('checksMs', checksDoneAt - checksStartedAt)
-                noteNetSlotEnd(unheld ? 'unheld' : 'stub')
+                noteNetSlotPart('checksMs', checkLapAt - checksStartedAt)
+                noteNetSlotEnd(scan.unheld ? 'unheld' : 'stub')
             }
             return { kind: 'full' }
-        }
-        if (MEASURE) {
-            const stubsDoneAt = performance.now()
-            noteNetSlotPart('stubsMs', stubsDoneAt - checkLapAt)
-            checkLapAt = stubsDoneAt
         }
         if (unsavable.size > 0) {
             const present = presentChaIds(db)
@@ -885,14 +876,14 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 checkLapAt = unsavableDoneAt
             }
         }
-        const residents = residentChaIds(db)
+        const residents = scan.residents
         // Before any early return: a slot that ends here with no resident left must still release the shadow of a character
-        // that was put back. Inside the `residentsMs` lap, so the sub-parts still sum to `checksMs`.
+        // that was put back. Its own lap, so the sub-parts still sum to `checksMs`.
         encoder.pruneShadows(new Set(residents))
         if (MEASURE) {
-            const residentsDoneAt = performance.now()
-            noteNetSlotPart('residentsMs', residentsDoneAt - checkLapAt)
-            checkLapAt = residentsDoneAt
+            const pruneDoneAt = performance.now()
+            noteNetSlotPart('pruneMs', pruneDoneAt - checkLapAt)
+            checkLapAt = pruneDoneAt
         }
         if (residents.length === 0) {
             if (MEASURE) {
