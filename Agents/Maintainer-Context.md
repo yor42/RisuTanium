@@ -11875,3 +11875,265 @@ Round 2:
   - A9 snapshot (lane A's technical choice, accepted by lane B): a release build refuses `run-as`, so the on-device snapshot in lane B's A9 request is impossible. The kept copy is `Backup_partial.bin` on the PC, and the restore path is a re-import.
   - The item 5 split follows phone 1's verified capture (`%TEMP%\risu-b715\phone1-fresh\report.md`, step 6 and its corrections): store2 `plan` is about 110 s of main-thread time after a chat select and 8.4 s of a 10.9 s one-character edit. Whether the select or the idle net puts the modules in scope is still unobserved.
   - No historical decision text is rewritten.
+
+### MC-370 — Lane B, 2026-10-22: the export cold-collect regression is measured before it is fixed (measurement-only switches, then a 2x2 phone session)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: `%TEMP%\risu-lane-b\c223\coldcollect\report.md` (perf-analyzer, with the independent verifier's corrections appended: 17 claims, 12 verified, 3 overstated, 2 unverifiable, 0 wrong). Lane A's phone 1 run report: `%TEMP%\risu-b715\phone1-fresh\report.md`, step 7.
+- **Related:** `MC-365`, `MC-367`; CHORE-223, CHORE-225.
+
+1. **"Measure first (Recommended)".**
+   - Add two measurement-build-only settings: the read-ahead (0 to 3) and a hold on the save loop's idle-net ticks during an export. Each is small and reviewed, and normal builds do not change.
+   - Then run a phone session of four exports: read-ahead on and off, crossed with the net held and not held.
+   - Fix according to the result.
+   - The result also shapes stage B.
+   
+   Not chosen: "Turn read-ahead off on Android now" and "Wait for the planner fix".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The question stated that the cold collect went from about 100 s to 358 s with the same read counts, that read-ahead concurrency is the leading suspect, and that save-step contention is plausible.
+- The plan adds a third measurement, the peak number of reads in flight. Lane A schedules the session after A9. The net-held arm also serves as CHORE-225's baseline.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-371 — Lane B, 2026-10-22: the store2 save-planning stall is cut by changes meant to leave what is saved and when unchanged (CHORE-225 stages A and B first; the idle-net cadence is decided after)
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: `%TEMP%\risu-lane-b\c225\sizing.md` (investigator) with `c225\sizing-verify.md` (doc-verifier: 6 claim groups, 5 verified (2 of them in part), 1 overstated, 0 wrong).
+- **Related:** `MC-370`; CHORE-225, CHORE-223.
+
+1. **"A+B first, decide after (Recommended)".**
+   - Stage A: skip the list derivation for a module whose unit is reused, and make the hex-to-base64url step faster. The bytes stay the same.
+   - Stage B: yield between modules so that no single task holds the page.
+   - Whether the idle net keeps checking modules every tick is decided after the phone measurements of A and B.
+   
+   Not chosen: "Also slow the net now" (check modules less often, so an unmarked module edit is saved later) and "Also drop the module net" (an unmarked module edit would never be saved).
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The question stated the following:
+  - With 0 or 1 characters resident, the idle net re-encodes every module on every 2 s tick, which takes 6 to 15 s on the Note 9. That range is the coordinator's figure; the sizing did not re-measure it.
+  - List derivation is about 70% of that cost cold.
+  - Neither stage A nor stage B is meant to change what is saved or when. For stage A that holds only if the differential test passes.
+- Nothing here authorizes application-code edits, commits or pushes.
+
+### MC-372 — Lane B, 2026-10-23: the idle net checks modules at most once per 30 s (CHORE-225 stage C); four follow-ups approved
+
+- **Tag:** decisions (relayed by lane A, then confirmed by the maintainer in the lane B session with one `AskUserQuestion` round, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: `%TEMP%\risu-lane-b\c225\stageC-proposal.md` (row 2432) and lane A's after run `%TEMP%\risu-b715\phone1-p4\report.md`.
+- **Related:** `MC-371`, `MC-368` 1; CHORE-225, CHORE-226.
+
+1. **Stage C: "C2: at most every 30 s (Recommended)".**
+   - The store2 idle net takes module scope at most once per 30 s.
+   - A module edit that raised no mark is saved up to about 30 s later than before.
+   - Marked module edits and characters are unaffected.
+   
+   Not chosen: C1 (every tick), C3 (also on page hide) and C4 (drop the module net).
+2. **Follow-ups, all approved:**
+   - the yield-gap measurement (measurement builds only);
+   - B2, extra yields in the front, `finishTree` and the commit, only if the measurement shows long gaps;
+   - CHORE-226, a sizing only, with no code, of why `shard:13` is rewritten on every commit;
+   - holding the idle net during the automatic GC pass, only if the mark is still 1 s or more after C2.
+3. **Order:**
+   1. C2 together with the yield-gap meter, which share one phone run;
+   2. the CHORE-226 sizing;
+   3. B2, if needed;
+   4. the GC hold, if needed.
+4. **The hide window: "Acceptable as recorded (Recommended)"** (a second `AskUserQuestion` round, 2026-10-23, asked after Gate 1's P1).
+   - A module edit that raised no mark and was made in the last 30 s before the app is hidden or killed is not saved. Before C2, that window was about one tick.
+   - No module pass on hide (C3) is added.
+
+**Notes that are not the maintainer's words:**
+- The option texts and the order were written by the orchestrator and lane A.
+- Normal gates apply: opus-reviewer for save-loop changes, the maintainer's commit approval, and lane A's merge.
+- Nothing here authorizes a commit or a push.
+
+### MC-389 — Lane D, 2026-10-22: the save-planning stall goes to lane B; CHORE-241 S3 and S4 parked until a re-measure
+
+- **Tag:** decision (`AskUserQuestion` answers by option label, relayed by lane A)
+- **Date:** 2026-10-22
+- **Sweep ref:** none (relayed by lane A the same day)
+- **Source:** lane A's cross-session messages relaying two maintainer answers after the phone 1 chat capture (`%TEMP%\risu-b715\phone1-fresh\report.md`, step 6 and doc-verifier corrections), the ownership answer recorded by lane A as `MC-457` item 5, and the answer to lane D's S3/S4 proposal (ledger rows 2583 to 2585).
+- **Reasoning:** none stated. Lane D's proposal: the phone 1 capture put the stall in store2 save planning (plan 109.6 s inclusive after the cold chat select, 8.4 s of the 10.9 s edit), while S3 could save at most about 0.72 s of the select's 2.8 s script work and S4 nothing measurable (the edit's two script passes took 58 ms).
+- **Alternatives rejected:** not relayed.
+- **Related:** `MC-457` (lane A), `MC-386`, `MC-387`; CHORE-241; CHORE-155.
+
+**What was decided:**
+1. **"Lane B planner, D render (Recommended)"** (`MC-457` item 5). Lane B owns the store2 save-planning fix; lane D keeps chat-render work (S3, S4) and trace-side work, and writes no planner code. Lane D handed its unverified source-trace packet (`%TEMP%\risu-lane-d\plan-trace\packet.md`) to lane B as Gate 1 input.
+2. **"Park, re-measure after fix (Recommended)".** CHORE-241 stays open with S3 and S4 parked. After lane B's planner fix, the same phone 1 chat capture runs on a measure build; if chat open is then dominated by its own render, S3 becomes a design stage with a plan review.
+
+### MC-463 — Lane E, 2026-10-22: grid avatars stage B is visible-first only
+
+- **Tag:** decision (AskUserQuestion answer relayed by lane A, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answer. Input: lane E's stage B proposal (`%TEMP%\risu-lane-e\grid\stageB-proposal.md`) from the verified phone 1 trace analysis (`%TEMP%\risu-lane-e\grid\phone-analysis\report.md`, corrections at its end).
+- **Related:** `MC-459`, `MC-460`, `MC-461`; lane B's CHORE-225 (planner).
+
+1. **"B1' only, rest deferred (Recommended)".** Stage B is B1': grid avatar requests from visible cells are served first, and queued work for cells that scrolled away is dropped, under the Gate 1 B-6 rules (an aborted lookup is never cached and never painted full size). Other avatar callers are unchanged. B2, B3, A2 and background generation are deferred until a phone capture after lane B's CHORE-225 planner fix, because on phone 1 store2 `plan` slices of 8-9 s held the main thread for 94 % of the grid capture and no task timeout or full-size paint occurred. Process: Gate 1 (opus-reviewer) on the plan, one coder, the normal gates. Lane A schedules the phone check after the planner fix.
+
+### MC-464 — Lane E, 2026-10-23: commit and merge grid avatars stage B (B1')
+
+- **Tag:** decision (AskUserQuestion answer relayed by lane A, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answer. Input: lane E's request for commit approval after the B1' Gate 2 (row 3578) and the records check (row 3579).
+- **Related:** `MC-459` to `MC-461`, `MC-463`.
+
+1. **"Commit + merge (Recommended)".** Fast-forward `worktree-Lane-E` to main `8c5347ba5`, commit exactly the 12 named source and test paths plus the lane E records, and send lane A the tip and each source file's hash; lane A merges, runs the full checks, folds in and pushes. The phone check follows lane B's CHORE-225 planner fix, on a re-import.
+
+### MC-348 — Lane A, 2026-10-23: merges and approvals since MC-457, CHORE-225 stage C and its follow-ups, the lane organisation, the CHORE-205 study and stage 0, the subagent report-file workaround, CHORE-226, and the heap snapshots
+
+- Tag: decisions (chat replies and `AskUserQuestion` answers by option label, 2026-10-22 to 2026-10-23). Date: 2026-10-23. Sweep ref: none.
+- Source: two lane A session transcripts: the earlier session `1c5d666f-a481-42d8-be9b-a9de61c9160c` and the later session `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` (the new account), under the Claude project folder for this repository. Quoted replies and option labels are the maintainer's, verbatim from those transcripts. The question texts below are lane A's paraphrase of the transcript question, and the option text is the orchestrator's, recorded as shown. Transcript timestamps are UTC.
+- Related: `MC-457` (the previous lane A MC), `MC-368` 1 (the daily-APK block), `MC-369`, `MC-370` to `MC-372` (lane B), `MC-389` (lane D), `MC-463` and `MC-464` (lane E), `MC-349` (V2.1 plugin execution is retired), `MC-175`; CHORE-205, CHORE-206, CHORE-223, CHORE-225, CHORE-226; ledger rows from 2183.
+
+**The maintainer's answers:**
+- **Lane B export switches merge.**
+  - Question (paraphrased): merge lane B's `87c2c6bd0`, which adds export measurement switches that exist only in measurement builds, after Gate 1 approved, Gate 2 was editorial, 20,966 tests passed and the release-dist check was OK?
+  - Answer: "Merge + full checks (Recommended)".
+- **Lane B save-pass meter merge.**
+  - Question (paraphrased): merge lane B's `0e4f2ae2b`, CHORE-225's first commit, a save-pass meter that exists only in measurement builds and gives the planner fix its baseline (Gate 2 editorial, 20,979 tests passed, release-dist check OK)?
+  - Answer: "Merge + full checks (Recommended)".
+- **Phone 1 part 3.**
+  - Question (paraphrased): run lane B's revised phone 1 session (5 to 7 exports of the real-profile copy, about 1.5 to 2 hours; it finds what slowed the export, runs the edit-then-idle clean-up check that A9 missed, and keeps one export on the PC to count its characters and chats against the backup; a measurement build of main installed in place with the test key, no wipe)?
+  - Answer (2026-10-22 22:15): "Run it now (Recommended)".
+  - Option text: one perf-analyzer on phone 1 only; the kept export stays in PC scratch and is deleted after the count; results are verified, then sent to lane B.
+  - Not chosen: "Only the count + edit check", "Not now".
+- **CHORE-225 stage A merge.**
+  - Question (paraphrased): merge lane B's `66abbc145` (the save reuses an unchanged module's saved asset and inlay lists, and one conversion step is faster; the save output is byte-identical by review's differential fuzz; Gate 1 approved, Gate 2 editorial, 21,040 tests passed)?
+  - Answer (asked 2026-10-22 22:53; answered within a minute): "Merge after phone run (Recommended)".
+  - Option text: the running phone session is on main `4bc6b0b42`, before this fix, so it gives the clean baseline; lane A merges right after it finishes, runs the full checks and pushes; a later phone run measures the result.
+  - Not chosen: "Merge now", "Hold".
+- **CHORE-225 stage B merge.**
+  - Question (paraphrased): merge lane B's stage B `77990fcb2` (each save pass pauses after every module; a character added during a pause is saved in the next pass; what is saved and when does not change) together with stage A after the phone run, then do one "after" phone run?
+  - Answer (2026-10-22 23:42): "Merge A+B after phone (Recommended)".
+  - Not chosen: "Only stage A for now".
+- **Lane records commits.**
+  - Question (paraphrased): should lanes B, D and E each commit their one uncommitted lane records file (handoff blocks; lane D's also holds `MC-389` and rows 2583 to 2586) on their own branches now, without pushing, to be merged with the next records batch?
+  - Answer: "Commit all three now (Recommended)".
+- **Phone 1 "after" session.**
+  - Question (paraphrased): run the CHORE-225 "after" session on phone 1 once the merge's full checks pass (a measurement build of main `9f8e95722` on the same profile, no wipe; runs: quiet idle, edit then idle, a quiet export, responsiveness after opening a chat; pass marks set before the run; lane E's grid capture would need a fresh re-import)?
+  - Answer (asked 2026-10-23 01:44; answered within a minute): "Runs 1-4, grid later (Recommended)".
+  - Option text: run 1 to 4 now; the grid capture needs a re-import, so it is scheduled separately.
+  - Not chosen: "Runs 1-4 plus grid", "Wait for new account".
+- **CHORE-205 architecture study: priority and horizon.**
+  - Context: lane A had asked a preliminary question about subsystems with architectural problems. The reply that clarified its horizon (2026-10-23 01:29): "yeah, it wasn't about 'let's do it', it was more of in wider term that includes post-MVP. so its more of preliminary question of 'are there any subsystems that we will have to work with sooner or later which has architectural problems on it?'"
+  - Reply on the priority (2026-10-23 01:37): "fully agreed. I think we should ticket this study as high priority with secondary problems, as it solves lots of core issues."
+- **CHORE-225 stage C.**
+  - Question (paraphrased): how often should the background save re-encode the modules? Now it does so on every 2 s tick, costing about 2.5 s each time; the trade-off is that a module edit the app failed to notice is saved later, while marked edits and characters are unaffected.
+  - Answer (asked 2026-10-23 02:41; answered within a minute): "C2: at most every 30 s (Recommended)".
+  - Option text: idle CPU falls to about 8% of today; an unnoticed module edit is saved up to about 30 s later than now.
+  - Not chosen in this question: "C2 with 60 s", "Keep every tick (C1)".
+  - Follow-ups (a multi-select question; all four chosen): "Yield-gap measurement", "B2 extra yields", "CHORE-226 shard rewrite", "Idle net paused during clean-up". Option text: B2 only if the measurement shows long gaps; CHORE-226 is a sizing with no code; the clean-up hold is the fallback for the slow marking step, and lane B recommends waiting until stage C is measured.
+  - Lane B's own record of the stage C answer, its order and the hide-window round is `MC-372`.
+- **Workflow fix: subagent scratch reports.**
+  - Report (earlier session, after the stage C answer): "one thing to fix in the workflow before handoff - current write access harnesses blocks the coder from writing reports and they have to recite it on their handback."
+  - Question (paraphrased): to stop agents being refused scratch-report writes, add an allow rule to the gitignored `.claude/settings.local.json`; which scope?
+  - Answer: "risu-* scratch roots (Recommended)".
+- **Merge stage C and hand off.**
+  - Reply (earlier session): "stage C and CHORE-226 sizing is done - let's merge it and handoff."
+- **New-account session start.**
+  - Reply (later session, first message): "Read the Lane A handoff, and resume - this is new account, so let's start the CHORE-226 sizing too."
+  - Question (paraphrased): run the CHORE-225 stage C phone run on phone 1 now (a measurement build of main `3882db23e`, arms M and Y, per lane B's request), with a CHORE-226 add-on in run 4: capture two consecutive shard units after a select and report only which entry field names differ?
+  - Answer: "Run it with add-on (Recommended)".
+  - Question (paraphrased): CHORE-226 sizing found no unnecessary rewrite (a select changes `lastInteraction` and `chatPage`, which rewrites a shard of about 33 KB); which candidate?
+  - Answer: "Decide after the diff (Recommended)".
+  - Question (paraphrased): may lane A dedupe lane B's duplicated handoff bullets and commit that records-only file on `worktree-Lane-B`, without pushing, to merge with batch 4?
+  - Answer: "Dedupe + commit (Recommended)".
+- **Lane organisation and the CHORE-205 study.**
+  - Lane A's question to the maintainer: "we are currently running Lane A right now. do you want me to re-create B-E? or should we reorganize according to our current task orders?"
+  - Reply: "I'll wait and create Lane B when it is actually needed. C-E feels redundant right now. so when you hand me the initiation prompt and brief for new session, I will create them. instead, how about we run chore-205 investigation now?"
+- **Subagent report-file refusals.**
+  - Reply: "I did some github search on claude code, and I think this refusal is 'intended'. https://github.com/anthropics/claude-code/issues/44657 . I think we should design our workflow around it." (The summary of the later session lists this reply; the original message line was not located separately.)
+  - Question (paraphrased): Claude Code refuses a subagent Write only when the file name starts with REPORT, SUMMARY, FINDINGS or ANALYSIS (.md); how should the workflow handle subagent reports?
+  - Answer: "Rename + text fallback (Recommended)".
+  - Question (paraphrased): the rule lives in the committed hook `.claude/scripts/subagent-identity.ps1` (a one-sentence change); may lane A edit it, validate it, and commit and push to main?
+  - Answer: "Edit, commit and push (Recommended)".
+- **V2.1 plugin library.** Reply to a CHORE-205 report question: "No, I don't have V2.1 plugins. plus, V2.1 was actively retired from community when upstream maintainer showed that there is security concern." (In the transcript the reply is prefixed "S1 - ", while the handoff places it under the S2 report's open question 3; the sentence itself is verbatim.) The retirement decision that followed is `MC-349`.
+- **CHORE-205 stage 0.**
+  - Question (paraphrased): CHORE-205 decision-memo question 6, the only blocking one: start stage 0 (measurement only, no product change: tick split timers, a net-found-change counter, a module-writer trace, heap snapshots) now, and where?
+  - Answer: "Now, PC + one Note 9 run (Recommended)".
+- **Lane Cloud.**
+  - Reply: "let's tackle 1~3 in series. you can commit the handoff and give me the brief prompt, and I will create the cloud session."
+- **CHORE-226.**
+  - Question (paraphrased): on the phone, opening a character and its chat rewrote one 33 KB shard unit and only `lastInteraction` changed; the expected second commit and `chatPage` change never appeared, and the commit took about 1.3 s on the Note 9 (how much of that blocks the screen is unknown). What should be done?
+  - Answer: "A: no codec change (Recommended)".
+  - Not chosen: "Test warm re-select first", "D: more, smaller shards", "C: throttle lastInteraction".
+  - Limits of the evidence behind the question (part 5's verifier): the tap was on the already-open chat; a warm re-select and the `chatPage` half were not tested; the units log was not reset before the tap, so the commit cannot be pinned to the tap rather than to opening the character.
+- **`ui.mjs`.**
+  - Question (paraphrased): did the maintainer have their own `ui.mjs` in the repository root, given that the heap agent deleted a 0-byte `ui.mjs` there that it says it created by mistake?
+  - Answer: "Not mine".
+- **Heap snapshots.**
+  - Question (paraphrased): delete the 7.9 GB of heap snapshots (they contain real text) in the stage 0 scratch folder now that the report is verified?
+  - Answer: "Delete them (Recommended)".
+- **Records batch 4.**
+  - Question (paraphrased): do the three records-only lane merges (lane B `2f30c1362` with its merge of main, lane D `e295d27ae`, lane E `53eb983cc`) now and start records batch 4, with the batch commit waiting for the maintainer's approval after verification?
+  - Answer (2026-10-23 07:42): "Merge now, start batch 4 (Recommended)".
+  - Option text: three `--no-ff` records-only merges on main now, pushed per the standing push approval.
+  - Not chosen: "Start drafting, merge later".
+
+**What was decided (maintainer):**
+1. **Merges.** Lane B's measurement switches (`87c2c6bd0`) and save-pass meter (`0e4f2ae2b`) merge with full checks; CHORE-225 stages A and B merge together after the phone run, followed by one "after" phone run on the same profile (runs 1 to 4; the grid capture is scheduled separately and needs a re-import).
+2. **Lane records.** Lanes B, D and E each commit only their own records file on their own branch without pushing; lane A merges them with batch 4. Lane B's duplicated handoff bullets are deduplicated by lane A and committed.
+3. **Stage C.** The store2 idle net takes module scope at most once per 30 s (C2), with the four follow-ups approved (recorded in `MC-372`). Stage C is merged after Gate 2 on the maintainer's instruction "let's merge it and handoff".
+4. **Phone run with add-on.** The stage C phone run includes a field-names-only diff of two consecutive shard units in run 4. CHORE-226 is decided after the diff, and then as "A: no codec change": the phone saw one `shard:13` commit with `lastInteraction` the only change (on the already-open chat; a warm re-select and `chatPage` untested; the commit's attribution to the tap is limited), and the stage 0 timers decide whether commit cost matters.
+5. **Lane organisation.** Lanes C, D and E are retired for now. Lane B is created only when it is needed. Lane A hands the maintainer an initiation prompt and brief for each new session, and the maintainer creates the session.
+6. **CHORE-205.** The architecture study is ticketed at high priority with its secondary problems. It is a long-horizon, post-MVP question about subsystems that will need architectural work. The study runs now (six read-only investigators, advisors, a decision memo), and stage 0 (measurement only) starts on the PC plus one Note 9 run.
+7. **Subagent scratch reports.** The workflow is designed around Claude Code's refusal: subagent scratch outputs are named `result.md` (or `<id>-result.md`), with the text in the hand-back as the fallback, and %TEMP% scratch under `risu-*` roots is allowed through the gitignored local settings. The hook change is committed and pushed.
+8. **Cleanup.** The heap snapshots are deleted; the `ui.mjs` file was not the maintainer's.
+9. **Lane Cloud.** Lane Cloud tackles its items 1 to 3 in series.
+10. **Batch 4.** The three records-only lane merges are made now and records batch 4 starts; the batch commit waits for the maintainer's approval after independent verification.
+
+- Notes, not the maintainer's words:
+  - Merges, with lane A's full-check results (outputs under `%TEMP%\risu-b715\`; the handoff's figures):
+    - `ff06d0136` (lane B export switches): 21,007 passed; the release-dist check was OK at 244 files.
+    - `f16fb5c30` (lane E grid avatars stage B1', `MC-464`): 21,046 passed; the source hashes matched the Gate 2 hashes.
+    - `4bc6b0b42` (lane B save-pass meter): 21,059 passed; the release-dist check was OK.
+    - `9f8e95722` (lane B CHORE-225 stages A and B; lane B's records tip `cc1a3da48` merged with a conflict in `lane-B-records.md` resolved by keeping both appended blocks): 21,136 passed, 23 skipped; `pnpm check` 0 errors and 0 warnings; build OK; the release-dist check OK at 244 files; pushed.
+    - `3882db23e` (lane B CHORE-225 stage C, lane B commit `7eb3d7223`): 21,163 passed, 23 skipped; check 0 and 0; build and release-dist OK; pushed.
+    - Records-only lane merges: `841fb4a3c` (lane B), `e17845070` (lane D), `5fbc993b1` (lane E); pushed.
+  - CHORE-225 stage C is merged as `3882db23e`. The `MC-368` 1 daily-APK block still stands: the lane B pre-registered rule needs the garbage-collection mark under 1 s, and in phone 1 part 5 `gcMarkMs` was under 1 s on 3 of 7 launches (`%TEMP%\risu-b715\phone1-p5\result.md`, verified; its "Corrections from doc-verifier" section takes precedence).
+  - Lane B is running CHORE-205 stage 0 items (a), the tick split timers, and (b), the net-found-change counter, from a brief handed over with the initiation prompt; their device request and merge are still to come. Stage 0 items (c), the module-writer trace, and (d), the PC heap snapshots, are verified (`%TEMP%\risu-b715\c205\stage0\c-writers-result.md` and `d-heap-result.md`, each with corrections appended).
+  - The CHORE-205 reports (S1 to S6), the advisor results and the decision memo are under `%TEMP%\risu-b715\c205\`, each with a "Corrections from doc-verifier" section that takes precedence; the decision memo's 35 of about 40 claims were CONFIRMED and 0 REFUTED (handoff).
+  - The stage C question in lane A's session offered "C2 with 60 s" and "Keep every tick (C1)" as the other options, while `MC-372` (the lane B session's round) lists C1, C3 and C4 as not chosen. The two sessions' option sets differ; both recorded the same chosen label.
+  - The census of the p3 export against the backup found no data loss after several stage 5a passes (`%TEMP%\risu-b715\census\partial-vs-p3.txt`; the verifier checked ids, states and chat counts, not bytes).
+  - The commits behind item 7 are `b288851f1` (the hook text for the "no registration needed in %TEMP% scratch" rule, made after the maintainer's report of refused report writes) and `9319256d4` (the `result.md` naming rule). The cause is Claude Code's own refusal of a subagent Write whose file name starts with report, summary, findings or analysis (anthropics/claude-code issue 44657, cited by the maintainer).
+  - `ui.mjs` was a stray file from an agent; nothing was lost.
+  - Lane Cloud has reserved `MC-700` to `MC-749`, CHORE-500 to CHORE-549 and ledger rows 5000 to 5499, and has written nothing yet. Its brief names the phases (test reliability, a check of CHORE-09 to CHORE-16, small fixes) and the branch `lane-cloud`.
+  - No historical decision text is rewritten.
+
+### MC-349 — Lane A, 2026-10-23: V2.1 plugin execution is retired; the data is kept (amends `MC-175` for V2.1 plugins only)
+
+- Tag: decisions (chat message and `AskUserQuestion` answers by option label, 2026-10-23). Date: 2026-10-23. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` (the new-account session). The quoted messages and option labels are the maintainer's. The question texts below are lane A's paraphrase, and the option text is the orchestrator's. Sizing: `%TEMP%\risu-b715\v21-retire\sizing-result.md` (investigator, with the doc-verifier's "Corrections" section, which takes precedence).
+- Related: `MC-175` (amended for V2.1 plugins only), `MC-348` (the maintainer's earlier statement that they have no V2.1 plugins), `MC-091` (scope amendment); CHORE-205 (the study that raised it), CHORE-206 (the implementation).
+
+**The maintainer's words:**
+- **The earlier statement (answering a CHORE-205 report question):** "No, I don't have V2.1 plugins. plus, V2.1 was actively retired from community when upstream maintainer showed that there is security concern." (Recorded in `MC-348`.)
+- **The question that opened this decision (chat message):** "what if we retire V2.1 entirely? upstream also states that V2.x will be dropped in the future and strongly discourages its use."
+- **What to retire.**
+  - Question (paraphrased): retire V2.1 plugins in the fork? Upstream still supports 2.1 "for a long time" but recommends 3.0; this amends `MC-175`'s "plugins continue to work" for 2.1.
+  - Answer: "Retire 2.1 execution, keep data (Recommended)".
+- **When.**
+  - Question (paraphrased): if retiring, when?
+  - Answer: "Size now, implement post-MVP (Recommended)".
+
+**What was decided (maintainer):**
+1. **V2.1 plugin execution is retired.** A V2.1 plugin is never executed.
+2. **The data is kept.** The chosen option's text: entries "stay untouched in the DB and .bin (round-trip intact)". Lane A applies this, as the sizing requirement, as: a V2.1 plugin entry is kept byte-for-byte through every save, `.bin` export and import, including its `enabled` flag ("byte-for-byte" and `enabled` are lane A's wording, not the maintainer's). This amends `MC-175` for V2.1 plugins only; versions 1, 2 and 3.0 are unchanged.
+3. **Timing.** The implementation is sized now and built after the MVP. It is CHORE-206.
+
+- Notes, not the maintainer's words:
+  - Upstream's `migrationGuide.md` (on `upstream/main`, `src/ts/plugins/migrationGuide.md`) says 2.1 "will still be supported for a long time", recommends 3.0, and says 2.1 "might show security warnings" (quoted from the handoff; not reopened here). The maintainer's question says upstream states that V2.x will be dropped in the future; the guide's wording above is the only upstream text the records hold. It does not say V2.x will be dropped, but it does say 2.1 "can be deprecated in the future", and its table says security warnings will be shown after 2.0 deprecation.
+  - Sizing (verified, with corrections): versions 1 and 2 already never execute, and new 2.1 imports are already refused. The work is about 12 to 14 source files edited and 4 deleted, roughly -900 source lines and -3,000 test lines, and 7 locale files. Stages 1 and 2 must land together and must also drop the `loadPlugins` restore-all and switch-off block. The cleanup of the `pluginV2` handler sets stays, because version 3 relies on it. A test is needed for updating a 2.1 plugin to 3.0, which carries `enabled` over. The `backuplocal.ts` round trip is confirmed by search only.
+  - The `enabled` flag of an existing 2.1 entry is written automatically in one place; the toggle, the 3.0 hot-reload, new entries and the list merge are the other writers (verifier's correction 5).
+  - Open for the maintainer, as UI questions: a notice at boot, the toggle, the localized refusal text, and what to do with the dead `PluginAlertModal` (nothing opens it).
+  - The implementation is CHORE-206, post-MVP.
+  - No historical decision text is rewritten.

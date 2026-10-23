@@ -20,6 +20,8 @@ Goal: a personal Android MVP (not a release), usable before the major UI overhau
 
 **Status (2026-10-22, lane A fold-in): store2 stage 5a (A2) merged in `9dd028b3b` (no-ff of lane B's `67273e799`; `MC-366`, `MC-368`, `MC-369`). Full checks on `9dd028b3b`: `pnpm test` 20,962 passed; `checkReleaseDist` OK on 244 files; `cargo test --lib` 202 passed; `pnpm check` 0/0; build passed. A9 was dispatched on phone 1 as a MEASURE build of `771ec2b30` (it contains 5a), installed as an in-place update with the fixed test key; the restore path is a re-import of `Backup_partial.bin`; the result is pending. The daily APK must not be built from `main` until A9 passes (`MC-368` 1, `MC-457` 2).**
 
+**Status (2026-10-23, lane A records batch 4): the `MC-368` 1 daily-APK block stays.** Lane B rules that the stage 5a mark result blocks the lift under the criterion "GC mark under 1 s, with the pass ending inside the ~60 s window". Phone part 4 gave 3 of 5 launches under 1 s; part 5 gave 3 of 7 (values in its section 8.5; the verdict is lane B's). A bounded re-arm or batch cap does not address the mark. Holding the idle net during the GC pass is considered only if the mark stays at 1 s or more after stage C (`MC-372` 2).
+
 **Parked until after A5:** stage 5b (clean-up UI, quota path, C3/Q3, Q9), CHORE-128, CHORE-115, the Node items (CHORE-49, 62, 46, 0b, the CHORE-129 web/Node residual), list windowing, S4-6, CHORE-147, the old Step 3 re-measure, WF-6 and WF-10, the old Step 4 UI-overhaul checkpoint, and the release (R).
 
 The "Queue after the 2026-10-09 batch" section and the Sequencing Summary below are superseded by this block.
@@ -7094,6 +7096,8 @@ The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer); the im
 
 ### CHORE-223 — An Android stub export spends most of its time in two steps outside the asset loop ('export start' to 'export cold collected'; 'export database encoded' to 'export stub and late payloads done')
 
+**Status update (2026-10-23, lane A records batch 4): the cold-collect regression is traced to the idle net, not fixed.** Cold collect tracks the idle-net ticks: `netTickMs` is 93.6-94.9% of the cold-collect wall at 0 residents (phone 1 part 3, verified with corrections; the pollers did not reproduce the 358 s). Export cold collect was 102.8 s in part 4 and 25.9 s in part 5 (`%TEMP%\risu-b715\phone1-p4\report.md`, `phone1-p5\result.md`). Its stage B design waits on lane A and the maintainer. Not COMPLETE.
+
 **Status update (2026-10-22, lane A, fifth): stage A Part 1 done on phone 1 (`%TEMP%\risu-b715\phone1-fresh\report.md`, independently verified with the doc-verifier's corrections, which take precedence; ledger row 2178). Export 932 s against A1's 1,170 s, about 20 % faster overall; completion PASS (517 + 500 + 1 = 1,018). New open item: a cold-collect regression (cold collect 358 s against 100 s; `stubReadMs` 351 s against 98 s; the same read counts), under lane B's diagnosis; no CHORE number is assigned. Stage B design waits on that diagnosis. Not COMPLETE.**
 
 **Status update (2026-10-22, lane A, fourth): stage A merged in `eb5e10bec` (no-ff of `4b04514b0`; `MC-365`, `MC-367`); not COMPLETE: stage A Part 1 is owed.** Full checks on `eb5e10bec` (`%TEMP%\risu-b715\records-b223a\`): `pnpm test` 917 files passed, 1 skipped (20,772 tests passed, 23 skipped); `pnpm check` 0/0; `pnpm build` passed; `cargo test --lib` 202 passed. Phone 2, Part 2, on a test profile: after a settled commit, `__risuGcNow.run({confirm:true})` returned done (deleted 9); after a restart it returned done (deleted 0). Per the doc-verifier, done after a tracked commit means the last store2-commit write reported `flushed === true`; n=1, tiny profile, the refused-idle path was not exercised. Part 1 was not run: A1's throwaway key is deleted; `MC-456` 4 chose a fixed test key with a phone 1 wipe and re-import (the tool change is in progress; ledger row 2170). Part 2 unblocks lane B's stage 5a coding (`MC-345` A2). Ledger rows 2161 to 2170 and 2379 to 2388.
@@ -7157,6 +7161,75 @@ Overlays outside `alertStore` (Settings, the Realm frame, the bookmark list, `po
 
 **Status (2026-10-22): open, not scheduled.** Filed per MC-455 Q1 ("Pop-up dialogs only").
 
+### CHORE-225 — Store2 save planning re-encodes every module on each idle-net tick, blocking the page for 6 to 15 s on the Note 9
+
+**Status (2026-10-23): stages A, B and C merged; not COMPLETE.** Title and facts are from lane B's records (`Agents/Lanes/lane-B-records.md`, the CHORE-225 entry and rows 2430 to 2436); this heading was added by lane A's batch 4 because the Roadmap had no entry.
+- A and B: merged in `9f8e95722` (lane B `cc1a3da48`; full checks 21,136 passed, 23 skipped; `pnpm check` 0/0; build OK; dist OK at 244 files).
+- Stage C (idle-net module scope at most once per 30 s, `MC-372` 1): merged in `3882db23e` (lane B `7eb3d7223`; full checks 21,163 passed).
+- Phone part 4 (build of `9f8e95722`; `%TEMP%\risu-b715\phone1-p4\report.md`, verified with corrections): module ticks PASS (2.3-3.0 s, 25-36% of baseline); edit plans PASS (0.5-2.4 s); CDP by +20 s after a select FAIL (slow polls until about +148 s); output FAIL-literal (7 commits against 6, unit kinds unchanged, +3,256 B); GC mark 3 of 5 launches under 1 s. Export cold collect 102.8 s (information only).
+- Phone part 5 (build of `3882db23e`, MEASURE; `%TEMP%\risu-b715\phone1-p5\result.md`, verified with corrections): module ticks at most once per 30 s, about 30-31 s apart; a 0-resident tick without modules takes about 0.6 s as one unyielded block (the cadence is about 2.5 s, so the tick duty share is about 24%, an upper bound of 25-30%); CDP after a select still fails (arm M; arm Y inconclusive, n=1); GC mark under 1 s on 3 of 7 launches (values in the report's section 8.5; the verdict is lane B's); export cold collect 25.9 s (information only).
+- Not established: which path does not yield. Yield points are not in `finishTree` or the commit stage (part 4 verifier). Stage B2 (extra yields) is approved only if the gaps prove long. The GC idle-net hold is approved after stage C is measured (`MC-372` 2).
+- The daily-APK lift stays blocked (`MC-368` 1).
+
+### CHORE-226 — Why the `shard:13` unit is rewritten on every select commit
+
+**Status (2026-10-23): sized (lane B row 2437, doc-verifier PASS); closed with no codec change.** Title and facts are from lane B's records (row 2437); this heading was added by lane A's batch 4. The maintainer: "A: no codec change (Recommended)" (`MC-348`).
+- Finding: not shown to be an unnecessary rewrite. A shard unit holds the index rows of about 30 characters (`SHARD_COUNT` 16); `changeChar` sets `lastInteraction` on every select and a chat-row tap sets `chatPage`, so each select was expected to rewrite a whole shard twice (about 76 KB per select, including a 33,141 B shard; INFERRED in lane B's sizing, not seen on the phone: part 5 saw one `shard:13` commit of about 38 KB with only `lastInteraction` changed, on the already-open chat; a warm re-select and `chatPage` were not tested, and the units log was not reset before the tap). The serialization is canonical.
+- Phone part 5 field diff: one shard:13 commit, with `lastInteraction` the only change in one entry. `chatPage` and a warm re-select were not tested, and commit attribution is limited (the units log was not reset before the tap). Part 4 saw the same-size shard rewritten under a new key on each commit; its cause was not traced.
+- About 10 ms of CPU on the desktop, so it does not explain the 2-3 s ticks. Stage 0 timers decide whether commit cost matters.
+
+### CHORE-205 — Architecture study: subsystems that fail as the library grows (the whole-library in-memory model and its secondary problems)
+
+**Status (2026-10-23): open, HIGH priority (the maintainer: "I think we should ticket this study as high priority with secondary problems, as it solves lots of core issues"). It is a study, not a rewrite: no implementation follows without the maintainer's decision. It starts after phone 1 part 3 and the CHORE-225 "after" run, whose numbers it uses. Its decision is recorded in lane A's next MC (now `MC-348`).**
+
+**Status update (2026-10-23, after stages (a) to (c) and stage 0 (c) and (d)):** stages (a) to (c) are done and verified. The root hypothesis, "the whole library is one reactive object", is refuted for the growth case: store2 boots a stub for every non-resident character on every backend, and the grid, list and rail mount only what is on screen. It holds literally only when an enabled V2.1 plugin forces every character to load; the maintainer has no V2.1 plugins. The study replaces it with three findings:
+- **R1:** save planning runs on the UI thread as whole-scope passes. Phone measurement (one phone): a due module tick takes 1.9-4.0 s of busy main-thread time (before CHORE-225 stage C).
+- **R2:** change detection works by reading everything and comparing. This is a deliberate net, and its cost grows with bytes.
+- **R3:** modules are always resident and assembled whole (35.6 MiB at boot, re-read by the net).
+
+Ranking (decision memo section 2, with its Corrections, which take precedence): (1) the save planner and idle net, (2) modules always resident, (3) export and import of a 36 GB library on a phone, all three "must deal with eventually"; then patch in place: chat display, grid, plugin permissions. Per-chat residency is deferred, not a small patch (stage 3, expensive to reverse). Not architecturally broken: the store2 on-disk format, the content-named asset store, the Android shell. Memo: `%TEMP%\risu-b715\c205\decision-memo.md`.
+
+Stage 0 (measurement only) is approved as `MC-348` ("Now, PC + one Note 9 run (Recommended)"):
+- (c) module-writer trace: verified; no missed module writer; residual gaps need a V2.1 plugin that does not clean up after itself (`%TEMP%\risu-b715\c205\stage0\c-writers-result.md`).
+- (d) PC heap snapshots (best-case hardware; one partial dataset of 164 modules; 500 stubs): module data reaches 68.35 MB (a reachable-union size, not a dominator-retained size), 2.035x its 33.58 MB JSON and about 66% of the roughly 103 MB used heap after GC. 56.0 MB is plain V8 data; Svelte proxies about 5.8 MB; the effect objects, their deps, reactions arrays and snapshot closures together 6.4 MB. The 35.6 MiB vs 33.58 MB size mismatch is unreconciled (`%TEMP%\risu-b715\c205\stage0\d-heap-result.md`, verified with corrections).
+- (a) the tick split and (b) the net-found counter are with lane B. The one Note 9 run follows lane B's merge (owed).
+
+- **Question (the maintainer, 2026-10-23):** this is a long-horizon question that includes post-MVP work. Which subsystems will have to be dealt with sooner or later because of architectural problems?
+- **Lane A's first read (from session context, unverified; not evidence):**
+  - **Root:** the whole library is one reactive object in the page's main-thread memory. Many issues are workarounds for this:
+    - save planning finds changes by re-encoding everything (CHORE-225);
+    - the boot walk, cold storage, stubs and unload keep less of that object resident (`MC-130` is exploratory);
+    - the grid loads every avatar;
+    - export and import pass all data through the page.
+  - **Secondary:**
+    - (1) nearly all CPU work is on the main thread (Svelte, saving, card scripts, image work), with no worker architecture;
+    - (2) page-to-native transfer is base64 (`writeVia=b64`);
+    - (3) the `.bin` backup is one monolithic file, bound by `MC-175` and `MC-223`;
+    - (4) card display scripts run on every message on every pass, under upstream semantics (no caching or limit design);
+    - (5) the plugin permission flow re-prompts after each "No".
+  - **Judged not architecturally broken so far:** the store2 on-disk format, the content-named asset store, and the Android shell.
+- **Study shape:**
+  - (a) One investigator per subsystem maps it against library growth, using the maintainer's real sizes: 500+ characters, characters 132 MiB together, 100+ modules (asset modules of 1-2 GB), 383k assets and 32 GiB, a ~36 GB `.bin`. For each, it states when it fails, the cost of changing it, the upstream-compatibility constraints, the tests that would carry over, and whether the current MVP work points the same way.
+  - (b) An independent `senior-advisor` challenge on the result, with a separate challenge for the in-memory library model (the expensive-to-reverse one).
+  - (c) A short decision memo for the maintainer.
+- **Constraints:** `MC-175` and `MC-223` (backup round-trip with upstream); `MC-011` (no fork userbase); `MC-091` (scope amendments are the maintainer's). AGENTS.md's dirty-tracking warning applies to any change-tracking design.
+- **Inputs:** `%TEMP%\risu-b715\phone1-fresh\report.md` (part 1, verified); `%TEMP%\risu-lane-e\grid\phone-analysis\report.md` (grid starvation, verified); phone 1 part 3; the CHORE-225 "after" run.
+
+### CHORE-206 — Retire V2.1 plugin execution and keep the data (MC-349)
+
+**Status (2026-10-23): open, post-MVP, not scheduled.** The maintainer: "Retire 2.1 execution, keep data (Recommended)" and "Size now, implement post-MVP (Recommended)". This amends `MC-175` for V2.1 only; versions 1, 2 and 3.0 are unchanged (`MC-349`).
+- Scope from the sizing (`%TEMP%\risu-b715\v21-retire\sizing-result.md`; its Corrections take precedence):
+  - V1 and V2 already never execute; new V2.1 imports and updates are already refused at three call sites.
+  - Seven call sites: bootstrap, ModuleMenu, archiveGate, loadPlugins, bootArchivePass, database wrapModuleAssets, characterPutBack.
+  - Stages 1 and 2 land together. Stage 1 alone is incoherent (an enabled V2.1 plugin disables archiving but never runs). Stage 1 also drops the loadPlugins block that unwraps modules, restores all and writes `enabled` off.
+  - Keep the pluginV2 handler-set cleanup (the `.clear()` calls and the unload loop), because V3 relies on it.
+  - Required test: updating a V2.1 plugin to 3.0 carries the old `enabled` (`carrySavedValues`), so an enabled V2.1 plugin runs again at once. This is the intended migration.
+  - Stage 3 (optional) removes only 2.1-only members of the API object. Read `Object.keys(oldApis)` first; the V3 compatibility shims stay.
+  - Size: about 12-14 source files edited and 4 deleted; roughly -900 source lines and +60; tests roughly -3,000 and +250; 7 locale files. Stage 2 touches the persistence surface (opus-reviewer).
+- Data kept: the `.bin` round trip keeps plugin data byte-for-byte, including the `enabled` flag (MC-349 notes).
+- Open UI questions for the maintainer: the boot notice; the toggle for a V2.1 entry; the localized refusal text; the dead `PluginAlertModal` (no non-test code sets its `open`; deleting `pluginSafety.ts` needs its type import removed and the modal's fate decided).
+- Moot once CHORE-206 lands (not closed): CHORE-30 and CHORE-65, both V2.1 paths. A title search found only these two; body-text mentions were not swept (TODO(evidence)).
+
 ### CHORE-353 — The write-scope guard refuses only the Edit and Write tools, so a shell write can change a repository file outside its grant (MC-457 1)
 
 **Status (2026-10-22, lane A): open, ticketed, not scheduled (`MC-457` 1).** The maintainer: "let's ticket this for now and revisit this if similar things happen again." Source: lane E's CHORE-181 Gate 2 remediation (ledger row 3558). The coder ran its mutants by text-replacing worktree files with PowerShell and restoring them, including `alertPrompts.ts`, which was outside its grant; the write guard did not refuse it. Lane E's hash check found that file equal to the reviewed copy (row 3559).
@@ -7175,6 +7248,8 @@ On phone 2 with the large profile `m2-mix18k` (CHORE-181 cell 5), after the firs
 **Status (2026-10-22): open, low priority, not scheduled.** Filed at lane A's request from the verified CHORE-181 phone report (`%TEMP%\risu-b715\c181-phone\report.md`, corrections appended). Folded in by lane A in `a25ceb764`.
 
 ### Grid avatar loading (MC-452, MC-459) — stage A, the thumbnail write leaves the generation slot (no CHORE number)
+
+**Status (2026-10-23, lane A records batch 4):** grid stage B1' is merged in `f16fb5c30` (lane E; 21,046 passed; hashes matched Gate 2; `MC-463`, `MC-464`). The rest of stage B is deferred (`MC-463`). Lane E is retired for now. The grid capture on a re-import is owed; lane A runs it.
 
 **Status (2026-10-22, lane A fold-in): stage A1 merged in `771ec2b30` (no-ff of `cd4546b8e`; `MC-459` to `MC-462`); full checks on `771ec2b30`: `pnpm test` 20,968 passed, 23 skipped; `pnpm check` 0/0; build passed. The phone 1 cold capture was taken on a pre-A1 build (lane E's ledger rows 3562 to 3570; the grid part of `%TEMP%\risu-b715\phone1-fresh\report.md`, whose thumbnail counts are unsupported). Stage B waits on lane E's trace analysis.** Decisions: MC-459, MC-460 and MC-461.
 
@@ -7195,6 +7270,8 @@ On phone 2 with the large profile `m2-mix18k` (CHORE-181 cell 5), after the firs
 - **Smallest coherent correction (draft):** find what makes Vitest write the file; a `.gitattributes` rule `*.snap text eol=lf` so the checkout is LF like the blob and what Vitest writes; check which other `.snap` files exist and whether any is committed CRLF before adding it. Acceptance: two consecutive full runs leave the tree clean.
 
 ### CHORE-241 — MVP chat-open and edit stalls: a quadratic display regex, and chat-phase measurement
+
+**Status update (2026-10-23, lane A records batch 4): S3 and S4 are parked until a re-measure after CHORE-225 (`MC-389`).** Lane D is retired for now. The save-planning stall is CHORE-225 (lane B).
 
 **Status update (2026-10-22, lane A, after the phone 1 capture): S3 and S4 likely parked; lane D will propose (`MC-457` 5). The dominant cost is store2 save planning: on phone 1 (ledger row 2178) the planner `plan` is about 110 s of main-thread time after a chat select and 8.4 s of a 10.9 s one-character edit. That planner fix is lane B's; lane D keeps the render work and hands its plan-path evidence to lane B. Open item: the save-planning stall under lane B, which lane B has named CHORE-225 (its records entry comes with batch 4). The 60 s timeout fix for the differential tests is merged in `e63a3eea8` (ledger rows 2581 and 2582).**
 

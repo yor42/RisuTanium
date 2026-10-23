@@ -353,6 +353,8 @@ Lane D (UI lists and small items), branch `worktree-Lane-D`. Rules: [README.md](
 | 2585 | 2026-10-22 | Maintainer answers on ownership and on parking S3 and S4, relayed by lane A | orchestrator | n/a | n/a | Recorded as `MC-389`. Lane D idle on CHORE-241 until lane B's planner fix and the re-measure. |
 | 2586 | 2026-10-22 | Record verification: `MC-389`, rows 2583 to 2585, the CHORE-241 update and the Handoff line | `doc-verifier` | 46,168 (subagent) | records | 9 verified (incl. a recount of 62/31/31/47 and the 0.72 s S3 bound from the ring JSON), 3 orchestrator-attested (relayed answers, token count), 1 corrected: row 2584's per-tick time now "roughly 6 to 15 s". Optional fix applied: row 2583 "at least 128 s". Noted for lane B: the plan-trace packet labels the hit-pass `ms` values as a time span; the 0.72 s bound in these records comes from the `t` values. |
 
+**Folded in by lane A on 2026-10-23 (records batch 4): ledger rows 2583 to 2586 are in the shared ledger.**
+
 ## Handoff
 
 - 2026-10-21: lane started. Branch fast-forwarded from 74b28ddd1 to e8fd39618 (`origin/main`, which adds `Agents/Lanes/` and CHORE-195). First stage: character list S4-4 (drag), Gate 1 with `opus-reviewer`.
