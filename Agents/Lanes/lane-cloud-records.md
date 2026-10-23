@@ -67,6 +67,18 @@ Baseline full `pnpm test` on unmodified `9a6127354` (Linux, Node 22.22.0, 4 CPUs
 
 1. Question (paraphrased): the stop hook wants a commit; uncommitted are the records file and the unreviewed CHORE-152 fake edit. What should be committed? Answer: **"Records only (Recommended)"**. The option said: commit and push just `Agents/Lanes/lane-cloud-records.md`; the CHORE-152 edit waits for its Gate 2.
 
+### MC-704 — Lane Cloud, 2026-10-23: commit CHORE-152 after Gate 2 approves, without asking again
+
+- **Tag:** decision (`AskUserQuestion` answer, 2026-10-23, asked under `MC-701` after the stop hook asked for a commit)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-701`, `MC-702` 1, `MC-703`; CHORE-152.
+
+1. Question (paraphrased): the only uncommitted change is the CHORE-152 edit to `src/ts/storage/tests/tauriChunkFake.ts`, which is in Gate 2. Commit it? Answer: **"Commit after Gate 2 without asking again"**. The option said: if Gate 2 returns `[APPROVE]`, commit and push it without another question.
+
+**Notes, not the maintainer's words:** this covers the CHORE-152 commit only. Any other verdict than `[APPROVE]` goes back to the maintainer.
+
 ## CHORE entries (proposed status changes)
 
 ### CHORE-142 — `Agents/Tools/save-gen/generate-and-verify.harness.ts` is broken
@@ -77,6 +89,19 @@ Baseline full `pnpm test` on unmodified `9a6127354` (Linux, Node 22.22.0, 4 CPUs
 - **Cause:** the harness's module mocks were copied from `src/ts/storage/tests/risuSave.test.ts` and had gone stale. That test now also mocks `src/ts/storage/store/appStore` (through `appStoreModuleOver` in `src/ts/storage/tests/appStoreMock`), which keeps the real application graph from loading.
 - **Change (harness file only, +15/-5):** the same `appStore` mock; `store` declared through `vi.hoisted`; the header and region comments updated (the stale "copied verbatim ... lines ~7-55" is gone). No assertion changed. `appStore` is not on the verified path: `risuSave.ts` calls `getAppStore` only in its remote-sync branch (orchestrator check).
 - **Evidence:** after the fix the same command exits 0 with 4 of 4 passed (implementer 3 runs, orchestrator 1, reviewer 1). The reviewer's scratch mutant (a decoder wrapper that drops one character) failed all 4 tests ("expected 30 to be 31"). `pnpm test`'s default glob does not match `*.harness.ts`. `Agents/Tools` is outside `tsconfig.json`'s include, so `pnpm check` does not cover it.
+
+### CHORE-152 — Slow and flaky test: `src/ts/storage/tests/assetPieceSave.test.ts`
+
+**Proposed status (2026-10-23, lane Cloud): fixed on `lane-cloud` (test-only, `MC-702` 1); technically accepted (Gate 2 `[APPROVE]`, row 5006).** The flaky part was already closed by CHORE-193 step 2 (lane E, `4cf1cce22`: `vi.setConfig({ testTimeout: 30_000 })` in the file), which this change leaves in place.
+
+- **Cause (rows 5002 and 5003, verified by execution):** about 63% of the file's CPU self time was the per-character callback `Uint8Array.from(atob(data), (char) => char.charCodeAt(0))` at the two chunk-write sites of the shared test fake `src/ts/storage/tests/tauriChunkFake.ts`, which runs over each chunk of about 1 MiB. `assetPieceSave` reaches the fake through `tauriDesktopFake.ts`.
+- **Change (that file only, +17/-2):** both sites call a local `decodeBase64` helper that keeps `atob` and copies the bytes with an index loop. `atob` stays because it rejects invalid characters and bad lengths that `Buffer.from(data, 'base64')` accepts, so a producer bug still fails in the fake. It tolerates missing padding, as before.
+- **Evidence (loaded Linux machine; timings indicative only, not evidence for the Note 9 or Pi targets):**
+  - Equivalence script (compatibility guard; there was no behavioural defect to reproduce): 2003 valid inputs decode byte-identically before and after, and 13 edge and invalid inputs give the same throw or result. The throw still happens before the size record and the fault hook.
+  - All 31 test files that reach the fake (directly, through `tauriDesktopFake.ts` or through `tauriWireFake.ts`): 31 of 31 files, 964 of 964 tests passed, by the implementer and the reviewer.
+  - `assetPieceSave.test.ts` alone: 23 of 23 in 10.7 s (Gate 2 log) and 10.2 s (doc-verifier rerun), against 35.7 s before (verification control, row 5003). The implementer's own figures of about 10 s were not logged.
+  - `pnpm check`: 0 errors, 0 warnings, run with `NODE_OPTIONS=--max-old-space-size=8192`. The implementer reported a heap out-of-memory abort at the default limit; that log was not kept.
+- **Gap, not fixed (out of scope):** no repository test notices if the fake's decoder is swapped for a lenient one (an implementer's scratch mutant).
 
 ### CHORE-144 — Test-suite fragilities seen during the sidebar closeout
 
@@ -96,6 +121,9 @@ Baseline full `pnpm test` on unmodified `9a6127354` (Linux, Node 22.22.0, 4 CPUs
 | 5002 | 2026-10-23 | CHORE-144 (four fragilities) and CHORE-152 (`assetPieceSave` slowness): status on current main, causes, test-only fix proposals (scratchpad `c144/result.md`) | investigator | 103,229 (subagent usage) | no | Verified with corrections in row 5003. CHORE-152: about 63% of the file's CPU self time is in the per-character callback `Uint8Array.from(atob(data), cb)` in `src/ts/storage/tests/tauriChunkFake.ts` (two sites); a scratch index loop kept `atob` and took the file from about 37 s to about 12 s, 23 of 23 passing (loaded machine). CHORE-144: item 2 (`backuplocalEncryptedRefusal` under shuffle) passed with 42 seeds; items 1 ((G) byte for byte) and 3 (`nodeHttpStore` ENOBUFS) did not reproduce and stay UNCERTAIN, needing the failing message or stack; item 4 (msgpackr 1.10.1 `utf8Write` throws on Node 24.22.1 for strings of 64 or more characters, not on 22.22.0) is test-environment only, and three tests already clamp it. No repository edits. |
 | 5003 | 2026-10-23 | Independent check of row 5002 (scratchpad `c144/verify/result.md`) | doc-verifier | 41,287 (subagent usage) | no | Decision-critical claims VERIFIED by execution: own mutant 23 of 23 in 11.6 s and 11.3 s against a control at 35.7 s; 10 more shuffle seeds passed; the msgpackr throw reruns on Node 24.22.1 and not on 22.22.0. Corrections: the fake reaches 23 files through `tauriDesktopFake.ts` plus 6 through `tauriWireFake.ts` (not "about 10"); `nodeServerFixture` has 17 test users (not 20); `atob` tolerates missing padding but rejects bad characters and lengths that `Buffer.from(..., 'base64')` accepts; the second site is at line 315, not 317. Items 1 and 3 UNVERIFIABLE (no failing evidence exists). |
 | 5004 | 2026-10-23 | Check the CHORE-142 commit message and this records file before the MC-700 commit (scratchpad `c142/cv/result.md`) | doc-verifier | 39,716 (subagent usage) | no | About 22 claims; the rest VERIFIED; harness rerun 4 of 4. Applied: lane A's 21,163 now names merge `3882db23e` (and `9a6127354` differs from it only in records and one workflow script); the actors wording now describes the grouped timeout errors; the ID ranges cite the brief. Rejected: the finding that the trailer must name a different model (the trailer is the session's prescribed attribution). UNVERIFIABLE: the uncaptured `saveLoop` alone runs, token figures, the MC-700 quote. |
+| 5005 | 2026-10-23 | CHORE-152: fix the slow decode in `src/ts/storage/tests/tauriChunkFake.ts` only, keeping `atob` (scratchpad `c152/result.md`) | test-warrior | 33,058 (subagent usage) | no | `decodeBase64` helper with an index loop at both sites; equivalence 2003 valid and 13 edge inputs, 0 mismatches; a lenient-decoder scratch mutant was noticed by no repository test; 31 of 31 reaching files and 964 of 964 tests passed; `assetPieceSave` alone 23 of 23 in about 10 s; `pnpm check` 0/0 with an 8 GiB heap. |
+| 5006 | 2026-10-23 | CHORE-152 Gate 2 (scratchpad `c152/g2/result.md`) | adversarial-reviewer | 25,994 (subagent usage) | no | `[APPROVE]`, no findings. Equivalence by reasoning and by rerun (the `atob` output is Latin-1; the throw position is unchanged); 31 of 31 files and 964 of 964 tests; `assetPieceSave` alone 23 of 23 in about 10.7 s; `pnpm check` 0/0; the file count of 31 rechecked. Nit, no change needed: `atob` also tolerates missing padding. |
+| 5007 | 2026-10-23 | Check the CHORE-152 commit message and records before the MC-704 commit (scratchpad `c152/cv/result.md`) | doc-verifier | 35,933 (subagent usage) | no | 16 claims, 12 VERIFIED; spot run `assetPieceSave` alone 23 of 23 in 10.17 s. Applied: the commit message no longer claims a CHORE-144 entry (that was in `8224c8b`); the timings cite logged runs only; the heap out-of-memory note is marked as the implementer's report with no kept log. UNVERIFIABLE: token figures and the provenance of the maintainer's option text. |
 
 ## Handoff
 
