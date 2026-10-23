@@ -23,13 +23,13 @@
     const indexByKey = $derived(new Map(found.trash.map((match) => [match.key, match.index])));
     const rows = $derived(listRows(found.trash.map((match) => match.key)));
 </script>
-{#snippet card(cardKey: string)}
+{#snippet card(cardKey: string, position: number, visible: () => boolean)}
     {@const char = DBState.db.characters[indexByKey.get(cardKey) ?? -1]}
     {#if char}
         {@const parsedDesc = parseMultilangString(char.creatorNotes ?? '')}
         <!-- A trashed row does not open: its avatar is only a picture, and the row keeps restore and delete. -->
         <div class="flex p-2 border border-darkborderc rounded-md">
-            <CharListAvatar src={char.image} />
+            <CharListAvatar src={char.image} {visible} />
             <div class="flex-1 flex flex-col ml-2 min-w-0">
                 <h4 class="text-textcolor font-bold text-lg mb-1 break-words">{char.name || language.settingsPage.unnamed}</h4>
                 <CharacterDescription text={parsedDesc['en'] || parsedDesc['xx'] || language.othersUi.noDescription} visible={true} />

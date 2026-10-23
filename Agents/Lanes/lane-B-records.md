@@ -860,6 +860,8 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 - **Store2 stage 5a, later the same day:** the flush premise held on phone 2 (row 2389). Implemented, and Gate 2 returned `[EDITORIAL]` (rows 2390 to 2394). Next: the commit, then the A9 device check. A9 runs on a MEASURE build over a snapshot copy of A1's real profile, with `risu-measure-import=on`. It reads the result line in `__risuImportPhases`, and a missing entry is ambiguous. The daily APK gets 5a only after A9 (`MC-368` 1).
 - **Store2 stage 5a** (`MC-345` A2): automatic clean-up of store2 leftovers, no UI. (Superseded by the "later the same day" bullet above: the flush check is done and 5a is implemented.) Decisions `MC-366`, `MC-368` and `MC-369` (the automatic pass runs only in the app, the `tauri` kind). Sized and verified, challenged by the senior-advisor (rows 2371 to 2374); Gate 1 r1 and r2 `[REJECT]`, r3 `[EDITORIAL]`: plan r5 accepted (rows 2376, 2379 and 2380). The implementation starts after the CHORE-223 stage A commit (one writer per checkout). The daily APK gets it only after a measurement run on a copy of A1's profile.
 
+- **Folded in by lane A on 2026-10-22, merged in `9dd028b3b`** (no-ff of `67273e799`; `MC-366`, `MC-368`, `MC-369`). Ledger rows 2389 to 2395 are folded in after row 2388. The daily APK waits for A9 on a copy of A1's profile (`MC-368` 1); the A9 phone run is pending.
+
 2026-10-23, handoff for a fresh lane B session (the maintainer's quota is near its limit; any session may stop):
 - **Branch state:** `worktree-Lane-B` is at `77990fcb2`. The tree is clean apart from this note. Commits since the last lane A merge:
   - `87c2c6bd0`: export measurement switches; merged on main as `ff06d0136`.

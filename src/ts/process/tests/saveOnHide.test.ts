@@ -3,7 +3,9 @@ import { describe, expect, test, vi } from 'vitest'
 // The installer takes its collaborators as arguments; this keeps the page's save loop out of the module graph.
 vi.mock('src/ts/globalApi.svelte', () => ({ requestSaveNow: vi.fn(), hasUnsavedSaveMarks: vi.fn(() => false) }))
 
-import { installSaveOnHide, type SaveOnHideDeps } from 'src/ts/process/saveOnHide'
+import { flushBeforeLeaving, flushPageBeforeLeaving, installSaveOnHide, type FlushDeps, type SaveOnHideDeps } from 'src/ts/process/saveOnHide'
+import { hasUnsavedSaveMarks, requestSaveNow } from 'src/ts/globalApi.svelte'
+import { beginInFlight, resetInFlightForTest } from 'src/ts/process/inFlightWork'
 import type { InFlightKind } from 'src/ts/process/inFlightWork'
 import type { ActiveStream } from 'src/ts/process/activeStreams'
 
@@ -144,5 +146,78 @@ describe('the hide trigger', () => {
         win.dispatchEvent(new Event('pagehide'))
 
         expect(deps.saveNow).not.toHaveBeenCalled()
+    })
+})
+
+describe('the flush shared with the Back press', () => {
+    function flushDeps(options: { kinds: InFlightKind[], unsaved: boolean, streams?: ActiveStream[] }): FlushDeps & { calls: string[] } {
+        const calls: string[] = []
+        return {
+            calls,
+            kinds: () => options.kinds,
+            streams: () => options.streams ?? [],
+            unsaved: () => options.unsaved,
+            mark: (chaId) => { calls.push(`mark:${chaId}`) },
+            saveNow: () => { calls.push('saveNow') },
+        }
+    }
+
+    test('with a chat in flight it marks the streams, then saves, even on a page without unsaved edits', () => {
+        const deps = flushDeps({ kinds: ['chat'], unsaved: false, streams: [{ chaId: 'a', replyChatId: 'r1' }] })
+
+        flushBeforeLeaving(deps)
+
+        expect(deps.calls).toEqual(['mark:a', 'mark:undefined', 'saveNow'])
+    })
+
+    test('with unsaved edits and no chat it saves and marks nothing', () => {
+        const deps = flushDeps({ kinds: [], unsaved: true })
+
+        flushBeforeLeaving(deps)
+
+        expect(deps.calls).toEqual(['saveNow'])
+    })
+
+    test('a clean page with no chat is not asked to save, because the request itself would mark it dirty', () => {
+        const deps = flushDeps({ kinds: ['tts'], unsaved: false })
+
+        flushBeforeLeaving(deps)
+
+        expect(deps.calls).toEqual([])
+    })
+})
+
+describe('the page flush wiring used by the Back press', () => {
+    test('a clean page with no chat in flight requests no save', () => {
+        resetInFlightForTest()
+        vi.mocked(requestSaveNow).mockClear()
+        vi.mocked(hasUnsavedSaveMarks).mockReturnValue(false)
+
+        flushPageBeforeLeaving()
+
+        expect(requestSaveNow).not.toHaveBeenCalled()
+    })
+
+    test('a page with unsaved marks requests one save', () => {
+        resetInFlightForTest()
+        vi.mocked(requestSaveNow).mockClear()
+        vi.mocked(hasUnsavedSaveMarks).mockReturnValue(true)
+
+        flushPageBeforeLeaving()
+        vi.mocked(hasUnsavedSaveMarks).mockReturnValue(false)
+
+        expect(requestSaveNow).toHaveBeenCalledTimes(1)
+    })
+
+    test('a chat in flight requests a save even on a clean page', () => {
+        resetInFlightForTest()
+        vi.mocked(requestSaveNow).mockClear()
+        vi.mocked(hasUnsavedSaveMarks).mockReturnValue(false)
+        const end = beginInFlight('chat')
+
+        flushPageBeforeLeaving()
+        end()
+
+        expect(requestSaveNow).toHaveBeenCalledTimes(1)
     })
 })

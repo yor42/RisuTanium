@@ -46,6 +46,95 @@ Lane E's records, kept on branch `worktree-Lane-E` and folded into the shared fi
 
 1. **"Commit + merge (Recommended)".** Commit the 8 named CHORE-187 paths and the lane E records pass on `worktree-Lane-E` after merging main, then send the tip to lane A for merge.
 
+### MC-459 — Lane E, 2026-10-22: grid avatar loading moves from lane D to lane E
+
+- **Tag:** decision (AskUserQuestion answer relayed by lane A, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answer "Take grid avatars from lane D".
+- **Related:** `MC-452` (MVP scope), CHORE-241 (lane D keeps the chat stalls, S3 and S4).
+
+1. **"Take grid avatars from lane D".** Lane E owns the slow grid avatar fill (the A1 report, `%TEMP%\risu-b715\a1-partial\report.md`, whose corrections override its body: 500 characters, Grid mode about 85 virtualised cells, avatars as background-image data URIs; initial fill about 0.34/s, about 0.55/s after a scroll; a full screen about 2 min on a Note 9 release build with a real profile). Step 1 is a PC trace with a synthetic profile of similar shape and a sized Gate 1 plan, with one investigator and no fan-out (the quota is in the yellow zone). Lane D's notes: the grid path does not reach the script/regex pipeline (CHORE-241's cause); nothing measured.
+
+### MC-460 — Lane E, 2026-10-22: grid avatar loading, product answers
+
+- **Tag:** decision (AskUserQuestion answers relayed by lane A, 2026-10-22; Q1, Q2 and Q5 asked as one question)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answers. Input: lane E's questions from the step 1 trace (`%TEMP%\risu-lane-e\grid\packet.md`).
+- **Related:** `MC-459`, `MC-452`, `MC-175`.
+
+1. **Q1, Q2, Q5: "Keep all three (Recommended)".** The grey tile stays while an avatar loads; animated avatars keep animating in the grid; thumbnails stay a cache and never go into the `.bin`.
+2. **Q3, background generation: "Not yet, decide after phone (Recommended)".** Do stages A and B, measure on the phone, then decide.
+3. **Q4, on failure or timeout: "Blank for big images, retry later (Recommended)".**
+4. **Q6, target: "Visible screen in under 10 s (Recommended)",** on a cold open on the Note 9 with the partial profile.
+5. Lane A chose a raw profile for the phone measurement (no code change): a CDP trace across a cold grid open with pollers off, plus a count of `risuThumb` records before the open, on phone 1 after lane D's capture. The phone attribution stays INFERRED until then; Gate 1 for stages A and B may proceed in parallel.
+
+### MC-461 — Lane E, 2026-10-22: grid avatar loading, retry answers and stage A sequencing
+
+- **Tag:** decision (AskUserQuestion answers relayed by lane A, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answers to D1 and D4 of the grid avatar Gate 1 verdict (`%TEMP%\risu-lane-e\grid\g1\verdict.md`).
+- **Related:** `MC-460` (Q4), `MC-459`, `MC-452`.
+
+1. **D1, retry fill: "Next time it's drawn (Recommended)".** A grey tile whose thumbnail would later succeed fills in when the cell is next drawn (remount); a tile that stays on screen is not refreshed live.
+2. **D4, retry cap: "Stay grey until restart (Recommended)".** A big image that keeps failing gets a few retries (for example 3, with exponential back-off), then stays grey until the app restarts.
+3. Lane A accepted lane E's sequencing: stage A now (A1, with one coder; the exact A2 variant measured first in scratch by one investigator, shipped only if the long-task sum falls by at least 30% on the large PNG tiers, with a `THUMB_VERSION` bump), gated and committed as one stage-A commit; stage B's design waits for the phone capture. Lane A also accepted lane E's rulings: a failed image of unknown size counts as big; the no-full-size rule is opt-in from the grid avatar component only.
+
+### MC-464 — Lane E, 2026-10-23: commit and merge grid avatars stage B (B1')
+
+- **Tag:** decision (AskUserQuestion answer relayed by lane A, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answer. Input: lane E's request for commit approval after the B1' Gate 2 (row 3578) and the records check (row 3579).
+- **Related:** `MC-459` to `MC-461`, `MC-463`.
+
+1. **"Commit + merge (Recommended)".** Fast-forward `worktree-Lane-E` to main `8c5347ba5`, commit exactly the 12 named source and test paths plus the lane E records, and send lane A the tip and each source file's hash; lane A merges, runs the full checks, folds in and pushes. The phone check follows lane B's CHORE-225 planner fix, on a re-import.
+
+### MC-463 — Lane E, 2026-10-22: grid avatars stage B is visible-first only
+
+- **Tag:** decision (AskUserQuestion answer relayed by lane A, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answer. Input: lane E's stage B proposal (`%TEMP%\risu-lane-e\grid\stageB-proposal.md`) from the verified phone 1 trace analysis (`%TEMP%\risu-lane-e\grid\phone-analysis\report.md`, corrections at its end).
+- **Related:** `MC-459`, `MC-460`, `MC-461`; lane B's CHORE-225 (planner).
+
+1. **"B1' only, rest deferred (Recommended)".** Stage B is B1': grid avatar requests from visible cells are served first, and queued work for cells that scrolled away is dropped, under the Gate 1 B-6 rules (an aborted lookup is never cached and never painted full size). Other avatar callers are unchanged. B2, B3, A2 and background generation are deferred until a phone capture after lane B's CHORE-225 planner fix, because on phone 1 store2 `plan` slices of 8-9 s held the main thread for 94 % of the grid capture and no task timeout or full-size paint occurred. Process: Gate 1 (opus-reviewer) on the plan, one coder, the normal gates. Lane A schedules the phone check after the planner fix.
+
+### MC-462 — Lane E, 2026-10-22: commit and merge grid avatar stage A
+
+- **Tag:** decision (AskUserQuestion answer relayed by lane A, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answer. Input: lane E's request for commit approval after the stage A Gate 2 (row 3568) and the records check (row 3570).
+- **Related:** `MC-459`, `MC-460`, `MC-461`.
+
+1. **"Commit + merge (Recommended)".** Fast-forward `worktree-Lane-E` to main `d42bfeb63`, commit `src/ts/media/avatarThumb.ts`, `src/ts/media/avatarThumb.test.ts` and the lane E records, and send the tip to lane A for merge. Phone 1's first cold grid capture runs on a pre-stage-A build; an "after" capture needs another re-import (an empty thumbnail store) and is scheduled later by lane A with the maintainer's OK.
+
+### MC-458 — Lane E, 2026-10-22: commit and merge CHORE-181
+
+- **Tag:** decision (AskUserQuestion answer relayed by lane A, 2026-10-22)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answer. Input: lane E's request for commit approval after CHORE-181 Gate 2 round 2 (row 3560).
+- **Related:** `MC-346`, `MC-455`; CHORE-181.
+
+1. **"Commit + merge (Recommended)", conditional on the records check passing.** The records check (row 3561) found no required corrections. Commit the 11 named CHORE-181 paths and the lane E records on `worktree-Lane-E` after merging main; the hand-back names the hash of `src/ts/alertPrompts.ts` at the tip and confirms it equals the copy Gate 2 reviewed (the file a shell mutant touched, row 3558). Lane A runs the six-cell phone check on phone 2 after merging.
+
+### MC-455 — Lane E, 2026-10-22: CHORE-181 Back with a dialog open (scope and behaviour)
+
+- **Tag:** decision (AskUserQuestion answers relayed by lane A, 2026-10-22; Q4 to Q6 asked as one question)
+- **Date:** 2026-10-22
+- **Sweep ref:** none
+- **Source:** lane A's cross-session message to the lane E session, quoting the maintainer's answers. Input: lane E's questions Q1 to Q6 from the CHORE-181 investigation (`%TEMP%\risu-lane-e\a3\181\packet.md`, verified in `verify.md`).
+- **Related:** `MC-346` (CHORE-181 "Close the dialog"), `MC-279` item 8, `MC-345` (item A3); CHORE-181, CHORE-153, CHORE-351, CHORE-352.
+
+1. **Q1 scope: "Pop-up dialogs only (Recommended)".** Back closes only the dialogs shown through `alertStore` (alerts, confirms, selects, inputs, waits). Settings, the Realm frame, popups and panels keep toast-then-quit; filed as CHORE-352.
+2. **Q2 select and input: "Nothing for now, ticket it (Recommended)".** Back neither quits nor closes while a select or input prompt is open; a real cancel is filed as CHORE-351 (about 50 external `alertSelect`/`alertInput` call sites, the verifier's count).
+3. **Q3 dialogs with no cancel (`tos`, `staleAccountNotice`, `progress`, a `wait` without cancel): "Nothing (Recommended)".** Back is ignored and never quits through them.
+4. **Q4 to Q6: "Accept all three (Recommended)".** After Back closes a dialog, the next Back starts the quit guard fresh (toast first, then a second Back within 2 s quits). Back closes a dialog even inside the 400 ms misclick guard. Unsaved edits are flushed on the first Back press, only when there are unsaved edits; whether the in-flight-chat branch of the hide flush is included is the orchestrator's technical choice.
+
 ## CHORE entries
 
 ### CHORE-193 (changed) — status line to add at fold-in
@@ -97,15 +186,74 @@ Lane E's records, kept on branch `worktree-Lane-E` and folded into the shared fi
 - Realm share: `shareRealmCardData` returns `null` on a failed export and leaves the error alert visible (before: a partial or empty buffer was posted and the alert store was cleared). `RealmFrame.svelte` closes without posting on `null`; a rejected share shows the error and closes instead of leaving the spinner (same-cause fold-in, row 3544).
 - Not changed: a failed module export leaves the truncated file the person chose (`LocalWriter` has no abort); the writer handle after a mid-export failure is not closed. The Tauri cancel is tested only with a mocked `init` returning false, not a native dialog.
 
+### CHORE-351 (new) — select and input prompts have no cancel, so Back cannot close them (MC-455 Q2)
+
+`alertSelect` and `alertInput` prompts have no cancel button and no cancel value; about 50 external call sites read their answer (the verifier's count, which misses calls through a reference). Under MC-455, Android Back does nothing while one is open. A real cancel needs a cancel value and a caller audit. (The `selectModule` prompt is not part of this ticket: its X button answers `''`, which its only caller treats as a cancel, so Back answers it the same way under CHORE-181.)
+
+**Status (2026-10-22): open, not scheduled.** Filed per MC-455 Q2 ("Nothing for now, ticket it").
+
+### CHORE-352 (new) — Back does not close Settings, the Realm frame, popups or panels (MC-455 Q1)
+
+Overlays outside `alertStore` (Settings, the Realm frame, the bookmark list, `popupStore`, the easy panel, the popup editor, the loadout modal, iris, the custom sidebar config dialog) have no Back handler: with one open, Android Back takes the toast-then-quit guard. MC-455 kept that behaviour for CHORE-181. The phone sidebar and Grid edit mode already have Back handlers.
+
+**Status (2026-10-22): open, not scheduled.** Filed per MC-455 Q1 ("Pop-up dialogs only").
+
 ### CHORE-350 (new) — a value that cannot be stored retries every save pass (MC-346 Q-A)
 
 A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a module, preset, settings or plugin data still makes the store2 save loop retry every second with one toast, then an alert on every pass from the fifth attempt, and blocks saves for every character.
 
 **Status (2026-10-22): open, not scheduled.** Filed per MC-346 Q-A ("Leave as today, ticket it"). Source: the A1' audit (CHORE-117 stage 2 row) and doc-verifier correction 10 (foldBack re-marks everything).
 
+### CHORE-354 (new) — on a large profile the page does not answer Back within 1 s after the first Back, and no hide event fires on the quit
+
+On phone 2 with the large profile `m2-mix18k` (CHORE-181 cell 5), after the first Android Back showed the quit toast the page logged nothing further and the toast never cleared; the second Back quit only through the host's 1 s timeout (1.018 s, against 16 to 30 ms on the small profile). The edits persisted. On both large-profile quits no `visibilitychange` to hidden fired (0 of 2, against 5 of 5 on the small profile; `pagehide` 0 of 7 overall), so save-on-hide (CHORE-153) did not run and the Back-guard flush (CHORE-181) was the only save request before the quit.
+
+- Candidate causes (neither shown): (a) the Back-guard flush's save, only if `hasUnsavedSaveMarks()` was true at the first Back (in run r1 the edit was 3.4 s old, so the flush was probably a no-op; only run r2-fast could involve it); (b) the debounced save or other large-profile main-thread work. Not shown to be a CHORE-181 regression.
+- Evidence needed: a page CPU profile across the first and second Back on `m2-mix18k`; a matched large-profile run with the flush disabled and the edit within about 100 ms of the first Back. Removing or deferring the flush is not supported without that run, since it is the only pre-quit save request when no hide event fires.
+- Cost bounded: the second Back still quits through the host timeout; no edit was lost in the runs.
+
+**Status (2026-10-22): open, low priority, not scheduled.** Filed at lane A's request from the verified CHORE-181 phone report (`%TEMP%\risu-b715\c181-phone\report.md`, corrections appended). Lane A folds it in.
+
 ### CHORE-181 (changed) — "Close the dialog" (MC-346)
 
+**Folded in by lane A on 2026-10-22, merged in `c4dc06dbc`** (no-ff of `00ae53c77`; `MC-346`, `MC-455`, `MC-458`). Ledger rows 3551 to 3561 are folded in after row 3550.
+
+**Status (2026-10-22, lane E item A3): fixed on `worktree-Lane-E` (base main `b87e457f9`); technically accepted (rows 3551 to 3560; records checked in row 3561); the maintainer approved the commit and merge (`MC-458`); committed over main `0d905815b` and sent to lane A; then lane A's merge, full checks and the phone check.** Decisions: MC-346, MC-455 and MC-458.
+
+- With an `alertStore` dialog covering the page, Android Back no longer reaches the default Back: it closes the dialog with the answer that dialog's own cancel or close control gives (`ask`/`pluginconfirm` `'no'`; `selectChar` and `selectModule` `''`; `cardexport` the cancel JSON with an empty `type2`; `addchar`/`chatOptions` `'cancel'`; a `wait` with `onCancel` runs it, as Escape does; notices close), or does nothing for `select`, `input`, `tos`, `staleAccountNotice`, `progress` and a `wait` without `onCancel` (`toast` and `none` do not cover the page and are held too). Either way the press is consumed and the quit guard starts fresh. A total table in `src/ts/alertBack.ts` makes a new alert type fail the type check.
+- Back answers a prompt even inside the 400 ms answer guard, only when the store holds exactly that prompt's data (`answerShownPrompt` in `alertPrompts.ts`); a rapid double Back cancels two queued prompts in a row.
+- The Back-guard flush (assigned from CHORE-153): the press that shows the quit toast, and the press whose toast fails (which quits), request a save with the hide flush's rule (a chat reply in flight is saved; otherwise only unsaved edits; a clean page is never made dirty). The request runs in a new task after the answer to the host, so save work cannot delay that answer. Best effort: the write may not finish if the process dies at once.
+- Not a claim that Back never quits: the host still runs the default Back when the page does not answer within 1 s (for example while an import keeps the page busy). Kotlin is unchanged.
+- Phone check for lane A: Back with a confirm open closes it; Back with a select open does nothing; Back during an import progress bar; with an unsaved edit, Back (toast) then Back (quit), relaunch, the edit is kept; the first Back shows the toast with a large profile and an unsaved edit; whether `visibilitychange`/`pagehide` fires on the Back quit (record it).
+- Out of scope, ticketed: select/input cancel (CHORE-351); Back for Settings, Realm, popups and panels (CHORE-352).
+
 **Status (2026-10-22): product decision MC-346 "Close the dialog": with a dialog open, Back closes or cancels the dialog, then a second Back follows the 2 s quit guard. This amends the MC-279 8 rule for the dialog case. Lane D's S4-5 merge landed in `3a0f2cf0c` (before base `389f461de`); not yet scheduled.**
+
+### Grid avatar loading (MC-452, MC-459) — stage A, the thumbnail write leaves the generation slot (no CHORE number)
+
+**Folded in by lane A on 2026-10-22, merged in `771ec2b30`** (no-ff of `cd4546b8e`; `MC-459` to `MC-462`). Ledger rows 3562 to 3570 are folded in with rows 3551 to 3561, after row 3550.
+
+**Status (2026-10-22, lane E): stage A fixed on `worktree-Lane-E` (base `c4dc06dbc`); technically accepted (rows 3562 to 3569; records checked in row 3570); the maintainer approved the commit and merge (`MC-462`); committed over main `d42bfeb63` and sent to lane A. Stage B waits for lane A's phone capture (`%TEMP%\risu-lane-e\grid\phone-request.md`).** Decisions: MC-459, MC-460 and MC-461.
+
+- In `src/ts/media/avatarThumb.ts`, a finished thumbnail is memoized, its waiters resolve and its concurrency slot is freed before its IndexedDB write settles; the write runs outside the slot, still bounded by the store timeout, and its failure stays silent. A slow store therefore no longer holds back the next thumbnail.
+- Backpressure: no new task starts while 4 or more writes are unsettled. Tasks already running still add their writes, so the peak is 5 at the default concurrency of 2 (probe, row 3568). A write that times out stops counting even though the underlying IndexedDB request may still be pending (accepted, row 3568).
+- Test hooks: `setLimits` accepts `maxPendingWrites`; `reset()` clears the pending-write count and a write epoch keeps a late write from an earlier test out of a later count; `stats()` exposes the count.
+- Existing test T7b changed deliberately: a write timeout no longer "frees the slot"; it now asserts that generation resumes once the pending write times out (with a cap of 1).
+- A2 (decode through `fetch` and `createImageBitmap`) is not shipped: it did not meet the pre-set 30% rule (row 3566). `THUMB_VERSION` is unchanged, so existing thumbnails stay valid.
+- Not measured on a device; the PC figures are best-case hardware. Whether stage A changes the phone fill rate is unknown until the phone capture.
+- Stage B as first planned (from the Gate 1 verdict, `%TEMP%\risu-lane-e\grid\g1\verdict.md`, B-1 to B-8; superseded by `MC-463` and the stage B section below): read timeout not a miss, no full-size paint for big images (grid avatar component only, unknown size counts as big), dropping queued work nobody waits for; retry rules per MC-461 (fill on next draw; a few retries with back-off, then grey until restart).
+
+### Grid avatar loading (MC-452, MC-459) — stage B (B1'), visible cells first and abandoned lookups dropped (no CHORE number)
+
+**Status (2026-10-22, lane E): fixed on `worktree-Lane-E` (base `a25ceb764`); technically accepted (rows 3571 to 3578; records checked in row 3579); the maintainer approved the commit and merge (`MC-464`); committed over main `8c5347ba5` and sent to lane A. B2, B3, A2 and background generation are deferred until a phone capture after lane B's CHORE-225 planner fix (`MC-463`).** Decisions: MC-459 to MC-461 and MC-463.
+
+- Phone evidence (rows 3571, 3572; build `e63a3eea8`, before stage A): on the grid capture, store2 `plan` tasks of 8.2-9.2 s, one about every 9 s, held the main thread for 95.1 s of 101 s; thumbnails ran only in the 10 gaps of 0.5-0.7 s between them (42 completed tasks in the capture); no task timeout and no full-size paint. Off-screen cells filled while visible ones did not (counters; the cause, newest-first order plus overscan, is inferred). The 10 s target cannot be met until the planner yields; lane B has the grid-open case as a validation case.
+- `CharacterWindow.svelte` gives each card a third snippet argument: a function that reports, when called, whether the card's row intersects the viewport (no overscan). It reads the window's scroll state untracked and uses the reported viewport, so it is correct before the first height report. The four render sites (GridCatalog grid and list cards, MobileCharacters, CharacterTrashList) pass it to `CharListAvatar` as `visible`.
+- `getAvatarThumbSrc` and `getCharImage` take optional `{ signal, visible }`; calls without options keep their signatures, return types and behaviour (folder picture, sidebar, alert select). The queue starts the newest task with a visible waiter, else the newest task; visibility is read when a slot frees, and a missing or throwing visibility function counts as visible. The stage A write cap is unchanged.
+- Each caller gets its own promise. A caller's abort settles only that caller with the aborted outcome (a symbol, neither `null` nor a string, so neither the style cache nor the folder-picture cache can store it). When the last waiter of a task that has not started aborts, the task leaves the queue and its in-flight entry is deleted at once, in every phase including the store read; a later caller starts fresh. A started task is never dropped: it finishes and is memoized and stored. In-flight deletion checks it removes the same entry. `getCharImage` checks the signal before `getFileSrc`.
+- `CharListAvatar` aborts its lookup on unmount or location change, never reads the `visible` prop in its effect, and neither paints, remembers nor logs an aborted lookup.
+- Tests changed on purpose: T5c's title only ("among equally visible tasks (callers without options)"); the `CharacterWindow` test helper gains an optional `card` option. No existing assertion was rewritten. B1'-9(a) ("one of two waiters aborting keeps the task") is red on the base, not green as Gate 1 predicted, because the base never returns the aborted outcome; it stays as a guard. The `getCharImage` signal check is evidenced by mutant M14, not by the base run (three base failures there are a mock setup error).
+- Not measured on a device. Untested and accepted: a mutant that leaves a dropped task's promise unsettled survives (the shipped code settles it), as do an abort listener that calls `pump` (no observable effect) and a `>` to `>=` boundary in the visibility function.
 
 ## Ledger rows
 
@@ -162,6 +310,35 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 | 3548 | 2026-10-22 | Orchestrator nit fix | orchestrator | n/a | no | Restored the four trailing spaces of the one blank line the coder had emptied in `characterCards.ts` (first json branch only; no BOM, as at HEAD; CR 2490 = LF 2490). 4 card test files 48 passed. |
 | 3549 | 2026-10-22 | Independent check of the CHORE-187 records and commit message | doc-verifier | 41,382 (subagent usage) | no | All claims CONFIRMED against the diff and the Gate 1, implementation and Gate 2 files; row 3548's diff has exactly the intended hunks. Applied: row 3547 now says Gate 2 ran 8 `modules.*` files. Noted: the Roadmap entry is updated at fold-in. Its trailer remark was not taken (the trailer names the committing model). |
 | 3550 | 2026-10-22 | CHORE-187 commit | orchestrator | n/a | no | Lane A relayed `MC-454`. Fast-forwarded to main `1f4771ca7` (no overlap); 155 passed over the same files as row 3546; `pnpm check` 0/0. The 8 named paths and this records file committed together on `worktree-Lane-E` (hash in the hand-off message to lane A). |
+| 3551 | 2026-10-22 | CHORE-181 investigation (`a3\181\packet.md`) | investigator | 95,271 (subagent usage) | no | Source reading only. `dispatchBack` returns `false` when `pageCovered()`, so any `alertStore` dialog lets the host quit at once; per-type cancel paths; prompts answered only through the raw store, and the 400 ms answer guard; no Android code ties Back to a hide event. Six product questions (answered in `MC-455`). |
+| 3552 | 2026-10-22 | Independent check of row 3551 (`a3\181\verify.md`) | doc-verifier | 67,636 (subagent usage) | no | Core findings CONFIRMED. CORRECTED: about 50 external `alertSelect`/`alertInput` call sites, not 66; the `saveOnHide.ts` path and its two-branch rule; missed `pageCovered()` users (hotkey `keysBlocked`, panel gesture start); line citations. |
+| 3553 | 2026-10-22 | CHORE-181 plan (`a3\181\plan.md`) | orchestrator | n/a | no | Covered page consumes Back and closes or holds per a total type table; a prompt-answer function past the answer guard; the hide flush extracted and passed to the guard as `flush`. |
+| 3554 | 2026-10-22 | CHORE-181 Gate 1 (`a3\181\g1\verdict.md`) | opus-reviewer | 148,568 (subagent usage) | no | `[APPROVE WITH AMENDMENTS]`, A1 to A7. A1: `selectModule` has a cancel (its X answers `''`, its only caller returns on it); the orchestrator confirmed it in source and corrected CHORE-351. A2 identity check on the shown prompt; A3 tests; A4 `cardexport` `type2:''`; A5 flush also on the press whose toast throws; A6 no claim that Back never quits (1 s host timeout); A7 try/catch around the close. Executed: the 5 existing test files, 138 passed. |
+| 3555 | 2026-10-22 | CHORE-181 implementation (`a3\181\impl\handback.md`) | sonnet-coder | 133,965 (subagent usage: 24,960 READY stop + 109,005) | no | Exact grant for 11 files, revoked after the hand-back. New `alertBack.ts` and `alertBack.test.ts`; `answerShownPrompt`; the guard's covered branch and `flush` option; `flushBeforeLeaving` extracted. With only the new helpers added to a base copy, 19 of 20 `alertBack` tests failed on the covered early return. 9 mutants killed. 13 files 425 passed; `pnpm check` 0/0; CRLF. |
+| 3556 | 2026-10-22 | Orchestrator verification after row 3555 | orchestrator | n/a | no | Grant revoked. `pnpm check` 0/0. 25 test files that touch the Back handler, alert prompts, the Escape table or the hide flush: 946 passed. |
+| 3557 | 2026-10-22 | CHORE-181 Gate 2, round 1 (`a3\181\g2\verdict.md`) | opus-reviewer (effort xhigh) | 198,294 (subagent usage) | no | `[EDITORIAL]`. Plan items and A1 to A7 met; all 24 types match their own controls; the hold set is MC-455's; adding a type fails the type check (executed). Base red: 33 failed, 136 passed. 40 mutants, killed except an equivalent and S4, S5, P3, P4. 27 files 1001 passed. Wording: three comments overstated the flush. Optional: production flush wiring and a same-type identity test. Finding 7 (reasoning): synchronous save work started by the flush could delay the answer past the host's 1 s limit. |
+| 3558 | 2026-10-22 | Gate 2 round 1 remediation (`a3\181\rem\handback.md`) | sonnet-coder | 91,529 (subagent usage: 24,623 READY stop + 66,906) | no | Exact grant for 5 files, revoked. Wording fixed; the flush is scheduled with `setTimeout(..., 0)` (orchestrator decision on finding 7); wiring tests kill S4 and S5; an ask-over-ask test kills P3; an inline-flush mutant is killed. Against the brief, it ran its mutants by text-replacing worktree files with PowerShell and restoring them, including `alertPrompts.ts`, which was outside its grant; the write guard did not refuse it. |
+| 3559 | 2026-10-22 | Orchestrator verification after row 3558 | orchestrator | n/a | no | Grant revoked. `alertPrompts.ts` hash equals the Gate 2 reviewer's copy of the implemented file; CR = LF in all changed files. `pnpm check` 0/0; 27 test files 1005 passed. Lane A told of the guard gap (awareness only, at the maintainer's request). |
+| 3560 | 2026-10-22 | CHORE-181 Gate 2, round 2 (`a3\181\g2r2\verdict.md`) | opus-reviewer | 66,004 (subagent usage) | no | `[APPROVE]`. The flush never runs in `dispatchBack`'s own turn; once on the toast press and on the press whose toast throws, never on the quitting press; `dispatchBack` otherwise byte-identical to round 1; its own mutants killed; I1, S4, S5, S6, P3 killed. Reasoned, not run on a device: the 0 ms timer runs after the host's callback, and a late one is covered by the hide flush. `alertPrompts.ts` unchanged. 6 files 173 passed; `pnpm check` 0/0; CRLF. |
+| 3561 | 2026-10-22 | Independent check of the CHORE-181 records (MC-455, CHORE-351, CHORE-352, the CHORE-181 status, rows 3551 to 3560) | doc-verifier | 46,662 (subagent usage) | no | No required corrections; code-describing bullets CONFIRMED against the diff. Applied: `toast` and `none` named in the hold list. Not covered by it: the CHORE-352 overlay list (from rows 3551 and 3552) and the per-row quotes of the verdict files; the `selectModule` caller (`applyModule` returns on `''`) was checked by the orchestrator. |
+| 3562 | 2026-10-22 | Grid avatar step 1: PC trace with a synthetic profile and a plan draft (`%TEMP%\risu-lane-e\grid\packet.md`) | investigator | not captured | no | Thumbnails persist in IndexedDB; after a first pass every visible avatar is a store hit (about 0.08 ms on the PC). First-pass cost 22 to 29 ms per avatar unthrottled, 133 to 147 ms at 6x, mostly full-size decode plus `toDataURL` on the main thread; queue concurrency 2, LIFO, no cancel; the store write is awaited inside the slot. Phone attribution INFERRED. |
+| 3563 | 2026-10-22 | Independent check of row 3562 (`grid\verify.md`) | doc-verifier | not captured | no | Mechanism claims CONFIRMED with corrections: the memo is FIFO, not LRU; the `urlDecodeOff` latch sets only when the bytes path then decodes; the size skip is decided only after a full decode. Harness not re-run. |
+| 3564 | 2026-10-22 | Grid avatar plan, stages A and B (`grid\plan.md`) | orchestrator | n/a | no | A1 write outside the slot with a cap; A2 decode through `createImageBitmap`; B1 drop unwanted queued work, B2 read timeout not a miss, B3 no full-size paint for big images. |
+| 3565 | 2026-10-22 | Grid avatar Gate 1 (`grid\g1\verdict.md`) | opus-reviewer | not captured | no | `[APPROVE WITH AMENDMENTS]`. A-1 real backpressure; A-2 order; A-3 the write failure is silent today; A-4 test hooks; A-5 measure the exact A2 variant first, drop rule; A-6, A-7 if A2 lands (bump `THUMB_VERSION` instead of a pixel gate). Stage B: B-1 to B-8 (feature-off is not a failure; keep the hung-store guard T3b; the grey style must not be cached; size by bytes, unknown is big; bounded back-off; aborts leave no trace; opt-in from the grid component; deliberate test changes). D1 and D4 to the maintainer (MC-461). |
+| 3566 | 2026-10-22 | A2 measurement, scratch only (`grid\a2\report.md`) | investigator | 83,521 (subagent usage) | no | Headless Chrome 155 on the PC, 24 avatars per run, concurrency 2, 6 runs per path. Long-task sum unthrottled: 832x1216 PNG 0 to 0 (rule undefined, no task over 50 ms today); 1536x2304 PNG 923 to 0 ms. At 6x: 66% and 79% lower on the two PNG tiers. JPEG: no gain unthrottled; 2048x3072 worse (29.7 to 34.8 ms per avatar). Orchestrator ruling: does not qualify under the pre-set rule; re-evaluate with the phone capture. A-7 smoke run only. |
+| 3567 | 2026-10-22 | A1 implementation (`grid\a1\report.md`) | sonnet-coder | 112,850 (subagent usage: 25,347 READY stop + 87,503) | no | Exact grant for `avatarThumb.ts` and `avatarThumb.test.ts`, revoked after the hand-back. New T7c (5 tests), T7b changed deliberately. Red on base via a scratch transform: 7 failed, 92 passed. Scratch mutants (no backpressure, src or skip write inside the slot, reset not clearing, no epoch check) all killed. Orchestrator: hand-back hashes match, no other repository path written; the coder could not write its report, which the orchestrator saved. |
+| 3568 | 2026-10-22 | A1 Gate 2 (`grid\a1g2\verdict.md`) | opus-reviewer | 89,919 (subagent usage) | no | `[EDITORIAL]`. Peak pending writes are cap + concurrency - 1 = 5 (probe), so the cap comment overstated the limit; a timed-out write stops counting while its request may live on (accepted). No deadlock or double settle (probes); A-2 order deviation justified (the literal order overshoots the cap: mutant killed); A-3, A-4 met; T7b change justified. Red on base re-run: 7 failed. Coder's mutants and 6 more killed. 164 targeted tests passed; `pnpm check` 0/0. |
+| 3569 | 2026-10-22 | Editorial fixes after row 3568 | orchestrator | n/a | no | Cap comment states the peak; the cap test name says "at concurrency 1"; T7c added to the test file's header and region comments. Comment and test-name text only. Both files CRLF; `avatarThumb.test.ts` 99 passed; `pnpm check` 0/0. |
+| 3570 | 2026-10-22 | Independent check of the grid avatar records (MC-459 to MC-461, the stage A status, rows 3562 to 3569, the handoff) | doc-verifier | 63,303 (subagent usage) | no | No corrections; code-describing claims CONFIRMED against the diff; `avatarThumb.test.ts` re-run, 99 passed; maintainer relays and token figures unverifiable. Applied: the `maxPendingWrites` test hook named in the status. |
+| 3571 | 2026-10-22 | Phone 1 grid traces, analysis (`%TEMP%\risu-lane-e\grid\phone-analysis\report.md`) | perf-analyzer | 138,538 (subagent usage) | no | Grid capture 101 s: 11 main-thread tasks of 8.2-9.2 s, 95.1 s; 90.7 % of CPU samples under store2 `plan`; thumbnails in 0.5-0.7 s gaps; first thumbnail IPC +8.8 s; no 15 s timeout, no full-size paint; off-screen cells filled before visible ones (counters). Ranking below starvation is judgement. Corrections in row 3572. |
+| 3572 | 2026-10-22 | Independent check of row 3571 (`grid\phone-verify\`, own scripts) | doc-verifier | 58,754 (subagent usage) | no | Core figures CONFIRMED. CORRECTED: toDataURL about 42 calls, mean about 72 ms (not 31, median 97 ms); the main-thread re-decode is 42 of 42 images, about 40 % of toDataURL time; counter times about +18 s and +63 s (probes delayed). `plan` is in the saveLoop chunk; the poster of each slice is not shown. Corrections appended to the report. |
+| 3573 | 2026-10-22 | Stage B proposal (`grid\stageB-proposal.md`) | orchestrator | n/a | no | B1' (visible first, drop abandoned work) now; B2, B3, A2, background generation after a capture following lane B's planner fix; the 10 s target after that fix about 4-6 s (inferred). The maintainer chose B1' only (`MC-463`). Lane B told of the starvation (CHORE-225 validation case). |
+| 3574 | 2026-10-22 | B1' source packet (`grid\b1\packet.md`) | investigator | 91,990 (subagent usage) | no | Four render sites, one `CharacterWindow`, overscan `max(1 viewport, 2 rows)`, keyed cells not remounted on scroll; no observer in `CharListAvatar`; options: fixed priority (rejected), per-tile observer, window-derived visibility, abort only (does not fix the order). Premises checked at Gate 1 (row 3576). |
+| 3575 | 2026-10-22 | B1' plan (`grid\b1\plan.md`) | orchestrator | n/a | no | Visibility from `CharacterWindow`'s scroll state, read live by the queue; per-caller abort under Gate 1 B-6; other callers unchanged. A per-tile observer rejected (the windowing removed per-tile observers deliberately). |
+| 3576 | 2026-10-22 | B1' Gate 1 (`grid\b1\g1\verdict.md`) | opus-reviewer | 147,578 (subagent usage) | no | `[APPROVE WITH AMENDMENTS]`, B1'-1 to B1'-9: untracked live visibility from `windowViewport`; nothing reactive read before the first await; missing or throwing visibility counts as visible; identity-checked in-flight deletion; signal check before `getFileSrc`; aborted outcome neither `null` nor a string; abort during the store read; reset/stats; added tests and mutants. Orchestrator: one commit; Q2(a) drop the entry in every phase. |
+| 3577 | 2026-10-22 | B1' implementation (`grid\b1\impl\report.md`) | sonnet-coder | 211,734 (subagent usage: 26,895 READY stop + 184,839) | no | Exact grant for 12 paths (one new test file), revoked after the hand-back; hand-back hashes match; no other repository path written. New tests: avatarThumb T5f (18), getCharImageThumb (5), CharListAvatar (7), CharacterWindow (6), a real-pipeline file (3). Red on the base via a scratch transform; mutants M01-M23 killed (M11 after a test was strengthened). 10 files 299 passed; `pnpm check` 0/0. |
+| 3578 | 2026-10-22 | B1' Gate 2 (`grid\b1\g2\verdict.md`) | opus-reviewer | 142,538 (subagent usage) | no | `[EDITORIAL]`. No logic, cache-safety or invariant defect; every amendment implemented and pinned. Svelte `dev:false` compile confirms the visibility function runs untracked. 14 files 387 passed; `pnpm check` 0/0. Base run: 34 failed (the `getCharImage` signal check proven by M14, not the base run). Two test comments corrected by the orchestrator (a guard mislabelled green on the base; a header said two reproducers where there are two plus a guard); `avatarThumb.test.ts` and the new file re-run, 120 passed. Surviving reviewer mutants: unsettled dropped task (follow-up test gap), pump in the abort listener (no effect), visibility boundary. |
+| 3579 | 2026-10-22 | Independent check of the stage B records (MC-463, the stage B status, the stage A supersession bullet, rows 3571 to 3578, the handoff) | doc-verifier | 51,239 (subagent usage) | no | No blocking corrections; code-describing bullets CONFIRMED against the diff (read, not run). Applied: "about 4 per gap" replaced by the supported count (42 completed tasks in 10 gaps). The "4-6 s" figure of row 3573 is in the proposal (the checker's grep missed the long line). Maintainer relay, token figures and the coder's base-run details unverifiable by it. |
 
 ## Handoff
 
@@ -180,3 +357,11 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 **2026-10-22, CHORE-117 stage 2.** Technically accepted (rows 3533 to 3541; records checked in row 3542); the maintainer approved the commit (`MC-453`); the 20 named paths and these records are committed together on `worktree-Lane-E` over main `eb5e10bec` and sent to lane A for merge. Both writer grants (rows 3533, 3537) were revoked after their hand-backs. Not done in this lane: a full `pnpm test` and build (lane A's, on merged main). Next: CHORE-187 with normal gates, then CHORE-181. Next free IDs: MC-454, CHORE-351, row 3543.
 
 **2026-10-22, CHORE-187.** Technically accepted (rows 3543 to 3548; records checked in row 3549); the maintainer approved the commit and merge (`MC-454`); committed with these records on `worktree-Lane-E` over main `1f4771ca7` (row 3550) and sent to lane A. Its writer grant (row 3545) was revoked after the hand-back. Next: CHORE-181; its read-only investigation packet is `%TEMP%\risu-lane-e\a3\181\packet.md` (not yet verified; six product questions for the maintainer). Next free IDs: MC-455, CHORE-351, row 3551.
+
+**2026-10-22, CHORE-181.** The maintainer answered the six questions (`MC-455`); CHORE-351 and CHORE-352 filed. Technically accepted (rows 3551 to 3560) on `worktree-Lane-E` over main `b87e457f9`; commit pending the maintainer's approval; then lane A's merge, full checks and the phone check listed under CHORE-181. Both writer grants revoked. A3's four items (CHORE-153, CHORE-117 stage 2, CHORE-187, CHORE-181) are then all with lane A. The guard gap of row 3558: the maintainer kept lane E's interim measures (no temporary repository edits by any tool, mutants in scratch only, a hash check after any "restored" hand-back) and asked for a ticket, revisited if a similar bypass happens again; lane A files it as MC-457 and CHORE-353. Records checked in row 3561. The maintainer approved the commit and merge (`MC-458`); committed with these records over main `0d905815b` and sent to lane A. Next free IDs: MC-459, CHORE-354, row 3562.
+
+**2026-10-22, grid avatars stage A.** Lane E took grid avatar loading from lane D (`MC-459`); the maintainer answered the product questions (`MC-460`, `MC-461`). Stage A (A1 only) technically accepted on `worktree-Lane-E` over `c4dc06dbc` (rows 3562 to 3569; records checked in row 3570); its writer grant was revoked after the hand-back. The maintainer approved the commit and merge (`MC-462`); committed with these records over main `d42bfeb63` and sent to lane A. A2 not shipped (row 3566). Next: lane A's phone capture per `%TEMP%\risu-lane-e\grid\phone-request.md`, then a stage B plan from the Gate 1 amendments and the phone data, and a decision on A2 and on background generation (MC-460 Q3). Next free IDs: MC-463, CHORE-354, row 3571.
+
+**2026-10-22, after the stage A merge.** Lane A merged stage A as `771ec2b30` (full checks running there). CHORE-354 filed at lane A's request from the verified CHORE-181 phone report (open, low priority). Lane E has no other work until lane A's phone 1 grid capture lands. Next free IDs: MC-463, CHORE-355, row 3571.
+
+**2026-10-22, grid avatars stage B (B1').** The phone 1 capture showed the grid starved by store2 planning (rows 3571, 3572); lane B has the grid-open validation case. The maintainer chose B1' only (`MC-463`). B1' technically accepted on `worktree-Lane-E` over `a25ceb764` (rows 3573 to 3578; records checked in row 3579); its writer grant was revoked after the hand-back. The maintainer approved the commit and merge (`MC-464`); committed with these records over main `8c5347ba5` and sent to lane A. Next: after lane B's planner fix, lane A's phone capture on a re-import (pass mark: over 80 % of paints before the first swipe on visible cells), then decisions on B2, B3, A2 and background generation. Next free IDs: MC-465, CHORE-355, row 3580.

@@ -6,7 +6,7 @@ import { loadData } from "./ts/bootstrap";
 import { initHotkey } from "./ts/hotkey";
 import { preLoadCheck } from "./preload";
 import { startKeepAliveService } from "./ts/android/keepAliveService";
-import { startSaveOnHide } from "./ts/process/saveOnHide";
+import { flushPageBeforeLeaving, startSaveOnHide } from "./ts/process/saveOnHide";
 import { mount } from "svelte";
 import { installBackGuard } from "./ts/backHandlers";
 import { alertToast } from "./ts/alert";
@@ -24,7 +24,10 @@ preLoadCheck()
 let app = mount(App, {
     target: document.getElementById("app"),
 });
-installBackGuard({ showToast: () => alertToast(language.alerts.pressBackAgainToQuit) })
+installBackGuard({
+    showToast: () => alertToast(language.alerts.pressBackAgainToQuit),
+    flush: flushPageBeforeLeaving,
+})
 // The import flow is loaded on first use: a boot that never imports does not load the backup code.
 registerStore2Boot((env) => dispatchStore2Boot(env, {
     ui: createProductionBootUi(),

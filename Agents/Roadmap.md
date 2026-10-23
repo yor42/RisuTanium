@@ -18,6 +18,8 @@ Goal: a personal Android MVP (not a release), usable before the major UI overhau
 
 **Constraint:** the MVP APK uses the final package id and the maintainer's real signing key (the package-id and signing part of CHORE-60), so later APKs install over it without data loss. The pre-cutover upstream-readable `.bin` stays on the PC as the only restore until 5a and the A3 fixes land.
 
+**Status (2026-10-22, lane A fold-in): store2 stage 5a (A2) merged in `9dd028b3b` (no-ff of lane B's `67273e799`; `MC-366`, `MC-368`, `MC-369`). Full checks on `9dd028b3b`: `pnpm test` 20,962 passed; `checkReleaseDist` OK on 244 files; `cargo test --lib` 202 passed; `pnpm check` 0/0; build passed. A9 was dispatched on phone 1 as a MEASURE build of `771ec2b30` (it contains 5a), installed as an in-place update with the fixed test key; the restore path is a re-import of `Backup_partial.bin`; the result is pending. The daily APK must not be built from `main` until A9 passes (`MC-368` 1, `MC-457` 2).**
+
 **Parked until after A5:** stage 5b (clean-up UI, quota path, C3/Q3, Q9), CHORE-128, CHORE-115, the Node items (CHORE-49, 62, 46, 0b, the CHORE-129 web/Node residual), list windowing, S4-6, CHORE-147, the old Step 3 re-measure, WF-6 and WF-10, the old Step 4 UI-overhaul checkpoint, and the release (R).
 
 The "Queue after the 2026-10-09 batch" section and the Sequencing Summary below are superseded by this block.
@@ -6838,6 +6840,8 @@ with index -1.
 
 ### CHORE-181 — Back with a dialog or alert open quits the Android app with no toast and does not close the dialog
 
+**Status update (2026-10-22, lane A, fifth): merged in `c4dc06dbc` (no-ff of `00ae53c77`; `MC-346`, `MC-455`, `MC-458`); technically accepted (lane E rows 3551 to 3561). The phone 2 check is done (ledger row 2176; the report `%TEMP%\risu-b715\c181-phone\report.md` is verified with corrections): cells 1 to 3 and 6 pass; cell 4 persisted 4 of 4. Full checks on `c4dc06dbc`: `pnpm test` 20,915 passed; two `regexEarlyReject` tests timed out in the full run and passed alone (21 of 21), and lane D's 60 s describe timeout (`e63a3eea8`) fixes them (rows 2171 and 2172). The large-profile Back delay (the second Back quits only through the host's 1 s timeout, and no hide event fires on that quit) is CHORE-354, low priority; it is not a loss and is not shown to be a regression of this item.**
+
 **Status update (2026-10-22, lane A, fourth): answers relayed, MC-455 pending in lane E records.**
 
 **Status update (2026-10-22, lane A, third): the Back-guard flush deferred by CHORE-153 is recorded here (lane E).** The CHORE-153 commit (`c5c6897f5`) leaves the Back-guard flush open, and it is tracked under this item. Not scheduled. Lane E's plan puts this item after CHORE-117 stage 2, with normal gates; S4-5 is merged in `3a0f2cf0c`.
@@ -7090,6 +7094,8 @@ The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer); the im
 
 ### CHORE-223 — An Android stub export spends most of its time in two steps outside the asset loop ('export start' to 'export cold collected'; 'export database encoded' to 'export stub and late payloads done')
 
+**Status update (2026-10-22, lane A, fifth): stage A Part 1 done on phone 1 (`%TEMP%\risu-b715\phone1-fresh\report.md`, independently verified with the doc-verifier's corrections, which take precedence; ledger row 2178). Export 932 s against A1's 1,170 s, about 20 % faster overall; completion PASS (517 + 500 + 1 = 1,018). New open item: a cold-collect regression (cold collect 358 s against 100 s; `stubReadMs` 351 s against 98 s; the same read counts), under lane B's diagnosis; no CHORE number is assigned. Stage B design waits on that diagnosis. Not COMPLETE.**
+
 **Status update (2026-10-22, lane A, fourth): stage A merged in `eb5e10bec` (no-ff of `4b04514b0`; `MC-365`, `MC-367`); not COMPLETE: stage A Part 1 is owed.** Full checks on `eb5e10bec` (`%TEMP%\risu-b715\records-b223a\`): `pnpm test` 917 files passed, 1 skipped (20,772 tests passed, 23 skipped); `pnpm check` 0/0; `pnpm build` passed; `cargo test --lib` 202 passed. Phone 2, Part 2, on a test profile: after a settled commit, `__risuGcNow.run({confirm:true})` returned done (deleted 9); after a restart it returned done (deleted 0). Per the doc-verifier, done after a tracked commit means the last store2-commit write reported `flushed === true`; n=1, tiny profile, the refused-idle path was not exercised. Part 1 was not run: A1's throwaway key is deleted; `MC-456` 4 chose a fixed test key with a phone 1 wipe and re-import (the tool change is in progress; ledger row 2170). Part 2 unblocks lane B's stage 5a coding (`MC-345` A2). Ledger rows 2161 to 2170 and 2379 to 2388.
 
 **Status update (2026-10-22, lane A): MVP scope and lane B's follow-ups (`MC-452` item 2; `MC-363` to `MC-369`).** The slow export is MVP scope (`MC-452`). Lane B reports that CHORE-223 stage A covers the write path and stub read-ahead, not the 686 s asset loop, which may need its own item (not filed; no CHORE number assigned). Store2 stage 5a runs automatic clean-up only in the Tauri app; the self-hosted server and web versions keep today's behaviour until 5b (`MC-369`). The stored-character defaults are CHORE-224 (`MC-363` 4).
@@ -7139,6 +7145,47 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 
 **Status (2026-10-22): open, not scheduled.** Filed per `MC-346` Q-A ("Leave as today, ticket it"). Source: the A1' audit (CHORE-117 stage 2 row) and doc-verifier correction 10 (foldBack re-marks everything).
 
+### CHORE-351 (new) — select and input prompts have no cancel, so Back cannot close them (MC-455 Q2)
+
+`alertSelect` and `alertInput` prompts have no cancel button and no cancel value; about 50 external call sites read their answer (the verifier's count, which misses calls through a reference). Under MC-455, Android Back does nothing while one is open. A real cancel needs a cancel value and a caller audit. (The `selectModule` prompt is not part of this ticket: its X button answers `''`, which its only caller treats as a cancel, so Back answers it the same way under CHORE-181.)
+
+**Status (2026-10-22): open, not scheduled.** Filed per MC-455 Q2 ("Nothing for now, ticket it").
+
+### CHORE-352 (new) — Back does not close Settings, the Realm frame, popups or panels (MC-455 Q1)
+
+Overlays outside `alertStore` (Settings, the Realm frame, the bookmark list, `popupStore`, the easy panel, the popup editor, the loadout modal, iris, the custom sidebar config dialog) have no Back handler: with one open, Android Back takes the toast-then-quit guard. MC-455 kept that behaviour for CHORE-181. The phone sidebar and Grid edit mode already have Back handlers.
+
+**Status (2026-10-22): open, not scheduled.** Filed per MC-455 Q1 ("Pop-up dialogs only").
+
+### CHORE-353 — The write-scope guard refuses only the Edit and Write tools, so a shell write can change a repository file outside its grant (MC-457 1)
+
+**Status (2026-10-22, lane A): open, ticketed, not scheduled (`MC-457` 1).** The maintainer: "let's ticket this for now and revisit this if similar things happen again." Source: lane E's CHORE-181 Gate 2 remediation (ledger row 3558). The coder ran its mutants by text-replacing worktree files with PowerShell and restoring them, including `alertPrompts.ts`, which was outside its grant; the write guard did not refuse it. Lane E's hash check found that file equal to the reviewed copy (row 3559).
+
+- The interim rules stand: no temporary repository edits by any tool, mutants on scratch copies only, and a hash check after any "restored" hand-back.
+- Deferred, not made now: (a) a hook that compares the working tree before and after each shell command and flags writes outside the grant; (b) one worktree per coder. Revisit both if a similar shell write recurs.
+
+### CHORE-354 (new) — on a large profile the page does not answer Back within 1 s after the first Back, and no hide event fires on the quit
+
+On phone 2 with the large profile `m2-mix18k` (CHORE-181 cell 5), after the first Android Back showed the quit toast the page logged nothing further and the toast never cleared; the second Back quit only through the host's 1 s timeout (1.018 s, against 16 to 30 ms on the small profile). The edits persisted. On both large-profile quits no `visibilitychange` to hidden fired (0 of 2, against 5 of 5 on the small profile; `pagehide` 0 of 7 overall), so save-on-hide (CHORE-153) did not run and the Back-guard flush (CHORE-181) was the only save request before the quit.
+
+- Candidate causes (neither shown): (a) the Back-guard flush's save, only if `hasUnsavedSaveMarks()` was true at the first Back (in run r1 the edit was 3.4 s old, so the flush was probably a no-op; only run r2-fast could involve it); (b) the debounced save or other large-profile main-thread work. Not shown to be a CHORE-181 regression.
+- Evidence needed: a page CPU profile across the first and second Back on `m2-mix18k`; a matched large-profile run with the flush disabled and the edit within about 100 ms of the first Back. Removing or deferring the flush is not supported without that run, since it is the only pre-quit save request when no hide event fires.
+- Cost bounded: the second Back still quits through the host timeout; no edit was lost in the runs.
+
+**Status (2026-10-22): open, low priority, not scheduled.** Filed at lane A's request from the verified CHORE-181 phone report (`%TEMP%\risu-b715\c181-phone\report.md`, corrections appended). Folded in by lane A in `a25ceb764`.
+
+### Grid avatar loading (MC-452, MC-459) — stage A, the thumbnail write leaves the generation slot (no CHORE number)
+
+**Status (2026-10-22, lane A fold-in): stage A1 merged in `771ec2b30` (no-ff of `cd4546b8e`; `MC-459` to `MC-462`); full checks on `771ec2b30`: `pnpm test` 20,968 passed, 23 skipped; `pnpm check` 0/0; build passed. The phone 1 cold capture was taken on a pre-A1 build (lane E's ledger rows 3562 to 3570; the grid part of `%TEMP%\risu-b715\phone1-fresh\report.md`, whose thumbnail counts are unsupported). Stage B waits on lane E's trace analysis.** Decisions: MC-459, MC-460 and MC-461.
+
+- In `src/ts/media/avatarThumb.ts`, a finished thumbnail is memoized, its waiters resolve and its concurrency slot is freed before its IndexedDB write settles; the write runs outside the slot, still bounded by the store timeout, and its failure stays silent. A slow store therefore no longer holds back the next thumbnail.
+- Backpressure: no new task starts while 4 or more writes are unsettled. Tasks already running still add their writes, so the peak is 5 at the default concurrency of 2 (probe, row 3568). A write that times out stops counting even though the underlying IndexedDB request may still be pending (accepted, row 3568).
+- Test hooks: `setLimits` accepts `maxPendingWrites`; `reset()` clears the pending-write count and a write epoch keeps a late write from an earlier test out of a later count; `stats()` exposes the count.
+- Existing test T7b changed deliberately: a write timeout no longer "frees the slot"; it now asserts that generation resumes once the pending write times out (with a cap of 1).
+- A2 (decode through `fetch` and `createImageBitmap`) is not shipped: it did not meet the pre-set 30% rule (row 3566). `THUMB_VERSION` is unchanged, so existing thumbnails stay valid.
+- Not measured on a device; the PC figures are best-case hardware. Whether stage A changes the phone fill rate is unknown until the phone capture.
+- Stage B (from the Gate 1 verdict, `%TEMP%\risu-lane-e\grid\g1\verdict.md`, B-1 to B-8): read timeout not a miss, no full-size paint for big images (grid avatar component only, unknown size counts as big), dropping queued work nobody waits for; retry rules per MC-461 (fill on next draw; a few retries with back-off, then grey until restart).
+
 ### CHORE-240 — A full `pnpm test` rewrites `modules.test.ts.snap` with LF line endings
 
 **Status (2026-10-22, lane D): open, not scheduled.** Test-only. Source: ledger row 2515 (first filed there); first seen in the `git status` of the S4-4 Gate 1 round 1 report after the CHORE-192 full run (row 2504).
@@ -7148,6 +7195,8 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 - **Smallest coherent correction (draft):** find what makes Vitest write the file; a `.gitattributes` rule `*.snap text eol=lf` so the checkout is LF like the blob and what Vitest writes; check which other `.snap` files exist and whether any is committed CRLF before adding it. Acceptance: two consecutive full runs leave the tree clean.
 
 ### CHORE-241 — MVP chat-open and edit stalls: a quadratic display regex, and chat-phase measurement
+
+**Status update (2026-10-22, lane A, after the phone 1 capture): S3 and S4 likely parked; lane D will propose (`MC-457` 5). The dominant cost is store2 save planning: on phone 1 (ledger row 2178) the planner `plan` is about 110 s of main-thread time after a chat select and 8.4 s of a 10.9 s one-character edit. That planner fix is lane B's; lane D keeps the render work and hands its plan-path evidence to lane B. Open item: the save-planning stall under lane B, which lane B has named CHORE-225 (its records entry comes with batch 4). The 60 s timeout fix for the differential tests is merged in `e63a3eea8` (ledger rows 2581 and 2582).**
 
 **Status (2026-10-22, lane A fold-in): S1 and S0 merged in `1d2272b7d` (no-ff of `a29c58871`, lane D; `MC-386`, `MC-387`); technically accepted; not COMPLETE: S3 and S4 wait for the phone 1 capture.** S2 was dropped: every `vite` build already strips `console.*`. Full checks on `1d2272b7d` (`%TEMP%\risu-b715\records-d241\`): `pnpm test` 923 files passed, 1 skipped; 20,882 tests passed, 23 skipped; `pnpm check` 0/0; `pnpm build` passed; `checkReleaseDist` OK (242 files, no measurement markers). Lane D's ledger rows 2567 to 2580 are folded in after row 2566; the mechanism, the S1 and S0 detail and the Gate 1 and Gate 2 rounds are in `Agents/Lanes/lane-D-records.md`.
 

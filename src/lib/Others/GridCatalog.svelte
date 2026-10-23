@@ -1322,7 +1322,7 @@
     }
 </script>
 
-{#snippet listCard(cardKey: string)}
+{#snippet listCard(cardKey: string, position: number, visible: () => boolean)}
     {@const index = indexByKey.get(cardKey) ?? -1}
     {@const char = DBState.db.characters[index]}
     <!-- Defence in depth: a position past the end of a shrinking list draws no row instead of throwing. -->
@@ -1334,7 +1334,7 @@
             if (clickedLink(event) || (!clickedButton(event) && selectedInside(event.currentTarget, window.getSelection()))) { return }
             pick(index)
         }}>
-            <CharListAvatar src={char.image} />
+            <CharListAvatar src={char.image} {visible} />
             <div class="flex-1 flex flex-col ml-2 min-w-0">
                 <h4 class="text-textcolor font-bold text-lg mb-1 break-words"><button class="text-start font-bold cursor-pointer">{char.name || language.settingsPage.unnamed}</button></h4>
                 <CharacterDescription
@@ -1394,7 +1394,7 @@
     {/if}
 {/snippet}
 
-{#snippet gridCard(cardKey: string)}
+{#snippet gridCard(cardKey: string, position: number, visible: () => boolean)}
     {@const entry = entryByKey.get(cardKey)}
     {#if entry?.kind === 'folder'}
         <!-- The tile is a native button; its picture is decorative and the folder's name is the button's. In edit mode a tap selects it and the corner chevron opens or closes the folder. -->
@@ -1469,6 +1469,7 @@
             >
                 <CharListAvatar
                     src={char.image}
+                    {visible}
                     fallbackStyle={char.image ? '' : index === $selectedCharID ? 'background:var(--risu-theme-selected)' : ''}
                     label={char.name || language.settingsPage.unnamed}
                     onclick={() => {

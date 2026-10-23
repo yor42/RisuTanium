@@ -57,15 +57,21 @@ const DEFAULT_MEMO_MAX_ENTRIES = 1000
 const DEFAULT_MEMO_MAX_BYTES = 16 * 1024 * 1024
 /** Bounds a single `getItem`/`setItem` call, separate from `timeoutMs`
  *  (which bounds the whole read-decode-draw pipeline), so a hung IndexedDB
- *  open or transaction can't hold a store call - or the concurrency slot
- *  `persistRecord` is awaited under - open indefinitely. */
+ *  open or transaction can't hold a store call - or the pending-write count
+ *  that gates generation - open indefinitely. */
 const DEFAULT_STORE_TIMEOUT_MS = 5000
+/** Unsettled writes (running or waiting on the store) at which no new task
+ *  starts, so a slow store slows the first pass down instead of letting
+ *  generated data URIs pile up in memory. Tasks already running still add
+ *  their writes, so the peak is this count plus the concurrency minus one. */
+const DEFAULT_MAX_PENDING_WRITES = 4
 
 let concurrency = DEFAULT_CONCURRENCY
 let timeoutMs = DEFAULT_TIMEOUT_MS
 let memoMaxEntries = DEFAULT_MEMO_MAX_ENTRIES
 let memoMaxBytes = DEFAULT_MEMO_MAX_BYTES
 let storeTimeoutMs = DEFAULT_STORE_TIMEOUT_MS
+let maxPendingWrites = DEFAULT_MAX_PENDING_WRITES
 
 /** Sentinel returned by `withStoreTimeout` when the timeout wins the race;
  *  a rejection from the underlying call still propagates normally. */
@@ -147,11 +153,7 @@ async function readStoreRecord(loc: string): Promise<{ kind: 'src', src: string 
     return { kind: 'miss' }
 }
 
-async function persistRecord(loc: string, record: ThumbRecord): Promise<void> {
-    const store = getStore()
-    if (!store) {
-        return
-    }
+async function persistRecord(store: ThumbStoreLike, loc: string, record: ThumbRecord): Promise<void> {
     try {
         // A timeout (like a rejection) is simply ignored here: the caller
         // already has the generated src regardless of whether this write
@@ -163,13 +165,73 @@ async function persistRecord(loc: string, record: ThumbRecord): Promise<void> {
     }
 }
 
+/** Writes in flight, counted from the moment one starts until the store call
+ *  settles or times out. */
+let pendingWrites = 0
+/** Bumped by the test reset, so a write that was started before it neither
+ *  changes the count nor re-pumps afterwards. */
+let writeEpoch = 0
+
+/** Starts the write outside the concurrency slot and returns at once. The
+ *  store is captured here, so a write still pending never lands in a store
+ *  installed later. The write's outcome never reaches the memo or the caller. */
+function schedulePersist(loc: string, record: ThumbRecord) {
+    const store = getStore()
+    if (!store) {
+        return
+    }
+    const epoch = writeEpoch
+    pendingWrites++
+    void persistRecord(store, loc, record).then(() => {
+        if (epoch !== writeEpoch) {
+            return
+        }
+        pendingWrites--
+        pump()
+    })
+}
+
 // ---------------------------------------------------------------------------
 // In-memory memo (LRU by insertion order) and in-flight dedupe.
 // ---------------------------------------------------------------------------
 
 const memo = new Map<string, string | null>()
 let memoBytes = 0
-const inFlight = new Map<string, Promise<string | null>>()
+
+/** Outcome of a lookup whose caller stopped waiting. Neither a string nor
+ *  `null`, so no caller-side cache can store it as a picture or as "no
+ *  thumbnail". */
+export const THUMB_ABORTED: unique symbol = Symbol('avatarThumb-aborted')
+export type ThumbAborted = typeof THUMB_ABORTED
+
+/** Per-call options of a lookup. Without them a call behaves as it always did:
+ *  it cannot be abandoned and counts as visible. */
+export interface ThumbRequestOptions {
+    /** Abandons this caller's wait. A task nobody waits for any more is dropped
+     *  while it has not started. */
+    signal?: AbortSignal
+    /** Read when the queue picks its next task, never earlier. A missing or
+     *  throwing function counts as visible. */
+    visible?: () => boolean
+}
+
+/** One caller waiting on a shared lookup. */
+interface ThumbWaiter {
+    visible: (() => boolean) | undefined
+}
+
+/** One shared lookup per loc, from the store read until it settles. */
+interface InFlightEntry {
+    promise: Promise<string | null>
+    waiters: Set<ThumbWaiter>
+    /** Set once the generation task is queued. */
+    task: QueueTask | null
+    /** True once every waiter left before the task started; the read that is
+     *  still pending then enqueues nothing. */
+    dropped: boolean
+}
+
+const inFlight = new Map<string, InFlightEntry>()
 
 function memoValueBytes(value: string | null): number {
     return value ? value.length : 0
@@ -193,24 +255,63 @@ function memoize(loc: string, value: string | null) {
 }
 
 // ---------------------------------------------------------------------------
-// Queue: concurrency-limited, LIFO (the icon still on screen shouldn't wait
-// behind ones already scrolled past), with a per-task timeout.
+// Queue: concurrency-limited, newest first among the tasks a caller can see
+// (the icon still on screen shouldn't wait behind ones already scrolled past
+// or mounted below the fold), with a per-task timeout.
 // ---------------------------------------------------------------------------
 
 interface QueueTask {
     loc: string
+    /** The callers still waiting; shared with the in-flight entry. */
+    waiters: Set<ThumbWaiter>
+    /** True from the moment the queue starts the task. */
+    started: boolean
     resolve: (value: string | null) => void
 }
 
 const queue: QueueTask[] = []
 let running = 0
 
+function isWaiterVisible(waiter: ThumbWaiter): boolean {
+    if (!waiter.visible) {
+        return true
+    }
+    try {
+        return waiter.visible()
+    } catch {
+        // A broken getter must not stall the pump that runs from the slot
+        // release and from the write's completion.
+        return true
+    }
+}
+
+function isTaskVisible(task: QueueTask): boolean {
+    for (const waiter of task.waiters) {
+        if (isWaiterVisible(waiter)) {
+            return true
+        }
+    }
+    return false
+}
+
+/** Index of the newest task with a visible waiter, else of the newest task.
+ *  Read at pop time, so a scroll reorders the queue without touching it. */
+function nextTaskIndex(): number {
+    for (let i = queue.length - 1; i >= 0; i--) {
+        if (isTaskVisible(queue[i])) {
+            return i
+        }
+    }
+    return queue.length - 1
+}
+
 function pump() {
-    while (running < concurrency && queue.length > 0) {
-        const task = queue.pop()
+    while (running < concurrency && pendingWrites < maxPendingWrites && queue.length > 0) {
+        const [task] = queue.splice(nextTaskIndex(), 1)
         if (!task) {
             break
         }
+        task.started = true
         running++
         void runTask(task)
     }
@@ -277,13 +378,17 @@ async function runTask(task: QueueTask) {
             finishAndFree(null)
         }
         else if ('skip' in result) {
-            await persistRecord(task.loc, { v: THUMB_VERSION, skip: true })
+            // Memoize and free the slot first: the store write is not
+            // awaited, so a slow store cannot hold generation back. The
+            // write is counted before the slot frees so the pump that
+            // follows already sees it.
             memoize(task.loc, null)
+            schedulePersist(task.loc, { v: THUMB_VERSION, skip: true })
             finishAndFree(null)
         }
         else {
-            await persistRecord(task.loc, { v: THUMB_VERSION, src: result.src })
             memoize(task.loc, result.src)
+            schedulePersist(task.loc, { v: THUMB_VERSION, src: result.src })
             finishAndFree(result.src)
         }
     } catch {
@@ -292,21 +397,50 @@ async function runTask(task: QueueTask) {
     }
 }
 
-function enqueueGeneration(loc: string): Promise<string | null> {
+function enqueueGeneration(loc: string, entry: InFlightEntry): Promise<string | null> {
     if (!ensureReadbackAllowed()) {
         return Promise.resolve(null)
     }
     return new Promise<string | null>((resolve) => {
-        queue.push({ loc, resolve })
+        const task: QueueTask = { loc, waiters: entry.waiters, started: false, resolve }
+        entry.task = task
+        queue.push(task)
         pump()
     })
+}
+
+/** Removes `entry` from the in-flight map only while it is still the entry
+ *  registered for `loc`, so a late cleanup never removes a newer lookup. */
+function forgetEntry(loc: string, entry: InFlightEntry) {
+    if (inFlight.get(loc) === entry) {
+        inFlight.delete(loc)
+    }
+}
+
+/** Called when the last waiter of `entry` left. A task that has started
+ *  finishes and is memoized as usual; anything earlier (store read, queue) is
+ *  dropped in this same synchronous step, so the next caller starts fresh. */
+function dropEntryIfAbandoned(loc: string, entry: InFlightEntry) {
+    if (entry.waiters.size > 0 || entry.task?.started) {
+        return
+    }
+    entry.dropped = true
+    forgetEntry(loc, entry)
+    const task = entry.task
+    if (task) {
+        const at = queue.indexOf(task)
+        if (at >= 0) {
+            queue.splice(at, 1)
+        }
+        task.resolve(null)
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Public lookup.
 // ---------------------------------------------------------------------------
 
-async function resolveThumb(loc: string): Promise<string | null> {
+async function resolveThumb(loc: string, entry: InFlightEntry): Promise<string | null> {
     try {
         const record = await readStoreRecord(loc)
         if (record.kind === 'src') {
@@ -322,28 +456,69 @@ async function resolveThumb(loc: string): Promise<string | null> {
         // trusted enough to attempt generation this call.
         return null
     }
-    return enqueueGeneration(loc)
+    if (entry.dropped) {
+        // Every waiter left during the read: nothing is generated for them.
+        return null
+    }
+    return enqueueGeneration(loc, entry)
+}
+
+/** Gives one caller its own promise around the shared lookup, so its abort
+ *  settles only that caller. Listeners are removed as soon as it settles. */
+function waitOnEntry(loc: string, entry: InFlightEntry, options: ThumbRequestOptions | undefined): Promise<string | null | ThumbAborted> {
+    const waiter: ThumbWaiter = { visible: options?.visible }
+    entry.waiters.add(waiter)
+    const signal = options?.signal
+    if (!signal) {
+        return entry.promise
+    }
+    return new Promise<string | null | ThumbAborted>((resolve) => {
+        const onAbort = () => {
+            entry.waiters.delete(waiter)
+            resolve(THUMB_ABORTED)
+            dropEntryIfAbandoned(loc, entry)
+        }
+        const onValue = (value: string | null) => {
+            signal.removeEventListener('abort', onAbort)
+            resolve(value)
+        }
+        signal.addEventListener('abort', onAbort, { once: true })
+        entry.promise.then(onValue, () => onValue(null))
+    })
 }
 
 /**
  * Resolves a cached (or freshly generated) list-avatar thumbnail for `loc`,
  * or `null` when the caller should fall back to the full-size path. Never
- * rejects, and reads no reactive state before its first await so it stays
- * safe to call from a Svelte `{@const}`.
+ * rejects, and reads no reactive state before its first await (it calls no
+ * visibility function there either) so it stays safe to call from a Svelte
+ * `{@const}`. With options the caller may abandon the wait and gets
+ * `THUMB_ABORTED` instead.
  */
-export async function getAvatarThumbSrc(loc: string): Promise<string | null> {
+export async function getAvatarThumbSrc(loc: string): Promise<string | null>
+export async function getAvatarThumbSrc(loc: string, options: ThumbRequestOptions): Promise<string | null | ThumbAborted>
+export async function getAvatarThumbSrc(loc: string, options?: ThumbRequestOptions): Promise<string | null | ThumbAborted> {
+    if (options?.signal?.aborted) {
+        return THUMB_ABORTED
+    }
     if (memo.has(loc)) {
         return memo.get(loc) ?? null
     }
     const existing = inFlight.get(loc)
     if (existing) {
-        return existing
+        return waitOnEntry(loc, existing, options)
     }
-    const promise = resolveThumb(loc).finally(() => {
-        inFlight.delete(loc)
+    const entry: InFlightEntry = {
+        promise: Promise.resolve(null),
+        waiters: new Set(),
+        task: null,
+        dropped: false
+    }
+    entry.promise = resolveThumb(loc, entry).finally(() => {
+        forgetEntry(loc, entry)
     })
-    inFlight.set(loc, promise)
-    return promise
+    inFlight.set(loc, entry)
+    return waitOnEntry(loc, entry, options)
 }
 
 /** Only local `assets/` locs are eligible, never more aggressive than the
@@ -963,7 +1138,10 @@ export const __avatarThumbTestHooks = {
         readbackCheckFn = fn
         readbackChecked = false
     },
-    setLimits(limits: { concurrency?: number, timeoutMs?: number, storeTimeoutMs?: number, memoMaxEntries?: number, memoMaxBytes?: number }) {
+    setLimits(limits: { concurrency?: number, timeoutMs?: number, storeTimeoutMs?: number, memoMaxEntries?: number, memoMaxBytes?: number, maxPendingWrites?: number }) {
+        if (limits.maxPendingWrites !== undefined) {
+            maxPendingWrites = limits.maxPendingWrites
+        }
         if (limits.concurrency !== undefined) {
             concurrency = limits.concurrency
         }
@@ -983,9 +1161,16 @@ export const __avatarThumbTestHooks = {
     reset() {
         memo.clear()
         memoBytes = 0
+        for (const entry of inFlight.values()) {
+            entry.waiters.clear()
+            entry.dropped = true
+        }
         inFlight.clear()
         queue.length = 0
         running = 0
+        pendingWrites = 0
+        writeEpoch++
+        maxPendingWrites = DEFAULT_MAX_PENDING_WRITES
         readbackChecked = false
         readbackAllowed = true
         readbackCheckFn = defaultReadbackCheck
@@ -1001,11 +1186,17 @@ export const __avatarThumbTestHooks = {
         memoMaxBytes = DEFAULT_MEMO_MAX_BYTES
     },
     stats() {
+        let waiters = 0
+        for (const entry of inFlight.values()) {
+            waiters += entry.waiters.size
+        }
         return {
             memoEntries: memo.size,
             memoBytes,
             inFlight: inFlight.size,
+            waiters,
             running,
+            pendingWrites,
             queued: queue.length
         }
     }

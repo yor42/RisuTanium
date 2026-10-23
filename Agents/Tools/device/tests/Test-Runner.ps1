@@ -252,6 +252,94 @@ try {
     }
     Assert (@(Get-ChildItem -LiteralPath $RunnerDir -Filter '*.ps1' -File | Where-Object { [IO.File]::ReadAllText($_.FullName) -match '\b95\d\d\b' }).Count -eq 0) 'ports: no script mentions the former 95xx default range'
 
+    # sign-install: the persistent test keystore is created once, reused by every later run and never deleted.
+    # A small APK is cut from the built release APK (manifest and resources only) and a fake adb accepts the install.
+    $siApkSource = Join-Path $PSScriptRoot '..\..\..\..\src-tauri\gen\android\app\build\outputs\apk\universal\release\app-universal-release-unsigned.apk'
+    $siJdk = 'C:\Users\yor42\.gradle\jdks\azul_systems__inc_-21-amd64-windows.2'
+    $siBuildTools = if ($env:ANDROID_HOME) { Get-ChildItem (Join-Path $env:ANDROID_HOME 'build-tools') -Directory -ErrorAction SilentlyContinue | Sort-Object { [version]($_.Name -replace '[^\d.].*$', '') } | Select-Object -Last 1 } else { $null }
+    if (-not (Test-Path -LiteralPath $siApkSource) -or -not (Test-Path -LiteralPath $siJdk) -or -not $siBuildTools) {
+        Write-Output 'SKIP sign-install keystore tests: the built release APK, the JDK or the Android build-tools are missing'
+    } else {
+        $siDir = Join-Path $work 'sign-install-key'
+        New-Item -ItemType Directory -Force -Path $siDir | Out-Null
+        $siSmallApk = Join-Path $siDir 'small.apk'
+        Add-Type -AssemblyName System.IO.Compression
+        $siSrc = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $siApkSource).Path)
+        $siDst = [IO.Compression.ZipFile]::Open($siSmallApk, 'Create')
+        foreach ($siName in @('AndroidManifest.xml', 'resources.arsc')) {
+            $siEntry = $siSrc.GetEntry($siName)
+            if ($siEntry) {
+                $siNew = $siDst.CreateEntry($siName, 'NoCompression')
+                $siIn = $siEntry.Open(); $siOut = $siNew.Open(); $siIn.CopyTo($siOut); $siOut.Dispose(); $siIn.Dispose()
+            }
+        }
+        $siDst.Dispose(); $siSrc.Dispose()
+        $siFakeAdb = Join-Path $siDir 'fakeadb.cmd'
+        New-Cmd $siFakeAdb @(
+            '@echo off',
+            'echo %* | findstr /c:"get-state" >nul',
+            'if not errorlevel 1 (echo device& exit /b 0)',
+            'echo %* | findstr /c:"pm path" >nul',
+            'if not errorlevel 1 (echo package:/data/app/x/base.apk& exit /b 0)',
+            'echo %* | findstr /c:"run-as" >nul',
+            'if not errorlevel 1 (echo uid=10000& exit /b 0)',
+            'echo %* | findstr /c:" install " >nul',
+            'if not errorlevel 1 (echo Success& exit /b 0)',
+            'exit /b 0')
+        $siKeystore = Join-Path (Join-Path $siDir ('testks-' + [guid]::NewGuid().ToString('N'))) 'test-release.p12'
+        function Invoke-SignInstallForKeyTest([string]$RunName, [string]$Keystore = $siKeystore) {
+            $text = (& pwsh -NoProfile -File (Join-Path $RunnerDir 'sign-install.ps1') -OutDir (Join-Path $siDir $RunName) -Kind release -Apk $siSmallApk `
+                -AdbExe $siFakeAdb -TestKeystore $Keystore -MaxSeconds 240 | Out-String)
+            $digest = if ($text -match 'test-key-sha256=([0-9a-f]{64})') { $Matches[1] } else { $null }
+            return [pscustomobject]@{ Exit = $LASTEXITCODE; Text = $text; Digest = $digest; Signed = (Join-Path (Join-Path $siDir $RunName) 'signed.apk') }
+        }
+        $siRun1 = Invoke-SignInstallForKeyTest 'run1'
+        $siHash1 = if (Test-Path -LiteralPath $siKeystore) { (Get-FileHash -LiteralPath $siKeystore -Algorithm SHA256).Hash } else { $null }
+        $siRun2 = Invoke-SignInstallForKeyTest 'run2'
+        $siHash2 = if (Test-Path -LiteralPath $siKeystore) { (Get-FileHash -LiteralPath $siKeystore -Algorithm SHA256).Hash } else { $null }
+        Assert ($siRun1.Exit -eq 0 -and $siRun2.Exit -eq 0 -and $siRun1.Text -match 'verdict=pass' -and $siRun2.Text -match 'verdict=pass') 'sign-install: both signing runs pass'
+        Assert ($siRun1.Text -match 'created=True' -and $siRun2.Text -match 'created=False') 'sign-install: the test keystore is created on the first run only'
+        Assert ($siRun1.Digest -and $siRun1.Digest -eq $siRun2.Digest) 'sign-install: a second run prints the same test-key certificate SHA-256'
+        Assert ($siHash1 -and $siHash1 -eq $siHash2) 'sign-install: the test keystore is not deleted or rewritten by the second run'
+        $savedJavaHome = $env:JAVA_HOME
+        $env:JAVA_HOME = $siJdk
+        $siCerts = (& (Join-Path $siBuildTools.FullName 'apksigner.bat') verify --print-certs $siRun2.Signed | Out-String)
+        $env:JAVA_HOME = $savedJavaHome
+        Assert ($siRun2.Digest -and $siCerts -match ('(?i)certificate SHA-256 digest: ' + $siRun2.Digest)) 'sign-install: the second run signs the APK with the printed test key'
+        Assert ((Test-Path -LiteralPath (Join-Path $siDir 'run2')) -and @(Get-ChildItem -LiteralPath (Join-Path $siDir 'run2') -Directory -Filter 'ks-*').Count -eq 0 -and (Test-Path -LiteralPath $siKeystore)) 'sign-install: no per-run keystore directory is left under the output directory and the test keystore stays'
+
+        # first-run race: a valid keystore appears at the target after keytool finished and before the move; it must survive untouched
+        $siKeytoolExe = Join-Path $siJdk 'bin\keytool.exe'
+        $siRaceDir = Join-Path $siDir 'race'
+        New-Item -ItemType Directory -Force -Path $siRaceDir | Out-Null
+        $siRaceSource = Join-Path $siRaceDir 'winner.p12'
+        $null = & $siKeytoolExe -genkeypair -keystore $siRaceSource -storetype PKCS12 -storepass 'risu-test-key' -keypass 'risu-test-key' -alias 'risu-test' -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=risu-test' 2>&1
+        $siRaceTarget = Join-Path (Join-Path $siRaceDir 'target') 'test-release.p12'
+        $siRaceSourceHash = (Get-FileHash -LiteralPath $siRaceSource -Algorithm SHA256).Hash
+        $env:RISU_TEST_KEYSTORE_RACE_SOURCE = $siRaceSource
+        try { $siRaceRun = Invoke-SignInstallForKeyTest 'race' $siRaceTarget } finally { Remove-Item Env:\RISU_TEST_KEYSTORE_RACE_SOURCE -ErrorAction SilentlyContinue }
+        $siRaceHash = if (Test-Path -LiteralPath $siRaceTarget) { (Get-FileHash -LiteralPath $siRaceTarget -Algorithm SHA256).Hash } else { $null }
+        Assert ($siRaceRun.Exit -eq 0 -and $siRaceRun.Text -match 'verdict=pass' -and $siRaceRun.Text -match 'created=False') 'sign-install race: the loser passes and reports it did not create the keystore'
+        Assert ($siRaceHash -and $siRaceHash -eq $siRaceSourceHash) 'sign-install race: the keystore that appeared first survives with the same digest'
+        Assert (@(Get-ChildItem -LiteralPath (Split-Path -Parent $siRaceTarget) -Force | Where-Object { $_.Name -ne 'test-release.p12' }).Count -eq 0) 'sign-install race: the loser leaves no temporary keystore file behind'
+
+        # keytool failure: no keystore and no temporary file remain, and the run fails with the keytool exit
+        $siFailTarget = Join-Path (Join-Path $siDir 'keytoolfail-ks') 'test-release.p12'
+        $env:JAVA_TOOL_OPTIONS = '-Xbogusoption'
+        try { $siFailRun = Invoke-SignInstallForKeyTest 'keytoolfail' $siFailTarget } finally { Remove-Item Env:\JAVA_TOOL_OPTIONS -ErrorAction SilentlyContinue }
+        Assert ($siFailRun.Exit -eq 1 -and $siFailRun.Text -match 'verdict=fail' -and $siFailRun.Text -match 'keytool exit') 'sign-install keytool failure: the run fails with the keytool exit'
+        Assert (-not (Test-Path -LiteralPath $siFailTarget) -and @(Get-ChildItem -LiteralPath (Split-Path -Parent $siFailTarget) -Force).Count -eq 0) 'sign-install keytool failure: no keystore and no temporary file are left'
+
+        # release key location: a -TestKeystore under %USERPROFILE%\.risu-signing is refused (USERPROFILE points at scratch here)
+        $siFakeProfile = Join-Path $siDir 'fakeprofile'
+        $siReleaseLike = Join-Path (Join-Path $siFakeProfile '.risu-signing') 'test-release.p12'
+        $savedUserProfile = $env:USERPROFILE
+        $env:USERPROFILE = $siFakeProfile
+        try { $siRefuseRun = Invoke-SignInstallForKeyTest 'refuse' $siReleaseLike } finally { $env:USERPROFILE = $savedUserProfile }
+        Assert ($siRefuseRun.Exit -eq 1 -and $siRefuseRun.Text -match 'verdict=fail' -and $siRefuseRun.Text -match 'release key location') 'sign-install: a -TestKeystore under the release key location is refused'
+        Assert (-not (Test-Path -LiteralPath (Join-Path $siFakeProfile '.risu-signing'))) 'sign-install: the refused path creates nothing'
+    }
+
     # -Fast skips the sections the stage 4 and lock tests do not depend on; it is for scratch mutant runs only.
     if (-not $Fast) {
     # quoting

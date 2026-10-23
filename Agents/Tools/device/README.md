@@ -14,7 +14,7 @@ scratch (`%TEMP%\risu-b715\devscripts\`, not in the repository). Where a stateme
 | `lib.ps1` | Shared helpers, dot-sourced by every script: tracked child processes, bounded adb, device lock, result JSON, CDP forwards, crash watch, fixture push, import-ring logic. Do not run it. |
 | `Run-Check.ps1` | Runs one child command under a hard cap and writes `result.json`. |
 | `build-apk.ps1` | Android APK build through Run-Check (debug or release). |
-| `sign-install.ps1` | Verifies (and for release re-signs with a throwaway key) and installs an APK on the test phone. |
+| `sign-install.ps1` | Verifies (and for release re-signs with the persistent test key) and installs an APK on the test phone. |
 | `sign-release.ps1` | Maintainer only: builds the release APK signed with the real key from a SecretManagement vault and verifies the certificate. Refuses agent shells; setup in [SIGNING.md](SIGNING.md). |
 | `device-prep.ps1` | Keeps the phone awake and exempts the app from battery optimisation; `-Revert` restores the originals. |
 | `cold-start.ps1` | N cold starts: `am start -W` time, ready signal over CDP, settled PSS. |
@@ -99,9 +99,18 @@ pwsh -NoProfile -File Agents\Tools\device\build-apk.ps1 -OutDir $env:TEMP\risu-b
 ### sign-install.ps1
 
 `-OutDir`, `-Kind debug|release` (both required), `-Apk`, `-Serial`, `-AllowedSerials`, `-Package`, `-ResignThrowaway`,
-`-AllowClear`, `-MaxSeconds 600`, `-RepoRoot`, `-AdbExe`. A debug APK is verified and installed as built (same stable debug
-key, so reinstalls stay signature-compatible). A release APK, or any APK with `-ResignThrowaway`, is zipaligned and signed
-with a throwaway keystore generated under `-OutDir` for the run and deleted afterwards. Installs with `adb install -r`, then
+`-TestKeystore`, `-AllowClear`, `-MaxSeconds 600`, `-RepoRoot`, `-AdbExe`. A debug APK is verified and installed as built
+(same stable debug key, so reinstalls stay signature-compatible). A release APK, or any APK with `-ResignThrowaway`, is
+zipaligned and signed with the persistent TEST keystore, by default `%LOCALAPPDATA%\risu-test-signing\test-release.p12`
+(override with `-TestKeystore`), so later test builds update in place. It is created once with `keytool` when missing
+(alias `risu-test`, `CN=risu-test`, a fixed non-secret test password) and is never deleted. It is a test key for the spare
+phones and never the release key; release signing stays in `sign-release.ps1`. The certificate SHA-256 is printed on every
+signing run (`test-key-sha256=...`) and recorded in `result.json` (`install.testKeySha256`), so reports can name it. The
+phone must be reinstalled once (`-AllowClear`) if it still holds an app signed with an older throwaway key. A corrupt test
+keystore is never auto-repaired: to mint a new key, delete the file, then reinstall once with `-AllowClear`, which wipes the
+app data on that phone. The keystore is written to a temporary file and moved into place without overwriting, so two first
+runs at once keep the first valid keystore. A `-TestKeystore` path under `%USERPROFILE%\.risu-signing` (the release key
+location) is refused. Installs with `adb install -r`, then
 checks `pm path` and `run-as ... id`; a debug install that is not debuggable fails. A signature mismatch fails with
 `signature-mismatch` and changes nothing; only `-AllowClear` uninstalls (which wipes the app data) and reinstalls. Needs
 `ANDROID_HOME` (build-tools) and the pinned JDK 21.
@@ -254,7 +263,7 @@ pwsh -NoProfile -File Agents\Tools\device\import-bin.ps1 -OutDir $env:TEMP\risu-
   `src-tauri\gen\android\app\build\outputs\apk\universal\debug\app-universal-debug.apk` and
   `...\universal\release\app-universal-release-unsigned.apk`; `sign-install.ps1` writes a re-signed copy to
   `<OutDir>\signed.apk`. A release build signs through `src-tauri\gen\android\keystore.properties` when that file exists;
-  `sign-install.ps1` uses a throwaway key generated per run and deleted afterwards. Signing material (`src-tauri\key.txt`,
+  `sign-install.ps1` uses the persistent test keystore described above (never the release key). Signing material (`src-tauri\key.txt`,
   keystores, `keystore.properties`) is never read or quoted by the scripts or by this page.
 - **Toolchain paths.** `build-apk.ps1` and `sign-install.ps1` hard-code the Gradle-managed JDK 21 at
   `C:\Users\yor42\.gradle\jdks\azul_systems__inc_-21-amd64-windows.2`; `NDK_HOME` and `ANDROID_HOME` must be set.

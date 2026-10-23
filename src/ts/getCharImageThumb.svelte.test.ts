@@ -134,6 +134,7 @@ vi.mock(import('./media/avatarThumb'), async (importOriginal) => {
 //#endregion
 
 import { getCharImage } from './characters'
+import { THUMB_ABORTED } from './media/avatarThumb'
 import { DBState } from './stores.svelte'
 
 beforeEach(() => {
@@ -207,6 +208,51 @@ describe('T9g (guard): the thumbnail path is never reached when ineligible', () 
         await getCharImage('other/b.png', 'thumbcss')
         expect(getAvatarThumbSrcSpy).not.toHaveBeenCalled()
         expect(getFileSrcSpy).toHaveBeenCalledWith('other/b.png')
+    })
+})
+
+describe('B1 (abort): a lookup abandoned through its signal never reaches getFileSrc', () => {
+    // REPRODUCER (red on the base: the spy resolves null, so the full-size read runs for the gone caller).
+    test("a signal aborted while the thumbnail lookup settles with null returns the aborted outcome without calling getFileSrc", async () => {
+        const controller = new AbortController()
+        getAvatarThumbSrcSpy.mockImplementationOnce(async () => null)
+        const pending = getCharImage('assets/a.png', 'thumbcss', { signal: controller.signal })
+        controller.abort()
+        expect(await pending).toBe(THUMB_ABORTED)
+        expect(getFileSrcSpy).not.toHaveBeenCalled()
+    })
+
+    // REPRODUCER (red on the base): the thumbnail module says aborted and the value is neither a string nor null.
+    test('the aborted outcome of the thumbnail lookup is passed on, never turned into a full-size read', async () => {
+        const controller = new AbortController()
+        getAvatarThumbSrcSpy.mockImplementationOnce(async () => THUMB_ABORTED as never)
+        const result = await getCharImage('assets/a.png', 'thumb', { signal: controller.signal })
+        expect(result).toBe(THUMB_ABORTED)
+        expect(getFileSrcSpy).not.toHaveBeenCalled()
+    })
+
+    test('a signal that is not aborted changes nothing, and the options reach the thumbnail lookup', async () => {
+        const controller = new AbortController()
+        const visible = () => true
+        getAvatarThumbSrcSpy.mockResolvedValueOnce('data:image/webp;base64,thumb')
+        const result = await getCharImage('assets/a.png', 'thumbcss', { signal: controller.signal, visible })
+        expect(result).toBe('background: url("data:image/webp;base64,thumb");background-size: cover;')
+        expect(getAvatarThumbSrcSpy).toHaveBeenCalledWith('assets/a.png', { signal: controller.signal, visible })
+    })
+
+    test('a null thumbnail with a live signal still falls back to getFileSrc', async () => {
+        const controller = new AbortController()
+        const result = await getCharImage('assets/a.png', 'thumb', { signal: controller.signal })
+        expect(result).toBe('data:mock-image;loc=assets/a.png')
+    })
+
+    // GUARD: an ineligible loc has no thumbnail lookup to abort, but an abort still skips the file read.
+    test('an ineligible loc with an aborted signal does not read the file', async () => {
+        const controller = new AbortController()
+        controller.abort()
+        const result = await getCharImage('other/b.png', 'thumbcss', { signal: controller.signal })
+        expect(result).toBe(THUMB_ABORTED)
+        expect(getFileSrcSpy).not.toHaveBeenCalled()
     })
 })
 

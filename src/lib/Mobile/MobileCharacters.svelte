@@ -114,7 +114,7 @@
     const entryByKey = $derived(new Map(sorted.map((entry) => [entry.key, entry])));
     const rows = $derived(listRows(sorted.filter((entry) => found.matched.has(entry.i)).map((entry) => entry.key)));
 </script>
-{#snippet card(cardKey: string, position: number)}
+{#snippet card(cardKey: string, position: number, visible: () => boolean)}
     {@const entry = entryByKey.get(cardKey)}
     {@const index = entry?.i ?? -1}
     {@const c = DBState.db.characters[index]}
@@ -126,7 +126,7 @@
             changeChar(index)
             endGrid()
         }}>
-            <CharListAvatar src={c.image} class="hover:bg-[#10b981] transition-colors duration-150" />
+            <CharListAvatar src={c.image} {visible} class="hover:bg-[#10b981] transition-colors duration-150" />
             <div class="flex flex-1 w-full flex-col justify-start items-start text-start">
                 <span>{entry.name}</span>
                 <div class="text-sm text-textcolor2 flex items-center w-full flex-wrap">
