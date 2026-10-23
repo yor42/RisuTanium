@@ -44,6 +44,29 @@ Baseline full `pnpm test` on unmodified `9a6127354` (Linux, Node 22.22.0, 4 CPUs
 
 **What was decided:** when the stop hook asks for a commit, the orchestrator asks the maintainer with `AskUserQuestion` rather than declining silently or committing. The hook itself is still not approval.
 
+### MC-702 — Lane Cloud, 2026-10-23: fix the CHORE-152 test fake here; close CHORE-144 as observed
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript. Input: the investigator packet (row 5002) and its verification (row 5003).
+- **Related:** `MC-091` (scope amendment); CHORE-152, CHORE-144, CHORE-193; lane B's brief (storage tests are lane B's area).
+
+1. **CHORE-152.** Question (paraphrased): about 63% of `assetPieceSave`'s time is a per-character callback in the shared test-only fake `src/ts/storage/tests/tauriChunkFake.ts`, which 29 storage test files reach, all in lane B's area. Should it be fixed here? Answer: **"Fix here, test-only (Recommended)"**. The option said: change only `tauriChunkFake.ts` (both sites), keep `atob`, rerun all 29 files that reach it, plus Gate 2. Lane B sees the change at merge, with a possible overlap if lane B edits the fake.
+2. **CHORE-144.** Question (paraphrased): item 2 passed 52 seeds; items 1 and 3 never reproduced and their logs are gone; item 4 is test-environment only on Node 24 and already clamped in three tests. What should be done? Answer: **"Close as observed (Recommended)"**. The option said: no code change; record item 2 as not reproducible, items 1 and 3 as reopen-with-evidence, and item 4 as known and already worked around.
+
+**What was decided:** lane Cloud changes `tauriChunkFake.ts` (test-only) for CHORE-152. CHORE-144 closes with no code change.
+
+### MC-703 — Lane Cloud, 2026-10-23: commit the records only; CHORE-152 waits for its Gate 2
+
+- **Tag:** decision (`AskUserQuestion` answer, 2026-10-23, asked under `MC-701` after the stop hook asked for a commit)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-700`, `MC-701`, `MC-702`; CHORE-144, CHORE-152.
+
+1. Question (paraphrased): the stop hook wants a commit; uncommitted are the records file and the unreviewed CHORE-152 fake edit. What should be committed? Answer: **"Records only (Recommended)"**. The option said: commit and push just `Agents/Lanes/lane-cloud-records.md`; the CHORE-152 edit waits for its Gate 2.
+
 ## CHORE entries (proposed status changes)
 
 ### CHORE-142 — `Agents/Tools/save-gen/generate-and-verify.harness.ts` is broken
@@ -54,6 +77,15 @@ Baseline full `pnpm test` on unmodified `9a6127354` (Linux, Node 22.22.0, 4 CPUs
 - **Cause:** the harness's module mocks were copied from `src/ts/storage/tests/risuSave.test.ts` and had gone stale. That test now also mocks `src/ts/storage/store/appStore` (through `appStoreModuleOver` in `src/ts/storage/tests/appStoreMock`), which keeps the real application graph from loading.
 - **Change (harness file only, +15/-5):** the same `appStore` mock; `store` declared through `vi.hoisted`; the header and region comments updated (the stale "copied verbatim ... lines ~7-55" is gone). No assertion changed. `appStore` is not on the verified path: `risuSave.ts` calls `getAppStore` only in its remote-sync branch (orchestrator check).
 - **Evidence:** after the fix the same command exits 0 with 4 of 4 passed (implementer 3 runs, orchestrator 1, reviewer 1). The reviewer's scratch mutant (a decoder wrapper that drops one character) failed all 4 tests ("expected 30 to be 31"). `pnpm test`'s default glob does not match `*.harness.ts`. `Agents/Tools` is outside `tsconfig.json`'s include, so `pnpm check` does not cover it.
+
+### CHORE-144 — Test-suite fragilities seen during the sidebar closeout
+
+**Proposed status (2026-10-23, lane Cloud): CLOSED as observed, no code change (`MC-702` 2).** Evidence: rows 5002 and 5003 (investigator packet `c144/result.md`, verified with corrections in `c144/verify/result.md`, session scratchpad). Runtime: Linux, Node 24.22.1 unless noted, loaded machine.
+
+- **Item 1, `backuplocalCharacterIdsExport` "(G) ... byte for byte": not reproduced; UNCERTAIN.** Every run passed all 10 tests in the file: 3 plain runs, 6 shuffle seeds, and 12 seeds run as 3 batches of 4 parallel processes under load. The test takes about 2 ms, so a timeout is not the cause. No random input was found, and the encode is deterministic (gzip mtime 0). The assertion `expect(Buffer.equals(...)).toBe(true)` prints nothing useful when it fails. Reopen only with the failing run's output.
+- **Item 2, `backuplocalEncryptedRefusal` under `--sequence.shuffle`: not reproducible on current main.** It passed 41 of 41 with 42 seeds (1 to 40, 12345, 99999), with 10 more seeds in the verification, and 51 of 51 with 8 seeds on Node 22.22.0 run together with `backuplocalCharacterIdsExport`. The failing seed was never recorded. Reopen with a recorded seed.
+- **Item 3, `nodeHttpStore` ENOBUFS: not reproduced; UNCERTAIN.** The file starts one child server in `beforeAll` and sends sequential requests, so the "unbounded connections" premise is refuted. ENOBUFS is an OS error from spawn, bind or socket calls. The shared spawn-and-listen in `src/ts/storage/tests/nodeServerFixture.ts` (17 test users) is a candidate under a parallel full run (INFERRED). Reopen with the failing stack.
+- **Item 4, msgpackr 1.10.1 `utf8Write` `ERR_BUFFER_OUT_OF_BOUNDS`: CONFIRMED, test environment only.** On Node 24.22.1, `Packr.encode` throws for any string of 64 or more characters (`pack.js` calls `target.utf8Write(str, pos, 0xffffffff)`), standalone and inside vitest. Node 22.22.0 does not throw. Three tests already clamp `Buffer.prototype.utf8Write` (`risuSave.msgpackRelease.test.ts`, `composedRoundTrip.svelte.test.ts`, `exportStubForm.test.ts`). The app imports only `msgpackr/index-no-eval`, in browser code whose `Buffer` is the feross polyfill, which has no `utf8Write`, so msgpackr takes its `encodeInto` path. That is source reasoning, not run in a WebView. Nothing under `server/` uses msgpackr. Not checked: which other tests would fail on Node 24 without a clamp (CI uses Node 24).
 
 ## Ledger rows
 
