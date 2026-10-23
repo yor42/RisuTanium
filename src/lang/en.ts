@@ -1321,6 +1321,7 @@ export const languageEnglish = {
     ToggleSuperMemory: "Toggle SupaMemory",
     SuperMemory: "SupaMemory",
     resetSupaMemory: "Reset SupaMemory data",
+    resetSupaMemoryConfirm: "Clear this chat's SupaMemory summary data? This cannot be undone.",
     useExperimental: "Enable Experimental Features",
     showMemoryLimit: "Show Memory Limit",
     showFirstMessagePages: "Show First Message Pages",

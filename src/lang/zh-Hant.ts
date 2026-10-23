@@ -1236,6 +1236,7 @@ export const languageChineseTraditional = {
     "ToggleSuperMemory": "切換 SupaMemory",
     "SuperMemory": "SupaMemory",
     "resetSupaMemory": "重設 SupaMemory 資料",
+    "resetSupaMemoryConfirm": "要清除此聊天的 SupaMemory 摘要資料嗎？此操作無法復原。",
     "Speech": "語音",
     "useExperimental": "啟用實驗性功能",
     "showMemoryLimit": "顯示記憶上限",

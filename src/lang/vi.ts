@@ -1192,6 +1192,7 @@ export const languageVietnamese = {
     "ToggleSuperMemory": "Chuyển đổi SupaBộ nhớ",
     "SuperMemory": "SupaBộ Nhớ",
     "resetSupaMemory": "Đặt lại dữ liệu SupaBộ Nhớ",
+    "resetSupaMemoryConfirm": "Xóa dữ liệu tóm tắt SupaBộ Nhớ của cuộc trò chuyện này? Hành động này không thể hoàn tác.",
     "useExperimental": "Có thể thực hiện các tính năng thử nghiệm",
     "showMemoryLimit": "Hiển thị giới hạn bộ nhớ",
     "showFirstMessagePages": "Hiển thị trang tin nhắn đầu tiên",

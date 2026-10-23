@@ -1192,6 +1192,7 @@ export const languageChinese = {
     "ToggleSuperMemory": "激活 SupaMemory",
     "SuperMemory": "SupaMemory",
     "resetSupaMemory": "重置 SupaMemory 数据",
+    "resetSupaMemoryConfirm": "要清除此聊天的 SupaMemory 摘要数据吗？此操作无法撤销。",
     "useExperimental": "激活实验性功能",
     "showMemoryLimit": "显示记忆上限",
     "showFirstMessagePages": "显示第一条消息页面",

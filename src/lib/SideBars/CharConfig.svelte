@@ -10,7 +10,7 @@
     import Check from "../UI/GUI/CheckInput.svelte";
     import { addCharEmotion, addingEmotion, getCharImage, rmCharEmotion, selectCharImg, makeGroupImage, removeChar, changeCharImage } from "../../ts/characters";
     import LoreBook from "./LoreBook/LoreBookSetting.svelte";
-    import { alertError, alertNormal, showHypaV2Alert } from "../../ts/alert";
+    import { alertConfirm, alertError, alertNormal, showHypaV2Alert } from "../../ts/alert";
     import { SecretRefError } from "src/ts/secretRef";
     import BarIcon from "./BarIcon.svelte";
     import { findCharacterbyId, getAuthorNoteDefaultText, selectMultipleFile, selectSingleFile } from "../../ts/util";
@@ -1250,8 +1250,11 @@
             <span class="text-textcolor mt-4">{language.SuperMemory}</span>
             <TextAreaInput margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData}></TextAreaInput>
             <Button
-                onclick={() => {
+                onclick={async () => {
                     const chat = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage]
+                    if(!await alertConfirm(language.resetSupaMemoryConfirm)){
+                        return
+                    }
                     chat.supaMemoryData = ''
                     delete chat.supaMemoryCoveredId
                 }}
@@ -1287,8 +1290,11 @@
             <span class="text-textcolor mt-4">{language.SuperMemory}</span>
             <TextAreaInput margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData}></TextAreaInput>
             <Button
-                onclick={() => {
+                onclick={async () => {
                     const chat = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage]
+                    if(!await alertConfirm(language.resetSupaMemoryConfirm)){
+                        return
+                    }
                     chat.supaMemoryData = ''
                     delete chat.supaMemoryCoveredId
                 }}

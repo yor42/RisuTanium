@@ -1,7 +1,10 @@
 /**
- * The empty-chat rule at the plugin write sites (MC-721 1, MC-722 2, MC-720 3): a plugin write that
- * leaves a chat with no messages leaves it with no SupaMemory data, plain or `hypa:`, and no covered-ID
- * field; a non-empty replacement that lacks the resume message is not repointed.
+ * The empty-chat rule at the plugin write sites (MC-721 1, MC-722 2, MC-720 3): `setDatabase` and
+ * `setDatabaseLite` (V2 and V3) writing a `characters` array clear SupaMemory data, plain or `hypa:`, and
+ * the covered-ID field from every empty chat of every character, not only the chats the write changed.
+ * `setChar`, `setCharacter` and `setCharacterToIndex` clear the written character's empty chats;
+ * `setChatToIndex` clears the written chat. A non-empty replacement that lacks the resume message is not
+ * repointed.
  *
  * One row per API entry, each over the REAL `v3.svelte.ts` and `plugins.svelte.ts` (the module-mock set
  * of `v3ColdCharacters.svelte.test.ts`): V2 `setChar`, `setDatabaseLite`, `setDatabase`; V3 `setChar`,

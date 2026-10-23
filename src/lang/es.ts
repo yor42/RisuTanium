@@ -1192,6 +1192,7 @@ export const languageSpanish = {
     "ToggleSuperMemory": "Alternar SupaMemoria",
     "SuperMemory": "SupaMemoria",
     "resetSupaMemory": "Restablecer los datos de SupaMemoria",
+    "resetSupaMemoryConfirm": "¿Borrar los datos de resumen de SupaMemoria de este chat? Esta acción no se puede deshacer.",
     "useExperimental": "Habilitar Funciones Experimentales",
     "showMemoryLimit": "Mostrar Límite de Memoria",
     "showFirstMessagePages": "Mostrar Páginas del Primer Mensaje",

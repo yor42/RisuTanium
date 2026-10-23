@@ -384,9 +384,14 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
                             }
                         }
                         else{
+                            // No subject: only a message that exists in the selected chat is
+                            // written; a missing character, chat or index leaves the data as it is.
                             const selchar = db.characters[get(selectedCharID)]
-                            selchar.chats[selchar.chatPage].message[chatID].data = data
-                            data = data.replace(reg, "")
+                            const target = selchar?.chats?.[selchar.chatPage]?.message?.[chatID]
+                            if(target){
+                                target.data = data
+                                data = data.replace(reg, "")
+                            }
                         }
                     }
                     else if(

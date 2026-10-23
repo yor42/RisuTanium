@@ -1192,6 +1192,7 @@ export const languageKorean = {
     "ToggleSuperMemory": "수파메모리 토글",
     "SuperMemory": "수파메모리",
     "resetSupaMemory": "수파메모리 데이터 초기화",
+    "resetSupaMemoryConfirm": "이 채팅의 수파메모리 요약 데이터를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
     "useExperimental": "실험적 요소 보이기",
     "showMemoryLimit": "기억 한계치 보이기",
     "showFirstMessagePages": "퍼스트 메시지 페이지 보이기",
