@@ -416,6 +416,9 @@ export function initHotkey(){
     document.addEventListener('touchend', (ev) => {
         touchs = 0
     })
+    document.addEventListener('touchcancel', (ev) => {
+        touchs = 0
+    })
 }
 
 // The characters the previous/next hotkeys cycle through, sorted by name, each

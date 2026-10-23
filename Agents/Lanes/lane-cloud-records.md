@@ -237,6 +237,50 @@ Found in Phase 2 (CHORE-09, CHORE-10), all upstream behaviour too (`MC-069`). Ea
 
 **What was decided.** Extends `MC-714`: deleting the resume message with no following message leaves the summary and resumes from the next message sent, without an error and without re-summarising surviving messages. The `MC-714` error-and-reset fallback stays for data that is already dangling. This is a fix-brief requirement; the Phase 2 reproducers do not pin it.
 
+### MC-716 — Lane Cloud, 2026-10-23: Phase 2 close commit; Phase 3 start, commit rule and Phase 2 picks; CHORE-09 open questions
+
+- **Tag:** decision (maintainer messages and `AskUserQuestion` answers, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-709`, `MC-710`, `MC-711` to `MC-715`; CHORE-09, CHORE-10, CHORE-133, CHORE-138, CHORE-139, CHORE-143.
+
+1. Phase 2 close commit. Answer: **"Commit and push (Recommended)"** (commit `4455c00`).
+2. Maintainer message: **"start phase 3"**.
+3. Phase 3 commit rule. Answer: **"Per ticket, no re-ask (Recommended)"**: commit and push each Phase 3 ticket (tests, fix, report, records) to `lane-cloud` after its Gate 2 passes and its report passes doc-verifier.
+4. Which Phase 2 bugs join Phase 3. Answer (multi-select): **"CHORE-09 items 4,9,10,11"**, **"CHORE-10 non-saved items"**, **"CHORE-10 saved-memory items"**. The question stated that the saved-memory items (V3-4, V2-1, V2-2, SUPA-3, SUPA-5) change saved data, had been handed to lane A, and would need explicit go-ahead here; this answer is that go-ahead (opus-reviewer gates; lane A to be informed through these records). CHORE-09 item 7 was not picked.
+5. CHORE-09 item 11, comma inside a regex key. Answer: **"Don't split inside /…/ (Recommended)"**: a comma inside a `/pattern/flags` key stays part of the regex; commas between keys still separate keys.
+6. CHORE-09 item 10, target re-entry after a refund. Answer: **"No, refund only (Recommended)"**: refunded tokens go to later entries in the normal order; the cut target stays cut.
+7. CHORE-09 item 4, trigger editor. Answer: **"Leave editor as is (Recommended)"**: no UI change.
+
+**What was decided.** Phase 3 covers CHORE-138, CHORE-139, CHORE-143 and CHORE-133, plus CHORE-09 items 4, 9, 10 and 11 and all CHORE-10 items (including the saved-memory items), each to its `MC-710` to `MC-715` decision and items 5 to 7 above. Per-ticket commits after Gate 2 and doc-verifier, without re-asking.
+
+### MC-717 — Lane Cloud, 2026-10-23: CHORE-138, CHORE-139 and CHORE-143 decisions
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-250` (CHORE-138's accepted limitation, now superseded for this gap), `MC-716`; CHORE-138, CHORE-139, CHORE-143.
+
+1. CHORE-138, triple-touch gesture without `touchcancel` (two touches, a cancel, then one touch within 300 ms opens the quick menu). Answer: **"3-line fix (Recommended)"**: a `touchcancel` resets the count, like `touchend`. Fork-only; upstream has the same gap.
+2. CHORE-139, deleting a folder's last remaining character leaves an empty folder until the next order check. Answer: **"Yes, remove it (Recommended)"**: fix `checkCharOrder` to drop a folder it just emptied, matching bulk delete, and remove the now-redundant double-call workarounds.
+3. CHORE-143, already fixed on the fork (null-error window events are warn-only, which also silences cross-origin "Script error." events). Answer: **"Keep silent, close (Recommended)"**: close the ticket as already fixed.
+
+### MC-718 — Lane Cloud, 2026-10-23: CHORE-09 fix-plan amendments and CHORE-133 decisions
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-710`, `MC-716`, `MC-091` (scope amendment), `MC-175`, `MC-245` 1, `MC-238`, `MC-239`; CHORE-09, CHORE-133.
+
+1. CHORE-09 item 11 knock-on: the V2/V3 card exporters in `src/ts/characterCards.ts` also split lorebook keys on commas, which would rewrite `/dragon{1,2}/` on export and re-import. Answer: **"Yes, same splitter (Recommended)"**: the exporters use the same regex-aware splitter (shared-cause scope amendment).
+2. CHORE-09 items 9 and 11: does Case Sensitive govern the plain-text match of a non-`/pattern/` key in regex mode? Answer: **"Yes, follow the toggle (Recommended)"**: off (default) case-insensitive; on case-sensitive; `/pattern/` keys keep their own flags.
+3. CHORE-09 item 10: an injector whose target never activated. Answer: **"Refund too (Recommended)"**: same treatment as a cut target.
+4. CHORE-133, the one-sentence translator path that writes the source text back with `innerHTML`. Answer: **"Insert as text (Recommended)"**: use `textContent`.
+5. CHORE-133, the edit-display replacement that writes translator output back with `innerHTML`. Answer: **"Leave it, separate ticket (Recommended)"**: out of this ticket; to be filed as a new ticket (proposed in the CHORE entries).
+
 ## CHORE entries (proposed status changes)
 
 ### CHORE-67 — Existing tests that run DOMPurify under happy-dom may pass for the wrong reason
@@ -301,6 +345,14 @@ Found in Phase 2 (CHORE-09, CHORE-10), all upstream behaviour too (`MC-069`). Ea
 - **Saved-data risks:** handed to lane A in "For lane A: Phase 2 saved-data risks" above (V3-4, V2-1, V2-2, SUPA-3, SUPA-5).
 - **Residuals:** UI-1 dropdown order untested; SHARED-1 and V2-5 untested; Hanurai split mode untested; the experimental V3 path is not tested for similar-memory retrieval; the SUPA-3 fix must repoint on every delete path (Chat.svelte remove, `/cut`, `/del`, `cutChat`/`removeChat` in scriptings, trigger cuts) and implement `MC-715`, which no test pins.
 
+### CHORE-138 — The triple-touch counter has no `touchcancel`
+
+**Proposed status (2026-10-23, lane Cloud): fixed on `lane-cloud` (`MC-717` 1); technically accepted (Gate 2 `[APPROVE]`, row 5047).** A `touchcancel` listener in `initHotkey()` resets the count like `touchend`; regression test `src/ts/hotkey.touchcancel.test.ts` (reproducer failed before the fix). Fork-only; upstream has the same gap. Real Android WebView cancel behaviour untested. Report: [CHORE-138-result.md](lane-cloud/CHORE-138-result.md).
+
+### CHORE-143 — A ResizeObserver-loop event makes `bootstrap.ts`'s global error handler throw before `alertError`
+
+**Proposed status (2026-10-23, lane Cloud): CLOSED, already fixed on the fork (`MC-717` 3); no change in this lane.** `bootstrap.ts` delegates to `handleWindowError` in `src/ts/windowErrorGuard.ts`, which warns only for events without an error object (covered by `windowErrorGuard.test.ts`). Upstream still has the defect. The Roadmap entry's "open" status is stale. Report: [CHORE-143-result.md](lane-cloud/CHORE-143-result.md).
+
 ## Ledger rows
 
 | # | Date | Question | Tier(s) | Tokens | Escalated? | Outcome |
@@ -345,6 +397,19 @@ Found in Phase 2 (CHORE-09, CHORE-10), all upstream behaviour too (`MC-069`). Ea
 | 5037 | 2026-10-23 | Independent check of the CHORE-10 report, records diff and commit message (scratchpad `p2/c10d/dv/result.md`) | doc-verifier | 76,813 (subagent usage) | no | Reran ten files: 40 passed, 32 expected fail. Decision quotes, test titles, REPRODUCED citations and upstream sample verified; corrected "For lane A" section accurate. Required: four corrections (fork line `OtherBotSettings.svelte:1279`, ledger range 5018-5036, stale records bullet, environment line); applied by the Orchestrator and recorded in the report's corrections section. |
 | 5038 | 2026-10-23 | Phase 2 final checks on the committed tree `ae9edbf` (this records file modified, not covered by either command), Linux, Node 22.22.0, 4 CPUs (session scratchpad `p2/close/test.log`, `actors.log`, `check.log`) | orchestrator | not measured | no | `NODE_OPTIONS=--max-old-space-size=8192 pnpm test` (the variable is not echoed in the log): 950 files passed, 1 failed, 1 skipped (952); 21,197 tests passed, 9 failed, 41 expected fail (9 CHORE-09, 32 CHORE-10), 30 skipped; 1,416 s. The 9 failures are the baseline `actors.test.ts` timeouts (above); rerun alone: 9 of 71 fail, all timeouts (5 s and one 240 s), no assertion error, same as the baseline. The baseline `saveLoop` flushed:false failure did not occur in this run (it is intermittent; still open for lane A). `pnpm check`: 0 errors, 0 warnings. No build: no application code changed. |
 | 5039 | 2026-10-23 | Independent check of the Phase 2 close records diff (scratchpad `p2/close/dv/result.md`) | doc-verifier | 42,535 (subagent usage) | no | Row 5038 numbers, commits, ledger ranges, 41 = 9 + 32 expected fails (rerun of the 12 files: 50 passed, 41 expected fail) and the actors baseline match VERIFIED. Required: cite the `pnpm test` heap setting accurately; correct the CHORE-10 report ledger range (applied as its corrections item 5). |
+| 5040 | 2026-10-23 | CHORE-138 trace and scratch reproducer (scratchpad `p3/c138/result.md`) | investigator | 51,523 (subagent usage) | no | Premise confirmed: the triple-touch block in `hotkey.ts` has no `touchcancel`; the other `touchcancel` listener only clears the swipe map. Effect: a false quick-menu open within 300 ms after a cancel. Upstream same. Tiny fix. |
+| 5041 | 2026-10-23 | CHORE-139 trace and scratch reproducer (scratchpad `p3/c139/result.md`) | investigator | 59,315 (subagent usage) | no | Cause is in `checkCharOrder` (emptiness tested before pruning), not `removeChar`; single deletes of a folder's last member affected. Upstream same. Reactive-database change: opus-reviewer gate. |
+| 5042 | 2026-10-23 | CHORE-143 trace (scratchpad `p3/c143/result.md`) | investigator | 43,199 (subagent usage) | no | Premise refuted for the fork: `windowErrorGuard.ts` already ignores null-error events (warn only); existing test covers it. Upstream still has the defect. |
+| 5043 | 2026-10-23 | Independent check of rows 5040-5042 (scratchpad `p3/vfy/result.md`) | doc-verifier | 39,423 (subagent usage) | no | All decision-critical claims VERIFIED; both reproducers rerun failing on the intended assertion; CHORE-143 guard 3 passed. CHORE-139: "19 calls in 8 files" (not 10); no code path creates an empty character folder; held save unaffected. |
+| 5044 | 2026-10-23 | CHORE-09 items 4, 9, 10, 11 fix plan (scratchpad `p3/c09fix/plan.md`) | sonnet-coder | 78,846 (subagent usage) | no | Plan only, no edits. Raised the export-splitter amendment and two assumptions, answered in `MC-718` 1-3. Under Gate 1. |
+| 5045 | 2026-10-23 | CHORE-133 trace and jsdom scratch reproducer (scratchpad `p3/c133/result.md`) | investigator | 63,761 (subagent usage) | no | The F4 sink is `translator.ts` one-sentence `innerHTML`, distinct from alert 45; markup comes from decoded message text, not the API; downstream consumers sanitize, no live exploit. Upstream same. Under independent check. |
+| 5046 | 2026-10-23 | CHORE-138 implementation (scratchpad `p3/c138/impl/result.md`) | sonnet-coder | 32,642 (subagent usage) | no | `touchcancel` reset in `hotkey.ts` (+3); new `src/ts/hotkey.touchcancel.test.ts` (reproducer failed before the fix on its intended assertion, 2 guards). `src/ts/hotkey` tests 267 passed; `pnpm check` 0/0. Under Gate 2. |
+| 5047 | 2026-10-23 | CHORE-138 Gate 2 (scratchpad `p3/c138/g2/result.md`) | adversarial-reviewer | 25,181 (subagent usage) | no | `[APPROVE]`. Pre-fix reproducer fails on its intended assertion (scratch copy of HEAD `hotkey.ts`); 267 `hotkey` tests pass; `pnpm check` 0/0. Misspelled-event and missing-reset mutants caught; `window` target (equivalent), reset to 1 and resetting the start time survive (optional hardening). |
+| 5048 | 2026-10-23 | CHORE-138 and CHORE-143 reports and commit-message draft (`Agents/Lanes/lane-cloud/CHORE-138-result.md`, `CHORE-143-result.md`; scratchpad `p3/c138/commit-msg.txt`) | doc-writer | 56,383 (subagent usage) | no | Rechecked current line numbers; noted the stale Roadmap CHORE-143 status. Under independent check. |
+| 5049 | 2026-10-23 | Independent check of the CHORE-133 trace (scratchpad `p3/c133/vfy/result.md`) | doc-verifier | 39,062 (subagent usage) | no | 6 VERIFIED, 1 EXECUTED (reproducer A fails on the intended assertion); `textContent` loses nothing (source reading). No blocking corrections. |
+| 5050 | 2026-10-23 | CHORE-09 fix plan Gate 1 (scratchpad `p3/c09fix/g1/result.md`) | adversarial-reviewer | 59,725 (subagent usage) | no | `[EDITORIAL]`: update the `triggerOriginWrites` guard for item 4; add the `characterCards.ts` exporters (`MC-718` 1) with a round-trip test; make the splitter skip escaped `\/` and bracketed `/`; `i`-flag the comment-strip regexes for item 9; extra edge and later-round cut tests. |
+| 5051 | 2026-10-23 | CHORE-133 fix plan Gate 1 (scratchpad `p3/c133/g1/result.md`) | adversarial-reviewer | 32,408 (subagent usage) | no | `[EDITORIAL]`: lossless on ten inputs before and after (scratch); reproducers must stub `processScriptFull` as identity, or the edit-display `innerHTML` site masks the fix; scope wording: single-sentence reparse only. |
+| 5052 | 2026-10-23 | Independent check of the CHORE-138 and CHORE-143 reports and commit message (scratchpad `p3/c138/dv/result.md`) | doc-verifier | 38,966 (subagent usage) | no | About 30 claims, none wrong; 12 tests rerun passed; upstream re-opened and agrees. No required corrections; optional commit-message wording applied. |
 
 ## Handoff
 
