@@ -11,7 +11,7 @@ This is a targeted stabilization and improvement campaign, not a rewrite. Use a 
 
 ## Compatibility and authorization
 
-- `.bin` backups must travel upstream → fork and fork → upstream without loss. Upstream need not read the fork's own storage directly. Upstream-compatible characters, modules, presets, plugins and supported integrations continue to work (MC-175).
+- `.bin` backups must travel upstream → fork and fork → upstream without loss. Upstream need not read the fork's own storage directly. Upstream-compatible characters, modules, presets, plugins and supported integrations continue to work (MC-175). Exception: V2.1 plugin execution is retired; their data stays untouched in the database and `.bin`, but they will not run once CHORE-206 lands (MC-349; post-MVP, so current code still runs them).
 - Sole size exception: fork → upstream may omit data larger than upstream can hold only after a warning naming it and confirmation before export starts. Upstream → fork must always work (MC-223).
 - This fork has never shipped; upstream has the users. Fork-local behavior is not a reason to preserve a defect, and there is no release pressure (MC-011). Do not design recovery for already-corrupted fork-local state.
 - Scope may be amended for agreed mobile behavior, necessary technical prerequisites, shared-cause corrections or an explicit complexity reduction. Record the failure, causal connection and smallest coherent correction. New product trade-offs remain the maintainer's (MC-091).

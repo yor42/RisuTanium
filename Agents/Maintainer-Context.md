@@ -6154,6 +6154,8 @@ same and stage 2 does not change the cost (ledger row 679).
 
 ### MC-175 — The compatibility invariant is a two-way round trip: a `.bin` backup moves between upstream and this fork in both directions; upstream need not read the fork's own storage
 
+*Amended by `MC-349` (2026-10-23): V2.1 plugins no longer "continue to work". Once CHORE-206 lands, a V2.1 plugin is never executed, and its data stays untouched in the database and `.bin` (the round trip stays intact). Versions 1, 2 and 3.0 are unchanged. CHORE-206 is post-MVP, so the current code still runs V2.1 plugins.*
+
 - **Tag:** stated in chat (a correction of how the campaign had read the compatibility invariant), and a request (item 2)
 - **Date:** 2026-10-03
 - **Sweep ref:** none (stated directly this session)
