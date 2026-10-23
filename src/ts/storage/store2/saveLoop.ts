@@ -1,4 +1,4 @@
-import type { Database } from '../database.svelte'
+import type { Database, character, groupChat } from '../database.svelte'
 import type { toSaveType } from '../risuSave'
 import { createYieldBudget } from '../saveYield'
 import { Store2StalePageError } from './backend/errors'
@@ -465,10 +465,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         return marked
     }
 
-    function requestOf(snapshot: Store2Snapshot | null, db: Database, rewriteAll: boolean): SavePassRequest {
+    function requestOf(snapshot: Store2Snapshot | null, db: Database, rewriteAll: boolean, netChaId: string | null): SavePassRequest {
         const gaps = MEASURE ? startYieldGaps() : null
         const budget = MEASURE && gaps !== null ? createYieldBudget({ yieldFn: () => gaps.yield() }) : createYieldBudget()
-        const request = shapeOf(snapshot, db, rewriteAll, { yield: () => budget.maybeYield() })
+        const request = shapeOf(snapshot, db, rewriteAll, netChaId, { yield: () => budget.maybeYield() })
         if (MEASURE) {
             activeGaps = gaps
             gaps?.describe(request)
@@ -484,10 +484,15 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
      * most once per `moduleMs`: with no resident character the tick still runs and carries the modules until they are
      * due; with residents the character round-robin is unchanged and module scope rides on whichever tick is next once
      * due. The module clock advances when a tick takes module scope, so a check that fails waits for the next one.
+     * A tick given `netChaId` is a verdict slot's pass: it names that character, takes no module scope, and leaves the
+     * round-robin index and the module clock alone, because the slot that judged the character already consumed its turn.
      */
-    function shapeOf(snapshot: Store2Snapshot | null, db: Database, rewriteAll: boolean, yielding: { yield: () => Promise<void> }): SavePassRequest {
+    function shapeOf(snapshot: Store2Snapshot | null, db: Database, rewriteAll: boolean, netChaId: string | null, yielding: { yield: () => Promise<void> }): SavePassRequest {
         if (snapshot !== null) {
             return { marked: marksOf(snapshot, db), modules: snapshot.toSave.modules, whole: snapshot.whole, rewriteAll, ...yielding }
+        }
+        if (netChaId !== null) {
+            return { marked: new Set(), modules: false, whole: false, net: { chaId: netChaId, modules: false }, ...yielding }
         }
         const now = port.now()
         const modulesDue = now - lastModuleNetAt >= moduleMs
@@ -631,9 +636,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     }
 
     /** `attemptRun` with the gap recorder closed on every exit, a throw included, before the pass's own waits begin. */
-    async function attemptOf(run: { snapshot: Store2Snapshot | null, landed: boolean, plan: SavePlan | null }, tick: boolean): Promise<Outcome> {
+    async function attemptOf(run: { snapshot: Store2Snapshot | null, landed: boolean, plan: SavePlan | null }, tick: boolean, netChaId: string | null): Promise<Outcome> {
         try {
-            return await attemptRun(run, tick)
+            return await attemptRun(run, tick, netChaId)
         } finally {
             if (MEASURE) {
                 activeGaps?.finish()
@@ -642,7 +647,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
     }
 
-    async function attemptRun(run: { snapshot: Store2Snapshot | null, landed: boolean, plan: SavePlan | null }, tick: boolean): Promise<Outcome> {
+    async function attemptRun(run: { snapshot: Store2Snapshot | null, landed: boolean, plan: SavePlan | null }, tick: boolean, netChaId: string | null): Promise<Outcome> {
         run.snapshot = tick ? null : takeStore2Snapshot(port)
         const read = await committer.readCommit()
         peerSignal = false
@@ -655,7 +660,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             consent = null
         }
         const db = port.getDatabase()
-        const plan = await planOf(db, requestOf(run.snapshot, db, saveMine))
+        const plan = await planOf(db, requestOf(run.snapshot, db, saveMine, netChaId))
         run.plan = plan
         if (MEASURE) {
             activeGaps?.planned()
@@ -698,13 +703,13 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         port.requestPass()
     }
 
-    async function pass(tick: boolean): Promise<void> {
+    async function pass(tick: boolean, netChaId: string | null = null): Promise<void> {
         const run: { snapshot: Store2Snapshot | null, landed: boolean, plan: SavePlan | null } = { snapshot: null, landed: false, plan: null }
         if (!tick) {
             port.beginIteration()
         }
         try {
-            const outcome = await port.withWriteLock(() => attemptOf(run, tick))
+            const outcome = await port.withWriteLock(() => attemptOf(run, tick, netChaId))
             switch (outcome.kind) {
                 case 'saved':
                     retries = 0
@@ -775,6 +780,82 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
     }
 
+    /** What an idle-net slot does: nothing, a full tick, or a silent pass that names one judged character. */
+    type NetDecision = { kind: 'none' } | { kind: 'full' } | { kind: 'character', chaId: string }
+
+    /**
+     * Decides one idle-net slot without planning. Order matters: the checks a full pass would answer by loading, writing
+     * or refusing come before any verdict, because a verdict reads only the acknowledged encoding of one character.
+     * The peer is read here, never through `checkPeer`: a failed read must not leave `peerSignal` set, and the full tick
+     * it falls back to reads again and reports the failure itself.
+     */
+    async function netDecision(): Promise<NetDecision> {
+        if (port.now() - lastModuleNetAt >= moduleMs || consent !== null) {
+            return { kind: 'full' }
+        }
+        const read = await port.withWriteLock(() => committer.readCommit())
+        const judged = judge(read)
+        if (judged.kind === 'stop') {
+            setPark(parkOf(judged))
+            return { kind: 'none' }
+        }
+        if (port.isDue()) {
+            return { kind: 'none' }
+        }
+        if (encoder.pendingKey !== null) {
+            return { kind: 'full' }
+        }
+        const db = port.getDatabase()
+        if (encoder.unheldChaIds(db).length > 0 || encoder.stubsNeedFullPass(db)) {
+            return { kind: 'full' }
+        }
+        if (unsavable.size > 0) {
+            const present = presentChaIds(db)
+            for (const chaId of unsavable.keys()) {
+                if (!present.has(chaId)) {
+                    return { kind: 'full' }
+                }
+            }
+        }
+        const residents = residentChaIds(db)
+        if (residents.length === 0) {
+            return { kind: 'none' }
+        }
+        const index = netIndex % residents.length
+        netIndex = (index + 1) % residents.length
+        const chaId = residents[index]
+        if (unsavable.has(chaId)) {
+            return { kind: 'character', chaId }
+        }
+        const slot = (db.characters as Array<character | groupChat | null>).find(
+            (candidate): candidate is character | groupChat => typeof candidate === 'object' && candidate !== null && !isColdStub(candidate)
+                && String((candidate as { chaId?: unknown }).chaId ?? '') === chaId)
+        if (slot === undefined) {
+            return { kind: 'full' }
+        }
+        return encoder.verdictOf(slot) === 'clean' ? { kind: 'none' } : { kind: 'character', chaId }
+    }
+
+    /**
+     * One idle-net slot. Modules due, a pending attempt, a character or stub the full pass would load or write, and any
+     * fault in the checks all take the full tick; otherwise one resident character is judged against the acknowledged
+     * encoding and only a character that differs is passed, silently, with no mark and no indicator.
+     */
+    async function netSlot(): Promise<void> {
+        let decision: NetDecision
+        try {
+            decision = await netDecision()
+        } catch (error) {
+            console.error(error)
+            decision = { kind: 'full' }
+        }
+        if (decision.kind === 'full') {
+            await pass(true)
+        } else if (decision.kind === 'character') {
+            await pass(true, decision.chaId)
+        }
+    }
+
     async function loop(): Promise<never> {
         await port.wait(1000)
         while (true) {
@@ -806,10 +887,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     noteNetHeldTick()
                 } else if (MEASURE) {
                     const tickStartedAt = port.now()
-                    await pass(true)
+                    await netSlot()
                     noteNetPassTick(port.now() - tickStartedAt)
                 } else {
-                    await pass(true)
+                    await netSlot()
                 }
             }
             await port.wait(500)

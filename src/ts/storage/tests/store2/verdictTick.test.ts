@@ -46,7 +46,7 @@ import { resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
 import { getActiveStore2Save, resetStore2SaveForTest } from 'src/ts/storage/store2/saveActive'
 import { resetRetainedForTest } from 'src/ts/process/coldRetained'
 import { bootThroughDispatch, countedBackend, createClock, seedTree, testEnv } from '../store2SaveKit'
-import { assembleDatabase, previousFrom, stubFromEntry, unitMapSource, type PreviousEncoding, type ReusableUnit } from '../../store2/codec'
+import { assembleDatabase, characterMatchesAcknowledged, previousFrom, stubFromEntry, unitMapSource, type PreviousEncoding, type ReusableUnit } from '../../store2/codec'
 import { createKeyMint, type BuildContext } from '../../store2/commit'
 import type { ShardEntry } from '../../store2/format'
 import { createSaveEncoder, type SaveEncoder } from '../../store2/saveEncoder'
@@ -256,8 +256,26 @@ describe('the moved-field compare of verdictOf', () => {
         for (const field of ['lastInteraction', 'trashTime']) {
             const characters = f.live()
             characters[0][field] = 12345
+            // The premise of the reproducer: the primitive alone leaves these two fields to the stub overlay.
+            expect(characterMatchesAcknowledged(characters[0] as unknown as character, { env: seededEnv(5), lists: fakeLists, previous: f.previous }), field).toBe('clean')
             expect(verdictOfSlot(f.encoder, characters[0]), field).toBe('dirty')
         }
+    })
+
+    test('guard: an acknowledged value the codec does not move, unchanged live, stays clean and a pass plans unchanged', async () => {
+        // Kills dropping the rule that a field compares only when the codec would move it: the entry holds no such field.
+        const db = clone(buildSmall(3)) as unknown as Obj
+        Object.assign((db.characters as Obj[])[0], { lastInteraction: 'soon', trashTime: 'later' })
+        db.characterOrder = (db.characters as Obj[]).map(slot => slot.chaId)
+        const first = encodeWith(asDatabase(db))
+        const previous = previousFrom(first)
+        const encoder = createSaveEncoder({ previous, lists: fakeLists, env: seededEnv(5), now: () => NOW })
+        const characters = clone(assembleDatabase(first.manifest, unitMapSource(first.units)).characters as unknown as Obj[])
+        expect(characters[0].lastInteraction).toBe('soon')
+        expect(characters[0].trashTime).toBe('later')
+        expect(verdictOfSlot(encoder, characters[0])).toBe('clean')
+        const plan = await encoder.plan(asDatabase({ ...clone(db), characters }), { marked: new Set([String(characters[0].chaId)]), modules: false, whole: false })
+        expect(plan.unchanged).toBe(true)
     })
 
     test('a removed lastInteraction or trashTime is dirty: the entry holds a field the pass would no longer write', () => {
@@ -309,6 +327,8 @@ describe('verdictOf: the cases only a full pass can answer', () => {
         const lists = { ...fakeLists, characterAssets: () => { throw fault } }
         const encoder = createSaveEncoder({ previous: f.previous, lists, env: seededEnv(5), now: () => NOW })
         const logged = vi.spyOn(console, 'error').mockImplementation(() => { })
+        // The premise of the reproducer: the primitive itself throws on this derivation.
+        expect(() => characterMatchesAcknowledged(f.live()[0] as unknown as character, { env: seededEnv(5), lists, previous: f.previous })).toThrow(fault)
         expect(verdictOfSlot(encoder, f.live()[0])).toBe('unknown')
         expect(logged).toHaveBeenCalledTimes(1)
         expect(logged.mock.calls[0]).toContain(fault)
