@@ -48,14 +48,14 @@ describe('hypaMemoryV2 response reservation', () => {
         ]
         // Nothing needs summarising: 150 tokens fit a 1000-token context.
         const inputTokens = 150
-        const result = await hypaMemoryV2(chats, inputTokens, 1000, {} as Chat, {} as character, tokenizer)
+        const result = await hypaMemoryV2(chats, inputTokens, 1000, { message: [] } as Chat, {} as character, tokenizer)
         expect(result.error).toBeUndefined()
         expect(result.currentTokens).toBeGreaterThanOrEqual(inputTokens)
     })
 
     it('guard: the memory block is added to the returned token count', async () => {
         const chats: OpenAIChat[] = [{ role: 'user', content: 'one', memo: 'id1' }]
-        const result = await hypaMemoryV2(chats, 150, 1000, {} as Chat, {} as character, tokenizer)
+        const result = await hypaMemoryV2(chats, 150, 1000, { message: [] } as Chat, {} as character, tokenizer)
         expect(result.error).toBeUndefined()
         expect(result.chats[0].memo).toBe('supaMemory')
         expect(result.currentTokens).toBeGreaterThan(0)

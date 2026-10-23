@@ -79,7 +79,7 @@ function callV2(
     currentTokens = chats.length * 10,
     chatTokenizer: ChatTokenizer = tokenizer,
 ) {
-    return hypaMemoryV2(chats, currentTokens, maxContextTokens, room as Chat, char, chatTokenizer)
+    return hypaMemoryV2(chats, currentTokens, maxContextTokens, { message: [], ...room } as Chat, char, chatTokenizer)
 }
 
 function summaryTexts(memory: SerializableHypaV2Data | undefined) {
@@ -245,8 +245,8 @@ describe('hypaMemoryV2 orphan cleanup', () => {
      * `Chat.message` for ids m0..m8: a hidden message stays in the list with `disabled: true` (the
      * caller leaves it out of the sent `chats`), a deleted message is absent from the list.
      */
-    const storedMessages = ({ hidden = [], deleted = [] }: { hidden?: number[]; deleted?: number[] }): Message[] =>
-        Array.from({ length: 9 }, (_, i): Message => ({
+    const storedMessages = ({ hidden = [], deleted = [], count = 9 }: { hidden?: number[]; deleted?: number[]; count?: number }): Message[] =>
+        Array.from({ length: count }, (_, i): Message => ({
             role: 'user',
             data: '',
             chatId: `m${i}`,
@@ -255,7 +255,7 @@ describe('hypaMemoryV2 orphan cleanup', () => {
     const sentWithoutM2 = () => memoChats(['m0', 'm1', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8'])
 
     // regression reproducer: CHORE-10 V3-4 (V2 half), MC-711 1
-    it.fails('keeps a summary that covers a hidden message', async () => {
+    it('keeps a summary that covers a hidden message', async () => {
         room = { hypaV2Data: storedMemory(), message: storedMessages({ hidden: [2] }) }
         const result = await callV2(sentWithoutM2(), 100000, 10)
         expect(result.error).toBeUndefined()
@@ -285,6 +285,78 @@ describe('hypaMemoryV2 orphan cleanup', () => {
         const result = await callV2([greeting, ...memoChats(['m0', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7'])], 100000, 10)
         expect(result.error).toBeUndefined()
         expect(summaryTexts(result.memory)).toEqual(['M1 covers m0,m1,m2', 'M2 covers m3,m4'])
+    })
+
+    // guard (passes at HEAD): the stored shape of the greeting's memo is null
+    it('guard: a summary covering the memo-less greeting is kept when its memo is stored as null', async () => {
+        const memory = storedMemory()
+        memory.mainChunks[0].chatMemos = [null, 'm0', 'm1']
+        room = { hypaV2Data: memory, message: storedMessages({}) }
+        const greeting: OpenAIChat = { role: 'assistant', content: 'greeting' }
+        const result = await callV2([greeting, ...memoChats(['m0', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7'])], 100000, 10)
+        expect(result.error).toBeUndefined()
+        expect(summaryTexts(result.memory)).toEqual(['M1 covers m0,m1,m2', 'M2 covers m3,m4'])
+    })
+
+    // regression reproducer (fails at HEAD): an allBefore reset leaves the greeting and the earlier
+    // messages out of `chats`, but they still exist
+    it.each([
+        ['undefined memo', [undefined, 'm0', 'm1']],
+        ['null memo', [null, 'm0', 'm1']],
+        ['memo-less only', [undefined]],
+    ])('keeps a greeting-covering summary after an allBefore reset (%s)', async (_label, covered) => {
+        const memory = storedMemory()
+        memory.mainChunks[0].chatMemos = covered as string[]
+        room = { hypaV2Data: memory, message: storedMessages({}) }
+        const result = await callV2(memoChats(['m5', 'm6', 'm7', 'm8']), 100000, 10)
+        expect(result.error).toBeUndefined()
+        expect(summaryTexts(result.memory)).toEqual(['M1 covers m0,m1,m2', 'M2 covers m3,m4'])
+    })
+
+    // regression reproducer (fails at HEAD): summaries before the reset point are not orphans
+    it('keeps summaries covering messages before the allBefore reset', async () => {
+        room = { hypaV2Data: storedMemory(), message: storedMessages({}) }
+        const result = await callV2(memoChats(['m5', 'm6', 'm7', 'm8']), 100000, 10)
+        expect(result.error).toBeUndefined()
+        expect(summaryTexts(result.memory)).toEqual(['M1 covers m0,m1,m2', 'M2 covers m3,m4'])
+    })
+
+    // regression reproducer (fails at HEAD, which also drops the hidden-covered summary): a hidden message
+    // elsewhere does not save a summary whose message was removed
+    it('a summary whose message left the chat is removed although another covered message is hidden', async () => {
+        room = { hypaV2Data: storedMemory(), message: storedMessages({ deleted: [2], hidden: [3] }) }
+        const result = await callV2(memoChats(['m0', 'm1', 'm4', 'm5', 'm6', 'm7', 'm8']), 100000, 10)
+        expect(result.error).toBeUndefined()
+        expect(summaryTexts(result.memory)).toEqual(['M2 covers m3,m4'])
+    })
+
+    describe('last covered message hidden', () => {
+        const sent = (hidden: number[]) => memoChats(Array.from({ length: 20 }, (_, i) => `m${i}`).filter((_, i) => !hidden.includes(i)))
+        const fedLines = () => summarizer.inputs.flatMap((input) => input.split('\n'))
+
+        // regression reproducer (fails at HEAD: the hidden message deletes the second summary, so m3 is fed again)
+        it('resumes after the latest covered message, feeds nothing twice and keeps both summaries', async () => {
+            room = { hypaV2Data: storedMemory(), message: storedMessages({ hidden: [4], count: 20 }) }
+            const result = await callV2(sent([4]), 200)
+            expect(result.error).toBeUndefined()
+            expect(summarizer.calls).toBeGreaterThan(0)
+            expect(summaryTexts(result.memory).slice(0, 2)).toEqual(['M1 covers m0,m1,m2', 'M2 covers m3,m4'])
+            for (const covered of ['m0', 'm1', 'm2', 'm3', 'm4']) expect(fedLines().some((line) => new RegExp(`content ${covered}\\b`).test(line))).toBe(false)
+            expect(new Set(fedLines()).size).toBe(fedLines().length)
+        })
+
+        // regression reproducer (fails at HEAD)
+        it('keeps the same summary when the message is shown again', async () => {
+            room = { hypaV2Data: storedMemory(), message: storedMessages({ hidden: [4], count: 20 }) }
+            const hiddenRun = await callV2(sent([4]), 200)
+            expect(summaryTexts(hiddenRun.memory).slice(0, 2)).toEqual(['M1 covers m0,m1,m2', 'M2 covers m3,m4'])
+            summarizer.inputs = []
+            room = { hypaV2Data: hiddenRun.memory, message: storedMessages({ count: 20 }) }
+            const shown = await callV2(sent([]), 200)
+            expect(shown.error).toBeUndefined()
+            expect(summaryTexts(shown.memory).slice(0, 2)).toEqual(['M1 covers m0,m1,m2', 'M2 covers m3,m4'])
+            expect(fedLines().some((line) => /content m4\b/.test(line))).toBe(false)
+        })
     })
 })
 

@@ -222,7 +222,7 @@ async function hypaMemoryV3MainExp(
 
     // Clean orphaned summaries
     if (!settings.preserveOrphanedMemory) {
-        cleanOrphanedSummary(chats, data);
+        cleanOrphanedSummary(chats, room, data);
     }
 
     // Determine starting index
@@ -999,7 +999,7 @@ async function hypaMemoryV3Main(
 
     // Clean orphaned summaries
     if (!settings.preserveOrphanedMemory) {
-        cleanOrphanedSummary(chats, data);
+        cleanOrphanedSummary(chats, room, data);
     }
 
     // Determine starting index
@@ -1666,14 +1666,26 @@ function toSerializableHypaV3Data(data: HypaV3Data): SerializableHypaV3Data {
     };
 }
 
-function cleanOrphanedSummary(chats: OpenAIChat[], data: HypaV3Data): void {
-    // Collect all memos from current chats
-    const currentChatMemos = new Set(chats.map((chat) => chat.memo));
+function cleanOrphanedSummary(chats: OpenAIChat[], room: Chat, data: HypaV3Data): void {
+    // Hiding a message or an `allBefore` reset never orphans a summary.
+    // `chats` omits hidden messages and, after an `allBefore` reset, everything
+    // before the reset, yet all of those still live in `room.message`, so the
+    // stored chat ids are valid too. `undefined` is always valid: the greeting is
+    // not a `room.message` entry and leaves `chats` under `allBefore`, so a
+    // summary whose only memos are memo-less is never orphaned.
+    const validMemos = new Set<string | undefined>(chats.map((chat) => chat.memo));
+
+    for (const message of room.message) {
+        validMemos.add(message.chatId);
+    }
+
+    validMemos.add(undefined);
+
     const originalLength = data.summaries.length;
 
-    // Filter summaries - keep only those whose chatMemos are subset of current chat memos
+    // Filter summaries - keep only those whose chatMemos are a subset of the valid memos
     data.summaries = data.summaries.filter((summary) => {
-        return isSubset(summary.chatMemos, currentChatMemos);
+        return isSubset(summary.chatMemos, validMemos);
     });
 
     const removedCount = originalLength - data.summaries.length;
@@ -1683,7 +1695,7 @@ function cleanOrphanedSummary(chats: OpenAIChat[], data: HypaV3Data): void {
     }
 }
 
-function isSubset(subset: Set<string>, superset: Set<string>): boolean {
+function isSubset(subset: Set<string>, superset: Set<string | undefined>): boolean {
     for (const elem of subset) {
         if (!superset.has(elem)) {
             return false;

@@ -290,9 +290,22 @@ function convertOldToNewHypaV2Data(oldData: OldHypaV2Data, chats: OpenAIChat[]):
 
 function cleanInvalidChunks(
     chats: OpenAIChat[],
+    room: Chat,
     data: HypaV2Data,
 ): void {
-    const currentChatMemos = new Set(chats.map((chat) => chat.memo));
+    // Hiding a message or an `allBefore` reset never invalidates a summary.
+    // `chats` omits hidden messages and, after an `allBefore` reset, everything
+    // before the reset, yet all of those still live in `room.message`, so the
+    // stored chat ids are valid too. `undefined` is always valid: the greeting is
+    // not a `room.message` entry and leaves `chats` under `allBefore`, so a
+    // summary whose only memos are memo-less is never invalid.
+    const currentChatMemos = new Set<string | undefined>(chats.map((chat) => chat.memo));
+
+    for (const message of room.message) {
+        currentChatMemos.add(message.chatId);
+    }
+
+    currentChatMemos.add(undefined);
 
     // mainChunks filtering
     data.mainChunks = data.mainChunks.filter((mainChunk) => {
@@ -373,7 +386,7 @@ export async function hypaMemoryV2(
     }
 
     // Clean invalid HypaV2 data
-    cleanInvalidChunks(chats, data);
+    cleanInvalidChunks(chats, room, data);
 
     let allocatedTokens = db.hypaAllocatedTokens;
     let chunkSize = db.hypaChunkSize;

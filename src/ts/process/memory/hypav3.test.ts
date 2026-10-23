@@ -220,7 +220,7 @@ describe('hypaMemoryV3 orphaned summaries', () => {
     const keptTexts = (result: Awaited<ReturnType<typeof call>>) => result.memory?.summaries.map((s) => s.text)
 
     // regression reproducer: CHORE-10 V3-4 (V3), MC-711 1
-    it.fails('a summary covering a hidden message is kept when Preserve Orphaned Memory is off', async () => {
+    it('a summary covering a hidden message is kept when Preserve Orphaned Memory is off', async () => {
         const result = await call(sentWithoutM2(), 10, 100000, twoSummaries(hiddenM2()))
         expect(result.error).toBeUndefined()
         expect(keptTexts(result)).toEqual(['S0', 'S1'])
@@ -302,7 +302,7 @@ describe('hypaMemoryV3 experimental implementation', () => {
     const twoSummaries = (stored: Message[]) => roomWith([summary('S0', [0, 1, 2]), summary('S1', [3, 4])], stored)
 
     // regression reproducer: CHORE-10 V3-4 (experimental path), MC-711 1
-    it.fails('a summary covering a hidden message is kept when Preserve Orphaned Memory is off', async () => {
+    it('a summary covering a hidden message is kept when Preserve Orphaned Memory is off', async () => {
         useExperimental()
         const result = await call(sentWithoutM2(), 10, 100000, twoSummaries(storedMessages(9, { hidden: [2] })))
         expect(result.error).toBeUndefined()
@@ -337,6 +337,83 @@ describe('hypaMemoryV3 experimental implementation', () => {
         const result = await call(story(4), inputTokens, 1000, roomWith([]))
         expect(result.error).toBeUndefined()
         expect(result.currentTokens).toBeGreaterThanOrEqual(inputTokens)
+    })
+})
+
+// Summaries survive hidden messages and an allBefore reset: `chats` omits both, `room.message` still
+// holds them. Each path runs the same rows; the experimental rows set `useExperimentalImpl`.
+describe.each([
+    ['standard', {}],
+    ['experimental', { useExperimentalImpl: true, similarMemoryRatio: 0 }],
+] as [string, Partial<HypaV3Settings>][])('hypaMemoryV3 %s summaries and hidden or pre-reset messages', (_path, pathSettings) => {
+    const keptTexts = (result: Awaited<ReturnType<typeof call>>) => result.memory?.summaries.map((s) => s.text)
+    const without = (chats: OpenAIChat[], hidden: number[]) => chats.filter((chat) => !hidden.some((i) => chat.memo === `m${i}`))
+    const twoSummaries = (stored: Message[]) => roomWith([summary('S0', [0, 1, 2]), summary('S1', [3, 4])], stored)
+
+    beforeEach(() => setSettings({ ...pathSettings, maxChatsPerSummary: 3 }))
+
+    // regression reproducer (fails at HEAD): P6, an allBefore reset leaves the greeting and the
+    // earlier messages out of `chats`
+    it('keeps a greeting-covering summary after an allBefore reset', async () => {
+        const result = await call(story(9).slice(5), 10, 100000, greetingRoom())
+        expect(result.error).toBeUndefined()
+        expect(keptTexts(result)).toEqual(['G', 'S1'])
+    })
+
+    // regression reproducer (fails at HEAD)
+    it.each([
+        ['null memo', () => JSON.parse(JSON.stringify([null])) as string[]],
+        ['undefined memo', () => [undefined] as unknown as string[]],
+    ])('keeps a summary whose only memo is the memo-less greeting after an allBefore reset (%s)', async (_label, memos) => {
+        const room = roomWith([{ ...summary('G', []), chatMemos: memos() }, summary('S1', [2, 3])], storedMessages(9))
+        const result = await call(story(9).slice(5), 10, 100000, room)
+        expect(result.error).toBeUndefined()
+        expect(keptTexts(result)).toEqual(['G', 'S1'])
+    })
+
+    // regression reproducer (fails at HEAD): summaries before the reset point are not orphans
+    it('keeps summaries covering messages before the allBefore reset', async () => {
+        const result = await call(story(9).slice(5), 10, 100000, twoSummaries(storedMessages(9)))
+        expect(result.error).toBeUndefined()
+        expect(keptTexts(result)).toEqual(['S0', 'S1'])
+    })
+
+    // regression reproducer (fails at HEAD, which also drops the hidden-covered summary): a hidden message
+    // elsewhere does not save a summary whose message was removed
+    it('a summary whose message left the chat is removed although another covered message is hidden', async () => {
+        const room = twoSummaries(storedMessages(9, { deleted: [2], hidden: [3] }))
+        const result = await call(without(story(9), [2, 3]), 10, 100000, room)
+        expect(result.error).toBeUndefined()
+        expect(keptTexts(result)).toEqual(['S1'])
+    })
+
+    describe('last covered message hidden', () => {
+        // 12 messages, 120 tokens in, 60 allowed: the call must summarise past the covered messages.
+        const sentChats = (hidden: number[]) => without(story(12), hidden)
+        const hiddenRoom = () => twoSummaries(storedMessages(12, { hidden: [4] }))
+
+        // regression reproducer (fails at HEAD: the hidden message deletes S1, so m3 is fed again)
+        it('resumes after the latest covered message, feeds nothing twice and keeps both summaries', async () => {
+            const result = await call(sentChats([4]), 110, 60, hiddenRoom())
+            expect(result.error).toBeUndefined()
+            expect(keptTexts(result)?.slice(0, 2)).toEqual(['S0', 'S1'])
+            const fed = fedIndexes()
+            expect(fed.length).toBeGreaterThan(0)
+            expect(fed.filter((index) => index <= 4)).toEqual([])
+            expect(new Set(fed).size).toBe(fed.length)
+        })
+
+        // regression reproducer (fails at HEAD)
+        it('keeps the same summary when the message is shown again', async () => {
+            const hiddenRun = await call(sentChats([4]), 110, 60, hiddenRoom())
+            expect(keptTexts(hiddenRun)?.slice(0, 2)).toEqual(['S0', 'S1'])
+            state.fed = []
+            const shownRoom = { hypaV3Data: hiddenRun.memory, message: storedMessages(12) } as Chat
+            const shown = await call(sentChats([]), 120, 60, shownRoom)
+            expect(shown.error).toBeUndefined()
+            expect(keptTexts(shown)?.slice(0, 2)).toEqual(['S0', 'S1'])
+            expect(fedIndexes().filter((index) => index <= 4)).toEqual([])
+        })
     })
 })
 

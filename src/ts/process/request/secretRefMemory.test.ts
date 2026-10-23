@@ -83,7 +83,7 @@ import type { Chat, character } from 'src/ts/storage/database.svelte'
 const REF = '${RISU_TEST_KEY}'
 
 const tokenizer = { tokenizeChat: async () => 10 } as unknown as ChatTokenizer
-const room = { supaMemoryData: '', hypaV2Data: undefined } as unknown as Chat
+const room = { supaMemoryData: '', hypaV2Data: undefined, message: [] } as unknown as Chat
 const char = { name: 'Char', type: 'character' } as unknown as character
 
 function chats(count: number): OpenAIChat[] {

@@ -865,6 +865,131 @@ Gate 2 did not rerun the importer run; it relied on `importers.log`.
 - **Full suite.** The full `pnpm test` and the relevant build have not been run on this snapshot; they are pending at phase close. Ledger rows 5107 to 5110 record this stage.
 - The implementer ran no mutant in the repository; the two mock-edit files are beyond the plan's named files (flagged, accepted by Gate 2).
 
+## Phase 3 — stage C2 fix
+
+Scope: V3-4 for HypaV2, HypaV3 standard and HypaV3 experimental (2026-10-23). Decisions: `MC-711` 1, `MC-722` and `MC-723` in [lane-cloud-records.md](../lane-cloud-records.md). Evidence is the scratchpad `p3/c10/` tree (`C/plan.md` section "C2 V3-4", premises 2 and 6 and the C2 residual under "Gate 1 round 3"; `C/advisor2/result.md`; `C2/impl/result.md` and its logs including `green-orch.log`; `C2/g2/result.md`, Gate 2 `[EDITORIAL]`), the `git diff` of the six code/test files below, the records file, and upstream read-only at `/home/user/kwaroran/risuai` f50b594. Line numbers are the current working tree (branch `lane-cloud`, HEAD ad4ac00 plus uncommitted edits). Nothing was committed by this pass. Gate 1 for C2 was `[APPROVE]` (round 3). Gate 2 was `[EDITORIAL]`: the Orchestrator applied E1 (V2 removed-message fixture now includes `m4`), E2 (cleaner comments reworded) and O1 (extra blank line); afterwards `hypav2.test.ts` plus `hypav3.test.ts` ran 90 passed. No new gate round followed those edits.
+
+### Files
+
+- `src/ts/process/memory/hypav2.ts` and `src/ts/process/memory/hypav3.ts` (17 and 28 lines changed per `git diff --stat`).
+- `src/ts/process/memory/hypav2.test.ts` (80) and `src/ts/process/memory/hypav3.test.ts` (81).
+- Fixture-only: `src/ts/process/memory/hypav2.tokenAccounting.test.ts` (4) and `src/ts/process/request/secretRefMemory.test.ts` (2); see "Fixture-only edits". The second is outside the files the plan named.
+- This report and `Agents/Lanes/lane-cloud-records.md`. The records file carries the C2 status line, CHORE-502 and ledger rows 5111 to 5114; rows 5111 and 5112 exist in the working tree, the Orchestrator adds 5113 (this report) and 5114 (its independent check).
+
+### The change
+
+- **`hypav3.ts`**: `cleanOrphanedSummary(chats, room, data)` (`:1669`) takes the chat. The valid set is the memos of `chats`, plus the `chatId` of every message in `room.message` (hidden and pre-`allBefore` ones included), plus `undefined`. `isSubset` (`:1698`) widens its superset type to `Set<string | undefined>`; runtime behaviour is the same. Both call sites pass `room`: the experimental block (`:225`) and the standard block (`:1002`). `preserveOrphanedMemory` semantics are unchanged: when it is on, nothing is cleaned.
+- **`hypav2.ts`**: `cleanInvalidChunks(chats, room, data)` (`:291`) builds the same valid set; the call site (`:389`) passes `room`. V2 has no Preserve setting.
+- The comment above each valid set states the invariant: hiding a message or an `allBefore` reset never invalidates a summary, and `undefined` is always valid because the greeting is not a `room.message` entry and leaves `chats` under `allBefore`.
+- Resume needed no change in this stage: it is the shared `findResumeIndex` (A3 for V3, C3 for V2), which takes the maximum position over every memo, so a hidden last memo no longer makes the lookup return -1 (plan premise 2). Gate 2 traced that a kept summary can only add positions, so the resume point never moves backward.
+
+### Decision
+
+`MC-711` 1: "V3-4 (hidden messages make covering summaries look orphaned; V3 deletes them unless Preserve Orphaned Memory is on, V2 always; the deletion is assigned back to the chat). Answer: **"Hidden ≠ orphan (Recommended)"**. The option said: check summaries against the full message list, so only messages that were really deleted orphan a summary; hiding never deletes memory; applies to V2 and V3."
+
+Keeping summaries of pre-`allBefore` messages follows from the wording of `MC-711` 1 ("check summaries against the full message list, so only messages that were really deleted orphan a summary"): those messages stay in `room.message`. The `undefined` member follows from `MC-722` 1 (never lose the greeting) and the plan's probe P6 (an `allBefore` reset deleted the greeting-covering summary at HEAD). No separate maintainer question was asked about pre-`allBefore` summaries; their consequences (F4 below) are reported to the maintainer here and in the phase summary, not decided anew.
+
+### Tests
+
+Run labels: reproducer = fails at the pre-fix base; guard = may pass before and after. HEAD results are the implementer's executed run against HEAD source (`red-head.log`: 2 files failed, 24 failed / 66 passed over `hypav2.test.ts` plus `hypav3.test.ts`) and Gate 2's independent repeat (the same 24 rows; Gate 2 `run-head.log`).
+
+Flipped `it.fails` to `it` (all reproducers; all fail at HEAD): `hypav2.test.ts:258` (V2), `hypav3.test.ts:223` (V3 standard) and `hypav3.test.ts:305` (V3 experimental), each "keeps a summary that covers a hidden message".
+
+New rows. The V3 rows sit in one `describe.each` over `standard` and `experimental` (the latter sets `useExperimentalImpl: true` and `similarMemoryRatio: 0`), so each V3 row runs twice. Counts below are executed rows.
+
+| Test (`hypav2.test.ts` / `hypav3.test.ts`) | Label | HEAD |
+|---|---|---|
+| allBefore reset after a greeting-covering summary (V2 `:307` x3: undefined memo, null memo, memo-less only; V3 `:357` plus `:367` x2: null, undefined) | reproducer | fails (V2 3, V3 3 per path) |
+| summaries before the `allBefore` reset are kept (V2 `:317`, V3 `:375`) | reproducer (the plan called it a guard; it fails at HEAD) | fails (1 + 1 per path) |
+| a summary whose message left the chat is removed although another covered message is hidden (V2 `:326`, V3 `:383`) | reproducer (the plan called it a guard; it fails at HEAD because HEAD also drops the hidden-covered summary) | fails (1 + 1 per path) |
+| P5, last covered message hidden: resumes after the latest covered message, feeds nothing twice, keeps both summaries (V2 `:338`, V3 `:396`) | reproducer | fails (1 + 1 per path) |
+| P5, the same summary is kept when the message is shown again (V2 `:349`, V3 `:407`) | reproducer | fails (1 + 1 per path) |
+| V2 summary covering the greeting is kept when its memo is stored as `null` (`:291`) | guard | passes (the loader mapping from C3 and the `undefined` member of the HEAD set already keep it) |
+
+Totals: V2 8 reproducers (flip 1, allBefore 3, pre-`allBefore` 1, left-the-chat 1, P5 2) and 1 new guard; V3 8 per path (flip 1, allBefore 3, pre-`allBefore` 1, left-the-chat 1, P5 2), 16 in all. 8 + 16 = 24, matching the HEAD run.
+
+Existing guards that pass unmodified at HEAD and after (not counted in the 24): really-deleted-removed (V2 `:265`, V3 `:229` and `:312`), greeting kept (V2 `:279`, V3 `:235` and `:319`) and Preserve keeps. Gate 2 mutant R2 shows the deleted-removed guards and the left-the-chat rows catch a cleaner that stops cleaning.
+
+The implementer reported that the plan's two "guards" ("summary before `allBefore`" and "removed plus hidden") fail at HEAD; they are labelled reproducers in the tests and above. Gate 2 confirmed both.
+
+### Fixture-only edits
+
+`hypaMemoryV2` and the V3 cleaner now iterate `room.message`, so fixtures that passed `{}` or a room without `message` fail before the new assertions run. The edits add an empty `message` and change no assertion:
+
+- `hypav2.test.ts:82`: `callV2` spreads `{ message: [], ...room }` (a test's own `message` still wins).
+- `hypav2.tokenAccounting.test.ts:51,58`: `{ message: [] } as Chat`.
+- `request/secretRefMemory.test.ts:86`: `message: []` in the shared `room`. The implementer found 7 tests in this file failing with "room.message is not iterable" until this edit.
+
+Gate 2 traced that production always has `room.message`: `splitSentMessages` (declared at `src/ts/cbs.ts:112`, reading `.length` at `:113`) is called from `index.svelte.ts:1295` via `makeMs` at `:1301`, before the memory calls at `:1548` and `:1566`, and the entry points in `index.svelte.ts` pass `currentChat`. Plugin and group rooms use the same `Chat` type.
+
+### Mutants and proof that the experimental rows are real
+
+Implementer mutants, on scratch copies by module substitution (repository files never mutated; logs `mutant-m1..m5.log`, `mutant-fixed.log`):
+
+| Mutant | Fails | Named rows |
+|---|---|---|
+| fixed (control) | 0 of 90 | none |
+| M1 drop `undefined` | 9 | allBefore rows: V2 3, V3 standard 3, V3 experimental 3 |
+| M2 chats-only valid set | 24 | hidden-covered, P5, pre-`allBefore`, allBefore, left-the-chat |
+| M3 `room.message`-only valid set | 39 | greeting guards (V2 x2, V3 standard and experimental), resume and memo-less rows, allBefore |
+| M4 last-memo resume | 10 | P5 resume row (V2, standard, experimental) plus the A3/C3 set-order rows |
+| M5 experimental call site only uses a chats-only set | 8, all `experimental` | 0 standard rows |
+
+Gate 2 mutants (its own copies, `g2/vitest.g2.config.mjs`; logs `run-*.log`):
+
+| Mutant | Fails | Notes |
+|---|---|---|
+| HEAD source | 24 | exactly the 24 reproducer rows; the V2 stored-null guard passes |
+| R1 union adds only `disabled === true` ids | 13 | every pre-`allBefore` and allBefore row, plus the V2 left-the-chat row (through the E1 fixture inconsistency, since fixed) |
+| R2 no cleaning | 6 | both deleted-removed guards on every path and the three left-the-chat rows |
+| R3 standard call site reverted to chats-only | 8, all standard | 0 experimental |
+| R4 experimental call site drops hidden ids | 4, all experimental hidden rows | 0 standard |
+| R5 union skips `disabled` messages | 12 | every hidden row on all three paths |
+| R6 drop `undefined` | 9 | same as M1 |
+| M5 rerun | 8, all experimental | confirms the implementer |
+
+Proof the experimental rows reach the experimental code: the dispatch is `settings.useExperimentalImpl` (`hypav3.ts:146`) and the experimental rows set it. M5 and R4 break only the call inside `hypaMemoryV3MainExp` and fail only experimental rows; R3 breaks only the standard call and fails only standard rows. The earlier A3 Gate 2 note found that the advisor and Gate 1 probe templates used a non-existent flag `enableExperimentalMode`, so their "experimental" rows had run the standard path; the C2 rows use the real switch and the mutants above show it. Gate 2 also ran behaviour probes on the real working-tree `hypav3.ts`, standard and experimental (`g2/probe/v3probe.test.ts`, 8 of 8 passed, `g2/probe.log`).
+
+### Visible effects
+
+- **Hiding a message** no longer deletes the summaries that cover it, in V2 and in V3 with Preserve Orphaned Memory off (or on, where nothing was cleaned anyway). Unhiding restores the same summary and nothing is re-fed (P5 rows). Before the change the cleaned data was assigned back to the chat and unhiding could not restore it.
+- **An `allBefore` reset** no longer deletes summaries that cover messages before the reset, or the summary that covers the greeting.
+- **F4 (reported to the maintainer)**, both sides:
+  - (a) Summaries keep text derived from messages the user hid from the model; a hidden message's content stays in the summaries that already cover it.
+  - (b) `splitSentMessages` treats every message at or before the latest `allBefore` as not sent. With the new valid set those pre-reset summaries are kept and still injected into the memory prompt (before the change they were deleted on the next send). Gate 2 confirmed this by execution: with an `allBefore` marker at index 5 and summaries covering m0 to m2 and m3, m4, both survive, only m6 to m14 are fed, a second send feeds nothing again, and with budget available the memory prompt contains both summaries.
+- **A summary whose only memos are memo-less never orphans** (the key `undefined`: the greeting, example turns, chatId-less legacy messages). The key is always valid, so a stale example-turn-only summary also stays. This is intended by the plan (premise 6, advisor) and is not a defect; it is a consequence of `undefined` being one key for several kinds of chat.
+- **A really deleted message still orphans its summary**: removed from `room.message`, the summary is cleaned (guards; Gate 2 R2). This holds even when another message of the same summary is hidden (the left-the-chat rows).
+- Resume does not move backward and does not duplicate: Gate 2 traced that `findResumeIndex` takes the maximum over every memo and that hidden or pre-reset memos have no position in `chats`; the cleaners run synchronously before the first await.
+
+### Saved data and MC-175
+
+No saved shape changes. `hypaV2Data` and `hypaV3Data` keep their fields; the change is fewer deletions, so upstream data is kept as much as or more than before. Upstream reading a fork chat applies its own cleaner on its next send and deletes hidden-covered summaries (upstream behaviour, not a fork regression; Gate 2). Other writers are consistent: `HypaV3Modal`'s own orphan check already looks at `chat.message` (Gate 2), and the `coldstorageData.ts` merge comment about the cleaner deleting a summary keyed to a dropped error message stays true because that message leaves `room.message`. The MC-223 size exception does not apply.
+
+### Upstream status
+
+Checked at f50b594: the same defect. `cleanInvalidChunks(chats, data)` (`hypav2.ts:275`, call `:370`) and `cleanOrphanedSummary(chats, data)` (`hypav3.ts:1650`, calls `:212` and `:991`) build the valid set from `chats.map((chat) => chat.memo)` only (`hypav3.ts:1652`; `hypav2.ts:279`). Hidden messages are not in `chats`, so upstream deletes hidden-covered summaries as well. The fix is fork-only; no upstream change was proposed here.
+
+### Verification
+
+| Run | Who | Result |
+|---|---|---|
+| Red-first against HEAD source (executed) | implementer; Gate 2 | 24 failed / 66 passed over `hypav2.test.ts` and `hypav3.test.ts`, on the kept-summary assertions |
+| `hypav2.test.ts` plus `hypav3.test.ts` on the fixed source (executed) | implementer; Orchestrator after E1, E2 and O1 | 90 passed |
+| 61 test files that import `hypav2`, `hypav3` or `hypaResume` (executed, `green-orch.log`) | Orchestrator, after the last fixture edit | 61 files passed, 1310 passed, 1 skipped. The implementer's first run of this set had 7 failures in `secretRefMemory.test.ts`, fixed by the fixture edit; the implementer did not rerun the full 61 files |
+| Targeted: `src/ts/process/memory/`, `request/secretRefMemory.test.ts`, `memorySummarizerSubject`, `requestOriginMemory`, `coldStorageDeletionGuards` (executed, no substitution) | Gate 2 | 14 files, 258 passed, 1 expected fail (the C4 `supaMemory.test.ts` `it.fails`, unrelated), 1 skipped |
+| `NODE_OPTIONS=--max-old-space-size=8192 pnpm check` (executed) | implementer (before the last fixture edit); Gate 2 on the current tree | 0 errors, 0 warnings both times |
+
+Not run: the full `pnpm test` and the build on this snapshot (pending at phase close). The 61-file set is a subset.
+
+### Residuals
+
+- **NewChat and NewChatExample marker summaries still orphan (Gate 1 round 3, g1r3).** A summary whose memos include the `NewChat` or `NewChatExample` marker orphans when the marker leaves `chats` (`trimStartNewChat`, NovelAI, examples removed), because marker memos are neither `room.message` ids nor `undefined`. HEAD and upstream behave the same. Not fixed. The earlier cleaner comment ("invalid only when it covers a message that no longer exists") overclaimed this; Gate 2 E2 reworded it.
+- **CHORE-502 (F1, proposed, pre-existing).** `convertOldToNewHypaV2Data` maps old-format summary targets through `chats`. If a target is hidden or before `allBefore`, that chunk and the next (whose start is that target) are dropped and the converted data is saved. Gate 2 probe (`g2/probe/v2legacy.test.ts`): targets m2 and m4 with m2 hidden gives no chunks; nothing hidden gives two. HEAD and upstream f50b594 (`hypav2.ts:188-275`) have the same code; only never-converted old-format data reaches it. Not fixed in C2. Whether `MC-711` 1 ("applies to V2") extends to this conversion is the maintainer's call.
+- **CHORE-501** (the HypaV3 modal "next summarisation" preview, from stage A3) is unchanged by C2.
+- **Full suite pending.** `pnpm test` on the final snapshot and the relevant build have not been run.
+- The inherited residuals from A3 and C3 (`MC-723` bounded duplicate greeting summary, upstream `trimStartNewChat` without examples, examples removed after an example-only summary, messages unhidden after being summarised around) are unchanged by this stage; see those sections.
+- The `it.fails` rows for the hidden message are flipped in V2 and V3. A separate `it.fails` in `supaMemory.test.ts` belongs to C4.
+
 ## Corrections from doc-verifier
 
 This section takes precedence over the body above. Independent doc-verifier pass, 2026-10-23 (scratchpad `p2/c10d/dv/result.md`): ten files rerun (40 passed, 32 expected fail), test titles, decision quotes, REPRODUCED citations and an upstream sample verified; four required corrections, applied in the body by the Orchestrator:
@@ -919,3 +1044,12 @@ Independent doc-verifier check, 2026-10-23 (scratchpad `p3/c10/C3/dv/result.md`;
 7. Ledger row 5107's "5 guards" counts test letters (d, h, i, k, m); those are seven guard test rows, because (i) and (k) have two rows each. Row 5107 is corrected.
 
 The scratchpad logs were read, not rerun; the full suite, `pnpm check` and the build were not run by the verifier.
+
+### Stage C2 (Phase 3)
+
+Independent doc-verifier check, 2026-10-23 (scratchpad `p3/c10/C2/dv/result.md`; ledger row 5114). About 75 claims checked, none wrong; four test files rerun (117 passed). These citation corrections take precedence over the text above and have been applied to it:
+
+1. `cbs.ts:112` is the `splitSentMessages` declaration (`.length` read at `:113`); the call site is `index.svelte.ts:1295` via `makeMs` at `:1301`, before the memory calls at `:1548` and `:1566`.
+2. The probe "8 of 8 passed" figure is in `g2/probe.log`; `g2/probe-out.txt` holds only the two legacy-conversion output lines.
+
+The verifier read the F4 trace and the logs without rerunning them and did not check E1, E2 and O1 against Gate 2's text.
