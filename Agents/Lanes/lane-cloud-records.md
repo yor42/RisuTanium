@@ -283,6 +283,20 @@ Found in Phase 2 (CHORE-09, CHORE-10), all upstream behaviour too (`MC-069`). Ea
 
 ## CHORE entries (proposed status changes)
 
+
+### MC-719 — Lane Cloud, 2026-10-23: CHORE-10 fix-plan questions (SHARED-2 scope, UI-1 toggle)
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23, after the CHORE-10 batch A and B fix plans)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-712` 8, `MC-713` 6, `MC-091`; CHORE-10.
+
+1. SHARED-2 scope (HypaV3 similar-memory search uses the same dot-product score). Answer: **"Shared retriever only (Recommended)"**. The option said: switch only the shared HypaProcesser to cosine; V3 similar-memory stays on dot product; no effect on emotion scoring.
+2. UI-1 toggle label order (Hanurai and HypaV3 both on: the label says Hypa, the runtime runs Hanurai). Answer: **"Follow runtime order (Recommended)"**. The option said: order the label checks as the runtime does (Hanurai, then Hypa V2/V3, then Supa); with Hanurai+V3 on, the label says Hanurai.
+3. UI-1 toggle visibility (a V2-only setup with summarizer type `none` shows no toggle, although the runtime runs V2). Answer: **"Yes, show it (Recommended)"**. The option said: add V2 to the toggle's visibility condition at the same two render sites; no saved data changes.
+
+**What was decided.** `MC-713` 6 applies to the shared retriever only. The UI-1 fix orders the toggle label by runtime precedence and shows the toggle for V2-only setups; item 3 is a same-cause scope amendment (`MC-091`).
 ### CHORE-67 — Existing tests that run DOMPurify under happy-dom may pass for the wrong reason
 
 **Proposed status (2026-10-23, lane Cloud): CLOSED (`MC-705`); the two residual tests were moved to jsdom on `lane-cloud`; technically accepted (Gate 2, row 5011).** The Roadmap's "open, not scheduled" status (2026-10-02) was stale: the main fix was made under `MC-238` 4 and `MC-239` (six files moved to jsdom in `76af9bba`, per `MC-239`), and the residual survey below confirms it holds.
@@ -365,6 +379,10 @@ Found in Phase 2 (CHORE-09, CHORE-10), all upstream behaviour too (`MC-069`). Ea
 
 **Proposed status (2026-10-23, lane Cloud): items 4, 9, 10 and 11 fixed on `lane-cloud` (`MC-710`, `MC-716` 5 to 7, `MC-718` 1 to 3); technically accepted (Gate 1 `[EDITORIAL]` row 5050, Gate 2 `[EDITORIAL]` row 5061, E1 applied row 5062). Item 7 remains open (not picked, `MC-716` 4).** New `src/ts/process/loreKeys.ts` splitter used by lorebook matching and the CCv2/CCv3 exporters; Case Sensitive toggle in the lorebook editor; en.ts keys `caseSensitive` and `help.caseSensitiveLorebook` (other locales: translator). `docs/wiki/Lorebook.md` and `Trigger-Script.md` describe the old behaviour (maintainer's to update). Report: [CHORE-09-result.md](lane-cloud/CHORE-09-result.md), Phase 3 section.
 
+### CHORE-139 — `removeChar` leaves a just-emptied folder in place
+
+**Proposed status (2026-10-23, lane Cloud): fixed on `lane-cloud` (`MC-717` 2); technically accepted (Gate 2 round 1 `[REJECT]` row 5058, round 2 `[EDITORIAL]` row 5065, editorial applied row 5066).** The cause was in `checkCharOrder` (emptiness tested before pruning), not `removeChar`: one pass now drops a folder it just emptied, matching bulk delete, and the double-call workarounds in `trashFolderMembers` and `trashCharacters` are removed. Regression test `src/ts/characters.removeCharFolderPrune.svelte.test.ts`; `GridCatalog.folderMenu` (F) updated to one call. Reactive-database change (`characterOrder` spliced in place, as the old second pass did); save format unchanged. Upstream has the same pruning order. Report: [CHORE-139-result.md](lane-cloud/CHORE-139-result.md). Gate 1 not required: small low-risk fix under the `gates.md` carve-out; Gate 2 (opus-reviewer) found two missed call-count pins. Ledger rows 5041, 5043, 5053, 5058, 5060, 5065 to 5068.
+
 ## Ledger rows
 
 | # | Date | Question | Tier(s) | Tokens | Escalated? | Outcome |
@@ -434,6 +452,10 @@ Found in Phase 2 (CHORE-09, CHORE-10), all upstream behaviour too (`MC-069`). Ea
 | 5062 | 2026-10-23 | CHORE-09 Gate 2 E1 applied (`loreKeys.test.ts` guard row `/a/v,/b/y`) | orchestrator | not measured | no | `loreKeys.test.ts` 33 passed; scratch copy of `loreKeys.ts` without `v` in the flag set fails that guard (1 failed, 32 passed; scratchpad `p3/c09fix/e1`). |
 | 5063 | 2026-10-23 | CHORE-09 Phase 3 report update and commit-message draft (`Agents/Lanes/lane-cloud/CHORE-09-result.md`; scratchpad `p3/c09fix/commit-msg.txt`) | doc-writer | 57,887 (subagent usage) | no | Status, Phase 3 section (decisions, files, deviation, en.ts keys, gates, residuals including `docs/wiki/Lorebook.md` and `Trigger-Script.md` lines for the maintainer). Under independent check. |
 | 5064 | 2026-10-23 | Independent check of the CHORE-09 Phase 3 report, rows and commit message (scratchpad `p3/c09fix/dv/result.md`) | doc-verifier | 43,520 (subagent usage) | no | One WRONG claim (diff figure 14 files/261/94 should be 9 files/232/82 for this ticket's tracked files), corrected by the Orchestrator; all else VERIFIED; six test files rerun, 135 passed, no `.fails` left. |
+| 5065 | 2026-10-23 | CHORE-139 Gate 2, round 2 (fresh reviewer; scratchpad `p3/c139/g2r2/result.md`) | opus-reviewer | 67,209 (subagent usage) | no | `[EDITORIAL]`; ends the streak at one rejection. Round-1 findings resolved and rerun: `GridCatalog.folderMenu` (F) passes (fails with the old double call); no-`i--` and no-`continue` mutants caught; pre-fix fails 7 of 9 on the intended order assertion; guards hold. No other test pins the double call (154 files mention `checkCharOrder`). 162 related files, 2,884 tests passed; `pnpm check` 0/0. Editorial: stale "repairs it twice" comment in `GridCatalog.svelte`. |
+| 5066 | 2026-10-23 | CHORE-139 round-2 editorial applied (`GridCatalog.svelte` comment: "repairs it once") | orchestrator | not measured | no | Comment-only change; no re-review needed per the verdict. |
+| 5067 | 2026-10-23 | CHORE-139 report and commit-message draft (`Agents/Lanes/lane-cloud/CHORE-139-result.md`; scratchpad `p3/c139/commit-msg.txt`) | doc-writer | not reported | no | Notes the refuted implementation claims and the investigation's `4455c00` line numbers. Checked in row 5068; corrections applied. |
+| 5068 | 2026-10-23 | Independent check of row 5067 and the CHORE-139 records entry and commit draft (scratchpad `p3/c139/dv/result.md`) | doc-verifier | 46,405 (subagent usage) | no | About 24 claims: 20 VERIFIED, 1 WRONG (bootstrap does not pass `db`), 3 STALE (line numbers, pending notes), 1 INCOMPLETE (Gate 1 basis). Reran targeted tests: 47 and 29 passed. Corrections applied by the orchestrator. |
 
 ## Handoff
 

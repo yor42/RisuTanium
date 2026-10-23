@@ -1144,11 +1144,12 @@ export function visibleCharacterIds(): Set<string> {
  * The change is one synchronous stretch: work owned by each character is stopped, each gets
  * `trashTime`, the folder, if it is still the same entry of the order, is replaced in place by
  * its member ids that were not just trashed (hidden characters, an id a held save still
- * needs, an id added during the dialog), and `checkCharOrder` then runs twice and drops the
- * trashed ids that remain elsewhere; each id is marked for saving (a non-selected
- * character's in-place field write reaches the save only through that mark). A folder that was
- * replaced or removed during the dialog is not edited. The replacement does not depend on
- * `checkCharOrder`, which skips its cleanup while saving is held. Returns the number trashed.
+ * needs, an id added during the dialog), and `checkCharOrder` then drops the
+ * trashed ids that remain elsewhere, and any folder that empties; each id is marked for saving
+ * (a non-selected character's in-place field write reaches the save only through that mark). A
+ * folder that was replaced or removed during the dialog is not edited. The replacement does
+ * not depend on `checkCharOrder`, which skips its cleanup while saving is held. Returns the
+ * number trashed.
  */
 export async function trashFolderMembers(entry: folder, folderName: string): Promise<number> {
     const visibleBefore = visibleCharacterIds()
@@ -1183,9 +1184,6 @@ export async function trashFolderMembers(entry: folder, folderName: string): Pro
         const trashedIds = new Set(doomed.map((c) => c.chaId))
         order.splice(at, 1, ...entry.data.filter((id) => !trashedIds.has(id)))
     }
-    // One pass drops the trashed ids that remain in other folders; a folder it emptied is only
-    // removed by a second pass, which would otherwise leave an empty folder in the rail.
-    checkCharOrder()
     checkCharOrder()
     for(const c of doomed){
         markCharacterForSave(c.chaId)
@@ -1261,9 +1259,6 @@ export async function trashCharacters(picked: { characters: readonly (character 
             }
         }
     }
-    // One pass drops the trashed ids that remain in other folders; a folder it emptied is only
-    // removed by a second pass, which would otherwise leave an empty folder in the rail.
-    checkCharOrder()
     checkCharOrder()
     for(const c of doomed){
         markCharacterForSave(c.chaId)
