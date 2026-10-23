@@ -5,6 +5,7 @@ import {
     mapContextualChunkEmbeddings,
 } from "./contextualEmbeddingCache";
 import { TaskRateLimiter } from "./taskRateLimiter";
+import { findResumeIndex } from "./hypaResume";
 import {
     type EmbeddingText,
     type EmbeddingResult,
@@ -228,9 +229,9 @@ async function hypaMemoryV3MainExp(
     let startIdx = 0;
 
     if (data.summaries.length > 0) {
-        const lastSummary = data.summaries.at(-1);
-        const lastChatIndex = chats.findIndex(
-            (chat) => chat.memo === [...lastSummary.chatMemos].at(-1)
+        const lastChatIndex = findResumeIndex(
+            chats,
+            data.summaries.map((summary) => summary.chatMemos)
         );
 
         if (lastChatIndex !== -1) {
@@ -1005,9 +1006,9 @@ async function hypaMemoryV3Main(
     let startIdx = 0;
 
     if (data.summaries.length > 0) {
-        const lastSummary = data.summaries.at(-1);
-        const lastChatIndex = chats.findIndex(
-            (chat) => chat.memo === [...lastSummary.chatMemos].at(-1)
+        const lastChatIndex = findResumeIndex(
+            chats,
+            data.summaries.map((summary) => summary.chatMemos)
         );
 
         if (lastChatIndex !== -1) {
@@ -1070,11 +1071,8 @@ async function hypaMemoryV3Main(
         }
 
         const toSummarize: OpenAIChat[] = [];
-        const endIdx = Math.min(
-            startIdx + settings.maxChatsPerSummary,
-            chats.length - settings.queryChatCount
-        );
         let toSummarizeTokens = 0;
+        let currentIndex = startIdx;
 
         console.log(
             logPrefix,
@@ -1085,23 +1083,25 @@ async function hypaMemoryV3Main(
             maxContextTokens,
             "\nStart Index:",
             startIdx,
-            "\nEnd Index:",
-            endIdx,
-            "\nChat Count:",
-            endIdx - startIdx,
             "\nMax Chats Per Summary:",
             settings.maxChatsPerSummary
         );
 
-        for (let i = startIdx; i < endIdx; i++) {
-            const chat = chats[i];
+        // Terminates because maxChatsPerSummary >= 1 (the UI enforces a
+        // minimum of 1): currentIndex advances on every path, so the window
+        // always moves on even when every examined chat is skipped.
+        while (
+            toSummarize.length < settings.maxChatsPerSummary &&
+            currentIndex < chats.length - settings.queryChatCount
+        ) {
+            const chat = chats[currentIndex];
             const chatTokens = await tokenizer.tokenizeChat(chat);
 
             console.log(
                 logPrefix,
                 "Evaluating chat:",
                 "\nIndex:",
-                i,
+                currentIndex,
                 "\nRole:",
                 chat.role,
                 "\nContent:",
@@ -1112,31 +1112,40 @@ async function hypaMemoryV3Main(
 
             toSummarizeTokens += chatTokens;
 
+            let shouldSummarize = true;
+
             if (
                 chat.name === "example_user" ||
                 chat.name === "example_assistant" ||
                 chat.memo === "NewChatExample"
             ) {
-                console.log(logPrefix, `Skipping example chat at index ${i}`);
-                continue;
+                console.log(
+                    logPrefix,
+                    `Skipping example chat at index ${currentIndex}`
+                );
+                shouldSummarize = false;
             }
 
             if (chat.memo === "NewChat") {
-                console.log(logPrefix, `Skipping new chat at index ${i}`);
-                continue;
+                console.log(logPrefix, `Skipping new chat at index ${currentIndex}`);
+                shouldSummarize = false;
             }
 
             if (chat.content.trim().length === 0) {
-                console.log(logPrefix, `Skipping empty chat at index ${i}`);
-                continue;
+                console.log(logPrefix, `Skipping empty chat at index ${currentIndex}`);
+                shouldSummarize = false;
             }
 
             if (settings.doNotSummarizeUserMessage && chat.role === "user") {
-                console.log(logPrefix, `Skipping user role at index ${i}`);
-                continue;
+                console.log(logPrefix, `Skipping user role at index ${currentIndex}`);
+                shouldSummarize = false;
             }
 
-            toSummarize.push(chat);
+            if (shouldSummarize) {
+                toSummarize.push(chat);
+            }
+
+            currentIndex++;
         }
 
         // Stop summarization if further reduction would go below target tokens (unless we're over max tokens)
@@ -1184,7 +1193,7 @@ async function hypaMemoryV3Main(
         }
 
         currentTokens -= toSummarizeTokens;
-        startIdx = endIdx;
+        startIdx = currentIndex;
     }
 
     console.log(

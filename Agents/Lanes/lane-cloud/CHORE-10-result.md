@@ -550,6 +550,117 @@ No saved data changes: the change affects per-request scoring only; embedding ca
 - Embedder and storage are mocked; results show control flow, not provider behaviour. NaN input vectors are out of scope (Gate 2).
 - The emotion-selection change for non-normalised Custom Server embeddings is reasoned from source; no test measures it.
 
+## Phase 3 — stage A3 fixes
+
+Scope: V3-2 and V3-3 (2026-10-23). Decisions: `MC-711` 2 and 3, `MC-722` 1 and `MC-723` in [lane-cloud-records.md](../lane-cloud-records.md). Evidence is the scratchpad `p3/c10/` tree (`A/a3-plan.md`, `C/advisor2/result.md` (the rule), `C/g1r3/result.md` (Gate 1, A3 `[EDITORIAL]`), `A3/impl/result.md` and its logs, `A3/g2/result.md` (Gate 2 `[EDITORIAL]`), `A3/ed/result.md` (the editorial)) and the `git diff` of the files below; line numbers are the current working tree (HEAD ffc5fc2 plus uncommitted edits). Nothing was committed by this pass. Stage A3 is the third stage of batch A (A1 and A2 are the sections above). Gate 1 and Gate 2 were both `[EDITORIAL]`; the Gate 2 corrections E1 to E4 were applied (`A3/ed/result.md`), with no new gate round.
+
+### Files
+
+Four tracked files (`git diff --stat`: 191 insertions, 46 deletions) and two untracked new files:
+
+- `src/ts/process/memory/hypav3.ts` (+36/-27 by `git diff --numstat`; both resume sites and the standard batching loop);
+- `src/ts/process/memory/hypaResume.ts` (new, 62 lines) and `src/ts/process/memory/hypaResume.test.ts` (new, untracked);
+- `src/ts/process/memory/hypav3.test.ts`;
+- `src/ts/process/coldstorageData.ts` (comments only);
+- `src/ts/process/tests/coldStorageDeletionGuards.svelte.test.ts` (one comment).
+
+The records file `Agents/Lanes/lane-cloud-records.md` and this report are also modified and are listed in the commit. The records file carries the stage A3 status line, CHORE-501 and ledger rows 5094 to 5102. Rows 5094, 5095, 5097 and 5098 are batch C planning; rows 5096, 5099, 5100 and 5101 are stage A3; row 5102 is added by the Orchestrator. `hypav2.ts` is untouched.
+
+### V3-2: resume after the highest covered message (`MC-711` 2, `MC-722` 1, `MC-723`)
+
+- **Change:**
+  - New pure module `hypaResume.ts` (imports only `type OpenAIChat`). `isSkipEligibleChat` (`:7`) is true for `example_user` / `example_assistant` names, `NewChatExample` / `NewChat` memos and blank content. `findResumeIndex(chats, memoSets)` (`:28`) builds the first-index position of every memo in `chats` (`undefined` included), deletes the `undefined` key when the first memo-less chat is skip-eligible (`:40-47`), and returns the maximum position over every memo of every set, or -1 (`:49-61`).
+  - Both V3 resume sites call it with `chats, data.summaries.map((summary) => summary.chatMemos)`: experimental `hypav3.ts:232`, standard `hypav3.ts:1009`. `startIdx = lastChatIndex + 1` and the token deduction over `chats.slice(0, lastChatIndex + 1)` are unchanged. The old code compared against the last memo of the last summary.
+  - The helper lives in a new module rather than in `hypav3.ts` (plan choice, accepted by the Orchestrator): `hypav2.test.ts` does not mock `stores.svelte` / `webllm`, which `hypav3.ts` imports, so a V2 import from `hypav3.ts` would load that graph in every V2 test. V2 (batch C) will import the same helper.
+  - `coldstorageData.ts` comments (two hunks holding three comment edits, no behaviour change) now say the resume point is the highest position, in the sent chat list, of any memo of any summary, and that an empty-memo summary covers nothing and contributes no position. `coldStorageDeletionGuards.svelte.test.ts` has the matching comment.
+- **Decision, `MC-711` 2:** "Resume from max covered (Recommended)". The option said: base the resume point on the latest message covered by any summary, not only the last summary.
+- **Decision, `MC-722` 1:** "Re-summarise, never lose (Recommended)". The option said: when it cannot tell, treat the greeting as not yet summarised; the worst case is the greeting summarised twice, costing an extra call; nothing is lost.
+- **Decision, `MC-723` 1:** "Accept and report (Recommended)". The option said: keep the rule and record this as a known limitation; a few repeat summaries of the greeting in this rare setup; no loss; summary sizes stay as configured. The case: with example turns and a batch that is the greeting alone (V3: one message per summary), each send can summarise the greeting again until the chat grows by about the greeting's length.
+- **Rule source:** `C/advisor2/result.md` (senior-advisor, adopted). Root cause: `undefined` is one key for every memo-less chat, and upstream V2 can cover example turns, so an upstream Set `{undefined}` may mean examples only. Mapping `undefined` to the first non-skipped chat risks silent greeting loss (advisor probe P4); ignoring it re-summarises the greeting on every send for unambiguous data (N1).
+- **Tests (red-first, `A3/impl/result.md`):** on unmodified source with tests flipped or added, 7 failed, 30 passed, 2 expected fail (39); Gate 2 reproduced it against a HEAD copy (`A3/g2/red.log`). Each failure is on its intended assertion.
+  - **Reproducers that flipped (`it.fails` to `it`, `hypav3.test.ts`):** `summaries not ordered by coverage resume after the latest covered message`, standard (`:172`) and experimental (`:291`). Failure: fed `[1..5]` / `[4,5]` where `[]` was expected.
+  - **New reproducers:** `a summary Set listing the latest memo first resumes after the latest position` (`:375`, both paths); `example turns before the greeting keep the example-only {undefined} summary from skipping them` (`:397`, both paths; fails because plain `findIndex` resumes at the first example turn).
+  - **Compatibility guards (pass before and after):** the greeting-only sole summary in stored-null and in-memory-undefined shapes (`it.each` at `:385`); `example turns before the greeting: the greeting is still summarised after an example-only {undefined} summary` (`:407`); `guard: a set holding only the NewChat marker keeps the greeting` (`:415`); `guard: a set that reaches message ids decides by ids and does not feed the greeting again` (`:422`).
+  - **Bounded-repeat guard (`MC-723`):** `guard: a greeting-only batch with examples present is not fed again on the second send in this fixture` (`:433`). Its comment states the accepted limitation: at a max context of 120 this fixture shows no repeat on the second send; at 250 the greeting is fed again on that send (Gate 2 probe `n3/`: with `maxChatsPerSummary` 1, examples and four sends, the greeting is fed `[1,0,0,0]` for max 140 to 240 and `[1,1,0,0]` at 250, identical at HEAD). Repeats are bounded and lose nothing.
+  - **`hypaResume.test.ts`** (new, no mocks, no red-first run because the module is absent at base): `isSkipEligibleChat` branches (`it.each`) and `findResumeIndex` rows: -1 with no covered memo, maximum across sets, independence from Set order, absent memos ignored, `undefined` kept when the first memo-less chat is the greeting, kept when only memo-bearing marker chats precede it, dropped for an example turn, a defined memo past the greeting dominates, `undefined` wins only while nothing defined lies further on.
+- **Mutants:**
+
+| mutant | implementer | Gate 2 |
+|---|---|---|
+| skip `undefined` always | 7 fail (3 `hypaResume` rows, greeting-only guard x4) | not run (advisor N1) |
+| map `undefined` to the first non-skipped chat | 6 fail (2 helper rows, example-in-prompt x2, greeting-still-summarised x2) | first-memo-less check on `chats[0]` instead: 7 fail |
+| plain `findIndex` (no delete) | 4 fail | covered by the above |
+| last memo only, in the helper | 11 fail | last-position map: 6 fail |
+| `min` instead of `max` | 11 fail | not run |
+| last memo only at both V3 sites | 6 fail | exp site only: 1 fail; std site only: 1 fail |
+| helper without the blank branch | not run | 2 fail |
+
+  The "greeting still summarised" test is a guard, not a HEAD reproducer, but it is what kills the first-non-skipped mutant.
+
+### V3-3: the standard path counts summarised messages only (`MC-711` 3)
+
+- **Change:** the fixed window (`endIdx = min(startIdx + maxChatsPerSummary, ...)` and `for (i = startIdx; i < endIdx; i++)`) and its `End Index` / `Chat Count` log lines are removed. The standard loop is now the experimental loop: `let currentIndex = startIdx` (`hypav3.ts:1075`), `while (toSummarize.length < settings.maxChatsPerSummary && currentIndex < chats.length - settings.queryChatCount)` (`:1094-1095`), the same four skip rules, token accrual for every examined chat, `currentIndex++` on every path (`:1148`), and `startIdx = currentIndex` (`:1196`). The experimental loop (`:295`, `:365`, `:394`) already matched and has no change.
+- **Termination invariant:** a comment above the standard loop (`:1090`) states that it terminates because `maxChatsPerSummary >= 1` (the UI enforces a minimum of 1). At 0 (or NaN) both HEAD and the new code spin; this is pre-existing (Gate 1, Gate 2).
+- **Decision, `MC-711` 3:** "Code: std path counts". The option said: make the standard path count only summarized messages, as the experimental path does, so the help text becomes true.
+- **Tests:**
+  - **Reproducer, flipped:** `with the user-message option a batch holds maxChatsPerSummary non-user messages` (`hypav3.test.ts:205`, was `it.fails`). It fails on the pre-fix source with `['assistant']` where three assistants are expected.
+  - **Compatibility guards (pass before and after; Gate 1 label correction):** `a batch window made only of skipped chats` (`:448`): `guard: blank chats fill the first window and a later batch is still summarised` and `guard: user messages fill the first window with the user-message option and a later batch is still summarised`. The tokenizer in these tests throws after a fixed call count, so a loop that stops advancing fails instead of spinning on microtasks. Their value is the `currentIndex++` mutant.
+- **Mutants:**
+
+| mutant | result |
+|---|---|
+| restore the `endIdx` window (std) | implementer: 1 fail (the batch-size reproducer) |
+| drop `currentIndex++` (std and exp) | implementer: the full `hypav3.test.ts` run OOMs the worker (older tests with skipped chats spin); only the skipped-window describe: 2 fail each, "tokenizer call limit: window stopped advancing". Gate 2 (std): subset 2 fail, full file OOM, vitest exit 1 |
+| std counts examined chats | Gate 2: 1 fail |
+| std `startIdx += pushed count` | Gate 2: 1 fail |
+| std `<=` on the `queryChatCount` bound | **Gate 2: SURVIVED** |
+| std pushes blank chats | **Gate 2: SURVIVED** |
+
+  The two survivors are in unchanged skip rules: a test gap around existing semantics, not a defect in the change. `fedIndexes` cannot see blank chats, so the blank-window guard does not assert they are not fed (Gate 2 suggestion; not done).
+
+### Visible effects
+
+- **A bulk re-summarise no longer re-summarises.** V3 resumes after the highest position of any covered memo. A non-contiguous bulk selection that includes the newest summary used to move the resume point back (V3-2); it now does not. A summary Set listing the latest memo first also no longer moves it.
+- **The greeting is never lost.** An ambiguous `{undefined}` summary is not counted when an example turn precedes the greeting (`MC-722` 1). Gate 2 probes: upstream example-only `{undefined}` keeps the greeting summarised and the example turns in the prompt; `{'NewChat'}` marker-only keeps the greeting; sets that reach ids decide by ids.
+- **Bounded repeat greeting summaries with example turns (`MC-723`).** With examples present and a greeting-only batch, the greeting can be summarised again on a later send. It is bounded and loses nothing (probe above).
+- **Standard path, "Do Not Summarize User Message":** the batch now holds `maxChatsPerSummary` summarised messages; skipped (user, blank, example, new-chat) messages no longer use up slots. The help text is now true for both paths. Gate 2 saw the difference only where skipped chats sit in a window: `greet-m3` std (first batch `{undefined,m0}` became `{undefined,m0,m1}`) and `user-opt-m3` std (six short batches became three full ones), now equal to the experimental path.
+- **Ordinary chats behave identically to HEAD** (Gate 2, executed, seven configurations, standard and experimental): fed inputs, saved memo sets, output chats and `currentTokens` were identical when no chat is skip-eligible and the user option is off.
+
+### Saved data
+
+- **Which messages are summarised changes**: the resume point and the standard batch contents differ from HEAD for the cases above. A saved chat's existing summaries are not rewritten or repaired on load (`MC-011`).
+- **The `hypaV3Data` shape is unchanged**: `toSerializableHypaV3Data` / `toHypaV3Data` and the pushed summary shape are untouched (Gate 2 diff read). Stored `null` memos map back to `undefined` in the existing loader, and both shapes were executed (greeting-only sole summary, null and undefined).
+- **Upstream data works (`MC-175`):** upstream-shaped sets (example-only `{undefined}`, `{'NewChat'}`, sets reaching ids, latest-first order) were executed and keep the greeting; the helper adds no sentinel memo or field. `lastChatMemo` handling is not touched.
+
+### Upstream status
+
+Upstream has the same defects, so this is a fork-only fix. Verified in the upstream checkout at f50b594 (`/home/user/kwaroran/risuai`, `git rev-parse` gives f50b594): `src/ts/process/memory/hypav3.ts` resumes from `[...lastSummary.chatMemos].at(-1)` (`:219-221` experimental, `:998-1000` standard) and the standard path still has `endIdx` (`:1063`, loop `:1086`, `startIdx = endIdx` `:1177`); there is no `hypaResume`-like file in that `memory/` directory. Not checked: the upstream `HypaV3Modal` splice line (cited from the earlier V3-2 finding). No format, plugin or `.bin` contract is touched (`MC-175`).
+
+### Verification run
+
+- **Red-first (executed, implementer and Gate 2):** 7 failed, 30 passed, 2 expected fail (39); see V3-2.
+- **Green (executed, implementer, before the editorial):** `hypav3.test.ts` + `hypaResume.test.ts`: 55 passed + 2 expected fail (the two V3-4 `it.fails`, untouched); targeted memory dir + cold storage: 12 files, 166 passed, 9 expected fail.
+- **Green (executed, Gate 2):** memory dir and every test file importing or mocking `hypav3`, `hypaResume` or `coldstorageData`: 107 files, 2926 passed, 11 expected fail, 1 skipped, exit 0.
+- **After the editorial (executed, `A3/ed/result.md`):** `hypav3.test.ts`, `hypaResume.test.ts`, `coldStorageDeletionGuards.svelte.test.ts`: 3 files, 113 passed, 2 expected fail, 1 skipped (116).
+- **`pnpm check` (executed, implementer, Gate 2 and after the editorial):** 0 errors, 0 warnings (with `NODE_OPTIONS=--max-old-space-size=8192`).
+- **Gate 2 probes (executed):** HEAD copy against the real module on both paths, with `useExperimentalImpl: true` for the experimental path. Current code passes P4, P4b, P4u, N1, N2, N6, N7, N8; HEAD fails P4u and N8. P5 and P6 fail at both HEAD and the current code: they are batch C (C2, `cleanOrphanedSummary`), not A3.
+- **Gate 2:** `[EDITORIAL]` (E1 to E4 applied). Gate 1 for A3: `[EDITORIAL]` (`C/g1r3/result.md`; its A3 corrections were folded into the plan).
+
+### Residuals
+
+- **CHORE-501 (proposed):** `getNextSummarizationTarget` in `src/lib/Others/HypaV3Modal/modal-footer.svelte` still uses the last summary's last memo. This display-only preview can disagree with the real resume point for unordered or latest-first sets. No data effect. Not fixed; see the records file.
+- **Full `pnpm test` and the relevant build have not been run** on this snapshot; they are pending at phase close. The multi-file runs above are targeted (importers of the changed modules), not the full suite.
+- **Mutant survivors:** the `queryChatCount` bound `<=` and the std blank-push mutants survive in unchanged skip rules (above).
+- **`currentIndex++` mutant:** it OOMs the full test file (loud failure: worker heap, vitest exit 1, not a silent pass). Attribution comes from the bounded-tokenizer guards. Real code cannot reach it under the loop guard.
+- **Probe-template flag:** the advisor and Gate 1 probe templates set `enableExperimentalMode`, which is not a HypaV3 setting (`useExperimentalImpl` is), so their "experimental" rows ran the standard path. Gate 2 re-ran with the real flag and reached the same table. The experimental-path evidence for A3 therefore rests on the Gate 2 run.
+- **Implementer's in-repo mutants:** `mut.py` wrote mutants into the repository files and restored them; gates.md asks for in-memory or scratch substitution. The restore was confirmed byte-identical (`cmp` against `hypav3.good` / `hypaResume.good`, and md5, Gate 2).
+- **Upstream `trimStartNewChat` without examples:** upstream skips the greeting at index 0 and never covers it; the fork's resume then drops it from the prompt. Pre-existing upstream behaviour (advisor).
+- **Examples removed after an example-only summary:** `{undefined}` is then read as the greeting. The data looks unambiguous; accepted.
+- **Messages unhidden after surrounding summarisation:** sliced without coverage under any max rule; pre-existing, out of scope.
+- **One chronological-data corner (plan, not separately executed):** when the last summary ends on `undefined`, there are two memo-less chats and an earlier summary covers a later defined memo, the new code resumes after that later memo (decided, `MC-711` 2).
+- **Two copies of the skip predicate:** the V3 loops keep inline skip rules and `isSkipEligibleChat` duplicates them. Parity is tested only through the `hypav3.test.ts` example-turn tests; the optional Gate 1 row driving a blank or `NewChat` first memo-less chat through `hypaMemoryV3` was not added (Gate 2).
+- **V2-to-V3 conversion:** `HypaV3Modal` conversion copies V2 memos, so the same ambiguity reaches V3; the rule handles it (plan).
+
 ## Corrections from doc-verifier
 
 This section takes precedence over the body above. Independent doc-verifier pass, 2026-10-23 (scratchpad `p2/c10d/dv/result.md`): ten files rerun (40 passed, 32 expected fail), test titles, decision quotes, REPRODUCED citations and an upstream sample verified; four required corrections, applied in the body by the Orchestrator:
@@ -573,3 +684,13 @@ Independent doc-verifier pass, 2026-10-23 (scratchpad `p3/c10/A1/dv/result.md`):
 ### Stage A2 (Phase 3)
 
 Independent doc-verifier pass, 2026-10-23 (scratchpad `p3/c10/A2/dv/result.md`): the stage A2 section, `MC-723`, the status line, rows 5088 to 5092 and the commit draft. Test file rerun: 5 passed; file:line cites, mutant and Gate 2 figures, decision quotes verified; `cosineSimilarity` has no importer outside `hypamemory.ts`. Corrections, applied: (1) upstream dot product verified in the upstream checkout (the TODO is resolved in "Upstream status"); (2) the importer-run figure in row 5089 is the implementer's own, not independently confirmed; (3) the row-range wording names which rows are stage A2. `pnpm check` and the full suite were not rerun by this pass.
+
+### Stage A3 (Phase 3)
+
+Independent doc-verifier check, 2026-10-23 (scratchpad `p3/c10/A3/dv/result.md`; ledger row 5102). About 60 claims checked; the three targeted test files were rerun (113 passed, 2 expected fail, 1 skipped). These corrections take precedence over the text above and have been applied to it:
+
+1. The `coldstorageData.ts` comment change is two hunks holding three comment edits, not four hunks.
+2. The greeting-only compatibility guard starts at the `it.each` on `hypav3.test.ts:385`; `:384` is its comment line.
+3. Ledger row 5099 (Gate 2) said "7 of 9 own mutants caught". `A3/g2/result.md` lists ten Gate 2 mutants: eight caught and two survived. Row 5099 now says "8 of 10". The mutant table in this report was already correct.
+
+The Gate 2 probes, mutant runs, the 2926-pass run and `pnpm check` were read from their logs and not rerun by the verifier.

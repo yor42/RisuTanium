@@ -169,7 +169,7 @@ describe('hypaMemoryV3 resume point', () => {
     })
 
     // regression reproducer: CHORE-10 V3-2, MC-711 2
-    it.fails('summaries not ordered by coverage resume after the latest covered message', async () => {
+    it('summaries not ordered by coverage resume after the latest covered message', async () => {
         // A non-contiguous merge leaves the summary covering m4,m5 first and the newest-by-position summary last.
         const room = roomWith([summary('AC', [0, 1, 4, 5]), summary('B', [2, 3])])
         const result = await call(story(12), 120, 60, room)
@@ -202,7 +202,7 @@ describe('hypaMemoryV3 summary batch size', () => {
     })
 
     // regression reproducer: CHORE-10 V3-3, MC-711 3
-    it.fails('with the user-message option a batch holds maxChatsPerSummary non-user messages', async () => {
+    it('with the user-message option a batch holds maxChatsPerSummary non-user messages', async () => {
         setSettings({ maxChatsPerSummary: 3, doNotSummarizeUserMessage: true })
         const result = await call(story(20), 200, 100, roomWith([]))
         expect(result.error).toBeUndefined()
@@ -288,7 +288,7 @@ describe('hypaMemoryV3 experimental implementation', () => {
     })
 
     // regression reproducer: CHORE-10 V3-2 (experimental path), MC-711 2
-    it.fails('summaries not ordered by coverage resume after the latest covered message', async () => {
+    it('summaries not ordered by coverage resume after the latest covered message', async () => {
         useExperimental()
         const room = roomWith([summary('AC', [0, 1, 4, 5]), summary('B', [2, 3])])
         const result = await call(story(12), 120, 60, room)
@@ -337,5 +337,142 @@ describe('hypaMemoryV3 experimental implementation', () => {
         const result = await call(story(4), inputTokens, 1000, roomWith([]))
         expect(result.error).toBeUndefined()
         expect(result.currentTokens).toBeGreaterThanOrEqual(inputTokens)
+    })
+})
+
+// Memo-less chats (the greeting, example turns) share the `undefined` memo key, so a summary Set that
+// holds `undefined` says nothing about WHICH memo-less chat it covered; the resume point is the
+// highest position of any memo of any summary, and `undefined` counts only for the greeting.
+describe.each([
+    ['standard', {}],
+    ['experimental', { useExperimentalImpl: true, similarMemoryRatio: 0 }],
+] as [string, Partial<HypaV3Settings>][])('hypaMemoryV3 %s resume with memo-less chats', (_path, pathSettings) => {
+    const exampleTurns = (): OpenAIChat[] => [
+        { role: 'user', content: 'exU', name: 'example_user' },
+        { role: 'assistant', content: 'exA', name: 'example_assistant' },
+    ]
+    const newChat: OpenAIChat = { role: 'system', content: '[Start a new chat]', memo: 'NewChat' }
+    const memorylessSummary = (memos: (string | undefined)[]) => ({
+        text: 'S', chatMemos: memos as unknown as string[], isImportant: false, tags: [],
+    })
+    /** The stored shape: `undefined` memos reach the loader as JSON `null`. */
+    const storedRoom = (memos: (string | undefined)[]) => ({
+        hypaV3Data: JSON.parse(JSON.stringify({ summaries: [memorylessSummary(memos)] })) as SerializableHypaV3Data,
+        message: [],
+    } as Chat)
+    const liveRoom = (memos: (string | undefined)[]) => ({
+        hypaV3Data: { summaries: [memorylessSummary(memos)] } as SerializableHypaV3Data,
+        message: [],
+    } as Chat)
+    const greetingFed = () => state.fed.filter((text) => text.includes('greeting')).length
+    const inPrompt = (result: Awaited<ReturnType<typeof call>>, content: string) => result.chats.some((chat) => chat.content === content)
+    // 120 tokens of room, so a 22-chat history must summarise.
+    const overBudget = (chats: OpenAIChat[], room: Chat, tokenizer?: ChatTokenizer) => call(chats, chats.length * 10, 120, room, tokenizer)
+
+    beforeEach(() => setSettings({ ...pathSettings, maxChatsPerSummary: 3 }))
+
+    // regression reproducer: CHORE-10 V3-2, MC-711 2
+    it('a summary Set listing the latest memo first resumes after the latest position', async () => {
+        const room = roomWith([summary('X', [5, 4, 1, 0])])
+        const result = await call(story(12), 120, 60, room)
+        expect(result.error).toBeUndefined()
+        const fed = fedIndexes()
+        expect(fed.length).toBeGreaterThan(0)
+        expect(fed.filter((index) => index <= 5)).toEqual([])
+    })
+
+    // compatibility guard (passes before and after): a greeting-only sole summary resumes after the greeting
+    it.each([
+        ['stored null', storedRoom],
+        ['in-memory undefined', liveRoom],
+    ])('guard: greeting-only sole summary (%s) is not fed again and leaves the prompt', async (_shape, makeRoom) => {
+        const chats = [newChat, greeting, ...story(20)]
+        const result = await overBudget(chats, makeRoom([undefined]))
+        expect(result.error).toBeUndefined()
+        expect(greetingFed()).toBe(0)
+        expect(inPrompt(result, 'greeting')).toBe(false)
+    })
+
+    // regression reproducer (example assertion): CHORE-10 V3-2, MC-723; plain findIndex resumes at the first example turn
+    it('example turns before the greeting keep the example-only {undefined} summary from skipping them', async () => {
+        const chats = [...exampleTurns(), newChat, greeting, ...story(2)]
+        const result = await call(chats, chats.length * 10, 1000, storedRoom([undefined]))
+        expect(result.error).toBeUndefined()
+        expect(inPrompt(result, 'exU')).toBe(true)
+        expect(inPrompt(result, 'exA')).toBe(true)
+        expect(inPrompt(result, 'greeting')).toBe(true)
+    })
+
+    // compatibility guard (passes before and after): the example-only {undefined} summary does not hide the greeting
+    it('example turns before the greeting: the greeting is still summarised after an example-only {undefined} summary', async () => {
+        const chats = [...exampleTurns(), newChat, greeting, ...story(20)]
+        const result = await overBudget(chats, storedRoom([undefined]))
+        expect(result.error).toBeUndefined()
+        expect(greetingFed()).toBeGreaterThan(0)
+    })
+
+    // compatibility guards (pass before and after): upstream shapes
+    it('guard: a set holding only the NewChat marker keeps the greeting', async () => {
+        const chats = [...exampleTurns(), newChat, greeting, ...story(2)]
+        const result = await call(chats, chats.length * 10, 1000, storedRoom(['NewChat']))
+        expect(result.error).toBeUndefined()
+        expect(inPrompt(result, 'greeting')).toBe(true)
+    })
+
+    it('guard: a set that reaches message ids decides by ids and does not feed the greeting again', async () => {
+        const chats = [...exampleTurns(), newChat, greeting, ...story(20)]
+        const result = await overBudget(chats, storedRoom([undefined, 'm0', 'm1']))
+        expect(result.error).toBeUndefined()
+        expect(greetingFed()).toBe(0)
+        expect(Math.min(...fedIndexes())).toBe(2)
+    })
+
+    // Accepted limitation (MC-723): with example turns present, a greeting-only batch can summarise the
+    // greeting again. Such repeats are bounded and lose nothing. At a max context of 120 this fixture shows
+    // no repeat on the second send; at a max context of 250 the greeting is fed again on that send.
+    it('guard: a greeting-only batch with examples present is not fed again on the second send in this fixture', async () => {
+        setSettings({ ...pathSettings, maxChatsPerSummary: 1 })
+        const chats = [...exampleTurns(), newChat, greeting, ...story(20)]
+        const room = storedRoom([undefined])
+        const first = await overBudget(chats, room)
+        expect(first.error).toBeUndefined()
+        expect(greetingFed()).toBeLessThanOrEqual(1)
+        state.fed = []
+        const second = await overBudget(chats, { hypaV3Data: JSON.parse(JSON.stringify(first.memory)), message: [] } as Chat)
+        expect(second.error).toBeUndefined()
+        expect(greetingFed()).toBe(0)
+    })
+
+    // compatibility guard (passes before and after): skipped chats advance the window. The tokenizer throws
+    // after a fixed call count so a loop that stops advancing fails instead of spinning on microtasks.
+    describe('a batch window made only of skipped chats', () => {
+        function boundedTokenizer(limit = 1000): ChatTokenizer {
+            let calls = 0
+            return {
+                tokenizeChat: async () => {
+                    if (++calls > limit) throw new Error('tokenizer call limit: window stopped advancing')
+                    return 10
+                },
+            } as unknown as ChatTokenizer
+        }
+        const blank = (index: number): OpenAIChat => ({ role: 'assistant', content: ' ', memo: `b${index}` })
+        const userRun = (index: number): OpenAIChat => ({ role: 'user', content: `#${index}#`, memo: `m${index}` })
+
+        it('guard: blank chats fill the first window and a later batch is still summarised', async () => {
+            const chats = [blank(0), blank(1), blank(2), ...story(20).map((chat, i) => message(i + 3, chat.role))]
+            const result = await overBudget(chats, roomWith([]), boundedTokenizer())
+            expect(result.error).toBeUndefined()
+            expect(fedIndexes().length).toBeGreaterThan(0)
+            expect(Math.min(...fedIndexes())).toBe(3)
+        })
+
+        it('guard: user messages fill the first window with the user-message option and a later batch is still summarised', async () => {
+            setSettings({ ...pathSettings, maxChatsPerSummary: 3, doNotSummarizeUserMessage: true })
+            const chats = [userRun(0), userRun(1), userRun(2), ...story(20).map((chat, i) => message(i + 3, i % 2 ? 'user' : 'assistant'))]
+            const result = await overBudget(chats, roomWith([]), boundedTokenizer())
+            expect(result.error).toBeUndefined()
+            expect(state.fed.length).toBeGreaterThan(0)
+            expect(state.fed.join('\n')).not.toMatch(/^user: /m)
+        })
     })
 })
