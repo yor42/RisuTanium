@@ -10,7 +10,9 @@ Hanurai Memory is a retrieval-only [[Long Term Memory]] system. It does not summ
 
 ## Settings
 
-- **Chunk Size** (default 1000, minimum 100): the number of tokens set aside for retrieved text when older messages are trimmed. It is a reservation, not a cap. See step 4 below.
+- **Chunk Size** (default 1000, minimum 100): the number of tokens set aside for retrieved text when older messages are trimmed. It is also a cap: the retrieved block never grows past Chunk Size. See step 4 below.
+  <!-- src/ts/process/memory/hanuraiMemory.ts:63-74,92-114 -->
+  **Fork difference:** upstream treats it as a reservation only, not a cap.
 - **Text Spliting** (default off): when on, each message is split at blank lines, and every paragraph is embedded and retrieved on its own. When off, whole messages are the unit.
 - **Embedding**: the shared embedding model.
 
@@ -21,7 +23,12 @@ This runs on every request while the toggle is on, whether or not the chat is ov
 1. **Documents.** Every entry in the chat history except the last three is embedded, as a whole or per paragraph (see **Text Spliting**). Empty entries are skipped. This includes example messages, the "[Start a new chat]" marker and the first message, because they are part of the history the prompt builder passes in. Texts are embedded with a `search_document:` prefix, and vectors are cached, so each text is only embedded once per model.
 2. **Queries.** The last three messages are each used as a query, with a `search_query:` prefix. Every document's similarity score is summed across the queries, weighted 1 for the newest message, ½ for the one before it and ⅓ for the third.
 3. **Trim.** The oldest entries are removed until the prompt, plus **Chunk Size**, fits inside Max Context. The prompt here includes the reserved response length. If everything is removed and it still does not fit, the request fails with the "too much token" error.
-4. **Fill.** The retrieved texts are added in score order until the next one would push the prompt to Max Context. Filling stops at the first text that does not fit. The limit is Max Context itself, not Chunk Size, so retrieval can use more than Chunk Size when there is room.
+4. **Fill.** The retrieved texts are considered in score order.
+   - A text that is already in the prompt is skipped. The prompt's texts are its whole messages and, with **Text Spliting** on, their paragraphs too.
+   - A text that would push the retrieved block over **Chunk Size** is skipped, and later, smaller texts can still be added.
+   - Filling stops at the first text that would push the prompt to Max Context.
+   <!-- src/ts/process/memory/hanuraiMemory.ts:76-114 -->
+   **Fork difference:** the Chunk Size cap, and the skip of paragraphs already in the prompt. Upstream skips only texts equal to a whole message, and stops only at Max Context, so it can use more than Chunk Size when there is room (compared against local `upstream/main` 61d0eb79a, 2026-10-20).
 5. **Insert.** The chosen texts are joined with blank lines and placed as one system message at the start of the chat history.
 
 ## Data

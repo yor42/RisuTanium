@@ -94,7 +94,9 @@ The argument is trimmed and read in this order:
 
 Indexes count from 0 (the first message is 0).
 
-<!-- src/ts/process/command.ts:209-250 -->
+**Fork difference:** `/cut` and `/del` keep plain [[SupaMemory]] valid. If the removal deletes the message SupaMemory resumes from, the resume point moves to the next surviving message, and a chat left empty loses its SupaMemory data. See [[SupaMemory#when-messages-are-removed]].
+
+<!-- src/ts/process/command.ts:209-250; src/ts/process/memory/supaResume.ts:59-141 -->
 
 ### `/multisend`
 

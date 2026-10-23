@@ -36,12 +36,14 @@ Defaults are in brackets.
 - **Max Memory Tokens Ratio (Estimated)**: read only. It estimates how much of Max Context is left for memory. The calculation is Max Context minus the prompt template, the character's description, personality and scenario, the character's lorebook (up to the lore token budget) and 3 × Max Response, divided by Max Context.
 - **Memory Tokens Ratio** [0.2]: the memory budget as a fraction of Max Context.
 - **Extra Summarization Ratio** [0; at most 1 − Memory Tokens Ratio]: once summarization starts, it continues until the prompt is below Max Context × (1 − this value), so that it does not have to run again on the next message.
-- **Max Messages Per Summary** [6]: the size of one summarization batch. See step 6 of How it works for how skipped messages are counted.
+- **Max Messages Per Summary** [6]: the size of one summarization batch, counted in messages that are actually included. Messages that are left out (see step 6 of How it works) do not count toward it.
 - **Query Chat Count** [3; 1–20]: the number of latest messages used as the similarity query. These messages are also never summarized.
 - **Chunk Separator Regex** [`\n\n`]: how summaries are split into chunks for similarity search. Write either a regex source or `/pattern/flags`. An invalid regex falls back to blank lines.
 - **Recent Memory Ratio** [0.4] and **Similar Memory Ratio** [0.4]: shares of the memory budget. When the two sliders add up to more than 1, the UI lowers the other one.
 - **Random Memory Ratio**: read only, calculated as 1 − Recent − Similar.
-- **Preserve Orphaned Memory** [off]: when off, a summary is deleted at the start of a request if any message it covers is no longer in the chat history. This happens, for example, when the message was deleted. When on, such summaries are kept.
+- **Preserve Orphaned Memory** [off]: when off, a summary is deleted at the start of a request if a message it covers is gone from both the chat's full message list and the prompt, for example because the message was deleted. Hidden messages, and messages before an "all before" reset, do not orphan a summary, and a summary whose only covered entries have no message ID is never deleted. When on, orphaned summaries are kept.
+  <!-- src/ts/process/memory/hypav3.ts:1669-1696 -->
+  **Fork difference:** the deletion rule (the on/off option itself is unchanged).
 - **Apply Regex Script When Rerolling** [off]: applies the character's regex scripts to the messages the modal sends when you reroll a summary. It also applies to the "will summarize" preview. It does not affect normal summarization.
 - **Do Not Summarize User Message** [off]: user messages are left out of the text sent to the summarizer. They are still removed from the prompt along with the rest of the batch.
 - **Advanced Settings**
@@ -49,7 +51,9 @@ Defaults are in brackets.
   - **Always Toggle On** [off]: turns the character's memory toggle on whenever you select a character.
   - Standard implementation only: **Enable Similarity Correction** [off]. Also summarizes the query messages and uses that summary as an extra query. This costs one additional model call on every request with more than one query message.
   - Experimental implementation only:
-    - **Summarization Requests Per Minute** [20] and **Summarization Max Concurrent** [1, max 10]: apply only when the SupaMemory Model is the Auxiliary Model.
+    - **Summarization Requests Per Minute** [20] and **Summarization Max Concurrent** [1, max 10]: apply only when the SupaMemory Model is the Auxiliary Model. A Max Concurrent value higher than Requests Per Minute is accepted; both limits apply.
+      <!-- src/ts/process/memory/taskRateLimiter.ts:31-38,96-121; src/ts/process/memory/hypav3.ts:401,647 -->
+      **Fork difference:** upstream throws an error ("maxConcurrentTasks must be less than tasksPerMinute") in that case. The same applies to the Embedding pair below.
     - **Embedding Requests Per Minute** [100] and **Embedding Max Concurrent** [1, max 10]: apply to API embedding models.
 
 ## How it works
@@ -57,9 +61,13 @@ Defaults are in brackets.
 This runs on every request while the toggle is on.
 
 1. **Check the settings.** If Recent + Similar is more than 1, the request stops with an error.
-2. **Count the input.** The reserved response length (**Max Response**) is subtracted, so V3 compares only the input with Max Context. The tip in the modal says the same: summarization begins "when input tokens exceed the maximum context size".
+2. **Count the input.** The count includes the reserved response length (**Max Response**), as in [[SupaMemory]], and is compared with Max Context. The tip in the modal reads "Tip: HypaV3 begins summarization when input tokens exceed the maximum context size."
+   <!-- src/ts/process/index.svelte.ts:1057; src/ts/process/memory/hypav3.ts:196-246,978-1023; src/lang/en.ts:1831 -->
+   **Fork difference:** upstream subtracts Max Response from the count first. The modal tip does not mention Max Response either way.
 3. **Clean orphans** (unless **Preserve Orphaned Memory** is on).
-4. **Resume.** Messages up to the last message of the newest summary are already summarized and are removed from the history.
+4. **Resume.** The resume point is the latest position in the history of any message covered by any summary. Messages up to it are already summarized and are removed from the history. Entries without a message ID count toward the resume point only when the first of them is something the summarizer would not skip.
+   <!-- src/ts/process/memory/hypaResume.ts:28-62; src/ts/process/memory/hypav3.ts:229-246,1006-1023 -->
+   **Fork difference:** upstream resumes after the last message of the last summary.
 5. **Reserve memory.**
    - With no summaries yet and a prompt that fits, only the size of an empty memory block is reserved.
    - Otherwise V3 reserves Max Context × **Memory Tokens Ratio**. The usable memory budget is that amount minus the empty block's tags.
@@ -67,7 +75,9 @@ This runs on every request while the toggle is on.
    - Stop once the input is at or below Max Context × (1 − **Extra Summarization Ratio**).
    - If no more than **Query Chat Count** messages are left after the resume point, stop if the input fits. Otherwise fail with *"Cannot summarize further …"*.
    - Take the next **Max Messages Per Summary** messages, never touching the last **Query Chat Count** messages.
-   - Leave out example messages, the "[Start a new chat]" marker, empty messages, and (with **Do Not Summarize User Message**) user messages. Left-out messages still count toward the batch size and still leave the prompt.
+   - Leave out example messages, the "[Start a new chat]" marker, empty messages, and (with **Do Not Summarize User Message**) user messages. Left-out messages do not count toward the batch size: the batch keeps walking past them until it holds **Max Messages Per Summary** included messages or reaches the protected last messages. They still leave the prompt, and their tokens still count when the prompt size is worked out.
+     <!-- src/ts/process/memory/hypav3.ts:1093-1149,310-360 -->
+     **Fork difference:** in the standard implementation, left-out messages used to count toward the batch size. The experimental implementation already behaved as described here.
    - If the input already fits and removing this batch would go below the target, stop without summarizing it.
    - Send the batch as `role: text` lines, with inline images replaced by `[Image]`. The reply, with `<Thoughts>` or `<think>` blocks removed, becomes a new summary linked to those messages.
    - If a summarization fails, the request fails, but summaries created earlier in the same request are saved.
@@ -81,7 +91,9 @@ This runs on every request while the toggle is on.
      - Chunks are ranked by weighted similarity. Each summary then scores the sum of 1/(60 + rank) over its chunks, so a summary with several well-ranked chunks moves up.
      - Summaries are added in that order, until the first one that does not fit.
      - This whole step, including all embedding, is skipped when Similar Memory Ratio is 0.
-   - **Random**: budget × Random Memory Ratio, plus whatever the recent and similar shares left unused. The remaining summaries are shuffled. Each one is added if it fits, and ones that are too large are skipped.
+   - **Random**: budget × Random Memory Ratio, plus whatever the recent and similar shares left unused. The remaining summaries are shuffled (a Fisher-Yates shuffle, so every order is equally likely). Each one is added if it fits, and ones that are too large are skipped.
+     <!-- src/ts/process/memory/hypav3.ts:124-131,850,1519 -->
+     **Fork difference:** the shuffle method.
 8. **Insert.** The selected summaries are put back in chronological order, joined with blank lines, and placed as one system message at the start of the remaining history:
 
 ```
@@ -100,7 +112,6 @@ Which summaries were chosen for each pool is saved with the chat.
 
 - **Batches run together.** All summarization batches for the request are collected first, then sent through a rate limiter. The limits are **Summarization Requests Per Minute** and **Summarization Max Concurrent** for the Auxiliary Model. Local models always run one at a time.
 - **Failures.** If a batch fails, the summaries of the batches before it are kept, and the rest of that request's summaries are discarded. Pending batches are cancelled after the first failure.
-- **Batch size counts only included messages.** Messages left out (examples, the marker, empty messages, user messages with **Do Not Summarize User Message**) do not count toward **Max Messages Per Summary**. This matches the help text for Do Not Summarize User Message.
 - **Similarity search.** A different embedding processor is used, with cosine similarity. For API models, it follows **Embedding Requests Per Minute** and **Embedding Max Concurrent**. Local models are embedded in small sequential batches.
 - **Queries per paragraph.** Each query message is split at blank lines, and each paragraph is its own query. A message's weight is shared equally between its paragraphs.
 - **No Similarity Correction.** The option is hidden and not used.

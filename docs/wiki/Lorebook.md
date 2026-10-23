@@ -1,93 +1,104 @@
 # Lorebook
 
 A Lorebook is a set of text entries ("lore") that are conditionally inserted into the prompt based on the chat's content. It lets you give a character a large amount of background knowledge without paying its token cost on every turn.
-<!-- src/ts/process/lorebook.svelte.ts:75 -->
+<!-- src/ts/process/lorebook.svelte.ts:114 -->
 
 ## Where lorebooks live
 
 Three scopes are merged into one list for every scan, in this order: **Character Lore → the current chat's Chat Lore → enabled modules' Module Lore**.
-<!-- src/ts/process/lorebook.svelte.ts:79-82 -->
+<!-- src/ts/process/lorebook.svelte.ts:137-140 -->
 
 - **Character Lore** — attached to the character and travels with the character card.
-  <!-- src/ts/storage/database.svelte.ts:1356 -->
+  <!-- src/ts/storage/database.svelte.ts:1409 -->
 - **Chat Lore** — attached to one specific chat only.
-  <!-- src/ts/storage/database.svelte.ts:1821 -->
+  <!-- src/ts/storage/database.svelte.ts:1879 -->
 - **Module Lore** — comes from any enabled [[module|Modules]]; entries from all enabled modules are concatenated in module order.
-  <!-- src/ts/process/modules.ts:441-453 -->
+  <!-- src/ts/process/modules.ts:767-778 -->
 
-The app also has a Global Lorebook settings page, but it cannot be opened from the settings menu, and its entries are never used in chats.
-<!-- src/lib/Setting/Settings.svelte:214-215 -->
+The database still initialises a global `loreBook` list on load, but there is no Global Lorebook settings page and its entries are never used in chats: the scan builds its list only from character, chat and module lore.
+<!-- src/ts/storage/database.svelte.ts:364-371,873; src/ts/process/lorebook.svelte.ts:137-140 -->
+**Fork difference:** upstream has a `GlobalLoreBookSettings.svelte` page (present in local `upstream/main` 61d0eb79a, absent here: no such file under `src/lib/Setting/Pages`).
 
 Folders are UI-only grouping containers. They have a placeholder key that practically never matches chat text, so they organize the list but never insert content themselves.
-<!-- src/ts/process/lorebook.svelte.ts:50-58,285-298; src/lib/SideBars/LoreBook/LoreBookData.svelte:121-133 -->
+<!-- src/ts/process/lorebook.svelte.ts:78-106; src/lib/SideBars/LoreBook/LoreBookData.svelte:121-133 -->
 
 Toggling **Locally Active** on a Character Lore entry from within a chat creates a linked copy in that chat's Chat Lore. The copy mirrors the parent entry's name and text and is always active for that chat only, without duplicating the original entry.
-<!-- src/ts/process/lorebook.svelte.ts:60-72,285-298; src/lib/SideBars/LoreBook/LoreBookData.svelte:52-87 -->
+<!-- src/ts/process/lorebook.svelte.ts:375-388; src/lib/SideBars/LoreBook/LoreBookData.svelte:52-87 -->
 
 ## Entry fields
 
 - **Name** — display-only label.
-- **Activation Keys** — comma-separated. Any one key matching activates the entry, unless a negative decorator says otherwise (see Activation below).
-- **Secondary Keys** — only used when **Selective** is on; see Activation below.
+- **Activation Keys** — comma-separated. Any one key matching activates the entry, unless a negative decorator says otherwise (see Activation below). With **Use Regex** on, a comma inside a `/pattern/flags` key stays part of that key (see Activation).
+- **Secondary Keys** — only used when **Selective** is on; see Activation below. They are split and matched the same way as the Activation Keys.
 - **Always Active** — skips key matching entirely; the entry is always included, subject to the token budget.
 - **Insertion Order** — see Ordering and token budget below.
 - **Prompt** — the text inserted, plus any leading `@@decorator` lines (see the decorator list below).
-- **Use Regex** — treat every key as a `/pattern/flags` literal instead of plain text (see Activation).
+- **Use Regex** — treat keys written as `/pattern/flags` as regular expressions; any other key in the list is still matched as plain text (see Activation). Hidden for Always Active entries and in lorePlus mode. Default off.
 - **Activation Probability** — the current save format expresses this as an `@@probability` decorator (see Legacy).
-- **Case Sensitive** — round-tripped for character-card (V2/V3) compatibility, but matching is currently always case-insensitive at runtime. This setting has no effect on activation.
-  <!-- src/ts/process/lorebook.svelte.ts:174-180,206-209; src/ts/characterCards.ts:1130,1160 -->
+- **Case Sensitive** — a checkbox next to Use Regex, off by default. When on, plain keys must match the letter case exactly (the help text says "If enabled, plain keys must match the letter case exactly. Regex keys (/regex/flags) use their own flags."). It has no effect on `/pattern/flags` keys, which follow their own flags (without `i` they are already case-sensitive). The checkbox is hidden for Always Active entries, and (like Use Regex) in lorePlus mode. The setting is stored per entry and round-trips through character-card (V2/V3) export and import; a card imported with `case_sensitive: true` is now actually matched case-sensitively.
+  <!-- src/lib/SideBars/LoreBook/LoreBookData.svelte:288-297; src/ts/process/lorebook.svelte.ts:212-223,629; src/ts/characterCards.ts:1577,1607,1622,2038,2054; src/lang/en.ts:598,1629 -->
+  **Fork difference:** upstream RisuAI keeps the field and the card round trip, but has no checkbox and its matcher always lower-cases (compared against local `upstream/main` 61d0eb79a, 2026-10-20).
 
 ## Activation
 
 Each time the prompt is built, the engine scans all entries that haven't activated yet, and repeats until no new entry activates. This repetition is what makes recursive scanning possible.
-<!-- src/ts/process/lorebook.svelte.ts:254-606 -->
+<!-- src/ts/process/lorebook.svelte.ts:342-697 -->
 
 For each entry, unless it's Always Active or force-activated by a decorator:
 
-1. The primary **Activation Keys** are checked against the last *N* messages (Scan Depth, see below) plus any already-recursively-activated lore text. Any one key matching is enough.
-   <!-- src/ts/process/lorebook.svelte.ts:145-230,534-542 -->
-2. If **Selective** is on and Secondary Keys are set, the secondary key group is checked too, and both groups must match for the entry to activate.
-   <!-- src/ts/process/lorebook.svelte.ts:527-556 -->
-3. Matching is always case-insensitive, and, unless Full Word Matching is on, ignores spaces in both the key and the searched text before comparing substrings.
-   <!-- src/ts/process/lorebook.svelte.ts:174-223 -->
-4. If **Use Regex** is on, every key must be written as `/pattern/flags`. If even one key in the list isn't in that form, the whole check fails and the entry never activates, not just that key. Both regex and plain-text (substring/full-word) matching test only the raw message text (`m.data`); the `name: text` wrapped form (`m.prompt`) is never matched against — it's only used to label matches in the debug match log.
-   <!-- src/ts/process/lorebook.svelte.ts:145-224 -->
+1. The primary **Activation Keys** are checked against the last *N* messages (Scan Depth, see below) plus any already-recursively-activated lore text. Any one key matching is enough. Each key is trimmed and empty keys are dropped before matching.
+   <!-- src/ts/process/lorebook.svelte.ts:166-183,612-615 -->
+2. If **Selective** is on and Secondary Keys are set, the secondary key group is checked too, and both groups must match for the entry to activate. The Selective checkbox is hidden while Use Regex is on, but a saved Selective entry with Secondary Keys is still enforced when its keys are checked.
+   <!-- src/ts/process/lorebook.svelte.ts:617-622,624-646; src/lib/SideBars/LoreBook/LoreBookData.svelte:282 -->
+3. A plain key is matched against the message text with `{{// ...}}` and `{{comment: ...}}` removed. Unless **Case Sensitive** is on, both the text and the key are lower-cased first. Unless Full Word Matching is on, spaces are ignored in both the key and the searched text before comparing substrings; with Full Word Matching on, the text is split on spaces and a key must equal one of the words.
+   <!-- src/ts/process/lorebook.svelte.ts:212-223,270-313 -->
+4. If **Use Regex** is on, the key list is first split so that commas inside a `/pattern/flags` key stay in the key: `/a,b/i`, `/dragon{1,2}/`, `/a\/,b/` and `/[/],x/` are each one key. A backslash escapes the next character and a `[...]` class may contain slashes. A key that starts with `/` but has no closing `/flags` followed by a comma or the end of the list, and any key that does not start with `/`, ends at the next comma. The recognised flags are `d g i m s u v y`. Edge cases: `/x/, /y/` is two keys; `/a/i/` is one key; `http://a.b/c,d` splits at the comma; `/` and `//` are single keys; `and/or,x` splits.
+   <!-- src/ts/process/loreKeys.ts:1-74; src/ts/process/lorebook.svelte.ts:613,619 -->
+5. In regex mode, a key written as `/pattern/flags` is tested as a regular expression with its own flags against the raw message text (`m.data`), with no lower-casing and no comment removal. An invalid regular expression makes the whole check fail, so the entry does not activate. A key that is not in `/pattern/flags` form no longer fails the check: it is matched as a plain key (comments removed, spaces ignored, lower-cased unless Case Sensitive). Full Word Matching is not applied to these plain keys in regex mode. In both modes the `name: text` wrapped form (`m.prompt`) is never matched against — it's only used to label matches in the debug match log.
+   <!-- src/ts/process/lorebook.svelte.ts:225-268 -->
+   **Fork difference:** upstream splits every key list on `,` (so a comma inside a regex key breaks it), and in regex mode a key that is not `/pattern/flags` makes the whole check fail (compared against local `upstream/main` 61d0eb79a, 2026-10-20).
+6. `@@additional_keys`, `@@exclude_keys` and `@@exclude_keys_all` take their keys from the decorator argument list (comma-separated) and use the entry's Use Regex and Case Sensitive settings. The regex branch does not read the "all" mode, so `@@exclude_keys_all` on a Use Regex entry deactivates the entry as soon as one key matches (inferred from reading the code, not run). A regex key containing a comma inside a decorator argument is probably split by the decorator parser (inferred, not checked). For `@@exclude_keys` and `@@exclude_keys_all`, an invalid regular expression counts as "no match", so the decorator does not exclude the entry.
+   <!-- src/ts/process/lorebook.svelte.ts:529-550,624-633,225-268 -->
+7. Character-card export (V2 and V3) writes keys and secondary keys using the same splitter, so a comma inside a regex key stays in the key; import joins keys with `, `.
+   <!-- src/ts/characterCards.ts:1568-1582,1612-1613,2044-2045 -->
+   **Fork difference:** upstream export uses a plain `,` split.
 
 **Scan Depth** and **Token Budget**: each character (or group) can override the app-wide defaults. If not overridden, the default Scan Depth is 5 and the default Token Budget is 800.
-<!-- src/ts/storage/database.svelte.ts:73-77,819-820,1502-1507 -->
+<!-- src/ts/storage/database.svelte.ts:90-94,870-871,1559-1562; src/ts/process/lorebook.svelte.ts:150-154 -->
 
 **Recursive scanning**: once an entry activates, its content is added to the pool of text that later entries can match against, so lore can chain. This can be toggled globally per character (default: on) or per entry with the `@@recursive`/`@@unrecursive` decorators. `@@no_recursive_search` excludes just that entry's own text from being used as bait for other entries' recursive matches.
-<!-- src/ts/process/lorebook.svelte.ts:88,136-143,499-510,591-604 -->
+<!-- src/ts/process/lorebook.svelte.ts:154,204,589-600,682-694 -->
 
 ## Ordering and token budget
 
 1. All activated entries are sorted by **priority**, descending. Priority defaults to Insertion Order but can be overridden per entry with the `@@priority` decorator.
-   <!-- src/ts/process/lorebook.svelte.ts:273-274,494-497,608-610 -->
+   <!-- src/ts/process/lorebook.svelte.ts:361-362,584-587,699-701 -->
 2. Entries are added, in that priority order, until the Token Budget would be exceeded. Anything past the budget is dropped entirely.
-   <!-- src/ts/process/lorebook.svelte.ts:612-620 -->
+   <!-- src/ts/process/lorebook.svelte.ts:703-724 -->
 3. The surviving entries are then re-sorted by **Insertion Order** (descending) and reversed, so a higher Insertion Order ends up later in the prompt, closer to the model's next reply and generally more influential. Priority only controls which entries survive the budget cut.
-   <!-- src/ts/process/lorebook.svelte.ts:622-624,661-663 -->
+   <!-- src/ts/process/lorebook.svelte.ts:741-743,780-783 -->
 4. `@@ignore_on_max_context` forces priority to `-1000`, making that entry the first to be dropped once the budget is tight, without excluding it outright when the budget allows it.
-   <!-- src/ts/process/lorebook.svelte.ts:435-438 -->
-5. `@@inject_lore` merges are applied after the budget cut, matched against the surviving entries' name. If the target entry was itself dropped by the budget, the injection is silently lost. Note: this can make the actual token count exceed the configured budget.
-   <!-- src/ts/process/lorebook.svelte.ts:627-659 -->
+   <!-- src/ts/process/lorebook.svelte.ts:525-528 -->
+5. `@@inject_lore` merges are applied after the budget cut, matched against the surviving entries' name. If the target entry was itself dropped by the budget, the injecting entry is dropped too: its tokens are given back to the entries after it in priority order, and the cut is repeated until no injector is left without its target. A target that was cut in the latest run stays cut, even if the refunded tokens would now fit it. Note: the injected text is appended after the cut, so the actual token count can still exceed the configured budget.
+   <!-- src/ts/process/lorebook.svelte.ts:703-778 -->
+   **Fork difference:** upstream filters once, so a lost target silently loses the injection but the injector still used up its share of the budget (compared against local `upstream/main` 61d0eb79a, 2026-10-20).
 
 ## Positions
 
 Set with the `@@position`/`@@depth`/`@@reverse_depth`/`@@role` decorators. Default position is the normal lorebook block; default role is `system`.
 
 - **Normal** (no position decorator) — inserted as part of the main lorebook block, ordered as above.
-  <!-- src/ts/process/index.svelte.ts:542-552 -->
+  <!-- src/ts/process/index.svelte.ts:968-978 -->
 - **Before/After Character Description, Personality, Scenario** (`@@position before_desc|after_desc|personality|scenario`) — spliced next to those specific prompt fields.
-  <!-- src/ts/process/index.svelte.ts:554-571 -->
+  <!-- src/ts/process/index.svelte.ts:980-997 -->
 - **Custom Prompt Template slot** (`@@position pt_<name>`) — only pulled in where a `{{position::<name>}}` [[CBS|Curly Brased Syntaxes]] tag is placed inside another prompt piece, typically a [[Prompt Template]] block. This is resolved up to 5 nesting levels deep; any leftover `{{position::...}}` tags are then stripped.
-  <!-- src/ts/process/index.svelte.ts:513-540 -->
+  <!-- src/ts/process/index.svelte.ts:939-966 -->
 - **`@@depth 0`** (same as the `@@end` decorator) — placed at the very end of the prompt, after everything else. It's split into non-assistant-role and assistant-role groups; assistant-role entries are added after user/system ones, since assistant content must stay a prefill.
-  <!-- src/ts/process/index.svelte.ts:595-624 -->
+  <!-- src/ts/process/index.svelte.ts:1025-1054 -->
 - **`@@depth N`** (`N` > 0) / **`@@reverse_depth N`** — spliced directly into the in-context message list rather than the system-prompt area, at an index computed from `N`. `depth` and `reverse_depth` count from opposite ends of the message list. Useful for content that should appear to come from a specific point in the conversation rather than the system prompt.
-  <!-- src/ts/process/index.svelte.ts:1069-1207 -->
+  <!-- src/ts/process/index.svelte.ts:1513-1523,1665-1672 -->
 - **`@@role user|assistant|system`** — sets the chat role used when the entry is turned into a message. Only meaningful for the depth-based positions above.
-  <!-- src/ts/process/lorebook.svelte.ts:363-369 -->
+  <!-- src/ts/process/lorebook.svelte.ts:453-459 -->
 
 ## Injection decorators
 
@@ -96,12 +107,12 @@ Separate from `@@position`:
 - **`@@inject_lore <target name>`** — merges this entry's text into another lore entry, matched by that entry's Name, after the token-budget cut. Default operation is append.
 - **`@@inject_at <target>`** — targets a [[Prompt Template]] block instead of another lore entry. Default operation is append.
 - **`@@inject_prepend`** / **`@@inject_replace <substring>`** — change the operation set by `inject_lore`/`inject_at` to prepend, or to replace a literal substring (`param`) inside the target's text. These can be combined with `inject_lore`/`inject_at` on the same entry; the target choice and the operation are independent decorators.
-  <!-- src/ts/process/lorebook.svelte.ts:391-434; src/ts/process/index.svelte.ts:610-658 -->
+  <!-- src/ts/process/lorebook.svelte.ts:481-523; src/ts/process/index.svelte.ts:1040-1047,1063-1088 -->
 
 ## All `@@` decorators
 
 Decorators are one per line at the start of an entry's Prompt text. The first line that isn't `@@...` ends the decorator block, and everything from there on is the literal prompt text.
-<!-- src/ts/process/lorebook.svelte.ts:300-515 -->
+<!-- src/ts/process/lorebook.svelte.ts:390-605 -->
 
 `@@@name args` (triple-`@`) is a fallback form: it only runs if the immediately preceding `@@name` decorator was not recognized. `@@@end`/`@@end` are always equivalent and always run regardless of that fallback state. This lets you write a primary decorator plus a fallback for import/export compatibility with other card formats.
 
@@ -145,21 +156,21 @@ Arguments are comma-separated after the decorator name, e.g. `@@depth 3` → `["
 ## Character, module, and chat lorebooks
 
 - Character Lore and Chat Lore are edited from the same Lorebook panel in a character's sidebar, on separate "Character"/"Chat" tabs. Chat Lore only exists in the current chat and isn't shared across other chats with the same character.
-  <!-- src/lib/SideBars/LoreBook/LoreBookSetting.svelte:55-78 -->
+  <!-- src/lib/SideBars/LoreBook/LoreBookSetting.svelte:50-66 -->
 - Module Lore ships inside a module and is merged in for every character that has that module enabled. There's no per-character override of a module's own lorebook entries.
 - Import/Export writes and reads `{"type":"risu","ver":1,"data":[...]}` JSON. It also accepts a Character Card V2/V3 `character_book` object, using its `entries` list, mapping fields such as `keys`, `secondary_keys`, `order`, `priority`, `constant`, and `selective` onto the fields described above.
-  <!-- src/ts/process/lorebook.svelte.ts:668-745 -->
+  <!-- src/ts/process/lorebook.svelte.ts:787-822,847-889 -->
 
 ## Legacy
 
 - The old Activation Probability number field is migrated on load into an `@@probability N` decorator prepended to the entry's content, and the field itself is then cleared. This runs once per entry.
-  <!-- src/ts/characters.ts:664-681 -->
+  <!-- src/ts/characters.ts:788-805 -->
 - `<end>`/`<bot>`/`<user>` legacy tags inside lore content are migrated to `@@depth 0`/`{{char}}`/`{{user}}` in that same pass.
-  <!-- src/ts/characters.ts:676 -->
+  <!-- src/ts/characters.ts:800 -->
 - Two other internal entry types from older save formats are still accepted for backward compatibility, but the current UI only writes Normal, Child, or Folder entries, and always-active behavior is fully controlled by the Always Active toggle.
-  <!-- src/ts/process/lorebook.svelte.ts:285; src/ts/process/lorebook.svelte.ts:16-42 -->
+  <!-- src/ts/storage/database.svelte.ts:1379; src/ts/process/lorebook.svelte.ts:375-388 -->
 - A lore-cache field is round-tripped through character-card export/import for compatibility, but isn't read by the current activation engine.
-  <!-- src/ts/characterCards.ts:1132,1162 -->
+  <!-- src/ts/characterCards.ts:1579,1609,2040 -->
 
 ## Worked examples
 

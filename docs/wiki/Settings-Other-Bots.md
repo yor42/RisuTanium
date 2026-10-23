@@ -18,9 +18,9 @@ A few fields are one stored value shared by more than one place on this page (or
 
 - The **NovelAI API Key** on the Image Generation tab and the **NovelAI API key** on the TTS tab are the same field.
 - The **OpenAI API Key** used for Dall-E and the **OpenAI Key** used for TTS are the same field (also the app's general OpenAI text-completion key).
-- `supaMemoryPrompt` and `supaMemoryKey` are shared between HypaMemory V2's SuperMemory settings and the plain SupaMemory settings, and `supaMemoryKey` is reused again as the OpenAI key under the Embedding section.
+- `supaMemoryPrompt` and `supaMemoryKey` are shared between HypaMemory V2's SupaMemory settings and the plain SupaMemory settings, and `supaMemoryKey` is reused again as the OpenAI key under the Embedding section.
 - The Imagen **GoogleAI API Key** (`google.accessToken`) is the same field as the Google/Gemini API key on **Settings → Chat Bot**.
-<!-- NAIApiKey: OtherBotSettings.svelte:308-638 (Image Generation) and :944-967 (TTS); openAIKey: OtherBotSettings.svelte:642-652 (Dall-E) and :944-967 (TTS); supaMemoryKey/supaMemoryPrompt: OtherBotSettings.svelte:1038-1055, 1259-1280, 1282-1322; google.accessToken: OtherBotSettings.svelte:752-787, BotSettings.svelte:164-167 -->
+<!-- NAIApiKey: OtherBotSettings.svelte:322 (Image Generation) and :988-989 (TTS); openAIKey: OtherBotSettings.svelte:668 (Dall-E) and :985-986 (TTS); supaMemoryKey/supaMemoryPrompt: OtherBotSettings.svelte:1069-1086, 1270-1290, 1293-1335; google.accessToken: OtherBotSettings.svelte:778, BotSettings.svelte:180 -->
 
 ---
 
@@ -40,27 +40,27 @@ A single dropdown chooses which memory system is active:
 | `hanuraiMemory` | HanuraiMemory |
 | `hypaV3` | HypaMemory V3 |
 
-Picking one turns the other three off. Note: this dropdown lists the systems in a different order of priority than the order the app actually uses at runtime when more than one system's flags are set in stored data (for example by an older save or a manual edit) — see [[Long Term Memory]] for the runtime order.
-<!-- src/lib/Setting/Pages/OtherBotSettings.svelte:982-1029 -->
+Picking one turns the other three off. Note: the option list is in a different order than the priority the app actually uses at runtime when more than one system's flags are set in stored data (for example by an older save or a manual edit) — see [[Long Term Memory]] for the runtime order. The value the dropdown displays follows the runtime order (HanuraiMemory, then HypaMemory V2, then HypaMemory V3, then SupaMemory, then None), so for such data it shows the system that actually runs. **Fork difference:** the displayed value follows the runtime order; the option list is unchanged.
+<!-- src/lib/Setting/Pages/OtherBotSettings.svelte:1011-1060 (displayed value :1015-1019) -->
 
 ### HanuraiMemory fields (shown when Type is HanuraiMemory)
 
 | Label | Field | Default | Range | What it does |
 |---|---|---|---|---|
-| Chunk Size | `hanuraiTokens` | 1000 | min 100, no max | A token reservation used while trimming old messages; see [[Hanurai Memory]] for how retrieval fill actually works. |
+| Chunk Size | `hanuraiTokens` | 1000 | min 100, no max | A token reservation used while trimming old messages, and also the cap on the retrieved block (**fork difference**: upstream treats it as a reservation only); see [[Hanurai Memory]] for how retrieval fill actually works. |
 | Text Spliting | `hanuraiSplit` (checkbox) | off | — | Whether HanuraiMemory splits text before embedding it. |
-<!-- src/lib/Setting/Pages/OtherBotSettings.svelte:1031-1037 -->
+<!-- src/lib/Setting/Pages/OtherBotSettings.svelte:1062-1068; src/ts/process/memory/hanuraiMemory.ts:92-114 -->
 
 ### HypaMemory V2 fields (shown when Type is HypaMemory V2)
 
 | Label | Field | Default | Options/Range | What it does |
 |---|---|---|---|---|
-| SuperMemory Model | `supaModelType` | `distilbart` | distilbart-cnn-6-6 (Free/Local), OpenAI 3.5 Turbo Instruct, Auxiliary Model | Which model summarizes chunks. |
-| SuperMemory OpenAI Key | `supaMemoryKey` | empty | free text | Shown when SuperMemory Model is OpenAI 3.5 Turbo Instruct, or when a legacy `davinci`/`curie` value is already set in the save (not offered in the dropdown itself). Shared with the SupaMemory and Embedding sections' OpenAI key. |
+| SupaMemory Model | `supaModelType` | `distilbart` | distilbart-cnn-6-6 (Free/Local), OpenAI 3.5 Turbo Instruct, Auxiliary Model | Which model summarizes chunks. |
+| SupaMemory OpenAI Key | `supaMemoryKey` | empty | free text | Shown when SupaMemory Model is OpenAI 3.5 Turbo Instruct. A saved `davinci`/`curie` value (not offered in the dropdown) is changed to OpenAI 3.5 Turbo Instruct every time the settings load (**fork difference**: upstream's request code still sends the old model ids; `src/ts/storage/database.svelte.ts:257-261`). Shared with the SupaMemory and Embedding sections' OpenAI key. |
 | Summarization Prompt | `supaMemoryPrompt` | empty | free text, ChatML formatting allowed | Prompt used for summarization; blank uses the default prompt. Shared with the plain SupaMemory section. |
 | Chunk Size | `hypaChunkSize` | 3000 | min 100 | V2's own chunking budget. |
 | Allocated Tokens | `hypaAllocatedTokens` | 3000 | min 100 | V2's memory-block token budget. |
-<!-- src/lib/Setting/Pages/OtherBotSettings.svelte:1038-1055 (OpenAI Key visibility: :1043-1046) -->
+<!-- src/lib/Setting/Pages/OtherBotSettings.svelte:1069-1086 (OpenAI Key visibility: :1077-1080); src/ts/storage/database.svelte.ts:257-261 -->
 
 ### HypaMemory V3 (shown when Type is HypaMemory V3)
 
@@ -74,19 +74,19 @@ Settings for V3 live in **presets** — named, reusable bundles, independent of 
 | Trash (delete) | Deletes the current preset. Blocked if it is the only preset left. |
 | Download (export) | Downloads the preset as a JSON file. |
 | Upload (import) | Loads a preset from a JSON file exported this way and adds it as a new preset. |
-<!-- src/lib/Setting/Pages/OtherBotSettings.svelte:1059-1174; src/ts/process/memory/hypav3.ts:1786-1825 -->
+<!-- src/lib/Setting/Pages/OtherBotSettings.svelte:1087-1186; src/ts/process/memory/hypav3.ts:1833-1877 -->
 
 Preset fields:
 
 | Label | Field | Default | Options/Range | What it does |
 |---|---|---|---|---|
-| SuperMemory Model | `summarizationModel` | Auxiliary Model | Auxiliary Model; plus, only if your browser reports GPU support, three local Qwen3 models | Which model summarizes chats. |
+| SupaMemory Model | `summarizationModel` | Auxiliary Model | Auxiliary Model; plus, only if your browser reports GPU support, three local Qwen3 models | Which model summarizes chats. |
 | Summarization Prompt | `summarizationPrompt` | empty | free text | Blank uses the built-in default. |
 | Re-summarization Prompt | `reSummarizationPrompt` | empty | free text | Used when merging several selected summaries into one via bulk edit. Blank uses the built-in default. |
 | Max Memory Tokens Ratio (Estimated) | — (display only, not saved) | — | — | An informational, disabled number showing an estimate; not a setting. |
 | Memory Tokens Ratio | `memoryTokensRatio` | 0.2 | 0–1, step 0.01 | Fraction of the max context reserved for the long-term memory block. |
 | Extra Summarization Ratio | `extraSummarizationRatio` | 0 | 0 to (1 − Memory Tokens Ratio) | Lowers the threshold at which summarization stops. |
-| Max Chats Per Summary | `maxChatsPerSummary` | 6 | min 1 | Maximum messages grouped into one summary. |
+| Max Messages Per Summary | `maxChatsPerSummary` | 6 | min 1 | Maximum messages grouped into one summary. Messages that are left out of summarization do not count toward it (**fork difference** in the standard implementation; see [[HypaMemory V3]]). |
 | Query Chat Count | `queryChatCount` | 3 | min 1, max 20 | How many recent messages are used to build the retrieval query. |
 | Chunk Separator Regex | `summaryChunkSeparator` | `\n\n` | free text (regex) | Pattern used to split text into chunks. |
 | Recent Memory Ratio | `recentMemoryRatio` | 0.4 | 0–1, step 0.01 | Share of the memory budget filled with the most recent summaries. Changing this or Similar Memory Ratio automatically shrinks the other so their sum never exceeds 1. |
@@ -95,7 +95,7 @@ Preset fields:
 | Preserve Orphaned Memory | `preserveOrphanedMemory` (checkbox) | off | — | If on, summaries that reference since-deleted chat messages are kept instead of removed. |
 | Apply Regex Script When Rerolling | `processRegexScript` (checkbox) | off | — | Applies your character's regex scripts when a summary is rerolled. |
 | Do Not Summarize User Message | `doNotSummarizeUserMessage` (checkbox) | off | — | Excludes user messages from the "max messages per summary" count. |
-<!-- src/ts/process/memory/hypav3.ts:1786-1825; queryChatCount: hypav3.ts:50, bound OtherBotSettings.svelte:1210; summaryChunkSeparator: hypav3.ts:42, bound OtherBotSettings.svelte:1212; help text keys read from src/lang/en.ts -->
+<!-- src/ts/process/memory/hypav3.ts:1833-1877; queryChatCount: hypav3.ts:56, bound OtherBotSettings.svelte:1221; summaryChunkSeparator: hypav3.ts:48, bound OtherBotSettings.svelte:1223; help text keys read from src/lang/en.ts -->
 
 **Advanced Settings** (a nested, always-expandable sub-section):
 
@@ -108,18 +108,18 @@ Preset fields:
 | Embedding Requests Per Minute | `embeddingRequestsPerMinute` | 100 | min 1, no upper bound on this page | Rate limit for embedding calls. Shown only with Use Experimental Implementation on. |
 | Embedding Max Concurrent | `embeddingMaxConcurrent` | 1 | min 1, max 10 | Concurrency limit for embedding calls. Shown only with Use Experimental Implementation on. |
 | Enable Similarity Correction | `enableSimilarityCorrection` (checkbox) | off | — | Adds a summary of recent chats as an extra query. Does not work together with the experimental implementation. Shown only with Use Experimental Implementation off. |
-<!-- src/lib/Setting/Pages/OtherBotSettings.svelte:1231-1255 -->
+<!-- src/lib/Setting/Pages/OtherBotSettings.svelte:1242-1266 -->
 
 ### SupaMemory fields (shown when Type is SupaMemory)
 
 | Label | Field | Default | Options/Range | What it does |
 |---|---|---|---|---|
-| SuperMemory Model | `supaModelType` | `distilbart` | distilbart, OpenAI 3.5 Turbo Instruct, Auxiliary Model | Which model produces the rolling summary. |
+| SupaMemory Model | `supaModelType` | `distilbart` | distilbart, OpenAI 3.5 Turbo Instruct, Auxiliary Model | Which model produces the rolling summary. |
 | Max SupaMemory Chunk Size | `maxSupaChunkSize` | 1200 | min 100 | SupaMemory's own chunk-size budget (a separate field from HypaMemory V2's Chunk Size/Allocated Tokens). |
-| SuperMemory OpenAI Key | `supaMemoryKey` | empty | free text | Shown for the OpenAI-backed model choices. Same field as V2's key above. |
-| SuperMemory Prompt | `supaMemoryPrompt` | empty | free text (single-line here, unlike the text area shown in the V2 branch for the same field) | Same stored value as V2's Summarization Prompt. |
+| SupaMemory OpenAI Key | `supaMemoryKey` | empty | free text | Shown for the OpenAI-backed model choices. Same field as V2's key above. |
+| SupaMemory Prompt | `supaMemoryPrompt` | empty | free text (single-line here, unlike the text area shown in the V2 branch for the same field) | Same stored value as V2's Summarization Prompt. |
 | Enable HypaMemory | `hypaMemory` (checkbox) | off | — | Adds HypaMemory v1's vector-search retrieval on top of the rolling summary; see [[SupaMemory]]. |
-<!-- src/lib/Setting/Pages/OtherBotSettings.svelte:1259-1280 -->
+<!-- src/lib/Setting/Pages/OtherBotSettings.svelte:1270-1290 -->
 
 ### Embedding
 
@@ -131,7 +131,7 @@ Shown at the bottom of this tab at all times, even with Type set to None, becaus
 | OpenAI API Key | `supaMemoryKey` | empty | free text | Shown for the three OpenAI embedding options. Reuses the same stored field as the SupaMemory OpenAI Key above — setting one changes the other. |
 | URL / Key-Password / Request Model | `hypaCustomSettings.url/key/model` | empty | free text | Shown for Custom: an OpenAI-compatible embedding endpoint. |
 | Voyage API Key | `voyageApiKey` | empty | free text | Shown for Voyage Context 3. Masked by **Hide API Keys**. |
-<!-- src/lib/Setting/Pages/OtherBotSettings.svelte:1282-1322 -->
+<!-- src/lib/Setting/Pages/OtherBotSettings.svelte:1293-1335 -->
 
 ---
 

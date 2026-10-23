@@ -15,7 +15,9 @@ RisuAI has five memory systems:
 Two switches must both be on:
 
 1. **Settings → Other Bots → Long Term Memory → Type**: pick a system. The dropdown turns the other systems off, so only one is active when you set it here.
-2. **The character's memory toggle.** This appears in the chat toggles once a system is selected. Its label depends on the system: **Toggle SupaMemory**, **Toggle HypaMemory** (HypaMemory v1 and V3), or **HanuraiMemory**. The toggle belongs to the character or group, so every chat with that character uses it.
+2. **The character's memory toggle.** This appears in the chat toggles once a system is selected. Its label depends on the system: **Toggle SupaMemory**, **Toggle HypaMemory** (HypaMemory v1, V2 and V3), or **HanuraiMemory**. The toggle belongs to the character or group, so every chat with that character uses it.
+   <!-- src/lib/SideBars/Toggles.svelte:192-194,207-209; src/lang/en.ts:1321,1486,1607 -->
+   **Fork difference:** with V2 on, upstream labels the toggle **Toggle SupaMemory**; here it is **Toggle HypaMemory**. The toggle also shows when the memory model is none but V2 is on. Upstream gives V3's label priority over Hanurai; here HanuraiMemory comes first.
 
 With HypaMemory V3, **Always Toggle On** (in the preset's Advanced Settings) turns the character toggle on automatically each time you select a character.
 
@@ -28,21 +30,27 @@ The Type dropdown only ever enables one system. Several flags can still be set a
 3. [[HypaMemory V3]]
 4. [[SupaMemory]], or HypaMemory v1 if **Enable HypaMemory** is checked
 
+The Type dropdown shows the same order, so in such data it displays the system that actually runs.
+<!-- src/lib/Setting/Pages/OtherBotSettings.svelte:1015-1019; src/ts/process/index.svelte.ts:1529-1605 -->
+**Fork difference:** the displayed value follows this order (the option list itself is unchanged).
+
 ## Comparison
 
 | | Hanurai | SupaMemory | HypaMemory v1 | HypaMemory V2 | HypaMemory V3 |
 |---|---|---|---|---|---|
-| **Mechanism** | Retrieves old raw messages by similarity to the last 3 messages | Summarizes the oldest messages into one running summary, and re-summarizes that summary when it gets long | SupaMemory, plus retrieval of up to 3 stored chunk summaries | Summarizes old messages in token-sized chunks. The prompt gets the earliest summaries plus paragraphs retrieved by similarity | Summarizes old messages in message-count batches. The prompt gets important, then recent, then similar, then random summaries within a budget |
+| **Mechanism** | Retrieves old raw messages by similarity to the last 3 messages, skipping any that are already in the prompt | Summarizes the oldest messages into one running summary, and re-summarizes that summary when it gets long | SupaMemory, plus retrieval of up to 3 stored chunk summaries | Summarizes old messages in token-sized chunks. The prompt gets the earliest summaries plus paragraphs retrieved by similarity | Summarizes old messages in message-count batches. The prompt gets important, then recent, then similar, then random summaries within a budget |
 | **Runs on** | Every request | Only when the prompt is over Max Context | Only when the prompt is over Max Context | Every request (summarizes only when over) | Every request (summarizes only when over) |
 | **Persisted in the chat** | Nothing | Plain text | Same storage as SupaMemory, but as `hypa:` + JSON | JSON | JSON. Settings live in global presets |
 | **Model calls** | None | 1 per summarized chunk, plus re-summarization of the running summary | Same as SupaMemory | 1 per summarized chunk | 1 per summarized batch. **Enable Similarity Correction** adds 1 per request |
 | **Embeddings** | Every older message is embedded once (cached), plus 3 query embeddings per request | None | The stored chunk summaries (cached), plus 1 query, only when over Max Context | All summary paragraphs (cached), plus 3 queries per request | The unselected summaries' chunks (cached), plus one query per recent message (per paragraph in the experimental mode). Skipped when **Similar Memory Ratio** is 0 |
-| **Memory budget** | **Chunk Size** is reserved, but retrieval may fill the rest of the context | No fixed cap. Chunks are at most min(Max Context ÷ 3, **Max SupaMemory Chunk Size**) | Same as SupaMemory | **Allocated Tokens** (at most half of it for the summaries part) | **Memory Tokens Ratio** × Max Context |
+| **Memory budget** | **Chunk Size** is reserved and is also the cap on the retrieved block | No fixed cap. Chunks are at most min(Max Context ÷ 3, **Max SupaMemory Chunk Size**) | Same as SupaMemory | **Allocated Tokens** (at most half of it for the summaries part) | **Memory Tokens Ratio** × Max Context |
 | **Editable** | — | Text box in character settings | Text box in character settings (raw JSON) | Hypa V2 Modal | Hypa V3 Modal (edit, reroll, importance, tags, categories, merge) |
 
 "Cached" means the vector is stored in the browser's local embedding cache (see below). Embedding the same text again with the same model costs nothing.
 
-In this table, "prompt tokens" works differently per system. SupaMemory and Hanurai count the reserved response length (**Max Response**) as part of the prompt. HypaMemory V2 and V3 subtract it first, so they compare only the input against Max Context.
+In this table, "prompt tokens" is counted the same way for every system: the prompt includes the reserved response length (**Max Response**) when it is compared with Max Context.
+<!-- src/ts/process/index.svelte.ts:1057; src/ts/process/memory/hypav2.ts:391-393; src/ts/process/memory/hypav3.ts:196-246,978-1023 -->
+**Fork difference:** upstream's HypaMemory V2 and V3 subtract Max Response first, so they compare only the input against Max Context.
 
 ## Conversion paths
 

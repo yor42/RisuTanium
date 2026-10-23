@@ -74,7 +74,7 @@ V1 is a flat list of `{comment, type, conditions, effect: [oneEffect]}` entries 
 | `command` | `value` | runs `value` through `processMultiCommand` — the same pipe-separated (`\|`) mini-language as the chat command bar (see [[Chat Commands]]) | any |
 | `stop` | — | stops the AI from sending/generating this round | any |
 | `runtrigger` | `value` (target trigger's `comment`) | recursively runs a `manual` trigger by name (see recursion note above) | any |
-| `cutchat` | `start`, `end` | slices the chat message array | any |
+| `cutchat` | `start`, `end` | slices the chat message array. **Fork difference:** if plain [[SupaMemory]] data is saved and its resume-point message is cut out, the resume point moves to the next surviving message, and a chat left with no messages loses its SupaMemory data <!-- src/ts/process/triggers.ts:1575-1583; src/ts/process/memory/supaResume.ts:59-141 --> | any |
 | `modifychat` | `index`, `value` | overwrites one message's text | any |
 | `showAlert` | `alertType: 'normal'\|'error'\|'input'\|'select'`, `value`, `inputVar` | shows a dialog; `input`/`select` write the response into `inputVar`; no-ops outside low-level access, and bails entirely in display mode | **low-level** |
 | `sendAIprompt` | — | flags that this trigger pass should trigger an AI response | **low-level** |
@@ -130,7 +130,7 @@ Long-running loops built with `v2Loop` are throttled automatically: every 100 it
 
 | Effect | Parameters | Behavior |
 |---|---|---|
-| `v2CutChat` | `start`/`startType`, `end`/`endType` | slices the message array (defaults: start 0, end = length) |
+| `v2CutChat` | `start`/`startType`, `end`/`endType` | slices the message array (defaults: start 0, end = length). **Fork difference:** the SupaMemory resume point and empty-chat handling are the same as for `cutchat` <!-- src/ts/process/triggers.ts:2003-2018 --> |
 | `v2ModifyChat` | `index`/`indexType`, `value`/`valueType` | overwrites one message's text |
 | `v2Impersonate` | `role`, `value`/`valueType` | appends a message |
 | `v2GetLastMessage` | `outputVar` | last message's text, or `"null"` |
@@ -170,7 +170,7 @@ Long-running loops built with `v2Loop` are throttled automatically: every 100 it
 | `v2GetLorebookCountNew` | `outputVar` | entry count |
 | `v2SetLorebookAlwaysActive` | `index`/`indexType`, `value: boolean` | toggles always-active on that entry |
 
-All of these persist immediately to the trigger's own character's lorebook data — the member's, in a group run, per "Which character and chat effects act on" above. <!-- src/ts/process/triggers.ts:2606-2738 -->
+All of these persist immediately to the trigger's own character's lorebook data — the member's, in a group run, per "Which character and chat effects act on" above. <!-- src/ts/process/triggers.ts:2669-2801 -->
 
 ### String
 
@@ -240,7 +240,7 @@ If the JSON in the variable can't be parsed, most array effects reset it to `"[]
 
 Kept for old scripts; hidden from the "add effect" picker for new ones. <!-- src/lib/SideBars/Scripts/TriggerV2List.svelte:136-144 -->
 
-These are believed non-functional today, except `v2GetLorebookCount`. Global lore entries are stored as objects with named fields (`key`, `content`, `alwaysActive`, and so on), but every other effect in this group tries to access them as if they were numbered list items instead. Because the entries aren't structured that way, lookups by name or index never find a match, and reads/writes into these "slots" touch the wrong field entirely. This looks like logic left over from an older lorebook format. Treat the index-based effects in the Lorebook V2 section above as the supported way to do the same things. <!-- src/ts/process/triggers.ts:2109-2166; src/ts/storage/database.svelte.ts:1320-1341 -->
+These are believed non-functional today, except `v2GetLorebookCount`, and `v2SetLorebookActivation`, which is now a deliberate no-op. Global lore entries are stored as objects with named fields (`key`, `content`, `alwaysActive`, and so on), but `v2ModifyLorebook`, `v2GetLorebook`, `v2GetLorebookEntry` and `v2GetLorebookIndexViaName` try to access them as if they were numbered list items instead. Because the entries aren't structured that way, lookups by name or index never find a match (a read yields `"null"` or `-1`, and a modify does nothing). This looks like logic left over from an older lorebook format. Treat the index-based effects in the Lorebook V2 section above as the supported way to do the same things. <!-- src/ts/process/triggers.ts:2179-2230; src/ts/storage/database.svelte.ts:1373-1391 -->
 
 | Effect | Parameters | Behavior |
 |---|---|---|
@@ -248,7 +248,7 @@ These are believed non-functional today, except `v2GetLorebookCount`. Global lor
 | `v2ModifyLorebook` / `v2GetLorebook` | `target`/`targetType` (intended to match a lore entry's key), `value`/`valueType`, `outputVar` | intended to modify/read content by key lookup; the lookup never matches (see above) |
 | `v2GetLorebookCount` | `outputVar` | entry count — this one works, since it's just `.length` |
 | `v2GetLorebookEntry` | `index`/`indexType`, `outputVar` | intended to read content by index; always yields `"null"` (see above) |
-| `v2SetLorebookActivation` | `index`/`indexType`, `value: boolean` | intended to toggle activation by index; writes to a non-existent field instead of `alwaysActive` (see above) |
+| `v2SetLorebookActivation` | `index`/`indexType`, `value: boolean` | does nothing: no write, no error, and the chat is not marked changed (see above). Use `v2SetLorebookAlwaysActive` instead. **Fork difference:** upstream writes to a non-existent field instead of `alwaysActive`. <!-- src/ts/process/triggers.ts:2215-2218 --> |
 | `v2GetLorebookIndexViaName` | `name`/`nameType`, `outputVar` | intended exact-match index lookup by name; the lookup never matches (see above) |
 
 ## Relation to Lua

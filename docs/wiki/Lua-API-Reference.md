@@ -30,12 +30,12 @@ Access levels, from the "permission tiers" section on [[Lua Scripting]]:
 | `getChatRole(id, index)` | index: number | `'user'`/`'char'`, or `''` | None |
 | `getRecentChats(id, count)` *(shim)* | count: number | table array of the last `count` messages, `{role, data, time}` each | None |
 | `getFullChat(id)` *(shim)* | — | table array of every message | None |
-| `setFullChat(id, value)` *(shim)* | value: table array of `{role, data}` | replaces the whole chat message list | Safe |
+| `setFullChat(id, value)` *(shim)* | value: table array of `{role, data}` | replaces the whole chat message list. **Fork difference:** an empty list also clears the chat's [[SupaMemory]] data <!-- src/ts/process/scriptings.ts:437-443 --> | Safe |
 | `getChatLength(id)` | — | number of messages | None |
 | `setChat(id, index, value)` | index: number, value: string | overwrites message text at index | Safe |
 | `setChatRole(id, index, value)` | index, value (`'user'` else treated as `'char'`) | — | Safe |
-| `cutChat(id, start, end)` | start, end: number | slices the message array to `[start, end)` | Safe |
-| `removeChat(id, index)` | index: number | removes one message | Safe |
+| `cutChat(id, start, end)` | start, end: number | slices the message array to `[start, end)`. **Fork difference:** keeps the [[SupaMemory]] resume point valid, see [[SupaMemory#when-messages-are-removed]] <!-- src/ts/process/scriptings.ts:343-354 --> | Safe |
+| `removeChat(id, index)` | index: number | removes one message. **Fork difference:** keeps the [[SupaMemory]] resume point valid, see [[SupaMemory#when-messages-are-removed]] <!-- src/ts/process/scriptings.ts:355-366 --> | Safe |
 | `addChat(id, role, value)` | role (`'user'` else `'char'`), value: string | appends a message | Safe |
 | `insertChat(id, index, role, value)` | index, role, value | inserts a message at index | Safe |
 | `getCharacterLastMessage(id)` | — | text of the most recent `char`-role message in the call's chat, falling back to that chat's owner's first message. Inside a trigger run or `editInput`, "the call's chat" is the run's own chat, re-read fresh on every call (not held from when the call began); outside a run it's the selected character's chat | None |
