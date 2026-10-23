@@ -862,8 +862,9 @@ describe('A plain run with no switch (guard)', () => {
         const char = makeCharacter('char-plain')
         installDb([char])
         const chat = char.chats[0]
-        // v2ModifyLorebook/v2SetLorebookActivation address globalLore entries
-        // by array index (`v[0]`/`v[2]`, a tuple shape); v2CreateLorebook and
+        // v2ModifyLorebook addresses globalLore entries by array index
+        // (`v[0]`, a tuple shape; v2SetLorebookActivation is inert and leaves
+        // `v[2]` as it was); v2CreateLorebook and
         // the ModifyByIndex/AlwaysActive/DeleteByIndex effects address the
         // object shape (`.comment`/`.alwaysActive`) instead. Both APIs write
         // the same `char.globalLore` array, so this fixture keeps a tuple
@@ -896,7 +897,7 @@ describe('A plain run with no switch (guard)', () => {
         expect(DBState.db.characters[0].desc).toBe('plain-new-desc')
         expect(DBState.db.characters[0].replaceGlobalNote).toBe('plain-note')
         expect(DBState.db.characters[0].globalLore[0][1]).toBe('tuple-modified')
-        expect(DBState.db.characters[0].globalLore[0][2]).toBe(true)
+        expect(DBState.db.characters[0].globalLore[0][2]).toBe(false)
         expect(DBState.db.characters[0].globalLore.length).toBe(2) // the scratch "delete-me" entry was removed
         expect(DBState.db.characters[0].globalLore[1].comment).toBe('n2')
         expect(DBState.db.characters[0].globalLore[1].alwaysActive).toBe(true)

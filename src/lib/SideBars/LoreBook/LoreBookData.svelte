@@ -290,6 +290,10 @@
                     <Check bind:check={value.useRegex} name={language.useRegexLorebook}/>
                     <Help key="useRegexLorebook" name={language.useRegexLorebook}/>
                 </div>
+                <div class="flex items-center mt-2">
+                    <Check check={value.extentions?.risu_case_sensitive ?? false} onChange={(check: boolean) => value.extentions = {...value.extentions, risu_case_sensitive: check}} name={language.caseSensitive}/>
+                    <Help key="caseSensitiveLorebook" name={language.caseSensitive}/>
+                </div>
             {/if}
         </div>
         {/if}

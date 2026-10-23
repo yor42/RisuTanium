@@ -15,10 +15,9 @@
  * The tokenizer is a stand-in that counts characters, so entry sizes are the
  * budget arithmetic.
  *
- * Tests titled `regression reproducer:` are `test.fails` until the matching or
- * budget rule changes (CHORE-09 items 9, 10 and 11, MC-710); flip them to
- * `test` with the fix. Tests titled `guard:` pin behaviour that must be
- * preserved and pass before and after.
+ * Tests titled `regression reproducer:` fail on the matching or budget rule
+ * they name (CHORE-09 items 9, 10 and 11, MC-710, MC-716, MC-718). Tests titled
+ * `guard:` pin behaviour that must be preserved and pass before and after.
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
@@ -70,12 +69,12 @@ function entry(key: string, over: Entry = {}): Entry {
     }
 }
 
-function setScene(lore: Entry[], said: string[], tokenBudget = 100000) {
+function setScene(lore: Entry[], said: string[], tokenBudget = 100000, settings: Entry = {}) {
     h.db.characters = [{
         name: 'Char',
         chatPage: 0,
         globalLore: lore,
-        loreSettings: { scanDepth: said.length, tokenBudget, fullWordMatching: false, recursiveScanning: false },
+        loreSettings: { scanDepth: said.length, tokenBudget, fullWordMatching: false, recursiveScanning: false, ...settings },
         chats: [{
             id: 'chat-1',
             localLore: [],
@@ -84,8 +83,8 @@ function setScene(lore: Entry[], said: string[], tokenBudget = 100000) {
     }]
 }
 
-async function activated(lore: Entry[], said: string, tokenBudget?: number) {
-    setScene(lore, [said], tokenBudget)
+async function activated(lore: Entry[], said: string, tokenBudget?: number, settings?: Entry) {
+    setScene(lore, [said], tokenBudget, settings)
     return (await loadLoreBookV3Prompt()).actives
 }
 
@@ -109,14 +108,34 @@ describe('lorebook case-sensitive flag', () => {
         expect(await activated([entry('/Dragon/', { useRegex: true, ...caseSensitive(false) })], 'a DRAGON here')).toHaveLength(0)
     })
 
-    // CHORE-09 item 9, MC-710: flip to `test` once the flag is honoured for plain keys.
-    test.fails('regression reproducer: with the flag a plain key does not match text in another case', async () => {
+    test('regression reproducer: with the flag a plain key does not match text in another case', async () => {
         expect(await activated([entry('Dragon', caseSensitive(true))], 'a DRAGON here')).toHaveLength(0)
     })
 
-    // CHORE-09 item 9, MC-710: flip to `test` once the flag is honoured for plain keys.
-    test.fails('regression reproducer: with the flag a lower-case plain key does not match capitalised text', async () => {
+    test('regression reproducer: with the flag a lower-case plain key does not match capitalised text', async () => {
         expect(await activated([entry('dragon', caseSensitive(true))], 'a Dragon here')).toHaveLength(0)
+    })
+
+    test('regression reproducer: with the flag and full-word matching a key does not match a word in another case', async () => {
+        const fullWord = { fullWordMatching: true }
+        expect(await activated([entry('Dragon', caseSensitive(true))], 'a DRAGON here', undefined, fullWord)).toHaveLength(0)
+        expect(await activated([entry('Dragon', caseSensitive(true))], 'a Dragon here', undefined, fullWord)).toHaveLength(1)
+    })
+
+    test('regression reproducer: with the flag a recursively scanned entry text is matched case-sensitively too', async () => {
+        const first = entry('dragon', { comment: 'FIRST', content: 'Wyvern follows' })
+        const settings = { recursiveScanning: true }
+        expect(await activated([first, entry('wyvern', { comment: 'SECOND', ...caseSensitive(true) })], 'dragon', undefined, settings)).toHaveLength(1)
+        expect(await activated([first, entry('wyvern', { comment: 'SECOND', ...caseSensitive(false) })], 'dragon', undefined, settings)).toHaveLength(2)
+    })
+
+    test('regression reproducer: with the flag a key still ignores spaces but keeps its case', async () => {
+        expect(await activated([entry('Dra gon', caseSensitive(true))], 'a Dragon here')).toHaveLength(1)
+        expect(await activated([entry('Dra gon', caseSensitive(true))], 'a dragon here')).toHaveLength(0)
+    })
+
+    test.each(['{{Comment:dragon}} hi', '{{//Dragon}} hi', '{{COMMENT:Dragon}} hi'])('guard: with the flag a comment block %j is still removed before matching', async (said) => {
+        expect(await activated([entry('Dragon', caseSensitive(true)), entry('dragon', caseSensitive(true))], said)).toHaveLength(0)
     })
 })
 
@@ -131,23 +150,62 @@ describe('lorebook regex mode with a non-regex key', () => {
         expect(await activated([regexEntry('/wyvern/,/wolf/')], 'a dragon here')).toHaveLength(0)
     })
 
-    // CHORE-09 item 11, MC-710: flip to `test` once a bare key falls back to a substring.
-    test.fails('regression reproducer: a bare key in a list with a regex key matches as a substring', async () => {
+    test('regression reproducer: a bare key in a list with a regex key matches as a substring', async () => {
         expect(await activated([regexEntry('/dragon/,wolf')], 'a wolf here')).toHaveLength(1)
     })
 
-    // CHORE-09 item 11, MC-710: flip to `test` once a bare key falls back to a substring.
-    test.fails('regression reproducer: a bare key matches as a case-insensitive substring', async () => {
+    test('regression reproducer: a bare key matches as a case-insensitive substring', async () => {
         expect(await activated([regexEntry('dragon')], 'a Dragon here')).toHaveLength(1)
     })
 
-    // CHORE-09 item 11, MC-710: flip to `test` once a bare key falls back to a substring.
-    test.fails('regression reproducer: a bare key before a regex key does not stop the regex key matching', async () => {
+    test('regression reproducer: a bare key before a regex key does not stop the regex key matching', async () => {
         expect(await activated([regexEntry('wolf,/dragon/')], 'a dragon here')).toHaveLength(1)
     })
 
     test('guard: a bare key is a substring, not a regex', async () => {
         expect(await activated([regexEntry('dr.gon')], 'a dragon here')).toHaveLength(0)
+    })
+
+    test('guard: an invalid regex key keeps the entry inactive even beside a matching bare key', async () => {
+        expect(await activated([regexEntry('dragon,/(/')], 'a dragon here')).toHaveLength(0)
+    })
+
+    test('regression reproducer: a bare key follows the case-sensitive flag', async () => {
+        expect(await activated([regexEntry('Dragon')], 'a DRAGON here')).toHaveLength(1)
+        expect(await activated([{ ...regexEntry('Dragon'), ...caseSensitive(true) }], 'a Dragon here')).toHaveLength(1)
+        expect(await activated([{ ...regexEntry('Dragon'), ...caseSensitive(true) }], 'a DRAGON here')).toHaveLength(0)
+    })
+
+    test('regression reproducer: a comma inside a regex key stays part of the pattern', async () => {
+        expect(await activated([regexEntry('/dragon{1,2}/')], 'a dragon here')).toHaveLength(1)
+        expect(await activated([regexEntry('/a,b/i')], 'xA,By')).toHaveLength(1)
+        expect(await activated([regexEntry('/a,b/i')], 'xAy')).toHaveLength(0)
+    })
+
+    test('regression reproducer: an escaped or bracketed slash does not end a regex key', async () => {
+        expect(await activated([regexEntry('/a\\/,b/')], 'xa/,by')).toHaveLength(1)
+        expect(await activated([regexEntry('/[/],x/')], 'x/,xy')).toHaveLength(1)
+        expect(await activated([regexEntry('/[a/,b]/')], 'xyz')).toHaveLength(0)
+        expect(await activated([regexEntry('/[a/,b]/')], 'xb')).toHaveLength(1)
+    })
+
+    test('guard: keys separated by a comma and a space are two regex keys', async () => {
+        expect(await activated([regexEntry('/x/, /y/')], 'a y here')).toHaveLength(1)
+    })
+
+    test('regression reproducer: an unterminated slash key splits into bare keys at its comma', async () => {
+        expect(await activated([regexEntry('/abc,def')], 'xdefx')).toHaveLength(1)
+    })
+
+    test('regression reproducer: the secondary keys of a selective entry may hold a comma regex', async () => {
+        const selective = { selective: true, secondkey: '/wol{1,2}f/' }
+        expect(await activated([{ ...regexEntry('/dragon/'), ...selective }], 'dragon and wolf')).toHaveLength(1)
+        expect(await activated([{ ...regexEntry('/dragon/'), ...selective }], 'dragon alone')).toHaveLength(0)
+    })
+
+    test('guard: outside regex mode a slash key is split at its comma', async () => {
+        expect(await activated([entry('/a,b/')], 'xb/y')).toHaveLength(1)
+        expect(await activated([entry('/a,b/')], 'x/ay')).toHaveLength(1)
     })
 })
 
@@ -167,11 +225,52 @@ describe('lorebook @@inject_lore budget', () => {
         expect(actives.map((a) => [a.source, a.prompt])).toEqual([['TARGET', 'T'.repeat(10)]])
     })
 
-    // CHORE-09 item 10, MC-710: flip to `test` once the injector's tokens are refunded when its target is cut.
-    test.fails('regression reproducer: the injector\'s tokens are given back when its target was cut', async () => {
+    test('regression reproducer: the injector\'s tokens are given back when its target was cut', async () => {
         // The injector (10) fits in 25, the target (30) never does, and the other entry (20)
         // fits only when the injector's 10 are refunded.
         const actives = await activated([target(30), injector, other(20)], 'dragon', 25)
         expect(sources(actives)).toEqual(['OTHER'])
+    })
+
+    test('guard: the refunded target is not admitted again', async () => {
+        // By priority: injector (10), middle (20), target (15). The target is cut at 35;
+        // the refund would make room for it, but a cut target stays cut. Passes before
+        // and after the refund; it fails when the refund re-admits the target.
+        const middle = entry('dragon', { comment: 'MIDDLE', content: 'M'.repeat(20), insertorder: 70 })
+        const smallTarget = entry('dragon', { comment: 'TARGET', content: 'T'.repeat(15), insertorder: 50 })
+        const actives = await activated([smallTarget, injector, middle], 'dragon', 35)
+        expect(sources(actives)).toEqual(['MIDDLE'])
+    })
+
+    test('regression reproducer: the injector is refunded when its target never activated', async () => {
+        const absent = entry('absent key', { comment: 'TARGET', content: 'T'.repeat(5), insertorder: 50 })
+        const actives = await activated([absent, injector, other(20)], 'dragon', 25)
+        expect(sources(actives)).toEqual(['OTHER'])
+    })
+
+    const injectorFor = (comment: string, location: string, size: number, insertorder: number) =>
+        entry('dragon', { comment, content: `@@inject_lore ${location}\n` + 'I'.repeat(size), insertorder })
+    const plain = (comment: string, size: number, insertorder: number) =>
+        entry('dragon', { comment, content: comment[0].repeat(size), insertorder })
+
+    test('regression reproducer: an injector admitted after a refund is refunded too when its target was cut', async () => {
+        // Budget 25. Round one keeps IA and M; IA's target TA was cut, so IA is refunded and
+        // IB (cut in round one) is admitted; IB's target TB is cut, so IB is refunded too
+        // and TAIL fits only after the second refund.
+        const actives = await activated([
+            injectorFor('IA', 'TA', 10, 100), plain('MM', 10, 90), injectorFor('IB', 'TB', 10, 80),
+            plain('TA', 30, 70), plain('TB', 30, 60), plain('TAIL', 15, 10),
+        ], 'dragon', 25)
+        expect(sources(actives)).toEqual(['TAIL', 'MM'])
+    })
+
+    test('regression reproducer: a target cut only in a later round voids its injector and stays cut', async () => {
+        // Budget 30. T2 fits in round one. The refund of IA admits IB (15), which pushes T2 out
+        // in round two; IB is then refunded, and T2 (5) is not admitted although it would fit.
+        const actives = await activated([
+            injectorFor('IA', 'TA', 10, 100), plain('TA', 40, 95), plain('YY', 15, 90),
+            injectorFor('IB', 'T2', 15, 80), plain('T2', 5, 60), plain('ZZ', 10, 10),
+        ], 'dragon', 30)
+        expect(sources(actives)).toEqual(['ZZ', 'YY'])
     })
 })

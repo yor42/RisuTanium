@@ -10,10 +10,9 @@
  * Runs the real `runTrigger` over a plain in-memory database; the CBS parser is
  * an identity stand-in and every heavy collaborator is stubbed.
  *
- * Tests titled `regression reproducer:` are `test.fails` until the activation
- * effect stops writing a stray key and stops throwing (CHORE-09 item 4,
- * MC-710); flip them to `test` with the fix. Tests titled `guard:` pin behaviour
- * that must be preserved and pass before and after.
+ * Tests titled `regression reproducer:` fail when the activation effect writes
+ * a stray key or throws (CHORE-09 item 4, MC-710). Tests titled `guard:` pin
+ * behaviour that must be preserved and pass before and after.
  */
 import { describe, test, expect, vi, beforeAll } from 'vitest'
 import { writable, get } from 'svelte/store'
@@ -166,20 +165,17 @@ describe('deprecated V2 lorebook effects', () => {
         expect(r.lore[0].alwaysActive).toBe(false)
     })
 
-    // CHORE-09 item 4, MC-710: flip to `test` once the activation effect stops writing.
-    test.fails('regression reproducer: the activation effect writes no stray key onto a lore entry', async () => {
+    test('regression reproducer: the activation effect writes no stray key onto a lore entry', async () => {
         const r = await setActivation('0')
         expect(Object.keys(r.lore[0]).sort()).toEqual(Object.keys(lore()[0]).sort())
     })
 
-    // CHORE-09 item 4, MC-710: flip to `test` once an out-of-range index is ignored.
-    test.fails('regression reproducer: the activation effect does not throw for an out-of-range index', async () => {
+    test('regression reproducer: the activation effect does not throw for an out-of-range index', async () => {
         const r = await setActivation('5')
         expect(r.err).toBeNull()
     })
 
-    // CHORE-09 item 4, MC-710: flip to `test` once a non-numeric index is ignored.
-    test.fails('regression reproducer: the activation effect does not throw for a non-numeric index', async () => {
+    test('regression reproducer: the activation effect does not throw for a non-numeric index', async () => {
         const r = await setActivation('abc')
         expect(r.err).toBeNull()
     })

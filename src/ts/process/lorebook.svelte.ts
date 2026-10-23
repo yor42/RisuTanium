@@ -16,6 +16,7 @@ import type { OriginContext, RunSubject } from "./chatOrigin";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
 import type { PromptView } from "../cbs";
 import { beginBusy } from "./memory/busyActions";
+import { splitLoreKeys } from "./loreKeys";
 
 /**
  * A fixed stand-in for `RunSubject` that always resolves to `ctx`, captured
@@ -166,6 +167,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
         keys:string[],
         searchDepth:number,
         regex:boolean
+        caseSensitive:boolean
         fullWordMatching:boolean
         all?:boolean
         dontSearchWhenRecursive: boolean
@@ -207,32 +209,56 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                 }
             }))    
 
+        // Plain keys (every key outside regex mode, a non-/pattern/ key inside it) match
+        // against comment-stripped text, in lower case unless the entry is case-sensitive.
+        const buildPlainMList = () => mList.map((m) => {
+            const strip = (text:string) => (arg.caseSensitive ? text : text.toLocaleLowerCase())
+                .replace(/\{\{\/\/(.+?)\}\}/gi,'').replace(/\{\{comment:(.+?)\}\}/gi,'')
+            return {
+                source: m.source,
+                prompt: strip(m.prompt),
+                data: strip(m.data)
+            }
+        })
+        const plainKey = (key:string) => arg.caseSensitive ? key : key.toLocaleLowerCase()
+
         if(arg.regex){
-            const regexes: { regex: RegExp, source: string }[] = []
-            for(const regexString of arg.keys){
-                const parsed = regexString.match(/^\/([\s\S]*)\/([dgimsuvy]*)$/)
+            const regexKeys: { key: string, regex: RegExp|null }[] = []
+            for(const key of arg.keys){
+                const parsed = key.match(/^\/([\s\S]*)\/([dgimsuvy]*)$/)
                 if(!parsed){
-                    return false
+                    regexKeys.push({ key, regex: null })
+                    continue
                 }
                 const [, pattern, flags] = parsed
 
                 try {
-                    regexes.push({
-                        regex: new RegExp(pattern, flags),
-                        source: regexString
-                    })
+                    regexKeys.push({ key, regex: new RegExp(pattern, flags) })
                 } catch (error) {
                     return false
                 }
             }
-            for(const mText of mList){
-                for(const {regex, source} of regexes){
-                    regex.lastIndex = 0
-                    if(regex.test(mText.data)){
+            const plainMList = regexKeys.some((k) => !k.regex) ? buildPlainMList() : []
+            for(let i = 0; i < mList.length; i++){
+                const mText = mList[i]
+                const plainText = plainMList[i]?.data.replace(/ /g,'') ?? ''
+                for(const {key, regex} of regexKeys){
+                    if(regex){
+                        regex.lastIndex = 0
+                        if(regex.test(mText.data)){
+                            matchLog.push({
+                                prompt: mText.prompt,
+                                source: mText.source,
+                                activated: key
+                            })
+                            return true
+                        }
+                    }
+                    else if(plainText.includes(plainKey(key).replace(/ /g,''))){
                         matchLog.push({
-                            prompt: mText.prompt,
+                            prompt: plainMList[i].prompt,
                             source: mText.source,
-                            activated: source
+                            activated: key
                         })
                         return true
                     }
@@ -241,13 +267,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
             return false
         }
 
-        mList = mList.map((m) => {
-            return {
-                source: m.source,
-                prompt: m.prompt.toLocaleLowerCase().replace(/\{\{\/\/(.+?)\}\}/g,'').replace(/\{\{comment:(.+?)\}\}/g,''),
-                data: m.data.toLocaleLowerCase().replace(/\{\{\/\/(.+?)\}\}/g,'').replace(/\{\{comment:(.+?)\}\}/g,'')
-            }
-        })
+        mList = buildPlainMList()
 
         let allMode = arg.all ?? false
         let allModeMatched = true
@@ -257,7 +277,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
             if(arg.fullWordMatching){
                 const splited = mText.split(' ')
                 for(const key of arg.keys){
-                    if(splited.includes(key.toLocaleLowerCase())){
+                    if(splited.includes(plainKey(key))){
                         matchLog.push({
                             prompt: m.prompt,
                             source: m.source,
@@ -275,7 +295,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
             else{
                 mText = mText.replace(/ /g,'')
                 for(const key of arg.keys){
-                    const realKey = key.toLocaleLowerCase().replace(/ /g,'')
+                    const realKey = plainKey(key).replace(/ /g,'')
                     if(mText.includes(realKey)){
                         matchLog.push({
                             prompt: m.prompt,
@@ -590,13 +610,13 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
             }
             else{
                 searchQueries.push({
-                    keys: fullLore[i].key.split(','),
+                    keys: splitLoreKeys(fullLore[i].key, fullLore[i].useRegex),
                     negative: false
                 })
 
                 if(fullLore[i].secondkey && fullLore[i].selective){
                     searchQueries.push({
-                        keys: fullLore[i].secondkey.split(','),
+                        keys: splitLoreKeys(fullLore[i].secondkey, fullLore[i].useRegex),
                         negative: false
                     })
                 }
@@ -606,6 +626,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                         keys: query.keys,
                         searchDepth: scanDepth,
                         regex: fullLore[i].useRegex,
+                        caseSensitive: fullLore[i].extentions?.risu_case_sensitive === true,
                         fullWordMatching: fullWordMatching,
                         all: query.all,
                         dontSearchWhenRecursive: dontSearchWhenRecursive
@@ -679,15 +700,43 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
         return b.priority - a.priority
     })
 
-    let usedTokens = 0
-
-    const activesFiltered = activesSorted.filter((act) => {
-        if(usedTokens + act.tokens <= loreToken){
-            usedTokens += act.tokens
-            return true
+    // An injector that survives the cut but whose target is not among the survivors
+    // (cut, or never activated) merges nothing, so it is dropped and its tokens go
+    // back to the entries after it in priority order. Refunds can admit another
+    // injector, so the cut repeats until no injector is left without its target.
+    // A target cut in the latest run stays cut, even when the refund would fit it.
+    const deadInjectors = new Set<typeof actives[number]>()
+    const pinnedCut = new Set<typeof actives[number]>()
+    let activesFiltered: typeof actives
+    while(true){
+        let usedTokens = 0
+        const cutInRun: typeof actives = []
+        activesFiltered = activesSorted.filter((act) => {
+            if(deadInjectors.has(act) || pinnedCut.has(act)){
+                return false
+            }
+            if(usedTokens + act.tokens <= loreToken){
+                usedTokens += act.tokens
+                return true
+            }
+            cutInRun.push(act)
+            return false
+        })
+        const targetless = activesFiltered.filter((act) => {
+            return act.inject?.lore && !activesFiltered.some((l) => !l.inject?.lore && l.source === act.inject.location)
+        })
+        if(targetless.length === 0){
+            break
         }
-        return false
-    })
+        for(const act of targetless){
+            deadInjectors.add(act)
+            for(const cut of cutInRun){
+                if(!cut.inject?.lore && cut.source === act.inject.location){
+                    pinnedCut.add(cut)
+                }
+            }
+        }
+    }
 
     let activesResorted = activesFiltered.sort((a,b) => {
         return b.order - a.order

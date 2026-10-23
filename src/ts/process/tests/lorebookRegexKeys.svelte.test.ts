@@ -3,8 +3,9 @@
 /**
  * Regex keys of a lorebook entry (`useRegex`) in the REAL `loadLoreBookV3Prompt`
  * scan. A `/pattern/flags` key is matched against every message inside the scan
- * depth, a flagless `/pattern/` key is valid, and a key that is not a valid
- * regex never activates the entry and never throws.
+ * depth, a flagless `/pattern/` key is valid, a key that is not written as
+ * `/pattern/flags` matches as a plain substring, and a `/pattern/flags` key that
+ * is not a valid regex never activates the entry and never throws.
  *
  * Labels: R = regression reproducer (fails on the slash-stripping
  * implementation that rewrote the key in place, passes on the parse-once
@@ -135,8 +136,12 @@ describe('lorebook regex keys', () => {
         await expect(activated([entry('/(/i', true)], sleepy)).resolves.toBe(0)
     })
 
-    test('G: a regex-mode key that is not written as /pattern/ does not activate', async () => {
-        expect(await activated([entry('dragon', true)], sleepy)).toBe(0)
+    test('R: a regex-mode key that is not written as /pattern/ matches as a case-insensitive substring', async () => {
+        expect(await activated([entry('dragon', true)], sleepy)).toBe(1)
+    })
+
+    test('G: a regex-mode key that is not written as /pattern/ and is absent does not activate', async () => {
+        expect(await activated([entry('wyvern', true)], sleepy)).toBe(0)
     })
 
     test('G: a plain key still matches by substring, case-insensitively', async () => {

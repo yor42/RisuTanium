@@ -2208,14 +2208,7 @@ export async function runTrigger(char:character,mode:triggerMode, arg: RunTrigge
                     break
                 }
                 case 'v2SetLorebookActivation':{
-                    if(memberRequiredButGone()){
-                        break
-                    }
-                    char.globalLore = char.globalLore ?? []
-                    let index = effect.indexType === 'value' ? Number(risuChatParser(effect.index,{chara:char, subject})) : Number(getVar(risuChatParser(effect.index,{chara:char, subject})))
-                    let value = effect.value
-                    char.globalLore[index][2] = value
-                    markWrite()
+                    //deprecated: globalLore entries are loreBook objects with no activation slot, so this is a deliberate no-op
                     break
                 }
                 case 'v2GetLorebookIndexViaName':{

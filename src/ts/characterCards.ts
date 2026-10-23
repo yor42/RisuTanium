@@ -32,6 +32,7 @@ import { getResidency } from "./storage/store2/residencyActive"
 import { applyCharacterDefaults, resetChatStreamingState } from "./storage/characterDefaults"
 import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
 import { normalizeOnboarding } from "./onboardingData"
+import { splitLoreKeys } from "./process/loreKeys"
 
 
 const EXTERNAL_HUB_URL = 'https://sv.risuai.xyz';
@@ -1608,8 +1609,8 @@ function createBaseV2(char:character) {
         ext.risu_loreCache = lore.loreCache
 
         charBook.push({
-            keys: lore.key.split(',').map(r => r.trim()),
-            secondary_keys: lore.selective ? lore.secondkey.split(',').map(r => r.trim()) : undefined,
+            keys: splitLoreKeys(lore.key, lore.useRegex ?? false).map(r => r.trim()),
+            secondary_keys: lore.selective ? splitLoreKeys(lore.secondkey, lore.useRegex ?? false).map(r => r.trim()) : undefined,
             content: lore.content,
             extensions: ext,
             enabled: true,
@@ -2040,8 +2041,8 @@ export function createBaseV3(char:character){
 
         charBook.push({
             ...{
-                keys: lore.key.split(',').map(r => r.trim()),
-                secondary_keys: lore.selective ? lore.secondkey.split(',').map(r => r.trim()) : undefined,
+                keys: splitLoreKeys(lore.key, lore.useRegex ?? false).map(r => r.trim()),
+                secondary_keys: lore.selective ? splitLoreKeys(lore.secondkey, lore.useRegex ?? false).map(r => r.trim()) : undefined,
                 content: lore.content,
                 extensions: ext,
                 enabled: true,
