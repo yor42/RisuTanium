@@ -442,12 +442,21 @@ describe('new behaviour: result mapping', () => {
 
     test('a commit with flushed:false does not count as saved and does not fire the callbacks', async () => {
         const { db, kit } = await edited()
+        let releaseThird = (): void => {}
+        const third = new Promise<void>((resolve) => {
+            releaseThird = resolve
+        })
         script(kit, [async (read, request) => {
             const result = await kit.committer.commit(read, request)
             return result.status === 'committed' ? { ...result, flushed: false } : result
         }, async (read, request) => {
             const result = await kit.committer.commit(read, request)
             return result.status === 'committed' ? { ...result, flushed: false } : result
+        }, async (read, request) => {
+            // The retry after the second report would commit flushed and count as saved. It waits here until the
+            // assertions ran, so they do not depend on how long the retry's sleep takes against the poll interval.
+            await third
+            return kit.committer.commit(read, request)
         }])
         const loop = runLoop(kit, db)
         chars(db)[0].personality = 'durable edit'
@@ -455,6 +464,7 @@ describe('new behaviour: result mapping', () => {
         await until(() => loop.failures.length >= 2, 'two failure reports', 4000)
         expect(loop.state.saved).toBe(0)
         expect(loop.failures.map(failure => failure.attempts)).toEqual([1, 2])
+        releaseThird()
         healthy(loop)
     })
 
