@@ -1,7 +1,8 @@
 import { encodeUnit, newManifestKey, newShardKey, newUnitKey, readRef, refOfFrame, UNIT_TYPE, type KeyEnv, type UnitType } from '../format'
 import { Sha256 } from '../../../assetHash'
+import { MEASURE } from '../../../process/memory/measureFlag'
 import type { KeyMint } from '../commit'
-import { CodecError, type EncodedTree, type EncodedUnit, type PreviousEncoding, type ReusableUnit } from './types'
+import { CodecError, type EncodedTree, type EncodedUnit, type PreviousEncoding, type ReusableUnit, type SplitRecorder } from './types'
 
 /** Which key shape a new unit gets. */
 export type UnitKeyKind = 'unit' | 'shard' | 'manifest'
@@ -62,6 +63,8 @@ export interface UnitSinkOptions {
      * profile) and throws `UnitNotReusedError` at the first unit that is not reused. It never hands out a key.
      */
     reuseOnly?: boolean
+    /** Measurement builds only: counts each put and the time its framing and digest take. */
+    split?: SplitRecorder
 }
 
 /**
@@ -75,6 +78,7 @@ export class UnitSink {
     private readonly identities = new Set<string>()
     private readonly keys = new Set<string>()
     private readonly reuseOnly: boolean
+    private declare readonly split: SplitRecorder | undefined
 
     constructor(
         private readonly env: KeyEnv,
@@ -83,6 +87,9 @@ export class UnitSink {
         options: UnitSinkOptions = {},
     ) {
         this.reuseOnly = options.reuseOnly === true
+        if (MEASURE && options.split !== undefined) {
+            this.split = options.split
+        }
         if (previous !== null && !this.reuseOnly) {
             for (const unit of previous.units.values()) {
                 this.keys.add(unit.key)
@@ -104,8 +111,13 @@ export class UnitSink {
 
     /** Frames `body` as a unit of `type` at `identity`, reusing the previous key when the bytes are unchanged. */
     put(identity: string, type: UnitType, body: object, kind: UnitKeyKind = 'unit'): EncodedUnit {
+        const started = MEASURE && this.split !== undefined ? this.split.now() : 0
         const bytes = encodeUnit(type, body)
+        const framed = MEASURE && this.split !== undefined ? this.split.now() : 0
         const digest = unitDigest(bytes)
+        if (MEASURE && this.split !== undefined) {
+            this.split.splitUnitCost(framed - started, this.split.now() - framed)
+        }
         const prior = this.previous?.units.get(identity)
         if (prior !== undefined && isSameUnit(prior, type, bytes, digest)) {
             return this.record(identity, type, prior.key, bytes, digest, true)
@@ -121,8 +133,14 @@ export class UnitSink {
         if (this.reuseOnly) {
             throw new UnitNotReusedError(identity)
         }
+        const started = MEASURE && this.split !== undefined ? this.split.now() : 0
         const bytes = encodeUnit(type, body)
-        return this.record(identity, type, this.freshKey(kind), bytes, unitDigest(bytes), false)
+        const framed = MEASURE && this.split !== undefined ? this.split.now() : 0
+        const digest = unitDigest(bytes)
+        if (MEASURE && this.split !== undefined) {
+            this.split.splitUnitCost(framed - started, this.split.now() - framed)
+        }
+        return this.record(identity, type, this.freshKey(kind), bytes, digest, false)
     }
 
     private record(identity: string, type: UnitType, key: string, bytes: Uint8Array, digest: string, reused: boolean): EncodedUnit {

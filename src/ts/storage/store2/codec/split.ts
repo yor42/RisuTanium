@@ -21,8 +21,9 @@ import { carryShards, chunkRefTuple, groupIntoShards, listRefTuple, refTuple, SH
 import { assertChatNotPointer, assertNotStub } from './stub'
 import {
     CodecInputError, type ConfigOwner, type EncodedTree, type EncodedUnit, type EncodeOptions, type ListDerivation,
-    type PreviousEncoding, type ReusableUnit,
+    type PreviousEncoding, type ReusableUnit, type SplitRecorder,
 } from './types'
+import { MEASURE } from '../../../process/memory/measureFlag'
 
 /**
  * Split: `Database` to units. Pure: no storage, and the only inputs are the
@@ -132,8 +133,14 @@ export class Encoder {
     private readonly occurrences = new Map<string, number>()
     private readonly usedU = new Set<string>()
 
-    constructor(readonly options: EncodeOptions, readonly previous: PreviousEncoding | null) {
-        this.sink = new UnitSink(options.env, previous, options.keys)
+    /** Measurement builds only: the recorder the sink and the hooks below write into; never read back. */
+    declare readonly split: SplitRecorder | undefined
+
+    constructor(readonly options: EncodeOptions, readonly previous: PreviousEncoding | null, split?: SplitRecorder) {
+        if (MEASURE && split !== undefined) {
+            this.split = split
+        }
+        this.sink = new UnitSink(options.env, previous, options.keys, MEASURE && split !== undefined ? { split } : {})
     }
 
     put(identity: string, type: UnitType, body: object, kind: UnitKeyKind = 'unit'): EncodedUnit {
@@ -429,23 +436,44 @@ function previousModuleEntries(encoder: Encoder): ReadonlyMap<string, ModuleEntr
 function encodeModuleAt(
     raw: unknown, index: number, seen: Map<string, number>, encoder: Encoder, previousEntries: ReadonlyMap<string, ModuleEntry> | null,
 ): ModuleEntry {
+    const split = MEASURE ? encoder.split : undefined
+    const turnStarted = MEASURE && split !== undefined ? split.now() : 0
     const module = plainObject(raw, `modules[${index}]`)
+    if (MEASURE && split !== undefined) {
+        split.addMs('splitModuleReadMs', split.now() - turnStarted)
+    }
     const fields = moduleEntryFields(module)
     const occurrence = seen.get(fields.id) ?? 0
     seen.set(fields.id, occurrence + 1)
     const handle = `${fields.id}#${occurrence}`
     const unit = encoder.put(`${IDENTITY.module}${handle}`, UNIT_TYPE.module, moduleBodyOf(module))
     const kept = unit.reused ? carriedModuleLists(encoder, previousEntries, handle) : null
+    let entry: ModuleEntry
     if (kept !== null) {
         for (const [identity, listUnit] of kept.units) {
             encoder.carried.set(identity, listUnit)
         }
-        return { ...fields, unit: refTuple(unit.ref), al: kept.al, il: kept.il }
+        entry = { ...fields, unit: refTuple(unit.ref), al: kept.al, il: kept.il }
+    } else {
+        const assetsStarted = MEASURE && split !== undefined ? split.now() : 0
+        const assets = encoder.options.lists.moduleAssets(module)
+        if (MEASURE && split !== undefined) {
+            split.addMs('splitModuleListsMs', split.now() - assetsStarted)
+        }
+        const al = encoder.putAssetList(`${IDENTITY.alModule}${handle}`, assets)
+        const inlaysStarted = MEASURE && split !== undefined ? split.now() : 0
+        const inlays = encoder.options.lists.moduleInlays(module)
+        if (MEASURE && split !== undefined) {
+            split.addMs('splitModuleListsMs', split.now() - inlaysStarted)
+        }
+        const il = inlays === null ? null : encoder.putInlayList(`${IDENTITY.ilModule}${handle}`, inlays)
+        entry = { ...fields, unit: refTuple(unit.ref), al, il }
     }
-    const al = encoder.putAssetList(`${IDENTITY.alModule}${handle}`, encoder.options.lists.moduleAssets(module))
-    const inlays = encoder.options.lists.moduleInlays(module)
-    const il = inlays === null ? null : encoder.putInlayList(`${IDENTITY.ilModule}${handle}`, inlays)
-    return { ...fields, unit: refTuple(unit.ref), al, il }
+    if (MEASURE && split !== undefined) {
+        split.addMs('splitModulesMs', split.now() - turnStarted)
+        split.splitModuleCount()
+    }
+    return entry
 }
 
 export function encodeModules(db: Database, encoder: Encoder): ModuleEntry[] {
@@ -517,8 +545,13 @@ export function encodeModuleSet(db: Database, encoder: Encoder): ModuleSet {
 
 /** The module index over the encoded entries. */
 function finishModuleSet(moduleEntries: ModuleEntry[], encoder: Encoder): ModuleSet {
+    const split = MEASURE ? encoder.split : undefined
+    const started = MEASURE && split !== undefined ? split.now() : 0
     const body = carryModuleIndex(encoder.previous?.objects?.moduleIndex, { v: 1, entries: moduleEntries })
     const unit = encoder.putParent(IDENTITY.moduleIndex, UNIT_TYPE.moduleIndex, body)
+    if (MEASURE && split !== undefined) {
+        split.addMs('splitModulesMs', split.now() - started)
+    }
     return { body, ref: refTuple(unit.ref) }
 }
 
@@ -550,9 +583,18 @@ export function finishTree(
     carried: ReadonlyMap<string, ReusableUnit>,
 ): EncodedTree {
     const options = encoder.options
+    const split = MEASURE ? encoder.split : undefined
+    if (MEASURE && split !== undefined) {
+        split.section = 'finish'
+    }
+    const shardsStarted = MEASURE && split !== undefined ? split.now() : 0
     const { presets, presetPlain, plugins, pluginStorage } = front
     const shardBodies = carryShards(encoder.previous?.objects?.shards, groupIntoShards(entries, SHARD_COUNT), encoder.stableChats)
     const shards = shardBodies.map((shard, index) => refTuple(encoder.putParent(`shard:${index}`, UNIT_TYPE.shard, shard, 'shard').ref))
+    const fixedStarted = MEASURE && split !== undefined ? split.now() : 0
+    if (MEASURE && split !== undefined) {
+        split.addMs('splitFinishShardsMs', fixedStarted - shardsStarted)
+    }
 
     const loadoutItems = listOrEmpty(db.loadouts, 'loadouts').map((item) => toPlainJson(item) ?? null)
     const loadouts = encoder.put('loadouts', UNIT_TYPE.loadouts, { v: 1, items: loadoutItems } satisfies LoadoutsBody)
@@ -566,6 +608,10 @@ export function finishTree(
     }
     const order = encoder.put('order', UNIT_TYPE.order, orderBody)
 
+    if (MEASURE && split !== undefined) {
+        split.addMs('splitFinishFixedMs', split.now() - fixedStarted)
+    }
+    const configStarted = MEASURE && split !== undefined ? split.now() : 0
     const config = configFields(db)
     const configOwner: ConfigOwner = {
         config,
@@ -580,6 +626,10 @@ export function finishTree(
     const configAl = encoder.putAssetList('al:config', options.lists.configAssets(configOwner))
     const fixedIl = encoder.putInlayList('il:config', options.lists.configInlays(configOwner))
 
+    if (MEASURE && split !== undefined) {
+        split.addMs('splitFinishConfigMs', split.now() - configStarted)
+    }
+    const manifestStarted = MEASURE && split !== undefined ? split.now() : 0
     const manifest = carryManifest(encoder.previous?.objects?.manifest, buildManifest({
         seq: options.seq,
         createdAt: options.createdAt,
@@ -602,6 +652,9 @@ export function finishTree(
     const indexUnits = new Map<string, ReusableUnit>([...carried, ...encoder.carried])
     for (const unit of units) {
         indexUnits.set(unit.identity, { key: unit.key, type: unit.type, ref: unit.ref, digest: unit.digest })
+    }
+    if (MEASURE && split !== undefined) {
+        split.addMs('splitFinishManifestMs', split.now() - manifestStarted)
     }
     return {
         manifestKey: manifestUnit.key,
