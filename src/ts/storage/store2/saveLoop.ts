@@ -11,6 +11,7 @@ import { classifyCommitRead } from './commitKey'
 import type { CommitKey } from './format'
 import type { Store2SaveContext } from './saveActive'
 import { createSaveEncoder, type SavePassRequest, type SavePlan } from './saveEncoder'
+import { peekSaveMarks } from './savePassMeter'
 import { startYieldGaps, type YieldGapRecorder } from './saveYieldMeter'
 
 /**
@@ -471,6 +472,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (MEASURE) {
             activeGaps = gaps
             gaps?.describe(request)
+            if (snapshot === null) {
+                request.peekMarks = () => peekSaveMarks(port)
+            }
         }
         return request
     }
@@ -518,7 +522,11 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             if (MEASURE) {
                 activeGaps?.resume()
             }
-            return await encoder.plan(port.getDatabase(), { ...request, marked: new Set([...request.marked, error.chaId]) })
+            const retried: SavePassRequest = { ...request, marked: new Set([...request.marked, error.chaId]) }
+            if (MEASURE) {
+                retried.retry = true
+            }
+            return await encoder.plan(port.getDatabase(), retried)
         }
     }
 

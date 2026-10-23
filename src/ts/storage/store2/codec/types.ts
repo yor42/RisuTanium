@@ -157,6 +157,36 @@ export interface ListDerivation {
     readonly moduleListVersions?: { readonly asset: number, readonly inlay: number }
 }
 
+/** The sections whose unit puts a measurement build counts apart: the sink attributes each put to the one set last. */
+export type SplitPutSection = 'front' | 'modules' | 'characters' | 'finish'
+
+/** The span fields a codec hook adds to (milliseconds of synchronous work; a yield's wait is never inside one). */
+export type SplitMsField =
+    | 'splitScopeMs' | 'splitSinkMs' | 'splitListMs' | 'splitFrontMs' | 'splitModulesMs' | 'splitCarriedMs'
+    | 'splitPreviousEntriesMs' | 'splitCarriedUnitsMs' | 'splitFinishTreeMs' | 'splitPlanTailMs'
+    | 'splitModuleReadMs' | 'splitModuleListsMs'
+    | 'splitFinishShardsMs' | 'splitFinishFixedMs' | 'splitFinishConfigMs' | 'splitFinishManifestMs'
+
+/**
+ * The recorder a measurement build hands to the codec, only ever set by the save encoder under `MEASURE`. The codec
+ * reads its clock through `now()` and writes numbers into it; it never reads anything back, so a recorder cannot
+ * change what is encoded. Every method is total: a failure inside the recorder is swallowed by the recorder.
+ */
+export interface SplitRecorder {
+    now(): number
+    /** The section the sink counts the next puts under. */
+    section: SplitPutSection | null
+    addMs(field: SplitMsField, ms: number): void
+    /** One unit put by the sink: the time spent framing the body and the time spent digesting the frame. */
+    splitUnitCost(encodeMs: number, digestMs: number): void
+    /** One module's turn, counted toward the module set. */
+    splitModuleCount(): void
+    /** One named character's synchronous block. */
+    splitCharacter(chaId: string, normalizeMs: number, emitMs: number, skipped: boolean): void
+    /** The per-pass set of shared ids `encodeScopedParts` computed, as that pass used it. */
+    splitAmbiguous(ambiguous: ReadonlySet<string>): void
+}
+
 export interface EncodeOptions {
     /** Randomness and clock for keys and entity ids; a CSPRNG in production. */
     env: KeyEnv

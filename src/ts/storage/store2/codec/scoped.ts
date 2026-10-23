@@ -15,8 +15,9 @@ import {
 import { isColdStub } from './stub'
 import {
     CodecAssembleError, CodecError, CodecInputError, SharedChaIdStubError, StubRefusedError, type EncodedTree, type EncodedUnit,
-    type EncodeOptions, type ListDerivation, type PreviousEncoding, type ReusableUnit,
+    type EncodeOptions, type ListDerivation, type PreviousEncoding, type ReusableUnit, type SplitRecorder,
 } from './types'
+import { MEASURE } from '../../../process/memory/measureFlag'
 
 /**
  * Owner-scoped encode: the pass encodes only what the caller says changed and
@@ -46,6 +47,13 @@ export interface EncodeScope {
      * it; an import or an install, which have no earlier copy to fall back on, fail on such a character.
      */
     skipUnsavableCharacters?: boolean
+    /** Measurement builds only: the recorder the pass's hooks write into. Set by the save encoder under `MEASURE`, never read back. */
+    split?: SplitRecorder
+}
+
+/** The recorder's clock, or 0 when no recorder is set: a span is only ever taken as the difference of two such reads. */
+function readClock(split: SplitRecorder | undefined): number {
+    return MEASURE && split !== undefined ? split.now() : 0
 }
 
 /** A character a pass could not encode and went on without. */
@@ -235,7 +243,13 @@ interface ScopedParts {
 async function encodeScopedParts(db: Database, options: EncodeOptions, scope: EncodeScope): Promise<ScopedParts> {
     checkDatabase(db, options)
     const previous = options.previous ?? null
-    const encoder = new Encoder(options, previous)
+    const split = MEASURE ? scope.split : undefined
+    const sinkStarted = readClock(split)
+    const encoder = new Encoder(options, previous, split)
+    if (MEASURE && split !== undefined) {
+        split.addMs('splitSinkMs', split.now() - sinkStarted)
+    }
+    const listStarted = readClock(split)
     // One consistent character list per pass: `db.characters` is read here, before any await, and never again. The
     // module encode below yields, so this copy (and the shared-id scan over it) must precede it: `scopeOf` named its
     // characters from the list as it stood when this pass began, and a character added during any yield is not among
@@ -245,12 +259,40 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
     // next pass's. `finishTree` takes its characters from `entries` and `configFields` leaves the field out.
     const characters: readonly Slot[] = [...db.characters]
     const ambiguous = ambiguousChaIds(characters, previous)
+    if (MEASURE && split !== undefined) {
+        split.addMs('splitListMs', split.now() - listStarted)
+        split.splitAmbiguous(ambiguous)
+        split.section = 'front'
+    }
+    const frontStarted = readClock(split)
     const front = encodeFront(db, encoder)
-    const moduleSet = scope.modules ? await encodeModuleSetYielding(db, encoder, scope.yield) : carriedModuleSet(previous)
+    if (MEASURE && split !== undefined) {
+        split.addMs('splitFrontMs', split.now() - frontStarted)
+        split.section = 'modules'
+    }
+    let moduleSet: ModuleSet
+    if (scope.modules) {
+        moduleSet = await encodeModuleSetYielding(db, encoder, scope.yield)
+    } else {
+        const carriedModulesStarted = readClock(split)
+        moduleSet = carriedModuleSet(previous)
+        if (MEASURE && split !== undefined) {
+            split.addMs('splitModulesMs', split.now() - carriedModulesStarted)
+        }
+    }
+    if (MEASURE && split !== undefined) {
+        split.section = 'characters'
+    }
 
     let previousEntries: Map<string, ShardEntry> | null = null
     const entriesOfPrevious = (): Map<string, ShardEntry> => {
-        previousEntries ??= previousEntriesOf(previous)
+        if (previousEntries === null) {
+            const builtStarted = readClock(split)
+            previousEntries = previousEntriesOf(previous)
+            if (MEASURE && split !== undefined) {
+                split.addMs('splitPreviousEntriesMs', split.now() - builtStarted)
+            }
+        }
         return previousEntries
     }
     const entries: ShardEntry[] = []
@@ -270,6 +312,7 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
         // A shared id is never carried: which previous entry belongs to which holder cannot be told from the id.
         const named = !stub && (scope.characters === 'all' || scope.characters.has(chaId) || ambiguous.has(chaId))
         if (named) {
+            const normalizeStarted = readClock(split)
             let normalized: NormalizedCharacter | null = null
             if (scope.skipUnsavableCharacters === true && !ambiguous.has(chaId)) {
                 // Only the read of the live character is guarded: it fails before the encoder has claimed anything, so
@@ -287,21 +330,45 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
                         carriedOwners.add(entry.u)
                         entries.push(entry)
                     }
+                    if (MEASURE && split !== undefined) {
+                        split.splitCharacter(chaId, split.now() - normalizeStarted, 0, true)
+                    }
                     await scope.yield?.()
                     continue
                 }
             }
+            if (MEASURE && split !== undefined && normalized === null) {
+                // `encodeCharacter` is `emitCharacter` over `normalizeCharacter`; taking the two steps apart only lets the read be timed.
+                normalized = normalizeCharacter(slot, position)
+            }
+            const emitStarted = readClock(split)
             entries.push(normalized === null ? encodeCharacter(slot, position, encoder) : emitCharacter(normalized, encoder))
             encoded.push(chaId)
+            if (MEASURE && split !== undefined) {
+                split.splitCharacter(chaId, emitStarted - normalizeStarted, split.now() - emitStarted, false)
+            }
             await scope.yield?.()
         } else {
+            const carriedStarted = readClock(split)
             const entry = carriedEntry(slot, chaId, encoder, entriesOfPrevious)
             carriedOwners.add(entry.u)
             entries.push(entry)
+            if (MEASURE && split !== undefined) {
+                split.addMs('splitCarriedMs', split.now() - carriedStarted)
+            }
         }
     }
+    const carriedUnitsStarted = readClock(split)
     const carried = carriedUnits(previous, carriedOwners, !scope.modules)
-    return { tree: finishTree(db, encoder, front, moduleSet, entries, carried), parents: encoder.parents, skipped, encoded }
+    const finishStarted = readClock(split)
+    if (MEASURE && split !== undefined) {
+        split.addMs('splitCarriedUnitsMs', finishStarted - carriedUnitsStarted)
+    }
+    const tree = finishTree(db, encoder, front, moduleSet, entries, carried)
+    if (MEASURE && split !== undefined) {
+        split.addMs('splitFinishTreeMs', split.now() - finishStarted)
+    }
+    return { tree, parents: encoder.parents, skipped, encoded }
 }
 
 /**
@@ -462,9 +529,16 @@ export interface ScopedPlan {
  */
 export async function planScopedEncode(db: Database, options: EncodeOptions, scope: EncodeScope): Promise<ScopedPlan> {
     const { tree, parents, skipped, encoded } = await encodeScopedParts(db, { ...options, keys: placeholderMint() }, scope)
+    const split = MEASURE ? scope.split : undefined
+    const tailStarted = readClock(split)
+    const newUnits = tree.units.filter(unit => !unit.reused).length
+    const unchanged = isUnchanged(tree)
+    if (MEASURE && split !== undefined) {
+        split.addMs('splitPlanTailMs', split.now() - tailStarted)
+    }
     return {
-        newUnits: tree.units.filter(unit => !unit.reused).length,
-        unchanged: isUnchanged(tree),
+        newUnits,
+        unchanged,
         skipped,
         encoded,
         finalize: context => rekey(tree, parents, context),

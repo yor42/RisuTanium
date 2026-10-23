@@ -6,7 +6,9 @@ import {
 } from './codec'
 import { defaultKeyEnv, type KeyEnv } from './format'
 import { MEASURE } from '../../process/memory/measureFlag'
-import { finishSavePass, noteSavePassCommit, startSavePass } from './savePassMeter'
+import {
+    finishSavePass, noteSavePassCommit, startSavePass, startSplit, type SaveMarkPeek, type SavePassSplitRecorder,
+} from './savePassMeter'
 
 /**
  * The save encoder layer: between the mark tracker and `committer.commit`. It holds the encoding the store last
@@ -40,6 +42,13 @@ export interface SavePassRequest {
     rewriteAll?: boolean
     /** Called after each module and each character that was encoded, so a long pass hands control back between them. */
     yield?: () => Promise<void>
+    /**
+     * Measurement builds only, set by the save loop for an idle-net tick: copies the tracker's marks without writing
+     * them. The meter calls it at the plan's start and at its acknowledgement; nothing else reads it.
+     */
+    peekMarks?: () => SaveMarkPeek
+    /** Measurement builds only: this plan is the second one of a tick, made after a stub was loaded. */
+    retry?: boolean
 }
 
 export interface SavePlan {
@@ -146,7 +155,7 @@ function withoutDigests(encoding: PreviousEncoding): PreviousEncoding {
     return { ...encoding, units }
 }
 
-function scopeOf(db: Database, previous: PreviousEncoding, request: SavePassRequest): EncodeScope {
+function scopeOf(db: Database, previous: PreviousEncoding, request: SavePassRequest, split: SavePassSplitRecorder | null): EncodeScope {
     const everything = request.whole || request.rewriteAll === true
     const modules = everything || request.modules || request.net?.modules === true
     if (everything) {
@@ -157,7 +166,11 @@ function scopeOf(db: Database, previous: PreviousEncoding, request: SavePassRequ
     if (typeof netChaId === 'string') {
         characters.add(netChaId)
     }
-    for (const chaId of unheldChaIds(db, previous)) {
+    const unheld = unheldChaIds(db, previous)
+    if (MEASURE && split !== null) {
+        split.noteUnheld(unheld)
+    }
+    for (const chaId of unheld) {
         characters.add(chaId)
     }
     return { modules, characters, yield: request.yield, skipUnsavableCharacters: true }
@@ -174,14 +187,19 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
         async plan(db, request) {
             const base = previous
             const measuredAt = MEASURE ? startSavePass() : null
-            const scope = scopeOf(db, base, request)
+            const split = MEASURE ? startSplit(request) : null
+            const scopeStarted = MEASURE && split !== null ? split.now() : 0
+            const scope = scopeOf(db, base, request, split)
+            if (MEASURE && split !== null) {
+                split.addMs('splitScopeMs', split.now() - scopeStarted)
+            }
             const scoped = await planScopedEncode(
                 db,
                 { env, lists: options.lists, seq: 0, createdAt: now(), previous: request.rewriteAll === true ? withoutDigests(base) : base },
-                scope,
+                MEASURE && split !== null ? { ...scope, split } : scope,
             )
             if (MEASURE) {
-                finishSavePass(measuredAt, request, scope.modules, scoped.encoded.length)
+                finishSavePass(measuredAt, request, scope.modules, scoped.encoded.length, split)
             }
             let built: EncodedTree | null = null
             return {
@@ -192,7 +210,11 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
                 commitRequest: () => ({
                     newUnits: scoped.newUnits,
                     build: (context) => {
+                        const buildStarted = MEASURE && split !== null ? split.now() : 0
                         built = scoped.finalize(context)
+                        if (MEASURE && split !== null) {
+                            split.commitBuildMs(split.now() - buildStarted)
+                        }
                         return builtCommitOf(built)
                     },
                 }),
@@ -203,10 +225,12 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
                     if (previous !== base) {
                         throw new SavePlanError('The acknowledged encoding moved since this plan was made.')
                     }
+                    const acknowledgeStarted = MEASURE && split !== null ? split.now() : 0
                     previous = previousFrom(built)
+                    const acknowledgeMs = MEASURE && split !== null ? split.now() - acknowledgeStarted : 0
                     pending = null
                     if (MEASURE) {
-                        noteSavePassCommit(request, built.units)
+                        noteSavePassCommit(request, built.units, split === null ? null : { split, acknowledgeMs, entities: built.index.entities })
                     }
                 },
                 keepAsPending: () => {
