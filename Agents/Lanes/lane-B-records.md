@@ -818,3 +818,21 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 - **CHORE-223 stage A, later the same day:** implemented, through Gate 2 (r1 `[REJECT]`, r2 `[EDITORIAL]`), main merged in (rows 2381 to 2387). Next: the commit, then a phone run through the maintainer and lane A that also runs the stage 5a flush check (row 2384). (Since then: committed `4b04514b0`, merged as `eb5e10bec`; the flush check ran, row 2389; the export run is pending.)
 - **Store2 stage 5a, later the same day:** the flush premise held on phone 2 (row 2389). Implemented, and Gate 2 returned `[EDITORIAL]` (rows 2390 to 2394). Next: the commit, then the A9 device check. A9 runs on a MEASURE build over a snapshot copy of A1's real profile, with `risu-measure-import=on`. It reads the result line in `__risuImportPhases`, and a missing entry is ambiguous. The daily APK gets 5a only after A9 (`MC-368` 1).
 - **Store2 stage 5a** (`MC-345` A2): automatic clean-up of store2 leftovers, no UI. (Superseded by the "later the same day" bullet above: the flush check is done and 5a is implemented.) Decisions `MC-366`, `MC-368` and `MC-369` (the automatic pass runs only in the app, the `tauri` kind). Sized and verified, challenged by the senior-advisor (rows 2371 to 2374); Gate 1 r1 and r2 `[REJECT]`, r3 `[EDITORIAL]`: plan r5 accepted (rows 2376, 2379 and 2380). The implementation starts after the CHORE-223 stage A commit (one writer per checkout). The daily APK gets it only after a measurement run on a copy of A1's profile.
+
+2026-10-23, handoff for a fresh lane B session (the maintainer's quota is near its limit; any session may stop):
+- **Branch state:** `worktree-Lane-B` is at `77990fcb2`. The tree is clean apart from this note. Commits since the last lane A merge:
+  - `87c2c6bd0`: export measurement switches; merged on main as `ff06d0136`.
+  - `0e4f2ae2b`: the CHORE-225 save-pass meter; merged into main `4bc6b0b42`.
+  - `66abbc145`: CHORE-225 stage A.
+  - `77990fcb2`: CHORE-225 stage B and the derivation pin.
+  - The last two are unmerged. The maintainer chose "Merge A+B after phone": lane A merges `77990fcb2` once after the baseline phone session, then runs full checks and pushes.
+- **Waiting on lane A and the maintainer:**
+  - The baseline phone session on phone 1: a MEASURE build of main `4bc6b0b42` with `risu-measure-savepass=on`. It runs `device-requests\2026-10-23-chore223-export-2x2.md` (revision 2: export conditions, edit-then-idle GC, and a census closing check).
+  - The census of the kept export against the `Backup_partial.bin` reference (row 2417; tool `%TEMP%\risu-lane-b\tools\census\`, approved in row 2416). This settles 500 against 499 units (`MC-368` 1 stays blocked until then).
+- **Next actions for lane B:**
+  1. When lane A sends the verified baseline result path, write the CHORE-225 "after" phone request against it. The after run uses the same profile, steps and meter as the baseline. Criteria: an edit-pass plan under 8.4 s; CDP answers under 150 ms by 20 s after a select; commit-meter units and bytes equal to the baseline; the grid with no task over 1 s and its first thumbnail IPC within 1 s.
+  2. Read the export conditions result with its pre-registered rule. Then design CHORE-223 stage B (the Rust batch read), or change the read-ahead default.
+  3. After the after run: CHORE-225 stage C, the idle-net module cadence, is the maintainer's decision (`MC-371`). Also the 33,142 B unit identity, from the meter's `units()`.
+  4. Record the census result and the A9 verdict for `MC-368` 1 when lane A relays them.
+- **Open, not scheduled:** CHORE-221; the residual synchronous segments (a single large module, the front, `finishTree`); the pin's `getOwnPropertyDescriptor` gap (row 2424).
+- **Next free IDs:** `MC-372`, CHORE-226, row 2430. Scratch is `%TEMP%\risu-lane-b\`; ports 6400 to 6419.
