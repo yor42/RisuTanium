@@ -454,7 +454,13 @@ describe('every slot ends in exactly one counted way', () => {
     })
 })
 
-const ALL_PARTS: readonly NetSlotPart[] = ['lockWaitMs', 'readMs', 'judgeMs', 'checksMs', 'verdictMs', 'primitiveMs', 'movedMs']
+const ALL_PARTS: readonly NetSlotPart[] = [
+    'lockWaitMs', 'readMs', 'judgeMs', 'checksMs', 'unheldMs', 'stubsMs', 'unsavableMs', 'residentsMs', 'findMs', 'verdictMs', 'primitiveMs', 'movedMs',
+]
+
+const READ: readonly NetSlotPart[] = ['lockWaitMs', 'readMs', 'judgeMs']
+// The checks a slot ran when it reached a resident lookup with no unsavable character to scan.
+const CHECKS: readonly NetSlotPart[] = ['checksMs', 'unheldMs', 'stubsMs', 'residentsMs']
 
 /** The single slot's timing record: the parts named in `taken` are finite non-negative numbers, every other part is null. */
 function expectTiming(reason: NetSlotReason, taken: readonly NetSlotPart[]): NetSlotTiming {
@@ -474,12 +480,10 @@ function expectTiming(reason: NetSlotReason, taken: readonly NetSlotPart[]): Net
 }
 
 describe('the sub-timings of a slot decision', () => {
-    const READ: readonly NetSlotPart[] = ['lockWaitMs', 'readMs', 'judgeMs']
-
     test('a clean verdict times every part, the primitive and the moved-field compare included', async () => {
         const world = await startWorld(clone(buildSmall(3)))
         await world.slotAt(2_000)
-        expectTiming('verdictClean', [...READ, 'checksMs', 'verdictMs', 'primitiveMs', 'movedMs'])
+        expectTiming('verdictClean', [...READ, ...CHECKS, 'findMs', 'verdictMs', 'primitiveMs', 'movedMs'])
         expect(world.crashed).toEqual([])
     })
 
@@ -488,7 +492,7 @@ describe('the sub-timings of a slot decision', () => {
         const world = await startWorld(db)
         chars(db)[0].personality = 'edited in place, nothing marked'
         await world.slotAt(2_000)
-        expectTiming('verdictDirty', [...READ, 'checksMs', 'verdictMs', 'primitiveMs'])
+        expectTiming('verdictDirty', [...READ, ...CHECKS, 'findMs', 'verdictMs', 'primitiveMs'])
     })
 
     test('a verdict that throws inside the primitive keeps the verdict time and no primitive time', async () => {
@@ -506,7 +510,7 @@ describe('the sub-timings of a slot decision', () => {
         vi.spyOn(console, 'error').mockImplementation(() => {})
         fault.on = true
         await world.slotAt(2_000)
-        expectTiming('verdictUnknown', [...READ, 'checksMs', 'verdictMs'])
+        expectTiming('verdictUnknown', [...READ, ...CHECKS, 'findMs', 'verdictMs'])
     })
 
     test('an unsavable resident on its turn ends before any verdict', async () => {
@@ -521,13 +525,13 @@ describe('the sub-timings of a slot decision', () => {
         chars(db)[1].personality = original
         await world.slotAt(2_000)
         await world.slotAt(4_000)
-        expectTiming('verdictUnknown', [...READ, 'checksMs'])
+        expectTiming('verdictUnknown', [...READ, ...CHECKS, 'unsavableMs'])
     })
 
     test('no resident: the checks are timed and no verdict is', async () => {
         const world = await startWorld(clone(buildSmall(0)))
         await world.slotAt(2_000)
-        expectTiming('noResident', [...READ, 'checksMs'])
+        expectTiming('noResident', [...READ, ...CHECKS])
     })
 
     test('unheld: the checks are timed and no verdict is', async () => {
@@ -536,7 +540,7 @@ describe('the sub-timings of a slot decision', () => {
         chars(db).push({ ...clone(chars(db)[0]), chaId: 'brand-new-character', name: 'Brand new' })
         ;(db as unknown as Entry).characterOrder = chars(db).map(slot => slot.chaId)
         await world.slotAt(2_000)
-        expectTiming('unheld', [...READ, 'checksMs'])
+        expectTiming('unheld', [...READ, 'checksMs', 'unheldMs'])
     })
 
     test('modulesDue: no read, no judge, no checks', async () => {
@@ -638,7 +642,10 @@ describe('the sub-timings of a slot decision', () => {
         noteNetSlotMs(3)
         const tally = meterOf().verdicts()
         expect(tally.slotTimings).toEqual([
-            { reason: null, decisionMs: 3, lockWaitMs: null, readMs: null, judgeMs: null, checksMs: null, verdictMs: null, primitiveMs: null, movedMs: null },
+            {
+                reason: null, decisionMs: 3, lockWaitMs: null, readMs: null, judgeMs: null, checksMs: null, unheldMs: null, stubsMs: null,
+                unsavableMs: null, residentsMs: null, findMs: null, verdictMs: null, primitiveMs: null, movedMs: null,
+            },
         ])
         expect(tally.decisionMs).toEqual([3])
     })
@@ -658,6 +665,8 @@ describe('the sub-timings of a slot decision', () => {
         vi.stubGlobal('localStorage', { getItem: () => null })
         noteNetSlotBegin()
         noteNetSlotPart('judgeMs', 5)
+        noteNetSlotPart('unsavableMs', 5)
+        noteNetSlotPart('findMs', 5)
         noteNetSlotEnd('noResident')
         noteNetSlotMs(5)
         expect(meterOf().verdicts().slotTimings).toEqual([])
@@ -676,9 +685,13 @@ function installHandClock(): { now: number } {
 }
 
 describe('each part carries the time spent inside it', () => {
-    const NONE: Partial<Record<NetSlotPart, number>> = { lockWaitMs: 0, readMs: 0, judgeMs: 0, checksMs: 0, verdictMs: 0, primitiveMs: 0, movedMs: 0 }
+    // `unsavableMs` is null unless the slot scanned an unsavable character; every other part of a clean slot is a number.
+    const NONE: Partial<Record<NetSlotPart, number | null>> = {
+        lockWaitMs: 0, readMs: 0, judgeMs: 0, checksMs: 0, unheldMs: 0, stubsMs: 0, unsavableMs: null, residentsMs: 0, findMs: 0,
+        verdictMs: 0, primitiveMs: 0, movedMs: 0,
+    }
 
-    function expectParts(expected: Partial<Record<NetSlotPart, number>>, decisionMs: number): void {
+    function expectParts(expected: Partial<Record<NetSlotPart, number | null>>, decisionMs: number): void {
         const timing = meterOf().verdicts().slotTimings[0]
         expect(timing.reason).toBe('verdictClean')
         expect(timing.decisionMs).toBe(decisionMs)
@@ -786,7 +799,7 @@ describe('each part carries the time spent inside it', () => {
         expectParts({ movedMs: 15, primitiveMs: timing.primitiveMs as number, verdictMs: (timing.primitiveMs as number) + 15 }, (timing.primitiveMs as number) + 15)
     })
 
-    test('a slow check lands in checksMs and not in verdictMs', async () => {
+    test('a slow check lands in unheldMs and checksMs and not in verdictMs', async () => {
         const world = await startWorld(clone(buildSmall(3)))
         const hand = installHandClock()
         world.encoder.unheldChaIds = () => {
@@ -794,10 +807,10 @@ describe('each part carries the time spent inside it', () => {
             return []
         }
         await world.slotAt(2_000)
-        expectParts({ checksMs: 7 }, 7)
+        expectParts({ checksMs: 7, unheldMs: 7 }, 7)
     })
 
-    test('a slow stub check lands in checksMs too', async () => {
+    test('a slow stub check lands in stubsMs and checksMs', async () => {
         const world = await startWorld(clone(buildSmall(3)))
         const hand = installHandClock()
         world.encoder.stubsNeedFullPass = () => {
@@ -805,7 +818,251 @@ describe('each part carries the time spent inside it', () => {
             return false
         }
         await world.slotAt(2_000)
-        expectParts({ checksMs: 9 }, 9)
+        expectParts({ checksMs: 9, stubsMs: 9 }, 9)
+    })
+
+    /**
+     * Makes every read of `db.characters` advance the hand clock by the next entry of `steps` (reads past the end add
+     * nothing). `residentChaIds` and `presentChaIds` read it twice each and the final lookup once, so the entries place
+     * time inside one of them. The encoder checks that also read it are stubbed out by the caller.
+     */
+    function slowCharactersReads(db: object, hand: { now: number }, steps: readonly number[]): void {
+        let stored = (db as { characters: unknown }).characters
+        let reads = 0
+        Object.defineProperty(db, 'characters', {
+            configurable: true,
+            enumerable: true,
+            get() {
+                hand.now += steps[reads] ?? 0
+                reads += 1
+                return stored
+            },
+            set(value: unknown) {
+                stored = value
+            },
+        })
+    }
+
+    /** Replaces the two encoder checks that precede the lookups with ones that find nothing to do and take the given time. */
+    function quietChecks(encoder: Pick<SaveEncoder, 'unheldChaIds' | 'stubsNeedFullPass'>, hand: { now: number }, unheldMs = 0, stubsMs = 0): void {
+        encoder.unheldChaIds = () => {
+            hand.now += unheldMs
+            return []
+        }
+        encoder.stubsNeedFullPass = () => {
+            hand.now += stubsMs
+            return false
+        }
+    }
+
+    test('a slow resident list lands in residentsMs and checksMs only', async () => {
+        const db = clone(buildSmall(3))
+        const world = await startWorld(db)
+        const hand = installHandClock()
+        quietChecks(world.encoder, hand)
+        // The two reads inside residentChaIds; the final lookup is the third read and stays fast.
+        slowCharactersReads(db, hand, [5, 5])
+        await world.slotAt(2_000)
+        expectParts({ residentsMs: 10, checksMs: 10 }, 10)
+    })
+
+    test('a slow final lookup lands in findMs and checksMs only', async () => {
+        const db = clone(buildSmall(3))
+        const world = await startWorld(db)
+        const hand = installHandClock()
+        quietChecks(world.encoder, hand)
+        slowCharactersReads(db, hand, [0, 0, 13])
+        await world.slotAt(2_000)
+        expectParts({ findMs: 13, checksMs: 13 }, 13)
+    })
+
+    test('a slow unsavable scan lands in unsavableMs and checksMs only', async () => {
+        const db = clone(buildSmall(4))
+        const world = await startWorld(db)
+        chars(db)[1].personality = cyclic()
+        world.tracker.character = [idOf(db, 1)]
+        world.state.due = true
+        world.state.dirty = true
+        await until(() => world.notices >= 1, 'the notice of the break', 4000)
+        chars(db)[1].personality = 'restored'
+        const hand = installHandClock()
+        quietChecks(world.encoder, hand)
+        // The two reads inside presentChaIds come first; the resident list and the lookup follow and stay fast.
+        slowCharactersReads(db, hand, [4, 4])
+        await world.slotAt(2_000)
+        expectParts({ unsavableMs: 8, checksMs: 8 }, 8)
+    })
+
+    test('every sub-part carries its own time and they sum to checksMs', async () => {
+        const db = clone(buildSmall(4))
+        const world = await startWorld(db)
+        chars(db)[1].personality = cyclic()
+        world.tracker.character = [idOf(db, 1)]
+        world.state.due = true
+        world.state.dirty = true
+        await until(() => world.notices >= 1, 'the notice of the break', 4000)
+        chars(db)[1].personality = 'restored'
+        const hand = installHandClock()
+        quietChecks(world.encoder, hand, 3, 4)
+        // presentChaIds (two reads), residentChaIds (two reads), then the final lookup.
+        slowCharactersReads(db, hand, [5, 5, 2, 2, 6])
+        await world.slotAt(2_000)
+        expectParts({ unheldMs: 3, stubsMs: 4, unsavableMs: 10, residentsMs: 4, findMs: 6, checksMs: 27 }, 27)
+        const timing = meterOf().verdicts().slotTimings[0]
+        const sum = (timing.unheldMs as number) + (timing.stubsMs as number) + (timing.unsavableMs as number)
+            + (timing.residentsMs as number) + (timing.findMs as number)
+        expect(sum).toBe(timing.checksMs)
+    })
+
+    test('unsavableMs is null when nothing is unsavable', async () => {
+        const world = await startWorld(clone(buildSmall(3)))
+        await world.slotAt(2_000)
+        const timing = expectTiming('verdictClean', [...READ, ...CHECKS, 'findMs', 'verdictMs', 'primitiveMs', 'movedMs'])
+        expect(timing.unsavableMs).toBeNull()
+    })
+
+    test('an unheld character ends the checks before the stub check runs, and stubsMs stays null', async () => {
+        const db = clone(buildSmall(3))
+        const world = await startWorld(db)
+        let stubCalls = 0
+        world.encoder.stubsNeedFullPass = () => {
+            stubCalls += 1
+            return false
+        }
+        chars(db).push({ ...clone(chars(db)[0]), chaId: 'brand-new-character', name: 'Brand new' })
+        ;(db as unknown as Entry).characterOrder = chars(db).map(slot => slot.chaId)
+        await world.slotAt(2_000)
+        expect(stubCalls).toBe(0)
+        expect(expectTiming('unheld', [...READ, 'checksMs', 'unheldMs']).stubsMs).toBeNull()
+    })
+
+    test('a stub that needs a full pass ends the checks after stubsMs', async () => {
+        const world = await startWorld(clone(buildSmall(3)))
+        const hand = installHandClock()
+        world.encoder.stubsNeedFullPass = () => {
+            hand.now += 9
+            return true
+        }
+        await world.slotAt(2_000)
+        const timing = expectTiming('stub', [...READ, 'checksMs', 'unheldMs', 'stubsMs'])
+        expect(timing.stubsMs).toBe(9)
+        expect(timing.checksMs).toBe(9)
+    })
+
+    test('an absent unsavable character ends the checks after unsavableMs', async () => {
+        const db = clone(buildSmall(4))
+        const world = await startWorld(db)
+        chars(db)[1].personality = cyclic()
+        world.tracker.character = [idOf(db, 1)]
+        world.state.due = true
+        world.state.dirty = true
+        await until(() => world.notices >= 1, 'the notice of the break', 4000)
+        chars(db).splice(1, 1)
+        await world.slotAt(2_000)
+        expectTiming('unsavableAbsent', [...READ, 'checksMs', 'unheldMs', 'stubsMs', 'unsavableMs'])
+    })
+})
+
+/** Every `performance.now()` read returns one more than the last, so each clock read between two laps counts as 1. */
+function installTickingClock(): void {
+    const tick = { now: 5_000 }
+    vi.spyOn(performance, 'now').mockImplementation(() => {
+        tick.now += 1
+        return tick.now
+    })
+}
+
+/** The latest slot's record, and how far `checksMs` is from the sum of the sub-parts the slot ran (null when `checksMs` is null). */
+function lastSlotChecks(): { reason: NetSlotReason | null, ran: NetSlotPart[], residual: number | null } {
+    const timings = meterOf().verdicts().slotTimings
+    const timing = timings[timings.length - 1]
+    const ran: NetSlotPart[] = []
+    let sum = 0
+    for (const part of ['unheldMs', 'stubsMs', 'unsavableMs', 'residentsMs', 'findMs'] as const) {
+        const value = timing[part]
+        if (value !== null) {
+            ran.push(part)
+            sum += value
+        }
+    }
+    return { reason: timing.reason, ran, residual: timing.checksMs === null ? null : timing.checksMs - sum }
+}
+
+describe('the sub-parts sum exactly to checksMs on every exit', () => {
+    /** An unsavable character at index 1, after which the world is left with the unsavable set non-empty. */
+    async function worldWithUnsavable(): Promise<{ db: Database, world: World }> {
+        const db = clone(buildSmall(4))
+        const world = await startWorld(db)
+        chars(db)[1].personality = cyclic()
+        world.tracker.character = [idOf(db, 1)]
+        world.state.due = true
+        world.state.dirty = true
+        await until(() => world.notices >= 1, 'the notice of the break', 4000)
+        return { db, world }
+    }
+
+    test('unheld exit', async () => {
+        const db = clone(buildSmall(3))
+        const world = await startWorld(db)
+        chars(db).push({ ...clone(chars(db)[0]), chaId: 'brand-new-character', name: 'Brand new' })
+        ;(db as unknown as Entry).characterOrder = chars(db).map(slot => slot.chaId)
+        installTickingClock()
+        await world.slotAt(2_000)
+        expect(lastSlotChecks()).toEqual({ reason: 'unheld', ran: ['unheldMs'], residual: 0 })
+    })
+
+    test('stub exit', async () => {
+        const world = await startWorld(clone(buildSmall(3)))
+        world.encoder.stubsNeedFullPass = () => true
+        installTickingClock()
+        await world.slotAt(2_000)
+        expect(lastSlotChecks()).toEqual({ reason: 'stub', ran: ['unheldMs', 'stubsMs'], residual: 0 })
+    })
+
+    test('absent unsavable exit', async () => {
+        const { db, world } = await worldWithUnsavable()
+        chars(db).splice(1, 1)
+        installTickingClock()
+        await world.slotAt(2_000)
+        expect(lastSlotChecks()).toEqual({ reason: 'unsavableAbsent', ran: ['unheldMs', 'stubsMs', 'unsavableMs'], residual: 0 })
+    })
+
+    test('unsavable resident on its turn', async () => {
+        const db = clone(buildSmall(4))
+        const world = await startWorld(db)
+        const personality = chars(db)[1].personality
+        chars(db)[1].personality = cyclic()
+        world.tracker.character = [idOf(db, 1)]
+        world.state.due = true
+        world.state.dirty = true
+        await until(() => world.notices >= 1, 'the notice of the break', 4000)
+        chars(db)[1].personality = personality
+        installTickingClock()
+        await world.slotAt(2_000)
+        await world.slotAt(4_000)
+        expect(lastSlotChecks()).toEqual({ reason: 'verdictUnknown', ran: ['unheldMs', 'stubsMs', 'unsavableMs', 'residentsMs'], residual: 0 })
+    })
+
+    test('no resident exit', async () => {
+        const world = await startWorld(clone(buildSmall(0)))
+        installTickingClock()
+        await world.slotAt(2_000)
+        expect(lastSlotChecks()).toEqual({ reason: 'noResident', ran: ['unheldMs', 'stubsMs', 'residentsMs'], residual: 0 })
+    })
+
+    test('verdict exit with no unsavable character', async () => {
+        const world = await startWorld(clone(buildSmall(3)))
+        installTickingClock()
+        await world.slotAt(2_000)
+        expect(lastSlotChecks()).toEqual({ reason: 'verdictClean', ran: ['unheldMs', 'stubsMs', 'residentsMs', 'findMs'], residual: 0 })
+    })
+
+    test('verdict exit after an unsavable scan', async () => {
+        const { db, world } = await worldWithUnsavable()
+        chars(db)[1].personality = 'restored'
+        installTickingClock()
+        await world.slotAt(2_000)
+        expect(lastSlotChecks()).toEqual({ reason: 'verdictClean', ran: ['unheldMs', 'stubsMs', 'unsavableMs', 'residentsMs', 'findMs'], residual: 0 })
     })
 })
 
