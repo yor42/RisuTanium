@@ -219,7 +219,7 @@ export class HypaProcesser{
         query: VectorArray,
       ): [string, number][] {
           const memoryVectors = this.vectors
-          const sim = similarity
+          const sim = cosineSimilarity
           const searches = memoryVectors
                 .map((vector, index) => ({
                     similarity: sim(query, vector.embedding),
@@ -257,7 +257,9 @@ export function cosineSimilarity(a:VectorArray, b:VectorArray):number {
         magA += a[i] * a[i];
         magB += b[i] * b[i];
     }
-    return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+    const magnitude = Math.sqrt(magA) * Math.sqrt(magB);
+    // A zero vector has no direction; NaN would make the sort comparator inconsistent.
+    return magnitude === 0 ? 0 : dot / magnitude;
 }
 
 export function contextHash(texts: string[]): string {

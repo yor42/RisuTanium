@@ -492,6 +492,64 @@ No saved data changes: every item alters per-request selection or prompt text on
 - The embedder, tokenizer and database are mocked; results show control flow, not provider behaviour.
 - The empty-section behaviour of V2-3 and the empty-block case of HAN-2 are stated but not pinned by a test.
 
+## Phase 3 — stage A2 fixes
+
+Scope: SHARED-2 (2026-10-23). Decisions: `MC-713` 6 and `MC-719` 1 (with its correction note) in [lane-cloud-records.md](../lane-cloud-records.md). Evidence is the scratchpad `p3/c10/` tree (`A/plan.md` SHARED-2 parts, `A/g1/`, `A2/impl/result.md`, `A2/g2/result.md`) and the `git diff` of the two files below; line numbers are the current working tree. Nothing was committed by this pass. Stage A2 is the second of the three stages batch A was split into (A1 is the section above; A3 is not covered).
+
+### Files
+
+Two tracked files: `src/ts/process/memory/hypamemory.ts` (+4/-2) and `src/ts/process/memory/hypamemory.similarity.test.ts` (+21/-2) (`A2/impl/result.md`; the diff was reread). The records file `Agents/Lanes/lane-cloud-records.md` and this report are also modified and are listed in the commit (the records file carries `MC-723`, the stage A2 status line and ledger rows 5088 to 5093; rows 5089, 5090, 5092 and 5093 are stage A2, rows 5088 and 5091 are batch C and stage A3 planning).
+
+### SHARED-2: the shared retriever scores with cosine
+
+- **Change:** `hypamemory.ts:222` is `const sim = cosineSimilarity` inside `HypaProcesser.similaritySearchVectorWithScore` (was `const sim = similarity`, the raw dot product). `cosineSimilarity` (`hypamemory.ts:251`) gains a zero-magnitude guard at `:260-262`: `const magnitude = Math.sqrt(magA) * Math.sqrt(magB)` and `return magnitude === 0 ? 0 : dot / magnitude`, so a zero vector scores 0 instead of NaN (a NaN would make the sort comparator inconsistent). The implementer reports `cosineSimilarity` has no importer outside `hypamemory.ts`. The exported `similarity` (dot product) and `similarityCheck` are untouched (Gate 2).
+- **Decision, `MC-713` 6:** "Fix comparator; cosine (Recommended)". The option said: use a correct comparator (b - a), and switch to cosine similarity; for unit vectors the ranking is unchanged. The comparator half is SHARED-1 (stage A1).
+- **Decision, `MC-719` 1:** "Shared retriever only (Recommended)". The option said: switch only the shared HypaProcesser to cosine; V3 similar-memory stays on dot product; no effect on emotion scoring. Correction note in the record: the shared retriever's scores also reach the emotion-image code, and "no effect on emotion scoring" holds only for normalised embeddings.
+
+### Tests (`hypamemory.similarity.test.ts`, 5 tests, all pass)
+
+- **Regression reproducer, flipped:** `ranks a document the same when its vector is scaled by 10 (cosine)` (`:64`, was `it.fails`). Executed red-first on the pre-fix code: it fails with `expected ['far','close'] to deeply equal ['close','far']` (the scaled vector outranks), and the other existing tests passed (2 passed, 1 expected fail before the flip).
+- **Guard, not a reproducer:** `scores a zero-vector document 0 and keeps the other documents in order` (`:70`). It passes on the dot product too (0, no NaN), so it guards against a naive cosine; the no-guard mutant fails it. Ties keep insertion order because `Array.prototype.sort` is stable (Gate 2, read).
+- **Compatibility guard:** `guard: the exported similarity stays a raw dot product` (`:83`). Passes before and after. It pins `similarity([3, 4], [3, 4]) === 25` and `similarity([10, 0], [2, 5]) === 20`.
+- **Mutants (implementer, executed; restored, diff against the fixed copy identical):**
+
+| mutant | result |
+|---|---|
+| search back to the dot product | scaled-vector test fails |
+| zero-magnitude guard removed | zero-vector test fails |
+| `similarity()` made cosine | dot-product guard fails |
+
+  Gate 2 ran its own: revert to dot (scale test fails), remove the guard (zero test fails), guard returns 1 (zero test fails), `similarity` made cosine-like (V3 guard fails). The md5 of `hypamemory.ts` (8469698c7873b07580e47c4757ad2a78) was identical before and after.
+
+### Visible effects
+
+- **Normalised embeddings:** scores and ranking are unchanged (cosine equals the dot product for unit vectors). The Transformers embedder uses `normalize: true` (Gate 2, read).
+- **Non-normalised Custom Server embeddings:** ranking and score scale change (scores become scale-invariant). Emotion-image selection can change: `index.svelte.ts` subtracts fixed penalties of about 0.005 to 0.025 from the scores and takes the highest, and those penalties now act on a cosine scale. This is a disclosed, accepted effect (`MC-719` correction note); it is not "no effect".
+- **Other consumers:** Gate 2 found `hanuraiMemory`, `hypav2`, `scripts`, `triggers`, `addinfo`, `multisend`, `scriptings`, `graphmem` and `supaMemory` rank only, with no score thresholds (Gate 2, read; absence of a threshold user is within the searched consumers).
+- **HypaV3 similar-memory: unchanged.** `HypaProcesserEx.similaritySearchScoredEx` imports `similarity` from `hypamemory` and calls it directly, so it does not go through the changed method and stays on the dot product (Gate 2, traced from source). The main V3 search uses `HypaProcessorV2` (`hypamemoryv2.ts`, its own private `similarity`).
+
+### Upstream status
+
+Upstream has the same dot product, so this is a fork-only fix (verified in the upstream checkout at f50b594: `hypamemory.ts:211` is `const sim = similarity` and `similarity` at `:232` sums `a[i] * b[i]`). No format, plugin or `.bin` contract is touched (`MC-175`).
+
+### Saved data
+
+No saved data changes: the change affects per-request scoring only; embedding caches and memory data keep their shape and meaning (Gate 2 diff read, REASONED from source).
+
+### Verification run
+
+- **Green (executed, implementer):** `hypamemory.similarity.test.ts` 5/5. Importer files (the implementer's pattern list: hypamemory, hypav2, hanurai, supa, graphmem, scriptings, triggers, scripts, multisend, addinfo, PlaygroundEmbedding, index.svelte): the result file states "230 test files ... 230 passed; 5218 passed | 13 expected fail | 1 skipped". The wording is ambiguous; the file count is not independently confirmed here.
+- **Green (executed, Gate 2):** memory, scriptings, files, scriptsMeasure and triggerNestingLimit tests: 24 files, 325 passed, 12 expected fail.
+- **`pnpm check` (executed, both):** 0 errors, 0 warnings, exit 0 (Gate 2 with `NODE_OPTIONS=--max-old-space-size=8192`).
+- **Gate 2:** `[APPROVE]`, no required changes (`A2/g2/result.md`). Gate 1 for batch A: see the stage A1 section.
+
+### Residuals
+
+- The V3 guard pins the exported `similarity`, not the call site: `HypaProcesserEx` is not exported from `hypav3.ts`, so the test cannot drive `similaritySearchScoredEx`. Repointing the V3 call to `cosineSimilarity` would not be caught (Gate 2: nonblocking).
+- The full `pnpm test` and the relevant build have not been run on this snapshot; they are pending at phase close.
+- Embedder and storage are mocked; results show control flow, not provider behaviour. NaN input vectors are out of scope (Gate 2).
+- The emotion-selection change for non-normalised Custom Server embeddings is reasoned from source; no test measures it.
+
 ## Corrections from doc-verifier
 
 This section takes precedence over the body above. Independent doc-verifier pass, 2026-10-23 (scratchpad `p2/c10d/dv/result.md`): ten files rerun (40 passed, 32 expected fail), test titles, decision quotes, REPRODUCED citations and an upstream sample verified; four required corrections, applied in the body by the Orchestrator:
@@ -511,3 +569,7 @@ Independent doc-verifier pass, 2026-10-23 (scratchpad `p3/c10/B/dv/result.md`): 
 ### Stage A1 (Phase 3)
 
 Independent doc-verifier pass, 2026-10-23 (scratchpad `p3/c10/A1/dv/result.md`): about 40 claims in the stage A1 section plus `MC-722`, the status line, rows 5083 to 5086 and the commit draft. Five test files rerun: 37 passed, 12 expected fail. File:line cites, test titles, counts, decision quotes and upstream status (f50b594) verified. Corrections, applied in the body above: (1) the records-file sentence in Files; (2) "table above" reworded; (3) red-first failure breakdown. `pnpm check` and the full suite were not rerun by this pass.
+
+### Stage A2 (Phase 3)
+
+Independent doc-verifier pass, 2026-10-23 (scratchpad `p3/c10/A2/dv/result.md`): the stage A2 section, `MC-723`, the status line, rows 5088 to 5092 and the commit draft. Test file rerun: 5 passed; file:line cites, mutant and Gate 2 figures, decision quotes verified; `cosineSimilarity` has no importer outside `hypamemory.ts`. Corrections, applied: (1) upstream dot product verified in the upstream checkout (the TODO is resolved in "Upstream status"); (2) the importer-run figure in row 5089 is the implementer's own, not independently confirmed; (3) the row-range wording names which rows are stage A2. `pnpm check` and the full suite were not rerun by this pass.

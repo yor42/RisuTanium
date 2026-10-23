@@ -31,7 +31,7 @@ vi.mock('localforage', () => {
     }
 })
 
-import { HypaProcesser } from './hypamemory'
+import { HypaProcesser, similarity } from './hypamemory'
 
 async function ranking(tag: string, documentVectors: Record<string, number[]>) {
     vectors.clear()
@@ -61,8 +61,27 @@ describe('HypaProcesser ranking', () => {
     })
 
     // regression reproducer: CHORE-10 SHARED-2, MC-713 6
-    it.fails('ranks a document the same when its vector is scaled by 10 (cosine)', async () => {
+    it('ranks a document the same when its vector is scaled by 10 (cosine)', async () => {
         const scaledFar = far.map((x) => x * 10)
         expect(await ranking('scaled', { far: scaledFar, close })).toEqual(['close', 'far'])
+    })
+
+    // zero-vector reproducer: a naive cosine yields NaN, which makes the sort comparator inconsistent
+    it('scores a zero-vector document 0 and keeps the other documents in order', async () => {
+        const zeroed = await ranking('zero', { zeroA: [0, 0], far, zeroB: [0, 0], close })
+        expect(zeroed).toEqual(['close', 'far', 'zeroA', 'zeroB'])
+        vectors.clear()
+        vectors.set('query', [1, 0])
+        vectors.set('zs zero', [0, 0])
+        const processer = new HypaProcesser('MiniLM')
+        await processer.addText(['zs zero'])
+        const [[, score]] = await processer.similaritySearchScored('query')
+        expect(score).toBe(0)
+    })
+
+    // compatibility guard: hypav3 similaritySearchScoredEx imports this raw dot product and stays on it (MC-719 1)
+    it('guard: the exported similarity stays a raw dot product', () => {
+        expect(similarity([3, 4], [3, 4])).toBe(25)
+        expect(similarity([10, 0], [2, 5])).toBe(20)
     })
 })
