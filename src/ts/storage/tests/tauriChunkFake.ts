@@ -45,6 +45,21 @@
  */
 import type { FakeTauriFs } from './tauriFsFake'
 
+/**
+ * Decodes a base64 chunk the way a strict decoder does: `atob` throws on an invalid
+ * character or length, which `Buffer.from(data, 'base64')` would silently tolerate, so
+ * a producer bug still fails here. The byte copy is an index loop because a per-char
+ * callback over ~1 MiB chunks dominates the runtime of the suites using this fake.
+ */
+function decodeBase64(data: string): Uint8Array {
+    const binary = atob(data)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i)
+    }
+    return bytes
+}
+
 export interface ChunkCall {
     command: string
     args: Record<string, unknown>
@@ -145,7 +160,7 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
         const finalKey = typeof args.finalKey === 'string' ? args.finalKey : undefined
         checkKey(key)
         const temp = tempPath(key, id)
-        const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0))
+        const bytes = decodeBase64(data)
         chunkSizes.push(bytes.length)
         const fault = writeFault?.({ key, offset, last, index: calls.length - 1 })
         if (offset === 0) {
@@ -312,7 +327,7 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
         requireTopKey(key)
         checkKey(key)
         const temp = tempPath(key, id)
-        const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0))
+        const bytes = decodeBase64(data)
         topChunkSizes.push(bytes.length)
         if ((offset === 0 || !last) && !isCurrent(gen)) {
             if (offset > 0) {

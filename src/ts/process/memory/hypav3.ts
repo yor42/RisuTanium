@@ -5,6 +5,7 @@ import {
     mapContextualChunkEmbeddings,
 } from "./contextualEmbeddingCache";
 import { TaskRateLimiter } from "./taskRateLimiter";
+import { findResumeIndex } from "./hypaResume";
 import {
     type EmbeddingText,
     type EmbeddingResult,
@@ -120,6 +121,16 @@ function splitBySeparator(text: string, separator: string): string[] {
     }
 }
 
+/** Fisher-Yates over a copy: every permutation is equally likely. */
+function shuffle<T>(items: T[]): T[] {
+    const shuffled = items.slice();
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+}
+
 export async function hypaMemoryV3(
     chats: OpenAIChat[],
     currentTokens: number,
@@ -202,9 +213,6 @@ async function hypaMemoryV3MainExp(
         };
     }
 
-    // Initial token correction
-    currentTokens -= db.maxResponse;
-
     // Load existing hypa data if available
     const data: HypaV3Data = room.hypaV3Data
         ? toHypaV3Data(room.hypaV3Data)
@@ -214,16 +222,16 @@ async function hypaMemoryV3MainExp(
 
     // Clean orphaned summaries
     if (!settings.preserveOrphanedMemory) {
-        cleanOrphanedSummary(chats, data);
+        cleanOrphanedSummary(chats, room, data);
     }
 
     // Determine starting index
     let startIdx = 0;
 
     if (data.summaries.length > 0) {
-        const lastSummary = data.summaries.at(-1);
-        const lastChatIndex = chats.findIndex(
-            (chat) => chat.memo === [...lastSummary.chatMemos].at(-1)
+        const lastChatIndex = findResumeIndex(
+            chats,
+            data.summaries.map((summary) => summary.chatMemos)
         );
 
         if (lastChatIndex !== -1) {
@@ -839,9 +847,9 @@ async function hypaMemoryV3MainExp(
         );
 
         // Target only summaries that haven't been selected yet
-        const unusedSummaries = data.summaries
-            .filter((e) => !selectedSummaries.includes(e))
-            .sort(() => Math.random() - 0.5); // Random shuffle
+        const unusedSummaries = shuffle(
+            data.summaries.filter((e) => !selectedSummaries.includes(e))
+        );
 
         for (const summary of unusedSummaries) {
             const summaryTokens = await tokenizer.tokenizeChat({
@@ -982,9 +990,6 @@ async function hypaMemoryV3Main(
         };
     }
 
-    // Initial token correction
-    currentTokens -= db.maxResponse;
-
     // Load existing hypa data if available
     const data: HypaV3Data = room.hypaV3Data
         ? toHypaV3Data(room.hypaV3Data)
@@ -994,16 +999,16 @@ async function hypaMemoryV3Main(
 
     // Clean orphaned summaries
     if (!settings.preserveOrphanedMemory) {
-        cleanOrphanedSummary(chats, data);
+        cleanOrphanedSummary(chats, room, data);
     }
 
     // Determine starting index
     let startIdx = 0;
 
     if (data.summaries.length > 0) {
-        const lastSummary = data.summaries.at(-1);
-        const lastChatIndex = chats.findIndex(
-            (chat) => chat.memo === [...lastSummary.chatMemos].at(-1)
+        const lastChatIndex = findResumeIndex(
+            chats,
+            data.summaries.map((summary) => summary.chatMemos)
         );
 
         if (lastChatIndex !== -1) {
@@ -1066,11 +1071,8 @@ async function hypaMemoryV3Main(
         }
 
         const toSummarize: OpenAIChat[] = [];
-        const endIdx = Math.min(
-            startIdx + settings.maxChatsPerSummary,
-            chats.length - settings.queryChatCount
-        );
         let toSummarizeTokens = 0;
+        let currentIndex = startIdx;
 
         console.log(
             logPrefix,
@@ -1081,23 +1083,25 @@ async function hypaMemoryV3Main(
             maxContextTokens,
             "\nStart Index:",
             startIdx,
-            "\nEnd Index:",
-            endIdx,
-            "\nChat Count:",
-            endIdx - startIdx,
             "\nMax Chats Per Summary:",
             settings.maxChatsPerSummary
         );
 
-        for (let i = startIdx; i < endIdx; i++) {
-            const chat = chats[i];
+        // Terminates because maxChatsPerSummary >= 1 (the UI enforces a
+        // minimum of 1): currentIndex advances on every path, so the window
+        // always moves on even when every examined chat is skipped.
+        while (
+            toSummarize.length < settings.maxChatsPerSummary &&
+            currentIndex < chats.length - settings.queryChatCount
+        ) {
+            const chat = chats[currentIndex];
             const chatTokens = await tokenizer.tokenizeChat(chat);
 
             console.log(
                 logPrefix,
                 "Evaluating chat:",
                 "\nIndex:",
-                i,
+                currentIndex,
                 "\nRole:",
                 chat.role,
                 "\nContent:",
@@ -1108,31 +1112,40 @@ async function hypaMemoryV3Main(
 
             toSummarizeTokens += chatTokens;
 
+            let shouldSummarize = true;
+
             if (
                 chat.name === "example_user" ||
                 chat.name === "example_assistant" ||
                 chat.memo === "NewChatExample"
             ) {
-                console.log(logPrefix, `Skipping example chat at index ${i}`);
-                continue;
+                console.log(
+                    logPrefix,
+                    `Skipping example chat at index ${currentIndex}`
+                );
+                shouldSummarize = false;
             }
 
             if (chat.memo === "NewChat") {
-                console.log(logPrefix, `Skipping new chat at index ${i}`);
-                continue;
+                console.log(logPrefix, `Skipping new chat at index ${currentIndex}`);
+                shouldSummarize = false;
             }
 
             if (chat.content.trim().length === 0) {
-                console.log(logPrefix, `Skipping empty chat at index ${i}`);
-                continue;
+                console.log(logPrefix, `Skipping empty chat at index ${currentIndex}`);
+                shouldSummarize = false;
             }
 
             if (settings.doNotSummarizeUserMessage && chat.role === "user") {
-                console.log(logPrefix, `Skipping user role at index ${i}`);
-                continue;
+                console.log(logPrefix, `Skipping user role at index ${currentIndex}`);
+                shouldSummarize = false;
             }
 
-            toSummarize.push(chat);
+            if (shouldSummarize) {
+                toSummarize.push(chat);
+            }
+
+            currentIndex++;
         }
 
         // Stop summarization if further reduction would go below target tokens (unless we're over max tokens)
@@ -1180,7 +1193,7 @@ async function hypaMemoryV3Main(
         }
 
         currentTokens -= toSummarizeTokens;
-        startIdx = endIdx;
+        startIdx = currentIndex;
     }
 
     console.log(
@@ -1503,9 +1516,9 @@ async function hypaMemoryV3Main(
         );
 
         // Target only summaries that haven't been selected yet
-        const unusedSummaries = data.summaries
-            .filter((e) => !selectedSummaries.includes(e))
-            .sort(() => Math.random() - 0.5); // Random shuffle
+        const unusedSummaries = shuffle(
+            data.summaries.filter((e) => !selectedSummaries.includes(e))
+        );
 
         for (const summary of unusedSummaries) {
             const summaryTokens = await tokenizer.tokenizeChat({
@@ -1653,14 +1666,26 @@ function toSerializableHypaV3Data(data: HypaV3Data): SerializableHypaV3Data {
     };
 }
 
-function cleanOrphanedSummary(chats: OpenAIChat[], data: HypaV3Data): void {
-    // Collect all memos from current chats
-    const currentChatMemos = new Set(chats.map((chat) => chat.memo));
+function cleanOrphanedSummary(chats: OpenAIChat[], room: Chat, data: HypaV3Data): void {
+    // Hiding a message or an `allBefore` reset never orphans a summary.
+    // `chats` omits hidden messages and, after an `allBefore` reset, everything
+    // before the reset, yet all of those still live in `room.message`, so the
+    // stored chat ids are valid too. `undefined` is always valid: the greeting is
+    // not a `room.message` entry and leaves `chats` under `allBefore`, so a
+    // summary whose only memos are memo-less is never orphaned.
+    const validMemos = new Set<string | undefined>(chats.map((chat) => chat.memo));
+
+    for (const message of room.message) {
+        validMemos.add(message.chatId);
+    }
+
+    validMemos.add(undefined);
+
     const originalLength = data.summaries.length;
 
-    // Filter summaries - keep only those whose chatMemos are subset of current chat memos
+    // Filter summaries - keep only those whose chatMemos are a subset of the valid memos
     data.summaries = data.summaries.filter((summary) => {
-        return isSubset(summary.chatMemos, currentChatMemos);
+        return isSubset(summary.chatMemos, validMemos);
     });
 
     const removedCount = originalLength - data.summaries.length;
@@ -1670,7 +1695,7 @@ function cleanOrphanedSummary(chats: OpenAIChat[], data: HypaV3Data): void {
     }
 }
 
-function isSubset(subset: Set<string>, superset: Set<string>): boolean {
+function isSubset(subset: Set<string>, superset: Set<string | undefined>): boolean {
     for (const elem of subset) {
         if (!superset.has(elem)) {
             return false;

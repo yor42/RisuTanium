@@ -595,6 +595,7 @@ export const languageEnglish = {
         dynamicAssetsEditDisplay: "If enabled, the dynamic assets will be applied to the Modify Display stage too. However, this can cause performance issues.",
         nickname: "Nickname would used be in {{char}} or <char> in chat instead of character's name if it is set.",
         useRegexLorebook: "If enabled, it will use regex for lorebook search, instead of string matching. It uses /regex/flags format.",
+        caseSensitiveLorebook: "If enabled, plain keys must match the letter case exactly. Regex keys (/regex/flags) use their own flags.",
         customChainOfThought: "Warning: chain of thought toggle is no longer recommended to use. Put chain of thought prompt in other prompt entries instead.",
         customPromptTemplateToggle:
             "Here you can define your own prompt toggles. Use `<toggle variable>=<toggle name>` format, seperated by newline. for example, `cot=Toggle COT`. You can use these toggles in prompt by using `{{getglobalvar::toggle_<toggle variable>}}`. like `{{getglobalvar::toggle_cot}}`.",
@@ -1319,6 +1320,7 @@ export const languageEnglish = {
     Speech: "Speech",
     ToggleSuperMemory: "Toggle SupaMemory",
     SuperMemory: "SupaMemory",
+    resetSupaMemory: "Reset SupaMemory data",
     useExperimental: "Enable Experimental Features",
     showMemoryLimit: "Show Memory Limit",
     showFirstMessagePages: "Show First Message Pages",
@@ -1623,6 +1625,7 @@ export const languageEnglish = {
     jsonDesc: "JSON format is a format that is easy to read and write for both humans and machines.",
     nickname: "Nickname",
     useRegexLorebook: "Use Regex",
+    caseSensitive: "Case Sensitive",
     customPromptTemplateToggle: "Custom Toggles",
     defaultVariables: "Default Variables",
     hypaAllocatedTokens: "Allocated Tokens",

@@ -106,26 +106,56 @@ export async function supaMemory(
                     }
 
                     supaMemory = HypaData[indexSelected].supa
+                    currentTokens += await tokenize(supaMemory)
                     hypaChunks = HypaData[indexSelected].hypa
 
                 }
                 else{
-                    let i =0;
-                    while(true){
-                        if(chats.length === 0){
-                            return {
-                                currentTokens: currentTokens,
-                                chats: chats,
-                                error: "SupaMemory: chat ID not found"
+                    // Invariant: coverage is defined on room.message order, hidden messages included. With
+                    // first line P and covered-ID field c (c is true iff supaMemoryCoveredId === P), the
+                    // covered set is { m : pos(m) < pos(P) } plus P when c. The pointer moves only in the
+                    // summarisation loop below (a write whose summariser input holds every sent entry between
+                    // the old resume point and the new one), in a delete that removed the pointer message
+                    // (repointSupaMemory), or when the end-of-chat pair is written. This resolver never
+                    // writes lastId other than the stored id.
+                    const roomMessages = room.message ?? []
+                    const positions = new Map<string, number>()
+                    roomMessages.forEach((message, index) => {
+                        if(message.chatId && !positions.has(message.chatId)){
+                            positions.set(message.chatId, index)
+                        }
+                    })
+                    const p = positions.get(id) ?? -1
+                    if(p !== -1){
+                        const covered = room.supaMemoryCoveredId === id
+                        while(chats.length > 0){
+                            const memo = chats[0].memo
+                            const at = memo === undefined ? undefined : positions.get(memo)
+                            const droppable = at === undefined || at < p || (covered && at === p)
+                            if(!droppable){
+                                break
                             }
+                            currentTokens -= await tokenizer.tokenizeChat(chats[0])
+                            chats.splice(0, 1)
                         }
-                        if(chats[0].memo === id){
-                            lastId = id
-                            break
+                        lastId = id
+                    }
+                    else{
+                        while(true){
+                            if(chats.length === 0){
+                                return {
+                                    currentTokens: currentTokens,
+                                    chats: chats,
+                                    error: "SupaMemory: the saved resume point (a message that no longer exists) cannot be found. Press 'Reset SupaMemory data' in the character's chat memory settings to continue."
+                                }
+                            }
+                            if(chats[0].memo === id){
+                                lastId = id
+                                break
+                            }
+                            currentTokens -= await tokenizer.tokenizeChat(chats[0])
+                            chats.splice(0, 1)
                         }
-                        currentTokens -= await tokenizer.tokenizeChat(chats[0])
-                        chats.splice(0, 1)
-                        i += 1
                     }
         
 
@@ -161,7 +191,7 @@ export async function supaMemory(
                 const s = await hypa.similaritySearch(stringlizeChat(filteredChat.slice(0, 4), char?.name ?? '', false))
                 hypaResult = ''
                 if(s.length > 0){
-                    hypaResult = "past events: " + s.slice(0,3)
+                    hypaResult = "past events: " + s.slice(0,3).join('\n')
                     currentTokens += await tokenizer.tokenizeChat({
                         role: "assistant",
                         content: hypaResult,
@@ -353,6 +383,13 @@ export async function supaMemory(
                             spiceLen += 1
                             currentTokens -= tokens
                             chunkSize += tokens
+                        }
+                        else{
+                            return {
+                                currentTokens: currentTokens,
+                                chats: chats,
+                                error: "Not Enough Tokens to summarize in SupaMemory"
+                            }
                         }
                     }
                     lastId = cont.memo

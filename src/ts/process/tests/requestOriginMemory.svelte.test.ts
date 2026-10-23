@@ -96,7 +96,7 @@ vi.mock(import('../request/request'), () => ({
 
 vi.mock(import('../memory/hypamemory'), () => ({
     // Embeds every text to the same one-dimensional vector, which is all the
-    // similarity step of hypaV3 needs to run to its end.
+    // similarity steps of hypaV2 and hypaV3 need to run to their end.
     HypaProcesser: class {
         vectors: Array<{ content: string, embedding: number[] }> = []
         model = 'test-embedding'
@@ -108,6 +108,7 @@ vi.mock(import('../memory/hypamemory'), () => ({
         }
         async getEmbeds(_query: string) { return [[1]] }
         async similaritySearch() { return [] }
+        async similaritySearchScored() { return [] }
     },
     similarity: vi.fn(() => 1),
 }) as unknown as typeof import('../memory/hypamemory'))

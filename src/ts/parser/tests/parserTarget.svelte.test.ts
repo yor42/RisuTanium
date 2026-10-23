@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Direct `risuChatParser` calls with a `subject` argument: the resolved
  * origin owner and chat a call reads/writes when one is given, instead of
@@ -9,12 +10,13 @@
  * never re-implemented), and the real `../../process/modules` (`getModules`
  * and its lookups), the same real-module set
  * `tests/modulesTriggerStamping.svelte.test.ts` loads against the same kind
- * of stand-ins. This file needs neither Lua nor `runTrigger`, so it runs
- * under the project's default (happy-dom) environment with real DOMPurify,
- * matching `parser/tests/trimMarkdownStyle.test.ts` and
- * `parser/tests/cbs/conditionals.test.ts`, which already prove real
- * `../parser.svelte` loads and runs there; `DBState.db` below is a plain
- * object (not a rune), matching those same two files.
+ * of stand-ins. This file needs neither Lua nor `runTrigger`. It runs under
+ * jsdom with real DOMPurify because the display guard asserts on
+ * `ParseMarkdown`'s sanitized output, which happy-dom does not sanitize
+ * reliably (MC-239); `parser/tests/trimMarkdownStyle.test.ts` loads the
+ * real `../parser.svelte` the same way. `DBState.db` below is a plain
+ * object (not a rune), as in that file and
+ * `parser/tests/cbs/conditionals.test.ts`.
  *
  * `../../process/scripts` is mocked (only `ParseMarkdown`, exercised by the
  * display guard, reaches it) with a stand-in whose own `processScriptFull`

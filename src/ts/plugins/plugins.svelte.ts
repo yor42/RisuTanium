@@ -36,6 +36,7 @@ import {
     type PreparedPlugin,
 } from "./pluginBatch";
 import { clearRestoreAllStrikes, readRestoreAllStrikes } from "../storage/bootArchiveMemo";
+import { clearSupaMemoryIfEmptyIn } from "../process/memory/supaResume";
 import {
     fillMissingCharacterInstallIds,
     fillMissingDatabaseInstallIds,
@@ -658,6 +659,11 @@ function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginN
             db.pluginCustomStorage[key] = newDb[key];
         }
     }
+    // Cleared through the live list: the reactive proxy's set trap does not write to the raw
+    // object, so the stored chats are cleared through the stored reference.
+    if (Array.isArray(newDb.characters)) {
+        clearSupaMemoryIfEmptyIn(db.characters)
+    }
     return newDb
 }
 
@@ -761,6 +767,7 @@ export const getV2PluginAPIs = () => {
                 warnIfCharacterInstallDuplicatesChatIds(char?.chats, char?.chaId, db.characters, replaced?.chats, pluginName)
             }
             db.characters[charid] = char
+            clearSupaMemoryIfEmptyIn([db.characters[charid]])
             setDatabaseLite(db)
         },
         addProvider: (name: string, func: (arg: PluginV2ProviderArgument, abortSignal?: AbortSignal) => Promise<{ success: boolean, content: string }>, options?: PluginV2ProviderOptions) => {

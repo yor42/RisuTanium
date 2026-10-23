@@ -3341,6 +3341,11 @@ export function checkCharOrder(db: Database = DBState.db) {
                     i2--;
                 }
             }
+            if (data.data.length === 0) {
+                order.splice(i, 1)
+                i--;
+                continue
+            }
             order[i] = data
         }
         else {

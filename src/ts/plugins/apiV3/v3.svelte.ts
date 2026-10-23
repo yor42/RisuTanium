@@ -42,6 +42,7 @@ import type { ModelModeExtended } from "src/ts/process/request/shared";
 import { requestChatDataMain } from "src/ts/process/request/request";
 import { getModuleLorebooks } from "src/ts/process/modules";
 import { markPluginPanelHidden, markPluginPanelShown } from "src/ts/process/memory/busyActions";
+import { clearSupaMemoryIfEmpty, clearSupaMemoryIfEmptyIn } from "src/ts/process/memory/supaResume";
 import {
     registerTTSPreprocessor,
     unregisterTTSPreprocessor,
@@ -722,6 +723,7 @@ export function setChatToIndexImpl(characterIndex: number, chatIndex: number, ch
             fillMissingChatSlotId(chat)
             warnIfChatSlotIdDuplicated(chats, chatIndex, chat?.id, replaced?.id, pluginName)
             DBState.db.characters[charId].chats[chatIndex] = chat
+            clearSupaMemoryIfEmpty(DBState.db.characters[charId].chats[chatIndex])
             markCharacterForSave(DBState.db.characters[charId]?.chaId)
         }
     }
@@ -1038,6 +1040,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 warnIfCharacterChaIdDuplicated(db.characters, index, char?.chaId, replaced?.chaId, plugin.name)
                 warnIfCharacterInstallDuplicatesChatIds(char?.chats, char?.chaId, db.characters, replaced?.chats, plugin.name)
                 DBState.db.characters[charId] = char
+                clearSupaMemoryIfEmptyIn([DBState.db.characters[charId]])
             }
         },
         getChatFromIndex: (characterIndex:number, chatIndex:number) => {

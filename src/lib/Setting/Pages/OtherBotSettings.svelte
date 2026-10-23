@@ -1013,10 +1013,10 @@
         <span class="text-textcolor mt-4">{language.type}</span>
 
         <SelectInput className="mb-4" value={
-            DBState.db.hypaV3 ? 'hypaV3' :
+            DBState.db.hanuraiEnable ? 'hanuraiMemory' :
             DBState.db.hypav2 ? 'hypaV2' :
-            DBState.db.supaModelType !== 'none' ? 'supaMemory' :
-            DBState.db.hanuraiEnable ? 'hanuraiMemory' : 'none'
+            DBState.db.hypaV3 ? 'hypaV3' :
+            DBState.db.supaModelType !== 'none' ? 'supaMemory' : 'none'
         } onchange={(v) => {
             //@ts-expect-error 'value' doesn't exist on EventTarget, but target is HTMLSelectElement here
             const value = v.target.value

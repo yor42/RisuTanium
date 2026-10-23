@@ -8,6 +8,7 @@ import {
 import type { OpenAIChat } from "../index.svelte";
 import type { RunSubject } from "../chatOrigin";
 import type { ChatTokenizer } from "src/ts/tokenizer";
+import { findResumeIndex, isSkipEligibleChat } from "./hypaResume";
 import { requestChatData } from "../request/request";
 import { HypaProcesser } from "./hypamemory";
 import { globalFetch } from "src/ts/globalApi.svelte";
@@ -289,9 +290,22 @@ function convertOldToNewHypaV2Data(oldData: OldHypaV2Data, chats: OpenAIChat[]):
 
 function cleanInvalidChunks(
     chats: OpenAIChat[],
+    room: Chat,
     data: HypaV2Data,
 ): void {
-    const currentChatMemos = new Set(chats.map((chat) => chat.memo));
+    // Hiding a message or an `allBefore` reset never invalidates a summary.
+    // `chats` omits hidden messages and, after an `allBefore` reset, everything
+    // before the reset, yet all of those still live in `room.message`, so the
+    // stored chat ids are valid too. `undefined` is always valid: the greeting is
+    // not a `room.message` entry and leaves `chats` under `allBefore`, so a
+    // summary whose only memos are memo-less is never invalid.
+    const currentChatMemos = new Set<string | undefined>(chats.map((chat) => chat.memo));
+
+    for (const message of room.message) {
+        currentChatMemos.add(message.chatId);
+    }
+
+    currentChatMemos.add(undefined);
 
     // mainChunks filtering
     data.mainChunks = data.mainChunks.filter((mainChunk) => {
@@ -309,15 +323,6 @@ function cleanInvalidChunks(
     } else {
         data.lastMainChunkID = 0;
     }
-}
-
-export function regenerateSummary(
-    chats: OpenAIChat[],
-    data: HypaV2Data,
-    mainChunkIndex: number
-) : void {
-    const targetMainChunk = data.mainChunks[mainChunkIndex];
-
 }
 
 function toSerializableHypaV2Data(data: HypaV2Data): SerializableHypaV2Data {
@@ -342,7 +347,10 @@ function toHypaV2Data(data: SerializableHypaV2Data): HypaV2Data {
         ...data,
         mainChunks: data.mainChunks.map(mainChunk => ({
             ...mainChunk,
-            chatMemos: new Set(mainChunk.chatMemos),
+            // Convert null back to undefined (JSON serialization converts undefined to null)
+            chatMemos: new Set(
+                mainChunk.chatMemos.map((memo) => (memo === null ? undefined : memo))
+            ),
         })),
     };
 }
@@ -368,11 +376,6 @@ export async function hypaMemoryV2(
         mainChunks: [],
     };
 
-    // Subtract maxResponse from currentTokens to fix the token calculation issue.
-    // This is not a fundamental solution but rather a temporary fix.
-    // It is designed to minimize impact on other code.
-    currentTokens -= db.maxResponse;
-
     if (room.hypaV2Data) {
         if (isOldHypaV2Data(room.hypaV2Data)) {
         console.log("Old HypaV2 data detected. Converting to new format...");
@@ -383,7 +386,7 @@ export async function hypaMemoryV2(
     }
 
     // Clean invalid HypaV2 data
-    cleanInvalidChunks(chats, data);
+    cleanInvalidChunks(chats, room, data);
 
     let allocatedTokens = db.hypaAllocatedTokens;
     let chunkSize = db.hypaChunkSize;
@@ -397,9 +400,10 @@ export async function hypaMemoryV2(
     // Find the index to start summarizing from
     let idx = 0;
     if (data.mainChunks.length > 0) {
-        const lastMainChunk = data.mainChunks[data.mainChunks.length - 1];
-        const lastChatMemo = lastMainChunk.lastChatMemo;
-        const lastChatIndex = chats.findIndex(chat => chat.memo === lastChatMemo);
+        const lastChatIndex = findResumeIndex(
+            chats,
+            data.mainChunks.map((mainChunk) => mainChunk.chatMemos)
+        );
         if (lastChatIndex !== -1) {
             idx = lastChatIndex + 1;
 
@@ -418,6 +422,9 @@ export async function hypaMemoryV2(
         let halfDataTokens = 0;
 
         const startIdx = idx;
+        // Tokens of skipped chats passed in this iteration; counted only once the
+        // iteration succeeds, because a failed one is re-walked from startIdx.
+        let skippedTokens = 0;
 
         console.log(
             "[HypaV2] Starting summarization iteration:",
@@ -445,16 +452,10 @@ export async function hypaMemoryV2(
                 "\nWould adding this exceed chunkSize?", (halfDataTokens + chatTokens > chunkSize)
             );
 
-            // Skip index 0 ([Start a new chat])
-            if (idx === 0) {
-                console.log("[HypaV2] Skipping index 0");
-                idx++;
-                continue;
-            }
-
-            // Skip if the content of this chat is empty
-            if (!chat.content.trim()) {
-                console.log(`[HypaV2] Skipping empty content of index ${idx}`);
+            // Skip example turns, new-chat markers and blank messages
+            if (isSkipEligibleChat(chat)) {
+                console.log(`[HypaV2] Skipping index ${idx}`);
+                skippedTokens += chatTokens;
                 idx++;
                 continue;
             }
@@ -528,7 +529,8 @@ export async function hypaMemoryV2(
                     error: "[HypaV2] Summarization failed multiple times. Aborting to prevent infinite loop.",
                 };
             }
-            // If summarization fails, try again in next iteration
+            // Retry the same batch: nothing was summarised, so nothing is passed over
+            idx = startIdx;
             continue;
         }
 
@@ -579,21 +581,25 @@ export async function hypaMemoryV2(
             "\nUpdated chunks count:", data.chunks.length
         );
 
-        currentTokens -= halfDataTokens;
+        currentTokens -= halfDataTokens + skippedTokens;
         console.log("[HypaV2] tokens after summarization deduction:", currentTokens);
     }
 
     // Construct the mainPrompt from mainChunks
     mainPrompt = "";
     let mainPromptTokens = 0;
-    for (const chunk of data.mainChunks) {
+    const selectedMainChunks: string[] = [];
+    for (const chunk of data.mainChunks.slice().reverse()) {
         const chunkTokens = await tokenizer.tokenizeChat({
             role: "system",
             content: chunk.text,
         });
         if (mainPromptTokens + chunkTokens > allocatedTokens / 2) break;
-        mainPrompt += `\n\n${chunk.text}`;
+        selectedMainChunks.push(chunk.text);
         mainPromptTokens += chunkTokens;
+    }
+    for (const text of selectedMainChunks.reverse()) {
+        mainPrompt += `\n\n${text}`;
     }
 
     // Fetch additional memory from chunks

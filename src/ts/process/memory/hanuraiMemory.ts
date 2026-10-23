@@ -6,6 +6,8 @@ import type { ChatTokenizer } from "src/ts/tokenizer";
 import { getDatabase } from "src/ts/storage/database.svelte";
 
 const maxRecentChatQuery = 4;
+const documentPrefix = 'search_document: '
+
 export async function hanuraiMemory(chats:OpenAIChat[],arg:{
     currentTokens:number,
     maxContextTokens:number,
@@ -30,11 +32,11 @@ export async function hanuraiMemory(chats:OpenAIChat[],arg:{
                 if(!split.trim()){
                     continue
                 }
-                addTexts.push(`search_document: ${split.trim()}`)
+                addTexts.push(`${documentPrefix}${split.trim()}`)
             }
         }
         else{
-            addTexts.push(`search_document: ${chat.content?.trim()}`)
+            addTexts.push(`${documentPrefix}${chat.content?.trim()}`)
         }
     })
     await processer.addText(addTexts)
@@ -71,23 +73,44 @@ export async function hanuraiMemory(chats:OpenAIChat[],arg:{
 
     tokens -= db.hanuraiTokens
 
+    const promptTexts = new Set<string>()
+    for(const chat of chats){
+        const content = chat.content?.trim()
+        if(!content){
+            continue
+        }
+        promptTexts.add(content)
+        if(db.hanuraiSplit){
+            for(const split of chat.content.split('\n\n')){
+                if(split.trim()){
+                    promptTexts.add(split.trim())
+                }
+            }
+        }
+    }
+
     let resultTexts:string[] = []
+    let blockTokens = 0
     for(const vector of vectorResult){
-        const chat = chats.find((chat) => chat.content === vector[0].substring(16))
-        if(chat){
+        const resultText = vector[0].substring(documentPrefix.length)
+        if(promptTexts.has(resultText)){
             continue
         }
         const tokenized = await tokenizer.tokenizeChat({
             role: 'system',
             memo: 'supaMemory',
-            content: vector[0].substring(16)
+            content: resultText
         }) + 2
+        if(blockTokens + tokenized > db.hanuraiTokens){
+            continue
+        }
         tokens += tokenized
         if(tokens >= arg.maxContextTokens){
             tokens -= tokenized
             break
         }
-        resultTexts.push(vector[0].substring(16))
+        blockTokens += tokenized
+        resultTexts.push(resultText)
     }
     chats.unshift({
         role: "system",

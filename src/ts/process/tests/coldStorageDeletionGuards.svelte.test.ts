@@ -1661,10 +1661,9 @@ describe('CHORE-07 stage 7c-2: mergeRetriedColdChatSideFields (pure)', () => {
                 summaries: [
                     // This summary's ONLY memo is the one being dropped --
                     // stripping it would leave `chatMemos: []`, and
-                    // hypav3.ts's startIdx computation reads
-                    // `[...lastSummary.chatMemos].at(-1)`, which is
-                    // `undefined` for an empty list if this summary ends up
-                    // last. It must be removed outright instead.
+                    // such a summary covers nothing and contributes no
+                    // position to hypav3.ts's resume point. It must be
+                    // removed outright instead.
                     { text: 'live1-emptied-by-strip', chatMemos: ['dropped-memo'], isImportant: false },
                     { text: 'live2', chatMemos: ['keep-2'], isImportant: true },
                 ],

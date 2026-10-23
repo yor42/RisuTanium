@@ -830,7 +830,8 @@ describe('Grid folder menu: the actions', () => {
             const trashed = DBState.db.characters.filter((c) => c.trashTime).map((c) => c.chaId).sort()
             expect(trashed).toEqual(['B', 'C'])
             expect(shape()).toEqual(['A', '§temp', 'U'])
-            expect(checkCharOrderSpy).toHaveBeenCalledTimes(2)
+            // One pass removes the trashed ids and the folder it just emptied.
+            expect(checkCharOrderSpy).toHaveBeenCalledTimes(1)
             expect(picked(rig.target)).toBe(0)
         })
     })

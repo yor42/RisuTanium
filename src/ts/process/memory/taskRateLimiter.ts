@@ -35,10 +35,6 @@ export class TaskRateLimiter {
       failFast: true,
       ...options,
     };
-
-    if (this.options.maxConcurrentTasks > this.options.tasksPerMinute) {
-      throw new Error("maxConcurrentTasks must be less than tasksPerMinute");
-    }
   }
 
   public async executeTask<TData>(

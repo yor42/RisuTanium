@@ -503,7 +503,7 @@ async function translateHTMLUntracked(html: string, reverse:boolean, charArg:sim
                         }
                     } else {
                         // Single sentence
-                        node.innerHTML = sentences[0];
+                        node.textContent = sentences[0];
                         await translateNodeText(node, true);
                     }
                     return;

@@ -20,6 +20,7 @@ import { isTTSVoiceMode } from "./ttsModes";
 import { ttsAddition } from "./ttsAddition";
 import { buildDisplayParseOptions } from "./displayParseOptions";
 import { supaMemory } from "./memory/supaMemory";
+import { writeSupaMemoryData } from "./memory/supaResume";
 import { v4 } from "uuid";
 import { groupOrder } from "./group";
 import { runTrigger } from "./triggers";
@@ -1600,7 +1601,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             if(!memoryCtx){
                 return endGone()
             }
-            memoryCtx.chat.supaMemoryData = sp.memory ?? memoryCtx.chat.supaMemoryData
+            writeSupaMemoryData(memoryCtx.chat, sp.memory)
             console.log(memoryCtx.chat.supaMemoryData)
             memoryCtx.chat.lastMemory = sp.lastId ?? memoryCtx.chat.lastMemory;
         }

@@ -335,21 +335,22 @@ function mergeHypaV3Categories(
 
 /**
  * hypaV3 links a summary to the messages it covers by `chatId` memo, not by
- * index (`hypav3.ts`'s `startIdx` computation) -- keeping only the live
- * post-error memory would push every restored message before `startIdx`, so
- * it would never be summarized or prompted again. Emptiness is judged on
+ * index (`findResumeIndex` in `hypaResume.ts`, used for `hypav3.ts`'s
+ * `startIdx`) -- keeping only the live post-error memory would push every
+ * restored message before `startIdx`, so it would never be summarized or
+ * prompted again. Emptiness is judged on
  * `summaries.length` alone (semantic, not deep-equal to the cold-storage
  * reset shape): a live chat that never re-accumulated any summary of its
  * own takes the blob's data wholesale, even if some OTHER field (e.g.
  * `modalSettings`) happens to be set on it (CHORE-07).
  *
  * **Accepted limit.** This only protects BLOB messages the blob's own
- * summaries already covered. After the merge, the last summary is a live
- * post-error one, so `startIdx` (`[...lastSummary.chatMemos].at(-1)`) is
- * computed from THAT summary's memos -- any blob
+ * summaries already covered. After the merge, the resume point is the highest
+ * position, in the sent chat list, of any memo of any summary, which the live
+ * post-error summaries now reach -- any blob
  * message the blob never got around to summarizing (or every blob message,
- * if the blob has `{summaries:[]}` while live has summaries) falls before
- * `startIdx` and is never summarized or prompted again. The same applies to
+ * if the blob has `{summaries:[]}` while live has summaries) that sits before
+ * that position is never summarized or prompted again. The same applies to
  * `mergeHypaV2SideField` below when the blob has no `mainChunks` but live
  * does. This is a memory-context gap only -- `chat.message` itself still
  * has every message, restored blob and live tail alike; nothing is lost,
@@ -373,10 +374,9 @@ function mergeHypaV3SideField(
     // summary on the next send, since the message it was keyed to is gone
     // -- unless `preserveOrphanedMemory` is set (also in `hypav3.ts`). If
     // stripping that one memo leaves a summary with NO memos left at all,
-    // this drops the summary outright here instead: `hypav3.ts`'s own
-    // `startIdx` computation reads `[...lastSummary.chatMemos].at(-1)`,
-    // which would be `undefined` for a summary with an empty list, so an
-    // empty-chatMemos summary must never be allowed to become the last one.
+    // this drops the summary outright here instead: an empty-chatMemos
+    // summary covers nothing and contributes no position to `hypav3.ts`'s
+    // resume point, so it is not worth keeping.
     const strippedLiveSummaries = droppedErrorMessageChatId
         ? liveSummaries
             .map((summary) => {

@@ -106,7 +106,7 @@
     // and through the folder menu (`runFolderMenu`, the rail's own code): its rename, colour and picture
     // edits each assign characterOrder once and never repair it, the picture's asset is saved before that
     // assignment, Ungroup and Delete -> Keep assign and repair it as the rail does, and Delete -> Trash
-    // (`trashFolderMembers`) splices the order in place, repairs it twice, stops the members' work, sets
+    // (`trashFolderMembers`) splices the order in place, repairs it once, stops the members' work, sets
     // their trash time and marks each of them for saving. Mounting,
     // searching, opening folders, choosing a sort, entering and leaving edit mode, selecting and every
     // cancelled or refused action (Cancel in the folder menu included) write nothing, never assign

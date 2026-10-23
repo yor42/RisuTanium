@@ -1249,6 +1249,16 @@
         {:else if DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData && DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData.length > 4 || DBState.db.characters[$selectedCharID].supaMemory}
             <span class="text-textcolor mt-4">{language.SuperMemory}</span>
             <TextAreaInput margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData}></TextAreaInput>
+            <Button
+                onclick={() => {
+                    const chat = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage]
+                    chat.supaMemoryData = ''
+                    delete chat.supaMemoryCoveredId
+                }}
+                className="mt-2"
+            >
+                {language.resetSupaMemory}
+            </Button>
         {/if}
 
         <Button
@@ -1276,6 +1286,16 @@
         {#if DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData && DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData.length > 4 || DBState.db.characters[$selectedCharID].supaMemory}
             <span class="text-textcolor mt-4">{language.SuperMemory}</span>
             <TextAreaInput margin="both" autocomplete="off" bind:value={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].supaMemoryData}></TextAreaInput>
+            <Button
+                onclick={() => {
+                    const chat = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage]
+                    chat.supaMemoryData = ''
+                    delete chat.supaMemoryCoveredId
+                }}
+                className="mt-2"
+            >
+                {language.resetSupaMemory}
+            </Button>
         {/if}
 
         <div class="flex items-center mt-4">

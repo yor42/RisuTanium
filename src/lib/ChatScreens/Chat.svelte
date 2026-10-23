@@ -10,6 +10,7 @@
     import { runLuaButtonTrigger, runLuaInteractionTrigger } from 'src/ts/process/scriptings'
     import { risuChatParser } from "src/ts/process/scripts"
     import { MEASURE } from "src/ts/process/memory/measureFlag"
+    import { withSupaRepoint } from "src/ts/process/memory/supaResume"
     import { noteEditConfirm } from "src/ts/process/chatPhaseRing"
     import { runTrigger } from 'src/ts/process/triggers'
     import { beginWork, originStatus } from 'src/ts/process/chatOrigin'
@@ -256,9 +257,10 @@
 
     async function rm(e:MouseEvent | TouchEvent, rec?:boolean){
         if(e.shiftKey){
-            let msg = DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message
-            msg = msg.slice(0, idx)
-            DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message = msg
+            const shiftChat = DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage]
+            withSupaRepoint(shiftChat, () => {
+                shiftChat.message = shiftChat.message.slice(0, idx)
+            })
             return
         }
 
@@ -297,12 +299,14 @@
         if(at === -1){
             return
         }
-        if(removeFromHere){
-            chat.message.splice(at)
-        }
-        else{
-            chat.message.splice(at, 1)
-        }
+        withSupaRepoint(chat, () => {
+            if(removeFromHere){
+                chat.message.splice(at)
+            }
+            else{
+                chat.message.splice(at, 1)
+            }
+        })
         markCharacterForSave(owner.chaId)
     }
 
@@ -1304,7 +1308,10 @@
         const newChat = $state.snapshot(currentChat)
         newChat.name = createChatCopyName(newChat.name, 'Branch')
         newChat.id = v4()
-        newChat.message = newChat.message.slice(0, idx + 1)
+        // Repointed against the full pre-slice list, which lacks the branch comment pushed below.
+        withSupaRepoint(newChat, () => {
+            newChat.message = newChat.message.slice(0, idx + 1)
+        })
         newChat.message.push({
             role: 'char',
             data: '{{specialcomment::branchedfrom::' + currentChat.id + '::' + currentChat.name + '::' + currentMessage.chatId + '::}}',

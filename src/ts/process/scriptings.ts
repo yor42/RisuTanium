@@ -19,6 +19,7 @@ import { fetchNative, readImage } from "../globalApi.svelte";
 import { loadLoreBookV3Prompt, snapshotSubject } from './lorebook.svelte';
 import { getPersonaPrompt, getUserName, getUserIcon, parseKeyValue } from '../util';
 import { createRunSubject, type Origin, type RunSubject } from "./chatOrigin";
+import { clearSupaMemoryIfEmpty, withSupaRepoint } from "./memory/supaResume";
 let luaFactory:LuaFactory
 let ScriptingSafeIds = new Set<string>()
 let ScriptingEditDisplayIds = new Set<string>()
@@ -345,7 +346,9 @@ export async function runScripted(code:string, arg:{
                 }
                 const target = currentChatFor(ScriptingEngineState)
                 if(target){
-                    target.message = target.message.slice(start,end)
+                    withSupaRepoint(target, () => {
+                        target.message = target.message.slice(start,end)
+                    })
                     markWriteFor(ScriptingEngineState)
                 }
             })
@@ -355,7 +358,9 @@ export async function runScripted(code:string, arg:{
                 }
                 const target = currentChatFor(ScriptingEngineState)
                 if(target){
-                    target.message.splice(index, 1)
+                    withSupaRepoint(target, () => {
+                        target.message.splice(index, 1)
+                    })
                     markWriteFor(ScriptingEngineState)
                 }
             })
@@ -435,6 +440,7 @@ export async function runScripted(code:string, arg:{
                         data: v.data
                     }
                 })
+                clearSupaMemoryIfEmpty(target)
                 markWriteFor(ScriptingEngineState)
             })
 

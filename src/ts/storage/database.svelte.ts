@@ -254,6 +254,11 @@ export function setDatabase(data:Database){
     if(checkNullish(data.supaModelType)){
         data.supaModelType = "none"
     }
+    // Upstream no longer offers davinci or curie (their OpenAI models are retired);
+    // instruct35 is its remaining OpenAI completion option.
+    if(data.supaModelType === "davinci" || data.supaModelType === "curie"){
+        data.supaModelType = "instruct35"
+    }
     if(checkNullish(data.askRemoval)){
         data.askRemoval = true
     }
@@ -1874,6 +1879,13 @@ export interface Chat{
     localLore: loreBook[]
     sdData?:string
     supaMemoryData?:string
+    /**
+     * Valid only while it equals the first line of `supaMemoryData`: that message is already summarised.
+     * A send write keeps it only if it was valid before the write and still equals the new first line;
+     * a stale value is deleted by that write. Memory rewritten outside the fork (for example an
+     * upstream re-summary) to the same first line is still read as covered.
+     */
+    supaMemoryCoveredId?:string
     hypaV2Data?:SerializableHypaV2Data
     lastMemory?:string
     suggestMessages?:string[]
