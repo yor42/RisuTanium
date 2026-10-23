@@ -1,15 +1,17 @@
+import type { JsonObject, JsonValue } from '../blockFrame'
 import type { Database, character, groupChat } from '../database.svelte'
 import type { CommitRequest } from './commit'
 import {
-    builtCommitOf, characterMatchesAcknowledged, CodecInputError, isColdStub, movable, overlayStub, planScopedEncode, previousEntriesOf,
-    previousEntryOf, previousFrom,
+    acknowledgedBytesOf, builtCommitOf, characterMatchesAcknowledged, characterMatchesAcknowledgedPlain, CodecInputError, isColdStub,
+    movable, overlayStub, planScopedEncode, plainObject, previousEntriesOf, previousFrom, sameJsonValue, verdictBaseOf,
     type AcknowledgedVerdict, type EncodedTree, type EncodeScope, type ListDerivation, type PreviousEncoding, type ReusableUnit,
-    type SkippedCharacter,
+    type SkippedCharacter, type VerdictBase,
 } from './codec'
 import { defaultKeyEnv, type KeyEnv, type ShardEntry } from './format'
 import { MEASURE } from '../../process/memory/measureFlag'
 import {
-    finishSavePass, noteNetSlotPart, noteSavePassCommit, startSavePass, startSplit, type SaveMarkPeek, type SavePassSplitRecorder,
+    finishSavePass, noteNetShadow, noteNetShadowEvent, noteNetShadowTripwire, noteNetSlotPart, noteSavePassCommit, startSavePass,
+    startSplit, type NetShadowTag, type SaveMarkPeek, type SavePassSplitRecorder,
 } from './savePassMeter'
 
 /**
@@ -105,9 +107,23 @@ export interface SaveEncoder {
      * Whether a resident character is what the acknowledged encoding holds: `characterMatchesAcknowledged` plus the
      * `lastInteraction` and `trashTime` entry fields, which that primitive leaves to the stub overlay. `clean` means a
      * pass naming the character plans nothing for it. `unknown` while an attempt is pending, and for any fault of the
-     * read (logged): only a full pass can answer then. Pure: it changes no state.
+     * read (logged): only a full pass can answer then.
+     *
+     * Its only state is the value shadows. A resident whose last verdict was `clean` against the current acknowledged
+     * encoding keeps its plain JSON tree (the value `toPlainJson` read) and its live `type`; the next visit that reads
+     * a tree equal to it, with the same prologue result, answers the primitive's `clean` without re-deriving. The
+     * verdict of the primitive is a function of that tree, the live `type`, the acknowledged encoding and the
+     * encoder's constants, so equal inputs give an equal verdict. Every replacement of the acknowledged encoding and
+     * every pending attempt drops all shadows.
      */
     verdictOf(slot: character | groupChat): AcknowledgedVerdict
+    /**
+     * Drops the shadow of every character not in `residents`. The idle net calls it with the resident ids it computed
+     * for the slot, before any early return, so a character that was put back stops being held.
+     */
+    pruneShadows(residents: ReadonlySet<string>): void
+    /** How many shadows are held and what they are charged in total: at most `SHADOW_TOTAL_BUDGET`. */
+    shadowStats(): { entries: number, charged: number }
     /**
      * Whether a cold stub would make a full pass refuse it, load it or write it: its handle is not held, it names a
      * unit other than the entry's, its id is shared, its entry is missing or its overlaid entry differs from the
@@ -180,17 +196,57 @@ function movedFieldsMatch(slot: character | groupChat, entry: ShardEntry): boole
     return true
 }
 
-function sameJsonValue(a: unknown, b: unknown): boolean {
-    if (Object.is(a, b)) {
-        return true
+/** The largest charge one character's shadow may have, and the most all shadows together may be charged. Engineering constants, not settings. */
+export const SHADOW_CHARACTER_CAP = 16 * 1024 * 1024
+export const SHADOW_TOTAL_BUDGET = 64 * 1024 * 1024
+
+/**
+ * What a shadow is charged: an upper bound of the heap its tree pins, from the acknowledged framed bytes of the
+ * character (twice that for text V8 keeps at two bytes per unit, plus a margin), a header per string and a cost per
+ * object or array. The tree can outlive its character's residency until the next prune, so bytes are charged in full.
+ */
+export function shadowChargeOf(acknowledgedBytes: number, strings: number, containers: number): number {
+    return Math.ceil(acknowledgedBytes * 2.2 + strings * 32 + containers * 200)
+}
+
+/** The strings and containers (objects and arrays) of a plain tree; one pass, only run when a shadow is admitted. */
+function weighPlain(root: JsonValue): { strings: number, containers: number } {
+    let strings = 0
+    let containers = 0
+    const pending: JsonValue[] = [root]
+    for (let value = pending.pop(); value !== undefined; value = pending.pop()) {
+        if (typeof value === 'string') {
+            strings++
+        } else if (typeof value === 'object' && value !== null) {
+            containers++
+            for (const child of Array.isArray(value) ? value : Object.values(value)) {
+                pending.push(child)
+            }
+        }
     }
-    if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null || Array.isArray(a) !== Array.isArray(b)) {
-        return false
+    return { strings, containers }
+}
+
+type PrimitiveValue = string | number | boolean | bigint | symbol | null | undefined
+
+function isPrimitive(value: unknown): value is PrimitiveValue {
+    return value === null || (typeof value !== 'object' && typeof value !== 'function')
+}
+
+/** What a shadow keeps of a clean character: its plain tree, the live `type` read with it, and what it is charged. */
+interface VerdictShadow {
+    plain: JsonObject
+    type: PrimitiveValue
+    charged: number
+}
+
+/** The id a character's shadow is held under; null when the slot is not an object or its id cannot be read. */
+function shadowKeyOf(slot: character | groupChat): string | null {
+    try {
+        return typeof slot === 'object' && slot !== null ? String((slot as { chaId?: unknown }).chaId ?? '') : null
+    } catch {
+        return null
     }
-    const left = a as Record<string, unknown>
-    const right = b as Record<string, unknown>
-    const keys = Object.keys(left)
-    return keys.length === Object.keys(right).length && keys.every(key => Object.hasOwn(right, key) && sameJsonValue(left[key], right[key]))
 }
 
 function stubsNeedFullPassOver(db: Database, previous: PreviousEncoding): boolean {
@@ -263,6 +319,53 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
     let pending: EncodedTree | null = null
     manifestKeyOf(previous)
 
+    // The value shadows (see `SaveEncoder.verdictOf`), by `chaId`. They belong to one acknowledged encoding: `shadowOf`
+    // is the one they were taken against, and `resetShadows` runs wherever `previous` is replaced or `pending` is set.
+    const shadows = new Map<string, VerdictShadow>()
+    let shadowOf: PreviousEncoding = previous
+    let shadowsCharged = 0
+
+    function dropShadow(chaId: string | null): void {
+        const held = chaId === null ? undefined : shadows.get(chaId)
+        if (chaId !== null && held !== undefined) {
+            shadowsCharged -= held.charged
+            shadows.delete(chaId)
+            if (MEASURE) {
+                noteNetShadowEvent('cleared')
+            }
+        }
+    }
+
+    function resetShadows(): void {
+        if (MEASURE && shadows.size > 0) {
+            noteNetShadowEvent('cleared', shadows.size)
+        }
+        shadows.clear()
+        shadowsCharged = 0
+        shadowOf = previous
+    }
+
+    /** Keeps the clean character's tree when admission allows; a character's earlier shadow is gone either way. */
+    function admitShadow(base: VerdictBase, plain: JsonObject, type: unknown): void {
+        const replaced = shadows.get(base.chaId)
+        if (replaced !== undefined) {
+            shadowsCharged -= replaced.charged
+            shadows.delete(base.chaId)
+        }
+        if (isPrimitive(type)) {
+            const { strings, containers } = weighPlain(plain)
+            const charged = shadowChargeOf(acknowledgedBytesOf(previous, base.acknowledged), strings, containers)
+            if (charged <= SHADOW_CHARACTER_CAP && shadowsCharged + charged <= SHADOW_TOTAL_BUDGET) {
+                shadows.set(base.chaId, { plain, type, charged })
+                shadowsCharged += charged
+                return
+            }
+        }
+        if (MEASURE) {
+            noteNetShadowEvent('refused')
+        }
+    }
+
     return {
         async plan(db, request) {
             const base = previous
@@ -309,6 +412,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
                     previous = previousFrom(built)
                     const acknowledgeMs = MEASURE && split !== null ? split.now() - acknowledgeStarted : 0
                     pending = null
+                    resetShadows()
                     if (MEASURE) {
                         noteSavePassCommit(request, built.units, split === null ? null : { split, acknowledgeMs, entities: built.index.entities })
                     }
@@ -318,6 +422,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
                         throw new SavePlanError('The plan was kept as pending before any build ran.')
                     }
                     pending = built
+                    resetShadows()
                 },
             }
         },
@@ -327,6 +432,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
             }
             previous = previousFrom(pending)
             pending = null
+            resetShadows()
             return true
         },
         get pendingKey() {
@@ -339,31 +445,87 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
         hasStubs: db => Array.isArray(db.characters) && db.characters.some(slot => typeof slot === 'object' && slot !== null && isColdStub(slot)),
         verdictOf(slot) {
             if (pending !== null) {
+                if (MEASURE) {
+                    noteNetShadow('none')
+                }
                 return 'unknown'
             }
             try {
                 const primitiveStartedAt = MEASURE ? performance.now() : 0
-                const verdict = characterMatchesAcknowledged(slot, { env, lists: options.lists, previous })
+                const verdictOptions = { env, lists: options.lists, previous }
+                let verdict: AcknowledgedVerdict = 'unknown'
+                let tag: NetShadowTag = 'none' // measurement builds only; folded out of a normal build
+                const base = verdictBaseOf(slot, previous)
+                if (base === null) {
+                    dropShadow(shadowKeyOf(slot))
+                } else {
+                    // A fault of the read answers `unknown` silently, as the primitive does for the same fault.
+                    let plain: JsonObject | null = null
+                    try {
+                        plain = plainObject(slot, 'characters[0]')
+                    } catch {
+                        dropShadow(base.chaId)
+                    }
+                    if (plain !== null) {
+                        // The live `type` is the one input of the entry that is not in the plain tree's compare: a boxed
+                        // or `toJSON` value can leave the tree equal while the entry reads it differently.
+                        const liveType: unknown = (slot as { type?: unknown }).type
+                        const held = shadowOf === previous ? shadows.get(base.chaId) : undefined
+                        if (held !== undefined && Object.is(held.type, liveType) && sameJsonValue(plain, held.plain)) {
+                            verdict = 'clean'
+                            if (MEASURE) {
+                                tag = 'hit'
+                            }
+                        } else {
+                            if (MEASURE) {
+                                tag = 'miss'
+                            }
+                            verdict = characterMatchesAcknowledgedPlain(slot, plain, base, verdictOptions)
+                            if (verdict === 'clean') {
+                                admitShadow(base, plain, liveType)
+                            } else {
+                                dropShadow(base.chaId)
+                            }
+                        }
+                    }
+                }
                 if (MEASURE) {
                     noteNetSlotPart('primitiveMs', performance.now() - primitiveStartedAt)
+                    // Every eighth hit is judged again by the full primitive on the live slot, which re-reads everything.
+                    if (noteNetShadow(tag) && tag === 'hit' && base !== null) {
+                        const tripwireStartedAt = performance.now()
+                        const full = characterMatchesAcknowledged(slot, verdictOptions)
+                        noteNetShadowTripwire(performance.now() - tripwireStartedAt)
+                        if (full !== 'clean') {
+                            noteNetShadowEvent('disagreed')
+                            dropShadow(base.chaId)
+                            verdict = full
+                        }
+                    }
                 }
-                if (verdict !== 'clean') {
+                if (verdict !== 'clean' || base === null) {
                     return verdict
                 }
                 const movedStartedAt = MEASURE ? performance.now() : 0
-                const chaId = String((slot as { chaId?: unknown }).chaId ?? '')
-                const u = previous.entities.get(`${chaId}#0`)
-                const entry = u === undefined ? undefined : previousEntryOf(previous, u)
-                const movedMatch = entry !== undefined && movedFieldsMatch(slot, entry)
+                const movedMatch = movedFieldsMatch(slot, base.acknowledged)
                 if (MEASURE) {
                     noteNetSlotPart('movedMs', performance.now() - movedStartedAt)
                 }
                 return movedMatch ? 'clean' : 'dirty'
             } catch (error) {
+                dropShadow(shadowKeyOf(slot))
                 console.error('The verdict of a resident character could not be read; a full pass will decide.', error)
                 return 'unknown'
             }
         },
+        pruneShadows(residents) {
+            for (const chaId of [...shadows.keys()]) {
+                if (!residents.has(chaId)) {
+                    dropShadow(chaId)
+                }
+            }
+        },
+        shadowStats: () => ({ entries: shadows.size, charged: shadowsCharged }),
         stubsNeedFullPass(db) {
             try {
                 return stubsNeedFullPassOver(db, previous)

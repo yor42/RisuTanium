@@ -92,6 +92,23 @@ function plainValue(value: unknown, ancestors: object[], skipToJson: boolean): J
     return out
 }
 
+/**
+ * Whether two plain trees hold the same value: `Object.is` on leaves, equal key sets on objects (key order does not
+ * count, as the canonical JSON sorts keys), equal length and elements on arrays. Never goes through `JSON.stringify`.
+ */
+export function sameJsonValue(a: unknown, b: unknown): boolean {
+    if (Object.is(a, b)) {
+        return true
+    }
+    if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null || Array.isArray(a) !== Array.isArray(b)) {
+        return false
+    }
+    const left = a as Record<string, unknown>
+    const right = b as Record<string, unknown>
+    const keys = Object.keys(left)
+    return keys.length === Object.keys(right).length && keys.every(key => Object.hasOwn(right, key) && sameJsonValue(left[key], right[key]))
+}
+
 /** `source` as a plain JSON object, or a `CodecInputError` naming `where`. */
 export function plainObject(value: unknown, where: string): JsonObject {
     const plain = toPlainJson(value)

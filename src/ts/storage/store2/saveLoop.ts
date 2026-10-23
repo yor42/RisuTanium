@@ -886,6 +886,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
         }
         const residents = residentChaIds(db)
+        // Before any early return: a slot that ends here with no resident left must still release the shadow of a character
+        // that was put back. Inside the `residentsMs` lap, so the sub-parts still sum to `checksMs`.
+        encoder.pruneShadows(new Set(residents))
         if (MEASURE) {
             const residentsDoneAt = performance.now()
             noteNetSlotPart('residentsMs', residentsDoneAt - checkLapAt)
