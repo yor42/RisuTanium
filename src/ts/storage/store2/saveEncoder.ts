@@ -24,11 +24,14 @@ import { finishSavePass, noteSavePassCommit, startSavePass } from './savePassMet
 export interface SavePassRequest {
     /** The chaIds of the characters the marks name (explicit marks, the selected-character effects, the identity tracker). */
     marked: ReadonlySet<string>
-    /** The module effect flags fired, or the idle net owns the modules this tick. */
+    /** The module effect flags fired, or the idle net has no resident character to carry the module check and the check is due. */
     modules: boolean
     /** Every resident non-stub character and the modules: the full-reload triggers. */
     whole: boolean
-    /** Idle net: one more resident character per tick; `modules` is set on the first tick of a cycle. */
+    /**
+     * Idle net: one more resident character per tick. `modules` takes module scope at most once per the loop's
+     * `moduleIntervalMs`; a check that fails waits for the next one.
+     */
     net?: { chaId: string | null, modules: boolean }
     /**
      * Save mine: every unit but a stub's is written anew, nothing is reused. A stub's units are carried, since a stub

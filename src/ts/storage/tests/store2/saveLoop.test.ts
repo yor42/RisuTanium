@@ -334,16 +334,15 @@ describe('new behaviour: the full-reload flag and the module flag reach the enco
 })
 
 describe('new behaviour: the idle net writes what no mark named', () => {
-    test('with the net on, an unmarked character edit and an unflagged module edit are written within one cycle', async () => {
+    // Guard: the character cadence is unchanged; the module half moved to saveLoopModuleCadence.test.ts (MC-372 1).
+    test('guard: with the net on, an unmarked character edit is written within one cycle', async () => {
         const db = clone(buildSmall(4))
         const loop = await startLoop(db, { idleNet: { intervalMs: 1 } })
         chars(db)[2].personality = 'unmarked edit'
-        ;(db.modules as unknown as Entry[])[1].description = 'unflagged module edit'
         await until(async () => {
             const saved = await loop.kit.saved()
             return (saved.characters[2] as unknown as Entry).personality === 'unmarked edit'
-                && ((saved.modules as unknown as Entry[])[1]).description === 'unflagged module edit'
-        }, 'the idle net to write both edits', 4000)
+        }, 'the idle net to write the character edit', 4000)
         healthy(loop)
     })
 

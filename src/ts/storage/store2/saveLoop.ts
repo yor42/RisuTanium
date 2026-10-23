@@ -11,6 +11,7 @@ import { classifyCommitRead } from './commitKey'
 import type { CommitKey } from './format'
 import type { Store2SaveContext } from './saveActive'
 import { createSaveEncoder, type SavePassRequest, type SavePlan } from './saveEncoder'
+import { startYieldGaps, type YieldGapRecorder } from './saveYieldMeter'
 
 /**
  * The save loop of a store2 session: the loop `saveDb()` runs when a session is active. It keeps the block-profile
@@ -77,10 +78,15 @@ export interface Store2PeerHandler {
 
 export interface IdleNetOptions {
     intervalMs: number
+    /** The least time between two ticks that take module scope; defaults to `IDLE_NET_MODULE_INTERVAL_MS`. */
+    moduleIntervalMs?: number
 }
 
 /** The idle net's default cadence: one resident character per tick. */
 export const IDLE_NET_INTERVAL_MS = 2000
+
+/** The idle net takes module scope at most this often; a module edit that raised no mark waits for the next such tick. */
+export const IDLE_NET_MODULE_INTERVAL_MS = 30_000
 
 /** A commit landed but its backend could not confirm it reached stable storage: the person is told, and the next pass commits again. */
 export class Store2NotFlushedError extends Error {
@@ -281,6 +287,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     const committer: Committer = sessionCommitter
     const encoder = context.encoder ?? createSaveEncoder({ previous: context.previous, lists: context.lists, env: context.env })
     const netMs = context.idleNet === null ? null : (context.idleNet?.intervalMs ?? IDLE_NET_INTERVAL_MS)
+    const moduleMs = context.idleNet?.moduleIntervalMs ?? IDLE_NET_MODULE_INTERVAL_MS
 
     let savetrys = 0
     let retries = 0
@@ -293,6 +300,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let peerSignal = false
     let netIndex = 0
     let lastNetAt = port.now()
+    /** When a tick last took module scope; the next such tick is `moduleMs` later, whatever the first one came to. */
+    let lastModuleNetAt = port.now()
+    /** The gap recorder of the attempt in flight, a measurement build only; one attempt runs at a time under the write lock. */
+    let activeGaps: YieldGapRecorder | null = null
     /**
      * The characters the latest attempts whose commit landed could not encode. A character leaves it when a pass encodes
      * it, or when it is no longer in the database; an attempt whose commit did not land changes nothing here.
@@ -454,18 +465,38 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     }
 
     function requestOf(snapshot: Store2Snapshot | null, db: Database, rewriteAll: boolean): SavePassRequest {
-        const budget = createYieldBudget()
-        const yielding = { yield: () => budget.maybeYield() }
+        const gaps = MEASURE ? startYieldGaps() : null
+        const budget = MEASURE && gaps !== null ? createYieldBudget({ yieldFn: () => gaps.yield() }) : createYieldBudget()
+        const request = shapeOf(snapshot, db, rewriteAll, { yield: () => budget.maybeYield() })
+        if (MEASURE) {
+            activeGaps = gaps
+            gaps?.describe(request)
+        }
+        return request
+    }
+
+    /**
+     * The request of one pass. A marked pass takes its modules from the snapshot's flag. A tick takes module scope at
+     * most once per `moduleMs`: with no resident character the tick still runs and carries the modules until they are
+     * due; with residents the character round-robin is unchanged and module scope rides on whichever tick is next once
+     * due. The module clock advances when a tick takes module scope, so a check that fails waits for the next one.
+     */
+    function shapeOf(snapshot: Store2Snapshot | null, db: Database, rewriteAll: boolean, yielding: { yield: () => Promise<void> }): SavePassRequest {
         if (snapshot !== null) {
             return { marked: marksOf(snapshot, db), modules: snapshot.toSave.modules, whole: snapshot.whole, rewriteAll, ...yielding }
         }
+        const now = port.now()
+        const modulesDue = now - lastModuleNetAt >= moduleMs
+        if (modulesDue) {
+            lastModuleNetAt = now
+        }
         const residents = residentChaIds(db)
         if (residents.length === 0) {
-            return { marked: new Set(), modules: true, whole: false, net: { chaId: null, modules: true }, ...yielding }
+            return { marked: new Set(), modules: modulesDue, whole: false, net: { chaId: null, modules: modulesDue }, ...yielding }
         }
         const index = netIndex % residents.length
         netIndex = (index + 1) % residents.length
-        return { marked: new Set(), modules: false, whole: false, net: { chaId: residents[index], modules: index === 0 }, ...yielding }
+        return { marked: new Set(), modules: false, whole: false, net: { chaId: residents[index], modules: modulesDue }, ...yielding }
     }
 
     async function planOf(db: Database, request: SavePassRequest): Promise<SavePlan> {
@@ -478,8 +509,14 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
             // The stub that shares its id, or that names units its entry no longer holds, is loaded, and the pass is
             // planned once more over the live list. A pass that stays blocked is a failed save the person is told about.
+            if (MEASURE) {
+                activeGaps?.pause()
+            }
             if (!await context.loadStub(error.chaId)) {
                 throw error
+            }
+            if (MEASURE) {
+                activeGaps?.resume()
             }
             return await encoder.plan(port.getDatabase(), { ...request, marked: new Set([...request.marked, error.chaId]) })
         }
@@ -585,7 +622,19 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
     }
 
+    /** `attemptRun` with the gap recorder closed on every exit, a throw included, before the pass's own waits begin. */
     async function attemptOf(run: { snapshot: Store2Snapshot | null, landed: boolean, plan: SavePlan | null }, tick: boolean): Promise<Outcome> {
+        try {
+            return await attemptRun(run, tick)
+        } finally {
+            if (MEASURE) {
+                activeGaps?.finish()
+                activeGaps = null
+            }
+        }
+    }
+
+    async function attemptRun(run: { snapshot: Store2Snapshot | null, landed: boolean, plan: SavePlan | null }, tick: boolean): Promise<Outcome> {
         run.snapshot = tick ? null : takeStore2Snapshot(port)
         const read = await committer.readCommit()
         peerSignal = false
@@ -600,15 +649,28 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         const db = port.getDatabase()
         const plan = await planOf(db, requestOf(run.snapshot, db, saveMine))
         run.plan = plan
+        if (MEASURE) {
+            activeGaps?.planned()
+        }
         // A page that is asked to overwrite a peer's commit has something to write even when it changed nothing.
         if (plan.unchanged && !forced && !saveMine) {
             return { kind: 'saved', wrote: false }
         }
-        const request = plan.commitRequest()
+        const planned = plan.commitRequest()
+        const request = MEASURE && activeGaps !== null ? activeGaps.wrapBuild(planned) : planned
         const result = saveMine ? await committer.saveMine(read, request) : await committer.commit(read, request)
+        if (MEASURE) {
+            activeGaps?.committed()
+        }
         if (result.status === 'refused' && result.reason === 'marker-present') {
             // A marker of this page load that an earlier bulk could not clear would refuse every later bulk.
+            if (MEASURE) {
+                activeGaps?.pause()
+            }
             const cleared = await clearOwnMarker(read)
+            if (MEASURE) {
+                activeGaps?.resume()
+            }
             // A clear refused because a newer page owns the generation never succeeds on this page: it is replaced, not retried.
             if ((cleared?.status === 'failed' || cleared?.status === 'unknown') && cleared.cause instanceof Store2StalePageError) {
                 return { kind: 'park', park: parkOf({ kind: 'stop', reason: 'replaced', key: null, revision: false }) }
