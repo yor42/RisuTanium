@@ -254,6 +254,11 @@ export function setDatabase(data:Database){
     if(checkNullish(data.supaModelType)){
         data.supaModelType = "none"
     }
+    // Upstream no longer offers davinci or curie (their OpenAI models are retired);
+    // instruct35 is its remaining OpenAI completion option.
+    if(data.supaModelType === "davinci" || data.supaModelType === "curie"){
+        data.supaModelType = "instruct35"
+    }
     if(checkNullish(data.askRemoval)){
         data.askRemoval = true
     }

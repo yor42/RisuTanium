@@ -661,6 +661,66 @@ Upstream has the same defects, so this is a fork-only fix. Verified in the upstr
 - **Two copies of the skip predicate:** the V3 loops keep inline skip rules and `isSkipEligibleChat` duplicates them. Parity is tested only through the `hypav3.test.ts` example-turn tests; the optional Gate 1 row driving a blank or `NewChat` first memo-less chat through `hypaMemoryV3` was not added (Gate 2).
 - **V2-to-V3 conversion:** `HypaV3Modal` conversion copies V2 memos, so the same ambiguity reaches V3; the rule handles it (plan).
 
+## Phase 3 — stage C1 fix
+
+Scope: SUPA-5 (2026-10-23). Decision: `MC-712` 7 in [lane-cloud-records.md](../lane-cloud-records.md). Evidence is the scratchpad `p3/c10/` tree (`C/plan.md` section "C1 SUPA-5", `C1/impl/result.md` and its logs, `C1/g2/result.md` (Gate 2 `[EDITORIAL]`)), the `git diff` of the two files below, and upstream read-only at `/home/user/kwaroran/risuai` f50b594. Line numbers are the current working tree (branch `lane-cloud`, HEAD 5c88496 per Gate 2, plus uncommitted edits). Nothing was committed by this pass. Gate 1 for C1 was `[APPROVE]` (round 2; also round 1 and round 3 per ledger rows 5077, 5083, 5094). Gate 2 was `[EDITORIAL]`; E1 was applied by the Orchestrator with no new gate round.
+
+### Files
+
+- `src/ts/storage/database.svelte.ts` (+5): in `setDatabase`, directly after the `supaModelType` nullish default.
+- `src/ts/storage/tests/databaseSupaModelType.test.ts` (+3/-2).
+- This report and `Agents/Lanes/lane-cloud-records.md` (the C1 status line and ledger rows 5103 to 5106; the Orchestrator adds 5105 and 5106).
+
+### The change
+
+`database.svelte.ts:257-261`: if `data.supaModelType` is `"davinci"` or `"curie"`, set it to `"instruct35"`. It is an in-memory assignment on the loaded tree and goes through the normal save. The comment reads: "Upstream no longer offers davinci or curie (their OpenAI models are retired); instruct35 is its remaining OpenAI completion option." (Gate 2 E1 found the implementer's first wording, "Upstream offers and reads instruct35 only", false; the Orchestrator reworded it.)
+
+### Decision
+
+`MC-712` 7 (lane-cloud-records.md:194): "SUPA-5 (legacy davinci/curie summarizer values). Answer: **"Migrate to instruct35 (Recommended)"**. The option said: on load, map davinci/curie to the gpt-3.5-turbo-instruct option; the saved value changes; upstream reads it fine."
+
+### Test flip
+
+`databaseSupaModelType.test.ts:124-128`: the `test.fails.each(['davinci', 'curie'])` rows `a saved %s loads as instruct35` became `test.each`. The comment now says only the in-memory value is asserted and persistence is not tested. The 5 guard rows are unchanged.
+
+| Run | Who | Source | Result |
+|---|---|---|---|
+| Red (executed) | implementer | pre-fix | 5 passed, 2 expected fail (`test.fails.each`) |
+| Green (executed) | implementer | fixed | 7 passed |
+| Mutant, migration removed (executed) | implementer | HEAD `database.svelte.ts` swapped in | 2 failed (davinci, curie), 5 passed |
+| Related (executed) | implementer | fixed | `databaseSupaModelType`, `databaseAccountField`, `risuSave`, `secretFields`: 38 passed |
+| Red (executed) | Gate 2, scratch copy | HEAD `database.svelte.ts` with the flipped test | 2 failed, 5 passed; received "davinci" and "curie" |
+| Green (executed) | Gate 2, scratch copy | fixed | 7 passed |
+| Mutant 1 (executed) | Gate 2, scratch copy | only davinci migrated | 1 failed (curie), 6 passed |
+| Mutant 2 (executed) | Gate 2, scratch copy | everything except `subModel` mapped | 3 failed, 4 passed (the guards catch an over-broad mapping) |
+| `pnpm check` (executed) | implementer; Gate 2 | in-repo | 0 errors, 0 warnings. Gate 2's first run aborted with an OOM at the default heap; the rerun used `NODE_OPTIONS=--max-old-space-size=6144`, exit 0 |
+
+Many other tests import `setDatabase` but mock it or do not read `supaModelType`; they were not run (implementer).
+
+### Saved data
+
+Changed value: a saved `supaModelType` of `davinci` or `curie` becomes `instruct35`. Gate 2 traced these from source; none was executed end to end.
+
+- Upstream `.bin` into the fork: backup restore calls `setDatabase(dbData)` (backuplocal.ts), so the setting migrates (`MC-175`).
+- Fork into upstream: export reads `getDatabase()` (backuplocal.ts:601, :889), which holds the migrated value; upstream offers `instruct35` and reads it as `gpt-3.5-turbo-instruct`, so the backup stays readable (`MC-223`). If an un-migrated value were stored anyway, upstream still reads davinci and curie as before.
+- Idempotent: `instruct35` is not in the predicate; the guard row "instruct35 is kept as saved" passes (executed). Presets do not carry the field (plan).
+- Load paths: 8 `setDatabase(` calls in `src/ts/bootstrap.ts` (grep of the working tree; Gate 2 counted 7), backup restore, the Google token persist and the plugin `setDatabase(db)` (plugins.svelte.ts:1071), all through `setDatabase`. Plugin `setDatabaseLite` writes (plugins.svelte.ts:1023, :1040) assign `DBState.db` directly after load; that is not a load, and a plugin writing `davinci` still works because the fork keeps its branches.
+
+### Upstream status
+
+Checked at f50b594. Upstream still has the request branches: `hypav2.ts:74-75` and `supaMemory.ts:218` send `text-curie-001` for `curie`, and every other non-`instruct35` value falls through to `text-davinci-003` (Gate 2; E1 confirmed by the Orchestrator per row 5104). Upstream's `OtherBotSettings.svelte` still lists davinci and curie in the OpenAI-key field condition (:1046, :1269, Gate 2) but its selector no longer offers them. Upstream also offers `distilbart` and `subModel`.
+
+### Process notes
+
+- The implementer ran its mutant in the repository file in place (the HEAD copy swapped in for one run, then restored), not on a scratch copy. Gate 2 confirmed the repository file byte-identical to the implementer's `fixed.bak` (`cmp`), diff stat +4 at that time, 0 CR in either file or at HEAD.
+- Gate 2 E2 (optional): the test-file header at HEAD says the summariser request "only know[s]" distilbart, instruct35 and subModel, while the fork's `supaMemory.ts` and `hypav2.ts` still branch on `curie`. It was not applied.
+
+### Residuals
+
+- Persistence of the migrated value is untested (in-memory only). Gate 2 did not trace whether root dirty tracking marks the root block right after load (reasoning only; not decision-critical, since every later load migrates again and export reads the in-memory value).
+- The curie and davinci branches in `supaMemory.ts` and `hypav2.ts`, and the key-field conditions in `OtherBotSettings.svelte`, are left in the fork. They are unreachable after load except through a plugin write; removing them is optional cleanup (plan).
+- The full `pnpm test` and the relevant build have not been run on this snapshot; they are pending at phase close.
+
 ## Corrections from doc-verifier
 
 This section takes precedence over the body above. Independent doc-verifier pass, 2026-10-23 (scratchpad `p2/c10d/dv/result.md`): ten files rerun (40 passed, 32 expected fail), test titles, decision quotes, REPRODUCED citations and an upstream sample verified; four required corrections, applied in the body by the Orchestrator:
@@ -694,3 +754,10 @@ Independent doc-verifier check, 2026-10-23 (scratchpad `p3/c10/A3/dv/result.md`;
 3. Ledger row 5099 (Gate 2) said "7 of 9 own mutants caught". `A3/g2/result.md` lists ten Gate 2 mutants: eight caught and two survived. Row 5099 now says "8 of 10". The mutant table in this report was already correct.
 
 The Gate 2 probes, mutant runs, the 2926-pass run and `pnpm check` were read from their logs and not rerun by the verifier.
+
+### Stage C1 (Phase 3)
+
+Independent doc-verifier check, 2026-10-23 (scratchpad `p3/c10/C1/dv/result.md`; ledger row 5106). About 35 claim groups checked; the test file was rerun (7 passed). These corrections take precedence over the text above and have been applied to it:
+
+1. `src/ts/bootstrap.ts` has 8 `setDatabase(` calls (lines 185, 214, 246, 352, 383, 426, 696, 1237), not 7 as Gate 2 counted. The conclusion that every load path goes through `setDatabase` is unchanged.
+2. UNVERIFIABLE from repository or upstream source: that OpenAI retired the davinci and curie models (the code comment and this section say so). It is an external fact; nothing in this stage depends on it.

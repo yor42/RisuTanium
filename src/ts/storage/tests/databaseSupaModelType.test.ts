@@ -121,8 +121,9 @@ describe('setDatabase summariser model migration', () => {
         expect(loadWith(undefined)).toBe('none')
     })
 
-    // regression reproducer: CHORE-10 SUPA-5, MC-712 7
-    test.fails.each(['davinci', 'curie'])('a saved %s loads as instruct35', (value) => {
+    // regression reproducer: CHORE-10 SUPA-5, MC-712 7. Only the in-memory
+    // value is asserted; persistence of the migrated value is not tested.
+    test.each(['davinci', 'curie'])('a saved %s loads as instruct35', (value) => {
         expect(loadWith(value)).toBe('instruct35')
     })
 })
