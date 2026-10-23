@@ -13,7 +13,7 @@ import {
 } from './bodies'
 import { assembleChat, splitChat } from './chat'
 import { buildManifest, carryManifest } from './manifest'
-import { carryModuleIndex, moduleBodyOf, moduleEntryFields } from './modules'
+import { carryModuleIndex, moduleBodyOf, moduleEntryFields, moduleHandles } from './modules'
 import { defineOwn, listOrEmpty, omitFields, pickFields, plainObject, toPlainJson } from './normalize'
 import { groupKeysIntoBuckets, PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 import { UnitSink, type UnitKeyKind } from './reuse'
@@ -127,6 +127,8 @@ export class Encoder {
     readonly parents = new Map<string, { type: UnitType, body: object }>()
     /** Entity id to the chat handles of that character that come from a unique real chat id. */
     readonly stableChats = new Map<string, Set<string>>()
+    /** Previous module list units this encode kept without encoding them (see `encodeModules`); `finishTree` adds them to the index units. */
+    readonly carried = new Map<string, ReusableUnit>()
     private readonly occurrences = new Map<string, number>()
     private readonly usedU = new Set<string>()
 
@@ -365,20 +367,91 @@ export function encodePluginStorage(db: Database, encoder: Encoder): { refs: Ref
     return { refs, plain: storage }
 }
 
+/** The first three elements of a Ref and of a ListRef (tail, bytes, crc) agree. */
+function sameRefHead(a: Ref | ListRef, b: Ref | ListRef): boolean {
+    return a[0] === b[0] && a[1] === b[1] && a[2] === b[2]
+}
+
+/** The previous unit under `identity` when it is a stored, digested unit of `type` that the index ref `ref` names; else undefined. */
+function previousUnitOf(previous: PreviousEncoding, identity: string, type: UnitType, ref: Ref | ListRef): ReusableUnit | undefined {
+    const unit = previous.units.get(identity)
+    return unit !== undefined && unit.type === type && unit.digest !== undefined && sameRefHead(unit.ref, ref) ? unit : undefined
+}
+
+/**
+ * The previous list units of a module whose unit this encode reused, when carrying them is allowed; null means
+ * derive. Carrying needs every one of: the derivation opts in (`moduleListVersions`); the previous module index holds
+ * an entry for the handle and its module ref agrees with the units map; the entry names a digested asset list unit
+ * and a digested inlay list unit (an entry without an inlay list is derived), each agreeing with the units map and
+ * at the opted-in version. A list that is not carried is derived as before.
+ *
+ * A carried list equals a fresh derivation only under the writer invariant that every module list unit an index entry
+ * names was derived from the module unit that same entry names, which `encodeModules` guarantees for every tree this
+ * build writes. The module unit is reused only when its bytes (and so its plain module) are the previous ones.
+ */
+function carriedModuleLists(
+    encoder: Encoder, previousEntries: ReadonlyMap<string, ModuleEntry> | null, handle: string,
+): { al: ListRef, il: ListRef, units: [string, ReusableUnit][] } | null {
+    const versions = encoder.options.lists.moduleListVersions
+    const previous = encoder.previous
+    const entry = previousEntries?.get(handle)
+    if (versions === undefined || previous === null || entry === undefined || entry.il === null) {
+        return null
+    }
+    if (previousUnitOf(previous, `${IDENTITY.module}${handle}`, UNIT_TYPE.module, entry.unit) === undefined) {
+        return null
+    }
+    const alId = `${IDENTITY.alModule}${handle}`
+    const alUnit = entry.al[3] === versions.asset ? previousUnitOf(previous, alId, UNIT_TYPE.assetList, entry.al) : undefined
+    if (alUnit === undefined) {
+        return null
+    }
+    const ilId = `${IDENTITY.ilModule}${handle}`
+    const ilUnit = entry.il[3] === versions.inlay ? previousUnitOf(previous, ilId, UNIT_TYPE.inlayList, entry.il) : undefined
+    if (ilUnit === undefined) {
+        return null
+    }
+    // Copies, not the previous arrays; `listRefTuple` also drops an unknown trailing element exactly as a fresh list ref does.
+    return { al: listRefTuple(entry.al, entry.al[3]), il: listRefTuple(entry.il, entry.il[3]), units: [[alId, alUnit], [ilId, ilUnit]] }
+}
+
+/** The previous module index entries by handle; null when there is no previous index, which carries nothing. */
+function previousModuleEntries(encoder: Encoder): ReadonlyMap<string, ModuleEntry> | null {
+    const previousIndex = encoder.previous?.objects?.moduleIndex
+    return previousIndex === undefined ? null : new Map(moduleHandles(previousIndex.entries).map((handle, position) => [handle, previousIndex.entries[position]]))
+}
+
+/**
+ * One module's turn: its plain copy, unit, both lists and index entry, all produced in this one synchronous call so a
+ * module is never torn. `seen` counts the ids met so far and so must run in module order. The sync and the yielding
+ * module set both loop this step.
+ */
+function encodeModuleAt(
+    raw: unknown, index: number, seen: Map<string, number>, encoder: Encoder, previousEntries: ReadonlyMap<string, ModuleEntry> | null,
+): ModuleEntry {
+    const module = plainObject(raw, `modules[${index}]`)
+    const fields = moduleEntryFields(module)
+    const occurrence = seen.get(fields.id) ?? 0
+    seen.set(fields.id, occurrence + 1)
+    const handle = `${fields.id}#${occurrence}`
+    const unit = encoder.put(`${IDENTITY.module}${handle}`, UNIT_TYPE.module, moduleBodyOf(module))
+    const kept = unit.reused ? carriedModuleLists(encoder, previousEntries, handle) : null
+    if (kept !== null) {
+        for (const [identity, listUnit] of kept.units) {
+            encoder.carried.set(identity, listUnit)
+        }
+        return { ...fields, unit: refTuple(unit.ref), al: kept.al, il: kept.il }
+    }
+    const al = encoder.putAssetList(`${IDENTITY.alModule}${handle}`, encoder.options.lists.moduleAssets(module))
+    const inlays = encoder.options.lists.moduleInlays(module)
+    const il = inlays === null ? null : encoder.putInlayList(`${IDENTITY.ilModule}${handle}`, inlays)
+    return { ...fields, unit: refTuple(unit.ref), al, il }
+}
+
 export function encodeModules(db: Database, encoder: Encoder): ModuleEntry[] {
     const seen = new Map<string, number>()
-    return listOrEmpty(db.modules, 'modules').map((raw, index) => {
-        const module = plainObject(raw, `modules[${index}]`)
-        const fields = moduleEntryFields(module)
-        const occurrence = seen.get(fields.id) ?? 0
-        seen.set(fields.id, occurrence + 1)
-        const handle = `${fields.id}#${occurrence}`
-        const unit = encoder.put(`${IDENTITY.module}${handle}`, UNIT_TYPE.module, moduleBodyOf(module))
-        const al = encoder.putAssetList(`${IDENTITY.alModule}${handle}`, encoder.options.lists.moduleAssets(module))
-        const inlays = encoder.options.lists.moduleInlays(module)
-        const il = inlays === null ? null : encoder.putInlayList(`${IDENTITY.ilModule}${handle}`, inlays)
-        return { ...fields, unit: refTuple(unit.ref), al, il }
-    })
+    const previousEntries = previousModuleEntries(encoder)
+    return listOrEmpty(db.modules, 'modules').map((raw, index) => encodeModuleAt(raw, index, seen, encoder, previousEntries))
 }
 
 /**
@@ -439,10 +512,32 @@ export interface ModuleSet {
 
 /** Encodes the modules and the module index. */
 export function encodeModuleSet(db: Database, encoder: Encoder): ModuleSet {
-    const moduleEntries = encodeModules(db, encoder)
+    return finishModuleSet(encodeModules(db, encoder), encoder)
+}
+
+/** The module index over the encoded entries. */
+function finishModuleSet(moduleEntries: ModuleEntry[], encoder: Encoder): ModuleSet {
     const body = carryModuleIndex(encoder.previous?.objects?.moduleIndex, { v: 1, entries: moduleEntries })
     const unit = encoder.putParent(IDENTITY.moduleIndex, UNIT_TYPE.moduleIndex, body)
     return { body, ref: refTuple(unit.ref) }
+}
+
+/**
+ * `encodeModuleSet` that awaits `yieldFn` after each module, so no single task holds the page for the whole set. The
+ * module list is copied before the first await and only that copy is read: a module added, removed or reordered
+ * during a yield reaches the next pass, and the committed index names exactly this list. A module edited inside its
+ * own turn is whole; one edited after its turn is the next pass's.
+ */
+export async function encodeModuleSetYielding(db: Database, encoder: Encoder, yieldFn: (() => Promise<void>) | undefined): Promise<ModuleSet> {
+    const modules = [...listOrEmpty(db.modules, 'modules')]
+    const seen = new Map<string, number>()
+    const previousEntries = previousModuleEntries(encoder)
+    const moduleEntries: ModuleEntry[] = []
+    for (let index = 0; index < modules.length; index++) {
+        moduleEntries.push(encodeModuleAt(modules[index], index, seen, encoder, previousEntries))
+        await yieldFn?.()
+    }
+    return finishModuleSet(moduleEntries, encoder)
 }
 
 /**
@@ -504,7 +599,7 @@ export function finishTree(
     const manifestUnit = encoder.sink.putFresh('manifest', UNIT_TYPE.manifest, manifest, 'manifest')
 
     const units = encoder.sink.units
-    const indexUnits = new Map<string, ReusableUnit>(carried)
+    const indexUnits = new Map<string, ReusableUnit>([...carried, ...encoder.carried])
     for (const unit of units) {
         indexUnits.set(unit.identity, { key: unit.key, type: unit.type, ref: unit.ref, digest: unit.digest })
     }
