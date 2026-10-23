@@ -67,7 +67,9 @@ import type { SplitMsField, SplitPutSection, SplitRecorder } from './codec/types
  * resident in the unsavable set and a `verdictOf` that threw, which the encoder logs and returns as `unknown`, so a
  * throw is not told apart from a primitive `unknown`. Every pass an idle-net slot runs, a full-tick fallback or a
  * verdict-named silent pass, is a stage 0 `tick`; `slotEnds` tells which reason sent it. `decisionMs` is the wall
- * time of each slot's decision part; `slotPassMs` the pass a slot went on to run.
+ * time of each slot's decision part; `slotPassMs` the pass a slot went on to run. `slotTimings` (CHORE-205 stage 1d) holds
+ * one record per slot, aligned with `decisionMs`, with the slot's end reason and where its decision time went (see
+ * `NetSlotTiming`).
  */
 
 export type SavePassKind = 'rewriteAll' | 'whole' | 'tick' | 'edit'
@@ -249,8 +251,34 @@ export interface NetVerdictSummary {
     outcomes: Record<NetVerdictOutcome, number>
     /** Wall time of the decision part of each slot, newest last, at most 1000. */
     decisionMs: number[]
+    /** One record per slot, aligned with `decisionMs` (same length, same order), at most 1000. */
+    slotTimings: NetSlotTiming[]
     /** Wall time of the pass a slot went on to run, newest last, at most 1000; slots that ran no pass add none. */
     slotPassMs: number[]
+}
+
+/** The parts of one slot's decision that are timed apart; a part the slot's path did not take stays null. */
+export type NetSlotPart = 'lockWaitMs' | 'readMs' | 'judgeMs' | 'checksMs' | 'verdictMs' | 'primitiveMs' | 'movedMs'
+
+/**
+ * Where one slot's `decisionMs` went. `lockWaitMs` is the wait for the write lock and `readMs` the `readCommit` inside
+ * it (recorded also when the read throws). `judgeMs` is `judge`. `checksMs` is everything between `judge` and the verdict:
+ * `unheldChaIds`, `stubsNeedFullPass`, the unsavable and resident lookups; a check that throws leaves it null.
+ * `verdictMs` is `verdictOf` as a whole, split into `primitiveMs` (`characterMatchesAcknowledged`) and `movedMs` (the
+ * moved-field compare, only after a `clean` primitive). `reason` is how the slot ended. The switch is read on every
+ * call: a slot begun with the switch off and ended with it on is recorded with `reason` null and every part null, and a
+ * slot begun with it on and ended with it off is not recorded at all.
+ */
+export interface NetSlotTiming {
+    reason: NetSlotReason | null
+    decisionMs: number
+    lockWaitMs: number | null
+    readMs: number | null
+    judgeMs: number | null
+    checksMs: number | null
+    verdictMs: number | null
+    primitiveMs: number | null
+    movedMs: number | null
 }
 
 /** The part of a save request that decides the kind. */
@@ -345,6 +373,7 @@ interface NetVerdictState {
     slotEnds: Record<NetSlotReason, number>
     outcomes: Record<NetVerdictOutcome, number>
     decisionMs: number[]
+    slotTimings: NetSlotTiming[]
     slotPassMs: number[]
 }
 
@@ -353,11 +382,14 @@ function freshVerdicts(): NetVerdictState {
     for (const reason of NET_SLOT_REASONS) {
         slotEnds[reason] = 0
     }
-    return { slotEnds, outcomes: { clean: 0, dirty: 0, unknown: 0 }, decisionMs: [], slotPassMs: [] }
+    return { slotEnds, outcomes: { clean: 0, dirty: 0, unknown: 0 }, decisionMs: [], slotTimings: [], slotPassMs: [] }
 }
 
 // Created on first use, for the same reason as the net-found state.
 let verdictStore: NetVerdictState | null = null
+// The record of the slot in flight: begun by `noteNetSlotBegin`, closed by `noteNetSlotMs`. Parts noted outside a slot
+// (the encoder's verdict called by anything else) find it null and record nothing.
+let slotInFlight: NetSlotTiming | null = null
 
 function verdictsNow(): NetVerdictState {
     verdictStore ??= freshVerdicts()
@@ -370,7 +402,9 @@ function verdictSummary(): NetVerdictSummary {
     for (const reason of NET_SLOT_REASONS) {
         slots += state.slotEnds[reason]
     }
-    return { slots, slotEnds: { ...state.slotEnds }, outcomes: { ...state.outcomes }, decisionMs: [...state.decisionMs], slotPassMs: [...state.slotPassMs] }
+    return { slots, slotEnds: { ...state.slotEnds }, outcomes: { ...state.outcomes }, decisionMs: [...state.decisionMs],
+        slotTimings: state.slotTimings.map(timing => ({ ...timing })), slotPassMs: [...state.slotPassMs],
+    }
 }
 
 /** The idle net calls this once per slot, with the way the slot ended and, for a slot that reached a verdict, what it said. */
@@ -384,16 +418,48 @@ export function noteNetSlotEnd(reason: NetSlotReason, outcome: NetVerdictOutcome
         if (outcome !== null) {
             verdictsNow().outcomes[outcome]++
         }
+        if (slotInFlight !== null) {
+            slotInFlight.reason = reason
+        }
     } catch {
         // A measurement failure never reaches the save.
     }
 }
 
-/** The wall time of one slot's decision part. */
+/** The idle net calls this at the start of each slot; the parts and the end reason noted until `noteNetSlotMs` belong to it. */
+export function noteNetSlotBegin(): void {
+    try {
+        slotInFlight = null
+        if (switchedOn()) {
+            slotInFlight = {
+                reason: null, decisionMs: 0, lockWaitMs: null, readMs: null, judgeMs: null, checksMs: null,
+                verdictMs: null, primitiveMs: null, movedMs: null,
+            }
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+/** One timed part of the slot in flight; a part noted twice keeps the last. */
+export function noteNetSlotPart(part: NetSlotPart, ms: number): void {
+    try {
+        if (slotInFlight !== null) {
+            slotInFlight[part] = ms
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+/** The wall time of one slot's decision part; it also closes the slot's timing record. */
 export function noteNetSlotMs(ms: number): void {
     try {
+        const timing = slotInFlight
+        slotInFlight = null
         if (switchedOn()) {
             pushLimited(verdictsNow().decisionMs, ms)
+            pushLimited(verdictsNow().slotTimings, { ...(timing ?? { reason: null, lockWaitMs: null, readMs: null, judgeMs: null, checksMs: null, verdictMs: null, primitiveMs: null, movedMs: null }), decisionMs: ms })
         }
     } catch {
         // A measurement failure never reaches the save.
@@ -452,6 +518,7 @@ const handle: SavePassMeterHandle = {
     verdicts: verdictSummary,
     reset: () => {
         verdictStore = null
+        slotInFlight = null
         passes.length = 0
         commits.length = 0
         netFoundStore = null

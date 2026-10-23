@@ -9,7 +9,7 @@ import {
 import { defaultKeyEnv, type KeyEnv, type ShardEntry } from './format'
 import { MEASURE } from '../../process/memory/measureFlag'
 import {
-    finishSavePass, noteSavePassCommit, startSavePass, startSplit, type SaveMarkPeek, type SavePassSplitRecorder,
+    finishSavePass, noteNetSlotPart, noteSavePassCommit, startSavePass, startSplit, type SaveMarkPeek, type SavePassSplitRecorder,
 } from './savePassMeter'
 
 /**
@@ -342,14 +342,23 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
                 return 'unknown'
             }
             try {
+                const primitiveStartedAt = MEASURE ? performance.now() : 0
                 const verdict = characterMatchesAcknowledged(slot, { env, lists: options.lists, previous })
+                if (MEASURE) {
+                    noteNetSlotPart('primitiveMs', performance.now() - primitiveStartedAt)
+                }
                 if (verdict !== 'clean') {
                     return verdict
                 }
+                const movedStartedAt = MEASURE ? performance.now() : 0
                 const chaId = String((slot as { chaId?: unknown }).chaId ?? '')
                 const u = previous.entities.get(`${chaId}#0`)
                 const entry = u === undefined ? undefined : previousEntryOf(previous, u)
-                return entry !== undefined && movedFieldsMatch(slot, entry) ? 'clean' : 'dirty'
+                const movedMatch = entry !== undefined && movedFieldsMatch(slot, entry)
+                if (MEASURE) {
+                    noteNetSlotPart('movedMs', performance.now() - movedStartedAt)
+                }
+                return movedMatch ? 'clean' : 'dirty'
             } catch (error) {
                 console.error('The verdict of a resident character could not be read; a full pass will decide.', error)
                 return 'unknown'
