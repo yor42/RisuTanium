@@ -109,6 +109,99 @@ Baseline full `pnpm test` on unmodified `9a6127354` (Linux, Node 22.22.0, 4 CPUs
 
 1. Question (paraphrased): the four Phase 1 reports in `Agents/Lanes/lane-cloud/` are untracked and being revised, then verified; the full checks are running. What should be committed? Answer: **"At Phase 1 close, no re-ask (Recommended)"**. The option said: commit the four reports plus the final records update together after the doc-verifier passes and the full checks finish; then hand back for Phase 1 approval.
 
+### MC-708 — Lane Cloud, 2026-10-23: Phase 1 accepted; start Phase 2
+
+- **Tag:** decision (chat message, 2026-10-23, in reply to the Phase 1 hand-back)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-707`, `MC-069`; CHORE-09 to CHORE-16.
+
+1. The maintainer's words: **"go ahead with Phase 2"**.
+
+**What was decided.** Phase 2 starts under the brief's terms: trace, reproduce or refute the open suspected bugs of CHORE-09 to CHORE-16; no application-code changes; reproducers may be committed as `it.fails` or skipped tests; product questions go to the maintainer. Upstream comparison uses a read-only shallow clone of `kwaroran/risuai` at `f50b5942` (2026-10-23), outside the repository.
+
+**Notes.** At the start of Phase 2 the Roadmap shows CHORE-11, CHORE-13, CHORE-14, CHORE-15 and CHORE-16 resolved by the UI session (2026-10-01 to 2026-10-03), CHORE-12 left with MOD-3 and MOD-5 (neither a bug to trace) and MOD-4 under CHORE-05, and CHORE-09 with items 4, 9, 10 and 11 left and item 7's no-subject fallback. CHORE-10's 21 items have no recorded progress. Phase 2 therefore covers CHORE-09's remaining items and CHORE-10.
+
+### MC-709 — Lane Cloud, 2026-10-23: Phase 2 commits per ticket, without asking again
+
+- **Tag:** decision (`AskUserQuestion` answer, 2026-10-23, asked under `MC-701` after the stop hook reported the uncommitted `MC-708` entry)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-701`, `MC-707`, `MC-708`.
+
+1. Question (paraphrased): how should Phase 2 commits work? Answer: **"Per ticket, no re-ask (Recommended)"**. The option said: commit the records and each ticket's report plus reproducer tests once its doc-verifier passes, naming paths, and push lane-cloud; hold the MC-708 entry until the first such commit.
+
+### MC-710 — Lane Cloud, 2026-10-23: CHORE-09 items 4, 7, 9, 10 and 11, intended behaviour
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23, after the CHORE-09 investigation and its independent verification)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-208` (CHORE-09 items 1, 3, 5 and 6), `MC-069`, `MC-708`; CHORE-09.
+
+1. Item 4 (the five deprecated V2 lorebook effects never match; `v2SetLorebookActivation` writes a stray `"2": true` and throws out of range). Answer: **"Inert, no junk write"**. The option said: keep returning null/-1 as today (existing cards already cope), but stop the stray "2" write and the throw.
+2. Item 7 (`@@inject` with no subject writes to the selected character's current chat; reached from the display parser, the translator and the HypaV3 modal utils). Answer: **"Plumb the owner"**. The option said: pass the owning character and message through those three callers so `@@inject` always hits the right chat; larger change, touches the parser.
+3. Item 9 (`extensions.risu_case_sensitive` is round-tripped but has no UI and no matching effect). Answer: **"Honour it + UI toggle"**. The option said: plain keys match case-sensitively when the flag is true (regex keys keep their own flags), and add a per-entry toggle in the lorebook editor (new UI, translator work).
+4. Item 10 (`@@inject_lore` merges run after the token-budget cut). Answer: **"Refund when target cut"**. The option said: keep the current order; when the target was cut, give the injector's tokens back so other entries can use them; a cut injector still loses its merge.
+5. Item 11 (in regex mode one non-`/pattern/` key fails the whole entry; keys are split on commas before parsing). Answer: **"Plain-substring fallback"**. The option said: non-slash keys in regex mode match as ordinary case-insensitive substrings; regex keys stay regex. The comma-splitting of regex keys was described in the question but not answered separately.
+
+**What was decided.** These answers fix what each Phase 2 reproducer asserts and what a later fix does. Phase 2 changes no application code. Items 9 and 11 change what upstream cards do; item 9 adds UI and translation work; item 7 touches the parser.
+
+**Notes.** The existing guard "a regex-mode key not written as /pattern/ does not activate" in `src/ts/process/tests/lorebookRegexKeys.svelte.test.ts` contradicts answer 5 and would change with the fix. Answer 2 is upstream-different: upstream has no subject path at all.
+
+### MC-711 — Lane Cloud, 2026-10-23: CHORE-10 HypaV3 items V3-2, V3-3, V3-4 and V3-5, intended behaviour
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23, after the HypaV3 investigation and its independent verification)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-069`, `MC-708`, `MC-214`; CHORE-10.
+
+1. V3-4 (hidden messages make covering summaries look orphaned; V3 deletes them unless Preserve Orphaned Memory is on, V2 always; the deletion is assigned back to the chat). Answer: **"Hidden ≠ orphan (Recommended)"**. The option said: check summaries against the full message list, so only messages that were really deleted orphan a summary; hiding never deletes memory; applies to V2 and V3.
+2. V3-2 (a non-contiguous bulk re-summarize that includes the newest summary moves the resume point back). Answer: **"Resume from max covered (Recommended)"**. The option said: base the resume point on the latest message covered by any summary, not only the last summary.
+3. V3-3 (the "Do Not Summarize User Message" help text matches only the experimental path). Answer: **"Code: std path counts"**. The option said: make the standard path count only summarized messages, as the experimental path does, so the help text becomes true.
+4. V3-5 (biased shuffle). Answer: **"Uniform shuffle (Recommended)"**. The option said: replace it with a Fisher–Yates shuffle.
+
+**What was decided.** These answers fix what each Phase 2 reproducer asserts and what a later fix does. Phase 2 changes no application code. V3-4 is a saved-memory loss risk; per the brief it is written up for lane A, and its save pipeline was not traced (opus-reviewer territory).
+
+### MC-712 — Lane Cloud, 2026-10-23: CHORE-10 SupaMemory, rate limiter, token and UI items, intended behaviour
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23, after the CHORE-10 SupaMemory/limiter/UI/token investigation and its independent verification)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-069`, `MC-708`, `MC-711`; CHORE-10.
+
+1. SUPA-3 (deleting the resume message makes plain SupaMemory fail on every overflowing request). Answer: **"Resume at next survivor (Recommended)"**. The option said: fall back to the nearest surviving message after the deleted one and keep the existing summary; no saved-format change.
+2. V3-1 (the rate limiter throws when concurrency exceeds RPM, which the UI allows). Answer: **"Allow it (Recommended)"**. The option said: drop the check; the RPM window already gates task starts; no UI change.
+3. TOK-1 (V2/V3 subtract the response reservation; the others keep it). Answer: **"Input + response (Recommended)"**. The option said: V2/V3 stop subtracting Max Response, matching the other memory systems and the no-memory path; their prompts get Max Response tokens shorter.
+4. SUPA-1 (HypaMemory v1 does not count the loaded summary). Answer: **"Count it (Recommended)"**. The option said: add the loaded summary's tokens on the v1 path as the plain path does.
+5. SUPA-2 (v1 queries with the oldest four remaining messages and comma-joins the results). Answer: **"Keep query, fix the join"**. The option said: treat the oldest-4 query as intended; join the results with newlines instead of commas.
+6. SUPA-4 (no-progress loop with a tiny chunk size). Answer: **"Exit with an error (Recommended)"**. The option said: when an iteration makes no progress, stop and return the existing "Not Enough Tokens to summarize" style error instead of looping.
+7. SUPA-5 (legacy davinci/curie summarizer values). Answer: **"Migrate to instruct35 (Recommended)"**. The option said: on load, map davinci/curie to the gpt-3.5-turbo-instruct option; the saved value changes; upstream reads it fine.
+8. UI-1 (dropdown precedence differs from the runtime; the V2 toggle label). Answer: **"Dropdown follows runtime (Recommended)"**. The option said: align the dropdown expression to the runtime order, and give V2 the Hypa toggle label; no saved data changes.
+
+**What was decided.** These answers fix what each Phase 2 reproducer asserts and what a later fix does. Phase 2 changes no application code. Answer 7 changes a saved setting value on load; that later fix is a save-data change for the applicable gate.
+
+### MC-713 — Lane Cloud, 2026-10-23: CHORE-10 Hanurai, HypaV2 and shared retrieval items, intended behaviour
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23, after the CHORE-10 Hanurai/V2/shared investigation and its independent verification)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-069`, `MC-708`, `MC-711`, `MC-712`; CHORE-10.
+
+1. V2-1 (a failed batch followed by a success leaves a permanent coverage gap). Answer: **"Retry same batch (Recommended)"**. The option said: roll back to the batch start and retry it; the existing 3-strike limit then aborts with an error after 3 failures on that batch; nothing is skipped.
+2. V2-2 (V2 skips only index 0; example turns and the marker are summarised; the first message can be dropped; memo-less example turns make summaries re-run every turn). Answer: **"Adopt V3's skip rules (Recommended)"**. The option said: skip example turns, the example marker and the new-chat marker as V3 does; only real chat messages are summarized, and the first message is never dropped.
+3. V2-3 (the summary section keeps the oldest summaries). Answer: **"Newest-first (Recommended)"**. The option said: select newest summaries first, render them oldest-to-newest.
+4. HAN-1 and HAN-2. Answer: **"Fix HAN-1; cap at Chunk Size (Recommended)"**. The option said: fix the prefix and compare trimmed text, so in-prompt messages are not duplicated; and bound retrieval by Chunk Size.
+5. V2-4 and V2-5. Answer: **"Fix count; delete stub (Recommended)"**. The option said: deduct skipped entries' tokens; delete the dead `regenerateSummary`.
+6. SHARED-1 and SHARED-2. Answer: **"Fix comparator; cosine (Recommended)"**. The option said: use a correct comparator (b - a), and switch to cosine similarity; for unit vectors the ranking is unchanged.
+
+**What was decided.** These answers fix what each Phase 2 reproducer asserts and what a later fix does. Phase 2 changes no application code. V2-1 is a saved-memory loss risk written up for lane A; its save pipeline after the assignment in `index.svelte.ts` was not traced.
+
 ## CHORE entries (proposed status changes)
 
 ### CHORE-67 — Existing tests that run DOMPurify under happy-dom may pass for the wrong reason
