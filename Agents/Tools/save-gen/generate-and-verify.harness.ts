@@ -14,17 +14,21 @@
  * default include glob) never sees this file, because that glob only
  * matches `*.spec.ts`/`*.test.ts` and this file is named `*.harness.ts`.
  *
- * Mocking pattern for risuSave.ts's side-effecting dependencies is copied
- * verbatim from src/ts/storage/tests/risuSave.test.ts (lines ~7-55) so the
- * encoder/decoder run headlessly here exactly as they do in that suite.
+ * Mocking pattern for risuSave.ts's side-effecting dependencies mirrors the
+ * module mocks in src/ts/storage/tests/risuSave.test.ts (localforage,
+ * globalApi.svelte, appStore via appStoreMock, database.svelte, platform,
+ * plugin-fs) so the encoder/decoder run headlessly here as they do in that suite.
  */
 import { describe, test, expect, vi, beforeAll } from 'vitest'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 
-//#region module mocks — copied from src/ts/storage/tests/risuSave.test.ts
-const store = new Map<string, unknown>()
+//#region module mocks — mirror src/ts/storage/tests/risuSave.test.ts
+// `vi.hoisted` because the hoisted `vi.mock` factories run during module
+// evaluation, before plain top-level `const`s would be initialised.
+const { store } = vi.hoisted(() => ({ store: new Map<string, unknown>() }))
 
 vi.mock('localforage', () => ({
     default: {
@@ -51,6 +55,12 @@ vi.mock(
             },
         }) as unknown as typeof import('src/ts/globalApi.svelte'),
 )
+
+vi.mock(import('src/ts/storage/store/appStore'), async () => {
+    const { appStoreModuleOver } = await import('src/ts/storage/tests/appStoreMock')
+    const { forageStorage } = await import('src/ts/globalApi.svelte')
+    return appStoreModuleOver(() => forageStorage as unknown as ForageLike) as unknown as typeof import('src/ts/storage/store/appStore')
+})
 
 vi.mock(
     import('src/ts/storage/database.svelte'),
