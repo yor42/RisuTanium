@@ -286,11 +286,24 @@ export async function requestChatData(arg:requestDataArgument, model:ModelModeEx
             }
             
     
-            da = await requestChatDataMain({
-                ...arg,
-                staticModel: fallBackModels[fallbackIndex],
-                tools: tools,
-            }, model, abortSignal)
+            try{
+                da = await requestChatDataMain({
+                    ...arg,
+                    staticModel: fallBackModels[fallbackIndex],
+                    tools: tools,
+                }, model, abortSignal)
+            }
+            catch(e){
+                // A throw caused by the caller's own Stop reports the same
+                // silent result as a Stop noticed after the await.
+                if(abortSignal?.aborted){
+                    return {
+                        type: 'fail',
+                        result: 'Aborted'
+                    }
+                }
+                throw e
+            }
 
             if(abortSignal?.aborted){
                 return {
