@@ -37,6 +37,7 @@ import { didBootPassCommit } from "./process/memory/bootArchiveState";
 import { beginInFlight } from "./process/inFlightWork";
 import { getAppStore } from "./storage/store/appStore";
 import { nodeAssetRouteViolation } from "./storage/store/keyRules";
+import type { PieceWriter } from "./storage/store/contract";
 import { BlockSetGateError, BlockTooLargeError } from "./storage/blockStore";
 import { SaveParkError, heldSaveStore, type HeldSaveInfo } from "./storage/saveHold";
 import { isCharacterEntry, isMissingCharacterId, isUsableCharacterId } from "./storage/characterIds";
@@ -712,8 +713,9 @@ export async function saveAssetFromPieces(pieces: AsyncIterable<Uint8Array>, opt
     }
 
     const endInFlight = beginChokePoint('asset')
-    const writer = store.openWriter(`assets/incoming-${uuidv4()}`)
+    let writer: PieceWriter | null = null
     try {
+        writer = store.openWriter(`assets/incoming-${uuidv4()}`)
         const hash = new Sha256()
         for (let step = await next(); step.done !== true; step = await next()) {
             hash.update(step.value)
@@ -727,7 +729,7 @@ export async function saveAssetFromPieces(pieces: AsyncIterable<Uint8Array>, opt
         await writer.finish(key)
         return key
     } catch (error) {
-        await writer.abort()
+        await writer?.abort()
         try {
             await iterator.return?.()
         } catch {
