@@ -1,4 +1,4 @@
-// node Agents/Tools/device/tests/mock-openai.test.mjs [--server <path to mock-openai.mjs>]
+// node Agents/Tools/device/tests/mock-openai.selftest.mjs [--server <path to mock-openai.mjs>]
 // Self-test of the mock endpoint: starts it on ephemeral ports and asserts its replies and its log. Needs no device and no network
 // beyond 127.0.0.1. Plain asserts; exit code 0 only if every assert holds. --server points the test at another copy of the
 // server (used to prove that a broken copy fails these tests).

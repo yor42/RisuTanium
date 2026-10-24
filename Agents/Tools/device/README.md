@@ -26,7 +26,7 @@ scratch (`%TEMP%\risu-b715\devscripts\`, not in the repository). Where a stateme
 | `mock-openai.mjs` | `node` mock of an OpenAI-style chat endpoint on 127.0.0.1 (default port 6250), for synthetic-device checks. |
 | `mock-reverse.ps1` | Adds, verifies or removes the one `adb reverse` rule that lets the phone reach the mock; `-Probe` tests the path from the phone shell. |
 | `tests/Test-Runner.ps1` | Self-tests with a fake adb; needs no device. |
-| `tests/mock-openai.test.mjs` | Plain-node self-test of the mock endpoint; needs no device. |
+| `tests/mock-openai.selftest.mjs` | Plain-node self-test of the mock endpoint; needs no device. |
 
 Every script takes `-OutDir` (created if missing) and writes `<OutDir>\result.json`; most print one line
 `verdict=<v> reason=<text> result=<path>` and exit 0 only for `pass`, else 1.
@@ -273,7 +273,7 @@ pwsh -NoProfile -File Agents\Tools\device\mock-reverse.ps1 -OutDir $env:TEMP\ris
   then `client-error`, never `request`. A `connect` line alone is not enough. The probe runs as the adb shell user, not as the app, so it
   proves only the reverse rule and the PC listener; it does not show that the app's WebView, `fetchWithTauri` or `streamed_fetch`
   can reach the port. If `toybox nc` is missing, record that and read the mock's log for a `request` line at the first app send instead.
-- **Self-tests.** `node Agents\Tools\device\tests\mock-openai.test.mjs` (starts the mock on ephemeral ports; `--server <path>`
+- **Self-tests.** `node Agents\Tools\device\tests\mock-openai.selftest.mjs` (starts the mock on ephemeral ports; `--server <path>`
   tests another copy) and the `mock-reverse:` cases in `tests/Test-Runner.ps1`. The SSE parser in the node test is a copy of the
   data-line rule in `getTranStream` (`src/ts/process/request/openAI/requests.ts`); the real app remains the authority against drift.
   On Windows the SIGINT case is skipped, because Node cannot deliver SIGINT to a child process there.
