@@ -57,7 +57,7 @@
     "core-js": "^3.47.0",
     "crc": "^4.3.2",
     "diff": "^8.0.4",
-    "dompurify": "^3.4.16",
+    "dompurify": "^3.4.17",
     "express": "^4.22.1",
     "express-rate-limit": "^8.7.1",
     "fflate": "^0.8.2",
