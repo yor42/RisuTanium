@@ -109,3 +109,172 @@ None yet.
   - CHORE-390 is unscheduled.
   - Pushing the branch needs the maintainer's approval.
   - Merging is lane A's job.
+
+# Batch 2 (from 2026-10-25): closure audit and test fixes
+
+Lane A's brief `%TEMP%\risu-b715\lanes-next\lane-G-hygiene.md` (lane A records the maintainer's choice as MC-507). Branch fast-forwarded to `main` `8003b3c4c`; batch 1 is folded in. IDs continue at MC-543, CHORE-391, row 3900.
+
+## Batch 2 MC entries
+
+### MC-543 — Lane G, 2026-10-25: lane G takes batch 2 (closure audit of CHORE-29, 31, 32, 55, 61, 70; CHORE-209; CHORE-183)
+
+- Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `7fb81b14-3585-4fb9-b518-f42aa7240633`. The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: lane A relayed the batch and said the relay is not approval, so lane G confirmed the scope in its own session before starting.
+- Alternatives rejected: "Audit + CHORE-209 only"; "Not now".
+- Related: `MC-507` (lane A's record of the same choice), `MC-500` (commit on the lane branch after gates and green checks).
+
+**The maintainer's answer.** To "Lane A relayed Lane G's next batch, which it says you chose as "Closure audit + test fixes": (1) a records-only closure audit of CHORE-29, 31, 32, 55, 61 and 70 against current main, with a close/park/keep proposal for you to decide; (2) CHORE-209, a test-only isolation fix for the Chat.supaResume branch tests; (3) CHORE-183, a missing or non-list botPresets stopping "Convert without these parts", sized first, with any product choice brought to you before code. Should Lane G take this scope?": "Yes, all three". The option read: "Lane G fast-forwards to main, then audit, CHORE-209, and CHORE-183 (sized first)."
+
+**What was decided (maintainer).** Lane G takes all three items of batch 2. CHORE-183 is sized first, and any product choice comes to the maintainer before code.
+
+### MC-544 — Lane G, 2026-10-25: CHORE-183, converting an older-format save with a missing, null or non-list `botPresets` uses the Default preset; a present non-list is named among the skipped parts
+
+- Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `7fb81b14-3585-4fb9-b518-f42aa7240633`; the sizing packet `%TEMP%\risu-lane-g\chore183\result.md` (an `investigator` packet, not independently verified; a scratch vitest run of the real `convertLegacyWithout` there). The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: the sizing packet found that the throw (`botPresets is not a list.`) is reachable only through the older-format (msgpack) lenient decode, after the user confirms "Convert without these parts", and that nothing is written. The block-format decoder, the `.bin` import path and `setDatabase` already default a missing list to a Default preset. Whether a malformed value is dropped silently or named is user-visible.
+- Alternatives rejected: "Default it; always name it"; "Refuse with a message"; "Park it".
+- Related: `MC-322` 6 (the source of CHORE-183), `MC-175`.
+
+**The maintainer's answer.** To "CHORE-183: converting an older-format save whose preset list (botPresets) is missing, null or not a list crashes after you confirm "Convert without these parts" (nothing is written). Newer saves and .bin imports already fill in a Default preset in that case. Real old saves probably always have the list; the trigger so far is a synthetic file. What should the conversion do?": "Default it; name bad ones (Recommended)". The option read: "Missing or null: use the Default preset, as other import paths do, without listing it, since nothing is lost. Present but not a list: also use the Default preset, and list "Presets" among the skipped parts on the confirm screen so you know that value was dropped. The original file is never changed."
+
+**What was decided (maintainer).**
+1. A missing or null `botPresets` in an older-format save being converted becomes the Default preset, and is not listed as skipped.
+2. A present `botPresets` that is not a list also becomes the Default preset, and "Presets" is listed among the skipped parts on the confirm screen.
+3. The original file is never changed.
+
+### MC-545 — Lane G, 2026-10-25: CHORE-183, on the normal (strict) conversion a present non-list `botPresets` counts as a failed read; corrects the premise of `MC-544`
+
+- Tag: decision and a correction (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `7fb81b14-3585-4fb9-b518-f42aa7240633`; the CHORE-183 Gate 1 verdict `%TEMP%\risu-lane-g\chore183\review\gate1.md` (`opus-reviewer`, `[REJECT]`) and its runs `run4.log` and `run6.log` there (lane G read the run results). The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- **Correction to `MC-544`'s reasoning.** `MC-544` said the throw is reachable only through the older-format lenient decode, after the user confirms "Convert without these parts". The Gate 1 reviewer found that wrong. A save with a recognised older-format header decodes the same way in strict and lenient mode, so the throw comes first in the normal strict conversion, at boot and on the recovery screen, and no question is asked first. The reviewer's runs used real older-writer bytes (`encodeRisuSaveLegacy`, uncompressed and compressed) with `botPresets` missing or an object, through `convertLegacyProfile`, and the result was `CodecInputError: botPresets is not a list.`, nothing asked and nothing written. `MC-544` 1 (missing or null becomes the Default preset) still applies on both paths. `MC-544` 2 (name a present non-list) cannot be shown on the strict path, which has no skipped-parts list. The text of `MC-544` is left as recorded.
+- Alternatives rejected: "Default it silently there"; "Add a "Presets" item".
+- Related: `MC-544`, `MC-091`, `MC-058` (new strings would need the translator); CHORE-391 (the same class of crash for other fields).
+
+**The maintainer's answer.** To "CHORE-183 follow-up: the crash also happens on the normal conversion of an older save (at startup, no screen shown), not only on "Convert without these parts". The normal path has no skipped-parts list, so your choice to name a malformed (non-list) preset value can't be shown there. A missing/null list → Default preset works on both paths as decided. For a present but malformed value on the normal path, what should happen?": "Treat as a failed read (Recommended)". The option read: "The normal conversion treats the file as not cleanly readable, so the existing flow follows: a good backup if one exists, otherwise the "Convert without these parts" screen, which names "Presets" before you convert. No new UI text; keeps your rule that a dropped value is always named first."
+
+**What was decided (maintainer).** On the normal (strict) conversion of an older-format save, a present `botPresets` that is not a list counts as a failed strict read. The existing flow then follows: a good backup if one exists, otherwise "Convert without these parts", which names "Presets" before the user converts (`MC-544` 2 holds there). No new UI text.
+
+### MC-546 — Lane G, 2026-10-25: closure audit: CHORE-29, 31, 32, 55 and 61 close; CHORE-55's later stages and CHORE-61's `kv:` export edge become new tickets; CHORE-70 stays open, narrowed
+
+- Tag: decisions (maintainer's `AskUserQuestion` answers by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `7fb81b14-3585-4fb9-b518-f42aa7240633`. The evidence is the audit packet `%TEMP%\risu-lane-g\audit\result.md` (`investigator`, source reading at `8003b3c4c`) and its independent check `%TEMP%\risu-lane-g\audit\review\verdict.md` (`opus-reviewer`, `[REJECT]` of the packet's wording for CHORE-29, 32 and 70; it ran scratch vitest diagnostics on the real store2 save loop, `run1.log` to `run3.log` there). Both re-check lane E's audit `%TEMP%\risu-lane-e\audit\audit.md`. The answers and option labels are the maintainer's; the question texts are lane G's wording, quoted below, and were written from the corrected verdict.
+- Reasoning: the tickets' status lines said "superseded on store2 per lane E audit" or "candidate to close". The brief required a source check of each "moot" claim. The verdict confirmed that the legacy save loop, `RisuSaveEncoder` writes and `reloadSaveEncoder` cannot run on any production page. It confirmed the three fixing commits (`33545c2c6`, `d0decfb61`, `0d4efeb12`) as ancestors of `8003b3c4c`. It corrected three premises:
+  - CHORE-29: since `67273e799`, unused units are cleaned up automatically, once per launch, on Tauri only.
+  - CHORE-32: the returned character counts as unheld and is saved at the next idle-net check, about every 2 s (scratch test S1).
+  - CHORE-70: a leftover remains on read-only legacy pages.
+- Limit: question 1 did not mention CHORE-32's narrow stub-load retry window, where only the 30 s backstop catches the edit (traced, not run); the CHORE-32 status line records it.
+- Alternatives rejected: "Close 29 and 31; keep 32"; "Close and drop the rest" and "Keep open for the rest" (CHORE-55); "Close, no ticket" (CHORE-61); "Close, accept the gap" (CHORE-70).
+- Related: `MC-181` (CHORE-55's release blocker lifted), `MC-223` (the one allowed export exception), `MC-091`, `MC-175`; CHORE-392 and CHORE-393.
+
+**The maintainer's answers.**
+1. To "Closure audit (verified by opus-reviewer, with scratch tests run on the real store2 save loop): CHORE-29 (stale copy on filling a chaId), CHORE-31 (cold storage turns a group into a character) and CHORE-32 (a swap drops a pending edit) no longer happen. 29 and 32 were shown by test; 32's edit is now saved at the next idle check about 2 s later. Close these three as moot, with the corrected reasons?": "Close all three (Recommended)". The option read: "Each gets a dated closing line citing the mechanism or commit (31: 33545c2c6) and the scratch test evidence."
+2. To "CHORE-55 (Tauri main-file writes not atomic): fixed for every store write by d0decfb61 (temp file, rename, sync). The ticket also lists later stages (inlay files, search index, streaming writes) that were never done; MC-181 only lifted the release blocker. What happens to those?": "Close; new ticket for rest (Recommended)". The option read: "Close CHORE-55 as fixed and file the remaining stages as their own open, unscheduled ticket."
+3. To "CHORE-61 (encoder loses data on a reserved or over-long chaId): fixed by 0d4efeb12. One edge remains: a character id like "kv:foo" makes a full .bin export refuse with an error when the save also has a "foo" data namespace. That is a loud refusal, not silent loss, but it blocks every full export while it lasts.": "Close; file kv: ticket (Recommended)". The option read: "Close CHORE-61 and file the kv: export edge as a small new ticket (its fix changes export re-id behaviour, so it would come back to you)."
+4. To "CHORE-70 (a partly decoded save is installed without notice): fixed on every page that saves. Left over: on a read-only legacy page (web/Node, or a not-yet-converted Tauri/Android profile whose storage gate failed) a partly decoded save loads with no notice, and a .bin export from there can be partial yet look complete. Data on disk is untouched.": "Keep open, narrowed (Recommended)". The option read: "Retitle CHORE-70 to the read-only-page notice and partial-export gap; low priority, not scheduled."
+
+**What was decided (maintainer).**
+1. CHORE-29, CHORE-31 and CHORE-32 close as moot, each with a dated line citing the mechanism or commit and the scratch evidence.
+2. CHORE-55 closes as fixed. Its remaining stages (inlay files, search index, streaming writes) become a new open, unscheduled ticket, CHORE-392.
+3. CHORE-61 closes as fixed. The `kv:` export edge becomes a small new ticket, CHORE-393. Its fix changes export re-id behaviour, so it comes back to the maintainer.
+4. CHORE-70 stays open at low priority, unscheduled. It is retitled to the read-only-page notice and partial-export gap.
+
+### MC-547 — Lane G, 2026-10-25: commit CHORE-183 on the lane branch (the per-commit approval for a persistence change)
+
+- Tag: approval (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `7fb81b14-3585-4fb9-b518-f42aa7240633`. The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: lane G's batch 1 brief says save-format, persistence and data-loss changes need per-commit approval even under the standing approval. CHORE-183 changes what a legacy conversion installs.
+- Alternative rejected: "Hold it".
+- Related: `MC-500`, `MC-544`, `MC-545`; commit `8c1abc67a`.
+
+**The maintainer's answer.** To "CHORE-183 is ready to commit on the Lane G branch. Converting an older save with a missing or null preset list now installs with the Default preset. A malformed list makes the normal conversion offer a good backup, or else name "Presets" on the "Convert without these parts" screen. The source file is never written. Gate 1 (after one REJECT) and Gate 2 are APPROVE from opus-reviewer; full test, check and build are green. It changes what a conversion writes, so it needs your per-commit approval. Commit it?": "Commit it". The option read: "Commit the five CHORE-183 files on worktree-Lane-G (not pushed); lane A merges."
+
+**What was decided (maintainer).** CHORE-183 is committed on `worktree-Lane-G`. It is not pushed, and lane A merges it.
+
+## Batch 2 CHORE changes
+
+### CHORE-391 — Converting an older-format save stops with an error for other malformed fields
+
+**Status (2026-10-25): open, not scheduled; found by the CHORE-183 Gate 1 review.** Type: suspected defect (legacy conversion), the same class as CHORE-183. Not decided whether or how to handle these; no maintainer decision.
+
+- Source: `%TEMP%\risu-lane-g\chore183\review\gate1.md`, residual R1 (`opus-reviewer` source reading at `8003b3c4c`; not executed for these fields).
+- The cases: a present non-list `modules`, `loadouts`, `plugins` or `pluginV2`; a `botPresets` list with an element that is not an object; a character or chat that is not an object. The CHORE-183 commit-claim check (`opus-reviewer`, source reading, not executed) adds two more: a character's non-list `chats` and a chat's non-list `message`. Each still throws a `CodecInputError` in the conversion. At boot the user then sees an error alert, and on the recovery screen the unexpected-error screen. That addition was reported in session, not saved.
+
+### Status lines for the Roadmap entries (closure audit, `MC-546`)
+
+- **CHORE-29 — COMPLETE (closed as moot, 2026-10-25, `MC-546` 1).**
+  - In store2 the manifest is rebuilt from the live list on each pass (`scoped.ts`), and ids are minted (`split.ts`), so nothing brings back a stale copy.
+  - Scratch tests S3 and S4 (`%TEMP%\risu-lane-g\audit\review\`, real store2 save loop on a memory backend) reload exactly the live list after filling an empty `chaId` and after replacing a slot five times.
+  - Unused units are cleaned up automatically, once per launch, on Tauri only (`67273e799`, `autoGc.ts`); on web and Node they stay on disk.
+  - An upstream `.bin` that already holds a stale character block imports it, as upstream does; that is not a fork defect.
+- **CHORE-31 — COMPLETE (closed as moot, 2026-10-25, `MC-546` 1).**
+  - `33545c2c6` (2026-10-01, the 10-day archiving stopped) deleted `makeColdDataForCharacter`.
+  - `buildColdStub` (`coldCharacter.ts`) and `stubFromEntry` (`stub.ts`) keep the group type and members.
+  - On conversion and import, `resolveLegacyTree` (`resolve.ts`) brings back the unit's real group.
+- **CHORE-32 — COMPLETE (closed as moot, 2026-10-25, `MC-546` 1).**
+  - In store2, the pass that drops the absent character's mark (`saveLoop.ts`, `marksOf`) also saves without that character. When it returns it counts as unheld and is saved at the next idle-net check, about every 2 s (scratch test S1; control S2).
+  - A narrow window remains in `planOf`'s stub-load retry, where only the 30 s backstop catches the edit (traced, not run; existing test B3 covers the backstop).
+  - That window is a short not-yet-saved delay (CHORE-153 class), not a permanent drop.
+  - No repository test covers the absent-character case; the scratch tests are diagnostics.
+- **CHORE-55 — COMPLETE (closed as fixed, 2026-10-25, `MC-546` 2).**
+  - `d0decfb61` and the store contract write every Tauri store file through a temp file, a rename and a sync (`tauriAtomicWrite.ts`, `tauriFilesStore.ts`, `durable_write.rs`, `chunked_io.rs`).
+  - The remaining stages are CHORE-392.
+- **CHORE-61 — COMPLETE (closed as fixed, 2026-10-25, `MC-546` 3).**
+  - `0d4efeb12` (2026-10-08, CHORE-117) added the reserved-name and 255-byte checks (`characterIds.ts`, `risuSave.ts`) and a prototype-free block map.
+  - `exportCopyOf` re-ids reserved, over-long and missing ids before `writeRisuSaveV0` names character blocks by `chaId`.
+  - The remaining `kv:` edge is CHORE-393.
+- **CHORE-209 — fixed on `worktree-Lane-G` in `1fb45bf9a` (2026-10-25); technically accepted; merge pending.**
+  - Test (c) of `src/lib/ChatScreens/Chat.supaResume.svelte.test.ts` imported its memory modules dynamically inside the timed body. They are now imported at the top of the file. `afterEach` also restores the empty mocked database, but that reset alone does not fix the race: a Gate 2 mutant with only the reset still failed.
+  - Evidence: under a scratch config that delays the cold import with a 300 ms timeout, the `8003b3c4c` file fails (c) by timeout and (d) with "expected 3 to be 5", and the fixed file passes 21 of 21. Both the implementer and the Gate 2 reviewer ran this; the reviewer used the final harness on a scratch copy of the base file (`%TEMP%\risu-lane-g\chore209\gate2\red.log`).
+  - Limit: the forced delay models the cold import, not real full-suite timing.
+  - Gates: no plan gate (test-only, small); Gate 2 EDITORIAL, with the comment reworded and rechecked (`%TEMP%\risu-lane-g\chore209\gate2\verdict.md`). Commit claims checked by `doc-verifier` in session (not saved).
+- **CHORE-183 — fixed on `worktree-Lane-G` in `8c1abc67a` (2026-10-25, committed under `MC-547`); technically accepted; merge pending.**
+  - What changed (`MC-544`, `MC-545`):
+    - A missing or null `botPresets` in a converted older-format save gets the Default preset, shared with `completeRestoredTree` through `makeDefaultPreset` in `treeToBlockSet.ts`.
+    - A present non-list `botPresets` makes the strict read (`readStrictSource`) treat that file as not decoded, so a good backup is offered. Otherwise the lenient read names "Presets" and the conversion then defaults it.
+    - Only a tree with a `characters` list is defaulted. The source file is never written.
+  - Tests: new `src/ts/storage/tests/store2/legacyConvertPresets.test.ts` and two cases in `legacyLenient.test.ts`. 18 reproducers fail on `8003b3c4c` for the defect (Gate 2 rerun, `%TEMP%\risu-lane-g\chore183\gate2\red-base.log`).
+  - Gates (all `opus-reviewer`): Gate 1 round 1 REJECT (wrong premise, corrected in `MC-545`), round 2 APPROVE with amendments B1 to B6; Gate 2 APPROVE; commit message and comments EDITORIAL (reported in session, not saved), corrected and closed.
+  - Full checks: run on the tree holding both changes, before three comment-only edits (see the batch 2 handoff).
+  - Residual: CHORE-391.
+- **CHORE-70 — open, low priority, not scheduled; narrowed (2026-10-25, `MC-546` 4).**
+  - New title: "On a read-only legacy page a partly decoded save loads with no notice, and a `.bin` export from it can be partial yet look complete".
+  - Saving pages decode strictly first (`convert.ts`), so the original premise no longer holds there.
+  - The leftover reaches read-only legacy pages: web (the transitional OPFS page) and Node (a failed capability probe), and a not-yet-converted Tauri or Android profile whose native storage-gate registration failed or timed out (`store2/backend/tauri.ts`).
+  - On those pages a partly decoded save is loaded with no notice (`bootstrap.ts`). The `.bin` export there has no read-only check, because `refuseOnReadOnlyPage` guards only restore, internal-backup load and clean-up.
+  - Data on disk is untouched. The Android MVP's store2 profile cannot reach a read-only legacy page, so `MC-350`'s carried-forward data is not affected.
+  - `.bin` import goes through `storeImport.ts` and `importTree.ts` (CHORE-221), not the same path.
+
+### CHORE-392 — Tauri non-store writes are not yet atomic: inlay files, search index, streaming writes (the remaining stages of CHORE-55)
+
+**Status (2026-10-25): open, not scheduled (`MC-546` 2).** Type: robustness (partial write on a failed write). Split out of CHORE-55 when it closed: the store writes are atomic since `d0decfb61`, and the later stages in CHORE-55's entry were never done. `MC-181` lifted CHORE-55's release blocker; this ticket carries no blocker.
+
+### CHORE-393 — A character id like `kv:foo` makes a full `.bin` export refuse when the save also has a `foo` data namespace
+
+**Status (2026-10-25): open, not scheduled (`MC-546` 3).** Type: suspected defect (export).
+
+- `isUsableCharacterId('kv:foo')` is true (`characterIds.ts`), and `writeRisuSaveV0` then throws on the block-name collision (`risuSaveV0.ts`). Scratch tests K1 to K3 in `%TEMP%\risu-lane-g\audit\review\` show it.
+- `runExport` reports the error, so it is a loud refusal, not silent loss. While it lasts it blocks every full `.bin` export, which goes beyond `MC-223`'s one allowed exception.
+- A fix changes export re-id behaviour, so the choice comes back to the maintainer.
+
+## Batch 2 fold-in list
+
+- MC-543, MC-544, MC-545.
+- MC-546, MC-547.
+- CHORE-391, CHORE-392, CHORE-393 (new).
+- Status lines: CHORE-29, 31, 32, 55, 61 COMPLETE (to the closed archive); CHORE-70 narrowed and retitled; CHORE-209 and CHORE-183 fixed (merge pending).
+- Commits: `1fb45bf9a` (CHORE-209), `8c1abc67a` (CHORE-183), then this records file.
+
+## Batch 2 handoff
+
+- 2026-10-25: scope confirmed (MC-543), branch at `8003b3c4c`. Next: the closure audit and CHORE-183 sizing (read-only, in parallel), then CHORE-209.
+- 2026-10-25: batch 2 done. Branch `worktree-Lane-G` on main `8003b3c4c`: `1fb45bf9a` (CHORE-209), `8c1abc67a` (CHORE-183), then this records file. Not pushed.
+- **Full checks** ran on the tree holding both changes, before three comment-only edits to the CHORE-183 files. Lane G made the `plan = await` spacing fix before the run, but no saved file records that order (the `convert.ts` mtime is later than the logs because of the comment edits). Logs are in `%TEMP%\risu-lane-g\full2\`, with exit codes in `exits.txt`.
+  - `pnpm test`: exit 0. 990 files passed and 1 skipped; 22,157 tests passed and 23 skipped.
+  - `pnpm check`: exit 0, with 0 errors and 0 warnings.
+  - `pnpm build`: exit 0.
+  - The run rewrote `src/ts/process/mcp/risuaccess/tests/__snapshots__/modules.test.ts.snap` with line-ending changes only (`git diff --stat` empty). Lane G restored it with `git checkout --`.
+- **Open:** no product question.
+  - New tickets: CHORE-391 (other malformed fields), CHORE-392 (CHORE-55's remaining stages) and CHORE-393 (the `kv:` export edge, whose fix choice comes back to the maintainer).
+  - CHORE-70 stays open, narrowed.
+  - Pushing the branch needs the maintainer's approval; merging is lane A's job.

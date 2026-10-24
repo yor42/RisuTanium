@@ -1,4 +1,4 @@
-import type { Database } from '../../database.svelte'
+import type { botPreset, Database } from '../../database.svelte'
 import { LEGACY_MAIN_FILE_KEY } from '../../blockKeys'
 import { fingerprintMainFile } from '../../mainFileFingerprint'
 import type { ByteStore } from '../../store/contract'
@@ -33,6 +33,10 @@ import { collectLegacyColdKeys } from './walk'
  * Invariants:
  *  - Nothing is written before every question is answered. The first write is then the marker on the first-life entry
  *    and the fence on the `exit` entry. Every refusal, decline and read failure before it leaves the store as it was.
+ *    The Default preset a profile without a preset list gets is loaded before the install is planned, so a failed load
+ *    of it writes nothing.
+ *  - A decoded older-format tree without a preset list gets the Default preset on the resolved copy only; the decoded
+ *    tree, and so the legacy list built from it, is the file as read.
  *  - The old files are never written, renamed or deleted here. The new tree names them (`fixed.legacyKeep`) so a later
  *    deletion can see which of them it has fully read, and the install carries the list of old fork-format keys that
  *    later deletion may remove (`oldData/plan.ts`), persisted with the tree and before its final write.
@@ -47,12 +51,20 @@ import { collectLegacyColdKeys } from './walk'
 export interface LegacyDecoders {
     strict(bytes: Uint8Array): Promise<Database>
     lenient(bytes: Uint8Array): Promise<LenientLegacyDecode>
+    /** A fresh Default preset, asked for only when a tree without a preset list needs one. Absent: the real one is loaded. */
+    defaultPreset?(): Promise<botPreset>
+}
+
+/** The real Default preset, loaded on first use: the module that builds it needs the database module, which a node test run cannot load. */
+async function loadDefaultPreset(): Promise<botPreset> {
+    return (await import('../../treeToBlockSet')).makeDefaultPreset()
 }
 
 /** The real decoders, loaded on first use: a page that never converts does not load the save decoder. */
 const defaultDecoders: LegacyDecoders = {
     strict: async (bytes) => (await import('../../risuSave')).decodeRisuSave(bytes, { strict: true }) as Promise<Database>,
     lenient: async (bytes) => (await import('./lenient')).decodeLegacyLenient(bytes),
+    defaultPreset: loadDefaultPreset,
 }
 
 /**
@@ -88,7 +100,7 @@ export interface ConvertHooks {
 }
 
 export interface ConvertStrictHooks extends ConvertHooks {
-    /** The main file did not decode strictly and this numbered backup (its time) did: converting from it is the person's choice, asked before anything else. `false` declines: nothing is written. */
+    /** The main file did not decode strictly (a decode failure, or a `botPresets` that is present and not a list) and this numbered backup (its time) did: converting from it is the person's choice, asked before anything else. `false` declines: nothing is written. */
     confirmFromBackup(backup: number): Promise<boolean>
 }
 
@@ -185,15 +197,35 @@ async function strictTreeOf(decoders: LegacyDecoders, bytes: Uint8Array | null):
     }
 }
 
+/** An object with a `characters` list: the tree the conversion treats as a database (the lenient decode's own criterion). */
+function isLegacyDatabase(tree: unknown): boolean {
+    return typeof tree === 'object' && tree !== null && Array.isArray((tree as { characters?: unknown }).characters)
+}
+
+/** The tree, or null when it is a database whose `botPresets` is present and not a list. */
+function acceptedStrictTree(tree: Database | null): Database | null {
+    if (tree === null || !isLegacyDatabase(tree)) {
+        return tree
+    }
+    const presets: unknown = tree.botPresets
+    return presets === undefined || presets === null || Array.isArray(presets) ? tree : null
+}
+
 /**
  * The strict reading of the profile: the main file, then each numbered backup newest first, one decoded at a time. A
  * decode failure moves on to the next copy; a failure of the storage read itself rejects, because nothing is known about
  * the copy that could not be read. `{ tried }` when none decodes. No raw bytes are kept past the choice of a source: only
  * the fingerprint of the file converted from.
+ *
+ * A copy that decodes to a database whose `botPresets` is present and not a list counts as not decoded, the main file and
+ * each backup alike, so a good backup or "convert without these" follows instead of a silent replacement. A missing or
+ * null list is not that case: the conversion gives it the Default preset. A tree that is not a database is left to the
+ * conversion's own refusal. The check is here, not in `strictTreeOf`, because the legacy list also reads backups through
+ * that and must not list one `unreadable` for this.
  */
 async function readStrictSource(request: ConvertRequest, decoders: LegacyDecoders): Promise<{ source: DecodedSource } | { tried: number[] }> {
     let mainBytes = await readBytes(request.store, LEGACY_MAIN_FILE_KEY)
-    const main = await strictTreeOf(decoders, mainBytes)
+    const main = acceptedStrictTree(await strictTreeOf(decoders, mainBytes))
     if (main !== null && mainBytes !== null) {
         return { source: { tree: main, fingerprint: fingerprintMainFile(mainBytes), origin: { kind: 'main' } } }
     }
@@ -202,7 +234,7 @@ async function readStrictSource(request: ConvertRequest, decoders: LegacyDecoder
     for (const time of await request.listBackupTimes()) {
         tried.push(time)
         let bytes = await readBytes(request.store, backupKey(time))
-        const tree = await strictTreeOf(decoders, bytes)
+        const tree = acceptedStrictTree(await strictTreeOf(decoders, bytes))
         if (tree !== null && bytes !== null) {
             return { source: { tree, fingerprint: fingerprintMainFile(bytes), origin: { kind: 'backup', backup: time } } }
         }
@@ -403,6 +435,8 @@ async function convertDecoded(request: ConvertRequest, hooks: ConvertHooks, deco
     if (source.tree === null) {
         return blocked('convert-read-failed', 'The decoded tree is gone.')
     }
+    // Decided on the tree as read: the resolve normalises `characters` and the list build drops the tree.
+    const needsDefaultPreset = isLegacyDatabase(source.tree) && !Array.isArray(source.tree.botPresets)
     let resolved
     try {
         resolved = await resolveLegacyTree(source.tree, reader, request.resolve)
@@ -418,6 +452,10 @@ async function convertDecoded(request: ConvertRequest, hooks: ConvertHooks, deco
     const listed = await buildLegacyList(request, decoders, reader, source)
     if ('reason' in listed) {
         return blocked(listed.reason, listed.detail)
+    }
+    if (needsDefaultPreset) {
+        // On the resolved copy only, after the list was built from the file as read, and before any marker is written.
+        resolved.database.botPresets = [await (decoders.defaultPreset ?? loadDefaultPreset)()]
     }
     const plan = await planWholeTreeInstall(resolved.database, {
         lists: request.lists,

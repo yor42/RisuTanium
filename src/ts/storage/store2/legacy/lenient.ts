@@ -12,11 +12,14 @@ import {
  * cannot use and names it. It never consults the block cache, so on this path a
  * block the file itself lacks is left out and named even where the cache holds
  * an older copy; cache-filled blocks no longer count as present. The older
- * msgpack formats have no blocks to name: today's decoder may guess an older
- * format and return whatever it decodes, so nothing can be named there, and the
- * result is accepted only when it is an object with a `characters` list. A
- * block-format save is not held to that: a profile with no characters writes no
- * list, and its root block was already required by the decoder.
+ * msgpack formats have no blocks: today's decoder may guess an older format and
+ * return whatever it decodes, so the result is accepted only when it is an
+ * object with a `characters` list, and the only thing named there is a
+ * `botPresets` that is present and not a list (kind `presets`), because the
+ * conversion replaces it with the Default preset. A missing or null `botPresets`
+ * names nothing: no data is dropped. A block-format save is not held to that: a
+ * profile with no characters writes no list, and its root block was already
+ * required by the decoder.
  */
 
 /** An older-format save decoded to something that is not a database: no object with a `characters` list. */
@@ -56,5 +59,10 @@ export async function decodeLegacyLenient(bytes: Uint8Array): Promise<LenientLeg
             skipped: Array.from(omitted, ([name, block]) => ({ name, kind: block.kind, reason: block.reason })),
         }
     }
-    return { tree: checkedTree(await decodeRisuSave(bytes)), skipped: [] }
+    const tree = checkedTree(await decodeRisuSave(bytes))
+    const presets = (tree as { botPresets?: unknown }).botPresets
+    const skipped: SkippedLegacyEntry[] = presets === undefined || presets === null || Array.isArray(presets)
+        ? []
+        : [{ name: 'botPresets', kind: 'presets', reason: 'The presets are not a list.' }]
+    return { tree, skipped }
 }
