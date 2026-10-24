@@ -283,3 +283,112 @@ Scratch paths are under the session scratchpad, outside the repository.
 - No UI strings were added or changed, so the translator has nothing to do.
 
 **Handoff (2026-10-24, lane C cloud).** Branch `lane-c-cloud`, from `main` at `f0e397aae`. Commits: `e6d8875` CHORE-500, `c505275` CHORE-330, `a9f15b1` CHORE-501, then the records commit of this section. Gates: CHORE-500 Gate 1 carve-out, Gate 2 `[APPROVE WITH AMENDMENTS]` with the amendment applied. CHORE-330 Gate 1 had two rounds of `[APPROVE WITH AMENDMENTS]` and the mechanism changed; Gate 2 `[APPROVE]`. CHORE-501 v1 Gate 2 `[APPROVE WITH AMENDMENTS]`, then `MC-437`; v2 Gate 1 `[APPROVE WITH AMENDMENTS]` and Gate 2 `[APPROVE]`. Tests: row 3337. No stored data or save format changed (`MC-175`, `MC-350`). No `REJECT` rounds. Open questions for the maintainer: none outstanding. Residuals are listed in each CHORE entry. Next free IDs: MC-438, CHORE-331, row 3341.
+
+## 2026-10-24 — lane C (cloud), batch Q: CHORE-240, CHORE-185, CHORE-353
+
+Session: the same lane C (cloud) session and Linux container. Branch `lane-c-cloud-q` from `main` at `15777155a`. Lane A's cross-session message reported that the earlier work was merged (`a83c7901b`; records folded in at `ec069c5ad`) and proposed batch Q under a standing approval that lane A records as `MC-500`. `MC-500` was not on `main` when this section was started, so the scope was confirmed with the maintainer in this session (`MC-438`). Next free IDs at start: MC-438, CHORE-331, row 3341.
+
+**MC entries**
+
+### MC-438 — Lane C, 2026-10-24: batch Q confirmed under lane A's standing approval; CHORE-353 sized only
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane C (cloud) session transcript; lane A's cross-session message, relayed as a peer message and not as maintainer approval.
+- **Related:** `MC-500` (lane A's record, not yet on `main`), `MC-457` 1; CHORE-240, CHORE-185, CHORE-353.
+
+1. **Batch Q: "Confirm all (Recommended)".** The option said: start batch Q as lane A proposes; commit on `lane-c-cloud-q` under the standing approval when its conditions hold; push `lane-c-cloud-q` when the batch is ready; report to lane A; Windows and device checks are flagged for lane A. The question gave the conditions as lane A stated them: every ticket passed Gate 2 with APPROVE or EDITORIAL, full checks pass, no product question is open, and save format, persistence and data-loss work still need per-commit approval. Not chosen: "Confirm, ask per commit", "Not now".
+2. **CHORE-353: "Size only, then ask (Recommended)".** The option said: size the options (the before/after tree hook, or one worktree per coder) and bring them back to the maintainer; no tooling change without the maintainer's choice. The guard runs on lane A's Windows setup, so lane A tests it. Not chosen: "Keep it parked", "Implement the hook".
+
+**Notes that are not the maintainer's words:**
+- The question and option texts were written by the orchestrator.
+- Item 1 adopts lane A's standing approval as stated in its message; the text of `MC-500` itself was not available to check.
+
+### MC-439 — Lane C, 2026-10-24: CHORE-353 stays parked with the interim rules; the sizing facts go to the ticket
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane C (cloud) session transcript. Input: the CHORE-353 sizing packet (row 3341) and the orchestrator's check of its decision-critical claims (row 3342).
+- **Related:** `MC-457` 1, `MC-438` 2; CHORE-353.
+
+1. **"Keep rules, record facts (Recommended)".** The option said: no tooling change; keep the interim rules (no repository edits by any tool, mutants on scratch copies, hash-check restored files); add the sizing and the "guard inactive on cloud lanes" fact to the ticket for lane A; it stays parked per `MC-457` 1. Not chosen:
+   - "Flag-only shell hook": lane A builds and tests a post-command check that flags changed files outside the grant; detection only, documented as missing change-and-restore.
+   - "Read-only enforcement": lane A designs per-grant read-only file attributes; real prevention, with its own plan and Windows testing.
+   - "Worktree per coder": containment, not prevention; it replaces the single-writer rule.
+
+**Notes that are not the maintainer's words:**
+- The question and option texts were written by the orchestrator, from the investigator's packet.
+
+**CHORE entries**
+
+### CHORE-353 (changed) — The write-scope guard refuses only the Edit and Write tools, so a shell write can change a repository file outside its grant (MC-457 1)
+
+**Status (2026-10-24, lane C cloud batch Q): sized; stays parked (`MC-439`, `MC-457` 1); no tooling change.** Rows 3341 and 3342.
+
+- **Corrected premise (EXECUTED and TRACED; rechecked by the orchestrator, row 3342):** in the Linux cloud container the guard does not run at all. There is no `pwsh` or `powershell`. The hooks in `.claude/settings.json` are PowerShell (`guard-write.ps1` requires 7.0), and `Get-GuardPath` in `write-guard-common.ps1` accepts only Windows drive paths. So cloud lanes work on the written rules alone. On Windows the one write hook is `PreToolUse` with matcher `Write|Edit`; every agent profile, read-only roles included, also holds a shell tool. `docs/workflow/ownership.md` already states that the hook is not a filesystem sandbox.
+- **Options sized (scratch `q\c353\result.md`):**
+  - (a) A before/after tree comparison on shell calls can only flag, not undo. Cost: about 15 ms for `git ls-files -m -o` plus hashing the changed files on this tree; Windows cost UNVERIFIED. It cannot catch a file changed and restored inside one command, which is the shape of the incident that raised this ticket (rows 3558 and 3559).
+  - (b) One worktree per coder contains a stray write rather than preventing it, and replaces the single-writer rule.
+  - (c) Per-grant read-only file attributes are the only real prevention, and the largest design.
+  - (d) The interim rules, already in force.
+- **For lane A:** the guard configuration assumes `C:\Projects\RisuAI` and PowerShell 7, so a cloud coder's grant is doctrine only. Revisit if a similar shell write recurs (`MC-457` 1).
+
+### CHORE-240 (changed) — A full `pnpm test` rewrites `modules.test.ts.snap` with LF line endings
+
+**Status (2026-10-24, lane C cloud batch Q): fixed on `lane-c-cloud-q` in `413f600`; Gate 1 `[APPROVE WITH AMENDMENTS]` (row 3344); Gate 2 `[APPROVE]` (row 3347).** Test tooling only. The Windows check is lane A's.
+
+- **Cause (TRACED in `@vitest/snapshot` 4.1.11; EXECUTED in scratch clones; rows 3343 and 3344):**
+  - Outside CI the default `updateSnapshot` is `"new"`.
+  - `getSnapshotData` then marks every non-empty snapshot file dirty.
+  - `saveSnapshotFile` skips the write only when the file text is byte-identical to its LF serialisation; `readSnapshotFile` does no line-ending normalisation.
+  - So a CRLF working copy, as on a `core.autocrlf=true` checkout, is rewritten as LF on every local run. No obsolete or reordered key is involved.
+  - Reproduced in a `core.autocrlf=true` clone: `i/lf w/crlf` before, ` M` after one run.
+- **What changed:** `.gitattributes` gains `*.snap text eol=lf` with a one-line comment, so every checkout writes the snapshot as LF, matching the blob and what Vitest writes. Exactly one `.snap` file is tracked, `src/ts/process/mcp/risuaccess/tests/__snapshots__/modules.test.ts.snap`, with an LF blob. The two `i/crlf` blobs are archive files marked `-text` and are unaffected. Committing the rule causes no renormalisation diff.
+- **Linux evidence (Gate 1, row 3344):** a fresh `core.autocrlf=true` clone with the rule checks the snapshot out `w/lf attr/text eol=lf`, and the other files are unchanged. Two consecutive test runs leave `git status --short` empty.
+- **For lane A on Windows:**
+  - An existing CRLF checkout keeps the file CRLF after `git checkout -- <snap>`, because Git sees it as clean. Either delete the file and then run `git checkout -- <snap>`, or let the first test run rewrite it to LF, after which the tree is clean.
+  - Acceptance: two consecutive full `pnpm test` runs, then `git status --porcelain`, `git diff --stat` and `git ls-files --eol <snap>`. A lone ` M` with an empty `git diff` is a stale index stat; `git add <snap>` clears it.
+- **Related:** `MC-438`.
+
+### CHORE-185 (changed) — The `Chat.draftCaptureScenarios` "success-then-fail" test is load-sensitive
+
+**Status (2026-10-24, lane C cloud batch Q): fixed on `lane-c-cloud-q` in `ab52cb8`; Gate 1 `[APPROVE]` for this row (row 3344); Gate 2 `[APPROVE]` (row 3347).** Test-only.
+
+- **Cause (TRACED and EXECUTED; rows 3343 and 3344):**
+  - `updateTranslationCache` in `src/lib/ChatScreens/Chat.svelte` chains writes through `translationWriteChain`. So the second save's mocked timer starts only after the first save settles.
+  - The two generated "overlapping saves" tests, "fail-then-success" and "success-then-fail" alike, waited a fixed `sleepMs(50)`. An event-loop stall over about 35 ms let that sleep expire while the editor was still open.
+  - Not a product race: in the stalled run the writes stayed in order (`T1`, `T2`) and `alertError` fired once.
+- **What changed:** in `src/lib/ChatScreens/Chat.draftCaptureScenarios.svelte.test.ts` the fixed sleep is replaced with `vi.waitFor` on the editor closing, the idiom the file already uses elsewhere. One source site generates both tests. The wait stays inside `expectNoUnhandledRejections`, which still sees a late rejection (Gate 1 mutant M4).
+- **Evidence:**
+  - Diagnostic stall reproducer (60 ms busy-wait after the second click, scratch copy only): old test 2 failed, 11 passed; fixed test 13 passed; fixed without the stall 13 passed (row 3345).
+  - Gate 1 scratch mutants of `Chat.svelte` against the fixed test: no record delete → 2 fail; editor never closes → 2 fail; `.catch(alertError)` removed → 2 fail; write chain bypassed → "success-then-fail" fails, while "fail-then-success" passes, a property of the existing test.
+  - Repeated runs: 10 under CPU load and 3 alone, all 13 of 13 (row 3346).
+- **Residual:** `Chat.translationSaveInFlight.svelte.test.ts` was audited (by grep and reading, Gate 1). Its fixed sleeps follow deferred promises that the test releases by hand, not chained mock timers, so it is out of scope.
+- **Related:** `MC-438`.
+
+**Ledger rows**
+
+Scratch paths are under the session scratchpad, outside the repository.
+
+| Row | Date | Item | Agent / role | Artifact | Result |
+|---|---|---|---|---|---|
+| 3341 | 2026-10-24 | CHORE-353 sizing | investigator | `q\c353\result.md` (hand-back saved by the orchestrator) | Packet: the guard is PowerShell- and Windows-path-only, so it is inactive in the cloud container; the hook matches `Write\|Edit` only; four options sized (flag-only tree diff, worktree per coder, read-only attributes, interim rules). Input to `MC-439`. |
+| 3342 | 2026-10-24 | CHORE-353 premise check | orchestrator | inline commands | `command -v pwsh powershell`: none. `.claude/settings.json` hooks: `PreToolUse` `Write\|Edit` and `SubagentStart`, both PowerShell. `write-guard-common.ps1` requires `^[a-zA-Z]:[\\/]`. `ownership.md` states that the hook is not a sandbox. |
+| 3343 | 2026-10-24 | CHORE-240 and CHORE-185 sizing | investigator ×2 | `q\c240\` (hand-back, claims in `q\plan.md`), `q\c185\result.md`, `stall.log`, `fixed.log` | CHORE-240: the cause is CRLF (Vitest write rule; repro in scratch: CRLF rewritten, LF and `CI=1` unchanged); one tracked `.snap`. The orchestrator read the `@vitest/snapshot` lines. CHORE-185: a chained mock timer plus a fixed sleep; the forced stall fails both variants; the `vi.waitFor` fix passes; not a product race. |
+| 3344 | 2026-10-24 | Batch Q Gate 1 | adversarial-reviewer | `q\g1\verdict.md` (hand-back text saved by the orchestrator) | `[APPROVE WITH AMENDMENTS]`: CHORE-240 with amendments, CHORE-185 `[APPROVE]`, CHORE-353 `[APPROVE]` (records only). Independently re-executed both sizings: `autocrlf=true` clones before and after the rule, no renormalisation diff, two clean runs; the stall reproducer; four `Chat.svelte` mutants. Amendments, all taken into the entries: F1, `git checkout --` does not refresh a clean CRLF file; F2, also check `git diff --stat` and `git ls-files --eol`; F3, keep `.gitattributes` line endings; F4, the sibling file is audited, not unaudited. |
+| 3345 | 2026-10-24 | Batch Q implementation | orchestrator (single writer) | `.gitattributes`; `Chat.draftCaptureScenarios.svelte.test.ts`; `q\impl\` | Rule appended (LF kept; `git check-attr`: `text: set`, `eol: lf`). Test wait replaced; `sleepMs` is still used elsewhere in the file. In a scratch archive copy: old test plus stall 2 failed, 11 passed; fixed plus stall 13 passed; fixed 13 passed. |
+| 3346 | 2026-10-24 | CHORE-185 repeated runs | orchestrator | `q\impl\load.txt` | Fixed test file, `npx vitest run src/lib/ChatScreens/Chat.draftCaptureScenarios.svelte.test.ts`: 10 runs under four busy-loop CPU burners (4 cores), 13 of 13 each; 3 runs alone, 13 of 13 each. Burners stopped afterwards. |
+| 3347 | 2026-10-24 | Batch Q Gate 2 | adversarial-reviewer | `q\g2\verdict.md` | `[APPROVE]`: CHORE-240 and CHORE-185 each `[APPROVE]`; their record entries accurate. CHORE-240 in `git clone --config core.autocrlf=true` clones: without the rule, ` M` after runs 1 and 2; with the rule, `w/lf` and a clean status after both runs; `git ls-files --eol` differs only on the snapshot; no renormalisation. CHORE-185: a 70 ms stall inside the first write's timer fails the old test (2 of 13) and passes the fixed one. In the reviewer's runs a stall after the second click did not reproduce on the old test, while the orchestrator's did (row 3345); both are scratch diagnostics. Mutants against the fixed test: record delete, `.catch` removed, chain bypass (1), orphan rejection; all caught. |
+| 3348 | 2026-10-24 | Batch Q final checks | orchestrator | `q\final\` (`check.txt`, `test.txt`, `tree.txt`, `tree-after.txt`) | On the batch Q tree (`main` `15777155a` plus the two changes, uncommitted at run time): `pnpm check` 0 errors, 0 warnings. Full `pnpm test`: 983 files, 22048 tests; 10 failed, 22008 passed, 30 skipped; 1523.9 s. Failures: 9 in `store2/replay/actors.test.ts`, the known Linux timeouts; 1 is `saveLoopNetBackstop` B7, the same failure as row 3338 (lane A's message says it passes on Windows; relayed, not checked here). `git status` was unchanged by the run: the snapshot was not rewritten. |
+| 3349 | 2026-10-24 | Batch Q commits | orchestrator | `413f600` (CHORE-240), `ab52cb8` (CHORE-185) on `lane-c-cloud-q` | One commit per ticket, files named, under the standing batch approval (`MC-438` 1): both have Gate 2 `[APPROVE]`; full checks pass apart from the known Linux failures; no product question open; no save-format or persistence work. |
+| 3350 | 2026-10-24 | Batch Q records verification | doc-verifier | `q\records-verify.md` | PASS, no required corrections: about 45 claims, 33 VERIFIED and 9 not checkable from files (the option texts, the unsaved CHORE-240 sizing hand-back, the Gate 1 stub, scratch figures not rerun, lane A's B7 report). Optional notes applied by the orchestrator: lane A's Windows B7 report marked as relayed; the Gate 1 hand-back text saved into `q\g1\verdict.md`. |
+
+**Not done (for lane A at merge):**
+- Full checks and the build on the merged snapshot.
+- The Windows check for CHORE-240, as described in its entry. Lane A should also take note that the write guard does not run on cloud lanes (CHORE-353).
+- Fold these records into the shared files: Roadmap statuses for CHORE-240, CHORE-185 and CHORE-353; `MC-438` and `MC-439`; rows 3341 to 3350.
+- No README change: none of the three changes is user-visible (`MC-332` 2). No UI strings changed.
+
+**Handoff (2026-10-24, lane C cloud batch Q).** Branch `lane-c-cloud-q`, from `main` at `15777155a`. Commits: `413f600` CHORE-240, `ab52cb8` CHORE-185, then the records commit of this section, which also carries CHORE-353 (records only, `MC-439`). Gates: one batch Gate 1, `[APPROVE WITH AMENDMENTS]` (row 3344), with amendments applied; one batch Gate 2, `[APPROVE]` per ticket (row 3347). Tests: row 3348. No stored data changed. Open questions for the maintainer: none. Next free IDs: MC-440, CHORE-331, row 3351.
