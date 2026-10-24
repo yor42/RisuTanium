@@ -13,6 +13,7 @@
     import { loadoutModalStore } from "src/ts/stores.svelte";
     import { applyLoadout, saveCurrentLoadout, type Loadout } from "src/ts/loadout";
     import { getCurrentCharacter } from "src/ts/storage/database.svelte";
+    import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
 
     type LoadoutApplyOption = 'modules' | 'globalVariables' | 'preset' | 'persona';
 
@@ -35,6 +36,13 @@
     function close() {
         loadoutModalStore.open = false;
     }
+
+    // Back does what the X does. The effect reads no reactive state.
+    $effect(() => registerBackHandler(backCloseHandler({
+        isOpen: () => loadoutModalStore.open,
+        snapshot: () => loadoutModalStore.open,
+        close,
+    })));
 
     const RECENT_LIMIT = 3;
 

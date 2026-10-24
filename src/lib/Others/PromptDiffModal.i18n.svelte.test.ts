@@ -26,6 +26,13 @@ vi.mock(import('../../ts/storage/database.svelte'), () => ({
     getDatabase: vi.fn(() => dbBox.db),
 }) as unknown as typeof import('../../ts/storage/database.svelte'))
 
+// The modal registers an Android Back handler; the real registry pulls in the real stores module,
+// which this test's partial database mock cannot serve.
+vi.mock('src/ts/backHandlers', () => ({
+    registerBackHandler: () => () => {},
+    backCloseHandler: () => () => false,
+}))
+
 import { changeLanguage } from 'src/lang'
 import { languageEnglish } from 'src/lang/en'
 import { languageKorean } from 'src/lang/ko'

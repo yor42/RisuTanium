@@ -2,6 +2,7 @@
     import { XIcon } from "@lucide/svelte"
     import { language } from "src/lang"
     import { fillLang } from "src/lang/fill"
+    import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers"
     import { getDatabase, type PromptDiffPrefs } from "../../ts/storage/database.svelte"
     import type { PromptItem, PromptItemPlain, PromptItemChatML, PromptItemTyped, PromptItemAuthorNote, PromptItemChat } from "src/ts/process/prompt.ts";
 
@@ -178,10 +179,23 @@
         }
     }
 
+    // Set once the X path has run. The host unmounts this modal after onClose, so the unmount is
+    // not observable at press time; the flag is what tells Back that the close was done.
+    let closeRequested = false
+
     function handleClose() {
         savePrefsToDB()
+        closeRequested = true
         onClose()
     }
+
+    // Registered after the preset list's own handler, so Back closes the diff first, with the same
+    // preference save as the X. The effect reads no reactive state.
+    $effect(() => registerBackHandler(backCloseHandler({
+        isOpen: () => !closeRequested,
+        snapshot: () => closeRequested,
+        close: handleClose,
+    })))
 
 
 // Derived values

@@ -10,6 +10,8 @@
     import { sleep } from "src/ts/util";
     import { onDestroy, onMount } from "svelte";
     import { isUpstreamAccepted } from "src/ts/upstreamAgreement";
+    import { get } from "svelte/store";
+    import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
 
     // Read once, before the first render: a flag that started `true` and
     // was corrected in `onMount` would still mount the `<iframe>` (and start
@@ -19,6 +21,13 @@
     const close =  () => {
         $ShowRealmFrameStore = ''
     }
+    // Back does what the close button does. The effect reads no reactive state.
+    $effect(() => registerBackHandler(backCloseHandler({
+        isOpen: () => Boolean(get(ShowRealmFrameStore)),
+        snapshot: () => get(ShowRealmFrameStore),
+        close,
+    })))
+
     let iframe: HTMLIFrameElement = $state(null)
     let loadingStage = $state(0)
     let pongGot = false

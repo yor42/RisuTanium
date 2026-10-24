@@ -10,6 +10,7 @@
   import { DBState, selectedCharID } from "src/ts/stores.svelte";
   import type { Category, CategoryManagerState, SearchState, FilterState } from "./types";
   import { createCategoryId } from "./utils";
+  import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
 
   interface Props {
     categoryManagerState: CategoryManagerState;
@@ -48,6 +49,19 @@
     categoryManagerState.isOpen = false;
     categoryManagerState.editingCategory = null;
   }
+
+  // This component stays mounted while closed, so Back registers only while the manager is open and
+  // is then newer than the modal's own handler. The effect reads only the open flag.
+  $effect(() => {
+    if (!categoryManagerState.isOpen) {
+      return;
+    }
+    return registerBackHandler(backCloseHandler({
+      isOpen: () => categoryManagerState.isOpen,
+      snapshot: () => categoryManagerState.isOpen,
+      close: closeCategoryManager,
+    }));
+  });
 
   function startEditCategory(category: Category) {
     categoryManagerState.editingCategory = { ...category };

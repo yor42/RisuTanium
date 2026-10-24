@@ -8,6 +8,7 @@
   import { language } from "src/lang";
   import { DBState, selectedCharID } from "src/ts/stores.svelte";
   import type { TagManagerState } from "./types";
+  import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
 
   interface Props {
     tagManagerState: TagManagerState;
@@ -29,6 +30,22 @@
     tagManagerState.editingTag = "";
     tagManagerState.editingTagIndex = -1;
   }
+
+  // Shown only while open with a summary selected. This component stays mounted while closed, so
+  // Back registers only then and is newer than the modal's own handler. The effect reads only the
+  // shown flag.
+  const tagManagerShown = $derived(tagManagerState.isOpen && tagManagerState.currentSummaryIndex >= 0);
+
+  $effect(() => {
+    if (!tagManagerShown) {
+      return;
+    }
+    return registerBackHandler(backCloseHandler({
+      isOpen: () => tagManagerState.isOpen && tagManagerState.currentSummaryIndex >= 0,
+      snapshot: () => `${tagManagerState.isOpen}|${tagManagerState.currentSummaryIndex}`,
+      close: closeTagManager,
+    }));
+  });
 
   function addTag(summaryIndex: number, tagName: string) {
     if (!tagName.trim()) return;

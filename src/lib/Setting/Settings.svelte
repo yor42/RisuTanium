@@ -18,6 +18,22 @@
     import HotkeySettings from "./Pages/HotkeySettings.svelte";
     import PluginDefinedIcon from "../Others/PluginDefinedIcon.svelte";
     import SettingsLegalLinks from "./SettingsLegalLinks.svelte";
+    import { get } from "svelte/store";
+    import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
+    import { settingsBackClose } from "./settingsBack";
+
+    // Only the overlay answers Back: the embedded page in the mobile shell is mounted while
+    // settingsOpen is false and is closed by the shell handler. The effect reads only the gate.
+    $effect(() => {
+        if(!$settingsOpen){
+            return
+        }
+        return registerBackHandler(backCloseHandler({
+            isOpen: () => get(settingsOpen),
+            snapshot: () => `${get(settingsOpen)}|${get(SettingsMenuIndex)}`,
+            close: settingsBackClose,
+        }))
+    })
 
     if(window.innerWidth >= 900 && $SettingsMenuIndex === -1 && !$MobileGUI){
         $SettingsMenuIndex = 1
@@ -170,9 +186,7 @@
                 {/if}
                 <SettingsLegalLinks />
                 {#if window.innerWidth < 700 && !$MobileGUI}
-                    <button class="absolute top-2 right-2 hover:text-green-500 text-textcolor" onclick={() => {
-                        settingsOpen.set(false)
-                    }}> <CircleXIcon size={DBState.db.settingsCloseButtonSize} /> </button>
+                    <button class="absolute top-2 right-2 hover:text-green-500 text-textcolor" onclick={settingsBackClose}> <CircleXIcon size={DBState.db.settingsCloseButtonSize} /> </button>
                 {/if}
             </div>
         {/if}
@@ -211,14 +225,7 @@
             </div>
             {/key}
             {#if !$MobileGUI}
-                <button class="absolute top-2 right-2 hover:text-green-500 text-textcolor" onclick={() => {
-                    if(window.innerWidth >= 700){
-                        settingsOpen.set(false)
-                    }
-                    else{
-                        $SettingsMenuIndex = -1
-                    }
-                }}>
+                <button class="absolute top-2 right-2 hover:text-green-500 text-textcolor" onclick={settingsBackClose}>
                     <CircleXIcon size={DBState.db.settingsCloseButtonSize} />
                 </button>
             {/if}

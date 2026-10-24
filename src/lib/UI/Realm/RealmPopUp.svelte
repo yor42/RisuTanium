@@ -11,6 +11,7 @@
     import MultiLangDisplay from "../GUI/MultiLangDisplay.svelte";
     import { tooltip } from "src/ts/gui/tooltip";
     import { addBlockedRealmCreator } from "src/ts/realmBlocking";
+    import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
 
     interface Props {
         openedData: hubType;
@@ -19,13 +20,23 @@
 
     let { openedData = $bindable(), onBlock = () => {} }: Props = $props();
 
+    // The backdrop click is the only close; Back runs it. The effect reads no reactive state, and
+    // the same component serves the App-level popup and the Realm tab.
+    function closePopUp() {
+        openedData = null
+    }
+
+    $effect(() => registerBackHandler(backCloseHandler({
+        isOpen: () => openedData !== null && openedData !== undefined,
+        snapshot: () => openedData === null || openedData === undefined,
+        close: closePopUp,
+    })))
+
 </script>
 
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
-<div class="top-0 left-0 z-50 fixed w-full h-full bg-black/50 flex justify-center items-center text-textcolor" role="button" tabindex="0" onclick={() => {
-    openedData = null
-}}>
+<div class="top-0 left-0 z-50 fixed w-full h-full bg-black/50 flex justify-center items-center text-textcolor" role="button" tabindex="0" onclick={closePopUp}>
     <div class="p-6 max-w-full bg-darkbg rounded-md flex flex-col gap-4 w-2xl overflow-y-auto max-h-full">
         <div class="w-full flex flex-col">
             <h1 class="text-2xl font-bold max-w-full overflow-hidden whitespace-nowrap text-ellipsis">{openedData.name}</h1>

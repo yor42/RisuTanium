@@ -12,6 +12,7 @@
     import { RisuAccessClient } from "src/ts/process/mcp/risuaccess";
     import localforage from "localforage";
     import { getModelInfo, LLMFormat } from "src/ts/model/modellist";
+    import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
 
     interface DialogueLine {
         speaker: string;
@@ -90,6 +91,25 @@
     function hide() {
         irisStore.open = false;
     }
+
+    function closeBacklog() {
+        showBacklog = false;
+    }
+
+    // Back does what the visible close controls do: the backlog's close button while the backlog
+    // covers the dialogue, the Close button otherwise. During the fade-out irisStore.open is
+    // already false, so a Back then is not handled. The effect reads no reactive state.
+    $effect(() => registerBackHandler(backCloseHandler({
+        isOpen: () => irisStore.open,
+        snapshot: () => `${irisStore.open}|${showBacklog}`,
+        close: () => {
+            if (showBacklog) {
+                closeBacklog();
+            } else {
+                hide();
+            }
+        },
+    })));
 
     function advance() {
         if (showBacklog || atEnd) return;
@@ -342,7 +362,7 @@
                         </svg>
                     </button>
                     <button
-                        onclick={() => (showBacklog = false)}
+                        onclick={closeBacklog}
                         class="text-white/40 transition hover:text-white/80"
                         aria-label={language.iris.closeBacklog}
                     >

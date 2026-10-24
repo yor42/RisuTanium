@@ -13,6 +13,7 @@
     import { XIcon } from "@lucide/svelte";
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
     import CustomModelsSettings from "src/lib/Setting/Pages/Advanced/CustomModelsSettings.svelte";
+    import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
 
     let selectedOption = $state('models');
     let selectedParameterOption = $state('memory')
@@ -29,6 +30,13 @@
     const onClose = () => {
         easyPanelStore.open = false
     }
+
+    // Back does what the X does. The effect reads no reactive state.
+    $effect(() => registerBackHandler(backCloseHandler({
+        isOpen: () => easyPanelStore.open,
+        snapshot: () => easyPanelStore.open,
+        close: onClose,
+    })))
 
 </script>
 

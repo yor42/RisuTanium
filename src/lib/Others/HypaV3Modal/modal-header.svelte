@@ -1,5 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
+  import { get } from "svelte/store";
+  import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
   import {
     SearchIcon,
     StarIcon,
@@ -100,6 +102,14 @@
   function closeModal() {
     $hypaV3ModalOpen = false;
   }
+
+  // Back does what the X does. The category and tag managers register their own handlers only
+  // while they are open, so they are newer and answer first. The effect reads no reactive state.
+  $effect(() => registerBackHandler(backCloseHandler({
+    isOpen: () => get(hypaV3ModalOpen),
+    snapshot: () => get(hypaV3ModalOpen),
+    close: closeModal,
+  })));
 
   function toggleBulkEditMode() {
     if (onToggleBulkEditMode) {

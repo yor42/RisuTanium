@@ -2,7 +2,9 @@
     import { alertCardExport, alertConfirm, alertError } from "../../ts/alert";
     import { language } from "../../lang";
     import { changeToPreset, copyPreset, downloadPreset, importPreset } from "../../ts/storage/database.svelte";
-    import { DBState } from 'src/ts/stores.svelte';
+    import { DBState, openPresetList } from 'src/ts/stores.svelte';
+    import { get } from "svelte/store";
+    import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
     import { CopyIcon, Share2Icon, PencilIcon, HardDriveUploadIcon, PlusIcon, TrashIcon, XIcon, GitCompare } from "@lucide/svelte";
     import TextInput from "../UI/GUI/TextInput.svelte";
     import { prebuiltPresets } from "src/ts/process/templates/templates";
@@ -19,6 +21,14 @@
     }
 
     let { close = () => {} }: Props = $props();
+
+    // Back does what the header X does. The diff modal registers its own handler when it opens, so
+    // it is newer and answers first. The effect reads no reactive state.
+    $effect(() => registerBackHandler(backCloseHandler({
+        isOpen: () => get(openPresetList),
+        snapshot: () => get(openPresetList),
+        close: () => close(),
+    })))
 
     let showDiffModal = $state(false)
     let selectedDiffPreset = $state<number | null>(null)

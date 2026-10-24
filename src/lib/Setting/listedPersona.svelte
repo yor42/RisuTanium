@@ -2,7 +2,9 @@
     import { XIcon } from "@lucide/svelte";
     import { language } from "../../lang";
     
-    import { DBState } from 'src/ts/stores.svelte';
+    import { DBState, openPersonaList } from 'src/ts/stores.svelte';
+    import { get } from "svelte/store";
+    import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
     import { changeUserPersona } from "src/ts/persona";
 
 
@@ -11,6 +13,13 @@
     }
 
     let { close = () => {} }: Props = $props();
+
+    // Back does what the header X does. The effect reads no reactive state.
+    $effect(() => registerBackHandler(backCloseHandler({
+        isOpen: () => get(openPersonaList),
+        snapshot: () => get(openPersonaList),
+        close: () => close(),
+    })))
 
 </script>
 

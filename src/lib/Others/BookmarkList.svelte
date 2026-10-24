@@ -8,8 +8,17 @@
     import { language } from "src/lang";
     import { alertInput } from "src/ts/alert";
     import { keyEventBlocked } from "src/ts/keyEventBlocked";
+    import { get } from "svelte/store";
+    import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
 
     const close = () => $bookmarkListOpen = false;
+
+    // Back does what the X does. The effect reads no reactive state.
+    $effect(() => registerBackHandler(backCloseHandler({
+        isOpen: () => get(bookmarkListOpen),
+        snapshot: () => get(bookmarkListOpen),
+        close,
+    })));
     let chara = $derived(DBState.db.characters[$selectedCharID]);
     const simpleChar = $derived(createSimpleCharacter(chara));
 

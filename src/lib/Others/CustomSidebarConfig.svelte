@@ -4,17 +4,30 @@
     import { language } from "src/lang";
     import { getFullSettingsData, getLabel } from "src/ts/setting/utils";
     import TextInput from "../UI/GUI/TextInput.svelte";
+    import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
 
 
     let configPage: "list" | "add" | "addSettingsSubmenu" = $state("list");
     let search = $state("");
+
+    function closeDialog() {
+        customSideBarConfigDialogStore.open = false;
+    }
+
+    // Back does what the Close button and the backdrop do, whatever page is showing. The effect
+    // reads no reactive state.
+    $effect(() => registerBackHandler(backCloseHandler({
+        isOpen: () => customSideBarConfigDialogStore.open,
+        snapshot: () => customSideBarConfigDialogStore.open,
+        close: closeDialog,
+    })));
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
     class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
-    onclick={() => (customSideBarConfigDialogStore.open = false)}
+    onclick={closeDialog}
 >
     <div
         class="bg-darkbg p-4 rounded max-h-full overflow-auto flex flex-col gap-2"
@@ -59,11 +72,7 @@
                 {language.othersUi.addItem}
             </Button>
 
-            <Button
-                onclick={() => {
-                    customSideBarConfigDialogStore.open = false;
-                }}
-            >
+            <Button onclick={closeDialog}>
                 {language.uiCommon.close}
             </Button>
         {/if}

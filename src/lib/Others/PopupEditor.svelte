@@ -7,6 +7,7 @@
     import { tokenize } from 'src/ts/tokenizer';
     import Toggles from '../SideBars/Toggles.svelte';
     import { getCurrentCharacter } from 'src/ts/storage/database.svelte';
+    import { backCloseHandler, registerBackHandler } from 'src/ts/backHandlers';
 
     let languageMode = $state(popUpEditorStore.language || 'markdown');
     let previewing = $state(false);
@@ -38,6 +39,18 @@
         })
     })
 
+    // The X and the backdrop close it; the typed value stays in popUpEditorStore for the caller.
+    function closeEditor() {
+        popUpEditorStore.open = false
+    }
+
+    // Back does what the X does. The effect reads no reactive state.
+    $effect(() => registerBackHandler(backCloseHandler({
+        isOpen: () => popUpEditorStore.open,
+        snapshot: () => popUpEditorStore.open,
+        close: closeEditor,
+    })))
+
     onMount(() => {
         import('./MonacoEditor.svelte').then((module) => {
             MonacoComponent = module.default;
@@ -49,7 +62,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
     class="fixed top-0 left-0 w-full h-full bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
-    onclick={() => (popUpEditorStore.open = false)}
+    onclick={closeEditor}
 >
     <div
         class="bg-darkbg rounded-lg p-4 w-11/12 h-11/12 flex flex-col gap-2"
@@ -81,7 +94,7 @@
                 {/if}
                 <button
                     class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition"
-                    onclick={() => (popUpEditorStore.open = false)}
+                    onclick={closeEditor}
                 >
                     X
                 </button>
