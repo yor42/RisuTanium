@@ -1737,6 +1737,9 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
             saving.state = false
             savingStoppedReason.set(reason)
         },
+        notifyTooLarge(label) {
+            alertToast(language.savingStoppedTooLargeBlockMessage(label, NODE_BODY_LIMIT_BYTES))
+        },
         reportFailure(error, attempts) {
             const storageFull = isQuotaExceededError(error) || isQuotaExceededError(error instanceof Error ? error.cause : undefined)
             saveFailureStore.set({ class: saveFailureClassOf(error, storageFull), attempts })

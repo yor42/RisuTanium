@@ -11,7 +11,7 @@ import { getStore2BootSession } from '../storage/store2/bootActive'
 import type { Store2Backend } from '../storage/store2/backend/types'
 import type { Committer } from '../storage/store2/commit'
 import { createLegacyStoreReader } from '../storage/store2/legacy/storeReader'
-import { isSaveLoopParked } from '../storage/store2/saveLoop'
+import { isSaveLoopParked, isSaveLoopStopped } from '../storage/store2/saveLoop'
 import { listRestorePoints, restorePoint, type RestorePointRow } from '../storage/store2/restorePoints'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
 import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from './restoreLock'
@@ -54,17 +54,18 @@ const SAVE_FIRST_REQUESTS = 2
  * Saves what this tab has marked before the list is read, so the state the
  * restore keeps as a restore point includes it. A parked loop is left alone:
  * `requestSaveNow` would mark the tab dirty and raise the peer prompt, and a
- * parked loop cannot commit anyway.
+ * parked loop cannot commit anyway. A stopped loop (a body the server refuses as too large) cannot commit either and
+ * would only run out the bound, so it is left alone too.
  */
 export async function saveFirst(boundMs: number): Promise<void> {
-    if (isSaveLoopParked() || isSaveClean()) {
+    if (isSaveLoopParked() || isSaveLoopStopped() || isSaveClean()) {
         return
     }
     alertWait(language.store2RestoreSaving)
     const deadline = Date.now() + boundMs
     for (let request = 0; request < SAVE_FIRST_REQUESTS; request++) {
         const remaining = deadline - Date.now()
-        if (isSaveClean() || isSaveLoopParked() || remaining <= 0) {
+        if (isSaveClean() || isSaveLoopParked() || isSaveLoopStopped() || remaining <= 0) {
             return
         }
         await new Promise<void>((resolve) => {

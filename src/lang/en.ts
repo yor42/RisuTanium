@@ -2329,6 +2329,28 @@ export const languageEnglish = {
         : blockName === 'config' ? 'the save format record'
         : blockName === 'stubs' ? 'your archived characters'
         : `"${blockName}"`,
+    saveUnitLabel: (part: string, bytes: number | null): string => {
+        const words = part === 'saveRecord' ? 'the save record'
+            : part === 'saveIndex' ? 'the save index'
+            : part === 'characterList' ? 'a part of your character list'
+            : part === 'character' ? 'a character'
+            : part === 'lorebook' ? 'the lorebook of a character'
+            : part === 'scripts' ? 'the scripts of a character'
+            : part === 'chat' ? 'a chat'
+            : part === 'chatPart' ? 'a part of a chat'
+            : part === 'module' ? 'a module'
+            : part === 'moduleList' ? 'your module list'
+            : part === 'settings' ? 'your general settings'
+            : part === 'preset' ? 'a bot preset'
+            : part === 'plugin' ? 'a plugin'
+            : part === 'pluginData' ? 'your plugin data'
+            : part === 'fileList' ? 'a list of your images and files'
+            : part === 'characterOrder' ? 'your character order'
+            : part === 'loadouts' ? 'your loadouts'
+            : 'a part of your data'
+        // Rounded up, so a body just over the limit never reads as exactly the limit.
+        return bytes === null ? words : `${words} (${(Math.ceil((bytes * 10) / (1024 * 1024)) / 10).toFixed(1)} MiB)`
+    },
     saveConversionFailedAlert:"Moving your data to the new save format did not succeed after several tries. Nothing was changed in your saved data, and this tab has stopped saving. Reload the page to try again.",
     saveSnapshotSkippedTooLarge: "Your data is larger than the self-hosted server accepts in one file, so automatic backup copies are skipped. Saving is not affected. To keep a backup, export a .bin file with \"Save Backup Locally\" under \"Backup & Files\" in the settings.",
     saveSnapshotSkippedMemory: "This device could not set aside enough memory for an automatic backup copy of your data, so it was skipped. Saving is not affected.",

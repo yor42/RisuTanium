@@ -2190,6 +2190,27 @@ export const languageChinese = {
         : blockName === 'config' ? '保存格式记录'
         : blockName === 'stubs' ? '您已归档的角色'
         : `"${blockName}"`,
+    "saveUnitLabel": (part: string, bytes: number | null): string => {
+        const words = part === 'saveRecord' ? '保存记录'
+            : part === 'saveIndex' ? '保存索引'
+            : part === 'characterList' ? '您的角色列表的一部分'
+            : part === 'character' ? '一个角色'
+            : part === 'lorebook' ? '某个角色的世界书'
+            : part === 'scripts' ? '某个角色的脚本'
+            : part === 'chat' ? '一段聊天'
+            : part === 'chatPart' ? '某段聊天的一部分'
+            : part === 'module' ? '一个模块'
+            : part === 'moduleList' ? '您的模块列表'
+            : part === 'settings' ? '您的通用设置'
+            : part === 'preset' ? '一个机器人预设'
+            : part === 'plugin' ? '一个插件'
+            : part === 'pluginData' ? '您的插件数据'
+            : part === 'fileList' ? '您的图片和文件列表'
+            : part === 'characterOrder' ? '您的角色顺序'
+            : part === 'loadouts' ? '您的配置组包'
+            : '您的一部分数据'
+        return bytes === null ? words : `${words}（${(Math.ceil((bytes * 10) / (1024 * 1024)) / 10).toFixed(1)} MiB）`
+    },
     "saveConversionFailedAlert": "将您的数据迁移到新的保存格式在多次尝试后仍未成功。已保存的数据没有任何更改，且此标签页已停止保存。请重新加载页面以重试。",
     "saveSnapshotSkippedTooLarge": "您的数据超过了自托管服务器单个文件所能接受的大小，因此自动备份副本已被跳过。保存不受影响。若要保留备份，请在设置的“备份 & 文件”下使用“本地保存备份”导出 .bin 文件。",
     "saveSnapshotSkippedMemory": "此设备无法为您数据的自动备份副本预留足够的内存，因此已跳过。保存不受影响。",

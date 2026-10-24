@@ -17,6 +17,7 @@ import { createWorldKit, nextCommit, settled, sleepReal, until, type World } fro
 import { startStore2, store2Boot, peerCommit, type Store2Kit } from 'src/ts/storage/tests/store2SaveKit'
 import { FakeLockManagerCore, FakeTabLockManagerView, makeSimulatedTab } from 'src/ts/storage/tests/fakeWebLocks'
 import { language } from 'src/lang'
+import { NODE_BODY_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
 import { COMMIT_KEY } from 'src/ts/storage/store2/format/keys'
 import { encodeUnit, UNIT_TYPE } from 'src/ts/storage/store2/format'
 import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
@@ -132,12 +133,16 @@ interface Page {
 }
 
 /** The page as the application runs it: a store2 session over a reactive `DBState`, in the `store2` page mode. */
-async function openPage(options: { webLocks?: boolean } = {}): Promise<Page> {
+async function openPage(options: { webLocks?: boolean, loopCommitter?: (real: Committer) => Committer } = {}): Promise<Page> {
     const locks = new FakeLockManagerCore()
     const manager = options.webLocks === false ? undefined : new FakeTabLockManagerView(locks, 'this')
     Object.defineProperty(window.navigator, 'locks', { value: manager, configurable: true })
     h.db = makeDb('base', ['alpha', 'beta'])
     const k = await startStore2({ db: h.db as unknown as Database })
+    if (options.loopCommitter !== undefined) {
+        // The save loop reads its committer once, when it starts: the replacement has to be in place before `w.start()`.
+        k.context.session = { ...k.context.session, committer: options.loopCommitter(k.committer) }
+    }
     const w = await worlds.startWorld({ kind: 'tauri', startLoop: false, boot: store2Boot(k) })
     const stores = await import('src/ts/stores.svelte')
     const { flushSync } = await import('svelte')
@@ -352,6 +357,35 @@ describe('saving first', () => {
         expect(page.shown, 'the picker was reached').toHaveLength(1)
         expect(page.w.api.getSaveMarkCount()).toBe(marks)
         expect(page.k.peer.asked.length + page.k.peer.clean.length).toBe(prompts)
+    })
+
+    // Reproducer: a loop stopped on a too-large body cannot commit, so a save request would only run out the whole bound.
+    test('a stopped loop skips the save: it returns at once and puts no saving screen up', async () => {
+        const page = await openPage({
+            loopCommitter: (real) => ({
+                ...real,
+                async commit() {
+                    return { status: 'failed', cause: new page.errors.Store2PayloadTooLargeError('The Node server answered 413.', 'store2/example', 1024, 8) }
+                },
+            }),
+        })
+        page.db.mainPrompt = 'too big to save'
+        page.flush()
+        await until(() => page.loop.isSaveLoopStopped(), 'the loop to stop on the refusal')
+        // Over several loop ticks the page tells the person once, and the tab shows the stopped reason.
+        await sleepReal(1500)
+        const stoppedLabel = language.saveUnitLabel('chatPart', 1024)
+        expect(vi.mocked(page.alert.alertToast).mock.calls.map((call) => call[0]))
+            .toEqual([language.savingStoppedTooLargeBlockMessage(stoppedLabel, NODE_BODY_LIMIT_BYTES)])
+        const { get: readStore } = await import('svelte/store')
+        expect(readStore((await import('src/ts/stores.svelte')).savingStoppedReason)).toBe('too-large')
+        vi.mocked(page.alert.alertWait).mockClear()
+        const started = Date.now()
+
+        await page.restore.saveFirst(3000)
+
+        expect(Date.now() - started).toBeLessThan(1000)
+        expect(page.alert.alertWait).not.toHaveBeenCalled()
     })
 
     test('a save that never commits is waited for no longer than the bound, and the restore goes on', async () => {

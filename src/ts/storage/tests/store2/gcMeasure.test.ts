@@ -264,6 +264,20 @@ describe('each refusal deletes nothing and leaves nothing registered', () => {
         await expectRefusal(await rig.handle.run({ confirm: true }), 'save-loop-parked', rig, junk)
     })
 
+    // New behaviour: a tab stopped on a too-large body holds unsaved edits in memory only, like a parked one.
+    test('new behaviour: the save loop has stopped on a body the server refuses as too large', async () => {
+        const rig = await indexedDbRig()
+        const junk = await orphan(rig.backend)
+        const handle = installGcMeasure({
+            session: sessionOf('indexeddb', rig.watched.backend),
+            store: async () => createMemoryByteStore(),
+            deletionActive: () => false,
+            loadPage: async () => rig.page.facts,
+            saveLoopStopped: () => true,
+        }, {})
+        await expectRefusal(await handle.run({ confirm: true }), 'save-loop-stopped', rig, junk)
+    })
+
     test('the old-data deletion step is active', async () => {
         const rig = await indexedDbRig()
         const junk = await orphan(rig.backend)

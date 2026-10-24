@@ -2190,6 +2190,27 @@ export const languageKorean = {
         : blockName === 'config' ? '저장 형식 기록'
         : blockName === 'stubs' ? '보관된 캐릭터'
         : `"${blockName}"`,
+    saveUnitLabel: (part: string, bytes: number | null): string => {
+        const words = part === 'saveRecord' ? '저장 기록'
+            : part === 'saveIndex' ? '저장 색인'
+            : part === 'characterList' ? '캐릭터 목록의 일부'
+            : part === 'character' ? '캐릭터'
+            : part === 'lorebook' ? '캐릭터의 로어북'
+            : part === 'scripts' ? '캐릭터의 스크립트'
+            : part === 'chat' ? '채팅'
+            : part === 'chatPart' ? '채팅의 일부'
+            : part === 'module' ? '모듈'
+            : part === 'moduleList' ? '모듈 목록'
+            : part === 'settings' ? '일반 설정'
+            : part === 'preset' ? '봇 프리셋'
+            : part === 'plugin' ? '플러그인'
+            : part === 'pluginData' ? '플러그인 데이터'
+            : part === 'fileList' ? '이미지 및 파일 목록'
+            : part === 'characterOrder' ? '캐릭터 순서'
+            : part === 'loadouts' ? '로드아웃'
+            : '데이터의 일부'
+        return bytes === null ? words : `${words} (${(Math.ceil((bytes * 10) / (1024 * 1024)) / 10).toFixed(1)} MiB)`
+    },
     saveConversionFailedAlert: "데이터를 새 저장 형식으로 옮기려고 여러 번 시도했지만 성공하지 못했습니다. 저장된 데이터는 전혀 변경되지 않았으며, 이 탭은 저장을 멈췄습니다. 페이지를 새로고침하여 다시 시도하세요.",
     saveSnapshotSkippedTooLarge: "데이터가 셀프 호스팅 서버가 한 파일로 받아들이는 크기보다 커서 자동 백업 사본을 건너뜁니다. 저장에는 영향이 없습니다. 백업을 보관하려면 설정의 \"백업 & 파일\"에서 \"로컬 백업 저장\"으로 .bin 파일을 내보내세요.",
     saveSnapshotSkippedMemory: "이 기기가 데이터의 자동 백업 사본에 필요한 메모리를 확보하지 못해 건너뛰었습니다. 저장에는 영향이 없습니다.",

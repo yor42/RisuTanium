@@ -2192,6 +2192,27 @@ export const languageSpanish = {
         : blockName === 'config' ? 'el registro del formato de guardado'
         : blockName === 'stubs' ? 'tus personajes archivados'
         : `"${blockName}"`,
+    saveUnitLabel: (part: string, bytes: number | null): string => {
+        const words = part === 'saveRecord' ? 'el registro de guardado'
+            : part === 'saveIndex' ? 'el índice de guardado'
+            : part === 'characterList' ? 'una parte de tu lista de personajes'
+            : part === 'character' ? 'un personaje'
+            : part === 'lorebook' ? 'el libro de lore de un personaje'
+            : part === 'scripts' ? 'los scripts de un personaje'
+            : part === 'chat' ? 'un chat'
+            : part === 'chatPart' ? 'una parte de un chat'
+            : part === 'module' ? 'un módulo'
+            : part === 'moduleList' ? 'tu lista de módulos'
+            : part === 'settings' ? 'tus ajustes generales'
+            : part === 'preset' ? 'un preset de bot'
+            : part === 'plugin' ? 'un plugin'
+            : part === 'pluginData' ? 'los datos de tus plugins'
+            : part === 'fileList' ? 'una lista de tus imágenes y archivos'
+            : part === 'characterOrder' ? 'el orden de tus personajes'
+            : part === 'loadouts' ? 'tus loadouts'
+            : 'una parte de tus datos'
+        return bytes === null ? words : `${words} (${(Math.ceil((bytes * 10) / (1024 * 1024)) / 10).toFixed(1)} MiB)`
+    },
     saveConversionFailedAlert: "Pasar tus datos al nuevo formato de guardado no tuvo éxito tras varios intentos. No se cambió nada en tus datos guardados, y esta pestaña ha dejado de guardar. Recarga la página para intentarlo de nuevo.",
     saveSnapshotSkippedTooLarge: "Tus datos son más grandes de lo que el servidor autoalojado acepta en un solo archivo, por lo que se omiten las copias de respaldo automáticas. El guardado no se ve afectado. Para conservar un respaldo, exporta un archivo .bin con \"Guardar Respaldo Localmente\" en \"Respaldo y Archivos\", dentro de los ajustes.",
     saveSnapshotSkippedMemory: "Este dispositivo no pudo reservar suficiente memoria para una copia de respaldo automática de tus datos, por lo que se omitió. El guardado no se ve afectado.",

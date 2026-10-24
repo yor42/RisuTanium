@@ -1,8 +1,9 @@
 // @vitest-environment node
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
-    Store2BackendFailureError, Store2StalePageError, Store2UnknownOutcomeError,
+    Store2BackendFailureError, Store2PayloadTooLargeError, Store2StalePageError, Store2UnknownOutcomeError,
 } from '../../store2/backend'
+import { language } from 'src/lang'
 import { createCommitter, type AbandonResult, type CommitResult, type Committer, type CommitRequest } from '../../store2/commit'
 import { classifyCommitRead } from '../../store2/commitKey'
 import { encodeUnit, UNIT_TYPE, type CommitKey } from '../../store2/format'
@@ -10,7 +11,7 @@ import type { Store2Read } from '../../store2/backend'
 import type { ListDerivation } from '../../store2/codec'
 import { buildColdStub } from '../../../process/coldCharacter'
 import { createSaveEncoder } from '../../store2/saveEncoder'
-import { backedOffWait, runStore2SaveLoop, type Store2LoopPort, type UnsavableCharacter } from '../../store2/saveLoop'
+import { backedOffWait, isSaveLoopStopped, runStore2SaveLoop, type Store2LoopPort, type UnsavableCharacter } from '../../store2/saveLoop'
 import type { Database, character } from '../../database.svelte'
 import type { toSaveType } from '../../risuSave'
 import { until } from '../saveLoopWorld'
@@ -67,6 +68,10 @@ interface Loop {
     unsavableThrows: Error | null
     broadcasts: string[]
     crashed: unknown[]
+    /** Every `setStopped` call, in order. */
+    stopCalls: Array<{ reason: string, detail: string | undefined }>
+    /** Every too-large notice the loop asked the port to show, in order. */
+    tooLargeNotices: string[]
     mark(chaId: string): void
     /** Asks for a pass the way a debounce that elapsed does. */
     due(): void
@@ -132,6 +137,8 @@ function runLoop(kit: Store2Kit, db: Database): Loop {
         unsavableThrows: null,
         broadcasts: [],
         crashed: [],
+        stopCalls: [],
+        tooLargeNotices: [],
         mark(chaId) {
             tracker.character.push(chaId)
             loop.state.marks += 1
@@ -204,8 +211,12 @@ function runLoop(kit: Store2Kit, db: Database): Loop {
             loop.state.peerHeard = false
             return heard
         },
-        setStopped(reason) {
+        setStopped(reason, detail) {
             loop.state.stopped = reason
+            loop.stopCalls.push({ reason, detail })
+        },
+        notifyTooLarge(label) {
+            loop.tooLargeNotices.push(label)
         },
         reportFailure(error, attempts) {
             loop.failures.push({ error, attempts })
@@ -1597,5 +1608,202 @@ describe('guard: the loop does not start without a committer', () => {
         const orphan = { ...kit.context, session: { kind: kit.context.session.kind, committer: null } }
         const never = vi.fn()
         await expect(runStore2SaveLoop(orphan, { getDatabase: never } as unknown as Store2LoopPort)).rejects.toThrow('no-committer')
+    })
+})
+
+describe('new behaviour: a body the server refuses as too large stops this tab', () => {
+    const REFUSED_BYTES = 3 * 1024 * 1024
+    const label = language.saveUnitLabel('chatPart', REFUSED_BYTES)
+    const refusal = () => new Store2PayloadTooLargeError('The Node server answered 413.', 'store2/example', REFUSED_BYTES, UNIT_TYPE.chatChunk)
+
+    async function edited(): Promise<{ db: Database, kit: Store2Kit }> {
+        const db = clone(buildSmall(4))
+        const kit = await startStore2({ db })
+        return { db, kit }
+    }
+
+    /**
+     * The kit's committer whose every commit answers `result` and counts itself. After the first commit a bulk marker of
+     * this page load stands on the base reads until a scripted clear removes it; `clear` answers each clear the loop asks for.
+     */
+    function refusingCommitter(kit: Store2Kit, result: CommitResult, clear: (attempt: number, standing: { value: boolean }) => AbandonResult): { commits: number, clears: number, reads: number } {
+        const real = kit.committer
+        const seen = { commits: 0, clears: 0, reads: 0 }
+        const standing = { value: false }
+        const scripted: Committer = {
+            ...real,
+            async readCommit() {
+                seen.reads += 1
+                const read = await real.readCommit()
+                const parsed = classifyCommitRead(read)
+                if (!standing.value || parsed.status !== 'parsed') {
+                    return read
+                }
+                const marked: CommitKey = { ...parsed.value, staging: { owner: real.owner, prefix: 'store2/g-0000000000000001-', startedAt: 1, label: 'bulk' } }
+                return { ...read, bytes: encodeUnit(UNIT_TYPE.commit, marked) }
+            },
+            async commit() {
+                seen.commits += 1
+                standing.value = result.status === 'abandoned' && result.cleared !== null && result.cleared.status !== 'cleared'
+                return result
+            },
+            async abandonClear() {
+                seen.clears += 1
+                return clear(seen.clears, standing)
+            },
+        }
+        kit.context.session = { ...kit.context.session, committer: scripted }
+        return seen
+    }
+
+    const settle = (ms = 150) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+    async function stopThenTick(loop: Loop, db: Database): Promise<void> {
+        chars(db)[0].personality = 'cannot be saved'
+        loop.mark(chaIdOf(db, 0))
+        await until(() => loop.stopCalls.length >= 1, 'the stop', 4000)
+        // Further requests for a pass over several ticks: a stopped loop runs none.
+        for (let round = 0; round < 3; round++) {
+            loop.due()
+            await settle(40)
+        }
+    }
+
+    test.each([
+        ['an ordinary commit that failed', (): CommitResult => ({ status: 'failed', cause: refusal() })],
+        ['a bulk commit abandoned after its marker was cleared', (): CommitResult => ({ status: 'abandoned', reason: 'upload-failed', cleared: { status: 'nothing' }, cause: refusal() })],
+        ['a bulk commit abandoned with no own marker to clear', (): CommitResult => ({ status: 'abandoned', reason: 'upload-failed', cleared: null, cause: refusal() })],
+    ])('new behaviour: %s with the too-large cause stops once, tells once, retries nothing and keeps the tab dirty', async (_name, result) => {
+        const { db, kit } = await edited()
+        const seen = refusingCommitter(kit, result(), () => ({ status: 'nothing' }))
+        const loop = runLoop(kit, db)
+        await stopThenTick(loop, db)
+        expect(loop.stopCalls).toEqual([{ reason: 'too-large', detail: label }])
+        expect(loop.tooLargeNotices).toEqual([label])
+        expect(loop.failures).toEqual([])
+        expect(loop.uncounted).toEqual([])
+        expect(seen.commits).toBe(1)
+        expect(seen.clears).toBe(0)
+        // The edits of the refused snapshot are folded back into the live database, once, so none is lost.
+        expect(loop.merges).toBe(1)
+        expect(loop.state.dirty).toBe(true)
+        expect(loop.state.saved).toBe(0)
+        expect(isSaveLoopStopped()).toBe(true)
+        expect(kit.peer.asked).toEqual([])
+        healthy(loop)
+    })
+
+    test('new behaviour: the stop logs the refusal once, with the error itself as the cause', async () => {
+        const { db, kit } = await edited()
+        const error = refusal()
+        refusingCommitter(kit, { status: 'failed', cause: error }, () => ({ status: 'nothing' }))
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => { })
+        try {
+            const loop = runLoop(kit, db)
+            await stopThenTick(loop, db)
+            expect(logged.mock.calls.filter((call) => call[0] === error)).toHaveLength(1)
+        } finally {
+            logged.mockRestore()
+        }
+    })
+
+    test('new behaviour: a stop that left the own marker standing keeps clearing it until the clear succeeds, then runs no commit', async () => {
+        const { db, kit } = await edited()
+        const seen = refusingCommitter(
+            kit,
+            { status: 'abandoned', reason: 'upload-failed', cleared: { status: 'failed', cause: new Store2BackendFailureError('down') }, cause: refusal() },
+            (attempt, standing) => {
+                if (attempt === 1) {
+                    return { status: 'failed', cause: new Store2BackendFailureError('down again') }
+                }
+                standing.value = false
+                return { status: 'nothing' }
+            },
+        )
+        const loop = runLoop(kit, db)
+        await stopThenTick(loop, db)
+        await until(() => seen.clears >= 2, 'the second clear', 4000)
+        await settle()
+        // Exactly two clears: the one that failed and the one that succeeded; the marker is gone, so nothing is retried.
+        expect(seen.clears).toBe(2)
+        expect(seen.commits).toBe(1)
+        // Once the marker is gone the stopped loop only waits: it does not even read the commit key again.
+        const readsWhenDone = seen.reads
+        await settle()
+        expect(seen.reads).toBe(readsWhenDone)
+        expect(loop.stopCalls).toHaveLength(1)
+        expect(loop.tooLargeNotices).toHaveLength(1)
+        expect(loop.failures).toEqual([])
+        healthy(loop)
+    })
+
+    test('new behaviour: a clear whose answer was lost but whose marker is gone ends on the fresh read, with one clear and no further reads', async () => {
+        const { db, kit } = await edited()
+        const seen = refusingCommitter(
+            kit,
+            { status: 'abandoned', reason: 'upload-failed', cleared: { status: 'unknown', cause: new Store2UnknownOutcomeError('lost') }, cause: refusal() },
+            (_attempt, standing) => {
+                standing.value = false
+                return { status: 'unknown', cause: new Store2UnknownOutcomeError('lost') }
+            },
+        )
+        const loop = runLoop(kit, db)
+        await stopThenTick(loop, db)
+        await until(() => seen.clears >= 1, 'the clear', 4000)
+        await settle()
+        const readsWhenDone = seen.reads
+        await settle()
+        expect(seen.clears).toBe(1)
+        expect(seen.reads).toBe(readsWhenDone)
+        healthy(loop)
+    })
+
+    test('new behaviour: a stop does not clear a marker that a refused clear can never remove (refused ends the retry)', async () => {
+        const { db, kit } = await edited()
+        const seen = refusingCommitter(
+            kit,
+            { status: 'abandoned', reason: 'upload-failed', cleared: { status: 'failed', cause: new Store2BackendFailureError('down') }, cause: refusal() },
+            () => ({ status: 'refused', reason: 'damaged', detail: 'x' }),
+        )
+        const loop = runLoop(kit, db)
+        await stopThenTick(loop, db)
+        await until(() => seen.clears >= 1, 'the clear', 4000)
+        await settle()
+        expect(seen.clears).toBe(1)
+        healthy(loop)
+    })
+
+    test.each([
+        ['failed', (): AbandonResult => ({ status: 'failed', cause: new Store2StalePageError('replaced') })],
+        ['unknown', (): AbandonResult => ({ status: 'unknown', cause: new Store2StalePageError('replaced') })],
+    ])('new behaviour: a clear answered %s by a replaced page ends the retry, with one clear and no further reads', async (_name, answer) => {
+        const { db, kit } = await edited()
+        const seen = refusingCommitter(
+            kit,
+            { status: 'abandoned', reason: 'upload-failed', cleared: { status: 'failed', cause: new Store2BackendFailureError('down') }, cause: refusal() },
+            () => answer(),
+        )
+        const loop = runLoop(kit, db)
+        await stopThenTick(loop, db)
+        await until(() => seen.clears >= 1, 'the clear', 4000)
+        await settle()
+        const readsWhenDone = seen.reads
+        await settle(1300)
+        // The marker still stands on the base reads, yet a page that was replaced never retries the clear.
+        expect(seen.clears).toBe(1)
+        expect(seen.reads).toBe(readsWhenDone)
+        healthy(loop)
+    })
+
+    test('guard: a backend failure that is not a too-large refusal is still a counted, retried failure and does not stop the tab', async () => {
+        const { db, kit } = await edited()
+        const seen = refusingCommitter(kit, { status: 'failed', cause: new Store2BackendFailureError('down') }, () => ({ status: 'nothing' }))
+        const loop = runLoop(kit, db)
+        chars(db)[0].personality = 'retried'
+        loop.mark(chaIdOf(db, 0))
+        await until(() => seen.commits >= 2, 'a retry', 4000)
+        expect(loop.stopCalls).toEqual([])
+        expect(loop.tooLargeNotices).toEqual([])
+        expect(loop.failures.length).toBeGreaterThanOrEqual(1)
     })
 })

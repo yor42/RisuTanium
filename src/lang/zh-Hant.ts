@@ -2235,6 +2235,27 @@ export const languageChineseTraditional = {
         : blockName === 'config' ? '儲存格式記錄'
         : blockName === 'stubs' ? '您已封存的角色'
         : `"${blockName}"`,
+    "saveUnitLabel": (part: string, bytes: number | null): string => {
+        const words = part === 'saveRecord' ? '儲存記錄'
+            : part === 'saveIndex' ? '儲存索引'
+            : part === 'characterList' ? '您的角色列表的一部分'
+            : part === 'character' ? '一個角色'
+            : part === 'lorebook' ? '某個角色的 Lorebook'
+            : part === 'scripts' ? '某個角色的腳本'
+            : part === 'chat' ? '一段聊天'
+            : part === 'chatPart' ? '某段聊天的一部分'
+            : part === 'module' ? '一個模組'
+            : part === 'moduleList' ? '您的模組清單'
+            : part === 'settings' ? '您的一般設定'
+            : part === 'preset' ? '一個機器人預設集'
+            : part === 'plugin' ? '一個外掛'
+            : part === 'pluginData' ? '您的外掛資料'
+            : part === 'fileList' ? '您的圖片和檔案清單'
+            : part === 'characterOrder' ? '您的角色順序'
+            : part === 'loadouts' ? '您的設定組合'
+            : '您的一部分資料'
+        return bytes === null ? words : `${words}（${(Math.ceil((bytes * 10) / (1024 * 1024)) / 10).toFixed(1)} MiB）`
+    },
     "saveConversionFailedAlert": "將您的資料遷移到新的儲存格式在多次嘗試後仍未成功。已儲存的資料沒有任何變更，且此分頁已停止儲存。請重新載入頁面以重試。",
     "saveSnapshotSkippedTooLarge": "您的資料超過了自架伺服器單一檔案所能接受的大小，因此自動備份副本已被跳過。儲存不受影響。若要保留備份，請在設定的「備份 & 檔案」下使用「在本機儲存備份」匯出 .bin 檔案。",
     "saveSnapshotSkippedMemory": "此裝置無法為您資料的自動備份副本預留足夠的記憶體，因此已跳過。儲存不受影響。",

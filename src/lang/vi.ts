@@ -2190,6 +2190,27 @@ export const languageVietnamese = {
         : blockName === 'config' ? 'bản ghi định dạng lưu'
         : blockName === 'stubs' ? 'các nhân vật đã lưu trữ của bạn'
         : `"${blockName}"`,
+    saveUnitLabel: (part: string, bytes: number | null): string => {
+        const words = part === 'saveRecord' ? 'bản ghi lưu'
+            : part === 'saveIndex' ? 'chỉ mục lưu'
+            : part === 'characterList' ? 'một phần danh sách nhân vật của bạn'
+            : part === 'character' ? 'một nhân vật'
+            : part === 'lorebook' ? 'Lorebook của một nhân vật'
+            : part === 'scripts' ? 'các tập lệnh của một nhân vật'
+            : part === 'chat' ? 'một cuộc trò chuyện'
+            : part === 'chatPart' ? 'một phần của một cuộc trò chuyện'
+            : part === 'module' ? 'một mô-đun'
+            : part === 'moduleList' ? 'danh sách mô-đun của bạn'
+            : part === 'settings' ? 'cài đặt chung của bạn'
+            : part === 'preset' ? 'một cài đặt trước của bot'
+            : part === 'plugin' ? 'một plugin'
+            : part === 'pluginData' ? 'dữ liệu plugin của bạn'
+            : part === 'fileList' ? 'danh sách hình ảnh và tệp của bạn'
+            : part === 'characterOrder' ? 'thứ tự nhân vật của bạn'
+            : part === 'loadouts' ? 'các loadout của bạn'
+            : 'một phần dữ liệu của bạn'
+        return bytes === null ? words : `${words} (${(Math.ceil((bytes * 10) / (1024 * 1024)) / 10).toFixed(1)} MiB)`
+    },
     saveConversionFailedAlert: "Việc chuyển dữ liệu của bạn sang định dạng lưu mới không thành công sau nhiều lần thử. Không có gì trong dữ liệu đã lưu của bạn bị thay đổi, và tab này đã ngừng lưu. Hãy tải lại trang để thử lại.",
     saveSnapshotSkippedTooLarge: "Dữ liệu của bạn lớn hơn mức máy chủ tự lưu trữ chấp nhận trong một tệp, nên các bản sao lưu tự động bị bỏ qua. Việc lưu không bị ảnh hưởng. Để giữ một bản sao lưu, hãy xuất tệp .bin bằng \"Lưu sao lưu cục bộ\" trong mục \"Sao lưu & Tệp\" ở phần cài đặt.",
     saveSnapshotSkippedMemory: "Thiết bị này không thể dành đủ bộ nhớ cho một bản sao lưu tự động của dữ liệu của bạn, nên bản đó đã bị bỏ qua. Việc lưu không bị ảnh hưởng.",

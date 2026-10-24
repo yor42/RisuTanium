@@ -16,6 +16,7 @@ import {
     Store2CommitConflictError,
     Store2FenceConflictError,
     Store2OverwriteRefusedError,
+    Store2PayloadTooLargeError,
     Store2UnitConflictError,
     Store2UnknownOutcomeError,
     createNodeBackend,
@@ -24,6 +25,7 @@ import {
     type Store2Read,
 } from 'src/ts/storage/store2/backend'
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
+import { encodeFrame, UNIT_TYPE } from 'src/ts/storage/store2/format'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 import { createNodeHttpStore, type FetchLike } from 'src/ts/storage/store/nodeHttpStore'
 import { hexOfKey, startNodeServer, type NodeServerFixture } from '../nodeServerFixture'
@@ -542,5 +544,114 @@ describe('node backend reads and listing', () => {
         expect(await backend.countPrefix('store2/')).toBe(2)
         expect(await backend.countPrefix('store2-')).toBe(1)
         expect(wire.sent.some((request) => request.path === '/api/list')).toBe(true)
+    })
+})
+
+describe('node backend 413 answers', () => {
+    /** The body parser's answer to a body over the limit, with or without the guarded marker a proxy may strip. */
+    function tooLargeAnswer(marked: boolean): Response {
+        return new Response(JSON.stringify({ error: 'Storage payload is too large', code: 'PAYLOAD_TOO_LARGE', message: 'Storage writes are limited to 100 MiB.' }), {
+            status: 413,
+            headers: marked ? { 'content-type': 'application/json', 'risu-storage-guarded': '1' } : { 'content-type': 'application/json' },
+        })
+    }
+
+    const framed = (type: number, size: number): Uint8Array => encodeFrame(type as typeof UNIT_TYPE[keyof typeof UNIT_TYPE], new Uint8Array(size))
+
+    // Reproducers: on the base a 413 is classified as an unknown outcome, which the committer reads back as a peer's write.
+    describe.each([['marked', true], ['unmarked', false]])('a %s 413', (_label, marked) => {
+        test('reproducer: a unit upload names the key, the byte count and the frame type, and is a definite failure', async () => {
+            const { backend, wire } = await open()
+            wire.answer = async (request, real) => isWriteOf(request, unitKey(1)) ? tooLargeAnswer(marked) : real()
+            const body = framed(UNIT_TYPE.chatChunk, 40)
+            const error = await backend.putUnit(unitKey(1), body).catch((e: unknown) => e)
+            expect(error).toBeInstanceOf(Store2BackendFailureError)
+            expect(error).toBeInstanceOf(Store2PayloadTooLargeError)
+            expect(error).toMatchObject({ key: unitKey(1), bytes: body.length, unitType: UNIT_TYPE.chatChunk })
+            expect(error).not.toBeInstanceOf(Store2UnknownOutcomeError)
+        })
+
+        test('reproducer: a commitOrdinary unit upload is a too-large failure, and guard: no commit-key write follows it', async () => {
+            const { backend, wire } = await open()
+            const absent = await absentCommit(backend)
+            wire.answer = async (request, real) => isWriteOf(request, unitKey(2)) ? tooLargeAnswer(marked) : real()
+            const error = await backend.commitOrdinary(absent, [unit(1), unit(2)], bytesOf(1)).catch((e: unknown) => e)
+            expect(error).toBeInstanceOf(Store2BackendFailureError)
+            expect(error).toBeInstanceOf(Store2PayloadTooLargeError)
+            expect(error).toMatchObject({ key: unitKey(2) })
+            expect(wire.sent.some((request) => isWriteOf(request, COMMIT_KEY))).toBe(false)
+            wire.answer = undefined
+            expect((await backend.readCommit()).bytes).toBeNull()
+        })
+
+        test('reproducer: a 413 on the commit-key write of commitOrdinary names the commit key and its frame type', async () => {
+            const { backend, wire } = await open()
+            const absent = await absentCommit(backend)
+            wire.answer = async (request, real) => isWriteOf(request, COMMIT_KEY) ? tooLargeAnswer(marked) : real()
+            const next = framed(UNIT_TYPE.commit, 12)
+            const error = await backend.commitOrdinary(absent, [unit(1)], next).catch((e: unknown) => e)
+            expect(error).toBeInstanceOf(Store2BackendFailureError)
+            expect(error).toBeInstanceOf(Store2PayloadTooLargeError)
+            expect(error).toMatchObject({ key: COMMIT_KEY, bytes: next.length, unitType: UNIT_TYPE.commit })
+        })
+
+        test('reproducer: casCommit and casFence name their own key', async () => {
+            const { backend, wire } = await open()
+            wire.answer = async (request, real) => request.path === '/api/write-checked' ? tooLargeAnswer(marked) : real()
+            const commitError = await backend.casCommit(await absentCommit(backend), bytesOf(7)).catch((e: unknown) => e)
+            expect(commitError).toBeInstanceOf(Store2BackendFailureError)
+            expect(commitError).toBeInstanceOf(Store2PayloadTooLargeError)
+            expect(commitError).toMatchObject({ key: COMMIT_KEY, bytes: 1, unitType: null })
+            const fenceError = await backend.casFence(await absentFence(backend), bytesOf(7)).catch((e: unknown) => e)
+            expect(fenceError).toBeInstanceOf(Store2BackendFailureError)
+            expect(fenceError).toBeInstanceOf(Store2PayloadTooLargeError)
+            expect(fenceError).toMatchObject({ key: FENCE_KEY })
+        })
+
+        test('reproducer: a removal, which has no body of its own, is a too-large failure with no key', async () => {
+            const { backend, wire } = await open()
+            wire.answer = async (request, real) => request.path === '/api/remove-checked' ? tooLargeAnswer(marked) : real()
+            const error = await backend.removeBatch([unitKey(1)], await absentCommit(backend), (await backend.readFence()).token).catch((e: unknown) => e)
+            expect(error).toBeInstanceOf(Store2BackendFailureError)
+            expect(error).toBeInstanceOf(Store2PayloadTooLargeError)
+            expect(error).toMatchObject({ key: null, bytes: null, unitType: null })
+        })
+    })
+
+    // New behaviour: the preference among definite failures when several uploads fail in one step.
+    test('new behaviour: a too-large upload is reported before another definite failure, and an unknown outcome still comes first', async () => {
+        const { backend, wire } = await open()
+        const absent = await absentCommit(backend)
+        wire.answer = async (request, real) => {
+            if (isWriteOf(request, unitKey(1))) {
+                return new Response('bad', { status: 400 })
+            }
+            return isWriteOf(request, unitKey(2)) ? tooLargeAnswer(true) : real()
+        }
+        expect(await backend.commitOrdinary(absent, [unit(1), unit(2)], bytesOf(1)).catch((e: unknown) => e)).toBeInstanceOf(Store2PayloadTooLargeError)
+        wire.answer = async (request, real) => {
+            if (isWriteOf(request, unitKey(3))) {
+                return tooLargeAnswer(true)
+            }
+            return isWriteOf(request, unitKey(4)) ? applyThenLose(real) : real()
+        }
+        expect(await backend.commitOrdinary(absent, [unit(3), unit(4)], bytesOf(1)).catch((e: unknown) => e)).toBeInstanceOf(Store2UnknownOutcomeError)
+    })
+
+    // Guard: passes before and after; the other statuses keep their classification.
+    test.each([400, 401, 403])('guard: a %i answer is still a definite failure that is not a too-large refusal', async (status) => {
+        const { backend, wire } = await open()
+        wire.answer = async (request, real) => isWriteOf(request, COMMIT_KEY) ? new Response('no', { status }) : real()
+        const error = await backend.casCommit(await absentCommit(backend), bytesOf(1)).catch((e: unknown) => e)
+        expect(error).toBeInstanceOf(Store2BackendFailureError)
+        expect(error).not.toBeInstanceOf(Store2PayloadTooLargeError)
+    })
+
+    test.each([500, 502, 503, 504])('guard: a %i answer is still an unknown outcome', async (status) => {
+        const { backend, wire } = await open()
+        wire.answer = async (request, real) => isWriteOf(request, COMMIT_KEY) ? new Response('upstream', { status }) : real()
+        const error = await backend.casCommit(await absentCommit(backend), bytesOf(1)).catch((e: unknown) => e)
+        expect(error).toBeInstanceOf(Store2UnknownOutcomeError)
+        expect(error).not.toBeInstanceOf(Store2PayloadTooLargeError)
     })
 })

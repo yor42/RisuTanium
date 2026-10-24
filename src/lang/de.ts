@@ -2192,6 +2192,27 @@ export const languageGerman = {
         : blockName === 'config' ? 'den Eintrag zum Speicherformat'
         : blockName === 'stubs' ? 'Ihre archivierten Charaktere'
         : `"${blockName}"`,
+    "saveUnitLabel": (part: string, bytes: number | null): string => {
+        const words = part === 'saveRecord' ? 'der Speichereintrag'
+            : part === 'saveIndex' ? 'der Speicherindex'
+            : part === 'characterList' ? 'ein Teil Ihrer Charakterliste'
+            : part === 'character' ? 'ein Charakter'
+            : part === 'lorebook' ? 'das Lore-Buch eines Charakters'
+            : part === 'scripts' ? 'die Skripte eines Charakters'
+            : part === 'chat' ? 'ein Chat'
+            : part === 'chatPart' ? 'ein Teil eines Chats'
+            : part === 'module' ? 'ein Modul'
+            : part === 'moduleList' ? 'Ihre Modulliste'
+            : part === 'settings' ? 'Ihre allgemeinen Einstellungen'
+            : part === 'preset' ? 'eine Bot-Voreinstellung'
+            : part === 'plugin' ? 'ein Plugin'
+            : part === 'pluginData' ? 'Ihre Plugin-Daten'
+            : part === 'fileList' ? 'eine Liste Ihrer Bilder und Dateien'
+            : part === 'characterOrder' ? 'die Reihenfolge Ihrer Charaktere'
+            : part === 'loadouts' ? 'Ihre Loadouts'
+            : 'ein Teil Ihrer Daten'
+        return bytes === null ? words : `${words} (${(Math.ceil((bytes * 10) / (1024 * 1024)) / 10).toFixed(1)} MiB)`
+    },
     "saveConversionFailedAlert": "Das Überführen Ihrer Daten in das neue Speicherformat ist nach mehreren Versuchen nicht gelungen. An Ihren gespeicherten Daten wurde nichts geändert, und dieser Tab hat das Speichern eingestellt. Laden Sie die Seite neu, um es erneut zu versuchen.",
     "saveSnapshotSkippedTooLarge": "Ihre Daten sind größer, als der selbst gehostete Server in einer Datei akzeptiert, daher werden automatische Backup-Kopien übersprungen. Das Speichern ist davon nicht betroffen. Um ein Backup zu behalten, exportieren Sie in den Einstellungen unter \"Backup & Dateien\" mit \"Backup lokal speichern\" eine .bin-Datei.",
     "saveSnapshotSkippedMemory": "Dieses Gerät konnte nicht genug Speicher für eine automatische Backup-Kopie Ihrer Daten bereitstellen, daher wurde sie übersprungen. Das Speichern ist davon nicht betroffen.",
