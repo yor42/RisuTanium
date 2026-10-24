@@ -646,6 +646,7 @@ describe('the sub-timings of a slot decision', () => {
             {
                 reason: null, decisionMs: 3, lockWaitMs: null, readMs: null, judgeMs: null, checksMs: null, scanMs: null,
                 unsavableMs: null, pruneMs: null, findMs: null, verdictMs: null, primitiveMs: null, movedMs: null,
+                spanAMs: null, yieldMs: null, spanBMs: null,
             },
         ])
         expect(tally.decisionMs).toEqual([3])
@@ -689,7 +690,7 @@ describe('each part carries the time spent inside it', () => {
     // `unsavableMs` is null unless the slot scanned an unsavable character; every other part of a clean slot is a number.
     const NONE: Partial<Record<NetSlotPart, number | null>> = {
         lockWaitMs: 0, readMs: 0, judgeMs: 0, checksMs: 0, scanMs: 0, unsavableMs: null, pruneMs: 0, findMs: 0,
-        verdictMs: 0, primitiveMs: 0, movedMs: 0,
+        verdictMs: 0, primitiveMs: 0, movedMs: 0, spanAMs: 0, yieldMs: 0, spanBMs: 0,
     }
 
     function expectParts(expected: Partial<Record<NetSlotPart, number | null>>, decisionMs: number): void {
@@ -759,7 +760,7 @@ describe('each part carries the time spent inside it', () => {
         await world.slotAt(2_000)
         const timing = meterOf().verdicts().slotTimings[0]
         expect(timing.primitiveMs).toBeGreaterThanOrEqual(20)
-        expectParts({ primitiveMs: timing.primitiveMs as number, verdictMs: timing.primitiveMs as number }, timing.primitiveMs as number)
+        expectParts({ primitiveMs: timing.primitiveMs as number, verdictMs: timing.primitiveMs as number, spanBMs: timing.primitiveMs as number }, timing.primitiveMs as number)
     })
 
     test('a slow primitive and a slow moved-field compare each land in their own part, and both in verdictMs', async () => {
@@ -797,7 +798,7 @@ describe('each part carries the time spent inside it', () => {
         const timing = meterOf().verdicts().slotTimings[0]
         // The primitive's own time is whatever the list derivation cost; the compare adds exactly its 15.
         expect(timing.primitiveMs).toBeGreaterThanOrEqual(20)
-        expectParts({ movedMs: 15, primitiveMs: timing.primitiveMs as number, verdictMs: (timing.primitiveMs as number) + 15 }, (timing.primitiveMs as number) + 15)
+        expectParts({ movedMs: 15, primitiveMs: timing.primitiveMs as number, verdictMs: (timing.primitiveMs as number) + 15, spanBMs: (timing.primitiveMs as number) + 15 }, (timing.primitiveMs as number) + 15)
     })
 
     /** Wraps the encoder's `netScan` so it answers as the real one does and takes `ms` more of the hand clock. */
@@ -824,7 +825,7 @@ describe('each part carries the time spent inside it', () => {
         const hand = installHandClock()
         slowScan(world.encoder, hand, 7)
         await world.slotAt(2_000)
-        expectParts({ checksMs: 7, scanMs: 7 }, 7)
+        expectParts({ checksMs: 7, scanMs: 7, spanAMs: 7 }, 7)
     })
 
     test('a slow shadow prune lands in pruneMs and checksMs only', async () => {
@@ -832,7 +833,7 @@ describe('each part carries the time spent inside it', () => {
         const hand = installHandClock()
         slowPrune(world.encoder, hand, 9)
         await world.slotAt(2_000)
-        expectParts({ checksMs: 9, pruneMs: 9 }, 9)
+        expectParts({ checksMs: 9, pruneMs: 9, spanAMs: 9 }, 9)
     })
 
     /**
@@ -864,7 +865,7 @@ describe('each part carries the time spent inside it', () => {
         // The scan's one read; the final lookup is the second read and stays fast.
         slowCharactersReads(db, hand, [5])
         await world.slotAt(2_000)
-        expectParts({ scanMs: 5, checksMs: 5 }, 5)
+        expectParts({ scanMs: 5, checksMs: 5, spanAMs: 5 }, 5)
     })
 
     test('a slow final lookup lands in findMs and checksMs only', async () => {
@@ -873,7 +874,7 @@ describe('each part carries the time spent inside it', () => {
         const hand = installHandClock()
         slowCharactersReads(db, hand, [0, 13])
         await world.slotAt(2_000)
-        expectParts({ findMs: 13, checksMs: 13 }, 13)
+        expectParts({ findMs: 13, checksMs: 13, spanBMs: 13 }, 13)
     })
 
     test('a slow unsavable scan lands in unsavableMs and checksMs only', async () => {
@@ -889,7 +890,7 @@ describe('each part carries the time spent inside it', () => {
         // The scan's read comes first and stays fast; the two reads inside presentChaIds follow, then the lookup.
         slowCharactersReads(db, hand, [0, 4, 4])
         await world.slotAt(2_000)
-        expectParts({ unsavableMs: 8, checksMs: 8 }, 8)
+        expectParts({ unsavableMs: 8, checksMs: 8, spanAMs: 8 }, 8)
     })
 
     test('every sub-part carries its own time and they sum to checksMs', async () => {
@@ -906,7 +907,7 @@ describe('each part carries the time spent inside it', () => {
         // The scan (one read), presentChaIds (two reads), then the final lookup.
         slowCharactersReads(db, hand, [3, 5, 5, 6])
         await world.slotAt(2_000)
-        expectParts({ scanMs: 3, unsavableMs: 10, pruneMs: 4, findMs: 6, checksMs: 23 }, 23)
+        expectParts({ scanMs: 3, unsavableMs: 10, pruneMs: 4, findMs: 6, checksMs: 23, spanAMs: 17, spanBMs: 6 }, 23)
         const timing = meterOf().verdicts().slotTimings[0]
         const sum = (timing.scanMs as number) + (timing.unsavableMs as number) + (timing.pruneMs as number) + (timing.findMs as number)
         expect(sum).toBe(timing.checksMs)

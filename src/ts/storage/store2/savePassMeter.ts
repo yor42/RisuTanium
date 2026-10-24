@@ -270,6 +270,7 @@ export interface NetShadowTally {
 export type NetSlotReason =
     | 'modulesDue' | 'consent' | 'readFailed' | 'parked' | 'dueAfterRead' | 'pending' | 'unheld' | 'stub' | 'unsavableAbsent'
     | 'verdictClean' | 'verdictDirty' | 'verdictUnknown' | 'slotMissing' | 'guardThrow' | 'noResident'
+    | 'dueAfterYield' | 'dbChanged'
 
 /** What the judged character's verdict said. A `verdictOf` that threw reads as `unknown`: the encoder logs the throw and returns it. */
 export type NetVerdictOutcome = 'clean' | 'dirty' | 'unknown'
@@ -290,16 +291,24 @@ export interface NetVerdictSummary {
 
 /** The parts of one slot's decision that are timed apart; a part the slot's path did not take stays null. */
 export type NetSlotPart = 'lockWaitMs' | 'readMs' | 'judgeMs' | 'checksMs' | 'scanMs' | 'unsavableMs' | 'pruneMs' | 'findMs' | 'verdictMs' | 'primitiveMs' | 'movedMs'
+    | 'spanAMs' | 'yieldMs' | 'spanBMs'
 
 /**
  * Where one slot's `decisionMs` went. `lockWaitMs` is the wait for the write lock and `readMs` the `readCommit` inside
  * it (recorded also when the read throws). `judgeMs` is `judge`. `checksMs` is everything between `judge` and the verdict:
- * the fused scan, the unsavable and prune steps and the resident lookup; a check that throws leaves it null. Its
+ * the fused scan, the unsavable and prune steps and the resident lookup; a check that throws before the yield leaves it null. Its
  * sub-parts are `scanMs` (`SaveEncoder.netScan`: the unheld, stub and resident checks in one pass), `unsavableMs` (the
  * unsavable-absent scan, run only when something is unsavable), `pruneMs` (the shadow prune) and
- * `findMs` (the final resident lookup);
- * each is null when the slot did not run it, and those it ran sum to `checksMs`. When a check throws, the sub-parts
- * finished before it are recorded while `checksMs` stays null.
+ * `findMs` (the final resident lookup, timed from the resume after the yield, so it also covers the two re-checks
+ * and the round-robin advance);
+ * each is null when the slot did not run it, and those it ran sum to `checksMs`. When a check throws before the yield,
+ * the sub-parts finished before it are recorded while `checksMs` stays null; a throw after the yield (a faulting step or
+ * a rejecting yield) finds `checksMs` already closed at the yield. On a slot that yielded, `pruneMs` ends at the yield and
+ * `checksMs` is the time to the yield plus `findMs`; an exit after the yield that runs no `find` (`dueAfterYield`,
+ * `dbChanged`, an unsavable resident) leaves `findMs` null and `checksMs` at the time to the yield.
+ * `spanAMs` is `judge` start to the yield (or to the end of the decision when the slot left before it), `yieldMs` the
+ * wait, and `spanBMs` the resume to the end of the decision; all three are null when the slot left before `judge`, and
+ * the last two when it left before the yield. Their sum plus `lockWaitMs` and `readMs` is at most `decisionMs`.
  * `verdictMs` is `verdictOf` as a whole, split into `primitiveMs` (the prologue, the plain read, and either the shadow
  * compare or the plain-entry primitive) and `movedMs` (the moved-field compare, only after a `clean` verdict). On a
  * tripwire slot `verdictMs` and `decisionMs` also include `shadowTripwireMs` (see `NetShadowSlot`), which `primitiveMs`
@@ -321,6 +330,9 @@ export interface NetSlotTiming {
     verdictMs: number | null
     primitiveMs: number | null
     movedMs: number | null
+    spanAMs: number | null
+    yieldMs: number | null
+    spanBMs: number | null
 }
 
 /**
@@ -420,7 +432,7 @@ function netFoundNow(): NetFoundState {
 
 const NET_SLOT_REASONS: readonly NetSlotReason[] = [
     'modulesDue', 'consent', 'readFailed', 'parked', 'dueAfterRead', 'pending', 'unheld', 'stub', 'unsavableAbsent',
-    'verdictClean', 'verdictDirty', 'verdictUnknown', 'slotMissing', 'guardThrow', 'noResident',
+    'verdictClean', 'verdictDirty', 'verdictUnknown', 'slotMissing', 'guardThrow', 'noResident', 'dueAfterYield', 'dbChanged',
 ]
 
 interface NetVerdictState {
@@ -490,7 +502,7 @@ export function noteNetSlotBegin(): void {
             slotInFlight = {
                 reason: null, decisionMs: 0, lockWaitMs: null, readMs: null, judgeMs: null, checksMs: null,
                 scanMs: null, unsavableMs: null, pruneMs: null, findMs: null,
-                verdictMs: null, primitiveMs: null, movedMs: null,
+                verdictMs: null, primitiveMs: null, movedMs: null, spanAMs: null, yieldMs: null, spanBMs: null,
             }
         }
     } catch {
@@ -520,7 +532,7 @@ export function noteNetSlotMs(ms: number): void {
             shadowSlotStore ??= []
             pushLimited(shadowSlotStore, shadowSlot ?? blankShadowSlot())
             pushLimited(verdictsNow().decisionMs, ms)
-            pushLimited(verdictsNow().slotTimings, { ...(timing ?? { reason: null, lockWaitMs: null, readMs: null, judgeMs: null, checksMs: null, scanMs: null, unsavableMs: null, pruneMs: null, findMs: null, verdictMs: null, primitiveMs: null, movedMs: null }), decisionMs: ms })
+            pushLimited(verdictsNow().slotTimings, { ...(timing ?? { reason: null, lockWaitMs: null, readMs: null, judgeMs: null, checksMs: null, scanMs: null, unsavableMs: null, pruneMs: null, findMs: null, verdictMs: null, primitiveMs: null, movedMs: null, spanAMs: null, yieldMs: null, spanBMs: null }), decisionMs: ms })
         }
     } catch {
         // A measurement failure never reaches the save.
