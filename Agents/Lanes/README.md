@@ -1,6 +1,6 @@
 # Parallel lanes (from 2026-10-21)
 
-The maintainer asked on 2026-10-21 for parallel orchestrator sessions, each on its own worktree, and for a fallback when a session runs out of its ID range. This file sets the rules every lane session follows on top of `AGENTS.md` and `docs/workflow/`. Lane briefs: [lane-B-brief.md](lane-B-brief.md), [lane-C-brief.md](lane-C-brief.md), [lane-D-brief.md](lane-D-brief.md) and [lane-E-brief.md](lane-E-brief.md).
+The maintainer asked on 2026-10-21 for parallel orchestrator sessions, each on its own worktree, and for a fallback when a session runs out of its ID range. This file sets the rules every lane session follows on top of `AGENTS.md` and `docs/workflow/`. Lane briefs: [lane-B-brief.md](lane-B-brief.md), [lane-C-brief.md](lane-C-brief.md), [lane-D-brief.md](lane-D-brief.md) and [lane-E-brief.md](lane-E-brief.md). Lanes F and G (2026-10-24, `MC-503`) have no brief file: lane A gave each brief to the maintainer in chat, to paste into a new Claude app session.
 
 ## Lanes
 
@@ -8,9 +8,11 @@ The maintainer asked on 2026-10-21 for parallel orchestrator sessions, each on i
 |---|---|---|---|
 | A | the session that wrote this file (records owner) | `C:\Projects\RisuAI` (`main`) | the device scripts (`Agents/Tools/device/`), both Note 9s, the shared records files, merges into `main`, CHORE-193 (its triage handed to lane E, or lane B between stages, on 2026-10-22) |
 | B | import/export page fixes | `.claude/worktrees/Lane-B`, branch `worktree-Lane-B` (started by the maintainer 2026-10-21) | the import and export code path listed in its brief |
-| D | UI lists | `.claude/worktrees/Lane-D`, branch `worktree-Lane-D` | the character list, list windowing, chat-render tickets, CHORE-195 and CHORE-192 |
-| C | design of the role-play-first import and the thin native task | `.claude/worktrees/Lane-C`, branch `worktree-Lane-C` (started by the maintainer) | its plan document; first step is the CHORE-202 rerun plan (plan only) |
-| E | CHORE-193 flake triage | `.claude/worktrees/Lane-E`, branch `worktree-Lane-E`, if the maintainer starts it | the investigation and per-file proposals. Lane B may take this work between stages instead; it then uses lane B's IDs and scratch |
+| D (retired) | UI lists | `.claude/worktrees/Lane-D`, branch `worktree-Lane-D` | the character list, list windowing, chat-render tickets, CHORE-195 and CHORE-192 |
+| C (cloud) | design of the role-play-first import and the thin native task | `.claude/worktrees/Lane-C`, branch `worktree-Lane-C` (started by the maintainer) | its plan document; first step is the CHORE-202 rerun plan (plan only) |
+| E (retired) | CHORE-193 flake triage | `.claude/worktrees/Lane-E`, branch `worktree-Lane-E`, if the maintainer starts it | the investigation and per-file proposals. Lane B may take this work between stages instead; it then uses lane B's IDs and scratch |
+| F | the plugin batch (CHORE-30, CHORE-65) | branch `worktree-Lane-F`, started by the maintainer in the Claude app from the brief lane A gave in chat (`MC-503`) | CHORE-30 (V2/V3 `setChar`) and CHORE-65 (plugins reading each other's saved arguments); no phone access |
+| G | the parity batch (CHORE-178, CHORE-45, CHORE-41) | branch `worktree-Lane-G`, started by the maintainer in the Claude app from the brief lane A gave in chat (`MC-503`) | CHORE-178 (lorebook scan depth larger than the chat), CHORE-45 (script cache misses on repeat sends) and CHORE-41 (edit button sometimes opens no editor); no phone access |
 
 Lane C starts with the CHORE-202 rerun plan; its design work waits for lane A's run of that plan.
 
@@ -31,7 +33,9 @@ Each lane takes IDs only from its own range. A range's IDs are permanent once us
 | E | MC-450 to MC-469 | CHORE-350 to CHORE-369 | 3500 to 3699 | none; if the range runs out, go straight to provisional IDs (step 2) |
 | A (added 2026-10-24) | MC-470 to MC-479, then MC-500 to MC-519 | as above | as above | as above |
 | B (added 2026-10-24) | MC-480 to MC-499 | as above | as above | as above |
-| New lanes | from MC-520, CHORE-370, row 3700, in blocks of 20 / 20 / 200, assigned by lane A | | | |
+| F (added 2026-10-24) | MC-520 to MC-539 | CHORE-370 to CHORE-389 | 3700 to 3899 | none assigned; see the contingency steps below |
+| G (added 2026-10-24) | MC-540 to MC-559 | CHORE-390 to CHORE-409 | 3900 to 4099 | none assigned; see the contingency steps below |
+| New lanes | from MC-560, CHORE-410, row 4100, in blocks of 20 / 20 / 200, assigned by lane A | | | |
 
 ### When a range runs out (contingency)
 
@@ -49,17 +53,17 @@ Each lane takes IDs only from its own range. A range's IDs are permanent once us
 
 ## Shared resources
 
-- **Scratch.** Each lane uses its own root under `%TEMP%`: lane A `%TEMP%\risu-b715\`, lane B `%TEMP%\risu-lane-b\`, lane D `%TEMP%\risu-lane-d\`, lane C `%TEMP%\risu-lane-c\`, lane E `%TEMP%\risu-lane-e\`. Do not register a folder with the write guard.
+- **Scratch.** Each lane uses its own root under `%TEMP%`: lane A `%TEMP%\risu-b715\`, lane B `%TEMP%\risu-lane-b\`, lane D `%TEMP%\risu-lane-d\`, lane C `%TEMP%\risu-lane-c\`, lane E `%TEMP%\risu-lane-e\`, lane F `%TEMP%\risu-lane-f\`, lane G `%TEMP%\risu-lane-g\`. Do not register a folder with the write guard.
 - **node_modules.** Use what the worktree setup provides. If the worktree has none, run `pnpm install --frozen-lockfile` in it. Never remove a `node_modules` junction recursively.
-- **Ports.** Lane A 6000 to 6399 (device ports as in its scripts), lane B 6400 to 6419, lane D 6420 to 6439, lane C 6440 to 6459, lane E 6460 to 6479. Use a free-port and identity check; kill only processes you started; never kill by image name. `.claude/launch.json` has fixed ports, such as `risuai-prod-scratch` on 6011 (lane A's range), and must not be edited. A lane starts its own server on its own port and points the preview at it.
-- **Phones.** Only lane A drives the Note 9s; lanes C and E have no phone access. A lane that needs a device result asks the maintainer to pass the request to lane A, with a data ceiling, a time limit and a pass/fail exit (`MC-330`). PC first (`MC-330` 3).
+- **Ports.** Lane A 6000 to 6399 (device ports as in its scripts), lane B 6400 to 6419, lane D 6420 to 6439, lane C 6440 to 6459, lane E 6460 to 6479, lane F 6480 to 6499, lane G 6500 to 6519. Use a free-port and identity check; kill only processes you started; never kill by image name. `.claude/launch.json` has fixed ports, such as `risuai-prod-scratch` on 6011 (lane A's range), and must not be edited. A lane starts its own server on its own port and points the preview at it.
+- **Phones.** Only lane A drives the Note 9s; lanes C, E, F and G have no phone access. A lane that needs a device result asks the maintainer to pass the request to lane A, with a data ceiling, a time limit and a pass/fail exit (`MC-330`). PC first (`MC-330` 3).
 - **Android builds.** A lane that builds Android uses its own `CARGO_TARGET_DIR` (for example `%TEMP%\risu-lane-b\cargo-target-android`), never lane A's warm cache.
 - **Full checks.** Focused tests run freely. A full `pnpm test` while another lane's full run is going hits the CHORE-193 load flakes. A failure in `assetPieceSave`, `firstLife` or `storeImportBoot` is rerun alone before it counts.
 - **Translations.** The translator's write guard allows `main` only (memory note). A lane's translator writes its strings to the lane's scratch, and the lane's coder copies them into the worktree's locale files.
 
 ## Merging into `main`
 
-- A lane merges only with the maintainer's approval for that merge. The standing push approval covers `main` after a commit or fast-forward; pushing a lane branch needs its own approval.
+- A lane merges only with the maintainer's approval for that merge. The standing push approval covers `main` after a commit or fast-forward; pushing a lane branch needs its own approval. Since 2026-10-24, per `MC-500` (lane A's reading of the maintainer's standing approval for gated batches), lane A may merge a lane batch without asking each time when every ticket passed Gate 2 with APPROVE or EDITORIAL, the full checks pass on the merged snapshot and no product question is open. Save format, persistence and data-loss work still needs per-merge approval, and pushing a lane branch still needs its own approval.
 - The merge is done in the `main` checkout when lane A has no active application-code writer there.
 - Full `pnpm test`, `pnpm check` and the relevant build run on the merged snapshot before the push.
 - Order: lane D whenever it passes its gates; lane B after lane D if both are ready, since B carries save-format risk.

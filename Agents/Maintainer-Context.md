@@ -13357,3 +13357,254 @@ Folded in from `Agents/Lanes/lane-C-records.md` on 2026-10-24 (merge `a83c7901b`
 - Notes, not the maintainer's words:
   - The classification and closeout results are agent output. The closeout check ran reasoning and grep only, no tests (its own statement). Its gate-verdict words for CHORE-193 steps 4 and 5 were not reopened.
   - Nothing here authorizes a commit or a push.
+
+### MC-481 — Lane B, 2026-10-24: leave the stubDescription fixed point; lane B sizes the next CHORE-205 lever
+
+- **Tag:** decision (the maintainer's answer in lane A's session, relayed by lane A to lane B on 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** lane A's message to lane B, 2026-10-24, quoting the maintainer: "yeah, I'll take your recommendation. option 2 it is."
+- **Related:** `MC-350`, `MC-480`; lane B row 2474; CHORE-205.
+
+The maintainer took lane A's recommendation, which had two parts:
+1. **`stubDescription` fixed point (row 2474):** leave it as it is for now. The cost is one extra full pass for affected characters, with no data change. A fix would change stored descriptions, which now falls under `MC-350`.
+2. **Next task:** lane B sizes the next CHORE-205 lever among the architecture study's remaining root findings (R3, modules always resident and assembled whole; R2, change detection reads everything and compares), less what stages 1 to 2d and the backstop took. Then it brings the maintainer a proposal with stages and decision questions. No implementation before the maintainer answers.
+
+**Notes that are not the maintainer's words:**
+- The ID was assigned by lane A at records batch 5 (`f0e397aae`).
+- Lane A also relayed that the release-signed Android MVP holds real data since 2026-10-24, so every store2 or save-loop plan names its carry-forward route (lane A records this as `MC-475`).
+- Nothing here authorizes a commit or a push.
+
+Folded in from `Agents/Lanes/lane-B-records.md` on 2026-10-24 (merge `15777155a`).
+
+### MC-482 — Lane B, 2026-10-24: L3 (modules not kept in memory) is in the next CHORE-205 proposal; a phone memory baseline first
+
+- **Tag:** decision (the maintainer's message and AskUserQuestion answer in the lane B session, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane B session transcript; sizing `%TEMP%\risu-lane-b\c205-next\sizing\result.md`, which had recommended deferring L3 until a phone heap figure exists.
+- **Related:** `MC-481`, `MC-350`; CHORE-205.
+
+1. **L3 in scope:** the maintainer wrote: "I think L3 is worth to tackle - while there is no phone memory figure, memory useage of android build is bit on a high side before 2gb limit SIGKILL the process."
+2. **Memory baseline:** "Request it now (Recommended)". The option read: "Lane A runs a short memory session on phone 1, which is free. It gives L3 a real starting figure and shows how close the app gets to the 2 GB kill. Sizing L3 from the code continues meanwhile." The request is `%TEMP%\risu-lane-b\device-requests\2026-10-24-c205-memory.md`.
+3. **When memory neared 2 GB** (AskUserQuestion, several answers allowed): "Batch data managing Plugins", "Importing a .bin backup", "Exporting a backup". The maintainer did not pick "Normal chatting" or "Right after start".
+
+**Notes that are not the maintainer's words:**
+- The roughly 2 GB SIGKILL point is the maintainer's observation on Android; lane B has not measured it.
+- Nothing here authorizes implementation, a commit or a push; `MC-481` item 2 still requires the maintainer's answer to the proposal before any code.
+
+Folded in from `Agents/Lanes/lane-B-records.md` on 2026-10-24 (merge `15777155a`).
+
+### MC-483 — Lane B, 2026-10-24: memory peaks and the save-check cost, one at a time; ask, then reload before a large import or export; L3 waits for measurements
+
+- **Tag:** decision (the maintainer's AskUserQuestion answers in the lane B session, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane B session transcript; the verified sizings in `%TEMP%\risu-lane-b\c205-next\` (`sizing`, `l3-sizing`, `peaks-sizing`, each with its `-verify` folder); phone 1 memory baseline `device-requests\2026-10-24-c205-memory.result.md`.
+- **Related:** `MC-481`, `MC-482`, `MC-350`, `MC-175`, `MC-223`; CHORE-205.
+
+1. **Order:** "Both, one at a time". The option read: "Memory peaks first, then the save-check cost straight after, as separate gated stages."
+2. **Reload before a large import or export on Android:** "Ask, then reload (Recommended)". The option read: "A prompt says the app will reload to free memory. The import or export starts on its own after the reload. You can say no and continue without it."
+3. **L3 (modules not kept in memory):** "Measure, then decide (Recommended)". The option read: "The phone measurements first show how much of memory is the module set. L3 comes back to you only if that share is large."
+4. **Phone measurements:** "Yes, phone 1 (Recommended)". The option read: "Short sessions on phone 1's test profile, through lane A, as before."
+
+**Notes that are not the maintainer's words:**
+- The figures shown in the options were INFERRED, except the 1,128 MiB and 436 MiB renderer figures (MEASURED, Note 9, older build `e63a3eea8`, PSS not JS heap) and the 2.5-3.7 s full-check medians (MEASURED on two Note 9 units).
+- What counts as "large" for item 2 is not yet set; the plan must propose a threshold and bring it back.
+- Nothing here authorizes implementation, a commit or a push.
+
+Folded in from `Agents/Lanes/lane-B-records.md` on 2026-10-24 (merge `15777155a`).
+
+### MC-484 — Lane B, 2026-10-24: the risuaccess MCP module tools join the L3 sizing
+
+- **Tag:** decision (the maintainer's answer in lane A's session, relayed by lane A to lane B on 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** lane A's message to lane B, 2026-10-24: the maintainer chose "Send to lane B for L3 (Recommended)".
+- **Related:** `MC-482`, `MC-483` item 3, `MC-350`, `MC-175`; CHORE-205.
+
+1. **Scope:** the L3 sizing includes the risuaccess MCP module tools.
+2. **The maintainer's idea, as lane A relayed it:** MCP output is read by an LLM, not by deterministic plugin code, so MCP can change internally to fit an "only load what is currently loaded" approach.
+
+**Notes that are not the maintainer's words:**
+- Lane A's quick read, unverified: characters are already served one unit at a time (`readArchivedCharacter`, `restoreArchivedForWrite`). The module list, get and edit tools read `DBState.db.modules` directly, so they need every module resident.
+- Lane A's proposed direction: one module read or written on demand from its store2 unit; the list built from a small index; tool names, arguments and result shapes unchanged.
+- `MC-483` item 3 still holds: L3 comes back to the maintainer only after measurement, as a proposal before any code. `MC-350` applies to any change in what is stored.
+- Nothing here authorizes implementation, a commit or a push.
+
+Folded in from `Agents/Lanes/lane-B-records.md` on 2026-10-24 (merge `15777155a`).
+
+### MC-500 — Lane A, 2026-10-24: "Clean up, then batches" replaces one-ticket-at-a-time; parking is a list the maintainer approves group by group (amends `MC-089` for parked tickets); a gated batch is committed and merged without asking each time, except save and data work; Node items are parked
+
+- Tag: decisions (the maintainer's free-text message and `AskUserQuestion` answers by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` (the call at transcript line 4397); the question and answer extract `%TEMP%\risu-b715\records-b10\questions.md`; the records batch 10 brief (`%TEMP%\risu-b715\records-b10\brief.md`), which carries the maintainer's message verbatim. The quotes and option labels are the maintainer's. Question and option texts are lane A's wording as the extract records them.
+- Reasoning: the maintainer's message (quote 1): going through tickets one by one takes too long.
+- Alternatives rejected: listed after the decisions, with the option texts verbatim.
+- Related: `MC-089` (amended for parked tickets), `MC-345`, `MC-479`, `MC-321`, `MC-501`, `MC-502`, `MC-503`, `MC-504`.
+
+**The maintainer's words and answers.**
+1. The message: "I think we should take more radical approaches here - tacking tickets one by one would take too long. either we go through tickets in batches, or finish currently open phase 2 items first. either way, I think we should change our approach more drastically rather than going through tickets one by one."
+2. To "Which approach should replace one-ticket-at-a-time?": "Clean up, then batches (Recommended)". The option read: "A short records-only pass first: settle the ~20 status-only rows, fold in the old lane E audit verdicts, and rewrite Phase 2 to match what CHORE-205 found. Then cluster batches run in parallel: lane A takes Tauri streaming (CHORE-164, 165, 149, 166 and 167, one Rust path), lane C takes test tooling, and lane B carries on with CHORE-205 L3. The Android Back family is next."
+3. To "May I draft a decision amending MC-089 ('nothing ships until every current ticket is cleared') that parks or closes ticket groups? Candidates: upstream-parity tickets, items the UI overhaul will replace, Node/self-hosting items, and low-value tickets with no repro.": "Draft list, I approve groups (Recommended)". The option read: "I bring a grouped list with each ticket's reason, and you approve or reject group by group. Nothing is parked before that."
+4. To "Should a gated batch be committed and merged without asking you each time? This would apply only when every ticket in it passed Gate 2 with APPROVE or EDITORIAL, the full checks pass, and no product question is open.": "Yes, except save/data work (Recommended)". The option read: "Standing approval for such batches. Anything touching save format, persistence or possible data loss still waits for your approval of each commit."
+5. To "Do you still run a self-hosted Node server, now that the MVP is Android-only?": "No, park Node items". The option read: "The Node/self-hosting group goes on the parking list."
+
+**What was decided (maintainer).**
+1. One-ticket-at-a-time is replaced by "Clean up, then batches" (answer 2). The batch assignments in the option text are lane A's proposal; `MC-502` and `MC-503` record the changes made to them.
+2. Parking is drafted as a list, and the maintainer approves it group by group. Nothing is parked before that (answer 3). The groups are decided in `MC-501`. This amends `MC-089` for the parked tickets: the question text states that parked tickets leave the open table and stay in the records, and that a parked ticket can come back. How a parked ticket counts against `MC-089`'s "every current ticket" rule is lane A's reading (a parked ticket is no longer a current ticket), not the maintainer's words.
+3. Standing approval: a gated batch may be committed and merged without asking each time when every ticket in it passed Gate 2 with APPROVE or EDITORIAL, the full checks pass and no product question is open. Save format, persistence and possible data-loss work still needs the maintainer's approval of each commit (answer 4).
+4. Node and self-hosting items are parked, because the MVP is Android-only (answer 5). Which Node tickets are parked is decided in `MC-501`.
+
+**Lane A's rulings (not the maintainer's decisions).**
+- The standing approval covers lane merges into `main` under the same conditions. Pushing a lane branch still needs its own approval.
+- The standing approval also covers tooling-only commits that passed their gate. Device profile stage C (`df408f8de`, ledger row 2268) was committed under it.
+
+**Alternatives rejected (the unchosen options, verbatim).**
+- Approach: "Freeze UI tickets for overhaul": "Move every UI-surface ticket (lists and grid, chat rendering, wording, the Back family) into a bucket for the overhaul now. That gives the biggest shrink (35 to 40 rows), but leaves daily annoyances such as Back closing the app until the overhaul." And "Phase 2 only": "Lane B finishes CHORE-205 first, step by step; the other lanes wait. This is slowest."
+- Parking: "No parking": "Keep MC-089 as is; every ticket stays to be worked."
+- Standing approval: "Yes, for every batch": "Standing approval for every batch that meets those conditions." And "Keep asking me": "Keep the current per-commit and per-merge approvals."
+- Node: "Yes, keep them": "Keep the Node group. CHORE-89, 120 and 49 can be one small batch in the server file."
+
+- Notes, not the maintainer's words:
+  - The standing approval applies only to batches that meet its stated conditions. This entry authorizes no other commit or push.
+  - The `Agents/Lanes/README.md` "Merging into `main`" section keeps its earlier text and carries a dated sentence for this standing approval.
+
+### MC-501 — Lane A, 2026-10-24: ticket groups parked or closed (groups A and C parked, D parked and closed, F split, CHORE-30 kept as work); groups B and E stay open (amends `MC-089` for the parked tickets)
+
+- Tag: decisions (`AskUserQuestion` answers by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` (the call at transcript line 4494); the extract `%TEMP%\risu-b715\records-b10\questions.md`; the parking draft `%TEMP%\risu-b715\week0\park\result.md` (ledger row 2263) and its doc-verifier check `week0\verify\result.md` (row 2264); the records batch 10 brief. The option labels are the maintainer's. Question and option texts are lane A's wording as the extract records them.
+- Reasoning: `MC-500` set the approval-by-group procedure; the maintainer answered the group list.
+- Alternatives rejected: listed after the decisions, with the option texts verbatim.
+- Related: `MC-500`, `MC-504`, `MC-089`, `MC-345` 3, `MC-479`, `MC-199`, `MC-475`; CHORE-02, 12, 16, 30, 41, 45, 46, 49, 50, 62, 65, 66, 74, 85, 89, 97, 104, 105, 107, 108, 109, 118, 120, 129, 135, 140, 146, 150, 151, 158, 160, 163, 171, 172, 173, 175, 178, 179, 180, 191, 200, 203.
+
+**The maintainer's answers (option labels).**
+1. To "Which parking groups do you approve? (Parked tickets leave the open table and stay in the records; a parked ticket can come back.)": "A: Node-only" and "C: overhaul and UI feel". The options read: A: "Park CHORE-49, 105, 175 and the CHORE-200 residual. Close CHORE-50 and CHORE-89, which are already fixed in code." C: "Park CHORE-104, 160, 74 and 12 MOD-5 (backup screens and new features) and CHORE-135, 140, 171 and 173 (sidebar and list feel)."
+2. To "Group D, low value or no repro (16 tickets). Park 12 and close 4 (CHORE-85, 118, 146 and 203)?": "Yes, except 163 and 158 (Recommended)". The option read: "Park or close all of them except CHORE-163 (archive pass paused, persistence-adjacent) and CHORE-158 (possible stray recency write), which stay open for the week 0 pass."
+3. To the Group F question (CHORE-108 and the web stage of 109, the CHORE-129 residual, and CHORE-179 and 180): "Park web, Back to batch A (Recommended)". The option read: "Park 108, 109 web and 129 residual (hosted web is private-only and not an MVP target). Move 179 and 180 into the Android Back batch."
+4. To "CHORE-30 is a V2/V3 plugin bug: setChar writes to whichever character is selected, so it can overwrite the wrong character, or write characters[-1] when none is selected. Keep it as work, or accept it because upstream behaves the same?": "Keep as work (Recommended)". The option read: "Retitle it to the V2/V3 path and keep it in the plugin-API batch, together with CHORE-65's cross-plugin argument access."
+
+**What was decided (maintainer).**
+1. **Group A parked:** CHORE-49, 105, 175 and the CHORE-200 residual. **Closed** as already fixed in code: CHORE-50 and CHORE-89.
+2. **Group C parked:** CHORE-104, 160, 74, 12 MOD-5, 135, 140, 171 and 173.
+3. **Group D:**
+   - parked: CHORE-02, 66, 97, 107, 150, 151, 172, 16 PG-4 and 191;
+   - closed: CHORE-85, 118, 146 and 203;
+   - CHORE-163 and 158 stay open;
+   - CHORE-167, 185 and 240 were left out as batch members.
+4. **Group F:** parked: CHORE-108, the web stage of 109 and the CHORE-129 residual. CHORE-179 and 180 move to the Android Back batch.
+5. **Groups B and E were not selected and stay open.** B is CHORE-45, 178 and 41; `MC-503` gives them to a lane. E is CHORE-46, 62, 120 and P9. The maintainer parked "Node items" in `MC-500` but chose only group A of the two Node groups; no record explains the choice for E, and it stays open as recorded.
+6. **CHORE-30** is kept as work, retitled to the V2/V3 path, in the plugin batch with CHORE-65 (`MC-503`). `MC-479` recorded no re-decision on CHORE-30; this is it.
+7. **Parked tickets** leave the open table and stay in the records, and can come back.
+8. **Two further parking answers** (S4-6 and list windowing; A-lite stage 5b) came after this extraction and are recorded in `MC-504`, not here.
+
+**Lane A's notes (not the maintainer's decisions).**
+- Count correction: the Group D question said 16 tickets. The group had 15 once CHORE-167, 185 and 240 were left out (the draft in row 2263 listed 18): 9 parked, 4 closed and 2 kept open.
+- The doc-verifier check (row 2264) passed the closes on code and record reading with wording fixes. Its conditions: CHORE-50 stays "not re-run on a live server"; CHORE-89's "remaining gaps ticketed as CHORE-119/130" claim is dropped; CHORE-203 cites `MC-345` 5, and its optional debug and release pair is dropped, not done; CHORE-146 is closed by the maintainer's approval with no wording change. The same check found the draft's CHORE-41 premise overstated: `MC-199` 1 waits for the maintainer's report, and the Android condition "may now be satisfied (MVP installed, `MC-475`)".
+- The doc-verifier check (row 2264) found CHORE-186 not closable: no verifier row covers its merge-close records. That is outside this decision.
+
+**Alternatives rejected (the unchosen options, verbatim).**
+- Groups: "E: Node, data/security": "Park CHORE-46 (database over 100 MB), CHORE-62 (another device's save loses edits), CHORE-120 (first client sets the password) and P9. All are Node-only, but each has a data-loss or security angle." And "B: upstream parity": "Park CHORE-45 (script cache misses: about 60 ms on the PC, maybe 10-15x on a phone), CHORE-178 (lore scan skips early messages in short chats) and CHORE-41 (edit button sometimes opens nothing)."
+- Group D: "Yes, all 16": "Park 12 and close 4, as listed." And "No": "Keep all of group D open."
+- Group F: "Keep all open": "Keep all of group F open." And "Park all": "Park all of group F."
+- CHORE-30: "Accept upstream parity": "Park it as upstream behaviour."
+
+- Notes, not the maintainer's words:
+  - The Roadmap and the parked-tickets file carry the per-ticket status lines (records batch 10).
+  - Nothing here authorizes a commit or a push.
+
+### MC-502 — Lane A, 2026-10-24: batch T product answers (a Stop keeps the partial reply as a normal message; a native stream that fails after the reply started shows the error, reversing `MC-260` 8 for that path; a Stop before the first byte is silent) and phone 2 for lane B's reload checks
+
+- Tag: decisions (`AskUserQuestion` answers by option label and one chat message, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` (the call at transcript line 4510); the extract `%TEMP%\risu-b715\records-b10\questions.md`; the batch T files under `%TEMP%\risu-b715\batchT\` (`sizing.md`, `plan.md`, `plan-v2.md`, `gate1\result.md`, `gate1-r2\result.md`; ledger rows 2265 to 2267); the records batch 10 brief. The option labels and the quoted message are the maintainer's. Question and option texts are lane A's wording as the extract records them.
+- Reasoning: the options carry lane A's trade-offs; the maintainer chose the recommended option on all four questions.
+- Alternatives rejected: listed after the decisions, with the option texts verbatim.
+- Related: `MC-260` 8 (reversed for the native streaming path), `MC-261` 2, `MC-500`, `MC-483`, `MC-475`; CHORE-149, 164, 165, 166, 167.
+
+**The maintainer's answers (option labels).**
+1. To "Batch T (native streaming, CHORE-164/165/149): when the user presses Stop during a native stream, what happens to the partial reply?": "Keep it as normal (Recommended)". The option read: "As today: the partial reply stays as a normal message. Only the native request is now cancelled at once, as MC-261 2 already chose."
+2. To "CHORE-165: when a native stream fails after the reply has started (cut connection, 240 s timeout), it currently looks complete. What should happen?": "Show the error (Recommended)". The option read: "Error the stream: the user sees the failure and the partial text stays. This reverses MC-260 8's 'not on errors' for this native path."
+3. To "CHORE-167: a Stop before the first byte shows 'Error: aborted', but a later Stop is silent. Align them?": "Silent, like a later Stop (Recommended)". The option read: "A user Stop never shows an error dialog. A timeout still reports its error."
+4. To "Lane B wants three reload checks on a phone: sessionStorage survival, whether a dialog opens without a tap, and memory before and after a reload. Phone 1 holds your real partial profile and an older build; both phones need a new build from current main. Where should they run?": "Phone 2, synthetic (Recommended)". The option read: "Run them on phone 2 after device stage D loads the new 500-character synthetic profile on a fresh build of main. No real data, screenshots allowed. A short wait for stage C and D."
+5. The chat message on the device profile stages: "1. Device profile stage B can go ahead." It answers the go-ahead `MC-474` recorded as pending; free-text reply, no options offered.
+
+**What was decided (maintainer).**
+1. A Stop during a native stream keeps the partial reply as a normal message. Only the native request is cancelled at once (answer 1).
+2. A native stream that fails after the reply has started (cut connection, 240 s timeout) shows the error and keeps the partial text. This reverses `MC-260` 8's "not on errors" for the native streaming path only (answer 2).
+3. A user Stop never shows an error dialog, before or after the first byte. A timeout still reports its error (answer 3).
+4. Lane B's three reload checks run on phone 2 with the synthetic profile, not on phone 1 (answer 4).
+5. Device profile stage B went ahead (message in answer 5).
+
+**Lane A's rulings and reading (not the maintainer's decisions).**
+- CHORE-166 leaves batch T and becomes its own batch: the batch T sizing found that only CHORE-164, 165 and 149 share the `streamed_fetch` path (row 2265).
+- A cancel that arrives before the native request registers takes effect through a bounded, short-lived tombstone: a cap of about 64 entries and a time to live of at most 10 s. Gate 1 finding A4 (row 2266) records this ruling as applying and replacing plan v1's "no tombstone".
+- Answer 4 implies approval of device stage D on phone 2: a fresh main build on the test key, `pm clear`, and the synthetic device-profile import, followed by lane B's three checks. The maintainer did not word it so; this is lane A's reading of the option text.
+- Gate history for batch T: plan v1, Gate 1 round 1 [REJECT]; plan v2, Gate 1 round 2 [APPROVE WITH AMENDMENTS] (B1 to B4, row 2267). No stage was implemented at the time of writing; T1 was in progress.
+
+**Alternatives rejected (the unchosen options, verbatim).**
+- Stop: "Keep, mark stopped": "Keep the partial reply with a 'stopped' marker. This changes saved message state, so it needs the full persistence review." And "Discard it": "Remove the partial reply."
+- Late failure: "Mark interrupted only": "Keep the quiet finish but flag the message as interrupted. This touches saved message state, so it needs the full persistence review." And "Leave as is": "No change for late failures."
+- CHORE-167: "Always show aborted": "Every Stop shows the aborted notice." And "Leave as is": "No change; CHORE-167 is parked."
+- Placement: "Phone 1, real partial": "Run them now on phone 1 after installing a main build. Real-data rules apply: no screenshots or DOM text, numbers and booleans only."
+
+- Notes, not the maintainer's words:
+  - This entry is the record of the `MC-260` 8 reversal that Gate 1 (row 2266, A10) asked the orchestrator to write at closeout. It describes the decision, not an implementation.
+  - Nothing here authorizes a commit or a push.
+
+### MC-503 — Lane A, 2026-10-24: two new lanes, F (plugin batch: CHORE-30, 65) and G (parity batch: CHORE-178, 45, 41), started by the maintainer in the Claude app from briefs lane A gives in chat
+
+- Tag: decisions (`AskUserQuestion` answers and chat messages, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` (the call at transcript line 4751); the extract `%TEMP%\risu-b715\records-b10\questions.md`; the records batch 10 brief. The quotes and option labels are the maintainer's. Question and option texts are lane A's wording as the extract records them.
+- Reasoning: the maintainer's offer of a second account whose weekly quota would otherwise expire (quote 1).
+- Alternatives rejected: listed after the decisions, with the option texts verbatim.
+- Related: `MC-500`, `MC-501`, `MC-479`, `MC-502`; CHORE-30, 41, 45, 65, 178; `Agents/Lanes/README.md`.
+
+**The maintainer's words and answers.**
+1. The offer: "if you want, I can try to add few more lanes to the workflow to tackle another batches if those can take on another batches. I have another max account that will expire 6 days from now. so we can safely burn away its weekly quota."
+2. To "Which batches should new lanes take? Each lane works in its own worktree. Only lane A drives the Note 9s, so PC-testable batches parallelise best.": "Plugin batch (Recommended)" and "Parity batch (Recommended)". The options read: Plugin batch: "CHORE-30: V2/V3 setChar writes to whichever character is selected. CHORE-65: plugins read and change each other's saved arguments. JS only, testable on PC." Parity batch: "Group B, the ones you kept open. CHORE-178: lorebook scan depth larger than the chat. CHORE-45: the script cache misses on repeat sends. CHORE-41: the edit button sometimes opens no editor. Mostly PC-testable; 41 may need a phone repro."
+3. To "Should lane A write the lane briefs now, so you can start each new session pointed at its brief?" the maintainer chose neither listed option and wrote: "Give me the copy-pastable brief for each lane - I will start them through claude app."
+
+**What was decided (maintainer).**
+1. Two new lanes take the plugin batch (CHORE-30, 65) and the parity batch (CHORE-178, 45, 41).
+2. The maintainer starts each session in the Claude app from a copy-pastable brief that lane A gives in chat. No brief file for lanes F or G exists in `Agents/Lanes/` at this writing.
+
+**Lane A's assignments (not the maintainer's decisions).**
+- **Lane F, plugin batch (CHORE-30, 65):** MC-520 to MC-539, CHORE-370 to CHORE-389, ledger rows 3700 to 3899, ports 6480 to 6499, scratch `%TEMP%\risu-lane-f\`, branch `worktree-Lane-F`.
+- **Lane G, parity batch (CHORE-178, 45, 41):** MC-540 to MC-559, CHORE-390 to CHORE-409, ledger rows 3900 to 4099, ports 6500 to 6519, scratch `%TEMP%\risu-lane-g\`, branch `worktree-Lane-G`.
+- Both lanes have no phone access. Device requests are relayed to lane A (`MC-330`).
+- New lanes now start from MC-560, CHORE-410 and row 4100.
+
+**Alternatives rejected (the unchosen options, verbatim).**
+- Batches: "Android Back batch": "CHORE-179, 180, 351, 352, 354 (and 147 if in scope). Needs many phone checks, and those go through lane A, so this lane would wait on the phones. Better kept in lane A after batch T." And "Node data/security": "Group E (CHORE-46, 62, 120, P9). You chose to park Node items, so I would not start this unless you want to."
+- Briefs: "Yes, write briefs (Recommended)": "Lane A writes Agents/Lanes/lane-F-brief.md (and G if picked): scope, ID blocks from MC-520/CHORE-370/row 3700, scratch root, ports, merge rules, the standing gated-batch approval. You create each worktree and start a session rooted in it." And "I'll brief them myself": "Lane A gives you only the ID blocks and port ranges."
+
+- Notes, not the maintainer's words:
+  - CHORE-30's retitle and the plugin batch come from `MC-501` answer 4. CHORE-41's phone repro, if needed, goes through lane A.
+  - Nothing here authorizes a commit or a push.
+
+### MC-504 — Lane A, 2026-10-24: S4-6 and list windowing stay parked to the UI overhaul; A-lite stage 5b stays parked behind CHORE-205's L3 and per-chat work; the `AGENTS.md` sentence on V2.1 plugins is updated
+
+- Tag: decisions (three `AskUserQuestion` answers by option label, 2026-10-24, given after the extraction in `MC-500` to `MC-503`). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6`; the records batch 10 brief (`%TEMP%\risu-b715\records-b10\brief.md`), which quotes the three questions, the answers and the chosen options. The answers are the maintainer's. Question and option texts are lane A's wording as the brief quotes them.
+- Reasoning: the options carry lane A's reasons; the maintainer chose the recommended option each time.
+- Alternatives rejected: listed after the decisions, with the option texts verbatim from lane A's questions (supplied by the coordinator).
+- Related: `MC-345` 3, `MC-475`, `MC-366`, `MC-369`, `MC-349`, `MC-476`, `MC-501`, `MC-500`; CHORE-205, CHORE-206; the character list rework S4-6 and list windowing; A-lite stage 5b.
+
+**The maintainer's answers (option labels).**
+1. To "Character list rework: S4-6 (arrow-key focus) and list windowing were parked until after the MVP (MC-345 3). The MVP is installed, and no record unparks them. What now?": "Keep parked to overhaul (Recommended)". The option read: "Both are list-UI work the UI overhaul will redo. Stay parked; you said to park 'overhaul and UI feel' (group C)."
+2. To "A-lite stage 5b (clean-up UI, quota path, prompt wording, orphan counter) was parked until after the MVP. Stage 5a (automatic clean-up on the Tauri app) is merged. What should happen to 5b?": "Keep parked behind 205 (Recommended)". The option read: "Revisit after CHORE-205's L3 and per-chat work, which change what clean-up must handle."
+3. To "AGENTS.md still says V2.1 plugins run until CHORE-206 lands. CHORE-206 cuts A and B (f6a9b2dd2, 562927bd3) are on main, so V2.1 execution is already retired. May lane A update that sentence?": "Yes, update it (Recommended)". The option read: "Rewrite it to: V2.1 execution is retired (MC-349, CHORE-206); their data stays untouched in the database and .bin. Goes in records batch 10."
+
+**What was decided (maintainer).**
+1. S4-6 and list windowing stay parked, now to the UI overhaul rather than to after the MVP (answer 1).
+2. A-lite stage 5b stays parked behind CHORE-205's L3 and per-chat work. It is revisited after them (answer 2).
+3. Lane A may update the `AGENTS.md` sentence on V2.1 plugins (answer 3). Records batch 10 replaced "but they will not run once CHORE-206 lands (MC-349; post-MVP, so current code still runs them)" with a citation: the sentence now reads "Exception: V2.1 plugin execution is retired; their data stays untouched in the database and `.bin` (MC-349, CHORE-206, MC-504)."
+
+**Alternatives rejected (the unchosen options, verbatim).**
+- S4-6 and list windowing: "After CHORE-205 L3": "Unpark them as a batch once lane B's L3 module work lands." And "Unpark now": "Make them a batch now (could go to a new lane)."
+- A-lite stage 5b: "Schedule it next": "Make 5b a batch now. It is save/data work, so every commit still needs your approval." And "Drop the UI, keep 5a": "Close 5b's UI part; automatic 5a clean-up is the whole feature."
+- AGENTS.md: "No, leave it": "Keep AGENTS.md as is."
+
+- Notes, not the maintainer's words:
+  - The option text for answer 3 gave a longer wording; the sentence in `AGENTS.md` follows the replacement lane A specified in the records batch 10 brief. The doc-verifier check (row 2264) had flagged the old `AGENTS.md` sentence as stale.
+  - These two parkings are the Roadmap's "PARKED (MC-504)" entries; the group decisions are in `MC-501`.
+  - Nothing here authorizes a commit or a push.

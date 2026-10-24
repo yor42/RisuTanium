@@ -19,154 +19,123 @@ Ideas that are **not** part of this campaign — quality-of-life features, nice-
 Replaces the finished `MC-345` work order (moved to [Archive/Roadmap-closed-2026-10-24.md](Archive/Roadmap-closed-2026-10-24.md); `MC-479`). This records state and sets no priorities; [Live-State](Live-State.md) holds the dated detail.
 
 - **MVP:** installed on the maintainer's phone (`MC-475`); `MC-350` carry-forward is live.
-- **Lane A:** orchestration and records. Device profile stage B waits on the maintainer's go-ahead (`MC-474`). CHORE-207 next: read the grid plan for the A2 overlap (`MC-478`).
-- **Lane B:** CHORE-205. Sizing lever L3, including the MCP module tools; its plugin module asset-list fix `916adac48` is to be rebased onto `main` after CHORE-206 and re-gated before a new merge request.
-- **Lane C (cloud):** CHORE-500, CHORE-330 and CHORE-501 merged in `a83c7901b`; idle.
+- **Lane A:** orchestration and records; runs batch T (the native streaming path: CHORE-164, 165, 149 and 167; `MC-502`), whose plan v2 passed Gate 1 round 2 as `[APPROVE WITH AMENDMENTS]`; T1 is committed (`a51321952`, not pushed) and T2 is in progress. Device profile stage D follows on phone 2 (a fresh main build on the test key, `pm clear`, the synthetic device-profile import), then lane B's three checks (`MC-502`). The Android Back batch (CHORE-179 and 180) and CHORE-166 follow batch T. CHORE-207 stays a candidate (`MC-478`).
+- **Lane B:** CHORE-205, sizing lever L3 (including the MCP module tools). Its plugin module asset-list fix is rebased and merged (`15777155a`).
+- **Lane C (cloud):** runs batch Q (CHORE-240, CHORE-185 and CHORE-353). Its earlier scope (CHORE-500, CHORE-330 and CHORE-501) merged in `a83c7901b`.
+- **Lanes F and G (new, `MC-503`):** F runs the plugin batch (CHORE-30 and CHORE-65), G the parity batch (CHORE-178, CHORE-45 and CHORE-41). Neither has phone access; device requests go to lane A.
+- **Batches (`MC-500`):** work runs in gated batches. Parked tickets (`MC-501`, `MC-504`) are in [Roadmap-parked.md](Roadmap-parked.md).
 
 ## Open tickets
 
 One row per open entry below, in file order. "Needs review" marks an entry whose status lines conflict or are incomplete; a bounded pass settles it later. State is the entry's latest status phrase, shortened.
 
+Parked tickets and sub-items (`MC-501`, `MC-504`) are not in this table; they are in [Roadmap-parked.md](Roadmap-parked.md), and a parked sub-item of an open ticket carries a "PARKED" status line in its entry.
+
 | ID | Title | State | Owner | Next |
 |---|---|---|---|---|
 | Phase 1 — Persistence &… | Phase 1 — Persistence & asset-integrity hardening (correctness, no architecture change) | 10. ❌ Attempted, then reverted — needs a properly-scoped follow-up, not a quick fix. | - | Phase 1 item 10 (inlay GC) needs a properly-scoped follow-up |
 | Phase 1.5 — Multi-write… | Phase 1.5 — Multi-writer conflict hardening (new, from topic 05) | Still open, identified but not fixed: the `alertStore` modal hijack | - | alertStore modal hijack; no 'stopped saving' indicator |
-| Phase 2 — RAM/architect… | Phase 2 — RAM/architecture rework (the shared root cause; highest leverage, highest effor… | Status (2026-09-30) — Phase 2 is in progress; it has not landed. | - | Phase 2 items 3, 4, 8 still open; exit criterion unmet |
+| Phase 2 — RAM/architect… | Phase 2 — RAM/architecture rework (the shared root cause; highest leverage, highest effor… | Status (2026-09-30) — Phase 2 is in progress; it has not landed. | - | status 2026-10-24: items 3, 4, 8 open; exit criterion not recorded as met |
 | Phase 4 — Android (expl… | Phase 4 — Android (explicitly gated behind Phase 2) | the release stays gated. | - | Android release gated behind memory/perf work |
-| CHORE-02 | `toSave.chat` is dead plumbing in the encoder | Decide whether to wire it up | - | decide: wire up per-chat toSave.chat or delete it |
 | CHORE-03 | Trash: dedicated bug-hunting pass | ### CHORE-03 — Trash: dedicated bug-hunting pass | - | dedicated trash bug-hunting pass not started |
 | CHORE-04 | Module enable/disable causes a freeze too, by a DIFFERENT mechanism | Grounded hypothesis — NOT verified, test it before acting on it: | - | test the ReloadGUIPointer hypothesis |
 | CHORE-05 | Translation coverage: much of the UI is English-only | open only for the native-speaker review, LOW PRIORITY | Main Campaign | native-speaker review (low priority) |
 | CHORE-06 | `console.log` of whole-save objects may pin them in memory for the session | - Still open: how many log lines a typical session produces after boot | - | confirm in-browser retention; log sizes not objects |
-| CHORE-07 | A transient cold-storage read failure permanently orphans a chat (DATA LOSS, reproduced) | needs review: Stage 7c-2 (a Retry for chats that already show the pre-7b error text | - | confirm whether stages beyond 7c-2 remain |
 | CHORE-08 | Plugin permission consent: session cache ignores the permission kind, and the provider pr… | Decide the UX (key the cache by name + kind | - | maintainer UX decision on consent cache and provider prompt |
-| CHORE-12 | Modules: 6 suspected bugs (none lose data) | - MOD-5: open. An icon editor is a new feature. | - | MOD-1 not done by decision; MOD-3 left; MOD-5 open |
-| CHORE-16 | Playground: 4 suspected bugs | needs review: PG-4's part is open (the hand-off is in the PG-2, PG-3 and PG-4 bullet below). | - | confirm PG-4 wiki hand-off state |
+| CHORE-12 | Modules: 6 suspected bugs (none lose data) | - MOD-5: open. An icon editor is a new feature. | - | MOD-1 not done by decision; MOD-3 left; MOD-5 parked (MC-501) |
+| CHORE-16 | Playground: 4 suspected bugs | PG-4 parked (MC-501); code done in 0d41f06a | - | PG-4 remainder is a wiki hand-off (maintainer's) |
 | CHORE-17 | Plugin `setDatabase` re-encodes every character (a cost, not data loss) | (the setter boundary reconcile) is ON HOLD — see "Why layer 1 is on hold" below. | - | layer 1 on hold |
-| CHORE-29 | Filling a missing `chaId` brings back a stale copy of the character | Status (2026-09-24): found by Gate 1 round 4 of the W0 plan (ledger row 170), which ran it. Not | - | not fixed, not scheduled |
-| CHORE-30 | v2.1 `setChar` writes into whatever is selected when the plugin calls it | open; not moot: the V2/V3 `setChar` path is live | - | retitle to the V2/V3 path, or the maintainer accepts upstream parity |
-| CHORE-31 | Cold storage may turn an idle group into a plain character | Status (2026-09-24): found in passing by the W0 investigation (ledger row 164). Untraced for | - | trace impact first |
-| CHORE-32 | A swap can drop a character's pending edit for one save | Status (2026-09-24): found by the W0 follow-up checks (ledger row 169, check 2). Traced, not | - | traced, not run; narrow |
-| CHORE-33 | RisuAccount removal: drop the hub credential, keep Realm and Drive | needs review: Status (2026-10-24, lane A records batch 6; encrypted backups, `MC-477`): the refusal stands, b… | - | DONE 2026-09-26; 2026-10-24 note only corrects a premise; watch kwaroran/Risuai… |
+| CHORE-29 | Filling a missing `chaId` brings back a stale copy of the character | Status (2026-09-24): found by Gate 1 round 4 of the W0 plan (ledger row 170), which ran it. Not | - | superseded on store2 per lane E audit; candidate to close |
+| CHORE-30 | v2.1 `setChar` writes into whatever is selected when the plugin calls it | open; not moot: the V2/V3 `setChar` path is live (retitled 2026-10-24 to the V2/V3 path, MC-501) | lane F | plugin batch (MC-503) |
+| CHORE-31 | Cold storage may turn an idle group into a plain character | Status (2026-09-24): found in passing by the W0 investigation (ledger row 164). Untraced for | - | superseded on store2 per lane E audit; candidate to close |
+| CHORE-32 | A swap can drop a character's pending edit for one save | Status (2026-09-24): found by the W0 follow-up checks (ledger row 169, check 2). Traced, not | - | superseded per lane E audit; candidate to close |
 | CHORE-35 | Upstream proxy and CDN infrastructure outside Realm and Drive have no agreement gate | needs review: Traced to source, not fixed. | - | opt-in stage scheduled (MC-092); CHORE-60 text says 'CHORE-35 closes' |
-| CHORE-41 | Bug: the edit button on earlier messages sometimes opens no editor | Status (2026-10-06, Main Campaign): open, LOW PRIORITY (`MC-199` 1). | - | revisit only on maintainer's report |
-| CHORE-45 | The script cache misses every lookup on a repeat send in a long chat | Present upstream. Not fixed and not scheduled. | - | not scheduled (script cache) |
+| CHORE-41 | Bug: the edit button on earlier messages sometimes opens no editor | Status (2026-10-06, Main Campaign): open, LOW PRIORITY (`MC-199` 1). | lane G | parity batch (MC-503); MC-199 condition may now be satisfied; waits for maintainer report |
+| CHORE-45 | The script cache misses every lookup on a repeat send in a long chat | Present upstream. Not fixed and not scheduled. | lane G | parity batch (MC-503) |
 | CHORE-46 | The self-hosted Node server cannot save a database larger than 100 MB | Present upstream. Not fixed and not scheduled. | - | not scheduled (Node 100 MB); parked until after A5 |
-| CHORE-49 | The self-hosted Node server does not boot when opened over plain HTTP | Not fixed and not scheduled. | - | not scheduled; parked until after A5 |
-| CHORE-50 | The first run of a new self-hosted Node server fails until a reload | needs review: Not re-run against a live server for this record. | - | fixed in code a29335f76; not re-run against a live server |
-| CHORE-55 | Tauri main-file writes are not atomic (a failed write can leave a partial `database/datab… | Stage 5 or later (inlays with CHORE-48, the search index, CHORE-46's | - | stage 5 or later not scheduled |
+| CHORE-55 | Tauri main-file writes are not atomic (a failed write can leave a partial `database/datab… | Stage 5 or later (inlays with CHORE-48, the search index, CHORE-46's | - | superseded on store2 per lane E audit; stage 5 or later not scheduled |
 | CHORE-60 | Release identity: the desktop build still carries upstream's identity | the first signed build is the maintainer's (`MC-456` 3) | lane A / maintainer | first signed build is the maintainer's (MC-456 3); updater, key.txt |
-| CHORE-61 | The save encoder silently loses presets, modules or a character when a character's `chaId… | open, not scheduled and not placed in the work order | - | not scheduled; data-loss candidate |
+| CHORE-61 | The save encoder silently loses presets, modules or a character when a character's `chaId… | open, not scheduled and not placed in the work order | - | superseded per lane E audit; candidate to retitle or park |
 | CHORE-62 | On a Node server, another device's save makes this device stop saving until it reloads, a… | Open questions: where the unsynced edits would be kept | - | Node; parked until after A5 |
-| CHORE-65 | Plugins read and change each other's saved arguments, and V2.1 plugins edit the plugin li… | needs review: Status (2026-10-02, later): low priority | - | may now be closable after CHORE-206 landed 2026-10-24; low priority, not schedu… |
-| CHORE-66 | The wiki's plugin pages describe the plugin-list behaviour from before CHORE-64 | open, not scheduled. Documentation. | - | wiki is the maintainer's; not scheduled |
+| CHORE-65 | Plugins read and change each other's saved arguments, and V2.1 plugins edit the plugin li… | needs review: Status (2026-10-02, later): low priority | lane F | plugin batch (MC-503); V2.1 half moot, cross-plugin getArg/setArg open |
 | CHORE-68 | CHORE-63 stage C: embed the app's own images from inside a message into the "Copy as card… | open, not scheduled. Filed at the maintainer's decision | - | not scheduled (copy-as-card stage C) |
-| CHORE-70 | Startup installs a save that only partly decodes, without checking whether a backup is co… | open, not scheduled. Filed at the maintainer's decision | - | not scheduled; design undecided |
+| CHORE-70 | Startup installs a save that only partly decodes, without checking whether a backup is co… | open, not scheduled. Filed at the maintainer's decision | - | superseded per lane E audit (read-only legacy residue) |
 | CHORE-71 | The plugin overwrite guard walks every chat in live memory on each in-place plugin `setIt… | open, not scheduled, LOW priority. | - | LOW priority; not scheduled |
 | CHORE-72 | A local backup restore writes an entry whose name does not match the cold-storage key pat… | open, not scheduled, LOW priority. | - | LOW priority; not scheduled |
 | CHORE-73 | On a Windows desktop, a chat whose pointer names a unit in a `coldstorage` folder that do… | open, not scheduled, LOW priority. | - | LOW priority; not scheduled |
-| CHORE-74 | The `.bin` export warns when the backup holds plugin data that upstream will not restore | Status (2026-10-20, `MC-322` 1): DEFERRED. | - | deferred QOL (MC-177) |
 | CHORE-83 | Every boot writes the main file, a numbered backup and about 507 block-cache entries even… | partly addressed by `f04068f1` | - | block-cache puts on boot still open |
 | CHORE-84 | The page-load listing of stored units and assets is awaited before plugins and costs abou… | open, not scheduled. Severity: not assessed. | - | not scheduled |
-| CHORE-85 | A browser crash within seconds of a committing boot pass can leave the pass breaker at 'o… | needs review: moot for its stated consequence. | - | moot for stated consequence (idle reload removed); residual recorded, not fixed |
-| CHORE-89 | On the Node server, `/hub-proxy` forwards a request to any URL named in the `x-risu-node-… | open, not scheduled; fixes are to be proposed after Stage 0 of the save-layer track. | - | Node; propose fixes; not scheduled |
 | CHORE-92 | The copy-as-card `text/plain` companion still includes the thinking text | locked behind CHORE-68 | - | locked behind CHORE-68 |
-| CHORE-97 | Browser CORS for the Hugging Face router is unverified; a live check with a real Hugging… | Status (2026-10-04, side session): DEFERRED by the maintainer (`MC-221`) | - | needs a working Hugging Face key |
 | CHORE-120 | On the Node server, `/api/set_password` accepts any client until a password exists, and t… | open, not scheduled; fixes are to be proposed after Stage 0 of the save-layer track. | - | Node; not scheduled |
 | CHORE-128 | A faster Risutanium-to-Risutanium backup format and a sync folder (design not started) | Status (2026-10-06): open, not scheduled; design follows the Rust `.bin` path | - | parked until after A5; design not started |
-| CHORE-129 | Warn before an upstream-compatible export when data exceeds upstream's size limits, and l… | Status (2026-10-22, lane B stage 4, `MC-359`): RESIDUAL ACCEPTED UNTIL STAGE 0b for web and Node | lane B | web/Node size check until stage 0b; parked until after A5 |
+| CHORE-129 | Warn before an upstream-compatible export when data exceeds upstream's size limits, and l… | Status (2026-10-22, lane B stage 4, `MC-359`): RESIDUAL ACCEPTED UNTIL STAGE 0b for web and Node | lane B | web/Node size check parked (MC-501) until stage 0b |
 | CHORE-101 | Assets saved before a refusal, a save failure or a changed file stay behind as orphans | Status (2026-10-06): open, not scheduled. Type: wasted disk. | - | not scheduled (orphan assets) |
 | CHORE-102 | A re-import of a large file whose assets already exist still sends every piece over IPC b… | Status (2026-10-06): open, not scheduled. Type: performance. | - | not scheduled |
 | CHORE-103 | The restore of a large legacy `database` entry peaks at about +1.2 GiB in its decode tail | the residual is format-bound and the item stays OPEN. | lane B | format-bound residual; A4 only if A1 says so |
-| CHORE-104 | The "kept file" message | Status (2026-10-06): open, not scheduled. | - | wording undefined (TODO evidence) |
-| CHORE-105 | A Node chunked upload endpoint (optional) | Status (2026-10-06): open, optional, any time (`MC-225` 3). | - | optional, any time |
 | CHORE-106 | Put `.charx` and editor uploads onto the piece save | Status (2026-10-06): open, not scheduled. | - | not scheduled |
-| CHORE-107 | `openWriter` belongs inside the `try` | Status (2026-10-06): open, not scheduled. | - | not scheduled (TODO evidence) |
-| CHORE-108 | The web stage of piece saving | Status (2026-10-06): open, not scheduled (`MC-225` 5 | - | web stage of piece saving |
-| CHORE-109 | Show assets without loading them whole | - Not done: the web stage (a service worker over the stored files | - | web stage (waits CHORE-108); inlays CHORE-114 |
+| CHORE-109 | Show assets without loading them whole | - Not done: the web stage (a service worker over the stored files | - | web stage parked (MC-501); inlays CHORE-114 |
 | CHORE-111 | Native-speaker review of the Stage 1c, `.bin` and importer strings | Status (2026-10-06): open, low priority, the same deferral as CHORE-05 (`MC-212`). | Main Campaign | native-speaker review, low priority |
 | CHORE-112 | Android follow-ups | Status (2026-10-06): open, not scheduled. From the Android work | - | Android follow-ups; not scheduled |
 | CHORE-113 | Stage 1c residuals | Status (2026-10-06): open, not scheduled. The residual list of Report 59 section 7 | - | stage 1c residuals; not scheduled |
 | CHORE-114 | Inlays are missing from `.bin` backups and never reach the Node server | Open: a Note 9 low-end measurement of Stage C's cleanup (debug build) | - | Note 9 measurement of stage C cleanup; interim memory copy |
 | CHORE-115 | Android asset protocol answers Range requests with a non-zero start wrongly; asset videos… | fixed by wry 0.57.1 in builds made from this checkout, MEASURED on phone 2 | lane A | verify on next MVP build (wry 0.57.1); video check did not run |
 | CHORE-117 | Save-time validation: a committed generation must always load | not COMPLETE: stage 1b is still open, narrowed by the audit | lane E | stage 1b open; needs maintainer decision |
-| CHORE-118 | Gemini audio orphan | Status (2026-10-07): open; queued, not filed in detail. | - | symptom not recorded (TODO evidence) |
-| CHORE-135 | Sidebar Stage 4: the panel does not follow the finger | Status (2026-10-08): open; not scheduled. Type: feature remainder. | - | finger-following panel; not scheduled |
-| CHORE-140 | Rail: Home leaves 12 px hidden; verify smooth scroll-to-active into a closed folder | Status (2026-10-08): open. Type: verification and bug, low. | - | verify scroll-to-active into closed folder |
 | CHORE-141 | Android restore's `relaunch()` does not restart the app | Status (2026-10-08): open; noticed in Stage 3. | - | Android relaunch() cause not investigated |
-| CHORE-146 | Possible Vietnamese wording tweak for "Ungroup" ("Bỏ nhóm") | Status (2026-10-08): open; maintainer or translator call. | Translator | maintainer or translator call |
 | CHORE-147 | Android: the process aborts on exit with the OS Back (FORTIFY "pthread_mutex_lock called… | Status (2026-10-09): open; pre-existing; cause not established. | - | cause not established; parked until after A5 |
 | CHORE-148 | The generated Tauri Android files in the checkout are stale (tauri 2.11.5 against a lock… | Status (2026-10-09): open; regenerate before relying on them. | - | regenerate Tauri Android files before relying on them |
-| CHORE-149 | `streamed_fetch` in `src-tauri/src/lib.rs` uses `.unwrap()` where a failure can panic the… | Status (2026-10-09): open; observed in source, panic behaviour not run. | - | replace unwrap() in streamed_fetch |
-| CHORE-150 | A custom page colour near middle grey may give low button contrast on Android 15+ | Status (2026-10-09): known limit; not tested. | - | known limit; not tested |
-| CHORE-151 | Untested limits of the Android bar and keyboard handling | Status (2026-10-09): open; not tested. | - | untested Android bar/keyboard limits |
+| CHORE-149 | `streamed_fetch` in `src-tauri/src/lib.rs` uses `.unwrap()` where a failure can panic the… | Status (2026-10-09): open; observed in source, panic behaviour not run. | lane A | batch T (MC-502) |
 | CHORE-153 | Observation: a Light-scheme change can be lost if the app is force-stopped about 15 s aft… | technically accepted; owes the debounce cap (Q-C, deferred, no ticket) | - | - |
 | CHORE-154 | Output-identical cheap fixes in the chat parse pipeline | Status (2026-10-09): open; queued after the windowing items. | - | queued after windowing items; parked |
 | CHORE-155 | The full chat re-renders on every `ReloadGUIPointer` bump | Status (2026-10-09): open; queued after the windowing items; | - | queued after windowing items |
 | CHORE-156 | Decided chat-render work items (streaming default, Lua engine reuse, superseded parses) | Status (2026-10-09): decided (`MC-257`); queued after the windowing items; not planned. | - | decided (MC-257); needs Gate 1 plans |
 | CHORE-157 | Chat render small items: `ScriptingEditDisplayIds` never cleared; `getClosestMatch` overw… | Status (2026-10-09): open; queued after the windowing items. | - | queued after windowing items |
 | CHORE-158 | After cancelling the character-import picker, "Rail 1000" appeared at the top of the char… | Status (2026-10-09): open; observation, not diagnosed. | - | observation, not diagnosed |
-| CHORE-159 | Every restore leaves a large `dbbackup-*.bin` in the app's database directory | Status (2026-10-09): open; observation. | - | observation (dbbackup growth) |
-| CHORE-160 | Cancelling the export save dialog shows "Error: Failed" | Status (2026-10-09): open; observation; not compared with the earlier build. | - | observation |
+| CHORE-159 | Every restore leaves a large `dbbackup-*.bin` in the app's database directory | Status (2026-10-09): open; observation. | - | audit base predates stage 5a; per-import growth unmeasured |
 | CHORE-161 | Android boot baseline follow-ups: timers starved during `encoder.init`, and main-thread w… | Status (2026-10-09): open; performance follow-ups, not planned. | - | not planned |
 | CHORE-162 | Android boot baseline follow-up: per-call IPC cost of block reads (batching) | Status (2026-10-09): open; performance follow-up, not planned. | - | not planned |
 | CHORE-163 | Unexplained: the archive pass wrote units and then paused after a font change (device tes… | Status (2026-10-09): open; unexplained; may be moot after `9371359e` | - | unexplained; may be moot after 9371359e |
-| CHORE-164 | Stop ends the reply on screen but does not close the native `streamed_fetch` request on T… | Status (2026-10-10): open; ticketed on the maintainer's answer "Ticket it, fix later" | - | ticketed 'fix later'; not planned |
-| CHORE-165 | A `streamed_fetch` that fails after the body was handed over closes the stream normally,… | Status (2026-10-10): open; not reproduced on a device; not planned. | - | not reproduced; not planned |
-| CHORE-166 | Timers that are still late while the app is hidden after Stage 3b | Status (2026-10-10): open; known gaps, not planned. | - | known gaps; not planned |
-| CHORE-167 | A reply aborted while the app is hidden shows no "aborted" dialog on return, while a fore… | Status (2026-10-10): open; observation; not diagnosed. | - | observation; not diagnosed |
+| CHORE-164 | Stop ends the reply on screen but does not close the native `streamed_fetch` request on T… | Status (2026-10-10): open; ticketed on the maintainer's answer "Ticket it, fix later" | lane A | batch T (MC-502) |
+| CHORE-165 | A `streamed_fetch` that fails after the body was handed over closes the stream normally,… | Status (2026-10-10): open; not reproduced on a device; not planned. | lane A | batch T (MC-502) |
+| CHORE-166 | Timers that are still late while the app is hidden after Stage 3b | Status (2026-10-10): open; known gaps, not planned. | lane A | its own batch, after batch T (MC-502) |
+| CHORE-167 | A reply aborted while the app is hidden shows no "aborted" dialog on return, while a fore… | Status (2026-10-10): open; observation; not diagnosed. | lane A | batch T (MC-502) |
 | CHORE-168 | The composer's "Continue Response" creates a user-role message with the "says nothing" pl… | Status (2026-10-10): open; observation; not diagnosed. | - | observation; not diagnosed |
 | CHORE-169 | Tapping a link in a catalogue description on Android shows "Scoped shell IO error: Permis… | Status (2026-10-10): open; ticketed on the maintainer's answer "Ticket it (Recommended)" | - | unconfirmed on base; not planned |
 | CHORE-170 | Grid fling long tasks of up to 153 to 227 ms on the Note 9; try a smaller grid overscan a… | Status (2026-10-10): open; observation with a partial attribution; not planned. | - | try smaller grid overscan after profiling |
-| CHORE-171 | A long plain-text List description clips its third line mid-glyph, with "Show more" direc… | Status (2026-10-10): open; cosmetic; not planned. | - | cosmetic; not planned |
-| CHORE-172 | Trash tab flings show 13 to 17% janky frames on the Note 9 | Status (2026-10-10): open; observation; cause UNCERTAIN; needs a larger trash to settle; not planned. | - | needs a larger trash to settle |
-| CHORE-173 | A zoom or font-scale change that does not resize the scroller is not picked up until the… | Status (2026-10-10): open; low; not planned. | - | low; not planned |
-| CHORE-174 | `CharConfig.svelte` re-reads `$selectedCharID` live across an `await` and can write to th… | Status (2026-10-10): open; existing issue, not fixed by the unload stage 1a; not planned. | lane E | A3 fix in work order |
-| CHORE-175 | On a versioned (Node) store, a put that lands but whose response throws leaves `writeAckn… | Status (2026-10-10): open; usability limitation, not data loss; | - | usability limitation (Node); not planned |
+| CHORE-174 | `CharConfig.svelte` re-reads `$selectedCharID` live across an `await` and can write to th… | Status (2026-10-10): open; existing issue, not fixed by the unload stage 1a; not planned. | lane E | no fix on main; lane E audit: still present |
 | CHORE-177 | Grid fling jank with every folder open on the Note 9 (the scroller's layer height; the br… | Status (2026-10-10): open; not planned; to be revisited with the list-windowing perf work | - | revisit with list-windowing work |
-| CHORE-178 | Lorebook `searchMatch` slices from `length - scanDepth` with no clamp, so a scan depth la… | Status (2026-10-11): open; not planned; present in upstream too. | - | not planned |
-| CHORE-179 | Phone-browser Back closes neither the sidebar nor Grid edit mode | Status (2026-10-11): open; not planned; the browser half of the S4-2 Back decision | - | browser Back; not planned |
-| CHORE-180 | Back on screens with their own back stack and no Back handler: the Beta Mobile GUI chat "… | Status (2026-10-11): open; not planned; found by the S4-2b Note 9 pass. | - | not planned |
+| CHORE-178 | Lorebook `searchMatch` slices from `length - scanDepth` with no clamp, so a scan depth la… | Status (2026-10-11): open; not planned; present in upstream too. | lane G | parity batch (MC-503) |
+| CHORE-179 | Phone-browser Back closes neither the sidebar nor Grid edit mode | Status (2026-10-11): open; not planned; the browser half of the S4-2 Back decision | - | Android Back batch, after batch T (MC-501) |
+| CHORE-180 | Back on screens with their own back stack and no Back handler: the Beta Mobile GUI chat "… | Status (2026-10-11): open; not planned; found by the S4-2b Note 9 pass. | - | Android Back batch, after batch T (MC-501) |
 | CHORE-183 | A `botPresets` list that is missing or not a list makes "Convert without these parts" sto… | Status (2026-10-20, stage 4b close): open, not scheduled. | - | not scheduled |
 | CHORE-184 | The Lua runtime (wasmoon `glue.wasm`) is fetched from unpkg.com at run time | Status (2026-10-20, stage 4b close): open, not scheduled. | - | not scheduled (Lua fetched from unpkg) |
-| CHORE-185 | The `Chat.draftCaptureScenarios` "success-then-fail" test is load-sensitive | Status (2026-10-20, stage 4b close): open, not scheduled. | - | not scheduled (test flake) |
-| CHORE-186 | E5: a shared-profile upstream save loses upstream's plugin index on store2 conversion (pr… | needs review: technically accepted (records pending independent verification at this writing). | - | records pending verification at that writing; maintainer's call on old snapshots |
+| CHORE-185 | The `Chat.draftCaptureScenarios` "success-then-fail" test is load-sensitive | Status (2026-10-20, stage 4b close): open, not scheduled. | lane C (cloud) | batch Q |
+| CHORE-186 | E5: a shared-profile upstream save loses upstream's plugin index on store2 conversion (pr… | technically accepted; merge-close records unverified | - | doc-verifier pass on the merge-close records, then COMPLETE |
 | CHORE-188 | The import warning says "Your saved data is not changed until the import has finished", w… | Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled. | - | not scheduled (import warning wording) |
 | CHORE-189 | Index-level incomplete items carry the slot key `_coldpluginIndex` and a minted id, so th… | Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled. | - | not scheduled |
 | CHORE-190 | U3 A2 non-blocking items: the dirty mark, `keys()` and `length()` after `clear()`, and a… | Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled. | - | not scheduled |
-| CHORE-191 | English `chatParseFailed` now ends with a trailing ", " | Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled. | - | not scheduled (cosmetic) |
 | CHORE-202 | The Note 9 screen-off import stall has an unknown cause | Cause of the freeze still UNKNOWN; no fix has been found. | lane C / lane A | rerun with working power polling or trace; cause unknown |
-| CHORE-203 | The Note 9 debug-build copy rate is 3.6 to 3.9 MiB/s; separate the debug cost | Status (2026-10-22, later): measured on release, not settled. | lane A | same-commit debug/release pair if it still matters |
-| CHORE-221 | A `.bin` commit's salvage can leave out blocks the person did not confirm | Status (2026-10-22): open, candidate; not scheduled. | lane B | candidate; unverified reviewer note |
-| CHORE-222 | Parallel large-entry streams: pick the defaults on the Note 9, then raise them | needs review: the maintainer accepted it (`MC-342` 1). | lane B | - |
+| CHORE-221 | A `.bin` commit's salvage can leave out blocks the person did not confirm | Status (2026-10-22): open, candidate; not scheduled. | lane B | candidate; lane E audit confirms the reviewer reading |
 | CHORE-223 | An Android stub export spends most of its time in two steps outside the asset loop ('expo… | Not COMPLETE. | lane B | cold-collect traced to idle net; stage B design waits |
 | CHORE-224 | Opening a stored character does not apply the character defaults, so a character without… | technically accepted; owes the node fixture flake ticket and Gate 2 notes N1 to N3 | lane B | - |
 | CHORE-350 | a value that cannot be stored retries every save pass (MC-346 Q-A) | Status (2026-10-22): open, not scheduled. Filed per `MC-346` Q-A | lane E | not scheduled (MC-346 Q-A) |
 | CHORE-351 | CHORE-351 (new) — select and input prompts have no cancel, so Back cannot close them (MC-… | Status (2026-10-22): open, not scheduled. Filed per MC-455 Q2 | - | not scheduled (MC-455 Q2) |
 | CHORE-352 | CHORE-352 (new) — Back does not close Settings, the Realm frame, popups or panels (MC-455… | Status (2026-10-22): open, not scheduled. Filed per MC-455 Q1 | - | not scheduled (MC-455 Q1) |
 | CHORE-225 | Store2 save planning re-encodes every module on each idle-net tick, blocking the page for… | Status (2026-10-23): stages A, B and C merged; not COMPLETE. | lane B | stages A-C merged; re-measure |
-| CHORE-226 | Why the `shard:13` unit is rewritten on every select commit | needs review: closed with no codec change | lane B | - |
 | CHORE-502 | Old-format HypaV2 data conversion drops summaries whose target message is hidden (propose… | Status (2026-10-24, lane A records batch 5): parked post-MVP | - | parked post-MVP (MC-352 2) |
-| CHORE-205 | Architecture study: subsystems that fail as the library grows (the whole-library in-memor… | Status (2026-10-24, lane A records batch 6): lane B is sizing the next lever, L3 | lane B | L3 per-module units proposal before code |
+| CHORE-205 | Architecture study: subsystems that fail as the library grows (the whole-library in-memor… | Status (2026-10-24, lane A records batch 6): lane B is sizing the next lever, L3 | lane B | L3 per-module units (rebase of the plugin asset-list fix merged in 15777155a) |
 | CHORE-206 | Retire V2.1 plugin execution and keep the data (MC-349) | Status (2026-10-24, lane A records batch 6): technically COMPLETE. | lane A | Stage 3 (remove 2.1-only API members) deferred; optional alertPluginConfirm fol… |
 | CHORE-207 | off-main-thread asset work (candidate) | Status (2026-10-24): open, candidate, not scheduled, no code (`MC-478`). | lane A | candidate; no code |
-| CHORE-353 | The write-scope guard refuses only the Edit and Write tools, so a shell write can change… | Status (2026-10-22, lane A): open, ticketed, not scheduled (`MC-457` 1). | lane A | revisit if similar things happen |
+| CHORE-353 | The write-scope guard refuses only the Edit and Write tools, so a shell write can change… | Status (2026-10-22, lane A): open, ticketed, not scheduled (`MC-457` 1). | lane C (cloud) | batch Q |
 | CHORE-354 | CHORE-354 (new) — on a large profile the page does not answer Back within 1 s after the f… | Status (2026-10-22): open, low priority, not scheduled. | lane A | low priority; not scheduled |
 | Grid avatar loading (MC… | Grid avatar loading (MC-452, MC-459) — stage A, the thumbnail write leaves the generation… | The rest of stage B is deferred (`MC-463`). | lane E | rest of stage B deferred (MC-463) |
-| CHORE-240 | A full `pnpm test` rewrites `modules.test.ts.snap` with LF line endings | Status (2026-10-22, lane D): open, not scheduled. Test-only. | lane D | test-only; not scheduled |
+| CHORE-240 | A full `pnpm test` rewrites `modules.test.ts.snap` with LF line endings | Status (2026-10-22, lane D): open, not scheduled. Test-only. | lane C (cloud) | batch Q |
 | CHORE-241 | MVP chat-open and edit stalls: a quadratic display regex, and chat-phase measurement | S3 and S4 are parked until a re-measure after CHORE-225 (`MC-389`). | lane D | S3/S4 parked until re-measure after CHORE-225 |
-| CHORE-200 | On a Node server, a cold-storage unit over the request body limit fails only after the up… | the boot-pass strike for an oversize unit remains open as a proposed follow-up, not scheduled. | - | boot-pass strike for oversize unit (proposed, not scheduled) |
+| CHORE-200 | On a Node server, a cold-storage unit over the request body limit fails only after the up… | the boot-pass strike for an oversize unit remains open as a proposed follow-up, not scheduled. | - | Node boot-pass strike residual parked (MC-501) |
 | Android boot batch (202… | Android boot batch (2026-10-09): gates, checks, device passes, accepted limits and open q… | needs review: Open maintainer questions (not decided). | - | COMPLETE per Phase 2 bullet but Q-A/Q-B 'Open maintainer questions' remain |
-| Character list rework (… | Character list rework (2026-10-10): Stage 1 plans, gates, checks, accepted limits | Character list rework, status 2026-10-22 (sixth update, lane A): IN PROGRESS. | - | Character list rework: S4-6 parked, item IN PROGRESS |
-| Character list rework (… | Character list rework (2026-10-10): Stages 1c, 2a and 2b | Character list rework, status 2026-10-22 (sixth update, lane A): IN PROGRESS. | - | Character list rework item IN PROGRESS |
-| Character list rework (… | Character list rework (2026-10-10 to 2026-10-11): Stage 3, S4-1 and S4-2 | Character list rework, status 2026-10-22 (sixth update, lane A): IN PROGRESS. | - | Character list rework item IN PROGRESS |
-| Upstream merge `979dbc9… | Upstream merge `979dbc9d` and the logo PR #8 (2026-10-11) | needs review: Upstream merge `1f455c0b` (3 files, +265/-21; pushed). | - | no status line; merge record, pushed |
-| Character list rework (… | Character list rework (2026-10-12): S4-3, group the Grid edit-mode selection into a new f… | Character list rework, status 2026-10-22 (sixth update, lane A): IN PROGRESS. | - | Character list rework item IN PROGRESS |
+| Character list rework | Character list rework (2026-10-10 onward): stages 1 to S4-5 | stage records COMPLETE (four section entries moved to the closed archive); the item is IN PROGRESS | - | S4-5b Note 9 pass (MC-384 2); S4-6 and list windowing parked to the UI overhaul (MC-504) |
 | QOL side track (2026-10… | QOL side track (2026-10-12): batch import of plugins and modules, plugin export, per-mode… | Status (2026-10-12): IN PROGRESS, not COMPLETE; branch `feat/qol` | lane QOL | nothing committed or merged as of 2026-10-12 |
-| Runtime unload, the wor… | Runtime unload, the work after increment 1 (unload-2, 2026-10-12): gates, checks and owed… | every device or Tauri claim below is owed, not observed. | - | device/Tauri checks owed (cloud session) |
-| Stage 4b, store2 import… | Stage 4b, store2 import and export close (2026-10-20): commits, gates, checks, devices, c… | needs review: COMPLETE once these records are verified. | - | COMPLETE conditional on record verification; not recorded here |
-| A-lite storage rewrite… | A-lite storage rewrite (2026-10-13): stage list, gates and state | Open items. | - | Open items list before the freeze |
-| Session 2026-10-21 (res… | Session 2026-10-21 (resume): plugin-index change, stub-export flip, device scripts | - Open: the Note 9 export figure, batched for the next device session | - | Note 9 export figure batched for next device session |
+| Runtime unload, the wor… | Runtime unload, the work after increment 1 (unload-2, 2026-10-12): gates, checks and owed… | every device or Tauri claim below is owed, not observed. | - | audit: most superseded; two checks owed in changed form |
+| A-lite storage rewrite… | A-lite storage rewrite (2026-10-13): stage list, gates and state | Open items. | - | 5a merged; 5b parked behind CHORE-205 (MC-504) |
 | Candidate tickets, not… | Candidate tickets, not yet numbered (2026-10-04) | Deferred. The server still starts as if the snapshot were empty | - | unnumbered candidates (G2-4 suspected, P9 deferred) |
 
 ---
@@ -296,6 +265,8 @@ and the pre-existing last-writer-wins whole-DB overwrite, which remains architec
 ---
 
 ## Phase 2 — RAM/architecture rework (the shared root cause; highest leverage, highest effort)
+
+**Status (2026-10-24, lane A records batch 10): Phase 2 is partly superseded. The items below stand as written.** Store2 boots a stub for every non-resident character on every backend, which refutes "the whole library is one reactive object" for the growth case (CHORE-205 entry, 2026-10-23 update). Item 8 (resident chat data) is therefore addressed at the character grain. The boot archive pass, the cold-storage archive engine and the idle reload are gated off or removed on store2 pages (`MC-268` item 3; lane E audit, source reading, doc-verifier-checked, not run), and V2.1 plugin execution, the case that forced every character to load, is retired (`MC-349`, `MC-476`). What remains: CHORE-205's work, none of it built (L3 per-module units, a lane B proposal before code; the per-chat blocks of item 9 in CHORE-205 stage 3, deferred as expensive to reverse); list windowing (`MC-345` 3), parked to the UI overhaul (`MC-504`; that this is the same item as item 3's chat-list windowing is INFERRED); item 4, size-based compaction of long recent chats (`MC-135` 3); and the exit criterion, which is not recorded as met. See `MC-348`, `MC-373`, `MC-479`.
 
 This phase is the load-bearing one: it's what Phase 4 (Android) is gated behind, and it's the most consequential thing found in any of the four investigations. Sequence sub-items by risk — start with the isolated component-level fix, end with the DB-wide architectural change.
 
@@ -505,18 +476,6 @@ Once Phase 2 has landed:
 ---
 
 ## Chores — confirmed bugs found during Stage B, NOT yet scheduled
-
-### CHORE-02 — `toSave.chat` is dead plumbing in the encoder
-
-`grep -n "toSave.chat\|RisuSaveType.CHAT" src/ts/storage/risuSave.ts` returns **nothing**. The
-field is populated (`dbChangeEffects.svelte.ts:80-85`) and merged back on failed saves
-(`globalApi.svelte.ts:620-623`), but the encoder never reads it to decide anything — chats persist
-inside the whole-character `CHARACTER_WITH_CHAT` block, gated solely by `toSave.character`.
-
-Consequence: leftover/aspirational plumbing for a per-chat granularity that was never wired up.
-**Useful corollary: a CHORE-01 fix needs no parallel per-chat work.** Decide whether to wire it up
-or delete it; do not leave it looking load-bearing. Low risk either way, but deleting it touches
-`toSaveType`, so treat it as save-adjacent.
 
 ### CHORE-03 — Trash: dedicated bug-hunting pass
 
@@ -1131,60 +1090,6 @@ Node; in-browser retention is inferred, not proven.**
   these stay pinned.
 - **Fix, if confirmed:** small and low-risk — log sizes and counts, not objects.
 
-### CHORE-07 — A transient cold-storage read failure permanently orphans a chat (DATA LOSS, reproduced)
-
-**Status 2026-09-21:** stage 7a (stop deleting: startup asset sweep and manual cleanup) is **committed `c66c9f4b`** (Report 13 §2; gates ledger 29/33/34). Stage 7b's minimal core (a failed load changes nothing, send guards, a failure notice) is **committed `3e17c8a3`** (gates ledger 39/40). Stage 7c-1 (telling missing data from read errors, the firm missing-data notice, plugin storage rejecting on failure, the plugin `sendChat` guard, and the character-switch restore race) is **committed `be3633bd`** (gates ledger 41/42; live check ledger 43). Stage 7c-2 (a Retry for chats that already show the pre-7b error text, with a hypa-aware side-field merge, and no longer re-cold-storing such chats) is **committed `4a4dfae1`** (Report 13 §5.3 rev 7; gates ledger 44/45; live check ledger 46).
-
-**A second loss path, reproduced 2026-09-21 (ledger 22), which deletes ASSET FILES.** Startup
-`cleanChunks` (`bootstrap.ts:292` → `:576-589` Tauri, `:645-654` web) deletes every asset that
-`getUncleanables` does not list. For a cold-stored character, `getUncleanables` needs a
-successful cold read to see its emotion images and additional assets. After one failed read,
-those files are **deleted**, while the blob stays intact.
-- **Affected:** anyone with cold-stored characters and the cold-storage **setting** off.
-- **Likely explains** some "images going missing" reports.
-- **Fix plan:** `Agents/Reports/13-chore07-cold-read-failure-plan.md` §3.4.
-
-**Seen in the wild (maintainer, 2026-09-21):** old user reports exist of this exact
-`[Cold storage data could not be loaded...]` text. Cold storage defaults to on only for installs
-that had no plugins at first load, so the affected population is mostly plugin-free users.
-
-Found by the memory investigation on 2026-09-21 (ledger row 14). **Reproduced end to end the same
-day (ledger row 15)** by `Agents/Tools/save-gen/cold-storage-orphan-repro.svelte.harness.ts`, which
-drives the real `coldstorage.svelte.ts`, `registerDbChangeEffects()` and the RisuSave encoder/decoder.
-- **Setup:** one read throws; the blob is still present.
-- **What was observed, in order:**
-  - `getColdStorageItem` returns `null`, and a retry right after returns the real payload.
-  - `preLoadChat` overwrites the chat with the error message.
-  - `markChanged` fires.
-  - The decoded save holds the error string.
-  - A later `preLoadChat` is a no-op, because the pointer header is gone.
-  - `cleanColdStorage()` then **deletes the still-intact blob**.
-- **Control:** a genuinely missing blob produces the same error message, so the user cannot tell
-  the two cases apart.
-- **Branches:** the reproduction exercised the web (OPFS) branch. Source shows the same
-  catch-everything-and-return-`null` in the Node-server (`:61-73`) and Tauri (`:74-84`) branches.
-- **Account branch (source-inferred, not reproduced):** any non-200 hub response falls back to
-  local, and returns `null` if the data isn't local. This path depends on selection, like CHORE-01
-  and CHORE-03: the overwrite persists only while that character is selected.
-- **Corrected ranges:** `getColdStorageItem` spans `:40-105`; `cleanColdStorage` spans `:244-262`;
-  the referenced-key logic lives in `coldstorageData.ts:64-97`.
-
-The rest of this entry is the original source trace, kept for its line references:
-- **What happens on a failed read:** `getColdStorageItem` swallows every error and returns `null`
-  (`coldstorage.svelte.ts:74-104`). `preLoadChat` then treats `null` as "missing or corrupted" and
-  overwrites the chat's messages with an error message (`:650-661`).
-- **Why the loss persists:** that overwrite is an ordinary mutation of the selected character, so it
-  is saved and the cold pointer is gone from the live data. The key survives only as text inside the
-  error message.
-- **How the blob would then be deleted (inferred):** a later manual `cleanColdStorage`
-  (`:244-257`, triggered from `UserSettings.svelte:95`) deletes blobs that no pointer references. It
-  would then delete the still-intact blob.
-- **Scope:** whole-character restore is safe (`characters.ts:893-901` alerts and keeps the stub).
-- **Next step:** reproduce the failure against unfixed code first, as with CHORE-03, then separate
-  "not found" from "read failed".
-- **Relevance:** this campaign targets exactly the "sudden data loss" that 1000+-character users
-  report.
-
 ### CHORE-08 — Plugin permission consent: session cache ignores the permission kind, and the provider prompt is not enforced
 
 Found while rewriting the plugin wiki pages (2026-09-22); both verified by the Orchestrator in
@@ -1207,6 +1112,8 @@ Decide the UX (key the cache by name + kind; on a declined provider, fail the re
 visible error) with the maintainer before implementing. Translations of the prompts: CHORE-05.
 
 ### CHORE-12 — Modules: 6 suspected bugs (none lose data)
+
+**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group C) for MOD-5 only.** The module icon editor is parked; the ticket stays open for its other items. Can return on a maintainer decision.
 
 **Status (2026-10-03, UI session): MOD-2 and MOD-6 DONE 2026-10-03 in `0d41f06a`** (ledger rows
 861 to 868; the same commit as CHORE-16 PG-2 to PG-4). Product choices in `MC-207`. MOD-1 is **not done**, by the maintainer's
@@ -1278,6 +1185,8 @@ mismatch, a missing editor control, or a GUI-refresh lag; none touch what's save
   Report 99); a fix to either must update the page.
 
 ### CHORE-16 — Playground: 4 suspected bugs
+
+**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D) for PG-4 only.** PG-4's code is done (`0d41f06a`; `MC-207`); what remains is a wiki hand-off (`docs/wiki/Playground.md` is the maintainer's) and the custom key and request model, which are still bound to the live memory settings. The ticket stays open for its other items. Can return on a maintainer decision.
 
 Found by the wiki session while writing the [[Playground]] wiki page (2026-09-22). Full hand-off,
 with per-bug evidence, status and suggested investigation: **`Agents/Reports/99-playground.md`**.
@@ -1537,6 +1446,8 @@ how far the cause was traced, since several were seen in passing and not investi
 
 ### CHORE-29 — Filling a missing `chaId` brings back a stale copy of the character
 
+**Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): SUPERSEDED on store2 (the fill code remains, the harm is gone: shard entries are rebuilt from the live list and ids are minted); not run through a reload. Candidate to close; closing is the maintainer's (`MC-479`).
+
 **Status (2026-09-24):** found by Gate 1 round 4 of the W0 plan (ledger row 170), which ran it. Not
 fixed. Upstream `characterFormatUpdate` fills a missing `chaId` in the same way.
 
@@ -1556,6 +1467,10 @@ fixed. Upstream `characterFormatUpdate` fills a missing `chaId` in the same way.
 
 ### CHORE-30 — v2.1 `setChar` writes into whatever is selected when the plugin calls it
 
+**Status (2026-10-24, lane A records batch 10): retitled 2026-10-24 to: V2/V3 `setChar` writes into whatever character is selected (`MC-501`); lane F.** The old title above is kept. Assigned to lane F's plugin batch with CHORE-65 (`MC-503`).
+
+**Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): STILL PRESENT, plugin-only. The audit names the V2/V3 `setChar` and `setCharacter` reach, and an index of -1 writes a stray property. The audit predates CHORE-206 cut A (`f6a9b2dd2`), which retired the V2.1 `__pluginApis__.setChar` route, so the live reach is V2 and V3.
+
 **Status (2026-10-24, lane A Roadmap cleanup): open; not moot.** CHORE-206 removed only the V2.1 sandbox wiring. `getV2PluginAPIs().setChar`, which V3 `setChar` and `setCharacter` call through `setSelectedCharacter`, still writes to the selected character, so the defect is live outside V2.1 and the "both V2.1 paths" note below is wrong for this ticket (closeout check, ledger row 2261).
 
 **Status (2026-09-24):** found in passing by Gate 1 rounds 3 and 4 of the W0 plan. Traced, not
@@ -1569,6 +1484,8 @@ writer rework.
 
 ### CHORE-31 — Cold storage may turn an idle group into a plain character
 
+**Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): SUPERSEDED. `buildColdStub` and `stubFromEntry` keep the group type, and the archive engine is blocked on store2. Candidate to close; closing is the maintainer's (`MC-479`).
+
 **Status (2026-09-24):** found in passing by the W0 investigation (ledger row 164). **Untraced for
 impact.** Upstream has the same placeholder literal.
 
@@ -1579,6 +1496,8 @@ impact.** Upstream has the same placeholder literal.
 
 ### CHORE-32 — A swap can drop a character's pending edit for one save
 
+**Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): SUPERSEDED. The only caller is inside the legacy loop. The audit's clause that the edit is "re-encoded via `unheldChaIds`" is INFERRED, but the audit's doc-verifier correction 5 found `unheldChaIds` is live store2 code (benign). Candidate to close; closing is the maintainer's (`MC-479`).
+
 **Status (2026-09-24):** found by the W0 follow-up checks (ledger row 169, check 2). Traced, not
 run. Narrow.
 
@@ -1586,57 +1505,6 @@ run. Narrow.
   `characters` and does not re-fold them, although the reload branch does.
 - If a character already had a pending edit when a plugin swap briefly removed it from the array,
   that edit misses that save. It is saved with the next mark.
-
-### CHORE-33 — RisuAccount removal: drop the hub credential, keep Realm and Drive
-
-**Status (2026-10-24, lane A records batch 6; encrypted backups, `MC-477`): the refusal stands, but its premise is corrected.** The `MC-081` premise (encryption only for account sync) no longer holds. Upstream `dae3f6509` (2026-10-14) made every full export from risuai.xyz encrypted, so every hosted full `.bin` carries encryption (MEASURED from `git show`). Desktop and self-hosted upstream cannot decrypt those backups either (kwaroran/Risuai#1681, open since 2026-10-22). So no full-data route off risuai.xyz exists today. The refusal text now names only the Partial Backup route (`4f9947cc7` first text, corrected in `03816728c`; the wiki pages, first written in `561a8a595`, were corrected in the same commit). Watch kwaroran/Risuai#1681.
-
-**Status (2026-09-26): ✅ DONE.** Plan: `Agents/Reports/28-risuaccount-removal-plan.md` rev 3.6, in
-three sub-stages, each with its own Gate 2 and live check. Gate 1 on the plan: ledger rows 193 to
-197 (rounds 1 and 2 rejected on substance; round 3 approved).
-- **28A** (`e1dd839c`, 2026-09-25): refuses an account-sync-encrypted `.bin` upfront, before any
-  write (`MC-081`). Gate 2: rows 198-199. Live check: row 200.
-- **28B** (`87b974e5`, 2026-09-26): removes RisuAccount, Kei and the hub sign-in; merges the
-  unreachable Files page into the renamed "Backup & Files" tab (`MC-088`). Gate 2: rows 203-204.
-  Live check: row 205.
-- **28C** (`d2653123`, 2026-09-26): asks for agreement to upstream's Terms of Service and Privacy
-  Policy at first use of Realm or Drive, not at boot (`MC-086`); the old boot ToS prompt
-  (`alertTOS`) is gone. Gate 2 took two rounds of substantive rejection on the same class of leak
-  (rows 213-214); round 3 (row 215) was interrupted by a process exit before a verdict, though its
-  scratch scenarios found two more leaks (E2/E4) in the same placeholder-control load logic. The
-  Orchestrator then escalated to `senior-advisor` (row 216) rather than write a fourth revision,
-  and landed on an Invariant A/B redesign; a fresh Gate 2 on that redesign returned `[EDITORIAL]`
-  (row 220), closed by a same-reviewer re-check (row 222). Live check: row 221 (production Node
-  build; nothing reached an upstream host before acceptance; the mobile landing view and the
-  accept path were not run live, covered by tests).
-
-See Report 28 for the full record. Six items Report 28 found out of scope for this stage are
-filed as CHORE-35 to CHORE-40 below.
-
-**Known limitation (Report 28 section 11.7, O1; not fixed here):** a blocking dialog posted while
-the agreement prompt is up — for example `saveDb`'s multi-tab conflict prompt — is hidden behind
-the prompt, and that dialog's wait takes the prompt's answer instead of its own. The conflict
-prompt falls back to its safe choice, `'stay'`, so this is not a data-loss path. A real fix needs
-an alert queue; that is a later fix, not part of 28C.
-
-- **Background:** scope and the migration refusal were maintainer-decided (`MC-080`, `MC-081`);
-  see `Agents/Reports/25-risuaccount-removal-strategy.md` for the strategy record (superseded by
-  Report 28 where they differ). The maintainer set the timing: after the multiuser removal
-  (CHORE-34, `911376cb`) and before W1, the order `senior-advisor` recommended. Later decisions
-  (`MC-084` to `MC-089`) refined the design: one shared agreement at first use of Realm or Drive
-  instead of a boot ToS screen (`MC-086`), the Files-page merge (`MC-088`), and keeping the OPFS
-  switch visible after the merge (`MC-089`). `SavePopupIcon.svelte` was edited, not deleted, since
-  it also holds CHORE-28's frozen-save indicator.
-
-- **Removes:** the hub sign-in and everything that uses its token — account sync, account data
-  save and load, account backup restore, account cold storage, Kei auto-backup and Kei image
-  generation, and in-app edit and remove of the user's own Realm uploads.
-- **Keeps:** Realm browse, info, download, report and anonymous upload; Google Drive backup; the
-  self-hosted server's `/hub-proxy`.
-- **Migration:** a user migrating from upstream keeps their data via a `.bin` local backup
-  import (`MC-011`). An account-sync-encrypted `.bin` is refused upfront, before any write, with
-  the two upstream alternatives named in the message (`MC-081`).
-- **Separate stage from the multiuser removal** (`MC-074`); the two are not folded together.
 
 ### CHORE-35 — Upstream proxy and CDN infrastructure outside Realm and Drive have no agreement gate
 
@@ -1676,6 +1544,8 @@ against the third requirement of upstream's notice. The maintainer chose to leav
 
 ### CHORE-41 — Bug: the edit button on earlier messages sometimes opens no editor
 
+**Status (2026-10-24, lane A records batch 10):** open; assigned to lane G's parity batch with CHORE-45 and CHORE-178 (`MC-503`). The premise in `MC-199` 1 (revisit after the Android Tauri build works) may now be satisfied (MVP installed, `MC-475`); the revisit still waits for the maintainer's report.
+
 **Status (2026-10-06, Main Campaign): open, LOW PRIORITY (`MC-199` 1).** The maintainer now thinks it may not be a fault in this app: a WebView that simply stopped responding because everything else was overloading the browser on the 36 GB upstream profile. It is revisited only on their report, after the Android Tauri build works fully; no reproduction attempt is queued. Android's logcat captures the WebView console (`Tauri/Console`), which can be used if it recurs there.
 
 **Status (2026-10-04, side session): still open.** The hand-off listed it in Batch B; the maintainer chose not to take it in
@@ -1704,6 +1574,8 @@ output (below).
   fork's likely scale is unconfirmed.
 
 ### CHORE-45 — The script cache misses every lookup on a repeat send in a long chat
+
+**Status (2026-10-24, lane A records batch 10):** open; assigned to lane G's parity batch with CHORE-178 and CHORE-41 (`MC-503`).
 
 **Status (2026-09-29):** filed from W2c-a's cache measurement (Report 40 section 6; ledger row
 361), under `MC-069`. Present upstream. Not fixed and not scheduled.
@@ -1756,88 +1628,9 @@ output (below).
   `/api/write` body into the temp file the handler already renames, rather than a higher limit,
   because `express.raw` buffers the whole body in server memory and a Pi 3 is a target host.
 
-### CHORE-49 — The self-hosted Node server does not boot when opened over plain HTTP
-
-**Status (2026-09-30):** filed under `MC-144` from ledger row 485. It is present upstream since
-`v2026.3.330`. Not fixed and not scheduled.
-
-- **Observed (scratch production build, headless Chrome 154; ledger row 485):**
-  - opening the Node server at a plain-HTTP LAN address stops at "Cannot read properties of undefined
-    (reading 'generateKey')" during "Loading Local Save File";
-  - no `/api` request is sent;
-  - on localhost the app boots to the password prompt (first run and save not run); HTTPS was not
-    run.
-- **Mechanism (traced):**
-  - `AutoStorage` selects `NodeStorage` before any capability test.
-  - `NodeStorage` signs every request with a client-generated ES256 key through `crypto.subtle`,
-    which a non-secure context lacks.
-  - `server.cjs` requires that JWT on `/api/read`, `/api/write`, `/api/remove` and `/api/list`.
-  - Upstream `61996dd2` (2026-03-03, "change server.cjs to jwt based approch") introduced this. Before
-    it, the client hashed the password through the server, with no client `crypto.subtle`.
-- **Who is affected:** users who open the Node server over a LAN IP or VPN without HTTPS. The
-  maintainer reports these are most of the "local plain HTTP" group (`MC-143` 1, `MC-002`). From
-  source, such deployments should have worked on upstream up to `v2026.2.291` (traced, not run), so
-  users migrating from those versions would see the boot error.
-- **Constraints for the fix:**
-  - it must not weaken authentication on HTTPS or localhost;
-  - how much transport security a plain-HTTP deployment may give up is the maintainer's decision;
-  - a plain-HTTP origin also lacks Web Locks, OPFS and `crypto.randomUUID`, so any code that the fix
-    makes reachable there must not assume them. Memory stage 1's boot pass already archives nothing
-    without them (Report 49, D1).
-- **Effect on the manual clean-up (Report 50, deferred N4):** without `crypto.subtle`, the clean-up's
-  fingerprint of the main file is sampled, so a same-length change in bytes the sample skips goes
-  unnoticed. Fixing this ticket makes that residual reachable on the Node server. The Node revision
-  gives an exact alternative for that case. The same residual exists today on a static web build
-  served over plain HTTP (it boots and saves, ledger row 485), where there is no revision to compare.
-- **Also needed by CHORE-109 Stage A (2026-10-07; `MC-226`, Report 61 section 4):** the Node asset route's read token is signed in the browser with `crypto.subtle`, which a plain-HTTP LAN page lacks. The fix for this ticket must also give the asset-read token a signer, or plain-HTTP LAN pages get no benefit from the asset route.
-
-### CHORE-50 — The first run of a new self-hosted Node server fails until a reload
-
-**Status (2026-10-21 record update):** fixed in code by `a29335f76` (2026-10-03), per its commit message and `nodeStorage.ts`, where the `unset` branch of `checkAuth` now calls `login(digest)` after `/api/set_password`. Not re-run against a live server for this record.
-
-**Status (2026-10-01; superseded by the line above):** filed from ledger row 501. Present upstream since its `61996dd2`
-(inferred from source; upstream not run). Not fixed and not scheduled.
-
-- **Observed (Orchestrator, built-in pane, fresh scratch `save/`, production build of `d199b07b`):**
-  - the app asks "Set your password to security";
-  - after a password is entered, the boot stops with the alert "getItem Error";
-  - network: `GET /api/test_auth` 200, `POST /api/crypto` 200, `POST /api/set_password` 200, then
-    `GET /api/read` 400 with `{"error":"Unknown Public Key"}`;
-  - after a reload the app asks "Input your password..." and the same password boots normally.
-- **Mechanism (source read by the Orchestrator; not run beyond the observation above):**
-  - Trigger: the server has no password set. `/api/test_auth` answers `unset` whenever the server's
-    in-memory password is empty, and `server.cjs` loads it only from `save/__password`. That is the
-    case on a first run.
-  - `NodeStorage.checkAuth` (`src/ts/storage/nodeStorage.ts`): when `/api/test_auth` answers `unset`,
-    it asks for a password, POSTs it to `/api/set_password`, and returns without calling `/api/login`
-    and without setting `authChecked`. The `incorrect` branch is the one that sends the tab's public
-    key to `/api/login`.
-  - The client ignores the `/api/set_password` response: the `fetch` result is not checked.
-  - `server/node/server.cjs`: `/api/set_password` only stores the password. `/api/login` is the only
-    route that adds the public key's hash to `knownPublicKeysHashes`
-    (`save/__known_public_key_hashes.json`). The JWT check on `/api/read` answers 400 "Unknown Public
-    Key" for a key not in that list.
-  - The private `readItem` (called by `getItem` and `peekItem`) turns the failed read into the thrown
-    string "getItem Error", which the boot shows as an alert.
-  - Origin: the client's set-password path is upstream `74f76255` (kwaroran, 2023-05-28, "[feat]
-    nodejs hosting password"). The public-key list is upstream `61996dd2` (kwaroran, 2026-03-03,
-    "change server.cjs to jwt based approch"). So upstream has had the same first-run failure since
-    2026-03-03 (inferred from the source; upstream not run).
-- **Who is affected:** anyone whose Node server has no password set, which includes anyone starting
-  a new self-hosted Node server, once, on first run. Workaround: reload and type the same password.
-  - **Empty `save/`:** nothing is lost (observed).
-  - **A `save/` that already holds data but has no `__password`** (for example an old upstream save
-    from before the 2023 password feature, or a deleted `__password`) takes the same branch. Source
-    read by the Orchestrator, not run with a populated save: in `bootstrap.ts` the web and Node
-    branch calls `forageStorage.getItem('database/database.bin')` before the decode `try`, so the
-    "getItem Error" throw is caught only by the boot's outer catch, which shows the error alert. The
-    boot ends before `setDatabase` and before the save loop starts, so nothing is written.
-- **Constraint for the fix:** it must not weaken authentication. The password must still be required
-  to register a key.
-- **Fix direction (non-normative):** after setting the password, log in with the same password so the
-  tab's key is registered, or have the server register the key sent with `set_password`.
-
 ### CHORE-55 — Tauri main-file writes are not atomic (a failed write can leave a partial `database/database.bin`)
+
+**Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): SUPERSEDED. Store2 Tauri writes use a temp file, `sync_all`, rename and a directory sync, and no legacy main file is written on a store2 page.
 
 **Status (2026-10-03, stage 4, latest): stage 4 (cold-storage units, the OPFS switch removal and the copy-back) is done
 by `980791fa` (local, not pushed); Gate 2 closed `[EDITORIAL]`.** Stages 0 to 4 are done. The older status blocks below
@@ -2782,6 +2575,8 @@ from upstream has been deleted."); afterwards `gh release list --repo yor42/Risu
 
 ### CHORE-61 — The save encoder silently loses presets, modules or a character when a character's `chaId` equals a fixed block name, and cannot write a `chaId` over 255 bytes (observed at encoder level only)
 
+**Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): SUPERSEDED, and lane A's premise is refuted: the legacy and V0 encoders do not key blocks in one plain object. The reachable edge is a `kv:<namespace>` `chaId` (doc-verifier correction 3: an export failure, very rare). Candidate to retitle or park.
+
 **Status (2026-10-01):** open, **not scheduled and not placed in the work order**; type: data loss candidate.
 Filed from memory stage 1 step 5d-1's Gate 1 round 1 (`opus-reviewer`, ledger row 558). **Observed** by that reviewer
 in a scratch run of the real `RisuSaveEncoder`, not in a running app and not through `saveDb`. **Not known:** how a
@@ -2913,6 +2708,8 @@ step 5d-4's investigation (ledger row 588). The README documents the consequence
 
 ### CHORE-65 — Plugins read and change each other's saved arguments, and V2.1 plugins edit the plugin list directly through the `getDatabase` proxy (DATA LOSS (V2.1 proxy route); no prompt; the unprompted write EXECUTED in a scratch test, the removal TRACED)
 
+**Status (2026-10-24, lane A records batch 10):** open; assigned to lane F's plugin batch with CHORE-30 (`MC-503`). Half is moot: CHORE-206 cuts A (`f6a9b2dd2`) and B (`562927bd3`) retired the V2.1 proxy route (`MC-349`). Cross-plugin `getArg` and `setArg` are V3 API and stay open (`MC-479`); low priority (`MC-165` 3).
+
 **Status (2026-10-02, later): low priority**, at the maintainer's word (`MC-165` 3: "old V2.1 plugins are getting
 rare, so I think it can be marked as low priority."). It stays open and not scheduled.
 
@@ -2931,24 +2728,6 @@ in-place edits), with no prompt. c1, c4 and c5 EXECUTED the unprompted write; th
 - **Related:** CHORE-64 (`48f00223` closed the `setDatabase` and `setDatabaseLite` paths); `MC-163` 4 and 7; `MC-011`
   (upstream compatibility); ledger row 618.
 
-### CHORE-66 — The wiki's plugin pages describe the plugin-list behaviour from before CHORE-64
-
-**Status (2026-10-02):** open, **not scheduled**. Documentation. `docs/wiki/**` belongs to the Wiki session, so the
-maintainer chose to record this as a ticket. The `48f00223` commit message says the pages are not part of that change.
-The line numbers are those the Gate 2 reviewer found on 2026-10-02 (ledger row 620); they were re-verified by
-`doc-verifier` on 2026-10-02.
-
-- `docs/wiki/Plugin-Docs.md`, around line 82: describes an install by `setDatabase` as one confirmation per plugin,
-  with the old rule.
-- The same page, around line 126: says `setDatabase()` and `setDatabaseLite()` "have no consent prompt at all". That is
-  still true of permission gating, but it is misleading now that plugin-list changes prompt.
-- `docs/wiki/Plugin-API-Reference.md`, around lines 88 to 89: says `setDatabaseLite` merges directly and that
-  `setDatabase` confirms each new plugin.
-- The same page, around line 178: calls `installPlugin` a thin wrapper of the `setDatabase` flow.
-- **What the pages need to say:** the rule is `MC-163` 1 to 10 and the `48f00223` commit message. `plugins.md` and
-  `risuai.d.ts` already describe the merge as a difference from upstream.
-- **Related:** CHORE-64; `MC-163`; the Wiki session's lane (`docs/wiki/**`).
-
 ### CHORE-68 — CHORE-63 stage C: embed the app's own images from inside a message into the "Copy as card" card
 
 **Status (2026-10-02):** open, **not scheduled**. Filed at the maintainer's decision (`MC-166` 4: "Ticket it for later
@@ -2966,6 +2745,8 @@ The line numbers are those the Gate 2 reviewer found on 2026-10-02 (ledger row 6
 - **Related:** CHORE-63 (stage B, `7ca8f2a9`); `MC-165` 2 and 6; `MC-166` 4.
 
 ### CHORE-70 — Startup installs a save that only partly decodes, without checking whether a backup is complete (silent missing characters; decode RUN, boot path TRACED)
+
+**Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): SUPERSEDED (read-only residue). Strict decode runs first; a silent partial install survives only on a read-only legacy page.
 
 **Status (2026-10-02):** open, **not scheduled**. Filed at the maintainer's decision (`MC-167` 9: "File a ticket
 (Recommended)"). It belongs to the CHORE-59 family (recovering from partly damaged saves). Type: data loss candidate,
@@ -3039,33 +2820,6 @@ an investigation before anything is decided.
 - **What the ticket asks:** decide whether those consumers should read the missing folder as "missing". Not decided.
 - **Related:** CHORE-51; the note under CHORE-51 about `coldStorageCleanupSaveUnreadable` could be folded in; `MC-170` 1.
 
-### CHORE-74 — The `.bin` export warns when the backup holds plugin data that upstream will not restore
-
-**Status (2026-10-20, `MC-322` 1): DEFERRED.** Stage 4b adds no warning; it stays later QOL work (`MC-177`). The earlier status follows.
-
-**Status (2026-10-03):** open, **not scheduled**; **not a release item**: the maintainer said it should not be a release
-blocker, because it is upstream behaviour, and that the warning is a later quality-of-life item (`MC-177` 1). This
-replaces the Orchestrator's earlier reading of `MC-089` for this ticket. Type: a small UI change. Filed at the
-maintainer's decision (`MC-176` 2: "Accept, warn at export"). Priority: LOW (`MC-176` 3).
-
-- **What happens today:** upstream's `.bin` import restores a cold-storage unit only when it is an array or an object with
-  a `character` or `message` key (upstream `isColdStorageBackupData`, the Orchestrator verified it in
-  `src/ts/process/coldstorageData.ts` at `upstream/main` `f9728b14`). v3 plugin storage values of any other shape are lost
-  there, and upstream's confirm calls them items that "could not be linked to a character". The fork's export carries
-  them, so it is the fork -> upstream direction that loses them (ledger row 697; RUN, with the real code of both trees on
-  a mocked web store). Upstream's own export shows an "incomplete backup" confirm for these units; the fork's export
-  shows nothing for them.
-- **Why it matters:** the compatibility invariant is a two-way `.bin` round trip (`MC-175`). The maintainer decided the
-  loss is upstream's own limit and does not count against the invariant (`MC-176` 1), so the fork cannot remove it. The
-  fork can tell the user.
-- **Acceptance (the mechanism is non-normative):** when an export includes v3 plugin storage units that upstream would not
-  restore, the user is told before or when the export finishes, in plain words: the plugin data will not come back if this
-  file is loaded into upstream RisuAI, and it does in this app. The export bytes do not change. The new English string
-  goes in with its call site; the translations go to `translator`. Gated as usual (`AGENTS.md` section 4).
-- **Not in scope:** upstream's own export losses (B1, non-`.png` assets; B2), device-local stores, and an encrypted `.bin`
-  (`MC-081`).
-- **Related:** `MC-175`, `MC-176`, `MC-081`; CHORE-55 (the round-trip note under its stage 2b block); ledger row 697.
-
 ### CHORE-83 — Every boot writes the main file, a numbered backup and about 507 block-cache entries even when nothing changed (measured on an i9)
 
 **Status (2026-10-04):** open, **not scheduled**; partly addressed by `f04068f1` (the main-file write and the numbered backup; the block-cache puts stay open, see the update below). Priority: LOW to MEDIUM (the Orchestrator's assessment, not the maintainer's); it matters most on phones. Filed from the step 7
@@ -3092,30 +2846,6 @@ ledger row 1023).
 - **Not known:** the cost with the real 36 GB asset store, and on a phone: TODO(evidence).
 - **Related:** ledger row 1023; `MC-193`.
 
-### CHORE-85 — A browser crash within seconds of a committing boot pass can leave the pass breaker at 'one' and keep the idle reload off (LOW priority)
-
-**Status (2026-10-04):** open, **LOW priority**, not scheduled. The maintainer asked for it: "yep. file it as low priority
-ticket." (`MC-193` 11). Filed from the step 6b live check (finding 1; ledger row 1027).
-
-- **What was seen:** in the live check, a profile copied right after Chrome was killed had not flushed the removal of the
-  `archivePassStrikes` key (`src/ts/storage/bootArchiveMemo.ts`). The next boot read the D18 breaker as 'one' and the idle
-  reload stayed blocked. With a graceful close after a 10 s wait the key stayed absent. It was a harness artifact; it was
-  not reproduced beyond that kill.
-- **Consequence if it can happen for real:** the idle reload stays off for that profile until the next committing pass. It costs
-  one missed release and never loses data. SUSPECTED, not pursued.
-- **Related:** ledger row 1027; `MC-193`; `MC-158`.
-
-**Update (2026-10-12, folded in from the unload-2 records; settled by item 5): moot for its stated consequence.** The idle reload was removed in `b33e485ae` (`MC-268` item 3; ledger rows 2035 to 2039), so the consequence named above, the idle reload staying off, no longer exists. Residual, recorded and not fixed: a stale `'one'` makes the next boot pass that fails, or crashes after its start record, pause the device one failure sooner and post the archive-paused notice; while paused, re-archive also refuses (`'device-paused'`). A missed archive, no data cost. `archiveMayRun` and card import do not read the breaker. Never reproduced beyond a harness artifact.
-
-### CHORE-89 — On the Node server, `/hub-proxy` forwards a request to any URL named in the `x-risu-node-path` header, with no authentication check (TRACED)
-
-**Status (2026-10-04):** open, **not scheduled**; fixes are to be proposed after Stage 0 of the save-layer track. Severity: not assessed. Filed at the maintainer's "File both, extend our range (Recommended)" (`MC-194` 14). Reported by the side session's CHORE-80 investigation; verified in source by the Orchestrator, and its route code re-read for this entry at the time of writing.
-
-- **What was traced:** `hubProxyFunc` in `server/node/server.cjs` (the `/hub-proxy/*` routes, GET and POST) uses the value of the `x-risu-node-path` request header, decoded with `decodeURIComponent`, as the URL to fetch when the header is present, and otherwise the hub URL plus the request path. It forwards the client's headers (except `host`, `connection`, `content-length` and the path header, with `origin` set to the hub's origin) and the body, follows a redirect by a second fetch, and returns the response. The function makes no `checkAuth` or `checkProxyAuth` call, unlike the `/proxy` family's handlers. The routes carry `authenticatedRouteLimiter`, which is a rate limiter (`rateLimit`), not an authentication check. The only `app.use` calls in the file are the static files and the body parsers, so no global middleware authenticates it either. Upstream origin: `0a5bae66`, 2025-11-24 (re-checked with `git log -S` at the records fact-check, ledger row 1070).
-- **Consequence:** anyone who can reach the server can make it fetch an arbitrary URL and read the response. This is the shape of a server-side request forgery; whether it matters depends on who can reach the server. The hosted build is meant for private networks only (`MC-191`), so this is framed as an integrity and exposure gap on that network, not as a public-internet vulnerability. SUSPECTED, not run.
-- **Not known:** whether the Hono server has the same route (TODO(evidence)); which of the app's flows send the header (TODO(evidence)).
-- **Related:** `MC-194` 14; `MC-191`; CHORE-120; CHORE-80 (the side session's investigation found it).
-
 ### CHORE-92 — The copy-as-card `text/plain` companion still includes the thinking text
 
 **Status (2026-10-03, UI session):** open, **not scheduled**, and **locked behind CHORE-68** (`MC-179` 4: CHORE-68 and
@@ -3128,20 +2858,6 @@ app's own images into the card, not the companion text, so this is its own ticke
 - **What the ticket asks:** decide whether the companion should leave out thinking like the plain Copy button now does.
   Not decided.
 - **Related:** CHORE-69; CHORE-68; `MC-203` 1.
-
-### CHORE-97 — Browser CORS for the Hugging Face router is unverified; a live check with a real Hugging Face TTS model is owed
-
-**Status (2026-10-04, side session): DEFERRED by the maintainer (`MC-221`)**, like the native-speaker review (`MC-212`):
-there is no working Hugging Face key. It stays open and unscheduled until one is available.
-
-**Status (2026-10-03, UI session):** open, **not scheduled**. Type: verification.
-
-- **What is unverified:** the new Huggingface request goes to `https://router.huggingface.co/hf-inference/models/${model}`
-  from the browser. That `huggingface.js` builds this URL and returns a raw audio Blob is read from its source (ledger row
-  835). Whether the router sends CORS headers that allow the call from a browser page, and whether any real model answers
-  with audio there, has not been tested. All TTS tests mock the network.
-- **What the ticket asks:** a live check by the maintainer with a real Hugging Face TTS model and key.
-- **Related:** CHORE-15 TTS-1 and TTS-2; `MC-204` 1.
 
 ### CHORE-120 — On the Node server, `/api/set_password` accepts any client until a password exists, and the first client wins (TRACED)
 
@@ -3161,6 +2877,8 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 - **Open questions:** whether the `.bin` can carry the inlay and MCP data without breaking an upstream import; the asset-fsync cost for this format; the format may exceed upstream's limits, which `MC-223` allows. **(Updated 2026-10-17, `MC-298`: the first question no longer applies to this format, which is a new format unrelated to `.bin` and a complete backup; the other two stay open.)**
 
 ### CHORE-129 — Warn before an upstream-compatible export when data exceeds upstream's size limits, and leave that data out
+
+**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group F) for the web/Node residual only.** The missing size check on web and Node export before writing is parked. The ticket stays open for its other items. Can return on a maintainer decision.
 
 **Status (2026-10-22, lane B stage 4, `MC-359`): RESIDUAL ACCEPTED UNTIL STAGE 0b for web and Node; Android assets are now checked; merged in `dd9c04679` (lane B stage 4, `18156c972`, `MC-359`).** Ledger rows 2326 to 2335. The earlier statuses in the Roadmap entry stand.
 
@@ -3204,27 +2922,13 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 
 **Status (2026-10-06): open, not scheduled.** Type: memory. The live check of `bc631526` (S1) measured the whole restore peaking at +1,211 MiB in the tail that decodes the 159 MB legacy database against a flat +110 MiB asset phase (a control with 300 small entries peaked +1,131 MiB), so the under-1-GB target was not met. The records items list "legacy decode memory" as a follow-up without further detail (TODO(evidence): confirm this ticket is the one meant). Platform: Windows, i9, WebView2 154.
 
-### CHORE-104 — The "kept file" message
-
-**Status (2026-10-06): open, not scheduled.** The records items list a "kept-file message" follow-up of the importer and hashing work without detail (TODO(evidence): the intended wording and where it shows are not in the evidence). Possibly the `backupFailedFileKept` text of `bc631526`.
-
-### CHORE-105 — A Node chunked upload endpoint (optional)
-
-**Status (2026-10-06): open, optional, any time (`MC-225` 3).** Node-hosted imports keep the 100 MiB per-asset limit and have no chunk endpoint; `1e71c45c`'s message notes there is no chunk endpoint yet (CHORE-108). Whether Rust moves the bytes is decided after live numbers (`MC-225` 3).
-
 ### CHORE-106 — Put `.charx` and editor uploads onto the piece save
 
 **Status (2026-10-06): open, not scheduled.** `1e71c45c` moves only the `.risum` and PNG importers onto the piece save; `.charx` asset entries and the module and character editors' uploads still save whole (the records items name the follow-up without detail; TODO(evidence)).
 
-### CHORE-107 — `openWriter` belongs inside the `try`
-
-**Status (2026-10-06): open, not scheduled.** A follow-up named in the records items as "O2 openWriter inside the try" from the piece-by-piece hashing work (TODO(evidence): the file and the failure it prevents are not in the evidence).
-
-### CHORE-108 — The web stage of piece saving
-
-**Status (2026-10-06): open, not scheduled** (`MC-225` 5: desktop and Android first, "web next stage"). On web and Node an asset is still read and saved whole (`1e71c45c`'s message: "Web and Node otherwise behave as before"); CHORE-105 is the Node endpoint.
-
 ### CHORE-109 — Show assets without loading them whole
+
+**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group F) for the web stage only.** The service worker over the stored files waits on CHORE-108, which is parked. The ticket stays open for its other items. Can return on a maintainer decision.
 
 **Status (2026-10-07): Stages A and B are on `main`; Stage C (the Note 9) is done: images and thumbnails pass, video fails (CHORE-115).** Report 61; `MC-226`, `MC-227` and `MC-229`; ledger rows 1312 to 1325 and 1331.
 
@@ -3286,27 +2990,9 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 - **Observed (ledger row 1365, `investigator`, TRACED):** a save written on the Note 9 would not load on the next start. The damaged block was a `characters` entry that is the bare number 5 (the return value of `createNewGroup`, likely pushed by a test agent). The encoder keys `String(undefined)` and writes an empty header name with no check; the loader's `checkSingleBlock` rejects it as wrong-name. The save and the numbered backup both succeeded, then the next start refused to load. The boot repair skips non-objects. No ordinary UI route was found; plugin writes of non-objects were not examined. Backup 17913433458 decodes strictly (5 characters); the two oldest backups fail with "reading length" (not investigated).
 - **Direction (non-normative):** validate at the encoder or the commit so that a committed generation always loads, with a red-before-green test through `loadBlockProfile`. It touches persistence, so it goes through a plan gate and `opus-reviewer`. Look at the "reading length" backups too (see the correction above).
 
-### CHORE-118 — Gemini audio orphan
-
-**Status (2026-10-07): open; queued, not filed in detail.** The records items name this ticket only as "a Gemini audio orphan". TODO(evidence): the symptom, the mechanism, a repro and `file:line` are not in the sources given. The number is assigned by the hold note's order (see CHORE-117).
-
-### CHORE-135 — Sidebar Stage 4: the panel does not follow the finger
-
-**Status (2026-10-08): open; not scheduled.** Type: feature remainder. Stage 4 chose "Triggers now, follow later" (`MC-250` 6): the swipe triggers open and close, and a finger-following animation was left for later (Maybe-Later QOL-07 (c) remainder).
-
-- **Note (scratch plan notes `sidebar-s4\plan-stage4.md`, session scratch):** the open and close animation is CSS keyframes on the panel's width, and the close waits for `animationend`; a finger-following version needs a transform-based panel, a `dragging` state and a store flip on release, and `animationSpeed` 0 needs an immediate path. Backdrop: see CHORE-136. These are the Stage 4 packet's reading, not re-traced for this entry.
-
-### CHORE-140 — Rail: Home leaves 12 px hidden; verify smooth scroll-to-active into a closed folder
-
-**Status (2026-10-08): open.** Type: verification and bug, low. Stage 3 accepted that Home leaves 12 px hidden (`MC-249`). Scroll-to-active into a closed folder was fixed for instant jumps by Stage 5 amendment 2 (restore errors at or under 0.5 px on the Note 9); the smooth (near) case is uncovered and needs a check.
-
 ### CHORE-141 — Android restore's `relaunch()` does not restart the app
 
 **Status (2026-10-08): open; noticed in Stage 3.** Type: bug, Android (`MC-249` accepted limitation). The cause was not investigated in the sources given. TODO(evidence).
-
-### CHORE-146 — Possible Vietnamese wording tweak for "Ungroup" ("Bỏ nhóm")
-
-**Status (2026-10-08): open; maintainer or translator call.** Type: translation. Not a decision. Translator owns non-English locales (`MC-058`).
 
 ### CHORE-147 — Android: the process aborts on exit with the OS Back (FORTIFY "pthread_mutex_lock called on a destroyed mutex")
 
@@ -3325,25 +3011,12 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 
 ### CHORE-149 — `streamed_fetch` in `src-tauri/src/lib.rs` uses `.unwrap()` where a failure can panic the task
 
+**Status (2026-10-24, lane A records batch 10):** open; in batch T, run by lane A (`MC-502`).
+
 **Status (2026-10-09): open; observed in source, panic behaviour not run.** Type: bug, latent, Tauri (all platforms).
 
 - **First noted by** the keep-alive investigator (`keepalive\packet.md`, not independently verified); **re-read by this entry's writer in the working tree at `6f9c0b98`:** `streamed_fetch` (`lib.rs:706-837`) decodes the request body with `general_purpose::STANDARD.decode(...).unwrap()` for POST, PUT and DELETE (`lib.rs:743`, `759`, `769`), so an invalid base64 body panics; and it calls `app.emit(...).unwrap()` for the headers event (`lib.rs:800`) and the end event (`lib.rs:832`), so a failed emit (for example after the webview is gone) panics. The chunk emit in the loop returns an error string instead (`lib.rs:818-823`), and `chunk.unwrap()` at `lib.rs:808` follows an `is_none()` check.
 - **Not established:** whether a panic in the async command kills the app or only that command, and whether Activity destruction on Android reaches the emit paths. TODO(evidence): a reproduction.
-
-### CHORE-150 — A custom page colour near middle grey may give low button contrast on Android 15+
-
-**Status (2026-10-09): known limit; not tested.** Type: limitation, Android API 35 and above (`MC-253`).
-
-- The navigation-bar rule uses the existing luminance split (0.179) to decide whether the scheme is light. The API 35 three-button icons are `#45464F` and `#C5C6D0`, not black and white, so a page colour just above the split in day mode gives about 2:1 against `#45464F` (Gate 1 amendment round 1 finding 7). The shipped schemes tested (`#282A36`, `#FFFFFF`, `#1A1A1A`) are far from the split. A custom colour near it was not tested.
-
-### CHORE-151 — Untested limits of the Android bar and keyboard handling
-
-**Status (2026-10-09): open; not tested.** Type: verification (`MC-253`).
-
-- The soft keyboard on API 30 to 34 (the only branch that uses the native IME inset without enforced edge-to-edge; source-reasoned only).
-- The bars on Android 16 and above.
-- 3-button behaviour on large screens with a persistent taskbar.
-- Also not covered by device pass 2: the keyboard in gesture navigation (3-button only), a real finger (adb strokes only), and Note 9 day-mode bars (night mode left as found).
 
 ### CHORE-153 — Observation: a Light-scheme change can be lost if the app is force-stopped about 15 s after the tap
 
@@ -3406,17 +3079,12 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 
 ### CHORE-159 — Every restore leaves a large `dbbackup-*.bin` in the app's database directory
 
+**Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): SUPERSEDED as written; the successor is UNCERTAIN. The audit base (`542d28b0f`) predates store2 stage 5a (automatic clean-up of unreferenced units, once per launch, Tauri app only; `9dd028b3b`, `67273e799`). Neither `dbbackup` writer runs on store2, and store2 retains up to 20 manifests. Per-import growth is unmeasured, and whether 5a frees the retained manifests' units is not checked.
+
 **Status (2026-10-09): open; observation.** Type: observation (storage growth), Android.
 
 - **Observed (session scratch `device\emu\report.md`, "Unexpected"; API 35 emulator, device pass 1):** "Each restore leaves a 166 MB `dbbackup-*.bin` in the app's database directory (8 accumulated)." The profile was the 1000-character tier C (about 166 MB decoded). The Note 9 reports do not mention these files (its app data directory was not listable without root, `device\note9\report.md` C4).
 - **Not established:** whether the files are an intended pre-restore or numbered backup, whether they are ever pruned, and how much space eight of them take on a phone. TODO(evidence).
-
-### CHORE-160 — Cancelling the export save dialog shows "Error: Failed"
-
-**Status (2026-10-09): open; observation; not compared with the earlier build.** Type: observation (error message on cancel), Android.
-
-- **Observed (session scratch `device\note9\report.md`, Phase B smoke, Note 9, device pass 1):** the export chooser opens (`CREATE_DOCUMENT`); pressing Back shows an alert "Error: Failed"; the app stays responsive. The report notes "arm A not compared", so it is not known whether build A (`890f5f20`) does the same. The emulator pass did not run the cancel ("lorebook export succeeded, no save dialog, cancel NOT RUN").
-- **Not established:** the code path that raises the message. TODO(evidence).
 
 ### CHORE-161 — Android boot baseline follow-ups: timers starved during `encoder.init`, and main-thread work after the boot marker
 
@@ -3444,6 +3112,8 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 
 ### CHORE-164 — Stop ends the reply on screen but does not close the native `streamed_fetch` request on Tauri; the provider keeps generating
 
+**Status (2026-10-24, lane A records batch 10):** open; in batch T, run by lane A (`MC-502`).
+
 **Status (2026-10-10): open; ticketed on the maintainer's answer "Ticket it, fix later" (`MC-261` 2); not planned.** Type: defect (resource use and provider cost), Tauri; found during keep-alive.
 
 - **Observed (Stage 3 device pass, `keepalive\device\report.md` finding 1; Note 9 API 29 and the API 35 emulator):** after the notification Stop or the in-app Stop, the mock server's requests ran to the full chunk count (mock REQ#5 and #6 on the Note 9, #34 to #36 on the emulator); requests stopped before the first byte still got their first byte 60 s later and streamed; the mock logged `ABORT (client closed)` only when the process died. The visible behaviour is correct (the text stops and the notification leaves). Observed again after Stage 3b (`keepalive\device3b\report.md` finding 2; the Orchestrator's spot-check: stopped requests logged `END` with full chunk counts and no `ABORT`).
@@ -3451,6 +3121,8 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 - **Scope in the maintainer's answer (`MC-261` 2):** a native request cancel for `streamed_fetch` on Tauri, desktop too; the device evidence is Android only. No fix beyond that is proposed here.
 
 ### CHORE-165 — A `streamed_fetch` that fails after the body was handed over closes the stream normally, so an error-truncated reply looks complete
+
+**Status (2026-10-24, lane A records batch 10):** open; in batch T, run by lane A (`MC-502`).
 
 **Status (2026-10-10): open; not reproduced on a device; not planned.** Type: suspected defect (silent truncation), Tauri; found during keep-alive.
 
@@ -3461,6 +3133,8 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 
 ### CHORE-166 — Timers that are still late while the app is hidden after Stage 3b
 
+**Status (2026-10-24, lane A records batch 10):** open; leaves batch T and becomes its own batch (lane A ruling, `MC-502`); it follows batch T.
+
 **Status (2026-10-10): open; known gaps, not planned.** Type: performance and behaviour while hidden, Android; found during keep-alive.
 
 - **Not covered by the Stage 3b fix (`keepalive\plan-3b-amend.md` A-5):** the balanced and strong display modes (a 125 ms `setTimeout` plus `requestAnimationFrame`) are still late while hidden (the default `'off'` mode has no timer on the chunk-to-reply-complete path); the `sleep(1)` in `anthropic.ts`'s catch branch after a mid-stream parse error; provider retry back-offs; the `buildTimeoutSignal` timers. The post-reply save debounce was not surveyed there (Stage 4 saves on hide instead).
@@ -3468,6 +3142,8 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 - **Evidence for the mechanism:** `keepalive\lag\report.md` (single device, the Note 9; WebView version not recorded) as recomputed in `gate1-3b.md` Part 1; hidden-page timers were throttled to about 1 s ticks and then to gaps of 9 to 15 s and, in one run, none for 281.6 s.
 
 ### CHORE-167 — A reply aborted while the app is hidden shows no "aborted" dialog on return, while a foreground abort shows "Error: aborted"
+
+**Status (2026-10-24, lane A records batch 10):** open; in batch T, run by lane A (`MC-502`).
 
 **Status (2026-10-10): open; observation; not diagnosed.** Type: observation (inconsistent feedback), Android; found during keep-alive.
 
@@ -3497,41 +3173,14 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 - **Reading (the perf-analyzer's, not independently verified):** the long tasks are mostly the browser's style recalculation and compositor commit after about 140 tile elements (about 28 rows of 5 at an overscan of one viewport each side) are inserted, with Svelte component creation about a fifth and one GC-heavy task. Blank frames were 0 of 8,207 by DOM measurement.
 - **Proposal (the coder's, untested):** profile one fling first; if mounting dominates, try about 0.5 viewport of overscan for the grid only, accepting more blank edge at fast flings. `stage2b-report.md` "Overscan" says not to change it blind.
 
-### CHORE-171 — A long plain-text List description clips its third line mid-glyph, with "Show more" directly under it
-
-**Status (2026-10-10): open; cosmetic; not planned.** Type: visual defect (Stage 1c).
-
-- **Observed (`charlist\note9-2a.md` item 3; screenshot `46-media-row.png`, Card 0006):** in a List row with long plain text the clamp cuts the third line in the middle, and the toggle sits directly under the cut.
-- **Cause as the coder recorded it (`stage1c-report.md`, "Clamp choice"):** the clamp is `max-h-18` (4.5rem, three 1.5rem lines) with `overflow-hidden` rather than `line-clamp`, because `line-clamp` over block children is unreliable across engines; the consequence stated there is "no ellipsis, and the last line can be cut mid-line".
-
-### CHORE-172 — Trash tab flings show 13 to 17% janky frames on the Note 9
-
-**Status (2026-10-10): open; observation; cause UNCERTAIN; needs a larger trash to settle; not planned.** Type: performance, Android.
-
-- **Observed (`charlist\note9-2a.md` check 3 and item 2):** Trash tab 17.05% janky over 475 frames (down) and 13.05% over 590 frames (up), p90 17 to 19 ms, against 3.9 to 5.3% in the other windowed lists; 7 to 12 rows with markdown and avatar thumbnails resolving on first mount. The sample is small (125 trashed rows, not 1000) and the cause is UNCERTAIN.
-- **Needed:** a Trash with about 1000 rows on the phone (also listed as not observed in 2a and 2b), with recent trash times (the app purges trash older than 3 days at boot; `note9-2a.md` item 4).
-
-### CHORE-173 — A zoom or font-scale change that does not resize the scroller is not picked up until the next resize
-
-**Status (2026-10-10): open; low; not planned.** Type: suspected defect (Stage 2b grid), found in the r3 review.
-
-- **Source:** the records brief of 2026-10-10 names it as the r3 review's finding 3 (low). The review text is not in the sources given. TODO(evidence).
-- **Mechanism as far as the sources show (inference):** `stage2b-report.md` r3 D1 says the rem probe result is cached in `measuredRemPx` and "re-measured only at bind and on a size report of the scroller", so a change of the effective 1 rem that leaves the scroller's size unchanged is not seen until the next size report. Not tested.
-
 ### CHORE-174 — `CharConfig.svelte` re-reads `$selectedCharID` live across an `await` and can write to the wrong character
+
+**Status (2026-10-24, lane A records batch 10):** open. Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): STILL PRESENT at the audit HEAD `542d28b0f`, with 3 more await-spanning write sites in `CharConfig.svelte`. No fix is on `main`: the commits to that file since the audit are unrelated (lane A week 0 check).
 
 **Status (2026-10-10): open; existing issue, not fixed by the unload stage 1a; not planned.** Type: suspected defect (mis-target, never a stub).
 
 - **Observed (source reading, `archdefault\gate1-unload-1-r1.md` finding 5):** `CharConfig.svelte:595-609` re-reads `$selectedCharID` live, so a wrong-character write is possible; it can never reach a stub. The line numbers are as read at `ac2db1fb`. `plan-unload-1.md` v2 (A5) records it as an existing issue, not fixed in increment 1, and `stage1a-report.md` item 6 confirms `CharConfig.svelte` is untouched.
 - **Related, lower severity (`s0.md` "EXISTING-BUG (low)"):** `runAutopilot` re-reads the selection (`devToolActions.ts`) and selection-bound fallbacks in `chatVar.svelte.ts` and `scripts.ts` can mis-target; a mis-target, not a silent loss.
-
-### CHORE-175 — On a versioned (Node) store, a put that lands but whose response throws leaves `writeAcknowledged` in a loud stuck conflict until reload
-
-**Status (2026-10-10): open; usability limitation, not data loss; recorded with the unload stage 1b-0 closeout; not planned.** Type: limitation (Node storage).
-
-- **Observed (the Orchestrator's follow-up record `archdefault\records-followup.md`; the 1b-0 review text is not saved):** on a versioned store (the Node server), a put that reaches the server but whose response throws leaves `writeAcknowledged` in a stuck conflict: it is loud (the save is refused as a conflict), not silent, and it lasts until the page is reloaded. No data loss is recorded.
-- **Related, from the pre-1b verification and plan section G3:** the stage 1b-0 rule covers the delete outcomes of cleanup; G3 describes the 'conflict' outcome as matching `writeAcknowledged`'s throw handling (null bytes, version kept). That this put path is outside the 1b-0 rule is an inference from reading those records, not tested.
-- **Not established:** a reproduction, the exact trigger and any repair. TODO(evidence).
 
 ### CHORE-177 — Grid fling jank with every folder open on the Note 9 (the scroller's layer height; the browser re-fetches CSS background images when tiles are re-created)
 
@@ -3545,6 +3194,8 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 
 ### CHORE-178 — Lorebook `searchMatch` slices from `length - scanDepth` with no clamp, so a scan depth larger than the message count drops the oldest messages
 
+**Status (2026-10-24, lane A records batch 10):** open; assigned to lane G's parity batch with CHORE-45 and CHORE-41 (`MC-503`). Source check by the batch 10 doc-verifier pass (reasoned, not run): there is no clamp; with the default depth of 5, a chat of 3 or 4 messages scans only the last 2 or 1.
+
 **Status (2026-10-11): open; not planned; present in upstream too.** Type: suspected defect (lorebook scan, plain and regex keys).
 
 - **Observed (source reading at `e75b1249`, `src/ts/process/lorebook.svelte.ts`, `searchMatch`):** the scanned window is `messages.slice(messages.length - arg.searchDepth, messages.length)` with no clamp of the start.
@@ -3552,6 +3203,8 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 - **Not decided:** whether to fix it here or upstream; how often a depth above the message count occurs in practice.
 
 ### CHORE-179 — Phone-browser Back closes neither the sidebar nor Grid edit mode
+
+**Status (2026-10-24, lane A records batch 10):** open; in the Android Back batch (`MC-501`, group F), which follows batch T.
 
 **Status (2026-10-11): open; not planned; the browser half of the S4-2 Back decision (`MC-278` 4, D2).** Type: limitation (browser Back).
 
@@ -3561,6 +3214,8 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 - **Not decided:** the mechanism for browsers.
 
 ### CHORE-180 — Back on screens with their own back stack and no Back handler: the Beta Mobile GUI chat "Menu" page shows the quit toast and does not close
+
+**Status (2026-10-24, lane A records batch 10):** open; in the Android Back batch (`MC-501`, group F), which follows batch T.
 
 **Status (2026-10-11): open; not planned; found by the S4-2b Note 9 pass.** Type: suspected defect (Android Back).
 
@@ -3579,9 +3234,13 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 
 ### CHORE-185 — The `Chat.draftCaptureScenarios` "success-then-fail" test is load-sensitive
 
+**Status (2026-10-24, lane A records batch 10):** open; in batch Q with CHORE-240 and CHORE-353, run by lane C (cloud).
+
 **Status (2026-10-20, stage 4b close): open, not scheduled.** It failed once in the full run `checks-19afc6829` under APK-build load; it passed 3 of 3 alone, and the quiet-PC run `checks-19afc6829-r2` passed. Test-only.
 
 ### CHORE-186 — E5: a shared-profile upstream save loses upstream's plugin index on store2 conversion (pre-release blocker)
+
+**Status (2026-10-24, lane A records batch 10):** open. Technically accepted: the fix is merged as `2862940fe`; the Gate 2 dispositions of S1, S2a, S2b and S3 are in `Upstream-Merges.md`; the old-snapshot case (`MC-333` 1) landed in `4a4ddf050`; the U5 round trip is in ledger row 2093. Finding 12b (legacy boot paths can install an unconverted index pointer) is out of scope under `MC-324` 9 and stays listed in `Upstream-Merges.md`. The merge-close records (the 2026-10-21 section of `Upstream-Merges.md` and this entry's status) have no recorded independent verification. Next step: a doc-verifier pass on them, then the COMPLETE line.
 
 **Status (2026-10-21, upstream `61d0eb79a` merge close): fixed on `main` by the merge `2862940fe`, technically accepted (records pending independent verification at this writing).** U3 S1 `f6894f96d`, S2a `40145cda0` (E5 inverted: the old-data deletion now keeps the index and its large units), S2b `cee2effb5` and S3 `75a68bba0` (manual cleanup keeps them) each passed an independent Gate 2 (`Upstream-Merges.md`). The U5 round trip P1 against upstream `61d0eb79a` passed on decoded data (synthetic small fixtures, one PC). Still open, the maintainer's call and not part of this fix: older upstream snapshots that point at an index upstream already deleted stop every manual cleanup (S2a I1, S3 R1), and a legacy boot path can install an unconverted pointer tree (finding 12b); both are listed in `Upstream-Merges.md`. **Earlier status (2026-10-20, stage 4b close): open; PRE-RELEASE BLOCKER, owned by the upstream compatibility work (`MC-324` 9).** On a shared-folder or same-origin upstream profile, the store2 conversion and the old-data deletion remove upstream's plugin index and large units. Minimal fix per `MC-324` 9: the converter converts the index, and cleanup deletes nothing while a profile still carries upstream's pointer.
 
@@ -3611,10 +3270,6 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 - **E8 (pre-existing):** on a store2 page the V3 value is written before the mapping across an await; a stale V2 write in that gap drops it. The same on the base.
 - **Also:** mutant `m4` survives (a current unit id with no value is not forced absent; only the reviewer's E4 diagnostic covers it).
 
-### CHORE-191 — English `chatParseFailed` now ends with a trailing ", "
-
-**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Cosmetic. Source: U0 Gate 2 finding O2. The chat parse-error alert now shows the stack once (the stack block of the alert), so the stack slot of `language.errors.chatParseFailed` is empty and the English text ends with ", ". Fixing it changes the key in all 7 locales (the translator owns the non-English files).
-
 ### CHORE-202 — The Note 9 screen-off import stall has an unknown cause
 
 **Status (2026-10-22, E1 done on phone 2; ledger rows 2149 and 2150; MC-433, MC-345): E1 variant A hit outcome (ii).** With `WebView.onResume()` called during a transfer, the page still froze at hidden +60.001 s after `onStop`. Doc-verified (row 2150). This closes only the `onResume` route (n=1, HOME only; one device, phone 2, patched debug build, not merged). The MVP keeps the foreground-import constraint (`MC-345`), and the native-task question waits on A1. Report: `C:\Users\yor42\AppData\Local\Temp\risu-b715\e1\report.md`, with its corrections appended. Cause of the freeze still UNKNOWN; no fix has been found.
@@ -3640,66 +3295,15 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 - **Status (2026-10-22, later):** rerun planning goes to lane C as its first step (`Agents/Lanes/lane-C-brief.md`). It produces a plan only; lane A runs it on a phone.
 - **Related:** `MC-326` 4, `MC-336`; CHORE-203.
 
-### CHORE-203 — The Note 9 debug-build copy rate is 3.6 to 3.9 MiB/s; separate the debug cost
-
-**Status (2026-10-22): open, not scheduled.** Source: `measure2\report.md` and `measure2\verify.md` (scratch).
-
-- **Verified:** the asset copy took 316.0 s (3.85 MiB/s, run a1) and 334.6 s (3.64 MiB/s, a2) for 1,216.7 MiB, on a debug MEASURE build with debug Rust, on one Note 9 with a sampler adding load.
-- **MEASURED during the copy window:** the flash was 10 to 12% utilised and the busiest thread about 25% (renderer main thread 25.3 to 25.5%).
-- **Next (done 2026-10-22, see the status below):** the same imports on a release MEASURE build, batched with lane B's Note 9 request (`%TEMP%\risu-lane-b\device-requests\2026-10-22-stage1-stub-import-calibration.md`, scratch; CHORE-220).
-- **Status (2026-10-22, later): measured on release, not settled.** On phone 2 the release build copied the m2-mix18k assets in 216 s (mean of 212.2 and 219.4 s) against debug's 325 s, 1.51x. The two runs differ in commit (`74b28ddd1` against `42993e408`, and the copy path changed between them: `assetBatchPipeline.ts`, `backuplocal.ts`, `storeImport.ts`), in start state (debug from `base1`, release from `pm clear` plus the wizard) and in collectors (the debug runs were heavier), so the build-type share is not isolated. INFERRED: one parallel lift (the lane B stage 3 knob at 4 streams, 4 flights, 70.9 s) fits a latency-bound chain, but no CPU or disk counters were taken. Next: a same-commit debug/release pair, if it still matters after lane B picks its CHORE-222 defaults. Ledger rows 2122 and 2123.
-- **Related:** `MC-336`, `MC-330`; CHORE-202, CHORE-220.
-
 ### CHORE-221 — A `.bin` commit's salvage can leave out blocks the person did not confirm
+
+**Status (2026-10-24, lane A records batch 10):** open. Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): the reviewer's reading is CONFIRMED (a failed `remotes/` read becomes an omitted block); the store2 import path is STILL PRESENT (low; narrow trigger); the block-era commit path tail is SUPERSEDED (unreachable on store2).
 
 **Status (2026-10-22): open, candidate; not scheduled.** Source: the lane B stage 2 Gate 1 review (`%TEMP%\risu-lane-b\s2\gate1-r1.md`, non-binding note). It is a reviewer's reading, not independently verified by the orchestrator.
 
 - **Problem (reviewer's claim):** the left-out question (`MC-183`) is asked once, over the validity probe's decode. The commit decodes again, and for a block-format file `RisuSaveDecoder` reads `remotes/` from the app store at that time. So the commit's salvage can leave out blocks that the person never confirmed. Since stage 2 the commit also re-reads the entry from the file, so a same-length body change with an intact header (which the header re-check does not detect) falls in the same class.
 - **Possible fix named by the reviewer:** refuse as a changed file when the commit's left-out names are not a subset of the confirmed `facts.omitted`.
 - **Related:** `MC-183`, `MC-357`; CHORE-103.
-
-### CHORE-222 — Parallel large-entry streams: pick the defaults on the Note 9, then raise them
-
-**Status (2026-10-22, fixed): the Note 9 debug integrity check passed on phone 1 (rows 2130 and 2131); the maintainer accepted it (`MC-342` 1).** All 18,000 assets byte-exact (names, sha256 and sizes), 0 missing or extra, 0 risu-write or .tmp files in assets/. Limits: commit inferred, not observed; the finishing message not seen (inconclusive); the default rests on the copy knob reading null before the import (no saved artifact).
-
-**Status (2026-10-22, implemented; merged in `af735c916` (lane B); `MC-361`, `MC-341` 1): technically accepted on the PC, pending the Note 9 debug-build check (superseded by the status above: the check passed).** Gate 1 `[REJECT]` and then `[APPROVE]` in round 2; Gate 2 `[EDITORIAL]`, E1 and E2 applied. Ledger rows 2344 to 2348. `MC-361`'s condition holds: the default does not ship before that check (main is not a release).
-- **The defaults** (`src/ts/drive/backuplocal.ts`): `ANDROID_ASSET_MAX_STREAMS` 2 and Android `maxFlights` 4. The desktop keeps `ASSET_MAX_STREAMS` 1 and the literal `streamAlone` path. The MEASURE knob still overrides both.
-- **The finishing message:** "Finishing copying files..." shows immediately before the drain, only when nothing stopped or failed, the source is unchanged, and the pipeline has work outstanding (`RestoreAssetPipeline.outstanding`).
-  - On the tail without store2, `Loading backup...` replaces it before the commit.
-  - Web and Node pages without store2 now show `Loading backup...` during the decode instead of the last percentage. This is cosmetic.
-- **The PC prerequisites are met:**
-  - a phone-like 60-entry mix restores byte-exact at 2,4, at 4,4 and at the default;
-  - a refused name above 1 stream is reported (the stage 3 survivors r3 and r7 are now killed).
-- **Note 9 debug integrity check** (lane B's device request): chosen for phone 1 (`MC-341` 2) and dispatched on 2026-10-22; the result is pending (superseded by the status above: passed).
-- **Open, optional:** removing `!sourceChanged` (m9b), `stopMessage === null` (g5) or `passFailure === null` (g6) from the message condition leaves every test passing. The consequence is a "Finishing copying files..." flash before the correct error, with nothing installed. Tests for these were named by Gate 2 and are not added.
-
-**Status (2026-10-22, later, `MC-361`): in progress; superseded by the status above.** The Note 9 run is done (row 2336), and the maintainer chose:
-- 2 streams with 4 flights on Android;
-- the desktop stays at 1;
-- a finishing message during the drain;
-- the literal path is kept.
-
-The plan is `%TEMP%\risu-lane-b\c222\plan.md`, at Gate 1 (opus-reviewer); the implementation is in progress, uncommitted, in lane B's worktree (dated history: implemented and merged since, see the status above). The default does not ship before the PC completion test, the refused-name test above 1 stream, and a Note 9 debug-build check of the restored assets.
-
-**Status (2026-10-22): open.** The lane B stage 3 code is merged as `42993e408`. Both defaults are 1 (today's behaviour). Source: `MC-358` 1, the stage 3 gates (`%TEMP%\risu-lane-b\s3\gate1-r1.md`, `gate2-r1.md`).
-
-- **What exists:**
-  - `RestoreAssetPipeline` (`src/ts/drive/assetBatchPipeline.ts`) takes `maxStreams` and `streamSliceBytes`.
-  - At `maxStreams` 1, the copy runs today's literal path (`streamAlone`).
-  - Above 1, large entries stream beside each other and beside batches:
-    - the last entry in file order wins for keys that fold equal;
-    - a sink, batch or source failure stops the other streams before their next chunk (`MC-358` 2);
-    - Android streams read one writer chunk (1 MiB) per slice.
-  - **The knob.** A MEASURE-only knob, `localStorage['risu-measure-copy'] = "<streams>[,<flights>[,<sliceKiB>]]"`, is read in `backuplocal.ts` `copyMeasureLimits` on every import. `risu-measure-copy` is in `util/checkReleaseDist.mjs` `FORBIDDEN_MARKERS`.
-- **Next:**
-  1. A Note 9 run: a `VITE_RISU_MEASURE=1` release build, a large `.bin` such as `m2-mix18k.bin` (34.4% of its bytes in entries above 1 MiB). Streams x flights in {1,2,4} x {2,4}, and the slice size where it matters. Record the copy rate (`__risuImportPhases`) and the renderer and app PSS peak. A device request goes to lane A once this stage is committed.
-  2. Before raising a default above 1:
-     - (a) a test at more than 1 stream that a refused stream name is reported in the import's skipped list (Gate 2 mutant r7 survived; today it is reachable only through the knob);
-     - (b) the maintainer settles the progress text during a long drain (the percentage counts bytes read and can sit at 100% while streams finish);
-     - (c) decide whether the literal `maxStreams` 1 path is deleted (the new path at 1 is not identical: batches would overlap the stream).
-  3. A one-line change sets `ANDROID_ASSET_MAX_STREAMS`, the desktop `ASSET_MAX_STREAMS` and, if measured, the Android flight count.
-- **Known, accepted:** when the loop throws, the caller skips `stopStreams` (Gate 2 mutant r3 survived). The only effect is a delay before the error shows.
-- **Related:** `MC-358`, `MC-328` 2, `MC-197` 9.
 
 ### CHORE-223 — An Android stub export spends most of its time in two steps outside the asset loop ('export start' to 'export cold collected'; 'export database encoded' to 'export stub and late payloads done')
 
@@ -3777,13 +3381,6 @@ Overlays outside `alertStore` (Settings, the Realm frame, the bookmark list, `po
 - Phone part 5 (build of `3882db23e`, MEASURE; `%TEMP%\risu-b715\phone1-p5\result.md`, verified with corrections): module ticks at most once per 30 s, about 30-31 s apart; a 0-resident tick without modules takes about 0.6 s as one unyielded block (the cadence is about 2.5 s, so the tick duty share is about 24%, an upper bound of 25-30%); CDP after a select still fails (arm M; arm Y inconclusive, n=1); GC mark under 1 s on 3 of 7 launches (values in the report's section 8.5; the verdict is lane B's); export cold collect 25.9 s (information only).
 - Not established: which path does not yield. Yield points are not in `finishTree` or the commit stage (part 4 verifier). Stage B2 (extra yields) is approved only if the gaps prove long. The GC idle-net hold is approved after stage C is measured (`MC-372` 2).
 - The daily-APK lift stays blocked (`MC-368` 1).
-
-### CHORE-226 — Why the `shard:13` unit is rewritten on every select commit
-
-**Status (2026-10-23): sized (lane B row 2437, doc-verifier PASS); closed with no codec change.** Title and facts are from lane B's records (row 2437); this heading was added by lane A's batch 4. The maintainer: "A: no codec change (Recommended)" (`MC-348`).
-- Finding: not shown to be an unnecessary rewrite. A shard unit holds the index rows of about 30 characters (`SHARD_COUNT` 16); `changeChar` sets `lastInteraction` on every select and a chat-row tap sets `chatPage`, so each select was expected to rewrite a whole shard twice (about 76 KB per select, including a 33,141 B shard; INFERRED in lane B's sizing, not seen on the phone: part 5 saw one `shard:13` commit of about 38 KB with only `lastInteraction` changed, on the already-open chat; a warm re-select and `chatPage` were not tested, and the units log was not reset before the tap). The serialization is canonical.
-- Phone part 5 field diff: one shard:13 commit, with `lastInteraction` the only change in one entry. `chatPage` and a warm re-select were not tested, and commit attribution is limited (the units log was not reset before the tap). Part 4 saw the same-size shard rewritten under a new key on each commit; its cause was not traced.
-- About 10 ms of CPU on the desktop, so it does not explain the 2-3 s ticks. Stage 0 timers decide whether commit cost matters.
 
 ### CHORE-502 — Old-format HypaV2 data conversion drops summaries whose target message is hidden (proposed by lane Cloud)
 
@@ -3887,6 +3484,8 @@ Stage 0 (measurement only) is approved as `MC-348` ("Now, PC + one Note 9 run (R
 
 ### CHORE-353 — The write-scope guard refuses only the Edit and Write tools, so a shell write can change a repository file outside its grant (MC-457 1)
 
+**Status (2026-10-24, lane A records batch 10):** open; in batch Q with CHORE-240 and CHORE-185, run by lane C (cloud).
+
 **Status (2026-10-22, lane A): open, ticketed, not scheduled (`MC-457` 1).** The maintainer: "let's ticket this for now and revisit this if similar things happen again." Source: lane E's CHORE-181 Gate 2 remediation (ledger row 3558). The coder ran its mutants by text-replacing worktree files with PowerShell and restoring them, including `alertPrompts.ts`, which was outside its grant; the write guard did not refuse it. Lane E's hash check found that file equal to the reviewed copy (row 3559).
 
 - The interim rules stand: no temporary repository edits by any tool, mutants on scratch copies only, and a hash check after any "restored" hand-back.
@@ -3918,6 +3517,8 @@ On phone 2 with the large profile `m2-mix18k` (CHORE-181 cell 5), after the firs
 
 ### CHORE-240 — A full `pnpm test` rewrites `modules.test.ts.snap` with LF line endings
 
+**Status (2026-10-24, lane A records batch 10):** open; in batch Q with CHORE-185 and CHORE-353, run by lane C (cloud).
+
 **Status (2026-10-22, lane D): open, not scheduled.** Test-only. Source: ledger row 2515 (first filed there); first seen in the `git status` of the S4-4 Gate 1 round 1 report after the CHORE-192 full run (row 2504).
 
 - **Problem:** after a full `pnpm test`, `src/ts/process/mcp/risuaccess/tests/__snapshots__/modules.test.ts.snap` shows as modified. `git diff --ignore-cr-at-eol` showed no content change, so the difference was line endings only. The committed blob is LF and the checkout is CRLF (`core.autocrlf=true`; `git ls-files --eol` shows i/lf w/crlf). Captured after the S4-4b full run (row 2521): the working file was LF only (73 LF, 0 CR; `i/lf w/lf`), so Vitest rewrites the CRLF checkout as LF and Git sees the line-ending change. Why Vitest rewrites a snapshot whose content matches is not established (inferred: it compares the serialized LF text with the CRLF file). Seen after 6 full runs in lane D, each time restored from the index or to CRLF: the CHORE-192, S4-4a, S4-4b and S4-4c trees (rows 2504, 2515, 2521, 2536) and both completed runs on the `MC-382` tree (row 2543).
@@ -3933,6 +3534,8 @@ On phone 2 with the large profile `m2-mix18k` (CHORE-181 cell 5), after the firs
 **Status (2026-10-22, lane A fold-in): S1 and S0 merged in `1d2272b7d` (no-ff of `a29c58871`, lane D; `MC-386`, `MC-387`); technically accepted; not COMPLETE: S3 and S4 wait for the phone 1 capture.** S2 was dropped: every `vite` build already strips `console.*`. Full checks on `1d2272b7d` (`%TEMP%\risu-b715\records-d241\`): `pnpm test` 923 files passed, 1 skipped; 20,882 tests passed, 23 skipped; `pnpm check` 0/0; `pnpm build` passed; `checkReleaseDist` OK (242 files, no measurement markers). Lane D's ledger rows 2567 to 2580 are folded in after row 2566; the mechanism, the S1 and S0 detail and the Gate 1 and Gate 2 rounds are in `Agents/Lanes/lane-D-records.md`.
 
 ### CHORE-200 — On a Node server, a cold-storage unit over the request body limit fails only after the upload (fixed in stage 2a; the boot-pass strike for an oversize unit remains open as a proposed follow-up)
+
+**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group A) for the residual only.** The Node boot-pass strike for an oversize cold unit is parked. Can return on a maintainer decision.
 
 **Status (2026-10-12): fixed in stage 2a (`bd02c04d4`, merged in `2e065403a`; ledger rows 2024, 2027 to 2030); the boot-pass strike for an oversize unit remains open as a proposed follow-up, not scheduled.**
 
@@ -3996,136 +3599,6 @@ Summary status is in the "Android boot batch" bullet near the top. Everything be
 
 **Records closeout.** Drafted by `doc-writer` from the reports above and the Orchestrator's brief (ledger row 1550). Records verified by `doc-verifier` 2026-10-09 (PASS WITH FIXES, fixes applied; ledger row 1551); records committed in `ecf06db4`.
 
-### Character list rework (2026-10-10): Stage 1 plans, gates, checks, accepted limits
-
-Summary status is in the "Character list rework" bullet near the top. Everything below is from the session scratch reports named in the ledger rows 1576 to 1583 (`charlist\`); "session scratch" paths are relative to it. Decisions: `MC-262`, `MC-263`. Stages 2 to 4 are not recorded here: the Stage 2 plan drafter running when this was written is not part of this closeout.
-
-**Investigation and its verification.** `survey.md` (`investigator`, source-read at `dfc5062e`) was checked by `doc-verifier` (`verify.md`): CONFIRMED that avatar gating mounts all DOM and two observer registrations per card and falls open with no observer, that grid, list and trash follow `db.characters` order while the simple list follows `lastInteraction` descending, and that only the sidebar rail uses `characterOrder`; PARTLY on the scan count (at most 2 scans per keystroke, not 3), on the stub (no tags or creator; its `creatorNotes` is the shown description, cut to 500) and on the harnesses (`charlist-avatar-count` fakes an all-visible observer, so it cannot show gating). Omissions it found: A. the mobile list shows trashed characters and has no trash tab; B. each avatar is wrapped in `{#await}`, which re-creates its button on resolve; C. the scroll root differs per tab; D. the stub rule above; E. the row keys follow `db.characters` order, so re-keying by id is a prerequisite for Stage 3. Raw usage: survey 159,734 tokens, verifier 69,444.
-
-**Plan.** `plan-s1.md` (a draft; the maintainer's round 2 answers followed it). Two slips in the plan were corrected before Gate 1: `describeForSearch` should read `stubDescription`, and R5 counts `isHiddenSystemCharacter` calls per debounced keystroke (at most one index rebuild, no per-keystroke `db.characters` scan; base 2N and more). Stage cut: 1a search and header; 1b the mobile trash view.
-
-**Gate 1 (`adversarial-reviewer`, `gate1-s1.md`): `[APPROVE WITH CHANGES]`, seven required changes, none changing the design or the cut.** R1 a combined matched set so `hideTrash:false` still lists trashed rows; R2 the cache holds normalised strings only and flags, id and position are read fresh; R3 the header shows the open tab's count (answer 7) and the "Trash (n)" count choice is stated and tested; R4 hide the add button while the trash view is open; R5 the shared result is an object of getters read lazily, with an embedded-reactivity test; R6 the default flip of `hideTrash` moves to 1b; R7 the test list additions. Recommended: R8 to R10; R11 (low) notes that a loaded character's words past character 500 are not findable, which is the maintainer's rule.
-
-**Stage 1a (`62d55ab6`).** Implemented by `sonnet-coder` (`stage1a-report.md`). Red before green: on the base, 41 failed and 108 passed over `MobileCharacters.search`, `GridCatalog.search` and the four edited test files (`red-1a.txt`); the two `src/ts/gui/tests` files cannot load on the base (specification tests, not reproducers). After: `npx vitest run src/lib/Mobile src/lib/Others/GridCatalog src/lib/Others/charlistAvatar src/ts/gui src/ts/process/tests/coldCharacter` 19 files, 384 passed, 0 failed; `pnpm check` 0/0 (`after-1a-r1.txt` repeats these figures after the remediation dispatch described below; the committed `characterSearch.ts` writes the zero-width characters as `\u` escapes). Harness (`Agents/Tools/save-gen/charlist-search-count.svelte.harness.ts`, happy-dom, all-visible observer fake, counts only; `baseline-1a.txt`, `after-1a.txt`): `isHiddenSystemCharacter` calls for a three-keystroke burst fall from 1,500 (simple) and 3,000 (grid) at 500 characters, and 3,000 and 6,000 at 1,000, to 0; element additions and removals, observe and unobserve counts and final DOM size are identical to the base. **Gate 2 (`adversarial-reviewer`, `gate2-1a.md`): `[APPROVE WITH CHANGES]`, `[EDITORIAL]` class, no substantive defect.** It re-ran the targeted tests (19 files, 384 passed) and `pnpm check` (0/0), re-ran the base on a scratch copy (41 failed, 34 passed of 75 in the two search files, same count as the coder), and ran its own mutations M1, M2, M3, M5, M6, M8, M9 and M10, which the tests caught; M4 and M7 (dropping the `{#if c}` and `{#if char}` guards) left every test green. Findings: F1 (low, test strength) those guards are unexercised defensive code; F2 (editorial) literal invisible characters in the regex classes, now `\u` escapes in the committed source; F3 (editorial) the new test files are LF while some working-copy sibling tests show CRLF (autocrlf only; the index is LF throughout; no repository harm); F4 and F5 information (the unused `search` prop on the embedded list, dropped in 1b; the 500-character limit). The remediation dispatch applied the editorial fixes (per the coordinator's follow-up message of 2026-10-10, not a saved report): F2, the literal invisible characters replaced by `\u` escapes in three files; F1, the guards could not be made red, so a comment marks them as defence in depth.
-
-**Stage 1b (`6833d0ac`).** Implemented by `sonnet-coder` (`stage1b-report.md`). Red before green: 14 failed and 141 passed over the runnable files on the base (`red-1b.txt`); the `CharacterTrashList` test cannot load on the base. After: `npx vitest run src/lib/Mobile src/lib/Others/GridCatalog src/lib/Others/CharacterTrashList src/lib/Others/charlistAvatar src/ts/gui src/ts/process/tests/coldCharacter` 22 files, 408 passed; `pnpm check` 0/0 (`after-1b.txt`). No new language keys. **Gate 2 (`adversarial-reviewer`, `gate2-1b.md`): `[ACCEPT with notes]`, gate token `[APPROVE]`, no required changes.** It re-ran 15 files, 212 passed, and `pnpm check` 0/0, and read the red run; it did not re-run the red on a scratch copy and ran no mutations. Optional notes: no guard test that the embedded simple tab shows no Trash row and no trashed characters (true by construction); an unindented `{:else}` block (cosmetic). Behaviour: `trashOpen` is local state, so a swipe leaves the screen and resets it; the add button is hidden while the view is open; the "Trash (n)" row counts the whole trash, excluding hidden system characters and ignoring the query, while the open view applies the search (the Orchestrator's choice, `MC-263` 3).
-
-**Full checks by the Orchestrator on the final trees** (the coders and reviewers ran targeted tests only). 1a: `full-1a.txt` `pnpm test` 630 files passed, 12,543 passed, 6 skipped (12,549), 109.69 s; `check-1a.txt` `pnpm check` 0 errors and 0 warnings; `build-1a.txt` ends "built in 20.51s". 1b: `full-1b.txt` 633 files passed, 12,567 passed, 6 skipped (12,573), exit 0, 114.89 s; `check-1b.txt` 0 errors and 0 warnings, exit 0; `build-1b.txt` ends "built in 12.98s", exit 0. The test logs show the same iframe `NotSupportedError` and Svelte class-declaration warning output in both runs; the runs passed. Commits: `git show --stat` 14 files, 2,599 insertions and 161 deletions for `62d55ab6`; 7 files, 1,203 insertions and 51 deletions for `6833d0ac`.
-
-**Accepted limitations and what is not verified.**
-- The harness figures are counts in happy-dom with an all-visible `IntersectionObserver` fake, not timings, and they show no change in DOM or observer counts until windowing (Stage 2). Nothing was run in a browser or on a device; no frame-budget or phone claim follows from these figures.
-- The mobile trash view has not been tried on a phone; the check is deferred to Stage 2 (`MC-263` 2). Not checked there: scroll, swipe inside the trash view, the add button.
-- Words past character 500 of a loaded character's notes are not searchable, and tags and creator are searched for loaded characters only; both follow `MC-262` 3 and are tested.
-- The mobile placeholder "unnamed" is no longer searchable; this was an intended change, stated in the plan and tested.
-- Both search box routes (desktop and the mobile header) are now debounced in the consumer, so the header count and the rows follow the landed query.
-- The defaults taken without asking (`MC-262`) are not confirmed by the maintainer.
-
-**Remaining work (item stays IN PROGRESS).** Stage 1c, added before Stage 2 on the maintainer's round 3 answers (`MC-264`): a click anywhere on a Grid or List entry (except its delete button) opens the character and closes the screen, as Simple does; trash rows no longer open on click (restore and delete only); List descriptions get a "Show more" / "Show less" button, shown only when the text is cut off, which needs two new English keys (the translator adds the other languages). The Orchestrator's finding behind it: the grid and list tabs and the trash avatar call `changeChar` without `endGrid`; only the simple tab closes the screen, and no show-more key exists. Not yet planned or gated when this was drafted. Stage 2, windowing of the character lists, with the phone check of the trash view folded in. Stage 3, the grid reads `characterOrder` read-only and shows folder tiles. Stage 4, drag and folder management in the grid (`opus-reviewer` gate). Records for Stages 2 to 4 are to follow.
-
-**Records closeout for Stage 1.** Drafted by `doc-writer` from the Orchestrator's brief and the saved reports (ledger row 1584). Independent verification by `doc-verifier` has not been recorded when this was drafted. Records not yet committed. (Update 2026-10-10: `doc-verifier` PASS WITH FIXES, fixes applied, per ledger row 1584; the records were committed in `25eeca6e`.)
-
-### Character list rework (2026-10-10): Stages 1c, 2a and 2b
-
-Summary status is in the second "Character list rework" bullet near the top. Everything below is from the session scratch reports named in ledger rows 1585 to 1608 (`charlist\`, `backupname\`); "session scratch" paths are relative to it. Decisions: `MC-265`, `MC-266`, `MC-269`, `MC-271` (and `MC-267` for the backup name, which is not part of the rework). The reports are the coders' and perf-analyzers' own; the device reports were not independently verified (no verifier row).
-
-**Stage 1c (`9c1b8a39`; `stage1c-report.md`).** Red on the unmodified components: 20 failed, 38 passed. Decisions: `MC-264` items 8 to 10 and `MC-265` items 11 and 12. Behaviour: a click anywhere on a Grid or List entry (except delete, "Show more" and links, and not a drag that selects text) opens the character and closes the screen; trash rows keep restore and delete only; List and Trash descriptions render through `ParseMarkdown` without a character, then `stripMedia` removes images, media, SVG, style blocks, image-fetching or escaped inline styles, app-control attributes (`risu-*`, `x-hl-*`), forms and non-web link targets, and the List clamps at three lines by height (`max-h-18`). Gate 2: `[REJECT]` (B1, B2), then `[PASS WITH FIXES]` by a second fresh reviewer (F1 forms); the coder's r1 and r2 applied the fixes; the review of r2 is not recorded. Full run 638 files, 12,630 passed, 6 skipped; `pnpm check` 0 and 0; build exit 0. Accepted and not verified at commit time: the visual result (Tailwind clamp, prose styles) had not been seen in a browser; the markdown cache is bounded by entries (200 texts), not bytes; the clamp has no ellipsis and can cut the last line (CHORE-171); the parse of a description is skipped for rows far from the viewport.
-
-**Stage 2a (`ac2db1fb`; `stage2a-report.md`, `gate1-s2.md`, `plan-s2-v4.md`, `gate2-2a.md`, `note9-2a.md`).** New `CharacterWindow.svelte`, `charListRows.ts`, `CharListAvatar.svelte`, `windowErrorGuard.ts`; the rail's `computeLayout` is reused through a heights map (`railLayout.ts` untouched). Reproducers fail on the base on assertion errors (for example "expected 200 to be less than 40"); feature tests and guards are labelled in the report. Harness counts (happy-dom): List 12 rows and Simple 22 at every N from 500 to 2000, against N rows on the base. Final tree: `pnpm test` 648 files, 12,736 passed, 6 skipped; `pnpm check` 0 and 0; `pnpm build` exit 0. Note 9 (SM-N960N, API 29, 1000 synthetic characters, 875 live and 125 trashed): List 8 to 14 rows mounted of 875, Simple 16 to 25, mobile list 17 to 26, Trash 7 to 12 of 125; List 5.27% janky over 7,415 frames (p99 21 ms), Simple 5.03%, mobile list 3.93%, Trash tab 17.05% and 13.05% over 475 and 590 frames; the Q8 immediate correction did not cut a fling (229 programmatic writes; gross travel equal within 0.3%); Back from the mobile trash returned to the same row and offset; 0 `ResizeObserver loop` events. Not observed: raster blanks (DOM and four screenshots only), a 1000-row trash on the phone, Tab on the phone, the link tap on the base, Pi 3 or mid-range phones.
-
-**Stage 2b (`e31b4f2f`; `plan-s2b.md` v2, `stage2b-report.md` r1 to r4, `note9-2b.md`).** `CharacterWindow` gains a grid layout (rows of tiles; the column count is `floor((width + gap) / (tile + gap))` from a rendered 1 rem probe, so Android font scaling cannot over- or under-count); `scrollbar-gutter: stable`; a partial last row stays centred; each tile is a list item with `aria-setsize` and `aria-posinset`. A column change runs in the next animation frame, outside the observer delivery, and keeps the first visible tile (a sticky anchor repeats the same tile across changes). `CharListAvatar` caches resolved styles (300 entries, 32 KB per entry cap, no failed or empty-URL results). Red on the base copy: 38 failed, 177 passed of 215 in nine files. Gate 1 `[PASS WITH FIXES]`; Gate 2 as in the status bullet. Final tree: `pnpm test` 648 files, 12,784 passed, 6 skipped; `pnpm check` 0 and 0; build exit 0. Device: first pass found D1 (Android font scale: 6 columns and a clipped sixth tile at 0.85) and D2 (`ResizeObserver loop` events on column-narrowing; benign, no alert); after r3 the recheck showed 5 columns with no overflow at 0.85, 1.1 and 1.3, 0 loop events on the phone (4 rotations) and the desktop (8 resizes), the same tile after rotation round trips; 2.57% janky over 5,952 frames, one run at 15.0%. In the first desktop pass (before r3) the heap stayed flat over four full sweeps (35.59 to 35.74 MB), with about 300 distinct style strings in a heap snapshot. **Accepted and not observed:** r4's anchor edge cases are unit-tested only (the device builds preceded them); the Tauri desktop app, real browser zoom, raster blanks, a tap during momentum, a 1000-row trash on the phone, Pi 3 and mid-range phones were not run; the cause of the 13 to 15% bimodal jank runs is unattributed; after browsing more than 300 distinct avatars, returning to the top re-creates tiles that show grey first (the designed cache bound); an unexplained selection of Card 0064 while the Edge window was minimized is treated as a harness artefact until reproduced; the 2a link-tap alert was not retested; a one-frame interval of old rows after a column change was not looked for.
-
-**Remaining work (item stays IN PROGRESS).** S3: row keys by character id (the 2a keys are `String(match.index)`, so a permanent delete shifts them and the focus pin can follow an index onto another character once), then the grid reads `characterOrder` read-only with folder tiles. S4: drag and folder management in the Grid (`opus-reviewer` gate), arrow keys, the per-row centring offset for the drag hit test (`gridRowInset` was not added in 2b). Windowing of the plugin, module and preset lists follows the rework. Tickets: CHORE-169 to CHORE-174 below.
-
-**Records closeout for Stages 1c, 2a and 2b.** Drafted by `doc-writer` from the saved reports, `answers.md` and `git show --stat` (ledger row 1610). Independent verification by `doc-verifier` has not been recorded when this was drafted. Records not yet committed.
-
-### Character list rework (2026-10-10 to 2026-10-11): Stage 3, S4-1 and S4-2
-
-Summary status is in the third "Character list rework" bullet near the top. Everything below is from the session scratch reports named in ledger rows 1641 to 1694 (`charlist\`, with the answers record `charlist\records-s34\maintainer-answers.txt`, the handbacks in `charlist\records-s34\handbacks\` and the usage figures in `charlist\usage.txt` and `charlist\records-s34\usage-session.txt`); "session scratch" paths are relative to `charlist\`. Decisions: `MC-273` to `MC-278`. The reports are the coders', reviewers' and device agents' own. The device reports and the F2 trace (`f2-trace.md`) were not independently verified (no verifier row); `avatar-cache-investigation.md` was spot-checked by the Orchestrator only (its core claims: the `avatarThumb` memo holds up to 1000 entries or 16M characters, thumbnails are `data:webp` URLs, blob URLs are revoked).
-
-**Stage 3 plan and Gate 1.** `plan-s3.md` (`investigator`, base `8c6146ed`) cut the work into 3a stable keys, 3b the Grid on `characterOrder` (3b-1 the order and folder tiles, 3b-2 sections) and 3c the sort selector. Gate 1 (`adversarial-reviewer`, `gate1-s3.md`) `[PASS WITH FIXES]`, 12 findings, all accepted into `plan-s3.md` "Gate 1 amendments": 1 HIGH (3b: duplicate order entries would give duplicate card keys, so each order occurrence takes the next unused live holder of its id and unused holders are appended); findings 2 to 7 MEDIUM (focus survival across a folder toggle specified on a mechanism that cannot work; the reproducer R7 not true as stated; `MobileCharacters` has no source for the occurrence number; R5 not a regression reproducer; the "Grid never writes `characterOrder`" guard too weak; the shared open-folder key needs two explicit conditions); finding 9 LOW (copy before sorting). Findings 8 and 10 to 12 are not summarised here.
-
-**Stage 3a (`6035dd56`, 10 files, +836/-37; `stage3a-report.md`, `gate2-3a.md`).** List and Grid cards, Trash rows and the mobile Simple list are keyed by slot (the character id plus how many earlier non-hidden slots share that id; trashed slots count), through one `slotKeys` helper in `characterSearch.ts`; a key that is gone resolves to nothing, never to a neighbour. Red on the base: 7 tests, 5 failed on assertions (for example focus moved from D to E after deleting B; "expected 'Character 20' to be 'Character 19'" after leaving the mobile trash view), 2 guards passed. Final tree (the coder's run): `pnpm test` 657 files, 12,919 passed, 6 skipped; `pnpm check` 0 and 0. Gate 2 `[PASS]` (the reviewer re-ran the reproducers on the base: 5 of 7 failed).
-
-**Stage 3b-1 (`08b88870`, 4 files, +1,048/-18; `stage3b1-report.md`, `gate2-3b1.md`).** New `charListOrder.ts` (`buildGridEntries`): the Grid shows the saved order read only, a folder is one tile, hidden, trashed and dangling ids are skipped, characters the order does not list are appended in database order, a search is flat with a folder badge, and open folders are shared with the rail through its `localStorage` key (`risutanium.rail.openFolders`). The Grid never writes the database and never calls `checkCharOrder`. Red on the base: 13 failed, 2 passed (assertion failures and feature-absent failures; the 2 are guards). Final tree: `pnpm test` 659 files, 12,944 passed, 6 skipped (`full-3b1.txt`); `pnpm check` 0 and 0; build ok. Gate 2 `[PASS WITH FIXES]` (no substantive defect): the reviewer's mutations showed the focus test could not fail in 3b-1 and a reassignment of `characterOrder` in the toggle went undetected; the Orchestrator applied the `characterOrder` reference check and a test title (`pending-records.txt`; the commit message says two test fixes).
-
-**Stage 3b-2 (`8f10f04b`, 6 files, +949/-15; `stage3b2-report.md`, `stage3b2-fix-report.md`, `gate2-3b2.md`, `gate2-3b2-fix.md`).** An open folder's tile and members form a section of whole rows in the folder's tint (`gridSectionRows` in `charListRows.ts`, `folderSectionClass` in `charListOrder.ts`, a class and `data-charlist-folder` on the window's grid row); a folder tile looks up its own picture and shows the sidebar's face (the name with Show Folder Name, else the icon) when the picture is empty, missing or failed, or when hide-all-images is on. Red on the base: 11 failed, 4 passed. Gate 2 `[PASS WITH FIXES]`: finding 1, the picture lookup repeated and blanked on every toggle (fixed with a per-Grid lookup cache keyed by picture and hide-all-images, red 1 failed and 16 passed before); finding 2, with hide-all-images the Grid shows the face where the rail shows its placeholder image (kept, `MC-275` 2); delta review `[PASS]`. Final tree after the fix: `pnpm test` 660 files, 12,969 passed, 6 skipped; `pnpm check` 0 and 0; build exit 0.
-
-**Stage 3b-3 (`f4d2205f`, 2 files, +47/-14; `stage3b3-report.md`).** Device defects from the first pass (below): closing a folder whose tile was partly scrolled off the top made the list jump because the refocus scrolled the tile into view, so focus is restored with `preventScroll` (F1); a folder with a missing picture showed an empty dark tile, so the face is always drawn over the picture layer (F3). The focus reproducer is mock-level (it spies on `focus`); the scroll effect itself is a device check. Final tree: `pnpm test` 660 files, 12,970 passed; `pnpm check` 0 and 0; build exit 0. Gate 2 `[PASS]` with no fixes (the report came in the reviewer's hand-back and is not saved as a file).
-
-**Stage 3b-4 (`c8a99472`, 2 files, +123/-26; `gate2-3b4.md`).** `CharListAvatar`'s style cache is bounded by 16 MiB of style text (the shared thumbnail memo's budget) and 4,000 entries, least recently used first, instead of 300 entries; the 32K-character per-entry cap, the skip of failed pictures and the hide-all-images key are unchanged. Reproducers: a pass over 625 thumbnails keeps them all, the budget fills to 16 MiB, 4,000 tiny styles fit; a guard checks the running total. The commit message gives `pnpm test` 660 files, 12,973 passed, `pnpm check` 0 and a good build; no saved run file for these figures. Gate 2 `opus-reviewer` `[APPROVE]` with no fixes (the new tests fail on the old cache: 3 of the 4; each bookkeeping mutation turned a test red). Memory cost, by the reviewer's reasoning and the maintainer's acceptance (`MC-275` 6): thumbnail bytes are held in both caches; style strings are ASCII, so about 16 MiB of one-byte data, with a pathological two-byte ceiling of 32 MiB (reasoning, not measured).
-
-**Stage 3c (`49c10864`, 14 files, +503/-21; `stage3c-report.md`, `gate2-3c.md`).** A Sort selector on its own line below the tabs, Grid tab only: My order (the sidebar order with folders), Recent (last interaction, newest first, the comparator shared with the Simple tab) and Name (the displayed name, ties by key). Recent and Name are flat like search, with a folder badge on members. The choice is kept in `localStorage` (`risutanium.grid.sort`, `gridMemory.ts`), never in the database or backups; a sort change scrolls to the top, a folder toggle does not; open folders are kept for when My order returns. Folder icons and names get a dark shadow (F5). New keys `othersUi.sortLabel` and `othersUi.sortMyOrder` in every locale. Red on a copy of `c8a99472` with the new tests: 17 failed (8 in `charListOrder`, 9 in `GridCatalog`); two of the guards fail there only because the export and the selector do not exist. The coder's run had 6 `localeParity` failures until the translator ran. Final tree per the commit message: `pnpm test` 661 files, 12,998 passed; `pnpm check` 0 errors; build ok (no saved run file for this final run). Gate 2 `[APPROVE]`; its notes: a doc comment's wording, no test for the unnamed placeholder or for duplicate, hidden or trashed ids in the flat modes, a missing trailing newline in a test file, and the 360 px layout reasoned from markup only.
-
-**Device passes for Stage 3 (not independently verified).** `note9-3b.md` (build at `8f10f04b`): Note 9 SM-N960N, API 29, WebView Chrome 153, 411 x 773 CSS px, font scale 1.1, 1000 synthetic characters (875 live, 125 trashed, 50 folders; the closed Grid is 325 tiles, 281 of them characters, 44 folders), plus Edge against the Node server on Windows (not the Tauri app). Windowing with folders 90 to 140 tiles mounted closed and 95 to 145 with the 150-member folder open, 0 blank frames at row level; rotation with an open section stable; the 3a phone check passed (delete a trashed character, Back: top row and scroll offset unchanged); open state shared with the rail both ways; keyboard focus stays on a folder tile across toggles. Findings: F1 closing a folder whose tile is partly above the viewport jumped the scroll (-369 px on the phone), mechanism measured to be the refocus `focus()` call; F2 fling jank with every folder open (CHORE-177); F3 a folder whose picture file is missing showed an empty tile; F4 (minor) with Show Folder Name on, a folder with an empty name shows a blank tile (the report did not compare the rail; reading `SidebarRail.svelte` at `e75b1249`, the rail also renders the name with no fallback). `note9-3b34.md` (build at `c8a99472`): F1 passes (2 of 2 partly visible, 1 fully visible), F3 passes (all 5 pictured folders show the face over the picture), the avatar cache shows 0 late style writes (652 to 904 before), the CSS image requests persist (CHORE-177), F2 re-measured at 10.04% all open. F5 (minor, the pass-3b recheck's label): a white folder name over a bright noise picture is hard to read (fixed in 3c; in the S4-2 pass the icon was readable and the name "readable but weak" over the same fixture picture, `note9-s4-2.md` check 9, a marginal pass with the same fixture caveat). Not observed: the Tauri app, raster blanks (DOM level only), a tap during momentum scrolling, the fling pass under Android font scaling or in landscape, a Pi 3 or a mid-range phone.
-
-**Stage 4 plan.** `plan-s4.md` (`investigator`, base `49c10864`) drafted a Grid edit mode as 4a (shell, selection), 4b (drag, writes `characterOrder`) and 4c (new folder, bulk delete, folder menu); it refuted the premise that folder management can simply be reused (the menu is closures local to `SidebarRail.svelte`). The `senior-advisor` (`advisor-s4.md`) advised generalising `RailDrag` behind a geometry resolver in its own commit, keeping `gridTarget.ts` as the two-dimensional resolver, two order operations only, and listed what not to do (overlays inside measured rows, a ghost positioned by `top`/`left`, iterating the selection per tile, the default `touch-action`). Gate 1 (`opus-reviewer`, `gate1-s4.md`) `[APPROVE WITH AMENDMENTS]`, A4-1 to A4-17 binding the coder briefs; it settled that a trash-only change needs no `requiresFullEncoderReload` (a trashed character stays in `db.characters`; `markCharacterForSave` per id suffices). The Orchestrator's stage list (`answers.md`; the stage numbers S4-1 to S4-6 are not in `plan-s4.md`, which uses 4a to 4d): S4-1 rail generalisation, S4-2 edit shell, selection, chevron and bulk trash, S4-3 group into a new folder, S4-4 drag (hit test, moves, append, dwell merge, Alt+Left/Right, the "Moved N" announcement), S4-5 folder-menu extraction and the Grid menu (own commit, touching `SidebarRail.svelte`), S4-6 arrow-key focus. The answers are `MC-277`.
-
-**S4-1 (`ff5bd37e`, 5 files, +262/-9; `stage4-1-report.md`, `gate2-s4-1.md`).** `railResolver.ts` (`RailGeometry`: `sourceAt`, `hasKey`, `zoneCandidateAt`, `resolveTarget`, with a default that delegates to the old functions) and an optional third constructor argument on `RailDrag`; `bindRail` takes a `RailMachine` type so another machine with the same methods can be bound. No existing test was edited. Red: one reproducer ("geometry decides source, target and source-gone check") fails on `49c10864` with the new files copied in; the other new tests are guards. Rail suites: 41 files, 677 tests pass. Final tree: `pnpm test` 663 files, 13,002 passed, 6 skipped; `pnpm check` 0 and 0; build ok. Gate 2 `opus-reviewer` `[APPROVE]` with one optional editorial note (a positional assertion): four geometry sites in the base all route through the resolver; in-memory mutations of each call site turned the reproducer red.
-
-**S4-2 (`e75b1249`, 26 files, +3,259/-62), with S4-2b and S4-2c folded in.** *Edit mode.* `GridCatalog.svelte` (edit mode, picks, chevron, floating Edit/Done button), `charListEdit.ts` (a pick remembers the character object or folder entry it stood for, so an action acts only on picks that still resolve to the same object), `gridTarget.ts` (the pure hit test over the window's rows), `CharacterWindow.svelte` (`attach` and `getGeometry()`); the long press reuses `RailDrag` through `bindRail` with a Grid geometry whose zone and target are empty, so there is no drag and no write; a mouse never long-presses. Escape, Done, a tab switch and closing the screen leave edit mode and clear the selection. Under Recent or Name the Edit button and the long press switch to My order first. *Bulk trash.* `trashCharacters()` in `characters.ts` (+78): one confirmation naming the count (plus the busy line), an identity re-check after the dialog, `stopWorkIn`, `trashTime`, a picked folder replaced in place by its non-trashed members, `checkCharOrder` twice, `markCharacterForSave` per character, `requiresFullEncoderReload` untouched. *Back and the quit toast (S4-2b Change 1).* `backHandlers.ts` turns `window.__risuTaniumBack` into a registry (newest first, the first handler to return true ends the press); the phone overlay sidebar moved onto it and the Grid registers while editing; when none takes the press the guard in `main.ts` shows "Press Back again to quit" and a second Back within 2 s (`QUIT_WINDOW_MS`) quits; the arm is dropped when the page goes hidden; while a dialog or alert covers the page (`pageCovered()`) Back quits at once with no toast; `MainActivity.kt` has comment updates only. *The hold (S4-2b Change 2).* `railDrag` hosts may return false from an optional `edgeScroll()` (the Grid does; the sidebar keeps its edge scroll); `enterEdit` scrolls once, after a sort switch, to the held tile (selected) or, for a member of a closed folder, to its folder tile (nothing selected). *The count row (S4-2c, D9).* In edit mode the Sort row (one fixed `h-8` row) shows the count and "Move to trash"; the old in-flow bar is gone. *Keys.* `alerts.pressBackAgainToQuit` and `othersUi.editMode`, `editDone`, `editMoveToTrash`, `editSelectedCount`, `editFolderToggle`, `editTrashConfirm` in English and six locales; the translator rated the Vietnamese and Spanish toast phrasing and the German quotation marks as medium confidence.
-
-*Red, mutants and gates.* S4-2: the coder's mutants M1 to M15 and T1 to T9 were caught except M12 (equivalent through a disabled button); Gate 2 `opus-reviewer` `[EDITORIAL]` ran its own mutants (X3, X5, X6 caught; X1, X2, X4, X11 and X12 survived), found a test title that overstated a sort switch the test never made, and found no save-safety, ordering or write-path defect; the coder's tests-only remediation caught X1, X2, X4 and X11 (X12 stays unit-level), and no re-review is recorded. The reviewer's finding 5, that the six locale `editTrashConfirm` strings drop a sentence, was refuted by the Orchestrator (the English string has none). S4-2b plan: Gate 1 `[REJECT]` at round 1 (the mechanism was sound; five points needed plan changes, findings 1, 2, 3, 4 and 7), `[REJECT]` at round 2 (the folder-tile key derivation, the edge auto-scroll that survives the scroll, reproducers red for the wrong reason), `[REJECT]` at round 3 (a release-time scroll under My order that nothing authorized; the closed-folder path ends at the switch, not at release), then the `senior-advisor` escalation traced the scroll problem to the rail machine's edge auto-scroll, which the Grid cannot use; the plan was split into Change 1 and Change 2 and round 4 on Change 2 was `[EDITORIAL]`. Change 1 red: "Back while editing exits edit mode" (`expected undefined to be true`) and "open overlay with a toast up: still consumed" (`expected false to be true`); Gate 2 `[APPROVE]` with two editorials. Change 2 red: 3 of 41 Grid tests failed (for example `expected +0 to be 224`) and the declining-host `railDrag` test; Gate 2 `[REJECT]` for tests only (four surviving mutants), after which each mutant a to d fails exactly one test (`mutant-a.txt` to `mutant-d.txt`); the Orchestrator accepted this on those outputs with no reviewer re-run. S4-2c: Gate 1 on revision 1 `[REJECT]`, revision 2 had no recorded Gate 1; red 5 failed, 40 passed; green 45 of 45; Gate 2 `[APPROVE]`. A class-only hardening of the edit row (`shrink-0 whitespace-nowrap` on the button, `min-w-0 truncate` on the count) got a fresh review `[APPROVE]`; only the 45 Grid edit tests and `pnpm check` were re-run after it. *Checks.* Final S4-2c tree: `pnpm test` 669 files, 13,111 passed, 6 skipped (exit 0); `pnpm check` 0 errors, 0 warnings; build exit 0.
-
-*Device (Note 9, debug builds, same fixture; not independently verified).* `note9-s4-2.md` (before Back handling): a long press enters edit mode and selects the held tile (no native menu seen; a haptic observed, inferred to be the app's vibrate call); taps toggle, the chevron opens and closes folders; Back in edit mode closed the app (no handler yet); edge auto-scroll ran during a held press and could scroll the held tile away; changing the sort while editing left edit mode; bulk trash of 2 characters and a folder with one member removed exactly 4 tiles and, after Restore, the three characters returned at the end of My order outside any folder and the folder did not come back (the dialog says "A restored character returns outside any folder"; existing restore behaviour). Fling jank was informational only: all open, edit mode off, 14.22% pooled (5 of 10 runs over 10%); edit mode on 33.06% with 4 of 10 runs in device slow mode and half the frames per run, unexplained and confounded by run order and heat; closed 24.07% pooled, 2.77% over the 6 runs outside slow mode. `note9-s4-2b.md` (HEAD `5b0fa42b` plus the uncommitted tree): Back in edit mode leaves it with no toast; the next Back toasts and a Back within 0.8 s quits, one after 3.2 s toasts again; the toast also works in Settings and the chat screen; the phone overlay sidebar closes on Back with no toast; with a dialog open Back quits at once; holds in the edge bands did not scroll; a Recent long press switched to My order with the tile centred and selected; a closed-folder member gave edit mode with 0 selected and the folder tile visible; the label reads "Move to trash". Deviations: the Beta Mobile GUI "Menu" page (CHORE-180), a held bottom tile showed only a 9 CSS px sliver after the count bar appeared, and a top hold selected the count text (both addressed by S4-2c). The corrected interleaved jank pass read edit off 25.16% against on 15.42% pooled (informational; the first pass was a protocol artefact). `note9-s4-2c.md`: all 6 checks pass: the header row is 32 px in both modes and no tile moved; a bottom-band hold left the tile in place; a top-band hold left no text selection; German fits on one line at 411 dp and the count is cut short at an emulated 360 dp; a Recent long press and Back, then the toast, were rechecked. Not checked: the desktop pointer and keyboard path (Escape, mouse) on any device, the Tauri app, whether the `contextmenu` event was default-prevented, whether the vibration came from the app, landscape after S4-2c, the true end of a long list under the floating button, and a third Back.
-
-**Accepted limitations and what is not verified.**
-- The device reports, the F2 trace and the Note 9 figures are single-device, debug-build, synthetic-input measurements; the desktop passes were Edge against the Node server on best-case hardware, not the Tauri app, a Pi 3 or a mid-range phone.
-- F2 is not fixed (CHORE-177). The sort and the open folders are remembered per device and are not in backups, by decision (`MC-274`).
-- The quit toast and the edit-mode Back work only where the Android app asks the page what Back should do; phone-browser Back is CHORE-179; screens with their own back stack are CHORE-180; accepted limitation R5 (`s4-2b-change1-report.md`): where a history entry exists, a second Back may go back in history.
-- The S4-2b Change 2 Gate 2 remediation was accepted on the coder's mutant outputs without a reviewer re-run; the post-S4-2c class-only hardening had a fresh review and targeted tests only, not a repeat of the full run.
-- After a bulk trash, restoring puts characters at the end of the order outside any folder and an emptied folder is not recreated (existing restore behaviour, stated in the dialog).
-- The non-English strings are the translator's (`MC-058`); the translator rated the Vietnamese and Spanish quit toast and the German quotation marks as medium confidence (`MC-278`).
-
-**Carry-forward notes (not tickets).**
-- S4-4 must restore source-gone cancellation during a real tile drag (`plan-s4-2b.md` Revision 4: the gate becomes "entered edit mode by this long press and no tile drag"), bring edge scroll back in the Grid only while dragging tiles (D8, the Orchestrator's plan for that stage), and check `entry.ref` rather than the placeholder ref given to tiles with no order ref (`stage4-2-report.md`).
-- A Name-sort long press on a plain far-down tile was not device-checked (the chosen card was a closed-folder member); include it in the next Grid device pass.
-- Optional cleanup, verified by reading the code at `e75b1249`: the `exitEdit` branch in `chooseSort` can no longer end edit mode from the UI, because the select that calls it is rendered only when not editing and `enterEdit` passes 'order'; and the test titled "the count bar shows the count, and Trash is disabled at zero" in `GridCatalog.edit.svelte.test.ts` (and the file's header comment) still say "count bar" although the count now sits in the Sort row.
-- F4: an empty folder name with Show Folder Name on shows a blank tile in the Grid and, by reading `SidebarRail.svelte`, in the rail (minor, not ticketed).
-- Planned keys not yet added: `othersUi.editGroup` and the screen-reader "Moved N items" key (`MC-277` 15). Update 2026-10-12: `othersUi.editGroup` was added in S4-3 (`c186bbd7`); the "Moved N items" key is still not added.
-
-**Remaining work (item stays IN PROGRESS; as of 2026-10-11; S4-3 is done, see the section "Character list rework (2026-10-12): S4-3").** S4-3 (group the selection into a new folder; the planner's default allows one selected character), S4-4 (drag: hit test, moves, append to a folder, dwell merge onto a character, Alt+Left/Right, the "Moved N items" announcement; the plan names `opus-reviewer` for the stages that write `characterOrder`), S4-5 (folder-menu extraction and the Grid menu, its own commit touching the sidebar), S4-6 (arrow-key focus). Then windowing of the plugin, module and preset lists and the rest of the queue. Device checks owed: the next Grid pass (Name-sort long press; landscape after S4-2c).
-
-**Records closeout for this section.** Drafted by `doc-writer` from the saved reports, `maintainer-answers.txt`, the usage files, `git show --stat` of the commits and the Orchestrator's brief (ledger row 1695). Independently verified by `doc-verifier` (row 1696, PASS WITH FIXES, fixes applied).
-
-### Upstream merge `979dbc9d` and the logo PR #8 (2026-10-11)
-
-Decisions: `MC-277` 18 to 21. Ledger rows 1668 to 1671 and 1678.
-
-**Upstream merge `1f455c0b` (3 files, +265/-21; pushed).** Brings in upstream PR #1532 (`4fa72fb5`; the range `2a511a31..979dbc9d` has one non-merge commit and two upstream merge commits). The staged change is only the regex branch of `searchMatch` in `src/ts/process/lorebook.svelte.ts`: a flagged regex key such as `/dragon/i` was rewritten to `/dragon` and effectively never activated, and a flagless key was skipped; now each key is parsed as `/pattern/flags` with flags limited to `dgimsuvy`, and a key that cannot be parsed or is not a valid regular expression makes that key list not match. Fork-side test `src/ts/process/tests/lorebookRegexKeys.svelte.test.ts`: 10 tests driving the real `loadLoreBookV3Prompt`, 5 reproducers that fail on the pre-merge code and 5 compatibility guards (`upstream-1532-test-report.md`). Gate 2 `adversarial-reviewer` `[APPROVE]` (with the pre-merge source injected in memory, 5 fail and 5 pass). Full checks on the merged tree with the uncommitted S4-2 work present: `pnpm test` 667 of 668 files, 13,064 passed, 6 skipped, the 6 failures all `localeParity` for English keys awaiting translation; `pnpm check` 0 errors; build ok (`fullcheck-1532-*.txt`). The merge's own record is `Agents/Upstream-Merges.md`, committed with the merge and not rewritten here; its follow-up is CHORE-178. The record was drafted by `doc-writer` and checked by `doc-verifier` (`[EDITORIAL]`).
-
-**Logo PR #8 (merge `5b0fa42b`, 4 files, +93/-3).** From the cloud session: `0ed32570` bundles the unmodified NanumSquare Neo Heavy woff2 (NAVER, SIL OFL 1.1) with its licence and a README credit and applies it to the home-screen title; `9babc1b1` adds the brand gradient to "Risu" and a Hangul Day variant (October 9, Korean UI: 리스타늄). Merged on the maintainer's "merge the logo PR once checks pass". Gate 2 `adversarial-reviewer` `[APPROVE]` by reading only (no build or test run by the reviewer); notes: no `forced-colors` fallback for the transparent gradient text, the holiday variants also pick up the new font (the PR body says they keep their own styling), no automated test for the October 9 / `ko` branch, and the 361 KB font is fetched when the home screen first renders. The commit message reports `pnpm check` 0 errors, a good build (font emitted to `dist/assets`) and `pnpm test` 664 files, 13,012 passed, 6 skipped on the PR tree; who ran them is not recorded, and whether the PR's CI checks were read before the merge is not recorded. TODO(evidence). Not verified: the font file's provenance (the reviewer reports the PR says it came from the npm package `typeface-nanum-square-neo@0.0.6` and was not byte-compared with NAVER's download) and whether the font declares a Reserved Font Name.
-
-### Character list rework (2026-10-12): S4-3, group the Grid edit-mode selection into a new folder
-
-Decisions: `MC-279`. Ledger rows 1697 to 1706, 1709, 1710 and 1713. Ticket: CHORE-181. Everything below is from the session scratch reports named in those rows (`charlist\`, with the answers record `charlist\records-s34\maintainer-answers.txt` and the usage figures in `charlist\usage.txt` and `charlist\records-s34\usage-session.txt`); "session scratch" paths are relative to `charlist\`. The device reports are the Note 9 agent's own and were not independently verified (no verifier row). The coder's report `stage4-3-report.md` contains two claims that the Gate 2 reviewer refuted (below); they are not repeated here.
-
-**Plan and Gate 1.** `plan-s4-3.md` (`investigator`, base `d6717f66`) designs `groupIntoFolder` as a pure order operation beside `dropOnItem`, a release hook in `RailDrag`, a `groupPlan` seam, the Grid menu and an edit-row button, and put six product questions to the maintainer (Q1 to Q6, all answered "(Recommended)", `MC-279`). Gate 1 (`opus-reviewer`, `gate1-s4-3.md`) `[APPROVE WITH AMENDMENTS]`, B1 to B12 binding on the coder brief: B1 the operation moves every string member of a picked folder, hidden ones included (the plan's "visible, untrashed" gloss was wrong); B2 a folder plus one of its own members counts as a lone folder; B3 the menu choice is mapped through the action list built when the menu opened (otherwise a Group that became available meanwhile could run on a "Move to trash" tap); B4 a design for the Q4 scroll; B5 the planned mutant G4 (drop before insert) is equivalent for this operation (scratch experiment `g1s43-g4.mjs`: 200,000 random orders, `dropFirstDiffers` 0, `noShiftDiffers` 119,356, `multisetFailures` 0); B6 the Grid's `contextmenu` listener must be bubble phase; B7 right-click and the keyboard menu select an unselected tile first, as the hold does; B8 a hold on a selected tile keeps it selected; B9 the rewritten `GridCatalog.edit` test must not leak a pending prompt; B10 more Grid tests; B11 the condition of property P3; B12 the dissolved folder ids are removed from the open-folder list explicitly (the plan's "automatic prune" was overstated). Not verified at Gate 1: the Android timing of the native `contextmenu` against the release, the 360 dp row, and the exact Q1 option text (TODO(evidence)).
-
-**S4-3 (`c186bbd7`, 17 files, +2,475/-32; `stage4-3-report.md`, `commit-s4-3.md`).** `groupIntoFolder` (`sidebarOrder.ts`, +99) resolves every ref on the input (any unresolved ref returns the input unchanged), builds one new closed folder with the default folder name at the slot of the first pick in list order (a folder member's slot is its folder's slot), moves the picks in list order, drops folders the move emptied, and inserts before dropping. `railDrag.ts` (+9) gains an optional `onTouchHold` host hook for a touch hold released in place on a non-folder source, called after the session ends; the sidebar defines no hook. `charListEdit.ts` gains `groupPlan` (decides what a Group acts on; drops a member pick whose own folder tile is picked; no Group for a lone folder) and `chooseRowForms`. `GridCatalog.svelte` gains the menu through `alertSelect` on the whole selection, a bubble-phase `contextmenu` listener sharing `openTileMenu`, the icon button (`h-8 w-8 shrink-0`, `FolderPlusIcon`, `aria-label` and `title` = `othersUi.editGroup`, disabled when there is nothing to group), one write path (a `characterOrder` assignment, then `checkCharOrder()`, the rail's pattern), the Q4 scroll guarded by a generation counter, and the row forms. One new key, `othersUi.editGroup` "Group into new folder", in `en.ts` and the six other locales (translator, parity 6 of 6). After a Group the selection clears and edit mode stays. *Count and row (from the device findings, `MC-279` 8 to 10):* the count shows only the number when the full "N selected" does not fit beside Group and a labelled "Move to trash"; if even the number does not fit, "Move to trash" becomes a trash icon (32 x 32, same accessible name, tooltip and confirmation); the choice comes from hidden measuring probes of the full text, the number and the label, and the shown forms are never measured, so it cannot loop; one polite live region always holds the full count text.
-
-**Red, mutants and gates.** No test of the feature can fail by assertion on the base alone (new function, new export), so the evidence is mutation proof: in-memory mutants through `vitest.mutate3.config.ts` and `run-mutant3.ps1`, with the SHA-256 of each source file recorded before and after (identical; no mutant ever sat in a repo file). Operation mutants G1 to G18 were all killed except where the report says otherwise: G4 is equivalent (G4' replaces it) and G14 is the same defect as G7 (`mutants-s4-3-op.txt`). The Grid and rail mutants were killed except R5 (it survived the original tests and was killed only after Gate 2, below), in three cases after a first run survived and the tests were strengthened (GM6, B4a, GM4; `mutants-s4-3-ui.txt`, `-ui2.txt`); GM14, a defence-in-depth guard for a missing saved order, survives with no reachable failing case. Count mutants C1 to C7 (`mutants-s4-3-count.txt`) and row mutants R1 to R8 (`mutants-s4-3-row.txt`; these R names are distinct from the rail-hook mutant R5) were all killed. The `GridCatalog.edit` test that pinned "a hold does not select" was rewritten on purpose (B9). Gate 2 `opus-reviewer` `[EDITORIAL]` (`gate2-s4-3.md`): no defect in the code, the save path or the tests' logic; it re-ran 13 coder mutants (the Gate 2 report's own table itemises 11: nine killed, GM14 and R5 survived) and ran 17 of its own (12 killed; V12, V13 and V15 survived; V14 and V16 argued equivalent). Corrections to the coder's report: (E1) R5, "the hook also fires after a real drop", is NOT equivalent: a key scroll or an edge scroll re-evaluates the target with no finger travel, and the reviewer's scratch test (touch lift, `PageDown`, release at the press point) fails on the mutant; the product cannot show it today (the Grid resolver has no drop targets), and it becomes observable in S4-4; (E2) the lone-folder menu case is reachable (an open folder picked, then a menu on one of its own members gives [Move to trash, Cancel]); the code is right in both cases. The coder then added tests for E1, E2 and N1 (subsumption with duplicate folder ids) without product changes (`mutants-s4-3-g2fix.txt`: R5 killed by the new rail test, V12 by the new `charListEdit` test); no reviewer re-run of those tests is recorded. Non-blocking observations left open: N2 (the `!editing` check in `openTileMenu` has no test; V13 survives), N3 (`openTileMenu` toggles the selection before `menuOpen` is checked; judged unreachable in production because a covering prompt blocks both paths; reasoning, not executed), V15 (nothing pins `preventDefault` when keys are blocked). The count change (`gate2-s4-3-count.md`) and the row cascade (`gate2-s4-3-row.md`) each got a fresh `adversarial-reviewer` `[APPROVE]` by reading plus running the three Grid test files and `pnpm check`; non-blocking: no unit test at the icon form's full-text and number boundary (200 and 201 at the test's base widths) and the count wrapper carries both `flex-1` and `flex-none` (cosmetic); the count review's reasoned surviving mutant (`void countFull` dropped) is covered later by the coder's row test "(F) a changed count is measured again without a resize" (the coder's report, not re-run by a reviewer). Checks: after the first coder run `pnpm test` failed only `localeParity` for `editGroup` in the six locales (669 files passed, 1 failed; 13,192 tests passed, 6 failed, 6 skipped); on the final tree (`full-s4-3-row-test.txt`, `-check.txt`, `-build.txt`) `pnpm test` 670 files, 13,211 passed, 6 skipped; `pnpm check` 0 errors, 0 warnings; build exit 0 (confirmed by the Orchestrator, "build exit 0" in the task output; the saved file ends "built in 24.19s" with no exit line).
-
-**Device (Note 9 SM-N960N, API 29, 411 x 773 CSS px, dpr 2.625, font scale 1.1, 875 live characters and 507 Grid entries; debug APKs built from `git archive d6717f66` plus the working-tree files; not independently verified).** `note9-s4-3.md` (before the count change), PASS: one menu on a 0.7 s and a 1.5 s hold with no native menu (one `contextmenu` event, no second menu); a hold on an unselected tile joining the selection; Cancel leaving the order unchanged (three times); Group through the menu of a member of an open folder, a top-level character and a closed 32-member folder (one closed "New Folder" at the member's folder slot holding 34 characters, 875 unique characters before and after, none missing or doubled); Group through the icon (the Grid scrolled from 1907 to 0 within 300 ms); the icon disabled with nothing selected and with a lone folder; a lone folder plus one of its own members offering [Move to trash, Cancel]; the new folder in the sidebar at the same slot with Rename working and the Grid showing the new name; persistence across a force-stop (the all-open tile list identical); the English row at 411 dp (32 px row, 32 x 32 Group button 8 dp from "Move to trash"); a Name-sort long press on a far-down tile (it switched to My order with the tile centred and selected, no click event); and "Move to trash" after a Group trashing only the selection (875 to 874, then restored from the Trash). FAIL: German at 411 dp (count cut to "1 aus...") and at an emulated 360 dp (count invisible). DEVIATION: with the menu open Back quit the app at once, with no toast, and the menu did not close (CHORE-181). `note9-s4-3b.md` (number only if cramped): English 411 dp PASS; German 411 dp shows the number ("1 ausgewählt" needs 91.3 px of a 59.8 px box); German emulated 360 dp with 1 selected shows "1" in a box of 8.35 px for a text 8.65 px wide; FAIL: at 360 dp a two-digit count read "1" while 14 were selected. `note9-s4-3c.md` (the row cascade), all 6 checks PASS: English unchanged; German 411 dp the number beside the labelled button; German emulated 360 dp (window override 945 x 1943) the trash icon with the full "N ausgewählt" unclipped for 0, 1, 14 and 111 selected; tapping the icon opened the same confirmation (cancelled, nothing changed); resizing back returned the labelled button with the selection kept; the live region held the full localized text in every case.
-
-**Accepted limitations and what is not verified.**
-- Group has no confirmation and no undo; the Gate 1 reviewer and the coder brief call this risk maintainer-accepted, but no maintainer message saying so is in the sources given (TODO(evidence)) (an ungroup in the sidebar restores membership only, not a dropped folder's name, colour and picture). The Group button is 32 dp and sits 8 dp from the destructive button (measured); no tap-error trial was run.
-- Back with a prompt open quits the app (CHORE-181). No test drives Back with the real prompt open (the group suite's menu is a spy).
-- The number-only form beside the icon (a count wider than about 200 px) was not reached on the device; the coder's arithmetic puts it at more than about five digits (inferred).
-- 360 dp was emulated with a window-size override at the same pixel density, not a true 360 dp device; only English and German were measured; TalkBack was not run (DOM read only); font scales other than 1.1 were not run; the loop-holds-saving branch of `checkCharOrder` is not covered after a Group (the result needs no prune).
-- The device passes did not cover Group with search active, Group under Recent or Name (the menu is My order only by code), a folder tile's own menu, or a second Back after the menu Back. The Gate 2 reviewers ran no browser or device render; the count and row layouts are reasoned from markup and stubbed widths.
-
-**Carry-forward notes (not tickets).**
-- The device test fixture's order was only partly restored after the S4-3 pass: the rebuilt "Folder 03 (32)" has a new folder id (`5bb2874c...` instead of `cce6d877...`) and stands at Grid slot 14 instead of 30, and Card 0161 is at slot 2 instead of 226. Every position between them shifted, so later passes see a changed fixture, and any check that depends on those ids or slots needs the new values.
-- After a Group the sidebar rail shows entries the Grid hides: the fixture holds duplicate occurrences (an id listed twice, or in two folders; inferred to pre-exist, from `note9-3b.md` and one first-pass screenshot, because the rail was not scanned before). Group moves one occurrence and the other stays (no loss measured). Fixture duplicates pre-date the pass; not a design item (no recovery for corrupted fork-local state, AGENTS.md).
-- R5 (Gate 2 E1): a key scroll can carry a lifted tile onto a drop target without finger travel; covered by a rail test, and relevant again in S4-4.
-- S4-4 must restore source-gone cancellation during a real tile drag and bring Grid edge scroll back only while dragging tiles (the notes in the S4-2 section stay).
-- Optional cleanup: the boundary test at the icon form, the duplicated class on the count wrapper, and N2, N3 and V15 above, besides the optional items in the S4-2 section.
-- Renaming the new folder works only in the sidebar until S4-5 (Q3). The Name-sort long press that the S4-2 notes listed as unchecked was checked in this pass (check 9, PASS).
-
-**Remaining work (item stays IN PROGRESS).** S4-4 (drag: hit test, moves, append to a folder, dwell merge onto a character, Alt+Left/Right, the "Moved N items" announcement; `groupIntoFolder` is the base of the dwell merge, and extending it with a placement argument must re-run the property tests and the G mutants), S4-5 (folder-menu extraction and the Grid menu, its own commit touching the sidebar), S4-6 (arrow-key focus). Then windowing of the plugin, module and preset lists and the rest of the queue. Device checks owed: the next Grid pass on the changed fixture, and landscape after S4-2c (only the count switch was seen in landscape, `note9-s4-3b.md` check 4).
-
-**Records closeout for this section.** Drafted by `doc-writer` from the saved reports, `maintainer-answers.txt`, the usage files, `git show --stat c186bbd7` and the Orchestrator's brief (ledger row 1719). Independently verified by `doc-verifier` (row 1720, PASS WITH FIXES, fixes applied).
-
 ### QOL side track (2026-10-12): batch import of plugins and modules, plugin export, per-model data fetched online
 
 **Status (2026-10-12): IN PROGRESS, not COMPLETE; branch `feat/qol` in the worktree `C:\Projects\RisuAI\.claude\worktrees\qol` at `d6717f66`; nothing committed or merged.** Decisions: `MC-280`. Ledger rows 1707, 1708, 1711, 1712 and 1714 to 1718. Everything below is from the session scratch reports in `qol\` (relative to the session scratch directory). The surveys and plans are investigator reports and are not independently verified; the Orchestrator spot-checked the `LLMModel` fields, the default of `dynamicModelRegistry` and the picker and plugin prompts only.
@@ -4147,6 +3620,8 @@ Decisions: `MC-279`. Ledger rows 1697 to 1706, 1709, 1710 and 1713. Ticket: CHOR
 **Not decided / owed.** The Gate 1 round 2 outcomes of the plans; the implementation of batch import and per-model data; plugin export full checks, commit on `feat/qol` and merge; the merge of `feat/qol` (the maintainer's words allow it after S4-3; each item still needs its gates); the plans' open questions for the maintainer.
 
 ### Runtime unload, the work after increment 1 (unload-2, 2026-10-12): gates, checks and owed device checks
+
+**Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): the unload-2 stub v3 upgrade, stage 2a re-archive / device pause (doc-verifier correction 7: the put-back replaces the mechanism; device coverage TODO(evidence)) and stage 2b old-unit deletion are SUPERSEDED; card import to archive is SUPERSEDED as written; trash archiving is mostly SUPERSEDED; the web idle reload is N/A on Android (removed anyway, `b33e485ae`). Owed in changed form instead of the device list below: (1) the trash purge on a store2 boot, the Trash-tab display and the upstream round trip of a trashed stub, including the upstream mobile trash list that was never exercised; (2) the generic 20-card import with a 20 MB charx and no out-of-memory. Neither has a located store2 device check (TODO(evidence)).
 
 Summary status is in the "Runtime unload" bullet near the top. Decisions: `MC-300` to `MC-308`. Records: ledger rows 2001 to 2039; tickets CHORE-200 and CHORE-201, and the updates under CHORE-85 and CHORE-86. The work was done by a cloud session on `feat/unload-2` (base `origin/main` at `f45ac41`, per the branch's records file) and merged into `main` as `2e065403a` (`git log`: 2026-10-12 21:08 +0900). Commits on the branch (`git log 2e065403a^1..2e065403a^2`, read by the records pass): the release `dist` check `3b3e4a61c`, stub v3 `982e6fa5d`, card import to the archive `010c6053b`, trash archiving `34b8ec9dc`, stage 2a `bd02c04d4`, stage 2b `9d03b2ba1` and the removal of the idle reload `b33e485ae`, with records commits between them. The session ran in a cloud Linux container (no Note 9, no Android build, no Windows, no Tauri desktop; the PowerShell write guard did not run, so write ownership was kept by discipline): every device or Tauri claim below is owed, not observed. The verdicts and check results below are the cloud session's own, as folded in; the fold did not re-run any check.
 
@@ -4234,35 +3709,9 @@ Summary status is in the "Runtime unload" bullet near the top. Decisions: `MC-30
   - **Web, installed as an app:** open a card file with the app: it is imported once.
   - **Note 9 (Android, Tauri) and Windows (Tauri desktop):** start-up, the boot archive pass and re-archiving behave as before (no change expected; the desktop path was never on).
 
-### Stage 4b, store2 import and export close (2026-10-20): commits, gates, checks, devices, carries
-
-**State (2026-10-21): merged into `main` as `ea49d579d` and pushed (`MC-325`); COMPLETE once these records are verified.** D10 ran on 2026-10-20 and 2026-10-21 (ledger rows 2069 to 2071), and the merge is row 2072. Next: the upstream compatibility work, then `MC-323`. Earlier state (2026-10-20): technically accepted on the unmerged branch; the A4 round trip and the merge decision were owed.
-
-**D10, A4 upstream round trip (`s4b\d10\d10-results.md`, verified with fixes; synthetic fixtures, one i9 PC, single runs):** upstream at `979dbc9d` (the last upstream commit merged into the fork) in `C:\Projects\RisuAI-upstream`; fork `19afc6829`. An upstream-written `.bin` with all four pointer kinds goes into the fork, out (inline, and stub form from a scratch build), and back into upstream with every character, chat, message, plugin key and asset present; the only difference is `isStreaming: false`, which the fork never stores and upstream resets on load. The fork's "chat 3: missing" import notice is expected (that upstream-written input lacks the unit). The 101 MiB Node restore skips the asset after a named warning and a confirmation, as decided in `MC-318` 10; the literal "skips nothing" check is deferred to the chunked-upload item. The 99 MiB control restores byte-identical. Stub form: upstream imports the unloaded (B) export without dialogs and every chat and message is present when decoded; the loaded (A) export was not re-imported and one character's open check is inconclusive, so `EXPORT_UNLOADED_CHARACTERS` stays `'inline'` until the maintainer decides. Not run: L4 against upstream `e773240bf` (informative). Open: a "reading 'map'" error when opening some test characters also appears in upstream-only runs; likely the hand-built fixture's shape (no `triggerscript`, `personas` empty), uncertain, not a fork defect. The fork filled a placeholder chat from a unit present in the hand-built golden (adds data, loses none).
-
-**Commits on `feat/alite-s4`, in order:** `775602a2b` S1; `ea7669b96` S2a (boot import skip notices, one boot notice across the service-worker reload; `MC-322` 5); `1b27483f6` S2b (import, restore and export shells return their end and facts); `c25482c16` S3 (inlay round-trip compatibility guard on store2 pages); `96b9d10f1` CHORE-110 (deterministic gzip header in `.bin` exports); `19afc6829` S4 (release the import's decoded tree and msgpackr's retained buffers). S4 has a latent coupling: the release relies on the Buffer polyfill loading before msgpackr, and a change of load order fails loudly.
-
-**Gates (ledger rows 1975 to 2000 and 2040 to 2062):** Gate 1 plan `[REJECT]`, then `[APPROVE WITH CONDITIONS]`. S1 Gate 2 `[APPROVE WITH CONDITIONS]`, then `[APPROVE]` after one targeted round. S2a Gate 2 `[APPROVE WITH CONDITIONS]`, then `[APPROVE]`. S2b Gate 2 `[REJECT]`, `[REJECT]`, `[APPROVE]` (three rounds). S3 `[APPROVE]`. CHORE-110 `[APPROVE]`. S4 Gate 1 `[APPROVE WITH AMENDMENTS]`; S4 Gate 2 `[REJECT]` (`packr.useBuffer(Uint8Array)` broke `composedRoundTrip` 8 of 15 under Node), then `[EDITORIAL]` after the round 2 re-review (ED1, ED2 applied).
-
-**Checks (the final snapshot `19afc6829`; the figures are from the check logs as recorded):** `checks-bef339121`: 19,596 passed. `checks-c25482c16`: 19,708 passed. `checks-96b9d10f1`: 19,711 passed, 23 skipped; check, build and release-dist PASS. `checks-19afc6829`: `pnpm test` had 1 failure, `Chat.draftCaptureScenarios` "success-then-fail", under APK-build load (passed 3 of 3 alone), now CHORE-185. `checks-19afc6829-r2` on a quiet PC: 19,724 passed, 23 skipped, 0 failed; check, build and release-dist PASS. Replay and live 429 re-run at `96b9d10f1` (orchestrator, 2026-10-20): 3 files, 40 passed, 0 skipped.
-**Devices (one Note 9, SM-N960N, Android 10, WebView 154, single runs unless stated; each verified by `doc-verifier` with the corrections listed):**
-- D1: PASS. Step 3 partial: the natural race was not timed; injected stale writes were refused.
-- D2 to D4: PASS with corrections (`d2d4-acceptance.md`). Probe gap: the dev servers were not shipped. D4 found the `botPresets` lenient-convert crash (`MC-322` 6; CHORE-183). D2's double boot notice was fixed in S2a.
-- D7: PASS. The CHORE-110 cause is the gzip MTIME.
-- D5 and D8 (device build `c25482c16`, before the CHORE-110 fix): D8 PASS, partly evidenced (screenshots; no focus log). D5 1,000-entry fixture: cold start median 6.65 s against 13.40 s baseline. A2 NOT-RUN (no API key). A1 shape only; the meter JSON was not saved. Baseline is the main frontend on the `c25482c16` Rust shell. The old fixture `m-10k-real.bin` is defective (no globalLore). The verifier withdrew the VmHWM and app-memory claims.
-- D5 re-run and post-fix export (the build with the S4 fix, `19afc6829`, on the device; single run): CHORE-110 closed on a small (5-character) profile, one device; two exports are identical (SHA-256 `875D4B5A...`, gzip MTIME 0; verified from the files). Import 637.5 s on the 1,000-entry file; plateau about 0.65 to 0.72 GB total; peak 1.07 GB in the commit; renderer fresh. Comparison figures for the import (new build about 1.4 to 1.49 GB sustained; baseline about 0.4 GB, spiking to about 1.1 GB at the finish) are the d5d8 verifier's recomputation from the raw samples `new-fix-import` and `base-fix-import`, not text in `d5d8-results.md`. The single run cannot separate the S4 fix from the fresh renderer; the baseline was not re-run. The cited lmkd line (18:34) is outside the import.
-- D11a: PASS. The real upstream partial backup (345,832,259 B; 500 characters, 771 chats, 164 modules, 14 plugins, 2 presets, 68 personas, 517 assets) round-trips identically on the PC; heap peak 252 MiB. Four broken images are keys absent from the partial `.bin` and referenced in `characters[].additionalAssets` or `emotionImages`: expected (`asset-failures.md`). Corrections: export about 23 s click-to-begin; the 5,228 key count is unsupported; "Success" shows before the download completes.
-- D11b: PASS. F1 90 MB (1,200 characters, 150 modules, 99.6k messages): import 38.6 s, heap 181 MiB. F2 3 GiB (40k assets): import 141.1 s, heap 83 MiB. Both round-trip identically on the PC. Store2 import resolves cold-storage pointers, so exports carry chats inline; export size grows, and fork to upstream loses the cold-storage savings (MC-175 holds).
-
-**D11 split and tiered data (`MC-324` 1 and 2):** real shapes come from the maintainer's upstream partial backup; scale comes from synthetic fixtures on the PC; a full 32 GiB real import is not required. Large data runs stay on the PC unless the check is Android-specific or a pre-release run.
-
-**Memory (S4):** the reachable-set checks pass for the legacy and block formats; PC 1k renderer working set (MiB, headless Chrome, i9 best-case hardware, synthetic fixture, single run each): peak 1217 to 1004; commit-window median 894 to 709. The asset-window slope target was missed and is reported only. Raw `databaseBytes` is still held (deferred option C).
-
-**Upstream `e773240bf` (separate item; LANDED on `main` as `2862940fe` on 2026-10-21, merged up to upstream `61d0eb79a`, pushed; `MC-331`; details and per-stage gates in `Upstream-Merges.md`, ledger rows 2074 to 2094; CHORE-186 fixed, residuals CHORE-187 to CHORE-193; the paragraph below is the pre-implementation plan):** the triage (`upstream-e773240\triage.md`, verified with corrections) names a 37-file conflict set; the plugin storage index layout is live upstream since `68b5d032c` (2026-10-13). The maintainer's answers are `MC-324` items 1 to 11 (plugin storage reads both layouts; SaveKV passes through verbatim; onboarding data only; the welcome redesign is skipped; Node write errors are taken, adapted). Compatibility inputs for Gate 1: `sizing-compat.md` (verified 8 of 8), `advisor-g1g2.md` (`senior-advisor` challenge), `exp\exp-results.md` (verified with corrections), `savekv-intent.md`. Order after the `feat/alite-s4` merge: G6, then G3, then G2 (S1 to S3), then G1, as one merge. E5 is the pre-release blocker CHORE-186.
-
-**Notes, not tickets:** fixture-shape crashes (a character without `globalLore` throws on open; `personas []` throws on chat open; a missing `didFirstSetup` shows the first-run wizard). No notice appears after a partial import that about 156k referenced additional assets are missing (for the backup-screen rework, N12). Store key totals grow slightly per boot (untraced). The CHORE-74 and `MC-176` warning text may be stale against upstream `e773240bf` (unverified). The S4 latent coupling to the Buffer polyfill load order.
-
 ### A-lite storage rewrite (2026-10-13): stage list, gates and state
+
+**Status (2026-10-24, lane A records batch 10):** stage 5a (automatic clean-up on the Tauri app) is merged (`9dd028b3b`, `67273e799`), so the stage table below that lists stage 5 as not started is stale. Stage 5b (clean-up UI, quota path, prompt wording, orphan counter) is PARKED behind CHORE-205's L3 and per-chat work (`MC-504`); revisit after that work changes what clean-up must handle.
 
 **Update 2026-10-22 (correction, latest): stage 4b was merged into `main` as `ea49d579d` (`MC-325` 3, 2026-10-20) and pushed; the "nothing is merged" and "remaining" wording of the 2026-10-19 and 2026-10-20 updates below and in the 4a+4b State cell is superseded on that point. Later work is under "Current work order" at the top (`MC-345`).**
 
@@ -4309,19 +3758,6 @@ Summary status is in the "Runtime unload" bullet near the top. Decisions: `MC-30
 - **An upstream-exported `.bin` sample** (stage 4b).
 - **Before the freeze (technical):** independent re-verification or re-measure of the S0-8 root-write series and the S0-5b 16-shard run (both AUTHOR-ONLY); the E1-1 model run (4-hour cap on the i9; not finishing blocks the freeze). **(Updated 2026-10-14: the re-measure and the E1-1 run are done, ledger rows 1743 to 1745; E1-1 ran at `faultCap=1`, which does not exhaust the A2 bounds, so what remains before the freeze declaration is the maintainer-run counts-only census (plan 8.3) and the model variants V1 to V4, Report 62 D8. **(Updated 2026-10-14, latest: the census ran and the freeze was declared in plan v3.4 amendment 5 with disclosed residuals, including that no plan-named V4 set finished; `MC-293` to `MC-296`; ledger rows 1772 to 1777.)**)** **Open, not decided:** the plan's P0b `&revisions=1` list mode is not covered by `MC-290` (`&revisions=1` answered "Not now", `MC-295`).
 - **Settled in round G1 (`MC-288`):** plugin storage inside backups (Q-C), V2.1 keeps modules resident and a v3 `getDatabase` with modules waits (Q5), oldest backups dropped one at a time with a notice on a full quota (Q-B).
-
-### Session 2026-10-21 (resume): plugin-index change, stub-export flip, device scripts
-
-State at `b781b1f35` on `main`, pushed. Decisions: `MC-333` and `MC-334`. Evidence is session scratch (`%TEMP%\risu-b715\`), outside the repository.
-
-**Plugin index (`4a4ddf050`, `MC-333` 1, scope corrected in `MC-334` 3 to A4 and A5):** an index that only a numbered backup or retained snapshot points at, and whose read reports it absent, contributes only its own key, so old-data deletion and manual cleanup can run. Unreadable or damaged reads, the main file, committed blocks, older confirmed copies and live data still stop. Gates: Gate 1 `opus-reviewer` `[APPROVE WITH AMENDMENTS]`; Gate 2 `opus-reviewer` `[EDITORIAL]` (two wording fixes applied). Seven reproducers fail on the pre-change base; mutants killed except one shown equivalent. Checks on that tree (commit message): `pnpm test` 20127 passed, 23 skipped; `pnpm check` 0/0; build and `checkReleaseDist` pass.
-
-**Stub-export flip (`b781b1f35`, `MC-326` 7, `MC-334` 1, 4 and 5):** `EXPORT_UNLOADED_CHARACTERS` is `'stub'`. Trashed characters and characters whose chats name a cold-storage root stay inline (the root guard is a technical fail-safe, `MC-334` notes). Gates: Gate 1 `opus-reviewer` `[REJECT]`, then `[APPROVE]` with seven amendments; Gate 2 `opus-reviewer` `[REJECT]` (one owed legacy-page import guard), then `[EDITORIAL]`. Checks (commit message): `pnpm test` 20187 passed, 23 skipped; `pnpm check` 0/0; build and `checkReleaseDist` pass.
-- **S2 upstream compatibility leg (`s2\results.md` plus `s2\verify.md`, PASS WITH FIXES, corrections applied; synthetic fixture of 4 characters, one i9 PC, headless Chrome, single run):** upstream `61d0eb79a` imports and opens a stub-form export without dialogs or error text and re-exports it; the fork re-imports both files. 4 characters, 4 chats and 4 messages in every file; the trashed character stays trashed. Not covered: the trashed character was not opened in upstream, the upstream mobile trash list was not exercised, the group had one whole and one stub member, and page-stub evidence is a heap query (INFERRED).
-- **PC measurement (`pc\results.md` plus `pc\verify.md`, PASS WITH FIXES; i9-13900KF best-case hardware, headless Chrome, static IndexedDB web build, synthetic 500-character fixture, n=3 per form, medians; n=1 for the 5% trashed variant):** peak JS heap during export 202 -> 145 MiB (the rise above the pre-click level 84 -> 9 MiB, on different bases, and 500 ms sampling makes peaks lower bounds); click-to-saved 16.0 -> 13.5 s (includes about 1 s script latency; n=3, one machine; the first inline run was slow and unexplained); file 43,081,603 -> 93,853,848 bytes (2.18 times); database entry 30.6 -> 10.4 MB; 500 uncompressed unit entries. Whole-browser memory shows no separable difference. No phone or frame-budget claim. The file-size growth goes on the list for the faster or native export work (`MC-326` 6, `MC-334` 5).
-- **Open:** the Note 9 export figure, batched for the next device session (`MC-334` 1); the upstream mobile trash list, not exercised; the D10 "reading 'map'" error, not reproduced on the S2 fixture in either form, cause unknown; CHORE-194 (filed this pass).
-
-**Device-check scripts (`MC-330` 7, `MC-333` 4):** Stage 1 is accepted: Gate 2 round 1 `[REJECT]` (cleanup-safety defects in the process tracker), round 2 `[APPROVE]` (`devscripts\g2\`, `g2r2\`). The scripts are untracked under `Agents/Tools/device/` and stay uncommitted until Stage 5. Stages 2 to 5 remain.
 
 ### Candidate tickets, not yet numbered (2026-10-04)
 
