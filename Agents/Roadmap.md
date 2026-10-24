@@ -7291,6 +7291,33 @@ Stage 0 (measurement only) is approved as `MC-348` ("Now, PC + one Note 9 run (R
 - Open UI questions for the maintainer: the boot notice; the toggle for a V2.1 entry; the localized refusal text; the dead `PluginAlertModal` (no non-test code sets its `open`; deleting `pluginSafety.ts` needs its type import removed and the modal's fate decided).
 - Moot once CHORE-206 lands (not closed): CHORE-30 and CHORE-65, both V2.1 paths. A title search found only these two; body-text mentions were not swept (TODO(evidence)).
 
+### CHORE-207 — off-main-thread asset work (candidate)
+
+**Status (2026-10-24): open, candidate, not scheduled, no code (`MC-478`).** Filed from the lane A question on carrying the off-main-thread idea forward. The idea's origin is the maintainer's recollection of an advisor's side-chat suggestion to move non-critical work such as asset loading to another thread; no advisor transcript was found, and none is claimed.
+
+- **Findings (verified; confidence as stated):**
+  - Existing workers: the Pyodide worker (`scriptings.ts`), Monaco and pdf.js (CONFIRMED). fflate async in cold storage and `.charx` import is possibly already off-thread (INFERRED from fflate's design, not checked in `node_modules`). fflate sync in `bergamotTranslator.ts` and `risuSaveV0.ts` runs on the main thread (CONFIRMED).
+  - Rust has no asset decode, resize, hash or zip command (CONFIRMED). Rust has other commands (network, Python, inference), which are not asset work.
+  - On Tauri and Node, `getFileSrc` returns native URLs, so no asset bytes cross the main thread for display (CONFIRMED, `globalApi.svelte.ts:355-379`).
+  - The recorded main-thread cost is the avatar first-pass `renderThumb`: full-size decode plus `toDataURL` on the main thread (rows 3562 and 3566; MEASURED on PC, phone attribution INFERRED).
+  - The plain-HTTP base64 figure of about 8.75 ms CPU per MB is i9-13900K best case (the Roadmap figure; its source cite is stale, now `globalApi.svelte.ts:459`).
+  - Not a candidate: `.bin` / `risuSave` decode. This is inference: structured clone copies the object graph and doubles peak memory, and it belongs to lane B.
+  - Grid fling jank is not a worker candidate (row 1654 reports a compositor-stage cause; that row is NOT independently verified, and "a worker would not fix it" is the investigator's inference).
+- **Ranking (opinion where stated):**
+  1. avatar thumbnails;
+  2. the plain-HTTP asset path, where a blob URL is likely better than a worker (opinion);
+  3. `.charx` import (low).
+- **First stage proposed (not approved):** a pure byte-to-thumbnail function using `createImageBitmap` resize and `OffscreenCanvas.convertToBlob`, run on the main thread behind a flag and measured on a Note 9 with a cold synthetic profile, before any worker.
+  - It goes beyond grid A2, which is already measured and not shipped (row 3566). The `convertToBlob` stage also changes the output from the current data URL to a Blob.
+  - The A2 re-evaluation with the phone capture comes first.
+- **UNVERIFIED:**
+  - worker PSS on the Note 9;
+  - WebP `convertToBlob` on WebView 155;
+  - service-worker interaction;
+  - the `strip` plugin on worker code.
+- **Next:** read `%TEMP%\risu-lane-e\grid\plan.md` to settle the A2 overlap.
+- **Related:** the Grid avatar loading entry, MC-452, MC-459, MC-463, MC-130, CHORE-205, CHORE-177.
+
 ### CHORE-353 — The write-scope guard refuses only the Edit and Write tools, so a shell write can change a repository file outside its grant (MC-457 1)
 
 **Status (2026-10-22, lane A): open, ticketed, not scheduled (`MC-457` 1).** The maintainer: "let's ticket this for now and revisit this if similar things happen again." Source: lane E's CHORE-181 Gate 2 remediation (ledger row 3558). The coder ran its mutants by text-replacing worktree files with PowerShell and restoring them, including `alertPrompts.ts`, which was outside its grant; the write guard did not refuse it. Lane E's hash check found that file equal to the reviewed copy (row 3559).

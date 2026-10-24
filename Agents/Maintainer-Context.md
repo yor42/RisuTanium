@@ -13249,3 +13249,21 @@ Round 2:
 - Notes, not the maintainer's words:
   - `MC-223` (upstream to fork must always work) is not met for risuai.xyz full backups. The cause is upstream's key access, not a fork defect. The maintainer decided that this is an exception to `MC-223`: "refusing an encrypted risuai.xyz backup does indeed count as an exception to MC-223. as it is impossible for us to achieve full parity without tricking domain - which we shouldn't do." The exception covers only encrypted risuai.xyz full backups; every other upstream-to-fork restore must still work.
   - Nothing here authorizes a commit or a push beyond the labels quoted.
+
+### MC-478 — Lane A, 2026-10-24: file the off-main-thread idea as CHORE-207, a candidate with no code (relates to `MC-452`, `MC-459`)
+
+- Tag: decision (`AskUserQuestion` answer by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6`; the sizing report `%TEMP%\risu-b715\offthread\result.md` and its doc-verifier result `verify-result.md` ([EDITORIAL]). The quoted option label is the maintainer's; the question text is quoted from the records batch 7 brief as lane A's wording. The idea's origin is the maintainer's recollection of an independent advisor's side-chat suggestion to move non-critical work such as asset loading to another thread. That suggestion is not in the records, and no advisor transcript was found.
+- Reasoning: the investigator sized where off-main-thread work could help. The verified findings, the ranking and the proposed first stage are recorded in the Roadmap entry "CHORE-207: off-main-thread asset work (candidate)". The grid plan A2 (decode through `fetch` plus `createImageBitmap`) was already measured (ledger row 3566) and not shipped under the pre-set 30% rule, to be re-evaluated with the phone capture. The proposed first stage goes beyond A2 and is not approved.
+- Alternatives rejected: "Fold into grid A2" (hand the findings to the grid avatar plan's owner as input to A2, no separate ticket) and "Keep as a note only" (leave it in scratch and the lane A log, revisit after the MVP's memory work).
+- Related: `MC-130`, `MC-452`, `MC-459`, `MC-463`; CHORE-205.
+
+**The maintainer's question and answer.** The question was "How should lane A carry the off-main-thread idea forward?" and the answer was "Record as candidate (Recommended)". That option read: "File it as a new CHORE candidate (CHORE-207) with the verified findings: thumbnails first, behind grid plan A2. No code yet. Next, read the grid plan to settle the A2 overlap and the Note 9 measurements it needs."
+
+**What was decided (maintainer):**
+1. File the off-main-thread idea as CHORE-207, a candidate. It is not scheduled and no code is written.
+2. The next step is to read the grid plan (`%TEMP%\risu-lane-e\grid\plan.md`) to settle the A2 overlap, and to name the Note 9 measurements it needs.
+
+- Notes, not the maintainer's words:
+  - The option text says "thumbnails first, behind grid plan A2". The doc-verifier found that the proposed first stage (a pure byte-to-thumbnail function run on the main thread behind a flag, measured on a Note 9 before any worker) goes beyond A2. The Roadmap entry keeps it as proposed, not approved.
+  - Nothing here authorizes a commit or a push.
