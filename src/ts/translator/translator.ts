@@ -292,6 +292,14 @@ export function translateHTML(html: string, reverse:boolean, charArg:simpleChara
     return withInFlight('translate', () => translateHTMLUntracked(html, reverse, charArg, chatID, regenerate))
 }
 
+// Translated text is literal text. Escaping only `&` and `<` keeps it text when the
+// edit-display result is parsed as markup, so only markup a display script adds
+// becomes elements. Quotes and `>` stay as written so display-script regexes that
+// match them keep matching.
+function escapeTranslatedForMarkup(text: string): string {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+}
+
 async function translateHTMLUntracked(html: string, reverse:boolean, charArg:simpleCharacterArgument|string = '', chatID:number, regenerate = false): Promise<string> {
     if(!html){
         return html
@@ -430,15 +438,16 @@ async function translateHTMLUntracked(html: string, reverse:boolean, charArg:sim
                 return;
             }
             
+            const escapedTranslated = escapeTranslatedForMarkup(translated);
             const { data: processedTranslated } = await processScriptFull(
                 alwaysExistChar,
-                translated,
+                escapedTranslated,
                 "editdisplay",
                 chatID
             );
             // If the translation is the same, don't replace the node
-            if (translated == processedTranslated) {
-                node.textContent = processedTranslated;
+            if (escapedTranslated == processedTranslated) {
+                node.textContent = translated;
                 applyMarkdownToNode(node)
                 return;
             }
