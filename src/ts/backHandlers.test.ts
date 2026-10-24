@@ -14,6 +14,7 @@ vi.mock('./alertBack', () => ({ closeDialogForBack: closeDialog }))
 
 import {
     QUIT_WINDOW_MS,
+    backCloseHandler,
     dispatchBack,
     ensureBackHook,
     installBackGuard,
@@ -322,6 +323,196 @@ describe('quit guard', () => {
         installBackGuard({ showToast })
         dispatchBack()
         expect(first).not.toHaveBeenCalled()
+        expect(showToast).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('quit arm after a handled press', () => {
+    test('(R) a handled press drops the arm: after it the next unhandled press warns again, not quits', () => {
+        installBackGuard({ showToast })
+        expect(dispatchBack()).toBe(true)
+        expect(showToast).toHaveBeenCalledTimes(1)
+        let open = true
+        registerBackHandler(() => {
+            const handled = open
+            open = false
+            return handled
+        })
+        vi.advanceTimersByTime(500)
+        expect(dispatchBack()).toBe(true)
+        expect(showToast).toHaveBeenCalledTimes(1)
+        vi.advanceTimersByTime(500)
+        expect(dispatchBack()).toBe(true)
+        expect(showToast).toHaveBeenCalledTimes(2)
+        expect(dispatchBack()).toBe(false)
+    })
+})
+
+describe('backCloseHandler', () => {
+    function makeSurface(initialOpen: boolean) {
+        const state = { open: initialOpen }
+        const close = vi.fn(() => {
+            state.open = false
+        })
+        const handler = backCloseHandler({
+            isOpen: () => state.open,
+            snapshot: () => state.open,
+            close,
+        })
+        return { state, close, handler }
+    }
+
+    test('(G) an open surface is closed and the press is handled without a warning', () => {
+        installBackGuard({ showToast })
+        const { state, close, handler } = makeSurface(true)
+        registerBackHandler(handler)
+        expect(dispatchBack()).toBe(true)
+        expect(close).toHaveBeenCalledTimes(1)
+        expect(state.open).toBe(false)
+        expect(showToast).not.toHaveBeenCalled()
+    })
+
+    test('(G) a closed surface is not handled: it neither closes nor blurs and the guard runs', () => {
+        installBackGuard({ showToast })
+        const input = document.createElement('input')
+        document.body.appendChild(input)
+        input.focus()
+        const { close, handler } = makeSurface(false)
+        registerBackHandler(handler)
+        expect(dispatchBack()).toBe(true)
+        expect(close).not.toHaveBeenCalled()
+        expect(document.activeElement).toBe(input)
+        expect(showToast).toHaveBeenCalledTimes(1)
+        input.remove()
+    })
+
+    test('(G) a close that changes nothing falls through to the older handler and the guard (no stuck Back)', () => {
+        installBackGuard({ showToast })
+        const older = vi.fn(() => false)
+        registerBackHandler(older)
+        const close = vi.fn()
+        registerBackHandler(backCloseHandler({ isOpen: () => true, snapshot: () => 1, close }))
+        expect(dispatchBack()).toBe(true)
+        expect(close).toHaveBeenCalledTimes(1)
+        expect(older).toHaveBeenCalledTimes(1)
+        expect(showToast).toHaveBeenCalledTimes(1)
+        vi.advanceTimersByTime(500)
+        expect(dispatchBack()).toBe(false)
+    })
+
+    test('(G) a surface still registered while it animates closed does not trap Back', () => {
+        installBackGuard({ showToast })
+        const state = { open: true, closing: false }
+        registerBackHandler(
+            backCloseHandler({
+                isOpen: () => true,
+                snapshot: () => state.open,
+                close: () => {
+                    if (!state.closing) {
+                        state.open = false
+                        state.closing = true
+                    }
+                },
+            }),
+        )
+        expect(dispatchBack()).toBe(true)
+        expect(showToast).not.toHaveBeenCalled()
+        expect(dispatchBack()).toBe(true)
+        expect(showToast).toHaveBeenCalledTimes(1)
+    })
+
+    test('(G) the focused field is blurred before close: blur, focusout, then close with body focused', () => {
+        const input = document.createElement('input')
+        document.body.appendChild(input)
+        input.focus()
+        const order: string[] = []
+        input.addEventListener('blur', () => order.push('blur'))
+        input.addEventListener('focusout', () => order.push('focusout'))
+        const state = { open: true }
+        registerBackHandler(
+            backCloseHandler({
+                isOpen: () => state.open,
+                snapshot: () => state.open,
+                close: () => {
+                    order.push(document.activeElement === document.body ? 'close:body' : 'close:other')
+                    state.open = false
+                },
+            }),
+        )
+        expect(dispatchBack()).toBe(true)
+        expect(order).toEqual(['blur', 'focusout', 'close:body'])
+        input.remove()
+    })
+
+    test('(G) a close that changed state and then threw is logged and still handles the press', () => {
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+        installBackGuard({ showToast })
+        const older = vi.fn(() => true)
+        registerBackHandler(older)
+        const state = { open: true }
+        registerBackHandler(
+            backCloseHandler({
+                isOpen: () => state.open,
+                snapshot: () => state.open,
+                close: () => {
+                    state.open = false
+                    throw new Error('subscriber failed')
+                },
+            }),
+        )
+        expect(dispatchBack()).toBe(true)
+        expect(older).not.toHaveBeenCalled()
+        expect(error).toHaveBeenCalled()
+        error.mockRestore()
+    })
+
+    test('(G) a close that threw without changing anything falls through', () => {
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+        installBackGuard({ showToast })
+        const older = vi.fn(() => true)
+        registerBackHandler(older)
+        registerBackHandler(
+            backCloseHandler({
+                isOpen: () => true,
+                snapshot: () => 0,
+                close: () => {
+                    throw new Error('boom')
+                },
+            }),
+        )
+        expect(dispatchBack()).toBe(true)
+        expect(older).toHaveBeenCalledTimes(1)
+        error.mockRestore()
+    })
+
+    test('(G) a prompt raised by the blur takes the press and the surface is not closed', () => {
+        installBackGuard({ showToast })
+        const input = document.createElement('input')
+        document.body.appendChild(input)
+        input.focus()
+        input.addEventListener('blur', () => covered.mockReturnValue(true))
+        const close = vi.fn()
+        registerBackHandler(backCloseHandler({ isOpen: () => true, snapshot: () => 0, close }))
+        expect(dispatchBack()).toBe(true)
+        expect(close).not.toHaveBeenCalled()
+        expect(showToast).not.toHaveBeenCalled()
+        input.remove()
+    })
+
+    test('(G) nested surfaces close newest first, then the guard warns', () => {
+        installBackGuard({ showToast })
+        const surfaces = ['a', 'b', 'c'].map(() => makeSurface(true))
+        for (const surface of surfaces) {
+            registerBackHandler(surface.handler)
+        }
+        for (const index of [2, 1, 0]) {
+            expect(dispatchBack()).toBe(true)
+            expect(surfaces.map((surface) => surface.state.open)).toEqual(
+                surfaces.map((_, at) => at < index),
+            )
+        }
+        expect(showToast).not.toHaveBeenCalled()
+        expect(dispatchBack()).toBe(true)
         expect(showToast).toHaveBeenCalledTimes(1)
     })
 })

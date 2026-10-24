@@ -4,20 +4,22 @@
     
     import { DBState } from 'src/ts/stores.svelte';
     import { MobileGUIStack, MobileSearch, selectedCharID, SettingsMenuIndex, MobileSideBar } from "src/ts/stores.svelte";
+    import { registerBackHandler } from "src/ts/backHandlers";
+    import { closeShellChat, closeShellSettingsDetail, closeShellSidebarPage, createMobileShellBackHandler } from "./mobileBack";
+
+    // Registered while the header is mounted, so it is gone while the Settings overlay replaces the
+    // shell. The effect reads no reactive state, so navigating never re-registers it above an overlay.
+    $effect(() => registerBackHandler(createMobileShellBackHandler()))
 
 </script>
 <div class="w-full px-4 h-16 border-b border-b-darkborderc bg-darkbg flex justify-start items-center gap-2">
     {#if $selectedCharID !== -1 && $MobileSideBar > 0}
-        <button onclick={() => {
-            MobileSideBar.set(0)
-        }}>
+        <button onclick={closeShellSidebarPage}>
             <ArrowLeft />
         </button>
         <span class="font-bold text-lg w-2/3 truncate">{language.menu}</span>
     {:else if $selectedCharID !== -1}
-        <button onclick={() => {
-            selectedCharID.set(-1)
-        }}>
+        <button onclick={closeShellChat}>
             <ArrowLeft />
         </button>
         <span class="font-bold text-lg w-2/3 truncate">{DBState.db.characters[$selectedCharID].name}</span>
@@ -29,9 +31,7 @@
             </button>
         </div>
     {:else if $MobileGUIStack === 2 && $SettingsMenuIndex > -1}
-        <button onclick={() => {
-            SettingsMenuIndex.set(-1)
-        }}>
+        <button onclick={closeShellSettingsDetail}>
             <ArrowLeft />
         </button>
         <span class="font-bold text-lg">Risuai</span>

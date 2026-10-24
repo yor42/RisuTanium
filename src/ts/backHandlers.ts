@@ -1,3 +1,4 @@
+import { flushSync } from 'svelte'
 import { closeDialogForBack } from './alertBack'
 import { pageCovered } from './alertPrompts'
 
@@ -60,6 +61,8 @@ export function dispatchBack(): boolean {
     for (const entry of entries.slice().reverse()) {
         try {
             if (entry.run()) {
+                // A handled press ends the quit sequence: quitting always needs a fresh warning.
+                armedAt = null
                 return true
             }
         } catch (error) {
@@ -131,6 +134,49 @@ export function registerBackHandler(handler: BackHandler): () => void {
         if (at !== -1) {
             entries.splice(at, 1)
         }
+    }
+}
+
+export interface BackCloseOptions {
+    /** Whether the surface is open now. When false the press is not handled and nothing is touched. */
+    isOpen: () => boolean
+    /** Every piece of state the close can change, as a primitive (a flag, an index or a joined key). */
+    snapshot: () => string | number | boolean
+    /** The surface's own close control function. */
+    close: () => void
+}
+
+/**
+ * Builds a handler that does what the surface's close control does. It answers true only when the
+ * snapshot changed, so a surface that is open in name but whose close did nothing falls through to
+ * the quit guard and Back is never trapped.
+ *
+ * The focused field is blurred and the effects are flushed before the close runs, as an X tap
+ * does: a change-on-blur write must reach the dirty-tracking effects under the selection that is
+ * about to close, or the edit is not marked for saving. A prompt raised by that blur covers the
+ * page and takes the press without closing. A throwing close is logged and judged by the snapshot,
+ * so an older handler never closes a second surface on the same press.
+ */
+export function backCloseHandler(options: BackCloseOptions): BackHandler {
+    return () => {
+        if (!options.isOpen()) {
+            return false
+        }
+        const before = options.snapshot()
+        const active = document.activeElement
+        if (active instanceof HTMLElement && active !== document.body) {
+            active.blur()
+        }
+        flushSync()
+        if (pageCovered()) {
+            return true
+        }
+        try {
+            options.close()
+        } catch (error) {
+            console.error('Back close failed', error)
+        }
+        return options.snapshot() !== before
     }
 }
 
