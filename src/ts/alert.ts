@@ -245,6 +245,11 @@ export function alertWait(msg:string, onCancel?: () => void): alertData {
     return data
 }
 
+/** Whether the store still holds exactly `data`, the object `alertWait` returned; any other alert, a prompt or a clear makes it false. */
+export function alertIsShowing(data: alertData): boolean {
+    return get(alertStoreImported) === data
+}
+
 
 /** Closes the alert on screen. A prompt that is on screen is left alone: only its answer closes it. */
 export function alertClear(){

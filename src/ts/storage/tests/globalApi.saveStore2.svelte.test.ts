@@ -907,3 +907,193 @@ describe('new behaviour: a character that cannot be saved is skipped, noticed on
         expect((await page.k.saved()).characters[2]).toMatchObject({ personality: 'edited beside the unreadable name' })
     })
 })
+
+describe('new behaviour: a whole save request makes isSaveClean mean the store holds every resident, the modules and the settings', () => {
+    /** The wait's own gate: the page is clean and the loop is not parked. */
+    async function gateOpen(page: Page): Promise<boolean> {
+        const { isSaveLoopParked } = await import('src/ts/storage/store2/saveLoop')
+        return page.w.api.isSaveClean() && !isSaveLoopParked()
+    }
+
+    /** An in-place edit of a character that is not selected, which no effect marks. */
+    async function editUnmarked(page: Page, index: number, text: string): Promise<void> {
+        characters(page.db)[index].personality = text
+        page.flush()
+    }
+
+    async function storedPersonality(page: Page, index: number): Promise<unknown> {
+        return ((await page.k.saved()).characters[index] as unknown as Entry).personality
+    }
+
+    async function parkPage(page: Page): Promise<void> {
+        const { isSaveLoopParked } = await import('src/ts/storage/store2/saveLoop')
+        const key = await peerCommit(page.k, (peerDb) => { (peerDb.characters as unknown as Entry[])[3].personality = 'the peer edit' })
+        h.channels.at(-1)!.onmessage?.({ data: { sessionID: 'a peer tab', epoch: key.epoch } })
+        await until(() => isSaveLoopParked(), 'the parked loop', 6000)
+    }
+
+    test('R1 reproducer: an unmarked edit of a resident character is in the store when the gate opens', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        const marks = page.w.api.getSaveMarkCount()
+        await editUnmarked(page, 2, 'unmarked resident edit')
+        await sleepReal(100)
+        // The edit raised no mark and the page reads clean, which is why a gate that only waits for a clean page misses it.
+        expect(page.w.api.getSaveMarkCount()).toBe(marks)
+        expect(page.w.api.isSaveClean()).toBe(true)
+        expect(await storedPersonality(page, 2)).not.toBe('unmarked resident edit')
+
+        expect(page.w.api.requestWholeSave()).toBe(true)
+        await until(() => gateOpen(page), 'the gate', 8000)
+        expect(await storedPersonality(page, 2)).toBe('unmarked resident edit')
+    })
+
+    test('R1 guard: a gate that saves first and then reads isSaveClean returns at once on a clean page and leaves the unmarked edit out', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        await editUnmarked(page, 2, 'unmarked resident edit')
+        await sleepReal(100)
+        const { saveFirst } = await import('src/ts/drive/storeRestore')
+        await saveFirst(2000)
+        expect(page.w.api.isSaveClean()).toBe(true)
+        expect(await storedPersonality(page, 2)).not.toBe('unmarked resident edit')
+    })
+
+    test('R2a guard: a refused commit during the whole pass keeps the gate closed until the retry has landed', async () => {
+        const state = { armed: false, openAtRefusal: null as boolean | null }
+        let currentPage: Page | null = null
+        const page = await startPage(small(), {
+            hooks: {
+                before: (name) => {
+                    if (name === 'commitOrdinary' && state.armed) {
+                        state.armed = false
+                        state.openAtRefusal = currentPage!.w.api.isSaveClean()
+                        throw new Error('commit refused once')
+                    }
+                },
+            },
+        })
+        currentPage = page
+        await settled(page.w)
+        await editUnmarked(page, 3, 'edit across a refused commit')
+        state.armed = true
+        expect(page.w.api.requestWholeSave()).toBe(true)
+        await until(() => gateOpen(page), 'the gate after the retry', 20000)
+        expect(state.openAtRefusal).toBe(false)
+        expect(await storedPersonality(page, 3)).toBe('edit across a refused commit')
+    })
+
+    test('R2b guard: a commit that is not confirmed flushed keeps the gate closed until a flushed pass', async () => {
+        const state = { unflushed: false, seen: 0 }
+        const page = await startPage(small(), {
+            hooks: {
+                flushed: (name) => {
+                    if (name !== 'commitOrdinary' || !state.unflushed) {
+                        return undefined
+                    }
+                    state.seen += 1
+                    return false
+                },
+            },
+        })
+        await settled(page.w)
+        await editUnmarked(page, 3, 'edit across an unflushed commit')
+        state.unflushed = true
+        expect(page.w.api.requestWholeSave()).toBe(true)
+        await until(() => state.seen >= 1, 'the unflushed commit', 8000)
+        expect(page.w.api.isSaveClean()).toBe(false)
+        state.unflushed = false
+        await until(() => gateOpen(page), 'the gate after the flushed pass', 20000)
+        expect(await storedPersonality(page, 3)).toBe('edit across an unflushed commit')
+    })
+
+    test('R3 reproducer: a parked loop is not asked, and nothing is marked or raised', async () => {
+        const page = await startPage(small(), { peer: createPeerDouble('reload') })
+        await settled(page.w)
+        await parkPage(page)
+        const { isSaveLoopParked } = await import('src/ts/storage/store2/saveLoop')
+        const marks = page.w.api.getSaveMarkCount()
+        const flag = page.w.api.requiresFullEncoderReload.state
+        expect(page.w.api.wholeSaveAvailable()).toBe(false)
+        expect(page.w.api.requestWholeSave()).toBe(false)
+        expect(page.w.api.getSaveMarkCount()).toBe(marks)
+        expect(page.w.api.requiresFullEncoderReload.state).toBe(flag)
+        expect(page.k.peer.asked).toEqual([])
+        expect(isSaveLoopParked()).toBe(true)
+    })
+
+    test('R3 reproducer: stopped saving and frozen keys are refused without a mark', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        const marks = page.w.api.getSaveMarkCount()
+        page.stores.savingStoppedReason.set('stopped for the test')
+        expect(page.w.api.requestWholeSave()).toBe(false)
+        page.stores.savingStoppedReason.set('')
+        page.stores.frozenSaveKeysStore.set([{ chaId: 'frozen', names: ['frozen'] }])
+        expect(page.w.api.requestWholeSave()).toBe(false)
+        page.stores.frozenSaveKeysStore.set([])
+        expect(page.w.api.getSaveMarkCount()).toBe(marks)
+        expect(page.w.api.requiresFullEncoderReload.state).toBe(false)
+        expect(page.w.api.wholeSaveAvailable()).toBe(true)
+    })
+
+    test('R3 reproducer: before the loop has a live scheduler nothing is requested', async () => {
+        const answers: boolean[] = []
+        const page = await startPage(small(), {
+            beforeStart: (early) => {
+                answers.push(early.w.api.requestWholeSave())
+                answers.push(early.w.api.wholeSaveAvailable())
+                expect(early.w.api.requiresFullEncoderReload.state).toBe(false)
+            },
+        })
+        expect(answers).toEqual([false, false])
+        await settled(page.w)
+        expect(page.w.api.wholeSaveAvailable()).toBe(true)
+    })
+
+    test('R4 reproducer: a pass already running at the request does not open the gate before the whole pass', async () => {
+        const hold: { armed: boolean; reached: boolean; release: () => void; released: Promise<void> } = {
+            armed: false,
+            reached: false,
+            release: () => { },
+            released: Promise.resolve(),
+        }
+        hold.released = new Promise<void>((resolve) => { hold.release = resolve })
+        // The commit that follows the held one belongs to the whole pass; holding it shows the gate between the two.
+        const next: typeof hold = { armed: false, reached: false, release: () => { }, released: Promise.resolve() }
+        next.released = new Promise<void>((resolve) => { next.release = resolve })
+        const page = await startPage(small(), {
+            hooks: {
+                before: async (name) => {
+                    if (name === 'commitOrdinary' && hold.armed) {
+                        hold.armed = false
+                        hold.reached = true
+                        await hold.released
+                    } else if (name === 'commitOrdinary' && next.armed) {
+                        next.armed = false
+                        next.reached = true
+                        await next.released
+                    }
+                },
+            },
+        })
+        await settled(page.w)
+        hold.armed = true
+        characters(page.db)[0].personality = 'edit of the running pass'
+        page.w.marks.markCharacterForSave(characters(page.db)[0].chaId)
+        page.flush()
+        await until(() => hold.reached, 'the held commit', 6000)
+        await editUnmarked(page, 3, 'unmarked edit after the snapshot')
+        expect(page.w.api.requestWholeSave()).toBe(true)
+        next.armed = true
+        hold.release()
+        await until(() => next.reached, 'the whole pass commit', 20000)
+        expect(await storedPersonality(page, 0)).toBe('edit of the running pass')
+        expect(page.w.api.isSaveClean()).toBe(false)
+        expect(await gateOpen(page)).toBe(false)
+        next.release()
+        await until(() => gateOpen(page), 'the gate', 20000)
+        expect(await storedPersonality(page, 0)).toBe('edit of the running pass')
+        expect(await storedPersonality(page, 3)).toBe('unmarked edit after the snapshot')
+    })
+})
