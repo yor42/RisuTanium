@@ -39,6 +39,11 @@ const ROOT_EXCLUDED = new Set(["characters", "botPresets", "modules", "loadouts"
 
 const KV_NAME_PREFIX = "kv:";
 
+/** The name of the block a namespace is written as; the export's collision check uses this same function. */
+export function kvBlockNameOf(namespace: string): string {
+    return KV_NAME_PREFIX + namespace;
+}
+
 const utf8 = new TextEncoder();
 
 interface PlannedBlock {
@@ -142,7 +147,7 @@ export function writeRisuSaveV0(db: object, kv: Readonly<Record<string, unknown>
     }
 
     for (const [namespace, content] of Object.entries(kv)) {
-        plan(BLOCK_TYPE.kv, KV_NAME_PREFIX + namespace, "kv", content);
+        plan(BLOCK_TYPE.kv, kvBlockNameOf(namespace), "kv", content);
     }
 
     plan(BLOCK_TYPE.config, "config", "config", { version: 1 });

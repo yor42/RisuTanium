@@ -233,6 +233,22 @@ vi.mock(import('src/ts/process/modules'), () => ({
     moduleUpdate: vi.fn(async () => { }),
 }) as unknown as typeof import('src/ts/process/modules'))
 
+/** The characters a store2 entity stub reads back, by entity key; any other stub reads through the real unit store. */
+const entityBox = vi.hoisted(() => ({ characters: new Map<string, unknown>() }))
+
+vi.mock(import('src/ts/process/coldCharacterRestore'), async (importOriginal) => {
+    const original = await importOriginal()
+    return {
+        ...original,
+        readColdCharacterCopy: async (stub: Parameters<typeof original.readColdCharacterCopy>[0]) => {
+            const entity = entityBox.characters.get(String(stub.coldstorage))
+            return entity === undefined
+                ? original.readColdCharacterCopy(stub)
+                : { status: 'ok' as const, character: structuredClone(entity) as typeof stub }
+        },
+    }
+})
+
 //#endregion
 
 //#region units and the legacy OPFS stand-in
@@ -489,6 +505,7 @@ beforeEach(() => {
     backupSink.writes.length = 0
     unitMem.clear()
     unitReadLog.length = 0
+    entityBox.characters.clear()
     forageKeysMock.mockReset()
     forageGetItemMock.mockReset()
     forageSetItemMock.mockClear()
@@ -633,5 +650,145 @@ describe.each([
         expect(completionReports()).toContain('"Lost Stub"')
         expect(completionReports()).toContain('cannot be restored from this export')
         expect(alertErrorMock).not.toHaveBeenCalled()
+    })
+})
+
+/** A store2 entity key: 26 characters of the base-32 alphabet. */
+const ENTITY_KEY = 'a'.repeat(26)
+const NAMESPACES = { foo: { version: 1, entries: [] } }
+
+describe.each([
+    ['SaveLocalBackup', SaveLocalBackup],
+    ['SavePartialLocalBackup', SavePartialLocalBackup],
+])('%s exports a character whose id is the block name of an upstream data namespace', (_name, run) => {
+    /** The run saved a database entry and raised no error; a refused export resolves as failed instead of throwing. */
+    async function expectSaved(): Promise<void> {
+        const outcome = await run()
+        expect(outcome.status).toBe('saved')
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(writtenEntries().some((e) => e.name === 'database.risudat')).toBe(true)
+    }
+
+    test('(R) a live character is exported under a new id, the lists follow, the page and the namespaces are untouched', async () => {
+        const held = heldCharacter('kv:foo', 'Held')
+        const db = databaseWith({
+            characters: [held, makeLiveCharacter('a', 'A', [])],
+            characterOrder: [{ id: 'F', name: 'F', data: ['kv:foo'] }, 'a'],
+            loadouts: [{ characterIds: ['kv:foo'] }],
+            upstreamKvBlocks: NAMESPACES,
+        })
+        getDatabaseMock.mockImplementation(() => db)
+        const before = JSON.stringify(db)
+
+        await expectSaved()
+
+        expect(JSON.stringify(db)).toBe(before)
+        expect(db.characters[0]).toBe(held)
+        const exported = await exportedDatabase()
+        const fresh = exported.characters[0].chaId as string
+        expect(exported.characters.map((c) => c.chaId)).toEqual([fresh, 'a'])
+        expect(fresh).not.toBe('kv:foo')
+        expect(exported.characterOrder).toEqual([{ id: 'F', name: 'F', data: [fresh] }, 'a'])
+        expect((exported.loadouts as Array<{ characterIds: string[] }>)[0].characterIds).toEqual([fresh])
+        const messages = (exported.characters[0].chats as Array<{ message: Array<{ saying: string }> }>)[0].message
+        expect(messages[0].saying).toBe(fresh)
+        expect(messages[1].saying).toBe('kv:foo')
+        expect(exported.upstreamKvBlocks).toEqual(NAMESPACES)
+        expect(completionReports()).toContain('an id that cannot be saved and was exported with a new one')
+    })
+
+    test('(R) two characters with the colliding id each get their own new id', async () => {
+        const db = databaseWith({ characters: [heldCharacter('kv:foo', 'One'), heldCharacter('kv:foo', 'Two')], upstreamKvBlocks: NAMESPACES })
+        getDatabaseMock.mockImplementation(() => db)
+
+        await expectSaved()
+
+        const ids = (await exportedDatabase()).characters.map((c) => c.chaId as string)
+        expect(ids).toHaveLength(2)
+        expect(ids).not.toContain('kv:foo')
+        expect(new Set(ids).size).toBe(2)
+    })
+
+    test('(R) the whole written name counts: kv:kv:bar collides with the namespace kv:bar and kv:bar does not', async () => {
+        const db = databaseWith({
+            characters: [heldCharacter('kv:kv:bar', 'Collides'), heldCharacter('kv:bar', 'Fine')],
+            upstreamKvBlocks: { 'kv:bar': { version: 1, entries: [] } },
+        })
+        getDatabaseMock.mockImplementation(() => db)
+
+        await expectSaved()
+
+        const ids = (await exportedDatabase()).characters.map((c) => c.chaId as string)
+        expect(ids[0]).not.toBe('kv:kv:bar')
+        expect(ids[1]).toBe('kv:bar')
+    })
+
+    test('(R) an archived character whose own id and unit id both collide is exported under a new id and named as not restorable', async () => {
+        const BLOB = uid(31)
+        await putBlob(BLOB, 'kv:foo', [makeChat('c', 'archived')])
+        const db = databaseWith({ characters: [makeLiveCharacter('a', 'A', []), makeStub('kv:foo', 'Stub', BLOB)], characterOrder: ['a', 'kv:foo'], upstreamKvBlocks: NAMESPACES })
+        getDatabaseMock.mockImplementation(() => db)
+
+        await expectSaved()
+
+        const exported = await exportedDatabase()
+        const fresh = exported.characters[1].chaId as string
+        expect(fresh).toMatch(/^[0-9a-f-]{36}$/)
+        expect(exported.characterOrder).toEqual(['a', fresh])
+        expect(completionReports()).toContain('"Stub"')
+        expect(completionReports()).toContain('cannot be restored from this export')
+    })
+
+    test('(R) an archived character whose own id collides but whose unit records a clean id takes the unit\'s id', async () => {
+        const BLOB = uid(32)
+        await putBlob(BLOB, 'real-id', [makeChat('c', 'archived')])
+        const db = databaseWith({ characters: [makeLiveCharacter('a', 'A', []), makeStub('kv:foo', 'Stub', BLOB)], upstreamKvBlocks: NAMESPACES })
+        getDatabaseMock.mockImplementation(() => db)
+
+        await expectSaved()
+
+        expect((await exportedDatabase()).characters.map((c) => c.chaId)).toEqual(['a', 'real-id'])
+        expect(completionReports()).toContain('exported with the id its archived data records')
+    })
+
+    test('(R) a store2 entity stub in the default stub mode is exported whole under a new id, with no unit body that names the old id and no not-restorable notice', async () => {
+        entityBox.characters.set(ENTITY_KEY, makeLiveCharacter('kv:foo', 'Entity', [{ id: 'e1', message: [{ time: 1, data: 'from the entity', role: 'char' }], note: '', name: '', localLore: [] }]))
+        const db = databaseWith({ characters: [makeLiveCharacter('a', 'A', []), makeStub('kv:foo', 'Entity', ENTITY_KEY)], characterOrder: ['a', 'kv:foo'], upstreamKvBlocks: NAMESPACES })
+        getDatabaseMock.mockImplementation(() => db)
+
+        await expectSaved()
+
+        const exported = await exportedDatabase()
+        const fresh = exported.characters[1].chaId as string
+        expect(fresh).toMatch(/^[0-9a-f-]{36}$/)
+        expect(exported.characterOrder).toEqual(['a', fresh])
+        expect(exported.characters[1].coldstorage).toBeUndefined()
+        expect(JSON.stringify(exported.characters[1].chats)).toContain('from the entity')
+        expect(completionReports()).toContain('an id that cannot be saved and was exported with a new one')
+        expect(completionReports()).not.toContain('cannot be restored from this export')
+        const unitBodies = writtenEntries().filter((e) => e.name.startsWith('coldstorage_')).map((e) => decoder.decode(e.data))
+        expect(unitBodies.filter((body) => body.includes('kv:foo'))).toEqual([])
+    })
+
+    test('(G) may pass before and after: an id that is not a written block name keeps its id', async () => {
+        const db = databaseWith({ characters: [heldCharacter('kv:other', 'Other')], characterOrder: ['kv:other'], upstreamKvBlocks: NAMESPACES })
+        getDatabaseMock.mockImplementation(() => db)
+
+        await expectSaved()
+
+        const exported = await exportedDatabase()
+        expect(exported.characters.map((c) => c.chaId)).toEqual(['kv:other'])
+        expect(exported.characterOrder).toEqual(['kv:other'])
+    })
+
+    test('(G) may pass before and after: with no namespaces a kv:foo id is exported byte for byte as the legacy encoder writes it', async () => {
+        const db = databaseWith({ characters: [heldCharacter('kv:foo', 'A')], characterOrder: ['kv:foo'], upstreamKvBlocks: {} })
+        getDatabaseMock.mockImplementation(() => db)
+
+        await expectSaved()
+
+        const { upstreamKvBlocks: _field, ...withoutField } = db as unknown as Record<string, unknown>
+        const entry = writtenEntries().find((e) => e.name === 'database.risudat')!
+        expect(Buffer.from(entry.data).equals(Buffer.from(encodeRisuSaveLegacy({ ...withoutField, account: undefined } as unknown as Database, 'compression')))).toBe(true)
     })
 })

@@ -24,12 +24,11 @@ import { repairBotPresetsId } from "../storage/botPresetRepair";
 import { describeOmitted } from "../storage/bootBlockLoad";
 import { buildRestoreSet, completeRestoredTree, currentCharacterNames, leftOutQuestion, readArchivedUnitCharacter, repairRestoredCharacters, replaceWithRestoredSet } from "./restoreReplace";
 import { repairCharacterTree } from "../storage/characterTreeRepair";
-import { isCharacterEntry, isUsableCharacterId } from "../storage/characterIds";
 import { repairDatabaseIds } from "../process/chatIds";
 import { reloadAfterRestore } from "./restoreReload";
 import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection, type ColdStorageBackupPayload } from "../process/coldstorage.svelte";
-import { characterListNeedsRepair, collectBackupColdStorage, inlinedCharacter, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, takeStubReadStats, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
+import { characterListNeedsRepair, kvBlockNamesOf, collectBackupColdStorage, inlinedCharacter, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, takeStubReadStats, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
 import { convertPluginStorageIndex } from "../process/pluginStorageIndex";
 import { v4 } from "uuid";
@@ -191,20 +190,23 @@ function describeWriteMeasure(): string {
  */
 async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>): Promise<{ tree: Database, notice: string | null }> {
     const plain = { ...db, account: undefined }
+    // The namespaces are written as blocks beside the characters, and a character whose id is one of their block names
+    // cannot be saved; the set is read from the page's field before the copy loses it.
+    const reserved = kvBlockNamesOf(db.upstreamKvBlocks)
     if ((inlined.size > 0 || stubEntries.size > 0) && Array.isArray(db.characters)) {
         plain.characters = db.characters.map((slot) => stubWithMintedKey(slot, stubEntries) ?? inlinedFromMinted(slot, stubEntries) ?? inlinedCharacter(slot, inlined))
         // A stub's unit body is written only when the export tree's ids are the ones the body holds. The repair below
         // rewrites ids in the tree only, so a list that needs it (it changed after collection decided) carries every
         // minted stub inline instead.
-        if (stubEntries.size > 0 && characterListNeedsRepair(plain.characters)) {
+        if (stubEntries.size > 0 && characterListNeedsRepair(plain.characters, reserved)) {
             plain.characters = db.characters.map((slot) => inlinedFromMinted(slot, stubEntries) ?? inlinedCharacter(slot, inlined))
         }
     }
     const list: unknown = plain.characters
-    if (!Array.isArray(list) || list.every((entry) => isCharacterEntry(entry) && isUsableCharacterId(entry.chaId))) {
+    if (!Array.isArray(list) || !characterListNeedsRepair(list, reserved)) {
         return { tree: plain, notice: null }
     }
-    const repair = await repairCharacterTree(plain, 'export', { readUnitCharacter: readArchivedUnitCharacter })
+    const repair = await repairCharacterTree(plain, 'export', { readUnitCharacter: readArchivedUnitCharacter, reservedBlockNames: reserved })
     const count = (kind: string) => repair.notices.filter((notice) => notice.kind === kind).length
     const recovered = count('stub-id-recovered')
     const filled = count('id-filled')

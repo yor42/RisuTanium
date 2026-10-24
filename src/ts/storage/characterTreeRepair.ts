@@ -72,6 +72,12 @@ export interface RepairOptions {
      * character whose own id is missing or unusable.
      */
     readUnitCharacter?: (stub: Record<string, unknown>) => Promise<unknown>
+    /**
+     * Block names the export writes besides characters (upstream data namespaces). A character whose id's text form is
+     * one of them is treated as having an unusable id, and a unit id that is one of them is unusable too. Honoured in
+     * export only; boot and restore ignore it.
+     */
+    reservedBlockNames?: ReadonlySet<string>
 }
 
 type Entry = Record<string, unknown>
@@ -201,9 +207,11 @@ export async function repairCharacterTree(tree: { characters?: unknown }, mode: 
         return characters[index]
     }
 
+    const reserved = copying ? options.reservedBlockNames : undefined
+    const isReserved = (id: unknown): boolean => reserved !== undefined && reserved.has(String(id))
     const inUse = new Set<string>()
     for (const entry of characters) {
-        if (isUsableCharacterId(entry.chaId)) {
+        if (isUsableCharacterId(entry.chaId) && !isReserved(entry.chaId)) {
             inUse.add(String(entry.chaId))
         }
     }
@@ -229,7 +237,7 @@ export async function repairCharacterTree(tree: { characters?: unknown }, mode: 
 
     for (let index = 0; index < characters.length; index++) {
         const entry = characters[index]
-        const problem = characterIdProblem(entry.chaId)
+        const problem = characterIdProblem(entry.chaId) ?? (isReserved(entry.chaId) ? 'unusable' : null)
         if (problem === null) {
             continue
         }
@@ -257,7 +265,7 @@ export async function repairCharacterTree(tree: { characters?: unknown }, mode: 
                 failure = 'unit-not-object'
             } else {
                 unitId = unit.chaId
-                if (!isUsableCharacterId(unitId)) {
+                if (!isUsableCharacterId(unitId) || isReserved(unitId)) {
                     failure = 'unit-id-unusable'
                 } else if (inUse.has(String(unitId))) {
                     failure = 'unit-id-duplicate'

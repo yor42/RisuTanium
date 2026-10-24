@@ -6,6 +6,7 @@ import { getColdStorageBackupName, listColdBackupRoots, listColdPluginStorageKey
 import { getResidency, isEntityUnitKey } from '../storage/store2/residencyActive'
 import { coldUnitCharacter } from '../process/coldCharacter'
 import { isCharacterEntry, isUsableCharacterId } from '../storage/characterIds'
+import { kvBlockNameOf } from '../storage/risuSaveV0'
 import { v4 as uuidv4 } from 'uuid'
 import { MEASURE } from '../process/memory/measureFlag'
 
@@ -59,9 +60,21 @@ export const DEFAULT_READ_RETRY: ReadRetryPolicy = {
  * usable id. The repair rewrites ids in the tree it is given (group member lists, chat speakers, folder order), and the
  * bodies of stub unit entries are fixed at collection, so a stub's unit body is written only when the export tree's ids
  * are the ones the body holds. When this holds, the export carries every unloaded character inline instead.
+ * `reserved` are the other block names the export writes (`kvBlockNamesOf`): an id that is one of them cannot be saved either.
  */
-export function characterListNeedsRepair(list: unknown): boolean {
-    return Array.isArray(list) && !list.every((entry) => isCharacterEntry(entry) && isUsableCharacterId(entry.chaId))
+export function characterListNeedsRepair(list: unknown, reserved?: ReadonlySet<string>): boolean {
+    return Array.isArray(list) && !list.every((entry) => isCharacterEntry(entry) && isUsableCharacterId(entry.chaId) && !(reserved?.has(String(entry.chaId)) ?? false))
+}
+
+/** The block names an export writes for the upstream data namespaces of `kv`; empty when it holds none. */
+export function kvBlockNamesOf(kv: unknown): ReadonlySet<string> {
+    const names = new Set<string>()
+    if (typeof kv === 'object' && kv !== null) {
+        for (const namespace of Object.keys(kv)) {
+            names.add(kvBlockNameOf(namespace))
+        }
+    }
+    return names
 }
 
 /**
@@ -231,7 +244,7 @@ function startSettledRead(slot: Slot): Promise<SettledRead> {
  * A trashed stub (a truthy `trashTime` on the page's stub) and a character with a cold-storage root are inlined in every
  * mode.
  */
-export async function readStubsForExport(db: Pick<Database, 'characters'>, options: ExportCollectionOptions = {}): Promise<StubsForExport> {
+export async function readStubsForExport(db: Pick<Database, 'characters' | 'upstreamKvBlocks'>, options: ExportCollectionOptions = {}): Promise<StubsForExport> {
     const requestedAhead = options.readAhead ?? (MEASURE ? readAheadKnob() : undefined) ?? STUB_READ_AHEAD
     const ahead = Number.isFinite(requestedAhead) ? Math.max(0, Math.floor(requestedAhead)) : STUB_READ_AHEAD
     if (MEASURE) {
@@ -239,7 +252,7 @@ export async function readStubsForExport(db: Pick<Database, 'characters'>, optio
         stubStats = emptyStubStats()
         stubStats.ahead = ahead
     }
-    const mode = (options.mode ?? EXPORT_UNLOADED_CHARACTERS) === 'stub' && !characterListNeedsRepair(db.characters) ? 'stub' : 'inline'
+    const mode = (options.mode ?? EXPORT_UNLOADED_CHARACTERS) === 'stub' && !characterListNeedsRepair(db.characters, kvBlockNamesOf(db.upstreamKvBlocks)) ? 'stub' : 'inline'
     const retry: ReadRetryPolicy = { ...DEFAULT_READ_RETRY, ...options.readRetry }
     const inlined = new Map<string, Slot>()
     const stubEntries = new Map<string, MintedStubEntry>()
