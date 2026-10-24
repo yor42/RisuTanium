@@ -77,13 +77,8 @@ vi.mock(import('../globalApi.svelte'), () => ({
 vi.mock(import('../stores.svelte'), () => ({
     DBState: { db: {} },
     hotReloading: [] as string[],
-    pluginAlertModalStore: writable(null),
     selectedCharID: writable(-1),
 }) as unknown as typeof import('../stores.svelte'))
-
-vi.mock(import('./pluginSafety'), () => ({
-    checkCodeSafety: vi.fn(async () => true),
-}) as unknown as typeof import('./pluginSafety'))
 
 vi.mock(import('./pluginSafeClass'), () => ({
     SafeDocument: class {},

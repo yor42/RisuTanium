@@ -77,10 +77,6 @@ vi.mock(import('../../../storage/database.svelte'), async () => {
     } as unknown as typeof import('../../../storage/database.svelte')
 })
 
-vi.mock(import('../../pluginSafety'), () => ({
-    checkCodeSafety: vi.fn(async (code: string) => ({ modifiedCode: code })),
-}) as unknown as typeof import('../../pluginSafety'))
-
 vi.mock(import('../../pluginSafeClass'), () => ({
     SafeDocument: class {},
     SafeIdbFactory: class {},
@@ -106,7 +102,6 @@ vi.mock(import('../../../stores.svelte'), () => {
         DBState: state,
         selectedCharID: writable(-1),
         hotReloading: writable(false),
-        pluginAlertModalStore: writable(null),
         additionalChatMenu: [],
         additionalFloatingActionButtons: [],
         additionalHamburgerMenu: [],

@@ -10,8 +10,8 @@
  *   precede the V3 loader, and an update that turns a V2.1 entry into a 3.0 one keeps `enabled` and loads it.
  *
  * Titles starting `reproducer:` fail on the pre-change code; `guard:` pins behaviour that holds before and after.
- * `pluginSafety` is deliberately not mocked, so the old V2.1 path would really run; the V3 loader, the alert queue
- * and the sandbox classes are mocks, so a pass says nothing about the native sandbox.
+ * The V3 loader, the alert queue and the sandbox classes are mocks, so a pass says nothing about the native
+ * sandbox.
  */
 import { writable } from 'svelte/store'
 import { describe, test, expect, vi, beforeEach } from 'vitest'

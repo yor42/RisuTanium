@@ -94,10 +94,6 @@ vi.mock(import('../../pluginSafeClass'), () => ({
     tagWhitelist: [],
 }) as unknown as typeof import('../../pluginSafeClass'))
 
-vi.mock(import('../../pluginSafety'), () => ({
-    checkCodeSafety: vi.fn(async () => true),
-}) as unknown as typeof import('../../pluginSafety'))
-
 vi.mock(import('../transpiler'), () => ({
     pluginCodeTranspiler: vi.fn((code: string) => code),
 }) as unknown as typeof import('../transpiler'))
@@ -109,7 +105,6 @@ vi.mock(import('../../../stores.svelte'), () => {
         DBState: state,
         selectedCharID: writable(-1),
         hotReloading: writable(false),
-        pluginAlertModalStore: writable(null),
         additionalChatMenu: [],
         additionalFloatingActionButtons: [],
         additionalHamburgerMenu: [],

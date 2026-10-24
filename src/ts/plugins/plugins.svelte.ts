@@ -2,7 +2,7 @@ import { get, writable } from "svelte/store";
 import { language } from "../../lang";
 import { fillLang } from "../../lang/fill";
 import { getCurrentCharacter, getDatabase, setDatabase, setDatabaseLite } from "../storage/database.svelte";
-import { alertConfirm, alertError, alertPluginConfirm } from "../alert";
+import { alertConfirm, alertError } from "../alert";
 import { selectFileByDom, sleep } from "../util";
 import type { OpenAIChat } from "../process/index.svelte";
 import { fetchNative, globalFetch, readImage, saveAsset, toGetter } from "../globalApi.svelte";

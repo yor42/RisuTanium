@@ -39,7 +39,6 @@ vi.mock(import('../../stores.svelte'), () => {
     return {
         DBState: state,
         hotReloading: writable(false),
-        pluginAlertModalStore: writable(null),
         selectedCharID: writable(-1),
     } as unknown as typeof import('../../stores.svelte')
 })
@@ -94,10 +93,6 @@ vi.mock(import('../../storage/store/appStore'), () => ({
 vi.mock(import('../../storage/dbChangeEffects.svelte'), () => ({
     markIdentitySeen: vi.fn(),
 }) as unknown as typeof import('../../storage/dbChangeEffects.svelte'))
-
-vi.mock(import('../pluginSafety'), () => ({
-    checkCodeSafety: vi.fn(async (code: string) => ({ modifiedCode: code })),
-}) as unknown as typeof import('../pluginSafety'))
 
 vi.mock(import('../pluginSafeClass'), () => ({
     SafeDocument: class { },

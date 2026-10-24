@@ -73,7 +73,6 @@ vi.mock(import('src/ts/stores.svelte'), () => {
         bodyIntercepterStore: writable(null),
         savingStoppedReason: writable(null),
         hotReloading: writable(false),
-        pluginAlertModalStore: writable(null),
         frozenSaveKeysStore: writable([]),
     } as unknown as typeof import('src/ts/stores.svelte')
 })
@@ -223,10 +222,6 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
 // plugins.svelte.ts's own additional dependencies (pluginIdentityFill.svelte.test.ts's set).
-
-vi.mock(import('src/ts/plugins/pluginSafety'), () => ({
-    checkCodeSafety: vi.fn(async () => true),
-}) as unknown as typeof import('src/ts/plugins/pluginSafety'))
 
 vi.mock(import('src/ts/plugins/pluginSafeClass'), () => ({
     SafeDocument: class {},
