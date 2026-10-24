@@ -205,8 +205,8 @@ afterAll(() => {
 interface Loaded { db: BootDatabase, units: Map<string, unknown> }
 
 /** The generated file decoded, optionally changed before the logical tree is taken (the twins use that). */
-function load(prepare?: (loaded: Loaded) => void): { loaded: Loaded, expected: Tree } {
-    const inspected = verifier.inspectBin(binA)
+function load(prepare?: (loaded: Loaded) => void, bin = binA): { loaded: Loaded, expected: Tree } {
+    const inspected = verifier.inspectBin(bin)
     expect(inspected.problems).toEqual([])
     const loaded: Loaded = { db: inspected.db as BootDatabase, units: inspected.walk.units }
     prepare?.(loaded)
@@ -247,6 +247,55 @@ describe('the app\'s boot code over the generated database', () => {
         // twin: presets without the localNetwork fields are filled in by the real setDatabase, which the diff must see
         const twin = run(({ db }) => { for (const preset of db.botPresets) { delete preset.localNetworkMode; delete preset.localNetworkTimeoutSec } })
         expect(twin.sample.some((entry) => entry.path.startsWith('$.botPresets[0].localNetwork') && entry.kind === 'extra')).toBe(true)
+    }, TIMEOUT_MS)
+
+    test('setDatabase keeps the device scale\'s provider settings at the root and in the active preset, and its sub-task features off', async () => {
+        const binDevice = path.join(scratch, 'device.bin')
+        const generated = spawnSync(process.execPath, ['--max-old-space-size=4096', GEN_SCRIPT, '--out', binDevice, '--seed', '1337', '--scale', 'device'], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+        if (generated.error) throw generated.error
+        expect(generated.status, generated.stderr).toBe(0)
+
+        useMocks(SET_DATABASE_MOCKS)
+        const { setDatabase } = await import('src/ts/storage/database.svelte')
+        const { applyCharacterDefaults } = await import('src/ts/storage/characterDefaults')
+        type AppDatabase = Parameters<typeof setDatabase>[0]
+        type AppCharacter = Parameters<typeof applyCharacterDefaults>[0]
+
+        const run = (prepare?: (loaded: Loaded) => void) => {
+            const { loaded, expected } = load(prepare, binDevice)
+            for (const character of charactersOf(loaded)) applyCharacterDefaults(character as unknown as AppCharacter)
+            setDatabase(loaded.db as unknown as AppDatabase)
+            return { loaded, diff: verifier.deepDiff(expected, verifier.resolveTree(loaded.db, loaded.units).tree, 20) }
+        }
+
+        // what the app must still hold after setDatabase: the root settings, and the active preset's copies of the provider ones
+        const providerFields = {
+            aiModel: 'reverse_proxy', subModel: 'reverse_proxy', forceReplaceUrl: 'http://127.0.0.1:6250/v1/chat/completions',
+            customProxyRequestModel: 'mock-model', customAPIFormat: 0, autofillRequestUrl: true, proxyKey: 'mock-key', useStreaming: false,
+        }
+        const rootOnlyFields = {
+            usePlainFetch: false, dynamicModelRegistry: false,
+            // sub-task features: auto-suggest, auto-translate, HypaV3, SupaMemory, embeddings (HypaMemory and the emotion embedding), image generation, TTS
+            useAutoSuggestions: false, autoTranslate: false, useAutoTranslateInput: false, hypaV3: false, hypaMemory: false, supaModelType: 'none',
+            emotionProcesser: 'submodel', hanuraiEnable: false, sdProvider: '', ttsAutoSpeech: false,
+        }
+        const { loaded, diff } = run()
+        expect(diff.sample).toEqual([])
+        expect(diff.differences).toBe(0)
+        expect(diff.addedRootKeys.length).toBeGreaterThan(20)
+        for (const [key, value] of Object.entries({ ...providerFields, ...rootOnlyFields })) expect(loaded.db[key], `root ${key}`).toBe(value)
+        const preset = loaded.db.botPresets[loaded.db.botPresetsId as number]
+        for (const [key, value] of Object.entries(providerFields)) expect(preset[key], `preset ${key}`).toBe(value)
+        // the root-only fields are not mirrored into the preset
+        for (const key of Object.keys(rootOnlyFields)) expect(Object.hasOwn(preset, key), `preset ${key}`).toBe(false)
+        // the device profile has no stubs, groups, folders or trash
+        expect(loaded.db.characters.some((character) => character.trashTime !== undefined)).toBe(false)
+        expect(loaded.db.characterOrder.every((item) => typeof item === 'string')).toBe(true)
+
+        // twin: without the request-model field the real setDatabase fills the empty default, so the value checks above can fail
+        const twin = run(({ db }) => { delete db.customProxyRequestModel; delete db.aiModel })
+        expect(twin.loaded.db.customProxyRequestModel).toBe('')
+        expect(twin.loaded.db.aiModel).not.toBe('reverse_proxy')
     }, TIMEOUT_MS)
 
     test('updateLorebooks and checkCharOrder change nothing the verifier compares', async () => {

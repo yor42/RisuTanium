@@ -1,8 +1,19 @@
 // Deterministic synthetic upstream-compatible .bin generator (MC-471). Plain Node ESM, no src/ imports.
 //
-//   node Agents/Tools/save-gen/synth-bin-gen.mjs --out <path outside the repo> --seed 1337 --scale small|mid [--dry-run]
+//   node Agents/Tools/save-gen/synth-bin-gen.mjs --out <path outside the repo> --seed 1337 --scale small|mid|device [--dry-run]
 //
 // Writes <out> (the .bin) and <out>.manifest.json (the expectations synth-bin-verify.mjs compares an exported .bin against).
+//
+// The device scale is for chat-session mechanics on a device only (rail, open, send, edit, idle). It copies the shape of a
+// real 500-character profile: no stubs, groups, folders or trash, mostly one near-empty chat per character, 164 skewed-size
+// modules, global lore on 30% of the characters, and about 517 assets, nearly all of them 4-8 KiB avatars. Use it for no
+// memory, avatar-decode or save-cost conclusion (tiny avatars and empty chats understate them), and not for the MC-471
+// round-trip acceptance (opening a character stamps new fields into it). Its root points the app at the local mock endpoint
+// (Agents/Tools/device/mock-openai.mjs, port 6250) with the literal key mock-key, and presets the sub-task features off.
+// Session characters: the first six characters of the rail (indexes 0-5) hold two chats of 8-16 messages each. Every
+// character whose index is a multiple of 3 (0, 3, 6, ...) carries an editoutput regex script that rewrites the reply
+// letter c to d, so the mock's [mock-reply] marker displays as [modk-reply] there. A check that reads the reply marker must
+// use a character whose index is not a multiple of 3 (1, 2, 4, 5 among the session characters) or expect [modk-reply].
 //
 // Usage (the round trip on a store2 page):
 //   1. Generate: --scale small for a quick pass, --scale mid for the MC-471 totals. --dry-run prints the plan and writes nothing.
@@ -85,7 +96,8 @@ const EXCLUDED_CHARACTER_KEYS = ['coldstorage', 'coldStoragedChats', 'coldVersio
 const EXCLUDED_CHAT_KEYS = ['isStreaming', 'activeStreamingDisplayOptimizationMode']
 
 // The configuration-root fields this file sets. Each value is already what the boot normalisation (setDatabase) leaves, and
-// none is key-like: no credential or token is ever written. username, personaPrompt and userNote are persona 0's fields
+// none is key-like: no credential or token is ever written (the device scale's provider settings add only the mock's
+// throwaway proxyKey 'mock-key'). username, personaPrompt and userNote are persona 0's fields
 // (saveUserPersona and changeUserPersona keep the root copy equal to personas[selectedPersona]).
 // promptInfoInsideChat is false because setDatabase forces it false on the web and leaves it absent on Tauri and the node
 // server (the branch on isNodeServer and isTauri); writing it makes a web and a Tauri export hold the same root keys.
@@ -120,6 +132,30 @@ const SCALES = {
     modules: 8, moduleAssets: 10, moduleIconEvery: 2, modulesMiB: 0.5, personas: 3, folders: 2, presets: 2,
     big200: false, chatBaseBytes: 60 * KIB, groups: 2, pluginValues: 3, loadouts: 2,
   },
+  // Optional fields that small and mid leave unset keep their draws and output unchanged: avatarKiB, trashEvery,
+  // chatCountTable, sessionCharacters, moduleBytes, luaModules, loreShape, rootSettings.
+  device: {
+    characters: 500, stubEvery: 0, additional: 0, emotionCharacters: 0, emotionPerCharacter: 0,
+    vitsCharacters: 0, vitsHugeSlot: -1, vitsStride: 40, vitsMiB: [0, 0], voiceRefs: 0, voiceStride: 16, ccAssets: 0,
+    modules: 164, moduleAssets: 0, moduleIconEvery: 21, modulesMiB: 30, personas: 5, folders: 0, presets: 3,
+    big200: false, chatBaseBytes: 60 * KIB, groups: 0, pluginValues: 0, loadouts: 0,
+    avatarKiB: [4, 8], trashEvery: 0,
+    // chats per character from the partial profile's census (500 characters, 771 chats), assigned by a seeded shuffle
+    chatCountTable: [[1, 442], [2, 21], [3, 10], [4, 4], [5, 4], [6, 8], [7, 2], [8, 1], [9, 1], [14, 1], [15, 1], [21, 3], [24, 1], [26, 1]],
+    sessionCharacters: 6,
+    moduleBytes: { median: 72 * KIB, sigma: 1.452, max: 3.4 * MIB }, luaModules: 3,
+    loreShape: { fraction: 0.3, median: 21817, sigma: 1.968, max: 4114042 },
+    rootSettings: {
+      aiModel: 'reverse_proxy', subModel: 'reverse_proxy', forceReplaceUrl: 'http://127.0.0.1:6250/v1/chat/completions',
+      customProxyRequestModel: 'mock-model', customAPIFormat: 0, autofillRequestUrl: true, proxyKey: 'mock-key',
+      useStreaming: false, usePlainFetch: false, dynamicModelRegistry: false,
+      useAutoSuggestions: false, useAutoTranslateInput: false, hypaV3: false, hypaMemory: false, supaModelType: 'none',
+      emotionProcesser: 'submodel', hanuraiEnable: false, sdProvider: '', ttsAutoSpeech: false,
+    },
+    // the settings the active preset repeats (setPreset takes preset ?? root, and blanks customProxyRequestModel when absent);
+    // dynamicModelRegistry and the sub-task switches are root-only
+    presetSettings: ['aiModel', 'subModel', 'forceReplaceUrl', 'customProxyRequestModel', 'customAPIFormat', 'autofillRequestUrl', 'proxyKey', 'useStreaming'],
+  },
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -152,7 +188,7 @@ function parseArguments(argv) {
     else throw new Error(`unknown argument ${arg}`)
   }
   if (!Number.isInteger(opt.seed) || opt.seed < 0 || opt.seed > 0xFFFFFFFF) throw new Error('--seed must be an integer from 0 to 4294967295')
-  if (!Object.hasOwn(SCALES, opt.scale)) throw new Error('--scale must be small or mid')
+  if (!Object.hasOwn(SCALES, opt.scale)) throw new Error('--scale must be small, mid or device')
   if (!opt.dryRun && !opt.out) throw new Error('--out is required unless --dry-run')
   if (opt.out) {
     const resolved = path.resolve(opt.out)
@@ -194,6 +230,11 @@ function canonical(value) {
   if (Array.isArray(value)) return '[' + value.map((item) => (item === undefined ? 'null' : canonical(item))).join(',') + ']'
   const keys = Object.keys(value).filter((key) => value[key] !== undefined).sort()
   return '{' + keys.map((key) => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}'
+}
+
+/** The listed keys of `source`; nothing when either is absent. */
+function pick(source, keys) {
+  return source && keys ? Object.fromEntries(keys.map((key) => [key, source[key]])) : {}
 }
 
 /** Per-key hashes and one hash over them, for the keys of `object` that are not excluded. */
@@ -294,7 +335,35 @@ function buildPlan(seed, cfg) {
   const additionalCounts = weights.map((w) => Math.floor(cfg.additional * w / weightSum))
   for (let leftover = cfg.additional - additionalCounts.reduce((sum, n) => sum + n, 0), i = 0; leftover > 0; leftover--, i = (i + 1) % cfg.characters) additionalCounts[i]++
 
-  const emotionStride = Math.max(1, Math.floor(cfg.characters / cfg.emotionCharacters))
+  // Device-only draws come from their own sequence, so the sequence small and mid draw from is untouched.
+  const deviceRnd = mulberry32((seed ^ 0xD3D3D3D3) >>> 0)
+  const deviceGauss = makeRandomHelpers(deviceRnd).gauss
+  let deviceChatCounts = null
+  if (cfg.chatCountTable) {
+    deviceChatCounts = cfg.chatCountTable.flatMap(([count, characterCount]) => Array(characterCount).fill(count))
+    if (deviceChatCounts.length !== cfg.characters) throw new Error(`chatCountTable covers ${deviceChatCounts.length} characters, not ${cfg.characters}`)
+    for (let k = deviceChatCounts.length - 1; k > 0; k--) {
+      const j = Math.floor(deviceRnd() * (k + 1))
+      ;[deviceChatCounts[k], deviceChatCounts[j]] = [deviceChatCounts[j], deviceChatCounts[k]]
+    }
+    // the session characters hold two chats each: swap a two-chat entry into every session slot, which keeps the total
+    for (let s = 0; s < cfg.sessionCharacters; s++) {
+      if (deviceChatCounts[s] === 2) continue
+      const donor = deviceChatCounts.findIndex((count, k) => k >= cfg.sessionCharacters && count === 2)
+      if (donor < 0) throw new Error('chatCountTable has too few two-chat entries for the session characters')
+      ;[deviceChatCounts[s], deviceChatCounts[donor]] = [deviceChatCounts[donor], deviceChatCounts[s]]
+    }
+  }
+  // messages per chat: p50 0, p95 16, max 62 (borrowed from a real profile)
+  const deviceMessageCount = () => {
+    const u = deviceRnd()
+    if (u < 0.5) return 0
+    if (u < 0.95) return 1 + Math.floor(((u - 0.5) / 0.45) ** 2 * 15)
+    return 16 + Math.floor(((u - 0.95) / 0.05) ** 3 * 47)
+  }
+  const deviceMessageBytes = () => (deviceRnd() < 0.02 ? 20 * KIB + deviceRnd() * 40 * KIB : 200 + deviceRnd() * 1300)
+  const emotionStride = cfg.emotionCharacters > 0 ? Math.max(1, Math.floor(cfg.characters / cfg.emotionCharacters)) : 0
+  const trashEvery = cfg.trashEvery ?? 50
   const characters = []
   let stubCount = 0
   for (let i = 0; i < cfg.characters; i++) {
@@ -303,18 +372,18 @@ function buildPlan(seed, cfg) {
     const stub = cfg.stubEvery > 0 && (i % cfg.stubEvery === cfg.stubEvery - 1 || i === 2 + cfg.vitsStride)
     const character = {
       index: i, chaId, stub, stubOrdinal: stub ? stubCount++ : -1, stubKey: stub ? uuid() : '',
-      avatar: addAsset('avatar', 'png', 'png', imageSize(80, 250)),
+      avatar: addAsset('avatar', 'png', 'png', imageSize(...(cfg.avatarKiB ?? [80, 250]))),
       additional: [], emotion: [], vits: null, voice: null, cc: [],
       chats: [], chatPage: 0, firstMsgIndex: -1,
       // one inline and one stub character in every fifty are in the trash; some stubs hold a newer lastInteraction than their unit
-      trashed: i % 50 === 7 ? 'inline' : stub && i % 50 === 19 ? 'stub' : '',
+      trashed: trashEvery > 0 && i % trashEvery === 7 ? 'inline' : trashEvery > 0 && stub && i % trashEvery === 19 ? 'stub' : '',
       newerStub: stub && i % 20 === 9,
     }
     for (let k = 0; k < additionalCounts[i]; k++) {
       const ext = additionalExt()
       character.additional.push({ label: `extra${k}`, ext, id: addAsset('additional', ext, ext === 'png' ? 'png' : 'opaque', additionalSize()) })
     }
-    if (i % emotionStride === 1 && i / emotionStride < cfg.emotionCharacters) {
+    if (emotionStride > 0 && i % emotionStride === 1 && i / emotionStride < cfg.emotionCharacters) {
       for (let k = 0; k < cfg.emotionPerCharacter; k++) character.emotion.push({ label: `emo${k}`, id: addAsset('emotion', 'png', 'png', imageSize(60, 200)) })
     }
     const vitsSlot = i >= 2 && (i - 2) % cfg.vitsStride === 0 ? (i - 2) / cfg.vitsStride : -1
@@ -335,7 +404,7 @@ function buildPlan(seed, cfg) {
       character.voice = { fileName: `voice-${i}.wav`, id: addAsset('voice', 'wav', 'opaque', between(300 * KIB, 2 * MIB)) }
     }
     // every second stub also holds a cc asset, over the ccAssets spread, so the stub units carry them
-    const spreadCc = i % Math.max(1, Math.floor(cfg.characters / cfg.ccAssets)) === 0 && assets.filter((a) => a.kind === 'cc').length < cfg.ccAssets
+    const spreadCc = cfg.ccAssets > 0 && i % Math.max(1, Math.floor(cfg.characters / cfg.ccAssets)) === 0 && assets.filter((a) => a.kind === 'cc').length < cfg.ccAssets
     if (spreadCc || (stub && character.stubOrdinal % 2 === 0)) {
       character.cc.push({ name: `cc${i}`, id: addAsset('cc', 'png', 'png', imageSize(20, 200)) })
     }
@@ -344,6 +413,18 @@ function buildPlan(seed, cfg) {
     for (let c = 0; c < chatCount; c++) character.chats.push({ id: uuid(), bytes: chatBytes / chatCount, hangul: (i + c) % 7 === 0 })
     character.chatPage = Math.floor(rnd() * chatCount)
     character.firstMsgIndex = Math.floor(rnd() * 3) - 1
+    if (deviceChatCounts) {
+      const session = i < cfg.sessionCharacters
+      character.chats = Array.from({ length: deviceChatCounts[i] }, (_, c) => {
+        const messageBytes = Array.from({ length: session ? 8 + Math.floor(deviceRnd() * 9) : deviceMessageCount() }, deviceMessageBytes)
+        return { id: uuid(), bytes: messageBytes.reduce((sum, n) => sum + n, 0), messageBytes, hangul: (i + c) % 7 === 0 }
+      })
+      character.chatPage = Math.floor(deviceRnd() * character.chats.length)
+    }
+    if (cfg.loreShape) {
+      const lore = cfg.loreShape
+      character.loreBytes = deviceRnd() < lore.fraction ? Math.min(lore.max, lore.median * Math.exp(lore.sigma * deviceGauss())) : 0
+    }
     characters.push(character)
   }
   if (cfg.big200) {
@@ -360,8 +441,14 @@ function buildPlan(seed, cfg) {
   for (let m = 0; m < cfg.modules; m++) {
     const moduleAssets = []
     for (let k = 0; k < cfg.moduleAssets; k++) moduleAssets.push({ label: `mod${m}-asset${k}`, id: addAsset('moduleAsset', 'png', 'png', imageSize(30, 300)) })
-    const icon = m % cfg.moduleIconEvery === 0 ? addAsset('moduleIcon', 'png', 'png', imageSize(20, 100)) : -1
-    modules.push({ id: uuid(), assets: moduleAssets, icon })
+    const icon = cfg.moduleIconEvery > 0 && m % cfg.moduleIconEvery === 0 ? addAsset('moduleIcon', 'png', 'png', imageSize(20, 100)) : -1
+    const planned = { id: uuid(), assets: moduleAssets, icon }
+    if (cfg.moduleBytes) planned.bytes = Math.min(cfg.moduleBytes.max, cfg.moduleBytes.median * Math.exp(cfg.moduleBytes.sigma * deviceGauss()))
+    if (cfg.luaModules > 0) {
+      const luaStep = Math.floor(cfg.modules / cfg.luaModules)
+      planned.luaBytes = m % luaStep === 0 && m / luaStep < cfg.luaModules ? 1 * KIB + Math.floor(deviceRnd() * 3 * KIB) : 0
+    }
+    modules.push(planned)
   }
   const misc = {
     userIcon: addAsset('userIcon', 'png', 'png', imageSize(20, 100)),
@@ -430,10 +517,10 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
   // `variant` spreads the optional chat fields over the chats: tail state (stored with the last chunk of a store2 chat),
   // message chatId stamps, memory data and chat-local lore. `memberIds` makes the char messages of a group name a speaker.
   const buildChat = (variant, chat, c, memberIds) => {
-    const count = Math.max(1, Math.ceil(chat.bytes / 1500))
+    const count = chat.messageBytes ? chat.messageBytes.length : Math.max(1, Math.ceil(chat.bytes / 1500))
     const message = Array.from({ length: count }, (_, m) => {
       const role = m % 2 === 0 ? 'char' : 'user'
-      const entry = { role, data: text(chat.bytes / count, chat.hangul), time: T + m * 60000 }
+      const entry = { role, data: text(chat.messageBytes ? chat.messageBytes[m] : chat.bytes / count, chat.hangul), time: T + m * 60000 }
       if (m % 5 === 0) entry.chatId = chat.id
       if (memberIds && role === 'char') entry.saying = memberIds[m % memberIds.length]
       return entry
@@ -463,7 +550,8 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
       // the fields applyCharacterDefaults fills on every character at boot, here with values some characters really hold
       customscript: planned.index % 3 === 0 ? [{ comment: `cs${planned.index}`, in: 'a+', out: 'b', type: 'editprocess', flag: 'g' }, { comment: `cs${planned.index}-b`, in: 'c', out: 'd', type: 'editoutput' }] : [],
       // some stubs too (every second, every third from the second), so their units carry lore and trigger scripts
-      globalLore: planned.index % 4 === 0 || (planned.stub && planned.stubOrdinal % 2 === 0) ? loreBook(`g${planned.index}`, 2 + planned.index % 5, planned.index % 20 === 0 ? 100 * KIB : 1400) : [],
+      globalLore: planned.loreBytes !== undefined ? (planned.loreBytes > 0 ? loreBook(`g${planned.index}`, Math.max(1, Math.round(planned.loreBytes / 1400)), 1400) : [])
+        : planned.index % 4 === 0 || (planned.stub && planned.stubOrdinal % 2 === 0) ? loreBook(`g${planned.index}`, 2 + planned.index % 5, planned.index % 20 === 0 ? 100 * KIB : 1400) : [],
       triggerscript: planned.index % 5 === 0 || (planned.stub && planned.stubOrdinal % 3 === 1) ? [{ comment: `t${planned.index}`, type: 'manual', conditions: [], effect: [{ type: 'setvar', var: 'synthetic', operator: '=', value: String(planned.index) }], lowLevelAccess: false }] : [],
       viewScreen: 'none', bias: [], characterVersion: '', creator: '', utilityBot: false, scenario: '', systemPrompt: '',
       tags: planned.index % 3 === 0 ? ['synthetic', `tag${planned.index % 5}`] : [],
@@ -507,11 +595,13 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
   const modules = plan.modules.map((planned, m) => {
     const module = {
       id: planned.id, name: `Synthetic Module ${m}`, description: text(500),
-      lorebook: loreBook(`m${m}`, lorebookEntries, 1400),
+      lorebook: loreBook(`m${m}`, planned.bytes === undefined ? lorebookEntries : Math.max(1, Math.round(planned.bytes / 1500)), 1400),
       regex: [{ comment: `r${m}`, in: 'a+', out: 'b', type: 'editprocess', flag: 'g' }],
       trigger: m % 3 === 0 ? [{ comment: `mt${m}`, type: 'manual', conditions: [], effect: [{ type: 'setvar', var: 'synthetic', operator: '=', value: String(m) }], lowLevelAccess: false }] : [],
       assets: planned.assets.map((a) => [a.label, refOf(a.id), 'png']),
     }
+    // a manual Lua trigger never runs on its own, so a session does not start the Lua runtime
+    if (planned.luaBytes > 0) module.trigger.push({ comment: `lua${m}`, type: 'manual', conditions: [], effect: [{ type: 'triggerlua', code: `-- ${text(planned.luaBytes)}\nfunction onSyntheticManual(id)\n  return nil\nend\n` }], lowLevelAccess: true })
     if (planned.icon >= 0) module.icon = refOf(planned.icon)
     if (withProjections) projections.modules[module.id] = project(module, [])
     return module
@@ -522,7 +612,7 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
   const personas = misc.personas.map((p, i) => (i === 0
     ? { id: p.id, name: SETTINGS_VALUES.username, personaPrompt: SETTINGS_VALUES.personaPrompt, icon: refOf(misc.userIcon), note: SETTINGS_VALUES.userNote }
     : { id: p.id, name: `Persona ${i}`, personaPrompt: text(300), icon: refOf(p.icon), note: '' }))
-  const botPresets = misc.presets.map((p, i) => ({ id: p.id, name: `Synthetic Preset ${i}`, temperature: 80, maxContext: 4000, maxResponse: 300, image: refOf(p.image), localNetworkMode: false, localNetworkTimeoutSec: 600 }))
+  const botPresets = misc.presets.map((p, i) => ({ id: p.id, name: `Synthetic Preset ${i}`, temperature: 80, maxContext: 4000, maxResponse: 300, image: refOf(p.image), localNetworkMode: false, localNetworkTimeoutSec: 600, ...pick(cfg.rootSettings, cfg.presetSettings) }))
   // The first untrashed characters of the list move into folders; every other untrashed character or group stays in the
   // order by id. A trashed character is in no order entry (checkCharOrder leaves it out).
   const everyone = [...characters, ...groups]
@@ -559,7 +649,7 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
   const database = {
     formatversion: 5, characters: everyone, characterOrder, personas, modules, botPresets, loadouts, statics, pluginCustomStorage,
     userIcon: refOf(misc.userIcon), customBackground: refOf(misc.customBackground),
-    ...SETTINGS_VALUES, enabledModules: modules.slice(0, 3).map((module) => module.id),
+    ...SETTINGS_VALUES, ...cfg.rootSettings, enabledModules: modules.slice(0, 3).map((module) => module.id),
   }
   if (withProjections) {
     // The whole logical tree, one hash per root key: what the verifier's resolved tree must equal, order of every list included.

@@ -630,6 +630,30 @@ describe('synthetic .bin generator', () => {
         expect(result.stderr).toContain('inside the repository')
         expect(fs.existsSync(target)).toBe(false)
     })
+
+    test('plans the device scale as the real-shape profile: 500 characters, 771 chats, 164 modules, about 517 assets that are almost all avatars', () => {
+        const dry = runNode(GEN_SCRIPT, ['--scale', 'device', '--dry-run'])
+        expect(dry.status).toBe(0)
+        const plan = JSON.parse(dry.stdout) as {
+            characters: number, groups: number, stubs: number, trashed: number, chats: number, modules: number, assets: number,
+            largestAssets: unknown[], byKind: Record<string, { count: number, bytes: number }>, estimatedFileBytes: number,
+        }
+        expect(plan.characters).toBe(500)
+        expect(plan.groups).toBe(0)
+        expect(plan.stubs).toBe(0)
+        expect(plan.trashed).toBe(0)
+        expect(plan.chats).toBe(771)
+        expect(plan.modules).toBe(164)
+        expect(Math.abs(plan.assets - 517)).toBeLessThanOrEqual(3)
+        expect(plan.byKind.avatar.count).toBe(500)
+        expect(plan.byKind.avatar.bytes / 500).toBeGreaterThanOrEqual(4 * 1024)
+        expect(plan.byKind.avatar.bytes / 500).toBeLessThanOrEqual(8 * 1024)
+        for (const kind of ['additional', 'emotion', 'vits', 'voice', 'cc', 'moduleAsset']) expect(plan.byKind[kind], kind).toBeUndefined()
+        expect(plan.largestAssets).toEqual([])
+        expect(plan.estimatedFileBytes).toBeLessThan(100 * 1024 * 1024)
+        // the same seed plans the same profile
+        expect(runNode(GEN_SCRIPT, ['--scale', 'device', '--dry-run']).stdout).toBe(dry.stdout)
+    }, TIMEOUT_MS)
 })
 
 describe('the verifier\'s resolved tree against the app\'s own import', () => {
