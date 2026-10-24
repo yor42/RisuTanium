@@ -7210,9 +7210,31 @@ Overlays outside `alertStore` (Settings, the Realm frame, the bookmark list, `po
 
 **Status (2026-10-24, lane A records batch 5): open, parked post-MVP** (`MC-352` 4). No data risk. In `src/ts/translator/translator.ts`, `translateNodeText`'s edit-display branch writes the processed translation with `innerHTML`; card authors may rely on that. Downstream consumers sanitize. Found at the CHORE-133 Gate 1 (`Agents/Lanes/lane-cloud-records.md`).
 
+**Status (2026-10-24, lane C cloud): fixed on `lane-c-cloud` in `e6d8875`; Gate 2 `[APPROVE WITH AMENDMENTS]`, amendment applied and checked (rows 3321 to 3324).** Decision: `MC-435` 1. Tiny-task carve-out for Gate 1: the change is a few lines at one site, and the product choice was settled first.
+
+**Status (2026-10-24, lane A records batch 8): merged in `a83c7901b` (no-ff merge of `33e225258`); merge review [APPROVE] (ledger row 2258); full checks on `a83c7901b` green (row 2259). Technically accepted. No phone check is named by lane C's records.**
+
+**Plugin note (lane A merge review, 2026-10-24):** V2 `editdisplay` plugin hooks, Lua edit triggers and the `display` trigger now receive translated text with `&` and `<` escaped, as `MC-435` decided. A plugin that matches a literal `<` there sees `&lt;`.
+
+### CHORE-330 — The translator's markdown pass re-parses literal text as markup
+
+**Status (2026-10-24, lane C cloud): fixed on `lane-c-cloud` in `c505275`; Gate 1 two rounds `[APPROVE WITH AMENDMENTS]` (rows 3325, 3329), Gate 2 `[APPROVE]` (row 3332).** Filed and scheduled in this lane by `MC-435` 2; decision `MC-436`.
+
+**Status (2026-10-24, lane A records batch 8): merged in `a83c7901b`; merge review [APPROVE] (ledger row 2258); full checks on `a83c7901b` green (row 2259). Technically accepted. No phone check is named by lane C's records.**
+
+- **Defect (investigator, EXECUTED, row 3320; independent check at Gate 1):** `applyMarkdownToNode` (`src/ts/parser/parser.svelte.ts`) renders each translated text node with markdown-it (`html: true`) and writes the result with `innerHTML`. The text is decoded, so `a &amp;amp; b` shows as `a & b`, which undoes CHORE-133's ampersand fix in the app (that test mocks the pass as a no-op), and inline tags in literal text become elements. Its only production caller is the translator's Combine translation path.
+- **What changed (`src/ts/parser/parser.svelte.ts`):** `applyMarkdownToNode` renders through a third markdown-it instance, `mdLiteral`, with `html: false` and the `code` and `entity` rules off. So markdown-it escapes `<` and keeps `&name;` as text under its own rules for code spans, fences and backslash escapes. The KaTeX output of `$$…$$` is replaced by private-use placeholders (U+E9C0 index U+E9C1) and restored after rendering. In text it is restored as MathML; inside a tag attribute, or when KaTeX throws, it is restored as the escaped raw match. U+E9C0 and U+E9C1 are stripped from the input first. `renderMarkdown` gains a trailing `literalText = false`. Its false path runs the same statements in the same order, so chat and highlight output is unchanged (byte-compared at Gate 2). This mechanism replaced the planned pre-scanner after Gate 1 round 1 (row 3326). Against `MC-436`'s option text, `<https://…>` autolinks and `[l](<a b>)` keep working.
+- **Tests:** new `src/ts/parser/applyMarkdownLiteralText.test.ts` (16 tests; jsdom; a file-level KaTeX spy) and `src/ts/translator/translateLiteralMarkdown.test.ts` (end-to-end `translateHTML` with the real markdown pass). On the pre-fix parser 9 fail: 6 reproducers, 2 characterisations and the end-to-end case; 8 guards pass. `MC-239`: with `md` in place of `mdLiteral` the reproducers fail.
+- **Residuals:** `$$a$$_x_` stays plain, because the placeholder's last character counts as a word character for emphasis flanking (`*` forms work). `$$` inside a fence renders MathML inside the code block; HEAD showed MathML source text. `[a]($$a$$)` gives an inert placeholder href. `customQuotesData` holding `<` or `>` is inserted raw, as at HEAD. Translator-returned inline HTML now shows as literal tags (`MC-436`).
+- **Related:** `MC-436`, `MC-435` 2, `MC-239`; CHORE-133, CHORE-500.
+
 ### CHORE-501 — HypaV3 modal "next summarisation" preview uses the last summary's last memo (proposed by lane Cloud)
 
 **Status (2026-10-24, lane A records batch 5): open, parked post-MVP** (`MC-352` 4). Display-only: `getNextSummarizationTarget` in `src/lib/Others/HypaV3Modal/modal-footer.svelte` can disagree with the real resume point after CHORE-10 stage A3. No data effect.
+
+**Status (2026-10-24, lane C cloud): fixed on `lane-c-cloud` in `a9f15b1`; v1 Gate 2 `[APPROVE WITH AMENDMENTS]` (row 3327); the maintainer chose to fix the greeting case first (`MC-437`); v2 Gate 1 `[APPROVE WITH AMENDMENTS]` (row 3331), Gate 2 `[APPROVE]` (row 3335).** Display only.
+
+**Status (2026-10-24, lane A records batch 8): merged in `a83c7901b`; merge review [APPROVE] (ledger row 2258); full checks on `a83c7901b` green (row 2259). Technically accepted. No phone check is named by lane C's records.**
 
 ### CHORE-502 — Old-format HypaV2 data conversion drops summaries whose target message is hidden (proposed by lane Cloud)
 

@@ -13267,3 +13267,54 @@ Round 2:
 - Notes, not the maintainer's words:
   - The option text says "thumbnails first, behind grid plan A2". The doc-verifier found that the proposed first stage (a pure byte-to-thumbnail function run on the main thread behind a flag, measured on a Note 9 before any worker) goes beyond A2. The Roadmap entry keeps it as proposed, not approved.
   - Nothing here authorizes a commit or a push.
+
+### MC-435 — Lane C, 2026-10-24: CHORE-500 escapes the translated text before display scripts; the markdown-pass finding is filed as CHORE-330 and fixed in this lane
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane C (cloud) session transcript. Input: the orchestrator's sizing of `translateNodeText` in `src/ts/translator/translator.ts` and a diagnostic run under jsdom (`scratch\c500\diag\`, row 3319).
+- **Related:** `MC-718` 4 and 5, `MC-352` 4, `MC-239`, `MC-175`, `MC-350`; CHORE-500, CHORE-133, CHORE-330.
+
+1. **CHORE-500: "Escape text first (Recommended)".** The option said: escape `&` and `<` in the translated text before the card's display scripts run, so only markup the scripts add becomes elements; literal text stays text, the same as when scripts change nothing. Trade-off: in this mode a script regex sees `&lt;` / `&amp;` instead of `<` / `&` in translated text. Not chosen: "Markdown on the string" (render the script output through markdown like an untranslated message; stray `<` survives but escaped tags still become elements and `&amp;amp;` still collapses), "Sanitize at the site" (chat DOMPurify policy; hygiene only, the text loss remains), "Close, no change".
+2. **The side finding: "Fix it in this lane too".** The finding: the markdown pass after the translation (`applyMarkdownToNode`, markdown-it with `html: true`) re-parses literal text as markup, which undoes CHORE-133's ampersand fix in the app; CHORE-133's test replaced that pass with a no-op. It is filed as CHORE-330 and sized and fixed in this lane after CHORE-501, with its own gates. Not chosen: "File, don't fix (Recommended)", "Don't file".
+
+**Notes that are not the maintainer's words:**
+- The question and option texts were written by the orchestrator.
+- "Escape text first" applies only to the edit-display branch, which runs only with Combine translation on and when a display script changes the translated text.
+- The diagnostic run is an orchestrator experiment (row 3319). Its CHORE-500 effects were later reproduced on the pre-fix base by the coder and by Gate 2 (rows 3321 and 3322); its CHORE-330 effect was independently checked at CHORE-330 Gate 1 (row 3325).
+
+Folded in from `Agents/Lanes/lane-C-records.md` on 2026-10-24 (merge `a83c7901b`).
+
+### MC-436 — Lane C, 2026-10-24: CHORE-330 escapes literal text before the translator's markdown pass, except inside KaTeX and code
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane C (cloud) session transcript. Input: the investigator packet `scratch\c330\inv\result.md` (row 3320; independently checked at Gate 1, row 3325).
+- **Related:** `MC-435` 2, `MC-718` 4, `MC-239`, `MC-175`; CHORE-330, CHORE-133, CHORE-500.
+
+1. **"Escape outside math/code (Recommended)".** The option said: escape `&` and `<` in the text before markdown, except inside `$$…$$` (KaTeX) and backtick code. Bold, italics, quote marks, line breaks, KaTeX and code spans work as today; literal tags and entities stay as written. Changes: `<https://…>` written in text no longer becomes a link, and any inline HTML a translator returns shows as literal tags. Not chosen: "Escape everything" (`$$a<b$$` math falls back to raw text and code spans show doubled entities), "No markdown pass" (bold and italics come back as visible `**x**` / `*x*` markers; KaTeX and code spans stop rendering), "Leave as is".
+
+**Notes that are not the maintainer's words:**
+- The question and option texts were written by the orchestrator, from the investigator's executed runs.
+- The markdown pass (`applyMarkdownToNode`) has one production caller, the translator's Combine translation path (investigator, row 3320).
+- The shipped mechanism (CHORE-330, row 3326) differs from the option text in the user's favour: `<https://…>` autolinks and `[l](<a b>)` keep working. It does not change the chosen outcome (literal `&` and `<` stay text outside math and code).
+
+Folded in from `Agents/Lanes/lane-C-records.md` on 2026-10-24 (merge `a83c7901b`).
+
+### MC-437 — Lane C, 2026-10-24: CHORE-501 fixes the greeting-only case before commit
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane C (cloud) session transcript. Input: CHORE-501 Gate 2 `[APPROVE WITH AMENDMENTS]` (row 3327) and the orchestrator's red-before-green rerun (row 3328).
+- **Related:** `MC-352` 4, `MC-711` 2, `MC-722` 1; CHORE-501.
+
+1. **"Fix greeting case first".** The option said: mirror the summariser's greeting rule in the preview (example messages, first-message-sent) before committing; needs a re-review. Not chosen: "Commit, record limits (Recommended)", which would have committed and recorded two limitations: a summary that covers only the greeting still previews the greeting, and after a chat reset or hidden messages the preview maps from the full message list. Also not chosen: "Not yet".
+
+**Notes that are not the maintainer's words:**
+- The question and option texts were written by the orchestrator.
+- The orchestrator's reading: the preview builds the same prompt-order list the summariser reads (example turns, the greeting when it is sent, then the sent messages) and calls the shared `findResumeIndex`, which also covers the reset and hidden-message limitation. That is a proposal for the plan review, not the maintainer's words.
+
+Folded in from `Agents/Lanes/lane-C-records.md` on 2026-10-24 (merge `a83c7901b`).
