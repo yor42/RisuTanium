@@ -33,7 +33,9 @@ vi.mock(import('./platform'), () => ({
 //#endregion
 
 import {
+    alertClear,
     alertConfirm,
+    alertIsShowing,
     alertModuleSelect,
     alertNormal,
     alertNormalWait,
@@ -268,5 +270,28 @@ describe('alertWait', () => {
 
         expect(second).not.toBe(first)
         expect(get(alertStore)).toBe(second)
+    })
+})
+
+describe('alertIsShowing', () => {
+    test('it is true while the store holds the very notice alertWait returned', () => {
+        const notice = alertWait('Loading...')
+
+        expect(alertIsShowing(notice)).toBe(true)
+    })
+
+    test('it is false after a toast, after a second notice with the same text, and after the store is cleared', () => {
+        const notice = alertWait('Loading...')
+
+        alertToast('replaced')
+        expect(alertIsShowing(notice)).toBe(false)
+
+        const first = alertWait('Loading...')
+        alertWait('Loading...')
+        expect(alertIsShowing(first)).toBe(false)
+
+        const third = alertWait('Loading...')
+        alertClear()
+        expect(alertIsShowing(third)).toBe(false)
     })
 })

@@ -281,7 +281,8 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 
 //#endregion
 
-import { SaveLocalBackup, SavePartialLocalBackup, exportThisTabBackup, type BackupExportOptions, type ExportOutcome } from 'src/ts/drive/backuplocal'
+import { language } from 'src/lang'
+import { SaveLocalBackup, SavePartialLocalBackup, confirmPartialBackup, exportThisTabBackup, type BackupExportOptions, type ExportOutcome } from 'src/ts/drive/backuplocal'
 import { setColdStorageItem } from 'src/ts/process/coldstorage.svelte'
 import { formatColdStorageLoadError } from 'src/ts/process/coldstorageData'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
@@ -963,6 +964,41 @@ describe('SavePartialLocalBackup explanations', () => {
 
         expect(outcome).toEqual({ status: 'declined', cause: 'partial-explanation-declined' })
         expect(backupSink.writes).toEqual([])
+    })
+
+    test('guard: declining only the second explanation also resolves declined with nothing written', async () => {
+        await pageOf()
+        let asked = 0
+        alertConfirmMock.mockImplementation(async () => (asked += 1) < 2)
+
+        const outcome = await SavePartialLocalBackup()
+
+        expect(asked).toBe(2)
+        expect(outcome).toEqual({ status: 'declined', cause: 'partial-explanation-declined' })
+        expect(backupSink.writes).toEqual([])
+    })
+
+    test('reproducer: confirmPartialBackup asks the two explanations in order and answers whether both were accepted', async () => {
+        await pageOf()
+        expect(await confirmPartialBackup()).toBe(true)
+        expect(alertConfirmMock.mock.calls.map((c) => String(c[0]))).toEqual([language.partialBackupFirstConfirm, language.partialBackupSecondConfirm])
+
+        alertConfirmMock.mockClear()
+        alertConfirmMock.mockImplementation(async () => false)
+        expect(await confirmPartialBackup()).toBe(false)
+        expect(alertConfirmMock).toHaveBeenCalledTimes(1)
+        expect(backupSink.writes).toEqual([])
+    })
+
+    test('guard: after both explanations are accepted SavePartialLocalBackup writes through the same export as exportThisTabBackup', async () => {
+        await pageOf()
+        const viaConfirms = await SavePartialLocalBackup()
+        expect(viaConfirms.status).toBe('saved')
+        expect(backupSink.writes.length).toBeGreaterThan(0)
+        backupSink.writes.length = 0
+        const viaResume = await exportThisTabBackup()
+        expect(viaResume.status).toBe('saved')
+        expect(backupSink.writes.length).toBeGreaterThan(0)
     })
 })
 

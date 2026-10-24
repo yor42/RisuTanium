@@ -47,7 +47,12 @@ vi.mock(import('src/ts/drive/backuplocal'), () => ({
     LoadLocalBackup: vi.fn(),
     SaveLocalBackup: vi.fn(async () => ({ status: 'saved', notices: [] })),
     SavePartialLocalBackup: vi.fn(async () => ({ status: 'saved', notices: [] })),
+    confirmPartialBackup: vi.fn(async () => true),
 }) as unknown as typeof import('src/ts/drive/backuplocal'))
+
+vi.mock(import('src/ts/drive/reloadFirst'), () => ({
+    askReloadFirstThenExport: vi.fn(async () => {}),
+}) as unknown as typeof import('src/ts/drive/reloadFirst'))
 
 vi.mock(import('src/ts/drive/backupWorkGuard'), () => ({
     refuseBackupLoadWhileBusy: vi.fn(() => false),
@@ -64,6 +69,9 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 //#endregion
 
 import { language } from 'src/lang'
+import { alertConfirm } from 'src/ts/alert'
+import { confirmPartialBackup } from 'src/ts/drive/backuplocal'
+import { askReloadFirstThenExport } from 'src/ts/drive/reloadFirst'
 import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import UserSettings from 'src/lib/Setting/Pages/UserSettings.svelte'
 
@@ -83,6 +91,7 @@ async function teardown(target: HTMLElement, app: Record<string, unknown>): Prom
 const buttonLabels = (target: HTMLElement): string[] => [...target.querySelectorAll('button')].map((button) => button.textContent?.trim() ?? '')
 
 beforeEach(() => {
+    vi.clearAllMocks()
     resetPageStorageModeForTests()
 })
 
@@ -122,5 +131,68 @@ describe('UserSettings "Backup & Files" by page storage mode', () => {
         flushSync()
         expect(buttonLabels(target)).not.toContain(language.cleanColdStorage)
         return teardown(target, app)
+    })
+})
+
+describe('UserSettings backup buttons and the reload-first offer', () => {
+    function clickButton(target: HTMLElement, label: string): void {
+        const button = [...target.querySelectorAll('button')].find((candidate) => candidate.textContent?.trim() === label)
+        expect(button).toBeDefined()
+        button!.click()
+    }
+
+    test('reproducer: the full button asks for the offer for a full export after the backup confirm', async () => {
+        vi.mocked(alertConfirm).mockImplementation(async () => true)
+        setPageStorageMode({ kind: 'store2' })
+        const { target, app } = mountPage()
+
+        clickButton(target, language.saveBackupLocal)
+        await vi.waitFor(() => expect(askReloadFirstThenExport).toHaveBeenCalledWith('export-full'))
+
+        expect(askReloadFirstThenExport).toHaveBeenCalledTimes(1)
+        expect(confirmPartialBackup).not.toHaveBeenCalled()
+        await teardown(target, app)
+    })
+
+    test('reproducer: the partial button asks the two explanations after the backup confirm and before the offer', async () => {
+        const order: string[] = []
+        vi.mocked(alertConfirm).mockImplementation(async () => { order.push('backupConfirm'); return true })
+        vi.mocked(confirmPartialBackup).mockImplementation(async () => { order.push('explanations'); return true })
+        vi.mocked(askReloadFirstThenExport).mockImplementation(async (kind) => { order.push('offer:' + kind) })
+        setPageStorageMode({ kind: 'store2' })
+        const { target, app } = mountPage()
+
+        clickButton(target, language.savePartialLocalBackup)
+        await vi.waitFor(() => expect(order).toEqual(['backupConfirm', 'explanations', 'offer:export-partial']))
+        await teardown(target, app)
+    })
+
+    test('reproducer: declining the explanations means no offer and no export', async () => {
+        vi.mocked(alertConfirm).mockImplementation(async () => true)
+        vi.mocked(confirmPartialBackup).mockImplementation(async () => false)
+        setPageStorageMode({ kind: 'store2' })
+        const { target, app } = mountPage()
+
+        clickButton(target, language.savePartialLocalBackup)
+        await vi.waitFor(() => expect(confirmPartialBackup).toHaveBeenCalledTimes(1))
+        await Promise.resolve()
+
+        expect(askReloadFirstThenExport).not.toHaveBeenCalled()
+        await teardown(target, app)
+    })
+
+    test('guard: declining the backup confirm starts nothing', async () => {
+        vi.mocked(alertConfirm).mockImplementation(async () => false)
+        setPageStorageMode({ kind: 'store2' })
+        const { target, app } = mountPage()
+
+        clickButton(target, language.saveBackupLocal)
+        clickButton(target, language.savePartialLocalBackup)
+        await vi.waitFor(() => expect(alertConfirm).toHaveBeenCalledTimes(2))
+        await Promise.resolve()
+
+        expect(askReloadFirstThenExport).not.toHaveBeenCalled()
+        expect(confirmPartialBackup).not.toHaveBeenCalled()
+        await teardown(target, app)
     })
 })
