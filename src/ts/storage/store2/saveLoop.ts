@@ -1,6 +1,6 @@
 import type { Database, character, groupChat } from '../database.svelte'
 import type { toSaveType } from '../risuSave'
-import { createYieldBudget } from '../saveYield'
+import { createYieldBudget, yieldToEventLoop } from '../saveYield'
 import { Store2StalePageError } from './backend/errors'
 import type { Store2Read } from './backend/types'
 import { MEASURE } from '../../process/memory/measureFlag'
@@ -177,6 +177,8 @@ export interface Store2LoopPort {
     sleep(ms: number): Promise<unknown>
     sleepForever(): Promise<never>
     now(): number
+    /** The idle-net slot's one yield before its verdict; absent means `yieldToEventLoop`. Tests inject their own. */
+    yieldNow?(): Promise<void>
 }
 
 /** Takes the marks of a pass and trims the live tracker to its sticky front, before any await. */
@@ -307,6 +309,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let activeGaps: YieldGapRecorder | null = null
     /** Whether the current idle-net slot's base read and judgement finished, a measurement build only; it tells a failed read from a later fault. */
     let netReadDone = false
+    /** The clock reads that bound the current slot's spans, set by `netDecision` and read by `netSlot`; a measurement build only. */
+    let netJudgeStartedAt: number | null = null
+    let netYieldCalledAt: number | null = null
+    let netResumedAt: number | null = null
     /**
      * The characters the latest attempts whose commit landed could not encode. A character leaves it when a pass encodes
      * it, or when it is no longer in the database; an attempt whose commit did not land changes nothing here.
@@ -789,7 +795,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
      * Decides one idle-net slot without planning. Order matters: the checks a full pass would answer by loading, writing
      * or refusing come before any verdict, because a verdict reads only the acknowledged encoding of one character.
      * The peer is read here, never through `checkPeer`: a failed read must not leave `peerSignal` set, and the full tick
-     * it falls back to reads again and reports the failure itself.
+     * it falls back to reads again and reports the failure itself. A slot that reaches the verdict yields once first and
+     * re-checks only what the yield can change: a pass became due, or the database object was replaced.
      */
     async function netDecision(): Promise<NetDecision> {
         const modulesDue = port.now() - lastModuleNetAt >= moduleMs
@@ -817,6 +824,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         const judged = judge(read)
         if (MEASURE) {
             noteNetSlotPart('judgeMs', performance.now() - judgeStartedAt)
+            netJudgeStartedAt = judgeStartedAt
             netReadDone = true
         }
         if (judged.kind === 'stop') {
@@ -843,6 +851,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         // Each check's sub-part runs from the previous check's end, and an exit closes `checksMs` at the same clock read as
         // its last sub-part, so the sub-parts sum to `checksMs`; a check the slot did not run leaves its sub-part null.
         let checkLapAt = checksStartedAt
+        // Where the prune's lap began, which a yielding slot's `pruneMs` measures from.
+        let pruneLapAt = checksStartedAt
         // One pass answers the unheld, stub and resident checks; unheld is the first exit, as when they ran apart.
         const scan = encoder.netScan(db)
         if (MEASURE) {
@@ -883,6 +893,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (MEASURE) {
             const pruneDoneAt = performance.now()
             noteNetSlotPart('pruneMs', pruneDoneAt - checkLapAt)
+            pruneLapAt = checkLapAt
             checkLapAt = pruneDoneAt
         }
         if (residents.length === 0) {
@@ -892,12 +903,48 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
             return { kind: 'none' }
         }
+        // One yield before the verdict, so the work above and the work below are separate stretches of the event loop. It
+        // sits before the `netIndex` advance: a slot that leaves at `dueAfterYield` or `dbChanged` uses no resident's turn.
+        // This loop is suspended during the yield, so `previous`'s identity, `pendingKey`, the shadow map, `netIndex`,
+        // `lastModuleNetAt`, `unsavable`, `park` and `consent` cannot change; character loads may fill missing unit digests
+        // in place, which depends only on the bytes and does not change a verdict. The write lock is not held across it.
+        // `pruneMs` ends at the yield (the `noResident` check falls inside it) and `checksMs` is closed up to it; a later
+        // exit that runs the `find` adds `findMs` to it, and one that does not leaves it as it is.
+        const yieldCalledAt = MEASURE ? performance.now() : 0
+        if (MEASURE) {
+            netYieldCalledAt = yieldCalledAt
+            noteNetSlotPart('pruneMs', yieldCalledAt - pruneLapAt)
+            noteNetSlotPart('checksMs', yieldCalledAt - checksStartedAt)
+        }
+        let resumedAt = 0
+        try {
+            await (port.yieldNow !== undefined ? port.yieldNow() : yieldToEventLoop())
+        } finally {
+            // Read right after the await, also when it rejects: a rejection is a throw after the yield, whose span B starts here.
+            if (MEASURE) {
+                resumedAt = performance.now()
+                netResumedAt = resumedAt
+            }
+        }
+        if (port.isDue()) {
+            if (MEASURE) {
+                noteNetSlotEnd('dueAfterYield')
+            }
+            return { kind: 'none' }
+        }
+        // A different database object appeared during the yield. A restore's installed path keeps the write lock closed by
+        // design until the reload, so neither answer changes that; `none` skips a verdict on a database this slot did not scan.
+        if (port.getDatabase() !== db) {
+            if (MEASURE) {
+                noteNetSlotEnd('dbChanged')
+            }
+            return { kind: 'none' }
+        }
         const index = netIndex % residents.length
         netIndex = (index + 1) % residents.length
         const chaId = residents[index]
         if (unsavable.has(chaId)) {
             if (MEASURE) {
-                noteNetSlotPart('checksMs', checkLapAt - checksStartedAt)
                 noteNetSlotEnd('verdictUnknown', 'unknown')
             }
             return { kind: 'character', chaId }
@@ -906,9 +953,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             (candidate): candidate is character | groupChat => typeof candidate === 'object' && candidate !== null && !isColdStub(candidate)
                 && String((candidate as { chaId?: unknown }).chaId ?? '') === chaId)
         if (MEASURE) {
-            const checksDoneAt = performance.now()
-            noteNetSlotPart('findMs', checksDoneAt - checkLapAt)
-            noteNetSlotPart('checksMs', checksDoneAt - checksStartedAt)
+            const findDoneAt = performance.now()
+            noteNetSlotPart('findMs', findDoneAt - resumedAt)
+            noteNetSlotPart('checksMs', (yieldCalledAt - checksStartedAt) + (findDoneAt - resumedAt))
         }
         if (slot === undefined) {
             if (MEASURE) {
@@ -935,6 +982,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         const decisionStartedAt = MEASURE ? performance.now() : 0
         if (MEASURE) {
             netReadDone = false
+            netJudgeStartedAt = null
+            netYieldCalledAt = null
+            netResumedAt = null
             noteNetSlotBegin()
         }
         try {
@@ -946,8 +996,19 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
             decision = { kind: 'full' }
         }
+        // The one end-of-decision read, shared by the normal exits and the guard's catch. A slot that reached `judge` splits
+        // into span A (judge start to the yield, or to this read when it exited before the yield), the yield, and span B
+        // (the resume to this read); a slot that failed its read or took the full tick before `judge` has none of the three.
+        const decisionEndAt = MEASURE ? performance.now() : 0
         if (MEASURE) {
-            noteNetSlotMs(performance.now() - decisionStartedAt)
+            if (netJudgeStartedAt !== null) {
+                noteNetSlotPart('spanAMs', (netYieldCalledAt ?? decisionEndAt) - netJudgeStartedAt)
+                if (netYieldCalledAt !== null && netResumedAt !== null) {
+                    noteNetSlotPart('yieldMs', netResumedAt - netYieldCalledAt)
+                    noteNetSlotPart('spanBMs', decisionEndAt - netResumedAt)
+                }
+            }
+            noteNetSlotMs(decisionEndAt - decisionStartedAt)
         }
         const passStartedAt = MEASURE ? performance.now() : 0
         if (decision.kind === 'full') {
