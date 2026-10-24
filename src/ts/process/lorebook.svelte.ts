@@ -172,7 +172,8 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
         all?:boolean
         dontSearchWhenRecursive: boolean
     }) => {
-        const sliced = messages.slice(messages.length - arg.searchDepth,messages.length)
+        //a depth beyond the message count must scan every message, not wrap around from the end
+        const sliced = messages.slice(Math.max(0, messages.length - arg.searchDepth),messages.length)
         const newKeys = []
         for (const key of arg.keys) {
             const trimmed = key.trim()
@@ -458,7 +459,11 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                         return false
                     }
                     case 'scan_depth':{
-                        scanDepth = parseInt(arg[0])
+                        const int = parseInt(arg[0])
+                        if(Number.isNaN(int) || int < 0){
+                            return false
+                        }
+                        scanDepth = int
                         return
                     }
                     case 'is_greeting':{
