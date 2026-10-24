@@ -11,8 +11,8 @@ The maintainer asked on 2026-10-21 for parallel orchestrator sessions, each on i
 | D (retired) | UI lists | `.claude/worktrees/Lane-D`, branch `worktree-Lane-D` | the character list, list windowing, chat-render tickets, CHORE-195 and CHORE-192 |
 | C (cloud) | design of the role-play-first import and the thin native task | `.claude/worktrees/Lane-C`, branch `worktree-Lane-C` (started by the maintainer) | its plan document; first step is the CHORE-202 rerun plan (plan only) |
 | E (retired) | CHORE-193 flake triage | `.claude/worktrees/Lane-E`, branch `worktree-Lane-E`, if the maintainer starts it | the investigation and per-file proposals. Lane B may take this work between stages instead; it then uses lane B's IDs and scratch |
-| F | the plugin batch (CHORE-30, CHORE-65) | branch `worktree-Lane-F`, started by the maintainer in the Claude app from the brief lane A gave in chat (`MC-503`) | CHORE-30 (V2/V3 `setChar`) and CHORE-65 (plugins reading each other's saved arguments); no phone access. Merged into `main` as `4331440b6` on 2026-10-25 (`MC-506`); idle. Records folded in (records batch 12) |
-| G | the parity batch (CHORE-178, CHORE-45, CHORE-41) | branch `worktree-Lane-G`, started by the maintainer in the Claude app from the brief lane A gave in chat (`MC-503`) | CHORE-178 (lorebook scan depth larger than the chat), CHORE-45 (script cache misses on repeat sends) and CHORE-41 (edit button sometimes opens no editor); no phone access. Merged into `main` as `dceab1844` on 2026-10-25 (`MC-500` standing approval); idle. Records folded in (records batch 12) |
+| F | the plugin batch (CHORE-30, CHORE-65) | branch `worktree-Lane-F`, started by the maintainer in the Claude app from the brief lane A gave in chat (`MC-503`) | CHORE-30 (V2/V3 `setChar`) and CHORE-65 (plugins reading each other's saved arguments); no phone access. Merged into `main` as `4331440b6` on 2026-10-25 (`MC-506`). Records folded in (records batch 12). Now on batch 2, the Node group (CHORE-120, P9, CHORE-62, CHORE-46; scope in `MC-507`) |
+| G | the parity batch (CHORE-178, CHORE-45, CHORE-41) | branch `worktree-Lane-G`, started by the maintainer in the Claude app from the brief lane A gave in chat (`MC-503`) | CHORE-178 (lorebook scan depth larger than the chat), CHORE-45 (script cache misses on repeat sends) and CHORE-41 (edit button sometimes opens no editor); no phone access. Merged into `main` as `dceab1844` on 2026-10-25 (`MC-500` standing approval). Records folded in (records batch 12). Batch 2 (closure audit, CHORE-209, CHORE-183; `MC-507`, `MC-543`) is merged as `efcf63634` (`MC-509`) and its records are folded in (records batch 13). Now on batch 3 (small fixes and the un-parked CHORE-191, 107 and 02; `MC-508`) |
 
 Lane C starts with the CHORE-202 rerun plan; its design work waits for lane A's run of that plan.
 
@@ -37,7 +37,7 @@ Each lane takes IDs only from its own range. A range's IDs are permanent once us
 | G (added 2026-10-24) | MC-540 to MC-559 | CHORE-390 to CHORE-409 | 3900 to 4099 | none assigned; see the contingency steps below |
 | New lanes | from MC-560, CHORE-410, row 4100, in blocks of 20 / 20 / 200, assigned by lane A | | | |
 
-Next free IDs as of 2026-10-25 (records batch 12): lane A MC-507, CHORE-210, row 2282. Lane F MC-522, CHORE-371, row 3710. Lane G MC-543, CHORE-391, row 3900 (it has used no ledger rows). The other lanes are unchanged.
+Next free IDs as of 2026-10-25 (records batch 13): lane A MC-510, CHORE-211, row 2290. Lane B MC-488, CHORE-227, row 3031. Lane C MC-440, CHORE-331, row 3351. Lane F MC-522, CHORE-371, row 3710 (unchanged). Lane G MC-548, CHORE-394, row 3900 (it has used no ledger rows). The other lanes are unchanged.
 
 ### When a range runs out (contingency)
 

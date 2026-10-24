@@ -19,18 +19,19 @@ Ideas that are **not** part of this campaign — quality-of-life features, nice-
 Replaces the finished `MC-345` work order (moved to [Archive/Roadmap-closed-2026-10-24.md](Archive/Roadmap-closed-2026-10-24.md); `MC-479`). This records state and sets no priorities; [Live-State](Live-State.md) holds the dated detail.
 
 - **MVP:** installed on the maintainer's phone (`MC-475`); `MC-350` carry-forward is live.
-- **Lane A:** orchestration and records. Batch T (the native streaming path; `MC-502`) is done: CHORE-149, 164, 165 and 167 are COMPLETE and moved to the closed archive (T1 `a51321952`, T2 `9d16b3350`, T3 `d9c68b0fe`; `d9c68b0fe` was `main` then; `main` is now at `4331440b6`, pushed, after the lane G merge `dceab1844` and the lane F merge `4331440b6`). Device stage D on phone 2 passed (a release build of `d9c68b0fe` on the test key, the synthetic device profile and the mock settings); a stale Save picker remains in the back stack. Device-profile stage E (adoption, records only) is next for that track. Lane A's Android Back batch (`MC-505`: CHORE-180 and CHORE-352; CHORE-179 is parked again) passed Gate 1 with amendments, and stage A is next. After it: CHORE-166 (its own batch, not started) and the others. CHORE-208 ("Request timed out" has no `language` key) is new. CHORE-207 stays a candidate (`MC-478`).
-- **Lane B:** CHORE-205, sizing lever L3 (including the MCP module tools). Its plugin module asset-list fix is rebased and merged (`15777155a`). Its reload-check results from phone 2 are in (ledger row 2275).
-- **Lane C (cloud):** runs batch Q (CHORE-240, CHORE-185 and CHORE-353). Its earlier scope (CHORE-500, CHORE-330 and CHORE-501) merged in `a83c7901b`.
-- **Lanes F and G (`MC-503`):** both are merged and idle. F's plugin batch (CHORE-30, CHORE-65 and the new CHORE-370) is merged as `4331440b6` (branch `worktree-Lane-F` at `67628f6a5`); G's parity batch (CHORE-178 and CHORE-45 stage 1) is merged as `dceab1844` (branch `worktree-Lane-G` at `6e7707db6`); CHORE-41 is parked (`MC-540` 3). Neither has phone access; device requests go to lane A.
-- **Batches (`MC-500`):** work runs in gated batches. Parked tickets (`MC-501`, `MC-504`) are in [Roadmap-parked.md](Roadmap-parked.md).
-- **Next free IDs:** lane A MC-507, CHORE-210, row 2282; lane F MC-522, CHORE-371, row 3710; lane G MC-543, CHORE-391, row 3900; the others are in [Live-State](Live-State.md).
+- **Lane A:** orchestration and records. `main` is at `31b050a63`, pushed. The Android Back batch (`MC-505`) has both stages committed: stage A `561de025f` (CHORE-180) and stage B `31b050a63` (CHORE-352, with the preset, persona and HypaV3 modals). The plan passed Gate 1 with amendments and each stage passed Gate 2 `[APPROVE]` (ledger rows 2283 to 2288). The phone 2 checks and lane A's keyevent smoke pass are running, so neither ticket is COMPLETE; no daily APK from `main` is recommended until the Back device checks pass. Batch T (the native streaming path; `MC-502`) is done: CHORE-149, 164, 165 and 167 are COMPLETE and in the closed archive (T1 `a51321952`, T2 `9d16b3350`, T3 `d9c68b0fe`). Device stage D on phone 2 passed (a release build of `d9c68b0fe` on the test key, the synthetic device profile and the mock settings); a stale Save picker remains in the back stack. Device-profile stage E (adoption, records only) is next for that track. After the Back batch: CHORE-166 (its own batch, not started) and the others. CHORE-210 (the `manualCleanup` test flake) is new, owned by lane G (`MC-508`). CHORE-207 stays a candidate (`MC-478`).
+- **Lane B:** CHORE-205. Its reload prompt stage 1 (an offer to reload before a large Android export; `MC-485` to `MC-487`) is merged as `1537d09b9`; its phone checks are running through lane A. Stage 2 (import) follows, then L1, L2a and L3. Not COMPLETE.
+- **Lane C (cloud):** idle. Batch Q is merged as `4fb1e3cbb`: CHORE-240 and CHORE-185 are COMPLETE and in the closed archive (full checks, ledger row 2285), and CHORE-353 is parked (`MC-439`). Its earlier scope (CHORE-500, CHORE-330 and CHORE-501) merged in `a83c7901b`.
+- **Lanes F and G (`MC-503`):** F is on the Node group (CHORE-120, 62 and 46; `MC-507`: "Size all four, fix small"). G finished batch 2, merged as `efcf63634`: CHORE-183 and CHORE-209 are COMPLETE, CHORE-29, 31, 32, 55 and 61 are closed (`MC-546`), CHORE-70 is retitled and open, and CHORE-391, 392 and 393 are new. G is now on batch 3 (`MC-508`): CHORE-391, then 393 after its fix choice, then 191, 208, 210, 107, 189, 190 and 02; CHORE-191, 107 and 02 are un-parked. Earlier merges: F's plugin batch (CHORE-30, 65, 370) `4331440b6`; G's parity batch (CHORE-178, CHORE-45 stage 1) `dceab1844`; CHORE-41 is parked (`MC-540` 3). Neither has phone access; device requests go to lane A.
+- **Notes (not decisions):** `saveLoopNetBackstop` B7 failed once in the second full run of ledger row 2288 on Windows; the file alone passed 3 of 3, and it is reported to lane B. The maintainer mentioned two Dependabot PRs; lane A's plan, not yet answered by the maintainer, is dompurify 3.4.17 at a quiet point (applied on main with the jsdom sanitizer tests) and happy-dom 21 parked until the lanes are idle (`MC-507`, Related).
+- **Batches (`MC-500`):** work runs in gated batches. Parked tickets (`MC-501`, `MC-504`, and CHORE-353 by `MC-439`) are in [Roadmap-parked.md](Roadmap-parked.md).
+- **Next free IDs:** lane A MC-510, CHORE-211, row 2290; lane B MC-488, CHORE-227, row 3031; lane C MC-440, CHORE-331, row 3351; lane F MC-522, CHORE-371, row 3710; lane G MC-548, CHORE-394, row 3900; the others are in [Live-State](Live-State.md).
 
 ## Open tickets
 
 One row per open entry below, in file order. "Needs review" marks an entry whose status lines conflict or are incomplete; a bounded pass settles it later. State is the entry's latest status phrase, shortened.
 
-Parked tickets and sub-items (`MC-501`, `MC-504`) are not in this table; they are in [Roadmap-parked.md](Roadmap-parked.md), and a parked sub-item of an open ticket carries a "PARKED" status line in its entry.
+Parked tickets and sub-items (`MC-501`, `MC-504`; CHORE-353 by `MC-439`) are not in this table; they are in [Roadmap-parked.md](Roadmap-parked.md), and a parked sub-item of an open ticket carries a "PARKED" status line in its entry.
 
 | ID | Title | State | Owner | Next |
 |---|---|---|---|---|
@@ -38,6 +39,7 @@ Parked tickets and sub-items (`MC-501`, `MC-504`) are not in this table; they ar
 | Phase 1.5 — Multi-write… | Phase 1.5 — Multi-writer conflict hardening (new, from topic 05) | Still open, identified but not fixed: the `alertStore` modal hijack | - | alertStore modal hijack; no 'stopped saving' indicator |
 | Phase 2 — RAM/architect… | Phase 2 — RAM/architecture rework (the shared root cause; highest leverage, highest effor… | Status (2026-09-30) — Phase 2 is in progress; it has not landed. | - | status 2026-10-24: items 3, 4, 8 open; exit criterion not recorded as met |
 | Phase 4 — Android (expl… | Phase 4 — Android (explicitly gated behind Phase 2) | the release stays gated. | - | Android release gated behind memory/perf work |
+| CHORE-02 | `toSave.chat` is dead plumbing in the encoder | Status (2026-10-25): UN-PARKED (`MC-508`) | lane G | lane G batch 3 (MC-508); save-adjacent, so `opus-reviewer` if the plumbing is touched |
 | CHORE-03 | Trash: dedicated bug-hunting pass | ### CHORE-03 — Trash: dedicated bug-hunting pass | - | dedicated trash bug-hunting pass not started |
 | CHORE-04 | Module enable/disable causes a freeze too, by a DIFFERENT mechanism | Grounded hypothesis — NOT verified, test it before acting on it: | - | test the ReloadGUIPointer hypothesis |
 | CHORE-05 | Translation coverage: much of the UI is English-only | open only for the native-speaker review, LOW PRIORITY | Main Campaign | native-speaker review (low priority) |
@@ -46,33 +48,29 @@ Parked tickets and sub-items (`MC-501`, `MC-504`) are not in this table; they ar
 | CHORE-12 | Modules: 6 suspected bugs (none lose data) | - MOD-5: open. An icon editor is a new feature. | - | MOD-1 not done by decision; MOD-3 left; MOD-5 parked (MC-501) |
 | CHORE-16 | Playground: 4 suspected bugs | PG-4 parked (MC-501); code done in 0d41f06a | - | PG-4 remainder is a wiki hand-off (maintainer's) |
 | CHORE-17 | Plugin `setDatabase` re-encodes every character (a cost, not data loss) | (the setter boundary reconcile) is ON HOLD — see "Why layer 1 is on hold" below. | - | layer 1 on hold |
-| CHORE-29 | Filling a missing `chaId` brings back a stale copy of the character | Status (2026-09-24): found by Gate 1 round 4 of the W0 plan (ledger row 170), which ran it. Not | - | superseded on store2 per lane E audit; candidate to close |
-| CHORE-30 | v2.1 `setChar` writes into whatever is selected when the plugin calls it | open; not moot: the V2/V3 `setChar` path is live (retitled 2026-10-24 to the V2/V3 path, MC-501) | lane F | technically accepted; merged in 4331440b6 (MC-520); administrative closeout not stated in lane F's records |
-| CHORE-31 | Cold storage may turn an idle group into a plain character | Status (2026-09-24): found in passing by the W0 investigation (ledger row 164). Untraced for | - | superseded on store2 per lane E audit; candidate to close |
-| CHORE-32 | A swap can drop a character's pending edit for one save | Status (2026-09-24): found by the W0 follow-up checks (ledger row 169, check 2). Traced, not | - | superseded per lane E audit; candidate to close |
+| CHORE-30 | v2.1 `setChar` writes into whatever is selected when the plugin calls it | open; not moot: the V2/V3 `setChar` path is live (retitled 2026-10-24 to the V2/V3 path, MC-501) | lane F | technically accepted; merged in 4331440b6 (MC-520); retitle from lane F's records recorded 2026-10-25; administrative closeout not stated in lane F's records |
 | CHORE-35 | Upstream proxy and CDN infrastructure outside Realm and Drive have no agreement gate | needs review: Traced to source, not fixed. | - | opt-in stage scheduled (MC-092); CHORE-60 text says 'CHORE-35 closes' |
 | CHORE-45 | The script cache misses every lookup on a repeat send in a long chat | stage 1 technically accepted; merged in dceab1844 | lane G | stage 2 is CHORE-390 (MC-541 2); not COMPLETE |
-| CHORE-46 | The self-hosted Node server cannot save a database larger than 100 MB | Present upstream. Not fixed and not scheduled. | - | not scheduled (Node 100 MB); parked until after A5 |
-| CHORE-55 | Tauri main-file writes are not atomic (a failed write can leave a partial `database/datab… | Stage 5 or later (inlays with CHORE-48, the search index, CHORE-46's | - | superseded on store2 per lane E audit; stage 5 or later not scheduled |
+| CHORE-46 | The self-hosted Node server cannot save a database larger than 100 MB | Present upstream. Not fixed and not scheduled. | lane F | lane F Node group: size, then small fixes (MC-507); was: parked until after A5 |
 | CHORE-60 | Release identity: the desktop build still carries upstream's identity | the first signed build is the maintainer's (`MC-456` 3) | lane A / maintainer | first signed build is the maintainer's (MC-456 3); updater, key.txt |
-| CHORE-61 | The save encoder silently loses presets, modules or a character when a character's `chaId… | open, not scheduled and not placed in the work order | - | superseded per lane E audit; candidate to retitle or park |
-| CHORE-62 | On a Node server, another device's save makes this device stop saving until it reloads, a… | Open questions: where the unsynced edits would be kept | - | Node; parked until after A5 |
-| CHORE-65 | Plugins read and change each other's saved arguments, and V2.1 plugins edit the plugin li… | needs review: Status (2026-10-02, later): low priority | lane F | technically accepted; merged in 4331440b6 (MC-520 3); administrative closeout not stated in lane F's records |
+| CHORE-62 | On a Node server, another device's save makes this device stop saving until it reloads, a… | Open questions: where the unsynced edits would be kept | lane F | lane F Node group: size, then small fixes (MC-507); was: parked until after A5 |
+| CHORE-65 | Plugins read and change each other's saved arguments, and V2.1 plugins edit the plugin li… | needs review: Status (2026-10-02, later): low priority | lane F | technically accepted; merged in 4331440b6 (MC-520 3); retitle from lane F's records recorded 2026-10-25; administrative closeout not stated in lane F's records |
 | CHORE-68 | CHORE-63 stage C: embed the app's own images from inside a message into the "Copy as card… | open, not scheduled. Filed at the maintainer's decision | - | not scheduled (copy-as-card stage C) |
-| CHORE-70 | Startup installs a save that only partly decodes, without checking whether a backup is co… | open, not scheduled. Filed at the maintainer's decision | - | superseded per lane E audit (read-only legacy residue) |
+| CHORE-70 | Startup installs a save that only partly decodes, without checking whether a backup is co… | Status (2026-10-25): open, low priority, not scheduled; retitled (MC-546 4) | - | the read-only legacy-page notice and partial-export gap (MC-546 4) |
 | CHORE-71 | The plugin overwrite guard walks every chat in live memory on each in-place plugin `setIt… | open, not scheduled, LOW priority. | - | LOW priority; not scheduled |
 | CHORE-72 | A local backup restore writes an entry whose name does not match the cold-storage key pat… | open, not scheduled, LOW priority. | - | LOW priority; not scheduled |
 | CHORE-73 | On a Windows desktop, a chat whose pointer names a unit in a `coldstorage` folder that do… | open, not scheduled, LOW priority. | - | LOW priority; not scheduled |
 | CHORE-83 | Every boot writes the main file, a numbered backup and about 507 block-cache entries even… | partly addressed by `f04068f1` | - | block-cache puts on boot still open |
 | CHORE-84 | The page-load listing of stored units and assets is awaited before plugins and costs abou… | open, not scheduled. Severity: not assessed. | - | not scheduled |
 | CHORE-92 | The copy-as-card `text/plain` companion still includes the thinking text | locked behind CHORE-68 | - | locked behind CHORE-68 |
-| CHORE-120 | On the Node server, `/api/set_password` accepts any client until a password exists, and t… | open, not scheduled; fixes are to be proposed after Stage 0 of the save-layer track. | - | Node; not scheduled |
+| CHORE-120 | On the Node server, `/api/set_password` accepts any client until a password exists, and t… | open, not scheduled; fixes are to be proposed after Stage 0 of the save-layer track. | lane F | lane F Node group: size, then small fixes (MC-507); was: not scheduled |
 | CHORE-128 | A faster Risutanium-to-Risutanium backup format and a sync folder (design not started) | Status (2026-10-06): open, not scheduled; design follows the Rust `.bin` path | - | parked until after A5; design not started |
 | CHORE-129 | Warn before an upstream-compatible export when data exceeds upstream's size limits, and l… | Status (2026-10-22, lane B stage 4, `MC-359`): RESIDUAL ACCEPTED UNTIL STAGE 0b for web and Node | lane B | web/Node size check parked (MC-501) until stage 0b |
 | CHORE-101 | Assets saved before a refusal, a save failure or a changed file stay behind as orphans | Status (2026-10-06): open, not scheduled. Type: wasted disk. | - | not scheduled (orphan assets) |
 | CHORE-102 | A re-import of a large file whose assets already exist still sends every piece over IPC b… | Status (2026-10-06): open, not scheduled. Type: performance. | - | not scheduled |
 | CHORE-103 | The restore of a large legacy `database` entry peaks at about +1.2 GiB in its decode tail | the residual is format-bound and the item stays OPEN. | lane B | format-bound residual; A4 only if A1 says so |
 | CHORE-106 | Put `.charx` and editor uploads onto the piece save | Status (2026-10-06): open, not scheduled. | - | not scheduled |
+| CHORE-107 | `openWriter` belongs inside the `try` | Status (2026-10-25): UN-PARKED (`MC-508`) | lane G | lane G batch 3 (MC-508) |
 | CHORE-109 | Show assets without loading them whole | - Not done: the web stage (a service worker over the stored files | - | web stage parked (MC-501); inlays CHORE-114 |
 | CHORE-111 | Native-speaker review of the Stage 1c, `.bin` and importer strings | Status (2026-10-06): open, low priority, the same deferral as CHORE-05 (`MC-212`). | Main Campaign | native-speaker review, low priority |
 | CHORE-112 | Android follow-ups | Status (2026-10-06): open, not scheduled. From the Android work | - | Android follow-ups; not scheduled |
@@ -100,34 +98,34 @@ Parked tickets and sub-items (`MC-501`, `MC-504`) are not in this table; they ar
 | CHORE-174 | `CharConfig.svelte` re-reads `$selectedCharID` live across an `await` and can write to th… | Status (2026-10-10): open; existing issue, not fixed by the unload stage 1a; not planned. | lane E | no fix on main; lane E audit: still present |
 | CHORE-177 | Grid fling jank with every folder open on the Note 9 (the scroller's layer height; the br… | Status (2026-10-10): open; not planned; to be revisited with the list-windowing perf work | - | revisit with list-windowing work |
 | CHORE-178 | Lorebook `searchMatch` slices from `length - scanDepth` with no clamp, so a scan depth la… | Status (2026-10-11): open; not planned; present in upstream too. | lane G | technically accepted; merged in dceab1844 (MC-540 1 and 2); administrative closeout not stated in lane G's records |
-| CHORE-180 | Back on screens with their own back stack and no Back handler: the Beta Mobile GUI chat "… | Status (2026-10-25): in lane A's Android Back batch (MC-505) | lane A | plan passed Gate 1 with amendments; stage A next |
-| CHORE-183 | A `botPresets` list that is missing or not a list makes "Convert without these parts" sto… | Status (2026-10-20, stage 4b close): open, not scheduled. | - | not scheduled |
+| CHORE-180 | Back on screens with their own back stack and no Back handler: the Beta Mobile GUI chat "… | Status (2026-10-25, lane A records batch 13): stage A `561de025f` committed (Gate 2 [APPROVE]); not COMPLETE | lane A | phone 2 checks and lane A's keyevent smoke pass running (MC-505) |
 | CHORE-184 | The Lua runtime (wasmoon `glue.wasm`) is fetched from unpkg.com at run time | Status (2026-10-20, stage 4b close): open, not scheduled. | - | not scheduled (Lua fetched from unpkg) |
-| CHORE-185 | The `Chat.draftCaptureScenarios` "success-then-fail" test is load-sensitive | Status (2026-10-20, stage 4b close): open, not scheduled. | lane C (cloud) | batch Q |
 | CHORE-186 | E5: a shared-profile upstream save loses upstream's plugin index on store2 conversion (pr… | technically accepted; merge-close records unverified | - | doc-verifier pass on the merge-close records, then COMPLETE |
 | CHORE-188 | The import warning says "Your saved data is not changed until the import has finished", w… | Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled. | - | not scheduled (import warning wording) |
-| CHORE-189 | Index-level incomplete items carry the slot key `_coldpluginIndex` and a minted id, so th… | Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled. | - | not scheduled |
-| CHORE-190 | U3 A2 non-blocking items: the dirty mark, `keys()` and `length()` after `clear()`, and a… | Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled. | - | not scheduled |
+| CHORE-189 | Index-level incomplete items carry the slot key `_coldpluginIndex` and a minted id, so th… | Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled. | lane G | lane G batch 3 (MC-508); was: not scheduled |
+| CHORE-190 | U3 A2 non-blocking items: the dirty mark, `keys()` and `length()` after `clear()`, and a… | Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled. | lane G | lane G batch 3 (MC-508); was: not scheduled |
+| CHORE-191 | English `chatParseFailed` now ends with a trailing ", " | Status (2026-10-25): UN-PARKED (`MC-508`) | lane G | lane G batch 3 (MC-508); changes the key in all 7 locales, the Translator owns the non-English files |
 | CHORE-202 | The Note 9 screen-off import stall has an unknown cause | Cause of the freeze still UNKNOWN; no fix has been found. | lane C / lane A | rerun with working power polling or trace; cause unknown |
 | CHORE-221 | A `.bin` commit's salvage can leave out blocks the person did not confirm | Status (2026-10-22): open, candidate; not scheduled. | lane B | candidate; lane E audit confirms the reviewer reading |
 | CHORE-223 | An Android stub export spends most of its time in two steps outside the asset loop ('expo… | Not COMPLETE. | lane B | cold-collect traced to idle net; stage B design waits |
 | CHORE-224 | Opening a stored character does not apply the character defaults, so a character without… | technically accepted; owes the node fixture flake ticket and Gate 2 notes N1 to N3 | lane B | - |
 | CHORE-350 | a value that cannot be stored retries every save pass (MC-346 Q-A) | Status (2026-10-22): open, not scheduled. Filed per `MC-346` Q-A | lane E | not scheduled (MC-346 Q-A) |
 | CHORE-351 | CHORE-351 (new) — select and input prompts have no cancel, so Back cannot close them (MC-… | Status (2026-10-22): open, not scheduled. Filed per MC-455 Q2 | - | not scheduled (MC-455 Q2); stays its own ticket (MC-505) |
-| CHORE-352 | CHORE-352 (new) — Back does not close Settings, the Realm frame, popups or panels (MC-455… | Status (2026-10-25): in lane A's Android Back batch (MC-505), which reverses MC-455 Q1 for it | lane A | plan passed Gate 1 with amendments; stage A next |
+| CHORE-352 | CHORE-352 (new) — Back does not close Settings, the Realm frame, popups or panels (MC-455… | Status (2026-10-25, lane A records batch 13): stage B `31b050a63` committed (Gate 2 [APPROVE]); not COMPLETE | lane A | phone 2 checks and lane A's keyevent smoke pass running (MC-505) |
 | CHORE-225 | Store2 save planning re-encodes every module on each idle-net tick, blocking the page for… | Status (2026-10-23): stages A, B and C merged; not COMPLETE. | lane B | stages A-C merged; re-measure |
 | CHORE-502 | Old-format HypaV2 data conversion drops summaries whose target message is hidden (propose… | Status (2026-10-24, lane A records batch 5): parked post-MVP | - | parked post-MVP (MC-352 2) |
-| CHORE-205 | Architecture study: subsystems that fail as the library grows (the whole-library in-memor… | Status (2026-10-24, lane A records batch 6): lane B is sizing the next lever, L3 | lane B | L3 per-module units (rebase of the plugin asset-list fix merged in 15777155a) |
+| CHORE-205 | Architecture study: subsystems that fail as the library grows (the whole-library in-memor… | Status (2026-10-25, lane A records batch 13): reload prompt stage 1 merged in 1537d09b9; phone checks running; not COMPLETE | lane B | phone checks through lane A, then stage 2 (import, MC-485 1), then L1 and L2a and L3 (MC-483 order) |
 | CHORE-206 | Retire V2.1 plugin execution and keep the data (MC-349) | Status (2026-10-24, lane A records batch 6): technically COMPLETE. | lane A | Stage 3 (remove 2.1-only API members) deferred; optional alertPluginConfirm fol… |
 | CHORE-207 | off-main-thread asset work (candidate) | Status (2026-10-24): open, candidate, not scheduled, no code (`MC-478`). | lane A | candidate; no code |
-| CHORE-208 | "Request timed out" (the native fetch timeout error added by CHORE-164) is hard-coded English with no `language` key | Status (2026-10-25): open, low priority, not scheduled. | lane A | en key, then the Translator for the other locales (MC-058) |
-| CHORE-209 | `Chat.supaResume` "branch" tests can fail under full-suite load: a timed-out (c) may keep running into (d) | Status (2026-10-25): open, low priority, not scheduled; test isolation, not batch T. | lane A | hoist the dynamic imports, reset `DBState.db`; prove with a forced cold timeout |
-| CHORE-353 | The write-scope guard refuses only the Edit and Write tools, so a shell write can change… | Status (2026-10-22, lane A): open, ticketed, not scheduled (`MC-457` 1). | lane C (cloud) | batch Q |
+| CHORE-208 | "Request timed out" (the native fetch timeout error added by CHORE-164) is hard-coded English with no `language` key | Status (2026-10-25): open, low priority, not scheduled. | lane G | lane G batch 3 (MC-508); en key, then the Translator on main after the merge for the other locales (MC-058) |
+| CHORE-210 | `manualCleanup.svelte.test.ts` times out at 5000 ms under full-suite load | Status (2026-10-25, lane A records batch 13): open, low priority; test isolation | lane G | lane G batch 3 (MC-508) |
 | CHORE-354 | CHORE-354 (new) — on a large profile the page does not answer Back within 1 s after the f… | Status (2026-10-22): open, low priority, not scheduled. | lane A | low priority; not scheduled; out of the Back batch, needs a profile first (MC-505 lane A ruling) |
 | CHORE-370 | V3 `setCharacterToIndex` may not mark its write for saving (new) | Status (2026-10-25, Lane F): premise refuted; no fix needed (MC-520 4); residual unchecked | lane F | residual: a different `chaId` and the old block; TODO(evidence) |
 | CHORE-390 | Script cache stage 2: a prompt-pass cache sized to the chat, under a memory cap | Status (2026-10-24): open, not scheduled (MC-541 2) | lane G | waits for the memory-footprint work (MC-119) |
+| CHORE-391 | Converting an older-format save stops with an error for other malformed fields | Status (2026-10-25): open, not scheduled; found by the CHORE-183 Gate 1 review | lane G | lane G batch 3, first (MC-508); not decided whether or how to handle these |
+| CHORE-392 | Tauri non-store writes are not yet atomic: inlay files, search index, streaming writes (the remaining stages of CHORE-55) | Status (2026-10-25): open, not scheduled (`MC-546` 2) | - | not scheduled (MC-546 2); carries no release blocker (MC-181) |
+| CHORE-393 | A character id like `kv:foo` makes a full `.bin` export refuse when the save also has a `foo` data namespace | Status (2026-10-25): open, not scheduled (`MC-546` 3) | lane G | the fix choice comes back to the maintainer first (MC-546 3); then lane G batch 3 (MC-508) |
 | Grid avatar loading (MC… | Grid avatar loading (MC-452, MC-459) — stage A, the thumbnail write leaves the generation… | The rest of stage B is deferred (`MC-463`). | lane E | rest of stage B deferred (MC-463) |
-| CHORE-240 | A full `pnpm test` rewrites `modules.test.ts.snap` with LF line endings | Status (2026-10-22, lane D): open, not scheduled. Test-only. | lane C (cloud) | batch Q |
 | CHORE-241 | MVP chat-open and edit stalls: a quadratic display regex, and chat-phase measurement | S3 and S4 are parked until a re-measure after CHORE-225 (`MC-389`). | lane D | S3/S4 parked until re-measure after CHORE-225 |
 | CHORE-200 | On a Node server, a cold-storage unit over the request body limit fails only after the up… | the boot-pass strike for an oversize unit remains open as a proposed follow-up, not scheduled. | - | Node boot-pass strike residual parked (MC-501) |
 | Android boot batch (202… | Android boot batch (2026-10-09): gates, checks, device passes, accepted limits and open q… | needs review: Open maintainer questions (not decided). | - | COMPLETE per Phase 2 bullet but Q-A/Q-B 'Open maintainer questions' remain |
@@ -475,6 +473,22 @@ Once Phase 2 has landed:
 ---
 
 ## Chores — confirmed bugs found during Stage B, NOT yet scheduled
+
+### CHORE-02 — `toSave.chat` is dead plumbing in the encoder
+
+**Status (2026-10-25, lane A records batch 13): UN-PARKED (`MC-508`).** The maintainer: "un-park 191, 107 and 02." The entry moved back from [Roadmap-parked.md](Roadmap-parked.md) with its text unchanged; lane G's batch 3 owns it (`MC-508`). The PARKED line below is kept as history.
+
+**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D).** Can return on a maintainer decision. If the plumbing is ever touched, the change needs `opus-reviewer` (save-adjacent).
+
+`grep -n "toSave.chat\|RisuSaveType.CHAT" src/ts/storage/risuSave.ts` returns **nothing**. The
+field is populated (`dbChangeEffects.svelte.ts:80-85`) and merged back on failed saves
+(`globalApi.svelte.ts:620-623`), but the encoder never reads it to decide anything — chats persist
+inside the whole-character `CHARACTER_WITH_CHAT` block, gated solely by `toSave.character`.
+
+Consequence: leftover/aspirational plumbing for a per-chat granularity that was never wired up.
+**Useful corollary: a CHORE-01 fix needs no parallel per-chat work.** Decide whether to wire it up
+or delete it; do not leave it looking load-bearing. Low risk either way, but deleting it touches
+`toSaveType`, so treat it as save-adjacent.
 
 ### CHORE-03 — Trash: dedicated bug-hunting pass
 
@@ -1443,28 +1457,9 @@ stage's work, live check or review runs into one that is outside its scope, it i
 a chore rather than fixed inline or left in a conversation. Each entry says how it was found and
 how far the cause was traced, since several were seen in passing and not investigated.
 
-### CHORE-29 — Filling a missing `chaId` brings back a stale copy of the character
-
-**Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): SUPERSEDED on store2 (the fill code remains, the harm is gone: shard entries are rebuilt from the live list and ids are minted); not run through a reload. Candidate to close; closing is the maintainer's (`MC-479`).
-
-**Status (2026-09-24):** found by Gate 1 round 4 of the W0 plan (ledger row 170), which ran it. Not
-fixed. Upstream `characterFormatUpdate` fills a missing `chaId` in the same way.
-
-- A character that was saved without a `chaId` has its block saved under an empty name.
-- When a `chaId` is filled in later (`characterFormatUpdate`, and from W0 on the install fill and
-  `beginWork`), the character is saved under the new id. The old block is never deleted, so a
-  stale copy comes back on the next load.
-- **Replacing a character also leaves stale blocks, and they accumulate.** When a plugin replaces
-  a character with an id-less object, W0 gives it a fresh `chaId`. The replaced character's block
-  is not deleted without a full encoder reload, so each such install leaves one more block.
-  - Gate 2 round 3 of W0 ran 5 installs into slot 1 of a two-character database. A reload then
-    showed 7 characters where 2 were expected: the original, one stale block, and all five
-    installs.
-  - At HEAD the id-less object reuses a single block key instead, and can lose its newest
-    content.
-  - Deleting the replaced block when a slot's `chaId` changes fixes both cases.
-
 ### CHORE-30 — v2.1 `setChar` writes into whatever is selected when the plugin calls it
+
+**Status (2026-10-25, lane A records batch 13): retitled, from lane F's records.** The new title is lane F's: "V2/V3 setChar writes into whatever character is selected". The old title, kept in the heading above: "v2.1 `setChar` writes into whatever is selected when the plugin calls it". Batch 12 recorded the suggestion without applying it; the batch 10 line below already described the retitle. The ticket status is unchanged: technically accepted, merged in `4331440b6`, and lane F's records do not state administrative closeout.
 
 **Status (2026-10-25, lane A records batch 12, from lane F's records):** technically accepted; commit `a2849421a` on `worktree-Lane-F`, merged to `main` as `4331440b6` (full checks green on the first run; pushed). Lane F's retitle suggestion is "V2/V3 setChar writes into whatever character is selected". `setChar` refuses, before any id fill or write, when nothing is selected, the index is out of range, the slot is not a character, or both `chaId`s are present and differ by `idKey` (`MC-520` 1 and 2). Residuals (`MC-520` 1): a character with no `chaId` still replaces whatever is selected; a selected slot with no `chaId` accepts any id. Gate and check rows: ledger rows 3702 to 3708. Lane F's records do not state administrative closeout, so the ticket stays open here.
 
@@ -1482,30 +1477,6 @@ writer rework.
   `getChar` and `setChar` while the user switches overwrites the other character.
 - With nothing selected (`selectedCharID` is −1), it writes `characters[-1]`, which is silently
   lost.
-
-### CHORE-31 — Cold storage may turn an idle group into a plain character
-
-**Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): SUPERSEDED. `buildColdStub` and `stubFromEntry` keep the group type, and the archive engine is blocked on store2. Candidate to close; closing is the maintainer's (`MC-479`).
-
-**Status (2026-09-24):** found in passing by the W0 investigation (ledger row 164). **Untraced for
-impact.** Upstream has the same placeholder literal.
-
-- `makeColdDataForCharacter` does not skip groups, and its placeholder hard-codes
-  `type: 'character'` with no member list. A group idle long enough goes cold.
-- It is unknown whether anything reads `type` or the member list on a cold, unopened group before
-  `changeChar` restores it. That is the question to answer first.
-
-### CHORE-32 — A swap can drop a character's pending edit for one save
-
-**Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): SUPERSEDED. The only caller is inside the legacy loop. The audit's clause that the edit is "re-encoded via `unheldChaIds`" is INFERRED, but the audit's doc-verifier correction 5 found `unheldChaIds` is live store2 code (benign). Candidate to close; closing is the maintainer's (`MC-479`).
-
-**Status (2026-09-24):** found by the W0 follow-up checks (ledger row 169, check 2). Traced, not
-run. Narrow.
-
-- `prepareSaveIteration`'s no-reload branch drops save marks for `chaId`s that are absent from
-  `characters` and does not re-fold them, although the reload branch does.
-- If a character already had a pending edit when a plugin swap briefly removed it from the array,
-  that edit misses that save. It is saved with the next mark.
 
 ### CHORE-35 — Upstream proxy and CDN infrastructure outside Realm and Drive have no agreement gate
 
@@ -1585,6 +1556,8 @@ against the third requirement of upstream's notice. The maintainer chose to leav
 
 ### CHORE-46 — The self-hosted Node server cannot save a database larger than 100 MB
 
+**Status (2026-10-25, lane A records batch 13): assigned to lane F's Node group (`MC-507`).** The maintainer chose "Size all four, fix small (Recommended)" for lane F's Node group, which includes CHORE-120, 62 and 46; lane F sizes first and fixes what is small. The earlier "parked until after A5" note below is superseded for ownership only; no fix is decided.
+
 **Status (2026-09-30):** filed from the memory-footprint stage's persistence-side investigation
 (ledger row 456), under `MC-069`. Present upstream. Not fixed and not scheduled.
 
@@ -1605,750 +1578,6 @@ against the third requirement of upstream's notice. The maintainer chose to leav
   `senior-advisor` (ledger row 459) recommends both: the per-chat stage first, then a streamed
   `/api/write` body into the temp file the handler already renames, rather than a higher limit,
   because `express.raw` buffers the whole body in server memory and a Pi 3 is a target host.
-
-### CHORE-55 — Tauri main-file writes are not atomic (a failed write can leave a partial `database/database.bin`)
-
-**Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): SUPERSEDED. Store2 Tauri writes use a temp file, `sync_all`, rename and a directory sync, and no legacy main file is written on a store2 page.
-
-**Status (2026-10-03, stage 4, latest): stage 4 (cold-storage units, the OPFS switch removal and the copy-back) is done
-by `980791fa` (local, not pushed); Gate 2 closed `[EDITORIAL]`.** Stages 0 to 4 are done. The older status blocks below
-are kept as they were; where this block differs, this block governs. Ledger rows 718 to 731 are the stage 4 work (the
-facts investigation, the phone check, Gate 1 in three rounds, the implementation in two parts, the translations, Gate 2
-in two rounds with the remediation, the commit message draft and its check); rows 732 and 733 are these records and their
-fact-check; rows 734 and 735 are the `MC-181` records and their fact-check. `MC-180` records the maintainer's answers. The text of this block comes from the commit message (`git log -1
-980791fa`, fact-checked by the Gate 2 reviewer before the commit, ledger row 731) and the session's gate and plan files;
-the AVD figures are from `avd\result.md` in the session scratch.
-
-- **What stage 4 changed (from the commit message):** archived chats and plugin data (cold-storage units,
-  `coldstorage/<key>`) go through the one byte store, and the Backup & Files switch that put a profile on OPFS is removed.
-  OPFS receives no new data except from a page whose copy-back could not run.
-  - Units (`coldstorage.svelte.ts`, new `coldUnitLocation.ts`): a unit is a value in the page's byte store under
-    `coldstorage/<key>`; on Tauri the key keeps the existing `.json` suffix (the files already on disk), on Node the server
-    file names are unchanged. The per-platform names are decided in one module.
-    - Read: the store first. Only when it holds nothing, and only on the web, the legacy OPFS file
-      `coldstorage_<key>.json` is read; a unit in the store is never shadowed by its legacy file. A failed store read is an
-      error and never falls through to OPFS. A key the cold-key rule accepts but the store refuses (such as one with a
-      leading dot) reads as kind damaged and writes `false`. A store that cannot be opened reads as kind unavailable.
-    - Write: the page's store only; a legacy file is never written. On Node a write presents the version this page last
-      read or wrote for that unit, so a unit another device changed in between is refused (`false`) as before; a unit never
-      read, or deleted by this page, is written unconditionally. On Tauri a unit write is now the adapter's temp file and
-      rename, so a failed write leaves no partial unit (before, a plain `writeFile`).
-    - Delete (manual clean-up): on the web the legacy OPFS file is removed first, then the store entry; a unit counts as
-      deleted only when both succeeded. The clean-up deletes through the store in groups of 20 on Node and one unit per
-      call elsewhere; a failed call does not stop the next.
-    - Listing (load-time and clean-up start): the store's `coldstorage/` entries (on Tauri only top-level `.json` files),
-      united on the web with the legacy `coldstorage_*.json` names. A browser without `navigator.storage.getDirectory`
-      lists the store only; a `getDirectory` that rejects fails the whole listing, as before.
-    - Tauri boot: leftover temp files in `coldstorage/` are removed before the boot archive pass can write there, when the
-      folder exists.
-  - The OPFS switch is removed: `enableOpfs`, `disableOpfs` and the OPFS panel in `StorageMaintenanceSettings.svelte` (the
-    asset-integrity panel stays). `AutoStorage` no longer selects OPFS, no longer copies LocalForage into it and no longer
-    carries `opfsSwitchNotice`. 13 strings are removed and 5 added (the progress text and four fallback notices), in all
-    seven languages. The English wording says "browser storage" (`MC-180` 7).
-  - Copy-back at startup (new `storage/opfsCopyBack.ts`, run from the web branch of the store selection). A profile with
-    `opfs_flag!` set is classified from the flag, the IndexedDB main file and the IndexedDB `migrated` marker:
-    - flag unset: not OPFS-main; IndexedDB is used and nothing in OPFS is copied;
-    - flag set, IndexedDB holds the main file and no marker: the move to OPFS never completed, so IndexedDB is current;
-      the flag is cleared and nothing is copied. The same applies when the browser cannot write OPFS files (no
-      `createWritable`), because HEAD served IndexedDB there;
-    - flag set otherwise (no IndexedDB main file, or the marker present): OPFS is current and is copied back.
-    The inputs are read again under the exclusive storage-migration lock. The copy writes every hex-named OPFS file into
-    IndexedDB, compares the main file by SHA-256 against its read-back, and only then sets the clean-up marker, removes
-    the flag and removes `migrated` (best effort). The page uses IndexedDB only if the flag removal succeeded. If OPFS
-    holds no main file there is nothing to copy: the flag is cleared and IndexedDB is used. Progress shows through the wait
-    alert every 25 files.
-    - If the copy cannot run or finish (lock not granted, not enough free quota, a changed or failed copy, IndexedDB
-      unsupported), the keys written by the attempt are removed from IndexedDB, the flag and OPFS files are left as they
-      were, and the page runs from OPFS as at HEAD with a notice (another tab, space, no IndexedDB, or the error). The
-      next start tries again. A tab that loses the lock while a reload is pending stops without reading or writing; one
-      that finds the flag cleared by the winning tab uses IndexedDB.
-    - IndexedDB being supported but failing to open, or a deciding read throwing, fails the boot loudly, as at HEAD.
-    - Under the lock, before the space check, IndexedDB entries under the keys OPFS holds are removed, so leftovers of an
-      interrupted attempt do not count against the check.
-    - A final comparison of the OPFS files' name, size and `lastModified` against the snapshot taken at the start rolls
-      the copy back if a fallback tab wrote during it.
-  - OPFS leftovers (`MC-180` 6): after a copy-back the OPFS files stay for one start. At a later start that read an
-    existing main file from IndexedDB and decoded it (not the start that copied, not one that seeded an empty main file,
-    not one that fell back to a backup), the hex-named OPFS files are deleted, each only if IndexedDB holds its key (a raw
-    point lookup). `coldstorage_<key>.json` legacy unit files are never touched by this clean-up. The marker is removed
-    only when every presence check was answered and every deletion succeeded. It runs after the boot and is not awaited.
-  - Archive pass gate (`MC-180` 4): the web boot archive pass runs where the page's store is the IndexedDB store, including
-    browsers without OPFS `createWritable`, and not in a page that fell back to OPFS. It was gated on OPFS file writing.
-  - IndexedDB store: the point-lookup probe is exposed as `createEntryProbe` and is what the copy-back and the clean-up use
-    for presence checks.
-- **Behaviour changes (from the commit message):** a Node unit stored as a 0-byte file now reads as damaged (was missing); a
-  Tauri unit read that fails with `os error 3` while the file is absent is missing everywhere (it was an error; the manual
-  clean-up already skipped that case through its own folder check, which is removed); a browser without `getDirectory`
-  reads an absent unit as missing (was kind unavailable); a cold-safe key the store refuses reads damaged and writes
-  `false`. Fork-specific: nothing here changes the `.bin` format or its unit entries; export reads units, and restore
-  writes them, through the same facade, so a profile with units in the store and units only in legacy OPFS exports both.
-- **Tests (from the commit message):** run against a copy of HEAD, 7 tests fail on their own assertions and are the ones
-  offered as reproducers or as failures of a new assertion: the Tauri unit write that fails part-way leaves the earlier
-  unit readable and no temp, and a successful Tauri write renames a temp over the unit (2); the web archive pass runs for
-  the IndexedDB store without `createWritable`, and does not run for a page that fell back to OPFS (2); the Tauri boot
-  removes only the temp files of interrupted writes from `coldstorage/` (2, both new-behaviour tests of that sweep);
-  `AutoStorage` never selects OPFS (1, new behaviour). Other new tests fail at HEAD only because the module or export
-  they use does not exist, or on assertions of new behaviour; they are labelled new-behaviour tests and are not proof of
-  a fix. Guards, passing before and after: the Node unit file names for both upstream key shapes (UUID,
-  `<uuid>_accessMeta`). Three test files of the removed switch are deleted with it. Everything is fake-backed
-  (`fake-indexeddb`, a fake OPFS root, an in-memory Tauri fs and a fake Node server); the `lastModified` comparison is a
-  logic test of the fake and says nothing about how a real browser updates it.
-- **Phone check (RUN by `perf-analyzer`, not a gate input; `avd\result.md`, ledger row 719):** Android 13 (API 33) x86_64
-  emulator on the i9 host, profile `Pixel_6a_LowRam`, 2 GB RAM, Chrome 109. A standalone page measured IndexedDB put and
-  get of 1, 2, 5, 20 and 50 MB values with 0 mismatches and 0 errors. `avd\result.md` medians (put / get, ms): 1 MB 17 /
-  6; 2 MB 27 / 10; 5 MB 38 / 17; 20 MB 83 / 58; 50 MB 205 / 146. A synthetic 1.9 MB gzip payload read and decoded to 5.27
-  MB of JSON in 93 ms cold and about 40 ms warm. It measured the mechanism, not the app; emulator times are not a real
-  phone's, and backgrounding was not tested. The page was in the foreground for the whole run (6.5 s).
-- **Gate 1 (`opus-reviewer`, plan; ledger rows 720 to 722):** round 1 `[REJECT]`: the losing tab could serve OPFS after
-  the winner cleared the flag (BLOCKER), a commit-step failure path, and no progress. Round 2 `[REJECT]`: the round-1 fix
-  that skipped keys the IndexedDB store refuses would, with the later clean-up, have deleted an upstream asset with a
-  backslash in its name. The Orchestrator replaced the skip with a raw copy of every file and a clean-up that deletes
-  only files whose key IndexedDB holds. Round 3 `[EDITORIAL]`; the plan was accepted.
-- **Gate 2 (`opus-reviewer`, code; ledger rows 727 to 729):** round 1 `[REJECT]`: a start that created an empty main file
-  let the clean-up delete the only OPFS copy (MAJOR); fixed (a boot that seeded an empty main file does not start the
-  clean-up). Round 2 `[EDITORIAL]`: one new test was mislabelled as a regression reproducer and was retitled. The commit
-  message check (row 731) was also `[EDITORIAL]`; seven corrections were applied by the Orchestrator.
-- **Facts packet, refuted premises (ledger row 718):** `disableOpfs` was a button flow, not a boot copy-back; the flag
-  decides which store is current, not the `migrated` marker; `listColdStorageItems` has no production caller. Correction
-  (Gate 1 round 1, F13): the facts packet called HEAD's no-Web-Locks and lost-race `AutoStorage` branches stale-data
-  hazards. That is false: they ran only after the IndexedDB main file was found present and the marker absent, when
-  IndexedDB was current.
-- **Checks on the final tree (RUN by the Orchestrator, as the commit message states them; before two editorial edits, a
-  test retitle and one comment):** `pnpm test` 324 files, 6874 passed, 4 skipped; `pnpm check` 0 errors, 0 warnings;
-  `pnpm build` passes. **Not run:** native Tauri, a real `server.cjs`, a real browser's OPFS (including how
-  `lastModified` behaves), WebKit, Android Tauri.
-- **Open, residual and non-blocking (from the commit message):**
-  - A fallback tab's plugin-unit or asset write that lands in OPFS after the copy-back's final comparison is not carried
-    into IndexedDB; the page is served from IndexedDB afterwards.
-  - A profile whose origin quota cannot hold its data twice stays on OPFS at every start with the space notice; no data is
-    lost. A real browser may free deleted IndexedDB space lazily, so the pre-delete may not help there (the test is
-    fake-only).
-  - OPFS files whose key was deleted from IndexedDB between the copy-back and the clean-up stay in OPFS (quota only).
-  - The snapshot comparison walks every OPFS file twice and the clean-up does one IndexedDB count per file; neither is
-    measured on a large (350k-asset class) profile.
-  - IndexedDB `migrated` is removed best effort, and retried only while the clean-up marker is pending.
-  - Upstream's restore drops a fork-exported v3 plugin unit whose value is not chat- or character-shaped. This exists
-    before this change (INFERRED, not run); it appears to be the G1 limit in the round-trip note below (`MC-176`); that match
-    was not checked.
-  - The restart cost of an interrupted copy-back is accepted: it restarts, with no resume (the Orchestrator's call F3,
-    `MC-180`).
-- **Release blocker status:** stage 0 (the original defect, the non-atomic Tauri main-file write) is done by `d0decfb6`,
-  per its block below, and stages 1 to 4 are done. **Decided (`MC-181`, 2026-10-03):** the maintainer said "CHORE-55 is no
-  longer a release blocker". That clears CHORE-55 as a release blocker. It does not say the ticket is closed or that its
-  later stages are cancelled; they stay as later work (next line).
-- **Next for CHORE-55:** stages 0 to 4 are done. Stage 5 or later (inlays with CHORE-48, the search index, CHORE-46's
-  streaming) is not scheduled. Per `MC-179` 4, `feat/ui-batch` must be merged here before memory step 6.
-
-**Status (2026-10-03, stage 3, superseded by the stage 4 block above where they differ): stage 3 (assets) is done: Gate 2 approved; code commit
-`bf7f2cbf`, then a records commit (local, not pushed).** Stages 4 and 5 or later were open when this block was written. The older status blocks
-below are kept as they were; where this block differs, this block governs. Ledger rows 704 to 713 are the stage 3 work
-(the facts investigation, Gate 1 in two rounds, the implementation in two parts, the translations, the I8 measurement,
-Gate 2 in two rounds with the remediation between them); rows 714 to 717 are the commit message draft and its check, and
-these records and their fact-check. `MC-177` 3 started the stage; `MC-178` records the maintainer's restore answer. The
-Orchestrator's change summary (`s3-commit-constraints.md`) was spot-checked against `git diff -- src` and the untracked
-files (the optional `urlFor`, the extension rule, the sweep batch size, the group size, the notice bounds and the
-`assets/` temp sweep were each found in the diff); the rest is the summary's.
-
-- **What stage 3 changed (production):**
-  - Store layer: the contract gets an optional `urlFor(key)`, implemented only by the Tauri files store
-    (`convertFileSrc(join(appDataDir, key))`, memoised per key; it never reads the file and the string is unchanged). The
-    Tauri store lists a symbolic link when `exists()` resolves it and never descends into one; a link whose target is gone
-    is not listed. The IndexedDB store's `read` decides that a key is absent with a raw single-key `count(key)` on a
-    version-less connection (never creates anything, closes on `versionchange`, reopens once on `InvalidStateError`, any
-    other failure falls back to the key list), instead of listing every key.
-  - `getFileSrc`: on Tauri, asset keys go through `urlFor`, and a key the store refuses resolves `''`; other locations keep
-    the old fallback. On web and Node the bytes come from `store.read`; the service-worker and data-URL paths and the URL
-    strings are unchanged.
-  - `readImage` and `loadAsset` read through the store. A missing asset still rejects on Tauri, now with an `Error` naming
-    the key (before, the plugin's message); on web and Node it still resolves `null`. Off Tauri the result is a
-    `Buffer` view over the bytes the store returned (the wrap itself makes no copy), and a key the store refuses reads as
-    `null`. A stored entry that is not binary rejects (`StoreNotBinaryError`); before, `getItem` returned whatever
-    IndexedDB held.
-  - `saveAsset` writes through the store, unconditionally: on Tauri a temp file plus a rename, so a failed write leaves no
-    partial file; on Node a save is no longer refused with `NodeStorageConflictError` because another device deleted or
-    rewrote the same content-addressed asset after this page read it. The extension is kept when it is 1 to 16 ASCII
-    letters or digits, and is `png` otherwise. On Tauri an existing file (the names are content hashes) is not rewritten.
-    It accepts an `ArrayBuffer` or a typed-array view and rejects anything else with a `TypeError`, and records each key
-    in a page-level "written this page load" set before any I/O.
-  - Restore (`LoadLocalBackup`, `MC-178`): asset entries are written through the store, before the database as before. An
-    entry whose name the store refuses (`StoreInvalidKeyError`) is skipped. After the database is written, and before the
-    success message and the reload, one notice lists the count and the first 20 names, each cut at 100 characters (the
-    string `restoreAssetsSkipped`, with ko, cn, zh-Hant, vi, de and es). Any other write error still aborts the restore.
-  - Exports: the full export lists and reads `assets/` through the store, never exports a temp file, and on Tauri exports a
-    file in a subfolder under its bare name (as the web export already did). A symlink that resolves is exported, as
-    before; a link to a directory is listed and reported missing when it cannot be read; a dangling link is dropped (before, it was reported
-    missing). The partial export keeps only keys starting `assets/`; on Tauri a referenced asset that is absent, or a
-    referenced name that is a directory, is now reported missing (before, skipped silently); on the web a failed read is reported missing (before, it threw).
-  - Startup asset sweep (`cleanChunks`, `assetSweep.ts`): lists and deletes through the store on every platform and never
-    sees a temp file. A key is deleted only when it is in none of the boot keep set, the set of keys written in this page
-    load, and a live reference set re-read from the database once per batch of up to 100 candidates (a candidate is a key
-    the keep set does not protect). This closes a race in which an asset saved during the sweep, but not yet referenced,
-    was deleted. On Tauri only top-level `assets/<name>` keys are candidates and every comparison ignores case. The MC-139
-    rule and the "keep set incomplete, delete nothing" rule are unchanged.
-  - Manual clean-up: asset deletes go through the store in groups of 20 with per-key counts, and a failed group never stops
-    the next; on Tauri the candidates and the live re-check are top-level only and ignore case. Units still use the old
-    Node batch path until stage 4.
-  - Load-time listing: the asset part lists through the store (no temps; top-level keys only on Tauri). On Node this is a
-    second `/api/list` request at load.
-  - Tauri boot: leftover `risu-write-*.tmp` files in `assets/` are removed before anything writes there.
-- **What the restore change is, corrected (F4):** a plan note said the store closes a Tauri `..` traversal. That is
-  false: the plugin's `SafePathBuf` already refused `..` before stage 3. What changed is that a `..` name is now skipped
-  and listed, where the plugin's refusal used to abort the whole restore. On web and Node such a name used to be stored as it was; it is now skipped and listed
-  too, on every platform. The same creatable rule refuses any segment that starts with `.`. On every Tauri platform a
-  name with `< > : " | ? *` or a segment ending in a dot or space is refused for writing (and on Windows `:` is also
-  refused for reading); that the plugin allowed such a name before is INFERRED, not run.
-- **I8 measurement (RUN, Orchestrator, `scratchpad\chore55\i8bench\result.md`):** Chrome 152 in the built-in pane on the
-  maintainer's i9-13900K, which is best-case hardware; synthetic `assets/<64 hex>.png` keys in a separate database. The
-  check for an absent key, median of 9 repetitions: 27.9 ms at 5,000 keys and 446 ms at 50,000 keys with the listing
-  (HEAD); 0.3 ms and 0.4 ms with the single-key count (new). It measures the mechanism with the same calls, not the
-  adapter module (`indexedDbStore.absence.test.ts` pins the adapter's use of `count`). Phones and a Pi will be slower in
-  absolute terms; that is not measured.
-- **Tests:** new `src/ts/storage/tests/assetFacade.test.ts`, `indexedDbStore.absence.test.ts`, `assetSweep.test.ts`,
-  `src/ts/bootstrap.assetSweep.test.ts` and the helper `tauriPathFake.ts` (models the Windows separator rewrite in
-  `join`); the Tauri store, conformance, backuplocal, load-time listing, manual clean-up and bootstrap suites are extended.
-  Run against a git-archive extract of HEAD with the final tests copied in, 79 tests in 9 files fail, each on its intended
-  assertion: 42 reproducers, 27 new-behaviour tests and 10 tests of the new `urlFor` operation; no guard fails there (the
-  Gate 2 reviewer's RUN, ledger row 715). At Gate 2 round 1 the figure was 76, before the remediation tests. Of the four
-  remediation tests, all four fail against a copy taken before that change, and three fail at HEAD; the fourth (no walk
-  when every key is kept) passes at HEAD, which never walked. No assertion was removed or loosened except those two (the
-  dangling-link export guard and the partial-export directory guard), which were changed to the new behaviour (the
-  Orchestrator's reading; the verifier did not audit every migrated assertion). Gate 2 round 1 killed 29 of 32 mutants; in round 2 the mutants `bootLiveOnce`
-  and `manualCountsPerGroup` and 11 more were killed, and `webIncompleteIgnoredInLoop` is equivalent.
-- **Gate 2 (`opus-reviewer`):** round 1 `[REJECT]`, round 2 `[APPROVE]`. F1 (MAJOR, performance, RUN): the web and Node
-  sweep rebuilt the live reference set once per 100 listed keys, about 0.37 s at 5,100 references and about 35 s at 50,500
-  on the i9 (the Gate 2 reviewer's RUN figure, in its hand-back); fixed by batching over candidates only. F2 (MINOR): the Tauri page-set check was case-sensitive; fixed. F3:
-  three false comments; fixed. F4: the plan note above. The Orchestrator verified F1 and F2 at source.
-- **Checks on the final tree (RUN by the Orchestrator):** `pnpm test` 6772 passed, 4 skipped; `pnpm check` 0 errors and 0
-  warnings; `pnpm build` ok. Fake-backed only: an in-memory Tauri file system, `FakeNodeServer` behind the real Node store,
-  and `fake-indexeddb`. The only real-browser run is the I8 measurement. **Not run:** native Tauri, a real `server.cjs`,
-  WebKit, Android.
-- **Open, residual and non-blocking:**
-  - macOS: the fork's own export includes `.DS_Store` from `assets/`, so a fork-to-fork restore shows the notice for it.
-  - Windows reserved names such as `CON.png` are not skipped; the restore still aborts, as at HEAD.
-  - Empty subfolders in `assets/` are left behind on Tauri.
-  - Two nested Tauri keys with the same basename collide as one `.bin` entry, as on the web.
-  - A missing asset on Tauri now rejects with an `Error`, not the plugin's string; on Node a failed save rejects with an
-    `Error` object, not a string; a 0-byte asset reads as a value, not `null` (D9).
-  - `sweepAtomicWriteTemps('assets')` does not recurse into subfolders.
-  - The optional per-batch lowercased page-set `Set` is not done.
-  - Off Tauri a stored entry that is not binary now rejects instead of returning whatever IndexedDB held.
-  - On Tauri `getFileSrc` returns `''` for any failure, not only a refused key; before, a URL was built from a refused
-    key, including one whose path led outside `assets/`.
-- **Next for CHORE-55 (as of stage 3; the stage 4 block at the top has the current line):** stage 4 (cold-storage units, the OPFS switch removal and the copy-back per `MC-173` 1). Per
-  `MC-179` 4, when stage 3 is committed the maintainer is told, and its commits are merged into `feat/ui-batch` so the UI
-  session can take CHORE-68 and CHORE-74.
-
-**Status (2026-10-03, stage 2b, superseded by the stage 3 block above where they differ): stage 2 is done: 2a by `a29335f7` and 2b by `cbaeddd6` (local, not pushed). Stages 3
-and 4, and stage 5 or later, are open.** The older status blocks below are kept as they were; where this block differs,
-this block governs. Ledger rows 691 to 694 are the stage 2b work (the implementation, Gate 2, the commit message draft and
-its check); rows 695 and 696 are these records and their fact-check. `MC-174` records the maintainer's commit decision;
-`MC-175` the maintainer's correction of the compatibility invariant (a two-way `.bin` round trip), with `AGENTS.md` updated.
-
-- **What stage 2b changed (from the commit message):** the remote character blocks (`remotes/<chaId>.<hash>.bin`) are
-  written, skip-checked, read and cleaned up through the byte store.
-  - Writing a block (only Tauri and Node builds with remote saving on write blocks) is an unconditional store write; the
-    decoder reads through the store on every platform. On Tauri it is the adapter's atomic write (temp
-    file and rename), so a write that fails part-way leaves no partial file and keeps the file that was there. On Node a
-    peer's identical content-addressed block is no longer refused with `NodeStorageConflictError`.
-  - The exists-skip lists `remotes/` once per encoder init pass (on Node, one `/api/list`, not one existence check per
-    character). A failed listing fails the encode and nothing is written on a guess.
-  - The Tauri boot sweeps leftover `risu-write-*.tmp` files from `remotes/`, only when it exists, before the first remote
-    write of the page load.
-  - The remote-block clean-up in `bootstrap.ts` (Tauri and web) lists, reads, writes `.meta` and deletes through the
-    store. What it deletes is unchanged: v1 `.local.bin` blocks only, after the 7-day `.meta` rule. The Tauri boot no
-    longer creates `remotes/` (the first write does). On the web the remote blocks are listed separately through the store,
-    after the asset sweep, and a failure of that listing reaches the clean-up's error report.
-  - `saveDb` recognises `StoreVersionConflictError` only as the conflict. The post-commit conflict branch is kept, and a
-    test now reaches it through an injected conflict (the real server cannot send a 409 there).
-  - Not changed: the save format, the file and key names and the bytes written.
-  - Checks, as the commit message states them, RUN by the Orchestrator (`scratchpad\chore55\s2bfinal\`): `pnpm test` 315
-    files, 6624 passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` ok. The session log also records the
-    build with `VITE_RISU_LEGAL_CONFIGURED=TRUE` and a grep finding no `dist` JS file with `FakeNodeServer`, `appStoreMock`
-    or `forageBackedStore` (Orchestrator-run; not in the logs folder).
-    Four comment-and-title-only edits by the Orchestrator (comments in `bootstrap.ts`, `risuSave.ts` and
-    `bootArchivePass.ts`; one test title in `globalApi.nodeSave.svelte.test.ts`) were not followed by a rerun.
-  - Tests: fake-backed (an in-memory Tauri file system and `FakeNodeServer` behind the real `NodeStorage` and Node store;
-    the eleven migrated suites run on a forage-backed stand-in store). No native Tauri, real `server.cjs`, browser or
-    Android run. The commit message lists the reproducers (red against a git-archive extract of HEAD) and the guards.
-- **Facts established in stage 2b (Gate 2 and the commit check):**
-  - Upstream's decoder reads only `remotes/<chaId>.local.bin` (v1) and ignores `v` and `hash` (the Orchestrator verified
-    `git show upstream/main:src/ts/storage/risuSave.ts`). A profile this fork saved with remote saving on is therefore
-    missing those characters on upstream. This comes from the fork's v2 content-addressed blocks and is not changed by 2b.
-    Per the maintainer's correction (`MC-175`), the requirement is a way to go back and forth between upstream and the
-    fork, and an upstream-compatible `.bin` export/import meets it; compatibility of the profile folder itself is not
-    required. Whether a `.bin` exported by this fork restores everything on upstream is under investigation (ledger row
-    697).
-  - An unreadable `.meta` kept the block at HEAD too (the reviewer RAN it). 2b's only change there: when the `.meta`
-    existence check errors, no fresh `.meta` is written (at HEAD a rejecting `exists()` led to one). When the read errors,
-    the block is kept and nothing is written, as at HEAD.
-  - The store's Tauri listing hides only atomic-write temp names. Foreign files, and v1 blocks truncated by older
-    non-atomic writes, are listed.
-  - `saveDb`'s post-commit conflict branch is settled: nothing else in its `try` makes a `NodeStorage` read or write
-    (traced), and only the conditional main-file write can get a 409 from `server.cjs`.
-- **Open, residual and non-blocking:**
-  - A remote file left truncated by the old non-atomic write is still accepted by the exists-skip, which checks existence
-    only.
-  - Android: "absent" is recognised from the "(os error 2|3)" text, which is unproven there. If the text differs, listing
-    a `remotes/` that does not exist yet rejects: with remote saving on, the encoder's init fails and saving does not
-    start for that page load, and the clean-up reports an error (INFERRED from source, not run; for the Android wrapper
-    plan).
-  - Remote writes now pass the store's key rules. A `chaId` with a backslash, a control character, a leading dot, or an
-    empty or dot-led segment (Node and Tauri), 89 bytes or more (Node; it failed at HEAD too), or any of `<>:"|?*` (Tauri,
-    on every platform) fails the save loudly. No app path makes such ids; a plugin or hand-edited data could.
-  - A stale marker: `test.skip('a6 SKIPPED: remotes/ cleanup coverage requires bootstrap.ts ...')` in
-    `src/ts/process/tests/coldStorageDeletionGuards.svelte.test.ts`. The remote clean-up now has tests
-    (`bootstrap.remoteBlockCleanup.test.ts`), so the marker is misleading. Not changed.
-  - Still open from 2a: the IPC fallback flip (TRACED, not run); two tabs on a fresh Node server (a suspicion);
-    `NodeStorage.peekItem` has no production caller; the stage 0 Windows live check (`MC-171` 2); asset-route staleness
-    untested on WebKit and Android; on Android, IPC uses postMessage with JSON (TRACED, not run; for the Android wrapper
-    plan). Settled by 2b: the
-    `saveDb` post-commit conflict branch (kept, now tested via an injected conflict; `NodeStorageConflictError` is no
-    longer recognised there).
-- **Next for CHORE-55 (as of stage 2b; the stage 3 block at the top has the current line):** stage 3 (assets), then stage 4
-  (cold-storage units, the OPFS switch removal and the copy-back per `MC-173` 1).
-
-**Note (2026-10-03, after stage 2b): the upstream <-> fork `.bin` round trip (`MC-175`) was checked (ledger row 697);
-this note supersedes the "under investigation" sentence in the stage 2b block above.** RUN with the real export and import
-code of both trees (fork `cbaeddd6`, upstream `f9728b14`) on a mocked web store and synthetic data; the Tauri and Node
-paths are TRACED only. None of the findings below was caused by CHORE-55.
-- **Fork -> upstream holds, with one gap (G1):** v3 plugin storage units that are not an array or an object with a
-  `character` or `message` key are not restored by upstream's import (its confirm calls them items that "could not be
-  linked to a character", and the values then read null). Upstream's own exporter omits them too, after an "incomplete
-  backup" confirm (RUN: `up.export.report.json`).
-- **Upstream -> fork holds.** Upstream's exporter silently drops assets that are not `.png` (B1). It also leaves the G1
-  units out of its own backup (B2), after an "incomplete backup" confirm whose text names "unknown characters" and items
-  that "could not be linked to a character"; B1, by contrast, is silent. An account-encrypted `.bin` is refused
-  (`MC-081`). The fork-added database fields (archive settings, stub metadata) are ignored by upstream without harm.
-- **Refuted:** the `.bin` holds no remote pointers (it is the whole database as `encodeRisuSaveLegacy`, identical in both
-  trees), so the fork's v2 remote blocks do not affect it. Archived characters and chats round-trip. Device-local stores
-  (inlay media, HypaMemory caches, plugin permissions) are in neither exporter (TRACED from source, not run).
-- **Decided (`MC-176`):** G1 and B1 are upstream's own limits and do not count against the invariant; they are documented
-  in the records now and in the wiki later. The fork's export will warn about G1-type plugin data: CHORE-74.
-- **Decided (`MC-177`, 2026-10-03):** documentation (the wiki, later) is enough to clear CHORE-74's blocker, the G1-type
-  plugin data loss. The maintainer's words do not name G1 or B1. Applying the same clearance to B1, which `MC-176` 1
-  groups with G1 as an upstream limit, is the Orchestrator's reading, not stated. The wiki notes are owed to the Wiki
-  session. Whether the release must wait for the wiki page to exist was not stated. CHORE-74 is a later quality-of-life
-  item and not a release item (`MC-177` 1 and 2).
-- **Untested:** a real Tauri or Node run, upstream's UI for a fork group stub, and entries over 4 GiB.
-
-**Status (2026-10-03, stage 2a): stage 2a done by `a29335f7` (local, not pushed). Stage 2b (remote blocks), stages 3
-and 4, and stage 5 or later are open.** The older status blocks below are kept as they were; where this block differs,
-this block governs. Ledger rows 679 to 688 are the stage 2a work (the read-route investigation, the facts investigation,
-Gate 1, the implementation, the translation, Gate 2 round 1, the remediation, Gate 2 round 2, and the commit message with
-its check); rows 689 and 690 are these records and their fact-check. `MC-173` records the maintainer's decisions for this
-stage. The `AGENTS.md` change in the records commit is `MC-173` 3.
-
-- **The advisor's named investigation (the asset protocol against `readFile`) is answered (ledger row 679).** RUN in a
-  standalone Tauri 2.11.5 probe on Windows with WebView2, not in the app: both routes gave equal bytes in about 0.95 s
-  and the same per-process peak commit on a 155 MiB file (host about 10 times the file size on both routes, which comes
-  from delivering the whole file in one response; the exact cause inside the host is not isolated), on a 64 GB i9
-  desktop, best-case hardware. No staleness after a rename on WebView2. Key encoding is safe on both routes. The IPC
-  absence errors match the stage 1 regex. Not run on WebKit (macOS, Linux) or Android. Two hazards, both TRACED and not
-  run: a failed large IPC read flips the page to Tauri's JSON postMessage fallback, and ranged asset reads re-open the
-  file and are not a snapshot.
-- **What stage 2a changed (from the commit message):**
-  - The main file, at every site, and the numbered backups (the write, the listing and prune, and the internal-backup
-    picker) go through the byte store that `src/ts/storage/store/appStore.ts` selects once per page load. Stage 2b
-    (remote blocks), stage 3 (assets) and stage 4 (cold-storage units) are not moved.
-  - Selection: Tauri uses the desktop files store; the Node server uses the Node HTTP store, signed in through the one
-    `NodeStorage` that `AutoStorage` built; the web uses the IndexedDB store pinned to the IndexedDB driver. A web
-    profile whose main store was moved to OPFS uses a transitional store over its `OpfsStorage`
-    (`opfsTransitionalStore.ts`) until stage 4 (`MC-173` 1). A browser without IndexedDB stops the boot with the new
-    message `browserStorageUnavailable`, in all seven languages (`MC-173` 2).
-  - The Node main file's version is one explicit cell, set by `readMainFile` and by a successful `writeMainFile`; a
-    conditional write with no version rejects and never falls back to an unconditional write. The numbered-backup writes
-    and the prune are unconditional. One Node auth state serves every entry point of the page.
-  - The Tauri boot reads the main file and the backups through the file plugin, not the asset protocol.
-  - Checks, as the commit message states them, RUN by the Orchestrator on the final tree: `pnpm test` 312 files, 6578
-    passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` ok (`VITE_RISU_LEGAL_CONFIGURED=TRUE`). Two
-    later comment-and-title-only edits (the `appStore.ts` header clause and one test title in
-    `internalBackupSnapshotLoad.svelte.test.ts`) were re-run in their two files: 71 passed.
-  - Tests: the commit message lists the reproducers (each red against a git-archive extract of HEAD with the new tests
-    and harness changes copied in), the guards and the new-behaviour tests, and says which tests run over the real
-    `server/node/server.cjs` and which over the `FakeNodeServer` stand-in.
-- **What a user can see (the commit message's "What a user can see", with its corrected wording):**
-  - Node, a main file of 0 bytes: the boot took it for absent and wrote an empty save over it. It now takes the newest
-    decodable backup, and with none the boot fails with the error shown. The boot writes no main file and no seed (as
-    on any boot it may still delete numbered backups beyond the newest 20); the next save replaces the 0-byte file with
-    the data the boot loaded from the backup (a save happens when something changes, so the file stays as it is until
-    then; traced in source, no test runs the next save after these fallbacks).
-  - Tauri, a main file whose read fails with an error other than "not found" while `exists()` also answers false: the
-    boot took it for absent and wrote a seed over it. It now writes no seed or main file at boot and takes the newest
-    backup (the prune may still delete numbered backups beyond the newest 20); the next save replaces the file with that
-    backup's data (traced, not tested; whether that write succeeds depends on why the read failed). Only a file the read reports as not found, and `exists()` confirms
-    absent, is seeded, and the seed now happens after the boot archive session opens.
-  - Web on IndexedDB, a main-key entry stored as null: the boot used to seed over it. It now raises
-    `StoreNotBinaryError` and takes the backup route.
-  - A browser where IndexedDB is missing or cannot be opened: the boot used to continue on LocalForage's fallback driver;
-    it now stops with the new message and reads and writes nothing. The outcome stands for the page; a reload is the way
-    to try again.
-  - Node, a fresh server with no password: the page asked for the password twice (the double prompt was REPRODUCED against
-    the real server, ledger row 682); it now asks once.
-  - Backups: the prune runs after a numbered-backup write, at every Tauri boot, and when any boot falls back to the
-    backups, not after every save. `getDbBackups` only counts names that are exactly `dbbackup-<digits>.bin`, and
-    deletes the listed key itself.
-  - Not changed: the save format, the file and key names and the bytes written. Two devices on one Node server: a stale
-    save is still refused (`MC-159`).
-- **Facts that refuted planning text (ledger rows 679 and 680):**
-  - Read-through is unsound for an OPFS-main profile, because the copy into OPFS never removes a LocalForage key, so the
-    LocalForage copy is stale (the Orchestrator re-read `autoStorage.ts` and `storageMaintenance.ts` `disableOpfs`).
-    This qualifies `MC-167` 2 for the stage 2 kinds; it stands for cold units (stage 4).
-  - "Snapshots" are the `dbbackup` files on the read side, not a separate kind.
-  - The stage 1 note below, that a non-binary entry "stage 2 callers will meet", is false for stage 2 callers: only
-    `AutoStorage` reads `migrated` (it writes it, and `storageMaintenance.ts` removes it); no source in this fork reads
-    or writes `denied_opfs`, so no stage 2 caller meets a non-binary entry.
-  - The boot used the asset protocol at two sites only (the main read and the backup fallback), and three other sites
-    already read main-file-size data through IPC `readFile`. Remote blocks are written only on Tauri and Node.
-  - `AGENTS.md`'s "tauri pinned at 2.9.5" was wrong (`MC-173` 3; the Orchestrator verified `.gitignore` and a local lock).
-  - The Hono server is a static-web deployment: it sets no `__NODE__` and serves no `/api/read`, so it never reaches the
-    Node store (Gate 1 and Gate 2, TRACED). A fact for later stages, not a correction.
-- **Open, residual and non-blocking:**
-  - The IPC fallback flip (above; TRACED, not run).
-  - Two tabs on a fresh Node server: the second tab's boot can fail at set-password, and a reload recovers. A suspicion,
-    not reproduced.
-  - Asset-route staleness is untested on WebKit and Android; the boot no longer uses that route. On Android the stage 1
-    absence regex is not proven and IPC uses postMessage with JSON (TRACED in tauri 2.11.5's `ipc-protocol.js`, not
-    run; for the Android wrapper plan).
-  - `NodeStorage.peekItem` has no production caller left (a Grep of `src/` found one hit, the definition in
-    `nodeStorage.ts`).
-  - `saveDb`'s post-commit conflict branch is unreachable after 2a; settle it in 2b.
-  - The stage 0 Windows live check (`MC-171` 2) is still open.
-- **Next for CHORE-55 (as of stage 2a; the stage 2b block above has the current line):** stage 2b, already in the stage 2 plan (D7, D9 and scenarios S15 to S19): the remote-block encode
-  write (atomic on Tauri, through the store), the exists-skip, the decode read, the boot GC of v1 blocks and `.meta`, and a
-  `remotes/` temp sweep. A residual already known for 2b: a remote file left partial by an older non-atomic write is still
-  accepted by the existence check, because the read has no hash check. Then stages 3 and 4.
-
-**Status (2026-10-03, stage 1): stage 1 done by `d95b07da` (local, not pushed). Stages 2 to 4, and stage 5 or later, are open, not yet gated.** The
-older status blocks below are kept as they were; where this block differs, this block governs. Ledger rows 666 to 676 are
-the stage 1 work (the facts investigation, the three Gate 1 rounds, the implementation, Gate 2 round 1,
-the escalation, the remediation, Gate 2 round 2, and the commit message with its check); rows 677 and 678 are these records
-and their fact-check. `MC-172` records the maintainer's commit decision.
-
-- **What stage 1 added (from the commit message):**
-  - The contract, in `src/ts/storage/store/`: `read`, `write`, `delete`, `deleteMany`, `list(prefix)` and `has`, over whole
-    binary values. A zero-length value is a value and is distinct from an absent key. Every write and delete takes an
-    explicit condition, `{ ifVersion }` or `'unconditional'`; only the Node adapter enforces `ifVersion`. Creatable keys and
-    addressable keys are two rule sets, so a key upstream already stored under an unusual name stays readable, listed and
-    deletable but cannot be created again. `deleteMany` is not atomic and rejects with a per-key report. `urlFor` is not in
-    this stage.
-  - Three adapters: Tauri files (one file per key under AppData, every path passed as `./` + key, writes through
-    `writeFileAtomic`); Node HTTP (the server's hex key encoding, with the revisions held by the caller); IndexedDB on
-    LocalForage `risuai`/`keyvaluepairs`, with the driver pinned and no object store added and no database version forced.
-    OPFS gets no adapter.
-  - One conformance module run against all three adapters, and `fake-indexeddb` ^6.2.5 as a devDependency (`MC-167`). **No
-    production module imports the new code.**
-  - Checks, as the commit message states them, and RUN by the Orchestrator on the final tree: `pnpm test` 302 files, 6482
-    passed, 4 skipped; `pnpm check` 0 errors and 0 warnings; `pnpm build` ok (`VITE_RISU_LEGAL_CONFIGURED=TRUE`). A later
-    test-title-only rename in `nodeHttpStore.test.ts` was re-run in its file (70 passed), and the Gate 2 reviewer's own full
-    `pnpm test` on the tree with the rename gave the same 302 files, 6482 passed, 4 skipped. The tests are conformance and
-    compatibility guards for new code, not regression reproducers; no red-before-green run is claimed. The Tauri adapter is
-    tested only against the test fake, not on a real Tauri runtime.
-- **Scope amendment (`MC-091`, technical prerequisite), in `server/node/server.cjs`:**
-  - A1: `/api/read` sends `x-risu-exists: 1|0` beside `x-risu-revision` (`server.cjs:1273`). Without it a stored empty file and
-    a missing file give the same empty response.
-  - A2: `/api/list` returns only whole, even-length hex names (the filter at `server.cjs:1496`). A2 is the one change a user can
-    see: on Node, `/api/list` no longer returns `''` (decoded from the `__` files) or keys decoded from `.tmp-` write temps.
-  - A2 also removes a phantom that could make `encodeRemoteBlock`'s `keys().includes` skip a remote block whose write never
-    finished. The mechanism is TRACED. The frequency is INFERRED: only a crash in the middle of a write leaves an orphan temp.
-- **Facts that refuted planning assumptions (the stage 1 facts packet, ledger row 666):**
-  - Node `/api/list` returned `''` and `.tmp-` duplicates (RUN against the real server).
-  - A 0-byte value read as missing on Node (RUN; the Orchestrator re-read `readItem` in `nodeStorage.ts`).
-  - The Tauri capability has no `stat`, so there is no mtime version (the Orchestrator re-grepped `migrated.json`).
-  - The `risuai` store holds non-binary entries: `migrated` (a boolean written by `AutoStorage`) and `denied_opfs` (read by
-    upstream code and never written by any source, so only a hand-set value can exist).
-  - `risuSaveCache` is a separate LocalForage database of objects, not bytes. It stays a side store (the stage 1 plan's
-    scope); the advisor's contract sketch below records it as a load-bearing write-ahead copy that is never cleaned up.
-- **Prerequisites and notes for stages 2 to 4** (the Orchestrator's, from the gates):
-  - Every stage 2 to 4 caller chooses a condition explicitly. Today `NodeStorage` makes every key it wrote, or read through
-    `getItem`, conditional implicitly (`peekItem` does not adopt the revision). A conflict's reported version is diagnostic only and is never the next `ifVersion` for the same bytes.
-  - Version 0 on Node means "the server never bumped this key's revision", not "absent". Upstream's server kept no revisions,
-    and a corrupt `__revisions.json` resets the counters. A create-if-absent reads first.
-  - The IndexedDB driver is pinned: where IndexedDB is missing, every operation rejects (AutoStorage falls back today).
-  - Through the IndexedDB adapter, a stored non-binary entry under an app key rejects loudly on read; stage 2 callers will
-    meet that.
-  - Stage 3: sanitize the asset extension when a new asset is created. The asset key is `assets/<id>.<fileName.split('.').pop()>`
-    (`src/ts/globalApi.svelte.ts:490` and `:493`, checked by the writer). Whether existing oddly named assets are renamed is a
-    maintainer question for stage 3.
-  - Stage 0 temp files will appear in `assets/`, `remotes/` and `coldstorage/` once the Tauri adapter writes there. Their
-    readers and the `database/`-only boot sweep must be re-derived then (the stage 0 note below, restated as a stage 2 to 4
-    prerequisite).
-  - A Node startup sweep of orphan `.tmp-` files. They cost disk only, now that they are unlisted.
-  - On Tauri a key cannot also be a directory prefix of another key. Node and IndexedDB allow it. No app key collides.
-  - Single auth state in stage 2: the Node adapter takes an injected auth provider, and two `checkAuth` flows must not both
-    prompt.
-  - Still open from stage 0: the Windows live check (`MC-171` 2), and the advisor's asset-protocol against `readFile`
-    investigation before stage 2 (the Tauri adapter reads with `readFile` for now).
-  - Not handled (edge cases with no caller): a Windows `list` prefix containing `\`; Windows reserved device names in the
-    creatable rule; the duplicated 8000-byte request budget in `nodeHttpStore.ts` and `manualCleanup.ts`.
-- **Next for CHORE-55 (as of stage 1; the stage 2b block at the top has the current line):** stage 2 (the main file, numbered backups, snapshots, remote blocks, the boot read, the boot archive
-  commit, restore and the internal-backup load). It is not yet planned. The asset-protocol against `readFile` investigation
-  comes first.
-
-**Status (2026-10-03, stage 0): stage 0 done by `d0decfb6` (local, not pushed). Stages 1 to 4, and stage 5 or later, are open, not yet gated.** The
-older status blocks below are kept as they were; where this block differs, this block governs. Ledger rows 658 to 663 are
-the stage 0 work (the facts investigation, both gates, the implementation and the commit message); `MC-171` records the
-maintainer's commit decision.
-
-- **What stage 0 changed (from the commit message):**
-  - One helper, `writeFileAtomic` in `src/ts/storage/tauriAtomicWrite.ts`, writes the new bytes to a new file in the
-    target's own directory (`risu-write-<16 hex>.tmp`, created with createNew) and renames it over the target. The target
-    is never opened for writing. A failed write or rename removes its own temp file as best it can and rethrows the
-    original error. The helper takes and releases no lock.
-  - It is used at the six sites of the table below: the `saveDb` main write (under `dbWriteLock`), the `saveDb`
-    numbered-backup write (after the lock is released), `LoadLocalBackup`, `loadInternalBackup`, the Tauri `writeMainFile` of
-    the boot archive pass (`createProductionBootArchiveDeps`; the boot's write-back of the pre-pass bytes goes through it
-    too) and first launch in `loadData`.
-  - A boot sweep, `sweepAtomicWriteTemps('database')`, runs in `loadData`'s "Checking Files" block, after the database
-    folder is checked and made, before the first-launch write and before the boot archive session opens. It removes only
-    files whose name matches the temp pattern exactly. A failing listing or removal is logged and does not stop the boot.
-  - A bounded retry: the rename is retried up to four times, after 50, 100, 200 and 400 ms, when the error text ends in
-    "(os error 5)" or "(os error 32)". Any other error fails at once.
-  - No fsync (the plugin has none). This protects against a failed or interrupted write, not against power loss.
-  - Temp names never start with "." and never contain "dbbackup-", so the backup list, the prune, the internal-backup
-    picker and the manual clean-up's snapshot listing never see a temp file as a backup.
-  - Tests and checks, as the commit message states them: one reproducer per site; against a stand-in for the unchanged
-    behaviour (the helper module swapped for a plain `writeFile` of the target and a sweep that does nothing, over the site
-    and existing test files; the helper's own unit tests were not part of that run) all six reproducers failed for the
-    intended reason, and 17 tests failed in all; 12 mutants of the helper were all killed. RUN by the
-    Orchestrator on the final tree (the content of `d0decfb6`): `pnpm test` 298 files, 6268 passed, 4 skipped; `pnpm check`
-    0 errors and 0 warnings; `pnpm build` ok (`VITE_RISU_LEGAL_CONFIGURED=TRUE`).
-- **The filing's `TODO(evidence)` items 2 and 3, answered as far as they go:**
-  - **Item 2, a rename over an existing file:** RUN in a standalone Rust probe only (rustc 1.98.1, NTFS, Windows 11), not
-    in the app. With the target held open by another handle, the rename replaced the target when the holder shared delete
-    and failed with "os error 5" when it did not. The success relies on std's rename retrying through `FileRenameInfoEx`
-    after `MoveFileExW` returns ACCESS_DENIED (the std source; TRACED). CI builds with an unpinned stable toolchain, so the
-    std behind a build is not fixed. On macOS and Linux the rename replacing the target is INFERRED, not run.
-  - **Item 3, other Tauri writes:** for `database/`, no other Tauri write exists (a Grep). The other truncating Tauri
-    writes (assets, cold units, remote blocks, the meta file and exports) are unchanged by stage 0 and are still assigned to
-    no stage's atomic-write work.
-- **Open check (`MC-171` 2): not run.** The stage 0 live check on Windows in the real desktop app: save a few times, then
-  restore a backup (the option text the maintainer chose). The Orchestrator's addition, not in `MC-171`: also try a
-  program that holds the file without delete-share. It can be done whenever the maintainer next runs the desktop app on
-  Windows. It is not a gate on stage 1.
-- **New loud failure mode (from the commit message; the maintainer was told before the commit approval).** A program that
-  holds `database/database.bin` open without delete-share can block the rename. After the retries the write rejects, the old
-  file stays intact, and `saveDb` shows "Failed to save data, retrying…" and retries; from the fifth consecutive failed
-  attempt on it shows an error alert on each attempt. The save lands once the holder closes. Before stage 0 a holder that
-  shared read and write did not block the truncating write. A permanent ACCESS_DENIED (a read-only target, for instance)
-  is retried the same bounded number of times before it fails. This is a workflow change, not data loss.
-- **Corrections to the earlier text** (checked at HEAD `d0decfb6` by the writer unless noted):
-  - `restoreWriteFailed` is `src/lang/en.ts:1692` and `internalBackupWriteFailed` is `en.ts:1695` (the filing said 1672
-    and 1675).
-  - `src-tauri/Cargo.lock` locks `tauri` at 2.11.5 (`Cargo.toml`'s "2.9.5" is a caret requirement); `tauri-plugin-fs` is
-    2.5.2 as filed. The JS `@tauri-apps/plugin-fs` is 2.4.5 (`package.json`).
-  - The numbered-backup write runs outside `dbWriteLock` (the packet).
-  - The boot write-back in `installMainFileAsItIs` goes through the same `writeMainFile` dependency, so stage 0 covers it
-    (the packet).
-- **Notes for later stages** (the Orchestrator's, from Gate 1 and Gate 2; non-blocking):
-  - The temp naming rule and the boot sweep were derived for `database/` only. When the helper serves `assets/`,
-    `coldstorage/` or `remotes/` (the later stages of `MC-167`), both must be re-derived for the readers of those
-    directories.
-  - `encodeRemoteBlock` (`src/ts/storage/risuSave.ts`), when `skipRemoteSaving` is set, accepts an existing
-    content-addressed remote file on an `exists` check, so a remote file left partial by a crash would be accepted as present. This belongs to the remote-blocks stage
-    (stage 2).
-  - SUSPECTED, not run: temp-then-rename replaces a symlinked `database.bin` with a regular file and, on Unix, gives the
-    new file default permissions rather than the old mode. No known user setup does this.
-  - The test fake `tauriFsFake.ts` never emits "os error 17", so the Unix branch of the "temp already exists" carve-out is
-    untested.
-- **Next for CHORE-55 (as of stage 0; the stage 2b block at the top has the current line):** stage 1: the contract, three adapters
-  and one conformance suite, with no callers moved (`fake-indexeddb` is approved by `MC-167` 6). The advisor's named
-  investigation before stage 2, the Tauri boot read through the asset protocol against `readFile` on a large file, is still
-  open.
-
-**Status (2026-10-01):** filed from memory stage 1 step 5b's Gate 2 round 1 (`opus-reviewer`,
-non-blocking N2; Gate 2 is ledger row 530). Open. Scheduled with CHORE-51
-and CHORE-52, after CHORE-53 and CHORE-43/CHORE-54, before steps 6 and 7 (`MC-151` 3). It predates step 5b,
-and 5b adds a third write site with the same shape (the internal-backup load); the reviewer found the same shape in `LoadLocalBackup` and in `saveDb`.
-
-- **Mechanism (the reviewer's trace, not run; the writer re-read the plugin source):**
-  - `tauri-plugin-fs` 2.5.2 (the version in `src-tauri/Cargo.lock`) `write_file` opens the target with
-    truncate set, then writes the body with `write_all`. For a JS call that does not set `append`,
-    `truncate` is `!append`, so true (`commands.rs`, `write_file_inner`, lines 1078-1158 in the cargo
-    registry copy; `WriteFileOptions` at `:1059-1072`). There is no temp file and no rename. The file
-    is empty between the truncate and the end of the write.
-  - Tauri writes the main file through this call in three places: `saveDb`
-    (`globalApi.svelte.ts:1359`), `LoadLocalBackup` (`backuplocal.ts:714`) and the internal-backup
-    load (`internalBackup.ts:156`, committed with step 5b as `448962f4`; line re-checked at HEAD). A
-    fourth call, in `bootstrap.ts:94`, runs only when `database/database.bin` does not exist, to create
-    an empty legacy save (the writer's Grep of non-test `src/ts`). `upstream/main` has the same
-    `writeFile('database/database.bin', ...)` call in `globalApi.svelte.ts` (line 455) and in
-    `backuplocal.ts` (line 562) (checked by the writer, `git show` and a text search).
-- **Consequence (INFERRED from the mechanism; not run, and how likely a failed or interrupted write
-  is was not measured):** a write that fails or is cut off after the truncate can leave an empty or
-  partial `database/database.bin`. The wording "Your current database was not changed."
-  (`restoreWriteFailed`, `en.ts:1672`, `LoadLocalBackup`) and "Your current data was not changed."
-  (`internalBackupWriteFailed`, `en.ts:1675`, step 5b) would then be untrue.
-- **What recovers it today:** at boot, if decoding the main file throws, the Tauri branch tries the
-  numbered backups, newest first (`bootstrap.ts:112-139`; `getDbBackups` sorts descending,
-  `globalApi.svelte.ts:1566`).
-  - `TODO(evidence)`: whether a truncated or partial main file makes `decodeRisuSave` throw (so the
-    backup fallback runs) or decode in part. The Gate 1 round 1 reviewer traced that the default
-    decode drops a block that fails its data checksum rather than throwing; the truncation case was
-    not traced.
-- **Existing atomicity work, for comparison:** the Node server's `/api/write` already writes to a
-  unique temp file in the same directory and renames it over the real path (Phase 1 item 9,
-  Roadmap.md:75). For OPFS, Phase 0 awaited `stream.close()` in `OpfsStorage.setItem` (Phase 0 table,
-  `:26`), and Phase 1 item 5 says "its atomicity bug is fixed (Phase 0)" (`:71`). The Tauri main-file
-  writes have no equivalent.
-- **Fix direction (non-normative; the writer's, not the reviewer's):** the Node precedent is write to
-  a temp file in the same directory, then rename. The plugin has a `rename` command (`commands.rs:794`).
-  - `TODO(evidence)`: whether this app's Tauri capability allows `rename`, and whether a rename over an
-    existing file is atomic on each desktop platform.
-  - `TODO(evidence)`: other Tauri writes through the same plugin call (assets, cold-storage units,
-    numbered backups) were not surveyed.
-
-**Status (2026-10-02, later): open; the scope is rewritten by `MC-167`. Placed after CHORE-51 and CHORE-52, with stage 0
-first.** The text above is the 2026-10-01 filing and is kept; where this block differs, this block governs. The three
-`TODO(evidence)` items above are only partly answered below: item 1 (a truncated file) is answered by the decode RUN for
-the cuts it tried; item 2: the capability is confirmed (`src-tauri/capabilities/migrated.json`, `fs:allow-rename` with an
-`$APPDATA` scope), but whether a rename over an existing file is atomic is only INFERRED; item 3 (other Tauri writes) is
-answered only for the numbered backup, see the sites not covered below. CHORE-43 and CHORE-54 are closed (`71e75d9d`).
-
-**New scope (the maintainer's direction, `MC-167` 1, 2, 4, 6 and 7).** One storage interface that every save and load goes
-through, with three adapters (Tauri files, Node HTTP and one browser store, which is IndexedDB), and no code that bypasses
-it for the persisted kinds. OPFS is not written again: new writes go to IndexedDB only, data missing there is read from
-OPFS so upstream's archived chats keep working, there is no migration step, and the OPFS switch in Backup & Files goes
-away. `fake-indexeddb` may be added as a devDependency (not yet added). Inlays move under the interface in a later stage,
-with CHORE-48. Cross-chat search through the interface is a later feature (`MC-167` 8), not scheduled. **The original
-defect, no write-then-rename on the Tauri main file, stays as stage 0.**
-
-**Stages (planning basis, not yet gated).** These are the `senior-advisor`'s recommended strategy (ledger row 635),
-accepted by the Orchestrator as the planning basis (`MC-167`, the Orchestrator's calls). They are not a gated plan: no
-stage has a plan, a contract or tests yet.
-- **Stage 0:** an atomic path write (temp file, rename, remove the temp file on failure, a bounded retry for Windows
-  sharing violations) at the six Tauri sites below. About 60 lines plus tests (sizing packet, question 8). Crash
-  atomicity only; there is no fsync (see below). This is the Tauri adapter's write primitive later, so it is not
-  duplicated.
-- **Stage 1:** the contract, the three adapters and one conformance suite, with no callers moved (about 400 to 600 new
-  lines, sizing packet question 8). `fake-indexeddb` is approved for this stage.
-- **Stage 2:** the main file, numbered backups, snapshots, remote blocks, the boot read, the boot archive commit, restore
-  and the internal-backup load.
-- **Stage 3:** assets, through a `urlFor` operation (a bytes `get` cannot replace it: sizing packet question 2).
-- **Stage 4:** cold units with the read-through to OPFS, the removal of the OPFS main-database switch, and the copy-back
-  of a hand-set `opfs_flag!` at boot (`disableOpfs` already does that copy-back, per the advisor).
-- **Stage 5 or later:** inlays (CHORE-48), the search index, CHORE-46's streaming.
-- **Gating (the advisor's):** never gate stage 2 together with stage 3, or stage 2 with stage 4; `opus-reviewer` gates every
-  stage.
-- **The advisor's contract sketch:** `read`, `write`, `delete`, `list(prefix)`, `has` and `urlFor`; binary only, whole
-  values; no multi-key transaction, no GC, no chunking; a conditional write must never degrade silently, with a capability
-  flag. The version is a value: `read` returns the bytes and a version, and `write` and `delete` take `ifVersion`, so
-  `peek` disappears. LocalForage `risuai`/`keyvaluepairs` is kept with its driver pinned to IndexedDB, as
-  `avatarThumb.ts` does. `risuSaveCache` is registered as a load-bearing write-ahead copy and never cleaned up. The
-  non-strict install policy at startup is left alone (CHORE-70).
-- **Next investigations the advisor named:** the Tauri boot read through the asset protocol against `readFile` on a
-  155 MB file (the advisor's test size, not a limit: `MC-167` 3), before stage 2; a stage 0 live check on Windows, rename against an open handle; before stage 4, the largest
-  unit from the synthetic profile and a put/get on a phone.
-
-**The six Tauri write sites (the sizing packet's P2; the writer opened each line at HEAD `71e75d9d`).** The sizing
-packet found five `writeFile` calls to `database/database.bin` and a numbered-backup write of the same shape:
-
-| Site | What it writes |
-|---|---|
-| `src/ts/globalApi.svelte.ts:1359` (`saveDb`) | the main file |
-| `src/ts/globalApi.svelte.ts:1384` | the numbered backup `database/dbbackup-<ts>.bin` |
-| `src/ts/drive/backuplocal.ts:714` | the main file, in `LoadLocalBackup` |
-| `src/ts/drive/internalBackup.ts:156` | the main file, in the internal-backup load (`448962f4`) |
-| `src/ts/storage/bootArchiveHost.ts:78` | the main file, in the boot archive commit (`9b312962`); **not in the 2026-10-01 filing** |
-| `src/ts/bootstrap.ts:106` | the main file, on first launch (the filing said `:94`) |
-
-The sizing packet counted no `rename`, `copyFile`, `stat` or `truncate` call to the fs plugin in non-test `src` (a RUN
-count); the writer did not re-run it. The writer confirmed that `src-tauri/capabilities/migrated.json` lists
-`fs:allow-rename` and `fs:allow-remove` with an `$APPDATA` scope. The packet adds that `rename` is `std::fs::rename` in the
-plugin (not re-read by the writer). `upstream/main` has the same non-atomic write (filing text above). Boot reads the main
-file and the backups through the asset protocol (`fetch(convertFileSrc(...))`), not through fs IPC (sizing packet, P3).
-
-**Tauri `writeFile` sites that stage 0 does not cover, and that no stage yet assigns atomic-write work to** (the writer
-opened each line at HEAD `71e75d9d`): `src/ts/globalApi.svelte.ts:492` (assets), `src/ts/drive/backuplocal.ts:647`
-(assets), `src/ts/process/coldstorage.svelte.ts:346` (cold units), `src/ts/storage/risuSave.ts:804` (remote blocks) and
-`src/ts/bootstrap.ts:845` (a meta file). The stages above move assets (stage 3), remote blocks (stage 2) and cold units
-(stage 4) onto the interface, but none of them is stated to make these writes atomic; the stage plans have to say so.
-
-*Dated note (2026-10-03, after stage 3; the list above is kept as written):* of these five sites, only the cold-unit site
-in `coldstorage.svelte.ts` (stage 4) is still outside the store. The remote-block and meta sites were moved by stage 2b
-and the two asset sites by stage 3. The extension prerequisite in the stage list is met: new assets get a sanitized
-extension (1 to 16 ASCII letters or digits, else `png`), and existing asset names are kept as they are. The remote-block
-and meta sites were already store calls before stage 3 (moved by 2b). The other `writeFile(` hits in `src` are not the
-Tauri plugin: `process/mcp/filesystemclient.ts` (a class method) and `process/pyworker.ts` (`py.FS.writeFile`).
-
-*Dated note (2026-10-03, after stage 4; the list and the note above are kept as written):* the cold-unit site in
-`coldstorage.svelte.ts` is now a store call (`980791fa`; on Tauri a unit write is the adapter's temp file and rename). No
-Tauri `writeFile` site from the list above remains outside the store. A grep of `writeFile\(` in `src` at `980791fa`,
-excluding `*.test.ts`, finds `globalApi.svelte.ts` (line 89, a write into the Download folder; line 2395,
-`TauriWriter.write`, a user-chosen export path), the temp write inside `storage/tauriAtomicWrite.ts` (line 98), the
-test fake `storage/tests/tauriFsFake.ts` (line 168), and the two non-plugin hits named above.
-
-**Why stage 0 matters: the decode cut RUN (ledger row 636).** A synthetic save (four characters, 686 bytes) was cut at
-many points and decoded with `decodeRisuSave`, strictly and not strictly, with an empty and a populated `risuSaveCache`.
-- **Throws in both modes, so the backup fallback runs:** a 0-byte file, a cut inside the header, a cut in the middle of
-  a block, and a cut before the root block ends. This answers the filing's `TODO(evidence)` about a truncated file, for
-  these cuts. The sizing packet's "0-byte file: NOT TRACED" is answered the same way.
-- **Does not throw:** with an empty `risuSaveCache`, a non-strict decode of a cut at any of the 10 block boundaries from
-  the one right after the root block to the one before the last block, and of the file minus one byte, returns a tree with
-  characters missing (for example 0 of 4 characters at the boundary right after the root, 3 of 4 at length minus 1). With a populated `risuSaveCache` the same cuts decode to
-  a full tree: the cache silently completes the file (only a cache from the same generation was tested). A strict decode
-  throws at every cut except the full length.
-- **Boot (TRACED by the writer's read of `src/ts/bootstrap.ts:425-455` at HEAD `71e75d9d`, not run):** `decodeMainFile`
-  falls back to a non-strict decode when the strict decode throws, and `resolveArchiveOutcome` installs a non-strict tree
-  without the archive pass and without trying a backup. The result is a startup with characters silently missing; that
-  the next save keeps the loss is INFERRED, not traced. That startup decision is CHORE-70. The question put to the
-  maintainer (the Orchestrator's text) began "Confirmed by test", but only the decode was RUN; the boot path was TRACED.
-  It said that after about 100 minutes of saving all 20 backups could be newer than the damage; the basis is the sizing packet's note that a
-  backup is written at most every 5 minutes and 20 are kept (20 times 5 is 100; arithmetic, not run).
-- **What stage 0 gives:** protection against a write cut off by a crash or a failed write. It does not fsync, so it is not
-  power-loss durability (INFERRED, sizing packet question 2). A rename over an existing file on Windows is INFERRED to
-  replace it; the stage 0 live check on Windows is named above.
-- **The decode is RUN; the boot is TRACED.** The results file records decode outcomes only; the Tauri boot was not run.
-  The Orchestrator traced the Tauri boot branch at `71e75d9d`: `src/ts/bootstrap.ts:124-125` passes the main file to
-  `decodeMainFile` and then `resolveArchiveOutcome`, and reads the backups (`:145-172`) only when that outcome is not an
-  install.
-
-**What the sizing found (ledger row 633; sizing packet `chore55\sizing-packet.md` in the session scratchpad, not a repo
-file; the Orchestrator re-verified P1 and P4).**
-- **Upstream writes cold-storage units to OPFS on web** (P1; `git show upstream/main:src/ts/process/coldstorage.svelte.ts`,
-  the non-Node, non-Tauri branch, `coldstorage_<key>.json`). A same-origin upstream-to-fork user has data there, and a
-  pointer whose unit is gone reads as `missing`. That is why OPFS stays readable (`MC-167` 2). Upstream's `opfs_flag!`
-  main store is set by hand only, with no UI upstream, and the LocalForage copy is never removed, so a boot that ignored
-  the flag would load a stale `database.bin` (`autoStorage.ts:147-152` refuses this today, per the packet).
-- **Tauri is not the only bypass** (P3). Cold storage bypasses `AutoStorage` on every backend (a cast to `NodeStorage` on
-  Node, direct fs on Tauri, direct OPFS on web). The packet also lists ten other localforage database names, raw
-  IndexedDB, the Cache API and 56 `localStorage` lines, which the scope above does not cover. "No bypass" over the persisted
-  kinds is about 36 `forageStorage` lines, about 70 Tauri fs lines and 7 OPFS lines in about 17 files (the sizing packet's
-  counts; the grep patterns were not recorded).
-- **Remote saving is off by default** (P4; only a checkbox sets it), so `database.bin` is one body per save. On Node a body
-  is capped at 100 MiB (`bodyLimit.cjs`), and `bootArchivePass.ts:807` refuses a commit over the limit. Nothing chunks.
-- **The sized options** were costed before the maintainer chose read-through. Option A (everything to IndexedDB, with a
-  migration) was about 700 to 1000 changed lines in about 17 files with a mandatory migration under an exclusive lock;
-  option B (main database only) cannot drop OPFS. The read-through the maintainer chose (`MC-167` 2) was not sized
-  separately; the advisor proposed it after the sizing, and the CHORE-55 plan has to size it.
-- **Load-bearing risks (the packet):** `risuSaveCache` silently completes torn main files in non-strict decode, a hidden
-  recovery path outside `AutoStorage` that must be kept; boot installs a non-strict decode without trying a backup
-  (CHORE-70); `OpfsStorage.keys()` filters non-hex names, so the key spaces must stay separate; Node `/api/list` returns
-  stray keys (`__revisions.json`, `.tmp-` leftovers) that only prefix filters tolerate; cold-unit file naming differs per
-  backend, so the key mapping must live in the adapters; the Node revision is adopted only by `getItem` and `setItem`, and a
-  generic adopting `get` would bring back the overwrite the 409 prevents.
-- **Not measured:** IndexedDB against OPFS latency for 1, 10 and 50 MB units; IndexedDB per-value ceilings on iOS and
-  low-end Android (INFERRED, undocumented locally); whether real users have OPFS data (treated as present).
-
-**Cross-file atomicity (the maintainer's question S2; the sizing packet's Q9).** The `saveDb` order is: the encoder's remote
-blocks and `risuSaveCache`, then the root block under the write lock, then the BroadcastChannel, then an optional backup,
-then the prune.
-- The root is atomic on Node and IndexedDB; on OPFS it is INFERRED atomic on close (sizing packet Q2); on Tauri it can
-  be torn or empty (this ticket).
-- Remote blocks are hash-named since `86f59105` (the Stage 3a naming), so a crash between the blocks and the root leaves
-  harmless orphans that are never reclaimed; a stale client's root is rejected by the Node revision check (409). This
-  applies with remote saving on, on Tauri and Node only.
-- On Tauri a torn newest backup is possible; boot tries the newest first and moves on when decoding throws.
-- Orphan collection (GC) is absent (0 hits); Report 08 recommends not building it; no open ticket. The interface needs a
-  revision token on `get`, `put` and `delete`, an atomic replace and `has`. Only a GC would need a multi-key
-  precondition, and deferring it forces no change to the interface if the revision token and a batch delete are in the base
-  contract. If wanted, a GC is about 200 to 300 lines plus tests (not independently sized). Web multi-tab has no write-time
-  conflict check on IndexedDB and OPFS (INFERRED).
-- **Not decided:** whether a cross-file atomicity mechanism is built (`MC-167` 10).
-
-**Related:** `MC-167`, `MC-171`, `MC-172`, `MC-173`, `MC-174`, `MC-175`, `MC-089` (point 1 superseded), `MC-011`; CHORE-43/54 (closed), CHORE-48
-(inlays), CHORE-51 and CHORE-52 (closed by `59881788`), CHORE-59 (the same family), CHORE-70, CHORE-46, Report 08; commits
-`d0decfb6` (stage 0), `d95b07da` (stage 1), `a29335f7` (stage 2a) and `cbaeddd6` (stage 2b); ledger rows 633, 635, 636,
-658 to 665, 666 to 678, 679 to 690 and 691 to 696.
 
 ### CHORE-60 — Release identity: the desktop build still carries upstream's identity
 
@@ -2551,82 +1780,9 @@ from upstream has been deleted."); afterwards `gh release list --repo yor42/Risu
 - **Related:** `MC-011`, `MC-085`, `MC-086`, `MC-087`, `MC-089`, `MC-092`, `MC-153`, `MC-154`, `MC-155`, `MC-156`,
   `MC-157`; CHORE-35; ledger rows 536 to 539 and 552 to 554.
 
-### CHORE-61 — The save encoder silently loses presets, modules or a character when a character's `chaId` equals a fixed block name, and cannot write a `chaId` over 255 bytes (observed at encoder level only)
-
-**Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): SUPERSEDED, and lane A's premise is refuted: the legacy and V0 encoders do not key blocks in one plain object. The reachable edge is a `kv:<namespace>` `chaId` (doc-verifier correction 3: an export failure, very rare). Candidate to retitle or park.
-
-**Status (2026-10-01):** open, **not scheduled and not placed in the work order**; type: data loss candidate.
-Filed from memory stage 1 step 5d-1's Gate 1 round 1 (`opus-reviewer`, ledger row 558). **Observed** by that reviewer
-in a scratch run of the real `RisuSaveEncoder`, not in a running app and not through `saveDb`. **Not known:** how a
-live character comes to hold such a `chaId`, so the reach of the defect is UNKNOWN. Present at HEAD `e8cf50de`
-(`risuSave.ts` was not changed by 5d-1). Whether upstream's encoder behaves the same was not tested; the CHORE-28
-entry records that upstream `main` has the same one-block-per-`chaId` code.
-
-- **What exists (read at HEAD `e8cf50de`, 2026-10-01):**
-  - The encoder keeps one block per key in a plain object, `private blocks: { [key: string]: Uint8Array } = {}`
-    (`src/ts/storage/risuSave.ts:254`).
-  - `init` writes the fixed blocks under their own names: `root`, `preset`, `modules`, `loadouts`, `plugins` and
-    `pluginStorage` (`:340-374`), and `config` (`:452`). It writes each character's block under `String(chaId)`
-    into the same object (`:393-447`; the single-holder write is `this.blocks[key] = ...` at `:439`). `root`
-    is written last, after `__directory = Object.keys(this.blocks).filter(key => key !== 'root')`
-    (`:646-652`). Nothing in that loop checks the key against the fixed names, so a character whose `String(chaId)`
-    is a fixed name and the fixed block write to one key, and the later write wins (INFERRED from the line order
-    of the writes in `init`; the scratch run's outcomes below agree with it).
-  - The block header stores the name length in one byte (`headerBytes.set([nameBuf.length], 2)`, `:737`), so a
-    name of 256 bytes or more cannot be written back as a header the decoder can walk (the reviewer's reading,
-    confirmed by the scratch run below).
-  - A `chaId` of `__proto__` assigns to `blocks['__proto__']`, which replaces the object's prototype instead of
-    adding a key (INFERRED from plain-object semantics). The step 5d investigator's probe, which mirrored the
-    object and the `encode()` loops (`:662-674`) rather than running the real encoder, printed a `NaN` total
-    length and a `RangeError`; the real encoder's own outcome is the scratch run below.
-  - The CHORE-28 duplicate guard (`:376-449`) handles two characters holding the same key; it has no handling for
-    a key equal to a fixed block name (read, not run).
-  - `repairDatabaseIds` gives a falsy `chaId` a new id and re-ids a `chaId` that equals an earlier `chaId` or an
-    earlier chat id (one shared set for both, `src/ts/process/chatIds.ts:151-163`; the function is `:147-184`); it
-    does not look at the fixed names, the length or `__proto__`.
-- **Observed (the reviewer's scratch run; the record is `gate1-r1.md` and `names.scratch.test.ts` in the session
-  scratchpad, not in the repo):**
-  - Setup: the real `RisuSaveEncoder` (`init` with compression off, `set` with an empty to-save, then `encode`),
-    then `checkCommittedBlocks` and a strict `decodeRisuSave` of the written file. localforage, platform (web, not
-    the Node server), `database.svelte` and `globalApi` were mocked as in `bootArchiveCheck.test.ts`. The tree was
-    three characters: `plain-a`, one with the candidate `chaId`, and `plain-b`.
-  - `chaId` `root` or `config`: the encode succeeded, the block check failed on the block count (2 against 3), and
-    the strict decode of the written file succeeded with **2 characters**: one character silently gone.
-  - `preset`: the block check reported the preset block missing, and the strict decode succeeded with **the
-    presets replaced by the template**: the user's presets gone.
-  - `modules`: the strict decode succeeded with **`modules` undefined**.
-  - `loadouts` and `plugins`: the block check failed; the strict decode succeeded (what it returned for those two
-    was not recorded in the reviewer's table). `pluginStorage`: the block check failed on the block's kind.
-  - 256 ASCII bytes and 86 x U+4E00 (258 bytes): the block check failed on the header checksum and the strict
-    decode **threw**. 255 bytes (ASCII, and 85 x U+4E00) passed everything. A lone surrogate (`'ab\ud800cd'`): the
-    block check failed (the directory names a block the file does not hold) and the strict decode threw.
-  - `__proto__`: `encode` threw "offset is out of bounds". The Gate 2 reviewer saw the same throw against HEAD's
-    boot pass (the pass as it was before 5d-1) before its block check.
-  - The reviewer's table also lists names that did **not** fail: `constructor` and the other `Object.prototype`
-    method names, `__directory`, and the ids that sort differently (`'10'`, `'2'`, `'01'`, `'-1'`).
-- **Not observed:** `saveDb`'s own flow with real to-save flags (`src/ts/globalApi.svelte.ts:1324-1332` calls
-  `encoder.set` and `encoder.encode`); any running app; any real profile.
-- **Reach (what is known):**
-  - Per the reviewer, `__proto__`, over-255-byte and lone-surrogate names can reach the boot pass only through a
-    non-RISUSAVE (msgpack) main file, which the strict decode accepts (`risuSave.ts:1255-1257`, the `raw`
-    header branch, decodes with `unpackr`); fixed names and typed collisions (`5` and `"5"`) can arrive in an
-    ordinary RISUSAVE file. This is the reviewer's reading; the Orchestrator did not re-run it.
-  - The boot pass now refuses such a tree (`refusalReason`, `src/ts/storage/bootArchivePass.ts:345-373`, committed
-    as `e8cf50de`): it writes no unit, posts no notice and logs one console warning. **An ordinary save does not
-    refuse.** A Grep of non-test `src` for the pass's two constants, `FIXED_BLOCK_NAMES` and `MAX_BLOCK_NAME_BYTES`,
-    found them only in `bootArchivePass.ts`, so no other file checks these names under those constants; a check
-    under another name was not searched for.
-  - **TODO(evidence):** how a live character acquires a `chaId` that equals a fixed name, is over 255 bytes or is
-    `__proto__` (a plugin write, a CBS or Lua call, an import, a backup restore). No source was traced for this.
-- **Not decided:** the shape of a fix, and whether the fix refuses, re-ids or rejects such a `chaId`. The
-  encoder is shared by `saveDb`, the boot pass and the backup paths, and changing it is in the save format's
-  neighbourhood, so a plan would need `opus-reviewer` and an upstream-compatibility check (`MC-011`).
-- **What would settle it:** (a) a `saveDb`-level run with a fixed-name `chaId` and real to-save flags; (b) a trace of
-  how such an id can be set; (c) the same scratch run against upstream's encoder.
-- **Related:** CHORE-28 (the duplicate guard), CHORE-52 (cold-storage keys that alias); memory stage 1 step 5d-1
-  (`e8cf50de`, ledger rows 558 to 565).
-
 ### CHORE-62 — On a Node server, another device's save makes this device stop saving until it reloads, and its edits since its last save are lost (TRACED; not run against a real server)
+
+**Status (2026-10-25, lane A records batch 13): assigned to lane F's Node group (`MC-507`).** The maintainer chose "Size all four, fix small (Recommended)" for lane F's Node group, which includes CHORE-120, 62 and 46; lane F sizes first and fixes what is small. The earlier "parked until after A5" note is superseded for ownership only; no fix is decided.
 
 **Status (2026-10-03 note):** since `MC-182` CHORE-58 comes right after CHORE-59, ahead of steps 6 and 7, so CHORE-62 is now
 the last of the four (CHORE-59, CHORE-58, steps 6 and 7, CHORE-62). Its own placement after steps 6 and 7 is unchanged. The
@@ -2686,6 +1842,8 @@ step 5d-4's investigation (ledger row 588). The README documents the consequence
 
 ### CHORE-65 — Plugins read and change each other's saved arguments, and V2.1 plugins edit the plugin list directly through the `getDatabase` proxy (DATA LOSS (V2.1 proxy route); no prompt; the unprompted write EXECUTED in a scratch test, the removal TRACED)
 
+**Status (2026-10-25, lane A records batch 13): retitled, from lane F's records.** Lane F suggested dropping the moot V2.1 proxy half of the title and gave no replacement string; the new title is that clause removed: "Plugins read and change each other's saved arguments". The old title, kept in the heading above: "Plugins read and change each other's saved arguments, and V2.1 plugins edit the plugin list directly through the `getDatabase` proxy (DATA LOSS (V2.1 proxy route); no prompt; the unprompted write EXECUTED in a scratch test, the removal TRACED)". The ticket status is unchanged: technically accepted, merged in `4331440b6`, and lane F's records do not state administrative closeout.
+
 **Status (2026-10-25, lane A records batch 12, from lane F's records):** technically accepted; commit `5f1322222` on `worktree-Lane-F`, merged to `main` as `4331440b6` (pushed). V3 `getArg` and `setArg` throw (the plugin sees a rejected call) unless the name before the first `::` is the calling plugin's own; own-name calls are passed on unchanged (`MC-520` 3). The V2.1 `getDatabase` proxy half of the title is moot (V2 and V2.1 plugins are not executed; the V3 `getDatabase` is a permission-gated snapshot, TRACED in lane F's sizing). Lane F suggests dropping the moot V2.1 proxy half from the title; this batch does not retitle. Lane F's records supersede the earlier notes "may now be closable after CHORE-206" and "Moot once CHORE-206 lands". Gate and check rows: ledger rows 3702 to 3708. Lane F's records do not state administrative closeout, so the ticket stays open here.
 
 **Status (2026-10-24, lane A records batch 10):** open; assigned to lane F's plugin batch with CHORE-30 (`MC-503`). Half is moot: CHORE-206 cuts A (`f6a9b2dd2`) and B (`562927bd3`) retired the V2.1 proxy route (`MC-349`). Cross-plugin `getArg` and `setArg` are V3 API and stay open (`MC-479`); low priority (`MC-165` 3).
@@ -2725,6 +1883,13 @@ in-place edits), with no prompt. c1, c4 and c5 EXECUTED the unprompted write; th
 - **Related:** CHORE-63 (stage B, `7ca8f2a9`); `MC-165` 2 and 6; `MC-166` 4.
 
 ### CHORE-70 — Startup installs a save that only partly decodes, without checking whether a backup is complete (silent missing characters; decode RUN, boot path TRACED)
+
+**Status (2026-10-25, lane A records batch 13, from lane G's records): open, low priority, not scheduled; narrowed and retitled (`MC-546` 4).** Folded in from lane G's records (merge `efcf63634`). The new title: "On a read-only legacy page a partly decoded save loads with no notice, and a `.bin` export from it can be partial yet look complete". The old title, kept in the heading above: "Startup installs a save that only partly decodes, without checking whether a backup is complete (silent missing characters; decode RUN, boot path TRACED)". Lane G's lines:
+- Saving pages decode strictly first (`convert.ts`), so the original premise no longer holds there.
+- The leftover reaches read-only legacy pages: web (the transitional OPFS page) and Node (a failed capability probe), and a not-yet-converted Tauri or Android profile whose native storage-gate registration failed or timed out (`store2/backend/tauri.ts`).
+- On those pages a partly decoded save is loaded with no notice (`bootstrap.ts`). The `.bin` export there has no read-only check, because `refuseOnReadOnlyPage` guards only restore, internal-backup load and clean-up.
+- Data on disk is untouched. The Android MVP's store2 profile cannot reach a read-only legacy page, so `MC-350`'s carried-forward data is not affected.
+- `.bin` import goes through `storeImport.ts` and `importTree.ts` (CHORE-221), not the same path.
 
 **Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): SUPERSEDED (read-only residue). Strict decode runs first; a silent partial install survives only on a read-only legacy page.
 
@@ -2841,6 +2006,8 @@ app's own images into the card, not the companion text, so this is its own ticke
 
 ### CHORE-120 — On the Node server, `/api/set_password` accepts any client until a password exists, and the first client wins (TRACED)
 
+**Status (2026-10-25, lane A records batch 13): assigned to lane F's Node group (`MC-507`).** The maintainer chose "Size all four, fix small (Recommended)" for lane F's Node group, which includes CHORE-120, 62 and 46; lane F sizes first and fixes what is small. No fix is decided.
+
 **Status (2026-10-04):** open, **not scheduled**; fixes are to be proposed after Stage 0 of the save-layer track. Severity: not assessed. Filed at the maintainer's "File both, extend our range (Recommended)" (`MC-194` 14); the Main Campaign's CHORE range now also holds CHORE-120 to CHORE-129. Reported by the side session's CHORE-80 investigation; verified in source by the Orchestrator, and its route code re-read for this entry at the time of writing.
 
 - **What was traced:** the `POST /api/set_password` handler in `server/node/server.cjs` checks only that the in-memory `password` is the empty string. If it is, it stores the posted value, writes it to the password file and answers success; otherwise it answers 400 "already set". The route has no authentication check and no rate limiter argument. Upstream origin: `74f76255`, 2023-05-28 (re-checked with `git log -S` at the records fact-check, ledger row 1070).
@@ -2905,6 +2072,14 @@ app's own images into the card, not the companion text, so this is its own ticke
 ### CHORE-106 — Put `.charx` and editor uploads onto the piece save
 
 **Status (2026-10-06): open, not scheduled.** `1e71c45c` moves only the `.risum` and PNG importers onto the piece save; `.charx` asset entries and the module and character editors' uploads still save whole (the records items name the follow-up without detail; TODO(evidence)).
+
+### CHORE-107 — `openWriter` belongs inside the `try`
+
+**Status (2026-10-25, lane A records batch 13): UN-PARKED (`MC-508`).** The maintainer: "un-park 191, 107 and 02." The entry moved back from [Roadmap-parked.md](Roadmap-parked.md) with its text unchanged; lane G's batch 3 owns it (`MC-508`). The PARKED line below is kept as history.
+
+**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D).** Can return on a maintainer decision.
+
+**Status (2026-10-06): open, not scheduled.** A follow-up named in the records items as "O2 openWriter inside the try" from the piece-by-piece hashing work (TODO(evidence): the file and the failure it prevents are not in the evidence).
 
 ### CHORE-109 — Show assets without loading them whole
 
@@ -3151,6 +2326,8 @@ app's own images into the card, not the companion text, so this is its own ticke
 
 ### CHORE-180 — Back on screens with their own back stack and no Back handler: the Beta Mobile GUI chat "Menu" page shows the quit toast and does not close
 
+**Status (2026-10-25, lane A records batch 13): stage A committed as `561de025f`, pushed; phone checks running; not COMPLETE.** The commit is "Back leaves Beta Mobile GUI chat, menu and settings pages (CHORE-180)", on top of the lane C merge `4fb1e3cbb` (`MC-505`). Gate 1 was `[APPROVE WITH AMENDMENTS]` (batch 12 records). Implementation (ledger row 2283): 20 of 51 tests fail on the pre-fix base and 51 of 51 pass after; 7 mutants killed; `pnpm check` 0 errors and 0 warnings. Gate 2 `[APPROVE]` by `opus-reviewer` (row 2284); its finding F1: no device build from stage A alone. Full run on the merge plus stage A (row 2285): run 1 had 2 `manualCleanup` timeouts (CHORE-210), run 2 was green at 22,155 passed; check, build and the dist check OK. The phone 2 checks and lane A's keyevent smoke pass are running.
+
 **Status (2026-10-25, lane A records batch 12):** in lane A's Android Back batch (`MC-505`); the plan passed Gate 1 with amendments (`opus-reviewer`, [APPROVE WITH AMENDMENTS]) and stage A is next.
 
 **Status (2026-10-24, lane A records batch 10):** open; in the Android Back batch (`MC-501`, group F), which follows batch T.
@@ -3162,19 +2339,9 @@ app's own images into the card, not the companion text, so this is its own ticke
 - **Same class, inferred and not enumerated:** other chat-screen and Beta Mobile GUI header back stacks. The Gate 1 round 1 review of the S4-2b plan (`charlist\records-s34\handbacks\064925-ac47ee4fd4846ed6a.txt`, source reading) listed the screens where Back used to quit and now toasts first: settings, the mobile GUI, the chat screen and the modals not routed through `alertStore` (preset list, persona list, bookmark list, HypaV3, Realm popup); it called that the intended effect of D5, not a regression.
 - **Not decided:** whether these pages should close on Back.
 
-### CHORE-183 — A `botPresets` list that is missing or not a list makes "Convert without these parts" stop on the unexpected-error screen
-
-**Status (2026-10-20, stage 4b close): open, not scheduled.** Source: device check D4 (`d2d4-results.md`), `MC-322` 6. The conversion writes nothing. Proposed: a missing or non-list `botPresets` becomes a named omitted part.
-
 ### CHORE-184 — The Lua runtime (wasmoon `glue.wasm`) is fetched from unpkg.com at run time
 
 **Status (2026-10-20, stage 4b close): open, not scheduled.** Upstream-inherited (the same in upstream/main). Lua breaks offline and on a LAN. Source: the D11a finding E1 (`d11a-results.md`).
-
-### CHORE-185 — The `Chat.draftCaptureScenarios` "success-then-fail" test is load-sensitive
-
-**Status (2026-10-24, lane A records batch 10):** open; in batch Q with CHORE-240 and CHORE-353, run by lane C (cloud).
-
-**Status (2026-10-20, stage 4b close): open, not scheduled.** It failed once in the full run `checks-19afc6829` under APK-build load; it passed 3 of 3 alone, and the quiet-PC run `checks-19afc6829-r2` passed. Test-only.
 
 ### CHORE-186 — E5: a shared-profile upstream save loses upstream's plugin index on store2 conversion (pre-release blocker)
 
@@ -3193,6 +2360,8 @@ app's own images into the card, not the companion text, so this is its own ticke
 
 ### CHORE-189 — Index-level incomplete items carry the slot key `_coldpluginIndex` and a minted id, so the conflict retry asks the same question twice
 
+**Status (2026-10-25, lane A records batch 13): assigned to lane G's batch 3 (`MC-508`).** The maintainer: "let's tackle open low priority tickets too as they seem small." No fix is decided.
+
 **Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Source: U3 S2b Gate 2 and the coder's residual (`upstream-e773240\closeout-notes.md`).
 
 - **Problem:** when upstream's plugin index is absent or a small entry is bad, the incomplete item names `_coldpluginIndex` and an id minted per attempt, not the plugin key (`convertPluginStorageIndex` returns ids only). The prompt cannot name the plugin key, and the page import's conflict retry asks the question twice because the id changes per attempt.
@@ -3201,12 +2370,22 @@ app's own images into the card, not the companion text, so this is its own ticke
 
 ### CHORE-190 — U3 A2 non-blocking items: the dirty mark, `keys()` and `length()` after `clear()`, and a pre-existing store2 race
 
+**Status (2026-10-25, lane A records batch 13): assigned to lane G's batch 3 (`MC-508`).** The maintainer: "let's tackle open low priority tickets too as they seem small." No fix is decided.
+
 **Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Source: U3 A2 Gate 2 rounds 1 and 2 (`upstream-e773240\u3a2\g2-verdict.md`, `g2r2-verdict.md`). N4, the `clear()` listing and m4 lose nothing. E8 is a pre-existing narrow race (same on the base). A stale V2 write that lands between the store2 V3 value write and its mapping, across an await, can drop the not-yet-mapped value and leave the mapping dangling.
 
 - **N4:** `setDatabase(getDatabase())` and a proxy self-assignment now mark `pluginCustomStorage` dirty (measured `true`; on the base `false`), so store2 re-encodes it per key: extra save work. An optional `incoming === current` shortcut avoids it.
 - **After `clear()`:** V2 `keys()` and `length()` list `_coldplugin`, `_coldpluginIndex` and, on a store2 page, unit ids, where the base returned an empty list and 0. Consistent with the accepted residual that these keys were already listed whenever V3 data existed; upstream lists the internals too.
 - **E8 (pre-existing):** on a store2 page the V3 value is written before the mapping across an await; a stale V2 write in that gap drops it. The same on the base.
 - **Also:** mutant `m4` survives (a current unit id with no value is not forced absent; only the reviewer's E4 diagnostic covers it).
+
+### CHORE-191 — English `chatParseFailed` now ends with a trailing ", "
+
+**Status (2026-10-25, lane A records batch 13): UN-PARKED (`MC-508`).** The maintainer: "un-park 191, 107 and 02." The entry moved back from [Roadmap-parked.md](Roadmap-parked.md) with its text unchanged; lane G's batch 3 owns it (`MC-508`). The PARKED line below is kept as history.
+
+**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D).** Can return on a maintainer decision.
+
+**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Cosmetic. Source: U0 Gate 2 finding O2. The chat parse-error alert now shows the stack once (the stack block of the alert), so the stack slot of `language.errors.chatParseFailed` is empty and the English text ends with ", ". Fixing it changes the key in all 7 locales (the translator owns the non-English files).
 
 ### CHORE-202 — The Note 9 screen-off import stall has an unknown cause
 
@@ -3308,6 +2487,8 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 
 ### CHORE-352 (new) — Back does not close Settings, the Realm frame, popups or panels (MC-455 Q1)
 
+**Status (2026-10-25, lane A records batch 13): stage B committed as `31b050a63`, pushed; phone checks running; not COMPLETE.** The commit is "Back closes Settings, the Realm frame, popups, panels and the preset, persona and HypaV3 modals (CHORE-352)" (`MC-505`). Implementation (ledger row 2286): 50 of 73 tests fail on the pre-fix base (the coder's figure, before its last test edits); 82 new tests; 23 mutants; lane A approved one amendment, the `PromptDiffModal.i18n` test mock. Gate 2 `[APPROVE]` by `opus-reviewer` (row 2287): 53 of 76 fail on the pre-fix base in the reviewer's own run; 5 of its own mutants killed. Full run on the lane G batch 2 and lane B merges plus stage B (row 2288): run 1 green at 22,330 passed; run 2 had one failure, `saveLoopNetBackstop` B7 (a lane B test; the file alone passed 3 of 3; reported to lane B); check, build and the dist check OK; the snapshot unchanged. The phone 2 checks and lane A's keyevent smoke pass are running.
+
 **Status (2026-10-25, lane A records batch 12):** in lane A's Android Back batch (`MC-505`, which reverses `MC-455` Q1 for this ticket); the plan passed Gate 1 with amendments (`opus-reviewer`, [APPROVE WITH AMENDMENTS]) and stage A is next.
 
 Overlays outside `alertStore` (Settings, the Realm frame, the bookmark list, `popupStore`, the easy panel, the popup editor, the loadout modal, iris, the custom sidebar config dialog) have no Back handler: with one open, Android Back takes the toast-then-quit guard. MC-455 kept that behaviour for CHORE-181. The phone sidebar and Grid edit mode already have Back handlers.
@@ -3329,6 +2510,8 @@ Overlays outside `alertStore` (Settings, the Realm frame, the bookmark list, `po
 **Status (2026-10-24, lane A records batch 5): parked post-MVP** (`MC-352` 2). The read-only scan (`c502-scan\result.md`, verified) found 0 chats with `hypaV2Data` among 771 chats in `Backup_partial.bin`, and `db.hypav2` is off. The limit: only the partial backup was scanned. The persistence risk stands if old HypaV2 data is ever converted and saved, so re-scan before HypaV2 is used on such data.
 
 ### CHORE-205 — Architecture study: subsystems that fail as the library grows (the whole-library in-memory model and its secondary problems)
+
+**Status (2026-10-25, lane A records batch 13, from lane B's records): reload prompt stage 1 merged in `1537d09b9` (lane B's commit `46546a926`, "on Android, offer to reload before a large export"); phone checks running; not COMPLETE.** The decisions are `MC-485` to `MC-487` and the work is lane B's ledger rows 3014 to 3030; the maintainer approved the commit and the phone checks in lane B's session (relayed; lane A's own merge approval is `MC-509`). The full checks on the merge are ledger row 2288. Lane B's next steps: (1) phone checks through lane A: whole-pass time and memory peak with check 7(b) (an export that overlaps a timed-out pass), the 100/30 thresholds, a cancel after resume, edits just before the tap, the decline key across a reload and a force-stop, and displacement (check 11); (2) stage 2, import with "Continue import" and a re-pick (`MC-485` 1); (3) in `MC-483` order, L1 and L2a, then L3 with `MC-484` after measurement. Open: plan question 9.1 (wait past 20 s) waits for check 7(b).
 
 **Status (2026-10-24, lane A records batch 6): lane B is sizing the next lever, L3 (per-module units), with a proposal before code.** The memory baselines for L3 were collected on phone 1 (`0d54f5e84`, MEASURE build). Round 1 (C1 to C5): renderer PSS 263.5, 281.9, 322.3, 322.0 and 486.6 MB; the Modules page adds about 164 MB of native renderer memory. Round 2 (A and B; C skipped): the Modules-page spike is transient, and four characters plus one generation retain about 64 MB of heap until a reload. The maintainer sent the MCP module tools into L3's sizing (relayed to lane B). No code change in this batch.
 
@@ -3426,29 +2609,24 @@ Stage 0 (measurement only) is approved as `MC-348` ("Now, PC + one Note 9 run (R
 
 ### CHORE-208 — "Request timed out" (the native fetch timeout error added by CHORE-164) is hard-coded English with no `language` key
 
+**Status (2026-10-25, lane A records batch 13): owner changed from lane A to lane G's batch 3 (`MC-508`).** The non-English locale keys go through the Translator on main after the merge (`MC-508`; `MC-058`).
+
 **Status (2026-10-25, lane A records batch 11): open, low priority, not scheduled; owner lane A.** Type: translation gap (a missing key), Tauri (the native fetch path).
 
 - **Observed:** batch T stage T2 (`9d16b3350`) throws `Request timed out` from `fetchNative` when a timeout fires before the headers. The T2 coder grepped `src/lang/en.ts` for "timed out" and "timeout" and found no matching key, and Gate 2 flagged the string as non-blocking (ledger row 2271). The string is hard-coded English; no locale key was added.
 - **Needed:** an `en` key and its use at the throw site, then the Translator for the other locales (`MC-058`: preserve the maintainer's edits, keys, interpolations, CBS tags and line endings).
 - **Not established:** how often a person meets this error, and whether the timeout is reachable from a Settings control; stage D found the local-network timeout setting not exposed in the UI (source grep only, ledger row 2274).
 
-### CHORE-209 — `Chat.supaResume` "branch" tests can fail under full-suite load: a timed-out (c) may keep running into (d)
+### CHORE-210 — `manualCleanup.svelte.test.ts` times out at 5000 ms under full-suite load
 
-**Status (2026-10-25, lane A records batch 11): open, low priority, not scheduled; owner lane A.** Type: test isolation (a flake under load), not a product defect.
+**Status (2026-10-25, lane A records batch 13): open, low priority; owner lane G's batch 3 (`MC-508`).** Filed by lane A. Type: test isolation (a flake under load), not a product defect.
 
-- **Observed:** in the batch T full run on `d9c68b0fe`, (c) "a send over the branched chat" timed out at 5000 ms and (d) "the parent chat is untouched" failed "expected 3 to be 5" (ledger row 2273). Both passed alone and under synthetic CPU load in later runs (ledger row 2276).
-- **Likely mechanism (INFERRED, not reproduced):** (c) begins with a cold dynamic import of the memory modules; vitest does not cancel a timed-out test body, and the `afterEach` does not reset `DBState.db`, so a late (c) can change the chat that (d) reads.
-- **Not attributed to batch T:** the file mocks `globalApi.svelte` and `request/request`, which T2 and T3 changed; the provider files T2 changed are reached only through the mocked `request.ts`, and T2's `mcplib.ts` change is confined to `MCPClient`'s SSE reader, which this test file never references (lane A, source read; not traced at runtime).
-- **Candidate fix:** move the two dynamic imports to the top level or a `beforeAll`, and reset `DBState.db` in `afterEach`; prove it with a test that forces (c) to time out after a cold import.
-
-### CHORE-353 — The write-scope guard refuses only the Edit and Write tools, so a shell write can change a repository file outside its grant (MC-457 1)
-
-**Status (2026-10-24, lane A records batch 10):** open; in batch Q with CHORE-240 and CHORE-185, run by lane C (cloud).
-
-**Status (2026-10-22, lane A): open, ticketed, not scheduled (`MC-457` 1).** The maintainer: "let's ticket this for now and revisit this if similar things happen again." Source: lane E's CHORE-181 Gate 2 remediation (ledger row 3558). The coder ran its mutants by text-replacing worktree files with PowerShell and restoring them, including `alertPrompts.ts`, which was outside its grant; the write guard did not refuse it. Lane E's hash check found that file equal to the reviewed copy (row 3559).
-
-- The interim rules stand: no temporary repository edits by any tool, mutants on scratch copies only, and a hash check after any "restored" hand-back.
-- Deferred, not made now: (a) a hook that compares the working tree before and after each shell command and flags writes outside the grant; (b) one worktree per coder. Revisit both if a similar shell write recurs.
+- **Observed (full `pnpm test` runs on Windows):**
+  - The first run of the lane G batch 2 merge (`%TEMP%\risu-b715\laneg-merge\full\`, 3 failures) failed three tests in the `fixtures` group of `src/ts/storage/tests/manualCleanup.svelte.test.ts`: two timed out at 5000 ms, and one failed once with `No "risuChatParser" export is defined on the "src/ts/parser/parser.svelte" mock`.
+  - The first run of the Back stage A merge (ledger row 2285, `%TEMP%\risu-b715\backA\stageA-full\`, 2 failures) failed two tests in the same group, both timeouts at 5000 ms.
+  - The file alone passed, 292 of 292 (`laneg-merge\full\rerun-manualCleanup.txt`). The second full run of each merge was green (22,155 passed for the stage A merge).
+- **Not established:** why the file times out under load. The missing-export failure is INFERRED to be a late import after a timeout; it was not reproduced alone.
+- **Related:** CHORE-209 (another full-suite load flake, COMPLETE and in the closed archive), `MC-508`.
 
 ### CHORE-354 (new) — on a large profile the page does not answer Back within 1 s after the first Back, and no hide event fires on the quit
 
@@ -3479,6 +2657,35 @@ On phone 2 with the large profile `m2-mix18k` (CHORE-181 cell 5), after the firs
 - After CHORE-45 stage 1 the send's prompt pass has its own cache, still capped by entry count. A chat with more than that many cacheable messages misses on every message of a repeat send (sizing packet `%TEMP%\risu-lane-g\chore45\result.md`, simulation RUN in node; not measured on a device).
 - Proposed shape (from the sizing packet, not decided): the prompt-pass capacity follows the chat's length, bounded by a byte budget. The budget is the maintainer's number.
 
+### CHORE-391 — Converting an older-format save stops with an error for other malformed fields
+
+**Folded in from lane G's records (merge `efcf63634`), 2026-10-25, lane A records batch 13.**
+
+**Status (2026-10-25): open, not scheduled; found by the CHORE-183 Gate 1 review.** Type: suspected defect (legacy conversion), the same class as CHORE-183. Not decided whether or how to handle these; no maintainer decision.
+
+- Source: `%TEMP%\risu-lane-g\chore183\review\gate1.md`, residual R1 (`opus-reviewer` source reading at `8003b3c4c`; not executed for these fields).
+- The cases: a present non-list `modules`, `loadouts`, `plugins` or `pluginV2`; a `botPresets` list with an element that is not an object; a character or chat that is not an object. The CHORE-183 commit-claim check (`opus-reviewer`, source reading, not executed) adds two more: a character's non-list `chats` and a chat's non-list `message`. Each still throws a `CodecInputError` in the conversion. At boot the user then sees an error alert, and on the recovery screen the unexpected-error screen. That addition was reported in session, not saved.
+
+**Status (2026-10-25, lane A records batch 13): assigned to lane G's batch 3, first (`MC-508`).**
+
+### CHORE-392 — Tauri non-store writes are not yet atomic: inlay files, search index, streaming writes (the remaining stages of CHORE-55)
+
+**Folded in from lane G's records (merge `efcf63634`), 2026-10-25, lane A records batch 13.**
+
+**Status (2026-10-25): open, not scheduled (`MC-546` 2).** Type: robustness (partial write on a failed write). Split out of CHORE-55 when it closed: the store writes are atomic since `d0decfb61`, and the later stages in CHORE-55's entry were never done. `MC-181` lifted CHORE-55's release blocker; this ticket carries no blocker.
+
+### CHORE-393 — A character id like `kv:foo` makes a full `.bin` export refuse when the save also has a `foo` data namespace
+
+**Folded in from lane G's records (merge `efcf63634`), 2026-10-25, lane A records batch 13.**
+
+**Status (2026-10-25): open, not scheduled (`MC-546` 3).** Type: suspected defect (export).
+
+- `isUsableCharacterId('kv:foo')` is true (`characterIds.ts`), and `writeRisuSaveV0` then throws on the block-name collision (`risuSaveV0.ts`). Scratch tests K1 to K3 in `%TEMP%\risu-lane-g\audit\review\` show it.
+- `runExport` reports the error, so it is a loud refusal, not silent loss. While it lasts it blocks every full `.bin` export, which goes beyond `MC-223`'s one allowed exception.
+- A fix changes export re-id behaviour, so the choice comes back to the maintainer.
+
+**Status (2026-10-25, lane A records batch 13): assigned to lane G's batch 3, after the fix choice (`MC-508`).**
+
 ### Grid avatar loading (MC-452, MC-459) — stage A, the thumbnail write leaves the generation slot (no CHORE number)
 
 **Status (2026-10-23, lane A records batch 4):** grid stage B1' is merged in `f16fb5c30` (lane E; 21,046 passed; hashes matched Gate 2; `MC-463`, `MC-464`). The rest of stage B is deferred (`MC-463`). Lane E is retired for now. The grid capture on a re-import is owed; lane A runs it.
@@ -3492,16 +2699,6 @@ On phone 2 with the large profile `m2-mix18k` (CHORE-181 cell 5), after the firs
 - A2 (decode through `fetch` and `createImageBitmap`) is not shipped: it did not meet the pre-set 30% rule (row 3566). `THUMB_VERSION` is unchanged, so existing thumbnails stay valid.
 - Not measured on a device; the PC figures are best-case hardware. Whether stage A changes the phone fill rate is unknown until the phone capture.
 - Stage B (from the Gate 1 verdict, `%TEMP%\risu-lane-e\grid\g1\verdict.md`, B-1 to B-8): read timeout not a miss, no full-size paint for big images (grid avatar component only, unknown size counts as big), dropping queued work nobody waits for; retry rules per MC-461 (fill on next draw; a few retries with back-off, then grey until restart).
-
-### CHORE-240 — A full `pnpm test` rewrites `modules.test.ts.snap` with LF line endings
-
-**Status (2026-10-24, lane A records batch 10):** open; in batch Q with CHORE-185 and CHORE-353, run by lane C (cloud).
-
-**Status (2026-10-22, lane D): open, not scheduled.** Test-only. Source: ledger row 2515 (first filed there); first seen in the `git status` of the S4-4 Gate 1 round 1 report after the CHORE-192 full run (row 2504).
-
-- **Problem:** after a full `pnpm test`, `src/ts/process/mcp/risuaccess/tests/__snapshots__/modules.test.ts.snap` shows as modified. `git diff --ignore-cr-at-eol` showed no content change, so the difference was line endings only. The committed blob is LF and the checkout is CRLF (`core.autocrlf=true`; `git ls-files --eol` shows i/lf w/crlf). Captured after the S4-4b full run (row 2521): the working file was LF only (73 LF, 0 CR; `i/lf w/lf`), so Vitest rewrites the CRLF checkout as LF and Git sees the line-ending change. Why Vitest rewrites a snapshot whose content matches is not established (inferred: it compares the serialized LF text with the CRLF file). Seen after 6 full runs in lane D, each time restored from the index or to CRLF: the CHORE-192, S4-4a, S4-4b and S4-4c trees (rows 2504, 2515, 2521, 2536) and both completed runs on the `MC-382` tree (row 2543).
-- **Not established:** why Vitest rewrites this snapshot (an obsolete or reordered entry would also trigger a write), and whether other snapshot files are affected on other runs. Only one `.snap` file is tracked, and `.gitattributes` holds only `-text` entries for archive snapshots (row 2523).
-- **Smallest coherent correction (draft):** find what makes Vitest write the file; a `.gitattributes` rule `*.snap text eol=lf` so the checkout is LF like the blob and what Vitest writes; check which other `.snap` files exist and whether any is committed CRLF before adding it. Acceptance: two consecutive full runs leave the tree clean.
 
 ### CHORE-241 — MVP chat-open and edit stalls: a quadratic display regex, and chat-phase measurement
 

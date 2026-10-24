@@ -13766,3 +13766,276 @@ Folded in from `Agents/Lanes/lane-G-records.md` on 2026-10-25 (merge `dceab1844`
 
 - Notes, not the maintainer's words:
   - Nothing here authorizes any other commit or push.
+
+### MC-438 — Lane C, 2026-10-24: batch Q confirmed under lane A's standing approval; CHORE-353 sized only
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane C (cloud) session transcript; lane A's cross-session message, relayed as a peer message and not as maintainer approval.
+- **Related:** `MC-500` (lane A's record, not yet on `main`), `MC-457` 1; CHORE-240, CHORE-185, CHORE-353.
+
+1. **Batch Q: "Confirm all (Recommended)".** The option said: start batch Q as lane A proposes; commit on `lane-c-cloud-q` under the standing approval when its conditions hold; push `lane-c-cloud-q` when the batch is ready; report to lane A; Windows and device checks are flagged for lane A. The question gave the conditions as lane A stated them: every ticket passed Gate 2 with APPROVE or EDITORIAL, full checks pass, no product question is open, and save format, persistence and data-loss work still need per-commit approval. Not chosen: "Confirm, ask per commit", "Not now".
+2. **CHORE-353: "Size only, then ask (Recommended)".** The option said: size the options (the before/after tree hook, or one worktree per coder) and bring them back to the maintainer; no tooling change without the maintainer's choice. The guard runs on lane A's Windows setup, so lane A tests it. Not chosen: "Keep it parked", "Implement the hook".
+
+**Notes that are not the maintainer's words:**
+- The question and option texts were written by the orchestrator.
+- Item 1 adopts lane A's standing approval as stated in its message; the text of `MC-500` itself was not available to check.
+
+Folded in from `Agents/Lanes/lane-C-records.md` on 2026-10-25 (merge `4fb1e3cbb`).
+
+### MC-439 — Lane C, 2026-10-24: CHORE-353 stays parked with the interim rules; the sizing facts go to the ticket
+
+- **Tag:** decisions (one `AskUserQuestion` round, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane C (cloud) session transcript. Input: the CHORE-353 sizing packet (row 3341) and the orchestrator's check of its decision-critical claims (row 3342).
+- **Related:** `MC-457` 1, `MC-438` 2; CHORE-353.
+
+1. **"Keep rules, record facts (Recommended)".** The option said: no tooling change; keep the interim rules (no repository edits by any tool, mutants on scratch copies, hash-check restored files); add the sizing and the "guard inactive on cloud lanes" fact to the ticket for lane A; it stays parked per `MC-457` 1. Not chosen:
+   - "Flag-only shell hook": lane A builds and tests a post-command check that flags changed files outside the grant; detection only, documented as missing change-and-restore.
+   - "Read-only enforcement": lane A designs per-grant read-only file attributes; real prevention, with its own plan and Windows testing.
+   - "Worktree per coder": containment, not prevention; it replaces the single-writer rule.
+
+**Notes that are not the maintainer's words:**
+- The question and option texts were written by the orchestrator, from the investigator's packet.
+
+Folded in from `Agents/Lanes/lane-C-records.md` on 2026-10-25 (merge `4fb1e3cbb`).
+
+### MC-543 — Lane G, 2026-10-25: lane G takes batch 2 (closure audit of CHORE-29, 31, 32, 55, 61, 70; CHORE-209; CHORE-183)
+
+- Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `7fb81b14-3585-4fb9-b518-f42aa7240633`. The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: lane A relayed the batch and said the relay is not approval, so lane G confirmed the scope in its own session before starting.
+- Alternatives rejected: "Audit + CHORE-209 only"; "Not now".
+- Related: `MC-507` (lane A's record of the same choice), `MC-500` (commit on the lane branch after gates and green checks).
+
+**The maintainer's answer.** To "Lane A relayed Lane G's next batch, which it says you chose as "Closure audit + test fixes": (1) a records-only closure audit of CHORE-29, 31, 32, 55, 61 and 70 against current main, with a close/park/keep proposal for you to decide; (2) CHORE-209, a test-only isolation fix for the Chat.supaResume branch tests; (3) CHORE-183, a missing or non-list botPresets stopping "Convert without these parts", sized first, with any product choice brought to you before code. Should Lane G take this scope?": "Yes, all three". The option read: "Lane G fast-forwards to main, then audit, CHORE-209, and CHORE-183 (sized first)."
+
+**What was decided (maintainer).** Lane G takes all three items of batch 2. CHORE-183 is sized first, and any product choice comes to the maintainer before code.
+
+Folded in from `Agents/Lanes/lane-G-records.md` on 2026-10-25 (merge `efcf63634`).
+
+### MC-544 — Lane G, 2026-10-25: CHORE-183, converting an older-format save with a missing, null or non-list `botPresets` uses the Default preset; a present non-list is named among the skipped parts
+
+- Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `7fb81b14-3585-4fb9-b518-f42aa7240633`; the sizing packet `%TEMP%\risu-lane-g\chore183\result.md` (an `investigator` packet, not independently verified; a scratch vitest run of the real `convertLegacyWithout` there). The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: the sizing packet found that the throw (`botPresets is not a list.`) is reachable only through the older-format (msgpack) lenient decode, after the user confirms "Convert without these parts", and that nothing is written. The block-format decoder, the `.bin` import path and `setDatabase` already default a missing list to a Default preset. Whether a malformed value is dropped silently or named is user-visible.
+- Alternatives rejected: "Default it; always name it"; "Refuse with a message"; "Park it".
+- Related: `MC-322` 6 (the source of CHORE-183), `MC-175`.
+
+**The maintainer's answer.** To "CHORE-183: converting an older-format save whose preset list (botPresets) is missing, null or not a list crashes after you confirm "Convert without these parts" (nothing is written). Newer saves and .bin imports already fill in a Default preset in that case. Real old saves probably always have the list; the trigger so far is a synthetic file. What should the conversion do?": "Default it; name bad ones (Recommended)". The option read: "Missing or null: use the Default preset, as other import paths do, without listing it, since nothing is lost. Present but not a list: also use the Default preset, and list "Presets" among the skipped parts on the confirm screen so you know that value was dropped. The original file is never changed."
+
+**What was decided (maintainer).**
+1. A missing or null `botPresets` in an older-format save being converted becomes the Default preset, and is not listed as skipped.
+2. A present `botPresets` that is not a list also becomes the Default preset, and "Presets" is listed among the skipped parts on the confirm screen.
+3. The original file is never changed.
+
+Folded in from `Agents/Lanes/lane-G-records.md` on 2026-10-25 (merge `efcf63634`).
+
+### MC-545 — Lane G, 2026-10-25: CHORE-183, on the normal (strict) conversion a present non-list `botPresets` counts as a failed read; corrects the premise of `MC-544`
+
+- Tag: decision and a correction (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `7fb81b14-3585-4fb9-b518-f42aa7240633`; the CHORE-183 Gate 1 verdict `%TEMP%\risu-lane-g\chore183\review\gate1.md` (`opus-reviewer`, `[REJECT]`) and its runs `run4.log` and `run6.log` there (lane G read the run results). The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- **Correction to `MC-544`'s reasoning.** `MC-544` said the throw is reachable only through the older-format lenient decode, after the user confirms "Convert without these parts". The Gate 1 reviewer found that wrong. A save with a recognised older-format header decodes the same way in strict and lenient mode, so the throw comes first in the normal strict conversion, at boot and on the recovery screen, and no question is asked first. The reviewer's runs used real older-writer bytes (`encodeRisuSaveLegacy`, uncompressed and compressed) with `botPresets` missing or an object, through `convertLegacyProfile`, and the result was `CodecInputError: botPresets is not a list.`, nothing asked and nothing written. `MC-544` 1 (missing or null becomes the Default preset) still applies on both paths. `MC-544` 2 (name a present non-list) cannot be shown on the strict path, which has no skipped-parts list. The text of `MC-544` is left as recorded.
+- Alternatives rejected: "Default it silently there"; "Add a "Presets" item".
+- Related: `MC-544`, `MC-091`, `MC-058` (new strings would need the translator); CHORE-391 (the same class of crash for other fields).
+
+**The maintainer's answer.** To "CHORE-183 follow-up: the crash also happens on the normal conversion of an older save (at startup, no screen shown), not only on "Convert without these parts". The normal path has no skipped-parts list, so your choice to name a malformed (non-list) preset value can't be shown there. A missing/null list → Default preset works on both paths as decided. For a present but malformed value on the normal path, what should happen?": "Treat as a failed read (Recommended)". The option read: "The normal conversion treats the file as not cleanly readable, so the existing flow follows: a good backup if one exists, otherwise the "Convert without these parts" screen, which names "Presets" before you convert. No new UI text; keeps your rule that a dropped value is always named first."
+
+**What was decided (maintainer).** On the normal (strict) conversion of an older-format save, a present `botPresets` that is not a list counts as a failed strict read. The existing flow then follows: a good backup if one exists, otherwise "Convert without these parts", which names "Presets" before the user converts (`MC-544` 2 holds there). No new UI text.
+
+Folded in from `Agents/Lanes/lane-G-records.md` on 2026-10-25 (merge `efcf63634`).
+
+### MC-546 — Lane G, 2026-10-25: closure audit: CHORE-29, 31, 32, 55 and 61 close; CHORE-55's later stages and CHORE-61's `kv:` export edge become new tickets; CHORE-70 stays open, narrowed
+
+- Tag: decisions (maintainer's `AskUserQuestion` answers by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `7fb81b14-3585-4fb9-b518-f42aa7240633`. The evidence is the audit packet `%TEMP%\risu-lane-g\audit\result.md` (`investigator`, source reading at `8003b3c4c`) and its independent check `%TEMP%\risu-lane-g\audit\review\verdict.md` (`opus-reviewer`, `[REJECT]` of the packet's wording for CHORE-29, 32 and 70; it ran scratch vitest diagnostics on the real store2 save loop, `run1.log` to `run3.log` there). Both re-check lane E's audit `%TEMP%\risu-lane-e\audit\audit.md`. The answers and option labels are the maintainer's; the question texts are lane G's wording, quoted below, and were written from the corrected verdict.
+- Reasoning: the tickets' status lines said "superseded on store2 per lane E audit" or "candidate to close". The brief required a source check of each "moot" claim. The verdict confirmed that the legacy save loop, `RisuSaveEncoder` writes and `reloadSaveEncoder` cannot run on any production page. It confirmed the three fixing commits (`33545c2c6`, `d0decfb61`, `0d4efeb12`) as ancestors of `8003b3c4c`. It corrected three premises:
+  - CHORE-29: since `67273e799`, unused units are cleaned up automatically, once per launch, on Tauri only.
+  - CHORE-32: the returned character counts as unheld and is saved at the next idle-net check, about every 2 s (scratch test S1).
+  - CHORE-70: a leftover remains on read-only legacy pages.
+- Limit: question 1 did not mention CHORE-32's narrow stub-load retry window, where only the 30 s backstop catches the edit (traced, not run); the CHORE-32 status line records it.
+- Alternatives rejected: "Close 29 and 31; keep 32"; "Close and drop the rest" and "Keep open for the rest" (CHORE-55); "Close, no ticket" (CHORE-61); "Close, accept the gap" (CHORE-70).
+- Related: `MC-181` (CHORE-55's release blocker lifted), `MC-223` (the one allowed export exception), `MC-091`, `MC-175`; CHORE-392 and CHORE-393.
+
+**The maintainer's answers.**
+1. To "Closure audit (verified by opus-reviewer, with scratch tests run on the real store2 save loop): CHORE-29 (stale copy on filling a chaId), CHORE-31 (cold storage turns a group into a character) and CHORE-32 (a swap drops a pending edit) no longer happen. 29 and 32 were shown by test; 32's edit is now saved at the next idle check about 2 s later. Close these three as moot, with the corrected reasons?": "Close all three (Recommended)". The option read: "Each gets a dated closing line citing the mechanism or commit (31: 33545c2c6) and the scratch test evidence."
+2. To "CHORE-55 (Tauri main-file writes not atomic): fixed for every store write by d0decfb61 (temp file, rename, sync). The ticket also lists later stages (inlay files, search index, streaming writes) that were never done; MC-181 only lifted the release blocker. What happens to those?": "Close; new ticket for rest (Recommended)". The option read: "Close CHORE-55 as fixed and file the remaining stages as their own open, unscheduled ticket."
+3. To "CHORE-61 (encoder loses data on a reserved or over-long chaId): fixed by 0d4efeb12. One edge remains: a character id like "kv:foo" makes a full .bin export refuse with an error when the save also has a "foo" data namespace. That is a loud refusal, not silent loss, but it blocks every full export while it lasts.": "Close; file kv: ticket (Recommended)". The option read: "Close CHORE-61 and file the kv: export edge as a small new ticket (its fix changes export re-id behaviour, so it would come back to you)."
+4. To "CHORE-70 (a partly decoded save is installed without notice): fixed on every page that saves. Left over: on a read-only legacy page (web/Node, or a not-yet-converted Tauri/Android profile whose storage gate failed) a partly decoded save loads with no notice, and a .bin export from there can be partial yet look complete. Data on disk is untouched.": "Keep open, narrowed (Recommended)". The option read: "Retitle CHORE-70 to the read-only-page notice and partial-export gap; low priority, not scheduled."
+
+**What was decided (maintainer).**
+1. CHORE-29, CHORE-31 and CHORE-32 close as moot, each with a dated line citing the mechanism or commit and the scratch evidence.
+2. CHORE-55 closes as fixed. Its remaining stages (inlay files, search index, streaming writes) become a new open, unscheduled ticket, CHORE-392.
+3. CHORE-61 closes as fixed. The `kv:` export edge becomes a small new ticket, CHORE-393. Its fix changes export re-id behaviour, so it comes back to the maintainer.
+4. CHORE-70 stays open at low priority, unscheduled. It is retitled to the read-only-page notice and partial-export gap.
+
+Folded in from `Agents/Lanes/lane-G-records.md` on 2026-10-25 (merge `efcf63634`).
+
+### MC-547 — Lane G, 2026-10-25: commit CHORE-183 on the lane branch (the per-commit approval for a persistence change)
+
+- Tag: approval (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `7fb81b14-3585-4fb9-b518-f42aa7240633`. The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: lane G's batch 1 brief says save-format, persistence and data-loss changes need per-commit approval even under the standing approval. CHORE-183 changes what a legacy conversion installs.
+- Alternative rejected: "Hold it".
+- Related: `MC-500`, `MC-544`, `MC-545`; commit `8c1abc67a`.
+
+**The maintainer's answer.** To "CHORE-183 is ready to commit on the Lane G branch. Converting an older save with a missing or null preset list now installs with the Default preset. A malformed list makes the normal conversion offer a good backup, or else name "Presets" on the "Convert without these parts" screen. The source file is never written. Gate 1 (after one REJECT) and Gate 2 are APPROVE from opus-reviewer; full test, check and build are green. It changes what a conversion writes, so it needs your per-commit approval. Commit it?": "Commit it". The option read: "Commit the five CHORE-183 files on worktree-Lane-G (not pushed); lane A merges."
+
+**What was decided (maintainer).** CHORE-183 is committed on `worktree-Lane-G`. It is not pushed, and lane A merges it.
+
+Folded in from `Agents/Lanes/lane-G-records.md` on 2026-10-25 (merge `efcf63634`).
+
+### MC-485 — Lane B, 2026-10-24: the reload prompt before a large import or export, as built; E1 waits
+
+- **Tag:** decision (the maintainer's AskUserQuestion answers in the lane B session, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane B session transcript; sizing `%TEMP%\risu-lane-b\c205-next\e1-reload-sizing\result.md` and its verdict `e1-reload-verify\result.md`.
+- **Related:** `MC-483` item 2 (amended here for import), `MC-482`, `MC-350`, `MC-355`; CHORE-205.
+
+1. **Import:** "Tap Continue, pick again (Recommended)". The option read: "Before the file chooser, the app asks to reload. After the reload it shows "Continue import"; one tap opens the chooser and you pick the backup again." This amends `MC-483` item 2 for import ("starts on its own after the reload").
+2. **When to ask:** "Used + large library (Recommended)". The option read: "Only on Android, only if you've opened, edited or generated something since launch, and the library has more than about 100 characters or 30 modules. For import, it also asks once the backup turns out to be large (database part over 16 MB). These numbers come from two measurements, so they'd be checked on the phone."
+3. **Phone checks first:** "Yes, phone 1 first (Recommended)". The option read: "Short scripted checks through lane A on the test profile. The plan waits for the results."
+4. **Defaults:** "Accept all (Recommended)", for these six:
+   1. For export, the save dialog opens by itself after the reload.
+   2. If the reload does not happen or the app is closed, nothing runs later.
+   3. "No, continue without reloading" is remembered until the app is closed.
+   4. If unsaved changes cannot be saved first, the app does not reload and continues without it.
+   5. Desktop and web stay unchanged.
+   6. E1 (keeping the about 120 MB of character data compressed during export) waits until a run after a reload shows it is still needed.
+
+**Notes that are not the maintainer's words:**
+- Why import cannot start on its own: a picked file does not survive a reload (sizing); that the chooser needs a fresh tap after a reload is INFERRED and is phone check 2b.
+- The 100-character and 30-module thresholds are INFERRED from two measurements and must be checked on the phone. The 16 MB figure is the existing `IMPORT_SIZE_WARNING_BYTES` (16 MiB, `src/ts/drive/storeImport.ts`).
+- Default 1 depends on a phone check: whether the Tauri save dialog opens after a reload without a tap is INFERRED, not tested.
+- Default 4 includes a parked save loop or a `saveFirst` timeout (the verifier's addition): either means the app does not reload.
+- **Device, as relayed by lane A on 2026-10-24:** the maintainer chose "Phone 2, synthetic (Recommended)" in place of phone 1 for item 3. The checks run on phone 2 after device stage D (a fresh main build and the 500-character synthetic profile). That profile has tiny avatars and few messages, so check 3 gives reload deltas, not real-library sizes.
+- Nothing here authorizes implementation, a commit or a push.
+
+Folded in from `Agents/Lanes/lane-B-records.md` on 2026-10-25 (merge `1537d09b9`).
+
+### MC-486 — Lane B, 2026-10-25: the export reload prompt waits for the idle net, covers both exports, and remembers "no" until close
+
+- **Tag:** decision (the maintainer's AskUserQuestion answers in the lane B session, 2026-10-25)
+- **Date:** 2026-10-25
+- **Sweep ref:** none
+- **Source:** the lane B session transcript; plan draft `%TEMP%\risu-lane-b\c205-next\reload-s1\plan.md` (its product questions 1 to 4).
+- **Related:** `MC-485`, `MC-483`; CHORE-205.
+
+1. **Before reload:** "Wait, then reload (Recommended)". The option read: "Show "Saving…" for up to about 20 s until every character has been checked, then reload. If the wait runs out, the app doesn't reload and exports without it."
+2. **Partial export:** "Yes, both exports (Recommended)". The option read: "The same prompt, rules and thresholds apply to the full and partial backup buttons."
+3. **Cancel after the reload:** "Same as today (Recommended)". The option read: "It shows the same "Failed" message a manual cancel shows now. Nothing runs again afterwards."
+4. **Remember "no":** "Until the app is closed (Recommended)". The option read: "Kept in the same short-lived storage as the resume note, so it lasts through any reload and is forgotten when the app is closed. This matches your earlier answer exactly."
+
+**Notes that are not the maintainer's words:**
+- Item 1 rests on the plan's finding that an edit which raised no save mark is found only by the idle net, one resident character per tick, with a 30 s clean-verdict skip; the plan cites `saveLoop.ts`. The about 20 s figure is INFERRED and goes to Gate 1.
+- Nothing here authorizes implementation, a commit or a push.
+
+Folded in from `Agents/Lanes/lane-B-records.md` on 2026-10-25 (merge `1537d09b9`).
+
+### MC-487 — Lane B, 2026-10-25: implement the export reload prompt; a refused reload says nothing
+
+- **Tag:** decision (the maintainer's AskUserQuestion answers in the lane B session, 2026-10-25)
+- **Date:** 2026-10-25
+- **Sweep ref:** none
+- **Source:** the lane B session transcript; plan `%TEMP%\risu-lane-b\c205-next\reload-s1\plan-r4.md` with `plan-r4-amend.md`; rows 3017 to 3023.
+- **Related:** `MC-485`, `MC-486`; CHORE-205.
+
+1. **Implement:** "Implement it (Recommended)". The option read: "One coder implements it in lane B, then an independent review, full tests and checks; I ask you again before any commit. Phone checks (save time, memory peak, thresholds) follow through lane A."
+2. **Refusal note:** "Say nothing (Recommended)". The option read: "The export just starts; any save error stays on screen until you close it. No new text to translate."
+
+**Notes that are not the maintainer's words:** item 1 authorizes implementation and its gates only, not a commit or a push. Item 2's option text said "No new text to translate"; the change still adds four keys: the prompt, the two buttons and the `reloadFirstDidNotReload` toast. Gate 2 round 1 ruled that toast to be the `MC-485` default 2 case (the reload did not happen, so nothing is exported), not a refusal message. The maintainer is to be told at the commit question. Plan question 9.1 (whether to wait past 20 s) stays open until phone check 7(b).
+
+Folded in from `Agents/Lanes/lane-B-records.md` on 2026-10-25 (merge `1537d09b9`).
+
+### MC-507 — Lane A, 2026-10-25: the lane C merge after stage A Gate 2, and low-priority batches for the idle lanes F and G (lane F: the Node group; lane G: closure audit and test fixes)
+
+- Tag: decisions (two maintainer messages and two `AskUserQuestion` answers by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` (the call lines are not given by the extract); the extract `%TEMP%\risu-b715\records-b12\questions-b13.md`; the briefs `%TEMP%\risu-b715\lanes-next\lane-F-node.md` and `lane-G-hygiene.md`. The messages and option labels are the maintainer's. The question texts and the option descriptions are lane A's wording as the extract and its supplement record them.
+- Reasoning: none beyond the messages and answers.
+- Alternatives rejected: lane F: "Only 120 and P9", "Not Node". Lane G: "Only the closure audit", "Something else".
+- Related: `MC-500` (the standing approval for gated batches), `MC-501` 5 group E (left the Node items open), `MC-503` (lanes F and G), `MC-438` and `MC-439` (lane C batch Q), `MC-505` (the Back batch whose stage A Gate 2 comes first), `MC-543` (lane G's own confirmation of the batch 2 scope); CHORE-120, 62, 46, 240, 185, 353, 209, 183, 29, 31, 32, 55, 61, 70.
+
+**The maintainer's words and answers.**
+1. A message: "go ahead with said plan." "Said plan" is lane A's reply just before it, in substance: merge lane C after the stage A review comes back, so one full test run (about 25 minutes) covers both; the test script no longer restores the snapshot file and instead checks it stays unchanged (CHORE-240's check); if stage A needs fixes, lane C gets its own full run; lane C's records go into the next records batch.
+2. A message: "since there are Lane F and G now sitting Idle, I think we can delegate some low priority batches(like node only stuff) to it while we work on the remaining batches."
+3. To "Lane F (idle) next: the Node group that MC-501 left open. Which scope?" with the options "Size all four, fix small (Recommended)" / "Only 120 and P9" / "Not Node": "Size all four, fix small (Recommended)". The options read: "Size CHORE-120 (first client can set the Node password), P9 (a corrupt __revisions.json starts the server as empty), CHORE-62 (another device's save stops this one saving) and CHORE-46 (Node 100 MB limit). Fix 120 and P9 if they're small; bring 62 and 46 back with options, since both were marked 'after A5'. Persistence parts get opus-reviewer and per-commit approval." / "Just the two small Node fixes; leave 62 and 46 alone." / "Give lane F something else (say what)."
+4. To "Lane G (idle) next: a low-priority hygiene batch?" with the options "Closure audit + test fixes (Recommended)" / "Only the closure audit" / "Something else": "Closure audit + test fixes (Recommended)". The options read: "Check the six tickets lane E's audit called superseded on store2 (CHORE-29, 31, 32, 55, 61, 70) and draft close/park proposals for you; fix CHORE-209 (supaResume test isolation) and CHORE-183 (missing botPresets list stops 'Convert without these parts')." / "Records-only: the six superseded candidates, no code." / "Say what lane G should take."
+
+**What was decided (maintainer).**
+1. Lane C's batch Q is merged after stage A's Gate 2, with one shared full run (message 1; the merge is `4fb1e3cbb`, ledger row 2285).
+2. Low-priority batches, such as Node-only work, are delegated to the idle lanes F and G while lane A works the remaining batches (message 2).
+3. Lane F takes the Node group `MC-501` left open: CHORE-120, the unparseable `__revisions.json` (P9), CHORE-62 and CHORE-46. The answer is "size all four, fix small"; the brief has lane F fix CHORE-120 and P9 if small, and size CHORE-62 and CHORE-46 only, bringing options back (answer 3; brief `lane-F-node.md`).
+4. Lane G takes a closure audit and test fixes (answer 4; the brief `lane-G-hygiene.md` names the closure audit of CHORE-29, 31, 32, 55, 61 and 70, CHORE-209 and CHORE-183, as `MC-543` records).
+
+**Lane A's rulings (not the maintainer's decisions).**
+- Lane C's batch Q fell under `MC-500`: it is test tooling and a records-only sizing, with no product question.
+- Each brief to lane F and lane G is a peer relay, not maintainer approval; each lane confirms its scope with the maintainer in its own session (the briefs say so).
+
+**Related, not decisions.**
+- The maintainer's remark, verbatim: "notification: there are 2 new dependabot PRs, dompurify and happy-dom." The remote branches lane A fetched are `origin/dependabot/npm_and_yarn/dompurify-3.4.17` ("Bump dompurify from 3.4.16 to 3.4.17") and `origin/dependabot/npm_and_yarn/happy-dom-21.0.4` ("Bump happy-dom from 20.14.5 to 21.0.4").
+- Lane A's plan, which the maintainer has not answered:
+  - dompurify 3.4.17 at a quiet point, applied on main with the jsdom sanitizer tests (`MC-239`);
+  - happy-dom 21 parked until the lanes are idle.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes a commit or a push.
+
+### MC-508 — Lane A, 2026-10-25: lane G's batch 3 (CHORE-391 and 393, then 191, 208, 210, 107, 189, 190 and 02), and CHORE-191, 107 and 02 come out of the parked list
+
+- Tag: decisions (one maintainer message, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` (the line is not given by the extract); the extract `%TEMP%\risu-b715\records-b12\questions-b13.md`; the brief `%TEMP%\risu-b715\lanes-next\lane-G-batch3.md`. The message is the maintainer's. Lane A's suggestion, which the message accepts, is quoted in substance from the extract's supplement (the reply the maintainer accepted): "My suggestion for lane G's next batch: 1. CHORE-391, then CHORE-393 once you pick its fix. Lane G already knows this code. 2. A small fixes pass: CHORE-191, 208, 107 and the manualCleanup timeout fix. 3. CHORE-02 only if you want it un-parked." The maintainer added the open low-priority tickets (CHORE-189, 190, and 393 already listed).
+- Reasoning: none beyond the message.
+- Alternatives rejected: none were offered.
+- Related: `MC-500`, `MC-501`, `MC-507`, `MC-509`, `MC-543` to `MC-547`, `MC-058`, `MC-175`; CHORE-391, 393, 191, 208, 210, 107, 189, 190, 02.
+
+**The maintainer's message (verbatim).**
+
+> un-park 191, 107 and 02. I'll take your suggestion on next batch. let's tackle open low priority tickets too as they seem small.
+>
+> I can go through decisions via ask tool.
+
+**What was decided (maintainer).**
+1. CHORE-191, CHORE-107 and CHORE-02 are un-parked.
+2. Lane G's next batch is lane A's suggestion, in this order: CHORE-391, then CHORE-393 after its fix choice comes to the maintainer; then the small-fixes pass (CHORE-191, CHORE-208, CHORE-210, CHORE-107); then CHORE-189 and CHORE-190; then CHORE-02. The extract's summary of the suggestion reads "CHORE-391 then 393 (fix choice first), small-fixes pass (191, 208, 107, manualCleanup flake = CHORE-210), CHORE-02; plus open low-priority 189, 190"; the order above is the brief's.
+3. The open low-priority tickets (CHORE-189 and CHORE-190) are included, "as they seem small".
+4. The maintainer answers product decisions for the batch through the ask tool, which is how lane G brings them to him.
+
+**Lane A's rulings (not the maintainer's decisions).**
+- CHORE-210 is the `manualCleanup.svelte.test.ts` flake (5000 ms timeouts under full-suite load), and lane A assigned the ID from its own range.
+- The non-English locale keys for CHORE-208 go through the Translator on main after the merge. Lane G edits English only and lists the keys in its fold-in list (`MC-058`; the Translator's write guard works only on main).
+- Tickets that touch save, conversion, export or persistence code use opus-reviewer and need the maintainer's per-commit approval (the `MC-500` exception). The brief says so.
+- The brief is a peer relay, not maintainer approval: lane G confirms the scope with the maintainer in its own session.
+
+- Notes, not the maintainer's words:
+  - The Roadmap carries the per-ticket lines (records batch 13).
+  - Nothing here authorizes a commit or a push.
+
+### MC-509 — Lane A, 2026-10-25: merge lane G's batch 2 (CHORE-183, CHORE-209) and lane B's reload prompt (CHORE-205 stage 1) into main with shared full checks (lane A's rulings under `MC-500`)
+
+- Tag: decisions (two `AskUserQuestion` answers by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` (the call lines are not given by the extract); the extract `%TEMP%\risu-b715\records-b12\questions-b13.md`; ledger rows 2288 and 2289. The option labels are the maintainer's. The question texts and the option descriptions are lane A's wording as the extract and its supplement record them.
+- Reasoning (lane A's, from the question texts): CHORE-183 changes how older saves convert, and lane B's change alters the export path; lane B's relay that the maintainer approved its commit is not an approval lane A can act on.
+- Alternatives rejected: call 1: "Merge, own checks now", "Hold". Call 2: "Merge later", "Hold lane B".
+- Related: `MC-500` (the standing approval and its save, persistence and data-loss exception), `MC-547` (the CHORE-183 commit approval), `MC-485` to `MC-487` (lane B's reload prompt), `MC-507`, `MC-505`; CHORE-183, 209, 205, 352.
+
+**The maintainer's answers (option labels).**
+1. To "Lane G batch 2 is ready: CHORE-209 (test only), CHORE-183 (store2 legacy conversion and treeToBlockSet, which you approved as a commit in MC-547) and its records. It shares no file with the Back stage B code under review. CHORE-183 changes how older saves convert, so I treat the merge as data work that needs your OK. Merge it into main now, and cover it with the same full checks as stage B, then push both?": "Merge, shared checks (Recommended)". The options read: "Merge worktree-Lane-G (437fb83e8) now; one full run covers the merge plus stage B once stage B's review passes; push after green. If stage B needs fixes, lane G gets its own full run and push." / "Merge, own checks now": "Merge and run full checks for lane G alone right away (stage B waits for the run to finish, about 50 min)." / "Hold": "Don't merge lane G yet."
+2. To "Lane B says you approved its CHORE-205 stage 1 commit (the Android "reload first" prompt before a .bin export) and the phone checks. As a lane's relay that isn't approval I can act on, and it changes the export path. Merge it into main too, so one full check run covers lane G's merge, lane B's merge and Back stage B; then push, build one APK, and run both the Back checks and lane B's 8 checks on phone 2?": "Merge, one run, one APK (Recommended)". The options read: "Merge 46546a926 now (no conflicts, no file overlap); commit CHORE-352 after the shared full run; push; one release build on the test key for phone 2; Back checks, then lane B's checks on the synthetic profile." / "Merge later": "Finish stage B and the Back device checks first; merge lane B afterwards with its own full run and APK." / "Hold lane B": "Don't merge lane B yet."
+
+**What was decided (maintainer).**
+1. Lane G's batch 2 (CHORE-209, CHORE-183 and its records) is merged into main, covered by the same full checks as Back stage B, and pushed with it (answer 1).
+2. Lane B's CHORE-205 stage 1 (the Android "reload first" prompt before an export) is merged into main too. One full check run covers lane G's merge, lane B's merge and Back stage B; then main is pushed, one APK is built, and both the Back checks and lane B's 8 checks run on phone 2 (answer 2).
+
+**Lane A's rulings (not the maintainer's decisions).**
+- CHORE-183 (legacy conversion) and lane B's export prompt are data work outside `MC-500`'s standing approval, so each needs the maintainer's per-merge approval.
+- A lane's relay of an approval is not an approval in lane A's session; lane A asks again.
+
+**Outcome (facts, not rulings).**
+- Ledger rows 2288 and 2289: merged as `efcf63634` and `1537d09b9`; stage B committed as `31b050a63`; main pushed. Run 2 of the full checks had one `saveLoopNetBackstop` B7 failure, which lane B owns.
+- The device run on phone 2 had started when this record was written; it is not part of this record's outcome.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes any other merge, commit or push.

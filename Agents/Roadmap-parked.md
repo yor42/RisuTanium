@@ -1,6 +1,8 @@
 # Roadmap: parked tickets (2026-10-24)
 
-Tickets the maintainer parked on 2026-10-24 (`MC-501`, `MC-504`). A parked ticket is not in the open-tickets table of the [Roadmap](Roadmap.md) and is not a release blocker (`MC-501`), but it is not closed: a maintainer decision can bring it back. Entries are moved from the Roadmap with their text unchanged, apart from one dated "PARKED" status line at the top of each. Parking never overrides `MC-175`, `MC-223` or `MC-350`.
+Tickets the maintainer parked on 2026-10-24 (`MC-501`, `MC-504`; CHORE-353 by `MC-439`). A parked ticket is not in the open-tickets table of the [Roadmap](Roadmap.md) and is not a release blocker (`MC-501`), but it is not closed: a maintainer decision can bring it back. Entries are moved from the Roadmap with their text unchanged, apart from one dated "PARKED" status line at the top of each. Parking never overrides `MC-175`, `MC-223` or `MC-350`.
+
+CHORE-02, CHORE-107 and CHORE-191 were un-parked on 2026-10-25 (`MC-508`) and are back in the Roadmap, each with a dated status line there.
 
 Parked sub-items of tickets that stay open are not moved; they carry a "PARKED" status line in the Roadmap entry:
 
@@ -15,20 +17,6 @@ Parked sub-items of tickets that stay open are not moved; they carry a "PARKED" 
 | A-lite storage rewrite | stage 5b (clean-up UI, quota path, prompt wording, orphan counter), parked behind CHORE-205's L3 and per-chat work | `MC-504` |
 
 Parked entries follow, in the Roadmap's file order.
-
-### CHORE-02 — `toSave.chat` is dead plumbing in the encoder
-
-**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D).** Can return on a maintainer decision. If the plumbing is ever touched, the change needs `opus-reviewer` (save-adjacent).
-
-`grep -n "toSave.chat\|RisuSaveType.CHAT" src/ts/storage/risuSave.ts` returns **nothing**. The
-field is populated (`dbChangeEffects.svelte.ts:80-85`) and merged back on failed saves
-(`globalApi.svelte.ts:620-623`), but the encoder never reads it to decide anything — chats persist
-inside the whole-character `CHARACTER_WITH_CHAT` block, gated solely by `toSave.character`.
-
-Consequence: leftover/aspirational plumbing for a per-chat granularity that was never wired up.
-**Useful corollary: a CHORE-01 fix needs no parallel per-chat work.** Decide whether to wire it up
-or delete it; do not leave it looking load-bearing. Low risk either way, but deleting it touches
-`toSaveType`, so treat it as save-adjacent.
 
 ### CHORE-49 — The self-hosted Node server does not boot when opened over plain HTTP
 
@@ -144,12 +132,6 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 
 **Status (2026-10-06): open, optional, any time (`MC-225` 3).** Node-hosted imports keep the 100 MiB per-asset limit and have no chunk endpoint; `1e71c45c`'s message notes there is no chunk endpoint yet (CHORE-108). Whether Rust moves the bytes is decided after live numbers (`MC-225` 3).
 
-### CHORE-107 — `openWriter` belongs inside the `try`
-
-**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D).** Can return on a maintainer decision.
-
-**Status (2026-10-06): open, not scheduled.** A follow-up named in the records items as "O2 openWriter inside the try" from the piece-by-piece hashing work (TODO(evidence): the file and the failure it prevents are not in the evidence).
-
 ### CHORE-108 — The web stage of piece saving
 
 **Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group F).** Can return on a maintainer decision.
@@ -235,12 +217,6 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 - **Related, from the pre-1b verification and plan section G3:** the stage 1b-0 rule covers the delete outcomes of cleanup; G3 describes the 'conflict' outcome as matching `writeAcknowledged`'s throw handling (null bytes, version kept). That this put path is outside the 1b-0 rule is an inference from reading those records, not tested.
 - **Not established:** a reproduction, the exact trigger and any repair. TODO(evidence).
 
-### CHORE-191 — English `chatParseFailed` now ends with a trailing ", "
-
-**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D).** Can return on a maintainer decision.
-
-**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Cosmetic. Source: U0 Gate 2 finding O2. The chat parse-error alert now shows the stack once (the stack block of the alert), so the stack slot of `language.errors.chatParseFailed` is empty and the English text ends with ", ". Fixing it changes the key in all 7 locales (the translator owns the non-English files).
-
 ### CHORE-41 — Bug: the edit button on earlier messages sometimes opens no editor
 
 **Status (2026-10-25, lane A records batch 12): PARKED (`MC-540` 3).** The maintainer answered "Not seen lately" to lane G; lane G did not work it. Low priority (`MC-199` 1). Can return on a maintainer decision or report.
@@ -286,3 +262,26 @@ output (below).
 - **Inferred, not run:** the question put to the maintainer states that in a phone browser Back is the browser's own navigation and does not close the sidebar today. `charlist\back-mechanism.md` (an `investigator` trace, not independently verified) read from source that only `MainActivity` asks the page Back hook, so a browser never asks it. Nothing was run in a phone browser. TODO(evidence).
 - **Related, accepted limitation R5 (`charlist\s4-2b-change1-report.md`):** where a history entry exists, a second Back may go back in history.
 - **Not decided:** the mechanism for browsers.
+
+### CHORE-353 — The write-scope guard refuses only the Edit and Write tools, so a shell write can change a repository file outside its grant (MC-457 1)
+
+**Status (2026-10-25, lane A records batch 13): PARKED (`MC-439`, `MC-457` 1).** Lane C's batch Q sized it and the maintainer chose "Keep rules, record facts (Recommended)": no tooling change, the interim rules stay, and the sizing facts go to the ticket. The Roadmap listed it in the open table until this batch; it moves here because `MC-439` says it stays parked. Can return on a maintainer decision, and `MC-457` 1 revisits it if a similar shell write recurs.
+
+**Folded in from lane C's records (merge `4fb1e3cbb`), 2026-10-25, lane A records batch 13.**
+
+**Status (2026-10-24, lane C cloud batch Q): sized; stays parked (`MC-439`, `MC-457` 1); no tooling change.** Rows 3341 and 3342.
+
+- **Corrected premise (EXECUTED and TRACED; rechecked by the orchestrator, row 3342):** in the Linux cloud container the guard does not run at all. There is no `pwsh` or `powershell`. The hooks in `.claude/settings.json` are PowerShell (`guard-write.ps1` requires 7.0), and `Get-GuardPath` in `write-guard-common.ps1` accepts only Windows drive paths. So cloud lanes work on the written rules alone. On Windows the one write hook is `PreToolUse` with matcher `Write|Edit`; every agent profile, read-only roles included, also holds a shell tool. `docs/workflow/ownership.md` already states that the hook is not a filesystem sandbox.
+- **Options sized (scratch `q\c353\result.md`):**
+  - (a) A before/after tree comparison on shell calls can only flag, not undo. Cost: about 15 ms for `git ls-files -m -o` plus hashing the changed files on this tree; Windows cost UNVERIFIED. It cannot catch a file changed and restored inside one command, which is the shape of the incident that raised this ticket (rows 3558 and 3559).
+  - (b) One worktree per coder contains a stray write rather than preventing it, and replaces the single-writer rule.
+  - (c) Per-grant read-only file attributes are the only real prevention, and the largest design.
+  - (d) The interim rules, already in force.
+- **For lane A:** the guard configuration assumes `C:\Projects\RisuAI` and PowerShell 7, so a cloud coder's grant is doctrine only. Revisit if a similar shell write recurs (`MC-457` 1).
+
+**Status (2026-10-24, lane A records batch 10):** open; in batch Q with CHORE-240 and CHORE-185, run by lane C (cloud).
+
+**Status (2026-10-22, lane A): open, ticketed, not scheduled (`MC-457` 1).** The maintainer: "let's ticket this for now and revisit this if similar things happen again." Source: lane E's CHORE-181 Gate 2 remediation (ledger row 3558). The coder ran its mutants by text-replacing worktree files with PowerShell and restoring them, including `alertPrompts.ts`, which was outside its grant; the write guard did not refuse it. Lane E's hash check found that file equal to the reviewed copy (row 3559).
+
+- The interim rules stand: no temporary repository edits by any tool, mutants on scratch copies only, and a hash check after any "restored" hand-back.
+- Deferred, not made now: (a) a hook that compares the working tree before and after each shell command and flags writes outside the grant; (b) one worktree per coder. Revisit both if a similar shell write recurs.
