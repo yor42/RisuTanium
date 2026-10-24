@@ -2,7 +2,7 @@
 
 > **This page is written from the removal plan and the app's source, not tested against a
 > running build with a real RisuAccount.** Nobody working on this fork has an account-sync
-> backup to test with, so the routes below — especially the encrypted-backup routes — are unverified. If
+> backup to test with, so the routes below — especially the encrypted-backup route — are unverified. If
 > a step here does not match what you actually see, that is more likely to be this page than
 > your data.
 
@@ -51,33 +51,34 @@ locally run upstream instance (including the desktop app) is not encrypted this 
 normally. Logging out of account sync before saving on `risuai.xyz` no longer helps: the file is
 still encrypted.
 
+Upstream issue kwaroran/Risuai#1681 (open, 2026-10-22) reports that these backups can only be
+restored on `risuai.xyz` itself: the RisuAI desktop app and a self-hosted Node server cannot
+restore them either (related upstream issue: #1641). There is currently no way to move your full
+data, with its images, off `risuai.xyz`.
+
 The reason is deliberate, not a bug to be fixed later: reading that kind of file would depend on
-an endpoint RisuAccount's own servers control, which this fork cannot verify or rely on. Upstream
-alternatives exist, described below.
+an endpoint RisuAccount's own servers control, which this fork cannot verify or rely on. One upstream
+alternative exists, described below.
 
-## Two things you can do on upstream instead
+## What you can do on upstream instead
 
-If your backup was refused, upstream gives you two ways to get your data out, and each keeps and
-drops something different:
+If your backup was refused, upstream offers one way to get part of your data out:
 
-1. On `risuai.xyz`, **Save Partial Backup Locally (Excluding Character Assets)** (the button's
-   own label). It is not encrypted, and it keeps every chat, including cold-storage chat bodies.
-   It keeps character, group and persona profile images, your user icon, your background, and
-   folder and preset images. It drops everything else — emotion images, additional character
-   assets and VITS voice files.
-2. To keep every asset, load the encrypted backup into upstream RisuAI running anywhere other
-   than `risuai.xyz` — the desktop app or a self-hosted copy — if it can open it, then use **Save
-   Backup Locally** there. Backups saved outside `risuai.xyz` are not encrypted. Import that new
-   file here through **Settings → Backup & Files → Load Backup Locally**.
+- On `risuai.xyz`, **Save Partial Backup Locally (Excluding Character Assets)** (the button's
+  own label). It is not encrypted, and it keeps every chat, including cold-storage chat bodies.
+  It keeps character, group and persona profile images, your user icon, your background, and
+  folder and preset images. It drops everything else — emotion images, additional character
+  assets and VITS voice files.
 
-Route 1 loses the images it drops; route 2 depends on that other upstream copy being able to open
-the encrypted file. This fork does not decrypt the file itself.
+This route loses the images it drops. Loading the encrypted full backup into the desktop app or a
+self-hosted copy and saving it again there does not work, per upstream issue #1681. This fork does
+not decrypt the file itself.
 
 For each import here, close every other tab of this app first — see the restore behavior noted in
 the normal route above; the same tab-check and automatic-reload behavior applies.
 
-These routes are read from the code and upstream's source, not run end to end — nobody
-maintaining this fork has an encrypted `risuai.xyz` backup to test them against. If you try them,
+This route is read from the code and upstream's source, not run end to end — nobody
+maintaining this fork has an encrypted `risuai.xyz` backup to test it against. If you try it,
 treat your original data on `risuai.xyz` as the source of truth until you have checked the result.
 
 ## Self-hosted or local upstream: don't lose your images
