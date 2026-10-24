@@ -2,6 +2,8 @@ import { untrack } from "svelte"
 import { DBState, selectedCharID } from "../stores.svelte"
 import type { toSaveType } from "./risuSave"
 import { appendIfAbsent } from "./characterSaveMarks"
+import { MEASURE } from "../process/memory/measureFlag"
+import { classifyChange, ensureInstalled, noteIdentity, notePartitionTag, noteSignal } from "./netSignalMeter"
 
 export interface DbChangeEffectOptions {
     tracker: toSaveType
@@ -17,7 +19,7 @@ export interface DbChangeEffectOptions {
      */
     seed?: Iterable<object>
     /**
-     * TEST INSTRUMENTATION ONLY -- production never passes this. Called at
+     * TEST AND MEASURE INSTRUMENTATION ONLY -- only tests and MEASURE builds pass this. Called at
      * the top of every selected-character (6b) effect
      * body, so a test can count how many times each partition piece re-runs
      * without that count being observable through `tracker`/`markChanged`
@@ -49,6 +51,36 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
     selectedCharID.subscribe((v) => {
         selIdState = v
     })
+
+    if (MEASURE) {
+        // The net-signal meter's wrappers. The selected id is read untracked, once per call and only on the `part`
+        // branch, so no effect gains a dependency; a partition effect tags itself before its own `markChanged`.
+        const innerMarkChanged = opts.markChanged
+        const innerPartitionRun = opts.onPartitionRun
+        const selectedChaId = (): string | null => {
+            const chaId = (DBState?.db?.characters?.[selIdState] as { chaId?: unknown } | undefined)?.chaId
+            return typeof chaId === 'string' && chaId !== '' ? chaId : null
+        }
+        const readSelected = (): string | null => untrack(selectedChaId)
+        ensureInstalled(readSelected)
+        opts.onPartitionRun = (kind, index) => {
+            notePartitionTag()
+            innerPartitionRun?.(kind, index)
+        }
+        opts.markChanged = (markDirty) => {
+            try {
+                if (classifyChange(markDirty)) {
+                    const chaId = readSelected()
+                    if (chaId !== null) {
+                        noteSignal('part', chaId)
+                    }
+                }
+            } catch {
+                // A measurement failure never reaches the save.
+            }
+            innerMarkChanged(markDirty)
+        }
+    }
 
     let ranOnce = false
     // Deep-read, like the sibling effects below. A shallow id/length read misses
@@ -436,6 +468,9 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
                     const chaId = untrack(() => (c as { chaId?: string }).chaId)
                     if (chaId) {
                         appendIfAbsent(opts.tracker, chaId)
+                        if (MEASURE) {
+                            noteIdentity(chaId)
+                        }
                         opts.markChanged(true)
                     }
                 }

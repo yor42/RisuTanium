@@ -1,6 +1,8 @@
 import type { toSaveType } from '../risuSave'
 import type { UnitType } from './format'
 import type { SplitMsField, SplitPutSection, SplitRecorder } from './codec/types'
+import type { CharSignals, NetSignalHandle, SignalGlobals } from '../netSignalMeter'
+import type { InFlightKind } from '../../process/inFlightWork'
 
 /**
  * The save-pass meter of a measurement build: per encode pass the kind, whether the modules were encoded, how many
@@ -76,6 +78,17 @@ import type { SplitMsField, SplitPutSection, SplitRecorder } from './codec/types
  * runs and disagreements; `shadowSlots()` holds one record per slot, aligned with `slotTimings`, with the slot's tag and
  * its tripwire time. The tripwire re-judges every eighth hit with the full primitive on the live character; the phone
  * run requires zero disagreements. All of it records only while the `risu-measure-savepass` switch is on.
+ *
+ * Signal slots (`signalSlots()` and `signalAcks()`, CHORE-205 counter experiment): one self-contained record per slot, in
+ * its own ring, with the slot's timing fields copied in and the judged character's signal counters (see
+ * `netSignalMeter.ts`) copied at the instant the verdict returned (`endAt`; a slot that left before a verdict uses the
+ * decision's end). The counters come through `globalThis.__risuNetSignals`, typed here by an `import type` only: this
+ * module is in the `saveLoop` chunk and must not import the signal module at runtime. Without the handle the signal
+ * fields are null. A dirty slot also registers a late watch: `lateAt` is set when a signal for the character arrives
+ * within 10 s after `endAt`, and `watchRefused` when the handle's watch cap refused the registration. `signalAcks()`
+ * holds the points at which a character's saved state became current: `ack` (a commit, with the pass start and the
+ * characters it encoded), `unchanged` (a pass that found nothing to write), `adopted` (a pending attempt that proved
+ * to be current) and `init` (reserved: boot seeds no entry yet). Only `ack` is the primary baseline.
  */
 
 export type SavePassKind = 'rewriteAll' | 'whole' | 'tick' | 'edit'
@@ -240,6 +253,8 @@ export interface SavePassMeterHandle {
     verdicts(): NetVerdictSummary
     shadowTally(): NetShadowTally
     shadowSlots(): NetShadowSlot[]
+    signalSlots(): SignalSlotRecord[]
+    signalAcks(): SignalAckRecord[]
     reset(): void
 }
 
@@ -345,6 +360,53 @@ export interface NetShadowSlot {
     verdictShadow: NetShadowTag | null
     shadowTripwire: boolean
     shadowTripwireMs: number | null
+}
+
+/** One idle-net slot with the signal counters of the character it judged, self-contained (no join to `slotTimings`). */
+export interface SignalSlotRecord {
+    /** Monotonic per page, counted by this ring. */
+    seq: number
+    /** `performance.now()` at the slot's decision start; null when the loop gave no start. */
+    at: number | null
+    /** The instant `verdictOf` returned, or the decision's end for a slot that left before a verdict. */
+    endAt: number
+    reason: NetSlotReason | null
+    decisionMs: number
+    spanAMs: number | null
+    spanBMs: number | null
+    shadow: NetShadowTag | null
+    hidden: boolean | null
+    selectedChaId: string | null
+    /** The resident count after the shadow prune; null when the slot left before it. */
+    residents: number | null
+    /** The change in the resident count since the previous slot that had one; null for the first. */
+    residentsDelta: number | null
+    chaId: string | null
+    outcome: NetVerdictOutcome | null
+    /** Consecutive dirty verdicts for `chaId` including this one; 0 for any other outcome. */
+    dirtyRun: number
+    /** Copies taken at `endAt`; null without the handle or without a judged character. */
+    signals: CharSignals | null
+    signalGlobals: SignalGlobals | null
+    inFlightKinds: InFlightKind[] | null
+    /** Commits acknowledged by this ring's owner so far (cumulative). */
+    commits: number
+    /** Set when a signal for `chaId` arrived within 10 s after `endAt` (dirty slots only). */
+    lateAt: number | null
+    /** The handle's watch cap refused this dirty slot's late check. */
+    watchRefused: boolean
+}
+
+export type SignalAckKind = 'ack' | 'unchanged' | 'adopted' | 'init'
+
+/** A point at which the saved state of `chaIds` became current. */
+export interface SignalAckRecord {
+    kind: SignalAckKind
+    /** The start of the pass that produced the state. */
+    passStartAt: number
+    /** When the loop noted it. */
+    ackAt: number
+    chaIds: string[]
 }
 
 /** The part of a save request that decides the kind. */
@@ -497,8 +559,10 @@ export function noteNetSlotBegin(): void {
     try {
         slotInFlight = null
         shadowSlotInFlight = null
+        signalDraftInFlight = null
         if (switchedOn()) {
             shadowSlotInFlight = blankShadowSlot()
+            signalDraftInFlight = blankSignalDraft()
             slotInFlight = {
                 reason: null, decisionMs: 0, lockWaitMs: null, readMs: null, judgeMs: null, checksMs: null,
                 scanMs: null, unsavableMs: null, pruneMs: null, findMs: null,
@@ -526,13 +590,16 @@ export function noteNetSlotMs(ms: number): void {
     try {
         const timing = slotInFlight
         const shadowSlot = shadowSlotInFlight
+        const signalDraft = signalDraftInFlight
         slotInFlight = null
         shadowSlotInFlight = null
+        signalDraftInFlight = null
         if (switchedOn()) {
             shadowSlotStore ??= []
             pushLimited(shadowSlotStore, shadowSlot ?? blankShadowSlot())
             pushLimited(verdictsNow().decisionMs, ms)
             pushLimited(verdictsNow().slotTimings, { ...(timing ?? { reason: null, lockWaitMs: null, readMs: null, judgeMs: null, checksMs: null, scanMs: null, unsavableMs: null, pruneMs: null, findMs: null, verdictMs: null, primitiveMs: null, movedMs: null, spanAMs: null, yieldMs: null, spanBMs: null }), decisionMs: ms })
+            closeSignalSlot(signalDraft, timing, ms, shadowSlot)
         }
     } catch {
         // A measurement failure never reaches the save.
@@ -628,6 +695,209 @@ export function noteNetShadowEvent(event: 'cleared' | 'refused' | 'disagreed', c
     }
 }
 
+const SIGNAL_SLOT_LIMIT = 1500
+const SIGNAL_ACK_LIMIT = 500
+/** A dirty slot's late check: a signal for its character within this long after `endAt` marks it. */
+const SIGNAL_LATE_WINDOW_MS = 10000
+
+interface SignalSlotDraft {
+    at: number | null
+    clockEnd: number | null
+    residents: number | null
+    chaId: string | null
+    outcome: NetVerdictOutcome | null
+    endAt: number | null
+    signals: CharSignals | null
+    signalGlobals: SignalGlobals | null
+    kinds: InFlightKind[] | null
+    selected: string | null
+}
+
+// Created on first use, for the same reason as the net-found state.
+let signalSlotStore: SignalSlotRecord[] | null = null
+let signalAckStore: SignalAckRecord[] | null = null
+// The signal draft of the slot in flight, begun and closed with `slotInFlight`.
+let signalDraftInFlight: SignalSlotDraft | null = null
+let signalSlotSeq = 0
+let signalCommits = 0
+let signalLastResidents: number | null = null
+let signalDirtyRuns: Map<string, number> | null = null
+// The start of the pass in flight (null outside a pass or with the switch off), and the attempt kept as pending.
+let signalPassStartAt: number | null = null
+let signalKept: { passStartAt: number, chaIds: string[] } | null = null
+
+function blankSignalDraft(): SignalSlotDraft {
+    return { at: null, clockEnd: null, residents: null, chaId: null, outcome: null, endAt: null, signals: null, signalGlobals: null, kinds: null, selected: null }
+}
+
+function signalHandle(): NetSignalHandle | null {
+    return (globalThis as { __risuNetSignals?: NetSignalHandle }).__risuNetSignals ?? null
+}
+
+function readOrNull<T>(read: () => T): T | null {
+    try {
+        return read()
+    } catch {
+        return null
+    }
+}
+
+function takeSignalSnapshot(draft: SignalSlotDraft, endAt: number): void {
+    draft.endAt = endAt
+    const signals = signalHandle()
+    if (signals === null) {
+        return
+    }
+    const chaId = draft.chaId
+    draft.signals = chaId === null ? null : readOrNull(() => signals.signals(chaId))
+    draft.signalGlobals = readOrNull(() => signals.globals())
+    draft.kinds = readOrNull(() => signals.inFlightKinds())
+    draft.selected = readOrNull(() => signals.selected())
+}
+
+/** The idle net calls this once per slot with the resident count after the shadow prune. */
+export function noteSignalResidents(count: number): void {
+    try {
+        if (signalDraftInFlight !== null) {
+            signalDraftInFlight.residents = count
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+/**
+ * The idle net calls this at a verdict with the instant `verdictOf` returned, and at an unsavable or missing resident as
+ * `unknown` with a null instant: the counters are then copied when the slot closes, at the decision's end.
+ */
+export function noteSignalVerdict(chaId: string, outcome: NetVerdictOutcome, endAt: number | null): void {
+    try {
+        const draft = signalDraftInFlight
+        if (draft !== null) {
+            draft.chaId = chaId
+            draft.outcome = outcome
+            if (endAt !== null) {
+                takeSignalSnapshot(draft, endAt)
+            }
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+/** The decision's start and end instants, noted just before the slot closes; the end serves a slot that left before a verdict. */
+export function noteSignalSlotClock(startAt: number, endAt: number): void {
+    try {
+        if (signalDraftInFlight !== null) {
+            signalDraftInFlight.at = startAt
+            signalDraftInFlight.clockEnd = endAt
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+function closeSignalSlot(draft: SignalSlotDraft | null, timing: NetSlotTiming | null, decisionMs: number, shadowSlot: NetShadowSlot | null): void {
+    const current = draft ?? blankSignalDraft()
+    if (current.endAt === null) {
+        takeSignalSnapshot(current, current.clockEnd ?? performance.now())
+    }
+    const endAt = current.endAt ?? 0
+    let residentsDelta: number | null = null
+    if (current.residents !== null) {
+        residentsDelta = signalLastResidents === null ? null : current.residents - signalLastResidents
+        signalLastResidents = current.residents
+    }
+    signalDirtyRuns ??= new Map()
+    let dirtyRun = 0
+    if (current.chaId !== null) {
+        if (current.outcome === 'dirty') {
+            dirtyRun = (signalDirtyRuns.get(current.chaId) ?? 0) + 1
+            signalDirtyRuns.set(current.chaId, dirtyRun)
+        } else {
+            signalDirtyRuns.delete(current.chaId)
+        }
+    }
+    signalSlotSeq++
+    const record: SignalSlotRecord = {
+        seq: signalSlotSeq, at: current.at, endAt, reason: timing?.reason ?? null, decisionMs,
+        spanAMs: timing?.spanAMs ?? null, spanBMs: timing?.spanBMs ?? null, shadow: shadowSlot?.verdictShadow ?? null,
+        hidden: typeof document === 'undefined' ? null : document.hidden,
+        selectedChaId: current.selected, residents: current.residents, residentsDelta,
+        chaId: current.chaId, outcome: current.outcome, dirtyRun,
+        signals: current.signals, signalGlobals: current.signalGlobals, inFlightKinds: current.kinds,
+        commits: signalCommits, lateAt: null, watchRefused: false,
+    }
+    signalSlotStore ??= []
+    pushLimited(signalSlotStore, record, SIGNAL_SLOT_LIMIT)
+    const signals = signalHandle()
+    if (record.outcome === 'dirty' && record.chaId !== null && signals !== null) {
+        const chaId = record.chaId
+        record.watchRefused = !(readOrNull(() => signals.watch(chaId, endAt + SIGNAL_LATE_WINDOW_MS, () => {
+            record.lateAt ??= performance.now()
+        })) ?? false)
+    }
+}
+
+/** The loop calls this when a pass attempt starts: a marked pass at its snapshot, a tick pass at its plan start. */
+export function noteSignalPassStart(): void {
+    try {
+        signalPassStartAt = switchedOn() ? performance.now() : null
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+function pushSignalAck(kind: SignalAckKind, passStartAt: number, chaIds: readonly string[]): void {
+    signalAckStore ??= []
+    pushLimited(signalAckStore, { kind, passStartAt, ackAt: performance.now(), chaIds: [...chaIds] }, SIGNAL_ACK_LIMIT)
+}
+
+/** A commit landed and was acknowledged: `chaIds` is the set the plan encoded. Also drops an attempt kept as pending. */
+export function noteSignalAck(chaIds: readonly string[]): void {
+    try {
+        if (signalPassStartAt !== null) {
+            signalCommits++
+            signalKept = null
+            pushSignalAck('ack', signalPassStartAt, chaIds)
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+/** A pass found nothing to write: the characters it encoded equal their saved state. */
+export function noteSignalUnchanged(chaIds: readonly string[]): void {
+    try {
+        if (signalPassStartAt !== null) {
+            pushSignalAck('unchanged', signalPassStartAt, chaIds)
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+/** The pass in flight was kept as the pending attempt; an adoption makes its encoding current. */
+export function noteSignalKept(chaIds: readonly string[]): void {
+    try {
+        signalKept = signalPassStartAt === null ? null : { passStartAt: signalPassStartAt, chaIds: [...chaIds] }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+/** The pending attempt was adopted as current. */
+export function noteSignalAdopted(): void {
+    try {
+        if (signalKept !== null && switchedOn()) {
+            pushSignalAck('adopted', signalKept.passStartAt, signalKept.chaIds)
+        }
+        signalKept = null
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
 let passSeq = 0
 let splitClock: (() => number) | null = null
 
@@ -669,15 +939,27 @@ const handle: SavePassMeterHandle = {
     verdicts: verdictSummary,
     shadowTally: () => ({ ...shadowNow() }),
     shadowSlots: () => (shadowSlotStore ?? []).map(slot => ({ ...slot })),
+    signalSlots: () => (signalSlotStore ?? []).map(slot => ({ ...slot })),
+    signalAcks: () => (signalAckStore ?? []).map(entry => ({ ...entry, chaIds: [...entry.chaIds] })),
     reset: () => {
         verdictStore = null
         shadowStore = null
         shadowSlotStore = null
         shadowSlotInFlight = null
         slotInFlight = null
+        signalDraftInFlight = null
+        signalSlotStore = null
+        signalAckStore = null
+        signalSlotSeq = 0
+        signalCommits = 0
+        signalLastResidents = null
+        signalDirtyRuns = null
+        signalPassStartAt = null
+        signalKept = null
         passes.length = 0
         commits.length = 0
         netFoundStore = null
+        readOrNull(() => signalHandle()?.reset())
     },
 }
 

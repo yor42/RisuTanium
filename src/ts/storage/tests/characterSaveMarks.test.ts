@@ -3,7 +3,8 @@
  *
  * Drives the real `src/ts/storage/characterSaveMarks.ts` module directly --
  * no mocks needed, since it only imports a *type* from `risuSave.ts` (erased
- * at runtime) and has no other dependency.
+ * at runtime) and otherwise imports only the build flag and the net-signal
+ * meter, whose only runtime dependency is the import-free `inFlightWork`.
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
@@ -13,6 +14,7 @@ import {
     resetCharacterSaveMarksForTest,
     uninstallCharacterSaveMarks,
 } from '../characterSaveMarks'
+import { ensureInstalled, resetNetSignalsForTest, type NetSignalHandle } from '../netSignalMeter'
 import type { toSaveType } from '../risuSave'
 
 function makeTracker(character: string[] = []): toSaveType {
@@ -153,5 +155,56 @@ describe('markCharacterForSave', () => {
         installCharacterSaveMarks({ tracker, schedule: scheduleB })
 
         expect(scheduleB).not.toHaveBeenCalled()
+    })
+})
+
+describe('markCharacterForSave — net-signal counters (CHORE-205 counter experiment)', () => {
+    function handleOf(): NetSignalHandle | undefined {
+        return (globalThis as { __risuNetSignals?: NetSignalHandle }).__risuNetSignals
+    }
+
+    function enable(on: boolean): void {
+        localStorage.setItem('risu-measure-savepass', on ? 'on' : 'off')
+        resetNetSignalsForTest()
+        ensureInstalled(() => null)
+    }
+
+    afterEach(() => {
+        localStorage.clear()
+        resetNetSignalsForTest()
+    })
+
+    test('a mark counts as an api signal both before and after the tracker is installed', () => {
+        enable(true)
+        markCharacterForSave('a')
+        installCharacterSaveMarks({ tracker: makeTracker([]), schedule: vi.fn() })
+        markCharacterForSave('a')
+        markCharacterForSave('b')
+        expect(handleOf()?.signals('a')?.api.n).toBe(2)
+        expect(handleOf()?.signals('b')?.api.n).toBe(1)
+    })
+
+    test('falsy and non-string ids are not counted', () => {
+        enable(true)
+        installCharacterSaveMarks({ tracker: makeTracker([]), schedule: vi.fn() })
+        markCharacterForSave(undefined)
+        markCharacterForSave('')
+        markCharacterForSave(0 as unknown as string)
+        markCharacterForSave(5 as unknown as string)
+        expect(handleOf()?.dump().perChar).toEqual([])
+    })
+
+    // Compatibility guard: passes with the switch on and off; it fails if the hook alters the tracker, the queue or the schedule.
+    test.each([true, false])('the tracker, the queue and the schedule are identical with the switch %s', (on) => {
+        enable(on)
+        markCharacterForSave('queued')
+        const tracker = makeTracker(['front'])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+        markCharacterForSave('b')
+        markCharacterForSave('b')
+        expect(tracker.character).toEqual(['front', 'queued', 'b'])
+        expect(schedule).toHaveBeenCalledTimes(3)
+        expect(handleOf() !== undefined).toBe(on)
     })
 })

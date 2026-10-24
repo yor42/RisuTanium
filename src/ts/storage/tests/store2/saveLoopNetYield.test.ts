@@ -23,9 +23,11 @@ vi.mock('../../saveYield', async (importOriginal) => {
 })
 
 import type { Store2Read } from '../../store2/backend/types'
-import type { Committer } from '../../store2/commit'
+import type { CommitRequest, CommitResult, Committer } from '../../store2/commit'
+import { Store2UnknownOutcomeError } from '../../store2/backend'
 import { createSaveEncoder, type SaveEncoder, type SavePassRequest } from '../../store2/saveEncoder'
-import { startSavePass, type NetSlotPart, type NetSlotReason, type NetSlotTiming, type SavePassMeterHandle } from '../../store2/savePassMeter'
+import { startSavePass, type NetSlotPart, type NetSlotReason, type NetSlotTiming, type SavePassMeterHandle, type SignalSlotRecord } from '../../store2/savePassMeter'
+import { ensureInstalled, noteSignal, resetNetSignalsForTest } from '../../netSignalMeter'
 import { runStore2SaveLoop, type Store2LoopPort } from '../../store2/saveLoop'
 import { createSaveScheduler } from '../../saveScheduler'
 import type { Database } from '../../database.svelte'
@@ -38,6 +40,8 @@ import { buildSmall } from './codecFixtures'
  * CHORE-205 stage 2d: the idle-net slot yields once before its verdict. The behavioural tests run with the measurement
  * switch off, so what they assert is what a release build does; the meter tests run it on. Labels: R1 is the regression
  * reproducer (fails without the yield), G1 to G7 and the named extras are guards of the re-check order and the meter.
+ * The behavioural tests run twice, the second time with the net-signal counters installed (CHORE-205 counter experiment):
+ * every decision must be the same with the counters on.
  */
 
 type Entry = Record<string, unknown>
@@ -80,6 +84,8 @@ interface StartOptions {
     failRead?: { on: boolean }
     /** While `fn` is set, every base read is passed through it, so a test can spend time inside `judge`. */
     readWrap?: { fn: ((read: Store2Read) => Store2Read) | null }
+    /** While `fn` is set, a commit is answered by it; it may call the real committer. */
+    commitWrap?: { fn: ((real: Committer, read: Store2Read, request: CommitRequest) => Promise<CommitResult>) | null }
 }
 
 const worlds: World[] = []
@@ -105,6 +111,7 @@ afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     delete (globalThis as MeterGlobal).__risuSavePassMeter
+    resetNetSignalsForTest()
 })
 
 function useMeter(): void {
@@ -113,6 +120,12 @@ function useMeter(): void {
     vi.spyOn(console, 'log').mockImplementation(() => {})
     startSavePass()
     meterOf().reset()
+}
+
+/** The meter on and the net-signal counters installed, with `SEL` as the selected character. */
+function useSignals(): void {
+    useMeter()
+    ensureInstalled(() => 'SEL')
 }
 
 function clone<T>(value: T): T {
@@ -161,6 +174,7 @@ async function startWorld(db: Database, options: StartOptions = {}): Promise<Wor
     const counted = { reads: 0, sweeps: 0 }
     const failRead = options.failRead ?? { on: false }
     const readWrap = options.readWrap ?? { fn: null }
+    const commitWrap = options.commitWrap ?? { fn: null }
     const real = kit.context.session.committer as Committer
     kit.context.session = {
         ...kit.context.session,
@@ -173,6 +187,9 @@ async function startWorld(db: Database, options: StartOptions = {}): Promise<Wor
                 }
                 const read = await real.readCommit()
                 return readWrap.fn === null ? read : readWrap.fn(read)
+            },
+            async commit(read, request) {
+                return commitWrap.fn === null ? real.commit(read, request) : commitWrap.fn(real, read, request)
             },
         },
     }
@@ -301,7 +318,13 @@ async function startWorld(db: Database, options: StartOptions = {}): Promise<Wor
     return world
 }
 
-describe('the yield and the re-checks after it (measurement off)', () => {
+describe.each([false, true])('the yield and the re-checks after it (counters installed: %s)', (counters) => {
+    beforeEach(() => {
+        if (counters) {
+            useSignals()
+        }
+    })
+
     test('R1 reproducer: the scan runs before the yield, the lookup and the verdict after it', async () => {
         const world = await startWorld(clone(buildSmall(1)))
         world.order.length = 0
@@ -699,5 +722,129 @@ describe('the yield spans in the slot record (measurement on)', () => {
         expect(unheld.reason).toBe('unheld')
         expect(unspanned(due)).toBe(unspanned(clean))
         expect(unspanned(unheld)).toBe(unspanned(clean))
+    })
+})
+
+describe('the signal slots of the idle net (measurement on, counters installed)', () => {
+    beforeEach(() => {
+        useSignals()
+    })
+
+    function lastSlot(): SignalSlotRecord {
+        const slots = meterOf().signalSlots()
+        return slots[slots.length - 1]
+    }
+
+    test('a clean verdict slot records its character, outcome, resident count, selected character and instants', async () => {
+        const db = clone(buildSmall(3))
+        const world = await startWorld(db)
+        await world.slotAt(2_000)
+        const timing = lastTiming()
+        expect(lastSlot()).toMatchObject({
+            reason: 'verdictClean', chaId: idOf(db, 0), outcome: 'clean', residents: 3, selectedChaId: 'SEL', decisionMs: timing.decisionMs,
+            lateAt: null, watchRefused: false,
+        })
+        expect(lastSlot().at).toEqual(expect.any(Number))
+        expect(lastSlot().endAt).toBeGreaterThanOrEqual(lastSlot().at ?? Infinity)
+        expect(lastSlot().signals).toEqual({ api: { n: 0, lastAt: 0 }, identity: { n: 0, lastAt: 0 }, part: { n: 0, lastAt: 0 } })
+    })
+
+    test('the round robin is recorded slot by slot', async () => {
+        const db = clone(buildSmall(3))
+        const world = await startWorld(db)
+        for (const offset of [2_000, 4_000, 6_000, 8_000]) {
+            await world.slotAt(offset)
+        }
+        const seen = meterOf().signalSlots().map(slot => slot.chaId)
+        expect(seen.slice(-4)).toEqual([0, 1, 2, 0].map(index => idOf(db, index)))
+    })
+
+    test('a dirty verdict is marked late by a signal for its character, and its tick pass acks the character with the pass start', async () => {
+        const db = clone(buildSmall(1))
+        const world = await startWorld(db)
+        const id = idOf(db, 0)
+        world.onYield.action = () => {
+            chars(db)[0] = { ...clone(chars(db)[0]), personality: 'replaced during the yield' }
+        }
+        await world.slotAt(2_000)
+        await until(() => meterOf().signalAcks().some(entry => entry.kind === 'ack'), 'the ack of the silent pass', 4000)
+        expect(lastSlot()).toMatchObject({ chaId: id, outcome: 'dirty', reason: 'verdictDirty', dirtyRun: 1 })
+        const ack = meterOf().signalAcks().find(entry => entry.kind === 'ack')
+        expect(ack?.chaIds).toContain(id)
+        expect(ack?.passStartAt).toBeLessThanOrEqual(ack?.ackAt ?? -1)
+        expect(ack?.passStartAt).toBeGreaterThanOrEqual(lastSlot().endAt)
+        noteSignal('part', id)
+        expect(lastSlot().lateAt).not.toBeNull()
+    })
+
+    test('a committed marked pass acks the set it encoded, with its snapshot-time start', async () => {
+        const db = clone(buildSmall(2))
+        const world = await startWorld(db)
+        const id = idOf(db, 1)
+        chars(db)[1].personality = 'edited and marked'
+        world.tracker.character = [id]
+        world.state.due = true
+        world.state.dirty = true
+        await until(() => meterOf().signalAcks().some(entry => entry.kind === 'ack'), 'the ack of the marked pass', 4000)
+        const ack = meterOf().signalAcks().find(entry => entry.kind === 'ack')
+        expect(ack?.chaIds).toEqual([id])
+        expect(ack?.passStartAt).toBeLessThanOrEqual(ack?.ackAt ?? -1)
+    })
+
+    test('a marked pass that found nothing to write books an unchanged clean point, not an ack', async () => {
+        const db = clone(buildSmall(2))
+        const world = await startWorld(db)
+        const id = idOf(db, 1)
+        world.tracker.character = [id]
+        world.state.due = true
+        world.state.dirty = true
+        await until(() => meterOf().signalAcks().length > 0, 'the unchanged pass', 4000)
+        expect(meterOf().signalAcks().map(entry => [entry.kind, entry.chaIds])).toEqual([['unchanged', [id]]])
+    })
+
+    test('a pending attempt that the next base read shows current is adopted: an adopted clean point with the kept pass start and set', async () => {
+        const db = clone(buildSmall(2))
+        const commitWrap: { fn: ((real: Committer, read: Store2Read, request: CommitRequest) => Promise<CommitResult>) | null } = { fn: null }
+        const world = await startWorld(db, { commitWrap })
+        const id = idOf(db, 1)
+        // The first commit lands and its answer is lost: the attempt is kept as pending.
+        commitWrap.fn = async (real, read, request) => {
+            commitWrap.fn = null
+            await real.commit(read, request)
+            return { status: 'unknown', cause: new Store2UnknownOutcomeError('lost') }
+        }
+        chars(db)[1].personality = 'landed edit'
+        world.tracker.character = [id]
+        world.state.due = true
+        world.state.dirty = true
+        await until(() => meterOf().signalAcks().some(entry => entry.kind === 'adopted'), 'the adoption', 4000)
+        const adopted = meterOf().signalAcks().find(entry => entry.kind === 'adopted')
+        expect(adopted?.chaIds).toEqual([id])
+        expect(adopted?.passStartAt).toBeLessThanOrEqual(adopted?.ackAt ?? -1)
+        expect(meterOf().signalAcks().some(entry => entry.kind === 'ack')).toBe(false)
+    })
+
+    test('a slot that left before a verdict is recorded with the decision end and no character', async () => {
+        const db = clone(buildSmall(3))
+        const world = await startWorld(db)
+        world.onYield.action = () => {
+            world.state.due = true
+        }
+        await world.slotAt(2_000)
+        expect(lastSlot()).toMatchObject({ reason: 'dueAfterYield', chaId: null, outcome: null, signals: null, residents: 3 })
+        expect(lastSlot().at).toEqual(expect.any(Number))
+        expect(lastSlot().endAt).toBeGreaterThanOrEqual(lastSlot().at ?? Infinity)
+        expect(lastSlot().signalGlobals).not.toBeNull()
+    })
+
+    test('a resident missing at its turn is recorded as an unknown verdict of that character', async () => {
+        const db = clone(buildSmall(3))
+        const world = await startWorld(db)
+        const first = idOf(db, 0)
+        world.onYield.action = () => {
+            chars(db).splice(0, 1)
+        }
+        await world.slotAt(2_000)
+        expect(lastSlot()).toMatchObject({ reason: 'slotMissing', chaId: first, outcome: 'unknown' })
     })
 })

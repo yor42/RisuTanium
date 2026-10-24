@@ -1,4 +1,6 @@
 import type { toSaveType } from "./risuSave"
+import { MEASURE } from "../process/memory/measureFlag"
+import { noteSignal } from "./netSignalMeter"
 
 /**
  * Fork-specific internal API (CHORE-01). The maintainer's chosen design only
@@ -48,6 +50,9 @@ export function appendIfAbsent(tracker: toSaveType, id: string): void {
 export function markCharacterForSave(chaId: unknown): void {
     if (!chaId || typeof chaId !== 'string') {
         return
+    }
+    if (MEASURE) {
+        noteSignal('api', chaId)
     }
     if (!installed) {
         pendingQueue.add(chaId)

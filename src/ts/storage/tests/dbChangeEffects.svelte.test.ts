@@ -8,6 +8,7 @@ import type { RisuModule } from '../../process/modules'
 import type { toSaveType } from '../risuSave'
 import { coldStorageHeader } from '../../process/coldstorageData'
 import { toAssetList } from '../assetList'
+import { resetNetSignalsForTest, type NetSignalHandle } from '../netSignalMeter'
 
 // Guards for registerDbChangeEffects()'s preset effect
 // (src/ts/storage/dbChangeEffects.svelte.ts): it must deep-read via
@@ -2052,3 +2053,248 @@ describe('registerDbChangeEffects — selected-character partition rebuild count
         expect(tracker.character[0]).toBe('char-1-renamed')
     })
 })
+
+//#region net-signal counters (CHORE-205 counter experiment)
+
+// With the `risu-measure-savepass` switch on, registerDbChangeEffects wraps `markChanged` and `onPartitionRun` and
+// feeds the net-signal meter. The wrappers must change nothing the effects, the tracker or the caller's callbacks see,
+// and must add no effect dependency; the counts they book are what the experiment reads.
+
+function netSignalHandle(): NetSignalHandle | undefined {
+    return (globalThis as { __risuNetSignals?: NetSignalHandle }).__risuNetSignals
+}
+
+interface CounterSnapshot {
+    partGlobal: number
+    partFirst: number
+    tagOverwritten: number
+    part: Record<string, number>
+    identity: Record<string, number>
+    api: Record<string, number>
+    threw: boolean
+}
+
+interface CounterRun {
+    marks: boolean[]
+    runs: Record<string, number>
+    tracker: string
+    steps: CounterSnapshot[]
+}
+
+type CounterStep = () => void
+
+function counterChar(chaId: string): Record<string, unknown> {
+    return {
+        chaId, name: chaId, desc: 'd', type: 'character', chatPage: 0,
+        chats: [{ id: `${chaId}-c0`, name: 'c0', message: [{ role: 'user', data: 'hi' }, { role: 'char', data: 'yo' }] }],
+    }
+}
+
+function installCounterDb(): void {
+    DBState.db = {
+        botPresetsId: 0, botPresets: [], modules: [{ id: 'm1', name: 'M', lorebook: [] }], loadouts: [], plugins: [], pluginCustomStorage: {},
+        characters: [counterChar('A'), counterChar('B'), counterChar('C')],
+    } as unknown as Database
+}
+
+function counterSnapshot(threw: boolean): CounterSnapshot {
+    const dump = netSignalHandle()?.dump()
+    const snapshot: CounterSnapshot = {
+        partGlobal: dump?.globals.partGlobal ?? 0, partFirst: dump?.globals.partFirst ?? 0, tagOverwritten: dump?.globals.tagOverwritten ?? 0,
+        part: {}, identity: {}, api: {}, threw,
+    }
+    for (const [chaId, entry] of dump?.perChar ?? []) {
+        for (const kind of ['part', 'identity', 'api'] as const) {
+            if (entry[kind].n > 0) {
+                snapshot[kind][chaId] = entry[kind].n
+            }
+        }
+    }
+    return snapshot
+}
+
+function runCounterScenario(steps: CounterStep[], options: { on?: boolean } = {}): CounterRun {
+    localStorage.setItem('risu-measure-savepass', options.on === false ? 'off' : 'on')
+    resetNetSignalsForTest()
+    installCounterDb()
+    selectedCharID.set(0)
+    const tracker = makeTracker()
+    const runs: Record<string, number> = {}
+    const marks: boolean[] = []
+    const stop = $effect.root(() => {
+        registerDbChangeEffects({
+            tracker,
+            markChanged: (markDirty) => { marks.push(markDirty) },
+            onPartitionRun: (kind) => { runs[kind] = (runs[kind] ?? 0) + 1 },
+        })
+    })
+    flushSync()
+    for (const kind of Object.keys(runs)) {
+        runs[kind] = 0
+    }
+    marks.length = 0
+    netSignalHandle()?.reset()
+    const snapshots: CounterSnapshot[] = []
+    for (const step of steps) {
+        let threw = false
+        try {
+            step()
+            flushSync()
+        } catch {
+            threw = true
+        }
+        snapshots.push(counterSnapshot(threw))
+    }
+    stop()
+    return { marks, runs, tracker: JSON.stringify(tracker), steps: snapshots }
+}
+
+function counterChars(): Array<Record<string, unknown>> {
+    return DBState.db.characters as unknown as Array<Record<string, unknown>>
+}
+
+const fieldEditStep: CounterStep = () => { counterChars()[0].desc = 'changed' + Math.random() }
+const renameSelectedStep: CounterStep = () => { counterChars()[0].chaId = 'A-renamed' }
+const moduleEditStep: CounterStep = () => { (DBState.db.modules[0] as unknown as { name: string }).name = 'M' + Math.random() }
+const customStorageEditStep: CounterStep = () => { (DBState.db.pluginCustomStorage as Record<string, unknown>).k = 'v' + Math.random() }
+const messageAppendStep: CounterStep = () => {
+    ((counterChars()[0].chats as Array<{ message: unknown[] }>)[0].message).push({ role: 'user', data: 'more' })
+}
+const selectOtherStep: CounterStep = () => { selectedCharID.set(1) }
+const replaceOtherStep: CounterStep = () => { DBState.db.characters[2] = counterChar('C') as unknown as Database['characters'][number] }
+const replaceSelectedStep: CounterStep = () => { DBState.db.characters[0] = counterChar('A') as unknown as Database['characters'][number] }
+// Out-of-range chatPage: 6b-front throws between its onPartitionRun and its markChanged.
+const throwFrontStep: CounterStep = () => { counterChars()[0].chatPage = 5 }
+
+describe('registerDbChangeEffects — net-signal counters', () => {
+    afterEach(() => {
+        localStorage.clear()
+        resetNetSignalsForTest()
+    })
+
+    const scenarios: Array<[string, CounterStep[]]> = [
+        ['select', [selectOtherStep]],
+        ['field edit', [fieldEditStep]],
+        ['message append', [messageAppendStep]],
+        ['module edit', [moduleEditStep]],
+        ['pluginCustomStorage edit', [customStorageEditStep]],
+        ['identity replacement of a non-selected character', [replaceOtherStep]],
+        ['identity replacement of the selected character', [replaceSelectedStep]],
+        ['edit then in-place rename', [fieldEditStep, renameSelectedStep]],
+    ]
+
+    // Compatibility guard: the wrappers are transparent. It passes with the switch off too; it fails if a wrapper
+    // drops a call, reorders the arguments, or the untracked read changes how often an effect runs.
+    test.each(scenarios)('switch on and off agree on runs, marks and tracker: %s', (_name, steps) => {
+        const on = runCounterScenario(steps, { on: true })
+        const off = runCounterScenario(steps, { on: false })
+        expect(on.runs).toEqual(off.runs)
+        expect(on.marks).toEqual(off.marks)
+        expect(on.tracker).toEqual(off.tracker)
+        expect(Object.keys(off.steps[0].part)).toEqual([])
+        expect(netSignalHandle()).toBeUndefined()
+    })
+
+    test('with the switch on a field edit books one part event for the selected character', () => {
+        const on = runCounterScenario([fieldEditStep])
+        expect(on.steps[0].part).toEqual({ A: 1 })
+        expect(on.steps[0].partGlobal).toBe(0)
+    })
+
+    // T2a: reading the selected id tracked would re-run the field effect on a rename.
+    test('an edit then an in-place rename re-runs the field effect twice, not three times (the selected-id read is untracked)', () => {
+        const on = runCounterScenario([fieldEditStep, renameSelectedStep])
+        expect(on.runs.field).toBe(2)
+        expect(on.marks).toEqual([true, true, true])
+        expect(on.steps[1].part).toEqual({ A: 1, 'A-renamed': 2 })
+    })
+
+    // T2b
+    test('a module edit books partGlobal, not part', () => {
+        const on = runCounterScenario([moduleEditStep])
+        expect(on.steps[0].partGlobal).toBe(1)
+        expect(on.steps[0].part).toEqual({})
+    })
+
+    test('a pluginCustomStorage edit books partGlobal, not part', () => {
+        const on = runCounterScenario([customStorageEditStep])
+        expect(on.steps[0].partGlobal).toBe(1)
+        expect(on.steps[0].part).toEqual({})
+    })
+
+    // T2c: the identity effect books `identity` once and its own markChanged(true) is not booked again.
+    test('replacing a non-selected character books identity once and no part; a following global edit books partGlobal', () => {
+        const on = runCounterScenario([replaceOtherStep, moduleEditStep])
+        expect(on.steps[0].identity).toEqual({ C: 1 })
+        expect(on.steps[0].part).toEqual({})
+        expect(on.steps[0].partGlobal).toBe(0)
+        expect(on.steps[1].partGlobal).toBe(1)
+        expect(on.steps[1].part).toEqual({})
+    })
+
+    test('replacing the selected character books identity once and exactly the front and char partition runs as part', () => {
+        const on = runCounterScenario([replaceSelectedStep, moduleEditStep])
+        expect(on.steps[0].identity).toEqual({ A: 1 })
+        expect(on.steps[0].part).toEqual({ A: 2 })
+        expect(on.steps[0].partGlobal).toBe(0)
+        expect(on.steps[1].partGlobal).toBe(1)
+        expect(on.steps[1].part).toEqual({ A: 2 })
+    })
+
+    // T2d
+    test('changing the selection moves the attribution to the new character', () => {
+        const on = runCounterScenario([selectOtherStep, fieldEditStep])
+        expect(on.steps[0].part).toEqual({ B: 2 })
+        expect(on.steps[1].part).toEqual({ B: 2 })
+        const afterEditOfOther = runCounterScenario([selectOtherStep, () => { counterChars()[1].desc = 'changed' + Math.random() }])
+        expect(afterEditOfOther.steps[1].part).toEqual({ B: 3 })
+    })
+
+    // T2e
+    test('a caller-supplied onPartitionRun still sees every call', () => {
+        const on = runCounterScenario([fieldEditStep])
+        expect(on.runs.field).toBe(1)
+        expect(on.runs.front).toBe(0)
+        const off = runCounterScenario([fieldEditStep], { on: false })
+        expect(on.runs).toEqual(off.runs)
+    })
+
+    // T2f: the known leak. Each case starts from a front run that throws between its two calls.
+    describe('a front run that throws between its tag and its markChanged', () => {
+        test('then a module edit: booked as part (the documented leak), tagOverwritten stays 0', () => {
+            const on = runCounterScenario([throwFrontStep, moduleEditStep])
+            expect(on.steps[0].threw).toBe(true)
+            expect(on.steps[1].part).toEqual({ A: 1 })
+            expect(on.steps[1].tagOverwritten).toBe(0)
+            expect(on.steps[1].partGlobal).toBe(0)
+        })
+
+        test('then a field edit: tagOverwritten is 1', () => {
+            const on = runCounterScenario([throwFrontStep, fieldEditStep])
+            expect(on.steps[1].tagOverwritten).toBe(1)
+            expect(on.steps[1].part).toEqual({ A: 1 })
+        })
+
+        test('then a non-selected identity replacement: identity once and no part; the next global edit books partGlobal', () => {
+            const on = runCounterScenario([throwFrontStep, replaceOtherStep, moduleEditStep])
+            expect(on.steps[1].identity).toEqual({ C: 1 })
+            expect(on.steps[1].part).toEqual({})
+            expect(on.steps[2].partGlobal).toBe(1)
+        })
+
+        test.each([
+            ['module edit', [throwFrontStep, moduleEditStep]],
+            ['field edit', [throwFrontStep, fieldEditStep]],
+            ['identity replacement', [throwFrontStep, replaceOtherStep, moduleEditStep]],
+        ] as Array<[string, CounterStep[]]>)('saving behaviour is identical with the switch on and off: %s', (_name, steps) => {
+            const on = runCounterScenario(steps, { on: true })
+            const off = runCounterScenario(steps, { on: false })
+            expect(on.marks).toEqual(off.marks)
+            expect(on.tracker).toEqual(off.tracker)
+            expect(on.runs).toEqual(off.runs)
+            expect(on.steps.map(step => step.threw)).toEqual(off.steps.map(step => step.threw))
+        })
+    })
+})
+
+//#endregion
