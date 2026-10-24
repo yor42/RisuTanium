@@ -23,7 +23,10 @@ scratch (`%TEMP%\risu-b715\devscripts\`, not in the repository). Where a stateme
 | `restore-snapshot.ps1` | Restores a snapshot into the app data and verifies it against the manifest (debug builds only). |
 | `import-bin.ps1` | Drives the app's own "load local backup" UI for one `.bin` fixture and collects the import phase marks. |
 | `fixture-push.ps1` | Pushes (or removes) one fixture file in the phone's shared storage, with a SHA-256 skip. |
+| `mock-openai.mjs` | `node` mock of an OpenAI-style chat endpoint on 127.0.0.1 (default port 6250), for synthetic-device checks. |
+| `mock-reverse.ps1` | Adds, verifies or removes the one `adb reverse` rule that lets the phone reach the mock; `-Probe` tests the path from the phone shell. |
 | `tests/Test-Runner.ps1` | Self-tests with a fake adb; needs no device. |
+| `tests/mock-openai.test.mjs` | Plain-node self-test of the mock endpoint; needs no device. |
 
 Every script takes `-OutDir` (created if missing) and writes `<OutDir>\result.json`; most print one line
 `verdict=<v> reason=<text> result=<path>` and exit 0 only for `pass`, else 1.
@@ -227,6 +230,54 @@ pwsh -NoProfile -File Agents\Tools\device\import-bin.ps1 -OutDir $env:TEMP\risu-
   -SnapshotId baseline -BootWaitSec 60 -PortMin 6270 -PortMax 6289
 ```
 
+### mock-openai.mjs and mock-reverse.ps1
+
+A canned chat endpoint on the PC, so a synthetic-device check can send messages without a real model or key. Plan:
+`%TEMP%\risu-b715\synth-device\plan.md` (scratch, not in the repository). Node built-ins only; the mock binds `127.0.0.1` only.
+
+```
+node Agents\Tools\device\mock-openai.mjs --port 6250 --log $env:TEMP\risu-b715\mock.jsonl --pid-file $env:TEMP\risu-b715\mock.pid
+pwsh -NoProfile -File Agents\Tools\device\mock-reverse.ps1 -OutDir $env:TEMP\risu-b715\mockrev -Serial 2ac80128013f7ece -AllowedSerials 2ac80128013f7ece -Probe
+pwsh -NoProfile -File Agents\Tools\device\mock-reverse.ps1 -OutDir $env:TEMP\risu-b715\mockrev -Serial 2ac80128013f7ece -AllowedSerials 2ac80128013f7ece -Remove
+```
+
+- **Port.** Default 6250, `--port` overrides (`0` picks a free port and prints it). 6250 lies in lane A's 6000-6399 range and clears
+  the phone ranges (6270-6309, 6310-6329) and the 6330-6399 script defaults. The mock exits 1 with `EADDRINUSE` when the port is
+  taken, so check the port is free before the run. The startup line `mock-openai listening 127.0.0.1:<port> pid <pid>` goes to stdout.
+- **Endpoints.** `POST /v1/chat/completions` answers JSON, or SSE (status 200, `text/event-stream`, a role-only first chunk, content
+  chunks, one data line split across two writes, a stop chunk, `data: [DONE]`) when the body has `stream: true`. `GET /v1/models`
+  lists `mock-model`. `GET /__ping` answers `{"ok":true,"mock":"openai"}`. `OPTIONS` on any path is a CORS preflight answered 204 and echoes
+  `Access-Control-Request-Headers`, falling back to `authorization, content-type`; every parsed request's response carries
+  `Access-Control-Allow-Origin: *`, but the 400 sent for bytes that never became a request carries none. Any other method and path
+  pair answers 404.
+- **Replies.** Canned ASCII; every reply contains the marker `[mock-reply]`, which a DOM check can look for instead of reading text.
+  `--seed` rotates which canned text comes first.
+- **Options.** `--delay-ms` (before each reply), `--chunk-delay-ms` (between SSE chunks), `--fail-every N` (every Nth chat request
+  answers 500), `--log <path>` (JSON lines), `--pid-file <path>` (removed on SIGINT or SIGTERM).
+- **Log format.** One JSON object per line, never body text, header values or query strings:
+  - `{"t","event":"connect"}` for every accepted TCP socket, before any byte is read;
+  - `{"t","event":"request","method","path","stream","auth","bodyBytes","messages","status"}` for every parsed request (`auth` is
+    only whether an `Authorization` header was present; `messages` is the length of the body's `messages` array, or null);
+  - `{"t","event":"client-error","code","bytes"}` for bytes that never became a request (a TLS handshake, the probe's `x`, a client
+    that hung up mid-line). The mock answers such a socket with 400, closes it and keeps serving.
+- **mock-reverse.ps1.** `-Serial` is required and gated by `-AllowedSerials` (default: phone 1 only); `-Port` defaults to 6250.
+  Adding a rule first requires a listener on 127.0.0.1:Port on the PC and refuses without one, before any adb call. It then runs
+  `adb -s <serial> reverse --no-rebind tcp:P tcp:P` and reads the rule back from `reverse --list`. An identical rule is kept;
+  a rule for the same device port that points elsewhere is refused and left alone. `-Remove` removes only `tcp:P` (never
+  `--remove-all`), and only our identical rule. The listener check sends `GET /__ping HTTP/1.0`, so it leaves a `request` line,
+  never a `client-error` line. Re-run `reverse --list` before each send: a rule does not survive an adb server
+  restart or a replug.
+- **The probe (stage B check).** `-Probe` runs `adb -s <serial> shell 'echo x | toybox nc -w 3 127.0.0.1 P'` and reports nc's
+  exit code and output in `mockReverse.probe`. The pass criterion is a `client-error` line in the mock's log at or after
+  `mockReverse.probe.startedUtc` (ISO 8601 UTC, the log's `t` format), not nc's exit code: `x` is not HTTP, so the probe logs `connect`
+  then `client-error`, never `request`. A `connect` line alone is not enough. The probe runs as the adb shell user, not as the app, so it
+  proves only the reverse rule and the PC listener; it does not show that the app's WebView, `fetchWithTauri` or `streamed_fetch`
+  can reach the port. If `toybox nc` is missing, record that and read the mock's log for a `request` line at the first app send instead.
+- **Self-tests.** `node Agents\Tools\device\tests\mock-openai.test.mjs` (starts the mock on ephemeral ports; `--server <path>`
+  tests another copy) and the `mock-reverse:` cases in `tests/Test-Runner.ps1`. The SSE parser in the node test is a copy of the
+  data-line rule in `getTranStream` (`src/ts/process/request/openAI/requests.ts`); the real app remains the authority against drift.
+  On Windows the SIGINT case is skipped, because Node cannot deliver SIGINT to a child process there.
+
 ## Shared defaults and hazards
 
 - **RISK - port defaults.** `cold-start.ps1` and `import-bin.ps1` default to `-PortMin 6330 -PortMax 6399`. `Agents/Lanes/README.md`
@@ -395,7 +446,8 @@ pwsh -NoProfile -File Agents\Tools\device\tests\Test-Runner.ps1 -Fast -ScratchBa
 - `-Fast`: skips the sections the stage 4 and lock tests do not depend on; for scratch mutant runs only, not as a pass.
 - Host ports: the forward and port-scan tests probe host ports 9770 to 9799 (outside every lane reservation). A listener on
   one of them makes those tests fail spuriously; a live device run on lane A's ports no longer does.
-- Current count: 330 PASS, 0 FAIL, ALL PASSED (CHORE-204 remediation: one full run and the round 2 reviewer's run; 327 before the remediation, 296 in s4a). The full
+- Current count: 387 PASS, 0 FAIL, 1 SKIP (sign-install keystore tests, build inputs missing on that machine), ALL PASSED (one full run on 2026-10-24, including 22 `mock-reverse` assertions;
+  the probe remediation then added 3 `mock-reverse` assertions, 25 in all, checked in the mock-reverse section alone, not in a full run; the earlier recorded counts were 330 after the CHORE-204 remediation, 327 before it, 296 in s4a). The full
   serial suite took about 20 to 25 minutes. The build-apk generated-files test through `build-apk.ps1` needs the pinned JDK 21
   and prints `SKIP` without it (the unit checks of `Get-AndroidGeneratedMissing` still run).
 

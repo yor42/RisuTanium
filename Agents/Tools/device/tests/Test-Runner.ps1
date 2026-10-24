@@ -71,6 +71,19 @@ New-Cmd $fakeJs @(
     '    }',
     '    save("forwards.txt", f.filter((l) => l.split(" ")[1] !== a[1]).concat(["FAKE " + a[1] + " " + a[2]])); return',
     '  }',
+    '  if (a[0] === "reverse") {',
+    '    const f = lines("reverses.txt")',
+    '    if (a[1] === "--list") { f.forEach((l) => out(l)); return }',
+    '    if (a[1] === "--remove") { save("reverses.txt", f.filter((l) => l.split(" ")[1] !== a[2])); return }',
+    '    if (rd("reverr") !== "") { process.stderr.write(rd("reverr").trim() + "\n"); process.exit(1) }',
+    '    const nr = a[1] === "--no-rebind", dev = a[nr ? 2 : 1], host = a[nr ? 3 : 2]',
+    '    if (f.some((l) => l.split(" ")[1] === dev)) {',
+    '      if (nr) { process.stderr.write("adb: error: cannot rebind existing socket\n"); process.exit(1) }',
+    '      save("reverses.txt", f.filter((l) => l.split(" ")[1] !== dev))',
+    '    }',
+    '    if (rd("noapply") === "") save("reverses.txt", lines("reverses.txt").concat(["UsbFfs " + dev + " " + host]))',
+    '    return',
+    '  }',
     '  const dd = path.join(dir, "data"), rr = path.join(dir, "remote")',
     '  const cp = require("child_process")',
     '  const kbOf = (p) => { const s = fs.statSync(p); if (!s.isDirectory()) return Math.ceil(s.size / 4096) * 4; return 4 + fs.readdirSync(p).reduce((t, n) => t + kbOf(path.join(p, n)), 0) }',
@@ -128,6 +141,7 @@ New-Cmd $fakeJs @(
     '  if (/^df /.test(c)) { out("Filesystem 1K-blocks Used Available Use% Mounted on"); out("/dev/x 10000000 1000000 " + rd("dfavail", "9000000").trim() + " 10% /data"); return }',
     '  if (/^pm path/.test(c)) { out("package:/data/app/x/base.apk"); return }',
     '  if (/^am start -W/.test(c)) { if (rd("nostart") !== "") { out("Error type 3"); out("Error: Activity class does not exist."); return } wr("pid", rd("startpid", "5555")); out("Status: ok"); out("TotalTime: 321"); out("WaitTime: 330"); return }',
+    '  if (/^echo x \| toybox nc /.test(c)) { out(rd("ncout").trim()); process.exit(Number(rd("ncexit", "0"))) }',
     '  if (/^dumpsys power/.test(c)) { out("mWakefulness=Awake"); return }',
     '  if (/^dumpsys package/.test(c)) { out("versionCode=" + rd("vcode", "1000").trim() + " minSdk=24"); out("versionName=0.1.0"); out("pkgFlags=[ " + (rd("release") === "" ? "DEBUGGABLE " : "") + "HAS_CODE ]"); out("signatures=PackageSignatures{58f04a4 version:2, signatures:[" + rd("sig", "8b25b40d").trim() + "], past signatures:[]}"); return }',
     '  if (/^dumpsys webviewupdate/.test(c)) { out("Current WebView package (name, version): (com.fake.webview, 1.0)"); return }',
@@ -216,7 +230,7 @@ function Invoke-Runner {
 
 try {
     # static rules over the shipped scripts
-    $files = @('lib.ps1', 'Run-Check.ps1', 'build-apk.ps1', 'sign-install.ps1', 'device-prep.ps1', 'cold-start.ps1', 'snapshot.ps1', 'restore-snapshot.ps1', 'import-bin.ps1', 'fixture-push.ps1', 'sign-release.ps1') | ForEach-Object { Join-Path $RunnerDir $_ }
+    $files = @('lib.ps1', 'Run-Check.ps1', 'build-apk.ps1', 'sign-install.ps1', 'device-prep.ps1', 'cold-start.ps1', 'snapshot.ps1', 'restore-snapshot.ps1', 'import-bin.ps1', 'fixture-push.ps1', 'sign-release.ps1', 'mock-reverse.ps1') | ForEach-Object { Join-Path $RunnerDir $_ }
     $code = ($files | ForEach-Object { (Get-Content -LiteralPath $_) | Where-Object { $_ -notmatch '^\s*#' } }) -join [Environment]::NewLine
     Assert ($code -notmatch '\s-Wait\b') 'no Start-Process -Wait'
     Assert ($code -notmatch 'WaitForExit\(\s*\)') 'no unbounded WaitForExit'
@@ -251,6 +265,10 @@ try {
         Assert ($pmin -ge 6000 -and $pmax -le 6399 -and $pmin -le $pmax -and ($pmax -lt 6270 -or $pmin -gt 6329)) ('ports: ' + $ps + ' defaults ' + $pmin + '-' + $pmax + ' are inside lane A and clear of both phone ranges')
     }
     Assert (@(Get-ChildItem -LiteralPath $RunnerDir -Filter '*.ps1' -File | Where-Object { [IO.File]::ReadAllText($_.FullName) -match '\b95\d\d\b' }).Count -eq 0) 'ports: no script mentions the former 95xx default range'
+    # the mock endpoint's default port lies inside lane A's reservation and clear of both phone ranges and the script-default range
+    $mrAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $RunnerDir 'mock-reverse.ps1'), [ref]$null, [ref]$null)
+    $mrPort = [int](($mrAst.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'Port' }).DefaultValue.Value)
+    Assert ($mrPort -ge 6000 -and $mrPort -le 6399 -and ($mrPort -lt 6270 -or $mrPort -gt 6399)) ('ports: mock-reverse default port ' + $mrPort + ' is inside lane A and clear of both phone ranges and the 6330-6399 script defaults')
 
     # sign-install: the persistent test keystore is created once, reused by every later run and never deleted.
     # A small APK is cut from the built release APK (manifest and resources only) and a fake adb accepts the install.
@@ -1916,6 +1934,129 @@ try {
     Set-Fake 'uixml' '@auto'
     $nm3 = Invoke-Import 'imp-ownname' @('-FixturePath', $fxFile, '-RemoteName', 'mine-7.bin', '-SnapshotId', 'base1')
     Assert ($nm3.Exit -eq 0 -and $nm3.Result.data.fixture -eq 'mine-7.bin' -and (Test-Path -LiteralPath (Join-Path $fdir 'remote\mine-7.bin'))) 'import name: -RemoteName is used as given and its fixture stays on the device for the hash skip'
+
+    # ---------- mock-reverse against the stateful fake ----------
+    # A real listener on a free loopback port stands in for the mock endpoint; the rule list lives in reverses.txt of the fake.
+    $env:FAKE_ADB_DIR = $fdir
+    $env:FAKE_ADB_MODE = 'device'
+    $mockScript = Join-Path $RunnerDir 'mock-reverse.ps1'
+    $mockListener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
+    $mockListener.Start()
+    $mockPort = ([System.Net.IPEndPoint]$mockListener.LocalEndpoint).Port
+    $mockSpare = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
+    $mockSpare.Start()
+    $mockFreePort = ([System.Net.IPEndPoint]$mockSpare.LocalEndpoint).Port
+    $mockSpare.Stop()
+    $mockRule = 'tcp:' + $mockPort
+    $mockNl = [string][char]10
+    function Invoke-MockReverse([string]$Name, [string[]]$Extra = @(), [int]$UsePort = $mockPort, [string]$UseSerial = 'FAKE', [string]$UseAdb = $fake2) {
+        $o = Join-Path $work $Name
+        $a = @('-NoProfile', '-File', $mockScript, '-OutDir', $o, '-Serial', $UseSerial, '-AllowedSerials', 'FAKE', '-Port', [string]$UsePort, '-AdbExe', $UseAdb, '-RepoRoot', $work) + $Extra
+        $text = (& pwsh @a | Out-String)
+        $c = $LASTEXITCODE
+        $res = $null
+        if (Test-Path -LiteralPath (Join-Path $o 'result.json')) { $res = Get-Content -LiteralPath (Join-Path $o 'result.json') -Raw | ConvertFrom-Json -AsHashtable }
+        return [pscustomobject]@{ Exit = $c; Result = $res; Text = $text }
+    }
+    function Get-FakeReverses { $rf = Join-Path $fdir 'reverses.txt'; if (Test-Path -LiteralPath $rf) { return , @([IO.File]::ReadAllText($rf) -split '\r?\n' | Where-Object { $_ }) } return , @() }
+    try {
+        Clear-Fake
+        $mr1 = Invoke-MockReverse 'mr-add'
+        Assert ($mr1.Exit -eq 0 -and $mr1.Result.verdict -eq 'pass' -and $mr1.Result.mockReverse.action -eq 'added' -and $mr1.Result.mockReverse.listener -eq $true) 'mock-reverse: with a PC listener the rule is added and the run passes'
+        Assert ((Get-FakeReverses) -contains ('UsbFfs ' + $mockRule + ' ' + $mockRule) -and (Get-FakeCalls) -match [regex]::Escape('reverse --no-rebind ' + $mockRule + ' ' + $mockRule)) 'mock-reverse: the rule is created with --no-rebind as tcp:P to tcp:P'
+        Assert (@($mr1.Result.mockReverse.after) -contains ($mockRule + ' ' + $mockRule) -and (Test-ResultSchema $mr1.Result).Count -eq 0) 'mock-reverse: the result reads the rule back from the list and passes the schema'
+        Clear-Calls
+        $mr2 = Invoke-MockReverse 'mr-again'
+        Assert ($mr2.Exit -eq 0 -and $mr2.Result.mockReverse.action -eq 'kept' -and (Get-FakeReverses).Count -eq 1 -and (Get-FakeCalls) -notmatch 'reverse --no-rebind') 'mock-reverse: an identical existing rule is kept and not added again'
+
+        # a rule for the same device port that points elsewhere is refused and left alone
+        Clear-Fake
+        Set-Fake 'reverses.txt' ('UsbFfs ' + $mockRule + ' tcp:7777' + $mockNl)
+        Clear-Calls
+        $mr3 = Invoke-MockReverse 'mr-conflict'
+        Assert ($mr3.Exit -ne 0 -and $mr3.Result.verdict -eq 'fail' -and $mr3.Result.reason -match 'another target' -and (Get-FakeReverses).Count -eq 1 -and (Get-FakeReverses)[0] -eq ('UsbFfs ' + $mockRule + ' tcp:7777') -and (Get-FakeCalls) -notmatch 'reverse --(no-rebind|remove)') 'mock-reverse: a conflicting rule is refused and neither replaced nor removed'
+        $mr3b = Invoke-MockReverse 'mr-conflict-remove' @('-Remove')
+        Assert ($mr3b.Exit -ne 0 -and $mr3b.Result.reason -match 'not ours' -and (Get-FakeReverses).Count -eq 1) 'mock-reverse: -Remove refuses a rule that points at another target'
+
+        # -Remove takes out only tcp:P
+        Clear-Fake
+        Set-Fake 'reverses.txt' ('UsbFfs tcp:7001 tcp:7001' + $mockNl + 'UsbFfs ' + $mockRule + ' ' + $mockRule + $mockNl)
+        Clear-Calls
+        $mr4 = Invoke-MockReverse 'mr-remove' @('-Remove')
+        Assert ($mr4.Exit -eq 0 -and $mr4.Result.mockReverse.action -eq 'removed' -and (Get-FakeReverses).Count -eq 1 -and (Get-FakeReverses)[0] -eq 'UsbFfs tcp:7001 tcp:7001') 'mock-reverse: -Remove removes tcp:P and leaves another agent''s rule'
+        Assert ((Get-FakeCalls) -match [regex]::Escape('reverse --remove ' + $mockRule) -and (Get-FakeCalls) -notmatch 'remove-all') 'mock-reverse: -Remove names the one rule and never --remove-all'
+        Clear-Calls
+        $mr4b = Invoke-MockReverse 'mr-remove-absent' @('-Remove')
+        Assert ($mr4b.Exit -eq 0 -and $mr4b.Result.mockReverse.action -eq 'none' -and (Get-FakeCalls) -notmatch 'reverse --remove') 'mock-reverse: -Remove with no such rule passes without touching adb'
+        Clear-Fake
+        $mr4c = Invoke-MockReverse 'mr-remove-nolistener' @('-Remove') $mockFreePort
+        Assert ($mr4c.Exit -eq 0) 'mock-reverse: -Remove does not need a PC listener'
+
+        # refusals before any rule change
+        Clear-Fake
+        Clear-Calls
+        $mr5 = Invoke-MockReverse 'mr-serial' @() $mockPort 'OTHER'
+        Assert ($mr5.Exit -ne 0 -and $mr5.Result.reason -match 'not in the allowed list' -and (Get-FakeCalls) -eq '' -and (Get-FakeReverses).Count -eq 0) 'mock-reverse: a serial outside the allowed list is refused before any adb call'
+        $mr6 = Invoke-MockReverse 'mr-nolistener' @() $mockFreePort
+        Assert ($mr6.Exit -ne 0 -and $mr6.Result.reason -match 'no listener' -and $mr6.Result.mockReverse.listener -eq $false -and (Get-FakeCalls) -eq '' -and (Get-FakeReverses).Count -eq 0) 'mock-reverse: with no PC listener the rule is refused and adb is not called'
+        $mr7 = Invoke-MockReverse 'mr-noadb' @() $mockPort 'FAKE' (Join-Path $work 'no-such-adb.exe')
+        Assert ($mr7.Exit -ne 0 -and $mr7.Result.verdict -eq 'fail' -and (Get-FakeReverses).Count -eq 0) 'mock-reverse: an unavailable adb fails cleanly'
+        Clear-Calls
+        Set-Fake 'mode' 'offline'
+        $mr8 = Invoke-MockReverse 'mr-offline'
+        Remove-Item -LiteralPath (Join-Path $fdir 'mode') -Force
+        Assert ($mr8.Exit -ne 0 -and $mr8.Result.reason -match 'device-offline' -and (Get-FakeCalls) -notmatch 'reverse') 'mock-reverse: an offline device fails with no reverse call'
+        Clear-Fake
+        Set-Fake 'noapply' '1'
+        $mr9 = Invoke-MockReverse 'mr-noreadback'
+        Assert ($mr9.Exit -ne 0 -and $mr9.Result.reason -match 'not listed after adding') 'mock-reverse: a rule that does not read back fails'
+        Clear-Fake
+        Set-Fake 'reverr' 'adb: error: closed'
+        $mr10 = Invoke-MockReverse 'mr-adberr'
+        Assert ($mr10.Exit -ne 0 -and $mr10.Result.reason -match 'adb reverse failed' -and (Get-FakeReverses).Count -eq 0) 'mock-reverse: an adb error on the add fails the run'
+
+        # the probe: reported, never the verdict, and never combined with -Remove
+        Clear-Fake
+        Set-Fake 'ncout' 'connection refused'
+        Set-Fake 'ncexit' '1'
+        $mr11 = Invoke-MockReverse 'mr-probe' @('-Probe')
+        Assert ($mr11.Exit -eq 0 -and $mr11.Result.verdict -eq 'pass' -and $mr11.Result.mockReverse.probe.exitCode -eq 1 -and $mr11.Result.mockReverse.probe.out -eq 'connection refused') 'mock-reverse: -Probe reports nc''s output and exit code without letting them decide the verdict'
+        Assert ((Get-FakeCalls) -match [regex]::Escape('shell echo x | toybox nc -w 3 127.0.0.1 ' + $mockPort)) 'mock-reverse: -Probe runs the single-string nc command on the phone'
+        Assert ($mr11.Result.mockReverse.probeCriterion -match 'client-error' -and $mr11.Result.reason -match 'client-error' -and $mr11.Result.mockReverse.probeCriterion -notmatch 'connect log line' -and $mr11.Result.mockReverse.probe.ranAs -match 'not the app') 'mock-reverse: the result states that a client-error log line is the criterion and that the probe is not the app'
+        $mrRaw = Get-Content -LiteralPath (Join-Path $work 'mr-probe\result.json') -Raw
+        $mrStamp = [regex]::Match($mrRaw, '"startedUtc":\s*"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z)"')
+        Assert ($mrStamp.Success -and [Math]::Abs(([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse($mrStamp.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)).TotalMinutes) -lt 5) 'mock-reverse: the probe start time is recorded as UTC in the mock log timestamp format'
+
+        # the listener check sends an HTTP ping, so its own footprint is a request line and not the probe's client-error line
+        $mrFn = [Management.Automation.Language.Parser]::ParseFile($mockScript, [ref]$null, [ref]$null).Find({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-LocalListener' }, $true)
+        . ([scriptblock]::Create($mrFn.Extent.Text))
+        $mrPingListener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
+        $mrPingListener.Start()
+        try {
+            $mrAccept = $mrPingListener.AcceptTcpClientAsync()
+            $mrSeen = Test-LocalListener ([int]([System.Net.IPEndPoint]$mrPingListener.LocalEndpoint).Port)
+            $mrGot = ''
+            if ($mrAccept.Wait(3000)) {
+                $mrBuf = New-Object byte[] 256
+                $mrStream = $mrAccept.Result.GetStream()
+                $mrRead = $mrStream.ReadAsync($mrBuf, 0, 256)
+                if ($mrRead.Wait(3000)) { $mrGot = [System.Text.Encoding]::ASCII.GetString($mrBuf, 0, $mrRead.Result) }
+                $mrAccept.Result.Dispose()
+            }
+            $mrCrlf = [string][char]13 + [string][char]10
+            Assert ($mrSeen -eq $true -and $mrGot -eq ('GET /__ping HTTP/1.0' + $mrCrlf + $mrCrlf)) 'mock-reverse: the listener check sends GET /__ping as HTTP/1.0 and returns true'
+        } finally { $mrPingListener.Stop() }
+        Assert ((Test-LocalListener $mockFreePort) -eq $false) 'mock-reverse: the listener check returns false when nothing listens'
+        Clear-Calls
+        $mr12 = Invoke-MockReverse 'mr-probe-remove' @('-Probe', '-Remove')
+        Assert ($mr12.Exit -ne 0 -and (Get-FakeCalls) -eq '') 'mock-reverse: -Probe with -Remove is refused before any adb call'
+        Clear-Calls
+        $mr13 = Invoke-MockReverse 'mr-noprobe'
+        Assert ($mr13.Exit -eq 0 -and $null -eq $mr13.Result.mockReverse.probe -and (Get-FakeCalls) -notmatch 'toybox') 'mock-reverse: without -Probe no probe runs'
+    } finally {
+        $mockListener.Stop()
+        Clear-Fake
+    }
 } finally {
     Remove-Item Env:\FAKE_ADB_MODE -ErrorAction SilentlyContinue
     Remove-Item Env:\FAKE_LOCK_FILE -ErrorAction SilentlyContinue
