@@ -6,3 +6,5 @@ Agents/Archive/2026-10-08/Live-State.md -text
 Agents/Archive/2026-10-08/Phase2-Handoff.md -text
 # The device-check scripts are LF only (PowerShell and node read them byte-exact).
 Agents/Tools/device/** text eol=lf
+# Vitest rewrites a snapshot file that is not byte-identical to its LF output, so keep it LF in every checkout.
+*.snap text eol=lf
