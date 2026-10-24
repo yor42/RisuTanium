@@ -24,6 +24,7 @@ mod export_append;
 mod free_space;
 mod launch_inputs;
 mod store2_gate;
+mod streamed_fetch;
 use launch_inputs::LaunchInputs;
 use std::sync::Mutex;
 
@@ -871,130 +872,29 @@ async fn streamed_fetch(
     method: String,
     timeout_secs: Option<u64>,
 ) -> String {
-    //parse headers
-    let headers_json: Value = match serde_json::from_str(&headers) {
-        Ok(h) => h,
-        Err(e) => return format!(r#"{{"success":false, body:{}}}"#, e.to_string()),
+    let registry = app
+        .state::<streamed_fetch::FetchRegistry>()
+        .inner()
+        .clone();
+    let request = streamed_fetch::FetchRequest {
+        id,
+        url,
+        headers,
+        body,
+        method,
+        timeout_secs,
     };
-
-    let mut headers = HeaderMap::new();
-    if let Some(obj) = headers_json.as_object() {
-        for (key, value) in obj {
-            let header_name = match HeaderName::from_bytes(key.as_bytes()) {
-                Ok(name) => name,
-                Err(e) => return format!(r#"{{"success":false, body:{}}}"#, e.to_string()),
-            };
-            let header_value = match HeaderValue::from_str(value.as_str().unwrap_or("")) {
-                Ok(value) => value,
-                Err(e) => return format!(r#"{{"success":false, body:{}}}"#, e.to_string()),
-            };
-            headers.insert(header_name, header_value);
-        }
-    } else {
-        return format!(r#"{{"success":false,"body":"Invalid header JSON"}}"#);
-    }
-
-    let client = reqwest::Client::new();
-    let timeout_secs = timeout_secs.unwrap_or(240);
-    let builder: reqwest::RequestBuilder;
-    if method == "POST" {
-
-        let body_decoded = general_purpose::STANDARD.decode(body.as_bytes()).unwrap();
-
-        builder = client
-        .post(&url)
-        .headers(headers)
-        .timeout(Duration::from_secs(timeout_secs))
-        .body(body_decoded)
-    }
-    else if method == "GET" {
-        builder = client
-        .get(&url)
-        .headers(headers)
-        .timeout(Duration::from_secs(timeout_secs));
-    }
-    else if method == "PUT" {
-
-        let body_decoded = general_purpose::STANDARD.decode(body.as_bytes()).unwrap();
-
-        builder = client
-        .put(&url)
-        .headers(headers)
-        .timeout(Duration::from_secs(timeout_secs))
-        .body(body_decoded)
-    }
-    else if method == "DELETE" {
-
-        let body_decoded = general_purpose::STANDARD.decode(body.as_bytes()).unwrap();
-
-        builder = client
-        .delete(&url)
-        .headers(headers)
-        .timeout(Duration::from_secs(timeout_secs))
-        .body(body_decoded)
-    }
-    else {
-        return format!(r#"{{"success":false, body:"Invalid method"}}"#);
-    }
-
-
-
-    let response = builder
-        .send()
-        .await;
-
-    match response {
-        Ok(mut resp) => {
-            let headers = resp.headers();
-            let header_json = header_map_to_json(headers);
-            app.emit(
-                "streamed_fetch",
-                &format!(
-                    r#"{{"type": "headers", "body": {}, "id": "{}", "status": {}}}"#,
-                    header_json,
-                    id,
-                    resp.status().as_u16()
-                ),
-            )
-            .unwrap();
-            loop {
-                let byt = resp.chunk().await;
-                match byt {
-                    Ok(chunk) => {
-                        if chunk.is_none() {
-                            break;
-                        }
-                        let chunk = chunk.unwrap();
-                        let encoded = general_purpose::STANDARD.encode(chunk);
-                        let emited = app.emit(
-                            "streamed_fetch",
-                            &format!(
-                                r#"{{"type": "chunk", "body": "{}", "id": "{}"}}"#,
-                                encoded, id
-                            ),
-                        );
-
-                        match emited {
-                            Ok(_) => {}
-                            Err(e) => {
-                                return format!(r#"{{"success":false, body:{}}}"#, e.to_string())
-                            }
-                        }
-                    }
-                    Err(e) => return format!(r#"{{"success":false, body:{}}}"#, e.to_string()),
-                }
-            }
-            app.emit(
-                "streamed_fetch",
-                &format!(r#"{{"type": "end", "id": "{}"}}"#, id),
-            )
-            .unwrap();
-            return "{\"success\":true}".to_string();
-        }
-        Err(e) => return format!(r#"{{"success":false, body:{}}}"#, e.to_string()),
-    }
+    streamed_fetch::run_registered(&registry, request, |payload| {
+        app.emit("streamed_fetch", &payload)
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
+#[tauri::command]
+fn cancel_streamed_fetch(id: String, registry: tauri::State<'_, streamed_fetch::FetchRegistry>) {
+    registry.cancel(&id);
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -1018,7 +918,8 @@ pub fn run() {
 
     let mut builder = tauri::Builder::default()
         .manage(PendingLaunch(Mutex::new(cold_launch)))
-        .manage(store2_gate::Store2Gate::new());
+        .manage(store2_gate::Store2Gate::new())
+        .manage(streamed_fetch::FetchRegistry::new());
 
     #[cfg(desktop)]
     {
@@ -1088,7 +989,8 @@ pub fn run() {
             post_py_install,
             run_py_server,
             install_py_dependencies,
-            streamed_fetch
+            streamed_fetch,
+            cancel_streamed_fetch
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
