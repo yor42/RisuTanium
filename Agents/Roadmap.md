@@ -14,13 +14,13 @@ Ideas that are **not** part of this campaign — quality-of-life features, nice-
 
 ---
 
-## Now (2026-10-24)
+## Now (2026-10-25)
 
 Replaces the finished `MC-345` work order (moved to [Archive/Roadmap-closed-2026-10-24.md](Archive/Roadmap-closed-2026-10-24.md); `MC-479`). This records state and sets no priorities; [Live-State](Live-State.md) holds the dated detail.
 
 - **MVP:** installed on the maintainer's phone (`MC-475`); `MC-350` carry-forward is live.
-- **Lane A:** orchestration and records; runs batch T (the native streaming path: CHORE-164, 165, 149 and 167; `MC-502`), whose plan v2 passed Gate 1 round 2 as `[APPROVE WITH AMENDMENTS]`; T1 is committed (`a51321952`, not pushed) and T2 is in progress. Device profile stage D follows on phone 2 (a fresh main build on the test key, `pm clear`, the synthetic device-profile import), then lane B's three checks (`MC-502`). The Android Back batch (CHORE-179 and 180) and CHORE-166 follow batch T. CHORE-207 stays a candidate (`MC-478`).
-- **Lane B:** CHORE-205, sizing lever L3 (including the MCP module tools). Its plugin module asset-list fix is rebased and merged (`15777155a`).
+- **Lane A:** orchestration and records. Batch T (the native streaming path; `MC-502`) is done: CHORE-149, 164, 165 and 167 are COMPLETE and moved to the closed archive (T1 `a51321952`, T2 `9d16b3350`, T3 `d9c68b0fe`; `main` is at `d9c68b0fe`, pushed). Device stage D on phone 2 passed (a release build of `d9c68b0fe` on the test key, the synthetic device profile and the mock settings); a stale Save picker remains in the back stack. Device-profile stage E (adoption, records only) is next for that track. Next for lane A: the Android Back batch (CHORE-179, 180 and the Back family), CHORE-166 (its own batch, not started) and the plugin and parity lanes F and G. CHORE-208 ("Request timed out" has no `language` key) is new. CHORE-207 stays a candidate (`MC-478`).
+- **Lane B:** CHORE-205, sizing lever L3 (including the MCP module tools). Its plugin module asset-list fix is rebased and merged (`15777155a`). Its reload-check results from phone 2 are in (ledger row 2275).
 - **Lane C (cloud):** runs batch Q (CHORE-240, CHORE-185 and CHORE-353). Its earlier scope (CHORE-500, CHORE-330 and CHORE-501) merged in `a83c7901b`.
 - **Lanes F and G (new, `MC-503`):** F runs the plugin batch (CHORE-30 and CHORE-65), G the parity batch (CHORE-178, CHORE-45 and CHORE-41). Neither has phone access; device requests go to lane A.
 - **Batches (`MC-500`):** work runs in gated batches. Parked tickets (`MC-501`, `MC-504`) are in [Roadmap-parked.md](Roadmap-parked.md).
@@ -83,7 +83,6 @@ Parked tickets and sub-items (`MC-501`, `MC-504`) are not in this table; they ar
 | CHORE-141 | Android restore's `relaunch()` does not restart the app | Status (2026-10-08): open; noticed in Stage 3. | - | Android relaunch() cause not investigated |
 | CHORE-147 | Android: the process aborts on exit with the OS Back (FORTIFY "pthread_mutex_lock called… | Status (2026-10-09): open; pre-existing; cause not established. | - | cause not established; parked until after A5 |
 | CHORE-148 | The generated Tauri Android files in the checkout are stale (tauri 2.11.5 against a lock… | Status (2026-10-09): open; regenerate before relying on them. | - | regenerate Tauri Android files before relying on them |
-| CHORE-149 | `streamed_fetch` in `src-tauri/src/lib.rs` uses `.unwrap()` where a failure can panic the… | Status (2026-10-09): open; observed in source, panic behaviour not run. | lane A | batch T (MC-502) |
 | CHORE-153 | Observation: a Light-scheme change can be lost if the app is force-stopped about 15 s aft… | technically accepted; owes the debounce cap (Q-C, deferred, no ticket) | - | - |
 | CHORE-154 | Output-identical cheap fixes in the chat parse pipeline | Status (2026-10-09): open; queued after the windowing items. | - | queued after windowing items; parked |
 | CHORE-155 | The full chat re-renders on every `ReloadGUIPointer` bump | Status (2026-10-09): open; queued after the windowing items; | - | queued after windowing items |
@@ -94,10 +93,7 @@ Parked tickets and sub-items (`MC-501`, `MC-504`) are not in this table; they ar
 | CHORE-161 | Android boot baseline follow-ups: timers starved during `encoder.init`, and main-thread w… | Status (2026-10-09): open; performance follow-ups, not planned. | - | not planned |
 | CHORE-162 | Android boot baseline follow-up: per-call IPC cost of block reads (batching) | Status (2026-10-09): open; performance follow-up, not planned. | - | not planned |
 | CHORE-163 | Unexplained: the archive pass wrote units and then paused after a font change (device tes… | Status (2026-10-09): open; unexplained; may be moot after `9371359e` | - | unexplained; may be moot after 9371359e |
-| CHORE-164 | Stop ends the reply on screen but does not close the native `streamed_fetch` request on T… | Status (2026-10-10): open; ticketed on the maintainer's answer "Ticket it, fix later" | lane A | batch T (MC-502) |
-| CHORE-165 | A `streamed_fetch` that fails after the body was handed over closes the stream normally,… | Status (2026-10-10): open; not reproduced on a device; not planned. | lane A | batch T (MC-502) |
 | CHORE-166 | Timers that are still late while the app is hidden after Stage 3b | Status (2026-10-10): open; known gaps, not planned. | lane A | its own batch, after batch T (MC-502) |
-| CHORE-167 | A reply aborted while the app is hidden shows no "aborted" dialog on return, while a fore… | Status (2026-10-10): open; observation; not diagnosed. | lane A | batch T (MC-502) |
 | CHORE-168 | The composer's "Continue Response" creates a user-role message with the "says nothing" pl… | Status (2026-10-10): open; observation; not diagnosed. | - | observation; not diagnosed |
 | CHORE-169 | Tapping a link in a catalogue description on Android shows "Scoped shell IO error: Permis… | Status (2026-10-10): open; ticketed on the maintainer's answer "Ticket it (Recommended)" | - | unconfirmed on base; not planned |
 | CHORE-170 | Grid fling long tasks of up to 153 to 227 ms on the Note 9; try a smaller grid overscan a… | Status (2026-10-10): open; observation with a partial attribution; not planned. | - | try smaller grid overscan after profiling |
@@ -125,6 +121,8 @@ Parked tickets and sub-items (`MC-501`, `MC-504`) are not in this table; they ar
 | CHORE-205 | Architecture study: subsystems that fail as the library grows (the whole-library in-memor… | Status (2026-10-24, lane A records batch 6): lane B is sizing the next lever, L3 | lane B | L3 per-module units (rebase of the plugin asset-list fix merged in 15777155a) |
 | CHORE-206 | Retire V2.1 plugin execution and keep the data (MC-349) | Status (2026-10-24, lane A records batch 6): technically COMPLETE. | lane A | Stage 3 (remove 2.1-only API members) deferred; optional alertPluginConfirm fol… |
 | CHORE-207 | off-main-thread asset work (candidate) | Status (2026-10-24): open, candidate, not scheduled, no code (`MC-478`). | lane A | candidate; no code |
+| CHORE-208 | "Request timed out" (the native fetch timeout error added by CHORE-164) is hard-coded English with no `language` key | Status (2026-10-25): open, low priority, not scheduled. | lane A | en key, then the Translator for the other locales (MC-058) |
+| CHORE-209 | `Chat.supaResume` "branch" tests can fail under full-suite load: a timed-out (c) may keep running into (d) | Status (2026-10-25): open, low priority, not scheduled; test isolation, not batch T. | lane A | hoist the dynamic imports, reset `DBState.db`; prove with a forced cold timeout |
 | CHORE-353 | The write-scope guard refuses only the Edit and Write tools, so a shell write can change… | Status (2026-10-22, lane A): open, ticketed, not scheduled (`MC-457` 1). | lane C (cloud) | batch Q |
 | CHORE-354 | CHORE-354 (new) — on a large profile the page does not answer Back within 1 s after the f… | Status (2026-10-22): open, low priority, not scheduled. | lane A | low priority; not scheduled |
 | Grid avatar loading (MC… | Grid avatar loading (MC-452, MC-459) — stage A, the thumbnail write leaves the generation… | The rest of stage B is deferred (`MC-463`). | lane E | rest of stage B deferred (MC-463) |
@@ -3009,15 +3007,6 @@ app's own images into the card, not the companion text, so this is its own ticke
 - **Observed:** `src-tauri/gen/android/tauri.settings.gradle` points at `tauri-2.11.5\mobile\android`, and the generated `TauriActivity.kt` and `WryActivity.kt` are the tauri 2.11.5 and wry 0.55.1 templates; `src-tauri/Cargo.lock` resolves tauri 2.12.1, wry 0.57.0, tao 0.37.1 (read 2026-10-09). The generated files are git-ignored (`gen/android/.gitignore` and `app/.gitignore`; Gate 2 amendment 1), so they are not in any commit.
 - **Consequence:** a Gradle-only build from the checkout without regenerating compiles against 2.11.5. The batch's `MainActivity.kt` depends only on APIs the two versions share (Gate 2 amendment 1), and its compiled class was checked against 2.12.1 in a scratch copy. Gate 2 amendment 1 notes the 2.11.5 to 2.12.1 changes are lifecycle and plugin plumbing.
 
-### CHORE-149 — `streamed_fetch` in `src-tauri/src/lib.rs` uses `.unwrap()` where a failure can panic the task
-
-**Status (2026-10-24, lane A records batch 10):** open; in batch T, run by lane A (`MC-502`).
-
-**Status (2026-10-09): open; observed in source, panic behaviour not run.** Type: bug, latent, Tauri (all platforms).
-
-- **First noted by** the keep-alive investigator (`keepalive\packet.md`, not independently verified); **re-read by this entry's writer in the working tree at `6f9c0b98`:** `streamed_fetch` (`lib.rs:706-837`) decodes the request body with `general_purpose::STANDARD.decode(...).unwrap()` for POST, PUT and DELETE (`lib.rs:743`, `759`, `769`), so an invalid base64 body panics; and it calls `app.emit(...).unwrap()` for the headers event (`lib.rs:800`) and the end event (`lib.rs:832`), so a failed emit (for example after the webview is gone) panics. The chunk emit in the loop returns an error string instead (`lib.rs:818-823`), and `chunk.unwrap()` at `lib.rs:808` follows an `is_none()` check.
-- **Not established:** whether a panic in the async command kills the app or only that command, and whether Activity destruction on Android reaches the emit paths. TODO(evidence): a reproduction.
-
 ### CHORE-153 — Observation: a Light-scheme change can be lost if the app is force-stopped about 15 s after the tap
 
 **Status update (2026-10-22, lane A, third): merged in `c5c6897f5` (no-ff merge of `worktree-Lane-E` at `ea2e46447`, fix `846008435`); technically accepted; the phone 2 check passed and is doc-verified (ledger rows 2157 to 2159).** Full checks on `c5c6897f5` (`%TEMP%\risu-b715\records-e153\`): `pnpm test` 916 files passed, 1 skipped (20,724 tests passed, 23 skipped); `pnpm check` 0 errors and 0 warnings; `pnpm build` passed; `cargo test` not run (no Rust change). Phone 2 (debug build, small profile, scripted Home, `am force-stop` only), per the doc-verifier corrections: 7 of 7 Home runs at a hide-to-kill gap of 0.23 s or more persisted; the 20 ms case (colour only) did not persist; the H0.3 rows persisted before the 500 ms debounce could fire. The no-Home rows are a visible-page, debounce-only baseline, not a pre-fix control. Owed: the debounce cap (Q-C, deferred); the Back-guard flush moves to CHORE-181.
@@ -3110,28 +3099,9 @@ app's own images into the card, not the companion text, so this is its own ticke
 - **Why it is unexplained:** the two-pages verification (`twopages\verify.md`, "Possible tension with C8b") says that under its reply-routing model those units came from the new page's pass, and that it cannot explain from source why that pass did not commit; logs from both pages would be needed.
 - **Since the retire:** with the retire-only build E, a font change during the pass restarted the pass and it completed once with the notice and no pause on both devices (round 1 step E3, one run each; the emulator's strikes read "1" after the first start and "2" after the recreation, then null after completion). With build F a font change no longer recreates the activity (round 2 step F4: strikes stayed "1"). A recreation caused by a configuration change that is not declared in the manifest was not run on F.
 
-### CHORE-164 — Stop ends the reply on screen but does not close the native `streamed_fetch` request on Tauri; the provider keeps generating
-
-**Status (2026-10-24, lane A records batch 10):** open; in batch T, run by lane A (`MC-502`).
-
-**Status (2026-10-10): open; ticketed on the maintainer's answer "Ticket it, fix later" (`MC-261` 2); not planned.** Type: defect (resource use and provider cost), Tauri; found during keep-alive.
-
-- **Observed (Stage 3 device pass, `keepalive\device\report.md` finding 1; Note 9 API 29 and the API 35 emulator):** after the notification Stop or the in-app Stop, the mock server's requests ran to the full chunk count (mock REQ#5 and #6 on the Note 9, #34 to #36 on the emulator); requests stopped before the first byte still got their first byte 60 s later and streamed; the mock logged `ABORT (client closed)` only when the process died. The visible behaviour is correct (the text stops and the notification leaves). Observed again after Stage 3b (`keepalive\device3b\report.md` finding 2; the Orchestrator's spot-check: stopped requests logged `END` with full chunk counts and no `ABORT`).
-- **Pre-existing or not:** from source reading, pre-existing: the pump of an aborted Tauri stream keeps reading until Rust ends (`plan-v3.md`; `gate2-s12.md` nit: "aborted Tauri request is not cancelled on the Rust side (pre-existing, plan-accepted)"). Not proven on a device: no base APK was run (`device\report.md` finding 1). The Rust request has a total timeout, default 240 s, so the `invoke` settles by then at the latest (`gate1-adv-r2.md`, read in source there); the mock runs observed above were shorter than that.
-- **Scope in the maintainer's answer (`MC-261` 2):** a native request cancel for `streamed_fetch` on Tauri, desktop too; the device evidence is Android only. No fix beyond that is proposed here.
-
-### CHORE-165 — A `streamed_fetch` that fails after the body was handed over closes the stream normally, so an error-truncated reply looks complete
-
-**Status (2026-10-24, lane A records batch 10):** open; in batch T, run by lane A (`MC-502`).
-
-**Status (2026-10-10): open; not reproduced on a device; not planned.** Type: suspected defect (silent truncation), Tauri; found during keep-alive.
-
-- **Observed (source reading, not executed):** when `invoke('streamed_fetch')` resolves with `success:false` (or its result fails to parse) after the response headers and some body were delivered, `fetchNative`'s stream closes without an error, as it did before the keep-alive work; the reader sees a normal end, so a reply cut short by the failure is shown as complete. Sources: `keepalive\plan-v3.md` ("Out of scope, recorded as a candidate ticket"), `keepalive\plan-3b.md` and `keepalive\gate1-3b.md` (Part 2, A item 5: "after headers the stream closes without erroring (today's behaviour)").
-- **Pre-existing:** yes, per those sources (Stage 3b kept this behaviour on purpose: "success:false and parse-error after headers end the stream as today (close)", `plan-3b.md`).
-- **Relation to keep-alive:** the stored `interrupted` flag (`MC-260` 7 and 8) is cleared by any end the page saw, including this close, so such a reply is expected to carry no note (an inference from the rule, not tested; `MC-260` 8 chose "Only if the page died", and "Also on errors, best effort" was the unchosen alternative).
-- **Not established:** how often Rust reports `success:false` after the headers in practice. TODO(evidence).
-
 ### CHORE-166 — Timers that are still late while the app is hidden after Stage 3b
+
+**Status (2026-10-25, lane A records batch 11):** open; batch T is done, and this ticket's own batch is not started (`MC-502`).
 
 **Status (2026-10-24, lane A records batch 10):** open; leaves batch T and becomes its own batch (lane A ruling, `MC-502`); it follows batch T.
 
@@ -3140,15 +3110,6 @@ app's own images into the card, not the companion text, so this is its own ticke
 - **Not covered by the Stage 3b fix (`keepalive\plan-3b-amend.md` A-5):** the balanced and strong display modes (a 125 ms `setTimeout` plus `requestAnimationFrame`) are still late while hidden (the default `'off'` mode has no timer on the chunk-to-reply-complete path); the `sleep(1)` in `anthropic.ts`'s catch branch after a mid-stream parse error; provider retry back-offs; the `buildTimeoutSignal` timers. The post-reply save debounce was not surveyed there (Stage 4 saves on hide instead).
 - **Further timer sites named by the Gate 1 reviewer, not verified further (`keepalive\gate1-3b.md` Part 2, A item 9):** retry back-offs in `request.ts` (`sleep(1000)` on server error) and `anthropic.ts` (`sleep(3000)`), the timers in `tts.ts`, `sleep` in triggers, `composerActions`' `sleep(10)` before `sendChatMain` and the auto-mode waits.
 - **Evidence for the mechanism:** `keepalive\lag\report.md` (single device, the Note 9; WebView version not recorded) as recomputed in `gate1-3b.md` Part 1; hidden-page timers were throttled to about 1 s ticks and then to gaps of 9 to 15 s and, in one run, none for 281.6 s.
-
-### CHORE-167 — A reply aborted while the app is hidden shows no "aborted" dialog on return, while a foreground abort shows "Error: aborted"
-
-**Status (2026-10-24, lane A records batch 10):** open; in batch T, run by lane A (`MC-502`).
-
-**Status (2026-10-10): open; observation; not diagnosed.** Type: observation (inconsistent feedback), Android; found during keep-alive.
-
-- **Observed:** Stage 3 device pass, `keepalive\device\report.md` finding 4: a reply aborted while hidden shows no "aborted" dialog on resume, while a foreground abort shows "Error: aborted". Stage 3b re-check, `keepalive\device3b\report.md` finding 3: a foreground in-app Stop shows the "Error: aborted" dialog (emulator, 10 sends in a loop), which it says matches the Stage 3 finding. That second report does not test the hidden case.
-- **Not established:** whether the dialog is the intended feedback for a user Stop in the foreground at all, and why the hidden case differs. TODO(evidence).
 
 ### CHORE-168 — The composer's "Continue Response" creates a user-role message with the "says nothing" placeholder and streams into it instead of extending the last reply
 
@@ -3481,6 +3442,23 @@ Stage 0 (measurement only) is approved as `MC-348` ("Now, PC + one Note 9 run (R
   - the `strip` plugin on worker code.
 - **Next:** read `%TEMP%\risu-lane-e\grid\plan.md` to settle the A2 overlap.
 - **Related:** the Grid avatar loading entry, MC-452, MC-459, MC-463, MC-130, CHORE-205, CHORE-177.
+
+### CHORE-208 — "Request timed out" (the native fetch timeout error added by CHORE-164) is hard-coded English with no `language` key
+
+**Status (2026-10-25, lane A records batch 11): open, low priority, not scheduled; owner lane A.** Type: translation gap (a missing key), Tauri (the native fetch path).
+
+- **Observed:** batch T stage T2 (`9d16b3350`) throws `Request timed out` from `fetchNative` when a timeout fires before the headers. The T2 coder grepped `src/lang/en.ts` for "timed out" and "timeout" and found no matching key, and Gate 2 flagged the string as non-blocking (ledger row 2271). The string is hard-coded English; no locale key was added.
+- **Needed:** an `en` key and its use at the throw site, then the Translator for the other locales (`MC-058`: preserve the maintainer's edits, keys, interpolations, CBS tags and line endings).
+- **Not established:** how often a person meets this error, and whether the timeout is reachable from a Settings control; stage D found the local-network timeout setting not exposed in the UI (source grep only, ledger row 2274).
+
+### CHORE-209 — `Chat.supaResume` "branch" tests can fail under full-suite load: a timed-out (c) may keep running into (d)
+
+**Status (2026-10-25, lane A records batch 11): open, low priority, not scheduled; owner lane A.** Type: test isolation (a flake under load), not a product defect.
+
+- **Observed:** in the batch T full run on `d9c68b0fe`, (c) "a send over the branched chat" timed out at 5000 ms and (d) "the parent chat is untouched" failed "expected 3 to be 5" (ledger row 2273). Both passed alone and under synthetic CPU load in later runs (ledger row 2276).
+- **Likely mechanism (INFERRED, not reproduced):** (c) begins with a cold dynamic import of the memory modules; vitest does not cancel a timed-out test body, and the `afterEach` does not reset `DBState.db`, so a late (c) can change the chat that (d) reads.
+- **Not attributed to batch T:** the file mocks `globalApi.svelte` and `request/request`, which T2 and T3 changed; the provider files T2 changed are reached only through the mocked `request.ts`, and T2's `mcplib.ts` change is confined to `MCPClient`'s SSE reader, which this test file never references (lane A, source read; not traced at runtime).
+- **Candidate fix:** move the two dynamic imports to the top level or a `beforeAll`, and reset `DBState.db` in `afterEach`; prove it with a test that forces (c) to time out after a cold import.
 
 ### CHORE-353 — The write-scope guard refuses only the Edit and Write tools, so a shell write can change a repository file outside its grant (MC-457 1)
 
