@@ -171,6 +171,10 @@ import {
 } from 'src/ts/storage/characterSaveMarks'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { language } from 'src/lang'
+// Imported at the top so the cold module load happens at collection, never inside a timed test body.
+import { supaMemory } from 'src/ts/process/memory/supaMemory'
+import { writeSupaMemoryData } from 'src/ts/process/memory/supaResume'
+import { getDatabase } from 'src/ts/storage/database.svelte'
 import Chat from './Chat.svelte'
 import PopupList from '../UI/PopupList.svelte'
 
@@ -322,6 +326,9 @@ async function expectQuestionUp(): Promise<void> {
 
 let tracker: toSaveType
 
+// The mocked database as installed before any test sets one up (empty, no characters).
+const emptyDb = DBState.db
+
 beforeEach(() => {
     window.innerWidth = 1024
     selectedCharID.set(0)
@@ -338,6 +345,8 @@ afterEach(async () => {
     }
     mountedTargets.splice(0).forEach((t) => t.remove())
     document.body.replaceChildren()
+    // Each test starts from the empty database, not the one the previous test installed.
+    DBState.db = emptyDb
     resetCharacterSaveMarksForTest()
     vi.clearAllMocks()
 })
@@ -546,8 +555,6 @@ describe('branch', () => {
     })
 
     test('(c) a send over the branched chat: no error, nothing re-summarised, the branch point is dropped from the prompt', async () => {
-        const { supaMemory } = await import('src/ts/process/memory/supaMemory')
-        const { writeSupaMemoryData } = await import('src/ts/process/memory/supaResume')
         setupSupa({ supaMemoryData: `id-m4\n${'S'.repeat(400)}` })
         await branchAt(1)
         const room = branched() as never
@@ -556,7 +563,6 @@ describe('branch', () => {
         const sent = (id: string, tokens: number) => ({ role: 'user' as const, content: id.repeat(tokens), memo: id })
         const chats = [sent('id-m1', 60), sent('id-m2', 10)]
         const tokenizer = { tokenizeChat: async (chat: { content: string }) => chat.content.length } as never
-        const { getDatabase } = await import('src/ts/storage/database.svelte')
         vi.mocked(getDatabase).mockImplementation(() => ({
             removePunctuationHypa: false,
             maxSupaChunkSize: 1200,
