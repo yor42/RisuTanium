@@ -15,6 +15,7 @@ import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { incomingCharacterRefusal, withoutStubDowngrades } from "./stubDowngrade";
 import { databaseWriteProblem, singleCharacterProblem } from "./characterWriteCheck";
 import { PLUGIN_STORAGE_INDEX_KEY, PLUGIN_STORAGE_LEGACY_MAP_KEY } from "../process/pluginStorageIndex";
+import { AssetList, type AssetTuple } from "../storage/assetList";
 import {
     apiVersionRefusal,
     applyPluginChanges,
@@ -548,6 +549,55 @@ function commitPluginChanges(classified: PluginListClassification): Error | null
     return null
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        return false
+    }
+    const prototype = Object.getPrototypeOf(value)
+    return prototype === Object.prototype || prototype === null
+}
+
+/**
+ * The `modules` value a plugin write installs. Each module whose `assets` is a
+ * plain array becomes a shallow copy holding an `AssetList` of one-level
+ * tuple copies, so the list never enters the reactive graph and later edits of
+ * the plugin's own tuples cannot reach the live database. The plugin's objects
+ * are not mutated. The value is returned as is when it is not an array or when
+ * it is the live array itself. A module whose `assets` is a live list (a live
+ * module, or a spread of one) passes through: its tuples are already installed.
+ */
+function withHeldAssetLists(db: ReturnType<typeof getDatabase>, incoming: ReturnType<typeof getDatabase>['modules']): ReturnType<typeof getDatabase>['modules'] {
+    if (!Array.isArray(incoming) || incoming === db.modules) {
+        return incoming
+    }
+    const live = new Set<unknown>()
+    for (const mod of db.modules ?? []) {
+        if (mod?.assets) {
+            live.add(mod.assets)
+        }
+    }
+    const held: unknown[] = []
+    for (let i = 0; i < incoming.length; i++) {
+        const mod: unknown = incoming[i]
+        if (!isPlainObject(mod)) {
+            held.push(mod)
+            continue
+        }
+        const assets = mod.assets
+        if (!Array.isArray(assets) || assets instanceof AssetList || live.has(assets)) {
+            held.push(mod)
+            continue
+        }
+        const list = new AssetList()
+        for (let j = 0; j < assets.length; j++) {
+            const entry: unknown = assets[j]
+            list.push((Array.isArray(entry) ? entry.slice() : entry) as AssetTuple)
+        }
+        held.push({ ...mod, assets: list })
+    }
+    return held as ReturnType<typeof getDatabase>['modules']
+}
+
 /**
  * Writes every key of a plugin's write except `plugins`. `characters` is
  * reconciled against the live list at this moment, so a character restored
@@ -568,6 +618,9 @@ function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginN
         }
         if (key === 'pluginCustomStorage') {
             db.pluginCustomStorage = keepPluginStorageInternals(db.pluginCustomStorage, newDb[key]);
+        }
+        else if (key === 'modules') {
+            db.modules = withHeldAssetLists(db, newDb[key]);
         }
         else if (allowedDbKeys.includes(key)) {
             (db as any)[key] = newDb[key];
