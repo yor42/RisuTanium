@@ -106,7 +106,7 @@ export const languageEnglish = {
             `This chat's stored messages could not be read (key: ${coldDataKey}): the stored copy may be damaged. Nothing was changed or deleted.`,
         coldStorageLegacyChatUnavailable: "The earlier messages can't be loaded on this page: this browser offers no storage for them here. The messages you can already see are unaffected.",
         coldStorageLegacyChatDamaged: "The earlier messages could not be read: their stored copy may be damaged. The messages you can already see are unaffected.",
-        chatParseFailed: "Error while parsing chat message: {translated}, {message}, {stack}",
+        chatParseFailed: "Error while parsing chat message: {translated}, {message}",
         screenshotFailed: "Error while taking screenshot",
         irisLlmFailed: "Failed to get response from LLM: {error}",
         invalidApiKey: "Invalid API key",
