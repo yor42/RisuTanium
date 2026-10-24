@@ -488,8 +488,9 @@ describe('translation editor: revert / type-back / unmount sequences', () => {
                 save.click()
                 await typeInto(fx.target, 'T2')
                 save.click()
-                await sleepMs(50)
-                flushSync()
+                // The second write starts only after the first settles, so wait
+                // for the editor to close rather than for a fixed time.
+                await vi.waitFor(() => { flushSync(); expect(editArea(fx.target)).toBeNull() })
             })
             expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
             const saved = vi.mocked(setLLMCache).mock.calls.map((c) => c[1])
