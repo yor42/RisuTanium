@@ -1540,11 +1540,20 @@ interface RisuaiPluginAPI {
 
     /**
      * @deprecated Use getArgument() instead
+     *
+     * **Fork-specific note (not upstream RisuAI):** `arg` must be
+     * `"<your plugin name>::<key>"`. Any other name, or a key without `::`,
+     * throws; a plugin cannot read another plugin's arguments.
      */
     getArg(arg: string): any;
 
     /**
      * @deprecated Use setArgument() instead
+     *
+     * **Fork-specific note (not upstream RisuAI):** `arg` must be
+     * `"<your plugin name>::<key>"`. Any other name, or a key without `::`,
+     * throws and changes nothing; a plugin cannot change another plugin's
+     * arguments.
      */
     setArg(arg: string, value: string | number): void;
 

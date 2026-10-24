@@ -831,8 +831,11 @@ await Risuai.setCharacter(character);
 **Legacy names** (still work, but prefer new names):
 - `Risuai.getChar()` : Use `Risuai.getCharacter()`
 - `Risuai.setChar()` : Use `Risuai.setCharacter()`
+- `Risuai.getArg()` / `Risuai.setArg()` : Use `Risuai.getArgument()` / `Risuai.setArgument()`
 
 **Fork-specific note (not upstream RisuAI):** `setCharacter()` and `setChar()` write only the currently selected character. They reject with an `Error`, and write nothing, when no character is selected, or when `character` has a `chaId` that differs from the selected character's (for example because the user switched characters after your `getCharacter()` call). A `character` with no `chaId` still replaces the selected character. Upstream writes into whatever is selected, or into an invalid slot when nothing is.
+
+**Fork-specific note (not upstream RisuAI):** `getArg()` and `setArg()` reach only your own plugin's arguments. A key that does not start with your plugin's name followed by `::` throws an `Error`; upstream let a plugin read and change another plugin's arguments. Use `getArgument()` / `setArgument()`.
 
 ### Character & Chat by Index
 
@@ -1367,7 +1370,7 @@ await Risuai.getArgument(key)
 // L Deprecated (still work but avoid)
 await Risuai.getChar()
 await Risuai.setChar(char)
-await Risuai.getArg(key)
+await Risuai.getArg('YourPluginName::key')
 ```
 
 ### 6. Respect the Sandbox
