@@ -832,6 +832,8 @@ await Risuai.setCharacter(character);
 - `Risuai.getChar()` : Use `Risuai.getCharacter()`
 - `Risuai.setChar()` : Use `Risuai.setCharacter()`
 
+**Fork-specific note (not upstream RisuAI):** `setCharacter()` and `setChar()` write only the currently selected character. They reject with an `Error`, and write nothing, when no character is selected, or when `character` has a `chaId` that differs from the selected character's (for example because the user switched characters after your `getCharacter()` call). A `character` with no `chaId` still replaces the selected character. Upstream writes into whatever is selected, or into an invalid slot when nothing is.
+
 ### Character & Chat by Index
 
 Access characters and chats by their position in the database, and get the currently selected indices:

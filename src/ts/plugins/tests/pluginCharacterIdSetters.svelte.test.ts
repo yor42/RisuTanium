@@ -250,7 +250,7 @@ describe('while a character holds an id that cannot be saved (S20)', () => {
 
     test('(R) setChar cannot move the held id onto another slot', () => {
         selectedCharID.set(0)
-        expect(() => api().setChar({ chaId: 'config', name: 'A renamed', type: 'character', chats: [] })).toThrow()
+        expect(() => api().setChar({ chaId: 'config', name: 'A renamed', type: 'character', chats: [] })).toThrow(/cannot be saved/)
         expect(live()[0].chaId).toBe('a')
     })
 
@@ -258,5 +258,65 @@ describe('while a character holds an id that cannot be saved (S20)', () => {
         const snapshot = $state.snapshot(DBState.db.characters) as unknown as Entry[]
         await expect(api().setDatabase({ characters: [snapshot[0], { ...snapshot[1], chaId: 'preset' }] })).rejects.toThrow()
         expect(liveIds()).toEqual(['a', 'config'])
+    })
+})
+
+describe('setChar writes only the selected character, and only when one is selected', () => {
+    const names = () => live().map((c) => c.name)
+
+    test('(R) a character whose id is not the selected one is refused when the selection changed', () => {
+        selectedCharID.set(1)
+        expect(() => api().setChar({ chaId: 'a', name: 'A edited', type: 'character', chats: [] })).toThrow(/not the selected character/i)
+        expect(liveIds()).toEqual(['a', 'b'])
+        expect(names()).toEqual(['A', 'B'])
+    })
+
+    test('(R) nothing selected is refused and adds no slot or key', () => {
+        selectedCharID.set(-1)
+        const payload: Entry = { name: 'C', type: 'character', chats: [] }
+        expect(() => api().setChar(payload)).toThrow(/no character is selected/i)
+        expect(Object.keys(DBState.db.characters)).toEqual(['0', '1'])
+        expect(payload.chaId).toBeUndefined()
+        expect(liveIds()).toEqual(['a', 'b'])
+    })
+
+    test.each([[2], [5]])('(R) a selection at index %i past the end of the list is refused and adds no slot', (index) => {
+        selectedCharID.set(index)
+        expect(() => api().setChar({ chaId: 'c', name: 'C', type: 'character', chats: [] })).toThrow(/no character is selected/i)
+        expect(live()).toHaveLength(2)
+        expect(Object.keys(DBState.db.characters)).toEqual(['0', '1'])
+    })
+
+    test('(R) a selected slot that is not a character entry is refused', () => {
+        ;(DBState.db.characters as unknown as unknown[])[1] = 5
+        selectedCharID.set(1)
+        expect(() => api().setChar({ chaId: 'b', name: 'B edited', type: 'character', chats: [] })).toThrow(/no character is selected/i)
+        expect((DBState.db.characters as unknown as unknown[])[1]).toBe(5)
+    })
+
+    test('(G) a character with no id is written into the selected slot and given one', () => {
+        selectedCharID.set(1)
+        api().setChar({ name: 'B no id', type: 'character', chats: [] })
+        expect(live()[1].name).toBe('B no id')
+        expect(typeof live()[1].chaId).toBe('string')
+        expect(live()[1].chaId).not.toBe('')
+        expect(liveIds()[0]).toBe('a')
+    })
+
+    test('(R) the same id as number and as text is the same character; another number is refused', () => {
+        live()[0].chaId = '7'
+        selectedCharID.set(0)
+        expect(() => api().setChar({ chaId: 7, name: 'Seven edited', type: 'character', chats: [] })).not.toThrow()
+        expect(live()[0].name).toBe('Seven edited')
+        expect(() => api().setChar({ chaId: 8, name: 'Eight', type: 'character', chats: [] })).toThrow(/not the selected character/i)
+        expect(live()[0].name).toBe('Seven edited')
+        expect(live()[0].chaId).toBe(7)
+    })
+
+    test('(G) a selected slot with no id of its own accepts any id', () => {
+        delete live()[0].chaId
+        selectedCharID.set(0)
+        expect(() => api().setChar({ chaId: 'z', name: 'Z', type: 'character', chats: [] })).not.toThrow()
+        expect(live()[0].chaId).toBe('z')
     })
 })

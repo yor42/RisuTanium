@@ -13,7 +13,8 @@ import { loadV3Plugins } from "./apiV3/v3.svelte";
 import { pluginCodeTranspiler } from "./apiV3/transpiler";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { incomingCharacterRefusal, withoutStubDowngrades } from "./stubDowngrade";
-import { databaseWriteProblem, singleCharacterProblem } from "./characterWriteCheck";
+import { databaseWriteProblem, selectedCharacterMismatch, singleCharacterProblem } from "./characterWriteCheck";
+import { isCharacterEntry } from "../storage/characterIds";
 import { PLUGIN_STORAGE_INDEX_KEY, PLUGIN_STORAGE_LEGACY_MAP_KEY } from "../process/pluginStorageIndex";
 import { AssetList, type AssetTuple } from "../storage/assetList";
 import {
@@ -726,8 +727,11 @@ export const getV2PluginAPIs = () => {
             }
             const db = getDatabase()
             const charid = get(selectedCharID)
-            const replaced = charid >= 0 ? db.characters[charid] : undefined
-            const problem = singleCharacterProblem(char, replaced)
+            if (charid < 0 || charid >= db.characters.length || !isCharacterEntry(db.characters[charid])) {
+                throw new Error('No character is selected, so the character was not set. Nothing was written.')
+            }
+            const replaced = db.characters[charid]
+            const problem = singleCharacterProblem(char, replaced) ?? selectedCharacterMismatch(char, replaced)
             if (problem !== null) {
                 throw new Error(problem)
             }

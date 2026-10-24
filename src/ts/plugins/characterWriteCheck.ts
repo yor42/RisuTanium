@@ -94,6 +94,24 @@ export function singleCharacterProblem(incoming: unknown, replaced: unknown): st
     return `The character id ${describeId(id)} cannot be saved.`
 }
 
+/**
+ * Why a write of `incoming` into the selected slot, which holds `replaced`, is
+ * refused because it is another character: both ids are present and differ.
+ * A missing id on either side leaves nothing to compare, so a character with no
+ * id still targets the selected slot.
+ */
+export function selectedCharacterMismatch(incoming: unknown, replaced: unknown): string | null {
+    if (!isCharacterEntry(incoming) || !isCharacterEntry(replaced)) {
+        return null
+    }
+    const id = incoming.chaId
+    const replacedId = replaced.chaId
+    if (isMissingCharacterId(id) || isMissingCharacterId(replacedId) || idKey(id) === idKey(replacedId)) {
+        return null
+    }
+    return 'The character passed is not the selected character (the selection may have changed). Nothing was written.'
+}
+
 /** Why a write of the keys of `newDb` is refused, given the page's database. */
 export function databaseWriteProblem(live: { characters?: readonly unknown[] }, newDb: Record<string, unknown>): string | null {
     if (Object.hasOwn(newDb, 'characters')) {
