@@ -72,7 +72,17 @@ export async function importRegex(o?:customscript[]):Promise<customscript[]>{
 }
 
 let bestMatchCache = new Map<string, string>()
-let processScriptCache = new Map<string, string>()
+
+/**
+ * The send's prompt pass (calls carrying a `promptView`) caches in its own map,
+ * so display and streaming traffic cannot evict it. Every other call shares the
+ * second, smaller map. Both evict the oldest entry first and neither grows with
+ * the chat.
+ */
+const PROMPT_PASS_CACHE_CAP = 1000
+const SCRIPT_CACHE_CAP = 200
+let promptPassCache = new Map<string, string>()
+let scriptCache = new Map<string, string>()
 
 const scriptPassCounters = { cacheHits: 0, scans: 0, earlyRejects: 0 }
 
@@ -146,7 +156,7 @@ const flagActionRegex = /<(.+?)>/g
  * Whether running the scripts of `mode` over `data` gives a result the cache
  * key determines, with no side effect a hit would skip. The test reads the key's
  * own inputs only, so an entry under the key holds the same text whichever
- * caller stored it. A script `out` or the text itself holding `{` or `<` may
+ * prompt-pass call stored it. A script `out` or the text itself holding `{` or `<` may
  * carry a tag or a legacy `<char>` form, which reads chat, variables, owner or
  * persona; the actions and `@@` outs below read other messages or write. A
  * script whose `out` or `flag` is not a string comes from malformed imported
@@ -188,21 +198,23 @@ function isKeyDeterminedPass(scripts: customscript[], mode: ScriptMode, data: st
     return true
 }
 
-function cacheScript(hash:string, result:string){
-    processScriptCache.set(hash, result)
+function cacheScript(hash:string, result:string, promptPass:boolean){
+    const cache = promptPass ? promptPassCache : scriptCache
+    cache.set(hash, result)
 
-    if(processScriptCache.size > 1000){
-        processScriptCache.delete(processScriptCache.keys().next().value)
+    if(cache.size > (promptPass ? PROMPT_PASS_CACHE_CAP : SCRIPT_CACHE_CAP)){
+        cache.delete(cache.keys().next().value)
     }
 
 }
 
-function getScriptCache(hash:string){
-    return processScriptCache.get(hash)
+function getScriptCache(hash:string, promptPass:boolean){
+    return (promptPass ? promptPassCache : scriptCache).get(hash)
 }
 
 export function resetScriptCache(){
-    processScriptCache = new Map()
+    promptPassCache = new Map()
+    scriptCache = new Map()
 }
 
 /**
@@ -226,18 +238,22 @@ export function resetScriptCache(){
  *
  * `promptView` marks a call that builds the prompt. Its parses and
  * `@@repeat_back` then skip the messages the prompt does not send, and the
- * script cache serves and stores it only when `isKeyDeterminedPass` holds.
- * Without one the call reads and caches as any other.
+ * prompt-pass cache serves and stores it only when `isKeyDeterminedPass`
+ * holds. Without one the call reads and stores in the shared cache of every
+ * other call, which is smaller and never serves or evicts a prompt-pass entry.
+ *
+ * `cache` is `'bypass'` for a call whose text is never looked up again, such as
+ * a streamed partial reply: it neither reads nor stores in either cache.
  */
-export function processScriptFull(char:character|groupChat|simpleCharacterArgument, data:string, mode:ScriptMode, chatID = -1, cbsConditions:CbsConditions = {}, origin?:Origin, sendSubject?:RunSubject, messageRef?:MessageRef|null, promptView?:PromptView): ReturnType<typeof runScriptPass>{
+export function processScriptFull(char:character|groupChat|simpleCharacterArgument, data:string, mode:ScriptMode, chatID = -1, cbsConditions:CbsConditions = {}, origin?:Origin, sendSubject?:RunSubject, messageRef?:MessageRef|null, promptView?:PromptView, cache:'use'|'bypass' = 'use'): ReturnType<typeof runScriptPass>{
     // Not `async`: in a normal build the caller gets the body's own promise,
     // so an `await` of it resumes after the same microtask ticks as before.
     if(!MEASURE){
-        return runScriptPass(char, data, mode, chatID, cbsConditions, origin, sendSubject, messageRef, promptView)
+        return runScriptPass(char, data, mode, chatID, cbsConditions, origin, sendSubject, messageRef, promptView, cache)
     }
     const startT = performance.now()
     const probe: ScriptPassProbe = { cache: 'aborted', scans: 0, earlyRejects: 0 }
-    return runScriptPass(char, data, mode, chatID, cbsConditions, origin, sendSubject, messageRef, promptView, probe)
+    return runScriptPass(char, data, mode, chatID, cbsConditions, origin, sendSubject, messageRef, promptView, cache, probe)
         .finally(() => noteScriptPass(mode, startT, probe.cache, probe.scans, probe.earlyRejects))
 }
 
@@ -253,7 +269,7 @@ interface ScriptPassProbe {
     earlyRejects: number
 }
 
-async function runScriptPass(char:character|groupChat|simpleCharacterArgument, data:string, mode:ScriptMode, chatID:number, cbsConditions:CbsConditions, origin:Origin|undefined, sendSubject:RunSubject|undefined, messageRef:MessageRef|null|undefined, promptView:PromptView|undefined, probe?:ScriptPassProbe){
+async function runScriptPass(char:character|groupChat|simpleCharacterArgument, data:string, mode:ScriptMode, chatID:number, cbsConditions:CbsConditions, origin:Origin|undefined, sendSubject:RunSubject|undefined, messageRef:MessageRef|null|undefined, promptView:PromptView|undefined, cache:'use'|'bypass', probe?:ScriptPassProbe){
     let db = getDatabase()
     let emoChanged = false
     const subject = sendSubject ?? (origin ? createRunSubject(origin) : undefined)
@@ -291,9 +307,10 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
 
     data = risuChatParser(data, { chatID: chatID, cbsConditions, subject, promptView })
     const scripts = (db.presetRegex ?? []).concat(char.customscript).concat(getModuleRegexScripts(subject))
-    const useCache = !promptView || isKeyDeterminedPass(scripts, mode, data)
+    const promptPass = promptView !== undefined
+    const useCache = cache === 'use' && (!promptPass || isKeyDeterminedPass(scripts, mode, data))
     const hash = useCache ? generateScriptCacheKey(scripts, data, mode, chatID, cbsConditions, subject, promptView) : ''
-    const cached = useCache ? getScriptCache(hash) : undefined
+    const cached = useCache ? getScriptCache(hash, promptPass) : undefined
     if(MEASURE && probe){
         probe.cache = cached ? 'hit' : scripts.length === 0 ? 'empty' : useCache ? 'miss' : 'uncached'
     }
@@ -304,7 +321,7 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
     
     if(scripts.length === 0){
         if(useCache){
-            cacheScript(hash, data)
+            cacheScript(hash, data, promptPass)
         }
         return {data, emoChanged}
     }
@@ -578,7 +595,7 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
         if((!db.dynamicAssetsEditDisplay && mode === 'editdisplay')
             || mode === 'editinput' || mode === 'editprocess'){
             if(useCache){
-                cacheScript(hash, data)
+                cacheScript(hash, data, promptPass)
             }
             return {data, emoChanged}
         }
@@ -616,7 +633,7 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
     }
 
     if(useCache){
-        cacheScript(hash, data)
+        cacheScript(hash, data, promptPass)
     }
 
     return {data, emoChanged}

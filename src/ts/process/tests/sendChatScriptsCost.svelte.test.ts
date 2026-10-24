@@ -654,7 +654,7 @@ describe('the script cache key of the send\'s entries', () => {
         expect(second.cacheHits).toBe(1 + 3)
     })
 
-    test('guard: a direct call with no subject, at the send\'s data and index, hits the send\'s entry', async () => {
+    test('guard: the send\'s entries live in the prompt-pass cache, which a call without a prompt view neither reads nor fills', async () => {
         const A = makeChar('char-A', 'Alice', [makeChat('chat-A', [
             msg('user', 'u0-share'),
             msg('char', 'c1-share'),
@@ -666,12 +666,19 @@ describe('the script cache key of the send\'s entries', () => {
 
         resetScriptPassCountersForTests()
         const direct = await processScriptFull(A, 'u2-share', 'editprocess', 2, { chatRole: 'user' })
-
         expect(direct.data).toBe('u2-share')
+        expect(scriptPassCountersForTests().cacheHits).toBe(0)
+        // The miss filled the other cache, so a repeat of the direct call hits there.
+        await processScriptFull(A, 'u2-share', 'editprocess', 2, { chatRole: 'user' })
         expect(scriptPassCountersForTests().cacheHits).toBe(1)
+
+        // The prompt pass still finds its own entries: the next send hits for the greeting and the three unchanged messages.
+        resetScriptPassCountersForTests()
+        await sendReply(A, A.chats[0], 'reply-share-two')
+        expect(scriptPassCountersForTests().cacheHits).toBe(1 + 3)
     })
 
-    test('with a disabled message earlier, a later message\'s entry does not serve a direct call at the same chatID', async () => {
+    test('with a disabled message earlier, the prompt pass re-resolves a later message\'s repeat_back and a direct call at the same chatID sees the unshifted chat', async () => {
         const A = makeChar('char-A', 'Alice', [makeChat('chat-A', [
             msg('char', 'c0 TAGc0'),
             msg('user', 'D TAGD', { disabled: true }),
@@ -692,5 +699,52 @@ describe('the script cache key of the send\'s entries', () => {
         expect(direct.data).toBe('c3TAGD')
         expect(again.data).toBe('c3TAGD')
         expect(scriptPassCountersForTests().cacheHits).toBe(1)
+
+        // A repeat prompt pass is not served a stale c3: repeat_back is not key-determined, so it runs again and
+        // still skips the disabled message.
+        await sendReply(A, A.chats[0], 'reply-hidden-share-two')
+        expect(promptOf().find((entry) => entry.content.startsWith('c3'))?.content).toBe('c3TAGc0')
     })
+})
+
+describe('the script cache and streamed replies', () => {
+    const modes = ['off', 'balanced', 'strong'] as const
+
+    for (const mode of modes) {
+        test(`regression reproducer: a streamed reply leaves no editoutput entry for its text (${mode})`, async () => {
+            const A = makeChar('char-A', 'Alice', [makeChat('chat-A', [msg('user', 'Hi')])])
+            installDb([A], { streamingDisplayOptimizationMode: mode })
+            selectedCharID.set(0)
+
+            const send = await beginStreamedSend(A, A.chats[0])
+            for (const chunk of cumulative(3, `st${mode}`)) {
+                send.push(chunk)
+                await settle()
+            }
+            await finishStream(send)
+
+            const replyIndex = A.chats[0].message.length - 1
+            const text = A.chats[0].message[replyIndex].data
+            expect(text).toBe(`st${mode}1 st${mode}2 st${mode}3`)
+            resetScriptPassCountersForTests()
+            const direct = await processScriptFull(A, text, 'editoutput', replyIndex)
+            expect(direct.data).toBe(text)
+            expect(scriptPassCountersForTests().cacheHits).toBe(0)
+        })
+
+        test(`guard: a non-streamed reply still leaves its editoutput entry (${mode})`, async () => {
+            const A = makeChar('char-A', 'Alice', [makeChat('chat-A', [msg('user', 'Hi')])])
+            installDb([A], { streamingDisplayOptimizationMode: mode })
+            selectedCharID.set(0)
+
+            await sendReply(A, A.chats[0], `whole ${mode} reply`)
+
+            const replyIndex = A.chats[0].message.length - 1
+            const text = A.chats[0].message[replyIndex].data
+            expect(text).toBe(`whole ${mode} reply`)
+            resetScriptPassCountersForTests()
+            await processScriptFull(A, text, 'editoutput', replyIndex)
+            expect(scriptPassCountersForTests().cacheHits).toBe(1)
+        })
+    }
 })

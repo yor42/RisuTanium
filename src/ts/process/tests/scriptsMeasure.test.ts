@@ -181,6 +181,15 @@ describe('processScriptFull chat phase entries', () => {
         expect(entry.kind === 'script' && entry.cache).toBe('uncached')
     })
 
+    test('a bypassed call is reported as uncached with scripts and as empty without, even when its key is stored', async () => {
+        const scripts = [script({ in: 'a', out: 'b', type: 'editoutput' })]
+        await call(scripts, 'a', 'editoutput')
+        await processScriptFull(charWith(scripts), 'a', 'editoutput', -1, {}, undefined, undefined, undefined, undefined, 'bypass')
+        await processScriptFull(charWith([]), 'a', 'editoutput', -1, {}, undefined, undefined, undefined, undefined, 'bypass')
+        const caches = ringOf()!.snapshot().map(entry => entry.kind === 'script' ? entry.cache : null)
+        expect(caches).toEqual(['miss', 'uncached', 'empty'])
+    })
+
     test('a call that throws before it decides is reported as aborted', async () => {
         h.modulesThrow = true
         await expect(call([], 'text', 'editinput')).rejects.toThrow('module scripts unavailable')

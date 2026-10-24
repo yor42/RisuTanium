@@ -2185,7 +2185,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             if(!before){
                 return false
             }
-            const processed = await processScriptFull(nowChatroom, text, 'editoutput', before.index, {}, undefined, subject, replyMessageRef(before))
+            // Every text here is a partial or deferred reply that is never looked up again; caching it would only evict entries that are.
+            const processed = await processScriptFull(nowChatroom, text, 'editoutput', before.index, {}, undefined, subject, replyMessageRef(before), undefined, 'bypass')
             emoChanged = processed.emoChanged
             return writeReplyData(processed.data, bumpKeys)
         }
