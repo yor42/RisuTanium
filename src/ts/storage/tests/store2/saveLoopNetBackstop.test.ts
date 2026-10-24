@@ -529,15 +529,21 @@ describe('B7 a clock that runs backwards', () => {
         const db = clone(buildSmall(1))
         const world = await startWorld(db)
         // The clock jumps ahead inside the first slot, so its clean verdict is stamped far after the next slot's time;
-        // the loop's next iteration finds the clock back where it was.
+        // the loop's next iteration finds the clock back where it was. The first slot is counted at the moment the clock
+        // is set back, which is when that slot has ended: the next iteration may already be judging by the time a poll
+        // of the verdict list runs, so a slot-relative list could hold both verdicts.
+        let verdictsWhenClockWentBack = -1
         world.onYield.action = () => {
             world.clock.now += 1_000_000
             world.onSweep.action = () => {
+                verdictsWhenClockWentBack = world.verdicts.length
                 world.clock.now = world.start + 1_500
             }
         }
-        expect((await world.slotAt(1_000)).verdicts).toEqual([idOf(db, 0)])
+        await world.slotAt(1_000)
         await until(() => world.verdicts.length === 2, 'the next slot to verdict a clock that reads in the future', 4000)
+        expect(verdictsWhenClockWentBack).toBe(1)
+        expect(world.verdicts).toEqual([idOf(db, 0), idOf(db, 0)])
     })
 })
 
