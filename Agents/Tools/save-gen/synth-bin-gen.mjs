@@ -89,7 +89,15 @@ const EXCLUDED_CHAT_KEYS = ['isStreaming', 'activeStreamingDisplayOptimizationMo
 // (saveUserPersona and changeUserPersona keep the root copy equal to personas[selectedPersona]).
 // promptInfoInsideChat is false because setDatabase forces it false on the web and leaves it absent on Tauri and the node
 // server (the branch on isNodeServer and isTauri); writing it makes a web and a Tauri export hold the same root keys.
+// didFirstSetup is true because App.svelte shows WelcomeRisu while it is falsy, and finishing that wizard rewrites
+// username, temperature, maxContext, maxResponse, textTheme and globalNote plus the preset; bootstrap.ts also skips the
+// character URL import and the desktop launch import until it is true. formatversion 5 (set on the database below) keeps
+// checkNewFormat from migrating. No other database field gates a prompt: lastPatchNoteCheckVersion has no reader.
+// Gates this data cannot close are per device: localStorage 'upstreamServicesAgreement' (askUpstreamAgreement in
+// upstreamAgreement.ts, only on a Realm or hub action or a pending realm link) and 'nightlyWarned' (bootstrap.ts, nightly
+// builds only). A run must not trigger those paths between the import and the export.
 const SETTINGS_VALUES = {
+  didFirstSetup: true,
   promptInfoInsideChat: false,
   username: 'Synthetic User', personaPrompt: 'Synthetic persona prompt.', userNote: 'Synthetic user note.',
   language: 'en', temperature: 80, maxContext: 4000, maxResponse: 500, iconsize: 100, zoomsize: 100,

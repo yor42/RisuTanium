@@ -172,6 +172,7 @@ interface SynthFolder { id: string, name: string, data: string[] }
 interface SynthPersona { id: string, name: string, personaPrompt: string, icon: string, note: string }
 interface SynthDatabase {
     formatversion: number
+    didFirstSetup?: boolean
     characters: SynthCharacter[]
     characterOrder: (string | SynthFolder)[]
     personas: SynthPersona[]
@@ -499,6 +500,13 @@ describe('synthetic .bin generator', () => {
         expect(db.characters.filter((c) => c.coldstorage !== undefined).length).toBe(manifestA.counts.stubs)
     }, TIMEOUT_MS)
 
+    test('writes the database of a user who finished first setup, so a boot shows no wizard and the wizard writes nothing', async () => {
+        const db = await readDatabase(binA)
+        // App.svelte renders WelcomeRisu while didFirstSetup is falsy; checkNewFormat migrates below formatversion 5
+        expect(db.didFirstSetup).toBe(true)
+        expect(db.formatversion).toBe(5)
+    }, TIMEOUT_MS)
+
     test('fills the store2 parts a loss could hide in, in the stub units too', async () => {
         const db = await readDatabase(binA)
         const unitCharacters = [...(await readUnitCharacters(binA)).values()]
@@ -602,7 +610,7 @@ describe('synthetic .bin generator', () => {
         // every top-level field is on this list; none holds a credential, and a new one has to be added here on purpose
         expect(Object.keys(db).sort()).toEqual([
             'additionalPrompt', 'autoTranslate', 'botPresets', 'botPresetsId', 'characterOrder', 'characters', 'customBackground', 'customCSS',
-            'descriptionPrefix', 'enabledModules', 'formatversion', 'globalChatVariables', 'globalNote', 'iconsize', 'language', 'loadouts',
+            'descriptionPrefix', 'didFirstSetup', 'enabledModules', 'formatversion', 'globalChatVariables', 'globalNote', 'iconsize', 'language', 'loadouts',
             'loreBookDepth', 'loreBookToken', 'maxContext', 'maxResponse', 'modules', 'personaPrompt', 'personas', 'pluginCustomStorage', 'promptInfoInsideChat', 'selectedPersona',
             'statics', 'swipe', 'temperature', 'textTheme', 'theme', 'userIcon', 'userNote', 'username', 'zoomsize',
         ])
