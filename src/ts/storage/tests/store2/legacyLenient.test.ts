@@ -150,6 +150,20 @@ describe('new behaviour: lenient decode with named skips', () => {
         expect(tree.characters).toEqual([])
         expect(skipped).toEqual([])
     })
+
+    test.each(['noCompression', 'compression'] as const)('a msgpack-format save whose botPresets is not a list names the presets as skipped (%s)', async (compression) => {
+        const { skipped } = await decodeLegacyLenient(encodeRisuSaveLegacy({ characters: [], botPresets: { a: { name: 'a' } } }, compression))
+
+        expect(skipped.map(entry => entry.kind)).toEqual(['presets'])
+    })
+
+    test.each(['noCompression', 'compression'] as const)('a msgpack-format save with a missing or null botPresets names nothing (%s)', async (compression) => {
+        for (const save of [{ characters: [] }, { characters: [], botPresets: null }]) {
+            const { skipped } = await decodeLegacyLenient(encodeRisuSaveLegacy(save, compression))
+
+            expect(skipped).toEqual([])
+        }
+    })
 })
 
 describe('new behaviour: a result that is not a database is refused', () => {

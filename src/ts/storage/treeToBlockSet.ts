@@ -1,7 +1,15 @@
 import { BlockSetInvalidError, type BlockSetInput } from './blockStore'
-import { presetTemplate, type Database } from './database.svelte'
+import { presetTemplate, type botPreset, type Database } from './database.svelte'
 import { packedNamesOf } from './packedNames'
 import { RisuSaveEncoder, type EncoderReport, type toSaveType } from './risuSave'
+
+/**
+ * The Default preset a profile without a preset list gets, as `setDatabase` makes it. The construction the restore
+ * completion and the legacy conversion share; each call returns a fresh clone.
+ */
+export function makeDefaultPreset(): botPreset {
+    return { ...JSON.parse(JSON.stringify(presetTemplate)), name: 'Default' }
+}
 
 /**
  * Gives a decoded backup the containers the encoder reads, so every block of
@@ -17,7 +25,7 @@ export function completeRestoredTree(tree: Database): void {
     tree.loadouts ??= []
     tree.plugins ??= []
     if (!Array.isArray(tree.botPresets)) {
-        tree.botPresets = [{ ...JSON.parse(JSON.stringify(presetTemplate)), name: 'Default' }]
+        tree.botPresets = [makeDefaultPreset()]
     }
 }
 
