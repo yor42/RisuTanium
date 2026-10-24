@@ -1,6 +1,15 @@
 import { get } from "svelte/store";
 import { processScriptFull, risuChatParser } from "src/ts/process/scripts";
-import { type Message } from "src/ts/storage/database.svelte";
+import {
+  type Chat,
+  type Message,
+  type character,
+  type groupChat,
+} from "src/ts/storage/database.svelte";
+import { splitSentMessages } from "src/ts/cbs";
+import type { OpenAIChat } from "src/ts/process/index.svelte";
+import { hasExampleTurns } from "src/ts/process/exampleMessages";
+import { findResumeIndex } from "src/ts/process/memory/hypaResume";
 import { alertConfirm } from "src/ts/alert";
 import { DBState, selectedCharID } from "src/ts/stores.svelte";
 import { language } from "src/lang";
@@ -93,6 +102,78 @@ export function getFirstMessage(): string | null {
     : char.alternateGreetings?.[chat.fmIndex]
     ? char.alternateGreetings[chat.fmIndex]
     : null;
+}
+
+export type NextSummarizationTarget =
+  | { kind: "greeting" }
+  | { kind: "message"; index: number };
+
+export interface NextSummarizationSettings {
+  preserveOrphanedMemory: boolean;
+  doNotSummarizeUserMessage: boolean;
+}
+
+// The message the summariser would summarise next, derived from the same
+// prompt-order list it resumes on: example turns, then the greeting (only when
+// the chat is not a group and has no `allBefore` reset), then the sent
+// messages. Summaries holding a memo that is no longer valid are dropped first
+// unless `preserveOrphanedMemory`, and the resume point is `findResumeIndex`.
+// The next target is the first entry at or after it that the summariser's
+// batch loop would not skip. `greeting` is the raw text, so a greeting that
+// only becomes blank after processing is not treated as blank here.
+export function findNextSummarizationTarget(
+  char: character | groupChat,
+  chat: Chat,
+  greeting: string | null,
+  summaries: readonly { chatMemos: readonly (string | null | undefined)[] }[],
+  settings: NextSummarizationSettings
+): NextSummarizationTarget | null {
+  const split = splitSentMessages(chat.message);
+  const list: OpenAIChat[] = [];
+  const targets: (NextSummarizationTarget | null)[] = [];
+
+  if (hasExampleTurns(char)) {
+    list.push({ role: "assistant", content: "", name: "example_assistant" });
+    targets.push(null);
+  }
+
+  if (char.type !== "group" && split.resetAt === -1 && greeting !== null) {
+    list.push({ role: "assistant", content: greeting });
+    targets.push({ kind: "greeting" });
+  }
+
+  split.sent.forEach((message, i) => {
+    list.push({
+      role: message.role === "user" ? "user" : "assistant",
+      content: message.data,
+      // A message without a chat id never becomes the first memo-less entry.
+      memo: message.chatId ?? `\u0000unidentified-${i}`,
+    });
+    targets.push({ kind: "message", index: split.chatIndexes[i] });
+  });
+
+  const memoSets = summaries.map((summary) =>
+    summary.chatMemos.map((memo) => memo ?? undefined)
+  );
+  const keptSets = settings.preserveOrphanedMemory
+    ? memoSets
+    : memoSets.filter((memos) => {
+        const valid = new Set<string | undefined>([undefined]);
+        for (const message of chat.message) valid.add(message.chatId);
+        return memos.every((memo) => valid.has(memo));
+      });
+
+  for (let i = findResumeIndex(list, keptSets) + 1; i < list.length; i++) {
+    const entry = list[i];
+
+    if (!targets[i]) continue;
+    if (entry.content.trim().length === 0) continue;
+    if (settings.doNotSummarizeUserMessage && entry.role === "user") continue;
+
+    return targets[i];
+  }
+
+  return null;
 }
 
 export async function processRegexScript(

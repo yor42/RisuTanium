@@ -23,6 +23,7 @@ import { getModelInfo } from '../model/modellist';
 import { registerCBS, type matcherArg, type PromptView, type RegisterCallback } from '../cbs';
 import type { RunSubject } from '../process/chatOrigin';
 import cssSelectorParser from 'postcss-selector-parser'
+import { escapeHtmlText } from '../htmlEscape'
 
 const markdownItOptions = {
     html: true,
@@ -43,8 +44,13 @@ const mdHighlight = markdownit({
     ...markdownItOptions
 })
 
+// Renders text that is not markup: html:false makes markdown-it escape `<`, and
+// the entity rule is off so `&name;` stays text.
+const mdLiteral = markdownit({ ...markdownItOptions, html: false })
+
 md.disable(['code'])
 mdHighlight.disable(['code'])
+mdLiteral.disable(['code', 'entity'])
 
 DOMPurify.addHook("uponSanitizeElement", (node: HTMLElement, data) => {
     if (data.tagName === "iframe") {
@@ -152,10 +158,16 @@ export function risuEscape(text:string){
     })
 }
 
-function renderMarkdown(md:markdownit, data:string){
+function renderMarkdown(md:markdownit, data:string, literalText = false){
     let quotes = ['“', '”', '‘', '’']
     if(DBState.db?.customQuotes){
         quotes = DBState.db.customQuotesData ?? quotes
+    }
+    // literalText: html:false would escape the MathML, so each `$$` match becomes a
+    // private-use placeholder and is restored after rendering.
+    const mathResults: { match: string, mathml: string | null }[] = []
+    if(literalText){
+        data = data.replace(/[\uE9C0\uE9C1]/g, '')
     }
     data = data.replace(/\$\$(.*?)\$\$/gs, (
         match:string,
@@ -173,13 +185,38 @@ function renderMarkdown(md:markdownit, data:string){
                 throwOnError: true,
                 output: 'mathml'
             })
+            if(literalText){
+                mathResults.push({ match, mathml: rendered })
+                return '\uE9C0' + (mathResults.length - 1) + '\uE9C1'
+            }
             return rendered
         } catch (error) {
             console.error('KaTeX render error:', error)
+            if(literalText){
+                mathResults.push({ match, mathml: null })
+                return '\uE9C0' + (mathResults.length - 1) + '\uE9C1'
+            }
             return match
         }
     })
     let text = risuUnescape(md.render(data.replace(/“|”/g, '"').replace(/‘|’/g, "'")))
+
+    if(literalText){
+        // Inside a tag (attribute values) the raw match is always escaped text.
+        text = text.split(/(<[^>]*>)/).map((segment, segmentIndex) => {
+            const inTag = segmentIndex % 2 === 1
+            return segment.replace(/\uE9C0(\d+)\uE9C1/g, (placeholder, index) => {
+                const result = mathResults[Number(index)]
+                if(!result){
+                    return placeholder
+                }
+                if(inTag || result.mathml === null){
+                    return escapeHtmlText(result.match)
+                }
+                return result.mathml
+            })
+        }).join('')
+    }
 
     if(DBState.db?.unformatQuotes){
         text = text.replace(/\uE9b0/gu, quotes[0]).replace(/\uE9b1/gu, quotes[1])
@@ -1889,7 +1926,7 @@ export function applyMarkdownToNode(node: Node) {
     if (node.nodeType === Node.TEXT_NODE) {
         const text = node.textContent;
         if (text) {
-            let markdown = renderMarkdown(md, text);
+            let markdown = renderMarkdown(mdLiteral, text, true);
             if (markdown !== text) {
                 const span = node.ownerDocument.createElement('span');
                 span.innerHTML = markdown;

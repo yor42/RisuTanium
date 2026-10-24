@@ -6,7 +6,11 @@
   import { type Message } from "src/ts/storage/database.svelte";
   import { DBState, selectedCharID } from "src/ts/stores.svelte";
   import { language } from "src/lang";
-  import { getFirstMessage, processRegexScript } from "./utils";
+  import {
+    findNextSummarizationTarget,
+    getFirstMessage,
+    processRegexScript,
+  } from "./utils";
 
   interface Props {
     hypaV3Data: SerializableHypaV3Data;
@@ -17,38 +21,30 @@
   async function getNextSummarizationTarget(): Promise<Message | null> {
     const char = DBState.db.characters[$selectedCharID];
     const chat = char.chats[DBState.db.characters[$selectedCharID].chatPage];
-    const shouldProcess = getCurrentHypaV3Preset().settings.processRegexScript;
-
-    // Summaries exist
-    if (hypaV3Data.summaries.length > 0) {
-      const lastSummary = hypaV3Data.summaries.at(-1);
-      const lastMessageIndex = chat.message.findIndex(
-        (m) => m.chatId === lastSummary.chatMemos.at(-1)
-      );
-
-      if (lastMessageIndex !== -1) {
-        const next = chat.message[lastMessageIndex + 1] ?? null;
-
-        return next && shouldProcess
-          ? await processRegexScript(next, lastMessageIndex + 1)
-          : next;
-      }
-    }
-
-    // When no summaries exist OR couldn't find last connected message,
-    // check if first message is available
+    const settings = getCurrentHypaV3Preset().settings;
+    const shouldProcess = settings.processRegexScript;
     const firstMessage = getFirstMessage();
+    const target = findNextSummarizationTarget(
+      char,
+      chat,
+      firstMessage,
+      hypaV3Data.summaries,
+      settings
+    );
 
-    if (!firstMessage) {
-      const next = chat.message[0] ?? null;
+    if (!target) return null;
 
-      return next && shouldProcess ? await processRegexScript(next, 0) : next;
+    if (target.kind === "greeting") {
+      const next: Message = { role: "char", chatId: "first", data: firstMessage };
+
+      return shouldProcess ? await processRegexScript(next) : next;
     }
 
-    // Will summarize first message
-    const next: Message = { role: "char", chatId: "first", data: firstMessage };
+    const next = chat.message[target.index] ?? null;
 
-    return shouldProcess ? await processRegexScript(next) : next;
+    return next && shouldProcess
+      ? await processRegexScript(next, target.index)
+      : next;
   }
 </script>
 
