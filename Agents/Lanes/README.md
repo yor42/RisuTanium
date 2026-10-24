@@ -29,7 +29,9 @@ Each lane takes IDs only from its own range. A range's IDs are permanent once us
 | D | MC-375 to MC-394 | CHORE-240 to CHORE-259 | 2500 to 2699 | MC-410 to 419, CHORE-310 to 319, rows 3100 to 3199 |
 | C | MC-430 to MC-449 | CHORE-330 to CHORE-349 | 3300 to 3499 | none; if the range runs out, go straight to provisional IDs (step 2) |
 | E | MC-450 to MC-469 | CHORE-350 to CHORE-369 | 3500 to 3699 | none; if the range runs out, go straight to provisional IDs (step 2) |
-| New lanes | from MC-470, CHORE-370, row 3700, in blocks of 20 / 20 / 200, assigned by lane A | | | |
+| A (added 2026-10-24) | MC-470 to MC-479, then MC-500 to MC-519 | as above | as above | as above |
+| B (added 2026-10-24) | MC-480 to MC-499 | as above | as above | as above |
+| New lanes | from MC-520, CHORE-370, row 3700, in blocks of 20 / 20 / 200, assigned by lane A | | | |
 
 ### When a range runs out (contingency)
 

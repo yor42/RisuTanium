@@ -13318,3 +13318,42 @@ Folded in from `Agents/Lanes/lane-C-records.md` on 2026-10-24 (merge `a83c7901b`
 - The orchestrator's reading: the preview builds the same prompt-order list the summariser reads (example turns, the greeting when it is sent, then the sent messages) and calls the shared `findResumeIndex`, which also covers the reset and hidden-message limitation. That is a proposal for the plan review, not the maintainer's words.
 
 Folded in from `Agents/Lanes/lane-C-records.md` on 2026-10-24 (merge `a83c7901b`).
+
+### MC-479 — Lane A, 2026-10-24: clean up the Roadmap and Live-State so the open tickets show; closed entries move word for word to an archive (CHORE-30's premise corrected; relates to `MC-345`, `MC-475`)
+
+- Tag: decisions and a correction (maintainer's request and `AskUserQuestion` answers by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6`; the records batch 9 brief (`%TEMP%\risu-b715\records-b9\brief.md`); the classification `%TEMP%\risu-b715\roadmap-clean\result.md` with `sections.tsv`; the closeout check `%TEMP%\risu-b715\roadmap-clean\closeout\result.md`; the move scripts `%TEMP%\risu-b715\roadmap-clean\move\split.ps1` and `livestate.ps1`. The quotes and option labels are the maintainer's. Question texts are lane A's wording as the batch 9 brief quotes them.
+- Reasoning: the Roadmap had grown to 7,908 lines and Live-State to 81, so the currently open tickets could not be seen at a glance. The maintainer asked for a cleanup so the open list reads cleanly.
+- Alternatives rejected (the unchosen options, from lane A's questions): open tickets: "Index on top only" and "Index plus closed list"; the work order: "Keep it, mark done" and "I'll set a new order"; the 12 accepted tickets: "Keep, in a 'Done' table"; CHORE-30: "Keep open"; the unclear entries: "Settle them now".
+- Related: `MC-345` (the work order that was archived), `MC-475` (the MVP baseline; A5 done), `MC-349` (V2.1 retirement; CHORE-206), `MC-476` (CHORE-206 staging and accepted limitation), `MC-321` 4 (records batching and archiving), `docs/workflow/records.md`.
+
+**The maintainer's words and answers.**
+1. The request: "I think we should clean up the roadmap and live status. so we can cleanly see the list of currently open tickets."
+2. To "How should the Roadmap show the open tickets?": "Move closed out (Recommended)". The option read: "Move entries that are COMPLETE, CLOSED, superseded or moot, unchanged, into Agents/Archive/Roadmap-closed-2026-10-24.md. The Roadmap keeps only open entries, under a short open-tickets table (ID, title, state, owner, next step). History stays word for word, just in another file."
+3. To "The 'Current work order (MC-345)' block at the top is finished: the MVP is installed. What should replace it?": "Archive it, list lanes (Recommended)". The option read: "Move the MC-345 block, unchanged, to the archive. Replace it with a short 'Now' section listing each lane's current item (lane B: CHORE-205 L3; device profile stage B, waiting on you; lane C idle). It records state and sets no new priorities."
+4. To the question on the 12 merged, technically accepted tickets: "Close and archive (Recommended)". The option read: "A verifier first confirms that each one's decisions and records are current and that no phone check or residual is still owed. Those that pass get a dated COMPLETE line and move to the archive; any that fail stay open, with the reason."
+5. To the CHORE-30 question: "Close as moot (Recommended)". The option read: "Close CHORE-30 citing CHORE-206 and MC-349, and archive it. CHORE-65 stays open, because part of it (plugins reading each other's saved arguments) is not V2.1-only."
+6. To the question on the 11 other unclear entries: "Keep open, flag them (Recommended)". The option read: "They stay in the Roadmap and appear in the open table marked 'status needs review'. A later bounded pass settles each one with evidence."
+
+**What was decided (maintainer).**
+1. Clean up the Roadmap and Live-State so the open tickets are visible (quote 1).
+2. Entries that are COMPLETE, CLOSED, superseded or moot move, unchanged, to `Agents/Archive/Roadmap-closed-2026-10-24.md`. The Roadmap keeps the open entries under an open-tickets table (answer 2).
+3. The MC-345 work-order block is archived unchanged and replaced by a "Now" section that records each lane's current item and sets no priorities (answer 3).
+4. The 12 merged, technically accepted tickets are closed and archived only after a verifier confirms that nothing is owed (answer 4).
+5. CHORE-30 would be closed as moot and archived; CHORE-65 stays open (answer 5; see the correction below).
+6. The other unclear entries stay open and are marked "status needs review" in the open table. A later bounded pass settles each with evidence (answer 6).
+
+**Correction: the premise of answer 5 was wrong.** The maintainer chose "Close as moot" on lane A's statement that V2.1 scripts no longer run. The closeout check found that CHORE-30 is not V2.1-only. `getV2PluginAPIs().setChar` in `src/ts/plugins/plugins.svelte.ts` still writes to the selected character, and V3 `setChar` and `setCharacter` in `src/ts/plugins/apiV3/v3.svelte.ts` call it (the check's reading; lane A confirmed it in both files). CHORE-206 cut A removed the V2.1 execution wrapper, but the shared path is still live. CHORE-30 therefore stays open with a corrective status line. Lane A did not close it, which departs from the maintainer's answer 5 because its premise was false. No maintainer re-decision on CHORE-30 is recorded here; whether to narrow its title or accept the behaviour is a later call (the check names both options).
+
+**Lane A's rulings (not the maintainer's decisions).**
+- Classification (investigator): 251 units: OPEN 123, CLOSED 106, UNCLEAR 13, FRAME 4, SUPERSEDED 4, MOOT 1. No `Roadmap.md#` anchor links were found.
+- The investigator read the Current work order text as still showing A4 and A5 pending. Lane A ruled that A5 is done (`MC-475`), so the work order proper (lines 3 to 30) is archived. The file intro (derived-from and ordering text) stays at the top, followed by the new "Now" section.
+- Closeout check (doc-verifier), 12 tickets: PASS for CHORE-181, 182, 187, 192, 193, 195, 220, 330, 500 and 501; each got a dated COMPLETE line and was archived. FAIL for CHORE-153 (the debounce cap, Q-C, has no ticket) and CHORE-224 (a node-fixture flake ticket is not filed, and Gate 2 notes N1 to N3 are open). Both stay open.
+- CHORE-222 and CHORE-226 were classed CLOSED but are close to the accepted group with optional residuals and were not on the maintainer's closing list. Lane A kept them in the Roadmap, flagged "needs review".
+- Phase 2 stays whole because it mixes done and in-progress bullets. CHORE-206 stays open (stage 3 deferred).
+- The move was applied by script and is uncommitted at this writing. Each script checks that the original lines equal the kept lines, the moved lines and its own additions; both reported 0 mismatches. Archived 108 units, kept 143. The open table has 122 CHORE rows plus named items.
+- ID registry: lane A's MC block is now MC-500 to MC-519 (after MC-470 to MC-479); lane B's is MC-480 to MC-499; new lanes start at MC-520. Next free for lane A: MC-500, CHORE-208, ledger row 2262.
+
+- Notes, not the maintainer's words:
+  - The classification and closeout results are agent output. The closeout check ran reasoning and grep only, no tests (its own statement). Its gate-verdict words for CHORE-193 steps 4 and 5 were not reopened.
+  - Nothing here authorizes a commit or a push.
