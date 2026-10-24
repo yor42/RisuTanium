@@ -118,9 +118,10 @@ If the refusal comes at the last check of Load Backup Locally, the database is n
 3. The app scans the file for the RisuAccount encryption marker, showing "Checking local
    backup... (NN.NN%)". If the file can't be read, you get "The file could not be read. Nothing
    was imported."
-4. **If the marker is found**, the restore is refused: "This backup is encrypted by RisuAccount
-   and cannot be read here, for technical reasons. Nothing was imported. ..." with instructions
-   for getting an unencrypted backup out of upstream, and a link to the migration guide — see
+4. **If the marker is found**, the restore is refused: "This backup was saved on risuai.xyz, which
+   encrypts its full backups, and it cannot be read here, for technical reasons. Nothing was
+   imported. ..." with instructions for getting an unencrypted backup out of upstream, and a link
+   to the migration guide — see
    [[Migrating from upstream]]. Nothing is written in this case.
 5. **Cross-tab guard** — skipped entirely on Tauri (a single instance, so there's nothing to guard
    against; no warning either way). On the web build:

@@ -2,7 +2,7 @@
 
 > **This page is written from the removal plan and the app's source, not tested against a
 > running build with a real RisuAccount.** Nobody working on this fork has an account-sync
-> backup to test with, so the routes below — especially the combined route — are unverified. If
+> backup to test with, so the routes below — especially the encrypted-backup routes — are unverified. If
 > a step here does not match what you actually see, that is more likely to be this page than
 > your data.
 
@@ -39,16 +39,17 @@ When you import, keep in mind how this fork's restore behaves:
 - On success, the app reloads (or, on the Tauri desktop build, relaunches) by itself. You don't
   need to do anything else to finish.
 
-## If your backup is encrypted by RisuAccount
+## If your backup is encrypted
 
-Since upstream started encrypting full local backups made by a signed-in RisuAccount user on its
-own site (`risuai.xyz`), this fork cannot read that kind of `.bin` file. Trying to import one
-shows a message telling you it cannot be read, for technical reasons, and nothing is imported —
-no assets, no cold storage, no database changes.
+Since upstream commit `dae3f6509` (2026-10-14), every full backup saved on upstream's own site
+(`risuai.xyz`) is encrypted, whether or not you are signed in to RisuAccount. This fork cannot
+read that kind of `.bin` file. Trying to import one shows a message telling you it cannot be read,
+for technical reasons, and nothing is imported — no assets, no cold storage, no database changes.
 
-This only affects a backup made **while signed in to RisuAccount on `risuai.xyz`**. A backup made
-while logged out, or from a self-hosted or locally run upstream instance, is not encrypted this
-way and imports normally.
+This only affects a full backup **saved on `risuai.xyz`**. A backup saved from a self-hosted or
+locally run upstream instance (including the desktop app) is not encrypted this way and imports
+normally. Logging out of account sync before saving on `risuai.xyz` no longer helps: the file is
+still encrypted.
 
 The reason is deliberate, not a bug to be fixed later: reading that kind of file would depend on
 an endpoint RisuAccount's own servers control, which this fork cannot verify or rely on. Upstream
@@ -59,42 +60,25 @@ alternatives exist, described below.
 If your backup was refused, upstream gives you two ways to get your data out, and each keeps and
 drops something different:
 
-1. **Save Partial Backup Locally (Excluding Character Assets)** (the button's own label). It is
-   not encrypted, and it keeps every chat, including cold-storage chat bodies. It keeps character,
-   group and persona profile images, your user icon, your background, and folder and preset
-   images. It drops everything else — emotion images, additional character assets and VITS voice
-   files.
-2. **Logout**, then **Save Backup Locally**. This keeps the `.png` image assets a full backup
-   normally carries, but loses cold-storage chat bodies (the chats that had been moved to cold
-   storage stay behind).
+1. On `risuai.xyz`, **Save Partial Backup Locally (Excluding Character Assets)** (the button's
+   own label). It is not encrypted, and it keeps every chat, including cold-storage chat bodies.
+   It keeps character, group and persona profile images, your user icon, your background, and
+   folder and preset images. It drops everything else — emotion images, additional character
+   assets and VITS voice files.
+2. To keep every asset, load the encrypted backup into upstream RisuAI running anywhere other
+   than `risuai.xyz` — the desktop app or a self-hosted copy — if it can open it, then use **Save
+   Backup Locally** there. Backups saved outside `risuai.xyz` are not encrypted. Import that new
+   file here through **Settings → Backup & Files → Load Backup Locally**.
 
-Neither one alone gets you everything.
+Route 1 loses the images it drops; route 2 depends on that other upstream copy being able to open
+the encrypted file. This fork does not decrypt the file itself.
 
-## Getting everything: the combined route
+For each import here, close every other tab of this app first — see the restore behavior noted in
+the normal route above; the same tab-check and automatic-reload behavior applies.
 
-Doing both, and importing both here in the right order, is how you keep everything: your chats
-(including cold-storage ones) and your images.
-
-1. While still signed in, use **Save Partial Backup Locally (Excluding Character Assets)**. This
-   does not require logging out.
-2. **Logout** of RisuAccount, then use **Save Backup Locally** to make a full, unencrypted backup.
-3. Make these two backups back to back, without using the app in between, so both capture the
-   same chats.
-4. Import the **Partial** backup first, then the **Full** backup second, both through **Settings →
-   Backup & Files → Load Backup Locally** here. For each import, close every other tab of this app
-   first — see the restore behavior noted in the normal route above; the same tab-check and
-   automatic-reload behavior applies to both imports.
-
-The order matters. Each import replaces the whole database with the one just imported — it does
-not merge with what was already there. So the database you end up with is whichever backup you
-imported last, which is why the Full backup, the newer of the two, goes second. What survives from
-the Partial import is not its database, but the cold-storage chat bodies it already wrote to disk:
-the Full import doesn't carry those itself, but it doesn't delete them either, so they are still
-there afterward.
-
-This route is read from the code, not run end to end — nobody maintaining this fork has an
-account-sync backup to test it against. If you try it, treat your original data on RisuAccount as
-the source of truth until you have checked the result.
+These routes are read from the code and upstream's source, not run end to end — nobody
+maintaining this fork has an encrypted `risuai.xyz` backup to test them against. If you try them,
+treat your original data on `risuai.xyz` as the source of truth until you have checked the result.
 
 ## Self-hosted or local upstream: don't lose your images
 
