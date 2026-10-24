@@ -13608,3 +13608,161 @@ Folded in from `Agents/Lanes/lane-B-records.md` on 2026-10-24 (merge `15777155a`
   - The option text for answer 3 gave a longer wording; the sentence in `AGENTS.md` follows the replacement lane A specified in the records batch 10 brief. The doc-verifier check (row 2264) had flagged the old `AGENTS.md` sentence as stale.
   - These two parkings are the Roadmap's "PARKED (MC-504)" entries; the group decisions are in `MC-501`.
   - Nothing here authorizes a commit or a push.
+
+### MC-520 — Lane F, 2026-10-24: V3 character writes refuse a mismatched or absent selection; V3 getArg/setArg are limited to the calling plugin; setCharacterToIndex's saving is checked in this batch (CHORE-30, CHORE-65, CHORE-370; amends `MC-175` for these API calls only)
+
+- Tag: decisions (`AskUserQuestion` answers by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the Lane F session transcript; the sizing packet `%TEMP%\risu-lane-f\sizing\result.md` (investigator, TRACED only). The option labels are the maintainer's choices. The question and option texts are Lane F's wording, quoted below as asked.
+- Reasoning: none beyond the answers; the reasons in the option texts are Lane F's.
+- Alternatives rejected: item 1: "Write by chaId", "Keep upstream behaviour"; item 2: "Silently ignore"; item 3: "Refuse writes only", "Keep upstream behaviour"; item 4: "Separate ticket".
+- Differs from upstream: items 1, 2 and 3. Upstream's `setChar` writes `db.characters[get(selectedCharID)] = char` with no check, and its `getArg`/`setArg` accept any plugin name.
+- Related: `MC-175` (amended for these calls only), `MC-349` (V2.1 retired; V2 is not executed, as upstream), `MC-479` (CHORE-30 premise correction), `MC-165` 3 (CHORE-65 low priority), `MC-091` (item 4 as a shared-cause scope amendment), `MC-163`.
+
+**The questions and answers.**
+1. Question: "CHORE-30: a V3 plugin calls setChar/setCharacter with a character whose chaId differs from the selected one (selection changed during an await, or it passed another character). What should happen?" Answer: "Refuse the write (Recommended)". The option read: "The V3 call rejects with an error and nothing is written. A plugin doing getChar → edit → setChar keeps its chaId and is unaffected. Breaks only a plugin that deliberately swaps a different-chaId object into the selected slot (none is documented; plugins.md says \"current character\"). A missing chaId still targets the selected slot as today."
+2. Question: "CHORE-30: setChar/setCharacter is called while no character is selected (today it writes to characters[\"-1\"], whose save fate is unverified). What should happen?" Answer: "Refuse with an error (Recommended)". The option read: "The V3 call rejects with an error naming the cause; nothing is written. Matches the existing refusal style."
+3. Question: "CHORE-65: V3's deprecated getArg('Other::key') / setArg('Other::key', v) read and write another plugin's saved arguments, API keys included, with no prompt. Upstream is identical; no documented cross-plugin use exists, and a community-plugin survey is not possible from here (no probes of community services). What should the fork do?" Answer: "Own plugin only (Recommended)". The option read: "In V3, getArg/setArg refuse (error) when the name before '::' is not the calling plugin's own name. Own-name calls work as before. A plugin family that shares settings this way would break."
+4. Question: "The sizing found V3 setCharacterToIndex writes DBState.db directly without the save marking setChar uses; whether its write is saved is unverified (possible silent loss). Include it?" Answer: "Check it in this batch (Recommended)". The option read: "Investigate whether the write is saved; if it is not, fix it here as a shared-cause correction (MC-091) under the same gates. New CHORE ID from Lane F's range."
+
+**What was decided (the chosen options' texts, summarised by Lane F):**
+1. A V3 `setChar`/`setCharacter` whose character has a `chaId` that differs from the selected character's rejects and writes nothing; a character with no `chaId` still targets the selected slot.
+2. A V3 `setChar`/`setCharacter` with nothing selected rejects and writes nothing.
+3. V3 `getArg`/`setArg` refuse a name before `::` that is not the calling plugin's own; own-name calls work as before.
+4. Whether `setCharacterToIndex` writes are saved is checked in this batch, and fixed here only if they are not (see CHORE-370: they are).
+
+Folded in from `Agents/Lanes/lane-F-records.md` on 2026-10-25 (merge `4331440b6`).
+
+### MC-521 — Lane F, 2026-10-25: Lane F may register its subagents' exact-file write grants in main's ignored guard registry
+
+- Tag: decision (`AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the Lane F session transcript. The option label is the maintainer's choice; the question and option texts are Lane F's wording.
+- Reasoning (Lane F's, from the question): the session was launched rooted at `main`, so its hooks run `main`'s `guard-write.ps1`, whose checkout is `C:\Projects\RisuAI`. A coder reported `checkout=C:\Projects\RisuAI` while working in the Lane-F worktree. The lane brief says never to write to `C:\Projects\RisuAI` itself.
+- Alternatives rejected: "I relaunch Lane F", "Orchestrator writes".
+- Related: `docs/workflow/ownership.md` (guard root and registration), `Agents/Lanes/README.md`.
+
+**The question and answer.** Question: "This session was launched from main, so the write guard for my subagents is main's copy (checkout=C:\Projects\RisuAI). To let the coder write the 10 named worktree files I must register a grant in main's ignored registry. How should Lane F proceed?" Answer: "Register in main's registry (Recommended)". The option read: "Write one exact-file grant JSON into C:\Projects\RisuAI\.claude\scratch\write-scopes\ (git-ignored, used by the guard only) via the register script, listing only the 10 worktree files; revoke after hand-back. No tracked file in main changes."
+
+**What was decided (summarised by Lane F):** Lane F registers exact-file grants for its subagents in `main`'s git-ignored guard registry, lists only worktree files in them, and revokes each grant after the hand-back. No tracked file in `main` changes.
+
+Folded in from `Agents/Lanes/lane-F-records.md` on 2026-10-25 (merge `4331440b6`).
+
+### MC-540 — Lane G, 2026-10-24: CHORE-178, a lorebook scan depth larger than the chat scans every message; a non-number or negative `@@scan_depth` falls back to the configured depth; CHORE-41 stays parked
+
+- Tag: decisions (maintainer's `AskUserQuestion` answers by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane G session transcript `7fb81b14-3585-4fb9-b518-f42aa7240633`. The answers and option labels are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: CHORE-178's `searchMatch` in `src/ts/process/lorebook.svelte.ts` slices `messages.slice(messages.length - arg.searchDepth, messages.length)` with no clamp. A negative start counts from the end, so with depth 5 a 3-message chat scans only the last 2 messages and a 4-message chat only the last 1 (lane G's reading of `Array.prototype.slice` semantics at `df408f8de` when the question was asked; later confirmed by the Gate 1 reviewer's node experiment and by the reproducers failing on `df408f8de`). The meaning of a too-large depth and of a bad decorator value is user-visible, so it is the maintainer's choice (`MC-091`). CHORE-41 was parked by `MC-199` 1 until the maintainer reports it again; the Android MVP is installed (`MC-475`), so lane G asked.
+- Alternatives rejected: "Leave as upstream" (CHORE-178); "Leave as is" (the bad decorator value); "Still happens" (CHORE-41).
+- Related: `MC-175` and `MC-011` (the fork may diverge from upstream behaviour while staying data-compatible), `MC-199` 1 (CHORE-41 low priority), `MC-475` (the MVP baseline).
+
+**The maintainer's answers.**
+1. To "CHORE-178: when a lorebook's scan depth is larger than the number of chat messages, what should it scan? (Today with depth 5, a 3-message chat scans only the last 2, a 4-message chat only the last 1; 1-2 messages and 5+ work.)": "Scan all messages (Recommended)". The option read: "Clamp the window: depth larger than the chat means every message is scanned. Matches what depth is meant to be; differs from upstream only in fixing the bug. Depth 0 still scans no messages."
+2. To "CHORE-178 side case: an @@scan_depth decorator whose value is not a number (e.g. a typo) currently scans the whole chat. What should it do?": "Use normal depth (Recommended)". The option read: "Ignore the bad decorator value and use the lorebook's configured scan depth. A negative value is treated the same way."
+3. To "CHORE-41 (edit button on an earlier message sometimes opens no editor): do you still see it on the Android MVP or anywhere else?": "Not seen lately". The option read: "Keep it parked (low priority, MC-199 1); Lane G does not work it."
+
+**What was decided (maintainer).**
+1. A scan depth larger than the number of scanned messages scans every message. A depth of 0 still scans no messages (answer 1).
+2. An `@@scan_depth` value that is not a number, or is negative, is ignored and the lorebook's configured scan depth is used (answer 2).
+3. CHORE-41 stays parked at low priority; lane G does not work it (answer 3).
+
+Folded in from `Agents/Lanes/lane-G-records.md` on 2026-10-25 (merge `dceab1844`).
+
+### MC-541 — Lane G, 2026-10-24: CHORE-45 is fixed in two stages; stage 1 now with no extra memory, stage 2 (a prompt-pass cache that grows with the chat) waits for the memory-footprint work
+
+- Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane G session transcript `7fb81b14-3585-4fb9-b518-f42aa7240633`; the sizing packet `%TEMP%\risu-lane-g\chore45\result.md` (an `investigator` packet, not independently verified; a Map/FIFO simulation in `sim.js` and `sim2.js` there). The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: the sizing packet found that `processScriptCache` in `src/ts/process/scripts.ts` is shared by the send's prompt pass, display, `editinput` and `editoutput`, and that under the default streaming mode `'off'` (still the default at `df408f8de`; `MC-257`'s change is not implemented) each streamed chunk inserts an `editoutput` entry and the remounted body an `editdisplay` entry. A long reply can therefore evict the whole 1,000-entry cache, and the next send misses on every message. Separately, a chat with more than about 1,000 cacheable messages misses even without streaming; fixing that needs a capacity that grows with the chat, bounded by a memory budget, and `MC-119` places capacity sizing after the memory-footprint work.
+- Alternatives rejected: "Both stages, 16 MB cap"; "Both stages, 64 MB cap".
+- Related: `MC-069`, `MC-113`, `MC-119`, `MC-130`, `MC-257`; CHORE-390 (stage 2).
+
+**The maintainer's answer.** To "CHORE-45 (script cache): the cache holds 1,000 results shared by everything. A streamed reply adds ~2 entries per chunk, so one long reply can wipe it and make the next send redo every message's scripts (cost grows with chat length; worst on phones). Separately, chats with ~1,000+ cacheable messages miss even without streaming. How far should Lane G go?": "Stage 1 now, 2 later (Recommended)". The option read: "Now: stop caching streamed partial replies and give the send's prompt pass its own cache, so display/stream traffic can't evict it. No extra memory. Very long chats (1,000+ cacheable messages) still go cold; that part waits for the memory-footprint work (MC-119) and gets a follow-up ticket."
+
+**What was decided (maintainer).**
+1. CHORE-45 stage 1: streamed partial replies are not cached, and the send's prompt pass gets its own cache that display and streaming traffic cannot evict. No added memory budget.
+2. Stage 2, a prompt-pass capacity that grows with the chat under a memory cap, waits for the memory-footprint work (`MC-119`) and is filed as CHORE-390.
+
+Folded in from `Agents/Lanes/lane-G-records.md` on 2026-10-25 (merge `dceab1844`).
+
+### MC-542 — Lane G, 2026-10-25: CHORE-45 stage 1 caps are 1,000 entries for the prompt pass and 200 for everything else (amends the "no extra memory" wording of `MC-541` 1)
+
+- Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `7fb81b14-3585-4fb9-b518-f42aa7240633`. The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: the option chosen in `MC-541` said stage 1 adds no memory. A second fixed cap for the non-prompt traffic raises the worst-case ceiling of cached text, so lane G asked before planning. The ~20% and the MB figures in the option are lane G's arithmetic from the sizing packet's bound of about 1,000 x (2L + S) characters (L message length, S script text); nothing was measured.
+- Alternative rejected: "800 + 200 (same total)".
+- Related: `MC-541`, CHORE-390.
+
+**The maintainer's answer.** To "CHORE-45 stage 1 detail: splitting the cache means one fixed cap for the send's prompt pass and one for everything else (display, edits). I described stage 1 as 'no extra memory'; strictly, a second cap raises the worst case a little. Which split?": "1,000 + 200 (Recommended)". The option read: "Prompt pass keeps today's 1,000 entries; display/edits get their own 200 (the chat screen shows ~30-60 messages). Worst-case cached text rises by up to ~20% of today's ceiling (e.g. ~6 MB to ~7 MB at 2 KB messages). Fixed, does not grow with the chat."
+
+**What was decided (maintainer).** The send's prompt pass keeps a cache capped at 1,000 entries; all other script-cache traffic gets a separate cache capped at 200 entries. Neither grows with the chat.
+
+Folded in from `Agents/Lanes/lane-G-records.md` on 2026-10-25 (merge `dceab1844`).
+
+### MC-505 — Lane A, 2026-10-24: the Android Back batch (CHORE-180 and CHORE-352 in, CHORE-179 parked again; Back does what the surface's own close does; lane A may send the Back key to phone 2 once; the no-X Settings overlay and four more modals included)
+
+- Tag: decisions (six `AskUserQuestion` answers by option label, from three calls: five on 2026-10-24 and the sixth on 2026-10-25, after Gate 1). Date: 2026-10-24 (answer 6: 2026-10-25). Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` (the calls at transcript lines 5552 and 5604, and the later "Call after Gate 1" on the quit timer, whose transcript line the extract does not give); the extract `%TEMP%\risu-b715\records-b12\questions.md`; the records batch 12 brief (`%TEMP%\risu-b715\records-b12\brief.md`); the sizing and plan files named in ledger rows 2277 and 2278. The option labels are the maintainer's. Question and option texts are lane A's wording as the extract records them.
+- Reasoning: the options carry lane A's trade-offs; the maintainer chose the recommended option on all six questions.
+- Alternatives rejected: listed after the decisions, with the option texts verbatim.
+- Related: `MC-455` 1 (left CHORE-352 unscheduled; reversed here for CHORE-352) and `MC-455` 4 (answer 6 extends it), `MC-278` D2 and D5, `MC-501` answer 3, decision 4 (CHORE-179 and 180 to the Android Back batch; hosted web parked), `MC-500`, `MC-502`, `MC-330`; CHORE-179, 180, 351, 352, 354, 147.
+
+**The maintainer's answers (option labels).**
+1. To "Android Back batch scope. CHORE-180 (Beta Mobile GUI screens ignore Back) and CHORE-352 (Back does not close Settings, the Realm frame, popups and panels) share one cause: almost nothing registers with the existing Back dispatcher. MC-455 Q1 left 352 unscheduled. CHORE-179 (phone-browser Back) needs a separate browser history mechanism, and hosted web is parked as not an MVP target. What goes in?": "180 + 352, park 179 (Recommended)". The option read: "One batch for the Android app: register the mobile screens and the ~8 overlays with the existing dispatcher. This reverses MC-455 Q1 for 352. CHORE-179 goes back to parked with the hosted web. CHORE-351 (select/input prompt cancel, ~50 call sites, data-loss risk) stays its own ticket."
+2. To "When Back closes Settings, a popup or the Realm frame while the user has typed something unsaved, what should happen?": "Same as the X button (Recommended)". The option read: "Back does exactly what that surface's own close button does today; no new confirm dialog. Where X keeps the text, Back keeps it; where X discards, Back discards."
+3. To "Proving Back on phone 2: agents are not allowed to press Back. Calling the page's Back hook over CDP covers the screens but bypasses the Android host path (the 1 s timeout, the quit). May lane A itself send the Back key to phone 2 (adb keyevent 4, synthetic profile only) for one final smoke pass?": "Yes, lane A, phone 2 only (Recommended)". The option read: "Functional coverage through CDP; one short keyevent pass by lane A at the end on phone 2's synthetic profile. A quit press may trigger the known CHORE-147 native abort; that is expected and recorded."
+4. To "In the Beta Mobile GUI, Settings opened from module/preset import, the HypaV3 header or the module chat menu replaces the whole screen and has no close button at all (only desktop Escape closes it). Should Android Back close it?": "Yes, Back closes it (Recommended)". The option read: "Back runs the same close as Escape (settingsOpen off). It is the one place Back adds an exit that no on-screen control offers, which is the point of CHORE-180/352."
+5. To "Five more modals of the same kind are not in CHORE-352's list: the preset list, the persona list, the HypaV3 modal, the Realm info popup and the custom GUI settings menu (the last has no close at all). Add them to stage B?": "Add the four with a close (Recommended)". The option read: "Preset list, persona list, HypaV3 and Realm info get Back = their own close. The custom GUI settings menu, which has no close, is left out and noted."
+6. To "Back batch Gate 1 passed with amendments, and I'm applying all of them. It also found an edge case: on the character list, Back shows the 'press again to quit' toast. If, within 2 s, you open a chat and press Back twice, the second press quits without a fresh toast, because a Back that closes something doesn't reset the quit timer. Should a Back that closes something reset it?": "Yes, reset it (Recommended)". The option read: "Any Back that closes something cancels a pending quit, so quitting always needs a fresh toast then a second press at the root. One-line change in stage A; the save flush is unchanged."
+
+**What was decided (maintainer).**
+1. The Back batch is CHORE-180 plus CHORE-352, for the Android app. This reverses `MC-455` 1 for CHORE-352. CHORE-179 goes back to parked with the hosted web. CHORE-351 stays its own ticket (answer 1).
+2. Back on Settings, a popup or the Realm frame does exactly what that surface's own close button does today: no new confirm dialog; where X keeps typed text Back keeps it, where X discards Back discards (answer 2).
+3. Lane A may send `adb keyevent 4` to phone 2, on the synthetic profile only, for one final smoke pass at the end. A quit press may trigger the known CHORE-147 native abort; that is expected and recorded (answer 3). This amends the standing rule that agents do not press Back on a device, for that pass only (the brief's wording; the rule is stated in the question text).
+4. In the Beta Mobile GUI, Back closes the Settings overlay that has no close button, with the same close as Escape (answer 4).
+5. Back is also registered for the preset list, the persona list, the HypaV3 modal and the Realm info popup, each with Back = its own close. The custom GUI settings menu has no close and is left out (answer 5).
+6. A Back that closes something also resets a pending quit, so quitting always needs a fresh toast and then a second press at the root. This extends `MC-455` 4, which reset the quit arm for dialogs only. It is a one-line change in stage A; the save flush is unchanged (answer 6).
+
+**Lane A's rulings (not the maintainer's decisions).**
+- The character-list root stays toast-then-quit (`MC-278` D5).
+- CHORE-354 needs a profile first and is out of this batch.
+- CHORE-147 stays a risk note.
+- The Back-guard flush stays.
+- The shared helper blurs the focused field before closing, because an X tap blurs.
+- Gate 1 and stage B use opus-reviewer, because the blur runs `onchange` handlers that write `DBState.db`.
+- From the Gate 1 review: the helper blurs, then runs `flushSync`, then closes (amendment A1), and stage A also uses opus-reviewer (A7). Lane A accepted amendments A1 to A9.
+
+**Gate state at the time of writing:** plan `%TEMP%\risu-b715\backA\plan.md`; Gate 1 (opus-reviewer) [APPROVE WITH AMENDMENTS], amendments A1 to A9 accepted by lane A (`%TEMP%\risu-b715\backA\gate1\result.md`; ledger row 2281). No stage was implemented at the time of writing.
+
+**Alternatives rejected (the unchosen options, verbatim).**
+- Scope: "180 only": "Only the Beta Mobile GUI screens; 352 stays unscheduled as MC-455 Q1 said." And "180 + 352 + 179": "Also add browser Back via history entries (the option MC-278 D2 declined). Medium risk, phone-browser only."
+- Unsaved text: "Ask before discarding": "Back asks for confirmation when closing would drop typed text. Needs a dirty check per surface."
+- Device: "No, CDP only": "Never send the Back key; the host path stays unproven on device."
+- No-X Settings overlay: "No, leave it": "Back keeps falling through to the quit guard on that screen."
+- Extra modals: "Ticket only, no change": "Keep stage B to the 9 listed surfaces; the five stay open as a follow-up."
+- Quit timer: "No, leave it": "Keep today's behaviour: only dialogs reset the quit timer (MC-455 Q4). Fast presses across screens can quit without a new toast."
+
+- Notes, not the maintainer's words:
+  - The Roadmap carries the per-ticket status lines (records batch 12).
+  - Nothing here authorizes a commit or a push.
+
+### MC-506 — Lane A, 2026-10-24: merge lane F (CHORE-30, CHORE-65) with full checks and a push; a change to which plugin writes reach live characters gets a per-merge approval (lane A's ruling under `MC-500`)
+
+- Tag: decision (one `AskUserQuestion` answer by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` (the call at transcript line 5663); the extract `%TEMP%\risu-b715\records-b12\questions.md`; the records batch 12 brief. The option label is the maintainer's. Question and option texts are lane A's wording as the extract records them.
+- Reasoning: the question text states that lane F's change alters what plugin writes reach the maintainer's live characters, so lane A treated it as data work rather than using the standing approval.
+- Alternatives rejected: listed after the decisions, with the option texts verbatim.
+- Related: `MC-500` (the standing approval and its save and data-loss exception), `MC-520`, `MC-503`; CHORE-30, 65, 370; ledger row 2280.
+
+**The maintainer's answer (option label).** To "Merge lane F (CHORE-30: a V3 setChar/setCharacter for a character other than the selected one is refused, nothing written; CHORE-65: a V3 plugin's getArg/setArg reach only its own arguments)? It passed Gate 1 (after one REJECT) and opus-reviewer Gate 2, and its third full run was green. It changes what plugin writes reach your live characters, so I'm treating it as data work rather than using the standing approval. CHORE-370's open question (does a replaced character's old saved data come back on reload?) stays recorded as TODO(evidence).": "Merge, full checks, push (Recommended)". The option read: "Lane A merges into main, runs the full test, check, build and dist checks on the merged snapshot, and pushes only when green. Lane F's records are folded in at the next records batch."
+
+**What was decided (maintainer).** Lane F (branch `worktree-Lane-F` at `67628f6a5`) is merged into `main`, the full checks run on the merged snapshot, and `main` is pushed only when green.
+
+**Lane A's rulings (not the maintainer's decisions).**
+- A change to which plugin writes reach live characters falls under `MC-500`'s save, persistence and data-loss exception, so it gets a per-merge approval instead of the standing one.
+- Outcome (ledger row 2280): merged as `4331440b6`, the first full run green, pushed.
+
+**Alternatives rejected (the unchosen options, verbatim).**
+- "Merge, hold the push": "Merge and run the checks, but leave it unpushed until you've looked." And "Not yet": "Leave lane F unmerged."
+
+**Related, not a decision.** The records batch 11 commit question (call at transcript line 5519) was answered "Commit and push (Recommended)", to the question "Records batch 11 passed its doc-verifier ([EDITORIAL], fixes applied). It closes CHORE-149, 164, 165 and 167 with the phone 2 evidence, adds ledger rows 2270-2276 and new tickets CHORE-208 (timeout string key) and CHORE-209 (supaResume test isolation), and updates Live-State and the Now section. Files: Investigation-Ledger, Roadmap, the closed archive, Live-State. Commit and push?". It authorized that one batch's commit and push, and nothing else.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes any other commit or push.

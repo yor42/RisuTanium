@@ -240,3 +240,49 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 **Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D).** Can return on a maintainer decision.
 
 **Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Cosmetic. Source: U0 Gate 2 finding O2. The chat parse-error alert now shows the stack once (the stack block of the alert), so the stack slot of `language.errors.chatParseFailed` is empty and the English text ends with ", ". Fixing it changes the key in all 7 locales (the translator owns the non-English files).
+
+### CHORE-41 — Bug: the edit button on earlier messages sometimes opens no editor
+
+**Status (2026-10-25, lane A records batch 12): PARKED (`MC-540` 3).** The maintainer answered "Not seen lately" to lane G; lane G did not work it. Low priority (`MC-199` 1). Can return on a maintainer decision or report.
+
+**Status (2026-10-24, lane A records batch 10):** open; assigned to lane G's parity batch with CHORE-45 and CHORE-178 (`MC-503`). The premise in `MC-199` 1 (revisit after the Android Tauri build works) may now be satisfied (MVP installed, `MC-475`); the revisit still waits for the maintainer's report.
+
+**Status (2026-10-06, Main Campaign): open, LOW PRIORITY (`MC-199` 1).** The maintainer now thinks it may not be a fault in this app: a WebView that simply stopped responding because everything else was overloading the browser on the 36 GB upstream profile. It is revisited only on their report, after the Android Tauri build works fully; no reproduction attempt is queued. Android's logcat captures the WebView console (`Tauri/Console`), which can be used if it recurs there.
+
+**Status (2026-10-04, side session): still open.** The hand-off listed it in Batch B; the maintainer chose not to take it in
+the side session ("Skip CHORE-41", `MC-219` 3). Nothing changed. It is still blocked on the console output below.
+
+**Status (2026-09-26):** filed from the maintainer's bug report (`MC-090`) and two follow-up
+investigations, ledger rows 201, 202 and 206. Not fixed. Blocked on the maintainer's console
+output (below).
+
+- **Mechanism found (TRACED, ledger row 201, RUN on upstream `main` and this fork's HEAD):**
+  `Chats.svelte` does not render messages with `{#each}`; it mounts one `Chat` per visible message
+  by hand, keyed by a 32-bit hash of the message's `data`, `chatId`, index, portrait flag,
+  `disabled` and `ReloadChatPointer[index]`. `editMode` is plain local `$state` in `Chat.svelte`.
+  Whenever that hash changes for the message being edited, the instance is unmounted and
+  remounted, silently dropping the open editor with no error and a normal-looking button. This is
+  present in both upstream and this fork. The maintainer's supplied plugins (ledger row 202) were
+  ruled out as the trigger — none indexes messages or bumps the pointer that changes the hash.
+- **Still open: why the button stays dead across repeated clicks, not just once.** Ledger row 206
+  found a likely cause — a synchronous error thrown while building the `{#if editMode}` branch is
+  caught by nothing: there is no `<svelte:boundary>` anywhere in `src/`, upstream or this fork, so
+  the throw aborts that message's flush and every retry on a stable trigger replays it. The throw
+  site itself is not found. **Needs the maintainer's console output** at the moment of a failed
+  click, and whether the pencil icon flashes blue on the failed open.
+- **The report's build:** upstream's hosted site, risuai.xyz, on a roughly 36 GB `.bin` save
+  (`MC-090`); all data stored locally, no account sync. Whether the same triggers occur at this
+  fork's likely scale is unconfirmed.
+
+### CHORE-179 — Phone-browser Back closes neither the sidebar nor Grid edit mode
+
+**Status (2026-10-25, lane A records batch 12): PARKED (`MC-505`).** The maintainer chose "180 + 352, park 179", which returns it from lane A's Android Back batch to parked. Can return on a maintainer decision.
+
+**Status (2026-10-24, lane A records batch 10):** open; in the Android Back batch (`MC-501`, group F), which follows batch T.
+
+**Status (2026-10-11): open; not planned; the browser half of the S4-2 Back decision (`MC-278` 4, D2).** Type: limitation (browser Back).
+
+- **Decision (`MC-278` 4):** "Android app now, browser ticket (Recommended)": S4-2 hooks edit mode into the Android app's existing Back question (`window.__risuTaniumBack`, asked by `MainActivity`), not into browser history. The declined alternative was "Both now via browser history" (a history step while editing, which the question said has several timing pitfalls and adds history entries for the whole app).
+- **Inferred, not run:** the question put to the maintainer states that in a phone browser Back is the browser's own navigation and does not close the sidebar today. `charlist\back-mechanism.md` (an `investigator` trace, not independently verified) read from source that only `MainActivity` asks the page Back hook, so a browser never asks it. Nothing was run in a phone browser. TODO(evidence).
+- **Related, accepted limitation R5 (`charlist\s4-2b-change1-report.md`):** where a history entry exists, a second Back may go back in history.
+- **Not decided:** the mechanism for browsers.

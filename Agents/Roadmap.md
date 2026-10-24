@@ -19,11 +19,12 @@ Ideas that are **not** part of this campaign — quality-of-life features, nice-
 Replaces the finished `MC-345` work order (moved to [Archive/Roadmap-closed-2026-10-24.md](Archive/Roadmap-closed-2026-10-24.md); `MC-479`). This records state and sets no priorities; [Live-State](Live-State.md) holds the dated detail.
 
 - **MVP:** installed on the maintainer's phone (`MC-475`); `MC-350` carry-forward is live.
-- **Lane A:** orchestration and records. Batch T (the native streaming path; `MC-502`) is done: CHORE-149, 164, 165 and 167 are COMPLETE and moved to the closed archive (T1 `a51321952`, T2 `9d16b3350`, T3 `d9c68b0fe`; `main` is at `d9c68b0fe`, pushed). Device stage D on phone 2 passed (a release build of `d9c68b0fe` on the test key, the synthetic device profile and the mock settings); a stale Save picker remains in the back stack. Device-profile stage E (adoption, records only) is next for that track. Next for lane A: the Android Back batch (CHORE-179, 180 and the Back family), CHORE-166 (its own batch, not started) and the plugin and parity lanes F and G. CHORE-208 ("Request timed out" has no `language` key) is new. CHORE-207 stays a candidate (`MC-478`).
+- **Lane A:** orchestration and records. Batch T (the native streaming path; `MC-502`) is done: CHORE-149, 164, 165 and 167 are COMPLETE and moved to the closed archive (T1 `a51321952`, T2 `9d16b3350`, T3 `d9c68b0fe`; `d9c68b0fe` was `main` then; `main` is now at `4331440b6`, pushed, after the lane G merge `dceab1844` and the lane F merge `4331440b6`). Device stage D on phone 2 passed (a release build of `d9c68b0fe` on the test key, the synthetic device profile and the mock settings); a stale Save picker remains in the back stack. Device-profile stage E (adoption, records only) is next for that track. Lane A's Android Back batch (`MC-505`: CHORE-180 and CHORE-352; CHORE-179 is parked again) passed Gate 1 with amendments, and stage A is next. After it: CHORE-166 (its own batch, not started) and the others. CHORE-208 ("Request timed out" has no `language` key) is new. CHORE-207 stays a candidate (`MC-478`).
 - **Lane B:** CHORE-205, sizing lever L3 (including the MCP module tools). Its plugin module asset-list fix is rebased and merged (`15777155a`). Its reload-check results from phone 2 are in (ledger row 2275).
 - **Lane C (cloud):** runs batch Q (CHORE-240, CHORE-185 and CHORE-353). Its earlier scope (CHORE-500, CHORE-330 and CHORE-501) merged in `a83c7901b`.
-- **Lanes F and G (new, `MC-503`):** F runs the plugin batch (CHORE-30 and CHORE-65), G the parity batch (CHORE-178, CHORE-45 and CHORE-41). Neither has phone access; device requests go to lane A.
+- **Lanes F and G (`MC-503`):** both are merged and idle. F's plugin batch (CHORE-30, CHORE-65 and the new CHORE-370) is merged as `4331440b6` (branch `worktree-Lane-F` at `67628f6a5`); G's parity batch (CHORE-178 and CHORE-45 stage 1) is merged as `dceab1844` (branch `worktree-Lane-G` at `6e7707db6`); CHORE-41 is parked (`MC-540` 3). Neither has phone access; device requests go to lane A.
 - **Batches (`MC-500`):** work runs in gated batches. Parked tickets (`MC-501`, `MC-504`) are in [Roadmap-parked.md](Roadmap-parked.md).
+- **Next free IDs:** lane A MC-507, CHORE-210, row 2282; lane F MC-522, CHORE-371, row 3710; lane G MC-543, CHORE-391, row 3900; the others are in [Live-State](Live-State.md).
 
 ## Open tickets
 
@@ -46,18 +47,17 @@ Parked tickets and sub-items (`MC-501`, `MC-504`) are not in this table; they ar
 | CHORE-16 | Playground: 4 suspected bugs | PG-4 parked (MC-501); code done in 0d41f06a | - | PG-4 remainder is a wiki hand-off (maintainer's) |
 | CHORE-17 | Plugin `setDatabase` re-encodes every character (a cost, not data loss) | (the setter boundary reconcile) is ON HOLD — see "Why layer 1 is on hold" below. | - | layer 1 on hold |
 | CHORE-29 | Filling a missing `chaId` brings back a stale copy of the character | Status (2026-09-24): found by Gate 1 round 4 of the W0 plan (ledger row 170), which ran it. Not | - | superseded on store2 per lane E audit; candidate to close |
-| CHORE-30 | v2.1 `setChar` writes into whatever is selected when the plugin calls it | open; not moot: the V2/V3 `setChar` path is live (retitled 2026-10-24 to the V2/V3 path, MC-501) | lane F | plugin batch (MC-503) |
+| CHORE-30 | v2.1 `setChar` writes into whatever is selected when the plugin calls it | open; not moot: the V2/V3 `setChar` path is live (retitled 2026-10-24 to the V2/V3 path, MC-501) | lane F | technically accepted; merged in 4331440b6 (MC-520); administrative closeout not stated in lane F's records |
 | CHORE-31 | Cold storage may turn an idle group into a plain character | Status (2026-09-24): found in passing by the W0 investigation (ledger row 164). Untraced for | - | superseded on store2 per lane E audit; candidate to close |
 | CHORE-32 | A swap can drop a character's pending edit for one save | Status (2026-09-24): found by the W0 follow-up checks (ledger row 169, check 2). Traced, not | - | superseded per lane E audit; candidate to close |
 | CHORE-35 | Upstream proxy and CDN infrastructure outside Realm and Drive have no agreement gate | needs review: Traced to source, not fixed. | - | opt-in stage scheduled (MC-092); CHORE-60 text says 'CHORE-35 closes' |
-| CHORE-41 | Bug: the edit button on earlier messages sometimes opens no editor | Status (2026-10-06, Main Campaign): open, LOW PRIORITY (`MC-199` 1). | lane G | parity batch (MC-503); MC-199 condition may now be satisfied; waits for maintainer report |
-| CHORE-45 | The script cache misses every lookup on a repeat send in a long chat | Present upstream. Not fixed and not scheduled. | lane G | parity batch (MC-503) |
+| CHORE-45 | The script cache misses every lookup on a repeat send in a long chat | stage 1 technically accepted; merged in dceab1844 | lane G | stage 2 is CHORE-390 (MC-541 2); not COMPLETE |
 | CHORE-46 | The self-hosted Node server cannot save a database larger than 100 MB | Present upstream. Not fixed and not scheduled. | - | not scheduled (Node 100 MB); parked until after A5 |
 | CHORE-55 | Tauri main-file writes are not atomic (a failed write can leave a partial `database/datab… | Stage 5 or later (inlays with CHORE-48, the search index, CHORE-46's | - | superseded on store2 per lane E audit; stage 5 or later not scheduled |
 | CHORE-60 | Release identity: the desktop build still carries upstream's identity | the first signed build is the maintainer's (`MC-456` 3) | lane A / maintainer | first signed build is the maintainer's (MC-456 3); updater, key.txt |
 | CHORE-61 | The save encoder silently loses presets, modules or a character when a character's `chaId… | open, not scheduled and not placed in the work order | - | superseded per lane E audit; candidate to retitle or park |
 | CHORE-62 | On a Node server, another device's save makes this device stop saving until it reloads, a… | Open questions: where the unsynced edits would be kept | - | Node; parked until after A5 |
-| CHORE-65 | Plugins read and change each other's saved arguments, and V2.1 plugins edit the plugin li… | needs review: Status (2026-10-02, later): low priority | lane F | plugin batch (MC-503); V2.1 half moot, cross-plugin getArg/setArg open |
+| CHORE-65 | Plugins read and change each other's saved arguments, and V2.1 plugins edit the plugin li… | needs review: Status (2026-10-02, later): low priority | lane F | technically accepted; merged in 4331440b6 (MC-520 3); administrative closeout not stated in lane F's records |
 | CHORE-68 | CHORE-63 stage C: embed the app's own images from inside a message into the "Copy as card… | open, not scheduled. Filed at the maintainer's decision | - | not scheduled (copy-as-card stage C) |
 | CHORE-70 | Startup installs a save that only partly decodes, without checking whether a backup is co… | open, not scheduled. Filed at the maintainer's decision | - | superseded per lane E audit (read-only legacy residue) |
 | CHORE-71 | The plugin overwrite guard walks every chat in live memory on each in-place plugin `setIt… | open, not scheduled, LOW priority. | - | LOW priority; not scheduled |
@@ -81,7 +81,7 @@ Parked tickets and sub-items (`MC-501`, `MC-504`) are not in this table; they ar
 | CHORE-115 | Android asset protocol answers Range requests with a non-zero start wrongly; asset videos… | fixed by wry 0.57.1 in builds made from this checkout, MEASURED on phone 2 | lane A | verify on next MVP build (wry 0.57.1); video check did not run |
 | CHORE-117 | Save-time validation: a committed generation must always load | not COMPLETE: stage 1b is still open, narrowed by the audit | lane E | stage 1b open; needs maintainer decision |
 | CHORE-141 | Android restore's `relaunch()` does not restart the app | Status (2026-10-08): open; noticed in Stage 3. | - | Android relaunch() cause not investigated |
-| CHORE-147 | Android: the process aborts on exit with the OS Back (FORTIFY "pthread_mutex_lock called… | Status (2026-10-09): open; pre-existing; cause not established. | - | cause not established; parked until after A5 |
+| CHORE-147 | Android: the process aborts on exit with the OS Back (FORTIFY "pthread_mutex_lock called… | Status (2026-10-09): open; pre-existing; cause not established. | - | cause not established; parked until after A5; stays a risk note (MC-505 lane A ruling) |
 | CHORE-148 | The generated Tauri Android files in the checkout are stale (tauri 2.11.5 against a lock… | Status (2026-10-09): open; regenerate before relying on them. | - | regenerate Tauri Android files before relying on them |
 | CHORE-153 | Observation: a Light-scheme change can be lost if the app is force-stopped about 15 s aft… | technically accepted; owes the debounce cap (Q-C, deferred, no ticket) | - | - |
 | CHORE-154 | Output-identical cheap fixes in the chat parse pipeline | Status (2026-10-09): open; queued after the windowing items. | - | queued after windowing items; parked |
@@ -99,9 +99,8 @@ Parked tickets and sub-items (`MC-501`, `MC-504`) are not in this table; they ar
 | CHORE-170 | Grid fling long tasks of up to 153 to 227 ms on the Note 9; try a smaller grid overscan a… | Status (2026-10-10): open; observation with a partial attribution; not planned. | - | try smaller grid overscan after profiling |
 | CHORE-174 | `CharConfig.svelte` re-reads `$selectedCharID` live across an `await` and can write to th… | Status (2026-10-10): open; existing issue, not fixed by the unload stage 1a; not planned. | lane E | no fix on main; lane E audit: still present |
 | CHORE-177 | Grid fling jank with every folder open on the Note 9 (the scroller's layer height; the br… | Status (2026-10-10): open; not planned; to be revisited with the list-windowing perf work | - | revisit with list-windowing work |
-| CHORE-178 | Lorebook `searchMatch` slices from `length - scanDepth` with no clamp, so a scan depth la… | Status (2026-10-11): open; not planned; present in upstream too. | lane G | parity batch (MC-503) |
-| CHORE-179 | Phone-browser Back closes neither the sidebar nor Grid edit mode | Status (2026-10-11): open; not planned; the browser half of the S4-2 Back decision | - | Android Back batch, after batch T (MC-501) |
-| CHORE-180 | Back on screens with their own back stack and no Back handler: the Beta Mobile GUI chat "… | Status (2026-10-11): open; not planned; found by the S4-2b Note 9 pass. | - | Android Back batch, after batch T (MC-501) |
+| CHORE-178 | Lorebook `searchMatch` slices from `length - scanDepth` with no clamp, so a scan depth la… | Status (2026-10-11): open; not planned; present in upstream too. | lane G | technically accepted; merged in dceab1844 (MC-540 1 and 2); administrative closeout not stated in lane G's records |
+| CHORE-180 | Back on screens with their own back stack and no Back handler: the Beta Mobile GUI chat "… | Status (2026-10-25): in lane A's Android Back batch (MC-505) | lane A | plan passed Gate 1 with amendments; stage A next |
 | CHORE-183 | A `botPresets` list that is missing or not a list makes "Convert without these parts" sto… | Status (2026-10-20, stage 4b close): open, not scheduled. | - | not scheduled |
 | CHORE-184 | The Lua runtime (wasmoon `glue.wasm`) is fetched from unpkg.com at run time | Status (2026-10-20, stage 4b close): open, not scheduled. | - | not scheduled (Lua fetched from unpkg) |
 | CHORE-185 | The `Chat.draftCaptureScenarios` "success-then-fail" test is load-sensitive | Status (2026-10-20, stage 4b close): open, not scheduled. | lane C (cloud) | batch Q |
@@ -114,8 +113,8 @@ Parked tickets and sub-items (`MC-501`, `MC-504`) are not in this table; they ar
 | CHORE-223 | An Android stub export spends most of its time in two steps outside the asset loop ('expo… | Not COMPLETE. | lane B | cold-collect traced to idle net; stage B design waits |
 | CHORE-224 | Opening a stored character does not apply the character defaults, so a character without… | technically accepted; owes the node fixture flake ticket and Gate 2 notes N1 to N3 | lane B | - |
 | CHORE-350 | a value that cannot be stored retries every save pass (MC-346 Q-A) | Status (2026-10-22): open, not scheduled. Filed per `MC-346` Q-A | lane E | not scheduled (MC-346 Q-A) |
-| CHORE-351 | CHORE-351 (new) — select and input prompts have no cancel, so Back cannot close them (MC-… | Status (2026-10-22): open, not scheduled. Filed per MC-455 Q2 | - | not scheduled (MC-455 Q2) |
-| CHORE-352 | CHORE-352 (new) — Back does not close Settings, the Realm frame, popups or panels (MC-455… | Status (2026-10-22): open, not scheduled. Filed per MC-455 Q1 | - | not scheduled (MC-455 Q1) |
+| CHORE-351 | CHORE-351 (new) — select and input prompts have no cancel, so Back cannot close them (MC-… | Status (2026-10-22): open, not scheduled. Filed per MC-455 Q2 | - | not scheduled (MC-455 Q2); stays its own ticket (MC-505) |
+| CHORE-352 | CHORE-352 (new) — Back does not close Settings, the Realm frame, popups or panels (MC-455… | Status (2026-10-25): in lane A's Android Back batch (MC-505), which reverses MC-455 Q1 for it | lane A | plan passed Gate 1 with amendments; stage A next |
 | CHORE-225 | Store2 save planning re-encodes every module on each idle-net tick, blocking the page for… | Status (2026-10-23): stages A, B and C merged; not COMPLETE. | lane B | stages A-C merged; re-measure |
 | CHORE-502 | Old-format HypaV2 data conversion drops summaries whose target message is hidden (propose… | Status (2026-10-24, lane A records batch 5): parked post-MVP | - | parked post-MVP (MC-352 2) |
 | CHORE-205 | Architecture study: subsystems that fail as the library grows (the whole-library in-memor… | Status (2026-10-24, lane A records batch 6): lane B is sizing the next lever, L3 | lane B | L3 per-module units (rebase of the plugin asset-list fix merged in 15777155a) |
@@ -124,7 +123,9 @@ Parked tickets and sub-items (`MC-501`, `MC-504`) are not in this table; they ar
 | CHORE-208 | "Request timed out" (the native fetch timeout error added by CHORE-164) is hard-coded English with no `language` key | Status (2026-10-25): open, low priority, not scheduled. | lane A | en key, then the Translator for the other locales (MC-058) |
 | CHORE-209 | `Chat.supaResume` "branch" tests can fail under full-suite load: a timed-out (c) may keep running into (d) | Status (2026-10-25): open, low priority, not scheduled; test isolation, not batch T. | lane A | hoist the dynamic imports, reset `DBState.db`; prove with a forced cold timeout |
 | CHORE-353 | The write-scope guard refuses only the Edit and Write tools, so a shell write can change… | Status (2026-10-22, lane A): open, ticketed, not scheduled (`MC-457` 1). | lane C (cloud) | batch Q |
-| CHORE-354 | CHORE-354 (new) — on a large profile the page does not answer Back within 1 s after the f… | Status (2026-10-22): open, low priority, not scheduled. | lane A | low priority; not scheduled |
+| CHORE-354 | CHORE-354 (new) — on a large profile the page does not answer Back within 1 s after the f… | Status (2026-10-22): open, low priority, not scheduled. | lane A | low priority; not scheduled; out of the Back batch, needs a profile first (MC-505 lane A ruling) |
+| CHORE-370 | V3 `setCharacterToIndex` may not mark its write for saving (new) | Status (2026-10-25, Lane F): premise refuted; no fix needed (MC-520 4); residual unchecked | lane F | residual: a different `chaId` and the old block; TODO(evidence) |
+| CHORE-390 | Script cache stage 2: a prompt-pass cache sized to the chat, under a memory cap | Status (2026-10-24): open, not scheduled (MC-541 2) | lane G | waits for the memory-footprint work (MC-119) |
 | Grid avatar loading (MC… | Grid avatar loading (MC-452, MC-459) — stage A, the thumbnail write leaves the generation… | The rest of stage B is deferred (`MC-463`). | lane E | rest of stage B deferred (MC-463) |
 | CHORE-240 | A full `pnpm test` rewrites `modules.test.ts.snap` with LF line endings | Status (2026-10-22, lane D): open, not scheduled. Test-only. | lane C (cloud) | batch Q |
 | CHORE-241 | MVP chat-open and edit stalls: a quadratic display regex, and chat-phase measurement | S3 and S4 are parked until a re-measure after CHORE-225 (`MC-389`). | lane D | S3/S4 parked until re-measure after CHORE-225 |
@@ -1465,6 +1466,8 @@ fixed. Upstream `characterFormatUpdate` fills a missing `chaId` in the same way.
 
 ### CHORE-30 — v2.1 `setChar` writes into whatever is selected when the plugin calls it
 
+**Status (2026-10-25, lane A records batch 12, from lane F's records):** technically accepted; commit `a2849421a` on `worktree-Lane-F`, merged to `main` as `4331440b6` (full checks green on the first run; pushed). Lane F's retitle suggestion is "V2/V3 setChar writes into whatever character is selected". `setChar` refuses, before any id fill or write, when nothing is selected, the index is out of range, the slot is not a character, or both `chaId`s are present and differ by `idKey` (`MC-520` 1 and 2). Residuals (`MC-520` 1): a character with no `chaId` still replaces whatever is selected; a selected slot with no `chaId` accepts any id. Gate and check rows: ledger rows 3702 to 3708. Lane F's records do not state administrative closeout, so the ticket stays open here.
+
 **Status (2026-10-24, lane A records batch 10): retitled 2026-10-24 to: V2/V3 `setChar` writes into whatever character is selected (`MC-501`); lane F.** The old title above is kept. Assigned to lane F's plugin batch with CHORE-65 (`MC-503`).
 
 **Status (2026-10-24, lane A records batch 10):** Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): STILL PRESENT, plugin-only. The audit names the V2/V3 `setChar` and `setCharacter` reach, and an index of -1 writes a stray property. The audit predates CHORE-206 cut A (`f6a9b2dd2`), which retired the V2.1 `__pluginApis__.setChar` route, so the live reach is V2 and V3.
@@ -1540,38 +1543,15 @@ a donation, and upstream patreon feels off to be in a fork"), as part of the rem
 now on by default in every build from the repository, so the prompts this ticket lists are a known remaining gap
 against the third requirement of upstream's notice. The maintainer chose to leave the ticket at its place in the work order (item 4).
 
-### CHORE-41 — Bug: the edit button on earlier messages sometimes opens no editor
-
-**Status (2026-10-24, lane A records batch 10):** open; assigned to lane G's parity batch with CHORE-45 and CHORE-178 (`MC-503`). The premise in `MC-199` 1 (revisit after the Android Tauri build works) may now be satisfied (MVP installed, `MC-475`); the revisit still waits for the maintainer's report.
-
-**Status (2026-10-06, Main Campaign): open, LOW PRIORITY (`MC-199` 1).** The maintainer now thinks it may not be a fault in this app: a WebView that simply stopped responding because everything else was overloading the browser on the 36 GB upstream profile. It is revisited only on their report, after the Android Tauri build works fully; no reproduction attempt is queued. Android's logcat captures the WebView console (`Tauri/Console`), which can be used if it recurs there.
-
-**Status (2026-10-04, side session): still open.** The hand-off listed it in Batch B; the maintainer chose not to take it in
-the side session ("Skip CHORE-41", `MC-219` 3). Nothing changed. It is still blocked on the console output below.
-
-**Status (2026-09-26):** filed from the maintainer's bug report (`MC-090`) and two follow-up
-investigations, ledger rows 201, 202 and 206. Not fixed. Blocked on the maintainer's console
-output (below).
-
-- **Mechanism found (TRACED, ledger row 201, RUN on upstream `main` and this fork's HEAD):**
-  `Chats.svelte` does not render messages with `{#each}`; it mounts one `Chat` per visible message
-  by hand, keyed by a 32-bit hash of the message's `data`, `chatId`, index, portrait flag,
-  `disabled` and `ReloadChatPointer[index]`. `editMode` is plain local `$state` in `Chat.svelte`.
-  Whenever that hash changes for the message being edited, the instance is unmounted and
-  remounted, silently dropping the open editor with no error and a normal-looking button. This is
-  present in both upstream and this fork. The maintainer's supplied plugins (ledger row 202) were
-  ruled out as the trigger — none indexes messages or bumps the pointer that changes the hash.
-- **Still open: why the button stays dead across repeated clicks, not just once.** Ledger row 206
-  found a likely cause — a synchronous error thrown while building the `{#if editMode}` branch is
-  caught by nothing: there is no `<svelte:boundary>` anywhere in `src/`, upstream or this fork, so
-  the throw aborts that message's flush and every retry on a stable trigger replays it. The throw
-  site itself is not found. **Needs the maintainer's console output** at the moment of a failed
-  click, and whether the pencil icon flashes blue on the failed open.
-- **The report's build:** upstream's hosted site, risuai.xyz, on a roughly 36 GB `.bin` save
-  (`MC-090`); all data stored locally, no account sync. Whether the same triggers occur at this
-  fork's likely scale is unconfirmed.
-
 ### CHORE-45 — The script cache misses every lookup on a repeat send in a long chat
+
+**Status (2026-10-25, lane A records batch 12, from lane G's records):** stage 1 technically accepted; commit `6aabb3a85` on `worktree-Lane-G`, merged to `main` as `dceab1844` (pushed; full-run flakes in `dceab1844`'s checks are in ledger row 2279). Stage 2 is CHORE-390 (`MC-541` 2). Not COMPLETE.
+
+- **Prompt-pass cache.** Calls that carry a `promptView` cache in their own map, capped at 1,000 entries. Every other call shares a map capped at 200 (`MC-541` 1, `MC-542`). Both maps keep the same key, the same oldest-first eviction and the same `isKeyDeterminedPass` gate, and `resetScriptCache` clears both.
+- **Streamed replies bypass the cache.** `processScriptFull` takes a trailing `cache: 'use' | 'bypass'`, and the streaming reply path (`processAndWriteReply`) passes `'bypass'`. Non-streamed `editoutput` calls still cache.
+- **Accepted behaviour change (Gate 1 amendment 6).** An identical repeated streamed text now reruns the scripts, so `emoChanged` can be true.
+- **Accepted consequence (`MC-542`).** Display entries now live in the 200-entry map, so a very large chat-load window or a long off-mode stream thrashes display hits. This costs speed only.
+- **Not measured.** Nothing was measured on a device; the benefit is shown only by hit counters on mocks.
 
 **Status (2026-10-24, lane A records batch 10):** open; assigned to lane G's parity batch with CHORE-178 and CHORE-41 (`MC-503`).
 
@@ -2706,6 +2686,8 @@ step 5d-4's investigation (ledger row 588). The README documents the consequence
 
 ### CHORE-65 — Plugins read and change each other's saved arguments, and V2.1 plugins edit the plugin list directly through the `getDatabase` proxy (DATA LOSS (V2.1 proxy route); no prompt; the unprompted write EXECUTED in a scratch test, the removal TRACED)
 
+**Status (2026-10-25, lane A records batch 12, from lane F's records):** technically accepted; commit `5f1322222` on `worktree-Lane-F`, merged to `main` as `4331440b6` (pushed). V3 `getArg` and `setArg` throw (the plugin sees a rejected call) unless the name before the first `::` is the calling plugin's own; own-name calls are passed on unchanged (`MC-520` 3). The V2.1 `getDatabase` proxy half of the title is moot (V2 and V2.1 plugins are not executed; the V3 `getDatabase` is a permission-gated snapshot, TRACED in lane F's sizing). Lane F suggests dropping the moot V2.1 proxy half from the title; this batch does not retitle. Lane F's records supersede the earlier notes "may now be closable after CHORE-206" and "Moot once CHORE-206 lands". Gate and check rows: ledger rows 3702 to 3708. Lane F's records do not state administrative closeout, so the ticket stays open here.
+
 **Status (2026-10-24, lane A records batch 10):** open; assigned to lane F's plugin batch with CHORE-30 (`MC-503`). Half is moot: CHORE-206 cuts A (`f6a9b2dd2`) and B (`562927bd3`) retired the V2.1 proxy route (`MC-349`). Cross-plugin `getArg` and `setArg` are V3 API and stay open (`MC-479`); low priority (`MC-165` 3).
 
 **Status (2026-10-02, later): low priority**, at the maintainer's word (`MC-165` 3: "old V2.1 plugins are getting
@@ -2994,6 +2976,8 @@ app's own images into the card, not the companion text, so this is its own ticke
 
 ### CHORE-147 — Android: the process aborts on exit with the OS Back (FORTIFY "pthread_mutex_lock called on a destroyed mutex")
 
+**Status (2026-10-25, lane A records batch 12):** stays a risk note, not part of lane A's Android Back batch (lane A ruling recorded in `MC-505`).
+
 **Status (2026-10-09): open; pre-existing; cause not established.** Type: bug, Android, teardown.
 
 - **Observed (device passes, session scratch `batch\device\report.md` section 9(b) and `batch\device2\report.md` section 5):** exiting with the OS Back finishes the activity and the process logs `FORTIFY: pthread_mutex_lock called on a destroyed mutex`, then SIGABRT in `hwuiTask1` during teardown (also logged by `RustStdoutStderr`). Pass 2: BASELINE (`8acadfe0`) on the emulator, trial 5; the amendment build on the emulator, trials 1 and 3, and on the Note 9 (OS back gesture 07:50:55 and `KEYCODE_BACK` 08:23:10). The zygote reports "exited cleanly (0)". So it is not caused by this batch. Pass 1's guess "likely wry/Rust teardown" is unverified.
@@ -3155,6 +3139,8 @@ app's own images into the card, not the companion text, so this is its own ticke
 
 ### CHORE-178 — Lorebook `searchMatch` slices from `length - scanDepth` with no clamp, so a scan depth larger than the message count drops the oldest messages
 
+**Status (2026-10-25, lane A records batch 12, from lane G's records):** fixed on `worktree-Lane-G` in `d4e868da7`, technically accepted, merged to `main` as `dceab1844` (pushed). `searchMatch` clamps the scan window's start at 0, and a non-number or negative `@@scan_depth` returns `false`, so the configured depth stays and a `@@@scan_depth` fallback applies (`MC-540` 1 and 2). New test file `lorebookScanDepth.svelte.test.ts`: 13 tests, 6 reproducers fail on `df408f8de` and pass after, 7 guards pass before and after. Non-goal: a NaN or negative configured depth is not validated. Lane G's records do not state administrative closeout, so the ticket stays open here.
+
 **Status (2026-10-24, lane A records batch 10):** open; assigned to lane G's parity batch with CHORE-45 and CHORE-41 (`MC-503`). Source check by the batch 10 doc-verifier pass (reasoned, not run): there is no clamp; with the default depth of 5, a chat of 3 or 4 messages scans only the last 2 or 1.
 
 **Status (2026-10-11): open; not planned; present in upstream too.** Type: suspected defect (lorebook scan, plain and regex keys).
@@ -3163,18 +3149,9 @@ app's own images into the card, not the companion text, so this is its own ticke
 - **Source and inference:** the follow-up in `Agents/Upstream-Merges.md` for the merge `1f455c0b` says a depth above the message count gives a negative start and drops the oldest messages (for example 3 messages with depth 5 keeps only the last 2) and that it affects plain keys as well as regex keys. That example is reasoning from `Array.prototype.slice` semantics; this pass did not execute it. Not tested.
 - **Not decided:** whether to fix it here or upstream; how often a depth above the message count occurs in practice.
 
-### CHORE-179 — Phone-browser Back closes neither the sidebar nor Grid edit mode
-
-**Status (2026-10-24, lane A records batch 10):** open; in the Android Back batch (`MC-501`, group F), which follows batch T.
-
-**Status (2026-10-11): open; not planned; the browser half of the S4-2 Back decision (`MC-278` 4, D2).** Type: limitation (browser Back).
-
-- **Decision (`MC-278` 4):** "Android app now, browser ticket (Recommended)": S4-2 hooks edit mode into the Android app's existing Back question (`window.__risuTaniumBack`, asked by `MainActivity`), not into browser history. The declined alternative was "Both now via browser history" (a history step while editing, which the question said has several timing pitfalls and adds history entries for the whole app).
-- **Inferred, not run:** the question put to the maintainer states that in a phone browser Back is the browser's own navigation and does not close the sidebar today. `charlist\back-mechanism.md` (an `investigator` trace, not independently verified) read from source that only `MainActivity` asks the page Back hook, so a browser never asks it. Nothing was run in a phone browser. TODO(evidence).
-- **Related, accepted limitation R5 (`charlist\s4-2b-change1-report.md`):** where a history entry exists, a second Back may go back in history.
-- **Not decided:** the mechanism for browsers.
-
 ### CHORE-180 — Back on screens with their own back stack and no Back handler: the Beta Mobile GUI chat "Menu" page shows the quit toast and does not close
+
+**Status (2026-10-25, lane A records batch 12):** in lane A's Android Back batch (`MC-505`); the plan passed Gate 1 with amendments (`opus-reviewer`, [APPROVE WITH AMENDMENTS]) and stage A is next.
 
 **Status (2026-10-24, lane A records batch 10):** open; in the Android Back batch (`MC-501`, group F), which follows batch T.
 
@@ -3323,11 +3300,15 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 
 ### CHORE-351 (new) — select and input prompts have no cancel, so Back cannot close them (MC-455 Q2)
 
+**Status (2026-10-25, lane A records batch 12):** stays its own ticket, outside lane A's Android Back batch (`MC-505`).
+
 `alertSelect` and `alertInput` prompts have no cancel button and no cancel value; about 50 external call sites read their answer (the verifier's count, which misses calls through a reference). Under MC-455, Android Back does nothing while one is open. A real cancel needs a cancel value and a caller audit. (The `selectModule` prompt is not part of this ticket: its X button answers `''`, which its only caller treats as a cancel, so Back answers it the same way under CHORE-181.)
 
 **Status (2026-10-22): open, not scheduled.** Filed per MC-455 Q2 ("Nothing for now, ticket it").
 
 ### CHORE-352 (new) — Back does not close Settings, the Realm frame, popups or panels (MC-455 Q1)
+
+**Status (2026-10-25, lane A records batch 12):** in lane A's Android Back batch (`MC-505`, which reverses `MC-455` Q1 for this ticket); the plan passed Gate 1 with amendments (`opus-reviewer`, [APPROVE WITH AMENDMENTS]) and stage A is next.
 
 Overlays outside `alertStore` (Settings, the Realm frame, the bookmark list, `popupStore`, the easy panel, the popup editor, the loadout modal, iris, the custom sidebar config dialog) have no Back handler: with one open, Android Back takes the toast-then-quit guard. MC-455 kept that behaviour for CHORE-181. The phone sidebar and Grid edit mode already have Back handlers.
 
@@ -3471,6 +3452,8 @@ Stage 0 (measurement only) is approved as `MC-348` ("Now, PC + one Note 9 run (R
 
 ### CHORE-354 (new) — on a large profile the page does not answer Back within 1 s after the first Back, and no hide event fires on the quit
 
+**Status (2026-10-25, lane A records batch 12):** out of lane A's Android Back batch; it needs a profile first (lane A ruling recorded in `MC-505`).
+
 On phone 2 with the large profile `m2-mix18k` (CHORE-181 cell 5), after the first Android Back showed the quit toast the page logged nothing further and the toast never cleared; the second Back quit only through the host's 1 s timeout (1.018 s, against 16 to 30 ms on the small profile). The edits persisted. On both large-profile quits no `visibilitychange` to hidden fired (0 of 2, against 5 of 5 on the small profile; `pagehide` 0 of 7 overall), so save-on-hide (CHORE-153) did not run and the Back-guard flush (CHORE-181) was the only save request before the quit.
 
 - Candidate causes (neither shown): (a) the Back-guard flush's save, only if `hasUnsavedSaveMarks()` was true at the first Back (in run r1 the edit was 3.4 s old, so the flush was probably a no-op; only run r2-fast could involve it); (b) the debounced save or other large-profile main-thread work. Not shown to be a CHORE-181 regression.
@@ -3478,6 +3461,23 @@ On phone 2 with the large profile `m2-mix18k` (CHORE-181 cell 5), after the firs
 - Cost bounded: the second Back still quits through the host timeout; no edit was lost in the runs.
 
 **Status (2026-10-22): open, low priority, not scheduled.** Filed at lane A's request from the verified CHORE-181 phone report (`%TEMP%\risu-b715\c181-phone\report.md`, corrections appended). Folded in by lane A in `a25ceb764`.
+
+### CHORE-370 — V3 `setCharacterToIndex` may not mark its write for saving (new)
+
+**Folded in from lane F's records (merge `4331440b6`), 2026-10-25, lane A records batch 12.**
+
+- Status (2026-10-24, Lane F): open, in this batch (`MC-520` 4). Found by the CHORE-30 sizing (TRACED, not run): it assigns `DBState.db.characters[charId]` directly and does not call `setDatabaseLite`, unlike `setChar`. Whether the write is saved is unverified; the check comes first.
+- Status (2026-10-25, Lane F): premise refuted; no fix needed (`MC-520` 4 called for a fix only if the write is not saved). The sizing's premise that `setChar` marks characters through `setDatabaseLite` was wrong: the `setDatabaseLite` that `setChar` calls (`src/ts/storage/database.svelte.ts`) only wraps module asset lists and assigns `DBState.db`; it marks no characters. Both `setChar` and `setCharacterToIndex` are saved by the identity tracker in `src/ts/storage/dbChangeEffects.svelte.ts`, which marks any replaced element of `DBState.db.characters` by `chaId`; its comment names V3 `setCharacterToIndex` (TRACED). The existing guard `src/ts/plugins/apiV3/tests/v3SaveMarks.svelte.test.ts` drives `setCharacterToIndex` through the real effects and the real encoder round trip: 2 passed, run by Lane F on `df408f8de` on 2026-10-25 (EXECUTED). Packet: the investigator's hand-back, with `%TEMP%\risu-lane-f\save-mark\neg1.out.json` for the `-1` case.
+- Residual, not sized: when the replacing object carries a different `chaId` from the slot it replaces, the tracker does not delete the old `chaId`'s block (TRACED: the tracker only appends marks). `MC-520` 1 covers `setChar`/`setCharacter` only, so `setCharacterToIndex` still accepts a different `chaId`. Whether the old block comes back on reload was not checked. TODO(evidence).
+
+### CHORE-390 — Script cache stage 2: a prompt-pass cache sized to the chat, under a memory cap
+
+**Folded in from lane G's records (merge `dceab1844`), 2026-10-25, lane A records batch 12.**
+
+**Status (2026-10-24): open, not scheduled; waits for the memory-footprint work (`MC-541` 2, `MC-119`).** Type: performance limitation.
+
+- After CHORE-45 stage 1 the send's prompt pass has its own cache, still capped by entry count. A chat with more than that many cacheable messages misses on every message of a repeat send (sizing packet `%TEMP%\risu-lane-g\chore45\result.md`, simulation RUN in node; not measured on a device).
+- Proposed shape (from the sizing packet, not decided): the prompt-pass capacity follows the chat's length, bounded by a byte budget. The budget is the maintainer's number.
 
 ### Grid avatar loading (MC-452, MC-459) — stage A, the thumbnail write leaves the generation slot (no CHORE number)
 
