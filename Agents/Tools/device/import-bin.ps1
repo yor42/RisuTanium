@@ -23,7 +23,7 @@
 param(
     [string]$CheckId = 'import-bin',
     [Parameter(Mandatory)][string]$OutDir,
-    [ValidateRange(1, 1800)][int]$MaxSeconds = 1500,
+    [ValidateRange(1, 7200)][int]$MaxSeconds = 1500,
     [string]$FixturePath,
     [string]$RemoteName,
     [string]$RemoteDir = '/sdcard/Download',
@@ -244,7 +244,9 @@ try {
         $left = Get-Remaining
         if ($left -le 0) { Finish 'timeout' 'cap reached before the fixture push' }
         $pushStarted = $true
-        $pf = Push-Fixture -Serial $Serial -LocalPath $FixturePath -RemotePath $remotePath -TimeoutSec ([math]::Min(1200, $left))
+        # Every cap up to the former 1800 s maximum keeps the push's 1200 s sub-cap; only a longer cap lets the push use what the run has left.
+        $pushCapSec = if ($MaxSeconds -gt 1800) { $left } else { [math]::Min(1200, $left) }
+        $pf = Push-Fixture -Serial $Serial -LocalPath $FixturePath -RemotePath $remotePath -TimeoutSec $pushCapSec
         $r.fixture = [ordered]@{ name = $RemoteName; remotePath = $remotePath; bytes = $pf.Bytes; sha256 = $pf.Sha256; pushSkipped = $pf.Skipped; pushSeconds = $pf.Seconds; mbPerSec = $pf.MbPerSec }
         End-Step $(if ($pf.Skipped) { 'push skipped, device hash matches' } else { 'pushed and verified' })
         if (-not $pf.Ok) { Finish $(if ($pf.Reason -match 'exceeded') { 'timeout' } else { 'fail' }) ('fixture: ' + $pf.Reason) }

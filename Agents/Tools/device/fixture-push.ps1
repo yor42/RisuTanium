@@ -13,7 +13,7 @@ param(
     [switch]$AllowLarge,
     [string]$AllowLargeReason,
     [switch]$Remove,
-    [ValidateRange(1, 1800)][int]$MaxSeconds = 1200,
+    [ValidateRange(1, 7200)][int]$MaxSeconds = 1200,
     [string]$Serial,
     [string[]]$AllowedSerials,
     [string]$Package,
