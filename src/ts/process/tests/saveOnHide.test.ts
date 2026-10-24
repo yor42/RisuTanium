@@ -1,10 +1,10 @@
 import { describe, expect, test, vi } from 'vitest'
 
 // The installer takes its collaborators as arguments; this keeps the page's save loop out of the module graph.
-vi.mock('src/ts/globalApi.svelte', () => ({ requestSaveNow: vi.fn(), hasUnsavedSaveMarks: vi.fn(() => false) }))
+vi.mock('src/ts/globalApi.svelte', () => ({ requestSaveNow: vi.fn(), requestNetSweep: vi.fn(), hasUnsavedSaveMarks: vi.fn(() => false) }))
 
 import { flushBeforeLeaving, flushPageBeforeLeaving, installSaveOnHide, type FlushDeps, type SaveOnHideDeps } from 'src/ts/process/saveOnHide'
-import { hasUnsavedSaveMarks, requestSaveNow } from 'src/ts/globalApi.svelte'
+import { hasUnsavedSaveMarks, requestNetSweep, requestSaveNow } from 'src/ts/globalApi.svelte'
 import { beginInFlight, resetInFlightForTest } from 'src/ts/process/inFlightWork'
 import type { InFlightKind } from 'src/ts/process/inFlightWork'
 import type { ActiveStream } from 'src/ts/process/activeStreams'
@@ -187,7 +187,101 @@ describe('the flush shared with the Back press', () => {
     })
 })
 
+describe('the idle-net sweep asked by every flush', () => {
+    function sweepingDeps(options: { kinds: InFlightKind[], unsaved: boolean, streams?: ActiveStream[], sweepNet?: () => void }): FlushDeps & { calls: string[] } {
+        const calls: string[] = []
+        return {
+            calls,
+            kinds: () => options.kinds,
+            streams: () => options.streams ?? [],
+            unsaved: () => options.unsaved,
+            mark: (chaId) => { calls.push(`mark:${chaId}`) },
+            saveNow: () => { calls.push('saveNow') },
+            sweepNet: options.sweepNet ?? (() => { calls.push('sweepNet') }),
+        }
+    }
+
+    test('a clean page with no chat sweeps the net and asks for no save, so it is not dirtied', () => {
+        const deps = sweepingDeps({ kinds: [], unsaved: false })
+
+        flushBeforeLeaving(deps)
+
+        expect(deps.calls).toEqual(['sweepNet'])
+    })
+
+    test('a dirty page sweeps the net before it asks for the save', () => {
+        const deps = sweepingDeps({ kinds: [], unsaved: true })
+
+        flushBeforeLeaving(deps)
+
+        expect(deps.calls).toEqual(['sweepNet', 'saveNow'])
+    })
+
+    test('a chat in flight sweeps the net before the stream marks and the save', () => {
+        const deps = sweepingDeps({ kinds: ['chat'], unsaved: false, streams: [{ chaId: 'a', replyChatId: 'r1' }] })
+
+        flushBeforeLeaving(deps)
+
+        expect(deps.calls).toEqual(['sweepNet', 'mark:a', 'mark:undefined', 'saveNow'])
+    })
+
+    test('a throwing sweep does not stop the flush', () => {
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+        const deps = sweepingDeps({ kinds: [], unsaved: true, sweepNet: () => { throw new Error('the sweep failed') } })
+
+        flushBeforeLeaving(deps)
+
+        expect(deps.calls).toEqual(['saveNow'])
+        expect(logged).toHaveBeenCalledTimes(1)
+        logged.mockRestore()
+    })
+
+    test('a flush with no sweep member behaves as before', () => {
+        const deps = sweepingDeps({ kinds: [], unsaved: true })
+        delete deps.sweepNet
+
+        flushBeforeLeaving(deps)
+
+        expect(deps.calls).toEqual(['saveNow'])
+    })
+
+    test('the hide listeners sweep as well', () => {
+        const doc = new EventTarget() as EventTarget & { visibilityState: 'visible' | 'hidden' }
+        doc.visibilityState = 'hidden'
+        const win = new EventTarget()
+        const sweep = vi.fn()
+        const uninstall = installSaveOnHide({
+            doc: doc as unknown as SaveOnHideDeps['doc'],
+            win: win as unknown as SaveOnHideDeps['win'],
+            kinds: () => [],
+            streams: () => [],
+            unsaved: () => false,
+            mark: () => {},
+            saveNow: () => {},
+            sweepNet: sweep,
+        })
+
+        doc.dispatchEvent(new Event('visibilitychange'))
+        win.dispatchEvent(new Event('pagehide'))
+        uninstall()
+
+        expect(sweep).toHaveBeenCalledTimes(2)
+    })
+})
+
 describe('the page flush wiring used by the Back press', () => {
+    test('the page flush reaches the page\'s net sweep, and a clean page is still not asked to save', () => {
+        resetInFlightForTest()
+        vi.mocked(requestSaveNow).mockClear()
+        vi.mocked(requestNetSweep).mockClear()
+        vi.mocked(hasUnsavedSaveMarks).mockReturnValue(false)
+
+        flushPageBeforeLeaving()
+
+        expect(requestNetSweep).toHaveBeenCalledTimes(1)
+        expect(requestSaveNow).not.toHaveBeenCalled()
+    })
+
     test('a clean page with no chat in flight requests no save', () => {
         resetInFlightForTest()
         vi.mocked(requestSaveNow).mockClear()

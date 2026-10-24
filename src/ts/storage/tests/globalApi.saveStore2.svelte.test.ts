@@ -408,6 +408,76 @@ describe('new behaviour: the page hide saves an unsaved edit with no chat in fli
     })
 })
 
+describe('new behaviour: the net backstop on the real port (hidden page and Back)', () => {
+    const idleNet = { intervalMs: 100, moduleIntervalMs: 1_000_000_000, backstopMs: 30_000 }
+
+    /** Counts the idle net's verdict calls and its slots (one `netScan` each) on the encoder the loop runs. */
+    function watchNet(page: Page): { verdicts: string[], scans: () => number } {
+        const encoder = page.k.encoder
+        const verdicts: string[] = []
+        let scans = 0
+        const realVerdict = encoder.verdictOf.bind(encoder)
+        const realScan = encoder.netScan.bind(encoder)
+        encoder.verdictOf = (slot) => {
+            verdicts.push(String((slot as { chaId?: unknown }).chaId))
+            return realVerdict(slot)
+        }
+        encoder.netScan = (scanned) => {
+            scans += 1
+            return realScan(scanned)
+        }
+        return { verdicts, scans: () => scans }
+    }
+
+    /** Waits until every resident has been verdicted once and then at least two slots passed with no further verdict: the skip is live. */
+    async function reachSkipControl(page: Page, watch: ReturnType<typeof watchNet>): Promise<void> {
+        const residents = characters(page.db).length
+        await until(() => watch.verdicts.length >= residents, 'every resident verdicted once', 20_000)
+        const verdicts = watch.verdicts.length
+        const scans = watch.scans()
+        await until(() => watch.scans() >= scans + 2, 'two slots to pass', 20_000)
+        expect(watch.verdicts.length).toBe(verdicts)
+    }
+
+    test('the page reports hidden with no event: the next turns verdict every resident although their clocks are fresh', async () => {
+        let watch: ReturnType<typeof watchNet> | null = null
+        const page = await startPage(small(), { idleNet, beforeStart: (started) => { watch = watchNet(started) } })
+        const net = watch as unknown as ReturnType<typeof watchNet>
+        await reachSkipControl(page, net)
+        const show = hideDocument()
+        try {
+            const before = net.verdicts.length
+            await until(() => net.verdicts.length >= before + characters(page.db).length, 'a verdict for every resident while hidden', 20_000)
+            expect(new Set(net.verdicts.slice(before)).size).toBe(characters(page.db).length)
+        } finally {
+            show()
+        }
+    })
+
+    test('the Back press on a clean page sweeps the net: every resident is verdicted at its next turn, and the page is not dirtied', async () => {
+        let watch: ReturnType<typeof watchNet> | null = null
+        const page = await startPage(small(), { idleNet, beforeStart: (started) => { watch = watchNet(started) } })
+        const net = watch as unknown as ReturnType<typeof watchNet>
+        await reachSkipControl(page, net)
+        await settled(page.w)
+        const { flushPageBeforeLeaving } = await import('src/ts/process/saveOnHide')
+        const marks = page.w.api.getSaveMarkCount()
+        const before = net.verdicts.length
+        flushPageBeforeLeaving()
+        expect(page.w.api.getSaveMarkCount()).toBe(marks)
+        expect(page.w.api.hasUnsavedSaveMarks()).toBe(false)
+        await until(() => net.verdicts.length >= before + characters(page.db).length, 'a verdict for every resident after the sweep', 20_000)
+        expect(new Set(net.verdicts.slice(before)).size).toBe(characters(page.db).length)
+        expect(page.w.api.getSaveMarkCount()).toBe(marks)
+        expect(page.w.api.hasUnsavedSaveMarks()).toBe(false)
+        // The request is taken once: the clocks set by the sweep's verdicts are fresh again and the next slots skip.
+        const verdicts = net.verdicts.length
+        const scans = net.scans()
+        await until(() => net.scans() >= scans + 2, 'two slots to pass after the sweep', 20_000)
+        expect(net.verdicts.length).toBe(verdicts)
+    })
+})
+
 describe('new behaviour: a no-change pass writes nothing', () => {
     test('a mark with no edit commits no unit and no commit key, and callbacks still fire', async () => {
         const page = await startPage(small())

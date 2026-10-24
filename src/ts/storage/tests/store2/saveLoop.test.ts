@@ -1507,7 +1507,7 @@ describe('new behaviour: a character that cannot be saved is skipped, noticed on
 
     test('new behaviour: the idle net alone reports a break nothing marked and clears a fix nothing marked', async () => {
         const db = clone(buildSmall(4))
-        const loop = await startLoop(db, { idleNet: { intervalMs: 1 } })
+        const loop = await startLoop(db, { idleNet: { intervalMs: 1, backstopMs: 0 } })
         const original = chars(db)[1].personality
         await new Promise(resolve => setTimeout(resolve, 50))
         chars(db)[1].personality = cyclic()

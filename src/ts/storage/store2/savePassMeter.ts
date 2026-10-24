@@ -285,7 +285,7 @@ export interface NetShadowTally {
 export type NetSlotReason =
     | 'modulesDue' | 'consent' | 'readFailed' | 'parked' | 'dueAfterRead' | 'pending' | 'unheld' | 'stub' | 'unsavableAbsent'
     | 'verdictClean' | 'verdictDirty' | 'verdictUnknown' | 'slotMissing' | 'guardThrow' | 'noResident'
-    | 'dueAfterYield' | 'dbChanged'
+    | 'dueAfterYield' | 'dbChanged' | 'verdictSkipped'
 
 /** What the judged character's verdict said. A `verdictOf` that threw reads as `unknown`: the encoder logs the throw and returns it. */
 export type NetVerdictOutcome = 'clean' | 'dirty' | 'unknown'
@@ -494,7 +494,7 @@ function netFoundNow(): NetFoundState {
 
 const NET_SLOT_REASONS: readonly NetSlotReason[] = [
     'modulesDue', 'consent', 'readFailed', 'parked', 'dueAfterRead', 'pending', 'unheld', 'stub', 'unsavableAbsent',
-    'verdictClean', 'verdictDirty', 'verdictUnknown', 'slotMissing', 'guardThrow', 'noResident', 'dueAfterYield', 'dbChanged',
+    'verdictClean', 'verdictDirty', 'verdictUnknown', 'slotMissing', 'guardThrow', 'noResident', 'dueAfterYield', 'dbChanged', 'verdictSkipped',
 ]
 
 interface NetVerdictState {
@@ -779,6 +779,17 @@ export function noteSignalVerdict(chaId: string, outcome: NetVerdictOutcome, end
             if (endAt !== null) {
                 takeSignalSnapshot(draft, endAt)
             }
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+/** A slot that took a resident's turn but skipped its verdict names the resident, with no outcome, so its slot record still carries the judged `chaId`. */
+export function noteSignalSkipped(chaId: string): void {
+    try {
+        if (signalDraftInFlight !== null) {
+            signalDraftInFlight.chaId = chaId
         }
     } catch {
         // A measurement failure never reaches the save.

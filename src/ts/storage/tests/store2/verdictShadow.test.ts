@@ -792,7 +792,7 @@ afterEach(() => {
 })
 
 async function startWorld(db: Database, lists?: ListDerivation): Promise<World> {
-    const kit = await startStore2({ db, idleNet: { intervalMs: 1 }, lists })
+    const kit = await startStore2({ db, idleNet: { intervalMs: 1, backstopMs: 0 }, lists })
     const encoder = createSaveEncoder({ previous: kit.context.previous, lists: kit.context.lists, env: kit.context.env })
     kit.context.encoder = encoder
     const counted = { reads: 0, sweeps: 0 }

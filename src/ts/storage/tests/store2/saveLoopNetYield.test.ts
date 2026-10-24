@@ -147,7 +147,7 @@ function cyclic(): Entry {
 }
 
 async function startWorld(db: Database, options: StartOptions = {}): Promise<World> {
-    const kit = await startStore2({ db, idleNet: { intervalMs: 1 } })
+    const kit = await startStore2({ db, idleNet: { intervalMs: 1, backstopMs: 0 } })
     const inner = createSaveEncoder({ previous: kit.context.previous, lists: kit.context.lists, env: kit.context.env })
     const requests: SavePassRequest[] = []
     const verdicts: string[] = []

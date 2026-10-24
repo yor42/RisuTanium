@@ -108,7 +108,7 @@ interface StartOptions {
 }
 
 async function startWorld(db: Database, options: StartOptions = {}): Promise<World> {
-    const kit = await startStore2({ db, idleNet: { intervalMs: 1 }, lists: options.lists })
+    const kit = await startStore2({ db, idleNet: { intervalMs: 1, backstopMs: 0 }, lists: options.lists })
     const inner = createSaveEncoder({ previous: kit.context.previous, lists: kit.context.lists, env: kit.context.env })
     const requests: SavePassRequest[] = []
     const encoder: SaveEncoder = Object.create(inner) as SaveEncoder
