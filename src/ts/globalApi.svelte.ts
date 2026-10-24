@@ -4225,7 +4225,7 @@ export async function fetchNative(url: string, arg: {
             const stopped = arg.signal?.aborted === true
             abandonNative()
             finish()
-            throw new Error(stopped ? 'aborted' : 'Request timed out')
+            throw new Error(stopped ? 'aborted' : language.errors.requestTimedOut)
         }
 
         // A failure after the head belongs to the stream; before it, to this call.
