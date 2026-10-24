@@ -201,7 +201,13 @@ if(existsSync(revisionsPath)){
             }
         }
     } catch (error) {
-        console.error('Failed to parse __revisions.json, starting with an empty revision store:', error);
+        // Running without these revisions could hand out lower ones than a
+        // device or tab that is still open from before has already seen, and
+        // that client could then overwrite newer data. Neither file is touched.
+        console.error(`Cannot use ${revisionsPath} (${error?.code ?? error?.message ?? 'unknown'}); refusing to start, because running without its revisions could let a device or tab that is still open from before overwrite newer data. ` +
+            'Restoring a good copy of the file is the safe fix. Moving it aside instead restarts from zero every revision that __revisions.log does not hold, ' +
+            'which carries that risk, so only do that knowing it. Keep __revisions.log in place either way.', error);
+        process.exit(1)
     }
 }
 if(existsSync(revisionsLogPath)){
@@ -566,6 +572,15 @@ const authRouteLimiter = rateLimit({
     message: { error: 'Too many requests. Please retry shortly.' }
 });
 const loginRouteLimiter = rateLimit({
+    windowMs: 30 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many attempts. Please wait and try again later.' }
+});
+// Same budget as the login route, counted separately so a burst on one route
+// does not use up the other's attempts.
+const setPasswordRouteLimiter = rateLimit({
     windowMs: 30 * 1000,
     max: 10,
     standardHeaders: true,
@@ -1503,7 +1518,15 @@ app.post('/api/login', loginRouteLimiter, async (req, res) => {
         res.status(400).send({error: 'Password not set'})
         return;
     }
+    if(typeof req.body?.password !== 'string'){
+        res.status(400).send({error: 'Password incorrect'})
+        return;
+    }
     if(req.body.password && req.body.password.trim() === password.trim()){
+        if(typeof req.body.publicKey !== 'object' || req.body.publicKey === null){
+            res.status(400).send({error: 'Public key missing or invalid'})
+            return;
+        }
         knownPublicKeysHashes.push(await hashJSON(req.body.publicKey))
         writeFileSync(knownPublicKeysPath, JSON.stringify(knownPublicKeysHashes), 'utf-8')
         res.send({status:'success'})
@@ -1524,8 +1547,12 @@ app.post('/api/crypto', async (req, res) => {
 })
 
 
-app.post('/api/set_password', async (req, res) => {
+app.post('/api/set_password', setPasswordRouteLimiter, async (req, res) => {
     if(password === ''){
+        if(typeof req.body?.password !== 'string' || req.body.password.trim() === ''){
+            res.status(400).send({error: 'Password missing or invalid'})
+            return;
+        }
         password = req.body.password
         writeFileSync(passwordPath, password, 'utf-8')
         res.send({status: 'success'})
