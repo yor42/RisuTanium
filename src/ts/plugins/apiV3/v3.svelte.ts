@@ -777,6 +777,14 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         }
         oldApis.setChar(char, pluginName)
     }
+    // Fork-specific: the deprecated `getArg`/`setArg` take `Name::key`; a V3
+    // plugin may address only its own name.
+    const requireOwnArgument = (arg:string, replacement:string) => {
+        const separator = typeof arg === 'string' ? arg.indexOf('::') : -1
+        if(separator < 0 || arg.slice(0, separator) !== plugin.name){
+            throw new Error(`A plugin can read or change only its own arguments; use ${replacement}('key') for "${plugin.name}".`)
+        }
+    }
     const getPluginScriptHash = createPluginScriptHashGetter(plugin.script, hasher)
     const getPermission = async (permissionDesc: PluginPermission, reconfirm: boolean|'periodically' = false) => {
         return getPluginPermission(plugin.name, await getPluginScriptHash(), permissionDesc, reconfirm)
@@ -985,8 +993,14 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
 
         //Deprecated APIs from v2.1
         //Use getArgument / setArgument instead if possible
-        getArg: oldApis.getArg,
-        setArg: oldApis.setArg,
+        getArg: (arg:string) => {
+            requireOwnArgument(arg, 'getArgument')
+            return oldApis.getArg(arg)
+        },
+        setArg: (arg:string, value:string|number) => {
+            requireOwnArgument(arg, 'setArgument')
+            oldApis.setArg(arg, value)
+        },
 
         //New APIs for v3
         getArgument: async (key:string) => {

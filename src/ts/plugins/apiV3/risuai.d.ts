@@ -1342,6 +1342,12 @@ interface RisuaiPluginAPI {
      * different unit, or does not exist. The same placeholder you read from
      * `getDatabase` is accepted while the live character is still archived
      * under that unit, and so is a full character.
+     *
+     * **Fork-specific note (not upstream RisuAI):** this also rejects, and
+     * writes nothing, when no character is selected or when `character.chaId`
+     * differs from the selected character's (for example after the user
+     * switched characters). A `character` with no `chaId` still replaces the
+     * selected character.
      */
     setCharacter(character: any): Promise<void>;
 
@@ -1360,7 +1366,8 @@ interface RisuaiPluginAPI {
      * is loaded in full, is archived under a different unit, or does not exist.
      * The same placeholder you read from `getDatabase` is accepted while the
      * live character is still archived under that unit, and so is a full
-     * character.
+     * character. It also rejects when no character is selected or when
+     * `character.chaId` differs from the selected character's.
      */
     setChar(character: any): Promise<void>;
 
@@ -1533,11 +1540,20 @@ interface RisuaiPluginAPI {
 
     /**
      * @deprecated Use getArgument() instead
+     *
+     * **Fork-specific note (not upstream RisuAI):** `arg` must be
+     * `"<your plugin name>::<key>"`. Any other name, or a key without `::`,
+     * throws; a plugin cannot read another plugin's arguments.
      */
     getArg(arg: string): any;
 
     /**
      * @deprecated Use setArgument() instead
+     *
+     * **Fork-specific note (not upstream RisuAI):** `arg` must be
+     * `"<your plugin name>::<key>"`. Any other name, or a key without `::`,
+     * throws and changes nothing; a plugin cannot change another plugin's
+     * arguments.
      */
     setArg(arg: string, value: string | number): void;
 
