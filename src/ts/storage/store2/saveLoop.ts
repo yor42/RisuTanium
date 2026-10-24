@@ -13,7 +13,7 @@ import type { Store2SaveContext } from './saveActive'
 import { createSaveEncoder, type SavePassRequest, type SavePlan } from './saveEncoder'
 import {
     noteNetSlotBegin, noteNetSlotEnd, noteNetSlotMs, noteNetSlotPart, noteNetSlotPassMs, noteSignalAck, noteSignalAdopted, noteSignalKept,
-    noteSignalPassStart, noteSignalResidents, noteSignalSlotClock, noteSignalUnchanged, noteSignalVerdict, peekSaveMarks,
+    noteSignalPassStart, noteSignalResidents, noteSignalSkipped, noteSignalSlotClock, noteSignalUnchanged, noteSignalVerdict, peekSaveMarks,
 } from './savePassMeter'
 import { startYieldGaps, type YieldGapRecorder } from './saveYieldMeter'
 
@@ -84,10 +84,18 @@ export interface IdleNetOptions {
     intervalMs: number
     /** The least time between two ticks that take module scope; defaults to `IDLE_NET_MODULE_INTERVAL_MS`. */
     moduleIntervalMs?: number
+    /** Tests only: a clean verdict younger than this lets the net skip that resident's next verdict; 0 disables the skip. */
+    backstopMs?: number
 }
 
 /** The idle net's default cadence: one resident character per tick. */
 export const IDLE_NET_INTERVAL_MS = 2000
+
+/**
+ * A resident whose verdict was clean less than this long ago is passed over at its next turn. The rotation itself is
+ * unchanged, so a quiet resident is re-verdicted at its first turn at or after this age: this plus up to one rotation.
+ */
+const NET_VERDICT_BACKSTOP_MS = 30_000
 
 /** The idle net takes module scope at most this often; a module edit that raised no mark waits for the next such tick. */
 export const IDLE_NET_MODULE_INTERVAL_MS = 30_000
@@ -182,6 +190,10 @@ export interface Store2LoopPort {
     now(): number
     /** The idle-net slot's one yield before its verdict; absent means `yieldToEventLoop`. Tests inject their own. */
     yieldNow?(): Promise<void>
+    /** True once after the page asked for a sweep (a hide or Back): every resident is then verdicted at its next turn. Read after the yield. */
+    takeNetSweep?(): boolean
+    /** Whether the page is hidden; a hidden page's slots never skip a verdict. Read after the yield. */
+    pageHidden?(): boolean
 }
 
 /** Takes the marks of a pass and trims the live tracker to its sticky front, before any await. */
@@ -294,6 +306,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     const encoder = context.encoder ?? createSaveEncoder({ previous: context.previous, lists: context.lists, env: context.env })
     const netMs = context.idleNet === null ? null : (context.idleNet?.intervalMs ?? IDLE_NET_INTERVAL_MS)
     const moduleMs = context.idleNet?.moduleIntervalMs ?? IDLE_NET_MODULE_INTERVAL_MS
+    const backstopMs = context.idleNet?.backstopMs ?? NET_VERDICT_BACKSTOP_MS
 
     let savetrys = 0
     let retries = 0
@@ -305,6 +318,13 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let forced = false
     let peerSignal = false
     let netIndex = 0
+    /**
+     * When each resident's last clean verdict was taken (`port.now()`). An entry lives from a clean `verdictOf` until that
+     * resident's next turn, whether `netDecision` or the full tick takes it; a skipped turn puts the same value back, so
+     * the age counts from the last real verdict. A hide or Back sweep clears every entry, and the prune drops the entries
+     * of ids no longer resident; no ack, peer commit or adoption touches it.
+     */
+    const cleanVerdictAt = new Map<string, number>()
     let lastNetAt = port.now()
     /** When a tick last took module scope; the next such tick is `moduleMs` later, whatever the first one came to. */
     let lastModuleNetAt = port.now()
@@ -520,6 +540,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
         const index = netIndex % residents.length
         netIndex = (index + 1) % residents.length
+        cleanVerdictAt.delete(residents[index])
         return { marked: new Set(), modules: false, whole: false, net: { chaId: residents[index], modules: modulesDue }, ...yielding }
     }
 
@@ -911,7 +932,13 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         const residents = scan.residents
         // Before any early return: a slot that ends here with no resident left must still release the shadow of a character
         // that was put back. Its own lap, so the sub-parts still sum to `checksMs`.
-        encoder.pruneShadows(new Set(residents))
+        const residentSet = new Set(residents)
+        encoder.pruneShadows(residentSet)
+        for (const clockId of cleanVerdictAt.keys()) {
+            if (!residentSet.has(clockId)) {
+                cleanVerdictAt.delete(clockId)
+            }
+        }
         if (MEASURE) {
             const pruneDoneAt = performance.now()
             noteNetSlotPart('pruneMs', pruneDoneAt - checkLapAt)
@@ -929,7 +956,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         // One yield before the verdict, so the work above and the work below are separate stretches of the event loop. It
         // sits before the `netIndex` advance: a slot that leaves at `dueAfterYield` or `dbChanged` uses no resident's turn.
         // This loop is suspended during the yield, so `previous`'s identity, `pendingKey`, the shadow map, `netIndex`,
-        // `lastModuleNetAt`, `unsavable`, `park` and `consent` cannot change; character loads may fill missing unit digests
+        // `cleanVerdictAt`, `lastModuleNetAt`, `unsavable`, `park` and `consent` cannot change; `pageHidden` and
+        // `takeNetSweep` are the page's and are read after it; character loads may fill missing unit digests
         // in place, which depends only on the bytes and does not change a verdict. The write lock is not held across it.
         // `pruneMs` ends at the yield (the `noResident` check falls inside it) and `checksMs` is closed up to it; a later
         // exit that runs the `find` adds `findMs` to it, and one that does not leaves it as it is.
@@ -949,6 +977,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 netResumedAt = resumedAt
             }
         }
+        // A hide or Back asked for a sweep: every resident is verdicted at its next turn. Consumed on every slot that passes the yield.
+        if (port.takeNetSweep?.() === true) {
+            cleanVerdictAt.clear()
+        }
         if (port.isDue()) {
             if (MEASURE) {
                 noteNetSlotEnd('dueAfterYield')
@@ -966,6 +998,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         const index = netIndex % residents.length
         netIndex = (index + 1) % residents.length
         const chaId = residents[index]
+        const cleanAt = cleanVerdictAt.get(chaId)
+        cleanVerdictAt.delete(chaId)
         if (unsavable.has(chaId)) {
             if (MEASURE) {
                 noteNetSlotEnd('verdictUnknown', 'unknown')
@@ -988,8 +1022,24 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
             return { kind: 'full' }
         }
+        // The verdict alone is skipped: everything above ran as on the base, and the rotation has advanced. The old clock
+        // goes back unchanged so the age counts from the last real verdict. A hidden page never skips.
+        if (cleanAt !== undefined && backstopMs > 0 && !(port.pageHidden?.() ?? false)) {
+            const age = port.now() - cleanAt
+            if (age >= 0 && age < backstopMs) {
+                cleanVerdictAt.set(chaId, cleanAt)
+                if (MEASURE) {
+                    noteSignalSkipped(chaId)
+                    noteNetSlotEnd('verdictSkipped')
+                }
+                return { kind: 'none' }
+            }
+        }
         const verdictStartedAt = MEASURE ? performance.now() : 0
         const verdict = encoder.verdictOf(slot)
+        if (verdict === 'clean') {
+            cleanVerdictAt.set(chaId, port.now())
+        }
         if (MEASURE) {
             const verdictDoneAt = performance.now()
             noteNetSlotPart('verdictMs', verdictDoneAt - verdictStartedAt)

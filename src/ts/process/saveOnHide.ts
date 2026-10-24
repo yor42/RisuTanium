@@ -10,10 +10,14 @@
  * changes what a peer tab's commit or a parked loop sees. The save is best
  * effort, not durable: the asynchronous write may not finish if the page is
  * killed right away.
+ *
+ * Every flush, by hide or by Back, first asks the save loop to verdict each
+ * resident at its next turn. That request marks nothing and never makes the
+ * page dirty.
  */
 import { activeStreams, type ActiveStream } from './activeStreams'
 import { inFlightKinds, type InFlightKind } from './inFlightWork'
-import { hasUnsavedSaveMarks, requestSaveNow } from '../globalApi.svelte'
+import { hasUnsavedSaveMarks, requestNetSweep, requestSaveNow } from '../globalApi.svelte'
 import { markCharacterForSave } from '../storage/characterSaveMarks'
 
 export interface SaveOnHideDeps {
@@ -27,16 +31,24 @@ export interface SaveOnHideDeps {
     unsaved: () => boolean
     mark: (chaId: string | undefined) => void
     saveNow: () => void
+    /** Asks the idle net to verdict every resident at its next turn; it marks nothing and never dirties the page. */
+    sweepNet?: () => void
 }
 
-export type FlushDeps = Pick<SaveOnHideDeps, 'kinds' | 'streams' | 'unsaved' | 'mark' | 'saveNow'>
+export type FlushDeps = Pick<SaveOnHideDeps, 'kinds' | 'streams' | 'unsaved' | 'mark' | 'saveNow' | 'sweepNet'>
 
 /**
- * The one rule for leaving the page, by hide or by Back: with a chat in flight, mark its streams
- * and save; otherwise save only when there are unsaved edits. Without a chat in flight, a page
- * without unsaved edits is never made dirty, because the save request itself marks the page dirty.
+ * The one rule for leaving the page, by hide or by Back: first ask the idle net for a sweep, whatever else
+ * follows; then, with a chat in flight, mark its streams and save; otherwise save only when there are
+ * unsaved edits. Without a chat in flight, a page without unsaved edits is never made dirty, because the
+ * save request itself marks the page dirty.
  */
 export function flushBeforeLeaving(deps: FlushDeps): void {
+    try {
+        deps.sweepNet?.()
+    } catch (error) {
+        console.error(error)
+    }
     if (deps.kinds().includes('chat')) {
         for (const stream of deps.streams()) {
             deps.mark(stream.chaId)
@@ -75,6 +87,7 @@ const pageFlushDeps: FlushDeps = {
     unsaved: hasUnsavedSaveMarks,
     mark: markCharacterForSave,
     saveNow: requestSaveNow,
+    sweepNet: requestNetSweep,
 }
 
 /** The page's flush: the same rule the hide listeners apply. */

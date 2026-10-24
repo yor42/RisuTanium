@@ -853,6 +853,14 @@ export function requestSaveNow(): void {
     requestSaveNowImpl?.()
 }
 
+/** A hide or Back asked the store2 idle net to verdict every resident at its next turn; the loop takes it once. */
+let netSweepPending = false
+
+/** Asks for that sweep. It marks nothing and never makes the page dirty. */
+export function requestNetSweep(): void {
+    netSweepPending = true
+}
+
 /**
  * True from an edit's mark until the snapshot of the pass that took it, and
  * false after a snapshot that took every edit. A debounce running or a change
@@ -1750,6 +1758,12 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         sleep,
         sleepForever,
         now: () => Date.now(),
+        takeNetSweep() {
+            const pending = netSweepPending
+            netSweepPending = false
+            return pending
+        },
+        pageHidden: () => document.visibilityState === 'hidden',
     }
     if (MEASURE) {
         // A measurement build can hold the idle net while an export runs; dirty passes are not affected.
