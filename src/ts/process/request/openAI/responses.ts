@@ -791,7 +791,7 @@ function wrapResponsesToolStream(stream:ReadableStream<StreamResponseChunk>, bod
                 })
 
                 const transtream = getResponsesTranStream(arg)
-                resRec.body.pipeTo(transtream.writable)
+                resRec.body.pipeTo(transtream.writable).catch(() => {})
                 reader = transtream.readable.getReader()
                 lastValue = { "0": '' }
             }
@@ -856,7 +856,7 @@ export async function requestOpenAIResponseAPI(arg:RequestDataArgumentExtended):
         })
 
         const transtream = getResponsesTranStream(arg)
-        response.body.pipeTo(transtream.writable)
+        response.body.pipeTo(transtream.writable).catch(() => {})
         return {
             type: 'streaming',
             result: wrapResponsesToolStream(transtream.readable, body, headers, requestURL, arg, streamingLocalNetworkOptions)

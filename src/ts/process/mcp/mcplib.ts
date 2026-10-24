@@ -166,7 +166,15 @@ export class MCPClient{
         })
 
         while(true){
-            const {done, value} = await reader.read()
+            let done:boolean
+            let value:Uint8Array
+            try {
+                ({done, value} = await reader.read())
+            } catch (error) {
+                // A dropped connection ends the stream like a clean close; this loop runs unawaited.
+                console.warn('MCP SSE read failed', error)
+                break
+            }
             if(done) break
 
             buffer += decoder.decode(value, {stream: true})

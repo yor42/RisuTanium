@@ -437,17 +437,19 @@ describe('fetchNative stream pump while timers do not run', () => {
         expect(outcome.response).toBeNull()
     })
 
-    test('a command failure after the headers ends the stream', async () => {
+    test('a command failure after the headers errors the stream after the partial text', async () => {
         let finish: (value: string) => void = () => {}
         invokeMock.mockImplementation(() => new Promise<string>((resolve) => { finish = resolve }))
         const { id, pending } = await begin()
         emit(id, { type: 'headers', body: {}, status: 200 })
         emit(id, { type: 'chunk', body: b64('partial') })
         const response = await within(pending)
+        const reader: ReadableStreamDefaultReader<Uint8Array> = response!.body!.getReader()
 
         finish(JSON.stringify({ success: false, body: 'reset' }))
 
-        expect(await within(response!.text())).toBe('partial')
+        expect(new TextDecoder().decode((await within(reader.read())).value)).toBe('partial')
+        await expect(within(reader.read())).rejects.toThrow('reset')
     })
 
     test('an abort before the headers rejects as aborted', async () => {

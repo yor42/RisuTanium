@@ -1044,6 +1044,11 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                         })
 
                     } catch (error) {
+                        if(!arg?.abortSignal?.aborted){
+                            // A source that errored rejects every later read, so retrying would never end.
+                            controller.error(error)
+                            return
+                        }
                         await sleep(1)
                     }
                 }

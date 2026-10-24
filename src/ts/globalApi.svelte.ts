@@ -3581,10 +3581,21 @@ interface StreamedFetchEndData {
 }
 
 /**
- * Type representing a streamed fetch chunk.
- * @typedef {StreamedFetchChunkData | StreamedFetchHeaderData | StreamedFetchEndData} StreamedFetchChunk
+ * Interface representing a streamed fetch error data. It is the terminal event
+ * of a request that failed after its response head was sent.
+ * @interface
  */
-type StreamedFetchChunk = StreamedFetchChunkData | StreamedFetchHeaderData | StreamedFetchEndData
+interface StreamedFetchErrorData {
+    type: 'error',
+    body: string,
+    id: string
+}
+
+/**
+ * Type representing a streamed fetch chunk.
+ * @typedef {StreamedFetchChunkData | StreamedFetchHeaderData | StreamedFetchEndData | StreamedFetchErrorData} StreamedFetchChunk
+ */
+type StreamedFetchChunk = StreamedFetchChunkData | StreamedFetchHeaderData | StreamedFetchEndData | StreamedFetchErrorData
 
 /**
  * Interface representing a streamed fetch plugin.
@@ -3648,8 +3659,11 @@ const pipeFetchLog = (fetchLogIndex: number, readableStream: ReadableStream<Uint
     const splited = readableStream.tee();
     
     (async () => {
-        const text = await (new Response(splited[0])).text()
-        fetchLog[fetchLogIndex].response = redactResolved(text)
+        // A stream error already reaches the consumer through the other branch.
+        const text = await (new Response(splited[0])).text().catch(() => null)
+        if (text !== null && fetchLog[fetchLogIndex]) {
+            fetchLog[fetchLogIndex].response = redactResolved(text)
+        }
     })()
     
     return splited[1]
@@ -3932,6 +3946,8 @@ export async function fetchNative(url: string, arg: {
             chatId: arg.chatId,
         })
     }
+    // Later fetches add entries in front, so the entry is held by reference.
+    const logEntry = fetchLogIndex !== null ? fetchLog[fetchLogIndex] : undefined
     try {
         if (window.userScriptFetch && !throughProxy) {
             return await window.userScriptFetch(url, {
@@ -3951,7 +3967,12 @@ export async function fetchNative(url: string, arg: {
         }
         let fetchId = fetchIndex.toString().padStart(5, '0')
         nativeFetchData[fetchId] = []
+        // True once a terminal signal (end, error event or failed command) arrived; the first one wins.
         let resolved = false
+        // The native request was stopped or abandoned; the pump discards what is left.
+        let cancelled = false
+        let cancelSent = false
+        let finished = false
 
         let error = ''
         // Settles when the response head is known, the stream ended or the request was aborted.
@@ -3960,6 +3981,43 @@ export async function fetchNative(url: string, arg: {
         while (!streamedFetchListening) {
             await sleep(100)
         }
+
+        const failNative = (message: string) => {
+            if (resolved) {
+                return
+            }
+            resolved = true
+            error = message || 'streamed_fetch failed'
+            wakeNativeFetch(fetchId)
+        }
+
+        // Fire-and-forget; a cancel after the request finished would only leave a stale native tombstone.
+        const sendCancel = () => {
+            if (cancelSent || finished) {
+                return
+            }
+            cancelSent = true
+            try {
+                Promise.resolve(invoke('cancel_streamed_fetch', { id: fetchId })).catch(() => {})
+            } catch (e) {
+                console.error(e)
+            }
+        }
+
+        // Ends the native request and the pump without reporting an error.
+        const abandonNative = () => {
+            cancelled = true
+            sendCancel()
+            wakeNativeFetch(fetchId)
+        }
+
+        // Stop is the caller's own signal, so the listener outlives the timeout relay that
+        // fetchNative drops when it returns. Removed by finish().
+        const onStop = () => {
+            abandonNative()
+            settleHeaders()
+        }
+
         if (isTauri) {
             invoke('streamed_fetch', {
                 id: fetchId,
@@ -3972,22 +4030,26 @@ export async function fetchNative(url: string, arg: {
                 try {
                     const parsedRes = JSON.parse(res as string)
                     if (!parsedRes.success) {
-                        error = parsedRes.body
-                        resolved = true
-                        settleHeaders()
-                        wakeNativeFetch(fetchId)
+                        failNative(parsedRes.body)
                     }
                 } catch (e) {
                     // Error properties (message/name/stack) are non-enumerable, so
                     // JSON.stringify(e) returns "{}" and discards the real cause.
-                    error = e instanceof Error
+                    failNative(e instanceof Error
                         ? (e.message || e.name || 'streamed_fetch parse failed')
-                        : String(e)
-                    resolved = true
-                    settleHeaders()
-                    wakeNativeFetch(fetchId)
+                        : String(e))
                 }
+            }, (e: unknown) => {
+                failNative(e instanceof Error ? (e.message || e.name) : String(e))
             })
+            if (arg.signal) {
+                if (arg.signal.aborted) {
+                    onStop()
+                }
+                else {
+                    arg.signal.addEventListener('abort', onStop, { once: true })
+                }
+            }
         }
         else if (capStreamedFetch) {
             capStreamedFetch.streamedFetch({
@@ -4006,44 +4068,113 @@ export async function fetchNative(url: string, arg: {
         let resHeaders: { [key: string]: string } = null
         let status = 400
 
+        // The fetch log is captured in the pump itself, so no second branch of the
+        // stream exists to be cancelled or to reject unobserved.
+        const logDecoder = new TextDecoder()
+        let logText = ''
+
+        // Idempotent: every exit path ends here. Late native events find no queue and are dropped.
+        const finish = () => {
+            if (finished) {
+                return
+            }
+            finished = true
+            arg.signal?.removeEventListener('abort', onStop)
+            delete nativeFetchData[fetchId]
+            delete nativeFetchWake[fetchId]
+            if (logEntry) {
+                logEntry.response = redactResolved(logText + logDecoder.decode())
+            }
+        }
+
+        // Woken when the consumer has read down to an empty queue, or cancelled.
+        let queueDrained: (() => void) | undefined
         const tauriReadableStream = new ReadableStream<Uint8Array>({
-            async start(controller) {
-                // Nothing is awaited between the final emptiness check and arming the
-                // wake, so an event pushed meanwhile cannot be missed.
-                while (true) {
-                    const data = nativeFetchData[fetchId].shift()
-                    if (data !== undefined) {
-                        if (data.type === 'chunk') {
-                            const chunk = Buffer.from(data.body, 'base64')
-                            controller.enqueue(chunk as unknown as Uint8Array)
-                        }
-                        if (data.type === 'headers') {
-                            resHeaders = data.body
-                            status = data.status
-                            settleHeaders()
-                        }
-                        if (data.type === 'end') {
-                            resolved = true
-                            settleHeaders()
-                        }
-                        await Promise.resolve()
-                        continue
+            start(controller) {
+                // A second close or error on a settled stream throws, so every exit uses this one.
+                let closed = false
+                const closeStream = (failure?: Error) => {
+                    if (closed) {
+                        return
                     }
-                    if (resolved) {
-                        break
+                    closed = true
+                    try {
+                        if (failure) {
+                            controller.error(failure)
+                        }
+                        else {
+                            controller.close()
+                        }
+                    } catch {
+                        // The consumer already cancelled and settled the stream.
                     }
-                    await new Promise<void>((resolve) => { nativeFetchWake[fetchId] = resolve })
                 }
-                controller.close()
-                delete nativeFetchData[fetchId]
-                delete nativeFetchWake[fetchId]
+                const pump = async () => {
+                    try {
+                        // Nothing is awaited between the final emptiness check and arming the
+                        // wake, so an event pushed meanwhile cannot be missed.
+                        while (!cancelled) {
+                            const data = nativeFetchData[fetchId]?.shift()
+                            if (data !== undefined) {
+                                if (data.type === 'chunk') {
+                                    const chunk = Buffer.from(data.body, 'base64')
+                                    if (logEntry) {
+                                        logText += logDecoder.decode(chunk, { stream: true })
+                                    }
+                                    try {
+                                        controller.enqueue(chunk as unknown as Uint8Array)
+                                    } catch {
+                                        // The consumer cancelled the stream.
+                                        cancelled = true
+                                    }
+                                }
+                                if (data.type === 'headers') {
+                                    resHeaders = data.body
+                                    status = data.status
+                                    settleHeaders()
+                                }
+                                if (data.type === 'end') {
+                                    resolved = true
+                                    settleHeaders()
+                                }
+                                if (data.type === 'error') {
+                                    failNative(data.body)
+                                }
+                                await Promise.resolve()
+                                continue
+                            }
+                            if (resolved) {
+                                break
+                            }
+                            await new Promise<void>((resolve) => { nativeFetchWake[fetchId] = resolve })
+                        }
+                    }
+                    finally {
+                        // Before the head is known fetchNative throws the failure itself.
+                        settleHeaders()
+                        const failed = !cancelled && error !== '' && resHeaders !== null
+                        finish()
+                        if (failed) {
+                            // Erroring a stream discards what is still queued, so the
+                            // consumer reads the partial reply first.
+                            while (!cancelled && (controller.desiredSize ?? 1) < 1) {
+                                await new Promise<void>((resolve) => { queueDrained = resolve })
+                            }
+                        }
+                        closeStream(failed && !cancelled ? new Error(error) : undefined)
+                    }
+                }
+                pump().catch((e) => console.error(e))
+            },
+            pull() {
+                queueDrained?.()
+            },
+            cancel() {
+                abandonNative()
+                finish()
+                queueDrained?.()
             }
         })
-
-        let readableStream = tauriReadableStream
-        if (shouldLogFetch && fetchLogIndex !== null) {
-            readableStream = pipeFetchLog(fetchLogIndex, tauriReadableStream)
-        }
 
         // A stop before the first byte ends the wait here, while the timeout
         // relay is still live; once the Response is returned the caller's own
@@ -4056,18 +4187,22 @@ export async function fetchNative(url: string, arg: {
         requestSignal?.removeEventListener('abort', settleHeaders)
 
         if (resHeaders === null && requestSignal?.aborted) {
-            throw new Error('aborted')
+            // Stop is the caller's own signal; anything else is the request timeout.
+            const stopped = arg.signal?.aborted === true
+            abandonNative()
+            finish()
+            throw new Error(stopped ? 'aborted' : 'Request timed out')
         }
 
+        // A failure after the head belongs to the stream; before it, to this call.
         if (resHeaders === null) {
+            if (error !== '') {
+                throw new Error(error)
+            }
             resHeaders = {}
         }
 
-        if (error !== '') {
-            throw new Error(error)
-        }
-
-        return new Response(readableStream, {
+        return new Response(tauriReadableStream, {
             headers: new Headers(resHeaders),
             status: status
         })

@@ -705,7 +705,7 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
             saveSignature: arg.saveSignatures ?? false
         }) 
 
-        f.body.pipeTo(transtream.writable)
+        f.body.pipeTo(transtream.writable).catch(() => {})
 
         return {
             type: 'streaming',
@@ -1287,7 +1287,7 @@ function wrapToolStream(
                             modelInfo: arg.modelInfo,
                             saveSignature: arg.saveSignatures ?? false
                         })
-                        resRec.body.pipeTo(transtream.writable)
+                        resRec.body.pipeTo(transtream.writable).catch(() => {})
 
                         reader = transtream.readable.getReader()
 
