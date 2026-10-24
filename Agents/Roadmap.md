@@ -2233,6 +2233,8 @@ run. Narrow.
 
 ### CHORE-33 — RisuAccount removal: drop the hub credential, keep Realm and Drive
 
+**Status (2026-10-24, lane A records batch 6; encrypted backups, `MC-477`): the refusal stands, but its premise is corrected.** The `MC-081` premise (encryption only for account sync) no longer holds. Upstream `dae3f6509` (2026-10-14) made every full export from risuai.xyz encrypted, so every hosted full `.bin` carries encryption (MEASURED from `git show`). Desktop and self-hosted upstream cannot decrypt those backups either (kwaroran/Risuai#1681, open since 2026-10-22). So no full-data route off risuai.xyz exists today. The refusal text now names only the Partial Backup route (`4f9947cc7` first text, corrected in `03816728c`; the wiki pages, first written in `561a8a595`, were corrected in the same commit). Watch kwaroran/Risuai#1681.
+
 **Status (2026-09-26): ✅ DONE.** Plan: `Agents/Reports/28-risuaccount-removal-plan.md` rev 3.6, in
 three sub-stages, each with its own Gate 2 and live check. Gate 1 on the plan: ledger rows 193 to
 197 (rounds 1 and 2 rejected on substance; round 3 approved).
@@ -6413,6 +6415,8 @@ with index -1.
 
 ### CHORE-115 — Android asset protocol answers Range requests with a non-zero start wrongly; asset videos stall after about 1 MB
 
+**Status (2026-10-24, lane A records batch 6): fixed by wry 0.57.1 in builds made from this checkout, MEASURED on phone 2 (`c115\result.md` in `%TEMP%\risu-b715\`); pending the next MVP build.** `cargo update -p wry --precise 0.57.1` moved only wry (0.57.0 to 0.57.1, which contains PR #1865). On phone 2 (release build of `f0e397aae` with wry 0.57.1, test key), ranges with a non-zero start return exact 206 responses with correct `Content-Length`, and the asset files reassemble to their manifest sha256. Caveats: a range starting exactly at the file's size still fails rather than returning 416; the video check did not run. The lock is local only (`src-tauri/Cargo.lock` is gitignored), so the maintainer's next sign-release build from this checkout picks it up. The installed MVP (`f0e397aae`) still has wry 0.57.0.
+
 **Status (2026-10-22): post-MVP (MC-345).** The maintainer: "chore-115 can be optional, as animated asset is rare in my save data." Parked until after the A5 checkpoint; the wry release check below still applies before any Android release.
 
 **Status (2026-10-21) (superseded by the status above): open; PR #1865 is merged in wry (`b6bef412`, 2026-10-08) but no release carries it yet: the latest wry release is v0.57.0 (2026-09-08), 7 commits before the merge, and `src-tauri/Cargo.lock` resolves wry 0.57.0 and tauri 2.12.1 (checked with `gh` and the lock, 2026-10-21). Still waiting for a wry release containing the fix (`MC-230`); check before the Android release.** Acceptance (the Orchestrator's proposal, not a maintainer decision): the Stage C C2 fetches return the right length and the mp4 plays past 1 MB on the Note 9. It predates CHORE-109: `getFileSrc` at `f42cdad9` already returned `urlFor` or `convertFileSrc` on Tauri (INFERRED from source; the old build was not run).
@@ -7024,6 +7028,8 @@ with index -1.
 
 ### CHORE-204 — Device-script follow-ups (lane A)
 
+**Device profile (2026-10-24, lane A records batch 6; not a CHORE item, placed here as the closest device-tooling entry; `MC-474` holds the maintainer's answers):** a synthetic device profile is being built so phone runs use synthetic data and throwaway keys (`MC-472`). Answers: a local OpenAI-compatible mock endpoint on the PC via `adb reverse` (fallback: a throwaway real key entered in the UI), at the maintainer's real shape with small assets. Stage A (the mock, its test, `mock-reverse.ps1`, Test-Runner and README) is committed as `26f92322f`, after Gate 2 `[APPROVE]` in round 2. The A2 PC smoke passed (non-stream JSON and SSE, against the real app). Stages B to E remain; stage B (phone 2) waits for the maintainer's go-ahead.
+
 **Status (2026-10-22, fixed): items (a) to (e) are implemented, plus an added item (f), the `-WarnPattern` default; Gate 2 `[APPROVE]` in round 2; committed with the records (`MC-344`).** Ledger rows 2132 to 2135.
 
 - **Implemented:** (a) the port defaults are 6330 to 6399 (inside lane A's range, clear of phone 1 and phone 2; two runs that both rely on the default still share it, which the README says). (b) Notices are dismissed at launch, on each import-watch poll and in the boot wait; the click needs one button whose label is OK in any case or the Korean OK label, no input, and text that does not match `-WarnPattern`; the dismissed text goes to `import.noticesDismissed`. (c) Fixed, not just documented: a waiter takes a stale lock by moving it to a tombstone named after the stale holder. (d) `restore-snapshot.ps1` uses `tar --no-same-owner -xf`. (e) `build-apk.ps1` fails early and names the missing generated Android files (`TauriActivity.kt`, `proguard-tauri.pro`); it copies nothing. (f) The default `-WarnPattern` now matches the English and Korean time and size warnings (`store2ImportTimeWarning`, `store2ImportSizeWarning`); the old Korean alternative matched neither, which is why phone 1 needed a manual Yes tap (rows 2130 and 2131).
@@ -7218,6 +7224,8 @@ Overlays outside `alertStore` (Settings, the Realm frame, the bookmark list, `po
 
 ### CHORE-205 — Architecture study: subsystems that fail as the library grows (the whole-library in-memory model and its secondary problems)
 
+**Status (2026-10-24, lane A records batch 6): lane B is sizing the next lever, L3 (per-module units), with a proposal before code.** The memory baselines for L3 were collected on phone 1 (`0d54f5e84`, MEASURE build). Round 1 (C1 to C5): renderer PSS 263.5, 281.9, 322.3, 322.0 and 486.6 MB; the Modules page adds about 164 MB of native renderer memory. Round 2 (A and B; C skipped): the Modules-page spike is transient, and four characters plus one generation retain about 64 MB of heap until a reload. The maintainer sent the MCP module tools into L3's sizing (relayed to lane B). No code change in this batch.
+
 **Status (2026-10-24, lane A records batch 5; lane B's records through row 2499): open. Stages 1 to 2d and the counter experiment are merged; the time-only backstop is merged; the GC hold is dropped; the daily-APK block is lifted. One maintainer decision is open.**
 - Stage 0 judged. The maintainer chose stage 1 first (`MC-373`; row 2445).
 - Stage 1 merged in `778b6590e` (`MC-373`, `MC-374`). Phone s1: G1 passed on all six launches, so the `MC-372` GC hold is dropped. V1 met at 0 residents and not met at 1 resident (275.5 ms against the 768 ms full tick). V2 met. Lane B judged these results.
@@ -7267,6 +7275,8 @@ Stage 0 (measurement only) is approved as `MC-348` ("Now, PC + one Note 9 run (R
 - **Inputs:** `%TEMP%\risu-b715\phone1-fresh\report.md` (part 1, verified); `%TEMP%\risu-lane-e\grid\phone-analysis\report.md` (grid starvation, verified); phone 1 part 3; the CHORE-225 "after" run.
 
 ### CHORE-206 — Retire V2.1 plugin execution and keep the data (MC-349)
+
+**Status (2026-10-24, lane A records batch 6): technically COMPLETE.** Cut A `f6a9b2dd2` and cut B `562927bd3` are on `main` and pushed, each with its gates: Gate 1 round 3 `[EDITORIAL]`; cut A Gate 2 `[EDITORIAL]`; cut B Gate 2 `[APPROVE]`. Full checks on the cut B snapshot were green (976 files passed, 1 skipped; 21,947 tests; `pnpm check` 0/0; build and dist OK). Decisions: `MC-349` and `MC-476` (the boot notice, the toggle, the refusal text, the dead modal, the two cuts, and the accepted `setArg` limitation). Stage 3 (removing the 2.1-only API members) is deferred, because V3 plugins can see those keys. Optional follow-up: `alertPluginConfirm` has no production caller.
 
 **Status (2026-10-23): open, post-MVP, not scheduled.** The maintainer: "Retire 2.1 execution, keep data (Recommended)" and "Size now, implement post-MVP (Recommended)". This amends `MC-175` for V2.1 only; versions 1, 2 and 3.0 are unchanged (`MC-349`).
 - Scope from the sizing (`%TEMP%\risu-b715\v21-retire\sizing-result.md`; its Corrections take precedence):

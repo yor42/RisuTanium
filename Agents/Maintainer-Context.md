@@ -8101,6 +8101,8 @@ browser CORS behaviour of the Hugging Face router, and whether a real model answ
 
 ### MC-223 — Main Campaign, 2026-10-06: the compatibility invariant is relaxed for fork-to-upstream data over upstream's limits; the export warns by name first (amends `MC-175`)
 
+*Exception added by `MC-477` (2026-10-24): encrypted risuai.xyz full backups are refused; every other upstream-to-fork restore must still work.*
+
 - **Tag:** decision (a typed message), with the decisions the Orchestrator's notes list after it
 - **Date:** 2026-10-06
 - **Sweep ref:** none (stated directly this session)
@@ -13113,3 +13115,137 @@ Round 2:
   - Name mix-up: another project's sessions had also been named Lane A and Lane B, and lane B's messages reached the wrong session. Lane B is addressed as "Lane B [d820f9]".
   - Nothing here authorizes a commit or a push beyond the labels quoted.
   - No historical decision text is rewritten.
+
+### MC-474 — Lane A, 2026-10-24: the synthetic device profile (build it next; local mock endpoint; the maintainer's real shape with small assets)
+
+- Tag: decisions (chat message and `AskUserQuestion` answers by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` and `Agents/Handoff-2026-10-23-laneA.md` (lane A's living log). Quoted replies and option labels are the maintainer's. Question texts are lane A's paraphrase; the option text is the orchestrator's.
+- Reasoning: `MC-472` set the direction of synthetic data and throwaway keys for device runs. The maintainer asked for the session-ready profile that direction needs (characters to open and a chat to send in).
+- Alternatives rejected: the handoff names a fallback only, not a rejected alternative. If Android blocks cleartext localhost, the fallback is a throwaway real key entered through the UI (paraphrase of the handoff).
+- Related: `MC-472`, `MC-471`; the plan `%TEMP%\risu-b715\synth-device\plan.md` (r3); commit `26f92322f`; CHORE-115 (phone 2 is shared with it).
+
+**The maintainer's words:** "let's build the Synthetic device profile next".
+
+**The maintainer's answers (option labels):**
+1. The model endpoint. Answer: "Local mock endpoint (Recommended)". The handoff describes it as an OpenAI-compatible server on the PC, reached through `adb reverse`.
+2. The scale. Answer: "Your real shape, small assets (Recommended)".
+
+**What was decided (maintainer):**
+1. Build the synthetic device profile next, with a local mock endpoint, and at the maintainer's real shape with small assets.
+2. Later phone runs on the maintainer's real profile are allowed case by case. Each is an exception to the synthetic-first default of `MC-472`, not an amendment of it:
+   - memory baseline 1 (lane B's request `2026-10-24-c205-memory`): "Run all five now". The run used the real partial-library profile, with one real generation, no heap snapshot, no screenshot viewing and no DOM text;
+   - memory round 2: "A and B, skip C (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The plan is `synth-device\plan.md` r3, stages A to E. Mock port 6250; phone 2 CDP ports 6310-6329. Gate 1 round 1 was [REJECT] (reject streak 1; findings F1 to F10, among them a port clash with other lanes) and round 2 was [EDITORIAL].
+  - Stage A (the mock endpoint, its test and the adb reverse helper) was committed as `26f92322f` after Gate 2 round 2 [APPROVE]. Gate 2 round 1 was [REJECT].
+  - The stage A2 PC smoke passed for non-stream and SSE responses against the real app (`%TEMP%\risu-b715\synth-device\stageA2\result.md`). It needed a workaround: the web fetch path refuses `localhost` and `127.0.0.1`, so the smoke used `usePlainFetch` and a trailing-dot `localhost.`.
+  - Stages B to E: the handoff records no start of them up to the batch 6 brief. Stage B (a network probe on phone 2) was to be asked of the maintainer after A2.
+  - Nothing here authorizes a commit or a push beyond the labels quoted.
+
+### MC-475 — Lane A, 2026-10-24: the MVP baseline, and the cloud lane C set up
+
+- Tag: decisions and statements (chat messages and `AskUserQuestion` answers by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` and `Agents/Handoff-2026-10-23-laneA.md`. Quoted replies and option labels are the maintainer's. Question texts are lane A's paraphrase.
+- Reasoning: `MC-350` and `MC-470` made the first release-signed install the point from which saved data is carried forward in place. This entry records that point.
+- Alternatives rejected: none recorded.
+- Related: `MC-350`, `MC-470`, `MC-345`; `MC-011`; CHORE-115, CHORE-500, CHORE-501, CHORE-206; Dependabot alerts #160 and #161.
+
+**The MVP.**
+- The maintainer built the release-signed APK with `sign-release.ps1`. The first run failed at `:app:packageUniversalRelease` because of a wrong key alias (lane A classified the log by keyword only, no secrets read); the maintainer fixed the alias and the rerun passed (`%TEMP%\risu-b715\sign-release\build\result.json`).
+- The maintainer's words: "I think it is safe to declare MVP." and, after installing: "Installed now on my phone".
+- **The baseline for `MC-350`:**
+  - date: 2026-10-24;
+  - source: main `f0e397aae`;
+  - APK: `app-universal-release.apk`, 78,746,765 B, sha256 `A86B70FF0B54B225059B0F3C1EC78C48A6D83801729214597C5F26229F109E3C` (lane A recomputed it and it matches `result.json`);
+  - key: the maintainer's release key;
+  - installed on the maintainer's daily phone.
+- The `MC-350` carry-forward is live from this install. Storage and save-loop changes now carry live-data risk, so they need a forward migration or the `MC-470` export and re-import route.
+- Building a daily APK remains the maintainer's call (paraphrase of the brief).
+
+**Lane C (cloud).**
+- The maintainer approved CHORE-500 and CHORE-501 beforehand, to run on a new cloud lane (paraphrase of the handoff).
+- Setup, as the handoff states it:
+  - branch `lane-c-cloud` from main `f0e397aae`;
+  - lane C IDs: `MC-435` to `MC-449`, CHORE-330 onward, ledger rows 3319 to 3499;
+  - its records go in `Agents/Lanes/lane-C-records.md` on its branch;
+  - it commits and pushes its own branch only, with the maintainer's approval in that session;
+  - lane A merges, with the maintainer's approval.
+- The maintainer chose "Give me the prompt instead" (the prompt is `%TEMP%\risu-b715\lane-c-cloud\initiation-prompt.md`). The maintainer then wrote "Lane C has started." (lane A session transcript, a maintainer turn; the handoff records the start without the quote).
+
+**Other answers.**
+- CHORE-115 (the wry bump): "Bump, check, phone 2 (Recommended)". `src-tauri/Cargo.lock` is gitignored, so the wry 0.57.1 bump is local only. The installed MVP has wry 0.57.0, and the maintainer's next sign-release build in the checkout picks up 0.57.1. Phone 2 passed (`%TEMP%\risu-b715\c115\result.md`, with lane A's spot-check of the raw data); one edge case stays open: a range request with `start` equal to the size still fails with a TypeError where a 416 is expected.
+- Dependabot alerts #160 and #161 (`@vitest/mocker` 4.1.11, dev dependency): "Bump with CHORE-206 (Recommended)". This became commit `83d5f7b2c` (vitest 4.1.12). Lane A judged the alerts not exploitable here because they need a Vite dev server in vitest browser mode, which the project does not use (the handoff's reading).
+- `src-tauri/Cargo.toml` end-of-line churn from builds is left as it is. The maintainer's words: "you can leave the cargo.toml - its not worth the tokens to fix the thing that keep goes back and fourth." (lane A session transcript, a maintainer turn).
+
+**What was decided (maintainer):**
+1. The MVP is declared and installed on 2026-10-24 at the baseline above. The `MC-350` carry-forward is live from it.
+2. CHORE-500 and CHORE-501 run on the cloud lane C, under the rules above.
+3. The wry 0.57.1 bump is local only. The vitest bump is committed separately from CHORE-206.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes a commit or a push beyond the labels quoted.
+
+### MC-476 — Lane A, 2026-10-24: CHORE-206 UI answers, staging and accepted limitation (implements `MC-349`)
+
+- Tag: decisions (chat messages and `AskUserQuestion` answers by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` and `Agents/Handoff-2026-10-23-laneA.md`. Quoted option labels are the maintainer's. The question texts and the parenthetical explanations are lane A's paraphrase of the handoff.
+- Reasoning: `MC-349` retires V2.1 plugin execution and keeps the entries as data. CHORE-206 needed the interface for those entries.
+- Alternatives rejected: none recorded beyond the options not chosen.
+- Related: `MC-349`, `MC-350`, `MC-175`; CHORE-206 (cuts A and B); the plan `%TEMP%\risu-b715\c206\plan-r3.md` and the gates `gate1`, `gate1-r2`, `gate1-r3`.
+
+**The maintainer's answers (option labels).**
+1. Boot notice: "Badge in Plugin settings only (Recommended)". No interruption at boot; the V2.1 row shows a "needs 3.0, not running" warning; the data stays untouched.
+2. Enable toggle: "Disabled, with the note (Recommended)". The toggle is greyed out; the saved enabled value is kept exactly; an update to 3.0 carries it through `carrySavedValues`.
+3. Warning text: "Reuse existing strings (Recommended)" (`pluginVersionWarn` with API V2.1 and API V3; no new keys; `apiVersionRefusal` unchanged).
+4. The dead alert modal: "Delete it (Recommended)" (`PluginAlertModal`, the `pluginAlertModalStore` field and `pluginSafety.ts`).
+5. Arguments and settings of a V2.1 row (after Gate 1 round 1 [REJECT]): "Hide args and settings (Recommended)". The row shows the name, the warning, the greyed toggle and delete.
+6. Staging: "Two cuts (Recommended)". Cut A is the behaviour, the UI, the `en` keys and the tests. Cut B is the dead modal, `pluginSafety` and the mocks.
+
+**Also decided (maintainer).**
+- The run instruction, in the maintainer's words: "run CHORE-206 at lane A in the main checkout, once stage A of the device profile is done."
+- The reading of "byte-for-byte" for V2.1 entries (from `c206\plan-r3.md` section 1.8 and Gate 1 round 2): every field and every value is equal, in canonical key order, as for every store2 record. The `.bin` round-trip test therefore compares with `toStrictEqual`. This reading came from the reviewer's rejection and the plan; the handoff does not give it as a maintainer quote.
+- The accepted limitation: "Accept, record it (Recommended)". A user-installed V3 plugin can still write a V2.1 entry's `realArg` through the old `setArg('name::key')`, as upstream allows. "Untouched" means the app never writes it on its own.
+
+**What was decided (maintainer):**
+1. Answers 1 to 6 above govern CHORE-206. They amend no earlier entry; they implement `MC-349`.
+2. The `realArg` limitation is accepted and recorded here.
+
+- Notes, not the maintainer's words:
+  - Outcome: cut A is `f6a9b2dd2`; cut B is `562927bd3`. Both were pushed with the maintainer's "Commit and push" approvals. Gate 1 had rounds 1 and 2 [REJECT] and round 3 [EDITORIAL]. Cut A Gate 2 was [EDITORIAL] and cut B Gate 2 was [APPROVE]. Full checks on each cut: 976 files, 21,947 tests; `pnpm check` 0 errors and 0 warnings; build and dist OK (the handoff's figures).
+  - Side commits: `83d5f7b2c` (vitest 4.1.12) and `7c4213000` (the mock self-test rename, so vitest no longer collects it). Maintainer: "Commit both".
+  - Current code still follows `MC-349`: V2.1 plugin data stays in the database and `.bin`.
+  - Open optional follow-up noted by the handoff: `alertPluginConfirm` has no production caller.
+
+### MC-477 — Lane A, 2026-10-24: every full backup from risuai.xyz is encrypted; the fork's refusal stands (corrects the premise of `MC-081`, keeps its rule)
+
+- Tag: decisions and a correction (chat messages and `AskUserQuestion` answers by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` and `Agents/Handoff-2026-10-23-laneA.md`; the result files under `%TEMP%\risu-b715\enc-bin\` (`result.md`, `probe`, `probe2`, `forks`, `text-fix`, `text-fix2`, `wiki`, `wiki2`). Quoted option labels and the correction are the maintainer's. Question texts are lane A's paraphrase.
+- Reasoning: the maintainer reported that an upstream export, made on risuai.xyz in the browser without logging in, was refused by the fork as encrypted. `MC-081` rested on the premise that only account-sync exports are encrypted. That premise no longer holds.
+- Alternatives rejected: a non-hosted upstream route (load the backup there, then save a local backup) was first written into the text and the wiki, and the maintainer corrected it as wrong. Spoofing risuai.xyz's own Origin or Referer to get the key was not attempted (see the facts).
+- Related: `MC-081` (premise corrected, rule kept), `MC-223`, `MC-012`, `MC-175`.
+
+**The maintainer's answers (option labels).**
+- "Investigate decrypt first (Recommended)". The source to check was answered "Yes, risuai.xyz".
+- "Fix text now, probe once (Recommended)".
+- "Up to 3 probes (Recommended)".
+- "Yes, update wiki (Recommended)".
+- "Commit and push (Recommended)" for the text fix, the wiki update and the correction.
+
+**The maintainer's correction:** "desktop can not decrypt encrypted bin either", citing kwaroran/Risuai#1681 (open since 2026-10-22; related #1641; read through `gh`). The first text fix and the first wiki update had named a non-hosted upstream route; the correction removed it.
+
+**Facts (observations; MEASURED unless marked).**
+- Cause (MEASURED by `git show`): upstream commit `dae3f6509` (2026-10-14) dropped `isAccount` from the export condition, so every full `.bin` exported on risuai.xyz carries the encryption marker.
+- Only `database.risudat` is encrypted (it includes SaveKV), with AES-GCM and a SHA-256-derived key. No setting turns it off. Upstream exports from other origins are plain. The fork's own export never encrypts. Lane A verified the upstream `encryptBuffer` and `decryptBuffer` source (the handoff's statement).
+- The key is fetched from `sv.risuai.xyz/cryptokey`. The fork sent 3 GETs from phone 2 on 2026-10-24, and all got HTTP 403: a plugin-http request with no headers, one with a User-Agent and Accept, and a WebView fetch. The key was never read or recorded.
+- Forging risuai.xyz's own Origin and Referer was not sent: the auto-mode classifier blocked it as circumvention of a bot check. Lane A's conclusion is that the key endpoint admits only upstream's own site, and that spoofing it would circumvent upstream's access control. (Separately: plugin-http 2.8.0 without unsafe-headers drops a caller's Origin and Referer.)
+- Community forks (`forks\result.md`, all GPL-3.0): PocketRisu refuses the marker; PocketRisu-Kei fetches the key server-side with an Accept header only; HaejeokRisuai fetches client-side with no headers. None sets Origin or Referer. The study's hypothesis that our 403 was a missing User-Agent was not borne out by the probes.
+
+**What was decided (maintainer):**
+1. The fork keeps refusing a risuai.xyz encrypted full backup. `MC-081`'s rule stands.
+2. Partial Backup on risuai.xyz is the only route to move data off risuai.xyz. No full-data route off risuai.xyz exists while upstream issue #1681 stays open (the maintainer's correction and lane A's reading of it).
+3. The refusal text and the wiki say so. Commits: `4f9947cc7` (seven `src/lang` files, first text), `561a8a595` (two wiki pages, first update) and `03816728c` (the correction: seven `src/lang` files and two wiki pages; the refusal now names Partial Backup only and cites #1681 and #1641). Gate 2 [APPROVE] on both text fixes; doc-verifier PASS on both wiki updates.
+
+- Notes, not the maintainer's words:
+  - `MC-223` (upstream to fork must always work) is not met for risuai.xyz full backups. The cause is upstream's key access, not a fork defect. The maintainer decided that this is an exception to `MC-223`: "refusing an encrypted risuai.xyz backup does indeed count as an exception to MC-223. as it is impossible for us to achieve full parity without tricking domain - which we shouldn't do." The exception covers only encrypted risuai.xyz full backups; every other upstream-to-fork restore must still work.
+  - Nothing here authorizes a commit or a push beyond the labels quoted.
