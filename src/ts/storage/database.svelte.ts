@@ -16,7 +16,6 @@ import { normalizeTranslatorPresetState, type TranslatorPreset } from '../transl
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { blankSecretRef } from '../secretRef'
 import { safeStructuredClone } from '../polyfill';
-import { hasEnabledV21Plugin } from '../plugins/v21Plugins';
 import { AssetList, toAssetList } from './assetList';
 import {
     DEFAULT_CHAT_LOAD_ADDITIONAL_PAGES,
@@ -752,11 +751,9 @@ export function setDatabase(data:Database){
  * Holds each module's asset list as an `AssetList` so the list stays out of the
  * reactive graph. Idempotent: a list that is already an `AssetList` is not
  * written, so installing the live database again re-runs no module effect.
- * Nothing is wrapped while an enabled V2.1 plugin is present, because such a
- * plugin mutates the live lists in place and that would go untracked.
  */
 function wrapModuleAssets(data:Database){
-    if(!Array.isArray(data.modules) || hasEnabledV21Plugin(data.plugins)){
+    if(!Array.isArray(data.modules)){
         return
     }
     // When `data` is the live database every list is read through a proxy, so

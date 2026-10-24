@@ -372,13 +372,12 @@ describe('the module asset editor on an installed AssetList', () => {
         expect(assets[1]).toEqual(['renamed', 'assets/path-1', 'png'])
     })
 
-    test('guard: with an enabled V2.1 plugin an edit leaves a plain array', () => {
+    test('reproducer: an enabled V2.1 plugin does not keep the list a plain array, an edit installs an AssetList', () => {
         const { target, tracker } = openAssetTab(3, { plugins: [V21_PLUGIN] })
-        expect(Object.getPrototypeOf(DBState.db.modules[0].assets)).toBe(Array.prototype)
 
         type(inputs(target)[0], 'renamed')
 
-        expect(Object.getPrototypeOf(DBState.db.modules[0].assets)).toBe(Array.prototype)
+        expect(DBState.db.modules[0].assets instanceof AssetList).toBe(true)
         expect(savedNames()[0]).toBe('renamed')
         expect(tracker.modules).toBe(true)
     })

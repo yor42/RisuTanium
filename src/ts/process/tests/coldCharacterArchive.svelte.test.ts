@@ -250,7 +250,6 @@ describe('the gates', () => {
         ['the setting is false', () => { DBState.db.archiveCharacters = false }, 'setting'],
         ['the setting is not yet committed (undefined)', () => { DBState.db.archiveCharacters = undefined }, 'setting'],
         ['the format version is below the block format', () => { DBState.db.formatversion = 4 }, 'format-version'],
-        ['a V2.1 plugin is enabled', () => { DBState.db.plugins = [{ enabled: true, version: '2.1' }] as unknown as Database['plugins'] }, 'v21-plugin'],
     ])('new behaviour: %s -> refused at once, nothing written, not a counted failure', async (_name, apply, reason) => {
         apply()
 
@@ -265,7 +264,6 @@ describe('the gates', () => {
 
     test.each([
         ['the setting flips', () => { DBState.db.archiveCharacters = false }, 'setting'],
-        ['a V2.1 plugin is enabled', () => { DBState.db.plugins = [{ enabled: true, version: '2.1' }] as unknown as Database['plugins'] }, 'v21-plugin'],
         ['the session stops being able to archive', () => noteBootArchiveSession(false), 'unavailable'],
     ])('new behaviour: %s while the write is in flight -> refused at the final step, list untouched, orphan reported', async (_name, apply, reason) => {
         h.whileWriting = apply

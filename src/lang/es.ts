@@ -43,10 +43,6 @@ export const languageSpanish = {
             `No se puede abrir el personaje archivado ${characterName} en esta página: este navegador no ofrece aquí almacenamiento para personajes archivados (por ejemplo, en una dirección HTTP sin cifrar). No se cambió nada.`,
         "coldStorageNamedRestoreDamaged": (characterName: string) =>
             `No se pudo leer la copia archivada de ${characterName}: puede estar dañada. No se cambió ni se eliminó nada.`,
-        "coldStoragePluginRestoreProgress": (leftCount: number) =>
-            `Cargando personajes archivados para un plugin... quedan ${leftCount} elementos`,
-        "coldStoragePluginRestoreIncomplete": (characterNames: string) =>
-            `Hay un plugin habilitado que necesita todos los personajes en memoria, pero no se pudieron cargar estos personajes archivados: ${characterNames}. Siguen archivados, por lo que el plugin no verá sus datos.`,
         "coldStorageGroupMembersNotLoaded": (characterNames: string) =>
             `No se pudieron cargar estos personajes archivados de este grupo: ${characterNames}. Siguen archivados, no tienen primer mensaje en un chat nuevo y se omiten cuando el grupo habla.`,
         "coldStorageDatasetExportSkipped": (characterNames: string) =>
@@ -2052,8 +2048,6 @@ export const languageSpanish = {
         `Tu guardado es demasiado grande para que el servidor autoalojado archive personajes en él, así que no se archivó nada y tu guardado se dejó como estaba. Todo funciona como antes. Para volver a intentarlo en este dispositivo, desactiva y vuelve a activar ${settings} > ${advancedSettings} > ${toggle}.`,
     "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `El archivado de personajes al iniciar está en pausa en este dispositivo porque no se completó dos veces seguidas. No se perdió nada y los personajes ya archivados se siguen cargando cuando los abres. Mientras no lo reanudes, no se archiva nada nuevo al iniciar. Para volver a intentarlo, desactiva y vuelve a activar ${settings} > ${advancedSettings} > ${toggle}.`,
-    "v21PluginRestoreDisabledNotice": (pluginNames: string, settings: string, plugin: string) =>
-        `La aplicación se detuvo dos veces seguidas en este dispositivo mientras se cargaban todos los personajes archivados para un plugin, así que se desactivaron los siguientes plugins: ${pluginNames}. No se perdió nada y los personajes archivados se siguen cargando cuando los abres. Las solicitudes que usan el proveedor de un plugin desactivado fallarán hasta que lo vuelvas a activar. Para volver a intentarlo, vuelve a activarlo en ${settings} > ${plugin}.`,
     cleanColdStorage: "Limpiar Datos Archivados y Activos No Utilizados",
     customSidebarConfig: "Configuración Personalizada de la Barra Lateral",
     cleanColdStorageConfirm: "Esto eliminará permanentemente todos los datos archivados (almacenamiento frío) no utilizados y todos los archivos de activos no utilizados, es decir, las imágenes y el audio que ya no usa ningún personaje, módulo, persona ni ajuste. Parte de ello podría ser útil en el futuro y no se puede recuperar. ¿Quieres continuar?",

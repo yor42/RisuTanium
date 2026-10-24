@@ -35,7 +35,6 @@ import { untrack } from 'svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { afterNextSaveCommit } from '../../globalApi.svelte'
 import { markCharacterForSave } from '../../storage/characterSaveMarks'
-import { hasEnabledV21Plugin } from '../../plugins/v21Plugins'
 import type { Residency } from '../../storage/store2/residency'
 import { getResidency } from '../../storage/store2/residencyActive'
 import { isWriting } from '../chatOrigin'
@@ -137,12 +136,11 @@ function clearPending(exit: CandidateExit): void {
     }
 }
 
-/** Whether this database may put characters back at all: archiving on, no V2.1 plugin and a block-format database. */
+/** Whether this database may put characters back at all: archiving on and a block-format database. */
 function putBackMayRun(): boolean {
     const db = DBState.db
     return !!db
         && db.archiveCharacters !== false
-        && !hasEnabledV21Plugin(db.plugins)
         && typeof db.formatversion === 'number'
         && db.formatversion >= 5
 }

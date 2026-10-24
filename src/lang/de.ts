@@ -43,10 +43,6 @@ export const languageGerman = {
             `Der archivierte Charakter ${characterName} kann auf dieser Seite nicht geöffnet werden: Dieser Browser bietet hier keinen Speicher für archivierte Charaktere (zum Beispiel bei einer einfachen HTTP-Adresse). Es wurde nichts verändert.`,
         "coldStorageNamedRestoreDamaged": (characterName: string) =>
             `Die archivierte Kopie von ${characterName} konnte nicht gelesen werden: Sie ist möglicherweise beschädigt. Es wurde nichts verändert oder gelöscht.`,
-        "coldStoragePluginRestoreProgress": (leftCount: number) =>
-            `Archivierte Charaktere werden für ein Plugin geladen... noch ${leftCount} Element(e)`,
-        "coldStoragePluginRestoreIncomplete": (characterNames: string) =>
-            `Ein Plugin, das alle Charaktere im Speicher benötigt, ist aktiviert, aber diese archivierten Charaktere konnten nicht geladen werden: ${characterNames}. Sie bleiben archiviert, daher wird das Plugin ihre Daten nicht sehen.`,
         "coldStorageGroupMembersNotLoaded": (characterNames: string) =>
             `Diese archivierten Charaktere dieser Gruppe konnten nicht geladen werden: ${characterNames}. Sie bleiben archiviert, erhalten in einem neuen Chat keine erste Nachricht und werden übersprungen, wenn die Gruppe spricht.`,
         "coldStorageDatasetExportSkipped": (characterNames: string) =>
@@ -2052,8 +2048,6 @@ export const languageGerman = {
         `Ihr Speicherstand ist zu groß für das Archivieren von Charakteren auf dem selbst gehosteten Server, daher wurde nichts archiviert und Ihr Speicherstand blieb unverändert. Alles funktioniert wie bisher. Um es auf diesem Gerät erneut zu versuchen, schalten Sie ${settings} > ${advancedSettings} > ${toggle} aus und wieder ein.`,
     "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `Das Archivieren von Charakteren beim Start ist auf diesem Gerät pausiert, weil es zweimal hintereinander nicht abgeschlossen wurde. Es ist nichts verloren gegangen, und bereits archivierte Charaktere werden weiterhin geladen, wenn Sie sie öffnen. Bis Sie es fortsetzen, wird beim Start nichts Neues archiviert. Um es erneut zu versuchen, schalten Sie ${settings} > ${advancedSettings} > ${toggle} aus und wieder ein.`,
-    "v21PluginRestoreDisabledNotice": (pluginNames: string, settings: string, plugin: string) =>
-        `Die App wurde auf diesem Gerät zweimal hintereinander unterbrochen, während alle archivierten Charaktere für ein Plugin geladen wurden. Deshalb wurden folgende Plugins ausgeschaltet: ${pluginNames}. Es ist nichts verloren gegangen, und archivierte Charaktere werden weiterhin geladen, wenn Sie sie öffnen. Anfragen, die den Anbieter eines ausgeschalteten Plugins verwenden, schlagen fehl, bis Sie es wieder einschalten. Um es erneut zu versuchen, schalten Sie es unter ${settings} > ${plugin} wieder ein.`,
     "cleanColdStorage": "Nicht verwendete archivierte Daten und Assets bereinigen",
     "customSidebarConfig": "Benutzerdefinierte Seitenleisten-Konfiguration",
     "cleanColdStorageConfirm": "Dadurch werden alle nicht verwendeten archivierten Daten (Kaltlager) und alle nicht verwendeten Asset-Dateien dauerhaft gelöscht, also Bilder und Audiodateien, die kein Charakter, kein Modul, keine Persona und keine Einstellung mehr verwendet. Manches davon könnte in Zukunft noch nützlich sein, und es kann nicht wiederhergestellt werden. Möchten Sie fortfahren?",

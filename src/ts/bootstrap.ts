@@ -60,8 +60,7 @@ import { clearBootScreen } from "./storage/store2/ui/bootScreen.svelte";
 import { noticeText } from "./storage/store2/ui/bootText";
 import { LEGACY_MAIN_FILE_KEY } from "./storage/blockKeys";
 import { listBackupTimes } from "./drive/backupList";
-import { clearArchiveMemo, clearRestoreAllStrikes, rememberPausedTold, rememberSkipped, rememberTooLarge } from "./storage/bootArchiveMemo";
-import { hasEnabledV21Plugin } from "./plugins/v21Plugins";
+import { clearArchiveMemo, rememberPausedTold, rememberSkipped, rememberTooLarge } from "./storage/bootArchiveMemo";
 import { applyCharacterDefaults } from "./storage/characterDefaults";
 import { recordStartupCleanup } from "./storage/startupCleanupState";
 import { isTrashPurgeDue } from "./storage/trashPurge";
@@ -541,15 +540,6 @@ export async function loadData() {
             try {
                 if (recordsLoadTimeListing()) {
                     await recordLoadTimeListing()
-                }
-            } catch (error) { }
-
-            // The restore-all count only matters while a V2.1 plugin is enabled
-            // in the installed database; an enabled one keeps it, because a
-            // switch-off the breaker made may not have been saved yet.
-            try {
-                if (!hasEnabledV21Plugin(getDatabase().plugins)) {
-                    clearRestoreAllStrikes()
                 }
             } catch (error) { }
 

@@ -48,10 +48,6 @@ export const languageEnglish = {
             `The archived character ${characterName} can't be opened on this page: this browser offers no storage for archived characters here (for example on a plain-HTTP address). Nothing was changed.`,
         coldStorageNamedRestoreDamaged: (characterName: string) =>
             `The archived copy of ${characterName} could not be read: it may be damaged. Nothing was changed or deleted.`,
-        coldStoragePluginRestoreProgress: (leftCount: number) =>
-            `Loading archived characters for a plugin... ${leftCount} items left`,
-        coldStoragePluginRestoreIncomplete: (characterNames: string) =>
-            `A plugin that needs every character in memory is enabled, but these archived characters could not be loaded: ${characterNames}. They stay archived, so the plugin will not see their data.`,
         coldStorageGroupMembersNotLoaded: (characterNames: string) =>
             `These archived characters of this group could not be loaded: ${characterNames}. They stay archived, get no first message in a new chat, and are skipped when the group talks.`,
         coldStorageDatasetExportSkipped: (characterNames: string) =>
@@ -2190,8 +2186,6 @@ export const languageEnglish = {
         `Your save is too large for the self-hosted server to archive characters into, so nothing was archived and your save was left as it is. Everything works as before. To try again on this device, turn off and then turn on ${settings} > ${advancedSettings} > ${toggle}.`,
     archiveCharactersPausedNotice: (settings: string, advancedSettings: string, toggle: string) =>
         `Archiving characters at startup is paused on this device because it did not finish twice in a row. Nothing was lost, and characters that are already archived still load when you open them. Until you resume it, nothing new is archived at startup. To try again, turn off ${settings} > ${advancedSettings} > ${toggle} and then turn it back on.`,
-    v21PluginRestoreDisabledNotice: (pluginNames: string, settings: string, plugin: string) =>
-        `The app stopped twice in a row on this device while it was loading every archived character for a plugin, so it turned off ${pluginNames}. Nothing was lost, and archived characters still load when you open them. Requests that use the provider of a turned-off plugin will fail until you turn it back on. To try again, turn it back on in ${settings} > ${plugin}.`,
     cleanColdStorage: "Clean Unused Archived Data and Assets",
     customSidebarConfig: "Custom Sidebar Configuration",
     cleanColdStorageConfirm: "This will permanently delete all unused archived (cold storage) data and all unused asset files, meaning images and audio that no character, module, persona or setting uses any more. Some of it may still be useful in the future, and it cannot be recovered. Do you want to continue?",

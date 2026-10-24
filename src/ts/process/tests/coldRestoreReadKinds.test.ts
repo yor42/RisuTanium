@@ -104,7 +104,6 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 import { readColdCharacterCopy, restoreColdCharacter, type ColdRestoreFailure } from '../coldCharacterRestore'
 import { alertNamedRestoreFailure, readArchivedCharacter, restoreArchivedForWrite } from '../coldCharacterAccess'
 import { restoreColdCharacterByChaId } from '../coldMemberRestore'
-import { restoreAllColdCharacters } from '../coldRestoreAll'
 import { getCharacterForRead, recheckCharacterForWrite } from '../mcp/risuaccess/utils'
 import { alertError } from 'src/ts/alert'
 import { characterFormatUpdate } from 'src/ts/characters'
@@ -779,36 +778,6 @@ describe('the message chosen for every restore failure reason', () => {
     })
 })
 
-describe('restoring every archived character for a plugin keeps its neutral notice', () => {
-    test.each(NO_STORAGE)('guard: with %s the characters stay archived and one notice names them, whatever the reason', async () => {
-        const first = placeholder('first', 'cold-key-first', 'First')
-        const second = placeholder('second', 'cold-key-second', 'Second')
-        installDb([first, second])
-
-        await withStoreUnavailable(() => restoreAllColdCharacters())
-
-        expect(alerts()).toEqual([language.errors.coldStoragePluginRestoreIncomplete('First, Second')])
-        expect(slot(0)).toBe(first)
-        expect(slot(1)).toBe(second)
-        expect(first.coldstorage).toBe('cold-key-first')
-        expect(second.coldstorage).toBe('cold-key-second')
-    })
-
-    test('guard: damaged copies stay archived and one notice names them, whatever the reason', async () => {
-        const first = placeholder('first', 'cold-key-first', 'First')
-        const second = placeholder('second', 'cold-key-second', 'Second')
-        installDb([first, second])
-        putBytes('opfs', 'cold-key-first', new Uint8Array([1, 2, 3, 4]))
-        putBytes('opfs', 'cold-key-second', compressSync(new TextEncoder().encode('{not valid json')))
-
-        await restoreAllColdCharacters()
-
-        expect(alerts()).toEqual([language.errors.coldStoragePluginRestoreIncomplete('First, Second')])
-        expect(first.coldstorage).toBe('cold-key-first')
-        expect(second.coldstorage).toBe('cold-key-second')
-    })
-})
-
 describe('a stored character that lacks default fields, reached by a plugin or an MCP tool', () => {
     /** A unit as a backup import stores it: no `globalLore`, no `tags`. */
     function bareUnit(chaId = 'member') {
@@ -888,19 +857,5 @@ describe('a stored character that lacks default fields, reached by a plugin or a
 
         expect(JSON.stringify([group, bare])).toBe(once)
         expect((group as unknown as { characters: string[] }).characters).toEqual(['a', 'b'])
-    })
-
-    test('reproducer: restoring every archived character for a plugin installs characters that have the default fields', async () => {
-        installDb([placeholder('first', 'cold-key-first', 'First'), placeholder('second', 'cold-key-second', 'Second')])
-        putBytes('opfs', 'cold-key-first', encodeUnit(bareUnit('first')))
-        putBytes('opfs', 'cold-key-second', encodeUnit(bareUnit('second')))
-
-        await restoreAllColdCharacters()
-
-        for (const index of [0, 1]) {
-            const installed = slot(index) as unknown as { coldstorage?: string, globalLore: unknown }
-            expect(installed.coldstorage).toBeUndefined()
-            expect(installed.globalLore).toEqual([])
-        }
     })
 })

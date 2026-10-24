@@ -18,7 +18,6 @@
     import { selectMultipleFile } from "src/ts/util";
     
     import { DBState } from 'src/ts/stores.svelte';
-    import { hasEnabledV21Plugin } from "src/ts/plugins/v21Plugins";
     import { AssetList, toAssetList, toPlainAssetArray, type AssetTuple } from "src/ts/storage/assetList";
     import { untrack } from "svelte";
   import { v4 } from "uuid";
@@ -62,15 +61,14 @@
 
     // A module's asset list is replaced, never edited in place: an installed
     // `AssetList` is not reactive, so only an assignment re-renders and schedules
-    // a save. While an enabled V2.1 plugin is present the list stays a plain
-    // array, because that plugin edits it in place.
+    // a save.
     function currentAssetTuples(): AssetTuple[] {
         const list = currentModule.assets ?? []
         return list instanceof AssetList ? toPlainAssetArray(list) : $state.snapshot(list)
     }
 
     function commitAssets(next: AssetTuple[]){
-        currentModule.assets = hasEnabledV21Plugin(DBState.db.plugins) ? next : toAssetList(next)
+        currentModule.assets = toAssetList(next)
     }
 
     function renameAsset(index: number, name: string){

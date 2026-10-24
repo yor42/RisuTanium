@@ -189,6 +189,13 @@ describe('the settings-file button', () => {
         expect(rowButton(target, 'Has')).not.toBeNull()
         expect(rowButton(target, 'Has')!.getAttribute('title')).toBe(buttonLabel)
     })
+
+    test('reproducer: a V2.1 plugin has no settings-file button', () => {
+        installDb([plugin('Retired', { version: '2.1' as unknown as RisuPlugin['version'] }), plugin('Has')])
+        const target = mountPlugins()
+        expect(rowButton(target, 'Retired')).toBeNull()
+        expect(rowButton(target, 'Has')).not.toBeNull()
+    })
 })
 
 describe('export', () => {

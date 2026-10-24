@@ -55,7 +55,6 @@ export type ArchiveFailure =
     | 'unavailable'     // this session cannot archive
     | 'setting'         // archiveCharacters is not true
     | 'format-version'  // formatversion below the block format
-    | 'v21-plugin'
     | 'bad-target'      // already a stub, a missing, unusable or hidden-character (§) chaId, or not an object
     | 'id-taken'        // new: some slot holds the chaId; loaded: it is not the sole holder
     | 'slot-gone'       // loaded: the character is no longer in the list

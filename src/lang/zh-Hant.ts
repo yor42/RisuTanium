@@ -43,10 +43,6 @@ export const languageChineseTraditional = {
             `無法在此頁面開啟已封存的角色 ${characterName}：此瀏覽器在此處不提供用於存放已封存角色的儲存空間（例如在純 HTTP 位址下）。未做任何變更。`,
         "coldStorageNamedRestoreDamaged": (characterName: string) =>
             `無法讀取 ${characterName} 的封存副本：它可能已損毀。未做任何變更，也未刪除任何內容。`,
-        "coldStoragePluginRestoreProgress": (leftCount: number) =>
-            `正在為外掛載入已封存的角色... 剩餘 ${leftCount} 項`,
-        "coldStoragePluginRestoreIncomplete": (characterNames: string) =>
-            `已啟用需要將所有角色載入記憶體的外掛，但以下已封存的角色無法載入：${characterNames}。這些角色仍維持封存狀態，因此外掛將無法看到其資料。`,
         "coldStorageGroupMembersNotLoaded": (characterNames: string) =>
             `該群組中已封存的以下角色無法載入：${characterNames}。這些角色仍維持封存狀態，在新對話中不會有開局訊息，並且在群組發言時會被略過。`,
         "coldStorageDatasetExportSkipped": (characterNames: string) =>
@@ -2095,8 +2091,6 @@ export const languageChineseTraditional = {
         `您的存檔過大，自架伺服器無法將角色封存到其中，因此未封存任何內容，您的存檔也維持原樣。一切照常運作。若要在此裝置上重試，請先關閉再重新開啟 ${settings} > ${advancedSettings} > ${toggle}。`,
     "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `本裝置上的啟動時角色封存已暫停，因為它連續兩次未能完成。沒有任何內容遺失，已封存的角色在您開啟時仍會正常載入。在恢復之前，啟動時不會再封存任何新角色。若要重試，請先關閉再重新開啟 ${settings} > ${advancedSettings} > ${toggle}。`,
-    "v21PluginRestoreDisabledNotice": (pluginNames: string, settings: string, plugin: string) =>
-        `在本裝置上，應用程式在為外掛載入所有已封存角色的過程中連續兩次停止運作，因此以下外掛已被關閉：${pluginNames}。沒有任何內容遺失，已封存的角色在您開啟時仍會正常載入。使用已關閉外掛之供應商的請求將會失敗，直到您重新開啟該外掛。若要重試，請在 ${settings} > ${plugin} 中重新開啟。`,
     "cleanColdStorage": "清理未使用的封存資料與資源",
     "customSidebarConfig": "自訂側邊欄配置",
     "cleanColdStorageConfirm": "這將永久刪除所有未使用的封存（冷儲存）資料，以及所有未使用的資源檔案，即不再被任何角色、模組、人設或設定使用的圖片和音訊。其中部分內容未來可能仍然有用，且刪除後無法復原。是否要繼續？",

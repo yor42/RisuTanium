@@ -7,9 +7,7 @@ import type { ResidentPlanInput } from './treeBytes'
  *
  * With archiving off, or when the setting cannot be read, everything is resident. Otherwise an entity is resident
  * when it cannot be told apart from another by its `chaId`: the id is empty or not a string, starts with the `§` of a
- * hidden character, cannot name a block, or is held by two entries (a stub is matched to its entry by id). An enabled
- * V2.1 plugin does not change the set: it needs every character in memory, which `loadPlugins` provides by loading
- * the stubs before any plugin code runs.
+ * hidden character, cannot name a block, or is held by two entries (a stub is matched to its entry by id).
  */
 export function residentSetOf(input: ResidentPlanInput): ReadonlySet<string> {
     const everything = new Set(input.entries.map(entry => entry.u))

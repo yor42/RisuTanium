@@ -241,13 +241,13 @@ describe('installing a database holds module asset lists as AssetList', () => {
         expect(DBState.db.modules[0].assets instanceof AssetList).toBe(true)
     })
 
-    test('with an enabled V2.1 plugin the install leaves plain arrays', () => {
+    test('reproducer: an enabled V2.1 plugin does not stop the conversion', () => {
         setDatabase(makeDb([makeModule('a')], [V21_PLUGIN]))
 
-        expect(isPlainArray(DBState.db.modules[0].assets)).toBe(true)
+        expect(DBState.db.modules[0].assets instanceof AssetList).toBe(true)
     })
 
-    test('a disabled V2.1 plugin or an enabled V3 plugin does not stop the conversion', () => {
+    test('guard: a disabled V2.1 plugin or an enabled V3 plugin does not stop the conversion', () => {
         setDatabase(makeDb([makeModule('a')], [{ ...V21_PLUGIN, enabled: false }, { ...V21_PLUGIN, version: '3.0' }]))
 
         expect(DBState.db.modules[0].assets instanceof AssetList).toBe(true)

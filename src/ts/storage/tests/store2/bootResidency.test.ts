@@ -225,23 +225,6 @@ describe('boot policy: who stays resident', () => {
         expect(group.characters).toEqual(slots(boot.result).filter(slot => slot.chaId !== 'group-one').map(slot => slot.chaId))
         expect(profile.counted.reads.filter(key => unitKeysOf(entry).includes(key))).toEqual([])
     })
-
-    test('V2.1: the boot hands over stubs, and restore-all then loads every one of them from its units', async () => {
-        const profile = await profileOf({ archiveCharacters: true })
-        const boot = await bootThroughDispatch(profile.counted.backend)
-        const database = opened(boot.result).database
-        ;(DBState as { db: unknown }).db = database
-        // The crash-loop breaker of `loadPlugins` trips only while a stub stands in the list.
-        expect((database.characters as unknown as Plain[]).some(slot => slot.coldstorage)).toBe(true)
-
-        const { restoreAllColdCharacters } = await import('src/ts/process/coldRestoreAll')
-        await restoreAllColdCharacters()
-
-        const installed = DBState.db.characters as unknown as Plain[]
-        expect(installed.every(slot => slot.coldstorage === undefined)).toBe(true)
-        expect(installed.map(slot => (slot.chats as unknown[]).length)).toEqual(profile.entries.map(entry => entry.chats.length))
-        expect(vi.mocked(alertError)).not.toHaveBeenCalled()
-    })
 })
 
 describe('MC-142 1: a profile that never chose archiving', () => {

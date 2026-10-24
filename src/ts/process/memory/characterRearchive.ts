@@ -351,7 +351,6 @@ async function runJob(cha: Slot): Promise<void> {
             case 'unavailable':
             case 'setting':
             case 'format-version':
-            case 'v21-plugin':
                 // A gate went off during the job: the next selection change tries again.
                 outcome = 'gate'
                 return

@@ -570,26 +570,6 @@ describe('what the write can run into', () => {
         expect(writtenFor('A')).toBe(2)
         expect(isStub('A')).toBe(true)
     })
-
-    test('new behaviour: a V2.1 plugin enabled during the write refuses the archive, counts nothing and waits for the next selection', async () => {
-        world([fullCharacter('A'), fullCharacter('B'), fullCharacter('C')])
-        select('C')
-        begin()
-        h.whileWriting = () => { DBState.db.plugins = [{ enabled: true, version: '2.1' }] as never }
-
-        await commitAndSettle()
-
-        expect(isStub('A')).toBe(false)
-        expect(h.commits.length).toBe(0)
-
-        DBState.db.plugins = []
-        h.whileWriting = null
-        select('B')
-
-        expect(h.commits.length).toBe(1)
-        await commitAndSettle()
-        expect(isStub('A')).toBe(true)
-    })
 })
 
 describe('the trash purge (CHORE-201)', () => {

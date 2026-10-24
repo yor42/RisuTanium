@@ -1,5 +1,4 @@
 import { DBState } from '../stores.svelte'
-import { hasEnabledV21Plugin } from '../plugins/v21Plugins'
 import { canBootArchive } from './memory/bootArchiveState'
 
 /**
@@ -16,7 +15,6 @@ export type ArchiveGateFailure =
     | 'unavailable'     // this session cannot archive
     | 'setting'         // archiveCharacters is not true
     | 'format-version'  // formatversion below the block format
-    | 'v21-plugin'
 
 /** The gates that must hold for the whole archive, synchronous; null when archiving may run. */
 export function archiveMayRun(): ArchiveGateFailure | null {
@@ -29,9 +27,6 @@ export function archiveMayRun(): ArchiveGateFailure | null {
     }
     if (typeof db.formatversion !== 'number' || db.formatversion < MIN_FORMAT_VERSION) {
         return 'format-version'
-    }
-    if (hasEnabledV21Plugin(db.plugins)) {
-        return 'v21-plugin'
     }
     return null
 }

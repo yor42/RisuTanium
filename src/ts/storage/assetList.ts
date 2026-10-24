@@ -44,7 +44,7 @@ export function toAssetList(source: readonly AssetTuple[]): AssetList {
     return list
 }
 
-/** A plain array with the entries of `source`, for a handoff or a V2.1 plugin. */
+/** A plain array with the entries of `source`, for a handoff. */
 export function toPlainAssetArray(source: readonly AssetTuple[]): AssetTuple[] {
     const list: AssetTuple[] = []
     for (let i = 0; i < source.length; i++) {

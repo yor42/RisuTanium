@@ -188,14 +188,6 @@ describe('boot archive pass: format and plugin gates', () => {
     test.each([
         ['an enabled V2.1 plugin', [plugin('2.1', true)]],
         ['an enabled V2.1 plugin among others', [plugin(2, true, 'old'), plugin('3.0', true, 'v3'), plugin('2.1', true, 'new')]],
-    ] as const)('B2: guard: %s blocks archiving, the key and the notice', async (_label, plugins) => {
-        const { world, result } = await boot('opfs', twoCharacters({ plugins: [...plugins] }))
-
-        expectNothingDone(world, result)
-        expect(installedTree(result.outcome)).not.toHaveProperty('archiveCharacters')
-    })
-
-    test.each([
         ['a disabled V2.1 plugin', [plugin('2.1', false)]],
         ['an enabled V2.0 plugin (version 2)', [plugin(2, true)]],
         ['an enabled V3 plugin', [plugin('3.0', true)]],

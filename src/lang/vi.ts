@@ -43,10 +43,6 @@ export const languageVietnamese = {
             `Không thể mở nhân vật đã lưu trữ ${characterName} trên trang này: trình duyệt này không cung cấp bộ nhớ cho các nhân vật đã lưu trữ ở đây (ví dụ trên địa chỉ HTTP thông thường). Không có gì bị thay đổi.`,
         "coldStorageNamedRestoreDamaged": (characterName: string) =>
             `Không thể đọc bản đã lưu trữ của ${characterName}: bản đó có thể đã bị hỏng. Không có gì bị thay đổi hoặc bị xóa.`,
-        "coldStoragePluginRestoreProgress": (leftCount: number) =>
-            `Đang tải các nhân vật đã lưu trữ cho plugin... còn ${leftCount} mục`,
-        "coldStoragePluginRestoreIncomplete": (characterNames: string) =>
-            `Một plugin cần tất cả nhân vật trong bộ nhớ đang được bật, nhưng không thể tải các nhân vật đã lưu trữ sau: ${characterNames}. Chúng vẫn ở trạng thái lưu trữ, nên plugin sẽ không thấy dữ liệu của chúng.`,
         "coldStorageGroupMembersNotLoaded": (characterNames: string) =>
             `Không thể tải các nhân vật đã lưu trữ sau của nhóm này: ${characterNames}. Chúng vẫn ở trạng thái lưu trữ, không có tin nhắn đầu tiên trong cuộc trò chuyện mới và bị bỏ qua khi nhóm trò chuyện.`,
         "coldStorageDatasetExportSkipped": (characterNames: string) =>
@@ -2050,8 +2046,6 @@ export const languageVietnamese = {
         `Bản lưu của bạn quá lớn để máy chủ tự lưu trữ có thể lưu trữ nhân vật vào, nên không có gì được lưu trữ và bản lưu của bạn được giữ nguyên. Mọi thứ vẫn hoạt động như trước. Để thử lại trên thiết bị này, hãy tắt rồi bật lại ${settings} > ${advancedSettings} > ${toggle}.`,
     "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `Việc lưu trữ nhân vật khi khởi động đã bị tạm dừng trên thiết bị này vì nó không hoàn tất hai lần liên tiếp. Không có gì bị mất, và các nhân vật đã được lưu trữ vẫn được tải khi bạn mở chúng. Cho đến khi bạn tiếp tục lại, sẽ không có nhân vật mới nào được lưu trữ khi khởi động. Để thử lại, hãy tắt rồi bật lại ${settings} > ${advancedSettings} > ${toggle}.`,
-    "v21PluginRestoreDisabledNotice": (pluginNames: string, settings: string, plugin: string) =>
-        `Trên thiết bị này, ứng dụng đã dừng hai lần liên tiếp trong khi đang tải mọi nhân vật đã lưu trữ cho một plugin, nên các plugin sau đã bị tắt: ${pluginNames}. Không có gì bị mất, và các nhân vật đã được lưu trữ vẫn được tải khi bạn mở chúng. Các yêu cầu sử dụng nhà cung cấp của plugin đã bị tắt sẽ thất bại cho đến khi bạn bật lại plugin đó. Để thử lại, hãy bật lại trong ${settings} > ${plugin}.`,
     cleanColdStorage: "Dọn dẹp Dữ liệu Lưu trữ và Tệp Tài sản Không sử dụng",
     customSidebarConfig: "Cấu hình Thanh bên Tùy chỉnh",
     cleanColdStorageConfirm: "Thao tác này sẽ xóa vĩnh viễn toàn bộ dữ liệu lưu trữ (bộ nhớ lạnh) không sử dụng và toàn bộ tệp tài sản không sử dụng, tức là hình ảnh và âm thanh mà không nhân vật, mô-đun, persona hay cài đặt nào còn sử dụng. Một số có thể vẫn hữu ích trong tương lai, và không thể khôi phục. Bạn có muốn tiếp tục không?",

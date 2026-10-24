@@ -463,7 +463,6 @@ describe('what blocks a put-back', () => {
     })
 
     test.each([
-        ['an enabled V2.1 plugin', { plugins: [{ enabled: true, version: '2.1' }] }],
         ['archiving switched off', { archiveCharacters: false }],
         ['a format before the block format', { formatversion: 4 }],
     ])('acceptance: %s puts nothing back', async (_label, dbExtra) => {

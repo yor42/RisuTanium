@@ -17,7 +17,6 @@ import {
 import { buildColdStub, coldUnitCharacter, enrichLegacyStub, isArchivableCharacter, isLegacyStub } from '../process/coldCharacter'
 import { pointerChatKeys } from '../process/coldstorageData'
 import { repairDatabaseIds } from '../process/chatIds'
-import { hasEnabledV21Plugin } from '../plugins/v21Plugins'
 import { applyCharacterDefaults, resetChatStreamingState } from './characterDefaults'
 import type { ArchiveMemo, ArchiveStrikeState } from './bootArchiveMemo'
 
@@ -57,7 +56,7 @@ import type { ArchiveMemo, ArchiveStrikeState } from './bootArchiveMemo'
  * of this module therefore mocks `globalApi.svelte` and `database.svelte`, and
  * a test whose tree holds remote character blocks also mocks `appStore`. Keep
  * the static imports to `blockStore`, `blockFrame`, `packedNames`, `risuSave`,
- * `coldCharacter`, `coldstorageData`, `chatIds`, `v21Plugins`,
+ * `coldCharacter`, `coldstorageData`, `chatIds`,
  * `characterDefaults`, `uuid` and type-only imports.
  *
  * The pass's encoder writes nothing to storage: it frames the blocks and the
@@ -414,7 +413,6 @@ function isObjectSlot(value: unknown): value is Slot {
 function passesTreeGates(tree: Database): boolean {
     return typeof tree.formatversion === 'number'
         && tree.formatversion >= MIN_FORMAT_VERSION
-        && !hasEnabledV21Plugin(tree.plugins)
         && Array.isArray(tree.characters)
         && Array.isArray(tree.botPresets)
 }

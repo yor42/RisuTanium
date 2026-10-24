@@ -52,7 +52,7 @@
                     </span>
                 {/if}
             </div>
-            {#if plugin.version === 2 || plugin.version === "2.1"}
+            {#if plugin.version === 2}
                 <button class="text-yellow-400 hover:gray-200 cursor-pointer" onclick={() => {
                     alertMd(language.pluginV2Warning);
                 }} >
@@ -109,7 +109,7 @@
                 <DownloadIcon />
             </button>
 
-            {#if plugin.version !== 1 && Object.keys(plugin.arguments ?? {}).some((k) => !k.startsWith('hidden_'))}
+            {#if plugin.version !== 1 && plugin.version !== '2.1' && Object.keys(plugin.arguments ?? {}).some((k) => !k.startsWith('hidden_'))}
                 <button
                     class="textcolor2 hover:gray-200 cursor-pointer"
                     aria-label={language.pluginSettingsFile.button}
@@ -137,8 +137,12 @@
             {/if}
 
             <button
-                class="textcolor2 hover:gray-200 cursor-pointer"
+                class="textcolor2 hover:gray-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={plugin.version === '2.1'}
                 onclick={async (e) => {
+                    if (plugin.version === '2.1') {
+                        return
+                    }
                     togglePluginEnabled(plugin)
                     DBState.db.plugins[i] = plugin
                     e.preventDefault()
@@ -178,10 +182,10 @@
                 <TrashIcon />
             </button>
         </div>
-        {#if plugin.version === 1}
+        {#if plugin.version === 1 || plugin.version === '2.1'}
             <span class="text-draculared text-xs">
                 {language.pluginVersionWarn
-                    .replace("{{plugin_version}}", "API V1")
+                    .replace("{{plugin_version}}", plugin.version === 1 ? "API V1" : "API V2.1")
                     .replace("{{required_version}}", "API V3")}
             </span>
             <!--List up args-->

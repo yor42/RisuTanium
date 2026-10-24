@@ -36,7 +36,6 @@ import {
     installedTree,
     noticeKinds,
     peerCommits,
-    plugin,
     runDirect,
     startBoot,
     worldFor,
@@ -715,7 +714,6 @@ describe('boot archive pass breaker: boots that write nothing do not count', () 
     const CASES: Case[] = [
         ['a tree that reads the setting off', 'opfs', () => baseTree([fullCharacter('a', 'A')], { archiveCharacters: false })],
         ['a save below format 5', 'opfs', () => baseTree([fullCharacter('a', 'A')], { archiveCharacters: true, formatversion: 4 })],
-        ['an enabled V2.1 plugin', 'opfs', () => baseTree([fullCharacter('a', 'A')], { archiveCharacters: true, plugins: [plugin('2.1', true)] })],
         ['nothing eligible with the key present', 'opfs', () => baseTree([fullCharacter('t1', 'T1', { trashTime: 1 })], { archiveCharacters: true })],
         ['an array slot that is never eligible', 'opfs', () => baseTree([Object.assign([], { chaId: 'arr' })], { archiveCharacters: true })],
         ['a tree the refusal rejects', 'opfs', () => baseTree([fullCharacter('ok', 'Ok'), fullCharacter('root', 'Root')], { archiveCharacters: true })],

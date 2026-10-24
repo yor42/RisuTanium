@@ -42,7 +42,6 @@ import {
     makeTab,
     MAIN_KEY,
     noticeKinds,
-    plugin,
     runDirect,
     setupWorld,
     startBoot,
@@ -956,7 +955,6 @@ describe('boot archive pass: enrichment inherits the pass gates', () => {
     }
 
     const GATES: Gate[] = [
-        { label: 'an enabled V2.1 plugin', hosts: HOSTS, extra: { plugins: [plugin('2.1', true)] } },
         { label: 'a format version below 5', hosts: HOSTS, extra: { formatversion: 4 } },
         { label: 'a stale-account profile', hosts: HOSTS, env: () => ({ staleAccountProfile: true }) },
         {

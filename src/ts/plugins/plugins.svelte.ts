@@ -2,22 +2,19 @@ import { get, writable } from "svelte/store";
 import { language } from "../../lang";
 import { fillLang } from "../../lang/fill";
 import { getCurrentCharacter, getDatabase, setDatabase, setDatabaseLite } from "../storage/database.svelte";
-import { alertConfirm, alertError, alertNormal, alertPluginConfirm, waitAlert } from "../alert";
+import { alertConfirm, alertError, alertPluginConfirm } from "../alert";
 import { selectFileByDom, sleep } from "../util";
 import type { OpenAIChat } from "../process/index.svelte";
 import { fetchNative, globalFetch, readImage, saveAsset, toGetter } from "../globalApi.svelte";
-import { DBState, hotReloading, pluginAlertModalStore, selectedCharID } from "../stores.svelte";
+import { DBState, hotReloading, selectedCharID } from "../stores.svelte";
 import type { ScriptMode } from "../process/scripts";
-import { checkCodeSafety } from "./pluginSafety";
 import { SafeDocument, SafeIdbFactory, SafeLocalStorage } from "./pluginSafeClass";
 import { loadV3Plugins } from "./apiV3/v3.svelte";
 import { pluginCodeTranspiler } from "./apiV3/transpiler";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { incomingCharacterRefusal, withoutStubDowngrades } from "./stubDowngrade";
 import { databaseWriteProblem, singleCharacterProblem } from "./characterWriteCheck";
-import { hasEnabledV21Plugin } from "./v21Plugins";
 import { PLUGIN_STORAGE_INDEX_KEY, PLUGIN_STORAGE_LEGACY_MAP_KEY } from "../process/pluginStorageIndex";
-import { AssetList, toPlainAssetArray } from "../storage/assetList";
 import {
     apiVersionRefusal,
     applyPluginChanges,
@@ -35,7 +32,6 @@ import {
     type PluginBatchFailure,
     type PreparedPlugin,
 } from "./pluginBatch";
-import { clearRestoreAllStrikes, readRestoreAllStrikes } from "../storage/bootArchiveMemo";
 import { clearSupaMemoryIfEmptyIn } from "../process/memory/supaResume";
 import {
     fillMissingCharacterInstallIds,
@@ -351,36 +347,8 @@ export async function loadPlugins() {
     let db = getDatabase()
 
 
-    // An enabled V2.1 plugin reads and writes the live character list
-    // directly, so every archived character is restored before any V2.1 code
-    // runs. A character that cannot be restored stays archived and the plugin
-    // still loads. The restore is loaded on demand: it reads cold storage,
-    // which a profile without a V2.1 plugin never needs here.
-    //
-    // Two restores in a row that never finished (the count the restore keeps)
-    // mean the page may keep dying during it, which would leave the user
-    // unable to reach the plugin settings. Then the V2.1 plugins are switched
-    // off and the app opens. The count is only consulted when there is an
-    // archived character to restore, and it is not cleared here: the switch-off
-    // reaches the saved file only with a later save, and until then the next
-    // start must trip again. Turning a V2.1 plugin on clears it, and so does a
-    // start whose installed database has none enabled.
-    if (hasEnabledV21Plugin(db.plugins)) {
-        if ((DBState.db?.characters ?? []).some((cha) => cha?.coldstorage) && readRestoreAllStrikes() >= 2) {
-            // V2.1 is switched off here, so no V2.1 code runs and the module
-            // asset lists may stay `AssetList`s.
-            await switchOffV21PluginsAfterRestoreStrikes(db.plugins)
-        } else {
-            // A V2.1 plugin mutates the live module asset lists in place, which an
-            // `AssetList` does not track. Unwrap first, so the conversion never
-            // depends on the restore's outcome.
-            unwrapModuleAssets()
-            await restoreAllForV21Plugins()
-        }
-    }
-
     const enabledPlugins = safeStructuredClone(db.plugins).filter((p: RisuPlugin) => p.enabled)
-    const pluginV2 = enabledPlugins.filter((a: RisuPlugin) => a.version === 2 || a.version === '2.1')
+    const pluginV2 = enabledPlugins.filter((a: RisuPlugin) => a.version === 2)
     const pluginV3 = enabledPlugins.filter((a: RisuPlugin) => a.version === '3.0')
 
     await loadV2Plugin(pluginV2)
@@ -389,65 +357,14 @@ export async function loadPlugins() {
 
 /**
  * Flips a plugin on or off from the plugin settings and reloads the plugins.
- * Turning a V2.1 plugin on clears the restore-all count first, so `loadPlugins`
- * tries again from zero.
+ * A V2.1 plugin never runs, so its saved `enabled` is left as it is.
  */
 export async function togglePluginEnabled(plugin: RisuPlugin): Promise<void> {
+    if (plugin.version === '2.1') {
+        return
+    }
     plugin.enabled = !plugin.enabled
-    if (plugin.enabled && plugin.version === '2.1') {
-        clearRestoreAllStrikes()
-    }
     return loadPlugins()
-}
-
-/** Replaces every live module's `AssetList` with a plain array, one assignment per module. */
-function unwrapModuleAssets() {
-    for (const mod of DBState.db?.modules ?? []) {
-        const assets = mod?.assets
-        if (assets instanceof AssetList) {
-            mod.assets = toPlainAssetArray(assets)
-        }
-    }
-}
-
-async function switchOffV21PluginsAfterRestoreStrikes(plugins: RisuPlugin[]) {
-    const switchedOff: string[] = []
-    for (const plugin of plugins) {
-        if (plugin.enabled && plugin.version === '2.1') {
-            plugin.enabled = false
-            switchedOff.push(plugin.displayName ?? plugin.name)
-        }
-    }
-    console.warn('Loading archived characters for V2.1 plugins did not finish twice in a row; switched off:', switchedOff)
-    try {
-        alertNormal(language.v21PluginRestoreDisabledNotice(switchedOff.join(', '), language.settings, language.plugin))
-        await waitAlert()
-    } catch (noticeError) {
-        console.error('Telling the user that V2.1 plugins were switched off failed', noticeError)
-    }
-}
-
-async function restoreAllForV21Plugins() {
-    try {
-        const { restoreAllColdCharacters } = await import("../process/coldRestoreAll")
-        await restoreAllColdCharacters()
-    } catch (error) {
-        console.error('Restoring archived characters before loading V2.1 plugins failed', error)
-        // The plugin is about to see whichever characters are still
-        // archived, so the user is told which they are before it runs, and
-        // loading waits until the notice has been dismissed.
-        try {
-            const archived = (DBState.db?.characters ?? [])
-                .filter((cha) => cha?.coldstorage)
-                .map((cha) => cha.name || language.errors.coldStorageUnknownCharacterName)
-            if (archived.length > 0) {
-                alertError(language.errors.coldStoragePluginRestoreIncomplete(archived.join(', ')))
-                await waitAlert()
-            }
-        } catch (noticeError) {
-            console.error('Telling the user about the archived characters failed', noticeError)
-        }
-    }
 }
 
 export type PluginV2ProviderArgument = {
@@ -1149,79 +1066,9 @@ export async function loadV2Plugin(plugins: RisuPlugin[]) {
     globalThis.__pluginApis__ = getV2PluginAPIs()
 
     for (const plugin of plugins) {
-        let data = ''
-        let version = plugin.version || 2
+        console.log('Loading V2.0 Plugin', plugin.name)
 
-        const createRealScript = (data:string): string => {
-            const tt = (window as unknown as Window & {
-                trustedTypes?: {
-                    createPolicy: (name: string, rules: { createScript: (input: string) => string }) => { createScript: (input: string) => string }
-                }
-            }).trustedTypes
-            const policyFactory = tt ?? {
-                createPolicy: (_name: string, rules: { createScript: (input: string) => string }) => rules // Just return the rules object as the "policy"
-            }
-
-            const policy = policyFactory.createPolicy('plugin-policy', {
-                createScript: (_input) => {
-                    return `(async () => {
-                        const risuFetch = globalThis.__pluginApis__.risuFetch
-                        const nativeFetch = globalThis.__pluginApis__.nativeFetch
-                        const getArg = globalThis.__pluginApis__.getArg
-                        const printLog = globalThis.__pluginApis__.printLog
-                        const getChar = globalThis.__pluginApis__.getChar
-                        const setChar = globalThis.__pluginApis__.setChar
-                        const addProvider = globalThis.__pluginApis__.addProvider
-                        const addRisuScriptHandler = globalThis.__pluginApis__.addRisuScriptHandler
-                        const removeRisuScriptHandler = globalThis.__pluginApis__.removeRisuScriptHandler
-                        const addRisuReplacer = globalThis.__pluginApis__.addRisuReplacer
-                        const removeRisuReplacer = globalThis.__pluginApis__.removeRisuReplacer
-                        const onUnload = globalThis.__pluginApis__.onUnload
-                        const setArg = globalThis.__pluginApis__.setArg
-                        const saveAsset = globalThis.__pluginApis__.saveAsset
-                        const readImage = globalThis.__pluginApis__.readImage
-                        ${version === '2.1' ? `
-                            const safeGlobalThis = globalThis.__pluginApis__.getSafeGlobalThis()
-                            const Risuai = globalThis.__pluginApis__
-                            const safeLocalStorage = globalThis.__pluginApis__.safeLocalStorage
-                            const safeIdbFactory = globalThis.__pluginApis__.safeIdbFactory
-                            const alertStore = globalThis.__pluginApis__.alertStore
-                            const safeDocument = globalThis.__pluginApis__.safeDocument
-                            const getDatabase = globalThis.__pluginApis__.getDatabase
-                            const setDatabaseLite = globalThis.__pluginApis__.setDatabaseLite
-                            const setDatabase = globalThis.__pluginApis__.setDatabase
-                            const loadPlugins = globalThis.__pluginApis__.loadPlugins
-                            const SafeFunction = globalThis.__pluginApis__.SafeFunction
-                        ` : ''}
-
-                        ${data}
-                    })();`
-                }
-            });
-
-            return policy.createScript(data);
-        }
-
-        if(version === '2.1'){
-            const safety = (await checkCodeSafety(plugin.script))
-            data = safety.modifiedCode
-            console.log('Safety check result:', safety)
-            console.log('Loading V2.1 Plugin', plugin.name, data)
-
-            try {
-                new Function(createRealScript(data))()
-            } catch (error) {
-                console.error(error)
-            }
-
-            console.log('Loaded V2.1 Plugin', plugin.name)
-        }
-        else{
-            data = plugin.script
-            console.log('Loading V2.0 Plugin', plugin.name)
-
-            console.warn(`Plugin 2.0 is removed and no longer supported. Please update plugin "${plugin.name}" to API version 3.0`)
-        }
+        console.warn(`Plugin 2.0 is removed and no longer supported. Please update plugin "${plugin.name}" to API version 3.0`)
     }
 }
 

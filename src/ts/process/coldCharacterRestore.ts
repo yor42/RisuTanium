@@ -13,7 +13,7 @@ import { markIdentitySeen } from "../storage/dbChangeEffects.svelte"
  * Reading an archived character's unit back and installing it in place of its
  * stub, shared by `changeChar` (`characters.ts`),
  * `restoreColdCharacterByChaId` (`coldMemberRestore.ts`) and the plugin and
- * MCP access paths (`coldCharacterAccess.ts`, `coldRestoreAll.ts`). Reading a
+ * MCP access paths (`coldCharacterAccess.ts`). Reading a
  * copy without installing it is `readColdCharacterCopy`.
  *
  * This module must not import `characters.ts` or `index.svelte.ts` statically.

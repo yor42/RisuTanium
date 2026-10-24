@@ -43,10 +43,6 @@ export const languageChinese = {
             `无法在此页面打开已归档的角色 ${characterName}：此浏览器在此处不提供用于存放已归档角色的存储空间（例如在纯 HTTP 地址下）。未做任何更改。`,
         "coldStorageNamedRestoreDamaged": (characterName: string) =>
             `无法读取 ${characterName} 的归档副本：它可能已损坏。未做任何更改，也未删除任何内容。`,
-        "coldStoragePluginRestoreProgress": (leftCount: number) =>
-            `正在为插件加载已归档的角色... 还剩 ${leftCount} 项`,
-        "coldStoragePluginRestoreIncomplete": (characterNames: string) =>
-            `已启用需要将所有角色载入内存的插件，但以下已归档的角色无法加载：${characterNames}。它们仍保持归档状态，因此插件将无法看到其数据。`,
         "coldStorageGroupMembersNotLoaded": (characterNames: string) =>
             `该群组中已归档的以下角色无法加载：${characterNames}。它们仍保持归档状态，在新对话中不会有初始消息，并且在群组发言时会被跳过。`,
         "coldStorageDatasetExportSkipped": (characterNames: string) =>
@@ -2050,8 +2046,6 @@ export const languageChinese = {
         `您的存档过大，自托管服务器无法将角色归档到其中，因此未归档任何内容，您的存档也保持原样。一切照常运行。若要在此设备上重试，请先关闭再重新开启 ${settings} > ${advancedSettings} > ${toggle}。`,
     "archiveCharactersPausedNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `本设备上的启动时角色归档已暂停，因为它连续两次未能完成。没有任何内容丢失，已归档的角色在您打开时仍会正常加载。在恢复之前，启动时不会再归档任何新角色。若要重试，请先关闭再重新开启 ${settings} > ${advancedSettings} > ${toggle}。`,
-    "v21PluginRestoreDisabledNotice": (pluginNames: string, settings: string, plugin: string) =>
-        `在本设备上，应用在为插件加载所有已归档角色的过程中连续两次停止运行，因此以下插件已被关闭：${pluginNames}。没有任何内容丢失，已归档的角色在您打开时仍会正常加载。使用已关闭插件的提供商的请求将会失败，直到您重新开启该插件。若要重试，请在 ${settings} > ${plugin} 中重新开启。`,
     "cleanColdStorage": "清理未使用的归档数据和资源",
     "customSidebarConfig": "自定义侧边栏配置",
     "cleanColdStorageConfirm": "这将永久删除所有未使用的归档（冷存储）数据，以及所有未使用的资源文件，即不再被任何角色、模块、人设或设置使用的图片和音频。其中部分内容将来可能仍然有用，且删除后无法恢复。是否要继续？",
