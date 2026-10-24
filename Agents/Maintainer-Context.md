@@ -12265,3 +12265,851 @@ Round 2:
 - Notes, not the maintainer's words:
   - CHORE-09 item 7 is closed with the guard and this accepted residual.
   - The guard turns a logged TypeError into a no-op and changes no stored data (`MC-352` notes). Commit messages and status records must not say it prevents corruption.
+
+---
+
+### MC-354 — Lane A, 2026-10-24: CHORE-205 after stage 2c — do the yield and see
+
+- Tag: decisions (chat messages, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source:
+  - the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6`;
+  - the verified phone run `%TEMP%\risu-b715\phone1-s2c\result.md`, with its corrections;
+  - lane B's judgement, relayed by message: S0 good, V1 not met, the next step is the yield (`MC-403`).
+- Related: `MC-402` (the V1 definition), `MC-403`; CHORE-205.
+
+**The maintainer's words:**
+- "personal opinion, but 3~7ms off the mark does feel like a negligible gap compared to original stall."
+- After lane A's reply, they said: "yeah, let's do the yield and see how it turns out." In that reply lane A:
+  - agreed the gap is within noise;
+  - recommended the yield anyway: it splits the stretch, cuts the tail of about 60% of slots over 100 ms, and leaves margin for phones below the Note 9;
+  - proposed the yield as the last V1 step, and offered the maintainer the choice of raising the bar.
+
+**What was decided (maintainer):**
+1. Lane B goes ahead with the yield between the checks and the verdict (`MC-403`). Its result decides what comes next.
+
+- Notes, not the maintainer's words:
+  - The figures. Stage 2c's one-resident V1 medians are 107.45 and 103.1 ms on the Note 9, against about 327 ms in the split run's `decisionMs` and 275 ms at stage 1. The 0-resident figure is 37.5 ms.
+  - Lane A proposed that the yield be the last V1 step: if V1 is still not met afterwards, call it good enough. The maintainer did not state whether that cap applies. `MC-402`'s 100 ms bar is unchanged.
+
+**Later the same day (maintainer's words):**
+- The maintainer asked: "'good enough' cap was from my suspicion that we might be reaching the point of diminishing return. does the numbers really back up my suspicion, though?"
+- Lane A answered "mostly yes". Its reasoning:
+  - stage 2 saved about 160 ms; stage 2c saved a net 9 to 19 ms;
+  - the remaining verdict (about 75 ms) is near the floor for comparing values;
+  - large characters and slower phones are untested.
+  - It suggested that the next phone question be the verdict cost on the maintainer's largest character.
+- The maintainer replied: "agreed. and I think we should at least take a look if mechanism change can make drastic speed gain that would justify the effort."
+
+2. **The phone question after the yield.** It asks for the verdict cost on the maintainer's largest character, not only the median on the usual character. Lane A's reading of "agreed".
+3. **A mechanism-change study.** It sizes whether a different idle-net mechanism, one that avoids comparing values on idle slots, could give a drastic speed gain that justifies the effort. This is a study only; nothing is built without a later decision.
+
+**After the study (`AskUserQuestion` answer by option label, 2026-10-24):**
+- The verified study is `%TEMP%\risu-b715\c205-mechanism\result.md`, with its corrections. It found no change that makes each slot about 10× cheaper while still catching unmarked writes.
+- The candidate it under-rated is a hybrid:
+  - a per-character change counter, bumped by `markCharacterForSave` and by the tracked writes;
+  - the verdict runs only when a counter moved;
+  - a slow full sweep (30 s or more) is the backstop.
+- Answer: "Experiment after the yield (Recommended)".
+
+4. **The experiment comes after the yield; the release is unchanged until it decides.** Once the yield lands, lane B adds measurement-only (MEASURE) counters to each slot: input events, save marks, network and script responses, and the resident count. The maintainer runs a real session of 20-30 minutes with scripts and several characters open. The run measures how many slots are quiet and whether the net ever catches an unmarked write. The hybrid is decided with those numbers. The option text is the orchestrator's; that the experiment needs new measurement code and a session with several characters open comes from the study's "Corrections from doc-verifier" section.
+
+---
+
+### MC-470 — Lane A, 2026-10-24: in-place carry-forward of MVP data can give way to a full export and re-import (amends `MC-350`; refines `MC-345` 4)
+
+- Tag: decisions (chat message, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6`.
+- Related: `MC-350`, `MC-345` 4, `MC-011`, `MC-175`, `MC-223`.
+
+**The maintainer's words (chat message):** "clarification: no carry forward MVP is not always a dealbreaker - I was told that currently backup from MVP excludes assets, which can lead to data loss. if I can export my full data, including assets, and re-import on later version, data loss on move forward is acceptable. also, currently I haven't built and imported my real data to MVP. so no data loss happens even if something dramatically changes."
+
+**What was decided (maintainer):**
+1. **In-place carry-forward is not absolute.** The reason it was required (`MC-350` 2, and `MC-345` 4's condition) is that a backup from the MVP was understood to leave out assets. If the maintainer can export their full data, assets included, from the installed build and re-import it on the later version, a later build may drop in-place reading of the old data. Lane A's reading: the condition is a full export, assets included, from the build that holds the data, which the later build re-imports without loss.
+2. **Nothing is protected yet.** The maintainer has not built the MVP or imported their real data into it. Until they do, no data can be lost however much the format changes.
+
+- Notes, not the maintainer's words:
+  - `MC-350`'s start point is still recorded when the maintainer reports the install (lane A).
+  - Lane A's reading of the effect on `MC-350`: item 2 (automatic migration), and item 1's requirement to read the data in place, apply only while the installed build has no lossless full export. The maintainer's words do not touch item 3 (unreadable data is kept, not overwritten). Where one exists, a format change may instead require an export and re-import, provided the later build says so before its first launch touches the data. That proviso is lane A's proposal, not a decision.
+  - The premise "backup from MVP excludes assets" is the maintainer's report of what they were told (`MC-345` 4: "may leave out assets"). The current code's export writes every asset on Android too, batched, and leaves out only assets above the upstream size limit after a named confirmation (`MC-223`; `src/ts/drive/backuplocal.ts`, switched on for Android by `MC-359`). A 500-character, 3,000-asset Note 9 export is recorded (`MC-362`). No full real-library Android export with assets is recorded: the A1 run used the partial backup, which leaves out emotion images, extra assets and VITS (`MC-345` A1). Doc-verifier, 2026-10-24.
+
+---
+
+### MC-471 — Lane A, 2026-10-24: the Android export and re-import proof uses mid-scale synthetic data with generated assets
+
+- Tag: decisions (chat message and `AskUserQuestion` answer by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6`. The question text is lane A's; the option descriptions are the orchestrator's.
+- Related: `MC-470` (the export-and-re-import route), `MC-345` A1, `MC-223`, `MC-359`, `MC-362`.
+
+**The maintainer's words:**
+- Chat message: "my real data is heavily biased on additional asset and almost has no voice and emotion data. I think this is where synthetic data with generated assets would actually work better."
+- Scale question: lane A proposed the proof on phone 1 after lane B's yield runs:
+  - import a synthetic `.bin`;
+  - export a full `.bin` on the phone;
+  - re-import it on a fresh test profile;
+  - compare a hash of every asset and every character or chat unit.
+- Answer: "Mid scale, your shape (Recommended)". The option's description: "About 500 characters and 30–50k assets, 6–8 GiB. Mostly additional assets, as in your library, plus some emotion images, voice files and module assets so every kind is covered, plus a few entries over the upstream size limit to exercise the omission warning. Takes under an hour per pass on the Note 9."
+
+**What was decided (maintainer):**
+1. The proof of `MC-470`'s route uses synthetic data with generated asset bytes, not the real library.
+2. **Scale and shape.**
+   - About 500 characters, 30-50k assets and 6-8 GiB.
+   - Mostly additional assets; some emotion images, voice files and module assets, so every kind is covered.
+   - A few entries over the upstream size limit, to exercise the omission warning.
+
+- Notes, not the maintainer's words:
+  - The existing generators under `Agents/Tools/save-gen/` write neither asset bytes nor asset references, so this needs a new generator (lane A, 2026-10-24). It was built and committed as `ee23c1bd9`: `synth-bin-gen.mjs`, `synth-bin-verify.mjs`, `synth-bin.harness.ts` and `synth-bin-seam.harness.ts` (lane A, 2026-10-24).
+  - "Under an hour per pass" is lane A's estimate, not measured.
+  - The run is a phone 1 run, scheduled after lane B's yield runs (superseded by item 7). Per the memory note on tiered test data, an Android-specific risk justifies a large run on the Note 9.
+
+**Later the same day (`AskUserQuestion` answers by option label, 2026-10-24):**
+- The verified sizing study is `%TEMP%\risu-b715\synth-gen\result.md`, with its corrections. It found two facts that bear on the plan:
+  - The upstream limit is 4 GiB per asset (`UPSTREAM_HARD_LIMIT_BYTES`), and a `.bin` entry's length is a u32. So no over-limit entry can be inside a `.bin`.
+  - On Android, an export reads each asset over 4 MiB whole into memory.
+- Answers:
+  - Over-limit entries: "Drop it from this proof (Recommended)".
+  - Large assets: "Add a 200 MiB and a 500 MiB (Recommended)".
+  - Asset bytes: "Valid tiny images, padded (Recommended)".
+  - Script time limit: "Raise it to 2 h for this run (Recommended)".
+
+3. **No over-limit entries in this proof.** Item 2's "a few entries over the upstream size limit" is withdrawn. The omission warning keeps its existing unit tests.
+4. **Two large assets.** The data includes one 200 MiB asset and one 500 MiB asset. If the export fails on them, that is a finding to fix before the MVP.
+5. **Images decode.** Each image is a valid PNG or WebP, padded to a realistic size and unique per file. Voice files and models are random bytes with the right file extension.
+6. **The time limit is per run.** The device scripts take a limit of 2 h for this run only. Their defaults are unchanged: 1,500 s for `import-bin.ps1` and 1,200 s for `fixture-push.ps1`. The old maximum was 1,800 s; the option text said "stays at 30 minutes". A pass that takes longer than 2 h is itself a finding.
+
+- Notes, not the maintainer's words: the option descriptions are the orchestrator's. That a 1 GiB asset risks running out of memory is the verifier's inference; the cost of a 200 or 500 MiB asset on the phone is not measured.
+
+**Later the same day (`AskUserQuestion` answer by option label, 2026-10-24):**
+- Lane A's question: phone 1 is booked for lane B's counter experiment on the real partial library. The synthetic proof replaces a phone's data. Where should it run?
+- Answer: "Phone 2 (Recommended)".
+
+7. **The synthetic proof runs on phone 2.** That is the second spare Note 9, serial prefix `2ac80128`. Phone 1 keeps its real-library profile for lane B's counter experiment. This replaces the note above that the run is a phone 1 run.
+
+### MC-373 — Lane B, 2026-10-23: after CHORE-205 stage 0, stage 1 (the verdict tick) comes before the GC idle-net hold
+
+- **Tag:** decision (the maintainer, in the lane B session, one `AskUserQuestion` round, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: `%TEMP%\risu-lane-b\c205-stage0\s0-judgement.md` (verified, row 2445), built on lane A's run `%TEMP%\risu-b715\phone1-s0\result.md` and on `phone1-p5`.
+- **Related:** `MC-372` 2 (the GC hold) and `MC-368` 1 (the stage 5a daily-APK lift); CHORE-205, CHORE-225.
+
+1. **"Stage 1 first (Recommended)".**
+   - Lane B plans the stage 1 verdict tick between the 30 s full ticks. It does not slow the net.
+   - Orchestrator note (after the sizing): it does not slow the net for characters, peers or new characters. The fixed-group backstop is settled separately in `MC-374` 1.
+   - Gates: a `senior-advisor` challenge, then an `opus-reviewer` plan review.
+   - The GC mark is re-measured after stage 1. The `MC-372` GC idle-net hold follows only if the mark is still 1 s or more.
+   - The stage 5a daily-APK lift (`MC-368` 1) waits until then.
+
+   Not chosen:
+   - "GC hold first" (unblocks 5a sooner; stage 1 after);
+   - "Hold now, plan stage 1" (the hold implemented while stage 1 is planned).
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The stage 0 approval covered measurement only; this approves planning stage 1 and running its gates. Implementation follows Gate 1.
+- Nothing here authorizes a commit or a push.
+
+### MC-374 — Lane B, 2026-10-23: stage 1's verdict tick moves the fixed-group backstop to the 30 s full tick; a changed resident is saved by a silent pass
+
+- **Tag:** decisions (the maintainer, in the lane B session, one `AskUserQuestion` round with two questions, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input:
+  - the sizing `%TEMP%\risu-lane-b\c205-stage1\sizing\result.md`, verified, with its Corrections;
+  - the senior-advisor challenge `%TEMP%\risu-lane-b\c205-stage1\advisor\result.md`.
+- **Related:** `MC-373`, `MC-372` 1 and 4; CHORE-205.
+
+1. **"30 s full tick (Recommended)".**
+   - The verdict tick checks one resident character every 2 s.
+   - The backstop for fixed-group writes the change trackers cannot see moves to the 30 s full tick. The fixed group is settings, presets, plugins, plugin storage, loadouts, statics and the character order.
+   - An untracked write of that kind, made in the last 30 s before the app is hidden or killed, is not saved. This is the window `MC-372` 4 accepted for modules.
+   - Commits from another device, new characters and stub changes are still noticed every 2 s.
+
+   Not chosen: "Keep 2 s re-encode", which keeps the fixed group in every tick and saves about a quarter of a tick instead of three quarters.
+2. **"Silent pass (Recommended)".**
+   - A resident that the verdict tick finds changed is saved by a pass that commits without the saving indicator, as today's net does.
+   - Such a pass does not stop an automatic GC pass early.
+
+   Not chosen: "Mark it", which shows the indicator, makes a parked tab ask, and stops an auto-GC pass early.
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator from the advisor's wording.
+- The "about 770 ms to about 185 ms" figure in the option is the sizing's inference (n=1, MEASURE build).
+- Normal gates apply: an `opus-reviewer` Gate 1 and Gate 2, and the maintainer's commit approval.
+- Nothing here authorizes a commit or a push.
+
+### MC-400 — Lane B, 2026-10-23: after the stage 1 phone run, stage 5a's daily-APK block is lifted and the verdict's cost is measured before it is sized
+
+- **Tag:** decisions (the maintainer, in the lane B session, one `AskUserQuestion` round with two questions, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: the judgement `%TEMP%\risu-lane-b\c205-stage1\s1-judgement.md` (verified, row 2457), built on lane A's run `%TEMP%\risu-b715\phone1-s1\result.md` (verified).
+- **Related:** `MC-368` 1, `MC-372` 2, `MC-373`, `MC-374`; CHORE-205. First ID from lane B's overflow block (`Agents/Lanes/README.md`; lane B's main range ended at `MC-374`).
+
+1. **"Lift it (Recommended)".**
+   - The stage 5a automatic clean-up may go into the daily APK, which lifts the `MC-368` 1 block. The GC mark passed on all 6 launches: 253-540 ms, against 1.06-1.14 s on 4 of 7 before.
+   - The `MC-372` GC idle-net hold is not designed, per the request's pre-registered rule.
+   - Caveats stated in the question: n = 6 on one phone, no launch with an edit, and a fresh import of the partial backup.
+
+   Not chosen: "One more run first" (launches with an edit before the mark), and "Keep blocked".
+2. **"Measure, then size (Recommended)".**
+   - Next for CHORE-205: a MEASURE sub-timer that splits the slot's `decisionMs` into the lock-held read and `verdictOf`, run on the phone. Then size a cheaper verdict, for example by reusing the character's last canonical units, with its own gates.
+   - The trigger: with one resident, a slot cost 203-370 ms (median 275.5 ms, against about 768 ms before), over the 100 ms V1 limit. The verdicts were clean, and no fallback dominated.
+
+   Not chosen: "Accept as is" and "Defer".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The split of the one-resident cost (about 190 ms in `verdictOf`) is INFERRED. The sub-timer is there to measure it.
+- The `MC-368` 1 mark was first measured in A9 on a copy of A1's real profile (row 2431). This run, like `phone1-p5`, used a fresh import of `Backup_partial.bin`. The maintainer lifted the block with that caveat stated in the question; the real-profile mark was not re-measured.
+- Lifting the block authorizes the daily APK only. Nothing here authorizes a commit or a push.
+
+### MC-401 — Lane B, 2026-10-23: after the slot-time split, size both the cheaper verdict primitive and the cheaper pre-verdict scans in one sizing
+
+- **Tag:** decision (the maintainer, in the lane B session, one `AskUserQuestion`, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: the judgement `%TEMP%\risu-lane-b\c205-stage1\split-judgement.md` (verified, row 2461), built on lane A's `phone1-split\result.md` (verified).
+- **Related:** `MC-400` 2, `MC-374`; CHORE-205.
+
+1. **"Both, one sizing (Recommended)".**
+   - One investigator sizes both levers together:
+     - a cheaper `characterMatchesAcknowledged` primitive, about 70% of a one-resident slot (227-306 ms);
+     - cheaper pre-verdict scans (unheld, stub, resident), about 16-18% of a one-resident slot and 68 ms at 0 residents, over the whole characters array.
+   - A senior-advisor challenge and a staged plan follow. The scans are likely first, as the smaller change.
+
+   Not chosen: "Comparison only", "Scans only", "Stop here".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The scans' growth with library size is INFERRED; it was not measured.
+- The stage 1 DO NOT stands: no reuse by object identity.
+- Normal gates apply. Nothing here authorizes a commit or a push.
+
+### MC-402 — Lane B, 2026-10-24: after the stage 2 phone run, V1 is the synchronous stretch of an idle-net slot
+
+- **Tag:** decision (the maintainer, in the lane B session, one `AskUserQuestion`, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Input: the judgement `%TEMP%\risu-lane-b\c205-stage2\s2-judgement.md` (row 2472), built on lane A's `2026-10-24-c205-stage2.result.md` (verified).
+- **Related:** `MC-400` 2, `MC-401`; CHORE-205.
+
+1. **"Blocking stretch (Recommended)".**
+   - V1 becomes: the synchronous part of an idle-net slot is at or under 100 ms (option text: "the async read is reported but not counted").
+   - Next: size a cheaper stub scan (lever B1), about 41 ms of the checks with one resident.
+
+   Not chosen: "Whole check time" (keep `decisionMs` ≤ 100 ms), "Stop here".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator. They stated "about 117 ms" for the blocking part as inferred, not measured as one span.
+- The senior-advisor recommended this definition (`c205-stage2\advisor\result.md`, "Missed insights" 2). `decisionMs` stays reported (orchestrator).
+- From source (verifier): the lock wait and `readCommit` sit in the one awaited `withWriteLock` call; `judge` through `verdictOf` is synchronous.
+- This amends `MC-400`'s V1 definition only. Normal gates apply. Nothing here authorizes a commit or a push.
+
+### MC-403 — Lane B, 2026-10-24: stage 2c is the fused pre-check scan only
+
+- **Tag:** decision (the maintainer, in the lane B session, one `AskUserQuestion`, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs: `%TEMP%\risu-lane-b\c205-stage2c\sizing\result.md`, an investigator packet, verified by `c205-stage2c\verify\result.md` (corrections apply).
+- **Related:** `MC-402`, `MC-401`, `MC-374`; CHORE-205.
+
+1. **"Fused scan only (Recommended)".**
+   - Stage 2c merges the unheld, stub and resident scans of the idle-net slot into one tighter pass.
+   - V1 (`MC-402`) is judged on phone 1 with the maintainer-sized profile (500+ characters).
+   - A yield between the pre-checks and the verdict is added later, only if the phone run misses V1 or 1000+ characters becomes a target.
+
+   Not chosen: "Fused scan + yield", "Yield only".
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator.
+- The phone figures in them are INFERRED by proportional scaling from desktop. The phone showed a fast and a slow state about 6x apart, so the margin under 100 ms is uncertain.
+- Normal gates apply. Nothing here authorizes a commit or a push.
+
+### MC-404 — Lane B, 2026-10-24: with a yield in the idle-net slot, V1 is judged on the longest blocking stretch
+
+- **Tag:** decision (the maintainer, in the lane B session, one `AskUserQuestion`, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Inputs: the stage 2c judgement (row 2479) and the stage 2d sizing `%TEMP%\risu-lane-b\c205-stage2d\sizing\result.md` (an investigator packet, under verification when this was asked; verified afterwards, row 2480).
+- **Related:** `MC-402`, `MC-403`; CHORE-205.
+
+1. **"Longest stretch (Recommended)".**
+   - Once a slot yields between the pre-checks and the verdict, V1 is the median of the longer of its two blocking stretches, at or under 100 ms.
+   - This amends `MC-402`'s V1 for slots that yield.
+
+   Not chosen: "Sum of stretches", "Both levers" (plan the cheaper verdict right after).
+
+**Notes that are not the maintainer's words:**
+- The option texts were written by the orchestrator. They gave the stretches as about 26-29 ms and 76-79 ms, inferred from the 2c phone medians, and said that some slow slots still exceed 100 ms and that total work does not drop.
+- Normal gates apply. Nothing here authorizes a commit or a push.
+
+### MC-405 — Lane B, 2026-10-24: the yield is the last V1 step ("good enough" cap), judged after its phone run
+
+- **Tag:** decision (the maintainer, typed in the lane B session, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane B session transcript. Context: lane A's relay of the maintainer's go-ahead for the yield (lane A `MC-354`, uncommitted), which proposed this cap without the maintainer confirming it.
+- **Related:** `MC-402`, `MC-403`, `MC-404`; CHORE-205.
+
+1. **The maintainer's words:** "I confirm that good enough cap, but I'd like to see how yield turns out first - 'good enough' cap was from my suspicion that we might be reaching the point of diminishing return."
+   - "That good enough cap" is the cap lane A's relay proposed (lane A `MC-354`, not in this tree): make the yield the last V1 step, and if V1 is still missed after it, call it good enough.
+   - Orchestrator's reading: if V1 is missed after stage 2d, no further lever is sized for V1; the maintainer sees the stage 2d phone result before V1 work closes.
+
+**Notes that are not the maintainer's words:**
+- Lane A's relay quoted the maintainer as saying "3~7ms off the mark does feel like a negligible gap compared to original stall" and "yeah, let's do the yield and see how it turns out". That is relayed, and was not typed here.
+- The `MC-402`/`MC-404` 100 ms bar is unchanged; that this caps the effort, not the bar, is the orchestrator's inference.
+- Nothing here authorizes a commit or a push.
+
+### MC-406 — Lane B, 2026-10-24: V1 is met after the yield; the V1 work closes
+
+- **Tag:** decision (the maintainer's AskUserQuestion answer in the lane B session, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane B session transcript, and `%TEMP%\risu-lane-b\device-requests\2026-10-24-c205-stage2d.result.md` (lane A's phone run, doc-verified; its Corrections take precedence). Record row 2485.
+- **Related:** `MC-402`, `MC-404`, `MC-405`; CHORE-205.
+
+1. **The maintainer's answer:** "Close V1 (Recommended)". The question set out the stage 2d phone result and asked whether the CHORE-205 idle-check speed work could close. The option read: "Record V1 as met and the speed work as done. The counter experiment goes ahead next, and is still measurement-only."
+   - V1 per `MC-404` is met on both launches (row 2485).
+   - No further lever is sized for V1.
+
+**Notes that are not the maintainer's words:**
+- The `MC-402`/`MC-404` bar itself is unchanged.
+- The answer does not decide the hybrid change-counter design. That waits for the counter experiment's data, per lane A's relay (lane A `MC-354` 4).
+- Nothing here authorizes a commit, a push or a daily APK rebuild.
+
+### MC-407 — Lane B, 2026-10-24: design the hybrid change counter with a 30 s backstop
+
+- **Tag:** decision (the maintainer's AskUserQuestion answers in the lane B session, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane B session transcript; record rows 2491 and 2492.
+- **Related:** `MC-405`, `MC-406`; lane A `MC-354` 4; CHORE-205.
+
+1. **First answer, given on a wrong premise:** "Don't adopt for now (Recommended)". The option said: "The gain is about 2.6% of check time, and the cost is a slower safety net exactly where this data is blind."
+   - That figure was wrong. The 2.6% is about 48.5 s saved out of the 1853.7 s session wall time, not out of check time (rows 2492 and 2493).
+2. **The binding answer, after the correction:** "Design it, 30 s fallback". The option read: "Plan a release change that skips a character's full check when its counters haven't moved, with every character checked at least every 30 seconds. It goes through the full gates. A change no counter saw would be saved up to 30 seconds late."
+   - The correction stated:
+     - the full checks took about 64 s in total (594 × about 107 ms; INFERRED, applying the 107.3 ms median of the 495 hit slots to all 594 verdicts);
+     - a 30 s backstop would cut about three quarters of that, from about 3.4% to about 0.8% of the session (INFERRED);
+     - both dirty verdicts were marked;
+     - the data cannot show whether a write to a non-selected resident could go unmarked.
+   - The alternatives named in the question were keeping the idle check as is, or a targeted Lua or trigger test of a write to a non-selected character first.
+
+**Notes that are not the maintainer's words:**
+- The design is a release behaviour change of the idle-net slot. It needs:
+  - a plan;
+  - Gate 1 by opus-reviewer, and a `senior-advisor` challenge if the plan is expensive to reverse;
+  - implementation;
+  - Gate 2;
+  - the full checks;
+  - the maintainer's commit approval.
+- Accepted risk, as stated in the option: a write no counter saw is saved up to 30 s late. If Android kills the app within that window, the write is lost.
+- **Narrowed by `MC-408`:** no change counter goes into release; the rule is time-only.
+- Nothing here authorizes a commit or a push.
+
+### MC-408 — Lane B, 2026-10-24: the idle-net backstop is time-only, skips only the verdict, and a hide forces verdicts
+
+- **Tag:** decision (the maintainer's AskUserQuestion answers in the lane B session, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane B session transcript; the sizing `%TEMP%\risu-lane-b\c205-hybrid\sizing\result.md` and its verification `c205-hybrid\sizing-verify\result.md` (the verification takes precedence); record row 2494.
+- **Related:** `MC-407` (which this narrows); CHORE-205.
+
+1. **Rule:** "Time-only rule (Recommended)". The option read: "Fully check each character at most every 30 s. No counters in release; the measurement counters stay as tooling. Smallest change, same worst-case delay."
+2. **Placement:** "Final comparison only (Recommended)". The option read: "About 1% saved; every other detection keeps its current speed. Lowest risk."
+   - The whole-slot alternative, about 3%, was declined. It would have delayed the pre-checks: unheld, stub, peer-commit and unsavable detection.
+3. **On hide:** "Force a check (Recommended)". The option read: "Going to the background ignores the 30 s wait and checks every loaded character, so the hybrid adds no extra loss window on Android kills."
+
+**Notes that are not the maintainer's words:**
+- This narrows `MC-407`'s "skips a character's full check when its counters haven't moved". No change counter goes into release. A resident's verdict is skipped when it was last verdicted less than 30 s ago.
+- The figures shown were from the verified sizing and are INFERRED attributions of measured time to unexecuted paths: skipping only the verdict saves about 18 s, or 1% of the 31-minute session; the whole slot about 54 s, or 3%.
+- The backstop is 30 s, as in `MC-407`. Whether it is a fixed constant was not asked separately.
+- Nothing here authorizes a commit or a push.
+
+### MC-409 — Lane B, 2026-10-24: the backstop's hide and Back coverage, a 30 s ceiling, the silent-quit window, a fixed constant
+
+- **Tag:** decision (the maintainer's AskUserQuestion answers in the lane B session, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane B session transcript; the sizing `%TEMP%\risu-lane-b\c205-hybrid\sizing2\result.md`; record row 2495.
+- **Related:** `MC-408` (which this completes); CHORE-205; CHORE-354 (Investigation-Ledger row 2176).
+
+1. **Back:** "Yes, both (Recommended)". The option read: "Put the forced check where both background and Back go through, so both are covered."
+2. **The 30 s ceiling:** "Ceiling: jump to due (Recommended)". The option read: "Each character is checked about every 30 seconds at most, whatever the number loaded."
+3. **A silent quit:** "Accept the window (Recommended)". The option read: "Ship the time-only rule now. The silent-quit gap stays CHORE-354's to fix separately; only changes no save mark saw are affected."
+4. **The constant:** "Fixed in code (Recommended)". The option read: "30 seconds as a constant, with a test-only override. No new setting or UI."
+
+**Notes that are not the maintainer's words:**
+- The question for item 2 stated that waiting for the normal rotation gives about 37 s with 3 residents and about 44 s with 6, and that 13 or more never skip. These are INFERRED from a measured 2.455 s mean slot. "Jump to due" costs about 12 lines.
+- The question for item 3 stated that on phone 2 a large profile quit twice with no hidden signal (Investigation-Ledger row 2176, CHORE-354 filed, not fixed). An unmarked change could then be up to about 30 s old at death, against at most one round today.
+- **Item 2 is superseded by `MC-B1`** (keep the rotation and skip in turn). The "about 30 s" in item 3's question is INFERRED; under `MC-B1` the window is 30 s plus one rotation.
+- Nothing here authorizes a commit or a push.
+
+### MC-480 — Lane B, 2026-10-24: the backstop keeps today's rotation and skips in turn; the backstop's failing-resident pace (provisional ID)
+
+(Lane B's provisional MC-B1; numbered MC-480 at fold-in, 2026-10-24.)
+
+- **Tag:** decision (the maintainer's AskUserQuestion answers in the lane B session, 2026-10-24)
+- **Date:** 2026-10-24
+- **Sweep ref:** none
+- **Source:** the lane B session transcript; Gate 1 verdicts `%TEMP%\risu-lane-b\c205-hybrid\gate1-r2\result.md` and `gate1-r3\result.md`; record row 2496.
+- **Related:** `MC-407`, `MC-408`, `MC-409` (item 2 superseded); CHORE-205.
+- **ID:** provisional. Lane B's overflow block (MC-400 to 409) is used up (`Agents/Lanes/README.md` step 2). Lane A assigns the real ID at fold-in.
+
+1. **Failing-resident pace:** "Keep today's pace (Recommended)". The option read: "A character whose check failed waits one normal rotation before its retry, as it does now. The error alert keeps today's timing. A few more lines of code."
+   - The question followed Gate 1 r2's E1 and E6. Under jump-to-due, a failing or unsavable resident is retried about every slot, and the error alert comes after about 10 s, then repeats about every 2 s.
+2. **Approach, after Gate 1 r3's [REJECT], the second in a row:** "Keep rotation, skip in turn (Recommended)". The option read: "Simplest. The rotation stays exactly as today; when a character's turn comes and it had a clean check under 30 s ago, only its final comparison is skipped. Retries and error alerts keep today's timing exactly. Cost: the 30 s ceiling becomes 30 s plus up to one rotation (about 37 s with 3 characters, 44 s with 6), and with 13 or more nothing is skipped."
+   - The declined alternative was "Fix the jump-to-due plan". It kept the ceiling at about 30-34 s. A failing character's retry would land after one to two rotations, and its error alert could come up to about 4 rounds late.
+   - This supersedes `MC-409` item 2 ("Ceiling: jump to due").
+
+**Notes that are not the maintainer's words:**
+- The figures in the options were INFERRED from a measured 2.455 s mean slot and from the Gate 1 r3 scratch models.
+- **After the choice (Gate 1 r4, E-G2 and E-G8; told to the maintainer in the session):**
+  - Each resident's own retry pace is exactly today's. But `savetrys` and `retries` are loop-wide, so a skip that delays another resident's landing commit can move a failing resident's error-alert escalation earlier or later (model: slot 21 on the base, slots 12 and 30 here). There is no data risk.
+  - The option's "with 13 or more nothing is skipped" holds at the 2.455 s mean slot only. At the 2 s floor, skipping continues to N = 14.
+  - The declined option's "up to about 4 rounds later" overstated the model. Gate 1 r3 gives 0 to +4 slots at N = 6, which is less than one rotation.
+- **Item 1's outcome:** item 2's mechanism keeps today's pace by construction, because the rotation is unchanged. The pace counter that item 1 first led to is dropped.
+- **Supporting notes (Gate 1 r2 E7, r4 G9):**
+  - Hidden: Investigation-Ledger row 2138 (CHORE-202 R1 to R3, phone 2, WebView 155) has Tauri Android reporting the page hidden on HOME and screen-off in 3 of 3 runs. The 0.3-0.6 s after the key comes from that row's report `runs\report.md`, as read by Gate 1 r2 E7.
+  - Never skipped: an unsavable resident; a resident whose verdict is unknown or dirty every time (a shared `chaId`, a unit with no digest, a read fault, a failing silent pass); and N ≥ 13 at the mean slot (N ≥ 15 at the 2 s floor).
+  - A shared `chaId`: its verdict is always unknown, and a new second holder forces a full tick first. The only skip window is just after one id becomes shared, at most 30 s from that id's earlier clean verdict. No data risk.
+  - Window: under item 2, an unmarked write while visible is found within 30 s plus one rotation of the last clean verdict, which widens `MC-409` item 3's "about 30 s" (INFERRED).
+- Nothing here authorizes a commit or a push.
+
+### MC-700 — Lane Cloud, 2026-10-23: commit the completed Phase 1 items
+
+- **Tag:** decision (chat message, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript, after the orchestrator reported CHORE-142 technically accepted (Gate 2 `[APPROVE]`, row 5001) and declined the stop hook's request to commit without the maintainer's approval.
+- **Related:** the lane Cloud brief (commit only named paths, after the maintainer approves each commit; push `lane-cloud` only); CHORE-142.
+
+1. **"you can commit the completed items"**
+
+**What was decided:** the completed items may be committed on `lane-cloud`. At the time of the message, that was CHORE-142 (`Agents/Tools/save-gen/generate-and-verify.harness.ts`) and this records file, which records it.
+
+**Notes, not the maintainer's words:** CHORE-67, CHORE-144 and CHORE-152 were still under investigation or verification. They were not complete and are not covered. Pushing `lane-cloud` follows the brief's "push lane-cloud only" (never `main`, never force).
+
+### MC-701 — Lane Cloud, 2026-10-23: when the stop hook asks for a commit, ask the maintainer
+
+- **Tag:** rule (chat message, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript, sent while the MC-700 commit was being prepared, after the session's stop hook (`~/.claude/stop-hook-git-check.sh`) had asked three times to commit and push uncommitted changes and the orchestrator had declined each time without asking.
+- **Related:** `MC-700`; the lane Cloud brief (commit only after the maintainer approves each commit).
+
+1. **"rule clarification: when hook asks you to commit, you can use the ask tool for me to confirm."**
+
+**What was decided:** when the stop hook asks for a commit, the orchestrator asks the maintainer with `AskUserQuestion` rather than declining silently or committing. The hook itself is still not approval.
+
+### MC-702 — Lane Cloud, 2026-10-23: fix the CHORE-152 test fake here; close CHORE-144 as observed
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript. Input: the investigator packet (row 5002) and its verification (row 5003).
+- **Related:** `MC-091` (scope amendment); CHORE-152, CHORE-144, CHORE-193; lane B's brief (storage tests are lane B's area).
+
+1. **CHORE-152.** Question (paraphrased): about 63% of `assetPieceSave`'s time is a per-character callback in the shared test-only fake `src/ts/storage/tests/tauriChunkFake.ts`, which 29 storage test files reach, all in lane B's area. Should it be fixed here? Answer: **"Fix here, test-only (Recommended)"**. The option said: change only `tauriChunkFake.ts` (both sites), keep `atob`, rerun all 29 files that reach it, plus Gate 2. Lane B sees the change at merge, with a possible overlap if lane B edits the fake.
+2. **CHORE-144.** Question (paraphrased): item 2 passed 52 seeds; items 1 and 3 never reproduced and their logs are gone; item 4 is test-environment only on Node 24 and already clamped in three tests. What should be done? Answer: **"Close as observed (Recommended)"**. The option said: no code change; record item 2 as not reproducible, items 1 and 3 as reopen-with-evidence, and item 4 as known and already worked around.
+
+**What was decided:** lane Cloud changes `tauriChunkFake.ts` (test-only) for CHORE-152. CHORE-144 closes with no code change.
+
+### MC-703 — Lane Cloud, 2026-10-23: commit the records only; CHORE-152 waits for its Gate 2
+
+- **Tag:** decision (`AskUserQuestion` answer, 2026-10-23, asked under `MC-701` after the stop hook asked for a commit)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-700`, `MC-701`, `MC-702`; CHORE-144, CHORE-152.
+
+1. Question (paraphrased): the stop hook wants a commit; uncommitted are the records file and the unreviewed CHORE-152 fake edit. What should be committed? Answer: **"Records only (Recommended)"**. The option said: commit and push just `Agents/Lanes/lane-cloud-records.md`; the CHORE-152 edit waits for its Gate 2.
+
+### MC-704 — Lane Cloud, 2026-10-23: commit CHORE-152 after Gate 2 approves, without asking again
+
+- **Tag:** decision (`AskUserQuestion` answer, 2026-10-23, asked under `MC-701` after the stop hook asked for a commit)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-701`, `MC-702` 1, `MC-703`; CHORE-152.
+
+1. Question (paraphrased): the only uncommitted change is the CHORE-152 edit to `src/ts/storage/tests/tauriChunkFake.ts`, which is in Gate 2. Commit it? Answer: **"Commit after Gate 2 without asking again"**. The option said: if Gate 2 returns `[APPROVE]`, commit and push it without another question.
+
+**Notes, not the maintainer's words:** this covers the CHORE-152 commit only. Any other verdict than `[APPROVE]` goes back to the maintainer.
+
+### MC-705 — Lane Cloud, 2026-10-23: CHORE-67, move the two preservation tests to jsdom
+
+- **Tag:** decision (`AskUserQuestion` answer, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript. Input: the investigator survey (row 5008) and its verification (row 5009).
+- **Related:** `MC-238` 4, `MC-239` 1; CHORE-67.
+
+1. Question (paraphrased): no test relies on a DOMPurify removal under happy-dom, and the earlier `MC-239` fix holds. Two happy-dom tests (`GridCatalog.coldStub.svelte.test.ts`, `parserTarget.svelte.test.ts`) assert that plain text survives sanitizing, which `MC-239` says is not evidence under happy-dom; both pass under jsdom with no app change; an identity sanitizer cannot falsify them, while an empty-output stub does fail them. What should be done? Answer: **"Move the two to jsdom (Recommended)"**. The option said: add `// @vitest-environment jsdom` to those two test files only (test-only); prove an empty-output stub fails the named tests under jsdom; Gate 2; then close CHORE-67. GridCatalog's test is in the UI-list area other lanes use.
+
+### MC-706 — Lane Cloud, 2026-10-23: commit CHORE-67 with the records after Gate 2, without asking again
+
+- **Tag:** decision (`AskUserQuestion` answer, 2026-10-23, asked under `MC-701` after the stop hook asked for a commit)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-701`, `MC-704`, `MC-705`; CHORE-67.
+
+1. Question (paraphrased): uncommitted are the records file (decided and verified) and the CHORE-67 pragma edits in progress. What should be committed? Answer: **"CHORE-67 after Gate 2, no re-ask (Recommended)"**. The option said: commit the records and the two test files together once Gate 2 returns `[APPROVE]` and the message is checked; ask again only on any other verdict.
+
+### MC-707 — Lane Cloud, 2026-10-23: commit the Phase 1 reports and records at Phase 1 close, without asking again
+
+- **Tag:** decision (`AskUserQuestion` answer, 2026-10-23, asked under `MC-701` after the stop hook reported untracked files)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-701`, `MC-706`; CHORE-67, CHORE-142, CHORE-144, CHORE-152.
+
+1. Question (paraphrased): the four Phase 1 reports in `Agents/Lanes/lane-cloud/` are untracked and being revised, then verified; the full checks are running. What should be committed? Answer: **"At Phase 1 close, no re-ask (Recommended)"**. The option said: commit the four reports plus the final records update together after the doc-verifier passes and the full checks finish; then hand back for Phase 1 approval.
+
+### MC-708 — Lane Cloud, 2026-10-23: Phase 1 accepted; start Phase 2
+
+- **Tag:** decision (chat message, 2026-10-23, in reply to the Phase 1 hand-back)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-707`, `MC-069`; CHORE-09 to CHORE-16.
+
+1. The maintainer's words: **"go ahead with Phase 2"**.
+
+**What was decided.** Phase 2 starts under the brief's terms: trace, reproduce or refute the open suspected bugs of CHORE-09 to CHORE-16; no application-code changes; reproducers may be committed as `it.fails` or skipped tests; product questions go to the maintainer. Upstream comparison uses a read-only shallow clone of `kwaroran/risuai` at `f50b5942` (2026-10-23), outside the repository.
+
+**Notes.** At the start of Phase 2 the Roadmap shows CHORE-11, CHORE-13, CHORE-14, CHORE-15 and CHORE-16 resolved by the UI session (2026-10-01 to 2026-10-03), CHORE-12 left with MOD-3 and MOD-5 (neither a bug to trace) and MOD-4 under CHORE-05, and CHORE-09 with items 4, 9, 10 and 11 left and item 7's no-subject fallback. CHORE-10's 21 items have no recorded progress. Phase 2 therefore covers CHORE-09's remaining items and CHORE-10.
+
+### MC-709 — Lane Cloud, 2026-10-23: Phase 2 commits per ticket, without asking again
+
+- **Tag:** decision (`AskUserQuestion` answer, 2026-10-23, asked under `MC-701` after the stop hook reported the uncommitted `MC-708` entry)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-701`, `MC-707`, `MC-708`.
+
+1. Question (paraphrased): how should Phase 2 commits work? Answer: **"Per ticket, no re-ask (Recommended)"**. The option said: commit the records and each ticket's report plus reproducer tests once its doc-verifier passes, naming paths, and push lane-cloud; hold the MC-708 entry until the first such commit.
+
+### MC-710 — Lane Cloud, 2026-10-23: CHORE-09 items 4, 7, 9, 10 and 11, intended behaviour
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23, after the CHORE-09 investigation and its independent verification)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-208` (CHORE-09 items 1, 3, 5 and 6), `MC-069`, `MC-708`; CHORE-09.
+
+1. Item 4 (the five deprecated V2 lorebook effects never match; `v2SetLorebookActivation` writes a stray `"2": true` and throws out of range). Answer: **"Inert, no junk write"**. The option said: keep returning null/-1 as today (existing cards already cope), but stop the stray "2" write and the throw.
+2. Item 7 (`@@inject` with no subject writes to the selected character's current chat; reached from the display parser, the translator and the HypaV3 modal utils). Answer: **"Plumb the owner"**. The option said: pass the owning character and message through those three callers so `@@inject` always hits the right chat; larger change, touches the parser.
+3. Item 9 (`extensions.risu_case_sensitive` is round-tripped but has no UI and no matching effect). Answer: **"Honour it + UI toggle"**. The option said: plain keys match case-sensitively when the flag is true (regex keys keep their own flags), and add a per-entry toggle in the lorebook editor (new UI, translator work).
+4. Item 10 (`@@inject_lore` merges run after the token-budget cut). Answer: **"Refund when target cut"**. The option said: keep the current order; when the target was cut, give the injector's tokens back so other entries can use them; a cut injector still loses its merge.
+5. Item 11 (in regex mode one non-`/pattern/` key fails the whole entry; keys are split on commas before parsing). Answer: **"Plain-substring fallback"**. The option said: non-slash keys in regex mode match as ordinary case-insensitive substrings; regex keys stay regex. The comma-splitting of regex keys was described in the question but not answered separately.
+
+**What was decided.** These answers fix what each Phase 2 reproducer asserts and what a later fix does. Phase 2 changes no application code. Items 9 and 11 change what upstream cards do; item 9 adds UI and translation work; item 7 touches the parser.
+
+**Notes.** The existing guard "a regex-mode key not written as /pattern/ does not activate" in `src/ts/process/tests/lorebookRegexKeys.svelte.test.ts` contradicts answer 5 and would change with the fix. Answer 2 is upstream-different: upstream has no subject path at all.
+
+### MC-711 — Lane Cloud, 2026-10-23: CHORE-10 HypaV3 items V3-2, V3-3, V3-4 and V3-5, intended behaviour
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23, after the HypaV3 investigation and its independent verification)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-069`, `MC-708`, `MC-214`; CHORE-10.
+
+1. V3-4 (hidden messages make covering summaries look orphaned; V3 deletes them unless Preserve Orphaned Memory is on, V2 always; the deletion is assigned back to the chat). Answer: **"Hidden ≠ orphan (Recommended)"**. The option said: check summaries against the full message list, so only messages that were really deleted orphan a summary; hiding never deletes memory; applies to V2 and V3.
+2. V3-2 (a non-contiguous bulk re-summarize that includes the newest summary moves the resume point back). Answer: **"Resume from max covered (Recommended)"**. The option said: base the resume point on the latest message covered by any summary, not only the last summary.
+3. V3-3 (the "Do Not Summarize User Message" help text matches only the experimental path). Answer: **"Code: std path counts"**. The option said: make the standard path count only summarized messages, as the experimental path does, so the help text becomes true.
+4. V3-5 (biased shuffle). Answer: **"Uniform shuffle (Recommended)"**. The option said: replace it with a Fisher–Yates shuffle.
+
+**What was decided.** These answers fix what each Phase 2 reproducer asserts and what a later fix does. Phase 2 changes no application code. V3-4 is a saved-memory loss risk; per the brief it is written up for lane A, and its save pipeline was not traced (opus-reviewer territory).
+
+### MC-712 — Lane Cloud, 2026-10-23: CHORE-10 SupaMemory, rate limiter, token and UI items, intended behaviour
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23, after the CHORE-10 SupaMemory/limiter/UI/token investigation and its independent verification)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-069`, `MC-708`, `MC-711`; CHORE-10.
+
+1. SUPA-3 (deleting the resume message makes plain SupaMemory fail on every overflowing request). Answer: **"Resume at next survivor (Recommended)"**. The option said: fall back to the nearest surviving message after the deleted one and keep the existing summary; no saved-format change.
+2. V3-1 (the rate limiter throws when concurrency exceeds RPM, which the UI allows). Answer: **"Allow it (Recommended)"**. The option said: drop the check; the RPM window already gates task starts; no UI change.
+3. TOK-1 (V2/V3 subtract the response reservation; the others keep it). Answer: **"Input + response (Recommended)"**. The option said: V2/V3 stop subtracting Max Response, matching the other memory systems and the no-memory path; their prompts get Max Response tokens shorter.
+4. SUPA-1 (HypaMemory v1 does not count the loaded summary). Answer: **"Count it (Recommended)"**. The option said: add the loaded summary's tokens on the v1 path as the plain path does.
+5. SUPA-2 (v1 queries with the oldest four remaining messages and comma-joins the results). Answer: **"Keep query, fix the join"**. The option said: treat the oldest-4 query as intended; join the results with newlines instead of commas.
+6. SUPA-4 (no-progress loop with a tiny chunk size). Answer: **"Exit with an error (Recommended)"**. The option said: when an iteration makes no progress, stop and return the existing "Not Enough Tokens to summarize" style error instead of looping.
+7. SUPA-5 (legacy davinci/curie summarizer values). Answer: **"Migrate to instruct35 (Recommended)"**. The option said: on load, map davinci/curie to the gpt-3.5-turbo-instruct option; the saved value changes; upstream reads it fine.
+8. UI-1 (dropdown precedence differs from the runtime; the V2 toggle label). Answer: **"Dropdown follows runtime (Recommended)"**. The option said: align the dropdown expression to the runtime order, and give V2 the Hypa toggle label; no saved data changes.
+
+**What was decided.** These answers fix what each Phase 2 reproducer asserts and what a later fix does. Phase 2 changes no application code. Answer 7 changes a saved setting value on load; that later fix is a save-data change for the applicable gate.
+
+### MC-713 — Lane Cloud, 2026-10-23: CHORE-10 Hanurai, HypaV2 and shared retrieval items, intended behaviour
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23, after the CHORE-10 Hanurai/V2/shared investigation and its independent verification)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-069`, `MC-708`, `MC-711`, `MC-712`; CHORE-10.
+
+1. V2-1 (a failed batch followed by a success leaves a permanent coverage gap). Answer: **"Retry same batch (Recommended)"**. The option said: roll back to the batch start and retry it; the existing 3-strike limit then aborts with an error after 3 failures on that batch; nothing is skipped.
+2. V2-2 (V2 skips only index 0; example turns and the marker are summarised; the first message can be dropped; memo-less example turns make summaries re-run every turn). Answer: **"Adopt V3's skip rules (Recommended)"**. The option said: skip example turns, the example marker and the new-chat marker as V3 does; only real chat messages are summarized, and the first message is never dropped.
+3. V2-3 (the summary section keeps the oldest summaries). Answer: **"Newest-first (Recommended)"**. The option said: select newest summaries first, render them oldest-to-newest.
+4. HAN-1 and HAN-2. Answer: **"Fix HAN-1; cap at Chunk Size (Recommended)"**. The option said: fix the prefix and compare trimmed text, so in-prompt messages are not duplicated; and bound retrieval by Chunk Size.
+5. V2-4 and V2-5. Answer: **"Fix count; delete stub (Recommended)"**. The option said: deduct skipped entries' tokens; delete the dead `regenerateSummary`.
+6. SHARED-1 and SHARED-2. Answer: **"Fix comparator; cosine (Recommended)"**. The option said: use a correct comparator (b - a), and switch to cosine similarity; for unit vectors the ranking is unchanged.
+
+**What was decided.** These answers fix what each Phase 2 reproducer asserts and what a later fix does. Phase 2 changes no application code. V2-1 is a saved-memory loss risk written up for lane A; its save pipeline after the assignment in `index.svelte.ts` was not traced.
+
+### MC-714 — Lane Cloud, 2026-10-23: CHORE-10 SUPA-3 revised: repoint on delete, reset fallback for dangling data
+
+- **Tag:** decision (`AskUserQuestion` answer, 2026-10-23, after Gate 2 found `MC-712` 1 infeasible as stated)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-712` 1 (superseded for SUPA-3), `MC-223`, `MC-175`; CHORE-10.
+
+1. Question (paraphrased): "resume at the next survivor" cannot be computed at send time (SupaMemory saves only the resume ID and the summary; once the message is deleted nothing records where it stood), and existing dangling data (for example upstream backups) must still load. Answer: **"Repoint + reset fallback (Recommended)"**. The option said: deleting the resume message repoints SupaMemory to the next message (summary kept); for data that is already dangling, a clear error naming the problem, with a one-click reset of SupaMemory data.
+
+**What was decided.** Supersedes `MC-712` 1. The SUPA-3 reproducers assert (a) a message-delete that removes the resume message leaves `supaMemoryData` pointing at the next message with the summary unchanged, and (b) with a dangling ID the send fails with an error that names the SupaMemory resume problem rather than "chat ID not found" (the reset control itself is UI work for the fix).
+
+### MC-715 — Lane Cloud, 2026-10-23: CHORE-10 SUPA-3 edge: no message after the deleted resume message
+
+- **Tag:** decision (`AskUserQuestion` answer, 2026-10-23, raised by Gate 2 round 2)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-714` (extends it), CHORE-10.
+
+1. Question (paraphrased): under `MC-714`, when the resume message is deleted and no message follows it (Chat.svelte "remove from here", or `/del` reaching the resume message), what should SupaMemory do? Answer: **"Point past the end (Recommended)"**. The option said: treat everything left as already summarised; the next new message becomes the resume point; no error, nothing re-summarised.
+
+**What was decided.** Extends `MC-714`: deleting the resume message with no following message leaves the summary and resumes from the next message sent, without an error and without re-summarising surviving messages. The `MC-714` error-and-reset fallback stays for data that is already dangling. This is a fix-brief requirement; the Phase 2 reproducers do not pin it.
+
+### MC-716 — Lane Cloud, 2026-10-23: Phase 2 close commit; Phase 3 start, commit rule and Phase 2 picks; CHORE-09 open questions
+
+- **Tag:** decision (maintainer messages and `AskUserQuestion` answers, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-709`, `MC-710`, `MC-711` to `MC-715`; CHORE-09, CHORE-10, CHORE-133, CHORE-138, CHORE-139, CHORE-143.
+
+1. Phase 2 close commit. Answer: **"Commit and push (Recommended)"** (commit `4455c00`).
+2. Maintainer message: **"start phase 3"**.
+3. Phase 3 commit rule. Answer: **"Per ticket, no re-ask (Recommended)"**: commit and push each Phase 3 ticket (tests, fix, report, records) to `lane-cloud` after its Gate 2 passes and its report passes doc-verifier.
+4. Which Phase 2 bugs join Phase 3. Answer (multi-select): **"CHORE-09 items 4,9,10,11"**, **"CHORE-10 non-saved items"**, **"CHORE-10 saved-memory items"**. The question stated that the saved-memory items (V3-4, V2-1, V2-2, SUPA-3, SUPA-5) change saved data, had been handed to lane A, and would need explicit go-ahead here; this answer is that go-ahead (opus-reviewer gates; lane A to be informed through these records). CHORE-09 item 7 was not picked.
+5. CHORE-09 item 11, comma inside a regex key. Answer: **"Don't split inside /…/ (Recommended)"**: a comma inside a `/pattern/flags` key stays part of the regex; commas between keys still separate keys.
+6. CHORE-09 item 10, target re-entry after a refund. Answer: **"No, refund only (Recommended)"**: refunded tokens go to later entries in the normal order; the cut target stays cut.
+7. CHORE-09 item 4, trigger editor. Answer: **"Leave editor as is (Recommended)"**: no UI change.
+
+**What was decided.** Phase 3 covers CHORE-138, CHORE-139, CHORE-143 and CHORE-133, plus CHORE-09 items 4, 9, 10 and 11 and all CHORE-10 items (including the saved-memory items), each to its `MC-710` to `MC-715` decision and items 5 to 7 above. Per-ticket commits after Gate 2 and doc-verifier, without re-asking.
+
+### MC-717 — Lane Cloud, 2026-10-23: CHORE-138, CHORE-139 and CHORE-143 decisions
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-250` (CHORE-138's accepted limitation, now superseded for this gap), `MC-716`; CHORE-138, CHORE-139, CHORE-143.
+
+1. CHORE-138, triple-touch gesture without `touchcancel` (two touches, a cancel, then one touch within 300 ms opens the quick menu). Answer: **"3-line fix (Recommended)"**: a `touchcancel` resets the count, like `touchend`. Fork-only; upstream has the same gap.
+2. CHORE-139, deleting a folder's last remaining character leaves an empty folder until the next order check. Answer: **"Yes, remove it (Recommended)"**: fix `checkCharOrder` to drop a folder it just emptied, matching bulk delete, and remove the now-redundant double-call workarounds.
+3. CHORE-143, already fixed on the fork (null-error window events are warn-only, which also silences cross-origin "Script error." events). Answer: **"Keep silent, close (Recommended)"**: close the ticket as already fixed.
+
+### MC-718 — Lane Cloud, 2026-10-23: CHORE-09 fix-plan amendments and CHORE-133 decisions
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-710`, `MC-716`, `MC-091` (scope amendment), `MC-175`, `MC-245` 1, `MC-238`, `MC-239`; CHORE-09, CHORE-133.
+
+1. CHORE-09 item 11 knock-on: the V2/V3 card exporters in `src/ts/characterCards.ts` also split lorebook keys on commas, which would rewrite `/dragon{1,2}/` on export and re-import. Answer: **"Yes, same splitter (Recommended)"**: the exporters use the same regex-aware splitter (shared-cause scope amendment).
+2. CHORE-09 items 9 and 11: does Case Sensitive govern the plain-text match of a non-`/pattern/` key in regex mode? Answer: **"Yes, follow the toggle (Recommended)"**: off (default) case-insensitive; on case-sensitive; `/pattern/` keys keep their own flags.
+3. CHORE-09 item 10: an injector whose target never activated. Answer: **"Refund too (Recommended)"**: same treatment as a cut target.
+4. CHORE-133, the one-sentence translator path that writes the source text back with `innerHTML`. Answer: **"Insert as text (Recommended)"**: use `textContent`.
+5. CHORE-133, the edit-display replacement that writes translator output back with `innerHTML`. Answer: **"Leave it, separate ticket (Recommended)"**: out of this ticket; to be filed as a new ticket (proposed in the CHORE entries).
+
+### MC-719 — Lane Cloud, 2026-10-23: CHORE-10 fix-plan questions (SHARED-2 scope, UI-1 toggle)
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23, after the CHORE-10 batch A and B fix plans)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-712` 8, `MC-713` 6, `MC-091`; CHORE-10.
+
+1. SHARED-2 scope (HypaV3 similar-memory search uses the same dot-product score). Answer: **"Shared retriever only (Recommended)"**. The option said: switch only the shared HypaProcesser to cosine; V3 similar-memory stays on dot product; no effect on emotion scoring.
+2. UI-1 toggle label order (Hanurai and HypaV3 both on: the label says Hypa, the runtime runs Hanurai). Answer: **"Follow runtime order (Recommended)"**. The option said: order the label checks as the runtime does (Hanurai, then Hypa V2/V3, then Supa); with Hanurai+V3 on, the label says Hanurai.
+3. UI-1 toggle visibility (a V2-only setup with summarizer type `none` shows no toggle, although the runtime runs V2). Answer: **"Yes, show it (Recommended)"**. The option said: add V2 to the toggle's visibility condition at the same two render sites; no saved data changes.
+
+**What was decided.** `MC-713` 6 applies to the shared retriever only. Correction to the option text of answer 1 (Gate 1 review, scratchpad `p3/c10/A/g1/result.md`): the shared retriever's scores also reach the emotion-image code. For a non-normalised Custom Server embedding model, emotion selection can change, because the fixed penalties act on a cosine scale. "No effect on emotion scoring" holds only for normalised embeddings. The other option would have had the same effect (orchestrator reasoning: both options switch the shared retriever). The UI-1 fix orders the toggle label by runtime precedence and shows the toggle for V2-only setups; item 3 is a same-cause scope amendment (`MC-091`).
+
+### MC-720 — Lane Cloud, 2026-10-23: CHORE-10 SUPA-3 storage, hidden resume and whole-list replacement
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23, after the CHORE-10 batch C fix plan)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-714`, `MC-715`, `MC-175`, `MC-223`, `MC-091`; CHORE-10.
+
+1. How to store `MC-715` "point past the end" (the resume point is a message ID and the next message does not exist yet). Answer: **"ID plus fork-only flag (Recommended)"**. The option said: point at the last remaining message, and add a fork-only chat field meaning "that message is already summarised too". Upstream ignores the field and sees a valid ID, so a backup opened there works but re-summarises that one message. It adds a saved field, so the save-data reviewers check it first.
+2. A hidden resume message (hiding it, or a branch that hides messages, makes every overflowing send fail with "chat ID not found"). Answer: **"Yes, resolve at send (Recommended)"**. The option said: when sending, look the resume message up among all messages, hidden included, and resume from the next visible message. Same-cause scope amendment (`MC-091`); no format change.
+3. Whole-list replacement (`/send` clear mode, `setFullChat`, the reroll history swap). Answer: **"Error and reset (Recommended)"**. The option said: do not repoint; if the resume message is gone, the send shows the new SupaMemory error, which offers the Reset control.
+
+4. Every message of a chat that has a SupaMemory summary is deleted (no message ID is left to point at). Answer: **"Clear the memory (Recommended)"**. The option said: every message the summary covered is gone, so clear the chat's SupaMemory data, as HypaV3 drops summaries whose messages were deleted; the next long chat starts a new summary; no error.
+
+**What was decided.** The `MC-715` case keeps an upstream-readable resume ID and adds one fork-only chat field. The field is a save-format addition subject to opus-reviewer and a senior-advisor plan challenge. Upstream degrades to re-summarising one message. A hidden resume message resolves at send time. Whole-list replacement falls back to the `MC-714` error and reset path. Deleting every message clears `supaMemoryData` (answer 4, asked after the senior-advisor challenge).
+
+### MC-721 — Lane Cloud, 2026-10-23: CHORE-10 SupaMemory clear mode and reset placement
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23, after the batch C Gate 1 review, scratchpad `p3/c10/C/g1/result.md`)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-714`, `MC-720` 3 and 4; CHORE-10.
+
+1. `/send` in clear mode empties the whole chat (`MC-720` 3 and 4 point two ways). Answer: **"Clear the memory (Recommended)"**. The option said: if the chat ends up with no messages, clear the SupaMemory data as for deleting every message (`MC-720` 4); the error and reset path stays for replacements that leave other messages, such as setFullChat and the reroll swap.
+2. Where the reset is offered when the saved resume point is already broken. Answer: **"Button in settings (Recommended)"**. The option said: the error names the problem and says to press "Reset SupaMemory" in the character's chat memory settings, where the summary text box is; one place to maintain.
+
+**What was decided.** A chat left with no messages, whatever emptied it, clears `supaMemoryData` (and the covered-ID field). The `MC-720` 3 "offers the Reset control" is met by the error naming the settings button.
+
+### MC-722 — Lane Cloud, 2026-10-23: CHORE-10 ambiguous memo-less summaries; empty chat and HypaMemory v1
+
+- **Tag:** decision (`AskUserQuestion` answers, 2026-10-23, after the batch C Gate 1 round 2 review, scratchpad `p3/c10/C/g1r2/result.md`)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-711` 1 and 2, `MC-713` 2, `MC-721` 1, `MC-175`; CHORE-10.
+
+1. A saved HypaV2/V3 summary that ends on a message with no saved ID (the greeting, or an example turn; upstream summaries can cover example turns only) is ambiguous. Answer: **"Re-summarise, never lose (Recommended)"**. The option said: when it cannot tell, treat the greeting as not yet summarised; the worst case is the greeting summarised twice, costing an extra call; nothing is lost.
+2. Whether `MC-721` 1 (a chat left with no messages clears its SupaMemory) also clears HypaMemory v1 data (`hypa:` prefix in the same field). Answer: **"Clear it too (Recommended)"**. The option said: an empty chat clears the field whatever its kind; v1's summaries describe messages that no longer exist.
+
+**What was decided.** Resume and coverage rules for memo-less entries must never treat an ambiguous summary as covering the greeting; a duplicate summary is acceptable, a silent drop is not. A chat left with no messages clears `supaMemoryData` whatever its kind, and the covered-ID field.
+
+### MC-723 — Lane Cloud, 2026-10-23: CHORE-10 bounded greeting re-summary with example turns
+
+- **Tag:** decision (`AskUserQuestion` answer, 2026-10-23, after the senior-advisor memo-less mechanism reconsideration, scratchpad `p3/c10/C/advisor2/result.md`)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-722` 1, `MC-711` 2; CHORE-10.
+
+1. The narrow case left by the never-lose rule: with example turns and a summary batch that is the greeting alone (V2: greeting plus the next message exceeds Chunk Size; V3: one message per summary), each send can summarise the greeting again until the chat grows by about the greeting's length (probe: 3 sends, one extra paid call each). Answer: **"Accept and report (Recommended)"**. The option said: keep the rule and record this as a known limitation; a few repeat summaries of the greeting in this rare setup; no loss; summary sizes stay as configured.
+
+**What was decided.** The advisor's shared rule is adopted unchanged: a memo-less key counts for the resume only when the first memo-less chat is the greeting; the orphan valid set always contains it. The bounded duplicate is a reported limitation, not fixed by overshooting batch sizes.
+
+### MC-724 — Lane Cloud, 2026-10-23: CHORE-10 C4 residual on an upstream round trip
+
+- **Tag:** decision (`AskUserQuestion` answer, 2026-10-23, after the stage C4 Gate 2 round 2 review, scratchpad `p3/c10/C4/g2r2/result.md`)
+- **Date:** 2026-10-23
+- **Sweep ref:** none
+- **Source:** the lane Cloud session transcript.
+- **Related:** `MC-715`, `MC-720` 1, `MC-722` 1, `MC-175`; CHORE-10, proposed CHORE-503.
+
+1. The remaining silent-drop path after the C4 writer fix (R1): the fork holds the `MC-715` pair on the last message X; the chat goes to upstream, the SupaMemory text is cleared there, upstream re-summarises and its new resume point lands exactly on X; back in the fork the resolver reads the field as valid, so X is left out of both the prompt and the summary (the stored message is kept). Closing it needs a covered-field design tied to the whole memory text and a reopened Gate 1 with the senior-advisor. Answer: **"Record it, commit C4 (Recommended)"**. The option said: report it as a known residual and propose a follow-up ticket; C4 is committed as it is now; the chance is very low, and the message is still in the chat.
+
+**What was decided.** C4 is committed with R1 recorded as a known residual and proposed follow-up CHORE-503; no field redesign in this phase.
+
+### MC-472 — Lane A, 2026-10-24: device checks move to synthetic data and throwaway API keys
+
+- Tag: decision and direction (chat message, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6`. Context: the phone 1 backstop session (lane B's `MC-408` change, `fb85ce1ea`) sent two test messages on the maintainer's own provider key.
+- Related: `MC-471` (the synthetic `.bin` generator), `MC-402` to `MC-409` and `MC-480` (the backstop); `MC-345`; CHORE-205.
+
+**The maintainer's words:** "if it is not recorded, it is fine. but I think we should look into using synthetic data in future runs with throwaway temporary api keys, as these checks starts to demand more details of my actual save data, including what seems like a visual check on screenshot."
+
+**What was decided (maintainer):**
+1. Future device runs should use synthetic data and throwaway temporary API keys, where the check allows it. The maintainer's phrase is "look into using"; it is a direction, not a finished rule.
+
+- Notes, not the maintainer's words:
+  - Agents view a screenshot directly as an image, which is full visual reading, not text extraction. The first phone 1 backstop attempt's screenshot showed personal module names, and that screenshot is not forwarded.
+  - From the retry onward, device briefs say:
+    - screenshots are captured but not viewed unless a stop needs it;
+    - DOM reads are limited to bounds, roles and opaque ids, never text;
+    - response text is never read or recorded.
+  - Lane A's direction for future device briefs: build the profile from `Agents/Tools/save-gen/synth-bin-gen.mjs` and use a disposable API key.
+  - A session-ready synthetic profile (characters to open and a chat to send in) is a follow-up that lane A brings to the maintainer before building it. It is not approved.
+
+### MC-473 — Lane A, 2026-10-24: the maintainer's answers since MC-348 that no earlier entry records (merges, device runs, the synthetic proof and the records batch)
+
+- Tag: decisions (chat messages and `AskUserQuestion` answers by option label, 2026-10-23 to 2026-10-24). Date: 2026-10-24. Sweep ref: none.
+- Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` (the later part, from 2026-10-24) and `Agents/Handoff-2026-10-23-laneA.md` (lane A's living log). Quoted replies and option labels are the maintainer's. The question texts are lane A's paraphrase. The option text is the orchestrator's. Transcript timestamps are UTC.
+  - The labels dated 2026-10-23 below, and the stage 2 and stage 2c merge answers, are taken from the handoff and quoted as it has them. Question text paraphrased from the lane A handoff; the original prompt is not in a transcript on disk.
+- Related: `MC-348` (the previous lane A entry of this kind), `MC-349`, `MC-350` to `MC-354`, `MC-470`, `MC-471`, `MC-472`; lane B `MC-373`, `MC-374`, `MC-400` to `MC-409`, `MC-480`; lane Cloud `MC-700` to `MC-724`; `MC-175`; CHORE-205, CHORE-225, CHORE-226.
+- Left out because an earlier entry records them: "Review, then merge (Recommended)" and "Stop for now (Recommended)" (`MC-351` 1 and 2); "Experiment after the yield (Recommended)" (`MC-354` 4); "Phone 2 (Recommended)" (`MC-471` 7); "Design it, 30 s fallback" (lane B `MC-407` 2); "Stage 1 first (Recommended)" (lane B `MC-373` 1, 2026-10-23); and the maintainer's statement that the MVP is not installed yet (`MC-350`, `MC-470`).
+
+**The maintainer's answers, 2026-10-23:**
+- **The s0 and later merges.**
+  - Question (paraphrased): merge lane B's CHORE-205 stage 0 measurement change (`0dc8ace96`) and then run a phone 1 session on a measurement build?
+  - Answer: "Merge + phone run (Recommended)". Merged as `f365cf51e`.
+  - The same label was chosen for lane B's stage 1 (`da1d4e4bf`, merged as `778b6590e`) and for lane B's measurement-only decisionMs split (`f43f241bf`, merged as `ab30b8634`). Each was followed by a phone 1 run.
+- **MC-175 and AGENTS.md pointer to `MC-349`.** Reply: "yes, add the pointer". Committed as `87169e3f4`.
+- **Records batch 4 commit.** Reply: "you can commit the batch 4 when it is ready." Committed as `8802bc169`.
+- **Race fix merge.**
+  - Question (paraphrased): merge lane B's test-only fix `0420c2c7d` for the `saveLoop.test.ts` timing race lane Cloud saw on Linux?
+  - Answer: "Merge + full checks (Recommended)". Merged as `f74b729a5`.
+- **Cold grid.**
+  - Question (paraphrased): the grid capture on phone 1 was warm, because the thumb store survived the in-app restore. Allow one `pm clear` on phone 1, then a re-import of the partial backup through the app UI, then a cold grid capture?
+  - Answer: "Wipe phone 1 + re-import (Recommended)".
+  - Follow-up question (paraphrased): the thumb store held 23 records before any grid open, written by an untraced step. How should the capture go?
+  - Answer: "Capture now at 23 (Recommended)". The verified result is `%TEMP%\risu-b715\phone1-grid\result.md` (its corrections apply).
+
+**The maintainer's answers, 2026-10-24:**
+- **Stage 2 merge.** Answer: "Merge, phone, hold daily APK (Recommended)". Lane B's stage 2a and 2b merged as `7a13e3a51`. Daily APK hold: no daily APK from main until the blocking correctness checks pass (from the handoff).
+- **Stage 2c merge.** Answer: "Merge, phone, hold APK (Recommended)". Merged as `6baf2b974`. The phone run adds a paired clock-offset reading.
+- **Stage 2d merge.**
+  - Question (paraphrased): merge lane B's yield (`4dc8189c5`) and run lane B's four-launch phone request (the fourth launch on the maintainer's largest character)?
+  - Answer: "Merge, phone, hold APK (Recommended)". Merged as `ffc288090`. The option text: the daily APK stays on its current build until the blocking correctness check (zero disagreements) passes; the synthetic-data run waits until after this.
+- **Change counters.**
+  - Question (paraphrased): lane B's measurement-only change counters (`43e354d88`) are committed. The maintainer runs one 20-30 minute session on phone 1 with normal use. How should lane A go ahead?
+  - Answer: "Merge, build, then I'll run it (Recommended)". Merged as `4889fb764`.
+  - The maintainer's own report of the session (lane A's note `%TEMP%\risu-b715\phone1-ctr\maintainer-activity.md`, from their chat messages), by category only: several generations, heavy scripts, Lua, a plugin that manages folders and modules, and a provider manager. The app never went to the background. Idle began at 13:05:23 on the PC clock.
+- **Backstop merge.**
+  - Question (paraphrased): merge lane B's time-only backstop (`fb85ce1ea`, a release behaviour change) and run a scripted 10-15 minute phone 1 check on a measurement build?
+  - Answer: "Merge, phone 1 check (Recommended)". Merged as `0d54f5e84`.
+- **The void phone 1 attempt.**
+  - Question (paraphrased): the first backstop check was void. A plugin panel covered the app and the agent's taps may have changed the test profile's module order or toggles. How to handle it?
+  - Answer (free text): "window closed. order seems intact."
+- **Synthetic tooling commit.**
+  - Question (paraphrased): the synthetic-data tool passed review (51 of 51 tests); commit and push it (six tooling files, no app code), then do the PC import-and-export run?
+  - Answer: "Commit, push, PC run (Recommended)". Committed as `ee23c1bd9`.
+- **Generator fix and phone 2.**
+  - Question (paraphrased): the PC run passed at both sizes; commit the one-field generator fix and run the phone 2 round trip?
+  - Answer: "Commit fix, run phone 2 (Recommended)". Committed as `e41513308`.
+- **Phone 2 check b.**
+  - Question (paraphrased): check b was red on one setting, `useStreaming`, with a likely PC-side cause. How to proceed?
+  - Answer: "Resume c and d, verify (Recommended)".
+- **Cleanup of the large synthetic files.**
+  - Question (paraphrased): delete the large generated and exported `.bin` files (about 7.3 GB each) on the PC and on phone 2, keeping the manifest, check results and logs?
+  - Answer: "Delete them (Recommended)".
+- **The records batch.** Reply: "you can start the record batch."
+
+**The maintainer's statement, 2026-10-24 (from the handoff):** the `supaMemoryKey` field printed into an agent transcript during the CHORE-502 scan held an outdated, unused key, and the maintainer rotated it anyway. The incident is closed. The field name only is recorded here, no value. Scan briefs now forbid printing any key or settings field.
+
+**What was decided (maintainer):**
+1. Each merge above goes into `main` with the full checks, as the chosen label says.
+2. Phone 1 was wiped once and re-imported for a cold grid capture, and the capture ran at 23 existing thumb records.
+3. Daily-APK holds apply to stage 2, 2c and 2d until the blocking correctness check passes. Lane B's judgements lifted them (handoff).
+4. The synthetic proof's commits, and the deletion of its large files, are approved as stated.
+5. Records batch 5 starts. The batch commit comes later, after an independent verification and the maintainer's approval of the commit.
+
+- Notes, not the maintainer's words:
+  - Merges with lane A's full-check results (the handoff's figures; all pushed, `pnpm check` 0 errors and 0 warnings, build OK, release-dist check OK at 244 files):
+    - `f365cf51e`: 21,192 passed, 23 skipped (942 files).
+    - `f74b729a5`: 21,192 passed, 23 skipped.
+    - `778b6590e`: 21,264 passed, 23 skipped (945 files).
+    - `ab30b8634`: 21,287 passed, 23 skipped.
+    - `19625c694` (lane Cloud's branch, `MC-351`) with the locale commit `399aeed92`: 21,771 passed, 23 skipped.
+    - `7a13e3a51`: 21,362 passed, 23 skipped.
+    - `6baf2b974`: 21,871 passed, 23 skipped.
+    - `ffc288090`: 21,897 passed (976 files); the skipped count is not in the handoff.
+    - `4889fb764`: 21,982 passed (978 files); the skipped count is not in the handoff.
+    - `0d54f5e84`: 22,021 passed (979 files); the skipped count is not in the handoff.
+  - Tooling commits: `ee23c1bd9` (the synthetic `.bin` generator, verifier and harnesses, with the device-script time cap) and `e41513308` (the generator writes the first-setup-done flag). Both were pushed.
+  - **The `MC-471` proof outcome (lane A, 2026-10-24).**
+    - PC rerun 2 was green at small and mid scale (`%TEMP%\risu-b715\synth-pc\r2\result.md`).
+    - Phone 2: checks a, c and d pass with 0 differences. Lane A re-ran c and d independently with the same result (`%TEMP%\risu-b715\phone2-synth\laneA-recheck\`).
+    - Check b is red only on `useStreaming`. The explanation is PC-side: the BotSettings page auto-mounts at 900 px and wider, and the CheckInput `bind:checked` writes `false` into an unset value. Links 1-3 are CONFIRMED from source and link 4 is consistent (`%TEMP%\risu-b715\phone2-synth\usestreaming-verify\result.md`).
+    - No omission prompt appeared for the 200 MiB and 500 MiB assets.
+  - The phone 1 backstop retry is collected (`%TEMP%\risu-b715\phone1-bs\r2`). Lane B classified it as matching the design.
+  - Name mix-up: another project's sessions had also been named Lane A and Lane B, and lane B's messages reached the wrong session. Lane B is addressed as "Lane B [d820f9]".
+  - Nothing here authorizes a commit or a push beyond the labels quoted.
+  - No historical decision text is rewritten.

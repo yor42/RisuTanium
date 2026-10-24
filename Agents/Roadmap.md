@@ -22,6 +22,8 @@ Goal: a personal Android MVP (not a release), usable before the major UI overhau
 
 **Status (2026-10-23, lane A records batch 4): the `MC-368` 1 daily-APK block stays.** Lane B rules that the stage 5a mark result blocks the lift under the criterion "GC mark under 1 s, with the pass ending inside the ~60 s window". Phone part 4 gave 3 of 5 launches under 1 s; part 5 gave 3 of 7 (values in its section 8.5; the verdict is lane B's). A bounded re-arm or batch cap does not address the mark. Holding the idle net during the GC pass is considered only if the mark stays at 1 s or more after stage C (`MC-372` 2).
 
+**Status (2026-10-24, lane A records batch 5): MVP export proof and carry-forward; daily-APK holds released.** The export and re-import route (`MC-470`) has its proof on phone 2 with mid-scale synthetic data with generated assets (`MC-471`; about 500 characters and 40k assets). Checks a, c and d are green, and lane A re-ran c and d. Check b is red: the only difference is `useStreaming` on the PC list, and the investigator traced it to a PC-side UI write, not phone data loss (`phone2-synth\usestreaming-verify\result.md`, links 1 to 3 confirmed). The tooling is committed as `ee23c1bd9` (generator and verifier) and `e41513308` (the first-setup fix). Phone 2 holds the release build of `e41513308` with the synthetic profile. The MVP is not installed yet. The MC-350 carry-forward baseline is recorded when the maintainer announces the install. Device checks now use synthetic data and throwaway keys (`MC-472`); a session-ready synthetic profile is a proposal, not a ticket. The daily-APK holds from the stage 2 and 2c runs are released; no daily APK is current.
+
 **Parked until after A5:** stage 5b (clean-up UI, quota path, C3/Q3, Q9), CHORE-128, CHORE-115, the Node items (CHORE-49, 62, 46, 0b, the CHORE-129 web/Node residual), list windowing, S4-6, CHORE-147, the old Step 3 re-measure, WF-6 and WF-10, the old Step 4 UI-overhaul checkpoint, and the release (R).
 
 The "Queue after the 2026-10-09 batch" section and the Sequencing Summary below are superseded by this block.
@@ -1202,6 +1204,8 @@ visible error) with the maintainer before implementing. Translations of the prom
 
 ### CHORE-09 — Scripting, regex and lorebook bugs found during the wiki rewrite (none lose data)
 
+**Status (2026-10-24, lane A records batch 5): fixed; item 7 closed with an accepted residual.** Items 4, 9, 10 and 11 are fixed on `lane-cloud` (`MC-710`, `MC-716` 5 to 7, `MC-718` 1 to 3; commit `e34be1c`) and merged in `19625c694`. Item 7 has a guard in the small batch (`9fe98db90`; `MC-352` 3): the legacy `@@inject` write happens only when its target is the selected character's current chat and the message index exists. The residual is accepted (`MC-353`): a selection change while a script pass is in flight can still write message N of the newly selected chat; that is pre-existing upstream behaviour.
+
 **Status (2026-10-03, UI session): items 1, 3, 5 and 6 DONE 2026-10-03 in `e10cbbbd`** (ledger
 rows 869 to 877). Product choices in `MC-208`. The investigator (row 870) refuted the premise below: `scriptings.ts` and
 `triggers.ts` are no longer identical to upstream. The Orchestrator verified items 2, 5 and 6 in source.
@@ -1279,6 +1283,8 @@ Pyodide `type: 'py'` path in `runScripted` has no caller.
 writes to the wrong character.
 
 ### CHORE-10 — Long-term memory (HypaMemory v1/V2/V3, SupaMemory, Hanurai): 21 suspected bugs
+
+**Status (2026-10-24, lane A records batch 5): all 21 items fixed; merged in `19625c694`.** Fixed on `lane-cloud` in batch B `10a4adf` and stages A1 `cc25005`, A2 `ffc5fc2`, A3 `5c88496`, C1 `d6994c7`, C3 `ad4ac00`, C2 `048cb24` and C4 `36de3a6`, under `MC-711` to `MC-724`. Each stage was technically accepted at Gate 2. Residuals, per lane Cloud's records: SHARED-1 and V2-5 are untested; Hanurai split mode is untested; the experimental V3 path is not tested for similar-memory retrieval; the SUPA-3 repoint must cover every delete path; `MC-715` has no pinning test; and the reported residuals F4 (pre-reset summaries kept and injected), Proxy in-place empty, oversized SupaMemory entries and `MC-723` (bounded greeting re-summary). Follow-ups: CHORE-500, 501 and 502 are parked post-MVP; CHORE-503 is closed (entries above).
 
 Found by the wiki session while documenting the memory systems (2026-09-22). Full hand-off, with
 per-bug evidence, status and suggested investigation: **`Agents/Reports/99-long-term-memory.md`**.
@@ -5570,6 +5576,8 @@ The line numbers are those the Gate 2 reviewer found on 2026-10-02 (ledger row 6
 
 ### CHORE-67 — Existing tests that run DOMPurify under happy-dom may pass for the wrong reason (test reliability; RUN under happy-dom 20.1.0; the cause TRACED)
 
+**Status (2026-10-24, lane A records batch 5): CLOSED.** Lane Cloud moved the two residual tests to jsdom on `lane-cloud` (`MC-705`; Gate 2 row 5011), merged in `19625c694`. The 2026-10-02 "open, not scheduled" status below is stale.
+
 **Status (2026-10-02):** open, **not scheduled**. Filed from the CHORE-63 stage B investigation at the maintainer's
 decision (`MC-166` 6: "File CHORE-67 (Recommended)"). Type: test reliability; no product code is involved. Labels:
 RUN = executed in the investigation; TRACED = read in source.
@@ -6484,6 +6492,8 @@ with index -1.
 
 ### CHORE-133 — Translator `combineTranslation` single-sentence case sets `node.innerHTML`
 
+**Status (2026-10-24, lane A records batch 5): fixed** on `lane-cloud` (`MC-718` 4; commit `18a2c7a`; merged in `19625c694`). The one-sentence branch writes the flattened source text with `textContent`. The edit-display sibling is CHORE-500 (parked).
+
 **Status (2026-10-08): open; gated, not now (`MC-245` 1: "File a ticket (Recommended)").** Type: security hygiene. Filed from finding F4 of the security triage (ledger row 1408), which `MC-238` left undecided.
 
 - **Task (the maintainer's answer):** trace where the markup that reaches that `node.innerHTML` assignment can come from, then insert it as text or sanitize it. TODO(evidence): the file and line of the assignment are not in the sources given for this entry (only ledger row 1408 and `MC-238` name the case); take them from row 1408 before planning.
@@ -6522,9 +6532,13 @@ with index -1.
 
 ### CHORE-138 — The triple-touch counter has no `touchcancel`
 
+**Status (2026-10-24, lane A records batch 5): fixed** (`MC-717` 1; commit `bae8761`; merged in `19625c694`). A `touchcancel` listener resets the count; regression test `src/ts/hotkey.touchcancel.test.ts`. Real Android WebView cancel behaviour is untested.
+
 **Status (2026-10-08): open; pre-existing.** Type: bug, low. `src/ts/hotkey.ts` counts touches for the triple-touch gesture and has no `touchcancel` handling (`MC-250` accepted limitation; Stage 4 Gate 2). Checked at `8f4a5be6`: the triple-touch block in `hotkey.ts` (about lines 399-419 at that commit) registers only `touchstart` and `touchend`; a `touchcancel` listener elsewhere in the same file (about line 550) sits in a separate block whose purpose was not traced.
 
 ### CHORE-139 — `removeChar` leaves a just-emptied folder in place
+
+**Status (2026-10-24, lane A records batch 5): fixed** (`MC-717` 2; commit `299ca20`; merged in `19625c694`). `checkCharOrder` drops a folder it has just emptied, in one pass, and the double-call workarounds are removed.
 
 **Status (2026-10-08): open; latent.** Type: bug, latent. Stage 5's `trashFolderMembers` calls `checkCharOrder` twice to avoid the effect (Orchestrator's facts file; Stage 5 implementation report, session scratch). TODO(evidence): the `removeChar` trace and a reproducer outside that workaround.
 
@@ -6538,13 +6552,19 @@ with index -1.
 
 ### CHORE-142 — `Agents/Tools/generate-and-verify.harness.ts` is broken
 
+**Status (2026-10-24, lane A records batch 5): fixed**, in the harness file only, with the same `appStore` mock (Gate 2 `[APPROVE]`, row 5001); merged in `19625c694`. The lane Cloud records correct the path: the file is under `Agents/Tools/save-gen/`.
+
 **Status (2026-10-08): open.** Type: tooling. Listed in the Orchestrator's facts file without details. TODO(evidence): the failure and the commands that show it.
 
 ### CHORE-143 — A ResizeObserver-loop event makes `bootstrap.ts`'s global error handler throw before `alertError`
 
+**Status (2026-10-24, lane A records batch 5): CLOSED, already fixed on the fork** (`MC-717` 3). `handleWindowError` warns only for events without an error object (`windowErrorGuard.test.ts`). Upstream still has the defect.
+
 **Status (2026-10-08): open.** Type: bug, low. Per the Orchestrator's facts file: the handler in `src/ts/bootstrap.ts` reads `event.error.target` when `event.error` is null, so it throws before `alertError` runs; the user sees no alert. TODO(evidence): the trace and the reproduction (not re-traced for this entry).
 
 ### CHORE-144 — Test-suite fragilities seen during the sidebar closeout
+
+**Status (2026-10-24, lane A records batch 5): CLOSED as observed, no code change** (`MC-702` 2). Item 2 did not reproduce on current main; items 1 and 3 are UNCERTAIN and did not reproduce; item 4 is confirmed as a Node 24 test-environment issue only (msgpackr). Reopen with a recorded seed or the failing message.
 
 **Status (2026-10-08): open.** Type: tests. Per the Orchestrator's facts file (investigation `sidebar-s5\final2\flake.md`, session scratch):
 - `backuplocalCharacterIdsExport` "(G) ... byte for byte" (SavePartialLocalBackup) failed once on the Stage 5 snapshot run (1 failed / 12087 passed); not reproduced; Stage 5 is not on its path (the test mocks `src/ts/characters`).
@@ -6598,6 +6618,8 @@ with index -1.
 - Also not covered by device pass 2: the keyboard in gesture navigation (3-button only), a real finger (adb strokes only), and Note 9 day-mode bars (night mode left as found).
 
 ### CHORE-152 — Slow and flaky test: `src/ts/storage/tests/assetPieceSave.test.ts`
+
+**Status (2026-10-24, lane A records batch 5): fixed, test-only** (`MC-702` 1; `src/ts/storage/tests/tauriChunkFake.ts`; Gate 2 `[APPROVE]`, row 5006); merged in `19625c694`. The file takes 23 of 23 in about 10 s, against 35.7 s before (a loaded Linux machine; timings indicative only).
 
 **Status (2026-10-09): open.** Type: tests. Related to CHORE-144.
 
@@ -7178,7 +7200,36 @@ Overlays outside `alertStore` (Settings, the Realm frame, the bookmark list, `po
 - Phone part 5 field diff: one shard:13 commit, with `lastInteraction` the only change in one entry. `chatPage` and a warm re-select were not tested, and commit attribution is limited (the units log was not reset before the tap). Part 4 saw the same-size shard rewritten under a new key on each commit; its cause was not traced.
 - About 10 ms of CPU on the desktop, so it does not explain the 2-3 s ticks. Stage 0 timers decide whether commit cost matters.
 
+### CHORE-500 — Translator edit-display replacement writes translator output with `innerHTML` (proposed by lane Cloud)
+
+**Status (2026-10-24, lane A records batch 5): open, parked post-MVP** (`MC-352` 4). No data risk. In `src/ts/translator/translator.ts`, `translateNodeText`'s edit-display branch writes the processed translation with `innerHTML`; card authors may rely on that. Downstream consumers sanitize. Found at the CHORE-133 Gate 1 (`Agents/Lanes/lane-cloud-records.md`).
+
+### CHORE-501 — HypaV3 modal "next summarisation" preview uses the last summary's last memo (proposed by lane Cloud)
+
+**Status (2026-10-24, lane A records batch 5): open, parked post-MVP** (`MC-352` 4). Display-only: `getNextSummarizationTarget` in `src/lib/Others/HypaV3Modal/modal-footer.svelte` can disagree with the real resume point after CHORE-10 stage A3. No data effect.
+
+### CHORE-502 — Old-format HypaV2 data conversion drops summaries whose target message is hidden (proposed by lane Cloud)
+
+**Status (2026-10-24, lane A records batch 5): parked post-MVP** (`MC-352` 2). The read-only scan (`c502-scan\result.md`, verified) found 0 chats with `hypaV2Data` among 771 chats in `Backup_partial.bin`, and `db.hypav2` is off. The limit: only the partial backup was scanned. The persistence risk stands if old HypaV2 data is ever converted and saved, so re-scan before HypaV2 is used on such data.
+
+### CHORE-503 — SupaMemory covered-ID field can be read as valid after an upstream re-summary (proposed by lane Cloud)
+
+**Status (2026-10-24, lane A records batch 5): CLOSED as accepted** (`MC-352` 4; `MC-724`). The field is valid while it equals the first line of `supaMemoryData`, so an upstream re-summary that reproduces that line can make the covered message read as covered in the fork. Accepted per `MC-724`.
+
 ### CHORE-205 — Architecture study: subsystems that fail as the library grows (the whole-library in-memory model and its secondary problems)
+
+**Status (2026-10-24, lane A records batch 5; lane B's records through row 2499): open. Stages 1 to 2d and the counter experiment are merged; the time-only backstop is merged; the GC hold is dropped; the daily-APK block is lifted. One maintainer decision is open.**
+- Stage 0 judged. The maintainer chose stage 1 first (`MC-373`; row 2445).
+- Stage 1 merged in `778b6590e` (`MC-373`, `MC-374`). Phone s1: G1 passed on all six launches, so the `MC-372` GC hold is dropped. V1 met at 0 residents and not met at 1 resident (275.5 ms against the 768 ms full tick). V2 met. Lane B judged these results.
+- Split merged in `ab30b8634` (MEASURE-only; `MC-400` 2). The maintainer chose "Both, one sizing" (`MC-401`).
+- Stage 2 merged in `7a13e3a51`: 2a (checks split, MEASURE-only) and 2b (verdict value shadow, release behaviour). Phone s2: S0 and S4 passed.
+- Stage 2c merged in `6baf2b974` (fused pre-check `netScan`, `MC-403`). S0 passed. V1 was not met (103 to 107 ms), so the yield was next.
+- Stage 2d merged in `ffc288090` (one yield in the idle-net slot, `MC-404` and `MC-405`). S0 passed and V1 was met on both launches (row 2485). V1 is closed under `MC-406`.
+- Counters merged in `4889fb764` (MEASURE-only net-signal meter, `MC-354` 4). The phone 1 counter session and its analysis are rows 2491 to 2493.
+- Time-only 30 s backstop merged in `0d54f5e84` (release behaviour; `MC-407` to `MC-409`; `MC-B1` is `MC-480` after fold-in). A verdict is skipped in turn when its last clean verdict is under 30 s old. The rule does not apply while the page is hidden, and a hide or Back clears the clocks. Lane B judges that its phone check matches the design. The `MC-368` 1 daily-APK block is lifted (`MC-400`). The lift's caveats stand: n=6, one phone, and no edit launch.
+- Still open in lane B's records (row 2474): the `stubDescription` fixed point, a maintainer decision.
+- Lane A note, not lane B's: the stage 1 G1 clause on an edit launch is untested (`Agents/Handoff-2026-10-23-laneA.md`).
+- Full-check figures for each merge are in the ledger rows; they were not re-run for this entry.
 
 **Status (2026-10-23): open, HIGH priority (the maintainer: "I think we should ticket this study as high priority with secondary problems, as it solves lots of core issues"). It is a study, not a rewrite: no implementation follows without the maintainer's decision. It starts after phone 1 part 3 and the CHORE-225 "after" run, whose numbers it uses. Its decision is recorded in lane A's next MC (now `MC-348`).**
 

@@ -1162,6 +1162,8 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 
 **Folded in by lane A on 2026-10-23 (records batch 4): ledger rows 2396 to 2437 are in the shared ledger.**
 
+**Folded in by lane A on 2026-10-24 (records batch 5): MC-373, MC-374, MC-400 to MC-409 and MC-B1 (as MC-480); ledger rows 2438 to 2499. Next free: MC-481, row 3000.**
+
 ## Handoff
 
 2026-10-21: lane started; worktree clean at `74b28ddd1`; `pnpm install --frozen-lockfile` run in the worktree; this file created.
