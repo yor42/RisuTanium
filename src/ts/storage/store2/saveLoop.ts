@@ -11,7 +11,10 @@ import { classifyCommitRead } from './commitKey'
 import type { CommitKey } from './format'
 import type { Store2SaveContext } from './saveActive'
 import { createSaveEncoder, type SavePassRequest, type SavePlan } from './saveEncoder'
-import { noteNetSlotBegin, noteNetSlotEnd, noteNetSlotMs, noteNetSlotPart, noteNetSlotPassMs, peekSaveMarks } from './savePassMeter'
+import {
+    noteNetSlotBegin, noteNetSlotEnd, noteNetSlotMs, noteNetSlotPart, noteNetSlotPassMs, noteSignalAck, noteSignalAdopted, noteSignalKept,
+    noteSignalPassStart, noteSignalResidents, noteSignalSlotClock, noteSignalUnchanged, noteSignalVerdict, peekSaveMarks,
+} from './savePassMeter'
 import { startYieldGaps, type YieldGapRecorder } from './saveYieldMeter'
 
 /**
@@ -326,6 +329,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
 
     /** Whether the page may save over this base. A pending attempt that is the base's `current` is adopted here, before any plan. */
     function judge(read: Store2Read): Judged {
+        const pendingBefore = MEASURE ? encoder.pendingKey : null
         const classified = classifyCommitRead(read)
         const revision = read.token.kind === 'revision'
         if (classified.status !== 'parsed' || classified.value.current === null) {
@@ -333,6 +337,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
         const current = classified.value.current.key
         if (current === encoder.manifestKey || encoder.adoptIfCurrent(current)) {
+            if (MEASURE && pendingBefore !== null && encoder.pendingKey === null) {
+                noteSignalAdopted()
+            }
             return { kind: 'ok' }
         }
         return { kind: 'stop', reason: 'peer-commit', key: classified.value, revision }
@@ -548,6 +555,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             case 'committed':
                 flags.landed = true
                 plan.acknowledge()
+                if (MEASURE) {
+                    noteSignalAck(plan.encoded)
+                }
                 consent = null
                 port.broadcast(result.value.epoch)
                 // The commit landed and is the acknowledged encoding; only its durability is unconfirmed.
@@ -578,6 +588,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 throw result.cause
             case 'unknown':
                 plan.keepAsPending()
+                if (MEASURE) {
+                    noteSignalKept(plan.encoded)
+                }
                 throw result.cause
             case 'refused':
                 if (REPLACED_REFUSALS.has(result.reason)) {
@@ -656,6 +669,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     }
 
     async function attemptRun(run: { snapshot: Store2Snapshot | null, landed: boolean, plan: SavePlan | null }, tick: boolean, netChaId: string | null): Promise<Outcome> {
+        if (MEASURE && !tick) {
+            noteSignalPassStart()
+        }
         run.snapshot = tick ? null : takeStore2Snapshot(port)
         const read = await committer.readCommit()
         peerSignal = false
@@ -668,6 +684,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             consent = null
         }
         const db = port.getDatabase()
+        if (MEASURE && tick) {
+            noteSignalPassStart()
+        }
         const plan = await planOf(db, requestOf(run.snapshot, db, saveMine, netChaId))
         run.plan = plan
         if (MEASURE) {
@@ -675,6 +694,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
         // A page that is asked to overwrite a peer's commit has something to write even when it changed nothing.
         if (plan.unchanged && !forced && !saveMine) {
+            if (MEASURE) {
+                noteSignalUnchanged(plan.encoded)
+            }
             return { kind: 'saved', wrote: false }
         }
         const planned = plan.commitRequest()
@@ -895,6 +917,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             noteNetSlotPart('pruneMs', pruneDoneAt - checkLapAt)
             pruneLapAt = checkLapAt
             checkLapAt = pruneDoneAt
+            noteSignalResidents(residents.length)
         }
         if (residents.length === 0) {
             if (MEASURE) {
@@ -946,6 +969,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (unsavable.has(chaId)) {
             if (MEASURE) {
                 noteNetSlotEnd('verdictUnknown', 'unknown')
+                noteSignalVerdict(chaId, 'unknown', null)
             }
             return { kind: 'character', chaId }
         }
@@ -960,13 +984,16 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (slot === undefined) {
             if (MEASURE) {
                 noteNetSlotEnd('slotMissing')
+                noteSignalVerdict(chaId, 'unknown', null)
             }
             return { kind: 'full' }
         }
         const verdictStartedAt = MEASURE ? performance.now() : 0
         const verdict = encoder.verdictOf(slot)
         if (MEASURE) {
-            noteNetSlotPart('verdictMs', performance.now() - verdictStartedAt)
+            const verdictDoneAt = performance.now()
+            noteNetSlotPart('verdictMs', verdictDoneAt - verdictStartedAt)
+            noteSignalVerdict(chaId, verdict, verdictDoneAt)
             noteNetSlotEnd(verdict === 'clean' ? 'verdictClean' : verdict === 'dirty' ? 'verdictDirty' : 'verdictUnknown', verdict)
         }
         return verdict === 'clean' ? { kind: 'none' } : { kind: 'character', chaId }
@@ -1008,6 +1035,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     noteNetSlotPart('spanBMs', decisionEndAt - netResumedAt)
                 }
             }
+            noteSignalSlotClock(decisionStartedAt, decisionEndAt)
             noteNetSlotMs(decisionEndAt - decisionStartedAt)
         }
         const passStartedAt = MEASURE ? performance.now() : 0
