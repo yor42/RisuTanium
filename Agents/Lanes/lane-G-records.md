@@ -612,6 +612,17 @@ Scope: `Agents/Lanes/L3-plan.md` stages A1 and A2, with editorial E7; decisions 
 
 **Correction (doc-verifier, not the maintainer's words).** The question above and the A2 commit message say fflate loses no data "for any chunk size" / "any push size". That overstates the evidence. The Gate 2 probe covered whole pushes from 65536 B to 3,000,001 B at 15 fill states (902 cases, row 3906). The committed message is left as it is.
 
+### MC-564 — Lane G, 2026-10-26: commit approval for the stub-refusal follow-up (`6e581588e`)
+
+- Tag: approval (maintainer's `AskUserQuestion` answer by option label, 2026-10-26). Date: 2026-10-26. Sweep ref: none.
+- Source: the lane G session transcript `a91b553a-f872-4106-90a7-68ac838fea5f` (batch 4). Message: `%TEMP%\risu-lane-g\l3\follow\commit-msg.txt`. Plan check: `%TEMP%\risu-lane-g\l3\follow-gate1\result.md`. Gate 2: `%TEMP%\risu-lane-g\l3\follow-gate2\result.md`.
+- Alternatives rejected: "Not yet".
+- Related: `MC-561`; lane B `MC-581`, `MC-582`, `MC-583` (`Agents/Lanes/lane-B-records.md`, main `19c7e87a5`); CHORE-205.
+
+**The maintainer's answer.** To "Commit the stub-refusal follow-up on worktree-Lane-G? It covers 5 paths: risuSave.ts, backuplocal.ts, 2 new tests, and a comment in one older test. Gate 2 opus came back EDITORIAL, and its fixes are applied. It closes a live gap on main: the streamed export currently saves a stub-marked module. Targeted tests and pnpm check pass. The message is in %TEMP%\risu-lane-g\l3\follow\commit-msg.txt.": "Commit it (Recommended)". The option read: "Stage only the 5 named paths and commit them. The records go in a separate commit after that. No push. Then send the SHA to lane B for integration before S4d."
+
+**What was decided (maintainer).** The follow-up is committed on `worktree-Lane-G` as `6e581588e` (five named paths; not pushed). The records follow in a separate commit.
+
 ## Batch 4 ledger rows
 
 Same columns as `Agents/Investigation-Ledger.md`. Tokens are the subagent totals the harness reported.
@@ -625,6 +636,9 @@ Same columns as `Agents/Investigation-Ledger.md`. Tokens are the subagent totals
 | 3904 | 2026-10-25 | Gate 2 of A1 | opus-reviewer (fresh) | 118,905 | no | **`[EDITORIAL]`**, `%TEMP%\risu-lane-g\l3\a1-gate2\result.md`. Byte identity, buffer lifetime and test validity hold. 114 tests and `pnpm check` were rerun, plus 9 mutants. E1 to E4 (comments, two new test rows and a proxy assertion in the `$state` row; the coder also added a buffer-releasing encode before each `retainedAfter` baseline so an earlier row's leak cannot hide a later one) were applied by a sonnet-coder (`%TEMP%\risu-lane-g\l3\a1-ed\result.md`, 116 tests). The orchestrator reran both A1 test files (28 pass). Committed as `b8e3356bb` (`MC-562`). |
 | 3905 | 2026-10-25 | A2 implementation (streamed gzip sink, `writeDatabaseEntry`) | sonnet-coder | 143,993 | no | `%TEMP%\risu-lane-g\l3\a2\result.md`. Coder's claims: 41 files and 828 tests pass, `pnpm check` clean, 8 mutants red. Three writer mocks updated (`backupSaveBusy`, `exportThisTab.svelte`, `backuplocalEncryptWriter`); four unchanged. Diagnostic D, one run on a fast PC, synthetic 300 x 500 KiB characters plus a 4.5 MiB unit: peak `arrayBuffers` delta 419 MiB legacy, 154 MiB streamed sliced, 134 MiB unsliced; wall time 3.7 s, 3.9 s and 4.1 s. Best-case hardware only. |
 | 3906 | 2026-10-25 | Gate 2 of A2 | opus-reviewer (fresh) | 146,043 | no | **`[EDITORIAL]`**, `%TEMP%\risu-lane-g\l3\a2-gate2\result.md`. No blocking defect. The coder saw a large push "truncate"; the reviewer refuted it as a faulty mutant: a probe ran 902 cases, 65536 B to 3 MB pushed whole at 15 fill states, all inflating equal under fflate and `node:zlib` (M). So the 64 KiB slicing is a memory measure, not a correctness need. Six reviewer mutants and two of the coder's went red. 12 files and 224 tests pass; `pnpm check` clean. E1 to E3 were applied (the orchestrator then reran 9 files, 160 tests). E4 is a lead (see below). Committed as `06d22b02c` (`MC-563`). |
+| 3907 | 2026-10-26 | Plan check of the stub-refusal follow-up (`MC-561`, after B2a `52877a717`) | opus-reviewer | 124,475 | no | **`[EDITORIAL]`**, `%TEMP%\risu-lane-g\l3\follow-gate1\result.md`. The placement right after `getDatabase()` is sound in both export functions: only memory-only steps come before it, and the file opens later in `LocalWriter.init`. `runExport` reports the refusal as `file:'untouched'` with the generic alert (`MC-582`). Binding A1 to A5 and E5: label honesty (a foreign marker reaches the encoder on main); no sink spy; a real asset fixture with a positive control; assert the cause and `where`; make "writer never opened" and "collection not started" observable; scope the comment to a marker present at the start. |
+| 3908 | 2026-10-26 | Follow-up implementation | sonnet-coder | 112,448 | no | `%TEMP%\risu-lane-g\l3\follow-impl\result.md`. The coder reports 13 files and 204 tests passing, `pnpm check` clean, and 6 mutants red. |
+| 3909 | 2026-10-26 | Gate 2 of the follow-up | opus-reviewer (fresh) | 102,758 | no | **`[EDITORIAL]`**, `%TEMP%\risu-lane-g\l3\follow-gate2\result.md`. Placement, comments and tests hold. The reviewer reran 13 files and 204 tests, and `pnpm check`. Its 7 mutants all went red. G7 (no refusal at all, i.e. main `52877a717`): both exports return `saved` with the stub inside `database.risudat` (M). E1 to E3 are comment rescopes, applied by the orchestrator; the orchestrator then reran 5 files and 72 tests. Committed as `6e581588e` (`MC-564`). |
 
 ## Batch 4 leads (not tickets; for lane A or lane B to decide)
 
@@ -635,19 +649,36 @@ Same columns as `Agents/Investigation-Ledger.md`. Tokens are the subagent totals
 ## Batch 4 handoff
 
 - 2026-10-25: start at main `76e9d03b8` (fast-forward from `ffa776c5d`, `MC-560`).
-- Commits on `worktree-Lane-G`, not pushed:
+- Commits on `worktree-Lane-G` (lane G pushed none; lane A merged them to main, and they are ancestors of main `52877a717`):
   - `b8e3356bb`: A1, parts encoder (`MC-562`).
   - `06d22b02c`: A2, streamed gzip (`MC-563`).
-- **Open: the stub-refusal follow-up (`MC-561`).** When lane B's B2 lands (lane B sends its SHA and the refusal's exported name):
+  - `c774f3d83`: batch 4 records.
+- **The stub-refusal follow-up as planned on 2026-10-25 (`MC-561`; done, see below).** When lane B's B2 lands (lane B sends its SHA and the refusal's exported name):
   1. Rebase `worktree-Lane-G` onto it.
   2. Add the one-line call in the `encodeRisuSaveParts` wrapper body.
   3. Add test `parts-encoder-refuses-stub`, including the path through `encodeRisuSaveStreamed`. Mutants: delete the line; move it inside the generator.
   4. Run a fresh opus Gate 2, then commit with approval.
   
-  Lane B will not take track G for S4d until this commit exists.
+  Lane B will not take track G for S4d until this commit exists (satisfied by `6e581588e`, below).
 
   Lane B, 2026-10-26: B2 is split. B2a carries the stub marker and the callable refusal and is in Gate 1 round 2. The planned API, which may still change: a zero-import leaf, provisionally `src/ts/storage/moduleStub.ts`, with `isModuleStub(value)` and `assertNoModuleStubs(modules, where)`, which throws `ModuleStubRefusal` naming the module and `where`. The follow-up rebases on B2a's commit; lane B sends its SHA and the final names.
+
+  Lane B, 2026-10-26, later message (B2a plan revision 4 at Gate 1). Lane B relayed a maintainer decision of 2026-10-26 from its own session (now `MC-583`, below):
+  - The follow-up grows: an export of a page holding a module-stub marker must fail before it writes anything. Besides the call in `encodeRisuSaveParts`, add one `assertNoModuleStubs` call at the start of `writeLocalBackup` and of `writePartialLocalBackup` in `src/ts/drive/backuplocal.ts`, with a test that the export stops before the first asset is written.
+  - `ModuleStubRefusal` will extend `SaveParkError`. It lives in a zero-import module that `saveHold.ts` re-exports, with a `module-stub` kind and `what === 'modules'`. `runExport` does not filter by error class, so the user sees the generic export failure.
+  - Planned names: `assertNoModuleStubs`, `isModuleStub`, `ModuleStubRefusal`, from a leaf such as `src/ts/storage/moduleStub.ts`. The exact path comes with the SHA.
+  - Decision IDs, now recorded in `Agents/Lanes/lane-B-records.md` on main at `19c7e87a5` (headings confirmed by lane G with `git show`). MC-583 also records the maintainer's informed acceptance of the generic "run the backup again" text:
+    - `MC-581`: the marker-collision edge is accepted and refused loudly.
+    - `MC-582`: the user-facing wording stays generic, and the module name goes in `Error.message`.
+    - `MC-583`: an export fails before it writes anything. This is the basis for the early check.
+  - Binding note from B2a Gate 1 round 4 (E1, `[EDITORIAL]`). The unconditional early check in `writeLocalBackup`/`writePartialLocalBackup` is right until S4d. From S4d on, minted stubs are legitimately in the live list (C1 materialises them inside `exportCopyOf`, after the assets), so S4d (lane B) narrows the early check to foreign markers, i.e. slots failing the E10 deep-equal. The `encodeRisuSaveParts` wrapper check stays unconditional. The early-check comment must not claim every stub is foreign; "until stubs are minted, any marker is foreign" is acceptable.
+  - The follow-up was re-sized at 2 non-test files plus tests, and got its own opus plan check before Gate 2 (row 3907).
+- **Done: the stub-refusal follow-up (`MC-561`, `MC-564`).** B2a reached main as `52877a717`, with lane G's A1, A2 and records already inside. `worktree-Lane-G` was fast-forwarded to it (the records edits were uncommitted; B2a does not touch the records file). The final API is in `src/ts/storage/moduleStub.ts`: `assertNoModuleStubs`, `isModuleStub`, `ModuleStubRefusal` (extends `SaveParkError`), `MODULE_STUB_KEY` (a private-use-prefixed string) and `MODULE_STUB_VALUE`. Committed as `6e581588e`, not pushed:
+  - `encodeRisuSaveParts` refuses at the call.
+  - `writeLocalBackup` and `writePartialLocalBackup` refuse right after `getDatabase()`, before the cold collection, the store listing and `writer.init` (`MC-583`).
+  - The Gate 2 reviewer measured that on `52877a717` itself both exports saved a stub-marked module into `database.risudat`. B2a's refusals sit in the legacy and block encoders, which the streamed path (A2) no longer calls. The commit closes that gap, so its new tests are red on that base.
+  - Lane B has the SHA for its integration request.
 - Lane B, 2026-10-26: A1 and A2 merge cleanly onto main `85378dc9e` (B0, B1, CHORE-166 2A). Lane B's report: on the merged tree, the storage and drive suites pass (382 files, 11,874 tests) and `pnpm check` is clean. Lane B has asked lane A to integrate; the merge needs lane A's full checks and the maintainer's approval in lane A's session.
-- Plan and gate files are in `%TEMP%\risu-lane-g\l3\` (`plan\plan.md`, `sizing\`, `gate1-opus\`, `a1\`, `a1-gate2\`, `a1-ed\`, `a2\`, `a2-gate2\`, `a2-ed\`).
+- Plan and gate files are in `%TEMP%\risu-lane-g\l3\` (`plan\plan.md`, `sizing\`, `gate1-opus\`, `a1\`, `a1-gate2\`, `a1-ed\`, `a2\`, `a2-gate2\`, `a2-ed\`; follow-up: `follow\`, `follow-gate1\`, `follow-impl\`, `follow-gate2\`).
 - Not run here: full `pnpm test` and `pnpm build` (lane A on main); phone check P2 (after J1, through lane B and lane A). C1's parametrised export test runs on A2's writer at C1's own Gate 2 (L3-plan A2).
-- Records: `MC-560` to `MC-563`, rows 3900 to 3906. CHORE-205 has no lane G status line; lane B owns the ticket. Before merge, a doc-verifier must check these records (Agents/Lanes/README.md). Next free: `MC-564`, CHORE-394, row 3907.
+- Records: `MC-560` to `MC-564`, rows 3900 to 3909. CHORE-205 has no lane G status line; lane B owns the ticket. Before merge, a doc-verifier must check these records (Agents/Lanes/README.md). Next free: `MC-565`, CHORE-394, row 3910.
