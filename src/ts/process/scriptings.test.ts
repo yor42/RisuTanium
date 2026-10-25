@@ -90,3 +90,39 @@ test('keeps explicit false as the generation stop signal', async () => {
   expect(result.res).toBe(false)
   expect(result.stopSending).toBe(true)
 })
+
+test('a Lua script cannot write to a host prototype through an object an API returns', async () => {
+  // simpleLLM hands Lua a plain object. Through wasmoon's proxy extension Lua
+  // indexes the live object, so `__proto__` reaches the host's Object.prototype;
+  // without it Lua gets a table copy of the own keys.
+  const { requestChatData } = await import('./request/request')
+  vi.mocked(requestChatData).mockResolvedValue({ type: 'success', result: 'reply' } as never)
+  try {
+    const result = await runScripted(
+      `
+        onStart = async(function(id)
+          local reply = simpleLLM(id, "prompt"):await()
+          pcall(function()
+            reply.__proto__.risuLuaPolluted = "yes"
+          end)
+          return tostring(reply.success) .. ":" .. reply.result
+        end)
+      `,
+      {
+        char: {} as never,
+        chat: { message: [] } as never,
+        setVar: () => false,
+        getVar: () => 'null',
+        lowLevelAccess: true,
+        mode: 'start',
+      }
+    )
+
+    expect(Object.prototype.hasOwnProperty.call(Object.prototype, 'risuLuaPolluted')).toBe(false)
+    // guard: the returned fields still read in Lua
+    expect(result.res).toBe('true:reply')
+  } finally {
+    delete (Object.prototype as Record<string, unknown>).risuLuaPolluted
+    vi.mocked(requestChatData).mockReset()
+  }
+})
