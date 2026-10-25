@@ -853,39 +853,6 @@ export function requestSaveNow(): void {
     requestSaveNowImpl?.()
 }
 
-/** The store2 loop's parked-state reader, captured when the loop's module loads; null on a legacy-loop page and before that load resolves. */
-let readLoopParked: (() => boolean) | null = null
-
-/**
- * Whether a whole pass can be asked for and can finish: the real scheduler is
- * live, the store2 loop is not parked, saving is not stopped and no key is
- * frozen. A parked loop must not be asked, since a request counts as a mark and
- * raises the peer prompt. It does not read `saving.state`, so a pass already
- * running does not make it unavailable.
- */
-export function wholeSaveAvailable(): boolean {
-    return requestSaveNowImpl !== null
-        && readLoopParked !== null
-        && !readLoopParked()
-        && !get(savingStoppedReason)
-        && get(frozenSaveKeysStore).length === 0
-}
-
-/**
- * Asks for one whole pass: every resident character, the modules and the fixed
- * group are encoded. The flag is set before the request, so `isSaveClean()` stays
- * false until a pass whose snapshot came after this call has committed. Returns
- * false and changes nothing when `wholeSaveAvailable()` is false.
- */
-export function requestWholeSave(): boolean {
-    if (!wholeSaveAvailable()) {
-        return false
-    }
-    requiresFullEncoderReload.state = true
-    requestSaveNow()
-    return true
-}
-
 /** A hide or Back asked the store2 idle net to verdict every resident at its next turn; the loop takes it once. */
 let netSweepPending = false
 
@@ -1687,8 +1654,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         saveTimeoutExecute(true)
     }
 
-    const { runStore2SaveLoop, isSaveLoopParked } = await import('./storage/store2/saveLoop')
-    readLoopParked = isSaveLoopParked
+    const { runStore2SaveLoop } = await import('./storage/store2/saveLoop')
     const { describeSaveFailure, saveFailureClassOf } = await import('./storage/store2/ui/peerUi')
     /** Shows what a failing save tells the person and answers how long the loop waits; records nothing. */
     const showSaveFailure = (error: unknown, attempts: number, storageFull: boolean): number => {
