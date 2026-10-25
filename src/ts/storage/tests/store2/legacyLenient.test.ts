@@ -157,6 +157,25 @@ describe('new behaviour: lenient decode with named skips', () => {
         expect(skipped.map(entry => entry.kind)).toEqual(['presets'])
     })
 
+    test.each(['noCompression', 'compression'] as const)('every shape the codec refuses is named once per kind, and each skipped character slot on its own (%s)', async (compression) => {
+        const chat = (message: unknown) => ({ id: 'c', name: 'c', note: '', localLore: [], message })
+        const save = {
+            characters: [
+                { chaId: 'a', chats: 'x' }, { chaId: 'b', chats: [5, chat([1])] }, 5, { chaId: 'c', chats: [chat('x')] }, null,
+            ],
+            botPresets: [1, { name: 'p' }],
+            modules: 'x',
+            loadouts: { a: 1 },
+            plugins: [5],
+            pluginV2: 'x',
+            pluginCustomStorage: [],
+        }
+
+        const { skipped } = await decodeLegacyLenient(encodeRisuSaveLegacy(save, compression))
+
+        expect(skipped.map(entry => entry.kind)).toEqual(['presets', 'modules', 'loadouts', 'plugins', 'pluginStorage', 'chats', 'character', 'character'])
+    })
+
     test.each(['noCompression', 'compression'] as const)('a msgpack-format save with a missing or null botPresets names nothing (%s)', async (compression) => {
         for (const save of [{ characters: [] }, { characters: [], botPresets: null }]) {
             const { skipped } = await decodeLegacyLenient(encodeRisuSaveLegacy(save, compression))

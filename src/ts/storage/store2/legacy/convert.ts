@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid'
 import type { botPreset, Database } from '../../database.svelte'
 import { LEGACY_MAIN_FILE_KEY } from '../../blockKeys'
 import { fingerprintMainFile } from '../../mainFileFingerprint'
@@ -15,7 +16,7 @@ import type { ListParams } from '../lists/params'
 import { planOldDataSnapshot, withSnapshot, type WalkedLegacy } from '../oldData/plan'
 import type { ForeignClearHook } from '../owner'
 import { runExit, type ExitResult } from '../recovery'
-import { findLegacyFaults, legacyCharactersRefused } from './faults'
+import { dropLegacyFaults, findLegacyFaults, legacyCharactersRefused } from './faults'
 import { planWholeTreeInstall } from './install'
 import type { LenientLegacyDecode, SkippedLegacyEntry } from './lenient'
 import { legacyPluginIndexPointer, legacyPluginRefs } from './refs'
@@ -41,7 +42,11 @@ import { collectLegacyColdKeys } from './walk'
  *  - A strict decode that holds a shape the codec refuses (`faults.ts`) counts as not decoded, so the next copy or
  *    "convert without these" follows. A refusal the detector cannot see (a BigInt or a cycle inside an element) surfaces
  *    as a `CodecError` while the install is planned, before any marker: it is an unconvertible copy, never a throw out
- *    of the conversion, and the strict route moves on to the next copy.
+ *    of the conversion, and the strict route moves on to the next copy. A cycle first spins the legacy list's string
+ *    walk, which keeps no visited set, before the install is planned.
+ *  - "Convert without these" leaves out exactly the shapes it named (`dropLegacyFaults`), on the resolved copy and only
+ *    for the lenient origin; the decoded tree, and so the legacy list built from it, is the file as read. A cold unit
+ *    whose content the codec would refuse is unusable through the incomplete-data question, for every origin.
  *  - The old files are never written, renamed or deleted here. The new tree names them (`fixed.legacyKeep`) so a later
  *    deletion can see which of them it has fully read, and the install carries the list of old fork-format keys that
  *    later deletion may remove (`oldData/plan.ts`), persisted with the tree and before its final write.
@@ -105,7 +110,7 @@ export interface ConvertHooks {
 }
 
 export interface ConvertStrictHooks extends ConvertHooks {
-    /** The main file did not decode strictly (a decode failure, a part the codec refuses, or an older-format tree without a characters list) and this numbered backup (its time) did: converting from it is the person's choice, asked before anything else. `false` declines: nothing is written. */
+    /** The main file did not decode strictly (a decode failure, a part the codec refuses, or an older-format tree without a characters list) and this numbered backup (its time) did: converting from it is the person's choice, asked before anything else. Also asked for a later copy after an earlier one decoded but was refused while the install was planned. `false` declines: nothing is written. */
     confirmFromBackup(backup: number): Promise<boolean>
 }
 
@@ -220,10 +225,11 @@ export function hasBlockMagic(bytes: Uint8Array): boolean {
 }
 
 /**
- * The tree, or null when the codec would refuse it. The older msgpack format always writes a `characters` list, so a
- * tree without one (missing, null, not a list, or not an object at all) is not a database; a block-format save with no
- * characters writes none and is accepted. A present `characters` that is not a list, and any part `findLegacyFaults`
- * reports (`botPresets` included), refuse both formats. Judged on the tree as read.
+ * The tree, or null when it is refused: the codec would refuse it, or it is not a database. The older msgpack format
+ * always writes a `characters` list, so a tree without one (missing, null, not a list, or not an object at all) is
+ * refused although the codec would take it; a block-format save with no characters writes none and is accepted. A
+ * present `characters` that is not a list, and any part `findLegacyFaults` reports (`botPresets` included), refuse both
+ * formats. Judged on the tree as read.
  */
 function acceptedStrictTree(tree: Database | null, blockFormat: boolean): Database | null {
     if (tree === null || legacyCharactersRefused(tree, !blockFormat) || findLegacyFaults(tree).length > 0) {
@@ -479,7 +485,7 @@ async function convertDecoded(
     const needsDefaultPreset = isLegacyDatabase(source.tree) && !Array.isArray(source.tree.botPresets)
     let resolved
     try {
-        resolved = await resolveLegacyTree(source.tree, reader, request.resolve)
+        resolved = await resolveLegacyTree(source.tree, reader, { ...request.resolve, faultyUnitsUnusable: true })
     } catch (error) {
         if (error instanceof LegacyReadError) {
             return blocked('convert-read-failed', error.message)
@@ -493,13 +499,21 @@ async function convertDecoded(
     if ('reason' in listed) {
         return blocked(listed.reason, listed.detail)
     }
-    if (needsDefaultPreset) {
+    let database = resolved.database
+    let presetsEmptied = false
+    if (source.origin.kind === 'lenient') {
+        // The shapes the codec refuses were named to the person; the converted copy leaves them out. A strict origin never gets here with one.
+        const dropped = dropLegacyFaults(database, request.resolve?.newId ?? uuidv4)
+        database = dropped.database
+        presetsEmptied = dropped.presetsEmptied
+    }
+    if (needsDefaultPreset || presetsEmptied) {
         // On the resolved copy only, after the list was built from the file as read, and before any marker is written.
-        resolved.database.botPresets = [await (decoders.defaultPreset ?? loadDefaultPreset)()]
+        database = { ...database, botPresets: [await (decoders.defaultPreset ?? loadDefaultPreset)()] }
     }
     let plan
     try {
-        plan = await planWholeTreeInstall(resolved.database, {
+        plan = await planWholeTreeInstall(database, {
             lists: request.lists,
             env: request.env,
             convertedFrom: source.fingerprint,

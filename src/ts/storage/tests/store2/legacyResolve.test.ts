@@ -35,7 +35,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 import type { Database } from 'src/ts/storage/database.svelte'
 import { coldStorageHeader, formatColdStorageLoadError } from 'src/ts/process/coldstorageData'
 import { encodeDatabase, StubRefusedError } from 'src/ts/storage/store2/codec'
-import { LegacyReadError, resolveLegacyTree } from 'src/ts/storage/store2/legacy/resolve'
+import { LegacyReadError, resolveLegacyTree, type LegacyEntryReader } from 'src/ts/storage/store2/legacy/resolve'
 import { mergeRetriedColdChatSideFields, type RetryLegacyColdChatSideFields } from 'src/ts/process/coldstorageData'
 import { fakeLists, seededEnv } from './codecFixtures'
 import {
@@ -998,5 +998,81 @@ describe('new behaviour: the resolved trees encode', () => {
         expect(shardEntries.map(entry => entry.u).sort()).toEqual([...entityIds].sort())
         expect(JSON.stringify(shardEntries)).not.toContain(ID.stubBlob)
         expect(chars(database).every(c => !Object.hasOwn(c, 'u'))).toBe(true)
+    })
+})
+
+describe('the faultyUnitsUnusable opt-in: a unit or slot the codec would refuse', () => {
+    const UNIT = '0b6f6a1e-3c1a-4d7e-9a6b-2f3e4d5c6b71'
+    const OPTED_IN = { ...OPTIONS, faultyUnitsUnusable: true } as const
+    const message = (data: string): Obj => ({ role: 'char', data, time: 1 })
+    const chat = (messages: Obj[]): Obj => ({ id: 'c0', name: 'c', note: '', localLore: [], message: messages })
+
+    function unitReader(units: Record<string, unknown>): LegacyEntryReader {
+        return { async read(key) { return key in units ? { status: 'ok', value: structuredClone(units[key]) } : { status: 'missing' } } }
+    }
+    const stubDb = (): Database => ({ characters: [{ type: 'character', name: 'S', chaId: 'cha-s', coldstorage: UNIT, chats: [] }] }) as unknown as Database
+    const unitCharacter = (chats: unknown): Obj => ({ character: { type: 'character', name: 'S', chaId: 'cha-s', chats } })
+    const pointerDb = (): Database => ({
+        characters: [{ type: 'character', name: 'P', chaId: 'cha-p', chats: [chat([message(coldStorageHeader + UNIT), message('tail-ok')])] }],
+    }) as unknown as Database
+
+    test.each([
+        ['chats [5]', [5]],
+        ['a chat with a message that is not an object', [chat([5 as unknown as Obj])]],
+        ['chats a string', 'x'],
+    ])('reproducer: a stub whose unit holds %s is a shape failure: the placeholder stands in and the stub is named', async (_label, chats) => {
+        const { database, incomplete } = await resolveLegacyTree(stubDb(), unitReader({ [UNIT]: unitCharacter(chats) }), OPTED_IN)
+
+        expect(incomplete).toEqual([{ kind: 'character', chaId: 'cha-s', name: 'S', key: UNIT, reason: 'shape' }])
+        expect(chatsOf(chars(database)[0])).toEqual([expect.objectContaining({ id: 'placeholder-chat-id' })])
+        expect(JSON.stringify(chatsOf(chars(database)[0])[0].message)).toContain(UNIT)
+    })
+
+    test('guard (passes before and after): without the opt-in the same units are used as they are, as the `.bin` import has it', async () => {
+        const { database, incomplete } = await resolveLegacyTree(stubDb(), unitReader({ [UNIT]: unitCharacter([5]) }), OPTIONS)
+
+        expect(incomplete).toEqual([])
+        expect(chatsOf(chars(database)[0])).toEqual([5])
+    })
+
+    test('guard (passes before and after): a unit with sound chats is used under the opt-in', async () => {
+        const { database, incomplete } = await resolveLegacyTree(stubDb(), unitReader({ [UNIT]: unitCharacter([chat([message('hi')])]) }), OPTED_IN)
+
+        expect(incomplete).toEqual([])
+        expect(firstMessages(chars(database)[0])).toEqual(['hi'])
+    })
+
+    test('reproducer: a chat unit holding a message that is not an object is invalid: the load-error text stays and the tail is kept', async () => {
+        const { database, incomplete } = await resolveLegacyTree(pointerDb(), unitReader({ [UNIT]: [message('u1'), 5] }), OPTED_IN)
+
+        expect(incomplete).toEqual([{ kind: 'chat', chaId: 'cha-p', name: 'P', chatIndex: 0, key: UNIT, reason: 'invalid' }])
+        expect(chatsOf(chars(database)[0])[0].message).toEqual([{ ...message(formatColdStorageLoadError(UNIT)) }, message('tail-ok')])
+    })
+
+    test('guard (passes before and after): without the opt-in that chat unit is used as it is', async () => {
+        const { database, incomplete } = await resolveLegacyTree(pointerDb(), unitReader({ [UNIT]: [message('u1'), 5] }), OPTIONS)
+
+        expect(incomplete).toEqual([])
+        expect(chatsOf(chars(database)[0])[0].message).toEqual([message('u1'), 5, message('tail-ok')])
+    })
+
+    test('reproducer: a unit behind load-error text is judged the same way', async () => {
+        const db = { characters: [{ type: 'character', name: 'E', chaId: 'cha-e', chats: [chat([message(formatColdStorageLoadError(UNIT))])] }] } as unknown as Database
+
+        const { database, incomplete } = await resolveLegacyTree(db, unitReader({ [UNIT]: [5] }), OPTED_IN)
+
+        expect(incomplete).toEqual([expect.objectContaining({ kind: 'chat', key: UNIT, reason: 'invalid' })])
+        expect(firstMessages(chars(database)[0])).toEqual([formatColdStorageLoadError(UNIT)])
+    })
+
+    test('reproducer: a Date slot passes through as the same value under the opt-in, where it used to become an empty character', async () => {
+        const slot = new Date(0)
+        const db = { characters: [slot, { chaId: 'a', chats: [] }] } as unknown as Database
+
+        const opted = await resolveLegacyTree(db, unitReader({}), OPTED_IN)
+        const plain = await resolveLegacyTree(db, unitReader({}), OPTIONS)
+
+        expect((opted.database.characters as unknown[])[0]).toBe(slot)
+        expect((plain.database.characters as unknown[])[0]).toEqual({})
     })
 })

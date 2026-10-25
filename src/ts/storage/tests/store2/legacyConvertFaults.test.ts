@@ -3,9 +3,9 @@
  * not, an element that must be an object and is not, a missing characters list), through the real default decoders and
  * bytes written by the older writer (`encodeRisuSaveLegacy`) or composed block by block. The strict read counts such a
  * copy as not decoded, main file and backup alike, so a good backup or "convert without these" follows. The lenient
- * path ends at the blocked "convert without these" result instead of a thrown codec error. A refusal the detector
- * cannot see (a BigInt inside a message) is caught where the install is planned, before any marker, and moves on to the
- * next copy.
+ * path names each kind once and installs a copy without those parts (the tree handed to the install is captured by a
+ * wrapper of `planWholeTreeInstall`). A refusal the detector cannot see (a BigInt inside a message) is caught where the
+ * install is planned, before any marker, and moves on to the next copy.
  *
  * Platform boundaries mocked as in `legacyConvertPresets.test.ts`. Fixture strings stay under 64 characters (msgpackr).
  * A cyclic value inside an element is not exercised: the legacy list's string walk has no visited set and spins for
@@ -30,13 +30,27 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
     presetTemplate: { name: 'test-preset' },
 }) as unknown as typeof import('src/ts/storage/database.svelte'))
 vi.mock(import('src/ts/platform'), () => ({ isTauri: false, isNodeServer: true }))
+const { planned } = vi.hoisted(() => ({ planned: [] as unknown[] }))
+vi.mock('src/ts/storage/store2/legacy/install', async (importOriginal) => {
+    const original = await importOriginal<typeof import('src/ts/storage/store2/legacy/install')>()
+    return {
+        ...original,
+        planWholeTreeInstall: (...args: Parameters<typeof original.planWholeTreeInstall>) => {
+            planned.push(args[0])
+            return original.planWholeTreeInstall(...args)
+        },
+    }
+})
 vi.mock('@tauri-apps/plugin-fs', () => ({
     writeFile: vi.fn(), exists: vi.fn(async () => false), mkdir: vi.fn(), readFile: vi.fn(), BaseDirectory: { AppData: 0 },
 }))
 
+import { coldStorageHeader, formatColdStorageLoadError } from 'src/ts/process/coldstorageData'
 import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import type { Database } from 'src/ts/storage/database.svelte'
-import { encodeRisuSaveCompressionStream, encodeRisuSaveLegacy, isBlockFormatSave, RisuSaveEncoder } from 'src/ts/storage/risuSave'
+import {
+    decodeRisuSave, encodeRisuSaveCompressionStream, encodeRisuSaveLegacy, isBlockFormatSave, RisuSaveEncoder, type SalvageOmittedKind,
+} from 'src/ts/storage/risuSave'
 import { createMemoryBackend, type MemoryBackend } from 'src/ts/storage/store2/backend'
 import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import { firstLifeGrant } from 'src/ts/storage/store2/firstLife'
@@ -44,7 +58,8 @@ import { keyOfRef, readUnit, UNIT_TYPE, type LegacyList } from 'src/ts/storage/s
 import {
     convertLegacyProfile, convertLegacyWithout, hasBlockMagic, type ConvertRequest, type ConvertResult, type LegacyDecoders,
 } from 'src/ts/storage/store2/legacy/convert'
-import type { SkippedLegacyEntry } from 'src/ts/storage/store2/legacy/lenient'
+import { findLegacyFaults } from 'src/ts/storage/store2/legacy/faults'
+import { decodeLegacyLenient, type SkippedLegacyEntry } from 'src/ts/storage/store2/legacy/lenient'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
 import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
 import { BLOCK, composeSave } from '../manualCleanupHarness'
@@ -77,6 +92,7 @@ interface Rig {
 async function rig(
     main: Uint8Array, backups: Record<number, Uint8Array> = {}, decoders?: LegacyDecoders, units: Record<string, unknown> = {},
 ): Promise<Rig> {
+    planned.length = 0
     const store = createMemoryByteStore()
     store.files.set(MAIN, main)
     for (const [time, bytes] of Object.entries(backups)) {
@@ -157,35 +173,39 @@ function expectUntouched(test: Rig): void {
 interface FaultCase {
     label: string
     mutate(tree: Obj): void
-    /** False where the lenient path does not end at the blocked result, because the resolve changes the shape before the codec sees it. */
-    lenientBlocks?: boolean
+    /** The one kind "convert without these" names for it. */
+    kind: SalvageOmittedKind
+    /** How many characters the converted copy holds; one unless the fault is a character slot. */
+    characters?: number
 }
 
 const FAULTS: FaultCase[] = [
     ...(['modules', 'loadouts', 'plugins', 'pluginV2'] as const).flatMap((part): FaultCase[] => [
-        { label: `${part} a string`, mutate: tree => { tree[part] = 'x' } },
-        { label: `${part} an object`, mutate: tree => { tree[part] = { a: 1 } } },
+        { label: `${part} a string`, kind: part === 'pluginV2' ? 'plugins' : part, mutate: tree => { tree[part] = 'x' } },
+        { label: `${part} an object`, kind: part === 'pluginV2' ? 'plugins' : part, mutate: tree => { tree[part] = { a: 1 } } },
     ]),
-    ...(['modules', 'plugins', 'pluginV2'] as const).map((part): FaultCase => ({ label: `${part} [5]`, mutate: tree => { tree[part] = [5] } })),
-    { label: 'pluginCustomStorage a string', mutate: tree => { tree.pluginCustomStorage = 'x' } },
-    { label: 'pluginCustomStorage an array', mutate: tree => { tree.pluginCustomStorage = [] } },
-    { label: 'botPresets [5, ok]', mutate: tree => { tree.botPresets = [5, { name: 'ok' }] } },
-    { label: 'botPresets [null]', mutate: tree => { tree.botPresets = [null] } },
-    { label: 'botPresets [Date]', mutate: tree => { tree.botPresets = [new Date(0)] } },
-    { label: 'characters[0] is 5', mutate: tree => { (tree.characters as unknown[])[0] = 5 } },
-    { label: 'characters[0] is null', mutate: tree => { (tree.characters as unknown[])[0] = null } },
-    { label: 'characters[0] is an array', mutate: tree => { (tree.characters as unknown[])[0] = [] } },
-    // The resolve rewrites a Date slot to an empty object, so the lenient path installs a junk character until it passes the slot through.
-    { label: 'characters[0] is a Date', mutate: tree => { (tree.characters as unknown[])[0] = new Date(0) }, lenientBlocks: false },
-    { label: 'chats a string', mutate: tree => { characterOf(tree).chats = 'x' } },
-    { label: 'chats an object', mutate: tree => { characterOf(tree).chats = { a: 1 } } },
-    { label: 'chats [5]', mutate: tree => { characterOf(tree).chats = [5] } },
-    { label: 'chats [null]', mutate: tree => { characterOf(tree).chats = [null] } },
-    { label: 'chats [Date]', mutate: tree => { characterOf(tree).chats = [new Date(0)] } },
-    { label: 'message a string', mutate: tree => { chatOf(tree).message = 'x' } },
-    { label: 'message [5]', mutate: tree => { chatOf(tree).message = [5] } },
-    { label: 'message [ok, 5]', mutate: tree => { chatOf(tree).message = [{ role: 'user', data: 'ok', time: 1 }, 5] } },
-    { label: 'message [null]', mutate: tree => { chatOf(tree).message = [null] } },
+    ...(['modules', 'plugins', 'pluginV2'] as const).map((part): FaultCase => ({
+        label: `${part} [5]`, kind: part === 'pluginV2' ? 'plugins' : part, mutate: tree => { tree[part] = [5] },
+    })),
+    { label: 'pluginCustomStorage a string', kind: 'pluginStorage', mutate: tree => { tree.pluginCustomStorage = 'x' } },
+    { label: 'pluginCustomStorage an array', kind: 'pluginStorage', mutate: tree => { tree.pluginCustomStorage = [] } },
+    { label: 'botPresets [5, ok]', kind: 'presets', mutate: tree => { tree.botPresets = [5, { name: 'ok' }] } },
+    { label: 'botPresets [null]', kind: 'presets', mutate: tree => { tree.botPresets = [null] } },
+    { label: 'botPresets [Date]', kind: 'presets', mutate: tree => { tree.botPresets = [new Date(0)] } },
+    { label: 'characters[0] is 5', kind: 'character', characters: 0, mutate: tree => { (tree.characters as unknown[])[0] = 5 } },
+    { label: 'characters[0] is null', kind: 'character', characters: 0, mutate: tree => { (tree.characters as unknown[])[0] = null } },
+    { label: 'characters[0] is an array', kind: 'character', characters: 0, mutate: tree => { (tree.characters as unknown[])[0] = [] } },
+    // The resolve used to rewrite a Date slot to an empty object, which the conversion then installed as a junk character.
+    { label: 'characters[0] is a Date', kind: 'character', characters: 0, mutate: tree => { (tree.characters as unknown[])[0] = new Date(0) } },
+    { label: 'chats a string', kind: 'chats', mutate: tree => { characterOf(tree).chats = 'x' } },
+    { label: 'chats an object', kind: 'chats', mutate: tree => { characterOf(tree).chats = { a: 1 } } },
+    { label: 'chats [5]', kind: 'chats', mutate: tree => { characterOf(tree).chats = [5] } },
+    { label: 'chats [null]', kind: 'chats', mutate: tree => { characterOf(tree).chats = [null] } },
+    { label: 'chats [Date]', kind: 'chats', mutate: tree => { characterOf(tree).chats = [new Date(0)] } },
+    { label: 'message a string', kind: 'chats', mutate: tree => { chatOf(tree).message = 'x' } },
+    { label: 'message [5]', kind: 'chats', mutate: tree => { chatOf(tree).message = [5] } },
+    { label: 'message [ok, 5]', kind: 'chats', mutate: tree => { chatOf(tree).message = [{ role: 'user', data: 'ok', time: 1 }, 5] } },
+    { label: 'message [null]', kind: 'chats', mutate: tree => { chatOf(tree).message = [null] } },
 ]
 
 describe.each(ENCODINGS)('a save the codec refuses (%s)', (encoding) => {
@@ -243,17 +263,20 @@ describe.each(ENCODINGS)('a save the codec refuses (%s)', (encoding) => {
             expectUntouched(test)
         })
 
-        if (entry.lenientBlocks !== false) {
-            test('reproducer: "convert without these" ends at the blocked result with the codec\'s message, not a thrown error', async () => {
-                const test = await rig(encodeRisuSaveLegacy(profile(entry.mutate), encoding))
+        test('reproducer: "convert without these" names the part once, installs a copy without it, and leaves the old file alone', async () => {
+            const test = await rig(encodeRisuSaveLegacy(profile(entry.mutate), encoding))
+            const asked = freshAsked()
 
-                const result = await convertLegacyWithout(test.request, hooks(freshAsked()))
+            const result = await convertLegacyWithout(test.request, hooks(asked))
 
-                expect(result).toMatchObject({ status: 'blocked', reason: 'convert-lenient-failed' })
-                expect((result as { detail: string }).detail).not.toBe('')
-                expectUntouched(test)
-            })
-        }
+            expect(result).toMatchObject({ status: 'installed', fromBackup: null })
+            expect(asked.skipped.map(list => list.map(skipped => skipped.kind))).toEqual([[entry.kind]])
+            const converted = planned.at(-1) as Obj
+            expect(findLegacyFaults(converted)).toEqual([])
+            expect(converted.characters).toHaveLength(entry.characters ?? 1)
+            expect(test.files).toEqual(test.before)
+            expect(await legacyStatuses(test.memory)).toEqual({ [MAIN]: 'unreadable' })
+        })
     })
 
     test('guard (passes before and after): a valid main installs from the main file and lists a faulty backup ok', async () => {
@@ -309,6 +332,223 @@ describe.each(ENCODINGS)('a save the codec refuses (%s)', (encoding) => {
         expect(asked.incomplete).toEqual([])
     })
 
+    describe('what "convert without these" leaves in the converted copy', () => {
+        async function convertedWithout(tree: Obj, units: Record<string, unknown> = {}) {
+            const test = await rig(encodeRisuSaveLegacy(tree, encoding), {}, undefined, units)
+            const asked = freshAsked()
+            const result = await convertLegacyWithout(test.request, hooks(asked))
+            return { test, asked, result, converted: planned.at(-1) as Obj }
+        }
+        const kinds = (asked: Asked) => asked.skipped.map(list => list.map(skipped => skipped.kind))
+        const names = (list: unknown) => (list as Obj[]).map(element => element.name)
+        const chatsOfConverted = (converted: Obj) => (converted.characters as Obj[])[0].chats as Obj[]
+
+        test.each([
+            ['the selected preset stays and moves up', 2, 1],
+            ['the selected preset was dropped, so the id points one past the kept ones', 1, 2],
+            ['the first preset stays where it is', 0, 0],
+            ['an id that is not a position is left alone', 7, 7],
+            ['an id of -1 is left alone', -1, -1],
+        ])('reproducer: botPresets [p0, 5, p2], %s', async (_label, before, after) => {
+            const { result, converted, asked } = await convertedWithout(profile(tree => {
+                tree.botPresets = [{ name: 'p0' }, 5, { name: 'p2' }]
+                tree.botPresetsId = before
+            }))
+
+            expect(result).toMatchObject({ status: 'installed' })
+            expect(kinds(asked)).toEqual([['presets']])
+            expect(names(converted.botPresets)).toEqual(['p0', 'p2'])
+            expect(converted.botPresetsId).toBe(after)
+        })
+
+        test('reproducer: every preset dropped gives the Default preset, and botPresetsId is left as it was', async () => {
+            const { converted, asked } = await convertedWithout(profile(tree => { tree.botPresets = [5, null]; tree.botPresetsId = 1 }))
+
+            expect(kinds(asked)).toEqual([['presets']])
+            expect(converted.botPresets).toHaveLength(1)
+            expect(names(converted.botPresets)).not.toContain(undefined)
+            expect(converted.botPresetsId).toBe(1)
+        })
+
+        test('reproducer: an element that is not an object is left out of modules and plugins, the order of the others kept', async () => {
+            const { converted, asked } = await convertedWithout(profile(tree => {
+                const modules = tree.modules as Obj[]
+                const plugins = tree.plugins as Obj[]
+                tree.modules = [5, modules[0], 7, modules[1]]
+                tree.plugins = [null, plugins[0], plugins[1]]
+            }))
+            const original = profile()
+
+            expect(kinds(asked)).toEqual([['modules', 'plugins']])
+            expect(names(converted.modules)).toEqual(names((original.modules as Obj[]).slice(0, 2)))
+            expect(names(converted.plugins)).toEqual(names((original.plugins as Obj[]).slice(0, 2)))
+        })
+
+        test.each([
+            ['the kept chat after a dropped one moves up', 2, 1],
+            ['the selected chat was dropped, so the last kept chat is selected', 4, 2],
+            ['the first chat stays', 0, 0],
+            ['a page past the end is left alone', 9, 9],
+        ])('reproducer: chats [c0, 5, c1, c2, 5], %s', async (_label, before, after) => {
+            const { converted, asked } = await convertedWithout(profile(tree => {
+                const chats = characterOf(tree).chats as Obj[]
+                characterOf(tree).chats = [chats[0], 5, chats[1], { ...chats[0], id: 'c2' }, 5]
+                characterOf(tree).chatPage = before
+            }))
+
+            expect(kinds(asked)).toEqual([['chats']])
+            expect(chatsOfConverted(converted)).toHaveLength(3)
+            expect(((converted.characters as Obj[])[0]).chatPage).toBe(after)
+        })
+
+        test.each([['a string', 'x'], ['an object', { a: 1 }], ['only elements that are not objects', [5, null]]])(
+            'reproducer: chats %s gives the character one new empty chat, selected, with the id from the resolve options',
+            async (_label, chats) => {
+                const { converted, asked } = await convertedWithout(profile(tree => { characterOf(tree).chats = chats; characterOf(tree).chatPage = 3 }))
+
+                expect(kinds(asked)).toEqual([['chats']])
+                expect(chatsOfConverted(converted)).toEqual([{ id: 'placeholder-chat', message: [], note: '', name: 'Chat 1', localLore: [] }])
+                expect(((converted.characters as Obj[])[0]).chatPage).toBe(0)
+            },
+        )
+
+        test('reproducer: a message that is not an object is left out and the chat keeps its fmIndex exactly', async () => {
+            const { converted, asked } = await convertedWithout(profile(tree => {
+                const chat = chatOf(tree)
+                chat.fmIndex = 3
+                chat.message = [{ role: 'user', data: 'first', time: 1 }, 5, { role: 'char', data: 'second', time: 2 }]
+            }))
+
+            expect(kinds(asked)).toEqual([['chats']])
+            const chat = chatsOfConverted(converted)[0]
+            expect((chat.message as Obj[]).map(message => message.data)).toEqual(['first', 'second'])
+            expect(chat.fmIndex).toBe(3)
+            expect(chatsOfConverted(converted)).toHaveLength(2)
+        })
+
+        test('reproducer: a message list that is not a list becomes empty and the chat stays', async () => {
+            const { converted } = await convertedWithout(profile(tree => { chatOf(tree).message = 'x' }))
+
+            expect(chatsOfConverted(converted)).toHaveLength(2)
+            expect(chatsOfConverted(converted)[0].message).toEqual([])
+        })
+
+        test('reproducer: faults in many characters are one chats entry, and each skipped slot is its own character entry', async () => {
+            const { converted, asked } = await convertedWithout(profile(tree => {
+                const second = { ...structuredClone(characterOf(tree)), chaId: 'second', chats: 'x' }
+                characterOf(tree).chats = [5]
+                tree.characters = [5, characterOf(tree), second, null, new Date(0)]
+            }))
+
+            expect([...kinds(asked)[0]].sort()).toEqual(['character', 'character', 'character', 'chats'])
+            expect((converted.characters as Obj[]).map(character => character.chaId)).toEqual([characterOf(profile()).chaId, 'second'])
+        })
+
+        describe.each(['strict', 'lenient'] as const)('a cold unit the codec would refuse (%s)', (origin) => {
+            async function convert(tree: Obj, units: Record<string, unknown>) {
+                const test = await rig(encodeRisuSaveLegacy(tree, encoding), {}, undefined, units)
+                const asked = freshAsked()
+                const result = origin === 'strict' ? await convertLegacyProfile(test.request, hooks(asked)) : await convertLegacyWithout(test.request, hooks(asked))
+                return { test, asked, result, converted: planned.at(-1) as Obj }
+            }
+            const pointer = { role: 'char', data: coldStorageHeader + UNIT_A, time: 1 }
+            const stubTree = (unitChats: unknown): { tree: Obj, units: Record<string, unknown> } => {
+                let unit: Obj = {}
+                const tree = profile(t => {
+                    unit = { ...structuredClone(characterOf(t)), chats: unitChats }
+                    t.characters = [{ type: 'character', name: characterOf(t).name, chaId: characterOf(t).chaId, coldstorage: UNIT_A, chats: [] }]
+                })
+                return { tree, units: { [UNIT_A]: { character: unit } } }
+            }
+
+            test.each([['chats [5]', [5]], ['a message that is not an object', [{ id: 'c', name: '', note: '', localLore: [], message: [5] }]]])(
+                'reproducer: a stub whose unit holds %s is unusable: a placeholder, and the incomplete question names it',
+                async (_label, unitChats) => {
+                    const { tree, units } = stubTree(unitChats)
+
+                    const { result, asked, converted } = await convert(tree, units)
+
+                    expect(result).toMatchObject({ status: 'installed' })
+                    expect(asked.incomplete).toHaveLength(1)
+                    expect(asked.incomplete[0]).toEqual([expect.objectContaining({ kind: 'character', reason: 'shape', key: UNIT_A })])
+                    const chats = chatsOfConverted(converted)
+                    expect(chats).toHaveLength(1)
+                    expect(JSON.stringify(chats[0].message)).toContain(UNIT_A)
+                },
+            )
+
+            test('reproducer: a pointer chat whose unit is [5] keeps the load-error text and the chat is named invalid', async () => {
+                const { converted, asked, result } = await convert(profile(tree => { chatOf(tree).message = [pointer] }), { [UNIT_A]: [5] })
+
+                expect(result).toMatchObject({ status: 'installed' })
+                expect(asked.incomplete).toEqual([[expect.objectContaining({ kind: 'chat', reason: 'invalid', key: UNIT_A, chatIndex: 0 })]])
+                expect((chatsOfConverted(converted)[0].message as Obj[])[0].data).toBe(formatColdStorageLoadError(UNIT_A))
+            })
+
+            test('guard (passes before and after): a valid unit is used, nothing is asked', async () => {
+                const { converted, asked } = await convert(profile(tree => { chatOf(tree).message = [pointer] }), { [UNIT_A]: [{ role: 'user', data: 'from unit', time: 1 }] })
+
+                expect(asked.incomplete).toEqual([])
+                expect((chatsOfConverted(converted)[0].message as Obj[]).map(message => message.data)).toEqual(['from unit'])
+            })
+        })
+
+        test('reproducer: a pointer chat with a good and a bad message after it, the bad one dropped by the lenient read and refused by the strict read', async () => {
+            const tree = () => profile(t => { chatOf(t).message = [{ role: 'char', data: coldStorageHeader + UNIT_A, time: 1 }, { role: 'user', data: 'tail-ok', time: 2 }, 5] })
+            const units = { [UNIT_A]: [{ role: 'user', data: 'u1', time: 0 }, { role: 'char', data: 'u2', time: 0 }] }
+            const strict = await rig(encodeRisuSaveLegacy(tree(), encoding), {}, undefined, units)
+
+            expect(await convertLegacyProfile(strict.request, hooks(freshAsked()))).toEqual({ status: 'all-failed', backupsTried: [] })
+            const { converted, asked } = await convertedWithout(tree(), units)
+
+            expect(kinds(asked)).toEqual([['chats']])
+            expect((chatsOfConverted(converted)[0].message as Obj[]).map(message => message.data)).toEqual(['u1', 'u2', 'tail-ok'])
+        })
+    })
+
+    describe('the decoded tree is never changed by the conversion (snapshot at every depth)', () => {
+        function watching(snapshots: { tree: Obj, copy: Obj }[]): LegacyDecoders {
+            const keep = (tree: unknown) => { snapshots.push({ tree: tree as Obj, copy: structuredClone(tree) as Obj }) }
+            return {
+                strict: async (bytes) => { const tree = await decodeRisuSave(bytes, { strict: true }) as Database; keep(tree); return tree },
+                lenient: async (bytes) => { const decoded = await decodeLegacyLenient(bytes); keep(decoded.tree); return decoded },
+                defaultPreset: async () => ({ name: 'Default' }) as never,
+            }
+        }
+
+        test('reproducer: the lenient read drops a message, a chat, a preset, a module, a plugin and a character slot without touching the tree it decoded', async () => {
+            const snapshots: { tree: Obj, copy: Obj }[] = []
+            const units = { [UNIT_A]: [{ role: 'user', data: 'u1', time: 0 }] }
+            const tree = profile(t => {
+                const chats = characterOf(t).chats as Obj[]
+                chats[0].message = [{ role: 'char', data: coldStorageHeader + UNIT_A, time: 1 }, { role: 'user', data: 'tail', time: 2 }, 5]
+                // The second chat is the decoded tree's own, with a message array the drop must replace, not splice.
+                characterOf(t).chats = [chats[0], 5, { ...chats[1], message: [{ role: 'user', data: 'plain', time: 3 }, 5] }]
+                t.botPresets = [{ name: 'p0' }, 5]
+                t.modules = [5, ...(t.modules as unknown[])]
+                t.plugins = [null, ...(t.plugins as unknown[])]
+                t.pluginV2 = 'x'
+                t.characters = [new Date(0), ...(t.characters as unknown[]), 7]
+            })
+            const test = await rig(encodeRisuSaveLegacy(tree, encoding), {}, watching(snapshots), units)
+
+            const result = await convertLegacyWithout(test.request, hooks(freshAsked()))
+
+            expect(result).toMatchObject({ status: 'installed' })
+            expect(snapshots).toHaveLength(1)
+            expect(snapshots[0].tree).toEqual(snapshots[0].copy)
+        })
+
+        test('guard (passes before and after): a strict conversion leaves the decoded tree as it was', async () => {
+            const snapshots: { tree: Obj, copy: Obj }[] = []
+            const test = await rig(encodeRisuSaveLegacy(profile(), encoding), {}, watching(snapshots))
+
+            await convertLegacyProfile(test.request, hooks(freshAsked()))
+
+            expect(snapshots[0].tree).toEqual(snapshots[0].copy)
+        })
+    })
+
     describe.each([
         ['missing', (tree: Obj) => { delete tree.characters }],
         ['null', (tree: Obj) => { tree.characters = null }],
@@ -358,6 +598,21 @@ describe('block format', () => {
         return (await composeSave(new RisuSaveEncoder(), parts)).bytes
     }
 
+    test.each([
+        ['a string', '"x"'],
+        ['an object holding a character', '{"0":{"type":"character","chaId":"lost","name":"Lost","chats":[]}}'],
+    ])('reproducer: a root block whose characters is %s fails the strict read, and "convert without these" ends blocked instead of installing an empty profile', async (_label, charactersJson) => {
+        const badRoot = { name: 'root', type: BLOCK.ROOT, data: `{"formatversion":5,"characters":${charactersJson},"__directory":["preset"]}` }
+        const test = await rig(await blockSave([badRoot, preset]))
+
+        expect(await convertLegacyProfile(test.request, hooks(freshAsked()))).toEqual({ status: 'all-failed', backupsTried: [] })
+        expectUntouched(test)
+        const lenient = await convertLegacyWithout(test.request, hooks(freshAsked()))
+
+        expect(lenient).toMatchObject({ status: 'blocked', reason: 'convert-lenient-failed' })
+        expectUntouched(test)
+    })
+
     test('guard (passes before and after): a save with no characters list installs, the missing list is not a refusal here', async () => {
         const test = await rig(await blockSave([root(['preset', 'modules']), preset, { name: 'modules', type: BLOCK.MODULES, data: '[]' }]))
 
@@ -378,16 +633,33 @@ describe('block format', () => {
         expect(asked.fromBackup).toEqual([5])
     })
 
-    test('reproducer: a character block whose chats is a string fails the strict read and ends the lenient read at the blocked result', async () => {
+    test('reproducer: a character block whose chats is a string fails the strict read, and the lenient read names the chats and gives the character one new empty chat', async () => {
         const character = { type: 'character', chaId: 'cha1', name: 'n', chats: 'x', chatPage: 0 }
         const bad = await blockSave([root(['preset', 'cha1']), preset, { name: 'cha1', type: BLOCK.CHARACTER_WITH_CHAT, data: JSON.stringify(character) }])
         const test = await rig(bad)
+        const asked = freshAsked()
 
         expect(await convertLegacyProfile(test.request, hooks(freshAsked()))).toEqual({ status: 'all-failed', backupsTried: [] })
-        const lenient = await convertLegacyWithout(test.request, hooks(freshAsked()))
-
-        expect(lenient).toMatchObject({ status: 'blocked', reason: 'convert-lenient-failed' })
         expectUntouched(test)
+        const lenient = await convertLegacyWithout(test.request, hooks(asked))
+
+        expect(lenient).toMatchObject({ status: 'installed' })
+        expect(asked.skipped.map(list => list.map(skipped => skipped.kind))).toEqual([['chats']])
+        const converted = (planned.at(-1) as Obj).characters as Obj[]
+        expect(converted).toHaveLength(1)
+        expect(converted[0].chats).toEqual([{ id: 'placeholder-chat', message: [], note: '', name: 'Chat 1', localLore: [] }])
+    })
+
+    test('reproducer: a modules block holding an object is named and left out by the lenient read', async () => {
+        const bad = await blockSave([root(['preset', 'modules']), preset, { name: 'modules', type: BLOCK.MODULES, data: '{"a":1}' }])
+        const test = await rig(bad)
+        const asked = freshAsked()
+
+        const lenient = await convertLegacyWithout(test.request, hooks(asked))
+
+        expect(lenient).toMatchObject({ status: 'installed' })
+        expect(asked.skipped.map(list => list.map(skipped => skipped.kind))).toEqual([['modules']])
+        expect((planned.at(-1) as Obj).modules).toEqual([])
     })
 })
 
@@ -426,16 +698,29 @@ describe('hasBlockMagic agrees with isBlockFormatSave', () => {
 })
 
 describe('the safety net: a refusal only the codec sees (a BigInt inside a message)', () => {
-    afterEach(() => { vi.restoreAllMocks() })
+    // A regression of the continuation loop would decode forever on microtasks and starve the test timeout: past the limit the decoder throws, so the loop ends and the check below fails the test instead.
+    const STRICT_CALL_LIMIT = 12
+    const strictCalls: number[] = []
+    afterEach(() => {
+        vi.restoreAllMocks()
+        expect(strictCalls.length).toBeLessThanOrEqual(STRICT_CALL_LIMIT)
+    })
 
     function treeWith(bad: boolean): Database {
         return profile(tree => { chatOf(tree).message = [bad ? { role: 'user', data: 'x', time: 1, big: 10n } : { role: 'user', data: 'x', time: 1 }] }) as unknown as Database
     }
 
     /** Bytes whose first byte names the tree: 1 main, 9 and 5 backups; `bad` lists the ones holding a BigInt. */
-    function decodersFor(bad: number[], calls: number[] = []): LegacyDecoders {
+    function decodersFor(bad: number[], calls: number[] = strictCalls): LegacyDecoders {
+        strictCalls.length = 0
         return {
-            strict: async (bytes) => { calls.push(bytes[0]); return treeWith(bad.includes(bytes[0])) },
+            strict: async (bytes) => {
+                calls.push(bytes[0])
+                if (calls.length > STRICT_CALL_LIMIT) {
+                    throw new Error('The strict decoder was called past its limit.')
+                }
+                return treeWith(bad.includes(bytes[0]))
+            },
             lenient: async (bytes) => ({ tree: treeWith(bad.includes(bytes[0])), skipped: [] }),
             defaultPreset: async () => ({ name: 'Default' }) as never,
         }

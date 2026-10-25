@@ -2738,6 +2738,7 @@ export const languageEnglish = {
         skippedLoadouts: "Loadouts",
         skippedPlugins: "Plugins",
         skippedPluginStorage: "Plugin data",
+        skippedChats: "Chats that could not be read",
         skippedConfig: "App settings block",
         skippedOther: "A block of unrecognized data",
         withoutNo: "Not now",

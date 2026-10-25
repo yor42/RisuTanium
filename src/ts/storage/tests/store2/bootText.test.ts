@@ -160,6 +160,15 @@ describe('the name rule: the name when there is one, otherwise the id and "(name
         }
     })
 
+    test('a skipped chats entry has its own label: neither the generic one nor its internal name', () => {
+        const list = skippedList([{ name: 'characters[0].chats', kind: 'chats', reason: 'x' }])
+
+        expect(list.items).toEqual([language.store2Boot.skippedChats])
+        expect(language.store2Boot.skippedChats).toBe('Chats that could not be read')
+        expect(language.store2Boot.skippedChats).not.toBe(language.store2Boot.skippedOther)
+        expect(list.items.join('\n')).not.toContain('characters[0]')
+    })
+
     test('a skipped block of a kind the screen has no label for gets the generic label, not its name', () => {
         const unknown = { name: 'secret-internal', kind: 'future-kind', reason: 'x' } as unknown as SkippedLegacyEntry
         expect(skippedList([unknown]).items).toEqual([language.store2Boot.skippedOther])

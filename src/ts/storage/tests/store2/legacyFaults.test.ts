@@ -35,8 +35,11 @@ import type { Database } from 'src/ts/storage/database.svelte'
 import { decodeRisuSave, encodeRisuSaveLegacy, RisuSaveEncoder } from 'src/ts/storage/risuSave'
 import { CodecInputError } from 'src/ts/storage/store2/codec'
 import { isJsonObject, toPlainJson } from 'src/ts/storage/store2/codec/normalize'
-import { findCharacterFaults, findLegacyFaults, isObjectLike, legacyCharactersRefused } from 'src/ts/storage/store2/legacy/faults'
+import {
+    coalesceFaults, dropLegacyFaults, findCharacterFaults, findLegacyFaults, isObjectLike, legacyCharactersRefused, type LegacyFault,
+} from 'src/ts/storage/store2/legacy/faults'
 import { planWholeTreeInstall } from 'src/ts/storage/store2/legacy/install'
+import { decodeLegacyLenient, type SkippedLegacyEntry } from 'src/ts/storage/store2/legacy/lenient'
 import { resolveLegacyTree, type LegacyEntryReader } from 'src/ts/storage/store2/legacy/resolve'
 import { BLOCK, composeSave } from '../manualCleanupHarness'
 import { createClock, testEnv } from '../store2SaveKit'
@@ -212,7 +215,7 @@ const PARITY: ParityCase[] = [
         faulty: true,
     })),
     {
-        // The resolve keeps a plain-object test of its own and rewrites a Date slot to an empty object, so only the tree as read still holds the fault.
+        // Without the opt-in the resolve keeps a plain-object test of its own and rewrites a Date slot to an empty object, as the `.bin` import has always had it, so only the tree as read still holds the fault.
         label: 'characters[0] is a Date',
         mutate: tree => { (tree.characters as unknown[])[0] = new Date(0) },
         faulty: false,
@@ -369,5 +372,252 @@ describe.each(ENCODINGS)('root characters rows are refusals, not codec mirrors (
         const decoded = await decodeRisuSave(encodeRisuSaveLegacy(profile(mutate), encoding), { strict: true })
 
         expect(legacyCharactersRefused(decoded, true)).toBe(true)
+    })
+})
+
+describe.each(ENCODINGS)('the opt-in resolve and the drop against the codec, the as-read tree and the lenient list (%s)', (encoding) => {
+    test.each(PARITY.map(entry => [entry.label, entry] as const))('%s', async (_label, entry) => {
+        for (const key of Object.keys(parityUnits)) {
+            delete parityUnits[key]
+        }
+        const bytes = encodeRisuSaveLegacy(profile(entry.mutate), encoding)
+        const decoded = await decodeRisuSave(bytes, { strict: true }) as unknown as Database
+        const asRead = findLegacyFaults(decoded)
+
+        const plain = await resolveLegacyTree(decoded, readerOf(parityUnits))
+        const flagged = await resolveLegacyTree(decoded, readerOf(parityUnits), { faultyUnitsUnusable: true, newId: () => 'placeholder-chat' })
+
+        // The tree the conversion drops from holds exactly what the tree as read holds, and what the codec refuses.
+        expect(findLegacyFaults(flagged.database).length > 0).toBe(asRead.length > 0)
+        expect(await refusedByCodec(flagged.database)).toBe(asRead.length > 0)
+        // A unit the codec would refuse is unusable under the opt-in, and only then.
+        if (asRead.length === 0) {
+            expect(await refusedByCodec(plain.database)).toBe(flagged.incomplete.length > plain.incomplete.length)
+        }
+        // T-agree: the kinds the lenient read names are the kinds left on the tree the drop works on.
+        const named = new Set((await decodeLegacyLenient(bytes)).skipped.map(skipped => skipped.kind))
+        expect(named).toEqual(new Set(findLegacyFaults(flagged.database).map(fault => fault.kind)))
+        // After the drop the codec takes the tree.
+        const dropped = dropLegacyFaults(flagged.database, () => 'new-chat')
+        expect(findLegacyFaults(dropped.database)).toEqual([])
+        expect(await refusedByCodec(dropped.database)).toBe(false)
+    })
+})
+
+describe('the opt-in resolve and the drop, block format', () => {
+    const root = (directory: string[]) => ({ name: 'root', type: BLOCK.ROOT, data: JSON.stringify({ formatversion: 5, __directory: directory }) })
+    const preset = { name: 'preset', type: BLOCK.BOTPRESET, data: '[{"name":"p"}]' }
+
+    test.each([
+        ['a modules block holding an object', [root(['preset', 'modules']), preset, { name: 'modules', type: BLOCK.MODULES, data: '{"a":1}' }], ['modules']],
+        [
+            'a character block whose chats is a string',
+            [root(['preset', 'cha1']), preset, { name: 'cha1', type: BLOCK.CHARACTER_WITH_CHAT, data: JSON.stringify({ type: 'character', chaId: 'cha1', name: 'n', chats: 'x', chatPage: 0 }) }],
+            ['chats'],
+        ],
+    ] as [string, { name: string, type: number, data: string }[], string[]][])('%s: the lenient kinds are the kinds on the resolved tree, and the drop leaves the codec nothing to refuse', async (_label, parts, kinds) => {
+        const bytes = (await composeSave(new RisuSaveEncoder(), parts)).bytes
+        const decoded = await decodeRisuSave(bytes, { strict: true }) as unknown as Database
+
+        const flagged = await resolveLegacyTree(decoded, readerOf({}), { faultyUnitsUnusable: true })
+
+        expect((await decodeLegacyLenient(bytes)).skipped.map(skipped => skipped.kind)).toEqual(kinds)
+        expect([...new Set(findLegacyFaults(flagged.database).map(fault => fault.kind))]).toEqual(kinds)
+        expect(await refusedByCodec(dropLegacyFaults(flagged.database, () => 'new-chat').database)).toBe(false)
+    })
+
+    test('a salvage entry and a detector fault of one kind are one entry; the salvage entry is kept as it is', async () => {
+        const parts = [
+            { name: 'root', type: BLOCK.ROOT, data: JSON.stringify({ formatversion: 5, pluginV2: 'x', __directory: ['preset', 'plugins'] }) }, preset,
+            { name: 'plugins', type: BLOCK.PLUGINS, data: '{not json' },
+        ]
+        const bytes = (await composeSave(new RisuSaveEncoder(), parts)).bytes
+
+        const { skipped } = await decodeLegacyLenient(bytes)
+
+        expect(skipped.map(entry => entry.kind)).toEqual(['plugins'])
+        expect(skipped[0].name).toBe('plugins')
+    })
+})
+
+describe('coalesceFaults', () => {
+    const fault = (kind: LegacyFault['kind'], field: string): LegacyFault => ({ kind, field, reason: `${field} is bad.` })
+    const entry = (name: string, kind: SkippedLegacyEntry['kind']): SkippedLegacyEntry => ({ name, kind, reason: 'x' })
+
+    test('unit: one entry per kind however many parts are faulty; plugins and pluginV2 are one kind; every chat fault is one chats entry', () => {
+        const entries = coalesceFaults([
+            fault('plugins', 'plugins[0]'), fault('plugins', 'pluginV2'), fault('chats', 'characters[0].chats'), fault('chats', 'characters[3].chats[1].message[2]'),
+            fault('modules', 'modules'), fault('modules', 'modules[4]'),
+        ])
+
+        expect(entries.map(skipped => skipped.kind)).toEqual(['plugins', 'chats', 'modules'])
+        expect(entries.map(skipped => skipped.name)).toEqual(['plugins[0]', 'characters[0].chats', 'modules'])
+    })
+
+    test('unit: every skipped character slot is its own entry, with an empty name', () => {
+        const entries = coalesceFaults([fault('character', 'characters[0]'), fault('chats', 'characters[1].chats'), fault('character', 'characters[2]')])
+
+        expect(entries.map(skipped => [skipped.kind, skipped.name])).toEqual([['character', ''], ['chats', 'characters[1].chats'], ['character', '']])
+    })
+
+    test('unit: salvage entries are kept first and as they are, a kind they name is not named again, a salvaged character is not a kind', () => {
+        const salvaged = [entry('plugins', 'plugins'), entry('cha-lost', 'character'), entry('blk-1', 'other'), entry('blk-2', 'other')]
+
+        const entries = coalesceFaults([fault('plugins', 'pluginV2'), fault('chats', 'characters[0].chats'), fault('character', 'characters[2]')], salvaged)
+
+        expect(entries.slice(0, 4)).toEqual(salvaged)
+        expect(entries.slice(4).map(skipped => [skipped.kind, skipped.name])).toEqual([['chats', 'characters[0].chats'], ['character', '']])
+    })
+
+    test('unit: nothing faulty names nothing', () => {
+        expect(coalesceFaults([])).toEqual([])
+        expect(coalesceFaults([], [entry('x', 'other')])).toEqual([entry('x', 'other')])
+    })
+})
+
+describe('dropLegacyFaults', () => {
+    const drop = (db: Obj) => dropLegacyFaults(db as unknown as Database, () => 'new-chat')
+    const asObj = (db: Database) => db as unknown as Obj
+    const chat = (name: string, extra: Obj = {}): Obj => ({ id: name, name, message: [{ role: 'user', data: name, time: 1 }], note: '', localLore: [], ...extra })
+
+    test('unit: it never mutates the tree and shares everything it did not change; every container on a changed path is new', () => {
+        const kept = chat('kept')
+        const untouched = { type: 'character', chaId: 'a', name: 'a', chats: [kept] }
+        const faulty = { type: 'character', chaId: 'b', name: 'b', chats: [chat('c0', { message: [{ data: 'm' }, 5] }), kept] }
+        const tree: Obj = { botPresets: [{ name: 'p' }], modules: [{ name: 'm' }], characters: [untouched, faulty], plugins: [{ name: 'pl' }] }
+        const before = structuredClone(tree)
+
+        const { database } = drop(tree)
+        const out = asObj(database)
+
+        expect(tree).toEqual(before)
+        expect(out).not.toBe(tree)
+        expect(out.botPresets).toBe(tree.botPresets)
+        expect(out.modules).toBe(tree.modules)
+        expect(out.plugins).toBe(tree.plugins)
+        const characters = out.characters as Obj[]
+        expect(characters).not.toBe(tree.characters)
+        expect(characters[0]).toBe(untouched)
+        expect(characters[1]).not.toBe(faulty)
+        const changedChats = characters[1].chats as Obj[]
+        expect(changedChats).not.toBe(faulty.chats)
+        expect(changedChats[0]).not.toBe((faulty.chats as Obj[])[0])
+        expect(changedChats[0].message).not.toBe((faulty.chats as Obj[])[0].message)
+        expect(changedChats[1]).toBe(kept)
+    })
+
+    test('unit: a tree with no fault comes back as a new top-level object holding the same parts', () => {
+        const tree: Obj = { botPresets: [{ name: 'p' }], characters: [{ chaId: 'a', chats: [] }], loadouts: [5] }
+
+        const { database, presetsEmptied } = drop(tree)
+
+        expect(asObj(database)).not.toBe(tree)
+        expect(asObj(database)).toEqual(tree)
+        expect((asObj(database).characters as unknown[])[0]).toBe((tree.characters as unknown[])[0])
+        expect(presetsEmptied).toBe(false)
+    })
+
+    test('unit: parts that are present and not lists become empty lists, plugin storage an empty object, missing parts stay missing', () => {
+        const out = asObj(drop({ modules: 'x', loadouts: { a: 1 }, plugins: 5, pluginV2: 'x', pluginCustomStorage: [], characters: [] }).database)
+
+        expect(out).toEqual({ modules: [], loadouts: [], plugins: [], pluginV2: [], pluginCustomStorage: {}, characters: [] })
+        expect(Object.keys(asObj(drop({ characters: [] }).database))).toEqual(['characters'])
+    })
+
+    test('unit: loadouts elements are not judged', () => {
+        expect(asObj(drop({ loadouts: [5, null, 'x'] }).database).loadouts).toEqual([5, null, 'x'])
+    })
+
+    test.each([
+        ['stays and moves up', 2, 1],
+        ['was dropped: one past the kept ones', 1, 2],
+        ['stays at 0', 0, 0],
+        ['past the end is left alone', 3, 3],
+        ['-1 is left alone', -1, -1],
+        ['not an integer is left alone', 0.5, 0.5],
+        ['not a number is left alone', 'x', 'x'],
+    ] as [string, unknown, unknown][])('unit: botPresets [p0, 5, p2], botPresetsId %s', (_label, before, after) => {
+        const { database, presetsEmptied } = drop({ botPresets: [{ name: 'p0' }, 5, { name: 'p2' }], botPresetsId: before })
+
+        expect(asObj(database).botPresetsId).toBe(after)
+        expect((asObj(database).botPresets as Obj[]).map(preset => preset.name)).toEqual(['p0', 'p2'])
+        expect(presetsEmptied).toBe(false)
+    })
+
+    test('unit: no preset left, or a preset list that is not a list, says presetsEmptied and leaves botPresetsId alone', () => {
+        for (const botPresets of [[5, null], 'x', { a: 1 }]) {
+            const { database, presetsEmptied } = drop({ botPresets, botPresetsId: 4 })
+
+            expect(presetsEmptied).toBe(true)
+            expect(asObj(database).botPresets).toEqual([])
+            expect(asObj(database).botPresetsId).toBe(4)
+        }
+        expect(drop({ botPresets: [] }).presetsEmptied).toBe(false)
+        expect(drop({}).presetsEmptied).toBe(false)
+    })
+
+    test.each([
+        ['stays and moves up', 2, 1],
+        ['was dropped: the last kept chat', 4, 2],
+        ['stays at 0', 0, 0],
+        ['past the end is left alone', 9, 9],
+        ['not a number is left alone', '1', '1'],
+    ] as [string, unknown, unknown][])('unit: chats [c0, 5, c1, c2, 5], chatPage %s', (_label, before, after) => {
+        const { database } = drop({ characters: [{ chaId: 'a', chatPage: before, chats: [chat('c0'), 5, chat('c1'), chat('c2'), 5] }] })
+
+        const character = (asObj(database).characters as Obj[])[0]
+        expect((character.chats as Obj[]).map(kept => kept.name)).toEqual(['c0', 'c1', 'c2'])
+        expect(character.chatPage).toBe(after)
+    })
+
+    test('unit: a chat that only lost a message keeps chatPage; a missing chatPage stays missing', () => {
+        const withPage = (asObj(drop({ characters: [{ chatPage: 1, chats: [chat('c0'), chat('c1', { message: [5] })] }] }).database).characters as Obj[])[0]
+        const withoutPage = (asObj(drop({ characters: [{ chats: [5, chat('c1')] }] }).database).characters as Obj[])[0]
+
+        expect(withPage.chatPage).toBe(1)
+        expect(Object.hasOwn(withoutPage, 'chatPage')).toBe(false)
+    })
+
+    test.each([
+        ['chats a string', 'x'], ['chats an object', { a: 1 }], ['every chat dropped', [5, null]],
+    ] as [string, unknown][])('unit: %s gives one new empty chat, selected', (_label, chats) => {
+        const { database } = drop({ characters: [{ chaId: 'a', chatPage: 3, chats }] })
+
+        const character = (asObj(database).characters as Obj[])[0]
+        expect(character.chats).toEqual([{ id: 'new-chat', message: [], note: '', name: 'Chat 1', localLore: [] }])
+        expect(character.chatPage).toBe(0)
+    })
+
+    test('unit: chats that are [], null or missing as read are left as they are, and the id source is not asked', () => {
+        let asked = 0
+        const out = dropLegacyFaults({ characters: [{ chats: [] }, { chats: null }, { chaId: 'c' }, 5] } as unknown as Database, () => `id-${++asked}`)
+
+        expect(asked).toBe(0)
+        expect(asObj(out.database).characters).toEqual([{ chats: [] }, { chats: null }, { chaId: 'c' }])
+    })
+
+    test('unit: a message that is not an object goes, a message list that is not a list becomes empty, and fmIndex and the other chat fields are untouched', () => {
+        const { database } = drop({ characters: [{ chats: [
+            chat('a', { fmIndex: 3, message: [{ data: '1' }, 5, { data: '2' }] }), chat('b', { fmIndex: 2, message: 'x' }), chat('c', { message: null }),
+        ] }] })
+
+        const chats = (asObj(database).characters as Obj[])[0].chats as Obj[]
+        expect((chats[0].message as Obj[]).map(message => message.data)).toEqual(['1', '2'])
+        expect(chats[0].fmIndex).toBe(3)
+        expect(chats[1].message).toEqual([])
+        expect(chats[1].fmIndex).toBe(2)
+        expect(chats[2].message).toBeNull()
+    })
+
+    test('unit: a character slot that is not an object is left out and the order of the others kept', () => {
+        const { database } = drop({ characters: [{ chaId: 'a' }, 5, { chaId: 'b' }, null, [], new Date(0), { chaId: 'c' }] })
+
+        expect((asObj(database).characters as Obj[]).map(character => character.chaId)).toEqual(['a', 'b', 'c'])
+    })
+
+    test('unit: a stub keeps its own chats, as the detector does not judge them', () => {
+        const stub = { chaId: 'a', coldstorage: 'unit', chats: 'x' }
+
+        expect((asObj(drop({ characters: [stub] }).database).characters as Obj[])[0]).toBe(stub)
     })
 })

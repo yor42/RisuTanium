@@ -7,6 +7,7 @@ import {
 import { convertPluginStorageIndex, pluginIndexPointer } from '../../../process/pluginStorageIndex'
 import { DERIVED_COLD_FIELDS } from '../codec/bodies'
 import { StubRefusedError } from '../codec/types'
+import { findCharacterFaults, isObjectLike } from './faults'
 import { legacyFirstMessageRef, legacyPluginRefs, legacyRefsOfCharacter, type LegacyRefKind } from './refs'
 
 /**
@@ -80,7 +81,16 @@ export interface ResolveOptions {
     now?: () => number
     /** Id of a plugin value unit minted from an upstream plugin storage index entry; a v4 uuid by default. Not `newId`: that one names a chat. */
     newUnitId?: () => string
+    /**
+     * Opt-in, for the conversion: a cold unit whose content the store2 codec would refuse (`faults.ts`) counts as unusable,
+     * like a missing one, and a character slot the codec does not read as an object passes through unchanged, so the
+     * caller sees what the codec sees. Absent: units are used as they are, as the `.bin` import has always done.
+     */
+    faultyUnitsUnusable?: true
 }
+
+/** The options a resolve reads once they are filled in. */
+type ResolveSettings = Required<Omit<ResolveOptions, 'faultyUnitsUnusable'>>
 
 export interface ResolvedLegacyTree {
     database: Database
@@ -102,7 +112,9 @@ function stringOr(value: unknown, fallback: string): string {
 }
 
 /** The character a stub's unit holds, or why it cannot be used for this stub. */
-function characterOfUnit(read: Exclude<LegacyUnitRead, { status: 'error' }>, stub: Fields): { character: Fields } | { reason: IncompleteCharacterReason } {
+function characterOfUnit(
+    read: Exclude<LegacyUnitRead, { status: 'error' }>, stub: Fields, faultyUnusable: boolean,
+): { character: Fields } | { reason: IncompleteCharacterReason } {
     if (read.status === 'missing') {
         return { reason: 'missing' }
     }
@@ -113,11 +125,14 @@ function characterOfUnit(read: Exclude<LegacyUnitRead, { status: 'error' }>, stu
     if (!isFields(character)) {
         return { reason: 'shape' }
     }
-    return character.chaId === stub.chaId ? { character } : { reason: 'mismatch' }
+    if (character.chaId !== stub.chaId) {
+        return { reason: 'mismatch' }
+    }
+    return faultyUnusable && findCharacterFaults(character).length > 0 ? { reason: 'shape' } : { character }
 }
 
 /** The character that stands for one whose unit cannot be used: the stub's own identity and one chat that says why. */
-function placeholderCharacter(stub: Fields, key: string, options: Required<ResolveOptions>): Fields {
+function placeholderCharacter(stub: Fields, key: string, options: ResolveSettings): Fields {
     const placeholder: Fields = {
         type: stub.type === 'group' ? 'group' : 'character',
         name: stringOr(stub.name, ''),
@@ -145,8 +160,13 @@ function placeholderCharacter(stub: Fields, key: string, options: Required<Resol
 
 const SIDE_FIELDS = ['hypaV2Data', 'hypaV3Data', 'scriptstate', 'localLore'] as const
 
-/** The messages and side fields of a chat unit, or null when the unit is not a chat or its first message is a pointer again. */
-function chatOfUnit(read: Exclude<LegacyUnitRead, { status: 'error' }>): { message: unknown[], side: Fields | null } | null {
+/**
+ * The messages and side fields of a chat unit, or null when the unit is not a chat, its first message is a pointer
+ * again, or (`faultyUnusable`) one of its messages is not an object.
+ */
+function chatOfUnit(
+    read: Exclude<LegacyUnitRead, { status: 'error' }>, faultyUnusable: boolean,
+): { message: unknown[], side: Fields | null } | null {
     if (read.status !== 'ok') {
         return null
     }
@@ -163,6 +183,9 @@ function chatOfUnit(read: Exclude<LegacyUnitRead, { status: 'error' }>): { messa
             defineOwn(side, field, value[field])
         }
     } else {
+        return null
+    }
+    if (faultyUnusable && !message.every(isObjectLike)) {
         return null
     }
     // A pointer inside a unit is refused, never followed: a pointer must not reach the codec. Chains of load-error text are
@@ -215,7 +238,7 @@ function restoredChat(
  * tail, and `failure` names the key that stopped it. A read error aborts the resolve.
  */
 async function resolveChat(
-    chat: Fields, first: { key: string, kind: 'chatPointer' | 'errorText' }, reader: LegacyEntryReader,
+    chat: Fields, first: { key: string, kind: 'chatPointer' | 'errorText' }, reader: LegacyEntryReader, faultyUnusable: boolean,
 ): Promise<{ chat: Fields, failure: { key: string, reason: 'missing' | 'invalid' } | null }> {
     let current = chat
     let step: { key: string, kind: 'chatPointer' | 'errorText' } | null = first
@@ -226,7 +249,7 @@ async function resolveChat(
         }
         visited.add(step.key)
         const read = await readLegacyUnit(reader, step.key, step.kind)
-        const unit = chatOfUnit(read)
+        const unit = chatOfUnit(read, faultyUnusable)
         const next = unit === null ? null : restoredChat(current, (current.message as unknown[]).slice(1), unit, step.kind)
         if (next === null) {
             const messages = current.message as unknown[]
@@ -244,7 +267,7 @@ async function resolveChat(
 }
 
 async function resolveChats(
-    character: Fields, characterIndex: number, reader: LegacyEntryReader, incomplete: IncompleteItem[],
+    character: Fields, characterIndex: number, reader: LegacyEntryReader, incomplete: IncompleteItem[], faultyUnusable: boolean,
 ): Promise<Fields> {
     if (!Array.isArray(character.chats)) {
         return character
@@ -256,7 +279,7 @@ async function resolveChats(
     const chats: unknown[] = [...character.chats]
     for (const ref of refs) {
         const chatIndex = ref.chatIndex as number
-        const outcome = await resolveChat(chats[chatIndex] as Fields, { key: ref.key, kind: ref.kind as 'chatPointer' | 'errorText' }, reader)
+        const outcome = await resolveChat(chats[chatIndex] as Fields, { key: ref.key, kind: ref.kind as 'chatPointer' | 'errorText' }, reader, faultyUnusable)
         chats[chatIndex] = outcome.chat
         if (outcome.failure !== null) {
             incomplete.push({
@@ -358,32 +381,37 @@ function withoutColdFields(character: Fields): Fields {
  *   or not an index, a pointer that cannot name a unit, a small value that is
  *   not JSON and a large id that is not a unit id are listed; a failed read
  *   aborts.
+ * - With `faultyUnitsUnusable`, a stub's unit whose character holds a chat fault is a `shape` failure (a placeholder),
+ *   a chat unit with a message that is not an object is an `invalid` failure (the load-error text stays), and a
+ *   character slot the codec does not read as an object is passed through as it is.
  */
 export async function resolveLegacyTree(db: Database, reader: LegacyEntryReader, options: ResolveOptions = {}): Promise<ResolvedLegacyTree> {
-    const resolved: Required<ResolveOptions> = { newId: options.newId ?? uuidv4, now: options.now ?? Date.now, newUnitId: options.newUnitId ?? uuidv4 }
+    const resolved: ResolveSettings = { newId: options.newId ?? uuidv4, now: options.now ?? Date.now, newUnitId: options.newUnitId ?? uuidv4 }
+    const faultyUnusable = options.faultyUnitsUnusable === true
     const incomplete: IncompleteItem[] = []
     const characters: unknown[] = []
     const source: unknown[] = Array.isArray(db.characters) ? db.characters : []
     for (let index = 0; index < source.length; index++) {
         const slot = source[index]
-        if (!isFields(slot)) {
+        // A slot the codec does not read as an object (a Date, say) is not rewritten into an empty character under the opt-in.
+        if (!isFields(slot) || (faultyUnusable && !isObjectLike(slot))) {
             characters.push(slot)
             continue
         }
         // Any truthy `coldstorage` is a stub, as in the codec; one that is not a unit id has no unit to read.
         const stubRef = legacyRefsOfCharacter(slot, index).find(ref => ref.kind === 'stub')
         if (stubRef !== undefined) {
-            const unit = stubRef.key === '' ? { reason: 'shape' as const } : characterOfUnit(await readLegacyUnit(reader, stubRef.key, 'stub'), slot)
+            const unit = stubRef.key === '' ? { reason: 'shape' as const } : characterOfUnit(await readLegacyUnit(reader, stubRef.key, 'stub'), slot, faultyUnusable)
             if ('reason' in unit) {
                 incomplete.push({ kind: 'character', chaId: stringOr(slot.chaId, ''), name: stringOr(slot.name, ''), key: stubRef.key, reason: unit.reason })
                 characters.push(placeholderCharacter(slot, stubRef.key, resolved))
                 continue
             }
             const restored = applyStubStateOnRestore(slot as unknown as character, withoutColdFields(unit.character) as unknown as character) as unknown as Fields
-            characters.push(await resolveChats(restored, index, reader, incomplete))
+            characters.push(await resolveChats(restored, index, reader, incomplete, faultyUnusable))
             continue
         }
-        characters.push(await resolveChats(withoutColdFields(slot), index, reader, incomplete))
+        characters.push(await resolveChats(withoutColdFields(slot), index, reader, incomplete, faultyUnusable))
     }
 
     let pluginCustomStorage = db.pluginCustomStorage
