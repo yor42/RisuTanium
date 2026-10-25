@@ -13,6 +13,7 @@ import { loadV3Plugins } from "./apiV3/v3.svelte";
 import { pluginCodeTranspiler } from "./apiV3/transpiler";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { incomingCharacterRefusal, withoutStubDowngrades } from "./stubDowngrade";
+import { withoutModuleStubDowngrades } from "./moduleStubGuard";
 import { databaseWriteProblem, selectedCharacterMismatch, singleCharacterProblem } from "./characterWriteCheck";
 import { isCharacterEntry } from "../storage/characterIds";
 import { PLUGIN_STORAGE_INDEX_KEY, PLUGIN_STORAGE_LEGACY_MAP_KEY } from "../process/pluginStorageIndex";
@@ -600,14 +601,16 @@ function withHeldAssetLists(db: ReturnType<typeof getDatabase>, incoming: Return
 }
 
 /**
- * Writes every key of a plugin's write except `plugins`. `characters` is
- * reconciled against the live list at this moment, so a character restored
- * while a prompt was open is not downgraded. Returns the object that was
- * written, which is a copy when a placeholder was swapped out.
+ * Writes every key of a plugin's write except `plugins`. `characters` and
+ * `modules` are reconciled against the live lists at this moment, so a
+ * character restored or a module loaded while a prompt was open is not
+ * downgraded. Returns the object that was written, which is a copy when a
+ * placeholder was swapped out.
  */
 function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginName: string | undefined) {
     db.pluginCustomStorage ??= {}
     newDb = withoutStubDowngrades(db.characters, newDb, pluginName)
+    newDb = withoutModuleStubDowngrades(db.modules, newDb, pluginName)
     if (Array.isArray(newDb.characters)) {
         const beforeCharacters = db.characters
         fillMissingDatabaseInstallIds(newDb)
