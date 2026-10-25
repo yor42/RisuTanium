@@ -334,7 +334,7 @@ describe('the Android time warning on a store2 page', () => {
 
         await loadBin(binWith(17 * 1024 * 1024))
 
-        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(18)])
+        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(18, true)])
     })
 
     test('new behaviour: assets over the threshold and a database over 16 MiB give one prompt that holds both, in decimal megabytes', async () => {
@@ -366,7 +366,7 @@ describe('the Android time warning on a store2 page', () => {
 
         await loadBin(binWith(17 * 1024 * 1024))
 
-        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(18)])
+        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(18, true)])
     })
 
     test('guard: the warning belongs to store2 pages, so an Android block-mode import over the threshold shows no time text', async () => {
@@ -404,7 +404,7 @@ describe('the Android free-space check', () => {
         expect(expected).not.toContain('runs out of space')
     })
 
-    test('new behaviour: a large import that is short says so and that the import stops, and keeps the unchanged-data sentence', async () => {
+    test('new behaviour: a large import that is short says so and that the import stops, and says that copied files replace same-name files before the import finishes', async () => {
         freeBox.bytes = SHORT_BYTES
         const page = await openPage()
         answer(page, false)
@@ -415,7 +415,8 @@ describe('the Android free-space check', () => {
         expect(confirmTexts(page)).toEqual([expected])
         expect(expected).toContain('Only about 0.5 GB is free')
         expect(expected).toContain('the import stops')
-        expect(expected).toContain('Your saved data is not changed until the import has finished.')
+        expect(expected).toContain('Your saved data is not replaced until the import has finished.')
+        expect(expected).toContain('replace any stored file with the same name')
     })
 
     test('guard: a large import whose free space cannot be read keeps the cannot-check text', async () => {
@@ -473,7 +474,7 @@ describe('the Android free-space check', () => {
         expect(texts).toHaveLength(1)
         expect(texts[0]).toContain('only about 0.5 GB is free')
         expect(texts[0]).toContain('18 MB')
-        expect(texts).not.toContain(language.store2ImportSizeWarning(18))
+        expect(texts).not.toContain(language.store2ImportSizeWarning(18, true))
         expect(texts).toEqual([language.store2ImportSpaceWarning(0.6, 0.5, 18)])
     })
 
@@ -497,7 +498,7 @@ describe('the Android free-space check', () => {
 
         await loadBin(binWith(17 * 1024 * 1024))
 
-        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(18)])
+        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(18, true)])
         expect(freeBox.calls).toBe(1)
     })
 
@@ -509,7 +510,7 @@ describe('the Android free-space check', () => {
 
         await loadBin(binWith(17 * 1024 * 1024))
 
-        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(18)])
+        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(18, true)])
     })
 
     test('the reader is called once per Android import', async () => {

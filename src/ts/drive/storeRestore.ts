@@ -372,7 +372,7 @@ async function restoreOldChosen(time: number, committer: Committer, backend: Sto
     if (bytes === null) {
         return nothingReplaced()
     }
-    if (!await confirmDatabaseSize(bytes.length)) {
+    if (!await confirmDatabaseSize(bytes.length, false)) {
         return { outcome: 'canceled', cause: null }
     }
     // The salvage map of the file, kept after the person confirmed what it leaves out.

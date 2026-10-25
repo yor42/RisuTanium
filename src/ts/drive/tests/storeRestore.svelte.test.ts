@@ -877,7 +877,10 @@ describe('old numbered backups as rows of the picker', () => {
 
         const { reload } = await runRestore(page)
 
-        expect(vi.mocked(page.alert.alertConfirm).mock.calls.map((call) => String(call[0]))).toEqual([language.store2ImportSizeWarning(81)])
+        expect(vi.mocked(page.alert.alertConfirm).mock.calls.map((call) => String(call[0]))).toEqual([language.store2ImportSizeWarning(81, false)])
+        // A numbered backup restore copies no files, so the warning does not say it does.
+        expect(language.store2ImportSizeWarning(81, false)).toContain('Your saved data is not replaced until the import has finished.')
+        expect(language.store2ImportSizeWarning(81, false)).not.toContain('replace any stored file')
         // The decline, not a failed decode of the zero-filled bytes, is what stopped it.
         expect(alertErrorTexts(page)).toEqual([])
         expect(reload).not.toHaveBeenCalled()
