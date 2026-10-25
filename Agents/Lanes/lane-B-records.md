@@ -1031,6 +1031,69 @@ The maintainer took lane A's recommendation, which had two parts:
 - The amendment also replaces clauses 5 (a valid `ef`) and 6 (`su` equals the unit tail) of E1 in the L3 plan with one clause, the tag predicate `hasCurrentEntryFields`, so `stubEligible` has five clauses.
 - Nothing here authorizes a push, a merge to main (it needs the maintainer's approval in lane A's session, because B1 changes the stored format) or B2 code.
 
+### MC-581 — Lane B, 2026-10-26: a foreign module or restored data that already holds the exact module-stub marker key is an accepted limit; it is refused loudly and never saved wrong
+
+- **Tag:** decision (the maintainer's AskUserQuestion answer in the lane B session, 2026-10-26)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the lane B session transcript, as relayed in the orchestrator's brief for this record. The maintainer answered through AskUserQuestion in lane B session `02da88e4-5f8f-5cab-afe5-366d074cbe93`; the chosen option was "Accept, refuse loudly". The full question text is in that session's transcript before compaction and was not re-read for this record. The finding that raised it is R1 in the B2a Gate 1 round 1 verdict, `%TEMP%\risu-lane-b\c205-next\b2a-plan-review\result.md` (not opened for this record). Inputs: row 4107.
+- **Related:** `MC-496`, `MC-580`, `MC-582`, `MC-583`; CHORE-205.
+
+1. **The accepted limit:** a foreign module, or restored data, that already holds the exact module-stub marker key is accepted as a limit. It is refused loudly, with a message naming the module, and never saved wrong.
+2. **Imports:** imports do not strip the marker.
+
+**Notes that are not the maintainer's words:**
+- The other options the maintainer was shown are not in any file read for this record.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-582 — Lane B, 2026-10-26: on the legacy save, legacy restore, boot block-load and export paths a module stub refusal shows today's generic wording, with the module's id and name in `Error.message`; no new locale strings
+
+- **Tag:** decision (the maintainer's AskUserQuestion answer in the lane B session, 2026-10-26)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the lane B session transcript, as relayed in the orchestrator's brief for this record. The maintainer answered through AskUserQuestion in lane B session `02da88e4-5f8f-5cab-afe5-366d074cbe93`; the chosen option was "Generic is enough". The full question text is in that session's transcript before compaction and was not re-read for this record. The finding that raised it is F1 in the B2a Gate 1 round 2 verdict, `%TEMP%\risu-lane-b\c205-next\b2a-plan-review-r2\result.md` (not opened for this record). Inputs: row 4108.
+- **Related:** `MC-581`, `MC-583`, `MC-584`; CHORE-205.
+
+1. **What the person sees:** on the legacy save, legacy restore, boot block-load and export paths, the person sees today's generic wording ("your modules cannot be saved", or the generic export failure).
+2. **Where the detail goes:** the module's id and name go into `Error.message`.
+3. **Scope limits:** there are no new locale strings, and no edits to `globalApi.svelte.ts`, `restoreReplace.ts` or `bootBlockLoad.ts`.
+
+**Notes that are not the maintainer's words:**
+- The other options the maintainer was shown are not in any file read for this record.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-583 — Lane B, 2026-10-26: an export on a page holding a module-stub marker fails before it writes anything, with the generic message (an informed acceptance); S4d narrows the early check to foreign markers
+
+- **Tag:** decision (the maintainer's AskUserQuestion answer in the lane B session, 2026-10-26)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the lane B session transcript, as relayed in the orchestrator's brief for this record. The findings that raised it are N1 in the B2a Gate 1 round 3 verdict, `%TEMP%\risu-lane-b\c205-next\b2a-plan-review-r3\result.md`, and E1 in the round 4 verdict, `%TEMP%\risu-lane-b\c205-next\b2a-plan-review-r4\result.md` (neither opened for this record). The maintainer answered through AskUserQuestion in lane B session `02da88e4-5f8f-5cab-afe5-366d074cbe93`. The question named three options: "Fail early" (add one check when the export starts, so that it fails before writing anything; it rides on lane G's follow-up commit), "Accept as is" and "Dedicated message later". It stated that the generic message says to run the backup again, and that running it again fails the same way. The chosen option was "Fail early". The full question text is in that session's transcript before compaction and was not re-read for this record. Inputs: rows 4109 and 4111.
+- **Related:** `MC-581`, `MC-582`, `MC-584`, `MC-496`, lane G's `MC-561`; CHORE-205.
+
+1. **The behaviour:** an export on a page that holds a module-stub marker fails before it writes anything.
+2. **The message:** the generic `backupFailedNothingWritten`, with the module name only in `console.error`. The maintainer chose this over "accept as is" and over "a dedicated message later". The question they were shown stated that the generic text says to run the backup again, and that a rerun fails the same way, so this is an informed acceptance.
+3. **Delivery:** the check is delivered by lane G's `MC-561` follow-up: one call in `encodeRisuSaveParts` and one at the start of `writeLocalBackup` and of `writePartialLocalBackup`.
+4. **Binding on S4d:** before minting, S4d narrows the early export check to foreign markers, meaning slots that fail the shared stub comparison.
+
+**Notes that are not the maintainer's words:**
+- Until S4d, any marker is foreign. After S4d, the early check is narrowed to slots that fail the shared stub comparison (item 4).
+- Nothing here authorizes code, a commit or a push.
+
+### MC-584 — Lane B, 2026-10-26: for B2b, a module `StubRefusedError` on the store2 save loop takes the existing retry path; revisit before S4d
+
+- **Tag:** decision (the maintainer's AskUserQuestion answer in the lane B session, 2026-10-26)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the lane B session transcript, as relayed in the orchestrator's brief for this record. The question is Q1 of the B2b plan, `%TEMP%\risu-lane-b\c205-next\b2b-plan\plan.md` (not opened for this record). The maintainer answered through AskUserQuestion in lane B session `02da88e4-5f8f-5cab-afe5-366d074cbe93`. The question described the retry path: a retry toast, then a raw English alert from attempt 5, with nothing saving until a reload. Its three options were "Existing path for now" (keep today's retry behaviour with no new strings, and revisit before S4d), "Stop saving loudly" and "Decide at S4d". The chosen option was "Existing path for now". The full question text is in that session's transcript before compaction and was not re-read for this record. Inputs: rows 4118 and 4120.
+- **Related:** `MC-582`, `MC-583`; CHORE-205.
+
+1. **The behaviour:** a module `StubRefusedError` on the store2 save loop takes the existing retry path: a retry toast, then from attempt 5 the raw message on every retry.
+2. **Strings:** there are no new strings.
+3. **Revisit:** before S4d.
+
+**Notes that are not the maintainer's words:**
+- Nothing here authorizes code, a commit or a push.
+
 ## CHORE entries
 
 ### CHORE-227 (new) — After a finished export the app can stay marked busy, and the app has been killed after a second export
@@ -1642,6 +1705,23 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 | 4101 | 2026-10-25 | B1 commit and merge request | orchestrator; lane A (merge) | `c205-next\b1\commit.txt`; commit `7aa2d33b1` (`git log`) | no | Committed as `7aa2d33b1`, "feat(store2): tag module index entries with their fields version (CHORE-205 L3 B1)", after the maintainer's approval (`MC-580` 2). Per the brief: the merge request went to lane A; the main merge needs the maintainer's approval in lane A's session, because it is a stored-format change; phone check P1 is queued with lane A. Neither is confirmed in any file read here. |
 | 4102 | 2026-10-25 | Lane G coordination for B2 and J1 | lane G; orchestrator | `c205-next\j1-notes\from-lane-G.md`; `c205-next\b2-notes\carry-forward.md` | no | `MC-561` (lane G's decision, as quoted in the note): A1 Gate 2 runs without stub code; after B2 lands, track G rebases and adds the one-line refusal plus a parts-encoder-refuses-stub test as a separate commit with its own opus Gate 2. **S4d must not take track G until that commit exists.**<br>**J1 inherits from A2** (lane G's note): the sink `push(piece)` / `finish()`, an uncompressed-total refusal at 2^32 bytes or more naming `database.risudat`, stub refusal as the producer's job, input fed to fflate in 64 KiB slices.<br>**Advisor notes for J1 (not acted on in track G):** J1's async pull would need to re-establish the "no await between listing roots and encode" invariant and say what happens to a module that changes between check and pull. An unmeasured lead: the cold-collected payloads stay referenced for the whole encode. |
 | 4103 | 2026-10-25 | Flake check, B1 hold and lane G integration check | orchestrator; lane A (hold, full checks); lane G (A1, A2) | `c205-next\g-integ\targeted.log`; scratch trees `base.tar`, `gtip.tar`, `tree.tar` there; `CHORE-410` | no | **Flake check** (`internalBackupSnapshotLoad.svelte.test.ts`, file run alone, the counts in CHORE-410): `a831430cc` 1/5, `7aa2d33b1` 5/9, `06d22b02c` 0/2, B1 + lane G merge tree 6/8. The PC was loaded by other lanes' builds. Lane A's full run 1 on `7aa2d33b1` passed it (lane A's report).<br>**B1 hold** (lane A's report, not opened here): lane A held B1 at lane B's request, then lifted the hold. The full checks are met; the merge waits on P1.<br>**Lane G integration:** A1 `b8e3356bb` and A2 `06d22b02c` (lane G's report) merge cleanly onto `7aa2d33b1` by `git merge-tree`, tree `66b931a8281deb3b0c11f958334eb48b40322dda`.<br>**Targeted run on the merge tree:** `store2`, `drive/tests`, the risuSave, deterministicCompression and msgpackRelease tests, and `moduleRefs`. Result: 241 files, 8,044 passed, 16 skipped, 2 failed (`targeted.log`, a tail only: 1 failed file of 241). That the failing file was the CHORE-410 file is the orchestrator's statement from the terminal rerun; the saved tail does not name it. |
+| 4104 | reported to lane B by 2026-10-26; run date not recorded | L3 phone check P1 of B1 | lane A (Note 9, synthetic data) | lane A's report to lane B, by message (no file) | no | **Passed.** The B1 first pass wrote only `moduleIndex` and `manifest`, and it was the boot's first pass. `unit[3] = 1` was present on every entry, and the second boot committed nothing.<br>**Deviations:** the upgrade started from the base's normalised state, and duplicate ids could not be created through the UI.<br>Not opened here: the report itself. |
+| 4105 | 2026-10-26 | Lane G A1 and A2 merged to main | lane A; maintainer (approval in lane A's session); lane B (fast-forward) | `git log`: `decc1f56c`; lane G's records `c774f3d83` | no | Merged to main as `decc1f56c` (`--no-ff`) by lane A and pushed. Lane A's full checks on trial tree `4d936c16` (lane A's report, not opened here): `pnpm test` twice (23,452 each), `pnpm check` 0 errors, build plus `checkReleaseDist` OK. The maintainer approved in lane A's session. Lane B fast-forwarded to `decc1f56c`. |
+| 4106 | 2026-10-25 | Senior-advisor challenge of B2 | senior-advisor | `c205-next\b2-advisor\note.md` | no | **PROCEED WITH CHANGES,** and the split of B2 into **B2a** and **B2b**. The orchestrator classes the split as a complexity reduction (`MC-091`); the advisor note does not say so. |
+| 4107 | 2026-10-26 | B2a Gate 1, round 1 | opus-reviewer | `c205-next\b2a-plan-review\result.md` | no | **`[REJECT]`,** R1 to R6. R1 led to `MC-581`. |
+| 4108 | 2026-10-26 | B2a Gate 1, round 2 | opus-reviewer | `c205-next\b2a-plan-review-r2\result.md` | no | **`[REJECT]`,** F1, F2 and E1 to E10. F1 led to `MC-582`. After the second rejection the mechanism was reconsidered and held. |
+| 4109 | 2026-10-26 | B2a Gate 1, round 3 | opus-reviewer | `c205-next\b2a-plan-review-r3\result.md` | no | **`[REJECT]`,** F3: the class of `init`'s refusal. A refusal that is not a `SaveParkError`, thrown at legacy boot, causes one alert and then silent non-saving. N1 led to `MC-583`. The third consecutive rejection required advisor escalation before a fourth revision. |
+| 4110 | 2026-10-26 | Senior-advisor escalation after three rejections | senior-advisor | `c205-next\b2a-advisor\note.md` | no | **PROCEED** with **S1:** one refusal class, `ModuleStubRefusal extends SaveParkError`; `SaveParkError` moves to a zero-import `savePark.ts` that `saveHold.ts` re-exports. **S2:** the export statement is corrected after lane G's merge. |
+| 4111 | 2026-10-26 | B2a Gate 1, round 4 | opus-reviewer (same reviewer); orchestrator (folded in) | `c205-next\b2a-plan-review-r4\result.md`; plan `c205-next\b2a-plan\plan.md` (revision 4) | no | **`[EDITORIAL]`,** E1 to E8. The orchestrator folded them in, and the same reviewer gave "editorial closed". E1 is cited in `MC-583`. |
+| 4112 | 2026-10-26 | B2a implementation | sonnet-coder | `c205-next\b2a\result.md` | no | The coder's evidence, as reported: 9 reproducer (R) rows fail on `decc1f56c` at their named assertions; all 12 named mutants go red, run in scratch; targeted vitest 51 files and 1,419 tests passed; `pnpm check` 0 errors. Gate 2 follows in row 4113. |
+| 4113 | 2026-10-26 | B2a Gate 2 | opus-reviewer (fresh) | `c205-next\b2a-review\result.md` | no | **`[EDITORIAL]`.** The reviewer re-ran the base reds and 21 mutant runs.<br>**Findings:** E1, a test name over-claimed, renamed; E2, the `StubRefusedError` module-kind constructor is now an overload with a required module argument; E3, comment layout.<br>**Observations:** I1, the `set()` check runs once at the top, which is accepted; I2, `stubEligible` throws on a malformed `il`, which B2b guards. |
+| 4114 | 2026-10-26 | B2a closure review and commit | fresh closure reviewer; orchestrator | commit `52877a717` (`git log`) | no | The closure reviewer gave **`[EDITORIAL]`,** leaving two comment reflows. The orchestrator applied them and checked the diff and the CR/LF counts, ran `pnpm check` (0 errors) and targeted tests (16 files, 1,143 tests passed). Committed as `52877a717` with the maintainer's approval. |
+| 4115 | 2026-10-26 | B2a merged to main | lane A; maintainer (approval in lane A's session) | lane A's report (no file read here) | no | Lane A fast-forwarded main to `52877a717` and pushed. Lane A's full checks: `pnpm test` twice (23,513 each), `pnpm check` 0 errors, build plus `checkReleaseDist` OK. The maintainer approved in lane A's session. |
+| 4116 | 2026-10-26 | Lane G coordination for the `MC-561` follow-up | orchestrator; lane G | the message to lane G; lane G's plan check (no file read here) | no | Lane G was sent the final names (`assertNoModuleStubs`, `isModuleStub`, `ModuleStubRefusal`, `MODULE_STUB_KEY`, `MODULE_STUB_VALUE`, from `src/ts/storage/moduleStub.ts`). It started the follow-up from `52877a717`; its plan check came back **`[EDITORIAL]`.** The follow-up delivers the export check of `MC-583`. |
+| 4117 | 2026-10-26 | Lane H start prompt and correction | orchestrator; maintainer (relay) | the lane H start prompt (no file read here) | no | The prompt was updated to start at `52877a717` with an explicit import list. A correction followed from the B2b advisor recheck (R4, row 4119): C1 materialises only through `acquireModule`, B3's install owns the E10 check, and lane H never imports `store2/moduleStubMatch.ts`. The maintainer relayed it before lane H started coding. Lane H has started. |
+| 4118 | 2026-10-26 | B2b plan, first draft | investigator | `c205-next\b2b-plan\plan.md` | no | Draft of the B2b plan. Its Q1 led to `MC-584`. Revision 2 follows the advisor recheck (row 4119). |
+| 4119 | 2026-10-26 | Senior-advisor recheck of the B2b plan | senior-advisor | `c205-next\b2b-advisor\note.md` | no | **PROCEED WITH CHANGES:** binding B1 to B3 and recommendations R1 to R4, all four accepted by the orchestrator. The note also holds the S4a edited-path options (a), (b) and (c), carried to the handoff. |
+| 4120 | 2026-10-26 | B2b Gate 1, round 1 | opus-reviewer | the B2b plan, revision 2 | no | **In progress** when this was recorded. No verdict yet. |
 
 **Folded in by lane A on 2026-10-23 (records batch 4): ledger rows 2396 to 2437 are in the shared ledger.**
 
@@ -1993,3 +2073,14 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
   - Gate 2 N1: `entry.mcp` is set only for a non-null object while the app tests MCP by truthiness, so a stub or residency rule that relies on `entry.mcp` must be conservative, or the derivation becomes `Boolean(module.mcp)`. A plan decision.
   - Lane G `MC-561`: the A1 refusal follow-up commit comes after B2; S4d must not take track G before it exists. Lane G's notes for J1 are at `c205-next\j1-notes\from-lane-G.md` (row 4102).
 - **Next free IDs:** `MC-581`, CHORE-411, row 4104 (rows 3095 to 3099 are used).
+
+2026-10-26, L3 B1 checked on the phone; B2a committed and merged; B2b planned:
+- **State:** P1 passed on lane A's Note 9 (row 4104). Lane G's A1 and A2 are on main as `decc1f56c` (row 4105). B2 was split into B2a and B2b (row 4106). B2a (the module-stub marker, the save refusals and the acquire seam) passed Gate 1 on round 4 (`[EDITORIAL]`, after three `[REJECT]` rounds and the advisor escalation; rows 4107 to 4111) and Gate 2 (`[EDITORIAL]`; rows 4112 to 4114), is committed as `52877a717` and was fast-forwarded to main by lane A (row 4115). Lane G has started the `MC-561` follow-up from `52877a717` (row 4116); lane H has started from `52877a717` (row 4117). The B2b plan is at revision 2 and its Gate 1 round 1 is in progress (rows 4118 to 4120). Decisions: `MC-581` to `MC-584`.
+- **Next:** B2b Gate 1, then implementation, Gate 2 and the merge. Then B3, S4a, S4d, S5 and J1.
+- **Carry-forward:**
+  - **S4a:** ask the maintainer the edited-path product question before S4a's Gate 1. The options (a), (b) and (c) are in `%TEMP%\risu-lane-b\c205-next\b2b-advisor\note.md`.
+  - **S4d, minting:** mint only entries whose three keys are confirmed present.
+  - **S4d and recovery:** re-mint after a replaced encoding.
+  - **S4d, export check:** narrow the early export check to foreign markers (`MC-583` 4).
+  - **`MC-584`:** the module `StubRefusedError` retry-path choice for B2b is to be revisited before S4d.
+- **Next free IDs:** `MC-585`, CHORE-411, row 4121 (rows 4104 to 4120 are used; no CHORE entry was added in this batch).
