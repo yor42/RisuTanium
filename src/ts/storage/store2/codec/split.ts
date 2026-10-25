@@ -13,7 +13,7 @@ import {
 } from './bodies'
 import { assembleChat, splitChat } from './chat'
 import { buildManifest, carryManifest } from './manifest'
-import { carryModuleIndex, moduleBodyOf, moduleEntryFields, moduleHandles, taggedUnitRef } from './modules'
+import { carryModuleIndex, hasCurrentEntryFields, moduleBodyOf, moduleEntryFields, moduleHandles, taggedUnitRef } from './modules'
 import { defineOwn, listOrEmpty, omitFields, pickFields, plainObject, toPlainJson } from './normalize'
 import { groupKeysIntoBuckets, PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 import { UnitSink, type UnitKeyKind } from './reuse'
@@ -430,6 +430,23 @@ function carriedModuleLists(
     }
     // Copies, not the previous arrays; `listRefTuple` also drops an unknown trailing element exactly as a fresh list ref does.
     return { al: listRefTuple(entry.al, entry.al[3]), il: listRefTuple(entry.il, entry.il[3]), units: [[alId, alUnit], [ilId, ilUnit]] }
+}
+
+/**
+ * Whether a module stub may stand for `entry` without its body. `handles` is the unique-handle set of the whole module
+ * list (`uniqueIdHandles`), so a stub's handle `${id}#0` is in it only for a non-empty, non-positional id that exactly
+ * one module holds. All five must hold: that handle; a derivation that opts into list versions; an asset list at the
+ * current version; an inlay list that exists and is at the current version; and an entry-fields version this build
+ * knows. Nothing here carries a stub: a stub that reaches `encodeModuleAt` is refused by `moduleBodyOf`.
+ */
+export function stubEligible(
+    entry: ModuleEntry, handles: ReadonlySet<string>, versions: ListDerivation['moduleListVersions'],
+): boolean {
+    return handles.has(`${entry.id}#0`)
+        && versions !== undefined
+        && entry.al[3] === versions.asset
+        && entry.il !== null && entry.il[3] === versions.inlay
+        && hasCurrentEntryFields(entry)
 }
 
 /** The previous module index entries by handle; null when there is no previous index, which carries nothing. */

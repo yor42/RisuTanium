@@ -40,10 +40,11 @@ import { collectLegacyColdKeys } from './walk'
  *  - A decoded older-format tree without a preset list gets the Default preset on the resolved copy only; the decoded
  *    tree, and so the legacy list built from it, is the file as read.
  *  - A strict decode that holds a shape the codec refuses (`faults.ts`) counts as not decoded, so the next copy or
- *    "convert without these" follows. A refusal the detector cannot see (a BigInt or a cycle inside an element) surfaces
- *    as a `CodecError` while the install is planned, before any marker: it is an unconvertible copy, never a throw out
- *    of the conversion, and the strict route moves on to the next copy. A cycle first spins the legacy list's string
- *    walk, which keeps no visited set, before the install is planned.
+ *    "convert without these" follows. A refusal the detector cannot see (a BigInt or a cycle inside an element, or a
+ *    module that holds the module stub marker) surfaces as a `CodecError` while the install is planned, before any
+ *    marker: it is an unconvertible copy, never a throw out of the conversion, and the strict route moves on to the
+ *    next copy. A cycle first spins the legacy list's string walk, which keeps no visited set, before the install is
+ *    planned.
  *  - "Convert without these" leaves out exactly the shapes it named (`dropLegacyFaults`), on the resolved copy and only
  *    for the lenient origin; the decoded tree, and so the legacy list built from it, is the file as read. A cold unit
  *    whose content the codec would refuse is unusable through the incomplete-data question, for every origin.

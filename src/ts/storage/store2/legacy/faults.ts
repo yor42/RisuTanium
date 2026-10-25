@@ -14,8 +14,10 @@ import type { SkippedLegacyEntry } from './lenient'
  *    `dropLegacyFaults` never mutates and never splices: every container on the path to a change is replaced, every
  *    other one is shared, because the resolved tree shares its arrays and objects with the decoded tree.
  *  - Its rules mirror the codec's refusals (`encodeFront`, `encodePlugins`, `encodePluginStorage`, `encodeModuleSet`,
- *    `normalizeCharacterFromPlain`, `chatMessages`); a part the codec tolerates (`loadouts` elements, an absent or null
- *    list, a `chaId` of any type) is not a fault. "Present" means neither `undefined` nor `null`, as in `listOrEmpty`.
+ *    `normalizeCharacterFromPlain`, `chatMessages`), except the module stub marker, which is deliberately not a fault:
+ *    a module that holds it is refused by the codec, never stripped or converted around. A part the codec tolerates
+ *    (`loadouts` elements, an absent or null list, a `chaId` of any type) is not a fault. "Present" means neither
+ *    `undefined` nor `null`, as in `listOrEmpty`.
  *  - A value is judged the way the codec reads it: `toJSON` is applied once per level, a boxed primitive is its
  *    primitive, so a `Date` or a boxed number is not an object.
  *  - Deep faults (a BigInt or a cycle inside an element) are not seen here; the conversion's safety net catches them. A

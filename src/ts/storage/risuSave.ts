@@ -6,6 +6,7 @@ import { createYieldBudget } from "./saveYield"
 import { getAppStore } from "./store/appStore"
 import { characterIdProblem, isCharacterEntry, isUsableCharacterId } from "./characterIds"
 import { SaveParkError } from "./saveHold"
+import { assertNoModuleStubs } from "./moduleStub"
 
 const packr = new Packr({
     useRecords:false
@@ -165,6 +166,7 @@ function releasePackrBuffer(){
 }
 
 export function encodeRisuSaveLegacy(data:any, compression:'noCompression'|'compression' = 'noCompression'){
+    assertNoModuleStubs(data?.modules, 'encodeRisuSaveLegacy')
     try{
         let encoded:Uint8Array = packr.encode(data)
         if(compression === 'compression'){
@@ -188,6 +190,7 @@ export function encodeRisuSaveLegacy(data:any, compression:'noCompression'|'comp
 }
 
 export async function encodeRisuSaveCompressionStream(data:any) {
+    assertNoModuleStubs(data?.modules, 'encodeRisuSaveCompressionStream')
     await checkCompressionStreams()
     try{
         let encoded:Uint8Array = packr.encode(data)
@@ -656,6 +659,7 @@ export class RisuSaveEncoder {
         if(!Array.isArray(data.characters)){
             throw new SaveParkError('container-not-list', 'characters');
         }
+        assertNoModuleStubs(data.modules, 'RisuSaveEncoder.init');
         const presetText = listContainerText(data.botPresets, 'botPresets', report.repairedContainers, false);
         const modulesText = listContainerText(data.modules, 'modules', report.repairedContainers, true);
         const loadoutsText = listContainerText(data.loadouts, 'loadouts', report.repairedContainers, true);
@@ -828,6 +832,9 @@ export class RisuSaveEncoder {
     }
 
     async set(data:Database, toSave:toSaveType){
+        // Before any holder snapshot or block change, and whether or not the modules block is marked: a refusal
+        // leaves the layout and the marks untouched, and an unmarked pass cannot skip past a stub another pass would write.
+        assertNoModuleStubs(data.modules, 'RisuSaveEncoder.set');
         let obj:Record<any,any> = {}
         let keys = Object.keys(data)
         for(const key of keys){

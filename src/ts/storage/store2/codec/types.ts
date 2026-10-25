@@ -17,22 +17,44 @@ export class CodecError extends Error {
 }
 
 /**
- * A cold-stub character, or a chat that is still a cold-storage pointer, was
- * offered to the encoder. Encoding it would persist a placeholder in place of
- * the data it stands for, so the encoder refuses (I9).
+ * A cold-stub character, a chat that is still a cold-storage pointer, or a
+ * module stub the encoder cannot carry, was offered to the encoder. Encoding it
+ * would persist a placeholder in place of the data it stands for, so the
+ * encoder refuses (I9).
  */
 export class StubRefusedError extends CodecError {
+    /** The module's name; empty for a character or a chat. */
+    public readonly moduleName: string
+    /** Why a module stub was refused; null for a character or a chat. */
+    public readonly reason: ModuleStubReason | null
+
+    constructor(kind: 'character' | 'chat', chaId: string, chatIndex: number | null)
+    /**
+     * For kind `module`, `chaId` holds the module's id, `chatIndex` is null and `module` carries the name and the reason.
+     */
+    constructor(kind: 'module', chaId: string, chatIndex: null, module: { name: string, reason: ModuleStubReason })
     constructor(
-        public readonly kind: 'character' | 'chat',
+        public readonly kind: 'character' | 'chat' | 'module',
         public readonly chaId: string,
         public readonly chatIndex: number | null,
+        module?: { name: string, reason: ModuleStubReason },
     ) {
         super('stub', kind === 'character'
             ? `Character ${chaId} is a cold-storage stub and cannot be encoded.`
-            : `Chat ${chatIndex} of character ${chaId} is a cold-storage pointer and cannot be encoded.`)
+            : kind === 'module'
+                ? `The module "${module?.name ?? ''}" (${chaId}) is a module stub (${module?.reason}) and cannot be encoded.`
+                : `Chat ${chatIndex} of character ${chaId} is a cold-storage pointer and cannot be encoded.`)
         this.name = 'StubRefusedError'
+        this.moduleName = module?.name ?? ''
+        this.reason = module?.reason ?? null
     }
 }
+
+/**
+ * Why a module stub was refused: `edited` when its slot no longer equals the stub minted for its recorded entry,
+ * `uncarriable` when the stub cannot be carried as its entry (no recorded entry, a changed handle set or a stale list).
+ */
+export type ModuleStubReason = 'edited' | 'uncarriable'
 
 /** The database holds a shape the codec cannot store without losing or inventing data. */
 export class CodecInputError extends CodecError {
