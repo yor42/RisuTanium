@@ -3,6 +3,14 @@ import { vi } from 'vitest'
 // Suppress warning
 vi.mock(import('katex'), () => ({}))
 
+// The app hands wasmoon its bundled glue.wasm URL. Under Vitest that URL is a
+// dev-server path, which wasmoon's Node loader would read as a filesystem path,
+// so point it at the installed file instead.
+vi.mock('wasmoon/dist/glue.wasm?url', async () => {
+  const { fileURLToPath } = await import('node:url')
+  return { default: fileURLToPath(import.meta.resolve('wasmoon/dist/glue.wasm')) }
+})
+
 // Tests that mount Svelte transitions rely on `Element.prototype.animate` being
 // absent: components feature-detect it and collapse their transition to zero
 // duration, which finishes synchronously. happy-dom's own Animation never
