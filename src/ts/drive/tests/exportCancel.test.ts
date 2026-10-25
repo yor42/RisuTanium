@@ -12,7 +12,9 @@
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { get, writable } from 'svelte/store'
+import { deflateSync } from 'fflate'
 import type { Database } from 'src/ts/storage/database.svelte'
+import type { MintedStubEntry } from 'src/ts/drive/exportInline'
 import { language } from 'src/lang'
 
 //#region module mocks
@@ -42,7 +44,7 @@ const world = vi.hoisted(() => ({
     collectGate: null as Promise<void> | null,
     collectUnavailable: [] as string[],
     /** Unit entries minted for stubs, as the collection reports them; empty means the collection's own answer. */
-    stubEntries: new Map<string, { uuid: string, name: string, payload: { key: string, backupName: string, encoded: Uint8Array } }>(),
+    stubEntries: new Map<string, MintedStubEntry>(),
     storeTypeAtConfirm: [] as string[],
     readStoreType: (() => '') as () => string,
 }))
@@ -458,7 +460,7 @@ describe('a partial backup stalled mid-write', () => {
         const stubBody = bytes('stub-unit-entry-body')
         const db = world.db as { characters: Array<Record<string, unknown>> }
         db.characters = [{ chaId: 'a', name: 'A', type: 'character', chatPage: 0, chats: [], image: 'assets/profile.png', coldstorage: unit }]
-        world.stubEntries = new Map([[`${unit}\u0000a`, { uuid: 'minted-uuid', name: 'A', payload: { key: unit, backupName: 'minted-uuid', encoded: stubBody } }]])
+        world.stubEntries = new Map([[`${unit}\u0000a`, { uuid: 'minted-uuid', name: 'A', backupName: 'minted-uuid', rawLength: stubBody.length, packed: deflateSync(stubBody, { level: 1 }) }]])
 
         // An unstalled run shows which write carries the stub entry (header and body travel as one write); the second run stops taking writes there.
         expect((await exportThisTabBackup()).status).toBe('saved')

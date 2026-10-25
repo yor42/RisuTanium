@@ -10,7 +10,8 @@
  *
  * Labels in the titles:
  * - `reproducer`: fails against the export path before this change (the stub entries stay referenced from `cold` and the
- *   `stubPayloads` array until the export returns).
+ *   `stubPayloads` array until the export returns). The array holds the minted entries, which are unpacked one at a time
+ *   at their write (`exportStubPacked.test.ts` covers the packing).
  * - `guard`: holds before and after the change.
  *
  * The harness is the one `exportStubForm.test.ts` documents, with the writer and `exportInline` replaced as above.
@@ -37,7 +38,7 @@ const sink = vi.hoisted(() => ({
 /** What the wrapped `exportInline` returned to `backuplocal`. */
 const captured = vi.hoisted(() => ({
     cold: null as BackupColdStorage | null,
-    stubPayloads: null as Array<{ key: string, backupName: string, encoded: Uint8Array }> | null,
+    stubPayloads: null as Array<{ backupName: string }> | null,
     /** The names of the stub entries when the array was returned, in the order they are written. */
     names: [] as string[],
 }))
@@ -125,10 +126,10 @@ vi.mock(import('src/ts/drive/exportInline'), async (importOriginal) => {
             return cold
         },
         stubEntriesInTree: (...args: Parameters<typeof actual.stubEntriesInTree>) => {
-            const payloads = actual.stubEntriesInTree(...args)
-            captured.stubPayloads = payloads
-            captured.names = payloads.map((payload) => payload.backupName)
-            return payloads
+            const entries = actual.stubEntriesInTree(...args)
+            captured.stubPayloads = entries
+            captured.names = entries.map((entry) => entry.backupName)
+            return entries
         },
     }
 })
@@ -461,7 +462,7 @@ function watchStubStarts(): StartSeen[] {
             seen.push({
                 name,
                 heldByCold: captured.cold?.stubEntries.size ?? -1,
-                heldByArray: (captured.stubPayloads ?? []).map((payload) => payload.backupName),
+                heldByArray: (captured.stubPayloads ?? []).map((entry) => entry.backupName),
             })
         }
     }
@@ -579,7 +580,7 @@ describe.each([
         expect(written).not.toContain('database.risudat')
         expect(written.filter((name) => captured.names.includes(name))).toEqual([captured.names[0]])
         // Only the entry written before the failure is released.
-        expect((captured.stubPayloads ?? []).map((payload) => payload.backupName)).toEqual(captured.names.slice(1))
+        expect((captured.stubPayloads ?? []).map((entry) => entry.backupName)).toEqual(captured.names.slice(1))
     }, 120_000)
 
     test('guard: the failed export of a write that throws is the same without any large stub', async () => {

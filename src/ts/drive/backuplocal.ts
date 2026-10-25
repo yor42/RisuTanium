@@ -28,8 +28,8 @@ import { repairCharacterTree } from "../storage/characterTreeRepair";
 import { repairDatabaseIds } from "../process/chatIds";
 import { reloadAfterRestore } from "./restoreReload";
 import { language } from "src/lang";
-import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection, type ColdStorageBackupPayload } from "../process/coldstorage.svelte";
-import { characterListNeedsRepair, kvBlockNamesOf, collectBackupColdStorage, inlinedCharacter, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, takeStubReadStats, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
+import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
+import { characterListNeedsRepair, kvBlockNamesOf, collectBackupColdStorage, inlinedCharacter, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, takeStubReadStats, unpackStubEntry, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
 import { convertPluginStorageIndex, unavailableKeysOfMissing } from "../process/pluginStorageIndex";
 import { v4 } from "uuid";
@@ -100,20 +100,22 @@ async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdS
  * and no later step reads them, so the map is replaced at once and the array is emptied one entry per write. Only
  * references are dropped, never the bytes: a writer may hold the very body until it closes. The total is taken first,
  * because the array shrinks while the loop runs. A write that fails leaves the unwritten entries in place.
+ * Each entry is unpacked just before its write, so at most one unpacked body exists here at a time; an entry that does
+ * not unpack throws before anything of it is written, and the export fails as for any other write error.
  */
 async function writeStubPayloadsAndRelease(
     writer: Pick<LocalWriter, 'writeBackup'>,
     cold: BackupColdStorage,
-    stubPayloads: ColdStorageBackupPayload[],
+    stubEntries: MintedStubEntry[],
     progressPrefix: string,
     wait: (message: string) => void = alertWait,
 ): Promise<void> {
     cold.stubEntries = new Map()
-    const total = stubPayloads.length
+    const total = stubEntries.length
     for (let i = 0; i < total; i++) {
         wait(`${progressPrefix} (${i + 1} / ${total})`)
-        await writer.writeBackup(stubPayloads[0].backupName, stubPayloads[0].encoded)
-        stubPayloads.shift()
+        await writer.writeBackup(stubEntries[0].backupName, unpackStubEntry(stubEntries[0]))
+        stubEntries.shift()
     }
 }
 
@@ -124,7 +126,7 @@ function describeReadMeasure(): string {
         const ranges = takeRangeReadStats()
         const parts: string[] = []
         if (stubs) {
-            parts.push(`stubChars=${stubs.characters} stubReadMs=${Math.round(stubs.readMs)} stubEncodeMs=${Math.round(stubs.encodeMs)} stubAhead=${stubs.ahead} stubHeldMax=${stubs.heldMax} stubRetries=${stubs.retries} stubFailed=${stubs.failed}`)
+            parts.push(`stubChars=${stubs.characters} stubReadMs=${Math.round(stubs.readMs)} stubEncodeMs=${Math.round(stubs.encodeMs)} stubEncodeMsMax=${Math.round(stubs.encodeMsMax)} stubRawBytes=${stubs.rawBytes} stubPackedBytes=${stubs.packedBytes} stubAhead=${stubs.ahead} stubHeldMax=${stubs.heldMax} stubRetries=${stubs.retries} stubFailed=${stubs.failed}`)
         }
         if (ranges) {
             parts.push(`rangeReads=${ranges.reads} rangeMs=${Math.round(ranges.ms)} rangeWallMs=${Math.round(ranges.wallMs)} store2Reads=${ranges.store2Reads} store2Ms=${Math.round(ranges.store2Ms)} rangeMaxInFlight=${ranges.maxInFlight}`)
