@@ -13,6 +13,7 @@ import type { FilePlatform } from './keyRules'
 import { createNodeHttpStore } from './nodeHttpStore'
 import { createOpfsTransitionalStore } from './opfsTransitionalStore'
 import { createTauriFilesStore } from './tauriFilesStore'
+import { noteSelectedStore } from '../assetLimit'
 import { noteMainFileRead, resetMainFileOutcomeForTests } from '../mainFileOutcome'
 
 /**
@@ -228,7 +229,10 @@ export function getAppStore(): Promise<ByteStore> {
     if (injected !== null) {
         return Promise.resolve(injected)
     }
-    selection ??= selectStore()
+    selection ??= selectStore().then((store) => {
+        noteSelectedStore(selectedKind, store)
+        return store
+    })
     return selection
 }
 
@@ -252,6 +256,7 @@ export function injectAppStore(store: ByteStore | null, kind: AppStoreKind | nul
     selection = null
     resetMainFileOutcomeForTests()
     selectedKind = store === null ? null : kind
+    noteSelectedStore(selectedKind, store)
     fallbackNotice = null
     copiedBackThisPage = false
 }

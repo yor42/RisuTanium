@@ -85,12 +85,12 @@ export async function postInlayAsset(img:{
     const isAudio = inlayAudioExts.includes(extention)
     const isVideo = inlayVideoExts.includes(extention)
     if(isAudio || isVideo){
-        const limit = inlayAttachmentLimit()
+        const kind = isAudio ? 'audio' : 'video'
+        const limit = inlayAttachmentLimit(kind)
         const size = img.data instanceof Blob ? img.data.size : img.data.byteLength
         if(size > limit){
             return { refused: 'too-large', name: img.name, limit }
         }
-        const kind = isAudio ? 'audio' : 'video'
         const blob = new Blob([partOf()], {type: `${kind}/${extention}`})
         const imgid = v4()
 

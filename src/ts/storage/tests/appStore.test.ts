@@ -159,6 +159,32 @@ describe('the store each platform gets', () => {
         expect(await app.getAppStoreKind()).toBe('indexeddb')
     })
 
+    test('the real selection reaches the asset limit registry: Tauri 1 GiB, Node 100 MiB until pieces are recorded then 1 GiB, IndexedDB 200 MiB', async () => {
+        const MiB = 1024 * 1024
+        const limits = await import('src/ts/storage/assetLimit')
+        expect(limits.selectedStoreIsNode()).toBe(false)
+
+        platform('tauri')
+        await app.getAppStore()
+        expect(limits.selectedStoreIsNode()).toBe(false)
+        expect(limits.storeAssetLimitBytes()).toBe(1024 * MiB)
+
+        await nodeWorld()
+        app.injectAppStore(null)
+        const nodeStore = await app.getAppStore()
+        expect(limits.selectedStoreIsNode()).toBe(true)
+        expect(limits.storeAssetLimitBytes()).toBe(100 * MiB)
+        Object.assign(nodeStore, { piecesRecorded: () => true })
+        expect(limits.storeAssetLimitBytes()).toBe(1024 * MiB)
+
+        platform('web')
+        h.forage.realStorage = undefined
+        app.injectAppStore(null)
+        await app.getAppStore()
+        expect(limits.selectedStoreIsNode()).toBe(false)
+        expect(limits.storeAssetLimitBytes()).toBe(200 * MiB)
+    })
+
     test('the kind of a store injected without one is not guessed', async () => {
         const injected = { capabilities: { conditionalWrites: false } } as unknown as Awaited<ReturnType<AppStoreModule['getAppStore']>>
         app.injectAppStore(injected)

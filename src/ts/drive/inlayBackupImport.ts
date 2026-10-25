@@ -4,6 +4,7 @@ import {
     InlayUnreadableError,
     withInlayLock,
     writeAppInlay,
+    type InlayAsset,
 } from '../process/files/inlayStore'
 import { getAppStore } from '../storage/store/appStore'
 import type { ByteStore } from '../storage/store/contract'
@@ -39,6 +40,21 @@ export interface InlaySkipped {
     /** The id when the header was read, else the entry name. */
     label: string
     reason: InlaySkipReason
+    /** For `tooLarge`: the limit that applied to this inlay, so a notice prints the bound that was used. */
+    limit?: number
+}
+
+/** The largest inlay body that may be stored for an inlay of `type` (see `inlayAttachmentLimit`). */
+export type InlayLimitOf = (type: InlayAsset['type'] | undefined) => number
+
+/** The inlay type a header's record fields name, or `undefined` for anything else. */
+function inlayTypeOf(fields: Record<string, unknown>): InlayAsset['type'] | undefined {
+    const type = fields.type
+    return type === 'image' || type === 'video' || type === 'audio' || type === 'signature' ? type : undefined
+}
+
+function limitFunction(limit: number | InlayLimitOf): InlayLimitOf {
+    return typeof limit === 'number' ? () => limit : limit
 }
 
 export interface InlayRestoreResult {
@@ -54,17 +70,21 @@ interface InlayGroup {
     /** Body slices by part index. */
     parts: Map<number, Blob>
     /** Set once the group cannot be written. */
-    skip: { label: string, reason: InlaySkipReason } | null
+    skip: InlaySkipped | null
 }
 
 export class InlayRestoreCollector {
     private readonly groups = new Map<string, InlayGroup>()
 
-    constructor(private readonly limit: number) { }
+    private readonly limitOf: InlayLimitOf
+
+    constructor(limit: number | InlayLimitOf) {
+        this.limitOf = limitFunction(limit)
+    }
 
     /** Leaves out every entry of the inlay with name-hash `hash`, as too large for this page. */
-    preSkip(hash: string, id: string): void {
-        this.group(hash, hash).skip = { label: id, reason: 'tooLarge' }
+    preSkip(hash: string, id: string, limit?: number): void {
+        this.group(hash, hash).skip = { label: id, reason: 'tooLarge', limit }
     }
 
     private group(hash: string, firstName: string): InlayGroup {
@@ -114,8 +134,9 @@ export class InlayRestoreCollector {
             return 'ok'
         }
         group.header = header
-        if (header.len > this.limit) {
-            group.skip = { label: header.id, reason: 'tooLarge' }
+        const limit = this.limitOf(inlayTypeOf(header.fields))
+        if (header.len > limit) {
+            group.skip = { label: header.id, reason: 'tooLarge', limit }
             group.parts.clear()
             return 'ok'
         }
@@ -200,8 +221,9 @@ function isWhole(group: InlayGroup, header: InlayEntryHeader): boolean {
  * part 0 headers, so a Node restore can name them before anything is written.
  * Only entries whose name length can be an inlay name are read.
  */
-export async function listOversizedInlays(file: Blob, entries: readonly BackupIndexEntry[], limit: number): Promise<{ hash: string, id: string }[]> {
-    const found: { hash: string, id: string }[] = []
+export async function listOversizedInlays(file: Blob, entries: readonly BackupIndexEntry[], limit: number | InlayLimitOf): Promise<{ hash: string, id: string, limit: number }[]> {
+    const limitOf = limitFunction(limit)
+    const found: { hash: string, id: string, limit: number }[] = []
     for (const entry of entries) {
         if (entry.nameLength < MIN_ENTRY_NAME_LENGTH || entry.nameLength > MAX_ENTRY_NAME_LENGTH) {
             continue
@@ -218,8 +240,12 @@ export async function listOversizedInlays(file: Blob, entries: readonly BackupIn
             continue
         }
         const header = parseInlayHeader(new Uint8Array(await file.slice(dataStart + 4, dataStart + 4 + headerLength).arrayBuffer()))
-        if (header !== null && header.len > limit && await inlayIdHash(header.id) === parsed.hash) {
-            found.push({ hash: parsed.hash, id: header.id })
+        if (header === null) {
+            continue
+        }
+        const applied = limitOf(inlayTypeOf(header.fields))
+        if (header.len > applied && await inlayIdHash(header.id) === parsed.hash) {
+            found.push({ hash: parsed.hash, id: header.id, limit: applied })
         }
     }
     return found

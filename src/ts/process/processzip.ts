@@ -4,8 +4,7 @@ import { asBuffer, Semaphore, sleep } from "../util";
 import { alertStore } from "../alert";
 import { language } from "src/lang";
 import { fillLang } from "src/lang/fill";
-import { isNodeServer } from "../platform";
-import { NODE_BODY_LIMIT_BYTES } from "../storage/nodeBodyLimit";
+import { storeAssetLimitBytes } from "../storage/assetLimit";
 import { isImportSource, type ImportSource } from "../importSource";
 
 const MIB = 1024 * 1024;
@@ -19,7 +18,7 @@ export const charxLimits = {
     // card.json and module.risum
     metadataBytes: 50 * MIB,
     // every other entry
-    assetBytes: 200 * MIB,
+    assetBytes: 1024 * MIB,
     // decoded assets queued or being saved beyond which reading the archive pauses
     backlogBytes: 32 * MIB,
     // received bytes of an asset entry past which it is saved in pieces instead of being collected whole (a store that writes in pieces)
@@ -121,12 +120,12 @@ export class PieceQueue implements AsyncIterable<Uint8Array> {
 }
 
 /**
- * The largest asset an import takes: the asset limit, and never more than one write to the store accepts. The
- * self-hosted Node server refuses a request body above NODE_BODY_LIMIT_BYTES, so an asset above it can never be saved
- * there and is refused before anything is saved instead of failing in the middle of the import.
+ * The largest asset an import takes: the asset limit, and never more than the page's selected store accepts for one
+ * asset (`storeAssetLimitBytes`). An asset above it can never be saved there and is refused before anything is saved
+ * instead of failing in the middle of the import.
  */
 export function assetByteLimit(): number {
-    return isNodeServer ? Math.min(charxLimits.assetBytes, NODE_BODY_LIMIT_BYTES) : charxLimits.assetBytes;
+    return Math.min(charxLimits.assetBytes, storeAssetLimitBytes());
 }
 
 function entryLimit(name: string): number {

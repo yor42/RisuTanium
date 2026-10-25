@@ -2,8 +2,8 @@ import localforage from 'localforage'
 import { getAppStore } from 'src/ts/storage/store/appStore'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 import { isWellFormedUtf16 } from 'src/ts/storage/store/keyRules'
-import { isNodeServer } from 'src/ts/platform'
-import { NODE_BODY_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
+import { storeAssetLimitBytes } from 'src/ts/storage/assetLimit'
+import { isAndroidTransport } from 'src/ts/storage/tauriByteTransport'
 import { beginChokePoint } from '../memory/busyActions'
 import { dropInlayRender } from './inlayRenderCache'
 import {
@@ -68,26 +68,34 @@ export async function inFlight<T>(work: () => Promise<T>): Promise<T> {
     }
 }
 
-/** The largest value one write to the app store accepts. */
+/** The largest inlay body the page's selected store accepts. */
 export function inlayWriteLimit(): number {
-    return isNodeServer ? NODE_BODY_LIMIT_BYTES : Number.POSITIVE_INFINITY
+    return storeAssetLimitBytes()
 }
 
 const MIB = 1024 * 1024
 
+/**
+ * The largest video inlay Android takes. Android shows a video by reading the whole file, which the
+ * piecewise limits above this do not cover, so a video stays at this bound there (CHORE-373).
+ */
+export const ANDROID_VIDEO_INLAY_LIMIT_BYTES = 200 * MIB
+
 /** Mutable only so that tests can use small fixtures. */
 export const inlayLimits = {
     // the largest audio or video file a user can attach
-    attachmentBytes: 200 * MIB,
+    attachmentBytes: 1024 * MIB,
 }
 
 /**
- * The largest audio or video file a user can attach, in bytes: 200 MiB, and never
- * more than one write to the store accepts. An old inlay above it is not copied
- * on any platform, so the copy never makes a copy of a body that large.
+ * The largest inlay a user can attach or a copy or restore can store, in bytes: 1 GiB, and never
+ * more than the page's store accepts for one body. An Android video is further bounded by
+ * `ANDROID_VIDEO_INLAY_LIMIT_BYTES`. An old inlay above the limit is not copied on any platform,
+ * so the copy never makes a copy of a body that large. Pass the inlay's type when it is known.
  */
-export function inlayAttachmentLimit(): number {
-    return Math.min(inlayLimits.attachmentBytes, inlayWriteLimit())
+export function inlayAttachmentLimit(type?: InlayAsset['type']): number {
+    const limit = Math.min(inlayLimits.attachmentBytes, inlayWriteLimit())
+    return type === 'video' && isAndroidTransport() ? Math.min(limit, ANDROID_VIDEO_INLAY_LIMIT_BYTES) : limit
 }
 
 /** The body of an inlay value could not be read, so it cannot be stored; trying again will not help. */

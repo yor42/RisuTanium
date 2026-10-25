@@ -5,8 +5,8 @@
  * The old `inlay` LocalForage database is an in-memory map.
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { injectAppStore } from 'src/ts/storage/store/appStore'
-import { NODE_BODY_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
+import { injectAppStore, type AppStoreKind } from 'src/ts/storage/store/appStore'
+import { NODE_ASSET_LIMIT_BYTES, NODE_BODY_LIMIT_BYTES, WEB_ASSET_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
 import { chokePointInFlight, resetBusyActionsForTest } from '../../memory/busyActions'
 import { inlayBodyKey, inlayMetaKey } from '../inlayKeys'
 import { legacyInlayStore, readAppInlay } from '../inlayStore'
@@ -31,7 +31,11 @@ const h = vi.hoisted(() => ({
     /** Old-store removals and app-store deletes, in the order they happened. */
     removalLog: [] as string[],
     node: false,
+    /** What the operating-system plugin answers; the Android bound applies to a video when it is 'android'. */
+    os: 'windows' as string,
 }))
+
+vi.mock('@tauri-apps/plugin-os', () => ({ type: () => h.os }))
 
 vi.mock('localforage', () => ({
     default: {
@@ -82,10 +86,19 @@ beforeEach(() => {
     h.legacy.clear()
     h.removalLog.length = 0
     h.node = false
+    h.os = 'windows'
     resetBusyActionsForTest()
     appStore = createMemoryByteStore()
-    injectAppStore(appStore)
+    injectAppStore(appStore, 'indexeddb')
 })
+
+/** The page runs on `kind`; a Node store records whether its server takes pieces. */
+function useStoreKind(kind: AppStoreKind, piecesRecorded = false): void {
+    if (kind === 'node') {
+        Object.assign(appStore, { piecesRecorded: () => piecesRecorded })
+    }
+    injectAppStore(appStore, kind)
+}
 
 async function dataUriOf(blob: Blob): Promise<string> {
     return await new Promise<string>((resolve, reject) => {
@@ -302,18 +315,64 @@ describe('deleting an inlay', () => {
 describe('the attachment size limit', () => {
     const FILE = (size: number) => ({ name: 'clip.mp4', data: new Uint8Array(size) })
 
-    test('on a page that is not the Node server the limit is 200 MiB', () => {
-        expect(inlayLimits.attachmentBytes).toBe(200 * 1024 * 1024)
-        expect(inlayAttachmentLimit()).toBe(200 * 1024 * 1024)
+    const GIB = 1024 * 1024 * 1024
+    const MIB = 1024 * 1024
+
+    test('the attachment bound itself is 1 GiB; the browser store keeps 200 MiB below it until it holds large values in pieces (guard)', () => {
+        expect(inlayLimits.attachmentBytes).toBe(GIB)
+        expect(WEB_ASSET_LIMIT_BYTES).toBe(200 * MIB)
+        useStoreKind('indexeddb')
+        expect(inlayAttachmentLimit()).toBe(200 * MIB)
+        useStoreKind('opfs-transitional')
+        expect(inlayAttachmentLimit()).toBe(200 * MIB)
     })
 
-    test('on the Node server the limit is the smaller of 200 MiB and the body limit of one write', () => {
-        h.node = true
-        expect(inlayAttachmentLimit()).toBe(Math.min(200 * 1024 * 1024, NODE_BODY_LIMIT_BYTES))
+    test('the desktop and Android store takes an inlay up to 1 GiB (reproducer: 200 MiB or 100 MiB before)', () => {
+        useStoreKind('tauri')
+        expect(inlayAttachmentLimit()).toBe(GIB)
+        expect(inlayAttachmentLimit('audio')).toBe(GIB)
+        expect(inlayAttachmentLimit('video')).toBe(GIB)
+    })
+
+    test('a Node store whose server takes pieces takes an inlay up to 1 GiB (reproducer)', () => {
+        useStoreKind('node', true)
+        expect(inlayAttachmentLimit()).toBe(NODE_ASSET_LIMIT_BYTES)
+        expect(inlayAttachmentLimit()).toBe(GIB)
+    })
+
+    test('a Node store without recorded pieces keeps one request, 100 MiB (guard)', () => {
+        useStoreKind('node', false)
+        expect(inlayAttachmentLimit()).toBe(NODE_BODY_LIMIT_BYTES)
+        expect(NODE_BODY_LIMIT_BYTES).toBe(100 * MIB)
+    })
+
+    test('before a store is selected the smallest limit applies (guard)', () => {
+        injectAppStore(null)
+        expect(inlayAttachmentLimit()).toBe(NODE_BODY_LIMIT_BYTES)
+    })
+
+    test('on Android a video stays at 200 MiB while audio and other platforms follow the store (MC-536)', async () => {
+        useStoreKind('tauri')
+        h.os = 'android'
+        expect(inlayAttachmentLimit('video')).toBe(200 * MIB)
+        expect(inlayAttachmentLimit('audio')).toBe(GIB)
+        expect(inlayAttachmentLimit('image')).toBe(GIB)
+        expect(inlayAttachmentLimit()).toBe(GIB)
+        const over = await postInlayAsset({ name: 'clip.mp4', data: { byteLength: 200 * MIB + 1 } as unknown as Uint8Array })
+        expect(over).toEqual({ refused: 'too-large', name: 'clip.mp4', limit: 200 * MIB })
+        expect(appStore.writes).toEqual([])
+        h.os = 'windows'
+        expect(inlayAttachmentLimit('video')).toBe(GIB)
+    })
+
+    test('a store smaller than 200 MiB keeps a video under it on Android', () => {
+        useStoreKind('node', false)
+        h.os = 'android'
+        expect(inlayAttachmentLimit('video')).toBe(NODE_BODY_LIMIT_BYTES)
     })
 
     test.each([false, true])('one byte over the limit is refused and writes nothing (Node: %s)', async (node) => {
-        h.node = node
+        useStoreKind(node ? 'node' : 'indexeddb', false)
         const limit = inlayAttachmentLimit()
         const fake = { name: 'clip.mp4', data: { byteLength: limit + 1 } as unknown as Uint8Array }
         const result = await postInlayAsset(fake)
@@ -323,7 +382,7 @@ describe('the attachment size limit', () => {
     })
 
     test.each([false, true])('a file exactly at the limit is accepted (Node: %s)', async (node) => {
-        h.node = node
+        useStoreKind(node ? 'node' : 'indexeddb', false)
         const saved = inlayLimits.attachmentBytes
         inlayLimits.attachmentBytes = 8
         try {

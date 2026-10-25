@@ -49,6 +49,7 @@ import { packedForLayout, performSaveStep, type SaveStep } from "./storage/saveS
 import { StoreInvalidKeyError, StoreVersionConflictError } from "./storage/store/errors";
 import { NodeHttpError } from "./storage/store/nodeHttpStore";
 import { NODE_BODY_LIMIT_BYTES } from "./storage/nodeBodyLimit";
+import { storeAssetLimitBytes } from "./storage/assetLimit";
 import { fitsNodeBodyLimit } from "./storage/bootArchivePass";
 import { updateAnimationSpeed } from "./gui/animation";
 import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
@@ -1810,7 +1811,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
             savingStoppedReason.set(reason)
         },
         notifyTooLarge(label) {
-            alertToast(language.savingStoppedTooLargeBlockMessage(label, NODE_BODY_LIMIT_BYTES))
+            alertToast(language.savingStoppedTooLargeBlockMessage(label, NODE_BODY_LIMIT_BYTES, storeAssetLimitBytes()))
         },
         reportFailure(error, attempts) {
             const storageFull = isQuotaExceededError(error) || isQuotaExceededError(error instanceof Error ? error.cause : undefined)
@@ -2688,7 +2689,7 @@ export async function saveDb() {
                 // server that refused for a limit this client does not know names nothing.
                 console.error(error)
                 const what = error instanceof BlockTooLargeError ? describeBlockForPerson(error.blockName) : ''
-                alertToast(language.savingStoppedTooLargeBlockMessage(what, NODE_BODY_LIMIT_BYTES))
+                alertToast(language.savingStoppedTooLargeBlockMessage(what, NODE_BODY_LIMIT_BYTES, storeAssetLimitBytes()))
                 await parkSaving('too-large', what)
             }
             else if (!primaryCommitted && (error instanceof SaveParkError || error instanceof BlockSetGateError)) {

@@ -8,6 +8,7 @@ import { repairBotPresetsId } from "../storage/botPresetRepair";
 import { assembleLegacyFile, type BlockSetInput } from "../storage/blockStore";
 import { describeOmitted, layoutFileBytes } from "../storage/bootBlockLoad";
 import { NODE_BODY_LIMIT_BYTES } from "../storage/nodeBodyLimit";
+import { storeAssetLimitBytes } from "../storage/assetLimit";
 import { getPageBlockOwner } from "../storage/pageBlockOwner";
 import { getAppStore, MAIN_FILE_KEY } from "../storage/store/appStore";
 import { getStartupCleanup } from "../storage/startupCleanupState";
@@ -404,7 +405,7 @@ async function loadSelectedBackup(selectedBackup: string, busy: BusyHandle): Pro
             return snapshotRefused(written.aborted ? 'busy' : null)
         }
         if (written.kind === 'too-large') {
-            alertError(language.restoreTooLargeBlock(describeBlockForPerson(written.blockName), written.limit))
+            alertError(language.restoreTooLargeBlock(describeBlockForPerson(written.blockName), written.limit, storeAssetLimitBytes()))
             return snapshotRefused()
         }
         if (written.kind === 'unsavable') {

@@ -539,8 +539,8 @@ describe('the replace results map to one message each and the right lock state',
 
         await restore(kind, big)
 
-        expect(box.errors, 'every message shown').toEqual([language.restoreTooLargeBlock('"big-char"', 4096)])
-        expect(box.errors[0], 'the full message for a quoted character name').toBe('This backup could not be loaded: the self-hosted server accepts at most 0.00390625 MiB in one request (less if a proxy in front of the server sets a lower limit), and this part of your data is over that: "big-char". Nothing was changed.')
+        expect(box.errors, 'every message shown').toEqual([language.restoreTooLargeBlock('"big-char"', 4096, 4096)])
+        expect(box.errors[0], 'the full message for a quoted character name').toBe('This backup could not be loaded: the self-hosted server accepts at most 0.00390625 MiB for one saved part of your data, such as a character, a chat or the settings (less if a proxy in front of the server sets a lower limit), and this part is over that: "big-char". Asset files (images, audio and video) are not the cause; each may be up to 0.00390625 MiB. Nothing was changed.')
         expect(headOf()?.current, 'the head still names the old generation').toBe(oldGeneration)
         expect(writtenKeys().filter((key) => key.startsWith('blocks/')), 'blocks written').toEqual([])
         expectNothingInstalled()
@@ -550,10 +550,11 @@ describe('the replace results map to one message each and the right lock state',
 
 describe('the text of the too-large message (a new string): it reads as a sentence for every kind of label', () => {
     test('a plural label, a quoted name and no label all read grammatically', () => {
-        const message = (what: string) => language.restoreTooLargeBlock(what, 100 * 1024 * 1024)
-        expect(message('your bot presets')).toBe('This backup could not be loaded: the self-hosted server accepts at most 100 MiB in one request (less if a proxy in front of the server sets a lower limit), and this part of your data is over that: your bot presets. Nothing was changed.')
-        expect(message('"Bee"')).toContain('this part of your data is over that: "Bee". Nothing was changed.')
-        expect(message('')).toContain('and part of your data is over that. Nothing was changed.')
+        const message = (what: string) => language.restoreTooLargeBlock(what, 100 * 1024 * 1024, 1024 * 1024 * 1024)
+        expect(message('your bot presets')).toBe('This backup could not be loaded: the self-hosted server accepts at most 100 MiB for one saved part of your data, such as a character, a chat or the settings (less if a proxy in front of the server sets a lower limit), and this part is over that: your bot presets. Asset files (images, audio and video) are not the cause; each may be up to 1 GiB. Nothing was changed.')
+        expect(message('"Bee"')).toContain('this part is over that: "Bee". Asset files')
+        expect(message('')).toContain('and part of your data is over that. Asset files')
+        expect(language.restoreTooLargeBlock('', 100 * 1024 * 1024, 100 * 1024 * 1024)).toContain('each may be up to 100 MiB. Nothing was changed.')
     })
 })
 

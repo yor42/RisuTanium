@@ -131,6 +131,13 @@ import { exportModuleLegacy, importModule, readModule, type RisuModule } from 's
 import { charxLimits } from 'src/ts/process/processzip'
 import { ModuleRefusal } from 'src/ts/process/moduleRefusal'
 import { language } from 'src/lang'
+import { noteSelectedStore } from 'src/ts/storage/assetLimit'
+import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
+
+/** The asset limit follows the store the page selected: the browser store takes 200 MiB, a Node store without recorded pieces 100 MiB. */
+function selectStoreKind(kind: 'node' | 'indexeddb'): void {
+    noteSelectedStore(kind, createMemoryByteStore())
+}
 
 const KIB = 1024
 const MIB = 1024 * KIB
@@ -166,6 +173,7 @@ beforeEach(() => {
     h.last = 'none'
     h.modules = []
     h.node = false
+    selectStoreKind('indexeddb')
     h.saves = []
     h.failing = new Map()
     h.onSave = null
@@ -225,6 +233,7 @@ describe('regression reproducers', () => {
 
     test('on the Node server a record over the 100 MB write limit is refused naming the limit before anything is saved', async () => {
         h.node = true
+        selectStoreKind('node')
         //The second record declares 100 MiB + 1 and holds almost nothing; the limit is judged from the header alone.
         pick(risumBytes({ records: [patterned(1000, 1), patterned(10, 2)], declaredLengths: { 1: 100 * MIB + 1 } }))
 

@@ -160,7 +160,7 @@ async function copyEntryLocked(store: ByteStore, id: string, checkRoom: ((size: 
         return 'residue'
     }
     const size = valueSize(value)
-    if (size === null || size > inlayAttachmentLimit()) {
+    if (size === null || size > inlayAttachmentLimit(value.type)) {
         return 'residue'
     }
     if (await hasAppInlay(store, id)) {

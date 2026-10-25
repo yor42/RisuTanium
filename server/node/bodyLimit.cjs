@@ -4,10 +4,11 @@
 // equal, so changing one without the other fails that test.
 const NODE_BODY_LIMIT_BYTES = 104857600; // 100 MiB, what express's '100mb' means
 
-// The largest asset (or inlay body) the upload routes accept in total. It stays
-// at the body limit until the client paths that need more are in place; tests
-// override it through RISU_NODE_ASSET_LIMIT_BYTES.
-const NODE_ASSET_LIMIT_BYTES = 104857600; // 100 MiB
+// The largest asset (or inlay body) the upload routes accept in total. A test pins
+// it equal to the client's copy in src/ts/storage/nodeBodyLimit.ts. Other
+// bodies stay at the body limit. Tests override it through
+// RISU_NODE_ASSET_LIMIT_BYTES.
+const NODE_ASSET_LIMIT_BYTES = 1073741824; // 1 GiB
 // The largest single chunk of an upload append or ranged read.
 const NODE_UPLOAD_CHUNK_MAX_BYTES = 8388608; // 8 MiB
 

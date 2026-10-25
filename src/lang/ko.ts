@@ -1,3 +1,5 @@
+import { formatByteLimit } from './formatByteLimit'
+
 export const languageKorean = {
     "formating": {
         "main": "메인 프롬프트",
@@ -1908,9 +1910,9 @@ export const languageKorean = {
         `백업을 복원했지만, 이 앱에서 저장할 수 없는 이름의 에셋 파일 ${count}개는 복원되지 않았습니다. 이 파일을 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 파일:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupFileChangedWhileReading": "백업 파일을 읽는 도중 파일이 변경되어 복원을 중단했습니다. 일부 이미지나 콜드 스토리지 항목이 이미 추가되었거나 교체되었을 수 있습니다. 현재 데이터베이스는 변경되지 않았습니다.",
     "restoreOversizedAssetsConfirm": (count: number, names: string[], limitBytes: number) =>
-        `이 백업의 에셋 파일 ${count}개가 이 서버가 한 번의 요청으로 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 커서 여기에서는 복원할 수 없습니다. 이 파일을 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 이 파일들을 제외하고 계속하시겠습니까?\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+        `이 백업의 에셋 파일 ${count}개가 이 서버가 에셋 하나당 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 커서 여기에서는 복원할 수 없습니다. 이 파일을 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 이 파일들을 제외하고 계속하시겠습니까?\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "restoreAssetsSkippedTooLarge": (count: number, names: string[], limitBytes: number) =>
-        `백업을 복원했지만, 이 서버가 한 번의 요청으로 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 에셋 파일 ${count}개는 복원되지 않았습니다. 이 파일을 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 파일:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+        `백업을 복원했지만, 이 서버가 에셋 하나당 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 에셋 파일 ${count}개는 복원되지 않았습니다. 이 파일을 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 파일:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `서버 또는 서버 앞단의 프록시가 에셋 "${name}"이(가) 너무 크다며 거부하여 복원을 중단했습니다. 일부 이미지나 콜드 스토리지 항목이 이미 추가되었거나 교체되었을 수 있습니다. 현재 데이터베이스는 변경되지 않았습니다.`,
     "restoreAssetUploadStopped": (name: string) =>
@@ -1926,9 +1928,9 @@ export const languageKorean = {
         `백업을 복원했지만, 이 페이지가 저장할 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 인레이(채팅 이미지, 영상, 오디오, 서명) ${count}개는 복원되지 않았습니다. 이 인레이를 사용하는 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 항목:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupInlaysOldStoreUnlisted": "이 브라우저의 이전 인레이 저장소를 읽을 수 없어, 그곳에만 있는 인레이는 백업에 포함되지 않았습니다.",
     "restoreOversizedInlaysConfirm": (count: number, names: string[], limitBytes: number) =>
-        `이 백업에는 이 서버가 한 번의 요청으로 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 인레이(채팅 이미지, 영상, 오디오, 서명) ${count}개가 있어 여기서는 복원할 수 없습니다. 이 인레이를 사용하는 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 이 항목들을 제외하고 계속하시겠습니까?\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+        `이 백업에는 이 서버가 인레이 하나당 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 인레이(채팅 이미지, 영상, 오디오, 서명) ${count}개가 있어 여기서는 복원할 수 없습니다. 이 인레이를 사용하는 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 이 항목들을 제외하고 계속하시겠습니까?\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "restoreOversizedWithInlaysConfirm": (assetCount: number, assetNames: string[], inlayCount: number, inlayNames: string[], limitBytes: number) =>
-        `이 백업에는 이 서버가 한 번의 요청으로 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 에셋 파일 ${assetCount}개와 인레이(채팅 이미지, 영상, 오디오, 서명) ${inlayCount}개가 있어 여기서는 복원할 수 없습니다. 이 항목을 사용하는 캐릭터나 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 이 항목들을 제외하고 계속하시겠습니까?\n\n에셋 파일:\n${assetNames.join('\n')}${assetCount > assetNames.length ? `\n...외 ${assetCount - assetNames.length}개` : ''}\n\n인레이:\n${inlayNames.join('\n')}${inlayCount > inlayNames.length ? `\n...외 ${inlayCount - inlayNames.length}개` : ''}`,
+        `이 백업에는 이 서버가 에셋 또는 인레이 하나당 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 에셋 파일 ${assetCount}개와 인레이(채팅 이미지, 영상, 오디오, 서명) ${inlayCount}개가 있어 여기서는 복원할 수 없습니다. 이 항목을 사용하는 캐릭터나 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 이 항목들을 제외하고 계속하시겠습니까?\n\n에셋 파일:\n${assetNames.join('\n')}${assetCount > assetNames.length ? `\n...외 ${assetCount - assetNames.length}개` : ''}\n\n인레이:\n${inlayNames.join('\n')}${inlayCount > inlayNames.length ? `\n...외 ${inlayCount - inlayNames.length}개` : ''}`,
     "backupFailedFileDeleted": (asset: string | null) =>
         `${asset === null ? '백업에 실패했습니다.' : `${asset}이(가) 저장되는 동안 변경되었거나 읽을 수 없어 백업이 중단되었습니다.`} 백업 파일이 불완전하여 삭제했습니다. 백업을 다시 실행하세요.`,
     "backupFailedFileKept": (asset: string | null) =>
@@ -2154,8 +2156,8 @@ export const languageKorean = {
     opfsReadOnlyNotice: "RisuAI가 이번에는 데이터의 임시 사본으로 실행 중이므로 변경 사항을 저장하지 않으며, 백업 복원이나 저장소 정리도 사용할 수 없습니다. 데이터는 사라지지 않았습니다. 이 앱의 다른 탭을 닫고 다시 시작하면 데이터를 브라우저 저장소로 옮길 수 있습니다.",
     otherTabSavedReloadTitle: "다른 탭이나 기기에서 저장 방식 또는 저장 내용이 변경되어, 이 탭의 데이터 사본은 오래되었고 이 탭의 변경 사항은 이 탭에서 저장할 수 없습니다. 새로고침하면 저장 가능한 정상 상태로 돌아가지만, 이 탭에서 저장되지 않은 변경 사항은 모두 사라집니다.",
     savingStoppedReplacedMessage: "이 탭은 저장을 멈췄습니다. 다른 탭이나 기기가 저장된 데이터를 교체했기 때문에(백업을 불러왔거나 데이터가 새 형식으로 옮겨졌습니다), 이 탭의 사본은 오래되었고 이 탭에서 저장할 수 없습니다. 지금부터 하는 변경 사항은 유지되지 않습니다. 새로고침하면 최신 데이터를 가져오지만, 이 탭에서 저장되지 않은 변경 사항은 모두 사라집니다.",
-    savingStoppedTooLargeBlockMessage: (what: string, limitBytes: number) =>
-        `이 탭은 저장을 멈췄습니다. 셀프 호스팅 서버는 한 번의 요청에 최대 ${limitBytes / (1024 * 1024)} MiB까지만 받으며(서버 앞의 프록시가 더 낮은 한도를 설정했다면 그보다 작게), ${what ? `데이터의 이 부분이 그 한도를 넘었습니다: ${what}` : '데이터의 일부가 그 한도를 넘었지만, 서버가 어느 부분인지는 알려주지 않았습니다'}. 마지막으로 성공한 저장 이후의 변경 사항은 새로고침하면 사라집니다. 채팅이나 콘텐츠를 삭제하는 등으로 해당 부분의 크기를 줄이세요.`,
+    savingStoppedTooLargeBlockMessage: (what: string, limitBytes: number, assetLimitBytes: number) =>
+        `이 탭은 저장을 멈췄습니다. 셀프 호스팅 서버는 캐릭터, 채팅, 설정처럼 저장되는 데이터 한 부분당 최대 ${formatByteLimit(limitBytes)}까지만 받으며(서버 앞의 프록시가 더 낮은 한도를 설정했다면 그보다 작게), ${what ? `이 부분이 그 한도를 넘었습니다: ${what}` : '데이터의 일부가 그 한도를 넘었지만, 서버가 어느 부분인지는 알려주지 않았습니다'}. 에셋 파일(이미지, 오디오, 영상)에는 파일당 ${formatByteLimit(assetLimitBytes)}라는 별도 한도가 있으며, 이것은 원인이 아닙니다. 마지막으로 성공한 저장 이후의 변경 사항은 새로고침하면 사라집니다. 채팅이나 콘텐츠를 삭제하는 등으로 해당 부분의 크기를 줄이세요.`,
     savingStoppedConversionFailedMessage: "이 탭은 저장을 멈췄습니다. 데이터를 새 저장 형식으로 옮기려고 여러 번 시도했지만 성공하지 못했으며, 저장된 데이터는 전혀 변경되지 않았습니다. 마지막으로 성공한 저장 이후의 변경 사항은 새로고침하면 사라집니다. 페이지를 새로고침하여 다시 시도하세요.",
     savingStoppedUnconfirmedMessage: "이 탭은 저장을 멈췄습니다. RisuAI가 어느 저장본이 현재 것인지 확인하지 못했습니다. 페이지를 새로고침하여 어느 것이 불러와졌는지 확인하세요. 이 탭에서 마지막으로 성공한 저장 이후에 한 변경 사항은 사라졌을 수 있습니다.",
     savingStoppedInvalidDataMessage: (what: string) =>
@@ -2226,8 +2228,8 @@ export const languageKorean = {
     restoreLeftOutConfirm: (items: string) =>
         `이 백업 파일은 일부가 손상되었습니다. 아직 온전한 부분만 복원할 수 있으며, 다음 항목은 제외됩니다:\n\n${items}\n\n현재 데이터는 온전한 부분으로 대체됩니다. 복원하시겠습니까?`,
     restoreNotHappenedNotice: "백업을 불러오는 동안 다른 탭이나 기기에서 저장된 데이터를 변경했기 때문에 백업을 불러오지 않았으며, 아무것도 변경되지 않았습니다. 페이지를 새로고침한 뒤 다시 시도하세요.",
-    restoreTooLargeBlock: (what: string, limitBytes: number) =>
-        `이 백업을 불러오지 못했습니다. 셀프 호스팅 서버는 한 번의 요청에 최대 ${limitBytes / (1024 * 1024)} MiB까지만 받으며(서버 앞의 프록시가 더 낮은 한도를 설정했다면 그보다 작게), ${what ? `데이터의 이 부분이 그 한도를 넘었습니다: ${what}` : '데이터의 일부가 그 한도를 넘었습니다'}. 아무것도 변경되지 않았습니다.`,
+    restoreTooLargeBlock: (what: string, limitBytes: number, assetLimitBytes: number) =>
+        `이 백업을 불러오지 못했습니다. 셀프 호스팅 서버는 캐릭터, 채팅, 설정처럼 저장되는 데이터 한 부분당 최대 ${formatByteLimit(limitBytes)}까지만 받으며(서버 앞의 프록시가 더 낮은 한도를 설정했다면 그보다 작게), ${what ? `이 부분이 그 한도를 넘었습니다: ${what}` : '데이터의 일부가 그 한도를 넘었습니다'}. 에셋 파일(이미지, 오디오, 영상)은 원인이 아니며, 파일마다 최대 ${formatByteLimit(assetLimitBytes)}까지 허용됩니다. 아무것도 변경되지 않았습니다.`,
     restoreNoUndoCopyConfirm: (reason: 'damaged' | 'absent' | 'too-large') =>
         (reason === 'damaged' ? '현재 저장된 데이터를 읽을 수 없어, 이번에 불러오기 전에 백업 사본으로 보관할 수 없습니다. '
             : reason === 'too-large' ? '현재 데이터가 셀프 호스팅 서버가 백업 사본 하나로 받아들이는 크기보다 커서, 이번에 불러오기 전에 백업으로 보관할 수 없습니다. '

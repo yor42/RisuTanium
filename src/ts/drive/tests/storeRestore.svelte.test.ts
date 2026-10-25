@@ -375,8 +375,10 @@ describe('saving first', () => {
         // Over several loop ticks the page tells the person once, and the tab shows the stopped reason.
         await sleepReal(1500)
         const stoppedLabel = language.saveUnitLabel('chatPart', 1024)
+        // The page's own module graph decides the asset limit it prints.
+        const { storeAssetLimitBytes } = await import('src/ts/storage/assetLimit')
         expect(vi.mocked(page.alert.alertToast).mock.calls.map((call) => call[0]))
-            .toEqual([language.savingStoppedTooLargeBlockMessage(stoppedLabel, NODE_BODY_LIMIT_BYTES)])
+            .toEqual([language.savingStoppedTooLargeBlockMessage(stoppedLabel, NODE_BODY_LIMIT_BYTES, storeAssetLimitBytes())])
         const { get: readStore } = await import('svelte/store')
         expect(readStore((await import('src/ts/stores.svelte')).savingStoppedReason)).toBe('too-large')
         vi.mocked(page.alert.alertWait).mockClear()

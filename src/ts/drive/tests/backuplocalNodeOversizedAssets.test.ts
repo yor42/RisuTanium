@@ -43,6 +43,9 @@ vi.mock(import('../../platform'), () => ({
 
 vi.mock(import('../../storage/nodeBodyLimit'), () => ({
     NODE_BODY_LIMIT_BYTES: 1024 * 1024,
+    // A Node page whose server takes pieces holds an asset up to this; the browser limit sits between the two.
+    NODE_ASSET_LIMIT_BYTES: 8 * 1024 * 1024,
+    WEB_ASSET_LIMIT_BYTES: 2 * 1024 * 1024,
 }))
 
 vi.mock('@tauri-apps/plugin-fs', () => ({
@@ -145,7 +148,10 @@ import { overrideBackupWindowBytes } from '../backupContainer'
 import { encodeRisuSaveLegacy } from '../../storage/risuSave'
 import { forageStorage } from '../../globalApi.svelte'
 import { injectRestoreStore } from './restoreSupport'
+import { injectAppStore } from '../../storage/store/appStore'
+import { getPageBlockOwner } from '../../storage/pageBlockOwner'
 import { NodeHttpError } from '../../storage/store/nodeHttpStore'
+import type { ByteStore } from '../../storage/store/contract'
 import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
 
 //#region fixtures
@@ -205,8 +211,11 @@ let capturedInput: HTMLInputElement | null = null
 let createElementSpy: ReturnType<typeof vi.spyOn>
 /** Keys whose store write throws the given error. */
 const failingWrites = new Map<string, Error>()
+/** Whether the page's Node store has recorded that its server takes pieces. */
+const nodePieces = { recorded: false }
+let restoreStore: ByteStore
 
-beforeEach(() => {
+beforeEach(async () => {
     setDatabaseMock.mockClear()
     forageFiles.clear()
     forageSetItemMock.mockClear()
@@ -230,9 +239,11 @@ beforeEach(() => {
 
     const forageBackedStore = createForageBackedStore(forageStorage as unknown as ForageLike)
     // The restore writes a block generation through the page's byte store; here it is the storage-object model above. The model has
-    // no revision API, so the page is a desktop-kind one (a mutex head swap); the Node behaviour under test is the platform flag
-    // above and the thrown NodeHttpError.
-    injectRestoreStore({
+    // no revision API, so the block store runs in its mutex-head mode. The page's store kind is 'node' (the size limits follow the
+    // selected store), and the model records whether its server takes pieces through `piecesRecorded`; an asset sent in pieces is
+    // collected by `openWriter` and stored whole under its final key.
+    nodePieces.recorded = false
+    restoreStore = {
         ...forageBackedStore,
         write: async (key, bytes, condition) => {
             const failure = failingWrites.get(key)
@@ -241,7 +252,24 @@ beforeEach(() => {
             }
             return forageBackedStore.write(key, bytes, condition)
         },
-    })
+        piecesRecorded: () => nodePieces.recorded,
+        readPieces: async () => null,
+        openWriter: (key) => {
+            const parts: Uint8Array[] = []
+            return {
+                write: async (data) => { parts.push(data.slice()) },
+                finish: async (finalKey) => {
+                    await (forageStorage as unknown as ForageLike).setItem(finalKey ?? key, concatChunks(parts))
+                },
+                abort: async () => { parts.length = 0 },
+            }
+        },
+    }
+    // The page's block owner is built while the kind is 'tauri' (a mutex head swap), because the model has no revision API for
+    // the Node head swap; the owner stays cached when the selected kind then becomes 'node', which the size limits follow.
+    injectRestoreStore(restoreStore, 'tauri')
+    await getPageBlockOwner()
+    injectAppStore(restoreStore, 'node')
 
     capturedInput = null
     const realCreateElement = document.createElement.bind(document)
@@ -373,6 +401,46 @@ describe('an asset over the Node server body limit is disclosed before anything 
         expect(alertMocks.alertNormalWait).not.toHaveBeenCalled()
     })
 
+    // Reproducer (red before the limits followed the store): with pieces recorded the limit is the asset limit, not one request.
+    test('with pieces recorded an asset above one request and within the asset limit is restored in pieces, with no question', async () => {
+        nodePieces.recorded = true
+        const big = 6 * 1024 * 1024
+        const bytes = concatChunks([assetEntry('big.png', big), databaseEntry()])
+
+        await loadBackupBytes(bytes)
+
+        expect(alertMocks.alertConfirm).not.toHaveBeenCalled()
+        expect(writtenAssetKeys()).toEqual(['assets/big.png'])
+        const stored = forageSetItemMock.mock.calls.find((call) => call[0] === 'assets/big.png')?.[1]
+        expect(stored?.length).toBe(big)
+        expectBlockGenerationCommitted()
+        expect(alertMocks.alertNormalWait).not.toHaveBeenCalled()
+    })
+
+    test('with pieces recorded an asset above the asset limit is still asked about, naming the asset limit', async () => {
+        nodePieces.recorded = true
+        const assetLimit = 8 * 1024 * 1024
+        const bytes = concatChunks([assetEntry('fits.png', LIMIT + 10), assetEntry('huge.png', assetLimit + 10), databaseEntry()])
+
+        await loadBackupBytes(bytes)
+
+        expect(alertMocks.alertConfirm).toHaveBeenCalledTimes(1)
+        expect(alertMocks.alertConfirm).toHaveBeenCalledWith(language.restoreOversizedAssetsConfirm(1, ['huge.png'], assetLimit))
+        expect(writtenAssetKeys()).toEqual(['assets/fits.png'])
+        expect(alertMocks.alertNormalWait).toHaveBeenCalledWith(language.restoreAssetsSkippedTooLarge(1, ['huge.png'], assetLimit))
+    })
+
+    // Guard (passes before and after): a non-asset entry keeps its own path and is never listed by the asset limit.
+    test('with pieces recorded a cold unit above one request still restores and is not listed', async () => {
+        nodePieces.recorded = true
+        const bytes = concatChunks([bigColdEntry(), databaseEntry()])
+
+        await loadBackupBytes(bytes)
+
+        expect(alertMocks.alertConfirm).not.toHaveBeenCalled()
+        expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
+    })
+
     test('a cold unit whose JSON is over the limit restores and is not listed', async () => {
         const bytes = concatChunks([bigColdEntry(), databaseEntry()])
 
@@ -387,6 +455,7 @@ describe('an asset over the Node server body limit is disclosed before anything 
 
     test('an oversized asset on a page that is not Node-served is written, with no question asked', async () => {
         platformBox.isNodeServer = false
+        injectAppStore(restoreStore, 'tauri')
         const bytes = concatChunks([assetEntry('huge.png', LIMIT + 10), databaseEntry()])
 
         await loadBackupBytes(bytes)

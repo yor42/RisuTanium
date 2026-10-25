@@ -19,6 +19,7 @@ import { MEASURE } from "../process/memory/measureFlag";
 import { peekNetTickStats, residentCharacterCount, resetNetTickStats } from "../storage/measureExportHold";
 import { NodeHttpError } from "../storage/store/nodeHttpStore";
 import { NODE_BODY_LIMIT_BYTES } from "../storage/nodeBodyLimit";
+import { selectedStoreIsNode, storeAssetLimitBytes } from "../storage/assetLimit";
 import { createYieldBudget, yieldToEventLoop } from "../storage/saveYield";
 import { getDatabase, setDatabase, type Database } from "../storage/database.svelte";
 import { repairBotPresetsId } from "../storage/botPresetRepair";
@@ -447,6 +448,22 @@ async function nodePieceStore(): Promise<ByteStore | null> {
     } catch {
         return null
     }
+}
+
+/**
+ * The largest asset body a restore on a Node page may store: the asset limit when the server takes pieces, one request
+ * otherwise. `null` on any other store, where an asset's size is not checked up front. The capability is recorded
+ * once here (`nodePieceStore`), so this limit and the streaming decision of the restore come from the same answer.
+ * Non-asset entries (the database, cold-storage units) keep their own paths and the body limit. The page's store was
+ * selected at boot, long before a restore; the selection is read here and never started, because starting it takes
+ * the storage locks earlier than the restore's own lock attempt.
+ */
+async function nodeRestoreAssetLimit(): Promise<number | null> {
+    if (!selectedStoreIsNode()) {
+        return null
+    }
+    await nodePieceStore()
+    return storeAssetLimitBytes()
 }
 
 /** The Node page's asset piece source, or `null` where the whole-value paths stay. */
@@ -1322,12 +1339,12 @@ function checkIndexedEntry(bytes: Uint8Array, entry: BackupIndexEntry, expectedL
  * what is written, and the database is not an asset. An inlay part is not an
  * asset either: it is judged by `listOversizedInlays`. The walk kept the name
  * (its first `OVERSIZED_NAME_READ_BYTES` bytes for a longer one) of every
- * entry over `NODE_BODY_LIMIT_BYTES` when it was asked to.
+ * entry over `assetLimit` when it was asked to.
  */
-function listOversizedAssets(entries: readonly BackupIndexEntry[], names: ReadonlyMap<number, string>): { entry: BackupIndexEntry; name: string }[] {
+function listOversizedAssets(entries: readonly BackupIndexEntry[], names: ReadonlyMap<number, string>, assetLimit: number): { entry: BackupIndexEntry; name: string }[] {
     const found: { entry: BackupIndexEntry; name: string }[] = [];
     for (const entry of entries) {
-        if (entry.dataLength <= NODE_BODY_LIMIT_BYTES) {
+        if (entry.dataLength <= assetLimit) {
             continue;
         }
         const name = names.get(entry.headerOffset);
@@ -1361,8 +1378,24 @@ interface Store2BinImport {
     guard: UnsavedGuard;
 }
 
+/**
+ * The notices for the inlays left out as too large, one per distinct limit that applied (an Android video has a
+ * smaller bound than other inlays), each printing the limit that was used.
+ */
+function tooLargeInlayNotices(skippedInlays: readonly InlaySkipped[]): string[] {
+    const byLimit = new Map<number, string[]>();
+    for (const skipped of skippedInlays) {
+        if (skipped.reason !== 'tooLarge') {
+            continue;
+        }
+        const limit = skipped.limit ?? inlayAttachmentLimit();
+        byLimit.set(limit, [...(byLimit.get(limit) ?? []), skipped.label]);
+    }
+    return Array.from(byLimit, ([limit, names]) => language.restoreInlaysTooLarge(names.length, shownSkippedNames(names), limit));
+}
+
 /** The notices of what a store2 import left out, in the order the block-era restore shows them; each is awaited before the reload takes the page away. */
-function skippedNoticesOf(skippedAssets: readonly SkippedAsset[], skippedInlays: readonly InlaySkipped[]): string[] {
+function skippedNoticesOf(skippedAssets: readonly SkippedAsset[], skippedInlays: readonly InlaySkipped[], assetLimit: number | null): string[] {
     const notices: string[] = [];
     const invalidNames = skippedAssets.filter((skipped) => skipped.reason === 'invalidName').map((skipped) => skipped.name);
     const tooLargeNames = skippedAssets.filter((skipped) => skipped.reason === 'tooLarge').map((skipped) => skipped.name);
@@ -1370,21 +1403,18 @@ function skippedNoticesOf(skippedAssets: readonly SkippedAsset[], skippedInlays:
         notices.push(language.restoreAssetsSkipped(invalidNames.length, shownSkippedNames(invalidNames)));
     }
     if (tooLargeNames.length > 0) {
-        notices.push(language.restoreAssetsSkippedTooLarge(tooLargeNames.length, shownSkippedNames(tooLargeNames), NODE_BODY_LIMIT_BYTES));
+        notices.push(language.restoreAssetsSkippedTooLarge(tooLargeNames.length, shownSkippedNames(tooLargeNames), assetLimit ?? NODE_BODY_LIMIT_BYTES));
     }
     const inlayNames = (reason: InlaySkipped['reason']) => skippedInlays.filter((skipped) => skipped.reason === reason).map((skipped) => skipped.label);
     const invalidInlays = inlayNames('invalid');
     const notStoredInlays = inlayNames('notStored');
-    const tooLargeInlays = inlayNames('tooLarge');
     if (invalidInlays.length > 0) {
         notices.push(language.restoreInlaysInvalid(invalidInlays.length, shownSkippedNames(invalidInlays)));
     }
     if (notStoredInlays.length > 0) {
         notices.push(language.restoreInlaysNotStored(notStoredInlays.length, shownSkippedNames(notStoredInlays)));
     }
-    if (tooLargeInlays.length > 0) {
-        notices.push(language.restoreInlaysTooLarge(tooLargeInlays.length, shownSkippedNames(tooLargeInlays), inlayAttachmentLimit()));
-    }
+    notices.push(...tooLargeInlayNotices(skippedInlays));
     return notices;
 }
 
@@ -1491,13 +1521,14 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
             // means the file could not be confirmed safe, so it is treated
             // the same as finding the marker: nothing is written. This scan
             // takes no lock and runs before the cross-tab guard below.
+            const assetLimit = await nodeRestoreAssetLimit();
             let hasEncryptionMarker: boolean;
             let backupEntries: BackupIndexEntry[];
             let backupNames: ReadonlyMap<number, string>;
             try {
                 let lastWalkProgressText: string | null = null;
                 const walk = await indexBackupEntries(file, {
-                    oversizeBodyBytes: isNodeServer ? NODE_BODY_LIMIT_BYTES : undefined,
+                    oversizeBodyBytes: assetLimit ?? undefined,
                     onProgress: (scanned, total) => {
                         const progress = total > 0 ? ((scanned / total) * 100).toFixed(2) : '100.00'
                         const progressText = `Checking local backup... (${progress}%)`;
@@ -1544,14 +1575,14 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
             // be stored. Those assets are named before anything is written, and
             // the restore goes on without them only if the user agrees.
             const oversizedAssetNames = new Map<number, string>();
-            const inlayCollector = new InlayRestoreCollector(inlayAttachmentLimit());
-            if (isNodeServer) {
-                let oversizedInlays: { hash: string, id: string }[];
+            const inlayCollector = new InlayRestoreCollector(inlayAttachmentLimit);
+            if (assetLimit !== null) {
+                let oversizedInlays: { hash: string, id: string, limit: number }[];
                 try {
-                    for (const { entry, name } of listOversizedAssets(backupEntries, backupNames)) {
+                    for (const { entry, name } of listOversizedAssets(backupEntries, backupNames, assetLimit)) {
                         oversizedAssetNames.set(entry.headerOffset, name);
                     }
-                    oversizedInlays = await listOversizedInlays(file, backupEntries, inlayAttachmentLimit());
+                    oversizedInlays = await listOversizedInlays(file, backupEntries, inlayAttachmentLimit);
                 } catch (e) {
                     console.error(e);
                     alertError(language.backupFileUnreadable);
@@ -1561,7 +1592,7 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                     const names = Array.from(oversizedAssetNames.values());
                     const inlayNames = oversizedInlays.map((inlay) => inlay.id);
                     const question = oversizedInlays.length === 0
-                        ? language.restoreOversizedAssetsConfirm(names.length, shownSkippedNames(names), NODE_BODY_LIMIT_BYTES)
+                        ? language.restoreOversizedAssetsConfirm(names.length, shownSkippedNames(names), assetLimit)
                         : names.length === 0
                             ? language.restoreOversizedInlaysConfirm(inlayNames.length, shownSkippedNames(inlayNames), inlayAttachmentLimit())
                             : language.restoreOversizedWithInlaysConfirm(names.length, shownSkippedNames(names), inlayNames.length, shownSkippedNames(inlayNames), inlayAttachmentLimit());
@@ -1569,7 +1600,7 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                         return declined();
                     }
                     for (const inlay of oversizedInlays) {
-                        inlayCollector.preSkip(inlay.hash, inlay.id);
+                        inlayCollector.preSkip(inlay.hash, inlay.id, inlay.limit);
                     }
                 }
             }
@@ -1981,7 +2012,7 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                         // Only an install that landed has anything left out to report; each notice is awaited so the dispatch
                         // does not open the profile (or reload onto it) over an unread notice.
                         if (bootEnd.kind === 'finished' && bootEnd.result.status === 'installed') {
-                            for (const notice of skippedNoticesOf(skippedAssets, skippedInlays)) {
+                            for (const notice of skippedNoticesOf(skippedAssets, skippedInlays, assetLimit)) {
                                 await alertNormalWait(notice);
                             }
                         }
@@ -2027,7 +2058,7 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                             facts.flushed = end.flushed;
                             facts.repair = end.repair;
                             facts.incomplete = end.incomplete;
-                            await announceStore2Import(end, skippedNoticesOf(skippedAssets, skippedInlays), () => reloadOntoRestoredState(releaseExclusiveHold));
+                            await announceStore2Import(end, skippedNoticesOf(skippedAssets, skippedInlays, assetLimit), () => reloadOntoRestoredState(releaseExclusiveHold));
                             return ended('committed');
                     }
                 }
@@ -2152,7 +2183,7 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                     return refused(written.aborted ? 'busy' : null);
                 }
                 if (written.kind === 'too-large') {
-                    alertError(language.restoreTooLargeBlock(describeBlockForPerson(written.blockName), written.limit));
+                    alertError(language.restoreTooLargeBlock(describeBlockForPerson(written.blockName), written.limit, storeAssetLimitBytes()));
                     return refused();
                 }
                 if (written.kind === 'unsavable') {
@@ -2190,20 +2221,19 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                     await alertNormalWait(language.restoreAssetsSkipped(skippedInvalidNames.length, shownSkippedNames(skippedInvalidNames)));
                 }
                 if (skippedTooLargeNames.length > 0) {
-                    await alertNormalWait(language.restoreAssetsSkippedTooLarge(skippedTooLargeNames.length, shownSkippedNames(skippedTooLargeNames), NODE_BODY_LIMIT_BYTES));
+                    await alertNormalWait(language.restoreAssetsSkippedTooLarge(skippedTooLargeNames.length, shownSkippedNames(skippedTooLargeNames), assetLimit ?? NODE_BODY_LIMIT_BYTES));
                 }
                 const skippedInlayNames = (reason: InlaySkipped['reason']) => skippedInlays.filter((skipped) => skipped.reason === reason).map((skipped) => skipped.label);
                 const invalidInlays = skippedInlayNames('invalid');
                 const notStoredInlays = skippedInlayNames('notStored');
-                const tooLargeInlays = skippedInlayNames('tooLarge');
                 if (invalidInlays.length > 0) {
                     await alertNormalWait(language.restoreInlaysInvalid(invalidInlays.length, shownSkippedNames(invalidInlays)));
                 }
                 if (notStoredInlays.length > 0) {
                     await alertNormalWait(language.restoreInlaysNotStored(notStoredInlays.length, shownSkippedNames(notStoredInlays)));
                 }
-                if (tooLargeInlays.length > 0) {
-                    await alertNormalWait(language.restoreInlaysTooLarge(tooLargeInlays.length, shownSkippedNames(tooLargeInlays), inlayAttachmentLimit()));
+                for (const notice of tooLargeInlayNotices(skippedInlays)) {
+                    await alertNormalWait(notice);
                 }
                 // Awaited like the notices above, so it is read before the reload
                 // takes the page away; only a restore that landed gets here.

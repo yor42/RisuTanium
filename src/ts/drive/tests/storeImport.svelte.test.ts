@@ -449,6 +449,10 @@ describe('preconditions are checked before the first asset is written', () => {
     test('guard: the Node oversize prompt is asked first and a decline writes nothing', async () => {
         platformBox.isNodeServer = true
         const page = await openPage()
+        // The oversize question follows the page's selected store; this world's store stands in for a Node store without recorded pieces.
+        // The page runs in its own module graph, so the registry is taken from that graph.
+        const { noteSelectedStore } = await import('src/ts/storage/assetLimit')
+        noteSelectedStore('node', page.w.store)
         const big = new Uint8Array(1024 * 1024 + 1)
         const bytes = binOf(binEntry('big-asset.png', big), ...[golden('upstream-full.bin')])
         vi.mocked(page.alert.alertConfirm).mockImplementation(async () => false)

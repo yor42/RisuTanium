@@ -22,7 +22,8 @@ import { writable } from 'svelte/store'
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import type { Database } from '../../ts/storage/database.svelte'
 import type { FrozenSaveKeyInfo } from '../../ts/stores.svelte'
-import { NODE_BODY_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
+import { NODE_ASSET_LIMIT_BYTES, NODE_BODY_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
+import { storeAssetLimitBytes } from 'src/ts/storage/assetLimit'
 import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { heldSaveStore } from 'src/ts/storage/saveHold'
 
@@ -207,7 +208,7 @@ describe('SavePopupIcon -- the read-only page and the stop reasons of the block 
         flushSync()
 
         const message = alertNormalSpy.mock.calls[0][0] as string
-        expect(message).toBe(language.savingStoppedTooLargeBlockMessage('"Alice"', NODE_BODY_LIMIT_BYTES))
+        expect(message).toBe(language.savingStoppedTooLargeBlockMessage('"Alice"', NODE_BODY_LIMIT_BYTES, storeAssetLimitBytes()))
         expect(message).toContain('"Alice"')
         expect(message).not.toMatch(/archiv/i)
 
@@ -224,12 +225,20 @@ describe('SavePopupIcon -- the read-only page and the stop reasons of the block 
     })
 
     test('the too-large message reads grammatically for a plural label and for a character\'s name', () => {
-        const plural = language.savingStoppedTooLargeBlockMessage(language.saveBlockLabel('preset'), NODE_BODY_LIMIT_BYTES)
-        expect(plural).toContain('this part of your data is over that: your bot presets.')
+        const plural = language.savingStoppedTooLargeBlockMessage(language.saveBlockLabel('preset'), NODE_BODY_LIMIT_BYTES, NODE_BODY_LIMIT_BYTES)
+        expect(plural).toContain('this part is over that: your bot presets.')
         expect(plural).not.toContain('presets is')
-        const character = language.savingStoppedTooLargeBlockMessage('"Alice"', NODE_BODY_LIMIT_BYTES)
-        expect(character).toContain('this part of your data is over that: "Alice".')
-        expect(language.savingStoppedTooLargeBlockMessage('', NODE_BODY_LIMIT_BYTES)).toContain('and part of your data is over that; the server did not say which part.')
+        const character = language.savingStoppedTooLargeBlockMessage('"Alice"', NODE_BODY_LIMIT_BYTES, NODE_BODY_LIMIT_BYTES)
+        expect(character).toContain('this part is over that: "Alice".')
+        expect(language.savingStoppedTooLargeBlockMessage('', NODE_BODY_LIMIT_BYTES, NODE_BODY_LIMIT_BYTES)).toContain('and part of your data is over that; the server did not say which part.')
+    })
+
+    test('the too-large message names the part limit and the asset limit that apply, in MiB below 1 GiB and GiB from it', () => {
+        const withPieces = language.savingStoppedTooLargeBlockMessage('"Alice"', NODE_BODY_LIMIT_BYTES, NODE_ASSET_LIMIT_BYTES)
+        expect(withPieces).toBe('This tab has stopped saving. The self-hosted server accepts at most 100 MiB for one saved part of your data, such as a character, a chat or the settings (less if a proxy in front of the server sets a lower limit), and this part is over that: "Alice". Asset files (images, audio and video) have their own limit of 1 GiB each and are not the cause. Changes since the last successful save will be lost when you reload. Make that part smaller, for example by deleting chats or content from it.')
+        const withoutPieces = language.savingStoppedTooLargeBlockMessage('"Alice"', NODE_BODY_LIMIT_BYTES, NODE_BODY_LIMIT_BYTES)
+        expect(withoutPieces).toContain('have their own limit of 100 MiB each')
+        expect(withoutPieces).not.toContain('GiB')
     })
 
     test('the snapshot-skipped notice advises exporting a .bin by the label the person sees', () => {
@@ -245,7 +254,7 @@ describe('SavePopupIcon -- the read-only page and the stop reasons of the block 
             language.savingStoppedReplacedMessage,
             language.savingStoppedConversionFailedMessage,
             language.savingStoppedUnconfirmedMessage,
-            language.savingStoppedTooLargeBlockMessage('x', NODE_BODY_LIMIT_BYTES),
+            language.savingStoppedTooLargeBlockMessage('x', NODE_BODY_LIMIT_BYTES, NODE_BODY_LIMIT_BYTES),
         ]
         expect(new Set(texts).size).toBe(texts.length)
     })

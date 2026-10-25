@@ -1,3 +1,5 @@
+import { formatByteLimit } from './formatByteLimit'
+
 export const languageChinese = {
     "formating": {
         "main": "主提示词",
@@ -1909,9 +1911,9 @@ export const languageChinese = {
         `备份已恢复，但有 ${count} 个资源文件因其名称无法被本应用保存而未能恢复。使用这些文件的角色会将其显示为缺失。已跳过的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "backupFileChangedWhileReading": "备份文件在读取过程中发生了变化，因此恢复已停止。部分图片或冷存储条目可能已被添加或替换。当前数据库未被更改。",
     "restoreOversizedAssetsConfirm": (count: number, names: string[], limitBytes: number) =>
-        `此备份中有 ${count} 个资源文件超过了此服务器单次请求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB，因此无法在此处恢复。使用这些文件的角色会将其显示为缺失。是否在不包含它们的情况下继续？\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+        `此备份中有 ${count} 个资源文件超过了此服务器对单个资源文件可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB，因此无法在此处恢复。使用这些文件的角色会将其显示为缺失。是否在不包含它们的情况下继续？\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "restoreAssetsSkippedTooLarge": (count: number, names: string[], limitBytes: number) =>
-        `备份已恢复，但有 ${count} 个资源文件超过了此服务器单次请求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB 而未能恢复。使用这些文件的角色会将其显示为缺失。已跳过的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+        `备份已恢复，但有 ${count} 个资源文件超过了此服务器对单个资源文件可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB 而未能恢复。使用这些文件的角色会将其显示为缺失。已跳过的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `服务器或其前端的代理以资源文件“${name}”过大为由拒绝了它，因此恢复已停止。部分图片或冷存储条目可能已被添加或替换。当前数据库未被更改。`,
     "restoreAssetUploadStopped": (name: string) =>
@@ -1927,9 +1929,9 @@ export const languageChinese = {
         `备份已恢复，但有 ${count} 个内嵌文件（聊天图片、视频、音频或签名）超过了此页面可存储的 ${Math.floor(limitBytes / (1024 * 1024))} MB 而未能恢复。使用这些文件的聊天会将其显示为缺失。已跳过的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "backupInlaysOldStoreUnlisted": "此浏览器的旧内嵌文件存储无法读取，因此仅存放在其中的内嵌文件未包含在备份中。",
     "restoreOversizedInlaysConfirm": (count: number, names: string[], limitBytes: number) =>
-        `此备份中有 ${count} 个内嵌文件（聊天图片、视频、音频或签名）超过了此服务器单次请求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB，因此无法在此处恢复。使用这些文件的聊天会将其显示为缺失。是否在不恢复它们的情况下继续？\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+        `此备份中有 ${count} 个内嵌文件（聊天图片、视频、音频或签名）超过了此服务器对单个内嵌文件可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB，因此无法在此处恢复。使用这些文件的聊天会将其显示为缺失。是否在不恢复它们的情况下继续？\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "restoreOversizedWithInlaysConfirm": (assetCount: number, assetNames: string[], inlayCount: number, inlayNames: string[], limitBytes: number) =>
-        `此备份中有 ${assetCount} 个资源文件和 ${inlayCount} 个内嵌文件（聊天图片、视频、音频或签名）超过了此服务器单次请求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB，因此无法在此处恢复。使用这些文件的角色或聊天会将其显示为缺失。是否在不恢复它们的情况下继续？\n\n资源文件：\n${assetNames.join('\n')}${assetCount > assetNames.length ? `\n...另有 ${assetCount - assetNames.length} 个` : ''}\n\n内嵌文件：\n${inlayNames.join('\n')}${inlayCount > inlayNames.length ? `\n...另有 ${inlayCount - inlayNames.length} 个` : ''}`,
+        `此备份中有 ${assetCount} 个资源文件和 ${inlayCount} 个内嵌文件（聊天图片、视频、音频或签名）超过了此服务器对单个资源文件或内嵌文件可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB，因此无法在此处恢复。使用这些文件的角色或聊天会将其显示为缺失。是否在不恢复它们的情况下继续？\n\n资源文件：\n${assetNames.join('\n')}${assetCount > assetNames.length ? `\n...另有 ${assetCount - assetNames.length} 个` : ''}\n\n内嵌文件：\n${inlayNames.join('\n')}${inlayCount > inlayNames.length ? `\n...另有 ${inlayCount - inlayNames.length} 个` : ''}`,
     "backupFailedFileDeleted": (asset: string | null) =>
         `${asset === null ? '备份失败。' : `备份已停止，因为 ${asset} 在保存过程中发生了变化或无法读取。`}备份文件不完整，因此已被删除。请重新运行备份。`,
     "backupFailedFileKept": (asset: string | null) =>
@@ -2154,8 +2156,8 @@ export const languageChinese = {
     "opfsReadOnlyNotice": "RisuAI 这次是在您数据的临时副本上运行，因此不会保存更改，也无法恢复备份或清理存储。您的数据没有丢失。请关闭此应用的其他标签页并重新启动，以便将数据迁移到浏览器存储。",
     "otherTabSavedReloadTitle": "另一个标签页或设备更改了保存方式或保存内容，因此此标签页的数据副本已过期，其更改无法从此标签页保存。重新加载可恢复到可正常保存的状态，但此标签页中任何未保存的更改都将丢失。",
     "savingStoppedReplacedMessage": "此标签页已停止保存。另一个标签页或设备替换了已保存的数据（加载了备份，或数据已迁移到新格式），因此此标签页的副本已过期，无法从此标签页保存。从现在起所做的更改将不会被保留。重新加载会获取当前的数据，此标签页中任何未保存的更改都将丢失。",
-    "savingStoppedTooLargeBlockMessage": (what: string, limitBytes: number) =>
-        `此标签页已停止保存。自托管服务器单次请求最多接受 ${limitBytes / (1024 * 1024)} MiB（如果服务器前的代理设置了更低的限制，则以更低的为准），而${what ? `您的这部分数据超出了该限制：${what}` : '您的部分数据超出了该限制；服务器没有说明是哪一部分'}。自上次成功保存以来的更改将在重新加载时丢失。请缩减该部分的大小，例如删除其中的聊天或内容。`,
+    "savingStoppedTooLargeBlockMessage": (what: string, limitBytes: number, assetLimitBytes: number) =>
+        `此标签页已停止保存。自托管服务器对每个已保存的数据部分（例如角色、聊天或设置）最多接受 ${formatByteLimit(limitBytes)}（如果服务器前的代理设置了更低的限制，则以更低的为准），而${what ? `这部分超出了该限制：${what}` : '您的部分数据超出了该限制；服务器没有说明是哪一部分'}。资源文件（图片、音频和视频）各有单独的限制，每个文件为 ${formatByteLimit(assetLimitBytes)}，它们不是原因。自上次成功保存以来的更改将在重新加载时丢失。请缩减该部分的大小，例如删除其中的聊天或内容。`,
     "savingStoppedConversionFailedMessage": "此标签页已停止保存。将您的数据迁移到新的保存格式在多次尝试后仍未成功，且已保存的数据没有任何更改。自上次成功保存以来的更改将在重新加载时丢失。请重新加载页面以重试。",
     "savingStoppedUnconfirmedMessage": "此标签页已停止保存。RisuAI 无法确认哪一份保存是当前的。请重新加载页面，查看加载的是哪一份；此标签页中自上次成功保存以来所做的更改可能已丢失。",
     "savingStoppedInvalidDataMessage": (what: string) =>
@@ -2226,8 +2228,8 @@ export const languageChinese = {
     "restoreLeftOutConfirm": (items: string) =>
         `此备份文件已部分损坏。只能恢复仍然完好的部分，以下内容将被排除：\n\n${items}\n\n您当前的数据将被这些完好的部分替换。要恢复吗？`,
     "restoreNotHappenedNotice": "在读取备份期间，您已保存的数据被其他标签页或设备更改，因此未读取该备份，也没有更改任何内容。请重新加载页面后再试。",
-    "restoreTooLargeBlock": (what: string, limitBytes: number) =>
-        `无法读取此备份：自托管服务器单次请求最多接受 ${limitBytes / (1024 * 1024)} MiB（如果服务器前的代理设置了更低的限制，则以更低的为准），而${what ? `您的这部分数据超出了该限制：${what}` : '您的部分数据超出了该限制'}。没有更改任何内容。`,
+    "restoreTooLargeBlock": (what: string, limitBytes: number, assetLimitBytes: number) =>
+        `无法读取此备份：自托管服务器对每个已保存的数据部分（例如角色、聊天或设置）最多接受 ${formatByteLimit(limitBytes)}（如果服务器前的代理设置了更低的限制，则以更低的为准），而${what ? `这部分超出了该限制：${what}` : '您的部分数据超出了该限制'}。资源文件（图片、音频和视频）不是原因；每个文件最多可达 ${formatByteLimit(assetLimitBytes)}。没有更改任何内容。`,
     "restoreNoUndoCopyConfirm": (reason: 'damaged' | 'absent' | 'too-large') =>
         (reason === 'damaged' ? '无法读取您当前已保存的数据，因此在本次读取之前无法将其保留为备份副本。'
             : reason === 'too-large' ? '您当前的数据超过了自托管服务器作为单个备份副本所能接受的大小，因此在本次读取之前无法将其保留为备份。'

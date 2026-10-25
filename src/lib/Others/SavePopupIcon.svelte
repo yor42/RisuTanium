@@ -5,6 +5,7 @@
   import { DBState, savingStoppedReason, frozenSaveKeysStore } from "src/ts/stores.svelte";
   import { language } from "src/lang";
   import { NODE_BODY_LIMIT_BYTES } from "src/ts/storage/nodeBodyLimit";
+  import { storeAssetLimitBytes } from "src/ts/storage/assetLimit";
   import { pageStorageModeStore } from "src/ts/storage/pageStorageMode";
   import { heldSaveStore } from "src/ts/storage/saveHold";
   import { pageStoreIsOpfsTransitional } from "src/ts/storage/store/appStore";
@@ -45,7 +46,7 @@
       case 'node-conflict':
         return language.savingStoppedNodeConflictMessage
       case 'too-large':
-        return language.savingStoppedTooLargeBlockMessage(getSavingStoppedDetail(), NODE_BODY_LIMIT_BYTES)
+        return language.savingStoppedTooLargeBlockMessage(getSavingStoppedDetail(), NODE_BODY_LIMIT_BYTES, storeAssetLimitBytes())
       case 'replaced':
         return language.savingStoppedReplacedMessage
       case 'conversion-failed':

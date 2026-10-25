@@ -230,6 +230,13 @@ import { checkCharOrder, type VirtualWriter } from 'src/ts/globalApi.svelte'
 import { changeChar } from 'src/ts/characters'
 import { importSourceOfBytes, type ImportSource } from 'src/ts/importSource'
 import { language } from 'src/lang'
+import { noteSelectedStore } from 'src/ts/storage/assetLimit'
+import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
+
+/** The asset limit follows the store the page selected: the browser store takes 200 MiB, a Node store without recorded pieces 100 MiB. */
+function selectStoreKind(kind: 'node' | 'indexeddb'): void {
+    noteSelectedStore(kind, createMemoryByteStore())
+}
 
 // ---------------------------------------------------------------------------------------------
 // Synthetic archives (no real images, no user data)
@@ -418,6 +425,7 @@ function reset() {
     h.latePushThrow = false
     h.maxEntryBytes = 0
     h.node = false
+    selectStoreKind('indexeddb')
     vi.mocked(changeChar).mockClear()
     vi.mocked(checkCharOrder).mockClear()
     Object.assign(charxLimits, defaultLimits)
@@ -1194,6 +1202,7 @@ describe('charx size limits: refusal before anything is saved', () => {
 describe('charx size limits on the Node server', () => {
     test('an asset the directory declares over the 100 MiB write limit is refused with a message naming the limit before anything is saved', async () => {
         h.node = true
+        selectStoreKind('node')
         const z = declareSize(await writerArchive(cardEntries(), 6), 'assets/a.bin', 101 * MIB)
         expectRefusedBeforeSaving(await runImport(z, 'card.charx', 'file'), 'declared 101 MiB on Node', sizeMessage('assets/a.bin', 100))
     })
@@ -1207,6 +1216,7 @@ describe('charx size limits on the Node server', () => {
 
     test('the card.json and module.risum limit stays 50 MiB on the Node server (guard)', async () => {
         h.node = true
+        selectStoreKind('node')
         const z = await writerArchive([...cardEntries().filter(([k]) => k !== 'card.json'), ['card.json', paddedCard(51 * MIB)]], 6)
         expectRefusedBeforeSaving(await runImport(z, 'card.charx', 'file'), 'card.json 51 MiB on Node', sizeMessage('card.json', 50))
     }, 240000)

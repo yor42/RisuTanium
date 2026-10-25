@@ -36,6 +36,9 @@ const platformBox = vi.hoisted(() => {
     Object.defineProperty(navigator, 'locks', { value: undefined, configurable: true })
     return { isTauri: false }
 })
+/** What the operating-system plugin answers; 'other' is no shell, 'android' puts the Android video bound on a video inlay. */
+const osBox = vi.hoisted(() => ({ os: 'other' }))
+vi.mock('@tauri-apps/plugin-os', () => ({ type: () => osBox.os }))
 const BACKUP_PATH = vi.hoisted(() => 'backup-output.bin')
 
 const backupSink = vi.hoisted(() => ({ writes: [] as Uint8Array[] }))
@@ -316,7 +319,7 @@ import { inlayLimits } from 'src/ts/process/files/inlayStore'
 import { cacheInlayRender, cachedInlayRender } from 'src/ts/process/files/inlayRenderCache'
 import { runInlayCopy } from 'src/ts/process/files/inlayCopy'
 import { language } from 'src/lang'
-import { inlayEntryName, inlayIdHash } from 'src/ts/drive/inlayBackupCodec'
+import { inlayEntryName, inlayIdHash, partsFor } from 'src/ts/drive/inlayBackupCodec'
 
 /**
  * The Tauri tests below run once per way the desktop reaches its assets: one
@@ -509,6 +512,7 @@ function withPrefix(record: Record<string, string>): Record<string, string> {
 
 beforeEach(() => {
     platformBox.isTauri = false
+    osBox.os = 'other'
     backupSink.writes.length = 0
     batchFake.reset()
     batchFake.useStore(getAppStore)
@@ -1493,6 +1497,22 @@ describe('restoring the inlay entries of a backup', () => {
         } finally {
             inlayLimits.attachmentBytes = saved
         }
+    })
+
+    // Reproducer: the notice printed the untyped limit, so an Android video left out at 200 MiB was reported against the store's 1 GiB.
+    test('acceptance: on Android the notice prints the limit that applied, 200 MiB for a video and the store limit for audio', async () => {
+        osBox.os = 'android'
+        const claimed = (id: string, type: string, len: number) => buildInlayParts(id, new Uint8Array(8), {
+            fields: { name: id, ext: 'bin', type }, mime: `${type}/x`, header: { len, parts: partsFor(len) },
+        })
+        const MIB = 1024 * 1024
+
+        await loadBackupBytes(builtBackup([...await claimed('vid', 'video', 200 * MIB + 1), ...await claimed('aud', 'audio', 1024 * MIB + 1)]))
+
+        const notices = noticesShown()
+        expect(notices).toHaveLength(2)
+        expect(notices).toContain(language.restoreInlaysTooLarge(1, ['vid'], 200 * MIB))
+        expect(notices).toContain(language.restoreInlaysTooLarge(1, ['aud'], 1024 * MIB))
     })
 
     test('acceptance: a store that refuses an inlay is reported apart from an invalid entry, and the restore continues', async () => {

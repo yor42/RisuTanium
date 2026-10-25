@@ -33,7 +33,11 @@ const h = vi.hoisted(() => ({
     node: false,
     getCalls: [] as string[],
     onRemove: null as null | (() => void),
+    /** What the operating-system plugin answers; the Android video bound applies when it is 'android'. */
+    os: 'windows' as string,
 }))
+
+vi.mock('@tauri-apps/plugin-os', () => ({ type: () => h.os }))
 
 vi.mock('localforage', () => ({
     default: {
@@ -110,6 +114,7 @@ beforeEach(() => {
     h.node = false
     h.getCalls = []
     h.onRemove = null
+    h.os = 'windows'
     resetBusyActionsForTest()
     resetInlayCopyForTests()
     resetPageStorageModeForTests()
@@ -286,6 +291,23 @@ describe('residue and settled starts', () => {
         }
         expect(appStore.lists.length - listsAfterFirst).toBe(2)
         expect(h.keysCalls - keysAfterFirst).toBe(2)
+    })
+
+    // Reproducer: the copy passed no inlay type to the limit, so an Android video above 200 MiB was copied once the store took 1 GiB.
+    test('on Android a video above 200 MiB stays in the old store as residue while audio of the same size is copied', async () => {
+        h.os = 'android'
+        injectAppStore(appStore, 'tauri')
+        class BigBlob extends Blob {
+            override get size() { return 200 * MIB + 1 }
+        }
+        h.legacy.set('video', legacyImage('video', { name: 'video', ext: 'mp4', type: 'video', data: new BigBlob(['v'], { type: 'video/mp4' }) }))
+        h.legacy.set('audio', legacyImage('audio', { name: 'audio', ext: 'mp3', type: 'audio', data: new BigBlob(['a'], { type: 'audio/mpeg' }) }))
+
+        await expect(runInlayCopy(env)).resolves.toBe('done')
+
+        expect(JSON.parse(flags.get('inlayCopyDone')!).residual).toEqual(['video'])
+        expect(await readAppInlay('video')).toBeNull()
+        expect(await readAppInlay('audio')).not.toBeNull()
     })
 
     class UnreadableBlob extends Blob {
