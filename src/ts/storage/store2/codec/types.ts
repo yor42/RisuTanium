@@ -61,23 +61,44 @@ export class CodecAssembleError extends CodecError {
     }
 }
 
-/** One framed unit an encode produced; `reused` units hold the previous encoding's key and are not written again. */
-export interface EncodedUnit {
+interface EncodedUnitBase {
     /** Stable name of the unit's place in the tree; the reuse lookup key. */
     identity: string
     key: string
     type: UnitType
-    bytes: Uint8Array
     ref: Ref
     /** Collision-resistant digest of the framed bytes (`unitDigest`); the Ref's CRC alone cannot tell two contents apart. */
     digest: string
-    reused: boolean
+}
+
+/** A unit the encode must write: it holds its framed bytes until the pass ends. */
+export interface WrittenUnit extends EncodedUnitBase {
+    reused: false
+    bytes: Uint8Array
+}
+
+/**
+ * A unit equal to the previous encoding's, under that encoding's key. It holds no bytes in any property: the pass
+ * frames the unit to compare it and must not keep the frame alive through the tree.
+ */
+export interface ReusedUnit extends EncodedUnitBase {
+    reused: true
+}
+
+/**
+ * One framed unit an encode produced. Narrow with `reused === false` or `isWrittenUnit`; the project compiles with
+ * `strict: false`, where a negation of `reused` does not narrow.
+ */
+export type EncodedUnit = WrittenUnit | ReusedUnit
+
+export function isWrittenUnit(unit: EncodedUnit): unit is WrittenUnit {
+    return unit.reused === false
 }
 
 /**
  * What a later encode needs to know about one unit of an earlier one. A unit is
  * reused only when its `digest` is present and equal to the new bytes' digest;
- * `bytes`, when kept, add a byte-for-byte comparison.
+ * `bytes`, when kept (`previousFrom` with `keepBytes`, for written units only), add a byte-for-byte comparison.
  */
 export interface ReusableUnit {
     key: string

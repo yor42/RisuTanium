@@ -7,7 +7,7 @@ import {
 } from '../../store2/format'
 import { createSaveEncoder } from '../../store2/saveEncoder'
 import type { JsonValue } from '../../blockFrame'
-import { buildSmall, encodeWith, fakeLists, seededEnv } from './codecFixtures'
+import { buildSmall, bytesOf, encodeWith, fakeLists, seededEnv } from './codecFixtures'
 
 const NOW = 1_700_000_000_000
 
@@ -43,7 +43,7 @@ function storedKeep(manifestBytes: Uint8Array): JsonValue {
 function manifestBytesOf(tree: EncodedTree): Uint8Array {
     const unit = tree.units[tree.units.length - 1]
     expect(unit.type).toBe(UNIT_TYPE.manifest)
-    return unit.bytes
+    return bytesOf(unit)
 }
 
 describe('new behaviour: a re-encode carries the previous keep set', () => {

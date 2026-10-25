@@ -9,7 +9,7 @@ import { readUnit, UNIT_TYPE, type Manifest } from '../../store2/format'
 import type { Database } from '../../database.svelte'
 import type { Store2Backend } from '../../store2/backend'
 import {
-    asDatabase, buildSmall, encodeWith, fakeLists, sameBytes, seededEnv, type Obj,
+    asDatabase, buildSmall, bytesOf, encodeWith, fakeLists, sameBytes, seededEnv, storeOf, type Obj,
 } from './codecFixtures'
 import {
     COMMIT_BACKENDS, committerOf, createClock, expectInvariant, hooked, parsedCommit, seedStore, testEnv,
@@ -145,8 +145,14 @@ describe('the mint bridge', () => {
         expect(viaPlan.manifest).toEqual(direct.manifest)
         expect(viaPlan.units.map(unit => unit.identity)).toEqual(direct.units.map(unit => unit.identity))
         viaPlan.units.forEach((unit, index) => {
-            expect(direct.units[index].key).toBe(unit.key)
-            expect(sameBytes(direct.units[index].bytes, unit.bytes), unit.identity).toBe(true)
+            const other = direct.units[index]
+            expect(other.key).toBe(unit.key)
+            expect(other.reused, unit.identity).toBe(unit.reused)
+            expect(other.ref, unit.identity).toEqual(unit.ref)
+            expect(other.digest, unit.identity).toBe(unit.digest)
+            if (unit.reused === false && other.reused === false) {
+                expect(sameBytes(other.bytes, unit.bytes), unit.identity).toBe(true)
+            }
         })
         expect(viaPlan.index.objects).toEqual(direct.index.objects)
         expect([...viaPlan.index.units]).toEqual([...direct.index.units])
@@ -176,7 +182,7 @@ describe('commits of codec-built trees', () => {
 
         const stored = await storedDatabase(env.raw)
         const reference = encodeWith(asDatabase(next))
-        const full = assembleDatabase(reference.manifest, { get: key => reference.units.find(unit => unit.key === key)?.bytes })
+        const full = assembleDatabase(reference.manifest, storeOf(reference))
         expect(stored).toEqual(full)
     })
 
@@ -201,7 +207,7 @@ describe('commits of codec-built trees', () => {
         await expectInvariant(env.raw)
         const reference = encodeWith(asDatabase(next))
         const stored = await storedDatabase(env.raw)
-        expect(stored).toEqual(assembleDatabase(reference.manifest, { get: key => reference.units.find(unit => unit.key === key)?.bytes }))
+        expect(stored).toEqual(assembleDatabase(reference.manifest, storeOf(reference)))
     })
 
     test('a chain of scoped passes keeps naming units the store holds', async () => {
@@ -218,7 +224,7 @@ describe('commits of codec-built trees', () => {
             await expectInvariant(env.raw)
         }
         const reference = encodeWith(db)
-        expect(await storedDatabase(env.raw)).toEqual(assembleDatabase(reference.manifest, { get: key => reference.units.find(unit => unit.key === key)?.bytes }))
+        expect(await storedDatabase(env.raw)).toEqual(assembleDatabase(reference.manifest, storeOf(reference)))
     })
 })
 
@@ -232,7 +238,7 @@ describe('the attempt context and the no-change plan', () => {
         const tree = plan.finalize(contextOf(createKeyMint(testEnv(createClock(), 20), null).mint, 41, 1_800_000_000_123))
         expect(tree.manifest.seq).toBe(41)
         expect(tree.manifest.createdAt).toBe(1_800_000_000_123)
-        const stamped = readUnit(tree.units[tree.units.length - 1].bytes, UNIT_TYPE.manifest)
+        const stamped = readUnit(bytesOf(tree.units[tree.units.length - 1]), UNIT_TYPE.manifest)
         expect(stamped.status).toBe('ok')
         if (stamped.status === 'ok') {
             expect((stamped.value.body as Manifest).seq).toBe(41)

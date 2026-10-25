@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { describe, expect, test } from 'vitest'
-import { assembleDatabase, encodeDatabase, planScopedEncode, previousFrom, unitMapSource } from '../../store2/codec'
+import { assembleDatabase, encodeDatabase, planScopedEncode, previousFrom } from '../../store2/codec'
 import type { EncodedTree } from '../../store2/codec'
 import { createKeyMint } from '../../store2/commit'
 import { createListDerivation } from '../../store2/lists'
 import type { Database } from '../../database.svelte'
-import { buildSmall, encodeWith, seededEnv, type Obj } from './codecFixtures'
+import { buildSmall, bytesOf, encodeWith, seededEnv, storeOf, type Obj } from './codecFixtures'
 
 const NOW = 1_700_000_000_000
 
@@ -42,8 +42,9 @@ async function pass(
     return { tree: plan.finalize({ mint, seq: seed, now: NOW }), yields }
 }
 
-function decode(first: EncodedTree, tree: EncodedTree): { characters: unknown[], modules: Obj[] } {
-    return assembleDatabase(tree.manifest, unitMapSource([...first.units, ...tree.units])) as unknown as { characters: unknown[], modules: Obj[] }
+/** Assembles the last tree over the store every given encode built up, as a backend holds the units each wrote. */
+function decode(...trees: EncodedTree[]): { characters: unknown[], modules: Obj[] } {
+    return assembleDatabase(trees[trees.length - 1].manifest, storeOf(...trees)) as unknown as { characters: unknown[], modules: Obj[] }
 }
 
 function firstTree(db: Obj): EncodedTree {
@@ -113,7 +114,7 @@ describe('the module set yields between modules (regression reproducers, except 
         expect(chaIds(decode(first, one.tree).characters)).not.toContain('added-during-module-yield')
         // The next pass names the character the previous commit does not hold, as `scopeOf` does with `unheldChaIds`.
         const next = await pass(db, one.tree, new Set(['added-during-module-yield']), () => undefined, 3)
-        expect(chaIds(decode(first, next.tree).characters)).toContain('added-during-module-yield')
+        expect(chaIds(decode(first, one.tree, next.tree).characters)).toContain('added-during-module-yield')
     })
 
     for (const variant of ['edit-encoded', 'edit-unencoded', 'splice', 'reassign'] as const) {
@@ -154,14 +155,14 @@ describe('the module set yields between modules (regression reproducers, except 
             for (const module of saved) {
                 const id = String(module.id)
                 const identityAl = `al:module:${id}#0`
-                const a = tree.units.find(unit => unit.identity === identityAl) ?? first.units.find(unit => unit.identity === identityAl)
+                const a = [...tree.units, ...first.units].find(unit => unit.identity === identityAl && unit.reused === false)
                 const b = fresh.units.find(unit => unit.identity === identityAl)
                 expect(a).toBeDefined()
-                expect(Buffer.from(a!.bytes).equals(Buffer.from(b!.bytes))).toBe(true)
+                expect(Buffer.from(bytesOf(a!)).equals(Buffer.from(bytesOf(b!)))).toBe(true)
             }
             // The next pass over the same db commits the remainder: afterwards the saved modules are the live ones.
             const next = await pass(db, tree, new Set(), () => undefined, 3)
-            expect(decode(first, next.tree).modules).toEqual((db.modules as Obj[]))
+            expect(decode(first, tree, next.tree).modules).toEqual((db.modules as Obj[]))
         })
     }
 })

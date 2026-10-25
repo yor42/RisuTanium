@@ -158,8 +158,16 @@ function reasonOf(error: unknown): string {
     return error instanceof Error ? error.name : 'non-error-thrown'
 }
 
+/** The framed bytes of a unit this census wrote: it encodes with no previous encoding, so no unit is reused. */
+function framedBytes(unit: EncodedUnit): Uint8Array {
+    if (unit.reused === true) {
+        throw new Error('A census encode has no previous encoding, so a reused unit cannot occur.')
+    }
+    return unit.bytes
+}
+
 function bodyOf<T>(unit: EncodedUnit, type: UnitType): T | null {
-    const parsed = readUnit(unit.bytes, type)
+    const parsed = readUnit(framedBytes(unit), type)
     return parsed.status === 'ok' || parsed.status === 'stale' ? (parsed.value.body as unknown as T) : null
 }
 
@@ -546,7 +554,7 @@ class Census {
             if (unit === undefined) {
                 return null
             }
-            this.unit(kind, name, unit.bytes.length)
+            this.unit(kind, name, framedBytes(unit).length)
             return unit
         }
 
@@ -578,7 +586,7 @@ class Census {
             }
             const chatCore = sized('chatCore', chatOrdinal, chat.core)
             if (chatCore !== null) {
-                this.chatCoreBytes.add(chatOrdinal, chatCore.bytes.length)
+                this.chatCoreBytes.add(chatOrdinal, framedBytes(chatCore).length)
                 const body = bodyOf<ChatCore>(chatCore, UNIT_TYPE.chatCore)
                 if (body !== null) {
                     this.chatCoreF.add(chatOrdinal, utf8Length(canonicalJson(body.f)))
@@ -667,7 +675,7 @@ function measureFixed(census: Census, decoded: Rec, resolved: Rec): { tree: Enco
         if (unit === undefined) {
             return null
         }
-        census.unit(kind, ordinal, unit.bytes.length)
+        census.unit(kind, ordinal, framedBytes(unit).length)
         return unit
     }
     sized('configRoot', 'config', fixed.config)
@@ -698,11 +706,11 @@ function measureFixed(census: Census, decoded: Rec, resolved: Rec): { tree: Enco
             const ordinal = `pluginStorageKey#${keyIndex.get(entry.k) ?? -1}`
             const value = sized('pluginStorageValue', ordinal, entry.ref)
             if (value !== null) {
-                valueBytes += value.bytes.length
-                valueSizes.add(ordinal, value.bytes.length)
+                valueBytes += framedBytes(value).length
+                valueSizes.add(ordinal, framedBytes(value).length)
             }
         }
-        buckets.push({ keys: body?.entries.length ?? 0, bucketBytes: bucketUnit?.bytes.length ?? 0, valueBytes })
+        buckets.push({ keys: body?.entries.length ?? 0, bucketBytes: bucketUnit === null ? 0 : framedBytes(bucketUnit).length, valueBytes })
     })
 
     const bucketKeys = new Dist()
@@ -764,8 +772,8 @@ function measureTail(census: Census, fixed: EncodedTree, decoded: Rec): Rec {
     const shardBytes = new Dist()
     const entriesPerShard = new Dist()
     shardUnits.forEach((unit, i) => {
-        census.unit('shard', `shard#${i}`, unit.bytes.length)
-        shardBytes.add(`shard#${i}`, unit.bytes.length)
+        census.unit('shard', `shard#${i}`, framedBytes(unit).length)
+        shardBytes.add(`shard#${i}`, framedBytes(unit).length)
         entriesPerShard.add(`shard#${i}`, shardBodies[i].entries.length)
     })
     const characterOrder = toPlainJson(decoded.characterOrder)
@@ -774,7 +782,7 @@ function measureTail(census: Census, fixed: EncodedTree, decoded: Rec): Rec {
         orderBody.characterOrder = characterOrder
     }
     const order = sink.put('order', UNIT_TYPE.order, orderBody)
-    census.unit('order', 'order', order.bytes.length)
+    census.unit('order', 'order', framedBytes(order).length)
     const f = fixed.manifest.fixed
     const manifest = buildManifest({
         seq: 1,
@@ -792,15 +800,15 @@ function measureTail(census: Census, fixed: EncodedTree, decoded: Rec): Rec {
         pluginStorageRefs: f.pluginStorage.refs,
     })
     const manifestUnit = sink.putFresh('manifest', UNIT_TYPE.manifest, manifest, 'manifest')
-    census.unit('manifest', 'manifest', manifestUnit.bytes.length)
+    census.unit('manifest', 'manifest', framedBytes(manifestUnit).length)
     return {
         shardCount: shardBodies.length,
         shardEntriesTotal: census.entries.length,
         shardBytes: shardBytes.summary(),
         entriesPerShard: entriesPerShard.summary(),
         shardEntryJsonBytes: census.shardEntryBytes.summary(),
-        orderUnitBytes: order.bytes.length,
-        manifestBytes: manifestUnit.bytes.length,
+        orderUnitBytes: framedBytes(order).length,
+        manifestBytes: framedBytes(manifestUnit).length,
         note: 'shards, order and manifest are built from the per-owner entries and the fixed encode with the real grouping and manifest builder; owners that could not be encoded are absent',
     }
 }

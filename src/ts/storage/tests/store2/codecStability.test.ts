@@ -1,11 +1,11 @@
 import fc from 'fast-check'
 import { describe, expect, test, vi } from 'vitest'
-import { assembleDatabase, isUnchanged, toPlainJson, unitMapSource, unitsToWrite } from '../../store2/codec'
+import { assembleDatabase, isUnchanged, toPlainJson, unitsToWrite } from '../../store2/codec'
 import { canonicalJson, FRAME_OVERHEAD } from '../../store2/format'
 import type { Database } from '../../database.svelte'
 import {
-    asDatabase, buildLegacyCases, buildSmall, buildT3, buildT4, buildT5Chat, dbWithCharacters, differingIdentities, encodeWith,
-    previousFrom, profileWithChats, roundTrip, sameBytes, seededEnv, textOf, type Obj,
+    asDatabase, buildLegacyCases, buildSmall, buildT3, buildT4, buildT5Chat, bytesOf, dbWithCharacters, differingIdentities, encodeWith,
+    previousFrom, profileWithChats, roundTrip, sameBytes, seededEnv, storeOf, textOf, type Obj,
 } from './codecFixtures'
 
 // The profile-sized cases encode megabytes; a loaded machine must not turn that into a timeout.
@@ -29,10 +29,12 @@ function reverseKeys(value: unknown): unknown {
 /** Encode, assemble and encode `cycles` times, each from the previous encoding; nothing but the manifest is ever new after the first. */
 function expectNoDrift(db: Database, cycles: number): void {
     let tree = encodeWith(db, { env: seededEnv(1) })
+    const encodes = [tree]
     let current = db
     for (let cycle = 1; cycle <= cycles; cycle++) {
-        current = assembleDatabase(tree.manifest, unitMapSource(tree.units))
+        current = assembleDatabase(tree.manifest, storeOf(...encodes))
         const next = encodeWith(current, { env: seededEnv(100 + cycle), previous: previousFrom(tree) })
+        encodes.push(next)
         expect(isUnchanged(next), `cycle ${cycle}`).toBe(true)
         expect(unitsToWrite(next).map(unit => unit.identity), `cycle ${cycle}`).toEqual(['manifest'])
         tree = next
@@ -45,7 +47,7 @@ describe('byte stability', () => {
         const b = encodeWith(buildSmall(4), { env: seededEnv(3) })
         expect(differingIdentities(a, b)).toEqual([])
         for (let i = 0; i < a.units.length; i++) {
-            expect(sameBytes(a.units[i].bytes, b.units[i].bytes)).toBe(true)
+            expect(sameBytes(bytesOf(a.units[i]), bytesOf(b.units[i]))).toBe(true)
         }
     })
 
@@ -56,7 +58,7 @@ describe('byte stability', () => {
         ]
         for (const tree of trees) {
             for (const unit of tree.units) {
-                const text = textOf(unit.bytes.subarray(16, unit.bytes.length - 4))
+                const text = textOf(bytesOf(unit).subarray(16, bytesOf(unit).length - 4))
                 expect(canonicalJson(JSON.parse(text)), unit.identity).toBe(text)
             }
         }
@@ -74,8 +76,8 @@ describe('byte stability', () => {
     test('the shape of a unit frame: 20 bytes of overhead around the payload', () => {
         const tree = encodeWith(buildSmall(1))
         for (const unit of tree.units) {
-            expect(unit.bytes.length).toBeGreaterThanOrEqual(FRAME_OVERHEAD)
-            expect(unit.ref[1]).toBe(unit.bytes.length)
+            expect(bytesOf(unit).length).toBeGreaterThanOrEqual(FRAME_OVERHEAD)
+            expect(unit.ref[1]).toBe(bytesOf(unit).length)
         }
     })
 

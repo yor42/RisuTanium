@@ -11,7 +11,7 @@ import { encodeUnit, UNIT_TYPE } from '../../store2/format'
 import { createSaveEncoder, SavePlanError, type SaveEncoder, type SavePassRequest, type SavePlan } from '../../store2/saveEncoder'
 import type { character, Database } from '../../database.svelte'
 import {
-    asDatabase, buildSmall, buildT3, encodeWith, fakeLists, seededEnv, type Obj,
+    asDatabase, buildSmall, buildT3, bytesOf, encodeWith, fakeLists, seededEnv, type Obj,
 } from './codecFixtures'
 
 const NOW = 1_700_000_000_000
@@ -613,7 +613,7 @@ describe('new behaviour: a yielding pass encodes the character list as it stood 
             expect(fired).toBe(true)
             const { context } = attemptOf(1)
             const built = await plan.commitRequest().build(context)
-            const store = new Map(first.units.map(unit => [unit.key, unit.bytes] as const))
+            const store = new Map(first.units.map(unit => [unit.key, bytesOf(unit)] as const))
             for (const unit of built.units) {
                 store.set(unit.key, unit.bytes)
             }

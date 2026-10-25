@@ -440,12 +440,17 @@ export interface SavePassCommitExtra {
 }
 
 /** The part of an encoded unit the meter reads. */
-export interface MeteredUnit {
+export type MeteredUnit = {
     identity: string
     key: string
     type: UnitType
     bytes: Uint8Array
-    reused: boolean
+    reused: false
+} | {
+    identity: string
+    key: string
+    type: UnitType
+    reused: true
 }
 
 const RECORD_LIMIT = 1000
@@ -1442,7 +1447,7 @@ export function noteSavePassCommit(request: SavePassShape, units: readonly Meter
         }
         const written: SavePassUnitRecord[] = []
         for (const unit of units) {
-            if (!unit.reused) {
+            if (unit.reused === false) {
                 written.push({ identity: unit.identity, key: unit.key, type: unit.type, bytes: unit.bytes.length })
             }
         }

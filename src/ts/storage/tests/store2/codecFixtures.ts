@@ -5,8 +5,8 @@ import {
     type AssetList, type InlayList, type KeyEnv, type UnitType,
 } from '../../store2/format'
 import {
-    assembleDatabase, encodeDatabase, previousFrom, unitMapSource,
-    type ConfigOwner, type EncodedTree, type EncodedUnit, type EncodeOptions, type ListDerivation,
+    assembleDatabase, encodeDatabase, isWrittenUnit, previousFrom, unitMapSource,
+    type ConfigOwner, type EncodedTree, type EncodedUnit, type EncodeOptions, type ListDerivation, type UnitSource,
 } from '../../store2/codec'
 
 /**
@@ -137,7 +137,15 @@ export function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
     return true
 }
 
-/** The identities whose unit differs between two encodes (bytes or presence), sorted. */
+/** Whether two units of an encode differ: in key, Ref, digest, whether they were reused, or (when both were written) bytes. */
+export function unitsDiffer(x: EncodedUnit, y: EncodedUnit): boolean {
+    if (x.key !== y.key || x.reused !== y.reused || x.digest !== y.digest || x.ref.join() !== y.ref.join()) {
+        return true
+    }
+    return x.reused === false && y.reused === false && !sameBytes(x.bytes, y.bytes)
+}
+
+/** The identities whose unit differs between two encodes (see `unitsDiffer`) or is present in only one, sorted. */
 export function differingIdentities(a: EncodedTree, b: EncodedTree): string[] {
     const left = new Map(a.units.map(unit => [unit.identity, unit]))
     const right = new Map(b.units.map(unit => [unit.identity, unit]))
@@ -145,11 +153,45 @@ export function differingIdentities(a: EncodedTree, b: EncodedTree): string[] {
     for (const identity of new Set([...left.keys(), ...right.keys()])) {
         const x = left.get(identity)
         const y = right.get(identity)
-        if (x === undefined || y === undefined || x.key !== y.key || !sameBytes(x.bytes, y.bytes)) {
+        if (x === undefined || y === undefined || unitsDiffer(x, y)) {
             out.push(identity)
         }
     }
     return out.sort()
+}
+
+/** The framed bytes of a unit the encode wrote; a reused unit holds none, and asking for them is a test error. */
+export function bytesOf(unit: EncodedUnit): Uint8Array {
+    if (unit.reused === true) {
+        throw new Error(`The unit "${unit.identity}" is reused and holds no bytes.`)
+    }
+    return unit.bytes
+}
+
+/**
+ * The framed bytes of a unit that may have been reused: its own when the encode wrote it, otherwise those of the
+ * earlier encode that wrote the same key.
+ */
+export function bytesIn(unit: EncodedUnit, ...earlier: EncodedTree[]): Uint8Array {
+    if (unit.reused === false) {
+        return unit.bytes
+    }
+    for (const tree of earlier) {
+        for (const candidate of tree.units) {
+            if (candidate.reused === false && candidate.key === unit.key) {
+                return candidate.bytes
+            }
+        }
+    }
+    throw new Error(`No earlier encode wrote the key of the reused unit "${unit.identity}".`)
+}
+
+/**
+ * A store as a backend holds it after the encodes in order: the units each one wrote, under their keys. A reused unit
+ * adds nothing, since the encode that wrote it already did.
+ */
+export function storeOf(...trees: EncodedTree[]): UnitSource {
+    return unitMapSource(trees.flatMap(tree => tree.units.filter(isWrittenUnit)))
 }
 
 export function unitOf(tree: EncodedTree, identity: string): EncodedUnit {
@@ -166,7 +208,12 @@ export function identitiesWhere(tree: EncodedTree, prefix: string): string[] {
 
 /** The parsed body of a unit, for an assertion. */
 export function bodyOf(unit: EncodedUnit): JsonObject {
-    const parsed = readUnit(unit.bytes, unit.type as UnitType)
+    return bodyIn(unit)
+}
+
+/** The parsed body of a unit that may have been reused: read through the earlier encodes that wrote its key (`bytesIn`). */
+export function bodyIn(unit: EncodedUnit, ...earlier: EncodedTree[]): JsonObject {
+    const parsed = readUnit(bytesIn(unit, ...earlier), unit.type as UnitType)
     if (parsed.status !== 'ok' && parsed.status !== 'stale') {
         throw new Error(`Unit ${unit.identity} does not parse: ${parsed.reason}`)
     }

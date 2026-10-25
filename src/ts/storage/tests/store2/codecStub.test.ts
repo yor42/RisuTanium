@@ -8,7 +8,7 @@ import { buildColdStub, COLD_STUB_VERSION } from '../../../process/coldCharacter
 import type { character } from '../../database.svelte'
 import type { ShardEntry } from '../../store2/format'
 import {
-    asDatabase, buildLegacyCases, buildSmall, dbWithCharacters, encodeWith, fakeLists, roundTrip, seededEnv, type Obj,
+    asDatabase, buildLegacyCases, buildSmall, bytesOf, dbWithCharacters, encodeWith, fakeLists, roundTrip, seededEnv, type Obj,
 } from './codecFixtures'
 
 function loaded(index: number, chaId = `c${index}`): Obj {
@@ -73,7 +73,8 @@ describe('the codec refuses a stub (I9)', () => {
         expect(chat.message).toEqual([message])
         expect(second.units.map(unit => unit.identity)).toEqual(first.units.map(unit => unit.identity))
         for (const unit of first.units) {
-            expect(Array.from(unit.bytes)).toEqual(Array.from(second.units.find(one => one.identity === unit.identity)?.bytes ?? []))
+            const twin = second.units.find(one => one.identity === unit.identity)
+            expect(Array.from(bytesOf(unit))).toEqual(Array.from(twin === undefined ? [] : bytesOf(twin)))
         }
     })
 

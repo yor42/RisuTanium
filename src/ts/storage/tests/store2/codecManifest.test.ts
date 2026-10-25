@@ -3,14 +3,14 @@ import { buildManifest, MANIFEST_REQ, PLUGIN_STORAGE_BUCKETS, SHARD_COUNT, type 
 import { parseManifest, readUnit, refsOf, UNIT_TYPE, type Manifest, type UnitType } from '../../store2/format'
 import type { Database } from '../../database.svelte'
 import {
-    asDatabase, bodyOf, buildLegacyCases, buildSmall, buildT4, chat, dbWithCharacters, encodeWith, loreEntry, message, mulberry32,
+    asDatabase, bodyOf, buildLegacyCases, buildSmall, buildT4, bytesOf, chat, dbWithCharacters, encodeWith, loreEntry, message, mulberry32,
     prosePool, sparseCharacter, unitOf, uuidLike, type Obj,
 } from './codecFixtures'
 
 const SIXTEEN_KIB = 16 * 1024
 
 function manifestBytes(tree: EncodedTree): number {
-    return unitOf(tree, 'manifest').bytes.length
+    return bytesOf(unitOf(tree, 'manifest')).length
 }
 
 /**
@@ -114,7 +114,7 @@ function expectClosedTree(tree: EncodedTree): void {
         }
     }
     for (const unit of tree.units) {
-        const parsed = readUnit(unit.bytes)
+        const parsed = readUnit(bytesOf(unit))
         expect(parsed.status === 'ok' || parsed.status === 'stale').toBe(true)
         if (parsed.status === 'ok' || parsed.status === 'stale') {
             visit(parsed.value.type, parsed.value.body, unit.identity)

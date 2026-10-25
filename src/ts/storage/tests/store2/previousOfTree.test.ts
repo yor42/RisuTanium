@@ -10,7 +10,7 @@ import { createSaveEncoder, type SavePassRequest } from '../../store2/saveEncode
 import { keyOfRef, type ShardEntry } from '../../store2/format'
 import type { character, Database } from '../../database.svelte'
 import {
-    asDatabase, buildSmall, buildT3, encodeWith, fakeLists, seededEnv, type Obj,
+    asDatabase, buildSmall, buildT3, bytesOf, encodeWith, fakeLists, seededEnv, storeOf, type Obj,
 } from './codecFixtures'
 
 const NOW = 1_700_000_000_000
@@ -76,8 +76,7 @@ describe('guard: the previous of a stored tree is the previous of its own encode
             { env: seededEnv(2), lists: fakeLists, seq: 2, createdAt: NOW, previous: previousFrom(first) },
             { modules: false, characters: new Set([(db.characters[1] as { chaId: string }).chaId]) },
         )
-        const store = new Map([...first.units, ...second.units].map(unit => [unit.key, unit.bytes] as const))
-        const previous = previousOfTree(storedOf(second, { get: key => store.get(key) }))
+        const previous = previousOfTree(storedOf(second, storeOf(first, second)))
         expectSamePrevious(previous, previousFrom(second))
         expect([...previous.units.values()].every(unit => unit.digest !== undefined)).toBe(true)
     })
@@ -138,7 +137,7 @@ describe('new behaviour: digests, kept bytes and units the boot did not read', (
         const previous = previousOfTree(storedOf(first))
         for (const unit of first.units) {
             const held = previous.units.get(unit.identity)
-            expect(held?.digest, unit.identity).toBe(unitDigest(unit.bytes))
+            expect(held?.digest, unit.identity).toBe(unitDigest(bytesOf(unit)))
             expect(held?.key, unit.identity).toBe(unit.key)
             expect(held?.ref, unit.identity).toEqual(unit.ref)
             expect(held?.bytes, unit.identity).toBeUndefined()
@@ -150,7 +149,7 @@ describe('new behaviour: digests, kept bytes and units the boot did not read', (
         const stored = storedOf(first)
         const previous = previousOfTree(stored, { keepBytes: true })
         for (const unit of first.units) {
-            expect(previous.units.get(unit.identity)?.bytes, unit.identity).toEqual(unit.bytes)
+            expect(previous.units.get(unit.identity)?.bytes, unit.identity).toEqual(bytesOf(unit))
         }
         const plan = await encoderOver(previous).plan(assembleDatabase(first.manifest, stored.source), NOTHING_MARKED)
         expect(plan.unchanged).toBe(true)
@@ -181,9 +180,9 @@ describe('new behaviour: digests, kept bytes and units the boot did not read', (
         const target = first.units.find(unit => unit.identity === 'statics')
         expect(target).toBeDefined()
         // The last bytes of a frame are the payload checksum its referrer's Ref holds.
-        const bytes = new Uint8Array(target?.bytes ?? [])
+        const bytes = new Uint8Array(target === undefined ? [] : bytesOf(target))
         bytes[bytes.length - 1] ^= 0xff
-        const store = new Map(first.units.map(unit => [unit.key, unit.bytes] as const))
+        const store = new Map(first.units.map(unit => [unit.key, bytesOf(unit)] as const))
         store.set(target?.key ?? '', bytes)
         const previous = previousOfTree(storedOf(first, { get: key => store.get(key) }))
         expect(previous.units.get('statics')?.digest).toBeUndefined()
@@ -237,9 +236,9 @@ describe('new behaviour: the units a carry and the entity ids read are required'
 
     test('a shard whose bytes are damaged', () => {
         const shard = first.units.find(unit => unit.identity === 'shard:3')
-        const bytes = new Uint8Array(shard?.bytes ?? [])
+        const bytes = new Uint8Array(shard === undefined ? [] : bytesOf(shard))
         bytes[bytes.length - 6] ^= 0xff
-        const store = new Map(first.units.map(unit => [unit.key, unit.bytes] as const))
+        const store = new Map(first.units.map(unit => [unit.key, bytesOf(unit)] as const))
         store.set(shard?.key ?? '', bytes)
         expect(() => previousOfTree(storedOf(first, { get: key => store.get(key) }))).toThrow(CodecAssembleError)
     })
@@ -282,7 +281,7 @@ describe('new behaviour: hydrating the digests of a loaded entity', () => {
         for (const unit of first.units.filter(candidate => ownedBy(entry.u)(candidate.identity))) {
             const held = previous.units.get(unit.identity)
             expect(held, unit.identity).toBe(objects.get(unit.identity))
-            expect(held?.digest, unit.identity).toBe(unitDigest(unit.bytes))
+            expect(held?.digest, unit.identity).toBe(unitDigest(bytesOf(unit)))
             expect(held?.key, unit.identity).toBe(unit.key)
         }
         for (const [identity, before] of outside) {
@@ -316,9 +315,10 @@ describe('new behaviour: hydrating the digests of a loaded entity', () => {
         // The entry's Ref for the core disagrees with the unit the encoding holds: the checksum differs.
         const moved: ShardEntry = { ...entry, core: [entry.core[0], entry.core[1], entry.core[2] ^ 1] }
         // The bytes of the lore are damaged in the source.
-        const lorebytes = new Uint8Array(first.units.find(unit => unit.identity === lore)?.bytes ?? [])
+        const loreUnit = first.units.find(unit => unit.identity === lore)
+        const lorebytes = new Uint8Array(loreUnit === undefined ? [] : bytesOf(loreUnit))
         lorebytes[lorebytes.length - 1] ^= 0xff
-        const loreKey = first.units.find(unit => unit.identity === lore)?.key
+        const loreKey = loreUnit?.key
         // The previous encoding holds another key for the scripts than the entry names.
         ;(previous.units.get(scripts) as ReusableUnit).key = 'a-key-the-entry-does-not-name'
         hydrateEntityDigests(previous, moved, { get: key => (key === loreKey ? lorebytes : everything.get(key)) })

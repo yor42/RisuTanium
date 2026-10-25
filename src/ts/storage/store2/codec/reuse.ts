@@ -2,7 +2,10 @@ import { encodeUnit, newManifestKey, newShardKey, newUnitKey, readRef, refOfFram
 import { Sha256 } from '../../../assetHash'
 import { MEASURE } from '../../../process/memory/measureFlag'
 import type { KeyMint } from '../commit'
-import { CodecError, type EncodedTree, type EncodedUnit, type PreviousEncoding, type ReusableUnit, type SplitRecorder } from './types'
+import {
+    CodecError, isWrittenUnit,
+    type EncodedTree, type EncodedUnit, type PreviousEncoding, type ReusableUnit, type SplitRecorder, type WrittenUnit,
+} from './types'
 
 /** Which key shape a new unit gets. */
 export type UnitKeyKind = 'unit' | 'shard' | 'manifest'
@@ -33,7 +36,7 @@ export function unitDigest(bytes: Uint8Array): string {
  * Whether `bytes` is the unit `prior` describes: the same type, framed length,
  * payload CRC and digest. A Ref's CRC verifies the bytes of a known key; it does
  * not prove two contents equal, so a prior unit with no digest is never reused.
- * When the previous bytes were kept the comparison is also byte for byte.
+ * When the previous bytes were kept (only a written unit's are, see `previousFrom`) the comparison is also byte for byte.
  */
 function isSameUnit(prior: ReusableUnit, type: UnitType, bytes: Uint8Array, digest: string): boolean {
     if (prior.type !== type || prior.digest === undefined) {
@@ -149,15 +152,19 @@ export class UnitSink {
         }
         this.identities.add(identity)
         this.keys.add(key)
-        const unit: EncodedUnit = { identity, key, type, bytes, ref: refOfFrame(key, bytes), digest, reused }
+        const ref = refOfFrame(key, bytes)
+        // A reused unit drops the frame here: the tree outlives the pass's `put` calls and must not pin it.
+        const unit: EncodedUnit = reused
+            ? { identity, key, type, ref, digest, reused: true }
+            : { identity, key, type, bytes, ref, digest, reused: false }
         this.units.push(unit)
         return unit
     }
 }
 
 /** The units an encode must write: the new ones. The manifest is always new, so it is part of the answer. */
-export function unitsToWrite(tree: EncodedTree): EncodedUnit[] {
-    return tree.units.filter(unit => !unit.reused)
+export function unitsToWrite(tree: EncodedTree): WrittenUnit[] {
+    return tree.units.filter(isWrittenUnit)
 }
 
 /** Whether no unit but the (always new) manifest needs writing: the encoded state equals the previous one. */
@@ -166,14 +173,16 @@ export function isUnchanged(tree: EncodedTree): boolean {
 }
 
 /**
- * The `previous` of the next encode. `keepBytes` retains the unit bytes for a
- * byte-for-byte comparison, at the memory cost of holding the whole encoding.
+ * The `previous` of the next encode. `keepBytes` retains the bytes of the units the
+ * encode wrote, for a byte-for-byte comparison, at the memory cost of holding them.
+ * A reused unit holds no bytes, so it is compared again by type, Ref and digest
+ * only, as every unit is without `keepBytes`.
  */
 export function previousFrom(tree: EncodedTree, keepBytes = false): PreviousEncoding {
     // `index.units` also holds the units a scoped encode carried without encoding them; they have no bytes to keep.
     const units = new Map<string, ReusableUnit>(tree.index.units)
     for (const unit of tree.units) {
-        units.set(unit.identity, keepBytes
+        units.set(unit.identity, keepBytes && unit.reused === false
             ? { key: unit.key, type: unit.type, ref: unit.ref, digest: unit.digest, bytes: unit.bytes }
             : { key: unit.key, type: unit.type, ref: unit.ref, digest: unit.digest })
     }

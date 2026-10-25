@@ -22,8 +22,18 @@ import { CodecAssembleError, type EncodedUnit, type UnitSource } from './types'
  * parser rejects, and a body of the wrong shape all throw `CodecAssembleError`.
  */
 
+/**
+ * A source over the units an encode wrote. A reused unit holds no bytes (they are in the store from the encode that
+ * wrote them), so offering one is a caller error and throws, naming the unit.
+ */
 export function unitMapSource(units: readonly EncodedUnit[]): UnitSource {
-    const bytes = new Map(units.map(unit => [unit.key, unit.bytes]))
+    const bytes = new Map<string, Uint8Array>()
+    for (const unit of units) {
+        if (unit.reused === true) {
+            throw new CodecAssembleError(`The unit "${unit.identity}" is reused and holds no bytes; offer the units that wrote it.`)
+        }
+        bytes.set(unit.key, unit.bytes)
+    }
     return { get: key => bytes.get(key) }
 }
 

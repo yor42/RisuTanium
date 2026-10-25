@@ -8,7 +8,7 @@ import {
 import { UNIT_TYPE, type ShardEntry } from '../../store2/format'
 import type { Database } from '../../database.svelte'
 import {
-    asDatabase, bodyOf, buildSmall, buildT4, encodeWith, fakeLists, previousFrom, seededEnv, unitOf, type Obj,
+    asDatabase, bodyOf, buildSmall, buildT4, bytesOf, encodeWith, fakeLists, previousFrom, seededEnv, unitOf, type Obj,
 } from './codecFixtures'
 
 function clone(db: Database): Obj {
@@ -202,7 +202,7 @@ describe('what counts as the same unit', () => {
         const base = buildSmall(2)
         const first = encodeWith(base, { env: seededEnv(1) })
         const victim = unitOf(first, 'statics')
-        const tampered = new Uint8Array(victim.bytes)
+        const tampered = new Uint8Array(bytesOf(victim))
         tampered[tampered.length - 6] ^= 0x01
         const previous: PreviousEncoding = previousFrom(first)
         const units = new Map(previous.units)
@@ -226,7 +226,7 @@ describe('what counts as the same unit', () => {
     test('a unit digest is 128 bits of the SHA-256 of the framed bytes', () => {
         const first = encodeWith(buildSmall(1), { env: seededEnv(1) })
         for (const unit of first.units) {
-            expect(unit.digest).toBe(createHash('sha256').update(unit.bytes).digest('hex').slice(0, 32))
+            expect(unit.digest).toBe(createHash('sha256').update(bytesOf(unit)).digest('hex').slice(0, 32))
         }
     })
 
@@ -246,7 +246,7 @@ describe('what counts as the same unit', () => {
         db.username = 'b'.repeat(64)
         const first = encodeWith(asDatabase(db), { env: seededEnv(1) })
         const config = unitOf(first, 'config')
-        const payload = config.bytes.subarray(16, config.bytes.length - 4)
+        const payload = bytesOf(config).subarray(16, bytesOf(config).length - 4)
         const start = new TextDecoder().decode(payload).indexOf('"username":"') + '"username":"'.length
         const flips = crcPreservingFlips(payload, Array.from({ length: 64 }, (_, i) => start + i))
         const chars = String(db.username).split('')
@@ -258,7 +258,7 @@ describe('what counts as the same unit', () => {
         expect(forged.username).not.toBe(db.username)
         const next = encodeWith(asDatabase(forged), { env: seededEnv(2), previous: previousFrom(first) })
         const changed = unitOf(next, 'config')
-        expect(Buffer.compare(Buffer.from(changed.bytes), Buffer.from(config.bytes))).not.toBe(0)
+        expect(Buffer.compare(Buffer.from(bytesOf(changed)), Buffer.from(bytesOf(config)))).not.toBe(0)
         expect(changed.ref[1]).toBe(config.ref[1])
         expect(changed.ref[2]).toBe(config.ref[2])
         expect(changed.reused).toBe(false)

@@ -14,8 +14,9 @@ import {
 } from './split'
 import { isColdStub } from './stub'
 import {
-    CodecAssembleError, CodecError, CodecInputError, SharedChaIdStubError, StubRefusedError, type EncodedTree, type EncodedUnit,
-    type EncodeOptions, type ListDerivation, type PreviousEncoding, type ReusableUnit, type SplitRecorder,
+    CodecAssembleError, CodecError, CodecInputError, isWrittenUnit, SharedChaIdStubError, StubRefusedError, type EncodedTree,
+    type EncodedUnit, type EncodeOptions, type ListDerivation, type PreviousEncoding, type ReusableUnit, type SplitRecorder,
+    type WrittenUnit,
 } from './types'
 import { MEASURE } from '../../../process/memory/measureFlag'
 
@@ -459,7 +460,7 @@ function rekey(tree: EncodedTree, parents: ReadonlyMap<string, ParentBody>, cont
     const rewritten = new Map<string, object>()
     const units: EncodedUnit[] = []
     for (const unit of tree.units) {
-        if (unit.reused) {
+        if (unit.reused === true) {
             units.push(unit)
             continue
         }
@@ -477,7 +478,7 @@ function rekey(tree: EncodedTree, parents: ReadonlyMap<string, ParentBody>, cont
             bytes = encodeUnit(parent.type, body)
             digest = unitDigest(bytes)
         }
-        const next: EncodedUnit = { ...unit, key, bytes, digest, ref: refOfFrame(key, bytes) }
+        const next: WrittenUnit = { ...unit, key, bytes, digest, ref: refOfFrame(key, bytes) }
         finalRefs.set(tailOfKey(unit.key), next.ref)
         units.push(next)
     }
@@ -488,7 +489,7 @@ function rekey(tree: EncodedTree, parents: ReadonlyMap<string, ParentBody>, cont
     }
     const indexUnits = new Map(tree.index.units)
     for (const unit of units) {
-        if (!unit.reused) {
+        if (unit.reused === false) {
             indexUnits.set(unit.identity, { key: unit.key, type: unit.type, ref: unit.ref, digest: unit.digest })
         }
     }
@@ -751,7 +752,8 @@ function verdictOfNormalized(normalized: NormalizedCharacter, base: VerdictBase,
 export function builtCommitOf(tree: EncodedTree): BuiltCommit {
     return {
         units: tree.units
-            .filter(unit => !unit.reused && unit.type !== UNIT_TYPE.manifest)
+            .filter(isWrittenUnit)
+            .filter(unit => unit.type !== UNIT_TYPE.manifest)
             .map(unit => ({ key: unit.key, bytes: unit.bytes })),
         manifest: { key: tree.manifestKey, body: tree.manifest },
     }

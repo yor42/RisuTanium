@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { describe, expect, test } from 'vitest'
-import { assembleDatabase, planScopedEncode, previousFrom, unitMapSource } from '../../store2/codec'
+import { assembleDatabase, planScopedEncode, previousFrom } from '../../store2/codec'
 import { createKeyMint } from '../../store2/commit'
 import type { Database } from '../../database.svelte'
-import { buildSmall, encodeWith, fakeLists, seededEnv, type Obj } from './codecFixtures'
+import { buildSmall, encodeWith, fakeLists, seededEnv, storeOf, type Obj } from './codecFixtures'
 
 const NOW = 1_700_000_000_000
 
@@ -47,7 +47,7 @@ describe('a pass encodes one consistent character list, whatever the list does a
             expect(fired).toBe(true)
             const { mint } = createKeyMint(seededEnv(901), null)
             const tree = plan.finalize({ mint, seq: 2, now: NOW })
-            const decoded = assembleDatabase(tree.manifest, unitMapSource([...first.units, ...tree.units])) as unknown as { characters: unknown[] }
+            const decoded = assembleDatabase(tree.manifest, storeOf(first, tree)) as unknown as { characters: unknown[] }
             const saved = chaIds(decoded.characters)
             expect(saved).toEqual(before)
             expect(new Set(saved).size).toBe(saved.length)
