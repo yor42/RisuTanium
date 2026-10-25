@@ -4,6 +4,7 @@ import { language } from "src/lang"
 import { alertNormalWait } from "./alert"
 import streamSaver from "./vendor/streamSaver"
 import { MEASURE } from "./process/memory/measureFlag"
+import { isTauri } from "./platform"
 import { bytesToBase64, isAndroidTransport } from "./storage/tauriByteTransport"
 import type { ExportCancelToken } from "./exportCancel"
 
@@ -432,6 +433,15 @@ function answeredWithin(ready: Promise<void>, timeoutMs: number): Promise<boolea
             resolve(true)
         })
     })
+}
+
+/**
+ * Whether opening the browser writer needs a user gesture that is still fresh. Only streamsaver's popup helper does:
+ * it is used on a page that is not a secure context, when the download is not collected in memory. A secure page uses
+ * a hidden frame and the service worker, the memory paths download at close, and the desktop app opens a native dialog.
+ */
+export function webWriterNeedsGesture(): boolean {
+    return !isTauri && !globalThis.isSecureContext && !streamSaver.useBlobFallback
 }
 
 /**

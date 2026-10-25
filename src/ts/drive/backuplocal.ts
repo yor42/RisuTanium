@@ -1,6 +1,6 @@
 import { alertError, alertNormal, alertNormalWait, alertStore, alertWait, alertMd, alertConfirm } from "../alert";
 import { remove } from "@tauri-apps/plugin-fs";
-import { cancelledFileState, takeExportWriteStats, type ExportByteWriter, type ExportWriteCall } from "../exportWriters";
+import { cancelledFileState, takeExportWriteStats, webWriterNeedsGesture, type ExportByteWriter, type ExportWriteCall } from "../exportWriters";
 import { ExportCancelledError, ExportCancelToken, createExportWaitGate, type ExportWaitGate } from "../exportCancel";
 import { localBackupFileName } from "./backupFileName";
 import { LocalWriter, TauriWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson, pieceStoreOrNull } from "../globalApi.svelte";
@@ -40,6 +40,7 @@ import { beginBusy, withBusy, type BusyHandle } from "../process/memory/busyActi
 import { inlayAttachmentLimit } from "../process/files/inlayStore";
 import { parseInlayEntryName } from "./inlayBackupCodec";
 import { ExportReadError, nodePieceOpener, openFirstPiece, writeInlaysToBackup, type PieceOpener, type ReadPiece } from "./inlayBackupExport";
+import { findOversizeAssets, formatMiB, shownPromptNames } from "./backupUpstreamSizes";
 import { InlayRestoreCollector, listOversizedInlays, restoreCollectedInlays, type InlaySkipped } from "./inlayBackupImport";
 import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./restoreLock";
 import { reloadOntoRestoredState } from "./internalBackup";
@@ -255,6 +256,18 @@ async function listAssetsForBackup(store: ByteStore): Promise<{ keys: string[]; 
         }
     }
     return { keys: await store.list('assets/'), sized: null }
+}
+
+/** The sized asset listing where the desktop and Android command answers, else `null`; never falls back to the store's listing. */
+async function sizedListingOrNull(): Promise<SizedAssetKey[] | null> {
+    if (await assetBatchReadUsable()) {
+        try {
+            return await listAssetsSized()
+        } catch (e) {
+            console.error(e)
+        }
+    }
+    return null
 }
 
 /**
@@ -570,6 +583,59 @@ function oversizeNames(assets: ReadonlyMap<string, { charName: string, assetName
 }
 
 /**
+ * The assets of this backup that are larger than an upstream Node server takes in one
+ * request, named with their sizes, measured before any writer opens. `keys` limits the assets judged (a partial
+ * backup); `listing` is what the export already listed. An unknown store kind names nothing. Inlays are not judged: the
+ * fork writes each as entries of at most 64 MiB, which an upstream Node server takes.
+ */
+async function upstreamOversizeNames(
+    session: ExportSession,
+    store: ByteStore,
+    listing: { keys: readonly string[]; sized: readonly SizedAssetKey[] | null },
+    keys: readonly string[] | null,
+    assetMap: ReadonlyMap<string, { charName: string, assetName: string }>,
+): Promise<string[]> {
+    let kind: Awaited<ReturnType<typeof getAppStoreKind>>
+    try {
+        kind = await getAppStoreKind()
+    } catch {
+        return []
+    }
+    const assets = await findOversizeAssets({
+        kind,
+        store,
+        sized: listing.sized,
+        keys,
+        listedKeys: listing.keys,
+        cancel: session.cancel,
+        onProgress: (done, total) => session.gate.wait(`Checking asset sizes... (${done} / ${total})`),
+    })
+    return assets.map((item) => `${describeBackupAsset(assetMap, item.key)} (${formatMiB(item.size)})`)
+}
+
+/**
+ * Asks, before the writer opens, whether to keep the items an upstream Node server cannot restore in the backup
+ * (MC-532 2, MC-533 2). `true` when there are none or the person confirms; declining writes nothing.
+ */
+async function confirmUpstreamOversize(session: ExportSession, items: readonly string[]): Promise<boolean> {
+    return await confirmDuringExport(session, items.length > 0, async () => items.length === 0 || await alertConfirm(language.backupUpstreamOversizeConfirm(items.length, shownPromptNames(items))))
+}
+
+/**
+ * Called as the last step before the writer opens. Where opening the browser writer needs a fresh user gesture (the
+ * popup helper of a plain-HTTP page) and the size passes and prompts before it have let the last one lapse, asks for a
+ * click whose handler is the open itself.
+ */
+async function ensureGestureForWriter(session: ExportSession): Promise<void> {
+    if (webWriterNeedsGesture() && globalThis.navigator?.userActivation?.isActive === false) {
+        session.cancel.throwIfCancelled()
+        session.gate.clear()
+        await alertNormalWait(language.backupReadyToSave())
+        session.cancel.throwIfCancelled()
+    }
+}
+
+/**
  * Runs a full or partial export so that no failure of it ends unreported: the
  * person is told that the backup failed, whether the output file is gone, and
  * that it must not be used if it is not. The output file is removed only when
@@ -761,7 +827,15 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
         listing = { keys: sized.map((item) => item.key), sized }
     }
 
+    // Everything the 4 GiB prompt did not remove but an upstream Node server cannot restore (over 100 MiB) is named in
+    // a second prompt before the writer opens; confirming keeps it in the file, declining writes nothing.
+    const upstreamOversize = await upstreamOversizeNames(session, store, listing, null, assetMap)
+    if (!await confirmUpstreamOversize(session, upstreamOversize)) {
+        return { status: 'declined', cause: 'oversize-declined' }
+    }
+
     session.cancel.throwIfCancelled()
+    await ensureGestureForWriter(session)
     const writer = new LocalWriter()
     session.writer = writer
     const r = await writer.init(undefined, undefined, localBackupFileName(new Date()), session.cancel)
@@ -983,8 +1057,8 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
-    // Before the writer opens, name the units and stub entries a backup entry cannot hold and ask. The partial backup
-    // lists no asset sizes, so an asset of 4 GiB or more still fails the export when it is reached, as before.
+    // Before the writer opens, name the units and stub entries a backup entry cannot hold and ask. The partial backup's
+    // 4 GiB check lists no asset sizes (the 100 MiB check below judges the profile images), so an asset of 4 GiB or more still fails the export when it is reached, as before.
     const oversizePayloads = leaveOutOversizePayloads(collected, options.limitBytes ?? UPSTREAM_HARD_LIMIT_BYTES)
     const leftOut = oversizeNames(new Map(), [], oversizePayloads.items)
     if (!await confirmDuringExport(session, leftOut.length > 0, () => confirmLeaveOut(leftOut))) {
@@ -992,17 +1066,6 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
     }
     const cold = oversizePayloads.cold
     const coldStoragePayloads = cold.collected
-
-    session.cancel.throwIfCancelled()
-    const writer = new LocalWriter()
-    session.writer = writer
-    const r = await writer.init(undefined, undefined, localBackupFileName(new Date(), true), session.cancel)
-    // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
-    session.cancel.throwIfCancelled()
-    if(!r){
-        alertError('Failed')
-        return { status: 'declined', cause: 'save-dialog-cancelled' }
-    }
 
     const assetMap = new Map<string, { charName: string, assetName: string }>()
     session.describeAsset = (key) => describeBackupAsset(assetMap, key)
@@ -1065,6 +1128,26 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
 
     const store = await getAppStore()
     const assetKeys = Array.from(assetMap.keys())
+
+    // The profile images named above are judged by key from the same sources as a full backup; a partial backup writes
+    // no inlays. The prompt comes before the writer opens, as in a full backup.
+    const upstreamOversize = await upstreamOversizeNames(session, store, { keys: [], sized: await sizedListingOrNull() }, assetKeys, assetMap)
+    if (!await confirmUpstreamOversize(session, upstreamOversize)) {
+        return { status: 'declined', cause: 'oversize-declined' }
+    }
+
+    session.cancel.throwIfCancelled()
+    await ensureGestureForWriter(session)
+    const writer = new LocalWriter()
+    session.writer = writer
+    const r = await writer.init(undefined, undefined, localBackupFileName(new Date(), true), session.cancel)
+    // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
+    session.cancel.throwIfCancelled()
+    if(!r){
+        alertError('Failed')
+        return { status: 'declined', cause: 'save-dialog-cancelled' }
+    }
+
     const streamAssets = await desktopStreamingUsable()
     const nodeSource = streamAssets ? null : await nodeAssetPieceSource()
 

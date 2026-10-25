@@ -1987,6 +1987,8 @@ describe('a partial backup', () => {
     test('reads its assets from the ranged reader and makes no batch call', async () => {
         getDatabaseMock.mockImplementation(() => databaseWith({ customBackground: 'assets/bg.webp' }))
         fakeFs.plant('assets/bg.webp', filled(16, 9))
+        // The real sized listing reads metadata only; the fake would otherwise read the file to size it.
+        batchFake.ctl.sizeOf = () => 16
 
         expect(await outcomeOf(SavePartialLocalBackup)).toBeNull()
 

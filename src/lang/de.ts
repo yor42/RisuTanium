@@ -1916,6 +1916,8 @@ export const languageGerman = {
         `Das Backup wurde wiederhergestellt, mit Ausnahme von ${count} Asset-Datei(en), die größer sind als die ${Math.floor(limitBytes / (1024 * 1024))} MB, die dieser Server in einer Anfrage akzeptiert. Ein Charakter, der eine davon verwendet, zeigt sie als fehlend an. Übersprungen:\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `Der Server oder ein vorgeschalteter Proxy hat das Asset "${name}" als zu groß abgelehnt, daher wurde die Wiederherstellung abgebrochen. Möglicherweise wurden bereits einige Bilder oder Kaltlager-Einträge hinzugefügt oder ersetzt. Ihre aktuelle Datenbank wurde nicht verändert.`,
+    "restoreAssetUploadStopped": (name: string) =>
+        `Der Server hat den Upload des Assets "${name}" abgebrochen (der Upload ist abgelaufen, oder der Server hält zu viele nur teilweise hochgeladene Dateien), daher wurde die Wiederherstellung abgebrochen. Möglicherweise wurden bereits einige Bilder oder Kaltlager-Einträge hinzugefügt oder ersetzt. Ihre aktuelle Datenbank wurde nicht verändert.`,
     "partialBackupInlaysNotIncluded": "Inlays (Chat-Bilder, Videos, Audio und Signaturen) sind in einem Teil-Backup nicht enthalten.",
     "backupInlaysLeftOut": (count: number, names: string[]) =>
         `${count} Inlay(s) (Chat-Bilder, Videos, Audio oder Signaturen) konnten nicht gelesen werden oder werden nicht unterstützt und sind daher nicht im Backup enthalten. Ein Chat, der eines davon verwendet, zeigt es als fehlend an. Ausgelassen:\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
@@ -1940,6 +1942,10 @@ export const languageGerman = {
         `${items.length} Element(e) sind 4 GiB oder größer, was mehr ist, als ein einzelner Eintrag einer Backup-Datei fassen kann, daher können sie darin nicht gespeichert werden. Backup ohne sie erstellen? Es wurde noch nichts geschrieben.\n\n${items.join('\n')}`,
     "backupOversizeLeftOut": (items: string[]) =>
         `${items.length} Element(e) sind 4 GiB oder größer, was mehr ist, als ein einzelner Eintrag einer Backup-Datei fassen kann, daher ist ihr Inhalt nicht im Backup enthalten (ein Charakter behält nur einen Platzhalter):\n\n${items.join('\n')}`,
+    "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
+        `${count} Element(e) in diesem Backup sind größer als 100 MiB. Ein Upstream-RisuAI-Node-Server kann ein so großes Element nicht wiederherstellen und würde es daher überspringen, wenn dieses Backup dort wiederhergestellt wird; diese App und die anderen Plattformen stellen es wieder her. Das Backup mit diesen Elementen erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "backupReadyToSave": () =>
+        "Das Backup ist bereit zum Speichern. Klicken Sie auf OK, um das Speichern zu starten.",
     "backupFailedNothingWritten": () =>
         "Das Backup ist fehlgeschlagen, bevor etwas in die Datei geschrieben wurde. Führen Sie das Backup erneut aus.",
     "internalBackupUnreadable":"Dieses Backup ist beschädigt oder unvollständig und wurde daher nicht geladen. Ihre aktuellen Daten wurden nicht verändert.",

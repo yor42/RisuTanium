@@ -145,6 +145,18 @@ export interface ByteStore {
     countPrefix?(prefix: string): Promise<number | null>
 
     /**
+     * The keys that start with `prefix` and hold strictly more than `minSize`
+     * bytes, each with its size, from one listing and no value transferred.
+     * Optional and Node only. `null` means the server cannot answer (it lacks
+     * `/api/list-prefix`, or ignores `min-size` and so sends no sizes); a caller
+     * then has no sizes, which on a server that cannot hold more than 100 MiB
+     * means nothing is larger. A server error (5xx), a rejected request (400), a
+     * refused token or a transport failure rejects, never `null`. Never falls back
+     * to listing and reading.
+     */
+    listSized?(prefix: string, minSize: number): Promise<{ key: string, size: number }[] | null>
+
+    /**
      * Whether `key` holds a value. The value is never transferred to the caller.
      * The Node server answers from the file's size and revision, IndexedDB
      * looks the key up and loads no value, and the desktop store checks the

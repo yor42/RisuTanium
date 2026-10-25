@@ -1913,6 +1913,8 @@ export const languageKorean = {
         `백업을 복원했지만, 이 서버가 한 번의 요청으로 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 큰 에셋 파일 ${count}개는 복원되지 않았습니다. 이 파일을 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 파일:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `서버 또는 서버 앞단의 프록시가 에셋 "${name}"이(가) 너무 크다며 거부하여 복원을 중단했습니다. 일부 이미지나 콜드 스토리지 항목이 이미 추가되었거나 교체되었을 수 있습니다. 현재 데이터베이스는 변경되지 않았습니다.`,
+    "restoreAssetUploadStopped": (name: string) =>
+        `서버가 에셋 "${name}"의 업로드를 중단하여(업로드 시간이 만료되었거나, 서버에 일부만 업로드된 파일이 너무 많습니다) 복원을 중단했습니다. 일부 이미지나 콜드 스토리지 항목이 이미 추가되었거나 교체되었을 수 있습니다. 현재 데이터베이스는 변경되지 않았습니다.`,
     "partialBackupInlaysNotIncluded": "인레이(채팅 이미지, 영상, 오디오, 서명)는 부분 백업에 포함되지 않습니다.",
     "backupInlaysLeftOut": (count: number, names: string[]) =>
         `인레이(채팅 이미지, 영상, 오디오, 서명) ${count}개를 읽을 수 없거나 지원되지 않아 백업에 포함되지 않았습니다. 이 인레이를 사용하는 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 제외된 항목:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
@@ -1937,6 +1939,10 @@ export const languageKorean = {
         `${items.length}개 항목이 4 GiB 이상이라 백업 파일의 항목 하나에 담을 수 있는 크기를 넘으므로 백업에 저장할 수 없습니다. 해당 항목 없이 백업을 만드시겠습니까? 아직 아무것도 기록되지 않았습니다.\n\n${items.join('\n')}`,
     "backupOversizeLeftOut": (items: string[]) =>
         `${items.length}개 항목이 4 GiB 이상이라 백업 파일의 항목 하나에 담을 수 있는 크기를 넘으므로 해당 내용은 백업에 들어 있지 않습니다(캐릭터에는 자리 표시자만 남습니다):\n\n${items.join('\n')}`,
+    "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
+        `이 백업의 항목 ${count}개가 100 MiB보다 큽니다. 업스트림 RisuAI Node 서버는 이만큼 큰 항목을 복원할 수 없어, 이 백업을 그곳에서 복원하면 해당 항목을 건너뜁니다. 이 앱과 다른 플랫폼에서는 복원됩니다. 해당 항목을 포함하여 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "backupReadyToSave": () =>
+        "백업을 저장할 준비가 되었습니다. 저장을 시작하려면 확인을 누르세요.",
     "backupFailedNothingWritten": () =>
         "파일에 아무것도 기록되기 전에 백업에 실패했습니다. 백업을 다시 실행하세요.",
     "internalBackupUnreadable":"이 백업이 손상되었거나 불완전하여 불러오지 않았습니다. 현재 데이터는 변경되지 않았습니다.",

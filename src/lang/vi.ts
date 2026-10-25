@@ -1914,6 +1914,8 @@ export const languageVietnamese = {
         `Bản sao lưu đã được khôi phục, trừ ${count} tệp tài nguyên (asset) lớn hơn ${Math.floor(limitBytes / (1024 * 1024))} MB mà máy chủ này chấp nhận trong một yêu cầu. Nhân vật nào dùng một trong các tệp đó sẽ hiển thị tệp đó là bị thiếu. Các tệp đã bỏ qua:\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} tệp nữa` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `Máy chủ, hoặc proxy đặt trước nó, đã từ chối tệp tài nguyên (asset) "${name}" vì quá lớn nên việc khôi phục đã dừng lại. Một số hình ảnh hoặc mục bộ nhớ lạnh có thể đã được thêm hoặc thay thế. Cơ sở dữ liệu hiện tại của bạn không bị thay đổi.`,
+    "restoreAssetUploadStopped": (name: string) =>
+        `Máy chủ đã dừng việc tải lên tệp tài nguyên (asset) "${name}" (lượt tải lên đã hết hạn, hoặc máy chủ đang giữ quá nhiều tệp mới tải lên một phần) nên việc khôi phục đã dừng lại. Một số hình ảnh hoặc mục bộ nhớ lạnh có thể đã được thêm hoặc thay thế. Cơ sở dữ liệu hiện tại của bạn không bị thay đổi.`,
     "partialBackupInlaysNotIncluded": "Inlay (hình ảnh, video, âm thanh và chữ ký trong cuộc trò chuyện) không được đưa vào bản sao lưu một phần.",
     "backupInlaysLeftOut": (count: number, names: string[]) =>
         `Có ${count} inlay (hình ảnh, video, âm thanh hoặc chữ ký trong cuộc trò chuyện) không thể đọc được hoặc không được hỗ trợ nên không có trong bản sao lưu. Cuộc trò chuyện nào dùng một trong các inlay đó sẽ hiển thị inlay đó là bị thiếu. Các inlay bị bỏ sót:\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} inlay nữa` : ''}`,
@@ -1938,6 +1940,10 @@ export const languageVietnamese = {
         `${items.length} mục có dung lượng từ 4 GiB trở lên, vượt quá mức mà một mục trong tệp sao lưu có thể chứa, nên không thể lưu vào bản sao lưu. Tạo bản sao lưu mà không có chúng? Chưa có gì được ghi.\n\n${items.join('\n')}`,
     "backupOversizeLeftOut": (items: string[]) =>
         `${items.length} mục có dung lượng từ 4 GiB trở lên, vượt quá mức mà một mục trong tệp sao lưu có thể chứa, nên nội dung của chúng không có trong bản sao lưu (nhân vật chỉ giữ lại một phần giữ chỗ):\n\n${items.join('\n')}`,
+    "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
+        `${count} mục trong bản sao lưu này lớn hơn 100 MiB. Máy chủ Node RisuAI upstream không thể khôi phục mục lớn như vậy, nên sẽ bỏ qua chúng khi bản sao lưu này được khôi phục ở đó; ứng dụng này và các nền tảng khác thì khôi phục được. Bạn có muốn tạo bản sao lưu có bao gồm chúng không? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} mục nữa` : ''}`,
+    "backupReadyToSave": () =>
+        "Bản sao lưu đã sẵn sàng để lưu. Nhấn OK để bắt đầu lưu.",
     "backupFailedNothingWritten": () =>
         "Sao lưu không thành công trước khi có bất kỳ gì được ghi vào tệp. Hãy chạy lại sao lưu.",
     "internalBackupUnreadable":"Bản sao lưu này bị hỏng hoặc không đầy đủ nên không được tải. Dữ liệu hiện tại của bạn không bị thay đổi.",

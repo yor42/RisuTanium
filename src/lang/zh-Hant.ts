@@ -1959,6 +1959,8 @@ export const languageChineseTraditional = {
         `備份已復原，但有 ${count} 個資源檔案超過了此伺服器單次請求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB 而未能復原。使用這些檔案的角色會將其顯示為遺失。已略過的檔案：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `伺服器或其前端的代理以資源檔案「${name}」過大為由拒絕了它，因此復原已停止。部分圖片或冷儲存項目可能已被新增或取代。目前的資料庫未被變更。`,
+    "restoreAssetUploadStopped": (name: string) =>
+        `伺服器中止了資源檔案「${name}」的上傳（上傳已過期，或伺服器上部分上傳的檔案過多），因此復原已停止。部分圖片或冷儲存項目可能已被新增或取代。目前的資料庫未被變更。`,
     "partialBackupInlaysNotIncluded": "內嵌檔案（聊天圖片、影片、音訊和簽名）不包含在部分備份中。",
     "backupInlaysLeftOut": (count: number, names: string[]) =>
         `有 ${count} 個內嵌檔案（聊天圖片、影片、音訊或簽名）無法讀取或不受支援，因此未包含在備份中。使用這些檔案的聊天會將其顯示為遺失。已遺漏的檔案：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
@@ -1983,6 +1985,10 @@ export const languageChineseTraditional = {
         `有 ${items.length} 個項目達到或超過 4 GiB，超出了備份檔案單一項目所能容納的大小，因此無法儲存到備份中。要在不包含它們的情況下建立備份嗎？目前尚未寫入任何內容。\n\n${items.join('\n')}`,
     "backupOversizeLeftOut": (items: string[]) =>
         `有 ${items.length} 個項目達到或超過 4 GiB，超出了備份檔案單一項目所能容納的大小，因此它們的內容不在備份中（角色只保留一個預留位置）：\n\n${items.join('\n')}`,
+    "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
+        `此備份中有 ${count} 個項目大於 100 MiB。上游 RisuAI Node 伺服器無法復原如此大的項目，因此在那裡復原此備份時會略過它們；本應用程式和其他平台則可以復原。是否建立包含這些項目的備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
+    "backupReadyToSave": () =>
+        "備份已準備好儲存。請按「確定」開始儲存。",
     "backupFailedNothingWritten": () =>
         "備份在向檔案寫入任何內容之前就失敗了。請重新執行備份。",
     "internalBackupUnreadable":"此備份已損毀或不完整，因此未載入。目前的資料未被變更。",

@@ -1382,6 +1382,39 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
             return typeof count === 'number' && Number.isSafeInteger(count) && count >= 0 ? count : null
         },
 
+        async listSized(prefix: string, minSize: number): Promise<{ key: string, size: number }[] | null> {
+            checkAddressable(prefix)
+            if (!Number.isSafeInteger(minSize) || minSize < 0) {
+                throw new RangeError('minSize must be a non-negative safe integer.')
+            }
+            if (listPrefixUnsupported) {
+                return null
+            }
+            const response = await send(`/api/list-prefix?prefix=${hexOf(prefix)}&min-size=${minSize}`, { method: 'GET', headers: {} })
+            // A server error or a rejected request is not "the route is missing": the caller must not read it as no answer.
+            if (isAuthOrRateRefusal(response.status) || response.status >= 500 || response.status === 400) {
+                throw new NodeHttpError(response.status, 'list')
+            }
+            const body = response.ok ? await jsonObjectOf(response) : null
+            // A server that does not know `min-size` answers the plain name list: no sizes, so no answer.
+            if (body === null || body.success !== true || !Array.isArray(body.content) || !Array.isArray(body.sizes) || body.sizes.length !== body.content.length) {
+                return null
+            }
+            const kept = new Map<string, number>()
+            for (let i = 0; i < body.content.length; i++) {
+                const name: unknown = body.content[i]
+                const size: unknown = body.sizes[i]
+                if (typeof name !== 'string' || typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0) {
+                    return null
+                }
+                // Names that differ only in hex letter case arrive as one key; the larger file is the one named.
+                if (name.startsWith(prefix) && size > minSize && size > (kept.get(name) ?? -1)) {
+                    kept.set(name, size)
+                }
+            }
+            return Array.from(kept, ([key, size]) => ({ key, size }))
+        },
+
         async has(key: string): Promise<boolean> {
             checkAddressable(key)
             return (await readState(key, 'HEAD')).exists

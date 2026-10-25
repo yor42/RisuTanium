@@ -1914,6 +1914,8 @@ export const languageChinese = {
         `备份已恢复，但有 ${count} 个资源文件超过了此服务器单次请求可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB 而未能恢复。使用这些文件的角色会将其显示为缺失。已跳过的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `服务器或其前端的代理以资源文件“${name}”过大为由拒绝了它，因此恢复已停止。部分图片或冷存储条目可能已被添加或替换。当前数据库未被更改。`,
+    "restoreAssetUploadStopped": (name: string) =>
+        `服务器中止了资源文件“${name}”的上传（上传已过期，或服务器上部分上传的文件过多），因此恢复已停止。部分图片或冷存储条目可能已被添加或替换。当前数据库未被更改。`,
     "partialBackupInlaysNotIncluded": "内嵌文件（聊天图片、视频、音频和签名）不包含在部分备份中。",
     "backupInlaysLeftOut": (count: number, names: string[]) =>
         `有 ${count} 个内嵌文件（聊天图片、视频、音频或签名）无法读取或不受支持，因此未包含在备份中。使用这些文件的聊天会将其显示为缺失。已遗漏的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
@@ -1938,6 +1940,10 @@ export const languageChinese = {
         `有 ${items.length} 个项目达到或超过 4 GiB，超出了备份文件单个条目所能容纳的大小，因此无法保存到备份中。要在不包含它们的情况下创建备份吗？目前尚未写入任何内容。\n\n${items.join('\n')}`,
     "backupOversizeLeftOut": (items: string[]) =>
         `有 ${items.length} 个项目达到或超过 4 GiB，超出了备份文件单个条目所能容纳的大小，因此它们的内容不在备份中（角色只保留一个占位符）：\n\n${items.join('\n')}`,
+    "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
+        `此备份中有 ${count} 个项目大于 100 MiB。上游 RisuAI Node 服务器无法恢复如此大的项目，因此在那里恢复此备份时会跳过它们；本应用和其他平台则可以恢复。是否创建包含这些项目的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "backupReadyToSave": () =>
+        "备份已准备好保存。请按“确定”开始保存。",
     "backupFailedNothingWritten": () =>
         "备份在向文件写入任何内容之前就失败了。请重新运行备份。",
     "internalBackupUnreadable":"此备份已损坏或不完整，因此未被读取。当前数据未被更改。",

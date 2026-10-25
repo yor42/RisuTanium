@@ -1916,6 +1916,8 @@ export const languageSpanish = {
         `La copia de seguridad se restauró, excepto ${count} archivo(s) de recursos que superan los ${Math.floor(limitBytes / (1024 * 1024))} MB que este servidor acepta en una sola solicitud. Un personaje que use alguno de ellos lo mostrará como faltante. Omitidos:\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "restoreAssetRefusedTooLarge": (name: string) =>
         `El servidor, o un proxy delante de él, rechazó el recurso "${name}" por ser demasiado grande, por lo que la restauración se detuvo. Es posible que ya se hayan agregado o reemplazado algunas imágenes o entradas del almacenamiento frío. Tu base de datos actual no se modificó.`,
+    "restoreAssetUploadStopped": (name: string) =>
+        `El servidor detuvo la subida del recurso "${name}" (la subida caducó, o el servidor tiene demasiados archivos subidos solo en parte), por lo que la restauración se detuvo. Es posible que ya se hayan agregado o reemplazado algunas imágenes o entradas del almacenamiento frío. Tu base de datos actual no se modificó.`,
     "partialBackupInlaysNotIncluded": "Los inlays (imágenes, vídeo, audio y firmas del chat) no se incluyen en una copia de seguridad parcial.",
     "backupInlaysLeftOut": (count: number, names: string[]) =>
         `${count} inlay(s) (imágenes, vídeo, audio o firmas del chat) no se pudieron leer o no son compatibles, por lo que no están incluidos en la copia de seguridad. Un chat que use alguno de ellos lo mostrará como faltante. Excluidos:\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
@@ -1940,6 +1942,10 @@ export const languageSpanish = {
         `${items.length} elemento(s) ocupan 4 GiB o más, que es más de lo que cabe en una sola entrada de un archivo de copia de seguridad, por lo que no se pueden guardar en ella. ¿Crear la copia de seguridad sin ellos? Todavía no se ha escrito nada.\n\n${items.join('\n')}`,
     "backupOversizeLeftOut": (items: string[]) =>
         `${items.length} elemento(s) ocupan 4 GiB o más, que es más de lo que cabe en una sola entrada de un archivo de copia de seguridad, por lo que su contenido no está en la copia de seguridad (un personaje conserva solo un marcador de posición):\n\n${items.join('\n')}`,
+    "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
+        `${count} elemento(s) de esta copia de seguridad superan los 100 MiB. Un servidor Node de RisuAI upstream no puede restaurar un elemento tan grande, por lo que los omitiría al restaurar esta copia allí; esta aplicación y las demás plataformas sí los restauran. ¿Crear la copia de seguridad con ellos incluidos? Si lo rechazas, no se crea ningún archivo de copia de seguridad. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
+    "backupReadyToSave": () =>
+        "La copia de seguridad está lista para guardarse. Pulsa OK para empezar a guardarla.",
     "backupFailedNothingWritten": () =>
         "La copia de seguridad falló antes de que se escribiera nada en el archivo. Vuelve a ejecutar la copia de seguridad.",
     "internalBackupUnreadable":"Esta copia de seguridad está dañada o incompleta, por lo que no se cargó. Tus datos actuales no se modificaron.",

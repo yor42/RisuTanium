@@ -2076,6 +2076,10 @@ export const languageEnglish = {
         `${items.length} item(s) are 4 GiB or more, which is more than one entry of a backup file can hold, so they cannot be saved in it. Create the backup without them? Nothing has been written yet.\n\n${items.join('\n')}`,
     backupOversizeLeftOut: (items: string[]) =>
         `${items.length} item(s) are 4 GiB or more, which is more than one entry of a backup file can hold, so their content is not in the backup (a character keeps only a placeholder):\n\n${items.join('\n')}`,
+    backupUpstreamOversizeConfirm: (count: number, names: string[]) =>
+        `${count} item(s) in this backup are larger than 100 MiB. An upstream RisuAI Node server cannot restore an item that large, so it would skip them when this backup is restored there; this app and the other platforms restore them. Create the backup with them included? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    backupReadyToSave: () =>
+        "The backup is ready to save. Press OK to start saving it.",
     backupFailedNothingWritten: () =>
         "The backup failed before anything was written to the file. Run the backup again.",
     internalBackupUnreadable: "This backup is damaged or incomplete, so it was not loaded. Your current data was not changed.",
