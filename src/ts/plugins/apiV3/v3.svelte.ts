@@ -1,5 +1,8 @@
 import { allowedDbKeys, customProviderStore, getV2PluginAPIs, handlePluginInstallViaPlugin, pluginV2, type PluginV2ProviderArgument, type PluginV2ProviderOptions, type RisuPlugin } from "../plugins.svelte";
 import { SandboxHost } from "./factory";
+import { acquireModule, ModuleAmbiguousError } from "src/ts/storage/store2/moduleAcquire";
+import { isModuleStub } from "src/ts/storage/moduleStub";
+import type { RisuModule } from "src/ts/process/modules";
 import { createPluginScriptHashGetter, getPluginPermissionKey, PluginPermissionSessionCache, runWithPluginPermission, type PluginPermission } from "./pluginPermissionCache";
 import { getDatabase, type Chat } from "src/ts/storage/database.svelte";
 import { markCharacterForSave } from "src/ts/storage/characterSaveMarks";
@@ -761,6 +764,58 @@ function snapshotChat(chats: Chat[] | undefined, chatIndex: number) {
     return null;
 }
 
+/**
+ * Puts the body of each module stub of `liveModules` into the same index of
+ * `copiedModules`. A stub whose id another slot also holds is refused, because
+ * the loader resolves an id to its first holder and would hand this slot
+ * another module's body. Any failure rejects with a message naming the module
+ * (only the message crosses the plugin bridge), and nothing is half-filled for
+ * the caller: the rejection discards the copy. Every acquired module is released
+ * once its body has been copied.
+ */
+async function materialiseModuleStubs(liveModules: readonly RisuModule[] | undefined, copiedModules: RisuModule[]): Promise<void> {
+    const live = liveModules ?? []
+    const stubs: { index: number, id: string, name: string, ambiguous: boolean }[] = []
+    for(let index = 0; index < live.length; index++){
+        const slot = live[index]
+        if(!isModuleStub(slot)){
+            continue
+        }
+        stubs.push({
+            index,
+            id: slot.id,
+            name: slot.name,
+            ambiguous: live.some((other, otherIndex) => otherIndex !== index && other?.id === slot.id),
+        })
+    }
+    const releases: (() => void)[] = []
+    try{
+        for(const stub of stubs){
+            if(stub.ambiguous){
+                throw new Error(new ModuleAmbiguousError(stub.id, stub.name).message)
+            }
+            let acquired: Awaited<ReturnType<typeof acquireModule>>
+            try{
+                acquired = await acquireModule(stub.id)
+            }
+            catch(error){
+                const reason = error instanceof Error ? error.message : String(error)
+                throw new Error(`The module "${stub.name}" (${stub.id}) could not be loaded: ${reason}`)
+            }
+            if(!acquired){
+                throw new Error(`The module "${stub.name}" (${stub.id}) could not be loaded: the module list has no module with that id.`)
+            }
+            releases.push(acquired.release)
+            copiedModules[stub.index] = $state.snapshot(acquired.module)
+        }
+    }
+    finally{
+        for(const release of releases){
+            release()
+        }
+    }
+}
+
 // Exported (only) so CHORE-07 stage 7c-1's `sendChat` cold-chat guard can be
 // driven directly in tests without going through the iframe/SandboxHost
 // bridge -- see `src/ts/process/tests/pluginSendChatColdGuard.svelte.test.ts`.
@@ -921,6 +976,12 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                     continue;
                 }
                 (liteDB as any)[key] = $state.snapshot((db as any)[key]);
+            }
+            // A plugin only ever receives full modules: each module stub in the
+            // live list is loaded and its body copied into the same index of the copy.
+            const copiedModules = (liteDB as { modules?: RisuModule[] }).modules
+            if(Array.isArray(copiedModules)){
+                await materialiseModuleStubs(db.modules, copiedModules)
             }
             return liteDB;
         },
