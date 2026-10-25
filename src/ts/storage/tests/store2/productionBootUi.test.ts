@@ -526,6 +526,16 @@ describe('the in-session peer port', () => {
         expect(exportThisTabBackup).toHaveBeenCalledTimes(1)
     })
 
+    test('the automatic export runs the same tab export writer once and resolves its outcome without a hand-off prompt', async () => {
+        exportThisTabBackup.mockClear()
+        const ui = createProductionBootUi({ reload: vi.fn(), browserLanguage: 'en-US' })
+        expect(ui.peer.autoExport).toBeTypeOf('function')
+        await expect(ui.peer.autoExport?.('manifest')).resolves.toBe('saved')
+        expect(exportThisTabBackup).toHaveBeenCalledTimes(1)
+        exportThisTabBackup.mockResolvedValueOnce({ status: 'failed' } as never)
+        await expect(ui.peer.autoExport?.('manifest')).resolves.toBe('failed')
+    })
+
     test('the page reload is the port\'s reload', () => {
         const reload = vi.fn()
         const ui = createProductionBootUi({ reload, browserLanguage: 'ko-KR' })

@@ -3,6 +3,7 @@ import type { toSaveType } from '../risuSave'
 import { createYieldBudget, yieldToEventLoop } from '../saveYield'
 import { Store2PayloadTooLargeError, Store2StalePageError } from './backend/errors'
 import type { Store2Read } from './backend/types'
+import { isBusy } from '../../process/memory/busyActions'
 import { MEASURE } from '../../process/memory/measureFlag'
 import { netHeldNow, noteNetHeldTick, noteNetPassTick } from '../measureExportHold'
 import { isColdStub, SharedChaIdStubError, StubRefusedError } from './codec'
@@ -43,6 +44,11 @@ export interface PeerParkPrompt {
     offers: readonly PeerOffer[]
     /** Why 'save-mine' is not offered, for the wording the screen chooses. */
     saveMineUnavailable?: 'node' | 'replaced' | 'unloaded-characters'
+    /**
+     * How this park's one automatic export of the tab ended, for the wording: 'saved' means the file was handed to the
+     * browser, 'not-finished' means it was declined, failed, threw or was skipped. Absent when none ran.
+     */
+    autoExport?: 'saved' | 'not-finished'
 }
 
 /** What a clean prompt reads when its Reload is pressed: the loop's live state, never a copy taken when it was asked. */
@@ -78,6 +84,12 @@ export interface Store2PeerHandler {
      * A throw is a failure of the handler itself and is reported like a failed save.
      */
     exportThisTab(manifestKey: string): Promise<'saved' | 'declined' | 'failed'>
+    /**
+     * The same partial export without the blocking reload hand-off, run by the loop once per park before the question
+     * when a dirty Node tab parks. 'saved' means the file was handed to the browser, not that the download finished.
+     * The export's own dialogs still show. A throw counts as a failed automatic export. Absent, none runs.
+     */
+    autoExport?(manifestKey: string): Promise<'saved' | 'declined' | 'failed'>
     reload(): void
 }
 
@@ -270,6 +282,8 @@ interface Park {
     revision: boolean
     asked: boolean
     noticed: boolean
+    /** The park's one automatic export: carried to a newer park by `recheckPark`, so a later peer save never exports again. */
+    autoExport: 'pending' | 'running' | 'done' | 'failed'
 }
 
 type Outcome =
@@ -398,6 +412,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             revision: judged.revision,
             asked: false,
             noticed: false,
+            autoExport: 'pending',
         }
     }
 
@@ -447,6 +462,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             return
         }
         next.noticed = parked.noticed
+        next.autoExport = parked.autoExport
         setPark(next)
     }
 
@@ -478,7 +494,26 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             return
         }
         parked.asked = true
-        const prompt = promptOf(parked, true)
+        const asking = promptOf(parked, true)
+        // Once per park lifetime, before the question, and only where the tab can neither save over the peer nor be replaced.
+        if (asking.saveMineUnavailable === 'node' && parked.autoExport === 'pending' && context.peer.autoExport !== undefined) {
+            parked.autoExport = 'running'
+            // No await sits between the busy check and the call to the handler. The handler itself may await before its own
+            // busy entry registers, so a busy action starting in that narrow window is not excluded.
+            if (isBusy()) {
+                parked.autoExport = 'failed'
+            } else {
+                try {
+                    parked.autoExport = await context.peer.autoExport(encoder.manifestKey) === 'saved' ? 'done' : 'failed'
+                } catch (error) {
+                    parked.autoExport = 'failed'
+                    port.reportUncountedFailure(error, 5)
+                }
+            }
+        }
+        const prompt: PeerParkPrompt = parked.autoExport === 'done'
+            ? { ...asking, autoExport: 'saved' }
+            : parked.autoExport === 'failed' ? { ...asking, autoExport: 'not-finished' } : asking
         let answer: PeerOffer
         try {
             answer = await context.peer.decide(prompt)

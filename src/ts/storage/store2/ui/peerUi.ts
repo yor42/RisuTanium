@@ -75,11 +75,19 @@ async function untilClear(): Promise<void> {
     } while (holds(get(alertStore).type))
 }
 
-function titleOf(prompt: PeerParkPrompt): string {
+/** `exportShown`: whether 'Export this tab first' is among the buttons, so the wording never names a button that is not there. */
+function titleOf(prompt: PeerParkPrompt, exportShown: boolean): string {
     const text = language.store2Boot
     const title = prompt.reason === 'replaced' ? text.peerReplacedTitle : text.peerCommitTitle
     switch (prompt.saveMineUnavailable) {
-        case 'node': return `${title} ${text.peerNoSaveNode}`
+        case 'node': {
+            const base = `${title} ${text.peerNoSaveNode} ${exportShown ? text.peerNodeReloadDrops : text.peerNodeReloadDropsOnly}`
+            switch (prompt.autoExport) {
+                case 'saved': return `${base} ${text.peerAutoExportSaved}`
+                case 'not-finished': return `${base} ${text.peerAutoExportNotFinished}`
+                case undefined: return base
+            }
+        }
         case 'replaced': return `${title} ${text.peerNoSaveReplaced}`
         case 'unloaded-characters': return `${title} ${text.peerNoSaveUnloaded}`
         case undefined: return title
@@ -101,7 +109,7 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
     async function decide(prompt: PeerParkPrompt): Promise<PeerOffer> {
         await untilClear()
         const displayed = prompt.offers.filter((offer) => offer !== 'export-first' || exportAvailable)
-        const index = await alertSelect(displayed.map(labelOf), titleOf(prompt))
+        const index = await alertSelect(displayed.map(labelOf), titleOf(prompt, displayed.includes('export-first')))
         return displayed[Number(index)] ?? 'reload'
     }
 
@@ -154,12 +162,24 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         }
     }
 
+    /**
+     * The same export as `exportThisTab` without its reload hand-off: the loop asks its own question afterwards, which
+     * keeps Reload and Export this tab first available. The export's own dialogs and the writer's alerts still show.
+     */
+    async function autoExport(manifestKey: string): Promise<'saved' | 'declined' | 'failed'> {
+        if (options.exportThisTab === undefined) {
+            throw new Error('The export is not available in this build.')
+        }
+        return (await options.exportThisTab(manifestKey)).status
+    }
+
     return {
         parkedClean: (prompt, live) => {
             askClean(prompt, live).catch((error: unknown) => console.error(error))
         },
         decide,
         exportThisTab,
+        autoExport,
         reload: options.reload,
     }
 }
