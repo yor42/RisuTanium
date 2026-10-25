@@ -13,7 +13,7 @@ import {
 } from './bodies'
 import { assembleChat, splitChat } from './chat'
 import { buildManifest, carryManifest } from './manifest'
-import { carryModuleIndex, moduleBodyOf, moduleEntryFields, moduleHandles } from './modules'
+import { carryModuleIndex, moduleBodyOf, moduleEntryFields, moduleHandles, taggedUnitRef } from './modules'
 import { defineOwn, listOrEmpty, omitFields, pickFields, plainObject, toPlainJson } from './normalize'
 import { groupKeysIntoBuckets, PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 import { UnitSink, type UnitKeyKind } from './reuse'
@@ -463,7 +463,7 @@ function encodeModuleAt(
         for (const [identity, listUnit] of kept.units) {
             encoder.carried.set(identity, listUnit)
         }
-        entry = { ...fields, unit: refTuple(unit.ref), al: kept.al, il: kept.il }
+        entry = { ...fields, unit: taggedUnitRef(unit.ref), al: kept.al, il: kept.il }
     } else {
         const assetsStarted = MEASURE && split !== undefined ? split.now() : 0
         const assets = encoder.options.lists.moduleAssets(module)
@@ -477,7 +477,7 @@ function encodeModuleAt(
             split.addMs('splitModuleListsMs', split.now() - inlaysStarted)
         }
         const il = inlays === null ? null : encoder.putInlayList(`${IDENTITY.ilModule}${handle}`, inlays)
-        entry = { ...fields, unit: refTuple(unit.ref), al, il }
+        entry = { ...fields, unit: taggedUnitRef(unit.ref), al, il }
     }
     if (MEASURE && split !== undefined) {
         split.addMs('splitModulesMs', split.now() - turnStarted)

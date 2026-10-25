@@ -132,6 +132,8 @@ export interface ModuleEntry {
     icon?: string
     hideIcon?: boolean
     lowLevelAccess?: boolean
+    /** Present (true) only when the module carries an MCP configuration. */
+    mcp?: boolean
     hasToggle: boolean
     dsp: boolean
 }

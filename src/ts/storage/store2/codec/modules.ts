@@ -1,5 +1,5 @@
 import type { JsonObject } from '../../blockFrame'
-import { carryUnknownFields, KNOWN_FIELDS, type ModuleEntry, type ModuleIndex } from '../format'
+import { carryUnknownFields, KNOWN_FIELDS, type ModuleEntry, type ModuleIndex, type Ref } from '../format'
 import type { ModuleBody } from './bodies'
 import { CodecAssembleError } from './types'
 
@@ -39,7 +39,29 @@ export function moduleEntryFields(module: JsonObject): Omit<ModuleEntry, 'unit' 
     if (typeof module.lowLevelAccess === 'boolean') {
         entry.lowLevelAccess = module.lowLevelAccess
     }
+    if (typeof module.mcp === 'object' && module.mcp !== null) {
+        entry.mcp = true
+    }
     return entry
+}
+
+/**
+ * The entry-fields version this build writes: the fourth element of an entry's `unit` Ref. Every field
+ * `moduleEntryFields` derives must be listed in `KNOWN_FIELDS.moduleEntry`, otherwise `carryModuleIndex` would carry a
+ * stale previous value under this version. A later derived field bumps the version, and a reader accepts only its own.
+ * It is the only element a module entry `unit` Ref carries beyond the three of a plain Ref: the rekey recognises a Ref
+ * of three or four elements only.
+ */
+export const ENTRY_FIELDS_VERSION = 1
+
+/** Whether the derived fields of `entry` were computed by a build that knows this entry-fields version. Any other value, or no fourth element, reads as no tag. */
+export function hasCurrentEntryFields(entry: Pick<ModuleEntry, 'unit'>): boolean {
+    return entry.unit[3] === ENTRY_FIELDS_VERSION
+}
+
+/** A module entry `unit` Ref: the three elements of the unit's Ref plus the entry-fields version. */
+export function taggedUnitRef(ref: Ref): Ref {
+    return [ref[0], ref[1], ref[2], ENTRY_FIELDS_VERSION]
 }
 
 /** Module handle: the id, told apart from a repeated id by occurrence (the same handle the units are named by). */
