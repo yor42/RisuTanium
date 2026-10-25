@@ -6,7 +6,7 @@ import { localBackupFileName } from "./backupFileName";
 import { LocalWriter, TauriWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri, isNodeServer } from "src/ts/platform"
-import { decodeRisuSave, encodeRisuSaveLegacy, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock } from "../storage/risuSave";
+import { decodeRisuSave, encodeRisuSaveStreamed, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock, type StreamedRisuSave } from "../storage/risuSave";
 import { writeRisuSaveV0 } from "../storage/risuSaveV0";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
@@ -63,7 +63,8 @@ function getBasename(data:string){
  * after it (for example a plugin storage key created while the assets were
  * copied), and error-text roots whose unit was absent then and may exist now.
  * The roots are listed from the very object that is encoded, with no await
- * between the listing and the encode, so every unit key the written database
+ * between the listing and the encode (the streamed encode is synchronous, so
+ * that holds for the whole of it), so every unit key the written database
  * holds is carried, reported, or an error-text root left out by rule (its
  * unit is absent, or its key is one a restore could not place). The caller writes the returned units before the
  * database entry. `stubPayloads` are the entries of the stubs that are in the encoded tree, in `stub` mode: an entry
@@ -82,7 +83,7 @@ async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdS
     delete dbWithoutAccount.upstreamKvBlocks
     const dbData = typeof kvBlocks === 'object' && kvBlocks !== null && Object.keys(kvBlocks).length > 0
         ? writeRisuSaveV0(dbWithoutAccount, kvBlocks)
-        : encodeRisuSaveLegacy(dbWithoutAccount, 'compression')
+        : encodeRisuSaveStreamed(dbWithoutAccount)
     const stubPayloads = stubEntriesInTree(dbWithoutAccount.characters, cold.stubEntries)
     // An entity the first collection could not read stays a stub in the copy; the late collection does not read it again.
     // A minted uuid names an entry this export writes, never a unit of the page's store.
@@ -116,6 +117,31 @@ async function writeStubPayloadsAndRelease(
         wait(`${progressPrefix} (${i + 1} / ${total})`)
         await writer.writeBackup(stubEntries[0].backupName, unpackStubEntry(stubEntries[0]))
         stubEntries.shift()
+    }
+}
+
+/**
+ * Writes the `database.risudat` entry. The V0 form is one buffer written as before. The streamed form is a header with
+ * the total length, then each piece in order, and each piece's reference is dropped once it is written (only the
+ * reference: a writer may hold the very bytes until it closes). The length is checked against the 4 GiB entry limit
+ * `LocalWriter.writeBackup` applies, before any byte of the entry is written.
+ */
+async function writeDatabaseEntry(
+    writer: Pick<LocalWriter, 'writeBackup' | 'writeBackupHeader' | 'write'>,
+    dbData: Uint8Array | StreamedRisuSave,
+): Promise<void> {
+    if (dbData instanceof Uint8Array) {
+        await writer.writeBackup('database.risudat', dbData)
+        return
+    }
+    if (dbData.length > 0xFFFFFFFF) {
+        throw new Error(`Backup entry "database.risudat" is too large to store (a single backup entry is limited to 4 GiB).`)
+    }
+    await writer.writeBackupHeader('database.risudat', dbData.length)
+    const total = dbData.pieces.length
+    for (let i = 0; i < total; i++) {
+        await writer.write(dbData.pieces[0])
+        dbData.pieces.shift()
     }
 }
 
@@ -830,7 +856,7 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
 
     session.gate.wait(`Saving local Backup... (Saving database)`)
 
-    await writer.writeBackup('database.risudat', dbData)
+    await writeDatabaseEntry(writer, dbData)
     noteImportPhase(MEASURE ? `export database written ${describeWriteMeasure()}` : 'export database written')
     await writer.close()
     noteImportPhase(MEASURE ? `export closed ${describeWriteMeasure()}${describeNetMeasure()}` : 'export closed')
@@ -1075,7 +1101,7 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
 
     session.gate.wait(`Saving partial local backup... (Saving database)`)
 
-    await writer.writeBackup('database.risudat', dbData)
+    await writeDatabaseEntry(writer, dbData)
     await writer.close()
 
     const lateColdStorageReport = describeLateColdStorageKeys(late)
