@@ -65,14 +65,16 @@ async function writeInlay(id: string, value: InlayAsset) {
 
 export async function postInlayAsset(img:{
     name:string,
-    data:Uint8Array
+    data:Uint8Array|Blob
 }): Promise<string | InlayRefusal | null> {
 
     const extention = img.name.split('.').at(-1)
     const imgObj = new Image()
+    // A Blob (a picked File) is wrapped, not copied, so an attachment never exists twice in memory.
+    const partOf = (): BlobPart => img.data instanceof Blob ? img.data : asBuffer(img.data)
 
     if(inlayImageExts.includes(extention)){
-        imgObj.src = URL.createObjectURL(new Blob([asBuffer(img.data)], {type: `image/${extention}`}))
+        imgObj.src = URL.createObjectURL(new Blob([partOf()], {type: `image/${extention}`}))
 
         return await writeInlayImage(imgObj, {
             name: img.name,
@@ -84,11 +86,12 @@ export async function postInlayAsset(img:{
     const isVideo = inlayVideoExts.includes(extention)
     if(isAudio || isVideo){
         const limit = inlayAttachmentLimit()
-        if(img.data.byteLength > limit){
+        const size = img.data instanceof Blob ? img.data.size : img.data.byteLength
+        if(size > limit){
             return { refused: 'too-large', name: img.name, limit }
         }
         const kind = isAudio ? 'audio' : 'video'
-        const blob = new Blob([asBuffer(img.data)], {type: `${kind}/${extention}`})
+        const blob = new Blob([partOf()], {type: `${kind}/${extention}`})
         const imgid = v4()
 
         await writeInlay(imgid, {

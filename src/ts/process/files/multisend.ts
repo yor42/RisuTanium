@@ -6,7 +6,7 @@ import type { ComposerDraftKey } from '../composerDrafts.svelte';
 import { downloadFile } from 'src/ts/globalApi.svelte';
 import { isTauri } from "src/ts/platform"
 import { HypaProcesser } from '../memory/hypamemory';
-import { BufferToText as BufferToText, selectMultipleFile } from 'src/ts/util';
+import { BufferToText as BufferToText, selectMultipleFileObjects } from 'src/ts/util';
 import { isInlayRefusal, postInlayAsset } from './inlays';
 import { alertError } from '../../alert';
 import { language } from 'src/lang';
@@ -248,7 +248,9 @@ export async function postChatFile(query:string|{
     name:string,
     data:Uint8Array
 }, key?:ComposerDraftKey|null, hint?:OriginHint|null):Promise<postFileResult[]>{
-    const files = typeof(query) === 'string' ? (await selectMultipleFile([
+    // A picked file stays a File, unread: an audio or video attachment goes to the store in slices, and a text
+    // branch reads the file to text itself.
+    const files:{name:string, data:Uint8Array|Blob}[]|null = typeof(query) === 'string' ? (await selectMultipleFileObjects([
         //image format
         'jpg',
         'jpeg',
@@ -273,11 +275,13 @@ export async function postChatFile(query:string|{
         'po',
         // 'pdf',
         'txt'
-    ])) : [query]
+    ]))?.map((file) => ({name: file.name, data: file})) : [query]
 
     if(!files){
         return null
     }
+
+    const textOf = async (data:Uint8Array|Blob) => BufferToText(data instanceof Blob ? new Uint8Array(await data.arrayBuffer()) : data)
 
     const xquery = typeof(query) === 'string' ? query : ''
     const results: postFileResult[] = []
@@ -290,7 +294,7 @@ export async function postChatFile(query:string|{
             case 'po':{
                 if(key){
                     await sendPofile({
-                        file: BufferToText(file.data),
+                        file: await textOf(file.data),
                         query: xquery
                     }, createSendSubject({ chaId: key.chaId, chatId: key.chatId }, hint ?? undefined), hint ?? undefined)
                 }
@@ -303,7 +307,7 @@ export async function postChatFile(query:string|{
                 results.push({
                     type: 'text',
                     data: await sendPDFFile({
-                        file: BufferToText(file.data),
+                        file: await textOf(file.data),
                         query: xquery
                     }),
                     name: file.name
@@ -314,7 +318,7 @@ export async function postChatFile(query:string|{
                 results.push({
                     type: 'text',
                     data: await sendXMLFile({
-                        file: BufferToText(file.data),
+                        file: await textOf(file.data),
                         query: xquery
                     }),
                     name: file.name
@@ -361,7 +365,7 @@ export async function postChatFile(query:string|{
                 results.push({
                     type: 'text',
                     data: await sendTxtFile({
-                        file: BufferToText(file.data),
+                        file: await textOf(file.data),
                         query: xquery
                     }),
                     name: file.name

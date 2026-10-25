@@ -744,6 +744,48 @@ export async function saveAssetFromPieces(pieces: AsyncIterable<Uint8Array>, opt
     }
 }
 
+/** The bytes one slice of a Blob read by `saveAssetFromBlob` holds. */
+const BLOB_PIECE_BYTES = 4 * 1024 * 1024
+
+/**
+ * Saves a picked file or other Blob as an asset and returns its key, the same
+ * key `saveAsset` gives the same bytes and file name. On a store that offers
+ * `openWriter`, a Blob that may reach `ASSET_PIECE_SAVE_MIN_BYTES` is read one
+ * slice at a time (`saveAssetFromPieces`), so the page never holds the file
+ * whole (a Node server without upload routes still collects the pieces into one
+ * body in `openWriter`); anywhere else, and for a smaller Blob, it is read whole and `saveAsset` saves it.
+ * An error thrown while a slice is read (the file changed or vanished) is
+ * rethrown as it is, with nothing stored under the key.
+ */
+export async function saveAssetFromBlob(blob: Blob, fileName: string = '', options: { minPieceBytes?: number, pieceBytes?: number } = {}): Promise<string> {
+    const store = await getAppStore()
+    const threshold = options.minPieceBytes ?? ASSET_PIECE_SAVE_MIN_BYTES
+    const pieceBytes = options.pieceBytes ?? BLOB_PIECE_BYTES
+    if (store.openWriter === undefined || blob.size < threshold) {
+        return await saveAsset(new Uint8Array(await blob.arrayBuffer()), '', fileName)
+    }
+    let sliceFailure: { error: unknown } | null = null
+    async function* slices(): AsyncGenerator<Uint8Array, void, undefined> {
+        for (let start = 0; start < blob.size; start += pieceBytes) {
+            try {
+                yield new Uint8Array(await blob.slice(start, start + pieceBytes).arrayBuffer())
+            } catch (error) {
+                sliceFailure = { error }
+                throw error
+            }
+        }
+    }
+    try {
+        return await saveAssetFromPieces(slices(), { fileName, sizeBound: blob.size, minPieceBytes: threshold })
+    } catch (error) {
+        const failed = sliceFailure as { error: unknown } | null
+        if (error instanceof AssetSourceChangedError && failed !== null && error.cause === failed.error) {
+            throw failed.error
+        }
+        throw error
+    }
+}
+
 /**
  * The bytes of a value handed to `saveAsset`: a `Uint8Array`, an `ArrayBuffer`
  * or any other view over one, taken as they are without a copy. Anything else is

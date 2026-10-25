@@ -2,8 +2,8 @@
     import { FileMusicIcon, PlusIcon } from "@lucide/svelte";
     import { type character, type groupChat } from "src/ts/storage/database.svelte";
     import { DBState } from "src/ts/stores.svelte";
-    import { getFileSrc, saveAsset } from "src/ts/globalApi.svelte";
-    import { selectMultipleFile } from "src/ts/util";
+    import { getFileSrc, saveAssetFromBlob } from "src/ts/globalApi.svelte";
+    import { selectMultipleFileObjects } from "src/ts/util";
     import { beginBusy } from "src/ts/process/memory/busyActions";
     import { markCharacterForSave } from "src/ts/storage/characterSaveMarks";
     interface Props {
@@ -49,7 +49,7 @@
     <button class="hover:text-green-500 bg-textcolor2 flex justify-center items-center w-16 h-16 m-1 rounded-md" onclick={async () => {
         const target = currentCharacter
         if(target.type === 'character'){
-            const da = await selectMultipleFile(['png', 'webp', 'mp4', 'mp3', 'gif'])
+            const da = await selectMultipleFileObjects(['png', 'webp', 'mp4', 'mp3', 'gif'])
             if(!da){
                 return
             }
@@ -57,13 +57,12 @@
             try {
                 for(const f of da){
                     console.log(f)
-                    const img = f.data
                     const name = f.name
                     const extension = name.split('.').pop().toLowerCase()
                     if(!isTargetLive(target)){
                         return
                     }
-                    const imgp = await saveAsset(img,'',extension)
+                    const imgp = await saveAssetFromBlob(f, extension)
                     if(!isTargetLive(target)){
                         return
                     }

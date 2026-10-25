@@ -59,6 +59,8 @@ describe.each(['windows', 'linux', 'macos'])('with the operating system reported
         name: `Tauri files (desktop transport, ${os})`,
         conditionalWrites: false,
         offersUrlFor: true,
+        streamsBlobWrites: true,
+        blobWritesTakeAssetKeys: true,
         async create() {
             h.fs.reset()
             h.desktop.reset()

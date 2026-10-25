@@ -2,8 +2,8 @@ import { DBState } from 'src/ts/stores.svelte'
 import { language } from '../../lang'
 import { folderEntryAt, folderMemberIds, editFolder, ungroupFolder, type FolderRef } from './sidebarOrder'
 import { trashFolderMembers, untrashedMembersOf, visibleCharacterIds } from '../../ts/characters'
-import { getCharacterIndexObject, selectSingleFile } from 'src/ts/util'
-import { saveAsset } from 'src/ts/globalApi.svelte'
+import { getCharacterIndexObject, selectSingleFileObject } from 'src/ts/util'
+import { saveAssetFromBlob } from 'src/ts/globalApi.svelte'
 import { beginBusy } from 'src/ts/process/memory/busyActions'
 import { alertInput, alertSelect } from 'src/ts/alert'
 import { applyFolderImage } from './folderImage'
@@ -135,7 +135,7 @@ export async function runFolderMenu(target: FolderMenuTarget, host: FolderMenuHo
 
             case 1:
                 host.beforeFilePicker?.()
-                const folderImage = await selectSingleFile([
+                const folderImage = await selectSingleFileObject([
                     'png',
                     'jpg',
                     'webp',
@@ -152,7 +152,7 @@ export async function runFolderMenu(target: FolderMenuTarget, host: FolderMenuHo
 
                 const busy = beginBusy('imageAdd')
                 try {
-                    const folderImageData = await saveAsset(folderImage.data)
+                    const folderImageData = await saveAssetFromBlob(folderImage)
 
                     editFolderById(host, folderId, (entry) => { applyFolderImage(entry, folderImageData) })
                 } finally {

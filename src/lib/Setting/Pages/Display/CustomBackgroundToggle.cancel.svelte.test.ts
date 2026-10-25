@@ -13,13 +13,16 @@ import { installDomPicker, type DomPicker } from 'src/ts/util.domPickerHarness'
 const h = vi.hoisted(() => ({
     db: { customBackground: '', allowAllExtentionFiles: false, characters: [] as unknown[] },
     begin: vi.fn(() => ({ end: vi.fn() })),
-    save: vi.fn(async () => 'saved-bg'),
+    save: vi.fn(async (_file: Blob) => 'saved-bg'),
 }))
 
 vi.mock(import('src/ts/storage/database.svelte'), () => ({
     getDatabase: () => h.db,
-    saveImage: h.save,
+    saveImage: vi.fn(),
 }) as unknown as typeof import('src/ts/storage/database.svelte'))
+vi.mock(import('src/ts/globalApi.svelte'), () => ({
+    saveAssetFromBlob: h.save,
+}) as unknown as typeof import('src/ts/globalApi.svelte'))
 vi.mock(import('src/ts/stores.svelte'), () => ({
     DBState: { db: h.db },
     selectedCharID: { subscribe: vi.fn() },
@@ -74,9 +77,11 @@ describe('the custom background switch', () => {
     test('guard: a chosen image becomes the custom background', async () => {
         turnOn()
 
-        picker.pick([new File([Uint8Array.of(1, 2)], 'bg.png')])
+        const file = new File([Uint8Array.of(1, 2)], 'bg.png')
+        picker.pick([file])
         await new Promise((resolve) => setTimeout(resolve, 300))
 
+        expect(h.save).toHaveBeenCalledWith(file)
         expect(h.db.customBackground).toBe('saved-bg')
     })
 })

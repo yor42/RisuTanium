@@ -187,7 +187,7 @@ vi.mock(import('src/ts/util'), async () => {
         replaceAsync: vi.fn(),
         asBuffer: vi.fn(),
         selectSingleFile: vi.fn(),
-        selectMultipleFile: selectMultipleFileMock,
+        selectMultipleFileObjects: selectMultipleFileMock,
         BufferToText: (data: Uint8Array) => new TextDecoder().decode(data),
         parseKeyValue: (template: string) => {
             if (!template) return []
@@ -760,9 +760,17 @@ async function clickTriggerButton(name: string): Promise<unknown> {
 }
 
 /** A `.po` file with one entry per text, each ended by a blank line. */
+function poBody(texts: string[]): string {
+    return texts.map((text) => `msgid "${text}"\nmsgstr ""\n\n`).join('')
+}
+
 function poFile(...texts: string[]): { name: string, data: Uint8Array } {
-    const body = texts.map((text) => `msgid "${text}"\nmsgstr ""\n\n`).join('')
-    return { name: 'job.po', data: new TextEncoder().encode(body) }
+    return { name: 'job.po', data: new TextEncoder().encode(poBody(texts)) }
+}
+
+/** What the picker answers: the File itself, unread; `postChatFile` reads the text itself. */
+function pickedPoFile(...texts: string[]): File {
+    return new File([poBody(texts)], 'job.po')
 }
 
 /**
@@ -1344,7 +1352,7 @@ describe('Post File acts on the chat it was clicked in', () => {
         selectMultipleFileMock.mockImplementationOnce(async () => {
             dialog.markReached()
             await dialog.latch
-            return [poFile('one', 'two')]
+            return [pickedPoFile('one', 'two')]
         })
         const job = clickPostFile('')
         await dialog.reached
@@ -1465,7 +1473,7 @@ describe('Post File acts on the chat it was clicked in', () => {
         selectMultipleFileMock.mockImplementationOnce(async () => {
             dialog.markReached()
             await dialog.latch
-            return [poFile('one', 'two')]
+            return [pickedPoFile('one', 'two')]
         })
         const job = clickPostFile('')
         await dialog.reached

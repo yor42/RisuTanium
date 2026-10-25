@@ -73,7 +73,8 @@ vi.mock(
             downloadFile: vi.fn(),
             openURL: vi.fn(),
             loadAsset: vi.fn(),
-            saveAsset: saveAssetSpy,
+            saveAsset: vi.fn(),
+            saveAssetFromBlob: saveAssetSpy,
             readImage: vi.fn(),
             globalFetch: vi.fn(),
             aiWatermarkingLawApplies: vi.fn(() => false),
@@ -168,7 +169,7 @@ vi.mock(import('../../ts/util'), async (importOriginal) => {
     const actual = await importOriginal()
     return {
         ...actual,
-        selectSingleFile: selectSingleFileSpy,
+        selectSingleFileObject: selectSingleFileSpy,
     }
 })
 
@@ -485,7 +486,7 @@ const DELETE = '4'
 const CANCEL_TOP = '5'
 const BLUE = '2'
 
-const file = { name: 'p.png', data: new Uint8Array([1, 2, 3]) }
+const file = new File([new Uint8Array([1, 2, 3])], 'p.png')
 
 beforeEach(() => {
     localStorage.clear()
@@ -775,7 +776,7 @@ describe('Grid folder menu: the actions', () => {
             await answer(PICTURE)
             await answer('1')
             expect(selectSingleFileSpy).toHaveBeenCalledWith(['png', 'jpg', 'webp'])
-            expect(saveAssetSpy).toHaveBeenCalledWith(file.data)
+            expect(saveAssetSpy).toHaveBeenCalledWith(file)
             expect(folderOf('f1').imgFile).toBeUndefined()
             save.resolve('asset-9')
             await settle()

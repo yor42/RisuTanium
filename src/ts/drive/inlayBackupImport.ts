@@ -2,7 +2,6 @@ import type { BackupIndexEntry } from './backupContainer'
 import { inlayMetaKey } from '../process/files/inlayKeys'
 import {
     InlayUnreadableError,
-    bytesToString,
     withInlayLock,
     writeAppInlay,
 } from '../process/files/inlayStore'
@@ -161,9 +160,10 @@ export class InlayRestoreCollector {
         }
         const body = new Blob(slices, { type: header.repr === 'blob' ? header.mime : '' })
         try {
-            const data = header.repr === 'blob' ? body : bytesToString(header.repr, new Uint8Array(await body.arrayBuffer()))
+            // A text inlay's bytes travel as the Blob they arrived in; the record keeps its repr, so it reads back as a string.
+            const textRepr = header.repr === 'blob' ? undefined : header.repr
             await withInlayLock(header.id, async () => {
-                await writeAppInlay(store, header.id, { ...header.fields, data })
+                await writeAppInlay(store, header.id, { ...header.fields, data: body }, { textRepr })
             })
             return 'written'
         } catch (error) {
@@ -179,7 +179,7 @@ export class InlayRestoreCollector {
 
 /** A read of a slice of the backup file failed: the file changed or went away. */
 function isUnreadableFile(error: unknown): boolean {
-    return error instanceof DOMException && error.name === 'NotReadableError'
+    return error instanceof DOMException && (error.name === 'NotReadableError' || error.name === 'NotFoundError')
 }
 
 /** Whether the parts of `group` are exactly 0..parts-1 and add up to the header's length. */

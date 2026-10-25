@@ -21,12 +21,12 @@ const h = vi.hoisted(() => ({
         characters: [],
     },
     begin: vi.fn(() => ({ end: vi.fn() })),
-    save: vi.fn(async () => 'saved-image'),
+    save: vi.fn(async (_file: Blob) => 'saved-image'),
 }))
 
 vi.mock('./storage/database.svelte', () => ({
     getDatabase: () => h.db,
-    saveImage: h.save,
+    saveImage: vi.fn(),
     setDatabase: vi.fn(),
 }))
 vi.mock('./stores.svelte', () => ({
@@ -34,7 +34,7 @@ vi.mock('./stores.svelte', () => ({
     selectedCharID: { subscribe: vi.fn() },
 }))
 vi.mock('./alert', () => ({ alertError: vi.fn(), alertNormal: vi.fn(), alertStore: { set: vi.fn() } }))
-vi.mock('./globalApi.svelte', () => ({ AppendableBuffer: class {}, downloadFile: vi.fn(), readImage: vi.fn() }))
+vi.mock('./globalApi.svelte', () => ({ AppendableBuffer: class {}, downloadFile: vi.fn(), readImage: vi.fn(), saveAssetFromBlob: h.save }))
 vi.mock('src/lang', () => ({ language: {} }))
 vi.mock('./process/files/inlays', () => ({ reencodeImage: vi.fn() }))
 vi.mock('./pngChunk', () => ({ PngChunk: class {} }))
@@ -75,10 +75,12 @@ describe('selectUserImg', () => {
     test('guard: a chosen image is saved and becomes the persona icon', async () => {
         const pending = selectUserImg()
 
-        picker.pick([new File([Uint8Array.of(1, 2, 3)], 'me.png')])
+        const file = new File([Uint8Array.of(1, 2, 3)], 'me.png')
+        picker.pick([file])
 
         expect((await settledWithin(pending)).pending).toBe(false)
         expect(h.save).toHaveBeenCalledTimes(1)
+        expect(h.save).toHaveBeenCalledWith(file)
         expect(h.db.userIcon).toBe('saved-image')
     })
 })

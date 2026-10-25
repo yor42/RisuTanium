@@ -267,13 +267,17 @@ export async function isListedAppInlay(store: ByteStore, id: string, listed: Rea
  *
  * A Blob is handed to a store that offers `writeBlob` as it is, so the body is
  * never copied into memory; any other store, and a string, gets bytes.
+ * `options.textRepr` says that a Blob body holds the bytes of a string inlay
+ * (`string`: UTF-8, `string16`: UTF-16LE): the record then keeps that `repr` and
+ * an empty `mime`, so the inlay reads back as the string it was, while the
+ * bytes still travel as a Blob and are not decoded and encoded again.
  *
  * The caller holds `withInlayLock(id)`. The render cached for `id` is dropped
  * once the metadata commits and before the replaced body is deleted, and again
  * on every way out, so no cached URL points at a body that is gone. With
  * `revokeRendered` false the dropped render's object URL stays valid.
  */
-export async function writeAppInlay(store: ByteStore, id: string, value: object & { data?: unknown }, options: { revokeRendered?: boolean } = {}): Promise<void> {
+export async function writeAppInlay(store: ByteStore, id: string, value: object & { data?: unknown }, options: { revokeRendered?: boolean, textRepr?: 'string' | 'string16' } = {}): Promise<void> {
     const metaKey = inlayMetaKey(id)
     const bodyKey = inlayBodyKey(id, newBodyToken())
     if (metaKey === null || bodyKey === null) {
@@ -282,7 +286,7 @@ export async function writeAppInlay(store: ByteStore, id: string, value: object 
     const revoke = options.revokeRendered ?? true
     let prepared: PreparedBody | null
     try {
-        prepared = await prepareBody(store, value.data)
+        prepared = await prepareBody(store, value.data, options.textRepr)
     } catch (error) {
         throw new InlayUnreadableError(error)
     }
@@ -329,17 +333,20 @@ interface PreparedBody {
  * for a store that takes Blobs is probed with a one-byte read, so a Blob the browser cannot read is
  * refused here as unreadable and not by the store as a failed write; its bytes are not read otherwise.
  */
-async function prepareBody(store: ByteStore, data: unknown): Promise<PreparedBody | null> {
+async function prepareBody(store: ByteStore, data: unknown, textRepr?: 'string' | 'string16'): Promise<PreparedBody | null> {
     const writeBlob = store.writeBlob?.bind(store)
     if (data instanceof Blob && writeBlob !== undefined) {
         if (data.size > 0) {
             await data.slice(0, 1).arrayBuffer()
         }
-        return { repr: 'blob', mime: data.type, len: data.size, put: (key) => writeBlob(key, data, 'unconditional') }
+        return { repr: textRepr ?? 'blob', mime: textRepr === undefined ? data.type : '', len: data.size, put: (key) => writeBlob(key, data, 'unconditional') }
     }
     const body = await inlayBodyOf(data)
     if (body === null) {
         return null
+    }
+    if (data instanceof Blob && textRepr !== undefined) {
+        return { repr: textRepr, mime: '', len: body.bytes.length, put: (key) => store.write(key, body.bytes, 'unconditional') }
     }
     return { repr: body.repr, mime: body.mime, len: body.bytes.length, put: (key) => store.write(key, body.bytes, 'unconditional') }
 }

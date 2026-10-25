@@ -30,6 +30,8 @@ describeByteStoreConformance({
     name: 'Tauri files (android transport)',
     conditionalWrites: false,
     offersUrlFor: true,
+    streamsBlobWrites: true,
+    blobWritesTakeAssetKeys: true,
     async create() {
         h.fs.reset()
         h.chunk.reset()

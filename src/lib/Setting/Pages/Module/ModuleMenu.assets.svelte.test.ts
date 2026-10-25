@@ -21,8 +21,8 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const apiMocks = vi.hoisted(() => ({
     getFileSrc: vi.fn(async (path: string) => 'src:' + path),
-    saveAsset: vi.fn(async (..._args: unknown[]) => 'assets/saved'),
-    selectMultipleFile: vi.fn(async (_exts: string[]) => null as { name: string, data: Uint8Array }[] | null),
+    saveAssetFromBlob: vi.fn(async (..._args: unknown[]) => 'assets/saved'),
+    selectMultipleFileObjects: vi.fn(async (_exts: string[]) => null as File[] | null),
 }))
 
 vi.mock(import('src/ts/platform'), () => ({
@@ -35,7 +35,8 @@ vi.mock(import('src/ts/util'), () => ({
     decryptBuffer: vi.fn(async (d: unknown) => d),
     encryptBuffer: vi.fn(async (d: unknown) => d),
     selectSingleFile: vi.fn(async () => null),
-    selectMultipleFile: apiMocks.selectMultipleFile,
+    selectMultipleFile: vi.fn(async () => null),
+    selectMultipleFileObjects: apiMocks.selectMultipleFileObjects,
 }) as unknown as typeof import('src/ts/util'))
 
 // Modules the editor's imports reach pull in other globalApi exports; any name
@@ -44,7 +45,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => {
     const stub: Record<string, unknown> = {
         downloadFile: vi.fn(async () => {}),
         getFileSrc: apiMocks.getFileSrc,
-        saveAsset: apiMocks.saveAsset,
+        saveAssetFromBlob: apiMocks.saveAssetFromBlob,
         forageStorage: {
             getItem: vi.fn(async () => null),
             setItem: vi.fn(async () => {}),
@@ -243,9 +244,9 @@ const savedNames = () => DBState.db.modules[0].assets!.map((a) => a[0])
 
 beforeEach(() => {
     apiMocks.getFileSrc.mockClear()
-    apiMocks.saveAsset.mockReset()
-    apiMocks.saveAsset.mockImplementation(async () => 'assets/saved')
-    apiMocks.selectMultipleFile.mockReset()
+    apiMocks.saveAssetFromBlob.mockReset()
+    apiMocks.saveAssetFromBlob.mockImplementation(async () => 'assets/saved')
+    apiMocks.selectMultipleFileObjects.mockReset()
 })
 
 afterEach(async () => {
@@ -291,11 +292,13 @@ describe('the module asset editor on an installed AssetList', () => {
 
     test('adding an asset adds a row and schedules a save', async () => {
         const { target, tracker } = openAssetTab(2)
-        apiMocks.selectMultipleFile.mockResolvedValue([{ name: 'New.PNG', data: new Uint8Array(1) }])
+        const picked = new File([new Uint8Array(1)], 'New.PNG')
+        apiMocks.selectMultipleFileObjects.mockResolvedValue([picked])
 
         addButton(target).click()
         await settle()
 
+        expect(apiMocks.saveAssetFromBlob).toHaveBeenCalledWith(picked, 'png')
         expect(inputs(target)).toHaveLength(3)
         expect(DBState.db.modules[0].assets![2]).toEqual(['New.PNG', 'assets/saved', 'png'])
         expect(tracker.modules).toBe(true)
@@ -304,7 +307,7 @@ describe('the module asset editor on an installed AssetList', () => {
 
     test('guard: choosing no file adds nothing and schedules no save', async () => {
         const { target, tracker } = openAssetTab(2)
-        apiMocks.selectMultipleFile.mockResolvedValue(null)
+        apiMocks.selectMultipleFileObjects.mockResolvedValue(null)
 
         addButton(target).click()
         await settle()
@@ -316,10 +319,10 @@ describe('the module asset editor on an installed AssetList', () => {
     test('two adds that overlap while their uploads are pending keep both assets', async () => {
         const { target } = openAssetTab(1)
         const uploads: ((path: string) => void)[] = []
-        apiMocks.saveAsset.mockImplementation(() => new Promise<string>((resolve) => { uploads.push(resolve) }))
-        apiMocks.selectMultipleFile
-            .mockResolvedValueOnce([{ name: 'first.png', data: new Uint8Array(1) }])
-            .mockResolvedValueOnce([{ name: 'second.png', data: new Uint8Array(1) }])
+        apiMocks.saveAssetFromBlob.mockImplementation(() => new Promise<string>((resolve) => { uploads.push(resolve) }))
+        apiMocks.selectMultipleFileObjects
+            .mockResolvedValueOnce([new File([new Uint8Array(1)], 'first.png')])
+            .mockResolvedValueOnce([new File([new Uint8Array(1)], 'second.png')])
 
         addButton(target).click()
         await settle()
@@ -400,7 +403,7 @@ describe('the asset previews', () => {
         const { target } = openAssetTab(2, { preview: true })
         await settle()
         apiMocks.getFileSrc.mockClear()
-        apiMocks.selectMultipleFile.mockResolvedValue([{ name: 'New.png', data: new Uint8Array(1) }])
+        apiMocks.selectMultipleFileObjects.mockResolvedValue([new File([new Uint8Array(1)], 'New.png')])
 
         addButton(target).click()
         await settle()

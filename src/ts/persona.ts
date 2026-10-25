@@ -1,7 +1,7 @@
 import { getDatabase, saveImage, setDatabase } from "./storage/database.svelte"
-import { selectSingleFile, sleep } from "./util"
+import { selectSingleFile, selectSingleFileObject, sleep } from "./util"
 import { alertError, alertNormal, alertStore } from "./alert"
-import { AppendableBuffer, downloadFile, readImage } from "./globalApi.svelte"
+import { AppendableBuffer, downloadFile, readImage, saveAssetFromBlob } from "./globalApi.svelte"
 import { language } from "src/lang"
 import { reencodeImage } from "./process/files/inlays"
 import { PngChunk } from "./pngChunk"
@@ -10,14 +10,13 @@ import { DBState } from "./stores.svelte"
 import { beginBusy, type BusyHandle } from "./process/memory/busyActions"
 
 export async function selectUserImg() {
-    const selected = await selectSingleFile(['png'])
+    const selected = await selectSingleFileObject(['png'])
     if (!selected) {
         return
     }
     const busy = beginBusy('imageAdd')
     try {
-        const img = selected.data
-        const imgp = await saveImage(img)
+        const imgp = await saveAssetFromBlob(selected)
         DBState.db.userIcon = imgp
         DBState.db.personas[DBState.db.selectedPersona] = {
             ...DBState.db.personas[DBState.db.selectedPersona],

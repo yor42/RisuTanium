@@ -172,7 +172,10 @@ export interface ByteStore {
      * offers it for an inlay body key and a key under `assets/`: it reads the
      * Blob one slice at a time and uploads the slices, holds no Blob and offers
      * no `readBlob`; a server without the upload routes gets the whole value in
-     * one request. The value reads back through `read` as the same bytes, and
+     * one request. The Tauri store offers it for the same two key classes: it
+     * reads the Blob one slice at a time into its chunked writer (replacing the
+     * key when the last chunk lands) and offers no `readBlob` either.
+     * The value reads back through `read` as the same bytes, and
      * `list`, `has` and `delete` treat the key like any other. A File is stored as
      * a Blob over the same bytes. An error thrown while a slice of the Blob is
      * read reaches the caller as it is, and the write is abandoned and not re-sent.

@@ -40,7 +40,7 @@ vi.mock(import('src/ts/stores.svelte'), () => ({ DBState: { db: {} } }) as unkno
 
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     checkCharOrder: checkCharOrderSpy,
-    saveAsset: saveAssetSpy,
+    saveAssetFromBlob: saveAssetSpy,
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
 vi.mock(import('src/ts/process/memory/busyActions'), () => ({
@@ -52,7 +52,7 @@ vi.mock(import('src/ts/process/memory/busyActions'), () => ({
 }) as unknown as typeof import('src/ts/process/memory/busyActions'))
 
 vi.mock(import('src/ts/util'), () => ({
-    selectSingleFile: selectSingleFileSpy,
+    selectSingleFileObject: selectSingleFileSpy,
     getCharacterIndexObject: () => {
         const result: { [key: string]: number } = Object.create(null)
         world.characters.forEach((c, i) => { result[c.chaId] = i })
@@ -131,7 +131,7 @@ const flush = async () => {
     }
 }
 
-const picked = { name: 'a.png', data: new Uint8Array([1, 2, 3]) }
+const picked = new File([new Uint8Array([1, 2, 3])], 'a.png')
 const characters = () => [ch('a'), ch('b'), ch('c')]
 
 beforeEach(() => {
@@ -226,7 +226,7 @@ describe('4. picture from a file', () => {
         answers.push(TOP.picture, '1')
         const done = runFolderMenu(targetOf('f'), makeHost().host)
         await flush()
-        expect(saveAssetSpy).toHaveBeenCalledWith(picked.data)
+        expect(saveAssetSpy).toHaveBeenCalledWith(picked)
         expect(busyHandles).toHaveLength(1)
         expect(busyHandles[0].kind).toBe('imageAdd')
         expect(db.writes).toHaveLength(0)

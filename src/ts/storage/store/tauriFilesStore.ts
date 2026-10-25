@@ -3,13 +3,13 @@ import { join } from '@tauri-apps/api/path'
 import { BaseDirectory, readDir, readFile } from '@tauri-apps/plugin-fs'
 import { appDataDirectory, appFsExists, appFsMkdirAll, appFsRemove } from '../appFs'
 import { ATOMIC_TEMP_NAME_PATTERN, writeFileAtomic } from '../tauriAtomicWrite'
-import { createChunkedWriter, MISSING_FILE_ERROR, readRanged, transportKind } from '../tauriByteTransport'
+import { CHUNK_MAX, createChunkedWriter, MISSING_FILE_ERROR, readRanged, transportKind } from '../tauriByteTransport'
 import { isDurableKey, writeFileDurable } from '../tauriDurableWrite'
 import { registerPageGeneration, removeTopKeys, writeTopKey } from '../tauriGateTransport'
 import type { ByteStore, DeleteEntry, PieceWriter, ReadResult, StoreCondition, WriteResult } from './contract'
 import { StoreDeleteManyError, StoreInvalidKeyError, type DeleteReportEntry } from './errors'
 import { checkBytes, checkCondition, checkNoDuplicateKeys, ownBytes } from './guards'
-import { tauriAddressableViolation, tauriCreatableViolation, type FilePlatform } from './keyRules'
+import { inlayBodyKeyViolation, tauriAddressableViolation, tauriCreatableViolation, type FilePlatform } from './keyRules'
 
 /**
  * The byte store on the Tauri app's AppData directory (desktop and Android): one file per key, at
@@ -38,9 +38,11 @@ import { tauriAddressableViolation, tauriCreatableViolation, type FilePlatform }
  *
  * It offers `urlFor`: the web view loads a file from the asset protocol by its
  * absolute path, so the URL comes from the key alone and no byte is read (the
- * Node store offers one too, for the keys its asset route serves). It is the
- * one of two stores that offer `openWriter` (the Node store is the other), a write that
+ * Node store offers one too, for the keys its asset route serves). It is one of
+ * two stores that offer `openWriter` (the Node store is the other), a write that
  * arrives in pieces over the chunk commands, so the caller never holds the whole file.
+ * `writeBlob` is built on that writer: it reads the Blob one slice at a time for an
+ * inlay body key or a key under `assets/`, and keeps no Blob (there is no `readBlob`).
  *
  * It also offers `pageGate` (`tauriGateTransport.ts`): registration with the native
  * page-generation gate and the generation-checked write and removal of the store2
@@ -225,6 +227,32 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
         openWriter(key: string): PieceWriter {
             checkCreatable(key)
             return createChunkedWriter(key, { durable: isDurableKey(key) })
+        },
+
+        async writeBlob(key: string, blob: Blob, condition: StoreCondition): Promise<WriteResult> {
+            checkCreatable(key)
+            if (!key.startsWith('assets/') && inlayBodyKeyViolation(key) !== null) {
+                throw new StoreInvalidKeyError(key, 'a Blob is written only to an inlay body key or a key under assets/')
+            }
+            checkCondition(condition, false)
+            if (transportKind() === 'other') {
+                // No chunk commands on this page: the value is written in one call, as `write` does.
+                return await this.write(key, new Uint8Array(await blob.arrayBuffer()), condition)
+            }
+            // Each slice is read in full before it is handed to the writer, so a read
+            // error (a changed or vanished backup file) reaches the caller as it is,
+            // ends the write and is never sent again.
+            const writer = createChunkedWriter(key, { durable: isDurableKey(key) })
+            try {
+                for (let start = 0; start < blob.size; start += CHUNK_MAX) {
+                    await writer.write(new Uint8Array(await blob.slice(start, start + CHUNK_MAX).arrayBuffer()))
+                }
+                await writer.finish()
+            } catch (error) {
+                await writer.abort()
+                throw error
+            }
+            return writer.flushed === undefined ? { version: null } : { version: null, flushed: writer.flushed }
         },
 
         pageGate: {

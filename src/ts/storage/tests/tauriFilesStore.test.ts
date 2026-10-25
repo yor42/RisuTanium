@@ -38,6 +38,8 @@ for (const platform of PLATFORMS) {
         name: `Tauri files (${platform})`,
         conditionalWrites: false,
         offersUrlFor: true,
+        streamsBlobWrites: true,
+        blobWritesTakeAssetKeys: true,
         async create() {
             fakeFs.reset()
             fakeFs.setPlatform(platform)

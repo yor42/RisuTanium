@@ -2,7 +2,7 @@
     import { warnOnReject } from "src/ts/warnOnReject";
     import { language } from "../../lang";
     import { tokenizeAccurate } from "../../ts/tokenizer";
-    import { getCurrentCharacter, saveImage as saveAsset, type character, type groupChat } from "../../ts/storage/database.svelte";
+    import { getCurrentCharacter, type character, type groupChat } from "../../ts/storage/database.svelte";
     import { DBState } from 'src/ts/stores.svelte';
     import { untrack } from 'svelte';
     import { CharConfigSubMenu, MobileGUI, selectedCharID, hypaV3ModalOpen } from "../../ts/stores.svelte";
@@ -13,13 +13,13 @@
     import { alertConfirm, alertError, alertNormal, showHypaV2Alert } from "../../ts/alert";
     import { SecretRefError } from "src/ts/secretRef";
     import BarIcon from "./BarIcon.svelte";
-    import { findCharacterbyId, getAuthorNoteDefaultText, selectMultipleFile, selectSingleFile } from "../../ts/util";
+    import { findCharacterbyId, getAuthorNoteDefaultText, selectMultipleFileObjects, selectSingleFileObject } from "../../ts/util";
     import { beginBusy } from "../../ts/process/memory/busyActions";
     import Help from "../Others/Help.svelte";
     import { exportChar, openRealmUpload } from "src/ts/characterCards";
     import { fetchFishSpeechModels, getElevenTTSVoices, getWebSpeechTTSVoices, getVOICEVOXVoices, oaiVoices, getNovelAIVoices } from "src/ts/process/tts";
     import { createFishSpeechDefaults, createNovelAIVoiceDefaults } from "src/ts/process/ttsDefaults";
-    import { getFileSrc } from "src/ts/globalApi.svelte";
+    import { getFileSrc, saveAssetFromBlob } from "src/ts/globalApi.svelte";
     import { addGroupChar, rmCharFromGroup } from "src/ts/process/group";
     import TextInput from "../UI/GUI/TextInput.svelte";
     import NumberInput from "../UI/GUI/NumberInput.svelte";
@@ -593,7 +593,7 @@
                         <th class="font-medium cursor-pointer w-10">
                             <button class="hover:text-green-500" onclick={async () => {
                                 if(DBState.db.characters[$selectedCharID].type === 'character'){
-                                    const da = await selectMultipleFile(['png', 'webp', 'mp4', 'mp3', 'gif', 'jpeg', 'jpg', 'ttf', 'otf', 'css', 'webm', 'woff', 'woff2', 'svg', 'avif'])
+                                    const da = await selectMultipleFileObjects(['png', 'webp', 'mp4', 'mp3', 'gif', 'jpeg', 'jpg', 'ttf', 'otf', 'css', 'webm', 'woff', 'woff2', 'svg', 'avif'])
                                     DBState.db.characters[$selectedCharID].additionalAssets = DBState.db.characters[$selectedCharID].additionalAssets ?? []
                                     if(!da){
                                         return
@@ -601,10 +601,9 @@
                                     const busy = beginBusy('assetAdd')
                                     try {
                                         for(const f of da){
-                                            const img = f.data
                                             const name = f.name
                                             const extension = name.split('.').pop().toLowerCase()
-                                            const imgp = await saveAsset(img,'', extension)
+                                            const imgp = await saveAssetFromBlob(f, extension)
                                             DBState.db.characters[$selectedCharID].additionalAssets.push([name, imgp, extension])
                                             DBState.db.characters[$selectedCharID].additionalAssets = DBState.db.characters[$selectedCharID].additionalAssets
                                         }
@@ -935,7 +934,7 @@
 
             <span class="text-textcolor">{language.sidebarUi.ttsRefAudioData}</span>
             <Button onclick={async () => {
-                const audio = await selectSingleFile([
+                const audio = await selectSingleFileObject([
                     'wav',
                     'ogg',
                     'aac',
@@ -944,7 +943,7 @@
                 if(!audio){
                     return null
                 }
-                const saveId = await saveAsset(audio.data)
+                const saveId = await saveAssetFromBlob(audio)
                 DBState.db.characters[$selectedCharID].gptSoVitsConfig.ref_audio_data = {
                     fileName: audio.name,
                     assetId: saveId

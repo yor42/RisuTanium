@@ -70,7 +70,8 @@ vi.mock(
             downloadFile: vi.fn(),
             openURL: vi.fn(),
             loadAsset: vi.fn(),
-            saveAsset: saveAssetSpy,
+            saveAsset: vi.fn(),
+            saveAssetFromBlob: saveAssetSpy,
             readImage: vi.fn(),
             globalFetch: vi.fn(),
             aiWatermarkingLawApplies: vi.fn(() => false),
@@ -148,7 +149,7 @@ vi.mock(import('../../ts/characters'), async (importOriginal) => ({
 
 vi.mock(import('src/ts/util'), async (importOriginal) => ({
     ...(await importOriginal()),
-    selectSingleFile: pickerSpy as unknown as typeof import('src/ts/util').selectSingleFile,
+    selectSingleFileObject: pickerSpy as unknown as typeof import('src/ts/util').selectSingleFileObject,
 }))
 
 const selectAnswers: string[] = []

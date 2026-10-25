@@ -12,10 +12,10 @@
     import Check from "src/lib/UI/GUI/CheckInput.svelte";
     import Help from "src/lib/Others/Help.svelte";
     import TextAreaInput from "src/lib/UI/GUI/TextAreaInput.svelte";
-    import { getFileSrc, saveAsset, downloadFile } from "src/ts/globalApi.svelte";
+    import { getFileSrc, saveAssetFromBlob, downloadFile } from "src/ts/globalApi.svelte";
     import { alertNormal, alertError } from "src/ts/alert";
     import { exportRegex, importRegex } from "src/ts/process/scripts";
-    import { selectMultipleFile } from "src/ts/util";
+    import { selectMultipleFile, selectMultipleFileObjects } from "src/ts/util";
     
     import { DBState } from 'src/ts/stores.svelte';
     import { AssetList, toAssetList, toPlainAssetArray, type AssetTuple } from "src/ts/storage/assetList";
@@ -297,17 +297,16 @@
                 <th class="font-medium">{language.value}</th>
                 <th class="font-medium cursor-pointer w-10">
                     <button class="hover:text-green-500" onclick={async () => {
-                        const da = await selectMultipleFile(['png', 'webp', 'mp4', 'mp3', 'gif', 'jpeg', 'jpg', 'ttf', 'otf', 'css', 'webm', 'woff', 'woff2', 'svg', 'avif'])
+                        const da = await selectMultipleFileObjects(['png', 'webp', 'mp4', 'mp3', 'gif', 'jpeg', 'jpg', 'ttf', 'otf', 'css', 'webm', 'woff', 'woff2', 'svg', 'avif'])
                         if(!da){
                             return
                         }
                         const busy = beginBusy('assetAdd')
                         try {
                             for(const f of da){
-                                const img = f.data
                                 const name = f.name
                                 const extension = name.split('.').pop().toLowerCase()
-                                const imgp = await saveAsset(img,'', extension)
+                                const imgp = await saveAssetFromBlob(f, extension)
                                 // The list is read again after the await, so an asset
                                 // added while this one was uploading is kept.
                                 commitAssets([...currentAssetTuples(), [name, imgp, extension]])

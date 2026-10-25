@@ -34,11 +34,11 @@ vi.mock('src/ts/storage/database.svelte', () => ({}))
 
 vi.mock('src/ts/globalApi.svelte', () => ({
     getFileSrc: vi.fn(async (loc: string) => `blob:${loc}`),
-    saveAsset: vi.fn(),
+    saveAssetFromBlob: vi.fn(),
 }))
 
 vi.mock('src/ts/util', () => ({
-    selectMultipleFile: vi.fn(),
+    selectMultipleFileObjects: vi.fn(),
 }))
 
 vi.mock('src/ts/storage/characterSaveMarks', () => ({
@@ -46,8 +46,8 @@ vi.mock('src/ts/storage/characterSaveMarks', () => ({
 }))
 
 import AssetInput from './AssetInput.svelte'
-import { saveAsset } from 'src/ts/globalApi.svelte'
-import { selectMultipleFile } from 'src/ts/util'
+import { saveAssetFromBlob } from 'src/ts/globalApi.svelte'
+import { selectMultipleFileObjects } from 'src/ts/util'
 import { markCharacterForSave } from 'src/ts/storage/characterSaveMarks'
 import { isBusy, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 
@@ -77,7 +77,8 @@ async function flush(): Promise<void> {
     await new Promise<void>((r) => setTimeout(r, 0))
 }
 
-const file = { name: 'pic.png', data: new Uint8Array([1, 2, 3]) }
+// The picker hands back the File itself, unread; the save reads it in slices.
+const file = new File([new Uint8Array([1, 2, 3])], 'pic.png')
 
 let characters: Slot[]
 // Index the `currentCharacter` prop shows; a test moves it to model a selection change.
@@ -113,8 +114,8 @@ function additionalAssetsOf(slot: Slot): unknown {
 beforeEach(() => {
     resetBusyActionsForTest()
     selected = 0
-    vi.mocked(saveAsset).mockReset().mockResolvedValue('assets/saved.png')
-    vi.mocked(selectMultipleFile).mockReset()
+    vi.mocked(saveAssetFromBlob).mockReset().mockResolvedValue('assets/saved.png')
+    vi.mocked(selectMultipleFileObjects).mockReset()
     vi.mocked(markCharacterForSave).mockReset()
     warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -135,7 +136,7 @@ describe('AssetInput add button', () => {
     test('regression reproducer: an unchanged list gets the asset, the target is marked for save, and no busy entry is open before the picker returns', async () => {
         install(fullCharacter('X'), fullCharacter('Y'))
         const picker = deferred<typeof file[] | null>()
-        vi.mocked(selectMultipleFile).mockReturnValue(picker.promise as never)
+        vi.mocked(selectMultipleFileObjects).mockReturnValue(picker.promise as never)
         const button = mountInput()
 
         button.click()
@@ -146,19 +147,20 @@ describe('AssetInput add button', () => {
         expect(additionalAssetsOf(characters[0])).toEqual([['pic.png', 'assets/saved.png', 'png']])
         expect(additionalAssetsOf(characters[1])).toBeUndefined()
         expect(markCharacterForSave).toHaveBeenCalledWith('X')
+        expect(saveAssetFromBlob).toHaveBeenCalledWith(file, 'png')
         expect(isBusy()).toBe(false)
     })
 
     test('regression reproducer: a cancelled picker writes nothing, not even an empty asset list', async () => {
         install(fullCharacter('X'))
-        vi.mocked(selectMultipleFile).mockResolvedValue(null as never)
+        vi.mocked(selectMultipleFileObjects).mockResolvedValue(null as never)
         const button = mountInput()
 
         button.click()
         await flush()
 
         expect(additionalAssetsOf(characters[0])).toBeUndefined()
-        expect(saveAsset).not.toHaveBeenCalled()
+        expect(saveAssetFromBlob).not.toHaveBeenCalled()
         expect(isBusy()).toBe(false)
     })
 
@@ -166,7 +168,7 @@ describe('AssetInput add button', () => {
         install(fullCharacter('X'), fullCharacter('Y'))
         const x = characters[0]
         const picker = deferred<typeof file[] | null>()
-        vi.mocked(selectMultipleFile).mockReturnValue(picker.promise as never)
+        vi.mocked(selectMultipleFileObjects).mockReturnValue(picker.promise as never)
         const button = mountInput()
 
         button.click()
@@ -185,8 +187,8 @@ describe('AssetInput add button', () => {
         install(fullCharacter('X'), fullCharacter('Y'))
         const x = characters[0]
         const saving = deferred<string>()
-        vi.mocked(saveAsset).mockReturnValue(saving.promise)
-        vi.mocked(selectMultipleFile).mockResolvedValue([file] as never)
+        vi.mocked(saveAssetFromBlob).mockReturnValue(saving.promise)
+        vi.mocked(selectMultipleFileObjects).mockResolvedValue([file] as never)
         const button = mountInput()
 
         button.click()
@@ -203,7 +205,7 @@ describe('AssetInput add button', () => {
     test('regression reproducer: a slot swapped for a stub during the picker receives nothing and the action stops quietly', async () => {
         install(fullCharacter('X'), fullCharacter('Y'))
         const picker = deferred<typeof file[] | null>()
-        vi.mocked(selectMultipleFile).mockReturnValue(picker.promise as never)
+        vi.mocked(selectMultipleFileObjects).mockReturnValue(picker.promise as never)
         const button = mountInput()
 
         button.click()
@@ -214,7 +216,7 @@ describe('AssetInput add button', () => {
 
         expect(additionalAssetsOf(stub)).toBeUndefined()
         expect(additionalAssetsOf(characters[1])).toBeUndefined()
-        expect(saveAsset).not.toHaveBeenCalled()
+        expect(saveAssetFromBlob).not.toHaveBeenCalled()
         expect(warn).toHaveBeenCalledOnce()
         expect(isBusy()).toBe(false)
     })
@@ -222,8 +224,8 @@ describe('AssetInput add button', () => {
     test('regression reproducer: a slot swapped for a stub while the asset is saved ends as a quiet abort, not an unhandled throw', async () => {
         install(fullCharacter('X'))
         const saving = deferred<string>()
-        vi.mocked(saveAsset).mockReturnValue(saving.promise)
-        vi.mocked(selectMultipleFile).mockResolvedValue([file] as never)
+        vi.mocked(saveAssetFromBlob).mockReturnValue(saving.promise)
+        vi.mocked(selectMultipleFileObjects).mockResolvedValue([file] as never)
         const button = mountInput()
 
         button.click()

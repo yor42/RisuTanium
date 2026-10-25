@@ -93,6 +93,17 @@ export async function selectSingleFileObject(ext:string[]):Promise<File|null>{
 }
 
 /**
+ * Lets the user pick several files and hands back the `File` objects, unread, for a save that reads each file in
+ * pieces. Null when nothing was picked. Every platform, the desktop app included, uses the web view's chooser (as
+ * `importCharacter` does), so a picked file is never read whole here. `selectMultipleFile` stays for callers that
+ * want the bytes.
+ */
+export async function selectMultipleFileObjects(ext:string[]):Promise<File[]|null>{
+    const picked = await selectFileByDom(ext, 'multiple')
+    return picked && picked.length > 0 ? picked : null
+}
+
+/**
  * Lets the user pick several files. Null when nothing was picked. The web build and Android use the
  * web view's chooser: Android's dialog plugin answers content URIs whose names come from `basename`,
  * a synchronous plugin command that waits for the UI thread there.
