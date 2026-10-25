@@ -23,7 +23,7 @@ import { exportThisTabBackup, SaveLocalBackup, type ExportOutcome } from './back
 import { reloadAfterRestore } from './restoreReload'
 import {
     clearResumeNote, hasUsedSinceLaunch, readDeclined, shouldAskReloadFirst, workBlocksReload, writeDeclined, writeResumeNote,
-    type ResumeOp, type WorkProbes,
+    type ResumeOp, type SessionUse, type WorkProbes,
 } from './reloadFirstPolicy'
 
 /** From the answer "Reload first" to giving up and exporting in place. */
@@ -36,6 +36,8 @@ export interface ReloadFirstDeps {
     android(): boolean
     storeMode(): string
     used(): boolean
+    /** The inputs behind `used`, for the decision record only. */
+    useDetail?(): SessionUse
     counts(): { characters: number, modules: number }
     storage(): Storage | null
     now(): number
@@ -123,11 +125,64 @@ export async function askReloadFirstThenExport(kind: ResumeOp, deps: ReloadFirst
     }
 }
 
+/** Every input of one offer decision and its result, kept so a device run can read why an offer was or was not made. */
+export interface ReloadFirstDecision {
+    at: number
+    android: boolean
+    storeMode: string
+    used: boolean
+    characters: number
+    modules: number
+    declined: boolean
+    work: WorkProbes
+    wholeSaveAvailable: boolean
+    /** What the policy received as `workInFlight`. */
+    blocked: boolean
+    offer: boolean
+    /** The session-use inputs behind `used`; null when the dependency set gives none. */
+    use: SessionUse | null
+}
+
+declare global {
+    interface Window {
+        /** Read-only copy of the latest reload-first offer decision; undefined until the first decision. For device diagnostics. */
+        readonly __risuTaniumReloadFirstLast?: ReloadFirstDecision | null
+    }
+}
+
+let lastDecision: ReloadFirstDecision | null = null
+
+function copyDecision(decision: ReloadFirstDecision): ReloadFirstDecision {
+    return {
+        ...decision,
+        work: { ...decision.work },
+        use: decision.use === null ? null : { ...decision.use },
+    }
+}
+
+/** The latest decision as a plain copy, or null before any. */
+export function lastReloadFirstDecision(): ReloadFirstDecision | null {
+    return lastDecision === null ? null : copyDecision(lastDecision)
+}
+
+function ensureDecisionProperty(): void {
+    if (typeof window === 'undefined' || Object.getOwnPropertyDescriptor(window, '__risuTaniumReloadFirstLast') !== undefined) {
+        return
+    }
+    Object.defineProperty(window, '__risuTaniumReloadFirstLast', {
+        configurable: true,
+        enumerable: false,
+        get: lastReloadFirstDecision,
+    })
+}
+
 async function run(kind: ResumeOp, deps: ReloadFirstDeps): Promise<void> {
     const storage = deps.storage()
     const counts = deps.counts()
-    const blocked = workBlocksReload(deps.work()) || !deps.wholeSaveAvailable()
-    const offer = shouldAskReloadFirst({
+    const work = deps.work()
+    const wholeAvailable = deps.wholeSaveAvailable()
+    const blocked = workBlocksReload(work) || !wholeAvailable
+    const decision = {
         android: deps.android(),
         storeMode: deps.storeMode(),
         used: deps.used(),
@@ -135,7 +190,23 @@ async function run(kind: ResumeOp, deps: ReloadFirstDeps): Promise<void> {
         modules: counts.modules,
         declined: readDeclined(storage),
         workInFlight: blocked,
-    })
+    }
+    const offer = shouldAskReloadFirst(decision)
+    lastDecision = {
+        at: deps.now(),
+        android: decision.android,
+        storeMode: decision.storeMode,
+        used: decision.used,
+        characters: decision.characters,
+        modules: decision.modules,
+        declined: decision.declined,
+        work: { ...work },
+        wholeSaveAvailable: wholeAvailable,
+        blocked,
+        offer,
+        use: deps.useDetail?.() ?? null,
+    }
+    ensureDecisionProperty()
     if (!offer) {
         await deps.exportInPlace(kind)
         return
@@ -227,6 +298,7 @@ function realDeps(): ReloadFirstDeps {
         android: isAndroidTransport,
         storeMode: () => getPageStorageMode().kind,
         used: () => hasUsedSinceLaunch(sessionUse(getSaveMarkCount())),
+        useDetail: () => sessionUse(getSaveMarkCount()),
         counts: () => ({ characters: DBState.db.characters.length, modules: DBState.db.modules.length }),
         storage: sessionStorageOrNull,
         now: () => Date.now(),
