@@ -2280,6 +2280,7 @@ export const languageKorean = {
     cardFileEntryTooLarge: (fileName: string, limitMiB: number) => `이 카드 안의 "${fileName}" 파일이 ${limitMiB} MB 제한보다 커서 카드를 임포트하지 않았습니다.`,
     cardFileChanged: "임포트하는 동안 카드 파일이 변경되었거나 읽을 수 없어 임포트하지 않았습니다. 다시 임포트해 보세요.",
     cardImageTooLarge: (limitMiB: number) => `이 카드의 이미지가 ${limitMiB} MB 제한보다 커서 카드를 임포트하지 않았습니다.`,
+    assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) => `"${fileName}" 파일이 이 브라우저가 저장할 수 있는 ${limitMiB} MB보다 커서 저장하지 않았습니다.`,
     moduleFileIncomplete: "이 모듈 파일이 불완전하거나 손상되어 임포트하지 않았습니다.",
     moduleAssetTooLarge: (assetName: string, limitMiB: number) => `이 모듈 안의 에셋 "${assetName}"이(가) ${limitMiB} MB 제한보다 커서 모듈을 임포트하지 않았습니다.`,
     moduleFileChanged: "임포트하는 동안 모듈 파일이 변경되었거나 읽을 수 없어 임포트하지 않았습니다. 다시 임포트해 보세요.",

@@ -62,6 +62,7 @@ describeByteStoreConformance({
     },
     backendCalls: () => backendCallCount,
     offersBlobs: true,
+    blobWritesTakeAssetKeys: true,
     invalidEverywhere: [''],
     invalidPrefixes: [''],
     writeOnlyInvalid: [],

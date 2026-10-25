@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import { CHUNK_MAX, WRITE_CHUNK_BYTES } from 'src/ts/storage/tauriByteTransport'
 import type { ByteStore, ReadResult } from 'src/ts/storage/store/contract'
+import type { InlayAsset } from 'src/ts/process/files/inlayStore'
 
 // Many tests here hash megabytes and take one to two seconds alone; a loaded machine must not turn that into a timeout.
 vi.setConfig({ testTimeout: 30_000 })
@@ -631,5 +632,198 @@ describe('saveAssetFromPieces off Tauri', () => {
         await expect(api.saveAssetFromPieces(failing(), { sizeBound: 20 * MIB })).rejects.toBeInstanceOf(api.AssetSourceChangedError)
 
         expect(handle.files.size).toBe(0)
+    })
+})
+
+interface BlobStoreHandle extends MapStoreHandle {
+    /** The Blobs `writeBlob` kept, by key. */
+    blobs: Map<string, Blob>
+    writeBlob: ReturnType<typeof vi.fn>
+}
+
+/** A web-shaped store that keeps Blobs (the browser's IndexedDB): `writeBlob` and `readBlob`, no `openWriter`. */
+async function blobMapStore(writeBlobFailure?: unknown): Promise<BlobStoreHandle> {
+    const handle = await mapStore()
+    const blobs = new Map<string, Blob>()
+    const writeBlob = vi.fn(async (key: string, blob: Blob) => {
+        if (writeBlobFailure !== undefined) {
+            throw writeBlobFailure
+        }
+        blobs.set(key, blob)
+        return { version: null }
+    })
+    const store: ByteStore = {
+        ...handle.store,
+        has: async (key: string) => handle.files.has(key) || blobs.has(key),
+        readBlob: async (key: string) => blobs.get(key) ?? null,
+        writeBlob,
+    }
+    return { ...handle, store, blobs, writeBlob }
+}
+
+/** The sizes of every `Blob.arrayBuffer` call since the spy was made (a call on a slice reports the slice). */
+function arrayBufferSizes(spy: { mock: { contexts: unknown[] } }): number[] {
+    return spy.mock.contexts.map((context) => (context as Blob).size)
+}
+
+describe('saveAssetFromBlob on a store that keeps Blobs', () => {
+    test('reproducer: a picked file is hashed in slices and stored as the Blob itself, never read whole, under the key saveAsset gives', async () => {
+        const bytes = randomBytes(450, 31)
+        const { api, appStore } = await loadWorld()
+        const handle = await blobMapStore()
+        appStore.injectAppStore(handle.store)
+        const file = new File([bytes as Uint8Array<ArrayBuffer>], 'clip.mp4')
+        const reads = vi.spyOn(Blob.prototype, 'arrayBuffer')
+
+        const key = await api.saveAssetFromBlob(file, 'clip.mp4', { minPieceBytes: 1, pieceBytes: 70 })
+
+        expect(key).toBe(`assets/${sha256Hex(bytes)}.mp4`)
+        expect(handle.writeBlob).toHaveBeenCalledTimes(1)
+        expect(handle.writeBlob.mock.calls[0][0]).toBe(key)
+        expect((handle.writeBlob.mock.calls[0][1] as Blob).size).toBe(450)
+        expect(handle.write).not.toHaveBeenCalled()
+        expect(Math.max(...arrayBufferSizes(reads))).toBeLessThanOrEqual(70)
+    })
+
+    test('reproducer: a key the store already holds is not written again', async () => {
+        const bytes = randomBytes(300, 32)
+        const { api, appStore } = await loadWorld()
+        const handle = await blobMapStore()
+        appStore.injectAppStore(handle.store)
+
+        await api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), 'a.png', { minPieceBytes: 1 })
+        await api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), 'a.png', { minPieceBytes: 1 })
+
+        expect(handle.writeBlob).toHaveBeenCalledTimes(1)
+    })
+
+    test('guard: a Blob below the threshold is saved whole by saveAsset', async () => {
+        const bytes = randomBytes(300, 33)
+        const { api, appStore } = await loadWorld()
+        const handle = await blobMapStore()
+        appStore.injectAppStore(handle.store)
+
+        const key = await api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), 'a.png', { minPieceBytes: 10_000 })
+
+        expect(handle.writeBlob).not.toHaveBeenCalled()
+        expect(Array.from(handle.files.get(key) ?? [])).toEqual(Array.from(bytes))
+    })
+
+    test('reproducer: a browser that cannot keep a Blob gets the bytes whole under the key of the bytes it stores, even if the file changed since the hash pass', async () => {
+        const first = randomBytes(450, 34)
+        const second = randomBytes(450, 35)
+        const { api, appStore } = await loadWorld()
+        const { StoreBlobUnsupportedError } = await import('src/ts/storage/store/errors')
+        const handle = await blobMapStore(new StoreBlobUnsupportedError('assets/x', new DOMException('no blobs', 'DataCloneError')))
+        appStore.injectAppStore(handle.store)
+        // The slices read the first content; the whole read after the refused Blob write finds the file changed.
+        const file = new File([first as Uint8Array<ArrayBuffer>], 'clip.mp4')
+        vi.spyOn(file, 'arrayBuffer').mockImplementation(async () => (second as Uint8Array<ArrayBuffer>).buffer)
+
+        const key = await api.saveAssetFromBlob(file, 'clip.mp4', { minPieceBytes: 1, pieceBytes: 70 })
+
+        expect(key).toBe(`assets/${sha256Hex(second)}.mp4`)
+        expect(Array.from(handle.files.get(key) ?? [])).toEqual(Array.from(second))
+        expect(handle.files.has(`assets/${sha256Hex(first)}.mp4`)).toBe(false)
+    })
+
+    test('reproducer: a browser that cannot keep a Blob refuses a file above the whole-value bound, naming it, and stores nothing', async () => {
+        const bytes = randomBytes(450, 36)
+        vi.resetModules()
+        vi.doMock('src/ts/storage/nodeBodyLimit', async (importOriginal) => ({ ...(await importOriginal<typeof import('src/ts/storage/nodeBodyLimit')>()), WEB_ASSET_LIMIT_BYTES: 400 }))
+        try {
+            const { StoreBlobUnsupportedError } = await import('src/ts/storage/store/errors')
+            const api = await import('src/ts/globalApi.svelte')
+            const appStore = await import('src/ts/storage/store/appStore')
+            const handle = await blobMapStore(new StoreBlobUnsupportedError('assets/x', new DOMException('no blobs', 'DataCloneError')))
+            appStore.injectAppStore(handle.store)
+
+            await expect(api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), 'big.mp4', { minPieceBytes: 1 })).rejects.toThrow(/"big\.mp4" is larger than the \d+ MB this browser can store/)
+
+            expect(handle.files.size).toBe(0)
+            expect(handle.blobs.size).toBe(0)
+        } finally {
+            vi.doUnmock('src/ts/storage/nodeBodyLimit')
+        }
+    })
+
+    test('reproducer: the refusal of a file saved without a name says "unnamed file", not an empty pair of quotes', async () => {
+        const bytes = randomBytes(450, 38)
+        vi.resetModules()
+        vi.doMock('src/ts/storage/nodeBodyLimit', async (importOriginal) => ({ ...(await importOriginal<typeof import('src/ts/storage/nodeBodyLimit')>()), WEB_ASSET_LIMIT_BYTES: 400 }))
+        try {
+            const { StoreBlobUnsupportedError } = await import('src/ts/storage/store/errors')
+            const api = await import('src/ts/globalApi.svelte')
+            const appStore = await import('src/ts/storage/store/appStore')
+            const handle = await blobMapStore(new StoreBlobUnsupportedError('assets/x', new DOMException('no blobs', 'DataCloneError')))
+            appStore.injectAppStore(handle.store)
+
+            await expect(api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), undefined, { minPieceBytes: 1 })).rejects.toThrow(/^"unnamed file" is larger than the \d+ MB this browser can store/)
+
+            expect(handle.files.size).toBe(0)
+        } finally {
+            vi.doUnmock('src/ts/storage/nodeBodyLimit')
+        }
+    })
+
+    test('guard: a failure that is not the missing Blob capability reaches the caller and falls back to nothing', async () => {
+        const bytes = randomBytes(450, 37)
+        const quota = new DOMException('The quota has been exceeded.', 'QuotaExceededError')
+        const { api, appStore } = await loadWorld()
+        const handle = await blobMapStore(quota)
+        appStore.injectAppStore(handle.store)
+
+        await expect(api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), 'a.png', { minPieceBytes: 1 })).rejects.toBe(quota)
+
+        expect(handle.write).not.toHaveBeenCalled()
+        expect(handle.files.size).toBe(0)
+    })
+
+    test('guard: a store that offers openWriter without readBlob (Tauri, Node) still takes the piece writer', async () => {
+        const bytes = randomBytes(450, 38)
+        const { api, appStore } = await loadWorld()
+        const handle = await mapStore()
+        const parts: Uint8Array[] = []
+        const writeBlob = vi.fn(async () => ({ version: null }))
+        const openWriter = vi.fn(() => ({
+            write: async (data: Uint8Array) => { parts.push(data.slice()) },
+            finish: async (finalKey?: string) => { handle.files.set(finalKey ?? '', Buffer.concat(parts)) },
+            abort: async () => { },
+        }))
+        appStore.injectAppStore({ ...handle.store, openWriter, writeBlob })
+
+        const key = await api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), 'clip.mp4', { minPieceBytes: 1, pieceBytes: 70 })
+
+        expect(openWriter).toHaveBeenCalledTimes(1)
+        expect(writeBlob).not.toHaveBeenCalled()
+        expect(key).toBe(`assets/${sha256Hex(bytes)}.mp4`)
+        expect(Array.from(handle.files.get(key) ?? [])).toEqual(Array.from(bytes))
+    })
+})
+
+describe('an inlay body Blob on a store that cannot keep a Blob', () => {
+    test('reproducer: a body within the whole-value bound is stored as bytes; one above it is refused with the store error', async () => {
+        vi.resetModules()
+        vi.doMock('src/ts/storage/nodeBodyLimit', async (importOriginal) => ({ ...(await importOriginal<typeof import('src/ts/storage/nodeBodyLimit')>()), WEB_ASSET_LIMIT_BYTES: 400 }))
+        try {
+            const { StoreBlobUnsupportedError } = await import('src/ts/storage/store/errors')
+            const unsupported = new StoreBlobUnsupportedError('inlays/b-x', new DOMException('no blobs', 'DataCloneError'))
+            const inlays = await import('src/ts/process/files/inlayStore')
+            const handle = await blobMapStore(unsupported)
+            const small = randomBytes(300, 41)
+
+            const smallInlay: InlayAsset = { data: new Blob([small as Uint8Array<ArrayBuffer>], { type: 'video/mp4' }), ext: 'mp4', name: 'clip.mp4', type: 'video' }
+            const bigInlay: InlayAsset = { data: new Blob([randomBytes(450, 42) as Uint8Array<ArrayBuffer>], { type: 'video/mp4' }), ext: 'mp4', name: 'big.mp4', type: 'video' }
+
+            await inlays.writeAppInlay(handle.store, 'clip', smallInlay)
+
+            const record = await inlays.readAppInlayRecord(handle.store, 'clip')
+            expect(record?.len).toBe(300)
+            expect(Array.from(handle.files.get(record!.body) ?? [])).toEqual(Array.from(small))
+            await expect(inlays.writeAppInlay(handle.store, 'big', bigInlay)).rejects.toBe(unsupported)
+            expect(await inlays.readAppInlayRecord(handle.store, 'big')).toBeNull()
+        } finally {
+            vi.doUnmock('src/ts/storage/nodeBodyLimit')
+        }
     })
 })

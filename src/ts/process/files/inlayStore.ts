@@ -1,6 +1,8 @@
 import localforage from 'localforage'
 import { getAppStore } from 'src/ts/storage/store/appStore'
 import type { ByteStore } from 'src/ts/storage/store/contract'
+import { StoreBlobUnsupportedError } from 'src/ts/storage/store/errors'
+import { WEB_ASSET_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
 import { isWellFormedUtf16 } from 'src/ts/storage/store/keyRules'
 import { storeAssetLimitBytes } from 'src/ts/storage/assetLimit'
 import { isAndroidTransport } from 'src/ts/storage/tauriByteTransport'
@@ -347,7 +349,20 @@ async function prepareBody(store: ByteStore, data: unknown, textRepr?: 'string' 
         if (data.size > 0) {
             await data.slice(0, 1).arrayBuffer()
         }
-        return { repr: textRepr ?? 'blob', mime: textRepr === undefined ? data.type : '', len: data.size, put: (key) => writeBlob(key, data, 'unconditional') }
+        const blob = data
+        // A browser that cannot keep a Blob gets the body as bytes within the bound a whole value has always had; the
+        // readers of an inlay body already accept a bytes body. A larger body is refused with the store's own error.
+        const put = async (key: string): Promise<unknown> => {
+            try {
+                return await writeBlob(key, blob, 'unconditional')
+            } catch (error) {
+                if (!(error instanceof StoreBlobUnsupportedError) || blob.size > WEB_ASSET_LIMIT_BYTES) {
+                    throw error
+                }
+                return await store.write(key, new Uint8Array(await blob.arrayBuffer()), 'unconditional')
+            }
+        }
+        return { repr: textRepr ?? 'blob', mime: textRepr === undefined ? data.type : '', len: data.size, put }
     }
     const body = await inlayBodyOf(data)
     if (body === null) {

@@ -2280,6 +2280,7 @@ export const languageChinese = {
     "cardFileEntryTooLarge": (fileName: string, limitMiB: number) => `此角色卡内的文件“${fileName}”超过了 ${limitMiB} MB 的限制，因此该角色卡未导入。`,
     "cardFileChanged": "导入过程中角色卡文件发生了变化或无法读取，因此未导入。请重新导入。",
     "cardImageTooLarge": (limitMiB: number) => `此角色卡的图片超过了 ${limitMiB} MB 的限制，因此该角色卡未导入。`,
+    "assetFileTooLargeForBrowserStorage": (fileName: string, limitMiB: number) => `“${fileName}”超过了此浏览器可存储的 ${limitMiB} MB，因此未保存。`,
     "moduleFileIncomplete": "此模块文件不完整或已损坏，因此未导入。",
     "moduleAssetTooLarge": (assetName: string, limitMiB: number) => `此模块内的资源“${assetName}”超过了 ${limitMiB} MB 的限制，因此该模块未导入。`,
     "moduleFileChanged": "导入过程中模块文件发生了变化或无法读取，因此未导入。请重新导入。",

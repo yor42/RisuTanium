@@ -46,9 +46,9 @@ import { FILE_HEADER_V1 } from "./storage/blockFrame";
 import { getPageBlockOwner } from "./storage/pageBlockOwner";
 import { getPageStorageMode, pageRunsLegacyDeleters } from "./storage/pageStorageMode";
 import { packedForLayout, performSaveStep, type SaveStep } from "./storage/saveStep";
-import { StoreInvalidKeyError, StoreVersionConflictError } from "./storage/store/errors";
+import { StoreBlobUnsupportedError, StoreInvalidKeyError, StoreVersionConflictError } from "./storage/store/errors";
 import { NodeHttpError } from "./storage/store/nodeHttpStore";
-import { NODE_BODY_LIMIT_BYTES } from "./storage/nodeBodyLimit";
+import { NODE_BODY_LIMIT_BYTES, WEB_ASSET_LIMIT_BYTES } from "./storage/nodeBodyLimit";
 import { storeAssetLimitBytes } from "./storage/assetLimit";
 import { fitsNodeBodyLimit } from "./storage/bootArchivePass";
 import { updateAnimationSpeed } from "./gui/animation";
@@ -667,7 +667,10 @@ function assetExtensionOf(fileName: string): string {
  * in `assets/`; the last chunk renames it to the key computed from the pieces, or
  * discards it when that key already holds a file. The whole asset is never held
  * when the store writes in pieces (a Node server that lacks the upload routes
- * collects the pieces inside its writer). Anywhere else, and for a smaller asset,
+ * collects the pieces inside its writer; the browser's IndexedDB accumulates them
+ * in a Blob, writes nothing under the temporary name, and stores the bytes whole
+ * within `WEB_ASSET_LIMIT_BYTES` if the browser cannot keep a Blob).
+ * Anywhere else, and for a smaller asset,
  * the pieces are collected and `saveAsset` saves them.
  *
  * The pieces are read once and written as read: a piece is never modified or
@@ -779,7 +782,11 @@ const BLOB_PIECE_BYTES = 4 * 1024 * 1024
  * `openWriter`, a Blob that may reach `ASSET_PIECE_SAVE_MIN_BYTES` is read one
  * slice at a time (`saveAssetFromPieces`), so the page never holds the file
  * whole (a Node server without upload routes still collects the pieces into one
- * body in `openWriter`); anywhere else, and for a smaller Blob, it is read whole and `saveAsset` saves it.
+ * body in `openWriter`). On a store that keeps Blobs (`readBlob`, the browser's
+ * IndexedDB) such a Blob is hashed by slices and stored as the Blob itself; if
+ * the browser cannot keep a Blob, a file within `WEB_ASSET_LIMIT_BYTES` is read
+ * whole and saved by `saveAsset`, and a larger one is refused. Anywhere else, and
+ * for a smaller Blob, it is read whole and `saveAsset` saves it.
  * An error thrown while a slice is read (the file changed or vanished) is
  * rethrown as it is, with nothing stored under the key.
  */
@@ -787,6 +794,19 @@ export async function saveAssetFromBlob(blob: Blob, fileName: string = '', optio
     const store = await getAppStore()
     const threshold = options.minPieceBytes ?? ASSET_PIECE_SAVE_MIN_BYTES
     const pieceBytes = options.pieceBytes ?? BLOB_PIECE_BYTES
+    if (store.readBlob !== undefined && store.writeBlob !== undefined && blob.size >= threshold) {
+        // The browser's IndexedDB: the file is hashed slice by slice and handed to the store as the Blob it is.
+        const kept = await saveAssetBlobKept(store.writeBlob.bind(store), store, blob, fileName, pieceBytes)
+        if (kept !== null) {
+            return kept
+        }
+        // The browser keeps no Blob. The whole bytes are read and hashed again, so the key always names the bytes stored,
+        // even if the file changed since the first pass; a file above the bound a whole value has on this store is refused.
+        if (blob.size > WEB_ASSET_LIMIT_BYTES) {
+            throw new Error(language.assetFileTooLargeForBrowserStorage(fileName !== '' ? fileName : 'unnamed file', Math.floor(WEB_ASSET_LIMIT_BYTES / (1024 * 1024))))
+        }
+        return await saveAsset(new Uint8Array(await blob.arrayBuffer()), '', fileName)
+    }
     if (store.openWriter === undefined || blob.size < threshold) {
         return await saveAsset(new Uint8Array(await blob.arrayBuffer()), '', fileName)
     }
@@ -809,6 +829,47 @@ export async function saveAssetFromBlob(blob: Blob, fileName: string = '', optio
             throw failed.error
         }
         throw error
+    }
+}
+
+/**
+ * Saves `blob` under the key its bytes name, hashing it one slice at a time and storing the Blob itself, so the page
+ * never holds the file whole. Returns the key, or `null` when the browser refused to keep a Blob
+ * (`StoreBlobUnsupportedError`, nothing stored); every other failure is rethrown as it is. A source that ends before
+ * its size was read ends the save as `AssetSourceChangedError`, with nothing stored. The size of a File is a snapshot,
+ * so a change after the hash pass is detected only if the browser notices it while copying the file into the store.
+ */
+async function saveAssetBlobKept(writeBlob: NonNullable<ByteStore['writeBlob']>, store: ByteStore, blob: Blob, fileName: string, pieceBytes: number): Promise<string | null> {
+    const endInFlight = beginChokePoint('asset')
+    try {
+        const hash = new Sha256()
+        let hashed = 0
+        for (let start = 0; start < blob.size; start += pieceBytes) {
+            const slice = new Uint8Array(await blob.slice(start, start + pieceBytes).arrayBuffer())
+            hash.update(slice)
+            hashed += slice.length
+        }
+        if (hashed !== blob.size) {
+            throw new AssetSourceChangedError(`The source of the asset ended after ${hashed} of ${blob.size} bytes.`)
+        }
+        const key = `assets/${hash.digestHex()}.${assetExtensionOf(fileName)}`
+        // Before any I/O, so a sweep never takes the key from under the save.
+        noteAssetWrittenThisPage(key)
+        // A name is a content hash, so an existing value holds these bytes already.
+        if (await store.has(key)) {
+            return key
+        }
+        try {
+            await writeBlob(key, blob, 'unconditional')
+        } catch (error) {
+            if (error instanceof StoreBlobUnsupportedError) {
+                return null
+            }
+            throw error
+        }
+        return key
+    } finally {
+        endInFlight()
     }
 }
 

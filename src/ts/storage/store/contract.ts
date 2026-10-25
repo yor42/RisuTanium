@@ -5,8 +5,8 @@
  * `assets/<name>`); the rules are in `keyRules.ts`.
  *
  * Invariants every adapter keeps (values are bytes, except under an inlay body
- * key on a store that offers `readBlob`, where a value may be held as a Blob
- * that `read` still returns as the same bytes):
+ * key or a key under `assets/` on a store that offers `readBlob`, where a value
+ * may be held as a Blob that `read` still returns as the same bytes):
  * - Byte identity: `read` returns, byte for byte, the last value written under
  *   the key, or the value upstream wrote there. A zero-length value is a value
  *   and is never confused with an absent key.
@@ -178,9 +178,12 @@ export interface ByteStore {
 
     /**
      * Stores a Blob as the value of `key` without reading the whole Blob into
-     * memory. The browser's IndexedDB offers it for an inlay body key only and
-     * keeps the Blob (`readBlob`); any other key is refused before anything is
-     * written, so every other key class keeps holding bytes. The Node store
+     * memory. The browser's IndexedDB offers it for an inlay body key and a key
+     * under `assets/` and keeps the Blob (`readBlob`); any other key is refused
+     * before anything is written, so every other key class keeps holding bytes.
+     * It rejects with `StoreBlobUnsupportedError`, having stored nothing, when
+     * the browser cannot keep a Blob; the caller then stores the bytes with
+     * `write` if they fit the bound a whole value has on that store. The Node store
      * offers it for an inlay body key and a key under `assets/`: it reads the
      * Blob one slice at a time and uploads the slices, holds no Blob and offers
      * no `readBlob`; a server without the upload routes gets the whole value in
@@ -199,10 +202,20 @@ export interface ByteStore {
      * not a copy in memory. `null` when the key holds no such Blob: it is absent,
      * holds bytes (a `write`, a copy from another store), or the browser kept the
      * value in an encoded form that cannot be handed back as a Blob. A caller that
-     * gets `null` uses `read`. Refuses a key that is not an inlay body key like
-     * `writeBlob`.
+     * gets `null` uses `read`. Refuses a key that is neither an inlay body key
+     * nor a key under `assets/` like `writeBlob`.
      */
     readBlob?(key: string): Promise<Blob | null>
+
+    /**
+     * The value of `key` loaded once, in the form the store holds it: the Blob a
+     * `writeBlob` stored, or the bytes, or `null` when the key holds no value.
+     * Optional and IndexedDB only. A value stored in any other shape is read
+     * like `read` does (an encoded Blob decodes to bytes; data that is not
+     * binary rejects with `StoreNotBinaryError`). Refuses the keys `readBlob`
+     * refuses.
+     */
+    readValue?(key: string): Promise<Blob | Uint8Array | null>
 
     /**
      * Starts a write of one value that arrives in pieces, so the caller never
@@ -218,6 +231,11 @@ export interface ByteStore {
      * a typed error when the upload is gone, the server holds too many staged
      * bytes or the commit's outcome is unknown (`UploadGoneError`,
      * `UploadCapacityError`, `StoreOutcomeUnknownError`).
+     *
+     * The browser's IndexedDB offers it for a key under `assets/` as a Blob
+     * accumulator: nothing is written under `key` or any temporary key, so an
+     * abandoned write leaves nothing. `finish(finalKey)` keeps a value already
+     * under `finalKey`; `finish()` replaces the value under `key`.
      */
     openWriter?(key: string): PieceWriter
 

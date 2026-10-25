@@ -181,6 +181,19 @@ export function inlayBodyKeyViolation(key: string): string | null {
 }
 
 /**
+ * The reason `key` is neither an inlay body key nor a key under `assets/` that
+ * the browser's IndexedDB can create, or `null` when it is one of them. The two
+ * key classes a Blob may be stored under on the plain browser store.
+ */
+export function assetOrInlayBodyKeyViolation(key: string): string | null {
+    if (typeof key === 'string' && key.startsWith('assets/')) {
+        return indexedDbCreatableViolation(key)
+    }
+    const inlayReason = inlayBodyKeyViolation(key)
+    return inlayReason === null ? indexedDbCreatableViolation(key) : 'a Blob is written only to an inlay body key or a key under assets/'
+}
+
+/**
  * The reason the Node server's asset route (`GET /api/asset/<hex>`) refuses
  * `key`, or `null` when it serves it: a key under `assets/`, or an inlay body
  * key (`inlayBodyKeyViolation`) within the longest key the server accepts.

@@ -10,7 +10,8 @@ import { decodeRisuSave, encodeRisuSaveLegacy, isBlockFormatSave, salvageRisuSav
 import { writeRisuSaveV0 } from "../storage/risuSaveV0";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
-import { StoreInvalidKeyError, UploadCapacityError, UploadGoneError } from "../storage/store/errors";
+import { StoreBlobUnsupportedError, StoreInvalidKeyError, UploadCapacityError, UploadGoneError } from "../storage/store/errors";
+import { ASSET_PIECE_SAVE_MIN_BYTES } from "../assetHash";
 import { assetBatchWriteMode, isAssetBatchAvailable, isAssetBatchReadAvailable, listAssetsSized, readAssetBatch, writeAssetBatch, writeAssetBatchB64, type AssetBatchWriteMode, type AssetPutEntry, type AssetPutResult, type SizedAssetKey } from "../storage/tauriAssetBatch";
 import { CHUNK_MAX, createChunkedWriter, isDesktopTransport, readRangedPieces, takeRangeReadStats, transportKind, WRITE_CHUNK_BYTES, type ChunkedWriter } from "../storage/tauriByteTransport";
 import { tauriAddressableViolation, tauriCreatableViolation } from "../storage/store/keyRules";
@@ -18,7 +19,7 @@ import { ASSET_BATCH_MAX_ENTRIES, ASSET_MAX_STREAMS, ExportAssetReader, RestoreA
 import { MEASURE } from "../process/memory/measureFlag";
 import { peekNetTickStats, residentCharacterCount, resetNetTickStats } from "../storage/measureExportHold";
 import { NodeHttpError } from "../storage/store/nodeHttpStore";
-import { NODE_BODY_LIMIT_BYTES } from "../storage/nodeBodyLimit";
+import { WEB_ASSET_LIMIT_BYTES } from "../storage/nodeBodyLimit";
 import { selectedStoreIsNode, storeAssetLimitBytes } from "../storage/assetLimit";
 import { createYieldBudget, yieldToEventLoop } from "../storage/saveYield";
 import { getDatabase, setDatabase, type Database } from "../storage/database.svelte";
@@ -1403,7 +1404,7 @@ function skippedNoticesOf(skippedAssets: readonly SkippedAsset[], skippedInlays:
         notices.push(language.restoreAssetsSkipped(invalidNames.length, shownSkippedNames(invalidNames)));
     }
     if (tooLargeNames.length > 0) {
-        notices.push(language.restoreAssetsSkippedTooLarge(tooLargeNames.length, shownSkippedNames(tooLargeNames), assetLimit ?? NODE_BODY_LIMIT_BYTES));
+        notices.push(language.restoreAssetsSkippedTooLarge(tooLargeNames.length, shownSkippedNames(tooLargeNames), assetLimit ?? WEB_ASSET_LIMIT_BYTES));
     }
     const inlayNames = (reason: InlaySkipped['reason']) => skippedInlays.filter((skipped) => skipped.reason === reason).map((skipped) => skipped.label);
     const invalidInlays = inlayNames('invalid');
@@ -1707,6 +1708,10 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                 const nodeRestoreStore = desktopStreamLargeAssets ? null : await nodePieceStore();
                 const streamLargeAssets = desktopStreamLargeAssets || nodeRestoreStore !== null;
                 const openRestoreStream = (key: string): ChunkedWriter => nodeRestoreStore !== null ? nodeRestoreStore.openWriter!(key) : openAssetStream(key);
+                // On the browser's IndexedDB (a store that keeps Blobs) an entry of ASSET_PIECE_SAVE_MIN_BYTES or more is stored as a
+                // slice of the backup file, so the page never reads it into memory. No other page streams this way.
+                const webBlobRestoreStore = streamLargeAssets ? null : await getAppStore();
+                const blobRestoreStore = webBlobRestoreStore !== null && webBlobRestoreStore.readBlob !== undefined && webBlobRestoreStore.writeBlob !== undefined ? webBlobRestoreStore : null;
                 let stopMessage: string | null = null;
                 let passFailure: { error: unknown } | null = null;
                 let visitedEntries = 0;
@@ -1858,6 +1863,40 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                             }
                             await yieldBudget.maybeYield();
                             continue;
+                        }
+
+                        // The browser's IndexedDB: a large asset entry is stored as a slice of the backup file. The database and the
+                        // cold-storage entries stay whole-decoded below. A browser that cannot keep a Blob falls through to the
+                        // whole-entry path below, which restores an asset of any size and checks the file as it reads.
+                        if (blobRestoreStore !== null && entry.dataLength >= ASSET_PIECE_SAVE_MIN_BYTES
+                                && name !== 'database.risudat' && !getColdStorageBackupKey(name)) {
+                            const assetKey = 'assets/' + name;
+                            noteAssetWrittenThisPage(assetKey);
+                            const entryData = file.slice(dataStart, dataStart + entry.dataLength);
+                            if (entryData.size !== entry.dataLength) {
+                                stopMessage = language.backupFileChangedWhileReading;
+                                break;
+                            }
+                            let keptAsBlob = false;
+                            try {
+                                await blobRestoreStore.writeBlob!(assetKey, entryData, 'unconditional');
+                                keptAsBlob = true;
+                            } catch (error) {
+                                if (error instanceof StoreInvalidKeyError) {
+                                    console.error(error);
+                                    skippedAssets.push({ name, reason: 'invalidName' });
+                                    await yieldBudget.maybeYield();
+                                    continue;
+                                }
+                                if (!(error instanceof StoreBlobUnsupportedError)) {
+                                    throw error;
+                                }
+                            }
+                            if (keptAsBlob) {
+                                assetsSubmitted++;
+                                await yieldBudget.maybeYield();
+                                continue;
+                            }
                         }
 
                         let data: Uint8Array;
@@ -2221,7 +2260,7 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                     await alertNormalWait(language.restoreAssetsSkipped(skippedInvalidNames.length, shownSkippedNames(skippedInvalidNames)));
                 }
                 if (skippedTooLargeNames.length > 0) {
-                    await alertNormalWait(language.restoreAssetsSkippedTooLarge(skippedTooLargeNames.length, shownSkippedNames(skippedTooLargeNames), assetLimit ?? NODE_BODY_LIMIT_BYTES));
+                    await alertNormalWait(language.restoreAssetsSkippedTooLarge(skippedTooLargeNames.length, shownSkippedNames(skippedTooLargeNames), assetLimit ?? WEB_ASSET_LIMIT_BYTES));
                 }
                 const skippedInlayNames = (reason: InlaySkipped['reason']) => skippedInlays.filter((skipped) => skipped.reason === reason).map((skipped) => skipped.label);
                 const invalidInlays = skippedInlayNames('invalid');

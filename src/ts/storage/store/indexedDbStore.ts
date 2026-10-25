@@ -1,18 +1,23 @@
 import localforage from 'localforage'
 import { HEAD_KEY } from '../blockKeys'
 import { sameHeadBytes, type HeadRead, type HeadSwap, type SwapOutcome } from '../headSwap'
-import type { ByteStore, DeleteEntry, ReadResult, StoreCondition, WriteResult } from './contract'
-import { StoreDeleteManyError, StoreError, StoreInvalidKeyError, StoreNotBinaryError, type DeleteReportEntry } from './errors'
+import { WEB_ASSET_LIMIT_BYTES } from '../nodeBodyLimit'
+import type { ByteStore, DeleteEntry, PieceWriter, ReadResult, StoreCondition, WriteResult } from './contract'
+import { StoreBlobUnsupportedError, StoreDeleteManyError, StoreError, StoreInvalidKeyError, StoreNotBinaryError, type DeleteReportEntry } from './errors'
 import { checkBytes, checkCondition, checkNoDuplicateKeys, ownBytes } from './guards'
-import { indexedDbAddressableViolation, indexedDbCreatableViolation, inlayBodyKeyViolation } from './keyRules'
+import { assetOrInlayBodyKeyViolation, indexedDbAddressableViolation, indexedDbCreatableViolation } from './keyRules'
 
 /**
  * The byte store on the browser's IndexedDB, in the database upstream already
  * uses: LocalForage database `risuai`, object store `keyvaluepairs`, each value
- * a plain `Uint8Array` under its key, except under an inlay body key, which may
- * hold a Blob (`writeBlob`) that `read` still returns as bytes. No object store is added and no database
- * version is forced, so data upstream wrote is read where it lies and data this
- * store writes is read by upstream's own LocalForage code.
+ * a plain `Uint8Array` under its key, except under an inlay body key or a key
+ * under `assets/`, which may hold a Blob (`writeBlob`, or `openWriter`) that
+ * `read` still returns as bytes. No object store is added and no database
+ * version is forced, so data upstream wrote is read where it lies. Values that
+ * are bytes are read by upstream's own LocalForage code; a Blob-valued asset or
+ * inlay is stored as a plain Blob (LocalForage `getItem` returns it), but
+ * upstream does not display it, and this fork does not promise that upstream
+ * reads its own storage (MC-175).
  *
  * The driver is pinned to IndexedDB: where IndexedDB is missing every
  * operation rejects, instead of LocalForage silently falling back to WebSQL or
@@ -34,6 +39,8 @@ import { indexedDbAddressableViolation, indexedDbCreatableViolation, inlayBodyKe
 
 const DATABASE_NAME = 'risuai'
 const OBJECT_STORE_NAME = 'keyvaluepairs'
+/** The pieces a piece writer holds loose before it folds them into its Blob. */
+const WRITER_FOLD_BYTES = 8 * 1024 * 1024
 
 /**
  * A plain connection to the existing database, opened without a version so it
@@ -245,6 +252,90 @@ function createRawReader(): { get(key: string): Promise<unknown> } {
     }
 }
 
+/** The error names a browser raises when it cannot keep a Blob in IndexedDB. */
+function isBlobUnsupportedError(error: unknown): boolean {
+    const name = typeof error === 'object' && error !== null ? (error as { name?: unknown }).name : undefined
+    return name === 'DataCloneError' || name === 'UnknownError'
+}
+
+/**
+ * Puts a value under a key on a plain read-write connection of its own, so a
+ * Blob is stored as the Blob it is. LocalForage's `setItem` is not used for a
+ * Blob because, when its own support probe says the browser cannot store Blobs,
+ * it encodes the whole Blob as a base64 string in memory first. The database is
+ * created by LocalForage (`ready`), never by this connection.
+ *
+ * One put is one transaction, so a failed or aborted put leaves the previous
+ * value. The default durability matches `setItem`. The connection is replaced
+ * and the put retried once only when opening the transaction itself throws
+ * `InvalidStateError` (the browser closed the connection, or a version change):
+ * nothing was sent then, and the put is idempotent. An abort, a quota failure
+ * and any request error reject as they are, except `DataCloneError` and
+ * `UnknownError`, which become `StoreBlobUnsupportedError`: nothing was stored
+ * and the caller writes the bytes whole. `UnknownError` is also what a disk
+ * failure can raise, in which case the whole-bytes write fails again with its
+ * own error; no other error is mapped to this one.
+ */
+function createRawWriter(ready: () => Promise<unknown>): { put(key: string, value: Blob): Promise<void> } {
+    let connection: IDBDatabase | undefined
+    let opening: Promise<IDBDatabase | null> | undefined
+
+    function connect(): Promise<IDBDatabase | null> {
+        if (connection !== undefined) {
+            return Promise.resolve(connection)
+        }
+        opening ??= openExistingDatabase((closed) => {
+            if (connection === closed) {
+                connection = undefined
+            }
+        }).then((database) => {
+            connection = database ?? undefined
+            opening = undefined
+            return database
+        })
+        return opening
+    }
+
+    return {
+        async put(key: string, value: Blob): Promise<void> {
+            await ready()
+            for (let attempt = 0; ; attempt++) {
+                const database = await connect()
+                if (database === null) {
+                    throw new StoreError('The IndexedDB database could not be opened for a Blob write.')
+                }
+                let transaction: IDBTransaction
+                try {
+                    transaction = database.transaction(OBJECT_STORE_NAME, 'readwrite')
+                } catch (error) {
+                    if (attempt > 0 || !isInvalidStateError(error)) {
+                        throw error
+                    }
+                    if (connection === database) {
+                        connection = undefined
+                    }
+                    try {
+                        database.close()
+                    } catch {
+                        // Already closed.
+                    }
+                    continue
+                }
+                try {
+                    await new Promise<void>((resolve, reject) => {
+                        transaction.oncomplete = () => resolve()
+                        transaction.onabort = () => reject(transaction.error ?? new StoreError('The Blob write was aborted.'))
+                        transaction.objectStore(OBJECT_STORE_NAME).put(value, key)
+                    })
+                    return
+                } catch (error) {
+                    throw isBlobUnsupportedError(error) ? new StoreBlobUnsupportedError(key, error) : error
+                }
+            }
+        },
+    }
+}
+
 /**
  * The exclusive upper bound of the keys that start with `prefix`: the prefix
  * with its last UTF-16 code unit incremented, which is how IndexedDB orders
@@ -372,39 +463,81 @@ export function createIndexedDbStore(): ByteStore {
     const rawReader = createRawReader()
     const rangeReader = createRangeReader()
 
+    const rawWriter = createRawWriter(() => forage().ready())
+
     function checkBlobKey(key: string): void {
-        const reason = inlayBodyKeyViolation(key) ?? indexedDbCreatableViolation(key)
+        const reason = assetOrInlayBodyKeyViolation(key)
         if (reason !== null) {
             throw new StoreInvalidKeyError(key, reason)
         }
     }
 
+    /** A key a piece writer may be opened for or finished under: only a key under `assets/` holds an accumulated Blob. */
+    function checkAssetWriterKey(key: string): void {
+        const reason = indexedDbAddressableViolation(key) ?? indexedDbCreatableViolation(key)
+            ?? (key.startsWith('assets/') ? null : 'a piece writer stores only under assets/')
+        if (reason !== null) {
+            throw new StoreInvalidKeyError(key, reason)
+        }
+    }
+
+    /** Stores the Blob under `key`: a plain Blob, whose type is dropped for an asset (display types an asset by its extension). */
+    async function putBlob(key: string, blob: Blob): Promise<void> {
+        const tag = blobTag(blob)
+        if (tag === null) {
+            throw new TypeError('writeBlob stores a Blob.')
+        }
+        // A File reads back as `[object File]`, which `bytesOfStoredValue` refuses; a slice is a plain Blob over the same bytes, copied by nobody.
+        const isAsset = key.startsWith('assets/')
+        await rawWriter.put(key, tag === '[object File]' || isAsset ? blob.slice(0, blob.size, isAsset ? '' : blob.type) : blob)
+    }
+
+    async function readWhole(key: string): Promise<ReadResult> {
+        checkAddressable(key)
+        const store = forage()
+        let value = await store.getItem<unknown>(key)
+        if (value === null) {
+            // `getItem` answers null both for an absent key and for an entry
+            // stored as null or undefined, so absence is settled by a point
+            // lookup of the key, which loads no value, or when that cannot be
+            // made by the key list, which loads none either. Another tab may
+            // write the key in between, hence one more read before the entry
+            // is called non-binary.
+            const present = await entryExists(key) ?? (await store.keys()).includes(key)
+            if (!present) {
+                return { bytes: null, version: null }
+            }
+            value = await store.getItem<unknown>(key)
+        }
+        const bytes = value === null ? null : await bytesOfStoredValue(value)
+        if (bytes === null) {
+            throw new StoreNotBinaryError(key)
+        }
+        return { bytes, version: null }
+    }
+
+    /**
+     * The one raw load of a value: the Blob or the bytes as IndexedDB holds them, `null` for no entry. Any other shape
+     * (LocalForage's encoded Blob object, a flag, a string) goes to `read`, which decodes the encoded object and
+     * throws `StoreNotBinaryError` for data that is not binary. Asset keys never reach that branch, because `write`
+     * stores bytes as bytes and the raw writer never encodes.
+     */
+    async function readStoredValue(key: string): Promise<Blob | Uint8Array | null> {
+        const value = await rawReader.get(key)
+        if (blobTag(value) !== null) {
+            return value as Blob
+        }
+        const bytes = syncBytesOfStoredValue(value)
+        if (bytes !== undefined) {
+            return bytes === null ? null : ownBytes(bytes)
+        }
+        return (await readWhole(key)).bytes
+    }
+
     return {
         capabilities: { conditionalWrites: false },
 
-        async read(key: string): Promise<ReadResult> {
-            checkAddressable(key)
-            const store = forage()
-            let value = await store.getItem<unknown>(key)
-            if (value === null) {
-                // `getItem` answers null both for an absent key and for an entry
-                // stored as null or undefined, so absence is settled by a point
-                // lookup of the key, which loads no value, or when that cannot be
-                // made by the key list, which loads none either. Another tab may
-                // write the key in between, hence one more read before the entry
-                // is called non-binary.
-                const present = await entryExists(key) ?? (await store.keys()).includes(key)
-                if (!present) {
-                    return { bytes: null, version: null }
-                }
-                value = await store.getItem<unknown>(key)
-            }
-            const bytes = value === null ? null : await bytesOfStoredValue(value)
-            if (bytes === null) {
-                throw new StoreNotBinaryError(key)
-            }
-            return { bytes, version: null }
-        },
+        read: readWhole,
 
         async write(key: string, bytes: Uint8Array, condition: StoreCondition): Promise<WriteResult> {
             const reason = indexedDbAddressableViolation(key) ?? indexedDbCreatableViolation(key)
@@ -422,12 +555,7 @@ export function createIndexedDbStore(): ByteStore {
         async writeBlob(key: string, blob: Blob, condition: StoreCondition): Promise<WriteResult> {
             checkBlobKey(key)
             checkCondition(condition, false)
-            const tag = blobTag(blob)
-            if (tag === null) {
-                throw new TypeError('writeBlob stores a Blob.')
-            }
-            // A File reads back as `[object File]`, which `bytesOfStoredValue` refuses; a slice is a plain Blob over the same bytes, copied by nobody.
-            await forage().setItem(key, tag === '[object File]' ? blob.slice(0, blob.size, blob.type) : blob)
+            await putBlob(key, blob)
             return { version: null }
         },
 
@@ -435,6 +563,86 @@ export function createIndexedDbStore(): ByteStore {
             checkBlobKey(key)
             const value = await rawReader.get(key)
             return blobTag(value) === null ? null : value as Blob
+        },
+
+        async readValue(key: string): Promise<Blob | Uint8Array | null> {
+            checkBlobKey(key)
+            return await readStoredValue(key)
+        },
+
+        openWriter(key: string): PieceWriter {
+            checkAssetWriterKey(key)
+            // Nothing is ever written under `key` (it only names the writer), so an abandoned or crashed write leaves no
+            // orphan. Pieces are folded into the Blob in batches so the Blob has few parts; a piece is never modified
+            // after `write`, so it is held by reference until folded.
+            let accumulated = new Blob([])
+            let pending: BlobPart[] = []
+            let pendingBytes = 0
+            let closed = false
+
+            function fold(): void {
+                if (pending.length > 0) {
+                    accumulated = new Blob([accumulated, ...pending])
+                    pending = []
+                    pendingBytes = 0
+                }
+            }
+
+            function release(): void {
+                closed = true
+                pending = []
+                pendingBytes = 0
+                accumulated = new Blob([])
+            }
+
+            return {
+                async write(data: Uint8Array): Promise<void> {
+                    if (closed) {
+                        throw new StoreError('The piece writer is closed.')
+                    }
+                    pending.push(data as Uint8Array<ArrayBuffer>)
+                    pendingBytes += data.length
+                    if (pendingBytes >= WRITER_FOLD_BYTES) {
+                        fold()
+                    }
+                },
+
+                async finish(finalKey?: string): Promise<void> {
+                    if (closed) {
+                        throw new StoreError('The piece writer is closed.')
+                    }
+                    try {
+                        fold()
+                        const target = finalKey ?? key
+                        if (finalKey !== undefined) {
+                            checkAssetWriterKey(finalKey)
+                            // The kept value wins: nothing is written when the key already holds one.
+                            if (await entryExists(finalKey) ?? (await forage().keys()).includes(finalKey)) {
+                                return
+                            }
+                        }
+                        try {
+                            await putBlob(target, accumulated)
+                        } catch (error) {
+                            if (!(error instanceof StoreBlobUnsupportedError)) {
+                                throw error
+                            }
+                            // The browser keeps no Blob: the pieces already held are stored as bytes, within the bound
+                            // a whole value has always had on this store.
+                            if (accumulated.size > WEB_ASSET_LIMIT_BYTES) {
+                                throw error
+                            }
+                            await forage().setItem(target, new Uint8Array(await accumulated.arrayBuffer()))
+                        }
+                    } finally {
+                        release()
+                    }
+                },
+
+                async abort(): Promise<void> {
+                    release()
+                },
+            }
         },
 
         async delete(key: string, condition: StoreCondition): Promise<void> {

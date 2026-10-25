@@ -393,6 +393,18 @@ export function describeByteStoreConformance(harness: ConformanceHarness): void 
                 expect(await store.readBlob('inlays/b-absent.0123456789abcdef')).toBeNull()
             })
 
+            test('an adapter that takes asset keys keeps a Blob there too: readBlob returns it and read returns the same bytes', async () => {
+                if (store.writeBlob === undefined || store.readBlob === undefined || harness.blobWritesTakeAssetKeys !== true) {
+                    return
+                }
+                const payload = patternBytes(500, 5)
+                await store.writeBlob('assets/kept.png', new Blob([payload as BlobPart]), 'unconditional')
+                const blob = await store.readBlob('assets/kept.png')
+                expect(blob).not.toBeNull()
+                expect(Array.from(new Uint8Array(await blob!.arrayBuffer()))).toEqual(Array.from(payload))
+                expect(await readBytes(store, 'assets/kept.png')).toEqual(Array.from(payload))
+            })
+
             test.each([
                 ['an asset key', 'assets/x.png'],
                 ['the main file', 'database/database.bin'],
@@ -403,6 +415,10 @@ export function describeByteStoreConformance(harness: ConformanceHarness): void 
                 ['a body key in a subfolder', 'inlays/b-a/b.0123456789abcdef'],
             ])('a Blob member refuses %s and writes nothing', async (_label, key) => {
                 if (store.writeBlob === undefined || store.readBlob === undefined) {
+                    return
+                }
+                // An adapter that takes asset keys keeps a Blob there and answers readBlob for it.
+                if (key.startsWith('assets/') && harness.blobWritesTakeAssetKeys === true) {
                     return
                 }
                 await expect(store.writeBlob(key, new Blob(['x']), 'unconditional')).rejects.toBeInstanceOf(StoreInvalidKeyError)

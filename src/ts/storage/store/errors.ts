@@ -178,6 +178,19 @@ export class StoreValueChangedError extends StoreError {
     }
 }
 
+/**
+ * The browser refused to keep a Blob in IndexedDB (`DataCloneError`, or an `UnknownError` of the put or its transaction;
+ * old Safari and private windows of some browsers do this). Nothing was stored under the key. A producer answers it
+ * with the whole-bytes write its value fits in; no other failure is turned into this one. A disk failure that raised
+ * `UnknownError` is therefore retried as a whole-bytes write, where it surfaces again as that write's own error.
+ */
+export class StoreBlobUnsupportedError extends StoreError {
+    constructor(public readonly key: string, public readonly cause: unknown) {
+        super(`This browser cannot keep a large file in its browser storage (${JSON.stringify(key)}).`)
+        this.name = 'StoreBlobUnsupportedError'
+    }
+}
+
 /** The key holds an entry that is not bytes (only the shared browser store can hold one). */
 export class StoreNotBinaryError extends StoreError {
     constructor(public readonly key: string) {

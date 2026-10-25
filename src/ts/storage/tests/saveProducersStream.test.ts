@@ -387,13 +387,17 @@ describe('saveAssetFromBlob', () => {
         expect(whole).toBe(expected)
     })
 
-    test('guard: a store without openWriter (the browser store) reads the Blob and saves it with saveAsset, under the same key', async () => {
+    test('reproducer: the browser store keeps a picked File as a Blob under the key saveAsset gives, and read returns the bytes', async () => {
         const store = useIndexedDb()
-        expect(store.openWriter).toBeUndefined()
+        expect(store.readBlob).toBeDefined()
+        expect(store.writeBlob).toBeDefined()
         const bytes = patterned(300, 4)
 
         const key = await saveAssetFromBlob(new File([bytes as Uint8Array<ArrayBuffer>], 'a.png'), 'png', { minPieceBytes: 1 })
 
+        const kept = await store.readBlob!(key)
+        expect(kept).not.toBeNull()
+        expect(sameBytes(new Uint8Array(await kept!.arrayBuffer()), bytes)).toBe(true)
         expect(key).toBe(await saveAsset(bytes, '', 'png'))
         expect(sameBytes((await store.read(key)).bytes, bytes)).toBe(true)
     })

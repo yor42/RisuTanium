@@ -2282,6 +2282,7 @@ export const languageSpanish = {
     cardFileEntryTooLarge: (fileName: string, limitMiB: number) => `El archivo "${fileName}" dentro de esta tarjeta supera el límite de ${limitMiB} MB, por lo que la tarjeta no se importó.`,
     cardFileChanged: "El archivo de la tarjeta cambió o no se pudo leer durante la importación, por lo que no se importó. Inténtalo de nuevo.",
     cardImageTooLarge: (limitMiB: number) => `La imagen de esta tarjeta supera el límite de ${limitMiB} MB, por lo que la tarjeta no se importó.`,
+    assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) => `"${fileName}" supera los ${limitMiB} MB que este navegador puede almacenar, por lo que no se guardó.`,
     moduleFileIncomplete: "Este archivo de módulo está incompleto o dañado, por lo que no se importó.",
     moduleAssetTooLarge: (assetName: string, limitMiB: number) => `El recurso "${assetName}" de este módulo supera el límite de ${limitMiB} MB, por lo que el módulo no se importó.`,
     moduleFileChanged: "El archivo del módulo cambió o no se pudo leer durante la importación, por lo que no se importó. Inténtalo de nuevo.",

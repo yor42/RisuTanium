@@ -2280,6 +2280,7 @@ export const languageVietnamese = {
     cardFileEntryTooLarge: (fileName: string, limitMiB: number) => `Tệp "${fileName}" bên trong thẻ này lớn hơn giới hạn ${limitMiB} MB nên thẻ không được nhập.`,
     cardFileChanged: "Tệp thẻ đã thay đổi hoặc không thể đọc được trong khi nhập nên không được nhập. Hãy thử nhập lại.",
     cardImageTooLarge: (limitMiB: number) => `Ảnh của thẻ này lớn hơn giới hạn ${limitMiB} MB nên thẻ không được nhập.`,
+    assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) => `Tệp "${fileName}" lớn hơn ${limitMiB} MB mà trình duyệt này có thể lưu trữ nên không được lưu.`,
     moduleFileIncomplete: "Tệp mô-đun này không đầy đủ hoặc bị hỏng nên không được nhập.",
     moduleAssetTooLarge: (assetName: string, limitMiB: number) => `Tài nguyên "${assetName}" trong mô-đun này lớn hơn giới hạn ${limitMiB} MB nên mô-đun không được nhập.`,
     moduleFileChanged: "Tệp mô-đun đã thay đổi hoặc không thể đọc được trong khi nhập nên không được nhập. Hãy thử nhập lại.",

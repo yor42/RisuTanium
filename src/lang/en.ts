@@ -2422,6 +2422,8 @@ export const languageEnglish = {
     cardFileChanged: "The card file changed or could not be read while it was being imported, so it was not imported. Try importing it again.",
     cardImageTooLarge: (limitMiB: number) =>
         `The image of this card is larger than the ${limitMiB} MB limit, so the card was not imported.`,
+    assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) =>
+        `"${fileName}" is larger than the ${limitMiB} MB this browser can store, so it was not saved.`,
     moduleFileIncomplete: "This module file is incomplete or damaged, so it was not imported.",
     moduleAssetTooLarge: (assetName: string, limitMiB: number) =>
         `The asset "${assetName}" in this module is larger than the ${limitMiB} MB limit, so the module was not imported.`,
