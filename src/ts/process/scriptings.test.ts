@@ -51,6 +51,18 @@ vi.mock('./memory/hypamemory', () => ({ HypaProcesser: vi.fn() }))
 vi.mock('./request/request', () => ({ requestChatData: vi.fn() }))
 vi.mock('./stableDiff', () => ({ generateAIImage: vi.fn() }))
 
+const luaFactoryWasmUris = vi.hoisted((): (string | undefined)[] => [])
+vi.mock('wasmoon', async (importOriginal) => {
+  const wasmoon = await importOriginal<typeof import('wasmoon')>()
+  class RecordingLuaFactory extends wasmoon.LuaFactory {
+    constructor(customWasmUri?: string, environmentVariables?: Record<string, string>) {
+      luaFactoryWasmUris.push(customWasmUri)
+      super(customWasmUri, environmentVariables)
+    }
+  }
+  return { ...wasmoon, LuaFactory: RecordingLuaFactory }
+})
+
 let runScripted: typeof import('./scriptings').runScripted
 
 beforeAll(async () => {
@@ -125,4 +137,18 @@ test('a Lua script cannot write to a host prototype through an object an API ret
     delete (Object.prototype as Record<string, unknown>).risuLuaPolluted
     vi.mocked(requestChatData).mockReset()
   }
+})
+
+test('the Lua runtime loads its wasm from the app build, not a CDN', async () => {
+  // Without a URI, wasmoon in a browser or WebView fetches glue.wasm from
+  // unpkg.com, so Lua scripts fail offline and on a LAN.
+  await runScripted('function onStart() return false end', {
+    char: {} as never,
+    chat: { message: [] } as never,
+    mode: 'start',
+  })
+
+  const { default: bundledGlueWasm } = await import('wasmoon/dist/glue.wasm?url')
+  expect(luaFactoryWasmUris.length).toBeGreaterThan(0)
+  expect(luaFactoryWasmUris.every((uri) => uri === bundledGlueWasm)).toBe(true)
 })
