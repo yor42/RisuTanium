@@ -911,6 +911,8 @@ describe('the subscription', () => {
 
 describe('the real verdict over a character whose data cannot be read', () => {
     test('acceptance: the character stays loaded, the others are still judged, and the put-back is armed again', () => {
+        // The fire's time budget reads `performance`; a real clock under load could stop it before B is judged.
+        fakeClock()
         const sources = ['A', 'B', 'C', 'D', 'E'].map((id) => fullCharacter(id))
         const previous = previousFrom(encodeDatabase(
             dbWithCharacters(sources as unknown as Obj[]),
