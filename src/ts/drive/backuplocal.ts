@@ -897,33 +897,28 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
  * - Ideal for backing up core visual identity without bulk data
  */
 export async function SavePartialLocalBackup(options: BackupExportOptions = {}): Promise<ExportOutcome>{
-    if (!await confirmPartialBackup()) {
-        return { status: 'declined', cause: 'partial-explanation-declined' }
-    }
-
-    return exportThisTabBackup(options)
-}
-
-/**
- * The two explanatory confirms of the partial backup: how it differs from the regular one, then the warning that
- * assets are not saved. False when the person declines either.
- */
-export async function confirmPartialBackup(): Promise<boolean>{
+    // First confirmation: Explain the difference from regular backup
     const firstConfirm = await alertConfirm(language.partialBackupFirstConfirm)
 
     if (!firstConfirm) {
-        return false
+        return { status: 'declined', cause: 'partial-explanation-declined' }
     }
 
-    return await alertConfirm(language.partialBackupSecondConfirm)
+    // Second confirmation: Final warning about not saving assets
+    const secondConfirm = await alertConfirm(language.partialBackupSecondConfirm)
+
+    if (!secondConfirm) {
+        return { status: 'declined', cause: 'partial-explanation-declined' }
+    }
+
+    return withBusy('backupSave', () => runExport((session) => writePartialLocalBackup(session, options)))
 }
 
 /**
- * The partial-backup export (the database, the characters and the profile images, no other assets and no inlays)
- * without the two explanatory confirms, for callers whose person has already chosen this export: the partial button
- * after its confirms, the parked Node page's offer, and the export a reloaded page resumes. It holds the same busy entry
- * as the other exports. It does not pin this tab's unit references: a unit that is gone surfaces through the
- * incomplete-data prompt, and declining it returns `declined`.
+ * The export a parked Node page offers before it reloads: the partial-backup shape (the database, the characters and
+ * the profile images, no other assets and no inlays) without the two explanatory confirms, because the person already
+ * chose this export. It holds the same busy entry as the other exports. It does not pin this tab's unit references: a
+ * unit that is gone surfaces through the incomplete-data prompt, and declining it returns `declined`.
  */
 export function exportThisTabBackup(options: BackupExportOptions = {}): Promise<ExportOutcome>{
     return withBusy('backupSave', () => runExport((session) => writePartialLocalBackup(session, options)))

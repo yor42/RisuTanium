@@ -77,21 +77,11 @@ import {
     setUsingSw,
     checkCharOrder
 } from "./globalApi.svelte";
-import { takeResumeNote } from "./drive/reloadFirstPolicy";
 import { isTauri } from "./platform";
 import { isTauriDesktop } from "./tauriDesktop";
 import { registerModelDynamic } from "./model/modellist";
 
 const appWindow = isTauriDesktop ? getCurrentWebviewWindow() : null
-
-/** The page's `sessionStorage`, or null where a browser refuses access to it. */
-function sessionStorageOrNull(): Storage | null {
-    try {
-        return window.sessionStorage
-    } catch {
-        return null
-    }
-}
 
 /**
  * Resolves the next time the alert store returns to `type: 'none'`, the way
@@ -116,9 +106,6 @@ function waitForAlertCleared(): Promise<void> {
 export async function loadData() {
     const loaded = get(loadedStore)
     if (!loaded) {
-        // A "reload first" export note is taken (and removed) before anything here can park or fail, so a boot that
-        // never reaches ready cannot leave it for a later, unrelated launch.
-        const resumeExportOp = takeResumeNote(sessionStorageOrNull(), Date.now())
         // Opened after the storage is ready and before the main file is read,
         // and released on every path out of the read, decode and install below,
         // including the error path: a hold kept past a failed boot would block
@@ -639,12 +626,6 @@ export async function loadData() {
             // awaited, and a boot before first setup leaves them queued.
             if (isTauri && getDatabase().didFirstSetup) {
                 void desktopLaunchImport()
-            }
-            // The export a "reload first" note asked for opens its save dialog once the page is ready.
-            if (resumeExportOp !== null) {
-                void import("./drive/reloadFirst").then(({ runResumedExport }) => runResumedExport(resumeExportOp)).catch((error) => {
-                    console.error(error)
-                })
             }
 
         } catch (error) {

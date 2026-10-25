@@ -7,7 +7,6 @@ import { initHotkey } from "./ts/hotkey";
 import { preLoadCheck } from "./preload";
 import { startKeepAliveService } from "./ts/android/keepAliveService";
 import { flushPageBeforeLeaving, startSaveOnHide } from "./ts/process/saveOnHide";
-import { startSessionUseTracking } from "./ts/process/sessionUse";
 import { mount } from "svelte";
 import { installBackGuard } from "./ts/backHandlers";
 import { alertToast } from "./ts/alert";
@@ -38,7 +37,6 @@ loadData()
 initHotkey()
 startKeepAliveService()
 startSaveOnHide()
-startSessionUseTracking()
 document.getElementById('preloading').remove()
 
 export default app;

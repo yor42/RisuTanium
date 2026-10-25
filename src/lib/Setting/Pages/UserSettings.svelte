@@ -2,8 +2,7 @@
     import { language } from "src/lang";
     import { alertConfirm} from "src/ts/alert";
     import { loadInternalBackup } from "src/ts/drive/internalBackup";
-    import { LoadLocalBackup, confirmPartialBackup } from "src/ts/drive/backuplocal";
-    import { askReloadFirstThenExport } from "src/ts/drive/reloadFirst";
+    import { LoadLocalBackup, SaveLocalBackup, SavePartialLocalBackup } from "src/ts/drive/backuplocal";
     import { refuseBackupLoadWhileBusy } from "src/ts/drive/backupWorkGuard";
     import Button from "src/lib/UI/GUI/Button.svelte";
     import { exportAsDataset } from "src/ts/storage/exportAsDataset";
@@ -17,7 +16,7 @@
 <Button
     onclick={async () => {
         if(await alertConfirm(language.backupConfirm)){
-            askReloadFirstThenExport('export-full')
+            SaveLocalBackup()
         }
     }} className="mt-2">
     {language.saveBackupLocal}
@@ -26,9 +25,7 @@
 <Button
     onclick={async () => {
         if(await alertConfirm(language.backupConfirm)){
-            if(await confirmPartialBackup()){
-                askReloadFirstThenExport('export-partial')
-            }
+            SavePartialLocalBackup()
         }
     }} className="mt-2">
     {language.savePartialLocalBackup}
