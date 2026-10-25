@@ -285,6 +285,110 @@ export function encodeRisuSaveParts(data:object):Generator<Uint8Array, void, und
     return generateRisuSaveParts(data)
 }
 
+/** The uncompressed msgpack size at which the gzip trailer's 32-bit ISIZE field wraps; an export this large fails, as `packr.encode` does at 4 GiB. */
+const GZIP_SINK_UNCOMPRESSED_LIMIT = 2 ** 32
+
+/** Largest slice handed to fflate in one push. fflate grows its internal input buffer only when the pushed chunk plus the bytes already buffered exceeds 163840, and keeps that size until the final push; slices of at most 65536 bytes keep it from ever growing. */
+const GZIP_SINK_SLICE_BYTES = 65536
+
+/** Compressed output is gathered into blocks of this many bytes (the last may be smaller), so a writer receives few large pieces. */
+const GZIP_SINK_BLOCK_BYTES = 1024 * 1024
+
+/**
+ * The compressed `database.risudat` data as pieces to write in order, `pieces[0]` being the 11-byte header. `length` is
+ * the sum of the piece lengths, the value the entry's length field holds.
+ */
+export type StreamedRisuSave = {
+    length: number
+    pieces: Uint8Array[]
+}
+
+export interface RisuSaveGzipSink {
+    push(piece: Uint8Array): void
+    finish(): StreamedRisuSave
+}
+
+/**
+ * A sink that compresses msgpack pieces into one gzip member and holds only the compressed output. `push` reads a piece
+ * before returning, so a piece that is a view of the packr's buffer may be overwritten right after. `finish` makes the
+ * final push and returns the header piece followed by the compressed blocks, none of which the sink writes to again.
+ * Compressed bytes come out of fflate as a fresh array per call, so they are copied once, into the block being gathered.
+ *
+ * Contract of the producer: it owns the consistency of the tree it is reading between pushes (a producer that awaits
+ * must re-establish what `encodeDatabaseWithLateColdStorage` relies on), and it owns the refusal to encode a tree that
+ * holds a module stub (`encodeRisuSaveStreamed` gets it from the parts encoder's wrapper; any other producer must do the
+ * same before its first push). The sink checks only the size.
+ *
+ * `limit` is a parameter so a test can reach the oversize error with a small input; callers use the default.
+ */
+export function createRisuSaveGzipSink(limit: number = GZIP_SINK_UNCOMPRESSED_LIMIT): RisuSaveGzipSink {
+    const blocks: Uint8Array[] = []
+    let staging = new Uint8Array(GZIP_SINK_BLOCK_BYTES)
+    let used = 0
+    let total = 0
+    let finished = false
+    const gzip = new fflate.Gzip({ mtime: 0 }, (chunk) => {
+        let offset = 0
+        while(offset < chunk.length){
+            const take = Math.min(chunk.length - offset, staging.length - used)
+            staging.set(chunk.subarray(offset, offset + take), used)
+            used += take
+            offset += take
+            if(used === staging.length){
+                // A full block leaves the sink here; the next bytes go to a new buffer.
+                blocks.push(staging)
+                staging = new Uint8Array(GZIP_SINK_BLOCK_BYTES)
+                used = 0
+            }
+        }
+    })
+    return {
+        push(piece){
+            if(finished){
+                throw new Error('database.risudat sink already finished')
+            }
+            total += piece.length
+            if(total >= limit){
+                throw new Error(`The database (database.risudat) is too large to export: its uncompressed size reaches the limit of ${limit} bytes.`)
+            }
+            for(let offset = 0; offset < piece.length; offset += GZIP_SINK_SLICE_BYTES){
+                gzip.push(piece.subarray(offset, offset + GZIP_SINK_SLICE_BYTES))
+            }
+        },
+        finish(){
+            if(finished){
+                throw new Error('database.risudat sink already finished')
+            }
+            finished = true
+            gzip.push(new Uint8Array(0), true)
+            if(used > 0){
+                blocks.push(staging.slice(0, used))
+            }
+            // A fresh copy, so no piece handed out aliases the module constant.
+            const pieces = [Uint8Array.from(magicCompressedHeader), ...blocks]
+            let length = 0
+            for(const piece of pieces){
+                length += piece.length
+            }
+            return { length, pieces }
+        },
+    }
+}
+
+/**
+ * `encodeRisuSaveLegacy(data, 'compression')` as pieces: the parts encoder's msgpack goes through one gzip member
+ * without being held whole, and only the compressed output is kept. Synchronous, so the tree cannot change between
+ * pieces. The inflated bytes equal the legacy encoding's; the compressed bytes may differ.
+ */
+export function encodeRisuSaveStreamed(data: object): StreamedRisuSave {
+    const parts = encodeRisuSaveParts(data)
+    const sink = createRisuSaveGzipSink()
+    for(const piece of parts){
+        sink.push(piece)
+    }
+    return sink.finish()
+}
+
 export type toSaveType = {
     character: string[];
     chat: [string, string][];
