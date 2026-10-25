@@ -9,6 +9,7 @@ import { isCharacterEntry, isUsableCharacterId } from '../storage/characterIds'
 import { kvBlockNameOf } from '../storage/risuSaveV0'
 import { v4 as uuidv4 } from 'uuid'
 import { MEASURE } from '../process/memory/measureFlag'
+import { deflateSync, inflateSync } from 'fflate'
 
 /**
  * A `.bin` carries each character whole, or as an upstream-shaped stub with a unit payload. A store2 page may hold a
@@ -114,12 +115,21 @@ export function inlineKeyOf(u: string, chaId: unknown): string {
     return `${u}\u0000${String(chaId ?? '')}`
 }
 
-/** A stub's character as the unit entry of this export: the minted uuid the exported stub names, and the entry's bytes. */
+/**
+ * A stub's character as the unit entry of this export: the minted uuid the exported stub names, and the entry's bytes held
+ * raw-deflated until its write (`unpackStubEntry`). Only the packed bytes are held, so the entries of a large library
+ * stay small across the asset loop.
+ */
 export interface MintedStubEntry {
     uuid: string
     /** The character's name, for the prompt that names an entry too large for the file. */
     name: string
-    payload: ColdStorageBackupPayload
+    /** The entry's name in the file. */
+    backupName: string
+    /** The byte length of the entry's body, as it is written and as the size checks count it. */
+    rawLength: number
+    /** The body, raw-deflated; it holds no reference to the body's raw bytes. */
+    packed: Uint8Array
 }
 
 export interface StubsForExport {
@@ -137,8 +147,14 @@ export interface StubReadStats {
     characters: number
     /** Milliseconds the consumer waited on `readColdCharacterCopy`: the store reads and the character's decode, less what the read-ahead already did. Retry pauses are not counted. */
     readMs: number
-    /** Milliseconds in `stubUnitEntry`: the JSON text and its UTF-8 encode. */
+    /** Milliseconds in `stubUnitEntry`: the JSON text, its UTF-8 encode and its packing. */
     encodeMs: number
+    /** The longest single `stubUnitEntry`, in milliseconds. */
+    encodeMsMax: number
+    /** The summed byte length of the minted entries' bodies. */
+    rawBytes: number
+    /** The summed byte length of the minted entries as they are held. */
+    packedBytes: number
     /** The read-ahead in force. */
     ahead: number
     /** The most characters that were read (or being read) and not yet consumed at one time. */
@@ -150,7 +166,7 @@ export interface StubReadStats {
 }
 
 function emptyStubStats(): StubReadStats {
-    return { characters: 0, readMs: 0, encodeMs: 0, ahead: 0, heldMax: 0, retries: 0, failed: 0 }
+    return { characters: 0, readMs: 0, encodeMs: 0, encodeMsMax: 0, rawBytes: 0, packedBytes: 0, ahead: 0, heldMax: 0, retries: 0, failed: 0 }
 }
 
 let stubStats: StubReadStats = emptyStubStats()
@@ -191,16 +207,52 @@ function stubElapsed(startedAt: number): number {
     }
 }
 
-/** The unit entry of `character`: `{ character }` without the trash time, which only the stub carries. */
+/**
+ * The unit entry of `character`: `{ character }` without the trash time, which only the stub carries, held packed. The
+ * raw bytes are dropped here, so nothing keeps them across the export. A character whose text cannot be encoded or packed
+ * gives `null` and is exported whole.
+ */
 function stubUnitEntry(character: Slot): MintedStubEntry | null {
-    let encoded: Uint8Array
+    let rawLength: number
+    let packed: Uint8Array
     try {
-        encoded = new TextEncoder().encode(JSON.stringify({ character: coldUnitCharacter(character) }))
+        const encoded = new TextEncoder().encode(JSON.stringify({ character: coldUnitCharacter(character) }))
+        rawLength = encoded.byteLength
+        packed = deflateSync(encoded, { level: 1 })
     } catch {
         return null
     }
     const uuid = uuidv4()
-    return { uuid, name: character.name, payload: { key: uuid, backupName: getColdStorageBackupName(uuid), encoded } }
+    return { uuid, name: character.name, backupName: getColdStorageBackupName(uuid), rawLength, packed }
+}
+
+/** A minted stub entry that does not unpack to the body it was packed from. The export that meets it fails. */
+export class StubEntryUnpackError extends Error {
+    constructor(backupName: string, detail: string) {
+        super(`The stub entry ${backupName} could not be unpacked: ${detail}`)
+        this.name = 'StubEntryUnpackError'
+    }
+}
+
+/**
+ * The body of `entry` as it was minted. Each call returns a new `Uint8Array` that no other entry and no later call
+ * shares: a body of 1 MiB or more reaches the writer uncopied, and a writer or a test sink may hold it by reference until
+ * it closes, so a buffer reused for the next entry would change a body already handed over. Inflating without an output
+ * buffer lets fflate size the result; the length check then catches a packed body paired with another body's length, a
+ * cut-off stream and an empty one. It is a framing check, not protection against flipped bits: raw deflate carries no
+ * checksum, and the minted bytes were never checksummed either.
+ */
+export function unpackStubEntry(entry: MintedStubEntry): Uint8Array {
+    let body: Uint8Array
+    try {
+        body = inflateSync(entry.packed)
+    } catch (error) {
+        throw new StubEntryUnpackError(entry.backupName, error instanceof Error ? error.message : 'the packed bytes cannot be inflated')
+    }
+    if (body.byteLength !== entry.rawLength) {
+        throw new StubEntryUnpackError(entry.backupName, `${body.byteLength} bytes came out, ${entry.rawLength} were expected`)
+    }
+    return body
 }
 
 /**
@@ -346,11 +398,17 @@ export async function readStubsForExport(db: Pick<Database, 'characters' | 'upst
         const encodeAt = MEASURE && asStub ? stubMark() : 0
         const entry = asStub ? stubUnitEntry(copy.character) : null
         if (MEASURE && asStub) {
-            stubStats.encodeMs += stubElapsed(encodeAt)
+            const encodeElapsed = stubElapsed(encodeAt)
+            stubStats.encodeMs += encodeElapsed
+            stubStats.encodeMsMax = Math.max(stubStats.encodeMsMax, encodeElapsed)
         }
         if (entry === null) {
             inlined.set(key, copy.character)
         } else {
+            if (MEASURE) {
+                stubStats.rawBytes += entry.rawLength
+                stubStats.packedBytes += entry.packed.byteLength
+            }
             stubEntries.set(key, entry)
         }
     }
@@ -374,8 +432,10 @@ export function stubWithMintedKey(slot: Slot, stubEntries: ReadonlyMap<string, M
 
 /**
  * The whole character of a stub that has a minted entry, read back from the entry's bytes, with the stub's trash time and
- * last interaction; `null` when no entry was minted for it or the bytes do not hold a character. The fallback of an export
- * whose list turns out to need the id repair after the entries were minted.
+ * last interaction; `null` only when no entry was minted for it. The fallback of an export whose list turns out to need the
+ * id repair after the entries were minted, or whose stub was trashed after its entry was minted. An entry that is found
+ * and does not give a character throws, because the caller would otherwise leave the stub of an entity in the file as a
+ * placeholder, and an export that reports saved must carry every character it minted.
  */
 export function inlinedFromMinted(slot: Slot, stubEntries: ReadonlyMap<string, MintedStubEntry>): Slot | null {
     const u = typeof slot === 'object' && slot !== null ? slot.coldstorage : undefined
@@ -386,37 +446,37 @@ export function inlinedFromMinted(slot: Slot, stubEntries: ReadonlyMap<string, M
     if (entry === undefined) {
         return null
     }
-    try {
-        const body = JSON.parse(new TextDecoder().decode(entry.payload.encoded)) as { character?: Slot }
-        return body.character === undefined ? null : applyStubStateOnRestore(slot, body.character)
-    } catch {
-        return null
+    const body: unknown = JSON.parse(new TextDecoder().decode(unpackStubEntry(entry)))
+    const character = typeof body === 'object' && body !== null ? (body as { character?: Slot }).character : undefined
+    if (character === undefined || character === null) {
+        throw new StubEntryUnpackError(entry.backupName, 'the body holds no character')
     }
+    return applyStubStateOnRestore(slot, character)
 }
 
 /**
  * The unit entries to write for `characters`, the list that is encoded: one for each minted uuid some stub of it names,
  * in list order. An entry whose stub is not in the list (the character was loaded while the export ran) is not written.
  */
-export function stubEntriesInTree(characters: unknown, stubEntries: ReadonlyMap<string, MintedStubEntry>): ColdStorageBackupPayload[] {
+export function stubEntriesInTree(characters: unknown, stubEntries: ReadonlyMap<string, MintedStubEntry>): MintedStubEntry[] {
     if (!Array.isArray(characters) || stubEntries.size === 0) {
         return []
     }
-    const byUuid = new Map<string, ColdStorageBackupPayload>()
+    const byUuid = new Map<string, MintedStubEntry>()
     for (const entry of stubEntries.values()) {
-        byUuid.set(entry.uuid, entry.payload)
+        byUuid.set(entry.uuid, entry)
     }
     const written = new Set<string>()
-    const payloads: ColdStorageBackupPayload[] = []
+    const entries: MintedStubEntry[] = []
     for (const slot of characters as unknown[]) {
         const key = typeof slot === 'object' && slot !== null ? (slot as Slot).coldstorage : undefined
-        const payload = typeof key === 'string' ? byUuid.get(key) : undefined
-        if (payload !== undefined && !written.has(key as string)) {
+        const entry = typeof key === 'string' ? byUuid.get(key) : undefined
+        if (entry !== undefined && !written.has(key as string)) {
             written.add(key as string)
-            payloads.push(payload)
+            entries.push(entry)
         }
     }
-    return payloads
+    return entries
 }
 
 /**
@@ -581,11 +641,11 @@ export function leaveOutOversizePayloads(cold: BackupColdStorage, limitBytes: nu
     const stubEntries = new Map<string, MintedStubEntry>()
     const failedKeys = [...cold.failedKeys]
     for (const [key, entry] of cold.stubEntries) {
-        if (entry.payload.encoded.byteLength < limitBytes) {
+        if (entry.rawLength < limitBytes) {
             stubEntries.set(key, entry)
             continue
         }
-        items.push({ name: entry.name, size: entry.payload.encoded.byteLength })
+        items.push({ name: entry.name, size: entry.rawLength })
         failedKeys.push(key.split('\u0000')[0])
     }
     if (items.length === 0) {

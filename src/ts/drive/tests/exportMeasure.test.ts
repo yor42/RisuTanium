@@ -369,6 +369,25 @@ function concat(parts: Uint8Array[]): Uint8Array {
 /** The file the Tauri writer produced: every call's bytes in order. */
 const fileOfCalls = (): Uint8Array => concat(fsBox.calls.map((call) => call.data))
 
+/** The summed length of the bodies of the stub unit entries (`coldstorage_<uuid>.json`) of a container. */
+function unitBodyBytes(file: Uint8Array): number {
+    const view = new DataView(file.buffer, file.byteOffset, file.byteLength)
+    let total = 0
+    let offset = 0
+    while (offset + 4 <= file.length) {
+        const nameLength = view.getUint32(offset, true)
+        offset += 4
+        const name = new TextDecoder().decode(file.subarray(offset, offset + nameLength))
+        offset += nameLength
+        const dataLength = view.getUint32(offset, true)
+        offset += 4 + dataLength
+        if (/^coldstorage_[0-9a-f-]{36}\.json$/.test(name)) {
+            total += dataLength
+        }
+    }
+    return total
+}
+
 /** msgpackr 1.10.1 under Node rejects strings of 64 or more characters (the goldens README records it), so the fixture keeps them short. */
 function shortened(value: unknown): unknown {
     if (typeof value === 'string') {
@@ -492,6 +511,13 @@ describe('SaveLocalBackup measurement notes', () => {
         expect(numberIn(collected, 'stubChars')).toBe(2)
         expect(numberIn(collected, 'stubReadMs')).toBe(2)
         expect(numberIn(collected, 'stubEncodeMs')).toBe(2)
+        expect(numberIn(collected, 'stubEncodeMsMax')).toBe(1)
+        // The raw figure is the bodies the file carries; the grown characters repeat one message, so they pack far smaller.
+        const rawWritten = unitBodyBytes(fileOfCalls())
+        expect(rawWritten).toBeGreaterThan(5 * MIB)
+        expect(numberIn(collected, 'stubRawBytes')).toBe(rawWritten)
+        expect(numberIn(collected, 'stubPackedBytes')).toBeGreaterThan(0)
+        expect(numberIn(collected, 'stubPackedBytes')).toBeLessThan(rawWritten / 2)
         // The memory backend makes no read_range invoke.
         for (const name of ['rangeReads', 'rangeMs', 'rangeWallMs', 'store2Reads', 'store2Ms']) {
             expect(numberIn(collected, name), name).toBe(0)
@@ -558,6 +584,7 @@ describe('SaveLocalBackup measurement notes', () => {
         const collected = noteOf('export cold collected')
         expect(numberIn(collected, 'stubReadMs')).toBe(0)
         expect(numberIn(collected, 'stubEncodeMs')).toBe(0)
+        expect(numberIn(collected, 'stubEncodeMsMax')).toBe(0)
         expect(numberIn(noteOf('export closed'), 'writeCalls')).toBe(0)
     }, 120_000)
 
