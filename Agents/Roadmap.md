@@ -19,19 +19,22 @@ Ideas that are **not** part of this campaign — quality-of-life features, nice-
 Replaces the finished `MC-345` work order (moved to [Archive/Roadmap-closed-2026-10-24.md](Archive/Roadmap-closed-2026-10-24.md); `MC-479`). This records state and sets no priorities; [Live-State](Live-State.md) holds the dated detail.
 
 - **MVP:** installed on the maintainer's phone (`MC-475`); `MC-350` carry-forward is live.
-- **Lane A:** orchestration and records. `main` is at `31b050a63`, pushed. The Android Back batch (`MC-505`) has both stages committed: stage A `561de025f` (CHORE-180) and stage B `31b050a63` (CHORE-352, with the preset, persona and HypaV3 modals). The plan passed Gate 1 with amendments and each stage passed Gate 2 `[APPROVE]` (ledger rows 2283 to 2288). The phone 2 checks and lane A's keyevent smoke pass are running, so neither ticket is COMPLETE; no daily APK from `main` is recommended until the Back device checks pass. Batch T (the native streaming path; `MC-502`) is done: CHORE-149, 164, 165 and 167 are COMPLETE and in the closed archive (T1 `a51321952`, T2 `9d16b3350`, T3 `d9c68b0fe`). Device stage D on phone 2 passed (a release build of `d9c68b0fe` on the test key, the synthetic device profile and the mock settings); a stale Save picker remains in the back stack. Device-profile stage E (adoption, records only) is next for that track. After the Back batch: CHORE-166 (its own batch, not started) and the others. CHORE-210 (the `manualCleanup` test flake) is new, owned by lane G (`MC-508`). CHORE-207 stays a candidate (`MC-478`).
-- **Lane B:** CHORE-205. Its reload prompt stage 1 (an offer to reload before a large Android export; `MC-485` to `MC-487`) is merged as `1537d09b9`; its phone checks are running through lane A. Stage 2 (import) follows, then L1, L2a and L3. Not COMPLETE.
-- **Lane C (cloud):** idle. Batch Q is merged as `4fb1e3cbb`: CHORE-240 and CHORE-185 are COMPLETE and in the closed archive (full checks, ledger row 2285), and CHORE-353 is parked (`MC-439`). Its earlier scope (CHORE-500, CHORE-330 and CHORE-501) merged in `a83c7901b`.
-- **Lanes F and G (`MC-503`):** F is on the Node group (CHORE-120, 62 and 46; `MC-507`: "Size all four, fix small"). G finished batch 2, merged as `efcf63634`: CHORE-183 and CHORE-209 are COMPLETE, CHORE-29, 31, 32, 55 and 61 are closed (`MC-546`), CHORE-70 is retitled and open, and CHORE-391, 392 and 393 are new. G is now on batch 3 (`MC-508`): CHORE-391, then 393 after its fix choice, then 191, 208, 210, 107, 189, 190 and 02; CHORE-191, 107 and 02 are un-parked. Earlier merges: F's plugin batch (CHORE-30, 65, 370) `4331440b6`; G's parity batch (CHORE-178, CHORE-45 stage 1) `dceab1844`; CHORE-41 is parked (`MC-540` 3). Neither has phone access; device requests go to lane A.
-- **Notes (not decisions):** `saveLoopNetBackstop` B7 failed once in the second full run of ledger row 2288 on Windows; the file alone passed 3 of 3, and it is reported to lane B. The maintainer mentioned two Dependabot PRs; lane A's plan, not yet answered by the maintainer, is dompurify 3.4.17 at a quiet point (applied on main with the jsdom sanitizer tests) and happy-dom 21 parked until the lanes are idle (`MC-507`, Related).
+- **Lane A:** orchestration and records. `main` is at `f5430fb6b` ("chore(deps): bump dompurify to 3.4.17"), pushed. Done since the last Now: the Android Back batch (`MC-505`) is COMPLETE, with residuals (CHORE-180 and CHORE-352 are in the closed archive); lane G batch 3, lane F batch 2, lane B's E1 and reused-bytes changes and its reload-prompt removal, lane C's upstream sync (CHORE-331, `MC-515`) and the CHORE-213 test fix are merged with green full runs. The decision sweep is answered (`MC-517`; below). Next for lane A: the CHORE-166 batch (stage S1, the finished reply saved at once while hidden; the S0 phone run is in progress), CHORE-212 (the Firefox Android backup failure) and the CHORE-35 trace; the dompurify bump is applied (`f5430fb6b`). Batch T, the native streaming path, is done (`MC-502`). Device-profile stage E (adoption, records only) is next for that track. CHORE-207 stays a candidate (`MC-478`). No daily APK from `main` is recommended; building one is the maintainer's call.
+- **Lane B:** CHORE-205. The reload prompt was removed (`MC-489`); E1 (`MC-490`, `MC-491`) and the reused-bytes change (`MC-493`) are merged; L1 is dropped (`MC-492`). Next is L3, modules not kept in memory (PC measurement and code audit first; a phone run only by a separate request). CHORE-227 (a stuck busy state after an export) is open. Not COMPLETE.
+- **Lane C (cloud):** a code-only batch (`MC-516`): lane A's option listed CHORE-184, 188, 06, 03, 04, 71, 72, 73, 101, 221 and 350; lane C sizes them, fixes the small ones and asks the maintainer about anything larger. Its upstream sync (CHORE-331, merged as `20b115207`) is COMPLETE. Its earlier scope merged in `a83c7901b` and `4fb1e3cbb`.
+- **Lanes F and G (`MC-503`):** F finished its Node group (merged as `95a24de3e`): CHORE-120, 46 and 371 are COMPLETE, CHORE-62 is fixed but stays open here (two items listed on its entry), and the export Cancel is in (`MC-528` to `MC-530`); F's next work is sizing CHORE-372. G finished batch 3 (merged as `b37dc6223`, with the Translator's locale commit `6625baedf`): CHORE-391, 393, 189, 190, 107, 191, 208, 210 and 02 are COMPLETE. G holds `MC-560` to `MC-579`. Earlier merges: F's plugin batch (CHORE-30, 65, 370) `4331440b6`; G's parity batch (CHORE-178, CHORE-45 stage 1) `dceab1844`; CHORE-41 is parked (`MC-540` 3). Neither has phone access; device requests go to lane A.
+- **Devices:** phone 1 and phone 2 hold synthetic data (`MC-510`); the Tab S9 is a sandbox under the device rules; the Fold 7 is observation only. See [Live-State](Live-State.md).
+- **The UI overhaul gate (`MC-516`):** the overhaul starts once the save and data-loss tickets and CHORE-205's memory work are done. UI-surface tickets the overhaul will redo are parked into it. In the decision sweep the maintainer parked CHORE-154, 155, 170, 177, 05 and 111 (`MC-517`); CHORE-351, 68 and 92 were not parked and stay open. The shipping rule (`MC-089`) stays. A parallel UI/UX design session exists (`MC-511`).
+- **Decisions from the sweep (`MC-517`):** CHORE-08 is closed as fixed; CHORE-117 stage 1b is decided (keep the old id and show a notice); CHORE-35's first-release scope is what the Android build reaches (to be traced); the Android boot Q-A and Q-B are answered; CHORE-166 takes stage S1.
+- **Dependencies (`MC-517`):** GitHub shows 8 open alerts. The maintainer chose "dompurify now, rest batch (Recommended)": dompurify 3.4.17 on main now, with the jsdom sanitizer tests and full checks, then one batch with happy-dom 21 and the three small bumps (undici, body-parser, ip-address) once the lanes are quiet. The dompurify bump is applied (`f5430fb6b`, pushed; full run `%TEMP%\risu-b715\dompurify-full\`: test1 had 2 failures, test2 had 23,302 passed, check 0/0, build and dist OK, snapshot unchanged; Gate 2 [APPROVE] `dompurify-review\result.md`). Remaining in the dependency batch: happy-dom 21, undici, body-parser and ip-address, plus the Monaco copy question: Monaco 0.57.0 bundles its own vendored dompurify 3.4.15, which the bump cannot reach, so alerts #164 to 166 stay open for that copy (`MC-517`).
 - **Batches (`MC-500`):** work runs in gated batches. Parked tickets (`MC-501`, `MC-504`, and CHORE-353 by `MC-439`) are in [Roadmap-parked.md](Roadmap-parked.md).
-- **Next free IDs:** lane A MC-510, CHORE-211, row 2290; lane B MC-488, CHORE-227, row 3031; lane C MC-440, CHORE-331, row 3351; lane F MC-522, CHORE-371, row 3710; lane G MC-548, CHORE-394, row 3900; the others are in [Live-State](Live-State.md).
+- **Next free IDs:** lane A MC-518, CHORE-215, row 3229 (records batch 14); the lane B, C, F and G values and the new-lane start (MC-580) are in [Lanes/README.md](Lanes/README.md) and [Live-State](Live-State.md).
 
 ## Open tickets
 
 One row per open entry below, in file order. "Needs review" marks an entry whose status lines conflict or are incomplete; a bounded pass settles it later. State is the entry's latest status phrase, shortened.
 
-Parked tickets and sub-items (`MC-501`, `MC-504`; CHORE-353 by `MC-439`) are not in this table; they are in [Roadmap-parked.md](Roadmap-parked.md), and a parked sub-item of an open ticket carries a "PARKED" status line in its entry.
+Parked tickets and sub-items (`MC-501`, `MC-504`; CHORE-353 by `MC-439`; CHORE-154, 155, 170, 177, 05 and 111 by `MC-517`) are not in this table; they are in [Roadmap-parked.md](Roadmap-parked.md), and a parked sub-item of an open ticket carries a "PARKED" status line in its entry.
 
 | ID | Title | State | Owner | Next |
 |---|---|---|---|---|
@@ -39,21 +42,17 @@ Parked tickets and sub-items (`MC-501`, `MC-504`; CHORE-353 by `MC-439`) are not
 | Phase 1.5 — Multi-write… | Phase 1.5 — Multi-writer conflict hardening (new, from topic 05) | Still open, identified but not fixed: the `alertStore` modal hijack | - | alertStore modal hijack; no 'stopped saving' indicator |
 | Phase 2 — RAM/architect… | Phase 2 — RAM/architecture rework (the shared root cause; highest leverage, highest effor… | Status (2026-09-30) — Phase 2 is in progress; it has not landed. | - | status 2026-10-24: items 3, 4, 8 open; exit criterion not recorded as met |
 | Phase 4 — Android (expl… | Phase 4 — Android (explicitly gated behind Phase 2) | the release stays gated. | - | Android release gated behind memory/perf work |
-| CHORE-02 | `toSave.chat` is dead plumbing in the encoder | Status (2026-10-25): UN-PARKED (`MC-508`) | lane G | lane G batch 3 (MC-508); save-adjacent, so `opus-reviewer` if the plumbing is touched |
 | CHORE-03 | Trash: dedicated bug-hunting pass | ### CHORE-03 — Trash: dedicated bug-hunting pass | - | dedicated trash bug-hunting pass not started |
 | CHORE-04 | Module enable/disable causes a freeze too, by a DIFFERENT mechanism | Grounded hypothesis — NOT verified, test it before acting on it: | - | test the ReloadGUIPointer hypothesis |
-| CHORE-05 | Translation coverage: much of the UI is English-only | open only for the native-speaker review, LOW PRIORITY | Main Campaign | native-speaker review (low priority) |
 | CHORE-06 | `console.log` of whole-save objects may pin them in memory for the session | - Still open: how many log lines a typical session produces after boot | - | confirm in-browser retention; log sizes not objects |
-| CHORE-08 | Plugin permission consent: session cache ignores the permission kind, and the provider pr… | Decide the UX (key the cache by name + kind | - | maintainer UX decision on consent cache and provider prompt |
 | CHORE-12 | Modules: 6 suspected bugs (none lose data) | - MOD-5: open. An icon editor is a new feature. | - | MOD-1 not done by decision; MOD-3 left; MOD-5 parked (MC-501) |
 | CHORE-16 | Playground: 4 suspected bugs | PG-4 parked (MC-501); code done in 0d41f06a | - | PG-4 remainder is a wiki hand-off (maintainer's) |
 | CHORE-17 | Plugin `setDatabase` re-encodes every character (a cost, not data loss) | (the setter boundary reconcile) is ON HOLD — see "Why layer 1 is on hold" below. | - | layer 1 on hold |
 | CHORE-30 | v2.1 `setChar` writes into whatever is selected when the plugin calls it | open; not moot: the V2/V3 `setChar` path is live (retitled 2026-10-24 to the V2/V3 path, MC-501) | lane F | technically accepted; merged in 4331440b6 (MC-520); retitle from lane F's records recorded 2026-10-25; administrative closeout not stated in lane F's records |
-| CHORE-35 | Upstream proxy and CDN infrastructure outside Realm and Drive have no agreement gate | needs review: Traced to source, not fixed. | - | opt-in stage scheduled (MC-092); CHORE-60 text says 'CHORE-35 closes' |
+| CHORE-35 | Upstream proxy and CDN infrastructure outside Realm and Drive have no agreement gate | needs review: Traced to source, not fixed. Status (2026-10-25, batch 14): first-release scope decided (MC-517) | - | trace which of the five services the Android build reaches; opt-in for those (MC-517); CHORE-60 text says 'CHORE-35 closes' |
 | CHORE-45 | The script cache misses every lookup on a repeat send in a long chat | stage 1 technically accepted; merged in dceab1844 | lane G | stage 2 is CHORE-390 (MC-541 2); not COMPLETE |
-| CHORE-46 | The self-hosted Node server cannot save a database larger than 100 MB | Present upstream. Not fixed and not scheduled. | lane F | lane F Node group: size, then small fixes (MC-507); was: parked until after A5 |
 | CHORE-60 | Release identity: the desktop build still carries upstream's identity | the first signed build is the maintainer's (`MC-456` 3) | lane A / maintainer | first signed build is the maintainer's (MC-456 3); updater, key.txt |
-| CHORE-62 | On a Node server, another device's save makes this device stop saving until it reloads, a… | Open questions: where the unsynced edits would be kept | lane F | lane F Node group: size, then small fixes (MC-507); was: parked until after A5 |
+| CHORE-62 | On a Node server, another device's save makes this device stop saving until it reloads, a… | Status (2026-10-25, batch 14): fixed and merged in 95a24de3e; technically accepted; not closed here | lane F | open: card and module Cancel (MC-530) not device-exercised; maintainer to confirm the Translator's low-confidence terms (lane F) |
 | CHORE-65 | Plugins read and change each other's saved arguments, and V2.1 plugins edit the plugin li… | needs review: Status (2026-10-02, later): low priority | lane F | technically accepted; merged in 4331440b6 (MC-520 3); retitle from lane F's records recorded 2026-10-25; administrative closeout not stated in lane F's records |
 | CHORE-68 | CHORE-63 stage C: embed the app's own images from inside a message into the "Copy as card… | open, not scheduled. Filed at the maintainer's decision | - | not scheduled (copy-as-card stage C) |
 | CHORE-70 | Startup installs a save that only partly decodes, without checking whether a backup is co… | Status (2026-10-25): open, low priority, not scheduled; retitled (MC-546 4) | - | the read-only legacy-page notice and partial-export gap (MC-546 4) |
@@ -63,27 +62,22 @@ Parked tickets and sub-items (`MC-501`, `MC-504`; CHORE-353 by `MC-439`) are not
 | CHORE-83 | Every boot writes the main file, a numbered backup and about 507 block-cache entries even… | partly addressed by `f04068f1` | - | block-cache puts on boot still open |
 | CHORE-84 | The page-load listing of stored units and assets is awaited before plugins and costs abou… | open, not scheduled. Severity: not assessed. | - | not scheduled |
 | CHORE-92 | The copy-as-card `text/plain` companion still includes the thinking text | locked behind CHORE-68 | - | locked behind CHORE-68 |
-| CHORE-120 | On the Node server, `/api/set_password` accepts any client until a password exists, and t… | open, not scheduled; fixes are to be proposed after Stage 0 of the save-layer track. | lane F | lane F Node group: size, then small fixes (MC-507); was: not scheduled |
 | CHORE-128 | A faster Risutanium-to-Risutanium backup format and a sync folder (design not started) | Status (2026-10-06): open, not scheduled; design follows the Rust `.bin` path | - | parked until after A5; design not started |
 | CHORE-129 | Warn before an upstream-compatible export when data exceeds upstream's size limits, and l… | Status (2026-10-22, lane B stage 4, `MC-359`): RESIDUAL ACCEPTED UNTIL STAGE 0b for web and Node | lane B | web/Node size check parked (MC-501) until stage 0b |
 | CHORE-101 | Assets saved before a refusal, a save failure or a changed file stay behind as orphans | Status (2026-10-06): open, not scheduled. Type: wasted disk. | - | not scheduled (orphan assets) |
 | CHORE-102 | A re-import of a large file whose assets already exist still sends every piece over IPC b… | Status (2026-10-06): open, not scheduled. Type: performance. | - | not scheduled |
 | CHORE-103 | The restore of a large legacy `database` entry peaks at about +1.2 GiB in its decode tail | the residual is format-bound and the item stays OPEN. | lane B | format-bound residual; A4 only if A1 says so |
 | CHORE-106 | Put `.charx` and editor uploads onto the piece save | Status (2026-10-06): open, not scheduled. | - | not scheduled |
-| CHORE-107 | `openWriter` belongs inside the `try` | Status (2026-10-25): UN-PARKED (`MC-508`) | lane G | lane G batch 3 (MC-508) |
 | CHORE-109 | Show assets without loading them whole | - Not done: the web stage (a service worker over the stored files | - | web stage parked (MC-501); inlays CHORE-114 |
-| CHORE-111 | Native-speaker review of the Stage 1c, `.bin` and importer strings | Status (2026-10-06): open, low priority, the same deferral as CHORE-05 (`MC-212`). | Main Campaign | native-speaker review, low priority |
 | CHORE-112 | Android follow-ups | Status (2026-10-06): open, not scheduled. From the Android work | - | Android follow-ups; not scheduled |
 | CHORE-113 | Stage 1c residuals | Status (2026-10-06): open, not scheduled. The residual list of Report 59 section 7 | - | stage 1c residuals; not scheduled |
 | CHORE-114 | Inlays are missing from `.bin` backups and never reach the Node server | Open: a Note 9 low-end measurement of Stage C's cleanup (debug build) | - | Note 9 measurement of stage C cleanup; interim memory copy |
 | CHORE-115 | Android asset protocol answers Range requests with a non-zero start wrongly; asset videos… | fixed by wry 0.57.1 in builds made from this checkout, MEASURED on phone 2 | lane A | verify on next MVP build (wry 0.57.1); video check did not run |
-| CHORE-117 | Save-time validation: a committed generation must always load | not COMPLETE: stage 1b is still open, narrowed by the audit | lane E | stage 1b open; needs maintainer decision |
+| CHORE-117 | Save-time validation: a committed generation must always load | not COMPLETE: stage 1b is still open, narrowed by the audit; decided 2026-10-25 (MC-517) | lane E | stage 1b: keep the old saved id and show a notice (MC-517); not implemented |
 | CHORE-141 | Android restore's `relaunch()` does not restart the app | Status (2026-10-08): open; noticed in Stage 3. | - | Android relaunch() cause not investigated |
 | CHORE-147 | Android: the process aborts on exit with the OS Back (FORTIFY "pthread_mutex_lock called… | Status (2026-10-09): open; pre-existing; cause not established. | - | cause not established; parked until after A5; stays a risk note (MC-505 lane A ruling) |
 | CHORE-148 | The generated Tauri Android files in the checkout are stale (tauri 2.11.5 against a lock… | Status (2026-10-09): open; regenerate before relying on them. | - | regenerate Tauri Android files before relying on them |
 | CHORE-153 | Observation: a Light-scheme change can be lost if the app is force-stopped about 15 s aft… | technically accepted; owes the debounce cap (Q-C, deferred, no ticket) | - | - |
-| CHORE-154 | Output-identical cheap fixes in the chat parse pipeline | Status (2026-10-09): open; queued after the windowing items. | - | queued after windowing items; parked |
-| CHORE-155 | The full chat re-renders on every `ReloadGUIPointer` bump | Status (2026-10-09): open; queued after the windowing items; | - | queued after windowing items |
 | CHORE-156 | Decided chat-render work items (streaming default, Lua engine reuse, superseded parses) | Status (2026-10-09): decided (`MC-257`); queued after the windowing items; not planned. | - | decided (MC-257); needs Gate 1 plans |
 | CHORE-157 | Chat render small items: `ScriptingEditDisplayIds` never cleared; `getClosestMatch` overw… | Status (2026-10-09): open; queued after the windowing items. | - | queued after windowing items |
 | CHORE-158 | After cancelling the character-import picker, "Rail 1000" appeared at the top of the char… | Status (2026-10-09): open; observation, not diagnosed. | - | observation, not diagnosed |
@@ -91,49 +85,43 @@ Parked tickets and sub-items (`MC-501`, `MC-504`; CHORE-353 by `MC-439`) are not
 | CHORE-161 | Android boot baseline follow-ups: timers starved during `encoder.init`, and main-thread w… | Status (2026-10-09): open; performance follow-ups, not planned. | - | not planned |
 | CHORE-162 | Android boot baseline follow-up: per-call IPC cost of block reads (batching) | Status (2026-10-09): open; performance follow-up, not planned. | - | not planned |
 | CHORE-163 | Unexplained: the archive pass wrote units and then paused after a font change (device tes… | Status (2026-10-09): open; unexplained; may be moot after `9371359e` | - | unexplained; may be moot after 9371359e |
-| CHORE-166 | Timers that are still late while the app is hidden after Stage 3b | Status (2026-10-10): open; known gaps, not planned. | lane A | its own batch, after batch T (MC-502) |
+| CHORE-166 | Timers that are still late while the app is hidden after Stage 3b | Status (2026-10-25, batch 14): stage S1 chosen (MC-517); not implemented | lane A | S0 phone run in progress; S1 saves a finished reply at once while hidden; sizing c166\sizing.md |
 | CHORE-168 | The composer's "Continue Response" creates a user-role message with the "says nothing" pl… | Status (2026-10-10): open; observation; not diagnosed. | - | observation; not diagnosed |
 | CHORE-169 | Tapping a link in a catalogue description on Android shows "Scoped shell IO error: Permis… | Status (2026-10-10): open; ticketed on the maintainer's answer "Ticket it (Recommended)" | - | unconfirmed on base; not planned |
-| CHORE-170 | Grid fling long tasks of up to 153 to 227 ms on the Note 9; try a smaller grid overscan a… | Status (2026-10-10): open; observation with a partial attribution; not planned. | - | try smaller grid overscan after profiling |
 | CHORE-174 | `CharConfig.svelte` re-reads `$selectedCharID` live across an `await` and can write to th… | Status (2026-10-10): open; existing issue, not fixed by the unload stage 1a; not planned. | lane E | no fix on main; lane E audit: still present |
-| CHORE-177 | Grid fling jank with every folder open on the Note 9 (the scroller's layer height; the br… | Status (2026-10-10): open; not planned; to be revisited with the list-windowing perf work | - | revisit with list-windowing work |
 | CHORE-178 | Lorebook `searchMatch` slices from `length - scanDepth` with no clamp, so a scan depth la… | Status (2026-10-11): open; not planned; present in upstream too. | lane G | technically accepted; merged in dceab1844 (MC-540 1 and 2); administrative closeout not stated in lane G's records |
-| CHORE-180 | Back on screens with their own back stack and no Back handler: the Beta Mobile GUI chat "… | Status (2026-10-25, lane A records batch 13): stage A `561de025f` committed (Gate 2 [APPROVE]); not COMPLETE | lane A | phone 2 checks and lane A's keyevent smoke pass running (MC-505) |
 | CHORE-184 | The Lua runtime (wasmoon `glue.wasm`) is fetched from unpkg.com at run time | Status (2026-10-20, stage 4b close): open, not scheduled. | - | not scheduled (Lua fetched from unpkg) |
 | CHORE-186 | E5: a shared-profile upstream save loses upstream's plugin index on store2 conversion (pr… | technically accepted; merge-close records unverified | - | doc-verifier pass on the merge-close records, then COMPLETE |
 | CHORE-188 | The import warning says "Your saved data is not changed until the import has finished", w… | Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled. | - | not scheduled (import warning wording) |
-| CHORE-189 | Index-level incomplete items carry the slot key `_coldpluginIndex` and a minted id, so th… | Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled. | lane G | lane G batch 3 (MC-508); was: not scheduled |
-| CHORE-190 | U3 A2 non-blocking items: the dirty mark, `keys()` and `length()` after `clear()`, and a… | Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled. | lane G | lane G batch 3 (MC-508); was: not scheduled |
-| CHORE-191 | English `chatParseFailed` now ends with a trailing ", " | Status (2026-10-25): UN-PARKED (`MC-508`) | lane G | lane G batch 3 (MC-508); changes the key in all 7 locales, the Translator owns the non-English files |
 | CHORE-202 | The Note 9 screen-off import stall has an unknown cause | Cause of the freeze still UNKNOWN; no fix has been found. | lane C / lane A | rerun with working power polling or trace; cause unknown |
 | CHORE-221 | A `.bin` commit's salvage can leave out blocks the person did not confirm | Status (2026-10-22): open, candidate; not scheduled. | lane B | candidate; lane E audit confirms the reviewer reading |
 | CHORE-223 | An Android stub export spends most of its time in two steps outside the asset loop ('expo… | Not COMPLETE. | lane B | cold-collect traced to idle net; stage B design waits |
 | CHORE-224 | Opening a stored character does not apply the character defaults, so a character without… | technically accepted; owes the node fixture flake ticket and Gate 2 notes N1 to N3 | lane B | - |
 | CHORE-350 | a value that cannot be stored retries every save pass (MC-346 Q-A) | Status (2026-10-22): open, not scheduled. Filed per `MC-346` Q-A | lane E | not scheduled (MC-346 Q-A) |
 | CHORE-351 | CHORE-351 (new) — select and input prompts have no cancel, so Back cannot close them (MC-… | Status (2026-10-22): open, not scheduled. Filed per MC-455 Q2 | - | not scheduled (MC-455 Q2); stays its own ticket (MC-505) |
-| CHORE-352 | CHORE-352 (new) — Back does not close Settings, the Realm frame, popups or panels (MC-455… | Status (2026-10-25, lane A records batch 13): stage B `31b050a63` committed (Gate 2 [APPROVE]); not COMPLETE | lane A | phone 2 checks and lane A's keyevent smoke pass running (MC-505) |
 | CHORE-225 | Store2 save planning re-encodes every module on each idle-net tick, blocking the page for… | Status (2026-10-23): stages A, B and C merged; not COMPLETE. | lane B | stages A-C merged; re-measure |
 | CHORE-502 | Old-format HypaV2 data conversion drops summaries whose target message is hidden (propose… | Status (2026-10-24, lane A records batch 5): parked post-MVP | - | parked post-MVP (MC-352 2) |
-| CHORE-205 | Architecture study: subsystems that fail as the library grows (the whole-library in-memor… | Status (2026-10-25, lane A records batch 13): reload prompt stage 1 merged in 1537d09b9; phone checks running; not COMPLETE | lane B | phone checks through lane A, then stage 2 (import, MC-485 1), then L1 and L2a and L3 (MC-483 order) |
+| CHORE-205 | Architecture study: subsystems that fail as the library grows (the whole-library in-memor… | Status (2026-10-25, lane A records batch 14): reload prompt removed (MC-489); E1 and the reused-bytes change merged; L1 dropped; not COMPLETE | lane B | L3 (modules not kept in memory): PC measurement and code audit first (MC-483, MC-484); stage 2 (import) dropped |
 | CHORE-206 | Retire V2.1 plugin execution and keep the data (MC-349) | Status (2026-10-24, lane A records batch 6): technically COMPLETE. | lane A | Stage 3 (remove 2.1-only API members) deferred; optional alertPluginConfirm fol… |
 | CHORE-207 | off-main-thread asset work (candidate) | Status (2026-10-24): open, candidate, not scheduled, no code (`MC-478`). | lane A | candidate; no code |
-| CHORE-208 | "Request timed out" (the native fetch timeout error added by CHORE-164) is hard-coded English with no `language` key | Status (2026-10-25): open, low priority, not scheduled. | lane G | lane G batch 3 (MC-508); en key, then the Translator on main after the merge for the other locales (MC-058) |
-| CHORE-210 | `manualCleanup.svelte.test.ts` times out at 5000 ms under full-suite load | Status (2026-10-25, lane A records batch 13): open, low priority; test isolation | lane G | lane G batch 3 (MC-508) |
+| CHORE-211 | The preset diff modal throws a TypeError on open when a preset has no `promptTemplate` | Status (2026-10-25, batch 14): open, not scheduled; pre-existing | - | not scheduled; smallest fix proposed (treat a missing list as empty) |
+| CHORE-212 | Firefox on Android: a full backup from the web or Node build fails; the StreamSaver download stream errors before the prompt is answered | Status (2026-10-25, batch 14): open; cause not established | lane A | a debugger-off run with a screen-based prompt detector (MC-514) |
+| CHORE-214 | `productionBootUi.test.ts` hits 5000 ms timeouts under full-suite load | Status (2026-10-25): open, low priority; not reproduced in isolation | lane A (test isolation) | not scheduled; related CHORE-210 |
+| CHORE-227 | After a finished export the app can stay marked busy, and the app has been killed after a second export | Status (2026-10-25): open, cause unknown (MC-489) | lane B | read the busy kinds over CDP after r3's exact history |
+| CHORE-372 | Lift the self-hosted Node server's 100 MiB limit for assets | Status (2026-10-25, Lane F): open; sizing only (MC-524) | lane F | lane F sizes it; no code |
 | CHORE-354 | CHORE-354 (new) — on a large profile the page does not answer Back within 1 s after the f… | Status (2026-10-22): open, low priority, not scheduled. | lane A | low priority; not scheduled; out of the Back batch, needs a profile first (MC-505 lane A ruling) |
 | CHORE-370 | V3 `setCharacterToIndex` may not mark its write for saving (new) | Status (2026-10-25, Lane F): premise refuted; no fix needed (MC-520 4); residual unchecked | lane F | residual: a different `chaId` and the old block; TODO(evidence) |
 | CHORE-390 | Script cache stage 2: a prompt-pass cache sized to the chat, under a memory cap | Status (2026-10-24): open, not scheduled (MC-541 2) | lane G | waits for the memory-footprint work (MC-119) |
-| CHORE-391 | Converting an older-format save stops with an error for other malformed fields | Status (2026-10-25): open, not scheduled; found by the CHORE-183 Gate 1 review | lane G | lane G batch 3, first (MC-508); not decided whether or how to handle these |
 | CHORE-392 | Tauri non-store writes are not yet atomic: inlay files, search index, streaming writes (the remaining stages of CHORE-55) | Status (2026-10-25): open, not scheduled (`MC-546` 2) | - | not scheduled (MC-546 2); carries no release blocker (MC-181) |
-| CHORE-393 | A character id like `kv:foo` makes a full `.bin` export refuse when the save also has a `foo` data namespace | Status (2026-10-25): open, not scheduled (`MC-546` 3) | lane G | the fix choice comes back to the maintainer first (MC-546 3); then lane G batch 3 (MC-508) |
 | Grid avatar loading (MC… | Grid avatar loading (MC-452, MC-459) — stage A, the thumbnail write leaves the generation… | The rest of stage B is deferred (`MC-463`). | lane E | rest of stage B deferred (MC-463) |
 | CHORE-241 | MVP chat-open and edit stalls: a quadratic display regex, and chat-phase measurement | S3 and S4 are parked until a re-measure after CHORE-225 (`MC-389`). | lane D | S3/S4 parked until re-measure after CHORE-225 |
 | CHORE-200 | On a Node server, a cold-storage unit over the request body limit fails only after the up… | the boot-pass strike for an oversize unit remains open as a proposed follow-up, not scheduled. | - | Node boot-pass strike residual parked (MC-501) |
-| Android boot batch (202… | Android boot batch (2026-10-09): gates, checks, device passes, accepted limits and open q… | needs review: Open maintainer questions (not decided). | - | COMPLETE per Phase 2 bullet but Q-A/Q-B 'Open maintainer questions' remain |
+| Android boot batch (202… | Android boot batch (2026-10-09): gates, checks, device passes, accepted limits and open q… | Status (2026-10-25, batch 14): Q-A accepted and closed; Q-B accepted as a recorded limit (MC-517); no longer needs review | - | COMPLETE per Phase 2 bullet; Q-A and Q-B answered (MC-517) |
 | Character list rework | Character list rework (2026-10-10 onward): stages 1 to S4-5 | stage records COMPLETE (four section entries moved to the closed archive); the item is IN PROGRESS | - | S4-5b Note 9 pass (MC-384 2); S4-6 and list windowing parked to the UI overhaul (MC-504) |
 | QOL side track (2026-10… | QOL side track (2026-10-12): batch import of plugins and modules, plugin export, per-mode… | Status (2026-10-12): IN PROGRESS, not COMPLETE; branch `feat/qol` | lane QOL | nothing committed or merged as of 2026-10-12 |
 | Runtime unload, the wor… | Runtime unload, the work after increment 1 (unload-2, 2026-10-12): gates, checks and owed… | every device or Tauri claim below is owed, not observed. | - | audit: most superseded; two checks owed in changed form |
 | A-lite storage rewrite… | A-lite storage rewrite (2026-10-13): stage list, gates and state | Open items. | - | 5a merged; 5b parked behind CHORE-205 (MC-504) |
-| Candidate tickets, not… | Candidate tickets, not yet numbered (2026-10-04) | Deferred. The server still starts as if the snapshot were empty | - | unnumbered candidates (G2-4 suspected, P9 deferred) |
+| Candidate tickets, not… | Candidate tickets, not yet numbered (2026-10-04) | Deferred. The server still starts as if the snapshot were empty | - | unnumbered candidates (G2-4 suspected; P9 is now CHORE-371, closed) |
 
 ---
 
@@ -474,22 +462,6 @@ Once Phase 2 has landed:
 
 ## Chores — confirmed bugs found during Stage B, NOT yet scheduled
 
-### CHORE-02 — `toSave.chat` is dead plumbing in the encoder
-
-**Status (2026-10-25, lane A records batch 13): UN-PARKED (`MC-508`).** The maintainer: "un-park 191, 107 and 02." The entry moved back from [Roadmap-parked.md](Roadmap-parked.md) with its text unchanged; lane G's batch 3 owns it (`MC-508`). The PARKED line below is kept as history.
-
-**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D).** Can return on a maintainer decision. If the plumbing is ever touched, the change needs `opus-reviewer` (save-adjacent).
-
-`grep -n "toSave.chat\|RisuSaveType.CHAT" src/ts/storage/risuSave.ts` returns **nothing**. The
-field is populated (`dbChangeEffects.svelte.ts:80-85`) and merged back on failed saves
-(`globalApi.svelte.ts:620-623`), but the encoder never reads it to decide anything — chats persist
-inside the whole-character `CHARACTER_WITH_CHAT` block, gated solely by `toSave.character`.
-
-Consequence: leftover/aspirational plumbing for a per-chat granularity that was never wired up.
-**Useful corollary: a CHORE-01 fix needs no parallel per-chat work.** Decide whether to wire it up
-or delete it; do not leave it looking load-bearing. Low risk either way, but deleting it touches
-`toSaveType`, so treat it as save-adjacent.
-
 ### CHORE-03 — Trash: dedicated bug-hunting pass
 
 **Maintainer report: the trash implementation is known to be unstable among the community.** That
@@ -586,6 +558,8 @@ this same mechanism: this chore is about the pointer firing too often on a toggl
 changing anything on `ReloadGUIPointer`.
 
 ### CHORE-05 — Translation coverage: much of the UI is English-only
+
+**Status (2026-10-25, lane A records batch 14): PARKED into the UI overhaul (`MC-517`, `MC-516`).** The overhaul rewrites the strings; the native-speaker review (CHORE-111, parked with it in [Roadmap-parked.md](Roadmap-parked.md)) goes with it. This entry stays here, about 480 lines, instead of moving to the parked file, and its open-table row is removed. Can return on a maintainer decision; not a release blocker (`MC-501`).
 
 **Status (2026-10-04): UI-lane work done through batch 5e; open only for the native-speaker review, LOW PRIORITY, owned by
 the Main Campaign session (`MC-212`, `MC-218`).** Batch 1 (2026-10-03, UI session): DONE in `39f00517` (ledger rows 878 to 886). Product choices in `MC-209`. The investigator (row 878) refuted the
@@ -1103,27 +1077,6 @@ Node; in-browser retention is inferred, not proven.**
   these stay pinned.
 - **Fix, if confirmed:** small and low-risk — log sizes and counts, not objects.
 
-### CHORE-08 — Plugin permission consent: session cache ignores the permission kind, and the provider prompt is not enforced
-
-Found while rewriting the plugin wiki pages (2026-09-22); both verified by the Orchestrator in
-source. Present upstream too (not fork-introduced). The hosted build is private, so frame this as
-consent that does not do what it says, not as a security hole.
-
-1. **The in-session cache is keyed by plugin name only.** `getPluginPermission`
-   (`src/ts/plugins/apiV3/v3.svelte.ts:581-638`) returns early from `permissionGivenPlugins` /
-   `permissionDeniedPlugins` (`:568-569`, checked at `:582-587`), which hold plugin **names**. Once
-   the user grants any one permission, every other kind that plugin asks for later in the session
-   is granted without a prompt, and the `reconfirm` / `'periodically'` (3-day) re-confirmation is
-   skipped. One denial likewise denies every later kind. The persistent `localforage` record is
-   correctly per kind (`pluginHash + '_' + permissionDesc`); only the session cache is wrong.
-2. **The provider consent result is discarded.** `addProvider`'s wrapper
-   (`v3.svelte.ts:701-706`) awaits `getPluginPermission(plugin.name, 'provider', 'periodically')`
-   but never checks the boolean, so the provider runs even when the user declines.
-
-**Compatibility note:** fixing either makes prompts appear where users now get silent approval.
-Decide the UX (key the cache by name + kind; on a declined provider, fail the request with a
-visible error) with the maintainer before implementing. Translations of the prompts: CHORE-05.
-
 ### CHORE-12 — Modules: 6 suspected bugs (none lose data)
 
 **Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group C) for MOD-5 only.** The module icon editor is parked; the ticket stays open for its other items. Can return on a maintainer decision.
@@ -1480,6 +1433,8 @@ writer rework.
 
 ### CHORE-35 — Upstream proxy and CDN infrastructure outside Realm and Drive have no agreement gate
 
+**Status (2026-10-25, lane A records batch 14; `MC-517`): scope for the first release decided.** The maintainer chose "What Android uses (Recommended)": first trace which of the five upstream services the Android app actually reaches, and make only those opt-in now; the rest stay a release condition for web. The trace has not been done. Still open.
+
 **Status (2026-09-26):** filed out of scope from CHORE-33's plan (Report 28 section 3.5, item 1),
 `MC-087` #3b. Traced to source, not fixed.
 
@@ -1553,31 +1508,6 @@ against the third requirement of upstream's notice. The maintainer chose to leav
   memory is up to about 1,000 x (key + value) (inferred: V8 flattens the rope keys on Map insertion).
   Whether the default-mode change (`MC-257` 1) removes most of this is not established; CHORE-155
   and CHORE-156 are the related render tickets.
-
-### CHORE-46 — The self-hosted Node server cannot save a database larger than 100 MB
-
-**Status (2026-10-25, lane A records batch 13): assigned to lane F's Node group (`MC-507`).** The maintainer chose "Size all four, fix small (Recommended)" for lane F's Node group, which includes CHORE-120, 62 and 46; lane F sizes first and fixes what is small. The earlier "parked until after A5" note below is superseded for ownership only; no fix is decided.
-
-**Status (2026-09-30):** filed from the memory-footprint stage's persistence-side investigation
-(ledger row 456), under `MC-069`. Present upstream. Not fixed and not scheduled.
-
-- **Mechanism (source read by the Orchestrator; not run):**
-  - `server/node/server.cjs` parses every `application/octet-stream` body with
-    `express.raw({ limit: '100mb' })`.
-  - `NodeStorage.setItem` (`nodeStorage.ts`) sends `database.bin` whole, as one such body, to
-    `/api/write`.
-  - A larger body is refused before the handler runs, so the save fails.
-- **Seen in practice:** the maintainer's runtime `database.bin` is about 155 MB, and they use the
-  Tauri build rather than self-hosting because of this limit (`MC-131` 3-4). They report the limit
-  is well known among long-time self-hosters, who are told to export and delete unused characters
-  regularly and keep chats and characters elsewhere. Local plain-HTTP hosting is the second most
-  common platform.
-- **Related:** the memory-footprint stage (`MC-119`, `MC-130`) moves chats out of `database.bin`
-  into their own units, which shrinks the main file and may make this moot. Decide there whether
-  the stage fixes it, or whether the limit is raised or the write split separately.
-  `senior-advisor` (ledger row 459) recommends both: the per-chat stage first, then a streamed
-  `/api/write` body into the temp file the handler already renames, rather than a higher limit,
-  because `express.raw` buffers the whole body in server memory and a Pi 3 is a target host.
 
 ### CHORE-60 — Release identity: the desktop build still carries upstream's identity
 
@@ -1781,6 +1711,8 @@ from upstream has been deleted."); afterwards `gh release list --repo yor42/Risu
   `MC-157`; CHORE-35; ledger rows 536 to 539 and 552 to 554.
 
 ### CHORE-62 — On a Node server, another device's save makes this device stop saving until it reloads, and its edits since its last save are lost (TRACED; not run against a real server)
+
+**Status (2026-10-25, lane A records batch 14, from lane F's records): fixed on `worktree-Lane-F` and merged in `95a24de3e`; technically accepted; NOT closed here.** Two commits, each maintainer-approved (`MC-500`): `f3ab26c4a` (a dirty Node peer park auto-exports the partial backup once per park before the question; any busy action skips it; the prompt says a plain Reload drops this tab's unsaved changes and, after an automatic export, asks the user to check the download; `MC-523` 3, `MC-525` 1 and 2, `MC-526`) and `cc97b20d8` (a Cancel on every web export's progress dialog; `MC-528` to `MC-530`, an `MC-091` shared-cause amendment). The records were corrected: "parked until after A5" no longer holds (A5 is the Android MVP). Both gates were `opus-reviewer` (lane F's rows 3715, 3716, 3729, 3733, 3735, 3736, 3738 and 3741). Full checks: lane A's run `%TEMP%\risu-b715\lanef-b2-full\` (23,327 passed in both runs, check 0/0, build and dist OK, snapshot unchanged). Device check on mobile Firefox (lane F row 3744; `ff-cancel\result.md` with its "Lane A verification"): Cancel is shown, closes the dialog in about 1.5 s with the `MC-529` 2 notice, leaves no partial file and leaves the app usable; a late answer reproduces the maintainer's stall and Cancel exits it; a manual full-backup Cancel shows no park prompt (as coded; the `MC-528` summary was narrowed to the park paths in lane F's records commit `d2a48a8b7`). Residuals (lane F): a silently blocked web download still reports saved; the automatic export can replace an unread on-screen notice; a Cancel during the 10 s helper wait settles only at its end. Open, so the ticket stays open: (1) the card (PNG, CharX zip) and module Cancels (`MC-530`) were not exercised on a device; (2) lane F listed "whether the Translator's low-confidence terms stand" ("assets" and "inlays", the "save record" and "save index" phrases, the vi "Đã hủy xuất") as open for the maintainer. Separate and not caused by lane F: the Firefox full-backup failure, CHORE-212.
 
 **Status (2026-10-25, lane A records batch 13): assigned to lane F's Node group (`MC-507`).** The maintainer chose "Size all four, fix small (Recommended)" for lane F's Node group, which includes CHORE-120, 62 and 46; lane F sizes first and fixes what is small. The earlier "parked until after A5" note is superseded for ownership only; no fix is decided.
 
@@ -2004,17 +1936,6 @@ app's own images into the card, not the companion text, so this is its own ticke
   Not decided.
 - **Related:** CHORE-69; CHORE-68; `MC-203` 1.
 
-### CHORE-120 — On the Node server, `/api/set_password` accepts any client until a password exists, and the first client wins (TRACED)
-
-**Status (2026-10-25, lane A records batch 13): assigned to lane F's Node group (`MC-507`).** The maintainer chose "Size all four, fix small (Recommended)" for lane F's Node group, which includes CHORE-120, 62 and 46; lane F sizes first and fixes what is small. No fix is decided.
-
-**Status (2026-10-04):** open, **not scheduled**; fixes are to be proposed after Stage 0 of the save-layer track. Severity: not assessed. Filed at the maintainer's "File both, extend our range (Recommended)" (`MC-194` 14); the Main Campaign's CHORE range now also holds CHORE-120 to CHORE-129. Reported by the side session's CHORE-80 investigation; verified in source by the Orchestrator, and its route code re-read for this entry at the time of writing.
-
-- **What was traced:** the `POST /api/set_password` handler in `server/node/server.cjs` checks only that the in-memory `password` is the empty string. If it is, it stores the posted value, writes it to the password file and answers success; otherwise it answers 400 "already set". The route has no authentication check and no rate limiter argument. Upstream origin: `74f76255`, 2023-05-28 (re-checked with `git log -S` at the records fact-check, ledger row 1070).
-- **Consequence:** on a freshly started server with no password, whoever reaches `/api/set_password` first chooses the password. After that the route refuses. A password set by someone else would lock the owner out (SUSPECTED, not run). The hosted build is meant for private networks only (`MC-191`), which limits who can reach the route.
-- **Not known:** whether the app's first-run flow depends on a client calling this route before a password exists (TODO(evidence)); whether the Hono server has the same route (TODO(evidence)).
-- **Related:** `MC-194` 14; `MC-191`; CHORE-89; CHORE-80 (the side session's investigation found it).
-
 ### CHORE-128 — A faster Risutanium-to-Risutanium backup format and a sync folder (design not started)
 
 **Status (2026-10-06): open, not scheduled; design follows the Rust `.bin` path, which has landed** (CHORE-123). Type: feature. Filed from the maintainer's request (`MC-199` 2 and 3; ledger row 1267). The `.bin` stays the upstream-to-fork format. **(Updated 2026-10-17, `MC-298`: the maintainer decided on 2026-10-16 that the RisuTanium-only (fork-to-fork) backup is a completely new format, unrelated to upstream `.bin`, designed around store2 to use it fully (their example: import and export speed), and that it is a complete backup of all app data, RP data included, so one backup restores everything and the user need not keep a `.bin` too. The `.bin` becomes the backward-compatibility format for going back to upstream, and importing an upstream `.bin` stays required (`MC-223`). This is the format this ticket designs. Still not started: the design, and how it relates to store2's commit key, units and fence (not decided). The other parts of the maintainer's draft `docs/planning/2026-10-16-product-overhaul-direction.md` (the `.bin` as RP data only, Utility as fork-only, Hybrid keeping only the persona) are a draft, not decisions.)**
@@ -2073,14 +1994,6 @@ app's own images into the card, not the companion text, so this is its own ticke
 
 **Status (2026-10-06): open, not scheduled.** `1e71c45c` moves only the `.risum` and PNG importers onto the piece save; `.charx` asset entries and the module and character editors' uploads still save whole (the records items name the follow-up without detail; TODO(evidence)).
 
-### CHORE-107 — `openWriter` belongs inside the `try`
-
-**Status (2026-10-25, lane A records batch 13): UN-PARKED (`MC-508`).** The maintainer: "un-park 191, 107 and 02." The entry moved back from [Roadmap-parked.md](Roadmap-parked.md) with its text unchanged; lane G's batch 3 owns it (`MC-508`). The PARKED line below is kept as history.
-
-**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D).** Can return on a maintainer decision.
-
-**Status (2026-10-06): open, not scheduled.** A follow-up named in the records items as "O2 openWriter inside the try" from the piece-by-piece hashing work (TODO(evidence): the file and the failure it prevents are not in the evidence).
-
 ### CHORE-109 — Show assets without loading them whole
 
 **Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group F) for the web stage only.** The service worker over the stored files waits on CHORE-108, which is parked. The ticket stays open for its other items. Can return on a maintainer decision.
@@ -2092,10 +2005,6 @@ app's own images into the card, not the companion text, so this is its own ticke
 - **Stage C (2026-10-07, one Note 9, Android 10, WebView 153, a debug build, single runs; `MC-198` (a)):** the asset URL, the canvas readback and the thumbnail path pass; memory passes with caveats (no regression shown, not a saving); **a Range request with a start above 0 fails**, so an asset video stalls after about 1 MB. That defect predates CHORE-109 (INFERRED from source) and is CHORE-115. The Stage B URL-failure fallback was not exercised on the device. Report 61 section 8.
 - **Not done:** the web stage (a service worker over the stored files; it waits for CHORE-108), and inlays (CHORE-114). Firefox, a long-video connection cap and Linux and macOS asset-protocol CORS were not checked. All figures except Stage C's (one Note 9, debug build, single runs) are best-case hardware (`MC-003`, `MC-010`) with synthetic data (`MC-131`).
 - The 200 MB per-asset policy limit (`MC-187`) can rise once this and CHORE-126 both land; no decision to raise it is recorded.
-
-### CHORE-111 — Native-speaker review of the Stage 1c, `.bin` and importer strings
-
-**Status (2026-10-06): open, low priority, the same deferral as CHORE-05 (`MC-212`).** The translators flagged low-confidence wording in the strings added by these changes: the lists in Report 59 section 8 (Stage 1c slices, QOL-06) and the `.bin` speed change (cn and zh-Hant "saved as it is made", vi, de and es "download helper", de "Kaltlager"), the bounded-IPC messages (ko 이(가) and 에셋, es "tú mismo" gender, vi stiffness, cn and zh-Hant, de "Asset") and the importer strings (the de, vi and es asset term; ko 이(가)).
 
 ### CHORE-112 — Android follow-ups
 
@@ -2123,6 +2032,8 @@ app's own images into the card, not the companion text, so this is its own ticke
 - Android video stays broken until a wry release with the fix arrives.
 
 ### CHORE-117 — Save-time validation: a committed generation must always load
+
+**Status (2026-10-25, lane A records batch 14; `MC-517`): stage 1b decided, not implemented.** For a plugin that renames an already-saved character to an empty id, the maintainer chose "Keep old id + notice (Recommended)": ignore the empty id, keep the character's saved id so it stays in the order and folders, and show a notice. Not implemented; stage 1b stays open until it is.
 
 **Status update (2026-10-22, lane A, fourth): stage 2 merged in `e4413ffbd` (no-ff merge of `cc2128d60`; `MC-346`, `MC-347`, `MC-453`); technically accepted; not COMPLETE: stage 1b is still open, narrowed by the audit, and its expected outcome needs a maintainer decision.** Lane E's rows 3533 to 3542 are folded into the ledger (after row 3532). Full checks on `e4413ffbd` (`%TEMP%\risu-b715\records-e117\`): `pnpm test` 917 files passed, 1 skipped (20,824 tests passed, 23 skipped); `pnpm check` 0/0; `pnpm build` passed. The `modules.test.ts.snap` LF rewrite did not occur. The Q-A value-cannot-be-stored item is CHORE-350 (open, not scheduled).
 
@@ -2179,29 +2090,6 @@ app's own images into the card, not the companion text, so this is its own ticke
 ### Chat-screen render findings (investigation 2026-10-09): CHORE-154 to CHORE-157
 
 **Evidence and confidence.** Source: investigator packet `chatperf\packet.md` (snapshot `8acadfe0`) and its independent verification `chatperf\verify.md` (deep-investigator, snapshot `7921b287`; verdict "HOLDS WITH CORRECTIONS"; mechanisms confirmed). Where the two differ the verification is used. The micro-benchmarks are on the i9-13900KF (best-case hardware) with synthetic data; **nothing was measured on a phone or Pi**, and the packet adopts no scale factor (CHORE-45 estimates 10 to 15 times slower). Premises the investigation refuted or narrowed: `addMetadataToElement` never runs (`aiWatermarkingLawApplies()` returns `false`); only the streaming message is re-parsed per chunk (the window-wide cost is the hash loop and a forced layout); global custom CSS is one event-driven `<style>`. **Queue position:** after the windowing of other lists (`MC-256` 4). **Gate:** each ticket needs a Gate 1 plan and the post-implementation review; rendered output must stay identical except where `MC-257` decides a change (CHORE-156). The equivalence-risk ratings are the packet's, not a maintainer rule.
-
-### CHORE-154 — Output-identical cheap fixes in the chat parse pipeline
-
-**Status (2026-10-09): open; queued after the windowing items.** Type: performance, low risk by design. Each sub-item needs its own differential test proving the output is unchanged.
-
-1. **CBS fast path (packet F13 and F5).** Skip `risuChatParser` when the text has no `{{`, no `{#` and no `<user>`, `<char>` or `<bot>` (matched case-insensitively). **Two conditions (verification):** the guard must run after the `callStack` check at `parser.svelte.ts:1675-1679` (a reused argument with `callStack` 20 returns "ERROR: Call stack limit reached" even for plain text), and the tag test must be case-insensitive (the parser uses `/gi` at `:1704`; "Hi <USER>" would differ under a case-sensitive guard). The caller that benefits most is `executeScript` (`scripts.ts:470-472`), which re-parses after every plain regex script whether or not it matched; do not skip on "the regex did not match". **Executed by the verifier:** a differential test over 102,599 random brace-free inputs, with the real parser lines extracted and the matchers stubbed to throw: 0 differences, 0 matcher calls (`verify_fastpath.ts`, session scratch; the inputs were brace-free, so inputs with `{` that is not `{{`/`{#` were not covered by that run). Model cost on the i9: 0.007, 0.023, 0.096 ms per pass at 1, 5, 20 KB; per message with 150 scripts and 5 KB the packet's loop model gives 3.9 ms (a lower bound for brace-free text).
-2. **Memoize the CSS decode and build the selector processor once per call (F4).** `decodeStyleContent` (`parser.svelte.ts:1008-1032`) decodes, CBS-parses, CSS-parses and stringifies the style of every message on every parse, and `:974` builds a new selector processor inside the selector loop. Memoize by the post-CBS CSS text, successes only, with the `returnCSSError` fallback outside the cache; do not deduplicate the per-message `<style>` elements (that would change the DOM and cascade order). Model cost: 0.52, 1.85, 7.6 ms per decode at 10, 50, 200 rules.
-3. **`getClosestMatch` caching (F9 as corrected).** Neither successes nor misses are cached for the looked-up name: it writes `assetPaths[closest]` under the real asset's key (`parser.svelte.ts:657-660`), never under the queried name. A cache keyed by character id and name, cleared in `resetAssetsCache`, gives identical output while assets are unchanged. Model cost per missed name: 0.18, 0.79, 2.98 ms at 50, 300, 1000 assets. Coordinate with CHORE-157 (the same lines).
-4. **Dynamic-asset setup before the match scan (F8).** With `dynamicAssets` and `dynamicAssetsEditDisplay` on, `scripts.ts:525-564` builds a `HypaProcesser` and adds every asset name (one awaited IndexedDB read each, then an O(n^2) filter) before checking whether any tag needs fuzzy resolution. It also runs for `editoutput`, so per streamed chunk under mode `'off'` (verification). Move the setup after the match scan; the output is unchanged when no tag needs resolution.
-5. **Every keystroke in a regex OUT field bumps `ReloadGUIPointer` (N4).** `RegexData.svelte:130-131` (the `onInput` of the OUT field) re-parses the whole window and wipes the script cache on each keystroke; the comment and type fields bump at `:114` and `:118`. Related to CHORE-155.
-
-### CHORE-155 — The full chat re-renders on every `ReloadGUIPointer` bump
-
-**Status (2026-10-09): open; queued after the windowing items; builds on CHORE-04 and Report 19** (`Agents/Reports/19-chat-list-window-plan.md`, sections 2.4 and 9.4 already list several bump sources).
-
-- **Mechanism (verified, with the correction):** each `Chat` subscribes to `ReloadGUIPointer` (`Chat.svelte:744-746`) and re-runs its display parse, and the pointer is in the `{#key}` at `Chat.svelte:1026/:1042`, so one bump remounts every windowed `ChatBody`. The packet's "no parse/render cache anywhere" is wrong (`processScriptCache` exists, `scripts.ts:185-200, 264-270`), but each bump also calls `resetScriptCache()` and `ReloadChatPointer.set({})` (`stores.svelte.ts:188-191`), so the window re-parse is a guaranteed script-cache miss and `Chats`' effect re-runs.
-- **Writers (verification, non-test, COMPLETE: 20 sites in 8 files):** `SideChatList.svelte` 144, 160, 217, 241, 317, 337, 416, 471; `ModuleChatMenu.svelte` 95, 109; `ModuleSettings.svelte` 39, 45; `RegexData.svelte` 114, 118, 131; `globalApi.svelte.ts` 4229 (`changeChatTo`); `modules.ts` 786; `scriptings.ts` 449; `triggers.ts` 2575, 3010 (fires only when a value actually changes). `ChatList.svelte` imports the pointer but never writes it.
-- **Packet's smallest correction (not separately verified):** memoize only the pure tail (markdown plus sanitize, keyed by the exact input string and the settings it reads); a full `ParseMarkdown` cache is not safe (Lua, triggers, variables and random make it impure).
-- **Lower-priority related costs, listed here by the writer's choice** (F11 and F10 follow the bump; F6 and F7 are triggered by re-parses and effect runs, not only by bumps, so they are listed as separate lower-priority sub-items and are not claimed to be bump costs; each fix carries medium equivalence risk per the packet):
-  - F11: `BackgroundDom.svelte:15-19` re-parses the background and recreates its DOM (animations, video, audio) on every bump.
-  - F10: the `customHTML` theme parses the theme HTML per message (`Chat.svelte:759-768, 1555`); a theme `<style>` becomes one `<style>` per message. Cost not measured.
-  - F6: on any re-parse of a live `ChatBody`, the `{#await}` pending branch sanitizes and injects the previous result, then the resolved branch does it again (`ChatBody.svelte:279-283`; Svelte 5.56.8 destroys and recreates the branch). Animated assets may restart (inferred).
-  - F7: every `Chats` effect run hashes every windowed message's text and forces a layout (`Chats.svelte:83-85, 104-113, 189-197, 212-214`). Model: 0.11 ms (30 x 1 KB) to 4.3 ms (600 x 5 KB) per run.
 
 ### CHORE-156 — Decided chat-render work items (streaming default, Lua engine reuse, superseded parses)
 
@@ -2260,6 +2148,8 @@ app's own images into the card, not the companion text, so this is its own ticke
 
 ### CHORE-166 — Timers that are still late while the app is hidden after Stage 3b
 
+**Status (2026-10-25, lane A records batch 14; `MC-517`): stage S1 chosen, not implemented.** The maintainer chose "Finished reply only (Recommended)": a reply that ends while the app is hidden is saved at once (stage S1); other background work (idle checks, cleanup, the streaming display) may run late until the person returns. It is save-path code, so it gets the saved-data reviewer and the maintainer's approval per commit. The sizing is `%TEMP%\risu-b715\c166\sizing.md`; the S0 phone run is in progress. Not implemented.
+
 **Status (2026-10-25, lane A records batch 11):** open; batch T is done, and this ticket's own batch is not started (`MC-502`).
 
 **Status (2026-10-24, lane A records batch 10):** open; leaves batch T and becomes its own batch (lane A ruling, `MC-502`); it follows batch T.
@@ -2285,14 +2175,6 @@ app's own images into the card, not the companion text, so this is its own ticke
 - **Observed (Stage 2a Note 9 pass, `charlist\note9-2a.md` "Needs a fix or a decision" item 1; screenshot `44-link-tap.png`):** tapping a markdown link in a List row calls `openURL` and the shell plugin's `open` fails; an alert shows "Scoped shell IO error: Permission denied (os error 13)" and the console shows an `Uncaught (in promise)`. The row correctly does not open the character. The link went to a synthetic `example.invalid` address.
 - **Not established:** whether the base commit shows the same. The code path (`hubHtml.ts` to `openURL` to the plugin-shell `open`) is unchanged by the 2a diff, per the report, which did not run the base. The 2b pass did not retest it (`note9-2b.md` minor observation d).
 
-### CHORE-170 — Grid fling long tasks of up to 153 to 227 ms on the Note 9; try a smaller grid overscan after profiling
-
-**Status (2026-10-10): open; observation with a partial attribution; not planned.** Type: performance, Android (Note 9; the i9 desktop says nothing about this).
-
-- **Observed (`charlist\note9-2b.md` D3 and the r3 recheck):** during 72 Grid flings the page recorded 83 long tasks, 16 of at least 100 ms, max 153 ms (the 2a List: 13 tasks, max 77 ms); after r3 59 tasks, 16 of at least 100 ms, max 155 ms. One DevTools trace of six flings (tracing overhead included): 17 main-thread tasks of at least 50 ms, 5 of at least 100 ms, max 227 ms; within those 17 tasks Commit was 22% and UpdateLayoutTree 22% of exclusive time, script 19%, and the three next-longest tasks (112 to 116 ms) were 49 to 88% Commit.
-- **Reading (the perf-analyzer's, not independently verified):** the long tasks are mostly the browser's style recalculation and compositor commit after about 140 tile elements (about 28 rows of 5 at an overscan of one viewport each side) are inserted, with Svelte component creation about a fifth and one GC-heavy task. Blank frames were 0 of 8,207 by DOM measurement.
-- **Proposal (the coder's, untested):** profile one fling first; if mounting dominates, try about 0.5 viewport of overscan for the grid only, accepting more blank edge at fast flings. `stage2b-report.md` "Overscan" says not to change it blind.
-
 ### CHORE-174 — `CharConfig.svelte` re-reads `$selectedCharID` live across an `await` and can write to the wrong character
 
 **Status (2026-10-24, lane A records batch 10):** open. Per the lane E audit (source reading, doc-verifier-checked with corrections, not run): STILL PRESENT at the audit HEAD `542d28b0f`, with 3 more await-spanning write sites in `CharConfig.svelte`. No fix is on `main`: the commits to that file since the audit are unrelated (lane A week 0 check).
@@ -2301,16 +2183,6 @@ app's own images into the card, not the companion text, so this is its own ticke
 
 - **Observed (source reading, `archdefault\gate1-unload-1-r1.md` finding 5):** `CharConfig.svelte:595-609` re-reads `$selectedCharID` live, so a wrong-character write is possible; it can never reach a stub. The line numbers are as read at `ac2db1fb`. `plan-unload-1.md` v2 (A5) records it as an existing issue, not fixed in increment 1, and `stage1a-report.md` item 6 confirms `CharConfig.svelte` is untouched.
 - **Related, lower severity (`s0.md` "EXISTING-BUG (low)"):** `runAutopilot` re-reads the selection (`devToolActions.ts`) and selection-bound fallbacks in `chatVar.svelte.ts` and `scripts.ts` can mis-target; a mis-target, not a silent loss.
-
-### CHORE-177 — Grid fling jank with every folder open on the Note 9 (the scroller's layer height; the browser re-fetches CSS background images when tiles are re-created)
-
-**Status (2026-10-10): open; not planned; to be revisited with the list-windowing perf work (the maintainer's "Ticket it, move on (Recommended)", `MC-275` 4).** Type: performance observation (Grid, Stage 3b).
-
-- **Observed (MEASURED on the Note 9, SM-N960N, API 29, WebView Chrome 153, 1000 synthetic characters with 50 folders; `charlist\note9-3b.md` P4, `charlist\f2-trace.md`, `charlist\note9-3b34.md`):** with every folder open (919 tiles, 14,242 px) the instrumented pass measured 10.65% janky frames (718 of 6,741); the bare protocol (`adb` swipes, no page code during the flings) read 15 to 33% per run. Closed (325 tiles, 4,160 px) read 1.48% and with only the 150-member folder open (475 tiles, 6,153 px) 1.34%. In the trace, runs over 10% janky with a p50 under 10 ms ("moderate") occurred in 0 of 16 closed, 0 of 12 one-folder-open, 5 of 12 (600 tiles), 6 of 12 (750 tiles) and 28 of 43 all-open runs. A run is eight flings, so the "28 of 43 flings" and "0 of 12" in the question put to the maintainer count runs. The device also showed a separate "slow mode" (p50 10 ms or more, 38 to 57% janky) in some runs of every state; those runs are not in the moderate counts. After the avatar cache change (`c8a99472`) a 10-run re-measure gave all open 10.04% pooled (5 of 10 runs over 10%), one folder open 2.81% and closed 1.12% (`note9-3b34.md`); the S4-2 pass measured all open with edit mode off at 14.22% pooled, 5 of 10 runs over 10% (`note9-s4-2.md`). Ten runs per state cannot separate these figures from the earlier ones.
-- **Mechanism, INFERRED and not proven (the trace report is not independently verified):** main-thread work per fling was the same open and closed; the lost time is in the compositor pipeline stage `SubmitToReceiveCompositorFrame` (17 to 18 ms at p90 in a bad run against 2.9 to 3.4 ms in a good run of the same content); tile-manager and GPU-thread pressure grows with the scroller's composited layer (941 x 37,386 device px open against 941 x 10,920 closed; "violates memory policy" tile events 2 to 32 closed, all open 191 to 198 (one folder open 35, 600 tiles 106, 750 tiles 150)). The trace measured these not to be the cause: page script, style recalculation, layout, row paint, the section tint, row churn, folder-picture tiles, layer count, `scrollTop` writes and avatar image churn (the jank stays with images hidden). It establishes no smallest correction.
-- **Fold in (INFERRED, `note9-3b34.md`):** after the avatar cache change the app's own lookups are gone (0 late style writes against 652 to 904 per pass before), yet the browser still fetches the CSS background images again when tiles are re-created (about 730 requests per swipe run, 630 distinct, all open; css-initiated; closed about 2). The reading is Blink's image resource cache dropping the images, not shown; the request count before the change was not re-measured on a base build.
-- **Evidence (session scratch, not in the repository):** `charlist\f2-trace.md`, `charlist\device-3b\f2\`, `charlist\note9-3b34.md`, `charlist\device-3b34\f2\`. TODO(evidence): copy the selected artifacts into `Agents/Evidence/CHORE-177/` with a README if they are to outlive the scratch directory.
-- **Not established:** the cause, any fix, and whether a Pi 3 or a mid-range phone shows it.
 
 ### CHORE-178 — Lorebook `searchMatch` slices from `length - scanDepth` with no clamp, so a scan depth larger than the message count drops the oldest messages
 
@@ -2323,21 +2195,6 @@ app's own images into the card, not the companion text, so this is its own ticke
 - **Observed (source reading at `e75b1249`, `src/ts/process/lorebook.svelte.ts`, `searchMatch`):** the scanned window is `messages.slice(messages.length - arg.searchDepth, messages.length)` with no clamp of the start.
 - **Source and inference:** the follow-up in `Agents/Upstream-Merges.md` for the merge `1f455c0b` says a depth above the message count gives a negative start and drops the oldest messages (for example 3 messages with depth 5 keeps only the last 2) and that it affects plain keys as well as regex keys. That example is reasoning from `Array.prototype.slice` semantics; this pass did not execute it. Not tested.
 - **Not decided:** whether to fix it here or upstream; how often a depth above the message count occurs in practice.
-
-### CHORE-180 — Back on screens with their own back stack and no Back handler: the Beta Mobile GUI chat "Menu" page shows the quit toast and does not close
-
-**Status (2026-10-25, lane A records batch 13): stage A committed as `561de025f`, pushed; phone checks running; not COMPLETE.** The commit is "Back leaves Beta Mobile GUI chat, menu and settings pages (CHORE-180)", on top of the lane C merge `4fb1e3cbb` (`MC-505`). Gate 1 was `[APPROVE WITH AMENDMENTS]` (batch 12 records). Implementation (ledger row 2283): 20 of 51 tests fail on the pre-fix base and 51 of 51 pass after; 7 mutants killed; `pnpm check` 0 errors and 0 warnings. Gate 2 `[APPROVE]` by `opus-reviewer` (row 2284); its finding F1: no device build from stage A alone. Full run on the merge plus stage A (row 2285): run 1 had 2 `manualCleanup` timeouts (CHORE-210), run 2 was green at 22,155 passed; check, build and the dist check OK. The phone 2 checks and lane A's keyevent smoke pass are running.
-
-**Status (2026-10-25, lane A records batch 12):** in lane A's Android Back batch (`MC-505`); the plan passed Gate 1 with amendments (`opus-reviewer`, [APPROVE WITH AMENDMENTS]) and stage A is next.
-
-**Status (2026-10-24, lane A records batch 10):** open; in the Android Back batch (`MC-501`, group F), which follows batch T.
-
-**Status (2026-10-11): open; not planned; found by the S4-2b Note 9 pass.** Type: suspected defect (Android Back).
-
-- **Observed (MEASURED, `charlist\note9-s4-2b.md` check 2; Note 9 API 29, debug build at `5b0fa42b` plus the uncommitted tree):** in the Beta Mobile GUI shell the chat "Menu" page (header "Menu", a back arrow, Chat and Character tabs) is a different component from the sidebar. Back there shows "Press Back again to quit" and leaves the page open; the in-app arrow returns to the chat. INFERRED in the report, not observed: a second Back within the window then quits the app. On the Settings page of that shell (Display & Audio) Back also shows the toast and the page itself is not left by Back. The maintainer's own configuration has Beta Mobile GUI on.
-- **Inferred cause (source reading, not executed):** `panelGestureBinding`'s Back handler reads `sideBarStore`, which that page does not use.
-- **Same class, inferred and not enumerated:** other chat-screen and Beta Mobile GUI header back stacks. The Gate 1 round 1 review of the S4-2b plan (`charlist\records-s34\handbacks\064925-ac47ee4fd4846ed6a.txt`, source reading) listed the screens where Back used to quit and now toasts first: settings, the mobile GUI, the chat screen and the modals not routed through `alertStore` (preset list, persona list, bookmark list, HypaV3, Realm popup); it called that the intended effect of D5, not a regression.
-- **Not decided:** whether these pages should close on Back.
 
 ### CHORE-184 — The Lua runtime (wasmoon `glue.wasm`) is fetched from unpkg.com at run time
 
@@ -2357,35 +2214,6 @@ app's own images into the card, not the companion text, so this is its own ticke
 - **Open, `TODO(evidence)`:** how often a name repeats with different bytes. `saveAsset` names assets by SHA-256 or a custom id (verifier claim 6), and CHORE-182 records "content-named additions". CHORE-182's "Why the number matters" bullet says "'not changed until the import has finished' holds by construction but is untested". For a same-name asset with different bytes, that sentence and this entry directly contradict each other, because `backuplocal.ts` writes import assets `'unconditional'`.
 - **Fix needs:** a wording change in all 7 locales (the translator) or a skip-if-present-and-verify copy (`MC-326` 3 is the verifier's cross-reference; not reopened).
 - **Related:** CHORE-182.
-
-### CHORE-189 — Index-level incomplete items carry the slot key `_coldpluginIndex` and a minted id, so the conflict retry asks the same question twice
-
-**Status (2026-10-25, lane A records batch 13): assigned to lane G's batch 3 (`MC-508`).** The maintainer: "let's tackle open low priority tickets too as they seem small." No fix is decided.
-
-**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Source: U3 S2b Gate 2 and the coder's residual (`upstream-e773240\closeout-notes.md`).
-
-- **Problem:** when upstream's plugin index is absent or a small entry is bad, the incomplete item names `_coldpluginIndex` and an id minted per attempt, not the plugin key (`convertPluginStorageIndex` returns ids only). The prompt cannot name the plugin key, and the page import's conflict retry asks the question twice because the id changes per attempt.
-- **Proposed:** return the slot key from `convertPluginStorageIndex` (S1 and S2b together).
-- **Related:** CHORE-186.
-
-### CHORE-190 — U3 A2 non-blocking items: the dirty mark, `keys()` and `length()` after `clear()`, and a pre-existing store2 race
-
-**Status (2026-10-25, lane A records batch 13): assigned to lane G's batch 3 (`MC-508`).** The maintainer: "let's tackle open low priority tickets too as they seem small." No fix is decided.
-
-**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Source: U3 A2 Gate 2 rounds 1 and 2 (`upstream-e773240\u3a2\g2-verdict.md`, `g2r2-verdict.md`). N4, the `clear()` listing and m4 lose nothing. E8 is a pre-existing narrow race (same on the base). A stale V2 write that lands between the store2 V3 value write and its mapping, across an await, can drop the not-yet-mapped value and leave the mapping dangling.
-
-- **N4:** `setDatabase(getDatabase())` and a proxy self-assignment now mark `pluginCustomStorage` dirty (measured `true`; on the base `false`), so store2 re-encodes it per key: extra save work. An optional `incoming === current` shortcut avoids it.
-- **After `clear()`:** V2 `keys()` and `length()` list `_coldplugin`, `_coldpluginIndex` and, on a store2 page, unit ids, where the base returned an empty list and 0. Consistent with the accepted residual that these keys were already listed whenever V3 data existed; upstream lists the internals too.
-- **E8 (pre-existing):** on a store2 page the V3 value is written before the mapping across an await; a stale V2 write in that gap drops it. The same on the base.
-- **Also:** mutant `m4` survives (a current unit id with no value is not forced absent; only the reviewer's E4 diagnostic covers it).
-
-### CHORE-191 — English `chatParseFailed` now ends with a trailing ", "
-
-**Status (2026-10-25, lane A records batch 13): UN-PARKED (`MC-508`).** The maintainer: "un-park 191, 107 and 02." The entry moved back from [Roadmap-parked.md](Roadmap-parked.md) with its text unchanged; lane G's batch 3 owns it (`MC-508`). The PARKED line below is kept as history.
-
-**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D).** Can return on a maintainer decision.
-
-**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Cosmetic. Source: U0 Gate 2 finding O2. The chat parse-error alert now shows the stack once (the stack block of the alert), so the stack slot of `language.errors.chatParseFailed` is empty and the English text ends with ", ". Fixing it changes the key in all 7 locales (the translator owns the non-English files).
 
 ### CHORE-202 — The Note 9 screen-off import stall has an unknown cause
 
@@ -2485,16 +2313,6 @@ A value that cannot be stored (a cycle, a BigInt or a throwing `toJSON`) in a mo
 
 **Status (2026-10-22): open, not scheduled.** Filed per MC-455 Q2 ("Nothing for now, ticket it").
 
-### CHORE-352 (new) — Back does not close Settings, the Realm frame, popups or panels (MC-455 Q1)
-
-**Status (2026-10-25, lane A records batch 13): stage B committed as `31b050a63`, pushed; phone checks running; not COMPLETE.** The commit is "Back closes Settings, the Realm frame, popups, panels and the preset, persona and HypaV3 modals (CHORE-352)" (`MC-505`). Implementation (ledger row 2286): 50 of 73 tests fail on the pre-fix base (the coder's figure, before its last test edits); 82 new tests; 23 mutants; lane A approved one amendment, the `PromptDiffModal.i18n` test mock. Gate 2 `[APPROVE]` by `opus-reviewer` (row 2287): 53 of 76 fail on the pre-fix base in the reviewer's own run; 5 of its own mutants killed. Full run on the lane G batch 2 and lane B merges plus stage B (row 2288): run 1 green at 22,330 passed; run 2 had one failure, `saveLoopNetBackstop` B7 (a lane B test; the file alone passed 3 of 3; reported to lane B); check, build and the dist check OK; the snapshot unchanged. The phone 2 checks and lane A's keyevent smoke pass are running.
-
-**Status (2026-10-25, lane A records batch 12):** in lane A's Android Back batch (`MC-505`, which reverses `MC-455` Q1 for this ticket); the plan passed Gate 1 with amendments (`opus-reviewer`, [APPROVE WITH AMENDMENTS]) and stage A is next.
-
-Overlays outside `alertStore` (Settings, the Realm frame, the bookmark list, `popupStore`, the easy panel, the popup editor, the loadout modal, iris, the custom sidebar config dialog) have no Back handler: with one open, Android Back takes the toast-then-quit guard. MC-455 kept that behaviour for CHORE-181. The phone sidebar and Grid edit mode already have Back handlers.
-
-**Status (2026-10-22): open, not scheduled.** Filed per MC-455 Q1 ("Pop-up dialogs only").
-
 ### CHORE-225 — Store2 save planning re-encodes every module on each idle-net tick, blocking the page for 6 to 15 s on the Note 9
 
 **Status (2026-10-23): stages A, B and C merged; not COMPLETE.** Title and facts are from lane B's records (`Agents/Lanes/lane-B-records.md`, the CHORE-225 entry and rows 2430 to 2436); this heading was added by lane A's batch 4 because the Roadmap had no entry.
@@ -2510,6 +2328,14 @@ Overlays outside `alertStore` (Settings, the Realm frame, the bookmark list, `po
 **Status (2026-10-24, lane A records batch 5): parked post-MVP** (`MC-352` 2). The read-only scan (`c502-scan\result.md`, verified) found 0 chats with `hypaV2Data` among 771 chats in `Backup_partial.bin`, and `db.hypav2` is off. The limit: only the partial backup was scanned. The persistence risk stands if old HypaV2 data is ever converted and saved, so re-scan before HypaV2 is used on such data.
 
 ### CHORE-205 — Architecture study: subsystems that fail as the library grows (the whole-library in-memory model and its secondary problems)
+
+**Status (2026-10-25, lane A records batch 14, from lane B's records and lane A's handoff): reload prompt removed; E1 and the reused-bytes change merged; L1 dropped; L3 next; not COMPLETE.** Lane B's decisions are `MC-488` to `MC-493`; its ledger rows are 3031 to 3071.
+- **Reload prompt removed (`MC-489`):** the maintainer chose "Remove it, ticket busy (Recommended)". The prompt and its probe came out in `9f674cb38`, merged as `91d4c2973` (lane A full run `%TEMP%\risu-b715\laneb-remove-full\`: 23,254 passed twice, check 0/0, build and dist OK). This supersedes the reload-prompt route, the stage 1 line and the stage 2 (import) step in the entries below; stage 2 is dropped. Phone evidence behind it (lane A's verification sections): r2 and r3 export peaks overlapped between the in-place and reload-first arms (about 660 to 890 MB), the boot after a reload often peaked at about 850 to 890 MB, and a later busy-holder check did not reproduce the stuck busy state; the open part is CHORE-227. The stage 1 merge `1537d09b9` and the probe merge `c7c6f94d4` stay in history. The MVP build never contained the feature.
+- **E1 (`MC-490`, `MC-491`):** each minted stub entry is held raw-deflated until it is written; an unpack failure fails the export. `d3b617d5f`, merged as `8455abf9b` (lane A full run `laneb-e1-full\`: 23,281 passed twice, check 0/0, build and dist OK). Gate 2 `[APPROVE]` compared the exported bytes with main's (identical but for two differences that also differ between two runs of main). Phone check (lane B rows 3067 to 3069; lane A's verified results `2026-10-25-c205-e1-phone.result.md` and `-e1-phone2.result.md`, 500 stub units, n = 2): the meter reads 120.25 MB raw against 46.68 MB packed (73.6 MB less held); content unchanged on phone 1; about +6.4 s of stub encode per export (about +13 s export time on phone 2); no PSS peak change can be separated at n = 2. Lane B's reading, not a maintainer decision: L2a is not pursued.
+- **L1 dropped (`MC-492`):** the maintainer kept the 30 s module check.
+- **Reused units' bytes (`MC-493`):** a save pass no longer holds the bytes of reused units. `fcb85b1dc`, fast-forwarded to `main` (lane A full run `laneb-reused-full\`: 23,301 passed twice, check 0/0, build and dist OK). The delivered change is larger than the question described (a union type across 5 source files, 17 existing test files and 3 new ones; told to the maintainer at the commit question).
+- **Also merged:** the B7 test race fix `9095503da` (merged as `f7a2fb6c8`; lane A full run `b7-merge-full\` green twice).
+- **Next (lane B):** L3 (modules not kept in memory) with the MCP module tools (`MC-482`, `MC-484`): a PC measurement and a code audit first; phone time only by a separate request. It comes back to the maintainer only if the module share of memory is large (`MC-483` item 3). L3's phone run may be in progress (lane B's state in the lanes README).
 
 **Status (2026-10-25, lane A records batch 13, from lane B's records): reload prompt stage 1 merged in `1537d09b9` (lane B's commit `46546a926`, "on Android, offer to reload before a large export"); phone checks running; not COMPLETE.** The decisions are `MC-485` to `MC-487` and the work is lane B's ledger rows 3014 to 3030; the maintainer approved the commit and the phone checks in lane B's session (relayed; lane A's own merge approval is `MC-509`). The full checks on the merge are ledger row 2288. Lane B's next steps: (1) phone checks through lane A: whole-pass time and memory peak with check 7(b) (an export that overlaps a timed-out pass), the 100/30 thresholds, a cancel after resume, edits just before the tap, the decline key across a reload and a force-stop, and displacement (check 11); (2) stage 2, import with "Continue import" and a re-pick (`MC-485` 1); (3) in `MC-483` order, L1 and L2a, then L3 with `MC-484` after measurement. Open: plan question 9.1 (wait past 20 s) waits for check 7(b).
 
@@ -2607,26 +2433,66 @@ Stage 0 (measurement only) is approved as `MC-348` ("Now, PC + one Note 9 run (R
 - **Next:** read `%TEMP%\risu-lane-e\grid\plan.md` to settle the A2 overlap.
 - **Related:** the Grid avatar loading entry, MC-452, MC-459, MC-463, MC-130, CHORE-205, CHORE-177.
 
-### CHORE-208 — "Request timed out" (the native fetch timeout error added by CHORE-164) is hard-coded English with no `language` key
+### CHORE-211 (new) — The preset diff modal throws a TypeError on open when a preset has no `promptTemplate`
 
-**Status (2026-10-25, lane A records batch 13): owner changed from lane A to lane G's batch 3 (`MC-508`).** The non-English locale keys go through the Translator on main after the merge (`MC-508`; `MC-058`).
+**Status (2026-10-25, lane A records batch 14): open, not scheduled; filed by lane A.** Type: defect (an unhandled TypeError in a modal), no data loss, no saving involved. Pre-existing: not caused by the Android Back batch.
 
-**Status (2026-10-25, lane A records batch 11): open, low priority, not scheduled; owner lane A.** Type: translation gap (a missing key), Tauri (the native fetch path).
+- **Observed (phone 2, release build of `31b050a63`, synthetic profile; `%TEMP%\risu-b715\backA\device\result.md`):** four uncaught `TypeError: Cannot read properties of undefined (reading 'length')`, one for each of four opens of the preset diff modal ("Show Prompt Comparison", the two compare icons). Back still closed the modal. The device report called the cause UNCERTAIN.
+- **Traced (investigator, `%TEMP%\risu-b715\backA\device-followup\result.md`; the load-bearing lines reopened for this entry):** `PromptDiffModal.svelte` `getPromptCards` clones `db.botPresets[id].promptTemplate` and loops over `formated.length`. `promptTemplate` is optional on the preset type (`database.svelte.ts`), so a preset without one gives `undefined`, and `null` gives the same error with "null" in the message. The synthetic generator's presets carry no `promptTemplate`. A real preset saved without a template stores `null` (`saveCurrentPreset` area: `normalizePromptTemplate(db.promptTemplate) ?? null`); imported and upstream legacy presets can also lack it (INFERRED from reading, not run against a real preset). The stage B diff has no hunk touching `getPromptCards` (investigator, `git diff 31b050a63~1 31b050a63`).
+- **User impact (INFERRED, not observed):** the exception is thrown inside a derived value while the modal mounts, so a preset without a template probably shows no cards. Exact rendering was not observed.
+- **Smallest fix (the investigator's opinion, not a decision):** treat a missing or null `promptTemplate` as an empty list in `getPromptCards`, with a test using a preset that lacks one.
+- **Related:** CHORE-352 (COMPLETE, in the closed archive).
 
-- **Observed:** batch T stage T2 (`9d16b3350`) throws `Request timed out` from `fetchNative` when a timeout fires before the headers. The T2 coder grepped `src/lang/en.ts` for "timed out" and "timeout" and found no matching key, and Gate 2 flagged the string as non-blocking (ledger row 2271). The string is hard-coded English; no locale key was added.
-- **Needed:** an `en` key and its use at the throw site, then the Translator for the other locales (`MC-058`: preserve the maintainer's edits, keys, interpolations, CBS tags and line endings).
-- **Not established:** how often a person meets this error, and whether the timeout is reachable from a Settings control; stage D found the local-network timeout setting not exposed in the UI (source grep only, ledger row 2274).
+### CHORE-212 (new) — Firefox on Android: a full backup from the web or Node build fails ("download failed"); the StreamSaver download stream errors before the prompt is answered
 
-### CHORE-210 — `manualCleanup.svelte.test.ts` times out at 5000 ms under full-suite load
+**Status (2026-10-25, lane A records batch 14): open, owner lane A; the cause is not established; next step a debugger-off run with a screen-based prompt detector.** Type: defect on the web and Node builds (a full `.bin` export cannot be saved in mobile Firefox). Decisions: `MC-514` (the maintainer's answers and the choice of remote debugging). The maintainer's report: on risuai.xyz "you have to click yes to the download as soon as it pops up for backup to succeed" (a late answer stalls the export).
 
-**Status (2026-10-25, lane A records batch 13): open, low priority; owner lane G's batch 3 (`MC-508`).** Filed by lane A. Type: test isolation (a flake under load), not a product defect.
+- **Present before lane F's work (lane A's check of the raw files, `%TEMP%\risu-b715\ff-baseline\result.md`):** the full backup fails identically on `f3ab26c4a` (the parent of the export Cancel commit) and on `6625baedf` (main before any lane F change), Firefox 158.0.2, phone 2, a Node server on `http://127.0.0.1` over `adb reverse`, an answer 0.4 to 0.6 s after the prompt. Caveat: that origin counts as a secure context; the maintainer's LAN or VPN host is not reproduced.
+- **Not caused by the same-origin helper (lane A's verification of `%TEMP%\risu-b715\ff-swap\result.md`):** the fork's own build with only the helper URL swapped to the cross-origin stock helper (served 200) still failed 2 of 2 when answered within 0.45 s; no file landed. The fork serves its vendored helper same-origin only on secure pages (`b6d8e9634`, 2026-10-05; plain HTTP keeps the `github.io` helper).
+- **Mechanism (lane A's verification of `%TEMP%\risu-b715\ff-debug\result.md`, Firefox remote debugging, fork build):** the StreamSaver service-worker download stream errors before the prompt is answered (the console shows "A ServiceWorker intercepted the request and encountered an unexpected error" at the vendored `sw.js` `respondWith(new Response(stream, …))` line, ahead of both the prompt and the answer); the page then throws `AbortError` from the export writer's `write`, and the app reports an incomplete backup file. The rejected write was a small entry, so the stream had already been cancelled; nothing large was being written.
+- **Upstream fails the same way with the debugger attached:** the upstream build (`f50b5942e`, cross-origin stock helper) produced the same signature in the control run UC1 (239 s to the prompt; the error pair came before the answer). So the signature is not specific to the fork.
+- **Unresolved:** why upstream passed 2 of 2 without the debugger (`%TEMP%\risu-b715\ff-compare\result.md`, UZ1 (137.7 MB file, checked by lane A: 137,728,879 B in the `ls` listing) and UZ2 (reported, not size-checked by lane A); answered 0.5 s after the prompt, 36 s and 31 s to the prompt). The debugger attachment and the much longer time to the prompt are a possible confound; the fork-versus-upstream difference with debugging off is unexplained. A late answer (30 s or more) stalls the export in upstream too (a 192 KB partial file).
+- **Next step:** a debugger-off run, fork and upstream, answered within 1 s, using a screen-based prompt detector (a screenshot pixel check or `dumpsys window`) in place of the `uiautomator` text poll, which was blind to the prompt with debugging off. Phone 2, synthetic data, Wi-Fi off.
+- **Not shown:** whether the fork's vendored `streamSaver.ts` or the first-write timing matters (INFERRED candidates only).
+- **Related:** CHORE-62 (the export Cancel closes the stall, but cannot make the download succeed); `MC-514`; `MC-528` to `MC-530`.
 
-- **Observed (full `pnpm test` runs on Windows):**
-  - The first run of the lane G batch 2 merge (`%TEMP%\risu-b715\laneg-merge\full\`, 3 failures) failed three tests in the `fixtures` group of `src/ts/storage/tests/manualCleanup.svelte.test.ts`: two timed out at 5000 ms, and one failed once with `No "risuChatParser" export is defined on the "src/ts/parser/parser.svelte" mock`.
-  - The first run of the Back stage A merge (ledger row 2285, `%TEMP%\risu-b715\backA\stageA-full\`, 2 failures) failed two tests in the same group, both timeouts at 5000 ms.
-  - The file alone passed, 292 of 292 (`laneg-merge\full\rerun-manualCleanup.txt`). The second full run of each merge was green (22,155 passed for the stage A merge).
-- **Not established:** why the file times out under load. The missing-export failure is INFERRED to be a late import after a timeout; it was not reproduced alone.
-- **Related:** CHORE-209 (another full-suite load flake, COMPLETE and in the closed archive), `MC-508`.
+### CHORE-214 (new) — `productionBootUi.test.ts` hits 5000 ms timeouts under full-suite load
+
+**Status (2026-10-25, lane A): open, low priority; owner lane A (test isolation).** Related: CHORE-210 (another load-sensitive test).
+
+- **Observed (MEASURED, `%TEMP%\risu-b715\dompurify-full\`, test1 of the full run for the dompurify bump):** `src/ts/storage/tests/store2/productionBootUi.test.ts` failed two tests on the 5000 ms timeout: "a conversion pressed twice runs once: the second press finds the question already answered" (5008 ms) and "an ended screen stays: a change made elsewhere before the install stops the screen, Reload reloads, and the boot never settles". Test2 of the same run was green (23,302 passed).
+- **Isolated runs:** the file passed 35 of 35 in 8 isolated runs (`dompurify-full\bootui-repeat.txt`).
+- **Not established:** the cause beyond load; no product defect is claimed.
+
+### CHORE-227 (new) — After a finished export the app can stay marked busy, and the app has been killed after a second export
+
+**Folded in from lane B's records (merge `91d4c2973`), 2026-10-25, lane A records batch 14.**
+
+**Status (2026-10-25): open, cause unknown (`MC-489`).** Ledger rows 3040 to 3042 (lane B's rows).
+
+- **Observed:** in r3's check C on both phones, the reload-first decision probe read `work.busy:true`, `work.inFlight:true` and `chatSeen:false` at the second Full backup. That came after a finished, OK-closed in-place export and one character open (release `c7c6f94d4`, synthetic 500-character profile).
+- **Later kills:** in all three such sequences (r2 C2, and r3 C2 on both phones) the app was later SIGKILLed while in front. `busy:true` was read only in r3; r2 recorded only the missing prompt.
+  - phone 1: about 113 s after the second Save, leaving a 0-byte file and a blank page;
+  - phone 2: about 26 s after OK, while idle;
+  - r2: about 37 s after Save.
+  The logs name no cause, and no memory sample covers any kill.
+- **Not reproduced:** a clean rerun on phone 1 (`2026-10-25-c205-busy-holder.result.md`; lane A read all 22 CDP JSONs), 2 runs, read busy and in-flight as `[]` at every point after OK: 0, 2, 5 and 15 s, after the character open and return, and at the second decision. r3's history differs: earlier exports in the process, a generation attempt, and a 30 s wait on Success before OK.
+- **Source reading (lane B row 3041):** the export's own `backupSave` entry ends in `finally`, and nothing in the export runs after Success. Opening a character starts no busy producer. Every busy entry also holds an in-flight token.
+- **Effect while stuck (row 3041, by reading):** Load Local and Load Internal backup are refused; store2 auto-GC, the GC command, manual cleanup and inlay cleanup refuse; the Android keep-alive service stays up. The busy entry has no age limit; its in-flight token expires after 2 h.
+- **Next observation:** read the busy kinds over CDP after r3's exact history: a 30 s wait on Success, earlier exports in the same process, and a generation.
+- **Side finding, not decided:** `SaveLocalBackup` takes `backupSave` before the save picker opens, against the `busyActions` header comment, so a picker that never answers would hold busy. "Export Save as Dataset" shows no notice and builds the whole file on the page thread.
+
+### CHORE-372 (new) — Lift the self-hosted Node server's 100 MiB limit for assets
+
+**Folded in from lane F's records (merge `95a24de3e`), 2026-10-25, lane A records batch 14.**
+
+- Status (2026-10-25, Lane F): open; sizing only, after batch 2 (`MC-524`). No code.
+- What Lane F's source read found (TRACED, orchestrator, `8003b3c4c`; not yet independently verified):
+  - One constant, `NODE_BODY_LIMIT_BYTES` (104857600), defined in `src/ts/storage/nodeBodyLimit.ts` and `server/node/bodyLimit.cjs` and pinned equal by a test, bounds every Node body: the server's json, raw and text parsers and `/hub-proxy` (`server/node/server.cjs`), the block store and main-file checks (`blockStore.ts`, `bootArchivePass.ts`, `mainFileRename.ts`), cold storage, internal backup, the save-loop message, and the asset pre-checks (`processzip.ts`, `inlayStore.ts`, `backuplocal.ts` restore). Raising it everywhere would let non-asset bodies grow too.
+  - The write handler buffers the whole body (`express.raw`), then writes a temp file and renames it; the revision is bumped before the content is written.
+  - The asset route serves files with `res.sendFile` (streamed); `/api/read` reads the whole file into memory (a comment there says it avoids `sendFile` because of a lock).
+- Work to size: a separate asset limit applied on the asset write route only; streaming that upload into the temp file, with the revision-before-content order re-argued (persistence risk, `opus-reviewer`); moving the client pre-checks and messages to the new limit; any large-asset reads through `/api/read`; client memory for one large upload body (how store2 uploads an asset was not traced); and the fork-to-upstream export warning and omission for assets over upstream's limit (`MC-223`), which on web and Node is CHORE-129's parked residual (`MC-501`).
+- Unverified: which callers read assets through `/api/read`; how store2 sends an asset body.
 
 ### CHORE-354 (new) — on a large profile the page does not answer Back within 1 s after the first Back, and no hide event fires on the quit
 
@@ -2657,34 +2523,11 @@ On phone 2 with the large profile `m2-mix18k` (CHORE-181 cell 5), after the firs
 - After CHORE-45 stage 1 the send's prompt pass has its own cache, still capped by entry count. A chat with more than that many cacheable messages misses on every message of a repeat send (sizing packet `%TEMP%\risu-lane-g\chore45\result.md`, simulation RUN in node; not measured on a device).
 - Proposed shape (from the sizing packet, not decided): the prompt-pass capacity follows the chat's length, bounded by a byte budget. The budget is the maintainer's number.
 
-### CHORE-391 — Converting an older-format save stops with an error for other malformed fields
-
-**Folded in from lane G's records (merge `efcf63634`), 2026-10-25, lane A records batch 13.**
-
-**Status (2026-10-25): open, not scheduled; found by the CHORE-183 Gate 1 review.** Type: suspected defect (legacy conversion), the same class as CHORE-183. Not decided whether or how to handle these; no maintainer decision.
-
-- Source: `%TEMP%\risu-lane-g\chore183\review\gate1.md`, residual R1 (`opus-reviewer` source reading at `8003b3c4c`; not executed for these fields).
-- The cases: a present non-list `modules`, `loadouts`, `plugins` or `pluginV2`; a `botPresets` list with an element that is not an object; a character or chat that is not an object. The CHORE-183 commit-claim check (`opus-reviewer`, source reading, not executed) adds two more: a character's non-list `chats` and a chat's non-list `message`. Each still throws a `CodecInputError` in the conversion. At boot the user then sees an error alert, and on the recovery screen the unexpected-error screen. That addition was reported in session, not saved.
-
-**Status (2026-10-25, lane A records batch 13): assigned to lane G's batch 3, first (`MC-508`).**
-
 ### CHORE-392 — Tauri non-store writes are not yet atomic: inlay files, search index, streaming writes (the remaining stages of CHORE-55)
 
 **Folded in from lane G's records (merge `efcf63634`), 2026-10-25, lane A records batch 13.**
 
 **Status (2026-10-25): open, not scheduled (`MC-546` 2).** Type: robustness (partial write on a failed write). Split out of CHORE-55 when it closed: the store writes are atomic since `d0decfb61`, and the later stages in CHORE-55's entry were never done. `MC-181` lifted CHORE-55's release blocker; this ticket carries no blocker.
-
-### CHORE-393 — A character id like `kv:foo` makes a full `.bin` export refuse when the save also has a `foo` data namespace
-
-**Folded in from lane G's records (merge `efcf63634`), 2026-10-25, lane A records batch 13.**
-
-**Status (2026-10-25): open, not scheduled (`MC-546` 3).** Type: suspected defect (export).
-
-- `isUsableCharacterId('kv:foo')` is true (`characterIds.ts`), and `writeRisuSaveV0` then throws on the block-name collision (`risuSaveV0.ts`). Scratch tests K1 to K3 in `%TEMP%\risu-lane-g\audit\review\` show it.
-- `runExport` reports the error, so it is a loud refusal, not silent loss. While it lasts it blocks every full `.bin` export, which goes beyond `MC-223`'s one allowed exception.
-- A fix changes export re-id behaviour, so the choice comes back to the maintainer.
-
-**Status (2026-10-25, lane A records batch 13): assigned to lane G's batch 3, after the fix choice (`MC-508`).**
 
 ### Grid avatar loading (MC-452, MC-459) — stage A, the thumbnail write leaves the generation slot (no CHORE number)
 
@@ -2720,6 +2563,8 @@ On phone 2 with the large profile `m2-mix18k` (CHORE-181 cell 5), after the firs
 - **Related:** `MC-307` 2 and 4, `MC-308` 3 and 4, `MC-303` 3; CHORE-201.
 
 ### Android boot batch (2026-10-09): gates, checks, device passes, accepted limits and open questions
+
+**Status (2026-10-25, lane A records batch 14; `MC-517`): both open maintainer questions below are answered.** Q-A: the maintainer chose "Accept it (Recommended)": the one-time first-boot pass (about 2.5 minutes on a 1000-character profile on the Note 9, once per profile; later boots about 2 s, per the question text) is accepted and Q-A is closed. Q-B: the maintainer chose "No, accept the limit (Recommended)": a kill within about 1 s of the pass start losing its retry counter is recorded as a known limit; no durable storage. This clears the table's "needs review" for this row; the earlier text below is unchanged, and its "not decided" wording is superseded by this line.
 
 Summary status is in the "Android boot batch" bullet near the top. Everything below is from the session scratch reports named in the ledger rows 1515 to 1549 (`androidboot\`); "session scratch" paths below are relative to it.
 
@@ -2939,6 +2784,6 @@ Summary status is in the "Runtime unload" bullet near the top. Decisions: `MC-30
 Recorded so they are not lost. No number is assigned. CHORE-122 to CHORE-129 and CHORE-101 to CHORE-115 are now in use (`MC-196` 2). CHORE-116 to CHORE-118 have entries above (boot-window unsaved edits; save-time validation, which the maintainer queued after CHORE-116 on 2026-10-07 with "queue it after chore 116"; and a Gemini audio orphan), CHORE-119 and CHORE-130 to CHORE-134 are used by the entries above, CHORE-135 to CHORE-146 are used by the sidebar follow-ups above, CHORE-147 to CHORE-163 are used by the 2026-10-09 entries above, CHORE-164 to CHORE-168 by the keep-alive entries above (2026-10-10), CHORE-169 to CHORE-174 by the character list rework entries above (2026-10-10), CHORE-175 by the unload stage 1b-0 entry above, CHORE-176 by the Android launch splash entry above, CHORE-177 to CHORE-180 by the Grid fling jank, lorebook scan depth, phone-browser Back and Back-on-other-screens entries above (2026-10-11), and the next free number is CHORE-195 (CHORE-181 to CHORE-194 are filed; CHORE-200 and CHORE-201 belong to the Unload-2 range).
 
 - **A V2.1 plugin that switches itself off through the plugin API's `setDatabase` keeps running with wrapped module asset lists (G2-4; Stage A Gate 2 round 1, ledger row 1057; `b1d2804b`'s message).** SUSPECTED only, not reproduced. The real `setDatabase` would wrap the lists while the plugin's code is still running, and a later in-place push by that plugin would go untracked. No such upstream plugin is known.
-- **An unparseable or non-object `__revisions.json` on the Node server (P9; Stage 0 (ii) Gate 1 round 1, ledger row 1055; `2aa55398`'s message).** Deferred. The server still starts as if the snapshot were empty (the log is replayed, and a non-object takes the same path with the error logged), and the next compaction overwrites the file. The log does not worsen this. Possible fixes named in the commit message: rename the bad file aside and seed a high revision floor so stale devices get 409.
+- **P9 (an unparseable or non-object `__revisions.json` on the Node server) is now CHORE-371**, fixed by lane F (`648997938`, merged in `95a24de3e`; `MC-523` 2) and in the closed archive. Removed from this list at lane F's fold-in request (lane A records batch 14).
 - **Already numbered, so not candidates:** the module editor's `hideIcon` write on open is CHORE-88 (closed, `54b1a819`); "every boot writes the main file, a numbered backup and about 507 cache entries" is CHORE-83; "the page-load listing is awaited before plugins" is CHORE-84.
 
