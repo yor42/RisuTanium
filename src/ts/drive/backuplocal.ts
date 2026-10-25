@@ -8,6 +8,7 @@ import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { decodeRisuSave, encodeRisuSaveStreamed, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock, type StreamedRisuSave } from "../storage/risuSave";
 import { writeRisuSaveV0 } from "../storage/risuSaveV0";
+import { assertNoModuleStubs } from "../storage/moduleStub";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
 import { StoreInvalidKeyError } from "../storage/store/errors";
@@ -215,7 +216,7 @@ function describeWriteMeasure(): string {
  * read for it (`inlined`, `drive/exportInline.ts`), or, in `stub` mode, keeps its
  * place with the uuid minted for it (`stubEntries`); a minted stub that is trashed
  * when the tree is built, and every minted stub when the list then needs the id
- * repair, is inlined instead. The export is never refused;
+ * repair, is inlined instead. This function never refuses;
  * `notice` says what was done.
  */
 async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>): Promise<{ tree: Database, notice: string | null }> {
@@ -661,6 +662,9 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
         resetNetTickStats()
     }
     const db = getDatabase()
+    // Until module stubs are minted, a marker in the live list when the export starts is foreign: the export stops
+    // before it reads any unit or opens the file.
+    assertNoModuleStubs(db.modules, 'writeLocalBackup')
     if (MEASURE) {
         exportResidentsAtStart = residentCharacterCount(db.characters)
     }
@@ -955,6 +959,8 @@ export function exportThisTabBackup(options: BackupExportOptions = {}): Promise<
 async function writePartialLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
     session.gate.wait("Saving partial local backup...")
     const db = getDatabase()
+    // Same invariant as writeLocalBackup: a marker present when the export starts stops it before any read or file.
+    assertNoModuleStubs(db.modules, 'writePartialLocalBackup')
     const collected = await collectBackupColdStorage(db, options)
     if(!await confirmDuringExport(session, collected.unavailableKeys.length > 0, () => confirmIncompleteColdStorageOperation(db, collected.unavailableKeys, 'backup', collected.collected.owners))){
         return { status: 'declined', cause: 'incomplete-data-declined' }

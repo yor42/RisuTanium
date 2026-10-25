@@ -282,9 +282,12 @@ function* generateRisuSaveParts(data:object):Generator<Uint8Array, void, undefin
  * `data` is typed `object` because the root is any value `packr.encode` accepts as a tree (a plain object normally; a
  * Map, an Array or a class instance falls back to one whole encode) while a primitive root is not a save.
  *
- * Plain function, not a generator, so checks added here run at the call and not at the first `next()`.
+ * Plain function, not a generator, so checks added here (the module stub refusal) run at the call and not at the first
+ * `next()`.
  */
 export function encodeRisuSaveParts(data:object):Generator<Uint8Array, void, undefined>{
+    // Reads `modules` as a property, like the other encoders: what a Map root or a `toJSON` root encodes is not checked.
+    assertNoModuleStubs((data as { modules?: unknown }).modules, 'encodeRisuSaveParts')
     return generateRisuSaveParts(data)
 }
 

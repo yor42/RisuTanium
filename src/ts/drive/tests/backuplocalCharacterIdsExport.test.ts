@@ -5,8 +5,8 @@
  * never from the page's own objects. Entries that are not characters are left
  * out, an id that cannot be saved is replaced with the lists that named it
  * following, and an archived character takes back the id its unit records or,
- * when the unit cannot name one, a new id, said in the final message. The
- * export is never refused.
+ * when the unit cannot name one, a new id, said in the final message. No
+ * character-list problem refuses the export.
  *
  * The harness is the one `backuplocalUnitClosure.test.ts` documents: the real
  * writer, collector and unit store with every dialog mocked. A passing test
