@@ -40,8 +40,16 @@ export interface ConformanceHarness {
     failDeleteOf?(key: string): () => void
     /** Whether the adapter offers `urlFor`; an adapter that does not must leave it out. */
     offersUrlFor?: boolean
-    /** Whether the adapter offers `writeBlob` and `readBlob`; an adapter that does not must leave both out. */
+    /** Whether the adapter keeps Blobs: it offers `writeBlob` and `readBlob`. An adapter that does not must leave `readBlob` out. */
     offersBlobs?: boolean
+    /**
+     * Whether the adapter offers `writeBlob` without keeping Blobs (no `readBlob`): it streams the
+     * Blob to its backend and the value reads back as bytes. An adapter with `offersBlobs` streams too.
+     * An adapter that does neither must leave `writeBlob` out.
+     */
+    streamsBlobWrites?: boolean
+    /** Whether `writeBlob` also takes a key under `assets/`, as the Node store's does; every other key outside the inlay bodies is refused. */
+    blobWritesTakeAssetKeys?: boolean
     /** Whether the adapter offers the guarded operations; an adapter that does not must leave `guarded` out. */
     offersGuarded?: boolean
 }
@@ -290,25 +298,20 @@ export function describeByteStoreConformance(harness: ConformanceHarness): void 
             })
         })
 
-        describe('S13 a Blob under an inlay body key', () => {
+        describe('S13 an adapter that streams Blob writes', () => {
             const BODY = 'inlays/b-clip.0123456789abcdef'
 
-            test('only an adapter that keeps Blobs offers the members, both or neither', () => {
-                const offers = harness.offersBlobs === true
+            test('only an adapter that streams or keeps Blobs offers writeBlob', () => {
+                const offers = harness.streamsBlobWrites === true || harness.offersBlobs === true
                 expect(typeof store.writeBlob).toBe(offers ? 'function' : 'undefined')
-                expect(typeof store.readBlob).toBe(offers ? 'function' : 'undefined')
             })
 
-            test('a written Blob reads back as a Blob of the same bytes and type, and as the same bytes through read', async () => {
-                if (store.writeBlob === undefined || store.readBlob === undefined) {
+            test('a written Blob reads back as the same bytes through read', async () => {
+                if (store.writeBlob === undefined) {
                     return
                 }
-                const payload = patternBytes(1000, 11)
+                const payload = patternBytes(3000, 13)
                 await store.writeBlob(BODY, new Blob([payload as BlobPart], { type: 'video/mp4' }), 'unconditional')
-                const blob = await store.readBlob(BODY)
-                expect(blob).not.toBeNull()
-                expect(blob!.type).toBe('video/mp4')
-                expect(Array.from(new Uint8Array(await blob!.arrayBuffer()))).toEqual(Array.from(payload))
                 expect(await readBytes(store, BODY)).toEqual(Array.from(payload))
             })
 
@@ -322,6 +325,59 @@ export function describeByteStoreConformance(harness: ConformanceHarness): void 
                 await store.delete(BODY, 'unconditional')
                 expect(await store.has(BODY)).toBe(false)
                 expect((await store.read(BODY)).bytes).toBeNull()
+            })
+
+            test.each([
+                ['the main file', 'database/database.bin'],
+                ['an inlay metadata key', 'inlays/m-clip'],
+                ['a body key with a short token', 'inlays/b-clip.0123'],
+                ['a body key with an upper-case token', 'inlays/b-clip.0123456789ABCDEF'],
+                ['a body key whose id holds a lower-case escape', 'inlays/b-%e3.0123456789abcdef'],
+                ['a body key in a subfolder', 'inlays/b-a/b.0123456789abcdef'],
+            ])('writeBlob refuses %s and writes nothing', async (_label, key) => {
+                if (store.writeBlob === undefined) {
+                    return
+                }
+                await expect(store.writeBlob(key, new Blob(['x']), 'unconditional')).rejects.toBeInstanceOf(StoreInvalidKeyError)
+                expect(await store.has(key)).toBe(false)
+            })
+
+            test('a key under assets/ is refused, unless the adapter takes asset keys', async () => {
+                if (store.writeBlob === undefined) {
+                    return
+                }
+                if (harness.blobWritesTakeAssetKeys === true) {
+                    await store.writeBlob('assets/x.png', new Blob(['png']), 'unconditional')
+                    expect(await readBytes(store, 'assets/x.png')).toEqual([112, 110, 103])
+                    return
+                }
+                await expect(store.writeBlob('assets/x.png', new Blob(['x']), 'unconditional')).rejects.toBeInstanceOf(StoreInvalidKeyError)
+                expect(await store.has('assets/x.png')).toBe(false)
+            })
+        })
+
+        describe('S13 an adapter that keeps Blobs', () => {
+            const BODY = 'inlays/b-clip.0123456789abcdef'
+
+            test('only an adapter that keeps Blobs offers readBlob, and it offers writeBlob too', () => {
+                const keeps = harness.offersBlobs === true
+                expect(typeof store.readBlob).toBe(keeps ? 'function' : 'undefined')
+                if (keeps) {
+                    expect(typeof store.writeBlob).toBe('function')
+                }
+            })
+
+            test('a written Blob reads back as a Blob of the same bytes and type, and as the same bytes through read', async () => {
+                if (store.writeBlob === undefined || store.readBlob === undefined) {
+                    return
+                }
+                const payload = patternBytes(1000, 11)
+                await store.writeBlob(BODY, new Blob([payload as BlobPart], { type: 'video/mp4' }), 'unconditional')
+                const blob = await store.readBlob(BODY)
+                expect(blob).not.toBeNull()
+                expect(blob!.type).toBe('video/mp4')
+                expect(Array.from(new Uint8Array(await blob!.arrayBuffer()))).toEqual(Array.from(payload))
+                expect(await readBytes(store, BODY)).toEqual(Array.from(payload))
             })
 
             test('a key written as bytes is not a Blob, and a Blob key rewritten as bytes is not either', async () => {

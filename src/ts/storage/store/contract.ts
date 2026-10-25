@@ -5,7 +5,7 @@
  * `assets/<name>`); the rules are in `keyRules.ts`.
  *
  * Invariants every adapter keeps (values are bytes, except under an inlay body
- * key on a store that offers `writeBlob`, where a value may be held as a Blob
+ * key on a store that offers `readBlob`, where a value may be held as a Blob
  * that `read` still returns as the same bytes):
  * - Byte identity: `read` returns, byte for byte, the last value written under
  *   the key, or the value upstream wrote there. A zero-length value is a value
@@ -97,6 +97,16 @@ export interface PieceWriter {
     abort(): Promise<void>
 }
 
+/** A stored value read in pieces; see `ByteStore.readPieces`. */
+export interface PieceSource {
+    /** The byte length of the whole value, as of the first piece. */
+    readonly total: number
+    /** The version of the value the pieces belong to; `null` on a store without versions. */
+    readonly version: StoreVersion | null
+    /** The pieces in order; their lengths add up to `total`. Iterated once. */
+    readonly pieces: AsyncIterable<Uint8Array>
+}
+
 export interface ByteStore {
     readonly capabilities: StoreCapabilities
 
@@ -136,9 +146,9 @@ export interface ByteStore {
 
     /**
      * Whether `key` holds a value. The value is never transferred to the caller.
-     * The backend may still read it: the Node server reads the file to answer.
-     * IndexedDB looks the key up and loads no value; the desktop store checks
-     * the path only.
+     * The Node server answers from the file's size and revision, IndexedDB
+     * looks the key up and loads no value, and the desktop store checks the
+     * path only.
      */
     has(key: string): Promise<boolean>
 
@@ -155,12 +165,17 @@ export interface ByteStore {
     urlFor?(key: string): Promise<string>
 
     /**
-     * Stores a Blob as the value of `key` without reading it into memory. Only
-     * the browser's IndexedDB offers it, and only for an inlay body key: any other
-     * key is refused before anything is written, so every other key class keeps
-     * holding bytes. The value reads back through `read` as the same bytes, and
+     * Stores a Blob as the value of `key` without reading the whole Blob into
+     * memory. The browser's IndexedDB offers it for an inlay body key only and
+     * keeps the Blob (`readBlob`); any other key is refused before anything is
+     * written, so every other key class keeps holding bytes. The Node store
+     * offers it for an inlay body key and a key under `assets/`: it reads the
+     * Blob one slice at a time and uploads the slices, holds no Blob and offers
+     * no `readBlob`; a server without the upload routes gets the whole value in
+     * one request. The value reads back through `read` as the same bytes, and
      * `list`, `has` and `delete` treat the key like any other. A File is stored as
-     * a Blob over the same bytes.
+     * a Blob over the same bytes. An error thrown while a slice of the Blob is
+     * read reaches the caller as it is, and the write is abandoned and not re-sent.
      */
     writeBlob?(key: string, blob: Blob, condition: StoreCondition): Promise<WriteResult>
 
@@ -178,10 +193,30 @@ export interface ByteStore {
      * Starts a write of one value that arrives in pieces, so the caller never
      * holds the whole value. `key` is only the folder and the name of the
      * temporary file: a caller that finishes with a `finalKey` never creates
-     * `key`. Refuses an unusable key like `write`. Only the desktop store
-     * offers it; every other caller writes the whole value with `write`.
+     * `key`. Refuses an unusable key like `write`. The desktop store and the
+     * Node store offer it; every other caller writes the whole value with `write`.
+     * The Node store uploads in chunks when the server offers `pieces`, and
+     * otherwise collects the pieces and writes the whole value in one request,
+     * so the caller never sees a missing upload route. A write that fails
+     * rejects: with the transport's own error when a re-sent append fails again,
+     * with `NodeHttpError` when the server answers with its own failure, and with
+     * a typed error when the upload is gone, the server holds too many staged
+     * bytes or the commit's outcome is unknown (`UploadGoneError`,
+     * `UploadCapacityError`, `StoreOutcomeUnknownError`).
      */
     openWriter?(key: string): PieceWriter
+
+    /**
+     * Reads the value of `key` as consecutive pieces without ever holding the
+     * whole value, or resolves `null` when the key holds no value. `total` and
+     * `version` are known from the first piece, which is already fetched. The
+     * pieces never restart: when the value changes after the first piece the
+     * iteration rejects with `StoreValueChangedError`, and any other failure
+     * rejects with the transport's own error, which is never an absence. Only
+     * the Node store offers it, and falls back to one whole read when its server
+     * lacks ranged reads.
+     */
+    readPieces?(key: string): Promise<PieceSource | null>
 
     /**
      * Guarded operations. Optional and Node only: every other adapter leaves it
@@ -237,7 +272,7 @@ export interface CheckOnlyEntry {
     version: StoreVersion
 }
 
-/** What the server's guarded routes can do. `pieces` is false until the chunked upload exists. */
+/** What the server's guarded routes can do. `pieces` says the server takes chunked uploads and ranged reads of asset keys. */
 export interface GuardedCapabilities {
     checkOnly: boolean
     retire: boolean
@@ -268,7 +303,7 @@ export interface GuardedCapabilities {
  * - `StoreInvalidKeyError` and `StoreInvalidConditionError`, before any request.
  */
 export interface GuardedOperations {
-    /** Asks the server for its capabilities. Not cached; rejects with `ServerLacksCapabilityError` unless the answer has the marker and the three booleans. */
+    /** Asks the server for its capabilities. Not cached (the Node store records `pieces` from each answer); rejects with `ServerLacksCapabilityError` unless the answer has the marker and the three booleans. */
     probe(): Promise<GuardedCapabilities>
 
     /** `write`, with `checkOnly` compared in the same step. */

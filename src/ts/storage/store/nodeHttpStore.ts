@@ -1,4 +1,4 @@
-import type { ByteStore, CheckOnlyEntry, DeleteEntry, GuardedCapabilities, GuardedOperations, ReadResult, StoreCondition, WriteResult } from './contract'
+import type { ByteStore, CheckOnlyEntry, DeleteEntry, GuardedCapabilities, GuardedOperations, PieceSource, PieceWriter, ReadResult, StoreCondition, WriteResult } from './contract'
 import {
     ServerLacksCapabilityError,
     StoreCheckListTooLongError,
@@ -7,7 +7,10 @@ import {
     StoreInvalidConditionError,
     StoreInvalidKeyError,
     StoreOutcomeUnknownError,
+    StoreValueChangedError,
     StoreVersionConflictError,
+    UploadCapacityError,
+    UploadGoneError,
     type DeleteReportEntry,
 } from './errors'
 import { checkBytes, checkCondition, checkNoDuplicateKeys, versionOf } from './guards'
@@ -36,6 +39,17 @@ import { STORE2_PREFIX, isStore2Key, nodeAddressableViolation, nodeAssetRouteVio
  * - `/api/asset/<hex>` serves an `assets/` key or an inlay body key to a web view that cannot send a
  *   header: the token rides in the query, so `urlFor` builds the whole URL from
  *   the key alone and reads nothing.
+ * - `/api/upload/begin|append|commit|abort` and `/api/read-range` move an asset
+ *   key or an inlay body key in pieces, so neither side holds a value of up to
+ *   the asset limit whole in one request. The store uses them only while the
+ *   server's `/api/caps` says `pieces` (recorded from every successful probe
+ *   answer, cleared by a refused probe or by an upload route or the ranged read route answering 404);
+ *   otherwise `openWriter` and `writeBlob` collect the value and send it in one
+ *   `/api/write`, so an older or upstream server never sees an upload route. An
+ *   append is sent at the offset the server acknowledged, which makes a re-send
+ *   after a lost answer harmless; a commit is re-sent once and its outcome, when
+ *   still unknown, is settled by `has` for a create-if-absent commit and is
+ *   `StoreOutcomeUnknownError` for a replacing one.
  * - `/api/list` answers the decoded names of the files whose names are whole,
  *   even-length hex (case-insensitive). Write temps, the revision file and the
  *   server's other files are not in it. Two files whose hex differs only in
@@ -94,6 +108,11 @@ export interface NodeHttpStoreOptions {
     fetch?: FetchLike
     /** Prepended to every endpoint path; defaults to the page's own origin. */
     baseUrl?: string
+    /**
+     * The bytes of one upload chunk and of one ranged read; defaults to
+     * `NODE_PIECE_BYTES`. Never above the server's chunk limit.
+     */
+    pieceBytes?: number
     /** Budget for the keys and revisions of one remove request; defaults to the production figure. */
     requestKeyBytes?: number
     /** The most check-only keys one guarded request carries; defaults to the production figure. */
@@ -104,6 +123,70 @@ export interface NodeHttpStoreOptions {
     sleep?: (ms: number) => Promise<void>
     /** The clock, in milliseconds, that bounds the total time one call spends on rate-limit retries; defaults to `Date.now`. */
     now?: () => number
+}
+
+/**
+ * The default bytes of one upload chunk or ranged read. Must not exceed
+ * `NODE_UPLOAD_CHUNK_MAX_BYTES` in `server/node/bodyLimit.cjs`, which the server
+ * enforces per request; a test pins the two.
+ */
+export const NODE_PIECE_BYTES = 8 * 1024 * 1024
+
+/** What one upload request came to: it never reached an answer, or it did. */
+type UploadReply =
+    | { kind: 'network', error: unknown }
+    | { kind: 'answer', status: number, body: unknown }
+
+/** An upload id as the server issues it. */
+const UPLOAD_ID_PATTERN = /^[0-9a-f]{32}$/
+
+/** The non-negative safe integer under `name` in a JSON object answer, or `null`. */
+function countField(body: unknown, name: string): number | null {
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+        return null
+    }
+    const value = (body as Record<string, unknown>)[name]
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
+}
+
+/**
+ * Whether an error answer is the server's own JSON failure (`error` and `code`
+ * strings, as its upload routes answer after the handler ran and failed), and
+ * not a proxy's page or an empty gateway answer.
+ */
+function isServerFailureBody(body: unknown): boolean {
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+        return false
+    }
+    const { error, code } = body as { error?: unknown, code?: unknown }
+    return typeof error === 'string' && typeof code === 'string'
+}
+
+function codeOfBody(body: unknown): string | null {
+    const code = typeof body === 'object' && body !== null && !Array.isArray(body) ? (body as { code?: unknown }).code : undefined
+    return typeof code === 'string' ? code : null
+}
+
+/** The pieces joined into one array; a single piece is returned as it is. */
+function joinPieces(parts: readonly Uint8Array[]): Uint8Array {
+    if (parts.length === 1) {
+        return parts[0]
+    }
+    const whole = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0))
+    let at = 0
+    for (const part of parts) {
+        whole.set(part, at)
+        at += part.length
+    }
+    return whole
+}
+
+/** One ranged answer: the piece and what the server says about the whole value it was cut from. */
+interface RangePiece {
+    exists: boolean
+    revision: number
+    size: number
+    bytes: Uint8Array
 }
 
 /** Tries (the first included) one store call makes when the server answers 429. */
@@ -216,6 +299,15 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
     const maxCheckOnlyKeys = options.maxCheckOnlyKeys ?? CHECK_ONLY_MAX_KEYS
     const guardedHeaderBytes = options.guardedHeaderBytes ?? GUARDED_HEADER_BYTES
     const doFetch: FetchLike = options.fetch ?? ((url, init) => globalThis.fetch(url, init))
+    const pieceBytes = options.pieceBytes ?? NODE_PIECE_BYTES
+
+    /**
+     * Whether the server takes chunked uploads and ranged reads, as its last
+     * successful `/api/caps` answer said. False until a probe answered; a probe
+     * the server refuses, or an upload or ranged route that answers 404, clears
+     * it; a probe that fails in transit leaves it as it was.
+     */
+    let piecesRecorded = false
 
     function checkAddressable(key: string): void {
         const reason = nodeAddressableViolation(key)
@@ -558,23 +650,33 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
 
     const guarded: GuardedOperations = {
         async probe(): Promise<GuardedCapabilities> {
-            const answer = await guardedRequest({
-                operation: 'caps',
-                capability: 'caps',
-                method: 'GET',
-                headers: {},
-                checkOnlyCount: null,
-                ownConditionCount: 0,
-                retiredCount: null,
-                keysByHex: new Map(),
-                removedHex: [],
-                keyCount: 0,
-            })
+            let answer: GuardedAnswer
+            try {
+                answer = await guardedRequest({
+                    operation: 'caps',
+                    capability: 'caps',
+                    method: 'GET',
+                    headers: {},
+                    checkOnlyCount: null,
+                    ownConditionCount: 0,
+                    retiredCount: null,
+                    keysByHex: new Map(),
+                    removedHex: [],
+                    keyCount: 0,
+                })
+            } catch (error) {
+                if (error instanceof ServerLacksCapabilityError) {
+                    piecesRecorded = false
+                }
+                throw error
+            }
             const body = answer.kind === 'ok' ? answer.body : {}
             // Flags the client does not know are ignored; the three it uses must be present and boolean.
             if (typeof body.checkOnly !== 'boolean' || typeof body.retire !== 'boolean' || typeof body.pieces !== 'boolean') {
+                piecesRecorded = false
                 throw new ServerLacksCapabilityError('caps', 'the answer lacks a boolean checkOnly, retire or pieces flag', false)
             }
+            piecesRecorded = body.pieces
             return { checkOnly: body.checkOnly, retire: body.retire, pieces: body.pieces }
         },
 
@@ -670,15 +772,478 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
         return null
     }
 
+    /**
+     * One upload request. A failure to get an answer (including a body that
+     * stops arriving) is `network`: the request may or may not have been applied.
+     */
+    async function uploadRequest(route: string, headers: Record<string, string>, body?: Uint8Array): Promise<UploadReply> {
+        try {
+            const response = await send(route, { method: 'POST', headers, body: body as Uint8Array<ArrayBuffer> | undefined })
+            let parsed: unknown = null
+            const text = await response.text()
+            try {
+                parsed = JSON.parse(text)
+            } catch {
+                parsed = null
+            }
+            return { kind: 'answer', status: response.status, body: parsed }
+        } catch (error) {
+            return { kind: 'network', error }
+        }
+    }
+
+    /** The typed error of an upload answer that is not a success; a 404 also clears the capability record. */
+    function uploadAnswerError(reply: { status: number, body: unknown }, operation: string): Error {
+        if (reply.status === 410) {
+            return new UploadGoneError(operation)
+        }
+        if (reply.status === 503 && codeOfBody(reply.body) === 'upload-capacity') {
+            return new UploadCapacityError()
+        }
+        if (reply.status === 404) {
+            piecesRecorded = false
+        }
+        return new NodeHttpError(reply.status, operation, errorDetailOfBody(reply.body))
+    }
+
+    /** A failure the same request may be re-sent after: no answer, or a 5xx that is not the server's own JSON failure. */
+    function isResendable(reply: UploadReply): boolean {
+        return reply.kind === 'network' || (reply.status >= 500 && !isServerFailureBody(reply.body) && !(reply.status === 503 && codeOfBody(reply.body) === 'upload-capacity'))
+    }
+
+    /** What a piece writer does with the value it is handed: send chunks to the upload routes, or collect it for one single-body write. */
+    interface ValueWriter {
+        write(data: Uint8Array): Promise<void>
+        finish(finalKey?: string): Promise<WriteResult>
+        abort(): Promise<void>
+    }
+
+    /**
+     * A writer for one value. Refuses an unusable `key` before any request. With
+     * `pieces` recorded and an asset-route key it uploads (begin on the first
+     * chunk, append at the acknowledged offset, commit); in every other case,
+     * and when the server turns out to lack the upload routes at `begin`, it
+     * collects the pieces and writes the value in one request.
+     */
+    function createValueWriter(key: string): ValueWriter {
+        const keyReason = nodeAddressableViolation(key) ?? nodeCreatableViolation(key)
+        if (keyReason !== null) {
+            throw new StoreInvalidKeyError(key, keyReason)
+        }
+        let mode = 'undecided' as 'undecided' | 'upload' | 'collect'
+        let uploadId: string | null = null
+        let acknowledged = 0
+        let pending: Uint8Array[] = []
+        let pendingBytes = 0
+        const collected: Uint8Array[] = []
+        let over: { error: unknown } | null = null
+        let done: WriteResult | null = null
+
+        function decideMode(): void {
+            if (mode === 'undecided') {
+                mode = piecesRecorded && nodeAssetRouteViolation(key) === null ? 'upload' : 'collect'
+            }
+        }
+
+        async function sendAbort(): Promise<void> {
+            const id = uploadId
+            uploadId = null
+            if (id !== null) {
+                await uploadRequest('/api/upload/abort', { 'upload-id': id })
+            }
+        }
+
+        /** Ends the writer after a failure: the upload is abandoned and every later call rejects with the same error. */
+        async function fail(error: unknown): Promise<never> {
+            over = { error }
+            pending = []
+            pendingBytes = 0
+            collected.length = 0
+            await sendAbort()
+            throw error
+        }
+
+        /** Opens the upload on first use. False when the server has no upload routes: nothing was sent, so the writer collects instead. */
+        async function ensureBegun(): Promise<boolean> {
+            if (uploadId !== null) {
+                return true
+            }
+            const reply = await uploadRequest('/api/upload/begin', {})
+            if (reply.kind === 'network') {
+                throw reply.error
+            }
+            if (reply.status === 404) {
+                piecesRecorded = false
+                mode = 'collect'
+                collected.push(...pending)
+                pending = []
+                pendingBytes = 0
+                return false
+            }
+            if (reply.status !== 200) {
+                throw uploadAnswerError(reply, 'upload-begin')
+            }
+            const id = typeof reply.body === 'object' && reply.body !== null ? (reply.body as { id?: unknown }).id : undefined
+            if (typeof id !== 'string' || !UPLOAD_ID_PATTERN.test(id)) {
+                throw new StoreError('The Node server did not issue an upload id.')
+            }
+            uploadId = id
+            return true
+        }
+
+        /** Removes the first `length` pending bytes; a piece large enough is cut as a view, without a copy. */
+        function takePending(length: number): Uint8Array {
+            const first = pending[0]
+            if (first.length >= length) {
+                if (first.length === length) {
+                    pending.shift()
+                } else {
+                    pending[0] = first.subarray(length)
+                }
+                pendingBytes -= length
+                return first.subarray(0, length)
+            }
+            const chunk = new Uint8Array(length)
+            let at = 0
+            while (at < length) {
+                const piece = pending[0]
+                const take = Math.min(piece.length, length - at)
+                chunk.set(piece.subarray(0, take), at)
+                at += take
+                if (take === piece.length) {
+                    pending.shift()
+                } else {
+                    pending[0] = piece.subarray(take)
+                }
+            }
+            pendingBytes -= length
+            return chunk
+        }
+
+        /** Appends `chunk` at the acknowledged offset; a failure to get an answer, or a 5xx that is not the server's own failure, is re-sent once. */
+        async function appendChunk(chunk: Uint8Array): Promise<void> {
+            const headers = { 'content-type': 'application/octet-stream', 'upload-id': uploadId as string, 'upload-offset': String(acknowledged) }
+            let lastFailure: unknown = null
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                const reply = await uploadRequest('/api/upload/append', headers, chunk)
+                if (reply.kind === 'answer' && reply.status === 200) {
+                    const size = countField(reply.body, 'size')
+                    if (size !== acknowledged + chunk.length) {
+                        throw new StoreError('The Node server did not acknowledge the upload chunk.')
+                    }
+                    acknowledged = size
+                    return
+                }
+                if (isResendable(reply)) {
+                    lastFailure = reply.kind === 'network' ? reply.error : uploadAnswerError(reply, 'upload-append')
+                    continue
+                }
+                throw uploadAnswerError(reply as { status: number, body: unknown }, 'upload-append')
+            }
+            throw lastFailure
+        }
+
+        /** Sends the pending bytes in whole chunks (`all` also sends the last, shorter one). False when the writer fell back to collecting. */
+        async function drainPending(all: boolean): Promise<boolean> {
+            while (pendingBytes >= pieceBytes || (all && pendingBytes > 0)) {
+                if (!await ensureBegun()) {
+                    return false
+                }
+                await appendChunk(takePending(Math.min(pieceBytes, pendingBytes)))
+            }
+            return true
+        }
+
+        /**
+         * The commit of the staged value under `target`. `ifAbsent` keeps an
+         * existing value (the key is content-addressed). A commit whose answer was
+         * lost is re-sent once; the server answers the re-send with the first
+         * outcome. What is still unknown after that is settled by `has` for
+         * `ifAbsent` and is `StoreOutcomeUnknownError` for a replacing commit.
+         */
+        async function commitUpload(target: string, ifAbsent: boolean): Promise<WriteResult> {
+            const headers: Record<string, string> = { 'upload-id': uploadId as string, 'file-path': hexOf(target), 'upload-size': String(acknowledged) }
+            if (ifAbsent) {
+                headers['upload-if-absent'] = '1'
+            }
+            let cause: unknown = null
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                const reply = await uploadRequest('/api/upload/commit', headers)
+                if (reply.kind === 'answer' && reply.status === 200) {
+                    const revision = countField(reply.body, 'revision')
+                    if (revision === null) {
+                        throw new StoreError('The Node server did not report the new revision of the key.')
+                    }
+                    return { version: revision }
+                }
+                if (reply.kind === 'answer' && reply.status === 410) {
+                    cause = new UploadGoneError('upload-commit')
+                    break
+                }
+                if (isResendable(reply)) {
+                    cause = reply.kind === 'network' ? reply.error : uploadAnswerError(reply, 'upload-commit')
+                    continue
+                }
+                throw uploadAnswerError(reply as { status: number, body: unknown }, 'upload-commit')
+            }
+            if (ifAbsent) {
+                let present: boolean
+                try {
+                    present = await store.has(target)
+                } catch (error) {
+                    throw new StoreOutcomeUnknownError('upload commit', error)
+                }
+                if (present) {
+                    // The key holds a value, so nothing needs the staged bytes; the commit may never have reached the server.
+                    await sendAbort()
+                    return { version: null }
+                }
+                if (cause instanceof UploadGoneError) {
+                    throw cause
+                }
+            }
+            throw new StoreOutcomeUnknownError('upload commit', cause)
+        }
+
+        return {
+            async write(data: Uint8Array): Promise<void> {
+                if (over !== null) {
+                    throw over.error
+                }
+                if (done !== null) {
+                    throw new StoreError('The piece writer is finished.')
+                }
+                try {
+                    decideMode()
+                    if (data.length === 0) {
+                        return
+                    }
+                    if (mode === 'collect') {
+                        collected.push(data)
+                        return
+                    }
+                    pending.push(data)
+                    pendingBytes += data.length
+                    await drainPending(false)
+                } catch (error) {
+                    await fail(error)
+                }
+            },
+
+            async finish(finalKey?: string): Promise<WriteResult> {
+                if (over !== null) {
+                    throw over.error
+                }
+                if (done !== null) {
+                    return done
+                }
+                try {
+                    let target = key
+                    if (finalKey !== undefined) {
+                        const finalReason = nodeAddressableViolation(finalKey) ?? nodeCreatableViolation(finalKey)
+                        if (finalReason !== null) {
+                            throw new StoreInvalidKeyError(finalKey, finalReason)
+                        }
+                        target = finalKey
+                    }
+                    decideMode()
+                    let result: WriteResult | null = null
+                    if (mode === 'upload') {
+                        const routeReason = nodeAssetRouteViolation(target)
+                        if (routeReason !== null) {
+                            throw new StoreInvalidKeyError(target, routeReason)
+                        }
+                        if (await drainPending(true) && (uploadId !== null || await ensureBegun())) {
+                            result = await commitUpload(target, finalKey !== undefined)
+                        }
+                    }
+                    if (result === null) {
+                        // Collecting: by choice, or because the server has no upload routes.
+                        if (finalKey !== undefined && await store.has(target)) {
+                            result = { version: null }
+                        } else {
+                            result = await store.write(target, collected.length === 0 ? new Uint8Array(0) : joinPieces(collected), 'unconditional')
+                        }
+                    }
+                    done = result
+                    uploadId = null
+                    return result
+                } catch (error) {
+                    return await fail(error)
+                }
+            },
+
+            async abort(): Promise<void> {
+                if (over !== null || done !== null) {
+                    return
+                }
+                over = { error: new StoreError('The piece writer was aborted.') }
+                pending = []
+                pendingBytes = 0
+                collected.length = 0
+                await sendAbort()
+            },
+        }
+    }
+
+    /** One ranged answer for `key` from `start`. A 404 means the server lacks the route: the record is cleared. */
+    async function rangeRequest(key: string, start: number): Promise<RangePiece> {
+        const response = await send('/api/read-range', {
+            method: 'GET',
+            headers: { 'file-path': hexOf(key), 'range-start': String(start), 'range-length': String(pieceBytes) },
+        })
+        if (!response.ok) {
+            if (response.status === 404) {
+                piecesRecorded = false
+            }
+            throw new NodeHttpError(response.status, 'read-range', await errorDetailOf(response))
+        }
+        const revision = asRevision(response.headers.get('x-risu-revision'))
+        const size = asRevision(response.headers.get('x-risu-size'))
+        const existsHeader = response.headers.get('x-risu-exists')
+        if (revision === null || size === null || (existsHeader !== '1' && existsHeader !== '0')) {
+            throw new StoreError('The Node server did not report the revision, size and existence of the key.')
+        }
+        const bytes = new Uint8Array(await response.arrayBuffer())
+        if (existsHeader === '1' && bytes.length !== Math.min(pieceBytes, Math.max(0, size - start))) {
+            throw new StoreError('The Node server answered a ranged read with a piece of the wrong length.')
+        }
+        return { exists: existsHeader === '1', revision, size, bytes }
+    }
+
+    /** Whether `error` says the server has no ranged read route (and the record was cleared). */
+    function isMissingRangeRoute(error: unknown): boolean {
+        return error instanceof NodeHttpError && error.status === 404 && error.operation === 'read-range'
+    }
+
+    /**
+     * The whole value assembled from ranged pieces. The first piece fixes the
+     * revision and the size; a later piece that disagrees means the value
+     * changed, and the assembly starts over, at most twice.
+     */
+    async function readRanged(key: string): Promise<ReadResult> {
+        for (let attempt = 0; attempt <= 2; attempt++) {
+            const first = await rangeRequest(key, 0)
+            if (!first.exists) {
+                return { bytes: null, version: first.revision }
+            }
+            if (first.bytes.length === first.size) {
+                return { bytes: first.bytes, version: first.revision }
+            }
+            const whole = new Uint8Array(first.size)
+            whole.set(first.bytes, 0)
+            let at = first.bytes.length
+            let changed = false
+            while (at < first.size) {
+                const piece = await rangeRequest(key, at)
+                if (!piece.exists || piece.revision !== first.revision || piece.size !== first.size) {
+                    changed = true
+                    break
+                }
+                whole.set(piece.bytes, at)
+                at += piece.bytes.length
+            }
+            if (!changed) {
+                return { bytes: whole, version: first.revision }
+            }
+        }
+        throw new StoreValueChangedError(key)
+    }
+
+    /** The pieces after `first`, each checked against the first piece's revision and size; never restarts. */
+    async function* followingPieces(key: string, first: RangePiece): AsyncGenerator<Uint8Array> {
+        if (first.bytes.length > 0) {
+            yield first.bytes
+        }
+        let at = first.bytes.length
+        while (at < first.size) {
+            const piece = await rangeRequest(key, at)
+            if (!piece.exists || piece.revision !== first.revision || piece.size !== first.size) {
+                throw new StoreValueChangedError(key)
+            }
+            yield piece.bytes
+            at += piece.bytes.length
+        }
+    }
+
+    async function* viewsOf(bytes: Uint8Array): AsyncGenerator<Uint8Array> {
+        for (let at = 0; at < bytes.length; at += pieceBytes) {
+            yield bytes.subarray(at, Math.min(bytes.length, at + pieceBytes))
+        }
+    }
+
     const store: ByteStore = {
         capabilities: { conditionalWrites: true },
         guarded,
 
         async read(key: string): Promise<ReadResult> {
             checkAddressable(key)
+            if (piecesRecorded && nodeAssetRouteViolation(key) === null) {
+                try {
+                    return await readRanged(key)
+                } catch (error) {
+                    if (!isMissingRangeRoute(error)) {
+                        throw error
+                    }
+                }
+            }
             const { response, exists, version } = await readState(key, 'GET')
             const body = new Uint8Array(await response.arrayBuffer())
             return { bytes: exists ? body : null, version }
+        },
+
+        async readPieces(key: string): Promise<PieceSource | null> {
+            checkAddressable(key)
+            if (piecesRecorded && nodeAssetRouteViolation(key) === null) {
+                try {
+                    const first = await rangeRequest(key, 0)
+                    if (!first.exists) {
+                        return null
+                    }
+                    return { total: first.size, version: first.revision, pieces: followingPieces(key, first) }
+                } catch (error) {
+                    if (!isMissingRangeRoute(error)) {
+                        throw error
+                    }
+                }
+            }
+            const { bytes, version } = await store.read(key)
+            return bytes === null ? null : { total: bytes.length, version, pieces: viewsOf(bytes) }
+        },
+
+        openWriter(key: string): PieceWriter {
+            const writer = createValueWriter(key)
+            return {
+                write: (data) => writer.write(data),
+                finish: async (finalKey) => {
+                    await writer.finish(finalKey)
+                },
+                abort: () => writer.abort(),
+            }
+        },
+
+        async writeBlob(key: string, blob: Blob, condition: StoreCondition): Promise<WriteResult> {
+            const reason = nodeAddressableViolation(key) ?? nodeCreatableViolation(key) ?? nodeAssetRouteViolation(key)
+            if (reason !== null) {
+                throw new StoreInvalidKeyError(key, reason)
+            }
+            checkCondition(condition, true)
+            if (versionOf(condition) !== null || blob.size <= pieceBytes || !piecesRecorded) {
+                return await store.write(key, new Uint8Array(await blob.arrayBuffer()), condition)
+            }
+            // Each slice is read before any request is made for it, so a read error
+            // (a changed or vanished backup file) reaches the caller as it is and is
+            // never mistaken for a transport failure or re-sent.
+            const writer = createValueWriter(key)
+            try {
+                for (let start = 0; start < blob.size; start += pieceBytes) {
+                    await writer.write(new Uint8Array(await blob.slice(start, start + pieceBytes).arrayBuffer()))
+                }
+                return await writer.finish()
+            } catch (error) {
+                await writer.abort()
+                throw error
+            }
         },
 
         async write(key: string, bytes: Uint8Array, condition: StoreCondition): Promise<WriteResult> {
@@ -688,6 +1253,19 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
             }
             checkCondition(condition, true)
             checkBytes(bytes)
+            if (piecesRecorded && versionOf(condition) === null && bytes.length > pieceBytes && nodeAssetRouteViolation(key) === null) {
+                const writer = createValueWriter(key)
+                try {
+                    await writer.write(bytes)
+                    return await writer.finish()
+                } catch (error) {
+                    // The caller's too-large handling names the single write.
+                    if (error instanceof NodeHttpError && error.status === 413) {
+                        throw new NodeHttpError(413, 'write', error.detail)
+                    }
+                    throw error
+                }
+            }
             const headers: Record<string, string> = {
                 'content-type': 'application/octet-stream',
                 'file-path': hexOf(key),

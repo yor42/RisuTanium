@@ -111,6 +111,8 @@ describe('conformance: the fake and the real server run the same byte-store scen
         writeOnlyInvalid: [`k/${'x'.repeat(116)}`],
         oddKeys: ['assets/x.v2\\smile', 'assets/x.jpg\u0001'],
         offersGuarded: true,
+        streamsBlobWrites: true,
+        blobWritesTakeAssetKeys: true,
     })
 })
 

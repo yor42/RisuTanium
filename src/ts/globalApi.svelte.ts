@@ -593,9 +593,10 @@ export async function saveAsset(data: Uint8Array | ArrayBuffer | ArrayBufferView
         noteAssetWrittenThisPage(key)
         const store = await getAppStore()
         // A name is a content hash, so an existing file holds these bytes already.
-        // Replacing it would rename over a file the web view may hold open. Only
-        // the desktop store checks a key without a scan.
-        if (isTauri && await store.has(key)) {
+        // Replacing it would rename over a file the web view may hold open, and
+        // on the Node server it would bump the key's revision. Only the desktop
+        // store and the Node server check a key without a scan or a read.
+        if ((isTauri || isNodeServer) && await store.has(key)) {
             return key
         }
         await store.write(key, bytes, 'unconditional')
@@ -659,13 +660,14 @@ function assetExtensionOf(fileName: string): string {
  * Saves an asset that arrives in pieces and returns its key, the same key
  * `saveAsset` gives the whole bytes: `assets/<SHA-256 of the bytes>.<ext>`.
  *
- * On the desktop and Android app, for an asset that may be at least
- * `ASSET_PIECE_SAVE_MIN_BYTES` large, every piece is hashed and written once. The file
- * is built in a temporary file in `assets/`; the last chunk renames it to the key
- * computed from the pieces, or discards it when that key already holds a file.
- * The whole asset is never held, so the memory it needs is a few pieces. Anywhere
- * else, and for a smaller asset, the pieces are collected and `saveAsset` saves
- * them.
+ * On a store that offers `openWriter` (the desktop and Android app, and the Node
+ * server), for an asset that may be at least `ASSET_PIECE_SAVE_MIN_BYTES` large,
+ * every piece is hashed and written once. The file is built in a temporary file
+ * in `assets/`; the last chunk renames it to the key computed from the pieces, or
+ * discards it when that key already holds a file. The whole asset is never held
+ * when the store writes in pieces (a Node server that lacks the upload routes
+ * collects the pieces inside its writer). Anywhere else, and for a smaller asset,
+ * the pieces are collected and `saveAsset` saves them.
  *
  * The pieces are read once and written as read: a piece is never modified or
  * reused after it is yielded, because the writer keeps the newest piece until
@@ -696,7 +698,7 @@ export async function saveAssetFromPieces(pieces: AsyncIterable<Uint8Array>, opt
         }
     }
 
-    if (!isTauri || store.openWriter === undefined || options.sizeBound < threshold) {
+    if (store.openWriter === undefined || options.sizeBound < threshold) {
         const parts: Uint8Array[] = []
         let total = 0
         for (let step = await next(); step.done !== true; step = await next()) {

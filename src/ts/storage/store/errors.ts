@@ -145,6 +145,39 @@ export class StoreOutcomeUnknownError extends StoreError {
     }
 }
 
+/**
+ * A chunked upload no longer exists on the Node server (the server answered
+ * 410): it was reaped for being idle, evicted under capacity pressure, aborted,
+ * or the server restarted. Nothing the upload held is a value. Whether a commit
+ * sent before the answer took effect is not told by this error.
+ */
+export class UploadGoneError extends StoreError {
+    constructor(public readonly operation: string) {
+        super(`The upload no longer exists on the Node server (${operation}).`)
+        this.name = 'UploadGoneError'
+    }
+}
+
+/** The Node server holds too many staged upload bytes to take another chunk (503). The upload was abandoned and holds nothing. */
+export class UploadCapacityError extends StoreError {
+    constructor() {
+        super('The Node server holds too many staged upload bytes to take another chunk.')
+        this.name = 'UploadCapacityError'
+    }
+}
+
+/**
+ * A value read in pieces changed between two pieces (its revision or size
+ * moved), so the pieces do not belong together. A streaming reader cannot
+ * restart after it handed out its first piece; the caller starts over or fails.
+ */
+export class StoreValueChangedError extends StoreError {
+    constructor(public readonly key: string) {
+        super(`The value under ${JSON.stringify(key)} changed while it was being read in pieces.`)
+        this.name = 'StoreValueChangedError'
+    }
+}
+
 /** The key holds an entry that is not bytes (only the shared browser store can hold one). */
 export class StoreNotBinaryError extends StoreError {
     constructor(public readonly key: string) {

@@ -101,6 +101,8 @@ describeByteStoreConformance({
     oddKeys: ['assets/x.v2\\smile', 'assets/x.jpg\u0001'],
     offersUrlFor: true,
     offersGuarded: true,
+    streamsBlobWrites: true,
+    blobWritesTakeAssetKeys: true,
 })
 
 describe('Node HTTP store against the real server', () => {

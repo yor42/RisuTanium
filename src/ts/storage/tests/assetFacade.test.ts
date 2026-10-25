@@ -499,7 +499,7 @@ describe('saveAsset on the Node server', () => {
         expect(Array.from(server.files.get(PNG_KEY)?.bytes ?? [])).toEqual(Array.from(PNG))
     })
 
-    test('reproducer: after a read and a peer rewrite the save of the same asset still succeeds', async () => {
+    test('new behaviour: after a read and a peer rewrite the save of the same asset still succeeds and keeps the existing value', async () => {
         useNode()
         server.seed(PNG_KEY, PNG)
         const { api } = await loadWorld()
@@ -508,7 +508,8 @@ describe('saveAsset on the Node server', () => {
 
         await expect(api.saveAsset(PNG)).resolves.toBe(PNG_KEY)
 
-        expect(Array.from(server.files.get(PNG_KEY)?.bytes ?? [])).toEqual(Array.from(PNG))
+        // A hash-named key is content-addressed: an existing value is kept, never rewritten.
+        expect(Array.from(server.files.get(PNG_KEY)?.bytes ?? [])).toEqual(Array.from(OTHER))
     })
 })
 

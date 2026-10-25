@@ -39,7 +39,7 @@ import { tauriAddressableViolation, tauriCreatableViolation, type FilePlatform }
  * It offers `urlFor`: the web view loads a file from the asset protocol by its
  * absolute path, so the URL comes from the key alone and no byte is read (the
  * Node store offers one too, for the keys its asset route serves). It is the
- * only store that offers `openWriter`, a write that
+ * one of two stores that offer `openWriter` (the Node store is the other), a write that
  * arrives in pieces over the chunk commands, so the caller never holds the whole file.
  *
  * It also offers `pageGate` (`tauriGateTransport.ts`): registration with the native
