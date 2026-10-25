@@ -472,8 +472,11 @@ function getEmoSrc(emoArr: string[][], emoPaths: AssetPaths) {
 // asset-route URL) accumulate here. A `data:` result is never added, whichever
 // branch of getFileSrc made it: it already sits in getFileSrc's own budgeted
 // cache in globalApi.svelte.ts, so pinning a second permanent copy here would
-// make this Map unbounded. An empty result (no URL could be made) is not kept
-// either, so the next call asks again.
+// make this Map unbounded. A `blob:` result is never added either: its asset
+// can be deleted, which revokes the URL, and a pinned copy would then outlive
+// it while getFileSrc answers from its own map in constant time. An empty
+// result (no URL could be made) is not kept either, so the next call asks
+// again.
 const fileSrcCache = new Map<string, string>()
 
 async function getFileSrcCached(path:string){
@@ -482,7 +485,7 @@ async function getFileSrcCached(path:string){
         return cached
     }
     const src = await getFileSrc(path)
-    if(src && !src.startsWith('data:')){
+    if(src && !src.startsWith('data:') && !src.startsWith('blob:')){
         fileSrcCache.set(path, src)
     }
     return src

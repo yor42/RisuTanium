@@ -108,6 +108,20 @@ describe('AV-3 getFileSrcCached', () => {
     expect(getFileSrc).toHaveBeenCalledWith(path)
   })
 
+  test('T9b (reproducer): a blob URL result is never pinned, so rendering the same asset twice calls getFileSrc twice', async () => {
+    const name = 't9basset'
+    const path = 'assets/t9b-asset.png'
+    vi.mocked(getFileSrc).mockResolvedValue('blob:http://localhost/t9b')
+    const char = makeCharWithAsset(name, path)
+    resetAssetsCache((char as { additionalAssets: string[][] }).additionalAssets, [], [])
+
+    await ParseMarkdown(`{{asset::${name}}}`, char, 'back')
+    await ParseMarkdown(`{{asset::${name}}}`, char, 'back')
+
+    expect(getFileSrc).toHaveBeenCalledTimes(2)
+    expect(getFileSrc).toHaveBeenCalledWith(path)
+  })
+
   test('T10 (guard): a short URL result is served from fileSrcCache on the second render', async () => {
     const name = 't10asset'
     const path = 'some/t10-asset.png'

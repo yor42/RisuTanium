@@ -50,6 +50,8 @@ import { StoreBlobUnsupportedError, StoreInvalidKeyError, StoreVersionConflictEr
 import { NodeHttpError } from "./storage/store/nodeHttpStore";
 import { NODE_BODY_LIMIT_BYTES, WEB_ASSET_LIMIT_BYTES } from "./storage/nodeBodyLimit";
 import { storeAssetLimitBytes } from "./storage/assetLimit";
+import { displayMimeOfAssetKey } from "./storage/assetDisplayMime";
+import { assetOrInlayBodyKeyViolation } from "./storage/store/keyRules";
 import { fitsNodeBodyLimit } from "./storage/bootArchivePass";
 import { updateAnimationSpeed } from "./gui/animation";
 import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
@@ -197,6 +199,40 @@ const fileCache = new Map<string, FileCacheEntry>()
 // here is the full string too, returned as-is, same as a cached entry's.
 let oversizedMemo: { loc: string, src: string } | null = null
 
+// The `blob:` URL of every Blob-valued asset a page has displayed, by location.
+// A Blob handle is disk-backed, so this holds no payload bytes; it sits outside
+// `fileCache` on purpose: no entry count, byte budget or LRU eviction applies,
+// because DOM rendered earlier may still show the URL and an eviction-time
+// revoke would blank it. A URL is revoked only when its asset is deleted
+// (releaseAssetObjectUrl) or by the test seam's reset.
+const assetObjectUrls = new Map<string, string>()
+
+// The single stored-value read in flight per asset location, shared by every
+// producer that asks for the same location while it runs (a producer orphaned
+// by LRU eviction included), so one display costs one read and one URL. An
+// entry is removed when its read settles, a failed read included.
+const assetValueReads = new Map<string, Promise<Blob | Uint8Array | null>>()
+
+/**
+ * Revokes the object URLs of the assets `keys` name and drops what the display
+ * caches hold for them. Call it after an asset has been deleted from the store:
+ * a URL left alive would keep showing the deleted content, and a cached entry
+ * would keep answering for a key the store no longer holds.
+ */
+export function releaseAssetObjectUrl(keys: Iterable<string>): void {
+    for (const key of keys) {
+        const url = assetObjectUrls.get(key)
+        if (url !== undefined) {
+            URL.revokeObjectURL(url)
+            assetObjectUrls.delete(key)
+        }
+        fileCacheDelete(key)
+        if (oversizedMemo !== null && oversizedMemo.loc === key) {
+            oversizedMemo = null
+        }
+    }
+}
+
 // The byte cost of one cache entry for budget purposes: `src.length` MINUS
 // the constant-length `FILE_CACHE_SRC_PREFIX` every `src` carries, so the
 // budget tracks only the encoded payload, not the prefix shared by every
@@ -239,6 +275,11 @@ export const __fileCacheTestHooks = {
         }
     },
     reset() {
+        for (const url of assetObjectUrls.values()) {
+            URL.revokeObjectURL(url)
+        }
+        assetObjectUrls.clear()
+        assetValueReads.clear()
         fileCache.clear()
         FILE_CACHE_MAX_ENTRIES = FILE_CACHE_DEFAULT_MAX_ENTRIES
         fileCacheMaxBytes = FILE_CACHE_DEFAULT_MAX_BYTES
@@ -342,6 +383,55 @@ async function readBytesForUrl(loc: string): Promise<Uint8Array | null> {
 }
 
 /**
+ * The stored value of `loc` for a URL built outside Tauri, loaded once. An
+ * `assets/` key on a store that can hand a value back as a Blob (`readValue`)
+ * yields that Blob untouched, so a large asset is never copied into page memory;
+ * everything else yields bytes. Concurrent callers for one location share the
+ * read, and a rejected read leaves nothing behind for the next caller to join.
+ */
+async function readValueForUrl(loc: string): Promise<Blob | Uint8Array | null> {
+    const store = await getAppStore()
+    // A key the store can address but not create (one upstream's own code wrote) can hold no Blob, since
+    // no Blob write accepts it, so it is read as bytes like any other key readValue refuses.
+    if (!loc.startsWith('assets/') || store.readValue === undefined || assetOrInlayBodyKeyViolation(loc) !== null) {
+        return await readBytesForUrl(loc)
+    }
+    const pending = assetValueReads.get(loc)
+    if (pending !== undefined) {
+        return await pending
+    }
+    const read = store.readValue(loc).catch((error: unknown) => {
+        if (error instanceof StoreInvalidKeyError) {
+            return null
+        }
+        throw error
+    })
+    const tracked = read.finally(() => {
+        if (assetValueReads.get(loc) === tracked) {
+            assetValueReads.delete(loc)
+        }
+    })
+    assetValueReads.set(loc, tracked)
+    return await tracked
+}
+
+/**
+ * The `blob:` URL of the Blob stored under `loc`, made once per location: the
+ * synchronous check-and-set means two producers that both hold the Blob get the
+ * same URL. The Blob is retyped from the key's extension (zero copy), never
+ * from its own type.
+ */
+function objectUrlOfAssetBlob(loc: string, blob: Blob): string {
+    const existing = assetObjectUrls.get(loc)
+    if (existing !== undefined) {
+        return existing
+    }
+    const url = URL.createObjectURL(blob.slice(0, blob.size, displayMimeOfAssetKey(loc)))
+    assetObjectUrls.set(loc, url)
+    return url
+}
+
+/**
  * Gets the source URL of a file.
  *
  * On Tauri an asset URL comes from the store's `urlFor`, from the key alone, so
@@ -381,6 +471,10 @@ export async function getFileSrc(loc: string) {
         }
     }
     try {
+        const knownObjectUrl = assetObjectUrls.get(loc)
+        if (knownObjectUrl !== undefined) {
+            return knownObjectUrl
+        }
         if (usingSw) {
             const encoded = Buffer.from(loc, 'utf-8').toString('hex')
             const existing = fileCache.get(loc)
@@ -399,7 +493,17 @@ export async function getFileSrc(loc: string) {
                         if (hasCache) {
                             return { status: 'done' }
                         }
-                        const f = await readBytesForUrl(loc)
+                        const value = await readValueForUrl(loc)
+                        if (value instanceof Blob) {
+                            // A Blob asset is shown through an object URL kept in
+                            // assetObjectUrls; the service worker never holds a copy.
+                            if (value.size > 0) {
+                                objectUrlOfAssetBlob(loc, value)
+                                return { status: 'done' }
+                            }
+                            return { status: 'missing' }
+                        }
+                        const f = value
                         if (f && f.byteLength > 0) {
                             await fetch("/sw/register/" + encoded, {
                                 method: "POST",
@@ -429,7 +533,9 @@ export async function getFileSrc(loc: string) {
             else if (existing.status === 'loading' && existing.promise) {
                 await existing.promise
             }
-            return "/sw/img/" + encoded
+            // A caller that waited on a producer which made an object URL gets
+            // that URL, not the service-worker path nothing was registered under.
+            return assetObjectUrls.get(loc) ?? "/sw/img/" + encoded
         }
         else {
             const existing = fileCache.get(loc)
@@ -458,8 +564,14 @@ export async function getFileSrc(loc: string) {
                     // never rebuilding it per call. A caller that arrives
                     // after this entry is evicted or superseded by a retry
                     // still gets a different string than an earlier caller.
-                    const f = await readBytesForUrl(loc)
-                    const src = FILE_CACHE_SRC_PREFIX + Buffer.from(f ?? new Uint8Array()).toString('base64')
+                    const value = await readValueForUrl(loc)
+                    if (value instanceof Blob) {
+                        // The object URL lives in assetObjectUrls, outside the
+                        // budget; this entry holds no payload and costs 0.
+                        objectUrlOfAssetBlob(loc, value)
+                        return { status: 'done' }
+                    }
+                    const src = FILE_CACHE_SRC_PREFIX + Buffer.from(value ?? new Uint8Array()).toString('base64')
                     return { status: 'done', src }
                 })()
                 loadingEntry.promise = promise
@@ -510,7 +622,7 @@ export async function getFileSrc(loc: string) {
             // empty string, same as the pre-AV-3 code's
             // `resolved?.data ?? new Uint8Array()`) without rebuilding it per
             // call.
-            return resolved?.src ?? FILE_CACHE_SRC_PREFIX
+            return assetObjectUrls.get(loc) ?? resolved?.src ?? FILE_CACHE_SRC_PREFIX
         }
     } catch (error) {
         console.error(error)

@@ -329,6 +329,14 @@ describe('CharListAvatar', () => {
         expect(await remountAndCountLookups('assets/a.png')).toBe(0)
     })
 
+    test('reproducer: a style with a blob: URL is painted but not retained, since deleting its asset revokes the URL', async () => {
+        const target = mountAvatar({ src: 'assets/a.mp4' })
+        pending[0].resolve('background: url("blob:http://localhost/a1");background-size: cover;')
+        await settle()
+        expect(styleOf(target.querySelector('.ico')!)).toContain('blob:http://localhost/a1')
+        expect(await remountAndCountLookups('assets/a.mp4')).toBe(1)
+    })
+
     test('a change of an unrelated prop does not look the image up again', async () => {
         const props = $state({ src: 'assets/a.png', label: 'Ann', onclick: () => {} })
         mountAvatar(props)

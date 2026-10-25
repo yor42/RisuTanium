@@ -6,6 +6,7 @@ import {
     getBasename,
     getUncleanablesSync,
     locksSupported,
+    releaseAssetObjectUrl,
     tabPresenceLockAcquired
 } from "../globalApi.svelte"
 import { isNodeServer, isTauri } from "../platform"
@@ -840,8 +841,10 @@ async function removeAssetBatch(keys: string[], done: number, total: number): Pr
         showRemoving(done + start + group.length, total)
         try {
             await store.deleteMany(group.map((key) => ({ key, condition: 'unconditional' as const })))
+            releaseAssetObjectUrl(group)
         } catch (error) {
             if (error instanceof StoreDeleteManyError) {
+                releaseAssetObjectUrl(error.report.filter((entry) => entry.outcome === 'removed').map((entry) => entry.key))
                 const notRemoved = error.report.filter((entry) => entry.outcome !== 'removed')
                 console.error('Cold storage cleanup: could not delete an asset:', notRemoved[0]?.error ?? error)
                 failed += notRemoved.length

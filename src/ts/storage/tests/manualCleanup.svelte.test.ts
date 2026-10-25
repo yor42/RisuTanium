@@ -1442,6 +1442,95 @@ describe('a profile that never used plugin storage', () => {
     })
 })
 
+describe('assets: an object URL is released with its asset', () => {
+    /** Object URLs the page makes and revokes, named `blob:orphan/<n>` in creation order; `restore` puts the real functions back. */
+    function stubObjectUrls(): { created: string[], revoked: string[], restore(): void } {
+        const created: string[] = []
+        const revoked: string[] = []
+        const realCreate = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')
+        const realRevoke = Object.getOwnPropertyDescriptor(URL, 'revokeObjectURL')
+        Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: () => { created.push(`blob:orphan/${created.length}`); return created[created.length - 1] } })
+        Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: (url: string) => { revoked.push(url) } })
+        return {
+            created,
+            revoked,
+            restore() {
+                for (const [name, descriptor] of [['createObjectURL', realCreate], ['revokeObjectURL', realRevoke]] as const) {
+                    if (descriptor) {
+                        Object.defineProperty(URL, name, descriptor)
+                    } else {
+                        delete (URL as unknown as Record<string, unknown>)[name]
+                    }
+                }
+            },
+        }
+    }
+
+    test('REPRODUCER: deleting an orphan asset revokes the blob: URL the page made for it', async () => {
+        await setup()
+        seedAsset('orphan.png')
+        const { injectAppStore, getAppStore } = await import('src/ts/storage/store/appStore')
+        const current = await getAppStore()
+        injectAppStore({
+            ...current,
+            readValue: async (key) => key === 'assets/orphan.png' ? new Blob([new Uint8Array([9, 9])]) : null,
+        })
+        const urls = stubObjectUrls()
+        try {
+            const shown = await ctx.globalApi.getFileSrc('assets/orphan.png')
+            expect(shown).toBe('blob:orphan/0')
+            setLive(makeDb([]))
+            await prime(makeDb([]))
+
+            await run()
+
+            expect(assetKeys()).not.toContain('assets/orphan.png')
+            expect(urls.revoked).toEqual(['blob:orphan/0'])
+        } finally {
+            urls.restore()
+        }
+    })
+
+    test('guard: when deleteMany reports only some keys removed, only those URLs are revoked', async () => {
+        await setup()
+        seedAsset('gone.png')
+        seedAsset('stays.png')
+        const { injectAppStore, getAppStore } = await import('src/ts/storage/store/appStore')
+        const { StoreDeleteManyError } = await import('src/ts/storage/store/errors')
+        const current = await getAppStore()
+        injectAppStore({
+            ...current,
+            readValue: async (key) => key.startsWith('assets/') ? new Blob([new Uint8Array([9, 9])]) : null,
+            deleteMany: async (entries) => {
+                const assetEntries = entries.filter((entry) => entry.key.startsWith('assets/'))
+                if (assetEntries.length === 0) {
+                    return await current.deleteMany(entries)
+                }
+                h.forage.delete('assets/gone.png')
+                throw new StoreDeleteManyError(assetEntries.map((entry) => entry.key === 'assets/gone.png'
+                    ? { key: entry.key, outcome: 'removed' as const }
+                    : { key: entry.key, outcome: 'failed' as const, error: new Error('refused') }))
+            },
+        })
+        const urls = stubObjectUrls()
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+        try {
+            await ctx.globalApi.getFileSrc('assets/gone.png')
+            await ctx.globalApi.getFileSrc('assets/stays.png')
+            expect(urls.created).toEqual(['blob:orphan/0', 'blob:orphan/1'])
+            setLive(makeDb([]))
+            await prime(makeDb([]))
+
+            await run()
+
+            expect(assetKeys()).toEqual(['assets/stays.png'])
+            expect(urls.revoked).toEqual(['blob:orphan/0'])
+        } finally {
+            urls.restore()
+        }
+    })
+})
+
 describe('units: the load-time listing bounds what may be deleted', () => {
     test('keeps a unit written after the load-time listing and deletes one that was present at load', async () => {
         await setup()

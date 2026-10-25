@@ -74,6 +74,7 @@ import {
     getBasename,
     wasAssetWrittenThisPage,
     listAssetsWrittenThisPage,
+    releaseAssetObjectUrl,
     setUsingSw,
     checkCharOrder
 } from "./globalApi.svelte";
@@ -1317,7 +1318,10 @@ async function cleanChunks(options:{
                 ...assetGuards(),
                 writtenKeysThisPage: listAssetsWrittenThisPage,
                 listAssets: async () => (await store.list(ASSET_KEY_PREFIX)).map((key) => ({ name: key.slice(ASSET_KEY_PREFIX.length) })),
-                removeAsset: (key) => store.delete(key, 'unconditional'),
+                removeAsset: async (key) => {
+                    await store.delete(key, 'unconditional')
+                    releaseAssetObjectUrl([key])
+                },
                 getBasename
             })
         }
@@ -1406,7 +1410,10 @@ async function cleanChunks(options:{
                         ...keepSet,
                         writtenThisPage: guards.writtenThisPage,
                         liveUncleanable: () => live,
-                        removeAsset: (key) => store.delete(key, 'unconditional'),
+                        removeAsset: async (key) => {
+                            await store.delete(key, 'unconditional')
+                            releaseAssetObjectUrl([key])
+                        },
                         getBasename
                     })
                 }

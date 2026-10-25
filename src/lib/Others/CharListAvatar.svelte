@@ -8,7 +8,9 @@
     // the entry count stays within STYLE_CACHE_MAX_ENTRIES so tiny styles cannot grow the map without bound.
     // Only a lookup that resolved is stored; a failure is never remembered. A style that carries a whole file
     // (a data: URL for an animated avatar or a skipped thumbnail) is not stored either: an entry is kept only
-    // up to STYLE_CACHE_MAX_LENGTH UTF-16 units, which every thumbnail fits under. A style with an empty URL
+    // up to STYLE_CACHE_MAX_LENGTH UTF-16 units, which every thumbnail fits under. A style with a blob: URL is
+    // not stored either: deleting its asset revokes the URL, and a style kept past that would paint a dead URL
+    // when the same content is added again. A style with an empty URL
     // (the file source failed) is not stored; the empty style of hide-all-images has no URL and is.
     const STYLE_CACHE_MAX_TOTAL = 16 * 1024 * 1024;
     const STYLE_CACHE_MAX_ENTRIES = 4000;
@@ -27,7 +29,7 @@
     }
 
     function rememberStyle(key: string, style: string) {
-        if (style.length > STYLE_CACHE_MAX_LENGTH || style.includes('url("")')) {
+        if (style.length > STYLE_CACHE_MAX_LENGTH || style.includes('url("")') || style.includes('blob:')) {
             return;
         }
         const previous = styleCache.get(key);
