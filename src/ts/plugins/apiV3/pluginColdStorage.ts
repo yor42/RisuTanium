@@ -130,13 +130,17 @@ export async function readPluginStorageValue(
  *   call -- `_clearPluginStorage` may have replaced `_coldplugin` with a
  *   fresh object while the write was in flight, and writing into the
  *   object captured before the `await` would silently undo that clear.
+ * - a synchronous writer (`writePluginUnitToDb`) is not awaited: its value
+ *   and the mapping land in the same tick, so a `setDatabase` carrying an
+ *   older copy of the storage cannot run between them and drop a value the
+ *   current map does not name yet.
  */
 export async function writePluginStorageValue(
     db: PluginColdStorageDb,
     getLiveDb: () => PluginColdStorageDb,
     key: string,
     value: unknown,
-    setColdStorageItemFn: (coldId: string, value: unknown) => Promise<boolean>,
+    setColdStorageItemFn: (coldId: string, value: unknown) => boolean | Promise<boolean>,
     newColdId: () => string,
 ): Promise<void> {
     db.pluginCustomStorage ??= {}
@@ -153,7 +157,9 @@ export async function writePluginStorageValue(
     }
     const coldId = existingColdId || newColdId()
 
-    const writeSuccess = await setColdStorageItemFn(coldId, value === undefined ? null : value)
+    // A synchronous writer is not awaited, so its value and the mapping below land in one tick.
+    const written = setColdStorageItemFn(coldId, value === undefined ? null : value)
+    const writeSuccess = typeof written === 'boolean' ? written : await written
 
     if (!writeSuccess) {
         throw new Error(`Failed to write plugin storage for key: ${key}`)
@@ -189,8 +195,8 @@ export function readPluginUnitFromDb(getLiveDb: () => PluginColdStorageDb): (col
     }
 }
 
-export function writePluginUnitToDb(getLiveDb: () => PluginColdStorageDb): (coldId: string, value: unknown) => Promise<boolean> {
-    return async (coldId, value) => {
+export function writePluginUnitToDb(getLiveDb: () => PluginColdStorageDb): (coldId: string, value: unknown) => boolean {
+    return (coldId, value) => {
         if (coldId === '_coldplugin') {
             return false
         }

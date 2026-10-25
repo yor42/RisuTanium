@@ -550,6 +550,36 @@ describe('saveAssetFromPieces on Tauri', () => {
         expect(assetFiles()).toEqual([])
     }, 60_000)
 
+    test('reproducer: a store whose openWriter throws rejects with that error, releases the asset choke point and the source, and aborts no writer', async () => {
+        useTauri('linux')
+        const { api, appStore, busy } = await loadWorld()
+        const { StoreInvalidKeyError } = await import('src/ts/storage/store/errors')
+        const handle = await mapStore()
+        const refusal = new StoreInvalidKeyError('assets/incoming', 'refused by the store')
+        const openWriter = vi.fn((): never => { throw refusal })
+        appStore.injectAppStore({ ...handle.store, openWriter })
+        let released = false
+        async function* source(): AsyncGenerator<Uint8Array, void, undefined> {
+            try {
+                yield new Uint8Array(5 * MIB)
+            } finally {
+                released = true
+            }
+        }
+        const pieces = source()
+        // The generator only runs its finally once started, so start it as the save would.
+        const iterator = pieces[Symbol.asyncIterator]()
+        await iterator.next()
+
+        await expect(api.saveAssetFromPieces(pieces, { sizeBound: 64 * MIB })).rejects.toBe(refusal)
+
+        expect(openWriter).toHaveBeenCalledTimes(1)
+        expect(busy.chokePointInFlight('asset')).toBe(0)
+        expect(released).toBe(true)
+        expect(assetFiles()).toEqual([])
+        expect(desktop.count('abort_chunked')).toBe(0)
+    })
+
     test('guard: an asset below the threshold on Tauri is saved whole by saveAsset, with no chunk command', async () => {
         useTauri('linux')
         const bytes = randomBytes(3 * MIB, 13)

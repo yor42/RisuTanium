@@ -1014,7 +1014,7 @@ export function listEncodedBlocks(data: Uint8Array): EncodedBlockView[] {
  * - `other`: a block of a type this reader does not know, or any block no
  *   other kind names.
  */
-export type SalvageOmittedKind = 'character' | 'presets' | 'modules' | 'loadouts' | 'plugins' | 'pluginStorage' | 'ignored' | 'other'
+export type SalvageOmittedKind = 'character' | 'presets' | 'modules' | 'loadouts' | 'plugins' | 'pluginStorage' | 'chats' | 'ignored' | 'other'
 
 export interface SalvageOmittedBlock {
     kind: SalvageOmittedKind

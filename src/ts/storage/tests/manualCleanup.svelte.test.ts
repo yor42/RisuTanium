@@ -649,6 +649,22 @@ async function setup(options: { platform?: Platform, locks?: 'single' | 'none' }
     return ctx
 }
 
+// Loads every module `setup` imports once at collection, where no test timeout applies, so the first cold
+// transform of the graph is never charged to a timed test body. `setup` still rebuilds the graph per test.
+await import('src/ts/globalApi.svelte')
+await import('src/ts/process/coldstorage.svelte')
+await import('src/ts/storage/loadTimeListing')
+await import('src/ts/storage/mainFileRecord')
+await import('src/ts/stores.svelte')
+await import('src/ts/process/chatOrigin')
+await import('src/ts/process/memory/busyActions')
+await import('src/ts/process/generationOwnership.svelte')
+await import('src/ts/storage/risuSave')
+await import('src/ts/storage/nodeStorage')
+await import('src/ts/alert')
+await import('src/ts/storage/pageStorageMode')
+await import('src/ts/storage/store/appStore')
+
 afterEach(() => {
     vi.useRealTimers()
     globalThis.fetch = realFetch

@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid'
 import type { botPreset, Database } from '../../database.svelte'
 import { LEGACY_MAIN_FILE_KEY } from '../../blockKeys'
 import { fingerprintMainFile } from '../../mainFileFingerprint'
@@ -5,7 +6,7 @@ import type { ByteStore } from '../../store/contract'
 import { StoreNotBinaryError } from '../../store/errors'
 import type { Store2Backend, Store2Read } from '../backend/types'
 import type { BlockedReason } from '../bootActive'
-import type { ListDerivation } from '../codec/types'
+import { CodecError, type ListDerivation } from '../codec/types'
 import type { BuildContext, BuiltCommit } from '../commit'
 import { firstLifeInstall, installBuilt, type BuiltInstall, type FirstLifeGrant, type FirstLifeResult } from '../firstLife'
 import { defaultKeyEnv, encodeUnit, refOfFrame, UNIT_TYPE, type KeyEnv, type LegacyList } from '../format'
@@ -15,6 +16,7 @@ import type { ListParams } from '../lists/params'
 import { planOldDataSnapshot, withSnapshot, type WalkedLegacy } from '../oldData/plan'
 import type { ForeignClearHook } from '../owner'
 import { runExit, type ExitResult } from '../recovery'
+import { dropLegacyFaults, findLegacyFaults, legacyCharactersRefused } from './faults'
 import { planWholeTreeInstall } from './install'
 import type { LenientLegacyDecode, SkippedLegacyEntry } from './lenient'
 import { legacyPluginIndexPointer, legacyPluginRefs } from './refs'
@@ -37,6 +39,14 @@ import { collectLegacyColdKeys } from './walk'
  *    of it writes nothing.
  *  - A decoded older-format tree without a preset list gets the Default preset on the resolved copy only; the decoded
  *    tree, and so the legacy list built from it, is the file as read.
+ *  - A strict decode that holds a shape the codec refuses (`faults.ts`) counts as not decoded, so the next copy or
+ *    "convert without these" follows. A refusal the detector cannot see (a BigInt or a cycle inside an element) surfaces
+ *    as a `CodecError` while the install is planned, before any marker: it is an unconvertible copy, never a throw out
+ *    of the conversion, and the strict route moves on to the next copy. A cycle first spins the legacy list's string
+ *    walk, which keeps no visited set, before the install is planned.
+ *  - "Convert without these" leaves out exactly the shapes it named (`dropLegacyFaults`), on the resolved copy and only
+ *    for the lenient origin; the decoded tree, and so the legacy list built from it, is the file as read. A cold unit
+ *    whose content the codec would refuse is unusable through the incomplete-data question, for every origin.
  *  - The old files are never written, renamed or deleted here. The new tree names them (`fixed.legacyKeep`) so a later
  *    deletion can see which of them it has fully read, and the install carries the list of old fork-format keys that
  *    later deletion may remove (`oldData/plan.ts`), persisted with the tree and before its final write.
@@ -100,7 +110,7 @@ export interface ConvertHooks {
 }
 
 export interface ConvertStrictHooks extends ConvertHooks {
-    /** The main file did not decode strictly (a decode failure, or a `botPresets` that is present and not a list) and this numbered backup (its time) did: converting from it is the person's choice, asked before anything else. `false` declines: nothing is written. */
+    /** The main file did not decode strictly (a decode failure, a part the codec refuses, or an older-format tree without a characters list) and this numbered backup (its time) did: converting from it is the person's choice, asked before anything else. Also asked for a later copy after an earlier one decoded but was refused while the install was planned. `false` declines: nothing is written. */
     confirmFromBackup(backup: number): Promise<boolean>
 }
 
@@ -202,13 +212,30 @@ function isLegacyDatabase(tree: unknown): boolean {
     return typeof tree === 'object' && tree !== null && Array.isArray((tree as { characters?: unknown }).characters)
 }
 
-/** The tree, or null when it is a database whose `botPresets` is present and not a list. */
-function acceptedStrictTree(tree: Database | null): Database | null {
-    if (tree === null || !isLegacyDatabase(tree)) {
-        return tree
+const BLOCK_MAGIC = Array.from('RISUSAVE', char => char.charCodeAt(0))
+/** The shortest buffer `isBlockFormatSave` accepts: the length of the shortest header the save decoder compares. */
+const BLOCK_MAGIC_MIN_LENGTH = 11
+
+/**
+ * Whether `bytes` start the block format (the `RISUSAVE` prefix, and the length `isBlockFormatSave` demands). Local, so
+ * this module does not load the save decoder to answer it.
+ */
+export function hasBlockMagic(bytes: Uint8Array): boolean {
+    return bytes.length >= BLOCK_MAGIC_MIN_LENGTH && BLOCK_MAGIC.every((byte, index) => bytes[index] === byte)
+}
+
+/**
+ * The tree, or null when it is refused: the codec would refuse it, or it is not a database. The older msgpack format
+ * always writes a `characters` list, so a tree without one (missing, null, not a list, or not an object at all) is
+ * refused although the codec would take it; a block-format save with no characters writes none and is accepted. A
+ * present `characters` that is not a list, and any part `findLegacyFaults` reports (`botPresets` included), refuse both
+ * formats. Judged on the tree as read.
+ */
+function acceptedStrictTree(tree: Database | null, blockFormat: boolean): Database | null {
+    if (tree === null || legacyCharactersRefused(tree, !blockFormat) || findLegacyFaults(tree).length > 0) {
+        return null
     }
-    const presets: unknown = tree.botPresets
-    return presets === undefined || presets === null || Array.isArray(presets) ? tree : null
+    return tree
 }
 
 /**
@@ -217,24 +244,35 @@ function acceptedStrictTree(tree: Database | null): Database | null {
  * the copy that could not be read. `{ tried }` when none decodes. No raw bytes are kept past the choice of a source: only
  * the fingerprint of the file converted from.
  *
- * A copy that decodes to a database whose `botPresets` is present and not a list counts as not decoded, the main file and
- * each backup alike, so a good backup or "convert without these" follows instead of a silent replacement. A missing or
- * null list is not that case: the conversion gives it the Default preset. A tree that is not a database is left to the
- * conversion's own refusal. The check is here, not in `strictTreeOf`, because the legacy list also reads backups through
- * that and must not list one `unreadable` for this.
+ * A copy that decodes to a tree `acceptedStrictTree` refuses counts as not decoded, the main file and each backup alike,
+ * so a good backup or "convert without these" follows instead of a silent replacement or a thrown codec error. A missing
+ * or null `botPresets` is not a refusal: the conversion gives it the Default preset. The check is here, not in
+ * `strictTreeOf`, because the legacy list also reads backups through that and must not list one `unreadable` for this.
+ *
+ * `after` resumes the walk past a copy that decoded but could not be converted: the main file and every backup up to and
+ * including that origin are passed over (the backups still count as tried), so each further copy is decoded once.
  */
-async function readStrictSource(request: ConvertRequest, decoders: LegacyDecoders): Promise<{ source: DecodedSource } | { tried: number[] }> {
-    let mainBytes = await readBytes(request.store, LEGACY_MAIN_FILE_KEY)
-    const main = acceptedStrictTree(await strictTreeOf(decoders, mainBytes))
-    if (main !== null && mainBytes !== null) {
-        return { source: { tree: main, fingerprint: fingerprintMainFile(mainBytes), origin: { kind: 'main' } } }
+async function readStrictSource(
+    request: ConvertRequest, decoders: LegacyDecoders, after: ConvertOrigin | null = null,
+): Promise<{ source: DecodedSource } | { tried: number[] }> {
+    if (after === null) {
+        let mainBytes = await readBytes(request.store, LEGACY_MAIN_FILE_KEY)
+        const main = acceptedStrictTree(await strictTreeOf(decoders, mainBytes), mainBytes !== null && hasBlockMagic(mainBytes))
+        if (main !== null && mainBytes !== null) {
+            return { source: { tree: main, fingerprint: fingerprintMainFile(mainBytes), origin: { kind: 'main' } } }
+        }
+        mainBytes = null
     }
-    mainBytes = null
     const tried: number[] = []
+    let passOver = after !== null && after.kind === 'backup' ? after.backup : null
     for (const time of await request.listBackupTimes()) {
         tried.push(time)
+        if (passOver !== null) {
+            passOver = time === passOver ? null : passOver
+            continue
+        }
         let bytes = await readBytes(request.store, backupKey(time))
-        const tree = acceptedStrictTree(await strictTreeOf(decoders, bytes))
+        const tree = acceptedStrictTree(await strictTreeOf(decoders, bytes), bytes !== null && hasBlockMagic(bytes))
         if (tree !== null && bytes !== null) {
             return { source: { tree, fingerprint: fingerprintMainFile(bytes), origin: { kind: 'backup', backup: time } } }
         }
@@ -429,8 +467,16 @@ async function installOnEntry(
     return installBuilt({ backend: request.backend, env, marked: exit }, install)
 }
 
+/** The codec refused the resolved tree while the install was planned; nothing was written. Internal: the callers turn it into a next copy or a blocked result. */
+interface Unconvertible {
+    status: 'unconvertible'
+    detail: string
+}
+
 /** Steps 4 to 7 of the conversion over a decoded source: resolve, ask, list, install. */
-async function convertDecoded(request: ConvertRequest, hooks: ConvertHooks, decoders: LegacyDecoders, source: DecodedSource): Promise<SettledResult> {
+async function convertDecoded(
+    request: ConvertRequest, hooks: ConvertHooks, decoders: LegacyDecoders, source: DecodedSource,
+): Promise<SettledResult | Unconvertible> {
     const reader = createLegacyStoreReader(request.readColdStorageItem)
     if (source.tree === null) {
         return blocked('convert-read-failed', 'The decoded tree is gone.')
@@ -439,7 +485,7 @@ async function convertDecoded(request: ConvertRequest, hooks: ConvertHooks, deco
     const needsDefaultPreset = isLegacyDatabase(source.tree) && !Array.isArray(source.tree.botPresets)
     let resolved
     try {
-        resolved = await resolveLegacyTree(source.tree, reader, request.resolve)
+        resolved = await resolveLegacyTree(source.tree, reader, { ...request.resolve, faultyUnitsUnusable: true })
     } catch (error) {
         if (error instanceof LegacyReadError) {
             return blocked('convert-read-failed', error.message)
@@ -453,15 +499,32 @@ async function convertDecoded(request: ConvertRequest, hooks: ConvertHooks, deco
     if ('reason' in listed) {
         return blocked(listed.reason, listed.detail)
     }
-    if (needsDefaultPreset) {
-        // On the resolved copy only, after the list was built from the file as read, and before any marker is written.
-        resolved.database.botPresets = [await (decoders.defaultPreset ?? loadDefaultPreset)()]
+    let database = resolved.database
+    let presetsEmptied = false
+    if (source.origin.kind === 'lenient') {
+        // The shapes the codec refuses were named to the person; the converted copy leaves them out. A strict origin never gets here with one.
+        const dropped = dropLegacyFaults(database, request.resolve?.newId ?? uuidv4)
+        database = dropped.database
+        presetsEmptied = dropped.presetsEmptied
     }
-    const plan = await planWholeTreeInstall(resolved.database, {
-        lists: request.lists,
-        env: request.env,
-        convertedFrom: source.fingerprint,
-    })
+    if (needsDefaultPreset || presetsEmptied) {
+        // On the resolved copy only, after the list was built from the file as read, and before any marker is written.
+        database = { ...database, botPresets: [await (decoders.defaultPreset ?? loadDefaultPreset)()] }
+    }
+    let plan
+    try {
+        plan = await planWholeTreeInstall(database, {
+            lists: request.lists,
+            env: request.env,
+            convertedFrom: source.fingerprint,
+        })
+    } catch (error) {
+        // Planning encodes the whole tree before any marker, so a refusal here has written nothing. Anything that is not a codec refusal is a fault of the program or the store and stays loud.
+        if (error instanceof CodecError) {
+            return { status: 'unconvertible', detail: error.message }
+        }
+        throw error
+    }
     // The kind of the deletion snapshot comes from what the store holds now and from this attempt's walks, never from the entry.
     const snapshot = await planOldDataSnapshot({ store: request.store, listBackupTimes: request.listBackupTimes }, listed)
     const result = await installOnEntry(request, withSnapshot(withLegacyKeep(plan, listed.list), snapshot))
@@ -477,19 +540,29 @@ async function convertDecoded(request: ConvertRequest, hooks: ConvertHooks, deco
  */
 export async function convertLegacyProfile(request: ConvertRequest, hooks: ConvertStrictHooks): Promise<ConvertResult> {
     const decoders = request.decoders ?? defaultDecoders
-    let read
-    try {
-        read = await readStrictSource(request, decoders)
-    } catch (error) {
-        return blocked('convert-read-failed', messageOf(error))
+    let after: ConvertOrigin | null = null
+    for (;;) {
+        let read
+        try {
+            read = await readStrictSource(request, decoders, after)
+        } catch (error) {
+            return blocked('convert-read-failed', messageOf(error))
+        }
+        if ('tried' in read) {
+            return { status: 'all-failed', backupsTried: read.tried }
+        }
+        if (read.source.origin.kind === 'backup' && !(await hooks.confirmFromBackup(read.source.origin.backup))) {
+            return { status: 'declined' }
+        }
+        const result = await convertDecoded(request, hooks, decoders, read.source)
+        if (result.status !== 'unconvertible') {
+            return result
+        }
+        // The copy decoded but the codec refuses it: the next copy is tried and this one is only logged.
+        const origin = read.source.origin
+        console.warn(`The ${origin.kind === 'backup' ? `numbered backup ${origin.backup}` : 'main file'} decoded but cannot be converted: ${result.detail}`)
+        after = origin
     }
-    if ('tried' in read) {
-        return { status: 'all-failed', backupsTried: read.tried }
-    }
-    if (read.source.origin.kind === 'backup' && !(await hooks.confirmFromBackup(read.source.origin.backup))) {
-        return { status: 'declined' }
-    }
-    return convertDecoded(request, hooks, decoders, read.source)
 }
 
 /**
@@ -519,5 +592,6 @@ export async function convertLegacyWithout(request: ConvertRequest, hooks: Conve
     if (!(await hooks.confirmSkipped(decoded.skipped))) {
         return { status: 'declined' }
     }
-    return convertDecoded(request, hooks, decoders, { tree: decoded.tree, fingerprint, origin: { kind: 'lenient' } })
+    const result = await convertDecoded(request, hooks, decoders, { tree: decoded.tree, fingerprint, origin: { kind: 'lenient' } })
+    return result.status === 'unconvertible' ? blocked('convert-lenient-failed', result.detail) : result
 }

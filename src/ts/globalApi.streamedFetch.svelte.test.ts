@@ -203,6 +203,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 
 
 import { invoke } from '@tauri-apps/api/core'
+import { language } from 'src/lang'
 import { fetchNative, getFetchData } from 'src/ts/globalApi.svelte'
 import { resetInFlightForTest } from 'src/ts/process/inFlightWork'
 
@@ -391,7 +392,7 @@ test('a request timeout before the headers cancels the native request once and r
     await within(pending)
     await settle()
 
-    expect(outcome.error).toBe('Request timed out')
+    expect(outcome.error).toBe(language.errors.requestTimedOut)
     expect(cancelCalls()).toEqual([['cancel_streamed_fetch', { id }]])
 })
 

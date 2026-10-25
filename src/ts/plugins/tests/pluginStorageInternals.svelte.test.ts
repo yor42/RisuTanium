@@ -336,6 +336,39 @@ describe('store2 layout: values live at pluginCustomStorage[<unit id>] next to _
         expect(stored.plain).toBe('kept')
     })
 
+    // Guards (pass before and after): a unit id the current map names but that holds no value stays absent whatever the
+    // incoming object carries at that id.
+    test('guard: setDatabase cannot fill a mapped unit that holds no value', async () => {
+        installDb({ [PLUGIN_STORAGE_LEGACY_MAP_KEY]: { k: 'unit-1' } })
+        await getV2PluginAPIs().setDatabase({ pluginCustomStorage: { [PLUGIN_STORAGE_LEGACY_MAP_KEY]: { k: 'unit-1' }, 'unit-1': 'smuggled' } }, 'p')
+        expect(Object.hasOwn(liveStorage(), 'unit-1')).toBe(false)
+    })
+
+    test('guard: setDatabaseLite cannot fill a mapped unit that holds no value', () => {
+        installDb({ [PLUGIN_STORAGE_LEGACY_MAP_KEY]: { k: 'unit-1' } })
+        getV2PluginAPIs().setDatabaseLite({ pluginCustomStorage: { [PLUGIN_STORAGE_LEGACY_MAP_KEY]: { k: 'unit-1' }, 'unit-1': 'smuggled' } }, 'p')
+        expect(Object.hasOwn(liveStorage(), 'unit-1')).toBe(false)
+    })
+
+    test('guard: the getDatabase proxy cannot fill a mapped unit that holds no value', () => {
+        installDb({ [PLUGIN_STORAGE_LEGACY_MAP_KEY]: { k: 'unit-1' } })
+        const proxy = getV2PluginAPIs().getDatabase() as unknown as { pluginCustomStorage: Record<string, unknown> }
+        proxy.pluginCustomStorage = { [PLUGIN_STORAGE_LEGACY_MAP_KEY]: { k: 'unit-1' }, 'unit-1': 'smuggled' }
+        expect(Object.hasOwn(liveStorage(), 'unit-1')).toBe(false)
+    })
+
+    test('reproducer: a stale setDatabase issued right after a write starts cannot drop the value the write is landing', async () => {
+        installDb({ [PLUGIN_STORAGE_LEGACY_MAP_KEY]: {} })
+        const stale = $state.snapshot(DBState.db.pluginCustomStorage)
+        const write = v3Set('k', { n: 1 })
+        const staleCall = getV2PluginAPIs().setDatabase({ pluginCustomStorage: stale }, 'p')
+        await Promise.all([write, staleCall])
+        const stored = liveStorage()
+        const slots = stored[PLUGIN_STORAGE_LEGACY_MAP_KEY] as Record<string, string>
+        expect(slots.k).toBeTypeOf('string')
+        expect(stored[slots.k]).toEqual({ n: 1 })
+    })
+
     test('resetting pluginCustomStorage through the V2 getDatabase proxy keeps the internals and mapped values', async () => {
         installDb({ [PLUGIN_STORAGE_LEGACY_MAP_KEY]: { k: 'u1' }, [PLUGIN_STORAGE_INDEX_KEY]: LIVE_INDEX, u1: { v: 'old' }, v2key: 'x' })
         const proxy = getV2PluginAPIs().getDatabase() as unknown as { pluginCustomStorage: Record<string, unknown> }

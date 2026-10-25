@@ -245,3 +245,48 @@ describe('repairCharacterTree: an export works on a copy and never touches the p
         expect(copy.characters.every((c, i) => c === entries[i])).toBe(true)
     })
 })
+
+describe('repairCharacterTree: reservedBlockNames', () => {
+    const reserved: ReadonlySet<string> = new Set(['kv:foo', 'kv:kv:bar'])
+
+    test('(G) without the option an id that looks like a block name is untouched in every mode; boot and restore ignore the option', async () => {
+        for (const mode of ['boot', 'restore', 'export'] as const) {
+            const plain = { characters: [character('kv:foo')] }
+            await repairCharacterTree(plain, mode)
+            expect(ids(plain)).toEqual(['kv:foo'])
+        }
+        for (const mode of ['boot', 'restore'] as const) {
+            const tree = { characters: [character('kv:foo')] }
+            const result = await repairCharacterTree(tree, mode, { reservedBlockNames: reserved })
+            expect(ids(tree)).toEqual(['kv:foo'])
+            expect(result).toEqual({ notices: [], refusals: [] })
+        }
+    })
+
+    test('(R) in export a reserved id is replaced, every holder gets its own new id and the first holder takes the lists', async () => {
+        const tree = {
+            characters: [character('kv:foo'), character('kv:other'), character('kv:foo'), character('kv:kv:bar')],
+            characterOrder: ['kv:foo', 'kv:other'] as unknown[],
+        }
+        const result = await repairCharacterTree(tree, 'export', { reservedBlockNames: reserved })
+        const out = ids(tree) as string[]
+        expect(out[1]).toBe('kv:other')
+        expect(new Set(out).size).toBe(4)
+        expect(out.filter((id) => reserved.has(id))).toEqual([])
+        expect(tree.characterOrder).toEqual([out[0], 'kv:other'])
+        expect(result.notices.map((n) => n.kind)).toEqual(['id-replaced', 'id-replaced', 'id-replaced'])
+    })
+
+    test('(R) an archived reserved id takes a clean unit id, and a unit id that is reserved too leaves a new id', async () => {
+        const clean = { characters: [stub('kv:foo')] }
+        const cleanResult = await repairCharacterTree(clean, 'export', { reservedBlockNames: reserved, readUnitCharacter: async () => character('real') })
+        expect(ids(clean)).toEqual(['real'])
+        expect(cleanResult.notices.map((n) => n.kind)).toEqual(['stub-id-recovered'])
+
+        const both = { characters: [stub('kv:foo')] }
+        const bothResult = await repairCharacterTree(both, 'export', { reservedBlockNames: reserved, readUnitCharacter: async () => character('kv:foo') })
+        const fresh = ids(both)[0] as string
+        expect(fresh).toMatch(/^[0-9a-f-]{36}$/)
+        expect(bothResult.notices.map((n) => n.kind)).toEqual(['stub-unrestorable'])
+    })
+})

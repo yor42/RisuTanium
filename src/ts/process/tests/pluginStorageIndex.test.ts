@@ -16,6 +16,7 @@ import {
     mergeIndexIntoSlotMap,
     pluginIndexPointer,
     slotsOfIndex,
+    unavailableKeysOfMissing,
     type PluginIndexIo,
     type PluginIndexRead,
     type PluginStorageIndex,
@@ -269,7 +270,7 @@ describe('convertPluginStorageIndex', () => {
 
         const result = await convertPluginStorageIndex(fixture, io)
 
-        expect(result.missing).toEqual([uid(0x1000)])
+        expect(result.missing).toEqual([{ id: uid(0x1000), slotKey: 'bad' }])
         const slots = fixture._coldplugin as Record<string, string>
         expect(Object.keys(slots).sort()).toEqual(['good', 'kept'])
         expect(store.get(slots.good)).toBe(2)
@@ -283,7 +284,7 @@ describe('convertPluginStorageIndex', () => {
 
         const result = await convertPluginStorageIndex(fixture, io)
 
-        expect(result.missing).toEqual([uid(0x1000)])
+        expect(result.missing).toEqual([{ id: uid(0x1000), slotKey: 'a' }])
         expect(result.minted).toEqual([])
         expect('_coldpluginIndex' in fixture).toBe(false)
         expect(fixture._coldplugin).toEqual({})
@@ -295,9 +296,45 @@ describe('convertPluginStorageIndex', () => {
 
         const result = await convertPluginStorageIndex(fixture, io)
 
-        expect(result.missing).toEqual([uid(0x1000)])
-        expect(writes).toEqual([uid(0x1001)])
+        expect(result.missing).toEqual([{ id: POINTER, slotKey: 'a' }])
+        expect(writes).toEqual([uid(0x1000)])
         expect(Object.keys(fixture._coldplugin as object)).toEqual(['b'])
+    })
+
+    test('reproducer: the same bad entry reports the same item whatever ids the mint returns', async () => {
+        const convertWith = async (first: number) => {
+            const { fixture, units } = storageWith(indexOf([{ k: 'a', s: '{not json' }]))
+            const { io } = makeIo({ units })
+            let next = first
+            return (await convertPluginStorageIndex(fixture, { ...io, mint: () => uid(next++) })).missing
+        }
+
+        const firstAttempt = await convertWith(0x1000)
+        const secondAttempt = await convertWith(0x9000)
+
+        expect(firstAttempt).toEqual([{ id: POINTER, slotKey: 'a' }])
+        expect(secondAttempt).toEqual(firstAttempt)
+    })
+
+    test('reproducer: two bad entries are reported under their own plugin keys', async () => {
+        const { fixture, units } = storageWith(indexOf([{ k: 'a', s: '{not json' }, { k: 'b', s: 'also not json' }]))
+        const { io } = makeIo({ units })
+
+        const result = await convertPluginStorageIndex(fixture, io)
+
+        expect(result.missing.map(item => item.slotKey)).toEqual(['a', 'b'])
+    })
+
+    test('guard: the legacy-page restore question counts one unavailable key per failed slot', async () => {
+        const { fixture, units } = storageWith(indexOf([{ k: 'a', s: '{not json' }, { k: 'b', s: 'also not json' }]))
+        const { io } = makeIo({ units })
+        const { missing } = await convertPluginStorageIndex(fixture, io)
+
+        expect(new Set(unavailableKeysOfMissing(missing)).size).toBe(2)
+    })
+
+    test('guard: an index-level failure keeps its unit id as the unavailable key', () => {
+        expect(unavailableKeysOfMissing([{ id: POINTER, slotKey: '_coldpluginIndex' }, { id: '../x', slotKey: '_coldpluginIndex' }])).toEqual([POINTER, '../x'])
     })
 
     test('a large id that is no unit id is reported and not mapped', async () => {
@@ -306,7 +343,7 @@ describe('convertPluginStorageIndex', () => {
 
         const result = await convertPluginStorageIndex(fixture, io)
 
-        expect(result.missing).toEqual(['../escape'])
+        expect(result.missing).toEqual([{ id: '../escape', slotKey: 'a' }])
         expect(fixture._coldplugin).toEqual({})
     })
 
@@ -324,7 +361,7 @@ describe('convertPluginStorageIndex', () => {
 
         const result = await convertPluginStorageIndex(fixture, io)
 
-        expect(result).toEqual({ minted: [], missing: [POINTER] })
+        expect(result).toEqual({ minted: [], missing: [{ id: POINTER, slotKey: '_coldpluginIndex' }] })
         expect(writes).toEqual([])
         expect(fixture).toEqual({ _coldplugin: { kept: uid(2) } })
     })
@@ -335,7 +372,7 @@ describe('convertPluginStorageIndex', () => {
 
         const result = await convertPluginStorageIndex(fixture, io)
 
-        expect(result).toEqual({ minted: [], missing: [POINTER] })
+        expect(result).toEqual({ minted: [], missing: [{ id: POINTER, slotKey: '_coldpluginIndex' }] })
         expect('_coldpluginIndex' in fixture).toBe(false)
     })
 
@@ -345,7 +382,7 @@ describe('convertPluginStorageIndex', () => {
 
         const result = await convertPluginStorageIndex(fixture, io)
 
-        expect(result).toEqual({ minted: [], missing: ['../x'] })
+        expect(result).toEqual({ minted: [], missing: [{ id: '../x', slotKey: '_coldpluginIndex' }] })
         expect(reads).toEqual([])
         expect(fixture).toEqual({})
     })

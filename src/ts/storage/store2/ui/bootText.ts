@@ -115,6 +115,8 @@ function skippedKindLabel(kind: SkippedLegacyEntry['kind']): string {
             return text.skippedPlugins
         case 'pluginStorage':
             return text.skippedPluginStorage
+        case 'chats':
+            return text.skippedChats
         case 'ignored':
             return text.skippedConfig
         default:

@@ -25,6 +25,7 @@ export const languageEnglish = {
         networkFetchWeb:
             "This can be a CORS error. this only happens when using web version due to limitations of the browser. try using desktop local version, or other version of RisuTanium.",
         networkFetchPlain: "This can be a plain fetch error. try disabling force plain fetch option in settings.",
+        requestTimedOut: "Request timed out",
         requestLogRemoved: "This request log is removed.",
         requestLogRemovedDesc: "This request log removes when client is refreshed or reloaded.",
         secretRefUnavailable: (name: string) =>
@@ -106,7 +107,7 @@ export const languageEnglish = {
             `This chat's stored messages could not be read (key: ${coldDataKey}): the stored copy may be damaged. Nothing was changed or deleted.`,
         coldStorageLegacyChatUnavailable: "The earlier messages can't be loaded on this page: this browser offers no storage for them here. The messages you can already see are unaffected.",
         coldStorageLegacyChatDamaged: "The earlier messages could not be read: their stored copy may be damaged. The messages you can already see are unaffected.",
-        chatParseFailed: "Error while parsing chat message: {translated}, {message}, {stack}",
+        chatParseFailed: "Error while parsing chat message: {translated}, {message}",
         screenshotFailed: "Error while taking screenshot",
         irisLlmFailed: "Failed to get response from LLM: {error}",
         invalidApiKey: "Invalid API key",
@@ -2737,6 +2738,7 @@ export const languageEnglish = {
         skippedLoadouts: "Loadouts",
         skippedPlugins: "Plugins",
         skippedPluginStorage: "Plugin data",
+        skippedChats: "Chats that could not be read",
         skippedConfig: "App settings block",
         skippedOther: "A block of unrecognized data",
         withoutNo: "Not now",

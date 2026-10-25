@@ -2,6 +2,7 @@ import type { Database } from '../../database.svelte'
 import {
     decodeRisuSave, isBlockFormatSave, salvageRisuSave, type SalvageOmittedKind,
 } from '../../risuSave'
+import { coalesceFaults, findLegacyFaults, legacyCharactersRefused } from './faults'
 
 /**
  * The lenient decode behind "convert without these", the user-chosen exit when
@@ -14,15 +15,21 @@ import {
  * an older copy; cache-filled blocks no longer count as present. The older
  * msgpack formats have no blocks: today's decoder may guess an older format and
  * return whatever it decodes, so the result is accepted only when it is an
- * object with a `characters` list, and the only thing named there is a
- * `botPresets` that is present and not a list (kind `presets`), because the
- * conversion replaces it with the Default preset. A missing or null `botPresets`
- * names nothing: no data is dropped. A block-format save is not held to that: a
- * profile with no characters writes no list, and its root block was already
- * required by the decoder.
+ * object with a `characters` list. In both formats every shape the store2 codec
+ * refuses (`findLegacyFaults`) is named, one entry per kind and one per skipped
+ * character slot, because the conversion leaves exactly those out
+ * (`dropLegacyFaults`); a block the salvage already named is not named twice.
+ * A missing or null part names nothing: no data is dropped. A block-format save
+ * is refused when its characters are present and not a list, because installing
+ * them as an empty profile would drop them unnamed; a missing list is accepted,
+ * since a profile with no characters writes no list.
  */
 
-/** An older-format save decoded to something that is not a database: no object with a `characters` list. */
+/**
+ * The save cannot be converted leniently: an older-format save decoded to
+ * something that is not an object with a `characters` list, or a block-format
+ * save holds `characters` that are present and not a list.
+ */
 export class LegacyDecodeError extends Error {
     constructor() {
         super('The save decoded to something that is not a database (no characters list).')
@@ -54,15 +61,12 @@ function checkedTree(tree: unknown): Database {
 export async function decodeLegacyLenient(bytes: Uint8Array): Promise<LenientLegacyDecode> {
     if (isBlockFormatSave(bytes)) {
         const { db, omitted } = await salvageRisuSave(bytes)
-        return {
-            tree: db,
-            skipped: Array.from(omitted, ([name, block]) => ({ name, kind: block.kind, reason: block.reason })),
+        if (legacyCharactersRefused(db, false)) {
+            throw new LegacyDecodeError()
         }
+        const salvaged = Array.from(omitted, ([name, block]) => ({ name, kind: block.kind, reason: block.reason }))
+        return { tree: db, skipped: coalesceFaults(findLegacyFaults(db), salvaged) }
     }
     const tree = checkedTree(await decodeRisuSave(bytes))
-    const presets = (tree as { botPresets?: unknown }).botPresets
-    const skipped: SkippedLegacyEntry[] = presets === undefined || presets === null || Array.isArray(presets)
-        ? []
-        : [{ name: 'botPresets', kind: 'presets', reason: 'The presets are not a list.' }]
-    return { tree, skipped }
+    return { tree, skipped: coalesceFaults(findLegacyFaults(tree)) }
 }

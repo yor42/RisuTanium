@@ -611,6 +611,33 @@ describe('the commit and its outcomes', () => {
         expect((await page.k.commitKey()).retained).toHaveLength(1)
     })
 
+    // The committer is a double (conflict, then the real commit); the import, the resolve and the question's signature are real.
+    test('reproducer: a conflict does not repeat the question about a plugin storage entry that is not JSON', async () => {
+        const page = await openPage()
+        const pointer = '00000000-0000-4000-8000-0000000000a1'
+        const index = { type: 'risu-plugin-storage-index', version: 1, entries: [{ k: 'badKey', s: '{not json' }], trash: [] }
+        const source = makeDb('indexed', ['alpha'])
+        source.pluginCustomStorage = { _coldpluginIndex: pointer }
+        const bytes = binOf(
+            binEntry('database.risudat', await blockFileBytes(page, source)),
+            binEntry(`coldstorage_${pointer}.json`, new TextEncoder().encode(JSON.stringify(index))),
+        )
+        const real = page.k.committer
+        const calls = committingWith(page, async (_real, read, request, call) => {
+            if (call === 1) {
+                return { status: 'conflict', current: read }
+            }
+            return await real.commit(await real.readCommit(), request)
+        })
+
+        await loadBin(page, bytes)
+
+        expect(calls).toHaveLength(2)
+        expect(confirmTexts(page)).toHaveLength(1)
+        expect(confirmTexts(page)[0]).toContain('badKey')
+        expect(page.reloads.count).toBe(1)
+    })
+
     // New behaviour, pinned by mutants: the retry is one. A conflict that keeps coming ends unconfirmed, never in a loop.
     test('a conflict that repeats is retried once and then unconfirmed', async () => {
         const page = await openPage()
