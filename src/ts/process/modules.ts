@@ -14,6 +14,7 @@ import { DBState, HideIconStore, moduleBackgroundEmbedding, ReloadGUIPointer } f
 import {get} from "svelte/store"
 import { convertCharacterToModule, convertModuleToCharacter } from "../interchangeability"
 import { exportCharacterCard, importCharacterFile } from "../characterCards"
+import { matchesModuleRef, referencedModuleIds } from "./moduleRefs"
 import { ModuleRefusal } from "./moduleRefusal"
 import { ModuleImportStopped, confirmRisumLowLevel } from "./moduleImportStop"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportOutcome } from "../importBatch"
@@ -701,9 +702,7 @@ function getModuleById(id:string){
 function getModuleByIds(ids:string[]){
     const db = getDatabase()
     const idSet = new Set(ids)
-    const modules = db.modules.filter(m => 
-        idSet.has(m.id) || (m.namespace && idSet.has(m.namespace))
-    )
+    const modules = db.modules.filter(m => matchesModuleRef(m, idSet))
     return deduplicateModuleById(modules)
 }
 
@@ -737,20 +736,13 @@ export function getModules(subject?: RunSubject){
         persona = checkPersonaBinded()
     }
     const db = getDatabase()
-    let ids = db.enabledModules ?? []
-    if (currentChat){
-        ids = ids.concat(currentChat.modules ?? [])
-    }
-    if(character && character.modules){
-        ids = ids.concat(character.modules)
-    }
-    if(persona && persona.embeddedModule){
-        ids = ids.concat([persona.embeddedModule?.id])
-    }
-    if(db.moduleIntergration){
-        const intList = db.moduleIntergration.split(',').map((s) => s.trim())
-        ids = ids.concat(intList)
-    }
+    const ids = referencedModuleIds({
+        enabledModules: db.enabledModules,
+        chat: currentChat,
+        character,
+        persona,
+        moduleIntergration: db.moduleIntergration,
+    })
     const idsJoined = ids.join('-')
     if(lastModules === idsJoined){
         return lastModuleData
