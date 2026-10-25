@@ -392,3 +392,86 @@ Scratch paths are under the session scratchpad, outside the repository.
 - No README change: none of the three changes is user-visible (`MC-332` 2). No UI strings changed.
 
 **Handoff (2026-10-24, lane C cloud batch Q).** Branch `lane-c-cloud-q`, from `main` at `15777155a`. Commits: `413f600` CHORE-240, `ab52cb8` CHORE-185, then the records commit of this section, which also carries CHORE-353 (records only, `MC-439`). Gates: one batch Gate 1, `[APPROVE WITH AMENDMENTS]` (row 3344), with amendments applied; one batch Gate 2, `[APPROVE]` per ticket (row 3347). Tests: row 3348. No stored data changed. Open questions for the maintainer: none. Next free IDs: MC-440, CHORE-331, row 3351.
+
+## 2026-10-25 — lane C (cloud): upstream sync 61d0eb79a..f50b5942e (CHORE-331)
+
+Session: a new lane C (cloud) session in a Linux container, started by lane A at the maintainer's request (lane A's brief, 2026-10-25). Branch `lane-c-upstream-1023` from `origin/main` at `91fdaac2d`. Remote `upstream` = `https://github.com/kwaroran/Risuai`, fetched 2026-10-25, `upstream/main` = `f50b5942e`. Next free IDs at start: MC-440, CHORE-331, row 3351.
+
+**MC entries**
+
+### MC-440 — Lane C, 2026-10-25: the version suffix follows the upstream sync (`up2026.10.220`)
+
+- **Tag:** decisions (a direct instruction in chat, 2026-10-25)
+- **Date:** 2026-10-25
+- **Sweep ref:** none
+- **Source:** the lane C (cloud) session transcript. The maintainer's words, after the hand-back listed the question as open: "move the appSubVer and version.json to up2026.10.220."
+- **Related:** `MC-162` 3; CHORE-331.
+
+1. **`appSubVer` and `version.json` move to `up2026.10.220`**, upstream's version at `f50b5942e`, the last upstream commit merged. `appVer` stays `0.1.0`.
+
+**Notes that are not the maintainer's words:**
+- The instruction names only `appSubVer` and `version.json`. Two other places quote the old string and were not changed: `README.md` (the "A new identity" bullet says the home screen shows `0.1.0-up2026.8.250`) and `.github/ISSUE_TEMPLATE/bug_report.yml` (an example string). Whether they follow is left to the maintainer.
+- The instruction does not say whether later syncs move the suffix too.
+
+### MC-441 — Lane C, 2026-10-25: the README follows the new suffix; the issue template keeps its example
+
+- **Tag:** decisions (a direct instruction in chat, 2026-10-25)
+- **Date:** 2026-10-25
+- **Sweep ref:** none
+- **Source:** the lane C (cloud) session transcript. The maintainer's words, answering the `MC-440` notes: "update the README too, leave the issue template".
+- **Related:** `MC-440`, `MC-162` 3; CHORE-331.
+
+1. **`README.md`** ("A new identity" bullet) now says the home screen shows `0.1.0-up2026.10.220`.
+2. **`.github/ISSUE_TEMPLATE/bug_report.yml`** keeps its example string `0.1.0-up2026.8.250`.
+
+**Notes that are not the maintainer's words:**
+- Whether every later sync moves the suffix is still not stated.
+
+**CHORE entries**
+
+### CHORE-331 (new) — Bring in upstream 61d0eb79a..f50b5942e
+
+**Status (2026-10-25, lane C cloud): merged on `lane-c-upstream-1023` (`a2f3fb07e`), after the regression test `b724e2cc2`, with a comment fix `936f3667c`; Gate 1 `[APPROVE WITH AMENDMENTS]` for f71029477 (row 3354); Gate 2 `[APPROVE]` (row 3356). Needs the maintainer's merge approval (plugin and persistence paths).**
+
+- **Range:** `git log 61d0eb79a..upstream/main`: 9 commits, 7 non-merge (`9aae5e631` and `74d96626a`, the #1598 PR merge, are merges). The message of `a2f3fb07e` says "8 non-merge"; that is wrong and is left unrewritten. `git merge-base a2f3fb07e upstream/main` returns `f50b5942e`. The net change to the fork is one line in `src/ts/process/scriptings.ts` (plus upstream's trailing space on the line above it, kept byte-identical to upstream).
+- **Dispositions:**
+
+| Upstream commit | Disposition | Reason / evidence |
+|---|---|---|
+| `63399cbd4` fix: disable proxy in lua | TAKEN as is | `luaFactory.createEngine({injectObjects: true, enableProxy: false})`. In wasmoon 1.16.0 (installed) the proxy extension hands Lua a live JS object (its `__index` and `__newindex` read and write the object itself); with it off, objects reach Lua as table copies of their enumerable keys (wasmoon copies with `for...in`). Other script-visible effects, identical to upstream: `type()` of a returned object is `table`, not `userdata`; `pairs` over an array yields 1-based indices; `tostring` of a JS error drops the `Error: ` prefix; class instances lose their methods. Gate 2 found no fork code that depends on these. Regression test `scriptings.test.ts` "a Lua script cannot write to a host prototype through an object an API returns": `simpleLLM` returns `{success, result}`; Lua writes `reply.__proto__.risuLuaPolluted`. Red on `91fdaac2d` (`Object.prototype` gained the key), green after the merge; the same test guards that `reply.success` and `reply.result` still read in Lua. The fork and upstream declare the same 54 Lua API names. `src/ts/process` and `src/ts/parser` (208 files, 4490 tests) pass with the change (session output, not preserved). |
+| `72d2bacd9`, `ae54b830e` (#1598, merged upstream as `74d96626a`) setDatabase plugin round trip | ALREADY COVERED (CHORE-64, `48f00223`) | The fork's `setDatabase` never assigns `plugins`: `writeSetterKeys` skips the key and the list goes through `planPluginListWrite`, which merges by name and updates in place after a prompt. Upstream's defect line `newDb[key] = await handlePluginInstallViaPlugin(newDb.plugins)` is on `48f00223^`. Proof by test: `pluginListWrites.svelte.test.ts` "S1 ... setDatabase leaves every plugin as it was" drives the real V3 wrapper into the shared setter and passes on `91fdaac2d`; a scratch mutant that re-adds upstream's pre-fix assignment after `writeSetterKeys` fails it (53 of 137 fail, S1 among them). Upstream's same-name-in-place update matches the fork's S2/S3 tests. V2.1 plugin scripts no longer run (`MC-349`, CHORE-206), and the V2 setters are immune anyway (S2/S3 V2 callers; Gate 2 probe: an unchanged round trip or `[]` removes nothing). Gate 2's mutant forcing the wipe inside the shared `writeSetterKeys` failed 107 of 137, S1 and S5 on both `setDatabase` and `setDatabaseLite`; an undefined live `plugins` with `{plugins: []}` neither throws nor prompts. |
+| `f71029477` plugin storage migration before loading plugins | NOT APPLICABLE | Built on upstream's `PluginStorageStore`, which the fork did not take (10-21 merge, G2). Upstream already migrated legacy values into `_coldpluginIndex` at `61d0eb79a`, in the background from `makeColdData`; this commit only runs it before `loadPlugins` when plugins are installed. It changes no persisted layout, so the fork's import conversion of `_coldpluginIndex` still covers upstream's `.bin`. The fork reads plugin storage per access (`pluginColdStorage.ts`) and has no lazy or background migration for a loading plugin to race; the store2 conversion of an upstream index runs in `bootDispatch.ts` while the database loads, before `loadPlugins`. Closest analogue, unchanged by this commit and not fixed by an adapted port: residual 12b in the 10-21 merge record (`MC-324` 9), where legacy boot paths can install an unconverted `_coldpluginIndex`; that is a precedence problem, not a race. Gate 1 `[APPROVE WITH AMENDMENTS]` (row 3354). |
+| `63d85f9be`, `02a83695d`, `f50b5942e` version bumps (2026.10.210, .211, .220) | Fork side kept | `src-tauri/tauri.conf.json`, `database.svelte.ts` and `version.json` keep `0.1.0` and `up2026.8.250` (`MC-162` 3). No earlier sync met an upstream version change (upstream was `2026.8.250` from the fork point through `61d0eb79a`), so there is no precedent; `appSubVer` and `version.json` then moved to `up2026.10.220` at the maintainer's instruction (`MC-440`, row 3359). |
+| `9aae5e631` | Upstream merge commit | No change of its own. |
+
+- **Conflicts:** `tauri.conf.json`, `bootstrap.ts`, `plugins.svelte.ts`, `coldstorage.svelte.ts`, `database.svelte.ts`, `version.json`: the fork's side of the whole file. `pluginStorageStore.ts` (modify/delete): stays deleted. `scriptings.ts` merged cleanly.
+- **Persistence:** nothing changes a persisted shape. MC-175: a `.bin` moves as before in both directions; upstream Lua scripts now see the same table-copy behaviour as upstream.
+- **Draft for `Agents/Upstream-Merges.md`** (lane A folds it in): a section "2026-10-25 — merge of upstream/main `f50b5942e`" with the table above; **Last upstream commit merged: `f50b5942e`**; next merge: `git log --no-merges f50b5942e..upstream/main`.
+
+**Ledger rows**
+
+Scratch paths are under the session scratchpad, outside the repository.
+
+| Row | Date | Item | Agent / role | Artifact | Result |
+|---|---|---|---|---|---|
+| 3351 | 2026-10-25 | CHORE-331 classification | orchestrator | inline commands; `fork-apis.txt`, `up-apis.txt` | Read each upstream diff, the 10-21 merge record, `MC-162`, the fork's `setDatabase` and wasmoon 1.16.0's engine and proxy code. Dispositions as in CHORE-331. |
+| 3352 | 2026-10-25 | #1598 immunity | orchestrator | `mutant-1598.diff`, `mutant-1598.out` | `pluginListWrites` and `pluginListMerge` 187 of 187 on `91fdaac2d`. Scratch worktree with upstream's pre-fix assignment re-added: 53 failed, 84 passed, S1 among the failures. Worktree removed. |
+| 3353 | 2026-10-25 | `63399cbd4` red/green | orchestrator | `lua-red.out`, `lua-green.out` | New test red on `91fdaac2d` (`expected true to be false`: `Object.prototype` polluted), 3 of 3 green with `enableProxy: false`. `src/ts/process` and `src/ts/parser`: 208 files, 4490 passed, 4 skipped (session output, not preserved). |
+| 3354 | 2026-10-25 | `f71029477` Gate 1 | opus-reviewer | `g1-f710-verdict.md` | `[APPROVE WITH AMENDMENTS]`. Claims 1, 2 and 4 CONFIRMED; claim 3 CONFIRMED with qualification. A1 (record wording: "no lazy migration to race", cite residual 12b): applied in CHORE-331. A2 (process): the merge `a2f3fb07e` was committed in this checkout while this review was still running; see the deviation note below. The reviewer confirmed the committed tree has no upstream leftovers (`git diff --stat b724e2cc2 a2f3fb07e`: `scriptings.ts` only). No tests run (no code proposed). |
+| 3355 | 2026-10-25 | CHORE-331 commits | orchestrator | `b724e2cc2` (test), `a2f3fb07e` (merge), `936f3667c` (test comment) on `lane-c-upstream-1023` | Test first, then `git merge --no-ff upstream/main` with conflicts resolved to the fork's side; targeted tests 140 of 140 on the merge (session output, not preserved). |
+| 3356 | 2026-10-25 | CHORE-331 Gate 2 | opus-reviewer | `g2-verdict.md` | `[APPROVE]`, 9 non-blocking notes. Re-ran in a scratch worktree: merge shape (merge-base `f50b5942e`, same 7 conflict files, no f71029477 symbols), Lua test 1 of 3 failing at `b724e2cc2` on the pollution assertion and 3 of 3 at `a2f3fb07e`, Lua `__proto__` vectors with the proxy off (none pollute), a `writeSetterKeys` wipe mutant (107 of 137 fail), V2/V3 setter probes, 9 targeted files 280 of 280, `svelte-check` 0/0. Notes taken: "enumerable" not "own" keys (test comment and record), script-visible side effects listed, V2 setter immunity stated. Not taken: commit subject wording of `b724e2cc2` (no history rewrite). Recorded only: vitest 4.1.11 installed vs 4.1.12 in the lockfile (predates this branch); the test's `mockReset()` is harmless only while it is the last test in the file. |
+| 3357 | 2026-10-25 | CHORE-331 full checks | orchestrator | `check.out`, `build.out`, `test.out` | On `a2f3fb07e` (tree: only this records draft modified). `NODE_OPTIONS=--max-old-space-size=8192 pnpm check`: 0 errors, 0 warnings (the first run without the flag ran out of heap, exit 134, no result). `pnpm build`: exit 0. Full `pnpm test`: 1012 files, 23305 tests; 10 failed, 23272 passed, 23 skipped; 1406.8 s. All 10 failures are in `store2/replay/actors.test.ts` (concurrent recoveries ×6, injected faults ×1, Tauri restart ×3), the known Linux timeouts; `saveLoopNetBackstop` B7 passed in this run. `git status` unchanged by the run. Then `936f3667c` (test comment only, Gate 2 note 1): `scriptings.test.ts` 3 of 3. |
+| 3358 | 2026-10-25 | CHORE-331 records verification | doc-verifier | `records-verify.md` | PASS WITH CORRECTIONS. Required: the non-merge count is 7, not 8 (applied; the committed merge message keeps the wrong figure). Git facts, conflict set, dispositions, mutant and red/green outputs, row 3357, IDs, no invented MC entry, shared records untouched and format VERIFIED (pluginListWrites and pluginListMerge rerun 187 of 187). UNVERIFIABLE from preserved files: the first `pnpm check` OOM, the 208-file and 140-test runs (now marked as session output). |
+| 3359 | 2026-10-25 | `MC-440` version suffix | orchestrator (writer); adversarial-reviewer (Gate 2) | `version-verdict.md`, `check.log` (second session scratchpad) | `appSubVer` and `version.json` set to `up2026.10.220`; line endings and `version.json`'s missing final newline kept. Gate 2 `[EDITORIAL]`: the strings match upstream `f50b5942e:version.json`; the only consumers are `getVersionString` (home-screen Version line) and `AlertComp.svelte` (error-report text), both display only; nothing persists, compares or pins the suffix, so `.bin` compatibility is unaffected; `NODE_OPTIONS=--max-old-space-size=8192 pnpm check` 0 errors, 0 warnings. No tests run (no test pins the string). Editorial points applied: this row added, handoff line and next-free IDs updated. |
+| 3360 | 2026-10-25 | `MC-441` README | orchestrator | `README.md` | One string in the "A new identity" bullet: `0.1.0-up2026.8.250` → `0.1.0-up2026.10.220`; line endings kept. The issue template is unchanged. Documentation only, so no application tests. |
+
+**Process deviation (Gate 1 A2):** the brief asked for the f71029477 plan review before writing code. The orchestrator sent the review, then committed the merge locally (`a2f3fb07e`) before the verdict arrived. The merge takes no f71029477 code (fork side of every file it touches), the commit was not pushed before the verdict, and the verdict upheld the disposition, so nothing was reworked. Recorded so lane A can judge it at merge review.
+
+**Open questions for the maintainer (not decided):**
+1. ~~Should `appSubVer` and `version.json` move to `up2026.10.220`?~~ Answered: yes (`MC-440`).
+2. ~~Should `README.md` and the bug-report template follow the new suffix?~~ Answered: the README yes, the template no (`MC-441`).
+3. Should every later sync move the suffix? (`MC-440`, `MC-441` notes.)
+
+**Not done (for lane A at merge):** merge review, Windows full checks and the build on the merged snapshot; the maintainer's merge approval (plugin and persistence paths); fold-in of CHORE-331, rows 3351 to 3360, `MC-440`, `MC-441` and the Upstream-Merges draft. No README change for the sync itself (`MC-441` covers the version string): nothing user-visible beyond Lua scripts getting table copies instead of live JS objects (with the side effects listed under `63399cbd4`). No UI strings changed.
+
+**Handoff (2026-10-25, lane C cloud upstream sync).** Branch `lane-c-upstream-1023` from `origin/main` `91fdaac2d`: `b724e2cc2` test, `a2f3fb07e` merge of upstream `f50b5942e`, `936f3667c` test comment, then the records commit of this section. Gates: Gate 1 for f71029477 `[APPROVE WITH AMENDMENTS]`, amendments applied; Gate 2 `[APPROVE]`. Full checks: row 3357. No stored data shape changed. `appSubVer` and `version.json` then moved to `up2026.10.220` at the maintainer's instruction (`MC-440`, row 3359). The README followed and the issue template kept its example (`MC-441`, row 3360). Open question: whether later syncs move the suffix (above). Pushed: the branch only, never `main`. Next free IDs: MC-442, CHORE-332, row 3361.
