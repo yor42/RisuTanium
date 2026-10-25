@@ -3,6 +3,7 @@ import type { UnitType } from './format'
 import type { SplitMsField, SplitPutSection, SplitRecorder } from './codec/types'
 import type { CharSignals, NetSignalHandle, SignalGlobals } from '../netSignalMeter'
 import type { InFlightKind } from '../../process/inFlightWork'
+import { peekTextReadCount } from '../tauriByteTransport'
 
 /**
  * The save-pass meter of a measurement build: per encode pass the kind, whether the modules were encoded, how many
@@ -255,6 +256,8 @@ export interface SavePassMeterHandle {
     shadowSlots(): NetShadowSlot[]
     signalSlots(): SignalSlotRecord[]
     signalAcks(): SignalAckRecord[]
+    /** The `read_range_text` invokes since the page started (the transport's counter; neither `reset()` nor an export's take clears it). */
+    textReads(): number
     reset(): void
 }
 
@@ -957,6 +960,7 @@ const handle: SavePassMeterHandle = {
     shadowSlots: () => (shadowSlotStore ?? []).map(slot => ({ ...slot })),
     signalSlots: () => (signalSlotStore ?? []).map(slot => ({ ...slot })),
     signalAcks: () => (signalAckStore ?? []).map(entry => ({ ...entry, chaIds: [...entry.chaIds] })),
+    textReads: () => peekTextReadCount() ?? 0,
     reset: () => {
         verdictStore = null
         shadowStore = null

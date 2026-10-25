@@ -140,6 +140,18 @@ async fn read_range(app: AppHandle, key: String, offset: u64, len: u64) -> Resul
     Ok(tauri::ipc::Response::new(bytes))
 }
 
+/// `read_range` with the response as one base64 string of at most `chunked_io::TEXT_RANGE_MAX_BYTES` of
+/// piece. Fork-local: the page uses it only while it is hidden on Android, because a frozen page receives
+/// a string reply (delivered by script evaluation) but not a raw reply of 1 KiB or more. That depends on
+/// Tauri's reply path (`ipc/protocol.rs`, `ipc/channel.rs`) as of Tauri 2.12.1; re-check it whenever Tauri is updated.
+#[tauri::command]
+async fn read_range_text(app: AppHandle, key: String, offset: u64, len: u64) -> Result<String, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || chunked_io::read_key_range_text(&base, &key, offset, len))
+        .await
+        .map_err(|e| format!("the read task failed: {}", e))?
+}
+
 /// Writes many asset files in one call. The body is raw frames
 /// `[u32 LE keyLen][key][u32 LE dataLen][bytes]`; the result is one outcome per
 /// frame in input order, each `ok` with `flushed` (`false` when a directory
@@ -979,6 +991,7 @@ pub fn run() {
             write_chunk,
             abort_chunked,
             read_range,
+            read_range_text,
             export_append::export_append_b64,
             native_request,
             check_auth,

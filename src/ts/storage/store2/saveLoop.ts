@@ -213,6 +213,11 @@ export interface Store2LoopPort {
     takeNetSweep?(): boolean
     /** Whether the page is hidden; a hidden page's slots never skip a verdict. Read after the yield. */
     pageHidden?(): boolean
+    /**
+     * Whether the encode's budgeted yields are skipped now: a hidden Android page may be frozen inside a yield, and
+     * a frozen page runs no message or timer, so the pass would wait for the user to return. Absent means never.
+     */
+    yieldImmediately?(): boolean
 }
 
 /** Takes the marks of a pass and trims the live tracker to its sticky front, before any await. */
@@ -562,7 +567,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
 
     function requestOf(snapshot: Store2Snapshot | null, db: Database, rewriteAll: boolean, netChaId: string | null): SavePassRequest {
         const gaps = MEASURE ? startYieldGaps() : null
-        const budget = MEASURE && gaps !== null ? createYieldBudget({ yieldFn: () => gaps.yield() }) : createYieldBudget()
+        // `skip` sits in the budget, not in `yieldFn`, so a measurement build's replaced yield is bypassed too.
+        const skip = () => port.yieldImmediately?.() === true
+        const budget = MEASURE && gaps !== null ? createYieldBudget({ yieldFn: () => gaps.yield(), skip }) : createYieldBudget({ skip })
         const request = shapeOf(snapshot, db, rewriteAll, netChaId, { yield: () => budget.maybeYield() })
         if (MEASURE) {
             activeGaps = gaps

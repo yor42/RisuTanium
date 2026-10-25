@@ -14,6 +14,12 @@ export type YieldBudgetOptions = {
     budgetMs?: number
     now?: () => number
     yieldFn?: () => Promise<void>
+    /**
+     * Asked only once the budget has elapsed. True means the caller wants no yield now (a hidden Android page whose
+     * event loop the system may freeze mid-yield): the clock resets and `yieldFn` is not called. On a hidden page
+     * that has not frozen yet, the work between two awaits therefore runs as one task.
+     */
+    skip?: () => boolean
 }
 
 export type YieldBudget = {
@@ -34,7 +40,9 @@ export function createYieldBudget(opts: YieldBudgetOptions = {}): YieldBudget {
         },
         async maybeYield() {
             if (now() - last >= budgetMs) {
-                await yieldFn()
+                if (opts.skip?.() !== true) {
+                    await yieldFn()
+                }
                 last = now()
             }
         },

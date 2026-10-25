@@ -72,6 +72,7 @@ import { getMultiTabAction, isRevisionAwareBackend, nextAutoReloadHistory, resol
 import { hasLocalDrafts } from "./localDrafts";
 import { beginChokePoint, busyKinds } from "./process/memory/busyActions";
 import { installNetHold } from "./storage/measureExportHold";
+import { shouldBypassFrozenPagePaths } from "./storage/tauriByteTransport";
 import { MEASURE } from "./process/memory/measureFlag";
 import { noteChatSelect } from "./process/chatPhaseRing";
 import { draftContentOrphanGate } from "./draftContentOrphanGate";
@@ -1798,6 +1799,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
             return pending
         },
         pageHidden: () => document.visibilityState === 'hidden',
+        yieldImmediately: shouldBypassFrozenPagePaths,
     }
     if (MEASURE) {
         // A measurement build can hold the idle net while an export runs; dirty passes are not affected.

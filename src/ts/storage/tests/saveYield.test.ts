@@ -65,6 +65,48 @@ describe('createYieldBudget', () => {
 
         expect(yieldFn).not.toHaveBeenCalled()
     })
+
+    test('skip is not asked while the budget holds, so a visible page pays nothing for it', async () => {
+        const clock = makeClock()
+        const skip = vi.fn(() => true)
+        const budget = createYieldBudget({ budgetMs: 8, now: clock.now, yieldFn: async () => {}, skip })
+
+        clock.advance(5)
+        await budget.maybeYield()
+
+        expect(skip).not.toHaveBeenCalled()
+    })
+
+    test('a true skip once the budget has passed yields nothing and resets the clock', async () => {
+        const clock = makeClock()
+        const yieldFn = vi.fn(async () => {})
+        const skip = vi.fn(() => true)
+        const budget = createYieldBudget({ budgetMs: 8, now: clock.now, yieldFn, skip })
+
+        clock.advance(9)
+        await budget.maybeYield()
+        expect(yieldFn).not.toHaveBeenCalled()
+        expect(skip).toHaveBeenCalledTimes(1)
+
+        clock.advance(7) // under budget, measured from the reset by the skipped yield
+        await budget.maybeYield()
+        expect(skip).toHaveBeenCalledTimes(1)
+        clock.advance(2)
+        await budget.maybeYield()
+        expect(skip).toHaveBeenCalledTimes(2)
+        expect(yieldFn).not.toHaveBeenCalled()
+    })
+
+    test('a false skip yields as before', async () => {
+        const clock = makeClock()
+        const yieldFn = vi.fn(async () => {})
+        const budget = createYieldBudget({ budgetMs: 8, now: clock.now, yieldFn, skip: () => false })
+
+        clock.advance(9)
+        await budget.maybeYield()
+
+        expect(yieldFn).toHaveBeenCalledTimes(1)
+    })
 })
 
 // CHORE-17: `yieldToEventLoop`'s own fallback chain

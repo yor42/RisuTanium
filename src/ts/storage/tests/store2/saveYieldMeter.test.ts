@@ -53,6 +53,10 @@ vi.mock('../../saveYield', async (importOriginal) => {
                     while (performance.now() < end) {
                         // A known stretch of synchronous work before the yield.
                     }
+                    // The real budget consults `skip` only when it would yield, and then yields nothing.
+                    if (options?.skip?.() === true) {
+                        return
+                    }
                     await (options?.yieldFn ?? real.yieldToEventLoop)()
                 },
             }
@@ -454,7 +458,8 @@ describe('a normal build installs nothing', () => {
         expect(records()).toEqual([])
         expect(mode.reads()).toBe(0)
         expect(budget.options.length).toBeGreaterThan(0)
-        expect(budget.options.every(options => options === undefined)).toBe(true)
+        // The exact option shape: only the frozen-page `skip` function, no `yieldFn`, `budgetMs` or `now`, so the budget and primitive are the default ones.
+        expect(budget.options.every(options => options !== undefined && Object.keys(options).join() === 'skip' && typeof options.skip === 'function')).toBe(true)
         // The default primitive ran: the real yields went through scheduler.yield.
         expect(schedulerYield).toHaveBeenCalled()
     })

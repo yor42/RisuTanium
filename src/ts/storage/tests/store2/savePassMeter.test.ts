@@ -8,6 +8,16 @@ import {
     finishSavePass, noteSavePassCommit, savePassKindOf, startSavePass, type MeteredUnit, type SavePassMeterHandle,
 } from '../../store2/savePassMeter'
 import { UNIT_TYPE } from '../../store2/format'
+import { readRanged, setRangeReadClockForTest, takeRangeReadStats } from '../../tauriByteTransport'
+
+const invokeMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
+vi.mock('@tauri-apps/plugin-os', () => ({ type: () => 'android' }))
+
+/** An empty file's reply: only the 56-byte trailer (size 0), raw and as base64. */
+const EMPTY_FILE_TRAILER = new Uint8Array(56)
+const EMPTY_FILE_TEXT = `${'A'.repeat(75)}=`
 
 type MeterGlobal = { __risuSavePassMeter?: SavePassMeterHandle }
 
@@ -142,5 +152,55 @@ describe('the pass record and the switch', () => {
         vi.stubGlobal('localStorage', { getItem: () => { throw new Error('storage') } })
         expect(startSavePass({})).toBeNull()
         expect(() => noteSavePassCommit({ whole: false }, [unit('a', 'b', false)])).not.toThrow()
+    })
+})
+
+describe('the text read counter', () => {
+    async function readHidden(key: string, frozenSafe: boolean): Promise<void> {
+        vi.stubGlobal('document', { visibilityState: 'hidden' })
+        invokeMock.mockReset()
+        invokeMock.mockImplementation(async (command: string) => command === 'read_range_text' ? EMPTY_FILE_TEXT : EMPTY_FILE_TRAILER)
+        await readRanged(key, undefined, { frozenSafe })
+    }
+
+    test('the handle counts read_range_text invokes and does not clear them; an export take does not either', async () => {
+        switchTo('on')
+        const target = {}
+        startSavePass(target)
+        setRangeReadClockForTest(null)
+        await readHidden('store2-commit', true)
+        await readHidden('store2-commit', true)
+        await readHidden('store2/other', false)
+
+        expect(handleOf(target).textReads()).toBe(2)
+        expect(handleOf(target).textReads()).toBe(2)
+        expect(invokeMock).toHaveBeenCalledWith('read_range', expect.anything())
+        expect(takeRangeReadStats()).toMatchObject({ reads: 3 })
+        expect(handleOf(target).textReads()).toBe(2)
+    })
+
+    test('a build without measurement counts nothing and the handle reads zero', async () => {
+        vi.resetModules()
+        vi.doMock('../../../process/memory/measureFlag', () => ({ MEASURE: false }))
+        try {
+            const transport = await import('../../tauriByteTransport')
+            const meter = await import('../../store2/savePassMeter')
+            vi.stubGlobal('document', { visibilityState: 'hidden' })
+            invokeMock.mockReset()
+            invokeMock.mockImplementation(async () => EMPTY_FILE_TEXT)
+            await transport.readRanged('store2-commit', undefined, { frozenSafe: true })
+
+            expect(invokeMock).toHaveBeenCalledWith('read_range_text', expect.anything())
+            expect(transport.peekTextReadCount()).toBeNull()
+            expect(transport.takeRangeReadStats()).toBeNull()
+            switchTo('on')
+            const target = {}
+            meter.startSavePass(target)
+            // Callers install the meter only under `if (MEASURE)`; even if one is installed, the counter reads zero.
+            expect(handleOf(target).textReads()).toBe(0)
+        } finally {
+            vi.doUnmock('../../../process/memory/measureFlag')
+            vi.resetModules()
+        }
     })
 })
