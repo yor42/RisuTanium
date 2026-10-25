@@ -171,7 +171,7 @@ A1: the parts encoder keeps B2's refusal; test `parts-encoder-refuses-stub` (R).
 | N5 oracle | B2 oracle (I12), added ops, `no-carried-set` red on the model test; B3 real `saveLoop` + `dbChangeEffects` test with `no-hydrate`. |
 | Editorial I2/I2b | Replaced by the section 1 locator-vs-edited rule. |
 | Editorial `risuSave.ts` | Four stage writers, order B2, A1, A2, J1. |
-| Row 3089 / opus notes | Producer skip pinned in the six getters; `ReloadGUIPointer` bump in B3; exit-net flag and caller list (section 3); S5 swap during a plan deferred; entries lacking valid `ef`/`su` are read at boot (`mvpDataUpgrade` test), see O12. |
+| Row 3089 / opus notes | Producer skip pinned in the six getters; `ReloadGUIPointer` bump in B3; exit-net flag and caller list (section 3); S5 swap during a plan deferred; entries lacking valid `ef`/`su` are read at boot (`mvpDataUpgrade` test), see O12. Superseded by the B1 revision (MC-580): `ef` and `su` are replaced by the tag in the `unit` Ref, see the "B1 revision" section at the end. |
 
 ## 8. Phone checks (Note 9, synthetic; unchanged from plan2: P1 after B1, P3 after S4d, P4 after S5, P2 after J1)
 
@@ -185,7 +185,7 @@ A1: the parts encoder keeps B2's refusal; test `parts-encoder-refuses-stub` (R).
 | O4, O5, O8, O10, O11 | As plan2. | H, B3/S5, B2, A2/J1, S5 |
 | O6, O7 | Non-blocking (read-only callers tolerate an empty list; modules follow residency, the send await backstops selection paths). | S4a |
 | O9 | Closed: stubs stay with archiving off (I13, P9). | S4d, S5 |
-| O12 | Approach opinion, for the advisor. (a) `stubEligible`'s `il:null` clause is accepted as bound, but no writer in this build emits a null module `il` (P1), the resident path derives it (`split.ts:415`), and a stub would carry it unchanged; treating null as ineligible is a one-token, zero-cost safer alternative. (b) opus asked that entries without a valid `ef`/`su` be read at boot; that is a sixth eligibility clause, so it should live in `stubEligible`, not be restated in the boot filter. Both need the advisor's call before B2. | B2, S4d |
+| O12 | Approach opinion, for the advisor. (a) `stubEligible`'s `il:null` clause is accepted as bound, but no writer in this build emits a null module `il` (P1), the resident path derives it (`split.ts:415`), and a stub would carry it unchanged; treating null as ineligible is a one-token, zero-cost safer alternative. (b) opus asked that entries without a valid `ef`/`su` be read at boot; that is a sixth eligibility clause, so it should live in `stubEligible`, not be restated in the boot filter. Both need the advisor's call before B2. (b) is superseded by the B1 revision (MC-580): the clause is the tag predicate, not `ef`/`su`. | B2, S4d |
 | O13 | Home and name of the pure reference-rule leaf (must have zero imports so `treeBytes` can use it without a cycle). | B0 |
 
 Scratch from this task: this file only.
@@ -193,12 +193,12 @@ Scratch from this task: this file only.
 ## Orchestrator resolutions of O12 and O13 (lane B, before Gate 1 round 3)
 
 - **O12 (a):** an entry with `il === null` is NOT stub-eligible. This is the safer one-token clause. No writer in this build emits it, so it costs nothing.
-- **O12 (b):** "the entry has a valid `ef` marker and `su` equals its current unit tail" is a clause of `stubEligible` itself. The boot filter, S4d and S5 inherit it by calling the predicate; no stage restates it.
+- **O12 (b):** "the entry has a valid `ef` marker and `su` equals its current unit tail" is a clause of `stubEligible` itself. The boot filter, S4d and S5 inherit it by calling the predicate; no stage restates it. (Superseded by the B1 revision (MC-580): the clause is the tag predicate `hasCurrentEntryFields`, not `ef`/`su`.)
 - **O13:** B0 names the leaf file. It must have zero imports from store2 or process code, and B0's review checks this (no import cycle with `treeBytes`).
 
 ## Gate 1 round 3 editorials (opus `[EDITORIAL]`, `gate1-opus-r3\result.md`), binding on the stages named
 
-- **E1 (B2, before dispatch):** `stubEligible` has six clauses:
+- **E1 (B2, before dispatch):** `stubEligible` has six clauses (superseded by the B1 revision (MC-580): five clauses, 5 and 6 become the tag predicate):
   1. `uniqueIdHandles` membership;
   2. `versions` defined;
   3. `al[3]` is current;
@@ -206,7 +206,7 @@ Scratch from this task: this file only.
   5. a valid `ef`;
   6. `su` equals the unit tail.
   
-  The B2 table rows are `il:null -> false`, `ef absent -> false` and `su != tail -> false`. Mutant: `eligibility-ignores-su`. This supersedes section 1's four-clause text.
+  The B2 table rows are `il:null -> false`, `ef absent -> false` and `su != tail -> false`. Mutant: `eligibility-ignores-su`. This supersedes section 1's four-clause text. Clauses 5 and 6, the table rows `ef absent`/`su != tail` and the mutant `eligibility-ignores-su` are superseded by the B1 revision (MC-580): one tag clause, rows `tag absent -> false` and `tag !== 1 -> false`, mutant `eligibility-ignores-tag`.
 - **E2 (C1, before dispatch):** substitute modules before the `characterListNeedsRepair` check, by assigning a new `plain.modules`, so that both `exportCopyOf` returns see it. Add a no-repair case. Mutant: `substitute-on-repair-return-only`.
 - **E3:** P4 sub-claim corrected. `globalApi.svelte.ts` only imports `encodeRisuSaveLegacy`; the legacy save uses `RisuSaveEncoder`. `encodeRisuSaveCompressionStream` has test callers only.
 - **E4 (B3):** B3 states the argument that no production writer changes a stub's `id` together with another field. The supporting writer list is in the verdict, and C2 guards plugin writes. The valve reads by the stub's own recorded unit, and installs only if the slot deep-equals `stubFromModuleEntry` of that unit's previous entry; anything else fails loudly as `edited`.
@@ -216,3 +216,62 @@ Scratch from this task: this file only.
   - B2 has 7 test files.
   - B3's no-commit test is labelled M (mutant) only, because `load` does not exist on base.
 - **E7 (G):** if track G starts before B2 merges, A1 rebases onto B2 before its Gate 2, so that its stub-refusal test exercises B2's real marker.
+
+<!-- B1 revision appended 2026-10-25 (MC-580). Copied from lane B scratch b1-plan\plan.md, revision 4 (Gate 1 accepted after three opus rounds; ledger rows 3096 to 3098 in lane-B-records.md). Where this section and the text above disagree about B1, `ef`, `su` or E1 clauses 5 and 6, this section governs; the text above is left as the Gate 1 record. %TEMP% paths refer to lane B's machine. -->
+
+## B1 revision (delta, Gate 1 accepted 2026-10-25; MC-580)
+
+Base: Lane-B worktree HEAD `a831430cc` (main with B0 merged). The B1 row in section 4 reads "Unchanged"; this section supersedes it. The maintainer chose "Version in the key slot" (`MC-580`).
+
+### Why the plan2 B1 design changed
+
+- plan2 B1 stored `su`, the module unit's key tail, as a plain string beside `ef: 1`.
+- Production encodes run under placeholder keys, and the rekey (`codec/scoped.ts` `rewriteValue`) rewrites only Ref-shaped arrays. A string `su` keeps the placeholder tail. Executed by the investigator, with `su` injected by a mock at entry-build time (`su` never existed in production code): after one module edit the tail-derived value held `u-vvvvvvvvvv...`, and the next module-flagged pass rewrote the index again.
+- A recovery install (`recoveryPick.ts` `withReplacedRefs`) changes keys without changing content, so a tail tag is wrong there too (traced in source).
+
+### Binding design
+
+| Item | Content |
+|---|---|
+| Tag | The entry's `unit` Ref gains a 4th element, the entry-fields version: `unit: [tail, bytes, crc, 1]`. No `ef` field and no `su` field. It means: the derived fields on this entry were computed by a build that knows version 1, from the unit this Ref names. |
+| Writer | The two entry `unit` construction sites in `codec/split.ts` `encodeModuleAt`: the carried-lists branch (every unchanged module in production) and the derived branch. Every module-flagged pass rebuilds every entry with the tag. `moduleEntryFields` does not write it. |
+| Survival | `rewriteValue`, `withReplacedRefs` and `readRefValue` keep the 4th element; `isRefShape` accepts length 3 or 4; reuse and carry compare only the 3-element head. No Ref type change and no parse change. The writer comment states that the tag is the only extra element, because a 5-element `unit` would never be rekeyed. |
+| Predicate | `hasCurrentEntryFields(entry)` in `codec/modules.ts`: true iff `entry.unit[3] === 1` (`ENTRY_FIELDS_VERSION`). Any other value, or a missing 4th element, reads as "no tag". B2's `stubEligible` calls it; no stage restates it. |
+| Where readers look | The tag is read from the parsed stored index body. `previousOfTree` rebuilds module unit Refs with 3 elements, so it is never a source for the tag. |
+| `mcp` | A presence flag on the index entry, written only as `mcp: true` and only when `Module.mcp` is a non-null object; otherwise omitted. Lenient parse: a wrong type reads as absent. `mcp` is added to `KNOWN_FIELDS.moduleEntry`. |
+| Known-field invariant | Every field `moduleEntryFields` derives is listed in `KNOWN_FIELDS.moduleEntry`; otherwise `carryModuleIndex` carries a stale previous value under tag 1. A later derived field bumps the version, and a reader accepts only its own version. |
+| Older builds | A pre-B1 build (the MVP `f0e397aae` onward; the four format and codec files are byte-identical to `a831430cc`) rebuilds `unit` with exactly 3 elements on every module-flagged pass, so it drops the tag, and it carries unknown sibling fields stale for unique-id handles. The tag, not a sibling field, is the freshness signal. A downgrade is not a supported path (`MC-350` item 2); this is defence in depth. |
+| `.bin` (`MC-175`) | No change: `assembleModules` reads the module unit body only, never the entry. |
+| Migration (`MC-350`, `MC-496` item 7) | No job. The first debounced save pass after boot is module-flagged (a source trace, not an executed boot), so on the first launch of the new build every profile with modules rewrites its index once with no other edit pending; units are reused. After that, a no-change module-flagged pass is `unchanged`. |
+
+### Editorial on E1 (binding on B2)
+
+- E1's clauses 5 (a valid `ef`) and 6 (`su` equals the unit tail) become one clause: the tag predicate `hasCurrentEntryFields`, read from the parsed stored index body, never from `previousOfTree`'s units map.
+- `stubEligible` therefore has **five** clauses: `uniqueIdHandles` membership; `versions` defined; `al[3]` current; `il !== null` and `il[3]` current; the tag predicate.
+- The B2 table rows `ef absent -> false` and `su != tail -> false` become `tag absent -> false` and `tag !== 1 -> false`. The mutant `eligibility-ignores-su` becomes `eligibility-ignores-tag`.
+
+### F7 (binding on B2)
+
+A carried stub entry keeps the tag. Rebuilding it through the 3-element `refTuple` would make the stub ineligible on the next pass and send it through the valve every pass (churn, not loss). B2's carry test asserts the tag on a carried stub entry.
+
+### Old-build evidence strategy
+
+In-repo simulations of the old build were dropped (`readModuleEntry` is private and reads module-level `KNOWN_FIELDS`, and `carryModuleIndex` applies a unique-id filter, so a source-level simulation cannot reproduce the old build). The required Gate 2 cross-build run, in scratch outside the repository, uses real `a831430cc` code from `git archive a831430cc` (no index write) and a B1-written store saved as bytes. It shows:
+- the older code decodes a B1-written store, and reads the 4-element `unit` and `mcp` verbatim;
+- one module-flagged pass with an edit in the older code drops the tag on every entry and carries `mcp` only on unique-id handles;
+- B1 reads the result as "no tag" and restamps on its next pass.
+
+The frozen fixture for `entry-rewrite-adds-tag` is written by `a831430cc` code and generated before the first B1 source edit; its README records the commit, `createListDerivation`, the generator and the seeds. B1's pass seeds differ from the generation seeds.
+
+### Phone check P1 (through lane A, phone 1; pending)
+
+1. The MVP APK writes a synthetic profile with at least 3 modules, one with `mcp` and one duplicate id.
+2. Upgrade-install the B1 build.
+3. Boot. In the first save pass, read from the pass meter: `moduleIndex` is written once and no module, `al:module` or `il:module` unit is written. Any other unit written is named in the report. A read-only CDP read shows every entry's `unit[3]`.
+4. 30 s idle.
+5. Second boot: the first module-flagged pass writes nothing (`unchanged`); module content hashes are unchanged, with no extra module reads.
+
+### Gate results for B1
+
+- Gate 1: the delta plan, revision 4; rounds `[REJECT]` (reviewer label `[EDITORIAL]`, counted as a rejection by lane B), `[REJECT]`, `[EDITORIAL]`. The design did not change after the second rejection; the old-build evidence moved to real-code runs.
+- Gate 2: `[EDITORIAL]` in `b1-review\result.md`, then `[APPROVE]` after the fixes, returned by message and recorded in `b1-review\orchestrator-note.md` (the orchestrator's statement; the reviewer checked only the three edited passages and line endings and reran no tests; it also returned three commit-message corrections, applied before the commit); E1 to E3 are wording and test-header fixes. Its note N1 for B2: `entry.mcp` is set only for a non-null object while the app tests MCP by truthiness, so a rule that relies on `entry.mcp` must be conservative, or the derivation becomes `Boolean(module.mcp)` (a plan decision).
