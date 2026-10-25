@@ -41,6 +41,7 @@ import { readImage } from "../globalApi.svelte";
 import { pluginV2 } from "../plugins/plugins.svelte";
 import { isColdChat } from "./coldstorageData";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
+import { flushPageReplyEndWhenHidden } from "./saveOnHide";
 import { beginWork, createSendSubject, registerWork, resolveOriginWithHint, type Origin, type OriginContext, type SendSubject, type WorkHandle, type WorkStop } from "./chatOrigin";
 import { noteTurnReached, publishUnit, releaseUnit } from "./generationOwnership.svelte";
 import { addActiveStream } from "./activeStreams";
@@ -334,6 +335,7 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
         return completed && !unit.signal.aborted
     } finally {
         try {
+            flushPageReplyEndWhenHidden(entry.context.origin)
             endInFlight()
             callerSignal?.removeEventListener('abort', relayAbort)
             releaseUnit(unit)
@@ -2305,6 +2307,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     streamEndCtx.owner.reloadKeys += 1
                 }
                 void reader.cancel().catch(() => {})
+                // The reply text is settled here, and the post-reply steps below may wait on
+                // timers a hidden page does not run.
+                flushPageReplyEndWhenHidden(origin)
             }
         }
 
@@ -2444,6 +2449,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 keysCtx.owner.reloadKeys += 1
             }
         }
+
+        // The reply is written; the output trigger below may wait on timers a hidden page does not run.
+        flushPageReplyEndWhenHidden(origin)
 
         if(mrerolls.length >1){
             addRerolls(generationId, mrerolls, { chaId: origin.chaId, chatId: origin.chatId })

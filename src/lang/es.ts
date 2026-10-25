@@ -2004,6 +2004,7 @@ export const languageSpanish = {
     "keepAliveGenerating": "Generando una respuesta…",
     "keepAliveWorking": "Trabajando…",
     "keepAliveStop": "Detener",
+    "keepAliveFinishing": "Finalizando…",
     "messageInterrupted": "Interrumpido — la respuesta puede estar incompleta",
     "nanoGPTLoadingAccountInfo": "Cargando información de la cuenta…",
     "nanoGPTCreditBalance": "Saldo de crédito:",

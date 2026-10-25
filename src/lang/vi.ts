@@ -2002,6 +2002,7 @@ export const languageVietnamese = {
     "keepAliveGenerating": "Đang tạo phản hồi…",
     "keepAliveWorking": "Đang xử lý…",
     "keepAliveStop": "Dừng",
+    "keepAliveFinishing": "Đang hoàn tất…",
     "messageInterrupted": "Đã bị gián đoạn — phản hồi có thể chưa đầy đủ",
     "nanoGPTLoadingAccountInfo": "Đang tải thông tin tài khoản…",
     "nanoGPTCreditBalance": "Số dư tín dụng:",

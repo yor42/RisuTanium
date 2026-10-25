@@ -2137,6 +2137,7 @@ export const languageEnglish = {
     keepSessionAlive: "Keep Session Alive",
     keepAliveGenerating: "Generating a reply…",
     keepAliveWorking: "Working…",
+    keepAliveFinishing: "Finishing up…",
     keepAliveStop: "Stop",
     messageInterrupted: "Interrupted — the reply may be incomplete",
     // NanoGPT Dashboard

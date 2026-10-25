@@ -29,7 +29,7 @@ vi.mock('../process/tts', () => ({
     stopTTS: stopTTSMock,
 }))
 
-const LABELS = { generating: 'Generating a reply…', working: 'Working…', stop: 'Stop' }
+const LABELS = { generating: 'Generating a reply…', working: 'Working…', finishing: 'Finishing up…', stop: 'Stop' }
 
 interface FakeHost extends KeepAliveHost {
     start: Mock<(title: string, stopLabel: string) => void>
@@ -240,6 +240,79 @@ describe('the notification text', () => {
     })
 })
 
+describe('the notice while the service lingers', () => {
+    test('host path: the end of all work shows Finishing up without Stop, and only then asks the host to stop later', () => {
+        const host = fakeHost()
+        attach(host)
+        const end = beginInFlight('chat')
+        host.update.mockClear()
+
+        end()
+
+        expect(host.update).toHaveBeenCalledTimes(1)
+        expect(host.update).toHaveBeenCalledWith(LABELS.finishing, '')
+        expect(host.stopAfter).toHaveBeenCalledWith(KEEP_ALIVE_LINGER_MS)
+        // The host's update cancels a pending stop, so it must come first.
+        expect(host.update.mock.invocationCallOrder[0]).toBeLessThan(host.stopAfter.mock.invocationCallOrder[0])
+    })
+
+    test('guard: host path: a begin during the linger starts the service again with the work title and Stop', () => {
+        const host = fakeHost()
+        attach(host)
+        beginInFlight('chat')()
+        vi.advanceTimersByTime(KEEP_ALIVE_LINGER_MS - 1)
+
+        const endNext = beginInFlight('chat')
+
+        expect(host.start).toHaveBeenCalledTimes(2)
+        expect(host.start).toHaveBeenLastCalledWith(LABELS.generating, LABELS.stop)
+        endNext()
+    })
+
+    test('page-timer path: Finishing up without Stop is shown before the timer is set, and the stop follows the linger', () => {
+        const host = legacyHost()
+        attach(host)
+        host.stop.mockClear()
+        const end = beginInFlight('chat')
+        host.update.mockClear()
+
+        end()
+
+        expect(host.update).toHaveBeenCalledTimes(1)
+        expect(host.update).toHaveBeenCalledWith(LABELS.finishing, '')
+        expect(host.stop).not.toHaveBeenCalled()
+        vi.advanceTimersByTime(KEEP_ALIVE_LINGER_MS)
+        expect(host.stop).toHaveBeenCalledTimes(1)
+    })
+
+    test('page-timer path: a begin during the linger replaces Finishing up with the work notice on the one service', () => {
+        const host = legacyHost()
+        attach(host)
+        host.stop.mockClear()
+        beginInFlight('chat')()
+        vi.advanceTimersByTime(KEEP_ALIVE_LINGER_MS - 1)
+
+        const endNext = beginInFlight('chat')
+
+        expect(host.update).toHaveBeenLastCalledWith(LABELS.generating, LABELS.stop)
+        expect(host.start).toHaveBeenCalledTimes(1)
+        vi.advanceTimersByTime(KEEP_ALIVE_LINGER_MS * 5)
+        expect(host.stop).not.toHaveBeenCalled()
+        endNext()
+    })
+
+    test('page-timer path: a begin of stop-less work during the linger still replaces Finishing up', () => {
+        const host = legacyHost()
+        attach(host)
+        beginInFlight('image')()
+
+        const endNext = beginInFlight('image')
+
+        expect(host.update).toHaveBeenLastCalledWith(LABELS.working, '')
+        endNext()
+    })
+})
+
 describe('the Stop action', () => {
     test('stops the reply and the speech when either is in flight', () => {
         const host = fakeHost()
@@ -418,5 +491,15 @@ describe('startKeepAliveService', () => {
             expect(abortChatMock).toHaveBeenCalledTimes(1)
             expect(stopTTSMock).toHaveBeenCalledTimes(1)
         })
+    })
+
+    test('with the bridge, the end of the work shows the Finishing up title from the language table without Stop', () => {
+        const host = fakeHost()
+        window.__risuTaniumKeepAlive = host
+        consumer = startKeepAliveService()
+
+        beginInFlight('chat')()
+
+        expect(host.update).toHaveBeenLastCalledWith('Finishing up…', '')
     })
 })

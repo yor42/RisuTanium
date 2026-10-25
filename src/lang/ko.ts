@@ -2002,6 +2002,7 @@ export const languageKorean = {
     "keepAliveGenerating": "답변 생성 중…",
     "keepAliveWorking": "작업 중…",
     "keepAliveStop": "중지",
+    "keepAliveFinishing": "마무리 중…",
     "messageInterrupted": "중단됨 — 답변이 완전하지 않을 수 있습니다",
     "nanoGPTLoadingAccountInfo": "계정 정보 불러오는 중…",
     "nanoGPTCreditBalance": "크레딧 잔액:",
