@@ -29,7 +29,9 @@ import type { SaveFailureClass } from '../saveFailure'
 /**
  * How an export of this tab ended, as far as the prompt needs it: `saved` carries the report the writer showed (empty on
  * a plain success, whose own alert only says that inlays are not included; the hand-off prompt then shows that sentence);
- * `declined` and `failed` mean no file was kept and the writer has already told the person why.
+ * `declined` and `failed` mean the export is not finished and the writer has already told the person why. No file was
+ * kept, except after a cancel once a download stream had opened: the browser may hold an incomplete file, and the
+ * writer's closable notice saying so is already on screen, which `decide` waits out before it asks.
  */
 export type PeerExportResult =
     | { status: 'saved', notices: string[] }

@@ -1077,6 +1077,8 @@ export const languageVietnamese = {
     "successExport": "Đã xuất thành công và tải xuống thư mục tải xuống của bạn",
     "exportHeldInMemory": "Trình duyệt này không thể lưu bản xuất ngay trong khi tạo, nên bản xuất được giữ trong bộ nhớ cho đến khi hoàn tất rồi mới tải xuống. Bản xuất rất lớn có thể thất bại.",
     "exportHelperNotResponding": "Trình hỗ trợ tải xuống không phản hồi, nên bản xuất được giữ trong bộ nhớ cho đến khi hoàn tất rồi mới tải xuống. Bản xuất rất lớn có thể thất bại.",
+    "backupCancelledFileIncomplete": "Đã hủy sao lưu. Nếu trình duyệt đã lưu một tệp, tệp đó không đầy đủ: hãy xóa nó và không dùng nó.",
+    "exportCancelledFileIncomplete": "Đã hủy xuất. Nếu trình duyệt đã lưu một tệp, tệp đó không đầy đủ: hãy xóa nó và không dùng nó.",
     "successImport": "Đã nhập thành công",
     "importedCharacter": "Ký tự đã nhập",
     "alwaysActive": "Luôn luôn hoạt động",

@@ -1077,6 +1077,8 @@ export const languageChinese = {
     "successExport": "已成功导出并保存至你的下载数据夹",
     "exportHeldInMemory": "此浏览器无法在导出的同时边生成边保存，因此会先将导出内容保存在内存中，待完成后再下载。体积非常大的导出可能会失败。",
     "exportHelperNotResponding": "下载辅助程序没有响应，因此会先将导出内容保存在内存中，待完成后再下载。体积非常大的导出可能会失败。",
+    "backupCancelledFileIncomplete": "备份已取消。如果浏览器已保存了文件，该文件不完整：请删除它，不要使用。",
+    "exportCancelledFileIncomplete": "导出已取消。如果浏览器已保存了文件，该文件不完整：请删除它，不要使用。",
     "successImport": "成功导入",
     "importedCharacter": "导入角色",
     "alwaysActive": "始终激活",

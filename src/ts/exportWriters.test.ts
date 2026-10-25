@@ -9,19 +9,23 @@
  * `writeBackupEntry` that issues the four-write layout); (G) is a guard that passes with or without the change.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { writable } from 'svelte/store'
 import { PngChunk } from 'src/ts/pngChunk'
 import {
     BlobDownloadWriter,
     BACKUP_ENTRY_COALESCE_BYTES,
     TAURI_WRITE_CHUNK_BYTES,
     TauriWriter,
+    cancelledFileState,
     encodeBackupEntryHeader,
+    openWebExportWriter,
     resetExportWriteStatsForTest,
     setExportWriteClockForTest,
     takeExportWriteStats,
     writeBackupEntry,
     type ByteWriter,
 } from 'src/ts/exportWriters'
+import { ExportCancelToken, ExportCancelledError } from 'src/ts/exportCancel'
 
 const fs = vi.hoisted(() => ({
     files: new Map<string, Uint8Array>(),
@@ -44,6 +48,11 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
         fs.files.set(path, next)
     }),
 }))
+
+// The cancel token's module also holds the export's wait dialog, which reads the alert store.
+vi.mock(import('src/ts/stores.svelte'), () => ({
+    alertStore: writable({ type: 'none', msg: '' }),
+}) as unknown as typeof import('src/ts/stores.svelte'))
 
 vi.mock(import('src/ts/alert'), () => ({
     alertNormalWait: vi.fn(async () => { }),
@@ -381,6 +390,69 @@ describe('BlobDownloadWriter', () => {
         expect(closed.heldInMemory).toBe(false)
         expect(click).toHaveBeenCalledTimes(1)
         vi.restoreAllMocks()
+    })
+})
+
+describe('the cancel token of an export', () => {
+    test('(N) a cancel rejects a call that is still pending, and ignores its later result', async () => {
+        const token = new ExportCancelToken()
+        let finish: () => void = () => { }
+        const pending = token.race(new Promise<string>((resolve) => { finish = () => resolve('late') }))
+
+        token.cancel()
+
+        await expect(pending).rejects.toBeInstanceOf(ExportCancelledError)
+        finish()
+    })
+
+    test('(N) a call made after the cancel is rejected without waiting for it', async () => {
+        const token = new ExportCancelToken()
+        token.cancel()
+
+        await expect(token.race(Promise.resolve('ok'))).rejects.toBeInstanceOf(ExportCancelledError)
+        expect(() => token.throwIfCancelled()).toThrow(ExportCancelledError)
+    })
+
+    test('(N) a cancel runs each registered action once, however often it is pressed, and an action added later runs at once', () => {
+        const token = new ExportCancelToken()
+        const action = vi.fn()
+        token.onCancel(action)
+
+        token.cancel()
+        token.cancel()
+        const late = vi.fn()
+        token.onCancel(late)
+
+        expect(action).toHaveBeenCalledTimes(1)
+        expect(late).toHaveBeenCalledTimes(1)
+    })
+
+    test('(G) a call that settles before any cancel keeps its result and its failure', async () => {
+        const token = new ExportCancelToken()
+
+        await expect(token.race(Promise.resolve('ok'))).resolves.toBe('ok')
+        await expect(token.race(Promise.reject(new Error('disk full')))).rejects.toThrow('disk full')
+    })
+})
+
+describe('cancelledFileState', () => {
+    test('(N) a download stream that was opened may have left a file, even before any byte was written', () => {
+        expect(cancelledFileState({ write: async () => { }, close: async () => { } })).toBe('kept')
+    })
+
+    test('(N) a writer that holds everything in memory, no writer, and a desktop file writer leave no file', () => {
+        expect(cancelledFileState({ write: async () => { }, close: async () => { }, heldInMemory: true })).toBe('untouched')
+        expect(cancelledFileState(undefined)).toBe('untouched')
+        expect(cancelledFileState(new TauriWriter('out.bin'))).toBe('untouched')
+    })
+})
+
+describe('openWebExportWriter after a cancel', () => {
+    test('(N) a cancel seen before the helper is asked ends the open before any notice', async () => {
+        const token = new ExportCancelToken()
+        token.cancel()
+
+        await expect(openWebExportWriter('out.bin', token)).rejects.toBeInstanceOf(ExportCancelledError)
     })
 })
 

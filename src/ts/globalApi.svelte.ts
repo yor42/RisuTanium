@@ -13,6 +13,7 @@ import { get } from "svelte/store";
 import { flushSync } from "svelte";
 import { open } from '@tauri-apps/plugin-shell'
 import { TauriWriter, openWebExportWriter, writeBackupEntry, encodeBackupEntryHeader, type ExportByteWriter } from "./exportWriters";
+import { ExportCancelledError, type ExportCancelToken } from "./exportCancel";
 import { type Database, defaultSdDataFunc, getDatabase, appVer, getCurrentCharacter, type character, type groupChat, type Chat, appSubVer } from "./storage/database.svelte";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
@@ -3448,16 +3449,49 @@ export { TauriWriter }
  */
 export class LocalWriter {
     writer: ExportByteWriter
+    /** The cancel switch of the export this writer serves, once `useCancel` or `init` was given one. */
+    cancel: ExportCancelToken | undefined
+    private abortRequested = false
+
+    /**
+     * Ties the writer to an export's cancel token. From a cancel on, `write`, `writeBackup`, `writeBackupHeader` and
+     * `close` reject with `ExportCancelledError`, a call already pending included, and the opened writer is told to
+     * abort without anyone waiting for that: an abort may stay pending behind a write the browser never takes.
+     */
+    useCancel(cancel: ExportCancelToken): void {
+        this.cancel = cancel
+        cancel.onCancel(() => this.abortInner())
+    }
+
+    private abortInner(): void {
+        if (this.abortRequested || this.writer === undefined) {
+            return
+        }
+        this.abortRequested = true
+        try {
+            void this.writer.abort?.(new ExportCancelledError())?.catch((error: unknown) => console.error(error))
+        } catch (error) {
+            console.error(error)
+        }
+    }
+
+    private raced<T>(call: Promise<T>): Promise<T> {
+        return this.cancel ? this.cancel.race(call) : call
+    }
 
     /**
      * Initializes the writer.
-     * 
+     *
      * @param {string} [name='Binary'] - The name of the file.
      * @param {string[]} [ext=['bin']] - The file extensions.
      * @param {string} [suggestedFileName] - A complete file name (with extension) offered as the download name on web and as the save dialog's default path on Tauri. Without it, the web name is `name.ext[0]` and the dialog suggests none.
+     * @param {ExportCancelToken} [cancel] - The export's cancel switch; a cancel seen while the web writer opens aborts the new writer, and the caller's next checkpoint ends the export.
      * @returns {Promise<boolean>} - A promise that resolves to a boolean indicating success.
      */
-    async init(name = 'Binary', ext = ['bin'], suggestedFileName?: string): Promise<boolean> {
+    async init(name = 'Binary', ext = ['bin'], suggestedFileName?: string, cancel?: ExportCancelToken): Promise<boolean> {
+        if (cancel) {
+            this.useCancel(cancel)
+        }
         if (isTauri) {
             const filePath = await save({
                 ...(suggestedFileName ? { defaultPath: suggestedFileName } : {}),
@@ -3472,7 +3506,12 @@ export class LocalWriter {
             this.writer = new TauriWriter(filePath)
             return true
         }
-        this.writer = await openWebExportWriter(suggestedFileName ?? name + '.' + ext[0])
+        const fileName = suggestedFileName ?? name + '.' + ext[0]
+        this.writer = cancel ? await openWebExportWriter(fileName, cancel) : await openWebExportWriter(fileName)
+        if (cancel?.cancelled) {
+            // The cancel came while the writer opened, before there was a writer to abort.
+            this.abortInner()
+        }
         return true
     }
 
@@ -3489,7 +3528,7 @@ export class LocalWriter {
         if (encodedName.byteLength > 0xFFFFFFFF || data.byteLength > 0xFFFFFFFF) {
             throw new Error(`Backup entry "${name}" is too large to store (a single backup entry is limited to 4 GiB).`)
         }
-        await writeBackupEntry(this.writer, encodedName, data)
+        await writeBackupEntry({ write: (piece) => this.write(piece) }, encodedName, data)
     }
 
     /**
@@ -3505,7 +3544,7 @@ export class LocalWriter {
         if (encodedName.byteLength > 0xFFFFFFFF || dataLength > 0xFFFFFFFF) {
             throw new Error(`Backup entry "${name}" is too large to store (a single backup entry is limited to 4 GiB).`)
         }
-        await this.writer.write(encodeBackupEntryHeader(encodedName, dataLength))
+        await this.write(encodeBackupEntryHeader(encodedName, dataLength))
     }
 
     /**
@@ -3514,14 +3553,16 @@ export class LocalWriter {
      * @param {Uint8Array} data - The data to write.
      */
     async write(data: Uint8Array): Promise<void> {
-        await this.writer.write(data)
+        this.cancel?.throwIfCancelled()
+        await this.raced(this.writer.write(data))
     }
 
     /**
-     * Closes the writer.
+     * Closes the writer. After a cancel it does not close it, so no file is completed.
      */
     async close(): Promise<void> {
-        await this.writer.close()
+        this.cancel?.throwIfCancelled()
+        await this.raced(this.writer.close())
     }
 }
 

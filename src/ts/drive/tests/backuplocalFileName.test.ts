@@ -233,6 +233,7 @@ vi.mock(import('src/ts/storage/store/appStore'), async () => {
 
 import { SaveLocalBackup, SavePartialLocalBackup } from 'src/ts/drive/backuplocal'
 import { LocalWriter } from 'src/ts/globalApi.svelte'
+import { ExportCancelToken } from 'src/ts/exportCancel'
 
 beforeEach(() => {
     saveMock.mockClear()
@@ -290,12 +291,12 @@ describe('LocalWriter.init with a suggested name', () => {
 describe('the local backups request a dated default name', () => {
     test('SaveLocalBackup on web asks for local-YYYYMMDD.bin', async () => {
         await SaveLocalBackup()
-        expect(openWebExportWriterMock).toHaveBeenCalledExactlyOnceWith('local-20261010.bin')
+        expect(openWebExportWriterMock).toHaveBeenCalledExactlyOnceWith('local-20261010.bin', expect.any(ExportCancelToken))
     })
 
     test('SavePartialLocalBackup on web asks for local-partial-YYYYMMDD.bin', async () => {
         await SavePartialLocalBackup()
-        expect(openWebExportWriterMock).toHaveBeenCalledExactlyOnceWith('local-partial-20261010.bin')
+        expect(openWebExportWriterMock).toHaveBeenCalledExactlyOnceWith('local-partial-20261010.bin', expect.any(ExportCancelToken))
     })
 
     test('SaveLocalBackup on Tauri offers local-YYYYMMDD.bin in the save dialog', async () => {

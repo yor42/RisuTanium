@@ -1122,6 +1122,8 @@ export const languageChineseTraditional = {
     "successExport": "匯出成功，檔案已下載至您的下載資料夾",
     "exportHeldInMemory": "此瀏覽器無法在匯出的同時邊產生邊儲存，因此會先將匯出內容保存在記憶體中，待完成後再下載。體積非常大的匯出可能會失敗。",
     "exportHelperNotResponding": "下載輔助程式沒有回應，因此會先將匯出內容保存在記憶體中，待完成後再下載。體積非常大的匯出可能會失敗。",
+    "backupCancelledFileIncomplete": "備份已取消。如果瀏覽器已儲存了檔案，該檔案不完整：請刪除它，不要使用。",
+    "exportCancelledFileIncomplete": "匯出已取消。如果瀏覽器已儲存了檔案，該檔案不完整：請刪除它，不要使用。",
     "successImport": "匯入成功",
     "importedCharacter": "已匯入角色",
     "alwaysActive": "一律啟用",

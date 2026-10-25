@@ -1077,6 +1077,8 @@ export const languageKorean = {
     "successExport": "성공적으로 엑스포트하여 다운로드 경로에 다운로드했습니다.",
     "exportHeldInMemory": "이 브라우저는 엑스포트를 만드는 도중에 저장할 수 없어서, 완료될 때까지 메모리에 보관했다가 다운로드합니다. 매우 큰 엑스포트는 실패할 수 있습니다.",
     "exportHelperNotResponding": "다운로드 도우미가 응답하지 않아, 엑스포트를 완료될 때까지 메모리에 보관했다가 다운로드합니다. 매우 큰 엑스포트는 실패할 수 있습니다.",
+    "backupCancelledFileIncomplete": "백업이 취소되었습니다. 브라우저가 파일을 저장했다면 그 파일은 불완전하니 삭제하고 사용하지 마세요.",
+    "exportCancelledFileIncomplete": "엑스포트가 취소되었습니다. 브라우저가 파일을 저장했다면 그 파일은 불완전하니 삭제하고 사용하지 마세요.",
     "successImport": "성공적으로 임포트했습니다.",
     "importedCharacter": "성공적으로 임포트 됨.",
     "alwaysActive": "언제나 활성화",

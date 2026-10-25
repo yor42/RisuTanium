@@ -1206,6 +1206,8 @@ export const languageEnglish = {
     successExport: "Successfuly exported and downloaded to your download directory",
     exportHeldInMemory: "This browser cannot save the export as it is made, so it is held in memory until it is finished and then downloaded. A very large export may fail.",
     exportHelperNotResponding: "The download helper did not respond, so the export is held in memory until it is finished and then downloaded. A very large export may fail.",
+    backupCancelledFileIncomplete: "Backup cancelled. If your browser saved a file, it is incomplete: delete it and do not use it.",
+    exportCancelledFileIncomplete: "Export cancelled. If your browser saved a file, it is incomplete: delete it and do not use it.",
     successImport: "Successfuly imported",
     importedCharacter: "Imported Character",
     alwaysActive: "Always Active",

@@ -1077,6 +1077,8 @@ export const languageSpanish = {
     "successExport": "Exportado y descargado exitosamente en tu directorio de descargas",
     "exportHeldInMemory": "Este navegador no puede guardar la exportación a medida que se genera, por lo que se mantiene en memoria hasta que termine y luego se descarga. Una exportación muy grande puede fallar.",
     "exportHelperNotResponding": "El asistente de descarga no respondió, por lo que la exportación se mantiene en memoria hasta que termine y luego se descarga. Una exportación muy grande puede fallar.",
+    "backupCancelledFileIncomplete": "Copia de seguridad cancelada. Si tu navegador guardó un archivo, está incompleto: elimínalo y no lo uses.",
+    "exportCancelledFileIncomplete": "Exportación cancelada. Si tu navegador guardó un archivo, está incompleto: elimínalo y no lo uses.",
     "successImport": "Importado exitosamente",
     "importedCharacter": "Personaje Importado",
     "alwaysActive": "Siempre Activo",

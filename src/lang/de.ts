@@ -1077,6 +1077,8 @@ export const languageGerman = {
     "successExport": "Erfolgreich exportiert und in Ihrem Download-Verzeichnis gespeichert",
     "exportHeldInMemory": "Dieser Browser kann den Export nicht schon während der Erstellung speichern. Er wird daher im Arbeitsspeicher gehalten, bis er fertig ist, und erst dann heruntergeladen. Ein sehr großer Export kann fehlschlagen.",
     "exportHelperNotResponding": "Der Download-Helfer hat nicht geantwortet. Der Export wird daher im Arbeitsspeicher gehalten, bis er fertig ist, und erst dann heruntergeladen. Ein sehr großer Export kann fehlschlagen.",
+    "backupCancelledFileIncomplete": "Backup abgebrochen. Falls Ihr Browser eine Datei gespeichert hat, ist sie unvollständig: Löschen Sie sie und verwenden Sie sie nicht.",
+    "exportCancelledFileIncomplete": "Export abgebrochen. Falls Ihr Browser eine Datei gespeichert hat, ist sie unvollständig: Löschen Sie sie und verwenden Sie sie nicht.",
     "successImport": "Erfolgreich importiert",
     "importedCharacter": "Importierter Charakter",
     "alwaysActive": "Immer aktiv",
