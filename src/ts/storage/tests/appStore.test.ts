@@ -159,7 +159,7 @@ describe('the store each platform gets', () => {
         expect(await app.getAppStoreKind()).toBe('indexeddb')
     })
 
-    test('the real selection reaches the asset limit registry: Tauri 1 GiB, Node 100 MiB until pieces are recorded then 1 GiB, IndexedDB 200 MiB', async () => {
+    test('the real selection reaches the asset limit registry: Tauri 1 GiB, Node 100 MiB until pieces are recorded then 1 GiB, IndexedDB 1 GiB', async () => {
         const MiB = 1024 * 1024
         const limits = await import('src/ts/storage/assetLimit')
         expect(limits.selectedStoreIsNode()).toBe(false)
@@ -182,7 +182,7 @@ describe('the store each platform gets', () => {
         app.injectAppStore(null)
         await app.getAppStore()
         expect(limits.selectedStoreIsNode()).toBe(false)
-        expect(limits.storeAssetLimitBytes()).toBe(200 * MiB)
+        expect(limits.storeAssetLimitBytes()).toBe(1024 * MiB)
     })
 
     test('the kind of a store injected without one is not guessed', async () => {

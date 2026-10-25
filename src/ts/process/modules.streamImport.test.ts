@@ -33,6 +33,9 @@ const h = vi.hoisted(() => ({
     images: new Map<string, Uint8Array>(),
     /** the data the mocked card importer was handed */
     cardData: undefined as unknown,
+    /** what saveAssetFromPieces throws, if set, after it has drained nothing */
+    pieceFailure: null as null | Error,
+    pieceSaves: 0,
 }))
 
 vi.mock('uuid', () => ({ v4: () => 'uuid' }))
@@ -69,6 +72,15 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
         append(b: Uint8Array) { this.parts.push(b) }
         get buffer() { return Buffer.concat(this.parts) }
     },
+    AssetSourceChangedError: class AssetSourceChangedError extends Error {},
+    saveAssetFromPieces: vi.fn(async (pieces: AsyncIterable<Uint8Array>) => {
+        h.pieceSaves += 1
+        for await (const _piece of pieces) { void _piece }
+        if (h.pieceFailure) {
+            throw h.pieceFailure
+        }
+        return 'piece.png'
+    }),
     LocalWriter: class {},
     VirtualWriter: class {},
     downloadFile: vi.fn(),
@@ -131,6 +143,7 @@ import { exportModuleLegacy, importModule, readModule, type RisuModule } from 's
 import { charxLimits } from 'src/ts/process/processzip'
 import { ModuleRefusal } from 'src/ts/process/moduleRefusal'
 import { language } from 'src/lang'
+import { StoreBlobUnsupportedError } from 'src/ts/storage/store/errors'
 import { noteSelectedStore } from 'src/ts/storage/assetLimit'
 import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 
@@ -180,6 +193,8 @@ beforeEach(() => {
     h.sleeps = []
     h.images = new Map()
     h.cardData = undefined
+    h.pieceFailure = null
+    h.pieceSaves = 0
     Object.assign(charxLimits, limitDefaults)
     restoreFileReader = countFileReaderReads()
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -361,6 +376,25 @@ describe('guards', () => {
         expect(h.sleeps).toEqual([5000, 5000, 5000])
         expect(h.modules).toEqual([])
         expect(h.log).toEqual(['error:Failed to save 2 assets'])
+    })
+
+    test('a piece-saved record that a browser without Blob storage refuses shows the localized refusal at once, without retries or the generic count (regression reproducer)', async () => {
+        const refusal = new Error('File big.bin is too large for this browser to store', { cause: new StoreBlobUnsupportedError('assets/x', new DOMException('no blobs', 'DataCloneError')) })
+        h.pieceFailure = refusal
+
+        await expect(readModule(Buffer.from(risumBytes({ records: [patterned(16 * MIB, 1)] })))).rejects.toBe(refusal)
+
+        expect(h.pieceSaves).toBe(1)
+        expect(h.sleeps).toEqual([])
+    })
+
+    test('a piece-saved record whose save fails for another reason is still retried and counted (guard)', async () => {
+        h.pieceFailure = new Error('storage full')
+
+        await expect(readModule(Buffer.from(risumBytes({ records: [patterned(16 * MIB, 1)] })))).rejects.toThrow('Failed to save 1 assets')
+
+        expect(h.pieceSaves).toBe(4)
+        expect(h.sleeps).toEqual([5000, 5000, 5000])
     })
 
     describe('a source that changes between the two passes', () => {

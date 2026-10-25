@@ -14,7 +14,7 @@ import { StoreBlobUnsupportedError, StoreInvalidKeyError, UploadCapacityError, U
 import { ASSET_PIECE_SAVE_MIN_BYTES } from "../assetHash";
 import { assetBatchWriteMode, isAssetBatchAvailable, isAssetBatchReadAvailable, listAssetsSized, readAssetBatch, writeAssetBatch, writeAssetBatchB64, type AssetBatchWriteMode, type AssetPutEntry, type AssetPutResult, type SizedAssetKey } from "../storage/tauriAssetBatch";
 import { CHUNK_MAX, createChunkedWriter, isDesktopTransport, readRangedPieces, takeRangeReadStats, transportKind, WRITE_CHUNK_BYTES, type ChunkedWriter } from "../storage/tauriByteTransport";
-import { tauriAddressableViolation, tauriCreatableViolation } from "../storage/store/keyRules";
+import { assetOrInlayBodyKeyViolation, tauriAddressableViolation, tauriCreatableViolation } from "../storage/store/keyRules";
 import { ASSET_BATCH_MAX_ENTRIES, ASSET_MAX_STREAMS, ExportAssetReader, RestoreAssetPipeline, parseCopyMeasureKnob, streamAssetEntry, type AssetBatchLimits, type StreamedAssetEntry } from "./assetBatchPipeline";
 import { MEASURE } from "../process/memory/measureFlag";
 import { peekNetTickStats, residentCharacterCount, resetNetTickStats } from "../storage/measureExportHold";
@@ -473,6 +473,51 @@ async function nodeAssetPieceSource(): Promise<AssetPieceSource | null> {
     return store === null ? null : { open: nodePieceOpener(store), node: true }
 }
 
+/** The size of the slices a Blob-valued browser asset is exported in. */
+const WEB_BLOB_EXPORT_PIECE_BYTES = 4 * 1024 * 1024
+
+/**
+ * The browser store's piece source, or `null` for a store that does not offer `readValue`. One `readValue` loads the
+ * asset once: a Blob is read in slices so its bytes are never held whole, bytes come as one piece, and an absent key
+ * yields nothing (`missing`). A read that fails after the first piece raises `BackupAssetChangedError` in
+ * `writeAssetStreamed`, so an asset is never silently left out of the file once its entry has begun.
+ */
+function webBlobPieceSource(store: ByteStore): AssetPieceSource | null {
+    const readValue = store.readValue?.bind(store)
+    if (readValue === undefined) {
+        return null
+    }
+    return {
+        node: false,
+        open: async function* (key: string): AsyncGenerator<ReadPiece, void, undefined> {
+            if (assetOrInlayBodyKeyViolation(key) !== null) {
+                // A key upstream wrote that the store can address but not create has no Blob form: read it whole.
+                const { bytes } = await store.read(key)
+                if (bytes !== null) {
+                    yield { bytes, total: bytes.length }
+                }
+                return
+            }
+            const value = await readValue(key)
+            if (value === null) {
+                return
+            }
+            if (!(value instanceof Blob)) {
+                yield { bytes: value, total: value.length }
+                return
+            }
+            if (value.size === 0) {
+                yield { bytes: new Uint8Array(0), total: 0 }
+                return
+            }
+            for (let start = 0; start < value.size; start += WEB_BLOB_EXPORT_PIECE_BYTES) {
+                const bytes = new Uint8Array(await value.slice(start, Math.min(start + WEB_BLOB_EXPORT_PIECE_BYTES, value.size)).arrayBuffer())
+                yield { bytes, total: value.size }
+            }
+        },
+    }
+}
+
 /**
  * Writes one asset entry from the ranged reader, piece by piece: the entry
  * header carries the size the first piece reported, and the pieces follow in
@@ -880,6 +925,7 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
         : null
     const streamAssets = await desktopStreamingUsable()
     const nodeSource = streamAssets ? null : await nodeAssetPieceSource()
+    const webSource = streamAssets || nodeSource !== null ? null : webBlobPieceSource(store)
     let batchedAssets = 0
     let fallbackAssets = 0
     try {
@@ -907,8 +953,8 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
                 outcome = 'written'
             } else if (taken?.kind === 'missing') {
                 outcome = 'missing'
-            } else if (streamAssets || nodeSource !== null) {
-                outcome = await writeAssetStreamed(writer, key, nodeSource ?? DESKTOP_PIECE_SOURCE)
+            } else if (streamAssets || nodeSource !== null || webSource !== null) {
+                outcome = await writeAssetStreamed(writer, key, nodeSource ?? webSource ?? DESKTOP_PIECE_SOURCE)
             } else {
                 let data: Uint8Array | null = null
                 try {
@@ -1168,6 +1214,7 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
 
     const streamAssets = await desktopStreamingUsable()
     const nodeSource = streamAssets ? null : await nodeAssetPieceSource()
+    const webSource = streamAssets || nodeSource !== null ? null : webBlobPieceSource(store)
 
     for(let i=0;i<assetKeys.length;i++){
         const key = assetKeys[i]
@@ -1191,8 +1238,8 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
         // backup goes on. On the Node store a first range that fails again
         // after one re-send fails the export instead; elsewhere an unreadable
         // asset is also reported as missing.
-        if (streamAssets || nodeSource !== null) {
-            if (await writeAssetStreamed(writer, key, nodeSource ?? DESKTOP_PIECE_SOURCE) === 'missing') {
+        if (streamAssets || nodeSource !== null || webSource !== null) {
+            if (await writeAssetStreamed(writer, key, nodeSource ?? webSource ?? DESKTOP_PIECE_SOURCE) === 'missing') {
                 missingAssets.push(key)
             }
             continue

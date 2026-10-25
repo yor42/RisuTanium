@@ -155,6 +155,9 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 
 import { downloadRisuHub, importCharacterProcess } from 'src/ts/characterCards'
 import { language } from 'src/lang'
+import { noteSelectedStore } from 'src/ts/storage/assetLimit'
+import type { AppStoreKind } from 'src/ts/storage/store/appStore'
+import type { ByteStore } from 'src/ts/storage/store/contract'
 
 // ---------------------------------------------------------------------------------------------
 // Synthetic PNG cards (no real images, no user data)
@@ -661,5 +664,44 @@ describe('downloadRisuHub PNG download', () => {
         expect(h.errors).toEqual(['Error while importing'])
         expect(h.saved).toEqual([])
         expect(h.characters).toEqual([])
+    })
+})
+
+describe('PNG card image size on the browser store', () => {
+    const MIB = 1024 * 1024
+    const imageCard = () => build([ihdr(), chunk('IDAT', new U8(201 * MIB).fill(7)), text('chara', b64(v2Card(0))), iend()], [])
+
+    afterEach(() => {
+        noteSelectedStore(null, null)
+    })
+
+    /** Imports with the 1 GiB store limit of the desktop, Node and IndexedDB stores in force. */
+    async function importUnderGiB(kind: AppStoreKind): Promise<Outcome> {
+        noteSelectedStore(kind, {} as unknown as ByteStore)
+        const bytes = imageCard().bytes
+        reset()
+        h.assetLimit = 1024 * MIB
+        let returned: number | null | undefined
+        let thrown: string | null = null
+        try {
+            returned = await importCharacterProcess({ name: 'card.png', data: bytes })
+        } catch (e) {
+            thrown = e instanceof Error ? e.message : String(e)
+        }
+        return describeOutcome(returned, thrown)
+    }
+
+    test('reproducer: an image over 200 MiB is refused on IndexedDB even though the store limit is 1 GiB, because it is built and saved whole', async () => {
+        const out = await importUnderGiB('indexeddb')
+        expect(out.thrown).toBeNull()
+        expect(out.saved).toEqual([])
+        expect(out.characters).toEqual([])
+        expect(out.errors).toEqual([language.cardImageTooLarge(200)])
+    })
+
+    test('guard: the same image is taken on the desktop store, which keeps the store limit', async () => {
+        const out = await importUnderGiB('tauri')
+        expect(out.errors).toEqual([])
+        expect(out.characters).toHaveLength(1)
     })
 })

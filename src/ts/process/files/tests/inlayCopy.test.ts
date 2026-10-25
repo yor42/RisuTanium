@@ -5,7 +5,9 @@
  * pages are respected. Synthetic data only.
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { language } from 'src/lang'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
+import { StoreBlobUnsupportedError } from 'src/ts/storage/store/errors'
 import { beginBusy, chokePointInFlight, resetBusyActionsForTest } from '../../memory/busyActions'
 import { inlayMetaKey } from '../inlayKeys'
 import { inlayLimits, readAppInlay, readAppInlayRecord } from '../inlayStore'
@@ -391,6 +393,72 @@ describe('residue and settled starts', () => {
         } finally {
             inlayLimits.attachmentBytes = saved
         }
+    })
+
+    describe('on the browser IndexedDB store, where the limit is 1 GiB', () => {
+        // A string whose UTF-8 upper bound (3 bytes a character) is just above the 200 MiB a whole value has on that store.
+        const WHOLE_STRING_LENGTH = 70_000_000
+
+        /** A Blob that reports `size` bytes and holds none, so no test allocates 200 MiB. */
+        class BigBlob extends Blob {
+            constructor(private readonly reported: number) {
+                super([])
+            }
+
+            override get size(): number {
+                return this.reported
+            }
+        }
+
+        beforeEach(() => {
+            appStore = createMemoryByteStore({ blobs: true })
+            injectAppStore(appStore, 'indexeddb')
+        })
+
+        test('guard: a legacy string between 200 MiB and 1 GiB stays residue, never encoded whole, and is not lost', async () => {
+            h.legacy.set('text', legacyImage('t', { data: 'x'.repeat(WHOLE_STRING_LENGTH) }))
+            h.legacy.set('small', legacyImage('s'))
+
+            await expect(runInlayCopy(env)).resolves.toBe('done')
+
+            expect(JSON.parse(flags.get('inlayCopyDone')!).residual).toEqual(['text'])
+            expect(await readAppInlay('text')).toBeNull()
+            expect(await readAppInlay('small')).not.toBeNull()
+            expect(await getInlayAsset('text')).not.toBeNull()
+        })
+
+        test('reproducer: a legacy Blob of that size is copied by its Blob, not held back', async () => {
+            h.legacy.set('video', legacyImage('v', { type: 'video', data: new BigBlob(WHOLE_STRING_LENGTH * 3) }))
+
+            await expect(runInlayCopy(env)).resolves.toBe('done')
+
+            expect(JSON.parse(flags.get('inlayCopyDone')!).residual).toEqual([])
+            expect(await readAppInlayRecord(appStore, 'video')).toMatchObject({ repr: 'blob', len: WHOLE_STRING_LENGTH * 3 })
+            expect(appStore.blobWrites).toHaveLength(1)
+        })
+
+        test('guard: a string just under the whole-value bound is still copied', async () => {
+            h.legacy.set('text', legacyImage('t', { data: 'x'.repeat(1000) }))
+
+            await expect(runInlayCopy(env)).resolves.toBe('done')
+
+            expect(JSON.parse(flags.get('inlayCopyDone')!).residual).toEqual([])
+            expect(await readAppInlay('text')).not.toBeNull()
+        })
+
+        test('reproducer: a Blob the browser cannot keep, above the whole-value bound, is refused with the message that names the file and the limit', async () => {
+            appStore.failWrite = (key, size) => (size > 0 ? new StoreBlobUnsupportedError(key, new DOMException('no blobs', 'DataCloneError')) : null)
+
+            await expect(setInlayAsset('pic', legacyImage('pic', { data: new BigBlob(WHOLE_STRING_LENGTH * 3) })))
+                .rejects.toThrow(language.assetFileTooLargeForBrowserStorage('pic.png', 200))
+        })
+
+        test('reproducer: the same refusal for a nameless inlay uses the unnamed-file wording', async () => {
+            appStore.failWrite = (key, size) => (size > 0 ? new StoreBlobUnsupportedError(key, new DOMException('no blobs', 'DataCloneError')) : null)
+
+            await expect(setInlayAsset('pic', legacyImage('pic', { name: undefined, data: new BigBlob(WHOLE_STRING_LENGTH * 3) })))
+                .rejects.toThrow(language.assetFileTooLargeForBrowserStorage('unnamed file', 200))
+        })
     })
 
     test('a settled start makes no inlay list call and no old-store list call', async () => {

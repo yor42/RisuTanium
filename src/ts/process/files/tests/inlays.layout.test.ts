@@ -318,11 +318,11 @@ describe('the attachment size limit', () => {
     const GIB = 1024 * 1024 * 1024
     const MIB = 1024 * 1024
 
-    test('the attachment bound itself is 1 GiB; the browser store keeps 200 MiB below it until it holds large values in pieces (guard)', () => {
+    test('the attachment bound itself is 1 GiB; the IndexedDB store takes it, the transitional OPFS store keeps 200 MiB below it (reproducer: IndexedDB was 200 MiB before)', () => {
         expect(inlayLimits.attachmentBytes).toBe(GIB)
         expect(WEB_ASSET_LIMIT_BYTES).toBe(200 * MIB)
         useStoreKind('indexeddb')
-        expect(inlayAttachmentLimit()).toBe(200 * MIB)
+        expect(inlayAttachmentLimit()).toBe(GIB)
         useStoreKind('opfs-transitional')
         expect(inlayAttachmentLimit()).toBe(200 * MIB)
     })

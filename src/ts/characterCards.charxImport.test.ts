@@ -233,8 +233,8 @@ import { language } from 'src/lang'
 import { noteSelectedStore } from 'src/ts/storage/assetLimit'
 import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 
-/** The asset limit follows the store the page selected: the browser store takes 200 MiB, a Node store without recorded pieces 100 MiB. */
-function selectStoreKind(kind: 'node' | 'indexeddb'): void {
+/** The asset limit follows the store the page selected: the transitional OPFS store takes 200 MiB, a Node store without recorded pieces 100 MiB. */
+function selectStoreKind(kind: 'node' | 'opfs-transitional'): void {
     noteSelectedStore(kind, createMemoryByteStore())
 }
 
@@ -425,7 +425,7 @@ function reset() {
     h.latePushThrow = false
     h.maxEntryBytes = 0
     h.node = false
-    selectStoreKind('indexeddb')
+    selectStoreKind('opfs-transitional')
     vi.mocked(changeChar).mockClear()
     vi.mocked(checkCharOrder).mockClear()
     Object.assign(charxLimits, defaultLimits)

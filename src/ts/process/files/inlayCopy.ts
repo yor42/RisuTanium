@@ -1,5 +1,6 @@
 import { getAppStore, pageStoreIsIndexedDb, pageStoreIsOpfsTransitional } from 'src/ts/storage/store/appStore'
 import type { ByteStore } from 'src/ts/storage/store/contract'
+import { WEB_ASSET_LIMIT_BYTES } from 'src/ts/storage/nodeBodyLimit'
 import { getPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { isAppInitiatedReload } from 'src/ts/reloadGuard'
 import { busyKinds } from '../memory/busyActions'
@@ -161,6 +162,11 @@ async function copyEntryLocked(store: ByteStore, id: string, checkRoom: ((size: 
     }
     const size = valueSize(value)
     if (size === null || size > inlayAttachmentLimit(value.type)) {
+        return 'residue'
+    }
+    // A string body is encoded whole before it is stored, so on the browser's plain store it keeps the bound a whole
+    // value has there however far the store limit rises; a Blob body is stored by slices and is not held back.
+    if (typeof value.data === 'string' && size > WEB_ASSET_LIMIT_BYTES && await pageStoreIsIndexedDb()) {
         return 'residue'
     }
     if (await hasAppInlay(store, id)) {

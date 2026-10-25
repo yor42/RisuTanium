@@ -854,6 +854,10 @@ export async function saveAssetFromPieces(pieces: AsyncIterable<Uint8Array>, opt
         } catch {
             // The source is released best-effort; the error that ended the save is the one reported.
         }
+        if (error instanceof StoreBlobUnsupportedError) {
+            // The writer raises it only above the bound a whole value has on this store, so the user is told the limit.
+            throw browserStorageTooLargeError(fileName, error)
+        }
         throw error
     } finally {
         endInFlight()
@@ -883,6 +887,15 @@ export async function pieceStoreOrNull(): Promise<ByteStore | null> {
         }
     }
     return store.piecesRecorded() ? store : null
+}
+
+/**
+ * The error shown when a browser that keeps no Blob is handed a file above the bound a whole value has on the plain web
+ * store. The message names the file and that bound; `cause` keeps the store's own error.
+ */
+export function browserStorageTooLargeError(fileName: string, cause?: unknown): Error {
+    const message = language.assetFileTooLargeForBrowserStorage(fileName !== '' ? fileName : 'unnamed file', Math.floor(WEB_ASSET_LIMIT_BYTES / (1024 * 1024)))
+    return cause === undefined ? new Error(message) : new Error(message, { cause })
 }
 
 /** The bytes one slice of a Blob read by `saveAssetFromBlob` holds. */
@@ -915,7 +928,7 @@ export async function saveAssetFromBlob(blob: Blob, fileName: string = '', optio
         // The browser keeps no Blob. The whole bytes are read and hashed again, so the key always names the bytes stored,
         // even if the file changed since the first pass; a file above the bound a whole value has on this store is refused.
         if (blob.size > WEB_ASSET_LIMIT_BYTES) {
-            throw new Error(language.assetFileTooLargeForBrowserStorage(fileName !== '' ? fileName : 'unnamed file', Math.floor(WEB_ASSET_LIMIT_BYTES / (1024 * 1024))))
+            throw browserStorageTooLargeError(fileName)
         }
         return await saveAsset(new Uint8Array(await blob.arrayBuffer()), '', fileName)
     }

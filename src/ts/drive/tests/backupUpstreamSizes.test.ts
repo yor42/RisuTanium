@@ -174,6 +174,71 @@ describe('findOversizeAssets, browser pre-pass', () => {
         })
     }
 
+    /** A store that offers `readValue`: a Blob answers by its size, bytes by their length, and no whole `read` is made. */
+    function valueStore(values: Record<string, Blob | Uint8Array | null | 'error'>) {
+        const reads: string[] = []
+        const valueReads: string[] = []
+        const store = {
+            capabilities: { conditionalWrites: false },
+            async read(key: string) {
+                reads.push(key)
+                return { bytes: null, version: null }
+            },
+            async readValue(key: string) {
+                valueReads.push(key)
+                const value = values[key] ?? null
+                if (value === 'error') {
+                    throw new Error('unreadable')
+                }
+                return value
+            },
+        } as unknown as ByteStore
+        return { store, reads, valueReads }
+    }
+
+    /** A Blob that reports `size` bytes and holds none. */
+    function sizeLikeBlob(size: number): Blob {
+        const blob = new Blob([])
+        Object.defineProperty(blob, 'size', { value: size })
+        return blob
+    }
+
+    test('reproducer: a store with readValue is asked once per asset and a Blob is sized by its size without any read', async () => {
+        const probe = valueStore({
+            'assets/blob-over': sizeLikeBlob(LIMIT + 1),
+            'assets/blob-exact': sizeLikeBlob(LIMIT),
+            'assets/bytes-over': lengthLike(LIMIT + 7),
+            'assets/bytes-small': lengthLike(10),
+            'assets/gone': null,
+            'assets/broken': 'error',
+        })
+        const keys = ['assets/blob-over', 'assets/blob-exact', 'assets/bytes-over', 'assets/bytes-small', 'assets/gone', 'assets/broken']
+        const found = await findOversizeAssets({ ...base(probe.store), kind: 'indexeddb', listedKeys: keys })
+        expect(found).toEqual([{ key: 'assets/blob-over', size: LIMIT + 1 }, { key: 'assets/bytes-over', size: LIMIT + 7 }])
+        expect(probe.valueReads).toEqual(keys)
+        expect(probe.reads).toEqual([])
+    })
+
+    test('reproducer: a key upstream wrote that the store can address but not create is sized by a whole read, never by readValue', async () => {
+        const reads: string[] = []
+        const valueReads: string[] = []
+        const store = {
+            capabilities: { conditionalWrites: false },
+            async read(key: string) {
+                reads.push(key)
+                return { bytes: lengthLike(LIMIT + 3), version: null }
+            },
+            async readValue(key: string) {
+                valueReads.push(key)
+                throw new Error('readValue refuses a key the store cannot create')
+            },
+        } as unknown as ByteStore
+        const found = await findOversizeAssets({ ...base(store), kind: 'indexeddb', listedKeys: ['assets/.big.mp4'] })
+        expect(found).toEqual([{ key: 'assets/.big.mp4', size: LIMIT + 3 }])
+        expect(reads).toEqual(['assets/.big.mp4'])
+        expect(valueReads).toEqual([])
+    })
+
     test('reproducer: a partial backup reads only its own keys', async () => {
         const probe = browserStore()
         const found = await findOversizeAssets({ ...base(probe.store), kind: 'indexeddb', keys: ['assets/over', 'assets/small', 'outside/file'], listedKeys })

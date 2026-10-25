@@ -1,6 +1,7 @@
 import type { ByteStore } from '../storage/store/contract'
 import type { AppStoreKind } from '../storage/store/appStore'
 import type { ExportCancelToken } from '../exportCancel'
+import { assetOrInlayBodyKeyViolation } from '../storage/store/keyRules'
 
 /**
  * The largest asset an upstream Node server takes in one request (MC-223, MC-532 2). A backup holding
@@ -18,9 +19,19 @@ export function isOversizeForUpstream(size: number): boolean {
     return size > UPSTREAM_NODE_ASSET_LIMIT_BYTES
 }
 
-/** The size of the value of `key`, or `null` when it cannot be read. The bytes are dropped before this returns. */
+/**
+ * The size of the value of `key`, or `null` when it cannot be read. The bytes are dropped before this returns. A store
+ * that offers `readValue` loads the value once and a Blob answers by its size without being read into memory.
+ */
 async function storedSizeOf(store: ByteStore, key: string): Promise<number | null> {
     try {
+        if (store.readValue !== undefined && assetOrInlayBodyKeyViolation(key) === null) {
+            const value = await store.readValue(key)
+            if (value === null) {
+                return null
+            }
+            return value instanceof Blob ? value.size : value.length
+        }
         const { bytes } = await store.read(key)
         return bytes === null ? null : bytes.length
     } catch (error) {

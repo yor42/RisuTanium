@@ -1,4 +1,5 @@
 import localforage from 'localforage'
+import { language } from 'src/lang'
 import { getAppStore } from 'src/ts/storage/store/appStore'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 import { StoreBlobUnsupportedError } from 'src/ts/storage/store/errors'
@@ -296,7 +297,8 @@ export async function writeAppInlay(store: ByteStore, id: string, value: object 
     const revoke = options.revokeRendered ?? true
     let prepared: PreparedBody | null
     try {
-        prepared = await prepareBody(store, value.data, options.textRepr)
+        const named = (value as { name?: unknown }).name
+        prepared = await prepareBody(store, value.data, options.textRepr, typeof named === 'string' ? named : '')
     } catch (error) {
         throw new InlayUnreadableError(error)
     }
@@ -343,7 +345,7 @@ interface PreparedBody {
  * for a store that takes Blobs is probed with a one-byte read, so a Blob the browser cannot read is
  * refused here as unreadable and not by the store as a failed write; its bytes are not read otherwise.
  */
-async function prepareBody(store: ByteStore, data: unknown, textRepr?: 'string' | 'string16'): Promise<PreparedBody | null> {
+async function prepareBody(store: ByteStore, data: unknown, textRepr?: 'string' | 'string16', fileName: string = ''): Promise<PreparedBody | null> {
     const writeBlob = store.writeBlob?.bind(store)
     if (data instanceof Blob && writeBlob !== undefined) {
         if (data.size > 0) {
@@ -351,13 +353,17 @@ async function prepareBody(store: ByteStore, data: unknown, textRepr?: 'string' 
         }
         const blob = data
         // A browser that cannot keep a Blob gets the body as bytes within the bound a whole value has always had; the
-        // readers of an inlay body already accept a bytes body. A larger body is refused with the store's own error.
+        // readers of an inlay body already accept a bytes body. A larger body is refused with the message that names the
+        // file and that bound, not the store's own text.
         const put = async (key: string): Promise<unknown> => {
             try {
                 return await writeBlob(key, blob, 'unconditional')
             } catch (error) {
-                if (!(error instanceof StoreBlobUnsupportedError) || blob.size > WEB_ASSET_LIMIT_BYTES) {
+                if (!(error instanceof StoreBlobUnsupportedError)) {
                     throw error
+                }
+                if (blob.size > WEB_ASSET_LIMIT_BYTES) {
+                    throw new Error(language.assetFileTooLargeForBrowserStorage(fileName !== '' ? fileName : 'unnamed file', Math.floor(WEB_ASSET_LIMIT_BYTES / (1024 * 1024))), { cause: error })
                 }
                 return await store.write(key, new Uint8Array(await blob.arrayBuffer()), 'unconditional')
             }

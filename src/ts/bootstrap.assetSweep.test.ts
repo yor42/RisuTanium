@@ -217,6 +217,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => {
         getUncleanablesSync: vi.fn((): string[] => [...world.live]),
         wasAssetWrittenThisPage: (key: string) => world.written.has(key),
         listAssetsWrittenThisPage: () => Array.from(world.written),
+        releaseAssetObjectUrl: vi.fn(),
         AppendableBuffer: class {
             chunks: Uint8Array[] = []
             append(chunk: Uint8Array) { this.chunks.push(chunk) }
@@ -360,6 +361,9 @@ function describeSweep(name: string, platform: 'tauri' | 'node', backend: () => 
             store.put('assets/kept.png', bytesOf(2))
             world.keep = ['kept.png']
             const { boot } = await freshLoadData()
+            const { releaseAssetObjectUrl } = await import('src/ts/globalApi.svelte')
+            //The mock outlives the module reset, so the other platform's sweep must not answer for this one.
+            vi.mocked(releaseAssetObjectUrl).mockClear()
 
             const { loaded } = await boot()
 
@@ -367,6 +371,8 @@ function describeSweep(name: string, platform: 'tauri' | 'node', backend: () => 
             expect(store.has('assets/orphan.png')).toBe(false)
             expect(store.has('assets/kept.png')).toBe(true)
             expect(alertErrorMock).not.toHaveBeenCalled()
+            expect(vi.mocked(releaseAssetObjectUrl).mock.calls).toContainEqual([['assets/orphan.png']])
+            expect(vi.mocked(releaseAssetObjectUrl).mock.calls.flat(2)).not.toContain('assets/kept.png')
         })
 
         test('reproducer: an asset written during the page load, after the keep-set was built, is kept', async () => {

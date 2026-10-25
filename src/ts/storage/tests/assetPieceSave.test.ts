@@ -620,6 +620,50 @@ describe('saveAssetFromPieces off Tauri', () => {
         }
     })
 
+    /** A web-shaped store whose piece writer (the browser's Blob accumulator) fails its `finish` with `failure`. */
+    async function failingWriterStore(failure: unknown): Promise<MapStoreHandle> {
+        const handle = await mapStore()
+        const openWriter = vi.fn(() => ({
+            write: async () => { },
+            finish: async () => { throw failure },
+            abort: async () => { },
+        }))
+        return { ...handle, store: { ...handle.store, openWriter } }
+    }
+
+    test('reproducer: a browser that cannot keep a Blob refuses a streamed asset above the whole-value bound with the message that names the file and the limit', async () => {
+        const { api, appStore } = await loadWorld()
+        const { StoreBlobUnsupportedError } = await import('src/ts/storage/store/errors')
+        const unsupported = new StoreBlobUnsupportedError('assets/x', new DOMException('no blobs', 'DataCloneError'))
+        const handle = await failingWriterStore(unsupported)
+        appStore.injectAppStore(handle.store)
+
+        const refusal = api.saveAssetFromPieces(piecesOf(randomBytes(LARGE, 61), PIECE_SIZES), { fileName: 'big.mp4', sizeBound: LARGE })
+
+        await expect(refusal).rejects.toThrow(/^"big\.mp4" is larger than the \d+ MB this browser can store/)
+        await expect(refusal).rejects.toMatchObject({ cause: unsupported })
+        expect(handle.files.size).toBe(0)
+    })
+
+    test('reproducer: the same refusal without a file name (CharX, .risum) says "unnamed file"', async () => {
+        const { api, appStore } = await loadWorld()
+        const { StoreBlobUnsupportedError } = await import('src/ts/storage/store/errors')
+        const handle = await failingWriterStore(new StoreBlobUnsupportedError('assets/x', new DOMException('no blobs', 'DataCloneError')))
+        appStore.injectAppStore(handle.store)
+
+        await expect(api.saveAssetFromPieces(piecesOf(randomBytes(LARGE, 62), PIECE_SIZES), { sizeBound: LARGE }))
+            .rejects.toThrow(/^"unnamed file" is larger than the \d+ MB this browser can store/)
+    })
+
+    test('guard: any other failure of the piece writer reaches the caller as it is', async () => {
+        const { api, appStore } = await loadWorld()
+        const quota = new DOMException('The quota has been exceeded.', 'QuotaExceededError')
+        const handle = await failingWriterStore(quota)
+        appStore.injectAppStore(handle.store)
+
+        await expect(api.saveAssetFromPieces(piecesOf(randomBytes(LARGE, 63), PIECE_SIZES), { fileName: 'a.mp4', sizeBound: LARGE })).rejects.toBe(quota)
+    })
+
     test('data safety: a source that fails while the pieces are collected stores nothing and throws the typed error', async () => {
         const { api, appStore } = await loadWorld()
         const handle = await mapStore()
@@ -820,7 +864,9 @@ describe('an inlay body Blob on a store that cannot keep a Blob', () => {
             const record = await inlays.readAppInlayRecord(handle.store, 'clip')
             expect(record?.len).toBe(300)
             expect(Array.from(handle.files.get(record!.body) ?? [])).toEqual(Array.from(small))
-            await expect(inlays.writeAppInlay(handle.store, 'big', bigInlay)).rejects.toBe(unsupported)
+            const refusal = inlays.writeAppInlay(handle.store, 'big', bigInlay)
+            await expect(refusal).rejects.toThrow(/^"big\.mp4" is larger than the \d+ MB this browser can store/)
+            await expect(refusal).rejects.toMatchObject({ cause: unsupported })
             expect(await inlays.readAppInlayRecord(handle.store, 'big')).toBeNull()
         } finally {
             vi.doUnmock('src/ts/storage/nodeBodyLimit')
