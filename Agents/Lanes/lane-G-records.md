@@ -278,3 +278,282 @@ Lane A's brief `%TEMP%\risu-b715\lanes-next\lane-G-hygiene.md` (lane A records t
   - New tickets: CHORE-391 (other malformed fields), CHORE-392 (CHORE-55's remaining stages) and CHORE-393 (the `kv:` export edge, whose fix choice comes back to the maintainer).
   - CHORE-70 stays open, narrowed.
   - Pushing the branch needs the maintainer's approval; merging is lane A's job.
+
+# Batch 3 (from 2026-10-25): small fixes and low-priority follow-ups
+
+Lane A's brief `%TEMP%\risu-b715\lanes-next\lane-G-batch3.md` (lane A records the maintainer's un-park as MC-507 and MC-508). Branch fast-forwarded from `efcf63634` to main `31b050a63` on 2026-10-25, before the batch 3 commits. IDs started at MC-548, CHORE-394 (block 390 to 409; CHORE-391 to 393 already exist) and ledger row 3900. Batch 3 used MC-548 to MC-559, so lane G's MC block (540 to 559) is exhausted; the next MC needs a new block from lane A. Next free: CHORE-394, ledger row 3900. Scope confirmed by the maintainer (scope question, not an MC): all 8 tickets, in brief order, one commit each; persistence tickets get `opus-reviewer` and per-commit approval (`MC-500`).
+
+## Batch 3 MC entries
+
+### MC-548 — Lane G, 2026-10-25: CHORE-391, an older save with other malformed parts follows the botPresets rule (`MC-544`, `MC-545`)
+
+- Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `c81da7a4-dfe0-43d6-8c18-a15d4ddd2a9a`. The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below. Scratch: `%TEMP%\risu-lane-g\batch3\mc-source.md`.
+- Reasoning: an older-format save with a non-list `modules`, `loadouts`, `plugins`, `pluginV2`, `pluginCustomStorage`, `chats` or `message`, or with a preset, module, plugin, character, chat or message element that is not an object, stops the normal conversion with a `CodecInputError`. Nothing is written, but the user is stuck at every boot. The question asked whether to extend the `MC-544` and `MC-545` rule to all of them.
+- Alternative rejected: "Refuse only".
+- Related: `MC-544`, `MC-545`, `MC-557` (the refinements), `MC-091`, `MC-058` (new part names need the Translator), CHORE-391.
+
+**The maintainer's answer.** To "CHORE-391: an older save with other malformed parts (modules/loadouts/plugins not a list, a chat's messages not a list, a preset/character/chat/message that isn't an object) crashes the conversion at startup. Nothing is written and the old file stays intact, but the user is stuck at every boot. Extend the botPresets rule (MC-544/545) to all of them?": "Same rule as presets (Recommended)". The option read: "The normal conversion treats any of these as a failed read, so a good backup is offered if one exists. Otherwise "Convert without these parts" names each bad part (e.g. Modules, Chats) and drops it from the converted copy only; the old file is never changed. May need a few new part names (Translator)."
+
+**What was decided (maintainer).** Every other malformed part follows the `MC-544` and `MC-545` rule. The normal (strict) conversion counts it as a failed read, so a good backup is offered. Otherwise "Convert without these parts" names each bad part and drops it from the converted copy only. The old file is never changed. New part names may be needed; the Translator adds them later.
+
+### MC-549 — Lane G, 2026-10-25: CHORE-391, a present non-list character list is refused, never converted to an empty profile
+
+- Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `c81da7a4-dfe0-43d6-8c18-a15d4ddd2a9a`. The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: if the save's whole character list is not a list, the conversion silently succeeds with zero characters. No crash and no warning, and the old file stays intact. An empty profile would look like every character had vanished.
+- Alternative rejected: "Convert, name it".
+- Related: `MC-548`, `MC-553` 1 and `MC-557` 1 (the missing-list case, corrected there), `MC-091`.
+
+**The maintainer's answer.** To "Related case: if the save's whole character list is not a list, conversion silently succeeds with zero characters (no crash, no warning). The old file stays intact. What should happen?": "Refuse it (Recommended)". The option read: "Count it as a failed read: a good backup if any, otherwise the existing can't-convert path. Never install an empty profile from it, since that would look like all characters vanished."
+
+**What was decided (maintainer).** A present non-list character list counts as a failed read: a good backup if one exists, otherwise the existing can't-convert path. An empty profile is never installed from it. The scope of the missing-list case is set by `MC-557` 1.
+
+### MC-550 — Lane G, 2026-10-25: CHORE-02, `toSave.chat` stays in the code; the record is corrected and CHORE-02 closes as kept
+
+- Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `c81da7a4-dfe0-43d6-8c18-a15d4ddd2a9a`. The facts come from an `investigator` packet (in-session report, not saved; TRACED/OBSERVED at `efcf63634`). Scratch: `%TEMP%\risu-lane-g\batch3\mc-source.md`. The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: the Roadmap entry called `toSave.chat` dead plumbing. It is not fully dead. The encoder and the store2 save loop never read it, but the failed-save merge-back and the save-pass meter both read it. Removing it would touch about 8 save-side files and about 80 test fixtures for a tiny saving.
+- Alternative rejected: "Remove it".
+- Related: `MC-175`, `MC-011`, CHORE-02.
+- Facts, TRACED/OBSERVED at `efcf63634` (investigator packet, not independently verified): the type `toSaveType.chat` is in `risuSave.ts`. Its only populate site is the "6b-front" effect in `dbChangeEffects.svelte.ts`. It is trimmed in `globalApi.svelte.ts` and `store2/saveLoop.ts` and copied by `takeStore2Snapshot`. Its readers are `globalApi` `mergeUnsavedChanges` (merge-back after a failed save) and `store2/savePassMeter.ts` `peekSaveMarks` (a measurement counter). Chat mutations dirty the character through `tracker.character`, independent of `.chat`. The line numbers in the Roadmap-parked entry are stale.
+
+**The maintainer's answer.** To "CHORE-02: toSave.chat is not fully dead. The encoder never uses it, but the failed-save merge-back and the save-pass meter still read it. Removing it touches about 8 save-side files and ~80 test fixtures, all for a tiny saving. What should happen?": "Keep, fix the record (Recommended)". The option read: "Leave the code. Close CHORE-02 with the corrected facts and current file locations, so it no longer looks like a pending cleanup."
+
+**What was decided (maintainer).** The code stays. CHORE-02 closes with the corrected facts and current file locations.
+
+### MC-551 — Lane G, 2026-10-25: CHORE-107, `openWriter` moves inside the `try` in piece-by-piece asset saving, with a reproducer
+
+- Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `c81da7a4-dfe0-43d6-8c18-a15d4ddd2a9a`. The source of the ticket is commit `1e71c45c5` (2026-10-06) and `Agents/Reports/60-large-data-import-export-record.md` ("openWriter inside the try (O2 of the hashing review; CHORE-107)"). The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: if opening the writer throws, a busy counter leaks for the rest of the session. Today's keys cannot trigger it, so the defect is latent. Lane G asked whether to fix it now, as a small save-adjacent change.
+- Alternative rejected: "Close as latent".
+- Related: `MC-500` (per-commit approval for persistence), CHORE-107.
+
+**The maintainer's answer.** To "CHORE-107 is real but latent: in piece-by-piece asset saving, if opening the writer ever throws, a busy counter leaks for the rest of the session. Today's keys can't trigger it. Should I fix it now (small, save-adjacent, opus-reviewer, your approval before commit)?": "Fix it (Recommended)". The option read: "Move openWriter inside the try with a guard so cleanup always runs, plus a reproducer test using a throwing fake store."
+
+**What was decided (maintainer).** `openWriter` moves inside the `try` with a guard, so cleanup always runs. A reproducer uses a throwing fake store. The commit needs the maintainer's per-commit approval (`MC-558` 2).
+
+### MC-552 — Lane G, 2026-10-25: CHORE-393, the `.bin` export re-ids a character whose id collides with an upstream data block, in the exported copy only
+
+- Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `c81da7a4-dfe0-43d6-8c18-a15d4ddd2a9a`. The investigator packet is `%TEMP%\risu-lane-g\batch3\c393\result.md`. The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: a full `.bin` export refuses when a character's id is exactly `kv:<name>` and the save also holds an upstream data namespace `<name>`. That needs a hand-made or plugin-written id plus that exact namespace, since every minted id is a uuid. The live save is unaffected. The export already re-ids reserved and over-long ids, and this fits that path.
+- Alternatives rejected: "Re-id any kv: id"; "Leave it".
+- Related: `MC-175`, `MC-223` (the one allowed export exception), `MC-546` 3, `MC-556`, CHORE-393.
+
+**The maintainer's answer.** To "CHORE-393: a full .bin export refuses when a character's id is exactly "kv:<name>" and the save also holds an upstream data namespace <name>. It needs a hand-made or plugin-written id plus that exact namespace; all minted ids are uuids. The live save is unaffected. How should export handle it?": "Re-id on collision (Recommended)". The option read: "Only in the exported copy, give that one character a fresh id, as export already does for reserved or over-long ids. Order, folders, groups, loadouts and message authors are remapped by the existing code. Same "ids replaced" notice, no new text. The live save and import are unchanged."
+
+**What was decided (maintainer).** In the exported copy only, a character whose id collides with an upstream data block is given a fresh id, through the existing re-id path and notice. The live save and import are unchanged.
+
+### MC-553 — Lane G, 2026-10-25: CHORE-391 plan questions, round 1 (missing list, unreadable presets, character with no chats, the new "Chats" label)
+
+- Tag: decisions (maintainer's `AskUserQuestion` answers by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `c81da7a4-dfe0-43d6-8c18-a15d4ddd2a9a`; the CHORE-391 plan round 1, `%TEMP%\risu-lane-g\batch3\c391\`. The question and option texts are lane G's wording, quoted below.
+- Reasoning: `MC-548` and `MC-549` left four sub-cases open. Question 1's premise (a real save always has a character list) was wrong for upstream's block format, and `MC-557` 1 corrects it.
+- Alternatives rejected: not recorded as options in `mc-source.md`; TODO(evidence).
+
+**The maintainer's answers.**
+1. To "CHORE-391: an older save whose character list is missing or null (not just malformed) probably also converts into an empty profile today. Treat it like the malformed case?": "Refuse it too (Recommended)". The option read: "A failed read, same as a non-list: a good backup if any, otherwise can't convert. A real save always has the list, even if empty, so this only blocks a damaged file." The premise is wrong for block-format saves; `MC-557` 1 corrects it.
+2. To "If every preset in the list is unreadable and all get dropped, what should the converted save get?": "Default preset (Recommended)". The option read: "Same as a missing preset list (MC-544): the converted copy gets the Default preset, and "Presets" is named among the dropped parts."
+3. To "If all of a character's chats are unreadable and dropped, the character would have no chats left. What should conversion do?": "Add one new empty chat (Recommended)". The option read: "Keep the character usable, the way a new character starts with one chat. The dropped chats are named on the confirm screen and stay in the old file."
+4. To "Dropped chats and messages need a name on the "Convert without these parts" screen. Add a new label, or reuse the generic one?": "New "Chats" label (Recommended)". The option read: "One new English string, "Chats that could not be read". The Translator adds the other six locales later. Until then those locales show the English text."
+
+**What was decided (maintainer).**
+1. The missing or null list rule is set by `MC-557` 1 (older msgpack format only).
+2. Every preset dropped: the converted copy gets the Default preset, and "Presets" is named.
+3. A character left with no chats gets one new empty chat. The dropped chats are named and stay in the old file.
+4. A new label kind, `chats`, reads "Chats that could not be read". The Translator adds the other locales (`MC-058`).
+
+### MC-554 — Lane G, 2026-10-25: CHORE-189, name the real plugin key of an unreadable plugin storage entry, stable across retries
+
+- Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `c81da7a4-dfe0-43d6-8c18-a15d4ddd2a9a`; the CHORE-189/190 plan and sizing packet `%TEMP%\risu-lane-g\batch3\c189-190\result.md`. The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: the sizing found CHORE-189 narrower than recorded. Only an older save with a corrupted (non-JSON) small plugin entry is affected, on the page import with a peer-tab conflict. The prompt says "_coldpluginIndex" instead of the plugin's name and asks one extra time. No data is lost. The fix is about 15 lines in the store2 legacy path, with no new text.
+- Alternative rejected: "Leave open, low".
+- Related: `MC-091`, `MC-058` (no new text), CHORE-189.
+
+**The maintainer's answer.** To "CHORE-189 is narrower than recorded. Only an older save with a corrupted (non-JSON) small plugin entry is affected, on the page import with a peer-tab conflict. The prompt says "_coldpluginIndex" instead of the plugin's name and asks one extra time. No data is lost. The fix is about 15 lines in the store2 legacy path, with no new text. Fix it now?": "Fix it now (Recommended)". The option read: "Name the real plugin key and keep it stable across retries. opus-reviewer, and your approval before commit."
+
+**What was decided (maintainer).** The real plugin key is named, and it stays stable across retries. The commit needs `opus-reviewer` and the maintainer's per-commit approval.
+
+### MC-555 — Lane G, 2026-10-25: CHORE-190, four sized items: N4 and keys()/length() after clear() close as accepted; the m4 test is added; E8 is fixed
+
+- Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `c81da7a4-dfe0-43d6-8c18-a15d4ddd2a9a`; the CHORE-189/190 sizing packet `%TEMP%\risu-lane-g\batch3\c189-190\result.md`. The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: the sizing of CHORE-190's four items found: N4, extra re-encode work with no loss, where a fix costs about what it saves; keys()/length() after clear(), reachable only through the V2 plugin API, which has no live caller; E8, a one-microtask race that could drop one brand-new plugin value, practically unreachable; m4, a test gap, not a defect.
+- Alternative rejected: the recommended option, which closes E8 as accepted.
+- Related: `MC-091`, CHORE-190.
+
+**The maintainer's answer.** To "CHORE-190's four items, as sized: N4 (extra re-encode work, no loss, and a fix costs about what it saves), keys()/length() after clear() (V2 plugin API only, which has no live caller), E8 (a one-microtask race that could drop one brand-new plugin value, practically unreachable), m4 (a test gap, not a defect). What should happen?": "Also fix E8". The option read: "As above, and also reorder E8's write so the value and its mapping land in the same tick (about 10 lines plus an interleave test, opus-reviewer)." "As above" is the recommended option: "Close N4 and keys()/length() as accepted. Add the one missing test for m4. Close E8 as accepted, noting it would be reopened if plugin calls ever share a tick."
+
+**What was decided (maintainer).** N4 and keys()/length() after clear() close as accepted. The one missing m4 test is added. E8 is fixed: the value and its mapping are written in the same tick, with an interleave test and `opus-reviewer` review.
+
+### MC-556 — Lane G, 2026-10-25: CHORE-393 Gate 1 amendment 5, an archived older-format character whose ids collide is exported under a fresh id and is not re-attachable on re-import; accepted and disclosed
+
+- Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `c81da7a4-dfe0-43d6-8c18-a15d4ddd2a9a`; the CHORE-393 Gate 1 review `%TEMP%\risu-lane-g\batch3\c393\review\gate1.md` (amendment 5). The answer and option label are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: a character archived in the older format whose id collides is given a fresh id in the exported `.bin`. Its archived chats are still written, but on re-import the fork cannot attach them to the renamed character. The export shows its existing "cannot be restored" notice. Reserved ids are handled the same way today.
+- Alternative rejected: "Inline it instead".
+- Related: `MC-552`, `MC-223`, CHORE-393.
+
+**The maintainer's answer.** To "CHORE-393 edge: a character archived in the older format whose id collides (e.g. "kv:foo" plus namespace "foo") gets a fresh id in the exported .bin. Its archived chats are still written, but on re-import the fork can't attach them to the renamed character, and the export shows its existing "cannot be restored" notice. Reserved ids are handled the same way today. Accept that?": "Accept, disclose it (Recommended)". The option read: "Same as reserved ids. Needs a hand-made id, a matching upstream namespace and an old-format archive, all at once. Recorded in the decision and the commit message."
+
+**What was decided (maintainer).** The edge is accepted. It is disclosed in this decision and in the CHORE-393 commit message.
+
+### MC-557 — Lane G, 2026-10-25: CHORE-391 after the Gate 1 round 1 REJECT, four corrections and additions to `MC-553`
+
+- Tag: decisions (maintainer's `AskUserQuestion` answers by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `c81da7a4-dfe0-43d6-8c18-a15d4ddd2a9a`; the CHORE-391 Gate 1 round 1 verdict `%TEMP%\risu-lane-g\batch3\c391\review\gate1.md` (`opus-reviewer`, `[REJECT]`). The answers and option labels are the maintainer's; the question and option texts are lane G's wording, quoted below.
+- Reasoning: the Gate 1 reviewer showed that the missing-list premise of `MC-553` 1 is wrong for upstream's block format. A save with zero characters has no list at all and converts fine today. Questions 2 to 4 settle how archived (cold) faults, the summary line and a leftover crash are handled.
+- Alternatives rejected: not recorded as options in `mc-source.md`; TODO(evidence). Q2's question text describes a second question after conversion starts.
+
+**The maintainer's answers.**
+1. To "Correction to an earlier answer: I said a real save always has a character list. That's wrong for upstream's current (block) format: a save with zero characters has no list at all, and converts fine today. Should the "refuse missing list" rule apply only to the older msgpack format, where a missing list really means damage?": "Older format only (Recommended)". The option read: "Refuse a missing/null list only in old msgpack saves. Upstream block saves with zero characters keep converting normally. A malformed (non-list) value is still refused in both formats."
+2. To "Some bad chats or messages sit inside archived (cold) character data, which is only read after the confirm screen. Dropping and naming them individually needs a second question after conversion starts. How should a bad archived unit be handled?": "Treat unit as unreadable (Recommended)". The option read: "Reuse the existing "some data is incomplete" question that already covers missing archived units: that character's archived data is named there and left out of the copy. No new text, and the old file is unchanged."
+3. To "When chats are dropped from several characters, how should the confirm screen list them?": "One "Chats" line (Recommended)". The option read: "A single "Chats that could not be read" entry, however many characters it affects. Uses the one new string already approved."
+4. To "Some damage can still crash conversion even after this fix, e.g. hand-made bytes with huge numbers or cycles. Should a leftover crash become a blocked "can't convert this file" screen instead of an error at boot?": "Yes, add the net (Recommended)". The option read: "Any leftover conversion error goes to the existing can't-convert path: a good backup if any, otherwise the blocked screen. Nothing is written."
+
+**What was decided (maintainer).**
+1. The refusal of a missing or null character list applies only to the older msgpack format. A block-format save with no list converts as today. A present non-list value is refused in both formats.
+2. A fault inside an archived (cold) unit makes that unit unreadable, through the existing incomplete-data question. No new text. The old file is unchanged.
+3. Dropped chats from several characters are listed as one "Chats that could not be read" entry.
+4. A leftover conversion error goes to the existing can't-convert path: a good backup if one exists, otherwise the blocked screen. Nothing is written.
+
+### MC-558 — Lane G, 2026-10-25: commit approvals under `MC-500`: CHORE-191 and CHORE-208 committed with localeParity red for six locales; CHORE-107 and CHORE-393 approved per commit; CHORE-210 committed too
+
+- Tag: approval (maintainer's `AskUserQuestion` answers by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `c81da7a4-dfe0-43d6-8c18-a15d4ddd2a9a`. Test counts: `%TEMP%\risu-lane-g\batch3\full1\` and `full2\` (see the batch 3 handoff). The answers and option labels are the maintainer's; the question texts are lane G's wording, quoted below.
+- Reasoning: CHORE-191 and CHORE-208 change English strings, so six locale-parity checks stay red until the Translator updates ko, cn, zh-Hant, vi, de and es on main. Earlier lanes recorded the same expected failure. CHORE-107 and CHORE-393 are save-path commits and need per-commit approval under `MC-500`.
+- Alternatives rejected: not recorded in `mc-source.md`; TODO(evidence).
+- Related: `MC-500`, `MC-058`, `MC-548` to `MC-557`.
+
+**The maintainer's answers.**
+1. To "Commit CHORE-191 and CHORE-208 now? Both passed Gate 2. Full test: 22,344 pass; the only failures are the 6 locale-parity checks these English changes cause until the Translator updates ko/cn/zh-Hant/vi/de/es on main (earlier lanes recorded the same expected failure). Check and build pass.": "Commit, parity noted (Recommended)". The option read: "Two commits on worktree-Lane-G. Each message says localeParity stays red for the six locales until lane A's Translator commit. The locale work goes on the fold-in list."
+2. To "Per-commit approval (MC-500) for the two save-path commits, each Gate 2 APPROVE by opus-reviewer: CHORE-107 (...) and CHORE-393 (...). Approve?": "Approve both (Recommended)". The option read: "Commit each as its own commit on worktree-Lane-G. CHORE-210 (test-only, green) is committed too."
+
+**What was decided (maintainer).** CHORE-191 and CHORE-208 are committed on `worktree-Lane-G` with localeParity red for six locales until lane A's Translator commit. CHORE-107 and CHORE-393 are approved, each as its own commit. CHORE-210 is committed too.
+
+### MC-559 — Lane G, 2026-10-25: commit approvals under `MC-500`: CHORE-189, CHORE-190 and CHORE-391 stage 1 approved together; CHORE-391 stage 2 approved on its own
+
+- Tag: approval (maintainer's `AskUserQuestion` answers by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
+- Source: the lane G session transcript `c81da7a4-dfe0-43d6-8c18-a15d4ddd2a9a`. Scratch: `%TEMP%\risu-lane-g\batch3\mc-source.md` and `decisions.md`. Test counts: `%TEMP%\risu-lane-g\batch3\full2\` (question 1) and `full3\` (question 2). The answers and option labels are the maintainer's; the question texts are lane G's wording, quoted below.
+- Reasoning: CHORE-189, CHORE-190 and CHORE-391 are save-path changes and need per-commit approval under `MC-500`. Question 2 asks for stage 2 separately, after its Gate 2 REJECT and EDITORIAL rounds. Stage 2 adds the English string `store2Boot.skippedChats`, so localeParity stays red for the six locales as it does for CHORE-191 and CHORE-208 (`MC-558`).
+- Alternatives rejected: not recorded as options in `mc-source.md`; TODO(evidence).
+- Related: `MC-500`, `MC-558`, `MC-548` to `MC-557`, `MC-058`.
+
+**The maintainer's answers.**
+1. To "Per-commit approval (MC-500) for three save-path commits. Each passed opus Gate 2 (EDITORIAL, labels fixed). Full checks on this tree: check and build pass; test 22,918 pass, only the 6 known locale-parity failures from 191/208. CHORE-189 (name the real plugin key, asked once on retry), CHORE-190 (plugin value and mapping written in one tick), CHORE-391 stage 1 (malformed older saves are refused, a backup is offered, or the blocked screen shows instead of a crash; naming and dropping parts is stage 2). Approve?": "Approve all three (Recommended)". No option text is recorded in `mc-source.md`.
+2. To "Commit CHORE-391 stage 2 on worktree-Lane-G? Gate 2 ended EDITORIAL after one REJECT. pnpm check and pnpm build pass. Full pnpm test fails only the six localeParity locale cases (23153 passed). The message is in %TEMP%\risu-lane-g\batch3\commit\msg-391s2.txt.": "Approve commit (Recommended)". The option read: "Commit the 12 stage 2 files with the verified message. The .snap file is not included. Records and the lane A hand-back come next."
+
+**What was decided (maintainer).**
+1. CHORE-189 (`1db54d1f8`), CHORE-190 (`4233439cb`) and CHORE-391 stage 1 (`353b92a13`) are committed on `worktree-Lane-G`, each as its own commit.
+2. CHORE-391 stage 2 (`3dfcedf06`) is committed on `worktree-Lane-G` with localeParity red for the six locales until lane A's Translator commit.
+
+## Batch 3 CHORE changes
+
+### CHORE-191 — status update for the Roadmap entry
+
+**Status (2026-10-25, lane G): fixed on `worktree-Lane-G` in `0fe50f3f1`, technically accepted; merge pending.** The English `language.errors.chatParseFailed` text no longer ends with a stray ", ". English only. Gate 2 APPROVE by `adversarial-reviewer` (`%TEMP%\risu-lane-g\batch3\c191-208\gate2\verdict.md`; reported in the gates summary, not reread here). Locale follow-up (see the fold-in list): the other locales still carry `, {stack}`; the caller passes `stack: ''`, so they render as before. The commit `0fe50f3f1` is the batch 3 commit list's entry; the commit message is `%TEMP%\risu-lane-g\batch3\commit\msg-191.txt`.
+
+### CHORE-208 — status update for the Roadmap entry
+
+**Status (2026-10-25, lane G): fixed on `worktree-Lane-G` in `4d9c34499`, technically accepted; merge pending.** "Request timed out", the native fetch timeout error from CHORE-164, uses a new English key `language.errors.requestTimedOut`. The test assertion is a wiring guard, not a behavioural reproducer. Gate 2 APPROVE by `adversarial-reviewer`, the same review as CHORE-191 (`%TEMP%\risu-lane-g\batch3\c191-208\gate2\verdict.md`). Locale follow-up: missing in the six locales, so they fall back to English until the Translator adds it (`MC-058`).
+
+### CHORE-210 — status update for the Roadmap entry
+
+**Status (2026-10-25, lane G): fixed on `worktree-Lane-G` in `376ca6db1`, technically accepted; merge pending.** Test-only. The `manualCleanup.svelte.test.ts` failure under load is isolated. The mechanism, per the `376ca6db1` commit message: setup() resets modules and imports the heavy globalApi graph inside the timed body, so the first cold transform is charged to a timed test; the fix warms the graph at collection. Under a slow harness that models the cold load (not real full-suite timing), the previous file failed in all 4 slow runs (4 to 6 timeouts of 292); the fixed file passed 292 of 292 in 3 runs plus the reviewer's. The plain base run, with no delay, passes, so the fix is demonstrated only under the modelled cold load (`%TEMP%\risu-lane-g\batch3\c210\gate2\verdict.md`). Not reproduced: the one-off missing `risuChatParser` parser-mock error. TODO(evidence): it may be a separate cross-file mock issue. See the residual list.
+
+### CHORE-107 — status update for the Roadmap entry
+
+**Status (2026-10-25, lane G): fixed on `worktree-Lane-G` in `79cac1241`, technically accepted; merge pending.** `openWriter` runs inside the `try` with a guard, so the busy mark is released when opening the piece writer fails (`MC-551`). The reproducer is red on the base (`expected 1 to be +0`). Gate 2 APPROVE by `opus-reviewer` (`%TEMP%\risu-lane-g\batch3\c107\gate2\verdict.md`). Residual: a Gate 2 nit, a test comment that says "start it as the save would", which is inexact. Proposed wording: "as a caller that already read from it would". Recorded as a residual, not a new ticket.
+
+### CHORE-393 — status update for the Roadmap entry
+
+**Status (2026-10-25, lane G): fixed on `worktree-Lane-G` in `6ba956c5c`, technically accepted; merge pending.** The export re-ids a character whose id collides with an upstream data block (`kv:` plus a namespace), in the exported copy only (`MC-552`). The live save and import are unchanged. Gate 1 APPROVE with amendments 1 to 10 (`%TEMP%\risu-lane-g\batch3\c393\review\gate1.md`); Gate 2 APPROVE by `opus-reviewer` (`%TEMP%\risu-lane-g\batch3\c393\gate2\verdict.md`). 14 base reproducers fail: 12 export reproducers with the real writer error, 2 unit reproducers by assertion. Disclosure: `MC-556` (archived older-format chats of a re-id'd character are written but not re-attachable on re-import). The implementer's "12 failing" both-sites mutant claim is not repeated: the precise both-sites mutant fails 2, one per export (Gate 2 reviewer). Residual: message authors inside archived chat units are not remapped, the same as the reserved-id path (the `MC-556` consequence).
+
+### CHORE-189 — status update for the Roadmap entry
+
+**Status (2026-10-25, lane G): fixed on `worktree-Lane-G` in `1db54d1f8`, technically accepted; merge pending.** The unreadable plugin storage entry is named by its real plugin key, and the key is stable across retries (`MC-554`). Gate 1 REJECT with amendments, applied; Gate 2 [EDITORIAL] (`opus-reviewer`; the guard label corrected) (`%TEMP%\risu-lane-g\batch3\c189-190\gate2\verdict.md`). Residual: no test pins the `backuplocal` call line (the `mutWire` mutant survives). Recorded as a residual, not a new ticket.
+
+### CHORE-190 — status update for the Roadmap entry
+
+**Status (2026-10-25, lane G): fixed on `worktree-Lane-G` in `4233439cb`, technically accepted; merge pending.** E8 is fixed: the value and its mapping are written in one tick (`MC-555`). The N4 and keys()/length()-after-clear items are closed as accepted (`MC-555`). The m4 test gap is covered by the one added test. Gate 1 REJECT with amendments, applied; Gate 2 [EDITORIAL] (`opus-reviewer`, shared verdict with CHORE-189) (`%TEMP%\risu-lane-g\batch3\c189-190\gate2\verdict.md`).
+
+### CHORE-02 — COMPLETE (closed as kept, 2026-10-25, `MC-550`)
+
+- The code stays. The record is corrected: `toSave.chat` is read by the failed-save merge-back (`globalApi.svelte.ts` `mergeUnsavedChanges`) and the save-pass meter (`store2/savePassMeter.ts` `peekSaveMarks`); the encoder and the store2 save loop never read it.
+- The Roadmap-parked line numbers are stale; the file locations above are current at `efcf63634` (investigator, TRACED/OBSERVED; the two readers, `mergeUnsavedChanges` and `peekSaveMarks`, were confirmed in source by the batch 3 records doc-verifier). The Roadmap rows that still call it dead plumbing are lane A's to update at merge.
+
+### CHORE-391 — status update: fixed on the branch (both stages); merge pending
+
+**Status (2026-10-25, lane G): fixed on `worktree-Lane-G` in two commits, both technically accepted; merge pending. Stage 1 is `353b92a13`; stage 2 is `3dfcedf06`.**
+
+- Stage 1 (`MC-548`, `MC-549`, `MC-557`): a pure detector (`legacy/faults.ts`) finds the malformed parts. The strict read counts a file with any such part as not decoded, so a good backup is offered. An older-format save with no characters list is refused; a block-format save with no list still converts. A safety net around the whole-tree install turns any remaining codec error into the existing can't-convert result, with nothing written. Gate 1 REJECT, then APPROVE with amendments (`opus-reviewer`); Gate 2 EDITORIAL (`opus-reviewer`), test labels corrected. Full checks: see the batch 3 test status.
+- Stage 2 (`3dfcedf06`; `MC-549`, `MC-553`, `MC-557`; commit approved under `MC-559` 2): "Convert without these parts" on an older-format save now converts the save and leaves out exactly the parts it names. Source: the commit message of `3dfcedf06`, checked against the Gate 2 verdicts.
+  - A malformed preset, module, plugin, chat or message is dropped the way presets already were. The selected preset and the selected chat are remapped to the kept lists. If the selected preset was dropped, `botPresetsId` points one past the last kept preset. If every preset is dropped, the Default preset is installed. A dropped selected chat falls to the last kept chat. `fmIndex` is never changed.
+  - A character whose chats are all dropped gets one new empty chat. A character slot that is not an object is skipped and named.
+  - The skipped list names one entry per kind and one per skipped character slot, and does not name again a block the salvage already named. Malformed chats appear on one new "Chats" line, the new English key `store2Boot.skippedChats` ("Chats that could not be read").
+  - A present non-list `characters` is still refused, in the older format and, on this path, in the block format; a block-format save with no `characters` list still converts.
+  - The drop (`dropLegacyFaults`) builds a new tree and never changes the decoded one. During conversion a cold unit whose chats are malformed is treated as unreadable (resolve's `faultyUnitsUnusable` option); the `.bin` import does not pass that option and is unchanged.
+- Stage 2 tests (commit message; reproduced by the Gate 2 round 1 reviewer on the stage 1 code): 119 new behaviour tests fail by assertion (110 `legacyConvertFaults`, 6 `legacyResolve`, 2 `legacyLenient`, 1 `bootText`). The reviewer's base run was 281 failed of 1027, with 75 of those TypeErrors from missing exports and 206 assertion failures. The block-format `characters` reproducer added after Gate 2 round 1 failed by assertion on the pre-remediation code (round 2 mutant P0: 2 of 1454 failed, both by assertion).
+- Gates, CHORE-391 as a whole: Gate 1 (plan, both stages) `[REJECT]` and then APPROVE with amendments (`opus-reviewer`). Stage 2 Gate 2 round 1 `[REJECT]` (`opus-reviewer`; `%TEMP%\risu-lane-g\batch3\c391\gate2-s2\verdict.md`):
+  - F1: the check that refuses a present non-list `characters` was left out of the block-format branch of the lenient decoder, on a claim that the shape cannot occur. A root block carrying `characters` as a string or an object does decode to that. "Convert without these parts" then installed an empty profile and named nothing, against `MC-549` and `MC-557` 1. The strict path was already correct. Not a regression against the stage 1 code.
+  - F2: the salvage test said a salvage entry and a detector fault "of one kind are one entry" but used two different kinds, so the mutant Y5 survived (0 of 987 failed).
+  - E1 (editorial): "all mutants killed" was inexact, see the residuals.
+  - Remediation: the lenient decoder's block-format branch now throws `LegacyDecodeError` for a present non-list `characters` (a missing list is still accepted); a new reproducer for the string and object cases; the salvage test uses a corrupt `plugins` block plus a root `pluginV2` string.
+  - Gate 2 round 2 `[EDITORIAL]` (fresh `opus-reviewer`, seeded with the round 1 verdict; `%TEMP%\risu-lane-g\batch3\c391\gate2-s2r2\verdict.md`): F1 and F2 closed, with the red/green and mutant evidence rerun (Y5 now killed, 1 of 1454). E2: the `LegacyDecodeError` doc comment no longer matched where it is thrown; fixed in `3dfcedf06` (the commit message says a doc comment was corrected). Round 2 targeted tests: 19 files, 1393 of 1393 passed; `pnpm check` 0 errors and 0 warnings.
+- Full checks: the final snapshot is `353b92a13` plus the stage 2 diff (the content committed as `3dfcedf06`): see the batch 3 test status.
+- Residuals, none opened as a ticket (`plan-r2.md` section 8, the Gate 1 round 2 review and the two Gate 2 verdicts):
+  - A10: a `.bin` import of these malformed shapes still refuses them as `unsavable`. That is loud and unchanged (`MC-223`).
+  - Mh: the mutant "chat page reset when only a message is dropped" is equivalent, not killed. With no chat dropped the remap is the identity (Gate 2 round 1, E1). The commit message already says so.
+  - O1 (Gate 2 round 1, optional, not taken up): `convertDecoded` drops by recomputing the faults, not from the list the person confirmed. Agreement depends on `decoders.lenient` being `decodeLegacyLenient`, which the default decoders guarantee and a parity test proves. An injected lenient decoder, a test seam only, could drop silently. The reviewer suggested a one-line comment at the drop site.
+  - O2 (Gate 2 round 2, optional, not taken up): a `ROOT_COMPONENT` block with key `characters` and value `null` replaces a list the character blocks already built (`risuSave.ts`). Pre-existing, needs crafted bytes, and is outside this ticket's stated shapes. The reviewer: record it only if the maintainer wants it.
+  - Two salvaged blocks of the same kind still appear as two entries; salvage entries are kept verbatim. Pre-existing behaviour kept (Gate 2 round 1, deviation 1, accepted). The reviewer notes that only the `other` and `character` kinds can repeat within the salvage list.
+
+## Batch 3 ledger rows
+
+None. Batches 1 and 2 have no ledger-row block either (batch 1 says "None yet."). Ledger rows start at 3900 and none are used.
+
+## Batch 3 residuals
+
+Recorded in the status lines above. Proposed new CHORE IDs: none (CHORE-394 stays free). A residual becomes a new CHORE only if the parent decides it is real work.
+
+- CHORE-107: the inexact test comment (Gate 2 nit).
+- CHORE-189: no test pins the `backuplocal` call line.
+- CHORE-210: the one-off `risuChatParser` parser-mock error was not reproduced; possibly a separate cross-file mock issue. TODO(evidence).
+- CHORE-393: message authors inside archived chat units are not remapped (`MC-556`).
+- CHORE-391: A10 (a `.bin` import of these shapes stays `unsavable`, `MC-223`); Mh (equivalent mutant, not killed); O1 (no comment at the drop site naming the `decoders.lenient` coupling); O2 (`ROOT_COMPONENT` `characters: null` overwriting a built list, pre-existing, crafted bytes only); two salvaged blocks of the same kind still appear as two entries (pre-existing). Details in the CHORE-391 status above.
+
+## Batch 3 fold-in list
+
+- The commits: `0fe50f3f1` (CHORE-191), `4d9c34499` (CHORE-208), `376ca6db1` (CHORE-210), `79cac1241` (CHORE-107), `6ba956c5c` (CHORE-393), `1db54d1f8` (CHORE-189), `4233439cb` (CHORE-190), `353b92a13` (CHORE-391 stage 1), `3dfcedf06` (CHORE-391 stage 2). Then this records file.
+- Translator work on main, for ko, cn, zh-Hant, vi, de and es:
+  - remove ", {stack}" from `errors.chatParseFailed` (optional cosmetic; the English text no longer has it);
+  - add `errors.requestTimedOut` (`MC-058`);
+  - add `store2Boot.skippedChats` ("Chats that could not be read"; CHORE-391 stage 2).
+- `localeParity` stays red until the Translator's commit on main (`MC-558`, `MC-559` 2).
+- MC-548 to MC-559.
+- CHORE status changes: CHORE-191, 208, 210, 107, 393, 189, 190 and 391 (both stages) fixed on the branch (merge pending); CHORE-190's N4 and keys()/length() items closed as accepted; CHORE-02 COMPLETE (closed as kept).
+- New tickets: none. The residuals above are not tickets. Lane G's MC block (540 to 559) is exhausted; the next MC needs a new block from lane A. Next free: CHORE-394, ledger row 3900.
+
+## Batch 3 test status
+
+Full checks, read from the logs and exit files in `%TEMP%\risu-lane-g\batch3\full1\`, `full2\` and `full3\` (`test.log`, `check.log`, `build.log`, `exit.txt` or `exits.txt`, `head.txt`, `status.txt`). Each run's snapshot is the HEAD in `head.txt` plus the uncommitted changes in `status.txt`.
+
+- full1 (HEAD `31b050a63` plus the uncommitted changes of CHORE-191, 208, 210, 107 and 393, 11 modified files): `pnpm test` exit 1, 22,344 tests passed, 6 failed, 23 skipped; 1,004 of 1,006 files passed, 1 skipped. `pnpm check` exit 0, 0 errors and 0 warnings. `pnpm build` exit 0.
+- full2 (HEAD `6ba956c5c` plus the uncommitted changes of CHORE-189, 190 and 391 stage 1; it also lists the `.snap` file as modified): `pnpm test` exit 1, 22,918 passed, 6 failed, 23 skipped; 1,006 of 1,008 files passed. `pnpm check` exit 0, 0 errors and 0 warnings. `pnpm build` exit 0. This run predates four test-title-only relabels to "unit:" (the `353b92a13` commit message); the two files rerun after them pass.
+- full3 (final snapshot: HEAD `353b92a13` plus the uncommitted CHORE-391 stage 2 diff, 12 source and test files plus the modified, uncommitted `.snap`; the 3dfcedf06 file list matches those 12 files and no other source diff remains (doc-verifier); the stage 2 diff is the content committed as `3dfcedf06`, per the commit message and the brief; the run itself did not check out `3dfcedf06`): `pnpm test` exit 1, 23,153 passed, 6 failed, 23 skipped (23,182 total); 1,006 of 1,008 files passed, 1 skipped. `pnpm check` exit 0, 0 errors and 0 warnings. `pnpm build` exit 0.
+- In all three runs the only failing file is `src/lang/localeParity.test.ts`, with 6 failed tests, one per locale (ko, cn, zh-Hant, vi, de, es).
+  - In full1 and full2 the logs name `errors.requestTimedOut` (missing, from CHORE-208) and an `errors.chatParseFailed` placeholder mismatch (the locales still carry `{stack}`; from CHORE-191).
+  - In full3 the logs also name `store2Boot.skippedChats` (missing, from CHORE-391 stage 2).
+- The `.snap` file `src/ts/process/mcp/risuaccess/tests/__snapshots__/modules.test.ts.snap` shows as modified in full2 and full3 and in the session's git status; it is not part of any batch 3 commit (`MC-559` 2). Its change is not examined here.
+- Not run: the full suite on the committed `3dfcedf06` tree itself.
+
+## Batch 3 handoff
+
+- 2026-10-25: scope confirmed (8 tickets, in brief order). Branch fast-forwarded from `efcf63634` to main `31b050a63`, before the batch 3 commits.
+- 2026-10-25: commits on `worktree-Lane-G`, in order: `0fe50f3f1` (CHORE-191), `4d9c34499` (CHORE-208), `376ca6db1` (CHORE-210), `79cac1241` (CHORE-107), `6ba956c5c` (CHORE-393), `1db54d1f8` (CHORE-189), `4233439cb` (CHORE-190), `353b92a13` (CHORE-391 stage 1), `3dfcedf06` (CHORE-391 stage 2). Not pushed.
+- **CHORE-391 is done on the branch (both stages), merge pending.** Stage 2 Gate 2 ended `[EDITORIAL]` after one `[REJECT]`; the final full run is full3 above. `localeParity` is red for the six locales until the Translator's commit on main.
+- Open: no product question is open (the stage 2 part-name and label choices are settled by `MC-548` to `MC-553` and `MC-557`).
+- Pushing the branch needs the maintainer's approval. Merging is lane A's job.
