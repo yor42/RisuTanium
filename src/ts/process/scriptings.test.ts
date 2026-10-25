@@ -94,7 +94,7 @@ test('keeps explicit false as the generation stop signal', async () => {
 test('a Lua script cannot write to a host prototype through an object an API returns', async () => {
   // simpleLLM hands Lua a plain object. Through wasmoon's proxy extension Lua
   // indexes the live object, so `__proto__` reaches the host's Object.prototype;
-  // without it Lua gets a table copy of the own keys.
+  // without it Lua gets a table copy of the enumerable keys.
   const { requestChatData } = await import('./request/request')
   vi.mocked(requestChatData).mockResolvedValue({ type: 'success', result: 'reply' } as never)
   try {
