@@ -130,11 +130,30 @@ export type PluginIndexIo = {
     mint(): string
 }
 
+/**
+ * A unit the converted tree cannot be completed without. `slotKey` is the plugin storage key that stays unavailable,
+ * or `PLUGIN_STORAGE_INDEX_KEY` when the index itself is the failure. A failure that has no unit of its own carries the
+ * index pointer as `id`, so the pair is the same on every attempt.
+ */
+export type PluginMissingUnit = {
+    id: string
+    slotKey: string
+}
+
 export type PluginIndexConversion = {
     /** Units this conversion wrote. */
     minted: string[]
-    /** Unit ids the converted tree cannot be completed without; the caller reports them. */
-    missing: string[]
+    /** What the converted tree cannot be completed without; the caller reports them. */
+    missing: PluginMissingUnit[]
+}
+
+/**
+ * One unavailable-unit key per failed slot, for the legacy-page restore question that counts distinct keys. An
+ * index-level failure keeps its unit id; an entry-level failure is keyed by slot as well, so two failed entries that
+ * share an id (the index pointer) are still counted twice.
+ */
+export function unavailableKeysOfMissing(missing: readonly PluginMissingUnit[]): string[] {
+    return missing.map(item => item.slotKey === PLUGIN_STORAGE_INDEX_KEY ? item.id : `${item.slotKey}:${item.id}`)
 }
 
 /**
@@ -146,7 +165,9 @@ export type PluginIndexConversion = {
  * unreadable or non-index index unit, an index value that is not JSON, a
  * failed write and a large id that is no unit id are all returned in `missing`
  * and never turned into an empty value. The pointer is removed whatever the
- * outcome, so it can never be exported or kept without its units.
+ * outcome, so it can never be exported or kept without its units. A small entry
+ * is parsed before a unit id is minted, so an entry that is not JSON never
+ * mints and reports the index pointer, the same on every attempt.
  */
 export async function convertPluginStorageIndex(
     storage: Record<string, unknown> | null | undefined,
@@ -162,7 +183,7 @@ export async function convertPluginStorageIndex(
         return result
     }
     if (!isPluginUnitId(pointer)) {
-        result.missing.push(pointer)
+        result.missing.push({ id: pointer, slotKey: PLUGIN_STORAGE_INDEX_KEY })
         return result
     }
 
@@ -174,7 +195,7 @@ export async function convertPluginStorageIndex(
         read = { status: 'error', error }
     }
     if (read.status !== 'ok' || !isPluginStorageIndex(read.value)) {
-        result.missing.push(pointer)
+        result.missing.push({ id: pointer, slotKey: PLUGIN_STORAGE_INDEX_KEY })
         return result
     }
 
@@ -187,14 +208,23 @@ export async function convertPluginStorageIndex(
             }
             else {
                 dropped.add(slot.key)
-                result.missing.push(slot.id)
+                result.missing.push({ id: slot.id, slotKey: slot.key })
             }
+            continue
+        }
+        let value: unknown
+        try {
+            value = JSON.parse(slot.json)
+        }
+        catch {
+            dropped.add(slot.key)
+            result.missing.push({ id: pointer, slotKey: slot.key })
             continue
         }
         const id = io.mint()
         let written = false
         try {
-            written = await io.write(id, JSON.parse(slot.json))
+            written = await io.write(id, value)
         }
         catch {
             written = false
@@ -205,7 +235,7 @@ export async function convertPluginStorageIndex(
         }
         else {
             dropped.add(slot.key)
-            result.missing.push(id)
+            result.missing.push({ id, slotKey: slot.key })
         }
     }
     if (indexed.size > 0 || dropped.size > 0) {

@@ -30,7 +30,7 @@ import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection, type ColdStorageBackupPayload } from "../process/coldstorage.svelte";
 import { characterListNeedsRepair, kvBlockNamesOf, collectBackupColdStorage, inlinedCharacter, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, takeStubReadStats, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
-import { convertPluginStorageIndex } from "../process/pluginStorageIndex";
+import { convertPluginStorageIndex, unavailableKeysOfMissing } from "../process/pluginStorageIndex";
 import { v4 } from "uuid";
 import { BACKUP_ENCRYPTION_MARKER_NAME, BACKUP_NAME_PREFIX_BYTES, MAX_MARKER_NAME_BYTES, backupCopyWindowBytes, createBlobWindowReader, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry } from "./backupContainer";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
@@ -1880,7 +1880,7 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                 for(const key of indexConversion.minted){
                     restoredColdStorageKeys.add(key)
                 }
-                missingColdStorageKeys.push(...indexConversion.missing)
+                missingColdStorageKeys.push(...unavailableKeysOfMissing(indexConversion.missing))
                 // A plugin storage unit is present whatever value it holds;
                 // chat and character units must also be chat or character shaped.
                 const pluginColdStorageKeys = new Set(listColdPluginStorageKeys(dbData))

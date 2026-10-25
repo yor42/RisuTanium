@@ -845,9 +845,27 @@ describe('upstream plugin storage index', () => {
 
         const { database, incomplete } = await resolveLegacyTree(indexedTree(), readerOver(units), { ...OPTIONS, newUnitId: counterMint() })
 
-        expect(incomplete).toEqual([{ kind: 'plugin', slotKey: '_coldpluginIndex', key: '00000000-0000-4000-8000-000000000100', reason: 'missing' }])
+        expect(incomplete).toEqual([{ kind: 'plugin', slotKey: 'badKey', key: IDX.index, reason: 'missing' }])
         const slots = (database.pluginCustomStorage as Obj)._coldplugin as Record<string, string>
         expect(Object.hasOwn(slots, 'badKey')).toBe(false)
+    })
+
+    test('reproducer: the same bad small entries are listed identically whatever ids are minted, one item per plugin key', async () => {
+        const broken = { ...INDEX_VALUE, entries: [{ k: 'badKey', s: '{not json' }, { k: 'worseKey', s: 'also not json' }] }
+        const resolveWith = async (newUnitId: () => string) => {
+            const units = unitsOf({ [IDX.index]: { status: 'ok', value: broken } })
+            return (await resolveLegacyTree(indexedTree(), readerOver(units), { ...OPTIONS, newUnitId })).incomplete
+        }
+
+        const first = await resolveWith(counterMint())
+        let offset = 0x900
+        const second = await resolveWith(() => `00000000-0000-4000-8000-${(offset++).toString(16).padStart(12, '0')}`)
+
+        expect(first).toEqual([
+            { kind: 'plugin', slotKey: 'badKey', key: IDX.index, reason: 'missing' },
+            { kind: 'plugin', slotKey: 'worseKey', key: IDX.index, reason: 'missing' },
+        ])
+        expect(second).toEqual(first)
     })
 
     test('reproducer: a minted id that is already a plain plugin storage key keeps the plain value and is listed as a collision', async () => {

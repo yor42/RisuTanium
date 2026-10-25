@@ -4,7 +4,7 @@ import { applyStubStateOnRestore } from '../../../process/coldCharacter'
 import {
     formatColdStorageLoadError, isRestorableColdStorageKey, mergeRetriedColdChatSideFields, type RetryLegacyColdChatSideFields,
 } from '../../../process/coldstorageData'
-import { convertPluginStorageIndex, pluginIndexPointer, PLUGIN_STORAGE_INDEX_KEY } from '../../../process/pluginStorageIndex'
+import { convertPluginStorageIndex, pluginIndexPointer } from '../../../process/pluginStorageIndex'
 import { DERIVED_COLD_FIELDS } from '../codec/bodies'
 import { StubRefusedError } from '../codec/types'
 import { legacyFirstMessageRef, legacyPluginRefs, legacyRefsOfCharacter, type LegacyRefKind } from './refs'
@@ -284,7 +284,8 @@ interface ConvertedPluginStorage {
  * A small entry becomes a minted unit held in `minted`, a large entry keeps its unit id. An index unit whose read fails
  * (a rejection or an error status) aborts (`LegacyReadError`): `convertPluginStorageIndex` reports any failed read as
  * missing, so the failure is kept here and thrown once it returns. An index unit that is absent, not JSON or of another
- * shape is listed in `incomplete`, with the pointer dropped from the copy as the legacy-page import does.
+ * shape is listed in `incomplete` under the index key, with the pointer dropped from the copy as the legacy-page import
+ * does. A failed entry is listed under its own plugin key, with the same item on every attempt.
  */
 async function convertPluginIndex(
     source: unknown, reader: LegacyEntryReader, mint: () => string, incomplete: IncompleteItem[],
@@ -312,8 +313,8 @@ async function convertPluginIndex(
     if (failure.error !== null) {
         throw failure.error
     }
-    for (const key of conversion.missing) {
-        incomplete.push({ kind: 'plugin', slotKey: PLUGIN_STORAGE_INDEX_KEY, key, reason: 'missing' })
+    for (const item of conversion.missing) {
+        incomplete.push({ kind: 'plugin', slotKey: item.slotKey, key: item.id, reason: 'missing' })
     }
     return { storage, minted }
 }
