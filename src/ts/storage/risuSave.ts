@@ -206,6 +206,85 @@ export async function encodeRisuSaveCompressionStream(data:any) {
     }
 }
 
+/** msgpackr writes every plain object as a map 16 (`0xde` + u16 key count), so a root of this many keys or more is not split. */
+const PARTS_MAP16_KEY_LIMIT = 0x10000
+
+/** The map header msgpackr writes for a plain object of `count` keys (`count` below `PARTS_MAP16_KEY_LIMIT`). */
+function msgpackMapHeader(count:number):Uint8Array{
+    return Uint8Array.of(0xde, count >> 8, count & 0xff)
+}
+
+/** The array header msgpackr writes for `length` elements: fixarray below 16, array 16 below 65536, array 32 at 65536 or more. */
+function msgpackArrayHeader(length:number):Uint8Array{
+    if(length < 0x10){
+        return Uint8Array.of(0x90 | length)
+    }
+    if(length < 0x10000){
+        return Uint8Array.of(0xdc, length >> 8, length & 0xff)
+    }
+    return Uint8Array.of(0xdd, length >>> 24, (length >> 16) & 0xff, (length >> 8) & 0xff, length & 0xff)
+}
+
+/**
+ * Whether msgpackr writes `data` as a map of its `for...in` keys: it takes that path only when `data.constructor` is
+ * `Object` (so an object inheriting `Object` through a prototype counts, and an own or inherited `constructor` key
+ * that is not `Object`, a class instance, a Map, an Array or a null-prototype object does not).
+ */
+function isMsgpackPlainObjectRoot(data:object):boolean{
+    return !!data && (data as { constructor?: unknown }).constructor === Object
+}
+
+function* generateRisuSaveParts(data:object):Generator<Uint8Array, void, undefined>{
+    try{
+        const keys:string[] = []
+        const splittable = isMsgpackPlainObjectRoot(data)
+        if(splittable){
+            for(const key in data){
+                keys.push(key)
+            }
+        }
+        if(!splittable || keys.length >= PARTS_MAP16_KEY_LIMIT){
+            yield packr.encode(data)
+            return
+        }
+        yield msgpackMapHeader(keys.length)
+        // The keys were listed above and every value is read once, here, so the caller must not change the tree between
+        // pieces.
+        const root = data as Record<string, unknown>
+        for(const key of keys){
+            yield packr.encode(key)
+            const value = root[key]
+            if(Array.isArray(value)){
+                const length = value.length
+                yield msgpackArrayHeader(length)
+                for(let i = 0; i < length; i++){
+                    yield packr.encode(value[i])
+                }
+            }
+            else{
+                yield packr.encode(value)
+            }
+        }
+    }
+    finally{
+        releasePackrBuffer()
+    }
+}
+
+/**
+ * The msgpack of `data` as pieces whose concatenation equals `packr.encode(data)` byte for byte, so a consumer can
+ * compress an export without holding the whole encoding. A piece may be a view of the packr's buffer, valid until the
+ * next piece is requested; the buffer is released when the generator ends or is abandoned with `return()`.
+ *
+ * `data` is typed `object` because the root is any value `packr.encode` accepts as a tree (a plain object normally; a
+ * Map, an Array or a class instance falls back to one whole encode) while a primitive root is not a save.
+ *
+ * Plain function, not a generator, so checks added here run at the call and not at the first `next()`.
+ */
+export function encodeRisuSaveParts(data:object):Generator<Uint8Array, void, undefined>{
+    return generateRisuSaveParts(data)
+}
+
 export type toSaveType = {
     character: string[];
     chat: [string, string][];
