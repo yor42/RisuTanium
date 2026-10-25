@@ -10,6 +10,8 @@ import { changeChar, characterFormatUpdate } from "./characters"
 import { ASSET_PIECE_SAVE_MIN_BYTES } from "./assetHash"
 import { AppendableBuffer, AssetSourceChangedError, BlankWriter, checkCharOrder, downloadFile, loadAsset, LocalWriter, readImage, saveAsset, saveAssetFromPieces, VirtualWriter } from "./globalApi.svelte"
 import { isTauri, isNodeServer } from "src/ts/platform"
+import { ExportCancelledError, ExportCancelToken, createExportWaitGate } from "./exportCancel"
+import { cancelledFileState } from "./exportWriters"
 import { compressImage, getImageType } from "./media"
 import { DBState, SettingsMenuIndex, ShowRealmFrameStore, selectedCharID, settingsOpen } from "./stores.svelte"
 import { hasher } from "./parser/parser.svelte"
@@ -1704,10 +1706,42 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
 }):Promise<boolean> {
     const spec:'v2'|'v3' = arg.spec ?? 'v2' //backward compatibility
     let img = await readCardExportImage(char.image)
+    // A web export through a browser download can stall behind the browser's own prompt, so its dialog carries a Cancel
+    // (a percentage as text stands in for the bar, which cannot show one). A desktop file, a JSON card and a writer that
+    // is not a `LocalWriter` keep the dialogs they always had.
+    const cancel = (arg.writer === undefined || arg.writer instanceof LocalWriter) && type !== 'json' && !isTauri ? new ExportCancelToken() : null
+    const gate = cancel ? createExportWaitGate(cancel, true) : null
+    const showProgress = (msg:string, percent:string) => {
+        if(cancel && gate){
+            cancel.throwIfCancelled()
+            gate.wait(`${msg} (${percent}%)`)
+        }
+        else{
+            alertStore.set({ type: 'progress', msg, submsg: percent })
+        }
+    }
+    const showWriting = () => {
+        if(cancel && gate){
+            cancel.throwIfCancelled()
+            gate.wait(language.alerts.writingPng)
+        }
+        else{
+            alertStore.set({ type: 'wait', msg: language.alerts.writingPng })
+        }
+    }
+    let localWriter: LocalWriter|VirtualWriter|undefined
     try{
         char.image = ''
         img = type === 'png' ? (await reencodeImage(img)) : img
-        const localWriter = arg.writer ?? (new LocalWriter())
+        localWriter = arg.writer ?? (new LocalWriter())
+        if(cancel && arg.writer instanceof LocalWriter){
+            //A writer opened by the caller (a module export) joins this run's cancel switch.
+            arg.writer.useCancel(cancel)
+        }
+        //The writer's own first writes (the download prompt, the image chunks) can stall before any progress is shown.
+        if(cancel && gate){
+            showWriting()
+        }
         if(!arg.writer && type !== 'json'){
             const nameExt = {
                 'png': ['Image File', 'png'],
@@ -1716,7 +1750,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                 'charxJpeg': ['CharX Embedded Jpeg', 'jpeg']
             }
             const ext = nameExt[type]
-            await (localWriter as LocalWriter).init(ext[0], [ext[1]])
+            await (localWriter as LocalWriter).init(ext[0], [ext[1]], undefined, cancel ?? undefined)
         }
         const writer = (type === 'charx' || type === 'charxJpeg') ? (new CharXWriter(localWriter)) : type === 'json' ? (new BlankWriter()) : (new PngChunk.streamWriter(img, localWriter))
         await writer.init()
@@ -1728,11 +1762,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             const card = await createBaseV2(char)
             if(card.data.extensions.risuai.emotions && card.data.extensions.risuai.emotions.length > 0){
                 for(let i=0;i<card.data.extensions.risuai.emotions.length;i++){
-                    alertStore.set({
-                        type: 'progress',
-                        msg: language.alerts.addingEmotions,
-                        submsg: (i / card.data.extensions.risuai.emotions.length * 100).toFixed(2)
-                    })
+                    showProgress(language.alerts.addingEmotions, (i / card.data.extensions.risuai.emotions.length * 100).toFixed(2))
                     const key = card.data.extensions.risuai.emotions[i][1]
                     const rData = await readImage(key)
                     const b64encoded = Buffer.from(await compressImage(rData)).toString('base64')
@@ -1745,11 +1775,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             
             if(card.data.extensions.risuai.additionalAssets && card.data.extensions.risuai.additionalAssets.length > 0){
                 for(let i=0;i<card.data.extensions.risuai.additionalAssets.length;i++){
-                    alertStore.set({
-                        type: 'progress',
-                        msg: language.alerts.addingAdditionalAssets,
-                        submsg: (i / card.data.extensions.risuai.additionalAssets.length * 100).toFixed(2)
-                    })
+                    showProgress(language.alerts.addingAdditionalAssets, (i / card.data.extensions.risuai.additionalAssets.length * 100).toFixed(2))
                     const key = card.data.extensions.risuai.additionalAssets[i][1]
                     const rData = await readImage(key)
                     const b64encoded = Buffer.from(await compressImage(rData)).toString('base64')
@@ -1762,11 +1788,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             if(char.vits && char.ttsMode === 'vits'){
                 const keys = Object.keys(char.vits.files)
                 for(let i=0;i<keys.length;i++){
-                    alertStore.set({
-                        type: 'progress',
-                        msg: language.alerts.addingVits,
-                        submsg: (i / keys.length * 100).toFixed(2)
-                    })
+                    showProgress(language.alerts.addingVits, (i / keys.length * 100).toFixed(2))
                     const key = keys[i]
                     const rData = await loadAsset(char.vits.files[key])
                     const b64encoded = Buffer.from(rData).toString('base64')
@@ -1782,10 +1804,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             }
     
             await sleep(10)
-            alertStore.set({
-                type: 'wait',
-                msg: language.alerts.writingPng
-            })
+            showWriting()
     
             await writer.write("chara", Buffer.from(JSON.stringify(card)).toString('base64'))     
         }
@@ -1794,11 +1813,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             const seenPaths = new Set<string>()
             if(card.data.assets && card.data.assets.length > 0){
                 for(let i=0;i<card.data.assets.length;i++){
-                    alertStore.set({
-                        type: 'progress',
-                        msg: language.alerts.addingCardAssets,
-                        submsg: (i / card.data.assets.length * 100).toFixed(2)
-                    })
+                    showProgress(language.alerts.addingCardAssets, (i / card.data.assets.length * 100).toFixed(2))
                     let key = card.data.assets[i].uri
                     let rData:Uint8Array
                     if(key === 'ccdefault:' && type !== 'png'){
@@ -1938,10 +1953,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             }
 
             await sleep(10)
-            alertStore.set({
-                type: 'wait',
-                msg: language.alerts.writingPng
-            })
+            showWriting()
     
             if(type === 'charx' || type === 'charxJpeg'){
                 const md:RisuModule = {
@@ -1975,6 +1987,13 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
         return true
     }
     catch(e){
+        if(cancel && (cancel.cancelled || e instanceof ExportCancelledError)){
+            // The person's choice, not a failure. The notice is posted before this resolves so the caller's next dialog waits for it.
+            if(cancelledFileState(localWriter instanceof LocalWriter ? localWriter.writer : undefined) === 'kept'){
+                alertNormal(language.exportCancelledFileIncomplete)
+            }
+            return false
+        }
         alertError(e)
         return false
     }

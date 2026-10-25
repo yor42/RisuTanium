@@ -100,7 +100,17 @@ describe('export outcome mapping', () => {
 
     test.each(['incomplete-data-declined', 'save-dialog-cancelled', 'partial-explanation-declined', 'oversize-declined'] as const)(
         'new behaviour: a declined export (%s) is canceled and names its cause', (cause) => {
-            expect(endOfExport('export-partial', { status: 'declined', cause })).toMatchObject({ outcome: 'canceled', cause })
+            expect(endOfExport('export-partial', { status: 'declined', cause })).toMatchObject({ outcome: 'canceled', cause, detail: { file: null } })
+        })
+
+    // Mutant: the file state of a cancelled export is dropped, so a kept partial download reads as no file.
+    test.each(['kept', 'untouched'] as const)(
+        'new behaviour: a cancelled export (file %s) is canceled, names its cause and carries what became of its file', (file) => {
+            expect(endOfExport('export', { status: 'declined', cause: 'export-cancelled', file })).toMatchObject({
+                outcome: 'canceled',
+                cause: 'export-cancelled',
+                detail: { omitted: null, inlays: null, file },
+            })
         })
 })
 

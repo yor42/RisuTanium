@@ -1078,6 +1078,8 @@ export const languageVietnamese = {
     "successExport": "Đã xuất thành công và tải xuống thư mục tải xuống của bạn",
     "exportHeldInMemory": "Trình duyệt này không thể lưu bản xuất ngay trong khi tạo, nên bản xuất được giữ trong bộ nhớ cho đến khi hoàn tất rồi mới tải xuống. Bản xuất rất lớn có thể thất bại.",
     "exportHelperNotResponding": "Trình hỗ trợ tải xuống không phản hồi, nên bản xuất được giữ trong bộ nhớ cho đến khi hoàn tất rồi mới tải xuống. Bản xuất rất lớn có thể thất bại.",
+    "backupCancelledFileIncomplete": "Đã hủy sao lưu. Nếu trình duyệt đã lưu một tệp, tệp đó không đầy đủ: hãy xóa nó và không dùng nó.",
+    "exportCancelledFileIncomplete": "Đã hủy xuất. Nếu trình duyệt đã lưu một tệp, tệp đó không đầy đủ: hãy xóa nó và không dùng nó.",
     "successImport": "Đã nhập thành công",
     "importedCharacter": "Ký tự đã nhập",
     "alwaysActive": "Luôn luôn hoạt động",
@@ -2195,6 +2197,27 @@ export const languageVietnamese = {
         : blockName === 'config' ? 'bản ghi định dạng lưu'
         : blockName === 'stubs' ? 'các nhân vật đã lưu trữ của bạn'
         : `"${blockName}"`,
+    saveUnitLabel: (part: string, bytes: number | null): string => {
+        const words = part === 'saveRecord' ? 'bản ghi lưu'
+            : part === 'saveIndex' ? 'chỉ mục lưu'
+            : part === 'characterList' ? 'một phần danh sách nhân vật của bạn'
+            : part === 'character' ? 'một nhân vật'
+            : part === 'lorebook' ? 'Lorebook của một nhân vật'
+            : part === 'scripts' ? 'các tập lệnh của một nhân vật'
+            : part === 'chat' ? 'một cuộc trò chuyện'
+            : part === 'chatPart' ? 'một phần của một cuộc trò chuyện'
+            : part === 'module' ? 'một mô-đun'
+            : part === 'moduleList' ? 'danh sách mô-đun của bạn'
+            : part === 'settings' ? 'cài đặt chung của bạn'
+            : part === 'preset' ? 'một cài đặt trước của bot'
+            : part === 'plugin' ? 'một plugin'
+            : part === 'pluginData' ? 'dữ liệu plugin của bạn'
+            : part === 'fileList' ? 'danh sách hình ảnh và tệp của bạn'
+            : part === 'characterOrder' ? 'thứ tự nhân vật của bạn'
+            : part === 'loadouts' ? 'các loadout của bạn'
+            : 'một phần dữ liệu của bạn'
+        return bytes === null ? words : `${words} (${(Math.ceil((bytes * 10) / (1024 * 1024)) / 10).toFixed(1)} MiB)`
+    },
     saveConversionFailedAlert: "Việc chuyển dữ liệu của bạn sang định dạng lưu mới không thành công sau nhiều lần thử. Không có gì trong dữ liệu đã lưu của bạn bị thay đổi, và tab này đã ngừng lưu. Hãy tải lại trang để thử lại.",
     saveSnapshotSkippedTooLarge: "Dữ liệu của bạn lớn hơn mức máy chủ tự lưu trữ chấp nhận trong một tệp, nên các bản sao lưu tự động bị bỏ qua. Việc lưu không bị ảnh hưởng. Để giữ một bản sao lưu, hãy xuất tệp .bin bằng \"Lưu sao lưu cục bộ\" trong mục \"Sao lưu & Tệp\" ở phần cài đặt.",
     saveSnapshotSkippedMemory: "Thiết bị này không thể dành đủ bộ nhớ cho một bản sao lưu tự động của dữ liệu của bạn, nên bản đó đã bị bỏ qua. Việc lưu không bị ảnh hưởng.",
@@ -2735,6 +2758,10 @@ export const languageVietnamese = {
         peerExportHandedOff: "Việc xuất tab này đã được chuyển cho trình duyệt của bạn. Hãy đợi đến khi tải xuống xong, rồi nhấn Tải lại ngay. Tải lại sớm hơn có thể làm gián đoạn quá trình tải xuống.",
         peerExportReloadNow: "Tải lại ngay",
         peerNoSaveNode: "Cấu hình máy chủ này không thể lưu tab này đè lên tab khác.",
+        peerNodeReloadDrops: "Tải lại sẽ loại bỏ các thay đổi chưa lưu của tab này. “Xuất tab này trước, rồi tải lại” sẽ giữ chúng trong một tệp không chứa các hình ảnh, tài nguyên và inlay khác.",
+        peerNodeReloadDropsOnly: "Tải lại sẽ loại bỏ các thay đổi chưa lưu của tab này.",
+        peerAutoExportSaved: "Các thay đổi của tab này cũng đã được xuất tự động: tệp, không chứa các hình ảnh, tài nguyên và inlay khác, đã được chuyển cho trình duyệt của bạn. Hãy kiểm tra xem bản tải xuống đã đến và đã hoàn tất chưa trước khi bạn nhấn Tải lại. Các thay đổi thực hiện sau khi xuất không có trong đó.",
+        peerAutoExportNotFinished: "Việc xuất tự động chưa hoàn tất. Hãy dùng “Xuất tab này trước, rồi tải lại”.",
         peerNoSaveReplaced: "Sau khi dữ liệu đã lưu của bạn bị thay đổi từ bên ngoài tab này, phiên bản của tab này không thể được lưu đè lên đó.",
         peerNoSaveUnloaded: "Tab này không giữ mọi nhân vật trong bộ nhớ, nên phiên bản của nó không thể thay thế thay đổi của tab kia.",
         peerReloadOnly: "Tải lại",

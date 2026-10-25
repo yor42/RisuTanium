@@ -1078,6 +1078,8 @@ export const languageKorean = {
     "successExport": "성공적으로 엑스포트하여 다운로드 경로에 다운로드했습니다.",
     "exportHeldInMemory": "이 브라우저는 엑스포트를 만드는 도중에 저장할 수 없어서, 완료될 때까지 메모리에 보관했다가 다운로드합니다. 매우 큰 엑스포트는 실패할 수 있습니다.",
     "exportHelperNotResponding": "다운로드 도우미가 응답하지 않아, 엑스포트를 완료될 때까지 메모리에 보관했다가 다운로드합니다. 매우 큰 엑스포트는 실패할 수 있습니다.",
+    "backupCancelledFileIncomplete": "백업이 취소되었습니다. 브라우저가 파일을 저장했다면 그 파일은 불완전하니 삭제하고 사용하지 마세요.",
+    "exportCancelledFileIncomplete": "엑스포트가 취소되었습니다. 브라우저가 파일을 저장했다면 그 파일은 불완전하니 삭제하고 사용하지 마세요.",
     "successImport": "성공적으로 임포트했습니다.",
     "importedCharacter": "성공적으로 임포트 됨.",
     "alwaysActive": "언제나 활성화",
@@ -2195,6 +2197,27 @@ export const languageKorean = {
         : blockName === 'config' ? '저장 형식 기록'
         : blockName === 'stubs' ? '보관된 캐릭터'
         : `"${blockName}"`,
+    saveUnitLabel: (part: string, bytes: number | null): string => {
+        const words = part === 'saveRecord' ? '저장 기록'
+            : part === 'saveIndex' ? '저장 색인'
+            : part === 'characterList' ? '캐릭터 목록의 일부'
+            : part === 'character' ? '캐릭터'
+            : part === 'lorebook' ? '캐릭터의 로어북'
+            : part === 'scripts' ? '캐릭터의 스크립트'
+            : part === 'chat' ? '채팅'
+            : part === 'chatPart' ? '채팅의 일부'
+            : part === 'module' ? '모듈'
+            : part === 'moduleList' ? '모듈 목록'
+            : part === 'settings' ? '일반 설정'
+            : part === 'preset' ? '봇 프리셋'
+            : part === 'plugin' ? '플러그인'
+            : part === 'pluginData' ? '플러그인 데이터'
+            : part === 'fileList' ? '이미지 및 파일 목록'
+            : part === 'characterOrder' ? '캐릭터 순서'
+            : part === 'loadouts' ? '로드아웃'
+            : '데이터의 일부'
+        return bytes === null ? words : `${words} (${(Math.ceil((bytes * 10) / (1024 * 1024)) / 10).toFixed(1)} MiB)`
+    },
     saveConversionFailedAlert: "데이터를 새 저장 형식으로 옮기려고 여러 번 시도했지만 성공하지 못했습니다. 저장된 데이터는 전혀 변경되지 않았으며, 이 탭은 저장을 멈췄습니다. 페이지를 새로고침하여 다시 시도하세요.",
     saveSnapshotSkippedTooLarge: "데이터가 셀프 호스팅 서버가 한 파일로 받아들이는 크기보다 커서 자동 백업 사본을 건너뜁니다. 저장에는 영향이 없습니다. 백업을 보관하려면 설정의 \"백업 & 파일\"에서 \"로컬 백업 저장\"으로 .bin 파일을 내보내세요.",
     saveSnapshotSkippedMemory: "이 기기가 데이터의 자동 백업 사본에 필요한 메모리를 확보하지 못해 건너뛰었습니다. 저장에는 영향이 없습니다.",
@@ -2735,6 +2758,10 @@ export const languageKorean = {
         peerExportHandedOff: "이 탭의 엑스포트를 브라우저에 넘겼습니다. 다운로드가 끝날 때까지 기다린 뒤 지금 새로고침을 누르세요. 그보다 일찍 새로고침하면 다운로드가 중간에 끊길 수 있습니다.",
         peerExportReloadNow: "지금 새로고침",
         peerNoSaveNode: "이 서버 구성에서는 한 탭의 내용을 다른 탭 위에 덮어써 저장할 수 없습니다.",
+        peerNodeReloadDrops: "새로고침하면 이 탭의 저장되지 않은 변경 사항이 사라집니다. “먼저 이 탭을 엑스포트한 뒤 새로고침”을 사용하면 다른 이미지, 에셋, 인레이를 제외한 파일에 변경 사항을 보관합니다.",
+        peerNodeReloadDropsOnly: "새로고침하면 이 탭의 저장되지 않은 변경 사항이 사라집니다.",
+        peerAutoExportSaved: "이 탭의 변경 사항도 자동으로 엑스포트되었습니다. 다른 이미지, 에셋, 인레이를 제외한 파일이 브라우저에 넘겨졌습니다. 새로고침을 누르기 전에 다운로드가 도착했고 끝났는지 확인하세요. 엑스포트 이후에 한 변경 사항은 파일에 들어 있지 않습니다.",
+        peerAutoExportNotFinished: "자동 엑스포트가 끝나지 않았습니다. “먼저 이 탭을 엑스포트한 뒤 새로고침”을 사용하세요.",
         peerNoSaveReplaced: "저장된 데이터가 이 탭 밖에서 변경된 뒤에는 이 탭의 버전을 그 위에 덮어써 저장할 수 없습니다.",
         peerNoSaveUnloaded: "이 탭은 모든 캐릭터를 메모리에 보유하고 있지 않으므로, 이 탭의 버전으로 다른 탭의 변경 사항을 대체할 수 없습니다.",
         peerReloadOnly: "새로고침",

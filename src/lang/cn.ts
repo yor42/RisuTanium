@@ -1078,6 +1078,8 @@ export const languageChinese = {
     "successExport": "已成功导出并保存至你的下载数据夹",
     "exportHeldInMemory": "此浏览器无法在导出的同时边生成边保存，因此会先将导出内容保存在内存中，待完成后再下载。体积非常大的导出可能会失败。",
     "exportHelperNotResponding": "下载辅助程序没有响应，因此会先将导出内容保存在内存中，待完成后再下载。体积非常大的导出可能会失败。",
+    "backupCancelledFileIncomplete": "备份已取消。如果浏览器已保存了文件，该文件不完整：请删除它，不要使用。",
+    "exportCancelledFileIncomplete": "导出已取消。如果浏览器已保存了文件，该文件不完整：请删除它，不要使用。",
     "successImport": "成功导入",
     "importedCharacter": "导入角色",
     "alwaysActive": "始终激活",
@@ -2195,6 +2197,27 @@ export const languageChinese = {
         : blockName === 'config' ? '保存格式记录'
         : blockName === 'stubs' ? '您已归档的角色'
         : `"${blockName}"`,
+    "saveUnitLabel": (part: string, bytes: number | null): string => {
+        const words = part === 'saveRecord' ? '保存记录'
+            : part === 'saveIndex' ? '保存索引'
+            : part === 'characterList' ? '您的角色列表的一部分'
+            : part === 'character' ? '一个角色'
+            : part === 'lorebook' ? '某个角色的世界书'
+            : part === 'scripts' ? '某个角色的脚本'
+            : part === 'chat' ? '一段聊天'
+            : part === 'chatPart' ? '某段聊天的一部分'
+            : part === 'module' ? '一个模块'
+            : part === 'moduleList' ? '您的模块列表'
+            : part === 'settings' ? '您的通用设置'
+            : part === 'preset' ? '一个机器人预设'
+            : part === 'plugin' ? '一个插件'
+            : part === 'pluginData' ? '您的插件数据'
+            : part === 'fileList' ? '您的图片和文件列表'
+            : part === 'characterOrder' ? '您的角色顺序'
+            : part === 'loadouts' ? '您的配置组包'
+            : '您的一部分数据'
+        return bytes === null ? words : `${words}（${(Math.ceil((bytes * 10) / (1024 * 1024)) / 10).toFixed(1)} MiB）`
+    },
     "saveConversionFailedAlert": "将您的数据迁移到新的保存格式在多次尝试后仍未成功。已保存的数据没有任何更改，且此标签页已停止保存。请重新加载页面以重试。",
     "saveSnapshotSkippedTooLarge": "您的数据超过了自托管服务器单个文件所能接受的大小，因此自动备份副本已被跳过。保存不受影响。若要保留备份，请在设置的“备份 & 文件”下使用“本地保存备份”导出 .bin 文件。",
     "saveSnapshotSkippedMemory": "此设备无法为您数据的自动备份副本预留足够的内存，因此已跳过。保存不受影响。",
@@ -2735,6 +2758,10 @@ export const languageChinese = {
         "peerExportHandedOff": "此标签页的导出已交给浏览器处理。请等待下载完成后，再点击“立即重新加载”。过早重新加载可能会中断下载。",
         "peerExportReloadNow": "立即重新加载",
         "peerNoSaveNode": "此服务器配置无法将一个标签页的内容覆盖保存到另一个标签页之上。",
+        "peerNodeReloadDrops": "重新加载会丢弃此标签页未保存的更改。使用“先导出此标签页，再重新加载”可将这些更改保存到一个文件中，该文件不含其他图片、资源和内嵌图。",
+        "peerNodeReloadDropsOnly": "重新加载会丢弃此标签页未保存的更改。",
+        "peerAutoExportSaved": "此标签页的更改也已自动导出：不含其他图片、资源和内嵌图的文件已交给浏览器处理。请在点击“重新加载”之前确认下载已到达并已完成。导出之后所做的更改不在其中。",
+        "peerAutoExportNotFinished": "自动导出未完成。请使用“先导出此标签页，再重新加载”。",
         "peerNoSaveReplaced": "已保存的数据在此标签页之外被更改后，无法再用此标签页的版本覆盖保存。",
         "peerNoSaveUnloaded": "此标签页没有在内存中保留所有角色，因此其版本无法取代另一个标签页的更改。",
         "peerReloadOnly": "重新加载",

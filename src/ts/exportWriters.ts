@@ -5,6 +5,7 @@ import { alertNormalWait } from "./alert"
 import streamSaver from "./vendor/streamSaver"
 import { MEASURE } from "./process/memory/measureFlag"
 import { bytesToBase64, isAndroidTransport } from "./storage/tauriByteTransport"
+import type { ExportCancelToken } from "./exportCancel"
 
 /** Smallest unit the exporters hand to a writer that can take a byte array. */
 export interface ByteWriter {
@@ -405,6 +406,18 @@ class HeldInMemoryStreamWriter implements ExportByteWriter {
     }
 }
 
+/**
+ * What a cancelled export may have left: `kept` when a download stream was opened (the browser may already hold a file,
+ * even with no byte written), `untouched` when there is no writer, it holds everything in memory, or it is a desktop
+ * file writer (a desktop export offers no Cancel).
+ */
+export function cancelledFileState(target: ExportByteWriter | undefined): 'untouched' | 'kept' {
+    if (target === undefined || target instanceof TauriWriter || target.heldInMemory === true) {
+        return 'untouched'
+    }
+    return 'kept'
+}
+
 /** The helper page the application serves itself; used on a secure page, where a service worker can run. */
 export const SELF_HOSTED_HELPER_URL = '/streamsaver/mitm.html'
 
@@ -431,11 +444,14 @@ function answeredWithin(ready: Promise<void>, timeoutMs: number): Promise<boolea
  * - Otherwise nothing is written until the helper has answered. If it does not answer within
  *   `STREAM_HELPER_READY_TIMEOUT_MS`, the stream (which has received no bytes) is aborted, never closed, and the
  *   export is built in memory from its first byte and offered as one download.
+ * - A cancel (`cancel`) seen before the helper is asked, or after its timeout, ends the open with `ExportCancelledError`
+ *   before any notice or fallback download.
  */
-export async function openWebExportWriter(filename: string): Promise<ExportByteWriter> {
+export async function openWebExportWriter(filename: string, cancel?: ExportCancelToken): Promise<ExportByteWriter> {
     if (globalThis.isSecureContext) {
         streamSaver.mitm = SELF_HOSTED_HELPER_URL
     }
+    cancel?.throwIfCancelled()
     if (streamSaver.useBlobFallback) {
         await alertNormalWait(language.exportHeldInMemory)
         return new HeldInMemoryStreamWriter(streamSaver.createWriteStream(filename).writable.getWriter())
@@ -450,6 +466,8 @@ export async function openWebExportWriter(filename: string): Promise<ExportByteW
     } catch (error) {
         console.error(error)
     }
+    // A cancel during the helper wait ends the export here: no notice, and no download from the memory fallback.
+    cancel?.throwIfCancelled()
     await alertNormalWait(language.exportHelperNotResponding)
     return new BlobDownloadWriter(filename)
 }

@@ -1,8 +1,9 @@
 import type { Database, character, groupChat } from '../database.svelte'
 import type { toSaveType } from '../risuSave'
 import { createYieldBudget, yieldToEventLoop } from '../saveYield'
-import { Store2StalePageError } from './backend/errors'
+import { Store2PayloadTooLargeError, Store2StalePageError } from './backend/errors'
 import type { Store2Read } from './backend/types'
+import { isBusy } from '../../process/memory/busyActions'
 import { MEASURE } from '../../process/memory/measureFlag'
 import { netHeldNow, noteNetHeldTick, noteNetPassTick } from '../measureExportHold'
 import { isColdStub, SharedChaIdStubError, StubRefusedError } from './codec'
@@ -16,6 +17,7 @@ import {
     noteSignalPassStart, noteSignalResidents, noteSignalSkipped, noteSignalSlotClock, noteSignalUnchanged, noteSignalVerdict, peekSaveMarks,
 } from './savePassMeter'
 import { startYieldGaps, type YieldGapRecorder } from './saveYieldMeter'
+import { tooLargeLabel } from './tooLargeLabel'
 
 /**
  * The save loop of a store2 session: the loop `saveDb()` runs when a session is active. It keeps the block-profile
@@ -42,6 +44,11 @@ export interface PeerParkPrompt {
     offers: readonly PeerOffer[]
     /** Why 'save-mine' is not offered, for the wording the screen chooses. */
     saveMineUnavailable?: 'node' | 'replaced' | 'unloaded-characters'
+    /**
+     * How this park's one automatic export of the tab ended, for the wording: 'saved' means the file was handed to the
+     * browser, 'not-finished' means it was declined, failed, threw or was skipped. Absent when none ran.
+     */
+    autoExport?: 'saved' | 'not-finished'
 }
 
 /** What a clean prompt reads when its Reload is pressed: the loop's live state, never a copy taken when it was asked. */
@@ -77,6 +84,12 @@ export interface Store2PeerHandler {
      * A throw is a failure of the handler itself and is reported like a failed save.
      */
     exportThisTab(manifestKey: string): Promise<'saved' | 'declined' | 'failed'>
+    /**
+     * The same partial export without the blocking reload hand-off, run by the loop once per park before the question
+     * when a dirty Node tab parks. 'saved' means the file was handed to the browser, not that the download finished.
+     * The export's own dialogs still show. A throw counts as a failed automatic export. Absent, none runs.
+     */
+    autoExport?(manifestKey: string): Promise<'saved' | 'declined' | 'failed'>
     reload(): void
 }
 
@@ -174,6 +187,12 @@ export interface Store2LoopPort {
     peerHeard(): boolean
     /** Parks the saving state with a reason that has a string; the empty reason clears it. */
     setStopped(reason: string, detail?: string): void
+    /**
+     * The server refused a body as too large and this tab stopped saving: tells the person once, naming `label`. Not a save
+     * failure: it records none and promises no retry. The page's port always has it; it is optional only so that the many
+     * test ports of other behaviours need not declare it.
+     */
+    notifyTooLarge?(label: string): void
     /** Tells the person a save failed; answers how long the loop waits before it tries again. */
     reportFailure(error: unknown, attempts: number): number
     /**
@@ -263,6 +282,8 @@ interface Park {
     revision: boolean
     asked: boolean
     noticed: boolean
+    /** The park's one automatic export: carried to a newer park by `recheckPark`, so a later peer save never exports again. */
+    autoExport: 'pending' | 'running' | 'done' | 'failed'
 }
 
 type Outcome =
@@ -270,6 +291,8 @@ type Outcome =
     /** The pass did not land and nothing says it never will: counted, and reported when it persists. */
     | { kind: 'retry', reason: string, detail: string }
     | { kind: 'park', park: Park }
+    /** The server refused a body as too large: nothing was applied and the same bytes never fit, so this tab stops saving. */
+    | { kind: 'stop', cause: Store2PayloadTooLargeError, label: string, cleared: AbandonResult | null }
     | { kind: 'not-flushed' }
 
 /** The failures that name the page's own state as stale for good: only a reload ends them. */
@@ -289,12 +312,23 @@ export function backedOffWait(wait: number, attempts: number): number {
 /** Reads the running loop's parked state; `null` until a loop starts on this page. */
 let readParked: (() => boolean) | null = null
 
+/** Reads the running loop's stopped state (a body the server refuses as too large); `null` until a loop starts on this page. */
+let readStopped: (() => boolean) | null = null
+
 /**
  * Whether this page's save loop is parked on a commit it did not make. A read only: it changes nothing, and answers
  * `false` while no loop runs (a read-only or legacy page has none).
  */
 export function isSaveLoopParked(): boolean {
     return readParked !== null && readParked()
+}
+
+/**
+ * Whether this page's save loop has stopped for good because a body is over what the server accepts; only a reload ends
+ * it. A read only, `false` while no loop runs.
+ */
+export function isSaveLoopStopped(): boolean {
+    return readStopped !== null && readStopped()
 }
 
 export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPort): Promise<never> {
@@ -312,6 +346,11 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let retries = 0
     let park: Park | null = null
     readParked = () => park !== null
+    /** Set once by a too-large refusal and never cleared: no pass, idle net or park handling runs again on this page load. */
+    let stopped = false
+    /** The stop followed a bulk commit whose own marker may still stand: the stopped loop keeps clearing it until it is gone. */
+    let markerPending = false
+    readStopped = () => stopped
     /** The epoch the person agreed to overwrite with Save mine. */
     let consent: string | null = null
     /** A commit reported that it was not flushed: the next pass commits even when it changed nothing. */
@@ -373,6 +412,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             revision: judged.revision,
             asked: false,
             noticed: false,
+            autoExport: 'pending',
         }
     }
 
@@ -422,6 +462,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             return
         }
         next.noticed = parked.noticed
+        next.autoExport = parked.autoExport
         setPark(next)
     }
 
@@ -453,7 +494,26 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             return
         }
         parked.asked = true
-        const prompt = promptOf(parked, true)
+        const asking = promptOf(parked, true)
+        // Once per park lifetime, before the question, and only where the tab can neither save over the peer nor be replaced.
+        if (asking.saveMineUnavailable === 'node' && parked.autoExport === 'pending' && context.peer.autoExport !== undefined) {
+            parked.autoExport = 'running'
+            // No await sits between the busy check and the call to the handler. The handler itself may await before its own
+            // busy entry registers, so a busy action starting in that narrow window is not excluded.
+            if (isBusy()) {
+                parked.autoExport = 'failed'
+            } else {
+                try {
+                    parked.autoExport = await context.peer.autoExport(encoder.manifestKey) === 'saved' ? 'done' : 'failed'
+                } catch (error) {
+                    parked.autoExport = 'failed'
+                    port.reportUncountedFailure(error, 5)
+                }
+            }
+        }
+        const prompt: PeerParkPrompt = parked.autoExport === 'done'
+            ? { ...asking, autoExport: 'saved' }
+            : parked.autoExport === 'failed' ? { ...asking, autoExport: 'not-finished' } : asking
         let answer: PeerOffer
         try {
             answer = await context.peer.decide(prompt)
@@ -598,10 +658,16 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 if (result.cause instanceof Store2StalePageError) {
                     return { kind: 'park', park: parkOf({ kind: 'stop', reason: 'replaced', key: null, revision: false }) }
                 }
+                if (result.cause instanceof Store2PayloadTooLargeError) {
+                    return { kind: 'stop', cause: result.cause, label: tooLargeLabel(result.cause), cleared: null }
+                }
                 throw result.cause
             case 'abandoned':
                 if (result.cause === undefined) {
                     return { kind: 'retry', reason: result.reason, detail: 'The bulk commit did not land.' }
+                }
+                if (result.cause instanceof Store2PayloadTooLargeError) {
+                    return { kind: 'stop', cause: result.cause, label: tooLargeLabel(result.cause), cleared: result.cleared }
                 }
                 if (result.cause instanceof Store2StalePageError) {
                     return { kind: 'park', park: parkOf({ kind: 'stop', reason: 'replaced', key: null, revision: false }) }
@@ -640,6 +706,42 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             console.error(error)
             return null
         }
+    }
+
+    /**
+     * One try, while stopped, at removing this page load's own bulk marker so that no marker stands on the commit key for
+     * peers. A fresh read decides: no own marker means done. The retry ends on `cleared`, `nothing` or `refused` (or a
+     * clear a newer page refuses, which never succeeds here); a throw, `failed`, `unknown` or `conflict` is tried again.
+     */
+    async function releaseOwnMarkerWhileStopped(): Promise<void> {
+        try {
+            const read = await committer.readCommit()
+            const classified = classifyCommitRead(read)
+            const staging = classified.status === 'parsed' ? classified.value.staging : null
+            if (staging === null || staging.owner !== committer.owner) {
+                markerPending = false
+                return
+            }
+            const cleared = await committer.abandonClear(read, staging.owner, staging.prefix)
+            if (cleared.status === 'cleared' || cleared.status === 'nothing' || cleared.status === 'refused'
+                || ((cleared.status === 'failed' || cleared.status === 'unknown') && cleared.cause instanceof Store2StalePageError)) {
+                markerPending = false
+            }
+        } catch (error) {
+            console.error(error)
+        }
+    }
+
+    /** Stops this tab's saving for the rest of the page load; the edits stay in memory and the tab stays dirty. */
+    function stopForTooLarge(cause: Store2PayloadTooLargeError, label: string, cleared: AbandonResult | null): void {
+        if (stopped) {
+            return
+        }
+        stopped = true
+        console.error(cause)
+        markerPending = cleared !== null && cleared.status !== 'cleared' && cleared.status !== 'nothing'
+        port.setStopped('too-large', label)
+        port.notifyTooLarge?.(label)
     }
 
     /**
@@ -786,6 +888,11 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     retries = 0
                     foldBack(run.snapshot)
                     setPark(outcome.park)
+                    break
+                case 'stop':
+                    retries = 0
+                    foldBack(run.snapshot)
+                    stopForTooLarge(outcome.cause, outcome.label, outcome.cleared)
                     break
                 case 'not-flushed':
                     // The snapshot's data is in the store: nothing is folded back, and the next pass writes again. The
@@ -1103,6 +1210,16 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         await port.wait(1000)
         while (true) {
             port.sweep()
+            if (stopped) {
+                // Nothing else runs: only this page load's own marker is still released, on the retry interval.
+                if (markerPending) {
+                    await port.withWriteLock(releaseOwnMarkerWhileStopped)
+                    await port.sleep(1000)
+                } else {
+                    await port.wait(500)
+                }
+                continue
+            }
             if (port.peerHeard()) {
                 peerSignal = true
             }

@@ -3,7 +3,8 @@ import { ServerLacksCapabilityError, StoreCheckListTooLongError, StoreOutcomeUnk
 import { isStore2Key, STORE2_PREFIX } from '../../store/keyRules'
 import { NodeHttpError } from '../../store/nodeHttpStore'
 import { COMMIT_KEY, FENCE_KEY } from '../format/keys'
-import { Store2BackendError, Store2BackendFailureError, Store2CommitConflictError, Store2FenceConflictError, Store2OverwriteRefusedError, Store2UnitConflictError, Store2UnknownOutcomeError } from './errors'
+import { isKnownUnitType } from '../format/versions'
+import { Store2BackendError, Store2BackendFailureError, Store2CommitConflictError, Store2FenceConflictError, Store2OverwriteRefusedError, Store2PayloadTooLargeError, Store2UnitConflictError, Store2UnknownOutcomeError } from './errors'
 import { checkRemoveBatch, checkUnitKey, checkUnitKeys, revisionTokenOf, type CompareToken, type Store2Backend, type Store2Read, type Store2WriteResult, type UnitWrite } from './types'
 
 /**
@@ -37,12 +38,32 @@ const UNIT_PARALLELISM = 8
 /** Statuses of a guarded request that the server answers before it applies anything. */
 const NOTHING_APPLIED_STATUSES: ReadonlySet<number> = new Set([400, 401, 403, 429])
 
+/** The status the server answers when a body exceeds its limit; it is raised by the body parser, before any handler applies anything. */
+const TOO_LARGE_STATUS = 413
+
 function unreported(): Store2WriteResult {
     return { flushed: undefined }
 }
 
+/** The body a failed write sent, for the error that names it; `null` when the request had no body of its own. */
+interface SentBody {
+    key: string
+    bytes: Uint8Array | null
+}
+
+/** The unit type number of a frame, read from its header byte alone; null when the bytes are too short or name no known type. */
+function unitTypeOf(bytes: Uint8Array): number | null {
+    return bytes.length > 5 && isKnownUnitType(bytes[5]) ? bytes[5] : null
+}
+
+/** A 413: the server refused the body before any handler ran, so nothing was applied and the same bytes never fit. */
+function tooLargeOf(error: NodeHttpError, sent: SentBody | null): Store2PayloadTooLargeError {
+    const bytes = sent?.bytes ?? null
+    return new Store2PayloadTooLargeError(error.message, sent?.key ?? null, bytes === null ? null : bytes.length, bytes === null ? null : unitTypeOf(bytes), { cause: error })
+}
+
 /** What went wrong in one request, as the backend error that says whether it may have been applied. */
-function backendErrorOf(error: unknown, writing: boolean): Error {
+function backendErrorOf(error: unknown, writing: boolean, sent: SentBody | null = null): Error {
     if (error instanceof Store2BackendError || error instanceof RangeError) {
         return error
     }
@@ -54,6 +75,9 @@ function backendErrorOf(error: unknown, writing: boolean): Error {
             return error.mayHaveApplied ? new Store2UnknownOutcomeError(error.message, { cause: error }) : new Store2BackendFailureError(error.message, { cause: error })
         }
         if (error instanceof NodeHttpError) {
+            if (error.status === TOO_LARGE_STATUS) {
+                return tooLargeOf(error, sent)
+            }
             return NOTHING_APPLIED_STATUSES.has(error.status)
                 ? new Store2BackendFailureError(error.message, { cause: error })
                 : new Store2UnknownOutcomeError(error.message, { cause: error })
@@ -130,13 +154,22 @@ export function createNodeBackend(store: ByteStore): Store2Backend {
             if (error instanceof StoreVersionConflictError) {
                 throw conflict(await readKey(key))
             }
-            throw backendErrorOf(error, true)
+            throw backendErrorOf(error, true, { key, bytes: next })
         }
         return unreported()
     }
 
     async function putFresh(unit: UnitWrite): Promise<number> {
-        const written = await guarded.writeChecked(unit.key, unit.bytes, { ifVersion: 0 }, [])
+        let written: Awaited<ReturnType<GuardedOperations['writeChecked']>>
+        try {
+            written = await guarded.writeChecked(unit.key, unit.bytes, { ifVersion: 0 }, [])
+        } catch (error) {
+            // Raised here, where the body is known; a version conflict still reaches the callers as it is.
+            if (error instanceof NodeHttpError && error.status === TOO_LARGE_STATUS) {
+                throw tooLargeOf(error, unit)
+            }
+            throw error
+        }
         if (written.version === null) {
             throw new Store2BackendFailureError(`The Node server reported no revision for ${unit.key}.`)
         }
@@ -205,7 +238,11 @@ export function createNodeBackend(store: ByteStore): Store2Backend {
             const conflicts = failures.filter((failure) => failure.error instanceof StoreVersionConflictError)
             const others = failures.filter((failure) => !(failure.error instanceof StoreVersionConflictError)).map((failure) => backendErrorOf(failure.error, true))
             if (others.length > 0) {
-                throw others.find((error) => error instanceof Store2UnknownOutcomeError) ?? others[0]
+                // An outcome that may have been applied is read back first; among definite failures a too-large body is the
+                // one the person must be told about.
+                throw others.find((error) => error instanceof Store2UnknownOutcomeError)
+                    ?? others.find((error) => error instanceof Store2PayloadTooLargeError)
+                    ?? others[0]
             }
             if (conflicts.length > 0) {
                 // A stale commit key is reported before a unit that already exists.
@@ -235,7 +272,7 @@ export function createNodeBackend(store: ByteStore): Store2Backend {
                     }
                     throw new Store2BackendFailureError('The Node server named a key the request did not send.', { cause: error })
                 }
-                throw backendErrorOf(error, true)
+                throw backendErrorOf(error, true, { key: COMMIT_KEY, bytes: nextCommit })
             }
             return unreported()
         },

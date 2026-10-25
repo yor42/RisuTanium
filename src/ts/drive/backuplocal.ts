@@ -1,6 +1,7 @@
 import { alertError, alertNormal, alertNormalWait, alertStore, alertWait, alertMd, alertConfirm } from "../alert";
 import { remove } from "@tauri-apps/plugin-fs";
-import { takeExportWriteStats, type ExportByteWriter, type ExportWriteCall } from "../exportWriters";
+import { cancelledFileState, takeExportWriteStats, type ExportByteWriter, type ExportWriteCall } from "../exportWriters";
+import { ExportCancelledError, ExportCancelToken, createExportWaitGate, type ExportWaitGate } from "../exportCancel";
 import { localBackupFileName } from "./backupFileName";
 import { LocalWriter, TauriWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
@@ -105,11 +106,12 @@ async function writeStubPayloadsAndRelease(
     cold: BackupColdStorage,
     stubPayloads: ColdStorageBackupPayload[],
     progressPrefix: string,
+    wait: (message: string) => void = alertWait,
 ): Promise<void> {
     cold.stubEntries = new Map()
     const total = stubPayloads.length
     for (let i = 0; i < total; i++) {
-        alertWait(`${progressPrefix} (${i + 1} / ${total})`)
+        wait(`${progressPrefix} (${i + 1} / ${total})`)
         await writer.writeBackup(stubPayloads[0].backupName, stubPayloads[0].encoded)
         stubPayloads.shift()
     }
@@ -462,6 +464,25 @@ async function writeAssetStreamed(writer: LocalWriter, key: string): Promise<'wr
 interface ExportSession {
     writer: LocalWriter | null
     describeAsset: (key: string) => string
+    /** The run's cancel switch; a cancel reaches the body at its next checkpoint and every pending write at once. */
+    cancel: ExportCancelToken
+    /** The run's progress dialog: cancellable on the web, silent once cancelled. */
+    gate: ExportWaitGate
+}
+
+/**
+ * Asks `confirm` only if the export has not been cancelled. When `asks` says the confirm will really show a prompt, the
+ * export's own wait comes off the screen first, so the prompt is not hidden under a cancellable wait; when it will not,
+ * the wait (and its Cancel) stays. A cancel seen once the answer is in ends the export.
+ */
+async function confirmDuringExport(session: ExportSession, asks: boolean, confirm: () => Promise<boolean>): Promise<boolean> {
+    session.cancel.throwIfCancelled()
+    if (asks) {
+        session.gate.clear()
+    }
+    const answer = await confirm()
+    session.cancel.throwIfCancelled()
+    return answer
 }
 
 // The outcome types live in `operationEnd.ts` with their mapping to an `OperationEnd`; re-exported so importers keep working.
@@ -505,13 +526,24 @@ function oversizeNames(assets: ReadonlyMap<string, { charName: string, assetName
  * that it must not be used if it is not. The output file is removed only when
  * this export wrote to a desktop file; a desktop file this export did not
  * touch is left as it was. A web or Node stream is aborted, not removed.
+ * A web export offers a Cancel on its progress dialog (a desktop export does not). A cancel is the person's choice, not a
+ * failure: it reports nothing as failed, and says so when a download stream had opened, because the browser may
+ * already hold an incomplete file. The notice is on screen before this resolves, so the caller's next prompt waits for it.
  * Returns how the export ended; a caller that does not care may ignore it.
  */
 async function runExport(body: (session: ExportSession) => Promise<ExportOutcome>): Promise<ExportOutcome> {
-    const session: ExportSession = { writer: null, describeAsset: (key) => `'${key}'` }
+    const cancel = new ExportCancelToken()
+    const session: ExportSession = { writer: null, describeAsset: (key) => `'${key}'`, cancel, gate: createExportWaitGate(cancel, !isTauri) }
     try {
         return await body(session)
     } catch (error) {
+        if (cancel.cancelled || error instanceof ExportCancelledError) {
+            const file = cancelledFileState(session.writer?.writer)
+            if (file === 'kept') {
+                alertNormal(language.backupCancelledFileIncomplete)
+            }
+            return { status: 'declined', cause: 'export-cancelled', file }
+        }
         console.error(error)
         const file = await reportFailedExport(session, error)
         return { status: 'failed', cause: error, file }
@@ -591,7 +623,7 @@ export function SaveLocalBackup(options: BackupExportOptions = {}): Promise<Expo
 }
 
 async function writeLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
-    alertWait("Saving local backup...")
+    session.gate.wait("Saving local backup...")
     // The export notes share the import's measurement hook and ring (`noteImportPhase`), under an `export ` prefix.
     noteImportPhase('export start')
     if (MEASURE) {
@@ -606,7 +638,7 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
     }
     let cold = await collectBackupColdStorage(db, options)
     noteImportPhase(MEASURE ? `export cold collected ${describeReadMeasure()}${describeNetMeasure()}` : 'export cold collected')
-    if(!await confirmIncompleteColdStorageOperation(db, cold.unavailableKeys, 'backup', cold.collected.owners)){
+    if(!await confirmDuringExport(session, cold.unavailableKeys.length > 0, () => confirmIncompleteColdStorageOperation(db, cold.unavailableKeys, 'backup', cold.collected.owners))){
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
@@ -670,7 +702,7 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
     const oversizeAssets = listing.sized?.filter((item) => item.size >= limitBytes) ?? []
     const oversizePayloads = leaveOutOversizePayloads(cold, limitBytes)
     const leftOut = oversizeNames(assetMap, oversizeAssets, oversizePayloads.items)
-    if (!await confirmLeaveOut(leftOut)) {
+    if (!await confirmDuringExport(session, leftOut.length > 0, () => confirmLeaveOut(leftOut))) {
         return { status: 'declined', cause: 'oversize-declined' }
     }
     cold = oversizePayloads.cold
@@ -680,13 +712,16 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
         listing = { keys: sized.map((item) => item.key), sized }
     }
 
+    session.cancel.throwIfCancelled()
     const writer = new LocalWriter()
-    const r = await writer.init(undefined, undefined, localBackupFileName(new Date()))
+    session.writer = writer
+    const r = await writer.init(undefined, undefined, localBackupFileName(new Date()), session.cancel)
+    // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
+    session.cancel.throwIfCancelled()
     if(!r){
         alertError('Failed')
         return { status: 'declined', cause: 'save-dialog-cancelled' }
     }
-    session.writer = writer
     noteImportPhase('export writer opened')
 
     const assetKeys = listing.keys
@@ -716,7 +751,8 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
                 }).join(', ');
                 message += `\n(Skipping... ${skippedItems})`;
             }
-            alertWait(message)
+            session.cancel.throwIfCancelled()
+            session.gate.wait(message)
 
             let outcome: 'written' | 'missing'
             const taken = assetReader ? await assetReader.take(i) : null
@@ -762,14 +798,15 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
     // Inlays follow the assets and stay ahead of the database, which is last.
     const inlayResult = await writeInlaysToBackup(writer, store, {
         streaming: streamAssets,
-        onProgress: (done, total) => alertWait(`Saving local Backup Inlays... (${done} / ${total})`),
+        onProgress: (done, total) => session.gate.wait(`Saving local Backup Inlays... (${done} / ${total})`),
     })
+    session.cancel.throwIfCancelled()
     noteImportPhase('export inlays done')
 
     for(let i=0;i<coldStoragePayloads.payloads.length;i++){
         const payload = coldStoragePayloads.payloads[i]
         let message = `Saving local Backup Cold data... (${i + 1} / ${coldStoragePayloads.payloads.length})`
-        alertWait(message)
+        session.gate.wait(message)
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
     noteImportPhase('export cold payloads done')
@@ -779,16 +816,17 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
         takeExportWriteStats()
     }
     const { dbData, late, repairNotice, stubPayloads } = await encodeDatabaseWithLateColdStorage(db, cold)
+    session.cancel.throwIfCancelled()
     noteImportPhase('export database encoded')
-    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving local Backup Cold data...')
+    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving local Backup Cold data...', session.gate.wait)
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
-        alertWait(`Saving local Backup Cold data... (${i + 1} / ${late.payloads.length})`)
+        session.gate.wait(`Saving local Backup Cold data... (${i + 1} / ${late.payloads.length})`)
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
     noteImportPhase(MEASURE ? `export stub and late payloads done ${describeWriteMeasure()}` : 'export stub and late payloads done')
 
-    alertWait(`Saving local Backup... (Saving database)`)
+    session.gate.wait(`Saving local Backup... (Saving database)`)
 
     await writer.writeBackup('database.risudat', dbData)
     noteImportPhase(MEASURE ? `export database written ${describeWriteMeasure()}` : 'export database written')
@@ -892,10 +930,10 @@ export function exportThisTabBackup(options: BackupExportOptions = {}): Promise<
 }
 
 async function writePartialLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
-    alertWait("Saving partial local backup...")
+    session.gate.wait("Saving partial local backup...")
     const db = getDatabase()
     const collected = await collectBackupColdStorage(db, options)
-    if(!await confirmIncompleteColdStorageOperation(db, collected.unavailableKeys, 'backup', collected.collected.owners)){
+    if(!await confirmDuringExport(session, collected.unavailableKeys.length > 0, () => confirmIncompleteColdStorageOperation(db, collected.unavailableKeys, 'backup', collected.collected.owners))){
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
@@ -903,19 +941,22 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
     // lists no asset sizes, so an asset of 4 GiB or more still fails the export when it is reached, as before.
     const oversizePayloads = leaveOutOversizePayloads(collected, options.limitBytes ?? UPSTREAM_HARD_LIMIT_BYTES)
     const leftOut = oversizeNames(new Map(), [], oversizePayloads.items)
-    if (!await confirmLeaveOut(leftOut)) {
+    if (!await confirmDuringExport(session, leftOut.length > 0, () => confirmLeaveOut(leftOut))) {
         return { status: 'declined', cause: 'oversize-declined' }
     }
     const cold = oversizePayloads.cold
     const coldStoragePayloads = cold.collected
 
+    session.cancel.throwIfCancelled()
     const writer = new LocalWriter()
-    const r = await writer.init(undefined, undefined, localBackupFileName(new Date(), true))
+    session.writer = writer
+    const r = await writer.init(undefined, undefined, localBackupFileName(new Date(), true), session.cancel)
+    // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
+    session.cancel.throwIfCancelled()
     if(!r){
         alertError('Failed')
         return { status: 'declined', cause: 'save-dialog-cancelled' }
     }
-    session.writer = writer
 
     const assetMap = new Map<string, { charName: string, assetName: string }>()
     session.describeAsset = (key) => describeBackupAsset(assetMap, key)
@@ -990,7 +1031,8 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
             }).join(', ');
             message += `\n(Skipping... ${skippedItems})`;
         }
-        alertWait(message)
+        session.cancel.throwIfCancelled()
+        session.gate.wait(message)
 
         // A referenced key outside assets/ is not an asset of this store.
         if(!key || !key.startsWith('assets/')){
@@ -1021,19 +1063,20 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
     for(let i=0;i<coldStoragePayloads.payloads.length;i++){
         const payload = coldStoragePayloads.payloads[i]
         let message = `Saving partial local Backup Cold data... (${i + 1} / ${coldStoragePayloads.payloads.length})`
-        alertWait(message)
+        session.gate.wait(message)
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
     const { dbData, late, repairNotice, stubPayloads } = await encodeDatabaseWithLateColdStorage(db, cold)
-    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving partial local Backup Cold data...')
+    session.cancel.throwIfCancelled()
+    await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving partial local Backup Cold data...', session.gate.wait)
     for(let i=0;i<late.payloads.length;i++){
         const payload = late.payloads[i]
-        alertWait(`Saving partial local Backup Cold data... (${i + 1} / ${late.payloads.length})`)
+        session.gate.wait(`Saving partial local Backup Cold data... (${i + 1} / ${late.payloads.length})`)
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
-    alertWait(`Saving partial local backup... (Saving database)`)
+    session.gate.wait(`Saving partial local backup... (Saving database)`)
 
     await writer.writeBackup('database.risudat', dbData)
     await writer.close()

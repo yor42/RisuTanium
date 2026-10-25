@@ -20,6 +20,8 @@ import type { GcResult } from './pass'
  * - no data action is registered (an export, an import, a backup load or another clean-up);
  * - this page's save loop is not parked on a commit it did not make: a parked page may still hold the only copy of its
  *   own base, and an export of it reads that base's units;
+ * - this page's save loop has not stopped on a body the server refuses as too large: that page holds unsaved edits in
+ *   memory only, and the same reasoning as for a parked page applies;
  * - the old-data deletion step is not running;
  * - on a browser page, Web Locks exist and no other tab holds the storage presence lock, which the action then holds
  *   exclusively for the run. A browser page without Web Locks cannot know of another tab, so it refuses.
@@ -34,6 +36,7 @@ export type GcMeasureRefusal =
     | 'read-only'
     | 'busy'
     | 'save-loop-parked'
+    | 'save-loop-stopped'
     | 'old-data-deletion'
     | 'no-web-locks'
     | 'other-tab'
@@ -69,6 +72,8 @@ export interface GcMeasureDeps {
     deletionActive: () => boolean
     /** Replaces the live page, for tests; production loads the page's modules on the first run. */
     loadPage?: () => Promise<GcPageFacts>
+    /** Whether the page's save loop has stopped on a too-large body; replaces the loop's own reading, for tests. */
+    saveLoopStopped?: () => boolean
     /** Replaces the pacing timer, for tests. */
     sleep?: (ms: number) => Promise<void>
 }
@@ -125,6 +130,7 @@ export function installGcMeasure(deps: GcMeasureDeps, target: object = globalThi
             return refused('confirm-required', 'This deletes. Call run({ confirm: true }) to start a pass.')
         }
         const page = await (deps.loadPage ?? loadLivePage)()
+        const saveLoopStopped = deps.saveLoopStopped ?? (await import('../saveLoop')).isSaveLoopStopped
         const { backend } = session
         const web = session.kind !== 'tauri'
 
@@ -141,6 +147,9 @@ export function installGcMeasure(deps: GcMeasureDeps, target: object = globalThi
         }
         if (page.saveLoopParked()) {
             return refused('save-loop-parked', 'This page\'s save loop is parked on a commit it did not make.')
+        }
+        if (saveLoopStopped()) {
+            return refused('save-loop-stopped', 'This page\'s save loop has stopped because a part of the data is too large for the server.')
         }
         if (deps.deletionActive()) {
             return refused('old-data-deletion', 'The old-data deletion is running.')

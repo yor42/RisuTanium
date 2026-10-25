@@ -105,7 +105,8 @@ describe('decide: the wording of every reason and every reason save-mine is miss
     ] as const
     const missing = [
         [undefined, () => ''],
-        ['node', () => ` ${text().peerNoSaveNode}`],
+        // No export is available in these prompts, so the Node wording names no Export button.
+        ['node', () => ` ${text().peerNoSaveNode} ${text().peerNodeReloadDropsOnly}`],
         ['replaced', () => ` ${text().peerNoSaveReplaced}`],
         ['unloaded-characters', () => ` ${text().peerNoSaveUnloaded}`],
     ] as const
@@ -465,5 +466,63 @@ describe('exportThisTab: saved only after the person has pressed the hand-off pr
     test('a throw of the export is the handler failing: it rejects', async () => {
         const ui = createPeerUi({ reload: vi.fn(), exportAvailable: true, exportThisTab: async () => { throw new Error('boom') } })
         await expect(ui.exportThisTab('manifest')).rejects.toThrow('boom')
+    })
+})
+
+describe('autoExport: the same export without the blocking hand-off', () => {
+    test.each(['saved', 'declined', 'failed'] as const)('new behaviour: a %s export resolves as itself with no alert and no prompt', async (status) => {
+        const write = vi.fn(async (_manifestKey: string): Promise<PeerExportResult> => status === 'saved' ? { status, notices: ['Partial backup successful.'] } : { status })
+        const ui = createPeerUi({ reload: vi.fn(), exportAvailable: true, exportThisTab: write })
+        await expect(ui.autoExport?.('manifest')).resolves.toBe(status)
+        expect(write).toHaveBeenCalledTimes(1)
+        expect(write).toHaveBeenCalledWith('manifest')
+        expect(posted.markdown).toEqual([])
+        expect(shown().type).toBe('none')
+    })
+
+    test('new behaviour: a throw of the export rejects', async () => {
+        const ui = createPeerUi({ reload: vi.fn(), exportAvailable: true, exportThisTab: async () => { throw new Error('boom') } })
+        await expect(ui.autoExport?.('manifest')).rejects.toThrow('boom')
+    })
+
+    test('new behaviour: without an export in this build it rejects', async () => {
+        const { ui } = newUi()
+        await expect(ui.autoExport?.('manifest')).rejects.toThrow(/not available/)
+    })
+})
+
+describe('decide: the Node wording says what Reload drops and what the automatic export did', () => {
+    const node = (fields: Partial<PeerParkPrompt> = {}) => prompt({ offers: ['reload', 'export-first'], saveMineUnavailable: 'node', ...fields })
+
+    test('new behaviour: with the export shown the title says Reload drops the changes and Export keeps them without other images, assets and inlays', async () => {
+        const { ui } = newUi({ exportAvailable: true })
+        void ui.decide(node())
+        await waitForSelect()
+        const { title } = selectParts()
+        expect(title).toBe(`${text().peerCommitTitle} ${text().peerNoSaveNode} ${text().peerNodeReloadDrops}`)
+        expect(text().peerNodeReloadDrops).toMatch(/Reload drops this tab's unsaved changes/)
+        expect(text().peerNodeReloadDrops).toMatch(/Export this tab first keeps them in a file without other images, assets and inlays/)
+    })
+
+    test('new behaviour: a saved automatic export adds the line that the file was handed to the browser and the download must be checked before Reload', async () => {
+        const { ui } = newUi({ exportAvailable: true })
+        void ui.decide(node({ autoExport: 'saved' }))
+        await waitForSelect()
+        const { title, labels } = selectParts()
+        expect(title).toBe(`${text().peerCommitTitle} ${text().peerNoSaveNode} ${text().peerNodeReloadDrops} ${text().peerAutoExportSaved}`)
+        expect(text().peerAutoExportSaved).toMatch(/handed to your browser/)
+        expect(text().peerAutoExportSaved).toMatch(/without other images, assets and inlays/)
+        expect(text().peerAutoExportSaved).toMatch(/arrived and has finished before you press Reload/)
+        expect(labels).toEqual([text().peerReload, text().peerExportFirst])
+    })
+
+    test('new behaviour: an automatic export that did not finish adds the did-not-finish line, not the saved one, and keeps both buttons', async () => {
+        const { ui } = newUi({ exportAvailable: true })
+        void ui.decide(node({ autoExport: 'not-finished' }))
+        await waitForSelect()
+        const { title, labels } = selectParts()
+        expect(title).toBe(`${text().peerCommitTitle} ${text().peerNoSaveNode} ${text().peerNodeReloadDrops} ${text().peerAutoExportNotFinished}`)
+        expect(title).not.toContain(text().peerAutoExportSaved)
+        expect(labels).toEqual([text().peerReload, text().peerExportFirst])
     })
 })

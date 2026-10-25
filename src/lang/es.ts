@@ -1078,6 +1078,8 @@ export const languageSpanish = {
     "successExport": "Exportado y descargado exitosamente en tu directorio de descargas",
     "exportHeldInMemory": "Este navegador no puede guardar la exportación a medida que se genera, por lo que se mantiene en memoria hasta que termine y luego se descarga. Una exportación muy grande puede fallar.",
     "exportHelperNotResponding": "El asistente de descarga no respondió, por lo que la exportación se mantiene en memoria hasta que termine y luego se descarga. Una exportación muy grande puede fallar.",
+    "backupCancelledFileIncomplete": "Copia de seguridad cancelada. Si tu navegador guardó un archivo, está incompleto: elimínalo y no lo uses.",
+    "exportCancelledFileIncomplete": "Exportación cancelada. Si tu navegador guardó un archivo, está incompleto: elimínalo y no lo uses.",
     "successImport": "Importado exitosamente",
     "importedCharacter": "Personaje Importado",
     "alwaysActive": "Siempre Activo",
@@ -2197,6 +2199,27 @@ export const languageSpanish = {
         : blockName === 'config' ? 'el registro del formato de guardado'
         : blockName === 'stubs' ? 'tus personajes archivados'
         : `"${blockName}"`,
+    saveUnitLabel: (part: string, bytes: number | null): string => {
+        const words = part === 'saveRecord' ? 'el registro de guardado'
+            : part === 'saveIndex' ? 'el índice de guardado'
+            : part === 'characterList' ? 'una parte de tu lista de personajes'
+            : part === 'character' ? 'un personaje'
+            : part === 'lorebook' ? 'el libro de lore de un personaje'
+            : part === 'scripts' ? 'los scripts de un personaje'
+            : part === 'chat' ? 'un chat'
+            : part === 'chatPart' ? 'una parte de un chat'
+            : part === 'module' ? 'un módulo'
+            : part === 'moduleList' ? 'tu lista de módulos'
+            : part === 'settings' ? 'tus ajustes generales'
+            : part === 'preset' ? 'un preset de bot'
+            : part === 'plugin' ? 'un plugin'
+            : part === 'pluginData' ? 'los datos de tus plugins'
+            : part === 'fileList' ? 'una lista de tus imágenes y archivos'
+            : part === 'characterOrder' ? 'el orden de tus personajes'
+            : part === 'loadouts' ? 'tus loadouts'
+            : 'una parte de tus datos'
+        return bytes === null ? words : `${words} (${(Math.ceil((bytes * 10) / (1024 * 1024)) / 10).toFixed(1)} MiB)`
+    },
     saveConversionFailedAlert: "Pasar tus datos al nuevo formato de guardado no tuvo éxito tras varios intentos. No se cambió nada en tus datos guardados, y esta pestaña ha dejado de guardar. Recarga la página para intentarlo de nuevo.",
     saveSnapshotSkippedTooLarge: "Tus datos son más grandes de lo que el servidor autoalojado acepta en un solo archivo, por lo que se omiten las copias de respaldo automáticas. El guardado no se ve afectado. Para conservar un respaldo, exporta un archivo .bin con \"Guardar Respaldo Localmente\" en \"Respaldo y Archivos\", dentro de los ajustes.",
     saveSnapshotSkippedMemory: "Este dispositivo no pudo reservar suficiente memoria para una copia de respaldo automática de tus datos, por lo que se omitió. El guardado no se ve afectado.",
@@ -2739,6 +2762,10 @@ export const languageSpanish = {
         peerExportHandedOff: "La exportación de esta pestaña se ha pasado a tu navegador. Espera a que termine la descarga y luego pulsa Recargar ahora. Si recargas antes, la descarga puede cortarse.",
         peerExportReloadNow: "Recargar ahora",
         peerNoSaveNode: "Esta configuración del servidor no puede guardar una pestaña sobre otra.",
+        peerNodeReloadDrops: "Recargar descarta los cambios sin guardar de esta pestaña. “Exportar primero esta pestaña y luego recargar” los conserva en un archivo sin otras imágenes, recursos ni inlays.",
+        peerNodeReloadDropsOnly: "Recargar descarta los cambios sin guardar de esta pestaña.",
+        peerAutoExportSaved: "Los cambios de esta pestaña también se exportaron automáticamente: el archivo, sin otras imágenes, recursos ni inlays, se pasó a tu navegador. Comprueba que la descarga haya llegado y haya terminado antes de pulsar Recargar. Los cambios hechos después de la exportación no están incluidos.",
+        peerAutoExportNotFinished: "La exportación automática no terminó. Usa “Exportar primero esta pestaña y luego recargar”.",
         peerNoSaveReplaced: "Después de que tus datos guardados se cambiaran fuera de esta pestaña, la versión de esta pestaña no se puede guardar encima.",
         peerNoSaveUnloaded: "Esta pestaña no mantiene todos los personajes en memoria, por lo que su versión no puede reemplazar el cambio de la otra pestaña.",
         peerReloadOnly: "Recargar",

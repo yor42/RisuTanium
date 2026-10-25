@@ -110,7 +110,7 @@ export function outcomeOfBootFinish(result: BootImportFinish): { outcome: 'commi
 // ---- export ----
 
 /** What the person chose not to write, or was refused, when an export ended without writing a file. */
-export type ExportDeclinedCause = 'incomplete-data-declined' | 'save-dialog-cancelled' | 'partial-explanation-declined' | 'oversize-declined'
+export type ExportDeclinedCause = 'incomplete-data-declined' | 'save-dialog-cancelled' | 'partial-explanation-declined' | 'oversize-declined' | 'export-cancelled'
 
 /** What became of the file of an export that failed. */
 export type ExportFile = 'untouched' | 'deleted' | 'kept'
@@ -133,19 +133,22 @@ export interface ExportFacts {
     omitted: ExportOmitted | null
     /** Null for the partial export, which writes no inlays. */
     inlays: InlayExportResult | null
-    /** Set when the export failed. */
+    /** Set when the export failed or was cancelled. */
     file: ExportFile | null
 }
 
 /**
  * How an export ended. `saved`: the file was written and closed; `notices` holds the report the person was shown,
  * empty on a plain success, and `omitted` and `inlays` say what the file lacks. `declined`: the person chose not to
- * write it (a prompt answered Cancel, or the Tauri save dialog was cancelled; a web writer has no dialog to cancel).
+ * write it (a prompt answered Cancel, or the Tauri save dialog was cancelled). A web export that was cancelled while
+ * it ran is `declined` with cause `export-cancelled`, which also carries the file state: `kept` when a download stream
+ * had opened, so the browser may hold an incomplete file and the person was told so; `untouched` otherwise.
  * `failed`: the export threw; the person was told, `cause` is what was thrown and `file` what became of the file.
  */
 export type ExportOutcome =
     | { status: 'saved', notices: string[], omitted: ExportOmitted, inlays: InlayExportResult | null }
-    | { status: 'declined', cause: ExportDeclinedCause }
+    | { status: 'declined', cause: Exclude<ExportDeclinedCause, 'export-cancelled'> }
+    | { status: 'declined', cause: 'export-cancelled', file: 'untouched' | 'kept' }
     | { status: 'failed', cause: unknown, file: ExportFile }
 
 /** Whether a finished export left out anything the person was told about; the partial export's missing inlays do not count. */
@@ -161,7 +164,7 @@ export function exportOmitsData(operation: 'export' | 'export-partial', omitted:
 export function endOfExport(operation: 'export' | 'export-partial', outcome: ExportOutcome, target: string | null = null): OperationEnd<ExportFacts, ExportDeclinedCause> {
     switch (outcome.status) {
         case 'declined':
-            return { operation, target, outcome: 'canceled', cause: outcome.cause, detail: { omitted: null, inlays: null, file: null } }
+            return { operation, target, outcome: 'canceled', cause: outcome.cause, detail: { omitted: null, inlays: null, file: outcome.cause === 'export-cancelled' ? outcome.file : null } }
         case 'failed':
             return { operation, target, outcome: 'failed', cause: null, detail: { omitted: null, inlays: null, file: outcome.file } }
         case 'saved':

@@ -1078,6 +1078,8 @@ export const languageGerman = {
     "successExport": "Erfolgreich exportiert und in Ihrem Download-Verzeichnis gespeichert",
     "exportHeldInMemory": "Dieser Browser kann den Export nicht schon während der Erstellung speichern. Er wird daher im Arbeitsspeicher gehalten, bis er fertig ist, und erst dann heruntergeladen. Ein sehr großer Export kann fehlschlagen.",
     "exportHelperNotResponding": "Der Download-Helfer hat nicht geantwortet. Der Export wird daher im Arbeitsspeicher gehalten, bis er fertig ist, und erst dann heruntergeladen. Ein sehr großer Export kann fehlschlagen.",
+    "backupCancelledFileIncomplete": "Backup abgebrochen. Falls Ihr Browser eine Datei gespeichert hat, ist sie unvollständig: Löschen Sie sie und verwenden Sie sie nicht.",
+    "exportCancelledFileIncomplete": "Export abgebrochen. Falls Ihr Browser eine Datei gespeichert hat, ist sie unvollständig: Löschen Sie sie und verwenden Sie sie nicht.",
     "successImport": "Erfolgreich importiert",
     "importedCharacter": "Importierter Charakter",
     "alwaysActive": "Immer aktiv",
@@ -2197,6 +2199,27 @@ export const languageGerman = {
         : blockName === 'config' ? 'den Eintrag zum Speicherformat'
         : blockName === 'stubs' ? 'Ihre archivierten Charaktere'
         : `"${blockName}"`,
+    "saveUnitLabel": (part: string, bytes: number | null): string => {
+        const words = part === 'saveRecord' ? 'der Speichereintrag'
+            : part === 'saveIndex' ? 'der Speicherindex'
+            : part === 'characterList' ? 'ein Teil Ihrer Charakterliste'
+            : part === 'character' ? 'ein Charakter'
+            : part === 'lorebook' ? 'das Lore-Buch eines Charakters'
+            : part === 'scripts' ? 'die Skripte eines Charakters'
+            : part === 'chat' ? 'ein Chat'
+            : part === 'chatPart' ? 'ein Teil eines Chats'
+            : part === 'module' ? 'ein Modul'
+            : part === 'moduleList' ? 'Ihre Modulliste'
+            : part === 'settings' ? 'Ihre allgemeinen Einstellungen'
+            : part === 'preset' ? 'eine Bot-Voreinstellung'
+            : part === 'plugin' ? 'ein Plugin'
+            : part === 'pluginData' ? 'Ihre Plugin-Daten'
+            : part === 'fileList' ? 'eine Liste Ihrer Bilder und Dateien'
+            : part === 'characterOrder' ? 'die Reihenfolge Ihrer Charaktere'
+            : part === 'loadouts' ? 'Ihre Loadouts'
+            : 'ein Teil Ihrer Daten'
+        return bytes === null ? words : `${words} (${(Math.ceil((bytes * 10) / (1024 * 1024)) / 10).toFixed(1)} MiB)`
+    },
     "saveConversionFailedAlert": "Das Überführen Ihrer Daten in das neue Speicherformat ist nach mehreren Versuchen nicht gelungen. An Ihren gespeicherten Daten wurde nichts geändert, und dieser Tab hat das Speichern eingestellt. Laden Sie die Seite neu, um es erneut zu versuchen.",
     "saveSnapshotSkippedTooLarge": "Ihre Daten sind größer, als der selbst gehostete Server in einer Datei akzeptiert, daher werden automatische Backup-Kopien übersprungen. Das Speichern ist davon nicht betroffen. Um ein Backup zu behalten, exportieren Sie in den Einstellungen unter \"Backup & Dateien\" mit \"Backup lokal speichern\" eine .bin-Datei.",
     "saveSnapshotSkippedMemory": "Dieses Gerät konnte nicht genug Speicher für eine automatische Backup-Kopie Ihrer Daten bereitstellen, daher wurde sie übersprungen. Das Speichern ist davon nicht betroffen.",
@@ -2739,6 +2762,10 @@ export const languageGerman = {
         "peerExportHandedOff": "Der Export dieses Tabs wurde an Ihren Browser übergeben. Warten Sie, bis der Download abgeschlossen ist, und klicken Sie dann auf „Jetzt neu laden“. Ein früheres Neuladen kann den Download abbrechen.",
         "peerExportReloadNow": "Jetzt neu laden",
         "peerNoSaveNode": "Dieses Server-Setup kann einen Tab nicht über einen anderen speichern.",
+        "peerNodeReloadDrops": "Neu laden verwirft die ungespeicherten Änderungen dieses Tabs. „Diesen Tab zuerst exportieren, dann neu laden“ bewahrt sie in einer Datei ohne andere Bilder, Assets und Inlays auf.",
+        "peerNodeReloadDropsOnly": "Neu laden verwirft die ungespeicherten Änderungen dieses Tabs.",
+        "peerAutoExportSaved": "Die Änderungen dieses Tabs wurden zusätzlich automatisch exportiert: Die Datei, ohne andere Bilder, Assets und Inlays, wurde an Ihren Browser übergeben. Prüfen Sie, ob der Download angekommen und abgeschlossen ist, bevor Sie auf „Neu laden“ klicken. Änderungen nach dem Export sind darin nicht enthalten.",
+        "peerAutoExportNotFinished": "Der automatische Export wurde nicht abgeschlossen. Verwenden Sie „Diesen Tab zuerst exportieren, dann neu laden“.",
         "peerNoSaveReplaced": "Nachdem Ihre gespeicherten Daten außerhalb dieses Tabs geändert wurden, kann die Version dieses Tabs nicht darüber gespeichert werden.",
         "peerNoSaveUnloaded": "Dieser Tab hält nicht alle Charaktere im Arbeitsspeicher, daher kann seine Version die Änderung des anderen Tabs nicht ersetzen.",
         "peerReloadOnly": "Neu laden",

@@ -82,6 +82,25 @@ export class Store2BackendFailureError extends Store2BackendError {
 }
 
 /**
+ * The server refused a request body as too large (HTTP 413). The server rejects it before any handler runs, so nothing
+ * was applied: a definite failure, marked or not. Retrying the same bytes cannot succeed. `bytes` is the size of the body
+ * and `unitType` the unit type number from its frame header; both are null when the step had no body of its own (a
+ * removal) or the body was not a unit frame. The body itself is never kept.
+ */
+export class Store2PayloadTooLargeError extends Store2BackendFailureError {
+    constructor(
+        message: string,
+        readonly key: string | null,
+        readonly bytes: number | null,
+        readonly unitType: number | null,
+        options?: { cause?: unknown },
+    ) {
+        super(message, options)
+        this.name = 'Store2PayloadTooLargeError'
+    }
+}
+
+/**
  * A newer page registered with the Tauri gate, so the native side refused this
  * page's decisive write or removal before touching the disk: nothing was applied.
  * A definite failure (a backend failure to every caller), and the backend that saw

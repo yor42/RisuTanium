@@ -203,6 +203,16 @@ export interface PeerDouble extends Store2PeerHandler {
     exportResult: 'saved' | 'declined' | 'failed'
     /** While set, the export waits for it, as the real one waits for the person to press OK. */
     exportHold: Promise<void> | null
+    /** The manifest key of each automatic export, in call order; apart from `exports`, which holds the person's own choices. */
+    autoExports: string[]
+    /** Makes the automatic export reject. */
+    autoExportFails: boolean
+    /** What the automatic export resolves with when it does not fail. */
+    autoExportResult: 'saved' | 'declined' | 'failed'
+    /** While set, the automatic export waits for it. */
+    autoExportHold: Promise<void> | null
+    /** The order of `autoExport` and `decide` calls, one entry each. */
+    events: Array<'autoExport' | 'decide'>
 }
 
 export function createPeerDouble(answer: PeerOffer = 'reload'): PeerDouble {
@@ -217,11 +227,28 @@ export function createPeerDouble(answer: PeerOffer = 'reload'): PeerDouble {
         exportFails: false,
         exportResult: 'saved',
         exportHold: null,
+        autoExports: [],
+        autoExportFails: false,
+        autoExportResult: 'saved',
+        autoExportHold: null,
+        events: [],
         parkedClean(prompt, live) {
             double.clean.push(prompt)
             double.live.push(live)
         },
+        async autoExport(manifestKey) {
+            double.events.push('autoExport')
+            double.autoExports.push(manifestKey)
+            if (double.autoExportFails) {
+                throw new Error('The automatic export failed.')
+            }
+            if (double.autoExportHold !== null) {
+                await double.autoExportHold
+            }
+            return double.autoExportResult
+        },
         async decide(prompt) {
+            double.events.push('decide')
             double.asked.push(prompt)
             if (double.hold !== null) {
                 await double.hold

@@ -1123,6 +1123,8 @@ export const languageChineseTraditional = {
     "successExport": "匯出成功，檔案已下載至您的下載資料夾",
     "exportHeldInMemory": "此瀏覽器無法在匯出的同時邊產生邊儲存，因此會先將匯出內容保存在記憶體中，待完成後再下載。體積非常大的匯出可能會失敗。",
     "exportHelperNotResponding": "下載輔助程式沒有回應，因此會先將匯出內容保存在記憶體中，待完成後再下載。體積非常大的匯出可能會失敗。",
+    "backupCancelledFileIncomplete": "備份已取消。如果瀏覽器已儲存了檔案，該檔案不完整：請刪除它，不要使用。",
+    "exportCancelledFileIncomplete": "匯出已取消。如果瀏覽器已儲存了檔案，該檔案不完整：請刪除它，不要使用。",
     "successImport": "匯入成功",
     "importedCharacter": "已匯入角色",
     "alwaysActive": "一律啟用",
@@ -2240,6 +2242,27 @@ export const languageChineseTraditional = {
         : blockName === 'config' ? '儲存格式記錄'
         : blockName === 'stubs' ? '您已封存的角色'
         : `"${blockName}"`,
+    "saveUnitLabel": (part: string, bytes: number | null): string => {
+        const words = part === 'saveRecord' ? '儲存記錄'
+            : part === 'saveIndex' ? '儲存索引'
+            : part === 'characterList' ? '您的角色列表的一部分'
+            : part === 'character' ? '一個角色'
+            : part === 'lorebook' ? '某個角色的 Lorebook'
+            : part === 'scripts' ? '某個角色的腳本'
+            : part === 'chat' ? '一段聊天'
+            : part === 'chatPart' ? '某段聊天的一部分'
+            : part === 'module' ? '一個模組'
+            : part === 'moduleList' ? '您的模組清單'
+            : part === 'settings' ? '您的一般設定'
+            : part === 'preset' ? '一個機器人預設集'
+            : part === 'plugin' ? '一個外掛'
+            : part === 'pluginData' ? '您的外掛資料'
+            : part === 'fileList' ? '您的圖片和檔案清單'
+            : part === 'characterOrder' ? '您的角色順序'
+            : part === 'loadouts' ? '您的設定組合'
+            : '您的一部分資料'
+        return bytes === null ? words : `${words}（${(Math.ceil((bytes * 10) / (1024 * 1024)) / 10).toFixed(1)} MiB）`
+    },
     "saveConversionFailedAlert": "將您的資料遷移到新的儲存格式在多次嘗試後仍未成功。已儲存的資料沒有任何變更，且此分頁已停止儲存。請重新載入頁面以重試。",
     "saveSnapshotSkippedTooLarge": "您的資料超過了自架伺服器單一檔案所能接受的大小，因此自動備份副本已被跳過。儲存不受影響。若要保留備份，請在設定的「備份 & 檔案」下使用「在本機儲存備份」匯出 .bin 檔案。",
     "saveSnapshotSkippedMemory": "此裝置無法為您資料的自動備份副本預留足夠的記憶體，因此已跳過。儲存不受影響。",
@@ -2780,6 +2803,10 @@ export const languageChineseTraditional = {
         "peerExportHandedOff": "此分頁的匯出已交給瀏覽器處理。請等待下載完成後，再按「立即重新載入」。過早重新載入可能會中斷下載。",
         "peerExportReloadNow": "立即重新載入",
         "peerNoSaveNode": "此伺服器設定無法將一個分頁的內容覆蓋儲存到另一個分頁之上。",
+        "peerNodeReloadDrops": "重新載入會捨棄此分頁未儲存的變更。使用「先匯出此分頁，再重新載入」可將這些變更儲存到一個檔案中，該檔案不含其他圖片、資源和內嵌圖。",
+        "peerNodeReloadDropsOnly": "重新載入會捨棄此分頁未儲存的變更。",
+        "peerAutoExportSaved": "此分頁的變更也已自動匯出：不含其他圖片、資源和內嵌圖的檔案已交給瀏覽器處理。請在按「重新載入」之前確認下載已送達並已完成。匯出之後所做的變更不在其中。",
+        "peerAutoExportNotFinished": "自動匯出未完成。請使用「先匯出此分頁，再重新載入」。",
         "peerNoSaveReplaced": "已儲存的資料在此分頁之外被變更後，無法再用此分頁的版本覆蓋儲存。",
         "peerNoSaveUnloaded": "此分頁沒有在記憶體中保留所有角色，因此其版本無法取代另一個分頁的變更。",
         "peerReloadOnly": "重新載入",

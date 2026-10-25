@@ -1207,6 +1207,8 @@ export const languageEnglish = {
     successExport: "Successfuly exported and downloaded to your download directory",
     exportHeldInMemory: "This browser cannot save the export as it is made, so it is held in memory until it is finished and then downloaded. A very large export may fail.",
     exportHelperNotResponding: "The download helper did not respond, so the export is held in memory until it is finished and then downloaded. A very large export may fail.",
+    backupCancelledFileIncomplete: "Backup cancelled. If your browser saved a file, it is incomplete: delete it and do not use it.",
+    exportCancelledFileIncomplete: "Export cancelled. If your browser saved a file, it is incomplete: delete it and do not use it.",
     successImport: "Successfuly imported",
     importedCharacter: "Imported Character",
     alwaysActive: "Always Active",
@@ -2334,6 +2336,28 @@ export const languageEnglish = {
         : blockName === 'config' ? 'the save format record'
         : blockName === 'stubs' ? 'your archived characters'
         : `"${blockName}"`,
+    saveUnitLabel: (part: string, bytes: number | null): string => {
+        const words = part === 'saveRecord' ? 'the save record'
+            : part === 'saveIndex' ? 'the save index'
+            : part === 'characterList' ? 'a part of your character list'
+            : part === 'character' ? 'a character'
+            : part === 'lorebook' ? 'the lorebook of a character'
+            : part === 'scripts' ? 'the scripts of a character'
+            : part === 'chat' ? 'a chat'
+            : part === 'chatPart' ? 'a part of a chat'
+            : part === 'module' ? 'a module'
+            : part === 'moduleList' ? 'your module list'
+            : part === 'settings' ? 'your general settings'
+            : part === 'preset' ? 'a bot preset'
+            : part === 'plugin' ? 'a plugin'
+            : part === 'pluginData' ? 'your plugin data'
+            : part === 'fileList' ? 'a list of your images and files'
+            : part === 'characterOrder' ? 'your character order'
+            : part === 'loadouts' ? 'your loadouts'
+            : 'a part of your data'
+        // Rounded up, so a body just over the limit never reads as exactly the limit.
+        return bytes === null ? words : `${words} (${(Math.ceil((bytes * 10) / (1024 * 1024)) / 10).toFixed(1)} MiB)`
+    },
     saveConversionFailedAlert:"Moving your data to the new save format did not succeed after several tries. Nothing was changed in your saved data, and this tab has stopped saving. Reload the page to try again.",
     saveSnapshotSkippedTooLarge: "Your data is larger than the self-hosted server accepts in one file, so automatic backup copies are skipped. Saving is not affected. To keep a backup, export a .bin file with \"Save Backup Locally\" under \"Backup & Files\" in the settings.",
     saveSnapshotSkippedMemory: "This device could not set aside enough memory for an automatic backup copy of your data, so it was skipped. Saving is not affected.",
@@ -2883,6 +2907,10 @@ export const languageEnglish = {
         peerExportHandedOff: "The export of this tab has been handed to your browser. Wait until the download has finished, then press Reload now. Reloading earlier can cut the download off.",
         peerExportReloadNow: "Reload now",
         peerNoSaveNode: "This server setup cannot save one tab over another.",
+        peerNodeReloadDrops: "Reload drops this tab's unsaved changes. Export this tab first keeps them in a file without other images, assets and inlays.",
+        peerNodeReloadDropsOnly: "Reload drops this tab's unsaved changes.",
+        peerAutoExportSaved: "This tab's changes were also exported automatically: the file, without other images, assets and inlays, was handed to your browser. Check that the download arrived and has finished before you press Reload. Changes made after the export are not in it.",
+        peerAutoExportNotFinished: "The automatic export did not finish. Use Export this tab first.",
         peerNoSaveReplaced: "After your saved data was changed outside this tab, this tab's version cannot be saved over it.",
         peerNoSaveUnloaded: "This tab does not hold every character in memory, so its version cannot replace the other tab's change.",
         peerReloadOnly: "Reload",
