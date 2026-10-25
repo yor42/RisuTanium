@@ -7,7 +7,7 @@
  * MOCKED: the application modules the real dependency set imports, so the module loads; none of them is called by
  * these tests, which pass their own dependencies.
  */
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock(import('src/ts/alert'), () => ({}) as unknown as typeof import('src/ts/alert'))
 vi.mock(import('src/ts/alertPrompts'), () => ({}) as unknown as typeof import('src/ts/alertPrompts'))
@@ -24,7 +24,8 @@ import type { alertData } from 'src/ts/alert'
 import type { ExportOutcome } from 'src/ts/drive/operationEnd'
 import { isBusy, withBusy } from 'src/ts/process/memory/busyActions'
 import {
-    RELOAD_ALIVE_CHECK_MS, RELOAD_WAIT_CAP_MS, askReloadFirstThenExport, resetReloadFirstForTest, type ReloadFirstDeps,
+    RELOAD_ALIVE_CHECK_MS, RELOAD_WAIT_CAP_MS, askReloadFirstThenExport, lastReloadFirstDecision, resetReloadFirstForTest,
+    type ReloadFirstDeps,
 } from '../reloadFirst'
 import { DECLINED_KEY, RESUME_NOTE_KEY, parseResumeNote, type ResumeOp } from '../reloadFirstPolicy'
 
@@ -458,4 +459,107 @@ describe('askReloadFirstThenExport: the wait notice is displaced', () => {
         expect(sleeps).toBeGreaterThanOrEqual(4)
         expect(asks).toBe(1)
         expect(t.exported).toEqual(['export-full'])
-    })})
+    })
+})
+
+describe('askReloadFirstThenExport: the decision record', () => {
+    const NO_WORK = { drafts: false, inFlight: false, busy: false, chokePoint: false, parked: false }
+
+    afterEach(() => {
+        vi.unstubAllGlobals()
+    })
+
+    test('reproducer: a decision with no offer records every input and offer false', async () => {
+        const t = harness()
+        t.storage.set(DECLINED_KEY, '1')
+        t.deps.android = () => false
+        t.deps.storeMode = () => 'opfs'
+        t.deps.used = () => false
+        t.deps.counts = () => ({ characters: 3, modules: 7 })
+        t.deps.work = () => NO_WORK
+        t.deps.useDetail = () => ({ characterOpened: false, chatSeen: true, marksNow: 9, marksAtReady: 4 })
+        t.state.now = 42
+        await askReloadFirstThenExport('export-full', t.deps)
+        expect(lastReloadFirstDecision()).toEqual({
+            at: 42,
+            android: false,
+            storeMode: 'opfs',
+            used: false,
+            characters: 3,
+            modules: 7,
+            declined: true,
+            work: NO_WORK,
+            wholeSaveAvailable: true,
+            blocked: false,
+            offer: false,
+            use: { characterOpened: false, chatSeen: true, marksNow: 9, marksAtReady: 4 },
+        })
+    })
+
+    test('reproducer: a decision with an offer records offer true and the inputs; use is null without useDetail', async () => {
+        const t = harness()
+        await askReloadFirstThenExport('export-full', t.deps)
+        expect(t.events).toContain('ask')
+        expect(lastReloadFirstDecision()).toEqual({
+            at: 1_000_000,
+            android: true,
+            storeMode: 'store2',
+            used: true,
+            characters: 500,
+            modules: 164,
+            declined: false,
+            work: NO_WORK,
+            wholeSaveAvailable: true,
+            blocked: false,
+            offer: true,
+            use: null,
+        })
+    })
+
+    test('reproducer: a single true work probe is recorded as that probe and blocks the offer', async () => {
+        for (const probe of Object.keys(NO_WORK) as (keyof typeof NO_WORK)[]) {
+            const t = harness()
+            t.deps.work = () => ({ ...NO_WORK, [probe]: true })
+            await askReloadFirstThenExport('export-full', t.deps)
+            const recorded = lastReloadFirstDecision()
+            expect(recorded?.work).toEqual({ ...NO_WORK, [probe]: true })
+            expect(recorded?.blocked).toBe(true)
+            expect(recorded?.offer).toBe(false)
+        }
+    })
+
+    test('reproducer: a whole save that is unavailable is recorded and blocks the offer', async () => {
+        const t = harness()
+        t.state.wholeAvailable = false
+        await askReloadFirstThenExport('export-full', t.deps)
+        expect(lastReloadFirstDecision()).toMatchObject({ wholeSaveAvailable: false, blocked: true, offer: false })
+    })
+
+    test('reproducer: the window property is read-only, returns copies and follows the latest decision', async () => {
+        const fake = {} as Window
+        vi.stubGlobal('window', fake)
+        const first = harness()
+        first.state.answer = ''
+        await askReloadFirstThenExport('export-full', first.deps)
+        const seen = fake.__risuTaniumReloadFirstLast
+        expect(seen?.offer).toBe(true)
+        expect(Reflect.set(fake, '__risuTaniumReloadFirstLast', null)).toBe(false)
+        expect(fake.__risuTaniumReloadFirstLast).toEqual(seen)
+        expect(fake.__risuTaniumReloadFirstLast).not.toBe(seen)
+        expect(fake.__risuTaniumReloadFirstLast?.work).not.toBe(seen?.work)
+
+        const second = harness()
+        second.deps.counts = () => ({ characters: 1, modules: 0 })
+        second.deps.work = () => ({ ...NO_WORK, busy: true })
+        await askReloadFirstThenExport('export-partial', second.deps)
+        expect(fake.__risuTaniumReloadFirstLast).toMatchObject({ characters: 1, modules: 0, offer: false })
+        expect(fake.__risuTaniumReloadFirstLast?.work.busy).toBe(true)
+    })
+
+    test('guard: a missing window does not throw', async () => {
+        vi.stubGlobal('window', undefined)
+        const t = harness()
+        await expect(askReloadFirstThenExport('export-full', t.deps)).resolves.toBeUndefined()
+        expect(lastReloadFirstDecision()?.offer).toBe(true)
+    })
+})
