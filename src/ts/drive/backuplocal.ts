@@ -3,16 +3,16 @@ import { remove } from "@tauri-apps/plugin-fs";
 import { cancelledFileState, takeExportWriteStats, type ExportByteWriter, type ExportWriteCall } from "../exportWriters";
 import { ExportCancelledError, ExportCancelToken, createExportWaitGate, type ExportWaitGate } from "../exportCancel";
 import { localBackupFileName } from "./backupFileName";
-import { LocalWriter, TauriWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson } from "../globalApi.svelte";
+import { LocalWriter, TauriWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson, pieceStoreOrNull } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { decodeRisuSave, encodeRisuSaveLegacy, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock } from "../storage/risuSave";
 import { writeRisuSaveV0 } from "../storage/risuSaveV0";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
-import { StoreInvalidKeyError } from "../storage/store/errors";
+import { StoreInvalidKeyError, UploadCapacityError, UploadGoneError } from "../storage/store/errors";
 import { assetBatchWriteMode, isAssetBatchAvailable, isAssetBatchReadAvailable, listAssetsSized, readAssetBatch, writeAssetBatch, writeAssetBatchB64, type AssetBatchWriteMode, type AssetPutEntry, type AssetPutResult, type SizedAssetKey } from "../storage/tauriAssetBatch";
-import { CHUNK_MAX, createChunkedWriter, isDesktopTransport, readRangedPieces, takeRangeReadStats, transportKind, WRITE_CHUNK_BYTES, type RangedPiece } from "../storage/tauriByteTransport";
+import { CHUNK_MAX, createChunkedWriter, isDesktopTransport, readRangedPieces, takeRangeReadStats, transportKind, WRITE_CHUNK_BYTES, type ChunkedWriter } from "../storage/tauriByteTransport";
 import { tauriAddressableViolation, tauriCreatableViolation } from "../storage/store/keyRules";
 import { ASSET_BATCH_MAX_ENTRIES, ASSET_MAX_STREAMS, ExportAssetReader, RestoreAssetPipeline, parseCopyMeasureKnob, streamAssetEntry, type AssetBatchLimits, type StreamedAssetEntry } from "./assetBatchPipeline";
 import { MEASURE } from "../process/memory/measureFlag";
@@ -39,7 +39,7 @@ import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
 import { beginBusy, withBusy, type BusyHandle } from "../process/memory/busyActions";
 import { inlayAttachmentLimit } from "../process/files/inlayStore";
 import { parseInlayEntryName } from "./inlayBackupCodec";
-import { writeInlaysToBackup } from "./inlayBackupExport";
+import { ExportReadError, nodePieceOpener, openFirstPiece, writeInlaysToBackup, type PieceOpener, type ReadPiece } from "./inlayBackupExport";
 import { InlayRestoreCollector, listOversizedInlays, restoreCollectedInlays, type InlaySkipped } from "./inlayBackupImport";
 import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./restoreLock";
 import { reloadOntoRestoredState } from "./internalBackup";
@@ -410,26 +410,73 @@ class BackupAssetTooLargeError extends Error {
 const MAX_BACKUP_ENTRY_BYTES = 0xFFFFFFFF
 
 /**
+ * Where an export reads an asset's pieces from. `node` selects the Node store's rules for the first piece
+ * (see `writeAssetStreamed`); the desktop's source keeps its own.
+ */
+interface AssetPieceSource {
+    open: PieceOpener
+    node: boolean
+}
+
+const DESKTOP_PIECE_SOURCE: AssetPieceSource = { open: (key) => readRangedPieces(key), node: false }
+
+/**
+ * The Node store when this page is served by the Node server and its recorded capability says the server takes
+ * pieces (`pieceStoreOrNull` probes once if none is recorded); `null` keeps every whole-value path.
+ */
+async function nodePieceStore(): Promise<ByteStore | null> {
+    if (!isNodeServer) {
+        return null
+    }
+    try {
+        const store = await pieceStoreOrNull()
+        return store !== null && store.readPieces !== undefined && store.piecesRecorded !== undefined ? store : null
+    } catch {
+        return null
+    }
+}
+
+/** The Node page's asset piece source, or `null` where the whole-value paths stay. */
+async function nodeAssetPieceSource(): Promise<AssetPieceSource | null> {
+    const store = await nodePieceStore()
+    return store === null ? null : { open: nodePieceOpener(store), node: true }
+}
+
+/**
  * Writes one asset entry from the ranged reader, piece by piece: the entry
  * header carries the size the first piece reported, and the pieces follow in
  * order. Nothing of the asset is held beyond the piece being written.
  * Resolves `missing` when the first piece cannot be read (the key is absent or
- * unreadable), with nothing written. A size above `MAX_BACKUP_ENTRY_BYTES`
+ * unreadable), with nothing written. On the Node store only an absent key or a
+ * key refused for its shape is `missing`; a first range that fails twice throws
+ * `ExportReadError`. A size above `MAX_BACKUP_ENTRY_BYTES`
  * throws `BackupAssetTooLargeError` before anything of the entry is written.
  * Once the header is out, a read that fails, or a file that changed size or
  * identity, throws `BackupAssetChangedError`; a failing writer throws its own
  * error.
  */
-async function writeAssetStreamed(writer: LocalWriter, key: string): Promise<'written' | 'missing'> {
-    const pieces = readRangedPieces(key)
-    try {
-        let first: IteratorResult<RangedPiece, void>
+async function writeAssetStreamed(writer: LocalWriter, key: string, source: AssetPieceSource = DESKTOP_PIECE_SOURCE): Promise<'written' | 'missing'> {
+    let pieces: AsyncGenerator<ReadPiece, void, undefined>
+    let first: IteratorResult<ReadPiece, void>
+    if (source.node) {
+        // The Node store: absence and a refused key are `missing`; a first range that fails again after one re-send
+        // throws `ExportReadError`, so a network failure never yields a backup without the asset.
+        const opened = await openFirstPiece(source.open, key)
+        if (opened === null) {
+            return 'missing'
+        }
+        pieces = opened.pieces
+        first = opened.first
+    } else {
+        pieces = source.open(key)
         try {
             first = await pieces.next()
         } catch (error) {
             console.error(error)
             return 'missing'
         }
+    }
+    try {
         if (first.done === true) {
             return 'missing'
         }
@@ -441,7 +488,7 @@ async function writeAssetStreamed(writer: LocalWriter, key: string): Promise<'wr
         await writer.write(first.value.bytes)
         let written = first.value.bytes.length
         for (;;) {
-            let next: IteratorResult<RangedPiece, void>
+            let next: IteratorResult<ReadPiece, void>
             try {
                 next = await pieces.next()
             } catch (error) {
@@ -591,7 +638,7 @@ async function reportFailedExport(session: ExportSession, error: unknown): Promi
         alertError(language.backupFailedAssetTooLarge(session.describeAsset(error.key), file))
         return file
     }
-    const asset = error instanceof BackupAssetChangedError ? session.describeAsset(error.key) : null
+    const asset = error instanceof BackupAssetChangedError || error instanceof ExportReadError ? session.describeAsset(error.key) : null
     if (file === 'untouched') {
         alertError(language.backupFailedNothingWritten())
     } else if (file === 'deleted') {
@@ -740,6 +787,7 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
         )
         : null
     const streamAssets = await desktopStreamingUsable()
+    const nodeSource = streamAssets ? null : await nodeAssetPieceSource()
     let batchedAssets = 0
     let fallbackAssets = 0
     try {
@@ -767,8 +815,8 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
                 outcome = 'written'
             } else if (taken?.kind === 'missing') {
                 outcome = 'missing'
-            } else if (streamAssets) {
-                outcome = await writeAssetStreamed(writer, key)
+            } else if (streamAssets || nodeSource !== null) {
+                outcome = await writeAssetStreamed(writer, key, nodeSource ?? DESKTOP_PIECE_SOURCE)
             } else {
                 let data: Uint8Array | null = null
                 try {
@@ -800,6 +848,7 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
     // Inlays follow the assets and stay ahead of the database, which is last.
     const inlayResult = await writeInlaysToBackup(writer, store, {
         streaming: streamAssets,
+        openPieces: nodeSource?.open,
         onProgress: (done, total) => session.gate.wait(`Saving local Backup Inlays... (${done} / ${total})`),
     })
     session.cancel.throwIfCancelled()
@@ -1017,6 +1066,7 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
     const store = await getAppStore()
     const assetKeys = Array.from(assetMap.keys())
     const streamAssets = await desktopStreamingUsable()
+    const nodeSource = streamAssets ? null : await nodeAssetPieceSource()
 
     for(let i=0;i<assetKeys.length;i++){
         const key = assetKeys[i]
@@ -1036,10 +1086,12 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
             continue
         }
 
-        // A referenced asset that is absent or cannot be read is reported
-        // as missing on every platform, and the backup goes on.
-        if (streamAssets) {
-            if (await writeAssetStreamed(writer, key) === 'missing') {
+        // A referenced asset that is absent is reported as missing and the
+        // backup goes on. On the Node store a first range that fails again
+        // after one re-send fails the export instead; elsewhere an unreadable
+        // asset is also reported as missing.
+        if (streamAssets || nodeSource !== null) {
+            if (await writeAssetStreamed(writer, key, nodeSource ?? DESKTOP_PIECE_SOURCE) === 'missing') {
                 missingAssets.push(key)
             }
             continue
@@ -1535,7 +1587,12 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                 // Assets handed to the store; the written count is this less the names the pipeline refused, once it has drained.
                 let assetsSubmitted = 0;
                 const assetPipeline = await createRestoreAssetPipeline();
-                const streamLargeAssets = assetPipeline !== null || await desktopStreamingUsable();
+                const desktopStreamLargeAssets = assetPipeline !== null || await desktopStreamingUsable();
+                // On a Node page whose server takes pieces, an entry above one chunk goes to the store through its
+                // chunked writer; the rest of the restore is unchanged.
+                const nodeRestoreStore = desktopStreamLargeAssets ? null : await nodePieceStore();
+                const streamLargeAssets = desktopStreamLargeAssets || nodeRestoreStore !== null;
+                const openRestoreStream = (key: string): ChunkedWriter => nodeRestoreStore !== null ? nodeRestoreStore.openWriter!(key) : openAssetStream(key);
                 let stopMessage: string | null = null;
                 let passFailure: { error: unknown } | null = null;
                 let visitedEntries = 0;
@@ -1654,7 +1711,7 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                                 }
                                 assetsSubmitted++;
                             } else {
-                                const outcome = await streamAssetEntry(streamed, openAssetStream);
+                                const outcome = await streamAssetEntry(streamed, openRestoreStream);
                                 if (outcome.k === 'stopped') {
                                     // No stop condition is passed here, so this cannot happen; it must not count as written.
                                     throw new Error('a stream stopped without a stop condition');
@@ -1665,6 +1722,17 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                                     break;
                                 }
                                 if (outcome.k === 'sink') {
+                                    const shownName = name.length > SKIPPED_ASSET_NAME_CHARS_SHOWN ? name.slice(0, SKIPPED_ASSET_NAME_CHARS_SHOWN) + '...' : name;
+                                    if (nodeRestoreStore !== null && outcome.error instanceof NodeHttpError && outcome.error.status === 413) {
+                                        console.error(outcome.error);
+                                        stopMessage = language.restoreAssetRefusedTooLarge(shownName);
+                                        break;
+                                    }
+                                    if (nodeRestoreStore !== null && (outcome.error instanceof UploadGoneError || outcome.error instanceof UploadCapacityError)) {
+                                        console.error(outcome.error);
+                                        stopMessage = language.restoreAssetUploadStopped(shownName);
+                                        break;
+                                    }
                                     throw outcome.error;
                                 }
                                 if (outcome.k === 'invalid') {

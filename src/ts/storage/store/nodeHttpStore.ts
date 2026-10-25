@@ -1192,6 +1192,8 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
             return { bytes: exists ? body : null, version }
         },
 
+        piecesRecorded: () => piecesRecorded,
+
         async readPieces(key: string): Promise<PieceSource | null> {
             checkAddressable(key)
             if (piecesRecorded && nodeAssetRouteViolation(key) === null) {

@@ -222,6 +222,14 @@ export interface ByteStore {
     readPieces?(key: string): Promise<PieceSource | null>
 
     /**
+     * Whether the server's last successful capability probe said it takes chunked
+     * uploads and ranged reads (`pieces`). Optional and Node only. Makes no
+     * request, and is `false` before any probe and after a probe or a ranged
+     * read found the routes missing.
+     */
+    readonly piecesRecorded?: () => boolean
+
+    /**
      * Guarded operations. Optional and Node only: every other adapter leaves it
      * out. The self-hosted Node server alone can compare other keys' revisions
      * inside the same step as a write or a removal.

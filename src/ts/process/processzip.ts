@@ -1,4 +1,4 @@
-import { AppendableBuffer, saveAsset, type LocalWriter, type VirtualWriter } from "../globalApi.svelte";
+import { AppendableBuffer, pieceStoreOrNull, saveAsset, saveAssetFromPieces, type LocalWriter, type VirtualWriter } from "../globalApi.svelte";
 import * as fflate from "fflate";
 import { asBuffer, Semaphore, sleep } from "../util";
 import { alertStore } from "../alert";
@@ -22,7 +22,103 @@ export const charxLimits = {
     assetBytes: 200 * MIB,
     // decoded assets queued or being saved beyond which reading the archive pauses
     backlogBytes: 32 * MIB,
+    // received bytes of an asset entry past which it is saved in pieces instead of being collected whole (a store that writes in pieces)
+    streamAfterBytes: 4 * MIB,
 };
+
+/**
+ * One streamed entry's decoded bytes on their way from fflate's synchronous `ondata` to the asynchronous piece
+ * consumer of `saveAssetFromPieces`. Queued bytes are reported to the importer's backlog and released as the consumer
+ * takes them. The queue ends in one of two ways: `end()` after the entry's last chunk, so the consumer finishes
+ * normally; or `fail(error)`, after which the consumer's next read throws, so a save of a cut-short entry aborts and
+ * never takes a valid key. `dispose()` is the consumer being done (finished or failed): whatever is still queued is
+ * released and later pushes are dropped.
+ */
+export class PieceQueue implements AsyncIterable<Uint8Array> {
+    #chunks: Uint8Array[] = []
+    #queuedBytes = 0
+    #ended = false
+    #closed = false
+    #failure: Error | undefined
+    #wake: (() => void) | undefined
+
+    constructor(private readonly onQueued: (bytes: number) => void, private readonly onReleased: (bytes: number) => void) {}
+
+    /** Queues a copy of `data`; dropped once the queue is closed, failed or ended. */
+    push(data: Uint8Array) {
+        if (this.#closed || this.#ended || this.#failure || data.byteLength === 0) {
+            return
+        }
+        this.#chunks.push(data.slice())
+        this.#queuedBytes += data.byteLength
+        this.onQueued(data.byteLength)
+        this.#wakeConsumer()
+    }
+
+    /** No more chunks follow: the consumer drains what is queued and then finishes. */
+    end() {
+        this.#ended = true
+        this.#wakeConsumer()
+    }
+
+    /** The entry cannot be completed: queued bytes are released and the consumer's next read throws `error`. */
+    fail(error: Error) {
+        if (this.#failure || this.#closed) {
+            return
+        }
+        this.#failure = error
+        this.#release()
+        this.#wakeConsumer()
+    }
+
+    /** The consumer is done: queued bytes are released and later pushes are dropped. */
+    dispose() {
+        this.#closed = true
+        this.#release()
+        this.#wakeConsumer()
+    }
+
+    #release() {
+        const bytes = this.#queuedBytes
+        this.#chunks = []
+        this.#queuedBytes = 0
+        if (bytes > 0) {
+            this.onReleased(bytes)
+        }
+    }
+
+    #wakeConsumer() {
+        const wake = this.#wake
+        this.#wake = undefined
+        wake?.()
+    }
+
+    [Symbol.asyncIterator](): AsyncIterator<Uint8Array> {
+        return {
+            next: async () => {
+                for (;;) {
+                    if (this.#failure) {
+                        throw this.#failure
+                    }
+                    const chunk = this.#chunks.shift()
+                    if (chunk) {
+                        this.#queuedBytes -= chunk.byteLength
+                        this.onReleased(chunk.byteLength)
+                        return { done: false, value: chunk }
+                    }
+                    if (this.#ended || this.#closed) {
+                        return { done: true, value: undefined }
+                    }
+                    await new Promise<void>(resolve => { this.#wake = resolve })
+                }
+            },
+            return: async () => {
+                this.dispose()
+                return { done: true, value: undefined }
+            },
+        }
+    }
+}
 
 /**
  * The largest asset an import takes: the asset limit, and never more than one write to the store accepts. The
@@ -35,6 +131,11 @@ export function assetByteLimit(): number {
 
 function entryLimit(name: string): number {
     return name === 'card.json' || name === 'module.risum' ? charxLimits.metadataBytes : assetByteLimit();
+}
+
+// An entry that is saved as an asset (not card.json, module.risum or other JSON).
+function isStreamableAsset(name: string): boolean {
+    return name !== 'card.json' && name !== 'module.risum' && !isIgnoredJson(name)
 }
 
 // JSON other than card.json is not used by the import.
@@ -408,6 +509,14 @@ export class CharXImporter{
     // progress is shown.
     #abandoned: boolean = false
 
+    // Whether the store writes in pieces, asked once per parse(); when it does, an asset entry past
+    // charxLimits.streamAfterBytes is saved from a PieceQueue instead of being collected whole.
+    #streamPieces: boolean = false
+    // Entries still receiving data into a queue, by entry name.
+    #receiving: Map<string, PieceQueue> = new Map()
+    // Queues whose save has not ended, so a failure or abandon() reaches the writer that consumes them.
+    #saving: Set<PieceQueue> = new Set()
+
     // Results: filename -> saved asset ID mapping
     assets:{[key:string]:string} = {}
 
@@ -479,6 +588,11 @@ export class CharXImporter{
         this.completionPromise = this.#awaitCompletion()
 
         this.#failure = undefined
+        try {
+            this.#streamPieces = await pieceStoreOrNull() !== null
+        } catch {
+            this.#streamPieces = false
+        }
 
         // An entry the central directory lists above its limit refuses the card before any entry is read
         if(!(data instanceof ReadableStream)){
@@ -533,7 +647,16 @@ export class CharXImporter{
             reader.cancel().catch(() => {})
             throw this.#failure
         }
+        // An entry still receiving when the archive ends was cut short: its save fails, so it is never stored under a key.
+        this.#failQueues(this.#receiving.values(), new Error('The archive ended before an entry was complete'))
+        this.#receiving.clear()
         await this.#finalize()
+    }
+
+    #failQueues(queues: Iterable<PieceQueue>, error: Error) {
+        for (const queue of [...queues]) {
+            queue.fail(error)
+        }
     }
 
     /**
@@ -546,6 +669,9 @@ export class CharXImporter{
         }
         this.#failure = new CharXParseError(origin, cause, size)
         this.assetBuffers = {}
+        // Every queue ends by throwing, so no writer finishes an entry that was cut short.
+        this.#failQueues(this.#saving, this.#failure)
+        this.#receiving.clear()
     }
 
     /** Records that the entry `entryName` is larger than its limit. */
@@ -556,6 +682,7 @@ export class CharXImporter{
 
     /** Resolves once the decoded assets waiting to be saved are at most charxLimits.backlogBytes, or a failure is recorded. */
     async #waitForBacklog() {
+        // Woken by #releaseBacklog on every drain, including the release of a failed save's queued bytes.
         while(!this.#failure && this.#pendingBytes > charxLimits.backlogBytes){
             await new Promise<void>(resolve => { this.#wakeReader = resolve })
         }
@@ -587,11 +714,14 @@ export class CharXImporter{
     /**
      * Ends the importer's use without waiting for its saves: a save that has not started never starts, no progress is
      * shown from now on, and a rejection of the completion promise that nobody awaits is not reported as unhandled.
-     * Saves already in flight run to their end. Call it when the import stops after parse() succeeded without a
-     * call to done() having returned; it is harmless after done() has settled.
+     * Whole-entry saves already in flight run to their end, but a save that streams an entry in pieces is aborted: its
+     * queue ends by throwing, the writer discards its temporary file and nothing is stored under the entry's key.
+     * Call it when the import stops after parse() succeeded without a call to done() having returned; it is harmless
+     * after done() has settled.
      */
     abandon(){
         this.#abandoned = true
+        this.#failQueues(this.#saving, new Error('The import was abandoned'))
         this.completionPromise?.catch(() => {})
     }
 
@@ -703,6 +833,15 @@ export class CharXImporter{
                 return
             }
             buffer.append(data)
+            // The decision uses the bytes received so far: a local header's size is zero or absent in an archive
+            // written with data descriptors, so it says nothing about the entry's real size.
+            const queue = this.#receiving.get(fileName)
+            if(queue){
+                queue.push(data)
+            }
+            else if(this.#streamPieces && isStreamableAsset(fileName) && buffer.byteLength > charxLimits.streamAfterBytes){
+                this.#switchToPieces(fileName, buffer)
+            }
             if(final){
                 this.#handleFileComplete(fileName)
             }
@@ -722,7 +861,13 @@ export class CharXImporter{
         const buffer = this.assetBuffers[fileName]
         delete this.assetBuffers[fileName]
 
-        if(isIgnoredJson(fileName)){
+        const queue = this.#receiving.get(fileName)
+        if(queue){
+            // The entry is complete: the consumer drains what is queued and finishes the save.
+            this.#receiving.delete(fileName)
+            queue.end()
+        }
+        else if(isIgnoredJson(fileName)){
             // Other JSON files are not used
         }
         else if(fileName === 'card.json'){
@@ -737,6 +882,59 @@ export class CharXImporter{
                 id: fileName,
                 data: buffer.take()
             })
+        }
+    }
+
+    /** Takes `bytes` off the backlog and wakes the reader if it is waiting on it. */
+    #releaseBacklog(bytes: number) {
+        this.#pendingBytes -= bytes
+        const wake = this.#wakeReader
+        this.#wakeReader = undefined
+        wake?.()
+    }
+
+    /**
+     * Moves an entry that has passed charxLimits.streamAfterBytes from the whole path to the piece path: what it
+     * holds goes into a new queue, `saveAssetFromPieces` consumes the queue, and the entry's later chunks are pushed
+     * to it as they arrive. The entry is counted as enqueued here, in the same synchronous turn as the switch, so
+     * done() cannot settle before its save is accounted for.
+     */
+    #switchToPieces(fileName: string, buffer: EntryBuffer) {
+        const held = buffer.take()
+        const queue = new PieceQueue(bytes => { this.#pendingBytes += bytes }, bytes => this.#releaseBacklog(bytes))
+        // The entry's size is still counted against its limit, without keeping its bytes.
+        const counter = new EntryBuffer(false)
+        counter.append(held)
+        this.assetBuffers[fileName] = counter
+        this.#receiving.set(fileName, queue)
+        this.#saving.add(queue)
+        this.totalEnqueued += 1
+        queue.push(held)
+        void this.#saveStreamed(fileName, queue)
+    }
+
+    async #saveStreamed(fileName: string, queue: PieceQueue) {
+        let acquired = false
+        try {
+            await this.semaphore.acquire()
+            acquired = true
+            if(this.#failure || this.#abandoned){
+                return
+            }
+            // No file name: the key is the one `saveAsset` gives the same bytes.
+            this.assets[fileName] = await saveAssetFromPieces(queue, { sizeBound: entryLimit(fileName) })
+        } catch (error) {
+            this.errors.push(error instanceof Error ? error : new Error(String(error)))
+        } finally {
+            if (acquired) {
+                this.semaphore.release()
+            }
+            // Releases whatever is still queued, which wakes a reader waiting on the backlog.
+            queue.dispose()
+            this.#saving.delete(queue)
+            this.totalCompleted += 1
+            this.onProgress?.(this.totalCompleted, this.totalEnqueued)
+            this.#checkCompletion()
         }
     }
 
@@ -761,10 +959,7 @@ export class CharXImporter{
             if (acquired) {
                 this.semaphore.release()
             }
-            this.#pendingBytes -= byteLength
-            const wake = this.#wakeReader
-            this.#wakeReader = undefined
-            wake?.()
+            this.#releaseBacklog(byteLength)
             this.totalCompleted += 1
             this.onProgress?.(this.totalCompleted, this.totalEnqueued)
             this.#checkCompletion()

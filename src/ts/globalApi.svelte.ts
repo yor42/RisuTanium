@@ -38,7 +38,7 @@ import { didBootPassCommit } from "./process/memory/bootArchiveState";
 import { beginInFlight } from "./process/inFlightWork";
 import { getAppStore } from "./storage/store/appStore";
 import { nodeAssetRouteViolation } from "./storage/store/keyRules";
-import type { PieceWriter } from "./storage/store/contract";
+import type { ByteStore, PieceWriter } from "./storage/store/contract";
 import { BlockSetGateError, BlockTooLargeError } from "./storage/blockStore";
 import { SaveParkError, heldSaveStore, type HeldSaveInfo } from "./storage/saveHold";
 import { isCharacterEntry, isMissingCharacterId, isUsableCharacterId } from "./storage/characterIds";
@@ -742,6 +742,31 @@ export async function saveAssetFromPieces(pieces: AsyncIterable<Uint8Array>, opt
     } finally {
         endInFlight()
     }
+}
+
+/**
+ * The app store when it writes in pieces, or `null` where every value goes through the store whole. The desktop and
+ * Android store always qualify. The Node store qualifies when the capability it recorded says its server takes pieces;
+ * when none has been recorded yet, one probe is made so a page whose boot never probed still streams. Callers ask once
+ * per operation, never per asset.
+ */
+export async function pieceStoreOrNull(): Promise<ByteStore | null> {
+    const store = await getAppStore()
+    if (store.openWriter === undefined) {
+        return null
+    }
+    if (store.piecesRecorded === undefined) {
+        return store
+    }
+    if (!store.piecesRecorded() && store.guarded !== undefined) {
+        try {
+            await store.guarded.probe()
+        } catch (error) {
+            console.warn(error)
+            return null
+        }
+    }
+    return store.piecesRecorded() ? store : null
 }
 
 /** The bytes one slice of a Blob read by `saveAssetFromBlob` holds. */

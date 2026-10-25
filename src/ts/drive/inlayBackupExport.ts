@@ -1,4 +1,5 @@
 import type { ByteStore } from '../storage/store/contract'
+import { StoreInvalidKeyError } from '../storage/store/errors'
 import { readRangedPieces } from '../storage/tauriByteTransport'
 import {
     fieldsOf,
@@ -61,7 +62,88 @@ export interface InlayExportResult {
 export interface InlayExportOptions {
     /** Read an app-store body in ranged pieces (the desktop files store). */
     streaming: boolean
+    /**
+     * Read an app-store body through the Node store's pieces. A first range that
+     * fails twice with anything but a refused key fails the export (`ExportReadError`)
+     * instead of leaving the inlay out. Takes the place of `streaming` on a Node page.
+     */
+    openPieces?: PieceOpener
     onProgress?: (done: number, total: number) => void
+}
+
+/** One piece of a value read in pieces, with the whole value's size as of the first piece. */
+export interface ReadPiece {
+    bytes: Uint8Array
+    total: number
+}
+
+/**
+ * Starts reading `key` in pieces. The first `next()` carries the first piece and
+ * its `total`; a generator that is done at once says the key is absent.
+ */
+export type PieceOpener = (key: string) => AsyncGenerator<ReadPiece, void, undefined>
+
+/**
+ * A value of a Node store could not be read for the export: its first range
+ * failed again after being re-sent. The network failed, not the value, so the
+ * export ends with no completed file instead of going on without the value.
+ */
+export class ExportReadError extends Error {
+    constructor(public readonly key: string, cause: unknown) {
+        super(`The value ${key} could not be read for the export`, { cause })
+        this.name = 'ExportReadError'
+    }
+}
+
+/**
+ * The pieces of `key` from a Node store's `readPieces`. Nothing is yielded for an
+ * absent key (`x-risu-exists: 0`); an empty value yields one empty piece. A
+ * failure of any kind rejects with the store's own error, never as an absence.
+ */
+export function nodePieceOpener(store: ByteStore): PieceOpener {
+    const readPieces = store.readPieces?.bind(store)
+    if (readPieces === undefined) {
+        throw new Error('The store cannot read in pieces')
+    }
+    return async function* (key: string): AsyncGenerator<ReadPiece, void, undefined> {
+        const source = await readPieces(key)
+        if (source === null) {
+            return
+        }
+        if (source.total === 0) {
+            yield { bytes: new Uint8Array(0), total: 0 }
+            return
+        }
+        for await (const bytes of source.pieces) {
+            yield { bytes, total: source.total }
+        }
+    }
+}
+
+/**
+ * Opens `key` on a Node store and awaits its first piece. A key the store
+ * refuses for its shape resolves `null` (the caller treats it as absent). Any
+ * other failure of the first range is re-sent once on a fresh read; a second
+ * failure rejects with `ExportReadError`.
+ */
+export async function openFirstPiece(
+    open: PieceOpener,
+    key: string,
+): Promise<{ pieces: AsyncGenerator<ReadPiece, void, undefined>, first: IteratorResult<ReadPiece, void> } | null> {
+    let lastError: unknown = null
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const pieces = open(key)
+        try {
+            return { pieces, first: await pieces.next() }
+        } catch (error) {
+            if (error instanceof StoreInvalidKeyError) {
+                return null
+            }
+            lastError = error
+            await pieces.return(undefined).catch(() => { })
+        }
+    }
+    throw new ExportReadError(key, lastError)
 }
 
 /** The body of an inlay was not what its record promised. */
@@ -107,18 +189,30 @@ class BlobSource implements BodySource {
 }
 
 class RangedSource implements BodySource {
-    private readonly pieces: AsyncGenerator<{ bytes: Uint8Array, total: number }, void, undefined>
+    private pieces: AsyncGenerator<ReadPiece, void, undefined> | null
     private carry: Uint8Array = new Uint8Array(0)
     private checked = false
-    constructor(key: string, private readonly expectedLength: number) {
-        this.pieces = readRangedPieces(key)
+    /** `openPieces` is the Node store's source: its first range is re-sent once and a second failure fails the export. */
+    constructor(private readonly key: string, private readonly expectedLength: number, private readonly openPieces?: PieceOpener) {
+        this.pieces = openPieces === undefined ? readRangedPieces(key) : null
+    }
+    private async nextPiece(): Promise<IteratorResult<ReadPiece, void>> {
+        if (this.pieces === null && this.openPieces !== undefined) {
+            const opened = await openFirstPiece(this.openPieces, this.key)
+            if (opened === null) {
+                return { done: true, value: undefined }
+            }
+            this.pieces = opened.pieces
+            return opened.first
+        }
+        return await this.pieces!.next()
     }
     async take(count: number): Promise<Uint8Array> {
         const out = new Uint8Array(count)
         let filled = 0
         while (filled < count) {
             if (this.carry.length === 0) {
-                const next = await this.pieces.next()
+                const next = await this.nextPiece()
                 if (next.done === true) {
                     throw new InlayBodyChangedError('The inlay body is shorter than its record says')
                 }
@@ -139,7 +233,7 @@ class RangedSource implements BodySource {
         return out
     }
     async close(): Promise<void> {
-        await this.pieces.return(undefined)
+        await this.pieces?.return(undefined)
     }
 }
 
@@ -155,14 +249,14 @@ interface ExportableInlay {
  * The inlay `id` ready to be written, from the app store (`fromApp`) when it holds the id with a body of the
  * length its record says, or from the old store; `null` when that store does not hold it now.
  */
-async function openInlay(store: ByteStore, id: string, streaming: boolean, fromApp: boolean): Promise<ExportableInlay | 'unsupported' | null> {
+async function openInlay(store: ByteStore, id: string, streaming: boolean, fromApp: boolean, openPieces?: PieceOpener): Promise<ExportableInlay | 'unsupported' | null> {
     const record = fromApp ? await readAppInlayRecord(store, id) : null
     if (fromApp) {
         if (record === null || !await store.has(record.body)) {
             return null
         }
-        if (streaming) {
-            return { repr: record.repr, mime: record.mime, fields: record.fields, len: record.len, source: new RangedSource(record.body, record.len) }
+        if (streaming || openPieces !== undefined) {
+            return { repr: record.repr, mime: record.mime, fields: record.fields, len: record.len, source: new RangedSource(record.body, record.len, openPieces) }
         }
         const blob = await store.readBlob?.(record.body) ?? null
         if (blob !== null && blob.size === record.len) {
@@ -203,6 +297,9 @@ async function writeOneInlay(sink: InlayBackupSink, id: string, inlay: Exportabl
         try {
             body = await inlay.source.take(count)
         } catch (error) {
+            if (error instanceof ExportReadError) {
+                throw error
+            }
             console.warn('An inlay could not be read to its end and is left out of the backup:', error)
             return index === 0 ? 'retry' : 'unreadable'
         }
@@ -222,12 +319,12 @@ async function writeOneInlay(sink: InlayBackupSink, id: string, inlay: Exportabl
     return 'written'
 }
 
-async function exportOne(sink: InlayBackupSink, store: ByteStore, id: string, streaming: boolean): Promise<'written' | InlayLeftOutReason> {
+async function exportOne(sink: InlayBackupSink, store: ByteStore, id: string, streaming: boolean, openPieces?: PieceOpener): Promise<'written' | InlayLeftOutReason> {
     // The app store copy first, then the old store: the order `getInlayAsset` reads in.
     for (const fromApp of [true, false]) {
         let inlay: ExportableInlay | 'unsupported' | null
         try {
-            inlay = await openInlay(store, id, streaming, fromApp)
+            inlay = await openInlay(store, id, streaming, fromApp, openPieces)
         } catch (error) {
             console.warn('An inlay could not be read:', error)
             inlay = null
@@ -273,7 +370,7 @@ export async function writeInlaysToBackup(sink: InlayBackupSink, store: ByteStor
     for (let i = 0; i < ids.length; i++) {
         const id = ids[i]
         options.onProgress?.(i + 1, ids.length)
-        const outcome = await withInlayLock(id, () => exportOne(sink, store, id, options.streaming))
+        const outcome = await withInlayLock(id, () => exportOne(sink, store, id, options.streaming, options.openPieces))
         if (outcome === 'written') {
             result.exported++
         } else {

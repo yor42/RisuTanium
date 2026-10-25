@@ -2050,6 +2050,8 @@ export const languageEnglish = {
         `The backup was restored, except for ${count} asset file(s) larger than the ${Math.floor(limitBytes / (1024 * 1024))} MB this server accepts in one request. A character that uses one of them will show it as missing. Skipped:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     restoreAssetRefusedTooLarge: (name: string) =>
         `The server, or a proxy in front of it, refused the asset "${name}" as too large, so the restore stopped. Some images or cold-storage entries may already have been added or replaced. Your current database was not changed.`,
+    restoreAssetUploadStopped: (name: string) =>
+        `The server stopped the upload of the asset "${name}" (the upload expired, or the server holds too many partly uploaded files), so the restore stopped. Some images or cold-storage entries may already have been added or replaced. Your current database was not changed.`,
     partialBackupInlaysNotIncluded: "Inlays (chat images, video, audio and signatures) are not included in a partial backup.",
     backupInlaysLeftOut: (count: number, names: string[]) =>
         `${count} inlay(s) (chat images, video, audio or signatures) could not be read or are not supported, so they are not in the backup. A chat that uses one of them will show it as missing. Left out:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
