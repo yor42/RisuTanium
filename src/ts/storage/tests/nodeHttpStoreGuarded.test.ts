@@ -116,7 +116,7 @@ async function caught(promise: Promise<unknown>): Promise<unknown> {
 
 describe('guarded operations against the real server', () => {
     test('probe answers the three capabilities', async () => {
-        expect(await guardedOf().probe()).toEqual({ checkOnly: true, retire: true, pieces: false })
+        expect(await guardedOf().probe()).toEqual({ checkOnly: true, retire: true, pieces: true })
     })
 
     test('writeChecked, removeChecked and retireChecked work, and every request is uncached, unredirected, authenticated and counted', async () => {

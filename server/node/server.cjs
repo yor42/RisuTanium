@@ -9,16 +9,41 @@ const http = require('http');
 const path = require('path');
 const net = require('net');
 const htmlparser = require('node-html-parser');
-const { existsSync, mkdirSync, readFileSync, writeFileSync, openSync, closeSync, fsyncSync, renameSync, unlinkSync } = require('fs');
+const { existsSync, mkdirSync, readFileSync, writeFileSync, openSync, closeSync, fsyncSync, renameSync, unlinkSync, readdirSync } = require('fs');
 const fs = require('fs/promises')
 const crypto = require('crypto')
 const rateLimit = require('express-rate-limit');
 const { WebSocketServer } = require('ws');
-const { NODE_BODY_LIMIT_BYTES } = require('./bodyLimit.cjs');
+const { NODE_BODY_LIMIT_BYTES, NODE_ASSET_LIMIT_BYTES, NODE_UPLOAD_CHUNK_MAX_BYTES } = require('./bodyLimit.cjs');
 const { hubTargetURL, hubRedirectTarget, hubRequestHeaders, hubResponseHeaders, hubForwardBody } = require('./hubProxy.cjs');
 const { ASSET_READ_AUDIENCE, assetKeyFromHex, contentTypeForKey, sniffContentType, cacheControlForKey } = require('./assetRoute.cjs');
 const { store2KeyFromHex } = require('./store2Keys.cjs');
+
+// A positive integer from the environment, else `fallback`. The environment
+// overrides exist so tests can use small limits and short timers.
+function positiveIntegerFromEnv(name, fallback){
+    const configured = Number(process.env[name]);
+    return Number.isSafeInteger(configured) && configured > 0 ? configured : fallback;
+}
+const UPLOAD_ASSET_LIMIT_BYTES = positiveIntegerFromEnv('RISU_NODE_ASSET_LIMIT_BYTES', NODE_ASSET_LIMIT_BYTES);
+const UPLOAD_CHUNK_MAX_BYTES = positiveIntegerFromEnv('RISU_UPLOAD_CHUNK_MAX_BYTES', NODE_UPLOAD_CHUNK_MAX_BYTES);
+// Bytes all open uploads may hold on disk together; an orphan bound, not a quota.
+const UPLOAD_STAGED_CAP_BYTES = positiveIntegerFromEnv('RISU_UPLOAD_STAGED_CAP_BYTES', 4 * 1024 * 1024 * 1024);
+// An upload with no request for this long is reaped.
+const UPLOAD_IDLE_REAP_MS = positiveIntegerFromEnv('RISU_UPLOAD_IDLE_REAP_MS', 60 * 60 * 1000);
+// How long a committed upload answers a retried commit with its first success.
+const UPLOAD_TOMBSTONE_MS = positiveIntegerFromEnv('RISU_UPLOAD_TOMBSTONE_MS', 10 * 60 * 1000);
+// Under capacity pressure only uploads idle at least this long may be evicted.
+const UPLOAD_EVICT_IDLE_MS = positiveIntegerFromEnv('RISU_UPLOAD_EVICT_IDLE_MS', 5 * 60 * 1000);
+
 app.use(express.static(path.join(process.cwd(), 'dist'), {index: false}));
+// Upload requests are tracked from their arrival (trackUploadArrival, defined
+// with the upload routes), and an append body is read by its own parser with
+// the chunk maximum as the limit. That parser runs first and marks the request
+// as parsed, so the global parsers below skip it and an over-size chunk is
+// refused before more than the chunk maximum is buffered.
+app.use('/api/upload', trackUploadArrival);
+app.use('/api/upload/append', express.raw({ type: () => true, limit: UPLOAD_CHUNK_MAX_BYTES }));
 // The hub proxy forwards the request body as the client sent it, so it is
 // captured as raw bytes before any parser can replace it with a parsed value.
 app.use('/hub-proxy', express.raw({ type: () => true, limit: NODE_BODY_LIMIT_BYTES }));
@@ -30,6 +55,14 @@ app.use(express.text({ limit: NODE_BODY_LIMIT_BYTES }));
 // error page (which carries a stack and absolute paths). /api/write-checked is
 // a guarded route and keeps its marker on the answer.
 app.use((error, req, res, next) => {
+    if (error?.type === 'entity.too.large' && req.path === '/api/upload/append') {
+        res.status(413).send({
+            error: 'Upload chunk is too large',
+            code: 'PAYLOAD_TOO_LARGE',
+            message: `Upload chunks are limited to ${UPLOAD_CHUNK_MAX_BYTES} bytes.`,
+        });
+        return;
+    }
     if (error?.type === 'entity.too.large' && (req.path === '/api/write' || req.path === '/api/write-checked')) {
         console.error('[Storage] Rejected oversized request:', {
             size: error.length,
@@ -247,6 +280,22 @@ if(existsSync(revisionsLogPath)){
     } catch (error) {
         revisionCompactionDueAt = revisionLogRecords + revisionLogCompactAt
         console.error('Failed to compact the revision log at startup, continuing from memory:', error);
+    }
+}
+
+// Startup sweep, synchronous and before the server listens, so no request can
+// be using what it removes: an upload's staging file and a key write's temp
+// file left behind by a process that ended mid-request. Only these two exact
+// name shapes go; a key file (whole hex name) and every other `__` file stay.
+const uploadStagingNamePattern = /^__upload-[0-9a-f]{32}$/i
+const keyWriteTempNamePattern = /^(?:[0-9a-f]{2})+\.tmp-[0-9a-f]{16}$/i
+for(const entry of readdirSync(savePath, { withFileTypes: true })){
+    if(entry.isFile() && (uploadStagingNamePattern.test(entry.name) || keyWriteTempNamePattern.test(entry.name))){
+        try {
+            unlinkSync(path.join(savePath, entry.name))
+        } catch (error) {
+            console.error(`Could not remove the leftover ${entry.name}:`, error?.code ?? error)
+        }
     }
 }
 
@@ -1562,6 +1611,42 @@ app.post('/api/set_password', setPasswordRouteLimiter, async (req, res) => {
     }
 })
 
+// Whether a key holds a value, without reading it: the answer of HEAD. It is
+// registered before the GET route so express does not serve a HEAD request
+// through the GET handler, which reads the whole file. The revision and the
+// size are taken under the same per-key lock as the GET route's snapshot, so
+// the pair is as consistent as a read's.
+app.head('/api/read', storageRouteLimiter, async (req, res, next) => {
+    if(!await checkAuth(req, res)){
+        return;
+    }
+    const filePath = readPathOfRequest(req, res);
+    if(filePath === null){
+        return;
+    }
+    try {
+        let currentRevision = 0;
+        let size = null;
+        await withFileWriteLock(filePath, async () => {
+            currentRevision = revisions[filePath] ?? 0;
+            const stat = await fs.stat(path.join(savePath, filePath)).catch(() => null);
+            if(stat !== null && stat.isFile()){
+                size = stat.size;
+            }
+        });
+        res.setHeader('x-risu-revision', String(currentRevision));
+        res.setHeader('x-risu-exists', size === null ? '0' : '1');
+        res.setHeader('x-risu-size', String(size ?? 0));
+        if(size !== null){
+            res.setHeader('Content-Type', 'application/octet-stream');
+            res.setHeader('Content-Length', String(size));
+        }
+        res.end();
+    } catch (error) {
+        next(error);
+    }
+});
+
 app.get('/api/read', storageRouteLimiter, async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
@@ -1972,7 +2057,7 @@ app.get('/api/caps', storageRouteLimiter, async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
-    res.send({ checkOnly: true, retire: true, pieces: false, listPrefix: true });
+    res.send({ checkOnly: true, retire: true, pieces: true, listPrefix: true });
 });
 
 // Only whole, even-length hex names are keys. Everything else in the
@@ -2020,9 +2105,47 @@ app.get('/api/list-prefix', storageRouteLimiter, async (req, res, next) => {
     }
     const countOnly = req.query.count === '1';
     const lowerPrefix = prefix.toLowerCase();
+    // Optional: only keys whose file holds more than this many bytes, answered
+    // with their sizes. Without it the answer is the plain key list.
+    const minSizeParameter = req.query['min-size'];
+    let minSize = null;
+    if(minSizeParameter !== undefined){
+        minSize = typeof minSizeParameter === 'string' && /^\d+$/.test(minSizeParameter) ? Number(minSizeParameter) : NaN;
+        if(!Number.isSafeInteger(minSize)){
+            res.status(400).send({
+                success: false,
+                error: 'Invalid min-size'
+            });
+            return;
+        }
+    }
     try {
         const matching = (await fs.readdir(path.join(savePath)))
             .filter((v) => keyFileNamePattern.test(v) && v.toLowerCase().startsWith(lowerPrefix))
+        if(minSize !== null){
+            const sizes = await fileSizesWithLimit(matching, LIST_STAT_CONCURRENCY)
+            const keptNames = []
+            const keptSizes = []
+            for(let i = 0; i < matching.length; i++){
+                if(sizes[i] > minSize){
+                    keptNames.push(matching[i])
+                    keptSizes.push(sizes[i])
+                }
+            }
+            if(countOnly){
+                res.send({
+                    success: true,
+                    count: keptNames.length
+                });
+                return;
+            }
+            res.send({
+                success: true,
+                content: keptNames.map((v) => Buffer.from(v, 'hex').toString('utf-8')),
+                sizes: keptSizes
+            });
+            return;
+        }
         if(countOnly){
             res.send({
                 success: true,
@@ -2224,6 +2347,529 @@ async function handleWrite(req, res, next, guarded){
 
 app.post('/api/write', storageRouteLimiter, (req, res, next) => handleWrite(req, res, next, false));
 app.post('/api/write-checked', storageRouteLimiter, (req, res, next) => handleWrite(req, res, next, true));
+
+// ---------------------------------------------------------------------------
+// Chunked asset upload and ranged read.
+//
+// An upload stages its bytes in `__upload-<id>` beside the keys (the same
+// filesystem, so the final rename is atomic). The name is not a key name, so
+// no key route reaches it. The in-memory registry is the authority on what an
+// upload holds: `ack` is the number of bytes a client may rely on, and every
+// operation on one id (append, commit, abort, reaping) runs in that id's
+// promise chain, so they never overlap. A commit makes the staged file the
+// key's value the way handleWrite does: bump and log the revision first, then
+// rename, under the key's write lock. No lock is held while waiting for a
+// client, and no staging file outlives its upload: the startup sweep removes
+// leftovers and the reaper removes idle uploads.
+const LIST_STAT_CONCURRENCY = 16
+const uploadIdPattern = /^[0-9a-f]{32}$/
+const uploads = new Map()
+const uploadTombstones = new Map()
+
+// Sizes of the files named `names` in the save directory (-1 for one that is
+// not a file or cannot be read), with at most `limit` stats in flight.
+async function fileSizesWithLimit(names, limit){
+    const sizes = new Array(names.length).fill(-1)
+    let next = 0
+    async function worker(){
+        while(next < names.length){
+            const index = next++
+            try {
+                const stat = await fs.stat(path.join(savePath, names[index]))
+                if(stat.isFile()){
+                    sizes[index] = stat.size
+                }
+            } catch (error) {}
+        }
+    }
+    await Promise.all(Array.from({ length: Math.min(limit, names.length) }, worker))
+    return sizes
+}
+
+// The lower-case file name of a read request's `file-path`, or null after
+// answering 400.
+function readPathOfRequest(req, res){
+    const filePath = req.headers['file-path']
+    if(!filePath){
+        res.status(400).send({
+            error:'File path required'
+        })
+        return null
+    }
+    if(!isHex(filePath)){
+        res.status(400).send({
+            error:'Invaild Path'
+        })
+        return null
+    }
+    return filePath.toLowerCase()
+}
+
+function nonNegativeIntegerHeader(req, name){
+    const value = req.headers[name]
+    if(typeof value !== 'string' || !/^\d+$/.test(value)){
+        return null
+    }
+    const number = Number(value)
+    return Number.isSafeInteger(number) ? number : null
+}
+
+// The upload id of a request, or null after answering 400.
+function uploadIdOfRequest(req, res){
+    const id = req.headers['upload-id']
+    if(typeof id !== 'string' || !uploadIdPattern.test(id)){
+        res.status(400).send({ error: 'Invalid upload id', code: 'upload-id' })
+        return null
+    }
+    return id
+}
+
+function runInUploadChain(entry, fn){
+    const result = entry.chain.then(fn)
+    entry.chain = result.then(() => undefined, () => undefined)
+    return result
+}
+
+// Runs for every upload request before its body is read: the arrival counts
+// as use, and the upload is marked in flight until the response ends, so
+// eviction and the reaper never take an upload a request is working on.
+function trackUploadArrival(req, res, next){
+    const id = req.headers['upload-id']
+    const entry = typeof id === 'string' ? uploads.get(id) : undefined
+    if(entry !== undefined){
+        entry.lastTouch = Date.now()
+        entry.inFlight++
+        res.once('close', () => {
+            entry.inFlight--
+        })
+    }
+    next()
+}
+
+function uploadGoneAnswer(){
+    return { status: 410, body: { error: 'Upload is gone', code: 'upload-gone' } }
+}
+
+function uploadFailureAnswer(error, what){
+    const errorCode = typeof error?.code === 'string' ? error.code : 'WRITE_FAILED'
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const workingDirectory = process.cwd()
+    const clientErrorMessage = workingDirectory === path.parse(workingDirectory).root
+        ? errorMessage
+        : errorMessage.split(workingDirectory).join('.')
+    console.error(`[Storage] ${what}:`, { code: errorCode, message: errorMessage })
+    return {
+        status: errorCode === 'ENOSPC' || errorCode === 'EDQUOT' ? 507 : 500,
+        body: { error: what, code: errorCode, message: clientErrorMessage },
+    }
+}
+
+function sendUploadAnswer(res, answer){
+    res.status(answer.status).send(answer.body)
+}
+
+function stagedBytesTotal(){
+    let total = 0
+    for(const entry of uploads.values()){
+        total += entry.ack + entry.reserved
+    }
+    return total
+}
+
+// Frees staged bytes by dropping uploads no request is using and nobody has
+// touched for UPLOAD_EVICT_IDLE_MS, least recently touched first, until
+// `neededBytes` more fit under the cap. The registry entry goes first and in
+// the same turn as the in-flight check, with no await between, so a request
+// arriving afterwards finds no upload (410) instead of one whose file is being
+// unlinked. The unlink is not awaited and no other id's chain is waited for.
+function evictIdleUploads(neededBytes){
+    const now = Date.now()
+    const candidates = [...uploads.entries()]
+        .filter(([, entry]) => entry.inFlight === 0 && now - entry.lastTouch > UPLOAD_EVICT_IDLE_MS)
+        .sort((a, b) => a[1].lastTouch - b[1].lastTouch)
+    for(const [id, entry] of candidates){
+        if(stagedBytesTotal() + neededBytes <= UPLOAD_STAGED_CAP_BYTES){
+            break
+        }
+        uploads.delete(id)
+        fs.unlink(entry.stagingPath).catch(() => {})
+    }
+}
+
+// Holds `bytes` of the cap for an append, synchronously. False when the cap
+// cannot be met even after eviction.
+function reserveStagedBytes(entry, bytes){
+    if(stagedBytesTotal() + bytes > UPLOAD_STAGED_CAP_BYTES){
+        evictIdleUploads(bytes)
+        if(stagedBytesTotal() + bytes > UPLOAD_STAGED_CAP_BYTES){
+            return false
+        }
+    }
+    entry.reserved += bytes
+    return true
+}
+
+const uploadReapTimer = setInterval(() => {
+    const now = Date.now()
+    for(const [id, entry] of uploads){
+        if(entry.inFlight === 0 && now - entry.lastTouch > UPLOAD_IDLE_REAP_MS){
+            runInUploadChain(entry, async () => {
+                if(uploads.get(id) !== entry || entry.inFlight > 0 || Date.now() - entry.lastTouch <= UPLOAD_IDLE_REAP_MS){
+                    return
+                }
+                uploads.delete(id)
+                await fs.unlink(entry.stagingPath).catch(() => {})
+            }).catch(() => {})
+        }
+    }
+}, Math.max(20, Math.min(60000, Math.floor(UPLOAD_IDLE_REAP_MS / 4))))
+uploadReapTimer.unref()
+
+app.post('/api/upload/begin', storageRouteLimiter, async (req, res) => {
+    if(!await checkAuth(req, res)){
+        return
+    }
+    const id = crypto.randomBytes(16).toString('hex')
+    const stagingPath = path.join(savePath, `__upload-${id}`)
+    try {
+        await fs.writeFile(stagingPath, '', { flag: 'wx' })
+    } catch (error) {
+        sendUploadAnswer(res, uploadFailureAnswer(error, 'Failed to start upload'))
+        return
+    }
+    uploads.set(id, { stagingPath, ack: 0, reserved: 0, lastTouch: Date.now(), inFlight: 0, chain: Promise.resolve() })
+    res.send({ id })
+})
+
+// One append, in the upload's chain. A chunk at `ack` is written there and
+// extends `ack`; the chunk that ends exactly at `ack` is a replay of the last
+// one and is answered with `ack` once its bytes match what is staged; any
+// other offset is refused with `ack` so the client can resume.
+async function appendInChain(id, entry, offset, chunk){
+    if(uploads.get(id) !== entry){
+        return uploadGoneAnswer()
+    }
+    entry.lastTouch = Date.now()
+    if(offset === entry.ack){
+        if(entry.ack + chunk.length > UPLOAD_ASSET_LIMIT_BYTES){
+            return { status: 413, body: {
+                error: 'Asset is too large',
+                code: 'PAYLOAD_TOO_LARGE',
+                message: `Assets are limited to ${UPLOAD_ASSET_LIMIT_BYTES} bytes.`,
+            } }
+        }
+        let handle
+        let failure = null
+        try {
+            // No create flag: a staging file removed behind the registry must
+            // not come back as an empty file under a non-zero `ack`.
+            handle = await fs.open(entry.stagingPath, 'r+')
+            let written = 0
+            while(written < chunk.length){
+                const { bytesWritten } = await handle.write(chunk, written, chunk.length - written, offset + written)
+                written += bytesWritten
+            }
+        } catch (error) {
+            failure = error
+        } finally {
+            await handle?.close().catch(() => {})
+        }
+        if(failure !== null){
+            if(handle === undefined && failure?.code === 'ENOENT'){
+                uploads.delete(id)
+                return uploadGoneAnswer()
+            }
+            await fs.truncate(entry.stagingPath, entry.ack).catch(() => {})
+            return uploadFailureAnswer(failure, 'Failed to write upload chunk')
+        }
+        entry.ack += chunk.length
+        return { status: 200, body: { success: true, size: entry.ack } }
+    }
+    if(offset < entry.ack && offset + chunk.length === entry.ack){
+        let handle
+        try {
+            handle = await fs.open(entry.stagingPath, 'r')
+            const staged = Buffer.alloc(chunk.length)
+            let filled = 0
+            while(filled < staged.length){
+                const { bytesRead } = await handle.read(staged, filled, staged.length - filled, offset + filled)
+                if(bytesRead === 0){
+                    break
+                }
+                filled += bytesRead
+            }
+            if(filled === staged.length && staged.equals(chunk)){
+                return { status: 200, body: { success: true, size: entry.ack } }
+            }
+        } catch (error) {
+            if(handle === undefined && error?.code === 'ENOENT'){
+                uploads.delete(id)
+                return uploadGoneAnswer()
+            }
+            return uploadFailureAnswer(error, 'Failed to compare upload chunk')
+        } finally {
+            await handle?.close().catch(() => {})
+        }
+    }
+    return { status: 409, body: { error: 'Upload offset mismatch', code: 'upload-offset', size: entry.ack } }
+}
+
+app.post('/api/upload/append', storageRouteLimiter, async (req, res) => {
+    if(!await checkAuth(req, res)){
+        return
+    }
+    const id = uploadIdOfRequest(req, res)
+    if(id === null){
+        return
+    }
+    const offset = nonNegativeIntegerHeader(req, 'upload-offset')
+    if(offset === null){
+        res.status(400).send({ error: 'upload-offset is required and must be a non-negative integer', code: 'upload-offset' })
+        return
+    }
+    const chunk = req.body
+    if(!Buffer.isBuffer(chunk)){
+        res.status(400).send({ error: 'An upload chunk is required', code: 'upload-body' })
+        return
+    }
+    const entry = uploads.get(id)
+    if(entry === undefined){
+        sendUploadAnswer(res, uploadGoneAnswer())
+        return
+    }
+    // Only a chunk that would extend the upload takes cap space, and it takes
+    // it now, before any await: appends that arrive together cannot all pass
+    // the check against the same free space. A replay or a stale offset writes
+    // nothing and reserves nothing.
+    let reserved = 0
+    if(offset === entry.ack + entry.reserved && chunk.length > 0){
+        if(!reserveStagedBytes(entry, chunk.length)){
+            res.status(503).send({ error: 'The server is holding too many staged upload bytes', code: 'upload-capacity' })
+            return
+        }
+        reserved = chunk.length
+    }
+    try {
+        sendUploadAnswer(res, await runInUploadChain(entry, () => appendInChain(id, entry, offset, chunk)))
+    } catch (error) {
+        sendUploadAnswer(res, uploadFailureAnswer(error, 'Failed to write upload chunk'))
+    } finally {
+        entry.reserved -= reserved
+    }
+})
+
+// Bumps and logs `filePath`'s revision the way handleWrite does for an
+// unconditional write; the caller holds the key's write lock.
+function bumpRevisionForUpload(filePath){
+    return withRevisionTransaction(async () => {
+        const currentRevision = revisions[filePath] ?? 0
+        const bumped = currentRevision + 1
+        revisions[filePath] = bumped
+        try {
+            await appendRevisionRecords([filePath])
+        } catch (saveError) {
+            revisions[filePath] = currentRevision
+            throw saveError
+        }
+        scheduleRevisionCompaction()
+        return bumped
+    })
+}
+
+// The answer of a commit for an upload no longer in the registry: the first
+// success again when it was committed under this key and size moments ago.
+function committedOrGoneAnswer(id, finalName, size){
+    const tombstone = uploadTombstones.get(id)
+    if(tombstone !== undefined && tombstone.key === finalName && tombstone.size === size){
+        return { status: 200, body: tombstone.body }
+    }
+    return uploadGoneAnswer()
+}
+
+async function commitInChain(id, entry, finalName, size, ifAbsent){
+    if(uploads.get(id) !== entry){
+        return committedOrGoneAnswer(id, finalName, size)
+    }
+    entry.lastTouch = Date.now()
+    if(size !== entry.ack){
+        return { status: 409, body: { error: 'Upload size mismatch', code: 'upload-size', size: entry.ack } }
+    }
+    // The registry says what was acknowledged; the file must agree before it
+    // becomes a value.
+    let stagedSize
+    try {
+        const handle = await fs.open(entry.stagingPath, 'r')
+        try {
+            stagedSize = (await handle.stat()).size
+        } finally {
+            await handle.close()
+        }
+    } catch (error) {
+        if(error?.code === 'ENOENT'){
+            uploads.delete(id)
+            return uploadGoneAnswer()
+        }
+        return uploadFailureAnswer(error, 'Failed to commit upload')
+    }
+    if(stagedSize !== entry.ack || stagedSize !== size){
+        return { status: 409, body: { error: 'Upload size mismatch', code: 'upload-size', size: stagedSize } }
+    }
+    const finalPath = path.join(savePath, finalName)
+    let body
+    try {
+        body = await withFileWriteLock(finalName, async () => {
+            if(ifAbsent){
+                const existing = await fs.stat(finalPath).catch(() => null)
+                if(existing !== null && existing.isFile()){
+                    await fs.unlink(entry.stagingPath).catch(() => {})
+                    return { kept: true, revision: revisions[finalName] ?? 0 }
+                }
+            }
+            // Revision before content, as in handleWrite: a crash or a failed
+            // rename leaves a bumped revision over the old, intact value.
+            const newRevision = await bumpRevisionForUpload(finalName)
+            try {
+                await fs.rename(entry.stagingPath, finalPath)
+            } catch (error) {
+                await fs.unlink(entry.stagingPath).catch(() => {})
+                error.stagingRemoved = true
+                throw error
+            }
+            return { success: true, revision: newRevision }
+        })
+    } catch (error) {
+        if(error?.stagingRemoved === true){
+            uploads.delete(id)
+        }
+        return uploadFailureAnswer(error, 'Failed to commit upload')
+    }
+    uploads.delete(id)
+    uploadTombstones.set(id, { key: finalName, size, body })
+    setTimeout(() => {
+        uploadTombstones.delete(id)
+    }, UPLOAD_TOMBSTONE_MS).unref()
+    return { status: 200, body }
+}
+
+app.post('/api/upload/commit', storageRouteLimiter, async (req, res) => {
+    if(!await checkAuth(req, res)){
+        return
+    }
+    const id = uploadIdOfRequest(req, res)
+    if(id === null){
+        return
+    }
+    const rawPath = req.headers['file-path']
+    if(typeof rawPath !== 'string' || assetKeyFromHex(rawPath) === null){
+        res.status(400).send({ error: 'Invaild Path' })
+        return
+    }
+    const finalName = rawPath.toLowerCase()
+    const size = nonNegativeIntegerHeader(req, 'upload-size')
+    if(size === null){
+        res.status(400).send({ error: 'upload-size is required and must be a non-negative integer', code: 'upload-size' })
+        return
+    }
+    const ifAbsent = req.headers['upload-if-absent'] === '1'
+    const entry = uploads.get(id)
+    if(entry === undefined){
+        sendUploadAnswer(res, committedOrGoneAnswer(id, finalName, size))
+        return
+    }
+    try {
+        sendUploadAnswer(res, await runInUploadChain(entry, () => commitInChain(id, entry, finalName, size, ifAbsent)))
+    } catch (error) {
+        sendUploadAnswer(res, uploadFailureAnswer(error, 'Failed to commit upload'))
+    }
+})
+
+app.post('/api/upload/abort', storageRouteLimiter, async (req, res) => {
+    if(!await checkAuth(req, res)){
+        return
+    }
+    const id = uploadIdOfRequest(req, res)
+    if(id === null){
+        return
+    }
+    const entry = uploads.get(id)
+    if(entry !== undefined){
+        await runInUploadChain(entry, async () => {
+            if(uploads.get(id) !== entry){
+                return
+            }
+            uploads.delete(id)
+            await fs.unlink(entry.stagingPath).catch(() => {})
+        })
+    }
+    res.send({ success: true })
+})
+
+// One bounded piece of a stored asset (or inlay body) and the facts a reader
+// needs to assemble pieces: the revision, the whole size and whether the key
+// holds a value. All of it is taken under the key's write lock, so each piece's
+// revision belongs to the bytes in it; the lock covers one bounded read, never
+// the client's pace.
+app.get('/api/read-range', storageRouteLimiter, async (req, res, next) => {
+    if(!await checkAuth(req, res)){
+        return
+    }
+    const rawPath = req.headers['file-path']
+    if(typeof rawPath !== 'string' || assetKeyFromHex(rawPath) === null){
+        res.status(400).send({ error: 'Invaild Path' })
+        return
+    }
+    const filePath = rawPath.toLowerCase()
+    const start = nonNegativeIntegerHeader(req, 'range-start')
+    const length = nonNegativeIntegerHeader(req, 'range-length')
+    if(start === null || length === null || length < 1 || length > UPLOAD_CHUNK_MAX_BYTES){
+        res.status(400).send({ error: 'Invalid range' })
+        return
+    }
+    try {
+        let currentRevision = 0
+        let size = null
+        let bytes = Buffer.alloc(0)
+        await withFileWriteLock(filePath, async () => {
+            currentRevision = revisions[filePath] ?? 0
+            let handle
+            try {
+                handle = await fs.open(path.join(savePath, filePath), 'r')
+            } catch (error) {
+                if(error?.code === 'ENOENT'){
+                    return
+                }
+                throw error
+            }
+            try {
+                const stat = await handle.stat()
+                size = stat.size
+                const wanted = Math.max(0, Math.min(length, size - start))
+                if(wanted > 0){
+                    const buffer = Buffer.alloc(wanted)
+                    let filled = 0
+                    while(filled < wanted){
+                        const { bytesRead } = await handle.read(buffer, filled, wanted - filled, start + filled)
+                        if(bytesRead === 0){
+                            break
+                        }
+                        filled += bytesRead
+                    }
+                    bytes = buffer.subarray(0, filled)
+                }
+            } finally {
+                await handle.close().catch(() => {})
+            }
+        })
+        res.setHeader('x-risu-revision', String(currentRevision))
+        res.setHeader('x-risu-size', String(size ?? 0))
+        res.setHeader('x-risu-exists', size === null ? '0' : '1')
+        res.setHeader('Cache-Control', 'no-store')
+        res.setHeader('Content-Type', 'application/octet-stream')
+        res.send(bytes)
+    } catch (error) {
+        next(error)
+    }
+})
 
 async function getHttpsOptions() {
 

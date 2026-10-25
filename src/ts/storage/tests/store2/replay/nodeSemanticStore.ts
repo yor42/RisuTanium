@@ -83,7 +83,7 @@ const DEFAULT_SERVER_HEADER_BYTES = 16 * 1024
 /** What the other headers of a request weigh (the auth token, host, content type, ...). */
 const OTHER_HEADER_BYTES = 700
 
-const CAPABILITIES: GuardedCapabilities = { checkOnly: true, retire: true, pieces: false }
+const CAPABILITIES: GuardedCapabilities = { checkOnly: true, retire: true, pieces: true }
 
 function hexOf(key: string): string {
     let hex = ''

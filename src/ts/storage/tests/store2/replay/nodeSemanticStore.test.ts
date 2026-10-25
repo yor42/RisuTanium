@@ -319,7 +319,7 @@ describe('differential: which conflict is reported first when several conditions
     test('the capability answer is the patched server\'s', async () => {
         const answers = await Promise.all(SUBJECTS.map(([, make]) => make().store.guarded!.probe()))
         expect(answers[0]).toEqual(answers[1])
-        expect(answers[1]).toEqual({ checkOnly: true, retire: true, pieces: false })
+        expect(answers[1]).toEqual({ checkOnly: true, retire: true, pieces: true })
     })
 })
 

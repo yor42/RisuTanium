@@ -149,7 +149,7 @@ describe('capabilities', () => {
     test('/api/caps answers the three capabilities with the marker, no-store and an authenticated caller', async () => {
         const reply = await send('/api/caps', 'GET', {})
         expect(reply.status).toBe(200)
-        expect(reply.json).toEqual({ checkOnly: true, retire: true, pieces: false, listPrefix: true })
+        expect(reply.json).toEqual({ checkOnly: true, retire: true, pieces: true, listPrefix: true })
         expect(reply.headers.get('risu-storage-guarded')).toBe('1')
         expect(reply.headers.get('cache-control')).toMatch(/no-store/)
     })

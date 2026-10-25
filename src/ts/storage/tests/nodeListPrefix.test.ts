@@ -125,7 +125,7 @@ describe('/api/list-prefix on the real server', () => {
 
     test('/api/caps carries listPrefix next to the three flags', async () => {
         const response = await fetch(`${fixture.baseUrl}/api/caps`, { headers: { 'risu-auth': await fixture.authHeader() } })
-        expect(await response.json()).toEqual({ checkOnly: true, retire: true, pieces: false, listPrefix: true })
+        expect(await response.json()).toEqual({ checkOnly: true, retire: true, pieces: true, listPrefix: true })
     })
 })
 
