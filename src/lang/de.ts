@@ -2005,6 +2005,7 @@ export const languageGerman = {
     "keepAliveWorking": "Wird bearbeitet…",
     "keepAliveStop": "Stopp",
     "keepAliveFinishing": "Wird abgeschlossen…",
+    "keepAliveSavePending": "Antwort bereit. Öffnen Sie die App, um das Speichern abzuschließen.",
     "messageInterrupted": "Unterbrochen – die Antwort ist möglicherweise unvollständig",
     "nanoGPTLoadingAccountInfo": "Kontodaten werden geladen…",
     "nanoGPTCreditBalance": "Guthaben:",

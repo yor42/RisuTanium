@@ -876,8 +876,36 @@ export function hasUnsavedSaveMarks(): boolean {
 
 const nextCommitCallbacks = new Set<() => void>()
 
+/**
+ * The `snapshotMarkCount` of the latest commit: every mark counted at or below it was in the blocks
+ * that commit covered. It only grows, so a later iteration beginning never un-covers a mark. It
+ * counts a commit in which the mark's character could not be saved as covering it.
+ */
+let committedMarkCount = 0
+
+/** True when saving has stopped. The store's running value is the empty string, so test truthiness, never `!== null`. */
+export function isSavingStopped(): boolean {
+    return Boolean(get(savingStoppedReason))
+}
+
+/** Calls `callback` whenever saving is stopped (a store calls its subscriber at once, so only a truthy reason counts); the returned function unsubscribes. */
+export function onSavingStopped(callback: () => void): () => void {
+    return savingStoppedReason.subscribe((reason) => {
+        if (reason) {
+            callback()
+        }
+    })
+}
+
+/** The mark count the latest commit covered; compare with `getSaveMarkCount()` taken after a mark. */
+export function getCommittedSaveMarkCount(): number {
+    return committedMarkCount
+}
+
 /** Calls and forgets every callback registered for the next commit; a throwing callback never stops the others. */
 function fireNextCommitCallbacks(): void {
+    // Set before the callbacks run: a callback asks whether its marks are covered.
+    committedMarkCount = Math.max(committedMarkCount, snapshotMarkCount)
     for (const callback of [...nextCommitCallbacks]) {
         nextCommitCallbacks.delete(callback)
         try {

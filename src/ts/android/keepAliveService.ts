@@ -45,6 +45,8 @@ export interface KeepAliveLabels {
     working: string
     /** Shown while the service lingers after the last work, with no Stop action. */
     finishing: string
+    /** Shown while only a hidden reply's save is pending, with no Stop action. */
+    savePending: string
     stop: string
 }
 
@@ -79,7 +81,15 @@ function callHost<K extends keyof KeepAliveHost>(host: Partial<KeepAliveHost>, m
     }
 }
 
+/** True when a pending hidden-reply save is the only work in flight. */
+function onlySavePending(kinds: InFlightKind[]): boolean {
+    return kinds.length > 0 && kinds.every((kind) => kind === 'save')
+}
+
 function noticeFor(kinds: InFlightKind[], labels: KeepAliveLabels): Notice {
+    if (onlySavePending(kinds)) {
+        return { title: labels.savePending, stopLabel: '' }
+    }
     const chat = kinds.includes('chat')
     const stoppable = chat || kinds.includes('tts')
     return {
@@ -156,6 +166,10 @@ export function createKeepAliveConsumer(deps: KeepAliveDeps): KeepAliveConsumer 
             deps.stopWork()
             return
         }
+        if (onlySavePending(kinds)) {
+            // No Stop action is shown for a pending save, so a tap here is stale; stopping would drop the save's protection.
+            return
+        }
         stopService()
     }
     const timeoutHook = (): void => {
@@ -209,6 +223,7 @@ export function startKeepAliveService(): KeepAliveConsumer | null {
             generating: language.keepAliveGenerating,
             working: language.keepAliveWorking,
             finishing: language.keepAliveFinishing,
+            savePending: language.keepAliveSavePending,
             stop: language.keepAliveStop,
         }),
         stopWork: () => {

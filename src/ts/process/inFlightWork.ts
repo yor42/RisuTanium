@@ -12,7 +12,11 @@
  * Leaf module: it imports nothing from the chat pipeline so any unit may use it.
  */
 
-export type InFlightKind = 'chat' | 'tts' | 'image' | 'request' | 'translate' | 'embed' | 'busy'
+/**
+ * 'save' is a finished reply whose save has not yet landed while the page is hidden; it keeps the
+ * process alive but is not work the user can stop.
+ */
+export type InFlightKind = 'chat' | 'tts' | 'image' | 'request' | 'translate' | 'embed' | 'busy' | 'save'
 
 interface InFlightEntry {
     readonly kind: InFlightKind

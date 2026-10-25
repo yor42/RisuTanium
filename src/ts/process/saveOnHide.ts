@@ -16,6 +16,7 @@
  * page dirty.
  */
 import { activeStreams, type ActiveStream } from './activeStreams'
+import { holdHiddenReplySave } from './hiddenReplySaveGuard'
 import { inFlightKinds, type InFlightKind } from './inFlightWork'
 import { hasUnsavedSaveMarks, requestNetSweep, requestSaveNow } from '../globalApi.svelte'
 import { markCharacterForSave } from '../storage/characterSaveMarks'
@@ -67,6 +68,11 @@ export interface ReplyEndDeps {
     isHidden: () => boolean
     mark: (chaId: string | undefined) => void
     saveNow: () => void
+    /**
+     * Called right after the request: keeps the process alive until the reply's save lands. It runs
+     * while the chat token is still held, so the service never goes through its linger.
+     */
+    holdUntilSaved?: () => void
 }
 
 /** The characters a reply was written to: the owner and, in a group, the speaking member. */
@@ -90,6 +96,7 @@ export function flushReplyEndWhenHidden(deps: ReplyEndDeps, origin: ReplyEndOrig
     deps.mark(origin.memberChaId)
     // Marks first: each one restarts the debounce, which the request clears.
     deps.saveNow()
+    deps.holdUntilSaved?.()
 }
 
 function pageIsHidden(): boolean {
@@ -105,7 +112,12 @@ export function flushPageReplyEndWhenHidden(origin: ReplyEndOrigin): void {
         return
     }
     try {
-        flushReplyEndWhenHidden({ isHidden: pageIsHidden, mark: markCharacterForSave, saveNow: requestSaveNow }, origin)
+        flushReplyEndWhenHidden({
+            isHidden: pageIsHidden,
+            mark: markCharacterForSave,
+            saveNow: requestSaveNow,
+            holdUntilSaved: holdHiddenReplySave,
+        }, origin)
     } catch (error) {
         console.error(error)
     }

@@ -2005,6 +2005,7 @@ export const languageSpanish = {
     "keepAliveWorking": "Trabajando…",
     "keepAliveStop": "Detener",
     "keepAliveFinishing": "Finalizando…",
+    "keepAliveSavePending": "Respuesta lista. Abre la app para terminar de guardar.",
     "messageInterrupted": "Interrumpido — la respuesta puede estar incompleta",
     "nanoGPTLoadingAccountInfo": "Cargando información de la cuenta…",
     "nanoGPTCreditBalance": "Saldo de crédito:",

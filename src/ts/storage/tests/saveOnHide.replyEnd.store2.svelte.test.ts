@@ -7,7 +7,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
 import { createWorldKit, settled, sleepReal, until, type World } from 'src/ts/storage/tests/saveLoopWorld'
-import { startStore2, store2Boot, type Store2Kit } from 'src/ts/storage/tests/store2SaveKit'
+import { startStore2, store2Boot, type Hooks, type Store2Kit } from 'src/ts/storage/tests/store2SaveKit'
 import { buildSmall } from 'src/ts/storage/tests/store2/codecFixtures'
 import type { Database } from 'src/ts/storage/database.svelte'
 
@@ -83,9 +83,9 @@ function characters(db: Entry): Entry[] {
     return db.characters as Entry[]
 }
 
-async function startPage(db: Database): Promise<{ w: World, k: Store2Kit, db: Entry }> {
+async function startPage(db: Database, hooks?: Hooks): Promise<{ w: World, k: Store2Kit, db: Entry }> {
     h.db = db as unknown as Entry
-    const k = await startStore2({ db })
+    const k = await startStore2({ db, hooks })
     const w = await worlds.startWorld({ kind: 'tauri', startLoop: false, boot: store2Boot(k) })
     const stores = await import('src/ts/stores.svelte')
     ;(stores.DBState as { db: unknown }).db = h.db
@@ -142,5 +142,140 @@ describe('reply-end flush with the loop sleeps parked (store2, tauri kind)', () 
         await sleepReal(1500)
 
         expect(await savedPersonality(page.k, 2)).not.toBe('visible edit')
+    })
+})
+
+/** Holds every commit write until `open()`; a pass that took its snapshot stalls before it commits. */
+function commitGate() {
+    let open: () => void = () => {}
+    let closed: Promise<void> = Promise.resolve()
+    const gate = {
+        entered: 0,
+        close() {
+            closed = new Promise<void>((resolve) => { open = resolve })
+        },
+        open() {
+            open()
+        },
+        hooks: {
+            before: async (name: string) => {
+                if (name === 'commitOrdinary' || name === 'putUnit' || name === 'casCommit') {
+                    gate.entered += 1
+                    await closed
+                }
+            },
+        } satisfies Hooks,
+    }
+    return gate
+}
+
+describe('the save token against the real store2 loop with its commit held', () => {
+    async function startHeldPage() {
+        const gate = commitGate()
+        const page = await startPage(buildSmall(4), gate.hooks)
+        await settled(page.w)
+        h.parked.add(page.w.id)
+        await sleepReal(200)
+        setVisibility('hidden')
+        const inFlight = await import('src/ts/process/inFlightWork')
+        const onHide = await import('src/ts/process/saveOnHide')
+        const guard = await import('src/ts/process/hiddenReplySaveGuard')
+        // A running page holds the empty string, not null, and a store calls a new subscriber at once.
+        const stores = await import('src/ts/stores.svelte')
+        stores.savingStoppedReason.set('')
+        gate.entered = 0
+        return { gate, page, inFlight, onHide, guard }
+    }
+
+    test('the token is held while the pass is uncommitted and released by the commit that covers the reply', async () => {
+        const { gate, page, inFlight, onHide, guard } = await startHeldPage()
+        try {
+            gate.close()
+            characters(page.db)[2].personality = 'final reply'
+            onHide.flushPageReplyEndWhenHidden({ chaId: characters(page.db)[2].chaId as string })
+            await until(() => gate.entered > 0, 'the pass to stall at its commit')
+            await sleepReal(300)
+
+            expect(inFlight.inFlightKinds()).toEqual(['save'])
+
+            gate.open()
+            await until(() => inFlight.inFlightKinds().length === 0, 'the covering commit to release the token', 5000)
+            expect(await savedPersonality(page.k, 2)).toBe('final reply')
+        } finally {
+            gate.open()
+            guard.resetHiddenReplySaveGuardForTest()
+        }
+    })
+
+    // Distinguishes mark-count coverage from the dirty flag: an unrelated edit after the snapshot
+    // keeps the flag true, and a frozen page never runs the debounce that would clear it.
+    test('an unrelated mark made after the snapshot does not pin the token', async () => {
+        const { gate, page, inFlight, onHide, guard } = await startHeldPage()
+        try {
+            gate.close()
+            characters(page.db)[2].personality = 'final reply'
+            onHide.flushPageReplyEndWhenHidden({ chaId: characters(page.db)[2].chaId as string })
+            await until(() => gate.entered > 0, 'the pass to stall at its commit')
+            characters(page.db)[1].personality = 'unrelated edit'
+            page.w.marks.markCharacterForSave(characters(page.db)[1].chaId)
+            expect(page.w.api.hasUnsavedSaveMarks()).toBe(true)
+
+            gate.open()
+            await until(() => inFlight.inFlightKinds().length === 0, 'the covering commit to release the token', 5000)
+
+            expect(page.w.api.hasUnsavedSaveMarks()).toBe(true)
+        } finally {
+            gate.open()
+            guard.resetHiddenReplySaveGuardForTest()
+        }
+    })
+
+    // Distinguishes the snapshot's mark count from the live mark count: a pass whose snapshot predates
+    // the reply's marks commits without covering them.
+    test('a commit whose snapshot predates the reply keeps the token until the next pass lands', async () => {
+        const { gate, page, inFlight, onHide, guard } = await startHeldPage()
+        try {
+            gate.close()
+            characters(page.db)[1].personality = 'earlier edit'
+            page.w.marks.markCharacterForSave(characters(page.db)[1].chaId)
+            page.w.api.requestSaveNow()
+            await until(() => gate.entered > 0 && !page.w.api.hasUnsavedSaveMarks(), 'the first pass to take its snapshot and stall')
+            characters(page.db)[2].personality = 'final reply'
+            onHide.flushPageReplyEndWhenHidden({ chaId: characters(page.db)[2].chaId as string })
+            expect(inFlight.inFlightKinds()).toEqual(['save'])
+
+            let kindsAtFirstCommit: string[] | null = null
+            page.w.api.afterNextSaveCommit(() => { kindsAtFirstCommit = inFlight.inFlightKinds() })
+            gate.open()
+            await until(() => kindsAtFirstCommit !== null, 'the first commit', 5000)
+
+            expect(kindsAtFirstCommit).toEqual(['save'])
+            await until(() => inFlight.inFlightKinds().length === 0, 'the covering commit to release the token', 5000)
+            expect(await savedPersonality(page.k, 2)).toBe('final reply')
+        } finally {
+            gate.open()
+            guard.resetHiddenReplySaveGuardForTest()
+        }
+    })
+
+    test('saving stopped releases the token, and a stopped save holds none', async () => {
+        const { gate, page, inFlight, onHide, guard } = await startHeldPage()
+        try {
+            gate.close()
+            characters(page.db)[2].personality = 'final reply'
+            onHide.flushPageReplyEndWhenHidden({ chaId: characters(page.db)[2].chaId as string })
+            await until(() => gate.entered > 0, 'the pass to stall at its commit')
+            expect(inFlight.inFlightKinds()).toEqual(['save'])
+            const stores = await import('src/ts/stores.svelte')
+
+            stores.savingStoppedReason.set('too large')
+            expect(inFlight.inFlightKinds()).toEqual([])
+
+            onHide.flushPageReplyEndWhenHidden({ chaId: characters(page.db)[2].chaId as string })
+            expect(inFlight.inFlightKinds()).toEqual([])
+        } finally {
+            gate.open()
+            guard.resetHiddenReplySaveGuardForTest()
+        }
     })
 })

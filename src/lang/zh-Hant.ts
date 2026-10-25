@@ -2048,6 +2048,7 @@ export const languageChineseTraditional = {
     "keepAliveWorking": "處理中…",
     "keepAliveStop": "停止",
     "keepAliveFinishing": "收尾中…",
+    "keepAliveSavePending": "回覆已就緒。請開啟應用程式以完成儲存。",
     "messageInterrupted": "已中斷 — 回覆可能不完整",
     "loadouts": "設定組合",
     "nanoGPTLoadingAccountInfo": "正在載入帳號資訊…",

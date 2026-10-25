@@ -20,6 +20,8 @@ const runTriggerMock = vi.hoisted(() => vi.fn())
 const processScriptFullMock = vi.hoisted(() => vi.fn())
 const requestSaveNowMock = vi.hoisted(() => vi.fn())
 const markSpy = vi.hoisted(() => vi.fn())
+/** The save loop's counters as the guard reads them: each save request is a mark, and a commit covers the marks so far. */
+const persistence = vi.hoisted(() => ({ marks: 0, committed: 0, callbacks: new Set<() => void>() }))
 
 vi.mock('localforage', () => ({
     default: {
@@ -215,7 +217,16 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     requestSaveNow: requestSaveNowMock,
     requestNetSweep: vi.fn(),
     hasUnsavedSaveMarks: vi.fn(() => false),
+    getSaveMarkCount: () => persistence.marks,
+    getCommittedSaveMarkCount: () => persistence.committed,
+    afterNextSaveCommit: (callback: () => void) => { persistence.callbacks.add(callback) },
+    isSavingStopped: () => false,
+    onSavingStopped: () => () => {},
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
+
+vi.mock('src/ts/storage/tauriByteTransport', () => ({
+    isAndroidTransport: () => true,
+}))
 
 vi.mock('src/ts/storage/characterSaveMarks', async (importOriginal) => {
     const actual = await importOriginal<typeof import('src/ts/storage/characterSaveMarks')>()
@@ -232,6 +243,9 @@ import { sendChat, doingChat } from 'src/ts/process/index.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { abortUnitInProgress } from 'src/ts/process/generationOwnership.svelte'
 import { resetActiveStreamsForTest } from 'src/ts/process/activeStreams'
+import { inFlightKinds, resetInFlightForTest, subscribeInFlight } from 'src/ts/process/inFlightWork'
+import { resetHiddenReplySaveGuardForTest } from 'src/ts/process/hiddenReplySaveGuard'
+import { createKeepAliveConsumer, KEEP_ALIVE_LINGER_MS, type KeepAliveConsumer, type KeepAliveHost } from 'src/ts/android/keepAliveService'
 
 //#region fixtures
 
@@ -452,7 +466,13 @@ beforeEach(() => {
     requestSaveNowMock.mockReset()
     requests.length = 0
     watched = { chaId: 'char-0', chatId: 'chat-0' }
+    persistence.marks = 0
+    persistence.committed = 0
+    persistence.callbacks.clear()
+    resetHiddenReplySaveGuardForTest()
+    resetInFlightForTest()
     requestSaveNowMock.mockImplementation(() => {
+        persistence.marks += 1
         const chat = chatById(watched.chaId, watched.chatId)
         const reply = chat.message.at(-1)
         requests.push({
@@ -467,6 +487,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    resetHiddenReplySaveGuardForTest()
+    resetInFlightForTest()
     selectedCharID.set(-1)
     Reflect.deleteProperty(document, 'visibilityState')
 })
@@ -600,6 +622,152 @@ describe('a reply that ends while the page is hidden', () => {
         expect(requests[0].interrupted).toBe(false)
         expect(requests[0].marks).toContain('char-0')
         trigger.release()
+    })
+})
+
+interface RecordingHost extends KeepAliveHost {
+    calls: Array<{ method: string, args: unknown[] }>
+}
+
+const LABELS = { generating: 'Generating', working: 'Working', finishing: 'Finishing', savePending: 'Save pending', stop: 'Stop' }
+
+/** The keep-alive consumer over the real registry and a host that records every call, in order. */
+function recordingHost(): RecordingHost {
+    const calls: RecordingHost['calls'] = []
+    const record = (method: string) => (...args: unknown[]): void => { calls.push({ method, args }) }
+    return {
+        calls,
+        start: record('start'),
+        update: record('update'),
+        stop: record('stop'),
+        stopAfter: record('stopAfter'),
+        requestNotificationPermissionOnce: record('requestNotificationPermissionOnce'),
+    }
+}
+
+let keepAlive: KeepAliveConsumer | null = null
+
+function attachKeepAlive(host: RecordingHost): void {
+    keepAlive = createKeepAliveConsumer({
+        host,
+        kinds: inFlightKinds,
+        subscribe: subscribeInFlight,
+        labels: () => LABELS,
+        stopWork: () => {},
+    })
+    host.calls.length = 0
+}
+
+/** A commit that covers every mark requested so far, as the save loop's commit callbacks would report it. */
+function commitEverything(): void {
+    persistence.committed = persistence.marks
+    for (const callback of [...persistence.callbacks]) {
+        persistence.callbacks.delete(callback)
+        callback()
+    }
+}
+
+function methodsOf(host: RecordingHost): string[] {
+    return host.calls.map((call) => call.method)
+}
+
+describe('the keep-alive service across a hidden reply end', () => {
+    afterEach(() => {
+        keepAlive?.dispose()
+        keepAlive = null
+    })
+
+    // Regression reproducer: against the flush without the save hold, the end of the chat token
+    // sends update(finishing) and stopAfter while the save is still uncommitted.
+    test('streaming: no native stop is requested before the covering commit, and one follows it', async () => {
+        installSingleChat()
+        const host = recordingHost()
+        attachKeepAlive(host)
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: streamOf('Hello there.') })
+
+        expect(await settled(() => sendChat())).toBe(true)
+
+        expect(methodsOf(host)).not.toContain('stopAfter')
+        expect(methodsOf(host)).not.toContain('stop')
+        expect(inFlightKinds()).toEqual(['save'])
+        expect(host.calls.at(-1)).toEqual({ method: 'update', args: [LABELS.savePending, ''] })
+
+        commitEverything()
+
+        expect(inFlightKinds()).toEqual([])
+        expect(host.calls.slice(-2)).toEqual([
+            { method: 'update', args: [LABELS.finishing, ''] },
+            { method: 'stopAfter', args: [KEEP_ALIVE_LINGER_MS] },
+        ])
+    })
+
+    test('non-streaming: no native stop is requested before the covering commit, and one follows it', async () => {
+        installSingleChat()
+        const host = recordingHost()
+        attachKeepAlive(host)
+        requestChatDataMock.mockResolvedValueOnce({ type: 'success', result: 'Plain reply.' })
+
+        expect(await settled(() => sendChat())).toBe(true)
+
+        expect(methodsOf(host)).not.toContain('stopAfter')
+        expect(methodsOf(host)).not.toContain('stop')
+        expect(inFlightKinds()).toEqual(['save'])
+
+        commitEverything()
+
+        expect(host.calls.at(-1)).toEqual({ method: 'stopAfter', args: [KEEP_ALIVE_LINGER_MS] })
+    })
+
+    // Catches a hold begun after the chat token ends at the unit end: the earlier flush's token was
+    // already released by a commit, so only the unit-end flush protects the later request.
+    test('a commit between the stream end and the unit end: the unit-end flush holds before the chat token ends', async () => {
+        installSingleChat()
+        const host = recordingHost()
+        attachKeepAlive(host)
+        const trigger = holdOutputTrigger()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: streamOf('Hello there.') })
+
+        const outcome = settled(() => sendChat())
+        await until(() => requests.length > 0, 'the save request at the stream end')
+        expect(inFlightKinds()).toEqual(['chat', 'save'])
+        commitEverything()
+        expect(inFlightKinds()).toEqual(['chat'])
+
+        trigger.release()
+        expect(await outcome).toBe(true)
+
+        expect(inFlightKinds()).toEqual(['save'])
+        expect(methodsOf(host)).not.toContain('stopAfter')
+        expect(methodsOf(host)).not.toContain('stop')
+        commitEverything()
+        expect(host.calls.at(-1)).toEqual({ method: 'stopAfter', args: [KEEP_ALIVE_LINGER_MS] })
+    })
+
+    test('a group reply with two hidden turns holds one save token', async () => {
+        installGroupWorld(['member-a', 'member-b'])
+        watched = { chaId: 'group-1', chatId: 'group-chat' }
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: streamOf('A speaks.') })
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: streamOf('B speaks.') })
+
+        await settled(() => sendChat())
+        await settled(() => sendChat())
+
+        expect(inFlightKinds()).toEqual(['save'])
+        expect(persistence.callbacks.size).toBe(1)
+        commitEverything()
+        expect(inFlightKinds()).toEqual([])
+    })
+
+    // Compatibility guard: passes before and after the change. A visible page keeps its debounce and holds nothing.
+    test('guard: a visible reply holds no save token', async () => {
+        setVisibility('visible')
+        installSingleChat()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: streamOf('One.') })
+
+        expect(await settled(() => sendChat())).toBe(true)
+
+        expect(inFlightKinds()).toEqual([])
+        expect(persistence.callbacks.size).toBe(0)
     })
 })
 

@@ -2003,6 +2003,7 @@ export const languageChinese = {
     "keepAliveWorking": "正在处理…",
     "keepAliveStop": "停止",
     "keepAliveFinishing": "正在收尾…",
+    "keepAliveSavePending": "回复已就绪。请打开应用以完成保存。",
     "messageInterrupted": "已中断 — 回复可能不完整",
     "nanoGPTLoadingAccountInfo": "正在加载账户信息…",
     "nanoGPTCreditBalance": "余额:",
