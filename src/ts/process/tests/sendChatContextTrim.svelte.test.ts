@@ -457,10 +457,10 @@ function hashOf(value: unknown): string {
     return createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 16)
 }
 
-/** The request fields the prompt depends on; `currentChar`, `subject` and `chatId` are per-run objects or random ids. */
+/** The request fields the prompt depends on; `currentChar`, `subject` and `chatId` are per-run objects or random ids, and `mainSend` only marks the main send for the exit net. */
 function stableBody(): unknown {
     const body = (lastBody() ?? {}) as Record<string, unknown>
-    const { currentChar: _currentChar, subject: _subject, chatId: _chatId, ...rest } = body
+    const { currentChar: _currentChar, subject: _subject, chatId: _chatId, mainSend: _mainSend, ...rest } = body
     return withoutMemos(rest)
 }
 

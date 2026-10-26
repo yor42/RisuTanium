@@ -264,6 +264,7 @@ vi.mock(import('src/ts/process/scriptings'), async () => {
             ;(chat as { message: unknown[] }).message.push({ role: 'user', data: 'lua-added-message' })
             return { stopSending: false, chat, res: undefined }
         }),
+        runLuaInteractionTrigger: vi.fn(async () => undefined),
     } as unknown as typeof import('src/ts/process/scriptings')
 })
 
@@ -276,6 +277,10 @@ import type { triggerscript, triggerEffect } from 'src/ts/process/triggers'
 // Not mocked in this file (see the header) -- `handleButtonTriggerWithin`'s
 // own `beginWork`/`workHandle.end()` are real.
 import { isWriting } from 'src/ts/process/chatOrigin'
+import { alertError } from 'src/ts/alert'
+import { runLuaButtonTrigger, runLuaInteractionTrigger } from 'src/ts/process/scriptings'
+import { MODULE_STUB_KEY } from 'src/ts/storage/moduleStub'
+import { ModuleLoadError, registerModuleLoader, unregisterModuleLoader } from 'src/ts/storage/store2/moduleAcquire'
 
 //#region fixtures
 
@@ -612,5 +617,137 @@ describe('Registration through the mounted handler', () => {
         await settle()
 
         expect(isWriting({ chaId: liveChar.chaId, chatId: liveChat.id })).toBe(false)
+    })
+})
+
+describe('A manual fire waits for the modules it needs', () => {
+    let loaderCalls: string[] = []
+    let releaseLoad: () => void = () => {}
+
+    /** Registers a loader that waits for `releaseLoad` (or fails), then replaces the stub with a resident module. */
+    function registerGatedLoader(failure: Error | null = null) {
+        loaderCalls = []
+        registerModuleLoader(async (handle) => {
+            const id = handle.slice(0, handle.lastIndexOf('#'))
+            loaderCalls.push(id)
+            await new Promise<void>((resolve) => { releaseLoad = resolve })
+            if (failure) {
+                throw failure
+            }
+            const modules = DBState.db.modules as unknown as Array<Record<string, unknown>>
+            const index = modules.findIndex((m) => m.id === id)
+            modules[index] = { id, name: id, description: '', lorebook: [] }
+            return modules[index] as never
+        })
+    }
+
+    function installStubbedDb(char: character) {
+        DBState.db = baseDb({
+            modules: [{ id: 'm1', name: 'Alpha', description: '', [MODULE_STUB_KEY]: 1 }],
+            enabledModules: ['m1'],
+        }) as never
+        DBState.db.characters = [char] as never
+        selIdState.selId = 0
+    }
+
+    afterEach(() => {
+        unregisterModuleLoader()
+    })
+
+    test('manual-trigger-button-waits-for-module-then-runs', async () => {
+        const a1 = makeChat('a1')
+        a1.message.push({ role: 'char', data: '<button risu-trigger="setx" risu-id="t1">Click</button>' })
+        const char = makeCharacter('char-ens', [a1])
+        char.triggerscript.push(trig('setx', 'manual', [
+            v2('v2SetVar', { operator: '=', var: 'x', valueType: 'value', value: '1' }),
+        ]))
+        installStubbedDb(char)
+        registerGatedLoader()
+        const liveChar = DBState.db.characters[0]
+
+        const { target } = await mountChat({ idx: 0, message: a1.message[0].data, isLastMemory: false })
+        target.querySelector<HTMLButtonElement>('[risu-trigger="setx"]')!.click()
+        await settle()
+        expect(loaderCalls).toEqual(['m1'])
+        expect(liveChar.chats[0].scriptstate['$x']).toBeUndefined()
+
+        releaseLoad()
+        await settle()
+        expect(liveChar.chats[0].scriptstate['$x']).toBe('1')
+    })
+
+    test('lua-button-waits-for-module', async () => {
+        const a1 = makeChat('a1')
+        a1.message.push({ role: 'char', data: '<button risu-btn="go">Go</button>' })
+        installStubbedDb(makeCharacter('char-lua', [a1]))
+        registerGatedLoader()
+
+        const { target } = await mountChat({ idx: 0, message: a1.message[0].data, isLastMemory: false })
+        target.querySelector<HTMLButtonElement>('[risu-btn="go"]')!.click()
+        await settle()
+        expect(loaderCalls).toEqual(['m1'])
+        expect(runLuaButtonTrigger).not.toHaveBeenCalled()
+
+        releaseLoad()
+        await settle()
+        luaButtonGate.resolve()
+        await settle()
+        expect(runLuaButtonTrigger).toHaveBeenCalledTimes(1)
+    })
+
+    test('lua-form-waits-for-module', async () => {
+        const a1 = makeChat('a1')
+        a1.message.push({ role: 'char', data: '<form risu-form="f"><input name="q" value="v"><button type="submit">Send</button></form>' })
+        installStubbedDb(makeCharacter('char-form', [a1]))
+        registerGatedLoader()
+
+        const { target } = await mountChat({ idx: 0, message: a1.message[0].data, isLastMemory: false })
+        target.querySelector<HTMLFormElement>('[risu-form="f"]')!.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true }))
+        await settle()
+        expect(loaderCalls).toEqual(['m1'])
+        expect(runLuaInteractionTrigger).not.toHaveBeenCalled()
+
+        releaseLoad()
+        await settle()
+        expect(runLuaInteractionTrigger).toHaveBeenCalledTimes(1)
+    })
+
+    test('lua-form-load-failure-shows-moduleLoadFailed-and-does-not-run', async () => {
+        const a1 = makeChat('a1')
+        a1.message.push({ role: 'char', data: '<form risu-form="f"><input name="q" value="v"><button type="submit">Send</button></form>' })
+        installStubbedDb(makeCharacter('char-form-fail', [a1]))
+        registerGatedLoader(new ModuleLoadError('unreadable', 'm1', 'Alpha'))
+
+        const { target } = await mountChat({ idx: 0, message: a1.message[0].data, isLastMemory: false })
+        target.querySelector<HTMLFormElement>('[risu-form="f"]')!.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true }))
+        await settle()
+        releaseLoad()
+        await settle()
+
+        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
+        expect(String(vi.mocked(alertError).mock.calls[0][0])).toContain('Alpha')
+        expect(runLuaInteractionTrigger).not.toHaveBeenCalled()
+    })
+
+    test('manual-trigger-load-failure-shows-moduleLoadFailed-and-does-not-run', async () => {
+        const a1 = makeChat('a1')
+        a1.message.push({ role: 'char', data: '<button risu-trigger="setx" risu-id="t1">Click</button>' })
+        const char = makeCharacter('char-fail', [a1])
+        char.triggerscript.push(trig('setx', 'manual', [
+            v2('v2SetVar', { operator: '=', var: 'x', valueType: 'value', value: '1' }),
+        ]))
+        installStubbedDb(char)
+        registerGatedLoader(new ModuleLoadError('unreadable', 'm1', 'Alpha'))
+        const liveChar = DBState.db.characters[0]
+
+        const { target } = await mountChat({ idx: 0, message: a1.message[0].data, isLastMemory: false })
+        target.querySelector<HTMLButtonElement>('[risu-trigger="setx"]')!.click()
+        await settle()
+        releaseLoad()
+        await settle()
+
+        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
+        expect(String(vi.mocked(alertError).mock.calls[0][0])).toContain('Alpha')
+        expect(liveChar.chats[0].scriptstate['$x']).toBeUndefined()
     })
 })

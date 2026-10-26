@@ -65,6 +65,8 @@ type Op =
     | { kind: 'bump', at: number, which: 0 | 1 | 2 }
     | { kind: 'failRetry' }
     | { kind: 'load', at: number }
+    | { kind: 'namespace', at: number, which: 0 | 1 }
+    | { kind: 'ensure', which: 0 | 1 }
     | { kind: 'plain' }
 
 const STEPS = 30
@@ -340,6 +342,22 @@ function applyOp(model: Model, op: Op): Applied {
                 }
             }
             break
+        case 'namespace':
+            // A namespace is part of the recorded entry, so a stub minted from it carries the namespace a reference by
+            // namespace finds it by.
+            if (slot?.truth && !isStub(slot.live)) {
+                slot.truth.namespace = `ns${op.which}`
+                slot.live = clone(slot.truth)
+            }
+            break
+        case 'ensure':
+            // What the ensure step does: every stub a namespace reference names is replaced by its module in full.
+            for (const candidate of model.slots) {
+                if (candidate.truth !== null && isStub(candidate.live) && candidate.truth.namespace === `ns${op.which}`) {
+                    candidate.live = clone(candidate.truth)
+                }
+            }
+            break
         case 'plain':
             break
     }
@@ -527,6 +545,8 @@ const opArb: fc.Arbitrary<Op> = fc.oneof(
     { weight: 1, arbitrary: fc.tuple(position, fc.constantFrom<0 | 1 | 2>(0, 1, 2)).map(([at, which]): Op => ({ kind: 'bump', at, which })) },
     { weight: 1, arbitrary: fc.constant<Op>({ kind: 'failRetry' }) },
     { weight: 2, arbitrary: pick('load') },
+    { weight: 1, arbitrary: fc.tuple(position, fc.constantFrom<0 | 1>(0, 1)).map(([at, which]): Op => ({ kind: 'namespace', at, which })) },
+    { weight: 1, arbitrary: fc.constantFrom<0 | 1>(0, 1).map((which): Op => ({ kind: 'ensure', which })) },
     { weight: 3, arbitrary: fc.constant<Op>({ kind: 'plain' }) },
 )
 

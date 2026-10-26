@@ -18,6 +18,7 @@ import { applyChatTemplate } from "../templates/chatTemplate";
 import { runTransformers } from "../transformers";
 import { runTrigger } from "../triggers";
 import { createRunSubject, type RunSubject } from "../chatOrigin";
+import { moduleLoadFailedText, unloadedModulesOf } from "../moduleRefList";
 import { requestClaude } from './anthropic';
 import { requestGoogleCloudVertex } from './google';
 import { requestOpenAI, requestOpenAILegacyInstruct, requestOpenAIResponseAPI } from "./openAI/requests";
@@ -58,6 +59,8 @@ interface requestDataArgument{
     blockPlugins?:boolean
     // Never cloned and never handed to a plugin: the plugin provider builds its own argument.
     subject?: RunSubject
+    // Set only by the main chat send. Never handed to a plugin: the plugin provider builds its own argument.
+    mainSend?: boolean
 }
 
 export interface RequestDataArgumentExtended extends requestDataArgument{
@@ -201,6 +204,17 @@ function normalizeOllamaStreamResponse(response: Response): Response {
 }
 
 export async function requestChatData(arg:requestDataArgument, model:ModelModeExtended, abortSignal:AbortSignal=null):Promise<requestDataResponse> {
+    // Exit net of the main send: a referenced module whose body never loaded must not be left out of the prompt
+    // silently. It reads the same deduplicated list the producers read, so a resident first holder never trips it.
+    if(arg.mainSend){
+        const unloaded = unloadedModulesOf(arg.subject)
+        if(unloaded.length > 0){
+            return {
+                type: 'fail',
+                result: moduleLoadFailedText(unloaded.map((module) => module.name))
+            }
+        }
+    }
     const db = getDatabase()
     const fallBackModels:string[] = safeStructuredClone(db?.fallbackModels?.[model] ?? [])
     const tools = arg.tools ?? (await getTools(arg.subject))
