@@ -77,6 +77,51 @@ async function untilClear(): Promise<void> {
     } while (holds(get(alertStore).type))
 }
 
+const SHOWN_NAMES_MAX = 5
+const SHOWN_NAME_LENGTH_MAX = 40
+
+/**
+ * The names as one line each in a select title. The title and the buttons are joined with `||` and split on it again,
+ * so a name must never hold two bars in a row, and a bar left by removing a control or format character (bidi marks,
+ * zero-width characters) must not join its neighbours into one. Whitespace runs collapse first, then control and
+ * format characters go, then bar runs collapse and bars at either end go (a trailing bar would meet the `||` that
+ * follows the title); names that end up empty are dropped.
+ */
+function cleanNames(names: readonly string[]): string[] {
+    const out: string[] = []
+    for (const name of names) {
+        const clean = name
+            .replace(/\s+/g, ' ')
+            .replace(/[\p{Cc}\p{Cf}]/gu, '')
+            .replace(/\|+/g, '|')
+            .replace(/ {2,}/g, ' ')
+            .replace(/^[ |]+|[ |]+$/g, '')
+        if (clean === '') {
+            continue
+        }
+        const letters = Array.from(clean)
+        out.push(letters.length > SHOWN_NAME_LENGTH_MAX ? `${letters.slice(0, SHOWN_NAME_LENGTH_MAX - 1).join('')}…` : clean)
+    }
+    return out
+}
+
+/**
+ * The shared Save-mine-unavailable sentence. The suffix counts what the list does not show: `count` minus the names
+ * shown, so names dropped as empty are still counted. With nothing to show, the sentence carries the count alone.
+ * Function replacers keep `$&` and the like in a name literal.
+ */
+function blockedText(blocked: PeerParkPrompt['blocked']): string {
+    const text = language.store2Boot
+    const count = blocked?.count ?? 0
+    const shown = cleanNames(blocked?.names ?? []).slice(0, SHOWN_NAMES_MAX)
+    if (shown.length === 0) {
+        return text.peerNoSaveBlockedCount.replace('{count}', () => String(count))
+    }
+    const hidden = count - shown.length
+    const list = hidden > 0 ? `${shown.join(', ')} (+${hidden})` : shown.join(', ')
+    return text.peerNoSaveBlocked.replace('{names}', () => list)
+}
+
 /** `exportShown`: whether 'Export this tab first' is among the buttons, so the wording never names a button that is not there. */
 function titleOf(prompt: PeerParkPrompt, exportShown: boolean): string {
     const text = language.store2Boot
@@ -91,7 +136,7 @@ function titleOf(prompt: PeerParkPrompt, exportShown: boolean): string {
             }
         }
         case 'replaced': return `${title} ${text.peerNoSaveReplaced}`
-        case 'unloaded-characters': return `${title} ${text.peerNoSaveUnloaded}`
+        case 'carries': return `${title} ${blockedText(prompt.blocked)}`
         case undefined: return title
     }
 }

@@ -6,6 +6,7 @@ import type { Store2Read } from './backend/types'
 import { isBusy } from '../../process/memory/busyActions'
 import { MEASURE } from '../../process/memory/measureFlag'
 import { netHeldNow, noteNetHeldTick, noteNetPassTick } from '../measureExportHold'
+import { isModuleStub } from '../moduleStub'
 import { isColdStub, SharedChaIdStubError, StubRefusedError } from './codec'
 import { namesManifest, type AbandonResult, type CommitResult, type Committer } from './commit'
 import { classifyCommitRead } from './commitKey'
@@ -43,7 +44,7 @@ export interface PeerParkPrompt {
     /** The default first: it always starts with 'reload'. */
     offers: readonly PeerOffer[]
     /** Why 'save-mine' is not offered, for the wording the screen chooses. */
-    saveMineUnavailable?: 'node' | 'replaced' | 'unloaded-characters'
+    saveMineUnavailable?: 'node' | 'replaced' | 'carries'
     /** Present after a Save mine was refused in this park: the items it could not carry, named when the plan knew their names. */
     blocked?: { names: readonly string[], count: number }
     /**
@@ -262,6 +263,44 @@ export function residentChaIds(db: Database): string[] {
     return out
 }
 
+/**
+ * The items a tab holds only as stand-ins (cold-stub characters and module stubs), named by their own name, else their
+ * id. The count is the number of stand-ins, before any name is cleaned or dropped, and the test is the one `hasStubs`
+ * uses, so a prompt that withholds Save mine for stubs always has a count. Reads slots only and never throws.
+ */
+export function stubNamesOf(db: Database): { names: string[], count: number } {
+    const names: string[] = []
+    const nameOf = (slot: object, idField: string): string => {
+        const fields = slot as Record<string, unknown>
+        if (typeof fields.name === 'string' && fields.name !== '') {
+            return fields.name
+        }
+        const id = fields[idField]
+        return typeof id === 'string' ? id : ''
+    }
+    if (Array.isArray(db.characters)) {
+        for (const slot of db.characters) {
+            if (typeof slot === 'object' && slot !== null && isColdStub(slot)) {
+                names.push(nameOf(slot, 'chaId'))
+            }
+        }
+    }
+    if (Array.isArray(db.modules)) {
+        for (const slot of db.modules) {
+            if (isModuleStub(slot)) {
+                names.push(nameOf(slot as object, 'id'))
+            }
+        }
+    }
+    return { names, count: names.length }
+}
+
+/** The items a refused Save mine could not carry, as the plan named them; never reads the live database. */
+export function blockedOf(plan: Pick<SavePlan, 'carried'>): { names: readonly string[], count: number } {
+    const names = [...plan.carried.owners.values(), ...plan.carried.modules]
+    return { names, count: names.length > 0 ? names.length : plan.carried.units }
+}
+
 function presentChaIds(db: Database): Set<string> {
     const out = new Set<string>()
     if (Array.isArray(db.characters)) {
@@ -445,10 +484,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             return { reason: parked.reason, unsaved, offers: ['reload'] }
         }
         if (parked.blocked !== undefined) {
-            return { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'unloaded-characters', blocked: parked.blocked }
+            return { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'carries', blocked: parked.blocked }
         }
         if (encoder.hasStubs(port.getDatabase()) && !parked.namedMine) {
-            return { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'unloaded-characters' }
+            return { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'carries', blocked: stubNamesOf(port.getDatabase()) }
         }
         return { reason: parked.reason, unsaved, offers: ['reload', 'save-mine'] }
     }
@@ -880,12 +919,6 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 : { kind: 'retry', reason: result.reason, detail: result.detail }
         }
         return outcomeOf(result, plan, run)
-    }
-
-    /** The items a refused Save mine could not carry, as the plan named them; never reads the live database. */
-    function blockedOf(plan: SavePlan): { names: readonly string[], count: number } {
-        const names = [...plan.carried.owners.values(), ...plan.carried.modules]
-        return { names, count: names.length > 0 ? names.length : plan.carried.units }
     }
 
     function foldBack(snapshot: Store2Snapshot | null): void {

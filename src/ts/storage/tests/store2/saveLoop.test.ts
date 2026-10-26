@@ -15,7 +15,7 @@ import { moduleStubOf } from '../../store2/moduleStubMatch'
 import { buildColdStub } from '../../../process/coldCharacter'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from '../../moduleStub'
 import { createSaveEncoder } from '../../store2/saveEncoder'
-import { backedOffWait, isSaveLoopStopped, runStore2SaveLoop, type Store2LoopPort, type UnsavableCharacter } from '../../store2/saveLoop'
+import { backedOffWait, blockedOf, isSaveLoopStopped, runStore2SaveLoop, stubNamesOf, type Store2LoopPort, type UnsavableCharacter } from '../../store2/saveLoop'
 import type { Database, character } from '../../database.svelte'
 import type { toSaveType } from '../../risuSave'
 import { until } from '../saveLoopWorld'
@@ -1177,7 +1177,9 @@ describe('new behaviour: a peer\'s commit parks the page and the person decides'
         chars(live)[0].personality = 'my edit'
         loop.mark(chaIdOf(live, 0))
         await until(() => kit.peer.asked.length === 1, 'the prompt', 4000)
-        expect(kit.peer.asked[0]).toMatchObject({ offers: ['reload'], saveMineUnavailable: 'unloaded-characters' })
+        expect(kit.peer.asked[0]).toMatchObject({
+            offers: ['reload'], saveMineUnavailable: 'carries', blocked: { names: [String(chars(live)[1].name)], count: 1 },
+        })
         healthy(loop)
     })
 
@@ -1196,7 +1198,7 @@ describe('new behaviour: a peer\'s commit parks the page and the person decides'
         loop.mark(chaIdOf(live, 0))
         await until(() => kit.peer.asked.length === 1, 'the prompt', 4000)
         expect(kit.peer.asked[0].offers).toEqual(['reload'])
-        expect(kit.peer.asked[0]).toMatchObject({ saveMineUnavailable: 'unloaded-characters' })
+        expect(kit.peer.asked[0]).toMatchObject({ saveMineUnavailable: 'carries', blocked: { names: [String(slots[1].name)], count: 1 } })
         healthy(loop)
     })
 
@@ -1923,7 +1925,7 @@ describe('the carry rule at the loop: Save mine and bulk passes never write over
         const asked = world.kit.peer.asked
         expect(asked[0]).toMatchObject({ reason: 'peer-commit', unsaved: true, offers: ['reload', 'save-mine'] })
         expect(asked[1].offers).toEqual(['reload'])
-        expect(asked[1]).toMatchObject({ saveMineUnavailable: 'unloaded-characters', blocked: { names, count: names.length } })
+        expect(asked[1]).toMatchObject({ saveMineUnavailable: 'carries', blocked: { names, count: names.length } })
         expect(world.kit.peer.reloads).toBe(1)
     }
 
@@ -2123,7 +2125,7 @@ describe('the carry rule at the loop: Save mine and bulk passes never write over
             await until(() => world.peer.asked.length >= 3 || world.loop.state.saved >= 1, 'the third prompt or a landed save', 8000)
             expect(world.loop.state.saved).toBe(0)
             expect(world.peer.asked[2].offers).toEqual(['reload'])
-            expect(world.peer.asked[2]).toMatchObject({ saveMineUnavailable: 'unloaded-characters', blocked: { names: ['Small 1'], count: 1 } })
+            expect(world.peer.asked[2]).toMatchObject({ saveMineUnavailable: 'carries', blocked: { names: ['Small 1'], count: 1 } })
             expect(world.loop.state.saved).toBe(0)
             healthy(world.loop)
         })
@@ -2223,5 +2225,32 @@ describe('the carry rule at the loop: Save mine and bulk passes never write over
             expect(world.loop.state.saved).toBe(0)
             healthy(world.loop)
         })
+    })
+})
+
+describe('blockedOf and stubNamesOf: the items a prompt names', () => {
+    const carried = (owners: Array<[string, string]>, modules: string[], units: number) => ({
+        carried: { units, owners: new Map(owners), modules },
+    })
+
+    test('blockedOf names the plan\'s owners then its modules, and counts them', () => {
+        expect(blockedOf(carried([['c1', 'Alice'], ['c2', 'Bob']], ['Mod'], 40))).toEqual({ names: ['Alice', 'Bob', 'Mod'], count: 3 })
+    })
+
+    test('blockedOf with nothing named falls back to the carried unit count, never zero', () => {
+        expect(blockedOf(carried([], [], 5))).toEqual({ names: [], count: 5 })
+    })
+
+    test('stubNamesOf names cold stubs and module stubs by name, else by id, and counts every one', () => {
+        const db = {
+            characters: [{ chaId: 'c1', name: 'Alice', coldstorage: 'u1' }, { chaId: 'c2', name: 'Full' }, { chaId: 'c3', name: '', coldstorage: 'u3' }],
+            modules: [{ id: 'm1', name: 'Mod', [MODULE_STUB_KEY]: MODULE_STUB_VALUE }, { id: 'm2', name: 'Loaded' }, { id: 'm3', [MODULE_STUB_KEY]: MODULE_STUB_VALUE }],
+        } as unknown as Database
+        expect(stubNamesOf(db)).toEqual({ names: ['Alice', 'c3', 'Mod', 'm3'], count: 4 })
+    })
+
+    test('stubNamesOf counts a stub with no usable name and does not throw on odd slots', () => {
+        const db = { characters: [null, 3, { coldstorage: 'u' }], modules: 'none' } as unknown as Database
+        expect(stubNamesOf(db)).toEqual({ names: [''], count: 1 })
     })
 })
