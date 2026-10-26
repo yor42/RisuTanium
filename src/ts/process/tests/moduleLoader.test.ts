@@ -604,6 +604,25 @@ describe('the save loop valve answers without ever waiting for the person', () =
         expect(slots(world)[1].name).toBe('renamed by someone')
     })
 
+    test('an edited stub whose stored body needs the lorebook question is refused at once: no read, no question', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('bad', { lorebook: { bad: true } })])
+        stubOut(world, 1)
+        slots(world)[1].name = 'renamed by someone'
+        const loading = acquireModule(world.ids[1])
+        // A load that read first would wait for the person's answer and stay pending.
+        const state = await stateOf(loading)
+        if (state === 'pending') {
+            // The flight map outlives the test; answering the question it opened keeps a failing row from stalling the rows after it.
+            await answerCorruptionQuestion(false).catch(() => {})
+            await loading.catch(() => {})
+        }
+        expect(state).toBe('rejected')
+        await expect(loading).rejects.toMatchObject({ reason: 'edited' })
+        expect(world.gate.reads).toBe(0)
+        expect(h.waiting).toHaveLength(0)
+        expect(slots(world)[1].name).toBe('renamed by someone')
+    })
+
     test('an edited stub behind a resident of the same id is refused after no load, and the resident is not touched', async () => {
         const world = await bootWorld([moduleBody('a'), moduleBody('b')])
         stubOut(world, 1)

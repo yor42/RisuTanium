@@ -49,6 +49,12 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
     downloadPreset: downloadPresetSpy,
 }) as unknown as typeof import('src/ts/storage/database.svelte'))
 
+const realmModuleJsonSpy = vi.hoisted(() => vi.fn(async (_index: number): Promise<{ json: string, name: string } | null> => null))
+
+vi.mock(import('src/ts/process/moduleUse'), () => ({
+    realmModuleJson: realmModuleJsonSpy,
+}) as unknown as typeof import('src/ts/process/moduleUse'))
+
 vi.mock(import('src/ts/realmUploadUrl'), () => ({
     getRealmUploadUrl: getRealmUploadUrlSpy,
 }) as unknown as typeof import('src/ts/realmUploadUrl'))
@@ -232,6 +238,23 @@ describe('RealmFrame.svelte: a failed card export never reaches the upload ifram
         expect(postMessage).not.toHaveBeenCalled()
         expect(get(ShowRealmFrameStore)).toBe('')
         expect(get(alertStore)).toEqual(failure)
+    })
+
+    test('when a module payload is null, nothing is posted, no card share runs and the frame closes', async () => {
+        acceptUpstream()
+        ShowRealmFrameStore.set('module:0')
+        realmModuleJsonSpy.mockResolvedValueOnce(null)
+
+        const target = mountRealmFrame()
+        const postMessage = vi.fn()
+        const iframe = target.querySelector('iframe')
+        Object.defineProperty(iframe, 'contentWindow', { configurable: true, value: { postMessage } })
+        await settle()
+
+        expect(realmModuleJsonSpy).toHaveBeenCalledWith(0)
+        expect(shareRealmCardDataSpy).not.toHaveBeenCalled()
+        expect(postMessage).not.toHaveBeenCalled()
+        expect(get(ShowRealmFrameStore)).toBe('')
     })
 
     test('when the share rejects, the error is shown, nothing is posted and the frame closes', async () => {

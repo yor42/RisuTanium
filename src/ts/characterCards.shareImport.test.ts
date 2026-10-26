@@ -209,6 +209,7 @@ import { PngChunk } from 'src/ts/pngChunk'
 import { ModuleRefusal } from 'src/ts/process/moduleRefusal'
 import type { VirtualWriter } from 'src/ts/globalApi.svelte'
 import { language } from 'src/lang'
+import { MODULE_STUB_KEY } from 'src/ts/storage/moduleStub'
 import { busyKinds, isBusy } from 'src/ts/process/memory/busyActions'
 
 // ---------------------------------------------------------------------------------------------
@@ -850,6 +851,26 @@ describe('#import_module= and #import_preset= links', () => {
         await characterURLImport()
         expect(setConsumer).toHaveBeenCalledTimes(1)
         expect(h.last.startsWith(lastStart)).toBe(true)
+    })
+
+    test('a module that carries the stub marker is refused as text before the low-level prompt, and nothing is added', async () => {
+        h.confirm = true
+        setUrl(moduleLink(JSON.stringify({ name: 'm', lowLevelAccess: true, [MODULE_STUB_KEY]: 7 })))
+        await characterURLImport()
+        expect(h.modules).toHaveLength(0)
+        expect(h.prompts).toEqual([])
+        expect(h.errors).toEqual([language.errors.noData])
+        expect(h.errorKinds).toEqual(['string'])
+        expect(h.events).not.toContain('normal:' + language.successImport)
+    })
+
+    test('a module without the stub marker still imports after the low-level prompt (compatibility guard)', async () => {
+        h.confirm = true
+        setUrl(moduleLink(JSON.stringify({ name: 'm', lowLevelAccess: true })))
+        await characterURLImport()
+        expect(h.prompts).toEqual([language.lowLevelAccessConfirm])
+        expect(h.modules).toHaveLength(1)
+        expect(h.events).toContain('normal:' + language.successImport)
     })
 })
 

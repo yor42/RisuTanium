@@ -20,6 +20,7 @@ import { ModuleImportStopped, confirmRisumLowLevel } from "./moduleImportStop"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportOutcome } from "../importBatch"
 import { markBootWrite } from "../bootWindow"
 import { useModuleById } from "./moduleUse"
+import { hasModuleStubKey } from "../storage/moduleStub"
 import { DuplicateSession, applyModulePlacement, describeReplace, type DuplicateDecision } from "./moduleDuplicates"
 import { withBusy } from "./memory/busyActions"
 import { assetByteLimit, charxLimits } from "./processzip"
@@ -241,6 +242,11 @@ async function scanRisum(source: ImportSource): Promise<RisumScan> {
     const module = main.module
     if(!module || typeof module !== 'object' || (module.assets != null && !Array.isArray(module.assets))){
         console.error("Invalid module")
+        throw new ModuleRefusal(language.errors.noData)
+    }
+    //A file that carries the stub marker is refused whole, before any asset is written: it would be taken for a stand-in whose body is stored elsewhere.
+    if(hasModuleStubKey(module)){
+        console.error("Module carries the stub marker")
         throw new ModuleRefusal(language.errors.noData)
     }
 
@@ -574,6 +580,9 @@ async function importModuleJson(file:File, batchFile:string|undefined, session:D
     try {
         const importData = JSON.parse(Buffer.from(fileData).toString())
         if(importData.type === 'risuModule'){
+            if(hasModuleStubKey(importData)){
+                return {kind: 'refused', reason: language.errors.noData}
+            }
             if(
                 (!importData.name)
                 || (!importData.id)

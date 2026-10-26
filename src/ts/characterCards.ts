@@ -23,7 +23,8 @@ import { decodeBase64Bytes } from "./base64Bytes"
 import type { OnnxModelFiles } from "./process/transformers"
 import { CharXImporter, CharXParseError, CharXWriter, assetByteLimit, hasZipEndRecord } from "./process/processzip"
 import { exportModuleLegacy, readModule, type RisuModule } from "./process/modules"
-import { ModuleRefusal } from "./process/moduleRefusal"
+import { ModuleRefusal, importErrorMessage } from "./process/moduleRefusal"
+import { hasModuleStubKey } from "./storage/moduleStub"
 import { ModuleImportStopped, confirmRisumLowLevel } from "./process/moduleImportStop"
 import { importSourceOfBytes, importSourceOfFile, isImportSource, openDesktopImportSource, type ImportSource } from "./importSource"
 import { beginBusy, withBusy } from "./process/memory/busyActions"
@@ -875,6 +876,9 @@ export async function characterURLImport() {
         try {
             const data = hash.replace('#import_module=', '')
             const importData = JSON.parse(Buffer.from(decodeURIComponent(data), 'base64').toString('utf-8'))
+            if(hasModuleStubKey(importData)){
+                throw new ModuleRefusal(language.errors.noData)
+            }
             importData.id = v4()
 
             if(!importData.lowLevelAccess || await alertConfirm(language.lowLevelAccessConfirm)){
@@ -885,7 +889,7 @@ export async function characterURLImport() {
                 settingsOpen.set(true)
             }
         } catch (error) {
-            alertError(error)
+            alertError(importErrorMessage(error))
         }
     }
     else if(hash.startsWith('#import_preset=')){

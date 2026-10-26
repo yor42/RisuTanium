@@ -104,7 +104,13 @@ async function loadInto(flight: Flight, residency: Residency): Promise<RisuModul
     if (entry === null) {
         throw new ModuleLoadError('no-entry', id, id)
     }
-    const startIndex = slotsOfId(id, entry).recorded[0] ?? -1
+    const before = slotsOfId(id, entry)
+    const startIndex = before.recorded[0] ?? -1
+    // A stub of this id that is not the recorded one has been edited: refused before the body is read or a question is
+    // asked, since the answer could never be installed.
+    if (before.recorded.length === 0 && before.stubs) {
+        throw new ModuleLoadError('edited', id, before.name)
+    }
 
     const read = await residency.readModule(handle)
     if (read.status === 'error') {
