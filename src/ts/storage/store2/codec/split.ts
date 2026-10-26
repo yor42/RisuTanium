@@ -13,16 +13,18 @@ import {
 } from './bodies'
 import { assembleChat, splitChat } from './chat'
 import { buildManifest, carryManifest } from './manifest'
-import { carryModuleIndex, hasCurrentEntryFields, moduleBodyOf, moduleEntryFields, moduleHandles, taggedUnitRef } from './modules'
+import { carryModuleIndex, hasCurrentEntryFields, moduleBodyOf, moduleEntryFields, moduleHandles, taggedUnitRef, uniqueIdHandles } from './modules'
 import { defineOwn, listOrEmpty, omitFields, pickFields, plainObject, toPlainJson } from './normalize'
 import { groupKeysIntoBuckets, PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 import { UnitSink, type UnitKeyKind } from './reuse'
 import { carryShards, chunkRefTuple, groupIntoShards, listRefTuple, refTuple, SHARD_COUNT } from './shard'
 import { assertChatNotPointer, assertNotStub } from './stub'
 import {
-    CodecInputError, type ConfigOwner, type EncodedTree, type EncodedUnit, type EncodeOptions, type ListDerivation,
-    type PreviousEncoding, type ReusableUnit, type SplitRecorder,
+    CodecInputError, StubRefusedError, type ConfigOwner, type EncodedTree, type EncodedUnit, type EncodeOptions, type ListDerivation,
+    type ModuleStubReason, type PreviousEncoding, type ReusableUnit, type SplitRecorder,
 } from './types'
+import { isModuleStub } from '../../moduleStub'
+import { isRecordedStub } from '../moduleStubMatch'
 import { MEASURE } from '../../../process/memory/measureFlag'
 
 /**
@@ -437,7 +439,8 @@ function carriedModuleLists(
  * list (`uniqueIdHandles`), so a stub's handle `${id}#0` is in it only for a non-empty, non-positional id that exactly
  * one module holds. All five must hold: that handle; a derivation that opts into list versions; an asset list at the
  * current version; an inlay list that exists and is at the current version; and an entry-fields version this build
- * knows. Nothing here carries a stub: a stub that reaches `encodeModuleAt` is refused by `moduleBodyOf`.
+ * knows. `carryStubAt` carries a stub only when this holds; a stub met with no previous module index at all is refused
+ * by `moduleBodyOf`.
  */
 export function stubEligible(
     entry: ModuleEntry, handles: ReadonlySet<string>, versions: ListDerivation['moduleListVersions'],
@@ -447,6 +450,82 @@ export function stubEligible(
         && entry.al[3] === versions.asset
         && entry.il !== null && entry.il[3] === versions.inlay
         && hasCurrentEntryFields(entry)
+}
+
+/** The previous unit under `identity` when it is a unit of `type` that the index ref `ref` names by head; a digest is not required. */
+function previousUnitByHead(previous: PreviousEncoding, identity: string, type: UnitType, ref: Ref | ListRef): ReusableUnit | undefined {
+    const unit = previous.units.get(identity)
+    return unit !== undefined && unit.type === type && sameRefHead(unit.ref, ref) ? unit : undefined
+}
+
+/**
+ * The unique-handle set of a module list snapshot when it holds a module stub, else null (no stub needs it). Ids are read
+ * the way `moduleEntryFields` reads them, so the handles are the ones the encode names.
+ */
+function moduleStubHandles(slots: readonly unknown[]): ReadonlySet<string> | null {
+    if (!slots.some(slot => isModuleStub(slot))) {
+        return null
+    }
+    return uniqueIdHandles(slots.map((slot) => {
+        const id = typeof slot === 'object' && slot !== null ? (slot as { id?: unknown }).id : undefined
+        return { id: typeof id === 'string' ? id : '' }
+    }))
+}
+
+function moduleStubRefusal(fields: Pick<ModuleEntry, 'id' | 'name'>, reason: ModuleStubReason): StubRefusedError {
+    return new StubRefusedError('module', fields.id, null, { name: fields.name, reason })
+}
+
+/**
+ * The index entry a module stub is carried as, with the three previous units it names (module, asset list, inlay list)
+ * set into `encoder.carried` so the next acknowledged encoding still holds them. Refusals, in this order, so a stub that
+ * differs from its recorded entry is always `edited` and never reaches a loader that would drop that edit:
+ *
+ * 1. no well-formed recorded entry for the handle: `uncarriable`;
+ * 2. the slot is not exactly the stub minted from that entry: `edited`;
+ * 3. a named unit the previous encoding lacks (matched by ref head and unit type, no digest needed), or the entry not
+ *    eligible for a stub:
+ *    `uncarriable`.
+ *
+ * The returned entry is a fresh copy and copies `unit`, `al` and `il` element for element, as `moduleStubOf` does: a
+ * divergence makes an untouched stub compare as edited, or a carried entry differ from the stub minted from it. The
+ * previous entry object is never returned, because the index merge mutates entries.
+ */
+function carryStubAt(
+    module: JsonObject, fields: ReturnType<typeof moduleEntryFields>, handle: string, encoder: Encoder,
+    previousEntries: ReadonlyMap<string, ModuleEntry>, handles: ReadonlySet<string> | null,
+): ModuleEntry {
+    const previous = encoder.previous
+    const entry = previousEntries.get(handle)
+    if (previous === null || entry === undefined || entry.id !== fields.id || !Array.isArray(entry.unit) || !Array.isArray(entry.al)
+        || (entry.il !== null && !Array.isArray(entry.il))) {
+        throw moduleStubRefusal(fields, 'uncarriable')
+    }
+    if (!isRecordedStub(module, entry)) {
+        throw moduleStubRefusal(fields, 'edited')
+    }
+    const wanted: [string, UnitType, Ref | ListRef][] = [
+        [`${IDENTITY.module}${handle}`, UNIT_TYPE.module, entry.unit],
+        [`${IDENTITY.alModule}${handle}`, UNIT_TYPE.assetList, entry.al],
+    ]
+    if (entry.il !== null) {
+        wanted.push([`${IDENTITY.ilModule}${handle}`, UNIT_TYPE.inlayList, entry.il])
+    }
+    const found: [string, ReusableUnit][] = []
+    for (const [identity, type, ref] of wanted) {
+        const unit = previousUnitByHead(previous, identity, type, ref)
+        if (unit === undefined) {
+            throw moduleStubRefusal(fields, 'uncarriable')
+        }
+        found.push([identity, unit])
+    }
+    if (handles === null || !stubEligible(entry, handles, encoder.options.lists.moduleListVersions)) {
+        throw moduleStubRefusal(fields, 'uncarriable')
+    }
+    for (const [identity, unit] of found) {
+        encoder.carried.set(identity, unit)
+    }
+    return { ...entry, unit: [...entry.unit], al: [...entry.al], il: entry.il === null ? null : [...entry.il] }
 }
 
 /** The previous module index entries by handle; null when there is no previous index, which carries nothing. */
@@ -462,6 +541,7 @@ function previousModuleEntries(encoder: Encoder): ReadonlyMap<string, ModuleEntr
  */
 function encodeModuleAt(
     raw: unknown, index: number, seen: Map<string, number>, encoder: Encoder, previousEntries: ReadonlyMap<string, ModuleEntry> | null,
+    handles: ReadonlySet<string> | null,
 ): ModuleEntry {
     const split = MEASURE ? encoder.split : undefined
     const turnStarted = MEASURE && split !== undefined ? split.now() : 0
@@ -473,6 +553,9 @@ function encodeModuleAt(
     const occurrence = seen.get(fields.id) ?? 0
     seen.set(fields.id, occurrence + 1)
     const handle = `${fields.id}#${occurrence}`
+    if (isModuleStub(module) && previousEntries !== null) {
+        return carryStubAt(module, fields, handle, encoder, previousEntries, handles)
+    }
     const unit = encoder.put(`${IDENTITY.module}${handle}`, UNIT_TYPE.module, moduleBodyOf(module))
     const kept = unit.reused ? carriedModuleLists(encoder, previousEntries, handle) : null
     let entry: ModuleEntry
@@ -506,7 +589,9 @@ function encodeModuleAt(
 export function encodeModules(db: Database, encoder: Encoder): ModuleEntry[] {
     const seen = new Map<string, number>()
     const previousEntries = previousModuleEntries(encoder)
-    return listOrEmpty(db.modules, 'modules').map((raw, index) => encodeModuleAt(raw, index, seen, encoder, previousEntries))
+    const slots = listOrEmpty(db.modules, 'modules')
+    const handles = moduleStubHandles(slots)
+    return slots.map((raw, index) => encodeModuleAt(raw, index, seen, encoder, previousEntries, handles))
 }
 
 /**
@@ -592,9 +677,10 @@ export async function encodeModuleSetYielding(db: Database, encoder: Encoder, yi
     const modules = [...listOrEmpty(db.modules, 'modules')]
     const seen = new Map<string, number>()
     const previousEntries = previousModuleEntries(encoder)
+    const handles = moduleStubHandles(modules)
     const moduleEntries: ModuleEntry[] = []
     for (let index = 0; index < modules.length; index++) {
-        moduleEntries.push(encodeModuleAt(modules[index], index, seen, encoder, previousEntries))
+        moduleEntries.push(encodeModuleAt(modules[index], index, seen, encoder, previousEntries, handles))
         await yieldFn?.()
     }
     return finishModuleSet(moduleEntries, encoder)

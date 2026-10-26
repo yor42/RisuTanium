@@ -7,6 +7,7 @@ import {
     type AcknowledgedVerdict, type EncodedTree, type EncodeScope, type ListDerivation, type PreviousEncoding, type ReusableUnit,
     type SkippedCharacter, type VerdictBase,
 } from './codec'
+import { isModuleStub } from '../moduleStub'
 import { defaultKeyEnv, type KeyEnv, type ShardEntry } from './format'
 import { stubDescription } from '../../process/coldCharacter'
 import { MEASURE } from '../../process/memory/measureFlag'
@@ -103,6 +104,10 @@ export interface SaveEncoder {
     readonly manifestKey: string
     /** The acknowledged encoding, read only: the loop compares a later put-back against the latest committed tree. */
     acknowledged(): PreviousEncoding
+    /**
+     * Whether a character is a cold stub or a module is a module stub. Such a slot is not resident, so save mine over a
+     * base that does not name this page's manifest would carry keys the store may no longer hold.
+     */
     hasStubs(db: Database): boolean
     /**
      * Whether a resident character is what the acknowledged encoding holds: `characterMatchesAcknowledged` plus the
@@ -618,7 +623,8 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
             return manifestKeyOf(previous)
         },
         acknowledged: () => previous,
-        hasStubs: db => Array.isArray(db.characters) && db.characters.some(slot => typeof slot === 'object' && slot !== null && isColdStub(slot)),
+        hasStubs: db => (Array.isArray(db.characters) && db.characters.some(slot => typeof slot === 'object' && slot !== null && isColdStub(slot)))
+            || (Array.isArray(db.modules) && db.modules.some(slot => isModuleStub(slot))),
         verdictOf(slot) {
             if (pending !== null) {
                 if (MEASURE) {

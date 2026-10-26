@@ -8,6 +8,7 @@ import {
 import { buildColdStub } from '../../../process/coldCharacter'
 import { checkBuiltUnits, createKeyMint, type BuildContext } from '../../store2/commit'
 import { encodeUnit, UNIT_TYPE } from '../../store2/format'
+import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from '../../moduleStub'
 import { createSaveEncoder, SavePlanError, type SaveEncoder, type SavePassRequest, type SavePlan } from '../../store2/saveEncoder'
 import type { character, Database } from '../../database.svelte'
 import {
@@ -512,6 +513,18 @@ describe('new behaviour: hasStubs and the manifest key', () => {
         const encoder = encoderOf(previousFrom(encodeWith(db)))
         expect(encoder.hasStubs(db)).toBe(false)
         expect(encoder.hasStubs(withStub(db, chaIdOf(db, 1), undefined))).toBe(true)
+    })
+
+    test('hasStubs-sees-a-module-stub: a module that holds the stub marker counts, a module that holds another value does not', () => {
+        const db = buildSmall(3)
+        const encoder = encoderOf(previousFrom(encodeWith(db)))
+        const next = clone(db)
+        expect(encoder.hasStubs(asDatabase(next))).toBe(false)
+        ;(next.modules as Obj[])[1] = { ...(next.modules as Obj[])[1], [MODULE_STUB_KEY]: MODULE_STUB_VALUE }
+        expect(encoder.hasStubs(asDatabase(next))).toBe(true)
+        ;(next.modules as Obj[])[1][MODULE_STUB_KEY] = 2
+        expect(encoder.hasStubs(asDatabase(next))).toBe(false)
+        expect(encoder.hasStubs(withStub(asDatabase(next), chaIdOf(db, 1), undefined))).toBe(true)
     })
 
     test('the manifest key is the acknowledged encoding\'s, and an encoding with no manifest is refused', () => {

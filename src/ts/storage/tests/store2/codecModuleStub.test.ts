@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { JsonObject } from '../../blockFrame'
-import { stubFromModuleEntry } from '../../store2/codec/stub'
+import { moduleStubOf } from '../../store2/moduleStubMatch'
 import { ENTRY_FIELDS_VERSION } from '../../store2/codec/modules'
 import { CodecInputError, StubRefusedError } from '../../store2/codec/types'
 import type { ModuleEntry } from '../../store2/format'
@@ -53,9 +53,9 @@ describe('encodeDatabase with a module stub', () => {
     })
 })
 
-describe('stubFromModuleEntry', () => {
+describe('moduleStubOf', () => {
     test('is the entry fields plus the marker, with no body arrays', () => {
-        const stub = stubFromModuleEntry(entry())
+        const stub = moduleStubOf(entry())
         expect(stub[MARKER_KEY]).toBe(1)
         expect(stub).toMatchObject({ id: 'm1', name: 'Module one', description: 'about one', namespace: 'ns', icon: 'i.png', hideIcon: true, lowLevelAccess: false, hasToggle: true, dsp: true })
         for (const body of ['lorebook', 'regex', 'trigger', 'cjs', 'assets', 'backgroundEmbedding']) {
@@ -64,12 +64,12 @@ describe('stubFromModuleEntry', () => {
     })
 
     test('carries mcp true verbatim', () => {
-        expect(stubFromModuleEntry(entry()).mcp).toBe(true)
+        expect(moduleStubOf(entry()).mcp).toBe(true)
     })
 
     test('unit keeps its four elements and unit, al and il are fresh copies', () => {
         const source = entry()
-        const stub = stubFromModuleEntry(source)
+        const stub = moduleStubOf(source)
         expect(stub.unit).toEqual(source.unit)
         expect((stub.unit as unknown[]).length).toBe(4)
         expect(stub.unit).not.toBe(source.unit)
@@ -82,11 +82,11 @@ describe('stubFromModuleEntry', () => {
     })
 
     test('a null il stays null', () => {
-        expect(stubFromModuleEntry(entry({ il: null })).il).toBeNull()
+        expect(moduleStubOf(entry({ il: null })).il).toBeNull()
     })
 
     test('is plain JSON', () => {
-        const stub: JsonObject = stubFromModuleEntry(entry())
+        const stub: JsonObject = moduleStubOf(entry())
         expect(JSON.parse(JSON.stringify(stub))).toEqual(stub)
     })
 })

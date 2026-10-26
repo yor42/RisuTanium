@@ -10,6 +10,7 @@ import { encodeUnit, UNIT_TYPE, type CommitKey } from '../../store2/format'
 import type { Store2Read } from '../../store2/backend'
 import type { ListDerivation } from '../../store2/codec'
 import { buildColdStub } from '../../../process/coldCharacter'
+import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from '../../moduleStub'
 import { createSaveEncoder } from '../../store2/saveEncoder'
 import { backedOffWait, isSaveLoopStopped, runStore2SaveLoop, type Store2LoopPort, type UnsavableCharacter } from '../../store2/saveLoop'
 import type { Database, character } from '../../database.svelte'
@@ -1174,6 +1175,56 @@ describe('new behaviour: a peer\'s commit parks the page and the person decides'
         loop.mark(chaIdOf(live, 0))
         await until(() => kit.peer.asked.length === 1, 'the prompt', 4000)
         expect(kit.peer.asked[0]).toMatchObject({ offers: ['reload'], saveMineUnavailable: 'unloaded-characters' })
+        healthy(loop)
+    })
+
+    test('parked-module-stub-over-unnamed-base-offers-reload-only: a module stub withholds Save mine once the base no longer names this page\'s manifest', async () => {
+        const db = clone(buildSmall(4))
+        const kit = await startStore2({ db })
+        const live = clone(db)
+        const slots = live.modules as unknown as Record<string, unknown>[]
+        slots[1] = { id: slots[1].id, name: slots[1].name, [MODULE_STUB_KEY]: MODULE_STUB_VALUE }
+        const loop = runLoop(kit, live)
+        for (let round = 0; round < 22; round++) {
+            kit.clock.advance(6 * 60 * 1000)
+            await peerCommit(kit, (peerDb) => { chars(peerDb)[3].personality = `peer ${round}` }, 100 + round)
+        }
+        chars(live)[0].personality = 'my edit'
+        loop.mark(chaIdOf(live, 0))
+        await until(() => kit.peer.asked.length === 1, 'the prompt', 4000)
+        expect(kit.peer.asked[0].offers).toEqual(['reload'])
+        expect(kit.peer.asked[0]).toMatchObject({ saveMineUnavailable: 'unloaded-characters' })
+        healthy(loop)
+    })
+
+    test('guard: parked-module-stub-over-named-base-offers-save-mine. The same stub does not withhold Save mine while the base names this page\'s manifest', async () => {
+        let armed = false
+        let fired = false
+        const holder: { kit: Store2Kit | null } = { kit: null }
+        const db = clone(buildSmall(4))
+        const kit = await startStore2({
+            db,
+            hooks: {
+                before: async (name) => {
+                    if (armed && !fired && name === 'commitOrdinary' && holder.kit !== null) {
+                        fired = true
+                        await peerCommit(holder.kit, (peerDb) => { chars(peerDb)[3].personality = 'the peer edit' })
+                    }
+                },
+            },
+        })
+        holder.kit = kit
+        const live = clone(db)
+        const slots = live.modules as unknown as Record<string, unknown>[]
+        slots[1] = { id: slots[1].id, name: slots[1].name, [MODULE_STUB_KEY]: MODULE_STUB_VALUE }
+        const loop = runLoop(kit, live)
+        armed = true
+        chars(live)[0].personality = 'my edit'
+        loop.mark(chaIdOf(live, 0))
+        await until(() => kit.peer.asked.length >= 1, 'the prompt', 4000)
+        expect(fired).toBe(true)
+        expect(kit.peer.asked[0]).toMatchObject({ reason: 'peer-commit', unsaved: true, offers: ['reload', 'save-mine'] })
+        expect(kit.peer.asked[0]).not.toHaveProperty('saveMineUnavailable')
         healthy(loop)
     })
 })
