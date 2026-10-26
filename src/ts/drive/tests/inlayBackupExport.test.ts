@@ -28,6 +28,31 @@ vi.mock('localforage', () => ({
     },
 }))
 
+/**
+ * The ranged reader the streamed path calls: it records the piece size it was asked for and serves the body from
+ * `store`, in pieces of that size. `failKeys` makes a read of that key reject at its first piece.
+ */
+const ranged = vi.hoisted(() => ({
+    store: null as import('src/ts/storage/store/contract').ByteStore | null,
+    calls: [] as { key: string, pieceBytes: number | undefined }[],
+    failKeys: new Set<string>(),
+}))
+
+vi.mock(import('src/ts/storage/tauriByteTransport'), async (importOriginal) => ({
+    ...await importOriginal(),
+    readRangedPieces: async function* (key: string, pieceBytes?: number) {
+        ranged.calls.push({ key, pieceBytes })
+        if (ranged.failKeys.has(key)) {
+            throw new Error('scratch: the ranged read failed')
+        }
+        const bytes = (await ranged.store!.read(key)).bytes!
+        const size = pieceBytes ?? bytes.length
+        for (let offset = 0; offset < bytes.length; offset += size) {
+            yield { bytes: bytes.slice(offset, offset + size), offset, total: bytes.length, identity: 'scratch' }
+        }
+    },
+}))
+
 vi.mock(import('src/ts/globalApi.svelte'), () => {
     const stub: Record<string, unknown> = { forageStorage: {} }
     return new Proxy(stub, {
@@ -116,6 +141,9 @@ beforeEach(() => {
     legacy.failKeys = false
     store = createMemoryByteStore({ blobs: true })
     injectAppStore(store, 'indexeddb')
+    ranged.store = store
+    ranged.calls.length = 0
+    ranged.failKeys.clear()
 })
 
 describe('the parts of a large inlay', () => {
@@ -264,5 +292,49 @@ describe('what an export leaves out', () => {
         }
 
         await expect(writeInlaysToBackup(sink, store, { streaming: false })).rejects.toThrow('cannot be written')
+    })
+})
+
+describe('the piece size of a streamed inlay read', () => {
+    // Regression reproducer: the option did not exist, so the ranged reader always got the transport's default size.
+    test('pieceBytes reaches the ranged reader, and the entry equals the whole-read entry', async () => {
+        await putTo(store, 'v', { name: 'v.mp4', ext: 'mp4', type: 'video', data: patternedBlob(1) })
+        const record = (await readAppInlayRecord(store, 'v'))!
+        const whole = recordingSink()
+        await writeInlaysToBackup(whole.sink, store, { streaming: false })
+        const streamed = recordingSink()
+
+        const result = await writeInlaysToBackup(streamed.sink, store, { streaming: true, pieceBytes: 2 * MIB })
+
+        expect(result).toEqual({ exported: 1, leftOut: [], oldStoreUnlisted: false })
+        expect(ranged.calls).toEqual([{ key: record.body, pieceBytes: 2 * MIB }])
+        expect(streamed.entries.map((entry) => entry.name)).toEqual(whole.entries.map((entry) => entry.name))
+        expect(streamed.entries.map((entry) => Buffer.compare(Buffer.from(dataOf(entry)), Buffer.from(dataOf(whole.entries[streamed.entries.indexOf(entry)]))))).toEqual(whole.entries.map(() => 0))
+    })
+
+    // Compatibility guard: without the option the reader keeps its own default size.
+    test('guard: streaming without pieceBytes leaves the size to the transport', async () => {
+        await putTo(store, 'v', { name: 'v.mp4', ext: 'mp4', type: 'video', data: patternedBlob(1) })
+
+        await writeInlaysToBackup(recordingSink().sink, store, { streaming: true })
+
+        expect(ranged.calls.map((call) => call.pieceBytes)).toEqual([undefined])
+    })
+
+    // The body is present (`has` is true) and its first range fails: the inlay is left out and the export goes on. The Node
+    // pieces option would fail the whole export with ExportReadError instead.
+    test('guard: a body that is present but unreadable is left out, and the export goes on', async () => {
+        await putTo(store, 'bad', { name: 'b', ext: 'png', type: 'image', data: new Blob(['bad'], { type: 'image/png' }) })
+        await putTo(store, 'good', { name: 'g', ext: 'png', type: 'image', data: new Blob(['good'], { type: 'image/png' }) })
+        const bad = (await readAppInlayRecord(store, 'bad'))!
+        expect(await store.has(bad.body)).toBe(true)
+        ranged.failKeys.add(bad.body)
+        const { sink, entries } = recordingSink()
+
+        const result = await writeInlaysToBackup(sink, store, { streaming: true, pieceBytes: 2 * MIB })
+
+        expect(result).toEqual({ exported: 1, leftOut: [{ id: 'bad', reason: 'unreadable' }], oldStoreUnlisted: false })
+        expect(entries).toHaveLength(1)
+        expect(ranged.calls.some((call) => call.key === bad.body)).toBe(true)
     })
 })

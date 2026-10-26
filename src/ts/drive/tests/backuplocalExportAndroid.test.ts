@@ -38,7 +38,7 @@ const desktop = await vi.hoisted(async () => (await import('src/ts/storage/tests
 /** The Android bridge stand-in: what it was asked, and how it answers. */
 const bridge = vi.hoisted(() => ({
     /** Every command that reached it, in order, with the keys a read named. */
-    calls: [] as { command: string, keys: string[] }[],
+    calls: [] as { command: string, keys: string[], len?: number }[],
     /** Answers `get_assets_batch` as a number array instead of an ArrayBuffer. */
     asNumberArray: false,
     /** Makes `list_assets_sized` reject. */
@@ -234,7 +234,7 @@ vi.mock('@tauri-apps/api/core', () => ({
             }
         }
         if (command === 'read_range') {
-            bridge.calls.push({ command, keys: [(args as { key: string }).key] })
+            bridge.calls.push({ command, keys: [(args as { key: string }).key], len: (args as { len: number }).len })
         }
         return (desktop.invoke as (command: string, args?: unknown, options?: unknown) => Promise<unknown>)(command, args, options)
     },
@@ -340,11 +340,13 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
 
 //#endregion
 
-import { SaveLocalBackup } from 'src/ts/drive/backuplocal'
+import { SaveLocalBackup, SavePartialLocalBackup } from 'src/ts/drive/backuplocal'
+import { getDatabase } from 'src/ts/storage/database.svelte'
+import { readAppInlayRecord, writeAppInlay, type InlayAsset } from 'src/ts/process/files/inlayStore'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { injectRestoreStore } from './restoreSupport'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
-import { resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
+import { CHUNK_MAX, resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
 import { resetAssetBatchAvailabilityForTests } from 'src/ts/storage/tauriAssetBatch'
 import { resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 import type { ImportPhaseRingHandle } from 'src/ts/drive/importPhaseRing'
@@ -447,6 +449,7 @@ beforeEach(() => {
     fakeFs.directories.add('assets')
     alertConfirmMock.mockReset()
     alertConfirmMock.mockImplementation(async () => true)
+    vi.mocked(getDatabase).mockImplementation(() => ({ characters: [], personas: [], characterOrder: [], botPresets: [] }) as unknown as Database)
     alertMdMock.mockClear()
     alertErrorMock.mockReset()
     vi.spyOn(console, 'error').mockImplementation(() => { })
@@ -691,3 +694,201 @@ describe('the export phases', () => {
         expect(ring()?.snapshot() ?? []).toEqual([])
     })
 })
+
+//#region streamed asset reads
+
+const PIECE_LIMIT = 2 * MIB
+
+/** One backup entry built independently of the code under test: name length, name, data length, data, all little-endian. */
+function referenceEntry(name: string, data: Uint8Array): Buffer {
+    const nameBytes = Buffer.from(name, 'utf8')
+    const head = Buffer.alloc(4)
+    head.writeUInt32LE(nameBytes.length, 0)
+    const tail = Buffer.alloc(4)
+    tail.writeUInt32LE(data.length, 0)
+    return Buffer.concat([head, nameBytes, tail, Buffer.from(data)])
+}
+
+function writtenFile(): Buffer {
+    return Buffer.concat(backupSink.writes.map((part) => Buffer.from(part)))
+}
+
+/** Every reference entry is in the file whole and in the given order. */
+function expectEntriesInOrder(entries: readonly { name: string, data: Uint8Array }[]): void {
+    const file = writtenFile()
+    let from = 0
+    for (const entry of entries) {
+        const at = file.indexOf(referenceEntry(entry.name, entry.data), from)
+        expect(at, entry.name).toBeGreaterThanOrEqual(from)
+        from = at
+    }
+}
+
+const rangeLens = (): number[] => commandCalls('read_range').map((call) => call.len ?? -1)
+
+describe('an Android export reads a large asset in pieces', () => {
+    // Regression reproducer: on the base the asset above the batch size was read whole, as one 8 MiB range request.
+    test('full export: every read_range of a 5 MiB asset asks for at most 2 MiB, and no read is whole', async () => {
+        const large = patterned(5 * MIB, 9)
+        fakeFs.plant('assets/z-large.bin', large)
+
+        const outcome = await SaveLocalBackup()
+
+        expect(outcome.status).toBe('saved')
+        const lens = rangeLens()
+        expect(lens.length).toBeGreaterThanOrEqual(3)
+        expect(Math.max(...lens)).toBeLessThanOrEqual(PIECE_LIMIT)
+        expectEveryAssetExported(['assets/z-large.bin'])
+    })
+
+    // Compatibility guard inside the reproducer: the entry bytes are what an independent encoder makes, so the format is unchanged.
+    test('full export: the streamed entry is byte-identical to an independently encoded one, among the batched ones', async () => {
+        const small = plantSmall(3, 300)
+        const large = patterned(5 * MIB + 17, 5)
+        fakeFs.plant('assets/z-large.bin', large)
+
+        const outcome = await SaveLocalBackup()
+
+        expect(outcome.status).toBe('saved')
+        expect(rangeLens().length).toBeGreaterThanOrEqual(3)
+        expectEntriesInOrder([
+            ...small.map((key) => ({ name: key.slice('assets/'.length), data: fakeFs.files.get(key)! })),
+            { name: 'z-large.bin', data: large },
+        ])
+    })
+
+    test('guard: small assets keep the batch path and make no ranged read', async () => {
+        const keys = plantSmall(4, 1000)
+
+        const outcome = await SaveLocalBackup()
+
+        expect(outcome.status).toBe('saved')
+        expect(rangeLens()).toEqual([])
+        expectEveryAssetExported(keys)
+    })
+
+    // Regression reproducer: on the base the inlay body of an Android export was read whole.
+    test('full export: an inlay body is read in pieces of at most 2 MiB', async () => {
+        const body = patterned(5 * MIB, 2)
+        const store = createTauriFilesStore({ platform: 'posix' })
+        injectRestoreStore(store)
+        const asset: InlayAsset = { name: 'v.png', ext: 'png', type: 'image', data: new Blob([body as unknown as Uint8Array<ArrayBuffer>], { type: 'image/png' }) }
+        await writeAppInlay(store, 'v', asset)
+        const record = (await readAppInlayRecord(store, 'v'))!
+        bridge.calls.length = 0
+
+        const outcome = await SaveLocalBackup()
+
+        expect(outcome.status).toBe('saved')
+        const inlayReads = commandCalls('read_range').filter((call) => call.keys[0] === record.body)
+        expect(inlayReads.length).toBeGreaterThanOrEqual(3)
+        expect(Math.max(...inlayReads.map((call) => call.len ?? -1))).toBeLessThanOrEqual(PIECE_LIMIT)
+        const file = writtenFile()
+        expect(file.indexOf(Buffer.from(body.subarray(0, 4096)))).toBeGreaterThan(-1)
+    })
+
+    describe('partial export', () => {
+        function partialDatabase(icons: { userIcon?: string, personaIcon?: string, customBackground?: string }) {
+            vi.mocked(getDatabase).mockImplementation(() => ({
+                characters: [],
+                personas: icons.personaIcon === undefined ? [] : [{ name: 'p', icon: icons.personaIcon }],
+                characterOrder: [],
+                botPresets: [],
+                userIcon: icons.userIcon,
+                customBackground: icons.customBackground,
+            }) as unknown as Database)
+        }
+
+        // Regression reproducer: on the base every asset of a partial export was one whole store read.
+        test('reads a large profile image in pieces of at most 2 MiB and writes the same entry bytes', async () => {
+            const large = patterned(5 * MIB, 3)
+            const icon = patterned(900, 4)
+            fakeFs.plant('assets/big.png', large)
+            fakeFs.plant('assets/icon.png', icon)
+            partialDatabase({ userIcon: 'assets/big.png', personaIcon: 'assets/icon.png' })
+
+            const outcome = await SavePartialLocalBackup()
+
+            expect(outcome.status).toBe('saved')
+            expect(rangeLens().length).toBeGreaterThanOrEqual(4)
+            expect(Math.max(...rangeLens())).toBeLessThanOrEqual(PIECE_LIMIT)
+            expectEntriesInOrder([
+                { name: 'big.png', data: large },
+                { name: 'icon.png', data: icon },
+            ])
+        })
+
+        // Compatibility guard (passes before and after): an absent referenced asset is reported missing and the others are still written.
+        test('guard: an absent asset is reported missing, and the rest is written', async () => {
+            const icon = patterned(700, 8)
+            fakeFs.plant('assets/icon.png', icon)
+            partialDatabase({ userIcon: 'assets/absent.png', personaIcon: 'assets/icon.png' })
+
+            const outcome = await SavePartialLocalBackup()
+
+            expect(outcome.status).toBe('saved')
+            expect(outcome.status === 'saved' && outcome.omitted.assets).toEqual(['assets/absent.png'])
+            expectEntriesInOrder([{ name: 'icon.png', data: icon }])
+        })
+
+        // Check of the new behaviour, not a guard: the ranged reader logs the absence, which the base did not.
+        test('an absent asset is logged by the ranged reader exactly once', async () => {
+            fakeFs.plant('assets/icon.png', patterned(700, 8))
+            partialDatabase({ userIcon: 'assets/absent.png', personaIcon: 'assets/icon.png' })
+
+            await SavePartialLocalBackup()
+
+            expect(vi.mocked(console.error)).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    // Compatibility guards: the pieces change only on an Android page whose store is the files store.
+    describe('guard: the other platforms keep their reads', () => {
+        test('a desktop page keeps its own piece size, not the Android one', async () => {
+            osBox.os = 'windows'
+            resetByteTransportForTests()
+            fakeFs.plant('assets/z-large.bin', patterned(5 * MIB, 9))
+
+            const outcome = await SaveLocalBackup()
+
+            expect(outcome.status).toBe('saved')
+            expect(rangeLens().length).toBeGreaterThanOrEqual(1)
+            expect(rangeLens()[0]).toBe(CHUNK_MAX)
+            expect(CHUNK_MAX).toBeGreaterThan(PIECE_LIMIT)
+            expectEveryAssetExported(['assets/z-large.bin'])
+        })
+
+        test('a desktop page reads an inlay body above one piece with its own piece size', async () => {
+            osBox.os = 'windows'
+            resetByteTransportForTests()
+            const body = patterned(CHUNK_MAX + MIB, 2)
+            const store = createTauriFilesStore({ platform: 'posix' })
+            injectRestoreStore(store)
+            const asset: InlayAsset = { name: 'v.png', ext: 'png', type: 'image', data: new Blob([body as unknown as Uint8Array<ArrayBuffer>], { type: 'image/png' }) }
+            await writeAppInlay(store, 'v', asset)
+            const record = (await readAppInlayRecord(store, 'v'))!
+            bridge.calls.length = 0
+
+            const outcome = await SaveLocalBackup()
+
+            expect(outcome.status).toBe('saved')
+            const inlayReads = commandCalls('read_range').filter((call) => call.keys[0] === record.body)
+            expect(inlayReads.length).toBeGreaterThanOrEqual(1)
+            expect(inlayReads[0].len).toBe(CHUNK_MAX)
+        })
+
+        test('an Android page whose store is not the files store keeps the whole read', async () => {
+            injectRestoreStore(createTauriFilesStore({ platform: 'posix' }), 'indexeddb')
+            fakeFs.plant('assets/z-large.bin', patterned(5 * MIB, 9))
+
+            const outcome = await SaveLocalBackup()
+
+            expect(outcome.status).toBe('saved')
+            expect(rangeLens().length).toBeGreaterThanOrEqual(1)
+            expect(Math.min(...rangeLens())).toBeGreaterThan(PIECE_LIMIT)
+            expectEveryAssetExported(['assets/z-large.bin'])
+        })
+    })
+})
+
+//#endregion

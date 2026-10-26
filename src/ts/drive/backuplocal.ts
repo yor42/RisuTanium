@@ -344,8 +344,9 @@ const ANDROID_ASSET_BATCH_LIMITS: AssetBatchLimits = {
 /**
  * The Android export reader's limits, over the desktop defaults: a reply may
  * arrive through the bridge as a number array, so what is read ahead stays
- * within one 8 MiB piece of a ranged read, in two calls at most. The batch size
- * stays the desktop's.
+ * within 8 MiB, in two calls at most. This bounds the batch reader only; an
+ * asset above the batch size is read by the ranged reader in
+ * `ANDROID_EXPORT_PIECE_BYTES` pieces. The batch size stays the desktop's.
  */
 const ANDROID_EXPORT_READER_LIMITS: Partial<AssetBatchLimits> = {
     budgetBytes: 8 * 1024 * 1024,
@@ -467,6 +468,36 @@ interface AssetPieceSource {
 }
 
 const DESKTOP_PIECE_SOURCE: AssetPieceSource = { open: (key) => readRangedPieces(key), node: false }
+
+/**
+ * Piece size of an Android export's ranged reads. It bounds what one `read_range` reply holds at the renderer
+ * (an ArrayBuffer, or a number array that costs several times the piece in JS memory) and sets the call count
+ * (512 per GiB). It does not size the writer's calls: `TauriWriter` coalesces writes of up to its 4 MiB chunk into
+ * one buffer, so the append calls stay at 4 MiB.
+ */
+const ANDROID_EXPORT_PIECE_BYTES = 2 * 1024 * 1024
+
+const ANDROID_PIECE_SOURCE: AssetPieceSource = { open: (key) => readRangedPieces(key, ANDROID_EXPORT_PIECE_BYTES), node: false }
+
+/**
+ * The ranged piece source of an export on the app's own files store: the desktop's, or the Android one with
+ * smaller pieces; `null` elsewhere. Unlike `desktopStreamingUsable`, which the restore keeps using, this also
+ * answers on Android, so no asset above one piece is read whole through the store there (small assets still come
+ * back whole in batch replies).
+ */
+async function exportTauriPieceSource(): Promise<AssetPieceSource | null> {
+    if (await desktopStreamingUsable()) {
+        return DESKTOP_PIECE_SOURCE
+    }
+    if (transportKind() !== 'android') {
+        return null
+    }
+    try {
+        return await getAppStoreKind() === 'tauri' ? ANDROID_PIECE_SOURCE : null
+    } catch {
+        return null
+    }
+}
 
 /**
  * The Node store when this page is served by the Node server and its recorded capability says the server takes
@@ -971,7 +1002,8 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
             assetBatchWriteMode() === 'b64' ? ANDROID_EXPORT_READER_LIMITS : {},
         )
         : null
-    const streamAssets = await desktopStreamingUsable()
+    const tauriSource = await exportTauriPieceSource()
+    const streamAssets = tauriSource !== null
     const nodeSource = streamAssets ? null : await nodeAssetPieceSource()
     const webSource = streamAssets || nodeSource !== null ? null : webBlobPieceSource(store)
     let batchedAssets = 0
@@ -1002,7 +1034,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
             } else if (taken?.kind === 'missing') {
                 outcome = 'missing'
             } else if (streamAssets || nodeSource !== null || webSource !== null) {
-                outcome = await writeAssetStreamed(writer, key, nodeSource ?? webSource ?? DESKTOP_PIECE_SOURCE)
+                outcome = await writeAssetStreamed(writer, key, tauriSource ?? nodeSource ?? webSource!)
             } else {
                 let data: Uint8Array | null = null
                 try {
@@ -1034,6 +1066,8 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     // Inlays follow the assets and stay ahead of the database, which is last.
     const inlayResult = await writeInlaysToBackup(writer, store, {
         streaming: streamAssets,
+        // Inlays are held one part at a time (up to 64 MiB); the piece size only bounds each read reply.
+        pieceBytes: tauriSource === ANDROID_PIECE_SOURCE ? ANDROID_EXPORT_PIECE_BYTES : undefined,
         openPieces: nodeSource?.open,
         onProgress: (done, total) => session.gate.wait(`Saving local Backup Inlays... (${done} / ${total})`),
     })
@@ -1272,7 +1306,8 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         return { status: 'declined', cause: 'save-dialog-cancelled' }
     }
 
-    const streamAssets = await desktopStreamingUsable()
+    const tauriSource = await exportTauriPieceSource()
+    const streamAssets = tauriSource !== null
     const nodeSource = streamAssets ? null : await nodeAssetPieceSource()
     const webSource = streamAssets || nodeSource !== null ? null : webBlobPieceSource(store)
 
@@ -1299,7 +1334,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         // after one re-send fails the export instead; elsewhere an unreadable
         // asset is also reported as missing.
         if (streamAssets || nodeSource !== null || webSource !== null) {
-            if (await writeAssetStreamed(writer, key, nodeSource ?? webSource ?? DESKTOP_PIECE_SOURCE) === 'missing') {
+            if (await writeAssetStreamed(writer, key, tauriSource ?? nodeSource ?? webSource!) === 'missing') {
                 missingAssets.push(key)
             }
             continue

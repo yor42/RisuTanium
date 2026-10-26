@@ -68,6 +68,11 @@ export interface InlayExportOptions {
      * instead of leaving the inlay out. Takes the place of `streaming` on a Node page.
      */
     openPieces?: PieceOpener
+    /**
+     * Piece size of the ranged reads when `streaming` is set; the transport's default when absent. An inlay is
+     * still held one part at a time (up to `PART_DATA_MAX`), whatever the piece size.
+     */
+    pieceBytes?: number
     onProgress?: (done: number, total: number) => void
 }
 
@@ -193,8 +198,8 @@ class RangedSource implements BodySource {
     private carry: Uint8Array = new Uint8Array(0)
     private checked = false
     /** `openPieces` is the Node store's source: its first range is re-sent once and a second failure fails the export. */
-    constructor(private readonly key: string, private readonly expectedLength: number, private readonly openPieces?: PieceOpener) {
-        this.pieces = openPieces === undefined ? readRangedPieces(key) : null
+    constructor(private readonly key: string, private readonly expectedLength: number, private readonly openPieces?: PieceOpener, pieceBytes?: number) {
+        this.pieces = openPieces === undefined ? readRangedPieces(key, pieceBytes) : null
     }
     private async nextPiece(): Promise<IteratorResult<ReadPiece, void>> {
         if (this.pieces === null && this.openPieces !== undefined) {
@@ -249,14 +254,14 @@ interface ExportableInlay {
  * The inlay `id` ready to be written, from the app store (`fromApp`) when it holds the id with a body of the
  * length its record says, or from the old store; `null` when that store does not hold it now.
  */
-async function openInlay(store: ByteStore, id: string, streaming: boolean, fromApp: boolean, openPieces?: PieceOpener): Promise<ExportableInlay | 'unsupported' | null> {
+async function openInlay(store: ByteStore, id: string, streaming: boolean, fromApp: boolean, openPieces?: PieceOpener, pieceBytes?: number): Promise<ExportableInlay | 'unsupported' | null> {
     const record = fromApp ? await readAppInlayRecord(store, id) : null
     if (fromApp) {
         if (record === null || !await store.has(record.body)) {
             return null
         }
         if (streaming || openPieces !== undefined) {
-            return { repr: record.repr, mime: record.mime, fields: record.fields, len: record.len, source: new RangedSource(record.body, record.len, openPieces) }
+            return { repr: record.repr, mime: record.mime, fields: record.fields, len: record.len, source: new RangedSource(record.body, record.len, openPieces, pieceBytes) }
         }
         const blob = await store.readBlob?.(record.body) ?? null
         if (blob !== null && blob.size === record.len) {
@@ -319,12 +324,12 @@ async function writeOneInlay(sink: InlayBackupSink, id: string, inlay: Exportabl
     return 'written'
 }
 
-async function exportOne(sink: InlayBackupSink, store: ByteStore, id: string, streaming: boolean, openPieces?: PieceOpener): Promise<'written' | InlayLeftOutReason> {
+async function exportOne(sink: InlayBackupSink, store: ByteStore, id: string, streaming: boolean, openPieces?: PieceOpener, pieceBytes?: number): Promise<'written' | InlayLeftOutReason> {
     // The app store copy first, then the old store: the order `getInlayAsset` reads in.
     for (const fromApp of [true, false]) {
         let inlay: ExportableInlay | 'unsupported' | null
         try {
-            inlay = await openInlay(store, id, streaming, fromApp, openPieces)
+            inlay = await openInlay(store, id, streaming, fromApp, openPieces, pieceBytes)
         } catch (error) {
             console.warn('An inlay could not be read:', error)
             inlay = null
@@ -370,7 +375,7 @@ export async function writeInlaysToBackup(sink: InlayBackupSink, store: ByteStor
     for (let i = 0; i < ids.length; i++) {
         const id = ids[i]
         options.onProgress?.(i + 1, ids.length)
-        const outcome = await withInlayLock(id, () => exportOne(sink, store, id, options.streaming, options.openPieces))
+        const outcome = await withInlayLock(id, () => exportOne(sink, store, id, options.streaming, options.openPieces, options.pieceBytes))
         if (outcome === 'written') {
             result.exported++
         } else {
