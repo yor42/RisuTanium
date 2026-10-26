@@ -157,7 +157,7 @@
         }
         for(let i = 0; i < chara.emotionImages.length; i++){
             const path = chara.emotionImages[i][1]
-            emotionImageSrc(path, budget).then((url) => {
+            const settled = emotionImageSrc(path, budget).then((url) => {
                 if(runId !== emotionRunId || url === null){
                     return
                 }
@@ -165,9 +165,9 @@
                 const nowChar = DBState.db.characters[$selectedCharID]
                 const nowPath = nowChar?.type === 'character' ? nowChar.emotionImages?.[i]?.[1] : undefined
                 storeRowAssetUrl(emotionUrls, i, { path, use: 'whole', url }, nowPath, 'whole')
-            }).catch((reason: unknown) => {
-                console.warn('CharConfig: emotion image rejected', reason)
             })
+            // warnOnReject logs a rejection once; the row then stays blank.
+            Promise.resolve(warnOnReject('CharConfig: emotion image rejected', settled)).catch(() => {})
         }
     });
 
