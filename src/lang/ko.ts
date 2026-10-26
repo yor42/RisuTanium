@@ -2284,6 +2284,17 @@ export const languageKorean = {
     cardFileChanged: "임포트하는 동안 카드 파일이 변경되었거나 읽을 수 없어 임포트하지 않았습니다. 다시 임포트해 보세요.",
     cardImageTooLarge: (limitMiB: number) => `이 카드의 이미지가 ${limitMiB} MB 제한보다 커서 카드를 임포트하지 않았습니다.`,
     assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) => `"${fileName}" 파일이 이 브라우저가 저장할 수 있는 ${limitMiB} MB보다 커서 저장하지 않았습니다.`,
+    assetFilesTooLargeForLimit: (fileNames: string[], limitMiB: number) => {
+        const quoted = fileNames.slice(0, 20).map((name) => `"${name}"`)
+        const more = fileNames.length - quoted.length
+        if (fileNames.length === 1) {
+            return `${quoted[0]} 파일이 ${limitMiB} MB 제한보다 커서 추가하지 않았습니다.`
+        }
+        const list = more > 0
+            ? `${quoted.join(', ')} 외 ${more}개`
+            : `${quoted.slice(0, -1).join(', ')} 및 ${quoted[quoted.length - 1]}`
+        return `${list} 파일이 ${limitMiB} MB 제한보다 커서 추가하지 않았습니다.`
+    },
     assetSaveStorageFull: (fileName: string) => `브라우저 저장 공간이 가득 차서 "${fileName}" 파일을 저장하지 못했습니다. 아무것도 저장되지 않았으며 기존 데이터는 그대로입니다. 공간을 확보한 뒤(오래된 채팅, 캐릭터 또는 백업 삭제) 다시 시도하세요.`,
     moduleFileIncomplete: "이 모듈 파일이 불완전하거나 손상되어 임포트하지 않았습니다.",
     moduleAssetTooLarge: (assetName: string, limitMiB: number) => `이 모듈 안의 에셋 "${assetName}"이(가) ${limitMiB} MB 제한보다 커서 모듈을 임포트하지 않았습니다.`,

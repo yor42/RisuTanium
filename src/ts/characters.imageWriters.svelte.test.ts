@@ -70,6 +70,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     checkCharOrder: vi.fn(),
     downloadFile: vi.fn(),
     getFileSrc: vi.fn(async (loc: string) => `blob:${loc}`),
+    pickedAssetLimitBytes: vi.fn(async () => 1024 * 1024),
     requiresFullEncoderReload: { state: false },
     forageStorage: {
         keys: vi.fn(async () => []),
@@ -103,8 +104,10 @@ vi.mock(import('src/ts/util'), () => ({
     findCharacterbyId: vi.fn(),
     findCharacterIndexbyId: vi.fn(() => -1),
     getUserName: vi.fn(() => 'User'),
-    selectMultipleFile: vi.fn(),
-    selectSingleFile: vi.fn(),
+    // The picked "files" of these tests carry their bytes in `data`.
+    readPickedFileBytes: vi.fn(async (file: { data: Uint8Array }) => file.data),
+    selectMultipleFileObjects: vi.fn(),
+    selectSingleFileObject: vi.fn(),
 }) as unknown as typeof import('src/ts/util'))
 
 vi.mock(import('src/ts/media'), () => ({
@@ -154,10 +157,10 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 import { addCharEmotion, addingEmotion, makeGroupImage, selectCharImg } from './characters'
 import { getImageType } from 'src/ts/media'
 import { PngChunk } from 'src/ts/pngChunk'
-import { alertStore } from 'src/ts/alert'
+import { alertError, alertStore } from 'src/ts/alert'
 import { saveImage } from 'src/ts/storage/database.svelte'
 import { markCharacterForSave } from 'src/ts/storage/characterSaveMarks'
-import { findCharacterbyId, selectMultipleFile, selectSingleFile } from 'src/ts/util'
+import { findCharacterbyId, readPickedFileBytes, selectMultipleFileObjects, selectSingleFileObject } from 'src/ts/util'
 import { selectedCharID } from 'src/ts/stores.svelte'
 import { isBusy, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 
@@ -210,7 +213,7 @@ async function flush(): Promise<void> {
     await new Promise<void>((r) => setTimeout(r, 0))
 }
 
-const picked = { name: 'new.webp', data: new Uint8Array([1, 2, 3]) }
+const picked = { name: 'new.webp', size: 3, data: new Uint8Array([1, 2, 3]) }
 
 let warn: ReturnType<typeof vi.spyOn>
 
@@ -218,8 +221,8 @@ beforeEach(() => {
     resetBusyActionsForTest()
     vi.mocked(saveImage).mockReset().mockResolvedValue('saved/new.webp')
     vi.mocked(markCharacterForSave).mockReset()
-    vi.mocked(selectSingleFile).mockReset()
-    vi.mocked(selectMultipleFile).mockReset()
+    vi.mocked(selectSingleFileObject).mockReset()
+    vi.mocked(selectMultipleFileObjects).mockReset()
     vi.mocked(getImageType).mockReset().mockReturnValue('WEBP')
     vi.mocked(PngChunk.readGenerator).mockReset()
     addingEmotion.set(false)
@@ -237,7 +240,7 @@ describe('selectCharImg writes into the character that was acted on', () => {
     test('guard: an unchanged list gets the new image, the old one becomes an asset, and the character is marked', async () => {
         const characters = installList(fullCharacter('X', 'old.png'), fullCharacter('Y', 'y.png'))
         const picker = deferred<typeof picked | null>()
-        vi.mocked(selectSingleFile).mockReturnValue(picker.promise as never)
+        vi.mocked(selectSingleFileObject).mockReturnValue(picker.promise as never)
 
         const running = selectCharImg(0)
         expect(isBusy()).toBe(false)
@@ -254,7 +257,7 @@ describe('selectCharImg writes into the character that was acted on', () => {
 
     test('guard: a cancelled picker writes nothing and starts no busy entry', async () => {
         const characters = installList(fullCharacter('X', 'old.png'))
-        vi.mocked(selectSingleFile).mockResolvedValue(null as never)
+        vi.mocked(selectSingleFileObject).mockResolvedValue(null as never)
 
         await selectCharImg(0)
 
@@ -263,10 +266,27 @@ describe('selectCharImg writes into the character that was acted on', () => {
         expect(isBusy()).toBe(false)
     })
 
+    test('regression reproducer: a picture above the asset limit is not read or saved, the character is untouched, one notice names it', async () => {
+        const characters = installList(fullCharacter('X', 'old.png'))
+        vi.mocked(alertError).mockClear()
+        vi.mocked(readPickedFileBytes).mockClear()
+        vi.mocked(selectSingleFileObject).mockResolvedValue({ ...picked, name: 'huge.png', size: 1024 * 1024 + 1 } as never)
+
+        await selectCharImg(0)
+
+        expect(readPickedFileBytes).not.toHaveBeenCalled()
+        expect(saveImage).not.toHaveBeenCalled()
+        expect(characters[0].image).toBe('old.png')
+        expect(markCharacterForSave).not.toHaveBeenCalled()
+        expect(isBusy()).toBe(false)
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(alertError).toHaveBeenCalledWith('"huge.png" is larger than the 1 MB limit, so it was not added.')
+    })
+
     test('regression reproducer: a slot swapped for a stub during the picker receives nothing', async () => {
         const characters = installList(fullCharacter('X', 'old.png'), fullCharacter('Y', 'y.png'))
         const picker = deferred<typeof picked | null>()
-        vi.mocked(selectSingleFile).mockReturnValue(picker.promise as never)
+        vi.mocked(selectSingleFileObject).mockReturnValue(picker.promise as never)
 
         const running = selectCharImg(0)
         characters[0] = stubOf('X', 'old.png')
@@ -286,7 +306,7 @@ describe('selectCharImg writes into the character that was acted on', () => {
         const characters = installList(fullCharacter('X', 'old.png'), fullCharacter('Y', 'y.png'))
         const x = characters[0]
         const picker = deferred<typeof picked | null>()
-        vi.mocked(selectSingleFile).mockReturnValue(picker.promise as never)
+        vi.mocked(selectSingleFileObject).mockReturnValue(picker.promise as never)
 
         const running = selectCharImg(0)
         characters.unshift(fullCharacter('Z', 'z.png'))
@@ -303,7 +323,7 @@ describe('selectCharImg writes into the character that was acted on', () => {
     test('regression reproducer: a target removed during the picker leaves its neighbour untouched', async () => {
         const characters = installList(fullCharacter('X', 'old.png'), fullCharacter('Y', 'y.png'))
         const picker = deferred<typeof picked | null>()
-        vi.mocked(selectSingleFile).mockReturnValue(picker.promise as never)
+        vi.mocked(selectSingleFileObject).mockReturnValue(picker.promise as never)
 
         const running = selectCharImg(0)
         characters.splice(0, 1)
@@ -324,7 +344,7 @@ describe('selectCharImg writes into the character that was acted on', () => {
             yield { key: 'Title', value: 'a title' }
         } as never)
         const picker = deferred<typeof picked | null>()
-        vi.mocked(selectSingleFile).mockReturnValue(picker.promise as never)
+        vi.mocked(selectSingleFileObject).mockReturnValue(picker.promise as never)
 
         const running = selectCharImg(0)
         characters.unshift(fullCharacter('Z', 'z.png'))
@@ -339,7 +359,7 @@ describe('selectCharImg writes into the character that was acted on', () => {
         const characters = installList(fullCharacter('X', 'old.png'))
         const saving = deferred<string>()
         vi.mocked(saveImage).mockReturnValue(saving.promise)
-        vi.mocked(selectSingleFile).mockResolvedValue(picked as never)
+        vi.mocked(selectSingleFileObject).mockResolvedValue(picked as never)
 
         const running = selectCharImg(0)
         await flush()
@@ -359,11 +379,11 @@ describe('addCharEmotion writes into the character that was acted on', () => {
     test('guard: an unchanged list gets the emotion images and the character is marked', async () => {
         const characters = installList(fullCharacter('X', 'x.png'))
         const picker = deferred<typeof picked[] | null>()
-        vi.mocked(selectMultipleFile).mockReturnValue(picker.promise as never)
+        vi.mocked(selectMultipleFileObjects).mockReturnValue(picker.promise as never)
 
         const running = addCharEmotion(0)
         expect(get(addingEmotion)).toBe(true)
-        picker.resolve([{ name: 'happy.png', data: picked.data }])
+        picker.resolve([{ ...picked, name: 'happy.png' }])
         await running
 
         expect((characters[0] as { emotionImages: unknown[] }).emotionImages).toEqual([['happy', 'saved/new.webp']])
@@ -376,7 +396,7 @@ describe('addCharEmotion writes into the character that was acted on', () => {
         const characters = installList(fullCharacter('X', 'x.png'))
         const saving = deferred<string>()
         vi.mocked(saveImage).mockReturnValue(saving.promise)
-        vi.mocked(selectMultipleFile).mockResolvedValue([{ name: 'happy.png', data: picked.data }] as never)
+        vi.mocked(selectMultipleFileObjects).mockResolvedValue([{ ...picked, name: 'happy.png' }] as never)
 
         const running = addCharEmotion(0)
         await flush()
@@ -397,7 +417,7 @@ describe('addCharEmotion writes into the character that was acted on', () => {
         const x = characters[0]
         const saving = deferred<string>()
         vi.mocked(saveImage).mockReturnValue(saving.promise)
-        vi.mocked(selectMultipleFile).mockResolvedValue([{ name: 'happy.png', data: picked.data }] as never)
+        vi.mocked(selectMultipleFileObjects).mockResolvedValue([{ ...picked, name: 'happy.png' }] as never)
 
         const running = addCharEmotion(0)
         await flush()
@@ -414,12 +434,12 @@ describe('addCharEmotion writes into the character that was acted on', () => {
     test('regression reproducer: a slot swapped for a stub during the picker receives nothing', async () => {
         const characters = installList(fullCharacter('X', 'x.png'))
         const picker = deferred<typeof picked[] | null>()
-        vi.mocked(selectMultipleFile).mockReturnValue(picker.promise as never)
+        vi.mocked(selectMultipleFileObjects).mockReturnValue(picker.promise as never)
 
         const running = addCharEmotion(0)
         characters[0] = stubOf('X', 'x.png')
         const stub = characters[0]
-        picker.resolve([{ name: 'happy.png', data: picked.data }])
+        picker.resolve([{ ...picked, name: 'happy.png' }])
 
         await expect(running).resolves.toBeUndefined()
         expect((stub as { emotionImages?: unknown[] }).emotionImages).toBeUndefined()

@@ -2,8 +2,9 @@
     import { FileMusicIcon, PlusIcon } from "@lucide/svelte";
     import { type character, type groupChat } from "src/ts/storage/database.svelte";
     import { DBState } from "src/ts/stores.svelte";
-    import { getFileSrc, saveAssetFromBlob } from "src/ts/globalApi.svelte";
+    import { getFileSrc, pickedAssetLimitBytes, saveAssetFromBlob } from "src/ts/globalApi.svelte";
     import { selectMultipleFileObjects } from "src/ts/util";
+    import { reportRefusedAssets, splitByAssetLimit, warnRefusedAssets } from "src/ts/storage/pickedAssetLimit";
     import { beginBusy } from "src/ts/process/memory/busyActions";
     import { markCharacterForSave } from "src/ts/storage/characterSaveMarks";
     interface Props {
@@ -53,9 +54,15 @@
             if(!da){
                 return
             }
+            const limit = await pickedAssetLimitBytes()
+            const { within, refused } = splitByAssetLimit(da, limit)
+            if(within.length === 0){
+                reportRefusedAssets(refused, limit)
+                return
+            }
             const busy = beginBusy('assetAdd')
             try {
-                for(const f of da){
+                for(const f of within){
                     console.log(f)
                     const name = f.name
                     const extension = name.split('.').pop().toLowerCase()
@@ -72,9 +79,13 @@
                     // edits the selection effects would otherwise save.
                     markCharacterForSave(target.chaId)
                 }
+            } catch (error) {
+                warnRefusedAssets(refused, limit)
+                throw error
             } finally {
                 busy.end()
             }
+            reportRefusedAssets(refused, limit)
         }
     }}>
         <PlusIcon />

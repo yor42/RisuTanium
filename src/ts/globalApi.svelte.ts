@@ -51,6 +51,7 @@ import { StoreBlobUnsupportedError, StoreInvalidKeyError, StoreVersionConflictEr
 import { NodeHttpError } from "./storage/store/nodeHttpStore";
 import { NODE_BODY_LIMIT_BYTES, WEB_ASSET_LIMIT_BYTES } from "./storage/nodeBodyLimit";
 import { storeAssetLimitBytes } from "./storage/assetLimit";
+import { assertBlobWithinAssetLimit } from "./storage/pickedAssetLimit";
 import { displayMimeOfAssetKey } from "./storage/assetDisplayMime";
 import { assetOrInlayBodyKeyViolation } from "./storage/store/keyRules";
 import { fitsNodeBodyLimit } from "./storage/bootArchivePass";
@@ -947,6 +948,16 @@ export function browserStorageTooLargeError(fileName: string, cause?: unknown): 
     return cause === undefined ? new Error(message) : new Error(message, { cause })
 }
 
+/**
+ * The largest file a user may add as an asset, in bytes: the page store's asset limit. The piece capability is settled
+ * first, because a Node page that has not yet recorded it would otherwise answer the smaller body limit and refuse
+ * files that save fine in pieces.
+ */
+export async function pickedAssetLimitBytes(): Promise<number> {
+    await pieceStoreOrNull()
+    return storeAssetLimitBytes()
+}
+
 /** The bytes one slice of a Blob read by `saveAssetFromBlob` holds. */
 const BLOB_PIECE_BYTES = 4 * 1024 * 1024
 
@@ -962,6 +973,8 @@ const BLOB_PIECE_BYTES = 4 * 1024 * 1024
  * the browser cannot keep a Blob, a file within `WEB_ASSET_LIMIT_BYTES` is read
  * whole and saved by `saveAsset`, and a larger one is refused. Anywhere else, and
  * for a smaller Blob, it is read whole and `saveAsset` saves it.
+ * On every store, a Blob above the store's asset limit (`pickedAssetLimitBytes`) is refused first with
+ * `AssetTooLargeError`, before any byte is read.
  * An error thrown while a slice is read (the file changed or vanished) is
  * rethrown as it is, with nothing stored under the key.
  */
@@ -970,6 +983,7 @@ export async function saveAssetFromBlob(blob: Blob, fileName: string = '', optio
     const threshold = options.minPieceBytes ?? ASSET_PIECE_SAVE_MIN_BYTES
     const pieceBytes = options.pieceBytes ?? BLOB_PIECE_BYTES
     const displayName = assetDisplayName(blob, fileName)
+    assertBlobWithinAssetLimit(blob, displayName, await pickedAssetLimitBytes())
     if (store.readBlob !== undefined && store.writeBlob !== undefined && blob.size >= threshold) {
         // The browser's IndexedDB: the file is stored under a temporary name and the stored copy is named after its hash.
         const kept = await saveAssetBlobKept(store.writeBlob.bind(store), store, blob, fileName, displayName, pieceBytes)

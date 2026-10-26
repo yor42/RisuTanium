@@ -72,6 +72,7 @@ vi.mock(
             loadAsset: vi.fn(),
             saveAsset: vi.fn(),
             saveAssetFromBlob: saveAssetSpy,
+            pickedAssetLimitBytes: vi.fn(async () => 1024 * 1024 * 1024),
             readImage: vi.fn(),
             globalFetch: vi.fn(),
             aiWatermarkingLawApplies: vi.fn(() => false),

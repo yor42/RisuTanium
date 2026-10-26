@@ -80,6 +80,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     downloadFile: vi.fn(),
     getFileSrc: vi.fn(),
     requiresFullEncoderReload: requiresFullEncoderReloadMock,
+    pickedAssetLimitBytes: vi.fn(async () => 1024 * 1024),
     forageStorage: {
         keys: vi.fn(async () => []),
         getItem: vi.fn(async () => null),
@@ -126,6 +127,8 @@ vi.mock(import('src/ts/util'), () => ({
     }),
     getUserName: vi.fn(() => 'User'),
     selectMultipleFile: vi.fn(),
+    selectMultipleFileObjects: vi.fn(),
+    readPickedFileBytes: vi.fn(async () => new Uint8Array([1])),
     selectSingleFile: vi.fn(),
 }) as unknown as typeof import('src/ts/util'))
 
@@ -174,7 +177,7 @@ import { requiresFullEncoderReload } from 'src/ts/globalApi.svelte'
 import { registerDbChangeEffects } from './storage/dbChangeEffects.svelte'
 import { RisuSaveEncoder, decodeRisuSave } from './storage/risuSave'
 import { restoreCharacterFromTrash, removeChar, addCharEmotion } from './characters'
-import { selectMultipleFile } from 'src/ts/util'
+import { selectMultipleFileObjects } from 'src/ts/util'
 import { saveImage } from 'src/ts/storage/database.svelte'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from './storage/characterSaveMarks'
 
@@ -336,7 +339,7 @@ describe('addCharEmotion on a character that is not selected when its files land
         installDb()
         ;(DBState.db.characters[0] as unknown as { emotionImages: unknown[] }).emotionImages = []
         selectedCharID.set(1)
-        vi.mocked(selectMultipleFile).mockResolvedValueOnce([{ name: 'smile.png', data: new Uint8Array([1]) }])
+        vi.mocked(selectMultipleFileObjects).mockResolvedValueOnce([new File([new Uint8Array([1])], 'smile.png')])
         vi.mocked(saveImage).mockResolvedValueOnce('assets/smile.png')
         const tracker = makeTracker()
         const schedule = vi.fn()

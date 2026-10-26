@@ -17,6 +17,7 @@ import { describe, test, expect, vi, beforeEach } from 'vitest'
 import type { Database, folder } from 'src/ts/storage/database.svelte'
 import { DBState } from 'src/ts/stores.svelte'
 import { language } from 'src/lang'
+import { alertError } from 'src/ts/alert'
 import { runFolderMenu, type FolderMenuHost, type FolderMenuTarget } from './folderMenu'
 
 type TestCharacter = { chaId: string, name: string, trashTime?: number, hidden?: boolean }
@@ -41,6 +42,7 @@ vi.mock(import('src/ts/stores.svelte'), () => ({ DBState: { db: {} } }) as unkno
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     checkCharOrder: checkCharOrderSpy,
     saveAssetFromBlob: saveAssetSpy,
+    pickedAssetLimitBytes: vi.fn(async () => 1024 * 1024),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
 vi.mock(import('src/ts/process/memory/busyActions'), () => ({
@@ -76,6 +78,7 @@ vi.mock(import('src/ts/alert'), () => ({
         return answers.shift() ?? '99'
     }),
     alertInput: vi.fn(async () => inputs.shift() ?? ''),
+    alertError: vi.fn(),
 }) as unknown as typeof import('src/ts/alert'))
 
 const ch = (chaId: string, extra: Partial<TestCharacter> = {}): TestCharacter => ({ chaId, name: chaId, ...extra })
@@ -257,6 +260,21 @@ describe('4. picture from a file', () => {
         expect(saveAssetSpy).not.toHaveBeenCalled()
         expect(busyHandles).toHaveLength(0)
         expect(db.writes).toHaveLength(0)
+    })
+
+    test('regression reproducer: a picture above the asset limit saves nothing, starts no busy, writes nothing and shows one notice', async () => {
+        const db = setupDb([fold('f', ['a'])], characters())
+        const huge = new File([new Uint8Array([1])], 'huge.png')
+        Object.defineProperty(huge, 'size', { value: 1024 * 1024 + 1 })
+        selectSingleFileSpy.mockResolvedValue(huge)
+        vi.mocked(alertError).mockClear()
+        answers.push(TOP.picture, '1')
+        await runFolderMenu(targetOf('f'), makeHost().host)
+        expect(saveAssetSpy).not.toHaveBeenCalled()
+        expect(busyHandles).toHaveLength(0)
+        expect(db.writes).toHaveLength(0)
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(alertError).toHaveBeenCalledWith('"huge.png" is larger than the 1 MB limit, so it was not added.')
     })
 
     test('a folder that vanished while the chooser was open has no asset saved for it', async () => {

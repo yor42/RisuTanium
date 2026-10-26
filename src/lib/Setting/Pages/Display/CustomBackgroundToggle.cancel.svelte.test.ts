@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
     db: { customBackground: '', allowAllExtentionFiles: false, characters: [] as unknown[] },
     begin: vi.fn(() => ({ end: vi.fn() })),
     save: vi.fn(async (_file: Blob) => 'saved-bg'),
+    alert: vi.fn(),
 }))
 
 vi.mock(import('src/ts/storage/database.svelte'), () => ({
@@ -22,7 +23,12 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
 }) as unknown as typeof import('src/ts/storage/database.svelte'))
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     saveAssetFromBlob: h.save,
+    pickedAssetLimitBytes: vi.fn(async () => 1024 * 1024),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
+vi.mock(import('src/ts/alert'), async (importOriginal) => ({
+    ...await importOriginal(),
+    alertError: h.alert,
+}))
 vi.mock(import('src/ts/stores.svelte'), () => ({
     DBState: { db: h.db },
     selectedCharID: { subscribe: vi.fn() },
@@ -43,6 +49,7 @@ beforeEach(() => {
     h.db.customBackground = ''
     h.begin.mockClear()
     h.save.mockClear()
+    h.alert.mockClear()
     target = document.createElement('div')
     document.body.appendChild(target)
     app = mount(CustomBackgroundToggle, { target, props: {} }) as unknown as Record<string, unknown>
@@ -72,6 +79,21 @@ describe('the custom background switch', () => {
         expect(h.db.customBackground).toBe('')
         expect(h.begin).not.toHaveBeenCalled()
         expect(h.save).not.toHaveBeenCalled()
+    })
+
+    test('regression reproducer: an image above the asset limit puts the setting back off, saves nothing and shows one notice', async () => {
+        turnOn()
+
+        const file = new File([Uint8Array.of(1, 2)], 'huge.png')
+        Object.defineProperty(file, 'size', { value: 1024 * 1024 + 1 })
+        picker.pick([file])
+        await new Promise((resolve) => setTimeout(resolve, 300))
+
+        expect(h.db.customBackground).toBe('')
+        expect(h.begin).not.toHaveBeenCalled()
+        expect(h.save).not.toHaveBeenCalled()
+        expect(h.alert).toHaveBeenCalledTimes(1)
+        expect(h.alert).toHaveBeenCalledWith('"huge.png" is larger than the 1 MB limit, so it was not added.')
     })
 
     test('guard: a chosen image becomes the custom background', async () => {

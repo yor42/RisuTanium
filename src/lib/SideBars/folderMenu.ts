@@ -3,7 +3,8 @@ import { language } from '../../lang'
 import { folderEntryAt, folderMemberIds, editFolder, ungroupFolder, type FolderRef } from './sidebarOrder'
 import { trashFolderMembers, untrashedMembersOf, visibleCharacterIds } from '../../ts/characters'
 import { getCharacterIndexObject, selectSingleFileObject } from 'src/ts/util'
-import { saveAssetFromBlob } from 'src/ts/globalApi.svelte'
+import { pickedAssetLimitBytes, saveAssetFromBlob } from 'src/ts/globalApi.svelte'
+import { reportRefusedAssets } from 'src/ts/storage/pickedAssetLimit'
 import { beginBusy } from 'src/ts/process/memory/busyActions'
 import { alertInput, alertSelect } from 'src/ts/alert'
 import { applyFolderImage } from './folderImage'
@@ -147,6 +148,12 @@ export async function runFolderMenu(target: FolderMenuTarget, host: FolderMenuHo
 
                 // A folder that is gone, or whose id is not unique, has no safe target: no asset is saved for it.
                 if(!folderExists(folderId)) {
+                    return
+                }
+
+                const limit = await pickedAssetLimitBytes()
+                if(folderImage.size > limit) {
+                    reportRefusedAssets([folderImage], limit)
                     return
                 }
 

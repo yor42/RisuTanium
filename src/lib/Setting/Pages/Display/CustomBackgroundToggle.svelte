@@ -1,6 +1,7 @@
 <script lang="ts">
     import { language } from 'src/lang';
-    import { saveAssetFromBlob } from 'src/ts/globalApi.svelte';
+    import { pickedAssetLimitBytes, saveAssetFromBlob } from 'src/ts/globalApi.svelte';
+    import { reportRefusedAssets } from 'src/ts/storage/pickedAssetLimit';
     import { DBState } from 'src/ts/stores.svelte';
     import { selectSingleFileObject } from 'src/ts/util';
     import Check from 'src/lib/UI/GUI/CheckInput.svelte';
@@ -16,6 +17,12 @@
                 const d = await selectSingleFileObject(['png', 'webp', 'gif']);
                 if (!d) {
                     DBState.db.customBackground = '';
+                    return;
+                }
+                const limit = await pickedAssetLimitBytes();
+                if (d.size > limit) {
+                    DBState.db.customBackground = '';
+                    reportRefusedAssets([d], limit);
                     return;
                 }
                 const busy = beginBusy('imageAdd');

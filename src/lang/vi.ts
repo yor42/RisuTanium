@@ -2284,6 +2284,17 @@ export const languageVietnamese = {
     cardFileChanged: "Tệp thẻ đã thay đổi hoặc không thể đọc được trong khi nhập nên không được nhập. Hãy thử nhập lại.",
     cardImageTooLarge: (limitMiB: number) => `Ảnh của thẻ này lớn hơn giới hạn ${limitMiB} MB nên thẻ không được nhập.`,
     assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) => `Tệp "${fileName}" lớn hơn ${limitMiB} MB mà trình duyệt này có thể lưu trữ nên không được lưu.`,
+    assetFilesTooLargeForLimit: (fileNames: string[], limitMiB: number) => {
+        const quoted = fileNames.slice(0, 20).map((name) => `"${name}"`)
+        const more = fileNames.length - quoted.length
+        if (fileNames.length === 1) {
+            return `Tệp ${quoted[0]} lớn hơn giới hạn ${limitMiB} MB nên không được thêm.`
+        }
+        const list = more > 0
+            ? `${quoted.join(', ')} và ${more} tệp khác`
+            : `${quoted.slice(0, -1).join(', ')} và ${quoted[quoted.length - 1]}`
+        return `Các tệp ${list} lớn hơn giới hạn ${limitMiB} MB nên không được thêm.`
+    },
     assetSaveStorageFull: (fileName: string) => `Không thể lưu tệp "${fileName}" vì bộ nhớ trình duyệt của bạn đã đầy. Không có gì được lưu và dữ liệu hiện có của bạn vẫn nguyên vẹn. Hãy giải phóng dung lượng (xóa các cuộc trò chuyện cũ, nhân vật hoặc bản sao lưu) rồi thử lại.`,
     moduleFileIncomplete: "Tệp mô-đun này không đầy đủ hoặc bị hỏng nên không được nhập.",
     moduleAssetTooLarge: (assetName: string, limitMiB: number) => `Tài nguyên "${assetName}" trong mô-đun này lớn hơn giới hạn ${limitMiB} MB nên mô-đun không được nhập.`,

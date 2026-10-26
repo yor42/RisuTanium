@@ -19,7 +19,8 @@
     import { exportChar, openRealmUpload } from "src/ts/characterCards";
     import { fetchFishSpeechModels, getElevenTTSVoices, getWebSpeechTTSVoices, getVOICEVOXVoices, oaiVoices, getNovelAIVoices } from "src/ts/process/tts";
     import { createFishSpeechDefaults, createNovelAIVoiceDefaults } from "src/ts/process/ttsDefaults";
-    import { getFileSrc, saveAssetFromBlob } from "src/ts/globalApi.svelte";
+    import { getFileSrc, pickedAssetLimitBytes, saveAssetFromBlob } from "src/ts/globalApi.svelte";
+    import { reportRefusedAssets, splitByAssetLimit, warnRefusedAssets } from "src/ts/storage/pickedAssetLimit";
     import { addGroupChar, rmCharFromGroup } from "src/ts/process/group";
     import TextInput from "../UI/GUI/TextInput.svelte";
     import NumberInput from "../UI/GUI/NumberInput.svelte";
@@ -598,18 +599,28 @@
                                     if(!da){
                                         return
                                     }
+                                    const limit = await pickedAssetLimitBytes()
+                                    const { within, refused } = splitByAssetLimit(da, limit)
+                                    if(within.length === 0){
+                                        reportRefusedAssets(refused, limit)
+                                        return
+                                    }
                                     const busy = beginBusy('assetAdd')
                                     try {
-                                        for(const f of da){
+                                        for(const f of within){
                                             const name = f.name
                                             const extension = name.split('.').pop().toLowerCase()
                                             const imgp = await saveAssetFromBlob(f, extension)
                                             DBState.db.characters[$selectedCharID].additionalAssets.push([name, imgp, extension])
                                             DBState.db.characters[$selectedCharID].additionalAssets = DBState.db.characters[$selectedCharID].additionalAssets
                                         }
+                                    } catch (error) {
+                                        warnRefusedAssets(refused, limit)
+                                        throw error
                                     } finally {
                                         busy.end()
                                     }
+                                    reportRefusedAssets(refused, limit)
                                 }
                             }}>
                                 <PlusIcon />
@@ -941,6 +952,11 @@
                     'mp3'
                 ])
                 if(!audio){
+                    return null
+                }
+                const limit = await pickedAssetLimitBytes()
+                if(audio.size > limit){
+                    reportRefusedAssets([audio], limit)
                     return null
                 }
                 const saveId = await saveAssetFromBlob(audio)

@@ -2284,6 +2284,17 @@ export const languageChinese = {
     "cardFileChanged": "导入过程中角色卡文件发生了变化或无法读取，因此未导入。请重新导入。",
     "cardImageTooLarge": (limitMiB: number) => `此角色卡的图片超过了 ${limitMiB} MB 的限制，因此该角色卡未导入。`,
     "assetFileTooLargeForBrowserStorage": (fileName: string, limitMiB: number) => `“${fileName}”超过了此浏览器可存储的 ${limitMiB} MB，因此未保存。`,
+    "assetFilesTooLargeForLimit": (fileNames: string[], limitMiB: number) => {
+        const quoted = fileNames.slice(0, 20).map((name) => `“${name}”`)
+        const more = fileNames.length - quoted.length
+        if (fileNames.length === 1) {
+            return `${quoted[0]}超过了 ${limitMiB} MB 的限制，因此未添加。`
+        }
+        const list = more > 0
+            ? `${quoted.join('、')}以及另外 ${more} 个文件`
+            : `${quoted.slice(0, -1).join('、')}和${quoted[quoted.length - 1]}`
+        return `${list}超过了 ${limitMiB} MB 的限制，因此未添加。`
+    },
     "assetSaveStorageFull": (fileName: string) => `浏览器存储空间已满，无法保存“${fileName}”。未保存任何内容，您现有的数据完好无损。请释放空间（删除旧聊天、角色或备份）后重试。`,
     "moduleFileIncomplete": "此模块文件不完整或已损坏，因此未导入。",
     "moduleAssetTooLarge": (assetName: string, limitMiB: number) => `此模块内的资源“${assetName}”超过了 ${limitMiB} MB 的限制，因此该模块未导入。`,

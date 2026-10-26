@@ -4,8 +4,9 @@
  * Closing the file chooser of the emotion image picker without choosing files
  * does nothing: the pending flag that disables the add button is cleared, no
  * busy indicator starts and no emotion is added. Runs the REAL `addCharEmotion`
- * over the REAL `selectMultipleFile`; the chooser is played by
- * `util.domPickerHarness.ts`.
+ * over the REAL `selectMultipleFileObjects` and `readPickedFileBytes`; the chooser
+ * is played by `util.domPickerHarness.ts`. A file above the limit is never handed
+ * to `FileReader.readAsArrayBuffer`, which is how the real reader reads a file.
  */
 import { writable, get } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -58,6 +59,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     checkCharOrder: vi.fn(),
     downloadFile: vi.fn(),
     getFileSrc: vi.fn(),
+    pickedAssetLimitBytes: vi.fn(async () => 1024 * 1024),
     requiresFullEncoderReload: { state: false },
     forageStorage: {
         keys: vi.fn(async () => []),
@@ -134,18 +136,36 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({ getCurrentWebviewWindow: vi.fn
 vi.mock('src/lib/UI/PopupList.svelte', () => ({ default: {} }))
 
 import { addCharEmotion, addingEmotion } from './characters'
+import { alertError } from 'src/ts/alert'
+
+/** A file that reports `size` bytes without holding them; a read of it is caught by the `FileReader` spy. */
+function fileReportingSize(name: string, size: number): File {
+    const file = new File([Uint8Array.of(1)], name)
+    Object.defineProperty(file, 'size', { value: size })
+    return file
+}
 
 let picker: DomPicker
+// Every Blob the real reader was asked to read, through the same call the real reader uses.
+let readBlobs: Blob[]
 
 beforeEach(() => {
     picker = installDomPicker()
+    readBlobs = []
+    const realRead = FileReader.prototype.readAsArrayBuffer
+    vi.spyOn(FileReader.prototype, 'readAsArrayBuffer').mockImplementation(function (this: FileReader, blob: Blob) {
+        readBlobs.push(blob)
+        return realRead.call(this, blob)
+    })
     h.begin.mockClear()
     h.save.mockClear()
+    vi.mocked(alertError).mockClear()
     testDb.db = { characters: [{ type: 'character', chaId: 'c1', emotionImages: [] }], allowAllExtentionFiles: false } as unknown as Database
     addingEmotion.set(false)
 })
 
 afterEach(() => {
+    vi.mocked(FileReader.prototype.readAsArrayBuffer).mockRestore()
     picker.restore()
 })
 
@@ -170,5 +190,49 @@ describe('addCharEmotion', () => {
         expect((await settledWithin(pending)).pending).toBe(false)
         expect(get(addingEmotion)).toBe(false)
         expect((testDb.db.characters[0] as unknown as { emotionImages: unknown[][] }).emotionImages.map((entry) => entry[0])).toEqual(['happy', 'sad'])
+        expect(alertError).not.toHaveBeenCalled()
+    })
+
+    test('regression reproducer: when every file is above the limit the pending flag is cleared, nothing is read or added, one notice names them', async () => {
+        const pending = addCharEmotion(0)
+
+        picker.pick([fileReportingSize('big1.png', 1024 * 1024 + 1), fileReportingSize('big2.png', 2 * 1024 * 1024)])
+
+        expect((await settledWithin(pending)).pending).toBe(false)
+        expect(readBlobs).toEqual([])
+        expect(get(addingEmotion)).toBe(false)
+        expect(h.begin).not.toHaveBeenCalled()
+        expect(h.save).not.toHaveBeenCalled()
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(alertError).mock.calls[0][0]).toBe('"big1.png" and "big2.png" are larger than the 1 MB limit, so they were not added.')
+    })
+
+    test('regression reproducer: a mixed pick saves the files within the limit in order, then reports the refused ones once', async () => {
+        const pending = addCharEmotion(0)
+
+        picker.pick([new File([Uint8Array.of(1)], 'happy.png'), fileReportingSize('big.png', 1024 * 1024 + 1), new File([Uint8Array.of(2)], 'sad.webp')])
+
+        expect((await settledWithin(pending)).pending).toBe(false)
+        expect((readBlobs as File[]).map((blob) => blob.name)).toEqual(['happy.png', 'sad.webp'])
+        expect(get(addingEmotion)).toBe(false)
+        expect((testDb.db.characters[0] as unknown as { emotionImages: unknown[][] }).emotionImages.map((entry) => entry[0])).toEqual(['happy', 'sad'])
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(alertError).mock.calls[0][0]).toBe('"big.png" is larger than the 1 MB limit, so it was not added.')
+        expect(vi.mocked(alertError).mock.invocationCallOrder[0]).toBeGreaterThan(h.save.mock.invocationCallOrder[1])
+    })
+
+    test('when a later save throws, the refused names are logged and the save error escapes', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        h.save.mockRejectedValueOnce(new Error('disk full'))
+        const pending = addCharEmotion(0)
+        const outcome = pending.then(() => 'resolved', (error: Error) => error.message)
+
+        picker.pick([new File([Uint8Array.of(1)], 'happy.png'), fileReportingSize('big.png', 1024 * 1024 + 1)])
+
+        expect(await outcome).toBe('disk full')
+        expect(get(addingEmotion)).toBe(false)
+        expect(warn).toHaveBeenCalledWith('"big.png" is larger than the 1 MB limit, so it was not added.')
+        expect(alertError).not.toHaveBeenCalled()
+        warn.mockRestore()
     })
 })

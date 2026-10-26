@@ -1,7 +1,8 @@
 import { getDatabase, saveImage, setDatabase } from "./storage/database.svelte"
 import { selectSingleFile, selectSingleFileObject, sleep } from "./util"
 import { alertError, alertNormal, alertStore } from "./alert"
-import { AppendableBuffer, downloadFile, readImage, saveAssetFromBlob } from "./globalApi.svelte"
+import { AppendableBuffer, downloadFile, pickedAssetLimitBytes, readImage, saveAssetFromBlob } from "./globalApi.svelte"
+import { reportRefusedAssets } from "./storage/pickedAssetLimit"
 import { language } from "src/lang"
 import { reencodeImage } from "./process/files/inlays"
 import { PngChunk } from "./pngChunk"
@@ -12,6 +13,11 @@ import { beginBusy, type BusyHandle } from "./process/memory/busyActions"
 export async function selectUserImg() {
     const selected = await selectSingleFileObject(['png'])
     if (!selected) {
+        return
+    }
+    const limit = await pickedAssetLimitBytes()
+    if (selected.size > limit) {
+        reportRefusedAssets([selected], limit)
         return
     }
     const busy = beginBusy('imageAdd')

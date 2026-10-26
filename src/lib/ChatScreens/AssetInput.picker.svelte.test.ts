@@ -35,21 +35,33 @@ vi.mock('src/ts/storage/database.svelte', () => ({}))
 vi.mock('src/ts/globalApi.svelte', () => ({
     getFileSrc: vi.fn(async (loc: string) => `blob:${loc}`),
     saveAssetFromBlob: vi.fn(),
+    pickedAssetLimitBytes: vi.fn(async () => 1024 * 1024),
 }))
 
 vi.mock('src/ts/util', () => ({
     selectMultipleFileObjects: vi.fn(),
 }))
 
+vi.mock('src/ts/alert', () => ({
+    alertError: vi.fn(),
+}))
+
 vi.mock('src/ts/storage/characterSaveMarks', () => ({
     markCharacterForSave: vi.fn(),
 }))
+
+// The real busy registry, with `beginBusy` observable so a test can assert that no entry was started.
+vi.mock('src/ts/process/memory/busyActions', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('src/ts/process/memory/busyActions')>()
+    return { ...actual, beginBusy: vi.fn(actual.beginBusy) }
+})
 
 import AssetInput from './AssetInput.svelte'
 import { saveAssetFromBlob } from 'src/ts/globalApi.svelte'
 import { selectMultipleFileObjects } from 'src/ts/util'
 import { markCharacterForSave } from 'src/ts/storage/characterSaveMarks'
-import { isBusy, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
+import { alertError } from 'src/ts/alert'
+import { beginBusy, isBusy, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 
 type Slot = character | groupChat
 
@@ -79,6 +91,17 @@ async function flush(): Promise<void> {
 
 // The picker hands back the File itself, unread; the save reads it in slices.
 const file = new File([new Uint8Array([1, 2, 3])], 'pic.png')
+
+/** The limit the mocked store reports. */
+const LIMIT = 1024 * 1024
+
+/** A file that reports `size` bytes without holding them; reading it would fail the test. */
+function fileReportingSize(name: string, size: number): File {
+    const big = new File([new Uint8Array([1])], name)
+    Object.defineProperty(big, 'size', { value: size })
+    Object.defineProperty(big, 'slice', { value: () => { throw new Error('an oversized file must not be read') } })
+    return big
+}
 
 let characters: Slot[]
 // Index the `currentCharacter` prop shows; a test moves it to model a selection change.
@@ -113,10 +136,12 @@ function additionalAssetsOf(slot: Slot): unknown {
 
 beforeEach(() => {
     resetBusyActionsForTest()
+    vi.mocked(beginBusy).mockClear()
     selected = 0
     vi.mocked(saveAssetFromBlob).mockReset().mockResolvedValue('assets/saved.png')
     vi.mocked(selectMultipleFileObjects).mockReset()
     vi.mocked(markCharacterForSave).mockReset()
+    vi.mocked(alertError).mockReset()
     warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.spyOn(console, 'log').mockImplementation(() => {})
 })
@@ -148,6 +173,44 @@ describe('AssetInput add button', () => {
         expect(additionalAssetsOf(characters[1])).toBeUndefined()
         expect(markCharacterForSave).toHaveBeenCalledWith('X')
         expect(saveAssetFromBlob).toHaveBeenCalledWith(file, 'png')
+        expect(isBusy()).toBe(false)
+    })
+
+    test('regression reproducer: a mixed pick saves the files within the limit in order, then shows one notice naming the refused ones', async () => {
+        install(fullCharacter('X'))
+        const ok1 = new File([new Uint8Array([1])], 'ok1.png')
+        const big1 = fileReportingSize('big1.mp4', LIMIT + 1)
+        const ok2 = new File([new Uint8Array([2])], 'ok2.png')
+        const big2 = fileReportingSize('big2.mp4', LIMIT * 2)
+        vi.mocked(selectMultipleFileObjects).mockResolvedValue([ok1, big1, ok2, big2] as never)
+        const button = mountInput()
+
+        button.click()
+        await flush()
+
+        expect(vi.mocked(saveAssetFromBlob).mock.calls.map((call) => (call[0] as File).name)).toEqual(['ok1.png', 'ok2.png'])
+        expect(additionalAssetsOf(characters[0])).toEqual([
+            ['ok1.png', 'assets/saved.png', 'png'],
+            ['ok2.png', 'assets/saved.png', 'png'],
+        ])
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(alertError).toHaveBeenCalledWith('"big1.mp4" and "big2.mp4" are larger than the 1 MB limit, so they were not added.')
+        expect(vi.mocked(alertError).mock.invocationCallOrder[0]).toBeGreaterThan(vi.mocked(saveAssetFromBlob).mock.invocationCallOrder[1])
+        expect(isBusy()).toBe(false)
+    })
+
+    test('regression reproducer: when every file is above the limit no busy entry starts, nothing is saved and one notice is shown', async () => {
+        install(fullCharacter('X'))
+        vi.mocked(selectMultipleFileObjects).mockResolvedValue([fileReportingSize('big1.mp4', LIMIT + 1), fileReportingSize('big2.mp4', LIMIT + 2)] as never)
+        const button = mountInput()
+
+        button.click()
+        await flush()
+
+        expect(saveAssetFromBlob).not.toHaveBeenCalled()
+        expect(beginBusy).not.toHaveBeenCalled()
+        expect(additionalAssetsOf(characters[0])).toBeUndefined()
+        expect(alertError).toHaveBeenCalledTimes(1)
         expect(isBusy()).toBe(false)
     })
 

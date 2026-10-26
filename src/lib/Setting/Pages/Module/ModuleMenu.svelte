@@ -12,7 +12,8 @@
     import Check from "src/lib/UI/GUI/CheckInput.svelte";
     import Help from "src/lib/Others/Help.svelte";
     import TextAreaInput from "src/lib/UI/GUI/TextAreaInput.svelte";
-    import { getFileSrc, saveAssetFromBlob, downloadFile } from "src/ts/globalApi.svelte";
+    import { getFileSrc, saveAssetFromBlob, downloadFile, pickedAssetLimitBytes } from "src/ts/globalApi.svelte";
+    import { reportRefusedAssets, splitByAssetLimit, warnRefusedAssets } from "src/ts/storage/pickedAssetLimit";
     import { alertNormal, alertError } from "src/ts/alert";
     import { exportRegex, importRegex } from "src/ts/process/scripts";
     import { selectMultipleFile, selectMultipleFileObjects } from "src/ts/util";
@@ -304,9 +305,15 @@
                         if(!da){
                             return
                         }
+                        const limit = await pickedAssetLimitBytes()
+                        const { within, refused } = splitByAssetLimit(da, limit)
+                        if(within.length === 0){
+                            reportRefusedAssets(refused, limit)
+                            return
+                        }
                         const busy = beginBusy('assetAdd')
                         try {
-                            for(const f of da){
+                            for(const f of within){
                                 const name = f.name
                                 const extension = name.split('.').pop().toLowerCase()
                                 const imgp = await saveAssetFromBlob(f, extension)
@@ -314,9 +321,13 @@
                                 // added while this one was uploading is kept.
                                 commitAssets([...currentAssetTuples(), [name, imgp, extension]])
                             }
+                        } catch (error) {
+                            warnRefusedAssets(refused, limit)
+                            throw error
                         } finally {
                             busy.end()
                         }
+                        reportRefusedAssets(refused, limit)
                     }}>
                         <PlusIcon />
                     </button>

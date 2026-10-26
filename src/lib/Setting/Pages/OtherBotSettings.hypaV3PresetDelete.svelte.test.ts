@@ -46,6 +46,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     saveAsset: vi.fn(),
+    pickedAssetLimitBytes: vi.fn(),
     downloadFile: vi.fn(),
     globalFetch: vi.fn(),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
@@ -57,6 +58,8 @@ vi.mock(import('src/ts/platform'), () => ({
 
 vi.mock(import('src/ts/util'), () => ({
     selectSingleFile: vi.fn(),
+    selectSingleFileObject: vi.fn(),
+    readPickedFileBytes: vi.fn(),
 }) as unknown as typeof import('src/ts/util'))
 
 vi.mock(import('src/ts/characters'), () => ({

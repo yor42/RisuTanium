@@ -314,6 +314,14 @@ export function selectFileByDom(allowedExtensions:string[], multiple:'multiple'|
     });
 }
 
+/**
+ * Reads a file from `selectSingleFileObject` or `selectMultipleFileObjects` whole. The caller checks `file.size`
+ * against its limit first, so an oversized file is never read.
+ */
+export function readPickedFileBytes(file: File): Promise<Uint8Array> {
+    return readFileAsUint8Array(file)
+}
+
 function readFileAsUint8Array(file: File) {
     return new Promise<Uint8Array>((resolve, reject) => {
       const reader = new FileReader();

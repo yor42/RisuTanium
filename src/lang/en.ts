@@ -2427,6 +2427,17 @@ export const languageEnglish = {
         `The image of this card is larger than the ${limitMiB} MB limit, so the card was not imported.`,
     assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) =>
         `"${fileName}" is larger than the ${limitMiB} MB this browser can store, so it was not saved.`,
+    assetFilesTooLargeForLimit: (fileNames: string[], limitMiB: number) => {
+        const quoted = fileNames.slice(0, 20).map((name) => `"${name}"`)
+        const more = fileNames.length - quoted.length
+        if (fileNames.length === 1) {
+            return `${quoted[0]} is larger than the ${limitMiB} MB limit, so it was not added.`
+        }
+        const list = more > 0
+            ? `${quoted.join(', ')} and ${more} more files`
+            : `${quoted.slice(0, -1).join(', ')} and ${quoted[quoted.length - 1]}`
+        return `${list} are larger than the ${limitMiB} MB limit, so they were not added.`
+    },
     assetSaveStorageFull: (fileName: string) =>
         `"${fileName}" could not be saved because your browser storage is full. Nothing was saved and your existing data is intact. Free up space (delete old chats, characters or backups) and try again.`,
     moduleFileIncomplete: "This module file is incomplete or damaged, so it was not imported.",

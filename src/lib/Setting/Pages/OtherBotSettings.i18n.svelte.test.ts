@@ -15,8 +15,16 @@ import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
 
+const h = vi.hoisted(() => ({
+    alertError: vi.fn(),
+    saveAsset: vi.fn(),
+    pickedAssetLimitBytes: vi.fn(async () => 1024 * 1024),
+    selectSingleFileObject: vi.fn(),
+    readPickedFileBytes: vi.fn(),
+}))
+
 vi.mock(import('src/ts/alert'), () => {
-    const stub: Record<string, unknown> = { alertStore: writable({ type: 'none', msg: '' }) }
+    const stub: Record<string, unknown> = { alertStore: writable({ type: 'none', msg: '' }), alertError: h.alertError }
     return new Proxy(stub, {
         get: (t, k) => (k in t ? t[k as string] : k === 'then' ? undefined : vi.fn()),
         has: () => true,
@@ -32,7 +40,8 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 })
 
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
-    saveAsset: vi.fn(),
+    saveAsset: h.saveAsset,
+    pickedAssetLimitBytes: h.pickedAssetLimitBytes,
     downloadFile: vi.fn(),
     globalFetch: vi.fn(),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
@@ -44,6 +53,8 @@ vi.mock(import('src/ts/platform'), () => ({
 
 vi.mock(import('src/ts/util'), () => ({
     selectSingleFile: vi.fn(),
+    selectSingleFileObject: h.selectSingleFileObject,
+    readPickedFileBytes: h.readPickedFileBytes,
 }) as unknown as typeof import('src/ts/util'))
 
 vi.mock(import('src/ts/characters'), () => ({
@@ -111,6 +122,38 @@ afterEach(async () => {
     }
     mounted = []
     changeLanguage('en')
+})
+
+describe('the image pickers refuse a file above the asset limit before reading it', () => {
+    function oversizedPick(): File {
+        const file = new File([new Uint8Array([1])], 'huge.png')
+        Object.defineProperty(file, 'size', { value: 1024 * 1024 + 1 })
+        return file
+    }
+
+    test('regression reproducer: the NovelAI image-to-image picker reads and saves nothing and shows one notice', async () => {
+        h.alertError.mockClear()
+        h.saveAsset.mockClear()
+        h.readPickedFileBytes.mockClear()
+        h.selectSingleFileObject.mockResolvedValue(oversizedPick())
+        Object.assign(DBState.db, {
+            sdProvider: 'novelai',
+            NAIImgModel: 'nai-diffusion-3',
+            NAIImgConfig: { width: 512, height: 512, sampler: 'k_euler', reference_mode: '' },
+            NAII2I: true,
+        })
+        const target = mountImageTab()
+        const upload = Array.from(target.querySelectorAll('button')).find((b) => b.textContent?.includes(languageEnglish.settingsPage.uploadImage))
+        if (!upload) throw new Error('the image-to-image upload button is not shown')
+
+        upload.click()
+        await new Promise<void>((resolve) => setTimeout(resolve, 30))
+
+        expect(h.readPickedFileBytes).not.toHaveBeenCalled()
+        expect(h.saveAsset).not.toHaveBeenCalled()
+        expect(h.alertError).toHaveBeenCalledTimes(1)
+        expect(h.alertError).toHaveBeenCalledWith('"huge.png" is larger than the 1 MB limit, so it was not added.')
+    })
 })
 
 describe('the image-generation tab follows the UI language', () => {

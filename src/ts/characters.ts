@@ -2,11 +2,12 @@ import { get, writable } from "svelte/store";
 import { saveImage, type character, type Chat, type folder, type groupChat, defaultSdDataFunc, type loreBook, getDatabase, getCharacterByIndex, setCharacterByIndex } from "./storage/database.svelte";
 import { alertAddCharacter, alertConfirm, alertError, alertNormal, alertSelect, alertStore, alertWait } from "./alert";
 import { language } from "../lang";
-import { checkNullish, findCharacterbyId, findCharacterIndexbyId, getUserName, selectMultipleFile, selectSingleFile } from "./util";
+import { checkNullish, findCharacterbyId, findCharacterIndexbyId, getUserName, readPickedFileBytes, selectMultipleFileObjects, selectSingleFile, selectSingleFileObject } from "./util";
+import { reportRefusedAssets, splitByAssetLimit, warnRefusedAssets } from "./storage/pickedAssetLimit";
 import { v4 as uuidv4, v4 } from 'uuid';
 import { getImageType } from "./media";
 import { CharEmotion, DBState, MobileGUIStack, OpenRealmStore, selectedCharID } from "./stores.svelte";
-import { AppendableBuffer, changeChatTo, checkCharOrder, downloadFile, getFileSrc, requiresFullEncoderReload } from "./globalApi.svelte";
+import { AppendableBuffer, changeChatTo, checkCharOrder, downloadFile, getFileSrc, pickedAssetLimitBytes, requiresFullEncoderReload } from "./globalApi.svelte";
 import { updateInlayScreen } from "./process/inlayScreen";
 import { parseMarkdownSafe, sanitizeMarkdownSafe } from "./parser/parser.svelte";
 import { translateHTML } from "./translator/translator";
@@ -173,13 +174,18 @@ function liveIndexOf(target:character|groupChat|undefined):number {
 
 export async function selectCharImg(charIndex:number) {
     const target = DBState.db.characters[charIndex]
-    const selected = await selectSingleFile(['png', 'webp', 'gif', 'jpg', 'jpeg'])
-    if(!selected){
+    const selectedFile = await selectSingleFileObject(['png', 'webp', 'gif', 'jpg', 'jpeg'])
+    if(!selectedFile){
+        return
+    }
+    const limit = await pickedAssetLimitBytes()
+    if(selectedFile.size > limit){
+        reportRefusedAssets([selectedFile], limit)
         return
     }
     const busy = beginBusy('charImage')
     try {
-        const img = selected.data
+        const img = await readPickedFileBytes(selectedFile)
         if(liveIndexOf(target) === -1){
             return
         }
@@ -264,9 +270,16 @@ export const addingEmotion = writable(false)
 export async function addCharEmotion(charId:number) {
     addingEmotion.set(true)
     const target = DBState.db.characters[charId]
-    const selected = await selectMultipleFile(['png', 'webp', 'gif'])
+    const selected = await selectMultipleFileObjects(['png', 'webp', 'gif'])
     if(!selected){
         addingEmotion.set(false)
+        return
+    }
+    const limit = await pickedAssetLimitBytes()
+    const { within, refused } = splitByAssetLimit(selected, limit)
+    if(within.length === 0){
+        addingEmotion.set(false)
+        reportRefusedAssets(refused, limit)
         return
     }
     const busy = beginBusy('charEmotion')
@@ -274,8 +287,8 @@ export async function addCharEmotion(charId:number) {
         if(liveIndexOf(target) === -1){
             return
         }
-        for(const f of selected){
-            const img = f.data
+        for(const f of within){
+            const img = await readPickedFileBytes(f)
             const imgp = await saveImage(img)
             const name = f.name.replace('.png','').replace('.webp','')
             const index = liveIndexOf(target)
@@ -288,10 +301,14 @@ export async function addCharEmotion(charId:number) {
                 markCharacterForSave(target.chaId)
             }
         }
+    } catch (error) {
+        warnRefusedAssets(refused, limit)
+        throw error
     } finally {
         busy.end()
         addingEmotion.set(false)
     }
+    reportRefusedAssets(refused, limit)
 }
 
 export function rmCharEmotion(charId:number, emotionId:number) {

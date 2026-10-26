@@ -1399,3 +1399,126 @@ describe('saveAssetFromBlob judges the final key by the value it holds', () => {
         expect(Array.from(handle.values.keys())).toEqual([`assets/${sha256Hex(bytes)}.mp4`])
     })
 })
+
+describe('saveAssetFromBlob refuses a file above the store asset limit before reading it', () => {
+    const GIB = 1024 * MIB
+
+    /** A File that reports `size` bytes without holding them; any read of it fails the test. */
+    function fileReporting(name: string, size: number): { file: File, slice: ReturnType<typeof vi.fn>, arrayBuffer: ReturnType<typeof vi.fn> } {
+        const file = new File([Uint8Array.of(1)], name)
+        const slice = vi.fn(() => { throw new Error('a file above the limit must not be sliced') })
+        const arrayBuffer = vi.fn(async () => { throw new Error('a file above the limit must not be read') })
+        Object.defineProperty(file, 'size', { value: size })
+        Object.defineProperty(file, 'slice', { value: slice })
+        Object.defineProperty(file, 'arrayBuffer', { value: arrayBuffer })
+        return { file, slice, arrayBuffer }
+    }
+
+    async function refusalOf(promise: Promise<string>): Promise<{ names: readonly string[], limitBytes: number, message: string }> {
+        const { AssetTooLargeError } = await import('src/ts/storage/pickedAssetLimit')
+        const error = await promise.then(() => null, (reason: unknown) => reason)
+        expect(error).toBeInstanceOf(AssetTooLargeError)
+        const refusal = error as InstanceType<typeof AssetTooLargeError>
+        return { names: refusal.fileNames, limitBytes: refusal.limitBytes, message: refusal.message }
+    }
+
+    test.each([
+        ['tauri', 'tauri' as const, GIB],
+        ['indexeddb', 'indexeddb' as const, GIB],
+        ['opfs-transitional', 'opfs-transitional' as const, 200 * MIB],
+    ])('regression reproducer: on %s a file one byte above the limit is refused with its name and never sliced or read', async (_label, kind, limit) => {
+        const { api, appStore } = await loadWorld()
+        const handle = await mapStore()
+        appStore.injectAppStore(handle.store, kind)
+        const big = fileReporting('clip.mp4', limit + 1)
+
+        const refusal = await refusalOf(api.saveAssetFromBlob(big.file, 'mp4'))
+
+        expect(refusal.names).toEqual(['clip.mp4'])
+        expect(refusal.limitBytes).toBe(limit)
+        expect(big.slice).not.toHaveBeenCalled()
+        expect(big.arrayBuffer).not.toHaveBeenCalled()
+        expect(handle.files.size).toBe(0)
+        expect(handle.write).not.toHaveBeenCalled()
+    })
+
+    test('regression reproducer: on the browser IndexedDB store that keeps Blobs a file above the limit is refused before the Blob is handed to the store, sliced or read', async () => {
+        const { api, appStore } = await loadWorld()
+        const handle = await blobMapStore()
+        appStore.injectAppStore(handle.store, 'indexeddb')
+        const big = fileReporting('clip.mp4', GIB + 1)
+
+        const refusal = await refusalOf(api.saveAssetFromBlob(big.file, 'mp4'))
+
+        expect(refusal.names).toEqual(['clip.mp4'])
+        expect(refusal.limitBytes).toBe(GIB)
+        expect(handle.writeBlob).not.toHaveBeenCalled()
+        expect(big.slice).not.toHaveBeenCalled()
+        expect(big.arrayBuffer).not.toHaveBeenCalled()
+        expect(handle.blobs.size).toBe(0)
+    })
+
+    test('the refusal message is the translated notice with the limit in MB', async () => {
+        const { api, appStore } = await loadWorld()
+        appStore.injectAppStore((await mapStore()).store, 'tauri')
+
+        const refusal = await refusalOf(api.saveAssetFromBlob(fileReporting('a.mp4', GIB + 1).file))
+
+        expect(refusal.message).toBe('"a.mp4" is larger than the 1024 MB limit, so it was not added.')
+    })
+
+    test('boundary: a file of exactly the limit is not refused, one byte more is', async () => {
+        const { api, appStore } = await loadWorld()
+        const handle = await mapStore()
+        // Past the guard the save reaches the store's writer, which stops the test there.
+        appStore.injectAppStore({ ...handle.store, openWriter: () => { throw new Error('reached the writer') } }, 'opfs-transitional')
+
+        await expect(api.saveAssetFromBlob(fileReporting('exact.mp4', 200 * MIB).file)).rejects.toThrow('reached the writer')
+        await refusalOf(api.saveAssetFromBlob(fileReporting('over.mp4', 200 * MIB + 1).file))
+    })
+
+    test('guard (passes without the limit too; mutant M13 is its failing evidence): a Node page whose pieces are not yet recorded probes first, so a 150 MiB file is accepted', async () => {
+        const { api, appStore } = await loadWorld()
+        const handle = await mapStore()
+        let recorded = false
+        const probe = vi.fn(async () => { recorded = true })
+        appStore.injectAppStore({
+            ...handle.store,
+            openWriter: () => { throw new Error('reached the writer') },
+            piecesRecorded: () => recorded,
+            guarded: { probe } as never,
+        }, 'node')
+
+        await expect(api.saveAssetFromBlob(fileReporting('mid.mp4', 150 * MIB).file)).rejects.toThrow('reached the writer')
+
+        expect(probe).toHaveBeenCalledTimes(1)
+        expect(await api.pickedAssetLimitBytes()).toBe(GIB)
+    })
+
+    test('a Node page whose probe fails keeps the 100 MiB body limit and refuses a 150 MiB file', async () => {
+        const { api, appStore } = await loadWorld()
+        const handle = await mapStore()
+        vi.spyOn(console, 'warn').mockImplementation(() => {})
+        appStore.injectAppStore({
+            ...handle.store,
+            openWriter: () => { throw new Error('reached the writer') },
+            piecesRecorded: () => false,
+            guarded: { probe: async () => { throw new Error('no server') } } as never,
+        }, 'node')
+
+        const refusal = await refusalOf(api.saveAssetFromBlob(fileReporting('mid.mp4', 150 * MIB).file))
+
+        expect(refusal.limitBytes).toBe(100 * MIB)
+    })
+
+    test('guard: a file within the limit is saved as before', async () => {
+        const bytes = randomBytes(300, 7)
+        const { api, appStore } = await loadWorld()
+        const handle = await mapStore()
+        appStore.injectAppStore(handle.store, 'opfs-transitional')
+
+        const key = await api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), 'a.png')
+
+        expect(key).toBe(`assets/${sha256Hex(bytes)}.png`)
+    })
+})

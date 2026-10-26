@@ -34,8 +34,16 @@ vi.mock('./stores.svelte', () => ({
     selectedCharID: { subscribe: vi.fn() },
 }))
 vi.mock('./alert', () => ({ alertError: vi.fn(), alertNormal: vi.fn(), alertStore: { set: vi.fn() } }))
-vi.mock('./globalApi.svelte', () => ({ AppendableBuffer: class {}, downloadFile: vi.fn(), readImage: vi.fn(), saveAssetFromBlob: h.save }))
-vi.mock('src/lang', () => ({ language: {} }))
+vi.mock('./globalApi.svelte', () => ({
+    AppendableBuffer: class {},
+    downloadFile: vi.fn(),
+    readImage: vi.fn(),
+    saveAssetFromBlob: h.save,
+    pickedAssetLimitBytes: vi.fn(async () => 1024 * 1024),
+}))
+vi.mock('src/lang', () => ({
+    language: { assetFilesTooLargeForLimit: (names: string[], mb: number) => `${names.join(',')} exceeds ${mb} MB` },
+}))
 vi.mock('./process/files/inlays', () => ({ reencodeImage: vi.fn() }))
 vi.mock('./pngChunk', () => ({ PngChunk: class {} }))
 vi.mock('./process/memory/busyActions', () => ({ beginBusy: h.begin }))
@@ -44,6 +52,8 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({ getCurrentWebviewWindow: vi.fn
 vi.mock('src/lib/UI/PopupList.svelte', () => ({ default: {} }))
 
 import { selectUserImg } from './persona'
+import { alertError } from './alert'
+import { saveImage } from './storage/database.svelte'
 
 let picker: DomPicker
 
@@ -51,6 +61,8 @@ beforeEach(() => {
     picker = installDomPicker()
     h.begin.mockClear()
     h.save.mockClear()
+    vi.mocked(alertError).mockClear()
+    vi.mocked(saveImage).mockClear()
     h.db.userIcon = 'before'
     h.db.personas = [{ name: 'p' }]
 })
@@ -82,5 +94,23 @@ describe('selectUserImg', () => {
         expect(h.save).toHaveBeenCalledTimes(1)
         expect(h.save).toHaveBeenCalledWith(file)
         expect(h.db.userIcon).toBe('saved-image')
+    })
+
+    test('regression reproducer: an image above the asset limit shows the plain notice, reads and saves nothing, and starts no busy indicator', async () => {
+        const pending = selectUserImg()
+
+        const big = new File([Uint8Array.of(1)], 'huge.png')
+        Object.defineProperty(big, 'size', { value: 1024 * 1024 + 1 })
+        Object.defineProperty(big, 'slice', { value: () => { throw new Error('an oversized file must not be read') } })
+        Object.defineProperty(big, 'arrayBuffer', { value: () => { throw new Error('an oversized file must not be read') } })
+        picker.pick([big])
+
+        expect((await settledWithin(pending)).pending).toBe(false)
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(alertError).toHaveBeenCalledWith('huge.png exceeds 1 MB')
+        expect(h.save).not.toHaveBeenCalled()
+        expect(saveImage).not.toHaveBeenCalled()
+        expect(h.begin).not.toHaveBeenCalled()
+        expect(h.db.userIcon).toBe('before')
     })
 })

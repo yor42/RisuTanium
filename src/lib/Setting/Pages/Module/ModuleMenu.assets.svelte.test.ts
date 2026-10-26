@@ -46,6 +46,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => {
         downloadFile: vi.fn(async () => {}),
         getFileSrc: apiMocks.getFileSrc,
         saveAssetFromBlob: apiMocks.saveAssetFromBlob,
+        pickedAssetLimitBytes: vi.fn(async () => 1024 * 1024),
         forageStorage: {
             getItem: vi.fn(async () => null),
             setItem: vi.fn(async () => {}),
@@ -147,6 +148,7 @@ import type { toSaveType } from 'src/ts/storage/risuSave'
 import type { RisuModule } from 'src/ts/process/modules'
 import type { RisuPlugin } from 'src/ts/plugins/plugins.svelte'
 import { language } from 'src/lang'
+import { alertError } from 'src/ts/alert'
 import ModuleMenu from './ModuleMenu.svelte'
 
 //#region helpers
@@ -247,6 +249,7 @@ beforeEach(() => {
     apiMocks.saveAssetFromBlob.mockReset()
     apiMocks.saveAssetFromBlob.mockImplementation(async () => 'assets/saved')
     apiMocks.selectMultipleFileObjects.mockReset()
+    vi.mocked(alertError).mockClear()
 })
 
 afterEach(async () => {
@@ -303,6 +306,31 @@ describe('the module asset editor on an installed AssetList', () => {
         expect(DBState.db.modules[0].assets![2]).toEqual(['New.PNG', 'assets/saved', 'png'])
         expect(tracker.modules).toBe(true)
         expect(DBState.db.modules[0].assets instanceof AssetList).toBe(true)
+    })
+
+    test('regression reproducer: a mixed pick adds the files within the limit in order, then shows one notice naming the refused ones', async () => {
+        const { target } = openAssetTab(1)
+        const big = (name: string, size: number) => {
+            const file = new File([new Uint8Array(1)], name)
+            Object.defineProperty(file, 'size', { value: size })
+            Object.defineProperty(file, 'slice', { value: () => { throw new Error('an oversized file must not be read') } })
+            return file
+        }
+        apiMocks.selectMultipleFileObjects.mockResolvedValue([
+            new File([new Uint8Array(1)], 'ok1.png'),
+            big('big1.mp4', 1024 * 1024 + 1),
+            new File([new Uint8Array(1)], 'ok2.png'),
+            big('big2.mp4', 1024 * 1024 * 2),
+        ])
+
+        addButton(target).click()
+        await settle()
+
+        expect(apiMocks.saveAssetFromBlob.mock.calls.map((call) => (call[0] as File).name)).toEqual(['ok1.png', 'ok2.png'])
+        expect(savedNames()).toEqual(['name-0', 'ok1.png', 'ok2.png'])
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(alertError).toHaveBeenCalledWith('"big1.mp4" and "big2.mp4" are larger than the 1 MB limit, so they were not added.')
+        expect(vi.mocked(alertError).mock.invocationCallOrder[0]).toBeGreaterThan(apiMocks.saveAssetFromBlob.mock.invocationCallOrder[1])
     })
 
     test('guard: choosing no file adds nothing and schedules no save', async () => {

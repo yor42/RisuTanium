@@ -2286,6 +2286,17 @@ export const languageSpanish = {
     cardFileChanged: "El archivo de la tarjeta cambió o no se pudo leer durante la importación, por lo que no se importó. Inténtalo de nuevo.",
     cardImageTooLarge: (limitMiB: number) => `La imagen de esta tarjeta supera el límite de ${limitMiB} MB, por lo que la tarjeta no se importó.`,
     assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) => `"${fileName}" supera los ${limitMiB} MB que este navegador puede almacenar, por lo que no se guardó.`,
+    assetFilesTooLargeForLimit: (fileNames: string[], limitMiB: number) => {
+        const quoted = fileNames.slice(0, 20).map((name) => `"${name}"`)
+        const more = fileNames.length - quoted.length
+        if (fileNames.length === 1) {
+            return `${quoted[0]} supera el límite de ${limitMiB} MB, por lo que no se agregó.`
+        }
+        const list = more > 0
+            ? `${quoted.join(', ')} y ${more} archivos más`
+            : `${quoted.slice(0, -1).join(', ')} y ${quoted[quoted.length - 1]}`
+        return `${list} superan el límite de ${limitMiB} MB, por lo que no se agregaron.`
+    },
     assetSaveStorageFull: (fileName: string) => `No se pudo guardar "${fileName}" porque el almacenamiento de tu navegador está lleno. No se guardó nada y tus datos existentes están intactos. Libera espacio (elimina chats antiguos, personajes o respaldos) e inténtalo de nuevo.`,
     moduleFileIncomplete: "Este archivo de módulo está incompleto o dañado, por lo que no se importó.",
     moduleAssetTooLarge: (assetName: string, limitMiB: number) => `El recurso "${assetName}" de este módulo supera el límite de ${limitMiB} MB, por lo que el módulo no se importó.`,

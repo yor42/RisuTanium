@@ -4,9 +4,10 @@
     import { language } from "src/lang";
     import { fillLang } from "src/lang/fill";
     import Help from "src/lib/Others/Help.svelte";
-    import { selectSingleFile } from "src/ts/util";
+    import { readPickedFileBytes, selectSingleFile, selectSingleFileObject } from "src/ts/util";
+    import { reportRefusedAssets } from "src/ts/storage/pickedAssetLimit";
     import { DBState, selectedCharID } from 'src/ts/stores.svelte';
-    import { saveAsset, downloadFile } from "src/ts/globalApi.svelte";
+    import { saveAsset, downloadFile, pickedAssetLimitBytes } from "src/ts/globalApi.svelte";
     import { requestWavespeedModels } from "src/ts/process/wavespeedModels";
     import { SecretRefError } from "src/ts/secretRef";
     import { beginBusy } from "src/ts/process/memory/busyActions";
@@ -512,18 +513,23 @@
                 
                 <div class="relative">
                     <button class="mb-2" onclick={async () => {
-                        const img = await selectSingleFile([
+                        const imgFile = await selectSingleFileObject([
                             'jpg',
                             'jpeg',
                             'png',
                             'webp'
                         ])
-                        if(!img){
+                        if(!imgFile){
                             return null
                         }
-                        
-                        const imageData = img.data;
-                        
+                        const limit = await pickedAssetLimitBytes()
+                        if(imgFile.size > limit){
+                            reportRefusedAssets([imgFile], limit)
+                            return null
+                        }
+
+                        const imageData = await readPickedFileBytes(imgFile);
+
                         DBState.db.NAIImgConfig.character_base64image = Buffer.from(imageData).toString('base64');
                         const busy = beginBusy('imageAdd')
                         try {
@@ -602,19 +608,25 @@
             {#if DBState.db.NAII2I}
                 <div class="relative">
                     <button class="mb-2" onclick={async () => {
-                        const img = await selectSingleFile([
+                        const imgFile = await selectSingleFileObject([
                             'jpg',
                             'jpeg',
                             'png',
                             'webp'
                         ])
-                        if(!img){
+                        if(!imgFile){
                             return null
                         }
-                        DBState.db.NAIImgConfig.base64image = Buffer.from(img.data).toString('base64');
+                        const limit = await pickedAssetLimitBytes()
+                        if(imgFile.size > limit){
+                            reportRefusedAssets([imgFile], limit)
+                            return null
+                        }
+                        const imgData = await readPickedFileBytes(imgFile)
+                        DBState.db.NAIImgConfig.base64image = Buffer.from(imgData).toString('base64');
                         const busy = beginBusy('imageAdd')
                         try {
-                            const saveId = await saveAsset(img.data)
+                            const saveId = await saveAsset(imgData)
                             DBState.db.NAIImgConfig.image = saveId
                         } finally {
                             busy.end()
@@ -908,17 +920,22 @@
                 {#if DBState.db.wavespeedImage.reference_mode === 'image'}
                     <div class="relative">
                         <button class="mb-2" onclick={async () => {
-                            const img = await selectSingleFile([
+                            const imgFile = await selectSingleFileObject([
                                 'jpg',
                                 'jpeg',
                                 'png',
                                 'webp'
                             ])
-                            if(!img){
+                            if(!imgFile){
+                                return null
+                            }
+                            const limit = await pickedAssetLimitBytes()
+                            if(imgFile.size > limit){
+                                reportRefusedAssets([imgFile], limit)
                                 return null
                             }
 
-                            const imageData = img.data;
+                            const imageData = await readPickedFileBytes(imgFile);
 
                             DBState.db.wavespeedImage.reference_base64image = Buffer.from(imageData).toString('base64');
                             const busy = beginBusy('imageAdd')
