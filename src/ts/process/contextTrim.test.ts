@@ -200,12 +200,17 @@ describe('guard: the lazy context trim keeps what the eager trim keeps', () => {
         }
     })
 
+    test('the bounds keep every sum the walk forms below 2^53', () => {
+        expect(LAZY_BEFORE_LIMIT + LAZY_ENTRY_LIMIT * LAZY_COUNT_LIMIT).toBeLessThan(2 ** 53)
+    })
+
     test('within the bounds the walk is lazy; one past any bound and it is eager', async () => {
         const lazyCalls = async (c: Case) => (await expectSameAsEager(c)).lazy.calls.size
         const messages = () => Array.from({ length: 200 }, () => 10)
         expect(await lazyCalls(makeCase([], messages(), LAZY_BEFORE_LIMIT - 100, [], LAZY_BEFORE_LIMIT - 50))).toBeLessThanOrEqual(6)
         expect(await lazyCalls(makeCase([], messages(), -LAZY_BEFORE_LIMIT, [], -LAZY_BEFORE_LIMIT + 50))).toBeLessThanOrEqual(6)
         expect(await lazyCalls(makeCase([], messages(), LAZY_BEFORE_LIMIT + 2, [], LAZY_BEFORE_LIMIT + 52))).toBe(200)
+        expect(await lazyCalls(makeCase([], messages(), -LAZY_BEFORE_LIMIT - 2, [], -LAZY_BEFORE_LIMIT + 50))).toBe(200)
         expect(await lazyCalls(makeCase([], messages(), 0, [LAZY_COUNT_LIMIT], LAZY_COUNT_LIMIT + 50))).toBeLessThanOrEqual(6)
         expect(await lazyCalls(makeCase([], messages(), 0, [LAZY_COUNT_LIMIT + 1], LAZY_COUNT_LIMIT + 51))).toBe(200)
         expect(await lazyCalls(makeCase([], messages(), 0, [-1], 50))).toBe(200)

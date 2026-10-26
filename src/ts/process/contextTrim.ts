@@ -29,7 +29,7 @@ export async function totalInSendOrder(args: {
 
 /** The largest count the lazy walk works with; a text chat's count is far below it. */
 export const LAZY_COUNT_LIMIT = 2 ** 32
-/** The most chats plus counts after the messages the lazy walk works with. */
+/** The lazy walk works with fewer chats plus counts after the messages than this. */
 export const LAZY_ENTRY_LIMIT = 2 ** 18
 /** The largest `tokensBeforeMessages`, in magnitude, the lazy walk works with. */
 export const LAZY_BEFORE_LIMIT = 2 ** 51
