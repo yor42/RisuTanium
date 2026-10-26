@@ -2424,6 +2424,8 @@ export const languageEnglish = {
         `The image of this card is larger than the ${limitMiB} MB limit, so the card was not imported.`,
     assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) =>
         `"${fileName}" is larger than the ${limitMiB} MB this browser can store, so it was not saved.`,
+    assetSaveStorageFull: (fileName: string) =>
+        `"${fileName}" could not be saved because your browser storage is full. Nothing was saved and your existing data is intact. Free up space (delete old chats, characters or backups) and try again.`,
     moduleFileIncomplete: "This module file is incomplete or damaged, so it was not imported.",
     moduleAssetTooLarge: (assetName: string, limitMiB: number) =>
         `The asset "${assetName}" in this module is larger than the ${limitMiB} MB limit, so the module was not imported.`,

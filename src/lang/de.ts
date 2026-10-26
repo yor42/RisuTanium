@@ -2283,6 +2283,7 @@ export const languageGerman = {
     "cardFileChanged": "Die Kartendatei wurde während des Imports geändert oder konnte nicht gelesen werden und wurde daher nicht importiert. Versuchen Sie, sie erneut zu importieren.",
     "cardImageTooLarge": (limitMiB: number) => `Das Bild dieser Karte ist größer als das Limit von ${limitMiB} MB, daher wurde die Karte nicht importiert.`,
     "assetFileTooLargeForBrowserStorage": (fileName: string, limitMiB: number) => `"${fileName}" ist größer als die ${limitMiB} MB, die dieser Browser speichern kann, und wurde daher nicht gespeichert.`,
+    "assetSaveStorageFull": (fileName: string) => `"${fileName}" konnte nicht gespeichert werden, weil der Browser-Speicher voll ist. Es wurde nichts gespeichert und Ihre vorhandenen Daten sind unversehrt. Geben Sie Speicherplatz frei (löschen Sie alte Chats, Charaktere oder Backups) und versuchen Sie es erneut.`,
     "moduleFileIncomplete": "Diese Moduldatei ist unvollständig oder beschädigt und wurde daher nicht importiert.",
     "moduleAssetTooLarge": (assetName: string, limitMiB: number) => `Das Asset "${assetName}" in diesem Modul ist größer als das Limit von ${limitMiB} MB, daher wurde das Modul nicht importiert.`,
     "moduleFileChanged": "Die Moduldatei wurde während des Imports geändert oder konnte nicht gelesen werden und wurde daher nicht importiert. Versuchen Sie, sie erneut zu importieren.",

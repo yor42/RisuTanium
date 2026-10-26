@@ -2326,6 +2326,7 @@ export const languageChineseTraditional = {
     "cardFileChanged": "匯入過程中角色卡檔案發生了變化或無法讀取，因此未匯入。請重新匯入。",
     "cardImageTooLarge": (limitMiB: number) => `此角色卡的圖片超過了 ${limitMiB} MB 的限制，因此該角色卡未匯入。`,
     "assetFileTooLargeForBrowserStorage": (fileName: string, limitMiB: number) => `「${fileName}」超過了此瀏覽器可儲存的 ${limitMiB} MB，因此未儲存。`,
+    "assetSaveStorageFull": (fileName: string) => `瀏覽器儲存空間已滿，無法儲存「${fileName}」。未儲存任何內容，您現有的資料完好無損。請釋放空間（刪除舊聊天、角色或備份）後重試。`,
     "moduleFileIncomplete": "此模組檔案不完整或已損毀，因此未匯入。",
     "moduleAssetTooLarge": (assetName: string, limitMiB: number) => `此模組內的資源「${assetName}」超過了 ${limitMiB} MB 的限制，因此該模組未匯入。`,
     "moduleFileChanged": "匯入過程中模組檔案發生了變化或無法讀取，因此未匯入。請重新匯入。",

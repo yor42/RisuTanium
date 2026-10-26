@@ -400,6 +400,9 @@ describe('saveAssetFromBlob', () => {
         expect(sameBytes(new Uint8Array(await kept!.arrayBuffer()), bytes)).toBe(true)
         expect(key).toBe(await saveAsset(bytes, '', 'png'))
         expect(sameBytes((await store.read(key)).bytes, bytes)).toBe(true)
+        // The temporary copy the save makes is gone: only the content key remains.
+        expect((await store.list('assets/incoming-')).length).toBe(0)
+        expect(await store.list('assets/')).toEqual([key])
     })
 
     test('data safety: a slice that cannot be read reaches the caller as the same error on the Node store, once, and leaves nothing', async () => {

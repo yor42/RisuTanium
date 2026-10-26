@@ -304,6 +304,25 @@ describe('removeInlayAsset', () => {
     })
 })
 
+describe('postInlayAsset storage failures', () => {
+    test('reproducer: a quota failure while the attachment is stored reaches the caller as the storage-full message, with the browser error as its cause', async () => {
+        const quota = new DOMException('', 'QuotaExceededError')
+        appStore.failWrite = () => quota
+
+        const failure = postInlayAsset({ name: 'clip.mp3', data: new Uint8Array([0xff, 0xfb, 0x90, 0x00]) })
+
+        await expect(failure).rejects.toThrow(/^"clip\.mp3" could not be saved because your browser storage is full\./)
+        await expect(failure).rejects.toMatchObject({ cause: quota })
+    })
+
+    test('guard: a store failure that is not a quota error reaches the caller as it is', async () => {
+        const failure = new Error('disk failure')
+        appStore.failWrite = () => failure
+
+        await expect(postInlayAsset({ name: 'clip.mp3', data: new Uint8Array([1, 2, 3, 4]) })).rejects.toBe(failure)
+    })
+})
+
 describe('postInlayAsset', () => {
     test('stores audio asset and returns id', async () => {
         const data = new Uint8Array([0xff, 0xfb, 0x90, 0x00])

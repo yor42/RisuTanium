@@ -89,6 +89,21 @@ describe('writeBlob, readBlob and readValue on an asset key', () => {
         }
     })
 
+    test('guard: the temporary name a picked file is saved under (assets/incoming-<uuid>) is accepted, readable, deletable and absent from list afterwards (passes before and after)', async () => {
+        const store = createIndexedDbStore()
+        const key = `assets/incoming-${crypto.randomUUID()}`
+        const payload = pattern(300, 9)
+
+        await store.writeBlob!(key, new File([payload], 'x.mp4'), 'unconditional')
+
+        expect(await store.has(key)).toBe(true)
+        expect(await bytesOfBlob((await store.readBlob!(key))!)).toEqual(Array.from(payload))
+        expect(await store.list('assets/')).toEqual([key])
+        await store.delete(key, 'unconditional')
+        expect(await store.readBlob!(key)).toBeNull()
+        expect(await store.list('assets/')).toEqual([])
+    })
+
     test('reproducer: readValue gives the Blob for a Blob value, the bytes for a bytes value and null for no value, by one raw get each', async () => {
         const store = createIndexedDbStore()
         await store.writeBlob!('assets/blob.png', new Blob([bytesOf(5, 6, 7)]), 'unconditional')

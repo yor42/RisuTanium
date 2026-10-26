@@ -4,6 +4,7 @@ import { getDatabase } from "../../storage/database.svelte";
 import { getModelInfo, LLMFlags, LLMFormat } from "src/ts/model/modellist";
 import { asBuffer } from "../../util";
 import { getAppStore } from "../../storage/store/appStore";
+import { language } from "src/lang";
 import type { ByteStore } from "../../storage/store/contract";
 import { isAndroidTransport } from "../../storage/tauriByteTransport";
 import {
@@ -58,9 +59,21 @@ export function isInlayRefusal(result: string | InlayRefusal | null): result is 
 }
 
 async function writeInlay(id: string, value: InlayAsset) {
-    await withInlayLock(id, async () => {
-        await writeAppInlay(await getAppStore(), id, value)
-    })
+    try {
+        await withInlayLock(id, async () => {
+            await writeAppInlay(await getAppStore(), id, value)
+        })
+    } catch (error) {
+        // The raw browser quota error shows an empty dialog; the copy and import flows call `writeAppInlay` directly and keep matching the raw error.
+        if (isQuotaExceeded(error) || (error instanceof Error && isQuotaExceeded(error.cause))) {
+            throw new Error(language.assetSaveStorageFull(value.name.includes('.') ? value.name : 'unnamed file'), { cause: error })
+        }
+        throw error
+    }
+}
+
+function isQuotaExceeded(error: unknown): boolean {
+    return error instanceof DOMException && (error.name === 'QuotaExceededError' || error.code === 22 || error.code === 1014)
 }
 
 export async function postInlayAsset(img:{
