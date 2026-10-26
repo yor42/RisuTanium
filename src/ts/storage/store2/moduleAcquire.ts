@@ -1,12 +1,9 @@
 import type { RisuModule } from '../../process/modules'
 import { DBState } from '../../stores.svelte'
 import { isModuleStub } from '../moduleStub'
+import { getModuleLoader, setModuleLoader, type ModuleLoader } from './saveActive'
 
-/**
- * Brings a module stub's body in: it receives the stub's handle (`${id}#0`) and the caller's signal, installs the body
- * into the slot and returns that live slot, or null when the module is gone.
- */
-export type ModuleLoader = (handle: string, signal?: AbortSignal) => Promise<RisuModule | null>
+export type { ModuleLoader }
 
 /** A module could not be acquired. Carries the module's id and name; the load errors of the loader extend it. */
 export class ModuleAcquireError extends Error {
@@ -32,14 +29,27 @@ export class ModuleAmbiguousError extends ModuleAcquireError {
     }
 }
 
-let registeredLoader: ModuleLoader | null = null
+/** Why a module stub's body could not be brought in. */
+export type ModuleLoadFailure =
+    | 'unreadable' | 'damaged' | 'too-new' | 'no-entry' | 'stale' | 'edited' | 'ambiguous' | 'replaced'
+
+/**
+ * The loader could not bring a module stub's body in. `reason` says why; the module's data is never touched: the stub
+ * stays in its slot, so a later load or save still finds the recorded entry.
+ */
+export class ModuleLoadError extends ModuleAcquireError {
+    constructor(public readonly reason: ModuleLoadFailure, moduleId: string, moduleName: string, detail?: string) {
+        super(`The module "${moduleName}" (${moduleId}) could not be loaded: ${reason}${detail === undefined ? '' : ` (${detail})`}.`, moduleId, moduleName)
+        this.name = 'ModuleLoadError'
+    }
+}
 
 export function registerModuleLoader(loader: ModuleLoader): void {
-    registeredLoader = loader
+    setModuleLoader(loader)
 }
 
 export function unregisterModuleLoader(): void {
-    registeredLoader = null
+    setModuleLoader(null)
 }
 
 /**
@@ -64,10 +74,11 @@ export async function acquireModule(
     if (modules.some((module) => module !== first && module.id === id)) {
         throw new ModuleAmbiguousError(id, first.name)
     }
-    if (registeredLoader === null) {
+    const loader = getModuleLoader()
+    if (loader === null) {
         throw new ModuleLoaderMissingError(id, first.name)
     }
-    const loaded = await registeredLoader(`${id}#0`, signal)
+    const loaded = await loader(`${id}#0`, signal)
     return loaded === null ? null : { module: loaded, release: releaseNothing }
 }
 

@@ -5,7 +5,8 @@ import type { AppStoreKind } from '../store/appStore'
 import type { CompareToken, Store2Backend, UnitWrite } from './backend/types'
 import type { SessionDecision } from './session'
 import { reflushTopLevel, Store2Session } from './session'
-import { activateStore2Save, type Store2SaveContext } from './saveActive'
+import { activateStore2Save, setModuleLoader, type ModuleStubLoad, type Store2SaveContext } from './saveActive'
+import type { RisuModule } from '../../process/modules'
 import type { Store2PeerHandler } from './saveLoop'
 import { createSaveEncoder, type SaveEncoder } from './saveEncoder'
 import { createResidency } from './residency'
@@ -153,6 +154,21 @@ async function loadStubsOf(chaId: string): Promise<boolean> {
         await restoreColdCharacter(stub, { quiet: true })
     }
     return stubsOf().length === 0
+}
+
+/**
+ * The save loop's `loadModuleStub` and the registered module loader. Both load the process code on first use, so a page
+ * that never meets a module stub does not load it; the loader itself reads the registered residency at call time.
+ */
+async function loadModuleStubsOf(moduleId: string): Promise<ModuleStubLoad> {
+    const { loadModuleStubsOf: valve } = await import('../../process/moduleLoader')
+    return valve(moduleId)
+}
+
+async function loadModuleOf(handle: string, signal?: AbortSignal): Promise<RisuModule | null> {
+    signal?.throwIfAborted()
+    const { loadModule } = await import('../../process/moduleLoader')
+    return loadModule(handle, signal)
 }
 
 /**
@@ -320,8 +336,10 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
             env: keyEnv,
             peer: ui.peer,
             loadStub: loadStubsOf,
+            loadModuleStub: loadModuleStubsOf,
         }
         registerResidency(createResidency({ backend, context }))
+        setModuleLoader(loadModuleOf)
         activateStore2Save(context)
         setPageStorageMode({ kind: 'store2' })
         return { kind: 'store2', database, session, notices }

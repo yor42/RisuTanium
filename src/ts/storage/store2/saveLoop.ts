@@ -342,6 +342,19 @@ type Outcome =
     /** The server refused a body as too large: nothing was applied and the same bytes never fit, so this tab stops saving. */
     | { kind: 'stop', cause: Store2PayloadTooLargeError, label: string, cleared: AbandonResult | null }
     | { kind: 'not-flushed' }
+    /** A module's load is waiting for the person's answer: nothing was written, nothing is counted, and the loop makes no further pass until `settled`. */
+    | { kind: 'deferred', settled: Promise<void> }
+
+/**
+ * Thrown by `planOf` when the module valve reports a load that waits for the person. `attemptRun` turns it into the
+ * `deferred` outcome before any commit is built, so it never leaves the loop and is never counted as a failure.
+ */
+class ModuleLoadDeferred extends Error {
+    constructor(public readonly settled: Promise<void>) {
+        super('A module load is waiting for the person\'s answer.')
+        this.name = 'ModuleLoadDeferred'
+    }
+}
 
 /** The failures that name the page's own state as stale for good: only a reload ends them. */
 const REPLACED_REFUSALS: ReadonlySet<string> = new Set(['absent', 'no-current', 'damaged', 'too-new'])
@@ -401,6 +414,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     readStopped = () => stopped
     /** The epoch the person agreed to overwrite with Save mine. */
     let consent: string | null = null
+    /** Set while a module load waits for the person's answer; `null` otherwise. Gates the passes and the idle net, never the park handling or the peer check. */
+    let deferral: Promise<void> | null = null
     /** A commit reported that it was not flushed: the next pass commits even when it changed nothing. */
     let forced = false
     let peerSignal = false
@@ -659,7 +674,45 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         return { marked: new Set(), modules: false, whole: false, net: { chaId: residents[index], modules: modulesDue }, ...yielding }
     }
 
+    /**
+     * The plan of one pass over the live list. A module stub the planner cannot carry is brought in through the context's
+     * valve and the pass is planned again with the same request. The valve never waits for the person while the write
+     * lock is held: a load that would ask answers `deferred`, and the pass ends quietly (`ModuleLoadDeferred`). One load
+     * is made per module id and pass, so a refusal that survives its load is a failed save, with the planner's own error.
+     */
     async function planOf(db: Database, request: SavePassRequest): Promise<SavePlan> {
+        const loaded = new Set<string>()
+        let planDb = db
+        let planRequest = request
+        for (;;) {
+            try {
+                return await planWithStubLoads(planDb, planRequest)
+            } catch (error) {
+                const loadable = error instanceof StubRefusedError && error.kind === 'module' && error.reason === 'uncarriable'
+                if (!loadable || context.loadModuleStub === undefined || loaded.has(error.chaId)) {
+                    throw error
+                }
+                loaded.add(error.chaId)
+                if (MEASURE) {
+                    activeGaps?.pause()
+                }
+                const result = await context.loadModuleStub(error.chaId)
+                if (result.kind === 'refused') {
+                    throw error
+                }
+                if (result.kind === 'deferred') {
+                    throw new ModuleLoadDeferred(result.settled)
+                }
+                if (MEASURE) {
+                    activeGaps?.resume()
+                }
+                planDb = port.getDatabase()
+                planRequest = MEASURE ? { ...request, retry: true } : request
+            }
+        }
+    }
+
+    async function planWithStubLoads(db: Database, request: SavePassRequest): Promise<SavePlan> {
         try {
             return await encoder.plan(db, request)
         } catch (error) {
@@ -865,7 +918,15 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (MEASURE && tick) {
             noteSignalPassStart()
         }
-        const plan = await planOf(db, requestOf(run.snapshot, db, saveMine, netChaId))
+        let plan: SavePlan
+        try {
+            plan = await planOf(db, requestOf(run.snapshot, db, saveMine, netChaId))
+        } catch (error) {
+            if (error instanceof ModuleLoadDeferred) {
+                return { kind: 'deferred', settled: error.settled }
+            }
+            throw error
+        }
         run.plan = plan
         if (MEASURE) {
             activeGaps?.planned()
@@ -960,6 +1021,19 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     savetrys += 1
                     await port.sleep(port.reportFailure(new Store2CommitRefusedError(outcome.reason, outcome.detail), savetrys))
                     break
+                case 'deferred': {
+                    // Quiet by design: no counter, no report, no sleep. The marks are kept so the page stays dirty, and
+                    // the loop plans nothing until the flight settles, then makes one pass over the installed module.
+                    foldBack(run.snapshot)
+                    const clearDeferral = (): void => {
+                        if (deferral === waiting) {
+                            deferral = null
+                        }
+                    }
+                    const waiting: Promise<void> = outcome.settled.then(clearDeferral, clearDeferral)
+                    deferral = waiting
+                    break
+                }
                 case 'park':
                     retries = 0
                     foldBack(run.snapshot)
@@ -1004,7 +1078,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         try {
             const read = await port.withWriteLock(() => committer.readCommit())
             const judged = judge(read)
-            if (judged.kind === 'stop') {
+            // The epoch the person agreed to overwrite is not a new peer commit: a deferral that gates the pass must not
+            // make this check clear the consent and ask again.
+            if (judged.kind === 'stop' && !(consent !== null && judged.reason === 'peer-commit' && judged.key?.epoch === consent)) {
                 setPark(parkOf(judged))
             }
         } catch (error) {
@@ -1311,7 +1387,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     continue
                 }
             }
-            if (port.isDue()) {
+            if (port.isDue() && deferral === null) {
                 await pass(false)
                 await port.wait(500)
                 continue
@@ -1321,7 +1397,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 await port.wait(500)
                 continue
             }
-            if (netMs !== null && port.now() - lastNetAt >= netMs) {
+            if (netMs !== null && deferral === null && port.now() - lastNetAt >= netMs) {
                 lastNetAt = port.now()
                 if (MEASURE && netHeldNow()) {
                     noteNetHeldTick()
@@ -1333,7 +1409,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     await netSlot()
                 }
             }
-            await port.wait(500)
+            // Over a deferral the loop wakes the moment the flight settles instead of at its next turn.
+            await (deferral === null ? port.wait(500) : Promise.race([deferral, port.wait(500)]))
         }
     }
 

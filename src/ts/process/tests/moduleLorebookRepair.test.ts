@@ -46,7 +46,7 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
     DBState: h,
 }) as unknown as typeof import('src/ts/stores.svelte'))
 
-import { repairModuleLorebook } from 'src/ts/process/moduleLorebookRepair'
+import { lorebookRepairNeed, repairModuleLorebook } from 'src/ts/process/moduleLorebookRepair'
 import { acquireModule, registerModuleLoader, unregisterModuleLoader } from 'src/ts/storage/store2/moduleAcquire'
 import { language } from 'src/lang'
 
@@ -251,5 +251,51 @@ describe('what a loader must do around repairModuleLorebook', () => {
         const acquired = await acquiring
         expect(resolved).toBe(true)
         expect(acquired?.module.lorebook).toEqual([])
+    })
+})
+
+describe('lorebookRepairNeed judges from the body alone, and the repair follows the same decision', () => {
+    const bodies: Array<[label: string, make: () => RisuModule | null | undefined, need: 'none' | 'migrate' | 'ask']> = [
+        ['no body', () => null, 'none'],
+        ['no lorebook', () => body('N', undefined), 'none'],
+        ['an empty list', () => body('E', []), 'none'],
+        ['a current list', () => body('C', [lore('a', 2), lore('b', 3)]), 'none'],
+        ['a list with an entry below version 2', () => body('M', [lore('a', 2), lore('b', undefined)]), 'migrate'],
+        ['a string', () => body('S', 'text'), 'ask'],
+        ['an object', () => body('O', { a: 1 }), 'ask'],
+        ['a number', () => body('Q', 7), 'ask'],
+    ]
+
+    test.each(bodies)('contract: judge-names-the-repair: %s', async (_label, make, need) => {
+        const module = make()
+        expect(lorebookRepairNeed(module)).toBe(need)
+    })
+
+    test.each(bodies)('contract: judge-is-pure: %s is judged without a notice, a prompt or a change', async (_label, make) => {
+        const module = make()
+        const before = JSON.stringify(module)
+        lorebookRepairNeed(module)
+        expect(h.events).toEqual([])
+        expect(migrate).not.toHaveBeenCalled()
+        expect(JSON.stringify(module)).toBe(before)
+    })
+
+    test('contract: repair-follows-judge: only a body judged ask shows a notice, and only a body judged migrate migrates', async () => {
+        for (const [, make, need] of bodies) {
+            h.events.length = 0
+            h.waiting.length = 0
+            migrate.mockClear()
+            const module = make()
+            const pending = repairModuleLorebook(module)
+            await tick()
+            expect(h.events.some((event) => event.startsWith('error:')), `${need} shows a notice`).toBe(need === 'ask')
+            expect(migrate.mock.calls.length, `${need} migrates`).toBe(need === 'migrate' ? 1 : 0)
+            if (need === 'ask') {
+                await answer()
+                await answer(false)
+                await answer(false)
+            }
+            expect(await pending).toEqual({ changed: need === 'migrate' })
+        }
     })
 })
