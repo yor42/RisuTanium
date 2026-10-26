@@ -4,6 +4,17 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  express>body-parser: ~1.20.9
+  express-rate-limit>ip-address: ^10.7.4
+  jsdom>undici: ^7.30.1
+  monaco-editor>dompurify: ^3.4.17
+
+patchedDependencies:
+  monaco-editor@0.57.0:
+    hash: c58c7b883a9d693ce2765229bddb4f94eed04aeabbce7b355a3eaadcfef3ea7e
+    path: patches/monaco-editor@0.57.0.patch
+
 importers:
 
   .:
@@ -148,7 +159,7 @@ importers:
         version: 3.0.0-rc.0
       monaco-editor:
         specifier: ^0.57.0
-        version: 0.57.0
+        version: 0.57.0(patch_hash=c58c7b883a9d693ce2765229bddb4f94eed04aeabbce7b355a3eaadcfef3ea7e)
       msgpackr:
         specifier: 1.10.1
         version: 1.10.1
@@ -259,8 +270,8 @@ importers:
         specifier: ^4.5.3
         version: 4.5.3
       happy-dom:
-        specifier: ^20.14.5
-        version: 20.14.5
+        specifier: ^21.0.4
+        version: 21.0.4
       internal-ip:
         specifier: ^7.0.0
         version: 7.0.0
@@ -296,7 +307,7 @@ importers:
         version: 3.6.0(vite@8.1.6(@types/node@22.19.3)(esbuild@0.27.2)(jiti@2.6.1))
       vitest:
         specifier: ^4.1.12
-        version: 4.1.12(@types/node@22.19.3)(happy-dom@20.14.5)(jsdom@28.1.0)(vite@8.1.6(@types/node@22.19.3)(esbuild@0.27.2)(jiti@2.6.1))
+        version: 4.1.12(@types/node@22.19.3)(happy-dom@21.0.4)(jsdom@28.1.0)(vite@8.1.6(@types/node@22.19.3)(esbuild@0.27.2)(jiti@2.6.1))
 
 packages:
 
@@ -1561,8 +1572,8 @@ packages:
   bidi-js@1.1.0:
     resolution: {integrity: sha512-fX1Onk0tdVPC7obPWB5EbJ1z7NVhLq4m2xZLq2YXBkxzMXIGRpNMU88n0EPgWseKl12J7zXs7qrDxPK4sRs2fg==}
 
-  body-parser@1.20.8:
-    resolution: {integrity: sha512-JNcyFQ64OiijEkPzUBTCe+hyPXUD/3LEldGQ6iF5LR1w00mx9o7xtDWHXBY2iItjdCFGoilOLNQbH943ut7pHA==}
+  body-parser@1.20.9:
+    resolution: {integrity: sha512-FISIQxV5u91Y9gvuFq3q/tA/qTqLJn3AhRcEvyozyhJTh5OBFFtv827AdHU7Rbyct4r+Ba1/99oFa1Y3yuFsdw==}
     engines: {node: '>= 0.8', npm: 1.2.8000 || >= 1.4.16}
 
   boolbase@1.0.0:
@@ -1764,9 +1775,6 @@ packages:
     resolution: {integrity: sha512-cgwlv/1iFQiFnU96XXgROh8xTeetsnJiDsTc7TYCLFd9+/WNkIqPTxiM/8pSd8VIrhXGTf1Ny1q1hquVqDJB5w==}
     engines: {node: '>= 4'}
 
-  dompurify@3.4.15:
-    resolution: {integrity: sha512-EUBjM+B+lkDE41iE82DDSCfkoPGfXx8IxFxPMjNzm/Uk4xDet77rTN9wqlxlVg71kK7XGuUMv6wUxJUwwv+Xyw==}
-
   dompurify@3.4.17:
     resolution: {integrity: sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w==}
 
@@ -1955,8 +1963,8 @@ packages:
   guid-typescript@1.0.9:
     resolution: {integrity: sha512-Y8T4vYhEfwJOTbouREvG+3XDsjr8E3kIr7uf+JZ0BYloFsttiHU0WfvANVsR7TxNUJa/WpCnw/Ino/p+DeBhBQ==}
 
-  happy-dom@20.14.5:
-    resolution: {integrity: sha512-x/RzkpWO40bTjIoT30iQtt64FLLmH/iRcUCN2X//bLx7H3ifkdfPXyqsro/OYtqzIAhiLMMA7mmiOR9C3NOKjQ==}
+  happy-dom@21.0.4:
+    resolution: {integrity: sha512-tFm+GaLBgo6o0awHnvHaNoraVo27qJ+2tZEtZ+cIa08hXbeitrxAJajLI05hsUy/2/YTKcUjQYzHe5mCcraLBw==}
     engines: {node: '>=20.0.0'}
 
   has-property-descriptors@1.0.2:
@@ -2018,8 +2026,8 @@ packages:
     resolution: {integrity: sha512-qE4TeD4brqC45Vq/+VASeMiS1KRyfBkR6HT2sh9pZVVCzSjPkaCEfKFU+dL0PRv7NHJtvoKN2r82G6wTfzorkw==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
-  ip-address@10.7.3:
-    resolution: {integrity: sha512-A1kdq/tSb5QjvKvAMgIoEvDBIgL7qaqVP/jkvSwYYRZ9iEzvPpopxp2wQfu3SuZRHtpHNxMn8Fs0bS+gf5Xmwg==}
+  ip-address@10.7.5:
+    resolution: {integrity: sha512-t2v0rkILYv9WXmSL7TpAaU3HXgaFYOPUcH3QHgwQ++gpJuH3bqyMy4Fvt/DJCTKwzH3Cf+bAp5W/mFL39KPLzA==}
     engines: {node: '>= 12'}
 
   ip-regex@4.3.0:
@@ -2686,8 +2694,8 @@ packages:
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
-  undici@7.30.0:
-    resolution: {integrity: sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ==}
+  undici@7.30.1:
+    resolution: {integrity: sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==}
     engines: {node: '>=20.18.1'}
 
   unpipe@1.0.0:
@@ -3862,7 +3870,7 @@ snapshots:
     dependencies:
       require-from-string: 2.0.2
 
-  body-parser@1.20.8:
+  body-parser@1.20.9:
     dependencies:
       bytes: 3.1.2
       content-type: 1.0.5
@@ -4055,10 +4063,6 @@ snapshots:
     dependencies:
       domelementtype: 2.3.0
 
-  dompurify@3.4.15:
-    optionalDependencies:
-      '@types/trusted-types': 2.0.7
-
   dompurify@3.4.17:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
@@ -4174,7 +4178,7 @@ snapshots:
     dependencies:
       debug: 4.4.3
       express: 4.22.3
-      ip-address: 10.7.3
+      ip-address: 10.7.5
     transitivePeerDependencies:
       - supports-color
 
@@ -4182,7 +4186,7 @@ snapshots:
     dependencies:
       accepts: 1.3.8
       array-flatten: 1.1.1
-      body-parser: 1.20.8
+      body-parser: 1.20.9
       content-disposition: 0.5.4
       content-type: 1.0.5
       cookie: 0.7.2
@@ -4293,7 +4297,7 @@ snapshots:
 
   guid-typescript@1.0.9: {}
 
-  happy-dom@20.14.5:
+  happy-dom@21.0.4:
     dependencies:
       '@types/node': 22.19.3
       '@types/whatwg-mimetype': 3.0.2
@@ -4369,7 +4373,7 @@ snapshots:
       is-ip: 3.1.0
       p-event: 4.2.0
 
-  ip-address@10.7.3: {}
+  ip-address@10.7.5: {}
 
   ip-regex@4.3.0: {}
 
@@ -4410,7 +4414,7 @@ snapshots:
       saxes: 6.0.0
       symbol-tree: 3.2.4
       tough-cookie: 6.0.2
-      undici: 7.30.0
+      undici: 7.30.1
       w3c-xmlserializer: 5.0.0
       webidl-conversions: 8.0.1
       whatwg-mimetype: 5.0.0
@@ -4558,9 +4562,9 @@ snapshots:
 
   mobile-drag-drop@3.0.0-rc.0: {}
 
-  monaco-editor@0.57.0:
+  monaco-editor@0.57.0(patch_hash=c58c7b883a9d693ce2765229bddb4f94eed04aeabbce7b355a3eaadcfef3ea7e):
     dependencies:
-      dompurify: 3.4.15
+      dompurify: 3.4.17
       marked: 14.0.0
 
   mri@1.2.0: {}
@@ -5060,7 +5064,7 @@ snapshots:
 
   undici-types@6.21.0: {}
 
-  undici@7.30.0: {}
+  undici@7.30.1: {}
 
   unpipe@1.0.0: {}
 
@@ -5099,7 +5103,7 @@ snapshots:
     optionalDependencies:
       vite: 8.1.6(@types/node@22.19.3)(esbuild@0.27.2)(jiti@2.6.1)
 
-  vitest@4.1.12(@types/node@22.19.3)(happy-dom@20.14.5)(jsdom@28.1.0)(vite@8.1.6(@types/node@22.19.3)(esbuild@0.27.2)(jiti@2.6.1)):
+  vitest@4.1.12(@types/node@22.19.3)(happy-dom@21.0.4)(jsdom@28.1.0)(vite@8.1.6(@types/node@22.19.3)(esbuild@0.27.2)(jiti@2.6.1)):
     dependencies:
       '@vitest/expect': 4.1.12
       '@vitest/mocker': 4.1.12(vite@8.1.6(@types/node@22.19.3)(esbuild@0.27.2)(jiti@2.6.1))
@@ -5123,7 +5127,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.19.3
-      happy-dom: 20.14.5
+      happy-dom: 21.0.4
       jsdom: 28.1.0
     transitivePeerDependencies:
       - msw
