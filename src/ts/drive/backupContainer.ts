@@ -167,6 +167,28 @@ export function parseBackupEntryHeader(
     return { status: 'ok', header: { name, nameLength, dataLength, headerLength: dataLengthEnd } }
 }
 
+/**
+ * A read inside the file's own size delivered fewer bytes than it asked for.
+ * That is a changed or unreadable file, not a truncated tail: a file really
+ * cut off has a size that ends with it, so its reads are never short. The
+ * message carries the figures for the console only.
+ */
+export class BackupShortReadError extends Error {
+    readonly position: number
+    readonly requested: number
+    readonly received: number
+    readonly totalBytes: number
+
+    constructor(position: number, requested: number, received: number, totalBytes: number) {
+        super(`Backup read at ${position} returned ${received} of ${requested} bytes (file size ${totalBytes})`)
+        this.name = 'BackupShortReadError'
+        this.position = position
+        this.requested = requested
+        this.received = received
+        this.totalBytes = totalBytes
+    }
+}
+
 export interface BackupWalkOptions {
     /** Window size, in bytes, of the walk's sequential reads; a header larger than the window is read exactly. */
     windowBytes?: number
@@ -220,7 +242,8 @@ export interface BlobWindowReader {
      * request past the end is the caller's end of file, not a change). The
      * result is shorter than the clamped request only when the file delivered
      * fewer bytes than its size promised, which a caller must treat as a
-     * changed file. A range inside the window is a view of it; a miss reads a
+     * changed file (`indexBackupEntries` throws when the short read leaves
+     * what it needs unresolved). A range inside the window is a view of it; a miss reads a
      * new window starting at `start` (`fill`, the default) or, for a range
      * larger than a window or when `fill` is false, reads exactly the range
      * and leaves the held window alone. An exception from the read
@@ -274,6 +297,13 @@ export function createBlobWindowReader(file: Blob, windowBytes: number): BlobWin
  * nothing further to scan remains. A truncated trailing entry is not in the
  * index, so `LoadLocalBackup` silently drops it rather than treating it as
  * corruption.
+ *
+ * Only a file whose own size ends mid-entry is a truncated tail. A read
+ * inside that size that delivers too few bytes to resolve the header it
+ * needs (or a long name's data-length field or name prefix) throws
+ * `BackupShortReadError`, unless the bytes it did deliver already hold a
+ * complete marker name. Body bytes are not read here; the restore's copy
+ * pass checks their length.
  *
  * Any exception `file.slice(...).arrayBuffer()` throws propagates to the
  * caller uncaught: a walk that could not finish reading the file must never
@@ -334,7 +364,7 @@ export async function indexBackupEntries(file: Blob, options: BackupWalkOptions 
                 }
                 const fieldBuffer = await reader.view(fieldStart, 4)
                 if (fieldBuffer.length < 4) {
-                    return { hasMarker: false, entries, names }
+                    throw new BackupShortReadError(fieldStart, 4, fieldBuffer.length, totalBytes)
                 }
                 const dataLength = readUint32LE(fieldBuffer, 0)
                 const bodyEnd = fieldEnd + dataLength
@@ -343,7 +373,11 @@ export async function indexBackupEntries(file: Blob, options: BackupWalkOptions 
                 }
                 entries.push({ headerOffset: pos, nameLength: result.nameLength, dataLength, headerLength: 4 + result.nameLength + 4 })
                 if (oversizeBodyBytes !== undefined && dataLength > oversizeBodyBytes) {
-                    names.set(pos, new TextDecoder().decode(await reader.view(pos + 4, BACKUP_NAME_PREFIX_BYTES)))
+                    const namePrefix = await reader.view(pos + 4, BACKUP_NAME_PREFIX_BYTES)
+                    if (namePrefix.length < BACKUP_NAME_PREFIX_BYTES) {
+                        throw new BackupShortReadError(pos + 4, BACKUP_NAME_PREFIX_BYTES, namePrefix.length, totalBytes)
+                    }
+                    names.set(pos, new TextDecoder().decode(namePrefix))
                 }
                 pos = bodyEnd
                 options.onProgress?.(pos, totalBytes)
@@ -358,9 +392,16 @@ export async function indexBackupEntries(file: Blob, options: BackupWalkOptions 
                 return { hasMarker: true, entries: [], names: new Map() }
             }
 
-            // Fewer bytes than the file's size promised are the old walk's
-            // truncated tail: the walk ends without a marker, as before.
-            const moreAvailableBeyondWindow = requested < remaining && buffer.length === requested
+            // The marker test above runs first, so a short read that already
+            // holds a complete marker name still resolves as the marker. Any
+            // other short read is a file that delivered fewer bytes than its
+            // own size promised, never a truncated tail.
+            if (buffer.length < requested) {
+                throw new BackupShortReadError(pos, requested, buffer.length, totalBytes)
+            }
+            // A header still incomplete at the file's real end is the
+            // truncated tail: the walk ends without a marker.
+            const moreAvailableBeyondWindow = requested < remaining
             if (!moreAvailableBeyondWindow) {
                 return { hasMarker: false, entries, names }
             }
