@@ -78,7 +78,7 @@ import { hasLocalDrafts } from "./localDrafts";
 import { beginChokePoint, busyKinds } from "./process/memory/busyActions";
 import { installNetHold } from "./storage/measureExportHold";
 import { isAndroidTransport, shouldBypassFrozenPagePaths } from "./storage/tauriByteTransport";
-import { androidWithholdsUrl, forgetStoredAssetSizes, type AssetUse } from "./storage/assetUrlGate";
+import { androidWithholdsUrl, forgetStoredAssetSizes, type AssetUse, type WholeReadBudget } from "./storage/assetUrlGate";
 import { parseJsonBody } from "./network/frozenBody";
 import { MEASURE } from "./process/memory/measureFlag";
 import { noteChatSelect } from "./process/chatPhaseRing";
@@ -453,15 +453,24 @@ function objectUrlOfAssetBlob(loc: string, blob: Blob): string {
  * would read the file whole into the WebView's heap. A caller that does not say
  * what the URL is for gets `'whole'`; only a media element passes `'media'`.
  *
+ * A list passes the `budget` of its run for every `'whole'` row: the call joins
+ * the budget synchronously, before its first await, so admissions follow call
+ * (row) order, and a row the budget refuses gets `''` too.
+ *
  * @param {string} loc - The location of the file.
  * @param {AssetUse} use - What the URL is for.
+ * @param {WholeReadBudget} budget - The whole-read budget of the calling list; used for an `assets` file with a `'whole'` use only.
  * @returns {Promise<string>} - A promise that resolves to the source URL of the file, or `''` when none can be made or it is withheld.
  */
-export async function getFileSrc(loc: string, use: AssetUse = 'whole') {
+export async function getFileSrc(loc: string, use: AssetUse = 'whole', budget?: WholeReadBudget) {
     if (isTauri) {
         if (loc.startsWith('assets')) {
+            const admission = use === 'whole' && budget !== undefined ? budget.admit(loc) : undefined
             try {
                 if (await androidWithholdsUrl(loc, use)) {
+                    return ''
+                }
+                if (admission !== undefined && !(await admission)) {
                     return ''
                 }
                 const store = await getAppStore()

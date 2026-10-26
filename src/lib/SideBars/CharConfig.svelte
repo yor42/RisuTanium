@@ -7,7 +7,7 @@
     import { untrack } from 'svelte';
     import { CharConfigSubMenu, MobileGUI, selectedCharID, hypaV3ModalOpen } from "../../ts/stores.svelte";
     import { PlusIcon, SmileIcon, TrashIcon, UserIcon, ActivityIcon, BookIcon, User, Braces, Volume2Icon, DownloadIcon, HardDriveUploadIcon, Share2Icon, ImageIcon, ImageOffIcon, ArrowUp, ArrowDown, FileMusicIcon } from '@lucide/svelte'
-    import { assetListElement, assetListUse, rowAssetUrl, storeRowAssetUrl, type RowAssetUrl } from 'src/ts/storage/assetUrlGate'
+    import { assetListElement, assetListUse, createWholeReadBudget, rowAssetUrl, storeRowAssetUrl, type RowAssetUrl, type WholeReadBudget } from 'src/ts/storage/assetUrlGate'
     import Check from "../UI/GUI/CheckInput.svelte";
     import { addCharEmotion, addingEmotion, getCharImage, rmCharEmotion, selectCharImg, makeGroupImage, removeChar, changeCharImage } from "../../ts/characters";
     import LoreBook from "./LoreBook/LoreBookSetting.svelte";
@@ -98,7 +98,13 @@
         })
     });
 
+    // Not reactive: it only numbers the runs of the effect below, so a run that was superseded cannot store a URL.
+    let assetRunId = 0
+
     $effect.pre(() => {
+        const runId = ++assetRunId
+        // One budget per run: the whole reads of the list's images together stay within the Android heap.
+        const budget = createWholeReadBudget()
         if(DBState.db.characters[$selectedCharID].type ==='character' && DBState.db.useAdditionalAssetsPreview){
             if((DBState.db.characters[$selectedCharID] as character).additionalAssets){
                 for(let i = 0; i < (DBState.db.characters[$selectedCharID] as character).additionalAssets.length; i++){
@@ -109,7 +115,11 @@
                     const use = assetListUse(assetListElement(assetFileExtensions[i], { knownImagesOnly: true }))
                     if(use !== null){
                         const path = (DBState.db.characters[$selectedCharID] as character).additionalAssets[i][1]
-                        getFileSrc(path, use).then((url) => {
+                        const urlPromise = use === 'whole' ? getFileSrc(path, use, budget) : getFileSrc(path, use)
+                        urlPromise.then((url) => {
+                            if(runId !== assetRunId){
+                                return
+                            }
                             // Read when the URL settles: the row may name another asset by now.
                             const nowChar = DBState.db.characters[$selectedCharID]
                             const nowPath = nowChar?.type === 'character' ? nowChar.additionalAssets?.[i]?.[1] : undefined
@@ -119,6 +129,45 @@
                     }
                 }
             }
+        }
+    });
+
+    let emotionUrls:(RowAssetUrl|undefined)[] = $state([])
+    // Not reactive: it only numbers the runs of the emotion effect below.
+    let emotionRunId = 0
+
+    // The full-size image of an emotion row: like `getCharImage(loc, 'plain')`, but a whole read joins the run's budget.
+    async function emotionImageSrc(loc:string, budget:WholeReadBudget):Promise<string|null> {
+        if(DBState.db.hideAllImages || !loc){
+            return await getCharImage(loc, 'plain')
+        }
+        return await getFileSrc(loc, 'whole', budget)
+    }
+
+    $effect.pre(() => {
+        const runId = ++emotionRunId
+        // One budget per run of the table, joined in row order.
+        const budget = createWholeReadBudget()
+        if($CharConfigSubMenu !== 1 || viewSubMenu !== 1){
+            return
+        }
+        const chara = DBState.db.characters[$selectedCharID]
+        if(chara.type === 'group' || chara.viewScreen !== 'emotion' || !chara.emotionImages){
+            return
+        }
+        for(let i = 0; i < chara.emotionImages.length; i++){
+            const path = chara.emotionImages[i][1]
+            emotionImageSrc(path, budget).then((url) => {
+                if(runId !== emotionRunId || url === null){
+                    return
+                }
+                // Read when the URL settles: the row may name another image by now.
+                const nowChar = DBState.db.characters[$selectedCharID]
+                const nowPath = nowChar?.type === 'character' ? nowChar.emotionImages?.[i]?.[1] : undefined
+                storeRowAssetUrl(emotionUrls, i, { path, use: 'whole', url }, nowPath, 'whole')
+            }).catch((reason: unknown) => {
+                console.warn('CharConfig: emotion image rejected', reason)
+            })
         }
     });
 
@@ -515,14 +564,19 @@
                         </tr>
                     {:else}
                         {#each emos as emo, i}
+                            {@const emotionUrl = rowAssetUrl(emotionUrls[i], emo[1], 'whole')}
                             <tr>
-                                {#await warnOnReject('CharConfig: emotion image rejected', getCharImage(emo[1], 'plain'))}
-                                    <td class="font-medium truncate w-1/3"></td>
-                                {:then im}
-                                    <td class="font-medium truncate w-1/3"><img src={im} alt={language.sidebarUi.imageAlt} class="w-full"></td>
-                                {:catch}
-                                    <td class="font-medium truncate w-1/3"></td>
-                                {/await}
+                                <!-- A URL still being made, or made for another image, is undefined and shows an empty cell; '' is a URL that was withheld or could not be made, and shows the name box. -->
+                                <td class="font-medium truncate w-1/3">
+                                    {#if emotionUrl === ''}
+                                        <div class='w-16 h-16 m-1 rounded-md bg-slate-500 flex flex-col justify-center items-center'>
+                                            <FileMusicIcon/>
+                                            <div class='w-16 px-1 text-ellipsis whitespace-nowrap overflow-hidden'>{emo[0]}</div>
+                                        </div>
+                                    {:else if emotionUrl}
+                                        <img src={emotionUrl} alt={language.sidebarUi.imageAlt} class="w-full">
+                                    {/if}
+                                </td>
                                 <td class="font-medium truncate w-1/2">
                                     <TextInput marginBottom size='lg' bind:value={DBState.db.characters[$selectedCharID].emotionImages[i][0]} />
                                 </td>

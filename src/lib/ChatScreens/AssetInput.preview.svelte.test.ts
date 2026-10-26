@@ -16,6 +16,16 @@ import type { character } from 'src/ts/storage/database.svelte'
 const hoisted = vi.hoisted(() => ({
     testDb: { db: {} as { characters: unknown[] } },
     pending: new Map<string, (value: string) => void>(),
+    // Every call for a path in `holdPaths` hangs until released through `hung`.
+    holdPaths: new Set<string>(),
+    hung: new Map<string, Array<() => void>>(),
+    android: { on: false, sizes: new Map<string, number>() },
+}))
+
+vi.mock('src/ts/storage/tauriByteTransport', async (importOriginal) => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    isAndroidTransport: () => hoisted.android.on,
+    statStoredSize: async (key: string) => hoisted.android.sizes.get(key) ?? 0,
 }))
 
 vi.mock('src/ts/stores.svelte', () => ({
@@ -25,9 +35,17 @@ vi.mock('src/ts/stores.svelte', () => ({
 vi.mock('src/ts/storage/database.svelte', () => ({}))
 
 vi.mock('src/ts/globalApi.svelte', () => ({
-    getFileSrc: vi.fn(async (loc: string, use?: string) => {
+    // A whole use joins the passed budget synchronously, as the real `getFileSrc` does, and a refused row gets `''`.
+    getFileSrc: vi.fn(async (loc: string, use?: string, budget?: { admit(key: string): Promise<boolean> }) => {
+        const admission = use === 'whole' && budget !== undefined ? budget.admit(loc) : undefined
         if (loc.startsWith('assets/pending')) {
             return await new Promise<string>((resolve) => { hoisted.pending.set(loc, resolve) })
+        }
+        if (hoisted.holdPaths.has(loc)) {
+            await new Promise<void>((resolve) => { hoisted.hung.set(loc, [...(hoisted.hung.get(loc) ?? []), resolve]) })
+        }
+        if (admission !== undefined && !(await admission)) {
+            return ''
         }
         return use === 'whole' && loc.includes('huge') ? '' : `src:${loc}`
     }),
@@ -76,6 +94,10 @@ async function mountRows(rows: Row[]): Promise<HTMLButtonElement[]> {
 
 beforeEach(() => {
     hoisted.pending.clear()
+    hoisted.holdPaths.clear()
+    hoisted.hung.clear()
+    hoisted.android.on = false
+    hoisted.android.sizes.clear()
     vi.mocked(getFileSrc).mockClear()
 })
 
@@ -134,7 +156,7 @@ describe('which element a row renders', () => {
     test('contract: an image row asks for a whole use', async () => {
         await mountRows([['pic', 'assets/pic', 'png']])
 
-        expect(getFileSrc).toHaveBeenCalledWith('assets/pic', 'whole')
+        expect(getFileSrc).toHaveBeenCalledWith('assets/pic', 'whole', expect.anything())
     })
 
     test('reproducer: an image over the limit shows the name box instead of an image', async () => {
@@ -185,5 +207,67 @@ describe('a row whose asset changes', () => {
         await flush()
 
         expect(host?.querySelector('img')?.getAttribute('src')).toBe('src:assets/pending-b')
+    })
+})
+
+describe('the whole-read budget of the sticker list on Android', () => {
+    const MIB = 1024 * 1024
+    // 60.55 MiB: one of them fits the 64 MiB budget of a list and a second does not.
+    const BIG_BYTES = 63494348
+
+    function rowsOfSize(count: number, prefix: string, bytes: number): Row[] {
+        hoisted.android.on = true
+        return Array.from({ length: count }, (_, i) => {
+            hoisted.android.sizes.set(`assets/${prefix}${i}`, bytes)
+            return [`${prefix}${i}`, `assets/${prefix}${i}`, 'png'] as Row
+        })
+    }
+
+    function countIn(): { images: number, boxes: number } {
+        return {
+            images: host?.querySelectorAll('img').length ?? 0,
+            boxes: host?.querySelectorAll('div.bg-slate-500').length ?? 0,
+        }
+    }
+
+    test('reproducer: six 60.55 MiB images give one image on row 0 and five name boxes', async () => {
+        const buttons = await mountRows(rowsOfSize(6, 'big', BIG_BYTES))
+
+        expect(countIn()).toEqual({ images: 1, boxes: 5 })
+        expect(buttons[0].querySelector('img')).not.toBeNull()
+    })
+
+    test('reproducer: twelve 6 MiB images give ten images and two name boxes', async () => {
+        await mountRows(rowsOfSize(12, 'mid', 6 * MIB))
+
+        expect(countIn()).toEqual({ images: 10, boxes: 2 })
+    })
+
+    test('guard: off Android every image shows', async () => {
+        const rows = rowsOfSize(6, 'big', BIG_BYTES)
+        hoisted.android.on = false
+        await mountRows(rows)
+
+        expect(countIn()).toEqual({ images: 6, boxes: 0 })
+    })
+
+    test('reproducer: a superseded run that settles late does not store the URL its own budget admitted', async () => {
+        hoisted.android.on = true
+        hoisted.android.sizes.set('assets/a', 4 * MIB)
+        hoisted.android.sizes.set('assets/b', 60 * MIB)
+        hoisted.android.sizes.set('assets/c', 10 * MIB)
+        hoisted.holdPaths.add('assets/b')
+        await mountRows([['a', 'assets/a', 'png'], ['b', 'assets/b', 'png']])
+
+        // Row 0 now names a 10 MiB file, so the new run's budget refuses row 1.
+        hoisted.holdPaths.delete('assets/b')
+        listedCharacter!.additionalAssets = [['c', 'assets/c', 'png'], ['b', 'assets/b', 'png']]
+        await flush()
+        for (const release of hoisted.hung.get('assets/b') ?? []) release()
+        await flush()
+        const buttons = Array.from(host!.querySelectorAll('button')).slice(1) as HTMLButtonElement[]
+
+        expect(buttons[1].querySelector('img')).toBeNull()
+        expect(buttons[1].querySelectorAll('div.bg-slate-500').length).toBe(1)
     })
 })

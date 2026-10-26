@@ -4,6 +4,7 @@ import { language } from "src/lang"
 import { alertNormalWait } from "./alert"
 import streamSaver from "./vendor/streamSaver"
 import { MEASURE } from "./process/memory/measureFlag"
+import { noteMeasurePhase } from "./drive/importPhaseRing"
 import { isTauri } from "./platform"
 import { bytesToBase64, isAndroidTransport } from "./storage/tauriByteTransport"
 import type { ExportCancelToken } from "./exportCancel"
@@ -279,7 +280,7 @@ export class TauriWriter {
         }
     }
 
-    /** Console only: the bytes written against the size a zero-byte reopen saw. Only the URI host is named, never the document id, path or display name. */
+    /** Measurement ring only (`risu-measure-import` on): the bytes written against the size a zero-byte reopen saw. Only the URI host is named, never the document id, path or display name. */
     private logReopenSize(reopenSize: unknown, reopen: unknown) {
         try {
             let host = 'unknown'
@@ -289,7 +290,7 @@ export class TauriWriter {
                 // an unparsable URI is logged as an unknown host
             }
             const reopened = typeof reopenSize === 'number' ? String(reopenSize) : typeof reopen === 'string' ? reopen : 'none'
-            console.log(`[export] reopen size check: written=${this.bytesWritten} reopened=${reopened} host=${host}`)
+            noteMeasurePhase(`export reopen size check: written=${this.bytesWritten} reopened=${reopened} host=${host}`)
         } catch {
             // logging never changes the export result
         }

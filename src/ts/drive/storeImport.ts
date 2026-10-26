@@ -18,8 +18,7 @@ import type { BootImportEnd, BootImportTarget } from '../storage/store2/legacy/b
 import { getActiveStore2Save } from '../storage/store2/saveActive'
 import { incompleteList } from '../storage/store2/ui/bootText'
 import { readColdStorageItem } from '../process/coldstorage.svelte'
-import { MEASURE } from '../process/memory/measureFlag'
-import { pushImportPhase } from './importPhaseRing'
+import { noteMeasurePhase } from './importPhaseRing'
 import { estimateImportSeconds, IMPORT_TIME_WARNING_BYTES, importAssetBytes, importFreeGigabytesText, importFreeSpaceBytes, importGigabytesText, importSpaceVerdict, roundImportMinutes } from './importEstimate'
 import { transportKind } from '../storage/tauriByteTransport'
 import { readAppDataFreeBytes } from '../storage/appFreeSpace'
@@ -105,8 +104,6 @@ export type Store2ImportCheck =
     | { kind: 'ready', target: Store2ImportTarget }
     | { kind: 'refused', cause: Store2ImportRefusal }
 
-const IMPORT_MEASURE_KEY = 'risu-measure-import'
-
 /** The copy loop notes a phase once per this many entries visited. */
 export const IMPORT_COPY_PHASE_EVERY = 5000
 
@@ -117,20 +114,7 @@ export const IMPORT_COPY_PHASE_EVERY = 5000
  * condition away and logs and records nothing; the hook decides nothing.
  */
 export function noteImportPhase(phase: string): void {
-    if (!MEASURE) {
-        return
-    }
-    try {
-        if (typeof localStorage === 'undefined' || localStorage.getItem(IMPORT_MEASURE_KEY) !== 'on') {
-            return
-        }
-    } catch {
-        return
-    }
-    const heap = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize
-    const t = Math.round(performance.now())
-    console.info(`[import-measure] ${phase} t=${t}ms heap=${heap === undefined ? 'n/a' : `${Math.round(heap / (1024 * 1024))}MiB`}`)
-    pushImportPhase(phase, t, heap === undefined ? null : Math.round(heap / (1024 * 1024)))
+    noteMeasurePhase(phase)
 }
 
 /**

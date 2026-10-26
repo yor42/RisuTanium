@@ -218,7 +218,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 //#endregion
 
 import { getFileSrc, releaseAssetObjectUrl } from 'src/ts/globalApi.svelte'
-import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES, resetAssetUrlGateForTest } from 'src/ts/storage/assetUrlGate'
+import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES, createWholeReadBudget, resetAssetUrlGateForTest } from 'src/ts/storage/assetUrlGate'
 
 const MIB = 1024 * 1024
 const URL_OF = (key: string) => `asset://localhost/${key}`
@@ -294,6 +294,56 @@ describe('getFileSrc on Android above the whole-read limit', () => {
 
         expect(await getFileSrc('assets/a')).toBe('')
         expect(transport.stat).toHaveBeenCalledTimes(2)
+    })
+})
+
+describe('getFileSrc with the whole-read budget of a list', () => {
+    test('reproducer: admissions follow call order even when the sizes arrive in reverse order', async () => {
+        const settle = new Map<string, (size: number) => void>()
+        transport.stat.mockImplementation((key: string) => new Promise<number>((resolve) => { settle.set(key, resolve) }))
+        const budget = createWholeReadBudget()
+
+        const first = getFileSrc('assets/a', 'whole', budget)
+        const second = getFileSrc('assets/b', 'whole', budget)
+        await Promise.resolve()
+        settle.get('assets/b')?.(40 * MIB)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        settle.get('assets/a')?.(40 * MIB)
+
+        expect(await first).toBe(URL_OF('assets/a'))
+        expect(await second).toBe('')
+    })
+
+    test('a whole use the budget refuses gets no URL and the store is not asked', async () => {
+        transport.stat.mockResolvedValue(10 * MIB)
+        const budget = createWholeReadBudget(15 * MIB)
+
+        expect(await getFileSrc('assets/a', 'whole', budget)).toBe(URL_OF('assets/a'))
+        store.urlFor.mockClear()
+        expect(await getFileSrc('assets/b', 'whole', budget)).toBe('')
+        expect(store.urlFor).not.toHaveBeenCalled()
+    })
+
+    test('a media use ignores the budget and asks no size', async () => {
+        transport.stat.mockResolvedValue(10 * MIB)
+        const budget = createWholeReadBudget(1)
+
+        expect(await getFileSrc('assets/video', 'media', budget)).toBe(URL_OF('assets/video'))
+        expect(transport.stat).not.toHaveBeenCalled()
+    })
+
+    test('guard: a path outside the assets keys ignores the budget and is never probed', async () => {
+        transport.stat.mockResolvedValue(10 * MIB)
+
+        expect(await getFileSrc('/some/where.png', 'whole', createWholeReadBudget(1))).toBe('converted:/some/where.png')
+        expect(transport.stat).not.toHaveBeenCalled()
+    })
+
+    test('guard: without a budget the call behaves as before', async () => {
+        transport.stat.mockResolvedValue(60 * MIB)
+
+        expect(await getFileSrc('assets/a')).toBe(URL_OF('assets/a'))
+        expect(await getFileSrc('assets/b', 'whole')).toBe(URL_OF('assets/b'))
     })
 })
 

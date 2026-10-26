@@ -29,6 +29,7 @@
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Database } from '../../storage/database.svelte'
+import type { ImportPhaseRingHandle } from '../importPhaseRing'
 import { language } from 'src/lang'
 import {
     getColdStorageBackupKey as realGetColdStorageBackupKey,
@@ -1131,18 +1132,36 @@ describe('a backup that ends inside an entry, or lacks a database, is refused be
         expect(alertMocks.alertError).toHaveBeenCalledWith('Failed, Is file corrupted?')
     })
 
-    test('the refusal log carries counts and offsets only, never a name', async () => {
+    function measureRingPhases(): string[] {
+        const ring = (globalThis as { __risuImportPhases?: ImportPhaseRingHandle }).__risuImportPhases
+        return ring === undefined ? [] : ring.snapshot().map((record) => record.phase)
+    }
+
+    test('the refusal note goes to the measurement ring, not the console, and carries counts and offsets only, never a name', async () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+        const measureSwitch = vi.spyOn(localStorage, 'getItem').mockImplementation((key: string) => key === 'risu-measure-import' ? 'on' : null)
         try {
+            ;(globalThis as { __risuImportPhases?: ImportPhaseRingHandle }).__risuImportPhases?.reset()
             await loadBackupBytes(truncatedDatabaseFixture())
-            const lines = warn.mock.calls.map((call) => String(call[0])).filter((line) => line.startsWith('[restore] refused'))
+            const lines = measureRingPhases().filter((phase) => phase.startsWith('restore refused'))
             expect(lines).toHaveLength(1)
-            expect(lines[0]).toMatch(/truncated tail, size \d+, 2 complete entries, last complete end \d+/)
+            expect(lines[0]).toMatch(/^restore refused: truncated tail, size \d+, 2 complete entries, last complete end \d+$/)
             expect(lines[0]).not.toContain(ASSET_NAME)
             expect(lines[0]).not.toContain(DATABASE_NAME)
+            expect(warn.mock.calls.map((call) => String(call[0])).filter((line) => line.includes('refused'))).toEqual([])
         } finally {
+            measureSwitch.mockRestore()
+            info.mockRestore()
             warn.mockRestore()
         }
+    })
+
+    test('without the measurement switch the refusal note records nothing', async () => {
+        ;(globalThis as { __risuImportPhases?: ImportPhaseRingHandle }).__risuImportPhases?.reset()
+        await loadBackupBytes(truncatedDatabaseFixture())
+
+        expect(measureRingPhases().filter((phase) => phase.startsWith('restore refused'))).toEqual([])
     })
 })
 

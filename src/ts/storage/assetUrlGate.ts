@@ -162,6 +162,56 @@ export async function androidWithholdsUrl(key: string, use: AssetUse): Promise<b
     return (await androidAssetSizeVerdict(key)) !== 'within'
 }
 
+/**
+ * What a list of previews may ask the Android asset protocol to read whole at
+ * once. Every whole read puts one Java array of the file's size in the WebView
+ * heap and the requests of a list run in parallel, so the sum of what one list
+ * admits stays at or under this.
+ */
+export const ANDROID_LIST_WHOLE_READ_BUDGET_BYTES = 64 * 1024 * 1024
+
+/** The admissions of one list: one budget per run of the list's effect. */
+export interface WholeReadBudget {
+    /**
+     * Whether the whole read of `key` fits in what is left. Decisions are made
+     * strictly in call order, so a caller that calls in row order gets the first
+     * rows that fit. Never rejects; a size that cannot be read is `false`.
+     */
+    admit(key: string): Promise<boolean>
+}
+
+/**
+ * A budget of `budgetBytes` for one run of a list. Off Android every key is
+ * admitted without a probe. On Android a key whose stored size is unknown or
+ * above `ANDROID_WHOLE_READ_URL_LIMIT_BYTES` is refused and not counted (the
+ * per-file gate withholds it anyway); any other key is admitted when its size
+ * fits in what is left, and each call counts, a repeated key included, because
+ * each row loads its own image.
+ */
+export function createWholeReadBudget(budgetBytes: number = ANDROID_LIST_WHOLE_READ_BUDGET_BYTES): WholeReadBudget {
+    let admitted = 0
+    // Each decision waits for the previous one; probes themselves still run in parallel.
+    let previous: Promise<unknown> = Promise.resolve()
+    return {
+        admit(key: string): Promise<boolean> {
+            if (!isAndroidTransport()) {
+                return Promise.resolve(true)
+            }
+            const probe = probeStoredSize(key)
+            const decision = previous.then(async () => {
+                const size = await probe
+                if (size === null || size > ANDROID_WHOLE_READ_URL_LIMIT_BYTES || admitted + size > budgetBytes) {
+                    return false
+                }
+                admitted += size
+                return true
+            })
+            previous = decision.catch(() => false)
+            return decision.catch(() => false)
+        },
+    }
+}
+
 /** Forgets what is known about `keys` (a deleted asset), including a probe still running. */
 export function forgetStoredAssetSizes(keys: Iterable<string>): void {
     for (const key of keys) {

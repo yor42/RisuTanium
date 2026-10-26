@@ -38,7 +38,7 @@ vi.mock('src/ts/storage/store2/legacy/importTree', inert)
 vi.mock('src/ts/storage/store2/legacy/storeReader', inert)
 vi.mock('src/ts/storage/store2/legacy/binReader', inert)
 
-import { IMPORT_PHASE_RING_LIMIT, pushImportPhase, type ImportPhaseRingHandle } from '../importPhaseRing'
+import { IMPORT_PHASE_RING_LIMIT, noteMeasurePhase, pushImportPhase, type ImportPhaseRingHandle } from '../importPhaseRing'
 import { noteImportPhase } from '../storeImport'
 
 type RingGlobal = { __risuImportPhases?: ImportPhaseRingHandle }
@@ -102,6 +102,19 @@ describe('import phase ring', () => {
         flag.measure = false
         noteImportPhase('walked')
         expect(ringOf()).toBeUndefined()
+    })
+
+    test('noteMeasurePhase, used by the writers, shares the one switch and the one ring with noteImportPhase', () => {
+        noteMeasurePhase('export note')
+        noteImportPhase('import note')
+        expect(ringOf()!.snapshot().map(record => record.phase)).toEqual(['export note', 'import note'])
+        ringOf()!.reset()
+        flag.measure = false
+        noteMeasurePhase('export note')
+        setSwitch('off')
+        flag.measure = true
+        noteMeasurePhase('export note')
+        expect(ringOf()!.snapshot()).toEqual([])
     })
 
     test('with the localStorage switch not on there is no global and nothing recorded', () => {

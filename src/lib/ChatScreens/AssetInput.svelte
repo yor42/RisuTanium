@@ -4,7 +4,7 @@
     import { DBState } from "src/ts/stores.svelte";
     import { getFileSrc, pickedAssetLimitBytes, saveAssetFromBlob } from "src/ts/globalApi.svelte";
     import { selectMultipleFileObjects } from "src/ts/util";
-    import { assetListElement, assetListUse, rowAssetUrl, storeRowAssetUrl, type AssetUse, type RowAssetUrl } from "src/ts/storage/assetUrlGate";
+    import { assetListElement, assetListUse, createWholeReadBudget, rowAssetUrl, storeRowAssetUrl, type AssetUse, type RowAssetUrl } from "src/ts/storage/assetUrlGate";
     import { reportRefusedAssets, splitByAssetLimit, warnRefusedAssets } from "src/ts/storage/pickedAssetLimit";
     import { beginBusy } from "src/ts/process/memory/busyActions";
     import { markCharacterForSave } from "src/ts/storage/characterSaveMarks";
@@ -41,7 +41,13 @@
         return { path: asset?.[1], use: rowUse(assetFileExtensions[i]) }
     }
 
+    // Not reactive: it only numbers the runs of the effect below, so a run that was superseded cannot store a URL.
+    let assetRunId = 0
+
     $effect.pre(() => {
+        const runId = ++assetRunId
+        // One budget per run: the whole reads of the list's images together stay within the Android heap.
+        const budget = createWholeReadBudget()
         if(currentCharacter.type ==='character'){
             if(currentCharacter.additionalAssets){
                 for(let i = 0; i < currentCharacter.additionalAssets.length; i++){
@@ -54,7 +60,11 @@
                     const use = rowUse(assetFileExtensions[i])
                     if(use !== null){
                         const path = currentCharacter.additionalAssets[i][1]
-                        getFileSrc(path, use).then((url) => {
+                        const urlPromise = use === 'whole' ? getFileSrc(path, use, budget) : getFileSrc(path, use)
+                        urlPromise.then((url) => {
+                            if(runId !== assetRunId){
+                                return
+                            }
                             const now = rowNow(i)
                             storeRowAssetUrl(assetUrls, i, { path, use, url }, now.path, now.use)
                         })

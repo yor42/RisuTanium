@@ -8,11 +8,13 @@ vi.mock('../tauriByteTransport', () => ({
 }))
 
 import {
+    ANDROID_LIST_WHOLE_READ_BUDGET_BYTES,
     ANDROID_WHOLE_READ_URL_LIMIT_BYTES,
     androidAssetSizeVerdict,
     androidWithholdsUrl,
     assetListElement,
     assetListUse,
+    createWholeReadBudget,
     forgetStoredAssetSizes,
     resetAssetUrlGateForTest,
     rowAssetUrl,
@@ -132,6 +134,102 @@ describe('a probe failure', () => {
 
         expect(await androidAssetSizeVerdict('k')).toBe('unknown')
         expect(await androidAssetSizeVerdict('k')).toBe('within')
+    })
+})
+
+// Unit tests of the new budget: on a base without it they fail only by the missing export, so they are not reproducers.
+// The reproducers are the list tests and the getFileSrc ordering test.
+describe('the whole-read budget of a list', () => {
+    const MIB = 1024 * 1024
+
+    function sizes(table: Record<string, number>): void {
+        transport.stat.mockImplementation(async (key: string) => table[key] ?? -1)
+    }
+
+    test('the default budget is 64 MiB', () => {
+        expect(ANDROID_LIST_WHOLE_READ_BUDGET_BYTES).toBe(64 * MIB)
+    })
+
+    test('the admitted sum never exceeds the budget, and a size exactly at the budget is admitted', async () => {
+        sizes({ a: 32 * MIB, b: 32 * MIB, c: 1 })
+        const budget = createWholeReadBudget()
+
+        expect(await budget.admit('a')).toBe(true)
+        expect(await budget.admit('b')).toBe(true)
+        expect(await budget.admit('c')).toBe(false)
+    })
+
+    test('a refused key does not use up the budget', async () => {
+        sizes({ a: 40 * MIB, b: 40 * MIB, c: 24 * MIB })
+        const budget = createWholeReadBudget()
+
+        expect(await budget.admit('a')).toBe(true)
+        expect(await budget.admit('b')).toBe(false)
+        expect(await budget.admit('c')).toBe(true)
+    })
+
+    test('admissions are decided in call order when the sizes arrive in reverse order', async () => {
+        const settle = new Map<string, (size: number) => void>()
+        transport.stat.mockImplementation((key: string) => new Promise<number>((resolve) => { settle.set(key, resolve) }))
+        const budget = createWholeReadBudget()
+
+        const first = budget.admit('a')
+        const second = budget.admit('b')
+        settle.get('b')?.(40 * MIB)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        settle.get('a')?.(40 * MIB)
+
+        expect([await first, await second]).toEqual([true, false])
+    })
+
+    test('a size over the per-file limit is refused and not counted', async () => {
+        sizes({ big: LIMIT + 1, small: 60 * MIB })
+        const budget = createWholeReadBudget()
+
+        expect(await budget.admit('big')).toBe(false)
+        expect(await budget.admit('small')).toBe(true)
+    })
+
+    test('a repeated key counts each time', async () => {
+        sizes({ k: 40 * MIB })
+        const budget = createWholeReadBudget()
+
+        expect(await budget.admit('k')).toBe(true)
+        expect(await budget.admit('k')).toBe(false)
+    })
+
+    test('an unreadable size is refused, admit never rejects, and the next admission still works', async () => {
+        // 'bad' rejects; 'sync' throws before it returns a promise.
+        transport.stat.mockImplementation((key: string) => {
+            if (key === 'bad') {
+                return Promise.reject(new Error('missing (os error 2)'))
+            }
+            if (key === 'sync') {
+                throw new Error('thrown at once')
+            }
+            return Promise.resolve(10 * MIB)
+        })
+        const budget = createWholeReadBudget()
+
+        await expect(budget.admit('bad')).resolves.toBe(false)
+        await expect(budget.admit('sync')).resolves.toBe(false)
+        await expect(budget.admit('good')).resolves.toBe(true)
+    })
+
+    test('guard: off the Android transport every key is admitted and no size is asked', async () => {
+        transport.android = false
+        const budget = createWholeReadBudget(1)
+
+        expect(await budget.admit('a')).toBe(true)
+        expect(await budget.admit('b')).toBe(true)
+        expect(transport.stat).not.toHaveBeenCalled()
+    })
+
+    test('each budget counts for itself', async () => {
+        sizes({ a: 60 * MIB })
+
+        expect(await createWholeReadBudget().admit('a')).toBe(true)
+        expect(await createWholeReadBudget().admit('a')).toBe(true)
     })
 })
 

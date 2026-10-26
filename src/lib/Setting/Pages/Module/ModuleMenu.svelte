@@ -7,7 +7,7 @@
     import type { RisuModule } from "src/ts/process/modules";
     import { beginBusy } from "src/ts/process/memory/busyActions";
     import { DownloadIcon, FileMusicIcon, FolderPlusIcon, HardDriveUploadIcon, PlusIcon, TrashIcon } from "@lucide/svelte";
-    import { assetListElement, assetListUse, rowAssetUrl, storeRowAssetUrl, type RowAssetUrl } from "src/ts/storage/assetUrlGate";
+    import { assetListElement, assetListUse, createWholeReadBudget, rowAssetUrl, storeRowAssetUrl, type RowAssetUrl } from "src/ts/storage/assetUrlGate";
     import RegexList from "src/lib/SideBars/Scripts/RegexList.svelte";
     import TriggerList from "src/lib/SideBars/Scripts/TriggerList.svelte";
     import Check from "src/lib/UI/GUI/CheckInput.svelte";
@@ -43,10 +43,16 @@
         return currentModule.assets.map((asset) => `${asset[1]}\u0000${asset[2] ?? ''}`).join('\u0001')
     })
 
+    // Not reactive: it only numbers the runs of the effect below, so a run that was superseded cannot store a URL.
+    let assetRunId = 0
+
     $effect.pre(() => {
+        const runId = ++assetRunId
         if(assetPreviewKey === null){
             return
         }
+        // One budget per run: the whole reads of the list's images together stay within the Android heap.
+        const budget = createWholeReadBudget()
         untrack(() => {
             if(currentModule?.assets){
                 for(let i = 0; i < currentModule.assets.length; i++){
@@ -58,7 +64,11 @@
                     const use = assetListUse(assetListElement(assetFileExtensions[i]))
                     if(use !== null){
                         const path = currentModule.assets[i][1]
-                        getFileSrc(path, use).then((url) => {
+                        const urlPromise = use === 'whole' ? getFileSrc(path, use, budget) : getFileSrc(path, use)
+                        urlPromise.then((url) => {
+                            if(runId !== assetRunId){
+                                return
+                            }
                             // Read when the URL settles: the row may name another asset by now.
                             const nowPath = currentModule?.assets?.[i]?.[1]
                             const nowUse = assetListUse(assetListElement(assetFileExtensions[i]))

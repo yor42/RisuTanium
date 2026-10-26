@@ -18,17 +18,41 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const h = vi.hoisted(() => {
     const pending = new Map<string, (value: string) => void>()
+    // The next call for a path in `hangPaths` hangs until the test releases it through `hung`.
+    const hangPaths = new Set<string>()
+    // Every call for a path in `holdPaths` hangs until released.
+    const holdPaths = new Set<string>()
+    const hung = new Map<string, Array<() => void>>()
+    const android = { on: false, sizes: new Map<string, number>() }
     return {
         pending,
-        // A path starting with `assets/pending` settles only when the test resolves it.
-        getFileSrc: vi.fn(async (path: string, use?: string) => {
+        hangPaths,
+        holdPaths,
+        hung,
+        android,
+        // A path starting with `assets/pending` settles only when the test resolves it. A whole use joins the passed
+        // budget synchronously, as the real `getFileSrc` does, and a refused row gets `''`.
+        getFileSrc: vi.fn(async (path: string, use?: string, budget?: { admit(key: string): Promise<boolean> }) => {
+            const admission = use === 'whole' && budget !== undefined ? budget.admit(path) : undefined
             if (path.startsWith('assets/pending')) {
                 return await new Promise<string>((resolve) => { pending.set(path, resolve) })
+            }
+            if (holdPaths.has(path) || hangPaths.delete(path)) {
+                await new Promise<void>((resolve) => { hung.set(path, [...(hung.get(path) ?? []), resolve]) })
+            }
+            if (admission !== undefined && !(await admission)) {
+                return ''
             }
             return use === 'whole' && path.includes('huge') ? '' : 'src:' + path
         }),
     }
 })
+
+vi.mock(import('src/ts/storage/tauriByteTransport'), async (importOriginal) => ({
+    ...(await importOriginal()),
+    isAndroidTransport: () => h.android.on,
+    statStoredSize: async (key: string) => h.android.sizes.get(key) ?? 0,
+}))
 
 vi.mock(import('src/ts/stores.svelte'), () => {
     const state = $state({ db: {} as unknown as Record<string, unknown> })
@@ -141,12 +165,13 @@ vi.mock('../UI/GUI/MultiLangInput.svelte', () => ({ default: (_target: unknown) 
 //#endregion
 
 import { CharConfigSubMenu, DBState } from 'src/ts/stores.svelte'
+import { getCharImage } from 'src/ts/characters'
 import CharConfig from './CharConfig.svelte'
 
 const mountedTargets: HTMLElement[] = []
 const mountedInstances: unknown[] = []
 
-function install(additionalAssets: string[][]): void {
+function install(additionalAssets: string[][], emotionImages: string[][] = [], viewScreen = 'none'): void {
     const character = {
         chaId: 'char-a',
         name: 'Alpha',
@@ -187,7 +212,8 @@ function install(additionalAssets: string[][]): void {
         },
         fishSpeechConfig: { model: { _id: '', title: '', description: '' }, chunk_length: 200, normalize: false },
         additionalAssets,
-        emotionImages: [],
+        emotionImages,
+        viewScreen,
     }
     DBState.db = { characters: [character], personas: [], modules: [], useAdditionalAssetsPreview: true } as never
 }
@@ -216,6 +242,11 @@ async function openRows(assets: string[][]): Promise<HTMLElement[]> {
 
 beforeEach(() => {
     h.pending.clear()
+    h.hangPaths.clear()
+    h.holdPaths.clear()
+    h.hung.clear()
+    h.android.on = false
+    h.android.sizes.clear()
     h.getFileSrc.mockClear()
 })
 
@@ -241,7 +272,7 @@ describe('which element a row renders', () => {
         const cells = await openRows([['v', 'assets/huge-clip', 'MP4'], ['p', 'assets/pic', 'PNG']])
 
         expect(h.getFileSrc).toHaveBeenCalledWith('assets/huge-clip', 'media')
-        expect(h.getFileSrc).toHaveBeenCalledWith('assets/pic', 'whole')
+        expect(h.getFileSrc).toHaveBeenCalledWith('assets/pic', 'whole', expect.anything())
         expect(cells[0].querySelector('video source')?.getAttribute('src')).toBe('src:assets/huge-clip')
         expect(cells[1].querySelector('img')?.getAttribute('src')).toBe('src:assets/pic')
     })
@@ -307,5 +338,195 @@ describe('a row whose asset changes', () => {
         const cells = await settleRows()
 
         expect(cells[0].querySelector('img')?.getAttribute('src')).toBe('src:assets/pending-b')
+    })
+})
+
+const MIB = 1024 * 1024
+// 60.55 MiB: six of them are 363 MiB, one of them fits the 64 MiB budget of a list and a second does not.
+const BIG_BYTES = 63494348
+
+function rowsOfSize(count: number, prefix: string, ext: string): string[][] {
+    return Array.from({ length: count }, (_, i) => [`${prefix}${i}`, `assets/${prefix}${i}`, ext])
+}
+
+function setAndroidSizes(rows: string[][], bytes: number): void {
+    h.android.on = true
+    for (const row of rows) {
+        h.android.sizes.set(row[1], bytes)
+    }
+}
+
+async function settleAll(): Promise<void> {
+    flushSync()
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    flushSync()
+}
+
+function countIn(cells: HTMLElement[]): { images: number, boxes: number } {
+    return {
+        images: cells.reduce((sum, cell) => sum + cell.querySelectorAll('img').length, 0),
+        boxes: cells.reduce((sum, cell) => sum + cell.querySelectorAll('div.bg-slate-500').length, 0),
+    }
+}
+
+describe('the whole-read budget of the additional-assets list on Android', () => {
+    test('reproducer: six 60.55 MiB images give one image on row 0 and five name boxes', async () => {
+        const rows = rowsOfSize(6, 'big', 'png')
+        setAndroidSizes(rows, BIG_BYTES)
+        const cells = await openRows(rows)
+
+        expect(countIn(cells)).toEqual({ images: 1, boxes: 5 })
+        expect(cells[0].querySelector('img')).not.toBeNull()
+    })
+
+    test('reproducer: twelve 6 MiB images give ten images and two name boxes', async () => {
+        const rows = rowsOfSize(12, 'mid', 'png')
+        setAndroidSizes(rows, 6 * MIB)
+        const cells = await openRows(rows)
+
+        expect(countIn(cells)).toEqual({ images: 10, boxes: 2 })
+    })
+
+    test('guard: off Android every image shows', async () => {
+        const rows = rowsOfSize(6, 'big', 'png')
+        for (const row of rows) {
+            h.android.sizes.set(row[1], BIG_BYTES)
+        }
+        const cells = await openRows(rows)
+
+        expect(countIn(cells)).toEqual({ images: 6, boxes: 0 })
+    })
+
+    test('reproducer: a superseded run that settles late does not store the URL its own budget admitted', async () => {
+        const rows = [['a', 'assets/a', 'png'], ['b', 'assets/b', 'png']]
+        h.android.on = true
+        h.android.sizes.set('assets/a', 4 * MIB)
+        h.android.sizes.set('assets/b', 60 * MIB)
+        h.android.sizes.set('assets/c', 10 * MIB)
+        h.hangPaths.add('assets/b')
+        await openRows(rows)
+
+        // Row 0 now names a 10 MiB file, so the new run's budget refuses row 1.
+        const character = DBState.db.characters[0]
+        if (character.type !== 'character') throw new Error('the installed character is a full character')
+        character.additionalAssets = [['c', 'assets/c', 'png'], ['b', 'assets/b', 'png']] as typeof character.additionalAssets
+        await settleAll()
+        for (const release of h.hung.get('assets/b') ?? []) release()
+        await settleAll()
+        const cells = Array.from(document.querySelectorAll('table td.font-medium')) as HTMLElement[]
+
+        expect(cells[1].querySelector('img')).toBeNull()
+        expect(cells[1].querySelectorAll('div.bg-slate-500').length).toBe(1)
+    })
+
+    test('reproducer: turning the preview off supersedes the runs before it', async () => {
+        const rows = [['a', 'assets/a', 'png'], ['b', 'assets/b', 'png']]
+        h.android.on = true
+        h.android.sizes.set('assets/a', 4 * MIB)
+        h.android.sizes.set('assets/b', 60 * MIB)
+        h.android.sizes.set('assets/c', 10 * MIB)
+        h.holdPaths.add('assets/b')
+        await openRows(rows)
+
+        DBState.db.useAdditionalAssetsPreview = false
+        await settleAll()
+        const character = DBState.db.characters[0]
+        if (character.type !== 'character') throw new Error('the installed character is a full character')
+        character.additionalAssets = [['c', 'assets/c', 'png'], ['b', 'assets/b', 'png']] as typeof character.additionalAssets
+        await settleAll()
+        for (const release of h.hung.get('assets/b') ?? []) release()
+        await settleAll()
+        DBState.db.useAdditionalAssetsPreview = true
+        await settleAll()
+        const cells = Array.from(document.querySelectorAll('table td.font-medium')) as HTMLElement[]
+
+        // Row 1 waits for its own run; the late URL of the run before the preview was turned off is not shown.
+        expect(cells[1].querySelector('img')).toBeNull()
+        expect(cells[1].querySelectorAll('div.bg-slate-500').length).toBe(0)
+    })
+})
+
+describe('the whole-read budget of the emotion image table on Android', () => {
+    async function openEmotionRows(emotions: string[][], hideAllImages = false): Promise<HTMLElement[]> {
+        CharConfigSubMenu.set(1)
+        install([], emotions, 'emotion')
+        DBState.db.hideAllImages = hideAllImages
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        mountedTargets.push(target)
+        mountedInstances.push(mount(CharConfig, { target, props: {} }))
+        await settleAll()
+        const views = target.querySelectorAll('button.flex-1')
+        if (views.length < 3) throw new Error('the Display tab views are not shown')
+        ;(views[1] as HTMLButtonElement).click()
+        await settleAll()
+        return Array.from(target.querySelectorAll('table td.w-1\\/3')) as HTMLElement[]
+    }
+
+    function emotionRows(count: number, prefix: string): string[][] {
+        return Array.from({ length: count }, (_, i) => [`${prefix}${i}`, `assets/${prefix}${i}`])
+    }
+
+    test('reproducer: six 60.55 MiB emotion images give one image and five name boxes carrying the emotion names', async () => {
+        const rows = emotionRows(6, 'emo')
+        setAndroidSizes(rows, BIG_BYTES)
+        const cells = await openEmotionRows(rows)
+
+        expect(cells).toHaveLength(6)
+        expect(countIn(cells)).toEqual({ images: 1, boxes: 5 })
+        expect(cells[0].querySelector('img')).not.toBeNull()
+        expect(cells[5].textContent).toContain('emo5')
+    })
+
+    test('guard: off Android every emotion image shows', async () => {
+        const rows = emotionRows(6, 'emo')
+        const cells = await openEmotionRows(rows)
+
+        expect(countIn(cells)).toEqual({ images: 6, boxes: 0 })
+    })
+
+    test('a row whose URL is still in flight is blank, while a withheld row shows the name box with its emotion name', async () => {
+        h.holdPaths.add('assets/held')
+        const cells = await openEmotionRows([['waiting', 'assets/held'], ['too big', 'assets/huge-emo']])
+
+        expect(cells).toHaveLength(2)
+        expect(cells[0].querySelector('img')).toBeNull()
+        expect(cells[0].querySelectorAll('div.bg-slate-500').length).toBe(0)
+        expect(cells[1].querySelector('img')).toBeNull()
+        expect(cells[1].querySelectorAll('div.bg-slate-500').length).toBe(1)
+        expect(cells[1].textContent).toContain('too big')
+    })
+
+    test('guard: with all images hidden the emotion rows show the getCharImage placeholder and ask getFileSrc for nothing', async () => {
+        vi.mocked(getCharImage).mockResolvedValue('/none.webp')
+        try {
+            const cells = await openEmotionRows([['a', 'assets/a'], ['b', 'assets/b']], true)
+
+            expect(cells).toHaveLength(2)
+            expect(cells.map((cell) => cell.querySelector('img')?.getAttribute('src'))).toEqual(['/none.webp', '/none.webp'])
+            expect(h.getFileSrc.mock.calls.filter((call) => call[0] === 'assets/a' || call[0] === 'assets/b')).toEqual([])
+        } finally {
+            vi.mocked(getCharImage).mockImplementation(async () => '')
+        }
+    })
+
+    test('reproducer: a superseded run that settles late does not store the URL its own budget admitted', async () => {
+        h.android.on = true
+        h.android.sizes.set('assets/a', 4 * MIB)
+        h.android.sizes.set('assets/b', 60 * MIB)
+        h.android.sizes.set('assets/c', 10 * MIB)
+        h.hangPaths.add('assets/b')
+        await openEmotionRows([['a', 'assets/a'], ['b', 'assets/b']])
+
+        const character = DBState.db.characters[0]
+        if (character.type !== 'character') throw new Error('the installed character is a full character')
+        character.emotionImages = [['c', 'assets/c'], ['b', 'assets/b']] as typeof character.emotionImages
+        await settleAll()
+        for (const release of h.hung.get('assets/b') ?? []) release()
+        await settleAll()
+        const cells = Array.from(document.querySelectorAll('table td.w-1\\/3')) as HTMLElement[]
+
+        expect(cells[1].querySelector('img')).toBeNull()
+        expect(cells[1].querySelectorAll('div.bg-slate-500').length).toBe(1)
     })
 })

@@ -26,6 +26,7 @@ import {
     type ByteWriter,
 } from 'src/ts/exportWriters'
 import { ExportCancelToken, ExportCancelledError } from 'src/ts/exportCancel'
+import type { ImportPhaseRingHandle } from 'src/ts/drive/importPhaseRing'
 
 const fs = vi.hoisted(() => ({
     files: new Map<string, Uint8Array>(),
@@ -737,21 +738,48 @@ describe('TauriWriter on an Android content:// document', () => {
         await expect(writer.close()).rejects.toThrow('reported')
     })
 
-    // Unit tests of the closing log line only. They say nothing about what the Android document provider reports.
-    describe('the closing reopen size log', () => {
-        const PREFIX = '[export] reopen size check'
+    // Unit tests of the closing measurement note only. They say nothing about what the Android document provider reports.
+    describe('the closing reopen size note', () => {
+        const PREFIX = 'export reopen size check'
         let logSpy: ReturnType<typeof vi.spyOn>
+        let infoSpy: ReturnType<typeof vi.spyOn>
+
+        function ringHandle(): ImportPhaseRingHandle | undefined {
+            return (globalThis as { __risuImportPhases?: ImportPhaseRingHandle }).__risuImportPhases
+        }
 
         beforeEach(() => {
             logSpy = vi.spyOn(console, 'log').mockImplementation(() => { })
+            infoSpy = vi.spyOn(console, 'info').mockImplementation(() => { })
+            vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'risu-measure-import' ? 'on' : null })
+            ringHandle()?.reset()
         })
         afterEach(() => {
+            vi.unstubAllGlobals()
+            infoSpy.mockRestore()
             logSpy.mockRestore()
         })
 
         function checkLines(): string[] {
-            return logSpy.mock.calls.map((call) => String(call[0])).filter((line) => line.startsWith(PREFIX))
+            const phases = ringHandle()?.snapshot().map((record) => record.phase) ?? []
+            return phases.filter((line) => line.startsWith(PREFIX))
         }
+
+        test('(U) the note goes to the measurement ring only: nothing reaches console.log, and nothing is recorded without the switch', async () => {
+            android.os = 'android'
+            const writer = new TauriWriter(URI)
+            await writer.write(body(10, 1))
+            await writer.close()
+            expect(checkLines()).toHaveLength(1)
+            expect(logSpy.mock.calls.filter((call) => String(call[0]).includes('reopen size check'))).toEqual([])
+
+            vi.stubGlobal('localStorage', { getItem: () => null })
+            ringHandle()?.reset()
+            const quiet = new TauriWriter(URI)
+            await quiet.write(body(10, 1))
+            await quiet.close()
+            expect(checkLines()).toEqual([])
+        })
 
         test('(U) a reply with reopenSize logs the bytes written, the reopened size and only the host', async () => {
             android.os = 'android'
@@ -762,7 +790,7 @@ describe('TauriWriter on an Android content:// document', () => {
             await writer.close()
 
             expect(checkLines()).toEqual([`${PREFIX}: written=${TAURI_WRITE_CHUNK_BYTES + 30} reopened=130 host=com.android.externalstorage.documents`])
-            const all = JSON.stringify(logSpy.mock.calls)
+            const all = JSON.stringify(ringHandle()?.snapshot())
             expect(all).not.toContain('primary')
             expect(all).not.toContain('risu-backup')
             expect(all).not.toContain('Download')

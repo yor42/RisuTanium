@@ -1698,15 +1698,16 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
             }
 
             // A file whose walk ends inside an entry, or that holds entries but
-            // no database, is refused on every route before any write. The log
-            // carries counts and offsets only, never a name, id or content.
+            // no database, is refused on every route before any write. The
+            // measurement note carries counts and offsets only, never a name, id
+            // or content.
             const lastCompleteEntry = backupEntries.length > 0 ? backupEntries[backupEntries.length - 1] : null;
             const lastCompleteEnd = lastCompleteEntry === null
                 ? 0
                 : lastCompleteEntry.headerOffset + lastCompleteEntry.headerLength + lastCompleteEntry.dataLength;
             const lacksDatabase = !hasDatabaseEntry(backupEntries, backupNames);
             if (backupTruncatedTail || (lacksDatabase && backupEntries.length > 0)) {
-                console.warn(`[restore] refused: ${backupTruncatedTail ? 'truncated tail' : 'no database entry'}, size ${file.size}, ${backupEntries.length} complete entries, last complete end ${lastCompleteEnd}`);
+                noteImportPhase(`restore refused: ${backupTruncatedTail ? 'truncated tail' : 'no database entry'}, size ${file.size}, ${backupEntries.length} complete entries, last complete end ${lastCompleteEnd}`);
                 alertError(language.backupFileEndsEarly);
                 return refused();
             }
