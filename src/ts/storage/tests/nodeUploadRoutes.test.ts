@@ -584,8 +584,10 @@ describe('read-range', () => {
                 firstByteOf.set(revision, firstByte)
             }
         }
-        const pending: Promise<unknown>[] = []
         for (let round = 1; round <= 200; round++) {
+            // Each round races one write against its readers and settles before the next
+            // starts, so later rounds read strictly newer revisions than earlier ones.
+            const pending: Promise<unknown>[] = []
             // Consecutive rounds differ in both size and fill byte.
             const bytes = new Uint8Array(40 + (round % 7) * 8).fill(1 + (round % 7))
             pending.push(fetch(`${main.baseUrl}/api/write`, { method: 'POST', headers: { 'risu-auth': auth, 'file-path': hexOfKey(key), 'content-type': 'application/octet-stream' }, body: bytes }))
@@ -598,8 +600,8 @@ describe('read-range', () => {
                     note(Number(response.headers.get('x-risu-revision')), Number(response.headers.get('x-risu-size')), null)
                 }))
             }
+            await Promise.all(pending)
         }
-        await Promise.all(pending)
         expect(sizeOf.size).toBeGreaterThan(1)
         expect(conflicts).toEqual([])
     }, 60_000)
