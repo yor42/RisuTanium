@@ -2775,6 +2775,8 @@ export const languageGerman = {
         "peerCleanReplaced": "Ihre gespeicherten Daten wurden außerhalb dieses Tabs geändert. Laden Sie neu, um fortzufahren. In diesem Tab ist nichts ungespeichert.",
         "peerCleanCommitDrafts": "Ein anderer Tab hat Änderungen an Ihren Daten gespeichert. Dieser Tab enthält Text oder eine Bearbeitung, die Sie nicht abgeschlossen haben, und durch Neuladen wird dies verworfen.",
         "peerCleanReplacedDrafts": "Ihre gespeicherten Daten wurden außerhalb dieses Tabs geändert. Laden Sie neu, um fortzufahren. Dieser Tab enthält Text oder eine Bearbeitung, die Sie nicht abgeschlossen haben, und durch Neuladen wird dies verworfen.",
-        "peerReloadDrafts": "Neu laden (nicht abgeschlossener Text und Bearbeitungen gehen verloren)"
+        "peerReloadDrafts": "Neu laden (nicht abgeschlossener Text und Bearbeitungen gehen verloren)",
+        "moduleEditedTitle": "Das Modul \"{name}\" wurde in diesem Tab so geändert, dass es nicht gespeichert werden kann. Deshalb wird in diesem Tab nichts gespeichert. Zum Weiterarbeiten neu laden; die ungespeicherten Änderungen dieses Tabs gehen verloren.",
+        "moduleEditedKeep": "Weiterarbeiten (nichts wird gespeichert, bis neu geladen wird)"
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

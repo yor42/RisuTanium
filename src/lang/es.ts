@@ -2776,5 +2776,7 @@ export const languageSpanish = {
         peerCleanCommitDrafts: "Otra pestaña guardó cambios en tus datos. Esta pestaña tiene texto o una edición que no has terminado, y al recargar se descarta.",
         peerCleanReplacedDrafts: "Tus datos guardados se cambiaron fuera de esta pestaña. Recarga para continuar. Esta pestaña tiene texto o una edición que no has terminado, y al recargar se descarta.",
         peerReloadDrafts: "Recargar (se pierden el texto y las ediciones sin terminar)",
+        moduleEditedTitle: "El módulo \"{name}\" se cambió en esta pestaña de una forma que no se puede guardar, así que no se está guardando nada de esta pestaña. Recarga para seguir trabajando; los cambios sin guardar de esta pestaña se pierden.",
+        moduleEditedKeep: "Seguir trabajando (no se guarda nada hasta que recargues)",
     },
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

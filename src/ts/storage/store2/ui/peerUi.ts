@@ -4,6 +4,7 @@ import { escapeActionFor } from 'src/ts/alertEscape'
 import { alertStore } from 'src/ts/stores.svelte'
 import { get } from 'svelte/store'
 import { Store2CommitRefusedError, Store2NotFlushedError, type PeerLiveState, type PeerOffer, type PeerParkPrompt, type Store2PeerHandler } from '../saveLoop'
+import { StubRefusedError } from '../codec'
 import type { SaveFailureClass } from '../saveFailure'
 
 /**
@@ -220,9 +221,26 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         return (await options.exportThisTab(manifestKey)).status
     }
 
+    /**
+     * The one question for an edited module stub. Only Reload reloads, and only while the stub is still the blocker at
+     * the press; any other answer closes the prompt and it is not asked again for that module.
+     */
+    async function askModuleEdited(info: { moduleId: string, moduleName: string }, stillBlocked: () => boolean): Promise<void> {
+        await untilClear()
+        const text = language.store2Boot
+        const name = cleanNames([info.moduleName])[0] ?? ''
+        const index = await alertSelect([text.peerReload, text.moduleEditedKeep], text.moduleEditedTitle.replace('{name}', () => name))
+        if (index === '0' && stillBlocked()) {
+            options.reload()
+        }
+    }
+
     return {
         parkedClean: (prompt, live) => {
             askClean(prompt, live).catch((error: unknown) => console.error(error))
+        },
+        moduleEdited: (info, stillBlocked) => {
+            askModuleEdited(info, stillBlocked).catch((error: unknown) => console.error(error))
         },
         decide,
         exportThisTab,
@@ -241,10 +259,17 @@ export interface SaveFailureReport {
     waitMs: number
 }
 
+function isEditedModuleStub(error: unknown): boolean {
+    return error instanceof StubRefusedError && error.kind === 'module' && error.reason === 'edited'
+}
+
 /** Which kind of failure a save pass ended in; the same order of precedence as `describeSaveFailure`. */
 export function saveFailureClassOf(error: unknown, storageFull: boolean): SaveFailureClass {
     if (storageFull) {
         return 'storage-full'
+    }
+    if (isEditedModuleStub(error)) {
+        return 'module-edited'
     }
     if (error instanceof Store2NotFlushedError) {
         return 'not-flushed'
@@ -260,6 +285,10 @@ export function describeSaveFailure(error: unknown, attempts: number, storageFul
     const text = language
     if (storageFull) {
         return { toast: text.saveStorageFull, alert: null, showRaw: false, waitMs: 5000 }
+    }
+    if (isEditedModuleStub(error)) {
+        // The person is asked through the peer handler's own prompt, so neither a toast nor the raw error is shown.
+        return { toast: null, alert: null, showRaw: false, waitMs: 5000 }
     }
     const technical = error instanceof Error ? error.message : String(error)
     const escalated = attempts > 4

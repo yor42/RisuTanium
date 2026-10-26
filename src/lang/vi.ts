@@ -2772,5 +2772,7 @@ export const languageVietnamese = {
         peerCleanCommitDrafts: "Một tab khác đã lưu thay đổi vào dữ liệu của bạn. Tab này có văn bản hoặc chỉnh sửa bạn chưa hoàn tất, và tải lại sẽ loại bỏ chúng.",
         peerCleanReplacedDrafts: "Dữ liệu đã lưu của bạn đã bị thay đổi từ bên ngoài tab này. Hãy tải lại để tiếp tục. Tab này có văn bản hoặc chỉnh sửa bạn chưa hoàn tất, và tải lại sẽ loại bỏ chúng.",
         peerReloadDrafts: "Tải lại (văn bản và chỉnh sửa chưa hoàn tất sẽ bị mất)",
+        moduleEditedTitle: "Mô-đun \"{name}\" đã bị thay đổi trong tab này theo cách không thể lưu, nên không có gì trong tab này được lưu. Hãy tải lại để tiếp tục làm việc; các thay đổi chưa lưu của tab này sẽ bị mất.",
+        moduleEditedKeep: "Tiếp tục làm việc (không có gì được lưu cho đến khi bạn tải lại)",
     },
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

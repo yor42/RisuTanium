@@ -2921,6 +2921,8 @@ export const languageEnglish = {
         peerCleanCommitDrafts: "Another tab saved changes to your data. This tab has text or an edit you have not finished, and reloading discards it.",
         peerCleanReplacedDrafts: "Your saved data was changed outside this tab. Reload to continue. This tab has text or an edit you have not finished, and reloading discards it.",
         peerReloadDrafts: "Reload (unfinished text and edits are lost)",
+        moduleEditedTitle: "The module \"{name}\" was changed in this tab in a way that cannot be saved, so nothing in this tab is being saved. Reload to keep working; this tab's unsaved changes are lost.",
+        moduleEditedKeep: "Keep working (nothing is saved until you reload)",
     },
 } satisfies I18nTranslation;
 

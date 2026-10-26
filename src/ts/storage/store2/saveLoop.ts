@@ -73,6 +73,14 @@ export interface Store2PeerHandler {
      * is not a dirty edit: it never reaches `decide`, so the prompt itself warns that a reload discards it.
      */
     parkedClean(prompt: PeerParkPrompt, live: () => PeerLiveState): void
+    /**
+     * A module stub was edited in this tab, so no save pass can encode it and nothing in the tab is saved. Nothing is
+     * awaited and no lock is held: the loop keeps retrying while the person decides. `stillBlocked()` is read when
+     * Reload is pressed; it is false once a later pass has saved or a different module has been announced, and Reload
+     * then does nothing (nothing is lost; the next prompt offers its own Reload). Asked once per module id until a pass
+     * saves.
+     */
+    moduleEdited(info: { moduleId: string, moduleName: string }, stillBlocked: () => boolean): void
     /** Parked with unsaved edits: resolves with one of `prompt.offers`; anything else is read as 'reload'. */
     decide(prompt: PeerParkPrompt): Promise<PeerOffer>
     /**
@@ -405,6 +413,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
 
     let savetrys = 0
     let retries = 0
+    /** The module id whose edited-stub prompt was asked; cleared by a saved non-tick pass so a later edit asks again. */
+    let editedAnnounced: string | null = null
     let park: Park | null = null
     readParked = () => park !== null
     /** Set once by a too-large refusal and never cleared: no pass, idle net or park handling runs again on this page load. */
@@ -1003,6 +1013,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             switch (outcome.kind) {
                 case 'saved':
                     retries = 0
+                    if (!tick) {
+                        // A tick pass can be an idle-net pass that never planned modules; only a full pass proves the stub is gone.
+                        editedAnnounced = null
+                    }
                     if (run.plan !== null) {
                         settleUnsavable(run.plan)
                     }
@@ -1059,7 +1073,18 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
         } catch (error) {
             retries = 0
-            if (!run.landed) {
+            if (!run.landed && error instanceof StubRefusedError && error.kind === 'module' && error.reason === 'edited') {
+                // Outside the write lock. The marks are kept, so the edit is never dropped; the prompt is not awaited, and
+                // the wait is the request-interruptible one so a hide or Back flush still retries at once.
+                savetrys += 1
+                foldBack(run.snapshot)
+                const moduleId = error.chaId
+                if (editedAnnounced !== moduleId) {
+                    editedAnnounced = moduleId
+                    context.peer.moduleEdited({ moduleId, moduleName: error.moduleName }, () => editedAnnounced === moduleId)
+                }
+                await port.wait(port.reportFailure(error, savetrys))
+            } else if (!run.landed) {
                 savetrys += 1
                 foldBack(run.snapshot)
                 await port.sleep(port.reportFailure(error, savetrys))

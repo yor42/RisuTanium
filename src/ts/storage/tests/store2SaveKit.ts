@@ -213,6 +213,10 @@ export interface PeerDouble extends Store2PeerHandler {
     autoExportHold: Promise<void> | null
     /** The order of `autoExport` and `decide` calls, one entry each. */
     events: Array<'autoExport' | 'decide'>
+    /** Each `moduleEdited` announcement, in call order. */
+    edited: Array<{ moduleId: string, moduleName: string }>
+    /** The `stillBlocked` probe each `moduleEdited` call was given, in call order. */
+    editedStillBlocked: Array<() => boolean>
 }
 
 export function createPeerDouble(answer: PeerOffer = 'reload'): PeerDouble {
@@ -232,9 +236,15 @@ export function createPeerDouble(answer: PeerOffer = 'reload'): PeerDouble {
         autoExportResult: 'saved',
         autoExportHold: null,
         events: [],
+        edited: [],
+        editedStillBlocked: [],
         parkedClean(prompt, live) {
             double.clean.push(prompt)
             double.live.push(live)
+        },
+        moduleEdited(info, stillBlocked) {
+            double.edited.push(info)
+            double.editedStillBlocked.push(stillBlocked)
         },
         async autoExport(manifestKey) {
             double.events.push('autoExport')

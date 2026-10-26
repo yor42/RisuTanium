@@ -2816,6 +2816,8 @@ export const languageChineseTraditional = {
         "peerCleanReplaced": "您已儲存的資料在此分頁之外被變更。請重新載入以繼續。此分頁中沒有未儲存的內容。",
         "peerCleanCommitDrafts": "另一個分頁儲存了對您資料的變更。此分頁中有尚未完成的文字或編輯，重新載入會將其捨棄。",
         "peerCleanReplacedDrafts": "您已儲存的資料在此分頁之外被變更。請重新載入以繼續。此分頁中有尚未完成的文字或編輯，重新載入會將其捨棄。",
-        "peerReloadDrafts": "重新載入（未完成的文字和編輯將遺失）"
+        "peerReloadDrafts": "重新載入（未完成的文字和編輯將遺失）",
+        "moduleEditedTitle": "模組「{name}」在此分頁中被變更，且無法儲存，因此此分頁中的任何內容都不會被儲存。請重新載入以繼續工作；此分頁未儲存的變更將遺失。",
+        "moduleEditedKeep": "繼續工作（重新載入之前不會儲存任何內容）"
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>
