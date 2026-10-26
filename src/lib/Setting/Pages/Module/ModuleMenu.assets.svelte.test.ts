@@ -436,7 +436,7 @@ describe('the asset previews', () => {
         addButton(target).click()
         await settle()
 
-        expect(apiMocks.getFileSrc).toHaveBeenCalledWith('assets/saved')
+        expect(apiMocks.getFileSrc).toHaveBeenCalledWith('assets/saved', 'whole')
         expect(target.querySelectorAll('table img')).toHaveLength(3)
     })
 })

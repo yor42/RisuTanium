@@ -6,7 +6,8 @@
     import { type CCLorebook, convertExternalLorebook } from "src/ts/process/lorebook.svelte";
     import type { RisuModule } from "src/ts/process/modules";
     import { beginBusy } from "src/ts/process/memory/busyActions";
-    import { DownloadIcon, FolderPlusIcon, HardDriveUploadIcon, PlusIcon, TrashIcon } from "@lucide/svelte";
+    import { DownloadIcon, FileMusicIcon, FolderPlusIcon, HardDriveUploadIcon, PlusIcon, TrashIcon } from "@lucide/svelte";
+    import { assetListElement, assetListUse, rowAssetUrl, storeRowAssetUrl, type RowAssetUrl } from "src/ts/storage/assetUrlGate";
     import RegexList from "src/lib/SideBars/Scripts/RegexList.svelte";
     import TriggerList from "src/lib/SideBars/Scripts/TriggerList.svelte";
     import Check from "src/lib/UI/GUI/CheckInput.svelte";
@@ -31,7 +32,7 @@
 
     let { currentModule = $bindable() }: Props = $props();
     let assetFileExtensions:string[] = $state([])
-    let assetFilePath:string[] = $state([])
+    let assetUrls:(RowAssetUrl|undefined)[] = $state([])
 
     // The previews depend on the asset paths and extensions only, so a rename
     // (which replaces the list but keeps every path) does not reload them.
@@ -53,9 +54,17 @@
                         assetFileExtensions[i] = currentModule.assets[i][2]
                     } else
                         assetFileExtensions[i] = currentModule.assets[i][1].split('.').pop()
-                        getFileSrc(currentModule.assets[i][1]).then((filePath) => {
-                        assetFilePath[i] = filePath
-                    })
+                    // An icon row shows a name box and needs no URL.
+                    const use = assetListUse(assetListElement(assetFileExtensions[i]))
+                    if(use !== null){
+                        const path = currentModule.assets[i][1]
+                        getFileSrc(path, use).then((url) => {
+                            // Read when the URL settles: the row may name another asset by now.
+                            const nowPath = currentModule?.assets?.[i]?.[1]
+                            const nowUse = assetListUse(assetListElement(assetFileExtensions[i]))
+                            storeRowAssetUrl(assetUrls, i, { path, use, url }, nowPath, nowUse)
+                        })
+                    }
                 }
             }
         })
@@ -341,14 +350,24 @@
                 {#each currentModule.assets as assets, i}
                     <tr>
                         <td class="font-medium truncate">
-                            {#if assetFilePath[i] && DBState.db.useAdditionalAssetsPreview}
-                                {#if assetFileExtensions[i] === 'mp4'}
-                                <!-- svelte-ignore a11y_media_has_caption -->
-                                    <video controls class="mt-2 px-2 w-full m-1 rounded-md"><source src={assetFilePath[i]} type="video/mp4"></video>
-                                {:else if assetFileExtensions[i] === 'mp3'}
-                                    <audio controls class="mt-2 px-2 w-full h-16 m-1 rounded-md" loop><source src={assetFilePath[i]} type="audio/mpeg"></audio>
-                                {:else}
-                                    <img src={assetFilePath[i]} class="w-16 h-16 m-1 rounded-md" alt={assets[0]}/>
+                            {#if DBState.db.useAdditionalAssetsPreview}
+                                {@const element = assetListElement(assetFileExtensions[i])}
+                                {@const url = rowAssetUrl(assetUrls[i], assets[1], assetListUse(element))}
+                                <!-- A URL still being made, or made for another asset or use, is undefined and shows nothing; '' is a URL that was withheld or could not be made, and shows the name box. -->
+                                {#if element === 'icon' || url === ''}
+                                    <div class='w-16 h-16 m-1 rounded-md bg-slate-500 flex flex-col justify-center items-center'>
+                                        <FileMusicIcon/>
+                                        <div class='w-16 px-1 text-ellipsis whitespace-nowrap overflow-hidden'>{assets[0]}</div>
+                                    </div>
+                                {:else if url}
+                                    {#if element === 'video'}
+                                    <!-- svelte-ignore a11y_media_has_caption -->
+                                        <video controls class="mt-2 px-2 w-full m-1 rounded-md"><source src={url} type="video/mp4"></video>
+                                    {:else if element === 'audio'}
+                                        <audio controls class="mt-2 px-2 w-full h-16 m-1 rounded-md" loop><source src={url} type="audio/mpeg"></audio>
+                                    {:else}
+                                        <img src={url} class="w-16 h-16 m-1 rounded-md" alt={assets[0]}/>
+                                    {/if}
                                 {/if}
                             {/if}
                             <TextInput fullwidth size="sm" marginBottom bind:value={() => assets[0], (name) => renameAsset(i, name)} placeholder="..." />

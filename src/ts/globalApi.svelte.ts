@@ -78,6 +78,7 @@ import { hasLocalDrafts } from "./localDrafts";
 import { beginChokePoint, busyKinds } from "./process/memory/busyActions";
 import { installNetHold } from "./storage/measureExportHold";
 import { isAndroidTransport, shouldBypassFrozenPagePaths } from "./storage/tauriByteTransport";
+import { androidWithholdsUrl, forgetStoredAssetSizes, type AssetUse } from "./storage/assetUrlGate";
 import { parseJsonBody } from "./network/frozenBody";
 import { MEASURE } from "./process/memory/measureFlag";
 import { noteChatSelect } from "./process/chatPhaseRing";
@@ -224,7 +225,9 @@ const assetValueReads = new Map<string, Promise<Blob | Uint8Array | null>>()
  * would keep answering for a key the store no longer holds.
  */
 export function releaseAssetObjectUrl(keys: Iterable<string>): void {
-    for (const key of keys) {
+    const released = [...keys]
+    forgetStoredAssetSizes(released)
+    for (const key of released) {
         const url = assetObjectUrls.get(key)
         if (url !== undefined) {
             URL.revokeObjectURL(url)
@@ -445,13 +448,22 @@ function objectUrlOfAssetBlob(loc: string, blob: Blob): string {
  * from the store and are handed to the service worker or encoded into a data
  * URL.
  *
+ * On Android a URL for a `'whole'` use is withheld (`''`) when the stored size
+ * is above the whole-read limit or cannot be read, because the asset protocol
+ * would read the file whole into the WebView's heap. A caller that does not say
+ * what the URL is for gets `'whole'`; only a media element passes `'media'`.
+ *
  * @param {string} loc - The location of the file.
- * @returns {Promise<string>} - A promise that resolves to the source URL of the file, or `''` when none can be made.
+ * @param {AssetUse} use - What the URL is for.
+ * @returns {Promise<string>} - A promise that resolves to the source URL of the file, or `''` when none can be made or it is withheld.
  */
-export async function getFileSrc(loc: string) {
+export async function getFileSrc(loc: string, use: AssetUse = 'whole') {
     if (isTauri) {
         if (loc.startsWith('assets')) {
             try {
+                if (await androidWithholdsUrl(loc, use)) {
+                    return ''
+                }
                 const store = await getAppStore()
                 if (store.urlFor === undefined) {
                     throw new Error('The desktop store offers no URL for a file.')

@@ -4,6 +4,7 @@
     import { DBState } from "src/ts/stores.svelte";
     import { getFileSrc, pickedAssetLimitBytes, saveAssetFromBlob } from "src/ts/globalApi.svelte";
     import { selectMultipleFileObjects } from "src/ts/util";
+    import { assetListElement, assetListUse, rowAssetUrl, storeRowAssetUrl, type AssetUse, type RowAssetUrl } from "src/ts/storage/assetUrlGate";
     import { reportRefusedAssets, splitByAssetLimit, warnRefusedAssets } from "src/ts/storage/pickedAssetLimit";
     import { beginBusy } from "src/ts/process/memory/busyActions";
     import { markCharacterForSave } from "src/ts/storage/characterSaveMarks";
@@ -26,7 +27,19 @@
     }
 
     let assetFileExtensions:string[] = $state([])
-    let assetFilePath:string[] = $state([])
+    let assetUrls:(RowAssetUrl|undefined)[] = $state([])
+
+    // An audio or icon row shows a name box and needs no URL.
+    function rowUse(ext:string|undefined):AssetUse|null {
+        const element = assetListElement(ext)
+        return element === 'audio' ? null : assetListUse(element)
+    }
+
+    // The asset and use row `i` names now, read when a URL settles.
+    function rowNow(i:number):{ path:string|undefined, use:AssetUse|null } {
+        const asset = currentCharacter.type === 'character' ? currentCharacter.additionalAssets?.[i] : undefined
+        return { path: asset?.[1], use: rowUse(assetFileExtensions[i]) }
+    }
 
     $effect.pre(() => {
         if(currentCharacter.type ==='character'){
@@ -38,9 +51,14 @@
                     } else {
                         assetFileExtensions[i] = currentCharacter.additionalAssets[i][1].split('.').pop()
                     }
-                    getFileSrc(currentCharacter.additionalAssets[i][1]).then((filePath) => {
-                        assetFilePath[i] = filePath
-                    })
+                    const use = rowUse(assetFileExtensions[i])
+                    if(use !== null){
+                        const path = currentCharacter.additionalAssets[i][1]
+                        getFileSrc(path, use).then((url) => {
+                            const now = rowNow(i)
+                            storeRowAssetUrl(assetUrls, i, { path, use, url }, now.path, now.use)
+                        })
+                    }
                 }
             }
         }
@@ -92,21 +110,23 @@
     </button>
     {#if currentCharacter.additionalAssets}
         {#each currentCharacter.additionalAssets as additionalAsset, i}
+                {@const element = assetListElement(assetFileExtensions[i])}
+                {@const url = rowAssetUrl(assetUrls[i], additionalAsset[1], rowUse(assetFileExtensions[i]))}
                 <button onclick={()=>{
                     onSelect(additionalAsset)
                 }}>
-                    {#if assetFilePath[i]}
-                        {#if assetFileExtensions[i] === 'mp4'}
+                    <!-- A URL still being made, or made for another asset or use, is undefined and shows nothing; '' is a URL that was withheld or could not be made, and shows the name box. -->
+                    {#if element === 'audio' || element === 'icon' || url === ''}
+                        <div class='w-16 h-16 m-1 rounded-md bg-slate-500 flex flex-col justify-center items-center'>
+                            <FileMusicIcon/>
+                            <div class='w-16 px-1 text-ellipsis whitespace-nowrap overflow-hidden'>{additionalAsset[0]}</div>
+                        </div>
+                    {:else if url}
+                        {#if element === 'video'}
                             <!-- svelte-ignore a11y_media_has_caption -->
-                            <video class="w-16 h-16 m-1 rounded-md"><source src={assetFilePath[i]} type="video/mp4"></video>
-                        {:else if assetFileExtensions[i] === 'mp3'}
-                            <div class='w-16 h-16 m-1 rounded-md bg-slate-500 flex flex-col justify-center items-center'>
-                                <FileMusicIcon/>
-                                <div class='w-16 px-1 text-ellipsis whitespace-nowrap overflow-hidden'>{additionalAsset[0]}</div>
-                            </div>
-                            <!-- <audio controls class="w-16 h-16 m-1 rounded-md"><source src={assetPath} type="audio/mpeg"></audio> -->
+                            <video class="w-16 h-16 m-1 rounded-md"><source src={url} type="video/mp4"></video>
                         {:else}
-                        <img src={assetFilePath[i]} class="w-16 h-16 m-1 rounded-md" alt={additionalAsset[0]}/>
+                        <img src={url} class="w-16 h-16 m-1 rounded-md" alt={additionalAsset[0]}/>
                         {/if}
                     {/if}
                 </button>

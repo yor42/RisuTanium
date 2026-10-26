@@ -7,6 +7,7 @@ import { getAppStore } from "../../storage/store/appStore";
 import { language } from "src/lang";
 import type { ByteStore } from "../../storage/store/contract";
 import { isAndroidTransport } from "../../storage/tauriByteTransport";
+import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES } from "../../storage/assetUrlGate";
 import {
     cacheInlayRender,
     cachedInlayRender,
@@ -307,6 +308,11 @@ function renderOfAsset(img: InlayAsset): { render: InlayRender, objectUrl: strin
  */
 async function deliverStoredInlay(store: ByteStore, record: InlayRecord): Promise<{ render: InlayRender, objectUrl: string | null } | null> {
     const type = typeof record.fields.type === 'string' ? record.fields.type : ''
+    if(type === 'image' && isAndroidTransport() && record.len > ANDROID_WHOLE_READ_URL_LIMIT_BYTES){
+        // An image above the whole-read limit gets no URL and is not read into
+        // memory either: the page shows the empty image of a missing inlay.
+        return { render: { type, url: '', source: 'store-url' }, objectUrl: null }
+    }
     if(store.urlFor !== undefined && !(type === 'video' && isAndroidTransport())){
         try {
             return { render: { type, url: await store.urlFor(record.body), source: 'store-url' }, objectUrl: null }

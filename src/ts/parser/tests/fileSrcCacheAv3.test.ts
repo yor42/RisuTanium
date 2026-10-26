@@ -105,7 +105,7 @@ describe('AV-3 getFileSrcCached', () => {
     await ParseMarkdown(`{{asset::${name}}}`, char, 'back')
 
     expect(getFileSrc).toHaveBeenCalledTimes(2)
-    expect(getFileSrc).toHaveBeenCalledWith(path)
+    expect(getFileSrc).toHaveBeenCalledWith(path, 'whole')
   })
 
   test('T9b (reproducer): a blob URL result is never pinned, so rendering the same asset twice calls getFileSrc twice', async () => {
@@ -119,7 +119,7 @@ describe('AV-3 getFileSrcCached', () => {
     await ParseMarkdown(`{{asset::${name}}}`, char, 'back')
 
     expect(getFileSrc).toHaveBeenCalledTimes(2)
-    expect(getFileSrc).toHaveBeenCalledWith(path)
+    expect(getFileSrc).toHaveBeenCalledWith(path, 'whole')
   })
 
   test('T10 (guard): a short URL result is served from fileSrcCache on the second render', async () => {

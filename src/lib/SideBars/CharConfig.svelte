@@ -6,7 +6,8 @@
     import { DBState } from 'src/ts/stores.svelte';
     import { untrack } from 'svelte';
     import { CharConfigSubMenu, MobileGUI, selectedCharID, hypaV3ModalOpen } from "../../ts/stores.svelte";
-    import { PlusIcon, SmileIcon, TrashIcon, UserIcon, ActivityIcon, BookIcon, User, Braces, Volume2Icon, DownloadIcon, HardDriveUploadIcon, Share2Icon, ImageIcon, ImageOffIcon, ArrowUp, ArrowDown } from '@lucide/svelte'
+    import { PlusIcon, SmileIcon, TrashIcon, UserIcon, ActivityIcon, BookIcon, User, Braces, Volume2Icon, DownloadIcon, HardDriveUploadIcon, Share2Icon, ImageIcon, ImageOffIcon, ArrowUp, ArrowDown, FileMusicIcon } from '@lucide/svelte'
+    import { assetListElement, assetListUse, rowAssetUrl, storeRowAssetUrl, type RowAssetUrl } from 'src/ts/storage/assetUrlGate'
     import Check from "../UI/GUI/CheckInput.svelte";
     import { addCharEmotion, addingEmotion, getCharImage, rmCharEmotion, selectCharImg, makeGroupImage, removeChar, changeCharImage } from "../../ts/characters";
     import LoreBook from "./LoreBook/LoreBookSetting.svelte";
@@ -79,7 +80,7 @@
 
 
     let assetFileExtensions:string[] = $state([])
-    let assetFilePath:string[] = $state([])
+    let assetUrls:(RowAssetUrl|undefined)[] = $state([])
     let licensed = $state((DBState.db.characters[$selectedCharID].type === 'character') ? (DBState.db.characters[$selectedCharID] as character).license : '')
 
     $effect.pre(() => {
@@ -105,9 +106,17 @@
                         assetFileExtensions[i] = (DBState.db.characters[$selectedCharID] as character).additionalAssets[i][2]
                     } else
                         assetFileExtensions[i] = (DBState.db.characters[$selectedCharID] as character).additionalAssets[i][1].split('.').pop()
-                    getFileSrc((DBState.db.characters[$selectedCharID] as character).additionalAssets[i][1]).then((filePath) => {
-                        assetFilePath[i] = filePath
-                    })
+                    const use = assetListUse(assetListElement(assetFileExtensions[i], { knownImagesOnly: true }))
+                    if(use !== null){
+                        const path = (DBState.db.characters[$selectedCharID] as character).additionalAssets[i][1]
+                        getFileSrc(path, use).then((url) => {
+                            // Read when the URL settles: the row may name another asset by now.
+                            const nowChar = DBState.db.characters[$selectedCharID]
+                            const nowPath = nowChar?.type === 'character' ? nowChar.additionalAssets?.[i]?.[1] : undefined
+                            const nowUse = assetListUse(assetListElement(assetFileExtensions[i], { knownImagesOnly: true }))
+                            storeRowAssetUrl(assetUrls, i, { path, use, url }, nowPath, nowUse)
+                        })
+                    }
                 }
             }
         }
@@ -635,14 +644,24 @@
                         {#each DBState.db.characters[$selectedCharID].additionalAssets as assets, i}
                             <tr>
                                 <td class="font-medium truncate">
-                                    {#if assetFilePath[i] && DBState.db.useAdditionalAssetsPreview}
-                                        {#if assetFileExtensions[i] === 'mp4'}
-                                        <!-- svelte-ignore a11y_media_has_caption -->
-                                            <video controls class="mt-2 px-2 w-full m-1 rounded-md"><source src={assetFilePath[i]} type="video/mp4"></video>
-                                        {:else if assetFileExtensions[i] === 'mp3'}
-                                            <audio controls class="mt-2 px-2 w-full h-16 m-1 rounded-md" loop><source src={assetFilePath[i]} type="audio/mpeg"></audio>
-                                        {:else if ['png', 'webp', 'jpeg', 'jpg', 'gif'].includes(assetFileExtensions[i])}
-                                            <img src={assetFilePath[i]} class="w-16 h-16 m-1 rounded-md" alt={assets[0]}/>
+                                    {#if DBState.db.useAdditionalAssetsPreview}
+                                        {@const element = assetListElement(assetFileExtensions[i], { knownImagesOnly: true })}
+                                        {@const url = rowAssetUrl(assetUrls[i], assets[1], assetListUse(element))}
+                                        <!-- A URL still being made, or made for another asset or use, is undefined and shows nothing; '' is a URL that was withheld or could not be made, and shows the name box. -->
+                                        {#if element !== 'none' && url === ''}
+                                            <div class='w-16 h-16 m-1 rounded-md bg-slate-500 flex flex-col justify-center items-center'>
+                                                <FileMusicIcon/>
+                                                <div class='w-16 px-1 text-ellipsis whitespace-nowrap overflow-hidden'>{assets[0]}</div>
+                                            </div>
+                                        {:else if url}
+                                            {#if element === 'video'}
+                                            <!-- svelte-ignore a11y_media_has_caption -->
+                                                <video controls class="mt-2 px-2 w-full m-1 rounded-md"><source src={url} type="video/mp4"></video>
+                                            {:else if element === 'audio'}
+                                                <audio controls class="mt-2 px-2 w-full h-16 m-1 rounded-md" loop><source src={url} type="audio/mpeg"></audio>
+                                            {:else if element === 'image'}
+                                                <img src={url} class="w-16 h-16 m-1 rounded-md" alt={assets[0]}/>
+                                            {/if}
                                         {/if}
                                     {/if}
                                     <TextInput size="sm" marginBottom bind:value={DBState.db.characters[$selectedCharID].additionalAssets[i][0]} placeholder="..." />

@@ -4,6 +4,7 @@ import { replaceThoughtsBlocks } from './thoughts';
 import { appVer, getCurrentCharacter, getDatabase, type Database, type character, type customscript, type groupChat, type triggerscript } from '../storage/database.svelte';
 import { DBState, selIdState } from '../stores.svelte';
 import { aiWatermarkingLawApplies, getFileSrc } from '../globalApi.svelte';
+import type { AssetUse } from '../storage/assetUrlGate';
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { getChatVar, setChatVar, getGlobalChatVar } from './chatVar.svelte';
 import { processScriptFull } from '../process/scripts';
@@ -476,19 +477,40 @@ function getEmoSrc(emoArr: string[][], emoPaths: AssetPaths) {
 // can be deleted, which revokes the URL, and a pinned copy would then outlive
 // it while getFileSrc answers from its own map in constant time. An empty
 // result (no URL could be made) is not kept either, so the next call asks
-// again.
+// again. The key carries the use: a URL made for a media element must never
+// answer a `'whole'` request for the same path, which may have been withheld.
 const fileSrcCache = new Map<string, string>()
 
-async function getFileSrcCached(path:string){
-    const cached = fileSrcCache.get(path)
+async function getFileSrcCached(path:string, use:AssetUse){
+    const cacheKey = `${use}\u0000${path}`
+    const cached = fileSrcCache.get(cacheKey)
     if(cached){
         return cached
     }
-    const src = await getFileSrc(path)
+    const src = await getFileSrc(path, use)
     if(src && !src.startsWith('data:') && !src.startsWith('blob:')){
-        fileSrcCache.set(path, src)
+        fileSrcCache.set(cacheKey, src)
     }
     return src
+}
+
+/**
+ * What a `{{type::name}}` asset URL is used for; `asset` is a media element only
+ * for a video extension. `raw` and `path` put the URL into author markup whose
+ * element is unknown, so they are `'whole'` and withheld above the Android limit
+ * like an image.
+ */
+function assetUseOfCbs(type:string, ext:string|undefined):AssetUse{
+    switch(type){
+        case 'video':
+        case 'video-img':
+        case 'audio':
+        case 'bgm':
+            return 'media'
+        case 'asset':
+            return ext && videoExtensions.includes(ext) ? 'media' : 'whole'
+    }
+    return 'whole'
 }
 
 /** Escapes text for use inside a double-quoted HTML attribute. */
@@ -577,7 +599,7 @@ async function parseAdditionalAssets(data:string, char:simpleCharacterArgument|c
 
         if(type === 'emotion'){
             const srcPath = emoPaths?.[name]?.srcPaths?.[0]
-            const path = srcPath ? await getFileSrcCached(srcPath) : null
+            const path = srcPath ? await getFileSrcCached(srcPath, 'whole') : null
             if(!path){
                 return ''
             }
@@ -623,7 +645,7 @@ async function parseAdditionalAssets(data:string, char:simpleCharacterArgument|c
             pSrc = match.srcPaths[selIndex]
         }
 
-        const p = await getFileSrcCached(pSrc)
+        const p = await getFileSrcCached(pSrc, assetUseOfCbs(type, match.ext))
         switch(type){
             case 'raw':
             case 'path':

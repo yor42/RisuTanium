@@ -6,6 +6,7 @@ import type { Database, folder } from '../storage/database.svelte'
 import { asBuffer } from '../util'
 import { isNodeServer, isTauri } from '../platform'
 import { getAppStore } from '../storage/store/appStore'
+import { androidAssetSizeVerdict } from '../storage/assetUrlGate'
 import { readTauriHeader, readUrlHeader, type ImageHeader } from './avatarThumbHeader'
 
 /**
@@ -929,6 +930,20 @@ async function generateFromBytes(loc: string, scope: TaskScope): Promise<{ resul
 async function realGenerate(loc: string, ctx: GenContext): Promise<GenResult> {
     const scope = makeTaskScope(ctx)
     try {
+        // Before any URL decode or byte read: on Android a file above the
+        // whole-read limit gets no thumbnail (a skip, stored per content-hash
+        // key), and an unreadable size gets none this time (null, so nothing
+        // is memoized and the next request asks again).
+        const sizeVerdict = await androidAssetSizeVerdict(loc)
+        if (scope.isCancelled()) {
+            return null
+        }
+        if (sizeVerdict === 'over') {
+            return { skip: true }
+        }
+        if (sizeVerdict === 'unknown') {
+            return null
+        }
         let urlFailed = false
         if (!urlDecodeOff) {
             const probe = await readHeader(loc, scope)

@@ -524,7 +524,10 @@ function responseBytes(response: RangeResponse): Uint8Array {
     return bytes
 }
 
-/** The `read_range` and `read_range_text` invokes since the last `takeRangeReadStats`, as a measurement build counts them. */
+/**
+ * The `read_range` and `read_range_text` invokes since the last `takeRangeReadStats`, as a measurement build counts them.
+ * Size probes (`statStoredSize`) are left out of every field: they are not in `reads`, `ms`, `wallMs` or `maxInFlight`.
+ */
 export interface RangeReadStats {
     /** Invokes made by any reader on the page, so an upper bound for one export's reads. */
     reads: number
@@ -711,8 +714,8 @@ function usesTextRead(frozenSafe: boolean, len: number): boolean {
     return frozenSafe && len <= TEXT_RANGE_MAX_BYTES && shouldBypassFrozenPagePaths()
 }
 
-async function requestPiece(key: string, offset: number, len: number, text = false): Promise<RangePiece> {
-    const mark = MEASURE ? beginRangeRead(key, text) : null
+async function requestPiece(key: string, offset: number, len: number, text = false, counted = true): Promise<RangePiece> {
+    const mark = MEASURE && counted ? beginRangeRead(key, text) : null
     let response: Uint8Array
     try {
         if (text) {
@@ -749,6 +752,17 @@ async function requestPiece(key: string, offset: number, len: number, text = fal
         identity += byte.toString(16).padStart(2, '0')
     }
     return { bytes: response.subarray(0, pieceLength), total, identity }
+}
+
+/**
+ * The stored size of the file at `key` in bytes, from a zero-length `read_range`
+ * whose reply is only the trailer, so no file body crosses the bridge. A missing
+ * file rejects with the command's own error, which `MISSING_FILE_ERROR` matches.
+ * Measurement builds do not count this invoke as a range read.
+ */
+export async function statStoredSize(key: string): Promise<number> {
+    const piece = await requestPiece(key, 0, 0, false, false)
+    return piece.total
 }
 
 /**
