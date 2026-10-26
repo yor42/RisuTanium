@@ -284,6 +284,7 @@ import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE, ModuleStubRefusal } from 'src/ts/storage/moduleStub'
 import { language } from 'src/lang'
+import { DBState } from 'src/ts/stores.svelte'
 
 //#region helpers
 
@@ -393,7 +394,9 @@ describe.each([
     })
 
     test('new behaviour: the export fails with the refusal before anything is collected, listed, read, opened or written', async () => {
-        getDatabaseMock.mockImplementation(() => databaseWith(true))
+        const db = databaseWith(true)
+        getDatabaseMock.mockImplementation(() => db)
+        DBState.db = db
         const initSpy = vi.spyOn(LocalWriter.prototype, 'init')
 
         const outcome = await run()
