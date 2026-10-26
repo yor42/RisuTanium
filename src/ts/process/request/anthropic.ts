@@ -1077,7 +1077,8 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
         headers: headers,
         method: "POST",
         chatId: arg.chatId,
-        interceptor: 'anthropic_http'
+        interceptor: 'anthropic_http',
+        deliverWhileFrozen: true
     })
 
     if(!res.ok){

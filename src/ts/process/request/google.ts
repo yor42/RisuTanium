@@ -15,6 +15,8 @@ import { applyAdditionalParameters, applyParameters, getAdditionalParameters, ty
 import { bodyIntercepterStore } from "src/ts/stores.svelte"
 import { isSecretRef, registerSensitive, resolveSecret } from "src/ts/secretRef"
 import { resolveRequestKey } from "./secretKey"
+import { isAndroidTransport } from "src/ts/storage/tauriByteTransport"
+import { parseJsonBody, readBodyText } from "src/ts/network/frozenBody"
 
 /** Vertex access token minted from a referenced service-account key. Memory only; never stored. */
 let vertexMemoryToken: { reference: string, email: string, token: string, expires: number } | null = null
@@ -713,18 +715,22 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
         }
     }
 
+    // On Android the reply must arrive while a hidden page is frozen: no native time limit, and the body is
+    // read without the Body mixin. Web and desktop keep the 240 s native default and the mixin reads.
+    const android = isAndroidTransport()
     const res = await fetchNative(url, {
         headers: headers,
         body: JSON.stringify(body),
         method: 'POST',
         chatId: arg.chatId,
         signal: arg.abortSignal,
-        interceptor: 'gemini_base'
+        interceptor: 'gemini_base',
+        noNativeTimeout: android
     })
     
 
     if(!res.ok){
-        const data = await res.text()
+        const data = android ? await readBodyText(res) : await res.text()
         const text = JSON.stringify(data)
         if(text.includes('RESOURCE_EXHAUSTED')){
             return fallBackGemini(text)
@@ -814,7 +820,7 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
 
     // traverse responded data if it contains multipart contents
     let parts:GeminiPart[] = []
-    const resData = await res.json()
+    const resData = android ? await parseJsonBody(res) : await res.json()
     if(Array.isArray(resData)){
         for(const data of resData){
             const p = await processDataItem(data)

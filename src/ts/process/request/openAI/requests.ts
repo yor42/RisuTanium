@@ -301,7 +301,8 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
             chatId: arg.chatId,
             interceptor: 'mistral',
             networkRoute: networkOptions.networkRoute,
-            requestTimeoutMs: networkOptions.requestTimeoutMs
+            requestTimeoutMs: networkOptions.requestTimeoutMs,
+            deliverWhileFrozen: true
         } as const
 
         if(arg.previewBody){
@@ -684,7 +685,8 @@ export async function requestHTTPOpenAI(
         chatId: arg.chatId,
         interceptor: 'openai_basic',
         networkRoute: networkOptions.networkRoute,
-        requestTimeoutMs: networkOptions.requestTimeoutMs
+        requestTimeoutMs: networkOptions.requestTimeoutMs,
+        deliverWhileFrozen: true
     })
 
     function processTextResponse(dat: any):string{
@@ -956,7 +958,8 @@ export async function requestOpenAILegacyInstruct(arg:RequestDataArgumentExtende
         body: body,
         headers: headers,
         chatId: arg.chatId,
-        abortSignal: arg.abortSignal
+        abortSignal: arg.abortSignal,
+        deliverWhileFrozen: true
     });
 
     if(!response.ok){

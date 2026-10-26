@@ -692,6 +692,7 @@ async function requestNovelAI(arg:RequestDataArgumentExtended):Promise<requestDa
         headers: headers,
         abortSignal,
         chatId: arg.chatId,
+        deliverWhileFrozen: true
     })
 
     if((!da.ok )|| (!da.data.output)){
@@ -818,7 +819,8 @@ async function requestOobaLegacy(arg:RequestDataArgumentExtended):Promise<reques
         body: bodyTemplate,
         headers: headers,
         abortSignal,
-        chatId: arg.chatId
+        chatId: arg.chatId,
+        deliverWhileFrozen: true
     })
     
     const dat = res.data as any
@@ -902,7 +904,8 @@ async function requestOoba(arg:RequestDataArgumentExtended):Promise<requestDataR
         body: bodyTemplate,
         headers: headers,
         chatId: arg.chatId,
-        abortSignal: arg.abortSignal
+        abortSignal: arg.abortSignal,
+        deliverWhileFrozen: true
     })
 
     if(!response.ok){
@@ -1072,7 +1075,8 @@ async function requestKobold(arg:RequestDataArgumentExtended):Promise<requestDat
         body: body,
         headers: headers,
         abortSignal,
-        chatId: arg.chatId
+        chatId: arg.chatId,
+        deliverWhileFrozen: true
     })
 
     if(!da.ok){
@@ -1149,7 +1153,8 @@ async function requestNovelList(arg:RequestDataArgumentExtended):Promise<request
         headers: headers,
         body: send_body,
         chatId: arg.chatId,
-        abortSignal: arg.abortSignal
+        abortSignal: arg.abortSignal,
+        deliverWhileFrozen: true
     });
 
     if(!response.ok){
@@ -1390,7 +1395,8 @@ async function requestCohere(arg:RequestDataArgumentExtended):Promise<requestDat
         method: "POST",
         headers: headers,
         body: body,
-        abortSignal: arg.abortSignal
+        abortSignal: arg.abortSignal,
+        deliverWhileFrozen: true
     })
 
     if(!res.ok){

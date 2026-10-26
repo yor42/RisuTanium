@@ -72,7 +72,8 @@ import { getMultiTabAction, isRevisionAwareBackend, nextAutoReloadHistory, resol
 import { hasLocalDrafts } from "./localDrafts";
 import { beginChokePoint, busyKinds } from "./process/memory/busyActions";
 import { installNetHold } from "./storage/measureExportHold";
-import { shouldBypassFrozenPagePaths } from "./storage/tauriByteTransport";
+import { isAndroidTransport, shouldBypassFrozenPagePaths } from "./storage/tauriByteTransport";
+import { parseJsonBody } from "./network/frozenBody";
 import { MEASURE } from "./process/memory/measureFlag";
 import { noteChatSelect } from "./process/chatPhaseRing";
 import { draftContentOrphanGate } from "./draftContentOrphanGate";
@@ -2821,6 +2822,14 @@ export interface GlobalFetchArgs {
     interceptor?: string;
     requestTimeoutMs?: number;
     networkRoute?: 'auto' | 'local_network';
+    /**
+     * Fork-specific: the reply must arrive and be parsed while the hidden Android page is frozen.
+     * Android only: there, a non-streamed request through `fetchWithTauri` takes the native event
+     * route (`fetchWithNativeEvents`) and has no native deadline. Elsewhere the flag changes nothing.
+     * It is ignored for `rawResponse` and for plain-fetch and userscript routing, which never reach
+     * that route. A caller's `requestTimeoutMs` still bounds the request through `globalFetch`.
+     */
+    deliverWhileFrozen?: boolean;
 }
 
 /**
@@ -3036,10 +3045,61 @@ async function fetchWithUSFetch(url: string, arg: GlobalFetchArgs): Promise<Glob
  * @returns {Promise<GlobalFetchResult>} - The result of the fetch request.
  */
 async function fetchWithTauri(url: string, arg: GlobalFetchArgs): Promise<GlobalFetchResult> {
+    // Decided when the request starts: it starts visible, and the page freezes later.
+    if (arg.deliverWhileFrozen && !arg.rawResponse && isAndroidTransport()) {
+        return await fetchWithNativeEvents(url, arg);
+    }
     try {
         const headers = { 'Content-Type': 'application/json', ...arg.headers };
         const response = await TauriHTTPFetch(new URL(url), { body: JSON.stringify(arg.body), headers, method: arg.method ?? "POST", signal: arg.abortSignal });
         const data = arg.rawResponse ? new Uint8Array(await response.arrayBuffer()) : await response.json();
+        const ok = response.status >= 200 && response.status < 300;
+        addFetchLogInGlobalFetch(data, ok, url, arg, response.status);
+        return { ok, data, headers: Object.fromEntries(response.headers), status: response.status };
+    } catch (error) {
+        return { ok: false, data: `${error}`, headers: {}, status: 400 };
+    }
+}
+
+/**
+ * Fork-specific: the User-Agent tauri-plugin-http 2.8.0 adds when a request names none. The native
+ * event route sends the same value so that moving a request between the two routes is invisible to
+ * providers. It must be re-checked whenever the plugin is updated. That providers do not validate
+ * it is an assumption, not something verified.
+ */
+const pluginDefaultUserAgent = 'tauri-plugin-http/2.8.0';
+
+/**
+ * Fork-specific: performs a non-streamed JSON request over the native event route of `fetchNative`, so the reply
+ * reaches the page and is parsed while a hidden Android page is frozen. The HTTP plugin cannot do
+ * that: its body reads wait on tasks a frozen page never runs. Interceptors already ran in
+ * `globalFetch`, and its timeout signal is already `arg.abortSignal`; the request has no native limit.
+ *
+ * @param {string} url - The URL to fetch.
+ * @param {GlobalFetchArgs} arg - The arguments for the fetch request.
+ * @returns {Promise<GlobalFetchResult>} - The result of the fetch request.
+ */
+async function fetchWithNativeEvents(url: string, arg: GlobalFetchArgs): Promise<GlobalFetchResult> {
+    try {
+        const headers: { [key: string]: string } = { 'Content-Type': 'application/json', ...arg.headers };
+        if (!Object.keys(headers).some((key) => key.toLowerCase() === 'user-agent')) {
+            headers['User-Agent'] = pluginDefaultUserAgent;
+        }
+        const method = arg.method ?? "POST";
+        const response = await fetchNative(url, {
+            body: method === 'GET' ? undefined : (JSON.stringify(arg.body) ?? ''),
+            headers,
+            method,
+            signal: arg.abortSignal,
+            chatId: arg.chatId,
+            logFetch: false,
+            noNativeTimeout: true,
+        });
+        const data = await parseJsonBody(response);
+        // A stop after the head closes the stream cleanly, so a cut-off body must not pass as a reply.
+        if (arg.abortSignal?.aborted) {
+            return { ok: false, data: 'aborted', headers: {}, status: 400 };
+        }
         const ok = response.status >= 200 && response.status < 300;
         addFetchLogInGlobalFetch(data, ok, url, arg, response.status);
         return { ok, data, headers: Object.fromEntries(response.headers), status: response.status };
@@ -3607,6 +3667,12 @@ export { AppendableBuffer, VirtualWriter } from './byteBuffer'
 let fetchIndex = 0
 
 /**
+ * Per page load, so an id left in the native registry by a reload cannot collide with a new request.
+ * Not `crypto.randomUUID`, which a plain-HTTP origin lacks.
+ */
+const fetchIdPrefix = v4().slice(0, 8)
+
+/**
  * Stores native fetch data.
  * @type {{ [key: string]: StreamedFetchChunk[] }}
  */
@@ -3952,11 +4018,12 @@ export async function fetchNative(url: string, arg: {
     logFetch?: boolean
     requestTimeoutMs?: number
     networkRoute?: 'auto' | 'local_network'
+    /** Sends the native no-limit sentinel instead of the 240 s default; a given `requestTimeoutMs` still wins. */
+    noNativeTimeout?: boolean
 }): Promise<Response> {
 
     assertNoSecretRef(arg.headers, url)
     const useInterceptor = !!arg.interceptor
-    console.log(arg.body, 'body')
     if (arg.body === undefined && (arg.method === 'POST' || arg.method === 'PUT')) {
         throw new Error('Body is required for POST and PUT requests')
     }
@@ -4041,7 +4108,7 @@ export async function fetchNative(url: string, arg: {
         if (fetchIndex >= 100000) {
             fetchIndex = 0
         }
-        let fetchId = fetchIndex.toString().padStart(5, '0')
+        let fetchId = fetchIdPrefix + '-' + fetchIndex.toString().padStart(5, '0')
         nativeFetchData[fetchId] = []
         // True once a terminal signal (end, error event or failed command) arrived; the first one wins.
         let resolved = false
@@ -4101,7 +4168,11 @@ export async function fetchNative(url: string, arg: {
                 headers: JSON.stringify(headers),
                 body: realBody ? Buffer.from(realBody).toString('base64') : '',
                 method: arg.method,
-                timeout_secs: arg.requestTimeoutMs ? Math.max(1, Math.ceil(arg.requestTimeoutMs / 1000)) : undefined
+                // Tauri names the Rust argument `timeout_secs` as `timeoutSecs`. The native limit covers the
+                // whole request, body included; 0 is no limit and an absent value is the 240 s default.
+                timeoutSecs: arg.requestTimeoutMs
+                    ? Math.max(1, Math.ceil(arg.requestTimeoutMs / 1000))
+                    : (arg.noNativeTimeout ? 0 : undefined)
             }).then((res) => {
                 try {
                     const parsedRes = JSON.parse(res as string)

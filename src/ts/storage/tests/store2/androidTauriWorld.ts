@@ -38,7 +38,87 @@ export function createAndroidTauriWorld() {
         return false
     }
 
+    /**
+     * The request side: the HTTP plugin's `fetch` / `fetch_send` / `fetch_read_body` sequence and the `streamed_fetch`
+     * command. `streamed_fetch` only records its arguments; the events reach the page through `deliver`, which calls the
+     * callback the suite registered for the `listen` mock. `fetch_read_body` copies the plugin's wire format: each reply
+     * is an ArrayBuffer of the data plus a trailing 0 byte, and the last reply is the single byte 1.
+     */
+    const http = {
+        status: 200,
+        headers: [['content-type', 'application/json']] as [string, string][],
+        body: new Uint8Array() as Uint8Array,
+        readPos: 0,
+        /** The arguments of every `streamed_fetch` call. */
+        streamedCalls: [] as Record<string, unknown>[],
+        cancelledIds: [] as string[],
+        commands: [] as string[],
+        /** What the `streamed_fetch` command answers with once the request finished. */
+        streamedReply: '{"success":true}',
+        listener: undefined as ((event: { payload: string }) => void) | undefined,
+        setBody(body: string | Uint8Array): void {
+            http.body = typeof body === 'string' ? new TextEncoder().encode(body) : body
+            http.readPos = 0
+        },
+        /** Pushes the response head, the chunks and the end event of one `streamed_fetch` request into the page. */
+        deliver(id: string, chunks: Uint8Array[], options: { status?: number, headers?: Record<string, string>, end?: boolean } = {}): void {
+            if (!http.listener) {
+                throw new Error('setup: no streamed_fetch listener registered')
+            }
+            const send = (event: Record<string, unknown>) => http.listener!({ payload: JSON.stringify({ ...event, id }) })
+            send({ type: 'headers', body: options.headers ?? { 'content-type': 'application/json' }, status: options.status ?? 200 })
+            for (const chunkBytes of chunks) {
+                let binary = ''
+                for (const byte of chunkBytes) {
+                    binary += String.fromCharCode(byte)
+                }
+                send({ type: 'chunk', body: btoa(binary) })
+            }
+            if (options.end ?? true) {
+                send({ type: 'end' })
+            }
+        },
+    }
+
+    function requestCommand(command: string, args?: unknown): { handled: boolean, reply?: unknown } {
+        if (command === 'plugin:http|fetch') {
+            http.commands.push(command)
+            return { handled: true, reply: 7 }
+        }
+        if (command === 'plugin:http|fetch_send') {
+            http.commands.push(command)
+            return { handled: true, reply: { status: http.status, statusText: 'OK', url: 'https://api.example.invalid/v1/chat', headers: http.headers, rid: 8 } }
+        }
+        if (command === 'plugin:http|fetch_read_body') {
+            http.commands.push(command)
+            if (http.readPos >= http.body.length) {
+                return { handled: true, reply: new Uint8Array([1]).buffer }
+            }
+            const out = new Uint8Array(http.body.length - http.readPos + 1)
+            out.set(http.body.subarray(http.readPos))
+            out[out.length - 1] = 0
+            http.readPos = http.body.length
+            return { handled: true, reply: out.buffer }
+        }
+        if (command === 'plugin:http|fetch_cancel' || command === 'plugin:http|fetch_cancel_body') {
+            return { handled: true, reply: null }
+        }
+        if (command === 'streamed_fetch') {
+            http.streamedCalls.push(args as Record<string, unknown>)
+            return { handled: true, reply: http.streamedReply }
+        }
+        if (command === 'cancel_streamed_fetch') {
+            http.cancelledIds.push(String((args as { id: string }).id))
+            return { handled: true, reply: null }
+        }
+        return { handled: false }
+    }
+
     async function routed(command: string, args?: unknown): Promise<unknown> {
+        const request = requestCommand(command, args)
+        if (request.handled) {
+            return request.reply
+        }
         // The store2 top-level keys go through the gated chunk command; it is held and ordered like `write_chunk`.
         if (command !== 'write_chunk' && command !== 'store2_write_top_chunk') {
             return chunk.invoke(command, args)
@@ -71,8 +151,17 @@ export function createAndroidTauriWorld() {
         paths,
         writes,
         frozen,
+        http,
         invoke,
         reset(): void {
+            http.status = 200
+            http.headers = [['content-type', 'application/json']]
+            http.body = new Uint8Array()
+            http.readPos = 0
+            http.streamedCalls.length = 0
+            http.cancelledIds.length = 0
+            http.commands.length = 0
+            http.streamedReply = '{"success":true}'
             fs.reset()
             chunk.reset()
             paths.reset()
