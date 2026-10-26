@@ -1,8 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import type { JsonObject } from '../../blockFrame'
 import { COLD_STUB_VERSION } from '../../../process/coldCharacter'
-import type { ModuleEntry, ShardEntry } from '../format'
-import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from '../../moduleStub'
+import type { ShardEntry } from '../format'
 import { StubRefusedError } from './types'
 
 /** The text a chat's first message starts with while the chat is a cold-storage pointer. */
@@ -56,18 +55,6 @@ export function stubFromEntry(entry: ShardEntry): JsonObject {
         stub.tags = [...(entry.tags ?? [])]
         stub.creator = entry.creator ?? ''
     }
-    return stub
-}
-
-/**
- * The module stub a module index entry stands for: the entry's fields plus the module stub marker, with none of the
- * module's body arrays. `unit`, `al` and `il` are fresh copies, never the entry's own arrays, and `unit` keeps all four
- * elements (the entry-fields version included), so a stub nobody touched equals the stub minted from its entry again.
- * `mcp` is carried as the entry holds it (`true`), not as the object a full module holds.
- */
-export function stubFromModuleEntry(entry: ModuleEntry): JsonObject {
-    const stub: JsonObject = { ...entry, unit: [...entry.unit], al: [...entry.al], il: entry.il === null ? null : [...entry.il] }
-    stub[MODULE_STUB_KEY] = MODULE_STUB_VALUE
     return stub
 }
 

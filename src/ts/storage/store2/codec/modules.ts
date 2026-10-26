@@ -16,9 +16,10 @@ export function storedModule(module: JsonObject): JsonObject {
 
 /**
  * A module holding the stub marker is never a unit body: a real stub stands for a module this pass has no body for, and
- * a foreign module that holds the marker key cannot be told apart from one. The refusal is a `CodecInputError`, not a
- * `StubRefusedError`: no pass can carry a stub yet, and a later carry valve matches only the latter. The message is a
- * noun phrase that reads correctly for both, inside "cannot be saved as it is".
+ * a foreign module that holds the marker key cannot be told apart from one. A pass with a previous module index carries
+ * or refuses a stub with a `StubRefusedError` before reaching this body path; here it is refused with a `CodecInputError`
+ * when there is no previous index at all (convert, import, first encode), where no entry can stand for the stub. The
+ * message is a noun phrase that reads correctly for both, inside "cannot be saved as it is".
  */
 export function moduleBodyOf(module: JsonObject): ModuleBody {
     if (isModuleStub(module)) {
