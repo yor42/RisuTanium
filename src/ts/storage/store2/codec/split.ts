@@ -132,6 +132,8 @@ export class Encoder {
     readonly stableChats = new Map<string, Set<string>>()
     /** Previous module list units this encode kept without encoding them (see `encodeModules`); `finishTree` adds them to the index units. */
     readonly carried = new Map<string, ReusableUnit>()
+    /** The names (else ids) of the module stubs carried by `carry`, taken when each was carried. */
+    readonly carriedModuleNames: string[] = []
     private readonly occurrences = new Map<string, number>()
     private readonly usedU = new Set<string>()
 
@@ -525,6 +527,7 @@ function carryStubAt(
     for (const [identity, unit] of found) {
         encoder.carried.set(identity, unit)
     }
+    encoder.carriedModuleNames.push(entry.name !== '' ? entry.name : entry.id)
     return { ...entry, unit: [...entry.unit], al: [...entry.al], il: entry.il === null ? null : [...entry.il] }
 }
 

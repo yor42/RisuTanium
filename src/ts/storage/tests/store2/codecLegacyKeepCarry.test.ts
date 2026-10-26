@@ -118,3 +118,39 @@ describe('guard: no keep set stays no keep set, and the bytes do not change with
         expect(carryManifest(prev, next).fixed.legacyKeep).toEqual(own)
     })
 })
+
+describe('a build that is given the keep of the base it replaces writes that keep, and one that is not given any is unchanged', () => {
+    const db = buildSmall(3)
+    const first = encodeWith(db)
+
+    async function finalizeWith(previousKeep: Manifest['fixed']['legacyKeep'], context: { legacyKeep?: Manifest['fixed']['legacyKeep'] }): Promise<EncodedTree> {
+        const previous = previousWithKeep(first, previousKeep)
+        const plan = await planScopedEncode(db, { env: seededEnv(2), lists: fakeLists, seq: 2, createdAt: NOW, previous }, { modules: false, characters: new Set() })
+        const { mint } = createKeyMint(seededEnv(60), null)
+        return plan.finalize({ mint, seq: 2, now: NOW, ...context })
+    }
+
+    test('R12: the substituted keep is in the manifest bytes, in the tree\'s manifest and in the index objects the next pass carries from', async () => {
+        const planned = keepSetOf()
+        const base = { ...keepSetOf(), v: 7 }
+        const tree = await finalizeWith(planned, { legacyKeep: base })
+        expect(canonicalJson(storedKeep(manifestBytesOf(tree)))).toBe(canonicalJson(base))
+        expect(canonicalJson(tree.manifest.fixed.legacyKeep)).toBe(canonicalJson(base))
+        expect(canonicalJson(tree.index.objects?.manifest?.fixed.legacyKeep)).toBe(canonicalJson(base))
+    })
+
+    test('R12: a null keep of the base releases the planned keep in all three places', async () => {
+        const tree = await finalizeWith(keepSetOf(), { legacyKeep: null })
+        expect(storedKeep(manifestBytesOf(tree))).toBeNull()
+        expect(tree.manifest.fixed.legacyKeep).toBeNull()
+        expect(tree.index.objects?.manifest?.fixed.legacyKeep).toBeNull()
+    })
+
+    test('G10: with no keep in the context the output is the planned keep, byte for byte', async () => {
+        const planned = keepSetOf()
+        const tree = await finalizeWith(planned, {})
+        expect(canonicalJson(storedKeep(manifestBytesOf(tree)))).toBe(canonicalJson(planned))
+        const explicit = await finalizeWith(planned, { legacyKeep: undefined })
+        expect(Buffer.from(manifestBytesOf(explicit)).equals(Buffer.from(manifestBytesOf(tree)))).toBe(true)
+    })
+})

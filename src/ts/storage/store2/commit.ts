@@ -37,6 +37,7 @@ export type Refusal =
     | 'absent' | 'damaged' | 'too-new' | 'no-current'
     | 'marker-present' | 'bad-unit-set' | 'bad-manifest-key' | 'already-current' | 'tree-incomplete'
     | 'node-save-mine' | 'not-named' | 'already-pinned' | 'not-pinned' | 'not-mine' | 'no-snapshot' | 'snapshot-mismatch' | 'staging'
+    | 'base-unnamed'
 
 export interface Refused {
     status: 'refused'
@@ -44,6 +45,8 @@ export interface Refused {
     detail: string
     /** Keys a restore found missing or damaged. */
     missing?: string[]
+    /** A bulk commit refused after its marker was set: what the own-marker clear came to. Anything but `cleared` or `nothing` means the marker may still stand. */
+    cleared?: AbandonResult | null
 }
 
 /** A parsed commit key and the read (bytes and compare token) it came from. */
@@ -115,6 +118,8 @@ export interface BuildContext {
     seq: number
     /** The clock reading the commit key's `current.at` will carry. */
     now: number
+    /** The legacy keep the new manifest names instead of the one the build planned with (a save-mine over a base that does not name the planned manifest). */
+    legacyKeep?: Manifest['fixed']['legacyKeep']
 }
 
 export interface ManifestWrite {
@@ -146,6 +151,14 @@ export interface CommitRequest {
     label?: StagingLabel
     /** A replacement of the whole profile always keeps the state it replaces: the previous `current` enters `retained` whatever the admission interval says. */
     force?: boolean
+    /**
+     * Present when the build was planned over an acknowledged manifest. `from` is that manifest's key and `units` counts
+     * the pre-existing units the new manifest names without writing them. A commit that carries from `from` is refused
+     * unless the commit key it compares against still names `from`, because garbage collection may have deleted what it
+     * would carry. Requests without it are never refused by this rule. The legacy import is one: it builds over the
+     * manifest it replaces and keeps that manifest's legacy keep, as a forced bulk outside this check.
+     */
+    carry?: { from: string, units: number }
 }
 
 export interface CommitterOptions {
@@ -155,6 +168,11 @@ export interface CommitterOptions {
     env?: KeyEnv
     /** The Q3 question for a foreign marker; absent means a foreign marker is never cleared. */
     foreignClear?: ForeignClearHook
+}
+
+/** Whether the commit key keeps `manifestKey` alive: as current, retained or pinned (the garbage collector's keep set). */
+export function namesManifest(key: CommitKey, manifestKey: string): boolean {
+    return key.current?.key === manifestKey || key.retained.some(entry => entry.key === manifestKey) || key.pins.some(pin => pin.key === manifestKey)
 }
 
 /** Parses a read into a base, or the refusal that says why it cannot be one. */
@@ -412,10 +430,23 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
         return checkBuiltUnits(built, issued, declared, staged)
     }
 
-    async function ordinary(base: Base, request: CommitRequest, force: boolean): Promise<CommitResult> {
+    function refuseUnnamed(request: CommitRequest): Refused {
+        return refuse('base-unnamed', `The commit key no longer names the manifest ${request.carry?.from ?? ''} this build was planned over.`)
+    }
+
+    async function ordinary(base: Base, request: CommitRequest, force: boolean, legacyKeep?: Manifest['fixed']['legacyKeep']): Promise<CommitResult> {
+        // Only a save-mine reaches here over a base that does not name `from`; a build with nothing carried lands
+        // because the legacy keep is substituted and no pre-existing unit is named.
+        if (request.carry !== undefined && request.carry.units > 0 && !namesManifest(base.key, request.carry.from)) {
+            return refuseUnnamed(request)
+        }
         const { mint, issued } = createMint(null)
         const now = env.now()
-        const built = await request.build({ mint, seq: base.key.seq + 1, now })
+        const context: BuildContext = { mint, seq: base.key.seq + 1, now }
+        if (legacyKeep !== undefined) {
+            context.legacyKeep = legacyKeep
+        }
+        const built = await request.build(context)
         const refused = checkBuilt(built, issued, request.newUnits, false)
         if (refused !== null) {
             return refused
@@ -443,6 +474,11 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
     }
 
     async function bulk(base: Base, request: CommitRequest): Promise<CommitResult> {
+        // A bulk build may reference anything `from` names (units by key or digest, the legacy keep, opaque fields), so
+        // any carry over a base that does not name `from` is refused whatever the unit count says.
+        if (request.carry !== undefined && !namesManifest(base.key, request.carry.from)) {
+            return refuseUnnamed(request)
+        }
         if (base.key.staging !== null) {
             return refuse('marker-present', 'A bulk marker already stands on the commit key.')
         }
@@ -505,6 +541,11 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
         let heldRead = held
         let heldKey = markerKey
         for (let round = 0; round < REJUDGE_ATTEMPTS; round++) {
+            // A peer's commit while the marker stood may have dropped `from`; the garbage collector can then delete what
+            // this build carries, so the final write must not land over it.
+            if (request.carry !== undefined && !namesManifest(heldKey, request.carry.from)) {
+                return { ...refuseUnnamed(request), cleared: await clearOwnMarker(prefix) }
+            }
             const now = env.now()
             const next = nextCommitKey(heldKey, {
                 current: { key: built.manifest.key, at: now },
@@ -642,7 +683,44 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
             if (freshRead.token.kind === 'revision') {
                 return refuse('node-save-mine', 'Save-mine is not offered on Node; its commit key is compared by revision.')
             }
-            return ordinary(parsed.base, request, true)
+            const carry = request.carry
+            if (carry === undefined || namesManifest(parsed.base.key, carry.from)) {
+                return ordinary(parsed.base, request, true)
+            }
+            // The base dropped the manifest this build was planned over: carrying units from it is refused before any
+            // read, so a damaged base manifest cannot turn that refusal into a different one.
+            if (carry.units > 0) {
+                return refuseUnnamed(request)
+            }
+            // Nothing is carried, but the planned manifest's legacy keep may no longer be live. The new manifest names the
+            // keep of the base it replaces, read under the token the compare-and-write sends.
+            const currentKey = parsed.base.key.current?.key
+            if (currentKey === undefined) {
+                return refuse('no-current', 'The commit key names no current manifest.')
+            }
+            let baseBytes: Uint8Array | null
+            try {
+                baseBytes = (await backend.readUnits([currentKey])).get(currentKey) ?? null
+            } catch (error) {
+                if (error instanceof Store2BackendError) {
+                    return { status: 'failed', cause: error }
+                }
+                throw error
+            }
+            if (baseBytes === null) {
+                return refuse('absent', `The base manifest ${currentKey} is absent.`)
+            }
+            const baseUnit = readUnit(baseBytes, UNIT_TYPE.manifest)
+            switch (baseUnit.status) {
+                case 'ok':
+                case 'stale':
+                    return ordinary(parsed.base, request, true, structuredClone((baseUnit.value.body as Manifest).fixed.legacyKeep))
+                case 'too-new':
+                    return refuse('too-new', baseUnit.reason)
+                case 'damaged':
+                case 'unreadable':
+                    return refuse('damaged', baseUnit.reason)
+            }
         },
 
         async pin(read, key, reason) {
