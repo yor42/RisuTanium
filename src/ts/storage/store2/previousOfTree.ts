@@ -1,6 +1,6 @@
 import {
     FRAME_OVERHEAD, keyOfRef, readUnit, refOfFrame, UNIT_TYPE,
-    type ContentBody, type Manifest, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType,
+    type ContentBody, type Manifest, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType,
 } from './format'
 import {
     CodecAssembleError, IDENTITY, PLUGIN_LISTS, readStringListField, unitDigest,
@@ -83,7 +83,12 @@ export function registerEntityUnits(entry: ShardEntry, register: (identity: stri
  * nothing.
  */
 export function hydrateEntityDigests(previous: PreviousEncoding, entry: ShardEntry, source: UnitSource): void {
-    registerEntityUnits(entry, (identity, type, ref) => {
+    registerEntityUnits(entry, digestHydrator(previous, source))
+}
+
+/** The `register` of a hydration: gives the unit `previous` holds under the identity its digest, under the conditions of `hydrateEntityDigests`. */
+function digestHydrator(previous: PreviousEncoding, source: UnitSource): (identity: string, type: UnitType, ref: Ref) => void {
+    return (identity, type, ref) => {
         const unit = previous.units.get(identity)
         if (unit === undefined || unit.digest !== undefined || unit.type !== type || unit.key !== keyOfRef(ref)
             || unit.ref[1] !== ref[1] || unit.ref[2] !== ref[2]) {
@@ -93,7 +98,30 @@ export function hydrateEntityDigests(previous: PreviousEncoding, entry: ShardEnt
         if (bytes !== undefined) {
             unit.digest = unitDigest(bytes)
         }
-    })
+    }
+}
+
+/**
+ * Every unit one module index entry names, as `register` takes it, under the identities `encodeModules` gives them
+ * for the module `handle`. The boot registration and a later hydration of one loaded module walk the entry through
+ * this one function, so they cannot disagree on which identity a unit has.
+ */
+export function registerModuleUnits(entry: ModuleEntry, handle: string, register: (identity: string, type: UnitType, ref: Ref) => unknown): void {
+    register(`${IDENTITY.module}${handle}`, UNIT_TYPE.module, entry.unit)
+    register(`${IDENTITY.alModule}${handle}`, UNIT_TYPE.assetList, entry.al)
+    if (entry.il !== null) {
+        register(`${IDENTITY.ilModule}${handle}`, UNIT_TYPE.inlayList, entry.il)
+    }
+}
+
+/**
+ * `hydrateEntityDigests` for one loaded module: its module unit and its two lists get the digests the boot did not
+ * compute, in place and only where `previous` holds the unit under this identity with the entry's key, length and
+ * checksum and `source` holds bytes that are that unit. A list the read withheld (absent, damaged, or of a version above this build's) stays without a
+ * digest and is derived and written again by the next pass. A second call changes nothing.
+ */
+export function hydrateModuleDigests(previous: PreviousEncoding, entry: ModuleEntry, handle: string, source: UnitSource): void {
+    registerModuleUnits(entry, handle, digestHydrator(previous, source))
 }
 
 export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions = {}): PreviousEncoding {
@@ -174,13 +202,7 @@ export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions 
     })
 
     const handles = moduleHandles(moduleIndex)
-    moduleIndex.entries.forEach((entry, position) => {
-        register(`${IDENTITY.module}${handles[position]}`, UNIT_TYPE.module, entry.unit)
-        register(`${IDENTITY.alModule}${handles[position]}`, UNIT_TYPE.assetList, entry.al)
-        if (entry.il !== null) {
-            register(`${IDENTITY.ilModule}${handles[position]}`, UNIT_TYPE.inlayList, entry.il)
-        }
-    })
+    moduleIndex.entries.forEach((entry, position) => registerModuleUnits(entry, handles[position], register))
 
     const shards: Shard[] = []
     const entries = new Map<string, ShardEntry>()

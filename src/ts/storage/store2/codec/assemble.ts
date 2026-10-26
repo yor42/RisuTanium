@@ -2,7 +2,7 @@ import type { JsonObject, JsonValue } from '../../blockFrame'
 import type { Database } from '../../database.svelte'
 import {
     FRAME_OVERHEAD, keyOfRef, readUnit, refOfFrame, UNIT_TYPE,
-    type ChatChunk, type ChatCore, type ContentBody, type Manifest, type ModuleIndex, type PluginBucket, type Ref, type Shard,
+    type ChatChunk, type ChatCore, type ContentBody, type Manifest, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard,
     type ShardEntry, type UnitBody, type UnitType,
 } from '../format'
 import {
@@ -168,6 +168,11 @@ export function assembleCharacter(entry: ShardEntry, source: UnitSource): JsonOb
     return character
 }
 
+/** The module an index entry and its unit describe: the whole stored object, read through the entry's Ref like the module list of `assembleDatabase`. */
+export function assembleModule(entry: ModuleEntry, source: UnitSource): JsonObject {
+    return readObjectField(readContent(source, entry.unit, UNIT_TYPE.module, `module ${entry.id}`), 'module', `module ${entry.id}`)
+}
+
 function assemblePlugins(manifest: Manifest, source: UnitSource): Record<PluginList, JsonObject[]> {
     const lists: Record<PluginList, JsonObject[]> = { plugins: [], pluginV2: [] }
     manifest.fixed.plugins.forEach((ref, index) => {
@@ -226,8 +231,7 @@ export function assembleDatabase(manifest: Manifest, source: UnitSource, options
     }
 
     const index = readChecked(source, fixed.moduleIndex, UNIT_TYPE.moduleIndex, 'module index') as ModuleIndex
-    defineOwn(database, 'modules', assembleModules(index, (entry) =>
-        readObjectField(readContent(source, entry.unit, UNIT_TYPE.module, `module ${entry.id}`), 'module', `module ${entry.id}`)))
+    defineOwn(database, 'modules', assembleModules(index, entry => assembleModule(entry, source)))
 
     const entries = new Map<string, ShardEntry>()
     manifest.shards.forEach((ref, shardIndex) => {

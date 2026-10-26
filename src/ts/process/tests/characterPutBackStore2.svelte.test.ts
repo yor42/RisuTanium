@@ -74,6 +74,9 @@ let tracker: toSaveType
 /** A residency whose verdict is the test's and whose stub is what the real one makes: the entry's identity with the live slot's carried fields. */
 const residency: Residency = {
     entryOf: () => null,
+    moduleEntryOf: () => null,
+    readModule: async () => ({ status: 'error', reason: 'no-entry', error: new Error('unused') }),
+    hydrateModule: () => { },
     readCharacter: async () => ({ status: 'error', error: new Error('unused') }),
     load: async () => ({ status: 'error', error: new Error('unused') }),
     hydrate: () => { },
