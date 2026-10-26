@@ -1,6 +1,7 @@
 const express = require('express');
 const app = express();
 const { parseTrustProxy } = require('./trustProxy.cjs');
+const { nodeVersionWarning } = require('./nodeVersionCheck.cjs');
 const trustProxy = parseTrustProxy(process.env.TRUST_PROXY);
 if (trustProxy !== undefined) {
     app.set('trust proxy', trustProxy);
@@ -2326,7 +2327,10 @@ function setupProxyStreamWebSocket(server) {
 
 async function startServer() {
     try {
-      
+        const versionWarning = nodeVersionWarning(process.versions.node);
+        if (versionWarning) {
+            console.warn(`[Server] WARNING: ${versionWarning}`);
+        }
         const port = process.env.PORT || 6001;
         const httpsOptions = await getHttpsOptions();
         let server = null;
