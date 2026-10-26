@@ -7,6 +7,7 @@ import { scanAssetCacheIntegrity, evictAssetCacheEntries } from "./assetIntegrit
 import { DBState } from "../stores.svelte"
 import { language } from "src/lang"
 import { withBusy } from "../process/memory/busyActions"
+import { isModuleStub } from "./moduleStub"
 
 /**
  * The assets the current database references, plus those of every archived
@@ -14,14 +15,21 @@ import { withBusy } from "../process/memory/busyActions"
  * its cold-storage unit read one at a time. Each copy is dropped after its
  * assets are collected; the placeholders stay in their slots and nothing is
  * marked for save. `unchecked` names the archived characters whose unit could
- * not be read.
+ * not be read. Modules are never loaded: a module stub contributes only its own
+ * icon, and `uncheckedModules` names it (its id when its name is empty).
  */
-async function collectIntegrityTargets(): Promise<{ targets: string[], unchecked: string[] }> {
+async function collectIntegrityTargets(): Promise<{ targets: string[], unchecked: string[], uncheckedModules: string[] }> {
     const targets = new Set(getUncleanablesSync(DBState.db))
     const unchecked: string[] = []
+    const uncheckedModules: string[] = []
+    for (const module of DBState.db.modules ?? []) {
+        if (isModuleStub(module)) {
+            uncheckedModules.push(module.name || module.id)
+        }
+    }
     const archived = Array.from(DBState.db.characters ?? []).filter((c) => c.coldstorage)
     if (archived.length === 0) {
-        return { targets: Array.from(targets), unchecked }
+        return { targets: Array.from(targets), unchecked, uncheckedModules }
     }
     // Loaded only when an archived character exists, so the check does not
     // load the cold-storage restore modules otherwise.
@@ -42,7 +50,7 @@ async function collectIntegrityTargets(): Promise<{ targets: string[], unchecked
         // The blocking 'wait' state is never left up, whatever happened above.
         alertStore.set({ type: 'none', msg: '' })
     }
-    return { targets: Array.from(targets), unchecked }
+    return { targets: Array.from(targets), unchecked, uncheckedModules }
 }
 
 /**
@@ -57,10 +65,13 @@ export function verifyAssetIntegrity(): Promise<void> {
 }
 
 async function scanAndReportIntegrity(): Promise<void> {
-    const { targets, unchecked } = await collectIntegrityTargets()
-    const uncheckedLine = unchecked.length > 0
+    const { targets, unchecked, uncheckedModules } = await collectIntegrityTargets()
+    const uncheckedLine = (unchecked.length > 0
         ? language.assetIntegrityReportArchivedNotChecked(unchecked.join(', '))
-        : ''
+        : '')
+        + (uncheckedModules.length > 0
+            ? language.assetIntegrityReportModulesNotChecked(uncheckedModules.join(', '))
+            : '')
     if (targets.length === 0) {
         if (uncheckedLine) {
             alertMd(language.assetIntegrityReportTitle + language.assetIntegrityNoAssets + '\n\n' + uncheckedLine)

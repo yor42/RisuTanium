@@ -25,6 +25,7 @@ import { characterURLImport, hubURL } from "./characterCards";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
 import { encodeRisuSaveLegacy, RisuSaveEncoder, type SaveLayout, type toSaveType } from "./storage/risuSave";
 import { registerDbChangeEffects } from "./storage/dbChangeEffects.svelte";
+import { isModuleStub } from "./storage/moduleStub";
 import { appendIfAbsent, installCharacterSaveMarks } from "./storage/characterSaveMarks";
 import { createSaveScheduler } from "./storage/saveScheduler";
 import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } from "./storage/store2/saveActive";
@@ -3255,8 +3256,11 @@ async function resolveUncleanableChars(db: Database, opts: { swallowErrors: bool
  * `complete` is explicitly `false`.
  */
 export async function buildAssetKeepSet(db: Database): Promise<{ uncleanable: Set<string>, complete: boolean }> {
-    const { chars, complete } = await resolveUncleanableChars(db, { swallowErrors: true })
+    const { chars, complete: charsComplete } = await resolveUncleanableChars(db, { swallowErrors: true })
     const uncleanable = new Set(getUncleanablesSync(db, { chars }))
+    // A module stub holds none of its body's asset references and this layer can read no stub list, so the set
+    // is incomplete and the sweeps delete nothing.
+    const complete = charsComplete && !(db.modules ?? []).some((module) => isModuleStub(module))
     return { uncleanable, complete }
 }
 
@@ -3342,6 +3346,13 @@ export function getUncleanablesSync(db: Database, options?:{
 
     if (db.modules) {
         for (const module of db.modules) {
+            // A stub yields only the icon it holds as an index field; no other key is read.
+            if (isModuleStub(module)) {
+                if (Object.hasOwn(module, 'icon') && module.icon) {
+                    addUncleanable(module.icon)
+                }
+                continue
+            }
             const assets = module.assets
             if (assets) {
                 for (const asset of assets) {

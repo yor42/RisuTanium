@@ -2098,6 +2098,7 @@ export const languageSpanish = {
     assetIntegrityReportNotCached: (n: number) => `- Aún no está en caché (normal, no es un problema): ${n}\n`,
     assetIntegrityReportNotContentAddressed: (n: number) => `- No direccionado por contenido (no se puede verificar de esta forma): ${n}\n`,
     assetIntegrityReportArchivedNotChecked: (characterNames: string) => `- Personajes archivados cuyos activos no se comprobaron (no se pudieron cargar sus datos): ${characterNames}\n`,
+    assetIntegrityReportModulesNotChecked: (moduleNames: string) => `- Módulos cuyos activos no se comprobaron (no están cargados): ${moduleNames}\n`,
     assetIntegrityReportMismatchCount: (n: number) => `- **Discrepancias encontradas: ${n}**\n`,
     assetIntegrityReportEvicted: (n: number) => `\nSe eliminaron ${n} entradas de caché dañadas. Recarga la aplicación para que la corrección surta efecto.`,
     assetIntegrityReportLeftInCache: "\nSe dejaron en la caché, tal como solicitaste.",
