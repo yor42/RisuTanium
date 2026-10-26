@@ -5,7 +5,7 @@ import {
     acknowledgedBytesOf, builtCommitOf, characterMatchesAcknowledged, characterMatchesAcknowledgedPlain, CodecInputError, isColdStub,
     movable, overlayStub, planScopedEncode, plainObject, previousEntriesOf, previousFrom, sameJsonValue, verdictBaseOf,
     type AcknowledgedVerdict, type EncodedTree, type EncodeScope, type ListDerivation, type PreviousEncoding, type ReusableUnit,
-    type SkippedCharacter, type VerdictBase,
+    type ScopedPlan, type SkippedCharacter, type VerdictBase,
 } from './codec'
 import { isModuleStub } from '../moduleStub'
 import { defaultKeyEnv, type KeyEnv, type ShardEntry } from './format'
@@ -74,6 +74,8 @@ export interface SavePlan {
     readonly skipped: readonly SkippedCharacter[]
     /** The `chaId` of every character this pass encoded. */
     readonly encoded: readonly string[]
+    /** Existing units the new manifest names without writing them, and the names (taken at plan time) of the characters and modules carried by key. */
+    readonly carried: ScopedPlan['carried']
     /** The commit request of this plan; its build runs `finalize` under the attempt's own mint and keeps that tree. */
     commitRequest(): CommitRequest
     /**
@@ -571,8 +573,10 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
                 unchanged: scoped.unchanged && pending === null && previous === base,
                 skipped: scoped.skipped,
                 encoded: scoped.encoded,
+                carried: scoped.carried,
                 commitRequest: () => ({
                     newUnits: scoped.newUnits,
+                    carry: { from: manifestKeyOf(base), units: scoped.carried.units },
                     build: (context) => {
                         const buildStarted = MEASURE && split !== null ? split.now() : 0
                         built = scoped.finalize(context)

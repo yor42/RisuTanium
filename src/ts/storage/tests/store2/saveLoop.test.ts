@@ -4,11 +4,14 @@ import {
     Store2BackendFailureError, Store2PayloadTooLargeError, Store2StalePageError, Store2UnknownOutcomeError,
 } from '../../store2/backend'
 import { language } from 'src/lang'
-import { createCommitter, type AbandonResult, type CommitResult, type Committer, type CommitRequest } from '../../store2/commit'
-import { classifyCommitRead } from '../../store2/commitKey'
-import { encodeUnit, UNIT_TYPE, type CommitKey } from '../../store2/format'
+import { checkTree, createCommitter, type AbandonResult, type CommitResult, type Committer, type CommitRequest } from '../../store2/commit'
+import { classifyCommitRead, nextCommitKey } from '../../store2/commitKey'
+import { encodeUnit, newUnitKey, readUnit, refOfFrame, UNIT_TYPE, type CommitKey, type Manifest } from '../../store2/format'
 import type { Store2Read } from '../../store2/backend'
 import type { ListDerivation } from '../../store2/codec'
+import { gcPass } from '../../store2/gc/pass'
+import { createListDerivation } from '../../store2/lists'
+import { moduleStubOf } from '../../store2/moduleStubMatch'
 import { buildColdStub } from '../../../process/coldCharacter'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from '../../moduleStub'
 import { createSaveEncoder } from '../../store2/saveEncoder'
@@ -17,9 +20,9 @@ import type { Database, character } from '../../database.svelte'
 import type { toSaveType } from '../../risuSave'
 import { until } from '../saveLoopWorld'
 import {
-    createPeerDouble, peerCommit, peerPin, startStore2, type PeerDouble, type Store2Kit, type Store2StartOptions,
+    createPeerDouble, peerCommit, peerPin, startStore2, testEnv, type PeerDouble, type Store2Kit, type Store2StartOptions,
 } from '../store2SaveKit'
-import { buildSmall, fakeLists } from './codecFixtures'
+import { asDatabase, buildSmall, fakeLists, type Obj } from './codecFixtures'
 
 /**
  * The store2 save loop's engine over a real memory backend and committer, with a hand-built port in place of the
@@ -1856,5 +1859,369 @@ describe('new behaviour: a body the server refuses as too large stops this tab',
         expect(loop.stopCalls).toEqual([])
         expect(loop.tooLargeNotices).toEqual([])
         expect(loop.failures.length).toBeGreaterThanOrEqual(1)
+    })
+})
+
+describe('the carry rule at the loop: Save mine and bulk passes never write over a base that dropped what they carry', () => {
+    const MINUTE = 60 * 1000
+
+    /** The garbage collector's keep set for one manifest, written out here so the rule's own predicate is not the oracle. */
+    function keeps(key: CommitKey, manifestKey: string): boolean {
+        return key.current?.key === manifestKey || key.retained.some(entry => entry.key === manifestKey) || key.pins.some(pin => pin.key === manifestKey)
+    }
+
+    interface RuleWorld {
+        db: Database
+        live: Database
+        kit: Store2Kit
+        loop: Loop
+        peer: PeerDouble
+    }
+
+    async function dropSeedManifest(kit: Store2Kit, edit: (peerDb: Database) => void = () => {}): Promise<void> {
+        for (let round = 0; round < 22; round++) {
+            kit.clock.advance(6 * MINUTE)
+            await peerCommit(kit, (peerDb) => {
+                chars(peerDb)[3].personality = `peer ${round}`
+                edit(peerDb)
+            }, 100 + round)
+        }
+        expect(keeps(await kit.commitKey(), kit.seeded.manifestKey)).toBe(false)
+    }
+
+    async function collect(kit: Store2Kit): Promise<void> {
+        const result = await gcPass({ backend: kit.memory, kind: 'indexeddb', idleReason: () => null })
+        expect(result.status).toBe('done')
+    }
+
+    function ruleWorld(db: Database, options: Partial<Store2StartOptions> = {}): Promise<RuleWorld> {
+        return (async () => {
+            const peer = options.peer ?? createPeerDouble('save-mine')
+            const kit = await startStore2({ db, ...options, peer })
+            const live = clone(db)
+            return { db, live, kit, loop: runLoop(kit, live), peer }
+        })()
+    }
+
+    function coldStubOf(world: RuleWorld, index: number): Entry {
+        const source = JSON.parse(JSON.stringify(chars(world.live)[index])) as Entry
+        const u = world.kit.seeded.tree.index.entities.get(`${chaIdOf(world.live, index)}#0`) as string
+        return buildColdStub(source as unknown as character, u, ['chat-a']) as unknown as Entry
+    }
+
+    async function expectNothingWritten(world: RuleWorld, before: CommitKey): Promise<void> {
+        const after = await world.kit.commitKey()
+        expect(after.current?.key).toBe(before.current?.key)
+        expect(after.seq).toBe(before.seq)
+        expect(world.loop.state.saved).toBe(0)
+        expect(world.loop.failures).toEqual([])
+        expect(await checkTree(world.kit.memory, after.current?.key as string)).toMatchObject({ status: 'complete' })
+        healthy(world.loop)
+    }
+
+    function expectBlockedPrompt(world: RuleWorld, names: string[]): void {
+        const asked = world.kit.peer.asked
+        expect(asked[0]).toMatchObject({ reason: 'peer-commit', unsaved: true, offers: ['reload', 'save-mine'] })
+        expect(asked[1].offers).toEqual(['reload'])
+        expect(asked[1]).toMatchObject({ saveMineUnavailable: 'unloaded-characters', blocked: { names, count: names.length } })
+        expect(world.kit.peer.reloads).toBe(1)
+    }
+
+    function cyclic(): Entry {
+        const value: Entry = {}
+        value.self = value
+        return value
+    }
+
+    test('R1: a skipped saved character that a peer rewrote and the collector swept is not carried by Save mine: nothing is written and the second prompt offers Reload only, naming it', async () => {
+        const world = await ruleWorld(clone(buildSmall(4)))
+        chars(world.live)[1].personality = cyclic()
+        await dropSeedManifest(world.kit, (peerDb) => { chars(peerDb)[1].personality = 'a peer rewrote this' })
+        await collect(world.kit)
+        const before = await world.kit.commitKey()
+        chars(world.live)[0].personality = 'my edit'
+        world.loop.mark(chaIdOf(world.live, 0))
+        await until(() => world.kit.peer.asked.length >= 2 || world.loop.state.saved >= 1, 'the second prompt or a landed save', 6000)
+        expect(world.loop.state.saved).toBe(0)
+        await until(() => world.kit.peer.reloads === 1, 'the reload', 4000)
+        expectBlockedPrompt(world, ['Small 1'])
+        await expectNothingWritten(world, before)
+    })
+
+    test('R2: a saved character that a peer deleted is not carried by Save mine either', async () => {
+        const world = await ruleWorld(clone(buildSmall(4)))
+        chars(world.live)[1].personality = cyclic()
+        await dropSeedManifest(world.kit, (peerDb) => { chars(peerDb).splice(1, 1) })
+        await collect(world.kit)
+        const before = await world.kit.commitKey()
+        chars(world.live)[0].personality = 'my edit'
+        world.loop.mark(chaIdOf(world.live, 0))
+        await until(() => world.kit.peer.asked.length >= 2 || world.loop.state.saved >= 1, 'the second prompt or a landed save', 6000)
+        expect(world.loop.state.saved).toBe(0)
+        await until(() => world.kit.peer.reloads === 1, 'the reload', 4000)
+        expectBlockedPrompt(world, ['Small 1'])
+        await expectNothingWritten(world, before)
+    })
+
+    test('R3: a cold stub made after the first prompt is caught by the commit-time check: the second prompt offers Reload only', async () => {
+        const peer = createPeerDouble('save-mine')
+        let release: () => void = () => {}
+        peer.hold = new Promise<void>((resolve) => { release = resolve })
+        const world = await ruleWorld(clone(buildSmall(4)), { peer })
+        await dropSeedManifest(world.kit, (peerDb) => { chars(peerDb)[1].personality = 'a peer rewrote this' })
+        await collect(world.kit)
+        const before = await world.kit.commitKey()
+        chars(world.live)[0].personality = 'my edit'
+        world.loop.mark(chaIdOf(world.live, 0))
+        await until(() => peer.asked.length === 1, 'the first prompt', 4000)
+        expect(peer.asked[0].offers).toEqual(['reload', 'save-mine'])
+        chars(world.live)[1] = coldStubOf(world, 1)
+        peer.hold = null
+        release()
+        await until(() => peer.asked.length >= 2 || world.loop.state.saved >= 1, 'the second prompt or a landed save', 6000)
+        expect(world.loop.state.saved).toBe(0)
+        await until(() => peer.reloads === 1, 'the reload', 6000)
+        expectBlockedPrompt(world, ['Small 1'])
+        await expectNothingWritten(world, before)
+    })
+
+    test('R5: a Save mine that carries nothing over an unnamed base writes the base\'s keep, not the page\'s own that nobody names', async () => {
+        const world = await ruleWorld(clone(buildSmall(4)))
+        const keepKey = newUnitKey(testEnv(world.kit.clock, 61))
+        const keepBytes = encodeUnit(UNIT_TYPE.legacyList, { v: 1, iv: 1, files: [], h: '', l: [], i: { v: 1, u: [], h: '', o: [] } })
+        // A copy: the peers' commits are built from the seed tree's own manifest, which must keep no keep.
+        const previous = world.kit.context.previous
+        const manifest = previous.objects?.manifest
+        expect(manifest).toBeDefined()
+        if (manifest !== undefined) {
+            const kept = structuredClone(manifest)
+            kept.fixed.legacyKeep = { unit: refOfFrame(keepKey, keepBytes), v: 1, files: [] }
+            previous.objects = { ...previous.objects, manifest: kept }
+        }
+        await dropSeedManifest(world.kit)
+        await collect(world.kit)
+        chars(world.live)[0].personality = 'my edit'
+        world.loop.mark(chaIdOf(world.live, 0))
+        await savedBy(world.loop)
+        const key = await world.kit.commitKey()
+        const tree = await checkTree(world.kit.memory, key.current?.key as string)
+        const stored = readUnit((await world.kit.memory.readUnits([key.current?.key as string])).get(key.current?.key as string) as Uint8Array, UNIT_TYPE.manifest)
+        expect(stored.status === 'ok' ? (stored.value.body as Manifest).fixed.legacyKeep : 'unreadable').toBeNull()
+        expect(tree.status === 'incomplete' ? tree.missing : []).toEqual([])
+        healthy(world.loop)
+    })
+
+    test('G2: a Save mine that carries nothing lands over an unnamed base', async () => {
+        const world = await ruleWorld(clone(buildSmall(4)))
+        await dropSeedManifest(world.kit)
+        await collect(world.kit)
+        chars(world.live)[0].personality = 'my edit'
+        world.loop.mark(chaIdOf(world.live, 0))
+        await savedBy(world.loop)
+        expect((await world.kit.saved()).characters[0]).toMatchObject({ personality: 'my edit' })
+        expect(await checkTree(world.kit.memory, (await world.kit.commitKey()).current?.key as string)).toMatchObject({ status: 'complete' })
+        expect(world.kit.peer.asked).toHaveLength(1)
+        healthy(world.loop)
+    })
+
+    test('G1: a Save mine that carries a cold stub lands while the base still names this page\'s manifest', async () => {
+        const world = await ruleWorld(clone(buildSmall(4)))
+        chars(world.live)[1] = coldStubOf(world, 1)
+        await peerCommit(world.kit, (peerDb) => { chars(peerDb)[3].personality = 'the peer edit' })
+        chars(world.live)[0].personality = 'my edit'
+        world.loop.mark(chaIdOf(world.live, 0))
+        await savedBy(world.loop)
+        expect(world.kit.peer.asked[0]).toMatchObject({ offers: ['reload', 'save-mine'] })
+        expect(await checkTree(world.kit.memory, (await world.kit.commitKey()).current?.key as string)).toMatchObject({ status: 'complete' })
+        expect(world.kit.peer.asked).toHaveLength(1)
+        healthy(world.loop)
+    })
+
+    describe('a module stub (the real list derivation makes it eligible)', () => {
+        function moduleSeed(): Database {
+            const modules = [
+                { id: 'm0', name: 'Zero', description: 'first', assets: [] },
+                { id: 'm1', name: 'One', description: 'plain', assets: [] },
+                { id: 'm2', name: 'Two', description: 'third' },
+            ]
+            return asDatabase({ ...(clone(buildSmall(4)) as unknown as Obj), modules })
+        }
+
+        function mintModuleStub(world: RuleWorld): void {
+            const entry = world.kit.seeded.tree.index.objects?.moduleIndex?.entries[1]
+            expect(entry).toBeDefined()
+            if (entry !== undefined) {
+                ;(world.live.modules as unknown as Entry[])[1] = moduleStubOf(entry) as Entry
+            }
+        }
+
+        test('R6: a module stub made after the first prompt is caught at commit time and named by its module', async () => {
+            const peer = createPeerDouble('save-mine')
+            let release: () => void = () => {}
+            peer.hold = new Promise<void>((resolve) => { release = resolve })
+            const world = await ruleWorld(moduleSeed(), { peer, lists: createListDerivation() })
+            await dropSeedManifest(world.kit)
+            const before = await world.kit.commitKey()
+            chars(world.live)[0].personality = 'my edit'
+            world.loop.mark(chaIdOf(world.live, 0))
+            await until(() => peer.asked.length === 1, 'the first prompt', 4000)
+            mintModuleStub(world)
+            peer.hold = null
+            release()
+            await until(() => peer.asked.length >= 2 || world.loop.state.saved >= 1, 'the second prompt or a landed save', 6000)
+            expect(world.loop.state.saved).toBe(0)
+            await until(() => peer.reloads === 1, 'the reload', 6000)
+            expectBlockedPrompt(world, ['One'])
+            await expectNothingWritten(world, before)
+        })
+
+        test('G13: the same module stub is carried by a Save mine over a base that names this page\'s manifest', async () => {
+            const world = await ruleWorld(moduleSeed(), { lists: createListDerivation() })
+            mintModuleStub(world)
+            await peerCommit(world.kit, (peerDb) => { chars(peerDb)[3].personality = 'the peer edit' })
+            chars(world.live)[0].personality = 'my edit'
+            world.loop.mark(chaIdOf(world.live, 0))
+            await savedBy(world.loop)
+            expect(await checkTree(world.kit.memory, (await world.kit.commitKey()).current?.key as string)).toMatchObject({ status: 'complete' })
+            healthy(world.loop)
+        })
+    })
+
+    describe('after a refused Save mine, a newer commit decides whether Save mine is offered again', () => {
+        async function refusedWorld(): Promise<RuleWorld> {
+            const world = await ruleWorld(clone(buildSmall(4)))
+            chars(world.live)[1].personality = cyclic()
+            await dropSeedManifest(world.kit, (peerDb) => { chars(peerDb)[1].personality = 'a peer rewrote this' })
+            await collect(world.kit)
+            return world
+        }
+
+        /** The second question is answered by a peer commit and a throw, which asks the question again over the newer park. */
+        function interveneOnSecondQuestion(world: RuleWorld, intervene: () => Promise<void>): void {
+            const answer = world.peer.decide.bind(world.peer)
+            let calls = 0
+            world.peer.decide = async (prompt) => {
+                calls += 1
+                if (calls === 2) {
+                    world.peer.asked.push(prompt)
+                    await intervene()
+                    world.loop.state.peerHeard = true
+                    throw new Error('Asked again after a newer commit.')
+                }
+                return answer(prompt)
+            }
+        }
+
+        test('R17: a newer peer commit that still does not name this page\'s manifest keeps Reload only, with the same blocked items, and asks again', async () => {
+            const world = await refusedWorld()
+            interveneOnSecondQuestion(world, async () => {
+                world.kit.clock.advance(6 * MINUTE)
+                await peerCommit(world.kit, (peerDb) => { chars(peerDb)[3].personality = 'a newer peer edit' }, 900)
+            })
+            chars(world.live)[0].personality = 'my edit'
+            world.loop.mark(chaIdOf(world.live, 0))
+            await until(() => world.peer.asked.length >= 3 || world.loop.state.saved >= 1, 'the third prompt or a landed save', 8000)
+            expect(world.loop.state.saved).toBe(0)
+            expect(world.peer.asked[2].offers).toEqual(['reload'])
+            expect(world.peer.asked[2]).toMatchObject({ saveMineUnavailable: 'unloaded-characters', blocked: { names: ['Small 1'], count: 1 } })
+            expect(world.loop.state.saved).toBe(0)
+            healthy(world.loop)
+        })
+
+        test('G12: a commit key that names this page\'s manifest again offers Save mine again and drops the blocked items', async () => {
+            const world = await refusedWorld()
+            interveneOnSecondQuestion(world, async () => {
+                // The hand-built key only names the manifest; its units were collected, so the third question is answered with Reload.
+                world.peer.answer = 'reload'
+                const key = await world.kit.commitKey()
+                const named = nextCommitKey(key, { pins: [...key.pins, { key: world.kit.seeded.manifestKey, reason: 'named again' }] }, testEnv(world.kit.clock, 901))
+                const read = await world.kit.memory.readCommit()
+                await world.kit.memory.casCommit(read.token, encodeUnit(UNIT_TYPE.commit, named))
+            })
+            chars(world.live)[0].personality = 'my edit'
+            world.loop.mark(chaIdOf(world.live, 0))
+            await until(() => world.peer.asked.length >= 3 || world.loop.state.saved >= 1, 'the third prompt or a landed save', 8000)
+            expect(world.loop.state.saved).toBe(0)
+            expect(world.peer.asked[2].offers).toEqual(['reload', 'save-mine'])
+            expect(world.peer.asked[2].blocked).toBeUndefined()
+            healthy(world.loop)
+        })
+    })
+
+    describe('a bulk pass overtaken by a peer commit that does not name its manifest', () => {
+        const BULK_ROWS = 80
+
+        interface BulkWorld extends RuleWorld {
+            armed: { value: boolean }
+        }
+
+        /** The peer drops this page's manifest during the first unit upload; with `failClear`, the second compare-and-write after that (the refusal's own-marker clear) fails. */
+        async function bulkWorld(failClear: boolean): Promise<BulkWorld> {
+            const db = clone(buildSmall(BULK_ROWS))
+            const armed = { value: false }
+            let fired = false
+            let casAfterFire = 0
+            const holder: { kit: Store2Kit | null } = { kit: null }
+            const peer = createPeerDouble('reload')
+            const kit = await startStore2({
+                db,
+                peer,
+                hooks: {
+                    before: async (name) => {
+                        if (!armed.value || holder.kit === null) {
+                            return
+                        }
+                        if (name === 'putUnit' && !fired) {
+                            fired = true
+                            await dropSeedManifest(holder.kit)
+                        }
+                        if (failClear && fired && name === 'casCommit') {
+                            casAfterFire += 1
+                            if (casAfterFire === 2) {
+                                throw new Store2BackendFailureError('Injected: the own-marker clear did not land.')
+                            }
+                        }
+                    },
+                },
+            })
+            holder.kit = kit
+            return { db, live: db, kit, loop: runLoop(kit, db), peer, armed }
+        }
+
+        function editEverything(world: BulkWorld): void {
+            for (const entry of chars(world.live)) {
+                entry.personality = `${String(entry.personality)} edited`
+            }
+            world.loop.reloadFlag.state = true
+            world.armed.value = true
+            world.loop.due()
+        }
+
+        test('R4: the final write is refused, the peer\'s commit stands, no marker remains and the page parks with the ordinary prompt', async () => {
+            const world = await bulkWorld(false)
+            editEverything(world)
+            await until(() => world.peer.asked.length >= 1 || world.loop.state.saved >= 1, 'the prompt or a landed save', 20000)
+            expect(world.loop.state.saved).toBe(0)
+            const key = await world.kit.commitKey()
+            expect(world.peer.asked[0]).toMatchObject({ reason: 'peer-commit', unsaved: true, offers: ['reload', 'save-mine'] })
+            expect(world.peer.asked[0].blocked).toBeUndefined()
+            expect(key.staging).toBeNull()
+            expect(keeps(key, world.kit.seeded.manifestKey)).toBe(false)
+            expect(world.loop.state.saved).toBe(0)
+            expect(world.loop.failures).toEqual([])
+            expect(await checkTree(world.kit.memory, key.current?.key as string)).toMatchObject({ status: 'complete' })
+            healthy(world.loop)
+        })
+
+        test('R18: when the own-marker clear of the refusal does not land, the parked loop releases the marker on its next iteration', async () => {
+            const world = await bulkWorld(true)
+            editEverything(world)
+            await until(() => world.peer.asked.length >= 1 || world.loop.state.saved >= 1, 'the prompt or a landed save', 20000)
+            expect(world.loop.state.saved).toBe(0)
+            await until(async () => (await world.kit.commitKey()).staging === null, 'the marker released while parked', 8000)
+            expect(world.peer.asked).toHaveLength(1)
+            expect(world.loop.state.saved).toBe(0)
+            healthy(world.loop)
+        })
     })
 })

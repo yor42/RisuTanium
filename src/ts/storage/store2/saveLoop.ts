@@ -7,7 +7,7 @@ import { isBusy } from '../../process/memory/busyActions'
 import { MEASURE } from '../../process/memory/measureFlag'
 import { netHeldNow, noteNetHeldTick, noteNetPassTick } from '../measureExportHold'
 import { isColdStub, SharedChaIdStubError, StubRefusedError } from './codec'
-import type { AbandonResult, CommitResult, Committer } from './commit'
+import { namesManifest, type AbandonResult, type CommitResult, type Committer } from './commit'
 import { classifyCommitRead } from './commitKey'
 import type { CommitKey } from './format'
 import type { Store2SaveContext } from './saveActive'
@@ -44,6 +44,8 @@ export interface PeerParkPrompt {
     offers: readonly PeerOffer[]
     /** Why 'save-mine' is not offered, for the wording the screen chooses. */
     saveMineUnavailable?: 'node' | 'replaced' | 'unloaded-characters'
+    /** Present after a Save mine was refused in this park: the items it could not carry, named when the plan knew their names. */
+    blocked?: { names: readonly string[], count: number }
     /**
      * How this park's one automatic export of the tab ended, for the wording: 'saved' means the file was handed to the
      * browser, 'not-finished' means it was declined, failed, threw or was skipped. Absent when none ran.
@@ -289,6 +291,8 @@ interface Park {
     noticed: boolean
     /** The park's one automatic export: carried to a newer park by `recheckPark`, so a later peer save never exports again. */
     autoExport: 'pending' | 'running' | 'done' | 'failed'
+    /** Set when a Save mine was refused in this park: its presence, not its names, withholds Save mine from every later prompt. */
+    blocked?: { names: readonly string[], count: number }
 }
 
 type Outcome =
@@ -387,8 +391,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     const unsavable = new Map<string, UnsavableCharacter>()
 
     function namedByBase(key: CommitKey): boolean {
-        const mine = encoder.manifestKey
-        return key.current?.key === mine || key.retained.some(entry => entry.key === mine) || key.pins.some(pin => pin.key === mine)
+        return namesManifest(key, encoder.manifestKey)
     }
 
     /** Whether the page may save over this base. A pending attempt that is the base's `current` is adopted here, before any plan. */
@@ -441,6 +444,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (!unsaved) {
             return { reason: parked.reason, unsaved, offers: ['reload'] }
         }
+        if (parked.blocked !== undefined) {
+            return { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'unloaded-characters', blocked: parked.blocked }
+        }
         if (encoder.hasStubs(port.getDatabase()) && !parked.namedMine) {
             return { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'unloaded-characters' }
         }
@@ -468,6 +474,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
         next.noticed = parked.noticed
         next.autoExport = parked.autoExport
+        if (parked.blocked !== undefined && !next.namedMine) {
+            next.blocked = parked.blocked
+        }
         setPark(next)
     }
 
@@ -746,7 +755,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
         stopped = true
         console.error(cause)
-        markerPending = cleared !== null && cleared.status !== 'cleared' && cleared.status !== 'nothing'
+        markerPending = markerPending || (cleared !== null && cleared.status !== 'cleared' && cleared.status !== 'nothing')
         port.setStopped('too-large', label)
         port.notifyTooLarge?.(label)
     }
@@ -849,7 +858,34 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 return { kind: 'park', park: parkOf({ kind: 'stop', reason: 'replaced', key: null, revision: false }) }
             }
         }
+        if (result.status === 'refused' && result.reason === 'base-unnamed') {
+            // The final write of a bulk commit was refused and its own-marker clear did not land: the marker may still stand.
+            if (result.cleared != null && result.cleared.status !== 'cleared' && result.cleared.status !== 'nothing') {
+                markerPending = true
+            }
+            if (saveMine && judged.kind === 'stop') {
+                // The refused write never reached the compare-and-write, so `judged` is still the base.
+                const next = parkOf(judged)
+                next.blocked = blockedOf(plan)
+                return { kind: 'park', park: next }
+            }
+            let fresh: Judged | null = null
+            try {
+                fresh = judge(await committer.readCommit())
+            } catch (error) {
+                console.error(error)
+            }
+            return fresh !== null && fresh.kind === 'stop'
+                ? { kind: 'park', park: parkOf(fresh) }
+                : { kind: 'retry', reason: result.reason, detail: result.detail }
+        }
         return outcomeOf(result, plan, run)
+    }
+
+    /** The items a refused Save mine could not carry, as the plan named them; never reads the live database. */
+    function blockedOf(plan: SavePlan): { names: readonly string[], count: number } {
+        const names = [...plan.carried.owners.values(), ...plan.carried.modules]
+        return { names, count: names.length > 0 ? names.length : plan.carried.units }
     }
 
     function foldBack(snapshot: Store2Snapshot | null): void {
@@ -1232,6 +1268,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
             port.liveCheck()
             if (park !== null) {
+                // A refused bulk whose own-marker clear did not land would otherwise keep a marker standing for peers while parked.
+                if (markerPending) {
+                    await port.withWriteLock(releaseOwnMarkerWhileStopped)
+                }
                 await settlePark()
                 if (park !== null) {
                     await port.wait(500)
