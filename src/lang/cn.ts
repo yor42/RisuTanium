@@ -1940,6 +1940,17 @@ export const languageChinese = {
         `有 ${items.length} 个项目达到或超过 4 GiB，超出了备份文件单个条目所能容纳的大小，因此它们的内容不在备份中（角色只保留一个占位符）：\n\n${items.join('\n')}`,
     "backupFailedNothingWritten": () =>
         "备份在向文件写入任何内容之前就失败了。请重新运行备份。",
+    "backupFailedModuleUnreadable": (name: string, reason: 'damaged' | 'missing' | 'newer' | 'changed' | 'duplicate' | 'unreadable') => {
+        const clause = {
+            damaged: '已损坏，或其存储的数据缺失。在模块设置中将其删除或替换后，即可再次运行备份。',
+            missing: '找不到。请重新运行备份；如果仍然失败，请先在模块设置中将其删除或替换。',
+            newer: '由更新版本的应用保存，当前版本无法读取。请更新应用后重新运行备份；仅当您不再需要它时，才在模块设置中将其删除或替换。',
+            changed: '在读取过程中发生了变化。请重新运行备份；如果再次失败，请先在模块设置中将其删除或替换。',
+            duplicate: '与另一个模块的 ID 相同。在模块设置中删除这两个模块之一后，即可再次运行备份。',
+            unreadable: '无法读取。在模块设置中将其删除或替换后，即可再次运行备份。',
+        }[reason]
+        return `备份在向文件写入任何内容之前就已停止，因为模块“${name}”${clause}`
+    },
     "internalBackupUnreadable":"此备份已损坏或不完整，因此未被读取。当前数据未被更改。",
     "internalBackupWriteFailed": "无法保存该备份。当前数据未被更改。",
     "internalBackupListFailed": "无法读取备份列表。未更改任何内容。",

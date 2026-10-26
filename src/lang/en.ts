@@ -2076,6 +2076,17 @@ export const languageEnglish = {
         `${items.length} item(s) are 4 GiB or more, which is more than one entry of a backup file can hold, so their content is not in the backup (a character keeps only a placeholder):\n\n${items.join('\n')}`,
     backupFailedNothingWritten: () =>
         "The backup failed before anything was written to the file. Run the backup again.",
+    backupFailedModuleUnreadable: (name: string, reason: 'damaged' | 'missing' | 'newer' | 'changed' | 'duplicate' | 'unreadable') => {
+        const clause = {
+            damaged: 'is damaged, or its stored data is missing. The backup can be run again once it is deleted or replaced in the module settings.',
+            missing: 'could not be found. Run the backup again; if it still fails, delete or replace it in the module settings first.',
+            newer: 'was saved by a newer version of the app, which this version cannot read. Update the app and run the backup again; delete or replace it in the module settings only if you no longer need it.',
+            changed: 'changed while it was being read. Run the backup again; if it fails again, delete or replace it in the module settings first.',
+            duplicate: 'shares its id with another module. The backup can be run again once one of the two is deleted in the module settings.',
+            unreadable: 'could not be read. The backup can be run again once it is deleted or replaced in the module settings.',
+        }[reason]
+        return `The backup stopped before anything was written to the file because the module "${name}" ${clause}`
+    },
     internalBackupUnreadable: "This backup is damaged or incomplete, so it was not loaded. Your current data was not changed.",
     internalBackupWriteFailed: "The backup could not be saved. Your current data was not changed.",
     internalBackupListFailed: "The backup list could not be read. Nothing was changed.",

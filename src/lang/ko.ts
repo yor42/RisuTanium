@@ -1939,6 +1939,17 @@ export const languageKorean = {
         `${items.length}개 항목이 4 GiB 이상이라 백업 파일의 항목 하나에 담을 수 있는 크기를 넘으므로 해당 내용은 백업에 들어 있지 않습니다(캐릭터에는 자리 표시자만 남습니다):\n\n${items.join('\n')}`,
     "backupFailedNothingWritten": () =>
         "파일에 아무것도 기록되기 전에 백업에 실패했습니다. 백업을 다시 실행하세요.",
+    "backupFailedModuleUnreadable": (name: string, reason: 'damaged' | 'missing' | 'newer' | 'changed' | 'duplicate' | 'unreadable') => {
+        const clause = {
+            damaged: '손상되었거나 저장된 데이터가 없습니다. 모듈 설정에서 삭제하거나 교체하면 백업을 다시 실행할 수 있습니다.',
+            missing: '찾을 수 없습니다. 백업을 다시 실행하세요. 그래도 실패하면 먼저 모듈 설정에서 삭제하거나 교체하세요.',
+            newer: '더 새로운 버전의 앱에서 저장되어 이 버전에서는 읽을 수 없습니다. 앱을 업데이트한 뒤 백업을 다시 실행하세요. 더 이상 필요하지 않은 경우에만 모듈 설정에서 삭제하거나 교체하세요.',
+            changed: '읽는 도중 변경되었습니다. 백업을 다시 실행하세요. 다시 실패하면 먼저 모듈 설정에서 삭제하거나 교체하세요.',
+            duplicate: '다른 모듈과 ID가 같습니다. 둘 중 하나를 모듈 설정에서 삭제하면 백업을 다시 실행할 수 있습니다.',
+            unreadable: '읽을 수 없습니다. 모듈 설정에서 삭제하거나 교체하면 백업을 다시 실행할 수 있습니다.',
+        }[reason]
+        return `파일에 아무것도 기록되기 전에 백업이 중단되었습니다. 모듈 "${name}"이(가) ${clause}`
+    },
     "internalBackupUnreadable":"이 백업이 손상되었거나 불완전하여 불러오지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
     "internalBackupWriteFailed": "백업을 저장할 수 없었습니다. 현재 데이터는 변경되지 않았습니다.",
     "internalBackupListFailed": "백업 목록을 읽을 수 없었습니다. 아무것도 변경되지 않았습니다.",

@@ -1942,6 +1942,17 @@ export const languageGerman = {
         `${items.length} Element(e) sind 4 GiB oder größer, was mehr ist, als ein einzelner Eintrag einer Backup-Datei fassen kann, daher ist ihr Inhalt nicht im Backup enthalten (ein Charakter behält nur einen Platzhalter):\n\n${items.join('\n')}`,
     "backupFailedNothingWritten": () =>
         "Das Backup ist fehlgeschlagen, bevor etwas in die Datei geschrieben wurde. Führen Sie das Backup erneut aus.",
+    "backupFailedModuleUnreadable": (name: string, reason: 'damaged' | 'missing' | 'newer' | 'changed' | 'duplicate' | 'unreadable') => {
+        const clause = {
+            damaged: 'beschädigt ist oder seine gespeicherten Daten fehlen. Das Backup kann erneut ausgeführt werden, sobald es in den Moduleinstellungen gelöscht oder ersetzt wurde.',
+            missing: 'nicht gefunden werden konnte. Das Backup erneut ausführen; falls es weiterhin fehlschlägt, das Modul zuerst in den Moduleinstellungen löschen oder ersetzen.',
+            newer: 'mit einer neueren Version der App gespeichert wurde, die diese Version nicht lesen kann. Die App aktualisieren und das Backup erneut ausführen; das Modul in den Moduleinstellungen nur löschen oder ersetzen, wenn es nicht mehr benötigt wird.',
+            changed: 'während des Lesens geändert wurde. Das Backup erneut ausführen; falls es erneut fehlschlägt, das Modul zuerst in den Moduleinstellungen löschen oder ersetzen.',
+            duplicate: 'dieselbe ID wie ein anderes Modul hat. Das Backup kann erneut ausgeführt werden, sobald eines der beiden Module in den Moduleinstellungen gelöscht wurde.',
+            unreadable: 'nicht gelesen werden konnte. Das Backup kann erneut ausgeführt werden, sobald es in den Moduleinstellungen gelöscht oder ersetzt wurde.',
+        }[reason]
+        return `Das Backup wurde angehalten, bevor etwas in die Datei geschrieben wurde, weil das Modul "${name}" ${clause}`
+    },
     "internalBackupUnreadable":"Dieses Backup ist beschädigt oder unvollständig und wurde daher nicht geladen. Ihre aktuellen Daten wurden nicht verändert.",
     "internalBackupWriteFailed": "Das Backup konnte nicht gespeichert werden. Ihre aktuellen Daten wurden nicht verändert.",
     "internalBackupListFailed": "Die Backup-Liste konnte nicht gelesen werden. Es wurde nichts verändert.",

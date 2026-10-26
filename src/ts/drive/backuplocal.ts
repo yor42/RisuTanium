@@ -9,7 +9,7 @@ import { isTauri, isNodeServer } from "src/ts/platform"
 import { decodeRisuSave, encodeRisuSaveStreamed, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock, type StreamedRisuSave } from "../storage/risuSave";
 import { writeRisuSaveV0 } from "../storage/risuSaveV0";
 import { assertNoModuleStubs } from "../storage/moduleStub";
-import { snapshotModuleList } from "./exportModules";
+import { ExportModuleUnreadableError, snapshotModuleList } from "./exportModules";
 import type { RisuModule } from "../process/modules";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
@@ -622,6 +622,10 @@ async function reportFailedExport(session: ExportSession, error: unknown): Promi
     const file = await discardFailedExportFile(session.writer?.writer, error)
     if (error instanceof BackupAssetTooLargeError) {
         alertError(language.backupFailedAssetTooLarge(session.describeAsset(error.key), file))
+        return file
+    }
+    if (error instanceof ExportModuleUnreadableError) {
+        alertError(language.backupFailedModuleUnreadable(error.moduleName, error.reason))
         return file
     }
     const asset = error instanceof BackupAssetChangedError ? session.describeAsset(error.key) : null

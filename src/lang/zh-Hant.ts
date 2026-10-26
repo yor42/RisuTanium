@@ -1985,6 +1985,17 @@ export const languageChineseTraditional = {
         `有 ${items.length} 個項目達到或超過 4 GiB，超出了備份檔案單一項目所能容納的大小，因此它們的內容不在備份中（角色只保留一個預留位置）：\n\n${items.join('\n')}`,
     "backupFailedNothingWritten": () =>
         "備份在向檔案寫入任何內容之前就失敗了。請重新執行備份。",
+    "backupFailedModuleUnreadable": (name: string, reason: 'damaged' | 'missing' | 'newer' | 'changed' | 'duplicate' | 'unreadable') => {
+        const clause = {
+            damaged: '已損毀，或其儲存的資料遺失。在模組設定中將其刪除或取代後，即可再次執行備份。',
+            missing: '找不到。請重新執行備份；如果仍然失敗，請先在模組設定中將其刪除或取代。',
+            newer: '由較新版本的應用程式儲存，目前版本無法讀取。請更新應用程式後重新執行備份；僅當您不再需要它時，才在模組設定中將其刪除或取代。',
+            changed: '在讀取過程中發生了變化。請重新執行備份；如果再次失敗，請先在模組設定中將其刪除或取代。',
+            duplicate: '與另一個模組的 ID 相同。在模組設定中刪除這兩個模組之一後，即可再次執行備份。',
+            unreadable: '無法讀取。在模組設定中將其刪除或取代後，即可再次執行備份。',
+        }[reason]
+        return `備份在向檔案寫入任何內容之前就已停止，因為模組「${name}」${clause}`
+    },
     "internalBackupUnreadable":"此備份已損毀或不完整，因此未載入。目前的資料未被變更。",
     "internalBackupWriteFailed": "無法儲存此備份。目前的資料未被變更。",
     "internalBackupListFailed": "無法讀取備份清單。未變更任何內容。",

@@ -1942,6 +1942,17 @@ export const languageSpanish = {
         `${items.length} elemento(s) ocupan 4 GiB o más, que es más de lo que cabe en una sola entrada de un archivo de copia de seguridad, por lo que su contenido no está en la copia de seguridad (un personaje conserva solo un marcador de posición):\n\n${items.join('\n')}`,
     "backupFailedNothingWritten": () =>
         "La copia de seguridad falló antes de que se escribiera nada en el archivo. Vuelve a ejecutar la copia de seguridad.",
+    "backupFailedModuleUnreadable": (name: string, reason: 'damaged' | 'missing' | 'newer' | 'changed' | 'duplicate' | 'unreadable') => {
+        const clause = {
+            damaged: 'está dañado o faltan sus datos almacenados. La copia de seguridad se podrá volver a ejecutar cuando lo elimines o lo reemplaces en los ajustes de módulos.',
+            missing: 'no se pudo encontrar. Vuelve a ejecutar la copia de seguridad; si sigue fallando, elimínalo o reemplázalo primero en los ajustes de módulos.',
+            newer: 'fue guardado por una versión más reciente de la app, que esta versión no puede leer. Actualiza la app y vuelve a ejecutar la copia de seguridad; elimínalo o reemplázalo en los ajustes de módulos solo si ya no lo necesitas.',
+            changed: 'cambió mientras se estaba leyendo. Vuelve a ejecutar la copia de seguridad; si vuelve a fallar, elimínalo o reemplázalo primero en los ajustes de módulos.',
+            duplicate: 'comparte su ID con otro módulo. La copia de seguridad se podrá volver a ejecutar cuando elimines uno de los dos en los ajustes de módulos.',
+            unreadable: 'no se pudo leer. La copia de seguridad se podrá volver a ejecutar cuando lo elimines o lo reemplaces en los ajustes de módulos.',
+        }[reason]
+        return `La copia de seguridad se detuvo antes de que se escribiera nada en el archivo, porque el módulo "${name}" ${clause}`
+    },
     "internalBackupUnreadable":"Esta copia de seguridad está dañada o incompleta, por lo que no se cargó. Tus datos actuales no se modificaron.",
     "internalBackupWriteFailed": "No se pudo guardar la copia de seguridad. Tus datos actuales no se modificaron.",
     "internalBackupListFailed": "No se pudo leer la lista de copias de seguridad. No se modificó nada.",

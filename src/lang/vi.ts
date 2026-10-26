@@ -1940,6 +1940,17 @@ export const languageVietnamese = {
         `${items.length} mục có dung lượng từ 4 GiB trở lên, vượt quá mức mà một mục trong tệp sao lưu có thể chứa, nên nội dung của chúng không có trong bản sao lưu (nhân vật chỉ giữ lại một phần giữ chỗ):\n\n${items.join('\n')}`,
     "backupFailedNothingWritten": () =>
         "Sao lưu không thành công trước khi có bất kỳ gì được ghi vào tệp. Hãy chạy lại sao lưu.",
+    "backupFailedModuleUnreadable": (name: string, reason: 'damaged' | 'missing' | 'newer' | 'changed' | 'duplicate' | 'unreadable') => {
+        const clause = {
+            damaged: 'bị hỏng, hoặc dữ liệu đã lưu của nó bị thiếu. Bạn có thể chạy lại sao lưu sau khi xóa hoặc thay thế mô-đun này trong phần cài đặt mô-đun.',
+            missing: 'không tìm thấy. Hãy chạy lại sao lưu; nếu vẫn thất bại, hãy xóa hoặc thay thế mô-đun này trong phần cài đặt mô-đun trước.',
+            newer: 'được lưu bởi một phiên bản ứng dụng mới hơn mà phiên bản này không thể đọc. Hãy cập nhật ứng dụng rồi chạy lại sao lưu; chỉ xóa hoặc thay thế mô-đun này trong phần cài đặt mô-đun nếu bạn không còn cần đến nó.',
+            changed: 'đã thay đổi trong lúc đang được đọc. Hãy chạy lại sao lưu; nếu lại thất bại, hãy xóa hoặc thay thế mô-đun này trong phần cài đặt mô-đun trước.',
+            duplicate: 'có cùng ID với một mô-đun khác. Bạn có thể chạy lại sao lưu sau khi xóa một trong hai mô-đun trong phần cài đặt mô-đun.',
+            unreadable: 'không thể đọc được. Bạn có thể chạy lại sao lưu sau khi xóa hoặc thay thế mô-đun này trong phần cài đặt mô-đun.',
+        }[reason]
+        return `Quá trình sao lưu đã dừng trước khi có bất kỳ gì được ghi vào tệp, vì mô-đun "${name}" ${clause}`
+    },
     "internalBackupUnreadable":"Bản sao lưu này bị hỏng hoặc không đầy đủ nên không được tải. Dữ liệu hiện tại của bạn không bị thay đổi.",
     "internalBackupWriteFailed": "Không thể lưu bản sao lưu. Dữ liệu hiện tại của bạn không bị thay đổi.",
     "internalBackupListFailed": "Không thể đọc danh sách sao lưu. Không có gì bị thay đổi.",
