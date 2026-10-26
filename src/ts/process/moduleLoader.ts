@@ -111,6 +111,11 @@ async function loadInto(flight: Flight, residency: Residency): Promise<RisuModul
     if (before.recorded.length === 0 && before.stubs) {
         throw new ModuleLoadError('edited', id, before.name)
     }
+    // Two recorded copies of one id cannot be installed over either: refused before the body is read or a question is
+    // asked. A copy that appears while the read or the question is pending is refused by the check after them.
+    if (before.recorded.length > 1) {
+        throw new ModuleLoadError('ambiguous', id, before.name)
+    }
 
     const read = await residency.readModule(handle)
     if (read.status === 'error') {
@@ -237,8 +242,8 @@ export async function loadModuleStubsOf(moduleId: string): Promise<ModuleStubLoa
     const entry = residency === null ? null : residency.moduleEntryOf(handle)
     let recorded = false
     try {
-        // Exactly one live slot must be the recorded stub: with two, the install refuses the load as ambiguous only after
-        // the person has been asked, so no flight is started and the caller reports the original refusal.
+        // Exactly one live slot must be the recorded stub: with two, the load would be refused as ambiguous before any
+        // question, so no flight is started and the caller reports the original refusal.
         recorded = entry !== null && slotsOfId(moduleId, entry).recorded.length === 1
     } catch (error) {
         console.error(error)

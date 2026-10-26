@@ -750,4 +750,53 @@ describe('A manual fire waits for the modules it needs', () => {
         expect(String(vi.mocked(alertError).mock.calls[0][0])).toContain('Alpha')
         expect(liveChar.chats[0].scriptstate['$x']).toBeUndefined()
     })
+
+    /**
+     * Only the clicked character references the module and nothing enables it globally, so the module is found only
+     * through the owner the handler passes; a twin with the same `chaId` and no modules comes after it.
+     */
+    function installDuplicatedDb(char: character) {
+        DBState.db = baseDb({
+            modules: [{ id: 'm1', name: 'Alpha', description: '', [MODULE_STUB_KEY]: 1 }],
+            enabledModules: [],
+        }) as never
+        ;(char as unknown as Record<string, unknown>).modules = ['m1']
+        const twin = { ...char, chats: [makeChat('twin-chat')], modules: [] }
+        DBState.db.characters = [char, twin] as never
+        selIdState.selId = 0
+    }
+
+    test('guard: manual-trigger-button-loads-the-stub-of-a-duplicated-character-id', async () => {
+        const a1 = makeChat('a1')
+        a1.message.push({ role: 'char', data: '<button risu-trigger="setx" risu-id="t1">Click</button>' })
+        const char = makeCharacter('char-dup', [a1])
+        char.triggerscript.push(trig('setx', 'manual', [
+            v2('v2SetVar', { operator: '=', var: 'x', valueType: 'value', value: '1' }),
+        ]))
+        installDuplicatedDb(char)
+        registerGatedLoader()
+
+        const { target } = await mountChat({ idx: 0, message: a1.message[0].data, isLastMemory: false })
+        target.querySelector<HTMLButtonElement>('[risu-trigger="setx"]')!.click()
+        await settle()
+        expect(loaderCalls).toEqual(['m1'])
+
+        releaseLoad()
+        await settle()
+    })
+
+    test('guard: lua-form-loads-the-stub-of-a-duplicated-character-id', async () => {
+        const a1 = makeChat('a1')
+        a1.message.push({ role: 'char', data: '<form risu-form="f"><input name="q" value="v"><button type="submit">Send</button></form>' })
+        installDuplicatedDb(makeCharacter('char-dup-form', [a1]))
+        registerGatedLoader()
+
+        const { target } = await mountChat({ idx: 0, message: a1.message[0].data, isLastMemory: false })
+        target.querySelector<HTMLFormElement>('[risu-form="f"]')!.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true }))
+        await settle()
+        expect(loaderCalls).toEqual(['m1'])
+
+        releaseLoad()
+        await settle()
+    })
 })

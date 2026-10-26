@@ -267,6 +267,22 @@ describe('the valve loads each refused module once per pass', () => {
         expect(run.failures[0].error).toBeInstanceOf(StubRefusedError)
         expect(run.commits).toBe(0)
     })
+
+    test('guard: the pass after a failed one loads the same module again, not once per page', async () => {
+        const run = await startRun()
+        run.valve = (call) => {
+            if (call > 20) {
+                throw new Error('The valve was called again and again.')
+            }
+            return { kind: 'loaded' }
+        }
+        run.mark()
+        await until(() => run.failures.length >= 1, 'the failed save')
+        // The wait ends below the test timeout so a missing second call fails at the assertion.
+        await until(() => run.valveCalls.length >= 2, 'the retry pass loading again', 2000).catch(() => {})
+        expect(run.valveCalls.length).toBeGreaterThanOrEqual(2)
+        expect(run.valveCalls[1]).toBe(run.valveCalls[0])
+    })
 })
 
 describe('a deferred pass is quiet', () => {

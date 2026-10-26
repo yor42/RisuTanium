@@ -384,3 +384,50 @@ describe('the composer waits for the referenced module stubs', () => {
         expect(processMultiCommandMock).toHaveBeenCalledTimes(1)
     })
 })
+
+describe('the composer names the sending character when another character shares its id', () => {
+    /**
+     * Only the selected character references the module and nothing enables it globally, so the module is found only
+     * through the owner the composer passes; a twin with the same `chaId` and no modules comes after it.
+     */
+    function installDuplicatedDb(char: character): void {
+        installStubbedDb(char)
+        DBState.db.enabledModules = []
+        ;(char as unknown as { modules: string[] }).modules = ['m1']
+        const twin = makeCharacter(char.chaId)
+        twin.chats[0].id = `${char.chaId}-twin-chat-0`
+        DBState.db.characters.push(twin)
+    }
+
+    test('guard: composer-loads-the-stub-of-a-duplicated-character-id', async () => {
+        const char = makeCharacter('c-dup')
+        installDuplicatedDb(char)
+        seedDraft(char, 'hello there')
+        registerGatedLoader()
+
+        const outcome = send(source)
+        await settle()
+        expect(loaderCalls).toEqual(['m1'])
+        expect(sendChatMock).not.toHaveBeenCalled()
+
+        releaseLoad()
+        await outcome
+        expect(sendChatMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('guard: slash-command-loads-the-stub-of-a-duplicated-character-id-before-it-runs', async () => {
+        const char = makeCharacter('c-dup-slash')
+        installDuplicatedDb(char)
+        seedDraft(char, '/mycommand')
+        registerGatedLoader()
+
+        const outcome = send(source)
+        await settle()
+        expect(loaderCalls).toEqual(['m1'])
+        expect(processMultiCommandMock).not.toHaveBeenCalled()
+
+        releaseLoad()
+        await outcome
+        expect(processMultiCommandMock).toHaveBeenCalledTimes(1)
+    })
+})

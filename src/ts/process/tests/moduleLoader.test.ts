@@ -2,7 +2,8 @@
 /**
  * The module loader (`process/moduleLoader.ts`) over a real store2 boot: the tree is seeded in a memory backend, the real
  * dispatch opens it (which registers the residency and the module loader), the test then turns chosen module slots into
- * the stubs `moduleStubOf` mints, and every load goes through `acquireModule` or the save loop's valve entry. The backend
+ * the stubs `moduleStubOf` mints, and loads go through `acquireModule`, the save loop's valve entry, or `loadModule` where
+ * a row pins what the loader itself refuses without the callers' checks. The backend
  * is wrapped so a test can hold or fail the unit read. Alerts are deferred promises the test answers; a mocked store says
  * nothing about a native backend. Titles starting `guard:` pass before and after the change; the others fail when the
  * loader is missing or when the named mutant is applied.
@@ -649,6 +650,26 @@ describe('the save loop valve answers without ever waiting for the person', () =
         expect(slots(world).filter(isModuleStub)).toHaveLength(2)
     })
 
+    test('two copies of the recorded stub are refused by a direct load before the read and before any question', async () => {
+        const { loadModule } = await import('src/ts/process/moduleLoader')
+        const world = await bootWorld([moduleBody('a'), moduleBody('bad', { lorebook: { bad: true } })])
+        stubOut(world, 1)
+        slots(world).push(clone(slots(world)[1]))
+        const loading = loadModule(world.handles[1])
+        // A load that read first would wait for the person's answer and stay pending.
+        const state = await stateOf(loading)
+        if (state === 'pending') {
+            // The flight map outlives the test; answering the question it opened keeps a failing row from stalling the rows after it.
+            await answerCorruptionQuestion(false).catch(() => {})
+            await loading.catch(() => {})
+        }
+        expect(state).toBe('rejected')
+        await expect(loading).rejects.toMatchObject({ reason: 'ambiguous' })
+        expect(world.gate.reads).toBe(0)
+        expect(h.waiting).toHaveLength(0)
+        expect(slots(world).filter(isModuleStub)).toHaveLength(2)
+    })
+
     test('a failed load is refused, so the pass reports its own refusal; the stub stays', async () => {
         const world = await bootWorld([moduleBody('a'), moduleBody('b')])
         const entry = stubOut(world, 1)
@@ -828,5 +849,19 @@ describe('the install is judged against the encoding at install time', () => {
         expect((error as ModuleLoadError).reason).toBe('stale')
         expect((error as ModuleLoadError).moduleName).toBe('b')
         expect(isModuleStub(slots(world)[1])).toBe(true)
+    })
+
+    test('guard: a second recorded copy that appears during the read is still refused as ambiguous', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b')])
+        stubOut(world, 1)
+        const release = holdReads(world)
+        const loading = acquireModule(world.ids[1]).then(() => null, (thrown: unknown) => thrown)
+        await sleep(10)
+        slots(world).push(clone(slots(world)[1]))
+        release()
+        const error = await loading
+        expect(error).toBeInstanceOf(ModuleLoadError)
+        expect((error as ModuleLoadError).reason).toBe('ambiguous')
+        expect(slots(world).filter(isModuleStub)).toHaveLength(2)
     })
 })
