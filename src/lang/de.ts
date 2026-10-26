@@ -2291,6 +2291,7 @@ export const languageGerman = {
     "moduleLowLevelNamed": (name: string, file?: string) => file ? `Modul "${name}" (${file})` : `Modul "${name}"`,
     "importModulesDone": (imported: number, skipped: number) => skipped > 0 ? `${imported} ${imported === 1 ? 'Modul' : 'Module'} importiert, ${skipped} übersprungen.` : `${imported} ${imported === 1 ? 'Modul' : 'Module'} importiert.`,
     "moduleUnsupportedFile": (name: string) => `${name}: Dieser Dateityp wird nicht als Modul unterstützt.`,
+    "moduleLoadFailed": (name: string) => `Das Modul "${name}" konnte nicht geladen werden, daher wurde nichts damit gemacht.`,
     "moduleDuplicatePrompt": (name: string, file: string) => `Ein Modul mit dem Namen "${name}" (${file}) ist bereits installiert. Was soll mit dieser Datei geschehen?`,
     "moduleDuplicateReplace": "Ersetzen",
     "moduleDuplicateSkip": "Überspringen",

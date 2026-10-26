@@ -19,6 +19,7 @@ import { ModuleRefusal } from "./moduleRefusal"
 import { ModuleImportStopped, confirmRisumLowLevel } from "./moduleImportStop"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportOutcome } from "../importBatch"
 import { markBootWrite } from "../bootWindow"
+import { useModuleById } from "./moduleUse"
 import { DuplicateSession, applyModulePlacement, describeReplace, type DuplicateDecision } from "./moduleDuplicates"
 import { withBusy } from "./memory/busyActions"
 import { assetByteLimit, charxLimits } from "./processzip"
@@ -841,7 +842,20 @@ export async function applyModule() {
         return
     }
 
-    const module = safeStructuredClone(getModuleById(sel))
+    // A module in the database is acquired by id (its body is loaded when it is a stub) and released once the copy is
+    // taken; the embedded persona module is read as it is.
+    const row = getDatabase().modules.find((v) => v.id === sel)
+    const acquired = row ? await useModuleById(sel, row.name) : null
+    if (row && !acquired) {
+        return
+    }
+    let module: RisuModule | null
+    try {
+        module = safeStructuredClone(acquired ? acquired.module : getModuleById(sel))
+    }
+    finally {
+        acquired?.release()
+    }
     if (!module) {
         return
     }

@@ -2289,6 +2289,7 @@ export const languageKorean = {
     moduleLowLevelNamed: (name: string, file?: string) => file ? `모듈 "${name}" (${file})` : `모듈 "${name}"`,
     importModulesDone: (imported: number, skipped: number) => skipped > 0 ? `모듈 ${imported}개를 임포트했고 ${skipped}개를 건너뛰었습니다.` : `모듈 ${imported}개를 임포트했습니다.`,
     moduleUnsupportedFile: (name: string) => `${name}: 이 파일 형식은 모듈로 지원되지 않습니다.`,
+    moduleLoadFailed: (name: string) => `"${name}" 모듈을 불러오지 못하여 아무 작업도 수행하지 않았습니다.`,
     moduleDuplicatePrompt: (name: string, file: string) => `"${name}" 모듈(${file})이 이미 설치되어 있습니다. 이 파일을 어떻게 처리할까요?`,
     moduleDuplicateReplace: "바꾸기",
     moduleDuplicateSkip: "건너뛰기",
