@@ -35,7 +35,9 @@ import { hanuraiMemory } from "./memory/hanuraiMemory";
 import { hypaMemoryV2 } from "./memory/hypav2";
 import { runLuaEditTrigger } from "./scriptings";
 import { getModelInfo, LLMFlags } from "../model/modellist";
+import { LLMTokenizer } from "../model/types";
 import { hypaMemoryV3 } from "./memory/hypav3";
+import { totalInSendOrder, trimChatsToContext } from "./contextTrim";
 import { getModuleAssets, getModuleToggles } from "./modules";
 import { readImage } from "../globalApi.svelte";
 import { pluginV2 } from "../plugins/plugins.svelte";
@@ -1353,6 +1355,25 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         return false
     }
 
+    // The memory systems take every message's count; the context trim needs
+    // only the newest messages', so without a memory system the message chats
+    // are counted by the trim, as far as its decisions need. A count that may
+    // differ between calls or be no whole number (a plugin's tokenizer, a
+    // counting request, the local model server) is taken here as before. The
+    // prompt is the same either way while the tokenizer settings stay unchanged
+    // during the send. A message the trim drops without counting can no longer
+    // fail the send through its count (tiktoken refuses special-token text).
+    const memoryTakesChats = () => nowChatroom.supaMemory && (DBState.db.supaModelType !== 'none' || DBState.db.hanuraiEnable || DBState.db.hypav2 || DBState.db.hypaV3)
+    const countTokenizer = getModelInfo(DBState.db.aiModel)?.tokenizer
+    const countVaries = (DBState.db.aiModel === 'custom' && pluginV2.providerOptions?.get(DBState.db.currentPluginProvider)?.tokenizer === 'custom')
+        || countTokenizer === LLMTokenizer.GoogleCloud
+        || countTokenizer === LLMTokenizer.Local
+    const countMessagesInTrim = !memoryTakesChats() && !countVaries
+    const firstMessageChat = chats.length
+    const tokensBeforeMessages = currentTokens
+    const tokensAfterMessages:number[] = []
+    const countedMessages = new Map<OpenAIChat, number>()
+
     let index = 0
     // `index` is the position among the sent messages; it counts them for the
     // `<Thoughts>` depth. Every parse of a message reads its index in the chat,
@@ -1507,7 +1528,15 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             delete chat.multimodals
         }
         chats.push(chat)
-        currentTokens += await tokenizer.tokenizeChat(chat)
+        if(!countMessagesInTrim){
+            currentTokens += await tokenizer.tokenizeChat(chat)
+        }
+        else if(chat.multimodals){
+            // A multimodal count is arithmetic on the stored image size and can
+            // be NaN, infinite, negative or huge; the trim must see every such
+            // count, so it is taken here.
+            countedMessages.set(chat, await tokenizer.tokenizeChat(chat))
+        }
         index++
     }
     console.log(JSON.stringify(chats, null, 2))
@@ -1521,14 +1550,27 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             role: depthPrompt.role,
             content: risuChatParser(resolvePosition(depthPrompt.prompt), {chara: currentChar, subject, promptView})
         }
-        currentTokens += await tokenizer.tokenizeChat(chat)
+        const depthTokens = await tokenizer.tokenizeChat(chat)
+        tokensAfterMessages.push(depthTokens)
+        currentTokens += depthTokens
     }
     
     if(abortSignal.aborted){
         return false
     }
 
-    if(nowChatroom.supaMemory && (DBState.db.supaModelType !== 'none' || DBState.db.hanuraiEnable || DBState.db.hypav2 || DBState.db.hypaV3)){
+    const countArgs = {
+        chats,
+        firstMessageChat,
+        tokensBeforeMessages,
+        tokensAfterMessages,
+        countedMessages,
+        count: (chat:OpenAIChat) => tokenizer.tokenizeChat(chat),
+    }
+    if(memoryTakesChats()){
+        if(countMessagesInTrim){
+            currentTokens = await totalInSendOrder(countArgs)
+        }
         stageTimings.stage1Duration = Date.now() - stageTimings.stage1Start
         chatProcessStage.set(2)
         stageTimings.stage2Start = Date.now()
@@ -1612,15 +1654,26 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     }
     else{
         stageTimings.stage1Duration = Date.now() - stageTimings.stage1Start
-        while(currentTokens > maxContextTokens){
-            if(chats.length <= 1){
+        if(countMessagesInTrim){
+            const trimmed = await trimChatsToContext({ ...countArgs, maxContextTokens })
+            currentTokens = trimmed.currentTokens
+            if(!trimmed.fits){
                 throwError(language.errors.toomuchtoken + "\n\n" + fillLang(language.errors.requiredTokens, { tokens: `${currentTokens}` }))
 
                 return false
             }
+        }
+        else{
+            while(currentTokens > maxContextTokens){
+                if(chats.length <= 1){
+                    throwError(language.errors.toomuchtoken + "\n\n" + fillLang(language.errors.requiredTokens, { tokens: `${currentTokens}` }))
 
-            currentTokens -= await tokenizer.tokenizeChat(chats[0])
-            chats.splice(0, 1)
+                    return false
+                }
+
+                currentTokens -= await tokenizer.tokenizeChat(chats[0])
+                chats.splice(0, 1)
+            }
         }
         const lastMemoryCtx = subject.resolve()
         if(lastMemoryCtx){
