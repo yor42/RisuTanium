@@ -8,7 +8,7 @@ import type { UnitSource } from './codec/types'
 import { classifyCommitRead } from './commitKey'
 import {
     keyOfRef, readUnit, UNIT_TYPE,
-    type ChatChunk, type Manifest, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType,
+    type ChatChunk, type Manifest, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType,
 } from './format'
 import type { StoredTree } from './previousOfTree'
 import { checkManifestKey, readBatch } from './tree'
@@ -343,6 +343,67 @@ export async function readEntityBytes(backend: Store2Backend, entry: ShardEntry,
     let total = 0
     for (const unit of reader.bytes.values()) {
         total += unit.length
+    }
+    return { status: 'ok', source: reader.source, bytes: total }
+}
+
+export type ModuleBytesRead =
+    /** The module unit checked; `source` holds its bytes and those of the lists that checked (not an absent, damaged or newer-version list), and `bytes` is their total length. */
+    | { status: 'ok', source: UnitSource, bytes: number }
+    /** The module unit is absent or damaged. */
+    | { status: 'damaged', reason: string }
+    /** A unit the module names is in a newer frame format (or the module unit is of a newer version): nothing of the module is read. */
+    | { status: 'too-new', reason: string }
+    /** The backend failed: nothing is known about the module. */
+    | { status: 'unreadable', cause: Store2BackendError }
+
+/**
+ * Reads the units of one module for a load. The module unit cannot be replaced by an empty value, so one that is absent
+ * or damaged makes the read `damaged`, and a module unit in a newer frame format makes it `too-new`. The asset and
+ * inlay lists are derived from the module: one that is absent, damaged, or whose version is above this build's (a
+ * newer list, as the boot read reports it) does not fail the read; its bytes are withheld from the source, and the
+ * load leaves that list without a digest so the next pass derives it again from the body. A list in a newer frame
+ * format is `too-new` like the module unit and is never read around.
+ */
+export async function readModuleBytes(backend: Store2Backend, entry: ModuleEntry, options: { yield?: () => Promise<void> } = {}): Promise<ModuleBytesRead> {
+    const reader = createByteReader(backend, options.yield)
+    const lists: { ref: Ref, type: UnitType }[] = [{ ref: entry.al, type: UNIT_TYPE.assetList }]
+    if (entry.il !== null) {
+        lists.push({ ref: entry.il, type: UNIT_TYPE.inlayList })
+    }
+    const loaded = await reader.load([keyOfRef(entry.unit), ...lists.map(list => keyOfRef(list.ref))])
+    if (loaded.status === 'unreadable') {
+        return { status: 'unreadable', cause: loaded.cause }
+    }
+    const unitKey = keyOfRef(entry.unit)
+    const unit: UnitCheck = isStore2Key(unitKey)
+        ? checkUnit(reader.source, entry.unit, UNIT_TYPE.module)
+        : { status: 'damaged', reason: `${unitKey} is not a store2 unit key.`, byRef: true }
+    switch (unit.status) {
+        case 'ok':
+            break
+        case 'missing':
+            return { status: 'damaged', reason: `${unitKey} is missing.` }
+        case 'damaged':
+            return { status: 'damaged', reason: `${unitKey}: ${unit.reason}` }
+        case 'too-new':
+        case 'newer-list':
+            return { status: 'too-new', reason: unit.reason }
+    }
+    for (const list of lists) {
+        const key = keyOfRef(list.ref)
+        const checked = isStore2Key(key) ? checkUnit(reader.source, list.ref, list.type) : { status: 'missing' } satisfies UnitCheck
+        if (checked.status === 'too-new') {
+            // A list in a newer frame format is kept as it is: deriving it again would overwrite data this build cannot read.
+            return { status: 'too-new', reason: checked.reason }
+        }
+        if (checked.status !== 'ok') {
+            reader.bytes.delete(key)
+        }
+    }
+    let total = 0
+    for (const bytes of reader.bytes.values()) {
+        total += bytes.length
     }
     return { status: 'ok', source: reader.source, bytes: total }
 }

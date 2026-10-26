@@ -1,13 +1,13 @@
 // @vitest-environment node
 import { describe, expect, test } from 'vitest'
 import {
-    assembleDatabase, CodecAssembleError, encodeScoped, IDENTITY, previousFrom, unitDigest, unitMapSource,
+    assembleDatabase, CodecAssembleError, encodeScoped, IDENTITY, moduleHandles, previousFrom, unitDigest, unitMapSource,
     type EncodedTree, type PreviousEncoding, type ReusableUnit, type UnitSource,
 } from '../../store2/codec'
 import { buildColdStub } from '../../../process/coldCharacter'
-import { hydrateEntityDigests, previousOfTree, registerEntityUnits, type StoredTree } from '../../store2/previousOfTree'
+import { hydrateEntityDigests, hydrateModuleDigests, previousOfTree, registerEntityUnits, registerModuleUnits, type StoredTree } from '../../store2/previousOfTree'
 import { createSaveEncoder, type SavePassRequest } from '../../store2/saveEncoder'
-import { keyOfRef, type ShardEntry } from '../../store2/format'
+import { IL_REF_V, keyOfRef, type ModuleEntry, type ShardEntry } from '../../store2/format'
 import type { character, Database } from '../../database.svelte'
 import {
     asDatabase, buildSmall, buildT3, bytesOf, encodeWith, fakeLists, seededEnv, storeOf, type Obj,
@@ -365,6 +365,158 @@ describe('new behaviour: hydrating the digests of a loaded entity', () => {
         const hydrated = previousBeforeLoad()
         hydrateEntityDigests(hydrated, entry, everything)
         const after = await encoderOver(hydrated).plan(decoded, marked)
+        expect(after.newUnits).toBe(1)
+        expect(after.unchanged).toBe(true)
+    })
+})
+
+describe('contract: hydrating the digests of a loaded module', () => {
+    const db = buildSmall(3)
+    const first = encodeWith(db)
+    const entries: ModuleEntry[] = first.index.objects?.moduleIndex?.entries ?? []
+    const handles = moduleHandles(entries)
+    const entry = entries[1]
+    const handle = handles[1]
+    const otherHandle = handles[2]
+    const everything = unitMapSource(first.units)
+    const modulePrefixes = [IDENTITY.module, IDENTITY.alModule, IDENTITY.ilModule]
+    const ownedBy = (name: string) => (identity: string): boolean => modulePrefixes.some(prefix => identity === `${prefix}${name}`)
+    const unread = (identity: string): boolean => ownedBy(handle)(identity) || ownedBy(otherHandle)(identity)
+    const ownIdentities = (): string[] => first.units.filter(unit => ownedBy(handle)(unit.identity)).map(unit => unit.identity).sort()
+
+    function previousBeforeLoad(): PreviousEncoding {
+        return previousOfTree(storedOf(first, sourceWithout(first, unread)))
+    }
+
+    test('the fixture holds the module unit and a list for the module, so the cases below are not vacuous', () => {
+        expect(entries.length).toBeGreaterThanOrEqual(3)
+        expect(ownIdentities().length).toBeGreaterThanOrEqual(2)
+        expect(ownIdentities()).toContain(`${IDENTITY.module}${handle}`)
+        expect(ownIdentities()).toContain(`${IDENTITY.alModule}${handle}`)
+    })
+
+    test('registerModuleUnits names exactly the identities the encoder gives the module\'s units', () => {
+        const named: string[] = []
+        registerModuleUnits(entry, handle, identity => named.push(identity))
+        expect(named.sort()).toEqual(ownIdentities())
+    })
+
+    test('every unit of the module gets the digest of its bytes, in place, and nothing else changes', () => {
+        const previous = previousBeforeLoad()
+        const objects = new Map(ownIdentities().map(identity => [identity, previous.units.get(identity)] as const))
+        const outside = new Map([...previous.units].filter(([identity]) => !ownIdentities().includes(identity)).map(([identity, unit]) => [identity, { ...unit }] as const))
+        expect(ownIdentities().every(identity => previous.units.get(identity)?.digest === undefined)).toBe(true)
+        hydrateModuleDigests(previous, entry, handle, everything)
+        for (const unit of first.units.filter(candidate => ownedBy(handle)(candidate.identity))) {
+            const held = previous.units.get(unit.identity)
+            expect(held, unit.identity).toBe(objects.get(unit.identity))
+            expect(held?.digest, unit.identity).toBe(unitDigest(bytesOf(unit)))
+            expect(held?.key, unit.identity).toBe(unit.key)
+        }
+        for (const [identity, before] of outside) {
+            expect(previous.units.get(identity), identity).toEqual(before)
+        }
+    })
+
+    test('a module that was not hydrated keeps its units digest-less', () => {
+        const previous = previousBeforeLoad()
+        hydrateModuleDigests(previous, entry, handle, everything)
+        expect(first.units.filter(unit => ownedBy(otherHandle)(unit.identity)).every(unit => previous.units.get(unit.identity)?.digest === undefined)).toBe(true)
+    })
+
+    test('a second hydration changes nothing, and a unit that already has a digest keeps it', () => {
+        const previous = previousBeforeLoad()
+        hydrateModuleDigests(previous, entry, handle, everything)
+        const snapshot = new Map([...previous.units].map(([identity, unit]) => [identity, { ...unit }] as const))
+        hydrateModuleDigests(previous, entry, handle, everything)
+        expect(new Map([...previous.units].map(([identity, unit]) => [identity, { ...unit }] as const))).toEqual(snapshot)
+        const unit = previous.units.get(`${IDENTITY.module}${handle}`) as ReusableUnit
+        unit.digest = 'kept'
+        hydrateModuleDigests(previous, entry, handle, everything)
+        expect(unit.digest).toBe('kept')
+    })
+
+    test('a unit is hydrated only when the key and the Ref match and the bytes are that unit', () => {
+        const unitIdentity = `${IDENTITY.module}${handle}`
+        const listIdentity = `${IDENTITY.alModule}${handle}`
+        const previous = previousBeforeLoad()
+        // The entry's Ref for the module disagrees with the unit the encoding holds: the checksum differs.
+        const moved: ModuleEntry = { ...entry, unit: [entry.unit[0], entry.unit[1], entry.unit[2] ^ 1] }
+        hydrateModuleDigests(previous, moved, handle, everything)
+        expect(previous.units.get(unitIdentity)?.digest).toBeUndefined()
+        expect(previous.units.get(listIdentity)?.digest).toBeDefined()
+
+        // The bytes of the asset list are damaged in the source.
+        const damagedList = new Uint8Array(bytesOf(first.units.find(unit => unit.identity === listIdentity) as never))
+        damagedList[damagedList.length - 1] ^= 0xff
+        const listKey = keyOfRef(entry.al)
+        const damaged = previousBeforeLoad()
+        hydrateModuleDigests(damaged, entry, handle, { get: key => (key === listKey ? damagedList : everything.get(key)) })
+        expect(damaged.units.get(listIdentity)?.digest).toBeUndefined()
+        expect(damaged.units.get(unitIdentity)?.digest).toBeDefined()
+
+        // The encoding holds another key for the module than the entry names.
+        const rekeyed = previousBeforeLoad()
+        ;(rekeyed.units.get(unitIdentity) as ReusableUnit).key = 'a-key-the-entry-does-not-name'
+        hydrateModuleDigests(rekeyed, entry, handle, everything)
+        expect(rekeyed.units.get(unitIdentity)?.digest).toBeUndefined()
+        expect(rekeyed.units.get(listIdentity)?.digest).toBeDefined()
+
+        // The encoding's own Ref disagrees with the entry's (and with the stored bytes) while the keys agree.
+        const reRefed = previousBeforeLoad()
+        const heldUnit = reRefed.units.get(unitIdentity) as ReusableUnit
+        const heldList = reRefed.units.get(listIdentity) as ReusableUnit
+        heldUnit.ref = [heldUnit.ref[0], heldUnit.ref[1] + 1, heldUnit.ref[2]]
+        heldList.ref = [heldList.ref[0], heldList.ref[1], heldList.ref[2] ^ 1]
+        hydrateModuleDigests(reRefed, entry, handle, everything)
+        expect(heldUnit.key).toBe(keyOfRef(entry.unit))
+        expect(heldUnit.digest).toBeUndefined()
+        expect(heldList.digest).toBeUndefined()
+    })
+
+    test('a module with an inlay list: three identities are named and hydrated, and a withheld inlay list stays digest-less', () => {
+        const withInlays = encodeWith(db, { lists: { ...fakeLists, moduleInlays: () => ({ v: IL_REF_V, u: [], h: '', o: [] }) } })
+        const inlayEntries: ModuleEntry[] = withInlays.index.objects?.moduleIndex?.entries ?? []
+        const inlayHandles = moduleHandles(inlayEntries)
+        expect(inlayEntries[1].il).not.toBeNull()
+        const named: string[] = []
+        registerModuleUnits(inlayEntries[1], inlayHandles[1], identity => named.push(identity))
+        expect(named.sort()).toEqual([IDENTITY.alModule, IDENTITY.ilModule, IDENTITY.module].map(prefix => `${prefix}${inlayHandles[1]}`).sort())
+
+        const complete = unitMapSource(withInlays.units)
+        const lacking = (identity: string): boolean => modulePrefixes.some(prefix => identity === `${prefix}${inlayHandles[1]}`)
+        const previous = previousOfTree(storedOf(withInlays, sourceWithout(withInlays, lacking)))
+        hydrateModuleDigests(previous, inlayEntries[1], inlayHandles[1], complete)
+        for (const identity of named) {
+            expect(previous.units.get(identity)?.digest, identity).toBeDefined()
+        }
+
+        const withheld = previousOfTree(storedOf(withInlays, sourceWithout(withInlays, lacking)))
+        const inlayIdentity = `${IDENTITY.ilModule}${inlayHandles[1]}`
+        hydrateModuleDigests(withheld, inlayEntries[1], inlayHandles[1], sourceWithout(withInlays, identity => identity === inlayIdentity))
+        expect(withheld.units.get(inlayIdentity)?.digest).toBeUndefined()
+        expect(withheld.units.get(`${IDENTITY.alModule}${inlayHandles[1]}`)?.digest).toBeDefined()
+    })
+
+    test('a list the read withheld stays digest-less while the module unit is hydrated', () => {
+        const previous = previousBeforeLoad()
+        const listIdentity = `${IDENTITY.alModule}${handle}`
+        hydrateModuleDigests(previous, entry, handle, sourceWithout(first, identity => identity === listIdentity))
+        expect(previous.units.get(`${IDENTITY.module}${handle}`)?.digest).toBeDefined()
+        expect(previous.units.get(listIdentity)?.digest).toBeUndefined()
+    })
+
+    test('a pass over the loaded module writes nothing once hydrated, and rewrites it before', async () => {
+        const decoded = assembleDatabase(first.manifest, everything)
+        const request: SavePassRequest = { ...NOTHING_MARKED, modules: true }
+
+        const before = await encoderOver(previousBeforeLoad()).plan(decoded, request)
+        expect(before.unchanged).toBe(false)
+
+        const hydrated = previousBeforeLoad()
+        hydrateModuleDigests(hydrated, entry, handle, everything)
+        hydrateModuleDigests(hydrated, entries[2], otherHandle, everything)
+        const after = await encoderOver(hydrated).plan(decoded, request)
         expect(after.newUnits).toBe(1)
         expect(after.unchanged).toBe(true)
     })

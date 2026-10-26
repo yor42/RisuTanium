@@ -7,16 +7,16 @@ import {
     type MemoryBackend, type Store2Backend,
 } from 'src/ts/storage/store2/backend'
 import {
-    assembleDatabase, CodecAssembleError, IDENTITY, type EncodedTree, type EncodedUnit, type ListDerivation,
+    assembleDatabase, assembleModule, CodecAssembleError, IDENTITY, moduleHandles, type EncodedTree, type EncodedUnit, type ListDerivation,
 } from 'src/ts/storage/store2/codec'
 import { classifyCommitRead, nextCommitKey } from 'src/ts/storage/store2/commitKey'
 import {
     ASSET_REF_V, encodeUnit, FRAME_HEADER_BYTES, FRAME_OVERHEAD, IL_REF_V, keyOfRef, readUnit, UNIT_TYPE,
-    type KeyEnv, type Manifest, type Ref, type Shard, type ShardEntry, type UnitType,
+    type KeyEnv, type Manifest, type ModuleEntry, type ModuleIndex, type Ref, type Shard, type ShardEntry, type UnitType,
 } from 'src/ts/storage/store2/format'
 import { COMMIT_KEY } from 'src/ts/storage/store2/format/keys'
-import { previousOfTree } from 'src/ts/storage/store2/previousOfTree'
-import { CommitKeyRecheckError, readEntityBytes, readTreeBytes, type FlaggedLeaf, type ResidentPlanInput } from 'src/ts/storage/store2/treeBytes'
+import { hydrateModuleDigests, previousOfTree } from 'src/ts/storage/store2/previousOfTree'
+import { CommitKeyRecheckError, readEntityBytes, readModuleBytes, readTreeBytes, type FlaggedLeaf, type ResidentPlanInput } from 'src/ts/storage/store2/treeBytes'
 import { createClock, seedTree, testEnv, type TestClock } from '../store2SaveKit'
 import { buildSmall, chat, fakeLists, message, mulberry32, prosePool, type Obj } from './codecFixtures'
 
@@ -825,5 +825,155 @@ describe('new behaviour: readEntityBytes reads one entity under the damage rules
         const read = await readEntityBytes(many.memory, entriesOf(many)[0], { yield: async () => { yielded += 1 } })
         expect(read.status).toBe('ok')
         expect(yielded).toBeGreaterThanOrEqual(1)
+    })
+})
+
+describe('contract: readModuleBytes reads the units of one module, the module unit fatal and its lists not', () => {
+    function moduleEntriesOf(source: World): ModuleEntry[] {
+        return bodyOfKey<ModuleIndex>(source, keyOfRef(source.tree.manifest.fixed.moduleIndex), UNIT_TYPE.moduleIndex).entries
+    }
+
+    /** The key of each list the entry names. */
+    function listsOf(entry: ModuleEntry): { label: string, key: string }[] {
+        return [
+            { label: 'asset list', key: keyOfRef(entry.al) },
+            ...(entry.il === null ? [] : [{ label: 'inlay list', key: keyOfRef(entry.il) }]),
+        ]
+    }
+
+    const moduleEntry = (): ModuleEntry => moduleEntriesOf(world)[1]
+
+    test('an intact module: ok, the bytes of exactly its units and their total length, and the module assembles from them', async () => {
+        const entry = moduleEntry()
+        const asked: string[] = []
+        const spy = spied(world.memory, { beforeReadUnits: (_call, keys) => { asked.push(...keys) } })
+        const read = await readModuleBytes(spy.backend, entry)
+        if (read.status !== 'ok') {
+            throw new Error(`The intact module read ${read.status}.`)
+        }
+        const keys = [keyOfRef(entry.unit), ...listsOf(entry).map(list => list.key)]
+        expect([...new Set(asked)].sort()).toEqual([...keys].sort())
+        for (const key of keys) {
+            expect(read.source.get(key), key).toBeDefined()
+        }
+        expect(read.bytes).toBe(keys.reduce((sum, key) => sum + (world.memory.snapshot().get(key) as Uint8Array).length, 0))
+        const decoded = assembleModule(entry, read.source)
+        expect(decoded).toEqual((JSON.parse(JSON.stringify(world.db)) as { modules: unknown[] }).modules[1])
+    })
+
+    test('the module unit absent or damaged in any way is damaged', async () => {
+        const entry = moduleEntry()
+        const key = keyOfRef(entry.unit)
+        let compared = 0
+        for (const damage of DAMAGES) {
+            const bytes = damage.apply(world.memory.snapshot().get(key) as Uint8Array, UNIT_TYPE.module)
+            const read = await withUnit(world, key, bytes, () => readModuleBytes(world.memory, entry))
+            expect(read.status, damage.name).toBe('damaged')
+            compared++
+        }
+        expect(compared).toBe(DAMAGES.length)
+    })
+
+    test('a module unit that is not binary data is damaged', async () => {
+        const entry = moduleEntry()
+        const key = keyOfRef(entry.unit)
+        const spy = spied(world.memory, { beforeReadUnits: (_call, keys) => { if (keys.includes(key)) { throw new Store2NotBinaryError(key) } } })
+        expect((await readModuleBytes(spy.backend, entry)).status).toBe('damaged')
+    })
+
+    test('a module unit a newer build wrote is too-new, and is not read as damaged or absent', async () => {
+        const entry = moduleEntry()
+        const key = keyOfRef(entry.unit)
+        const bytes = tooNewFrame(world.memory.snapshot().get(key) as Uint8Array)
+        const read = await withUnit(world, key, bytes, () => readModuleBytes(world.memory, entry))
+        expect(read.status).toBe('too-new')
+    })
+
+    test('a list absent or damaged in any way does not fail the read: the module is ok and that list leaves the source', async () => {
+        const entry = moduleEntry()
+        const lists = listsOf(entry)
+        expect(lists.length).toBeGreaterThanOrEqual(1)
+        for (const list of lists) {
+            for (const damage of DAMAGES) {
+                const bytes = damage.apply(world.memory.snapshot().get(list.key) as Uint8Array, unitTypeOf(world, list.key))
+                const read = await withUnit(world, list.key, bytes, () => readModuleBytes(world.memory, entry))
+                expect(read.status, `${list.label}: ${damage.name}`).toBe('ok')
+                if (read.status === 'ok') {
+                    expect(read.source.get(list.key), `${list.label}: ${damage.name}`).toBeUndefined()
+                    expect(read.source.get(keyOfRef(entry.unit))).toBeDefined()
+                    expect(assembleModule(entry, read.source)).toBeDefined()
+                }
+            }
+        }
+    })
+
+    test('a list whose version is above this build\'s, with a matching Ref, reads ok, leaves the source and gets no digest', async () => {
+        const newerLists: ListDerivation = { ...fakeLists, moduleAssets: module => ({ ...fakeLists.moduleAssets(module), v: ASSET_REF_V + 1 }) }
+        const held = await seedWorld(richProfile(), newerLists)
+        const entries = moduleEntriesOf(held)
+        const entry = entries[1]
+        const key = keyOfRef(entry.al)
+        expect(held.memory.snapshot().get(key)).toBeDefined()
+        const read = await readModuleBytes(held.memory, entry)
+        expect(read.status).toBe('ok')
+        if (read.status !== 'ok') {
+            return
+        }
+        expect(read.source.get(key)).toBeUndefined()
+        expect(read.source.get(keyOfRef(entry.unit))).toBeDefined()
+        expect(assembleModule(entry, read.source)).toBeDefined()
+
+        const full = await readTreeBytes(held.memory, held.manifestKey)
+        if (full.status !== 'ok') {
+            throw new Error(`The tree read ${full.status}.`)
+        }
+        const previous = previousOfTree(full.tree)
+        const handle = moduleHandles(entries)[1]
+        for (const prefix of [IDENTITY.module, IDENTITY.alModule]) {
+            delete previous.units.get(`${prefix}${handle}`)?.digest
+        }
+        hydrateModuleDigests(previous, entry, handle, read.source)
+        expect(previous.units.get(`${IDENTITY.module}${handle}`)?.digest).toBeDefined()
+        expect(previous.units.get(`${IDENTITY.alModule}${handle}`)?.digest).toBeUndefined()
+    })
+
+    test('a list in a newer frame format is too-new', async () => {
+        const entry = moduleEntry()
+        for (const list of listsOf(entry)) {
+            const bytes = tooNewFrame(world.memory.snapshot().get(list.key) as Uint8Array)
+            const read = await withUnit(world, list.key, bytes, () => readModuleBytes(world.memory, entry))
+            expect(read.status, list.label).toBe('too-new')
+        }
+    })
+
+    test('a module with an inlay list: the list is read with the module, damage to it is not fatal and one in a newer frame format is too-new', async () => {
+        const withInlays = await seedWorld(richProfile(), { ...fakeLists, moduleInlays: () => ({ v: IL_REF_V, u: [], h: '', o: [] }) })
+        const entry = moduleEntriesOf(withInlays)[1]
+        if (entry.il === null) {
+            throw new Error('The module has no inlay list.')
+        }
+        const key = keyOfRef(entry.il)
+        const intact = await readModuleBytes(withInlays.memory, entry)
+        expect(intact.status).toBe('ok')
+        expect(intact.status === 'ok' ? intact.source.get(key) : undefined).toBeDefined()
+        for (const damage of DAMAGES) {
+            const bytes = damage.apply(withInlays.memory.snapshot().get(key) as Uint8Array, unitTypeOf(withInlays, key))
+            const read = await withUnit(withInlays, key, bytes, () => readModuleBytes(withInlays.memory, entry))
+            expect(read.status, damage.name).toBe('ok')
+            expect(read.status === 'ok' ? read.source.get(key) : null, damage.name).toBeUndefined()
+        }
+        const newer = tooNewFrame(withInlays.memory.snapshot().get(key) as Uint8Array)
+        expect((await withUnit(withInlays, key, newer, () => readModuleBytes(withInlays.memory, entry))).status).toBe('too-new')
+    })
+
+    test('a failing backend is unreadable, never damage, and the next read is ok', async () => {
+        const entry = moduleEntry()
+        world.memory.injectFault(1, 'fail')
+        const read = await readModuleBytes(world.memory, entry)
+        expect(read.status).toBe('unreadable')
+        if (read.status === 'unreadable') {
+            expect(read.cause).toBeInstanceOf(Store2BackendFailureError)
+        }
+        expect((await readModuleBytes(world.memory, entry)).status).toBe('ok')
     })
 })
