@@ -2291,6 +2291,7 @@ export const languageSpanish = {
     moduleLowLevelNamed: (name: string, file?: string) => file ? `Módulo "${name}" (${file})` : `Módulo "${name}"`,
     importModulesDone: (imported: number, skipped: number) => skipped > 0 ? `Se ${imported === 1 ? 'importó' : 'importaron'} ${imported} ${imported === 1 ? 'módulo' : 'módulos'}; omitidos: ${skipped}.` : `Se ${imported === 1 ? 'importó' : 'importaron'} ${imported} ${imported === 1 ? 'módulo' : 'módulos'}.`,
     moduleUnsupportedFile: (name: string) => `${name}: este tipo de archivo no es compatible como módulo.`,
+    moduleLoadFailed: (name: string) => `No se pudo cargar el módulo "${name}", por lo que no se hizo nada con él.`,
     moduleDuplicatePrompt: (name: string, file: string) => `Ya hay instalado un módulo llamado "${name}" (${file}). ¿Qué debe hacerse con este archivo?`,
     moduleDuplicateReplace: "Reemplazar",
     moduleDuplicateSkip: "Omitir",

@@ -14,13 +14,17 @@
     import { importMCPModule } from "src/ts/process/mcp/mcp";
     import { convertModuleToCharacter } from "src/ts/interchangeability";
     import { checkCharOrder } from "src/ts/globalApi.svelte";
+    import { useModuleRow } from "src/ts/process/moduleUse";
     let tempModule:RisuModule = $state({
         name: '',
         description: '',
         id: v4(),
     })
     let mode = $state(0)
-    let editModuleIndex = $state(-1)
+    // The editor holds the module it was opened on until it closes; one load runs at a time.
+    let editorRelease: (() => void) | null = null
+    let editorLoading = false
+    let destroyed = false
     let moduleSearch = $state('')
     let charConversionMode = $state(false)
 
@@ -35,11 +39,20 @@
     // The editor (modes 1 and 2) changes modules while open without refreshing the chat;
     // closing it, by a button or by this component being destroyed, refreshes once.
     function closeEditor(){
+        releaseEditor()
         mode = 0
         $ReloadGUIPointer += 1
     }
 
+    function releaseEditor(){
+        const release = editorRelease
+        editorRelease = null
+        release?.()
+    }
+
     onDestroy(() => {
+        destroyed = true
+        releaseEditor()
         refreshModules()
         if(mode !== 0){
             $ReloadGUIPointer += 1
@@ -69,9 +82,17 @@
                         {#if charConversionMode}
                             <button class="cursor-pointer text-violet-500 mr-2" onclick={async (e) => {
                                 e.stopPropagation()
-                                const module = DBState.db.modules.find((v) => v.id === rmodule.id)
-                                const char = convertModuleToCharacter(module)
-                                DBState.db.characters.push(char)
+                                const used = await useModuleRow(rmodule)
+                                if(!used){
+                                    return
+                                }
+                                try{
+                                    const char = convertModuleToCharacter(used.module)
+                                    DBState.db.characters.push(char)
+                                }
+                                finally{
+                                    used.release()
+                                }
                                 alertNormal(language.successfullyConverted)
                                 checkCharOrder()
                             }}>
@@ -102,21 +123,49 @@
                                 <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" use:tooltip={language.download} onclick={async (e) => {
                                     e.stopPropagation()
                                     const sel = parseInt(await alertSelect([`CharX (${language.recommended})`, language.alerts.risumLegacy]))
-                                    if(sel === 0){
-                                        exportModule(rmodule)
+                                    const used = await useModuleRow(rmodule)
+                                    if(!used){
+                                        return
                                     }
-                                    else{
-                                        exportModuleLegacy(rmodule)
+                                    try{
+                                        if(sel === 0){
+                                            await exportModule(used.module)
+                                        }
+                                        else{
+                                            await exportModuleLegacy(used.module)
+                                        }
+                                    }
+                                    finally{
+                                        used.release()
                                     }
                                 }}>
                                     <Share2Icon size={18}/>
                                 </button>
                                 <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" use:tooltip={language.edit} onclick={async (e) => {
                                     e.stopPropagation()
-                                    const index = DBState.db.modules.findIndex((v) => v.id === rmodule.id)
-                                    tempModule = rmodule
-                                    editModuleIndex = index
-                                    mode = 2
+                                    if(editorLoading){
+                                        return
+                                    }
+                                    editorLoading = true
+                                    try{
+                                        const used = await useModuleRow(rmodule)
+                                        if(!used){
+                                            return
+                                        }
+                                        // The editor edits the live module in place. A load that finishes after the
+                                        // component was destroyed, while another mode is open, or for a module that
+                                        // left the list opens nothing and gives its handle back.
+                                        if(destroyed || mode !== 0 || !DBState.db.modules.includes(used.module)){
+                                            used.release()
+                                            return
+                                        }
+                                        tempModule = used.module
+                                        editorRelease = used.release
+                                        mode = 2
+                                    }
+                                    finally{
+                                        editorLoading = false
+                                    }
                                 }}>
                                     <SquarePen size={18}/>
                                 </button>
@@ -200,7 +249,12 @@
     <ModuleMenu bind:currentModule={tempModule}/>
     {#if tempModule.name !== ''}
         <Button className="mt-6" onclick={() => {
-            DBState.db.modules[editModuleIndex] = tempModule
+            // The slot is found now, not when the editor opened: the list can change while the editor is open, and a
+            // module that left it is not written back. The same-stub install helper is where this write goes once it exists.
+            const slot = DBState.db.modules.indexOf(tempModule)
+            if(slot !== -1){
+                DBState.db.modules[slot] = tempModule
+            }
             closeEditor()
         }}>{language.editModule}</Button>
     {/if}

@@ -2334,6 +2334,7 @@ export const languageChineseTraditional = {
     "moduleLowLevelNamed": (name: string, file?: string) => file ? `模組「${name}」（${file}）` : `模組「${name}」`,
     "importModulesDone": (imported: number, skipped: number) => skipped > 0 ? `已匯入 ${imported} 個模組，略過 ${skipped} 個。` : `已匯入 ${imported} 個模組。`,
     "moduleUnsupportedFile": (name: string) => `${name}：此檔案類型不支援作為模組。`,
+    "moduleLoadFailed": (name: string) => `無法載入模組「${name}」，因此未對其執行任何操作。`,
     "moduleDuplicatePrompt": (name: string, file: string) => `已安裝名為「${name}」的模組（${file}）。要如何處理此檔案？`,
     "moduleDuplicateReplace": "取代",
     "moduleDuplicateSkip": "略過",

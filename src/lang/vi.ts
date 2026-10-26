@@ -2289,6 +2289,7 @@ export const languageVietnamese = {
     moduleLowLevelNamed: (name: string, file?: string) => file ? `Mô-đun "${name}" (${file})` : `Mô-đun "${name}"`,
     importModulesDone: (imported: number, skipped: number) => skipped > 0 ? `Đã nhập ${imported} mô-đun, bỏ qua ${skipped}.` : `Đã nhập ${imported} mô-đun.`,
     moduleUnsupportedFile: (name: string) => `${name}: loại tệp này không được hỗ trợ làm mô-đun.`,
+    moduleLoadFailed: (name: string) => `Không thể tải mô-đun "${name}", nên không có thao tác nào được thực hiện với nó.`,
     moduleDuplicatePrompt: (name: string, file: string) => `Mô-đun có tên "${name}" (${file}) đã được cài đặt. Nên xử lý tệp này như thế nào?`,
     moduleDuplicateReplace: "Thay thế",
     moduleDuplicateSkip: "Bỏ qua",

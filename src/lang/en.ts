@@ -2432,6 +2432,7 @@ export const languageEnglish = {
     moduleLowLevelNamed: (name: string, file?: string) => file ? `Module "${name}" (${file})` : `Module "${name}"`,
     importModulesDone: (imported: number, skipped: number) => skipped > 0 ? `Imported ${imported} ${imported === 1 ? 'module' : 'modules'}, skipped ${skipped}.` : `Imported ${imported} ${imported === 1 ? 'module' : 'modules'}.`,
     moduleUnsupportedFile: (name: string) => `${name}: this file type is not supported as a module.`,
+    moduleLoadFailed: (name: string) => `The module "${name}" could not be loaded, so nothing was done with it.`,
     moduleDuplicatePrompt: (name: string, file: string) => `A module named "${name}" (${file}) is already installed. What should happen to this file?`,
     moduleDuplicateReplace: "Replace",
     moduleDuplicateSkip: "Skip",

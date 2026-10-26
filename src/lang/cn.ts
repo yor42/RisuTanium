@@ -2289,6 +2289,7 @@ export const languageChinese = {
     "moduleLowLevelNamed": (name: string, file?: string) => file ? `模块“${name}”（${file}）` : `模块“${name}”`,
     "importModulesDone": (imported: number, skipped: number) => skipped > 0 ? `已导入 ${imported} 个模块，跳过 ${skipped} 个。` : `已导入 ${imported} 个模块。`,
     "moduleUnsupportedFile": (name: string) => `${name}：此文件类型不支持作为模块。`,
+    "moduleLoadFailed": (name: string) => `无法加载模块“${name}”，因此未对其执行任何操作。`,
     "moduleDuplicatePrompt": (name: string, file: string) => `已安装名为“${name}”的模块（${file}）。应如何处理此文件？`,
     "moduleDuplicateReplace": "替换",
     "moduleDuplicateSkip": "跳过",
