@@ -2096,6 +2096,7 @@ export const languageKorean = {
     assetIntegrityReportNotCached: (n: number) => `- 아직 캐시되지 않음 (정상, 문제 아님): ${n}\n`,
     assetIntegrityReportNotContentAddressed: (n: number) => `- 콘텐츠 주소 지정 방식이 아님 (이 방법으로는 검증 불가): ${n}\n`,
     assetIntegrityReportArchivedNotChecked: (characterNames: string) => `- 에셋을 검사하지 못한 보관된 캐릭터 (데이터를 불러올 수 없음): ${characterNames}\n`,
+    assetIntegrityReportModulesNotChecked: (moduleNames: string) => `- 에셋을 검사하지 못한 모듈 (로드되지 않음): ${moduleNames}\n`,
     assetIntegrityReportMismatchCount: (n: number) => `- **불일치 발견: ${n}개**\n`,
     assetIntegrityReportEvicted: (n: number) => `\n손상된 캐시 항목 ${n}개를 제거했습니다. 수정 사항을 적용하려면 앱을 새로고침하세요.`,
     assetIntegrityReportLeftInCache: "\n요청하신 대로 캐시에 남겨두었습니다.",

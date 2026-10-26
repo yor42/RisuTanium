@@ -2096,6 +2096,7 @@ export const languageChinese = {
     "assetIntegrityReportNotCached": (n: number) => `- 尚未缓存（正常，无需担心）：${n}\n`,
     "assetIntegrityReportNotContentAddressed": (n: number) => `- 非内容寻址（无法通过此方式验证）：${n}\n`,
     "assetIntegrityReportArchivedNotChecked": (characterNames: string) => `- 未检查资源的已归档角色（无法加载其数据）：${characterNames}\n`,
+    "assetIntegrityReportModulesNotChecked": (moduleNames: string) => `- 未检查资源的模块（未加载）：${moduleNames}\n`,
     "assetIntegrityReportMismatchCount": (n: number) => `- **发现不匹配项：${n}**\n`,
     "assetIntegrityReportEvicted": (n: number) => `\n已移除 ${n} 个已损坏的缓存条目。请重新加载应用以使修复生效。`,
     "assetIntegrityReportLeftInCache": "\n按照您的要求，保留在缓存中。",

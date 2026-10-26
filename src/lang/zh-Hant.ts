@@ -2141,6 +2141,7 @@ export const languageChineseTraditional = {
     "assetIntegrityReportNotCached": (n: number) => `- 尚未快取（正常，非問題）：${n}\n`,
     "assetIntegrityReportNotContentAddressed": (n: number) => `- 非內容定址（無法以此方式驗證）：${n}\n`,
     "assetIntegrityReportArchivedNotChecked": (characterNames: string) => `- 未檢查資源的已封存角色（無法載入其資料）：${characterNames}\n`,
+    "assetIntegrityReportModulesNotChecked": (moduleNames: string) => `- 未檢查資源的模組（未載入）：${moduleNames}\n`,
     "assetIntegrityReportMismatchCount": (n: number) => `- **發現不符項目：${n}**\n`,
     "assetIntegrityReportEvicted": (n: number) => `\n已移除 ${n} 個已損毀的快取項目。請重新載入應用程式，修復才會生效。`,
     "assetIntegrityReportLeftInCache": "\n依您的要求，保留於快取中。",

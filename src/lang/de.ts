@@ -2098,6 +2098,7 @@ export const languageGerman = {
     "assetIntegrityReportNotCached": (n: number) => `- Noch nicht zwischengespeichert (normal, kein Problem): ${n}\n`,
     "assetIntegrityReportNotContentAddressed": (n: number) => `- Nicht inhaltsadressiert (kann auf diese Weise nicht überprüft werden): ${n}\n`,
     "assetIntegrityReportArchivedNotChecked": (characterNames: string) => `- Archivierte Charaktere, deren Assets nicht geprüft wurden (ihre Daten konnten nicht geladen werden): ${characterNames}\n`,
+    "assetIntegrityReportModulesNotChecked": (moduleNames: string) => `- Module, deren Assets nicht geprüft wurden (sie sind nicht geladen): ${moduleNames}\n`,
     "assetIntegrityReportMismatchCount": (n: number) => `- **Abweichungen gefunden: ${n}**\n`,
     "assetIntegrityReportEvicted": (n: number) => `\n${n} beschädigte Cache-Einträge entfernt. Laden Sie die App neu, damit die Korrektur wirksam wird.`,
     "assetIntegrityReportLeftInCache": "\nWie gewünscht im Cache belassen.",

@@ -2235,6 +2235,7 @@ export const languageEnglish = {
     assetIntegrityReportNotCached: (n: number) => `- Not yet cached (normal, not an issue): ${n}\n`,
     assetIntegrityReportNotContentAddressed: (n: number) => `- Not content-addressed (can't be verified this way): ${n}\n`,
     assetIntegrityReportArchivedNotChecked: (characterNames: string) => `- Archived characters whose assets were not checked (their data could not be loaded): ${characterNames}\n`,
+    assetIntegrityReportModulesNotChecked: (moduleNames: string) => `- Modules whose assets were not checked (they are not loaded): ${moduleNames}\n`,
     assetIntegrityReportMismatchCount: (n: number) => `- **Mismatches found: ${n}**\n`,
     assetIntegrityReportEvicted: (n: number) => `\nRemoved ${n} corrupted cache entries. Reload the app for the fix to take effect.`,
     assetIntegrityReportLeftInCache: "\nLeft in the cache, as requested.",

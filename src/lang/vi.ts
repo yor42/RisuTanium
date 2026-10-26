@@ -2096,6 +2096,7 @@ export const languageVietnamese = {
     assetIntegrityReportNotCached: (n: number) => `- Chưa được lưu vào bộ nhớ đệm (bình thường, không phải vấn đề): ${n}\n`,
     assetIntegrityReportNotContentAddressed: (n: number) => `- Không theo địa chỉ nội dung (không thể xác minh theo cách này): ${n}\n`,
     assetIntegrityReportArchivedNotChecked: (characterNames: string) => `- Các nhân vật đã lưu trữ chưa được kiểm tra tài sản (không thể tải dữ liệu của chúng): ${characterNames}\n`,
+    assetIntegrityReportModulesNotChecked: (moduleNames: string) => `- Các mô-đun chưa được kiểm tra tài sản (chưa được tải): ${moduleNames}\n`,
     assetIntegrityReportMismatchCount: (n: number) => `- **Phát hiện ${n} mục không khớp**\n`,
     assetIntegrityReportEvicted: (n: number) => `\nĐã xóa ${n} mục bộ nhớ đệm bị hỏng. Hãy tải lại ứng dụng để bản sửa lỗi có hiệu lực.`,
     assetIntegrityReportLeftInCache: "\nĐã giữ lại trong bộ nhớ đệm theo yêu cầu của bạn.",
