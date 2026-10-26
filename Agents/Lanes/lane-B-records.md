@@ -1094,6 +1094,236 @@ The maintainer took lane A's recommendation, which had two parts:
 **Notes that are not the maintainer's words:**
 - Nothing here authorizes code, a commit or a push.
 
+### MC-585 — Lane B, 2026-10-26: B2b's save-mine guard counts module stubs as a courtesy pre-check, and its parked prompt reuses `peerNoSaveUnloaded` unchanged (wording superseded by `MC-587`)
+
+- **Tag:** decision (the maintainer's answer to an AskUserQuestion in the lane B session, 2026-10-26; the question text is summarised by the wording in the orchestrator's reservation note and is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("Pending record", MC-585), relayed in the brief for this record. The finding it answers is B-1 in the B2b Gate 1 round 1 verdict, `c205-next\b2b-plan-review\result.md`. Inputs: rows 4122 and 4123.
+- **Related:** `MC-583`, `MC-584`, `MC-586`, `MC-587`, `MC-314`; CHORE-205, CHORE-411.
+
+1. **The guard:** B2b's save-mine guard (`hasStubs`) counts module stubs as a courtesy pre-check. In B2b the parked prompt reuses `peerNoSaveUnloaded` unchanged.
+2. **Wording superseded:** the wording of item 1 is superseded by `MC-587`: the CHORE-411 stage replaces the per-case text with one shared message.
+
+**Notes that are not the maintainer's words:**
+- The advisor note for CHORE-411 says the `hasStubs` module term is not the safety: keep it as UX only, or drop it; B-1 is closed by design F and recorded as an S4d prerequisite (`multitab\advisor.md`, "B2b"). The B2b plan section 2.6 and B-1 are therefore an S4d prerequisite (the prompt rewording and the export early check), per the brief's correction.
+- The other options the maintainer was shown are not in any file read for this record.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-586 — Lane B, 2026-10-26: Save mine is withheld when it would have to carry anything this tab cannot rewrite; the prompt offers Reload only and names the blocking items; enforced at commit time (confirms `MC-314`)
+
+- **Tag:** decision (the maintainer's answer to an AskUserQuestion in the lane B session, 2026-10-26; the question text is summarised by the wording in the orchestrator's reservation note and is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` (MC-586), relayed in the brief for this record. Evidence behind the question: the N-1 report and its verification (`n1\result.md`, `n1-verify\result.md`) and the advisor verdict (`multitab\advisor.md`). Inputs: rows 4129 to 4133.
+- **Related:** `MC-314`, `MC-585`, `MC-587`, `MC-589`, `MC-590`, `MC-591`, `MC-595`; CHORE-411.
+
+1. **The rule:** when Save mine would have to carry anything this tab cannot rewrite (unloaded characters or modules, an unsavable character, the old-data keep list), it is withheld. The prompt offers Reload only and names the blocking items.
+2. **Where it is enforced:** at commit time (advisor design F): a commit that carries units refuses unless the base names the manifest they came from.
+3. **Replaces:** the N-1 answer "Offer reload only (Recommended)" (the option chosen in the lane B session), given earlier the same day for the skipped-character keep-mine bug and never assigned an MC (per the coordinator's message to this writer, relayed in the brief). It confirms `MC-314`.
+
+**Notes that are not the maintainer's words:**
+- Design alternatives from the sources, not necessarily the options shown to the maintainer. The N-1 report's smallest fixes: re-park withholding Save mine; drop the skipped character from the tree (a silent loss; "a product decision"); a generic presence check of carried keys (`n1\result.md`, Q4). The advisor rejected a presence check (B), pins (C) and a single writer (D); dropping Save mine (E) is "a product option only" (`multitab\advisor.md`).
+- The N-1 verification found that the report's predicate (skipped saved characters only) was incomplete and that the defect is latent at the snapshot (`n1-verify\result.md`, sections 1 and 4); the commit-time rule answers that incompleteness.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-587 — Lane B, 2026-10-26: the withheld-Save-mine prompt uses one shared message for every cause (replaces `peerNoSaveUnloaded`'s "every character" text; supersedes the wording of `MC-585`)
+
+- **Tag:** decision (the maintainer's answer to an AskUserQuestion in the lane B session, 2026-10-26; the question text is summarised by the wording in the orchestrator's reservation note and is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` (MC-587), relayed in the brief for this record. Inputs: rows 4130 and 4133.
+- **Related:** `MC-058` (the Translator owns the locales), `MC-585`, `MC-586`, `MC-596`, `MC-597`, `MC-598`, `MC-620`; CHORE-411.
+
+1. **The message:** the prompt uses one shared message for every cause: "Save mine is not available: these items are not loaded or cannot be saved in this tab: <names>". It replaces `peerNoSaveUnloaded`'s "every character" text.
+2. **Locales:** the Translator owns the locales.
+
+**Notes that are not the maintainer's words:**
+- The advisor's Q2 was "one message versus per-cause" (`multitab\advisor.md`). The count variant's English text is `MC-620`; the name list is shaped by `MC-596` and `MC-599`.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-588 — Lane B, 2026-10-26: on web, a withheld Save mine stays Reload only (no export-first) for now; revisit with the web and Node multi-tab work (5b)
+
+- **Tag:** decision (the maintainer's answer to an AskUserQuestion in the lane B session, 2026-10-26; the question text is summarised by the wording in the orchestrator's reservation note and is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` (MC-588), relayed in the brief for this record. The advisor's Q3 ("export-first on web") is in `multitab\advisor.md`.
+- **Related:** `MC-586`, `MC-589`; CHORE-411 (a hard prerequisite of 5b).
+
+1. **The behaviour:** on web, when Save mine is withheld, the prompt stays Reload only, with no export-first.
+2. **Revisit:** with the web and Node multi-tab work (5b).
+
+**Notes that are not the maintainer's words:**
+- Nothing here authorizes code, a commit or a push.
+
+### MC-589 — Lane B, 2026-10-26: Save mine is kept on every host where it exists today; designs that remove it are rejected for now
+
+- **Tag:** decision (the maintainer's answer to an AskUserQuestion in the lane B session, 2026-10-26; the question text is summarised by the wording in the orchestrator's reservation note and is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` (MC-589), relayed in the brief for this record. The advisor's Q4 ("retire save mine (flag only)") and option E are in `multitab\advisor.md`.
+- **Related:** `MC-299` item 9 (named in the note as standing), `MC-586`, `MC-590`; CHORE-411.
+
+1. **The decision:** Save mine is kept on every host where it exists today (`MC-299` item 9 stands). Designs that remove it (advisor option E) are rejected for now.
+
+**Notes that are not the maintainer's words:**
+- `MC-299` was not opened for this record; its item 9 is cited as the note words it.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-590 — Lane B, 2026-10-26: in a Save mine over an unnamed base, the old-data keep record is taken from the base's current manifest rather than carried
+
+- **Tag:** decision (the maintainer's answer to an AskUserQuestion in the lane B session, 2026-10-26; the question text is summarised by the wording in the orchestrator's reservation note and is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` (MC-590), relayed in the brief for this record. The two options are Q3 of `chore411\prereq.md`. Inputs: row 4133.
+- **Related:** `MC-589`, `MC-593`, `MC-594`; CHORE-411.
+
+1. **The decision:** in a Save mine over an unnamed base, the old-data keep record (`fixed.legacyKeep`) is taken from the base's current manifest rather than carried ("prereq option one, about 30 lines"). So Save mine stays available on converted profiles.
+
+**Notes that are not the maintainer's words:**
+- The alternative, from `chore411\prereq.md` Q3: option two, withhold Save mine while `legacyKeep` is non-null and the base is unnamed. The prereq report found no writer that releases `legacyKeep` at its snapshot (grep, executed), so option two would withhold Save mine on every converted profile whenever the base is unnamed; it judged option one to keep `MC-589` at about 30 lines.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-591 — Lane B, 2026-10-26: when the base still names this page's manifest, carrying is provably safe and Save mine stays offered even while stubs exist (amends `MC-314` item 1)
+
+- **Tag:** decision (the maintainer's answer to an AskUserQuestion in the lane B session, 2026-10-26; the question text is summarised by the wording in the orchestrator's reservation note and is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` (MC-591), relayed in the brief for this record. The gap it records is Q5 of `chore411\prereq.md`. Inputs: row 4133.
+- **Related:** `MC-314`, `MC-586`; CHORE-411.
+
+1. **The decision:** when the base still names this page's manifest, carrying is provably safe, and Save mine stays offered even while stubs exist. This is today's `namedMine` behaviour, now recorded.
+2. **Amendment:** this amends `MC-314` item 1.
+
+**Notes that are not the maintainer's words:**
+- `MC-314` item 1 (`Agents/Maintainer-Context.md:10344`, opened for this record) reads: "while stubs exist, a parked dirty tab is offered Reload only (the OQ3 refusal stands). Revisit "load the stubs, then Save mine" at W6/B3." It has no exception. The prereq report searched `Agents/` and `docs/` and found no record of the `namedMine` exception (zero hits for `namedMine`, `hasStubs`, `namedByBase`), calling it an unrecorded softening (`chore411\prereq.md` Q5; not repeated here).
+- Nothing here authorizes code, a commit or a push.
+
+### MC-592 — Lane B, 2026-10-26: a web bulk pass overtaken by a peer commit that does not name its manifest stops and parks with the ordinary peer-commit prompt
+
+- **Tag:** decision (the maintainer's CHORE-411 plan r1 product answer P1, an AskUserQuestion answer in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("CHORE-411 plan r1 product answers", P1). The probe behind it is Q1 of `chore411\prereq.md`. Inputs: rows 4133 to 4135.
+- **Related:** `MC-593`, `MC-595`; CHORE-411.
+
+1. **The behaviour:** a web bulk pass that is overtaken by a peer commit that does not name its manifest stops and parks with the ordinary peer-commit prompt (Reload or Save mine). The peer is not overwritten. The wasted upload is accepted.
+2. **Replaces** the map's L6 "by design" overwrite.
+
+**Notes that are not the maintainer's words:**
+- Gate 1 round 1 found that the plan's `units > 0` exemption at the bulk sites contradicted this decision, so the plan was changed to refuse on any declared carry at the bulk sites (`chore411-gate1\result.md`, finding 2).
+- Nothing here authorizes code, a commit or a push.
+
+### MC-593 — Lane B, 2026-10-26: an unreadable or absent base manifest during the keep read parks as replaced, with the existing Reload-only prompt and text
+
+- **Tag:** decision (the maintainer's CHORE-411 plan r1 product answer P4, an AskUserQuestion answer in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` (P4).
+- **Related:** `MC-590`, `MC-594`; CHORE-411.
+
+1. **The behaviour:** an unreadable or absent base manifest during the `MC-590` keep read parks as replaced (the existing Reload-only prompt and text). There is no new string.
+
+**Notes that are not the maintainer's words:**
+- Plan r2's addendum E3 maps each read result: `stale` reads as ok; absent refuses `'absent'`; `unreadable` and `damaged` refuse `'damaged'`; `too-new` refuses `'too-new'`; all park replaced (`chore411\plan-r2-addendum.md`).
+- Nothing here authorizes code, a commit or a push.
+
+### MC-594 — Lane B, 2026-10-26: over an unnamed base, Save mine always takes the base's keep list, including when the page's keep is null
+
+- **Tag:** decision (the maintainer's CHORE-411 plan r1 product answer P5, an AskUserQuestion answer in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` (P5).
+- **Related:** `MC-590`, `MC-593`; CHORE-411.
+
+1. **The behaviour:** over an unnamed base, Save mine always takes the base's keep list, including when the page's keep is null. A null base keep releases the page's keep.
+
+**Notes that are not the maintainer's words:**
+- Gate 1 round 1 asked for a test row and a mutant for a narrow variant that applies only when the page's keep is non-null (`chore411-gate1\result.md`, finding 4).
+- Nothing here authorizes code, a commit or a push.
+
+### MC-595 — Lane B, 2026-10-26: after a refused Save mine, a newer peer commit that still does not name this page's manifest keeps the prompt Reload only
+
+- **Tag:** decision (the maintainer's CHORE-411 plan r1 product answer P6, an AskUserQuestion answer in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` (P6).
+- **Related:** `MC-586`, `MC-597`; CHORE-411.
+
+1. **The behaviour:** after a refused Save mine, a newer peer commit that still does not name this page's manifest keeps the prompt Reload only (the blocked state is carried forward). Save mine is offered again only once the base names the manifest.
+
+**Notes that are not the maintainer's words:**
+- Gate 1 round 1 judged that, by the plan's own argument, the "named again" path is reachable in practice only through fence-first recovery exits, so its test row is synthetic (`chore411-gate1\result.md`, finding 8).
+- Nothing here authorizes code, a commit or a push.
+
+### MC-596 — Lane B, 2026-10-26: when the blocked names list resolves empty, the shared message shows a count instead
+
+- **Tag:** decision (the maintainer's CHORE-411 plan r1 product answer P2, an AskUserQuestion answer in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` (P2).
+- **Related:** `MC-587`, `MC-599`, `MC-620`; CHORE-411.
+
+1. **The behaviour:** when the blocked names list resolves empty, the shared message shows a count instead. This adds one `{count}` string; the Translator does the locales.
+
+**Notes that are not the maintainer's words:**
+- Nothing here authorizes code, a commit or a push.
+
+### MC-597 — Lane B, 2026-10-26: the Reload-only prompt after a refused Save mine shows only the shared message, with no extra line
+
+- **Tag:** decision (the maintainer's CHORE-411 plan r1 product answer P3, an AskUserQuestion answer in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` (P3).
+- **Related:** `MC-587`, `MC-595`; CHORE-411.
+
+1. **The behaviour:** the Reload-only prompt after a refused Save mine shows only the `MC-587` shared message; there is no extra line.
+
+**Notes that are not the maintainer's words:**
+- Nothing here authorizes code, a commit or a push.
+
+### MC-598 — Lane B, 2026-10-26: CHORE-411 stage (a) may merge before stage (b); until (b), the Reload-only prompt keeps the old `peerNoSaveUnloaded` text
+
+- **Tag:** decision (the maintainer's CHORE-411 plan r2 answer, an AskUserQuestion answer in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("CHORE-411 plan r2 answers"). Inputs: rows 4136 and 4137.
+- **Related:** `MC-585`, `MC-587`; CHORE-411.
+
+1. **The behaviour:** stage (a) may merge before stage (b). Until (b), the Reload-only prompt keeps the old `peerNoSaveUnloaded` text even for modules and skipped characters. The note names `MC-585` as the precedent.
+
+**Notes that are not the maintainer's words:**
+- Stage (a) is on main as `64f457d6c` (row 4140); stage (b) is committed and not yet merged (row 4143), so main still shows the old text at the time of writing.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-599 — Lane B, 2026-10-26: the (+N) suffix counts the true total: the blocked count minus the names shown
+
+- **Tag:** decision (the maintainer's CHORE-411 plan r2 answer, an AskUserQuestion answer in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("CHORE-411 plan r2 answers"); applied by the plan r2 addendum E2 (`chore411\plan-r2-addendum.md`). Inputs: row 4137.
+- **Related:** `MC-587`, `MC-596`; CHORE-411.
+
+1. **The behaviour:** the (+N) suffix counts the true total: `blocked.count` minus the names shown.
+
+**Notes that are not the maintainer's words:**
+- The addendum words it as ` (+N)` with `N = blocked.count - shown.length` when positive, `shown` being the at most 5 sanitised names displayed; with 6 names of which 2 are empty it shows 4 names and ` (+2)`.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-620 — Lane B, 2026-10-26: the English text of the count-only Save-mine-unavailable message (lane B's second MC block; first filed as a provisional `MC-B1`, then mislabelled `MC-600`)
+
+- **Tag:** decision (the maintainer's CHORE-411 plan r2 answer, an AskUserQuestion answer in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` (MC-620 and the block 2 line, "Lane B MC block 2 (lane A, 2026-10-26): MC-620 to MC-639"). Inputs: row 4137.
+- **Related:** `MC-587`, `MC-596`, `MC-599`; CHORE-411; `Agents/Lanes/README.md` step 2 (provisional IDs).
+
+1. **The text:** the key `peerNoSaveBlockedCount`, English: "Save mine is not available: items that are not loaded or cannot be saved in this tab ({count})." The Translator does the six locales.
+
+**Notes that are not the maintainer's words:**
+- **ID history:** lane B's block MC-580 to 599 was used up, so this decision was first given the provisional ID `MC-B1` (the placeholder form of `Agents/Lanes/README.md` step 2; an earlier, unrelated `MC-B1` was folded in as `MC-480`). It was then mislabelled `MC-600`, which is inside lane H's range MC-600 to 619 (lane H's own `MC-600` is the integrity-scan decision in `Agents/Lanes/lane-H-records.md`). Nothing committed cited it under either label: the commit messages of `bf1f92a75` and `f7fce82cf` carry no MC number, and `git grep -n -I MC-600 HEAD -- Agents docs src` finds only lane H's decision and the range statements. It was then re-numbered into lane B's second block, MC-620 to 639, assigned by lane A on 2026-10-26 (per the note). `MC-620` is the first used; the next free is `MC-621`.
+- Nothing here authorizes code, a commit or a push.
+
 ## CHORE entries
 
 ### CHORE-227 (new) — After a finished export the app can stay marked busy, and the app has been killed after a second export
@@ -1389,6 +1619,31 @@ Next: the phone "after" run, once lane A merges.
 
 - **Lane A's report:** its full run 1 on `7aa2d33b1` passed this file (not opened here).
 - **Next step:** find the timing dependency. The pre-B1 and lane G counts do not separate the load on the PC from a code cause.
+
+### CHORE-411 (new) — A store2 commit can name units that its base no longer keeps (Save mine and the bulk final write), so a collector pass can leave the committed tree incomplete
+
+**Status (2026-10-26): stages (a) and (b) merged; COMPLETE once these records are on main. Owner lane B.** Ledger rows 4129 to 4143. Stage (a) is `bf1f92a75`, merged to main as `64f457d6c`. Stage (b) is `f7fce82cf`, fast-forwarded onto main by lane A (`git rev-parse origin/main`, 2026-10-26). CHORE-411 is a hard prerequisite of 5b and comes before S4d.
+
+- **Origin and scope:** the multi-tab loss-path investigation (`multitab\map.md`), the N-1 report and its verification (`n1\result.md`, `n1-verify\result.md`) and the advisor's design F (`multitab\advisor.md`). The advisor re-scoped CHORE-411 from a `plan.skipped` predicate to design F and called it a shared-cause correction (`MC-091`). The orchestrator's reservation note calls it "re-scoped to advisor design F ... Before S4d; a hard prerequisite of 5b".
+- **The invariant:** a commit may name pre-existing units by key only if the base it lands on names the manifest they were carried from. It is broken by Save mine and by the bulk final write landing over a changed current (advisor, "Root cause"). The rule was a doc comment only; `checkTree` ran only in `restore` (N-1 report Q1, verified).
+- **Reachability:** latent at 19c7e87a5. The only automatic deleter is the garbage collector, which runs only on Tauri (`gc/autoGc.ts`); the verification found no platform that both deletes units and lets a parked peer's Save mine land. The advisor corrected one premise: single-instance is desktop-only, so Android's single page rests on the page-generation gate alone. The defect goes live when deletion extends to web and Node (5b). The N-1 report's statement that the whole profile fails to assemble was wrong as a production statement: boot asks continue, decline or earlier version (`n1-verify\result.md`, section 3).
+- **L6x:** an executed probe (`chore411\prereq.md` Q1) confirmed that a bulk final write over a changed current can name units a collector pass deleted in the bulk window. Design F's refusal covers the bulk final write too.
+- **Mechanism (stage (a)), per the plan r2 and the commit message:** a commit planned over an acknowledged manifest declares `CommitRequest.carry` (the manifest it carried from and the count of pre-existing units it names without writing). The committer refuses with `base-unnamed` when the commit key it compares against does not keep that manifest as current, retained or pinned. Sites: `ordinary` and Save mine on carried units; the bulk marker step and every round of the bulk final loop on any declared carry (`MC-592`), clearing its own marker. A Save mine that carries nothing takes the base's keep (`MC-590`, `MC-594`; `MC-593` for an unreadable base manifest). The loop parks a refused Save mine with the blocked items named at plan time and keeps that state across newer commits that still do not name the manifest (`MC-586`, `MC-595`). No stored format change.
+- **Mechanism (stage (b)):** one shared Reload-only message naming up to 5 cleaned items with a `(+N)` suffix (`MC-587`, `MC-596`, `MC-597`, `MC-599`, `MC-620`). Locale keys `peerNoSaveBlocked` and `peerNoSaveBlockedCount` replace `peerNoSaveUnloaded` in seven locale files; the Translator supplied the text, pasted unchanged. The `saveMineUnavailable` value becomes `'carries'`.
+- **Staging:** split into (a) and (b) by `MC-598`; until (b) reaches main, the old `peerNoSaveUnloaded` text is shown.
+- **Plan gates:** Gate 1 round 1 `[REJECT]` (14 findings; substantive: stage (a) had no park state, and the `units > 0` exemption at the bulk sites contradicted `MC-592`); streak 1. Round 2 `[EDITORIAL]` (E1 to E4, N1, N2). `[EDITORIAL]` neither counts nor breaks the streak. During round 2 the reviewer accidentally rewrote `store2/commit.ts` with identical content; it checked the content equal to `HEAD`, and the orchestrator verified the worktree blob hash equal to `HEAD`'s (`git hash-object` against `git rev-parse HEAD:<path>`; the orchestrator's own check in the lane B session). Rows 4135 and 4137.
+- **Stage (a) Gate 2:** `[EDITORIAL]` (row 4139). The behaviour was accepted; a false code comment and three commit-message claims were corrected, and both are applied in `bf1f92a75`. The E-3 disclosures, which the reviewer required in the records:
+  - G15 (the references-stay-inside-the-tree check) applies to fixtures only, not inside every loop scenario;
+  - R14 and R15 are built at committer level only;
+  - R4's `checkTree` assertion cannot distinguish base from fix (R4 runs no `gcPass`); R4 is red on base only through the peer overwrite;
+  - mutants X6 (the `markerPending` E4 line) and X8 (the bulk re-read) survive, and so does M23 (the count fallback) in stage (a); stage (b) pins M23 (row 4141);
+  - R10, R13L, G14 and M13 were not built;
+  - the "stale base manifest lands" row cannot be built, because a manifest never reads `stale`.
+- **Stage (b) Gate 2:** `[ACCEPT]`, no defects (row 4142).
+- **Accepted limitation (orchestrator, plan r2 addendum E1):** a refused bulk's own marker gets the in-refusal clear plus one parked retry. If both fail, the marker stands while the prompt is open: liveness only (GC spares the marker prefix), and nothing is lost.
+- **Outside CHORE-411 (addendum N1):** the legacy import builds over the manifest it replaces without `carry`, keeping its keep and unknown fields as a forced bulk. This is pre-existing and the code comment now says so.
+- **Remaining:** none inside CHORE-411. S4d later narrows the early export check to foreign markers (`MC-583` item 4) and must not narrow lane H's C1 snapshot check (row 4144). 5b needs CHORE-411 complete, and the web and Node Save-mine and export-first question is revisited there (`MC-588`).
+- **Related:** `MC-314`, `MC-585` to `MC-599`, `MC-620`, `MC-091`; CHORE-205.
 
 ## Ledger rows
 
@@ -1722,6 +1977,31 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 | 4118 | 2026-10-26 | B2b plan, first draft | investigator | `c205-next\b2b-plan\plan.md` | no | Draft of the B2b plan. Its Q1 led to `MC-584`. Revision 2 follows the advisor recheck (row 4119). |
 | 4119 | 2026-10-26 | Senior-advisor recheck of the B2b plan | senior-advisor | `c205-next\b2b-advisor\note.md` | no | **PROCEED WITH CHANGES:** binding B1 to B3 and recommendations R1 to R4, all four accepted by the orchestrator. The note also holds the S4a edited-path options (a), (b) and (c), carried to the handoff. |
 | 4120 | 2026-10-26 | B2b Gate 1, round 1 | opus-reviewer | the B2b plan, revision 2 | no | **In progress** when this was recorded. No verdict yet. |
+| 4121 | 2026-10-26 | Lane G and lane H (C2) merges to main | lane A | `git log` in the Lane-B worktree: `0378ea86f` ("Merge lane G: refuse a module stub before the streamed .bin export writes anything", `MC-561` follow-up, from `3ce315f6a` (on `6e581588e`)); `ba63e12d2` ("Merge lane H: module stubs never reach plugins or the risuaccess tools", C2, from `2fcf84921`) | no | Both are merges on main dated 2026-10-26; `ba63e12d2`'s first parent is `0378ea86f`. Merged by lane A; lane A's check figures not relayed to lane B. No earlier row for either hash existed in this file (grep, zero hits). The lane G merge delivers the export check of `MC-583` item 3. |
+| 4122 | 2026-10-26 | B2b Gate 1, round 1 (verdict) | opus-reviewer | `c205-next\b2b-plan-review\result.md` | no | **`[REJECT]`,** B-1 and B-2 blocking; streak 1 for B2b. B-1: Save mine over a base that no longer names this page's manifest would carry module-stub units a peer's GC may already have deleted (led to `MC-585` and to design F, row 4130). B-2: oracle 3 (I12) cannot fail on the defect it targets (`markLiveKeys` marks a named key live without checking it exists), and oracle 2 misses absent list units; shown by an executed probe. Fix required: after every committed pass and each `gcPass`, assert every `unit`/`al`/`il` key the index names is present and reads as the expected type. |
+| 4123 | 2026-10-26 | B2b Gate 1, round 2 | opus-reviewer | `c205-next\b2b-plan-review-r2\result.md` | no | **`[EDITORIAL]`.** B-1, B-2 and E-1 to E-6 resolved against the source; the author's dissent on `no-carried-set` accepted; four wording corrections; one pre-existing hazard outside B2b named for routing (the verdict's text was read to its first lines only). HEAD `19c7e87a5`. |
+| 4124 | 2026-10-26 | B2b implementation | sonnet-coder | `c205-next\b2b\result.md`, `commit.txt`, `targeted-final.txt`, `mutant-summary.txt` | no | Per the coder's report and the commit message of `bc4e8fa77`: new `store2/moduleStubMatch.ts`; changes in `codec/split.ts`, `codec/stub.ts`, `codec/modules.ts` and `saveEncoder.ts` (`hasStubs` counts module stubs); on `52877a717` 43 rows fail at their named assertions; 25 mutants run in scratch, each turning a row red; the model test runs 200 runs of 30 steps (seed 20261026) and commits 7,067 stub carries; `pnpm check` 0 errors; targeted run 8 files, 291 passed. One planned row ("recorded entry id mismatched") was left out (the check fires only for a malformed entry, where the compare still refuses). |
+| 4125 | 2026-10-26 | B2b Gate 2 | opus-reviewer (fresh) | `c205-next\b2b-review\result.md`; `run-mutants.ps1`, `mutant-out\` | no | **`[EDITORIAL]`, no blocking findings.** Refusal order, fresh-copy equality with `moduleStubOf`, handles once per pass and the `hasStubs` term checked in source. The reviewer ran six named rows on base: 4 failed, 2 passed (the 2 are guards). I1 (non-blocking edge): an id mutated in place during a yield can collide with a stub; the next pass refuses the stub loudly, nothing lost. I2 (outside B2b): the boot asset GC protects `db.modules[].assets`, which a resident stub lacks; belongs to S4d/B3. The orchestrator then fixed test comments and removed two unread model fields (commit message). |
+| 4126 | 2026-10-26 | B2b committed and merged | orchestrator; lane A | `git log`: `bc4e8fa77` merged as `77c06a307` ("Merge lane B: carry an untouched module stub through a save (CHORE-205 L3 B2b)") | no | Relayed by lane A on 2026-10-26: run 1 passed 23,652; run 2 had 3 load flakes (avatarThumbHeader, requestOriginMemory, formatHexStemFast), each passing alone; check 0 errors; build and dist OK; the maintainer approved the merge in lane A's session. Correction: B2b plan section 2.6 and B-1 are an S4d prerequisite (the prompt rewording and the export early check), not B2b work. |
+| 4127 | 2026-10-26 | Lane H C3 merged | lane A | `git log`: `2de7f2b47` merged as `a3c5fa540` ("Merge lane H: the module UI loads a module stub before using it (CHORE-205 L3 C3)") | no | Relayed by lane A: run 1 23,682 passed and 1 failed; run 2 23,680 passed and 3 failed, all 5 s timeouts under load (`bootstrap.assetSweep` in both runs (new), `nodeServerFixture` once); check 0 on the default Windows heap; build and dist OK; approved by the maintainer in lane A's session. |
+| 4128 | 2026-10-26 | Lane H C4 and C1 merged | lane A | `git log`: `a9dea50d7` (C1, the export loads module stubs before it opens anything) with its parent `f1fe36eab` (C4, stub-safe legacy keep-set, integrity scan and lorebook repair), merged as `08594c144` | no | Relayed by lane A: one combined trial of `4c6f755b7` plus `a9dea50d7` plus `bf1f92a75`, run on tree a8cc4975, which is `64f457d6c`'s tree; `08594c144` is contained in it but was not itself the trial tree. Run 1: 23,877 passed and 1 `nodeServerFixture` port flake, which passed alone. Run 2: 23,878 passed. Check 0 errors; build OK. The maintainer approved C4+C1 conditional on the full checks. See also row 4140. |
+| 4129 | 2026-10-26 | Store2 multi-tab mechanism map | discovery packet (agent role not stated in the file) | `c205-next\multitab\map.md` | no | HEAD `19c7e87a5`, read-only, no probes. Refuted premises: a peer's GC deleting units is not reachable in any shipped path (the only automatic deleter is `runAutoGc`, Tauri only, `MC-369`); GC does not know of another page's parked state; `namedMine` is mostly false in active multi-tab use (the 5-minute admission rule). Catalogued the loss paths, including B-1 and N-1. Labels C (source opened) and I (inferred) are the packet's own. |
+| 4130 | 2026-10-26 | Senior-advisor verdict on the multi-tab loss paths | senior-advisor | `c205-next\multitab\advisor.md` (a summary recorded by the orchestrator; the full hand-back is in the session transcript) | no | **Recommendation F:** enforce the carry rule at commit time (plan exposes "carried from manifest M"; `ordinary` and the bulk final write refuse `base-unnamed`; the loop re-parks with a prompt naming what blocks Save mine; Save mine takes the keep from the base's current manifest). Size I, about 30 to 60 non-test lines (the prerequisite probe later put it at 90 to 115 with names, bulk and UI). Rejected: presence check, pins, single writer; dropping Save mine only as a product option. Premise (b) corrected: single-instance is desktop-only. New lead L6x (traced, to be probed). Advisor questions Q1 to Q4 led to `MC-586` to `MC-589`; Q5 has no MC; `MC-590` and `MC-591` came from the prerequisite report (row 4133). |
+| 4131 | 2026-10-26 | N-1 report (Save mine carries a skipped unsavable character over an unnamed base) | investigator (role not stated in the file) | `c205-next\n1\result.md`; probe `append.ts.txt`, `probe-out.txt` | no | Snapshot `19c7e87a5`. **CONFIRMED (executed):** after 22 peer commits and a `gcPass`, Save mine commits (failures 0, crashed 0) and `checkTree` reports incomplete. Not independently accepted: see row 4132. |
+| 4132 | 2026-10-26 | N-1 independent verification | opus-reviewer | `c205-next\n1-verify\result.md`; probes `zzProbeN1.test.ts`, `zzProbeN1v.test.ts`, `probe-out.txt`, `probe2-out.txt` | no | **Report REJECTED as written; mechanism CONFIRMED and re-executed.** Wrong: production reachability (latent: GC is Tauri-only, and Tauri/Node paths cannot both delete and land a parked Save mine); "the whole profile fails to assemble" (boot asks continue, decline or earlier version); "later GC refuses". The proposed predicate was incomplete: an executed probe showed a stub made after the prompt still commits; `legacyKeep` and B2b module stubs are further carry sources. Recommended predicate: refuse when Save mine over an unnamed base carries anything. |
+| 4133 | 2026-10-26 | CHORE-411 prerequisite probes (L6x, carried-set seam, `legacyKeep`, refusal plumbing, record check) | investigator (role not stated in the file) | `c205-next\chore411\prereq.md`; probes `append-bulk*.ts.txt`, `probe-bulk-out.txt`, `probe-bulk2-out.txt`, `probe-carry-out.txt` | no | Snapshot `0378ea86f`. **L6x CONFIRMED by execution:** a bulk final write over a changed current, with a collector pass inside the bulk window, left `checkTree` incomplete; the control without the in-window pass was complete. Corrections: reused-by-digest units are pre-existing too (probe D: 109 of 112); `legacyKeep` is never released by any writer, so it is non-null forever on a converted profile. Q5 found no record of the `namedMine` exception to `MC-314`. Led to `MC-590` and `MC-591`. |
+| 4134 | 2026-10-26 | CHORE-411 plan, revision 1, and the maintainer's product answers | investigator (`plan.md` line 3) | `c205-next\chore411\plan.md`; prototype probes under `chore411\plan-probes\` | no | Delta plan for design F. Product answers P1 to P6 followed: `MC-592` to `MC-597`. |
+| 4135 | 2026-10-26 | CHORE-411 Gate 1, round 1 | opus-reviewer | `c205-next\chore411-gate1\result.md`; `proto.diff` | no | **`[REJECT]`,** streak 1. Substantive: finding 1 (stage (a) had no park state, so a refused Save mine would re-offer Save mine) and finding 2 (the `units > 0` exemption at the bulk sites contradicts `MC-592`). Required: finding 3 (the refs-diff test is a Gate 2 requirement), finding 4 (rows and mutants for `MC-593` to `MC-595`). Specify: findings 5 to 9 (refuse before the keep read; naming must never throw; the count string; the exact `recheckPark` line; the own marker after a failed clear). Race-freedom confirmed by reading (finding 10). No test or probe re-run. |
+| 4136 | 2026-10-26 | CHORE-411 plan, revision 2, and the plan r2 answers | investigator | `c205-next\chore411\plan-r2.md`; scratch `r13-*.txt` | no | Folds in findings 1 to 14. The maintainer's r2 answers: `MC-598`, `MC-599`, `MC-620`. The addendum (row 4137) overrides r2 where they differ. |
+| 4137 | 2026-10-26 | CHORE-411 Gate 1, round 2, and the addendum | opus-reviewer; orchestrator (addendum) | `c205-next\chore411-gate1-r2\result.md`; `chore411\plan-r2-addendum.md`; scratch `mut-m18-final.txt`, `mut-m18-marker.txt`, `rerun-r13-proto2.txt` | no | **`[EDITORIAL]`:** E1 (the marker-release claim was overstated), E2 (apply `MC-599`), E3 (keep-read status mapping), E4 (do not lower `markerPending`); N1 and N2 are notes. Executed: R13 and G9 on the prototype, plus two reviewer mutants, each killed. **Incident, disclosed:** the reviewer's first mutant attempt wrote `store2/commit.ts` in the worktree three times with identical content (relative path resolved against the process directory); the reviewer checked the content equal to `HEAD`'s blob modulo line endings, and the orchestrator verified the blob hash equal to `HEAD`. **Accepted limitation (orchestrator, E1):** a refused bulk's marker gets the in-refusal clear plus one parked retry; if both fail, it stands while the prompt is open: liveness only, nothing lost. |
+| 4138 | 2026-10-26 | CHORE-411 stage (a) implementation | sonnet-coder (agent a749929c71e62ad71) | `c205-next\chore411-a\result.md`, `base-run2.txt`, `tree-run.txt`, `check.txt`, `mutants-summary.txt`, `commit.txt` | no | Base `a3c5fa540`. As reported: on base 23 failed, 278 passed, 1 skipped: 17 at assertions and 6 contract rows (`TypeError` on the absent API) (the coder's own split in `result.md` was inconsistent; Gate 2 and the commit message give 17 and 6); green on the tree: 230 files, 7,836 passed, 16 skipped; `pnpm check` 0 errors; 21 mutants in scratch, with M23 surviving. Not built: R10, R13L, G14, M13, the optional two-failed-clears row. |
+| 4139 | 2026-10-26 | CHORE-411 stage (a) Gate 2 | opus-reviewer | `c205-next\chore411-a-gate2\result.md`; `src.diff`, `tests.diff`, `mutants-summary.txt`, `base-run.txt`, `diag-g15.txt` | no | **`[EDITORIAL]`.** Base red reproduced (23 failed, 278 passed, 1 skipped); green 301 passed; targeted suites 230 files, 7,836 passed; `pnpm check` 0 errors. Refusal sites and Save mine order verified race-free. E-1 (a false code comment), E-2 (three commit-message claims) and E-3 (disclosures) required; E-1 and E-2 are applied in `bf1f92a75`. **E-3 disclosures:** G15 applies to fixtures only; R14 and R15 are committer-level only; R4's `checkTree` cannot distinguish base from fix; mutants X6 and X8 survive, as does M23; R10, R13L, G14 and M13 were not built; the "stale manifest" row cannot be built. Details in CHORE-411. |
+| 4140 | 2026-10-26 | CHORE-411 stage (a) committed and merged | orchestrator; lane A | `git log`: `bf1f92a75` merged as `64f457d6c` ("Merge commit 'bf1f92a75'") | no | Results as in row 4128 (the combined trial ran on `64f457d6c`'s tree): 23,877 passed plus 1 `nodeServerFixture` port flake on run 1; run 2 23,878 passed; check 0; build OK. Relayed: the maintainer approved the merge if the checks passed. |
+| 4141 | 2026-10-26 | CHORE-411 stage (b) implementation | sonnet-coder (agent a0dcedd5fb5d530c0) | `c205-next\chore411-b\result.md`, `locales.md`, `base-run.txt`, `green-run.txt`, `check.txt`, `mutant-*.txt` | no | Base `bf1f92a75`. As reported: 11 files (seven locale files, `saveLoop.ts`, `ui/peerUi.ts`, `peerUi.test.ts`, `saveLoop.test.ts`); on base 29 failed, 169 passed; green 3 files, 198 passed; `pnpm check` 0 errors; 12 scratch mutants, all killed (including M23 in `blockedOf` and the UI fallback). Choices beyond the plan, flagged by the coder: bars at either end of a name are removed; the cleaning order; the `, ` separator; the 40-code-point cap. Not run: the full `pnpm test`, any device. |
+| 4142 | 2026-10-26 | CHORE-411 stage (b) Gate 2 | adversarial-reviewer | `c205-next\chore411-b-gate2\handback.md` (copied by the lane B orchestrator from the reviewer's message; `result.md` is a one-line pointer); `fuzz.mjs`, `red.txt`, `green.txt`, `check.txt` | no | **`[ACCEPT]`, no numbered defects.** Fuzzed a verbatim copy of the name cleaner: 300,000 inputs, 0 failures; 29 failures on base, 198 passed green; six reviewer mutants each caught; `pnpm check` 0 errors, 0 warnings. Limitation stated by the reviewer: Svelte button-row rendering was not exercised. |
+| 4143 | 2026-10-26 | CHORE-411 stage (b) committed and merged | orchestrator; lane A | `git log`: `f7fce82cf`; `git rev-parse origin/main` = `f7fce82cf` | no | Merged by fast-forward, main = `f7fce82cf` (tree 63d69238). Relayed by lane A: run 1 23,896 passed; run 2 16 failed in 9 files from 18 EBUSY on the risu-node-store temp rmdir and 2 timeouts, all 9 files passing alone (528 passed); check 0 errors; build and dist OK. Translations by the Translator, pasted unchanged. |
+| 4144 | 2026-10-26 | Track H assigned to lane B; requirements for B3 | maintainer (relayed by lane A, 2026-10-26); lane H | `c205-next\b3-notes\from-lane-H.md`; lane H's "Requirements for lane B" in `Agents/Lanes/lane-H-records.md` on main | no | The maintainer assigned the remainder of track H to lane B after CHORE-411, one app-code writer at a time. B3 calls `repairModuleLorebook` before install; installs a repaired body as needing a save; gives each module one shared load; S4d must not narrow C1's second snapshot stub check (`MC-583` item 4 narrows lane G's check only); after B3, run lane H's section 6 checks. Lane H runs the `L3-plan.md` section 6 re-verification at its rebase onto B3, and lane B builds B3 to meet it; since lane H retires after C1, whoever owns track H runs it. Lane H's note that acquire-returns-copy cannot be met on the plugin path (`getDatabase` returns a copy) means that re-verification checks that the real loader returns the live slot. |
+| 4145 | 2026-10-26 | Lane A process note | lane A (relayed) | the brief for this record | no | Lane A relayed both facts: a scratch `pnpm install` run with pnpm 12 rewrote `.modules.yaml` in lane A's own CHORE-216 mutant copy (`%TEMP%\risu-b715\cve-111497\mut`), which broke the shared `node_modules`; lane A rebuilt `node_modules` offline with pnpm 10.34.1. The ban is the lane B orchestrator's: from 2026-10-26, lane B's coder and reviewer briefs forbid package-manager commands in scratch copies or through junctions. |
 
 **Folded in by lane A on 2026-10-23 (records batch 4): ledger rows 2396 to 2437 are in the shared ledger.**
 
@@ -2083,4 +2363,23 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
   - **S4d and recovery:** re-mint after a replaced encoding.
   - **S4d, export check:** narrow the early export check to foreign markers (`MC-583` 4).
   - **`MC-584`:** the module `StubRefusedError` retry-path choice for B2b is to be revisited before S4d.
-- **Next free IDs:** `MC-585`, CHORE-411, row 4121 (rows 4104 to 4120 are used; no CHORE entry was added in this batch).
+- **Next free IDs:** `MC-585`, CHORE-411, row 4121 (rows 4104 to 4120 are used; no CHORE entry was added in this batch). (Superseded below.)
+
+2026-10-26, B2b merged; CHORE-411 stage (a) merged and stage (b) pending; track H assigned:
+- **Merged to main:**
+  - lane G `0378ea86f` and lane H C2 `ba63e12d2` (row 4121);
+  - B2b `bc4e8fa77` as `77c06a307` (row 4126);
+  - lane H C3 `2de7f2b47` as `a3c5fa540` (row 4127);
+  - lane H C4 and C1 as `08594c144` (row 4128);
+  - CHORE-411 stage (a) `bf1f92a75` as `64f457d6c` (row 4140).
+- **Merged:** CHORE-411 stage (b), `f7fce82cf` (Gate 2 `[ACCEPT]`), fast-forwarded onto main (rows 4141 to 4143). CHORE-411 is a hard prerequisite of 5b. Decisions `MC-585` to `MC-599` and `MC-620`; CHORE-411 entry added. The accepted marker-clear limitation and the stage (a) Gate 2 disclosures are in CHORE-411.
+- **Track H:** the maintainer assigned the remainder of track H to lane B after CHORE-411, one app-code writer at a time (row 4144).
+- **Next:** this records commit; then the B3 plan together with track H (lane H's requirements in row 4144), then S4a, S4d, S5 and J1.
+- **Carry-forward:**
+  - **S4a:** the edited-path product question to the maintainer before S4a's Gate 1 (unchanged from the entry above).
+  - **S4d:** the B2b plan section 2.6 and B-1 are an S4d prerequisite (the prompt rewording and the export early check); narrow the early export check to foreign markers (`MC-583` 4) without narrowing C1's second snapshot stub check; mint only entries whose three keys are confirmed present; re-mint after a replaced encoding; revisit `MC-584` first.
+  - **B3:** call `repairModuleLorebook` before install, install a repaired body as needing a save, give each module one shared load, and run lane H's section 6 checks afterwards.
+  - **Process:** no package-manager commands in scratch (row 4145).
+  - **Track H check:** lane H runs the `L3-plan.md` section 6 re-verification at its rebase onto B3; lane B builds B3 to meet it; whoever owns track H after lane H retires runs it.
+- **Handoff:** lane A folds `MC-585` to `MC-599` and `MC-620` into `Maintainer-Context.md` and regenerates the Decision-Index at its next fold-in.
+- **Next free IDs:** `MC-621` (lane B's block MC-580 to 599 is used up; block 2 is MC-620 to 639), CHORE-412, row 4146.
