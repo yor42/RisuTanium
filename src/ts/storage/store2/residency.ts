@@ -2,14 +2,14 @@ import type { JsonObject } from '../blockFrame'
 import type { character, groupChat } from '../database.svelte'
 import type { Store2Backend } from './backend/types'
 import {
-    assembleCharacter, characterMatchesAcknowledged, CodecAssembleError, overlayStub, stubFromEntry,
+    assembleCharacter, assembleModule, characterMatchesAcknowledged, CodecAssembleError, moduleHandles, overlayStub, stubFromEntry,
     type AcknowledgedVerdict, type UnitSource,
 } from './codec'
-import { defaultKeyEnv, type ShardEntry } from './format'
-import { hydrateEntityDigests } from './previousOfTree'
+import { defaultKeyEnv, type ModuleEntry, type ShardEntry } from './format'
+import { hydrateEntityDigests, hydrateModuleDigests } from './previousOfTree'
 import type { Store2SaveContext } from './saveActive'
 import type { SaveEncoder } from './saveEncoder'
-import { readEntityBytes } from './treeBytes'
+import { readEntityBytes, readModuleBytes } from './treeBytes'
 
 /**
  * Residency: which characters of the acknowledged encoding are held by the page as stubs, and how one is loaded,
@@ -28,9 +28,29 @@ export type ResidencyRead =
     | { status: 'ok', value: { character: JsonObject }, entry: ShardEntry, source: UnitSource, bytes: number }
     | { status: 'error', error: unknown, kind?: 'damaged' }
 
+/**
+ * A module read from its units, as a copy. `error` carries why: `no-entry` (the acknowledged encoding holds no module
+ * under the handle), `damaged` (the module unit is absent, damaged or not a module), `too-new` or `unreadable` (the
+ * store failed). An asset or inlay list that is absent, damaged or of a version above this build's is not an error:
+ * the module reads `ok`, that list's bytes are withheld from `source`, and it is left for the next pass to derive.
+ */
+export type ResidencyModuleRead =
+    | { status: 'ok', value: JsonObject, handle: string, entry: ModuleEntry, source: UnitSource, bytes: number }
+    | { status: 'error', reason: 'no-entry' | 'damaged' | 'too-new' | 'unreadable', error: unknown }
+
 export interface Residency {
     /** The entry the latest acknowledged encoding holds under `u`. */
     entryOf(u: string): ShardEntry | null
+    /** The module index entry the latest acknowledged encoding holds under `handle` (`<id>#<occurrence>`). */
+    moduleEntryOf(handle: string): ModuleEntry | null
+    /** Reads and assembles the module of `handle` as a copy: nothing is hydrated and nothing is installed. */
+    readModule(handle: string): Promise<ResidencyModuleRead>
+    /**
+     * Gives the module unit and lists of a read made earlier by `readModule` their digests in place, so an unedited
+     * loaded module is reused whole by its first pass. A unit whose key or Ref is no longer the acknowledged
+     * encoding's is left as it is, so a read that went stale hydrates nothing it should not.
+     */
+    hydrateModule(read: Extract<ResidencyModuleRead, { status: 'ok' }>): void
     /** Reads and assembles the character of `u` as a copy: nothing is hydrated. */
     readCharacter(u: string): Promise<ResidencyRead>
     /** `readCharacter`, then gives the units just read their digests in place, so the loaded character is reused whole by its first pass. */
@@ -111,8 +131,53 @@ export function createResidency(options: ResidencyOptions): Residency {
         hydrateEntityDigests(encoder.acknowledged(), read.entry, read.source)
     }
 
+    // Module entries by handle, rebuilt only when the acknowledged encoding's module index is a different object.
+    let indexedModules: unknown = null
+    let moduleEntries = new Map<string, ModuleEntry>()
+
+    function moduleEntryOf(handle: string): ModuleEntry | null {
+        const index = encoder.acknowledged().objects?.moduleIndex
+        if (index === undefined) {
+            return null
+        }
+        if (index !== indexedModules) {
+            const handles = moduleHandles(index.entries)
+            moduleEntries = new Map(index.entries.map((entry, position) => [handles[position], entry] as const))
+            indexedModules = index
+        }
+        return moduleEntries.get(handle) ?? null
+    }
+
+    async function readModule(handle: string): Promise<ResidencyModuleRead> {
+        const entry = moduleEntryOf(handle)
+        if (entry === null) {
+            return { status: 'error', reason: 'no-entry', error: new Error(`The acknowledged encoding holds no module ${handle}.`) }
+        }
+        try {
+            const read = await readModuleBytes(backend, entry)
+            switch (read.status) {
+                case 'damaged':
+                    return { status: 'error', reason: 'damaged', error: new Error(read.reason) }
+                case 'too-new':
+                    return { status: 'error', reason: 'too-new', error: new Error(read.reason) }
+                case 'unreadable':
+                    return { status: 'error', reason: 'unreadable', error: read.cause }
+                case 'ok':
+                    return { status: 'ok', value: assembleModule(entry, read.source), handle, entry, source: read.source, bytes: read.bytes }
+            }
+        } catch (error) {
+            // A unit that passed its check but does not hold a module is damaged; anything else is the store failing.
+            return error instanceof CodecAssembleError
+                ? { status: 'error', reason: 'damaged', error }
+                : { status: 'error', reason: 'unreadable', error }
+        }
+    }
+
     return {
         entryOf,
+        moduleEntryOf,
+        readModule,
+        hydrateModule: read => hydrateModuleDigests(encoder.acknowledged(), read.entry, read.handle, read.source),
         readCharacter,
         async load(u) {
             const read = await readCharacter(u)

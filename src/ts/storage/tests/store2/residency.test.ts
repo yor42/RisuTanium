@@ -6,7 +6,7 @@ import {
     createMemoryBackend, Store2BackendFailureError, type MemoryBackend, type Store2Backend,
 } from 'src/ts/storage/store2/backend'
 import {
-    assembleCharacter, assembleDatabase, CodecAssembleError, stubFromEntry, unitDigest, type ListDerivation, type PluginBody, type UnitSource,
+    assembleCharacter, assembleDatabase, CodecAssembleError, IDENTITY, moduleHandles, stubFromEntry, unitDigest, type ListDerivation, type PluginBody, type UnitSource,
 } from 'src/ts/storage/store2/codec'
 import { createKeyMint } from 'src/ts/storage/store2/commit'
 import {
@@ -433,5 +433,191 @@ describe('new behaviour: the residency works over the save loop\'s own context',
         derivations = 0
         expect(booted.residency.verdict(copy.value.character as unknown as character)).toBe('clean')
         expect(derivations).toBeGreaterThan(0)
+    })
+})
+
+describe('contract: the residency reads and hydrates one module', () => {
+    /** A boot whose module units carry no digest, as the units of a module stub will (the boot did not read them). */
+    async function bootedWithoutModuleDigests(options: Parameters<typeof bootOf>[1] = {}) {
+        const booted = await bootOf(archiving(2), options)
+        const index = booted.encoder.acknowledged().objects?.moduleIndex
+        if (index === undefined) {
+            throw new Error('The boot holds no module index.')
+        }
+        const handles = moduleHandles(index.entries)
+        const identitiesOf = (handle: string): string[] => [IDENTITY.module, IDENTITY.alModule, IDENTITY.ilModule].map(prefix => `${prefix}${handle}`)
+        for (const handle of handles) {
+            for (const identity of identitiesOf(handle)) {
+                const unit = booted.encoder.acknowledged().units.get(identity)
+                if (unit !== undefined) {
+                    delete unit.digest
+                }
+            }
+        }
+        const digestOf = (identity: string): string | undefined => booted.encoder.acknowledged().units.get(identity)?.digest
+        return { booted, index, handles, identitiesOf, digestOf }
+    }
+
+    function withHeader(bytes: Uint8Array, edit: (header: Uint8Array) => void): Uint8Array {
+        const out = new Uint8Array(bytes)
+        edit(out.subarray(0, 12))
+        new DataView(out.buffer, out.byteOffset + 12, 4).setUint32(0, crc32(out.subarray(0, 12)), true)
+        return out
+    }
+
+    test('moduleEntryOf answers the entry of the acknowledged module index by handle, and null for a handle it does not hold', async () => {
+        const { booted, index, handles } = await bootedWithoutModuleDigests()
+        expect(handles.length).toBeGreaterThanOrEqual(2)
+        handles.forEach((handle, position) => expect(booted.residency.moduleEntryOf(handle)).toBe(index.entries[position]))
+        expect(booted.residency.moduleEntryOf('no-such-module#0')).toBeNull()
+        expect(booted.residency.moduleEntryOf(`${index.entries[0].id}#1`)).toBeNull()
+    })
+
+    test('readModule answers a copy of the stored module and hydrates nothing', async () => {
+        const { booted, index, handles, identitiesOf, digestOf } = await bootedWithoutModuleDigests()
+        const read = await booted.residency.readModule(handles[1])
+        if (read.status !== 'ok') {
+            throw new Error(`The module read ${read.status}.`)
+        }
+        expect(read.entry).toBe(index.entries[1])
+        expect(read.handle).toBe(handles[1])
+        expect(read.value).toEqual((JSON.parse(JSON.stringify(booted.db)) as { modules: unknown[] }).modules[1])
+        expect(read.source.get(keyOfRef(read.entry.unit))).toBeDefined()
+        expect(read.bytes).toBeGreaterThan(0)
+        expect(identitiesOf(handles[1]).every(identity => digestOf(identity) === undefined)).toBe(true)
+    })
+
+    test('hydrateModule gives the module\'s units their digests in place and leaves every other module without one', async () => {
+        const { booted, handles, identitiesOf, digestOf } = await bootedWithoutModuleDigests()
+        const read = await booted.residency.readModule(handles[1])
+        if (read.status !== 'ok') {
+            throw new Error(`The module read ${read.status}.`)
+        }
+        booted.residency.hydrateModule(read)
+        const units = booted.encoder.acknowledged().units
+        expect(digestOf(`${IDENTITY.module}${handles[1]}`)).toBe(unitDigest(read.source.get(keyOfRef(read.entry.unit)) as Uint8Array))
+        expect(units.get(`${IDENTITY.alModule}${handles[1]}`)?.digest).toBeDefined()
+        for (const handle of handles.filter(candidate => candidate !== handles[1])) {
+            expect(identitiesOf(handle).every(identity => digestOf(identity) === undefined), handle).toBe(true)
+        }
+    })
+
+    test('a read that went stale hydrates nothing: the acknowledged encoding names another unit for the module', async () => {
+        const { booted, handles, digestOf } = await bootedWithoutModuleDigests()
+        const read = await booted.residency.readModule(handles[1])
+        if (read.status !== 'ok') {
+            throw new Error(`The module read ${read.status}.`)
+        }
+        const held = booted.encoder.acknowledged().units.get(`${IDENTITY.module}${handles[1]}`)
+        if (held === undefined) {
+            throw new Error('The module unit is not registered.')
+        }
+        held.key = 'a-key-the-read-did-not-name'
+        booted.residency.hydrateModule(read)
+        expect(digestOf(`${IDENTITY.module}${handles[1]}`)).toBeUndefined()
+    })
+
+    test('a handle the acknowledged encoding does not hold is an error with reason no-entry', async () => {
+        const { booted } = await bootedWithoutModuleDigests()
+        const read = await booted.residency.readModule('no-such-module#0')
+        expect(read).toMatchObject({ status: 'error', reason: 'no-entry' })
+    })
+
+    test('a module unit that is absent, damaged or not a module is an error with reason damaged, and the store is untouched', async () => {
+        const { booted, index, handles } = await bootedWithoutModuleDigests()
+        const key = keyOfRef(index.entries[1].unit)
+        const original = booted.memory.snapshot().get(key) as Uint8Array
+        try {
+            booted.memory.poke(key, null)
+            expect(await booted.residency.readModule(handles[1])).toMatchObject({ status: 'error', reason: 'damaged' })
+            const flipped = new Uint8Array(original)
+            flipped[flipped.length - 1] ^= 0xff
+            booted.memory.poke(key, flipped)
+            expect(await booted.residency.readModule(handles[1])).toMatchObject({ status: 'error', reason: 'damaged' })
+        } finally {
+            booted.memory.poke(key, original)
+        }
+        expect((await booted.residency.readModule(handles[1])).status).toBe('ok')
+    })
+
+    test('a module unit a newer build wrote is an error with reason too-new', async () => {
+        const { booted, index, handles } = await bootedWithoutModuleDigests()
+        const key = keyOfRef(index.entries[1].unit)
+        const original = booted.memory.snapshot().get(key) as Uint8Array
+        try {
+            booted.memory.poke(key, withHeader(original, header => { header[4] = 9 }))
+            expect(await booted.residency.readModule(handles[1])).toMatchObject({ status: 'error', reason: 'too-new' })
+        } finally {
+            booted.memory.poke(key, original)
+        }
+    })
+
+    test('an asset list that is absent or damaged is not an error: the module reads ok and that list has no bytes in the source', async () => {
+        const { booted, index, handles } = await bootedWithoutModuleDigests()
+        const key = keyOfRef(index.entries[1].al)
+        const original = booted.memory.snapshot().get(key) as Uint8Array
+        try {
+            for (const bytes of [null, original.slice(0, 4)]) {
+                booted.memory.poke(key, bytes)
+                const read = await booted.residency.readModule(handles[1])
+                expect(read.status).toBe('ok')
+                if (read.status === 'ok') {
+                    expect(read.source.get(key)).toBeUndefined()
+                    booted.residency.hydrateModule(read)
+                    expect(booted.encoder.acknowledged().units.get(`${IDENTITY.alModule}${handles[1]}`)?.digest).toBeUndefined()
+                    expect(booted.encoder.acknowledged().units.get(`${IDENTITY.module}${handles[1]}`)?.digest).toBeDefined()
+                }
+            }
+        } finally {
+            booted.memory.poke(key, original)
+        }
+    })
+
+    test('a module unit that matches its Ref but holds no module object is an error with reason damaged', async () => {
+        const { booted, index, handles } = await bootedWithoutModuleDigests()
+        const entry = index.entries[1]
+        const key = keyOfRef(entry.unit)
+        const framed = encodeUnit(UNIT_TYPE.module, { v: 1, module: 5 })
+        booted.memory.poke(key, framed)
+        entry.unit = refOfFrame(key, framed)
+        const read = await booted.residency.readModule(handles[1])
+        expect(read).toMatchObject({ status: 'error', reason: 'damaged' })
+        if (read.status === 'error') {
+            expect(read.error).toBeInstanceOf(CodecAssembleError)
+        }
+    })
+
+    test('after an acknowledged pass that changes the module index, moduleEntryOf answers the new entries', async () => {
+        const { booted, handles } = await bootedWithoutModuleDigests()
+        const before = booted.residency.moduleEntryOf(handles[1])
+        expect(before?.name).not.toBe('Renamed after boot')
+        const live = booted.db as unknown as { modules: Obj[] }
+        live.modules[1] = { ...live.modules[1], name: 'Renamed after boot' }
+        const pass = await booted.encoder.plan(booted.db, { marked: new Set(), modules: true, whole: false })
+        const { mint } = createKeyMint(seededEnv(901), null)
+        const built = await pass.commitRequest().build({ mint, seq: 2, now: NOW })
+        for (const unit of built.units) {
+            await booted.memory.putUnit(unit.key, unit.bytes)
+        }
+        pass.acknowledge()
+        const after = booted.residency.moduleEntryOf(handles[1])
+        expect(after).not.toBe(before)
+        expect(after?.name).toBe('Renamed after boot')
+        const read = await booted.residency.readModule(handles[1])
+        expect(read.status === 'ok' ? read.entry : null).toBe(after)
+    })
+
+    test('a failing store is an error with reason unreadable and the cause, never damage', async () => {
+        const { booted, handles } = await bootedWithoutModuleDigests({
+            backend: memory => ({
+                ...memory,
+                readUnits: async () => { throw new Store2BackendFailureError('the disk went away') },
+            }),
+        })
+        const read = await booted.residency.readModule(handles[1])
+        expect(read).toMatchObject({ status: 'error', reason: 'unreadable' })
+        if (read.status === 'error') {
+            expect(read.error).toBeInstanceOf(Store2BackendFailureError)
+        }
     })
 })

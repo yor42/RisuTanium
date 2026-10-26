@@ -8,3 +8,5 @@ Agents/Archive/2026-10-08/Phase2-Handoff.md -text
 Agents/Tools/device/** text eol=lf
 # Vitest rewrites a snapshot file that is not byte-identical to its LF output, so keep it LF in every checkout.
 *.snap text eol=lf
+# pnpm applies patches byte-exact; an autocrlf checkout must not turn them into CRLF.
+patches/*.patch -text
