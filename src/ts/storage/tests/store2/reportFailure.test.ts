@@ -12,7 +12,8 @@ vi.mock(import('src/ts/alert'), () => ({
 
 import { changeLanguage, language } from 'src/lang'
 import { Store2CommitRefusedError, Store2NotFlushedError } from 'src/ts/storage/store2/saveLoop'
-import { describeSaveFailure } from 'src/ts/storage/store2/ui/peerUi'
+import { StubRefusedError } from 'src/ts/storage/store2/codec'
+import { describeSaveFailure, saveFailureClassOf } from 'src/ts/storage/store2/ui/peerUi'
 
 /**
  * What a failing store2 save tells the person (`describeSaveFailure`, applied by `reportFailure` in `globalApi`): a
@@ -97,6 +98,33 @@ describe('a failure without a wording of its own', () => {
         const report = describeSaveFailure('plain text', 5, false)
         expect(report.showRaw).toBe(true)
         expect(report.alert).toBeNull()
+    })
+})
+
+describe('an edited module stub', () => {
+    const edited = new StubRefusedError('module', 'mod-1', null, { name: 'Edited module', reason: 'edited' })
+
+    test.each([1, 2, 4, 5, 9])('attempt %i: no toast, no alert, no raw error, five seconds', (attempts) => {
+        expect(describeSaveFailure(edited, attempts, false)).toEqual({ toast: null, alert: null, showRaw: false, waitMs: 5000 })
+    })
+
+    test('it is its own failure class', () => {
+        expect(saveFailureClassOf(edited, false)).toBe('module-edited')
+    })
+
+    test('guard: an uncarriable module stub, a character stub and a plain error keep the generic wording and class', () => {
+        const uncarriable = new StubRefusedError('module', 'mod-1', null, { name: 'Edited module', reason: 'uncarriable' })
+        const character = new StubRefusedError('character', 'cha-1', null)
+        for (const error of [uncarriable, character, new Error('other')]) {
+            expect(describeSaveFailure(error, 1, false)).toEqual({ toast: language.saveRetrying, alert: null, showRaw: false, waitMs: 1000 })
+            expect(describeSaveFailure(error, 5, false).showRaw).toBe(true)
+            expect(saveFailureClassOf(error, false)).toBe('other')
+        }
+    })
+
+    test('guard: a full storage still wins over the edited stub', () => {
+        expect(saveFailureClassOf(edited, true)).toBe('storage-full')
+        expect(describeSaveFailure(edited, 1, true).toast).toBe(language.saveStorageFull)
     })
 })
 

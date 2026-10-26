@@ -14,6 +14,8 @@
     import { noteEditConfirm } from "src/ts/process/chatPhaseRing"
     import { runTrigger } from 'src/ts/process/triggers'
     import { beginWork, originStatus } from 'src/ts/process/chatOrigin'
+    import { ensureModulesOrAlert } from 'src/ts/process/moduleEnsure'
+    import { hasModuleStubs } from 'src/ts/process/moduleRefList'
     import { sayTTS } from "src/ts/process/tts"
     import { buildDisplayParseOptions } from "src/ts/process/displayParseOptions"
     import { isTTSVoiceMode } from "src/ts/process/ttsModes"
@@ -812,7 +814,10 @@
 
         let triggerResult
         try {
-            triggerResult =
+            // A click has no cancel of its own: a load that waits on a question waits until it is answered or the
+            // chat is deleted. A failed load shows its alert and the trigger does not run.
+            const modulesReady = !hasModuleStubs() || await ensureModulesOrAlert(workHandle.origin, runController.signal, { owner: currentChar, chat: currentChat })
+            triggerResult = !modulesReady ? undefined :
                 triggerName ?
                     await runTrigger(currentChar, 'manual', {
                         chat: currentChat,
@@ -885,7 +890,10 @@
 
         let triggerResult
         try {
-            triggerResult = await runLuaInteractionTrigger('form', currentChar, formEvent, { data }, workHandle.origin)
+            const modulesReady = !hasModuleStubs() || await ensureModulesOrAlert(workHandle.origin, runController.signal, { owner: currentChar, chat: currentChat })
+            if (modulesReady) {
+                triggerResult = await runLuaInteractionTrigger('form', currentChar, formEvent, { data }, workHandle.origin)
+            }
         } finally {
             workHandle.end()
         }

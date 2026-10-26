@@ -312,13 +312,13 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 })
 
 import { SaveLocalBackup, SavePartialLocalBackup } from 'src/ts/drive/backuplocal'
-import { snapshotModuleList } from 'src/ts/drive/exportModules'
+import { ExportModuleUnreadableError, snapshotModuleList, type ExportModuleFailure } from 'src/ts/drive/exportModules'
 import { dbWriteLock, LocalWriter } from 'src/ts/globalApi.svelte'
 import { isBusy } from 'src/ts/process/memory/busyActions'
 import { writeRisuSaveV0 } from 'src/ts/storage/risuSaveV0'
 import { decodeRisuSave } from 'src/ts/storage/risuSave'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from 'src/ts/storage/moduleStub'
-import { registerModuleLoader, unregisterModuleLoader } from 'src/ts/storage/store2/moduleAcquire'
+import { ModuleAmbiguousError, ModuleLoadError, registerModuleLoader, unregisterModuleLoader, type ModuleLoadFailure } from 'src/ts/storage/store2/moduleAcquire'
 import { DBState } from 'src/ts/stores.svelte'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
@@ -561,7 +561,11 @@ describe.each(PROFILES)('$name', (profile) => {
         expect(backupSink.opened).toBe(0)
         expect(backupSink.writes.length).toBe(0)
         expect(alertErrorMock).toHaveBeenCalledTimes(1)
-        expect(String(alertErrorMock.mock.calls[0][0])).toBe(language.backupFailedNothingWritten())
+        const shown = String(alertErrorMock.mock.calls[0][0])
+        // The alert names the module and is not the generic text; a plain loader failure claims no cause.
+        expect(shown).toContain('Broken Module')
+        expect(shown).not.toBe(language.backupFailedNothingWritten())
+        expect(shown).toBe(language.backupFailedModuleUnreadable('Broken Module', 'unreadable'))
         expect(consoleErrorMentions('Broken Module')).toBe(true)
         expect(releaseLog.released).toEqual(['m-a'])
     })
@@ -628,7 +632,10 @@ describe('unreadable module on the Tauri backend', () => {
 
         expect(outcome.status).toBe('failed')
         expect(save).not.toHaveBeenCalled()
-        expect(String(alertErrorMock.mock.calls[0][0])).toBe(language.backupFailedNothingWritten())
+        const shown = String(alertErrorMock.mock.calls[0][0])
+        expect(shown).toContain('Broken Module')
+        expect(shown).not.toBe(language.backupFailedNothingWritten())
+        expect(shown).toBe(language.backupFailedModuleUnreadable('Broken Module', 'missing'))
     })
 })
 
@@ -773,6 +780,71 @@ describe('snapshotModuleList', () => {
         installLoaderDouble()
         await expect(snapshotModuleList(DBState.db)).rejects.toMatchObject({ name: 'ExportModuleUnreadableError', moduleName: 'Stub' })
         expect(loadLog).toEqual([])
+    })
+
+    type Reason = ExportModuleFailure
+
+    /** The reason a snapshot of one stub gives when the loader fails with `thrown`, or resolves null for `null`. */
+    async function reasonFor(thrown: Error | null): Promise<unknown> {
+        useDatabase(databaseWith({ modules: [stubSlot('m-x', 'Broken Module')] }))
+        registerModuleLoader(async () => {
+            if (thrown === null) {
+                return null
+            }
+            throw thrown
+        })
+        const error = await snapshotModuleList(DBState.db).catch((caught: unknown) => caught)
+        expect(error).toBeInstanceOf(ExportModuleUnreadableError)
+        return (error as ExportModuleUnreadableError).reason
+    }
+
+    const loaderRows: [string, ModuleLoadFailure, Reason][] = [
+        ['unreadable', 'unreadable', 'unreadable'],
+        ['damaged', 'damaged', 'damaged'],
+        ['too-new', 'too-new', 'newer'],
+        ['no-entry', 'no-entry', 'unreadable'],
+        ['edited', 'edited', 'unreadable'],
+        ['stale', 'stale', 'changed'],
+        ['replaced', 'replaced', 'changed'],
+        // Double-driven: the snapshot's own duplicate check preempts the loader's ambiguous answer in production.
+        ['ambiguous (loader double)', 'ambiguous', 'duplicate'],
+    ]
+
+    test.each(loaderRows)('unreadable-reason: loader failure %s maps to its reason', async (_label, failure, reason) => {
+        expect(await reasonFor(new ModuleLoadError(failure, 'm-x', 'Broken Module'))).toBe(reason)
+    })
+
+    test('unreadable-reason: a real two-slot duplicate list is duplicate', async () => {
+        useDatabase(databaseWith({ modules: [stubSlot('dup', 'Broken Module'), fullModule('dup', 'Other')] }))
+        installLoaderDouble()
+        const error = await snapshotModuleList(DBState.db).catch((caught: unknown) => caught)
+        expect((error as ExportModuleUnreadableError).cause).toBeInstanceOf(ModuleAmbiguousError)
+        expect((error as ExportModuleUnreadableError).reason).toBe('duplicate')
+    })
+
+    test('unreadable-reason: a null body is missing and a plain error is unreadable', async () => {
+        expect(await reasonFor(null)).toBe('missing')
+        expect(await reasonFor(new Error('read failed'))).toBe('unreadable')
+    })
+
+    test('unreadable-reason: every reason words a different alert that names the module and never advises reload', () => {
+        const reasons: Reason[] = ['damaged', 'missing', 'newer', 'changed', 'duplicate', 'unreadable']
+        const texts = reasons.map((reason) => language.backupFailedModuleUnreadable('Broken Module', reason))
+        expect(new Set(texts).size).toBe(reasons.length)
+        for (const text of texts) {
+            expect(text).toContain('"Broken Module"')
+            expect(text.toLowerCase()).not.toContain('reload')
+        }
+        const duplicate = language.backupFailedModuleUnreadable('Broken Module', 'duplicate')
+        expect(duplicate).not.toContain('changed')
+    })
+
+    test('unreadable-reason: a duplicate list stops a full export with the duplicate text', async () => {
+        useDatabase(databaseWith({ modules: [stubSlot('dup', 'Broken Module'), stubSlot('dup', 'Twin')] }))
+        installLoaderDouble()
+        const outcome = await SaveLocalBackup() as { status: string }
+        expect(outcome.status).toBe('failed')
+        expect(String(alertErrorMock.mock.calls[0][0])).toBe(language.backupFailedModuleUnreadable('Broken Module', 'duplicate'))
     })
 
     test('resident slots are the same objects, in order, in a new array', async () => {

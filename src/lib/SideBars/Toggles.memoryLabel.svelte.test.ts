@@ -27,6 +27,7 @@ vi.mock('src/ts/stores.svelte', () => ({
     selIdState: { selId: -1 },
     MobileGUI: { subscribe: (run: (value: boolean) => void) => { run(false); return () => {} } },
     selectedCharID: writable(0),
+    ReloadGUIPointer: writable(0),
 }))
 vi.mock('src/ts/storage/database.svelte', () => ({
     getCurrentCharacter: () => undefined,

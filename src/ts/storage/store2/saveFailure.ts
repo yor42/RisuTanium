@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store'
 
 /** The kind of failure a save pass ended in, as `describeSaveFailure` tells them apart. */
-export type SaveFailureClass = 'storage-full' | 'not-flushed' | 'commit-refused' | 'other'
+export type SaveFailureClass = 'storage-full' | 'not-flushed' | 'commit-refused' | 'module-edited' | 'other'
 
 /**
  * The save pass that is failing now. `attempts` counts the failed passes in a row. Only a save pass writes this:

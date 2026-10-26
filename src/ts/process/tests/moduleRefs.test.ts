@@ -299,18 +299,25 @@ describe('module reference rule through getModules', () => {
         expect(picked[0].name).toBe('first')
     })
 
-    test('memo-key-unchanged', () => {
-        const first = select([mod('a', undefined, 'old')], { enabled: ['a'], chat: ['b'] })
+    test('memo-key-is-the-joined-ids-and-the-list-object', () => {
+        const list = [mod('a', undefined, 'old')]
+        const first = select(list, { enabled: ['a'], chat: ['b'] })
         expect(first.map((m) => m.name)).toEqual(['old'])
-        // Same joined id list: the memoised result is returned, not recomputed.
-        ctx.db = { modules: [mod('a', undefined, 'new')], enabledModules: ['a'], moduleIntergration: '' }
+        // Same joined id list and the same list object: the memoised result is returned, not recomputed.
+        ctx.db = { modules: list, enabledModules: ['a'], moduleIntergration: '' }
         expect(getModules()).toBe(first)
-        // A different joined list recomputes.
+        // The same ids in a replaced list (a whole-list write) recompute.
+        ctx.db = { modules: [mod('a', undefined, 'new')], enabledModules: ['a'], moduleIntergration: '' }
+        const replaced = getModules()
+        expect(replaced).not.toBe(first)
+        expect((replaced as unknown as TestModule[]).map((m) => m.name)).toEqual(['new'])
+        // A different joined id list recomputes.
+        const shared = [mod('a', undefined, 'new'), mod('a-z', undefined, 'joined')]
         ctx.chat = undefined
-        ctx.db = { modules: [mod('a', undefined, 'new')], enabledModules: ['a', 'z'], moduleIntergration: '' }
+        ctx.db = { modules: shared, enabledModules: ['a', 'z'], moduleIntergration: '' }
         expect((getModules() as unknown as TestModule[]).map((m) => m.name)).toEqual(['new'])
-        // The key is the ids joined with '-', so these two lists collide.
-        ctx.db = { modules: [mod('a-z', undefined, 'joined')], enabledModules: ['a-z'], moduleIntergration: '' }
+        // The key is the ids joined with '-', so with the same list object these two lists collide.
+        ctx.db = { modules: shared, enabledModules: ['a-z'], moduleIntergration: '' }
         const collided = getModules() as unknown as TestModule[]
         expect(collided.map((m) => m.name)).toEqual(['new'])
     })

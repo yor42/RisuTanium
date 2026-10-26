@@ -53,7 +53,7 @@ import type { SkippedLegacyEntry } from 'src/ts/storage/store2/legacy/lenient'
 import type { IncompleteItem } from 'src/ts/storage/store2/legacy/resolve'
 import type { ColdUnitRead } from 'src/ts/storage/store2/legacy/storeReader'
 import { createSaveEncoder } from 'src/ts/storage/store2/saveEncoder'
-import { getActiveStore2Save, resetStore2SaveForTest } from 'src/ts/storage/store2/saveActive'
+import { getActiveStore2Save, getModuleLoader, resetStore2SaveForTest } from 'src/ts/storage/store2/saveActive'
 import { resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import { BLOCKED_TABLE, blockedScreen } from 'src/ts/storage/store2/ui/bootText'
@@ -534,6 +534,23 @@ describe('new behaviour: row 5, a normal store2 profile', () => {
         expect(getStore2BootSession()).toBe(result.session)
         expect(getPageStorageMode()).toEqual({ kind: 'store2' })
         expect(test.rounds()).toBe(1)
+    })
+
+    test('it registers the module loader and gives the save context the module valve, and a page that does not open registers neither', async () => {
+        const world = await seedWorld()
+        expect(getModuleLoader()).toBeNull()
+        expectStoreResult(await rig({ memory: world.memory }).dispatch())
+        expect(typeof getModuleLoader()).toBe('function')
+        expect(typeof getActiveStore2Save()?.loadModuleStub).toBe('function')
+        resetStore2SaveForTest()
+        expect(getModuleLoader()).toBeNull()
+
+        const tooNew = await seedWorld()
+        tooNew.memory.poke(COMMIT_KEY, tooNewFrame(stored(tooNew, COMMIT_KEY)))
+        const test = rig({ memory: tooNew.memory })
+        expect((await test.dispatch()).kind).not.toBe('store2')
+        expect(getModuleLoader()).toBeNull()
+        expect(getActiveStore2Save()).toBeNull()
     })
 
     test('it writes nothing: no backend write, no store write, no store delete (21 numbered backups stand)', async () => {

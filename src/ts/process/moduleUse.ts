@@ -1,6 +1,7 @@
 import { language } from 'src/lang'
 import { alertError } from '../alert'
 import { isModuleStub } from '../storage/moduleStub'
+import { DBState } from '../stores.svelte'
 import { acquireModule } from '../storage/store2/moduleAcquire'
 import type { RisuModule } from './modules'
 
@@ -28,6 +29,32 @@ export async function useModuleRow(row: RisuModule): Promise<UsableModule | null
 /** Loads the module held by `id` for a caller that only has the id; failures are shown as in `useModuleRow`. */
 export async function useModuleById(id: string, name: string): Promise<UsableModule | null> {
     return await acquireForUse(id, name)
+}
+
+/**
+ * The Realm upload payload of the module in list row `index`: the loaded module serialised with the `risuModule` type
+ * tag, and its name. The tag is added to a copy, so the live slot is never written; the row (not its id) selects the
+ * module, so a duplicate id cannot substitute another module. Null when the row is absent or its body cannot be loaded
+ * (the failure has been shown to the user).
+ */
+export async function realmModuleJson(index: number): Promise<{ json: string, name: string } | null> {
+    const row = DBState.db.modules[index]
+    if (!row) {
+        return null
+    }
+    const usable = await useModuleRow(row)
+    if (!usable) {
+        return null
+    }
+    try {
+        return {
+            json: JSON.stringify({ ...usable.module, type: 'risuModule' }),
+            name: usable.module.name
+        }
+    }
+    finally {
+        usable.release()
+    }
 }
 
 async function acquireForUse(id: string, name: string): Promise<UsableModule | null> {

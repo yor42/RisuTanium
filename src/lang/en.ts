@@ -2085,6 +2085,17 @@ export const languageEnglish = {
         "The backup is ready to save. Press OK to start saving it.",
     backupFailedNothingWritten: () =>
         "The backup failed before anything was written to the file. Run the backup again.",
+    backupFailedModuleUnreadable: (name: string, reason: 'damaged' | 'missing' | 'newer' | 'changed' | 'duplicate' | 'unreadable') => {
+        const clause = {
+            damaged: 'is damaged, or its stored data is missing. The backup can be run again once it is deleted or replaced in the module settings.',
+            missing: 'could not be found. Run the backup again; if it still fails, delete or replace it in the module settings first.',
+            newer: 'was saved by a newer version of the app, which this version cannot read. Update the app and run the backup again; delete or replace it in the module settings only if you no longer need it.',
+            changed: 'changed while it was being read. Run the backup again; if it fails again, delete or replace it in the module settings first.',
+            duplicate: 'shares its id with another module. The backup can be run again once one of the two is deleted in the module settings.',
+            unreadable: 'could not be read. The backup can be run again once it is deleted or replaced in the module settings.',
+        }[reason]
+        return `The backup stopped before anything was written to the file because the module "${name}" ${clause}`
+    },
     internalBackupUnreadable: "This backup is damaged or incomplete, so it was not loaded. Your current data was not changed.",
     internalBackupWriteFailed: "The backup could not be saved. Your current data was not changed.",
     internalBackupListFailed: "The backup list could not be read. Nothing was changed.",
@@ -2945,6 +2956,8 @@ export const languageEnglish = {
         peerCleanCommitDrafts: "Another tab saved changes to your data. This tab has text or an edit you have not finished, and reloading discards it.",
         peerCleanReplacedDrafts: "Your saved data was changed outside this tab. Reload to continue. This tab has text or an edit you have not finished, and reloading discards it.",
         peerReloadDrafts: "Reload (unfinished text and edits are lost)",
+        moduleEditedTitle: "The module \"{name}\" was changed in this tab in a way that cannot be saved, so nothing in this tab is being saved. Reload to keep working; this tab's unsaved changes are lost.",
+        moduleEditedKeep: "Keep working (nothing is saved until you reload)",
     },
 } satisfies I18nTranslation;
 

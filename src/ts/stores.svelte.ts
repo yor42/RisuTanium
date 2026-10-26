@@ -4,6 +4,7 @@ import { type simpleCharacterArgument } from "./parser/parser.svelte";
 import type { alertData } from "./alert";
 import { moduleUpdate } from "./process/modules";
 import { trackModuleUpdateDeps } from "./process/moduleUpdateDeps";
+import { ensureSelectedModules } from "./process/moduleEnsure";
 import { resetScriptCache } from "./process/scripts";
 import type { hubType } from "./characterCards";
 
@@ -184,7 +185,14 @@ ReloadGUIPointer.subscribe(() => {
     resetScriptCache()
 })
 
+// A reactive mirror of loadedStore: the module effect reads it, so the effect re-runs when boot ends and the load
+// trigger, inert until then, starts for the references that exist by then.
+const moduleBoot = $state({ done: false })
+
 $effect.root(() => {
+    loadedStore.subscribe((v) => {
+        moduleBoot.done = v
+    })
     selectedCharID.subscribe((v) => {
         selIdState.selId = v
 
@@ -203,5 +211,6 @@ $effect.root(() => {
         DBState?.db?.characters?.[selIdState.selId]?.backgroundHTML
         DBState?.db?.moduleIntergration
         moduleUpdate()
+        ensureSelectedModules(moduleBoot.done)
     })
 })

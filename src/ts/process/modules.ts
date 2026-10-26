@@ -1,7 +1,7 @@
 import { language } from "src/lang"
 import { fillLang } from "src/lang/fill"
 import { alertClear, alertConfirm, alertModuleSelect, alertNormal, alertStore, alertWait } from "../alert"
-import { getCurrentCharacter, getCurrentChat, getDatabase, setCurrentCharacter, setDatabase, type customscript, type loreBook, type triggerscript } from "../storage/database.svelte"
+import { getCurrentCharacter, getDatabase, setCurrentCharacter, setDatabase, type customscript, type loreBook, type triggerscript } from "../storage/database.svelte"
 import type { RunSubject } from "./chatOrigin"
 import { ASSET_PIECE_SAVE_MIN_BYTES } from "../assetHash"
 import { AppendableBuffer, AssetSourceChangedError, downloadFile, forageStorage, LocalWriter, readImage, saveAsset, saveAssetFromPieces, VirtualWriter } from "../globalApi.svelte"
@@ -14,12 +14,13 @@ import { DBState, HideIconStore, moduleBackgroundEmbedding, ReloadGUIPointer } f
 import {get} from "svelte/store"
 import { convertCharacterToModule, convertModuleToCharacter } from "../interchangeability"
 import { exportCharacterCard, importCharacterFile } from "../characterCards"
-import { matchesModuleRef, referencedModuleIds } from "./moduleRefs"
+import { moduleListOf, moduleRefIdsOf } from "./moduleRefList"
 import { ModuleRefusal } from "./moduleRefusal"
 import { ModuleImportStopped, confirmRisumLowLevel } from "./moduleImportStop"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportOutcome } from "../importBatch"
 import { markBootWrite } from "../bootWindow"
 import { useModuleById } from "./moduleUse"
+import { hasModuleStubKey, isModuleStub } from "../storage/moduleStub"
 import { DuplicateSession, applyModulePlacement, describeReplace, type DuplicateDecision } from "./moduleDuplicates"
 import { withBusy } from "./memory/busyActions"
 import { StoreBlobUnsupportedError } from "../storage/store/errors"
@@ -242,6 +243,11 @@ async function scanRisum(source: ImportSource): Promise<RisumScan> {
     const module = main.module
     if(!module || typeof module !== 'object' || (module.assets != null && !Array.isArray(module.assets))){
         console.error("Invalid module")
+        throw new ModuleRefusal(language.errors.noData)
+    }
+    //A file that carries the stub marker is refused whole, before any asset is written: it would be taken for a stand-in whose body is stored elsewhere.
+    if(hasModuleStubKey(module)){
+        console.error("Module carries the stub marker")
         throw new ModuleRefusal(language.errors.noData)
     }
 
@@ -586,6 +592,9 @@ async function importModuleJson(file:File, batchFile:string|undefined, session:D
     try {
         const importData = JSON.parse(Buffer.from(fileData).toString())
         if(importData.type === 'risuModule'){
+            if(hasModuleStubKey(importData)){
+                return {kind: 'refused', reason: language.errors.noData}
+            }
             if(
                 (!importData.name)
                 || (!importData.id)
@@ -712,68 +721,36 @@ function getModuleById(id:string){
     return null
 }
 
-function getModuleByIds(ids:string[]){
-    const db = getDatabase()
-    const idSet = new Set(ids)
-    const modules = db.modules.filter(m => matchesModuleRef(m, idSet))
-    return deduplicateModuleById(modules)
-}
-
-function deduplicateModuleById(modules:RisuModule[]){
-    let ids:string[] = []
-    let newModules:RisuModule[] = []
-    for(let i=0;i<modules.length;i++){
-        if(ids.includes(modules[i].id)){
-            continue
-        }
-        ids.push(modules[i].id)
-        newModules.push(modules[i])
-    }
-    return newModules
-}
-
+// The memo is keyed on the id list and on the list object that held the rows: a whole-list replacement with the same
+// ids (a plugin write) must not return rows of the replaced list.
 let lastModules = ''
+let lastModuleList:RisuModule[] | undefined = undefined
 let lastModuleData:RisuModule[] = []
 export function getModules(subject?: RunSubject){
-    let currentChat: ReturnType<typeof getCurrentChat>
-    let character: ReturnType<typeof getCurrentCharacter>
-    let persona: ReturnType<typeof checkPersonaBinded>
-    if(subject){
-        const ctx = subject.resolve()
-        currentChat = ctx?.chat
-        character = ctx?.owner
-        persona = checkPersonaBinded(ctx?.chat ?? null)
-    } else {
-        currentChat = getCurrentChat()
-        character = getCurrentCharacter()
-        persona = checkPersonaBinded()
-    }
-    const db = getDatabase()
-    const ids = referencedModuleIds({
-        enabledModules: db.enabledModules,
-        chat: currentChat,
-        character,
-        persona,
-        moduleIntergration: db.moduleIntergration,
-    })
+    const ids = moduleRefIdsOf(subject)
     const idsJoined = ids.join('-')
-    if(lastModules === idsJoined){
+    const list = getDatabase().modules
+    if(lastModules === idsJoined && lastModuleList === list){
         return lastModuleData
     }
 
-    let modules:RisuModule[] = getModuleByIds(ids)
+    let modules:RisuModule[] = moduleListOf(ids)
     lastModules = idsJoined
+    lastModuleList = list
     lastModuleData = modules
     return modules
 
 }
 
 
+// The body getters below skip a slot that is marked as a module stub even when it carries body keys (an edited or
+// malformed stub): a stub's body is never read until the loader has replaced the slot. getModules itself still
+// returns stubs, because callers read their id, namespace and icon flags.
 export function getModuleLorebooks(subject?: RunSubject) {
     const modules = getModules(subject)
     let lorebooks: loreBook[] = []
     for (const module of modules) {
-        if(!module){
+        if(!module || isModuleStub(module)){
             continue
         }
         if (module.lorebook) {
@@ -787,7 +764,7 @@ export function getModuleAssets(subject?: RunSubject) {
     const modules = getModules(subject)
     let assets: [string,string,string][] = []
     for (const module of modules) {
-        if(!module){
+        if(!module || isModuleStub(module)){
             continue
         }
         if (module.assets) {
@@ -802,7 +779,7 @@ export function getModuleTriggers(subject?: RunSubject) {
     const modules = getModules(subject)
     let triggers: triggerscript[] = []
     for (const module of modules) {
-        if(!module){
+        if(!module || isModuleStub(module)){
             continue
         }
         if (module.trigger) {
@@ -818,7 +795,7 @@ export function getModuleRegexScripts(subject?: RunSubject) {
     const modules = getModules(subject)
     let customscripts: customscript[] = []
     for (const module of modules) {
-        if(!module){
+        if(!module || isModuleStub(module)){
             continue
         }
         if (module.regex) {
@@ -832,7 +809,7 @@ export function getModuleToggles(subject?: RunSubject) {
     const modules = getModules(subject)
     let costomModuleToggles: string = ''
     for (const module of modules) {
-        if(!module){
+        if(!module || isModuleStub(module)){
             continue
         }
         if (module.customModuleToggle) {
@@ -845,7 +822,7 @@ export function getModuleToggles(subject?: RunSubject) {
 export function getModuleMcps(subject?: RunSubject) {
     const modules = getModules(subject)
 
-    return modules.map((v) => v.mcp?.url).filter((v) => v)
+    return modules.filter((v) => !isModuleStub(v)).map((v) => v.mcp?.url).filter((v) => v)
 }
 
 export async function applyModule() {
@@ -941,5 +918,6 @@ export function moduleUpdate(){
 
 export function refreshModules(){
     lastModules = ''
+    lastModuleList = undefined
     lastModuleData = []
 }

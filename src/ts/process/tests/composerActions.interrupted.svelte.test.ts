@@ -32,6 +32,24 @@ vi.mock(import('src/ts/stores.svelte'), () => {
     } as unknown as typeof import('src/ts/stores.svelte')
 })
 
+// The composer's module reference list reads the database through these three; the real file would load the whole
+// app graph, which this suite does not need.
+vi.mock(import('src/ts/storage/database.svelte'), async () => {
+    const stores = await import('src/ts/stores.svelte')
+    const { get } = await import('svelte/store')
+    const state = stores.DBState as unknown as { db: { characters?: Array<{ chatPage: number, chats?: unknown[] }> } }
+    const getCurrentCharacter = () => state.db.characters?.[get(stores.selectedCharID)]
+    const getCurrentChat = () => {
+        const char = getCurrentCharacter()
+        return char?.chats?.[char.chatPage]
+    }
+    return {
+        getDatabase: vi.fn(() => state.db),
+        getCurrentCharacter: vi.fn(getCurrentCharacter),
+        getCurrentChat: vi.fn(getCurrentChat),
+    } as unknown as typeof import('src/ts/storage/database.svelte')
+})
+
 vi.mock(import('src/ts/process/index.svelte'), () => ({
     doingChat: writable(false),
     sendChat: vi.fn(async () => true),

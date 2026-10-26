@@ -3,6 +3,7 @@
     import { language } from "src/lang";
     import { fillLang } from "src/lang/fill";
     import { shareRealmCardData } from "src/ts/realm";
+    import { realmModuleJson } from "src/ts/process/moduleUse";
     import { downloadPreset } from "src/ts/storage/database.svelte";
     import { DBState } from 'src/ts/stores.svelte';
     import { selectedCharID, ShowRealmFrameStore } from "src/ts/stores.svelte";
@@ -96,11 +97,14 @@
             }
         }
         else if($ShowRealmFrameStore.startsWith('module')){
-            const predata = DBState.db.modules[Number($ShowRealmFrameStore.split(':')[1])]
-            //@ts-expect-error adding type field for Realm export, not defined in module type
-            predata.type = 'risuModule'
-            const encodedPredata = new TextEncoder().encode(JSON.stringify(predata))
-            const encodedPredataName = new TextEncoder().encode(predata.name + '.json')
+            const payload = await realmModuleJson(Number($ShowRealmFrameStore.split(':')[1]))
+            if(!payload){
+                // The failure was already shown; closing posts nothing.
+                close()
+                return
+            }
+            const encodedPredata = new TextEncoder().encode(payload.json)
+            const encodedPredataName = new TextEncoder().encode(payload.name + '.json')
             data = {
                 data: toArrayBuffer(encodedPredata),
                 name: toArrayBuffer(encodedPredataName)

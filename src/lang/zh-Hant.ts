@@ -1994,6 +1994,17 @@ export const languageChineseTraditional = {
         "備份已準備好儲存。請按「確定」開始儲存。",
     "backupFailedNothingWritten": () =>
         "備份在向檔案寫入任何內容之前就失敗了。請重新執行備份。",
+    "backupFailedModuleUnreadable": (name: string, reason: 'damaged' | 'missing' | 'newer' | 'changed' | 'duplicate' | 'unreadable') => {
+        const clause = {
+            damaged: '已損毀，或其儲存的資料遺失。在模組設定中將其刪除或取代後，即可再次執行備份。',
+            missing: '找不到。請重新執行備份；如果仍然失敗，請先在模組設定中將其刪除或取代。',
+            newer: '由較新版本的應用程式儲存，目前版本無法讀取。請更新應用程式後重新執行備份；僅當您不再需要它時，才在模組設定中將其刪除或取代。',
+            changed: '在讀取過程中發生了變化。請重新執行備份；如果再次失敗，請先在模組設定中將其刪除或取代。',
+            duplicate: '與另一個模組的 ID 相同。在模組設定中刪除這兩個模組之一後，即可再次執行備份。',
+            unreadable: '無法讀取。在模組設定中將其刪除或取代後，即可再次執行備份。',
+        }[reason]
+        return `備份在向檔案寫入任何內容之前就已停止，因為模組「${name}」${clause}`
+    },
     "internalBackupUnreadable":"此備份已損毀或不完整，因此未載入。目前的資料未被變更。",
     "internalBackupWriteFailed": "無法儲存此備份。目前的資料未被變更。",
     "internalBackupListFailed": "無法讀取備份清單。未變更任何內容。",
@@ -2838,6 +2849,8 @@ export const languageChineseTraditional = {
         "peerCleanReplaced": "您已儲存的資料在此分頁之外被變更。請重新載入以繼續。此分頁中沒有未儲存的內容。",
         "peerCleanCommitDrafts": "另一個分頁儲存了對您資料的變更。此分頁中有尚未完成的文字或編輯，重新載入會將其捨棄。",
         "peerCleanReplacedDrafts": "您已儲存的資料在此分頁之外被變更。請重新載入以繼續。此分頁中有尚未完成的文字或編輯，重新載入會將其捨棄。",
-        "peerReloadDrafts": "重新載入（未完成的文字和編輯將遺失）"
+        "peerReloadDrafts": "重新載入（未完成的文字和編輯將遺失）",
+        "moduleEditedTitle": "模組「{name}」在此分頁中被變更，且無法儲存，因此此分頁中的任何內容都不會被儲存。請重新載入以繼續工作；此分頁未儲存的變更將遺失。",
+        "moduleEditedKeep": "繼續工作（重新載入之前不會儲存任何內容）"
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

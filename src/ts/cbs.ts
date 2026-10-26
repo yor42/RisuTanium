@@ -1726,7 +1726,7 @@ export function registerCBS(arg:CBSRegisterArg) {
             }
             return makeArray(module.assets?.map((f) => {
                 return f[0]
-            }))
+            }) ?? [])
         },
         alias: ['module_assetlist'],
         description: 'Returns a JSON array of asset names for the specified module namespace. Returns empty string if module not found.\n\nUsage:: {{moduleassetlist::mymodule}}',

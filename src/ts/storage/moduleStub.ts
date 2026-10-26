@@ -23,6 +23,18 @@ export function isModuleStub(value: unknown): boolean {
     return Object.hasOwn(value, MODULE_STUB_KEY) && (value as Record<string, unknown>)[MODULE_STUB_KEY] === MODULE_STUB_VALUE
 }
 
+/**
+ * Whether `value` is an object that carries the stub marker key, whatever its value. Stricter than `isModuleStub`: a
+ * file from outside that holds the key is refused as a whole, because a loader or encoder would take it for a stand-in
+ * for a module whose body is somewhere else. The own-key check avoids creating a source through a `$state` proxy.
+ */
+export function hasModuleStubKey(value: unknown): boolean {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        return false
+    }
+    return Object.hasOwn(value, MODULE_STUB_KEY)
+}
+
 function textOf(value: unknown): string {
     return typeof value === 'string' ? value : ''
 }

@@ -1948,6 +1948,17 @@ export const languageKorean = {
         "백업을 저장할 준비가 되었습니다. 저장을 시작하려면 확인을 누르세요.",
     "backupFailedNothingWritten": () =>
         "파일에 아무것도 기록되기 전에 백업에 실패했습니다. 백업을 다시 실행하세요.",
+    "backupFailedModuleUnreadable": (name: string, reason: 'damaged' | 'missing' | 'newer' | 'changed' | 'duplicate' | 'unreadable') => {
+        const clause = {
+            damaged: '손상되었거나 저장된 데이터가 없습니다. 모듈 설정에서 삭제하거나 교체하면 백업을 다시 실행할 수 있습니다.',
+            missing: '찾을 수 없습니다. 백업을 다시 실행하세요. 그래도 실패하면 먼저 모듈 설정에서 삭제하거나 교체하세요.',
+            newer: '더 새로운 버전의 앱에서 저장되어 이 버전에서는 읽을 수 없습니다. 앱을 업데이트한 뒤 백업을 다시 실행하세요. 더 이상 필요하지 않은 경우에만 모듈 설정에서 삭제하거나 교체하세요.',
+            changed: '읽는 도중 변경되었습니다. 백업을 다시 실행하세요. 다시 실패하면 먼저 모듈 설정에서 삭제하거나 교체하세요.',
+            duplicate: '다른 모듈과 ID가 같습니다. 둘 중 하나를 모듈 설정에서 삭제하면 백업을 다시 실행할 수 있습니다.',
+            unreadable: '읽을 수 없습니다. 모듈 설정에서 삭제하거나 교체하면 백업을 다시 실행할 수 있습니다.',
+        }[reason]
+        return `파일에 아무것도 기록되기 전에 백업이 중단되었습니다. 모듈 "${name}"이(가) ${clause}`
+    },
     "internalBackupUnreadable":"이 백업이 손상되었거나 불완전하여 불러오지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
     "internalBackupWriteFailed": "백업을 저장할 수 없었습니다. 현재 데이터는 변경되지 않았습니다.",
     "internalBackupListFailed": "백업 목록을 읽을 수 없었습니다. 아무것도 변경되지 않았습니다.",
@@ -2794,5 +2805,7 @@ export const languageKorean = {
         peerCleanCommitDrafts: "다른 탭이 데이터에 대한 변경 사항을 저장했습니다. 이 탭에는 아직 끝내지 않은 텍스트나 편집 내용이 있으며, 새로고침하면 사라집니다.",
         peerCleanReplacedDrafts: "저장된 데이터가 이 탭 밖에서 변경되었습니다. 계속하려면 새로고침하세요. 이 탭에는 아직 끝내지 않은 텍스트나 편집 내용이 있으며, 새로고침하면 사라집니다.",
         peerReloadDrafts: "새로고침 (끝내지 않은 텍스트와 편집 내용은 사라집니다)",
+        moduleEditedTitle: "모듈 \"{name}\"이(가) 이 탭에서 저장할 수 없는 방식으로 변경되어, 이 탭의 어떤 내용도 저장되지 않고 있습니다. 계속 작업하려면 새로고침하세요. 이 탭의 저장되지 않은 변경 사항은 사라집니다.",
+        moduleEditedKeep: "계속 작업 (새로고침하기 전까지 아무것도 저장되지 않습니다)",
     },
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

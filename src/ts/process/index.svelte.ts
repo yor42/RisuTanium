@@ -39,6 +39,8 @@ import { LLMTokenizer } from "../model/types";
 import { hypaMemoryV3 } from "./memory/hypav3";
 import { totalInSendOrder, trimChatsToContext } from "./contextTrim";
 import { getModuleAssets, getModuleToggles } from "./modules";
+import { ensureModulesOrAlert } from "./moduleEnsure";
+import { hasModuleStubs } from "./moduleRefList";
 import { readImage } from "../globalApi.svelte";
 import { pluginV2 } from "../plugins/plugins.svelte";
 import { isColdChat } from "./coldstorageData";
@@ -333,6 +335,11 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
         publishUnit(unit)
         endInFlight = beginInFlight('chat')
         doingChat.set(true)
+        // Awaited only after the flag is taken, so the check and the take stay one synchronous stretch. The busy
+        // button aborts the wait through the unit's signal; a failure alerts once and the finally releases the unit.
+        if(hasModuleStubs() && !(await ensureModulesOrAlert(entry.context.origin, unit.signal, entry.context.hint))){
+            return false
+        }
         const completed = await sendChatBody(chatProcessIndex, { ...arg, signal: unit.signal }, entry.context)
         return completed && !unit.signal.aborted
     } finally {
@@ -2106,6 +2113,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         escape: nowChatroom.type === 'character' && nowChatroom.escapeOutput,
         rememberToolUsage: DBState.db.rememberToolUsage,
         subject,
+        mainSend: true,
     }, 'model', abortSignal)
 
     console.log(req)

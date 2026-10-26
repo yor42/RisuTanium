@@ -1949,6 +1949,17 @@ export const languageVietnamese = {
         "Bản sao lưu đã sẵn sàng để lưu. Nhấn OK để bắt đầu lưu.",
     "backupFailedNothingWritten": () =>
         "Sao lưu không thành công trước khi có bất kỳ gì được ghi vào tệp. Hãy chạy lại sao lưu.",
+    "backupFailedModuleUnreadable": (name: string, reason: 'damaged' | 'missing' | 'newer' | 'changed' | 'duplicate' | 'unreadable') => {
+        const clause = {
+            damaged: 'bị hỏng, hoặc dữ liệu đã lưu của nó bị thiếu. Bạn có thể chạy lại sao lưu sau khi xóa hoặc thay thế mô-đun này trong phần cài đặt mô-đun.',
+            missing: 'không tìm thấy. Hãy chạy lại sao lưu; nếu vẫn thất bại, hãy xóa hoặc thay thế mô-đun này trong phần cài đặt mô-đun trước.',
+            newer: 'được lưu bởi một phiên bản ứng dụng mới hơn mà phiên bản này không thể đọc. Hãy cập nhật ứng dụng rồi chạy lại sao lưu; chỉ xóa hoặc thay thế mô-đun này trong phần cài đặt mô-đun nếu bạn không còn cần đến nó.',
+            changed: 'đã thay đổi trong lúc đang được đọc. Hãy chạy lại sao lưu; nếu lại thất bại, hãy xóa hoặc thay thế mô-đun này trong phần cài đặt mô-đun trước.',
+            duplicate: 'có cùng ID với một mô-đun khác. Bạn có thể chạy lại sao lưu sau khi xóa một trong hai mô-đun trong phần cài đặt mô-đun.',
+            unreadable: 'không thể đọc được. Bạn có thể chạy lại sao lưu sau khi xóa hoặc thay thế mô-đun này trong phần cài đặt mô-đun.',
+        }[reason]
+        return `Quá trình sao lưu đã dừng trước khi có bất kỳ gì được ghi vào tệp, vì mô-đun "${name}" ${clause}`
+    },
     "internalBackupUnreadable":"Bản sao lưu này bị hỏng hoặc không đầy đủ nên không được tải. Dữ liệu hiện tại của bạn không bị thay đổi.",
     "internalBackupWriteFailed": "Không thể lưu bản sao lưu. Dữ liệu hiện tại của bạn không bị thay đổi.",
     "internalBackupListFailed": "Không thể đọc danh sách sao lưu. Không có gì bị thay đổi.",
@@ -2794,5 +2805,7 @@ export const languageVietnamese = {
         peerCleanCommitDrafts: "Một tab khác đã lưu thay đổi vào dữ liệu của bạn. Tab này có văn bản hoặc chỉnh sửa bạn chưa hoàn tất, và tải lại sẽ loại bỏ chúng.",
         peerCleanReplacedDrafts: "Dữ liệu đã lưu của bạn đã bị thay đổi từ bên ngoài tab này. Hãy tải lại để tiếp tục. Tab này có văn bản hoặc chỉnh sửa bạn chưa hoàn tất, và tải lại sẽ loại bỏ chúng.",
         peerReloadDrafts: "Tải lại (văn bản và chỉnh sửa chưa hoàn tất sẽ bị mất)",
+        moduleEditedTitle: "Mô-đun \"{name}\" đã bị thay đổi trong tab này theo cách không thể lưu, nên không có gì trong tab này được lưu. Hãy tải lại để tiếp tục làm việc; các thay đổi chưa lưu của tab này sẽ bị mất.",
+        moduleEditedKeep: "Tiếp tục làm việc (không có gì được lưu cho đến khi bạn tải lại)",
     },
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

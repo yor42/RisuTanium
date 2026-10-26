@@ -1949,6 +1949,17 @@ export const languageChinese = {
         "备份已准备好保存。请按“确定”开始保存。",
     "backupFailedNothingWritten": () =>
         "备份在向文件写入任何内容之前就失败了。请重新运行备份。",
+    "backupFailedModuleUnreadable": (name: string, reason: 'damaged' | 'missing' | 'newer' | 'changed' | 'duplicate' | 'unreadable') => {
+        const clause = {
+            damaged: '已损坏，或其存储的数据缺失。在模块设置中将其删除或替换后，即可再次运行备份。',
+            missing: '找不到。请重新运行备份；如果仍然失败，请先在模块设置中将其删除或替换。',
+            newer: '由更新版本的应用保存，当前版本无法读取。请更新应用后重新运行备份；仅当您不再需要它时，才在模块设置中将其删除或替换。',
+            changed: '在读取过程中发生了变化。请重新运行备份；如果再次失败，请先在模块设置中将其删除或替换。',
+            duplicate: '与另一个模块的 ID 相同。在模块设置中删除这两个模块之一后，即可再次运行备份。',
+            unreadable: '无法读取。在模块设置中将其删除或替换后，即可再次运行备份。',
+        }[reason]
+        return `备份在向文件写入任何内容之前就已停止，因为模块“${name}”${clause}`
+    },
     "internalBackupUnreadable":"此备份已损坏或不完整，因此未被读取。当前数据未被更改。",
     "internalBackupWriteFailed": "无法保存该备份。当前数据未被更改。",
     "internalBackupListFailed": "无法读取备份列表。未更改任何内容。",
@@ -2793,6 +2804,8 @@ export const languageChinese = {
         "peerCleanReplaced": "您已保存的数据在此标签页之外被更改。请重新加载以继续。此标签页中没有未保存的内容。",
         "peerCleanCommitDrafts": "另一个标签页保存了对您数据的更改。此标签页中有尚未完成的文本或编辑，重新加载会将其丢弃。",
         "peerCleanReplacedDrafts": "您已保存的数据在此标签页之外被更改。请重新加载以继续。此标签页中有尚未完成的文本或编辑，重新加载会将其丢弃。",
-        "peerReloadDrafts": "重新加载（未完成的文本和编辑将丢失）"
+        "peerReloadDrafts": "重新加载（未完成的文本和编辑将丢失）",
+        "moduleEditedTitle": "模块“{name}”在此标签页中被更改，且无法保存，因此此标签页中的任何内容都不会被保存。请重新加载以继续工作；此标签页未保存的更改将丢失。",
+        "moduleEditedKeep": "继续工作（重新加载之前不会保存任何内容）"
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

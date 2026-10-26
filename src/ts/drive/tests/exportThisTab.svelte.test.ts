@@ -7,7 +7,7 @@
  * ends with the typed outcome. The real `LocalWriter` and the real writer body are driven; the web writer records the
  * entries written.
  */
-import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database } from 'src/ts/storage/database.svelte'
 
@@ -241,6 +241,12 @@ vi.mock(import('src/ts/storage/store/appStore'), async () => {
 import { exportThisTabBackup } from 'src/ts/drive/backuplocal'
 import { LocalWriter } from 'src/ts/globalApi.svelte'
 import { busyKinds } from 'src/ts/process/memory/busyActions'
+import { alertError } from 'src/ts/alert'
+import { language } from 'src/lang'
+import { DBState } from 'src/ts/stores.svelte'
+import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from 'src/ts/storage/moduleStub'
+import { registerModuleLoader, unregisterModuleLoader } from 'src/ts/storage/store2/moduleAcquire'
+import { createPeerUi } from 'src/ts/storage/store2/ui/peerUi'
 
 /** The entry names written, and the busy kinds seen when the `database.risudat` entry was written. */
 let written: string[] = []
@@ -331,5 +337,44 @@ describe('exportThisTabBackup', () => {
 
         expect(outcome.status).toBe('failed')
         expect(busyKinds()).not.toContain('backupSave')
+    })
+})
+
+describe('exportThisTabBackup with an unreadable module', () => {
+    function arrangeBrokenModule(): void {
+        const db = world.db as { modules?: unknown[] }
+        db.modules = [{ id: 'm-b', name: 'Broken Module', [MODULE_STUB_KEY]: MODULE_STUB_VALUE }]
+        DBState.db = world.db as Database
+        registerModuleLoader(async () => {
+            throw new Error('read failed')
+        })
+        vi.mocked(alertError).mockClear()
+    }
+
+    afterEach(() => {
+        unregisterModuleLoader()
+    })
+
+    test('unreadable-module-names-it: the alert names the module, not the generic text, and nothing is written', async () => {
+        arrangeBrokenModule()
+
+        const outcome = await exportThisTabBackup()
+
+        expect(outcome.status).toBe('failed')
+        expect(written).toEqual([])
+        expect(alertError).toHaveBeenCalledTimes(1)
+        const shown = String(vi.mocked(alertError).mock.calls[0][0])
+        expect(shown).toContain('Broken Module')
+        expect(shown).not.toBe(language.backupFailedNothingWritten())
+        expect(shown).toBe(language.backupFailedModuleUnreadable('Broken Module', 'unreadable'))
+    })
+
+    test('unreadable-module-names-it: the rescue autoExport reports failed, which the loop words as not finished, and shows the named alert', async () => {
+        arrangeBrokenModule()
+        const peer = createPeerUi({ reload: vi.fn(), exportAvailable: true, exportThisTab: async () => await exportThisTabBackup() })
+
+        await expect(peer.autoExport?.('manifest')).resolves.toBe('failed')
+
+        expect(String(vi.mocked(alertError).mock.calls[0][0])).toBe(language.backupFailedModuleUnreadable('Broken Module', 'unreadable'))
     })
 })

@@ -1,6 +1,6 @@
 <script lang="ts">
     import { getModuleToggles } from "src/ts/process/modules";
-    import { DBState, MobileGUI, selectedCharID } from "src/ts/stores.svelte";
+    import { DBState, MobileGUI, ReloadGUIPointer, selectedCharID } from "src/ts/stores.svelte";
     import { parseToggleSyntax, type sidebarToggle, type sidebarToggleGroup } from "src/ts/util";
     import { language } from "src/lang";
     import type { PromptItem } from "src/ts/process/prompt";
@@ -68,6 +68,8 @@
     })
 
     let groupedToggles = $derived.by(() => {
+        // A module loaded into its stub's slot keeps its id, so the toggles are told by the pointer that the content changed.
+        void $ReloadGUIPointer
         const ungrouped = parseToggleSyntax(
             DBState.db.customPromptTemplateToggle + '\n' +
             getModuleToggles() + '\n' +

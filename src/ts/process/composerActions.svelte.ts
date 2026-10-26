@@ -10,6 +10,8 @@ import sendSound from '../../etc/send.mp3'
 import { sendCharacterMessage } from './sendCharacterMessage'
 import { PreUnreroll, Prereroll } from './prereroll'
 import { processMultiCommand } from './command'
+import { ensureModulesOrAlert } from './moduleEnsure'
+import { hasModuleStubs } from './moduleRefList'
 import { isColdChat } from './coldstorageData'
 import { isExpTranslator, translate } from '../translator/translator'
 import { beginWork, originOf, originStatus, writeAt, type Origin, type WorkHandle } from './chatOrigin'
@@ -272,6 +274,13 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
         registerDraft(inflightDraftKey, COMPOSER_DRAFT_KIND)
 
         let workingText = takenMessageInput
+
+        // Above the command branch: a slash command, the input triggers and the regex scripts all read module
+        // bodies. A failed load leaves the outcome 'refused', so the finally puts the draft back; the busy button
+        // aborts the wait and has already put it back.
+        if(hasModuleStubs() && !(await ensureModulesOrAlert(workHandle.origin, controller.signal, { owner: char, chat: startChat }))){
+            return
+        }
 
         if(workingText.startsWith('/')){
             // The line acts on the chat the take started from, stops when the

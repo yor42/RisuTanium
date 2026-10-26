@@ -1951,6 +1951,17 @@ export const languageGerman = {
         "Das Backup ist bereit zum Speichern. Klicken Sie auf OK, um das Speichern zu starten.",
     "backupFailedNothingWritten": () =>
         "Das Backup ist fehlgeschlagen, bevor etwas in die Datei geschrieben wurde. Führen Sie das Backup erneut aus.",
+    "backupFailedModuleUnreadable": (name: string, reason: 'damaged' | 'missing' | 'newer' | 'changed' | 'duplicate' | 'unreadable') => {
+        const clause = {
+            damaged: 'beschädigt ist oder seine gespeicherten Daten fehlen. Das Backup kann erneut ausgeführt werden, sobald es in den Moduleinstellungen gelöscht oder ersetzt wurde.',
+            missing: 'nicht gefunden werden konnte. Das Backup erneut ausführen; falls es weiterhin fehlschlägt, das Modul zuerst in den Moduleinstellungen löschen oder ersetzen.',
+            newer: 'mit einer neueren Version der App gespeichert wurde, die diese Version nicht lesen kann. Die App aktualisieren und das Backup erneut ausführen; das Modul in den Moduleinstellungen nur löschen oder ersetzen, wenn es nicht mehr benötigt wird.',
+            changed: 'während des Lesens geändert wurde. Das Backup erneut ausführen; falls es erneut fehlschlägt, das Modul zuerst in den Moduleinstellungen löschen oder ersetzen.',
+            duplicate: 'dieselbe ID wie ein anderes Modul hat. Das Backup kann erneut ausgeführt werden, sobald eines der beiden Module in den Moduleinstellungen gelöscht wurde.',
+            unreadable: 'nicht gelesen werden konnte. Das Backup kann erneut ausgeführt werden, sobald es in den Moduleinstellungen gelöscht oder ersetzt wurde.',
+        }[reason]
+        return `Das Backup wurde angehalten, bevor etwas in die Datei geschrieben wurde, weil das Modul "${name}" ${clause}`
+    },
     "internalBackupUnreadable":"Dieses Backup ist beschädigt oder unvollständig und wurde daher nicht geladen. Ihre aktuellen Daten wurden nicht verändert.",
     "internalBackupWriteFailed": "Das Backup konnte nicht gespeichert werden. Ihre aktuellen Daten wurden nicht verändert.",
     "internalBackupListFailed": "Die Backup-Liste konnte nicht gelesen werden. Es wurde nichts verändert.",
@@ -2797,6 +2808,8 @@ export const languageGerman = {
         "peerCleanReplaced": "Ihre gespeicherten Daten wurden außerhalb dieses Tabs geändert. Laden Sie neu, um fortzufahren. In diesem Tab ist nichts ungespeichert.",
         "peerCleanCommitDrafts": "Ein anderer Tab hat Änderungen an Ihren Daten gespeichert. Dieser Tab enthält Text oder eine Bearbeitung, die Sie nicht abgeschlossen haben, und durch Neuladen wird dies verworfen.",
         "peerCleanReplacedDrafts": "Ihre gespeicherten Daten wurden außerhalb dieses Tabs geändert. Laden Sie neu, um fortzufahren. Dieser Tab enthält Text oder eine Bearbeitung, die Sie nicht abgeschlossen haben, und durch Neuladen wird dies verworfen.",
-        "peerReloadDrafts": "Neu laden (nicht abgeschlossener Text und Bearbeitungen gehen verloren)"
+        "peerReloadDrafts": "Neu laden (nicht abgeschlossener Text und Bearbeitungen gehen verloren)",
+        "moduleEditedTitle": "Das Modul \"{name}\" wurde in diesem Tab so geändert, dass es nicht gespeichert werden kann. Deshalb wird in diesem Tab nichts gespeichert. Zum Weiterarbeiten neu laden; die ungespeicherten Änderungen dieses Tabs gehen verloren.",
+        "moduleEditedKeep": "Weiterarbeiten (nichts wird gespeichert, bis neu geladen wird)"
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

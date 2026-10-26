@@ -1,13 +1,56 @@
 import type { Database } from '../storage/database.svelte'
 import type { RisuModule } from '../process/modules'
 import { isModuleStub } from '../storage/moduleStub'
-import { acquireModule, ModuleAmbiguousError, ModuleLoaderMissingError } from '../storage/store2/moduleAcquire'
+import { acquireModule, ModuleAmbiguousError, ModuleLoaderMissingError, ModuleLoadError } from '../storage/store2/moduleAcquire'
+
+/**
+ * What a person is told about an unreadable module. `unreadable` claims no cause; `duplicate` states only that the id is
+ * shared; `changed` is only a body that moved while it was read; `missing` is a body nothing could be found for.
+ */
+export type ExportModuleFailure = 'damaged' | 'missing' | 'newer' | 'changed' | 'duplicate' | 'unreadable'
+
+/** The acquire resolved null: no body was found. Private marker so the catch never reads message text. */
+class NullBodyError extends Error {
+    constructor(moduleId: string, moduleName: string) {
+        super(`No body was found for the module "${moduleName}" (${moduleId}).`)
+        this.name = 'NullBodyError'
+    }
+}
+
+function failureOf(cause: unknown): ExportModuleFailure {
+    if (cause instanceof NullBodyError) {
+        return 'missing'
+    }
+    if (cause instanceof ModuleAmbiguousError) {
+        return 'duplicate'
+    }
+    if (cause instanceof ModuleLoadError) {
+        switch (cause.reason) {
+            case 'ambiguous':
+                return 'duplicate'
+            case 'stale':
+            case 'replaced':
+                return 'changed'
+            case 'too-new':
+                return 'newer'
+            case 'damaged':
+                return 'damaged'
+            default:
+                return 'unreadable'
+        }
+    }
+    return 'unreadable'
+}
 
 /** A module of the database could not be read for an export; the export stops before it opens a file. */
 export class ExportModuleUnreadableError extends Error {
+    /** Why, as the alert words it; derived from `cause` once. */
+    public readonly reason: ExportModuleFailure
+
     constructor(public readonly moduleId: string, public readonly moduleName: string, cause: unknown) {
         super(`The module "${moduleName}" (${moduleId}) could not be read for the export.`, { cause })
         this.name = 'ExportModuleUnreadableError'
+        this.reason = failureOf(cause)
     }
 }
 
@@ -78,7 +121,7 @@ export async function snapshotModuleList(db: Database): Promise<ExportModuleSnap
                 continue
             }
             if (acquired === null) {
-                throw new Error(`No body was found for the module "${slot.name}" (${slot.id}).`)
+                throw new NullBodyError(slot.id, slot.name)
             }
             releases.push(acquired.release)
             modules.push(acquired.module)

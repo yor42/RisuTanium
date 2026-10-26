@@ -433,6 +433,86 @@ describe('both prompts wait for an alert that needs its OK', () => {
     })
 })
 
+describe('moduleEdited: a closable prompt that names the module', () => {
+    const info = { moduleId: 'mod-1', moduleName: 'Edited module' }
+
+    test('new behaviour: the buttons are Reload and Keep working, and the title names the module', async () => {
+        const { ui } = newUi()
+        ui.moduleEdited(info, () => true)
+        await waitForSelect()
+        expect(selectParts()).toEqual({
+            title: text().moduleEditedTitle.replace('{name}', () => 'Edited module'),
+            labels: [text().peerReload, text().moduleEditedKeep],
+        })
+    })
+
+    test('new behaviour: Reload reloads while the stub is still the blocker at the press', async () => {
+        const { ui, reload } = newUi()
+        ui.moduleEdited(info, () => true)
+        await waitForSelect()
+        await press(0)
+        await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1))
+    })
+
+    test('new behaviour: Reload reloads nothing once a later pass has saved, and the probe is read at the press', async () => {
+        const { ui, reload } = newUi()
+        let blocked = true
+        ui.moduleEdited(info, () => blocked)
+        await waitForSelect()
+        blocked = false
+        await press(0)
+        await vi.waitFor(() => expect(shown().type).toBe('none'))
+        await sleep(30)
+        expect(reload).not.toHaveBeenCalled()
+    })
+
+    test('new behaviour: Keep working closes the prompt and reloads nothing', async () => {
+        const { ui, reload } = newUi()
+        ui.moduleEdited(info, () => true)
+        await waitForSelect()
+        await press(1)
+        await vi.waitFor(() => expect(shown().type).toBe('none'))
+        await sleep(30)
+        expect(reload).not.toHaveBeenCalled()
+        expect(shown().type).toBe('none')
+    })
+
+    test.each(['error', 'normal', 'markdown'] as const)('new behaviour: a %s alert is left up until it is acknowledged, then the prompt asks', async (type) => {
+        const { ui } = newUi()
+        alertStore.set({ type, msg: 'the save failed' })
+        ui.moduleEdited(info, () => true)
+        await sleep(40)
+        expect(shown()).toEqual({ type, msg: 'the save failed' })
+
+        alertStore.set({ type: 'none', msg: '' })
+        await waitForSelect()
+        expect(selectParts().labels).toEqual([text().peerReload, text().moduleEditedKeep])
+    })
+
+    test('new behaviour: a name with || or control characters never splits the title or adds a button', async () => {
+        const { ui } = newUi()
+        ui.moduleEdited({ moduleId: 'mod-1', moduleName: 'Bad||Name‮\nx' }, () => true)
+        await waitForSelect()
+        const parts = selectParts()
+        expect(parts.labels).toEqual([text().peerReload, text().moduleEditedKeep])
+        expect(parts.title).toBe(text().moduleEditedTitle.replace('{name}', () => 'Bad|Name x'))
+    })
+
+    test('new behaviour: a long name is cut to 40 characters with an ellipsis', async () => {
+        const { ui } = newUi()
+        ui.moduleEdited({ moduleId: 'mod-1', moduleName: 'n'.repeat(60) }, () => true)
+        await waitForSelect()
+        expect(selectParts().title).toBe(text().moduleEditedTitle.replace('{name}', () => `${'n'.repeat(39)}…`))
+    })
+
+    test('new behaviour: a name with a replacement pattern is shown literally', async () => {
+        const { ui } = newUi()
+        ui.moduleEdited({ moduleId: 'mod-1', moduleName: 'a$&b' }, () => true)
+        await waitForSelect()
+        expect(selectParts().title).toBe(text().moduleEditedTitle.replace('{name}', () => 'a$&b'))
+    })
+})
+
 describe('the rest of the handler', () => {
     test('reload is the page reload it was given', () => {
         const { ui, reload } = newUi()

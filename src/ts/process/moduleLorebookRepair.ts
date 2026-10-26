@@ -30,19 +30,32 @@ export async function repairModuleLorebook(
     body: RisuModule | null | undefined,
     context?: { formatVersion?: number },
 ): Promise<{ changed: boolean }> {
-    if (!body?.lorebook) {
+    const need = lorebookRepairNeed(body)
+    if (body == null || need === 'none') {
         return { changed: false }
     }
-    const lorebook: unknown = body.lorebook
-    if (Array.isArray(lorebook)) {
-        const entries = lorebook as loreBook[]
-        if (!entries.some((entry) => !(entry?.bookVersion >= 2))) {
-            return { changed: false }
-        }
-        body.lorebook = updateLorebooks(entries)
+    if (need === 'migrate') {
+        body.lorebook = updateLorebooks(body.lorebook as loreBook[])
         return { changed: true }
     }
     return askLock.runExclusive(() => askAboutCorruptedLorebook(body, context?.formatVersion))
+}
+
+/**
+ * What `repairModuleLorebook` would do with `body`, decided from the body alone and before anything is shown or locked:
+ * `none` (no lorebook, or a current list), `migrate` (a list with an entry below book version 2, rewritten without a
+ * question) or `ask` (not a list: the person is told and asked). `repairModuleLorebook` branches on this one decision, so
+ * a caller that must not wait for the person can judge first and cannot disagree with the repair.
+ */
+export function lorebookRepairNeed(body: RisuModule | null | undefined): 'none' | 'migrate' | 'ask' {
+    if (!body?.lorebook) {
+        return 'none'
+    }
+    const lorebook: unknown = body.lorebook
+    if (!Array.isArray(lorebook)) {
+        return 'ask'
+    }
+    return (lorebook as loreBook[]).some((entry) => !(entry?.bookVersion >= 2)) ? 'migrate' : 'none'
 }
 
 async function askAboutCorruptedLorebook(body: RisuModule, formatVersion: number | undefined): Promise<{ changed: boolean }> {
