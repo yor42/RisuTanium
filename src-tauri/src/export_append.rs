@@ -75,8 +75,41 @@ pub fn append_to<W: Write>(
     Ok(json!({ "written": bytes.len() as u64, "synced": synced }))
 }
 
+/// Opens the document once more without writing, reads the size of the descriptor it yielded, and closes it. Nothing
+/// can fail the export from here: a failed or panicking `open` answers `open-failed`, a failed size answers
+/// `stat-failed`, and no error text is ever placed in the answer (the plugin's error text can name the URI).
+/// The answer is `{ "reopenSize": n }` or `{ "reopen": "open-failed" | "stat-failed" }`.
+pub fn reopen_note<F>(
+    open: impl FnOnce() -> std::io::Result<F> + std::panic::UnwindSafe,
+    size: impl FnOnce(&F) -> std::io::Result<u64>,
+) -> Value {
+    match std::panic::catch_unwind(open) {
+        Ok(Ok(file)) => match size(&file) {
+            Ok(n) => json!({ "reopenSize": n }),
+            Err(_) => json!({ "reopen": "stat-failed" }),
+        },
+        Ok(Err(_)) | Err(_) => json!({ "reopen": "open-failed" }),
+    }
+}
+
+/// Adds the fields of a reopen answer to the reply of a chunk that was written. It is only called with the reply of a
+/// successful append, so a reopen answer can never replace or hide a write failure; `written` and `synced` are kept.
+pub fn merge_reopen(reply: Value, note: Value) -> Value {
+    match (reply, note) {
+        (Value::Object(mut fields), Value::Object(extra)) => {
+            for (key, value) in extra {
+                fields.entry(key).or_insert(value);
+            }
+            Value::Object(fields)
+        }
+        (reply, _) => reply,
+    }
+}
+
 /// One chunk of an export file: `create` truncates the document first, otherwise the chunk is appended; `last` also
-/// syncs the file. The result is `{ "written": n }`, with `"synced": bool` on a last chunk.
+/// syncs the file and then, once the write has succeeded, opens the document once more in append mode without writing
+/// and reports the size of that descriptor. The result is `{ "written": n }`, with `"synced": bool` and a reopen
+/// field (`"reopenSize"` or `"reopen"`) on a last chunk. A failed reopen never changes the result of the write.
 #[tauri::command]
 pub async fn export_append_b64(
     app: tauri::AppHandle,
@@ -88,7 +121,9 @@ pub async fn export_append_b64(
     let target = check_target(&uri)?;
     let bytes = decode_chunk(&data)?;
     drop(data);
-    tauri::async_runtime::spawn_blocking(move || {
+    let reopen_target = if last { Some(target.clone()) } else { None };
+    let reopen_app = app.clone();
+    let reply = tauri::async_runtime::spawn_blocking(move || {
         use tauri_plugin_fs::FsExt;
         let mut options = tauri_plugin_fs::OpenOptions::new();
         if create {
@@ -103,7 +138,27 @@ pub async fn export_append_b64(
         append_to(&mut file, &bytes, last, |f| f.sync_all())
     })
     .await
-    .map_err(|e| format!("the write task failed: {}", e))?
+    .map_err(|e| format!("the write task failed: {}", e))??;
+    let Some(reopen_target) = reopen_target else {
+        return Ok(reply);
+    };
+    // A separate task: a panic here is a JoinError for this task only and cannot reach the finished write above.
+    let note = tauri::async_runtime::spawn_blocking(move || {
+        use tauri_plugin_fs::FsExt;
+        let mut options = tauri_plugin_fs::OpenOptions::new();
+        options.read(false).write(true).append(true);
+        reopen_note(
+            std::panic::AssertUnwindSafe(|| {
+                reopen_app
+                    .fs()
+                    .open(tauri_plugin_fs::FilePath::Url(reopen_target), options)
+            }),
+            |f| f.metadata().map(|m| m.len()),
+        )
+    })
+    .await
+    .unwrap_or_else(|_| json!({ "reopen": "open-failed" }));
+    Ok(merge_reopen(reply, note))
 }
 // end of command
 
@@ -263,6 +318,59 @@ mod tests {
         let reply = append_to(&mut writer, b"abc", true, |_| Err(io::Error::other("no sync"))).unwrap();
         assert_eq!(writer.out, b"abc");
         assert_eq!(reply, json!({ "written": 3, "synced": false }));
+    }
+
+    // Unit tests of the reopen helpers only. The native "wa" open of a content:// document is not tested offline.
+    #[test]
+    fn reopen_note_reports_the_size_of_the_reopened_descriptor() {
+        let note = reopen_note(|| Ok(42u64), |f| Ok(*f));
+        assert_eq!(note, json!({ "reopenSize": 42 }));
+    }
+
+    #[test]
+    fn reopen_note_answers_open_failed_without_the_error_text() {
+        let note = reopen_note(
+            || Err::<u64, _>(io::Error::other("content://secret/document/id")),
+            |f| Ok(*f),
+        );
+        assert_eq!(note, json!({ "reopen": "open-failed" }));
+        assert!(!note.to_string().contains("secret"));
+    }
+
+    #[test]
+    fn reopen_note_answers_stat_failed_without_the_error_text() {
+        let note = reopen_note(|| Ok(1u64), |_| Err(io::Error::other("content://secret/stat")));
+        assert_eq!(note, json!({ "reopen": "stat-failed" }));
+        assert!(!note.to_string().contains("secret"));
+    }
+
+    #[test]
+    fn reopen_note_maps_a_panicking_open_to_open_failed() {
+        let note = reopen_note(
+            || -> io::Result<u64> { panic!("null descriptor") },
+            |f| Ok(*f),
+        );
+        assert_eq!(note, json!({ "reopen": "open-failed" }));
+    }
+
+    #[test]
+    fn merge_reopen_keeps_the_append_reply_and_adds_only_the_reopen_field() {
+        let reply = json!({ "written": 3, "synced": true });
+        let panicked = reopen_note(|| -> io::Result<u64> { panic!("null descriptor") }, |f| Ok(*f));
+        assert_eq!(
+            merge_reopen(reply.clone(), panicked),
+            json!({ "written": 3, "synced": true, "reopen": "open-failed" })
+        );
+        assert_eq!(
+            merge_reopen(reply, json!({ "reopenSize": 3 })),
+            json!({ "written": 3, "synced": true, "reopenSize": 3 })
+        );
+    }
+
+    #[test]
+    fn merge_reopen_never_overwrites_a_field_of_the_append_reply() {
+        let merged = merge_reopen(json!({ "written": 3, "synced": false }), json!({ "written": 99, "reopenSize": 3 }));
+        assert_eq!(merged, json!({ "written": 3, "synced": false, "reopenSize": 3 }));
     }
 
     #[test]

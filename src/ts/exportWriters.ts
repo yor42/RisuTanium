@@ -236,6 +236,8 @@ export class TauriWriter {
     private failed = false
     private failure: unknown = undefined
     private attempted = false
+    /** Bytes the append command has confirmed, for the closing log line. */
+    private bytesWritten = 0
     /** Fixed at construction: whether chunks go to `export_append_b64` (the Android save dialog's `content://` document) instead of `writeFile`. */
     private readonly viaAppendCommand: boolean
 
@@ -262,14 +264,34 @@ export class TauriWriter {
         timing?.encoding()
         const text = bytesToBase64(data)
         timing?.encoded()
-        const reply = invoke<{ written?: number, synced?: boolean }>('export_append_b64', { uri: this.path, data: text, create: !append, last: closing })
+        const reply = invoke<{ written?: number, synced?: boolean, reopenSize?: number, reopen?: string }>('export_append_b64', { uri: this.path, data: text, create: !append, last: closing })
         timing?.returned()
         const result = await reply
         if (result?.written !== data.byteLength) {
             throw new Error(`export_append_b64 reported ${String(result?.written)} bytes written for a chunk of ${data.byteLength}`)
         }
+        this.bytesWritten += data.byteLength
         if (closing && typeof result.synced === 'boolean') {
             timing?.synced(result.synced)
+        }
+        if (closing) {
+            this.logReopenSize(result.reopenSize, result.reopen)
+        }
+    }
+
+    /** Console only: the bytes written against the size a zero-byte reopen saw. Only the URI host is named, never the document id, path or display name. */
+    private logReopenSize(reopenSize: unknown, reopen: unknown) {
+        try {
+            let host = 'unknown'
+            try {
+                host = new URL(this.path).host || 'unknown'
+            } catch {
+                // an unparsable URI is logged as an unknown host
+            }
+            const reopened = typeof reopenSize === 'number' ? String(reopenSize) : typeof reopen === 'string' ? reopen : 'none'
+            console.log(`[export] reopen size check: written=${this.bytesWritten} reopened=${reopened} host=${host}`)
+        } catch {
+            // logging never changes the export result
         }
     }
 

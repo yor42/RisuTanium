@@ -737,6 +737,89 @@ describe('TauriWriter on an Android content:// document', () => {
         await expect(writer.close()).rejects.toThrow('reported')
     })
 
+    // Unit tests of the closing log line only. They say nothing about what the Android document provider reports.
+    describe('the closing reopen size log', () => {
+        const PREFIX = '[export] reopen size check'
+        let logSpy: ReturnType<typeof vi.spyOn>
+
+        beforeEach(() => {
+            logSpy = vi.spyOn(console, 'log').mockImplementation(() => { })
+        })
+        afterEach(() => {
+            logSpy.mockRestore()
+        })
+
+        function checkLines(): string[] {
+            return logSpy.mock.calls.map((call) => String(call[0])).filter((line) => line.startsWith(PREFIX))
+        }
+
+        test('(U) a reply with reopenSize logs the bytes written, the reopened size and only the host', async () => {
+            android.os = 'android'
+            android.replyFor = (written, last) => ({ written, ...(last ? { synced: true, reopenSize: 130 } : {}) })
+            const writer = new TauriWriter(URI)
+            await writer.write(body(TAURI_WRITE_CHUNK_BYTES, 1))
+            await writer.write(body(30, 2))
+            await writer.close()
+
+            expect(checkLines()).toEqual([`${PREFIX}: written=${TAURI_WRITE_CHUNK_BYTES + 30} reopened=130 host=com.android.externalstorage.documents`])
+            const all = JSON.stringify(logSpy.mock.calls)
+            expect(all).not.toContain('primary')
+            expect(all).not.toContain('risu-backup')
+            expect(all).not.toContain('Download')
+        })
+
+        test('(U) a reopen failure code is logged, close still resolves and the file is not removed or failed', async () => {
+            android.os = 'android'
+            android.replyFor = (written, last) => ({ written, ...(last ? { synced: true, reopen: 'open-failed' } : {}) })
+            const writer = new TauriWriter(URI)
+            await writer.write(body(10, 1))
+            await expect(writer.close()).resolves.toBeUndefined()
+
+            expect(checkLines()).toEqual([`${PREFIX}: written=10 reopened=open-failed host=com.android.externalstorage.documents`])
+            expect(android.files.get(URI)!.byteLength).toBe(10)
+            expect(android.calls.map((call) => call.command)).toEqual(['export_append_b64'])
+        })
+
+        test('(U) a reply without reopen fields logs none and close resolves; the call count is unchanged', async () => {
+            android.os = 'android'
+            const writer = new TauriWriter(URI)
+            await writer.write(body(10, 1))
+            await expect(writer.close()).resolves.toBeUndefined()
+
+            expect(checkLines()).toEqual([`${PREFIX}: written=10 reopened=none host=com.android.externalstorage.documents`])
+            expect(android.calls).toHaveLength(1)
+        })
+
+        test('(U) a target that is not a parsable URI logs host unknown and does not throw', async () => {
+            android.os = 'android'
+            const writer = new TauriWriter('content://[bad')
+            await writer.write(body(10, 1))
+            await expect(writer.close()).resolves.toBeUndefined()
+
+            expect(checkLines()).toEqual([`${PREFIX}: written=10 reopened=none host=unknown`])
+        })
+
+        test('(U) the empty closing call after whole chunks also logs the total written', async () => {
+            android.os = 'android'
+            const writer = new TauriWriter(URI)
+            await writer.write(body(TAURI_WRITE_CHUNK_BYTES, 1))
+            await writer.close()
+
+            expect(checkLines()).toEqual([`${PREFIX}: written=${TAURI_WRITE_CHUNK_BYTES} reopened=none host=com.android.externalstorage.documents`])
+        })
+
+        test('(U) a writeFile path logs nothing', async () => {
+            android.os = 'windows'
+            const writer = new TauriWriter(URI)
+            await writer.write(body(10, 1))
+            await writer.close()
+
+            expect(checkLines()).toEqual([])
+            expect(fs.calls).toHaveLength(1)
+            expect(android.calls).toEqual([])
+        })
+    })
+
     test.each([null, undefined, 'ok', {}])('(R) a reply of %j fails the writer', async (reply) => {
         android.os = 'android'
         android.replyFor = () => reply
