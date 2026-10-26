@@ -2012,6 +2012,8 @@ export const languageGerman = {
     "keepAliveGenerating": "Antwort wird generiert…",
     "keepAliveWorking": "Wird bearbeitet…",
     "keepAliveStop": "Stopp",
+    "keepAliveFinishing": "Wird abgeschlossen…",
+    "keepAliveSavePending": "Antwort bereit. Öffnen Sie die App, um das Speichern abzuschließen.",
     "messageInterrupted": "Unterbrochen – die Antwort ist möglicherweise unvollständig",
     "nanoGPTLoadingAccountInfo": "Kontodaten werden geladen…",
     "nanoGPTCreditBalance": "Guthaben:",
@@ -2104,6 +2106,7 @@ export const languageGerman = {
     "assetIntegrityReportNotCached": (n: number) => `- Noch nicht zwischengespeichert (normal, kein Problem): ${n}\n`,
     "assetIntegrityReportNotContentAddressed": (n: number) => `- Nicht inhaltsadressiert (kann auf diese Weise nicht überprüft werden): ${n}\n`,
     "assetIntegrityReportArchivedNotChecked": (characterNames: string) => `- Archivierte Charaktere, deren Assets nicht geprüft wurden (ihre Daten konnten nicht geladen werden): ${characterNames}\n`,
+    "assetIntegrityReportModulesNotChecked": (moduleNames: string) => `- Module, deren Assets nicht geprüft wurden (sie sind nicht geladen): ${moduleNames}\n`,
     "assetIntegrityReportMismatchCount": (n: number) => `- **Abweichungen gefunden: ${n}**\n`,
     "assetIntegrityReportEvicted": (n: number) => `\n${n} beschädigte Cache-Einträge entfernt. Laden Sie die App neu, damit die Korrektur wirksam wird.`,
     "assetIntegrityReportLeftInCache": "\nWie gewünscht im Cache belassen.",
@@ -2251,12 +2254,12 @@ export const languageGerman = {
     "store2RestoreNotFlushed": "Die frühere Version wurde wiederhergestellt, aber das Gerät hat nicht bestätigt, dass sie auf den Datenträger geschrieben wurde. Die App wird jetzt neu geladen und schließt das Schreiben beim Start ab.",
     "store2RestoreDone": "Die frühere Version wurde wiederhergestellt. Die Version, die Sie zuvor hatten, bleibt in der Liste erhalten. Die App wird neu geladen.",
     "store2RestoreOldRow": (when: string) => `Alt: ${when}`,
-    "store2ImportSizeWarning": (megabytes: number) =>
-        `Die Daten in diesem Backup sind, ohne Bilder und andere Dateien, etwa ${megabytes} MB groß. Zum Lesen wird ein Mehrfaches davon an Arbeitsspeicher benötigt, daher kann einem Smartphone oder einem anderen kleinen Gerät der Speicher ausgehen und es kann anhalten. Ihre gespeicherten Daten werden erst geändert, wenn der Import abgeschlossen ist. Fortfahren?`,
+    "store2ImportSizeWarning": (megabytes: number, copiesFiles = false) =>
+        `Die Daten in diesem Backup sind, ohne Bilder und andere Dateien, etwa ${megabytes} MB groß. Zum Lesen wird ein Mehrfaches davon an Arbeitsspeicher benötigt, daher kann einem Smartphone oder einem anderen kleinen Gerät der Speicher ausgehen und es kann anhalten. Ihre gespeicherten Daten werden erst ersetzt, wenn der Import abgeschlossen ist.${copiesFiles ? ' Bilder und andere Dateien aus dem Backup werden vorher kopiert und ersetzen gespeicherte Dateien mit demselben Namen.' : ''} Fortfahren?`,
     "store2ImportTimeWarning": (entries: number, minutes: number, neededGigabytes: number, databaseMegabytes: number | null, freeGigabytes: number | null = null, short = false) =>
-        `Dieses Backup enthält ${entries} Dateien. Der Import auf diesem Smartphone kann ab jetzt etwa ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} Stunden` : `${minutes} Minuten`} dauern, oder länger. Das ist eine Schätzung auf Grundlage eines Mittelklasse-Smartphones; Ihres kann schneller oder langsamer sein, und ein Einsteiger-Smartphone kann deutlich langsamer sein. Lassen Sie die App geöffnet, bis der Import abgeschlossen ist.\n\nDer Import benötigt etwa ${neededGigabytes} GB freien Speicherplatz auf diesem Smartphone. ${freeGigabytes === null ? 'Die App kann nicht prüfen, wie viel frei ist.' : short ? `Es sind nur etwa ${freeGigabytes} GB frei, und wenn dem Smartphone der Speicherplatz ausgeht, wird der Import angehalten.` : `Etwa ${freeGigabytes} GB sind frei.`} ${databaseMegabytes === null ? '' : `Die Daten in diesem Backup sind, ohne Bilder und andere Dateien, etwa ${databaseMegabytes} MB groß. Zum Lesen wird ein Mehrfaches davon an Arbeitsspeicher benötigt, daher kann einem Smartphone der Speicher ausgehen und es kann anhalten. `}Nach dem Kopieren der Dateien kann am Ende noch eine Rückfrage erscheinen. Ihre gespeicherten Daten werden erst geändert, wenn der Import abgeschlossen ist. Fortfahren?`,
+        `Dieses Backup enthält ${entries} Dateien. Der Import auf diesem Smartphone kann ab jetzt etwa ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} Stunden` : `${minutes} Minuten`} dauern, oder länger. Das ist eine Schätzung auf Grundlage eines Mittelklasse-Smartphones; Ihres kann schneller oder langsamer sein, und ein Einsteiger-Smartphone kann deutlich langsamer sein. Lassen Sie die App geöffnet, bis der Import abgeschlossen ist.\n\nDer Import benötigt etwa ${neededGigabytes} GB freien Speicherplatz auf diesem Smartphone. ${freeGigabytes === null ? 'Die App kann nicht prüfen, wie viel frei ist.' : short ? `Es sind nur etwa ${freeGigabytes} GB frei, und wenn dem Smartphone der Speicherplatz ausgeht, wird der Import angehalten.` : `Etwa ${freeGigabytes} GB sind frei.`} ${databaseMegabytes === null ? '' : `Die Daten in diesem Backup sind, ohne Bilder und andere Dateien, etwa ${databaseMegabytes} MB groß. Zum Lesen wird ein Mehrfaches davon an Arbeitsspeicher benötigt, daher kann einem Smartphone der Speicher ausgehen und es kann anhalten. `}Nach dem Kopieren der Dateien kann am Ende noch eine Rückfrage erscheinen. Ihre gespeicherten Daten werden erst ersetzt, wenn der Import abgeschlossen ist. Bilder und andere Dateien aus dem Backup werden vorher kopiert und ersetzen gespeicherte Dateien mit demselben Namen. Fortfahren?`,
     "store2ImportSpaceWarning": (neededGigabytes: number, freeGigabytes: number, databaseMegabytes: number | null) =>
-        `Der Import benötigt etwa ${neededGigabytes} GB freien Speicherplatz auf diesem Smartphone, aber es sind nur etwa ${freeGigabytes} GB frei. Wenn dem Smartphone der Speicherplatz ausgeht, wird der Import angehalten. ${databaseMegabytes === null ? '' : `Die Daten in diesem Backup sind, ohne Bilder und andere Dateien, etwa ${databaseMegabytes} MB groß. Zum Lesen wird ein Mehrfaches davon an Arbeitsspeicher benötigt, daher kann einem Smartphone der Speicher ausgehen und es kann anhalten. `}Ihre gespeicherten Daten werden erst geändert, wenn der Import abgeschlossen ist. Fortfahren?`,
+        `Der Import benötigt etwa ${neededGigabytes} GB freien Speicherplatz auf diesem Smartphone, aber es sind nur etwa ${freeGigabytes} GB frei. Wenn dem Smartphone der Speicherplatz ausgeht, wird der Import angehalten. ${databaseMegabytes === null ? '' : `Die Daten in diesem Backup sind, ohne Bilder und andere Dateien, etwa ${databaseMegabytes} MB groß. Zum Lesen wird ein Mehrfaches davon an Arbeitsspeicher benötigt, daher kann einem Smartphone der Speicher ausgehen und es kann anhalten. `}Ihre gespeicherten Daten werden erst ersetzt, wenn der Import abgeschlossen ist. Bilder und andere Dateien aus dem Backup werden vorher kopiert und ersetzen gespeicherte Dateien mit demselben Namen. Fortfahren?`,
     "store2ImportIncompleteConfirm": (items: string) =>
         `Einige Daten in diesem Backup konnten nicht vollständig übernommen werden:\n\n${items}\n\nDiese Teile sind nach dem Import leer oder fehlen. Die Daten, die Sie jetzt haben, bleiben in der Liste der früheren gespeicherten Versionen erhalten. Trotzdem importieren?`,
     "store2ImportReadFailed": "Ein Teil des Backups oder Ihrer gespeicherten Daten konnte nicht gelesen werden, daher wurde nichts importiert. Ihre aktuellen Daten wurden nicht geändert.",
@@ -2299,6 +2302,7 @@ export const languageGerman = {
     "moduleLowLevelNamed": (name: string, file?: string) => file ? `Modul "${name}" (${file})` : `Modul "${name}"`,
     "importModulesDone": (imported: number, skipped: number) => skipped > 0 ? `${imported} ${imported === 1 ? 'Modul' : 'Module'} importiert, ${skipped} übersprungen.` : `${imported} ${imported === 1 ? 'Modul' : 'Module'} importiert.`,
     "moduleUnsupportedFile": (name: string) => `${name}: Dieser Dateityp wird nicht als Modul unterstützt.`,
+    "moduleLoadFailed": (name: string) => `Das Modul "${name}" konnte nicht geladen werden, daher wurde nichts damit gemacht.`,
     "moduleDuplicatePrompt": (name: string, file: string) => `Ein Modul mit dem Namen "${name}" (${file}) ist bereits installiert. Was soll mit dieser Datei geschehen?`,
     "moduleDuplicateReplace": "Ersetzen",
     "moduleDuplicateSkip": "Überspringen",
@@ -2773,7 +2777,8 @@ export const languageGerman = {
         "peerAutoExportSaved": "Die Änderungen dieses Tabs wurden zusätzlich automatisch exportiert: Die Datei, ohne andere Bilder, Assets und Inlays, wurde an Ihren Browser übergeben. Prüfen Sie, ob der Download angekommen und abgeschlossen ist, bevor Sie auf „Neu laden“ klicken. Änderungen nach dem Export sind darin nicht enthalten.",
         "peerAutoExportNotFinished": "Der automatische Export wurde nicht abgeschlossen. Verwenden Sie „Diesen Tab zuerst exportieren, dann neu laden“.",
         "peerNoSaveReplaced": "Nachdem Ihre gespeicherten Daten außerhalb dieses Tabs geändert wurden, kann die Version dieses Tabs nicht darüber gespeichert werden.",
-        "peerNoSaveUnloaded": "Dieser Tab hält nicht alle Charaktere im Arbeitsspeicher, daher kann seine Version die Änderung des anderen Tabs nicht ersetzen.",
+        "peerNoSaveBlocked": "„Meine speichern“ ist nicht verfügbar: Diese Elemente sind in diesem Tab nicht geladen oder können darin nicht gespeichert werden: {names}",
+        "peerNoSaveBlockedCount": "„Meine speichern“ ist nicht verfügbar: Elemente, die in diesem Tab nicht geladen sind oder nicht gespeichert werden können ({count}).",
         "peerReloadOnly": "Neu laden",
         "peerKeepReading": "Weiterlesen (dieser Tab kann nicht speichern)",
         "peerCleanCommit": "Ein anderer Tab hat Änderungen an Ihren Daten gespeichert. Laden Sie neu, um sie zu sehen. In diesem Tab ist nichts ungespeichert.",

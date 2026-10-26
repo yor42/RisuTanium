@@ -27,7 +27,7 @@ import type { AppStoreKind } from 'src/ts/storage/store/appStore'
 import type { World } from './saveLoopWorld'
 import type { Store2BootNotice, Store2BootResult } from 'src/ts/storage/store2/bootActive'
 import type { Store2BootUi } from 'src/ts/storage/store2/bootDispatch'
-import { fakeLists } from './store2/codecFixtures'
+import { bytesOf, fakeLists } from './store2/codecFixtures'
 
 export { fakeLists }
 
@@ -281,7 +281,7 @@ export interface SeededTree {
 export async function seedTree(backend: Store2Backend, db: Database, env: KeyEnv, lists: ListDerivation = fakeLists): Promise<SeededTree> {
     const tree = encodeDatabase(db, { env, lists, seq: 1, createdAt: env.now() })
     for (const unit of tree.units) {
-        await backend.putUnit(unit.key, unit.bytes)
+        await backend.putUnit(unit.key, bytesOf(unit))
     }
     const first = firstCommitKey({ current: { key: tree.manifestKey, at: env.now() }, staging: null, manifests: [tree.manifest] }, env)
     await backend.casCommit((await backend.readCommit()).token, encodeUnit(UNIT_TYPE.commit, first))
@@ -416,7 +416,9 @@ export async function peerCommit(kit: Store2Kit, edit: (db: Database) => void, s
     const peer = committerOf(kit.counted.memory, kit.clock, seed, 'peer-page')
     const encoder = createSaveEncoder({ previous: previousFrom(kit.seeded.tree), lists: fakeLists, env: testEnv(kit.clock, seed + 1) })
     const plan = await encoder.plan(peerDb, { marked: new Set(), modules: true, whole: true })
-    const result = await peer.commit(await peer.readCommit(), plan.commitRequest())
+    // A real peer judged its base `ok` on its own read, so the base names what it planned over; this helper's encoder
+    // is built from the seed tree and commits over a key that no longer names it, so the carry claim is left off.
+    const result = await peer.commit(await peer.readCommit(), { ...plan.commitRequest(), carry: undefined })
     if (result.status !== 'committed') {
         throw new Error(`The peer commit came to ${result.status}.`)
     }

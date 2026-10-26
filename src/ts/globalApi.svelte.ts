@@ -25,6 +25,7 @@ import { characterURLImport, hubURL } from "./characterCards";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
 import { encodeRisuSaveLegacy, RisuSaveEncoder, type SaveLayout, type toSaveType } from "./storage/risuSave";
 import { registerDbChangeEffects } from "./storage/dbChangeEffects.svelte";
+import { isModuleStub } from "./storage/moduleStub";
 import { appendIfAbsent, installCharacterSaveMarks } from "./storage/characterSaveMarks";
 import { createSaveScheduler } from "./storage/saveScheduler";
 import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } from "./storage/store2/saveActive";
@@ -75,6 +76,8 @@ import { getMultiTabAction, isRevisionAwareBackend, nextAutoReloadHistory, resol
 import { hasLocalDrafts } from "./localDrafts";
 import { beginChokePoint, busyKinds } from "./process/memory/busyActions";
 import { installNetHold } from "./storage/measureExportHold";
+import { isAndroidTransport, shouldBypassFrozenPagePaths } from "./storage/tauriByteTransport";
+import { parseJsonBody } from "./network/frozenBody";
 import { MEASURE } from "./process/memory/measureFlag";
 import { noteChatSelect } from "./process/chatPhaseRing";
 import { draftContentOrphanGate } from "./draftContentOrphanGate";
@@ -1270,8 +1273,36 @@ export function hasUnsavedSaveMarks(): boolean {
 
 const nextCommitCallbacks = new Set<() => void>()
 
+/**
+ * The `snapshotMarkCount` of the latest commit: every mark counted at or below it was in the blocks
+ * that commit covered. It only grows, so a later iteration beginning never un-covers a mark. It
+ * counts a commit in which the mark's character could not be saved as covering it.
+ */
+let committedMarkCount = 0
+
+/** True when saving has stopped. The store's running value is the empty string, so test truthiness, never `!== null`. */
+export function isSavingStopped(): boolean {
+    return Boolean(get(savingStoppedReason))
+}
+
+/** Calls `callback` whenever saving is stopped (a store calls its subscriber at once, so only a truthy reason counts); the returned function unsubscribes. */
+export function onSavingStopped(callback: () => void): () => void {
+    return savingStoppedReason.subscribe((reason) => {
+        if (reason) {
+            callback()
+        }
+    })
+}
+
+/** The mark count the latest commit covered; compare with `getSaveMarkCount()` taken after a mark. */
+export function getCommittedSaveMarkCount(): number {
+    return committedMarkCount
+}
+
 /** Calls and forgets every callback registered for the next commit; a throwing callback never stops the others. */
 function fireNextCommitCallbacks(): void {
+    // Set before the callbacks run: a callback asks whether its marks are covered.
+    committedMarkCount = Math.max(committedMarkCount, snapshotMarkCount)
     for (const callback of [...nextCommitCallbacks]) {
         nextCommitCallbacks.delete(callback)
         try {
@@ -2164,6 +2195,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
             return pending
         },
         pageHidden: () => document.visibilityState === 'hidden',
+        yieldImmediately: shouldBypassFrozenPagePaths,
     }
     if (MEASURE) {
         // A measurement build can hold the idle net while an export runs; dirty passes are not affected.
@@ -3185,6 +3217,14 @@ export interface GlobalFetchArgs {
     interceptor?: string;
     requestTimeoutMs?: number;
     networkRoute?: 'auto' | 'local_network';
+    /**
+     * Fork-specific: the reply must arrive and be parsed while the hidden Android page is frozen.
+     * Android only: there, a non-streamed request through `fetchWithTauri` takes the native event
+     * route (`fetchWithNativeEvents`) and has no native deadline. Elsewhere the flag changes nothing.
+     * It is ignored for `rawResponse` and for plain-fetch and userscript routing, which never reach
+     * that route. A caller's `requestTimeoutMs` still bounds the request through `globalFetch`.
+     */
+    deliverWhileFrozen?: boolean;
 }
 
 /**
@@ -3400,10 +3440,61 @@ async function fetchWithUSFetch(url: string, arg: GlobalFetchArgs): Promise<Glob
  * @returns {Promise<GlobalFetchResult>} - The result of the fetch request.
  */
 async function fetchWithTauri(url: string, arg: GlobalFetchArgs): Promise<GlobalFetchResult> {
+    // Decided when the request starts: it starts visible, and the page freezes later.
+    if (arg.deliverWhileFrozen && !arg.rawResponse && isAndroidTransport()) {
+        return await fetchWithNativeEvents(url, arg);
+    }
     try {
         const headers = { 'Content-Type': 'application/json', ...arg.headers };
         const response = await TauriHTTPFetch(new URL(url), { body: JSON.stringify(arg.body), headers, method: arg.method ?? "POST", signal: arg.abortSignal });
         const data = arg.rawResponse ? new Uint8Array(await response.arrayBuffer()) : await response.json();
+        const ok = response.status >= 200 && response.status < 300;
+        addFetchLogInGlobalFetch(data, ok, url, arg, response.status);
+        return { ok, data, headers: Object.fromEntries(response.headers), status: response.status };
+    } catch (error) {
+        return { ok: false, data: `${error}`, headers: {}, status: 400 };
+    }
+}
+
+/**
+ * Fork-specific: the User-Agent tauri-plugin-http 2.8.0 adds when a request names none. The native
+ * event route sends the same value so that moving a request between the two routes is invisible to
+ * providers. It must be re-checked whenever the plugin is updated. That providers do not validate
+ * it is an assumption, not something verified.
+ */
+const pluginDefaultUserAgent = 'tauri-plugin-http/2.8.0';
+
+/**
+ * Fork-specific: performs a non-streamed JSON request over the native event route of `fetchNative`, so the reply
+ * reaches the page and is parsed while a hidden Android page is frozen. The HTTP plugin cannot do
+ * that: its body reads wait on tasks a frozen page never runs. Interceptors already ran in
+ * `globalFetch`, and its timeout signal is already `arg.abortSignal`; the request has no native limit.
+ *
+ * @param {string} url - The URL to fetch.
+ * @param {GlobalFetchArgs} arg - The arguments for the fetch request.
+ * @returns {Promise<GlobalFetchResult>} - The result of the fetch request.
+ */
+async function fetchWithNativeEvents(url: string, arg: GlobalFetchArgs): Promise<GlobalFetchResult> {
+    try {
+        const headers: { [key: string]: string } = { 'Content-Type': 'application/json', ...arg.headers };
+        if (!Object.keys(headers).some((key) => key.toLowerCase() === 'user-agent')) {
+            headers['User-Agent'] = pluginDefaultUserAgent;
+        }
+        const method = arg.method ?? "POST";
+        const response = await fetchNative(url, {
+            body: method === 'GET' ? undefined : (JSON.stringify(arg.body) ?? ''),
+            headers,
+            method,
+            signal: arg.abortSignal,
+            chatId: arg.chatId,
+            logFetch: false,
+            noNativeTimeout: true,
+        });
+        const data = await parseJsonBody(response);
+        // A stop after the head closes the stream cleanly, so a cut-off body must not pass as a reply.
+        if (arg.abortSignal?.aborted) {
+            return { ok: false, data: 'aborted', headers: {}, status: 400 };
+        }
         const ok = response.status >= 200 && response.status < 300;
         addFetchLogInGlobalFetch(data, ok, url, arg, response.status);
         return { ok, data, headers: Object.fromEntries(response.headers), status: response.status };
@@ -3559,8 +3650,11 @@ async function resolveUncleanableChars(db: Database, opts: { swallowErrors: bool
  * `complete` is explicitly `false`.
  */
 export async function buildAssetKeepSet(db: Database): Promise<{ uncleanable: Set<string>, complete: boolean }> {
-    const { chars, complete } = await resolveUncleanableChars(db, { swallowErrors: true })
+    const { chars, complete: charsComplete } = await resolveUncleanableChars(db, { swallowErrors: true })
     const uncleanable = new Set(getUncleanablesSync(db, { chars }))
+    // A module stub holds none of its body's asset references and this layer can read no stub list, so the set
+    // is incomplete and the sweeps delete nothing.
+    const complete = charsComplete && !(db.modules ?? []).some((module) => isModuleStub(module))
     return { uncleanable, complete }
 }
 
@@ -3646,6 +3740,13 @@ export function getUncleanablesSync(db: Database, options?:{
 
     if (db.modules) {
         for (const module of db.modules) {
+            // A stub yields only the icon it holds as an index field; no other key is read.
+            if (isModuleStub(module)) {
+                if (Object.hasOwn(module, 'icon') && module.icon) {
+                    addUncleanable(module.icon)
+                }
+                continue
+            }
             const assets = module.assets
             if (assets) {
                 for (const asset of assets) {
@@ -3969,6 +4070,12 @@ export { AppendableBuffer, VirtualWriter } from './byteBuffer'
  * @type {number}
  */
 let fetchIndex = 0
+
+/**
+ * Per page load, so an id left in the native registry by a reload cannot collide with a new request.
+ * Not `crypto.randomUUID`, which a plain-HTTP origin lacks.
+ */
+const fetchIdPrefix = v4().slice(0, 8)
 
 /**
  * Stores native fetch data.
@@ -4316,11 +4423,12 @@ export async function fetchNative(url: string, arg: {
     logFetch?: boolean
     requestTimeoutMs?: number
     networkRoute?: 'auto' | 'local_network'
+    /** Sends the native no-limit sentinel instead of the 240 s default; a given `requestTimeoutMs` still wins. */
+    noNativeTimeout?: boolean
 }): Promise<Response> {
 
     assertNoSecretRef(arg.headers, url)
     const useInterceptor = !!arg.interceptor
-    console.log(arg.body, 'body')
     if (arg.body === undefined && (arg.method === 'POST' || arg.method === 'PUT')) {
         throw new Error('Body is required for POST and PUT requests')
     }
@@ -4405,7 +4513,7 @@ export async function fetchNative(url: string, arg: {
         if (fetchIndex >= 100000) {
             fetchIndex = 0
         }
-        let fetchId = fetchIndex.toString().padStart(5, '0')
+        let fetchId = fetchIdPrefix + '-' + fetchIndex.toString().padStart(5, '0')
         nativeFetchData[fetchId] = []
         // True once a terminal signal (end, error event or failed command) arrived; the first one wins.
         let resolved = false
@@ -4465,7 +4573,11 @@ export async function fetchNative(url: string, arg: {
                 headers: JSON.stringify(headers),
                 body: realBody ? Buffer.from(realBody).toString('base64') : '',
                 method: arg.method,
-                timeout_secs: arg.requestTimeoutMs ? Math.max(1, Math.ceil(arg.requestTimeoutMs / 1000)) : undefined
+                // Tauri names the Rust argument `timeout_secs` as `timeoutSecs`. The native limit covers the
+                // whole request, body included; 0 is no limit and an absent value is the 240 s default.
+                timeoutSecs: arg.requestTimeoutMs
+                    ? Math.max(1, Math.ceil(arg.requestTimeoutMs / 1000))
+                    : (arg.noNativeTimeout ? 0 : undefined)
             }).then((res) => {
                 try {
                     const parsedRes = JSON.parse(res as string)

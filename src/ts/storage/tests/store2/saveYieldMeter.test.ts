@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import type { Committer } from '../../store2/commit'
+import type { CommitRequest, Committer } from '../../store2/commit'
 import { runStore2SaveLoop, type Store2LoopPort } from '../../store2/saveLoop'
 import type { YieldBudgetOptions } from '../../saveYield'
-import { yieldGapMeterHandle, type YieldGapMeterHandle, type YieldGapRecord } from '../../store2/saveYieldMeter'
+import { startYieldGaps, yieldGapMeterHandle, type YieldGapMeterHandle, type YieldGapRecord } from '../../store2/saveYieldMeter'
 import type { Database, character } from '../../database.svelte'
 import type { toSaveType } from '../../risuSave'
 import { until } from '../saveLoopWorld'
@@ -52,6 +52,10 @@ vi.mock('../../saveYield', async (importOriginal) => {
                     const end = performance.now() + budget.spinMs
                     while (performance.now() < end) {
                         // A known stretch of synchronous work before the yield.
+                    }
+                    // The real budget consults `skip` only when it would yield, and then yields nothing.
+                    if (options?.skip?.() === true) {
+                        return
                     }
                     await (options?.yieldFn ?? real.yieldToEventLoop)()
                 },
@@ -454,8 +458,22 @@ describe('a normal build installs nothing', () => {
         expect(records()).toEqual([])
         expect(mode.reads()).toBe(0)
         expect(budget.options.length).toBeGreaterThan(0)
-        expect(budget.options.every(options => options === undefined)).toBe(true)
+        // The exact option shape: only the frozen-page `skip` function, no `yieldFn`, `budgetMs` or `now`, so the budget and primitive are the default ones.
+        expect(budget.options.every(options => options !== undefined && Object.keys(options).join() === 'skip' && typeof options.skip === 'function')).toBe(true)
         // The default primitive ran: the real yields went through scheduler.yield.
         expect(schedulerYield).toHaveBeenCalled()
+    })
+})
+
+describe('guard (passes before and after the carry rule): the build wrapper keeps the fields of the request it wraps', () => {
+    test('G9: the carry claim of a wrapped request is the request\'s own', () => {
+        const recorder = startYieldGaps({})
+        expect(recorder).not.toBeNull()
+        const request: CommitRequest = { newUnits: 3, build: () => { throw new Error('not built here') }, carry: { from: 'store2/m-from', units: 4 }, force: true }
+        const wrapped = recorder?.wrapBuild(request)
+        expect(wrapped?.carry).toEqual({ from: 'store2/m-from', units: 4 })
+        expect(wrapped?.force).toBe(true)
+        expect(wrapped?.newUnits).toBe(3)
+        recorder?.finish()
     })
 })

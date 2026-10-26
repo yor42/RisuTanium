@@ -5,6 +5,9 @@ services:
     container_name: risutanium
     build:
       context: .
+      # Fetch the latest node:24-slim on every build, so Node security releases reach a rebuilt image instead of a
+      # locally cached base staying on an affected Node (CVE-2026-111497 is fixed from 24.22.1).
+      pull: true
       args:
         # Baked into the frontend at build time, on by default. Unset becomes TRUE; a value set to empty (in the
         # shell that runs the build, or in your own untracked `.env` next to this file) opts out and keeps the

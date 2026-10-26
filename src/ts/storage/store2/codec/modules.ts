@@ -1,7 +1,8 @@
 import type { JsonObject } from '../../blockFrame'
-import { carryUnknownFields, KNOWN_FIELDS, type ModuleEntry, type ModuleIndex } from '../format'
+import { carryUnknownFields, KNOWN_FIELDS, type ModuleEntry, type ModuleIndex, type Ref } from '../format'
 import type { ModuleBody } from './bodies'
-import { CodecAssembleError } from './types'
+import { isModuleStub } from '../../moduleStub'
+import { CodecAssembleError, CodecInputError } from './types'
 
 /**
  * Modules: one unit each (type 9), plus the module index (type 10) that lists
@@ -13,7 +14,19 @@ export function storedModule(module: JsonObject): JsonObject {
     return module
 }
 
+/**
+ * A module holding the stub marker is never a unit body: a real stub stands for a module this pass has no body for, and
+ * a foreign module that holds the marker key cannot be told apart from one. A pass with a previous module index carries
+ * or refuses a stub with a `StubRefusedError` before reaching this body path; here it is refused with a `CodecInputError`
+ * when there is no previous index at all (convert, import, first encode), where no entry can stand for the stub. The
+ * message is a noun phrase that reads correctly for both, inside "cannot be saved as it is".
+ */
 export function moduleBodyOf(module: JsonObject): ModuleBody {
+    if (isModuleStub(module)) {
+        const id = typeof module.id === 'string' ? module.id : ''
+        const name = typeof module.name === 'string' ? module.name : ''
+        throw new CodecInputError(`the module "${name}" (${id}) with the module stub marker`)
+    }
     return { v: 1, module: storedModule(module) }
 }
 
@@ -39,11 +52,33 @@ export function moduleEntryFields(module: JsonObject): Omit<ModuleEntry, 'unit' 
     if (typeof module.lowLevelAccess === 'boolean') {
         entry.lowLevelAccess = module.lowLevelAccess
     }
+    if (typeof module.mcp === 'object' && module.mcp !== null) {
+        entry.mcp = true
+    }
     return entry
 }
 
+/**
+ * The entry-fields version this build writes: the fourth element of an entry's `unit` Ref. Every field
+ * `moduleEntryFields` derives must be listed in `KNOWN_FIELDS.moduleEntry`, otherwise `carryModuleIndex` would carry a
+ * stale previous value under this version. A later derived field bumps the version, and a reader accepts only its own.
+ * It is the only element a module entry `unit` Ref carries beyond the three of a plain Ref: the rekey recognises a Ref
+ * of three or four elements only.
+ */
+export const ENTRY_FIELDS_VERSION = 1
+
+/** Whether the derived fields of `entry` were computed by a build that knows this entry-fields version. Any other value, or no fourth element, reads as no tag. */
+export function hasCurrentEntryFields(entry: Pick<ModuleEntry, 'unit'>): boolean {
+    return entry.unit[3] === ENTRY_FIELDS_VERSION
+}
+
+/** A module entry `unit` Ref: the three elements of the unit's Ref plus the entry-fields version. */
+export function taggedUnitRef(ref: Ref): Ref {
+    return [ref[0], ref[1], ref[2], ENTRY_FIELDS_VERSION]
+}
+
 /** Module handle: the id, told apart from a repeated id by occurrence (the same handle the units are named by). */
-export function moduleHandles(entries: readonly ModuleEntry[]): string[] {
+export function moduleHandles(entries: readonly Pick<ModuleEntry, 'id'>[]): string[] {
     const seen = new Map<string, number>()
     return entries.map((entry) => {
         const occurrence = seen.get(entry.id) ?? 0
@@ -53,7 +88,7 @@ export function moduleHandles(entries: readonly ModuleEntry[]): string[] {
 }
 
 /** The handles of entries whose id is non-empty, does not start with `~` (the positional-handle prefix) and is held by exactly one entry of `entries`. */
-function uniqueIdHandles(entries: readonly ModuleEntry[]): Set<string> {
+export function uniqueIdHandles(entries: readonly Pick<ModuleEntry, 'id'>[]): Set<string> {
     const counts = new Map<string, number>()
     for (const entry of entries) {
         counts.set(entry.id, (counts.get(entry.id) ?? 0) + 1)

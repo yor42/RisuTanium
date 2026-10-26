@@ -437,7 +437,9 @@ describe('preconditions are checked before the first asset is written', () => {
 
         await loadBin(page, bytes)
 
-        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(megabytes)])
+        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(megabytes, true)])
+        // The import copies the backup's files before its commit, so a same-name file is replaced first.
+        expect(language.store2ImportSizeWarning(megabytes, true)).toContain('replace any stored file with the same name')
         // With the decline ignored the zero-filled entry would fail to decode and write nothing anyway; the error text is what shows the decline stopped it.
         expect(alertErrorTexts(page)).toEqual([])
         expect(mutations(page)).toEqual([])

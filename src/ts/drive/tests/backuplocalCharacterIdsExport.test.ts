@@ -5,8 +5,8 @@
  * never from the page's own objects. Entries that are not characters are left
  * out, an id that cannot be saved is replaced with the lists that named it
  * following, and an archived character takes back the id its unit records or,
- * when the unit cannot name one, a new id, said in the final message. The
- * export is never refused.
+ * when the unit cannot name one, a new id, said in the final message. No
+ * character-list problem refuses the export.
  *
  * The harness is the one `backuplocalUnitClosure.test.ts` documents: the real
  * writer, collector and unit store with every dialog mocked. A passing test
@@ -18,6 +18,7 @@
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
+import { decompressSync } from 'fflate'
 import type { Database } from 'src/ts/storage/database.svelte'
 
 //#region module mocks
@@ -557,6 +558,14 @@ afterEach(() => {
     vi.restoreAllMocks()
 })
 
+/**
+ * The msgpack bytes inside a compressed database entry (11-byte header, then one gzip member). The export compresses
+ * in slices, so the compressed bytes differ from the legacy encoder's while the msgpack they inflate to is the same.
+ */
+function inflatedMsgpack(entryData: Uint8Array): Buffer {
+    return Buffer.from(decompressSync(entryData.subarray(11)))
+}
+
 function exportedDatabase(): Promise<{ characters: Array<Record<string, unknown>> } & Record<string, unknown>> {
     const entry = writtenEntries().find((e) => e.name === 'database.risudat')
     if (!entry) {
@@ -572,14 +581,14 @@ describe.each([
     ['SaveLocalBackup', SaveLocalBackup],
     ['SavePartialLocalBackup', SavePartialLocalBackup],
 ])('%s exports a character list a reader can load', (_name, run) => {
-    test('(G) a list with nothing wrong is exported byte for byte', async () => {
+    test('(G) a list with nothing wrong is exported with the msgpack bytes of the legacy encoder', async () => {
         const db = databaseWith({ characters: [makeLiveCharacter('a', 'A', []), makeLiveCharacter('b', 'B', [])], characterOrder: ['a', 'b'] })
         getDatabaseMock.mockImplementation(() => db)
 
         expect(await outcomeOf(run)).toBeNull()
 
         const entry = writtenEntries().find((e) => e.name === 'database.risudat')!
-        expect(Buffer.from(entry.data).equals(Buffer.from(encodeRisuSaveLegacy({ ...db, account: undefined }, 'compression')))).toBe(true)
+        expect(inflatedMsgpack(entry.data).equals(inflatedMsgpack(encodeRisuSaveLegacy({ ...db, account: undefined }, 'compression')))).toBe(true)
     })
 
     test('(R) a character whose id cannot be saved is exported with a new id and the lists follow; the page keeps its own objects (S14)', async () => {
@@ -781,7 +790,7 @@ describe.each([
         expect(exported.characterOrder).toEqual(['kv:other'])
     })
 
-    test('(G) may pass before and after: with no namespaces a kv:foo id is exported byte for byte as the legacy encoder writes it', async () => {
+    test('(G) may pass before and after: with no namespaces a kv:foo id is exported with the msgpack bytes the legacy encoder writes', async () => {
         const db = databaseWith({ characters: [heldCharacter('kv:foo', 'A')], characterOrder: ['kv:foo'], upstreamKvBlocks: {} })
         getDatabaseMock.mockImplementation(() => db)
 
@@ -789,6 +798,6 @@ describe.each([
 
         const { upstreamKvBlocks: _field, ...withoutField } = db as unknown as Record<string, unknown>
         const entry = writtenEntries().find((e) => e.name === 'database.risudat')!
-        expect(Buffer.from(entry.data).equals(Buffer.from(encodeRisuSaveLegacy({ ...withoutField, account: undefined } as unknown as Database, 'compression')))).toBe(true)
+        expect(inflatedMsgpack(entry.data).equals(inflatedMsgpack(encodeRisuSaveLegacy({ ...withoutField, account: undefined } as unknown as Database, 'compression')))).toBe(true)
     })
 })

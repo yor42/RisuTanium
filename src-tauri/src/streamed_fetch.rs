@@ -202,11 +202,13 @@ fn build_request(
         "DELETE" => client.delete(&request.url).body(decode_body(&request.body)?),
         _ => return Err("Invalid method".to_string()),
     };
-    Ok(builder
-        .headers(headers)
-        .timeout(Duration::from_secs(
-            request.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS),
-        )))
+    let builder = builder.headers(headers);
+    // Zero is the caller's explicit "no limit"; an absent value keeps the default.
+    Ok(match request.timeout_secs {
+        Some(0) => builder,
+        Some(secs) => builder.timeout(Duration::from_secs(secs)),
+        None => builder.timeout(Duration::from_secs(DEFAULT_TIMEOUT_SECS)),
+    })
 }
 
 fn decode_body(body: &str) -> Result<Vec<u8>, String> {
@@ -404,6 +406,34 @@ mod tests {
         let (result, events) = run(&registry, req);
         assert_eq!(parse(&result)["success"], json!(false));
         assert!(events.lock().unwrap().is_empty());
+    }
+
+    fn built_timeout(timeout_secs: Option<u64>) -> Option<Duration> {
+        let client = reqwest::Client::new();
+        let mut req = request("t", "http://127.0.0.1:9/".to_string());
+        req.timeout_secs = timeout_secs;
+        build_request(&client, &req)
+            .ok()
+            .expect("request must build")
+            .build()
+            .expect("request must assemble")
+            .timeout()
+            .copied()
+    }
+
+    #[test]
+    fn missing_timeout_keeps_the_default_deadline() {
+        assert_eq!(built_timeout(None), Some(Duration::from_secs(DEFAULT_TIMEOUT_SECS)));
+    }
+
+    #[test]
+    fn zero_timeout_means_no_deadline() {
+        assert_eq!(built_timeout(Some(0)), None);
+    }
+
+    #[test]
+    fn explicit_timeout_is_applied_in_seconds() {
+        assert_eq!(built_timeout(Some(600)), Some(Duration::from_secs(600)));
     }
 
     #[test]

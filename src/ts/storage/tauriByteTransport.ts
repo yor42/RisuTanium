@@ -31,6 +31,11 @@ export const WRITE_CHUNK_COMMAND = 'write_chunk'
 export const WRITE_CHUNK_RAW_COMMAND = 'write_chunk_raw'
 export const ABORT_CHUNKED_COMMAND = 'abort_chunked'
 export const READ_RANGE_COMMAND = 'read_range'
+/** The same read as `read_range` with the reply as one base64 string; see `requestPiece`. */
+export const READ_RANGE_TEXT_COMMAND = 'read_range_text'
+
+/** Most file bytes one text read carries (also clamped by the command); a bigger piece goes over `read_range`. */
+export const TEXT_RANGE_MAX_BYTES = 64 * 1024
 
 /** Most file bytes one desktop IPC call carries, in either direction. */
 export const CHUNK_MAX = 4 * 1024 * 1024
@@ -473,6 +478,15 @@ export interface RangedPiece {
     identity: string
 }
 
+export interface RangedReadOptions {
+    /**
+     * The key is small and a pass that must finish while the page is hidden reads it: while
+     * `shouldBypassFrozenPagePaths()` holds, its pieces of at most `TEXT_RANGE_MAX_BYTES` go over
+     * `read_range_text`. Other keys, other platforms and a visible page keep `read_range`.
+     */
+    frozenSafe?: boolean
+}
+
 type RangeResponse = ArrayBuffer | ArrayBufferView | readonly number[]
 
 /**
@@ -510,7 +524,7 @@ function responseBytes(response: RangeResponse): Uint8Array {
     return bytes
 }
 
-/** The `read_range` invokes since the last `takeRangeReadStats`, as a measurement build counts them. */
+/** The `read_range` and `read_range_text` invokes since the last `takeRangeReadStats`, as a measurement build counts them. */
 export interface RangeReadStats {
     /** Invokes made by any reader on the page, so an upper bound for one export's reads. */
     reads: number
@@ -528,6 +542,7 @@ export interface RangeReadStats {
 interface RangeReadMark {
     startedAt: number
     store2: boolean
+    text: boolean
 }
 
 function emptyRangeStats(): RangeReadStats {
@@ -545,6 +560,7 @@ export function setRangeReadClockForTest(clock: (() => number) | null): void {
     rangeStats = emptyRangeStats()
     rangeInFlight = 0
     rangeBusySince = 0
+    textReadCount = 0
 }
 
 /**
@@ -571,7 +587,15 @@ export function takeRangeReadStats(): RangeReadStats | null {
     return stats
 }
 
-function beginRangeRead(key: string): RangeReadMark | null {
+/** The `read_range_text` invokes that ended since the page started (measurement builds only); no take clears it. */
+let textReadCount = 0
+
+/** Measurement builds only: the `read_range_text` invokes counted so far, so a run can show the hidden-page path was taken; `null` otherwise. */
+export function peekTextReadCount(): number | null {
+    return MEASURE ? textReadCount : null
+}
+
+function beginRangeRead(key: string, text: boolean): RangeReadMark | null {
     try {
         const startedAt = rangeClock()
         if (rangeInFlight === 0) {
@@ -581,7 +605,7 @@ function beginRangeRead(key: string): RangeReadMark | null {
         if (rangeInFlight > rangeStats.maxInFlight) {
             rangeStats.maxInFlight = rangeInFlight
         }
-        return { startedAt, store2: key.startsWith('store2/') }
+        return { startedAt, store2: key.startsWith('store2/'), text }
     } catch {
         return null
     }
@@ -594,6 +618,9 @@ function endRangeRead(mark: RangeReadMark): void {
         const ms = now - mark.startedAt
         rangeStats.reads += 1
         rangeStats.ms += ms
+        if (mark.text) {
+            textReadCount += 1
+        }
         if (mark.store2) {
             rangeStats.store2Reads += 1
             rangeStats.store2Ms += ms
@@ -606,17 +633,107 @@ function endRangeRead(mark: RangeReadMark): void {
     }
 }
 
-async function requestPiece(key: string, offset: number, len: number): Promise<RangePiece> {
-    const mark = MEASURE ? beginRangeRead(key) : null
-    let reply: RangeResponse
+const BASE64_REVERSE = (() => {
+    const table = new Int16Array(256).fill(-1)
+    for (let i = 0; i < BASE64_CODES.length; i++) {
+        table[BASE64_CODES[i]] = i
+    }
+    return table
+})()
+
+/** The 6-bit value of a base64 character code, or -1 for anything outside the alphabet (`=` included). */
+function sextet(code: number): number {
+    return code < 256 ? BASE64_REVERSE[code] : -1
+}
+
+/**
+ * Strict standard base64 (RFC 4648 alphabet, `=` padding, no whitespace) to bytes.
+ * The output is allocated once at its exact size and filled in one pass; any other
+ * character, a length that is not a multiple of four or padding anywhere but the end throws.
+ */
+export function base64ToBytes(text: string): Uint8Array {
+    const length = text.length
+    if (length % 4 !== 0) {
+        throw new Error('the base64 reply has a length that is not a multiple of four')
+    }
+    if (length === 0) {
+        return new Uint8Array(0)
+    }
+    let padding = 0
+    if (text.charCodeAt(length - 1) === 61) {
+        padding = text.charCodeAt(length - 2) === 61 ? 2 : 1
+    }
+    const out = new Uint8Array((length / 4) * 3 - padding)
+    const fullEnd = padding === 0 ? length : length - 4
+    let o = 0
+    for (let i = 0; i < fullEnd; i += 4) {
+        const a = sextet(text.charCodeAt(i))
+        const b = sextet(text.charCodeAt(i + 1))
+        const c = sextet(text.charCodeAt(i + 2))
+        const d = sextet(text.charCodeAt(i + 3))
+        if ((a | b | c | d) < 0) {
+            throw new Error('the base64 reply has an invalid character')
+        }
+        const group = (a << 18) | (b << 12) | (c << 6) | d
+        out[o++] = group >> 16
+        out[o++] = (group >> 8) & 255
+        out[o++] = group & 255
+    }
+    if (padding > 0) {
+        const i = fullEnd
+        const a = sextet(text.charCodeAt(i))
+        const b = sextet(text.charCodeAt(i + 1))
+        const c = padding === 1 ? sextet(text.charCodeAt(i + 2)) : 0
+        if ((a | b | c) < 0) {
+            throw new Error('the base64 reply has an invalid character')
+        }
+        const group = (a << 18) | (b << 12) | (c << 6)
+        out[o++] = group >> 16
+        if (padding === 1) {
+            out[o++] = (group >> 8) & 255
+        }
+    }
+    return out
+}
+
+/**
+ * Whether this page may be frozen with work pending: the Android app with its page
+ * hidden. The system freezes a hidden WebView's event loop after a while, and a
+ * frozen page delivers no timer, message or large raw reply, so work that must
+ * finish while hidden avoids all three. Safe where `document` does not exist.
+ */
+export function shouldBypassFrozenPagePaths(): boolean {
+    return isAndroidTransport() && typeof document !== 'undefined' && document.visibilityState === 'hidden'
+}
+
+/** Whether a read of `len` bytes of a frozen-safe key goes over the text command now. */
+function usesTextRead(frozenSafe: boolean, len: number): boolean {
+    return frozenSafe && len <= TEXT_RANGE_MAX_BYTES && shouldBypassFrozenPagePaths()
+}
+
+async function requestPiece(key: string, offset: number, len: number, text = false): Promise<RangePiece> {
+    const mark = MEASURE ? beginRangeRead(key, text) : null
+    let response: Uint8Array
     try {
-        reply = await invoke<RangeResponse>(READ_RANGE_COMMAND, { key, offset, len })
+        if (text) {
+            // Fork-local command (`read_range_text` in src-tauri/src/lib.rs). A frozen page still receives a
+            // reply that Tauri delivers by evaluating script, which is every JSON reply that does not start
+            // with `{` or `[` and every error; a Raw reply of 1 KiB or more instead goes through a fetch the
+            // frozen page never answers. The base64 string is such a reply. This holds for Tauri 2.12.1;
+            // re-check it against the `ipc/protocol.rs` reply path and `ipc/channel.rs` thresholds whenever Tauri is updated.
+            const reply = await invoke<string>(READ_RANGE_TEXT_COMMAND, { key, offset, len })
+            if (typeof reply !== 'string') {
+                throw new Error('the text range read answered something other than a string')
+            }
+            response = base64ToBytes(reply)
+        } else {
+            response = responseBytes(await invoke<RangeResponse>(READ_RANGE_COMMAND, { key, offset, len }))
+        }
     } finally {
         if (mark !== null) {
             endRangeRead(mark)
         }
     }
-    const response = responseBytes(reply)
     if (response.length < RANGE_TRAILER_BYTES) {
         throw new Error(`the range read of ${key} answered ${response.length} bytes, fewer than its trailer`)
     }
@@ -648,9 +765,12 @@ async function requestPiece(key: string, offset: number, len: number): Promise<R
  * caller decides what a change means. The pieces are views into the responses,
  * so a caller that keeps one past the next `next()` keeps its whole response.
  */
-export async function* readRangedPieces(key: string, pieceBytes: number = readPieceBytes()): AsyncGenerator<RangedPiece, void, undefined> {
+export async function* readRangedPieces(key: string, pieceBytes: number = readPieceBytes(), options: RangedReadOptions = {}): AsyncGenerator<RangedPiece, void, undefined> {
+    const frozenSafe = options.frozenSafe === true
+    // A frozen-safe key asks for at most the text cap while the page may freeze; the rest, if any, is continued.
+    const firstLength = frozenSafe && shouldBypassFrozenPagePaths() ? Math.min(pieceBytes, TEXT_RANGE_MAX_BYTES) : pieceBytes
     // An error here is the caller's: a missing file is how an absent key shows.
-    const first = await requestPiece(key, 0, pieceBytes)
+    const first = await requestPiece(key, 0, firstLength, usesTextRead(frozenSafe, firstLength))
     if (first.bytes.length > first.total) {
         throw new Error(`the range read of ${key} returned ${first.bytes.length} bytes of a ${first.total}-byte file`)
     }
@@ -662,7 +782,8 @@ export async function* readRangedPieces(key: string, pieceBytes: number = readPi
     while (filled < first.total) {
         let piece: RangePiece
         try {
-            piece = await requestPiece(key, filled, Math.min(pieceBytes, first.total - filled))
+            const length = Math.min(pieceBytes, first.total - filled)
+            piece = await requestPiece(key, filled, length, usesTextRead(frozenSafe, length))
         } catch (error) {
             // A file that vanishes between pieces was replaced or deleted mid-read; it is not an absent key.
             if (MISSING_FILE_ERROR.test(errorText(error))) {
@@ -684,9 +805,9 @@ export async function* readRangedPieces(key: string, pieceBytes: number = readPi
     }
 }
 
-async function readPieces(key: string, pieceBytes: number): Promise<Uint8Array> {
+async function readPieces(key: string, pieceBytes: number, options: RangedReadOptions): Promise<Uint8Array> {
     let out: Uint8Array | null = null
-    for await (const piece of readRangedPieces(key, pieceBytes)) {
+    for await (const piece of readRangedPieces(key, pieceBytes, options)) {
         if (piece.offset === 0) {
             if (piece.bytes.length === piece.total) {
                 return piece.bytes
@@ -707,10 +828,10 @@ async function readPieces(key: string, pieceBytes: number): Promise<Uint8Array> 
  * padded or mixed from two files. A missing file on the first piece rejects
  * with the command's own error, which ends in `(os error 2)`.
  */
-export async function readRanged(key: string, pieceBytes: number = readPieceBytes()): Promise<Uint8Array> {
+export async function readRanged(key: string, pieceBytes: number = readPieceBytes(), options: RangedReadOptions = {}): Promise<Uint8Array> {
     for (let attempt = 0; ; attempt++) {
         try {
-            return await readPieces(key, pieceBytes)
+            return await readPieces(key, pieceBytes, options)
         } catch (error) {
             if (!(error instanceof RangeReadChangedError) || attempt >= READ_RETRIES) {
                 throw error

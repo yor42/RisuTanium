@@ -9,7 +9,7 @@ import {
     ASSET_REF_V, encodeFrame, encodeUnit, FRAME_HEADER_BYTES, FRAME_OVERHEAD, keyOfRef, refOfFrame, tailOfKey, UNIT_TYPE,
     type ChunkRef, type Ref, type UnitType,
 } from 'src/ts/storage/store2/format'
-import { buildSmall, encodeWith } from './codecFixtures'
+import { buildSmall, bytesOf, encodeWith } from './codecFixtures'
 
 /**
  * `checkUnit` (`codec/assemble.ts`): the one check every read of a unit passes, so assembly and boot-time detection
@@ -30,7 +30,7 @@ function unitOf(tree: EncodedTree, matches: (unit: EncodedUnit) => boolean): Enc
 }
 
 function sourceOf(tree: EncodedTree, replace: Map<string, Uint8Array | null> = new Map()): UnitSource {
-    const bytes = new Map(tree.units.map(unit => [unit.key, unit.bytes] as const))
+    const bytes = new Map(tree.units.map(unit => [unit.key, bytesOf(unit)] as const))
     for (const [key, value] of replace) {
         if (value === null) {
             bytes.delete(key)
@@ -83,7 +83,7 @@ describe('new behaviour: checkUnit answers without throwing', () => {
     ])('%s is damaged (by the Ref: %s)', (_label, damage, byRef) => {
         const tree = treeOf()
         const unit = unitOf(tree, candidate => candidate.type === UNIT_TYPE.characterCore)
-        const checked = checkUnit(sourceOf(tree, new Map([[unit.key, damage(unit.bytes)]])), unit.ref, unit.type)
+        const checked = checkUnit(sourceOf(tree, new Map([[unit.key, damage(bytesOf(unit))]])), unit.ref, unit.type)
         expect(checked.status).toBe('damaged')
         expect(checked).toMatchObject({ byRef })
     })
@@ -107,7 +107,7 @@ describe('new behaviour: checkUnit answers without throwing', () => {
     test('a frame a newer build wrote is too-new, whatever else is wrong with the unit', () => {
         const tree = treeOf()
         const unit = unitOf(tree, candidate => candidate.type === UNIT_TYPE.characterCore)
-        const newer = withHeader(unit.bytes, header => { header[4] = 9 })
+        const newer = withHeader(bytesOf(unit), header => { header[4] = 9 })
         expect(checkUnit(sourceOf(tree, new Map([[unit.key, newer]])), unit.ref, unit.type).status).toBe('too-new')
     })
 
@@ -174,19 +174,19 @@ describe('guard: assembly reads through the same check and keeps its messages', 
     test('a unit that differs from its Ref still throws "does not match its Ref."', () => {
         const tree = treeOf()
         const unit = unitOf(tree, candidate => candidate.type === UNIT_TYPE.characterCore)
-        expect(assemble(tree, new Map([[unit.key, new Uint8Array([...unit.bytes, 0])]]))).toThrow(new RegExp(`unit ${unit.key} does not match its Ref\\.$`))
+        expect(assemble(tree, new Map([[unit.key, new Uint8Array([...bytesOf(unit), 0])]]))).toThrow(new RegExp(`unit ${unit.key} does not match its Ref\\.$`))
     })
 
     test('a flipped payload byte still throws "is damaged: <reason>"', () => {
         const tree = treeOf()
         const unit = unitOf(tree, candidate => candidate.type === UNIT_TYPE.characterCore)
-        expect(assemble(tree, new Map([[unit.key, flipped(unit.bytes, FRAME_HEADER_BYTES + 1)]]))).toThrow(`unit ${unit.key} is damaged: The payload checksum does not match.`)
+        expect(assemble(tree, new Map([[unit.key, flipped(bytesOf(unit), FRAME_HEADER_BYTES + 1)]]))).toThrow(`unit ${unit.key} is damaged: The payload checksum does not match.`)
     })
 
     test('a too-new unit still throws "is too-new: <reason>"', () => {
         const tree = treeOf()
         const unit = unitOf(tree, candidate => candidate.type === UNIT_TYPE.characterCore)
-        const newer = withHeader(unit.bytes, header => { header[4] = 9 })
+        const newer = withHeader(bytesOf(unit), header => { header[4] = 9 })
         expect(assemble(tree, new Map([[unit.key, newer]]))).toThrow(`unit ${unit.key} is too-new: Frame format 9 is newer than this build.`)
     })
 
@@ -195,7 +195,7 @@ describe('guard: assembly reads through the same check and keeps its messages', 
         const chunkUnit = unitOf(tree, candidate => candidate.type === UNIT_TYPE.chatChunk)
         // Re-reference the chunk, in the shard that names it, with a count that is not the one it holds.
         for (const shard of tree.units.filter(candidate => candidate.type === UNIT_TYPE.shard)) {
-            const body = JSON.parse(new TextDecoder().decode(shard.bytes.subarray(FRAME_HEADER_BYTES, shard.bytes.length - 4))) as {
+            const body = JSON.parse(new TextDecoder().decode(bytesOf(shard).subarray(FRAME_HEADER_BYTES, bytesOf(shard).length - 4))) as {
                 entries: { chats: { chunks: Ref[] }[] }[]
             }
             const target = body.entries.flatMap(entry => entry.chats.flatMap(chat => chat.chunks)).find(ref => ref[0] === chunkUnit.ref[0])
@@ -218,7 +218,7 @@ describe('guard: assembly reads through the same check and keeps its messages', 
         const unit = unitOf(tree, candidate => candidate.type === UNIT_TYPE.characterCore)
         const thrown = (() => {
             try {
-                assemble(tree, new Map([[unit.key, unit.bytes.slice(0, 7)]]))()
+                assemble(tree, new Map([[unit.key, bytesOf(unit).slice(0, 7)]]))()
             } catch (error) {
                 return error
             }
@@ -238,7 +238,7 @@ describe('guard: assembly reads through the same check and keeps its messages', 
     ] as [string, UnitType][])('the check and assembly agree on a damaged %s', (_label, type) => {
         const tree = treeOf()
         const unit = unitOf(tree, candidate => candidate.type === type)
-        const damaged = flipped(unit.bytes, FRAME_HEADER_BYTES + 1)
+        const damaged = flipped(bytesOf(unit), FRAME_HEADER_BYTES + 1)
         const replace = new Map([[unit.key, damaged]])
         expect(checkUnit(sourceOf(tree, replace), unit.ref, unit.type).status).toBe('damaged')
         expect(assemble(tree, replace)).toThrow(CodecAssembleError)

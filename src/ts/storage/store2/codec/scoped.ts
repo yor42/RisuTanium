@@ -14,8 +14,9 @@ import {
 } from './split'
 import { isColdStub } from './stub'
 import {
-    CodecAssembleError, CodecError, CodecInputError, SharedChaIdStubError, StubRefusedError, type EncodedTree, type EncodedUnit,
-    type EncodeOptions, type ListDerivation, type PreviousEncoding, type ReusableUnit, type SplitRecorder,
+    CodecAssembleError, CodecError, CodecInputError, isWrittenUnit, SharedChaIdStubError, StubRefusedError, type EncodedTree,
+    type EncodedUnit, type EncodeOptions, type ListDerivation, type PreviousEncoding, type ReusableUnit, type SplitRecorder,
+    type WrittenUnit,
 } from './types'
 import { MEASURE } from '../../../process/memory/measureFlag'
 
@@ -193,7 +194,7 @@ function ownerOf(identity: string): Owner {
 }
 
 /** The previous units this pass kept: those of a carried character and, when the modules are carried, the modules'. */
-function carriedUnits(previous: PreviousEncoding | null, carriedOwners: ReadonlySet<string>, modulesCarried: boolean): Map<string, ReusableUnit> {
+function carriedUnits(previous: PreviousEncoding | null, carriedOwners: ReadonlySet<string> | ReadonlyMap<string, string>, modulesCarried: boolean): Map<string, ReusableUnit> {
     const carried = new Map<string, ReusableUnit>()
     if (previous === null) {
         return carried
@@ -242,6 +243,15 @@ interface ScopedParts {
     skipped: SkippedCharacter[]
     /** The `chaId` of every character the pass encoded. */
     encoded: string[]
+    /** The characters carried from the previous encoding, by entity id, with the display name taken when they were carried. */
+    owners: ReadonlyMap<string, string>
+    /** The names (else ids) of the module stubs carried from the previous encoding. */
+    modules: readonly string[]
+}
+
+/** A carried entry's display name, captured at the carry site so naming it later never reads the previous encoding. */
+function nameOfEntry(entry: ShardEntry): string {
+    return entry.name !== '' ? entry.name : entry.u
 }
 
 async function encodeScopedParts(db: Database, options: EncodeOptions, scope: EncodeScope): Promise<ScopedParts> {
@@ -300,7 +310,7 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
         return previousEntries
     }
     const entries: ShardEntry[] = []
-    const carriedOwners = new Set<string>()
+    const carriedOwners = new Map<string, string>()
     const skipped: SkippedCharacter[] = []
     const encoded: string[] = []
     for (let position = 0; position < characters.length; position++) {
@@ -331,7 +341,7 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
                     skipped.push({ chaId, saved, cause: error })
                     if (saved) {
                         const entry = carriedEntry(slot, chaId, encoder, entriesOfPrevious)
-                        carriedOwners.add(entry.u)
+                        carriedOwners.set(entry.u, nameOfEntry(entry))
                         entries.push(entry)
                     }
                     if (MEASURE && split !== undefined) {
@@ -355,7 +365,7 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
         } else {
             const carriedStarted = readClock(split)
             const entry = carriedEntry(slot, chaId, encoder, entriesOfPrevious)
-            carriedOwners.add(entry.u)
+            carriedOwners.set(entry.u, nameOfEntry(entry))
             entries.push(entry)
             if (MEASURE && split !== undefined) {
                 split.addMs('splitCarriedMs', split.now() - carriedStarted)
@@ -372,7 +382,7 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
     if (MEASURE && split !== undefined) {
         split.addMs('splitFinishTreeMs', split.now() - finishStarted)
     }
-    return { tree, parents: encoder.parents, skipped, encoded }
+    return { tree, parents: encoder.parents, skipped, encoded, owners: carriedOwners, modules: encoder.carriedModuleNames }
 }
 
 /**
@@ -459,7 +469,7 @@ function rekey(tree: EncodedTree, parents: ReadonlyMap<string, ParentBody>, cont
     const rewritten = new Map<string, object>()
     const units: EncodedUnit[] = []
     for (const unit of tree.units) {
-        if (unit.reused) {
+        if (unit.reused === true) {
             units.push(unit)
             continue
         }
@@ -472,12 +482,17 @@ function rekey(tree: EncodedTree, parents: ReadonlyMap<string, ParentBody>, cont
             if (unit.type === UNIT_TYPE.manifest) {
                 // The attempt's own seq and clock reading, not the plan-time ones.
                 body = { ...(body as Manifest), seq: context.seq, createdAt: context.now }
+                if (context.legacyKeep !== undefined) {
+                    // The keep of the base this attempt replaces, not the one the plan carried.
+                    const manifest = body as Manifest
+                    body = { ...manifest, fixed: { ...manifest.fixed, legacyKeep: context.legacyKeep } }
+                }
             }
             rewritten.set(unit.identity, body)
             bytes = encodeUnit(parent.type, body)
             digest = unitDigest(bytes)
         }
-        const next: EncodedUnit = { ...unit, key, bytes, digest, ref: refOfFrame(key, bytes) }
+        const next: WrittenUnit = { ...unit, key, bytes, digest, ref: refOfFrame(key, bytes) }
         finalRefs.set(tailOfKey(unit.key), next.ref)
         units.push(next)
     }
@@ -488,7 +503,7 @@ function rekey(tree: EncodedTree, parents: ReadonlyMap<string, ParentBody>, cont
     }
     const indexUnits = new Map(tree.index.units)
     for (const unit of units) {
-        if (!unit.reused) {
+        if (unit.reused === false) {
             indexUnits.set(unit.identity, { key: unit.key, type: unit.type, ref: unit.ref, digest: unit.digest })
         }
     }
@@ -514,6 +529,8 @@ export interface ScopedPlan {
     skipped: readonly SkippedCharacter[]
     /** The `chaId` of every character the pass encoded. */
     encoded: readonly string[]
+    /** Existing units the tree names without writing them (reused by digest or carried by key), and the names of the characters and module stubs carried by key. */
+    carried: { units: number, owners: ReadonlyMap<string, string>, modules: readonly string[] }
     /**
      * The tree under the keys of `context.mint`, its manifest carrying `context.seq` and `context.now`. Pure over the
      * plan: a commit that builds again on a retry calls it again with the retry's own context, and every call gives a
@@ -532,7 +549,7 @@ export interface ScopedPlan {
  * is ignored: the plan owns the keys.
  */
 export async function planScopedEncode(db: Database, options: EncodeOptions, scope: EncodeScope): Promise<ScopedPlan> {
-    const { tree, parents, skipped, encoded } = await encodeScopedParts(db, { ...options, keys: placeholderMint() }, scope)
+    const { tree, parents, skipped, encoded, owners, modules } = await encodeScopedParts(db, { ...options, keys: placeholderMint() }, scope)
     const split = MEASURE ? scope.split : undefined
     const tailStarted = readClock(split)
     const newUnits = tree.units.filter(unit => !unit.reused).length
@@ -545,6 +562,7 @@ export async function planScopedEncode(db: Database, options: EncodeOptions, sco
         unchanged,
         skipped,
         encoded,
+        carried: { units: tree.index.units.size - newUnits, owners, modules },
         finalize: context => rekey(tree, parents, context),
     }
 }
@@ -751,7 +769,8 @@ function verdictOfNormalized(normalized: NormalizedCharacter, base: VerdictBase,
 export function builtCommitOf(tree: EncodedTree): BuiltCommit {
     return {
         units: tree.units
-            .filter(unit => !unit.reused && unit.type !== UNIT_TYPE.manifest)
+            .filter(isWrittenUnit)
+            .filter(unit => unit.type !== UNIT_TYPE.manifest)
             .map(unit => ({ key: unit.key, bytes: unit.bytes })),
         manifest: { key: tree.manifestKey, body: tree.manifest },
     }

@@ -59,7 +59,7 @@ import type { Store2Session } from 'src/ts/storage/store2/session'
 import { BLOCKED_TABLE, blockedScreen } from 'src/ts/storage/store2/ui/bootText'
 import { language } from 'src/lang'
 import { createClock, createPeerDouble, seedTree, testEnv, type PeerDouble } from '../store2SaveKit'
-import { buildSmall, chat, fakeLists, message, mulberry32, prosePool, type Obj } from './codecFixtures'
+import { buildSmall, bytesOf, chat, fakeLists, message, mulberry32, prosePool, type Obj } from './codecFixtures'
 
 /**
  * The store2 boot dispatch (`store2/bootDispatch.ts`), one test per row of the boot table: the action, exactly what it
@@ -116,7 +116,7 @@ function entryBody(world: World): ShardEntry[] {
         if (unit === undefined) {
             throw new Error('A shard is not in the encoded tree.')
         }
-        const payload = unit.bytes.subarray(FRAME_HEADER_BYTES, unit.bytes.length - 4)
+        const payload = bytesOf(unit).subarray(FRAME_HEADER_BYTES, bytesOf(unit).length - 4)
         return (JSON.parse(new TextDecoder().decode(payload)) as { entries: ShardEntry[] }).entries
     })
 }
@@ -885,7 +885,7 @@ describe('new behaviour: the re-read of the commit key before a finding is acted
         if (orderUnit === undefined) {
             throw new Error('No order unit.')
         }
-        const payload = JSON.parse(new TextDecoder().decode(orderUnit.bytes.subarray(FRAME_HEADER_BYTES, orderUnit.bytes.length - 4))) as { chars: string[] }
+        const payload = JSON.parse(new TextDecoder().decode(bytesOf(orderUnit).subarray(FRAME_HEADER_BYTES, bytesOf(orderUnit).length - 4))) as { chars: string[] }
         payload.chars = [...payload.chars, 'an-entity-no-shard-lists']
         const rewritten = encodeUnit(UNIT_TYPE.order, payload)
         const manifest: Manifest = structuredClone(world.tree.manifest)

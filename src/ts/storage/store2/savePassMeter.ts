@@ -3,6 +3,7 @@ import type { UnitType } from './format'
 import type { SplitMsField, SplitPutSection, SplitRecorder } from './codec/types'
 import type { CharSignals, NetSignalHandle, SignalGlobals } from '../netSignalMeter'
 import type { InFlightKind } from '../../process/inFlightWork'
+import { peekTextReadCount } from '../tauriByteTransport'
 
 /**
  * The save-pass meter of a measurement build: per encode pass the kind, whether the modules were encoded, how many
@@ -255,6 +256,8 @@ export interface SavePassMeterHandle {
     shadowSlots(): NetShadowSlot[]
     signalSlots(): SignalSlotRecord[]
     signalAcks(): SignalAckRecord[]
+    /** The `read_range_text` invokes since the page started (the transport's counter; neither `reset()` nor an export's take clears it). */
+    textReads(): number
     reset(): void
 }
 
@@ -440,12 +443,17 @@ export interface SavePassCommitExtra {
 }
 
 /** The part of an encoded unit the meter reads. */
-export interface MeteredUnit {
+export type MeteredUnit = {
     identity: string
     key: string
     type: UnitType
     bytes: Uint8Array
-    reused: boolean
+    reused: false
+} | {
+    identity: string
+    key: string
+    type: UnitType
+    reused: true
 }
 
 const RECORD_LIMIT = 1000
@@ -952,6 +960,7 @@ const handle: SavePassMeterHandle = {
     shadowSlots: () => (shadowSlotStore ?? []).map(slot => ({ ...slot })),
     signalSlots: () => (signalSlotStore ?? []).map(slot => ({ ...slot })),
     signalAcks: () => (signalAckStore ?? []).map(entry => ({ ...entry, chaIds: [...entry.chaIds] })),
+    textReads: () => peekTextReadCount() ?? 0,
     reset: () => {
         verdictStore = null
         shadowStore = null
@@ -1442,7 +1451,7 @@ export function noteSavePassCommit(request: SavePassShape, units: readonly Meter
         }
         const written: SavePassUnitRecord[] = []
         for (const unit of units) {
-            if (!unit.reused) {
+            if (unit.reused === false) {
                 written.push({ identity: unit.identity, key: unit.key, type: unit.type, bytes: unit.bytes.length })
             }
         }

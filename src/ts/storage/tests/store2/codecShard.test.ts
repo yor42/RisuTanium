@@ -4,18 +4,18 @@ import type { Shard, ShardEntry } from '../../store2/format'
 import { UNIT_TYPE } from '../../store2/format'
 import { groupIntoShards, SHARD_COUNT, shardOfU } from '../../store2/codec'
 import {
-    bodyOf, buildSmall, buildT4, dbWithCharacters, encodeWith, mulberry32, previousFrom, prosePool, roundTrip, seededEnv,
+    bodyIn, bodyOf, buildSmall, buildT4, dbWithCharacters, encodeWith, mulberry32, previousFrom, prosePool, roundTrip, seededEnv,
     sparseCharacter, unitOf, type Obj,
 } from './codecFixtures'
 
-function shardsOf(tree: ReturnType<typeof encodeWith>): { index: number, shard: Shard }[] {
+function shardsOf(tree: ReturnType<typeof encodeWith>, ...earlier: ReturnType<typeof encodeWith>[]): { index: number, shard: Shard }[] {
     return tree.units
         .filter(unit => unit.type === UNIT_TYPE.shard)
-        .map(unit => ({ index: Number(unit.identity.split(':')[1]), shard: bodyOf(unit) as unknown as Shard }))
+        .map(unit => ({ index: Number(unit.identity.split(':')[1]), shard: bodyIn(unit, ...earlier) as unknown as Shard }))
 }
 
-function entriesOf(tree: ReturnType<typeof encodeWith>): ShardEntry[] {
-    return shardsOf(tree).flatMap(({ shard }) => shard.entries)
+function entriesOf(tree: ReturnType<typeof encodeWith>, ...earlier: ReturnType<typeof encodeWith>[]): ShardEntry[] {
+    return shardsOf(tree, ...earlier).flatMap(({ shard }) => shard.entries)
 }
 
 function character(chaId: unknown, extra: Obj = {}): Obj {
@@ -90,7 +90,7 @@ describe('entity id u', () => {
         const slots = [character('keep'), character('rename')]
         const first = encodeWith(dbWithCharacters(slots), { env: seededEnv(1) })
         const again = encodeWith(dbWithCharacters(slots), { env: seededEnv(50), previous: previousFrom(first) })
-        const us = (tree: ReturnType<typeof encodeWith>) => Object.fromEntries(entriesOf(tree).map(entry => [entry.chaId, entry.u]))
+        const us = (tree: ReturnType<typeof encodeWith>) => Object.fromEntries(entriesOf(tree, first).map(entry => [entry.chaId, entry.u]))
         expect(us(again)).toEqual(us(first))
         const renamed = encodeWith(dbWithCharacters([slots[0], character('renamed')]), { env: seededEnv(60), previous: previousFrom(first) })
         expect(us(renamed).keep).toBe(us(first).keep)
@@ -103,7 +103,7 @@ describe('entity id u', () => {
         const entries = entriesOf(first)
         expect(new Set(entries.map(entry => entry.u)).size).toBe(2)
         const again = encodeWith(dbWithCharacters(slots), { env: seededEnv(9), previous: previousFrom(first) })
-        expect(entriesOf(again).map(entry => `${entry.name}:${entry.u}`).sort()).toEqual(entries.map(entry => `${entry.name}:${entry.u}`).sort())
+        expect(entriesOf(again, first).map(entry => `${entry.name}:${entry.u}`).sort()).toEqual(entries.map(entry => `${entry.name}:${entry.u}`).sort())
         expect(roundTrip(dbWithCharacters(slots)).assembled.characters.map(slot => slot.name)).toEqual(['first twin', 'second twin'])
     })
 

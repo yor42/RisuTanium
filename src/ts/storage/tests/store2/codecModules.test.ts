@@ -20,7 +20,7 @@ describe('module units', () => {
         for (const entry of index.entries) {
             const unit = unitOf(tree, `module:${entry.id}#0`)
             expect(unit.type).toBe(UNIT_TYPE.module)
-            expect(entry.unit).toEqual(unit.ref)
+            expect(entry.unit.slice(0, 3)).toEqual(unit.ref)
             expect((bodyOf(unit).module as Obj).id).toBe(entry.id)
         }
         expect(tree.units.filter(unit => unit.type === UNIT_TYPE.module)).toHaveLength(3)

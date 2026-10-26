@@ -81,7 +81,7 @@ export const KNOWN_FIELDS = {
     ],
     chatEntry: ['cid', 'core', 'chunks'],
     moduleIndex: ['v', 'entries'],
-    moduleEntry: ['id', 'unit', 'al', 'il', 'name', 'description', 'namespace', 'icon', 'hideIcon', 'lowLevelAccess', 'hasToggle', 'dsp'],
+    moduleEntry: ['id', 'unit', 'al', 'il', 'name', 'description', 'namespace', 'icon', 'hideIcon', 'lowLevelAccess', 'mcp', 'hasToggle', 'dsp'],
     fenceRecord: ['v', 'at', 'priorCommits', 'keys', 'priorFences'],
     deletionSnapshot: ['v', 'kind', 'upstream', 'keys'],
     deletionUpstream: ['main', 'backups'],
@@ -529,6 +529,10 @@ function readModuleEntry(value: JsonValue, where: string): ModuleEntry {
     }
     if (o.lowLevelAccess !== undefined) {
         entry.lowLevelAccess = bool(o.lowLevelAccess, `${where}.lowLevelAccess`)
+    }
+    // Derived field: a value of the wrong type reads as absent, since the module unit stays authoritative.
+    if (typeof o.mcp === 'boolean') {
+        entry.mcp = o.mcp
     }
     return entry
 }

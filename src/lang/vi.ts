@@ -2010,6 +2010,8 @@ export const languageVietnamese = {
     "keepAliveGenerating": "Đang tạo phản hồi…",
     "keepAliveWorking": "Đang xử lý…",
     "keepAliveStop": "Dừng",
+    "keepAliveFinishing": "Đang hoàn tất…",
+    "keepAliveSavePending": "Phản hồi đã sẵn sàng. Hãy mở ứng dụng để hoàn tất việc lưu.",
     "messageInterrupted": "Đã bị gián đoạn — phản hồi có thể chưa đầy đủ",
     "nanoGPTLoadingAccountInfo": "Đang tải thông tin tài khoản…",
     "nanoGPTCreditBalance": "Số dư tín dụng:",
@@ -2102,6 +2104,7 @@ export const languageVietnamese = {
     assetIntegrityReportNotCached: (n: number) => `- Chưa được lưu vào bộ nhớ đệm (bình thường, không phải vấn đề): ${n}\n`,
     assetIntegrityReportNotContentAddressed: (n: number) => `- Không theo địa chỉ nội dung (không thể xác minh theo cách này): ${n}\n`,
     assetIntegrityReportArchivedNotChecked: (characterNames: string) => `- Các nhân vật đã lưu trữ chưa được kiểm tra tài sản (không thể tải dữ liệu của chúng): ${characterNames}\n`,
+    assetIntegrityReportModulesNotChecked: (moduleNames: string) => `- Các mô-đun chưa được kiểm tra tài sản (chưa được tải): ${moduleNames}\n`,
     assetIntegrityReportMismatchCount: (n: number) => `- **Phát hiện ${n} mục không khớp**\n`,
     assetIntegrityReportEvicted: (n: number) => `\nĐã xóa ${n} mục bộ nhớ đệm bị hỏng. Hãy tải lại ứng dụng để bản sửa lỗi có hiệu lực.`,
     assetIntegrityReportLeftInCache: "\nĐã giữ lại trong bộ nhớ đệm theo yêu cầu của bạn.",
@@ -2249,12 +2252,12 @@ export const languageVietnamese = {
     store2RestoreNotFlushed: "Phiên bản trước đó đã được khôi phục, nhưng thiết bị chưa xác nhận đã ghi nó vào ổ đĩa. Ứng dụng sẽ tải lại ngay bây giờ và hoàn tất việc ghi khi khởi động.",
     store2RestoreDone: "Phiên bản trước đó đã được khôi phục. Phiên bản bạn dùng trước đó vẫn được giữ trong danh sách. Đang làm mới ứng dụng.",
     store2RestoreOldRow: (when: string) => `Cũ: ${when}`,
-    store2ImportSizeWarning: (megabytes: number) =>
-        `Dữ liệu trong bản sao lưu này, không tính hình ảnh và các tệp khác, nặng khoảng ${megabytes} MB. Việc đọc nó cần dung lượng bộ nhớ gấp nhiều lần con số đó, nên điện thoại hoặc thiết bị nhỏ khác có thể hết bộ nhớ và ngừng hoạt động. Dữ liệu đã lưu của bạn không bị thay đổi cho đến khi việc nhập hoàn tất. Tiếp tục?`,
+    store2ImportSizeWarning: (megabytes: number, copiesFiles = false) =>
+        `Dữ liệu trong bản sao lưu này, không tính hình ảnh và các tệp khác, nặng khoảng ${megabytes} MB. Việc đọc nó cần dung lượng bộ nhớ gấp nhiều lần con số đó, nên điện thoại hoặc thiết bị nhỏ khác có thể hết bộ nhớ và ngừng hoạt động. Dữ liệu đã lưu của bạn không bị thay thế cho đến khi việc nhập hoàn tất.${copiesFiles ? ' Hình ảnh và các tệp khác từ bản sao lưu được sao chép vào trước đó và thay thế mọi tệp đã lưu có cùng tên.' : ''} Tiếp tục?`,
     store2ImportTimeWarning: (entries: number, minutes: number, neededGigabytes: number, databaseMegabytes: number | null, freeGigabytes: number | null = null, short = false) =>
-        `Bản sao lưu này có ${entries} tệp. Từ bây giờ, việc nhập nó trên điện thoại này có thể mất khoảng ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} giờ` : `${minutes} phút`}, hoặc lâu hơn. Đây là ước tính dựa trên một chiếc điện thoại tầm trung; điện thoại của bạn có thể nhanh hơn hoặc chậm hơn, và điện thoại cấu hình thấp có thể chậm hơn nhiều. Hãy để ứng dụng mở cho đến khi hoàn tất.\n\nViệc nhập cần khoảng ${neededGigabytes} GB dung lượng trống trên điện thoại này. ${freeGigabytes === null ? 'Ứng dụng không thể kiểm tra còn bao nhiêu dung lượng trống.' : short ? `Chỉ còn khoảng ${freeGigabytes} GB dung lượng trống, và nếu điện thoại hết dung lượng thì việc nhập sẽ dừng lại.` : `Còn khoảng ${freeGigabytes} GB dung lượng trống.`} ${databaseMegabytes === null ? '' : `Dữ liệu trong bản sao lưu này, không tính hình ảnh và các tệp khác, nặng khoảng ${databaseMegabytes} MB, và việc đọc nó cần dung lượng bộ nhớ gấp nhiều lần con số đó, nên điện thoại có thể hết bộ nhớ và ngừng hoạt động. `}Một câu hỏi vẫn có thể xuất hiện ở cuối, sau khi các tệp đã được sao chép. Dữ liệu đã lưu của bạn không bị thay đổi cho đến khi việc nhập hoàn tất. Tiếp tục?`,
+        `Bản sao lưu này có ${entries} tệp. Từ bây giờ, việc nhập nó trên điện thoại này có thể mất khoảng ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} giờ` : `${minutes} phút`}, hoặc lâu hơn. Đây là ước tính dựa trên một chiếc điện thoại tầm trung; điện thoại của bạn có thể nhanh hơn hoặc chậm hơn, và điện thoại cấu hình thấp có thể chậm hơn nhiều. Hãy để ứng dụng mở cho đến khi hoàn tất.\n\nViệc nhập cần khoảng ${neededGigabytes} GB dung lượng trống trên điện thoại này. ${freeGigabytes === null ? 'Ứng dụng không thể kiểm tra còn bao nhiêu dung lượng trống.' : short ? `Chỉ còn khoảng ${freeGigabytes} GB dung lượng trống, và nếu điện thoại hết dung lượng thì việc nhập sẽ dừng lại.` : `Còn khoảng ${freeGigabytes} GB dung lượng trống.`} ${databaseMegabytes === null ? '' : `Dữ liệu trong bản sao lưu này, không tính hình ảnh và các tệp khác, nặng khoảng ${databaseMegabytes} MB, và việc đọc nó cần dung lượng bộ nhớ gấp nhiều lần con số đó, nên điện thoại có thể hết bộ nhớ và ngừng hoạt động. `}Một câu hỏi vẫn có thể xuất hiện ở cuối, sau khi các tệp đã được sao chép. Dữ liệu đã lưu của bạn không bị thay thế cho đến khi việc nhập hoàn tất. Hình ảnh và các tệp khác từ bản sao lưu được sao chép vào trước đó và thay thế mọi tệp đã lưu có cùng tên. Tiếp tục?`,
     store2ImportSpaceWarning: (neededGigabytes: number, freeGigabytes: number, databaseMegabytes: number | null) =>
-        `Việc nhập cần khoảng ${neededGigabytes} GB dung lượng trống trên điện thoại này, nhưng chỉ còn khoảng ${freeGigabytes} GB dung lượng trống. Nếu điện thoại hết dung lượng thì việc nhập sẽ dừng lại. ${databaseMegabytes === null ? '' : `Dữ liệu trong bản sao lưu này, không tính hình ảnh và các tệp khác, nặng khoảng ${databaseMegabytes} MB, và việc đọc nó cần dung lượng bộ nhớ gấp nhiều lần con số đó, nên điện thoại có thể hết bộ nhớ và ngừng hoạt động. `}Dữ liệu đã lưu của bạn không bị thay đổi cho đến khi việc nhập hoàn tất. Tiếp tục?`,
+        `Việc nhập cần khoảng ${neededGigabytes} GB dung lượng trống trên điện thoại này, nhưng chỉ còn khoảng ${freeGigabytes} GB dung lượng trống. Nếu điện thoại hết dung lượng thì việc nhập sẽ dừng lại. ${databaseMegabytes === null ? '' : `Dữ liệu trong bản sao lưu này, không tính hình ảnh và các tệp khác, nặng khoảng ${databaseMegabytes} MB, và việc đọc nó cần dung lượng bộ nhớ gấp nhiều lần con số đó, nên điện thoại có thể hết bộ nhớ và ngừng hoạt động. `}Dữ liệu đã lưu của bạn không bị thay thế cho đến khi việc nhập hoàn tất. Hình ảnh và các tệp khác từ bản sao lưu được sao chép vào trước đó và thay thế mọi tệp đã lưu có cùng tên. Tiếp tục?`,
     store2ImportIncompleteConfirm: (items: string) =>
         `Một phần dữ liệu trong bản sao lưu này không thể được nhập đầy đủ:\n\n${items}\n\nCác phần đó sẽ trống hoặc bị thiếu sau khi nhập. Dữ liệu bạn đang có được giữ trong danh sách các phiên bản đã lưu trước đó. Vẫn nhập?`,
     store2ImportReadFailed: "Một phần của bản sao lưu, hoặc một phần dữ liệu đã lưu của bạn, không đọc được nên không có gì được nhập. Dữ liệu hiện tại của bạn không bị thay đổi.",
@@ -2297,6 +2300,7 @@ export const languageVietnamese = {
     moduleLowLevelNamed: (name: string, file?: string) => file ? `Mô-đun "${name}" (${file})` : `Mô-đun "${name}"`,
     importModulesDone: (imported: number, skipped: number) => skipped > 0 ? `Đã nhập ${imported} mô-đun, bỏ qua ${skipped}.` : `Đã nhập ${imported} mô-đun.`,
     moduleUnsupportedFile: (name: string) => `${name}: loại tệp này không được hỗ trợ làm mô-đun.`,
+    moduleLoadFailed: (name: string) => `Không thể tải mô-đun "${name}", nên không có thao tác nào được thực hiện với nó.`,
     moduleDuplicatePrompt: (name: string, file: string) => `Mô-đun có tên "${name}" (${file}) đã được cài đặt. Nên xử lý tệp này như thế nào?`,
     moduleDuplicateReplace: "Thay thế",
     moduleDuplicateSkip: "Bỏ qua",
@@ -2769,7 +2773,8 @@ export const languageVietnamese = {
         peerAutoExportSaved: "Các thay đổi của tab này cũng đã được xuất tự động: tệp, không chứa các hình ảnh, tài nguyên và inlay khác, đã được chuyển cho trình duyệt của bạn. Hãy kiểm tra xem bản tải xuống đã đến và đã hoàn tất chưa trước khi bạn nhấn Tải lại. Các thay đổi thực hiện sau khi xuất không có trong đó.",
         peerAutoExportNotFinished: "Việc xuất tự động chưa hoàn tất. Hãy dùng “Xuất tab này trước, rồi tải lại”.",
         peerNoSaveReplaced: "Sau khi dữ liệu đã lưu của bạn bị thay đổi từ bên ngoài tab này, phiên bản của tab này không thể được lưu đè lên đó.",
-        peerNoSaveUnloaded: "Tab này không giữ mọi nhân vật trong bộ nhớ, nên phiên bản của nó không thể thay thế thay đổi của tab kia.",
+        peerNoSaveBlocked: "“Lưu bản của tôi” không khả dụng: các mục này chưa được tải hoặc không thể lưu trong tab này: {names}",
+        peerNoSaveBlockedCount: "“Lưu bản của tôi” không khả dụng: các mục chưa được tải hoặc không thể lưu trong tab này ({count}).",
         peerReloadOnly: "Tải lại",
         peerKeepReading: "Tiếp tục đọc (tab này không thể lưu)",
         peerCleanCommit: "Một tab khác đã lưu thay đổi vào dữ liệu của bạn. Hãy tải lại để xem. Không có gì trong tab này chưa được lưu.",

@@ -2,7 +2,9 @@
 
 Tickets the maintainer parked on 2026-10-24 (`MC-501`, `MC-504`; CHORE-353 by `MC-439`). A parked ticket is not in the open-tickets table of the [Roadmap](Roadmap.md) and is not a release blocker (`MC-501`), but it is not closed: a maintainer decision can bring it back. Entries are moved from the Roadmap with their text unchanged, apart from one dated "PARKED" status line at the top of each. Parking never overrides `MC-175`, `MC-223` or `MC-350`.
 
-CHORE-02, CHORE-107 and CHORE-191 were un-parked on 2026-10-25 (`MC-508`) and are back in the Roadmap, each with a dated status line there.
+CHORE-02, CHORE-107 and CHORE-191 were un-parked on 2026-10-25 (`MC-508`) and are back in the Roadmap, each with a dated status line there. All three were then closed by lane G's batch 3 (merge `b37dc6223`; `MC-550` for CHORE-02) and moved to the closed archive in lane A records batch 14.
+
+The UI-surface tickets that the UI overhaul will redo are to be parked into it (`MC-516`). Which exact tickets move here is not yet decided; the maintainer approves the list group by group (`MC-500`), so nothing is moved in batch 14.
 
 Parked sub-items of tickets that stay open are not moved; they carry a "PARKED" status line in the Roadmap entry:
 
@@ -285,3 +287,64 @@ output (below).
 
 - The interim rules stand: no temporary repository edits by any tool, mutants on scratch copies only, and a hash check after any "restored" hand-back.
 - Deferred, not made now: (a) a hook that compares the working tree before and after each shell command and flags writes outside the grant; (b) one worktree per coder. Revisit both if a similar shell write recurs.
+
+## Parked into the UI overhaul (2026-10-25, lane A records batch 14; `MC-517`, `MC-516`)
+
+The maintainer parked CHORE-154, 155, 170, 177, 05 and 111 into the UI overhaul in the decision sweep ("Chat render: 154, 155", "Grid/list: 170, 177", "Wording: 05, 111"). CHORE-351, 68 and 92 were offered and NOT parked; they stay open in the Roadmap. CHORE-05's entry is about 480 lines and stays in the [Roadmap](Roadmap.md) with its PARKED line (not moved byte for byte); the other five are moved below with their text unchanged.
+
+- **CHORE-05 — Translation coverage: much of the UI is English-only.** PARKED (`MC-517`, `MC-516`); the entry stays in the Roadmap; its table row was removed. See its PARKED line there. Not a release blocker (`MC-501`); can return on a maintainer decision.
+
+### CHORE-111 — Native-speaker review of the Stage 1c, `.bin` and importer strings
+
+**Status (2026-10-25, lane A records batch 14): PARKED into the UI overhaul (`MC-517`, `MC-516`).** The overhaul rewrites the strings. Can return on a maintainer decision.
+
+**Status (2026-10-06): open, low priority, the same deferral as CHORE-05 (`MC-212`).** The translators flagged low-confidence wording in the strings added by these changes: the lists in Report 59 section 8 (Stage 1c slices, QOL-06) and the `.bin` speed change (cn and zh-Hant "saved as it is made", vi, de and es "download helper", de "Kaltlager"), the bounded-IPC messages (ko 이(가) and 에셋, es "tú mismo" gender, vi stiffness, cn and zh-Hant, de "Asset") and the importer strings (the de, vi and es asset term; ko 이(가)).
+
+### CHORE-154 — Output-identical cheap fixes in the chat parse pipeline
+
+**Status (2026-10-25, lane A records batch 14): PARKED into the UI overhaul (`MC-517`, `MC-516`).** The overhaul rebuilds chat rendering. Can return on a maintainer decision.
+
+**Status (2026-10-09): open; queued after the windowing items.** Type: performance, low risk by design. Each sub-item needs its own differential test proving the output is unchanged.
+
+1. **CBS fast path (packet F13 and F5).** Skip `risuChatParser` when the text has no `{{`, no `{#` and no `<user>`, `<char>` or `<bot>` (matched case-insensitively). **Two conditions (verification):** the guard must run after the `callStack` check at `parser.svelte.ts:1675-1679` (a reused argument with `callStack` 20 returns "ERROR: Call stack limit reached" even for plain text), and the tag test must be case-insensitive (the parser uses `/gi` at `:1704`; "Hi <USER>" would differ under a case-sensitive guard). The caller that benefits most is `executeScript` (`scripts.ts:470-472`), which re-parses after every plain regex script whether or not it matched; do not skip on "the regex did not match". **Executed by the verifier:** a differential test over 102,599 random brace-free inputs, with the real parser lines extracted and the matchers stubbed to throw: 0 differences, 0 matcher calls (`verify_fastpath.ts`, session scratch; the inputs were brace-free, so inputs with `{` that is not `{{`/`{#` were not covered by that run). Model cost on the i9: 0.007, 0.023, 0.096 ms per pass at 1, 5, 20 KB; per message with 150 scripts and 5 KB the packet's loop model gives 3.9 ms (a lower bound for brace-free text).
+2. **Memoize the CSS decode and build the selector processor once per call (F4).** `decodeStyleContent` (`parser.svelte.ts:1008-1032`) decodes, CBS-parses, CSS-parses and stringifies the style of every message on every parse, and `:974` builds a new selector processor inside the selector loop. Memoize by the post-CBS CSS text, successes only, with the `returnCSSError` fallback outside the cache; do not deduplicate the per-message `<style>` elements (that would change the DOM and cascade order). Model cost: 0.52, 1.85, 7.6 ms per decode at 10, 50, 200 rules.
+3. **`getClosestMatch` caching (F9 as corrected).** Neither successes nor misses are cached for the looked-up name: it writes `assetPaths[closest]` under the real asset's key (`parser.svelte.ts:657-660`), never under the queried name. A cache keyed by character id and name, cleared in `resetAssetsCache`, gives identical output while assets are unchanged. Model cost per missed name: 0.18, 0.79, 2.98 ms at 50, 300, 1000 assets. Coordinate with CHORE-157 (the same lines).
+4. **Dynamic-asset setup before the match scan (F8).** With `dynamicAssets` and `dynamicAssetsEditDisplay` on, `scripts.ts:525-564` builds a `HypaProcesser` and adds every asset name (one awaited IndexedDB read each, then an O(n^2) filter) before checking whether any tag needs fuzzy resolution. It also runs for `editoutput`, so per streamed chunk under mode `'off'` (verification). Move the setup after the match scan; the output is unchanged when no tag needs resolution.
+5. **Every keystroke in a regex OUT field bumps `ReloadGUIPointer` (N4).** `RegexData.svelte:130-131` (the `onInput` of the OUT field) re-parses the whole window and wipes the script cache on each keystroke; the comment and type fields bump at `:114` and `:118`. Related to CHORE-155.
+
+### CHORE-155 — The full chat re-renders on every `ReloadGUIPointer` bump
+
+**Status (2026-10-25, lane A records batch 14): PARKED into the UI overhaul (`MC-517`, `MC-516`).** The overhaul rebuilds chat rendering. Can return on a maintainer decision.
+
+**Status (2026-10-09): open; queued after the windowing items; builds on CHORE-04 and Report 19** (`Agents/Reports/19-chat-list-window-plan.md`, sections 2.4 and 9.4 already list several bump sources).
+
+- **Mechanism (verified, with the correction):** each `Chat` subscribes to `ReloadGUIPointer` (`Chat.svelte:744-746`) and re-runs its display parse, and the pointer is in the `{#key}` at `Chat.svelte:1026/:1042`, so one bump remounts every windowed `ChatBody`. The packet's "no parse/render cache anywhere" is wrong (`processScriptCache` exists, `scripts.ts:185-200, 264-270`), but each bump also calls `resetScriptCache()` and `ReloadChatPointer.set({})` (`stores.svelte.ts:188-191`), so the window re-parse is a guaranteed script-cache miss and `Chats`' effect re-runs.
+- **Writers (verification, non-test, COMPLETE: 20 sites in 8 files):** `SideChatList.svelte` 144, 160, 217, 241, 317, 337, 416, 471; `ModuleChatMenu.svelte` 95, 109; `ModuleSettings.svelte` 39, 45; `RegexData.svelte` 114, 118, 131; `globalApi.svelte.ts` 4229 (`changeChatTo`); `modules.ts` 786; `scriptings.ts` 449; `triggers.ts` 2575, 3010 (fires only when a value actually changes). `ChatList.svelte` imports the pointer but never writes it.
+- **Packet's smallest correction (not separately verified):** memoize only the pure tail (markdown plus sanitize, keyed by the exact input string and the settings it reads); a full `ParseMarkdown` cache is not safe (Lua, triggers, variables and random make it impure).
+- **Lower-priority related costs, listed here by the writer's choice** (F11 and F10 follow the bump; F6 and F7 are triggered by re-parses and effect runs, not only by bumps, so they are listed as separate lower-priority sub-items and are not claimed to be bump costs; each fix carries medium equivalence risk per the packet):
+  - F11: `BackgroundDom.svelte:15-19` re-parses the background and recreates its DOM (animations, video, audio) on every bump.
+  - F10: the `customHTML` theme parses the theme HTML per message (`Chat.svelte:759-768, 1555`); a theme `<style>` becomes one `<style>` per message. Cost not measured.
+  - F6: on any re-parse of a live `ChatBody`, the `{#await}` pending branch sanitizes and injects the previous result, then the resolved branch does it again (`ChatBody.svelte:279-283`; Svelte 5.56.8 destroys and recreates the branch). Animated assets may restart (inferred).
+  - F7: every `Chats` effect run hashes every windowed message's text and forces a layout (`Chats.svelte:83-85, 104-113, 189-197, 212-214`). Model: 0.11 ms (30 x 1 KB) to 4.3 ms (600 x 5 KB) per run.
+
+### CHORE-170 — Grid fling long tasks of up to 153 to 227 ms on the Note 9; try a smaller grid overscan after profiling
+
+**Status (2026-10-25, lane A records batch 14): PARKED into the UI overhaul (`MC-517`, `MC-516`).** List windowing is already parked to the overhaul (`MC-504`). Can return on a maintainer decision.
+
+**Status (2026-10-10): open; observation with a partial attribution; not planned.** Type: performance, Android (Note 9; the i9 desktop says nothing about this).
+
+- **Observed (`charlist\note9-2b.md` D3 and the r3 recheck):** during 72 Grid flings the page recorded 83 long tasks, 16 of at least 100 ms, max 153 ms (the 2a List: 13 tasks, max 77 ms); after r3 59 tasks, 16 of at least 100 ms, max 155 ms. One DevTools trace of six flings (tracing overhead included): 17 main-thread tasks of at least 50 ms, 5 of at least 100 ms, max 227 ms; within those 17 tasks Commit was 22% and UpdateLayoutTree 22% of exclusive time, script 19%, and the three next-longest tasks (112 to 116 ms) were 49 to 88% Commit.
+- **Reading (the perf-analyzer's, not independently verified):** the long tasks are mostly the browser's style recalculation and compositor commit after about 140 tile elements (about 28 rows of 5 at an overscan of one viewport each side) are inserted, with Svelte component creation about a fifth and one GC-heavy task. Blank frames were 0 of 8,207 by DOM measurement.
+- **Proposal (the coder's, untested):** profile one fling first; if mounting dominates, try about 0.5 viewport of overscan for the grid only, accepting more blank edge at fast flings. `stage2b-report.md` "Overscan" says not to change it blind.
+
+### CHORE-177 — Grid fling jank with every folder open on the Note 9 (the scroller's layer height; the browser re-fetches CSS background images when tiles are re-created)
+
+**Status (2026-10-25, lane A records batch 14): PARKED into the UI overhaul (`MC-517`, `MC-516`).** Its earlier plan was to revisit it with the list-windowing work, which is parked to the overhaul (`MC-504`). Can return on a maintainer decision.
+
+**Status (2026-10-10): open; not planned; to be revisited with the list-windowing perf work (the maintainer's "Ticket it, move on (Recommended)", `MC-275` 4).** Type: performance observation (Grid, Stage 3b).
+
+- **Observed (MEASURED on the Note 9, SM-N960N, API 29, WebView Chrome 153, 1000 synthetic characters with 50 folders; `charlist\note9-3b.md` P4, `charlist\f2-trace.md`, `charlist\note9-3b34.md`):** with every folder open (919 tiles, 14,242 px) the instrumented pass measured 10.65% janky frames (718 of 6,741); the bare protocol (`adb` swipes, no page code during the flings) read 15 to 33% per run. Closed (325 tiles, 4,160 px) read 1.48% and with only the 150-member folder open (475 tiles, 6,153 px) 1.34%. In the trace, runs over 10% janky with a p50 under 10 ms ("moderate") occurred in 0 of 16 closed, 0 of 12 one-folder-open, 5 of 12 (600 tiles), 6 of 12 (750 tiles) and 28 of 43 all-open runs. A run is eight flings, so the "28 of 43 flings" and "0 of 12" in the question put to the maintainer count runs. The device also showed a separate "slow mode" (p50 10 ms or more, 38 to 57% janky) in some runs of every state; those runs are not in the moderate counts. After the avatar cache change (`c8a99472`) a 10-run re-measure gave all open 10.04% pooled (5 of 10 runs over 10%), one folder open 2.81% and closed 1.12% (`note9-3b34.md`); the S4-2 pass measured all open with edit mode off at 14.22% pooled, 5 of 10 runs over 10% (`note9-s4-2.md`). Ten runs per state cannot separate these figures from the earlier ones.
+- **Mechanism, INFERRED and not proven (the trace report is not independently verified):** main-thread work per fling was the same open and closed; the lost time is in the compositor pipeline stage `SubmitToReceiveCompositorFrame` (17 to 18 ms at p90 in a bad run against 2.9 to 3.4 ms in a good run of the same content); tile-manager and GPU-thread pressure grows with the scroller's composited layer (941 x 37,386 device px open against 941 x 10,920 closed; "violates memory policy" tile events 2 to 32 closed, all open 191 to 198 (one folder open 35, 600 tiles 106, 750 tiles 150)). The trace measured these not to be the cause: page script, style recalculation, layout, row paint, the section tint, row churn, folder-picture tiles, layer count, `scrollTop` writes and avatar image churn (the jank stays with images hidden). It establishes no smallest correction.
+- **Fold in (INFERRED, `note9-3b34.md`):** after the avatar cache change the app's own lookups are gone (0 late style writes against 652 to 904 per pass before), yet the browser still fetches the CSS background images again when tiles are re-created (about 730 requests per swipe run, 630 distinct, all open; css-initiated; closed about 2). The reading is Blink's image resource cache dropping the images, not shown; the request count before the change was not re-measured on a base build.
+- **Evidence (session scratch, not in the repository):** `charlist\f2-trace.md`, `charlist\device-3b\f2\`, `charlist\note9-3b34.md`, `charlist\device-3b34\f2\`. TODO(evidence): copy the selected artifacts into `Agents/Evidence/CHORE-177/` with a README if they are to outlive the scratch directory.
+- **Not established:** the cause, any fix, and whether a Pi 3 or a mid-range phone shows it.

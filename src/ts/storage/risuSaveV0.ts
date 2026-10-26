@@ -1,4 +1,5 @@
 import { gzipSync } from "fflate";
+import { assertNoModuleStubs } from "./moduleStub";
 
 /**
  * Writer for upstream's block save format ("v0"): header `RISUSAVE\0`, then blocks
@@ -7,11 +8,11 @@ import { gzipSync } from "fflate";
  * `.bin` database entry of a tree that carries upstream's SaveKV namespaces, which
  * only this format can hold; the fork's own storage never uses it.
  *
- * The module is pure (fflate only) so that it runs in any environment and shares no
- * code with the fork's block store. Every value is written as JSON, so a tree is
- * expected to be JSON-clean: a value JSON cannot represent is dropped or changed
- * exactly as `JSON.stringify` does, and one it cannot encode at all makes the write
- * throw.
+ * The module is pure (fflate and the import-free module-stub leaf only) so that it
+ * runs in any environment and shares no code with the fork's block store. Every
+ * value is written as JSON, so a tree is expected to be JSON-clean: a value JSON
+ * cannot represent is dropped or changed exactly as `JSON.stringify` does, and one
+ * it cannot encode at all makes the write throw.
  *
  * A name that does not fit the one-byte length, data that does not fit the four-byte
  * length, and two blocks of different kinds sharing a name are broken invariants:
@@ -108,6 +109,7 @@ function frame(block: PlannedBlock): Uint8Array {
  */
 export function writeRisuSaveV0(db: object, kv: Readonly<Record<string, unknown>>): Uint8Array {
     const tree = db as Record<string, unknown>;
+    assertNoModuleStubs(tree.modules, "writeRisuSaveV0");
     const planned: PlannedBlock[] = [];
     const kindOfName = new Map<string, string>();
 

@@ -258,6 +258,14 @@ beforeEach(() => {
         }
         return original.call(this, name, data)
     })
+    // The streamed database entry starts with its header instead of one writeBackup call.
+    const originalHeader = LocalWriter.prototype.writeBackupHeader
+    vi.spyOn(LocalWriter.prototype, 'writeBackupHeader').mockImplementation(async function (this: LocalWriter, name: string, length: number) {
+        if (name === 'database.risudat') {
+            busyAtDatabaseEntry.push(busyKinds().includes('backupSave'))
+        }
+        return originalHeader.call(this, name, length)
+    })
     return () => {
         vi.restoreAllMocks()
     }

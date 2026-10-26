@@ -9,13 +9,15 @@
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
-    Store2BackendFailureError, Store2UnknownOutcomeError, sameBytes, type Store2Backend,
+    createMemoryBackend, Store2BackendFailureError, Store2UnknownOutcomeError, sameBytes, type Store2Backend,
 } from 'src/ts/storage/store2/backend'
 import {
-    ADMISSION_INTERVAL_MS, nextRetained, type CommitResult, type Committer,
+    ADMISSION_INTERVAL_MS, nextRetained, type CommitRequest, type CommitResult, type Committer,
 } from 'src/ts/storage/store2/commit'
 import { RETAINED_MAX, firstCommitKey } from 'src/ts/storage/store2/commitKey'
-import { encodeUnit, keyOfTail, UNIT_TYPE, type CommitKey } from 'src/ts/storage/store2/format'
+import {
+    encodeUnit, keyOfTail, newManifestKey, readUnit, refOfFrame, UNIT_TYPE, type CommitKey, type KeyEnv, type Manifest,
+} from 'src/ts/storage/store2/format'
 import {
     COMMIT_BACKENDS, committerOf, createClock, expectInvariant, hooked, parsedCommit, peerWrite, plantCommit,
     plantKey, seedStore, testEnv, treeRequest, type BuildRecord, type Hooks, type OpenedBackend,
@@ -500,5 +502,200 @@ describe.each(COMMIT_BACKENDS.map(fixture => [fixture.name, fixture] as const))(
             const stored = (await entry.backend.readCommit()).bytes
             expect(stored === null ? null : Array.from(stored)).toEqual(read.bytes === null ? null : Array.from(read.bytes))
         })
+    })
+})
+
+describe('the carry rule: a commit that carries units needs a base that names the manifest it was planned over', () => {
+    async function ruleSetup(hooks: Hooks = {}) {
+        const raw = createMemoryBackend()
+        const clock = createClock()
+        const m0 = await seedStore(raw, testEnv(clock, 1))
+        const wrapped = hooked(raw, hooks)
+        const env = testEnv(clock, 300)
+        return { raw, wrapped, clock, m0, env, a: committerOf(wrapped.backend, clock, 100), b: committerOf(raw, clock, 200) }
+    }
+
+    /** A manifest key that no commit key names. */
+    const unnamedKey = (env: KeyEnv): string => newManifestKey(env)
+
+    function carrying(request: CommitRequest, from: string, units: number): CommitRequest {
+        return { ...request, carry: { from, units } }
+    }
+
+    /** A request whose build records the legacy keep it was given. */
+    function recording(extra: number, seen: Array<Manifest['fixed']['legacyKeep'] | undefined>, from: string, units: number): CommitRequest {
+        const request = treeRequest(extra)
+        return carrying({ ...request, build: (context) => { seen.push(context.legacyKeep); return request.build(context) } }, from, units)
+    }
+
+    /** A request whose manifest names a legacy keep, so a later base manifest holds one. */
+    function keepingRequest(): CommitRequest {
+        const request = treeRequest(0)
+        return {
+            ...request,
+            build: (context) => {
+                const built = request.build(context)
+                if (built instanceof Promise) {
+                    throw new Error('The fixture build is synchronous.')
+                }
+                const unit = built.units[0]
+                built.manifest.body.fixed.legacyKeep = { unit: refOfFrame(unit.key, unit.bytes), v: 1, files: [] }
+                return built
+            },
+        }
+    }
+
+    test('R7: an ordinary commit that carries units over a base that does not name its manifest is refused and writes nothing', async () => {
+        const { raw, wrapped, a, env, m0 } = await ruleSetup()
+        const before = await parsedCommit(raw)
+        wrapped.log.length = 0
+        const result = await a.commit(await a.readCommit(), carrying(treeRequest(0), unnamedKey(env), 5))
+        expect(result.status === 'refused' && result.reason).toBe('base-unnamed')
+        expect(wrapped.log).not.toContain('commitOrdinary')
+        expect(await parsedCommit(raw)).toEqual(before)
+        expect(before.current?.key).toBe(m0)
+    })
+
+    test('R7 and R14b: a save-mine that carries units is refused before any read, however damaged the base manifest is', async () => {
+        const { raw, wrapped, a, env } = await ruleSetup()
+        const ghost = newManifestKey(env)
+        await peerWrite(raw, env, { current: { key: ghost, at: 1 } })
+        await raw.putUnit(ghost, new Uint8Array([1, 2, 3]))
+        wrapped.log.length = 0
+        const result = await a.saveMine(await a.readCommit(), carrying(treeRequest(0), unnamedKey(env), 3))
+        expect(result.status === 'refused' && result.reason).toBe('base-unnamed')
+        expect(wrapped.log).not.toContain('readUnits')
+        expect(wrapped.log).not.toContain('commitOrdinary')
+    })
+
+    test('G4: a base that names the manifest as current, retained or pinned lets the commit land; no carry and zero units over an unnamed base land too', async () => {
+        const { raw, a, b, env, m0 } = await ruleSetup()
+        expect((await a.commit(await a.readCommit(), carrying(treeRequest(0, { tag: 'cur' }), m0, 4))).status).toBe('committed')
+        const m1 = (await parsedCommit(raw)).current?.key as string
+        expect((await b.commit(await b.readCommit(), carrying(treeRequest(0, { tag: 'ret' }), m0, 4))).status).toBe('committed')
+        expect((await parsedCommit(raw)).retained.map(entry => entry.key)).toContain(m0)
+        const pinned = unnamedKey(env)
+        await peerWrite(raw, env, { pins: [{ key: pinned, reason: 'keep' }] })
+        expect((await a.commit(await a.readCommit(), carrying(treeRequest(0, { tag: 'pin' }), pinned, 4))).status).toBe('committed')
+        expect((await a.commit(await a.readCommit(), carrying(treeRequest(0, { tag: 'zero' }), unnamedKey(env), 0))).status).toBe('committed')
+        expect((await a.commit(await a.readCommit(), treeRequest(0, { tag: 'none' }))).status).toBe('committed')
+        expect(m1).not.toBe(m0)
+    })
+
+    test('R14: a save-mine that carries nothing over an unnamed base refuses when the base manifest is absent, damaged or too new, and writes nothing', async () => {
+        for (const state of ['absent', 'damaged', 'too-new'] as const) {
+            const { raw, wrapped, a, env } = await ruleSetup()
+            const ghost = newManifestKey(env)
+            await peerWrite(raw, env, { current: { key: ghost, at: 1 } })
+            if (state === 'damaged') {
+                await raw.putUnit(ghost, new Uint8Array([1, 2, 3, 4]))
+            }
+            if (state === 'too-new') {
+                await raw.putUnit(ghost, encodeUnit(UNIT_TYPE.manifest, { fmt: 99, req: [] }))
+            }
+            wrapped.log.length = 0
+            const before = await parsedCommit(raw)
+            const result = await a.saveMine(await a.readCommit(), carrying(treeRequest(0), unnamedKey(env), 0))
+            expect(result.status === 'refused' && result.reason).toBe(state)
+            expect(wrapped.log).not.toContain('commitOrdinary')
+            expect(await parsedCommit(raw)).toEqual(before)
+        }
+    })
+
+    test('R15: a backend failure during the keep read is a failed commit, not a refusal, and writes nothing', async () => {
+        const hooks: Hooks = {}
+        const { raw, wrapped, a, env } = await ruleSetup(hooks)
+        hooks.before = (call) => {
+            if (call === 'readUnits') {
+                throw new Store2BackendFailureError('Injected read failure.')
+            }
+        }
+        const before = await parsedCommit(raw)
+        const result = await a.saveMine(await a.readCommit(), carrying(treeRequest(0), unnamedKey(env), 0))
+        expect(result.status).toBe('failed')
+        expect(wrapped.log).not.toContain('commitOrdinary')
+        expect(await parsedCommit(raw)).toEqual(before)
+    })
+
+    test('R16: a save-mine that carries nothing over an unnamed base builds with the base manifest\'s keep, null or not', async () => {
+        const { raw, a, b, env } = await ruleSetup()
+        const seenNull: Array<Manifest['fixed']['legacyKeep'] | undefined> = []
+        expect((await a.saveMine(await a.readCommit(), recording(0, seenNull, unnamedKey(env), 0))).status).toBe('committed')
+        expect(seenNull).toEqual([null])
+
+        expect((await b.commit(await b.readCommit(), keepingRequest())).status).toBe('committed')
+        const baseManifest = (await parsedCommit(raw)).current?.key as string
+        const stored = readUnit((await raw.readUnits([baseManifest])).get(baseManifest) as Uint8Array, UNIT_TYPE.manifest)
+        const baseKeep = stored.status === 'ok' ? (stored.value.body as Manifest).fixed.legacyKeep : undefined
+        expect(baseKeep).not.toBeNull()
+        const seenKeep: Array<Manifest['fixed']['legacyKeep'] | undefined> = []
+        expect((await a.saveMine(await a.readCommit(), recording(0, seenKeep, unnamedKey(env), 0))).status).toBe('committed')
+        expect(seenKeep).toEqual([baseKeep])
+    })
+
+    test('G11: a save-mine over a base that names the manifest keeps the page\'s own keep: no read, no substitution', async () => {
+        const { wrapped, a, m0 } = await ruleSetup()
+        const seen: Array<Manifest['fixed']['legacyKeep'] | undefined> = []
+        wrapped.log.length = 0
+        expect((await a.saveMine(await a.readCommit(), recording(0, seen, m0, 6))).status).toBe('committed')
+        expect(seen).toEqual([undefined])
+        expect(wrapped.log).not.toContain('readUnits')
+    })
+
+    test('R8 and R13: a bulk commit that carries over a base that does not name its manifest is refused before the marker, whatever the unit count', async () => {
+        for (const units of [0, 7]) {
+            const { raw, wrapped, a, env } = await ruleSetup()
+            const before = await parsedCommit(raw)
+            wrapped.log.length = 0
+            const result = await a.commit(await a.readCommit(), carrying(treeRequest(49), unnamedKey(env), units))
+            expect(result.status === 'refused' && result.reason).toBe('base-unnamed')
+            expect(wrapped.log).not.toContain('casCommit')
+            expect(wrapped.log).not.toContain('putUnit')
+            expect(await parsedCommit(raw)).toEqual(before)
+        }
+    })
+
+    test('R9 and R13: a peer commit that drops the manifest during the upload refuses the final write, clears the own marker and leaves the peer\'s commit', async () => {
+        for (const units of [0, 7]) {
+            const hooks: Hooks = {}
+            const { raw, a, env, m0 } = await ruleSetup(hooks)
+            const ghost = newManifestKey(env)
+            hooks.before = async (call, count) => {
+                if (call === 'putUnit' && count === 2) {
+                    await peerWrite(raw, env, { current: { key: ghost, at: 1 }, retained: [] })
+                }
+            }
+            const result = await a.commit(await a.readCommit(), carrying(treeRequest(49), m0, units))
+            expect(result.status === 'refused' && result.reason).toBe('base-unnamed')
+            expect(result.status === 'refused' && result.cleared?.status).toBe('cleared')
+            const key = await parsedCommit(raw)
+            expect(key.current?.key).toBe(ghost)
+            expect(key.staging).toBeNull()
+        }
+    })
+
+    test('G3: a bulk commit lands when a peer commit made during the upload retains the manifest it carries from', async () => {
+        const hooks: Hooks = {}
+        const { raw, clock, m0 } = await ruleSetup(hooks)
+        const peer = committerOf(raw, clock, 200)
+        hooks.before = async (call, count) => {
+            if (call === 'putUnit' && count === 2) {
+                expect((await peer.commit(await peer.readCommit(), treeRequest(0, { tag: 'peer' }))).status).toBe('committed')
+            }
+        }
+        const a = committerOf(hooked(raw, hooks).backend, clock, 100)
+        const result = await a.commit(await a.readCommit(), carrying(treeRequest(49), m0, 9))
+        expect(result.status).toBe('committed')
+        expect((await parsedCommit(raw)).staging).toBeNull()
+    })
+
+    test('G7: save-mine on a Node token is refused as node-save-mine before the carry rule', async () => {
+        const raw = createMemoryBackend()
+        const clock = createClock()
+        await seedStore(raw, testEnv(clock, 1))
+        const committer = committerOf(raw, clock, 100)
+        const read = await committer.readCommit()
+        const result = await committer.saveMine({ ...read, token: { kind: 'revision', revision: 1, present: true } }, carrying(treeRequest(0), unnamedKey(testEnv(clock, 5)), 3))
+        expect(result.status === 'refused' && result.reason).toBe('node-save-mine')
     })
 })

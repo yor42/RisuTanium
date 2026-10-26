@@ -17,22 +17,44 @@ export class CodecError extends Error {
 }
 
 /**
- * A cold-stub character, or a chat that is still a cold-storage pointer, was
- * offered to the encoder. Encoding it would persist a placeholder in place of
- * the data it stands for, so the encoder refuses (I9).
+ * A cold-stub character, a chat that is still a cold-storage pointer, or a
+ * module stub the encoder cannot carry, was offered to the encoder. Encoding it
+ * would persist a placeholder in place of the data it stands for, so the
+ * encoder refuses (I9).
  */
 export class StubRefusedError extends CodecError {
+    /** The module's name; empty for a character or a chat. */
+    public readonly moduleName: string
+    /** Why a module stub was refused; null for a character or a chat. */
+    public readonly reason: ModuleStubReason | null
+
+    constructor(kind: 'character' | 'chat', chaId: string, chatIndex: number | null)
+    /**
+     * For kind `module`, `chaId` holds the module's id, `chatIndex` is null and `module` carries the name and the reason.
+     */
+    constructor(kind: 'module', chaId: string, chatIndex: null, module: { name: string, reason: ModuleStubReason })
     constructor(
-        public readonly kind: 'character' | 'chat',
+        public readonly kind: 'character' | 'chat' | 'module',
         public readonly chaId: string,
         public readonly chatIndex: number | null,
+        module?: { name: string, reason: ModuleStubReason },
     ) {
         super('stub', kind === 'character'
             ? `Character ${chaId} is a cold-storage stub and cannot be encoded.`
-            : `Chat ${chatIndex} of character ${chaId} is a cold-storage pointer and cannot be encoded.`)
+            : kind === 'module'
+                ? `The module "${module?.name ?? ''}" (${chaId}) is a module stub (${module?.reason}) and cannot be encoded.`
+                : `Chat ${chatIndex} of character ${chaId} is a cold-storage pointer and cannot be encoded.`)
         this.name = 'StubRefusedError'
+        this.moduleName = module?.name ?? ''
+        this.reason = module?.reason ?? null
     }
 }
+
+/**
+ * Why a module stub was refused: `edited` when its slot no longer equals the stub minted for its recorded entry,
+ * `uncarriable` when the stub cannot be carried as its entry (no recorded entry, a changed handle set or a stale list).
+ */
+export type ModuleStubReason = 'edited' | 'uncarriable'
 
 /** The database holds a shape the codec cannot store without losing or inventing data. */
 export class CodecInputError extends CodecError {
@@ -61,23 +83,44 @@ export class CodecAssembleError extends CodecError {
     }
 }
 
-/** One framed unit an encode produced; `reused` units hold the previous encoding's key and are not written again. */
-export interface EncodedUnit {
+interface EncodedUnitBase {
     /** Stable name of the unit's place in the tree; the reuse lookup key. */
     identity: string
     key: string
     type: UnitType
-    bytes: Uint8Array
     ref: Ref
     /** Collision-resistant digest of the framed bytes (`unitDigest`); the Ref's CRC alone cannot tell two contents apart. */
     digest: string
-    reused: boolean
+}
+
+/** A unit the encode must write: it holds its framed bytes until the pass ends. */
+export interface WrittenUnit extends EncodedUnitBase {
+    reused: false
+    bytes: Uint8Array
+}
+
+/**
+ * A unit equal to the previous encoding's, under that encoding's key. It holds no bytes in any property: the pass
+ * frames the unit to compare it and must not keep the frame alive through the tree.
+ */
+export interface ReusedUnit extends EncodedUnitBase {
+    reused: true
+}
+
+/**
+ * One framed unit an encode produced. Narrow with `reused === false` or `isWrittenUnit`; the project compiles with
+ * `strict: false`, where a negation of `reused` does not narrow.
+ */
+export type EncodedUnit = WrittenUnit | ReusedUnit
+
+export function isWrittenUnit(unit: EncodedUnit): unit is WrittenUnit {
+    return unit.reused === false
 }
 
 /**
  * What a later encode needs to know about one unit of an earlier one. A unit is
  * reused only when its `digest` is present and equal to the new bytes' digest;
- * `bytes`, when kept, add a byte-for-byte comparison.
+ * `bytes`, when kept (`previousFrom` with `keepBytes`, for written units only), add a byte-for-byte comparison.
  */
 export interface ReusableUnit {
     key: string

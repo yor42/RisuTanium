@@ -11,6 +11,10 @@ This is the Node.js server for RisuTanium, for self-hosting purposes, who want t
 - `RISU_ALLOWED_ENV`: a comma-separated list of extra environment variable names that `/api/env-secret` may return to an authorized client. Names of the form `RISU_<NAME>_KEY` and `RISU_<NAME>_TOKEN` are always readable; any other name must be listed here.
 - `RISU_REVISION_LOG_COMPACT_AT`: the number of records the revision log may hold before it is compacted. Default `20000`; a value that is not a positive integer is ignored.
 
+## Node version
+
+Run a Node.js version that has the fix for CVE-2026-111497, a High-severity out-of-bounds write in the Brotli decoder behind `node:zlib`. The server fetches the URLs clients give it, and a hostile remote server can answer with `Content-Encoding: br`. The minimum fixed versions are 22.23.4, 24.22.1 and 26.12.1; any newer release of those lines, or a later major, is also fixed. Other lines (20, 23, 25 and older) have no fix. The server prints a warning at startup on an affected version and still starts.
+
 ## Realm proxy
 
 `/hub-proxy/*` forwards Realm requests to the hub. Only the `accept`, `accept-language`, `content-type`, `user-agent` and `x-risuai-info` request headers are sent on, so `risu-auth`, cookies, `authorization`, `x-forwarded-for` and `referer` never reach the hub. The request body is sent as the client wrote it. A hub `Set-Cookie` header is not passed back to the client.

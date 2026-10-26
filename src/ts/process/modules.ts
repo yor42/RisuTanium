@@ -14,10 +14,12 @@ import { DBState, HideIconStore, moduleBackgroundEmbedding, ReloadGUIPointer } f
 import {get} from "svelte/store"
 import { convertCharacterToModule, convertModuleToCharacter } from "../interchangeability"
 import { exportCharacterCard, importCharacterFile } from "../characterCards"
+import { matchesModuleRef, referencedModuleIds } from "./moduleRefs"
 import { ModuleRefusal } from "./moduleRefusal"
 import { ModuleImportStopped, confirmRisumLowLevel } from "./moduleImportStop"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportOutcome } from "../importBatch"
 import { markBootWrite } from "../bootWindow"
+import { useModuleById } from "./moduleUse"
 import { DuplicateSession, applyModulePlacement, describeReplace, type DuplicateDecision } from "./moduleDuplicates"
 import { withBusy } from "./memory/busyActions"
 import { StoreBlobUnsupportedError } from "../storage/store/errors"
@@ -713,9 +715,7 @@ function getModuleById(id:string){
 function getModuleByIds(ids:string[]){
     const db = getDatabase()
     const idSet = new Set(ids)
-    const modules = db.modules.filter(m => 
-        idSet.has(m.id) || (m.namespace && idSet.has(m.namespace))
-    )
+    const modules = db.modules.filter(m => matchesModuleRef(m, idSet))
     return deduplicateModuleById(modules)
 }
 
@@ -749,20 +749,13 @@ export function getModules(subject?: RunSubject){
         persona = checkPersonaBinded()
     }
     const db = getDatabase()
-    let ids = db.enabledModules ?? []
-    if (currentChat){
-        ids = ids.concat(currentChat.modules ?? [])
-    }
-    if(character && character.modules){
-        ids = ids.concat(character.modules)
-    }
-    if(persona && persona.embeddedModule){
-        ids = ids.concat([persona.embeddedModule?.id])
-    }
-    if(db.moduleIntergration){
-        const intList = db.moduleIntergration.split(',').map((s) => s.trim())
-        ids = ids.concat(intList)
-    }
+    const ids = referencedModuleIds({
+        enabledModules: db.enabledModules,
+        chat: currentChat,
+        character,
+        persona,
+        moduleIntergration: db.moduleIntergration,
+    })
     const idsJoined = ids.join('-')
     if(lastModules === idsJoined){
         return lastModuleData
@@ -861,7 +854,20 @@ export async function applyModule() {
         return
     }
 
-    const module = safeStructuredClone(getModuleById(sel))
+    // A module in the database is acquired by id (its body is loaded when it is a stub) and released once the copy is
+    // taken; the embedded persona module is read as it is.
+    const row = getDatabase().modules.find((v) => v.id === sel)
+    const acquired = row ? await useModuleById(sel, row.name) : null
+    if (row && !acquired) {
+        return
+    }
+    let module: RisuModule | null
+    try {
+        module = safeStructuredClone(acquired ? acquired.module : getModuleById(sel))
+    }
+    finally {
+        acquired?.release()
+    }
     if (!module) {
         return
     }

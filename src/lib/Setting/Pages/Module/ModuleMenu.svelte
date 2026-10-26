@@ -20,6 +20,7 @@
     import { DBState } from 'src/ts/stores.svelte';
     import { AssetList, toAssetList, toPlainAssetArray, type AssetTuple } from "src/ts/storage/assetList";
     import { untrack } from "svelte";
+    import { isModuleStub } from "src/ts/storage/moduleStub";
   import { v4 } from "uuid";
 
     let submenu = $state(0)
@@ -192,6 +193,8 @@
     }
 </script>
 
+<!-- A module stub has no body arrays; the tabs would create them on the stub. -->
+{#if !isModuleStub(currentModule)}
 <div class="flex w-full rounded-md border border-darkborderc mb-4 overflow-x-auto h-16 min-h-16 overflow-y-clip">
     <button onclick={() => {
         submenu = 0
@@ -362,4 +365,5 @@
         <Check bind:check={() => currentModule.lowLevelAccess ?? false, (v) => currentModule.lowLevelAccess = v} name={language.lowLevelAccess}/>
         <span> <Help key="lowLevelAccess" name={language.lowLevelAccess}/></span>
     </div>
+{/if}
 {/if}

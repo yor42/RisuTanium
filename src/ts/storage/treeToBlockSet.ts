@@ -59,8 +59,9 @@ export async function treeToBlockSet(tree: Database): Promise<BlockSetInput> {
  * `treeToBlockSet` with what the encoder left out. A caller that installs or
  * restores the tree refuses on a non-empty `excluded`, because the tree it is
  * about to install would then hold entries the saved generation does not.
- * Throws `SaveParkError` when a container is not a list or a character does not
- * serialize to an object; nothing has been written then.
+ * Throws `SaveParkError` when a container is not a list, a character does not
+ * serialize to an object or a module holds the module stub marker; nothing has
+ * been written then.
  */
 export async function treeToBlockSetReported(tree: Database): Promise<{ set: BlockSetInput, report: EncoderReport }> {
     const encoder = new RisuSaveEncoder()

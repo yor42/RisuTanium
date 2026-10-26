@@ -392,3 +392,357 @@ Scratch paths are under the session scratchpad, outside the repository.
 - No README change: none of the three changes is user-visible (`MC-332` 2). No UI strings changed.
 
 **Handoff (2026-10-24, lane C cloud batch Q).** Branch `lane-c-cloud-q`, from `main` at `15777155a`. Commits: `413f600` CHORE-240, `ab52cb8` CHORE-185, then the records commit of this section, which also carries CHORE-353 (records only, `MC-439`). Gates: one batch Gate 1, `[APPROVE WITH AMENDMENTS]` (row 3344), with amendments applied; one batch Gate 2, `[APPROVE]` per ticket (row 3347). Tests: row 3348. No stored data changed. Open questions for the maintainer: none. Next free IDs: MC-440, CHORE-331, row 3351.
+
+## 2026-10-25 — lane C (cloud): upstream sync 61d0eb79a..f50b5942e (CHORE-331)
+
+Session: a new lane C (cloud) session in a Linux container, started by lane A at the maintainer's request (lane A's brief, 2026-10-25). Branch `lane-c-upstream-1023` from `origin/main` at `91fdaac2d`. Remote `upstream` = `https://github.com/kwaroran/Risuai`, fetched 2026-10-25, `upstream/main` = `f50b5942e`. Next free IDs at start: MC-440, CHORE-331, row 3351.
+
+**MC entries**
+
+### MC-440 — Lane C, 2026-10-25: the version suffix follows the upstream sync (`up2026.10.220`)
+
+- **Tag:** decisions (a direct instruction in chat, 2026-10-25)
+- **Date:** 2026-10-25
+- **Sweep ref:** none
+- **Source:** the lane C (cloud) session transcript. The maintainer's words, after the hand-back listed the question as open: "move the appSubVer and version.json to up2026.10.220."
+- **Related:** `MC-162` 3; CHORE-331.
+
+1. **`appSubVer` and `version.json` move to `up2026.10.220`**, upstream's version at `f50b5942e`, the last upstream commit merged. `appVer` stays `0.1.0`.
+
+**Notes that are not the maintainer's words:**
+- The instruction names only `appSubVer` and `version.json`. Two other places quote the old string and were not changed: `README.md` (the "A new identity" bullet says the home screen shows `0.1.0-up2026.8.250`) and `.github/ISSUE_TEMPLATE/bug_report.yml` (an example string). Whether they follow is left to the maintainer.
+- The instruction does not say whether later syncs move the suffix too.
+
+### MC-441 — Lane C, 2026-10-25: the README follows the new suffix; the issue template keeps its example
+
+- **Tag:** decisions (a direct instruction in chat, 2026-10-25)
+- **Date:** 2026-10-25
+- **Sweep ref:** none
+- **Source:** the lane C (cloud) session transcript. The maintainer's words, answering the `MC-440` notes: "update the README too, leave the issue template".
+- **Related:** `MC-440`, `MC-162` 3; CHORE-331.
+
+1. **`README.md`** ("A new identity" bullet) now says the home screen shows `0.1.0-up2026.10.220`.
+2. **`.github/ISSUE_TEMPLATE/bug_report.yml`** keeps its example string `0.1.0-up2026.8.250`.
+
+**Notes that are not the maintainer's words:**
+- Whether every later sync moves the suffix is still not stated.
+
+**CHORE entries**
+
+### CHORE-331 (new) — Bring in upstream 61d0eb79a..f50b5942e
+
+**Status (2026-10-25, lane C cloud): merged on `lane-c-upstream-1023` (`a2f3fb07e`), after the regression test `b724e2cc2`, with a comment fix `936f3667c`; Gate 1 `[APPROVE WITH AMENDMENTS]` for f71029477 (row 3354); Gate 2 `[APPROVE]` (row 3356). Needs the maintainer's merge approval (plugin and persistence paths).**
+
+- **Range:** `git log 61d0eb79a..upstream/main`: 9 commits, 7 non-merge (`9aae5e631` and `74d96626a`, the #1598 PR merge, are merges). The message of `a2f3fb07e` says "8 non-merge"; that is wrong and is left unrewritten. `git merge-base a2f3fb07e upstream/main` returns `f50b5942e`. The net change to the fork is one line in `src/ts/process/scriptings.ts` (plus upstream's trailing space on the line above it, kept byte-identical to upstream).
+- **Dispositions:**
+
+| Upstream commit | Disposition | Reason / evidence |
+|---|---|---|
+| `63399cbd4` fix: disable proxy in lua | TAKEN as is | `luaFactory.createEngine({injectObjects: true, enableProxy: false})`. In wasmoon 1.16.0 (installed) the proxy extension hands Lua a live JS object (its `__index` and `__newindex` read and write the object itself); with it off, objects reach Lua as table copies of their enumerable keys (wasmoon copies with `for...in`). Other script-visible effects, identical to upstream: `type()` of a returned object is `table`, not `userdata`; `pairs` over an array yields 1-based indices; `tostring` of a JS error drops the `Error: ` prefix; class instances lose their methods. Gate 2 found no fork code that depends on these. Regression test `scriptings.test.ts` "a Lua script cannot write to a host prototype through an object an API returns": `simpleLLM` returns `{success, result}`; Lua writes `reply.__proto__.risuLuaPolluted`. Red on `91fdaac2d` (`Object.prototype` gained the key), green after the merge; the same test guards that `reply.success` and `reply.result` still read in Lua. The fork and upstream declare the same 54 Lua API names. `src/ts/process` and `src/ts/parser` (208 files, 4490 tests) pass with the change (session output, not preserved). |
+| `72d2bacd9`, `ae54b830e` (#1598, merged upstream as `74d96626a`) setDatabase plugin round trip | ALREADY COVERED (CHORE-64, `48f00223`) | The fork's `setDatabase` never assigns `plugins`: `writeSetterKeys` skips the key and the list goes through `planPluginListWrite`, which merges by name and updates in place after a prompt. Upstream's defect line `newDb[key] = await handlePluginInstallViaPlugin(newDb.plugins)` is on `48f00223^`. Proof by test: `pluginListWrites.svelte.test.ts` "S1 ... setDatabase leaves every plugin as it was" drives the real V3 wrapper into the shared setter and passes on `91fdaac2d`; a scratch mutant that re-adds upstream's pre-fix assignment after `writeSetterKeys` fails it (53 of 137 fail, S1 among them). Upstream's same-name-in-place update matches the fork's S2/S3 tests. V2.1 plugin scripts no longer run (`MC-349`, CHORE-206), and the V2 setters are immune anyway (S2/S3 V2 callers; Gate 2 probe: an unchanged round trip or `[]` removes nothing). Gate 2's mutant forcing the wipe inside the shared `writeSetterKeys` failed 107 of 137, S1 and S5 on both `setDatabase` and `setDatabaseLite`; an undefined live `plugins` with `{plugins: []}` neither throws nor prompts. |
+| `f71029477` plugin storage migration before loading plugins | NOT APPLICABLE | Built on upstream's `PluginStorageStore`, which the fork did not take (10-21 merge, G2). Upstream already migrated legacy values into `_coldpluginIndex` at `61d0eb79a`, in the background from `makeColdData`; this commit only runs it before `loadPlugins` when plugins are installed. It changes no persisted layout, so the fork's import conversion of `_coldpluginIndex` still covers upstream's `.bin`. The fork reads plugin storage per access (`pluginColdStorage.ts`) and has no lazy or background migration for a loading plugin to race; the store2 conversion of an upstream index runs in `bootDispatch.ts` while the database loads, before `loadPlugins`. Closest analogue, unchanged by this commit and not fixed by an adapted port: residual 12b in the 10-21 merge record (`MC-324` 9), where legacy boot paths can install an unconverted `_coldpluginIndex`; that is a precedence problem, not a race. Gate 1 `[APPROVE WITH AMENDMENTS]` (row 3354). |
+| `63d85f9be`, `02a83695d`, `f50b5942e` version bumps (2026.10.210, .211, .220) | Fork side kept | `src-tauri/tauri.conf.json`, `database.svelte.ts` and `version.json` keep `0.1.0` and `up2026.8.250` (`MC-162` 3). No earlier sync met an upstream version change (upstream was `2026.8.250` from the fork point through `61d0eb79a`), so there is no precedent; `appSubVer` and `version.json` then moved to `up2026.10.220` at the maintainer's instruction (`MC-440`, row 3359). |
+| `9aae5e631` | Upstream merge commit | No change of its own. |
+
+- **Conflicts:** `tauri.conf.json`, `bootstrap.ts`, `plugins.svelte.ts`, `coldstorage.svelte.ts`, `database.svelte.ts`, `version.json`: the fork's side of the whole file. `pluginStorageStore.ts` (modify/delete): stays deleted. `scriptings.ts` merged cleanly.
+- **Persistence:** nothing changes a persisted shape. MC-175: a `.bin` moves as before in both directions; upstream Lua scripts now see the same table-copy behaviour as upstream.
+- **Draft for `Agents/Upstream-Merges.md`** (lane A folds it in): a section "2026-10-25 — merge of upstream/main `f50b5942e`" with the table above; **Last upstream commit merged: `f50b5942e`**; next merge: `git log --no-merges f50b5942e..upstream/main`.
+
+**Ledger rows**
+
+Scratch paths are under the session scratchpad, outside the repository.
+
+| Row | Date | Item | Agent / role | Artifact | Result |
+|---|---|---|---|---|---|
+| 3351 | 2026-10-25 | CHORE-331 classification | orchestrator | inline commands; `fork-apis.txt`, `up-apis.txt` | Read each upstream diff, the 10-21 merge record, `MC-162`, the fork's `setDatabase` and wasmoon 1.16.0's engine and proxy code. Dispositions as in CHORE-331. |
+| 3352 | 2026-10-25 | #1598 immunity | orchestrator | `mutant-1598.diff`, `mutant-1598.out` | `pluginListWrites` and `pluginListMerge` 187 of 187 on `91fdaac2d`. Scratch worktree with upstream's pre-fix assignment re-added: 53 failed, 84 passed, S1 among the failures. Worktree removed. |
+| 3353 | 2026-10-25 | `63399cbd4` red/green | orchestrator | `lua-red.out`, `lua-green.out` | New test red on `91fdaac2d` (`expected true to be false`: `Object.prototype` polluted), 3 of 3 green with `enableProxy: false`. `src/ts/process` and `src/ts/parser`: 208 files, 4490 passed, 4 skipped (session output, not preserved). |
+| 3354 | 2026-10-25 | `f71029477` Gate 1 | opus-reviewer | `g1-f710-verdict.md` | `[APPROVE WITH AMENDMENTS]`. Claims 1, 2 and 4 CONFIRMED; claim 3 CONFIRMED with qualification. A1 (record wording: "no lazy migration to race", cite residual 12b): applied in CHORE-331. A2 (process): the merge `a2f3fb07e` was committed in this checkout while this review was still running; see the deviation note below. The reviewer confirmed the committed tree has no upstream leftovers (`git diff --stat b724e2cc2 a2f3fb07e`: `scriptings.ts` only). No tests run (no code proposed). |
+| 3355 | 2026-10-25 | CHORE-331 commits | orchestrator | `b724e2cc2` (test), `a2f3fb07e` (merge), `936f3667c` (test comment) on `lane-c-upstream-1023` | Test first, then `git merge --no-ff upstream/main` with conflicts resolved to the fork's side; targeted tests 140 of 140 on the merge (session output, not preserved). |
+| 3356 | 2026-10-25 | CHORE-331 Gate 2 | opus-reviewer | `g2-verdict.md` | `[APPROVE]`, 9 non-blocking notes. Re-ran in a scratch worktree: merge shape (merge-base `f50b5942e`, same 7 conflict files, no f71029477 symbols), Lua test 1 of 3 failing at `b724e2cc2` on the pollution assertion and 3 of 3 at `a2f3fb07e`, Lua `__proto__` vectors with the proxy off (none pollute), a `writeSetterKeys` wipe mutant (107 of 137 fail), V2/V3 setter probes, 9 targeted files 280 of 280, `svelte-check` 0/0. Notes taken: "enumerable" not "own" keys (test comment and record), script-visible side effects listed, V2 setter immunity stated. Not taken: commit subject wording of `b724e2cc2` (no history rewrite). Recorded only: vitest 4.1.11 installed vs 4.1.12 in the lockfile (predates this branch); the test's `mockReset()` is harmless only while it is the last test in the file. |
+| 3357 | 2026-10-25 | CHORE-331 full checks | orchestrator | `check.out`, `build.out`, `test.out` | On `a2f3fb07e` (tree: only this records draft modified). `NODE_OPTIONS=--max-old-space-size=8192 pnpm check`: 0 errors, 0 warnings (the first run without the flag ran out of heap, exit 134, no result). `pnpm build`: exit 0. Full `pnpm test`: 1012 files, 23305 tests; 10 failed, 23272 passed, 23 skipped; 1406.8 s. All 10 failures are in `store2/replay/actors.test.ts` (concurrent recoveries ×6, injected faults ×1, Tauri restart ×3), the known Linux timeouts; `saveLoopNetBackstop` B7 passed in this run. `git status` unchanged by the run. Then `936f3667c` (test comment only, Gate 2 note 1): `scriptings.test.ts` 3 of 3. |
+| 3358 | 2026-10-25 | CHORE-331 records verification | doc-verifier | `records-verify.md` | PASS WITH CORRECTIONS. Required: the non-merge count is 7, not 8 (applied; the committed merge message keeps the wrong figure). Git facts, conflict set, dispositions, mutant and red/green outputs, row 3357, IDs, no invented MC entry, shared records untouched and format VERIFIED (pluginListWrites and pluginListMerge rerun 187 of 187). UNVERIFIABLE from preserved files: the first `pnpm check` OOM, the 208-file and 140-test runs (now marked as session output). |
+| 3359 | 2026-10-25 | `MC-440` version suffix | orchestrator (writer); adversarial-reviewer (Gate 2) | `version-verdict.md`, `check.log` (second session scratchpad) | `appSubVer` and `version.json` set to `up2026.10.220`; line endings and `version.json`'s missing final newline kept. Gate 2 `[EDITORIAL]`: the strings match upstream `f50b5942e:version.json`; the only consumers are `getVersionString` (home-screen Version line) and `AlertComp.svelte` (error-report text), both display only; nothing persists, compares or pins the suffix, so `.bin` compatibility is unaffected; `NODE_OPTIONS=--max-old-space-size=8192 pnpm check` 0 errors, 0 warnings. No tests run (no test pins the string). Editorial points applied: this row added, handoff line and next-free IDs updated. |
+| 3360 | 2026-10-25 | `MC-441` README | orchestrator | `README.md` | One string in the "A new identity" bullet: `0.1.0-up2026.8.250` → `0.1.0-up2026.10.220`; line endings kept. The issue template is unchanged. Documentation only, so no application tests. |
+
+**Process deviation (Gate 1 A2):** the brief asked for the f71029477 plan review before writing code. The orchestrator sent the review, then committed the merge locally (`a2f3fb07e`) before the verdict arrived. The merge takes no f71029477 code (fork side of every file it touches), the commit was not pushed before the verdict, and the verdict upheld the disposition, so nothing was reworked. Recorded so lane A can judge it at merge review.
+
+**Open questions for the maintainer (not decided):**
+1. ~~Should `appSubVer` and `version.json` move to `up2026.10.220`?~~ Answered: yes (`MC-440`).
+2. ~~Should `README.md` and the bug-report template follow the new suffix?~~ Answered: the README yes, the template no (`MC-441`).
+3. Should every later sync move the suffix? (`MC-440`, `MC-441` notes.)
+
+**Not done (for lane A at merge):** merge review, Windows full checks and the build on the merged snapshot; the maintainer's merge approval (plugin and persistence paths); fold-in of CHORE-331, rows 3351 to 3360, `MC-440`, `MC-441` and the Upstream-Merges draft. No README change for the sync itself (`MC-441` covers the version string): nothing user-visible beyond Lua scripts getting table copies instead of live JS objects (with the side effects listed under `63399cbd4`). No UI strings changed.
+
+**Handoff (2026-10-25, lane C cloud upstream sync).** Branch `lane-c-upstream-1023` from `origin/main` `91fdaac2d`: `b724e2cc2` test, `a2f3fb07e` merge of upstream `f50b5942e`, `936f3667c` test comment, then the records commit of this section. Gates: Gate 1 for f71029477 `[APPROVE WITH AMENDMENTS]`, amendments applied; Gate 2 `[APPROVE]`. Full checks: row 3357. No stored data shape changed. `appSubVer` and `version.json` then moved to `up2026.10.220` at the maintainer's instruction (`MC-440`, row 3359). The README followed and the issue template kept its example (`MC-441`, row 3360). Open question: whether later syncs move the suffix (above). Pushed: the branch only, never `main`. Next free IDs: MC-442, CHORE-332, row 3361.
+
+## 2026-10-25 — lane C (cloud): code-only batch (CHORE-184, 188, 06, 03, 04, 71, 72, 73, 101, 221, 350)
+
+Session: a new lane C (cloud) session in a Linux container. Lane A's brief, 2026-10-25, at the maintainer's request ("Lane C: code-only batch"; the maintainer's words as relayed by lane A, so no MC entry is written for them here). Branch `lane-c-codeonly-1025` from `origin/main` at `991ee825c`. Rule: size every ticket, fix only the small ones that touch no save, persistence or data-loss path and need no product decision. Next free IDs at start: MC-442, CHORE-332, row 3361. Scratch paths below are under the session scratchpad, outside the repository.
+
+**MC entries:** none. The maintainer gave no answer in this session.
+
+**CHORE entries (changed)**
+
+### CHORE-184 (changed) — The Lua runtime (wasmoon `glue.wasm`) is fetched from unpkg.com at run time
+
+**Status (2026-10-25, lane C cloud): fixed on `lane-c-codeonly-1025` as `2598f708`; Gate 2 `[APPROVE]` (row 3362). Not COMPLETE until lane A merges and folds in.**
+
+- **Premise (TRACED):** wasmoon 1.16.0 is installed (`package.json` `^1.16.0`). `LuaFactory`'s constructor sets `customWasmUri` to `https://unpkg.com/wasmoon@1.16.0/dist/glue.wasm` when it sees a browser or a dedicated worker and no URI is passed. `makeLuaFactory` in `src/ts/process/scriptings.ts` called `new LuaFactory()`.
+- **Fix:** `import luaWasmUrl from "wasmoon/dist/glue.wasm?url"` and `new LuaFactory(luaWasmUrl)`. `vite-plugin-wasm` handles only ids that end in `.wasm`, so the `?url` import is Vite's asset URL. `pnpm build` writes `dist/assets/glue-<hash>.wasm` (271,581 bytes, the installed file's size), and the bundle hands `/assets/glue-<hash>.wasm` to the factory. Desktop and Android bundle `../dist` through the one `tauri.conf.json` (`frontendDist`; `csp` null). The dev server serves the file as `application/wasm` (Gate 2). Lua runs neither in a worker nor in an iframe (Gate 2).
+- **Test setup:** under Vitest the `?url` value is a dev-server path, which wasmoon's Node loader reads as a file path, so `vitest.setup.ts` maps the import to the installed file. Without it, 9 test files that run real Lua failed (74 tests).
+- **Not proven:** a device run. That a wrong MIME type from the Tauri or Android asset protocol is not fatal comes from reading the emscripten glue (it falls back to ArrayBuffer instantiation), not from a run. The URL assumes Vite's `base` stays `/` (the current config).
+
+### CHORE-188 (changed) — The import warning says "Your saved data is not changed until the import has finished", which is false when a same-name asset has different bytes
+
+**Status (2026-10-25, lane C cloud): English text fixed on `lane-c-codeonly-1025`; Gate 2 round 1 `[REJECT]` (row 3364), remediated (row 3365), round 2 `[REJECT]` (row 3366), remediated (row 3367); round 3 `[APPROVE]` (row 3368); committed as `da53ba04`. The other 6 locales wait for the translator.**
+
+- **Premise (TRACED):** in `backuplocal.ts`, `confirmImportScale` is asked before the asset copy. Each `assets/<name>` is then written `'unconditional'`, directly, through the pipeline's `writeEntry` or streamed. Inlays follow (`restoreCollectedInlays`, which replaces a same-id inlay). All of this happens before `commitStore2Import` or `commitBootImport`. On store2, cold-storage entries and the database are not written during the copy (Gate 2 round 1). `saveAsset` names assets `assets/<sha256 or customId>.<ext>`, so a name repeats with different bytes only for a hand-built `.bin`, a custom id or a damaged stored file.
+- **Fix:** the sentence becomes "Your saved data is not replaced until the import has finished." On the `.bin` paths it continues: "Images and other files from the backup are copied in before that, and replace any stored file with the same name." `store2ImportSizeWarning(megabytes, copiesFiles = false)` adds that second sentence only when `copiesFiles` is true. The parameter has a default because `localeParity.test.ts` compares each locale function's `Function.length` with English (round 2); a default parameter does not count, and `confirmDatabaseSize` still makes each caller choose. `confirmDatabaseSize(byteLength, copiesFiles, threshold)` gets `true` from both `confirmImportScale` calls and `false` from the numbered-backup restore (`restoreOldChosen`), which copies no files (the round 1 finding). `store2ImportTimeWarning` and `store2ImportSpaceWarning` appear only on the Android `.bin` path and always carry both sentences.
+- **For the translator (not done here):** `store2ImportSizeWarning` (now with the optional second parameter `copiesFiles`), `store2ImportTimeWarning` and `store2ImportSpaceWarning` in `cn.ts`, `de.ts`, `es.ts`, `ko.ts`, `vi.ts` and `zh-Hant.ts`. Each still has the old one-sentence meaning; the 1-parameter size function still type-checks against the new English signature.
+- **Not chosen:** a skip-if-present-and-verify copy, which would change the import's write path (persistence) and is left as the ticket's other direction.
+
+### CHORE-06 (changed) — `console.log` of whole-save objects may pin them in memory for the session
+
+**Status (2026-10-25, lane C cloud): moot on current `main`; proposed for closing (row 3369).**
+
+- **All four cited call sites are gone or narrowed (TRACED):**
+  - `console.log('blocks', this.blocks)` and `console.log('Decoded RisuSave data', db)` were removed by `165dcf10` (`git log -S`).
+  - `console.log(decoded)` in `bootstrap.ts` was narrowed to `console.log(decoded.tree)` by `9b312962` (it still logs the whole decoded tree), and the `value` argument in `coldstorage.svelte.ts` was removed by the same commit.
+  - `coldstorage.svelte.ts` now logs `("setting cold storage item", key)` only.
+- **Production strips `console.*`:**
+  - `vite.config.ts` runs `@rollup/plugin-strip` 3.0.4 on `command === 'build'`, with `include: '**/*.(mjs|js|svelte|ts)'` and the plugin's default `functions: ['console.*', 'assert.*']`.
+  - `tauribuild` and `buildsite` are both `vite build`.
+  - The fresh `dist` contains neither "setting cold storage item" nor "Decoded RisuSave". The one app `console.log` text left in it is in plugin iframe source held as a string (`apiV3/factory.ts`).
+- **What's left is dev only:** `console.log(decoded.tree)` in `bootstrap.ts`, which logs the decoded save tree in a dev build, and `console.log(decoded)` of a decoded preset in `database.svelte.ts`. The production build strips both, so the ticket stays moot for shipped builds. The dev-only retention is not worth a change.
+
+### CHORE-03 (changed) — Trash: dedicated bug-hunting pass
+
+**Status (2026-10-25, lane C cloud): investigated (row 3370); no confirmed live defect; nothing fixed. The candidates below need the maintainer's priority.**
+
+- **R1, the restore that kept a stale `trashTime` block: FIXED (TRACED).** Restore is now `restoreCharacterFromTrash` in `characters.ts`, from `152cc563` (CHORE-01 stage 1). It clears `trashTime`, calls `checkCharOrder()` and `markCharacterForSave(chaId)`. The trash list calls it. `characters.saveMarks`, `removeTrashedCharacters.save` and `removeCharPermanentRestored` pass 16 of 16. These are guards; no run of them on the pre-`152cc563` base was made.
+- **R2, the `removeChar('permanent')` splice during an in-flight `set()`: NOT PRESENT as described (TRACED, not run).** `RisuSaveEncoder.set()` loops over a snapshot of the holders (`characters.slice()`), and every removal sets `requiresFullEncoderReload` and marks the id. The store2 loop was not examined for the same race.
+- **Harness:** `Agents/Tools/save-gen/trash-restore-repro.svelte.harness.ts` no longer runs (0 tests; the `stores.svelte` mock lacks `selIdState`). It also replays the removed inline restore. Delete or repair: the maintainer's call.
+- **Candidates from the pass (investigator's, not all opened by the orchestrator):**
+  - **C1:** `removeChar` always ends with `selectedCharID.set(-1)`, while `removeTrashedCharacters` keeps the open chat. The orchestrator read it: the reset is the safe answer after a splice shifts indices. Keeping the selection would need the by-reference pattern. Whether the trash list can be open with a character selected was not checked. UI state, but it decides where later edits land; not changed.
+  - **C2:** a permanent delete or the boot purge leaves the character's cold units and assets behind (the doc comment says so). On store2 pages nothing removes them (see CHORE-101). Storage, not small.
+  - **C3:** `removeChar` resolves a number or string identifier after the two awaited confirms. It is latent: every caller passes the object.
+  - **C4:** `removeChar('normal')` on a trashed character would reset `trashTime`. It is latent: no caller does that.
+  - **C5:** the boot purge uses `Date.now()`, so a forward clock jump purges early. INFERRED, not run. The purge test deliberately matches upstream; a guard is a product question.
+  - **C6:** every move to trash through `removeChar` forces a full encoder reload. Cost only.
+- **Not opened:** the store2 save loop and residency for trashed stubs, `inlayCleanup.ts`, export paths, and restore of an overdue trashed character from a backup.
+
+### CHORE-04 (changed) — Module enable/disable causes a freeze too, by a DIFFERENT mechanism
+
+**Status (2026-10-25, lane C cloud): hypothesis partly confirmed (row 3371); not fixed: the remaining cause needs a profile first.**
+
+- **Refuted (TRACED):**
+  - The Settings toggle (`ModuleSettings.svelte`) has no explicit bump. It bumps `ReloadGUIPointer` once, through `moduleUpdate()` from the effect in `stores.svelte.ts`.
+  - The chat menu never changes `db.enabledModules`. It toggles chat-level modules (an explicit bump) and character-level modules (right-click, an explicit bump).
+  - The rebuild is not the whole message list: `Chats.svelte` mounts the last `loadPages` messages (30 by default, plus 15 per scroll up).
+- **Confirmed:** the chat-level toggle in the chat menu bumps twice, once explicitly and once through `moduleUpdate`. A reduced Svelte probe (RUN, synthetic, not the real components) shows two separate rebuilds, not one flush. Each bump resets the script cache and `ReloadChatPointer`, remounts every mounted `ChatBody` through `{#key}`, re-runs the parser per message, and rebuilds the background HTML when one exists.
+- **Why nothing was changed:** the Settings path bumps once and was reported to freeze too, so the double bump is not the whole cause. Dropping the explicit chat-level bump would halve that path at most. Whether the effect fires for character-level toggles is not known, so that bump must stay.
+- **Next step:** a production-build profile of one toggle in a 30-message chat, splitting the `ChatBody` remount, the parser and the script-cache recompile.
+
+### CHORE-71 (changed) — The plugin overwrite guard walks every chat in live memory on each in-place plugin `setItem`
+
+**Status (2026-10-25, lane C cloud): sized only (row 3372); still present; persistence-class, LOW.**
+
+- **Still present (TRACED):** `isPluginUnitLinkedElsewhere` in `src/ts/plugins/apiV3/pluginColdStorage.ts` walks every character, its chats and the `_coldplugin` map whenever the slot has a unit. `v3.svelte.ts` wires it for legacy and store2 pages.
+- **Direction:** a link index, or skipping the walk where no legacy link can exist. On store2, values live in `db.pluginCustomStorage`; that is INFERRED and needs a reviewer's safety judgement.
+- **Risk:** a wrong answer misses a refusal and overwrites a linked unit, which is silent data loss. So the fix is `opus-reviewer` class. No product decision is needed beyond `MC-170` 6.
+
+### CHORE-72 (changed) — A local backup restore writes an entry whose name does not match the cold-storage key pattern to `assets/<name>`
+
+**Status (2026-10-25, lane C cloud): the escape question is answered (row 3372); proposed for closing after one Windows check.**
+
+- **A crafted name cannot leave `assets/` (TRACED):**
+  - The restore always builds `'assets/' + name`.
+  - The store's creatable and addressable rules refuse `.` and `..` segments, `\`, control characters, a leading or trailing `/`, empty segments, temp names, NUL, absolute paths and drive prefixes. The Tauri rules add `<>:"|?*`, a trailing dot or space, and segments over 255 bytes.
+  - `asset_batch.rs` `guarded_asset_path` guards again on the Rust side.
+  - A refused name is skipped and reported (`invalidName`).
+- **Residual:**
+  - `a/b/c` writes nested folders under `assets/`.
+  - A name equal to an existing asset replaces it; that is CHORE-188's case.
+  - Windows device names (`CON`, `NUL`, `COM1`, `LPT1`) are not refused anywhere the investigator looked. Not tested. A synthetic Windows restore with an entry named `CON` would settle it (lane A's Windows checkout).
+- **Not opened:** the Node and IndexedDB store bodies.
+
+### CHORE-73 (changed) — On a Windows desktop, a chat whose pointer names a unit in a `coldstorage` folder that does not exist reads "unreadable" instead of "missing"
+
+**Status (2026-10-25, lane C cloud): already fixed on `main`; proposed for closing (row 3372).**
+
+- `classifyTauriColdRead` no longer exists (0 hits in `src` and `src-tauri/src`; removed by `980791fa`).
+- `src/ts/storage/tauriByteTransport.ts` defines `MISSING_FILE_ERROR = /\(os error (2|3)\)\s*$/`, whose doc says os error 3 is a missing directory on Windows. The orchestrator opened it.
+- `src/ts/process/tests/coldUnitsTauri.test.ts` pins "on Windows a unit read in a units folder that does not exist (os error 3) is missing".
+
+### CHORE-101 (changed) — Assets saved before a refusal, a save failure or a changed file stay behind as orphans
+
+**Status (2026-10-25, lane C cloud): sized only (row 3373); open, and wider than filed.**
+
+- **The `TODO(evidence)` is answered: on store2 pages nothing removes these assets (TRACED).**
+  - The startup sweep (`cleanChunks`, `bootstrap.ts`) and the manual clean-up (`runManualCleanup`, `manualCleanup.ts`) both run only when `modeRunsLegacyDeleters` is true, which is legacy and block pages only (`pageStorageMode.ts`). The orchestrator opened all three.
+  - The store2 maintenance removes unreferenced units only. The store2 sweep modules have no non-test deleting caller (INFERRED from the missing caller).
+- **Where orphans come from (TRACED):**
+  - the `.bin` restore's asset copy before `commitStore2Import` or `commitBootImport`;
+  - the streaming importer's `saveAssetFromPieces` (`modules.ts`, `characterCards.ts`);
+  - single `saveAsset` calls;
+  - CHORE-03 C2 (permanent delete).
+- **Direction:** delete on refusal only the assets the import newly created (names are content hashes and can be shared, so "new" against "already there" must be exact), or a store2 asset collector, which is larger but covers every source.
+- **Risk:** persistence and silent data loss if the new-or-existing test is wrong. No save-format change.
+
+### CHORE-221 (changed) — A `.bin` commit's salvage can leave out blocks the person did not confirm
+
+**Status (2026-10-25, lane C cloud): sized only (row 3373); the lane E reading holds on current code.**
+
+- **The two decodes are never compared (TRACED):**
+  - `readBinDatabaseOmitted` decodes, `confirmLeftOut` asks, and the answer goes into `facts.omitted`.
+  - The commit closures for the page import and the boot import call `readBinDatabaseTree`, which decodes again and discards its own omitted map.
+  - The decoder reads `remotes/*.bin` from the live store, so a read that fails only the second time becomes an unconfirmed omission.
+- **Smallest fix (still the reviewer's):** `decodeBinDatabase` returns the tree and the omitted map. The commit refuses as a changed file when its omitted names are not a subset of the confirmed ones. The confirmed names are carried into `commitStore2Import` and `commitBootImport`.
+- **Risk:** the restore path only; no format change.
+- **Not checked:** whether the numbered-backup restore (`storeRestore.ts`) needs the same guarantee.
+
+### CHORE-350 (changed) — a value that cannot be stored retries every save pass (MC-346 Q-A)
+
+**Status (2026-10-25, lane C cloud): sized only (row 3373); characters fixed, other parts still as filed.**
+
+- **Characters are fixed:** a character that cannot be stored is skipped and reported once (`cc2128d6`, merged as `e4413ffb`; `scoped.ts`).
+- **Module, preset and settings data are not (TRACED):**
+  - A cycle or a BigInt there throws `CodecInputError` (`normalize.ts`) from an unguarded part of the plan.
+  - The loop then counts the attempt, folds the snapshot back (everything re-marked) and sleeps 1 s (`saveLoop.ts`).
+  - `peerUi.ts` toasts on attempt 1 and alerts on every pass from the fifth.
+  - The throw comes before any commit, so no character's pending edit is saved while the bad value stays. INFERRED from the control flow; not run.
+  - A throwing `toJSON`'s path and the plugin-data path were not traced in detail.
+- **Direction:** a character-style skip for the other parts (larger than the character fix), or softening the alert. `MC-346` Q-A said to leave it as it is today.
+
+**Ledger rows**
+
+| Row | Date | Item | Agent / role | Artifact | Result |
+|---|---|---|---|---|---|
+| 3361 | 2026-10-25 | CHORE-184 sizing and fix | orchestrator | `c184-red.out`, `c184-green.out`, `lua-base.out`, `lua-fix.out`, `lua-fix2.out`, `c184-build.out` | Premise TRACED in wasmoon 1.16.0's `LuaFactory`. New test red on the base (1 failed, 3 passed), green after (4 of 4). Without the setup mapping, 9 files that run real Lua failed (74 of 495). With it, 18 files 499 of 499. `pnpm build` exit 0, `dist/assets/glue-Dlydm7r2.wasm` emitted and referenced. Committed as `2598f708`. |
+| 3362 | 2026-10-25 | CHORE-184 Gate 2 | adversarial-reviewer | `g2-184\verdict.md`, `dev.log`, `check.log` | `[APPROVE]`, no defects. Dev server on port 5199 serves the asset as `application/wasm`, 271,581 bytes. No worker, iframe or server import of `scriptings`. The setup mapping holds in the node file and in happy-dom and jsdom-pragma files (140 of 140); no jsdom file that runs Lua was run separately. `pnpm check` 0/0. Non-blocking: the URL assumes Vite `base` `/`. Mutants passing `undefined` or the unpkg URL were reasoned, not run. |
+| 3363 | 2026-10-25 | CHORE-188 fix, round 1 | orchestrator | `c188-red.out`, `c188-green.out` | The English sentence changed in 3 keys. `storeImportTimeWarning` test red on the base (1 failed, 29 passed). The 4 store import and restore files 120 of 120. |
+| 3364 | 2026-10-25 | CHORE-188 Gate 2, round 1 | opus-reviewer | `g2-188\verdict.md`, `tests.log`, `check2.log` | `[REJECT]`. `store2ImportSizeWarning` is also shown by the numbered-backup restore (`restoreOldChosen`), which copies no files, so the new sentence was false there. The `.bin` path claims held (assets and inlays before the commit; no units, plugin data or database written before it). Time and space warnings are on the Android `.bin` path only. Line endings LF, UTF-8 kept. Option A proposed. |
+| 3365 | 2026-10-25 | CHORE-188 remediation (option A) | orchestrator | `c188r2.diff`, `c188r2-green.out`, `c188r2-mut1.out`, `c188r2-mut2.out`, `c188r2-base.out`, `c188r2-check.out` | `copiesFiles` flag on the size key and `confirmDatabaseSize`: `.bin` callers pass `true`, the restore passes `false`. Content assertions added on both paths. 120 of 120. Mutant 1 (round 1's text, flag ignored): the restore test fails (1 of 120). Mutant 2 (the restore passes `true`): the restore test fails (1 of 38). Pre-fix `en.ts`: 3 fail. `pnpm check` 0/0. |
+| 3366 | 2026-10-25 | CHORE-188 Gate 2, round 2 | opus-reviewer | `g2-188-r2\verdict.md`, `parity-now.log`, `mut\` | `[REJECT]`. Round 1's finding fixed: every caller's flag correct (3 production callers of `confirmDatabaseSize`; `confirmImportScale`'s one caller covers the page and boot `.bin` imports). Blocking: the required second parameter made `src/lang/localeParity.test.ts` fail 6 of 6 (`Function.length` en 2, locale 1); `pnpm check` cannot see it and the 4-file run did not include it. Mutants M1 to M5 each killed by at least one test. Non-blocking: the copy sentence in the space warning and the non-short time warning is not pinned by a test. Second consecutive rejection: the mechanism was reconsidered (separate keys would also fail parity); the per-path flag stays and only the arity changes. |
+| 3367 | 2026-10-25 | CHORE-188 remediation, round 3 | orchestrator | `c188r3.diff`, `c188r3.out` | `copiesFiles = false` default in `en.ts`. `src/lang` plus the 4 store import and restore files: 9 files, 157 of 157. |
+| 3368 | 2026-10-25 | CHORE-188 Gate 2, round 3 | opus-reviewer | `g2-188-r3\verdict.md`, `mut\`, `lang-dir.log`, `check.log` | `[APPROVE]`. Both earlier findings fixed: `src/lang` 37 of 37; mutant M8 (the required parameter back) fails all 6 parity tests. Callers complete (3; `true`, `true`, `false`). Mutants on the 4 store files plus `localeParity` (126 tests): M1 1 fail, M3 5, M4 3, M5 1, M6 (flag dropped) 8, M7 (default flipped to `true`) 0 as expected, since no caller relies on the default. `pnpm check` 0/0. Non-blocking: deleting the copy sentence from `store2ImportSpaceWarning` would fail no test. The copy-order trace is reused from rounds 1 and 2 (same `backuplocal.ts`). Committed as `da53ba04`. |
+| 3369 | 2026-10-25 | CHORE-06 moot check | orchestrator | inline `git log -S`, `grep` over the fresh `dist` | All four cited call sites removed or narrowed (`165dcf10`, `9b312962`). The build strips `console.*` (`@rollup/plugin-strip` 3.0.4). The cited strings are absent from `dist`. Proposed for closing. |
+| 3370 | 2026-10-25 | CHORE-03 trash pass | investigator | `c03-packet.md` (the full packet is the investigator's hand-back) | R1 fixed (`152cc563`), R2 not present as described, harness broken. Candidates C1 to C6 (see CHORE-03). The orchestrator read `removeChar` and `removeTrashedCharacters` for C1. Not independently verified beyond that. |
+| 3371 | 2026-10-25 | CHORE-04 trace and probe | investigator | `c04-packet.md`, `c04-probe\` | Partly confirmed. The chat-level chat-menu toggle bumps twice. Settings bumps once. Windowing bounds the remount. Synthetic probe 2 bumps / 6 mounts against 1 / 3. A probe through the real stores failed on an import cycle. Probe files under `src` were created and deleted; the tree checked clean afterwards. |
+| 3372 | 2026-10-25 | CHORE-71, 72, 73 sizing | investigator | `c7x-packet.md` | CHORE-71 still present (persistence class). CHORE-72 no escape from `assets/` (Windows device names untested). CHORE-73 already fixed (`980791fa`; the orchestrator opened `tauriByteTransport.ts` and the test). Source only, nothing run. |
+| 3373 | 2026-10-25 | CHORE-101, 221, 350 sizing | investigator | `c1xx-packet.md` | CHORE-101: no asset clean-up on store2 (the orchestrator opened the three gates). CHORE-221: the two decodes are not compared. CHORE-350: characters fixed, other parts not. Source only, nothing run. |
+| 3374 | 2026-10-25 | Full checks on the final application snapshot | orchestrator | `full-status.txt`, `full-test.out`, `final-check.out`, `final-build.out` | Snapshot: HEAD `2598f708` plus the uncommitted CHORE-188 diff, byte-identical to the later commit `da53ba04` (`git diff 2598f708 da53ba04 -- src` equals `c188r3.diff`); only the records file differed. `NODE_OPTIONS=--max-old-space-size=8192 pnpm test`: 1015 files, 23,326 tests; 9 failed, 23,294 passed, 23 skipped; 1766 s. All 9 failures are in `store2/replay/actors.test.ts` (concurrent recoveries x6, injected faults x1, Tauri restart x2), the known Linux timeouts, not touched. `saveLoopNetBackstop` B7 passed. Then on `c92f6319` (`src` unchanged since `da53ba04`): `pnpm check` 0 errors, 0 warnings; `pnpm build` exit 0, `dist/assets/glue-Dlydm7r2.wasm` emitted. Linux only; the Windows full checks are lane A's. |
+| 3375 | 2026-10-25 | Records verification | doc-verifier | `records-verify.md` | PASS WITH CORRECTIONS. Required: the row range in "Not done" (applied: now 3361 to 3375 with this row); CHORE-06's bootstrap log was narrowed to `decoded.tree`, not removed (applied; moot verdict stands because production strips `console.*`); row 3374 committed with the section (applied). Optional applied: row 3362's jsdom wording, a Handoff paragraph. VERIFIED: shared records untouched (`git diff origin/main --stat -- Agents`: this file only), LF, no MC entry, hashes, CHORE-184 and 188 counts, CHORE-73, CHORE-101 gates, CHORE-03 R1 and R2, CHORE-221 sites, CHORE-350 throws, row 3374 figures. Not checkable from files: the CHORE-03 candidates and guard counts (packet delivered in chat), B7 history, the Windows device-name question. |
+
+**Open questions for the maintainer (not decided):**
+1. CHORE-101 (with CHORE-03 C2): on store2 pages nothing removes unreferenced assets. Should a refused or failed import delete the assets it newly wrote, should store2 get an asset collector, or should it stay as it is?
+2. CHORE-221: when the commit's decode leaves out more than the person confirmed, should the import refuse as a changed file or ask again? Does the numbered-backup restore need the same guarantee?
+3. CHORE-350: is `MC-346` Q-A ("Leave as today") still the answer for module, preset and settings data, now that characters are skipped?
+4. CHORE-04: should lane A take a production-build profile of one toggle before anything changes? Should the redundant chat-level bump be removed on its own?
+5. CHORE-03: should C1 (single permanent delete clears the open chat) match the batch delete? Should the boot purge get a clock guard (C5)? Should the broken harness be deleted or repaired?
+6. Closing CHORE-06 and CHORE-73 as moot or already fixed, and CHORE-72 after the Windows `CON` check: lane A's call at fold-in.
+
+**Not done (for lane A at merge):**
+- the merge review and the Windows full checks;
+- the translator's pass over the 3 import keys in 6 locales;
+- fold-in of these entries and rows 3361 to 3375.
+
+**Handoff (2026-10-25, lane C cloud code-only batch).** Branch `lane-c-codeonly-1025` from `origin/main` `991ee825c`: `2598f708` (CHORE-184), `da53ba04` (CHORE-188), then the records commits of this section. Gates: CHORE-184 Gate 2 `[APPROVE]`; CHORE-188 Gate 2 `[REJECT]`, `[REJECT]`, `[APPROVE]` (no advisor escalation: the third round approved). Full checks: row 3374. No save format or stored data changed. Pushed: the branch only, never `main`. Next free IDs: MC-442, CHORE-332, row 3376.
+
+## 2026-10-26 — lane C (cloud): CHORE-215, send-time token counting over the whole chat
+
+**Hand-back (lane C retires after this task, per the maintainer via lane A, 2026-10-26).**
+
+- **Branch.** `lane-C-chore215-tokenize`, from `ba63e12d2`; head is the records commit after `5b97aad7b`. Nothing was pushed to `main`.
+  - `10b26345f`: the test file, written and run on the unchanged base;
+  - `70ea3ed22`: the fix plus the extended tests;
+  - `801096c66`: the interim hand-back;
+  - `5b97aad7b`: the round 4 editorial points, and the round 4 verdict kept in `Agents/Lanes/lane-C-chore215-g2r4-verdict.md`.
+- **State: technically accepted on the lane branch.**
+  - **Still open:** lane A's merge review, the Windows full checks, the phone re-measurement, the maintainer's merge approval (prompt assembly) and the open question below. Not COMPLETE until lane A folds these records in.
+- **Gates.**
+  - Gate 1 (`opus-reviewer`): `[APPROVE]` with binding amendments A1 to A4, all applied (row 3377).
+  - Gate 2 (a fresh `opus-reviewer` each round):
+    - round 1 `[REJECT]` (row 3379);
+    - round 2 `[EDITORIAL]`, conditional (row 3381);
+    - round 3 `[REJECT]` (row 3382); the mechanism was then reconsidered (row 3383);
+    - round 4 `[EDITORIAL]` (row 3385), its points applied (row 3386).
+  - No third consecutive rejection, so no advisor escalation.
+- **Tests.**
+  - `src/ts/process/contextTrim.test.ts` (18 tests): today's eager loop as the reference; generated cases; float, NaN and bound cases; each bound check pinned by a mutant.
+  - `src/ts/process/tests/sendChatContextTrim.svelte.test.ts` (43 tests): 41 guards frozen on the base, the reproducer, and one `precondition:` test.
+  - On the base the send file fails exactly 2: the reproducer (6007 `tokenizeChat` calls against a bound of 52) and the `precondition:` test (see the deviation below). On the fix, both files pass 61 of 61.
+- **Measured.**
+  - No device run.
+  - Diagnostic D1 (Node, real tiktoken cl100k, 3,000 messages of about 500 B, 20 kept):
+    - today's pattern: 5,980 encodes, 1.0 to 1.4 s;
+    - the lazy pattern: 21 encodes, 3 to 5 ms.
+  - On the send path the reproducer goes from 6,007 calls to at most 52 (a window-only send makes 47).
+  - Unchanged: the per-message parse and `processScriptFull` (about 15% in lane A's profile). They have ordered side effects.
+- **Full checks** (Linux, on `5b97aad7b` with a clean tree; row 3387):
+  - `pnpm test`: 9 failed, 23,632 passed, 23 skipped. All 9 are the known Linux timeouts in `store2/replay/actors.test.ts`.
+  - `pnpm check`: 0/0.
+  - `pnpm build`: exit 0.
+- **Next step (lane A).**
+  - The merge review, the Windows full checks, and the phone re-measurement of the 3,000-message send.
+  - The maintainer's answer to the question below.
+- **Open product question for the maintainer (not decided).**
+  - **Today:** a message whose token count throws fails every send of that chat. For example, tiktoken refuses special-token text such as `<|endoftext|>` on the lazy-path tokenizers.
+  - **With the fix:** a dropped message that the trim never counts no longer fails the send.
+  - **The choice:** accept this behaviour change, or keep today's failure. Keeping it would mean counting every message again.
+
+**What changed.** Only the token count moves; every parse, script, trigger and push stays in order. The key points:
+
+1. **Mode.** Before the message loop, sendChat decides `countMessagesInTrim = !memoryTakesChats() && !countVaries`.
+   - `countVaries` covers the counts that may differ between calls or not be whole numbers: `aiModel 'custom'` with a plugin tokenizer `'custom'`, the GoogleCloud tokenizer, and the Local tokenizer (A1).
+   - In that mode the loop pushes each message chat uncounted. The exception is a chat with multimodals: it is counted in the loop, because its count is arithmetic on the stored image size.
+   - The depth-prompt counts are recorded too.
+2. **The memory gate.** It stays where it is, as the same expression (A4). If it opens after a lazy loop, `totalInSendOrder` replays today's addition order.
+3. **The trim.** `trimChatsToContext` emulates today's trim step by step: the same pops, the same subtraction (including `[Start a new chat]`, which is pushed but never added), and the same error and total. It counts message chats newest first, only as far as each decision needs.
+   - It runs only within bounds that make every sum exact in any order:
+     - counts are integers in [0, 2^32];
+     - there are fewer than 2^18 entries;
+     - `|tokensBeforeMessages|` is at most 2^51.
+   - Anything else falls back to the eager trim over the same counts.
+   - The decisions are written as "not over" (`!(x > max)`), so a non-number limit decides as today.
+4. **Recorded limitations (A2):**
+   - Identity holds while the tokenizer settings stay unchanged during the send.
+   - The dropped-message throw case is the open question above.
+   - `stage1Duration` no longer includes the lazy counting on the trim path. It is a timing field only; the prompt is unaffected.
+
+**Deviation.** The base-frozen guard `nan-default` became a `precondition:` test. It covers the stand-in tokenizer returning NaN for an old text message under the default tokenizer, where the base sent all 61 messages. Gate 2 round 1 verified that every lazy-path `encode` branch returns an array, so a text chat's count is a whole number and this input cannot happen. Gate 2 accepted the deviation.
+
+**Gate 2 history, for a fresh reviewer:**
+
+- **Round 1 `[REJECT]`:**
+  - `<=` against today's `>` for a NaN, `undefined` or string `maxContext` (fixed);
+  - a throwing count on a dropped message (recorded as the open question);
+  - unpinned routes for the plugin, GoogleCloud and multimodal counts (pinned with NaN guards);
+  - totals past 2^53 (see round 3);
+  - stage timing (recorded);
+  - wording (fixed).
+- **Round 2 `[EDITORIAL]`, conditional on closing F4.** Totals near 2^53 could flip the trim decision; first closed with a 2^51 bound on the fixed part.
+- **Round 4 `[EDITORIAL]`.** See row 3385.
+- **Round 3 `[REJECT]`.** The fix missed counts that were already counted (a multimodal inlay restored from a crafted `.bin`, of width 1e18), mixed-sign after-counts, and prefix counts. The mechanism was reconsidered: the scattered magnitude checks were replaced by the one uniform contract above, every check is pinned, and a 1,080-case search found 0 differences.
+
+**Ledger rows**
+
+Scratch paths are under the session scratchpad, outside the repository. The plan and all verdicts are in `c215/` there and are lost when the container goes. The summaries here are what survives.
+
+| Row | Date | Item | Agent / role | Artifact | Result |
+|---|---|---|---|---|---|
+| 3376 | 2026-10-26 | CHORE-215 sizing and plan | orchestrator | `c215\plan.md`, `c215\d1\d1.out` | Source facts F1 to F8 from `index.svelte.ts` and `tokenizer.ts`. Candidate (a), stopping the message walk at the context limit, was rejected because the parse and the scripts have ordered side effects. Candidate (b), a count cache, was deferred. Chosen: lazy counting in the trim. D1 as in the hand-back. |
+| 3377 | 2026-10-26 | Gate 1 | opus-reviewer | `c215\g1\verdict.md`, `trimprop.mjs` | `[APPROVE]` with A1 to A4: the Local tokenizer is eager (it POSTs to localhost and can give NaN); the settings-change limitation is recorded; tests; the memory gate stays in place. The emulation was equivalent over 200,000 random cases. Notes: fractional `maxResponse` and the error text; the mock constraints. The reviewer saw `test-warrior`'s base test appear during the review; that was the orchestrator's dispatch. |
+| 3378 | 2026-10-26 | Base tests | test-warrior (x2) | `10b26345f`; `c215\basewt` | The reproducer plus 12 guards, then 24 more guards (the boundary sweep at step 1, template, examples, inlay, NovelAI, start trigger, continue, the eager-path tokenizers, NaN, fractional `maxResponse`, a gate flip, empty chats), all frozen on the base. Boundary mutant `>=`: caught. |
+| 3379 | 2026-10-26 | Gate 2 round 1 | opus-reviewer | `c215\g2\verdict.md` | `[REJECT]`, see the Gate 2 history. |
+| 3380 | 2026-10-26 | Round 1 remediation | orchestrator | `c215\mut2\` | `!(x > max)`; NaN-route guards; safe-integer fallback; wording. Mutants m2, m4, m5 and `<=` are caught. 92 `sendChat` files: 2,306 passed. |
+| 3381 | 2026-10-26 | Gate 2 round 2 | opus-reviewer | `c215\g2r2\verdict.md`, `f4cx.mjs` | `[EDITORIAL]`, conditional on F4: the decision flips near 2^53. Closed with a bound on the fixed part. |
+| 3382 | 2026-10-26 | Gate 2 round 3 | opus-reviewer | `c215\g2r3\verdict.md`, `cx3.mjs`, `cx4.mjs` | `[REJECT]`: counted multimodal counts, mixed-sign after-counts and prefix counts are unbounded; M7 (13.1) unpinned; the JSDoc was misplaced. Second substantive rejection. |
+| 3383 | 2026-10-26 | Mechanism reconsidered, round 4 revision | orchestrator | `70ea3ed22`; `c215\mut4\` | One uniform contract (counts in [0, 2^32], fewer than 2^18 entries, \|before\| at most 2^51). The round 3 counterexamples are tests. All 11 checks pinned. 1,080-case search: 0 differences. 60 of 60. `pnpm check` 0/0. |
+| 3384 | 2026-10-26 | Full test, round 3 snapshot | orchestrator | `c215\full-test.out` | 1039 files: 9 failed (`replay/actors`, known Linux), 23,628 passed, 23 skipped. It predates `70ea3ed22`'s `contextTrim.ts`, so it is not a final-snapshot check. |
+| 3385 | 2026-10-26 | Gate 2 round 4 | opus-reviewer | `Agents/Lanes/lane-C-chore215-g2r4-verdict.md` (copy of `c215\g2r4\verdict.md`) | `[EDITORIAL]`.<br>**Closed:** round 3's finding; the contract is exact on every lazy path.<br>**Property classes, against the current helper:** cx4 0 of 125,820; cx3 and f4cx all match; prop4 and prop2 0; about 1.6M new cases with 0 mismatches inside the precondition; 61 worst-case bound checks exact against BigInt.<br>**Caller precondition:** traced, met.<br>**Editorial:** the negative side of the `before` bound was unpinned (mutant X1); the `LAZY_ENTRY_LIMIT` doc was off by one. |
+| 3386 | 2026-10-26 | Round 4 editorial points | orchestrator | `5b97aad7b` | A test at `-LAZY_BEFORE_LIMIT - 2`, which now catches X1 (1 of 18 fails). A test that the bounds' sum is below 2^53, which pins the reviewer's X7 and X8. The doc reads "fewer than". 61 of 61. |
+| 3387 | 2026-10-26 | Full checks on the final snapshot | orchestrator | `c215\final-status.txt`, `final-test.out`, `final-check.out`, `final-build.out` | HEAD `5b97aad7b`, clean tree.<br>`NODE_OPTIONS=--max-old-space-size=8192 pnpm test`: 1039 files; 9 failed, 23,632 passed, 23 skipped; 1541 s. All 9 failures are in `store2/replay/actors.test.ts` (known Linux).<br>`pnpm check` 0/0. `pnpm build` exit 0 (`dist/assets/glue-Dlydm7r2.wasm` emitted). Linux only. |
+
+**MC entries:** none. Lane A relayed the maintainer's instructions (the assignment on 2026-10-26; retire after CHORE-215); lane A records them. Next free lane C IDs: MC-442, CHORE-332, row 3388.

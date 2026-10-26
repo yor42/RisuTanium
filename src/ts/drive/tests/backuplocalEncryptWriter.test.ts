@@ -57,6 +57,8 @@ vi.mock(import('../../storage/database.svelte'), () => ({
 }) as unknown as typeof import('../../storage/database.svelte'))
 
 const writeBackupMock = vi.hoisted(() => vi.fn(async (_name: string, _data: Uint8Array) => {}))
+const writeBackupHeaderMock = vi.hoisted(() => vi.fn(async (_name: string, _length: number) => {}))
+const writeMock = vi.hoisted(() => vi.fn(async (_data: Uint8Array) => {}))
 const localWriterInitMock = vi.hoisted(() => vi.fn(async () => true))
 const localWriterCloseMock = vi.hoisted(() => vi.fn(async () => {}))
 
@@ -64,6 +66,8 @@ vi.mock(import('../../globalApi.svelte'), () => ({
     LocalWriter: class {
         init = localWriterInitMock
         writeBackup = writeBackupMock
+        writeBackupHeader = writeBackupHeaderMock
+        write = writeMock
         close = localWriterCloseMock
     },
     forageStorage: {
@@ -126,6 +130,8 @@ const fetchMock = vi.hoisted(() => vi.fn())
 beforeEach(() => {
     getDatabaseMock.mockClear()
     writeBackupMock.mockClear()
+    writeBackupHeaderMock.mockClear()
+    writeMock.mockClear()
     localWriterInitMock.mockClear()
     localWriterCloseMock.mockClear()
     encryptBufferMock.mockClear()
@@ -140,7 +146,8 @@ afterEach(() => {
 })
 
 function writtenEntryNames(): unknown[] {
-    return writeBackupMock.mock.calls.map((call) => call[0])
+    // The database entry is written as a header plus pieces, every other entry through writeBackup.
+    return [...writeBackupMock.mock.calls.map((call) => call[0]), ...writeBackupHeaderMock.mock.calls.map((call) => call[0])]
 }
 
 describe('a local backup never contains an account-sync encryption marker (I3)', () => {

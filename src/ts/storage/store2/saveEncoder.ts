@@ -5,8 +5,9 @@ import {
     acknowledgedBytesOf, builtCommitOf, characterMatchesAcknowledged, characterMatchesAcknowledgedPlain, CodecInputError, isColdStub,
     movable, overlayStub, planScopedEncode, plainObject, previousEntriesOf, previousFrom, sameJsonValue, verdictBaseOf,
     type AcknowledgedVerdict, type EncodedTree, type EncodeScope, type ListDerivation, type PreviousEncoding, type ReusableUnit,
-    type SkippedCharacter, type VerdictBase,
+    type ScopedPlan, type SkippedCharacter, type VerdictBase,
 } from './codec'
+import { isModuleStub } from '../moduleStub'
 import { defaultKeyEnv, type KeyEnv, type ShardEntry } from './format'
 import { stubDescription } from '../../process/coldCharacter'
 import { MEASURE } from '../../process/memory/measureFlag'
@@ -73,6 +74,8 @@ export interface SavePlan {
     readonly skipped: readonly SkippedCharacter[]
     /** The `chaId` of every character this pass encoded. */
     readonly encoded: readonly string[]
+    /** Existing units the new manifest names without writing them, and the names (taken at plan time) of the characters and modules carried by key. */
+    readonly carried: ScopedPlan['carried']
     /** The commit request of this plan; its build runs `finalize` under the attempt's own mint and keeps that tree. */
     commitRequest(): CommitRequest
     /**
@@ -103,6 +106,10 @@ export interface SaveEncoder {
     readonly manifestKey: string
     /** The acknowledged encoding, read only: the loop compares a later put-back against the latest committed tree. */
     acknowledged(): PreviousEncoding
+    /**
+     * Whether a character is a cold stub or a module is a module stub. Such a slot is not resident, so save mine over a
+     * base that does not name this page's manifest would carry keys the store may no longer hold.
+     */
     hasStubs(db: Database): boolean
     /**
      * Whether a resident character is what the acknowledged encoding holds: `characterMatchesAcknowledged` plus the
@@ -566,8 +573,10 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
                 unchanged: scoped.unchanged && pending === null && previous === base,
                 skipped: scoped.skipped,
                 encoded: scoped.encoded,
+                carried: scoped.carried,
                 commitRequest: () => ({
                     newUnits: scoped.newUnits,
+                    carry: { from: manifestKeyOf(base), units: scoped.carried.units },
                     build: (context) => {
                         const buildStarted = MEASURE && split !== null ? split.now() : 0
                         built = scoped.finalize(context)
@@ -618,7 +627,8 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
             return manifestKeyOf(previous)
         },
         acknowledged: () => previous,
-        hasStubs: db => Array.isArray(db.characters) && db.characters.some(slot => typeof slot === 'object' && slot !== null && isColdStub(slot)),
+        hasStubs: db => (Array.isArray(db.characters) && db.characters.some(slot => typeof slot === 'object' && slot !== null && isColdStub(slot)))
+            || (Array.isArray(db.modules) && db.modules.some(slot => isModuleStub(slot))),
         verdictOf(slot) {
             if (pending !== null) {
                 if (MEASURE) {

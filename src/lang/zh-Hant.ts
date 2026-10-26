@@ -2055,6 +2055,8 @@ export const languageChineseTraditional = {
     "keepAliveGenerating": "正在產生回覆…",
     "keepAliveWorking": "處理中…",
     "keepAliveStop": "停止",
+    "keepAliveFinishing": "收尾中…",
+    "keepAliveSavePending": "回覆已就緒。請開啟應用程式以完成儲存。",
     "messageInterrupted": "已中斷 — 回覆可能不完整",
     "loadouts": "設定組合",
     "nanoGPTLoadingAccountInfo": "正在載入帳號資訊…",
@@ -2147,6 +2149,7 @@ export const languageChineseTraditional = {
     "assetIntegrityReportNotCached": (n: number) => `- 尚未快取（正常，非問題）：${n}\n`,
     "assetIntegrityReportNotContentAddressed": (n: number) => `- 非內容定址（無法以此方式驗證）：${n}\n`,
     "assetIntegrityReportArchivedNotChecked": (characterNames: string) => `- 未檢查資源的已封存角色（無法載入其資料）：${characterNames}\n`,
+    "assetIntegrityReportModulesNotChecked": (moduleNames: string) => `- 未檢查資源的模組（未載入）：${moduleNames}\n`,
     "assetIntegrityReportMismatchCount": (n: number) => `- **發現不符項目：${n}**\n`,
     "assetIntegrityReportEvicted": (n: number) => `\n已移除 ${n} 個已損毀的快取項目。請重新載入應用程式，修復才會生效。`,
     "assetIntegrityReportLeftInCache": "\n依您的要求，保留於快取中。",
@@ -2294,12 +2297,12 @@ export const languageChineseTraditional = {
     "store2RestoreNotFlushed": "較早的版本已還原，但裝置未確認已將其寫入磁碟。應用程式現在將重新載入，並在啟動時完成寫入。",
     "store2RestoreDone": "較早的版本已還原。您之前使用的版本仍保留在清單中。正在重新整理應用程式。",
     "store2RestoreOldRow": (when: string) => `舊版：${when}`,
-    "store2ImportSizeWarning": (megabytes: number) =>
-        `此備份中的資料（不含圖片和其他檔案）約為 ${megabytes} MB。讀取它需要數倍於此的記憶體，因此手機或其他小型裝置可能會記憶體不足而停止運作。在匯入完成之前，您已儲存的資料不會被變更。要繼續嗎？`,
+    "store2ImportSizeWarning": (megabytes: number, copiesFiles = false) =>
+        `此備份中的資料（不含圖片和其他檔案）約為 ${megabytes} MB。讀取它需要數倍於此的記憶體，因此手機或其他小型裝置可能會記憶體不足而停止運作。在匯入完成之前，您已儲存的資料不會被取代。${copiesFiles ? '匯入完成前會先複製備份中的圖片和其他檔案，並取代已儲存的同名檔案。' : ''}要繼續嗎？`,
     "store2ImportTimeWarning": (entries: number, minutes: number, neededGigabytes: number, databaseMegabytes: number | null, freeGigabytes: number | null = null, short = false) =>
-        `此備份包含 ${entries} 個檔案。從現在開始，在這支手機上匯入它可能需要約 ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} 小時` : `${minutes} 分鐘`}，甚至更久。這是根據中階手機得出的估計，您的手機可能更快或更慢，低階手機可能慢得多。請在匯入完成前保持應用程式開啟。\n\n匯入需要這支手機上約 ${neededGigabytes} GB 的可用空間。${freeGigabytes === null ? '應用程式無法檢查目前有多少可用空間。' : short ? `目前僅約有 ${freeGigabytes} GB 可用，如果手機空間耗盡，匯入將會停止。` : `目前約有 ${freeGigabytes} GB 可用。`}${databaseMegabytes === null ? '' : `此備份中的資料（不含圖片和其他檔案）約為 ${databaseMegabytes} MB，讀取它需要數倍於此的記憶體，因此手機可能會記憶體不足而停止運作。`}檔案複製完成後，最後可能仍會出現一個詢問。在匯入完成之前，您已儲存的資料不會被變更。要繼續嗎？`,
+        `此備份包含 ${entries} 個檔案。從現在開始，在這支手機上匯入它可能需要約 ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} 小時` : `${minutes} 分鐘`}，甚至更久。這是根據中階手機得出的估計，您的手機可能更快或更慢，低階手機可能慢得多。請在匯入完成前保持應用程式開啟。\n\n匯入需要這支手機上約 ${neededGigabytes} GB 的可用空間。${freeGigabytes === null ? '應用程式無法檢查目前有多少可用空間。' : short ? `目前僅約有 ${freeGigabytes} GB 可用，如果手機空間耗盡，匯入將會停止。` : `目前約有 ${freeGigabytes} GB 可用。`}${databaseMegabytes === null ? '' : `此備份中的資料（不含圖片和其他檔案）約為 ${databaseMegabytes} MB，讀取它需要數倍於此的記憶體，因此手機可能會記憶體不足而停止運作。`}檔案複製完成後，最後可能仍會出現一個詢問。在匯入完成之前，您已儲存的資料不會被取代。匯入完成前會先複製備份中的圖片和其他檔案，並取代已儲存的同名檔案。要繼續嗎？`,
     "store2ImportSpaceWarning": (neededGigabytes: number, freeGigabytes: number, databaseMegabytes: number | null) =>
-        `匯入需要這支手機上約 ${neededGigabytes} GB 的可用空間，但目前僅約有 ${freeGigabytes} GB 可用。如果手機空間耗盡，匯入將會停止。${databaseMegabytes === null ? '' : `此備份中的資料（不含圖片和其他檔案）約為 ${databaseMegabytes} MB，讀取它需要數倍於此的記憶體，因此手機可能會記憶體不足而停止運作。`}在匯入完成之前，您已儲存的資料不會被變更。要繼續嗎？`,
+        `匯入需要這支手機上約 ${neededGigabytes} GB 的可用空間，但目前僅約有 ${freeGigabytes} GB 可用。如果手機空間耗盡，匯入將會停止。${databaseMegabytes === null ? '' : `此備份中的資料（不含圖片和其他檔案）約為 ${databaseMegabytes} MB，讀取它需要數倍於此的記憶體，因此手機可能會記憶體不足而停止運作。`}在匯入完成之前，您已儲存的資料不會被取代。匯入完成前會先複製備份中的圖片和其他檔案，並取代已儲存的同名檔案。要繼續嗎？`,
     "store2ImportIncompleteConfirm": (items: string) =>
         `此備份中的部分資料無法完整匯入：\n\n${items}\n\n匯入後，這些部分將為空白或缺失。您目前的資料會保留在較早儲存的版本清單中。仍要匯入嗎？`,
     "store2ImportReadFailed": "備份的一部分或您已儲存資料的一部分無法讀取，因此沒有匯入任何內容。您目前的資料沒有變更。",
@@ -2342,6 +2345,7 @@ export const languageChineseTraditional = {
     "moduleLowLevelNamed": (name: string, file?: string) => file ? `模組「${name}」（${file}）` : `模組「${name}」`,
     "importModulesDone": (imported: number, skipped: number) => skipped > 0 ? `已匯入 ${imported} 個模組，略過 ${skipped} 個。` : `已匯入 ${imported} 個模組。`,
     "moduleUnsupportedFile": (name: string) => `${name}：此檔案類型不支援作為模組。`,
+    "moduleLoadFailed": (name: string) => `無法載入模組「${name}」，因此未對其執行任何操作。`,
     "moduleDuplicatePrompt": (name: string, file: string) => `已安裝名為「${name}」的模組（${file}）。要如何處理此檔案？`,
     "moduleDuplicateReplace": "取代",
     "moduleDuplicateSkip": "略過",
@@ -2814,7 +2818,8 @@ export const languageChineseTraditional = {
         "peerAutoExportSaved": "此分頁的變更也已自動匯出：不含其他圖片、資源和內嵌圖的檔案已交給瀏覽器處理。請在按「重新載入」之前確認下載已送達並已完成。匯出之後所做的變更不在其中。",
         "peerAutoExportNotFinished": "自動匯出未完成。請使用「先匯出此分頁，再重新載入」。",
         "peerNoSaveReplaced": "已儲存的資料在此分頁之外被變更後，無法再用此分頁的版本覆蓋儲存。",
-        "peerNoSaveUnloaded": "此分頁沒有在記憶體中保留所有角色，因此其版本無法取代另一個分頁的變更。",
+        "peerNoSaveBlocked": "「儲存我的」無法使用：以下項目在此分頁中未載入或無法儲存：{names}",
+        "peerNoSaveBlockedCount": "「儲存我的」無法使用：在此分頁中未載入或無法儲存的項目（{count}）。",
         "peerReloadOnly": "重新載入",
         "peerKeepReading": "繼續閱讀（此分頁無法儲存）",
         "peerCleanCommit": "另一個分頁儲存了對您資料的變更。重新載入即可查看。此分頁中沒有未儲存的內容。",

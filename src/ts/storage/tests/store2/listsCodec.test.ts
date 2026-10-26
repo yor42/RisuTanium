@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { encodeDatabase, type EncodedTree } from '../../store2/codec'
 import { ASSET_REF_V, hexStemToBase64url, IL_REF_V, readUnit, splitHashStems, UNIT_TYPE, type AssetList, type InlayList, type ListRef, type UnitType } from '../../store2/format'
 import { createListDerivation, deriveCharacterAssets, deriveConfigAssets, deriveInlayList, deriveModuleAssets } from '../../store2/lists'
-import { chat, dbWithCharacters, message, mulberry32, prosePool, seededEnv, sparseCharacter, type Obj } from './codecFixtures'
+import { bytesOf, chat, dbWithCharacters, message, mulberry32, prosePool, seededEnv, sparseCharacter, type Obj } from './codecFixtures'
 import { HEX_A, HEX_B, HEX_C, inlayToken, UUID_A, UUID_B } from './listsFixtures'
 
 function encode(db: ReturnType<typeof dbWithCharacters>): EncodedTree {
@@ -16,7 +16,7 @@ function body<T>(tree: EncodedTree, ref: ListRef, type: UnitType): T {
     }
     expect(unit.type).toBe(type)
     expect(ref[3]).toBe(type === UNIT_TYPE.assetList ? ASSET_REF_V : IL_REF_V)
-    const parsed = readUnit(unit.bytes, type)
+    const parsed = readUnit(bytesOf(unit), type)
     if (parsed.status !== 'ok') {
         throw new Error(`Unit ${ref[0]} does not parse: ${parsed.status}`)
     }

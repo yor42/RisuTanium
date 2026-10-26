@@ -5234,3 +5234,264 @@ entry records that upstream `main` has the same one-block-per-`chaId` code.
 - **Problem:** after a full `pnpm test`, `src/ts/process/mcp/risuaccess/tests/__snapshots__/modules.test.ts.snap` shows as modified. `git diff --ignore-cr-at-eol` showed no content change, so the difference was line endings only. The committed blob is LF and the checkout is CRLF (`core.autocrlf=true`; `git ls-files --eol` shows i/lf w/crlf). Captured after the S4-4b full run (row 2521): the working file was LF only (73 LF, 0 CR; `i/lf w/lf`), so Vitest rewrites the CRLF checkout as LF and Git sees the line-ending change. Why Vitest rewrites a snapshot whose content matches is not established (inferred: it compares the serialized LF text with the CRLF file). Seen after 6 full runs in lane D, each time restored from the index or to CRLF: the CHORE-192, S4-4a, S4-4b and S4-4c trees (rows 2504, 2515, 2521, 2536) and both completed runs on the `MC-382` tree (row 2543).
 - **Not established:** why Vitest rewrites this snapshot (an obsolete or reordered entry would also trigger a write), and whether other snapshot files are affected on other runs. Only one `.snap` file is tracked, and `.gitattributes` holds only `-text` entries for archive snapshots (row 2523).
 - **Smallest coherent correction (draft):** find what makes Vitest write the file; a `.gitattributes` rule `*.snap text eol=lf` so the checkout is LF like the blob and what Vitest writes; check which other `.snap` files exist and whether any is committed CRLF before adding it. Acceptance: two consecutive full runs leave the tree clean.
+
+## Moved 2026-10-25 (lane A records batch 14)
+
+Entries moved unchanged from `Agents/Roadmap.md` at `991ee825c` by lane A records batch 14, each with dated status lines added at the top; CHORE-213, 331 and 371 are new entries with no earlier Roadmap text. A reopened ticket moves back to the Roadmap with a dated status line. Full checks on the merged snapshots are lane A's runs, cited by evidence path (the ledger rows are filled in by writer 1 of this batch):
+- Lane G batch 3 (CHORE-02, 107, 189, 190, 191, 208, 210, 391, 393): merge `b37dc6223` with the Translator's locale commit `6625baedf`. Lane A full run `%TEMP%\risu-b715\laneg-b3-full\`: `pnpm test` 23,165 passed in both runs, `pnpm check` 0 errors and 0 warnings, `pnpm build` and the dist check OK, snapshot unchanged; the CHORE-210 `manualCleanup` flake did not recur.
+- Lane F batch 2 (CHORE-46, 120, 371): merge `95a24de3e`. Lane A full run `%TEMP%\risu-b715\lanef-b2-full\`: 23,327 passed in both runs, check 0/0, build and dist OK, snapshot unchanged.
+- Android Back batch (CHORE-180, 352): stages `561de025f` and `31b050a63`; full checks as stated in each entry.
+- CHORE-213: lane B fix `991ee825c`; lane A full run `%TEMP%\risu-b715\laneb-c213-full\`: 23,302 passed in both runs, check 0/0, build and dist OK, snapshot unchanged.
+- CHORE-331: lane C merge `20b115207`; lane A full run `%TEMP%\risu-b715\lanec-up-full\` (test run 1 had the CHORE-213 failure, run 2 was green at 23,302); the later full run on `991ee825c`, which contains the merge, is green twice.
+
+### CHORE-02 — `toSave.chat` is dead plumbing in the encoder
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE (closed as kept, `MC-550`).** Lane G batch 3, merged in `b37dc6223`; the full run is `laneg-b3-full\`. The maintainer chose "Keep, fix the record (Recommended)": the code stays and this record is corrected. Lane G's lines below are folded in from its records:
+- The code stays. The record is corrected: `toSave.chat` is read by the failed-save merge-back (`globalApi.svelte.ts` `mergeUnsavedChanges`) and the save-pass meter (`store2/savePassMeter.ts` `peekSaveMarks`); the encoder and the store2 save loop never read it.
+- The line numbers in the entry below are stale; the file locations above are current at `efcf63634` (investigator, TRACED/OBSERVED; the two readers were confirmed in source by the batch 3 records doc-verifier). The entry below still calls it dead plumbing; that wording is superseded by this status.
+
+**Status (2026-10-25, lane A records batch 13): UN-PARKED (`MC-508`).** The maintainer: "un-park 191, 107 and 02." The entry moved back from [Roadmap-parked.md](../Roadmap-parked.md) with its text unchanged; lane G's batch 3 owns it (`MC-508`). The PARKED line below is kept as history.
+
+**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D).** Can return on a maintainer decision. If the plumbing is ever touched, the change needs `opus-reviewer` (save-adjacent).
+
+`grep -n "toSave.chat\|RisuSaveType.CHAT" src/ts/storage/risuSave.ts` returns **nothing**. The
+field is populated (`dbChangeEffects.svelte.ts:80-85`) and merged back on failed saves
+(`globalApi.svelte.ts:620-623`), but the encoder never reads it to decide anything — chats persist
+inside the whole-character `CHARACTER_WITH_CHAT` block, gated solely by `toSave.character`.
+
+Consequence: leftover/aspirational plumbing for a per-chat granularity that was never wired up.
+**Useful corollary: a CHORE-01 fix needs no parallel per-chat work.** Decide whether to wire it up
+or delete it; do not leave it looking load-bearing. Low risk either way, but deleting it touches
+`toSaveType`, so treat it as save-adjacent.
+
+### CHORE-107 — `openWriter` belongs inside the `try`
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE.** Fixed on `worktree-Lane-G` in `79cac1241` and merged in `b37dc6223`; the full run is `laneg-b3-full\`. Lane G's lines below were written before the merge ("merge pending" then) and are folded in from its records:
+- `openWriter` runs inside the `try` with a guard, so the busy mark is released when opening the piece writer fails (`MC-551`). The reproducer is red on the base (`expected 1 to be +0`). Gate 2 APPROVE by `opus-reviewer` (`%TEMP%\risu-lane-g\batch3\c107\gate2\verdict.md`). Residual, recorded and not a ticket: a Gate 2 nit, a test comment that says "start it as the save would", which is inexact; proposed wording "as a caller that already read from it would".
+
+**Status (2026-10-25, lane A records batch 13): UN-PARKED (`MC-508`).** The maintainer: "un-park 191, 107 and 02." The entry moved back from [Roadmap-parked.md](../Roadmap-parked.md) with its text unchanged; lane G's batch 3 owns it (`MC-508`). The PARKED line below is kept as history.
+
+**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D).** Can return on a maintainer decision.
+
+**Status (2026-10-06): open, not scheduled.** A follow-up named in the records items as "O2 openWriter inside the try" from the piece-by-piece hashing work (TODO(evidence): the file and the failure it prevents are not in the evidence).
+
+### CHORE-189 — Index-level incomplete items carry the slot key `_coldpluginIndex` and a minted id, so the conflict retry asks the same question twice
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE.** Fixed on `worktree-Lane-G` in `1db54d1f8` and merged in `b37dc6223`; the full run is `laneg-b3-full\`. Lane G's line below is folded in from its records (written before the merge):
+- The unreadable plugin storage entry is named by its real plugin key, and the key is stable across retries (`MC-554`). Gate 1 REJECT with amendments, applied; Gate 2 [EDITORIAL] (`opus-reviewer`; the guard label corrected) (`%TEMP%\risu-lane-g\batch3\c189-190\gate2\verdict.md`). Residual, recorded and not a ticket: no test pins the `backuplocal` call line (the `mutWire` mutant survives).
+
+**Status (2026-10-25, lane A records batch 13): assigned to lane G's batch 3 (`MC-508`).** The maintainer: "let's tackle open low priority tickets too as they seem small." No fix is decided.
+
+**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Source: U3 S2b Gate 2 and the coder's residual (`upstream-e773240\closeout-notes.md`).
+
+- **Problem:** when upstream's plugin index is absent or a small entry is bad, the incomplete item names `_coldpluginIndex` and an id minted per attempt, not the plugin key (`convertPluginStorageIndex` returns ids only). The prompt cannot name the plugin key, and the page import's conflict retry asks the question twice because the id changes per attempt.
+- **Proposed:** return the slot key from `convertPluginStorageIndex` (S1 and S2b together).
+- **Related:** CHORE-186.
+
+### CHORE-190 — U3 A2 non-blocking items: the dirty mark, `keys()` and `length()` after `clear()`, and a pre-existing store2 race
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE.** Fixed on `worktree-Lane-G` in `4233439cb` and merged in `b37dc6223`; the full run is `laneg-b3-full\`. Lane G's lines below are folded in from its records (written before the merge):
+- E8 is fixed: the value and its mapping are written in one tick (`MC-555`). The N4 and keys()/length()-after-clear items are closed as accepted (`MC-555`). The m4 test gap is covered by the one added test. Gate 1 REJECT with amendments, applied; Gate 2 [EDITORIAL] (`opus-reviewer`, shared verdict with CHORE-189) (`%TEMP%\risu-lane-g\batch3\c189-190\gate2\verdict.md`).
+
+**Status (2026-10-25, lane A records batch 13): assigned to lane G's batch 3 (`MC-508`).** The maintainer: "let's tackle open low priority tickets too as they seem small." No fix is decided.
+
+**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Source: U3 A2 Gate 2 rounds 1 and 2 (`upstream-e773240\u3a2\g2-verdict.md`, `g2r2-verdict.md`). N4, the `clear()` listing and m4 lose nothing. E8 is a pre-existing narrow race (same on the base). A stale V2 write that lands between the store2 V3 value write and its mapping, across an await, can drop the not-yet-mapped value and leave the mapping dangling.
+
+- **N4:** `setDatabase(getDatabase())` and a proxy self-assignment now mark `pluginCustomStorage` dirty (measured `true`; on the base `false`), so store2 re-encodes it per key: extra save work. An optional `incoming === current` shortcut avoids it.
+- **After `clear()`:** V2 `keys()` and `length()` list `_coldplugin`, `_coldpluginIndex` and, on a store2 page, unit ids, where the base returned an empty list and 0. Consistent with the accepted residual that these keys were already listed whenever V3 data existed; upstream lists the internals too.
+- **E8 (pre-existing):** on a store2 page the V3 value is written before the mapping across an await; a stale V2 write in that gap drops it. The same on the base.
+- **Also:** mutant `m4` survives (a current unit id with no value is not forced absent; only the reviewer's E4 diagnostic covers it).
+
+### CHORE-191 — English `chatParseFailed` now ends with a trailing ", "
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE.** Fixed on `worktree-Lane-G` in `0fe50f3f1` and merged in `b37dc6223`; the Translator's locale commit `6625baedf` removed ", {stack}" from the other six locales (lane A's handoff: "drop {stack}"); the full run is `laneg-b3-full\`. Lane G's line below is folded in from its records (written before the merge):
+- The English `language.errors.chatParseFailed` text no longer ends with a stray ", ". Gate 2 APPROVE by `adversarial-reviewer` (`%TEMP%\risu-lane-g\batch3\c191-208\gate2\verdict.md`).
+
+**Status (2026-10-25, lane A records batch 13): UN-PARKED (`MC-508`).** The maintainer: "un-park 191, 107 and 02." The entry moved back from [Roadmap-parked.md](../Roadmap-parked.md) with its text unchanged; lane G's batch 3 owns it (`MC-508`). The PARKED line below is kept as history.
+
+**Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D).** Can return on a maintainer decision.
+
+**Status (2026-10-21, upstream `61d0eb79a` merge close): open, not scheduled.** Cosmetic. Source: U0 Gate 2 finding O2. The chat parse-error alert now shows the stack once (the stack block of the alert), so the stack slot of `language.errors.chatParseFailed` is empty and the English text ends with ", ". Fixing it changes the key in all 7 locales (the translator owns the non-English files).
+
+### CHORE-208 — "Request timed out" (the native fetch timeout error added by CHORE-164) is hard-coded English with no `language` key
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE.** Fixed on `worktree-Lane-G` in `4d9c34499` and merged in `b37dc6223`; the Translator added `errors.requestTimedOut` in the six other locales in `6625baedf`; the full run is `laneg-b3-full\`. Lane G's line below is folded in from its records (written before the merge):
+- "Request timed out", the native fetch timeout error from CHORE-164, uses a new English key `language.errors.requestTimedOut`. The test assertion is a wiring guard, not a behavioural reproducer. Gate 2 APPROVE by `adversarial-reviewer`, the same review as CHORE-191 (`%TEMP%\risu-lane-g\batch3\c191-208\gate2\verdict.md`).
+
+**Status (2026-10-25, lane A records batch 13): owner changed from lane A to lane G's batch 3 (`MC-508`).** The non-English locale keys go through the Translator on main after the merge (`MC-508`; `MC-058`).
+
+**Status (2026-10-25, lane A records batch 11): open, low priority, not scheduled; owner lane A.** Type: translation gap (a missing key), Tauri (the native fetch path).
+
+- **Observed:** batch T stage T2 (`9d16b3350`) throws `Request timed out` from `fetchNative` when a timeout fires before the headers. The T2 coder grepped `src/lang/en.ts` for "timed out" and "timeout" and found no matching key, and Gate 2 flagged the string as non-blocking (ledger row 2271). The string is hard-coded English; no locale key was added.
+- **Needed:** an `en` key and its use at the throw site, then the Translator for the other locales (`MC-058`: preserve the maintainer's edits, keys, interpolations, CBS tags and line endings).
+- **Not established:** how often a person meets this error, and whether the timeout is reachable from a Settings control; stage D found the local-network timeout setting not exposed in the UI (source grep only, ledger row 2274).
+
+### CHORE-210 — `manualCleanup.svelte.test.ts` times out at 5000 ms under full-suite load
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE.** Fixed on `worktree-Lane-G` in `376ca6db1` and merged in `b37dc6223`. Test-only. The flake did not recur in lane A's full run `laneg-b3-full\`; that is not proof of the fix, which is shown only under a modelled cold load. Lane G's line below is folded in from its records (written before the merge):
+- The `manualCleanup.svelte.test.ts` failure under load is isolated. The mechanism, per the `376ca6db1` commit message: setup() resets modules and imports the heavy globalApi graph inside the timed body, so the first cold transform is charged to a timed test; the fix warms the graph at collection. Under a slow harness that models the cold load (not real full-suite timing), the previous file failed in all 4 slow runs (4 to 6 timeouts of 292); the fixed file passed 292 of 292 in 3 runs plus the reviewer's. The plain base run, with no delay, passes, so the fix is demonstrated only under the modelled cold load (`%TEMP%\risu-lane-g\batch3\c210\gate2\verdict.md`). Not reproduced: the one-off missing `risuChatParser` parser-mock error. TODO(evidence): it may be a separate cross-file mock issue.
+
+**Status (2026-10-25, lane A records batch 13): open, low priority; owner lane G's batch 3 (`MC-508`).** Filed by lane A. Type: test isolation (a flake under load), not a product defect.
+
+- **Observed (full `pnpm test` runs on Windows):**
+  - The first run of the lane G batch 2 merge (`%TEMP%\risu-b715\laneg-merge\full\`, 3 failures) failed three tests in the `fixtures` group of `src/ts/storage/tests/manualCleanup.svelte.test.ts`: two timed out at 5000 ms, and one failed once with `No "risuChatParser" export is defined on the "src/ts/parser/parser.svelte" mock`.
+  - The first run of the Back stage A merge (ledger row 2285, `%TEMP%\risu-b715\backA\stageA-full\`, 2 failures) failed two tests in the same group, both timeouts at 5000 ms.
+  - The file alone passed, 292 of 292 (`laneg-merge\full\rerun-manualCleanup.txt`). The second full run of each merge was green (22,155 passed for the stage A merge).
+- **Not established:** why the file times out under load. The missing-export failure is INFERRED to be a late import after a timeout; it was not reproduced alone.
+- **Related:** CHORE-209 (another full-suite load flake, COMPLETE and in the closed archive), `MC-508`.
+
+### CHORE-391 — Converting an older-format save stops with an error for other malformed fields
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE.** Both stages are fixed on `worktree-Lane-G` (stage 1 `353b92a13`, stage 2 `3dfcedf06`) and merged in `b37dc6223`; the new English key `store2Boot.skippedChats` and the other two keys are in the six locales from `6625baedf`; the full run is `laneg-b3-full\`. Decisions: `MC-548`, `MC-549`, `MC-553`, `MC-557`, `MC-559`. Lane G's lines below are folded in from its records (written before the merge):
+- Stage 1 (`MC-548`, `MC-549`, `MC-557`): a pure detector (`legacy/faults.ts`) finds the malformed parts. The strict read counts a file with any such part as not decoded, so a good backup is offered. An older-format save with no characters list is refused; a block-format save with no list still converts. A safety net around the whole-tree install turns any remaining codec error into the existing can't-convert result, with nothing written. Gate 1 REJECT, then APPROVE with amendments (`opus-reviewer`); Gate 2 EDITORIAL (`opus-reviewer`), test labels corrected.
+- Stage 2 (`MC-549`, `MC-553`, `MC-557`; commit approved under `MC-559` 2): "Convert without these parts" on an older-format save now converts the save and leaves out exactly the parts it names. A malformed preset, module, plugin, chat or message is dropped the way presets already were; the selected preset and chat are remapped to the kept lists; if every preset is dropped the Default preset is installed; a character whose chats are all dropped gets one new empty chat; a character slot that is not an object is skipped and named; malformed chats appear on one new "Chats" line (`store2Boot.skippedChats`, "Chats that could not be read"). A present non-list `characters` is refused in both formats; a block-format save with no list still converts. The drop (`dropLegacyFaults`) builds a new tree and never changes the decoded one. The `.bin` import is unchanged.
+- Gates: Gate 1 (plan, both stages) `[REJECT]` then APPROVE with amendments; stage 2 Gate 2 round 1 `[REJECT]` (F1: the block-format branch of the lenient decoder did not refuse a present non-list `characters`; F2: a salvage test used two different kinds), round 2 `[EDITORIAL]` with F1 and F2 closed (`%TEMP%\risu-lane-g\batch3\c391\gate2-s2\verdict.md`, `gate2-s2r2\verdict.md`).
+- Residuals, none opened as a ticket: A10 (a `.bin` import of these malformed shapes still refuses them as `unsavable`; loud and unchanged, `MC-223`); Mh (an equivalent mutant, not killed); O1 (no comment at the drop site naming the `decoders.lenient` coupling); O2 (a `ROOT_COMPONENT` `characters: null` replacing a built list: pre-existing, crafted bytes only); two salvaged blocks of the same kind still appear as two entries (pre-existing).
+- Limit, from lane G's test status: lane G's own final run was on `353b92a13` plus the uncommitted stage 2 diff, not on the committed `3dfcedf06`, and had the six localeParity failures; lane A's full run on the merged snapshot (`laneg-b3-full\`) is the green run.
+
+**Status (2026-10-25, lane A records batch 13): assigned to lane G's batch 3, first (`MC-508`).**
+
+**Folded in from lane G's records (merge `efcf63634`), 2026-10-25, lane A records batch 13.**
+
+**Status (2026-10-25): open, not scheduled; found by the CHORE-183 Gate 1 review.** Type: suspected defect (legacy conversion), the same class as CHORE-183. Not decided whether or how to handle these; no maintainer decision.
+
+- Source: `%TEMP%\risu-lane-g\chore183\review\gate1.md`, residual R1 (`opus-reviewer` source reading at `8003b3c4c`; not executed for these fields).
+- The cases: a present non-list `modules`, `loadouts`, `plugins` or `pluginV2`; a `botPresets` list with an element that is not an object; a character or chat that is not an object. The CHORE-183 commit-claim check (`opus-reviewer`, source reading, not executed) adds two more: a character's non-list `chats` and a chat's non-list `message`. Each still throws a `CodecInputError` in the conversion. At boot the user then sees an error alert, and on the recovery screen the unexpected-error screen. That addition was reported in session, not saved.
+
+### CHORE-393 — A character id like `kv:foo` makes a full `.bin` export refuse when the save also has a `foo` data namespace
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE.** Fixed on `worktree-Lane-G` in `6ba956c5c` and merged in `b37dc6223`; the full run is `laneg-b3-full\`. Decisions: `MC-552`, `MC-556`, `MC-558` 2. Lane G's lines below are folded in from its records (written before the merge):
+- The export re-ids a character whose id collides with an upstream data block (`kv:` plus a namespace), in the exported copy only (`MC-552`). The live save and import are unchanged. Gate 1 APPROVE with amendments 1 to 10 (`%TEMP%\risu-lane-g\batch3\c393\review\gate1.md`); Gate 2 APPROVE by `opus-reviewer` (`%TEMP%\risu-lane-g\batch3\c393\gate2\verdict.md`). 14 base reproducers fail: 12 export reproducers with the real writer error, 2 unit reproducers by assertion.
+- Accepted and disclosed (`MC-556`): archived older-format chats of a re-id'd character are written but not re-attachable on re-import. Residual: message authors inside archived chat units are not remapped, the same as the reserved-id path.
+- The implementer's "12 failing" both-sites mutant claim is not repeated: the precise both-sites mutant fails 2, one per export (Gate 2 reviewer).
+
+**Folded in from lane G's records (merge `efcf63634`), 2026-10-25, lane A records batch 13.**
+
+**Status (2026-10-25): open, not scheduled (`MC-546` 3).** Type: suspected defect (export).
+
+- `isUsableCharacterId('kv:foo')` is true (`characterIds.ts`), and `writeRisuSaveV0` then throws on the block-name collision (`risuSaveV0.ts`). Scratch tests K1 to K3 in `%TEMP%\risu-lane-g\audit\review\` show it.
+- `runExport` reports the error, so it is a loud refusal, not silent loss. While it lasts it blocks every full `.bin` export, which goes beyond `MC-223`'s one allowed exception.
+- A fix changes export re-id behaviour, so the choice comes back to the maintainer.
+
+**Status (2026-10-25, lane A records batch 13): assigned to lane G's batch 3, after the fix choice (`MC-508`).**
+
+### CHORE-46 — The self-hosted Node server cannot save a database larger than 100 MB
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE (closed as moot on store2, with the 413 fix).** Lane F batch 2, committed as `9bd399945` and merged in `95a24de3e`; the full run is `lanef-b2-full\`. Decisions: `MC-523` 4, `MC-525` 3 and 4, `MC-527`. Lane F's line below is folded in from its records:
+- Closed as moot on store2 (`MC-523` 4): store2 sends per-unit bodies, so the 100 MiB limit now applies per unit, not to the whole database. The remaining defect was fixed: a 413 retried forever. Every 413 is a definite nothing-applied failure (`MC-525` 4); the tab stops saving once, with one toast naming the part and its size and the existing too-large message (`MC-525` 3, `MC-527`), keeps its edits, and still clears its own bulk marker; `saveFirst` and the dev GC measure respect the stop. Follow-up: the too-large message's "Make that part smaller" advice stays (`MC-527`); revisit with CHORE-372 (open, lane F, to be sized).
+
+**Status (2026-10-25, lane A records batch 13): assigned to lane F's Node group (`MC-507`).** The maintainer chose "Size all four, fix small (Recommended)" for lane F's Node group, which includes CHORE-120, 62 and 46; lane F sizes first and fixes what is small. The earlier "parked until after A5" note below is superseded for ownership only; no fix is decided.
+
+**Status (2026-09-30):** filed from the memory-footprint stage's persistence-side investigation
+(ledger row 456), under `MC-069`. Present upstream. Not fixed and not scheduled.
+
+- **Mechanism (source read by the Orchestrator; not run):**
+  - `server/node/server.cjs` parses every `application/octet-stream` body with
+    `express.raw({ limit: '100mb' })`.
+  - `NodeStorage.setItem` (`nodeStorage.ts`) sends `database.bin` whole, as one such body, to
+    `/api/write`.
+  - A larger body is refused before the handler runs, so the save fails.
+- **Seen in practice:** the maintainer's runtime `database.bin` is about 155 MB, and they use the
+  Tauri build rather than self-hosting because of this limit (`MC-131` 3-4). They report the limit
+  is well known among long-time self-hosters, who are told to export and delete unused characters
+  regularly and keep chats and characters elsewhere. Local plain-HTTP hosting is the second most
+  common platform.
+- **Related:** the memory-footprint stage (`MC-119`, `MC-130`) moves chats out of `database.bin`
+  into their own units, which shrinks the main file and may make this moot. Decide there whether
+  the stage fixes it, or whether the limit is raised or the write split separately.
+  `senior-advisor` (ledger row 459) recommends both: the per-chat stage first, then a streamed
+  `/api/write` body into the temp file the handler already renames, rather than a higher limit,
+  because `express.raw` buffers the whole body in server memory and a Pi 3 is a target host.
+
+### CHORE-120 — On the Node server, `/api/set_password` accepts any client until a password exists, and the first client wins (TRACED)
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE.** Lane F batch 2, committed as `648997938` together with CHORE-371 and merged in `95a24de3e`; the full run is `lanef-b2-full\`. Decision: `MC-523` 1 (first-client-wins kept, accepted under `MC-191`). Lane F's lines below are folded in from its records:
+- `/api/set_password` refuses a missing, non-string or blank password with 400 before anything changes and has its own rate limiter (the login settings, counted separately); `/api/login` answers 400 to a non-string password and, with the right password, to a missing or non-object `publicKey`. First-client-wins is unchanged (`MC-191`). Scope amendment (`MC-091`, Lane F orchestrator's call, not a maintainer decision): `/api/login` crashed the server the same way when `password` was not a string, so it is fixed in the same change. Gate 1 rows 3713 and 3714; implementation row 3717; Gate 2 rows 3718 and 3719; commit row 3720 (lane F's rows). Residuals: the limiter keys on the client IP; the wrong-password path is unchanged.
+
+**Status (2026-10-25, lane A records batch 13): assigned to lane F's Node group (`MC-507`).** The maintainer chose "Size all four, fix small (Recommended)" for lane F's Node group, which includes CHORE-120, 62 and 46; lane F sizes first and fixes what is small. No fix is decided.
+
+**Status (2026-10-04):** open, **not scheduled**; fixes are to be proposed after Stage 0 of the save-layer track. Severity: not assessed. Filed at the maintainer's "File both, extend our range (Recommended)" (`MC-194` 14); the Main Campaign's CHORE range now also holds CHORE-120 to CHORE-129. Reported by the side session's CHORE-80 investigation; verified in source by the Orchestrator, and its route code re-read for this entry at the time of writing.
+
+- **What was traced:** the `POST /api/set_password` handler in `server/node/server.cjs` checks only that the in-memory `password` is the empty string. If it is, it stores the posted value, writes it to the password file and answers success; otherwise it answers 400 "already set". The route has no authentication check and no rate limiter argument. Upstream origin: `74f76255`, 2023-05-28 (re-checked with `git log -S` at the records fact-check, ledger row 1070).
+- **Consequence:** on a freshly started server with no password, whoever reaches `/api/set_password` first chooses the password. After that the route refuses. A password set by someone else would lock the owner out (SUSPECTED, not run). The hosted build is meant for private networks only (`MC-191`), which limits who can reach the route.
+- **Not known:** whether the app's first-run flow depends on a client calling this route before a password exists (TODO(evidence)); whether the Hono server has the same route (TODO(evidence)).
+- **Related:** `MC-194` 14; `MC-191`; CHORE-89; CHORE-80 (the side session's investigation found it).
+
+### CHORE-371 — An unparseable or non-object `__revisions.json` starts the Node server as if the snapshot were empty, and the next compaction overwrites the file (new; was P9)
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE.** Lane F batch 2, committed as `648997938` together with CHORE-120 and merged in `95a24de3e`; the full run is `lanef-b2-full\`. Decision: `MC-523` 2. The earlier "Candidate tickets, not yet numbered" bullet for P9 in the Roadmap now points here. Lane F's lines below are folded in from its records (new entry; no earlier Roadmap text):
+- Status (2026-10-25, Lane F): open, in batch 2 (`MC-522`). Numbered from the Roadmap's "Candidate tickets, not yet numbered" entry (P9; Stage 0 (ii) Gate 1 round 1, ledger row 1055; `2aa55398`'s message). Sizing first.
+- Status (2026-10-25, Lane F): technically accepted; committed on `worktree-Lane-F` as `648997938` (with CHORE-120, maintainer-approved as one commit). An unreadable, unparseable or non-object `__revisions.json` now stops startup (exit 1) before the log is read, with a console message naming the file, the reason and the recovery (restore a good copy; moving it aside restarts every revision that `__revisions.log` does not hold, with the same risk); neither file is touched (`MC-523` 2). Same gate rows as CHORE-120. Not checked: whether a self-hosting doc outside `docs/wiki/**` mentions `__revisions.json`.
+
+### CHORE-180 — Back on screens with their own back stack and no Back handler: the Beta Mobile GUI chat "Menu" page shows the quit toast and does not close
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE, with residuals.** Stage A `561de025f` (CHORE-180) is on `main`, pushed, with its gates and full run as in the batch 13 line below. Device evidence on phone 2 (release build of `31b050a63`, synthetic profile; the lane A handoff entries "device run (backA\device\result.md)", "Lane A keyevent smoke" and "popup editor X vs Back"): the Back rows for the Beta Mobile GUI Menu page, the chat and the Settings pages passed (`backA\device\result.md`); lane A's own keyevent smoke pass (`backA\keyevent\result.md`) passed all 5 steps with real key events; the one open row, the popup editor's typed text, was not reproduced in a repeat (X 3 of 3, Back 4 of 4 including keyboard down; `backA\device2\result.md`) and the source reading shows one close path (`backA\device-followup\result.md`: not a stage B regression). Residuals: Iris, the Realm frame and info popup and the HypaV3 modals were NOT RUN on a device (no UI opener for Iris in this tree, needs Realm pages, no HypaV3 data in the profile); they are covered by unit tests only. The quit at the end of the keyevent smoke hit the CHORE-147 FORTIFY abort (known, open, unchanged by this batch). `backA\device\result.md` has no "Lane A verification" section; the keyevent and popup-editor results are lane A's own runs. The overlay rows of `backA\device\result.md` came from the agent calling the Back handler (`__risuTaniumBack()`) over CDP, not key presses, and have no lane A verification; only the keyevent smoke used real key events. CHORE-179 stays parked and CHORE-351 stays its own ticket (`MC-505`). Not exercised: a real Android Back button press on stage B screens beyond the keyevent smoke's five steps.
+
+**Status (2026-10-25, lane A records batch 13): stage A committed as `561de025f`, pushed; phone checks running; not COMPLETE.** The commit is "Back leaves Beta Mobile GUI chat, menu and settings pages (CHORE-180)", on top of the lane C merge `4fb1e3cbb` (`MC-505`). Gate 1 was `[APPROVE WITH AMENDMENTS]` (batch 12 records). Implementation (ledger row 2283): 20 of 51 tests fail on the pre-fix base and 51 of 51 pass after; 7 mutants killed; `pnpm check` 0 errors and 0 warnings. Gate 2 `[APPROVE]` by `opus-reviewer` (row 2284); its finding F1: no device build from stage A alone. Full run on the merge plus stage A (row 2285): run 1 had 2 `manualCleanup` timeouts (CHORE-210), run 2 was green at 22,155 passed; check, build and the dist check OK. The phone 2 checks and lane A's keyevent smoke pass are running.
+
+**Status (2026-10-25, lane A records batch 12):** in lane A's Android Back batch (`MC-505`); the plan passed Gate 1 with amendments (`opus-reviewer`, [APPROVE WITH AMENDMENTS]) and stage A is next.
+
+**Status (2026-10-24, lane A records batch 10):** open; in the Android Back batch (`MC-501`, group F), which follows batch T.
+
+**Status (2026-10-11): open; not planned; found by the S4-2b Note 9 pass.** Type: suspected defect (Android Back).
+
+- **Observed (MEASURED, `charlist\note9-s4-2b.md` check 2; Note 9 API 29, debug build at `5b0fa42b` plus the uncommitted tree):** in the Beta Mobile GUI shell the chat "Menu" page (header "Menu", a back arrow, Chat and Character tabs) is a different component from the sidebar. Back there shows "Press Back again to quit" and leaves the page open; the in-app arrow returns to the chat. INFERRED in the report, not observed: a second Back within the window then quits the app. On the Settings page of that shell (Display & Audio) Back also shows the toast and the page itself is not left by Back. The maintainer's own configuration has Beta Mobile GUI on.
+- **Inferred cause (source reading, not executed):** `panelGestureBinding`'s Back handler reads `sideBarStore`, which that page does not use.
+- **Same class, inferred and not enumerated:** other chat-screen and Beta Mobile GUI header back stacks. The Gate 1 round 1 review of the S4-2b plan (`charlist\records-s34\handbacks\064925-ac47ee4fd4846ed6a.txt`, source reading) listed the screens where Back used to quit and now toasts first: settings, the mobile GUI, the chat screen and the modals not routed through `alertStore` (preset list, persona list, bookmark list, HypaV3, Realm popup); it called that the intended effect of D5, not a regression.
+- **Not decided:** whether these pages should close on Back.
+
+### CHORE-352 (new) — Back does not close Settings, the Realm frame, popups or panels (MC-455 Q1)
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE, with residuals.** Stage B `31b050a63` is on `main`, pushed, with its gates and full run as in the batch 13 line below (that run's one failure, `saveLoopNetBackstop` B7, was a lane B test race, fixed in `9095503da` and merged; the merge run is green twice, handoff entry "B7 merge f7a2fb6c8 full run green twice (22,330 each; b7-merge-full\)"). Device evidence on phone 2 (`backA\device\result.md`, `backA\keyevent\result.md`, `backA\device2\result.md`) as stated under CHORE-180: the Settings overlay, the Settings pages, the bookmark list, popup list, easy panel, popup editor, loadout, custom sidebar configuration, preset list with the diff modal, persona list and the overlays over shell pages passed. Residuals: Iris, the Realm frame and info popup and the HypaV3 tag, category and modal were NOT RUN on a device (unit-tested only); the CHORE-147 abort appears on quit (known). The overlay rows of `backA\device\result.md` came from the agent calling the Back handler (`__risuTaniumBack()`) over CDP, not key presses, and have no lane A verification; only the keyevent smoke used real key events. The preset diff modal threw a TypeError on open in the device run; it is pre-existing and not caused by stage B (`backA\device-followup\result.md`) and is filed as CHORE-211. CHORE-351 stays its own ticket (`MC-505`).
+
+**Status (2026-10-25, lane A records batch 13): stage B committed as `31b050a63`, pushed; phone checks running; not COMPLETE.** The commit is "Back closes Settings, the Realm frame, popups, panels and the preset, persona and HypaV3 modals (CHORE-352)" (`MC-505`). Implementation (ledger row 2286): 50 of 73 tests fail on the pre-fix base (the coder's figure, before its last test edits); 82 new tests; 23 mutants; lane A approved one amendment, the `PromptDiffModal.i18n` test mock. Gate 2 `[APPROVE]` by `opus-reviewer` (row 2287): 53 of 76 fail on the pre-fix base in the reviewer's own run; 5 of its own mutants killed. Full run on the lane G batch 2 and lane B merges plus stage B (row 2288): run 1 green at 22,330 passed; run 2 had one failure, `saveLoopNetBackstop` B7 (a lane B test; the file alone passed 3 of 3; reported to lane B); check, build and the dist check OK; the snapshot unchanged. The phone 2 checks and lane A's keyevent smoke pass are running.
+
+**Status (2026-10-25, lane A records batch 12):** in lane A's Android Back batch (`MC-505`, which reverses `MC-455` Q1 for this ticket); the plan passed Gate 1 with amendments (`opus-reviewer`, [APPROVE WITH AMENDMENTS]) and stage A is next.
+
+Overlays outside `alertStore` (Settings, the Realm frame, the bookmark list, `popupStore`, the easy panel, the popup editor, the loadout modal, iris, the custom sidebar config dialog) have no Back handler: with one open, Android Back takes the toast-then-quit guard. MC-455 kept that behaviour for CHORE-181. The phone sidebar and Grid edit mode already have Back handlers.
+
+**Status (2026-10-22): open, not scheduled.** Filed per MC-455 Q1 ("Pop-up dialogs only").
+
+### CHORE-213 — `characterPutBackStore2` "acceptance: … put-back is armed again" fails once under full-suite load
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE (filed and closed in this batch).** Fixed by lane B in `991ee825c` (a test-only change), fast-forwarded to `main` under `MC-500`'s standing approval for test-only changes with Gate 2 APPROVE, and pushed. Owner lane A (the ticket), investigated by lane B.
+- **Observed:** in lane A's full run on the lane C merge `20b115207` (`%TEMP%\risu-b715\lanec-up-full\`), test run 1 failed one test, "acceptance: the character stays loaded, the others are still judged, and the put-back is armed again" in `src/ts/process/tests/characterPutBackStore2.svelte.test.ts` (`isStub('B')` false). Run 2 was green at 23,302, and 15 of 15 isolated reruns passed.
+- **Cause (lane B row 3070, investigator, reproduced in a scratch copy; the orchestrator checked it in source):** a test-only race. `runFireStore2` (`src/ts/process/memory/characterPutBack.ts`) stops judging once the elapsed time reaches its 8 ms budget (`MAX_FIRE_MS`). The test used the real codec verdict on a real clock; under full-suite load the first character's verdict can take 8 ms, so the second is never judged and stays loaded. Unfixed with a 12 ms delay: 0 of 5 passed; fixed with 12 ms and 100 ms delays: 5 of 5. Product behaviour is as designed: the character stays loaded and is re-armed for the next commit, which delays the memory release but loses no data. Not involved: `fcb85b1dc` and lane C's sync (`git diff --stat` shows no put-back path).
+- **Fix (lane B row 3071):** `fakeClock()` plus a comment as the first statements of that test, as three sibling tests in the file already do. Gate 2 `[APPROVE]` (`adversarial-reviewer`, fresh): its own 15 ms injection failed 3 of 3 unfixed and passed 3 of 3 fixed; faking the clock hides nothing the test covers. The test file passes 40 of 40; `pnpm check` 0/0.
+- **Full checks on the fixed snapshot:** lane A full run `%TEMP%\risu-b715\laneb-c213-full\`: `pnpm test` 23,302 passed in both runs, `pnpm check` 0 errors and 0 warnings, `pnpm build` and the dist check OK, snapshot unchanged.
+- **Residual (lane B, not fixed, not reproduced):** the sibling test "the budget of one commit" asserts exactly `['A','B','C']` on a real clock with a mocked verdict, so in theory an 8 ms pause could break it; the legacy `runFire` tests were not audited.
+
+### CHORE-331 — Bring in upstream `61d0eb79a..f50b5942e`
+
+**Status (2026-10-25, lane A records batch 14): COMPLETE.** Lane C (cloud) branch `lane-c-upstream-1023`, merged to `main` as `20b115207` with the maintainer's approval (`MC-515`) and pushed. Lane A's merge review was `[EDITORIAL]` (`%TEMP%\risu-b715\lanec-up-merge\result.md`; upstream's trailing space is kept on purpose). Full checks: `%TEMP%\risu-b715\lanec-up-full\` (test run 1 failed one test, the CHORE-213 flake; run 2 green at 23,302; check 0/0; build and dist OK), and the later full run on `991ee825c`, which contains the merge, green twice (`laneb-c213-full\`). Lane C's records are folded in below word for word where they state the range and dispositions:
+- Range: `git log 61d0eb79a..upstream/main`, 9 commits, 7 non-merge. The net change to the fork is one line in `src/ts/process/scriptings.ts` (plus upstream's trailing space on the line above it, kept byte-identical to upstream). Lane C's merge message says "8 non-merge"; that is wrong and is left unrewritten.
+- `63399cbd4` (disable the proxy in Lua): TAKEN as is (`enableProxy: false`). Lua scripts now see table copies of API objects instead of live JS objects (wasmoon 1.16.0). Regression test in `scriptings.test.ts`: red on `91fdaac2d`, green after.
+- `72d2bacd9`, `ae54b830e` (#1598, setDatabase plugin round trip): ALREADY COVERED by CHORE-64 (`48f00223`); proof by test (`pluginListWrites.svelte.test.ts` S1 passes on `91fdaac2d`; a scratch mutant that re-adds upstream's assignment fails it).
+- `f71029477` (plugin storage migration before loading plugins): NOT APPLICABLE (built on upstream's `PluginStorageStore`, which the fork did not take).
+- `63d85f9be`, `02a83695d`, `f50b5942e` (version bumps): fork side kept (`MC-162` 3); `appSubVer` and `version.json` then moved to `up2026.10.220` and the README followed (`MC-440`, `MC-441`; the issue template keeps its example).
+- Gates: Gate 1 `[APPROVE WITH AMENDMENTS]` for `f71029477`, Gate 2 `[APPROVE]`; a process deviation (the merge was committed locally before the Gate 1 verdict arrived) was recorded by lane C and upheld. Nothing changes a persisted shape.
+- Open, not a condition: whether every later sync moves the version suffix (lane C's open question 3; `MC-440` and `MC-441` notes).
+- Draft for `Agents/Upstream-Merges.md` (a section "2026-10-25 — merge of upstream/main `f50b5942e`" with the disposition table, and "Last upstream commit merged: `f50b5942e`"): lane C asked lane A to fold it in; this batch's Roadmap writer does not own that file. See the result file, "Open". Dated 2026-10-25 (lane A, after the batch 14 verification): the draft is folded into `Agents/Upstream-Merges.md` as the section "2026-10-25 — merge of upstream/main `f50b5942e`", with "Last upstream commit merged: `f50b5942e`" and the next-merge command `git log --no-merges f50b5942e..upstream/main`.
+
+### CHORE-08 — Plugin permission consent: session cache ignores the permission kind, and the provider prompt is not enforced
+
+**Status (2026-10-25, lane A records batch 14): CLOSED as fixed (`MC-517`).** In the decision sweep the maintainer chose "Close as fixed (Recommended)". The fix is commit `0f38ac8c9` (2026-09-28, the upstream port): permissions are keyed by script hash plus permission, and a declined provider fails with `providerPermissionDenied`. Tests: `src/ts/plugins/apiV3/tests/v3PluginPermissions.svelte.test.ts` and `pluginPermissionCache.test.ts`. This batch checked with `git show --stat` that `0f38ac8c9` exists (2026-09-28, "scope permission decisions to the script and permission"), adds both test files and adds the `providerPermissionDenied` key to all seven locales; it did not rerun the tests. The text below is the original entry, unchanged.
+
+Found while rewriting the plugin wiki pages (2026-09-22); both verified by the Orchestrator in
+source. Present upstream too (not fork-introduced). The hosted build is private, so frame this as
+consent that does not do what it says, not as a security hole.
+
+1. **The in-session cache is keyed by plugin name only.** `getPluginPermission`
+   (`src/ts/plugins/apiV3/v3.svelte.ts:581-638`) returns early from `permissionGivenPlugins` /
+   `permissionDeniedPlugins` (`:568-569`, checked at `:582-587`), which hold plugin **names**. Once
+   the user grants any one permission, every other kind that plugin asks for later in the session
+   is granted without a prompt, and the `reconfirm` / `'periodically'` (3-day) re-confirmation is
+   skipped. One denial likewise denies every later kind. The persistent `localforage` record is
+   correctly per kind (`pluginHash + '_' + permissionDesc`); only the session cache is wrong.
+2. **The provider consent result is discarded.** `addProvider`'s wrapper
+   (`v3.svelte.ts:701-706`) awaits `getPluginPermission(plugin.name, 'provider', 'periodically')`
+   but never checks the boolean, so the provider runs even when the user declines.
+
+**Compatibility note:** fixing either makes prompts appear where users now get silent approval.
+Decide the UX (key the cache by name + kind; on a declined provider, fail the request with a
+visible error) with the maintainer before implementing. Translations of the prompts: CHORE-05.

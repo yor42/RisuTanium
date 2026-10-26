@@ -8,10 +8,11 @@ import {
 import { buildColdStub } from '../../../process/coldCharacter'
 import { checkBuiltUnits, createKeyMint, type BuildContext } from '../../store2/commit'
 import { encodeUnit, UNIT_TYPE } from '../../store2/format'
+import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from '../../moduleStub'
 import { createSaveEncoder, SavePlanError, type SaveEncoder, type SavePassRequest, type SavePlan } from '../../store2/saveEncoder'
 import type { character, Database } from '../../database.svelte'
 import {
-    asDatabase, buildSmall, buildT3, encodeWith, fakeLists, seededEnv, type Obj,
+    asDatabase, buildSmall, buildT3, bytesOf, encodeWith, fakeLists, seededEnv, type Obj,
 } from './codecFixtures'
 
 const NOW = 1_700_000_000_000
@@ -514,6 +515,18 @@ describe('new behaviour: hasStubs and the manifest key', () => {
         expect(encoder.hasStubs(withStub(db, chaIdOf(db, 1), undefined))).toBe(true)
     })
 
+    test('hasStubs-sees-a-module-stub: a module that holds the stub marker counts, a module that holds another value does not', () => {
+        const db = buildSmall(3)
+        const encoder = encoderOf(previousFrom(encodeWith(db)))
+        const next = clone(db)
+        expect(encoder.hasStubs(asDatabase(next))).toBe(false)
+        ;(next.modules as Obj[])[1] = { ...(next.modules as Obj[])[1], [MODULE_STUB_KEY]: MODULE_STUB_VALUE }
+        expect(encoder.hasStubs(asDatabase(next))).toBe(true)
+        ;(next.modules as Obj[])[1][MODULE_STUB_KEY] = 2
+        expect(encoder.hasStubs(asDatabase(next))).toBe(false)
+        expect(encoder.hasStubs(withStub(asDatabase(next), chaIdOf(db, 1), undefined))).toBe(true)
+    })
+
     test('the manifest key is the acknowledged encoding\'s, and an encoding with no manifest is refused', () => {
         const first = encodeWith(buildSmall(3))
         expect(encoderOf(previousFrom(first)).manifestKey).toBe(first.manifestKey)
@@ -613,7 +626,7 @@ describe('new behaviour: a yielding pass encodes the character list as it stood 
             expect(fired).toBe(true)
             const { context } = attemptOf(1)
             const built = await plan.commitRequest().build(context)
-            const store = new Map(first.units.map(unit => [unit.key, unit.bytes] as const))
+            const store = new Map(first.units.map(unit => [unit.key, bytesOf(unit)] as const))
             for (const unit of built.units) {
                 store.set(unit.key, unit.bytes)
             }
@@ -840,5 +853,81 @@ describe('a character whose data cannot be read is skipped by every save pass', 
         const fixed = await commitPass(encoder, db, { marked: new Set([id1]) }, 2)
         expect(fixed.plan.skipped).toEqual([])
         expect(fixed.plan.encoded).toEqual([id1])
+    })
+})
+
+describe('what a plan carries from the acknowledged encoding is counted and named when it is planned', () => {
+    function unitsOf(previous: PreviousEncoding, u: string): number {
+        return [...previous.units.keys()].filter(identity => identity.includes(u)).length
+    }
+
+    test('R11: a Save mine pass with nothing to carry counts zero units and names no one; the request names the acknowledged manifest', async () => {
+        const db = buildSmall(4)
+        const previous = previousFrom(encodeWith(db))
+        const encoder = encoderOf(previous)
+        const plan = await encoder.plan(db, request({ rewriteAll: true }))
+        expect(plan.carried.units).toBe(0)
+        expect(plan.carried.owners.size).toBe(0)
+        expect(plan.carried.modules).toEqual([])
+        expect(plan.commitRequest().carry).toEqual({ from: encoder.manifestKey, units: 0 })
+        expect(encoder.manifestKey).toBe(previous.units.get('manifest')?.key)
+    })
+
+    test('R11: a cold stub carried by a Save mine pass counts the units of that character and names it by its display name', async () => {
+        const db = buildSmall(4)
+        const previous = previousFrom(encodeWith(db))
+        const id1 = chaIdOf(db, 1)
+        const u = previous.entities.get(`${id1}#0`) as string
+        const plan = await encoderOf(previous).plan(withStub(db, id1, undefined), request({ rewriteAll: true }))
+        expect(plan.carried.units).toBe(unitsOf(previous, u))
+        expect(plan.carried.units).toBeGreaterThan(0)
+        expect([...plan.carried.owners]).toEqual([[u, 'Small 1']])
+        expect(plan.commitRequest().carry?.units).toBe(plan.carried.units)
+    })
+
+    test('R11: a skipped saved character is carried and counted the same way', async () => {
+        const db = buildSmall(4)
+        const previous = previousFrom(encodeWith(db))
+        const id1 = chaIdOf(db, 1)
+        const u = previous.entities.get(`${id1}#0`) as string
+        const cyclic: Obj = {}
+        cyclic.self = cyclic
+        ;(db.characters as unknown as Obj[])[1].personality = cyclic
+        const plan = await encoderOf(previous).plan(db, request({ rewriteAll: true }))
+        expect(plan.carried.units).toBe(unitsOf(previous, u))
+        expect([...plan.carried.owners]).toEqual([[u, 'Small 1']])
+    })
+
+    test('R11: a digested pass that edits one character counts every reused unit though it names no one', async () => {
+        const db = buildSmall(4)
+        const previous = previousFrom(encodeWith(db))
+        const next = clone(db)
+        ;(next.characters as Obj[])[0].personality = 'edited'
+        const plan = await encoderOf(previous).plan(asDatabase(next), request({ marked: new Set([chaIdOf(db, 0)]), whole: true }))
+        expect(plan.carried.owners.size).toBe(0)
+        expect(plan.carried.units).toBeGreaterThan(0)
+        expect(plan.carried.units).toBe(previous.units.size - plan.newUnits)
+        expect(plan.commitRequest().carry?.units).toBe(plan.carried.units)
+    })
+
+    test('R19: an entry without a name is named by its entity id', async () => {
+        const db = buildSmall(4)
+        const previous = previousFrom(encodeWith(db))
+        const id1 = chaIdOf(db, 1)
+        const u = previous.entities.get(`${id1}#0`) as string
+        const live = withStub(db, id1, undefined)
+        ;(live.characters as unknown as Obj[])[1].name = ''
+        const plan = await encoderOf(previous).plan(live, request({ rewriteAll: true }))
+        expect([...plan.carried.owners]).toEqual([[u, u]])
+    })
+
+    test('R19: the names are fixed when the plan is made, whatever the live database becomes afterwards', async () => {
+        const db = buildSmall(4)
+        const previous = previousFrom(encodeWith(db))
+        const id1 = chaIdOf(db, 1)
+        const live = withStub(db, id1, undefined)
+        const plan = await encoderOf(previous).plan(live, request({ rewriteAll: true }))
+        ;(live.characters as unknown as Obj[])[1].name = 'Renamed after the plan'
+        expect([...plan.carried.owners.values()]).toEqual(['Small 1'])
     })
 })

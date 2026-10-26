@@ -2010,6 +2010,8 @@ export const languageChinese = {
     "keepAliveGenerating": "正在生成回复…",
     "keepAliveWorking": "正在处理…",
     "keepAliveStop": "停止",
+    "keepAliveFinishing": "正在收尾…",
+    "keepAliveSavePending": "回复已就绪。请打开应用以完成保存。",
     "messageInterrupted": "已中断 — 回复可能不完整",
     "nanoGPTLoadingAccountInfo": "正在加载账户信息…",
     "nanoGPTCreditBalance": "余额:",
@@ -2102,6 +2104,7 @@ export const languageChinese = {
     "assetIntegrityReportNotCached": (n: number) => `- 尚未缓存（正常，无需担心）：${n}\n`,
     "assetIntegrityReportNotContentAddressed": (n: number) => `- 非内容寻址（无法通过此方式验证）：${n}\n`,
     "assetIntegrityReportArchivedNotChecked": (characterNames: string) => `- 未检查资源的已归档角色（无法加载其数据）：${characterNames}\n`,
+    "assetIntegrityReportModulesNotChecked": (moduleNames: string) => `- 未检查资源的模块（未加载）：${moduleNames}\n`,
     "assetIntegrityReportMismatchCount": (n: number) => `- **发现不匹配项：${n}**\n`,
     "assetIntegrityReportEvicted": (n: number) => `\n已移除 ${n} 个已损坏的缓存条目。请重新加载应用以使修复生效。`,
     "assetIntegrityReportLeftInCache": "\n按照您的要求，保留在缓存中。",
@@ -2249,12 +2252,12 @@ export const languageChinese = {
     "store2RestoreNotFlushed": "更早的版本已恢复，但设备未确认已将其写入磁盘。应用现在将重新加载，并在启动时完成写入。",
     "store2RestoreDone": "更早的版本已恢复。您之前使用的版本仍保留在列表中。正在刷新应用。",
     "store2RestoreOldRow": (when: string) => `旧版：${when}`,
-    "store2ImportSizeWarning": (megabytes: number) =>
-        `此备份中的数据（不含图片和其他文件）约为 ${megabytes} MB。读取它需要数倍于此的内存，因此手机或其他小型设备可能会内存不足而停止运行。在导入完成之前，您已保存的数据不会被更改。要继续吗？`,
+    "store2ImportSizeWarning": (megabytes: number, copiesFiles = false) =>
+        `此备份中的数据（不含图片和其他文件）约为 ${megabytes} MB。读取它需要数倍于此的内存，因此手机或其他小型设备可能会内存不足而停止运行。在导入完成之前，您已保存的数据不会被替换。${copiesFiles ? '导入完成前会先复制备份中的图片和其他文件，并替换已存储的同名文件。' : ''}要继续吗？`,
     "store2ImportTimeWarning": (entries: number, minutes: number, neededGigabytes: number, databaseMegabytes: number | null, freeGigabytes: number | null = null, short = false) =>
-        `此备份包含 ${entries} 个文件。从现在开始，在这部手机上导入它可能需要约 ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} 小时` : `${minutes} 分钟`}，甚至更久。这是基于中端手机得出的估计，您的手机可能更快或更慢，低端手机可能慢得多。请在导入完成前保持应用打开。\n\n导入需要这部手机上约 ${neededGigabytes} GB 的可用空间。${freeGigabytes === null ? '应用无法检查当前有多少可用空间。' : short ? `目前仅约有 ${freeGigabytes} GB 可用，如果手机空间耗尽，导入将停止。` : `目前约有 ${freeGigabytes} GB 可用。`}${databaseMegabytes === null ? '' : `此备份中的数据（不含图片和其他文件）约为 ${databaseMegabytes} MB，读取它需要数倍于此的内存，因此手机可能会内存不足而停止运行。`}文件复制完成后，最后可能仍会出现一个询问。在导入完成之前，您已保存的数据不会被更改。要继续吗？`,
+        `此备份包含 ${entries} 个文件。从现在开始，在这部手机上导入它可能需要约 ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} 小时` : `${minutes} 分钟`}，甚至更久。这是基于中端手机得出的估计，您的手机可能更快或更慢，低端手机可能慢得多。请在导入完成前保持应用打开。\n\n导入需要这部手机上约 ${neededGigabytes} GB 的可用空间。${freeGigabytes === null ? '应用无法检查当前有多少可用空间。' : short ? `目前仅约有 ${freeGigabytes} GB 可用，如果手机空间耗尽，导入将停止。` : `目前约有 ${freeGigabytes} GB 可用。`}${databaseMegabytes === null ? '' : `此备份中的数据（不含图片和其他文件）约为 ${databaseMegabytes} MB，读取它需要数倍于此的内存，因此手机可能会内存不足而停止运行。`}文件复制完成后，最后可能仍会出现一个询问。在导入完成之前，您已保存的数据不会被替换。导入完成前会先复制备份中的图片和其他文件，并替换已存储的同名文件。要继续吗？`,
     "store2ImportSpaceWarning": (neededGigabytes: number, freeGigabytes: number, databaseMegabytes: number | null) =>
-        `导入需要这部手机上约 ${neededGigabytes} GB 的可用空间，但目前仅约有 ${freeGigabytes} GB 可用。如果手机空间耗尽，导入将停止。${databaseMegabytes === null ? '' : `此备份中的数据（不含图片和其他文件）约为 ${databaseMegabytes} MB，读取它需要数倍于此的内存，因此手机可能会内存不足而停止运行。`}在导入完成之前，您已保存的数据不会被更改。要继续吗？`,
+        `导入需要这部手机上约 ${neededGigabytes} GB 的可用空间，但目前仅约有 ${freeGigabytes} GB 可用。如果手机空间耗尽，导入将停止。${databaseMegabytes === null ? '' : `此备份中的数据（不含图片和其他文件）约为 ${databaseMegabytes} MB，读取它需要数倍于此的内存，因此手机可能会内存不足而停止运行。`}在导入完成之前，您已保存的数据不会被替换。导入完成前会先复制备份中的图片和其他文件，并替换已存储的同名文件。要继续吗？`,
     "store2ImportIncompleteConfirm": (items: string) =>
         `此备份中的部分数据无法完整导入：\n\n${items}\n\n导入后，这些部分将为空或缺失。您当前的数据会保留在更早保存的版本列表中。仍要导入吗？`,
     "store2ImportReadFailed": "备份的一部分或您已保存数据的一部分无法读取，因此没有导入任何内容。您当前的数据没有更改。",
@@ -2297,6 +2300,7 @@ export const languageChinese = {
     "moduleLowLevelNamed": (name: string, file?: string) => file ? `模块“${name}”（${file}）` : `模块“${name}”`,
     "importModulesDone": (imported: number, skipped: number) => skipped > 0 ? `已导入 ${imported} 个模块，跳过 ${skipped} 个。` : `已导入 ${imported} 个模块。`,
     "moduleUnsupportedFile": (name: string) => `${name}：此文件类型不支持作为模块。`,
+    "moduleLoadFailed": (name: string) => `无法加载模块“${name}”，因此未对其执行任何操作。`,
     "moduleDuplicatePrompt": (name: string, file: string) => `已安装名为“${name}”的模块（${file}）。应如何处理此文件？`,
     "moduleDuplicateReplace": "替换",
     "moduleDuplicateSkip": "跳过",
@@ -2769,7 +2773,8 @@ export const languageChinese = {
         "peerAutoExportSaved": "此标签页的更改也已自动导出：不含其他图片、资源和内嵌图的文件已交给浏览器处理。请在点击“重新加载”之前确认下载已到达并已完成。导出之后所做的更改不在其中。",
         "peerAutoExportNotFinished": "自动导出未完成。请使用“先导出此标签页，再重新加载”。",
         "peerNoSaveReplaced": "已保存的数据在此标签页之外被更改后，无法再用此标签页的版本覆盖保存。",
-        "peerNoSaveUnloaded": "此标签页没有在内存中保留所有角色，因此其版本无法取代另一个标签页的更改。",
+        "peerNoSaveBlocked": "“保存我的”不可用：以下项目在此标签页中未加载或无法保存：{names}",
+        "peerNoSaveBlockedCount": "“保存我的”不可用：在此标签页中未加载或无法保存的项目（{count}）。",
         "peerReloadOnly": "重新加载",
         "peerKeepReading": "继续阅读（此标签页无法保存）",
         "peerCleanCommit": "另一个标签页保存了对您数据的更改。重新加载即可查看。此标签页中没有未保存的内容。",

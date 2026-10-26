@@ -2010,6 +2010,8 @@ export const languageKorean = {
     "keepAliveGenerating": "답변 생성 중…",
     "keepAliveWorking": "작업 중…",
     "keepAliveStop": "중지",
+    "keepAliveFinishing": "마무리 중…",
+    "keepAliveSavePending": "답변이 준비되었습니다. 앱을 열어 저장을 완료하세요.",
     "messageInterrupted": "중단됨 — 답변이 완전하지 않을 수 있습니다",
     "nanoGPTLoadingAccountInfo": "계정 정보 불러오는 중…",
     "nanoGPTCreditBalance": "크레딧 잔액:",
@@ -2102,6 +2104,7 @@ export const languageKorean = {
     assetIntegrityReportNotCached: (n: number) => `- 아직 캐시되지 않음 (정상, 문제 아님): ${n}\n`,
     assetIntegrityReportNotContentAddressed: (n: number) => `- 콘텐츠 주소 지정 방식이 아님 (이 방법으로는 검증 불가): ${n}\n`,
     assetIntegrityReportArchivedNotChecked: (characterNames: string) => `- 에셋을 검사하지 못한 보관된 캐릭터 (데이터를 불러올 수 없음): ${characterNames}\n`,
+    assetIntegrityReportModulesNotChecked: (moduleNames: string) => `- 에셋을 검사하지 못한 모듈 (로드되지 않음): ${moduleNames}\n`,
     assetIntegrityReportMismatchCount: (n: number) => `- **불일치 발견: ${n}개**\n`,
     assetIntegrityReportEvicted: (n: number) => `\n손상된 캐시 항목 ${n}개를 제거했습니다. 수정 사항을 적용하려면 앱을 새로고침하세요.`,
     assetIntegrityReportLeftInCache: "\n요청하신 대로 캐시에 남겨두었습니다.",
@@ -2249,12 +2252,12 @@ export const languageKorean = {
     store2RestoreNotFlushed: "이전 버전을 복원했지만, 기기에서 디스크에 기록되었다는 확인을 받지 못했습니다. 앱을 지금 새로고침하며, 시작할 때 기록을 마무리합니다.",
     store2RestoreDone: "이전 버전을 복원했습니다. 이전에 사용하던 버전은 목록에 보관되어 있습니다. 앱을 새로 고치는 중입니다.",
     store2RestoreOldRow: (when: string) => `이전: ${when}`,
-    store2ImportSizeWarning: (megabytes: number) =>
-        `이 백업에 들어 있는 데이터는 이미지와 기타 파일을 제외하고 약 ${megabytes} MB입니다. 이를 읽으려면 그 몇 배의 메모리가 필요하므로 휴대폰 같은 소형 기기는 메모리가 부족해 멈출 수 있습니다. 가져오기가 끝나기 전까지는 저장된 데이터가 변경되지 않습니다. 계속하시겠습니까?`,
+    store2ImportSizeWarning: (megabytes: number, copiesFiles = false) =>
+        `이 백업에 들어 있는 데이터는 이미지와 기타 파일을 제외하고 약 ${megabytes} MB입니다. 이를 읽으려면 그 몇 배의 메모리가 필요하므로 휴대폰 같은 소형 기기는 메모리가 부족해 멈출 수 있습니다. 가져오기가 끝나기 전까지는 저장된 데이터가 교체되지 않습니다.${copiesFiles ? ' 가져오기 전에 백업의 이미지와 기타 파일이 먼저 복사되며, 이름이 같은 저장된 파일은 교체됩니다.' : ''} 계속하시겠습니까?`,
     store2ImportTimeWarning: (entries: number, minutes: number, neededGigabytes: number, databaseMegabytes: number | null, freeGigabytes: number | null = null, short = false) =>
-        `이 백업에는 파일이 ${entries}개 들어 있습니다. 지금부터 이 휴대폰에서 가져오는 데 약 ${minutes >= 120 ? `${(minutes / 60).toFixed(1)}시간` : `${minutes}분`}, 또는 그 이상 걸릴 수 있습니다. 이는 중급형 휴대폰을 기준으로 한 추정치이므로 실제로는 더 빠르거나 느릴 수 있으며, 저사양 휴대폰은 훨씬 느릴 수 있습니다. 끝날 때까지 앱을 열어 두세요.\n\n가져오려면 이 휴대폰에 약 ${neededGigabytes} GB의 여유 공간이 필요합니다. ${freeGigabytes === null ? '앱은 여유 공간이 얼마인지 확인할 수 없습니다.' : short ? `여유 공간은 약 ${freeGigabytes} GB뿐이며, 휴대폰의 공간이 부족해지면 가져오기가 중단됩니다.` : `여유 공간은 약 ${freeGigabytes} GB입니다.`} ${databaseMegabytes === null ? '' : `이 백업에 들어 있는 데이터는 이미지와 기타 파일을 제외하고 약 ${databaseMegabytes} MB이며, 이를 읽으려면 그 몇 배의 메모리가 필요하므로 휴대폰이 메모리가 부족해 멈출 수 있습니다. `}파일 복사가 끝난 뒤 마지막에 질문이 다시 나타날 수 있습니다. 가져오기가 끝나기 전까지는 저장된 데이터가 변경되지 않습니다. 계속하시겠습니까?`,
+        `이 백업에는 파일이 ${entries}개 들어 있습니다. 지금부터 이 휴대폰에서 가져오는 데 약 ${minutes >= 120 ? `${(minutes / 60).toFixed(1)}시간` : `${minutes}분`}, 또는 그 이상 걸릴 수 있습니다. 이는 중급형 휴대폰을 기준으로 한 추정치이므로 실제로는 더 빠르거나 느릴 수 있으며, 저사양 휴대폰은 훨씬 느릴 수 있습니다. 끝날 때까지 앱을 열어 두세요.\n\n가져오려면 이 휴대폰에 약 ${neededGigabytes} GB의 여유 공간이 필요합니다. ${freeGigabytes === null ? '앱은 여유 공간이 얼마인지 확인할 수 없습니다.' : short ? `여유 공간은 약 ${freeGigabytes} GB뿐이며, 휴대폰의 공간이 부족해지면 가져오기가 중단됩니다.` : `여유 공간은 약 ${freeGigabytes} GB입니다.`} ${databaseMegabytes === null ? '' : `이 백업에 들어 있는 데이터는 이미지와 기타 파일을 제외하고 약 ${databaseMegabytes} MB이며, 이를 읽으려면 그 몇 배의 메모리가 필요하므로 휴대폰이 메모리가 부족해 멈출 수 있습니다. `}파일 복사가 끝난 뒤 마지막에 질문이 다시 나타날 수 있습니다. 가져오기가 끝나기 전까지는 저장된 데이터가 교체되지 않습니다. 가져오기 전에 백업의 이미지와 기타 파일이 먼저 복사되며, 이름이 같은 저장된 파일은 교체됩니다. 계속하시겠습니까?`,
     store2ImportSpaceWarning: (neededGigabytes: number, freeGigabytes: number, databaseMegabytes: number | null) =>
-        `가져오려면 이 휴대폰에 약 ${neededGigabytes} GB의 여유 공간이 필요하지만, 여유 공간은 약 ${freeGigabytes} GB뿐입니다. 휴대폰의 공간이 부족해지면 가져오기가 중단됩니다. ${databaseMegabytes === null ? '' : `이 백업에 들어 있는 데이터는 이미지와 기타 파일을 제외하고 약 ${databaseMegabytes} MB이며, 이를 읽으려면 그 몇 배의 메모리가 필요하므로 휴대폰이 메모리가 부족해 멈출 수 있습니다. `}가져오기가 끝나기 전까지는 저장된 데이터가 변경되지 않습니다. 계속하시겠습니까?`,
+        `가져오려면 이 휴대폰에 약 ${neededGigabytes} GB의 여유 공간이 필요하지만, 여유 공간은 약 ${freeGigabytes} GB뿐입니다. 휴대폰의 공간이 부족해지면 가져오기가 중단됩니다. ${databaseMegabytes === null ? '' : `이 백업에 들어 있는 데이터는 이미지와 기타 파일을 제외하고 약 ${databaseMegabytes} MB이며, 이를 읽으려면 그 몇 배의 메모리가 필요하므로 휴대폰이 메모리가 부족해 멈출 수 있습니다. `}가져오기가 끝나기 전까지는 저장된 데이터가 교체되지 않습니다. 가져오기 전에 백업의 이미지와 기타 파일이 먼저 복사되며, 이름이 같은 저장된 파일은 교체됩니다. 계속하시겠습니까?`,
     store2ImportIncompleteConfirm: (items: string) =>
         `이 백업의 일부 데이터를 완전히 가져오지 못했습니다:\n\n${items}\n\n가져온 뒤 해당 부분은 비어 있거나 누락됩니다. 지금 가지고 있는 데이터는 이전 저장 버전 목록에 보관됩니다. 그래도 가져오시겠습니까?`,
     store2ImportReadFailed: "백업의 일부 또는 저장된 데이터의 일부를 읽을 수 없어 아무것도 가져오지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
@@ -2297,6 +2300,7 @@ export const languageKorean = {
     moduleLowLevelNamed: (name: string, file?: string) => file ? `모듈 "${name}" (${file})` : `모듈 "${name}"`,
     importModulesDone: (imported: number, skipped: number) => skipped > 0 ? `모듈 ${imported}개를 임포트했고 ${skipped}개를 건너뛰었습니다.` : `모듈 ${imported}개를 임포트했습니다.`,
     moduleUnsupportedFile: (name: string) => `${name}: 이 파일 형식은 모듈로 지원되지 않습니다.`,
+    moduleLoadFailed: (name: string) => `"${name}" 모듈을 불러오지 못하여 아무 작업도 수행하지 않았습니다.`,
     moduleDuplicatePrompt: (name: string, file: string) => `"${name}" 모듈(${file})이 이미 설치되어 있습니다. 이 파일을 어떻게 처리할까요?`,
     moduleDuplicateReplace: "바꾸기",
     moduleDuplicateSkip: "건너뛰기",
@@ -2769,7 +2773,8 @@ export const languageKorean = {
         peerAutoExportSaved: "이 탭의 변경 사항도 자동으로 내보내졌습니다. 다른 이미지, 에셋, 인레이를 제외한 파일이 브라우저에 넘겨졌습니다. 새로고침을 누르기 전에 다운로드가 도착했고 끝났는지 확인하세요. 내보낸 이후에 한 변경 사항은 파일에 들어 있지 않습니다.",
         peerAutoExportNotFinished: "자동 내보내기가 끝나지 않았습니다. “먼저 이 탭을 내보낸 뒤 새로고침”을 사용하세요.",
         peerNoSaveReplaced: "저장된 데이터가 이 탭 밖에서 변경된 뒤에는 이 탭의 버전을 그 위에 덮어써 저장할 수 없습니다.",
-        peerNoSaveUnloaded: "이 탭은 모든 캐릭터를 메모리에 보유하고 있지 않으므로, 이 탭의 버전으로 다른 탭의 변경 사항을 대체할 수 없습니다.",
+        peerNoSaveBlocked: "“내 것 저장”을 사용할 수 없습니다: 다음 항목은 이 탭에 로드되지 않았거나 저장할 수 없습니다: {names}",
+        peerNoSaveBlockedCount: "“내 것 저장”을 사용할 수 없습니다: 이 탭에 로드되지 않았거나 저장할 수 없는 항목 ({count}).",
         peerReloadOnly: "새로고침",
         peerKeepReading: "계속 읽기 (이 탭은 저장할 수 없습니다)",
         peerCleanCommit: "다른 탭이 데이터에 대한 변경 사항을 저장했습니다. 새로고침하면 확인할 수 있습니다. 이 탭에는 저장되지 않은 내용이 없습니다.",

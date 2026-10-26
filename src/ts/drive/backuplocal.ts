@@ -6,8 +6,11 @@ import { localBackupFileName } from "./backupFileName";
 import { LocalWriter, TauriWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson, pieceStoreOrNull } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri, isNodeServer } from "src/ts/platform"
-import { decodeRisuSave, encodeRisuSaveLegacy, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock } from "../storage/risuSave";
+import { decodeRisuSave, encodeRisuSaveStreamed, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock, type StreamedRisuSave } from "../storage/risuSave";
 import { writeRisuSaveV0 } from "../storage/risuSaveV0";
+import { assertNoModuleStubs } from "../storage/moduleStub";
+import { snapshotModuleList } from "./exportModules";
+import type { RisuModule } from "../process/modules";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
 import { StoreBlobUnsupportedError, StoreInvalidKeyError, UploadCapacityError, UploadGoneError } from "../storage/store/errors";
@@ -66,14 +69,15 @@ function getBasename(data:string){
  * after it (for example a plugin storage key created while the assets were
  * copied), and error-text roots whose unit was absent then and may exist now.
  * The roots are listed from the very object that is encoded, with no await
- * between the listing and the encode, so every unit key the written database
+ * between the listing and the encode (the streamed encode is synchronous, so
+ * that holds for the whole of it), so every unit key the written database
  * holds is carried, reported, or an error-text root left out by rule (its
  * unit is absent, or its key is one a restore could not place). The caller writes the returned units before the
  * database entry. `stubPayloads` are the entries of the stubs that are in the encoded tree, in `stub` mode: an entry
  * exists exactly when a stub with its uuid is written, so a character loaded while the export ran leaves no orphan.
  */
-async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdStorage){
-    const { tree: exportCopy, notice: repairNotice } = await exportCopyOf(db, cold.inlined, cold.stubEntries)
+async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdStorage, modules: RisuModule[] | null){
+    const { tree: exportCopy, notice: repairNotice } = await exportCopyOf(db, cold.inlined, cold.stubEntries, modules)
     // Plugin values of a store2 page become units here; the exported copy carries no plain key for them.
     const plugin = pluginStorageForExport(exportCopy, cold.collected.settledKeys)
     const dbWithoutAccount = plugin.tree
@@ -85,7 +89,7 @@ async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdS
     delete dbWithoutAccount.upstreamKvBlocks
     const dbData = typeof kvBlocks === 'object' && kvBlocks !== null && Object.keys(kvBlocks).length > 0
         ? writeRisuSaveV0(dbWithoutAccount, kvBlocks)
-        : encodeRisuSaveLegacy(dbWithoutAccount, 'compression')
+        : encodeRisuSaveStreamed(dbWithoutAccount)
     const stubPayloads = stubEntriesInTree(dbWithoutAccount.characters, cold.stubEntries)
     // An entity the first collection could not read stays a stub in the copy; the late collection does not read it again.
     // A minted uuid names an entry this export writes, never a unit of the page's store.
@@ -119,6 +123,31 @@ async function writeStubPayloadsAndRelease(
         wait(`${progressPrefix} (${i + 1} / ${total})`)
         await writer.writeBackup(stubEntries[0].backupName, unpackStubEntry(stubEntries[0]))
         stubEntries.shift()
+    }
+}
+
+/**
+ * Writes the `database.risudat` entry. The V0 form is one buffer written as before. The streamed form is a header with
+ * the total length, then each piece in order, and each piece's reference is dropped once it is written (only the
+ * reference: a writer may hold the very bytes until it closes). The length is checked against the 4 GiB entry limit
+ * `LocalWriter.writeBackup` applies, before any byte of the entry is written.
+ */
+async function writeDatabaseEntry(
+    writer: Pick<LocalWriter, 'writeBackup' | 'writeBackupHeader' | 'write'>,
+    dbData: Uint8Array | StreamedRisuSave,
+): Promise<void> {
+    if (dbData instanceof Uint8Array) {
+        await writer.writeBackup('database.risudat', dbData)
+        return
+    }
+    if (dbData.length > 0xFFFFFFFF) {
+        throw new Error(`Backup entry "database.risudat" is too large to store (a single backup entry is limited to 4 GiB).`)
+    }
+    await writer.writeBackupHeader('database.risudat', dbData.length)
+    const total = dbData.pieces.length
+    for (let i = 0; i < total; i++) {
+        await writer.write(dbData.pieces[0])
+        dbData.pieces.shift()
     }
 }
 
@@ -192,11 +221,15 @@ function describeWriteMeasure(): string {
  * read for it (`inlined`, `drive/exportInline.ts`), or, in `stub` mode, keeps its
  * place with the uuid minted for it (`stubEntries`); a minted stub that is trashed
  * when the tree is built, and every minted stub when the list then needs the id
- * repair, is inlined instead. The export is never refused;
+ * repair, is inlined instead. This function never refuses;
  * `notice` says what was done.
  */
-async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>): Promise<{ tree: Database, notice: string | null }> {
+async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>, modules: RisuModule[] | null): Promise<{ tree: Database, notice: string | null }> {
     const plain = { ...db, account: undefined }
+    // Set before either return below, so every encoder gets the module list read before the export opened, never the live one.
+    if (modules !== null) {
+        plain.modules = modules
+    }
     // The namespaces are written as blocks beside the characters, and a character whose id is one of their block names
     // cannot be saved; the set is read from the page's field before the copy loses it.
     const reserved = kvBlockNamesOf(db.upstreamKvBlocks)
@@ -811,6 +844,21 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
         resetNetTickStats()
     }
     const db = getDatabase()
+    // Every module body is read before anything is opened; a module that cannot be read stops the export here.
+    const moduleSnapshot = await snapshotModuleList(db)
+    try {
+        return await writeLocalBackupWithModules(session, options, db, moduleSnapshot.modules)
+    } finally {
+        moduleSnapshot.release()
+    }
+}
+
+async function writeLocalBackupWithModules(session: ExportSession, options: BackupExportOptions, db: Database, modules: RisuModule[] | null): Promise<ExportOutcome>{
+    // A marker still in the live list after the module bodies were read is foreign: the export stops
+    // before it reads any unit or opens the file.
+    assertNoModuleStubs(db.modules, 'writeLocalBackup')
+    // A stub kept for a missing loader must not reach an encoder even if it has left the live list since.
+    assertNoModuleStubs(modules, 'writeLocalBackup snapshot')
     if (MEASURE) {
         exportResidentsAtStart = residentCharacterCount(db.characters)
     }
@@ -1004,7 +1052,7 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
         // The write counts of the notes below start here, so they hold the stub, late and database writes only.
         takeExportWriteStats()
     }
-    const { dbData, late, repairNotice, stubPayloads } = await encodeDatabaseWithLateColdStorage(db, cold)
+    const { dbData, late, repairNotice, stubPayloads } = await encodeDatabaseWithLateColdStorage(db, cold, modules)
     session.cancel.throwIfCancelled()
     noteImportPhase('export database encoded')
     await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving local Backup Cold data...', session.gate.wait)
@@ -1017,7 +1065,7 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
 
     session.gate.wait(`Saving local Backup... (Saving database)`)
 
-    await writer.writeBackup('database.risudat', dbData)
+    await writeDatabaseEntry(writer, dbData)
     noteImportPhase(MEASURE ? `export database written ${describeWriteMeasure()}` : 'export database written')
     await writer.close()
     noteImportPhase(MEASURE ? `export closed ${describeWriteMeasure()}${describeNetMeasure()}` : 'export closed')
@@ -1116,6 +1164,18 @@ export function exportThisTabBackup(options: BackupExportOptions = {}): Promise<
 async function writePartialLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
     session.gate.wait("Saving partial local backup...")
     const db = getDatabase()
+    const moduleSnapshot = await snapshotModuleList(db)
+    try {
+        return await writePartialLocalBackupWithModules(session, options, db, moduleSnapshot.modules)
+    } finally {
+        moduleSnapshot.release()
+    }
+}
+
+async function writePartialLocalBackupWithModules(session: ExportSession, options: BackupExportOptions, db: Database, modules: RisuModule[] | null): Promise<ExportOutcome>{
+    // Same invariant as writeLocalBackup: a marker left after the module bodies were read stops the export before any read or file.
+    assertNoModuleStubs(db.modules, 'writePartialLocalBackup')
+    assertNoModuleStubs(modules, 'writePartialLocalBackup snapshot')
     const collected = await collectBackupColdStorage(db, options)
     if(!await confirmDuringExport(session, collected.unavailableKeys.length > 0, () => confirmIncompleteColdStorageOperation(db, collected.unavailableKeys, 'backup', collected.collected.owners))){
         return { status: 'declined', cause: 'incomplete-data-declined' }
@@ -1264,7 +1324,7 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
-    const { dbData, late, repairNotice, stubPayloads } = await encodeDatabaseWithLateColdStorage(db, cold)
+    const { dbData, late, repairNotice, stubPayloads } = await encodeDatabaseWithLateColdStorage(db, cold, modules)
     session.cancel.throwIfCancelled()
     await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving partial local Backup Cold data...', session.gate.wait)
     for(let i=0;i<late.payloads.length;i++){
@@ -1275,7 +1335,7 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
 
     session.gate.wait(`Saving partial local backup... (Saving database)`)
 
-    await writer.writeBackup('database.risudat', dbData)
+    await writeDatabaseEntry(writer, dbData)
     await writer.close()
 
     const lateColdStorageReport = describeLateColdStorageKeys(late)

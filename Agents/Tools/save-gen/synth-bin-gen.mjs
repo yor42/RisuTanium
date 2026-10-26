@@ -1,6 +1,6 @@
 // Deterministic synthetic upstream-compatible .bin generator (MC-471). Plain Node ESM, no src/ imports.
 //
-//   node Agents/Tools/save-gen/synth-bin-gen.mjs --out <path outside the repo> --seed 1337 --scale small|mid|device [--dry-run]
+//   node Agents/Tools/save-gen/synth-bin-gen.mjs --out <path outside the repo> --seed 1337 --scale small|mid|device|device-units [--dry-run]
 //
 // Writes <out> (the .bin) and <out>.manifest.json (the expectations synth-bin-verify.mjs compares an exported .bin against).
 //
@@ -14,6 +14,8 @@
 // character whose index is a multiple of 3 (0, 3, 6, ...) carries an editoutput regex script that rewrites the reply
 // letter c to d, so the mock's [mock-reply] marker displays as [modk-reply] there. A check that reads the reply marker must
 // use a character whose index is not a multiple of 3 (1, 2, 4, 5 among the session characters) or expect [modk-reply].
+// The device-units scale is the device scale with real-sized character units (about 120 MB of character JSON); its comment
+// at SCALES says what it is for and what it cannot show.
 //
 // Usage (the round trip on a store2 page):
 //   1. Generate: --scale small for a quick pass, --scale mid for the MC-471 totals. --dry-run prints the plan and writes nothing.
@@ -133,7 +135,7 @@ const SCALES = {
     big200: false, chatBaseBytes: 60 * KIB, groups: 2, pluginValues: 3, loadouts: 2,
   },
   // Optional fields that small and mid leave unset keep their draws and output unchanged: avatarKiB, trashEvery,
-  // chatCountTable, sessionCharacters, moduleBytes, luaModules, loreShape, rootSettings.
+  // chatCountTable, sessionCharacters, moduleBytes, luaModules, loreShape, rootSettings, unitShape.
   device: {
     characters: 500, stubEvery: 0, additional: 0, emotionCharacters: 0, emotionPerCharacter: 0,
     vitsCharacters: 0, vitsHugeSlot: -1, vitsStride: 40, vitsMiB: [0, 0], voiceRefs: 0, voiceStride: 16, ccAssets: 0,
@@ -155,6 +157,31 @@ const SCALES = {
     // the settings the active preset repeats (setPreset takes preset ?? root, and blanks customProxyRequestModel when absent);
     // dynamicModelRegistry and the sub-task switches are root-only
     presetSettings: ['aiModel', 'subModel', 'forceReplaceUrl', 'customProxyRequestModel', 'customAPIFormat', 'autofillRequestUrl', 'proxyKey', 'useStreaming'],
+  },
+}
+
+// device-units is the device scale with character units sized and composed like a real 500-character profile (about 120 MB
+// of character JSON): the sizes follow a real size distribution (quantile table, assigned to the characters by a seeded
+// shuffle), and the bytes of each character are split over lorebook text, chat messages, greetings, scripts and description
+// by the real shares. It exists so a device check of the unit-holding export path sees realistic unit sizes and
+// compressibility (a real unit deflates at level 1 to about 0.38 of its size; this text, drawn from the generator's usual
+// 3000 syllable words and 800 Hangul words, lands there; a smaller vocabulary compresses better). Limits: the real
+// profile's additionalAssets paths (about 15% of its unit bytes) cannot be copied without the assets behind them, and an
+// asset reference without an asset changes the export flow, so that share is lorebook text here (assetsAsLore). Session
+// characters (indexes below sessionCharacters) keep their short device-scale messages and put the message share into
+// lorebook text too. The file is the device file plus the compressed database, so it is far larger than the device scale's;
+// the unit text is random words, so it carries no memory or render conclusion either.
+SCALES['device-units'] = {
+  ...SCALES.device,
+  unitShape: {
+    // [fraction of characters at or below, raw unit bytes] of the real profile; log-linear in between
+    quantiles: [[0, 2608], [0.05, 7553], [0.1, 10081], [0.2, 19736], [0.3, 30039], [0.4, 50907], [0.5, 79312], [0.6, 119131], [0.7, 190110],
+      [0.8, 333328], [0.9, 566188], [0.95, 1010208], [0.97, 1253900], [0.99, 2218812], [1, 4702885]],
+    // fractions of the unit bytes; lorebook content is the sum of lore and assetsAsLore. rest are three plain text fields.
+    share: { lore: 0.47, assetsAsLore: 0.14, message: 0.153, firstMessage: 0.033, alternates: 0.033, customscript: 0.033, triggerscript: 0.021, desc: 0.024, rest: 0.03 },
+    // Hangul letters as a share of the text's UTF-8 bytes, spaces counted as non-Hangul
+    hangul: { lore: 0.069, message: 0.814, greeting: 0.52 },
+    messageBytes: 7845, loreEntryBytes: 1940, scriptEntryBytes: 2000,
   },
 }
 
@@ -188,7 +215,7 @@ function parseArguments(argv) {
     else throw new Error(`unknown argument ${arg}`)
   }
   if (!Number.isInteger(opt.seed) || opt.seed < 0 || opt.seed > 0xFFFFFFFF) throw new Error('--seed must be an integer from 0 to 4294967295')
-  if (!Object.hasOwn(SCALES, opt.scale)) throw new Error('--scale must be small, mid or device')
+  if (!Object.hasOwn(SCALES, opt.scale)) throw new Error('--scale must be small, mid, device or device-units')
   if (!opt.dryRun && !opt.out) throw new Error('--out is required unless --dry-run')
   if (opt.out) {
     const resolved = path.resolve(opt.out)
@@ -427,6 +454,35 @@ function buildPlan(seed, cfg) {
     }
     characters.push(character)
   }
+  if (cfg.unitShape) {
+    const shape = cfg.unitShape
+    // unit sizes from the quantile table at evenly spaced fractions, dealt to the characters by a shuffle of their own
+    const unitRnd = mulberry32((seed ^ 0x7C7C7C7C) >>> 0)
+    const dealt = Array.from({ length: characters.length }, (_, k) => k)
+    for (let k = dealt.length - 1; k > 0; k--) {
+      const j = Math.floor(unitRnd() * (k + 1))
+      ;[dealt[k], dealt[j]] = [dealt[j], dealt[k]]
+    }
+    const unitBytesAt = (fraction) => {
+      let upper = 1
+      while (upper < shape.quantiles.length - 1 && shape.quantiles[upper][0] < fraction) upper++
+      const [lowFraction, lowBytes] = shape.quantiles[upper - 1]
+      const [highFraction, highBytes] = shape.quantiles[upper]
+      return lowBytes * (highBytes / lowBytes) ** ((fraction - lowFraction) / (highFraction - lowFraction))
+    }
+    characters.forEach((character, i) => {
+      const bytes = unitBytesAt(dealt[i] / (characters.length - 1))
+      const session = i < cfg.sessionCharacters
+      character.unit = { bytes, loreBytes: bytes * (shape.share.lore + shape.share.assetsAsLore + (session ? shape.share.message : 0)) }
+      if (session) return
+      // the message share becomes messages of the real mean size, dealt over the character's chats in turn
+      const messageCount = Math.max(1, Math.round(bytes * shape.share.message / shape.messageBytes))
+      const each = bytes * shape.share.message / messageCount
+      for (const chat of character.chats) { chat.messageBytes = []; chat.hangulShare = shape.hangul.message }
+      for (let k = 0; k < messageCount; k++) character.chats[k % character.chats.length].messageBytes.push(each)
+      for (const chat of character.chats) chat.bytes = chat.messageBytes.reduce((sum, n) => sum + n, 0)
+    })
+  }
   if (cfg.big200) {
     // one 200 MiB additional asset (video) on a character that is not a stub
     const holder = characters.find((c) => !c.stub && c.index >= 3)
@@ -498,6 +554,27 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
     }
     return parts.join(' ').slice(0, Math.max(0, Math.floor(bytes)))
   }
+  // Text of about `bytes` UTF-8 bytes (a little under, by less than one word), `hangulShare` of it Hangul: an English-like
+  // block then a Hangul block. Only the device-units scale calls it; text() above counts characters, not bytes.
+  const asciiWordBytes = words.map((word) => word.length)
+  const hangulWordBytes = hangulWords.map((word) => word.length * 3)
+  const wordBlock = (list, wordBytes, bytes) => {
+    const parts = []
+    for (let length = 0;;) {
+      const chosen = Math.floor(rnd() * list.length)
+      length += wordBytes[chosen] + (parts.length > 0 ? 1 : 0)
+      if (length > bytes) break
+      parts.push(list[chosen])
+    }
+    return parts.join(' ')
+  }
+  const unitText = (bytes, hangulShare) => {
+    if (bytes < 1) return ''
+    // a Hangul word has two syllables of three bytes on average and one separating space, so its letters are 6/7 of its bytes
+    const hangulBytes = Math.floor(bytes * hangulShare * 7 / 6)
+    const ascii = wordBlock(words, asciiWordBytes, bytes - hangulBytes)
+    return hangulBytes > 0 ? ascii + ' ' + wordBlock(hangulWords, hangulWordBytes, hangulBytes - 1) : ascii
+  }
 
   const projections = { characters: {}, chats: {}, modules: {}, parts: {}, restored: [] }
   const units = []
@@ -520,7 +597,8 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
     const count = chat.messageBytes ? chat.messageBytes.length : Math.max(1, Math.ceil(chat.bytes / 1500))
     const message = Array.from({ length: count }, (_, m) => {
       const role = m % 2 === 0 ? 'char' : 'user'
-      const entry = { role, data: text(chat.messageBytes ? chat.messageBytes[m] : chat.bytes / count, chat.hangul), time: T + m * 60000 }
+      const data = chat.hangulShare !== undefined ? unitText(chat.messageBytes[m], chat.hangulShare) : text(chat.messageBytes ? chat.messageBytes[m] : chat.bytes / count, chat.hangul)
+      const entry = { role, data, time: T + m * 60000 }
       if (m % 5 === 0) entry.chatId = chat.id
       if (memberIds && role === 'char') entry.saying = memberIds[m % memberIds.length]
       return entry
@@ -535,6 +613,32 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
     if (variant % 5 === 0) built.supaMemoryData = text(300)
     if (variant % 7 === 0) built.hypaV3Data = { summaries: [{ text: text(200), chatMemos: [chat.id], isImportant: false }] }
     return built
+  }
+  // Replaces the text-bearing fields of a device-units character by the planned share of its unit bytes. The extra scripts
+  // cannot fire: a script pattern starts with the never-matching (?!) and a trigger is manual.
+  const shapeUnit = (full, planned) => {
+    const { share, hangul, loreEntryBytes, scriptEntryBytes } = cfg.unitShape
+    const bytes = planned.unit.bytes
+    const spread = (total, entryBytes, make) => {
+      const count = Math.max(1, Math.round(total / entryBytes))
+      return Array.from({ length: count }, (_, k) => make(k, total / count))
+    }
+    full.desc = unitText(bytes * share.desc, 0)
+    full.firstMessage = unitText(bytes * share.firstMessage, hangul.greeting)
+    full.notes = ''
+    // backgroundHTML, defaultVariables and replaceGlobalNote carry the plain-text remainder of a real unit
+    for (const [field, part] of [['backgroundHTML', 0.43], ['defaultVariables', 0.3], ['replaceGlobalNote', 0.27]]) full[field] = unitText(bytes * share.rest * part, 0)
+    full.alternateGreetings = spread(bytes * share.alternates, 3000, (k, each) => unitText(each, hangul.greeting))
+    full.globalLore = spread(planned.unit.loreBytes, loreEntryBytes, (k, each) => ({
+      key: `g${planned.index}-k${k}`, secondkey: '', comment: `g${planned.index}-c${k}`, content: unitText(each, hangul.lore), mode: 'normal', insertorder: 100,
+      alwaysActive: false, selective: false, bookVersion: 2,
+    }))
+    full.customscript.push(...spread(bytes * share.customscript, scriptEntryBytes, (k, each) => ({
+      comment: `cu${planned.index}-${k}`, in: '(?!)' + unitText(each * 0.2, 0), out: unitText(each * 0.8, 0), type: 'editprocess', flag: 'g',
+    })))
+    full.triggerscript.push(...spread(bytes * share.triggerscript, scriptEntryBytes, (k, each) => ({
+      comment: `tu${planned.index}-${k}`, type: 'manual', conditions: [], effect: [{ type: 'setvar', var: 'synthetic', operator: '=', value: unitText(each, 0) }], lowLevelAccess: false,
+    })))
   }
   const characters = plan.characters.map((planned) => {
     const chats = planned.chats.map((chat, c) => buildChat(planned.index + c, chat, c, null))
@@ -556,6 +660,7 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
       viewScreen: 'none', bias: [], characterVersion: '', creator: '', utilityBot: false, scenario: '', systemPrompt: '',
       tags: planned.index % 3 === 0 ? ['synthetic', `tag${planned.index % 5}`] : [],
     }
+    if (planned.unit) shapeUnit(full, planned)
     if (planned.trashed === 'inline') full.trashTime = TRASH_TIME
     if (planned.vits) full.vits = { id: planned.vits.id, name: planned.vits.name, files: Object.fromEntries(planned.vits.files.map(([rel, id]) => [rel, refOf(id)])) }
     if (planned.voice) full.gptSoVitsConfig = { ref_audio_data: { fileName: planned.voice.fileName, assetId: refOf(planned.voice.id) } }

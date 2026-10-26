@@ -10,8 +10,8 @@ import { buildColdStub } from '../../../process/coldCharacter'
 import type { character, Database } from '../../database.svelte'
 import { UNIT_TYPE, type ShardEntry } from '../../store2/format'
 import {
-    bodyOf, buildSmall, buildT3, buildT4, buildLegacyCases, buildT5Chat, dbWithCharacters, asDatabase, encodeWith,
-    fakeLists, profileWithChats, seededEnv, sameBytes, type Obj,
+    bodyIn, buildSmall, buildT3, buildT4, buildLegacyCases, buildT5Chat, dbWithCharacters, asDatabase, encodeWith,
+    fakeLists, profileWithChats, seededEnv, sameBytes, storeOf, type Obj,
 } from './codecFixtures'
 
 const NOW = 1_700_000_000_000
@@ -34,10 +34,10 @@ function chaIdOf(db: Database, index: number): string {
     return (db.characters[index] as { chaId: string }).chaId
 }
 
-function entryOf(tree: EncodedTree, chaId: string): ShardEntry {
+function entryOf(tree: EncodedTree, chaId: string, ...earlier: EncodedTree[]): ShardEntry {
     for (const unit of tree.units) {
         if (unit.type === UNIT_TYPE.shard) {
-            const found = (bodyOf(unit).entries as unknown as ShardEntry[]).find(entry => entry.chaId === chaId)
+            const found = (bodyIn(unit, ...earlier).entries as unknown as ShardEntry[]).find(entry => entry.chaId === chaId)
             if (found !== undefined) {
                 return found
             }
@@ -82,7 +82,9 @@ describe('guard: with every character named the scoped encode is encodeDatabase,
             expect(other.reused).toBe(unit.reused)
             expect(other.digest).toBe(unit.digest)
             expect(other.ref).toEqual(unit.ref)
-            expect(sameBytes(other.bytes, unit.bytes), `${unit.identity} bytes`).toBe(true)
+            if (unit.reused === false && other.reused === false) {
+                expect(sameBytes(other.bytes, unit.bytes), `${unit.identity} bytes`).toBe(true)
+            }
         })
         expect([...b.index.units.keys()].sort()).toEqual([...a.index.units.keys()].sort())
         expect([...b.index.entities]).toEqual([...a.index.entities])
@@ -403,7 +405,7 @@ describe('stub guards (F2): the entry follows the stub, the body is never encode
         const restored = await encodeScoped(withStub(first, db, chaId, undefined), scopedOptions(3, trashed), { modules: false, characters: new Set() })
         expect(Object.hasOwn(indexEntry(restored, chaId), 'trashTime')).toBe(false)
         expect(indexEntry(restored, chaId)).toEqual(indexEntry(first, chaId))
-        expect(entryOf(restored, chaId).trashTime).toBeUndefined()
+        expect(entryOf(restored, chaId, trashed, first).trashTime).toBeUndefined()
     })
 
     test('the entry keeps the previous chat state and takes the stub\'s name and tags', async () => {
@@ -453,8 +455,7 @@ describe('stub guards (F2): the entry follows the stub, the body is never encode
     test('the carried stub assembles with the previous body, so the shard entry never outruns its units', async () => {
         const { db, first, chaId } = stubbed()
         const tree = await encodeScoped(withStub(first, db, chaId, 1234), scopedOptions(2, first), { modules: false, characters: new Set() })
-        const units = new Map([...first.units, ...tree.units].map(unit => [unit.key, unit.bytes] as const))
-        const assembled = assembleDatabase(tree.manifest, { get: key => units.get(key) })
+        const assembled = assembleDatabase(tree.manifest, storeOf(first, tree))
         const slot = (assembled.characters as unknown as { chaId: string, trashTime?: number, chats: unknown[] }[]).find(one => one.chaId === chaId)
         expect(slot?.trashTime).toBe(1234)
         expect(slot?.chats.length).toBe(2)
@@ -471,8 +472,7 @@ describe('a shared chaId is never carried (reproducers of the duplicate-holder l
     }
 
     function assembledFrom(first: EncodedTree, tree: EncodedTree): Obj[] {
-        const units = new Map([...first.units, ...tree.units].map(unit => [unit.key, unit.bytes] as const))
-        return assembleDatabase(tree.manifest, { get: key => units.get(key) }).characters as unknown as Obj[]
+        return assembleDatabase(tree.manifest, storeOf(first, tree)).characters as unknown as Obj[]
     }
 
     test('P1: the stub of a shared id is refused with the id named, not matched to the other holder\'s entry', async () => {
@@ -539,8 +539,7 @@ describe('skipping a character whose data cannot be read', () => {
     const SKIPPING: Pick<EncodeScope, 'skipUnsavableCharacters'> = { skipUnsavableCharacters: true }
 
     function unitsOf(...trees: EncodedTree[]): { get(key: string): Uint8Array | undefined } {
-        const units = new Map(trees.flatMap(tree => tree.units).map(unit => [unit.key, unit.bytes] as const))
-        return { get: key => units.get(key) }
+        return storeOf(...trees)
     }
 
     function assembledCharacters(...trees: EncodedTree[]): Obj[] {

@@ -528,7 +528,8 @@ async function requestHTTPResponsesAPI(requestURL:string, body:any, headers:Reco
         abortSignal: arg.abortSignal,
         interceptor: 'openai_response_api',
         networkRoute: networkOptions.networkRoute,
-        requestTimeoutMs: networkOptions.requestTimeoutMs
+        requestTimeoutMs: networkOptions.requestTimeoutMs,
+        deliverWhileFrozen: true
     })
 
     if(!response.ok){

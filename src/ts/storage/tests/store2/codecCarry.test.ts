@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { groupIntoShards, shardOfU, type EncodedTree, type EncodedUnit, type PreviousEncoding, type PreviousObjects } from '../../store2/codec'
 import type { Database } from '../../database.svelte'
 import { parseModuleIndex, parseShard, UNIT_TYPE, type ChatEntry, type ModuleIndex, type Shard } from '../../store2/format'
-import { asDatabase, bodyOf, buildSmall, encodeWith, previousFrom, seededEnv, unitOf, type JsonObject, type Obj } from './codecFixtures'
+import { asDatabase, bodyIn, bodyOf, buildSmall, bytesIn, encodeWith, previousFrom, seededEnv, unitOf, type JsonObject, type Obj } from './codecFixtures'
 
 const MARK = 'futureField'
 
@@ -40,12 +40,14 @@ function previousWithMarkers(tree: EncodedTree): { previous: PreviousEncoding, o
 }
 
 /** The JSON inside a unit's frame, read without the parser: the manifest with a `req` token this build does not know does not parse. */
-function rawBody(unit: EncodedUnit): JsonObject {
-    return JSON.parse(new TextDecoder().decode(unit.bytes.subarray(16, unit.bytes.length - 4))) as JsonObject
+function rawBody(unit: EncodedUnit, ...earlier: EncodedTree[]): JsonObject {
+    const bytes = bytesIn(unit, ...earlier)
+    return JSON.parse(new TextDecoder().decode(bytes.subarray(16, bytes.length - 4))) as JsonObject
 }
 
-function shardBodies(tree: EncodedTree): Shard[] {
-    return tree.units.filter(unit => unit.type === UNIT_TYPE.shard).map(unit => bodyOf(unit) as unknown as Shard)
+/** The shard bodies of `tree`; a shard it reused is read from the earlier encode that wrote it. */
+function shardBodies(tree: EncodedTree, ...earlier: EncodedTree[]): Shard[] {
+    return tree.units.filter(unit => unit.type === UNIT_TYPE.shard).map(unit => bodyIn(unit, ...earlier) as unknown as Shard)
 }
 
 describe('unknown fields of the format objects the codec writes are carried from the previous objects', () => {
@@ -76,7 +78,7 @@ describe('unknown fields of the format objects the codec writes are carried from
     test('shard top level, each shard entry (by u) and each chat entry (by cid)', () => {
         const { previous } = previousWithMarkers(first)
         const next = encodeWith(base, { env: seededEnv(2), previous })
-        const shards = shardBodies(next)
+        const shards = shardBodies(next, first)
         expect(shards).toHaveLength(16)
         for (const shard of shards) {
             expect((shard as unknown as Obj)[MARK]).toBe('shard-top')
@@ -112,7 +114,7 @@ describe('unknown fields of the format objects the codec writes are carried from
         const again = encodeWith(base, { env: seededEnv(3), previous: previousFrom(next) })
         expect(again.units.filter(unit => !unit.reused).map(unit => unit.identity)).toEqual(['manifest'])
         expect((again.manifest as unknown as Obj)[MARK]).toBe('manifest-top')
-        for (const shard of shardBodies(again)) {
+        for (const shard of shardBodies(again, next, first)) {
             expect((shard as unknown as Obj)[MARK]).toBe('shard-top')
         }
     })
@@ -148,7 +150,7 @@ describe('unknown fields of the format objects the codec writes are carried from
             env: seededEnv(2),
             previous: { ...previousFrom(first), objects: { shards: parsedShards, moduleIndex: parsedIndex.value } },
         })
-        for (const shard of shardBodies(next)) {
+        for (const shard of shardBodies(next, first)) {
             expect((shard as unknown as Obj)[MARK]).toBe('parsed-shard')
             for (const entry of shard.entries) {
                 expect((entry as unknown as Obj)[MARK]).toBe('parsed-entry')
@@ -172,7 +174,7 @@ describe('unknown fields of the format objects the codec writes are carried from
         const next = encodeWith(asDatabase(db), { env: seededEnv(2), previous })
         const removedU = (first.index.entities.get(`${String(removed.chaId)}#0`)) as string
         expect(removedU).toBeTypeOf('string')
-        const text = JSON.stringify(next.units.map(unit => rawBody(unit)))
+        const text = JSON.stringify(next.units.map(unit => rawBody(unit, first)))
         expect(text).not.toContain(`entry-${removedU}`)
         expect(text).not.toContain(`chat-${removedU}`)
         const keptU = first.index.entities.get(`${String(kept.chaId)}#0`) as string
@@ -187,7 +189,7 @@ describe('unknown fields of the format objects the codec writes are carried from
     test('without parsed previous objects nothing is carried', () => {
         const next = encodeWith(base, { env: seededEnv(2), previous: { units: previousFrom(first).units, entities: first.index.entities } })
         expect((next.manifest as unknown as Obj)[MARK]).toBeUndefined()
-        expect(JSON.stringify(next.units.map(unit => rawBody(unit)))).not.toContain(MARK)
+        expect(JSON.stringify(next.units.map(unit => rawBody(unit, first)))).not.toContain(MARK)
     })
 })
 
@@ -196,9 +198,9 @@ function cloneDb(db: Database): Obj {
 }
 
 /** The chat entries of every character of `tree`, by character `chaId`, in order. */
-function chatEntriesByChaId(tree: EncodedTree): Map<string, ChatEntry[]> {
+function chatEntriesByChaId(tree: EncodedTree, ...earlier: EncodedTree[]): Map<string, ChatEntry[]> {
     const byChaId = new Map<string, ChatEntry[]>()
-    for (const shard of shardBodies(tree)) {
+    for (const shard of shardBodies(tree, ...earlier)) {
         for (const entry of shard.entries) {
             byChaId.set(entry.chaId, entry.chats)
         }
@@ -228,7 +230,7 @@ describe('entries carry by entity identity, whatever the shard count of the prev
             env: seededEnv(2),
             previous: { ...previousFrom(first), objects: { shards: wide } },
         })
-        const shards = shardBodies(next)
+        const shards = shardBodies(next, first)
         expect(shards).toHaveLength(16)
         const carried = shards.flatMap(shard => shard.entries)
         expect(carried).toHaveLength(12)
@@ -278,7 +280,7 @@ describe('a chat or module entry carries only when its handle is a unique, non-e
         expect(chatEntriesByChaId(tree).get(chaId)?.map(chat => chat.cid)).toEqual(['~0', '~1'])
         ;(firstCharacter(raw).chats as Obj[]).shift()
         const next = encodeWith(asDatabase(raw), { env: seededEnv(2), previous })
-        const survivors = chatEntriesByChaId(next).get(chaId) as ChatEntry[]
+        const survivors = chatEntriesByChaId(next, tree).get(chaId) as ChatEntry[]
         expect(survivors).toHaveLength(1)
         expect((survivors[0] as unknown as Obj)[MARK]).toBeUndefined()
     })
@@ -290,7 +292,7 @@ describe('a chat or module entry carries only when its handle is a unique, non-e
         }
         const modules = raw.modules as Obj[]
         modules[0].id = '~mod'
-        const { previous } = marked(asDatabase(raw))
+        const { tree: prior, previous } = marked(asDatabase(raw))
         // The previous encoding holds the id-less chats as `~0` and `~1` with a field; the new first chat has the real id `~0`.
         const current = cloneDb(buildSmall(2))
         const nowChats = firstCharacter(current).chats as Obj[]
@@ -299,7 +301,7 @@ describe('a chat or module entry carries only when its handle is a unique, non-e
         const nowModules = current.modules as Obj[]
         nowModules[0].id = '~mod'
         const next = encodeWith(asDatabase(current), { env: seededEnv(2), previous })
-        const survivors = chatEntriesByChaId(next).get(String(firstCharacter(current).chaId)) as ChatEntry[]
+        const survivors = chatEntriesByChaId(next, prior).get(String(firstCharacter(current).chaId)) as ChatEntry[]
         expect(survivors.map(chat => chat.cid)).toEqual(['~0'])
         expect((survivors[0] as unknown as Obj)[MARK]).toBeUndefined()
         const entries = (bodyOf(unitOf(next, 'moduleIndex')) as unknown as ModuleIndex).entries
@@ -310,9 +312,9 @@ describe('a chat or module entry carries only when its handle is a unique, non-e
         const raw = cloneDb(buildSmall(2))
         const chats = firstCharacter(raw).chats as Obj[]
         chats[1].id = chats[0].id
-        const { previous } = marked(asDatabase(raw))
+        const { tree: prior, previous } = marked(asDatabase(raw))
         const next = encodeWith(asDatabase(raw), { env: seededEnv(2), previous })
-        for (const chat of chatEntriesByChaId(next).get(String(firstCharacter(raw).chaId)) as ChatEntry[]) {
+        for (const chat of chatEntriesByChaId(next, prior).get(String(firstCharacter(raw).chaId)) as ChatEntry[]) {
             expect((chat as unknown as Obj)[MARK]).toBeUndefined()
         }
     })
@@ -321,10 +323,10 @@ describe('a chat or module entry carries only when its handle is a unique, non-e
         const raw = cloneDb(buildSmall(2))
         const chats = firstCharacter(raw).chats as Obj[]
         const survivorId = String(chats[1].id)
-        const { previous } = marked(asDatabase(raw))
+        const { tree: prior, previous } = marked(asDatabase(raw))
         chats.shift()
         const next = encodeWith(asDatabase(raw), { env: seededEnv(2), previous })
-        const survivors = chatEntriesByChaId(next).get(String(firstCharacter(raw).chaId)) as ChatEntry[]
+        const survivors = chatEntriesByChaId(next, prior).get(String(firstCharacter(raw).chaId)) as ChatEntry[]
         expect(survivors.map(chat => chat.cid)).toEqual([survivorId])
         expect((survivors[0] as unknown as Obj)[MARK]).toBe(`was-${survivorId}`)
     })

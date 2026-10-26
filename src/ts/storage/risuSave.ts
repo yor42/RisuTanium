@@ -6,6 +6,7 @@ import { createYieldBudget } from "./saveYield"
 import { getAppStore } from "./store/appStore"
 import { characterIdProblem, isCharacterEntry, isUsableCharacterId } from "./characterIds"
 import { SaveParkError } from "./saveHold"
+import { assertNoModuleStubs } from "./moduleStub"
 
 const packr = new Packr({
     useRecords:false
@@ -165,6 +166,7 @@ function releasePackrBuffer(){
 }
 
 export function encodeRisuSaveLegacy(data:any, compression:'noCompression'|'compression' = 'noCompression'){
+    assertNoModuleStubs(data?.modules, 'encodeRisuSaveLegacy')
     try{
         let encoded:Uint8Array = packr.encode(data)
         if(compression === 'compression'){
@@ -188,6 +190,7 @@ export function encodeRisuSaveLegacy(data:any, compression:'noCompression'|'comp
 }
 
 export async function encodeRisuSaveCompressionStream(data:any) {
+    assertNoModuleStubs(data?.modules, 'encodeRisuSaveCompressionStream')
     await checkCompressionStreams()
     try{
         let encoded:Uint8Array = packr.encode(data)
@@ -204,6 +207,192 @@ export async function encodeRisuSaveCompressionStream(data:any) {
     finally{
         releasePackrBuffer()
     }
+}
+
+/** msgpackr writes every plain object as a map 16 (`0xde` + u16 key count), so a root of this many keys or more is not split. */
+const PARTS_MAP16_KEY_LIMIT = 0x10000
+
+/** The map header msgpackr writes for a plain object of `count` keys (`count` below `PARTS_MAP16_KEY_LIMIT`). */
+function msgpackMapHeader(count:number):Uint8Array{
+    return Uint8Array.of(0xde, count >> 8, count & 0xff)
+}
+
+/** The array header msgpackr writes for `length` elements: fixarray below 16, array 16 below 65536, array 32 at 65536 or more. */
+function msgpackArrayHeader(length:number):Uint8Array{
+    if(length < 0x10){
+        return Uint8Array.of(0x90 | length)
+    }
+    if(length < 0x10000){
+        return Uint8Array.of(0xdc, length >> 8, length & 0xff)
+    }
+    return Uint8Array.of(0xdd, length >>> 24, (length >> 16) & 0xff, (length >> 8) & 0xff, length & 0xff)
+}
+
+/**
+ * Whether msgpackr writes `data` as a map of its `for...in` keys: it takes that path only when `data.constructor` is
+ * `Object` (so an object inheriting `Object` through a prototype counts, and an own or inherited `constructor` key
+ * that is not `Object`, a class instance, a Map, an Array or a null-prototype object does not).
+ */
+function isMsgpackPlainObjectRoot(data:object):boolean{
+    return !!data && (data as { constructor?: unknown }).constructor === Object
+}
+
+function* generateRisuSaveParts(data:object):Generator<Uint8Array, void, undefined>{
+    try{
+        const keys:string[] = []
+        const splittable = isMsgpackPlainObjectRoot(data)
+        if(splittable){
+            for(const key in data){
+                keys.push(key)
+            }
+        }
+        if(!splittable || keys.length >= PARTS_MAP16_KEY_LIMIT){
+            yield packr.encode(data)
+            return
+        }
+        yield msgpackMapHeader(keys.length)
+        // The keys were listed above and every value is read once, here, so the caller must not change the tree between
+        // pieces.
+        const root = data as Record<string, unknown>
+        for(const key of keys){
+            yield packr.encode(key)
+            const value = root[key]
+            if(Array.isArray(value)){
+                const length = value.length
+                yield msgpackArrayHeader(length)
+                for(let i = 0; i < length; i++){
+                    yield packr.encode(value[i])
+                }
+            }
+            else{
+                yield packr.encode(value)
+            }
+        }
+    }
+    finally{
+        releasePackrBuffer()
+    }
+}
+
+/**
+ * The msgpack of `data` as pieces whose concatenation equals `packr.encode(data)` byte for byte, so a consumer can
+ * compress an export without holding the whole encoding. A piece may be a view of the packr's buffer, valid until the
+ * next piece is requested; the buffer is released when the generator ends or is abandoned with `return()`.
+ *
+ * `data` is typed `object` because the root is any value `packr.encode` accepts as a tree (a plain object normally; a
+ * Map, an Array or a class instance falls back to one whole encode) while a primitive root is not a save.
+ *
+ * Plain function, not a generator, so checks added here (the module stub refusal) run at the call and not at the first
+ * `next()`.
+ */
+export function encodeRisuSaveParts(data:object):Generator<Uint8Array, void, undefined>{
+    // Reads `modules` as a property, like the other encoders: what a Map root or a `toJSON` root encodes is not checked.
+    assertNoModuleStubs((data as { modules?: unknown }).modules, 'encodeRisuSaveParts')
+    return generateRisuSaveParts(data)
+}
+
+/** The uncompressed msgpack size at which the gzip trailer's 32-bit ISIZE field wraps; an export this large fails, as `packr.encode` does at 4 GiB. */
+const GZIP_SINK_UNCOMPRESSED_LIMIT = 2 ** 32
+
+/** Largest slice handed to fflate in one push. fflate grows its internal input buffer only when the pushed chunk plus the bytes already buffered exceeds 163840, and keeps that size until the final push; slices of at most 65536 bytes keep it from ever growing. */
+const GZIP_SINK_SLICE_BYTES = 65536
+
+/** Compressed output is gathered into blocks of this many bytes (the last may be smaller), so a writer receives few large pieces. */
+const GZIP_SINK_BLOCK_BYTES = 1024 * 1024
+
+/**
+ * The compressed `database.risudat` data as pieces to write in order, `pieces[0]` being the 11-byte header. `length` is
+ * the sum of the piece lengths, the value the entry's length field holds.
+ */
+export type StreamedRisuSave = {
+    length: number
+    pieces: Uint8Array[]
+}
+
+export interface RisuSaveGzipSink {
+    push(piece: Uint8Array): void
+    finish(): StreamedRisuSave
+}
+
+/**
+ * A sink that compresses msgpack pieces into one gzip member and holds only the compressed output. `push` reads a piece
+ * before returning, so a piece that is a view of the packr's buffer may be overwritten right after. `finish` makes the
+ * final push and returns the header piece followed by the compressed blocks, none of which the sink writes to again.
+ * Compressed bytes come out of fflate as a fresh array per call, so they are copied once, into the block being gathered.
+ *
+ * Contract of the producer: it owns the consistency of the tree it is reading between pushes (a producer that awaits
+ * must re-establish what `encodeDatabaseWithLateColdStorage` relies on), and it owns the refusal to encode a tree that
+ * holds a module stub (`encodeRisuSaveStreamed` gets it from the parts encoder's wrapper; any other producer must do the
+ * same before its first push). The sink checks only the size.
+ *
+ * `limit` is a parameter so a test can reach the oversize error with a small input; callers use the default.
+ */
+export function createRisuSaveGzipSink(limit: number = GZIP_SINK_UNCOMPRESSED_LIMIT): RisuSaveGzipSink {
+    const blocks: Uint8Array[] = []
+    let staging = new Uint8Array(GZIP_SINK_BLOCK_BYTES)
+    let used = 0
+    let total = 0
+    let finished = false
+    const gzip = new fflate.Gzip({ mtime: 0 }, (chunk) => {
+        let offset = 0
+        while(offset < chunk.length){
+            const take = Math.min(chunk.length - offset, staging.length - used)
+            staging.set(chunk.subarray(offset, offset + take), used)
+            used += take
+            offset += take
+            if(used === staging.length){
+                // A full block leaves the sink here; the next bytes go to a new buffer.
+                blocks.push(staging)
+                staging = new Uint8Array(GZIP_SINK_BLOCK_BYTES)
+                used = 0
+            }
+        }
+    })
+    return {
+        push(piece){
+            if(finished){
+                throw new Error('database.risudat sink already finished')
+            }
+            total += piece.length
+            if(total >= limit){
+                throw new Error(`The database (database.risudat) is too large to export: its uncompressed size reaches the limit of ${limit} bytes.`)
+            }
+            for(let offset = 0; offset < piece.length; offset += GZIP_SINK_SLICE_BYTES){
+                gzip.push(piece.subarray(offset, offset + GZIP_SINK_SLICE_BYTES))
+            }
+        },
+        finish(){
+            if(finished){
+                throw new Error('database.risudat sink already finished')
+            }
+            finished = true
+            gzip.push(new Uint8Array(0), true)
+            if(used > 0){
+                blocks.push(staging.slice(0, used))
+            }
+            // A fresh copy, so no piece handed out aliases the module constant.
+            const pieces = [Uint8Array.from(magicCompressedHeader), ...blocks]
+            let length = 0
+            for(const piece of pieces){
+                length += piece.length
+            }
+            return { length, pieces }
+        },
+    }
+}
+
+/**
+ * `encodeRisuSaveLegacy(data, 'compression')` as pieces: the parts encoder's msgpack goes through one gzip member
+ * without being held whole, and only the compressed output is kept. Synchronous, so the tree cannot change between
+ * pieces. The inflated bytes equal the legacy encoding's; the compressed bytes may differ.
+ */
+export function encodeRisuSaveStreamed(data: object): StreamedRisuSave {
+    const parts = encodeRisuSaveParts(data)
+    const sink = createRisuSaveGzipSink()
+    for(const piece of parts){
+        sink.push(piece)
+    }
+    return sink.finish()
 }
 
 export type toSaveType = {
@@ -473,6 +662,7 @@ export class RisuSaveEncoder {
         if(!Array.isArray(data.characters)){
             throw new SaveParkError('container-not-list', 'characters');
         }
+        assertNoModuleStubs(data.modules, 'RisuSaveEncoder.init');
         const presetText = listContainerText(data.botPresets, 'botPresets', report.repairedContainers, false);
         const modulesText = listContainerText(data.modules, 'modules', report.repairedContainers, true);
         const loadoutsText = listContainerText(data.loadouts, 'loadouts', report.repairedContainers, true);
@@ -645,6 +835,9 @@ export class RisuSaveEncoder {
     }
 
     async set(data:Database, toSave:toSaveType){
+        // Before any holder snapshot or block change, and whether or not the modules block is marked: a refusal
+        // leaves the layout and the marks untouched, and an unmarked pass cannot skip past a stub another pass would write.
+        assertNoModuleStubs(data.modules, 'RisuSaveEncoder.set');
         let obj:Record<any,any> = {}
         let keys = Object.keys(data)
         for(const key of keys){

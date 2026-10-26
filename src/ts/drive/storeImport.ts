@@ -363,13 +363,15 @@ export async function decodeNumberedBackup(bytes: Uint8Array): Promise<DecodedBa
 
 /**
  * Announces a large amount of saved data before it is decoded: for a `.bin` import the database entry plus the
- * estimated unit entries, for a numbered backup restore the database bytes. False when the person declines.
+ * estimated unit entries, for a numbered backup restore the database bytes. `copiesFiles` says the path copies the
+ * backup's files into the store before its commit, as a `.bin` import does and a numbered backup restore does not.
+ * False when the person declines.
  */
-export async function confirmDatabaseSize(byteLength: number, threshold: number = IMPORT_SIZE_WARNING_BYTES): Promise<boolean> {
+export async function confirmDatabaseSize(byteLength: number, copiesFiles: boolean, threshold: number = IMPORT_SIZE_WARNING_BYTES): Promise<boolean> {
     if (byteLength <= threshold) {
         return true
     }
-    return await alertConfirm(language.store2ImportSizeWarning(Math.ceil(byteLength / 1_000_000)))
+    return await alertConfirm(language.store2ImportSizeWarning(Math.ceil(byteLength / 1_000_000), copiesFiles))
 }
 
 /**
@@ -395,7 +397,7 @@ export async function confirmImportScale(fileSize: number, entries: number, data
     const assetBytes = importAssetBytes(fileSize, databaseBytes)
     const savedDataBytes = importSavedDataSizeBytes(databaseBytes, unitBytes)
     if (transportKind() !== 'android') {
-        return await confirmDatabaseSize(savedDataBytes)
+        return await confirmDatabaseSize(savedDataBytes, true)
     }
     const neededBytes = importFreeSpaceBytes(assetBytes)
     const freeBytes = await readAppDataFreeBytes()
@@ -404,7 +406,7 @@ export async function confirmImportScale(fileSize: number, entries: number, data
     const databaseMegabytes = savedDataBytes > IMPORT_SIZE_WARNING_BYTES ? Math.ceil(savedDataBytes / 1_000_000) : null
     if (assetBytes <= IMPORT_TIME_WARNING_BYTES) {
         if (verdict !== 'short' || freeGigabytes === null) {
-            return await confirmDatabaseSize(savedDataBytes)
+            return await confirmDatabaseSize(savedDataBytes, true)
         }
         return await alertConfirm(language.store2ImportSpaceWarning(importGigabytesText(neededBytes), freeGigabytes, databaseMegabytes))
     }

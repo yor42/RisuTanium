@@ -4,35 +4,11 @@
  * transport selected (`write_chunk`), on the chunk command and file system
  * stand-ins: the concurrent unit writes of `commitOrdinary` and the flush gate in
  * front of the commit key as they reach the transport that a phone uses. A pass
- * is not evidence about the Rust commands or the native bridge.
+ * is not evidence about the Rust commands or the native bridge. The stand-ins are shared through `androidTauriWorld`.
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-const h = await vi.hoisted(async () => {
-    const fs = (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true })
-    const chunk = (await import('src/ts/storage/tests/tauriChunkFake')).createChunkedInvoke(fs)
-    const paths = (await import('src/ts/storage/tests/tauriPathFake')).createFakeTauriPaths()
-    /** Every `write_chunk` as it starts and settles, with the most in flight at once; `before` can hold a write by key. */
-    const writes: { events: string[], inflight: number, peak: number, before: ((key: string) => Promise<void> | undefined) | undefined } = { events: [], inflight: 0, peak: 0, before: undefined }
-    async function invoke(command: string, args?: unknown): Promise<unknown> {
-        // The store2 top-level keys go through the gated chunk command; it is held and ordered like `write_chunk`.
-        if (command !== 'write_chunk' && command !== 'store2_write_top_chunk') {
-            return chunk.invoke(command, args)
-        }
-        const key = String((args as { key: string }).key)
-        writes.events.push(`start ${key}`)
-        writes.inflight++
-        writes.peak = Math.max(writes.peak, writes.inflight)
-        try {
-            await writes.before?.(key)
-            return await chunk.invoke(command, args)
-        } finally {
-            writes.inflight--
-            writes.events.push(`end ${key}`)
-        }
-    }
-    return { fs, chunk, paths, writes, invoke }
-})
+const h = await vi.hoisted(async () => (await import('src/ts/storage/tests/store2/androidTauriWorld')).createAndroidTauriWorld())
 
 vi.mock('@tauri-apps/plugin-fs', () => h.fs.module)
 vi.mock('@tauri-apps/api/path', () => h.paths.pathModule)
@@ -54,14 +30,7 @@ async function open(): Promise<Store2Backend> {
 
 describe('tauri backend, android transport', () => {
     beforeEach(() => {
-        h.fs.reset()
-        h.chunk.reset()
-        h.paths.reset()
-        h.chunk.reportFlushes()
-        h.writes.events.length = 0
-        h.writes.inflight = 0
-        h.writes.peak = 0
-        h.writes.before = undefined
+        h.reset()
     })
 
     test('unit writes overlap, at most four are in flight, and the commit key is written last after every unit write has ended', async () => {

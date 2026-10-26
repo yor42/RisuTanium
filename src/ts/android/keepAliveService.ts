@@ -34,13 +34,19 @@ declare global {
 /**
  * How long the service outlives the last work. Short gaps between units of
  * work (auto mode, a reply followed by speech) keep one service and one
- * notification instead of flapping.
+ * notification instead of flapping. The linger also gives a hidden reply's
+ * save time to land before the process loses its foreground status; the
+ * notice reads "Finishing up…" without a Stop action meanwhile.
  */
-export const KEEP_ALIVE_LINGER_MS = 2000
+export const KEEP_ALIVE_LINGER_MS = 10000
 
 export interface KeepAliveLabels {
     generating: string
     working: string
+    /** Shown while the service lingers after the last work, with no Stop action. */
+    finishing: string
+    /** Shown while only a hidden reply's save is pending, with no Stop action. */
+    savePending: string
     stop: string
 }
 
@@ -75,7 +81,15 @@ function callHost<K extends keyof KeepAliveHost>(host: Partial<KeepAliveHost>, m
     }
 }
 
+/** True when a pending hidden-reply save is the only work in flight. */
+function onlySavePending(kinds: InFlightKind[]): boolean {
+    return kinds.length > 0 && kinds.every((kind) => kind === 'save')
+}
+
 function noticeFor(kinds: InFlightKind[], labels: KeepAliveLabels): Notice {
+    if (onlySavePending(kinds)) {
+        return { title: labels.savePending, stopLabel: '' }
+    }
     const chat = kinds.includes('chat')
     const stoppable = chat || kinds.includes('tts')
     return {
@@ -111,13 +125,19 @@ export function createKeepAliveConsumer(deps: KeepAliveDeps): KeepAliveConsumer 
             if (!running) {
                 return
             }
+            const finishing: Notice = { title: deps.labels().finishing, stopLabel: '' }
             if (typeof host.stopAfter === 'function') {
                 // The host owns the linger: a hidden page's timers are throttled, the host's are not.
                 // The service counts as stopped here; a later begin calls start, which cancels the pending stop.
+                // The notice changes first: the host's update cancels a pending stop, so stopAfter must come after it.
                 running = false
                 shown = null
+                callHost(host, 'update', finishing.title, finishing.stopLabel)
                 callHost(host, 'stopAfter', lingerMs)
             } else if (lingerTimer === null) {
+                // The service stays running, so `shown` must track the notice for the next begin to replace it.
+                shown = finishing
+                callHost(host, 'update', finishing.title, finishing.stopLabel)
                 lingerTimer = setTimeout(stopService, lingerMs)
             }
             return
@@ -144,6 +164,10 @@ export function createKeepAliveConsumer(deps: KeepAliveDeps): KeepAliveConsumer 
         const kinds = deps.kinds()
         if (kinds.includes('chat') || kinds.includes('tts')) {
             deps.stopWork()
+            return
+        }
+        if (onlySavePending(kinds)) {
+            // No Stop action is shown for a pending save, so a tap here is stale; stopping would drop the save's protection.
             return
         }
         stopService()
@@ -198,6 +222,8 @@ export function startKeepAliveService(): KeepAliveConsumer | null {
         labels: () => ({
             generating: language.keepAliveGenerating,
             working: language.keepAliveWorking,
+            finishing: language.keepAliveFinishing,
+            savePending: language.keepAliveSavePending,
             stop: language.keepAliveStop,
         }),
         stopWork: () => {

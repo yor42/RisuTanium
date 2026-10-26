@@ -2012,6 +2012,8 @@ export const languageSpanish = {
     "keepAliveGenerating": "Generando una respuesta…",
     "keepAliveWorking": "Trabajando…",
     "keepAliveStop": "Detener",
+    "keepAliveFinishing": "Finalizando…",
+    "keepAliveSavePending": "Respuesta lista. Abre la app para terminar de guardar.",
     "messageInterrupted": "Interrumpido — la respuesta puede estar incompleta",
     "nanoGPTLoadingAccountInfo": "Cargando información de la cuenta…",
     "nanoGPTCreditBalance": "Saldo de crédito:",
@@ -2104,6 +2106,7 @@ export const languageSpanish = {
     assetIntegrityReportNotCached: (n: number) => `- Aún no está en caché (normal, no es un problema): ${n}\n`,
     assetIntegrityReportNotContentAddressed: (n: number) => `- No direccionado por contenido (no se puede verificar de esta forma): ${n}\n`,
     assetIntegrityReportArchivedNotChecked: (characterNames: string) => `- Personajes archivados cuyos activos no se comprobaron (no se pudieron cargar sus datos): ${characterNames}\n`,
+    assetIntegrityReportModulesNotChecked: (moduleNames: string) => `- Módulos cuyos activos no se comprobaron (no están cargados): ${moduleNames}\n`,
     assetIntegrityReportMismatchCount: (n: number) => `- **Discrepancias encontradas: ${n}**\n`,
     assetIntegrityReportEvicted: (n: number) => `\nSe eliminaron ${n} entradas de caché dañadas. Recarga la aplicación para que la corrección surta efecto.`,
     assetIntegrityReportLeftInCache: "\nSe dejaron en la caché, tal como solicitaste.",
@@ -2251,12 +2254,12 @@ export const languageSpanish = {
     store2RestoreNotFlushed: "La versión anterior se restauró, pero el dispositivo no confirmó que se escribiera en el disco. La aplicación se recarga ahora y termina de escribirla al iniciarse.",
     store2RestoreDone: "La versión anterior se restauró. La versión que tenías antes se conserva en la lista. Actualizando la aplicación.",
     store2RestoreOldRow: (when: string) => `Antigua: ${when}`,
-    store2ImportSizeWarning: (megabytes: number) =>
-        `Los datos de este respaldo, sin contar las imágenes y otros archivos, ocupan unos ${megabytes} MB. Leerlos requiere varias veces esa cantidad de memoria, por lo que un teléfono u otro dispositivo pequeño puede quedarse sin memoria y detenerse. Tus datos guardados no cambian hasta que termine la importación. ¿Continuar?`,
+    store2ImportSizeWarning: (megabytes: number, copiesFiles = false) =>
+        `Los datos de este respaldo, sin contar las imágenes y otros archivos, ocupan unos ${megabytes} MB. Leerlos requiere varias veces esa cantidad de memoria, por lo que un teléfono u otro dispositivo pequeño puede quedarse sin memoria y detenerse. Tus datos guardados no se reemplazan hasta que termine la importación.${copiesFiles ? ' Las imágenes y otros archivos del respaldo se copian antes y reemplazan cualquier archivo guardado con el mismo nombre.' : ''} ¿Continuar?`,
     store2ImportTimeWarning: (entries: number, minutes: number, neededGigabytes: number, databaseMegabytes: number | null, freeGigabytes: number | null = null, short = false) =>
-        `Este respaldo contiene ${entries} archivos. A partir de ahora, importarlo en este teléfono puede tardar unos ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} horas` : `${minutes} minutos`}, o más. Es una estimación basada en un teléfono de gama media; el tuyo puede ser más rápido o más lento, y un teléfono de gama baja puede ser mucho más lento. Mantén la aplicación abierta hasta que termine.\n\nLa importación necesita unos ${neededGigabytes} GB de espacio libre en este teléfono. ${freeGigabytes === null ? 'La aplicación no puede comprobar cuánto hay libre.' : short ? `Solo hay unos ${freeGigabytes} GB libres, y si el teléfono se queda sin espacio, la importación se detiene.` : `Hay unos ${freeGigabytes} GB libres.`} ${databaseMegabytes === null ? '' : `Los datos de este respaldo, sin contar las imágenes y otros archivos, ocupan unos ${databaseMegabytes} MB. Leerlos requiere varias veces esa cantidad de memoria, por lo que un teléfono puede quedarse sin memoria y detenerse. `}Aún puede aparecer una pregunta al final, después de copiar los archivos. Tus datos guardados no cambian hasta que termine la importación. ¿Continuar?`,
+        `Este respaldo contiene ${entries} archivos. A partir de ahora, importarlo en este teléfono puede tardar unos ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} horas` : `${minutes} minutos`}, o más. Es una estimación basada en un teléfono de gama media; el tuyo puede ser más rápido o más lento, y un teléfono de gama baja puede ser mucho más lento. Mantén la aplicación abierta hasta que termine.\n\nLa importación necesita unos ${neededGigabytes} GB de espacio libre en este teléfono. ${freeGigabytes === null ? 'La aplicación no puede comprobar cuánto hay libre.' : short ? `Solo hay unos ${freeGigabytes} GB libres, y si el teléfono se queda sin espacio, la importación se detiene.` : `Hay unos ${freeGigabytes} GB libres.`} ${databaseMegabytes === null ? '' : `Los datos de este respaldo, sin contar las imágenes y otros archivos, ocupan unos ${databaseMegabytes} MB. Leerlos requiere varias veces esa cantidad de memoria, por lo que un teléfono puede quedarse sin memoria y detenerse. `}Aún puede aparecer una pregunta al final, después de copiar los archivos. Tus datos guardados no se reemplazan hasta que termine la importación. Las imágenes y otros archivos del respaldo se copian antes y reemplazan cualquier archivo guardado con el mismo nombre. ¿Continuar?`,
     store2ImportSpaceWarning: (neededGigabytes: number, freeGigabytes: number, databaseMegabytes: number | null) =>
-        `La importación necesita unos ${neededGigabytes} GB de espacio libre en este teléfono, pero solo hay unos ${freeGigabytes} GB libres. Si el teléfono se queda sin espacio, la importación se detiene. ${databaseMegabytes === null ? '' : `Los datos de este respaldo, sin contar las imágenes y otros archivos, ocupan unos ${databaseMegabytes} MB. Leerlos requiere varias veces esa cantidad de memoria, por lo que un teléfono puede quedarse sin memoria y detenerse. `}Tus datos guardados no cambian hasta que termine la importación. ¿Continuar?`,
+        `La importación necesita unos ${neededGigabytes} GB de espacio libre en este teléfono, pero solo hay unos ${freeGigabytes} GB libres. Si el teléfono se queda sin espacio, la importación se detiene. ${databaseMegabytes === null ? '' : `Los datos de este respaldo, sin contar las imágenes y otros archivos, ocupan unos ${databaseMegabytes} MB. Leerlos requiere varias veces esa cantidad de memoria, por lo que un teléfono puede quedarse sin memoria y detenerse. `}Tus datos guardados no se reemplazan hasta que termine la importación. Las imágenes y otros archivos del respaldo se copian antes y reemplazan cualquier archivo guardado con el mismo nombre. ¿Continuar?`,
     store2ImportIncompleteConfirm: (items: string) =>
         `Algunos de los datos de este respaldo no se pudieron traer por completo:\n\n${items}\n\nEsas partes quedarán vacías o faltarán después de la importación. Los datos que tienes ahora se conservan en la lista de versiones guardadas anteriores. ¿Importar de todos modos?`,
     store2ImportReadFailed: "No se pudo leer una parte del respaldo, o de tus datos guardados, por lo que no se importó nada. Tus datos actuales no se cambiaron.",
@@ -2299,6 +2302,7 @@ export const languageSpanish = {
     moduleLowLevelNamed: (name: string, file?: string) => file ? `Módulo "${name}" (${file})` : `Módulo "${name}"`,
     importModulesDone: (imported: number, skipped: number) => skipped > 0 ? `Se ${imported === 1 ? 'importó' : 'importaron'} ${imported} ${imported === 1 ? 'módulo' : 'módulos'}; omitidos: ${skipped}.` : `Se ${imported === 1 ? 'importó' : 'importaron'} ${imported} ${imported === 1 ? 'módulo' : 'módulos'}.`,
     moduleUnsupportedFile: (name: string) => `${name}: este tipo de archivo no es compatible como módulo.`,
+    moduleLoadFailed: (name: string) => `No se pudo cargar el módulo "${name}", por lo que no se hizo nada con él.`,
     moduleDuplicatePrompt: (name: string, file: string) => `Ya hay instalado un módulo llamado "${name}" (${file}). ¿Qué debe hacerse con este archivo?`,
     moduleDuplicateReplace: "Reemplazar",
     moduleDuplicateSkip: "Omitir",
@@ -2773,7 +2777,8 @@ export const languageSpanish = {
         peerAutoExportSaved: "Los cambios de esta pestaña también se exportaron automáticamente: el archivo, sin otras imágenes, recursos ni inlays, se pasó a tu navegador. Comprueba que la descarga haya llegado y haya terminado antes de pulsar Recargar. Los cambios hechos después de la exportación no están incluidos.",
         peerAutoExportNotFinished: "La exportación automática no terminó. Usa “Exportar primero esta pestaña y luego recargar”.",
         peerNoSaveReplaced: "Después de que tus datos guardados se cambiaran fuera de esta pestaña, la versión de esta pestaña no se puede guardar encima.",
-        peerNoSaveUnloaded: "Esta pestaña no mantiene todos los personajes en memoria, por lo que su versión no puede reemplazar el cambio de la otra pestaña.",
+        peerNoSaveBlocked: "“Guardar los míos” no está disponible: estos elementos no están cargados o no se pueden guardar en esta pestaña: {names}",
+        peerNoSaveBlockedCount: "“Guardar los míos” no está disponible: elementos que no están cargados o no se pueden guardar en esta pestaña ({count}).",
         peerReloadOnly: "Recargar",
         peerKeepReading: "Seguir leyendo (esta pestaña no puede guardar)",
         peerCleanCommit: "Otra pestaña guardó cambios en tus datos. Recarga para verlos. No hay nada sin guardar en esta pestaña.",

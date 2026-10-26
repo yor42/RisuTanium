@@ -32,6 +32,8 @@
  * - `read_range` answers the piece followed by the 56-byte trailer (size, then
  *   six identity words, little-endian u64) as an `ArrayBuffer`, and rejects a
  *   missing file with a message that ends in `(os error 2)`.
+ * - `read_range_text` is `read_range` clamped to 64 KiB of piece with the response as
+ *   one base64 string.
  *
  * `app_fs_exists`, `app_fs_mkdir_all`, `app_fs_remove` and `app_data_dir_path`
  * mirror `src-tauri/src/app_fs.rs`: the key rule of `appFsKey`, a missing path
@@ -85,6 +87,8 @@ export interface RangeHooks {
 }
 
 export const TRAILER_BYTES = 56
+/** `TEXT_RANGE_MAX_BYTES` of `chunked_io.rs`. */
+const TEXT_RANGE_MAX_BYTES = 64 * 1024
 const WRITE_ID = /^[0-9a-f]{16}$/
 
 export function createChunkedInvoke(fs: FakeTauriFs) {
@@ -426,6 +430,11 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
                 return abortChunked(named)
             case 'read_range':
                 return readRange(named)
+            case 'read_range_text': {
+                // As `read_range_text` in lib.rs: the same response, clamped to the text cap, as one base64 string.
+                const piece = readRange({ ...named, len: Math.min(numberArg(named, 'len'), TEXT_RANGE_MAX_BYTES) })
+                return Buffer.from(piece).toString('base64')
+            }
             default:
                 return undefined
         }

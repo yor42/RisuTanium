@@ -35,7 +35,7 @@ import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
 import { language } from "src/lang";
 import { startObserveDom } from "./observer.svelte";
 import { updateGuisize } from "./gui/guisize";
-import { updateLorebooks } from "./characters";
+import { repairModuleLorebook } from "./process/moduleLorebookRepair";
 import { startCharacterPutBack } from "./process/memory/characterPutBack";
 import { noteBootArchiveSession, noteBootPassCommitted } from "./process/memory/bootArchiveState";
 import { initMobileGesture } from "./hotkey";
@@ -1075,65 +1075,13 @@ async function checkNewFormat(): Promise<void> {
         return v !== null;
     });
 
-    // This loop must run sequentially (not via Promise.all), because the corrupted-lorebook
-    // branch below awaits a sequence of user prompts (alertError/alertConfirm/alertMd), and
-    // RisuAI's alert system (src/ts/alert.ts) has a single global alert slot with no ownership.
-    // If multiple modules are corrupted and processed concurrently, their prompt sequences
-    // interleave on that shared slot: a later module's alert can overwrite an earlier module's
-    // still-pending question, and answering it resolves every pending waiter with that same
-    // answer. That can silently wipe a module's lorebook (v.lorebook = []) for a confirmation
-    // question the user never actually saw. Do not "optimize" this back to Promise.all.
+    // Sequential, one module at a time: the repair may ask the user. Prompts queue, but notices (alertError,
+    // alertMd) replace whatever is showing and waitAlert resolves on any close, and the reset question names no
+    // module, so concurrent repairs would interleave their notices and answers and the user could not tell
+    // which module a reset question is about. Do not "optimize" this back to Promise.all.
     const newModules: typeof db.modules = [];
     for (const v of (db.modules ?? [])) {
-        if (v?.lorebook) {
-            if (!Array.isArray(v.lorebook)) {
-                console.error('Critical: Invalid lorebook format detected in module');
-                console.error('Module data:', JSON.stringify(v, null, 2));
-                
-                // Alert user about corrupted data
-                alertError(language.bootstrap.dataCorruptionDetected(v.name || 'Unknown', typeof v.lorebook));
-                await waitAlert();
-                
-                // Ask if user wants to report the issue
-                const shouldReport = await alertConfirm(language.bootstrap.reportErrorQuestion);
-                
-                if (shouldReport) {
-                    try {
-                        // Collect diagnostic information (without personal data)
-                        const diagnosticInfo = {
-                            timestamp: new Date().toISOString(),
-                            moduleName: v.name || 'Unknown',
-                            lorebookType: typeof v.lorebook,
-                            lorebookValue: JSON.stringify(v.lorebook).substring(0, 500), // First 500 chars only
-                            isArray: Array.isArray(v.lorebook),
-                            keys: v.lorebook ? Object.keys(v.lorebook).join(', ') : 'N/A',
-                            formatVersion: db.formatversion || 'Unknown'
-                        };
-                        
-                        // Show the diagnostic info and allow user to copy or send
-                        const reportData = JSON.stringify(diagnosticInfo, null, 2);
-                        await alertMd(language.bootstrap.diagnosticInformation(reportData));
-                        await waitAlert();
-                        
-                        console.log('Diagnostic information for developers:', diagnosticInfo);
-                    } catch (reportError) {
-                        console.error('Failed to generate diagnostic report:', reportError);
-                    }
-                }
-                
-                // Ask if user wants to reset the data
-                const shouldReset = await alertConfirm(language.bootstrap.resetLorebookQuestion);
-                
-                if (shouldReset) {
-                    v.lorebook = [];
-                    console.log('Lorebook reset to empty array by user choice');
-                } else {
-                    console.warn('User chose to keep corrupted lorebook data');
-                }
-            } else {
-                v.lorebook = updateLorebooks(v.lorebook);
-            }
-        }
+        await repairModuleLorebook(v, { formatVersion: db.formatversion });
         newModules.push(v);
     }
     db.modules = newModules;
@@ -1394,7 +1342,7 @@ async function cleanChunks(options:{
             db.characters.map((v) => v.chaId)
         )
         if (keepSet?.complete === false) {
-            console.log('cleanChunks: cold-storage read was incomplete, skipping the forage asset sweep this run')
+            console.log('cleanChunks: asset keep-set was incomplete (a cold-storage read failed or a module stub is present), skipping the forage asset sweep this run')
         }
         if (keepSet && keepSet.complete !== false) {
             const guards = assetGuards()

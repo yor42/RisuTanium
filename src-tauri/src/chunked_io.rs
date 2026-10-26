@@ -355,6 +355,19 @@ pub fn read_key_range(base: &Path, key: &str, offset: u64, len: u64) -> Result<V
     read_range(&path, offset, len)
 }
 
+/// The most file bytes one text read returns, whatever the caller asked for. The page continues a shorter piece.
+pub const TEXT_RANGE_MAX_BYTES: u64 = 64 * 1024;
+
+/// `read_key_range` with the response (piece, then the 56-byte trailer) as one standard base64 string, for a
+/// page that may be frozen. A `String` reply serialises to a JSON string, which starts with `"`: Tauri delivers
+/// a JSON reply that does not start with `{` or `[`, and every error, by evaluating script in the page, which
+/// a frozen page still runs, while a raw reply of 1 KiB or more needs a fetch that a frozen page never answers.
+/// The error text is the file read's own, so a missing file still ends in `(os error 2)`.
+pub fn read_key_range_text(base: &Path, key: &str, offset: u64, len: u64) -> Result<String, String> {
+    let bytes = read_key_range(base, key, offset, len.min(TEXT_RANGE_MAX_BYTES))?;
+    Ok(general_purpose::STANDARD.encode(bytes))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1110,6 +1123,64 @@ mod tests {
         assert_eq!(response.len(), 2 + TRAILER_BYTES);
         assert_eq!(&response[..2], b"el");
         assert_eq!(&response[2..10], &5u64.to_le_bytes());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_text_read_is_the_base64_of_the_raw_read_trailer_included() {
+        let base = scratch("text-equal");
+        let bytes = patterned(300);
+        fs::write(base.join("f"), &bytes).unwrap();
+        fs::write(base.join("empty"), b"").unwrap();
+
+        for (key, offset, len) in [("f", 0u64, 300u64), ("f", 0, 7), ("f", 100, 50), ("f", 290, 100), ("f", 999, 10), ("empty", 0, 10)] {
+            let raw = read_key_range(&base, key, offset, len).unwrap();
+            let text = read_key_range_text(&base, key, offset, len).unwrap();
+            assert_eq!(general_purpose::STANDARD.decode(&text).unwrap(), raw, "{} {} {}", key, offset, len);
+            assert_eq!(raw.len() - piece(&raw).len(), TRAILER_BYTES);
+        }
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_text_read_never_returns_more_than_the_text_cap() {
+        let base = scratch("text-cap");
+        fs::write(base.join("big"), patterned(TEXT_RANGE_MAX_BYTES as usize + 10)).unwrap();
+
+        let text = read_key_range_text(&base, "big", 0, u64::MAX).unwrap();
+        let decoded = general_purpose::STANDARD.decode(&text).unwrap();
+
+        assert_eq!(piece(&decoded).len() as u64, TEXT_RANGE_MAX_BYTES);
+        assert_eq!(trailer(&decoded)[0], TEXT_RANGE_MAX_BYTES + 10);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn a_text_read_of_a_missing_key_keeps_the_os_error_ending() {
+        let base = scratch("text-missing");
+
+        let error = read_key_range_text(&base, "gone", 0, 10).unwrap_err();
+
+        assert!(error.ends_with("(os error 2)"), "{}", error);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn tauri_delivers_the_text_reply_as_a_json_string_never_an_object_or_array() {
+        use tauri::ipc::{InvokeResponseBody, IpcResponse};
+        let base = scratch("text-body");
+        fs::write(base.join("f"), patterned(5000)).unwrap();
+
+        // Tauri sends a JSON body that starts with `{` or `[` through the channel that a frozen page never
+        // answers, and any other JSON body by script evaluation.
+        let text = read_key_range_text(&base, "f", 0, 5000).unwrap();
+        match IpcResponse::body(text).unwrap() {
+            InvokeResponseBody::Json(json) => {
+                assert!(json.starts_with('"'), "{}", &json[..20.min(json.len())]);
+                assert!(!json.starts_with('{') && !json.starts_with('['));
+            }
+            InvokeResponseBody::Raw(_) => panic!("a String reply must be a JSON body"),
+        }
         fs::remove_dir_all(&base).unwrap();
     }
 }

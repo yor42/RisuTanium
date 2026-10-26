@@ -4,12 +4,23 @@ import { BaseDirectory, readDir, readFile } from '@tauri-apps/plugin-fs'
 import { appDataDirectory, appFsExists, appFsMkdirAll, appFsRemove } from '../appFs'
 import { ATOMIC_TEMP_NAME_PATTERN, writeFileAtomic } from '../tauriAtomicWrite'
 import { CHUNK_MAX, createChunkedWriter, MISSING_FILE_ERROR, readRanged, transportKind } from '../tauriByteTransport'
+import { COMMIT_KEY, FENCE_KEY } from '../store2/format/keys'
 import { isDurableKey, writeFileDurable } from '../tauriDurableWrite'
 import { registerPageGeneration, removeTopKeys, writeTopKey } from '../tauriGateTransport'
 import type { ByteStore, DeleteEntry, PieceWriter, ReadResult, StoreCondition, WriteResult } from './contract'
 import { StoreDeleteManyError, StoreInvalidKeyError, type DeleteReportEntry } from './errors'
 import { checkBytes, checkCondition, checkNoDuplicateKeys, ownBytes } from './guards'
 import { inlayBodyKeyViolation, tauriAddressableViolation, tauriCreatableViolation, type FilePlatform } from './keyRules'
+
+/**
+ * The commit key, which every save pass reads, and the fence, another small top-level store2 key that other
+ * readers (boot, collection, session) read. Only these take the text read while the page is hidden; other keys
+ * can be megabytes and keep `read_range`. A save pass's other reads (the `loadStub` retry in the planner and
+ * `has()` through `readDir`) still use the Raw path or a directory listing and fall back to the S2-A hold.
+ */
+function isFrozenSafeKey(key: string): boolean {
+    return key === COMMIT_KEY || key === FENCE_KEY
+}
 
 /**
  * The byte store on the Tauri app's AppData directory (desktop and Android): one file per key, at
@@ -160,7 +171,7 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
             const path = pluginPath(key)
             try {
                 // Android and desktop read in bounded pieces through the app's own command, which takes the bare key.
-                const bytes = transportKind() === 'other' ? await readFile(path, APP_DATA) : await readRanged(key)
+                const bytes = transportKind() === 'other' ? await readFile(path, APP_DATA) : await readRanged(key, undefined, { frozenSafe: isFrozenSafeKey(key) })
                 return { bytes: ownBytes(bytes), version: null }
             } catch (error) {
                 if (await isAbsent(error, key)) {

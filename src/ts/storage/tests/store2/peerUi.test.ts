@@ -108,7 +108,7 @@ describe('decide: the wording of every reason and every reason save-mine is miss
         // No export is available in these prompts, so the Node wording names no Export button.
         ['node', () => ` ${text().peerNoSaveNode} ${text().peerNodeReloadDropsOnly}`],
         ['replaced', () => ` ${text().peerNoSaveReplaced}`],
-        ['unloaded-characters', () => ` ${text().peerNoSaveUnloaded}`],
+        ['carries', () => ` ${text().peerNoSaveBlockedCount.replace('{count}', '0')}`],
     ] as const
     const offerSets: PeerOffer[][] = [['reload'], ['reload', 'save-mine']]
 
@@ -126,6 +126,80 @@ describe('decide: the wording of every reason and every reason save-mine is miss
             }
         }
     }
+})
+
+describe('decide: the shared Save-mine-unavailable message names what is blocked', () => {
+    /** Asks a Reload-only prompt that carries `blocked`, and returns the sentence after the title. */
+    async function blockedSentence(names: string[], count: number): Promise<string> {
+        const { ui } = newUi()
+        void ui.decide(prompt({ offers: ['reload'], saveMineUnavailable: 'carries', blocked: { names, count } }))
+        await waitForSelect()
+        const { title, labels } = selectParts()
+        // The title holds no `||`: the buttons after it are exactly the offers.
+        expect(labels).toEqual([text().peerReload])
+        const head = `${text().peerCommitTitle} `
+        expect(title.startsWith(head)).toBe(true)
+        return title.substring(head.length)
+    }
+
+    const listed = (list: string) => text().peerNoSaveBlocked.replace('{names}', () => list)
+    const counted = (count: number) => text().peerNoSaveBlockedCount.replace('{count}', String(count))
+
+    test('no names: the sentence carries the count alone', async () => {
+        expect(await blockedSentence([], 3)).toBe(counted(3))
+    })
+
+    test('the count is the plan count, not zero, when the list is empty', async () => {
+        expect(await blockedSentence([], 7)).toBe(counted(7))
+    })
+
+    test('names that clean to nothing leave the count alone', async () => {
+        expect(await blockedSentence([' ', '​'], 2)).toBe(counted(2))
+    })
+
+    test('one name', async () => {
+        expect(await blockedSentence(['Alice'], 1)).toBe(listed('Alice'))
+    })
+
+    test('five names are all shown, with no suffix', async () => {
+        expect(await blockedSentence(['A', 'B', 'C', 'D', 'E'], 5)).toBe(listed('A, B, C, D, E'))
+    })
+
+    test('six names show five and the rest as (+1)', async () => {
+        expect(await blockedSentence(['A', 'B', 'C', 'D', 'E', 'F'], 6)).toBe(listed('A, B, C, D, E (+1)'))
+    })
+
+    test('six names with two empty show four and (+2): the suffix is the count minus the names shown', async () => {
+        expect(await blockedSentence(['A', '', 'B', ' ', 'C', 'D'], 6)).toBe(listed('A, B, C, D (+2)'))
+    })
+
+    test('a count above the names listed is counted in the suffix', async () => {
+        expect(await blockedSentence(['A', 'B'], 9)).toBe(listed('A, B (+7)'))
+    })
+
+    test('a name with || or a run of | never splits the title', async () => {
+        expect(await blockedSentence(['a||b', 'c|||||d'], 2)).toBe(listed('a|b, c|d'))
+    })
+
+    test('a bar at either end of a name goes, so it cannot meet the separator after the title', async () => {
+        expect(await blockedSentence(['x|', '|y|'], 2)).toBe(listed('x, y'))
+    })
+
+    test('newlines and tabs become one space', async () => {
+        expect(await blockedSentence(['line one\r\nline\ttwo'], 1)).toBe(listed('line one line two'))
+    })
+
+    test('control and bidi characters go, and a bar run they separated does not rejoin', async () => {
+        expect(await blockedSentence(['a‮b\u0007c', 'p|​|q'], 2)).toBe(listed('abc, p|q'))
+    })
+
+    test('a long name is cut to 40 characters with an ellipsis', async () => {
+        expect(await blockedSentence(['x'.repeat(200)], 1)).toBe(listed(`${'x'.repeat(39)}…`))
+    })
+
+    test('a name with a replacement pattern is shown literally', async () => {
+        expect(await blockedSentence(['$&', '$1 $$'], 2)).toBe(listed('$&, $1 $$'))
+    })
 })
 
 describe('decide: the answer maps over the displayed offers', () => {

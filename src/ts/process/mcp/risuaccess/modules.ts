@@ -2,6 +2,8 @@ import { language } from 'src/lang'
 import { alertConfirm } from 'src/ts/alert'
 import { DBState } from 'src/ts/stores.svelte'
 import { pickHashRand } from 'src/ts/util'
+import type { RisuModule } from 'src/ts/process/modules'
+import { acquireModule, ModuleAcquireError } from 'src/ts/storage/store2/moduleAcquire'
 import { type MCPTool, MCPToolHandler, type RPCToolCallContent } from '../mcplib'
 
 const moduleNotFound = (id: string): RPCToolCallContent[] => [
@@ -12,6 +14,35 @@ const moduleNotFound = (id: string): RPCToolCallContent[] => [
 ]
 
 export class ModuleHandler extends MCPToolHandler {
+  /**
+   * Runs `run` on the live slot of module `id`, loading the body first when the slot is a module stub. The handle is
+   * released once `run` has finished with the module, and a load failure is the tool's error text, never a throw.
+   */
+  private async withModule(
+    id: string,
+    run: (module: RisuModule) => Promise<RPCToolCallContent[]>,
+  ): Promise<RPCToolCallContent[]> {
+    let acquired: Awaited<ReturnType<typeof acquireModule>>
+    try {
+      acquired = await acquireModule(id)
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      const text = error instanceof ModuleAcquireError
+        ? `Error: ${reason}`
+        : `Error: Module with ID ${id} could not be loaded: ${reason}`
+      return [{ type: 'text', text }]
+    }
+    if (!acquired || acquired.module.mcp) {
+      acquired?.release()
+      return moduleNotFound(id)
+    }
+    try {
+      return await run(acquired.module)
+    } finally {
+      acquired.release()
+    }
+  }
+
   private promptAccess(tool: string, action: string) {
     return alertConfirm(language.mcpAccessPrompt.replace('{{tool}}', tool).replace('{{action}}', action))
   }
@@ -367,163 +398,149 @@ export class ModuleHandler extends MCPToolHandler {
   }
 
   async getModuleInfo(id: string, fields?: string[]): Promise<RPCToolCallContent[]> {
-    const module = DBState.db.modules.find((m) => m.id === id)
+    return this.withModule(id, async (module) => {
 
-    if (!module || module.mcp) {
-      return moduleNotFound(id)
-    }
+      const enabledModules = new Set(DBState.db.enabledModules || [])
+      const defaultFields = ['name', 'description', 'id', 'enabled']
+      const targetFields = fields && fields.length > 0 ? fields : defaultFields
 
-    const enabledModules = new Set(DBState.db.enabledModules || [])
-    const defaultFields = ['name', 'description', 'id', 'enabled']
-    const targetFields = fields && fields.length > 0 ? fields : defaultFields
+      const allowedFields = new Set([
+        'name',
+        'description',
+        'id',
+        'enabled',
+        'lowLevelAccess',
+        'backgroundEmbedding',
+        'customModuleToggle',
+      ])
 
-    const allowedFields = new Set([
-      'name',
-      'description',
-      'id',
-      'enabled',
-      'lowLevelAccess',
-      'backgroundEmbedding',
-      'customModuleToggle',
-    ])
+      const obj: any = {}
+      for (const field of targetFields) {
+        // TODO: Guard against field
+        if (!allowedFields.has(field)) continue
 
-    const obj: any = {}
-    for (const field of targetFields) {
-      // TODO: Guard against field
-      if (!allowedFields.has(field)) continue
-
-      if (field === 'enabled') {
-        obj.enabled = enabledModules.has(module.id)
-      } else {
-        const val = module[field]
-        if (val !== undefined) {
-          obj[field] = val
+        if (field === 'enabled') {
+          obj.enabled = enabledModules.has(module.id)
+        } else {
+          const val = module[field]
+          if (val !== undefined) {
+            obj[field] = val
+          }
         }
       }
-    }
 
-    return [
-      {
-        type: 'text',
-        text: JSON.stringify(obj),
-      },
-    ]
+      return [
+        {
+          type: 'text',
+          text: JSON.stringify(obj),
+        },
+      ]
+    })
   }
 
   async setModuleInfo(id: string, data: any): Promise<RPCToolCallContent[]> {
-    const module = DBState.db.modules.find((m) => m.id === id)
-    if (!module || module.mcp) {
-      return [
-        {
-          type: 'text',
-          text: `Error: Module with ID ${id} not found.`,
-        },
-      ]
-    }
+    return this.withModule(id, async (module) => {
 
-    if (!(await this.promptAccess('risu-set-module-info', `modify module (${module.name}) information`))) {
-      return [
-        {
-          type: 'text',
-          text: 'Access denied by user.',
-        },
-      ]
-    }
-
-    const allowedFields = [
-      'name',
-      'description',
-      'enabled',
-      'lowLevelAccess',
-      'backgroundEmbedding',
-      'customModuleToggle',
-    ]
-
-    for (const [key, value] of Object.entries(data)) {
-      if (!allowedFields.includes(key)) continue
-
-      if (key === 'enabled') {
-        const enabledModules = new Set(DBState.db.enabledModules || [])
-        if (value) {
-          enabledModules.add(id)
-        } else {
-          enabledModules.delete(id)
-        }
-        DBState.db.enabledModules = Array.from(enabledModules)
-      } else {
-        // @ts-ignore
-        module[key] = value
+      if (!(await this.promptAccess('risu-set-module-info', `modify module (${module.name}) information`))) {
+        return [
+          {
+            type: 'text',
+            text: 'Access denied by user.',
+          },
+        ]
       }
-    }
 
-    return [
-      {
-        type: 'text',
-        text: `Successfully updated module ${module.name || id}`,
-      },
-    ]
+      const allowedFields = [
+        'name',
+        'description',
+        'enabled',
+        'lowLevelAccess',
+        'backgroundEmbedding',
+        'customModuleToggle',
+      ]
+
+      for (const [key, value] of Object.entries(data)) {
+        if (!allowedFields.includes(key)) continue
+
+        if (key === 'enabled') {
+          const enabledModules = new Set(DBState.db.enabledModules || [])
+          if (value) {
+            enabledModules.add(id)
+          } else {
+            enabledModules.delete(id)
+          }
+          DBState.db.enabledModules = Array.from(enabledModules)
+        } else {
+          // @ts-ignore
+          module[key] = value
+        }
+      }
+
+      return [
+        {
+          type: 'text',
+          text: `Successfully updated module ${module.name || id}`,
+        },
+      ]
+    })
   }
 
   async listModuleLorebooks(id: string, count: number = 100, offset: number = 0): Promise<RPCToolCallContent[]> {
-    const module = DBState.db.modules.find((m) => m.id === id)
-    if (!module || module.mcp) {
-      return moduleNotFound(id)
-    }
+    return this.withModule(id, async (module) => {
 
-    if (count > 100) count = 100
-    if (count < 1) count = 1
-    if (offset < 0) offset = 0
+      if (count > 100) count = 100
+      if (count < 1) count = 1
+      if (offset < 0) offset = 0
 
-    const lorebook = (module.lorebook || []).slice(offset, offset + count)
-    const organized = lorebook.map((entry) => {
-      return {
-        alwaysActive: entry.alwaysActive,
-        keys: entry.key,
-        name: entry.comment || 'Unnamed ' + pickHashRand(5515, entry.content),
-      }
-    })
+      const lorebook = (module.lorebook || []).slice(offset, offset + count)
+      const organized = lorebook.map((entry) => {
+        return {
+          alwaysActive: entry.alwaysActive,
+          keys: entry.key,
+          name: entry.comment || 'Unnamed ' + pickHashRand(5515, entry.content),
+        }
+      })
 
-    return [
-      {
-        type: 'text',
-        text: JSON.stringify(organized),
-      },
-    ]
-  }
-
-  async getModuleLorebook(id: string, names: string[]): Promise<RPCToolCallContent[]> {
-    const module = DBState.db.modules.find((m) => m.id === id)
-    if (!module || module.mcp) {
-      return moduleNotFound(id)
-    }
-
-    const entries = (module.lorebook || []).filter((l) => {
-      const displayName = l.comment || 'Unnamed ' + pickHashRand(5515, l.content)
-      return names.includes(displayName)
-    })
-
-    if (entries.length === 0) {
       return [
         {
           type: 'text',
-          text: `Error: Lorebook entries with names "${names.join(', ')}" not found.`,
+          text: JSON.stringify(organized),
         },
       ]
-    }
+    })
+  }
 
-    const result = entries.map((entry) => ({
-      alwaysActive: entry.alwaysActive,
-      content: entry.content,
-      keys: entry.key,
-      name: entry.comment || 'Unnamed ' + pickHashRand(5515, entry.content),
-    }))
+  async getModuleLorebook(id: string, names: string[]): Promise<RPCToolCallContent[]> {
+    return this.withModule(id, async (module) => {
 
-    return [
-      {
-        type: 'text',
-        text: JSON.stringify(result),
-      },
-    ]
+      const entries = (module.lorebook || []).filter((l) => {
+        const displayName = l.comment || 'Unnamed ' + pickHashRand(5515, l.content)
+        return names.includes(displayName)
+      })
+
+      if (entries.length === 0) {
+        return [
+          {
+            type: 'text',
+            text: `Error: Lorebook entries with names "${names.join(', ')}" not found.`,
+          },
+        ]
+      }
+
+      const result = entries.map((entry) => ({
+        alwaysActive: entry.alwaysActive,
+        content: entry.content,
+        keys: entry.key,
+        name: entry.comment || 'Unnamed ' + pickHashRand(5515, entry.content),
+      }))
+
+      return [
+        {
+          type: 'text',
+          text: JSON.stringify(result),
+        },
+      ]
+    })
   }
 
   async setModuleLorebook(
@@ -534,142 +551,135 @@ export class ModuleHandler extends MCPToolHandler {
     newName?: string,
     alwaysActive?: boolean
   ): Promise<RPCToolCallContent[]> {
-    const module = DBState.db.modules.find((m) => m.id === id)
-    if (!module || module.mcp) {
-      return moduleNotFound(id)
-    }
+    return this.withModule(id, async (module) => {
 
-    if (!(await this.promptAccess('risu-set-module-lorebook', `add/modify module (${module.name}) lorebook (${name})`))) {
+      if (!(await this.promptAccess('risu-set-module-lorebook', `add/modify module (${module.name}) lorebook (${name})`))) {
+        return [
+          {
+            type: 'text',
+            text: 'Access denied by user.',
+          },
+        ]
+      }
+
+      if (!module.lorebook) {
+        module.lorebook = []
+      }
+
+      const index = module.lorebook.findIndex((l) => {
+        const displayName = l.comment || 'Unnamed ' + pickHashRand(5515, l.content)
+        return displayName === name
+      })
+
+      if (index === -1) {
+        const newEntry = {
+          key: alwaysActive ? '' : keys?.join(',') || '',
+          content: content || '',
+          comment: newName || name,
+          alwaysActive: alwaysActive || false,
+          secondkey: '',
+          selective: false,
+          insertorder: 100,
+          mode: 'normal' as const,
+        }
+        module.lorebook.push(newEntry)
+        return [
+          {
+            type: 'text',
+            text: `Successfully added lorebook entry "${newName || name}" to module ${module.name}`,
+          },
+        ]
+      }
+
+      const entry = module.lorebook[index]
+
+      if (content !== undefined) {
+        entry.content = content
+      }
+      if (keys !== undefined) {
+        entry.key = alwaysActive ? '' : keys.join(',')
+      }
+      if (newName !== undefined) {
+        entry.comment = newName
+      }
+      if (alwaysActive !== undefined) {
+        entry.alwaysActive = alwaysActive
+        if (alwaysActive) {
+          entry.key = ''
+        }
+      }
+
       return [
         {
           type: 'text',
-          text: 'Access denied by user.',
+          text: `Successfully updated lorebook entry "${name}" in module ${module.name}`,
         },
       ]
-    }
-
-    if (!module.lorebook) {
-      module.lorebook = []
-    }
-
-    const index = module.lorebook.findIndex((l) => {
-      const displayName = l.comment || 'Unnamed ' + pickHashRand(5515, l.content)
-      return displayName === name
     })
-
-    if (index === -1) {
-      const newEntry = {
-        key: alwaysActive ? '' : keys?.join(',') || '',
-        content: content || '',
-        comment: newName || name,
-        alwaysActive: alwaysActive || false,
-        secondkey: '',
-        selective: false,
-        insertorder: 100,
-        mode: 'normal' as const,
-      }
-      module.lorebook.push(newEntry)
-      return [
-        {
-          type: 'text',
-          text: `Successfully added lorebook entry "${newName || name}" to module ${module.name}`,
-        },
-      ]
-    }
-
-    const entry = module.lorebook[index]
-
-    if (content !== undefined) {
-      entry.content = content
-    }
-    if (keys !== undefined) {
-      entry.key = alwaysActive ? '' : keys.join(',')
-    }
-    if (newName !== undefined) {
-      entry.comment = newName
-    }
-    if (alwaysActive !== undefined) {
-      entry.alwaysActive = alwaysActive
-      if (alwaysActive) {
-        entry.key = ''
-      }
-    }
-
-    return [
-      {
-        type: 'text',
-        text: `Successfully updated lorebook entry "${name}" in module ${module.name}`,
-      },
-    ]
   }
 
   async deleteModuleLorebook(id: string, name: string): Promise<RPCToolCallContent[]> {
-    const module = DBState.db.modules.find((m) => m.id === id)
-    if (!module || module.mcp) {
-      return moduleNotFound(id)
-    }
+    return this.withModule(id, async (module) => {
 
-    if (!(await this.promptAccess('risu-delete-module-lorebook', `delete module (${module.name}) lorebook (${name})`))) {
+      if (!(await this.promptAccess('risu-delete-module-lorebook', `delete module (${module.name}) lorebook (${name})`))) {
+        return [
+          {
+            type: 'text',
+            text: 'Access denied by user.',
+          },
+        ]
+      }
+
+      if (!module.lorebook) {
+        module.lorebook = []
+      }
+
+      const index = module.lorebook.findIndex((l) => {
+        const displayName = l.comment || 'Unnamed ' + pickHashRand(5515, l.content)
+        return displayName === name
+      })
+
+      if (index === -1) {
+        return [
+          {
+            type: 'text',
+            text: `Error: Lorebook entry with name "${name}" not found.`,
+          },
+        ]
+      }
+
+      module.lorebook.splice(index, 1)
+
       return [
         {
           type: 'text',
-          text: 'Access denied by user.',
+          text: `Successfully deleted lorebook entry "${name}" from module ${module.name}`,
         },
       ]
-    }
-
-    if (!module.lorebook) {
-      module.lorebook = []
-    }
-
-    const index = module.lorebook.findIndex((l) => {
-      const displayName = l.comment || 'Unnamed ' + pickHashRand(5515, l.content)
-      return displayName === name
     })
-
-    if (index === -1) {
-      return [
-        {
-          type: 'text',
-          text: `Error: Lorebook entry with name "${name}" not found.`,
-        },
-      ]
-    }
-
-    module.lorebook.splice(index, 1)
-
-    return [
-      {
-        type: 'text',
-        text: `Successfully deleted lorebook entry "${name}" from module ${module.name}`,
-      },
-    ]
   }
 
   async getModuleRegexScripts(id: string): Promise<RPCToolCallContent[]> {
-    const module = DBState.db.modules.find((m) => m.id === id)
+    return this.withModule(id, async (module) => {
 
-    if (!module || module.mcp) {
-      return moduleNotFound(id)
-    }
+      const organized = (module.regex || []).map((script) => {
+        return {
+          comment: script.comment || 'Unnamed ' + pickHashRand(5515, script.in + script.out),
+          in: script.in,
+          out: script.out,
+          type: script.type,
+          flag: script.flag,
+          ableFlag: script.ableFlag,
+        }
+      })
 
-    const organized = (module.regex || []).map((script) => {
-      return {
-        comment: script.comment || 'Unnamed ' + pickHashRand(5515, script.in + script.out),
-        in: script.in,
-        out: script.out,
-        type: script.type,
-        flag: script.flag,
-        ableFlag: script.ableFlag,
-      }
+      return [
+        {
+          type: 'text',
+          text: JSON.stringify(organized),
+        },
+      ]
     })
-
-    return [
-      {
-        type: 'text',
-        text: JSON.stringify(organized),
-      },
-    ]
   }
 
   async setModuleRegexScript(
@@ -682,163 +692,155 @@ export class ModuleHandler extends MCPToolHandler {
     flag?: string,
     ableFlag?: boolean
   ): Promise<RPCToolCallContent[]> {
-    const module = DBState.db.modules.find((m) => m.id === id)
-    if (!module || module.mcp) {
-      return moduleNotFound(id)
-    }
+    return this.withModule(id, async (module) => {
 
-    if (!(await this.promptAccess('risu-set-module-regex-script', `add/modify module (${module.name}) regex script (${name})`))) {
-      return [
-        {
-          type: 'text',
-          text: 'Access denied by user.',
-        },
-      ]
-    }
-
-    if (!module.regex) {
-      module.regex = []
-    }
-
-    const index = module.regex.findIndex((r) => {
-      const displayName = r.comment || 'Unnamed ' + pickHashRand(5515, r.in + r.out)
-      return displayName === name
-    })
-
-    if (index === -1) {
-      const newScript = {
-        comment: newName || name,
-        in: regexIn || '',
-        out: regexOut || '',
-        type: type || 'editdisplay',
-        flag: flag || '',
-        ableFlag: ableFlag !== undefined ? ableFlag : true,
+      if (!(await this.promptAccess('risu-set-module-regex-script', `add/modify module (${module.name}) regex script (${name})`))) {
+        return [
+          {
+            type: 'text',
+            text: 'Access denied by user.',
+          },
+        ]
       }
-      module.regex.push(newScript)
+
+      if (!module.regex) {
+        module.regex = []
+      }
+
+      const index = module.regex.findIndex((r) => {
+        const displayName = r.comment || 'Unnamed ' + pickHashRand(5515, r.in + r.out)
+        return displayName === name
+      })
+
+      if (index === -1) {
+        const newScript = {
+          comment: newName || name,
+          in: regexIn || '',
+          out: regexOut || '',
+          type: type || 'editdisplay',
+          flag: flag || '',
+          ableFlag: ableFlag !== undefined ? ableFlag : true,
+        }
+        module.regex.push(newScript)
+        return [
+          {
+            type: 'text',
+            text: `Successfully added regex script "${newName || name}" to module ${module.name}`,
+          },
+        ]
+      }
+
+      const script = module.regex[index]
+
+      if (newName !== undefined) script.comment = newName
+      if (regexIn !== undefined) script.in = regexIn
+      if (regexOut !== undefined) script.out = regexOut
+      if (type !== undefined) script.type = type
+      if (flag !== undefined) script.flag = flag
+      if (ableFlag !== undefined) script.ableFlag = ableFlag
+
       return [
         {
           type: 'text',
-          text: `Successfully added regex script "${newName || name}" to module ${module.name}`,
+          text: `Successfully updated regex script "${name}" in module ${module.name}`,
         },
       ]
-    }
-
-    const script = module.regex[index]
-
-    if (newName !== undefined) script.comment = newName
-    if (regexIn !== undefined) script.in = regexIn
-    if (regexOut !== undefined) script.out = regexOut
-    if (type !== undefined) script.type = type
-    if (flag !== undefined) script.flag = flag
-    if (ableFlag !== undefined) script.ableFlag = ableFlag
-
-    return [
-      {
-        type: 'text',
-        text: `Successfully updated regex script "${name}" in module ${module.name}`,
-      },
-    ]
+    })
   }
 
   async deleteModuleRegexScript(id: string, name: string): Promise<RPCToolCallContent[]> {
-    const module = DBState.db.modules.find((m) => m.id === id)
-    if (!module || module.mcp) {
-      return moduleNotFound(id)
-    }
+    return this.withModule(id, async (module) => {
 
-    if (!(await this.promptAccess('risu-delete-module-regex-script', `delete module (${module.name}) regex script (${name})`))) {
+      if (!(await this.promptAccess('risu-delete-module-regex-script', `delete module (${module.name}) regex script (${name})`))) {
+        return [
+          {
+            type: 'text',
+            text: 'Access denied by user.',
+          },
+        ]
+      }
+
+      if (!module.regex) {
+        module.regex = []
+      }
+
+      const index = module.regex.findIndex((r) => {
+        const displayName = r.comment || 'Unnamed ' + pickHashRand(5515, r.in + r.out)
+        return displayName === name
+      })
+
+      if (index === -1) {
+        return [
+          {
+            type: 'text',
+            text: `Error: Regex script with name "${name}" not found.`,
+          },
+        ]
+      }
+
+      module.regex.splice(index, 1)
+
       return [
         {
           type: 'text',
-          text: 'Access denied by user.',
+          text: `Successfully deleted regex script "${name}" from module ${module.name}`,
         },
       ]
-    }
-
-    if (!module.regex) {
-      module.regex = []
-    }
-
-    const index = module.regex.findIndex((r) => {
-      const displayName = r.comment || 'Unnamed ' + pickHashRand(5515, r.in + r.out)
-      return displayName === name
     })
-
-    if (index === -1) {
-      return [
-        {
-          type: 'text',
-          text: `Error: Regex script with name "${name}" not found.`,
-        },
-      ]
-    }
-
-    module.regex.splice(index, 1)
-
-    return [
-      {
-        type: 'text',
-        text: `Successfully deleted regex script "${name}" from module ${module.name}`,
-      },
-    ]
   }
 
   async getModuleLuaScript(id: string): Promise<RPCToolCallContent[]> {
-    const module = DBState.db.modules.find((m) => m.id === id)
-    if (!module || module.mcp) {
-      return moduleNotFound(id)
-    }
+    return this.withModule(id, async (module) => {
 
-    const firstTrigger = module.trigger?.[0]
-    if (firstTrigger?.effect?.[0]?.type === 'triggerlua' && firstTrigger.effect[0].code.trim().length > 0) {
+      const firstTrigger = module.trigger?.[0]
+      if (firstTrigger?.effect?.[0]?.type === 'triggerlua' && firstTrigger.effect[0].code.trim().length > 0) {
+        return [
+          {
+            type: 'text',
+            text: firstTrigger.effect[0].code,
+          },
+        ]
+      }
+
       return [
         {
           type: 'text',
-          text: firstTrigger.effect[0].code,
+          text: 'Error: This module does not contain a Lua trigger.',
         },
       ]
-    }
-
-    return [
-      {
-        type: 'text',
-        text: 'Error: This module does not contain a Lua trigger.',
-      },
-    ]
+    })
   }
 
   async setModuleLuaScript(id: string, code: string): Promise<RPCToolCallContent[]> {
-    const module = DBState.db.modules.find((m) => m.id === id)
-    if (!module || module.mcp) {
-      return moduleNotFound(id)
-    }
+    return this.withModule(id, async (module) => {
 
-    if (!(await this.promptAccess('risu-set-module-lua-script', `modify module (${module.name}) lua script`))) {
+      if (!(await this.promptAccess('risu-set-module-lua-script', `modify module (${module.name}) lua script`))) {
+        return [
+          {
+            type: 'text',
+            text: 'Access denied by user.',
+          },
+        ]
+      }
+
+      const firstTrigger = module.trigger?.[0]
+      if (firstTrigger?.effect?.[0]?.type === 'triggerlua') {
+        // @ts-ignore
+        firstTrigger.effect[0].code = code
+        return [
+          {
+            type: 'text',
+            text: `Successfully updated Lua script for module ${module.name}`,
+          },
+        ]
+      }
+
       return [
         {
           type: 'text',
-          text: 'Access denied by user.',
+          text: 'Error: User must first change the trigger type to Lua manually.',
         },
       ]
-    }
-
-    const firstTrigger = module.trigger?.[0]
-    if (firstTrigger?.effect?.[0]?.type === 'triggerlua') {
-      // @ts-ignore
-      firstTrigger.effect[0].code = code
-      return [
-        {
-          type: 'text',
-          text: `Successfully updated Lua script for module ${module.name}`,
-        },
-      ]
-    }
-
-    return [
-      {
-        type: 'text',
-        text: 'Error: User must first change the trigger type to Lua manually.',
-      },
-    ]
+    })
   }
 }

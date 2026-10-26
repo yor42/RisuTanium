@@ -5,7 +5,7 @@ import {
 } from '../../store2/codec'
 import { UNIT_TYPE, type ShardEntry } from '../../store2/format'
 import {
-    asDatabase, bodyOf, buildLegacyCases, buildSmall, buildT3, buildT4, buildT5Chat, dbWithCharacters, differingIdentities,
+    asDatabase, bodyOf, buildLegacyCases, buildSmall, buildT3, buildT4, buildT5Chat, bytesOf, dbWithCharacters, differingIdentities,
     encodeWith, previousFrom, profileWithChats, roundTrip, seededEnv, unitOf,
     type Obj,
 } from './codecFixtures'
@@ -160,7 +160,7 @@ describe('assemble refuses what it cannot trust', () => {
         const { tree, source } = encoded()
         const victim = unitOf(tree, 'statics')
         const other = unitOf(tree, 'loadouts')
-        const swapped: UnitSource = { get: key => (key === victim.key ? other.bytes : source.get(key)) }
+        const swapped: UnitSource = { get: key => (key === victim.key ? bytesOf(other) : source.get(key)) }
         expect(() => assembleDatabase(tree.manifest, swapped)).toThrow(/does not match its Ref/)
     })
 
@@ -205,7 +205,7 @@ describe('assemble refuses what it cannot trust', () => {
         const { tree, source } = encoded()
         const config = unitOf(tree, 'config')
         const statics = unitOf(tree, 'statics')
-        const swapped: UnitSource = { get: key => (key === config.key ? statics.bytes : source.get(key)) }
+        const swapped: UnitSource = { get: key => (key === config.key ? bytesOf(statics) : source.get(key)) }
         expect(() => assembleDatabase(tree.manifest, swapped)).toThrow(CodecAssembleError)
     })
 })

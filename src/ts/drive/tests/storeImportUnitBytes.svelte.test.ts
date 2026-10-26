@@ -469,7 +469,7 @@ describe('the import questions of an upstream-layout file built by hand', () => 
 
         await loadBin(bytes)
 
-        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(sizes.databaseClassMegabytes)])
+        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(sizes.databaseClassMegabytes, true)])
         expect(alertErrorTexts(page)).toEqual([])
     })
 
@@ -489,7 +489,7 @@ describe('the import questions of an upstream-layout file built by hand', () => 
 
         const end = await pickAtBoot(target, bytes)
 
-        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(sizes.databaseClassMegabytes)])
+        expect(confirmTexts(page)).toEqual([language.store2ImportSizeWarning(sizes.databaseClassMegabytes, true)])
         expect(end).toEqual({ kind: 'cancelled' })
         expect(installs).toEqual([])
     })

@@ -2145,6 +2145,8 @@ export const languageEnglish = {
     keepSessionAlive: "Keep Session Alive",
     keepAliveGenerating: "Generating a reply…",
     keepAliveWorking: "Working…",
+    keepAliveFinishing: "Finishing up…",
+    keepAliveSavePending: "Reply ready. Open the app to finish saving.",
     keepAliveStop: "Stop",
     messageInterrupted: "Interrupted — the reply may be incomplete",
     // NanoGPT Dashboard
@@ -2241,6 +2243,7 @@ export const languageEnglish = {
     assetIntegrityReportNotCached: (n: number) => `- Not yet cached (normal, not an issue): ${n}\n`,
     assetIntegrityReportNotContentAddressed: (n: number) => `- Not content-addressed (can't be verified this way): ${n}\n`,
     assetIntegrityReportArchivedNotChecked: (characterNames: string) => `- Archived characters whose assets were not checked (their data could not be loaded): ${characterNames}\n`,
+    assetIntegrityReportModulesNotChecked: (moduleNames: string) => `- Modules whose assets were not checked (they are not loaded): ${moduleNames}\n`,
     assetIntegrityReportMismatchCount: (n: number) => `- **Mismatches found: ${n}**\n`,
     assetIntegrityReportEvicted: (n: number) => `\nRemoved ${n} corrupted cache entries. Reload the app for the fix to take effect.`,
     assetIntegrityReportLeftInCache: "\nLeft in the cache, as requested.",
@@ -2389,12 +2392,12 @@ export const languageEnglish = {
     store2RestoreNotFlushed: "The earlier version was restored, but the device did not confirm that it was written to disk. The app reloads now and finishes writing it when it starts.",
     store2RestoreDone: "The earlier version was restored. The version you had before is kept in the list. Refreshing your app.",
     store2RestoreOldRow: (when: string) => `Old: ${when}`,
-    store2ImportSizeWarning: (megabytes: number) =>
-        `The saved data in this backup, not counting images and other files, is about ${megabytes} MB. Reading it needs several times that much memory, so a phone or another small device may run out of memory and stop. Your saved data is not changed until the import has finished. Continue?`,
+    store2ImportSizeWarning: (megabytes: number, copiesFiles = false) =>
+        `The saved data in this backup, not counting images and other files, is about ${megabytes} MB. Reading it needs several times that much memory, so a phone or another small device may run out of memory and stop. Your saved data is not replaced until the import has finished.${copiesFiles ? ' Images and other files from the backup are copied in before that, and replace any stored file with the same name.' : ''} Continue?`,
     store2ImportTimeWarning: (entries: number, minutes: number, neededGigabytes: number, databaseMegabytes: number | null, freeGigabytes: number | null = null, short = false) =>
-        `This backup holds ${entries} files. From now, importing it on this phone may take about ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} hours` : `${minutes} minutes`}, or longer. This is an estimate based on a mid-range phone; yours may be faster or slower, and a low-end phone can be much slower. Keep the app open until it finishes.\n\nThe import needs about ${neededGigabytes} GB of free space on this phone. ${freeGigabytes === null ? 'The app cannot check how much is free.' : short ? `Only about ${freeGigabytes} GB is free, and if the phone runs out of space the import stops.` : `About ${freeGigabytes} GB is free.`} ${databaseMegabytes === null ? '' : `The saved data in this backup, not counting images and other files, is about ${databaseMegabytes} MB, and reading it needs several times that much memory, so a phone may run out of memory and stop. `}A question may still appear at the end, after the files are copied. Your saved data is not changed until the import has finished. Continue?`,
+        `This backup holds ${entries} files. From now, importing it on this phone may take about ${minutes >= 120 ? `${(minutes / 60).toFixed(1)} hours` : `${minutes} minutes`}, or longer. This is an estimate based on a mid-range phone; yours may be faster or slower, and a low-end phone can be much slower. Keep the app open until it finishes.\n\nThe import needs about ${neededGigabytes} GB of free space on this phone. ${freeGigabytes === null ? 'The app cannot check how much is free.' : short ? `Only about ${freeGigabytes} GB is free, and if the phone runs out of space the import stops.` : `About ${freeGigabytes} GB is free.`} ${databaseMegabytes === null ? '' : `The saved data in this backup, not counting images and other files, is about ${databaseMegabytes} MB, and reading it needs several times that much memory, so a phone may run out of memory and stop. `}A question may still appear at the end, after the files are copied. Your saved data is not replaced until the import has finished. Images and other files from the backup are copied in before that, and replace any stored file with the same name. Continue?`,
     store2ImportSpaceWarning: (neededGigabytes: number, freeGigabytes: number, databaseMegabytes: number | null) =>
-        `The import needs about ${neededGigabytes} GB of free space on this phone, but only about ${freeGigabytes} GB is free. If the phone runs out of space, the import stops. ${databaseMegabytes === null ? '' : `The saved data in this backup, not counting images and other files, is about ${databaseMegabytes} MB, and reading it needs several times that much memory, so a phone may run out of memory and stop. `}Your saved data is not changed until the import has finished. Continue?`,
+        `The import needs about ${neededGigabytes} GB of free space on this phone, but only about ${freeGigabytes} GB is free. If the phone runs out of space, the import stops. ${databaseMegabytes === null ? '' : `The saved data in this backup, not counting images and other files, is about ${databaseMegabytes} MB, and reading it needs several times that much memory, so a phone may run out of memory and stop. `}Your saved data is not replaced until the import has finished. Images and other files from the backup are copied in before that, and replace any stored file with the same name. Continue?`,
     store2ImportIncompleteConfirm: (items: string) =>
         `Some of the data in this backup could not be brought in completely:\n\n${items}\n\nThose parts will be empty or missing after the import. The data you have now is kept in the list of earlier saved versions. Import anyway?`,
     store2ImportReadFailed: "Part of the backup, or of your saved data, could not be read, so nothing was imported. Your current data was not changed.",
@@ -2442,6 +2445,7 @@ export const languageEnglish = {
     moduleLowLevelNamed: (name: string, file?: string) => file ? `Module "${name}" (${file})` : `Module "${name}"`,
     importModulesDone: (imported: number, skipped: number) => skipped > 0 ? `Imported ${imported} ${imported === 1 ? 'module' : 'modules'}, skipped ${skipped}.` : `Imported ${imported} ${imported === 1 ? 'module' : 'modules'}.`,
     moduleUnsupportedFile: (name: string) => `${name}: this file type is not supported as a module.`,
+    moduleLoadFailed: (name: string) => `The module "${name}" could not be loaded, so nothing was done with it.`,
     moduleDuplicatePrompt: (name: string, file: string) => `A module named "${name}" (${file}) is already installed. What should happen to this file?`,
     moduleDuplicateReplace: "Replace",
     moduleDuplicateSkip: "Skip",
@@ -2920,7 +2924,8 @@ export const languageEnglish = {
         peerAutoExportSaved: "This tab's changes were also exported automatically: the file, without other images, assets and inlays, was handed to your browser. Check that the download arrived and has finished before you press Reload. Changes made after the export are not in it.",
         peerAutoExportNotFinished: "The automatic export did not finish. Use Export this tab first.",
         peerNoSaveReplaced: "After your saved data was changed outside this tab, this tab's version cannot be saved over it.",
-        peerNoSaveUnloaded: "This tab does not hold every character in memory, so its version cannot replace the other tab's change.",
+        peerNoSaveBlocked: "Save mine is not available: these items are not loaded or cannot be saved in this tab: {names}",
+        peerNoSaveBlockedCount: "Save mine is not available: items that are not loaded or cannot be saved in this tab ({count}).",
         peerReloadOnly: "Reload",
         peerKeepReading: "Keep reading (this tab cannot save)",
         peerCleanCommit: "Another tab saved changes to your data. Reload to see them. Nothing in this tab is unsaved.",
