@@ -46,6 +46,12 @@ const h = vi.hoisted(() => ({
     onAddInfo: null as null | (() => void),
     /** The content of every chat the tokenizer stand-in counted, in call order. */
     tokenCalls: [] as string[],
+    /** A chat whose content holds this text is counted as NaN by the tokenizer stand-in. */
+    nanMarker: null as null | string,
+    /** Fields the model-info stand-in returns on top of its placeholder model. */
+    modelInfo: {} as Record<string, unknown>,
+    /** Runs inside every model-info lookup (the send looks the model up once per message). */
+    onModelInfo: null as null | (() => void),
 }))
 
 vi.mock('localforage', () => ({
@@ -144,9 +150,13 @@ vi.mock(import('../../tokenizer'), () => ({
     ChatTokenizer: class {
         extra: number
         constructor(extra: number, _mode: string) { this.extra = extra }
-        async tokenizeChat(chat: { content: string }) {
+        async tokenizeChat(chat: { content: string, multimodals?: unknown[] }) {
             h.tokenCalls.push(chat.content)
-            return Math.ceil(chat.content.length / 4) + this.extra
+            if (h.nanMarker !== null && chat.content.includes(h.nanMarker)) {
+                return NaN
+            }
+            // Each multimodal part costs a flat 50 on top of the text.
+            return Math.ceil(chat.content.length / 4) + this.extra + (chat.multimodals?.length ?? 0) * 50
         }
     },
     tokenize: vi.fn(async (s: string) => (s?.length ?? 0)),
@@ -185,11 +195,15 @@ vi.mock(import('../stableDiff'), () => ({
 }) as unknown as typeof import('../stableDiff'))
 
 vi.mock(import('../../model/modellist'), () => ({
-    getModelInfo: vi.fn(() => ({
-        id: 'placeholder', name: 'Placeholder Model', shortName: 'Placeholder',
-        internalID: 'placeholder', format: 0, provider: 0, tokenizer: 0, flags: [],
-    })),
-    LLMFlags: {},
+    getModelInfo: vi.fn(() => {
+        h.onModelInfo?.()
+        return {
+            id: 'placeholder', name: 'Placeholder Model', shortName: 'Placeholder',
+            internalID: 'placeholder', format: 0, provider: 0, tokenizer: 0, flags: [],
+            ...h.modelInfo,
+        }
+    }),
+    LLMFlags: { hasImageInput: 0 },
 }) as unknown as typeof import('../../model/modellist'))
 
 // The real plugin module reads `document` at load time. The script pass reads
@@ -201,6 +215,7 @@ vi.mock(import('../../plugins/plugins.svelte'), () => ({
         editprocess: new Set(),
         editinput: new Set(),
         chatOutput: new Set(),
+        providerOptions: new Map(),
     },
 }) as unknown as typeof import('../../plugins/plugins.svelte'))
 
@@ -330,6 +345,10 @@ let supaMemoryMock: ReturnType<typeof vi.fn>
 let hanuraiMemoryMock: ReturnType<typeof vi.fn>
 let hypaV2Mock: ReturnType<typeof vi.fn>
 let hypaV3Mock: ReturnType<typeof vi.fn>
+let runTriggerMock: ReturnType<typeof vi.fn>
+let exampleMessageMock: ReturnType<typeof vi.fn>
+let getInlayAssetMock: ReturnType<typeof vi.fn>
+let providerOptions: Map<string, { tokenizer?: string }>
 
 beforeAll(async () => {
     const jsonLua = await readFile(resolve(process.cwd(), 'public/lua/json.lua'), 'utf8')
@@ -349,6 +368,10 @@ beforeAll(async () => {
     hanuraiMemoryMock = (await import('../memory/hanuraiMemory')).hanuraiMemory as unknown as ReturnType<typeof vi.fn>
     hypaV2Mock = (await import('../memory/hypav2')).hypaMemoryV2 as unknown as ReturnType<typeof vi.fn>
     hypaV3Mock = (await import('../memory/hypav3')).hypaMemoryV3 as unknown as ReturnType<typeof vi.fn>
+    runTriggerMock = (await import('../triggers')).runTrigger as unknown as ReturnType<typeof vi.fn>
+    exampleMessageMock = (await import('../exampleMessages')).exampleMessage as unknown as ReturnType<typeof vi.fn>
+    getInlayAssetMock = (await import('../files/inlays')).getInlayAsset as unknown as ReturnType<typeof vi.fn>
+    providerOptions = (await import('../../plugins/plugins.svelte')).pluginV2.providerOptions as unknown as Map<string, { tokenizer?: string }>
 })
 
 function msg(role: 'user' | 'char', data: string, extra: Partial<Message> = {}): Message {
@@ -409,11 +432,11 @@ function installDb(characters: Owner[], extra: Record<string, unknown> = {}): vo
 }
 
 /** One non-streamed send; resolves to what `sendChat` returned. */
-async function sendOnce(owner: Owner, chat: Chat): Promise<boolean | Error> {
+async function sendOnce(owner: Owner, chat: Chat, extraArg: Partial<SendChatArg> = {}): Promise<boolean | Error> {
     const handle = beginWork(owner, chat)!
     h.request.mockResolvedValueOnce({ type: 'success', result: 'reply' })
     try {
-        return await sendChat(-1, { origin: handle.origin, originHint: { owner, chat } })
+        return await sendChat(-1, { origin: handle.origin, originHint: { owner, chat }, ...extraArg })
     } catch (error) {
         return error instanceof Error ? error : new Error(String(error))
     } finally {
@@ -478,6 +501,15 @@ beforeEach(() => {
     h.request.mockResolvedValue({ type: 'success', result: 'unexpected' })
     h.onAddInfo = null
     h.tokenCalls.length = 0
+    h.nanMarker = null
+    h.modelInfo = {}
+    h.onModelInfo = null
+    providerOptions.clear()
+    runTriggerMock.mockReset()
+    runTriggerMock.mockImplementation(async () => undefined)
+    exampleMessageMock.mockReset()
+    exampleMessageMock.mockImplementation(() => [])
+    getInlayAssetMock.mockReset()
     memoryRecords.length = 0
     alertErrorMock.mockClear()
     for (const fn of [supaMemoryMock, hanuraiMemoryMock, hypaV2Mock, hypaV3Mock]) {
@@ -508,6 +540,9 @@ beforeEach(() => {
 afterEach(() => {
     selectedCharID.set(-1)
     h.onAddInfo = null
+    h.nanMarker = null
+    h.modelInfo = {}
+    h.onModelInfo = null
 })
 
 /** About 100 bytes of deterministic text, tagged with the message number. */
@@ -905,6 +940,398 @@ const FROZEN: Record<string, unknown> = {
             depthEntryIndex: 1,
         },
     },
+    'step-false': [
+        {
+            from: 1000,
+            count: 13,
+            first: 48,
+            hash: '560de24ec47c2342',
+        },
+        {
+            from: 1034,
+            count: 14,
+            first: 47,
+            hash: 'c138bbb8caa30151',
+        },
+        {
+            from: 1068,
+            count: 15,
+            first: 46,
+            hash: 'e21d0b7d8ac4423e',
+        },
+        {
+            from: 1102,
+            count: 16,
+            first: 45,
+            hash: '54d7b14feb6db8c3',
+        },
+        {
+            from: 1136,
+            count: 17,
+            first: 44,
+            hash: 'b72bd5b59a578e35',
+        }
+    ],
+    'step-true': [
+        {
+            from: 1000,
+            count: 12,
+            first: 49,
+            hash: '88ad1e3eb1bf83dd',
+        },
+        {
+            from: 1010,
+            count: 13,
+            first: 48,
+            hash: '560de24ec47c2342',
+        },
+        {
+            from: 1044,
+            count: 14,
+            first: 47,
+            hash: 'c138bbb8caa30151',
+        },
+        {
+            from: 1078,
+            count: 15,
+            first: 46,
+            hash: 'e21d0b7d8ac4423e',
+        },
+        {
+            from: 1112,
+            count: 16,
+            first: 45,
+            hash: '54d7b14feb6db8c3',
+        },
+        {
+            from: 1146,
+            count: 17,
+            first: 44,
+            hash: 'b72bd5b59a578e35',
+        }
+    ],
+    'template': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: '72a4f312bee61a71',
+        entries: 35,
+        formatedHash: '893c8e74495830cc',
+        keptCount: 31,
+        keptFirst: 35,
+        keptLast: 37,
+        memory: []
+    },
+    'legacy': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: 'f4c7ca5d6cc7e809',
+        entries: 29,
+        formatedHash: '0c41d2449597a58a',
+        keptCount: 26,
+        keptFirst: 35,
+        keptLast: 60,
+        memory: []
+    },
+    'examples-kept whole': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: '9006871c193c635e',
+        entries: 66,
+        formatedHash: 'fd5c091bf471a8a8',
+        keptCount: 61,
+        keptFirst: 0,
+        keptLast: 60,
+        memory: []
+    },
+    'examples-popped with the oldest chats, [Start a new chat] counted': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: '3c793fa1fd9c848f',
+        entries: 28,
+        formatedHash: 'ee7976ad331f8b69',
+        keptCount: 27,
+        keptFirst: 34,
+        keptLast: 60,
+        memory: []
+    },
+    'examples-popped with the oldest chats, no [Start a new chat]': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: '3c793fa1fd9c848f',
+        entries: 28,
+        formatedHash: 'ee7976ad331f8b69',
+        keptCount: 27,
+        keptFirst: 34,
+        keptLast: 60,
+        memory: []
+    },
+    'inlay': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: '23845e450d4494cf',
+        entries: 27,
+        formatedHash: 'c3cac22bfae01587',
+        keptCount: 26,
+        keptFirst: 35,
+        keptLast: 60,
+        memory: []
+    },
+    'novelai': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: 'c08e660b9cafe779',
+        entries: 30,
+        formatedHash: 'ad5f27d7c14cb6a6',
+        keptCount: 29,
+        keptFirst: 32,
+        keptLast: 60,
+        memory: []
+    },
+    'trigger-37': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: '45bd53ea1d4530b4',
+        entries: 29,
+        formatedHash: 'd24b73874e575f39',
+        keptCount: 26,
+        keptFirst: 35,
+        keptLast: 60,
+        memory: []
+    },
+    'trigger-300': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: '7e6de8105c4b345e',
+        entries: 21,
+        formatedHash: '57efd2253e843fe8',
+        keptCount: 18,
+        keptFirst: 43,
+        keptLast: 60,
+        memory: []
+    },
+    'continue': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: '4b7818814a9367bd',
+        entries: 29,
+        formatedHash: '72117d3895841116',
+        keptCount: 27,
+        keptFirst: 35,
+        keptLast: 61,
+        memory: []
+    },
+    'tokenizer-plugin provider with its own tokenizer': {
+        trimmed: {
+            result: true,
+            alerts: [],
+            requested: true,
+            bodyHash: 'c08e660b9cafe779',
+            entries: 30,
+            formatedHash: 'ad5f27d7c14cb6a6',
+            keptCount: 29,
+            keptFirst: 32,
+            keptLast: 60,
+            memory: []
+        },
+        remembered: {
+            result: true,
+            alerts: [],
+            requested: true,
+            bodyHash: '63b18432bf3f1d09',
+            entries: 47,
+            formatedHash: '3a1db83e7c805a37',
+            keptCount: 46,
+            keptFirst: 15,
+            keptLast: 60,
+            memory: [
+                {
+                    currentTokens: 2519,
+                    chatCount: 63,
+                    chatsHash: 'fc37ce892f1a97f9',
+                    firstChat: '[Start a new chat]',
+                    lastChat: '[M0060] lore'
+                }
+            ]
+        }
+    },
+    'tokenizer-Google Cloud tokenizing with googleClaudeTokenizing': {
+        trimmed: {
+            result: true,
+            alerts: [],
+            requested: true,
+            bodyHash: '3c793fa1fd9c848f',
+            entries: 28,
+            formatedHash: 'ee7976ad331f8b69',
+            keptCount: 27,
+            keptFirst: 34,
+            keptLast: 60,
+            memory: []
+        },
+        remembered: {
+            result: true,
+            alerts: [],
+            requested: true,
+            bodyHash: '751d4059f6d7d26d',
+            entries: 44,
+            formatedHash: 'ceebbe0b6166360c',
+            keptCount: 43,
+            keptFirst: 18,
+            keptLast: 60,
+            memory: [
+                {
+                    currentTokens: 2649,
+                    chatCount: 63,
+                    chatsHash: 'fc37ce892f1a97f9',
+                    firstChat: '[Start a new chat]',
+                    lastChat: '[M0060] lore'
+                }
+            ]
+        }
+    },
+    'tokenizer-local tokenizer': {
+        trimmed: {
+            result: true,
+            alerts: [],
+            requested: true,
+            bodyHash: '3c793fa1fd9c848f',
+            entries: 28,
+            formatedHash: 'ee7976ad331f8b69',
+            keptCount: 27,
+            keptFirst: 34,
+            keptLast: 60,
+            memory: []
+        },
+        remembered: {
+            result: true,
+            alerts: [],
+            requested: true,
+            bodyHash: '751d4059f6d7d26d',
+            entries: 44,
+            formatedHash: 'ceebbe0b6166360c',
+            keptCount: 43,
+            keptFirst: 18,
+            keptLast: 60,
+            memory: [
+                {
+                    currentTokens: 2649,
+                    chatCount: 63,
+                    chatsHash: 'fc37ce892f1a97f9',
+                    firstChat: '[Start a new chat]',
+                    lastChat: '[M0060] lore'
+                }
+            ]
+        }
+    },
+    'nan-local': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: 'b9fcd63e68adb07f',
+        entries: 64,
+        formatedHash: 'c0bbd3ec3e78b34b',
+        keptCount: 61,
+        keptFirst: 0,
+        keptLast: 60,
+        memory: []
+    },
+    'nan-default': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: 'b9fcd63e68adb07f',
+        entries: 64,
+        formatedHash: 'c0bbd3ec3e78b34b',
+        keptCount: 61,
+        keptFirst: 0,
+        keptLast: 60,
+        memory: []
+    },
+    'fraction-error': {
+        result: false,
+        alerts: [
+            "Error: The minimum required token is greater than the Max Context Size.\n\nRequired Tokens: 105.10000000000002"
+        ],
+        requested: false,
+        memory: []
+    },
+    'fraction-trim': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: 'fecebbdf00e3dbca',
+        entries: 43,
+        formatedHash: 'e733897ec42a4862',
+        keptCount: 42,
+        keptFirst: 19,
+        keptLast: 60,
+        memory: []
+    },
+    'gate-flip': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: '751d4059f6d7d26d',
+        entries: 44,
+        formatedHash: 'ceebbe0b6166360c',
+        keptCount: 43,
+        keptFirst: 18,
+        keptLast: 60,
+        memory: [
+            {
+                currentTokens: 2649,
+                chatCount: 63,
+                chatsHash: 'fc37ce892f1a97f9',
+                firstChat: '[Start a new chat]',
+                lastChat: '[M0060] lore'
+            }
+        ]
+    },
+    'empty-true': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: 'eca6f705832a9a6b',
+        entries: 1,
+        formatedHash: '829cc0b147e02c10',
+        keptCount: 0,
+        memory: []
+    },
+    'empty-group-true': {
+        result: "Cannot read properties of undefined (reading 'memo')",
+        alerts: [],
+        requested: false,
+        memory: []
+    },
+    'empty-false': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: '4ef983d06f1791b8',
+        entries: 2,
+        formatedHash: '46afa5e60d31d96c',
+        keptCount: 0,
+        memory: []
+    },
+    'empty-group-false': {
+        result: true,
+        alerts: [],
+        requested: true,
+        bodyHash: 'bcf7f51a1cd9341b',
+        entries: 3,
+        formatedHash: '69f1d5bbd71b03ac',
+        keptCount: 0,
+        memory: []
+    },
 }
 
 //#endregion
@@ -1101,6 +1528,273 @@ describe('guard: the request the trim produces is the one the base produced', ()
                 lastChat: rec.contents.at(-1)?.slice(0, 12),
                 request: facts(),
             })
+        })
+    }
+})
+
+describe('guard: the trim over the other inputs the context takes', () => {
+    const MAX = 1500
+    const COUNT = 61
+
+    function plain(count: number = COUNT, edit: (i: number, data: string) => string = (_i, data) => data): Message[] {
+        return Array.from({ length: count }, (_, i) => msg(i % 2 === 0 ? 'user' : 'char', edit(i, body100(i))))
+    }
+
+    async function runChat(
+        extraDb: Record<string, unknown>,
+        charExtra: Record<string, unknown> = {},
+        messages: Message[] = plain(),
+        extraArg: Partial<SendChatArg> = {},
+    ): Promise<boolean | Error> {
+        const A = makeChar('char-A', 'Alice', [makeChat('chat-A', messages)], charExtra)
+        installDb([A], { maxContext: MAX, ...extraDb })
+        selectedCharID.set(0)
+        return await sendOnce(A, A.chats[0], extraArg)
+    }
+
+    /** What one send produced: the result, the alerts, the request and what the memory systems received. */
+    function outcome(result: boolean | Error) {
+        const requested = h.request.mock.calls.length > 0
+        const kept = keptNumbers()
+        return {
+            result: result instanceof Error ? result.message : result,
+            alerts: alertedErrors(),
+            requested,
+            ...(requested ? { ...requestFacts(), keptCount: kept.length, keptFirst: kept[0], keptLast: kept.at(-1) } : {}),
+            memory: memoryRecords.map((rec) => ({
+                currentTokens: rec.currentTokens,
+                chatCount: rec.contents.length,
+                chatsHash: hashOf(rec.contents),
+                firstChat: rec.contents[0],
+                lastChat: rec.contents.at(-1)?.slice(0, 12),
+            })),
+        }
+    }
+
+    // The sweep moves maxContext by one so that a change of the boundary
+    // itself (a pop at equality, or one token less) moves a recorded change
+    // point. The table lists only the maxContext at which the kept messages
+    // change.
+    for (const trimStartNewChat of [false, true]) {
+        test(`guard: stepping maxContext by one keeps the same messages at every step (trimStartNewChat ${trimStartNewChat})`, async () => {
+            const changes: Array<{ from: number, count: number, first: number, hash: string }> = []
+            for (let maxContext = 1000; maxContext <= 1150; maxContext++) {
+                h.request.mockReset()
+                const result = await runChat({ maxContext, promptSettings: { trimStartNewChat } })
+                expect(result).toBe(true)
+                const numbers = keptNumbers()
+                const step = { from: maxContext, count: numbers.length, first: numbers[0], hash: requestFacts().formatedHash }
+                if (changes.at(-1)?.hash !== step.hash) {
+                    changes.push(step)
+                }
+            }
+            expect(changes.length).toBeGreaterThanOrEqual(4)
+            expectFrozen(`step-${trimStartNewChat}`, changes)
+        })
+    }
+
+    const templateCards = [
+        { type: 'plain', type2: 'main', text: 'TEMPLATE-MAIN for {{char}}', role: 'system' },
+        { type: 'persona' },
+        { type: 'description' },
+        { type: 'lorebook' },
+        { type: 'chat', rangeStart: 0, rangeEnd: 'end' },
+        { type: 'chat', rangeStart: -3, rangeEnd: 'end' },
+        { type: 'chat', rangeStart: 1, rangeEnd: 4 },
+        { type: 'authornote' },
+        { type: 'plain', type2: 'globalNote', text: 'TEMPLATE-NOTE', role: 'system' },
+    ]
+    const promptCharExtra = { globalLore: [lore('wi', 'WORLD-INFO-ENTRY'), lore('depth-entry', '@@depth 2\nLOREDEPTH')] }
+
+    test('guard: a prompt template with persona, description, lorebook and chat cards sends the same request', async () => {
+        const result = await runChat({ promptTemplate: templateCards, promptSettings: {}, personaPrompt: 'PERSONA-TEXT' }, promptCharExtra)
+        expectFrozen('template', outcome(result))
+    })
+
+    test('guard: the legacy formating order with the same persona, description and lorebook sends the same request', async () => {
+        const result = await runChat({ personaPrompt: 'PERSONA-TEXT' }, promptCharExtra)
+        expectFrozen('legacy', outcome(result))
+    })
+
+    const examplePair = () => [
+        { role: 'user', content: 'EXAMPLE-USER ' + 'one two three four '.repeat(20) },
+        { role: 'assistant', content: 'EXAMPLE-REPLY ' + 'five six seven eight '.repeat(20) },
+    ]
+
+    for (const [label, maxContext, trimStartNewChat] of [
+        ['kept whole', 999999, false],
+        ['popped with the oldest chats, [Start a new chat] counted', MAX, false],
+        ['popped with the oldest chats, no [Start a new chat]', MAX, true],
+    ] as const) {
+        test(`guard: example messages ahead of the chat (${label})`, async () => {
+            exampleMessageMock.mockImplementation(() => examplePair())
+            const result = await runChat({ maxContext, promptSettings: { trimStartNewChat } })
+            expectFrozen(`examples-${label}`, outcome(result))
+        })
+    }
+
+    test('guard: an inlay image in an old and in a kept message is sent as multimodal input', async () => {
+        h.modelInfo = { flags: [0] }
+        getInlayAssetMock.mockImplementation(async () => ({ type: 'image', data: 'data:image/png;base64,QUJD', width: 4, height: 4 }))
+        const result = await runChat({}, {}, plain(COUNT, (i, data) => (i === 2 || i === 58) ? `${data} {{inlay::img${i}}}` : data))
+        expect(getInlayAssetMock).toHaveBeenCalled()
+        expectFrozen('inlay', outcome(result))
+    })
+
+    test('guard: a NovelAI model gets no [Start a new chat] chat', async () => {
+        const result = await runChat({ aiModel: 'novelai_kayra' })
+        expectFrozen('novelai', outcome(result))
+    })
+
+    for (const tokens of [37, 300]) {
+        test(`guard: a start trigger result counts ${tokens} tokens and adds its system prompts`, async () => {
+            runTriggerMock.mockImplementation(async (_char: unknown, mode: string) => {
+                if (mode !== 'start') {
+                    return undefined
+                }
+                return {
+                    additonalSysPrompt: { start: 'TRIGGER-START', historyend: 'TRIGGER-HISTORY', promptend: 'TRIGGER-END' },
+                    tokens, stopSending: false, sendAIprompt: false, displayData: undefined, tempVars: {},
+                }
+            })
+            const result = await runChat({})
+            expectFrozen(`trigger-${tokens}`, outcome(result))
+        })
+    }
+
+    test('guard: a continue send trims and sends the same request', async () => {
+        const result = await runChat({}, {}, plain(COUNT + 1), { continue: true })
+        expectFrozen('continue', outcome(result))
+    })
+
+    // Tokenizers whose count may leave the process or the page: the counts
+    // themselves are the stand-in's, only the model selection differs.
+    const tokenizers: Array<[string, Record<string, unknown>, () => void]> = [
+        ['plugin provider with its own tokenizer', { aiModel: 'custom', currentPluginProvider: 'plug' }, () => {
+            providerOptions.set('plug', { tokenizer: 'custom' })
+        }],
+        ['Google Cloud tokenizing with googleClaudeTokenizing', { googleClaudeTokenizing: true }, () => {
+            h.modelInfo = { tokenizer: 10 }
+        }],
+        ['local tokenizer', {}, () => {
+            h.modelInfo = { tokenizer: 12 }
+        }],
+    ]
+
+    for (const [label, db, setup] of tokenizers) {
+        test(`guard: ${label} trims and sends the same request, and hands the memory systems the same inputs`, async () => {
+            setup()
+            const trimmed = outcome(await runChat(db))
+            memoryRecords.length = 0
+            h.request.mockReset()
+            const remembered = outcome(await runChat({ ...db, hypaV3: true }, { supaMemory: true }))
+            expectFrozen(`tokenizer-${label}`, { trimmed, remembered })
+        })
+    }
+
+    // A count that can be NaN is taken as each message is prepared, so a NaN
+    // on a dropped message still turns the trim off, as on the base. Each case
+    // tells its route apart: counted only by the trim, the NaN would be skipped
+    // and the newest window kept.
+    for (const [label, db, setup] of tokenizers.filter(([name]) => name !== 'local tokenizer')) {
+        test(`guard: a NaN count for an old message with the ${label} sends every message`, async () => {
+            setup()
+            h.nanMarker = 'NANMARK'
+            const result = outcome(await runChat(db, {}, plain(COUNT, (i, data) => i === 3 ? `${data} NANMARK` : data))) as { result: unknown, keptCount: number, keptFirst: number }
+            expect(result.result).toBe(true)
+            expect(result.keptCount).toBe(COUNT)
+            expect(result.keptFirst).toBe(0)
+        })
+    }
+
+    test('guard: a NaN count for an old message with an inlay image sends every message', async () => {
+        h.modelInfo = { flags: [0] }
+        h.nanMarker = 'NANMARK'
+        getInlayAssetMock.mockImplementation(async () => ({ type: 'image', data: 'data:image/png;base64,QUJD', width: 4, height: 4 }))
+        const result = outcome(await runChat({}, {}, plain(COUNT, (i, data) => i === 2 ? `${data} NANMARK {{inlay::img${i}}}` : data))) as { result: unknown, keptCount: number, keptFirst: number }
+        expect(getInlayAssetMock).toHaveBeenCalled()
+        expect(result.result).toBe(true)
+        expect(result.keptCount).toBe(COUNT)
+        expect(result.keptFirst).toBe(0)
+    })
+
+    // A limit that is not a number is never exceeded, so nothing is trimmed.
+    for (const maxContext of [NaN, undefined, 'abc']) {
+        test(`guard: a maxContext of ${String(maxContext)} sends every message`, async () => {
+            const result = outcome(await runChat({ maxContext })) as { result: unknown, keptCount: number, keptFirst: number }
+            expect(result.result).toBe(true)
+            expect(result.keptCount).toBe(COUNT)
+            expect(result.keptFirst).toBe(0)
+        })
+    }
+
+    test('guard: a NaN count for an old message with the local tokenizer sends every message', async () => {
+        h.modelInfo = { tokenizer: 12 }
+        h.nanMarker = 'NANMARK'
+        const result = await runChat({}, {}, plain(COUNT, (i, data) => i === 3 ? `${data} NANMARK` : data))
+        expectFrozen('nan-local', outcome(result))
+    })
+
+    // The default tokenizers count a text chat as an array length plus a whole
+    // number, so they never give NaN; the local model server and a plugin's
+    // tokenizer can, and their counts are taken as each message is prepared
+    // (the tests above). With
+    // the stand-in's NaN on a dropped message, the base sent every message (a
+    // NaN total is never over the limit); the trim now never counts that
+    // message and keeps the newest window instead.
+    test('precondition: a NaN count the default tokenizers cannot give, on a dropped message, no longer turns the trim off', async () => {
+        h.nanMarker = 'NANMARK'
+        const result = await runChat({}, {}, plain(COUNT, (i, data) => i === 3 ? `${data} NANMARK` : data))
+        const base = FROZEN['nan-default'] as { keptCount: number }
+        const now = outcome(result) as { result: unknown, keptCount: number, keptLast: number }
+        expect(base.keptCount).toBe(61)
+        expect(now.result).toBe(true)
+        expect(now.keptCount).toBeLessThan(base.keptCount)
+        expect(now.keptLast).toBe(60)
+    })
+
+    test('guard: a fractional maxResponse reports the required tokens exactly as the base printed them', async () => {
+        const result = await runChat({ maxContext: 100, maxResponse: 13.1 }, {}, alternating(5, body100))
+        expect(h.request).not.toHaveBeenCalled()
+        expectFrozen('fraction-error', outcome(result))
+    })
+
+    test('guard: a fractional maxResponse trims to the same request', async () => {
+        const result = await runChat({ maxResponse: 13.1 })
+        expectFrozen('fraction-trim', outcome(result))
+    })
+
+    test('guard: the memory gate turning true while the messages are prepared hands the memory system every chat', async () => {
+        let lookups = 0
+        h.onModelInfo = () => {
+            lookups++
+            if (lookups === 30) {
+                DBState.db.characters[0].supaMemory = true
+                DBState.db.hypaV3 = true
+            }
+        }
+        const result = await runChat({})
+        expect(lookups).toBeGreaterThanOrEqual(30)
+        expect(hypaV3Mock).toHaveBeenCalledTimes(1)
+        expectFrozen('gate-flip', outcome(result))
+    })
+
+    for (const trimStartNewChat of [true, false]) {
+        test(`guard: a character chat without messages and with an empty first message under the limit (trimStartNewChat ${trimStartNewChat})`, async () => {
+            const result = await runChat({ promptSettings: { trimStartNewChat } }, { firstMessage: '' }, [])
+            expectFrozen(`empty-${trimStartNewChat}`, outcome(result))
+        })
+
+        // A group chat sends no first message, so with nothing counted the
+        // list of chats is empty when the trim looks at it.
+        test(`guard: a group chat without messages under the limit (trimStartNewChat ${trimStartNewChat})`, async () => {
+            const group = makeGroup('group-1', ['member-a', 'member-b'], [makeChat('chat-G', [])])
+            const memberA = makeChar('member-a', 'Ann', [makeChat('chat-a', [])])
+            const memberB = makeChar('member-b', 'Bob', [makeChat('chat-b', [])])
+            installDb([group, memberA, memberB], { maxContext: MAX, promptSettings: { trimStartNewChat } })
+            selectedCharID.set(0)
+            const result = await sendOnce(group, group.chats[0])
+            expectFrozen(`empty-group-${trimStartNewChat}`, outcome(result))
         })
     }
 })
