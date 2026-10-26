@@ -271,6 +271,19 @@ export function scanBinForImport(entries: readonly BackupIndexEntry[], names: Re
     return { index, database }
 }
 
+/**
+ * Whether any complete entry is named `database.risudat`. Presence only: it never throws, and an entry the walk kept
+ * no name for is skipped, so a refusal check can run on any walk result.
+ */
+export function hasDatabaseEntry(entries: readonly BackupIndexEntry[], names: ReadonlyMap<number, string>): boolean {
+    for (const entry of entries) {
+        if (entry.nameLength <= SCAN_NAME_MAX_BYTES && names.get(entry.headerOffset) === DATABASE_ENTRY_NAME) {
+            return true
+        }
+    }
+    return false
+}
+
 /** The database entry's bytes, with its header checked again against the walk. Throws `BinFileChangedError`. */
 export async function readBinDatabase(file: Blob, entry: BackupIndexEntry): Promise<Uint8Array> {
     await readIndexedHeader(file, entry, DATABASE_ENTRY_NAME)

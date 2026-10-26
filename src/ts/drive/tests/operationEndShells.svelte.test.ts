@@ -361,13 +361,32 @@ describe('the Settings .bin import ends', () => {
         expect(alertErrorTexts(page)).toContain(language.store2Boot.readOnlyRefusal)
     })
 
-    test('new behaviour: a file with no database entry is nothing-replaced, not canceled', async () => {
+    test('new behaviour: a file cut inside its first header is nothing-replaced, not canceled, and says it is cut short', async () => {
         const page = await openPage()
 
         const end = await loadBin(new Uint8Array([0, 0, 0, 0]))
 
         expect(end).toMatchObject({ outcome: 'nothing-replaced', cause: null })
+        expect(alertErrorTexts(page)).toContain(language.backupFileEndsEarly)
+    })
+
+    test('new behaviour: a complete file with entries but no database entry is nothing-replaced and says it is cut short', async () => {
+        const page = await openPage()
+
+        const end = await loadBin(binEntry('golden-avatar.png', REFUSED_ASSET))
+
+        expect(end).toMatchObject({ outcome: 'nothing-replaced', cause: null })
+        expect(alertErrorTexts(page)).toContain(language.backupFileEndsEarly)
+    })
+
+    test('new behaviour: an empty file keeps the generic message and is nothing-replaced', async () => {
+        const page = await openPage()
+
+        const end = await loadBin(new Uint8Array(0))
+
+        expect(end).toMatchObject({ outcome: 'nothing-replaced', cause: null })
         expect(alertErrorTexts(page)).toContain('Failed, Is file corrupted?')
+        expect(alertErrorTexts(page)).not.toContain(language.backupFileEndsEarly)
     })
 
     test('new behaviour: declining the no-Web-Locks warning before any write is canceled', async () => {

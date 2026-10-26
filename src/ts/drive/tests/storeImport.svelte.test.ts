@@ -416,14 +416,36 @@ describe('preconditions are checked before the first asset is written', () => {
         expect(page.reloads.count).toBe(0)
     })
 
-    test('a file with no database entry is refused before any asset is written', async () => {
+    test('a file with entries but no database entry is refused as cut short before any asset is written', async () => {
         const page = await openPage()
         page.w.store.ops.length = 0
 
         await loadBin(page, binOf(binEntry('golden-avatar.png', AVATAR)))
 
-        expect(alertErrorTexts(page)).toContain('Failed, Is file corrupted?')
+        expect(alertErrorTexts(page)).toContain(language.backupFileEndsEarly)
         expect(mutations(page)).toEqual([])
+    })
+
+    // Message test: the store2 route already refused a truncated file without a database before any write.
+    test('message test: a file cut inside an entry, with no database, says it is cut short', async () => {
+        const page = await openPage()
+        page.w.store.ops.length = 0
+
+        await loadBin(page, binEntry('golden-avatar.png', AVATAR).slice(0, 12))
+
+        expect(alertErrorTexts(page)).toContain(language.backupFileEndsEarly)
+        expect(mutations(page)).toEqual([])
+    })
+
+    test('write reproducer: a complete database followed by a partial extra entry is refused with nothing written', async () => {
+        const page = await openPage()
+        page.w.store.ops.length = 0
+
+        await loadBin(page, binOf(golden('upstream-full.bin'), binEntry('extra.png', AVATAR).slice(0, 12)))
+
+        expect(alertErrorTexts(page)).toContain(language.backupFileEndsEarly)
+        expect(mutations(page)).toEqual([])
+        expect(page.reloads.count).toBe(0)
     })
 
     // New behaviour, pinned by mutants: a large database is announced, naming its size, before it is decoded.
@@ -760,6 +782,28 @@ describe('a bulk marker this page load left behind', () => {
         expect(key.current?.key).not.toBe(before)
         expect(key.staging).toBeNull()
         expect(page.reloads.count).toBe(1)
+    })
+})
+
+describe('unit: hasDatabaseEntry answers presence only', () => {
+    function entryAt(headerOffset: number, nameLength: number): { headerOffset: number, nameLength: number, dataLength: number, headerLength: number } {
+        return { headerOffset, nameLength, dataLength: 1, headerLength: 8 + nameLength }
+    }
+
+    test('finds the database among kept names and ignores the others', async () => {
+        const { hasDatabaseEntry } = await import('src/ts/drive/storeImport')
+        const entries = [entryAt(0, 9), entryAt(30, 16)]
+        expect(hasDatabaseEntry(entries, new Map([[0, 'first.png'], [30, 'database.risudat']]))).toBe(true)
+        expect(hasDatabaseEntry(entries, new Map([[0, 'first.png'], [30, 'other.risudat']]))).toBe(false)
+        expect(hasDatabaseEntry([], new Map())).toBe(false)
+    })
+
+    test('never throws: an entry without a kept name is skipped, and a name over 64 bytes is not looked at', async () => {
+        const { hasDatabaseEntry } = await import('src/ts/drive/storeImport')
+        const entries = [entryAt(0, 9), entryAt(30, 100), entryAt(200, 16)]
+        expect(hasDatabaseEntry(entries, new Map())).toBe(false)
+        expect(hasDatabaseEntry(entries, new Map([[30, 'database.risudat']]))).toBe(false)
+        expect(hasDatabaseEntry(entries, new Map([[200, 'database.risudat']]))).toBe(true)
     })
 })
 

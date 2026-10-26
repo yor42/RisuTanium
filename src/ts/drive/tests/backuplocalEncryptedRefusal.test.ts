@@ -11,7 +11,8 @@
  * encountered while looking for the marker also aborts the import before any
  * write, with its own message, distinct from the refusal. Without such an
  * entry present anywhere in the file, an import restores every entry in
- * file order, including a file truncated inside its final entry.
+ * file order; a file that ends inside an entry, or that holds entries but no
+ * database, is refused before any write.
  *
  * `getColdStorageBackupKey`/`isColdStorageBackupData` are the REAL functions
  * from `src/ts/process/coldstorageData.ts` (pure, no side effects); only
@@ -1096,16 +1097,52 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
         expect(loadingTexts).toEqual(expectedTexts)
     })
 
-    test('imports the entries before a truncated final database entry and reports file corruption', async () => {
+})
+
+describe('a backup that ends inside an entry, or lacks a database, is refused before any write', () => {
+    test('write reproducer: a backup cut inside its final database entry is refused before any write', async () => {
         await loadBackupBytes(truncatedDatabaseFixture())
 
-        expect(forageSetItemMock).toHaveBeenCalledWith(`assets/${ASSET_NAME}`, expect.any(Uint8Array))
-        expect(setColdStorageItemMock).toHaveBeenCalledWith(COLD_UUID, { message: [] })
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expectNoWritesNoInstallNoNetwork()
         expect(forageSetItemMock).not.toHaveBeenCalledWith('database/database.bin', expect.anything())
         expect(forageSetItemMock).not.toHaveBeenCalledWith('blocks/head', expect.anything())
-        expect(fetchMock).not.toHaveBeenCalled()
+        expect(alertMocks.alertError).toHaveBeenCalledWith(language.backupFileEndsEarly)
+    })
+
+    test('write reproducer: a complete database followed by a partial extra entry is refused before any write', async () => {
+        const partial = buildChunk('extra.png', new Uint8Array(32)).slice(0, 20)
+        await loadBackupBytes(concatChunks([assetEntry(), coldEntry(), databaseEntry(), partial]))
+
+        expectNoWritesNoInstallNoNetwork()
+        expect(alertMocks.alertError).toHaveBeenCalledWith(language.backupFileEndsEarly)
+    })
+
+    test('write reproducer: a complete file with entries but no database is refused before any write', async () => {
+        await loadBackupBytes(concatChunks([assetEntry(), coldEntry()]))
+
+        expectNoWritesNoInstallNoNetwork()
+        expect(alertMocks.alertError).toHaveBeenCalledWith(language.backupFileEndsEarly)
+    })
+
+    test('guard: an empty file keeps the generic message and writes nothing', async () => {
+        await loadBackupBytes(new Uint8Array(0))
+
+        expectNoWritesNoInstallNoNetwork()
         expect(alertMocks.alertError).toHaveBeenCalledWith('Failed, Is file corrupted?')
+    })
+
+    test('the refusal log carries counts and offsets only, never a name', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        try {
+            await loadBackupBytes(truncatedDatabaseFixture())
+            const lines = warn.mock.calls.map((call) => String(call[0])).filter((line) => line.startsWith('[restore] refused'))
+            expect(lines).toHaveLength(1)
+            expect(lines[0]).toMatch(/truncated tail, size \d+, 2 complete entries, last complete end \d+/)
+            expect(lines[0]).not.toContain(ASSET_NAME)
+            expect(lines[0]).not.toContain(DATABASE_NAME)
+        } finally {
+            warn.mockRestore()
+        }
     })
 })
 

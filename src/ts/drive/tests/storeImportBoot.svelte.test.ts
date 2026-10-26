@@ -395,4 +395,24 @@ describe('the start-up .bin import never writes a cold-storage unit (Gate 1 C1)'
         expect(installed).not.toHaveBeenCalled()
         expect(vi.mocked(boot.alert.alertError).mock.calls.length).toBeGreaterThan(0)
     })
+
+    test('write reproducer: a complete database followed by a partial extra entry is refused at boot with nothing installed', async () => {
+        const boot = await openBoot()
+        const { language } = await import('src/lang')
+        const installed = vi.fn(async () => ({ status: 'declined' as const }))
+        const target: BootImportTarget = { readColdStorageItem: async () => ({ status: 'missing' }), install: installed }
+        const partial = new Uint8Array(12)
+        new DataView(partial.buffer).setUint32(0, 9, true)
+        const rest = golden('upstream-full.bin')
+        const bytes = new Uint8Array(rest.length + partial.length)
+        bytes.set(rest, 0)
+        bytes.set(partial, rest.length)
+
+        const end = await pickAtBoot(target, bytes)
+
+        expect(end).toEqual({ kind: 'cancelled' })
+        expect(installed).not.toHaveBeenCalled()
+        expect(vi.mocked(boot.alert.alertError)).toHaveBeenCalledWith(language.backupFileEndsEarly)
+        expect(boot.w.store.mutating()).toEqual([])
+    })
 })

@@ -218,6 +218,8 @@ export interface BackupIndexEntry {
 export interface BackupWalkResult {
     /** `true` as soon as a complete entry name decodes to `BACKUP_ENCRYPTION_MARKER_NAME`; `entries` is then empty. */
     hasMarker: boolean
+    /** `true` when the walk ended inside an entry (a header, name, data-length field or body cut off by the end of the file). Always `false` when `hasMarker` is `true`. */
+    truncatedTail: boolean
     /** Every entry whose header and whole body fit in the file, in file order. A truncated trailing entry is not listed. */
     entries: BackupIndexEntry[]
     /**
@@ -295,8 +297,8 @@ export function createBlobWindowReader(file: Blob, windowBytes: number): BlobWin
  * entry's name is itself complete and is the marker: a truncated trailing
  * entry resolves `false` unless its complete name is the marker, so
  * nothing further to scan remains. A truncated trailing entry is not in the
- * index, so `LoadLocalBackup` silently drops it rather than treating it as
- * corruption.
+ * index; the result reports it as `truncatedTail`, and `LoadLocalBackup`
+ * refuses such a file before writing anything.
  *
  * Only a file whose own size ends mid-entry is a truncated tail. A read
  * inside that size that delivers too few bytes to resolve the header it
@@ -334,11 +336,11 @@ export async function indexBackupEntries(file: Blob, options: BackupWalkOptions 
             if (result.status === 'ok') {
                 const header = result.header
                 if (header.name === BACKUP_ENCRYPTION_MARKER_NAME) {
-                    return { hasMarker: true, entries: [], names: new Map() }
+                    return { hasMarker: true, truncatedTail: false, entries: [], names: new Map() }
                 }
                 const bodyEnd = pos + header.headerLength + header.dataLength
                 if (bodyEnd > totalBytes) {
-                    return { hasMarker: false, entries, names }
+                    return { hasMarker: false, truncatedTail: true, entries, names }
                 }
                 entries.push({
                     headerOffset: pos,
@@ -360,7 +362,7 @@ export async function indexBackupEntries(file: Blob, options: BackupWalkOptions 
                 const fieldStart = pos + 4 + result.nameLength
                 const fieldEnd = fieldStart + 4
                 if (fieldEnd > totalBytes) {
-                    return { hasMarker: false, entries, names }
+                    return { hasMarker: false, truncatedTail: true, entries, names }
                 }
                 const fieldBuffer = await reader.view(fieldStart, 4)
                 if (fieldBuffer.length < 4) {
@@ -369,7 +371,7 @@ export async function indexBackupEntries(file: Blob, options: BackupWalkOptions 
                 const dataLength = readUint32LE(fieldBuffer, 0)
                 const bodyEnd = fieldEnd + dataLength
                 if (bodyEnd > totalBytes) {
-                    return { hasMarker: false, entries, names }
+                    return { hasMarker: false, truncatedTail: true, entries, names }
                 }
                 entries.push({ headerOffset: pos, nameLength: result.nameLength, dataLength, headerLength: 4 + result.nameLength + 4 })
                 if (oversizeBodyBytes !== undefined && dataLength > oversizeBodyBytes) {
@@ -389,7 +391,7 @@ export async function indexBackupEntries(file: Blob, options: BackupWalkOptions 
                 // The name is complete and is the marker: it counts as a
                 // match whether or not the data-length field that follows
                 // it fits in the file.
-                return { hasMarker: true, entries: [], names: new Map() }
+                return { hasMarker: true, truncatedTail: false, entries: [], names: new Map() }
             }
 
             // The marker test above runs first, so a short read that already
@@ -403,13 +405,13 @@ export async function indexBackupEntries(file: Blob, options: BackupWalkOptions 
             // truncated tail: the walk ends without a marker.
             const moreAvailableBeyondWindow = requested < remaining
             if (!moreAvailableBeyondWindow) {
-                return { hasMarker: false, entries, names }
+                return { hasMarker: false, truncatedTail: true, entries, names }
             }
             want = Math.max(want * 2, result.need)
         }
     }
 
-    return { hasMarker: false, entries, names }
+    return { hasMarker: false, truncatedTail: false, entries, names }
 }
 
 /** `true` when `file` carries an entry whose complete name is `BACKUP_ENCRYPTION_MARKER_NAME`; see `indexBackupEntries` for the walk's rules. */

@@ -1387,7 +1387,7 @@ describe('a full backup carries the inlays of both stores and restores them', ()
 describe('restoring the inlay entries of a backup', () => {
     const BODY = patterned(900, 5)
 
-    test('acceptance: a backup cut inside an inlay keeps the inlays before the cut, drops the cut one and installs no database', async () => {
+    test('write reproducer: a backup cut inside an inlay is refused before any inlay or database is written', async () => {
         await setInlayAsset('first', imageInlay(20))
         await setInlayAsset('second', imageInlay(21))
         const before = await snapshotOf(['first', 'second'])
@@ -1401,11 +1401,10 @@ describe('restoring the inlay entries of a backup', () => {
         await loadBackupBytes(backup.slice(0, located[1].start + 4 + located[1].name.length + 4 + 20))
 
         const restored = await snapshotOf(['first', 'second'])
-        const present = Object.values(restored).filter((value) => value !== null)
-        expect(present).toHaveLength(1)
-        expect(Object.values(before)).toContainEqual(present[0])
+        expect(Object.values(restored).filter((value) => value !== null)).toHaveLength(0)
+        expect(Object.values(before).every((value) => value !== null)).toBe(true)
         expect(installedHead()).toBe(false)
-        expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileEndsEarly)
     })
 
     test('acceptance: parts split by other entries are accepted and the body is whole', async () => {

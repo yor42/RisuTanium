@@ -54,7 +54,7 @@ import { getPageStorageMode } from "../storage/pageStorageMode";
 import { BinFileChangedError, type ColdEntryIndex } from "../storage/store2/legacy/binReader";
 import type { BootImportEnd, BootImportTarget } from "../storage/store2/legacy/bootImport";
 import { emptyImportFacts, outcomeOfBootFinish, type ExportFile, type ExportOmitted, type ExportOutcome, type ImportFacts, type OperationCause, type OperationEnd, type OperationName, type OperationOutcome } from "./operationEnd";
-import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmImportScale, confirmLeftOut, createBinImportReader, IMPORT_COPY_PHASE_EVERY, noteImportPhase, readBinDatabaseOmitted, readBinDatabaseTree, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
+import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmImportScale, confirmLeftOut, createBinImportReader, hasDatabaseEntry, IMPORT_COPY_PHASE_EVERY, noteImportPhase, readBinDatabaseOmitted, readBinDatabaseTree, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -1666,6 +1666,7 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
             // takes no lock and runs before the cross-tab guard below.
             const assetLimit = await nodeRestoreAssetLimit();
             let hasEncryptionMarker: boolean;
+            let backupTruncatedTail: boolean;
             let backupEntries: BackupIndexEntry[];
             let backupNames: ReadonlyMap<number, string>;
             try {
@@ -1682,6 +1683,7 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                     }
                 });
                 hasEncryptionMarker = walk.hasMarker;
+                backupTruncatedTail = walk.truncatedTail;
                 backupEntries = walk.entries;
                 backupNames = walk.names;
                 noteImportPhase(`walked, ${backupEntries.length} entries`);
@@ -1692,6 +1694,24 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
             }
             if (hasEncryptionMarker) {
                 alertError(language.encryptedBackupRefused);
+                return refused();
+            }
+
+            // A file whose walk ends inside an entry, or that holds entries but
+            // no database, is refused on every route before any write. The log
+            // carries counts and offsets only, never a name, id or content.
+            const lastCompleteEntry = backupEntries.length > 0 ? backupEntries[backupEntries.length - 1] : null;
+            const lastCompleteEnd = lastCompleteEntry === null
+                ? 0
+                : lastCompleteEntry.headerOffset + lastCompleteEntry.headerLength + lastCompleteEntry.dataLength;
+            const lacksDatabase = !hasDatabaseEntry(backupEntries, backupNames);
+            if (backupTruncatedTail || (lacksDatabase && backupEntries.length > 0)) {
+                console.warn(`[restore] refused: ${backupTruncatedTail ? 'truncated tail' : 'no database entry'}, size ${file.size}, ${backupEntries.length} complete entries, last complete end ${lastCompleteEnd}`);
+                alertError(language.backupFileEndsEarly);
+                return refused();
+            }
+            if (lacksDatabase) {
+                alertError('Failed, Is file corrupted?');
                 return refused();
             }
 
@@ -2157,9 +2177,10 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                 // The pipeline has drained: what it was handed less what the store refused by name.
                 facts.assets = { written: assetsSubmitted - (assetPipeline?.invalidAssets().length ?? 0), skipped: skippedAssets };
 
-                // Written before the database is looked at, so a file cut short
-                // after some complete inlays keeps them; a part that is missing
-                // keeps its whole inlay out. Additive, like the assets.
+                // Reached only for a walk that ended on an entry boundary and
+                // holds a database, so every inlay part the file has is
+                // complete; a part that is missing keeps its whole inlay out.
+                // Additive, like the assets.
                 const inlayOutcome = await restoreCollectedInlays(inlayCollector);
                 if (inlayOutcome.changed) {
                     alertError(language.backupFileChangedWhileReading);

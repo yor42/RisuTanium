@@ -1947,6 +1947,7 @@ export const languageChineseTraditional = {
     "encryptedBackupRefused": "此備份儲存於 risuai.xyz，該網站會加密其完整備份，因此只有 risuai.xyz 才能還原。此處無法讀取。未匯入任何內容。\n\n若要搬移這些資料，請在 risuai.xyz 上使用 \"儲存部分本機備份（不含角色資源）\"。此備份未加密，會保留包含冷儲存在內的所有對話，並保留角色、群組與人設的頭像圖片、使用者圖示、背景，以及資料夾與預設圖片，其他圖片與 VITS 檔案則會被捨棄。\n\n詳情請參閱遷移指南。",
     "encryptedBackupImportStopped": "此備份包含已加密的部分，匯入已中止。部分圖片或冷儲存項目可能已被新增或取代。目前的資料庫未被變更。",
     "backupFileUnreadable": "無法讀取該檔案。未匯入任何內容。",
+    "backupFileEndsEarly": "該檔案被截斷，因此可能不完整。未匯入任何內容。如果您在 Android 上將其儲存到「下載」（Download）資料夾，請使用「我的檔案」（My Files）複製，或將其移至「文件」（Documents）資料夾，然後再試一次。",
     "restoreCheckingOtherTabs": "正在復原前檢查此應用程式是否有其他已開啟的分頁...",
     "restoreOtherTabRefused": "此應用程式似乎已在另一個分頁中開啟。請先關閉此應用程式的所有其他分頁，然後再試一次。未復原任何內容。",
     "restoreNoLockWarningConfirm": "您的瀏覽器無法在復原前檢查此應用程式是否已在另一個分頁中開啟。如果此應用程式的另一個分頁已開啟，它可能會在下次儲存時用自己較舊的資料覆寫您正在復原的資料——即使該分頁沒有任何未儲存的變更也是如此。請先關閉此應用程式的所有其他分頁，然後再繼續。仍要繼續嗎？",

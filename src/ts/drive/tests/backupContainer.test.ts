@@ -379,7 +379,7 @@ describe('indexBackupEntries returns where every complete entry sits', () => {
 
         const result = await indexBackupEntries(fileOf(bytes))
 
-        expect(result).toEqual({ hasMarker: true, entries: [], names: new Map() })
+        expect(result).toEqual({ hasMarker: true, truncatedTail: false, entries: [], names: new Map() })
     })
 })
 
