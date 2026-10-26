@@ -1324,6 +1324,199 @@ The maintainer took lane A's recommendation, which had two parts:
 - **ID history:** lane B's block MC-580 to 599 was used up, so this decision was first given the provisional ID `MC-B1` (the placeholder form of `Agents/Lanes/README.md` step 2; an earlier, unrelated `MC-B1` was folded in as `MC-480`). It was then mislabelled `MC-600`, which is inside lane H's range MC-600 to 619 (lane H's own `MC-600` is the integrity-scan decision in `Agents/Lanes/lane-H-records.md`). Nothing committed cited it under either label: the commit messages of `bf1f92a75` and `f7fce82cf` carry no MC number, and `git grep -n -I MC-600 HEAD -- Agents docs src` finds only lane H's decision and the range statements. It was then re-numbered into lane B's second block, MC-620 to 639, assigned by lane A on 2026-10-26 (per the note). `MC-620` is the first used; the next free is `MC-621`.
 - Nothing here authorizes code, a commit or a push.
 
+### MC-621 — Lane B, 2026-10-26: in B3, loading the blocked modules does not lift a refused Save mine's Reload-only state; "load, then Save mine" is revisited with S4d's prompt rewording
+
+- **Tag:** decision (the maintainer's B3 plan answer OQ1, in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("B3 plan answers", OQ1).
+- **Related:** `MC-595`, `MC-314`, `MC-625`; CHORE-205 B3, S4d.
+
+1. **The behaviour:** after a refused Save mine, loading the blocked modules does not lift `Park.blocked` in B3. Reload only stays until the base names the manifest or the page reloads (`MC-595` unchanged).
+2. **Later:** "load, then Save mine" is revisited with S4d's prompt rewording.
+
+**Notes that are not the maintainer's words:**
+- Gate 1 round 1 checked that `Park.blocked` is untouched by B3 (`b3-gate1\result.md`, "Checks that held" 5).
+- Nothing here authorizes code, a commit or a push.
+
+### MC-622 — Lane B, 2026-10-26: a damaged or missing module asset or inlay list unit is not a load failure; the body loads and the list is re-derived
+
+- **Tag:** decision (the maintainer's B3 plan answer OQ2, in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("B3 plan answers", OQ2, and "Orchestrator readings", MC-622 reading).
+- **Related:** `MC-350`; CHORE-205 B3a.
+
+1. **The behaviour:** a damaged or missing module asset or inlay list unit is not a load failure. The body loads and the list is re-derived.
+
+**Notes that are not the maintainer's words:**
+- **Recorded reading (the orchestrator's, 2026-10-26, told to the maintainer at the B3a commit question and not objected to; not a separate decision):** a module list unit whose version is above this build's is withheld and re-derived, as boot does today. A list in a newer frame format (`too-new`) stays fatal (`MC-350`).
+- B3a Gate 2 noted that re-deriving a newer-version list is outside the letter of this decision, matches the store's existing treatment of newer lists, and that the orchestrator may want to record the reading (`b3a-gate2\result.md`, F3). The coder had flagged the `too-new` assumption in `b3a\result.md`.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-623 — Lane B, 2026-10-26: the lorebook repair question may be asked from inside the save loop's load valve; saves wait until it is answered (amended by `MC-627` and `MC-629`)
+
+- **Tag:** decision (the maintainer's B3 plan answer OQ3, in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("B3 plan answers", OQ3).
+- **Related:** `MC-624`, `MC-627`, `MC-629`; CHORE-205 B3b.
+
+1. **The behaviour:** the lorebook repair question may be asked from inside the save loop's load valve. Saves wait until it is answered.
+2. **Condition:** Gate 1 must show no deadlock while the question is open.
+
+**Notes that are not the maintainer's words:**
+- Gate 1 round 1 found a deadlock and rejected (`b3-gate1\result.md`, F1; row 4146). The answer to it is `MC-627`, which amends this entry.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-624 — Lane B, 2026-10-26: if every caller aborts while the repair question is open, the answer is dropped and nothing is installed; the question returns on the next load (narrowed by `MC-630`)
+
+- **Tag:** decision (the maintainer's B3 plan answer OQ4, in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("B3 plan answers", OQ4).
+- **Related:** `MC-623`, `MC-630`; CHORE-205 B3b.
+
+1. **The behaviour:** if every caller aborts while the repair question is open, the answer is dropped and nothing is installed. The question returns on the next load.
+
+**Notes that are not the maintainer's words:**
+- `MC-630` narrows this for the case where a save is waiting on the module.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-625 — Lane B, 2026-10-26: the module stub refusal message on the failed-save path (the `MC-584` revisit) is decided at S4d; B3 keeps the existing path
+
+- **Tag:** decision (the maintainer's B3 plan answer OQ5, in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("B3 plan answers", OQ5).
+- **Related:** `MC-584`, `MC-627`; CHORE-205 B3, S4d.
+
+1. **The behaviour:** the `MC-584` revisit (the module stub refusal message on the failed-save path) is decided at S4d. B3 keeps the existing path.
+
+**Notes that are not the maintainer's words:**
+- In B3b the valve rethrows the planner's own `StubRefusedError` (`b3b\result.md`, "MC-625" line; test L4).
+- Nothing here authorizes code, a commit or a push.
+
+### MC-626 — Lane B, 2026-10-26: B3 has no separate phone check; it rides on S4d's phone check
+
+- **Tag:** decision (the maintainer's B3 plan answer OQ6, in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("B3 plan answers", OQ6; the note refers to it as P3).
+- **Related:** `Agents/Lanes/L3-plan.md` section 8 (P3 is the phone check after S4d); CHORE-205 B3, S4d.
+
+1. **The behaviour:** B3 has no separate phone check. It rides on S4d's phone check (P3).
+
+**Notes that are not the maintainer's words:**
+- Nothing here authorizes code, a commit or a push.
+
+### MC-627 — Lane B, 2026-10-26: a load that would ask the lorebook question, or wait behind an open question, never runs under the save lock; the valve fails that pass on the existing path and the next pass saves (amends `MC-623`)
+
+- **Tag:** decision (the maintainer's B3 Gate 1 round 1 answer, in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("B3 Gate 1 r1 answers"). Inputs: row 4146.
+- **Related:** `MC-623`, `MC-625`, `MC-629`; CHORE-205 B3b.
+
+1. **The behaviour:** a load that would ask the lorebook question, or wait behind an open question, never runs under the save lock. The valve fails that pass on the existing path (`MC-625`). The load and the question run outside the lock. The next pass then saves.
+2. **Unchanged:** restore and import code is not changed.
+3. **Why:** the note gives it as the answer after Gate 1 finding F1 found a deadlock with the restore and import wait notices.
+
+**Notes that are not the maintainer's words:**
+- The deadlock is `b3-gate1\result.md` F1: the question under the write lock can deadlock against restore paths that put up a wait notice the person cannot close. It was reproduced with the real alert layer (diagnostics D1 and D2).
+- Gate 1 round 2 read this decision as: the unit read may run under the save lock, and nothing that waits for the person does (`b3-plan\plan-r2-addendum.md`, E1). After the answer, "exactly one saving pass" follows; the install's change effect may add a pass that writes nothing.
+- `MC-629` amends how the failure is reported for this case.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-628 — Lane B, 2026-10-26: during an export snapshot, a stub deleted while loading, when another module holds the same id, is a failed load; the export stops with nothing written and the generic message
+
+- **Tag:** decision (the maintainer's B3 Gate 1 round 1 answer F6, in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("B3 Gate 1 r1 answers", MC-628). Inputs: row 4146.
+- **Related:** `MC-601` (lane H, the generic export message), `MC-631`, `MC-633`; CHORE-205 B3b.
+
+1. **The behaviour:** during an export snapshot, a stub deleted while loading, when another module holds the same id, is a failed load. The export stops with nothing written and the generic message (`MC-601`). It is never a silent duplicate.
+
+**Notes that are not the maintainer's words:**
+- The question arose from Gate 1 finding F6: in that case the export would have written a duplicate with no error (`b3-gate1\result.md`, F6, on C1's snapshot).
+- `MC-631` extends it to every `acquireModule` caller. `MC-633` records a limit.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-629 — Lane B, 2026-10-26: while a valve-deferred lorebook question is open, the save waits quietly: no toast and no failure notice; it retries after the answer and reports only if the load then fails (amends `MC-627`)
+
+- **Tag:** decision (the maintainer's B3 plan revision 2 answer OQ-A, in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("B3 plan r2 answers", OQ-A).
+- **Related:** `MC-627`, `MC-625`; CHORE-205 B3b.
+
+1. **The behaviour:** while a valve-deferred lorebook question is open, the save waits quietly. There is no toast and no failure notice. It retries after the answer and reports only if the load itself then fails.
+2. **Amendment:** this amends `MC-627`'s "existing failed-save path" for this case.
+
+**Notes that are not the maintainer's words:**
+- Gate 1 round 2 checked the quiet outcome against source (`b3-gate1-r2\result.md`, "Other scope items") and required a test that a `settled` that never resolves cannot stall saving silently (E2).
+- Gate 2 round 1 found that the exactly-one-recorded-stub case broke this decision's "reports only if the load itself then fails" (`b3b-gate2\result.md`, F1); it was fixed and accepted (rows 4150 to 4152).
+- Nothing here authorizes code, a commit or a push.
+
+### MC-630 — Lane B, 2026-10-26: when a save is waiting on the module, the module is installed after the answer even if every UI caller aborted (narrows `MC-624`)
+
+- **Tag:** decision (the maintainer's B3 plan revision 2 answer OQ-B, in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("B3 plan r2 answers", OQ-B).
+- **Related:** `MC-624`, `MC-629`; CHORE-205 B3b.
+
+1. **The behaviour:** when a save is waiting on the module (valve interest), the module is installed after the answer even if every UI caller aborted. Otherwise `MC-624` stands.
+
+**Notes that are not the maintainer's words:**
+- Nothing here authorizes code, a commit or a push.
+
+### MC-631 — Lane B, 2026-10-26: the deleted-while-loading case with another same-id module fails every `acquireModule` caller, never acting silently on a different module (extends `MC-628`)
+
+- **Tag:** decision (the maintainer's B3 plan revision 2 answer OQ-C, in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("B3 plan r2 answers", OQ-C).
+- **Related:** `MC-628`, `MC-633`; CHORE-205 B3b.
+
+1. **The behaviour:** the deleted-while-loading-with-another-same-id case fails every `acquireModule` caller (editor, share, apply, export), never acting silently on a different module.
+
+**Notes that are not the maintainer's words:**
+- Gate 1 round 2 counted four direct `acquireModule` callers in non-test `src` (`exportModules.ts`, `v3.svelte.ts`, `moduleUse.ts`, `risuaccess/modules.ts`), each surfacing the failure (`b3-gate1-r2\result.md`, "MC-631 callers: COMPLETE").
+- Nothing here authorizes code, a commit or a push.
+
+### MC-632 — Lane B, 2026-10-26: `checkPeer` honours an existing Save mine consent for its epoch the same way the save pass does, so a deferral never re-asks (closes a gap found by Gate 1 round 2, E3)
+
+- **Tag:** decision (the maintainer's B3 Gate 1 round 2 answer E3, in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("B3 Gate 1 r2 answers", MC-632). Inputs: row 4147.
+- **Related:** `MC-595`, `MC-629`; CHORE-205 B3b.
+
+1. **The behaviour:** the gap is closed. `checkPeer` honours an existing Save mine consent for its epoch the same way the save pass does, so a deferral never re-asks. A test pins it.
+
+**Notes that are not the maintainer's words:**
+- The gap (`b3-gate1-r2\result.md`, E3): with the due branch gated during a deferral, a turn with a peer signal runs `checkPeer`, which judged without the consent exception, so the person could be asked again. The reviewer rated it narrow and not a data loss.
+- Gate 2 round 1 found that the second half of the row (a newer peer epoch during the deferral parks again and clears the consent) had no test (`b3b-gate2\result.md`, F2); the row was added (row 4151).
+- Nothing here authorizes code, a commit or a push.
+
+### MC-633 — Lane B, 2026-10-26: accepted limit: an in-place replacement by a same-id module still returns the new module, and a delete followed by a shift that looks identical may return the other same-id module (a known limit of `MC-628` and `MC-631`)
+
+- **Tag:** decision (the maintainer's B3 Gate 1 round 2 answer E4, in the lane B session, 2026-10-26; the question text is not reproduced here)
+- **Date:** 2026-10-26
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("B3 Gate 1 r2 answers", MC-633). Inputs: row 4147.
+- **Related:** `MC-628`, `MC-631`; CHORE-205 B3b.
+
+1. **The accepted limit:** an in-place replacement by a same-id module still returns the new module. A delete-then-shift that looks identical may return the other same-id module. There is no loss and no duplicate.
+2. **Recorded as:** a known limit of `MC-628` and `MC-631`.
+
+**Notes that are not the maintainer's words:**
+- Gate 1 round 2, E4: the install classifies only from the state at install time, so no rule can tell the two apart. The reviewer named a strict alternative (fail every "other holder" case, which would change lane H's `plugin-setDatabase-during-load` expectation to a failure) as a product choice for the maintainer; it was not taken (`b3-gate1-r2\result.md`).
+- The limit is stated as a code comment at the in-place branch of the loader and in the B3b commit message (`b3b\result.md`, E4 line; `b3b-r2\commit.txt`).
+- Nothing here authorizes code, a commit or a push.
+
 ## CHORE entries
 
 ### CHORE-227 (new) — After a finished export the app can stay marked busy, and the app has been killed after a second export
@@ -2002,6 +2195,14 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
 | 4143 | 2026-10-26 | CHORE-411 stage (b) committed and merged | orchestrator; lane A | `git log`: `f7fce82cf`; `git rev-parse origin/main` = `f7fce82cf` | no | Merged by fast-forward, main = `f7fce82cf` (tree 63d69238). Relayed by lane A: run 1 23,896 passed; run 2 16 failed in 9 files from 18 EBUSY on the risu-node-store temp rmdir and 2 timeouts, all 9 files passing alone (528 passed); check 0 errors; build and dist OK. Translations by the Translator, pasted unchanged. |
 | 4144 | 2026-10-26 | Track H assigned to lane B; requirements for B3 | maintainer (relayed by lane A, 2026-10-26); lane H | `c205-next\b3-notes\from-lane-H.md`; lane H's "Requirements for lane B" in `Agents/Lanes/lane-H-records.md` on main | no | The maintainer assigned the remainder of track H to lane B after CHORE-411, one app-code writer at a time. B3 calls `repairModuleLorebook` before install; installs a repaired body as needing a save; gives each module one shared load; S4d must not narrow C1's second snapshot stub check (`MC-583` item 4 narrows lane G's check only); after B3, run lane H's section 6 checks. Lane H runs the `L3-plan.md` section 6 re-verification at its rebase onto B3, and lane B builds B3 to meet it; since lane H retires after C1, whoever owns track H runs it. Lane H's note that acquire-returns-copy cannot be met on the plugin path (`getDatabase` returns a copy) means that re-verification checks that the real loader returns the live slot. |
 | 4145 | 2026-10-26 | Lane A process note | lane A (relayed) | the brief for this record | no | Lane A relayed both facts: a scratch `pnpm install` run with pnpm 12 rewrote `.modules.yaml` in lane A's own CHORE-216 mutant copy (`%TEMP%\risu-b715\cve-111497\mut`), which broke the shared `node_modules`; lane A rebuilt `node_modules` offline with pnpm 10.34.1. The ban is the lane B orchestrator's: from 2026-10-26, lane B's coder and reviewer briefs forbid package-manager commands in scratch copies or through junctions. |
+| 4146 | 2026-10-26 | B3 Gate 1, round 1 | opus-reviewer (fresh) | `c205-next\b3-gate1\result.md`; `diag.log`, `diag-control.log`, `diag-d.log`, `diag-d1.log`, `diag-d2.log` | no | Plan draft 1 (`b3-plan\plan.md`), HEAD `3065a3575`. **`[REJECT]`,** streak 1. F1 (blocking): the lorebook repair question under the write lock can deadlock against restore paths that put up a wait notice the person cannot close; **reproduced** with the real alert layer (D1 and D2; the control without the lock passed alone). The plan's proposed test mocks away the alert layer where the cycle lives. F2 to F7: the valve's success test and classification order, the missing E4 argument, the install scan's cost, test labels and must-run list, two departures from E4 and C1 (a duplicate in the export snapshot), smaller points. Checks that held include proxy identity, dirty marking, the no-write load and that B3 is dead code in production until S4d. Led to `MC-627` and `MC-628`. |
+| 4147 | 2026-10-26 | B3 Gate 1, round 2, and the addendum | opus-reviewer (fresh, seeded with round 1); orchestrator (addendum) | `c205-next\b3-gate1-r2\result.md`, `V-A.log` to `V-G.log`; `b3-plan\plan-r2.md`, `plan-r2-addendum.md` | no | Plan revision 2.1, HEAD `3065a3575`. **`[EDITORIAL]`:** F1 to F7 closed; F1 closed on an executed model, and a naive variant of the model still reproduces the cycle (V-G). Lock-waiter enumeration: 20 acquisition lines, all in the plan's table (COMPLETE). Required before implementation: E1 (three inaccurate statements; read the lock rule as "the read may run under the lock, nothing that waits for the person does"), E2 (the throwing-flight `settled` row, and a deferral that starts in a tick pass), E3 (`checkPeer` and consent; `MC-632`), E4 (the same-id limit; `MC-633`), E5 (a cover joining an already-asking flight, and the constraint that no closeless cover is held across an await of `acquireModule`), E6 (test labels). Limit stated by the reviewer: the diagnostic models the lock and question cycle, not the production read, the install classification or `saveLoop`, so the real-loop rows are the evidence Gate 2 must execute. Gate 1 closed with the addendum applied. The reviewer rated a senior-advisor challenge not required. |
+| 4148 | 2026-10-26 | B3a Gate 2 | opus-reviewer | `c205-next\b3a-gate2\result.md`; `check.log`, `targeted.log`, `green.log`, `base-run.log`, `mut-C-*.log`, `mut-R-*.log`, `mutant.ps1`, `diag\` | no | **`[EDITORIAL]`,** no blocking finding. HEAD `3065a3575`, 8 changed files. `pnpm check` 0 errors; store2 plus `characterPutBackStore2` 163 files, 6,404 passed, 16 skipped; on base the new rows fail 26 (all "function is missing", so they are contract rows) and 337 existing rows pass as guards. Hydration survives an acknowledge, and a withheld list is written again (both executed). Required: F1 (the commit message was incomplete), F2 (three doc comments). Recommended rows, applied: F3 (a list above this build's version) and F4 (the module index rebuilt after an acknowledged pass). F5 to F7 informational (two survivors that also exist on the entity path; no guard on the module-unit assemble messages, pre-existing; a damaged module unit together with a too-new list reads `damaged`). The reviewer's own mutants F3, F4 and the message mutants survived before the rows; one whole-folder mutant run was polluted by memory pressure and re-run on 14 files. Led to the recorded reading of `MC-622`. |
+| 4149 | 2026-10-26 | B3a committed and merged | sonnet-coder (agent ad985a44b2c70b975); orchestrator; lane A | `c205-next\b3a\result.md`, `commit.txt`; `git log`: `7a6c84a9c` merged to main as `039f12e1e` ("Merge commit '7a6c84a9c'") | no | Base `3065a3575`. As reported at the end of the round: `pnpm check` 0 errors; the 4 targeted files 405 passed; `git diff --stat` 8 files, 669 insertions, 26 deletions; CRLF kept. The commit was `7a6c84a9c` ("feat(store2): module read and digest hydration, unreachable from the page (CHORE-205 stage B3a)", lane B, with the maintainer's question at commit time, per the reservations note); its merge to main is `039f12e1e`. B3a is reachable from the page only as a behaviour-preserving refactor (`assembleModule`, `registerModuleUnits`); the new read and hydrate paths have no non-test caller. Lane A's Windows full checks on the merge (tree `ced1ad89`, trial worktree `trial-b3a-wt`), as relayed by lane A: `pnpm test` run 1 23,984 passed, 2 failed (both in `internalBackupSnapshotLoad.svelte.test.ts`, a known flake: the parser mock lacks `risuChatParser`; predates CHORE-372), 23 skipped; run 2 23,986 passed, 0 failed, 23 skipped; `pnpm check` 0 errors, 0 warnings; `pnpm build` OK; `checkReleaseDist` OK, 245 files. The maintainer approved "Merge and push" in lane A's session (2026-10-26). |
+| 4150 | 2026-10-26 | B3b Gate 2, round 1 | opus-reviewer (agent a7162a001f50d90b4); sonnet-coder (agent ad2ff3ac05ab2105a) for the implementation | `c205-next\b3b\result.md`, `commit.txt`, `base-run-*.log`, `mutant-report*.txt`, `mut-*.log`; `c205-next\b3b-gate2\result.md`, `diag\`, `g2-mutant-report.txt`, `g2mut-*.log` | no | Base `039f12e1e`, uncommitted, 17 files (9 modified, 8 new). **`[REJECT]`,** streak 1. F1 (blocking): the valve started a flight for two live copies of a recorded stub, so the question looped and saving stalled with nothing reported; **reproduced** at valve level and on the real save loop (54 questions in 2.5 s, 0 failures). Reachability: nothing mints stubs before S4d; the reviewer found one route through a plugin array listing a stub twice. F2 (the second half of the Save mine consent row had no test), F3 and F4 (the registry comment and two commit-message claims were overstated). Deadlock (`MC-627`) re-checked: executed on the real loop, a naive mutant hangs, the real code completes. **Declared gaps, judged acceptable by the reviewer (checklist 7):** no row drives the v3 `getDatabase('all')` caller (it calls the same `acquireModule`; v3 rethrows with the reason), and no row for `saveFirst` bounded (L11; `storeRestore.ts` is untouched, `saveFirst` is bounded by its deadline, reasoned); four mutants not run (one equivalent, two single-path, one in B3a); two files cannot run on base (import failure), so their evidence is the mutants. Reviewer checks: `pnpm check` 0 errors; the 10 new and edited files 225/225; store2 plus `globalApi.saveStore2` 164 files, 6,430 passed, 16 skipped; base spot check 29 failed, 1 passed. |
+| 4151 | 2026-10-26 | B3b Gate 2, round 2 (F1 remediation) | sonnet-coder (agent a1c03f8b42967617a); opus-reviewer (agent adeac124eea904720) | `c205-next\b3b-r2\result.md`, `commit.txt`; `c205-next\b3b-gate2-r2\result.md`, `diag\`, `D-unmut-*.log`, `once-*.log`, `onceall-*.log`, `mutant-report.txt` | no | Remediation: the valve answers `refused` unless exactly one recorded stub is live (a new loader row and its mutant); a row for the newer-epoch park during a deferral; the registry comment restated. **`[REJECT]`,** streak 2, on one test defect only (N1): the existing row "a load that leaves the refusal in place is a failed save after one load..." read the live valve call count, which a retry pass could already have raised to 2; the unmodified file failed in 3 of 8 runs, so the final full `pnpm test` would go red intermittently. The coder had attributed that red to the `checkPeer-ignores-epoch` mutant, which was wrong (the reviewer's run: only the new row red). The F1 fix was **closed and accepted in the real loop** (a reproducer of the defect with the pre-fix condition: 54 questions; with the fix: 0 questions, the planner's own `StubRefusedError` counted, store unchanged). F2 to F4 closed. The reviewer judged the fix test-only, with no mechanism change. |
+| 4152 | 2026-10-26 | B3b Gate 2, round 3 (N1 remediation) | sonnet-coder (agent a2e13b2a5ad817d68); opus-reviewer (agent ac625599196cac3eb) | `c205-next\b3b-r3\result.md`; `c205-next\b3b-gate2-r3\result.md`, `r3-report.txt`, `run-r3.ps1`, `rep-1..12.log`, `mut-*.log` | no | Test-only change: the rig's `reportFailure` records the valve call count at the moment the failure is reported, and the row asserts 1 against that. **`[ACCEPT]`** (the reviewer's `[APPROVE]`), no blocking finding. Executed: 12 consecutive whole-file runs 13/13 (the coder's 10 runs likewise); `no-once-per-pass` red in 3 of 3 (`expected 6 to be 1`); `checkPeer-ignores-epoch` red in 3 of 3, on the newer-epoch row only; targeted 11 files, 333/333; `pnpm check` 0 errors; the test file is type-checked (a planted type error was reported). 16 of 17 files equal round 2's. **Observation O1:** the mutant `loaded-set-per-page` (the `loaded` set lasting a page load instead of one pass) survives all 11 files, so no row separates "one load per module id and pass" from "per page load"; the reviewer judged it hard to observe before runtime re-stubbing exists and did not reject on it (carried to S4d). Optional E1: a record line still cites an old log with two red rows (`b3b-r2\mut-checkPeer-ignores-epoch.log`); `b3b-r3\mut-checkPeer-ignores-epoch.log` is the clean single-red evidence. |
+| 4153 | 2026-10-26 | B3b committed and merged | orchestrator; maintainer (commit approval); lane A | `git log`: `83911ca29` on `worktree-Lane-B` ("feat(store2): module loader install, quiet save-loop valve and wiring (CHORE-205 stage B3b)"); message `c205-next\b3b-r2\commit.txt` | no | Committed with the maintainer's approval. Base `039f12e1e`. The message carries Gate 1 round 1 `[REJECT]` and round 2 `[EDITORIAL]`, and Gate 2 round 1 `[REJECT]`, round 2 `[REJECT]` (a flaky test row only) and round 3 `[ACCEPT]`. Its stated evidence: targeted run (the 10 B3b test files and `saveLoop.test.ts`) 333 passed; the store2 directory with `globalApi.saveStore2` 6,430 passed at Gate 2 round 1, before the remediation; `pnpm check` 0 errors. **Merged:** main fast-forwarded from `039f12e1e` to `83911ca29` and pushed by lane A (no merge commit); the maintainer approved "Merge and push" in lane A's session (2026-10-26); lane A asked because `MC-500`'s no-ask merge excludes save and data work. Lane A's Windows full checks (trial worktree `trial-b3b-wt`), as relayed by lane A: `pnpm test` run 1 24,087 passed, 2 failed (both in `internalBackupSnapshotLoad`, the known flake class), 23 skipped; run 2 24,089 passed, 0 failed, 23 skipped; `pnpm check` 0 errors, 0 warnings; `pnpm build` OK; `checkReleaseDist` OK, 249 files. |
 
 **Folded in by lane A on 2026-10-23 (records batch 4): ledger rows 2396 to 2437 are in the shared ledger.**
 
@@ -2382,4 +2583,29 @@ Rows from 2307 on use the shared ledger's columns. Tokens are each agent's own c
   - **Process:** no package-manager commands in scratch (row 4145).
   - **Track H check:** lane H runs the `L3-plan.md` section 6 re-verification at its rebase onto B3; lane B builds B3 to meet it; whoever owns track H after lane H retires runs it.
 - **Handoff:** lane A folds `MC-585` to `MC-599` and `MC-620` into `Maintainer-Context.md` and regenerates the Decision-Index at its next fold-in.
-- **Next free IDs:** `MC-621` (lane B's block MC-580 to 599 is used up; block 2 is MC-620 to 639), CHORE-412, row 4146.
+- **Next free IDs:** `MC-621` (lane B's block MC-580 to 599 is used up; block 2 is MC-620 to 639), CHORE-412, row 4146. (Superseded below.)
+
+2026-10-26, CHORE-205 L3 stage B3 (module loader): Gate 1 closed; B3a and B3b merged:
+- **Decisions:** `MC-621` to `MC-633` (the B3 plan answers, the Gate 1 round 1 answers `MC-627` and `MC-628`, the plan revision 2 answers `MC-629` to `MC-631`, the Gate 1 round 2 answers `MC-632` and `MC-633`), with the recorded reading of `MC-622`. No CHORE entry was added in this batch.
+- **Stage status:**
+
+  | Part | State |
+  |---|---|
+  | B3 plan, Gate 1 | Round 1 `[REJECT]` (a deadlock, reproduced; row 4146), round 2 `[EDITORIAL]` (E1 to E6; row 4147). Gate 1 is closed. |
+  | B3a (store side) | Gate 2 `[EDITORIAL]` (row 4148); committed as `7a6c84a9c`, merged to main as `039f12e1e` (row 4149). |
+  | B3b (loader, valve, wiring) | Gate 2 round 1 `[REJECT]` (row 4150), round 2 `[REJECT]` (a flaky test row only; row 4151), round 3 `[ACCEPT]` (row 4152); committed as `83911ca29` on `worktree-Lane-B` with the maintainer's approval (row 4153). **Merged:** main fast-forwarded to `83911ca29` and pushed by lane A after its full checks, with the maintainer's explicit approval, which `MC-500` requires for save work (row 4153). |
+
+  B3 is technically accepted and merged; it becomes COMPLETE after lane A folds these records into the shared files.
+- **Carry-forward:**
+  - **S4d:**
+    - Pin "one load per pass" against "one load per page load" with a row that re-stubs a module (Gate 2 round 3, O1; the mutant `loaded-set-per-page` survives all 11 targeted files).
+    - Decide the module refusal message on the failed-save path (`MC-625`, the `MC-584` revisit).
+    - Revisit "load, then Save mine" with the prompt rewording (`MC-621`).
+    - Narrow lane G's early export check to foreign markers (`MC-583` item 4) without narrowing C1's second snapshot stub check (row 4144).
+    - Constraint from Gate 1 round 2 E5: no closeless cover may be held across an await of `acquireModule` (the Tauri and Android gates are closeless; the reviewer found no current path that reaches it; `moduleValveAlert.test.ts` holds a guard row for the hang).
+    - The earlier S4d items stand (minting only entries whose three keys are confirmed present; re-mint after a replaced encoding; the B2b plan section 2.6 and B-1).
+  - **B3b's declared gaps** (judged acceptable by Gate 2 round 1, row 4150): no row drives the v3 `getDatabase('all')` caller of `MC-631`, and no row covers the `saveFirst` bound (L11).
+  - **After B3:** track H's re-verification (the `L3-plan.md` section 6 checks, now lane B's after lane H's retirement) runs on the real loader for items 1, 2, 3 and 5; item 4 (at S5, re-audit every acquire and release pair) is deferred to S5. The items are `Agents/Lanes/L3-plan.md` lines 157 to 161: 1 acquire returns the live object, 2 the failure type and module name match B3's errors, 3 duplicate-id resident modules, 5 the C2 and C3 reproducers on the real loader.
+  - **S4a and later callers:** the E5 constraint above.
+- **Handoff:** lane A folds `MC-621` to `MC-633` into `Maintainer-Context.md` and regenerates the Decision-Index, together with `MC-585` to `MC-599` and `MC-620` if not yet folded.
+- **Next free IDs:** `MC-634` (block 2 is MC-620 to 639), CHORE-412, row 4154.
