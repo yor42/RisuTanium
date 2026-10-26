@@ -252,5 +252,6 @@ describe('a stub deleted during its load while another module holds its id fails
         expect(error).toBeInstanceOf(ExportModuleUnreadableError)
         expect((error as ExportModuleUnreadableError).cause).toBeInstanceOf(ModuleLoadError)
         expect(((error as ExportModuleUnreadableError).cause as ModuleLoadError).reason).toBe('replaced')
+        expect(((error as ExportModuleUnreadableError).cause as ModuleLoadError).moduleName).toBe('b')
     })
 })

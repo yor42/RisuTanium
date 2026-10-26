@@ -438,13 +438,16 @@ describe('data the loader cannot read is never installed and never lost', () => 
         return { world, error, key, original }
     }
 
-    function expectLoadError(error: unknown, reason: string): void {
+    /** `name` is the module name the error carries: the recorded entry's name, or the id when no entry is held. */
+    function expectLoadError(error: unknown, reason: string, name = 'b'): void {
         expect(error).toBeInstanceOf(ModuleLoadError)
         expect(error).toBeInstanceOf(ModuleAcquireError)
         expect(error).not.toBeInstanceOf(ModuleLoaderMissingError)
         expect((error as ModuleLoadError).reason).toBe(reason)
         expect((error as ModuleLoadError).moduleId).toBe('id-b')
+        expect((error as ModuleLoadError).moduleName).toBe(name)
         expect((error as ModuleLoadError).message).toContain('id-b')
+        expect((error as ModuleLoadError).message).toContain(`"${name}"`)
     }
 
     test('a module unit that is absent is damaged: the slot stays the stub', async () => {
@@ -485,7 +488,7 @@ describe('data the loader cannot read is never installed and never lost', () => 
         }
         world.encoder.acknowledged().objects = { ...world.encoder.acknowledged().objects, moduleIndex: { ...index, entries: index.entries.filter(entry => entry.id !== world.ids[1]) } }
         const error = await acquireModule(world.ids[1]).then(() => null, (thrown: unknown) => thrown)
-        expectLoadError(error, 'no-entry')
+        expectLoadError(error, 'no-entry', 'id-b')
     })
 
     test('a damaged asset list is not a failure: the body loads, the list keeps no digest for the next pass to derive', async () => {
@@ -804,6 +807,7 @@ describe('the install is judged against the encoding at install time', () => {
         const error = await loading
         expect(error).toBeInstanceOf(ModuleLoadError)
         expect((error as ModuleLoadError).reason).toBe('stale')
+        expect((error as ModuleLoadError).moduleName).toBe('b')
         expect(isModuleStub(slots(world)[1])).toBe(true)
     })
 })
