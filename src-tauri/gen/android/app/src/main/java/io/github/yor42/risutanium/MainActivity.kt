@@ -1,6 +1,7 @@
 package io.github.yor42.risutanium
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
@@ -107,6 +108,21 @@ class MainActivity : TauriActivity() {
     }
     // Until the page reports its scheme the bars match the default dark scheme.
     applyBarColor(DEFAULT_BAR_COLOR)
+
+    // A file the app was started with. A restored instance and a relaunch from the recents list
+    // carry the intent that started the earlier instance, whose file was already handled.
+    if (savedInstanceState == null && (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) {
+      OpenedFilesBridge.enqueue(intent)
+    }
+  }
+
+  // A file opened or shared while the app is running (singleTask delivers it here). The queue
+  // takes it first, so a page that is not ready yet still finds it; the page is told to drain.
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    OpenedFilesBridge.enqueue(intent)
+    callPage("window.__risuTaniumOpenedFiles?.()")
   }
 
   // A configuration recreation leaves the superseded WebView alive and running next to the
@@ -125,6 +141,7 @@ class MainActivity : TauriActivity() {
       KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce),
       "__risuTaniumKeepAlive"
     )
+    webView.addJavascriptInterface(OpenedFilesBridge(contentResolver), "__risuTaniumOpenedFilesHost")
     if (previous != null && previous !== webView && sameId(previous, webView)) {
       mainHandler.post { retire(previous) }
     }

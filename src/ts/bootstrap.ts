@@ -14,6 +14,7 @@ import { alertError, alertMd, alertStaleAccountNotice, alertNormal, alertNormalW
 import { handleWindowError } from "./windowErrorGuard";
 import { characterURLImport, handlePendingRealmLink } from "./characterCards";
 import { desktopLaunchImport } from "./desktopLaunch";
+import { androidOpenedFilesImport } from "./android/openedFiles";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
 import { decodeRisuSave, encodeRisuSaveLegacy } from "./storage/risuSave";
 import { getPageBlockOwner } from "./storage/pageBlockOwner";
@@ -627,6 +628,12 @@ export async function loadData() {
             // awaited, and a boot before first setup leaves them queued.
             if (isTauri && getDatabase().didFirstSetup) {
                 void desktopLaunchImport()
+            }
+            // Files other Android apps opened or shared; not awaited. The
+            // drain itself holds them until first setup is done, so this
+            // runs before it too. A no-op without the Android host.
+            if (isTauri) {
+                androidOpenedFilesImport()
             }
 
         } catch (error) {

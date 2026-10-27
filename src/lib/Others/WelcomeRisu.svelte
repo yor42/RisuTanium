@@ -159,6 +159,7 @@
                 }
 
                 DBState.db.didFirstSetup = true
+                window.__risuTaniumOpenedFiles?.()
             }, 1000);
 
             DBState.db.claudeCachingExperimental = true
