@@ -555,7 +555,7 @@ describe('the in-session peer port', () => {
         alertStore.set({ type: 'none', msg: '0' })
 
         await vi.waitFor(() => expect(getAlert().type).toBe('none'))
-        ui.peer.parkedClean({ reason: 'peer-commit', unsaved: false, offers: ['reload'] }, () => ({ parked: true, dirty: false, drafts: false }))
+        ui.peer.parkedClean({ reason: 'peer-commit', unsaved: false, offers: ['reload'] }, () => ({ parked: true, dirty: false, drafts: false }), async () => 'clean')
         await vi.waitFor(() => expect(getAlert().type).toBe('select'))
         expect(language).toBe(languageEnglish)
         expect(getAlert().msg).toContain(text().peerKeepReading)

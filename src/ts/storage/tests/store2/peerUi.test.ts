@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { get, writable } from 'svelte/store'
 
-// MOCKED: the alert store the prompts share, and `alertSelect`, `alertMd` and `waitAlert` (the full alert module drags in
+// MOCKED: the alert store the prompts share, and `alertSelect`, `alertMd`, `alertWait`, `alertClear` and `waitAlert` (the full alert module drags in
 // the whole app). The replacement asks through the real prompt controller in `alertPrompts` and builds the message exactly
 // as `alertSelect` does; `alertMd` posts the markdown alert and records it, and `waitAlert` resolves with the first `none`,
 // as the real ones do.
@@ -20,6 +20,18 @@ vi.mock(import('src/ts/alert'), async () => {
         },
         alertToast: (msg: string) => {
             posted.toasts.push(msg)
+        },
+        // `alertWait` posts and returns the exact object, as the real one does; `alertClear` leaves a prompt alone, as the real one does.
+        alertWait: (msg: string, onCancel?: () => void) => {
+            const data = onCancel ? { type: 'wait', msg, onCancel } : { type: 'wait', msg }
+            store.set(data as alertData)
+            return data
+        },
+        alertClear: () => {
+            if (get(store).type === 'select') {
+                return
+            }
+            store.set({ type: 'none', msg: '' })
         },
         waitAlert: () => new Promise<void>((resolve) => {
             const stop = store.subscribe((value) => {
@@ -40,7 +52,7 @@ import { changeLanguage, language } from 'src/lang'
 import type { alertData } from 'src/ts/alert'
 import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from 'src/ts/alertPrompts'
 import { alertStore } from 'src/ts/stores.svelte'
-import type { PeerLiveState, PeerOffer, PeerParkPrompt } from 'src/ts/storage/store2/saveLoop'
+import type { ParkCheck, PeerLiveState, PeerOffer, PeerParkPrompt } from 'src/ts/storage/store2/saveLoop'
 import { acknowledged, createPeerUi, type PeerExportResult } from 'src/ts/storage/store2/ui/peerUi'
 
 /**
@@ -77,6 +89,20 @@ async function press(index: number): Promise<void> {
 
 /** The live state of a tab that is parked with nothing unsaved and no typed text. */
 const calm = (): PeerLiveState => ({ parked: true, dirty: false, drafts: false })
+
+/** The loop's answer to a Reload press when every resident is clean. */
+const cleanNow = async (): Promise<ParkCheck> => 'clean'
+
+/** A request the test settles itself, counting how often the loop was asked. */
+function manualCheck() {
+    let settle: (verdict: ParkCheck) => void = () => { }
+    const calls = { count: 0 }
+    const request = (): Promise<ParkCheck> => {
+        calls.count += 1
+        return new Promise<ParkCheck>((resolve) => { settle = resolve })
+    }
+    return { request, calls, answer: (verdict: ParkCheck) => settle(verdict) }
+}
 
 function newUi(options: { exportAvailable?: boolean } = {}) {
     const reload = vi.fn()
@@ -246,20 +272,20 @@ describe('decide: the answer maps over the displayed offers', () => {
 describe('parkedClean: a closable prompt asked once', () => {
     test('the buttons are Reload and Keep reading, and the title names the reason', async () => {
         const { ui } = newUi()
-        ui.parkedClean(prompt({ reason: 'peer-commit', unsaved: false, offers: ['reload'] }), () => calm())
+        ui.parkedClean(prompt({ reason: 'peer-commit', unsaved: false, offers: ['reload'] }), () => calm(), cleanNow)
         await waitForSelect()
         expect(selectParts()).toEqual({ title: text().peerCleanCommit, labels: [text().peerReloadOnly, text().peerKeepReading] })
         await press(1)
         await vi.waitFor(() => expect(shown().type).toBe('none'))
 
-        ui.parkedClean(prompt({ reason: 'replaced', unsaved: false, offers: ['reload'] }), () => calm())
+        ui.parkedClean(prompt({ reason: 'replaced', unsaved: false, offers: ['reload'] }), () => calm(), cleanNow)
         await waitForSelect()
         expect(selectParts().title).toBe(text().peerCleanReplaced)
     })
 
     test('Reload reloads', async () => {
         const { ui, reload } = newUi()
-        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => calm())
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => calm(), cleanNow)
         await waitForSelect()
         await press(0)
         await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1))
@@ -268,7 +294,7 @@ describe('parkedClean: a closable prompt asked once', () => {
     test('reproducer: Reload on a tab that became dirty after the prompt was asked reloads nothing', async () => {
         const { ui, reload } = newUi()
         let state = calm()
-        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state)
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state, cleanNow)
         await waitForSelect()
         state = { ...state, dirty: true }
         await press(0)
@@ -280,7 +306,7 @@ describe('parkedClean: a closable prompt asked once', () => {
     test('reproducer: Reload on a page that was unparked after the prompt was asked reloads nothing', async () => {
         const { ui, reload } = newUi()
         let state = calm()
-        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state)
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state, cleanNow)
         await waitForSelect()
         state = { ...state, parked: false }
         await press(0)
@@ -292,7 +318,7 @@ describe('parkedClean: a closable prompt asked once', () => {
     test('the state is read when Reload is pressed, so a tab that is clean then still reloads', async () => {
         const { ui, reload } = newUi()
         let state: PeerLiveState = { parked: true, dirty: true, drafts: false }
-        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state)
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state, cleanNow)
         await waitForSelect()
         state = calm()
         await press(0)
@@ -302,20 +328,20 @@ describe('parkedClean: a closable prompt asked once', () => {
     test('reproducer: a tab with typed text gets the wording that says a reload discards it, for each reason', async () => {
         const { ui } = newUi()
         const typed: PeerLiveState = { parked: true, dirty: false, drafts: true }
-        ui.parkedClean(prompt({ reason: 'peer-commit', unsaved: false, offers: ['reload'] }), () => typed)
+        ui.parkedClean(prompt({ reason: 'peer-commit', unsaved: false, offers: ['reload'] }), () => typed, cleanNow)
         await waitForSelect()
         expect(selectParts()).toEqual({ title: text().peerCleanCommitDrafts, labels: [text().peerReloadDrafts, text().peerKeepReading] })
         await press(1)
         await vi.waitFor(() => expect(shown().type).toBe('none'))
 
-        ui.parkedClean(prompt({ reason: 'replaced', unsaved: false, offers: ['reload'] }), () => typed)
+        ui.parkedClean(prompt({ reason: 'replaced', unsaved: false, offers: ['reload'] }), () => typed, cleanNow)
         await waitForSelect()
         expect(selectParts()).toEqual({ title: text().peerCleanReplacedDrafts, labels: [text().peerReloadDrafts, text().peerKeepReading] })
     })
 
     test('Reload on the prompt that warned of typed text reloads', async () => {
         const { ui, reload } = newUi()
-        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => ({ parked: true, dirty: false, drafts: true }))
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => ({ parked: true, dirty: false, drafts: true }), cleanNow)
         await waitForSelect()
         await press(0)
         await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1))
@@ -324,7 +350,7 @@ describe('parkedClean: a closable prompt asked once', () => {
     test('reproducer: text typed after a prompt without the warning was shown makes Reload ask again with the warning, and reload nothing', async () => {
         const { ui, reload } = newUi()
         let state = calm()
-        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state)
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state, cleanNow)
         await waitForSelect()
         expect(selectParts().title).toBe(text().peerCleanCommit)
         state = { ...state, drafts: true }
@@ -340,7 +366,7 @@ describe('parkedClean: a closable prompt asked once', () => {
     test('the second ask follows the same rules: Keep reading closes it, and a tab that became dirty reloads nothing', async () => {
         const { ui, reload } = newUi()
         let state = calm()
-        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state)
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state, cleanNow)
         await waitForSelect()
         state = { ...state, drafts: true }
         await press(0)
@@ -349,7 +375,7 @@ describe('parkedClean: a closable prompt asked once', () => {
         await vi.waitFor(() => expect(shown().type).toBe('none'))
 
         state = calm()
-        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state)
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state, cleanNow)
         await waitForSelect()
         state = { ...state, drafts: true }
         await press(0)
@@ -363,7 +389,7 @@ describe('parkedClean: a closable prompt asked once', () => {
 
     test('Keep reading closes the prompt without a reload, and a later prompt then shows', async () => {
         const { ui, reload } = newUi()
-        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => calm())
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => calm(), cleanNow)
         await waitForSelect()
         await press(1)
         await vi.waitFor(() => expect(shown().type).toBe('none'))
@@ -396,7 +422,7 @@ describe('both prompts wait for an alert that needs its OK', () => {
     test.each(holding)('parkedClean leaves a %s alert up until it is acknowledged, then asks', async (type) => {
         const { ui } = newUi()
         alertStore.set({ type, msg: 'the save failed' })
-        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => calm())
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => calm(), cleanNow)
         await sleep(40)
         expect(shown().type).toBe(type)
 
@@ -419,7 +445,7 @@ describe('both prompts wait for an alert that needs its OK', () => {
         if (which === 'decide') {
             void ui.decide(prompt({ offers: ['reload'] }))
         } else {
-            ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => calm())
+            ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => calm(), cleanNow)
         }
         await sleep(20)
         // The close and the next post happen in one synchronous step, before the waiting prompt resumes.
@@ -715,5 +741,120 @@ describe('decide: the Node wording says what Reload drops and what the automatic
         expect(title).toBe(`${text().peerCommitTitle} ${text().peerNoSaveNode} ${text().peerNodeReloadDrops} ${text().peerAutoExportNotFinished}`)
         expect(title).not.toContain(text().peerAutoExportSaved)
         expect(labels).toEqual([text().peerReload, text().peerExportFirst])
+    })
+})
+
+describe('parkedClean: Reload asks the loop to check before it reloads', () => {
+    test('the loop is asked only after an allowed press: Keep reading, a dirty page and an unparked page ask nothing', async () => {
+        const { ui, reload } = newUi()
+        const check = manualCheck()
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => calm(), check.request)
+        await waitForSelect()
+        await press(1)
+        await vi.waitFor(() => expect(shown().type).toBe('none'))
+
+        let state = calm()
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state, check.request)
+        await waitForSelect()
+        state = { ...state, dirty: true }
+        await press(0)
+        await vi.waitFor(() => expect(shown().type).toBe('none'))
+
+        state = calm()
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state, check.request)
+        await waitForSelect()
+        state = { ...state, parked: false }
+        await press(0)
+        await vi.waitFor(() => expect(shown().type).toBe('none'))
+        await sleep(30)
+        expect(check.calls.count).toBe(0)
+        expect(reload).not.toHaveBeenCalled()
+    })
+
+    test('reproducer: the wait alert shows while the loop checks, and every answer clears it; only clean reloads', async () => {
+        for (const verdict of ['clean', 'dirty', 'moved'] as const) {
+            const { ui, reload } = newUi()
+            const check = manualCheck()
+            ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => calm(), check.request)
+            await waitForSelect()
+            await press(0)
+            await vi.waitFor(() => expect(shown().type).toBe('wait'))
+            expect(shown().msg).toBe(text().peerChecking)
+            expect(check.calls.count).toBe(1)
+            expect(reload).not.toHaveBeenCalled()
+            check.answer(verdict)
+            await vi.waitFor(() => expect(shown().type).toBe('none'))
+            await sleep(20)
+            expect(reload).toHaveBeenCalledTimes(verdict === 'clean' ? 1 : 0)
+        }
+    })
+
+    test('reproducer: a mark that arrived while the loop checked reloads nothing, although the answer was clean', async () => {
+        const { ui, reload } = newUi()
+        let state = calm()
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state, async () => {
+            state = { ...state, dirty: true }
+            return 'clean'
+        })
+        await waitForSelect()
+        await press(0)
+        await vi.waitFor(() => expect(shown().type).toBe('none'))
+        await sleep(30)
+        expect(reload).not.toHaveBeenCalled()
+    })
+
+    test('reproducer: a page unparked while the loop checked reloads nothing, although the answer was clean', async () => {
+        const { ui, reload } = newUi()
+        let state = calm()
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state, async () => {
+            state = { ...state, parked: false }
+            return 'clean'
+        })
+        await waitForSelect()
+        await press(0)
+        await vi.waitFor(() => expect(shown().type).toBe('none'))
+        await sleep(30)
+        expect(reload).not.toHaveBeenCalled()
+    })
+
+    test('reproducer: text typed while the loop checked asks again with the warning and reloads nothing', async () => {
+        const { ui, reload } = newUi()
+        let state = calm()
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => state, async () => {
+            state = { ...state, drafts: true }
+            return 'clean'
+        })
+        await waitForSelect()
+        await press(0)
+        await vi.waitFor(() => expect(selectParts().title).toBe(text().peerCleanCommitDrafts))
+        expect(reload).not.toHaveBeenCalled()
+    })
+
+    test('Cancel on the wait alert closes it and reloads nothing, even if the loop answers clean afterwards', async () => {
+        const { ui, reload } = newUi()
+        const check = manualCheck()
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => calm(), check.request)
+        await waitForSelect()
+        await press(0)
+        await vi.waitFor(() => expect(shown().type).toBe('wait'))
+        shown().onCancel?.()
+        await vi.waitFor(() => expect(shown().type).toBe('none'))
+        check.answer('clean')
+        await sleep(30)
+        expect(reload).not.toHaveBeenCalled()
+    })
+
+    test('an alert that replaced the wait alert is left on screen when the loop answers', async () => {
+        const { ui, reload } = newUi()
+        const check = manualCheck()
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => calm(), check.request)
+        await waitForSelect()
+        await press(0)
+        await vi.waitFor(() => expect(shown().type).toBe('wait'))
+        alertStore.set({ type: 'error', msg: 'a save failed' })
+        check.answer('dirty')
+        await sleep(30)
+        expect(shown()).toMatchObject({ type: 'error', msg: 'a save failed' })
+        expect(reload).not.toHaveBeenCalled()
     })
 })
