@@ -2805,7 +2805,8 @@ export const languageVietnamese = {
         peerCleanCommitDrafts: "Một tab khác đã lưu thay đổi vào dữ liệu của bạn. Tab này có văn bản hoặc chỉnh sửa bạn chưa hoàn tất, và tải lại sẽ loại bỏ chúng.",
         peerCleanReplacedDrafts: "Dữ liệu đã lưu của bạn đã bị thay đổi từ bên ngoài tab này. Hãy tải lại để tiếp tục. Tab này có văn bản hoặc chỉnh sửa bạn chưa hoàn tất, và tải lại sẽ loại bỏ chúng.",
         peerReloadDrafts: "Tải lại (văn bản và chỉnh sửa chưa hoàn tất sẽ bị mất)",
-        moduleEditedTitle: "Mô-đun \"{name}\" đã bị thay đổi trong tab này theo cách không thể lưu, nên không có gì trong tab này được lưu. Hãy tải lại để tiếp tục làm việc; các thay đổi chưa lưu của tab này sẽ bị mất.",
-        moduleEditedKeep: "Tiếp tục làm việc (không có gì được lưu cho đến khi bạn tải lại)",
+        moduleEditedTitle: "Mô-đun \"{name}\" đã bị thay đổi trong tab này theo cách không thể lưu. Nhân vật và cuộc trò chuyện của bạn vẫn đang được lưu, nhưng các thay đổi đối với mô-đun sẽ không được lưu cho đến khi bạn tải lại, và sẽ bị mất nếu ứng dụng bị đóng. Hãy tải lại để loại bỏ chúng, cùng với mọi thứ khác chưa được lưu trong tab này, hoặc tiếp tục làm việc.",
+        moduleEditedKeep: "Tiếp tục làm việc (các thay đổi đối với mô-đun không được lưu cho đến khi bạn tải lại)",
+        moduleNotSaved: "Không thể lưu mô-đun \"{name}\". Nhân vật và cuộc trò chuyện của bạn vẫn đang được lưu, nhưng các thay đổi đối với mô-đun sẽ không được lưu cho đến khi \"{name}\" bị xóa hoặc được thay thế, và sẽ bị mất nếu ứng dụng bị đóng hoặc được tải lại.",
     },
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

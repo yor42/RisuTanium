@@ -217,6 +217,8 @@ export interface PeerDouble extends Store2PeerHandler {
     edited: Array<{ moduleId: string, moduleName: string }>
     /** The `stillBlocked` probe each `moduleEdited` call was given, in call order. */
     editedStillBlocked: Array<() => boolean>
+    /** Each `moduleNotSaved` notice, in call order. */
+    notSaved: Array<{ moduleId: string, moduleName: string }>
 }
 
 export function createPeerDouble(answer: PeerOffer = 'reload'): PeerDouble {
@@ -238,6 +240,7 @@ export function createPeerDouble(answer: PeerOffer = 'reload'): PeerDouble {
         events: [],
         edited: [],
         editedStillBlocked: [],
+        notSaved: [],
         parkedClean(prompt, live) {
             double.clean.push(prompt)
             double.live.push(live)
@@ -245,6 +248,9 @@ export function createPeerDouble(answer: PeerOffer = 'reload'): PeerDouble {
         moduleEdited(info, stillBlocked) {
             double.edited.push(info)
             double.editedStillBlocked.push(stillBlocked)
+        },
+        moduleNotSaved(info) {
+            double.notSaved.push(info)
         },
         async autoExport(manifestKey) {
             double.events.push('autoExport')

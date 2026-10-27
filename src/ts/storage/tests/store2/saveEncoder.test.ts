@@ -253,6 +253,34 @@ describe('new behaviour: modules only when flagged', () => {
         expect(moduleUnits(pass.written)).toContain(IDENTITY.moduleIndex)
         expect(moduleUnits(pass.written).some(identity => identity.startsWith(IDENTITY.module))).toBe(true)
     })
+
+    test.each([
+        ['the module flag', { modules: true }],
+        ['the idle net\'s first tick', { net: { chaId: null, modules: true } }],
+        ['a whole-resident pass', { whole: true }],
+        ['save mine', { rewriteAll: true }],
+    ] as const)('new behaviour: %s with carryModules carries the modules whole: an edited module is not written', async (_label, extra) => {
+        const pass = await commitPass(encoderOf(previous), edited(), { ...extra, carryModules: true })
+        expect(moduleUnits(pass.written)).toEqual([])
+    })
+
+    test.each([
+        ['a whole-resident pass', { whole: true }],
+        ['save mine', { rewriteAll: true }],
+    ] as const)('new behaviour: %s with carryModules still encodes every resident character', async (_label, extra) => {
+        const plan = await encoderOf(previous).plan(edited(), request({ ...extra, carryModules: true }))
+        for (let index = 0; index < db.characters.length; index += 1) {
+            expect(plan.encoded).toContain(chaIdOf(db, index))
+        }
+    })
+
+    test('new behaviour: the encoder carries the modules only when the acknowledged encoding holds the module index and its unit', () => {
+        expect(encoderOf(previous).carriesModules()).toBe(true)
+        const units = new Map(previous.units)
+        units.delete(IDENTITY.moduleIndex)
+        expect(encoderOf({ ...previous, units }).carriesModules()).toBe(false)
+        expect(encoderOf({ units: previous.units, entities: previous.entities }).carriesModules()).toBe(false)
+    })
 })
 
 describe('new behaviour: whole-resident mode, the idle net and the new-character rule', () => {

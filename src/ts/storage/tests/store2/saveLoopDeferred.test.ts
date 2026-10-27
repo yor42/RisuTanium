@@ -8,7 +8,6 @@
  * Labels: reproducer (fails against the base or the named mutant), guard (passes before and after).
  */
 import { afterEach, describe, expect, test } from 'vitest'
-import { StubRefusedError } from '../../store2/codec'
 import { moduleStubOf } from '../../store2/moduleStubMatch'
 import type { ModuleStubLoad } from '../../store2/saveActive'
 import { createSaveEncoder, type SaveEncoder, type SavePassRequest } from '../../store2/saveEncoder'
@@ -251,7 +250,7 @@ describe('the valve loads each refused module once per pass', () => {
         expect(run.failures).toEqual([])
     })
 
-    test('a load that leaves the refusal in place is a failed save after one load, with the planner\'s own refusal', async () => {
+    test('a load that leaves the refusal in place is no failed save: one load, then the pass goes on with the modules carried and the person is told', async () => {
         const run = await startRun()
         // A valve that keeps answering loaded must not keep the pass planning: the cap ends a loop that has no bound of its own.
         run.valve = (call) => {
@@ -260,15 +259,19 @@ describe('the valve loads each refused module once per pass', () => {
             }
             return { kind: 'loaded' }
         }
+        const character = (run.db.characters as unknown as Plain[])[0]
+        character.name = 'saved beside the unloaded module'
+        run.tracker.character.push(character.chaId as string)
         run.mark()
-        await until(() => run.failures.length >= 1, 'the failed save')
-        // The retry pass starts within milliseconds, so the live call count may already be 2; the count at the moment of the report is the invariant.
-        expect(run.failures[0].valveCallsAtReport).toBe(1)
-        expect(run.failures[0].error).toBeInstanceOf(StubRefusedError)
-        expect(run.commits).toBe(0)
+        await until(() => run.state.ended >= 1, 'the first pass')
+        expect(run.failures).toEqual([])
+        expect(run.valveCalls).toHaveLength(1)
+        expect(run.commits).toBe(1)
+        expect(run.requests.at(-1)?.carryModules).toBe(true)
+        expect(run.peer.notSaved).toHaveLength(1)
     })
 
-    test('guard: the pass after a failed one loads the same module again, not once per page', async () => {
+    test('the next marked pass loads the same module again, not once per page', async () => {
         const run = await startRun()
         run.valve = (call) => {
             if (call > 20) {
@@ -277,10 +280,10 @@ describe('the valve loads each refused module once per pass', () => {
             return { kind: 'loaded' }
         }
         run.mark()
-        await until(() => run.failures.length >= 1, 'the failed save')
-        // The wait ends below the test timeout so a missing second call fails at the assertion.
-        await until(() => run.valveCalls.length >= 2, 'the retry pass loading again', 2000).catch(() => {})
-        expect(run.valveCalls.length).toBeGreaterThanOrEqual(2)
+        await until(() => run.state.ended >= 1, 'the first pass')
+        run.mark()
+        await until(() => run.state.ended >= 2, 'the second pass')
+        expect(run.valveCalls).toHaveLength(2)
         expect(run.valveCalls[1]).toBe(run.valveCalls[0])
     })
 })
@@ -345,7 +348,7 @@ describe('a deferred pass is quiet', () => {
         expect(run.failures).toEqual([])
     })
 
-    test('a load that failed is reported once, by the next pass, as the planner\'s own refusal', async () => {
+    test('a load that failed is told once, by the next pass, as a module that cannot be saved, with no failed save', async () => {
         const run = await startRun()
         const gate = gateOf()
         run.valve = (call) => call === 1 ? { kind: 'deferred', settled: gate.promise } : { kind: 'refused' }
@@ -353,11 +356,12 @@ describe('a deferred pass is quiet', () => {
         await until(() => run.valveCalls.length === 1, 'the valve call')
         await sleep(60)
         expect(run.failures).toEqual([])
+        expect(run.peer.notSaved).toEqual([])
         gate.settle()
-        await until(() => run.failures.length >= 1, 'the report')
-        expect(run.failures[0].attempts).toBe(1)
-        expect(run.failures[0].error).toBeInstanceOf(StubRefusedError)
-        expect(run.failures[0].error).toMatchObject({ kind: 'module', reason: 'uncarriable' })
+        await until(() => run.failures.length >= 1 || run.peer.notSaved.length >= 1, 'the pass after the answer')
+        expect(run.failures).toEqual([])
+        expect(run.peer.notSaved).toHaveLength(1)
+        expect(run.peer.notSaved[0].moduleId).toBe(run.kit.context.previous.objects?.moduleIndex?.entries[0].id)
     })
 })
 

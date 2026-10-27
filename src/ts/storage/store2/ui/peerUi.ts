@@ -1,5 +1,5 @@
 import { language } from 'src/lang'
-import { alertMd, alertSelect, waitAlert, type alertData } from 'src/ts/alert'
+import { alertMd, alertSelect, alertToast, waitAlert, type alertData } from 'src/ts/alert'
 import { escapeActionFor } from 'src/ts/alertEscape'
 import { alertStore } from 'src/ts/stores.svelte'
 import { get } from 'svelte/store'
@@ -241,6 +241,11 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         },
         moduleEdited: (info, stillBlocked) => {
             askModuleEdited(info, stillBlocked).catch((error: unknown) => console.error(error))
+        },
+        // A toast never covers or waits for an alert, so nothing is awaited here.
+        moduleNotSaved: (info) => {
+            const name = cleanNames([info.moduleName])[0] ?? ''
+            alertToast(language.store2Boot.moduleNotSaved.replaceAll('{name}', () => name))
         },
         decide,
         exportThisTab,

@@ -1309,9 +1309,10 @@ export function hasUnsavedSaveMarks(): boolean {
 const nextCommitCallbacks = new Set<() => void>()
 
 /**
- * The `snapshotMarkCount` of the latest commit: every mark counted at or below it was in the blocks
- * that commit covered. It only grows, so a later iteration beginning never un-covers a mark. It
- * counts a commit in which the mark's character could not be saved as covering it.
+ * The `snapshotMarkCount` of the latest commit: every character and chat mark counted at or below it was in the
+ * blocks that commit covered. A module mark is the exception: a commit that carried the modules whole past a module it
+ * could not encode covers no module change, and the module mark stays held. It only grows, so a later iteration
+ * beginning never un-covers a mark. It counts a commit in which the mark's character could not be saved as covering it.
  */
 let committedMarkCount = 0
 
@@ -1329,7 +1330,7 @@ export function onSavingStopped(callback: () => void): () => void {
     })
 }
 
-/** The mark count the latest commit covered; compare with `getSaveMarkCount()` taken after a mark. */
+/** The mark count the latest commit covered, module marks excepted (see `committedMarkCount`); compare with `getSaveMarkCount()` taken after a mark. */
 export function getCommittedSaveMarkCount(): number {
     return committedMarkCount
 }
@@ -2168,6 +2169,11 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
             dirtySinceLastSave = true
             saveMarkCount += 1
             changed = true
+        },
+        // Dirty only: no pass becomes due and no mark is counted, so the loop's cadence and the idle net run on while
+        // the held edits keep the page from reading clean.
+        markUnsaved() {
+            dirtySinceLastSave = true
         },
         unsavable(current, newly) {
             unsavableCharacterCount = current.length

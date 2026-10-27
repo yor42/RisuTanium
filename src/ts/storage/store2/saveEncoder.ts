@@ -2,7 +2,7 @@ import type { JsonObject, JsonValue } from '../blockFrame'
 import type { Database, character, groupChat } from '../database.svelte'
 import type { CommitRequest } from './commit'
 import {
-    acknowledgedBytesOf, builtCommitOf, characterMatchesAcknowledged, characterMatchesAcknowledgedPlain, CodecInputError, isColdStub,
+    acknowledgedBytesOf, builtCommitOf, characterMatchesAcknowledged, characterMatchesAcknowledgedPlain, CodecInputError, IDENTITY, isColdStub,
     movable, overlayStub, planScopedEncode, plainObject, previousEntriesOf, previousFrom, sameJsonValue, verdictBaseOf,
     type AcknowledgedVerdict, type EncodedTree, type EncodeScope, type ListDerivation, type PreviousEncoding, type ReusableUnit,
     type ScopedPlan, type SkippedCharacter, type VerdictBase,
@@ -46,6 +46,11 @@ export interface SavePassRequest {
      * has no body to rewrite.
      */
     rewriteAll?: boolean
+    /**
+     * The modules are carried whole from the acknowledged encoding whatever else asks for module scope, so a module a
+     * pass cannot encode holds back nothing else. `whole` and `rewriteAll` still encode every resident character.
+     */
+    carryModules?: boolean
     /** Called after each module and each character that was encoded, so a long pass hands control back between them. */
     yield?: () => Promise<void>
     /**
@@ -102,6 +107,11 @@ export interface SaveEncoder {
      * acknowledged.
      */
     readonly pendingKey: string | null
+    /**
+     * Whether the acknowledged encoding holds a module index and its unit, so a pass can carry the modules whole
+     * (`SavePassRequest.carryModules`). False for an encoding that never held one.
+     */
+    carriesModules(): boolean
     /** The manifest key of the acknowledged encoding. */
     readonly manifestKey: string
     /** The acknowledged encoding, read only: the loop compares a later put-back against the latest committed tree. */
@@ -476,7 +486,7 @@ function withoutDigests(encoding: PreviousEncoding): PreviousEncoding {
 
 function scopeOf(db: Database, previous: PreviousEncoding, request: SavePassRequest, split: SavePassSplitRecorder | null): EncodeScope {
     const everything = request.whole || request.rewriteAll === true
-    const modules = everything || request.modules || request.net?.modules === true
+    const modules = request.carryModules !== true && (everything || request.modules || request.net?.modules === true)
     if (everything) {
         return { modules, characters: 'all', yield: request.yield, skipUnsavableCharacters: true }
     }
@@ -623,6 +633,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
         get pendingKey() {
             return pending === null ? null : pending.manifestKey
         },
+        carriesModules: () => previous.objects?.moduleIndex !== undefined && previous.units.has(IDENTITY.moduleIndex),
         get manifestKey() {
             return manifestKeyOf(previous)
         },

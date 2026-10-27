@@ -2809,7 +2809,8 @@ export const languageGerman = {
         "peerCleanCommitDrafts": "Ein anderer Tab hat Änderungen an Ihren Daten gespeichert. Dieser Tab enthält Text oder eine Bearbeitung, die Sie nicht abgeschlossen haben, und durch Neuladen wird dies verworfen.",
         "peerCleanReplacedDrafts": "Ihre gespeicherten Daten wurden außerhalb dieses Tabs geändert. Laden Sie neu, um fortzufahren. Dieser Tab enthält Text oder eine Bearbeitung, die Sie nicht abgeschlossen haben, und durch Neuladen wird dies verworfen.",
         "peerReloadDrafts": "Neu laden (nicht abgeschlossener Text und Bearbeitungen gehen verloren)",
-        "moduleEditedTitle": "Das Modul \"{name}\" wurde in diesem Tab so geändert, dass es nicht gespeichert werden kann. Deshalb wird in diesem Tab nichts gespeichert. Zum Weiterarbeiten neu laden; die ungespeicherten Änderungen dieses Tabs gehen verloren.",
-        "moduleEditedKeep": "Weiterarbeiten (nichts wird gespeichert, bis neu geladen wird)"
+        "moduleEditedTitle": "Das Modul \"{name}\" wurde in diesem Tab so geändert, dass es nicht gespeichert werden kann. Charaktere und Chats werden weiterhin gespeichert, Änderungen an Modulen jedoch nicht, bis neu geladen wird, und sie gehen verloren, wenn die App geschlossen wird. Neu laden verwirft sie zusammen mit allem anderen, was in diesem Tab noch nicht gespeichert ist; alternativ kann weitergearbeitet werden.",
+        "moduleEditedKeep": "Weiterarbeiten (Änderungen an Modulen werden nicht gespeichert, bis neu geladen wird)",
+        "moduleNotSaved": "Das Modul \"{name}\" kann nicht gespeichert werden. Charaktere und Chats werden weiterhin gespeichert, Änderungen an Modulen jedoch nicht, bis \"{name}\" gelöscht oder ersetzt wird, und sie gehen verloren, wenn die App geschlossen oder neu geladen wird."
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;
