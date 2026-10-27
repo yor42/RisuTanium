@@ -15312,6 +15312,7 @@ Folded in from `Agents/Lanes/lane-F-records.md` on 2026-10-25 (merge `95a24de3e`
 - Reasoning: none recorded.
 - Alternatives rejected: none.
 - Related: `MC-689`, `MC-692`, `MC-175`; CHORE-463.
+- Amended by `MC-695` (2026-10-27): the font note under "Lane A's notes" is now a maintainer rule (unmodified foundry files only, a licence field, free packs when bundled), and the acceptance set grew to five packs.
 
 **What was decided (maintainer; the log's paraphrase).**
 1. Packs that nod to other programs are acceptance examples for the theming contract: "Origin Navy" (an upstream nod; tokens, from the upstream scheme mapping) and "Office sheet" (a spreadsheet look: message rows as cells, gridlines, column letters through pseudo-element static text, the input bar as a formula bar). The contract passes if both can be written as packs with no app-code change, so part names must be fine-grained (message row, sender, timestamp, body, input bar, sidebar entry, header, button).
@@ -15331,6 +15332,7 @@ Folded in from `Agents/Lanes/lane-F-records.md` on 2026-10-25 (merge `95a24de3e`
 - Reasoning: none recorded.
 - Alternatives rejected: none.
 - Related: `MC-689`, `MC-691`; CHORE-463.
+- Amended by `MC-695` (2026-10-27): the maintainer ruled on lane A's proposal. The acceptance set is five packs (Origin Navy, Office Sheet, Terran Eclipse, Scratch White, Banana Cocoa); the rest is a gallery backlog.
 
 **What was decided (maintainer).**
 1. The acceptance theme packs also serve as the docs examples for writing a custom theme pack.
@@ -15393,6 +15395,45 @@ Folded in from `Agents/Lanes/lane-F-records.md` on 2026-10-25 (merge `95a24de3e`
 **Applied in:**
 - `docs/workflow/gates.md`: the full-checks paragraph, and the Gate 2 bullet under "Implementation briefs and hand-back";
 - `.claude/agents/opus-reviewer.md` and `.claude/agents/adversarial-reviewer.md`.
+
+### MC-695 — Lane A, 2026-10-27: theme packs: acceptance set, pack rules and font policy (amends `MC-691` and `MC-692`)
+
+- Tag: decisions (eight maintainer answers, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: the maintainer's answers in the lane A session, as recorded in `%TEMP%\risu-b715\themes\decisions-2026-10-27.md`; the maintainer's idea list (`84d86594-Human_brain_dumps.txt`, 17 entries).
+- Related: `MC-689`, `MC-691`, `MC-692`, `MC-175`; CHORE-463.
+- Reference: the pack list, capability matrix, per-pack purpose and font tables are in [Theme-Packs](Theme-Packs.md). Those are lane A's working data, not maintainer decisions.
+
+**Maintainer's words (2026-10-27), numbered as lane A put the questions:**
+1. "Subset causes license issue on many cases, so foundry file feels safer"
+2. "Free packs only when we are shipping it with an app."
+3. On a required licence and attribution field, checked at install: "that seems like a safer play."
+4. "No, just add a warning when user is about to import exceptionally large one."
+5. "5 accpetances: Origin Navy, Office Sheet, Terran Eclipse, Scratch White, and Banana Cocoa for now."
+6. "drop codex white and only accept human orange. Rename Archived blue to Aqua Halo."
+7. "let it carry image, every blur should carry reduced effect fallback, light only or dark only should be fine. but theme picker should disclose that it supports dark/light only. carbon fiber clarification is that "black background, white text and outlines"."
+8. "About the in-game fonts - instead of blindly falling back to specific fonts, I think checking licenses of fandom guesses first and choosing compatible one between them would be better choice here."
+9. After the game-font check: "yeah, honestly 나눔고딕 covers most of the case. we aren't looking for title font, but font that covers UI elements. and pretty sure AC fonts are for title recreation, not in game texts."
+
+**What was decided (the resulting rules, as lane A wrote them from the answers):**
+1. Fonts: a pack ships only the unmodified files its foundry publishes. No self-made subsets or format conversions.
+2. Licence field: every pack carries a licence and attribution field, checked when the pack is installed.
+3. Free packs: packs bundled with the app must be free. Packs distributed separately are not restricted by this rule.
+4. Size: there is no size cap. Importing an exceptionally large pack shows a warning first.
+5. Images: packs may carry image assets, such as textures.
+6. Blur: every pack that uses blur or transparency effects ships a reduced-effects fallback.
+7. Light and dark: a pack may be light-only or dark-only. The theme picker shows which modes a pack supports.
+8. Game fonts: licence-check the fonts fans believe each game uses, and pick from the compatible guesses. Use a generic fallback only when none is compatible. Amended by answer 9: a pack's font covers UI elements, not titles; NanumGothic (나눔고딕, OFL 1.1, unmodified files) covers most game-nod packs; title-face guesses such as the Ace Combat fan recreation (ACES07) and Source Han Serif for Arknights titles are out of scope.
+9. Acceptance set (amends `MC-692`): five packs, Origin Navy, Office Sheet, Terran Eclipse, Scratch White and Banana Cocoa. They are also the documentation examples (`MC-692`). The other ideas are a gallery backlog.
+10. Pack list changes: Codex White is dropped; Human Orange is accepted into the gallery (answer 6 reads "only accept human orange"); Archived Blue is renamed Aqua Halo; Carbon Fiber means a black background with white text and outlines.
+
+**Lane A's notes (not the maintainer's decisions).**
+- Rule 10's placement of Human Orange in the gallery backlog, rather than the acceptance set, is lane A's reading: answer 5 names the five acceptance packs and answer 6 only says "accept". The maintainer's "yeah" in answer 9 followed lane A's question on this, so lane A takes it as confirmed (INFERRED).
+- Wording that goes beyond the answers is lane A's gloss: rule 1's "format conversions" (from the OFL and Microsoft findings), rule 3's "separately distributed packs are not restricted", rule 4's "no size cap", rule 6's "or transparency" and rule 8's "generic fallback only when none is compatible".
+- The font licence findings and game-font guesses carry their own VERIFIED, UNVERIFIED, SOURCED and INFERRED marks in [Theme-Packs](Theme-Packs.md). Open there: Nostalgic Millennia on Android (Galmuri is a stand-in candidate, not licence-checked), Ace Combat (no shippable font) and MomoTalk (font unidentified).
+- Rule 4's warning threshold ("exceptionally large") is not defined: TODO(evidence), a later decision.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
 
 ### MC-494 — Lane B, 2026-10-25: try L3; a throwaway phone diagnostic before any real code
 
