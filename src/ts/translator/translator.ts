@@ -658,6 +658,21 @@ async function translateLLM(text:string, arg:{to:string, from:string, regenerate
     return result
 }
 
+/**
+ * Lets a caller that builds LLM translator input (module display regex, assets, CBS) wait until the chat's
+ * referenced modules are resident, using the same failure memory as `translateLLM`: one alert per memory
+ * period, and a failed load stops the translator's own check quietly. The result is ignored on purpose.
+ *
+ * The leading await is load-bearing: it keeps every read below out of the synchronous part of a caller's
+ * `$derived.by`, so the module slots are not tracked by it.
+ */
+export async function waitForTranslatorModules():Promise<void>{
+    await Promise.resolve()
+    if(hasModuleStubs()){
+        await ensureCurrentModules({ memory: translatorMemory })
+    }
+}
+
 export async function getLLMCache(text:string):Promise<string | null>{
     return await LLMCacheStorage.getItem(text)
 }

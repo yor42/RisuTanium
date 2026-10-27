@@ -91,7 +91,7 @@ vi.mock('localforage', () => ({
 
 //#endregion
 
-import { runTranslator, translate, translateHTML } from '../translator'
+import { runTranslator, translate, translateHTML, waitForTranslatorModules } from '../translator'
 import { ModuleLoadError, registerModuleLoader, unregisterModuleLoader } from '../../storage/store2/moduleAcquire'
 
 type Plain = Record<string, unknown>
@@ -310,5 +310,48 @@ describe('translator module wait: translateHTML', () => {
         expect(result).toBe('T:<p>one</p>')
         expect(h.regexReads).toBe(1)
         expect(h.audioPlays).toBe(1)
+    })
+})
+
+describe('translator module wait: waitForTranslatorModules', () => {
+    test('G a-failed-load-alerts-once-and-the-translator-then-stops-quietly-on-the-shared-memory', async () => {
+        installDb('llm', [stub('m1', 'Alpha')])
+        registerFailingLoader()
+
+        await expect(waitForTranslatorModules()).resolves.toBeUndefined()
+        expect(h.alerts).toHaveLength(1)
+        expect(h.alerts[0]).toContain('Alpha')
+
+        await expect(translateHTML('<p>one</p>', false, '', -1)).resolves.toBe('<p>one</p>')
+        expect(h.alerts).toHaveLength(1)
+        expect(loaderCalls).toEqual(['m1'])
+        expect(h.requests).toEqual([])
+    })
+
+    test('G a-wait-with-no-stubs-never-reaches-the-loader', async () => {
+        installDb('llm', [])
+        registerFailingLoader()
+
+        await waitForTranslatorModules()
+
+        expect(loaderCalls).toEqual([])
+        expect(h.alerts).toEqual([])
+    })
+
+    test('G the-wait-reads-nothing-in-its-synchronous-part', async () => {
+        installDb('llm', [stub('m1', 'Alpha')])
+        registerFailingLoader()
+        let moduleReads = 0
+        const modules = h.state.db.modules
+        Object.defineProperty(h.state.db, 'modules', {
+            configurable: true,
+            get() { moduleReads++; return modules },
+        })
+
+        const pending = waitForTranslatorModules()
+        // A caller's `$derived.by` tracks only this synchronous part, so the module slots must not be read in it.
+        expect(moduleReads).toBe(0)
+        await pending
+        expect(moduleReads).toBeGreaterThan(0)
     })
 })
