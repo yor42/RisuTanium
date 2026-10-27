@@ -1909,6 +1909,11 @@ export const languageKorean = {
     "restoreSavedReloadOrRestart": "백업이 복원되어 저장되었지만, 앱을 자동으로 새로고침할 수 없었습니다. 완료하려면 페이지를 새로고침하거나(또는 앱을 재시작)해 주세요.",
     "restoreAssetsSkipped": (count: number, names: string[]) =>
         `백업을 복원했지만, 이 앱에서 저장할 수 없는 이름의 에셋 파일 ${count}개는 복원되지 않았습니다. 이 파일을 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 건너뛴 파일:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "restoreOpenedBackupConfirm": (name: string) => `${name}을(를) 복원하시겠습니까? 현재 데이터가 모두 교체됩니다.`,
+    "openedBackupNotAlone": (names: string[]) =>
+        `복원되지 않았습니다. 백업은 다른 파일과 함께가 아니라 단독으로 열었을 때만 복원됩니다. 백업 파일만 따로 다시 여세요.\n\n${names.join('\n')}`,
+    "openedBackupOneAtATime": (names: string[]) =>
+        `복원되지 않았습니다. 백업은 한 번에 하나만 복원할 수 있습니다. 복원이 끝난 뒤에 다시 여세요.\n\n${names.join('\n')}`,
     "backupFileChangedWhileReading": "백업 파일을 읽는 도중 파일이 변경되어 복원을 중단했습니다. 일부 이미지나 콜드 스토리지 항목이 이미 추가되었거나 교체되었을 수 있습니다. 현재 데이터베이스는 변경되지 않았습니다.",
     "restoreOversizedAssetsConfirm": (count: number, names: string[], limitBytes: number) =>
         `이 백업의 에셋 파일 ${count}개가 이 서버가 에셋 하나당 받을 수 있는 ${Math.floor(limitBytes / (1024 * 1024))} MB보다 커서 여기에서는 복원할 수 없습니다. 이 파일을 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 이 파일들을 제외하고 계속하시겠습니까?\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,

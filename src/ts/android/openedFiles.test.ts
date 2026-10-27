@@ -13,8 +13,19 @@ const h = vi.hoisted(() => ({
 }))
 const importOpenedSourcesMock = vi.hoisted(() => vi.fn())
 
+const alertNormalWaitMock = vi.hoisted(() => vi.fn())
+const restoreOpenedBackupMock = vi.hoisted(() => vi.fn())
+
 vi.mock('../characterCards', () => ({
     importOpenedSources: importOpenedSourcesMock,
+    // Stand-in for the shared allow-list; the real list is pinned in characterCards.picker.test.ts.
+    isOpenedSourceImportable: (name: string) => /\.(charx|risum|risup|risupreset|preset)$/i.test(name),
+}))
+vi.mock('../alert', () => ({
+    alertNormalWait: alertNormalWaitMock,
+}))
+vi.mock('../drive/backuplocal', () => ({
+    restoreOpenedBackup: restoreOpenedBackupMock,
 }))
 vi.mock('../storage/database.svelte', () => ({
     getDatabase: () => ({ didFirstSetup: h.didFirstSetup }),
@@ -49,6 +60,8 @@ beforeEach(() => {
     rawOverride = null
     takeMock.mockClear()
     importOpenedSourcesMock.mockReset().mockResolvedValue(undefined)
+    alertNormalWaitMock.mockReset().mockResolvedValue(undefined)
+    restoreOpenedBackupMock.mockReset().mockResolvedValue(undefined)
     delete window.__risuTaniumOpenedFiles
     window.__risuTaniumOpenedFilesHost = { take: takeMock }
     vi.spyOn(console, 'warn').mockImplementation(() => { })
@@ -116,13 +129,13 @@ describe('androidOpenedFilesImport', () => {
         ])
     })
 
-    test('a batch goes to one import call in order; a .bin among its entries is passed on and does not block the others', async () => {
+    test('a batch goes to one import call in order; a .bin among its entries is held back and does not block the others', async () => {
         queued = [[entry('1.charx'), entry('backup.bin'), entry('3.risup')]]
         androidOpenedFilesImport()
         await settle()
         expect(importOpenedSourcesMock).toHaveBeenCalledTimes(1)
         const names = (importOpenedSourcesMock.mock.calls[0][0] as { name: string }[]).map((item) => item.name)
-        expect(names).toEqual(['1.charx', 'backup.bin', '3.risup'])
+        expect(names).toEqual(['1.charx', '3.risup'])
     })
 
     test('batches import one after another in the order they arrived', async () => {

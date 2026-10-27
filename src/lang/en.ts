@@ -2046,6 +2046,11 @@ export const languageEnglish = {
     restoreSavedReloadOrRestart: "Your backup was restored and saved, but the app could not reload automatically. Please reload the page (or restart the app) to finish.",
     restoreAssetsSkipped: (count: number, names: string[]) =>
         `The backup was restored, except for ${count} asset file(s) whose names this app cannot store. A character that uses one of them will show it as missing. Skipped:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    restoreOpenedBackupConfirm: (name: string) => `Restore ${name}? All current data will be replaced.`,
+    openedBackupNotAlone: (names: string[]) =>
+        `Not restored: a backup is restored only when it is opened on its own, not together with other files. Open it again by itself.\n\n${names.join('\n')}`,
+    openedBackupOneAtATime: (names: string[]) =>
+        `Not restored: only one backup can be restored at a time. Open it again after the restore has finished.\n\n${names.join('\n')}`,
     backupFileChangedWhileReading: "The backup file changed while it was being read, so the restore stopped. Some images or cold-storage entries may already have been added or replaced. Your current database was not changed.",
     restoreOversizedAssetsConfirm: (count: number, names: string[], limitBytes: number) =>
         `${count} asset file(s) in this backup are larger than the ${Math.floor(limitBytes / (1024 * 1024))} MB this server accepts for one asset, so they cannot be restored here. A character that uses one of them will show it as missing. Continue without them?\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,

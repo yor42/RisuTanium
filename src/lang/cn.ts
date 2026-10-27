@@ -1910,6 +1910,11 @@ export const languageChinese = {
     "restoreSavedReloadOrRestart": "备份已恢复并保存，但应用无法自动重新加载。请重新加载页面（或重启应用）以完成操作。",
     "restoreAssetsSkipped": (count: number, names: string[]) =>
         `备份已恢复，但有 ${count} 个资源文件因其名称无法被本应用保存而未能恢复。使用这些文件的角色会将其显示为缺失。已跳过的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "restoreOpenedBackupConfirm": (name: string) => `要恢复 ${name} 吗？当前所有数据都将被替换。`,
+    "openedBackupNotAlone": (names: string[]) =>
+        `未恢复：只有单独打开备份时才会恢复，与其他文件一起打开则不会。请单独重新打开该备份。\n\n${names.join('\n')}`,
+    "openedBackupOneAtATime": (names: string[]) =>
+        `未恢复：一次只能恢复一个备份。请在恢复完成后重新打开。\n\n${names.join('\n')}`,
     "backupFileChangedWhileReading": "备份文件在读取过程中发生了变化，因此恢复已停止。部分图片或冷存储条目可能已被添加或替换。当前数据库未被更改。",
     "restoreOversizedAssetsConfirm": (count: number, names: string[], limitBytes: number) =>
         `此备份中有 ${count} 个资源文件超过了此服务器对单个资源文件可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB，因此无法在此处恢复。使用这些文件的角色会将其显示为缺失。是否在不包含它们的情况下继续？\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,

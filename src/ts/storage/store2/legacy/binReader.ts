@@ -1,5 +1,5 @@
 import {
-    BACKUP_ENCRYPTION_MARKER_NAME, parseBackupEntryHeader, type BackupIndexEntry,
+    BACKUP_ENCRYPTION_MARKER_NAME, parseBackupEntryHeader, type BackupIndexEntry, type BinFile,
 } from '../../../drive/backupContainer'
 import {
     getColdStorageBackupKey, isAcceptedColdStorageBackupEntry, isRestorableColdStorageKey,
@@ -91,7 +91,7 @@ export class ColdEntryIndex {
     }
 }
 
-async function sliceBytes(file: Blob, start: number, length: number, name: string): Promise<Uint8Array> {
+async function sliceBytes(file: BinFile, start: number, length: number, name: string): Promise<Uint8Array> {
     let bytes: Uint8Array
     try {
         bytes = new Uint8Array(await file.slice(start, start + length).arrayBuffer())
@@ -125,7 +125,7 @@ function checkHeader(bytes: Uint8Array, place: ColdEntryPlace): void {
  * caller that already reads every header (the restore loop) calls `ColdEntryIndex.note` there instead. A header that
  * is not what the walk saw, or the encryption marker, throws `BinFileChangedError`.
  */
-export async function indexColdEntries(file: Blob, entries: readonly BackupIndexEntry[]): Promise<ColdEntryIndex> {
+export async function indexColdEntries(file: BinFile, entries: readonly BackupIndexEntry[]): Promise<ColdEntryIndex> {
     const index = new ColdEntryIndex()
     for (const entry of entries) {
         if (entry.nameLength > COLD_NAME_MAX_BYTES) {
@@ -153,7 +153,7 @@ type ColdEntryBody =
     | { status: 'rejected' }
 
 /** One entry, re-checked and decoded. Throws `BinFileChangedError`. */
-async function readColdEntry(file: Blob, place: ColdEntryPlace): Promise<ColdEntryBody> {
+async function readColdEntry(file: BinFile, place: ColdEntryPlace): Promise<ColdEntryBody> {
     const bytes = await sliceBytes(file, place.headerOffset, place.headerLength + place.dataLength, place.name)
     checkHeader(bytes.subarray(0, place.headerLength), place)
     let value: unknown
@@ -166,7 +166,7 @@ async function readColdEntry(file: Blob, place: ColdEntryPlace): Promise<ColdEnt
 }
 
 export interface BinEntryReaderOptions {
-    file: Blob
+    file: BinFile
     index: ColdEntryIndex
     /** Answers a unit id the file holds no accepted entry for: the page's legacy unit. Absent, such an id is missing. */
     fallback?: LegacyEntryReader

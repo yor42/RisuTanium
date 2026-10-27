@@ -1955,6 +1955,11 @@ export const languageChineseTraditional = {
     "restoreSavedReloadOrRestart": "備份已復原並儲存，但應用程式無法自動重新載入。請重新載入頁面（或重新啟動應用程式）以完成。",
     "restoreAssetsSkipped": (count: number, names: string[]) =>
         `備份已復原，但有 ${count} 個資源檔案因其名稱無法被本應用程式儲存而未能復原。使用這些檔案的角色會將其顯示為遺失。已略過的檔案：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
+    "restoreOpenedBackupConfirm": (name: string) => `要復原 ${name} 嗎？目前所有資料都將被取代。`,
+    "openedBackupNotAlone": (names: string[]) =>
+        `未復原：只有單獨開啟備份時才會復原，與其他檔案一起開啟則不會。請單獨重新開啟該備份。\n\n${names.join('\n')}`,
+    "openedBackupOneAtATime": (names: string[]) =>
+        `未復原：一次只能復原一個備份。請在復原完成後重新開啟。\n\n${names.join('\n')}`,
     "backupFileChangedWhileReading": "備份檔案在讀取過程中發生了變化，因此復原已停止。部分圖片或冷儲存項目可能已被新增或取代。目前的資料庫未被變更。",
     "restoreOversizedAssetsConfirm": (count: number, names: string[], limitBytes: number) =>
         `此備份中有 ${count} 個資源檔案超過了此伺服器對單個資源檔案可接受的 ${Math.floor(limitBytes / (1024 * 1024))} MB，因此無法在此處復原。使用這些檔案的角色會將其顯示為遺失。是否在不包含它們的情況下繼續？\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,

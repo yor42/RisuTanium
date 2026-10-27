@@ -232,6 +232,20 @@ export interface BackupWalkResult {
 }
 
 /**
+ * The part of a `Blob` a `.bin` restore reads through: its size and bounded slices. A `File` satisfies it as it is; a
+ * file opened from another app is read through an adapter that does the same without holding the file.
+ */
+export interface BinFile {
+    readonly size: number
+    slice(start: number, end?: number): BinSlice
+}
+
+/** One slice of a `BinFile`: it can be sliced again and read, and nothing is read until `arrayBuffer`. */
+export interface BinSlice extends BinFile {
+    arrayBuffer(): Promise<ArrayBuffer>
+}
+
+/**
  * A sequential reader over `Blob.slice()`: one window of at most
  * `windowBytes` is held, and `view` answers from it while the requested range
  * lies inside. A reader never pools or reuses an `ArrayBuffer` across
@@ -254,7 +268,7 @@ export interface BlobWindowReader {
     view(start: number, length: number, fill?: boolean): Promise<Uint8Array>
 }
 
-export function createBlobWindowReader(file: Blob, windowBytes: number): BlobWindowReader {
+export function createBlobWindowReader(file: BinFile, windowBytes: number): BlobWindowReader {
     const size = file.size
     const window = Math.max(1, Math.floor(windowBytes))
     let windowStart = 0
@@ -315,7 +329,7 @@ export function createBlobWindowReader(file: Blob, windowBytes: number): BlobWin
  * The walk also records each entry it steps over (`BackupIndexEntry`), so a
  * restore can read one entry at a time without scanning the file again.
  */
-export async function indexBackupEntries(file: Blob, options: BackupWalkOptions = {}): Promise<BackupWalkResult> {
+export async function indexBackupEntries(file: BinFile, options: BackupWalkOptions = {}): Promise<BackupWalkResult> {
     const totalBytes = file.size
     const windowBytes = Math.max(4, options.windowBytes ?? windowOverride.walk ?? DEFAULT_BACKUP_WALK_WINDOW_BYTES)
     const reader = createBlobWindowReader(file, windowBytes)
@@ -415,6 +429,6 @@ export async function indexBackupEntries(file: Blob, options: BackupWalkOptions 
 }
 
 /** `true` when `file` carries an entry whose complete name is `BACKUP_ENCRYPTION_MARKER_NAME`; see `indexBackupEntries` for the walk's rules. */
-export async function findEncryptionMarkerEntry(file: Blob, options: BackupWalkOptions = {}): Promise<boolean> {
+export async function findEncryptionMarkerEntry(file: BinFile, options: BackupWalkOptions = {}): Promise<boolean> {
     return (await indexBackupEntries(file, options)).hasMarker
 }
