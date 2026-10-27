@@ -33,9 +33,10 @@ vi.mock(import('../../process/moduleUpdateDeps'), () => ({
   trackModuleUpdateDeps: vi.fn(),
 }) as unknown as typeof import('../../process/moduleUpdateDeps'))
 
-vi.mock(import('../../process/moduleEnsure'), () => ({
+vi.mock(import('../../process/moduleEnsure'), async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../process/moduleEnsure')>()),
   ensureSelectedModules: vi.fn(),
-}) as unknown as typeof import('../../process/moduleEnsure'))
+}))
 
 vi.mock(import('../../process/scripts'), () => ({
   processScriptFull: vi.fn(async (_char: unknown, data: string) => ({ data, emoChanged: false })),
