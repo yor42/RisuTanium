@@ -9,7 +9,7 @@ import { isTauri, isNodeServer } from "src/ts/platform"
 import { decodeRisuSave, encodeRisuSaveStreamed, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock, type StreamedRisuSave } from "../storage/risuSave";
 import { writeRisuSaveV0 } from "../storage/risuSaveV0";
 import { assertNoModuleStubs } from "../storage/moduleStub";
-import { ExportModuleUnreadableError, snapshotModuleList } from "./exportModules";
+import { assertNoForeignModuleStubs, ExportModuleUnreadableError, snapshotModuleList } from "./exportModules";
 import type { RisuModule } from "../process/modules";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
@@ -889,9 +889,9 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
 }
 
 async function writeLocalBackupWithModules(session: ExportSession, options: BackupExportOptions, db: Database, modules: RisuModule[] | null): Promise<ExportOutcome>{
-    // A marker still in the live list after the module bodies were read is foreign: the export stops
+    // Only a foreign marker in the live list (not a recorded stub) stops the export here,
     // before it reads any unit or opens the file.
-    assertNoModuleStubs(db.modules, 'writeLocalBackup')
+    assertNoForeignModuleStubs(db.modules, 'writeLocalBackup')
     // A stub kept for a missing loader must not reach an encoder even if it has left the live list since.
     assertNoModuleStubs(modules, 'writeLocalBackup snapshot')
     if (MEASURE) {
@@ -1211,8 +1211,8 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
 }
 
 async function writePartialLocalBackupWithModules(session: ExportSession, options: BackupExportOptions, db: Database, modules: RisuModule[] | null): Promise<ExportOutcome>{
-    // Same invariant as writeLocalBackup: a marker left after the module bodies were read stops the export before any read or file.
-    assertNoModuleStubs(db.modules, 'writePartialLocalBackup')
+    // Same invariant as writeLocalBackup: only a foreign marker left in the live list stops the export here, before any read or file.
+    assertNoForeignModuleStubs(db.modules, 'writePartialLocalBackup')
     assertNoModuleStubs(modules, 'writePartialLocalBackup snapshot')
     const collected = await collectBackupColdStorage(db, options)
     if(!await confirmDuringExport(session, collected.unavailableKeys.length > 0, () => confirmIncompleteColdStorageOperation(db, collected.unavailableKeys, 'backup', collected.collected.owners))){

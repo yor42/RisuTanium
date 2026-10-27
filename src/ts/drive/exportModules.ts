@@ -1,6 +1,9 @@
 import type { Database } from '../storage/database.svelte'
 import type { RisuModule } from '../process/modules'
-import { isModuleStub } from '../storage/moduleStub'
+import { isModuleStub, ModuleStubRefusal } from '../storage/moduleStub'
+import { CodecInputError } from '../storage/store2/codec/types'
+import { slotIsRecordedStub } from '../storage/store2/moduleStubMatch'
+import { getResidency } from '../storage/store2/residencyActive'
 import { acquireModule, ModuleAmbiguousError, ModuleLoaderMissingError, ModuleLoadError } from '../storage/store2/moduleAcquire'
 
 /**
@@ -78,6 +81,47 @@ async function acquireOrKeep(id: string): Promise<Awaited<ReturnType<typeof acqu
             return 'unloadable'
         }
         throw error
+    }
+}
+
+function textOf(value: unknown): string {
+    return typeof value === 'string' ? value : ''
+}
+
+/**
+ * The export's check of the live module list. Like `assertNoModuleStubs` it scans an array by element and any other
+ * object by its values, but it refuses only a foreign stub: one with no residency, no acknowledged entry for its id, or a
+ * marker that is not the recorded stub of that entry. A recorded stub stays in the list and is not refused. A stub that
+ * cannot be read as JSON is foreign too and is refused with `ModuleStubRefusal`; any other error thrown while reading a
+ * stub is rethrown unchanged. The encoder and snapshot-list
+ * checks stay on the total `assertNoModuleStubs`.
+ */
+export function assertNoForeignModuleStubs(modules: unknown, where: string): void {
+    if (typeof modules !== 'object' || modules === null) {
+        return
+    }
+    const residency = getResidency()
+    const slots = Array.isArray(modules) ? modules : Object.values(modules)
+    for (let index = 0; index < slots.length; index++) {
+        const slot: unknown = slots[index]
+        if (!isModuleStub(slot)) {
+            continue
+        }
+        const fields = slot as Record<string, unknown>
+        const entry = residency === null ? null : residency.moduleEntryOf(`${textOf(fields.id)}#0`)
+        let recorded = false
+        if (entry !== null) {
+            try {
+                recorded = slotIsRecordedStub(slot, entry)
+            } catch (error) {
+                if (!(error instanceof CodecInputError)) {
+                    throw error
+                }
+            }
+        }
+        if (!recorded) {
+            throw new ModuleStubRefusal(textOf(fields.id), textOf(fields.name), where)
+        }
     }
 }
 
