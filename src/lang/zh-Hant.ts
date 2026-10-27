@@ -650,7 +650,7 @@ export const languageChineseTraditional = {
         "hypaV3EmbeddingRequestsPerMinute": "相似度搜尋每分鐘最多可送出的 Embedding 模型請求數",
         "hypaV3EmbeddingMaxConcurrent": "相似度搜尋可同時進行的 Embedding 模型請求上限",
         "hypaV3SummaryChunkSeparator": "用於將總結拆分成區塊以進行相似性搜尋的分隔符號。",
-        "coldstorage": "開啟後，應用程式會在啟動時將每個角色的完整資料單獨儲存，並僅在您開啟該角色時才載入。這樣在角色很多時可維持較低的記憶體用量。關閉後不會再封存任何新角色，已封存的角色仍可正常開啟。",
+        "coldstorage": "開啟後，應用程式會在啟動時將每個角色的完整資料單獨儲存，並僅在您開啟該角色時才載入。沒有任何設定使用的模組同樣不會載入，直到某個角色或聊天需要它們。這樣在角色或模組很多時可維持較低的記憶體用量。關閉後不會再封存任何新內容，並會在啟動時載入所有模組；已封存的角色仍可正常開啟。",
         "dynamicModelRegistry": "啟動時會使用您的 API 金鑰取得 Google、Anthropic 和 OpenAI 的模型清單，並新增內建清單中沒有的模型（OpenAI 為 GPT 模型）。同時每天最多一次從 openrouter.ai 以及 raw.githubusercontent.com 上的 LiteLLM 資料集（LiteLLM，MIT 授權）下載公開的模型限制與價格；不會向這兩處傳送任何金鑰。僅由供應商或僅由資料集列出的新增模型，會在「顯示不建議使用的設定」下以灰色顯示，選擇時會要求確認。關閉後會停止自動下載與新增的模型；已儲存的資料仍會使用，「重新整理模型資料」按鈕仍可更新限制與價格。",
         "keepSessionAlive": "維持分頁活動狀態，避免工作階段因閒置而失效。可能需要重新整理才會生效。\n\n" +
             "- **透過音訊**：循環播放人耳聽不到的低頻音以維持工作階段。此方式在大多數瀏覽器中相容性最佳，也通常最有效。在 Android 瀏覽器上啟用時會顯示媒體通知，其他音樂 App 也可能會暫停。\n",
@@ -2110,7 +2110,7 @@ export const languageChineseTraditional = {
     "nanoGPTSelectFromList": "從清單中選擇",
     "nanoGPTManualInput": "手動輸入",
     "nanoGPTManualModelSelect": "手動選擇模型",
-    "coldStorage": "啟動時封存角色",
+    "coldStorage": "啟動時封存角色和模組",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `為了維持較低的記憶體用量，本應用程式現在會在啟動時將每個角色的完整資料單獨儲存，並僅在您開啟該角色時才載入。不會刪除任何內容，您的角色外觀與運作方式都和以往相同。您可以在 ${settings} > ${advancedSettings} > ${toggle} 中關閉此功能。關閉後不會再封存任何新角色，已封存的角色仍可正常開啟。`,
     "archiveCharactersStoppedNotice": (characterName: string) =>

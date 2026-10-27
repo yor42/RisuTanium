@@ -608,7 +608,7 @@ export const languageChinese = {
         "hypaV3EmbeddingMaxConcurrent": "用于相似度搜索的嵌入模型最大并发请求数。",
         "hypaV3QueryChatCount": "用作相似度搜索查询的最近聊天消息数量。数值越高，用于判断相似度的聊天上下文越多。",
         "hypaV3SummaryChunkSeparator": "用于将总结拆分为多个块以进行相似度搜索的分隔符。",
-        "coldstorage": "开启后，应用会在启动时将每个角色的完整数据单独存储，并仅在您打开该角色时才加载。这样在角色很多时可以保持较低的内存占用。关闭后不会再归档任何新角色，已归档的角色仍可正常打开。",
+        "coldstorage": "开启后，应用会在启动时将每个角色的完整数据单独存储，并仅在您打开该角色时才加载。没有任何设置使用的模块同样不会加载，直到某个角色或聊天需要它们。这样在角色或模块很多时可以保持较低的内存占用。关闭后不会再归档任何新内容，并会在启动时加载所有模块；已归档的角色仍可正常打开。",
         "dynamicModelRegistry": "启动时使用您的 API 密钥获取 Google、Anthropic 和 OpenAI 的模型列表，并添加内置列表中没有的模型（OpenAI 为 GPT 模型）。同时每天最多一次从 openrouter.ai 以及 raw.githubusercontent.com 上的 LiteLLM 数据集（LiteLLM，MIT 许可证）下载公开的模型限制和价格；不会向这两处发送任何密钥。仅由服务提供方或仅由数据集列出的新增模型，会在“显示不建议的设置”下以灰色显示，选择时会要求确认。关闭后将停止自动下载以及新增的模型；已保存的数据仍会被使用，“刷新模型数据”按钮仍可更新限制和价格。"
     },
     "setup": {
@@ -2065,7 +2065,7 @@ export const languageChinese = {
     nanoGPTSelectFromList: "从列表中选择",
     nanoGPTManualInput: "手动输入",
     nanoGPTManualModelSelect: "手动模式选择",
-    "coldStorage": "启动时归档角色",
+    "coldStorage": "启动时归档角色和模块",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `为了保持较低的内存占用，本应用现在会在启动时将每个角色的完整数据单独存储，并仅在您打开该角色时才加载。不会删除任何内容，您的角色外观和使用方式与之前一致。您可以在 ${settings} > ${advancedSettings} > ${toggle} 中关闭此功能。关闭后不会再归档任何新角色，已归档的角色仍可正常打开。`,
     "archiveCharactersStoppedNotice": (characterName: string) =>

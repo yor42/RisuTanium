@@ -5,7 +5,8 @@
  * `registerModuleLoader` that replaces the slot the way the production loader does. The database is a plain object;
  * nothing here needs reactivity (the reactive trigger is driven in `moduleReferenceTrigger.svelte.test.ts`).
  *
- * Labels: every row is M except the G rows (`current-resolves-true-...` and the type-level memory/signal guard), which
+ * Labels: every row is M except the G rows (`current-resolves-true-...`, `trigger-after-a-normal-boot-...` and the
+ * type-level memory/signal guard), which
  * pass on any correct implementation. The symbols are new, so on the base the file fails at import; the evidence of an
  * M row is a named mutant.
  */
@@ -335,6 +336,19 @@ describe('ensureSelectedModules', () => {
         ensureSelectedModules(true)
         await settleTasks()
         expect(calls).toEqual(['m1'])
+    })
+
+    test('G trigger-after-a-normal-boot-starts-no-load-and-raises-no-alert', async () => {
+        // A normal boot: nothing selected, the globally referenced modules resident, the unreferenced ones stubs.
+        installDb([resident('m1', 'Alpha'), stub('m2', 'Beta'), stub('m3', 'Gamma')], { enabled: ['m1'] })
+        h.state.db.characters = []
+        registerInstallingLoader()
+        const alertsBefore = [...h.alerts]
+        ensureSelectedModules(true)
+        await settleTasks()
+        expect(calls).toEqual([])
+        expect(h.alerts).toEqual(alertsBefore)
+        expect(slots().filter((m) => m[MODULE_STUB_KEY] === 1).map((m) => m.id)).toEqual(['m2', 'm3'])
     })
 
     test('M trigger-terminates-after-install', async () => {
