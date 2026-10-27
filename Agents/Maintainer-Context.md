@@ -6184,6 +6184,8 @@ same and stage 2 does not change the cost (ledger row 679).
 
 *Amended by `MC-223` (2026-10-06): for the fork-to-upstream direction, data over upstream's size limits may be left out after a warning that names it; upstream to the fork must always work.*
 
+*Amended by `MC-774` (2026-10-27; the text above is unchanged): where upstream has an equivalent, the `.bin` export translates to upstream's shape; fork-only data with no upstream equivalent stays in store2/`.rtb` and is left out of the `.bin`, with an export warning that names it. This adopts the amending note that `MC-685` said was needed. Upstream to the fork still always works.*
+
 *Records batch 15 notes (2026-10-27; the text above is unchanged): (1) `MC-685` (2026-10-26) clarifies that the `.bin` carries what upstream can realistically support, so it need not carry Utility or Hybrid mode data or oversized assets; the log says an amending MC is needed when that rule is adopted, and none is written here. (2) `MC-519` requires the optional HypaV3 stored time to survive a `.bin` round trip, which upstream ignores. (3) `MC-518` accepts that upstream drops module asset folders on a round trip. (4) `MC-689` keeps upstream colour schemes and Custom CSS working under the theme-pack direction.*
 
 ### MC-176 — Upstream's own `.bin` limits do not count against the round-trip invariant; the fork's export warns when the backup holds plugin data upstream will not restore (CHORE-74)
@@ -8109,6 +8111,8 @@ browser CORS behaviour of the Hugging Face router, and whether a real model answ
 
 *Exception added by `MC-477` (2026-10-24): encrypted risuai.xyz full backups are refused; every other upstream-to-fork restore must still work.*
 
+*Amended by `MC-774` (2026-10-27; the text of this entry is unchanged): the omission exception extends beyond size. Fork-only data with no upstream equivalent stays in store2/`.rtb` and is left out of the `.bin` after a warning that names it; where upstream has an equivalent, the export translates to upstream's shape.*
+
 - **Tag:** decision (a typed message), with the decisions the Orchestrator's notes list after it
 - **Date:** 2026-10-06
 - **Sweep ref:** none (stated directly this session)
@@ -8930,6 +8934,7 @@ Commit the completed and independently verified workflow/configuration/documenta
 
 **What was decided:**
 1. **Default streaming display mode (resolves `MC-051`): "Balanced (Recommended)".** The question: the default for new profiles is `'off'`, and each chunk remounts and re-runs post-processing on the whole text. The option text: post-processing runs at most about every 0.125 s while streaming, with no per-chunk rebuild; the output is the same once streaming ends; the setting is labelled experimental, so check it on heavy-script cards first. The default currently comes from `?? 'off'` in `Chats.svelte` and the database default. Implementation must verify behaviour on heavy-script cards before the switch. **Not decided:** whether existing profiles with no stored value change; that is a plan question for Gate 1.
+   *Item 1 superseded by `MC-773` (2026-10-27; the text above is unchanged): DD-071 of the UI design session replaces the "Balanced" default, and CHORE-156 drops item 1. Items 2 and 3 stand.*
 2. **Lua engine reuse: "One engine per script (Recommended)".** Cache one engine per script (mode plus code) instead of per mode only. The option text: this removes the per-message recreation; multi-script setups keep globals between calls, as single-script setups already do; cards relying on the reset (unlikely) would behave differently from upstream.
 3. **Superseded streaming parses: "Finish, drop output (Recommended)".** Stale parses still run, including Lua side effects such as `setChatVar`, but their result is not put on screen. The option text: no behaviour change; this saves the extra DOM work but not the Lua time.
 
@@ -15195,6 +15200,8 @@ Folded in from `Agents/Lanes/lane-F-records.md` on 2026-10-25 (merge `95a24de3e`
 
 *This entry bears on `MC-175` and `MC-223`; see the notes added to those entries.*
 
+*Adopted by `MC-774` (2026-10-27; the text above is unchanged): `MC-774` is the amending rule this entry said was needed, and the notes on `MC-175` and `MC-223` record it.*
+
 - Notes, not the maintainer's words:
   - Nothing here authorizes application code, a commit or a push.
 
@@ -15496,6 +15503,8 @@ On lane A's proposal of the rule below: "yes, put it in the next records batch. 
 - `docs/workflow/routing.md`: the `senior-advisor` line;
 - `AGENTS.md`: line 3. `CLAUDE.md` only imports `AGENTS.md` and is not edited.
 
+*Amended by `MC-777` (2026-10-27; the text above is unchanged): every Gate 1 verdict carries an advisory "Simpler path" section, and a substantiated structural finding lets the orchestrator ask for the rewrite alternative at any rejection, not only at the second.*
+
 **Lane A's notes (not the maintainer's decisions).**
 - The first candidate for the rule is the multi-tab store2 review. `MC-699` records that review's outcome: no rewrite now.
 - The draft said this amends `MC-091`. A check of `MC-091` found no rewrite rule in it, so it is listed under Related only (lane A, batch 16 addendum item 7).
@@ -15580,6 +15589,129 @@ On lane A's proposal of the rule below: "yes, put it in the next records batch. 
 **Lane A's reading of the rule (to confirm in the wording of the verification; not a separate decision).** A secure-context-only feature may be offered. On a non-secure page it is disabled with a visible warning that says why. Its absence never blocks or changes the core path. For `.rtb`, encryption and decryption always work through the password slot, so a backup made on HTTPS opens on HTTP and the reverse.
 
 **Applies first to:** WebAuthn PRF biometric unlock (the `MC-698` amendment). Others to check when they are designed, not decided here: anything using `navigator.credentials`, clipboard read, or service-worker-only paths.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-771 — Lane A, 2026-10-27: multi-session (removing tab parking) is parked; the UI overhaul gets a screen-state rule; the engine-change list was requested
+
+- Tag: decision (maintainer chat message and `AskUserQuestion` sizing answer, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log lines 939 and 940; draft `%TEMP%\risu-b715\records-b17\mc566-568-laneG.md`.
+- Reasoning: the maintainer asked whether multi-session is cheaper with the UI overhaul or can be parked. Lane A's recommendation (INFERRED, unsized): layers 1 (per-entity save merge) and 3 (same-entity rules) cost the same later; layer 2 (live refresh of peer changes) gets dearer for every screen built with long-lived copies, so the overhaul gets a cheap rule now.
+- Alternatives rejected: not recorded.
+- Related: `MC-699` (multi-tab review), `MC-697`. No ticket.
+
+**The maintainer's words (2026-10-27).** Question: "about the sizing of multi-session: would this multi-session cheaper to implement along with UI overhaul as you recommended, or is it something that can be parked and revisited later without dealing with lot more issues?" After lane A's recommendation: "yeah, let's do that. but iirc some of the UI overhaul elements already needs some engine changes. so you might want to ask for a list of it." The earlier sizing answer the same day (log line 939) was "Not now".
+
+**What was decided (maintainer).**
+1. Multi-session (removing tab parking) is parked; the sizing answer is "Not now". It is a long-term idea with no ticket (Roadmap-parked).
+2. Screen-state rule for the UI overhaul: screens read character, chat, module (and settings) data from the store by ID or key and keep no long-lived copies; unsaved input lives in drafts held apart from the live data; derived values are recomputed from the store, not cached in components.
+3. Lane A asked the UI sessions for the list of engine changes the overhaul needs (per item: change, screen, data touched and persistence or format impact, mockup or implementation blocker, size, references). It was sent 2026-10-27 to the RisuTanium UI overhaul session [b9b5a0] and the Settings and models redesign session [884f0f]; session [e67a40] was no longer reachable.
+
+**Lane A's notes (not the maintainer's decisions).**
+- The three-layer analysis of tab parking is INFERRED and unsized: (1) per-entity save merge on a compare-and-set loss; (2) live refresh of peer changes into other tabs' `DBState`, the costly one; (3) same-entity conflict rules. A single-writer lock covers one browser only, not Node cross-device.
+- Nothing here authorizes application code, a commit or a push.
+
+### MC-772 — Lane A, 2026-10-27: compatibility rules for the Settings and models engine changes: the connections store is translated at `.bin` export; keys are stripped from sharing exports only
+
+- Tag: decisions (two `AskUserQuestion` answers, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log lines 941 and 942; draft `%TEMP%\risu-b715\records-b17\mc566-568-laneG.md`. The list is `docs/design/settings/ENGINE_CHANGES.md` in the UI design repository (26 items: slice 1 8, slice 2 8, slice 3 10); its sizes and `.bin` claims are INFERRED by the Settings session, and none blocks a mockup. That session records the screen rule as DS-067 "Store-first screens". Cross-session references: not verified here.
+- Alternatives rejected: not recorded.
+- Related: `MC-175`, `MC-223`, `MC-350`, `MC-698`, `MC-774`; "secrets travel" (batch 15).
+
+**What was decided (maintainer, by option label).**
+1. Item 3-1 (connections store; migration of keys, proxy URLs and model ids): "Translate at .bin export (Recommended)". The new shape lives in store2/`.rtb`; the `.bin` export writes the legacy upstream fields derived from connections; importing an upstream `.bin` runs the migration; the round trip is kept (`MC-175`, `MC-223`); Android gets an automatic forward migration (`MC-350`).
+2. Item 3-3 (keys removed from exports): "Sharing exports only (Recommended)". Keys are stripped from things meant for sharing (preset bundles, cards, modules); full backups (`.rtb`, `.bin`) keep them, and `.rtb` is protected by the optional password (`MC-698`).
+
+**Lane A's notes (not the maintainer's decisions).**
+- History and restore points and the 30-day recently-deleted list belong in store2, not in the `.bin`. Live write-through needs a save-cost check. The low-power setting is device-local. All need Note 9 cost checks at implementation.
+- The Settings session recorded this as DS-068 (item 3-1; its open detail is which connection fills the single legacy field when one provider has two) and DS-069 (item 3-3; slice 3 help text saying keys never go in any export is wrong and is fixed in its next round). Not verified here.
+- Nothing here authorizes application code, a commit or a push.
+
+### MC-773 — Lane A, 2026-10-27: DD-071 supersedes `MC-257` item 1 (the "Balanced" streaming default); CHORE-156 drops item 1
+
+- Tag: decision (`AskUserQuestion` answer in lane A, 2026-10-27, on a decision the maintainer made in the UI session on 2026-10-26). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log line 943; the UI overhaul session's engine-change list, `C:\Projects\Risutanium-UI-Rework\docs\design\ENGINE_CHANGES.md` (24 items; sizes and `.bin` notes INFERRED by that session), where #16 is DD-071. Cross-session reference: not verified here.
+- Alternatives rejected: not recorded.
+- Related: `MC-257`, `MC-051`; CHORE-156.
+
+**The maintainer's answers.** In the UI session (2026-10-26), DD-071: "Slice 1 append-only (Recommended)". In lane A (2026-10-27): "Drop item 1 (Recommended)".
+
+**What was decided (maintainer).**
+1. `MC-257` item 1 (default streaming display mode "Balanced") is superseded by DD-071. A note at `MC-257` records it; the text of `MC-257` is unchanged.
+2. CHORE-156 keeps item 2 (one Lua engine per script) and item 3 (superseded parses finish, drop output).
+
+**Lane A's notes (not the maintainer's decisions).**
+- The mapping of the UI list to tickets is lane A's, not a decision: #14 per-chat saves overlaps CHORE-412 (size together); #8 per-message alternatives needs translation at `.bin` export; #1, #4, #10, #11, #12, #15, #18 and #23 add fork-only stored data; #21 migrates stored toggle variables. The UI session recorded its screen rule as DD-157 (renumbered from DD-154).
+- Nothing here authorizes application code, a commit or a push.
+
+### MC-774 — Lane A, 2026-10-27: `.bin` export rule: translate to upstream's shape where an equivalent exists, else the data stays in store2/`.rtb` (amends `MC-175` and `MC-223`)
+
+- Tag: decision (`AskUserQuestion` answer, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log line 943; draft `%TEMP%\risu-b715\records-b17\mc566-568-laneG.md`. It settles the 2026-10-26 ".bin = what upstream can support" draft (auto-memory `project-bin-rp-only-draft`).
+- Alternatives rejected: not recorded.
+- Related: `MC-175`, `MC-223`, `MC-685`, `MC-772` item 1, `MC-350`; CHORE-128.
+
+**The maintainer's answer.** "Translate, else .rtb only (Recommended)".
+
+**What was decided (maintainer).**
+1. Where upstream has an equivalent, the `.bin` export translates to upstream's shape (for example per-message alternatives to a whole round).
+2. Fork-only data with no upstream equivalent stays in store2/`.rtb` and is left out of the `.bin`; the export warning names what is left out.
+3. Upstream to the fork always works.
+4. This extends the omission exception of `MC-223` beyond size, extends `MC-772` item 1, and is the amending note `MC-685` said was needed. Notes were added at `MC-175`, `MC-223` and `MC-685`; their text is unchanged.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-775 — Lane A, 2026-10-27: P3 includes the MVP upgrade check; the maintainer builds and installs the release APK after P3 (amends `MC-657`)
+
+- Tag: decision (one maintainer message, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log line 954; draft `%TEMP%\risu-b715\records-b17\mc566-568-laneG.md`. Context: the maintainer asked when the Fold 7 MVP (`f0e397aae`, `MC-475`) can be updated to pick up the data-loss fixes, and chose to wait for S4d-1m rather than install current main. Relayed to lane B 2026-10-27.
+- Alternatives rejected: not recorded.
+- Related: `MC-350`, `MC-475`, `MC-657`; CHORE-205.
+
+**The maintainer's words (2026-10-27):** "yes, let's add the upgrade step to P3, so the phone only has to be set up once. after that I create the signed apk and cover the data loss path."
+
+**What was decided (maintainer).**
+1. P3 (L3-plan section 8) starts from a synthetic profile written by the MVP APK on a spare Note 9, upgrade-installs the post-1m, 1b and S4d-2 build over it, and runs P1's checks plus P3's checks on that profile (`MC-350`: read in place).
+2. After P3 passes, the maintainer builds the release-signed APK and installs it on their phone, after a `.bin` backup export. Lane A never adbs that phone.
+
+- Notes, not the maintainer's words:
+  - The `MC-657` install hold (no phone install with 1m until 1b is merged) stands.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-776 — Lane A, 2026-10-27: CHORE-465 outcome: the zero-IV AES-GCM helper is frozen and labelled as obfuscation; translator presets stay at version 1; no warning for password-protected rcc cards
+
+- Tag: decisions (three `AskUserQuestion` answers, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log lines 958 and 959; audit `%TEMP%\risu-b715\c465\result.md` (investigator, snapshot main `385d51a5c`), independently verified ACCEPT by doc-verifier (8 claims, no corrections). The comment landed as `5ee361426` (`src/ts/util.ts`, comment only); Gate 2 APPROVE (adversarial-reviewer).
+- Alternatives rejected: not recorded.
+- Related: `MC-175`, `MC-698`, `MC-350`; CHORE-465.
+
+**The maintainer's answers (option labels).** "Freeze and label (Recommended)"; "Leave as is (Recommended)"; "No warning (Recommended)".
+
+**What was decided (maintainer).**
+1. `encryptBuffer` and `decryptBuffer` stay unchanged (upstream `.risup` compatibility, `MC-175`). A code comment states they are obfuscation under a public key and must not be used for `.rtb` (`MC-698`) or any secret; a future secret use gets a separate random-IV helper.
+2. Translator preset files keep `translatorPresetVersion` 1 and the same obfuscation.
+3. No UI warning for upstream password-protected rcc cards; the weakness (one unsalted SHA-256, reused IV) is recorded on the ticket only.
+
+**Lane A's notes (not the maintainer's decisions).**
+- Facts from the audit: the only non-test callers are `database.svelte.ts` (`.risup` export and import, key `risupreset`; Realm upload), `translator/presets.ts` (key `risutl`) and `characterCards.ts` (rcc read only, user password or `RISU_NONE`). No encrypted blob is stored in the database, store2 or `.bin`, so `MC-350` is not engaged; `MC-223` and `MC-477` are untouched.
+- CHORE-465 is COMPLETE in records batch 17.
+- Nothing here authorizes application code, a commit or a push.
+
+### MC-777 — Lane A, 2026-10-27: every Gate 1 verdict has an advisory "Simpler path" section; a substantiated structural finding can trigger the `MC-697` rewrite alternative at any rejection (amends `MC-697`)
+
+- Tag: decision (maintainer proposal in chat and three `AskUserQuestion` answers, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log line 960; draft `%TEMP%\risu-b715\records-b17\mc566-568-laneG.md`.
+- Alternatives rejected: not recorded.
+- Related: `MC-697`, `MC-699` (L7 changed its mechanism after its second Gate 1 REJECT, the first application of `MC-697` in practice).
+
+**The maintainer's words (2026-10-27):** "I think gate 1 reviewer can also help telling orchestrator about the 'bounded rewrite' decision. it's goal is to challenge the architecture, so finding potential easier/simpler path would be easier for it." Answers (option labels): "Every Gate 1 round (Recommended)"; "Advisory, can trigger early (Recommended)"; "In records batch 17 (Recommended)".
+
+**What was decided (maintainer).**
+1. Every Gate 1 verdict carries a short "Simpler path" section: does the plan's complexity, or the rejection, come from the subsystem's structure, and would a bounded rewrite or a simpler mechanism remove the failure class? "None found" is a valid answer.
+2. The section is advisory and never a blocker by itself. A substantiated structural finding lets the orchestrator ask the plan author for the `MC-697` rewrite alternative at any rejection, not only at the second. The `senior-advisor` challenge, the bounded-rewrite criteria and the maintainer's approval of a rewrite are unchanged.
+3. Applied in records batch 17: `docs/workflow/gates.md`, the `review-change` skill, and the Gate 1 reviewer profiles (`.claude/agents/adversarial-reviewer.md`, `.claude/agents/opus-reviewer.md`), with a doc-verifier pass. A note was added at `MC-697`; its text is unchanged.
 
 - Notes, not the maintainer's words:
   - Nothing here authorizes application code, a commit or a push.
@@ -16589,6 +16721,8 @@ Nothing here authorizes code, a commit or a push.
 3. No phone install with S4d-1m until S4d-1b is merged. The S4d-2 setting help text lands before that install.
 4. P3 runs on a spare Note 9 with synthetic data.
 
+*Amended by `MC-775` (2026-10-27; the text above is unchanged): P3 also includes the MVP upgrade check, and the maintainer builds and installs the release APK after P3 passes.*
+
 Nothing here authorizes code, a commit or a push.
 
 ### MC-658 — Lane B, 2026-10-27: after a failed module ensure the run stops; nothing is made and the translator caches nothing (amends `MC-499` item 2 for the `MC-655` callers)
@@ -16810,6 +16944,141 @@ Nothing here authorizes code, a commit or a push.
 - Notes, not the maintainer's words:
   - Nothing here authorizes application code, a commit or a push.
 
+### MC-566 — Lane G, 2026-10-27: L7 timing: an idle-net tick finds a change and survives a park; Reload runs one more check across all loaded characters (L7, split from `MC-699` step 1)
+
+- Tag: decision (the maintainer's answer by option label, given in the lane G session and relayed to lane A, confirmed in lane A, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log line 938; draft `%TEMP%\risu-b715\records-b17\mc566-568-laneG.md`. L7 is an unmarked edit while parked getting a Reload-only prompt with no export (lane G, split from multi-tab step 1); lane G's plan is `%TEMP%\risu-lane-g\multitab\l7\plan-r2.md`.
+- Alternatives rejected: not recorded.
+- Related: `MC-699`, `MC-486` (precedent, as the draft states it), `MC-565`, `MC-567` to `MC-573`.
+
+**The maintainer's words (relayed from lane G, 2026-10-27):** "I think we should fix the limitations." The option label, recommended: "Keep tick + check at Reload". Confirmed in lane A (`AskUserQuestion`): "Yes, record them".
+
+**What was decided (maintainer).** A change an idle-net tick found survives a park. Pressing Reload in the park prompt runs one more check across all loaded characters before reloading; if it finds changes, the unsaved prompt with export is shown instead.
+
+### MC-567 — Lane G, 2026-10-27: L7 scope: characters only
+
+- Tag: decision (option label relayed from the lane G session, confirmed in lane A, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log line 938; draft `%TEMP%\risu-b715\records-b17\mc566-568-laneG.md`.
+- Alternatives rejected: not recorded.
+- Related: `MC-566`, `MC-699`.
+
+**The option label (recommended):** "Characters only".
+
+**What was decided (maintainer).** The Reload check covers characters only. Module edits are always marked, so there is no module-scope check.
+
+### MC-568 — Lane G, 2026-10-27: L7: a character whose check cannot finish waits briefly, then counts as dirty
+
+- Tag: decision (option label relayed from the lane G session, confirmed in lane A, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log line 938; draft `%TEMP%\risu-b715\records-b17\mc566-568-laneG.md`. The draft heads this item "undecided"; that word names the case (a character whose check cannot decide), not the decision's status. The confirmation in lane A settles it (batch 17 addendum).
+- Alternatives rejected: not recorded.
+- Related: `MC-566`, `MC-569`, `MC-570`.
+
+**The option label (recommended):** "Wait, then dirty".
+
+**What was decided (maintainer).** A character whose check cannot finish (a pending attempt, unheld, a stub) waits briefly for the attempt to settle and counts as dirty if it still cannot decide. Worst case: an extra automatic `.bin` export on Node or an unnecessary unsaved prompt.
+
+### MC-569 — Lane G, 2026-10-27: L7: the Reload check deadline is 20 seconds; on reaching it the check counts as unsaved
+
+- Tag: decision (option label relayed from the lane G session, confirmed in lane A, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log line 939; draft `%TEMP%\risu-b715\records-b17\mc566-568-laneG.md`.
+- Alternatives rejected: not recorded.
+- Related: `MC-566`, `MC-568`, `MC-573`.
+
+**The option label (recommended):** "20 seconds".
+
+**What was decided (maintainer).** On reaching the 20-second deadline the Reload check counts as unsaved and the unsaved prompt with export appears; nothing is lost.
+
+### MC-570 — Lane G, 2026-10-27: L7: characters that cannot be saved count as unsaved at Reload
+
+- Tag: decision (option label relayed from the lane G session, confirmed in lane A, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log line 939; draft `%TEMP%\risu-b715\records-b17\mc566-568-laneG.md`.
+- Alternatives rejected: not recorded.
+- Related: `MC-568` (its spirit), `MC-569`.
+
+**The option label (recommended):** "Count as unsaved".
+
+**What was decided (maintainer).** An unsavable character at Reload counts as unsaved, and the unsaved prompt with export is shown so in-memory edits can be exported. The prompt may appear on every Reload while such a character stays loaded.
+
+### MC-571 — Lane G, 2026-10-27: L7: the wait alert reads "Checking for unsaved changes…" (one new `store2Boot` key; the translator does the other locales)
+
+- Tag: decision (option label relayed from the lane G session, confirmed in lane A, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log line 939; draft `%TEMP%\risu-b715\records-b17\mc566-568-laneG.md`; locale relay `%TEMP%\risu-lane-g\multitab\l7\locales.md` (six locales plus English; the German ellipsis was fixed by lane A).
+- Alternatives rejected: not recorded.
+- Related: `MC-572`, `MC-058` (the translator owns non-English locales).
+
+**The option label (recommended):** "Checking for unsaved changes…".
+
+**What was decided (maintainer).** The wait alert text is "Checking for unsaved changes…" in English, as one new `store2Boot` key; the translator writes the other locales.
+
+### MC-572 — Lane G, 2026-10-27: L7: the wait alert has a Cancel button
+
+- Tag: decision (option label relayed from the lane G session, confirmed in lane A, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log line 944; draft `%TEMP%\risu-b715\records-b17\mc566-568-laneG.md`.
+- Alternatives rejected: not recorded.
+- Related: `MC-571`, `MC-573`.
+
+**The option label (recommended):** "Yes, with Cancel".
+
+**What was decided (maintainer).** The "Checking for unsaved changes…" alert gets a Cancel button (the existing `language.cancel`). Cancel means do not reload and keep reading; the alert can always be closed.
+
+### MC-573 — Lane G, 2026-10-27: L7: the check starts on the save loop's next turn (up to about 0.5 s after Reload), then runs up to 20 seconds
+
+- Tag: decision (option label relayed from the lane G session, confirmed in lane A, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log line 944; draft `%TEMP%\risu-b715\records-b17\mc566-568-laneG.md`. After L7's second Gate 1 REJECT the `MC-697` reconsideration changed the mechanism: Reload asks the save loop, which serves the request in `settlePark` as the only owner of park state, and reloads only after a synchronous live re-read (`%TEMP%\risu-lane-g\multitab\l7\plan-r3.md`). The draft calls this the first application of `MC-697` in practice.
+- Alternatives rejected: not recorded.
+- Related: `MC-569`, `MC-697`, `MC-699`.
+
+**The option label (recommended):** "Yes, acceptable".
+
+**What was decided (maintainer).** After a Reload press the check starts on the save loop's next turn (up to about 0.5 s later), then runs up to 20 seconds (`MC-569`).
+
+### MC-574 — Lane G, 2026-10-27: CHORE-218 Android open-with: a busy queue and refused `.bin`; many files; one named `.bin` confirm; hold until first setup
+
+- Tag: decisions (four `AskUserQuestion` answers by option label in the lane G session, confirmed in lane A, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane G notes `%TEMP%\risu-lane-g\android\notes.md`; lane A log line 961. All four answers were the recommended option.
+- Alternatives rejected: not recorded.
+- Related: `MC-683`, `MC-350`, `MC-175`, `MC-223`, `MC-575`; CHORE-218.
+
+**What was decided (maintainer, option labels as lane G recorded them).**
+1. Busy open: "Queue; .bin refused". Cards, modules and presets wait and import one after another like the desktop path; a `.bin` opened while busy is refused with the existing busy message.
+2. Many files: "Import all; .bin alone". Cards, modules and presets import one at a time; a `.bin` is accepted only when shared on its own; a `.bin` inside a multi-file share is refused and the other files still import.
+3. `.bin` confirm: "One named confirm". One dialog names the file and says all current data will be replaced; the restore's later questions (scale, oversized assets, left-out data, unsaved edits) follow as today.
+4. First run: "Hold until setup". A file opened before first setup waits and is processed once first setup completes.
+
+**Lane G's note (not a maintainer decision).** The notes also record a later stage 2 answer under the ID `MC-577` (several opens waiting when a `.bin` restore reloads the app). Lane A has not folded it into this batch; `MC-577` is lane G's to record. TODO(evidence): fold `MC-577` when lane G hands it over.
+
+### MC-575 — Lane G, 2026-10-27: CHORE-218 Android allow-list: `.charx`, `.risum`, `.risup`, `.risupreset` and `.preset`; image and JSON cards are refused
+
+- Tag: decision (one `AskUserQuestion` answer by option label, confirmed in lane A, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane G notes `%TEMP%\risu-lane-g\android\notes.md`; lane A log line 961. Raised by the stage 1 Gate 1 finding 8 (`.risupreset` is an upstream preset extension the in-app importer already takes).
+- Alternatives rejected: not recorded.
+- Related: `MC-683`, `MC-574`; CHORE-218.
+
+**The option label (recommended):** "Add preset variants".
+
+**What was decided (maintainer).** Android accepts `.charx`, `.risum`, `.risup`, `.risupreset` and `.preset` when opened from another app; image and JSON cards (`.png`, `.jpg`, `.jpeg`, `.json`) are refused.
+
+### MC-576 — Lane G, 2026-10-27: CHORE-219 is the umbrella for CHORE-373 (part A) and CHORE-375 (part B), all owned by lane G; the Android video cap lifts to 1 GiB if the device run passes; exports stream; thumbnails above 64 MiB are bounded (amends `MC-536` and `MC-756`)
+
+- Tag: decisions (four `AskUserQuestion` answers by option label, confirmed in lane A, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane G notes `%TEMP%\risu-lane-g\android\notes.md`; lane A log line 961; sizing report `%TEMP%\risu-lane-g\android\chore219-sizing\result.md` (not independently verified here). All four answers were the recommended option.
+- Alternatives rejected: not recorded.
+- Related: `MC-531`, `MC-536`, `MC-756`, `MC-757`; CHORE-219, CHORE-373, CHORE-375.
+
+**What was decided (maintainer, option labels as lane G recorded them).**
+1. Umbrella: "Umbrella, two parts". CHORE-219 is the umbrella; CHORE-373 is part A (asset-URL family: video inlays via ranged URLs); CHORE-375 is part B (exports streamed instead of whole-in-JS). Lane G takes all three from lane F and runs them as separate gated stages. Lane F has no live session, so the handover is recorded here and in the Lanes README.
+2. Video cap: "Lift to 1 GiB". If a Note 9 device run proves ranged playback and seeking on wry 0.57.1, Android video inlays play from the file via range requests and the 200 MiB cap becomes 1 GiB (amends `MC-536`; matches `MC-531`).
+3. Big exports: "Stream it". Card PNG, CharX and `.risum` exporters write assets in pieces (as the `.bin` export does); no size limit short of format caps; persistence-grade review.
+4. Huge images: "Bounded thumbnail". Grid and list thumbnails above 64 MiB are decoded from a bounded read so huge avatars get a preview; full-size display stays withheld (amends `MC-756` for thumbnails).
+
+**Lane G's notes (not maintainer decisions).**
+- Stage 1 of CHORE-219 is a device run through lane A (Note 9, synthetic mp4 over 200 MiB, play past 1 MB and seek, with the `inlays.ts` skip removed in a probe build), after `MC-657` allows installs.
+- Not yet asked (stage 3 defaults to propose later): `MC-757` "B" (author `<video>` raw path), the chat-card 15 MiB pre-fetch check, whether 64 MiB itself stays, uncovered `readImage` callers and `.risum` and card import whole reads.
+- Lane G re-verified the `assetUrlGate.ts` 64 MiB constant, the `inlays.ts` Android-video URL skip in `deliverStoredInlay`, the tauri 2.12.1 `asset.rs` `MAX_LEN`, and the wry 0.57.1 `RustWebViewClient.kt` `wrapPartialContentBody`.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
 ### MC-600 — Lane H, 2026-10-26: the Asset Cache Integrity scan lists modules not in use as not checked
 
 - **Tag:** decision (the maintainer's AskUserQuestion answer in the lane H session, 2026-10-26)
@@ -16915,6 +17184,8 @@ Nothing here authorizes code, a commit or a push.
 
 **The question and answer.** Question: "On Android, video inlays are shown by reading the whole file into memory (the file link is skipped for video on purpose). At 1 GiB, saving would work but playing it would likely crash the app. What should the Android video inlay limit be?" Answer: "Keep 200 MiB, ticket it (Recommended)". The option read: "Android video inlays stay at 200 MiB; other inlays and assets go to 1 GiB. A follow-up ticket builds a piece-by-piece video display path on Android (native/WebView work, needs device runs on the live MVP build)."
 
+*Amended by `MC-576` (2026-10-27; the text above is unchanged): if a Note 9 device run proves ranged playback and seeking on wry 0.57.1, Android video inlays play from the file by range requests and the 200 MiB cap becomes 1 GiB (CHORE-219).*
+
 ### MC-537 — Lane F, 2026-10-25: the 100 MiB backup warning is its own prompt after the 4 GiB leave-out prompt; the ready-to-save prompt has OK only (CHORE-372 stage 4; qualifies `MC-532` 2, `MC-533` 2)
 
 - Tag: decision (`AskUserQuestion` answers by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
@@ -17012,6 +17283,8 @@ Q-F6b, asked: "When several files are picked at once and some are too large, wha
 - Lane A's conditions for Gates 1 and 2: the withhold decision is made from the stored size without reading the file; the 64 MiB cap applies only on Android.
 
 **The answer.** Answer: "A: withhold above 64 MiB (Recommended)". The option as shown: "Keep 1 GiB. Above 64 MiB, Android doesn't give the file's URL to image, CSS, fetch or thumbnail uses; they show the empty image a missing asset shows today. Video and audio still get it, so a 1 GiB video plays. Asset lists branch on file type, so .mov or .wav isn't previewed as an image. Also covers card-author message HTML."
+
+*Amended by `MC-576` (2026-10-27; the text above is unchanged): grid and list thumbnails above 64 MiB are decoded from a bounded read, so a huge avatar gets a preview; full-size display stays withheld (CHORE-375, CHORE-219).*
 
 ### MC-757 — Lane F, 2026-10-26: a raw asset path in a card author's own video tag is withheld like an image above 64 MiB on Android (CHORE-372 stage 7b; qualifies `MC-756`)
 
