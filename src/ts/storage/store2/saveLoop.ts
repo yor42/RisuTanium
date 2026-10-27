@@ -64,6 +64,16 @@ export interface PeerLiveState {
     drafts: boolean
 }
 
+/**
+ * What the loop made of a Reload press on a clean prompt. `clean`: every resident character matches the acknowledged
+ * encoding. `dirty`: a character differs or could not be judged in time; the page is marked unsaved and the loop asks
+ * the unsaved question. `moved`: the page is no longer parked.
+ */
+export type ParkCheck = 'clean' | 'dirty' | 'moved'
+
+/** The longest the loop spends judging the residents for a Reload press; an unfinished judgement counts as dirty. */
+export const PARK_CHECK_MAX_MS = 20_000
+
 export interface Store2PeerHandler {
     /**
      * Parked with nothing unsaved: only the reload action exists. Nothing is awaited. The prompt may be answered long
@@ -71,8 +81,13 @@ export interface Store2PeerHandler {
      * still parked and not dirty. A tab that has become dirty reloads nothing and the prompt closes; the loop then asks
      * `decide` with the unsaved wording, on its next iteration at the latest, because `asked` is still false. Typed text
      * is not a dirty edit: it never reaches `decide`, so the prompt itself warns that a reload discards it.
+     * Before it reloads, Reload asks the loop through `requestReload()`: the loop judges every resident character in its
+     * own step and answers; only `clean` allows the reload, and the page is read again at that instant. A tab found not
+     * clean is marked unsaved by the loop, which then asks `decide`. Only the resident judgement is bounded (by
+     * `PARK_CHECK_MAX_MS`); the loop's reads and the release of a pending marker wait on the write lock without a bound,
+     * so the person can cancel the wait. The promise settles whenever the loop serves the request or the park ends.
      */
-    parkedClean(prompt: PeerParkPrompt, live: () => PeerLiveState): void
+    parkedClean(prompt: PeerParkPrompt, live: () => PeerLiveState, requestReload: () => Promise<ParkCheck>): void
     /**
      * A module stub was edited in this tab, so no save pass can encode it: changes to modules are held in memory while
      * characters and chats keep saving. Nothing is awaited and no lock is held. `stillBlocked()` is read when Reload is
@@ -460,6 +475,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     /** A commit reported that it was not flushed: the next pass commits even when it changed nothing. */
     let forced = false
     let peerSignal = false
+    /** A Reload press waiting for the loop's check: the one owner of the park runs it inside `settlePark`. */
+    let reloadAsk: { result: Promise<ParkCheck>, settle: (verdict: ParkCheck) => void } | null = null
     let netIndex = 0
     /**
      * When each resident's last clean verdict was taken (`port.now()`). An entry lives from a clean `verdictOf` until that
@@ -519,6 +536,101 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
     }
 
+    /** Ends the park. A Reload press still waiting for its check is answered `moved`. */
+    function unpark(): void {
+        park = null
+        port.setStopped('')
+        const waiting = reloadAsk
+        reloadAsk = null
+        waiting?.settle('moved')
+    }
+
+    function isParked(): boolean {
+        return park !== null
+    }
+
+    /** Hands a Reload press to the loop; presses made before the loop serves one share its answer. */
+    function requestReload(): Promise<ParkCheck> {
+        if (park === null) {
+            return Promise.resolve('moved')
+        }
+        if (reloadAsk === null) {
+            let settle: (verdict: ParkCheck) => void = () => { }
+            const result = new Promise<ParkCheck>((resolve) => { settle = resolve })
+            reloadAsk = { result, settle }
+        }
+        return reloadAsk.result
+    }
+
+    /**
+     * The verdict over every resident character, run by `settlePark` for a Reload press. Undecided (a pending attempt
+     * that a base read does not settle, an unheld slot, a stub that needs a full pass, an unsavable character, a
+     * verdict that is not clean, an unfinished judgement) counts as dirty and marks the page, so the loop's unsaved
+     * question follows in the same step.
+     * No pass runs while the loop is here. The judgement itself changes no park state, so one that outlives its
+     * deadline cannot race the loop. A clean answer covers marked changes; the person's Reload reads the page again at
+     * the instant of reload.
+     */
+    async function checkBeforeReload(parked: Park): Promise<ParkCheck> {
+        if (encoder.pendingKey !== null) {
+            await recheckPark(parked)
+        }
+        if (!isParked()) {
+            return 'moved'
+        }
+        if (port.isDirty()) {
+            return 'dirty'
+        }
+        let cancelled = false
+        const judgeResidents = async (): Promise<ParkCheck> => {
+            if (encoder.pendingKey !== null) {
+                return 'dirty'
+            }
+            const db = port.getDatabase()
+            const scan = encoder.netScan(db)
+            if (scan.unheld || scan.stubsNeedFull || unsavable.size > 0) {
+                return 'dirty'
+            }
+            const slots = (db.characters as Array<character | groupChat | null>).filter(
+                (candidate): candidate is character | groupChat => typeof candidate === 'object' && candidate !== null && !isColdStub(candidate))
+            for (const slot of slots) {
+                if (cancelled) {
+                    return 'dirty'
+                }
+                if (encoder.verdictOf(slot) !== 'clean') {
+                    return 'dirty'
+                }
+                if (port.yieldImmediately?.() !== true) {
+                    await (port.yieldNow !== undefined ? port.yieldNow() : yieldToEventLoop())
+                }
+                if (port.getDatabase() !== db) {
+                    return 'dirty'
+                }
+            }
+            return 'clean'
+        }
+        let result: ParkCheck
+        try {
+            result = await Promise.race([judgeResidents(), port.sleep(PARK_CHECK_MAX_MS).then((): ParkCheck => 'dirty')])
+        } catch (error) {
+            console.error(error)
+            result = 'dirty'
+        }
+        cancelled = true
+        // Defensive: only settlePark changes the park while it is here, so this does not fire today.
+        if (!isParked()) {
+            return 'moved'
+        }
+        // A mark that arrived while the residents were judged outranks a clean verdict.
+        if (result === 'clean' && port.isDirty()) {
+            return 'dirty'
+        }
+        if (result === 'dirty') {
+            port.markUnsaved?.()
+        }
+        return result
+    }
+
     function setPark(next: Park): void {
         consent = null
         park = next
@@ -559,8 +671,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
         const judged = judge(read)
         if (judged.kind === 'ok') {
-            park = null
-            port.setStopped('')
+            unpark()
             return
         }
         const next = parkOf(judged)
@@ -588,6 +699,15 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 return
             }
         }
+        const asked = reloadAsk
+        if (asked !== null) {
+            reloadAsk = null
+            asked.settle(await checkBeforeReload(parked))
+            parked = park
+            if (parked === null) {
+                return
+            }
+        }
         if (!port.isDirty()) {
             if (!parked.noticed) {
                 parked.noticed = true
@@ -595,7 +715,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     parked: park !== null,
                     dirty: port.isDirty(),
                     drafts: port.hasDrafts(),
-                }))
+                }), requestReload)
             }
             return
         }
@@ -635,8 +755,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         const choice: PeerOffer = prompt.offers.includes(answer) ? answer : 'reload'
         if (choice === 'save-mine' && parked.epoch !== null) {
             consent = parked.epoch
-            park = null
-            port.setStopped('')
+            unpark()
             port.requestPass()
             return
         }
@@ -1089,6 +1208,13 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         return port.rearmWait !== undefined ? port.rearmWait(ms) : port.sleep(ms)
     }
 
+    /** A tick that judged or planned a change and ended in a park or a stop has no mark to fold back: the page is marked unsaved instead. */
+    function markUnlandedTick(run: PassRun, tick: boolean, netChaId: string | null): void {
+        if (tick && !run.landed && (netChaId !== null || (run.plan !== null && !run.plan.unchanged))) {
+            port.markUnsaved?.()
+        }
+    }
+
     async function pass(tick: boolean, netChaId: string | null = null): Promise<void> {
         const run: PassRun = { snapshot: null, landed: false, plan: null, moduleRefusal: null, moduleScope: false }
         if (!tick) {
@@ -1141,11 +1267,13 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 case 'park':
                     retries = 0
                     foldBack(run.snapshot)
+                    markUnlandedTick(run, tick, netChaId)
                     setPark(outcome.park)
                     break
                 case 'stop':
                     retries = 0
                     foldBack(run.snapshot)
+                    markUnlandedTick(run, tick, netChaId)
                     stopForTooLarge(outcome.cause, outcome.label, outcome.cleared)
                     break
                 case 'not-flushed':

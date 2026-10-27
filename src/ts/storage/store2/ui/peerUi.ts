@@ -1,9 +1,9 @@
 import { language } from 'src/lang'
-import { alertMd, alertSelect, alertToast, waitAlert, type alertData } from 'src/ts/alert'
+import { alertClear, alertMd, alertSelect, alertToast, alertWait, waitAlert, type alertData } from 'src/ts/alert'
 import { escapeActionFor } from 'src/ts/alertEscape'
 import { alertStore } from 'src/ts/stores.svelte'
 import { get } from 'svelte/store'
-import { Store2CommitRefusedError, Store2NotFlushedError, type PeerLiveState, type PeerOffer, type PeerParkPrompt, type Store2PeerHandler } from '../saveLoop'
+import { Store2CommitRefusedError, Store2NotFlushedError, type ParkCheck, type PeerLiveState, type PeerOffer, type PeerParkPrompt, type Store2PeerHandler } from '../saveLoop'
 import { StubRefusedError } from '../codec'
 import type { SaveFailureClass } from '../saveFailure'
 
@@ -19,7 +19,9 @@ import type { SaveFailureClass } from '../saveFailure'
  *    buttons must not shift the others.
  *  - `parkedClean` is a closable prompt: only the Reload button reloads, and only when the live state read at the press
  *    allows it. Any other answer, Reload on a page that is no longer parked and Reload on a tab that has become dirty
- *    leave the page as it is. A tab with typed text gets the wording that says a reload discards it; text that appeared
+ *    leave the page as it is. After the press the loop checks every resident character while a wait alert with Cancel is
+ *    up (cleared by identity on every exit); the page is read again after the loop's answer, so a mark that arrived
+ *    during the check never reloads. A tab with typed text gets the wording that says a reload discards it; text that appeared
  *    after a prompt without that wording was shown makes Reload ask again with it, never reload.
  *  - 'export-first' is shown only when the page can export; without the seam an unsaved tab has Reload (and Save mine
  *    where it is offered).
@@ -161,7 +163,21 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         return displayed[Number(index)] ?? 'reload'
     }
 
-    async function askClean(prompt: PeerParkPrompt, live: () => PeerLiveState): Promise<void> {
+    /** Whether the loop found every resident character clean. Cancel, like any answer but `clean`, reloads nothing. */
+    async function checkedByLoop(requestReload: () => Promise<ParkCheck>): Promise<boolean> {
+        let cancel: () => void = () => { }
+        const cancelled = new Promise<'cancelled'>((resolve) => { cancel = () => resolve('cancelled') })
+        const waiting = alertWait(language.store2Boot.peerChecking, () => cancel())
+        try {
+            return await Promise.race([requestReload(), cancelled]) === 'clean'
+        } finally {
+            if (get(alertStore) === waiting) {
+                alertClear()
+            }
+        }
+    }
+
+    async function askClean(prompt: PeerParkPrompt, live: () => PeerLiveState, requestReload: () => Promise<ParkCheck>): Promise<void> {
         for (;;) {
             await untilClear()
             const text = language.store2Boot
@@ -178,6 +194,16 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
                 return
             }
             if (now.drafts && !warned) {
+                continue
+            }
+            if (!await checkedByLoop(requestReload)) {
+                return
+            }
+            const last = live()
+            if (!last.parked || last.dirty) {
+                return
+            }
+            if (last.drafts && !warned) {
                 continue
             }
             options.reload()
@@ -236,8 +262,8 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
     }
 
     return {
-        parkedClean: (prompt, live) => {
-            askClean(prompt, live).catch((error: unknown) => console.error(error))
+        parkedClean: (prompt, live, requestReload) => {
+            askClean(prompt, live, requestReload).catch((error: unknown) => console.error(error))
         },
         moduleEdited: (info, stillBlocked) => {
             askModuleEdited(info, stillBlocked).catch((error: unknown) => console.error(error))

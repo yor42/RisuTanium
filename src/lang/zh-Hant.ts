@@ -2850,6 +2850,7 @@ export const languageChineseTraditional = {
         "peerCleanCommitDrafts": "另一個分頁儲存了對您資料的變更。此分頁中有尚未完成的文字或編輯，重新載入會將其捨棄。",
         "peerCleanReplacedDrafts": "您已儲存的資料在此分頁之外被變更。請重新載入以繼續。此分頁中有尚未完成的文字或編輯，重新載入會將其捨棄。",
         "peerReloadDrafts": "重新載入（未完成的文字和編輯將遺失）",
+        "peerChecking": "正在檢查未儲存的變更…",
         "moduleEditedTitle": "模組「{name}」在此分頁中被變更，且無法儲存。角色和聊天仍會繼續儲存，但在重新載入之前，對模組的變更不會被儲存，並且如果關閉應用程式，這些變更將遺失。重新載入將捨棄這些變更以及此分頁中其他尚未儲存的內容；也可以繼續工作。",
         "moduleEditedKeep": "繼續工作（重新載入之前不會儲存模組變更）",
         "moduleNotSaved": "無法儲存模組「{name}」。角色和聊天仍會繼續儲存，但在刪除或取代「{name}」之前，對模組的變更不會被儲存，並且如果關閉或重新載入應用程式，這些變更將遺失。"

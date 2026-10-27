@@ -219,6 +219,10 @@ export interface PeerDouble extends Store2PeerHandler {
     editedStillBlocked: Array<() => boolean>
     /** Each `moduleNotSaved` notice, in call order. */
     notSaved: Array<{ moduleId: string, moduleName: string }>
+    /** The `requestReload` each `parkedClean` call was given, in call order. */
+    requests: Array<() => Promise<'clean' | 'dirty' | 'moved'>>
+    /** Mirrors the real prompt's Reload press: the live read, the loop's check, the live read again, then the reload. */
+    pressReload(index?: number): Promise<void>
 }
 
 export function createPeerDouble(answer: PeerOffer = 'reload'): PeerDouble {
@@ -241,9 +245,27 @@ export function createPeerDouble(answer: PeerOffer = 'reload'): PeerDouble {
         edited: [],
         editedStillBlocked: [],
         notSaved: [],
-        parkedClean(prompt, live) {
+        requests: [],
+        async pressReload(index = 0) {
+            const live = double.live[index]
+            const before = live()
+            if (!before.parked || before.dirty) {
+                return
+            }
+            const request: (() => Promise<'clean' | 'dirty' | 'moved'>) | undefined = double.requests[index]
+            if (request !== undefined && await request() !== 'clean') {
+                return
+            }
+            const after = live()
+            if (!after.parked || after.dirty) {
+                return
+            }
+            double.reload()
+        },
+        parkedClean(prompt, live, requestReload) {
             double.clean.push(prompt)
             double.live.push(live)
+            double.requests.push(requestReload)
         },
         moduleEdited(info, stillBlocked) {
             double.edited.push(info)
