@@ -13264,6 +13264,11 @@ Round 2:
   - `MC-223` (upstream to fork must always work) is not met for risuai.xyz full backups. The cause is upstream's key access, not a fork defect. The maintainer decided that this is an exception to `MC-223`: "refusing an encrypted risuai.xyz backup does indeed count as an exception to MC-223. as it is impossible for us to achieve full parity without tricking domain - which we shouldn't do." The exception covers only encrypted risuai.xyz full backups; every other upstream-to-fork restore must still work.
   - Nothing here authorizes a commit or a push beyond the labels quoted.
 
+*Dated note, 2026-10-27 (the text above is unchanged; the refusal stands):*
+- *Fact: the upstream maintainer answered on kwaroran/Risuai#1681. The maintainer relayed it to lane A, and the lane A log (line 906) records it verbatim: "I'll add an option for unencrypted backups on the next major update for this. The reason behind was: Some users expressed concern that their data was being backed up in plain text. Because of that, I implemented encryption. At first, I made it only applied when an account was sync. However, as same concerns were raised by users who did not synced their accounts, I extended encryption to all users."*
+- *The maintainer chose "Fact + watch ticket (Recommended)" (log line 927). CHORE-469 holds the watch steps. They are lane A's plan under that answer, not separate maintainer decisions: when upstream ships the option, read it in source, fixture-test an unencrypted full `.bin` restore (`MC-223`), and update `encryptedBackupRefused` and its translations only after it ships.*
+- *Until then the fork keeps refusing encrypted risuai.xyz full backups. No upstream release containing the option has been checked for this note: TODO(evidence).*
+
 ### MC-478 — Lane A, 2026-10-24: file the off-main-thread idea as CHORE-207, a candidate with no code (relates to `MC-452`, `MC-459`)
 
 - Tag: decision (`AskUserQuestion` answer by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
@@ -15286,6 +15291,8 @@ Folded in from `Agents/Lanes/lane-F-records.md` on 2026-10-25 (merge `95a24de3e`
 - Notes, not the maintainer's words:
   - Nothing here authorizes application code, a commit or a push.
 
+*Amended by `MC-696` (2026-10-27; the text above is unchanged): the themeability check starts at the mockup stage, not only at the overhaul's first implementation stage. Mockups are built on tokens and named parts, and each finished screen gets a rough Origin Navy and Banana Cocoa re-skin. The full pack system stays at the implementation stage. This is lane A's reading of the two maintainer quotes in `MC-696`.*
+
 ### MC-690 — Lane A, 2026-10-27: device floors by role: the Note 9 is the floor for the Tauri app and the web frontend; the Raspberry Pi 3 is the floor for Node server hosting only
 
 - Tag: decision (one maintainer clarification, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
@@ -15396,6 +15403,10 @@ Folded in from `Agents/Lanes/lane-F-records.md` on 2026-10-25 (merge `95a24de3e`
 - `docs/workflow/gates.md`: the full-checks paragraph, and the Gate 2 bullet under "Implementation briefs and hand-back";
 - `.claude/agents/opus-reviewer.md` and `.claude/agents/adversarial-reviewer.md`.
 
+*Dated amendment, 2026-10-27 (the text above is unchanged): the known flake classes grew. Known flake classes added by the maintainer (2026-10-27, "Merge, open flake tickets (Recommended)"): CHORE-466 (`bootstrap.staleAccountProfile` 5 s timeout under full-suite load) and CHORE-467 (`supersededUnits` wall-clock wait under load). Each passes alone. Lane A source: log lines 919 and 920.*
+- *In practice lane A has also handled `internalBackupSnapshotLoad` (CHORE-410) as a known class since batch 15. That is practice, not a recorded maintainer decision.*
+- *CHORE-468 (Node server test timing: `nodeEnvSecret`, `nodeRetire`, `nodeServerFixture`) is opened as a ticket only; it is not added to the known classes. `docs/workflow/gates.md` cites `MC-694` for the flake-class rule and keeps no list; this note is where the classes are recorded, and gates.md is not edited.*
+
 ### MC-695 — Lane A, 2026-10-27: theme packs: acceptance set, pack rules and font policy (amends `MC-691` and `MC-692`)
 
 - Tag: decisions (eight maintainer answers, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
@@ -15431,6 +15442,144 @@ Folded in from `Agents/Lanes/lane-F-records.md` on 2026-10-25 (merge `95a24de3e`
 - Wording that goes beyond the answers is lane A's gloss: rule 1's "format conversions" (from the OFL and Microsoft findings), rule 3's "separately distributed packs are not restricted", rule 4's "no size cap", rule 6's "or transparency" and rule 8's "generic fallback only when none is compatible".
 - The font licence findings and game-font guesses carry their own VERIFIED, UNVERIFIED, SOURCED and INFERRED marks in [Theme-Packs](Theme-Packs.md). Open there: Nostalgic Millennia on Android (Galmuri is a stand-in candidate, not licence-checked), Ace Combat (no shippable font) and MomoTalk (font unidentified).
 - Rule 4's warning threshold ("exceptionally large") is not defined: TODO(evidence), a later decision.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-696 — Lane A, 2026-10-27: theme-pack mockup guidance: mockups on tokens and named parts, with rough Origin Navy and Banana Cocoa re-skins; the pack system itself stays out of the mockup stage (amends `MC-689`)
+
+- Tag: decision (one maintainer message and one answer, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: the lane A session, 2026-10-27 (lane A log line 890); the maintainer's words are in the session transcript, not in a file. The UI design session's reply is in log lines 891 and 902. Pack data: [Theme-Packs](Theme-Packs.md); answers: `%TEMP%\risu-b715\themes\decisions-2026-10-27.md`.
+- Reasoning: none recorded beyond the maintainer's message.
+- Alternatives rejected: not recorded.
+- Related: `MC-689`, `MC-691`, `MC-692`, `MC-695`; CHORE-463.
+
+**The maintainer's words (2026-10-27, lane A session; log line 890):** "they are still building mockups for deep nexus, so I think it can be parked for now. but at the same time I wonder if theme pack should go in scope of UI mockup early."
+
+Lane A then offered a short note to the UI sessions. The maintainer's answer: "Let's send a short note now."
+
+**What was decided (maintainer, with lane A's wording of the content).**
+1. A short note went to the UI overhaul sessions [e67a40] and [b9b5a0] and to the Settings redesign session [884f0f] (log line 890).
+2. Mockups are built on design tokens and named parts, not on one-off styles.
+3. Each finished mockup screen gets a rough re-skin with Origin Navy (tokens only) and Banana Cocoa (the chat messenger layout; not for the settings lane).
+4. Out of scope for the mockup stage: the pack format, fonts, images, loading and the picker.
+
+**Lane A's notes (not the maintainer's decisions).**
+- The amendment to `MC-689` is lane A's reading of the two quotes above (log line 890: "amends MC-689: mockup-stage themeability check"): `MC-689` makes a theming contract the overhaul's first implementation stage, and `MC-696` brings the themeability check forward to the mockup stage. The full pack system stays at the implementation stage. A note was added to `MC-689`.
+- DD-142 to DD-144 are the UI design session's decisions in the Risutanium-UI-Rework repository (`docs/design/DECISIONS.md`), as the lane A log reports them. They are cited here, not verified: that file is not in this checkout. DD-142 (log line 891): the maintainer confirmed the guidance in that session; the rule is in that repository's `docs/design/THEMING.md` (tokens only, `data-part` names, `data-part-critical`, rough Origin Navy and Banana Cocoa re-skins under `<area>/themes/` via `?theme=`). DD-143 (log line 902): geometry values are tokens too; only 0, 1px hairlines and layout percentages stay literal. DD-144 (log line 902): pack-stylable state is mirrored as `data-*` attributes (`data-run`, `data-meta`, and on the root `data-names` and `data-input`).
+- Per-screen part lists are in each screen's `THEME_AUDIT.md` in that repository and are inputs for the theming contract (log lines 891 and 902). Not opened for this record.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-697 — Lane A, 2026-10-27: a bounded subsystem rewrite is an allowed option in the gate loop on repeated rejections
+
+- Tag: decision (maintainer proposal and approval, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log lines 911 and 912; draft `%TEMP%\risu-b715\records-b16\mc697.md`.
+- Reasoning: the maintainer's proposal, below. No size threshold was set.
+- Alternatives rejected: not recorded.
+- Related: `MC-091` (the scope-amendment rule, which already allows "an explicit complexity reduction"; `MC-697` does not amend it), `MC-175`, `MC-223`, `MC-350`, `MC-699`.
+
+**The maintainer's words (2026-10-27):** "proposed enhancement to pre-implementation review workflow: instead of not allowing rewrites outright, I think we should think about if bounded subsystem rewrite could solve core and future potential points of failure cheaply on repeated rejections."
+
+On lane A's proposal of the rule below: "yes, put it in the next records batch. I think as-is is fine."
+
+**What was decided (maintainer: the rule as lane A proposed it, approved as is).**
+1. Trigger. At the second substantive rejection, "reconsider the mechanism" includes asking whether the rejections come from the subsystem's structure rather than one edge case. If so, the plan author writes a short rewrite alternative beside the patch path. At the third, `senior-advisor` must weigh the rewrite against the patch.
+2. Bounded. One subsystem with a named interface; callers keep their contract; the stored format is unchanged, or changed only under `MC-175`, `MC-223` and `MC-350`; the plan gives a size estimate in files and lines.
+3. When the rewrite wins. It removes the failure class (it names the closed failure points, found and foreseeable), costs about the same as or less than continued patching (code, tests, review rounds), and keeps all working behaviour.
+4. Gates. `senior-advisor` challenge plus the maintainer's approval; then a fresh Gate 1 with the reject streak reset (the mechanism changed). The old tests stay as compatibility guards, and each earlier rejection finding becomes a reproducer the rewrite must pass.
+5. The wording in `AGENTS.md` changes from "not a rewrite" to "not a wholesale rewrite; bounded subsystem rewrites are allowed under the gates rule".
+
+**Applied in (batch 16):**
+- `docs/workflow/gates.md`: the gate-loop paragraph;
+- `docs/workflow/routing.md`: the `senior-advisor` line;
+- `AGENTS.md`: line 3. `CLAUDE.md` only imports `AGENTS.md` and is not edited.
+
+**Lane A's notes (not the maintainer's decisions).**
+- The first candidate for the rule is the multi-tab store2 review. `MC-699` records that review's outcome: no rewrite now.
+- The draft said this amends `MC-091`. A check of `MC-091` found no rewrite rule in it, so it is listed under Related only (lane A, batch 16 addendum item 7).
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-698 — Lane A, 2026-10-27: optional password encryption for `.rtb` backups and the sync folder (CHORE-128 design input): Argon2id and AES-256-GCM; a master key with a mandatory password slot; biometrics device-local and later
+
+- Tag: decisions (a maintainer message and `AskUserQuestion` answers by option label, 2026-10-27; an amendment the same day). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log lines 915 and 921; draft `%TEMP%\risu-b715\records-b16\mc698.md`. Option labels and the maintainer's words are quoted; question texts are lane A's paraphrase.
+- Reasoning: the maintainer's message, below. Context: the upstream statement on kwaroran/Risuai#1681 that upstream encrypts because users worried about plain-text backups (see the note under `MC-477`).
+- Alternatives rejected: a PBKDF2 fallback for the KDF (lane A's note under the amendment says it stays rejected pending one check, below).
+- Related: `MC-686`, `MC-175`, `MC-477`, `MC-770`; CHORE-128, CHORE-465.
+
+**The maintainer's words (2026-10-27):** "since backup would contain sensitive data from messages that users does not want to share to API key, I think some sort of security is necessary, such as optional PW based encryption on .rtb. such as multi step approach like this: Password->Argon2id/PBKDF2->AES-256-GCM"
+
+**The maintainer's answers (option labels).**
+- Default: "Asked every export (Recommended)".
+- Key derivation: "Argon2id only (Recommended)".
+- Sync folder: "Yes, same scheme (Recommended)".
+- Amendment, key slots: "Adopt (Recommended)".
+- Amendment, biometrics: "Device-local, sync folder, later (Recommended)".
+
+**What was decided (maintainer, with lane A's wording of the options).**
+1. Encryption is optional. The export dialog offers "Encrypt with a password" on every export. An unencrypted `.rtb` stays possible. The password is never stored.
+2. The key derivation is Argon2id only. It needs a WebAssembly dependency. The parameters are chosen after a Note 9 memory measurement, and the header records the KDF id and parameters so they can change later.
+3. The sync folder uses the same scheme. Whether it can unlock without retyping the password is decided in the sync design.
+4. Amendment (same day). Each file has a random master key. A password slot is mandatory and is the only recovery. A password change rewrites only the slot.
+5. Amendment. Biometrics are device-local, for the sync folder, and later: each device keeps its own wrapped copy of the key in its own key store, and the backup file never changes. This is designed with the sync folder after a platform availability check (Tauri native key stores first; WebAuthn PRF only where it works).
+6. The refusal of encrypted risuai.xyz full backups (`MC-477`) is unchanged. The upstream `.bin` stays unencrypted (`MC-175`).
+
+**Context for the amendment.** The maintainer took the `.rtb` idea to an independent reviewer without source access. Its RFC proposed a multi-slot header: a random 256-bit master key, slot 0 a password through Argon2id, and slots 1..N WebAuthn PRF biometric keys appended per device. It also proposed 1 to 4 MiB chunks, zeroization and a PBKDF2 fallback for the web. The RFC itself is not in the records.
+
+**Lane A's notes: design inputs, not maintainer decisions, and not reviewed.**
+- Design direction proposed by lane A and accepted together with the answers (design-level): a per-file random salt; chunked AES-256-GCM with counter nonces, and the chunk index and a final flag in the associated data (age/STREAM style) so truncation, reordering or splicing fail; an authenticated header; the whole file encrypted including assets; no recovery (a lost password means a lost backup; warn and confirm twice).
+- Amendment notes: record the chunk size in the header, start at 1 MiB and confirm on the Note 9; zero own `Uint8Array`s and keep keys as non-extractable `CryptoKey`s (JS strings cannot be wiped; claim no more); if a slot table is ever mutable it needs its own authentication, separate from the per-chunk associated data; the PBKDF2 fallback stays rejected pending one check that the hosted build can load WebAssembly; WebAuthn needs a secure context with a domain (LAN or VPN `http` hosting usually lacks it, see `MC-770`) and Android WebView PRF support is unverified.
+- Side finding, ticket CHORE-465: the AES-GCM helper in `src/ts/util.ts` uses a fixed all-zero IV. It must not be reused for `.rtb`. Its callers need an audit. Not investigated for this record.
+- Implementation still waits on CHORE-205 L3 (`MC-686`).
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-699 — Lane A, 2026-10-27: multi-tab review outcome: no rewrite now; step 1 (a mandatory `carry` plus a carried-set test oracle) goes to lane G in its own worktree; Node GC is decided at 5b
+
+- Tag: decisions (`AskUserQuestion` answers by option label, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log lines 912, 915 and 916; draft `%TEMP%\risu-b715\records-b16\mc699.md`; the review `%TEMP%\risu-lane-g\multitab\result.md` (main `4b5866423`; its verifier's verdict is ACCEPT WITH CORRECTIONS). The maintainer's words are option labels only.
+- Reasoning: the review found no unintended loss path reachable in the field today. The facts are below.
+- Alternatives rejected: not recorded.
+- Related: `MC-697`, `MC-589`, `MC-369`, `MC-565`; CHORE-411.
+
+**The maintainer's answers (option labels).**
+1. Step 1: "Lane G, own worktree (Recommended)".
+2. Q1, Node GC across devices: "Decide at 5b (Recommended)".
+
+**What was decided (maintainer).**
+1. Step 1 is a mandatory `carry` plus the carried-set test oracle (about 30 lines; L7 is its own tiny check). Lane G plans and implements it in a new worktree off main `58665c9cd`, with `opus-reviewer` at both gates and a merge request to lane A. Lane G split L7 out later (log line 918): it needs `saveLoop.ts` and runs after the CHORE-166 stage 2C fix (`034723414`).
+2. Node GC stays off (`MC-369` as is). Q1 to Q3 are revisited with the 5b design.
+
+**Facts recorded with the decision (from the review; lane A's wording).**
+- No `MC-697` rewrite now. The criterion was: no unintended loss path reachable in the field. The read-half class is dormant while automatic GC is Tauri-only.
+- A lock-gated web GC on the presence lock is the direction for the 5b prerequisite. It is a direction, not a validated design: the review lists five open points (a to e) in its section 6.
+- One-path patching of the multi-tab mechanism is frozen.
+
+**Lane A's notes (not the maintainer's decisions).**
+- Step 1's import rule is recorded in `MC-565` (lane G).
+- No quotation marks occur in the source for this decision; the options are quoted by label only.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-770 — Lane A, 2026-10-27: features that need HTTPS may stay in the app if they disable themselves with a warning on HTTP, without affecting encryption or decryption
+
+- Tag: decision (one maintainer message, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log lines 922, 927; draft `%TEMP%\risu-b715\records-b16\mc770.md`. Drafted first as MC-700, which the cloud lane holds (MC-700 to MC-724); renumbered to the lane A block MC-770 to MC-789 (log line 927).
+- Reasoning: the biometric unlock in the `MC-698` amendment uses WebAuthn PRF, which needs a secure context, and LAN or VPN self-hosting is often plain HTTP.
+- Alternatives rejected: not recorded.
+- Related: `MC-698`, `MC-175`.
+
+**The maintainer's words (2026-10-27):** "I think features that requires HTTPs can be kept in the app if it can be disactivated with warning on http environment without causing issue on encryption/decryption."
+
+**Lane A's reading of the rule (to confirm in the wording of the verification; not a separate decision).** A secure-context-only feature may be offered. On a non-secure page it is disabled with a visible warning that says why. Its absence never blocks or changes the core path. For `.rtb`, encryption and decryption always work through the password slot, so a backup made on HTTPS opens on HTTP and the reverse.
+
+**Applies first to:** WebAuthn PRF biometric unlock (the `MC-698` amendment). Others to check when they are designed, not decided here: anything using `navigator.credentials`, clipboard read, or service-worker-only paths.
 
 - Notes, not the maintainer's words:
   - Nothing here authorizes application code, a commit or a push.
@@ -16387,6 +16536,198 @@ Folded in from `Agents/Lanes/lane-F-records.md` on 2026-10-25 (merge `95a24de3e`
 - Gate 1 round 2 (E7) also accepts, as recorded limits, that two stuck modules are named one at a time (the planner throws at the first refusing module).
 - Nothing here authorizes code, a commit or a push.
 
+### MC-654 — Lane B, 2026-10-27: recorded limit: a plugin database read (V3 `getDatabase`) keeps returning full modules
+
+- **Tag:** decision (the maintainer's S4d-1 census and boot-probe answers, in the lane B session, 2026-10-27; the question text is not reproduced here)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("S4d-1 census/probe answers", MC-654); census and verifier results `s4d1-census\`, `s4d1-census-verify\` ([EDITORIAL]).
+- **Related:** `MC-655`, `MC-656`; CHORE-205 S4d-1.
+
+1. **The accepted limit:** a plugin database read (V3 `getDatabase`, default or modules) keeps returning full modules. It loads every module, which cancels the S4d-1 memory saving for that profile, and one unloadable module fails the call, naming it.
+
+Nothing here authorizes code, a commit or a push.
+
+### MC-655 — Lane B, 2026-10-27: six request-trigger callers outside a send wait for the character's modules first
+
+- **Tag:** decision (the maintainer's S4d-1 census and boot-probe answers, lane B session, 2026-10-27)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `mc-reservations.md` ("S4d-1 census/probe answers", MC-655), as for `MC-654`.
+- **Related:** `MC-654`, `MC-658`, `MC-660`, `MC-661`; CHORE-205 S4d-1.
+
+1. The six request-trigger callers outside a send (translator, Suggestion, IrisModal, PlaygroundSubtitle twice, PlaygroundImageTrans) wait for the character's modules first, as a send does. A failed load shows the existing `moduleLoadFailed` message.
+2. This closes the cached-wrong-translation gap (the note's wording).
+
+Extended by `MC-660`; amended by `MC-661` for Suggestion. Nothing here authorizes code, a commit or a push.
+
+### MC-656 — Lane B, 2026-10-27: three shared-cause corrections folded into S4d-1 under `MC-091`
+
+- **Tag:** decision (the maintainer's S4d-1 census and boot-probe answers, lane B session, 2026-10-27)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `mc-reservations.md` ("S4d-1 census/probe answers", MC-656); boot probe `s4d1-bootprobe\`, verified [EDITORIAL] in `s4d1-bootprobe-verify\result.md`.
+- **Related:** `MC-091`, `MC-654`; CHORE-205 S4d-1.
+
+1. The parser asset cache is rebuilt after a module install (the two-or-more asset modules case, D3 and D6).
+2. The loader wraps installed assets as boot does (AssetList).
+3. The `checkNewFormat` module step no longer reassigns over concurrent installs or plugin writes (T3, reachable today). Fix: run the repair awaits over a copy, then filter nulls in the live list only if present.
+4. Each correction carries a red-first test.
+
+Nothing here authorizes code, a commit or a push.
+
+### MC-657 — Lane B, 2026-10-27: S4d-1 splits into 1p and 1m; merge order 1p, 1m, 1b; no phone install with 1m until 1b is merged
+
+- **Tag:** decision (the maintainer's S4d-1 plan answers Q1, Q6, Q2 and Q7, lane B session, 2026-10-27)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `mc-reservations.md` ("S4d-1 plan answers", MC-657); `s4d1-plan\plan.md` section 7.
+- **Related:** `MC-655`, `MC-656`; CHORE-205.
+
+1. S4d-1 splits into S4d-1p (the three `MC-656` fixes plus the six `MC-655` ensures, mergeable first) and S4d-1m (the mint).
+2. Merge order: 1p, 1m, 1b.
+3. No phone install with S4d-1m until S4d-1b is merged. The S4d-2 setting help text lands before that install.
+4. P3 runs on a spare Note 9 with synthetic data.
+
+Nothing here authorizes code, a commit or a push.
+
+### MC-658 — Lane B, 2026-10-27: after a failed module ensure the run stops; nothing is made and the translator caches nothing (amends `MC-499` item 2 for the `MC-655` callers)
+
+- **Tag:** decision (the maintainer's S4d-1 plan answer Q3, lane B session, 2026-10-27)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `mc-reservations.md` ("S4d-1 plan answers", MC-658).
+- **Related:** `MC-499`, `MC-655`, `MC-659`, `MC-668`.
+
+1. After a failed module ensure, the run stops. Nothing is made, and the translator caches nothing. This holds for the six `MC-655` callers and amends `MC-499` item 2 for them.
+
+Nothing here authorizes code, a commit or a push.
+
+### MC-659 — Lane B, 2026-10-27: the translator shows `moduleLoadFailed` once per translation run (amended by `MC-662`)
+
+- **Tag:** decision (the maintainer's S4d-1 plan answer Q4, lane B session, 2026-10-27)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `mc-reservations.md` ("S4d-1 plan answers", MC-659).
+- **Related:** `MC-658`, `MC-662`.
+
+1. The translator shows `moduleLoadFailed` once per translation run: the first failed ensure stops that run.
+
+Nothing here authorizes code, a commit or a push.
+
+### MC-660 — Lane B, 2026-10-27: HypaV3 re-summarize is a seventh caller; it waits for modules, and a failed load saves no summary
+
+- **Tag:** decision (the maintainer's S4d-1 Gate 1 round 1 answers P3, Q-A and P1, lane B session, 2026-10-27)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `mc-reservations.md` ("S4d-1 Gate 1 r1 answers", MC-660); `s4d1-gate1\result.md` ([REJECT], 1p only).
+- **Related:** `MC-655`, `MC-658`, `MC-663`, `MC-666`.
+
+1. HypaV3 re-summarize (HypaV3Modal and the summary item redo) is a seventh caller. It waits for the character's modules. A failed load shows `moduleLoadFailed` and saves no summary. This extends `MC-655` and `MC-658`.
+
+Nothing here authorizes code, a commit or a push.
+
+### MC-661 — Lane B, 2026-10-27: the automatic suggestion after a send stops silently after a failed module load (amends `MC-655` for Suggestion)
+
+- **Tag:** decision (the maintainer's S4d-1 Gate 1 round 1 answers, lane B session, 2026-10-27)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `mc-reservations.md` ("S4d-1 Gate 1 r1 answers", MC-661).
+- **Related:** `MC-655`.
+
+1. The automatic suggestion after a send stops silently after a failed module load. There is no second message.
+
+Nothing here authorizes code, a commit or a push.
+
+### MC-662 — Lane B, 2026-10-27: after one failed load the translator stays quiet for that module until the character or chat changes or the module loads (amends `MC-659`)
+
+- **Tag:** decision (the maintainer's S4d-1 Gate 1 round 1 answers, lane B session, 2026-10-27)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `mc-reservations.md` ("S4d-1 Gate 1 r1 answers", MC-662).
+- **Related:** `MC-659`, `MC-667`.
+
+1. After one failed module load the translator stays quiet for that module until the character or chat changes or the module loads. Each translation still stops and nothing is cached (`LLMCacheStorage` and the session cache).
+
+Nothing here authorizes code, a commit or a push.
+
+### MC-663 — Lane B, 2026-10-27: a stopped HypaV3 summary redo restores the summary the panel showed before
+
+- **Tag:** decision (the maintainer's S4d-1 plan round 2 answer N3, lane B session, 2026-10-27)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `mc-reservations.md` ("S4d-1 plan r2 answers", MC-663); `s4d1-plan\result-r2.md`, N3.
+- **Related:** `MC-660`.
+
+1. A stopped HypaV3 summary redo restores the summary the panel showed before. Nothing changes.
+
+Nothing here authorizes code, a commit or a push.
+
+### MC-664 — Lane B, 2026-10-27: a stopped composer input translation shows the message once; the typed text is sent untranslated (accepted), with a reviewer correction
+
+- **Tag:** decision (the maintainer's S4d-1 plan round 2 answer N4, lane B session, 2026-10-27), plus a correction the maintainer was told
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `mc-reservations.md` ("S4d-1 plan r2 answers", MC-664, and the "MC-664 correction" line); `s4d1-plan\result-r2.md`, N4.
+- **Related:** `MC-655`, `MC-665`.
+
+1. As asked: a stopped composer input translation shows the message once, and the typed text is sent untranslated, as with other translator failures today. Accepted.
+
+**Correction (reviewer E7, not the maintainer's words).**
+- When the module still fails, the send's own module wait then stops the send too, so the typed text is not sent; it stays unsent.
+- "Sent untranslated" holds only if the module loads in between.
+- Lane B told the maintainer (S4d-1 plan round 3). No further answer is recorded.
+
+Nothing here authorizes code, a commit or a push.
+
+### MC-665 — Lane B, 2026-10-27: the other translator entry points stop at most once, cache nothing and use the original text
+
+- **Tag:** decision (the maintainer's S4d-1 plan round 3 answer N7, lane B session, 2026-10-27)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `mc-reservations.md` ("S4d-1 plan r3 answers", MC-665); `s4d1-plan\result-r3.md`, N7.
+- **Related:** `MC-658`, `MC-664`.
+
+1. The other translator entry points (ChatBody, exportChat, PlaygroundTranslation, tts, the HypaV3 translate toggles, and the composer and Suggestion translate) inherit the stop: at most one message, nothing cached, and the original text is used. TTS speaks the untranslated text. Accepted.
+
+Nothing here authorizes code, a commit or a push.
+
+### MC-666 — Lane B, 2026-10-27: a cancelled or replaced HypaV3 redo that hits a failed module load still shows the one `moduleLoadFailed` message
+
+- **Tag:** decision (the maintainer's S4d-1 plan round 3 answer N7b, lane B session, 2026-10-27)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `mc-reservations.md` ("S4d-1 plan r3 answers", MC-666); `s4d1-plan\result-r3.md`, N7b.
+- **Related:** `MC-660`, `MC-663`.
+
+1. A cancelled or replaced HypaV3 redo that hits a failed module load still shows the one `moduleLoadFailed` message. The panel stays as the cancel left it.
+
+Nothing here authorizes code, a commit or a push.
+
+### MC-667 — Lane B, 2026-10-27: recorded limit: with auto-translate on, a failing module may call `alertError` twice; one notice shows
+
+- **Tag:** decision (the maintainer's S4d-1 Gate 1 round 3 answer N6, lane B session on account 2, 2026-10-27)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `mc-reservations.md` ("S4d-1 Gate 1 r3 answer", MC-667); `s4d1-gate1-r3\result.md`, N6.
+- **Related:** `MC-659`, `MC-662`.
+
+1. With auto-translate on, opening a chat with a failing module may call `alertError` twice (the chat-open trigger, then the translator owner with its own memory). One notice shows because the alert store is replaced. Accepted. The translator keeps its own failure memory; plan 4.C and section 6 were reworded to say so.
+
+Nothing here authorizes code, a commit or a push.
+
+### MC-668 — Lane B, 2026-10-27: ChatBody waits on the translator module check before building the LLM translator input (S4d-1p commit 4c)
+
+- **Tag:** decision (the maintainer's S4d-1p pre-wait module reads answer, lane B session on account 2, 2026-10-27)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `mc-reservations.md` ("S4d-1p pre-wait module reads", MC-668); `s4d1p-presite-check\result.md`, verified by `s4d1p-presite-verify\result.md`. This entry was added to the note after the batch 16 inventory was written; the inventory stops at `MC-667`.
+- **Related:** `MC-658`; the note's tickets CHORE-413 and CHORE-414.
+
+1. Fold into S4d-1p as commit 4c: ChatBody waits on the translator module check before building the LLM translator input (ParseMarkdown pretranslate), so no paid translation request is sent with pre-module input. Same cause as `MC-658`.
+
+Nothing here authorizes code, a commit or a push.
+
 ### MC-560 — Lane G, 2026-10-25: the uncommitted `modules.test.ts.snap` change stays in the worktree; the branch is fast-forwarded to main around it
 
 - Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
@@ -16445,6 +16786,29 @@ Folded in from `Agents/Lanes/lane-F-records.md` on 2026-10-25 (merge `95a24de3e`
 **The maintainer's answer.** To "Commit the stub-refusal follow-up on worktree-Lane-G? It covers 5 paths: risuSave.ts, backuplocal.ts, 2 new tests, and a comment in one older test. Gate 2 opus came back EDITORIAL, and its fixes are applied. It closes a live gap on main: the streamed export currently saves a stub-marked module. Targeted tests and pnpm check pass. The message is in %TEMP%\risu-lane-g\l3\follow\commit-msg.txt.": "Commit it (Recommended)". The option read: "Stage only the 5 named paths and commit them. The records go in a separate commit after that. No push. Then send the SHA to lane B for integration before S4d."
 
 **What was decided (maintainer).** The follow-up is committed on `worktree-Lane-G` as `6e581588e` (five named paths; not pushed). The records follow in a separate commit.
+
+### MC-565 — Lane G, 2026-10-27: an import passes the sentinel `IMPORT_REPLACES_BASE` instead of a real `carry`; the bulk-import window and the dangling-keep consequence are accepted limitations (part of `MC-699` step 1)
+
+- Tag: decisions (two maintainer answers given in the lane G session and relayed to lane A, each confirmed in lane A, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
+- Source: lane A log lines 923, 927, 928 and 929; draft `%TEMP%\risu-b715\records-b16\mc565-laneG.md`; lane G's plans `%TEMP%\risu-lane-g\multitab\step1\plan-r2.md` and `plan-r3.md`. The first answer was drafted in lane A as MC-701, then MC-771; lane G's own block took it as `MC-565` (log line 928). Lane G's Gate 1 verdicts for step 1 are from its messages to lane A: round 1 [REJECT]; round 2 [REJECT], which found the dangling-keep consequence; round 3 was running when this was recorded.
+- Alternatives rejected: not recorded.
+- Related: `MC-699` (step 1), `MC-369`, `MC-560` to `MC-564` (lane G).
+
+**The maintainer's first answer (relayed from lane G):** "Import: I-a. Use the sentinel and record the bulk-import window as an accepted limitation." Confirmed in lane A (`AskUserQuestion`): "Yes, record it".
+
+**The maintainer's re-confirmation (relayed from lane G, after its Gate 1 round 2):** "Keep I-a. Record the bulk-import window and the dangling-keep consequence (unreachable until something releases a keep) as an accepted limitation." Confirmed in lane A (`AskUserQuestion`): "Yes, record it".
+
+**What was decided (maintainer).**
+1. An import passes the named sentinel `IMPORT_REPLACES_BASE` (`Symbol.for('risu.store2.IMPORT_REPLACES_BASE')`) instead of a real `carry`.
+2. Accepted limitation (the bulk-import window, lane G's description): a bulk import (more than 59 units) re-reads before its final write, and a peer's ordinary commit can land while the import's marker stands. The import still carries the base keep by value.
+3. Accepted limitation (the dangling-keep consequence, lane G's facts): if the window were hit and `gcPass` later swept the keep unit, every later commit would carry a dangling `legacyKeep`. Restore of later snapshots is then refused (tree-incomplete) and asset sweeps fail (node-missing). Live data still loads (MEASURED by the scratch probe `rev3\keepDangling.probe.test.ts`).
+
+**Lane A's notes (not the maintainer's decisions).**
+- Unreachable on every host today (SOURCE, lane G: `gcPass` is the only remover, no production writer releases a keep, Tauri GC has no peer page, and web and Node have no GC). After 5b it would also need a keep-release step (INFERRED).
+- Evidence: `%TEMP%\risu-lane-g\multitab\step1\plan-r3.md`.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
 
 ### MC-600 — Lane H, 2026-10-26: the Asset Cache Integrity scan lists modules not in use as not checked
 

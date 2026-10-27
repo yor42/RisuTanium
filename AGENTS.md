@@ -1,6 +1,6 @@
 # RisuTanium / RisuAI working instructions
 
-This is a targeted stabilization and improvement campaign, not a rewrite. Use a senior-orchestrator workflow: keep discovery, implementation, independent review and arbitration in separate contexts when the agent system permits it. Do not assume the orchestrator's model identity.
+This is a targeted stabilization and improvement campaign, not a wholesale rewrite; bounded subsystem rewrites are allowed under the gates rule (MC-697). Use a senior-orchestrator workflow: keep discovery, implementation, independent review and arbitration in separate contexts when the agent system permits it. Do not assume the orchestrator's model identity.
 
 ## Start with the smallest relevant context
 
