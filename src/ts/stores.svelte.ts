@@ -6,6 +6,7 @@ import { moduleUpdate } from "./process/modules";
 import { trackModuleUpdateDeps } from "./process/moduleUpdateDeps";
 import { ensureSelectedModules } from "./process/moduleEnsure";
 import { resetScriptCache } from "./process/scripts";
+import { runGuiReloadHooks } from "./guiReloadHooks";
 import type { hubType } from "./characterCards";
 
 function updateSize(){
@@ -180,7 +181,12 @@ export const customSideBarConfigDialogStore = $state({
 //Set might be more ideal, however since Svelte doesn't support reactive Sets, using array for now
 export const hotReloading = $state<string[]>([])
 
+// This subscriber is the first one on the pointer, so the registered hooks (the parser's asset cache rebuild) run
+// before any later subscriber re-renders. The initial call at subscribe time is harmless: if the registry already
+// holds the parser hook, the hook reads only selIdState and DBState, both initialized above this call, and returns
+// at no selection. A hook must not read any binding of this module declared below this call.
 ReloadGUIPointer.subscribe(() => {
+    runGuiReloadHooks()
     ReloadChatPointer.set({})
     resetScriptCache()
 })

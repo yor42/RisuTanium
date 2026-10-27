@@ -25,6 +25,8 @@ import { registerCBS, type matcherArg, type PromptView, type RegisterCallback } 
 import type { RunSubject } from '../process/chatOrigin';
 import cssSelectorParser from 'postcss-selector-parser'
 import { escapeHtmlText } from '../htmlEscape'
+import { registerGuiReloadHook } from '../guiReloadHooks'
+import { untrack } from 'svelte'
 
 const markdownItOptions = {
     html: true,
@@ -556,21 +558,32 @@ export function resetAssetsCache(charAssets: string[][], emoAssets: string[][], 
     emoAssetsCache = charEmoPaths
 }
 
+// Rebuilds the caches from the selected character. It never nulls them: a null cache is refilled lazily from the
+// character being parsed, which may not be the selected one. A group or no selection leaves the caches alone.
+function rebuildSelectedAssetsCache() {
+    const charId = selIdState.selId
+    const char = DBState.db.characters?.[charId]
+    if (!char || char.type !== 'character') {
+        return
+    }
+
+    const charAssets = char.additionalAssets ?? []
+    const emoAssets = char.emotionImages ?? []
+    const moduleAssets = getModuleAssets()
+
+    resetAssetsCache(charAssets, emoAssets, moduleAssets)
+}
+
 $effect.root(() => {
     $effect(() => {
-        const charId = selIdState.selId
-        const char = DBState.db.characters?.[charId]
-        if (!char || char.type !== 'character') {
-            return
-        }
-
-        const charAssets = char.additionalAssets ?? []
-        const emoAssets = char.emotionImages ?? []
-        const moduleAssets = getModuleAssets()
-
-        resetAssetsCache(charAssets, emoAssets, moduleAssets)
+        rebuildSelectedAssetsCache()
     })
 })
+
+// A module install replaces a list slot in place. That write bumps no list version, and the effect reads the module rows through the `getModules()` memo, so it holds no dependency on the slot and does not see the install. The
+// pointer bump that follows an install runs this hook. It runs untracked because the pointer is set from inside
+// effects (the module effect in the stores module); a tracked rebuild would subscribe those effects to every asset edit.
+registerGuiReloadHook(() => untrack(rebuildSelectedAssetsCache))
 
 const imageCBS = ['img', 'image', 'emotion', 'asset', 'bg', 'raw', 'path']
 const videoExtensions = ['mp4', 'webm', 'avi', 'm4p', 'm4v']
