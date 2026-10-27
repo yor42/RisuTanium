@@ -5,7 +5,7 @@ import { repairCharacterTree, summarizeRepair, type RepairRefusal } from '../../
 import { completeRestoredTree } from '../../treeToBlockSet'
 import { Store2BackendError } from '../backend/errors'
 import type { Store2Backend, Store2Read } from '../backend/types'
-import type { BuildContext, BuiltCommit, Committer, CommitResult } from '../commit'
+import { IMPORT_REPLACES_BASE, type BuildContext, type BuiltCommit, type Committer, type CommitResult } from '../commit'
 import { classifyCommitRead } from '../commitKey'
 import { builtCommitOf, planScopedEncode, type ScopedPlan } from '../codec/scoped'
 import { carryManifest } from '../codec/manifest'
@@ -309,6 +309,6 @@ export async function importLegacyTree(request: ImportRequest, hooks: ImportHook
     }
     const built = buildImport(plan, { base: base.status === 'ok' ? base.manifest : undefined, list: request.legacyKeep })
     notePhase(hooks, 'import commit start')
-    const result = await request.committer.commit(read, { newUnits: built.newUnits, build: built.build, label: 'import', force: true })
+    const result = await request.committer.commit(read, { newUnits: built.newUnits, build: built.build, label: 'import', force: true, carry: IMPORT_REPLACES_BASE })
     return result.status === 'committed' ? { ...result, repair } : result
 }

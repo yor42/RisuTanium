@@ -8,7 +8,7 @@
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { Store2BackendFailureError, Store2UnknownOutcomeError, sameBytes } from 'src/ts/storage/store2/backend'
-import { Store2BulkAbortError, type CommitResult } from 'src/ts/storage/store2/commit'
+import { IMPORT_REPLACES_BASE, Store2BulkAbortError, type CommitResult } from 'src/ts/storage/store2/commit'
 import { firstCommitKey } from 'src/ts/storage/store2/commitKey'
 import { encodeUnit, stagingPrefix, UNIT_TYPE, type CommitKey } from 'src/ts/storage/store2/format'
 import type { ForeignClearHook } from 'src/ts/storage/store2/owner'
@@ -307,7 +307,7 @@ describe.each(COMMIT_BACKENDS.map(fixture => [fixture.name, fixture] as const))(
         test('a build that throws clears the marker and rethrows with the clear result', async () => {
             const { raw, a } = await setup()
             const failure = await a.commit(await a.readCommit(), {
-                newUnits: treeUnitCount(BULK_MIN),
+                newUnits: treeUnitCount(BULK_MIN), carry: IMPORT_REPLACES_BASE,
                 build: () => { throw new Error('codec failed') },
             }).catch((error: unknown) => error)
             expect(failure).toBeInstanceOf(Store2BulkAbortError)
@@ -325,7 +325,7 @@ describe.each(COMMIT_BACKENDS.map(fixture => [fixture.name, fixture] as const))(
                 }
             }
             const failure = await a.commit(await a.readCommit(), {
-                newUnits: treeUnitCount(BULK_MIN),
+                newUnits: treeUnitCount(BULK_MIN), carry: IMPORT_REPLACES_BASE,
                 build: () => { throw new Error('codec failed') },
             }).catch((error: unknown) => error)
             expect(failure).toBeInstanceOf(Store2BulkAbortError)

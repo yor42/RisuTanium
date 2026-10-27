@@ -34,7 +34,7 @@ import {
 } from 'src/ts/storage/store2/backend'
 import { assembleDatabase, planScopedEncode } from 'src/ts/storage/store2/codec'
 import type { Committer, CommitRequest } from 'src/ts/storage/store2/commit'
-import { createKeyMint } from 'src/ts/storage/store2/commit'
+import { createKeyMint, IMPORT_REPLACES_BASE } from 'src/ts/storage/store2/commit'
 import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import {
     canonicalJson, encodeUnit, keyOfRef, newManifestKey, readUnit, refOfFrame, UNIT_TYPE, type LegacyList, type Manifest,
@@ -140,7 +140,7 @@ function listOf(...files: [string, 'ok' | 'unreadable'][]): LegacyList {
 /** A request whose tree is a complete store2 tree that also names `list` as its keep set, with fields this build does not know at every level. */
 function keepingRequest(list: LegacyList, tag: string, extra: { req?: string[], futureTop?: boolean } = {}): CommitRequest {
     return {
-        newUnits: treeUnitCount(0) + 1,
+        newUnits: treeUnitCount(0) + 1, carry: IMPORT_REPLACES_BASE,
         build(context) {
             const built = buildTree(0, context, tag)
             const key = context.mint.unit()

@@ -138,6 +138,36 @@ export interface BuiltCommit {
     snapshot?: SnapshotPointer
 }
 
+export type Carry = { from: string, units: number }
+
+/**
+ * The claim of a request that replaces its base. Accepted limitation (bulk import window): an import carries the base's
+ * legacy keep by value and the bulk path does not judge this claim, so the final write can land a manifest that names a
+ * keep unit the garbage collector deleted while the marker stood. That needs a garbage collection pass, a peer commit
+ * landing over the base during the marker, and a writer that releases the keep: a null-setting commit, `Committer.restore`
+ * (it installs a manifest whole) or a recovery exit, each when the installed manifest does not name the keep. No current
+ * host combines them: Tauri runs one page, and Node and web run no garbage collection outside measurement builds, whose
+ * `gcPass` can be run by hand. If it happens, live data still loads and tree reads and export are unaffected, but restore
+ * of a manifest that names the keep is refused `tree-incomplete`, so are recovery picks of such manifests, and asset sweeps
+ * stop on an incomplete keep-set, until something releases the keep. Re-check when garbage collection reaches Node or web.
+ */
+export const IMPORT_REPLACES_BASE: unique symbol = Symbol.for('risu.store2.IMPORT_REPLACES_BASE')
+
+/** Fail-closed read of a request's carry: a Carry, or null for the sentinel; anything else is a programming error. */
+function plannedCarry(request: CommitRequest): Carry | null {
+    const carry = request.carry as unknown
+    if (carry === IMPORT_REPLACES_BASE) {
+        return null
+    }
+    if (typeof carry === 'object' && carry !== null) {
+        const held = carry as { from?: unknown, units?: unknown }
+        if (typeof held.from === 'string' && typeof held.units === 'number' && Number.isInteger(held.units) && held.units >= 0) {
+            return carry as Carry
+        }
+    }
+    throw new TypeError('CommitRequest.carry must be IMPORT_REPLACES_BASE or { from: string, units: integer >= 0 }.')
+}
+
 export interface CommitRequest {
     /** How many new units the commit writes, the manifest included; it decides ordinary or bulk before any key exists. */
     newUnits: number
@@ -152,13 +182,16 @@ export interface CommitRequest {
     /** A replacement of the whole profile always keeps the state it replaces: the previous `current` enters `retained` whatever the admission interval says. */
     force?: boolean
     /**
-     * Present when the build was planned over an acknowledged manifest. `from` is that manifest's key and `units` counts
-     * the pre-existing units the new manifest names without writing them. A commit that carries from `from` is refused
+     * Required; any other value throws a TypeError. Either a `Carry`, when the build was planned over an acknowledged
+     * manifest: `from` is that manifest's key and `units` counts the pre-existing units the new manifest names without
+     * writing them, the legacy keep excluded because it travels by value. A commit that carries from `from` is refused
      * unless the commit key it compares against still names `from`, because garbage collection may have deleted what it
-     * would carry. Requests without it are never refused by this rule. The legacy import is one: it builds over the
-     * manifest it replaces and keeps that manifest's legacy keep, as a forced bulk outside this check.
+     * would carry; the ordinary path skips the check at `units` 0, the bulk path judges any carry. Or
+     * `IMPORT_REPLACES_BASE`: the request replaces its base and claims nothing about a manifest it was planned over, so
+     * this rule never refuses it. That is not "carries nothing": the legacy import still carries the base's legacy keep
+     * by value, unjudged on the bulk path.
      */
-    carry?: { from: string, units: number }
+    carry: Carry | typeof IMPORT_REPLACES_BASE
 }
 
 export interface CommitterOptions {
@@ -431,13 +464,14 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
     }
 
     function refuseUnnamed(request: CommitRequest): Refused {
-        return refuse('base-unnamed', `The commit key no longer names the manifest ${request.carry?.from ?? ''} this build was planned over.`)
+        return refuse('base-unnamed', `The commit key no longer names the manifest ${plannedCarry(request)?.from ?? ''} this build was planned over.`)
     }
 
     async function ordinary(base: Base, request: CommitRequest, force: boolean, legacyKeep?: Manifest['fixed']['legacyKeep']): Promise<CommitResult> {
         // Only a save-mine reaches here over a base that does not name `from`; a build with nothing carried lands
         // because the legacy keep is substituted and no pre-existing unit is named.
-        if (request.carry !== undefined && request.carry.units > 0 && !namesManifest(base.key, request.carry.from)) {
+        const carry = plannedCarry(request)
+        if (carry !== null && carry.units > 0 && !namesManifest(base.key, carry.from)) {
             return refuseUnnamed(request)
         }
         const { mint, issued } = createMint(null)
@@ -476,7 +510,8 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
     async function bulk(base: Base, request: CommitRequest): Promise<CommitResult> {
         // A bulk build may reference anything `from` names (units by key or digest, the legacy keep, opaque fields), so
         // any carry over a base that does not name `from` is refused whatever the unit count says.
-        if (request.carry !== undefined && !namesManifest(base.key, request.carry.from)) {
+        const carry = plannedCarry(request)
+        if (carry !== null && !namesManifest(base.key, carry.from)) {
             return refuseUnnamed(request)
         }
         if (base.key.staging !== null) {
@@ -543,7 +578,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
         for (let round = 0; round < REJUDGE_ATTEMPTS; round++) {
             // A peer's commit while the marker stood may have dropped `from`; the garbage collector can then delete what
             // this build carries, so the final write must not land over it.
-            if (request.carry !== undefined && !namesManifest(heldKey, request.carry.from)) {
+            if (carry !== null && !namesManifest(heldKey, carry.from)) {
                 return { ...refuseUnnamed(request), cleared: await clearOwnMarker(prefix) }
             }
             const now = env.now()
@@ -634,6 +669,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
         readCommit: () => backend.readCommit(),
 
         async commit(read, request) {
+            plannedCarry(request)
             const parsed = baseOf(read)
             if (parsed.status === 'refused') {
                 return parsed
@@ -676,6 +712,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
         },
 
         async saveMine(freshRead, request) {
+            plannedCarry(request)
             const parsed = baseOf(freshRead)
             if (parsed.status === 'refused') {
                 return parsed
@@ -683,8 +720,8 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
             if (freshRead.token.kind === 'revision') {
                 return refuse('node-save-mine', 'Save-mine is not offered on Node; its commit key is compared by revision.')
             }
-            const carry = request.carry
-            if (carry === undefined || namesManifest(parsed.base.key, carry.from)) {
+            const carry = plannedCarry(request)
+            if (carry === null || namesManifest(parsed.base.key, carry.from)) {
                 return ordinary(parsed.base, request, true)
             }
             // The base dropped the manifest this build was planned over: carrying units from it is refused before any

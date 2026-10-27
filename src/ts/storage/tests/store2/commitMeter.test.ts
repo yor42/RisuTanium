@@ -16,7 +16,7 @@ vi.mock('src/ts/process/memory/measureFlag', () => ({
 
 import { createFakeStore } from '../blockStoreHarness'
 import { createMemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
-import type { CommitRequest, CommitResult, Committer } from 'src/ts/storage/store2/commit'
+import { IMPORT_REPLACES_BASE, type CommitRequest, type CommitResult, type Committer } from 'src/ts/storage/store2/commit'
 import { meterCommitter, type CommitMeterHandle } from 'src/ts/storage/store2/commitMeter'
 import { Store2Session } from 'src/ts/storage/store2/session'
 import { createClock, seedStore, testEnv, treeRequest, type BuildRecord } from './commitFixtures'
@@ -161,7 +161,7 @@ describe('commit meter in a measurement build', () => {
             clearMarker: settle as Committer['clearMarker'],
         }
         const read = { bytes: null, token: { kind: 'bytes' as const, bytes: null } }
-        const request: CommitRequest = { newUnits: 1, build: () => { throw new Error('unused') } }
+        const request: CommitRequest = { newUnits: 1, build: () => { throw new Error('unused') }, carry: IMPORT_REPLACES_BASE }
         const target: MeterGlobal = {}
         const metered = meterCommitter(createMemoryBackend(), () => inner, target)
         target.__risuCommitMeter?.reset()

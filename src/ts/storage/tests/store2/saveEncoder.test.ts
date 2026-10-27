@@ -910,7 +910,7 @@ describe('what a plan carries from the acknowledged encoding is counted and name
         expect(plan.carried.units).toBe(unitsOf(previous, u))
         expect(plan.carried.units).toBeGreaterThan(0)
         expect([...plan.carried.owners]).toEqual([[u, 'Small 1']])
-        expect(plan.commitRequest().carry?.units).toBe(plan.carried.units)
+        expect(plan.commitRequest().carry).toMatchObject({ units: plan.carried.units })
     })
 
     test('R11: a skipped saved character is carried and counted the same way', async () => {
@@ -935,7 +935,7 @@ describe('what a plan carries from the acknowledged encoding is counted and name
         expect(plan.carried.owners.size).toBe(0)
         expect(plan.carried.units).toBeGreaterThan(0)
         expect(plan.carried.units).toBe(previous.units.size - plan.newUnits)
-        expect(plan.commitRequest().carry?.units).toBe(plan.carried.units)
+        expect(plan.commitRequest().carry).toMatchObject({ units: plan.carried.units })
     })
 
     test('R19: an entry without a name is named by its entity id', async () => {
