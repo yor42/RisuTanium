@@ -14,7 +14,8 @@ import { buildSmall } from './codecFixtures'
 /**
  * The Reload check and the unlanded-tick mark of the store2 save loop, over a real memory backend and committer with a
  * hand-built port. The edits are synthetic and unmarked (no field producer is known). Labels in the titles: reproducer
- * (fails without the change), guard (passes before and after).
+ * (fails on the base for the defect itself), new behaviour (exercises the Reload request, which the base does not
+ * have, so it cannot run there), guard (holds the clean path of the new request; it cannot run on the base either).
  */
 
 type Entry = Record<string, unknown>
@@ -179,7 +180,7 @@ describe('guard: a clean resident set is judged clean', () => {
     })
 })
 
-describe('reproducer (mechanism, synthetic unmarked state): what the check cannot call clean is dirty, marks the page and brings the unsaved question', () => {
+describe('new behaviour (synthetic unmarked state): what the check cannot call clean is dirty, marks the page and brings the unsaved question', () => {
     test('an edit no mark saw', async () => {
         const loop = await start()
         holdAnswer(loop)
@@ -289,7 +290,7 @@ describe('guard: presses made before the loop serves one share its answer', () =
     })
 })
 
-describe('reproducer: the pending-attempt read at the Reload press', () => {
+describe('new behaviour: the pending-attempt read at the Reload press', () => {
     test('a park whose base turns out to be our own pending attempt is answered moved and unparks, with no unsaved question', async () => {
         let attempted = false
         let absentOnce = false
@@ -336,7 +337,7 @@ describe('reproducer: the pending-attempt read at the Reload press', () => {
     })
 })
 
-describe('reproducer: a request still waiting when the park ends', () => {
+describe('new behaviour: a request still waiting when the park ends', () => {
     test('a press waiting for the loop is answered moved when the peer read unparks the page first', async () => {
         let absentOnce = false
         const loop = await start({ idleNet: { intervalMs: 1, backstopMs: 0 } }, (_db, kit) => {

@@ -4,7 +4,8 @@
  * that is not selected, with no `markCharacterForSave`); no field producer is known. Mocked success here is not
  * evidence of native backend behaviour.
  *
- * Labels: reproducer (fails on the base), guard (passes with or without the change).
+ * Labels: reproducer (fails on the base for the defect itself), guard (passes with or without the change), new
+ * behaviour (exercises the Reload request, which the base does not have, so it cannot run there).
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
@@ -233,7 +234,7 @@ describe('guard: a parked tab with nothing unsaved still gets the clean prompt a
     }
 })
 
-describe('reproducer: a mark that arrives while the Reload check runs is not reloaded away', () => {
+describe('new behaviour: a mark that arrives while the Reload check runs is not reloaded away', () => {
     test('a marked edit after its slot was verdicted clean asks the unsaved question and reloads nothing', async () => {
         const peer = createPeerDouble('reload')
         unanswered(peer)
@@ -270,7 +271,7 @@ describe('reproducer: a mark that arrives while the Reload check runs is not rel
         expect(peer.asked[0]).toMatchObject({ unsaved: true })
     })
 
-    test('a mark that lands after the loop answered clean, before the press reads the page again, reloads nothing', async () => {
+    test('a mark that lands after the loop answered clean, before the press reads the page again, reloads nothing (PeerDouble press; peerUi.test pins the real re-read)', async () => {
         const peer = createPeerDouble('reload')
         unanswered(peer)
         const page = await startPage(small(), { idleNet: { intervalMs: 1_000_000_000 }, peer })

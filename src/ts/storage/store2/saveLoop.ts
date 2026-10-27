@@ -564,8 +564,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
 
     /**
      * The verdict over every resident character, run by `settlePark` for a Reload press. Undecided (a pending attempt
-     * that a base read does not settle, an unheld or stub slot, an unsavable character, a verdict that is not clean, an
-     * unfinished judgement) counts as dirty and marks the page, so the loop's unsaved question follows in the same step.
+     * that a base read does not settle, an unheld slot, a stub that needs a full pass, an unsavable character, a
+     * verdict that is not clean, an unfinished judgement) counts as dirty and marks the page, so the loop's unsaved
+     * question follows in the same step.
      * No pass runs while the loop is here. The judgement itself changes no park state, so one that outlives its
      * deadline cannot race the loop. A clean answer covers marked changes; the person's Reload reads the page again at
      * the instant of reload.
