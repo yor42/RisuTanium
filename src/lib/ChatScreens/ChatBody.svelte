@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { onDestroy } from "svelte"
     import isEqual from "lodash/isEqual"
     import { DBState } from 'src/ts/stores.svelte'
     import { sleep } from "src/ts/util"
@@ -6,7 +7,7 @@
     import { language } from "src/lang"
     import { fillLang } from "src/lang/fill"
     import { addMetadataToElement, getDistance, ParseMarkdown, postTranslationParse, trimMarkdown, type CbsConditions, type simpleCharacterArgument } from "../../ts/parser/parser.svelte"
-    import { getLLMCache, translateHTML } from "../../ts/translator/translator"
+    import { getLLMCache, translateHTML, waitForTranslatorModules } from "../../ts/translator/translator"
     import { getModuleAssets } from "src/ts/process/modules";
     import { getCurrentCharacter } from "src/ts/storage/database.svelte";
     import { getFileSrc } from "src/ts/globalApi.svelte";
@@ -50,6 +51,12 @@
     let lastCharArg:string|simpleCharacterArgument = null
     let lastChatId = -10
     let lastRenderedRevision: number | null = null
+    // Plain on purpose: a run resuming after a module wait reads it untracked. A module load remounts this component
+    // and destroys this instance before its waiting run resumes, so a destroyed run stops and only the new instance sends.
+    let destroyed = false
+    onDestroy(() => {
+        destroyed = true
+    })
 
     function getCbsCondition(){
         try{
@@ -85,12 +92,19 @@
                 try {
                     if(DBState.db.autoTranslate){
                         if(DBState.db.autoTranslateCachedOnly && DBState.db.translatorType === 'llm'){
-                            const cache = DBState.db.translateBeforeHTMLFormatting
-                            ? await getLLMCache(data)
-                            : !DBState.db.legacyTranslation
-                            ? await getLLMCache(await ParseMarkdown(data, charArg, 'pretranslate', chatID, getCbsCondition()))
-                            : await getLLMCache(await ParseMarkdown(data, charArg, mode, chatID, getCbsCondition()))
-                  
+                            let cache: string | null
+                            if(DBState.db.translateBeforeHTMLFormatting){
+                                cache = await getLLMCache(data)
+                            }
+                            else{
+                                // The lookup key must be the post-load text the translator will later request with.
+                                await waitForTranslatorModules()
+                                if(destroyed){
+                                    return
+                                }
+                                cache = await getLLMCache(await ParseMarkdown(data, charArg, !DBState.db.legacyTranslation ? 'pretranslate' : mode, chatID, getCbsCondition()))
+                            }
+
                             translateText = cache !== null
                         }
                         else{
@@ -131,6 +145,12 @@
                     transResult = marked
                 }
                 else if(!DBState.db.legacyTranslation){
+                    if(DBState.db.translatorType === 'llm'){
+                        await waitForTranslatorModules()
+                        if(destroyed){
+                            return
+                        }
+                    }
                     const marked = await ParseMarkdown(data, charArg, 'pretranslate', chatID, getCbsCondition())
                     translating = true
                     const translated = await postTranslationParse(await translateHTML(marked, false, charArg, chatID, retranslate))
@@ -140,6 +160,12 @@
                     transResult = translated
                 }
                 else{
+                    if(DBState.db.translatorType === 'llm'){
+                        await waitForTranslatorModules()
+                        if(destroyed){
+                            return
+                        }
+                    }
                     const marked = await ParseMarkdown(data, charArg, mode, chatID, getCbsCondition())
                     translating = true
                     const translated = await translateHTML(marked, false, charArg, chatID, retranslate)
