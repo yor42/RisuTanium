@@ -607,7 +607,7 @@ export const languageSpanish = {
         "hypaV3EmbeddingMaxConcurrent": "Número máximo de solicitudes simultáneas al modelo de embedding para la búsqueda de similitud.",
         "hypaV3QueryChatCount": "El número de mensajes de chat recientes utilizados como consulta para la búsqueda de similitud. Valores más altos usan más contexto del chat para determinar la similitud.",
         "hypaV3SummaryChunkSeparator": "Separador utilizado para dividir los resúmenes en fragmentos para la búsqueda de similitud.",
-        "coldstorage": "Cuando esta opción está activada, la aplicación guarda por separado los datos completos de cada personaje al iniciar y los carga solo cuando abres ese personaje. Así el uso de memoria se mantiene bajo cuando tienes muchos personajes. Si la desactivas, no se archiva ningún personaje nuevo y los personajes ya archivados se siguen abriendo con normalidad.",
+        "coldstorage": "Cuando esta opción está activada, la aplicación guarda por separado los datos completos de cada personaje al iniciar y los carga solo cuando abres ese personaje. Los módulos que ningún ajuste utiliza también quedan sin cargar hasta que un personaje o un chat los necesita. Así el uso de memoria se mantiene bajo cuando tienes muchos personajes o módulos. Si la desactivas, no se archiva nada nuevo y se cargan todos los módulos al iniciar; los personajes ya archivados se siguen abriendo con normalidad.",
         "dynamicModelRegistry": "Obtiene al iniciar las listas de modelos de Google, Anthropic y OpenAI con tus claves de API y añade los modelos que faltan en la lista integrada (en OpenAI, los modelos GPT). También descarga límites y precios públicos de los modelos, como máximo una vez al día, desde openrouter.ai y desde el conjunto de datos de LiteLLM en raw.githubusercontent.com (LiteLLM, licencia MIT); no se envía ninguna clave a ninguno de los dos. Los modelos añadidos que solo figuran en la lista del proveedor o solo en el conjunto de datos se muestran en gris en «Mostrar Configuraciones No Recomendadas» y piden confirmación al elegirlos. Si lo desactivas, se detienen las descargas automáticas y los modelos añadidos; los datos guardados se siguen usando y el botón «Actualizar datos de modelos» sigue actualizando los límites y precios.",
         "enableScrollToActiveChar": "Si está habilitado, pulsar la tecla de acceso rápido desplazará la barra lateral hasta el personaje activo. Las carpetas se abrirán automáticamente si están cerradas."
     },
@@ -2067,7 +2067,7 @@ export const languageSpanish = {
     nanoGPTSelectFromList: "Seleccionar de la lista",
     nanoGPTManualInput: "Entrada manual",
     nanoGPTManualModelSelect: "Selección manual de modelo",
-    coldStorage: "Archivar personajes al iniciar",
+    coldStorage: "Archivar personajes y módulos al iniciar",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `Para mantener bajo el uso de memoria, la aplicación ahora guarda por separado los datos completos de cada personaje al iniciar y los carga solo cuando abres ese personaje. No se elimina nada y tus personajes se ven y funcionan igual que antes. Puedes desactivarlo en ${settings} > ${advancedSettings} > ${toggle}. Si lo desactivas, no se archiva ningún personaje nuevo y los personajes ya archivados se siguen abriendo con normalidad.`,
     "archiveCharactersStoppedNotice": (characterName: string) =>

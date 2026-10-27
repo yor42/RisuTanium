@@ -608,7 +608,7 @@ export const languageKorean = {
         "hypaV3SummarizationMaxConcurrent": "요약 시 최대 동시 수파메모리 모델 요청 수입니다. 수파메모리 모델이 보조 모델인 경우에만 적용됩니다.",
         "hypaV3EmbeddingRequestsPerMinute": "유사도 검색 시 분당 최대 임베딩 모델 요청 수입니다.",
         "hypaV3EmbeddingMaxConcurrent": "유사도 검색 시 최대 동시 임베딩 모델 요청 수입니다.",
-        "coldstorage": "이 옵션을 켜면 앱이 시작될 때 각 캐릭터의 전체 데이터를 별도로 저장하고, 해당 캐릭터를 열 때만 불러옵니다. 캐릭터가 많을 때 메모리 사용량을 낮게 유지할 수 있습니다. 끄면 새로 보관되는 캐릭터는 없으며, 이미 보관된 캐릭터는 그대로 정상적으로 열립니다.",
+        "coldstorage": "이 옵션을 켜면 앱이 시작될 때 각 캐릭터의 전체 데이터를 별도로 저장하고, 해당 캐릭터를 열 때만 불러옵니다. 어떤 설정에서도 사용하지 않는 모듈 역시 캐릭터나 채팅에서 필요로 할 때까지 불러오지 않습니다. 캐릭터나 모듈이 많을 때 메모리 사용량을 낮게 유지할 수 있습니다. 끄면 새로 보관되는 항목은 없고 시작 시 모든 모듈을 불러오며, 이미 보관된 캐릭터는 그대로 정상적으로 열립니다.",
         "dynamicModelRegistry": "시작할 때 사용자의 API 키로 Google, Anthropic, OpenAI의 모델 목록을 가져와 내장 목록에 없는 모델을 추가합니다(OpenAI는 GPT 모델). 또한 하루에 한 번까지만 openrouter.ai와 raw.githubusercontent.com의 LiteLLM 데이터셋(LiteLLM, MIT 라이선스)에서 공개된 모델 한도와 가격을 내려받으며, 이 두 곳에는 키를 전송하지 않습니다. 제공자만 또는 데이터셋만 목록에 올린 추가 모델은 \"비권장 설정 보이기\" 아래에 회색으로 표시되며, 선택할 때 확인을 요청합니다. 이 옵션을 끄면 자동 다운로드와 추가되는 모델이 중단됩니다. 저장된 데이터는 계속 사용되며, 모델 데이터 새로고침 버튼은 계속 한도와 가격을 갱신합니다."
     },
     "setup": {
@@ -2065,7 +2065,7 @@ export const languageKorean = {
     nanoGPTSelectFromList: "목록에서 선택",
     nanoGPTManualInput: "수동 입력",
     nanoGPTManualModelSelect: "수동 모델 선택",
-    coldStorage: "시작 시 캐릭터 보관",
+    coldStorage: "시작 시 캐릭터와 모듈 보관",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `메모리 사용량을 낮게 유지하기 위해, 이 앱은 이제 시작할 때 각 캐릭터의 전체 데이터를 별도로 저장하고 해당 캐릭터를 열 때만 불러옵니다. 삭제되는 데이터는 없으며, 캐릭터는 이전과 동일하게 보이고 동작합니다. ${settings} > ${advancedSettings} > ${toggle}에서 이 기능을 끌 수 있습니다. 끄면 새로 보관되는 캐릭터는 없으며, 이미 보관된 캐릭터는 그대로 정상적으로 열립니다.`,
     "archiveCharactersStoppedNotice": (characterName: string) =>

@@ -607,7 +607,7 @@ export const languageVietnamese = {
         "hypaV3EmbeddingMaxConcurrent": "Số yêu cầu mô hình nhúng đồng thời tối đa cho tìm kiếm tương đồng.",
         "hypaV3QueryChatCount": "Số lượng tin nhắn trò chuyện gần đây được sử dụng làm truy vấn cho tìm kiếm tương đồng. Giá trị cao hơn sẽ sử dụng nhiều ngữ cảnh trò chuyện hơn để xác định độ tương đồng.",
         "hypaV3SummaryChunkSeparator": "Ký tự phân tách được dùng để chia các bản tóm tắt thành từng đoạn cho tìm kiếm tương đồng.",
-        "coldstorage": "Khi bật, ứng dụng sẽ lưu riêng toàn bộ dữ liệu của từng nhân vật khi khởi động và chỉ tải khi bạn mở nhân vật đó. Điều này giúp giữ mức sử dụng bộ nhớ thấp khi bạn có nhiều nhân vật. Khi tắt, sẽ không có nhân vật mới nào được lưu trữ, và các nhân vật đã được lưu trữ vẫn mở bình thường.",
+        "coldstorage": "Khi bật, ứng dụng sẽ lưu riêng toàn bộ dữ liệu của từng nhân vật khi khởi động và chỉ tải khi bạn mở nhân vật đó. Các mô-đun không được cài đặt nào sử dụng cũng được để chưa tải cho đến khi một nhân vật hoặc cuộc trò chuyện cần đến. Điều này giúp giữ mức sử dụng bộ nhớ thấp khi bạn có nhiều nhân vật hoặc mô-đun. Khi tắt, sẽ không có gì mới được lưu trữ và tất cả mô-đun được tải khi khởi động; các nhân vật đã được lưu trữ vẫn mở bình thường.",
         "dynamicModelRegistry": "Khi khởi động, tải danh sách mô hình của Google, Anthropic và OpenAI bằng khóa API của bạn và thêm các mô hình chưa có trong danh sách tích hợp (với OpenAI là các mô hình GPT). Ứng dụng cũng tải xuống giới hạn và giá công khai của mô hình, tối đa mỗi ngày một lần, từ openrouter.ai và từ bộ dữ liệu LiteLLM trên raw.githubusercontent.com (LiteLLM, giấy phép MIT); không gửi khóa nào đến hai nơi này. Các mô hình được thêm mà chỉ nhà cung cấp hoặc chỉ bộ dữ liệu liệt kê sẽ hiển thị màu xám dưới mục \"Hiển thị cài đặt không được đề xuất\" và yêu cầu xác nhận khi được chọn. Khi tắt tính năng này, việc tải xuống tự động và các mô hình được thêm sẽ dừng lại; dữ liệu đã lưu vẫn được sử dụng và nút Làm mới dữ liệu mô hình vẫn cập nhật giới hạn và giá.",
         "enableScrollToActiveChar": "Nếu được bật, nhấn phím tắt sẽ cuộn thanh bên đến nhân vật hiện đang hoạt động. Các thư mục sẽ tự động được mở nếu đang đóng."
     },
@@ -2065,7 +2065,7 @@ export const languageVietnamese = {
     nanoGPTSelectFromList: "Chọn từ danh sách",
     nanoGPTManualInput: "Nhập thủ công",
     nanoGPTManualModelSelect: "Chọn mô hình thủ công",
-    coldStorage: "Lưu trữ nhân vật khi khởi động",
+    coldStorage: "Lưu trữ nhân vật và mô-đun khi khởi động",
     "archiveCharactersNotice": (settings: string, advancedSettings: string, toggle: string) =>
         `Để giữ mức sử dụng bộ nhớ thấp, ứng dụng hiện lưu riêng toàn bộ dữ liệu của từng nhân vật khi khởi động và chỉ tải khi bạn mở nhân vật đó. Không có gì bị xóa, và các nhân vật của bạn trông và hoạt động như trước. Bạn có thể tắt tính năng này trong ${settings} > ${advancedSettings} > ${toggle}. Khi tắt, sẽ không có nhân vật mới nào được lưu trữ, và các nhân vật đã được lưu trữ vẫn mở bình thường.`,
     "archiveCharactersStoppedNotice": (characterName: string) =>

@@ -732,7 +732,7 @@ export const languageEnglish = {
             "Higher values use more chat context to determine similarity.",
         hypaV3SummaryChunkSeparator:
             "Separator used to split summaries into chunks for similarity search.",
-        coldstorage: "When this is on, the app stores each character's full data separately at startup and loads it only when you open that character. This keeps memory use low when you have many characters. Turning it off archives nothing new, and characters that are already archived still open normally.",
+        coldstorage: "When this is on, the app stores each character's full data separately at startup and loads it only when you open that character. Modules that no setting uses are also left unloaded until a character or chat needs them. This keeps memory use low when you have many characters or modules. Turning it off archives nothing new and loads every module at startup; characters that are already archived still open normally.",
         dynamicModelRegistry: "At startup, fetches the model lists of Google, Anthropic and OpenAI with your API keys and adds models missing from the built-in list (for OpenAI, GPT models). It also downloads public model limits and prices, at most once a day, from openrouter.ai and from the LiteLLM dataset on raw.githubusercontent.com (LiteLLM, MIT license); no key is sent to either of those two. Added models that only the provider or only the dataset lists are shown in gray under \"Show Unrecommended Settings\" and ask for confirmation when chosen. Turning this off stops the automatic downloads and the added models; saved data is still used, and the Refresh model data button still updates the limits and prices."
     },
     setup: {
@@ -2205,7 +2205,7 @@ export const languageEnglish = {
     nanoGPTSelectFromList: "Select from List",
     nanoGPTManualInput: "Manual Input",
     nanoGPTManualModelSelect: "Manual Model Select",
-    coldStorage: "Archive characters at startup",
+    coldStorage: "Archive characters and modules at startup",
     archiveCharactersNotice: (settings: string, advancedSettings: string, toggle: string) =>
         `To keep memory use low, this app now stores each character's full data separately at startup and loads it only when you open that character. Nothing is deleted, and your characters look and work as before. You can turn this off in ${settings} > ${advancedSettings} > ${toggle}. Turning it off archives nothing new, and characters that are already archived still open normally.`,
     archiveCharactersStoppedNotice: (characterName: string) =>
