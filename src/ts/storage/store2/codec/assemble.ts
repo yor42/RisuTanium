@@ -209,11 +209,14 @@ function assemblePluginStorage(manifest: Manifest, source: UnitSource): JsonObje
 export interface AssembleOptions {
     /** Builds one entity in place of `assembleCharacter`; called once per entity, in `order` order. Absent: `assembleCharacter`. */
     character?: (entry: ShardEntry, source: UnitSource) => JsonObject
+    /** Builds one module in place of `assembleModule`; called once per index entry, in index order, with the entry's handle. Absent: `assembleModule`. */
+    module?: (entry: ModuleEntry, source: UnitSource, handle: string) => JsonObject
 }
 
 /** The database the manifest and its units describe. Characters come back in `characters` order, fully loaded. */
 export function assembleDatabase(manifest: Manifest, source: UnitSource, options: AssembleOptions = {}): Database {
     const assembleEntity = options.character ?? assembleCharacter
+    const assembleOneModule = options.module ?? ((entry: ModuleEntry, source: UnitSource) => assembleModule(entry, source))
     const fixed = manifest.fixed
     const database: JsonObject = {}
     copyInto(database, readObjectField(readContent(source, fixed.config, UNIT_TYPE.configRoot, 'config'), 'f', 'config'))
@@ -231,7 +234,7 @@ export function assembleDatabase(manifest: Manifest, source: UnitSource, options
     }
 
     const index = readChecked(source, fixed.moduleIndex, UNIT_TYPE.moduleIndex, 'module index') as ModuleIndex
-    defineOwn(database, 'modules', assembleModules(index, entry => assembleModule(entry, source)))
+    defineOwn(database, 'modules', assembleModules(index, (entry, handle) => assembleOneModule(entry, source, handle)))
 
     const entries = new Map<string, ShardEntry>()
     manifest.shards.forEach((ref, shardIndex) => {

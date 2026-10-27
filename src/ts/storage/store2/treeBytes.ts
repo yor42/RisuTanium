@@ -4,6 +4,7 @@ import { Store2BackendError } from './backend/errors'
 import type { Store2Backend } from './backend/types'
 import { checkUnit, chunkCountMismatch, type UnitCheck } from './codec/assemble'
 import type { ConfigBody, PluginBody } from './codec/bodies'
+import { moduleHandles } from './codec/modules'
 import type { UnitSource } from './codec/types'
 import { classifyCommitRead } from './commitKey'
 import {
@@ -59,6 +60,8 @@ export interface ResidentPlanInput {
     config: JsonObject | null
     /** The plugin units that checked. */
     plugins: readonly PluginBody[]
+    /** The module index's entries, in index order; absent when the module index did not check. */
+    modules?: readonly ModuleEntry[]
 }
 
 export interface TreeBytesOptions {
@@ -67,6 +70,11 @@ export interface TreeBytesOptions {
      * planner runs once, after the fixed units have been read and checked.
      */
     resident?: (input: ResidentPlanInput) => ReadonlySet<string>
+    /**
+     * Which modules are read, by handle (`moduleHandles` over the index); `null` or absent reads every module. A module
+     * left out has none of its three units read and no flag. It runs with `resident`, once, over the same input.
+     */
+    residentModules?: (input: ResidentPlanInput) => ReadonlySet<string> | null
     /** Awaited between batches of reads, so a long read hands the thread back. */
     yield?: () => Promise<void>
 }
@@ -253,13 +261,6 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
     // The units the bodies of the first group name. A parent that did not check names nothing here: its own finding stands.
     const second: Wanted[] = []
     const moduleIndex = first.bodies.get(keyOfRef(manifest.fixed.moduleIndex)) as ModuleIndex | undefined
-    for (const entry of moduleIndex?.entries ?? []) {
-        second.push({ ref: entry.unit, type: UNIT_TYPE.module, role: fixed, chunk: false })
-        second.push({ ref: entry.al, type: UNIT_TYPE.assetList, role: fixed, chunk: false })
-        if (entry.il !== null) {
-            second.push({ ref: entry.il, type: UNIT_TYPE.inlayList, role: fixed, chunk: false })
-        }
-    }
     for (const ref of manifest.fixed.pluginStorage.refs) {
         const bucket = first.bodies.get(keyOfRef(ref)) as PluginBucket | undefined
         for (const entry of bucket?.entries ?? []) {
@@ -268,16 +269,33 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
     }
     const shards = manifest.shards.map(ref => first.bodies.get(keyOfRef(ref)) as Shard | undefined)
     let resident: ReadonlySet<string> | null = null
-    if (options.resident !== undefined) {
+    let residentModules: ReadonlySet<string> | null = null
+    if (options.resident !== undefined || options.residentModules !== undefined) {
         const config = first.bodies.get(keyOfRef(manifest.fixed.config)) as ConfigBody | undefined
-        resident = options.resident({
+        const input: ResidentPlanInput = {
             entries: shards.flatMap(shard => shard?.entries ?? []),
             config: config === undefined ? null : config.f,
             plugins: manifest.fixed.plugins.flatMap((ref) => {
                 const body = first.bodies.get(keyOfRef(ref)) as PluginBody | undefined
                 return body === undefined ? [] : [body]
             }),
-        })
+            ...(moduleIndex === undefined ? {} : { modules: moduleIndex.entries }),
+        }
+        resident = options.resident?.(input) ?? null
+        residentModules = options.residentModules?.(input) ?? null
+    }
+    // The module units are named only now: a module the planner left out has no unit read, so no finding is made for it.
+    const moduleEntries = moduleIndex?.entries ?? []
+    const moduleHandleList = moduleHandles(moduleEntries)
+    for (const [position, entry] of moduleEntries.entries()) {
+        if (residentModules !== null && !residentModules.has(moduleHandleList[position])) {
+            continue
+        }
+        second.push({ ref: entry.unit, type: UNIT_TYPE.module, role: fixed, chunk: false })
+        second.push({ ref: entry.al, type: UNIT_TYPE.assetList, role: fixed, chunk: false })
+        if (entry.il !== null) {
+            second.push({ ref: entry.il, type: UNIT_TYPE.inlayList, role: fixed, chunk: false })
+        }
     }
     for (const shard of shards) {
         for (const entry of shard?.entries ?? []) {

@@ -1,4 +1,8 @@
 import { isUsableCharacterId } from '../characterIds'
+import { matchesModuleRef, referencedModuleIds } from '../../process/moduleRefs'
+import { moduleHandles, uniqueIdHandles } from './codec/modules'
+import { stubEligible } from './codec/split'
+import type { ListDerivation } from './codec/types'
 import type { ResidentPlanInput } from './treeBytes'
 
 /**
@@ -27,5 +31,45 @@ export function residentSetOf(input: ResidentPlanInput): ReadonlySet<string> {
             resident.add(entry.u)
         }
     }
+    return resident
+}
+
+function isStringList(value: unknown): value is string[] {
+    return Array.isArray(value) && value.every(item => typeof item === 'string')
+}
+
+/**
+ * Which modules are resident at boot: the handles (`moduleHandles` over the index) of every module the boot assembles
+ * whole. Every other module becomes the stub its index entry stands for and none of its units is read. `null` means
+ * every module is resident: no index, no readable config, archiving off, or a global reference list that cannot be read.
+ *
+ * A module stays resident when the global lists name it (`enabledModules`, `moduleIntergration`, matched as the trigger
+ * and the exit net match them) or when the save encoder could not carry its stub (`stubEligible` over the whole index),
+ * so a minted stub is always carriable. The selected character and chat, always-resident characters' module lists,
+ * personas, loadouts and presets are deliberately not consulted: a later selection loads what it needs.
+ */
+export function residentModuleHandlesOf(
+    input: Pick<ResidentPlanInput, 'modules' | 'config'>, versions: ListDerivation['moduleListVersions'],
+): ReadonlySet<string> | null {
+    const { modules, config } = input
+    if (modules === undefined || config === null || config.archiveCharacters === false) {
+        return null
+    }
+    const enabled: unknown = config.enabledModules
+    const integration: unknown = config.moduleIntergration
+    const enabledList = enabled === undefined ? [] : isStringList(enabled) ? enabled : null
+    const integrationText = integration === undefined ? '' : typeof integration === 'string' ? integration : null
+    if (enabledList === null || integrationText === null) {
+        return null
+    }
+    const referenced = new Set(referencedModuleIds({ enabledModules: enabledList, moduleIntergration: integrationText }))
+    const stubbable = uniqueIdHandles(modules)
+    const handles = moduleHandles(modules)
+    const resident = new Set<string>()
+    modules.forEach((entry, position) => {
+        if (matchesModuleRef(entry, referenced) || !stubEligible(entry, stubbable, versions)) {
+            resident.add(handles[position])
+        }
+    })
     return resident
 }

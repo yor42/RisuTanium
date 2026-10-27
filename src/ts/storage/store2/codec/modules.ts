@@ -122,10 +122,11 @@ export function carryModuleIndex(prev: ModuleIndex | undefined, next: ModuleInde
     return next
 }
 
-/** The modules in index order, from the module units `read` returns. */
-export function assembleModules(index: ModuleIndex, read: (entry: ModuleEntry) => JsonObject): JsonObject[] {
-    return index.entries.map((entry) => {
-        const module = read(entry)
+/** The modules in index order, from the module units `read` returns; `read` also gets the entry's handle (`moduleHandles` over the index). */
+export function assembleModules(index: ModuleIndex, read: (entry: ModuleEntry, handle: string) => JsonObject): JsonObject[] {
+    const handles = moduleHandles(index.entries)
+    return index.entries.map((entry, position) => {
+        const module = read(entry, handles[position])
         if (typeof module !== 'object' || module === null || Array.isArray(module)) {
             throw new CodecAssembleError(`Module ${entry.id} is not an object.`)
         }

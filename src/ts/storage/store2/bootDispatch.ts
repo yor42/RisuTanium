@@ -11,8 +11,9 @@ import type { Store2PeerHandler } from './saveLoop'
 import { createSaveEncoder, type SaveEncoder } from './saveEncoder'
 import { createResidency } from './residency'
 import { registerResidency } from './residencyActive'
-import { residentSetOf } from './residencyPolicy'
-import { assembleCharacter, assembleDatabase, CodecAssembleError, stubFromEntry, type ListDerivation } from './codec'
+import { residentModuleHandlesOf, residentSetOf } from './residencyPolicy'
+import { moduleStubOf } from './moduleStubMatch'
+import { assembleCharacter, assembleDatabase, assembleModule, CodecAssembleError, stubFromEntry, type ListDerivation } from './codec'
 import { createListDerivation } from './lists/derive'
 import { defaultKeyEnv, type KeyEnv } from './format'
 import { firstLifeGrant, type FirstLifeLabel, type GrantResult } from './firstLife'
@@ -249,13 +250,17 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
             return stop('no-backend', 'The session has no backend.')
         }
         // What the resident planner decided: the entities it left resident.
-        const planned: { resident: ReadonlySet<string> | null } = { resident: null }
+        const planned: { resident: ReadonlySet<string> | null, residentModules: ReadonlySet<string> | null } = { resident: null, residentModules: null }
         let read
         try {
             read = await readTreeBytes(backend, manifestKey, {
                 resident: (input) => {
                     planned.resident = residentSetOf(input)
                     return planned.resident
+                },
+                residentModules: (input) => {
+                    planned.residentModules = residentModuleHandlesOf(input, lists.moduleListVersions)
+                    return planned.residentModules
                 },
             })
         } catch (error) {
@@ -289,8 +294,11 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
             // An entity the planner left out is a stub that names its units; its units were not read, so nothing of it is assembled.
             const resident = planned.resident
             const assembleWhole = fallback?.character ?? assembleCharacter
+            // A module the planner left out is the stub its entry stands for; the Set is the one the read consulted, so no module is stubbed whose units were read or assembled whose units were not.
+            const residentModules = planned.residentModules
             database = assembleDatabase(read.tree.manifest, read.tree.source, {
                 character: (entry, source) => resident === null || resident.has(entry.u) ? assembleWhole(entry, source) : stubFromEntry(entry),
+                module: (entry, source, handle) => residentModules === null || residentModules.has(handle) ? assembleModule(entry, source) : moduleStubOf(entry),
             })
             previous = previousOfTree(read.tree)
         } catch (error) {
