@@ -26,6 +26,8 @@
   import { type Message } from "src/ts/storage/database.svelte";
   import { translateHTML } from "src/ts/translator/translator";
   import { alertConfirm } from "src/ts/alert";
+  import { ensureCurrentModulesOrAlert } from "src/ts/process/moduleEnsure";
+  import { hasModuleStubs } from "src/ts/process/moduleRefList";
   import { DBState, selectedCharID } from "src/ts/stores.svelte";
   import type {
     SummaryItemState,
@@ -186,11 +188,25 @@
     if (isRerolling) return;
     if (isOrphan()) return;
 
+    const rerolledBeforeClick = rerolled;
+    const rerollFailedBeforeClick = rerollFailed;
+
     isRerolling = true;
     rerollFailed = false;
     rerolled = language.loadingEllipsis;
 
     try {
+      // The wait precedes every step that reads module data (regex scripts, lorebooks), not just summarize.
+      // A failed wait has already alerted. The restore applies only while the placeholder is still showing, so a
+      // Cancel or an edit made during the wait is kept; isRerolling is cleared by the finally below.
+      if (hasModuleStubs() && !(await ensureCurrentModulesOrAlert())) {
+        if (rerolled === language.loadingEllipsis) {
+          rerolled = rerolledBeforeClick;
+          rerollFailed = rerollFailedBeforeClick;
+        }
+        return;
+      }
+
       const toSummarize: OpenAIChat[] = await Promise.all(
         summary.chatMemos.map(async (chatMemo) => {
           const message = await getMessageFromChatMemo(chatMemo);

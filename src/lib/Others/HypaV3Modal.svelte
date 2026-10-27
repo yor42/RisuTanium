@@ -12,6 +12,8 @@
   import { translateHTML } from "src/ts/translator/translator";
   import { markCharacterForSave } from "src/ts/storage/characterSaveMarks";
   import { beginBusy } from "src/ts/process/memory/busyActions";
+  import { ensureCurrentModulesOrAlert } from "src/ts/process/moduleEnsure";
+  import { hasModuleStubs } from "src/ts/process/moduleRefList";
   import { alertConfirmTwice } from "./HypaV3Modal/utils";
   import ModalHeader from "./HypaV3Modal/modal-header.svelte";
   import ModalSummaryItem from "./HypaV3Modal/modal-summary-item.svelte";
@@ -261,6 +263,12 @@
 
       const uniqueChatMemos = [...new Set(mergedChatMemos)];
 
+      // A failed wait has already alerted. A superseded run leaves the panel to the run that replaced it.
+      if (hasModuleStubs() && !(await ensureCurrentModulesOrAlert())) {
+        if (run === bulkRunToken) bulkResummaryState = null;
+        return;
+      }
+
       const resummary = await summarize(oaiMessages, true);
 
       if (run !== bulkRunToken) return;
@@ -324,6 +332,7 @@
     const selectedSummaries = bulkResummaryState.heldSummaries;
     const run = ++bulkRunToken;
     const busy = beginBusy('hypaBulk');
+    const panelBeforeClick = bulkResummaryState;
 
     try {
       bulkResummaryState = {
@@ -341,6 +350,15 @@
         content: text
       }));
       
+      // A failed wait has already alerted. The earlier panel comes back only while this run is still current, and
+      // without a translation that was running when it was captured.
+      if (hasModuleStubs() && !(await ensureCurrentModulesOrAlert())) {
+        if (run === bulkRunToken) {
+          bulkResummaryState = { ...panelBeforeClick, isTranslating: false, translation: null };
+        }
+        return;
+      }
+
       const resummary = await summarize(oaiMessages, true);
 
       if (run !== bulkRunToken || !bulkResummaryState) return;

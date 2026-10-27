@@ -44,6 +44,12 @@ const summarizer = vi.hoisted(() => {
 
 const saveMarks = vi.hoisted(() => ({ marked: [] as string[] }))
 
+/** The module wait: `hasStubs` and `ensure` are mocks here (the helper has its own rows). */
+const moduleWait = vi.hoisted(() => ({
+    hasStubs: vi.fn(() => false),
+    ensure: vi.fn(async (): Promise<boolean> => true),
+}))
+
 vi.mock(import('src/ts/alert'), () => {
     const stub: Record<string, unknown> = {
         alertConfirm: confirms.ask,
@@ -86,6 +92,14 @@ vi.mock(import('src/ts/process/scripts'), () => ({
     risuChatParser: vi.fn((text: string) => text),
 }) as unknown as typeof import('src/ts/process/scripts'))
 
+vi.mock(import('src/ts/process/moduleRefList'), () => ({
+    hasModuleStubs: moduleWait.hasStubs,
+}) as unknown as typeof import('src/ts/process/moduleRefList'))
+
+vi.mock(import('src/ts/process/moduleEnsure'), () => ({
+    ensureCurrentModulesOrAlert: moduleWait.ensure,
+}) as unknown as typeof import('src/ts/process/moduleEnsure'))
+
 vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
     markCharacterForSave: vi.fn((chaId: string) => { saveMarks.marked.push(chaId) }),
 }) as unknown as typeof import('src/ts/storage/characterSaveMarks'))
@@ -93,6 +107,10 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 //#endregion
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
+import { translateHTML } from 'src/ts/translator/translator'
+import { processScriptFull } from 'src/ts/process/scripts'
+import { getCurrentHypaV3Preset } from 'src/ts/process/memory/hypav3'
+import { busyKinds, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 import HypaV3Modal from './HypaV3Modal.svelte'
 
 //#region fixtures and helpers
@@ -230,6 +248,12 @@ beforeEach(() => {
     noticeCalls.length = 0
     noticeMessages.length = 0
     saveMarks.marked.length = 0
+    moduleWait.hasStubs.mockReset()
+    moduleWait.hasStubs.mockImplementation(() => false)
+    moduleWait.ensure.mockReset()
+    moduleWait.ensure.mockImplementation(async () => true)
+    vi.mocked(translateHTML).mockClear()
+    resetBusyActionsForTest()
 })
 
 afterEach(async () => {
@@ -772,5 +796,326 @@ describe('the bulk run supersession rules', () => {
         await finishSummarizerAt(0, 'late result')
         expect(resultBarShown(target)).toBe(false)
         expect(texts()).toEqual(['s0', 's1', 's2', 's3'])
+    })
+})
+
+//#region module wait helpers
+
+/** The next module wait stays open until `release` answers it (true: loaded, false: failed and already alerted). */
+function gateNextEnsure(): { release: (loaded: boolean) => Promise<void> } {
+    const wait: { answer: ((loaded: boolean) => void) | null } = { answer: null }
+    moduleWait.ensure.mockImplementationOnce(() => new Promise<boolean>((resolve) => { wait.answer = resolve }))
+    return {
+        release: async (loaded) => {
+            expect(wait.answer, 'the module wait was started before it is answered').not.toBeNull()
+            wait.answer!(loaded)
+            await settle()
+        },
+    }
+}
+
+/** Gives every summary the chat message its chat memo points at, so the per-summary reroll is not disabled as orphaned. */
+function giveSummariesTheirMessages(): void {
+    DBState.db.characters[0].chats[0].message = data().summaries.map((s) => ({
+        chatId: s.chatMemos[0], role: 'char', data: 'body of ' + s.text, time: 0,
+    })) as never
+}
+
+/** The editable text areas of a summary card: the original first, the rerolled one second while it is shown. */
+function editableAreas(target: HTMLElement, text: string): string[] {
+    return (Array.from(card(target, text).querySelectorAll('textarea')) as HTMLTextAreaElement[])
+        .filter((t) => !t.readOnly)
+        .map((t) => t.value)
+}
+
+function clickReroll(target: HTMLElement, text: string): Promise<void> {
+    cardButtons(target, text)[2].click()
+    return settle()
+}
+
+/** The rerolled header's buttons are, in order: translate, cancel, apply. */
+async function cancelRerolled(target: HTMLElement, text: string): Promise<void> {
+    const label = Array.from(card(target, text).querySelectorAll('span'))
+        .find((s) => s.textContent?.trim() === language.hypaV3Modal.rerolledSummaryLabel.trim())!
+    ;(label.parentElement!.querySelectorAll('button')[1] as HTMLButtonElement).click()
+    await settle()
+}
+
+async function bulkSelection(target: HTMLElement, ...selected: string[]): Promise<void> {
+    await toggleBulkEdit(target)
+    await tickBulk(target, ...selected)
+}
+
+//#endregion
+
+describe('the bulk re-summarize waits for the chat\'s referenced modules', () => {
+    test('waits for the referenced modules before the summarizer call, with the processing panel showing', async () => {
+        installDb(four())
+        moduleWait.hasStubs.mockImplementation(() => true)
+        const gate = gateNextEnsure()
+        const target = mountModal()
+        await bulkSelection(target, 's1', 's2')
+        await resummarize(target)
+        expect(moduleWait.ensure).toHaveBeenCalledTimes(1)
+        expect(summarizer.pending.length).toBe(0)
+        expect(resultBarShown(target)).toBe(true)
+        await gate.release(true)
+        expect(summarizer.pending.length).toBe(1)
+        await finishSummarizer('merged')
+        expect(resultText(target)).toBe('merged')
+    })
+
+    test('a failed load makes no summarizer call, shows no failure notice, clears the panel and ends the busy state', async () => {
+        installDb(four())
+        moduleWait.hasStubs.mockImplementation(() => true)
+        moduleWait.ensure.mockImplementation(async () => false)
+        const target = mountModal()
+        await bulkSelection(target, 's1', 's2')
+        await resummarize(target)
+        expect(moduleWait.ensure).toHaveBeenCalledTimes(1)
+        expect(summarizer.pending.length).toBe(0)
+        expect(resultBarShown(target)).toBe(false)
+        expect(failureNotices()).toEqual([])
+        expect(busyKinds()).toEqual([])
+        expect(texts()).toEqual(four())
+    })
+
+    test('guard: Cancel during a waiting load, then a failed load, leaves the panel cleared and the busy state ended', async () => {
+        installDb(four())
+        moduleWait.hasStubs.mockImplementation(() => true)
+        const gate = gateNextEnsure()
+        const target = mountModal()
+        await bulkSelection(target, 's1', 's2')
+        await resummarize(target)
+        await cancelResult(target)
+        await gate.release(false)
+        expect(resultBarShown(target)).toBe(false)
+        expect(summarizer.pending.length).toBe(0)
+        expect(failureNotices()).toEqual([])
+        expect(busyKinds()).toEqual([])
+    })
+
+    test('a replaced run whose load fails does not clear the newer run\'s processing panel', async () => {
+        installDb(four())
+        moduleWait.hasStubs.mockImplementation(() => true)
+        const firstGate = gateNextEnsure()
+        const target = mountModal()
+        await bulkSelection(target, 's1', 's2')
+        await resummarize(target)
+        await tick(target, 's3')
+        await resummarize(target)
+        expect(summarizer.pending.length).toBe(1)
+        expect(resultBarShown(target)).toBe(true)
+        await firstGate.release(false)
+        expect(resultBarShown(target)).toBe(true)
+        await finishSummarizerAt(0, 'NEW')
+        expect(resultText(target)).toBe('NEW')
+        expect(busyKinds()).toEqual([])
+    })
+
+    test('guard: with no module stubs the wait is not entered and the summarizer is called at once', async () => {
+        installDb(four())
+        const target = mountModal()
+        await bulkSelection(target, 's1', 's2')
+        await resummarize(target)
+        expect(moduleWait.ensure).not.toHaveBeenCalled()
+        expect(summarizer.pending.length).toBe(1)
+    })
+})
+
+describe('the bulk re-roll waits for the chat\'s referenced modules', () => {
+    async function withFirstResult(target: HTMLElement): Promise<void> {
+        await bulkSelection(target, 's1', 's2')
+        await resummarize(target)
+        await finishSummarizer('FIRST')
+        moduleWait.hasStubs.mockImplementation(() => true)
+    }
+
+    test('waits for the referenced modules before the summarizer call, with the processing panel showing', async () => {
+        installDb(four())
+        const target = mountModal()
+        await withFirstResult(target)
+        const gate = gateNextEnsure()
+        await rerollResult(target)
+        expect(moduleWait.ensure).toHaveBeenCalledTimes(1)
+        expect(summarizer.pending.length).toBe(0)
+        expect(resultText(target)).toBeNull()
+        await gate.release(true)
+        expect(summarizer.pending.length).toBe(1)
+        await finishSummarizer('SECOND')
+        expect(resultText(target)).toBe('SECOND')
+    })
+
+    test('a failed load restores the earlier result, makes no summarizer call, shows no failure notice and ends the busy state', async () => {
+        installDb(four())
+        const target = mountModal()
+        await withFirstResult(target)
+        moduleWait.ensure.mockImplementation(async () => false)
+        await rerollResult(target)
+        expect(summarizer.pending.length).toBe(0)
+        expect(resultText(target)).toBe('FIRST')
+        expect(canApply(target)).toBe(true)
+        expect(failureNotices()).toEqual([])
+        expect(busyKinds()).toEqual([])
+    })
+
+    test('Cancel during a waiting load, then a failed load, leaves the panel cleared and no summary saved', async () => {
+        installDb(four())
+        const target = mountModal()
+        await withFirstResult(target)
+        const gate = gateNextEnsure()
+        await rerollResult(target)
+        await cancelResult(target)
+        await gate.release(false)
+        expect(resultBarShown(target)).toBe(false)
+        expect(texts()).toEqual(four())
+        expect(busyKinds()).toEqual([])
+    })
+
+    test('summaries removed during a waiting load leave the panel cleared when the load then fails', async () => {
+        installDb(['s0', 's1', 's2', 's3', 's4'])
+        const target = mountModal()
+        await withFirstResult(target)
+        const gate = gateNextEnsure()
+        await rerollResult(target)
+        await clickDeleteThis(target, 's0')
+        await answer(true)
+        await gate.release(false)
+        expect(resultBarShown(target)).toBe(false)
+        expect(texts()).toEqual(['s1', 's2', 's3', 's4'])
+        expect(busyKinds()).toEqual([])
+    })
+
+    test('a re-roll started while a translation runs, stopped by a failed load, leaves a working translate button', async () => {
+        installDb(four())
+        const target = mountModal()
+        await withFirstResult(target)
+        vi.mocked(translateHTML).mockImplementationOnce(() => new Promise<string>(() => {}))
+        resultButton(target, language.hypaV3Modal.translate).click()
+        await settle()
+        expect(translateHTML).toHaveBeenCalledTimes(1)
+        moduleWait.ensure.mockImplementation(async () => false)
+        await rerollResult(target)
+        expect(resultText(target)).toBe('FIRST')
+        resultButton(target, language.hypaV3Modal.translate).click()
+        await settle()
+        expect(translateHTML).toHaveBeenCalledTimes(2)
+    })
+
+    test('guard: with no module stubs the wait is not entered and the summarizer is called at once', async () => {
+        installDb(four())
+        const target = mountModal()
+        await withFirstResult(target)
+        moduleWait.hasStubs.mockImplementation(() => false)
+        await rerollResult(target)
+        expect(moduleWait.ensure).not.toHaveBeenCalled()
+        expect(summarizer.pending.length).toBe(1)
+    })
+})
+
+describe('a summary\'s own re-roll waits for the chat\'s referenced modules', () => {
+    function mountWithMessages(): HTMLElement {
+        installDb(four())
+        giveSummariesTheirMessages()
+        return mountModal()
+    }
+
+    test('waits for the referenced modules before the summarizer call, with the placeholder showing', async () => {
+        const target = mountWithMessages()
+        moduleWait.hasStubs.mockImplementation(() => true)
+        const gate = gateNextEnsure()
+        await clickReroll(target, 's1')
+        expect(moduleWait.ensure).toHaveBeenCalledTimes(1)
+        expect(summarizer.pending.length).toBe(0)
+        expect(editableAreas(target, 's1')).toEqual(['s1', language.loadingEllipsis])
+        await gate.release(true)
+        expect(summarizer.pending.length).toBe(1)
+        await finishSummarizer('RR')
+        expect(editableAreas(target, 's1')).toEqual(['s1', 'RR'])
+    })
+
+    test('a failed load makes no summarizer call, restores the earlier rerolled text, shows no notice and allows a new re-roll', async () => {
+        const target = mountWithMessages()
+        await clickReroll(target, 's1')
+        await finishSummarizer('RR1')
+        moduleWait.hasStubs.mockImplementation(() => true)
+        moduleWait.ensure.mockImplementationOnce(async () => false)
+        await clickReroll(target, 's1')
+        expect(summarizer.pending.length).toBe(0)
+        expect(editableAreas(target, 's1')).toEqual(['s1', 'RR1'])
+        expect(failureNotices()).toEqual([])
+        await clickReroll(target, 's1')
+        expect(summarizer.pending.length).toBe(1)
+    })
+
+    test('a failed load on a first re-roll removes the placeholder', async () => {
+        const target = mountWithMessages()
+        moduleWait.hasStubs.mockImplementation(() => true)
+        moduleWait.ensure.mockImplementationOnce(async () => false)
+        await clickReroll(target, 's1')
+        expect(summarizer.pending.length).toBe(0)
+        expect(editableAreas(target, 's1')).toEqual(['s1'])
+        await clickReroll(target, 's1')
+        expect(moduleWait.ensure).toHaveBeenCalledTimes(2)
+    })
+
+    test('guard: Cancel during a waiting load, then a failed load, keeps the cancelled state', async () => {
+        const target = mountWithMessages()
+        await clickReroll(target, 's1')
+        await finishSummarizer('RR1')
+        moduleWait.hasStubs.mockImplementation(() => true)
+        const gate = gateNextEnsure()
+        await clickReroll(target, 's1')
+        await cancelRerolled(target, 's1')
+        expect(editableAreas(target, 's1')).toEqual(['s1'])
+        await gate.release(false)
+        expect(editableAreas(target, 's1')).toEqual(['s1'])
+        expect(summarizer.pending.length).toBe(0)
+    })
+
+    test('the wait runs before the regex pass over the gathered messages, which reads module regex scripts', async () => {
+        const order: string[] = []
+        vi.mocked(getCurrentHypaV3Preset).mockReturnValue({ settings: { processRegexScript: true } } as never)
+        vi.mocked(processScriptFull).mockImplementationOnce((async () => {
+            order.push('regex')
+            return { data: 'processed', emoChanged: false }
+        }) as never)
+        try {
+            const target = mountWithMessages()
+            moduleWait.hasStubs.mockImplementation(() => true)
+            moduleWait.ensure.mockImplementationOnce(async () => { order.push('ensure'); return true })
+            await clickReroll(target, 's1')
+            expect(order).toEqual(['ensure', 'regex'])
+        } finally {
+            vi.mocked(getCurrentHypaV3Preset).mockImplementation(() => ({ settings: { processRegexScript: false } }) as never)
+        }
+    })
+
+    test('a failed load after a failed re-roll puts the failed text back and keeps Apply disabled', async () => {
+        const target = mountWithMessages()
+        await clickReroll(target, 's1')
+        summarizer.pending.shift()
+        summarizer.rejecters.shift()!(new Error('summarizer failed'))
+        await settle()
+        expect(editableAreas(target, 's1')).toEqual(['s1', language.hypaV3Modal.rerollFailed])
+        moduleWait.hasStubs.mockImplementation(() => true)
+        moduleWait.ensure.mockImplementationOnce(async () => false)
+        await clickReroll(target, 's1')
+        expect(summarizer.pending.length).toBe(0)
+        expect(editableAreas(target, 's1')).toEqual(['s1', language.hypaV3Modal.rerollFailed])
+        const label = Array.from(card(target, 's1').querySelectorAll('span'))
+            .find((s) => s.textContent?.trim() === language.hypaV3Modal.rerolledSummaryLabel.trim())!
+        const applyButton = label.parentElement!.querySelectorAll('button')[2] as HTMLButtonElement
+        expect(applyButton.disabled).toBe(true)
+        applyButton.click()
+        await settle()
+        expect(texts()).toEqual(four())
+    })
+
+    test('guard: with no module stubs the wait is not entered and the summarizer is called at once', async () => {
+        const target = mountWithMessages()
+        await clickReroll(target, 's1')
+        expect(moduleWait.ensure).not.toHaveBeenCalled()
+        expect(summarizer.pending.length).toBe(1)
     })
 })
