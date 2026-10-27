@@ -13,10 +13,20 @@ import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-    pick: vi.fn(async (): Promise<null> => null),
+    pick: vi.fn(async (): Promise<{ data: Uint8Array } | null> => null),
     request: vi.fn(),
     error: vi.fn(),
+    hasStubs: vi.fn(() => false),
+    ensure: vi.fn(async (): Promise<boolean> => true),
 }))
+
+vi.mock(import('src/ts/process/moduleRefList'), () => ({
+    hasModuleStubs: h.hasStubs,
+}) as unknown as typeof import('src/ts/process/moduleRefList'))
+
+vi.mock(import('src/ts/process/moduleEnsure'), () => ({
+    ensureCurrentModulesOrAlert: h.ensure,
+}) as unknown as typeof import('src/ts/process/moduleEnsure'))
 
 vi.mock(import('src/ts/util'), () => ({
     jsonOutputTrimmer: vi.fn((s: string) => s),
@@ -40,9 +50,15 @@ let target: HTMLElement
 let app: Record<string, unknown>
 
 beforeEach(() => {
-    h.pick.mockClear()
-    h.request.mockClear()
+    h.pick.mockReset()
+    h.pick.mockImplementation(async () => null)
+    h.request.mockReset()
+    h.request.mockResolvedValue({ type: 'streaming', result: null })
     h.error.mockClear()
+    h.hasStubs.mockReset()
+    h.hasStubs.mockReturnValue(false)
+    h.ensure.mockReset()
+    h.ensure.mockResolvedValue(true)
     target = document.createElement('div')
     document.body.appendChild(target)
     app = mount(PlaygroundImageTrans, { target, props: {} }) as unknown as Record<string, unknown>
@@ -78,5 +94,80 @@ describe('the image translation button in auto mode', () => {
         await new Promise((resolve) => setTimeout(resolve, 20))
 
         expect(h.pick).toHaveBeenCalledTimes(2)
+    })
+})
+
+/**
+ * The module wait before the translation request. `hasModuleStubs` and `ensureCurrentModulesOrAlert` are mocks here (the
+ * helper has its own rows); the image decode and canvas are stand-ins because happy-dom draws nothing. The
+ * `waits` and `does-not-request` rows fail against the component without the wait.
+ */
+describe('the module wait before the image translation request', () => {
+    const originalImage = globalThis.Image
+    const originalGetContext = HTMLCanvasElement.prototype.getContext
+    const originalToDataURL = HTMLCanvasElement.prototype.toDataURL
+    const originalCreateObjectURL = URL.createObjectURL
+
+    class DecodedImage {
+        src = ''
+        width = 2
+        height = 2
+        async decode(): Promise<void> {}
+    }
+
+    beforeEach(() => {
+        globalThis.Image = DecodedImage as unknown as typeof Image
+        HTMLCanvasElement.prototype.getContext = (() => ({ clearRect() {}, drawImage() {} })) as unknown as typeof HTMLCanvasElement.prototype.getContext
+        HTMLCanvasElement.prototype.toDataURL = () => 'data:image/png;base64,AA'
+        URL.createObjectURL = () => 'blob:image'
+        h.pick.mockImplementation(async () => ({ data: new Uint8Array([1]) }))
+    })
+
+    afterEach(() => {
+        globalThis.Image = originalImage
+        HTMLCanvasElement.prototype.getContext = originalGetContext
+        HTMLCanvasElement.prototype.toDataURL = originalToDataURL
+        URL.createObjectURL = originalCreateObjectURL
+    })
+
+    async function settle() {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        flushSync()
+    }
+
+    test('image-translation-waits-for-the-referenced-modules-before-the-request', async () => {
+        h.hasStubs.mockReturnValue(true)
+        let release: (ok: boolean) => void = () => {}
+        h.ensure.mockImplementation(() => new Promise<boolean>((resolve) => { release = resolve }))
+
+        translateButton().click()
+        await settle()
+        expect(h.ensure).toHaveBeenCalledTimes(1)
+        expect(h.request).not.toHaveBeenCalled()
+
+        release(true)
+        await settle()
+        expect(h.request).toHaveBeenCalledTimes(1)
+    })
+
+    test('image-translation-does-not-request-when-a-module-fails-and-the-button-is-idle-again', async () => {
+        h.hasStubs.mockReturnValue(true)
+        h.ensure.mockResolvedValue(false)
+
+        translateButton().click()
+        await settle()
+
+        expect(h.ensure).toHaveBeenCalledTimes(1)
+        expect(h.request).not.toHaveBeenCalled()
+        expect(h.error).not.toHaveBeenCalled()
+        expect(translateButton().textContent?.trim()).toBe(language.imageTranslation)
+    })
+
+    test('guard: no-stubs-adds-no-await: without stubs the wait is never asked for and the request is made', async () => {
+        translateButton().click()
+        await settle()
+
+        expect(h.ensure).not.toHaveBeenCalled()
+        expect(h.request).toHaveBeenCalledTimes(1)
     })
 })

@@ -5,6 +5,8 @@
     import { DBState, irisStore } from "src/ts/stores.svelte";
     import { requestChatData } from "src/ts/process/request/request";
     import { alertError } from "src/ts/alert";
+    import { ensureCurrentModulesOrAlert } from "src/ts/process/moduleEnsure";
+    import { hasModuleStubs } from "src/ts/process/moduleRefList";
     import { language } from "src/lang";
     import { fillLang } from "src/lang/fill";
     import { getIrisSystemPrompt } from "src/ts/iris";
@@ -230,7 +232,24 @@
         );
     }
 
+    // Drops the line submitUserInput pushed and returns the view to the line before it: currentIndex must never point
+    // past the end of the dialogue, or the template reads a line that is gone. The saved copy must drop it too: a reopened
+    // modal that still ends on the question waits for a reply that will never come.
+    function dropUnansweredLine() {
+        dialogue.pop();
+        currentIndex = dialogue.length - 1;
+        if (typingTimeout) clearTimeout(typingTimeout);
+        displayedText = dialogue[currentIndex].text;
+        isTyping = false;
+        saveDialogue();
+    }
+
     async function requestLLM(chat:OpenAIChat[]) {
+        // A failed wait has already alerted.
+        if(hasModuleStubs() && !(await ensureCurrentModulesOrAlert())){
+            dropUnansweredLine();
+            return;
+        }
         const res = await requestChatData({
             formated: chat,
             bias: {},
@@ -240,7 +259,7 @@
             pushDialogue({speaker: 'Iris', text: res.result});
         } else {
             alertError(fillLang(language.errors.irisLlmFailed, { error: `${res.result}` }));
-            dialogue.pop();
+            dropUnansweredLine();
         }
     }
 

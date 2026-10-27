@@ -314,6 +314,28 @@ describe('a plugin reads and writes modules through the real loader', () => {
         expect(liveModules()[1].lorebook?.[0].content).toBe('text of b')
     })
 
+    test('guard: plugin-getDatabase-default-read-loads-every-module', async () => {
+        await bootWithStub()
+        expect(isModuleStub(liveModules()[1])).toBe(true)
+
+        const copy = await api().getDatabase()
+
+        expect(modulesOf(copy).map((slot) => isModuleStub(slot))).toEqual([false, false, false])
+        expect(modulesOf(copy)[1].lorebook?.[0].content).toBe('text of b')
+        expect(isModuleStub(liveModules()[1])).toBe(false)
+    })
+
+    test('guard: a default read with one damaged unit rejects naming the module and the slot stays the stub', async () => {
+        const world = await bootWithStub()
+        world.memory.poke(world.unitKey, null)
+
+        const result = api().getDatabase()
+
+        await expect(result).rejects.toThrow(/"b" \(id-b\)/)
+        await expect(result).rejects.toThrow(/damaged/)
+        expect(isModuleStub(liveModules()[1])).toBe(true)
+    })
+
     test('a plugin edit of the copy written back lands in the installed live slot', async () => {
         await bootWithStub()
         const copy = await api().getDatabase(['modules'])

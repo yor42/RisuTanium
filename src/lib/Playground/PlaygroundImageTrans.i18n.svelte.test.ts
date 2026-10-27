@@ -25,6 +25,14 @@ vi.mock(import('src/ts/alert'), () => ({
     alertError: vi.fn(),
 }) as unknown as typeof import('src/ts/alert'))
 
+vi.mock(import('src/ts/process/moduleRefList'), () => ({
+    hasModuleStubs: vi.fn(() => false),
+}) as unknown as typeof import('src/ts/process/moduleRefList'))
+
+vi.mock(import('src/ts/process/moduleEnsure'), () => ({
+    ensureCurrentModulesOrAlert: vi.fn(async () => true),
+}) as unknown as typeof import('src/ts/process/moduleEnsure'))
+
 vi.mock('../UI/GUI/TextAreaInput.svelte', () => ({ default: () => {} }))
 
 //#endregion

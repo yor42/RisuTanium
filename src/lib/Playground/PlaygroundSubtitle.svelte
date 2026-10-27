@@ -34,7 +34,7 @@
     import Button from "../UI/GUI/Button.svelte";
     import { DBState } from "src/ts/stores.svelte";
     import { getModelInfo, LLMFlags } from "src/ts/model/modellist";
-    import { requestChatData } from "src/ts/process/request/request";
+    import { requestSubtitleModel } from "src/ts/process/subtitleRequest";
     import { asBuffer, selectFileByDom, selectSingleFile, sleep } from "src/ts/util";
     import { alertError, alertSelect } from "src/ts/alert";
     import { risuChatParser } from "src/ts/parser/parser.svelte";
@@ -105,15 +105,16 @@
             video.remove()
         }
 
-        const v =await requestChatData({
-            formated: [{
-                role: "user",
-                content: risuChatParser(prompt).replace(/{{slot}}/g, selLang).replace(/{{slot::time}}/g, time),
-                multimodals: [media]
-            }],
-            bias: {},
-            useStreaming: true
-        }, 'model')
+        const v = await requestSubtitleModel([{
+            role: "user",
+            content: risuChatParser(prompt).replace(/{{slot}}/g, selLang).replace(/{{slot::time}}/g, time),
+            multimodals: [media]
+        }])
+
+        if(!v){
+            outputText = ''
+            return
+        }
 
         if(v.type === 'multiline'){
             alertError(v.result[0][1])
@@ -319,15 +320,14 @@
         }
 
 
-        const v = await requestChatData({
-            formated: [{
-                role: "user",
-                content: risuChatParser(prompt).replace(/{{slot}}/g, selLang).replace(/{{slot::data}}/g, outputText),
-            }],
-            bias: {},
-            useStreaming: true
-        }, 'model')
+        const v = await requestSubtitleModel([{
+            role: "user",
+            content: risuChatParser(prompt).replace(/{{slot}}/g, selLang).replace(/{{slot::data}}/g, outputText),
+        }])
 
+        if(!v){
+            return
+        }
 
         if(v.type === 'multiline'){
             alertError(v.result[0][1])

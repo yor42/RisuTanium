@@ -55,6 +55,19 @@ vi.mock(import('src/ts/process/request/request'), () => ({
     requestChatData: vi.fn(),
 }) as unknown as typeof import('src/ts/process/request/request'))
 
+const moduleWait = vi.hoisted(() => ({
+    hasStubs: vi.fn(() => false),
+    ensure: vi.fn(async (): Promise<boolean> => true),
+}))
+
+vi.mock(import('src/ts/process/moduleRefList'), () => ({
+    hasModuleStubs: moduleWait.hasStubs,
+}) as unknown as typeof import('src/ts/process/moduleRefList'))
+
+vi.mock(import('src/ts/process/moduleEnsure'), () => ({
+    ensureCurrentModulesOrAlert: moduleWait.ensure,
+}) as unknown as typeof import('src/ts/process/moduleEnsure'))
+
 vi.mock(import('src/ts/process/mcp/risuaccess'), () => ({
     RisuAccessClient: class { async getToolList() { return [] } },
 }) as unknown as typeof import('src/ts/process/mcp/risuaccess'))
@@ -72,6 +85,8 @@ vi.mock(import('src/ts/keyEventBlocked'), () => ({
 }) as unknown as typeof import('src/ts/keyEventBlocked'))
 
 import { DBState } from 'src/ts/stores.svelte'
+import { requestChatData } from 'src/ts/process/request/request'
+import { alertError } from 'src/ts/alert'
 import { changeLanguage, language } from 'src/lang'
 import { languageEnglish } from 'src/lang/en'
 import { languageKorean } from 'src/lang/ko'
@@ -127,6 +142,13 @@ beforeEach(() => {
     vi.useFakeTimers()
     forage.saved = null
     forage.fail = false
+    moduleWait.hasStubs.mockReset()
+    moduleWait.hasStubs.mockReturnValue(false)
+    moduleWait.ensure.mockReset()
+    moduleWait.ensure.mockResolvedValue(true)
+    vi.mocked(requestChatData).mockReset()
+    vi.mocked(requestChatData).mockResolvedValue({ type: 'success', result: 'Answer.' })
+    vi.mocked(alertError).mockClear()
 })
 
 afterEach(async () => {
@@ -236,5 +258,116 @@ describe('IrisModal unsupported-model notice and controls', () => {
         expect(target.querySelector('button[aria-label="Close"]')).toBeNull()
         expect(language.uiCommon.send).toBe(vi_.uiCommon.send)
         expect(normalized(target)).toContain(vi_.uiCommon.send)
+    })
+})
+
+/**
+ * The module wait before the Iris request. `hasModuleStubs` and `ensureCurrentModulesOrAlert` are mocks here (the helper
+ * has its own rows). The `waits` and `does-not-request` rows fail against the component without the wait; the
+ * `no-stubs` row is a guard. The backlog lists the dialogue, so a question left behind by a stopped wait shows there.
+ */
+describe('IrisModal module wait before the request', () => {
+    async function ask(target: HTMLElement, question: string): Promise<void> {
+        const input = target.querySelector('input') as HTMLInputElement
+        input.value = question
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        flushSync()
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+        await vi.advanceTimersByTimeAsync(50)
+        flushSync()
+    }
+
+    async function backlogText(target: HTMLElement): Promise<string> {
+        ;(target.querySelector('button[title="View backlog (L)"]') as HTMLButtonElement).click()
+        await vi.advanceTimersByTimeAsync(100)
+        flushSync()
+        return normalized(target)
+    }
+
+    test('iris-waits-for-the-referenced-modules-before-the-request', async () => {
+        moduleWait.hasStubs.mockReturnValue(true)
+        let release: (ok: boolean) => void = () => {}
+        moduleWait.ensure.mockImplementation(() => new Promise<boolean>((resolve) => { release = resolve }))
+        const target = await mountIris('en')
+
+        await ask(target, 'Where is it?')
+        expect(moduleWait.ensure).toHaveBeenCalledTimes(1)
+        expect(requestChatData).not.toHaveBeenCalled()
+
+        release(true)
+        await vi.advanceTimersByTimeAsync(50)
+        expect(requestChatData).toHaveBeenCalledTimes(1)
+    })
+
+    test('iris-does-not-request-when-a-module-fails-and-drops-the-question-line', async () => {
+        moduleWait.hasStubs.mockReturnValue(true)
+        moduleWait.ensure.mockResolvedValue(false)
+        const target = await mountIris('en')
+
+        await ask(target, 'Where is it?')
+
+        expect(moduleWait.ensure).toHaveBeenCalledTimes(1)
+        expect(requestChatData).not.toHaveBeenCalled()
+        expect(alertError).not.toHaveBeenCalled()
+        expect(normalized(target)).toContain(languageEnglish.iris.introText)
+        expect((target.querySelector('input') as HTMLInputElement).disabled).toBe(false)
+        expect(await backlogText(target)).not.toContain('Where is it?')
+    })
+
+    async function closeAndReopen(): Promise<HTMLElement> {
+        for (const m of mounted) {
+            await unmount(m.app as never)
+            m.target.remove()
+        }
+        mounted = []
+        return await mountIris('en')
+    }
+
+    test('iris-reopened-after-a-stopped-wait-has-no-question-line-and-accepts-input', async () => {
+        moduleWait.hasStubs.mockReturnValue(true)
+        moduleWait.ensure.mockResolvedValue(false)
+        const target = await mountIris('en')
+
+        await ask(target, 'Where is it?')
+        const saved = forage.saved as Array<{ speaker: string, text: string }>
+        expect(saved[saved.length - 1].speaker).not.toBe('You')
+
+        const again = await closeAndReopen()
+        expect((again.querySelector('input') as HTMLInputElement).disabled).toBe(false)
+        expect(await backlogText(again)).not.toContain('Where is it?')
+    })
+
+    test('iris-reopened-after-a-failed-request-has-no-question-line-and-accepts-input', async () => {
+        vi.mocked(requestChatData).mockResolvedValue({ type: 'fail', result: 'boom' })
+        const target = await mountIris('en')
+
+        await ask(target, 'Where is it?')
+        const saved = forage.saved as Array<{ speaker: string, text: string }>
+        expect(saved[saved.length - 1].speaker).not.toBe('You')
+
+        const again = await closeAndReopen()
+        expect((again.querySelector('input') as HTMLInputElement).disabled).toBe(false)
+        expect(await backlogText(again)).not.toContain('Where is it?')
+    })
+
+    test('iris-failed-request-pops-the-question-line-and-keeps-the-view-in-range', async () => {
+        vi.mocked(requestChatData).mockResolvedValue({ type: 'fail', result: 'boom' })
+        const target = await mountIris('en')
+
+        await ask(target, 'Where is it?')
+
+        expect(requestChatData).toHaveBeenCalledTimes(1)
+        expect(normalized(target)).toContain(languageEnglish.iris.introText)
+        expect((target.querySelector('input') as HTMLInputElement).disabled).toBe(false)
+        expect(await backlogText(target)).not.toContain('Where is it?')
+    })
+
+    test('guard: no-stubs-adds-no-await: without stubs the wait is never asked for and the request is made', async () => {
+        const target = await mountIris('en')
+
+        await ask(target, 'Where is it?')
+
+        expect(moduleWait.ensure).not.toHaveBeenCalled()
+        expect(requestChatData).toHaveBeenCalledTimes(1)
     })
 })
