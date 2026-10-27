@@ -234,7 +234,9 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 
 //#endregion
 
-import { importCharacter, importCharacterProcess, importOpenedFiles } from 'src/ts/characterCards'
+import { importCharacter, importCharacterProcess, importOpenedFiles, importOpenedSources } from 'src/ts/characterCards'
+import { importPreset } from 'src/ts/storage/database.svelte'
+import { open } from '@tauri-apps/plugin-fs'
 import { charxLimits } from 'src/ts/process/processzip'
 import { language } from 'src/lang'
 
@@ -619,6 +621,78 @@ describe('importOpenedFiles with a PNG card', () => {
 
         expect(h.saves).toEqual([])
         expect(h.last).toBe('error:' + language.cardFileIncomplete)
+        expect(h.openHandles).toBe(0)
+    })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Files another Android app opens or shares: content URIs with a display name, a strict allow-list of kinds
+// (feature tests: the function is new)
+// ---------------------------------------------------------------------------------------------
+
+describe('importOpenedSources', () => {
+    beforeEach(() => {
+        vi.mocked(importPreset).mockClear()
+        vi.mocked(open).mockClear()
+    })
+
+    test('a content URI is opened as given and imports under its display name, and its handle is closed', async () => {
+        h.files.set('content://provider/doc/7', new U8(await charx('Shared').arrayBuffer()))
+
+        await importOpenedSources([{ name: 'Shared.charx', path: 'content://provider/doc/7' }])
+
+        expect(names()).toEqual(['Shared'])
+        expect(vi.mocked(open)).toHaveBeenCalledWith('content://provider/doc/7', { read: true })
+        expect(h.openHandles).toBe(0)
+    })
+
+    test('the allowed suffixes are matched case-insensitively', async () => {
+        h.files.set('content://p/1', new U8(await charx('Upper').arrayBuffer()))
+        h.files.set('content://p/2', new U8([1, 2, 3]))
+        h.files.set('content://p/3', new U8([4, 5, 6]))
+
+        await importOpenedSources([
+            { name: 'Upper.CHARX', path: 'content://p/1' },
+            { name: 'Pre.RISUP', path: 'content://p/2' },
+            { name: 'Pre2.RisuPreset', path: 'content://p/3' },
+        ])
+
+        expect(names()).toEqual(['Upper'])
+        expect(vi.mocked(importPreset)).toHaveBeenCalledTimes(2)
+    })
+
+    test('a .preset file is an allowed preset', async () => {
+        h.files.set('content://p/1', new U8([1, 2, 3]))
+        await importOpenedSources([{ name: 'x.preset', path: 'content://p/1' }])
+        expect(vi.mocked(importPreset)).toHaveBeenCalledTimes(1)
+    })
+
+    test('names outside the allow-list are refused with the unsupported-file reason and never opened', async () => {
+        for (const name of ['notes.png', 'card.json', 'backup.bin', 'noextension', '', 'photo.jpg', 'x.charx.zip']) {
+            vi.mocked(open).mockClear()
+            h.last = 'none'
+            await importOpenedSources([{ name, path: 'content://p/9' }])
+            expect(h.last).toBe('error:' + language.importFilesNotImported(1, 1, name + ': ' + language.importUnsupportedFile))
+            expect(vi.mocked(open)).not.toHaveBeenCalled()
+        }
+        expect(names()).toEqual([])
+    })
+
+    test('a refused .bin in a batch does not stop the allowed files', async () => {
+        h.files.set('content://p/1', new U8(await charx('Kept').arrayBuffer()))
+
+        await importOpenedSources([
+            { name: 'backup.bin', path: 'content://p/0' },
+            { name: 'Kept.charx', path: 'content://p/1' },
+        ])
+
+        expect(names()).toEqual(['Kept'])
+        expect(h.last).toBe('error:' + language.importFilesNotImported(1, 2, 'backup.bin: ' + language.importUnsupportedFile))
+    })
+
+    test('a URI that cannot be opened is reported for that file and never rejects', async () => {
+        await expect(importOpenedSources([{ name: 'Gone.charx', path: 'content://p/missing' }])).resolves.toBeUndefined()
+        expect(h.last.startsWith('error:')).toBe(true)
         expect(h.openHandles).toBe(0)
     })
 })

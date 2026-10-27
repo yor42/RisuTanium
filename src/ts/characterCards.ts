@@ -145,6 +145,24 @@ export async function importOpenedFiles(paths:string[]):Promise<void> {
     }
 }
 
+//Only these kinds are opened from another Android app; every other name, whatever the classifier would make of it, is refused.
+const openedSourceSuffixes = ['.charx', '.risum', '.risup', '.risupreset', '.preset']
+
+//Files another Android app opened or shared: each entry is a content URI with the display name its provider gave. The name decides: a name outside the allow-list is refused with the unsupported-file reason and its URI is never opened. Allowed kinds go through the same classification, open-in-pieces import and close as `importOpenedFiles`. Never rejects.
+export async function importOpenedSources(entries:{name:string, path:string}[]):Promise<void> {
+    try {
+        const run = newImportArchiveRun()
+        await importFiles(entries.map((entry) => {
+            const lower = entry.name.toLowerCase()
+            const allowed = openedSourceSuffixes.some((suffix) => lower.endsWith(suffix))
+            //An empty classification name never matches a suffix, so the shared refusal applies and the read is not called.
+            return classifiedImport(entry.name, allowed ? entry.name : '', '', () => openDesktopImportSource(entry.path), run)
+        }))
+    } catch (error) {
+        alertError(error)
+    }
+}
+
 //Cards and modules are handed on as the File or the source as it is, for the importer to read in pieces; a preset is read whole. The caller owns a source and closes it.
 async function importClassified(file:ClassifiedImport, data:File|ImportSource, run:ImportArchiveRun|null):Promise<ImportOutcome> {
     try {

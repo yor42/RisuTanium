@@ -11,6 +11,7 @@ import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { writable } from 'svelte/store'
 
 const desktopLaunchImportMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
+const androidOpenedFilesImportMock = vi.hoisted(() => vi.fn((): void => { }))
 
 vi.mock('localforage', () => ({
     default: {
@@ -83,6 +84,10 @@ vi.mock(import('src/ts/characterCards'), () => ({
 vi.mock(import('src/ts/desktopLaunch'), () => ({
     desktopLaunchImport: desktopLaunchImportMock,
 }) as unknown as typeof import('src/ts/desktopLaunch'))
+
+vi.mock(import('src/ts/android/openedFiles'), () => ({
+    androidOpenedFilesImport: androidOpenedFilesImportMock,
+}) as unknown as typeof import('src/ts/android/openedFiles'))
 
 vi.mock(import('src/ts/gui/animation'), () => ({
     updateAnimationSpeed: vi.fn(),
@@ -244,11 +249,15 @@ async function bootOnce() {
     await loadData()
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+    // The mocked stores module keeps one `loadedStore` for the whole file, and `loadData()` does nothing once it is true.
+    const { loadedStore } = await import('src/ts/stores.svelte')
+    loadedStore.set(false)
     localStorage.clear()
     fsStore.clear()
     dbState.current = {}
     desktopLaunchImportMock.mockClear()
+    androidOpenedFilesImportMock.mockReset().mockImplementation((): void => { })
     vi.stubGlobal('open', vi.fn())
     vi.resetModules()
 })
@@ -264,5 +273,28 @@ describe('loadData(): desktop launch inputs (Tauri)', () => {
         armTauriBoot(false)
         await bootOnce()
         expect(desktopLaunchImportMock).not.toHaveBeenCalled()
+    })
+})
+
+// Feature tests: the Android import is new. It is called on every Tauri boot, because the drain itself holds the
+// entries until first setup is done.
+describe('loadData(): Android opened files (Tauri)', () => {
+    test('a boot with first setup done starts the Android import once', async () => {
+        armTauriBoot(true)
+        await bootOnce()
+        expect(androidOpenedFilesImportMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('a boot before first setup starts it too', async () => {
+        armTauriBoot(false)
+        await bootOnce()
+        expect(androidOpenedFilesImportMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('it is not awaited: a call that never settles does not block the boot', async () => {
+        androidOpenedFilesImportMock.mockImplementation((() => new Promise<void>(() => { })) as unknown as () => void)
+        armTauriBoot(true)
+        await bootOnce()
+        expect(androidOpenedFilesImportMock).toHaveBeenCalledTimes(1)
     })
 })
