@@ -18,8 +18,10 @@ import { StoreNotBinaryError } from 'src/ts/storage/store/errors'
 import type { AppStoreKind } from 'src/ts/storage/store/appStore'
 import type { Store2BootUi } from 'src/ts/storage/store2/bootDispatch'
 import type { Store2BootEnv, Store2BootNotice } from 'src/ts/storage/store2/bootActive'
-import { checkUnit, unitMapSource } from 'src/ts/storage/store2/codec'
+import { checkUnit, unitMapSource, type ListDerivation } from 'src/ts/storage/store2/codec'
 import { FRAME_HEADER_BYTES, keyOfRef, UNIT_TYPE, type Shard } from 'src/ts/storage/store2/format'
+import { createListDerivation } from 'src/ts/storage/store2/lists/derive'
+import { isModuleStub } from 'src/ts/storage/moduleStub'
 import type { FlaggedItem } from 'src/ts/storage/store2/leafFallback'
 import { buildSmall, fakeLists } from 'src/ts/storage/tests/store2/codecFixtures'
 import { createClock, seedTree, testEnv, createPeerDouble } from 'src/ts/storage/tests/store2SaveKit'
@@ -417,6 +419,8 @@ interface BootOptions {
     /** Register no dispatch at all. */
     unregistered?: boolean
     tauri?: boolean
+    /** The list derivation the dispatch is given; absent, `fakeLists`, which carries no module list versions and so mints no module stub. */
+    lists?: ListDerivation
 }
 
 /** Imports a fresh `loadData` and the matching module pair, injects the page store, and registers the dispatch. */
@@ -436,7 +440,7 @@ async function boot(options: BootOptions): Promise<Boot> {
             kind: options.kind,
             backend: options.injectBackend === true ? async () => backend : undefined,
             keyEnv: testEnv(createClock(), 9001),
-            lists: fakeLists,
+            lists: options.lists ?? fakeLists,
         }))
     }
     const { loadData } = await import('src/ts/bootstrap')
@@ -664,6 +668,43 @@ describe('loadData(): a normal store2 profile', () => {
         const { getPageBlockOwner } = await import('src/ts/storage/pageBlockOwner')
         expect(await getPageBlockOwner()).toBeNull()
         expect(saveDbMock, 'the save loop starts through saveDb after the install').toHaveBeenCalled()
+    })
+})
+
+describe('loadData(): the module mint precedes the plugin loader (M)', () => {
+    const moduleBody = (id: string) => ({ id, name: `Module ${id}`, description: '', lorebook: [], regex: [], trigger: [], assets: [] })
+
+    /** What the plugin loader finds when it runs: each module slot's stub state and whether the module loader is registered. */
+    async function atPluginLoad(lists: ListDerivation | undefined): Promise<{ stubs: boolean[], loader: boolean, calls: number }> {
+        const run = await boot({ kind: 'indexeddb', store: legacyStore(), injectBackend: true, lists })
+        const source = { ...JSON.parse(JSON.stringify(buildSmall(2))) as Record<string, unknown>, archiveCharacters: true, enabledModules: [], moduleIntergration: '', modules: [moduleBody('ida'), moduleBody('idb')] }
+        await seedTree(run.backend, source as unknown as Database, testEnv(createClock(), 4242), createListDerivation())
+        const { getModuleLoader } = await import('src/ts/storage/store2/saveActive')
+        const seen = { stubs: [] as boolean[], loader: false, calls: 0 }
+        loadPluginsMock.mockImplementation(async () => {
+            seen.calls += 1
+            const modules = dbState.current.modules as Record<string, unknown>[]
+            seen.stubs = modules.map(module => isModuleStub(module as never))
+            seen.loader = getModuleLoader() !== null
+        })
+        acknowledgeNotices(run.alertStore)
+        await run.loadData()
+        await settle()
+        return seen
+    }
+
+    test('mint-precedes-plugins: with the real derivation every module is already a stub and the loader is registered when the plugin loader runs', async () => {
+        const seen = await atPluginLoad(createListDerivation())
+        expect(seen.calls).toBe(1)
+        expect(seen.stubs).toEqual([true, true])
+        expect(seen.loader).toBe(true)
+    })
+
+    test('mint-precedes-plugins is not vacuous: a boot under fakeLists mints no stub, while the loader is still registered', async () => {
+        const seen = await atPluginLoad(undefined)
+        expect(seen.calls).toBe(1)
+        expect(seen.stubs).toEqual([false, false])
+        expect(seen.loader).toBe(true)
     })
 })
 

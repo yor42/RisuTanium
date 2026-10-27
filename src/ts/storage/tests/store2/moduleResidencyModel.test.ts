@@ -11,8 +11,11 @@ import { markLiveKeys } from '../../store2/gc/mark'
 import { createListDerivation, deriveInlayList } from '../../store2/lists'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from '../../moduleStub'
 import { moduleStubOf } from '../../store2/moduleStubMatch'
+import { assembleDatabase, assembleModule } from '../../store2/codec'
 import { StubRefusedError } from '../../store2/codec/types'
+import { residentModuleHandlesOf } from '../../store2/residencyPolicy'
 import type { SaveEncoder, SavePassRequest } from '../../store2/saveEncoder'
+import { readTreeBytes } from '../../store2/treeBytes'
 import type { Database } from '../../database.svelte'
 import { startStore2, testEnv, createClock, type Hooks, type Store2Kit } from '../store2SaveKit'
 import { asDatabase, buildSmall, type Obj } from './codecFixtures'
@@ -56,6 +59,7 @@ type Op =
     | { kind: 'swap', at: number, to: number }
     | { kind: 'add' }
     | { kind: 'mint', at: number }
+    | { kind: 'bootStubbed', at: number }
     | { kind: 'inject', at: number, duplicate: boolean }
     | { kind: 'dup', at: number, to: number }
     | { kind: 'write', at: number, mode: 0 | 1, repair: 0 | 1 | 2 }
@@ -114,7 +118,7 @@ function recordedStubText(entry: ModuleEntry): string {
 }
 
 /** What the runs exercised, printed once so a model that stops reaching a branch is visible. */
-const stats = { commits: 0, edited: 0, uncarriable: 0, failRetry: 0, unchangedChecks: 0, undigestedRuns: 0 }
+const stats = { commits: 0, edited: 0, uncarriable: 0, failRetry: 0, unchangedChecks: 0, undigestedRuns: 0, bootStubbed: 0 }
 
 type Verdict = { kind: 'commit', carried: string[] } | { kind: 'refuse', reason: 'edited' | 'uncarriable' }
 
@@ -244,6 +248,8 @@ interface Applied {
     request: Partial<SavePassRequest>
     failFirst: boolean
     repair: Repair
+    /** The slot a boot of the committed tree would open as a stub: the stub is read back from the store before the pass. */
+    bootAt?: number
 }
 
 function applyOp(model: Model, op: Op): Applied {
@@ -280,6 +286,12 @@ function applyOp(model: Model, op: Op): Applied {
             if (slot !== undefined && mintable(model, at)) {
                 const found = entryFor(model, at)
                 slot.live = moduleStubOf(found!.entry) as Obj
+            }
+            break
+        case 'bootStubbed':
+            // An entry tampered with in memory no longer matches the stored index a boot would read.
+            if (slot !== undefined && !model.tampered && mintable(model, at)) {
+                applied.bootAt = at
             }
             break
         case 'inject': {
@@ -363,6 +375,41 @@ function applyOp(model: Model, op: Op): Applied {
     }
     sync(model)
     return applied
+}
+
+/**
+ * What a boot does to the module at `applied.bootAt`: the committed tree is read with the module planner and assembled
+ * with the module hook, both over the one resident set as the dispatch wires them, and a slot that came back as a stub
+ * replaces the live module. The stub must be the one the acknowledged entry stands for.
+ */
+async function bootStub(model: Model, applied: Applied): Promise<void> {
+    if (applied.bootAt === undefined) {
+        return
+    }
+    const found = entryFor(model, applied.bootAt)
+    const versions = createListDerivation().moduleListVersions
+    const planned: { resident: ReadonlySet<string> | null } = { resident: null }
+    const read = await readTreeBytes(model.kit.memory, model.kit.encoder.manifestKey, {
+        residentModules: (input) => {
+            planned.resident = residentModuleHandlesOf(input, versions)
+            return planned.resident
+        },
+    })
+    if (read.status !== 'ok' || found === undefined) {
+        throw new Error(`The committed tree read ${read.status}.`)
+    }
+    const booted = assembleDatabase(read.tree.manifest, read.tree.source, {
+        module: (entry, source, handle) => planned.resident === null || planned.resident.has(handle) ? assembleModule(entry, source) : moduleStubOf(entry),
+    }).modules as unknown as Obj[]
+    const module = booted[found.ackPosition]
+    if (isStub(module)) {
+        expect(stable(module), model.trace.join(' > ')).toBe(recordedStubText(found.entry))
+        model.slots[applied.bootAt].live = clone(module)
+        sync(model)
+        stats.bootStubbed++
+    } else {
+        expect(stable(module), model.trace.join(' > ')).toBe(stable(model.slots[applied.bootAt].truth))
+    }
 }
 
 function repairAll(model: Model, how: Repair): void {
@@ -536,6 +583,7 @@ const opArb: fc.Arbitrary<Op> = fc.oneof(
     { weight: 2, arbitrary: fc.tuple(position, position).map(([at, to]): Op => ({ kind: 'swap', at, to })) },
     { weight: 1, arbitrary: fc.constant<Op>({ kind: 'add' }) },
     { weight: 8, arbitrary: pick('mint') },
+    { weight: 4, arbitrary: position.map((at): Op => ({ kind: 'bootStubbed', at })) },
     { weight: 1, arbitrary: fc.tuple(position, fc.boolean()).map(([at, duplicate]): Op => ({ kind: 'inject', at, duplicate })) },
     { weight: 1, arbitrary: fc.tuple(position, position).map(([at, to]): Op => ({ kind: 'dup', at, to })) },
     { weight: 2, arbitrary: fc.tuple(position, fc.constantFrom<0 | 1>(0, 1), fc.constantFrom<0 | 1 | 2>(0, 1, 2)).map(([at, mode, repair]): Op => ({ kind: 'write', at, mode, repair })) },
@@ -585,6 +633,7 @@ describe('module residency model', () => {
                 stats.undigestedRuns += undigested ? 1 : 0
                 for (let step = 0; step < ops.length; step++) {
                     const applied = applyOp(model, ops[step])
+                    await bootStub(model, applied)
                     await runPass(model, applied)
                     if (step === midSweep) {
                         await sweep(model, 'mid-run sweep')
@@ -598,6 +647,7 @@ describe('module residency model', () => {
         const total = perRun.reduce((sum, count) => sum + count, 0)
         console.info(`module residency model: runs=${perRun.length} steps=${STEPS} seed=${SEED} runsWithCarry=${carriedRuns} totalStubCarries=${total} min=${Math.min(...perRun)} max=${Math.max(...perRun)} ms=${Date.now() - started} stats=${JSON.stringify(stats)}`)
         expect(perRun.length).toBe(RUNS)
+        expect(stats.bootStubbed, 'the boot-stubbed op reached a stub').toBeGreaterThan(0)
         expect(total, `committed stub carries per run: ${perRun.join(',')}`).toBeGreaterThan(0)
         expect(carriedRuns / perRun.length, `committed stub carries per run: ${perRun.join(',')}`).toBeGreaterThan(0.9)
     }, 900_000)
