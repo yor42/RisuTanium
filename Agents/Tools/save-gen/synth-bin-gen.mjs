@@ -1,6 +1,6 @@
 // Deterministic synthetic upstream-compatible .bin generator (MC-471). Plain Node ESM, no src/ imports.
 //
-//   node Agents/Tools/save-gen/synth-bin-gen.mjs --out <path outside the repo> --seed 1337 --scale small|mid|device|device-units [--dry-run]
+//   node Agents/Tools/save-gen/synth-bin-gen.mjs --out <path outside the repo> --seed 1337 --scale small|mid|device|device-units [--dry-run] [--p3-modules]
 //
 // Writes <out> (the .bin) and <out>.manifest.json (the expectations synth-bin-verify.mjs compares an exported .bin against).
 //
@@ -16,6 +16,22 @@
 // use a character whose index is not a multiple of 3 (1, 2, 4, 5 among the session characters) or expect [modk-reply].
 // The device-units scale is the device scale with real-sized character units (about 120 MB of character JSON); its comment
 // at SCALES says what it is for and what it cannot show.
+//
+// --p3-modules (any scale; for P3 of CHORE-205 L3, the module stub and residency work) appends five modules after the
+// regular ones and sets one root field. Without the flag the .bin and the manifest are byte-identical to what this file
+// wrote before the flag existed. The cases, each recorded in the manifest as p3Modules and checked by synth-bin-verify.mjs:
+//   - mcp: a module with mcp = { url } (the app's MCPModule), unreferenced, so a boot mints a stub that records mcp: true;
+//   - duplicate id: two modules (Duplicate Id A and B) share one id with different names, descriptions and bodies, both
+//     unreferenced. The manifest keys them <id> and <id>#2. A build that refuses or merges a duplicate-id import is a
+//     finding about that build, not a generator defect; the verifier then reports the missing or changed module;
+//   - integration: a module with namespace p3-integration-ns, reached only through the root moduleIntergration string
+//     (comma-separated ids or namespaces, as referencedModuleIds reads it), so it must stay resident;
+//   - no bookVersion: a module whose lorebook entries carry no bookVersion, which the app repairs to 2 on first load. This
+//     case is the one place the data is deliberately not normalised, so the seam harness difference for it is expected, and
+//     a verifier red on its lorebook after an app export means the app stamped the entries (a finding to read, not a loss).
+// enabledModules still names the first three regular modules, and every other module is unreferenced, so boot 2 can mint
+// stubs. The root archiveCharacters is never written: bootDispatch sets it true at the first boot where it is absent.
+// The extra modules take no assets and no icon and draw ids from their own sequence, so the asset plan is unchanged.
 //
 // Usage (the round trip on a store2 page):
 //   1. Generate: --scale small for a quick pass, --scale mid for the MC-471 totals. --dry-run prints the plan and writes nothing.
@@ -88,6 +104,12 @@ const KIB = 1024
 const PIECE_BYTES = 4 * MIB
 const T = 1700000000000
 const GENERATOR_VERSION = 3
+// --p3-modules: the module cases appended to the module list, in this order, and the names they carry.
+const P3_MODULE_KINDS = ['mcp', 'duplicate-a', 'duplicate-b', 'integration', 'no-book-version']
+const P3_MODULE_LABELS = { 'mcp': 'MCP Module', 'duplicate-a': 'Duplicate Id A', 'duplicate-b': 'Duplicate Id B', 'integration': 'Integration Module', 'no-book-version': 'No Book Version' }
+const P3_MCP_URL = 'http://127.0.0.1:6251/mcp'
+// The root moduleIntergration string is comma-separated module ids or namespaces (referencedModuleIds in moduleRefs.ts).
+const P3_INTEGRATION_NAMESPACE = 'p3-integration-ns'
 // A trashed character the startup purge never removes: the purge takes a trashTime older than three days.
 const TRASH_TIME = 4102444800000
 const COLD_STORAGE_HEADER = '\uEF01COLDSTORAGE\uEF01'
@@ -202,10 +224,11 @@ function realPathOfExisting(target) {
 }
 
 function parseArguments(argv) {
-  const opt = { out: '', seed: 1337, scale: '', dryRun: false }
+  const opt = { out: '', seed: 1337, scale: '', dryRun: false, p3Modules: false }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === '--dry-run') { opt.dryRun = true; continue }
+    if (arg === '--p3-modules') { opt.p3Modules = true; continue }
     const value = argv[i + 1]
     if (value === undefined) throw new Error(`${arg} needs a value`)
     i++
@@ -333,7 +356,7 @@ function produceAsset(spec, emit) {
 // ---------------------------------------------------------------------------------------------------------------------
 // plan: sizes, kinds and references, all from one seeded sequence; no bytes are produced here
 
-function buildPlan(seed, cfg) {
+function buildPlan(seed, cfg, p3Modules) {
   const rnd = mulberry32(seed)
   const { hex, uuid, gauss } = makeRandomHelpers(rnd)
   const assets = []
@@ -506,6 +529,17 @@ function buildPlan(seed, cfg) {
     }
     modules.push(planned)
   }
+  // The P3 cases are appended after the regular modules, with ids from a sequence of their own and no assets or icon, so
+  // the asset plan and every other draw are the same with or without the flag. The two duplicate-id modules share one id.
+  let p3 = null
+  if (p3Modules) {
+    const p3Uuid = makeRandomHelpers(mulberry32((seed ^ 0x3F3F3F3F) >>> 0)).uuid
+    const duplicateId = p3Uuid()
+    for (const kind of P3_MODULE_KINDS) {
+      modules.push({ id: kind === 'duplicate-a' || kind === 'duplicate-b' ? duplicateId : p3Uuid(), assets: [], icon: -1, bytes: 2 * 1500, p3: kind })
+    }
+    p3 = { integrationNamespace: P3_INTEGRATION_NAMESPACE }
+  }
   const misc = {
     userIcon: addAsset('userIcon', 'png', 'png', imageSize(20, 100)),
     customBackground: addAsset('customBackground', 'png', 'png', imageSize(100, 400)),
@@ -525,7 +559,7 @@ function buildPlan(seed, cfg) {
   }))
   const pluginIndexId = uuid()
   const loadouts = Array.from({ length: cfg.loadouts }, () => ({ id: uuid() }))
-  return { assets, characters, modules, misc, groups, pluginValues, pluginIndexId, loadouts }
+  return { assets, characters, modules, misc, groups, pluginValues, pluginIndexId, loadouts, p3 }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -708,7 +742,15 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
     // a manual Lua trigger never runs on its own, so a session does not start the Lua runtime
     if (planned.luaBytes > 0) module.trigger.push({ comment: `lua${m}`, type: 'manual', conditions: [], effect: [{ type: 'triggerlua', code: `-- ${text(planned.luaBytes)}\nfunction onSyntheticManual(id)\n  return nil\nend\n` }], lowLevelAccess: true })
     if (planned.icon >= 0) module.icon = refOf(planned.icon)
-    if (withProjections) projections.modules[module.id] = project(module, [])
+    if (planned.p3) {
+      module.name = `Synthetic P3 ${P3_MODULE_LABELS[planned.p3]}`
+      if (planned.p3 === 'mcp') module.mcp = { url: P3_MCP_URL }
+      if (planned.p3 === 'integration') module.namespace = plan.p3.integrationNamespace
+      // the one deliberately un-normalised case: the entries a boot repair stamps with bookVersion 2
+      if (planned.p3 === 'no-book-version') for (const entry of module.lorebook) delete entry.bookVersion
+    }
+    // A second module with an id already projected is keyed `<id>#2`; the verifier keys its tree the same way.
+    if (withProjections) projections.modules[projections.modules[module.id] ? `${module.id}#2` : module.id] = project(module, [])
     return module
   })
 
@@ -755,6 +797,23 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
     formatversion: 5, characters: everyone, characterOrder, personas, modules, botPresets, loadouts, statics, pluginCustomStorage,
     userIcon: refOf(misc.userIcon), customBackground: refOf(misc.customBackground),
     ...SETTINGS_VALUES, ...cfg.rootSettings, enabledModules: modules.slice(0, 3).map((module) => module.id),
+  }
+  // archiveCharacters stays unset in every output: bootDispatch sets it true at the first boot where it is absent.
+  if (plan.p3) database.moduleIntergration = plan.p3.integrationNamespace
+  if (withProjections && plan.p3) {
+    const byKind = (kind) => modules[plan.modules.findIndex((planned) => planned.p3 === kind)]
+    const noBook = byKind('no-book-version')
+    const integration = byKind('integration')
+    const referenced = new Set([...database.enabledModules, integration.id])
+    projections.p3 = {
+      archiveCharacters: 'unset',
+      mcp: { id: byKind('mcp').id, url: P3_MCP_URL },
+      duplicateId: { id: byKind('duplicate-a').id, names: [byKind('duplicate-a').name, byKind('duplicate-b').name], keys: [byKind('duplicate-a').id, `${byKind('duplicate-a').id}#2`] },
+      integration: { setting: 'moduleIntergration', value: database.moduleIntergration, namespace: integration.namespace, id: integration.id },
+      noBookVersion: { id: noBook.id, entries: noBook.lorebook.length },
+      enabled: database.enabledModules,
+      unreferenced: modules.filter((module) => !referenced.has(module.id)).map((module) => module.id),
+    }
   }
   if (withProjections) {
     // The whole logical tree, one hash per root key: what the verifier's resolved tree must equal, order of every list included.
@@ -820,7 +879,7 @@ function encodeDatabaseEntry(packr, database) {
 function main() {
   const opt = parseArguments(process.argv.slice(2))
   const cfg = SCALES[opt.scale]
-  const plan = buildPlan(opt.seed, cfg)
+  const plan = buildPlan(opt.seed, cfg, opt.p3Modules)
   const packr = new Packr({ useRecords: false })
 
   if (opt.dryRun) {
@@ -900,6 +959,7 @@ function main() {
     counts: { ...summarize(plan, { entries: entryCount, unitEntries: units.length, stubUnitContent: stubUnitContent(units), fileBytes }), parts: Object.keys(projections.parts).length },
     assets: Object.fromEntries(plan.assets.map((a) => [a.name, { sha256: a.sha256, bytes: a.size, kind: a.kind }])),
     characters: projections.characters, chats: projections.chats, modules: projections.modules, parts: projections.parts,
+    ...(projections.p3 ? { p3Modules: projections.p3 } : {}),
   }
   fs.writeFileSync(opt.out + '.manifest.json', JSON.stringify(manifest))
   console.log(JSON.stringify({ out: opt.out, manifest: opt.out + '.manifest.json', fileBytes, entries: entryCount, ...manifest.counts }, null, 2))
