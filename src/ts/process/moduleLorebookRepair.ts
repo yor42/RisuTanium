@@ -2,7 +2,7 @@ import { alertConfirm, alertError, alertMd, waitAlert } from "../alert"
 import { updateLorebooks } from "../characters"
 import { Mutex } from "../mutex"
 import { language } from "src/lang"
-import type { loreBook } from "../storage/database.svelte"
+import type { Database, loreBook } from "../storage/database.svelte"
 import type { RisuModule } from "./modules"
 
 /**
@@ -56,6 +56,41 @@ export function lorebookRepairNeed(body: RisuModule | null | undefined): 'none' 
         return 'ask'
     }
     return (lorebook as loreBook[]).some((entry) => !(entry?.bookVersion >= 2)) ? 'migrate' : 'none'
+}
+
+/**
+ * Repairs the lorebook of every module in `db.modules`, one module at a time, and tidies the list afterwards.
+ *
+ * Sequential on purpose: a repair may ask the person. Prompts queue, but notices replace whatever is showing and
+ * `waitAlert` resolves on any close, and the reset question names no module, so concurrent repairs would interleave
+ * their notices and answers and the person could not tell which module a reset question is about. Do not turn the
+ * loop into `Promise.all`.
+ *
+ * A repair can wait on the person while the rest of the application runs, so the list may change under the loop.
+ * The loop therefore walks a copy of the slots, and the list is read again only after the last await:
+ * - `null` or `undefined`: becomes an empty list;
+ * - a list holding a `null` or `undefined` element: replaced by the list without them;
+ * - a list without such elements: not assigned at all, so a loader's install or a plugin's write made during a wait stays;
+ * - any other value: left exactly as it was written.
+ * Repairs mutate the module bodies in place, so a repaired body is the one still in the live list. The elements of a
+ * list that replaced the original during a wait get no repair in this pass.
+ *
+ * The first save pass starts only after this function returns. Bodies still in the live list were migrated in place
+ * before that pass, so it saves them as migrated; nothing is saved while a question is open.
+ */
+export async function repairModuleListLorebooks(db: Pick<Database, 'modules' | 'formatversion'>): Promise<void> {
+    const slots: unknown = db.modules
+    if (Array.isArray(slots)) {
+        for (const body of [...(slots as RisuModule[])]) {
+            await repairModuleLorebook(body, { formatVersion: db.formatversion })
+        }
+    }
+    const live: unknown = db.modules
+    if (live === null || live === undefined) {
+        db.modules = []
+    } else if (Array.isArray(live) && live.some((body) => body === null || body === undefined)) {
+        db.modules = (live as RisuModule[]).filter((body) => body !== null && body !== undefined)
+    }
 }
 
 async function askAboutCorruptedLorebook(body: RisuModule, formatVersion: number | undefined): Promise<{ changed: boolean }> {

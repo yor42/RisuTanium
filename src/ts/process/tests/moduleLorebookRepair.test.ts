@@ -6,7 +6,7 @@
  * time. The loader in the contract tests is a test double. Titles beginning "guard:" pin behaviour that must be
  * preserved; titles beginning "contract:" document what a loader must do around the function.
  */
-import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from 'src/ts/storage/moduleStub'
 import type { RisuModule } from 'src/ts/process/modules'
 
@@ -46,7 +46,7 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
     DBState: h,
 }) as unknown as typeof import('src/ts/stores.svelte'))
 
-import { lorebookRepairNeed, repairModuleLorebook } from 'src/ts/process/moduleLorebookRepair'
+import { lorebookRepairNeed, repairModuleListLorebooks, repairModuleLorebook } from 'src/ts/process/moduleLorebookRepair'
 import { acquireModule, registerModuleLoader, unregisterModuleLoader } from 'src/ts/storage/store2/moduleAcquire'
 import { language } from 'src/lang'
 
@@ -297,5 +297,169 @@ describe('lorebookRepairNeed judges from the body alone, and the repair follows 
             }
             expect(await pending).toEqual({ changed: need === 'migrate' })
         }
+    })
+})
+
+/**
+ * `repairModuleListLorebooks`: the module step of the boot format check. A repair may wait on the person, so these rows
+ * change `db.modules` while a question is open, as a loader install or a plugin write would. Titles beginning "guard:"
+ * pin behaviour that holds before and after the change; every other row fails when the step reassigns the list it
+ * copied before the waits.
+ */
+describe('repairModuleListLorebooks', () => {
+    type ListDb = Parameters<typeof repairModuleListLorebooks>[0]
+
+    function listDb(modules: unknown): ListDb {
+        return { modules, formatversion: 1 } as unknown as ListDb
+    }
+
+    function liveModules(db: ListDb): unknown {
+        return (db as { modules: unknown }).modules
+    }
+
+    function setLiveModules(db: ListDb, value: unknown): void {
+        (db as { modules: unknown }).modules = value
+    }
+
+    /** Answers the three prompts of one reset question: the notice, the report question, then the reset question. */
+    async function answerQuestion(reset: boolean): Promise<void> {
+        await answer()
+        await answer(false)
+        await answer(reset)
+    }
+
+    /** A row that leaves a question open must not hold the step's question lock for the next row. */
+    afterEach(async () => {
+        for (let round = 0; round < 20 && h.waiting.length > 0; round++) {
+            h.waiting.shift()?.resolve(false)
+            await tick()
+        }
+        expect(h.waiting).toHaveLength(0)
+    })
+
+    test('guard: a null or undefined list becomes an empty list', async () => {
+        for (const missing of [null, undefined]) {
+            const db = listDb(missing)
+            await repairModuleListLorebooks(db)
+            expect(liveModules(db)).toEqual([])
+        }
+    })
+
+    test('guard: null and undefined elements are filtered out of a live list that holds them, the rest keeps its order', async () => {
+        const first = body('First', [])
+        const second = body('Second', [])
+        const db = listDb([null, first, undefined, second])
+        await repairModuleListLorebooks(db)
+        const live = liveModules(db) as unknown[]
+        expect(live).toHaveLength(2)
+        expect(live[0]).toBe(first)
+        expect(live[1]).toBe(second)
+    })
+
+    test('guard: a body migrated by the step stays in the live list as the same object', async () => {
+        const old = body('Old', [lore('x @@end', 1)])
+        const db = listDb([old])
+        await repairModuleListLorebooks(db)
+        expect((liveModules(db) as unknown[])[0]).toBe(old)
+        expect((old.lorebook as { bookVersion: number }[])[0].bookVersion).toBe(2)
+    })
+
+    test('a list without null elements is not assigned at all', async () => {
+        const list = [body('First', []), body('Second', [])]
+        let writes = 0
+        const db = {
+            formatversion: 1,
+            get modules(): unknown { return list },
+            set modules(_value: unknown) { writes++ },
+        } as unknown as ListDb
+        await repairModuleListLorebooks(db)
+        expect(writes).toBe(0)
+    })
+
+    test('a body installed into an already visited slot while a later question is open is kept', async () => {
+        const visited = body('Visited', [])
+        const asked = body('Asked', 'text')
+        const list = [visited, asked]
+        const db = listDb(list)
+        const pending = repairModuleListLorebooks(db)
+        await tick()
+        expect(errorEvents()).toHaveLength(1)
+        const installed = body('Installed', [])
+        list[0] = installed
+        await answerQuestion(false)
+        await pending
+        expect(liveModules(db)).toBe(list)
+        expect(list[0]).toBe(installed)
+    })
+
+    test('a whole list a plugin wrote while a question is open is kept as written, with its added module', async () => {
+        const db = listDb([body('Asked', 'text')])
+        const pending = repairModuleListLorebooks(db)
+        await tick()
+        const replacement = [body('Asked', 'text'), body('Added', [])]
+        setLiveModules(db, replacement)
+        await answerQuestion(false)
+        await pending
+        expect(liveModules(db)).toBe(replacement)
+        expect(replacement).toHaveLength(2)
+    })
+
+    test('a non-list a plugin wrote while a question is open is left as written', async () => {
+        const db = listDb([body('Asked', 'text')])
+        const pending = repairModuleListLorebooks(db)
+        await tick()
+        const written = { not: 'a list' }
+        setLiveModules(db, written)
+        await answerQuestion(false)
+        await pending
+        expect(liveModules(db)).toBe(written)
+    })
+
+    test('a list holding a null element that replaced the list while a question is open is filtered as the live list', async () => {
+        const db = listDb([body('Asked', 'text')])
+        const pending = repairModuleListLorebooks(db)
+        await tick()
+        const added = body('Added', [])
+        const replacement = [null, added]
+        setLiveModules(db, replacement)
+        await answerQuestion(false)
+        await pending
+        const live = liveModules(db) as unknown[]
+        expect(live).toHaveLength(1)
+        expect(live[0]).toBe(added)
+    })
+
+    test('a module a plugin pushed while a question is open is kept and is not asked about by this pass', async () => {
+        const list = [body('Asked', 'text')]
+        const db = listDb(list)
+        const pending = repairModuleListLorebooks(db)
+        await tick()
+        list.push(body('Pushed', 'text'))
+        await answerQuestion(false)
+        await tick()
+        expect(h.waiting).toHaveLength(0)
+        expect(errorEvents()).toHaveLength(1)
+        await pending
+        expect(list).toHaveLength(2)
+    })
+
+    test('guard: modules are repaired in list order, the next one is not asked about before the held question is answered', async () => {
+        const list = [body('First', 'text'), body('Second', 'text'), body('Old', [lore('x @@end', 1)])]
+        const db = listDb(list)
+        const pending = repairModuleListLorebooks(db)
+        await tick()
+        expect(errorEvents()).toHaveLength(1)
+        expect(errorEvents()[0]).toContain('First')
+        expect(migrate).not.toHaveBeenCalled()
+        await answerQuestion(true)
+        await tick()
+        expect(errorEvents()).toHaveLength(2)
+        expect(errorEvents()[1]).toContain('Second')
+        expect(migrate).not.toHaveBeenCalled()
+        await answerQuestion(false)
+        await pending
+        expect(migrate).toHaveBeenCalledTimes(1)
+        expect(list[0].lorebook).toEqual([])
+        expect(list[1].lorebook).toBe('text')
     })
 })

@@ -35,7 +35,7 @@ import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
 import { language } from "src/lang";
 import { startObserveDom } from "./observer.svelte";
 import { updateGuisize } from "./gui/guisize";
-import { repairModuleLorebook } from "./process/moduleLorebookRepair";
+import { repairModuleListLorebooks } from "./process/moduleLorebookRepair";
 import { startCharacterPutBack } from "./process/memory/characterPutBack";
 import { noteBootArchiveSession, noteBootPassCommitted } from "./process/memory/bootArchiveState";
 import { initMobileGesture } from "./hotkey";
@@ -1075,20 +1075,8 @@ async function checkNewFormat(): Promise<void> {
         return v !== null;
     });
 
-    // Sequential, one module at a time: the repair may ask the user. Prompts queue, but notices (alertError,
-    // alertMd) replace whatever is showing and waitAlert resolves on any close, and the reset question names no
-    // module, so concurrent repairs would interleave their notices and answers and the user could not tell
-    // which module a reset question is about. Do not "optimize" this back to Promise.all.
-    const newModules: typeof db.modules = [];
-    for (const v of (db.modules ?? [])) {
-        await repairModuleLorebook(v, { formatVersion: db.formatversion });
-        newModules.push(v);
-    }
-    db.modules = newModules;
-
-    db.modules = db.modules.filter((v) => {
-        return v !== null && v !== undefined;
-    });
+    // Sequential and live-list safe; see repairModuleListLorebooks.
+    await repairModuleListLorebooks(db);
 
     // Entries of the persona list that are not objects are left out and a
     // list that is not a list is empty, so the pass below cannot throw and the
