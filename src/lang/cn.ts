@@ -2783,7 +2783,8 @@ export const languageChinese = {
         "peerCleanCommitDrafts": "另一个标签页保存了对您数据的更改。此标签页中有尚未完成的文本或编辑，重新加载会将其丢弃。",
         "peerCleanReplacedDrafts": "您已保存的数据在此标签页之外被更改。请重新加载以继续。此标签页中有尚未完成的文本或编辑，重新加载会将其丢弃。",
         "peerReloadDrafts": "重新加载（未完成的文本和编辑将丢失）",
-        "moduleEditedTitle": "模块“{name}”在此标签页中被更改，且无法保存，因此此标签页中的任何内容都不会被保存。请重新加载以继续工作；此标签页未保存的更改将丢失。",
-        "moduleEditedKeep": "继续工作（重新加载之前不会保存任何内容）"
+        "moduleEditedTitle": "模块“{name}”在此标签页中被更改，且无法保存。角色和聊天仍会继续保存，但在重新加载之前，对模块的更改不会被保存，并且如果关闭应用，这些更改将丢失。重新加载将丢弃这些更改以及此标签页中其他尚未保存的内容；也可以继续工作。",
+        "moduleEditedKeep": "继续工作（重新加载之前不会保存模块更改）",
+        "moduleNotSaved": "无法保存模块“{name}”。角色和聊天仍会继续保存，但在删除或替换“{name}”之前，对模块的更改不会被保存，并且如果关闭或重新加载应用，这些更改将丢失。"
     }
 } satisfies DeepPartial<typeof import('./en').languageEnglish>;

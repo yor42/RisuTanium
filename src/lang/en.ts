@@ -2932,8 +2932,9 @@ export const languageEnglish = {
         peerCleanCommitDrafts: "Another tab saved changes to your data. This tab has text or an edit you have not finished, and reloading discards it.",
         peerCleanReplacedDrafts: "Your saved data was changed outside this tab. Reload to continue. This tab has text or an edit you have not finished, and reloading discards it.",
         peerReloadDrafts: "Reload (unfinished text and edits are lost)",
-        moduleEditedTitle: "The module \"{name}\" was changed in this tab in a way that cannot be saved, so nothing in this tab is being saved. Reload to keep working; this tab's unsaved changes are lost.",
-        moduleEditedKeep: "Keep working (nothing is saved until you reload)",
+        moduleEditedTitle: "The module \"{name}\" was changed in this tab in a way that cannot be saved. Your characters and chats are still being saved, but changes to modules are not saved until you reload, and they are lost if the app is closed. Reload to discard them, along with anything else not yet saved in this tab, or keep working.",
+        moduleEditedKeep: "Keep working (module changes are not saved until you reload)",
+        moduleNotSaved: "The module \"{name}\" cannot be saved. Your characters and chats are still being saved, but changes to modules are not saved until \"{name}\" is deleted or replaced, and they are lost if the app is closed or reloaded.",
     },
 } satisfies I18nTranslation;
 

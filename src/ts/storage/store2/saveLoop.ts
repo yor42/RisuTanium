@@ -74,13 +74,19 @@ export interface Store2PeerHandler {
      */
     parkedClean(prompt: PeerParkPrompt, live: () => PeerLiveState): void
     /**
-     * A module stub was edited in this tab, so no save pass can encode it and nothing in the tab is saved. Nothing is
-     * awaited and no lock is held: the loop keeps retrying while the person decides. `stillBlocked()` is read when
-     * Reload is pressed; it is false once a later pass has saved or a different module has been announced, and Reload
-     * then does nothing (nothing is lost; the next prompt offers its own Reload). Asked once per module id until a pass
-     * saves.
+     * A module stub was edited in this tab, so no save pass can encode it: changes to modules are held in memory while
+     * characters and chats keep saving. Nothing is awaited and no lock is held. `stillBlocked()` is read when Reload is
+     * pressed; it is false once a pass that took module scope has saved cleanly or a different module has been
+     * announced, and Reload then does nothing (nothing is lost; the next prompt offers its own Reload). Asked once per
+     * module id until such a pass saves.
      */
     moduleEdited(info: { moduleId: string, moduleName: string }, stillBlocked: () => boolean): void
+    /**
+     * A module stub that a load cannot bring in blocks module saves: changes to modules are held in memory while
+     * characters and chats keep saving. Nothing is awaited and no lock is held. Told once per module id until a pass
+     * that took module scope has saved cleanly.
+     */
+    moduleNotSaved(info: { moduleId: string, moduleName: string }): void
     /** Parked with unsaved edits: resolves with one of `prompt.offers`; anything else is read as 'reload'. */
     decide(prompt: PeerParkPrompt): Promise<PeerOffer>
     /**
@@ -184,6 +190,12 @@ export interface Store2LoopPort {
     snapshotTaken(): void
     /** Marks the page dirty and asks for another pass. */
     requestPass(): void
+    /**
+     * Marks the page dirty without making a pass due and without counting a mark: edits are held that no commit will
+     * take until the cause is fixed. Optional so that the many test ports of other behaviours need not declare it; the
+     * page's port always has it.
+     */
+    markUnsaved?(): void
     /**
      * After an attempt whose commit landed (saved, or landed without a flush), before `saved()`: every character that cannot be saved now (`current`) and those
      * that newly cannot (`newly`: not in the set before this attempt, still present after it). Called only when the
@@ -364,6 +376,17 @@ class ModuleLoadDeferred extends Error {
     }
 }
 
+/** What one pass records for the code after it: the marks it took, whether its commit landed, and how it treated the modules. */
+interface PassRun {
+    snapshot: Store2Snapshot | null
+    landed: boolean
+    plan: SavePlan | null
+    /** The module refusal the pass went on without (the modules were carried whole); null when none was met. */
+    moduleRefusal: StubRefusedError | null
+    /** The pass's request asked for module scope, so a clean save proves no module stub blocks it. */
+    moduleScope: boolean
+}
+
 /** The failures that name the page's own state as stale for good: only a reload ends them. */
 const REPLACED_REFUSALS: ReadonlySet<string> = new Set(['absent', 'no-current', 'damaged', 'too-new'])
 
@@ -413,8 +436,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
 
     let savetrys = 0
     let retries = 0
-    /** The module id whose edited-stub prompt was asked; cleared by a saved non-tick pass so a later edit asks again. */
+    /** The module id whose edited-stub prompt was asked; cleared by a pass that took module scope and saved cleanly, so a later edit asks again. */
     let editedAnnounced: string | null = null
+    /** The module id whose not-saved notice was told; cleared like `editedAnnounced`. */
+    let unsavedAnnounced: string | null = null
     let park: Park | null = null
     readParked = () => park !== null
     /** Set once by a too-large refusal and never cleared: no pass, idle net or park handling runs again on this page load. */
@@ -688,36 +713,45 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
      * The plan of one pass over the live list. A module stub the planner cannot carry is brought in through the context's
      * valve and the pass is planned again with the same request. The valve never waits for the person while the write
      * lock is held: a load that would ask answers `deferred`, and the pass ends quietly (`ModuleLoadDeferred`). One load
-     * is made per module id and pass, so a refusal that survives its load is a failed save, with the planner's own error.
+     * is made per module id and pass. A module refusal that survives its load (or that no load can help: an edited stub,
+     * or no valve) does not fail the pass: the pass is planned again with the modules carried whole, and the refusal is
+     * returned beside that plan so the caller holds the module mark. Characters and chats still save. The modules are
+     * carried only when the acknowledged encoding holds them; otherwise the planner's own error surfaces.
      */
-    async function planOf(db: Database, request: SavePassRequest): Promise<SavePlan> {
+    async function planOf(db: Database, request: SavePassRequest): Promise<{ plan: SavePlan, moduleRefusal: StubRefusedError | null }> {
         const loaded = new Set<string>()
         let planDb = db
         let planRequest = request
         for (;;) {
             try {
-                return await planWithStubLoads(planDb, planRequest)
+                return { plan: await planWithStubLoads(planDb, planRequest), moduleRefusal: null }
             } catch (error) {
-                const loadable = error instanceof StubRefusedError && error.kind === 'module' && error.reason === 'uncarriable'
-                if (!loadable || context.loadModuleStub === undefined || loaded.has(error.chaId)) {
+                if (!(error instanceof StubRefusedError) || error.kind !== 'module') {
                     throw error
                 }
-                loaded.add(error.chaId)
-                if (MEASURE) {
-                    activeGaps?.pause()
+                const loadable = error.reason === 'uncarriable' && context.loadModuleStub !== undefined && !loaded.has(error.chaId)
+                if (loadable && context.loadModuleStub !== undefined) {
+                    loaded.add(error.chaId)
+                    if (MEASURE) {
+                        activeGaps?.pause()
+                    }
+                    const result = await context.loadModuleStub(error.chaId)
+                    if (result.kind === 'deferred') {
+                        throw new ModuleLoadDeferred(result.settled)
+                    }
+                    if (MEASURE) {
+                        activeGaps?.resume()
+                    }
+                    if (result.kind !== 'refused') {
+                        planDb = port.getDatabase()
+                        planRequest = MEASURE ? { ...request, retry: true } : request
+                        continue
+                    }
                 }
-                const result = await context.loadModuleStub(error.chaId)
-                if (result.kind === 'refused') {
+                if (!encoder.carriesModules()) {
                     throw error
                 }
-                if (result.kind === 'deferred') {
-                    throw new ModuleLoadDeferred(result.settled)
-                }
-                if (MEASURE) {
-                    activeGaps?.resume()
-                }
-                planDb = port.getDatabase()
-                planRequest = MEASURE ? { ...request, retry: true } : request
+                return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: error }
             }
         }
     }
@@ -898,7 +932,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     }
 
     /** `attemptRun` with the gap recorder closed on every exit, a throw included, before the pass's own waits begin. */
-    async function attemptOf(run: { snapshot: Store2Snapshot | null, landed: boolean, plan: SavePlan | null }, tick: boolean, netChaId: string | null): Promise<Outcome> {
+    async function attemptOf(run: PassRun, tick: boolean, netChaId: string | null): Promise<Outcome> {
         try {
             return await attemptRun(run, tick, netChaId)
         } finally {
@@ -909,7 +943,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
     }
 
-    async function attemptRun(run: { snapshot: Store2Snapshot | null, landed: boolean, plan: SavePlan | null }, tick: boolean, netChaId: string | null): Promise<Outcome> {
+    async function attemptRun(run: PassRun, tick: boolean, netChaId: string | null): Promise<Outcome> {
         if (MEASURE && !tick) {
             noteSignalPassStart()
         }
@@ -928,9 +962,21 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (MEASURE && tick) {
             noteSignalPassStart()
         }
+        const planRequest = requestOf(run.snapshot, db, saveMine, netChaId)
+        run.moduleScope = planRequest.whole || planRequest.rewriteAll === true || planRequest.modules || planRequest.net?.modules === true
         let plan: SavePlan
         try {
-            plan = await planOf(db, requestOf(run.snapshot, db, saveMine, netChaId))
+            const planned = await planOf(db, planRequest)
+            plan = planned.plan
+            if (planned.moduleRefusal !== null) {
+                // Folded before the commit so that every later outcome keeps it: the held module changes are retried by
+                // each marked pass until the refusal is gone, and the page stays dirty meanwhile. It sets dirty only and
+                // makes no pass due, so the idle net and the character cadence keep running. A tick folds it too, so a
+                // refusal found without any mark still keeps the page dirty.
+                run.moduleRefusal = planned.moduleRefusal
+                port.tracker.modules = true
+                port.markUnsaved?.()
+            }
         } catch (error) {
             if (error instanceof ModuleLoadDeferred) {
                 return { kind: 'deferred', settled: error.settled }
@@ -1003,19 +1049,48 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         port.requestPass()
     }
 
+    /**
+     * Tells the person about a module stub the pass went on without, once per module id. Outside the write lock and
+     * never awaited; a handler that throws is logged, because a notice must not turn a pass that saved into a failed one.
+     */
+    function announceModuleRefusal(refusal: StubRefusedError | null): void {
+        if (refusal === null || refusal.kind !== 'module') {
+            return
+        }
+        const moduleId = refusal.chaId
+        try {
+            if (refusal.reason === 'edited') {
+                if (editedAnnounced !== moduleId) {
+                    editedAnnounced = moduleId
+                    console.error(refusal)
+                    context.peer.moduleEdited({ moduleId, moduleName: refusal.moduleName }, () => editedAnnounced === moduleId)
+                }
+            } else if (unsavedAnnounced !== moduleId) {
+                unsavedAnnounced = moduleId
+                console.error(refusal)
+                context.peer.moduleNotSaved({ moduleId, moduleName: refusal.moduleName })
+            }
+        } catch (error) {
+            console.error(error)
+        }
+    }
+
     async function pass(tick: boolean, netChaId: string | null = null): Promise<void> {
-        const run: { snapshot: Store2Snapshot | null, landed: boolean, plan: SavePlan | null } = { snapshot: null, landed: false, plan: null }
+        const run: PassRun = { snapshot: null, landed: false, plan: null, moduleRefusal: null, moduleScope: false }
         if (!tick) {
             port.beginIteration()
         }
         try {
             const outcome = await port.withWriteLock(() => attemptOf(run, tick, netChaId))
+            announceModuleRefusal(run.moduleRefusal)
             switch (outcome.kind) {
                 case 'saved':
                     retries = 0
-                    if (!tick) {
-                        // A tick pass can be an idle-net pass that never planned modules; only a full pass proves the stub is gone.
+                    if (run.moduleScope && run.moduleRefusal === null) {
+                        // Only a pass that planned the modules proves no stub blocks them; a character-only pass or a
+                        // degraded one says nothing, so the person is not asked again while the same stub stands.
                         editedAnnounced = null
+                        unsavedAnnounced = null
                     }
                     if (run.plan !== null) {
                         settleUnsavable(run.plan)
@@ -1073,16 +1148,15 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
         } catch (error) {
             retries = 0
+            // A throw after the degraded plan (a commit that landed, a failed hand-off) still tells the person once.
+            announceModuleRefusal(run.moduleRefusal)
             if (!run.landed && error instanceof StubRefusedError && error.kind === 'module' && error.reason === 'edited') {
-                // Outside the write lock. The marks are kept, so the edit is never dropped; the prompt is not awaited, and
-                // the wait is the request-interruptible one so a hide or Back flush still retries at once.
+                // Reached only when the acknowledged encoding holds no module set to carry. Outside the write lock. The
+                // marks are kept, so the edit is never dropped; the prompt is not awaited, and the wait is the
+                // request-interruptible one so a hide or Back flush still retries at once.
                 savetrys += 1
                 foldBack(run.snapshot)
-                const moduleId = error.chaId
-                if (editedAnnounced !== moduleId) {
-                    editedAnnounced = moduleId
-                    context.peer.moduleEdited({ moduleId, moduleName: error.moduleName }, () => editedAnnounced === moduleId)
-                }
+                announceModuleRefusal(error)
                 await port.wait(port.reportFailure(error, savetrys))
             } else if (!run.landed) {
                 savetrys += 1

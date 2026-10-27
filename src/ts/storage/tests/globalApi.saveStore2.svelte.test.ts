@@ -14,6 +14,7 @@ import { createWorldKit, nextCommit, settled, sleepReal, until, type World } fro
 import { startStore2, store2Boot, createPeerDouble, peerCommit, type Store2Kit, type Store2StartOptions } from 'src/ts/storage/tests/store2SaveKit'
 import { buildSmall } from 'src/ts/storage/tests/store2/codecFixtures'
 import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { moduleStubOf } from 'src/ts/storage/store2/moduleStubMatch'
 import type { ActiveStream } from 'src/ts/process/activeStreams'
 import type { Database, character } from 'src/ts/storage/database.svelte'
 
@@ -905,5 +906,42 @@ describe('new behaviour: a character that cannot be saved is skipped, noticed on
         await until(async () => (await toastsOf(language.saveCharacterUnsavedNotice(`"${chaId}"`))) >= 1, 'the notice by id', 4000)
         expect(vi.mocked(alertError)).not.toHaveBeenCalled()
         expect((await page.k.saved()).characters[2]).toMatchObject({ personality: 'edited beside the unreadable name' })
+    })
+})
+
+describe('new behaviour: a module stub the pass cannot encode keeps the page unsaved without a pass or a mark of its own', () => {
+    test('the page port holds the dirty flag after the degraded pass: unsaved marks, not clean, and neither a mark nor a further pass or commit follows', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        const entry = page.k.context.previous.objects?.moduleIndex?.entries[0]
+        if (entry === undefined) {
+            throw new Error('The seeded tree holds no module index.')
+        }
+        const encoder = page.k.context.encoder
+        if (encoder === undefined) {
+            throw new Error('The page holds no encoder.')
+        }
+        const plan = encoder.plan.bind(encoder)
+        let plans = 0
+        encoder.plan = async (planDb, request) => {
+            plans += 1
+            return plan(planDb, request)
+        }
+        ;(page.db.modules as Entry[])[0] = { ...(moduleStubOf(entry) as unknown as Entry), name: 'Edited module' }
+        page.flush()
+        // The edit's own change effects have counted their marks by now; the degraded pass runs after this point.
+        const marksAfterFlush = page.w.api.getSaveMarkCount()
+        await until(() => page.k.peer.edited.length === 1, 'the edited-stub announcement', 6000)
+        await sleepReal(100)
+        const marks = page.w.api.getSaveMarkCount()
+        expect(marks).toBe(marksAfterFlush)
+        const plansAfterPass = plans
+        const writesAfterPass = page.k.counted.writes.length
+        await sleepReal(900)
+        expect(page.w.api.hasUnsavedSaveMarks()).toBe(true)
+        expect(page.w.api.isSaveClean()).toBe(false)
+        expect(page.w.api.getSaveMarkCount()).toBe(marks)
+        expect(plans).toBe(plansAfterPass)
+        expect(page.k.counted.writes.length).toBe(writesAfterPass)
     })
 })

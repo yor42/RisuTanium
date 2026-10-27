@@ -6,7 +6,7 @@ import { get, writable } from 'svelte/store'
 // the whole app). The replacement asks through the real prompt controller in `alertPrompts` and builds the message exactly
 // as `alertSelect` does; `alertMd` posts the markdown alert and records it, and `waitAlert` resolves with the first `none`,
 // as the real ones do.
-const posted = vi.hoisted(() => ({ markdown: [] as string[] }))
+const posted = vi.hoisted(() => ({ markdown: [] as string[], toasts: [] as string[] }))
 vi.mock(import('src/ts/stores.svelte'), () => ({
     alertStore: writable({ type: 'none', msg: '' }),
 }) as unknown as typeof import('src/ts/stores.svelte'))
@@ -17,6 +17,9 @@ vi.mock(import('src/ts/alert'), async () => {
         alertMd: (msg: string) => {
             posted.markdown.push(msg)
             store.set({ type: 'markdown', msg })
+        },
+        alertToast: (msg: string) => {
+            posted.toasts.push(msg)
         },
         waitAlert: () => new Promise<void>((resolve) => {
             const stop = store.subscribe((value) => {
@@ -89,6 +92,7 @@ const prompt = (fields: Partial<PeerParkPrompt> & Pick<PeerParkPrompt, 'offers'>
 beforeEach(() => {
     changeLanguage('en')
     posted.markdown.length = 0
+    posted.toasts.length = 0
     resetAlertPromptsForTests()
     alertStore.set({ type: 'none', msg: '' })
 })
@@ -446,6 +450,15 @@ describe('moduleEdited: a closable prompt that names the module', () => {
         })
     })
 
+    test('new behaviour: the title says that characters and chats are still saved, that module changes are not, and that Reload discards what is unsaved', async () => {
+        const title = text().moduleEditedTitle
+        expect(title).toContain('Your characters and chats are still being saved')
+        expect(title).toContain('changes to modules are not saved')
+        expect(title).toContain('lost if the app is closed')
+        expect(title).toContain('anything else not yet saved in this tab')
+        expect(title).not.toContain('nothing in this tab is being saved')
+    })
+
     test('new behaviour: Reload reloads while the stub is still the blocker at the press', async () => {
         const { ui, reload } = newUi()
         ui.moduleEdited(info, () => true)
@@ -510,6 +523,30 @@ describe('moduleEdited: a closable prompt that names the module', () => {
         ui.moduleEdited({ moduleId: 'mod-1', moduleName: 'a$&b' }, () => true)
         await waitForSelect()
         expect(selectParts().title).toBe(text().moduleEditedTitle.replace('{name}', () => 'a$&b'))
+    })
+})
+
+describe('moduleNotSaved: one toast that names the module', () => {
+    test('new behaviour: the toast names the module in both places and no prompt is asked', async () => {
+        const { ui } = newUi()
+        ui.moduleNotSaved({ moduleId: 'mod-1', moduleName: 'Stuck module' })
+        expect(posted.toasts).toEqual([text().moduleNotSaved.replaceAll('{name}', () => 'Stuck module')])
+        expect(posted.toasts[0]).toContain('"Stuck module" is deleted or replaced')
+        expect(posted.toasts[0]).toContain('Your characters and chats are still being saved')
+        expect(posted.toasts[0]).toContain('lost if the app is closed or reloaded')
+        expect(shown().type).toBe('none')
+    })
+
+    test('new behaviour: a name with || or control characters is cleaned, a long name is cut, a replacement pattern is literal', () => {
+        const { ui } = newUi()
+        ui.moduleNotSaved({ moduleId: 'mod-1', moduleName: 'Bad||Name‮\nx' })
+        ui.moduleNotSaved({ moduleId: 'mod-2', moduleName: 'n'.repeat(60) })
+        ui.moduleNotSaved({ moduleId: 'mod-3', moduleName: 'a$&b' })
+        expect(posted.toasts).toEqual([
+            text().moduleNotSaved.replaceAll('{name}', () => 'Bad|Name x'),
+            text().moduleNotSaved.replaceAll('{name}', () => `${'n'.repeat(39)}…`),
+            text().moduleNotSaved.replaceAll('{name}', () => 'a$&b'),
+        ])
     })
 })
 
