@@ -12,7 +12,7 @@ import {
     createMemoryBackend, Store2BackendFailureError, Store2UnknownOutcomeError, sameBytes, type Store2Backend,
 } from 'src/ts/storage/store2/backend'
 import {
-    ADMISSION_INTERVAL_MS, nextRetained, type CommitRequest, type CommitResult, type Committer,
+    ADMISSION_INTERVAL_MS, IMPORT_REPLACES_BASE, nextRetained, type CommitRequest, type CommitResult, type Committer,
 } from 'src/ts/storage/store2/commit'
 import { RETAINED_MAX, firstCommitKey } from 'src/ts/storage/store2/commitKey'
 import {
@@ -229,7 +229,7 @@ describe.each(COMMIT_BACKENDS.map(fixture => [fixture.name, fixture] as const))(
             wrapped.log.length = 0
             const reused = record[0].keys[0]
             const result = await a.commit(await a.readCommit(), {
-                newUnits: 11,
+                newUnits: 11, carry: IMPORT_REPLACES_BASE,
                 build: async (ctx) => {
                     const tree = await treeRequest(0).build(ctx)
                     return { units: tree.units.map((unit, i) => i === 0 ? { ...unit, key: reused } : unit), manifest: tree.manifest }

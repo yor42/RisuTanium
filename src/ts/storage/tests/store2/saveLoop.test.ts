@@ -4,7 +4,7 @@ import {
     Store2BackendFailureError, Store2PayloadTooLargeError, Store2StalePageError, Store2UnknownOutcomeError,
 } from '../../store2/backend'
 import { language } from 'src/lang'
-import { checkTree, createCommitter, type AbandonResult, type CommitResult, type Committer, type CommitRequest } from '../../store2/commit'
+import { checkTree, createCommitter, IMPORT_REPLACES_BASE, type AbandonResult, type CommitResult, type Committer, type CommitRequest } from '../../store2/commit'
 import { classifyCommitRead, nextCommitKey } from '../../store2/commitKey'
 import { encodeUnit, newUnitKey, readUnit, refOfFrame, UNIT_TYPE, type CommitKey, type Manifest } from '../../store2/format'
 import type { Store2Read } from '../../store2/backend'
@@ -733,6 +733,7 @@ describe('new behaviour: result mapping', () => {
         async function leaveMarker(kit: Store2Kit, by: Committer): Promise<void> {
             void by.commit(await by.readCommit(), {
                 newUnits: 100,
+                carry: IMPORT_REPLACES_BASE,
                 label: 'bulk',
                 build: () => new Promise(() => {}),
             })

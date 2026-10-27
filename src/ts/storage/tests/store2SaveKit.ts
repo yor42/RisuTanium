@@ -10,7 +10,7 @@ import {
     createMemoryBackend, type MemoryBackend, type Store2Backend, type Store2WriteResult,
 } from 'src/ts/storage/store2/backend'
 import { assembleDatabase, encodeDatabase, previousFrom, type EncodedTree, type ListDerivation } from 'src/ts/storage/store2/codec'
-import { createCommitter, type Committer } from 'src/ts/storage/store2/commit'
+import { createCommitter, IMPORT_REPLACES_BASE, type Committer } from 'src/ts/storage/store2/commit'
 import { classifyCommitRead, firstCommitKey } from 'src/ts/storage/store2/commitKey'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
 import { createResidency, type Residency } from 'src/ts/storage/store2/residency'
@@ -433,8 +433,8 @@ export async function peerCommit(kit: Store2Kit, edit: (db: Database) => void, s
     const encoder = createSaveEncoder({ previous: previousFrom(kit.seeded.tree), lists: fakeLists, env: testEnv(kit.clock, seed + 1) })
     const plan = await encoder.plan(peerDb, { marked: new Set(), modules: true, whole: true })
     // A real peer judged its base `ok` on its own read, so the base names what it planned over; this helper's encoder
-    // is built from the seed tree and commits over a key that no longer names it, so the carry claim is left off.
-    const result = await peer.commit(await peer.readCommit(), { ...plan.commitRequest(), carry: undefined })
+    // is built from the seed tree and commits over a key that no longer names it, so the carry claim is replaced by the sentinel.
+    const result = await peer.commit(await peer.readCommit(), { ...plan.commitRequest(), carry: IMPORT_REPLACES_BASE })
     if (result.status !== 'committed') {
         throw new Error(`The peer commit came to ${result.status}.`)
     }

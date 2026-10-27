@@ -7,7 +7,7 @@
  */
 import { expect } from 'vitest'
 import {
-    createCommitter, type BuildContext, type BuiltCommit, type Committer, type CommitRequest,
+    createCommitter, IMPORT_REPLACES_BASE, type BuildContext, type BuiltCommit, type Committer, type CommitRequest,
 } from 'src/ts/storage/store2/commit'
 import { classifyCommitRead, firstCommitKey, nextCommitKey } from 'src/ts/storage/store2/commitKey'
 import type { Store2Backend, UnitWrite } from 'src/ts/storage/store2/backend'
@@ -115,6 +115,7 @@ export function treeRequest(extra: number, options: { tag?: string, record?: Bui
     return {
         newUnits: treeUnitCount(extra),
         label: options.label,
+        carry: IMPORT_REPLACES_BASE,
         build: (ctx) => buildTree(extra, ctx, options.tag ?? 'x', options.record),
     }
 }

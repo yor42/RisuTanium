@@ -4,7 +4,7 @@ import {
     assembleDatabase, builtCommitOf, encodeScoped, planScopedEncode, previousFrom, unitsToWrite,
     type EncodedTree, type EncodeOptions, type EncodeScope, type ScopedPlan,
 } from '../../store2/codec'
-import { checkBuiltUnits, createKeyMint, type BuildContext, type CommitResult, type KeyMint } from '../../store2/commit'
+import { checkBuiltUnits, createKeyMint, IMPORT_REPLACES_BASE, type BuildContext, type CommitResult, type KeyMint } from '../../store2/commit'
 import { readUnit, UNIT_TYPE, type Manifest } from '../../store2/format'
 import type { Database } from '../../database.svelte'
 import type { Store2Backend } from '../../store2/backend'
@@ -64,7 +64,7 @@ async function setup() {
 async function commitPlan(env: Awaited<ReturnType<typeof setup>>, plan: ScopedPlan): Promise<{ result: CommitResult, built: EncodedTree[] }> {
     const built: EncodedTree[] = []
     const result = await env.committer.commit(await env.committer.readCommit(), {
-        newUnits: plan.newUnits,
+        newUnits: plan.newUnits, carry: IMPORT_REPLACES_BASE,
         build: (context) => {
             const tree = plan.finalize(context)
             built.push(tree)
@@ -252,7 +252,7 @@ describe('the attempt context and the no-change plan', () => {
         const db = buildSmall(6)
         const seen: number[] = []
         const first = await env.committer.commit(await env.committer.readCommit(), {
-            newUnits: (await planScopedEncode(db, optionsOf(1, null), EVERYTHING)).newUnits,
+            newUnits: (await planScopedEncode(db, optionsOf(1, null), EVERYTHING)).newUnits, carry: IMPORT_REPLACES_BASE,
             build: async (context) => {
                 const tree = (await planScopedEncode(db, optionsOf(1, null), EVERYTHING)).finalize(context)
                 seen.push(context.seq, tree.manifest.seq)
