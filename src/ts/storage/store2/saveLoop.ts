@@ -241,6 +241,12 @@ export interface Store2LoopPort {
      * a frozen page runs no message or timer, so the pass would wait for the user to return. Absent means never.
      */
     yieldImmediately?(): boolean
+    /**
+     * A back-off that a save request ends early and whose request is kept for the wait after the pass, so a frozen page's
+     * page timer is not awaited between the request and the commit. Present only where the page can freeze; absent means
+     * the back-offs are the plain timed `sleep`.
+     */
+    rearmWait?(ms: number): Promise<void>
 }
 
 /** Takes the marks of a pass and trims the live tracker to its sticky front, before any await. */
@@ -1075,6 +1081,14 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
     }
 
+    /**
+     * A back-off after a pass or a peer read. `rearmWait` ends it on a save request and keeps that request for the wait
+     * after the pass; without it the back-off is the plain timed sleep. The delay is computed by the caller, once.
+     */
+    function backOff(ms: number): Promise<unknown> {
+        return port.rearmWait !== undefined ? port.rearmWait(ms) : port.sleep(ms)
+    }
+
     async function pass(tick: boolean, netChaId: string | null = null): Promise<void> {
         const run: PassRun = { snapshot: null, landed: false, plan: null, moduleRefusal: null, moduleScope: false }
         if (!tick) {
@@ -1103,12 +1117,13 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     retries += 1
                     foldBack(run.snapshot)
                     if (retries <= QUIET_RETRIES) {
-                        await port.sleep(1000)
+                        await backOff(1000)
                         break
                     }
                     // A run of retries that does not end is a failed save: the person is told and the attempts are counted.
                     savetrys += 1
-                    await port.sleep(port.reportFailure(new Store2CommitRefusedError(outcome.reason, outcome.detail), savetrys))
+                    const refusedDelay = port.reportFailure(new Store2CommitRefusedError(outcome.reason, outcome.detail), savetrys)
+                    await backOff(refusedDelay)
                     break
                 case 'deferred': {
                     // Quiet by design: no counter, no report, no sleep. The marks are kept so the page stays dirty, and
@@ -1143,7 +1158,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     if (run.plan !== null) {
                         settleUnsavable(run.plan)
                     }
-                    await port.sleep(backedOffWait(port.reportFailure(new Store2NotFlushedError(), savetrys), savetrys))
+                    const notFlushedDelay = backedOffWait(port.reportFailure(new Store2NotFlushedError(), savetrys), savetrys)
+                    await backOff(notFlushedDelay)
                     break
             }
         } catch (error) {
@@ -1157,13 +1173,16 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 savetrys += 1
                 foldBack(run.snapshot)
                 announceModuleRefusal(error)
-                await port.wait(port.reportFailure(error, savetrys))
+                const editedDelay = port.reportFailure(error, savetrys)
+                await (port.rearmWait !== undefined ? port.rearmWait(editedDelay) : port.wait(editedDelay))
             } else if (!run.landed) {
                 savetrys += 1
                 foldBack(run.snapshot)
-                await port.sleep(port.reportFailure(error, savetrys))
+                const failedDelay = port.reportFailure(error, savetrys)
+                await backOff(failedDelay)
             } else {
-                await port.sleep(port.reportUncountedFailure(error, 5))
+                const landedDelay = port.reportUncountedFailure(error, 5)
+                await backOff(landedDelay)
             }
         } finally {
             if (!tick) {
@@ -1185,7 +1204,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         } catch (error) {
             console.error(error)
             peerSignal = true
-            await port.sleep(1000)
+            await backOff(1000)
         }
     }
 
@@ -1327,7 +1346,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
         let resumedAt = 0
         try {
-            await (port.yieldNow !== undefined ? port.yieldNow() : yieldToEventLoop())
+            // A hidden Android page may be frozen inside the yield, which would hold the slot until the user returns.
+            if (port.yieldImmediately?.() !== true) {
+                await (port.yieldNow !== undefined ? port.yieldNow() : yieldToEventLoop())
+            }
         } finally {
             // Read right after the await, also when it rejects: a rejection is a throw after the yield, whose span B starts here.
             if (MEASURE) {

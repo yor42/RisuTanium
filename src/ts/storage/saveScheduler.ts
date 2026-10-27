@@ -32,6 +32,12 @@ export interface SaveScheduler {
     requestNow(): void
     /** A sleep that `requestNow` ends early, or skips once when it came before the sleep. */
     wait(ms: number): Promise<void>
+    /**
+     * `wait` for a back-off after which no pass necessarily follows. A `requestNow` that ends it also sets the latch, so the
+     * wait that follows the pass is not spent on a page timer; a latch already set ends it at once and stays set for that
+     * following wait.
+     */
+    waitRearm(ms: number): Promise<void>
     /** True while a debounce is running. */
     debouncePending(): boolean
 }
@@ -42,6 +48,21 @@ export function createSaveScheduler(options: SaveSchedulerOptions): SaveSchedule
     let pending = false
     let latch = false
     let wake: (() => void) | null = null
+    let wakeRearms = false
+
+    function sleepWake(ms: number, rearms: boolean): Promise<void> {
+        return new Promise<void>((resolve) => {
+            const thisWake = () => resolve()
+            wake = thisWake
+            wakeRearms = rearms
+            void options.sleep(ms).then(() => {
+                if (wake === thisWake) {
+                    wake = null
+                }
+                resolve()
+            })
+        })
+    }
 
     return {
         schedule(markDirty = true) {
@@ -66,6 +87,9 @@ export function createSaveScheduler(options: SaveSchedulerOptions): SaveSchedule
                 const resolve = wake
                 wake = null
                 resolve()
+                if (wakeRearms) {
+                    latch = true
+                }
             } else {
                 latch = true
             }
@@ -75,16 +99,13 @@ export function createSaveScheduler(options: SaveSchedulerOptions): SaveSchedule
                 latch = false
                 return Promise.resolve()
             }
-            return new Promise<void>((resolve) => {
-                const thisWake = () => resolve()
-                wake = thisWake
-                void options.sleep(ms).then(() => {
-                    if (wake === thisWake) {
-                        wake = null
-                    }
-                    resolve()
-                })
-            })
+            return sleepWake(ms, false)
+        },
+        waitRearm(ms) {
+            if (latch) {
+                return Promise.resolve()
+            }
+            return sleepWake(ms, true)
         },
         debouncePending() {
             return pending

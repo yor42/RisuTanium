@@ -2227,6 +2227,8 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
             }
         },
         wait: (ms) => scheduler.wait(ms),
+        // Chosen once by transport: a back-off begun visible can span the freeze, so the page's hidden state is no basis.
+        rearmWait: isAndroidTransport() ? (ms) => scheduler.waitRearm(ms) : undefined,
         sleep,
         sleepForever,
         now: () => Date.now(),

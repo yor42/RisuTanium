@@ -187,6 +187,95 @@ describe('requestNow', () => {
     })
 })
 
+describe('waitRearm', () => {
+    test('a request that wakes it also sets the latch, so the next wait returns at once and only that one', async () => {
+        const { scheduler } = setup()
+        const backoff = track(scheduler.waitRearm(60_000))
+        scheduler.requestNow()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(backoff.settled()).toBe(true)
+
+        const next = track(scheduler.wait(500))
+        await vi.advanceTimersByTimeAsync(0)
+        expect(next.settled()).toBe(true)
+        const after = track(scheduler.wait(500))
+        await vi.advanceTimersByTimeAsync(499)
+        expect(after.settled()).toBe(false)
+    })
+
+    test('a latch already set ends it at once and stays set for the wait after it', async () => {
+        const { scheduler } = setup()
+        scheduler.requestNow()
+
+        const backoff = track(scheduler.waitRearm(60_000))
+        await vi.advanceTimersByTimeAsync(0)
+        expect(backoff.settled()).toBe(true)
+
+        const next = track(scheduler.wait(500))
+        await vi.advanceTimersByTimeAsync(0)
+        expect(next.settled()).toBe(true)
+    })
+
+    test('guard: without a request it takes its full length and leaves no latch', async () => {
+        const { scheduler } = setup()
+        const backoff = track(scheduler.waitRearm(1000))
+        await vi.advanceTimersByTimeAsync(999)
+        expect(backoff.settled()).toBe(false)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(backoff.settled()).toBe(true)
+
+        const next = track(scheduler.wait(500))
+        await vi.advanceTimersByTimeAsync(499)
+        expect(next.settled()).toBe(false)
+    })
+
+    test('guard: a plain wait woken by a request leaves no latch (idle wake unchanged)', async () => {
+        const { scheduler } = setup()
+        const idle = track(scheduler.wait(1000))
+        scheduler.requestNow()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(idle.settled()).toBe(true)
+
+        const next = track(scheduler.wait(500))
+        await vi.advanceTimersByTimeAsync(499)
+        expect(next.settled()).toBe(false)
+    })
+
+    test('a plain wait woken by a request after a rearm wait leaves no latch (the rearm flag does not outlive its wait)', async () => {
+        const { scheduler } = setup()
+        const backoff = scheduler.waitRearm(60_000)
+        scheduler.requestNow()
+        await backoff
+        await scheduler.wait(500)
+
+        const idle = track(scheduler.wait(1000))
+        scheduler.requestNow()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(idle.settled()).toBe(true)
+
+        const next = track(scheduler.wait(500))
+        await vi.advanceTimersByTimeAsync(0)
+        expect(next.settled()).toBe(false)
+        await vi.advanceTimersByTimeAsync(499)
+        expect(next.settled()).toBe(false)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(next.settled()).toBe(true)
+    })
+
+    test('guard: the timer of a woken rearm wait does not end a later wait early', async () => {
+        const { scheduler } = setup()
+        const woken = scheduler.waitRearm(1000)
+        scheduler.requestNow()
+        await woken
+        const spent = scheduler.wait(500)
+        await spent
+        const later = track(scheduler.wait(5000))
+
+        await vi.advanceTimersByTimeAsync(1000)
+        expect(later.settled()).toBe(false)
+    })
+})
+
 describe('wait', () => {
     test('guard: without a request, the wait takes its full length (the retry backoff is unchanged)', async () => {
         const { scheduler } = setup()
