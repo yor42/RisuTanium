@@ -8,7 +8,9 @@
  *
  * Labels: reproducer (fails against the base or the named mutant), guard (passes before and after).
  */
+import { types } from 'node:util'
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import type { AssetList } from 'src/ts/storage/assetList'
 import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
 import { createWorldKit, nextCommit, settled, sleepReal, until, type World } from 'src/ts/storage/tests/saveLoopWorld'
 import { startStore2, store2Boot, type Store2Kit, type Store2StartOptions } from 'src/ts/storage/tests/store2SaveKit'
@@ -205,6 +207,46 @@ describe('a load that changes nothing costs no commit', () => {
             page.flush()
         })
         expect(page.k.writtenSince(mark)).toEqual([])
+    })
+})
+
+/** The small profile with the stored module 1 holding one asset tuple. */
+function withAssetModule(): Database {
+    const db = current() as unknown as { modules: Array<{ assets: string[][] }> }
+    db.modules[1].assets = [['asset-0', 'assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png', 'png']]
+    return db as unknown as Database
+}
+
+/** The world's module graph holds its own AssetList class, so the list is recognised by its prototype chain, not by `instanceof`. */
+function holdsAssetList(value: unknown): boolean {
+    return Array.isArray(value) && Object.getPrototypeOf(value) !== Array.prototype && Object.getPrototypeOf(value)?.constructor?.name === 'AssetList'
+}
+
+describe('a loaded module with assets', () => {
+    test('a-loaded-module-has-an-AssetList-in-the-slot-and-its-tuples-are-not-proxied', async () => {
+        const page = await startPage(withAssetModule())
+        await stubOut(page, 1)
+        await page.acquire(page.ids[1])
+        page.flush()
+        const assets = modules(page)[1].assets as AssetList
+        expect(holdsAssetList(assets)).toBe(true)
+        expect(Array.from(assets)).toEqual([['asset-0', 'assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png', 'png']])
+        expect(types.isProxy(assets)).toBe(false)
+        expect(types.isProxy(assets[0])).toBe(false)
+    })
+
+    test('guard: a-loaded-asset-module-is-not-rewritten-by-the-next-pass', async () => {
+        const page = await startPage(withAssetModule())
+        await stubOut(page, 1)
+        const writes = page.k.counted.writeCalls()
+        const reads = vi.spyOn(page.k.committer, 'readCommit')
+        await page.acquire(page.ids[1])
+        page.flush()
+        await until(() => reads.mock.calls.length > 0, 'the pass the install causes')
+        await settled(page.w)
+        expect(page.k.counted.writeCalls()).toBe(writes)
+        expect(digestOf(page, 1, IDENTITY.module)).toBeDefined()
+        expect(digestOf(page, 1, IDENTITY.alModule)).toBeDefined()
     })
 })
 

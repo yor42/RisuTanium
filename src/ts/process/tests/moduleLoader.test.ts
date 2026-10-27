@@ -79,6 +79,7 @@ vi.mock(import('src/ts/process/modules'), () => ({
     bumpModuleGui: vi.fn(() => { h.bumped += 1 }),
 }) as unknown as typeof import('src/ts/process/modules'))
 
+import { AssetList, toAssetList } from 'src/ts/storage/assetList'
 import { crc32 } from 'src/ts/storage/blockFrame'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { isModuleStub } from 'src/ts/storage/moduleStub'
@@ -335,6 +336,45 @@ describe('the boot registers the loader and a load installs the stored body', ()
         const got = await acquireModule(world.ids[0])
         expect(got?.module).toBe(slots(world)[0])
         expect(world.gate.reads).toBe(0)
+    })
+})
+
+describe('a load wraps the installed asset list the way the boot path does', () => {
+    const tuple = ['asset-0', 'assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png', 'png']
+
+    test('the installed list is an AssetList holding the stored tuples', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b', { assets: [tuple] })])
+        stubOut(world, 1)
+        await acquireModule(world.ids[1])
+        const assets = slots(world)[1].assets
+        expect(assets).toBeInstanceOf(AssetList)
+        expect(Array.from(assets as AssetList)).toEqual([tuple])
+    })
+
+    test('guard: a body without assets gets no assets field', async () => {
+        const body = moduleBody('b')
+        delete body.assets
+        const world = await bootWorld([moduleBody('a'), body])
+        stubOut(world, 1)
+        await acquireModule(world.ids[1])
+        expect(holdsFullBody(slots(world)[1])).toBe(true)
+        expect('assets' in slots(world)[1]).toBe(false)
+    })
+
+    test('guard: a body that already holds an AssetList keeps that very list', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b', { assets: [tuple] })])
+        stubOut(world, 1)
+        const prepared = toAssetList([['asset-0', 'assets/b.png', 'png']])
+        const realRead = world.residency.readModule.bind(world.residency)
+        vi.spyOn(world.residency, 'readModule').mockImplementation(async (handle) => {
+            const read = await realRead(handle)
+            if (read.status === 'ok') {
+                read.value.assets = prepared as unknown as typeof read.value.assets
+            }
+            return read
+        })
+        await acquireModule(world.ids[1])
+        expect(slots(world)[1].assets).toBe(prepared)
     })
 })
 
