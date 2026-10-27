@@ -13,6 +13,8 @@ import { resolveSecret, SecretRefError } from "../secretRef"
 import { language } from "../../lang"
 import { withInFlight } from "../process/inFlightWork"
 import { requestChatData } from "../process/request/request"
+import { createModuleFailureMemory, ensureCurrentModules } from "../process/moduleEnsure"
+import { hasModuleStubs } from "../process/moduleRefList"
 import { doingChat, type OpenAIChat } from "../process/index.svelte"
 import { applyMarkdownToNode, risuChatParser, type simpleCharacterArgument } from "../parser/parser.svelte"
 import { selectedCharID } from "../stores.svelte"
@@ -38,6 +40,21 @@ export const LLMCacheStorage = localforage.createInstance({
 })
 
 let waitTrans = 0
+
+// What translateLLM returns when the referenced modules did not load. It is never text, so no caller can cache it or
+// show it, and it is not an ERR:: string, so no caller alerts a second time.
+const TRANSLATE_STOPPED = Symbol('translate-stopped')
+
+// One translation run: a call into runTranslator or translateHTML. The module wait happens at the run's first request
+// (a cache hit needs no module) and its outcome covers every later chunk of the run.
+interface TranslateRun {
+    state: 'unchecked' | 'ready' | 'stopped'
+}
+
+// Remembers failed stubs for the translator only. The translator alerts at most once per memory period; on chat open
+// the module trigger's own alert for the same failure can come first (two alertError calls, shown as one notice
+// because the alert store is replaced). Runs started while the first check loads wait on it and stop quietly.
+const translatorMemory = createModuleFailureMemory()
 
 export function getCurrentTranslatorPreset(): TranslatorPreset {
     return getCurrentTranslatorPresetFromState(getDatabase())
@@ -96,6 +113,7 @@ async function runTranslatorUntracked(text:string, reverse:boolean, from:string,
     }
 
     let fullResult:string[] = []
+    const run: TranslateRun = { state: 'unchecked' }
 
     for(const chunk of chunks){
         if(chunk[1]){
@@ -104,7 +122,12 @@ async function runTranslatorUntracked(text:string, reverse:boolean, from:string,
                 fullResult.push(chunk[0])
                 continue
             }
-            const result = await translateMain(trimed, arg);
+            const result = await translateMain(trimed, arg, run);
+
+            if(result === TRANSLATE_STOPPED){
+                // Leaves before the session cache push below, so a stopped run serves nothing stale next time.
+                return text
+            }
 
             if(result.startsWith('ERR::')){
                 alertError(result)
@@ -134,11 +157,11 @@ async function runTranslatorUntracked(text:string, reverse:boolean, from:string,
 
 }
 
-async function translateMain(text:string, arg:{from:string, to:string, host:string, translatorNote?:string}){
+async function translateMain(text:string, arg:{from:string, to:string, host:string, translatorNote?:string}, run:TranslateRun){
     let db = getDatabase()
     if(db.translatorType === 'llm'){
         const tr = arg.to || 'en'
-        return translateLLM(text, {to: tr, from: arg.from, translatorNote: arg.translatorNote})
+        return translateLLM(text, {to: tr, from: arg.from, translatorNote: arg.translatorNote}, run)
     }
     if(db.translatorType === 'deepl'){
         const body = {
@@ -335,7 +358,10 @@ async function translateHTMLUntracked(html: string, reverse:boolean, charArg:sim
     if(db.translatorType === 'llm'){
         const tr = db.translator || 'en'
         const from = db.translatorInputLanguage
-        const r = await translateLLM(html, {to: tr, from: from, regenerate})
+        const r = await translateLLM(html, {to: tr, from: from, regenerate}, { state: 'unchecked' })
+        if(r === TRANSLATE_STOPPED){
+            return html
+        }
         if(db.playMessageOnTranslateEnd){
             const audio = new Audio(sendSound);
             audio.play().catch(() => {});
@@ -553,12 +579,19 @@ function needSuperChunkedTranslate(){
     return getDatabase().translatorType === 'deeplX'
 }
 
-async function translateLLM(text:string, arg:{to:string, from:string, regenerate?:boolean,translatorNote?:string}):Promise<string>{
+async function translateLLM(text:string, arg:{to:string, from:string, regenerate?:boolean,translatorNote?:string}, run:TranslateRun):Promise<string | typeof TRANSLATE_STOPPED>{
     if(!arg.regenerate){
         const cacheMatch = await LLMCacheStorage.getItem(text)
         if(cacheMatch !== null){
             return cacheMatch as string
         }
+    }
+    if(run.state === 'unchecked'){
+        // No signal is passed: a run that waits on another run's load must not inherit that run's abort.
+        run.state = hasModuleStubs() && !(await ensureCurrentModules({ memory: translatorMemory })) ? 'stopped' : 'ready'
+    }
+    if(run.state === 'stopped'){
+        return TRANSLATE_STOPPED
     }
     const styleDecodeRegex = /\<risu-style\>(.+?)\<\/risu-style\>/gms
     let styleDecodes:string[] = []

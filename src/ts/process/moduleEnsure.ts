@@ -1,7 +1,8 @@
 import { untrack } from 'svelte'
 import { acquireModule, ModuleLoadError } from '../storage/store2/moduleAcquire'
-import { createRunSubject, createSendSubject, type Origin, type OriginHint } from './chatOrigin'
+import { createRunSubject, createSendSubject, originOf, type Origin, type OriginHint } from './chatOrigin'
 import { alertError } from '../alert'
+import { getCurrentChat, getCurrentCharacter } from '../storage/database.svelte'
 import type { RisuModule } from './modules'
 import { hasModuleStubs, moduleLoadFailedText, unloadedModulesOf } from './moduleRefList'
 
@@ -9,9 +10,12 @@ import { hasModuleStubs, moduleLoadFailedText, unloadedModulesOf } from './modul
 // (see moduleRefList), and no closeless cover (a wait or progress notice without a cancel) may be held across an
 // acquireModule await: a lorebook question can keep a load pending until the person answers.
 
-/** One or more referenced modules did not load. `names` holds every failing module, in reference order. */
+/**
+ * One or more referenced modules did not load. `names` holds every failing module, in reference order; `slots` holds
+ * the failing slot objects in the same order, so a caller can remember which stub failed.
+ */
 export class ModuleEnsureError extends Error {
-    constructor(public readonly names: string[]) {
+    constructor(public readonly names: string[], public readonly slots: readonly object[] = []) {
         super(names.join(', '))
         this.name = 'ModuleEnsureError'
     }
@@ -30,6 +34,7 @@ export async function ensureModulesForOrigin(origin: Origin, signal?: AbortSigna
     }
     const subject = hint ? createSendSubject(origin, hint) : createRunSubject(origin)
     const names: string[] = []
+    const failedSlotObjects: object[] = []
     for(const slot of unloadedModulesOf(subject)){
         try {
             await acquireModule(slot.id, signal)
@@ -38,10 +43,11 @@ export async function ensureModulesForOrigin(origin: Origin, signal?: AbortSigna
                 throw signal.reason
             }
             names.push(slot.name)
+            failedSlotObjects.push(slot)
         }
     }
     if(names.length > 0){
-        throw new ModuleEnsureError(names)
+        throw new ModuleEnsureError(names, failedSlotObjects)
     }
 }
 
@@ -62,6 +68,125 @@ export async function ensureModulesOrAlert(origin: Origin, signal?: AbortSignal,
             return false
         }
         throw error
+    }
+}
+
+/**
+ * What one caller remembers about failed stubs. `key` is the origin the memory describes; `slots` holds the stub objects
+ * that failed for it; `inFlight` is the settling check that owns the current load, if any.
+ */
+export interface ModuleFailureMemory {
+    key: string
+    slots: WeakSet<object>
+    inFlight: Promise<boolean> | null
+}
+
+export function createModuleFailureMemory(): ModuleFailureMemory {
+    return { key: '', slots: new WeakSet(), inFlight: null }
+}
+
+/**
+ * Either a failure memory (no abort signal: a waiter must never inherit another caller's abort) or a plain wait with an
+ * optional signal and alert switch. Each member declares the other's properties as `never`, so the compiler rejects a
+ * call that passes a memory together with a signal or an alert; it would otherwise drop them silently.
+ */
+export type EnsureCurrentOptions =
+    { memory: ModuleFailureMemory, signal?: never, alert?: never }
+    | { memory?: never, signal?: AbortSignal, alert?: boolean }
+
+/**
+ * Waits for the stubs the selected character's current chat references, for callers that are not a send. True when
+ * nothing was needed or every module loaded. A failure shows one combined alert (unless `alert` is false) and returns
+ * false; an abort returns false silently. No stubs, no selection, a group owner or an id-less chat resolve true without
+ * loading. Call sites guard with hasModuleStubs() first so that a database without stubs adds no await.
+ *
+ * With a memory, a check for a chat whose stub already failed returns false without a load attempt or an alert, and a
+ * check that starts while another check for the same chat is still loading waits on it and shares its result, so only
+ * the owner of a load can alert. Changing the character or chat clears the memory; a stub replaced by its loaded body
+ * is no longer unloaded and is not remembered.
+ */
+export async function ensureCurrentModules(options: EnsureCurrentOptions = {}): Promise<boolean> {
+    if(!hasModuleStubs()){
+        return true
+    }
+    const character = getCurrentCharacter()
+    const chat = getCurrentChat()
+    if(!character || !chat || character.type === 'group'){
+        return true
+    }
+    const origin = originOf(character, chat)
+    if(!origin){
+        return true
+    }
+    const hint: OriginHint = { owner: character, chat }
+    if(options.memory){
+        return ensureWithMemory(options.memory, origin, hint)
+    }
+    const signal = options.signal
+    try {
+        await ensureModulesForOrigin(origin, signal, hint)
+        return true
+    } catch (error) {
+        if(error instanceof ModuleEnsureError){
+            if(options.alert !== false){
+                alertError(moduleLoadFailedText(error.names))
+            }
+            return false
+        }
+        if(signal?.aborted){
+            return false
+        }
+        throw error
+    }
+}
+
+/** The default call: alerts on a failure, silent on an abort. */
+export function ensureCurrentModulesOrAlert(signal?: AbortSignal): Promise<boolean> {
+    return ensureCurrentModules({ signal })
+}
+
+async function ensureWithMemory(memory: ModuleFailureMemory, origin: Origin, hint: OriginHint): Promise<boolean> {
+    const key = origin.chaId + ':' + origin.chatId
+    if(memory.key !== key){
+        memory.key = key
+        memory.slots = new WeakSet()
+        memory.inFlight = null
+    }
+    const unloaded = unloadedModulesOf(createSendSubject(origin, hint))
+    if(unloaded.length === 0){
+        return true
+    }
+    if(unloaded.some((slot) => memory.slots.has(slot))){
+        return false
+    }
+    if(memory.inFlight){
+        return await memory.inFlight
+    }
+    // Failing slots go into the set this check saw when it started: a key reset while the load runs must not move them
+    // into the new chat's memory.
+    const slotsAtStart = memory.slots
+    const own: Promise<boolean> = (async () => {
+        try {
+            await ensureModulesForOrigin(origin, undefined, hint)
+            return true
+        } catch (error) {
+            if(error instanceof ModuleEnsureError){
+                for(const slot of error.slots){
+                    slotsAtStart.add(slot)
+                }
+                alertError(moduleLoadFailedText(error.names))
+                return false
+            }
+            throw error
+        }
+    })()
+    memory.inFlight = own
+    try {
+        return await own
+    } finally {
+        if(memory.inFlight === own){
+            memory.inFlight = null
+        }
     }
 }
 
