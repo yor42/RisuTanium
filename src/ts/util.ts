@@ -502,6 +502,11 @@ export function getAuthorNoteDefaultText(){
 
 }
 
+// encryptBuffer and decryptBuffer are obfuscation, not secrecy: the key is one unsalted
+// SHA-256 of a string that is usually a public constant, and the IV is always zero, so the
+// same key reuses the same nonce. They stay byte-compatible so existing .risup, rcc and
+// translator preset files, including upstream's, still open. Never use them for .rtb or
+// any secret; a secret needs a separate helper with a random IV and a real key derivation.
 export async function encryptBuffer(data:Uint8Array, keys:string){
     // hash the key to get a fixed length key value
     const keyArray = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(keys))
