@@ -2,6 +2,8 @@
 //
 //   node Agents/Tools/save-gen/synth-bin-verify.mjs --manifest <m.json> --bin <exported.bin> [--show 20]
 //   node Agents/Tools/save-gen/synth-bin-verify.mjs --bin-a <first.bin> --bin-b <second.bin> [--forbid-added-root-keys] [--show 20]
+//   Either mode also takes --allow-duplicate-module-ids <id,id>: those module ids may repeat (the later modules key as <id>#2).
+//   A manifest written with --p3-modules allows its own duplicate id and also checks the P3 module cases (p3ModulesObserved).
 //
 // Parses a .bin on its own (the [u32 LE name length][name][u32 LE data length][data] framing of backupContainer.ts), hashes
 // every asset body by streaming it, decodes database.risudat and resolves it into one logical tree: characters a store2
@@ -69,7 +71,7 @@ const INLAY_NAME_PATTERN = /^risu-inlay-([0-9a-f]{64})-(0|[1-9][0-9]{0,6})\.part
 const COLD_UNIT_NAME_PATTERN = /^(?:coldstorage[/_])?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\.json$/
 
 function parseArguments(argv) {
-  const opt = { manifest: '', bin: '', binA: '', binB: '', show: 20, forbidAddedRootKeys: false }
+  const opt = { manifest: '', bin: '', binA: '', binB: '', show: 20, forbidAddedRootKeys: false, allowDuplicateModuleIds: [] }
   for (let i = 0; i < argv.length; i += 2) {
     const arg = argv[i]
     if (arg === '--forbid-added-root-keys') { opt.forbidAddedRootKeys = true; i--; continue }
@@ -80,6 +82,7 @@ function parseArguments(argv) {
     else if (arg === '--bin-a') opt.binA = value
     else if (arg === '--bin-b') opt.binB = value
     else if (arg === '--show') opt.show = Number(value)
+    else if (arg === '--allow-duplicate-module-ids') opt.allowDuplicateModuleIds = value.split(',').filter((id) => id !== '')
     else throw new Error(`unknown argument ${arg}`)
   }
   const manifestMode = opt.manifest !== '' || opt.bin !== ''
@@ -314,7 +317,7 @@ export function resolveTree(db, units) {
 }
 
 /** The per-kind maps the report localises with, and one hash per root key: the manifest side of the decision. */
-function entitiesOf(tree) {
+function entitiesOf(tree, allowedDuplicateModuleIds = new Set()) {
   const duplicates = { characters: [], chats: [], modules: [] }
   const entities = { characters: new Map(), chats: new Map(), modules: new Map() }
   const put = (map, key, value, list) => { if (map.has(key)) list.push(key); map.set(key, value) }
@@ -326,8 +329,15 @@ function entitiesOf(tree) {
     put(entities.characters, character.chaId, project(rest, [], { chatIds: chats.map((c) => c.id) }), duplicates.characters)
     for (const chat of chats) put(entities.chats, `${character.chaId}|${chat.id}`, project(chat, []), duplicates.chats)
   }
+  // A module id the caller allows to repeat (the generator's --p3-modules duplicate-id case) keys its later modules <id>#2,
+  // <id>#3 in tree order, as the generator's manifest does; any other repeated id stays one key and a named problem.
+  const moduleSeen = new Map()
   for (const module of Array.isArray(tree.modules) ? tree.modules : []) {
-    if (isPlainObject(module)) put(entities.modules, module.id, project(module, []), duplicates.modules)
+    if (!isPlainObject(module)) continue
+    const nth = (moduleSeen.get(module.id) ?? 0) + 1
+    moduleSeen.set(module.id, nth)
+    const key = nth > 1 && allowedDuplicateModuleIds.has(module.id) ? `${module.id}#${nth}` : module.id
+    put(entities.modules, key, project(module, []), duplicates.modules)
   }
   return { entities, duplicates }
 }
@@ -350,7 +360,7 @@ export function addedRootKeysOf(tree, expectedParts) {
 }
 
 /** One .bin read whole: its container walk, the logical tree, and what went wrong reading it. `db` is the decoded database as stored. */
-export function inspectBin(binPath, label) {
+export function inspectBin(binPath, label, allowedDuplicateModuleIds = []) {
   const problems = []
   const walk = walkContainer(binPath)
   problems.push(...walk.problems)
@@ -368,7 +378,7 @@ export function inspectBin(binPath, label) {
       const resolved = resolveTree(db, walk.units)
       const counts = resolved.counts
       tree = resolved.tree
-      const collected = entitiesOf(tree)
+      const collected = entitiesOf(tree, new Set(allowedDuplicateModuleIds))
       entities = collected.entities
       parts = partsOf(tree)
       resolution = { inlineCharacters: counts.inline, stubCharacters: counts.stub, coldChats: counts.coldChats, unitEntries: walk.units.size }
@@ -471,9 +481,43 @@ function compareProjected(expectedMap, actualMap, show) {
   )
 }
 
+/**
+ * The generator's --p3-modules cases (manifest.p3Modules) as the resolved tree holds them. A case that is gone or changed in
+ * kind is a named problem here; the whole-tree hash comparison still decides on content. archiveCharacters is reported, never
+ * judged: the generator leaves it unset and the app writes it at boot.
+ */
+export function p3ModulesObserved(record, tree) {
+  const problems = []
+  const modules = Array.isArray(tree.modules) ? tree.modules.filter(isPlainObject) : []
+  const withId = (id) => modules.filter((module) => module.id === id)
+  const mcp = withId(record.mcp.id)
+  if (mcp.length !== 1 || !isPlainObject(mcp[0].mcp) || mcp[0].mcp.url !== record.mcp.url) problems.push(`p3 mcp module ${record.mcp.id} does not hold mcp.url ${record.mcp.url}`)
+  const duplicates = withId(record.duplicateId.id)
+  if (duplicates.length !== record.duplicateId.names.length) problems.push(`p3 duplicate id ${record.duplicateId.id} is held by ${duplicates.length} modules, expected ${record.duplicateId.names.length}`)
+  else if (canonical(duplicates.map((module) => module.name)) !== canonical(record.duplicateId.names)) problems.push(`p3 duplicate id ${record.duplicateId.id} modules are named ${canonical(duplicates.map((module) => module.name))}, expected ${canonical(record.duplicateId.names)}`)
+  if (tree.moduleIntergration !== record.integration.value) problems.push(`p3 moduleIntergration is ${canonical(tree.moduleIntergration)}, expected ${canonical(record.integration.value)}`)
+  const integration = withId(record.integration.id)
+  if (integration.length !== 1 || integration[0].namespace !== record.integration.namespace) problems.push(`p3 integration module ${record.integration.id} does not hold namespace ${record.integration.namespace}`)
+  const noBook = withId(record.noBookVersion.id)
+  const stamped = noBook.length === 1 && Array.isArray(noBook[0].lorebook) ? noBook[0].lorebook.filter((entry) => isPlainObject(entry) && entry.bookVersion !== undefined).length : -1
+  if (noBook.length !== 1 || stamped < 0) problems.push(`p3 no-bookVersion module ${record.noBookVersion.id} is missing or holds no lorebook`)
+  else if (stamped > 0) problems.push(`p3 no-bookVersion module ${record.noBookVersion.id}: ${stamped} of ${record.noBookVersion.entries} lorebook entries now carry bookVersion (the app stamped them)`)
+  const enabled = Array.isArray(tree.enabledModules) ? tree.enabledModules : []
+  const missingEnabled = record.enabled.filter((id) => !enabled.includes(id))
+  if (missingEnabled.length) problems.push(`p3 enabledModules lost ${missingEnabled.length} of ${record.enabled.length} ids`)
+  return {
+    problems,
+    observed: {
+      mcpModules: mcp.length, duplicateIdModules: duplicates.length, integrationModules: integration.length,
+      noBookVersionEntriesWithBookVersion: stamped, moduleIntergration: tree.moduleIntergration, archiveCharacters: tree.archiveCharacters,
+    },
+  }
+}
+
 function main() {
   const opt = parseArguments(process.argv.slice(2))
   const problems = []
+  let p3Record = null
   let expected = null
   let actualSide
   let first = null
@@ -489,12 +533,19 @@ function main() {
     for (const [section, count] of [['assets', manifest.counts?.assets], ['characters', manifest.counts?.characters], ['chats', manifest.counts?.chats], ['modules', manifest.counts?.modules], ['parts', manifest.counts?.parts]]) {
       if (expected[section].size !== count) problems.push(`manifest ${section} holds ${expected[section].size} entries but counts says ${count}`)
     }
-    actualSide = inspectBin(opt.bin, '')
+    p3Record = manifest.p3Modules ?? null
+    actualSide = inspectBin(opt.bin, '', p3Record ? [...opt.allowDuplicateModuleIds, p3Record.duplicateId.id] : opt.allowDuplicateModuleIds)
   } else {
-    first = inspectBin(opt.binA, 'a')
+    first = inspectBin(opt.binA, 'a', opt.allowDuplicateModuleIds)
     problems.push(...first.problems)
     if (first.entities) expected = { assets: first.walk.assets, ...first.entities, parts: first.parts }
-    actualSide = inspectBin(opt.binB, 'b')
+    actualSide = inspectBin(opt.binB, 'b', opt.allowDuplicateModuleIds)
+  }
+  let p3Observed = null
+  if (p3Record && actualSide.tree) {
+    const checked = p3ModulesObserved(p3Record, actualSide.tree)
+    problems.push(...checked.problems)
+    p3Observed = checked.observed
   }
   problems.push(...actualSide.problems)
   const { walk } = actualSide
@@ -526,7 +577,7 @@ function main() {
   const differences = assetDifferences + treeDifferences
   const complete = Boolean(kinds.assets && kinds.parts && (!first || tree))
   const ok = differences === 0 && problems.length === 0 && complete
-  console.log(JSON.stringify({ ok, differences, problems, addedRootKeys, file: { bytes: walk.size, entries: walk.entries, inlayEntries: walk.inlays }, resolution: actualSide.resolution, kinds, tree }, null, 2))
+  console.log(JSON.stringify({ ok, differences, problems, addedRootKeys, ...(p3Observed ? { p3Modules: p3Observed } : {}), file: { bytes: walk.size, entries: walk.entries, inlayEntries: walk.inlays }, resolution: actualSide.resolution, kinds, tree }, null, 2))
   process.exitCode = ok ? 0 : 1
 }
 
