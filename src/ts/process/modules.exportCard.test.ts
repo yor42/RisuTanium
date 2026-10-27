@@ -71,6 +71,7 @@ vi.mock(import('src/ts/interchangeability'), () => ({
 vi.mock(import('src/ts/characterCards'), () => ({
     exportCharacterCard: spies.exportCard,
     importCharacterProcess: vi.fn(),
+    preflightCardExport: vi.fn(async () => ({ kind: 'ok', large: new Map() })),
 }) as unknown as typeof import('src/ts/characterCards'))
 
 import { language } from 'src/lang'

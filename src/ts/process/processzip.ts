@@ -175,13 +175,37 @@ export async function processZip(dataArray: Uint8Array): Promise<string> {
     }
 }
 
+/** The ZIP64 sentinel: an archive offset or an entry size that reaches it cannot be recorded in a plain zip. */
+export const ZIP_SIZE_SENTINEL = 0xFFFFFFFF
+
+/** The archive being written would need ZIP64: an offset or an entry size reached the writer's limit. */
+export class CharxTooLargeError extends Error {
+    constructor(public readonly limit:number){
+        super(`The CharX file would reach ${limit} bytes, which is more than a CharX file can hold here`)
+        this.name = 'CharxTooLargeError'
+    }
+}
+
 export class CharXWriter{
     zip:fflate.Zip
     writeEnd:boolean = false
     apb = new AppendableBuffer()
     #takenFilenames:Set<string> = new Set()
-    constructor(private writer:LocalWriter|WritableStreamDefaultWriter<Uint8Array>|VirtualWriter){
-        const handlerAsync = (err:Error, dat:Uint8Array, final:boolean) => {
+    // The first error fflate reported; every later write throws it before anything else is written.
+    #failure:Error|undefined
+    // Archive offset: the bytes of the zip handed to the writer. A `charxJpeg` prefix is not part of the zip's offsets,
+    // so `writeJpeg` takes it back out of this count.
+    #offset:number = 0
+    /**
+     * `limit` is the strict backstop: a chunk that would make an archive offset or an entry's size reach it is never
+     * handed on. The default is the ZIP64 sentinel; a test passes a small one.
+     */
+    constructor(private writer:LocalWriter|WritableStreamDefaultWriter<Uint8Array>|VirtualWriter, private readonly limit:number = ZIP_SIZE_SENTINEL){
+        const handlerAsync = (err:Error|null, dat:Uint8Array, final:boolean) => {
+            if(err){
+                this.#failure ??= err
+                return
+            }
             if(dat){
                 this.apb.append(dat)
             }
@@ -216,9 +240,32 @@ export class CharXWriter{
         }))
         const buf = await blob.arrayBuffer()
         this.apb.append(new Uint8Array(buf))
+        this.#offset -= buf.byteLength
+    }
+
+    #throwIfFailed(){
+        if(this.#failure){
+            throw this.#failure
+        }
+    }
+
+    /**
+     * Hands the collected archive bytes to the writer. A chunk that would make the archive offset reach the limit is
+     * not handed on.
+     */
+    async #flush(){
+        this.#throwIfFailed()
+        const out = this.apb.buffer
+        if(this.#offset + out.length >= this.limit){
+            throw new CharxTooLargeError(this.limit)
+        }
+        await this.writer.write(out)
+        this.#offset += out.length
+        this.apb.clear()
     }
 
     async write(key:string,data:Uint8Array|string, level?:0|1|2|3|4|5|6|7|8|9){
+        this.#throwIfFailed()
         key = this.#sanitizeZipFilename(key)
         let dat:Uint8Array
         if(typeof data === 'string'){
@@ -227,18 +274,20 @@ export class CharXWriter{
         else{
             dat = data
         }
+        if(dat.length >= this.limit){
+            throw new CharxTooLargeError(this.limit)
+        }
         this.writeEnd = false
         const file = new fflate.ZipDeflate(key, {
             level: level ?? 0
         });
         this.zip.add(file)
         file.push(dat, true)
-        await this.writer.write(this.apb.buffer)
-        this.apb.clear()
+        await this.#flush()
         if(this.writeEnd){
             await this.writer.close()
         }
-        
+
     }
 
     #sanitizeZipFilename(filename:string) {
@@ -267,9 +316,9 @@ export class CharXWriter{
     }
 
     async end(){
+        this.#throwIfFailed()
         this.zip.end()
-        await this.writer.write(this.apb.buffer)
-        this.apb.clear()
+        await this.#flush()
         if(this.writeEnd){
             await this.writer.close()
         }

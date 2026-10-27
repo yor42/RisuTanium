@@ -13,7 +13,8 @@ import { decodeRPack, encodeRPack } from "../rpack/rpack_js"
 import { DBState, HideIconStore, moduleBackgroundEmbedding, ReloadGUIPointer } from "../stores.svelte"
 import {get} from "svelte/store"
 import { convertCharacterToModule, convertModuleToCharacter } from "../interchangeability"
-import { exportCharacterCard, importCharacterFile } from "../characterCards"
+import { exportCharacterCard, importCharacterFile, preflightCardExport } from "../characterCards"
+import { appStoreOrNull, listModuleAssets, preflightExport, refuseExport } from "../drive/exportPreflight"
 import { moduleListOf, moduleRefIdsOf } from "./moduleRefList"
 import { ModuleRefusal } from "./moduleRefusal"
 import { ModuleImportStopped, confirmRisumLowLevel } from "./moduleImportStop"
@@ -61,6 +62,12 @@ async function writeModuleCard(module:RisuModule, arg:{
     const alertEnd = arg.alertEnd ?? true
 
     const char = convertModuleToCharacter(module)
+    // Before the save dialog and before the stand-in icon is saved; the card export is told so and does not check again.
+    const checked = await preflightCardExport(char, 'charx', 'v3')
+    if(checked.kind !== 'ok'){
+        await refuseExport(checked)
+        return
+    }
     if(!char.image){
         const res = await fetch('/none.webp')
         const data = new Uint8Array(await res.arrayBuffer())
@@ -75,7 +82,8 @@ async function writeModuleCard(module:RisuModule, arg:{
     }
     const exported = await exportCharacterCard(char, 'charx', {
         spec: 'v3',
-        writer
+        writer,
+        checked
     })
     if(!exported){
         //the export already showed its error; a success alert would hide it
@@ -105,7 +113,10 @@ export async function exportModuleLegacy(module:RisuModule, arg:{
         apb.append(buf)
     }
 
-    const assets = module.assets ?? []
+    const entries = listModuleAssets(module)
+    if(entries.length > 0 && await refuseExport(await preflightExport(entries, 'risum', appStoreOrNull))){
+        return null
+    }
     module = safeStructuredClone(module)
     module.assets ??= []
     module.assets = module.assets.map((asset) => {
@@ -122,14 +133,13 @@ export async function exportModuleLegacy(module:RisuModule, arg:{
     writeLength(mainbuf.length)
     apb.append(mainbuf)
 
-    for(let i=0;i<assets.length;i++){
-        const asset = assets[i]
+    for(const entry of entries){
         writeByte(1) //mark as asset
         alertStore.set({
             type: 'wait',
-            msg: fillLang(language.alerts.addingAssets, { completed: i, total: assets.length })
+            msg: fillLang(language.alerts.addingAssets, { completed: entry.index, total: entries.length })
         })
-        let rData = await readImage(asset[1])
+        let rData = await readImage(entry.key)
         if(!rData){
             rData = new Uint8Array(0) //blank buffer
         }

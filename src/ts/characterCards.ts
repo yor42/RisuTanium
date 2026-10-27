@@ -38,6 +38,7 @@ import { applyCharacterDefaults, resetChatStreamingState } from "./storage/chara
 import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
 import { normalizeOnboarding } from "./onboardingData"
 import { splitLoreKeys } from "./process/loreKeys"
+import { appStoreOrNull, listExportAssets, preflightExport, refuseExport, type ExportFormat, type PreflightOk, type PreflightResult } from "./drive/exportPreflight"
 
 
 const EXTERNAL_HUB_URL = 'https://sv.risuai.xyz';
@@ -1722,10 +1723,32 @@ function createBaseV2(char:character) {
 }
 
 
+/**
+ * Sizes the assets a card export would read and decides before anything opens: a refusal result, or `ok` with the size
+ * of every large asset. `portraitBytes` is the card image the export has already read (counted by a CharX estimate).
+ * `format` is derived from `type` unless the caller is a Realm share.
+ */
+export async function preflightCardExport(char:character, type:'png'|'json'|'charx'|'charxJpeg', spec:'v2'|'v3', options:{
+    realm?:boolean
+    portraitBytes?:number
+} = {}):Promise<PreflightResult> {
+    const format:ExportFormat = options.realm ? 'realm' : type === 'png' ? 'png' : type === 'json' ? 'json' : 'charx'
+    const v3 = spec === 'v3' ? createBaseV3(char) : null
+    const entries = listExportAssets(char, spec, type, v3?.data.assets ?? [])
+    const portraitBytes = options.portraitBytes ?? 0
+    return preflightExport(entries, format, appStoreOrNull, format === 'charx' ? {
+        portraitBytes,
+        jpegPrefixBytes: type === 'charxJpeg' ? portraitBytes : 0,
+        // card.json plus module.risum, estimated from the compact card as built (3 bytes per character) with room for the entry paths; the indented card.json can exceed it, which the headroom margin and the writer's backstop cover
+        metadataBytes: v3 ? JSON.stringify(v3).length * 3 + entries.length * 200 + 4096 : 0,
+    } : {})
+}
+
 export function exportCharacterCard(char:character, type:'png'|'json'|'charx'|'charxJpeg' = 'png', arg:{
     password?:string
     writer?:LocalWriter|VirtualWriter,
     spec?:'v2'|'v3'
+    checked?:PreflightOk
 } = {}):Promise<boolean> {
     return withBusy('export', () => writeCharacterCard(char, type, arg))
 }
@@ -1734,6 +1757,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
     password?:string
     writer?:LocalWriter|VirtualWriter,
     spec?:'v2'|'v3'
+    checked?:PreflightOk
 }):Promise<boolean> {
     const spec:'v2'|'v3' = arg.spec ?? 'v2' //backward compatibility
     let img = await readCardExportImage(char.image)
@@ -1762,6 +1786,10 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
     }
     let localWriter: LocalWriter|VirtualWriter|undefined
     try{
+        // Before any writer, dialog or file: a caller that already checked (a module export, a Realm share) passes its result on.
+        if(arg.checked === undefined && await refuseExport(await preflightCardExport(char, type, spec, {portraitBytes: img.length}))){
+            return false
+        }
         char.image = ''
         img = type === 'png' ? (await reencodeImage(img)) : img
         localWriter = arg.writer ?? (new LocalWriter())
@@ -1816,15 +1844,14 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                 }
             }
     
-            if(char.vits && char.ttsMode === 'vits'){
-                const keys = Object.keys(char.vits.files)
-                for(let i=0;i<keys.length;i++){
-                    showProgress(language.alerts.addingVits, (i / keys.length * 100).toFixed(2))
-                    const key = keys[i]
-                    const rData = await loadAsset(char.vits.files[key])
+            const vitsEntries = listExportAssets(char, 'v2', type)
+            if(vitsEntries.length > 0){
+                for(const entry of vitsEntries){
+                    showProgress(language.alerts.addingVits, (entry.index / vitsEntries.length * 100).toFixed(2))
+                    const rData = await loadAsset(entry.key)
                     const b64encoded = Buffer.from(rData).toString('base64')
                     assetIndex++
-                    card.data.extensions.risuai.vits[key] = `__asset:${assetIndex}`
+                    card.data.extensions.risuai.vits[entry.name] = `__asset:${assetIndex}`
                     await writer.write("chara-ext-asset_:" + assetIndex, b64encoded)
                 }
             }
@@ -1842,20 +1869,21 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
         else if(spec === 'v3'){
             const card = createBaseV3(char)
             const seenPaths = new Set<string>()
+            // The assets the loop reads, by their position in `card.data.assets`; a position with no entry is a known URI.
+            const entryAt = new Map(listExportAssets(char, 'v3', type, card.data.assets ?? []).map(entry => [entry.index, entry]))
             if(card.data.assets && card.data.assets.length > 0){
                 for(let i=0;i<card.data.assets.length;i++){
                     showProgress(language.alerts.addingCardAssets, (i / card.data.assets.length * 100).toFixed(2))
-                    let key = card.data.assets[i].uri
+                    const entry = entryAt.get(i)
                     let rData:Uint8Array
-                    if(key === 'ccdefault:' && type !== 'png'){
-                        key = char.image
-                        rData = img
-                    }
-                    else if(isKnownUri(key)){
+                    if(entry === undefined){
                         continue
                     }
+                    else if(entry.portrait){
+                        rData = img
+                    }
                     else{
-                        rData = await readImage(key)
+                        rData = await readImage(entry.key)
                     }
                     assetIndex++
                     if(type === 'png'){
@@ -1997,10 +2025,15 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                 }
                 delete card.data.extensions.risuai.triggerscript
                 delete card.data.extensions.risuai.customScripts
-                await writer.write("module.risum", await exportModuleLegacy(md, {
+                const risum = await exportModuleLegacy(md, {
                     alertEnd: false,
                     saveData: false
-                }))
+                })
+                if(risum === null){
+                    // The embedded module has no assets, so it is never refused.
+                    throw new Error('The embedded module.risum was refused')
+                }
+                await writer.write("module.risum", risum)
                 await writer.write("card.json", Buffer.from(JSON.stringify(card, null, 4)))
             }
             else{
