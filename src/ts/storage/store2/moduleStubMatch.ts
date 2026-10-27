@@ -37,3 +37,8 @@ export function isRecordedStub(plain: JsonObject, entry: ModuleEntry): boolean {
 export function slotIsRecordedStub(raw: unknown, entry: ModuleEntry): boolean {
     return isRecordedStub(plainObject(raw, 'module slot'), entry)
 }
+
+/** Whether two entries of one handle name the same stored units: the module unit and its asset and inlay lists. */
+export function sameEntryUnits(left: ModuleEntry, right: ModuleEntry): boolean {
+    return JSON.stringify([left.unit, left.al, left.il]) === JSON.stringify([right.unit, right.al, right.il])
+}

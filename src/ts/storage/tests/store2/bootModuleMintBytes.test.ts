@@ -694,6 +694,8 @@ describe('M downgrade-read: a build that does not know the mint reads the store'
             }
             const minted = await exportedDatabase()
 
+            // The export reads the stored copy: the stubs the page booted with are still stubs afterwards.
+            expect(stubIdsOf(booted.db)).toEqual(loadFirst ? [] : UNREFERENCED)
             expect((minted.modules as Plain[]).map(slot => slot.name)).toEqual(fiveModules().map(slot => slot.name))
             expect(minted.modules).toEqual(controlExport.modules)
             expect(minted).toEqual(controlExport)
@@ -735,8 +737,11 @@ describe('M upstream-bin-import-then-stubbed-boot-then-export-equals-the-all-res
         const index = await storedIndex(memory)
         const stubs = slotsOf(booted.db).filter((slot, position) => stubbed(slot) && isRecordedStub(plain(slot) as never, index.entries[position]))
         expect(stubs.length).toBeGreaterThan(0)
+        const stubsBefore = stubIdsOf(booted.db)
         const exported = await exportedDatabase()
 
+        // The export reads the stored copy: the imported modules that booted as stubs are still stubs afterwards.
+        expect(stubIdsOf(booted.db)).toEqual(stubsBefore)
         expect(exported.modules).toEqual(controlExport.modules)
         expect(exported).toEqual(controlExport)
         expect((exported.modules as Plain[]).map(slot => ({ id: slot.id, name: slot.name }))).toEqual(importedModules.map(slot => ({ id: slot.id, name: slot.name })))

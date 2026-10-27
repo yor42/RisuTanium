@@ -334,19 +334,18 @@ describe('the valve never holds the write lock while a question is open', () => 
 })
 
 describe('an export that waits for a module\'s question', () => {
-    test('the snapshot waits through the question without holding the lock, and ends with the repaired body', async () => {
+    // Re-hosting, not a reproducer: the export snapshot reads a stub's stored copy and never loads it, so a lorebook that
+    // needs repair raises no question; the row passed before on the loader and now pins the silent copy.
+    test('re-hosting, not a reproducer: the snapshot of a stub whose lorebook needs repair asks nothing and exports the lorebook as stored', async () => {
         const rig = await rigOf([healthy('a'), corrupted('m1')])
         const snapshot = rig.g.exportModules.snapshotModuleList(rig.db as never)
         await sleep(40)
-        expect(shown(rig).type).toBe('error')
-        let acquired = false
-        void rig.lock.acquire().then((release) => { acquired = true; release() })
-        await sleep(10)
-        expect(acquired).toBe(true)
-        await walkQuestion(rig, true, () => isFull(rig.db.modules[1]))
+        expect(shown(rig).type).toBe('none')
         const result = await snapshot
+        expect(shown(rig).type).toBe('none')
         expect(result.modules).toHaveLength(2)
-        expect((result.modules?.[1] as unknown as Plain).lorebook).toEqual([])
+        expect((result.modules?.[1] as unknown as Plain).lorebook).toEqual({ bad: true })
+        expect(isModuleStub(rig.db.modules[1] as never)).toBe(true)
     })
 
     test('a cover the person can cancel, put up while the load is asking, hands the question back when it is cancelled', async () => {

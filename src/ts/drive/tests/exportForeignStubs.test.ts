@@ -338,6 +338,26 @@ function installDatabase(db: Database): void {
     DBState.db = db
 }
 
+/**
+ * A live database whose module list is read twice by the export: the snapshot sees `atCall` with no residency, and every
+ * later read (the live check) sees `afterSnapshot` once a residency holds the recorded entry.
+ */
+function installDatabaseSeenTwice(atCall: Record<string, unknown>, afterSnapshot: Record<string, unknown>): void {
+    const db = databaseWith(null)
+    let reads = 0
+    Object.defineProperty(db, 'modules', {
+        get: () => {
+            if (reads++ === 0) {
+                return [atCall]
+            }
+            registerEntries([entryOf()])
+            return [afterSnapshot]
+        },
+        configurable: true,
+    })
+    installDatabase(db)
+}
+
 function databaseWith(stub: Record<string, unknown> | null): Database {
     const modules: Array<Record<string, unknown>> = [{ id: 'full-id-1', name: 'Full Module', lorebook: [] }]
     if (stub !== null) {
@@ -490,12 +510,14 @@ describe.each([
     ['writeLocalBackup', SaveLocalBackup],
     ['writePartialLocalBackup', SavePartialLocalBackup],
 ])('%s through the export', (functionName, run) => {
-    // The two foreign-stub rows below pass at the base apart from the import of the new symbol: the total live check
-    // refuses them there with the same `where`. They discriminate through the scratch mutants (sibling accepting
-    // everything, no CodecInputError catch), not through a base failure.
+    // The page has no residency when the snapshot reads the list, so the snapshot keeps the stub as it was at the call;
+    // the residency holding the stub's entry exists when the live check reads the list again, and the list then holds
+    // the stub the row names. That is how a marker written after the snapshot reaches the live check. The foreign-stub
+    // rows below pass at the base apart from the import of the new symbol: the total live check refuses them there
+    // with the same `where`. They discriminate through the scratch mutants (sibling accepting everything, no
+    // CodecInputError catch), not through a base failure.
     test('M: a non-JSON stub fails the export with ModuleStubRefusal and the generic text, writing nothing', async () => {
-        registerEntries([entryOf()])
-        installDatabase(databaseWith({ ...recordedStub(), big: 10n }))
+        installDatabaseSeenTwice(recordedStub(), { ...recordedStub(), big: 10n })
 
         const outcome = await run()
 
@@ -512,8 +534,7 @@ describe.each([
     })
 
     test('M: an edited marker fails the export at the live check, writing nothing', async () => {
-        registerEntries([entryOf()])
-        installDatabase(databaseWith({ ...recordedStub(), name: 'Renamed' }))
+        installDatabaseSeenTwice(recordedStub(), { ...recordedStub(), name: 'Renamed' })
 
         const outcome = await run()
 
@@ -526,10 +547,9 @@ describe.each([
     })
 
     test('M/rig: the narrowed live check lets a recorded stub through and the snapshot-list tree check refuses it, writing nothing', async () => {
-        // No module loader is registered, so the snapshot keeps the stub object. The `where` of the refusal names the
-        // snapshot-list check; with the total check restored at the live site the refusal names the live site and this row is red.
-        registerEntries([entryOf()])
-        installDatabase(databaseWith(recordedStub()))
+        // The snapshot kept the stub (no residency at the call). The `where` of the refusal names the snapshot-list
+        // check; with the total check restored at the live site the refusal names the live site and this row is red.
+        installDatabaseSeenTwice(recordedStub(), recordedStub())
 
         const outcome = await run()
 

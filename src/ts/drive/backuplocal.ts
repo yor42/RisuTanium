@@ -881,18 +881,14 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
     const db = getDatabase()
     // Every module body is read before anything is opened; a module that cannot be read stops the export here.
     const moduleSnapshot = await snapshotModuleList(db)
-    try {
-        return await writeLocalBackupWithModules(session, options, db, moduleSnapshot.modules)
-    } finally {
-        moduleSnapshot.release()
-    }
+    return await writeLocalBackupWithModules(session, options, db, moduleSnapshot.modules)
 }
 
 async function writeLocalBackupWithModules(session: ExportSession, options: BackupExportOptions, db: Database, modules: RisuModule[] | null): Promise<ExportOutcome>{
     // Only a foreign marker in the live list (not a recorded stub) stops the export here,
     // before it reads any unit or opens the file.
     assertNoForeignModuleStubs(db.modules, 'writeLocalBackup')
-    // A stub kept for a missing loader must not reach an encoder even if it has left the live list since.
+    // The snapshot keeps a stub only when the page has no residency; such a stub must not reach an encoder even if it has left the live list since.
     assertNoModuleStubs(modules, 'writeLocalBackup snapshot')
     if (MEASURE) {
         exportResidentsAtStart = residentCharacterCount(db.characters)
@@ -1203,11 +1199,7 @@ async function writePartialLocalBackup(session: ExportSession, options: BackupEx
     session.gate.wait("Saving partial local backup...")
     const db = getDatabase()
     const moduleSnapshot = await snapshotModuleList(db)
-    try {
-        return await writePartialLocalBackupWithModules(session, options, db, moduleSnapshot.modules)
-    } finally {
-        moduleSnapshot.release()
-    }
+    return await writePartialLocalBackupWithModules(session, options, db, moduleSnapshot.modules)
 }
 
 async function writePartialLocalBackupWithModules(session: ExportSession, options: BackupExportOptions, db: Database, modules: RisuModule[] | null): Promise<ExportOutcome>{

@@ -3,7 +3,7 @@ import { AssetList, toAssetList } from '../storage/assetList'
 import { isModuleStub } from '../storage/moduleStub'
 import { keyOfRef, type ModuleEntry } from '../storage/store2/format'
 import { ModuleLoadError } from '../storage/store2/moduleAcquire'
-import { slotIsRecordedStub } from '../storage/store2/moduleStubMatch'
+import { sameEntryUnits, slotIsRecordedStub } from '../storage/store2/moduleStubMatch'
 import type { Residency, ResidencyModuleRead } from '../storage/store2/residency'
 import { getResidency } from '../storage/store2/residencyActive'
 import type { ModuleStubLoad } from '../storage/store2/saveActive'
@@ -49,10 +49,6 @@ const flights = new Map<string, Flight>()
 
 function idOfHandle(handle: string): string {
     return handle.slice(0, handle.lastIndexOf('#'))
-}
-
-function sameEntryUnits(left: ModuleEntry, right: ModuleEntry): boolean {
-    return JSON.stringify([left.unit, left.al, left.il]) === JSON.stringify([right.unit, right.al, right.il])
 }
 
 /** The list slots that hold a stub or a module of `id`: stubs by index, residents by index. */

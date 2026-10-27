@@ -245,8 +245,15 @@ import { alertError } from 'src/ts/alert'
 import { language } from 'src/lang'
 import { DBState } from 'src/ts/stores.svelte'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from 'src/ts/storage/moduleStub'
-import { registerModuleLoader, unregisterModuleLoader } from 'src/ts/storage/store2/moduleAcquire'
+import { createMemoryBackend } from 'src/ts/storage/store2/backend'
+import { previousOfTree } from 'src/ts/storage/store2/previousOfTree'
+import { createResidency } from 'src/ts/storage/store2/residency'
+import { registerResidency, resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
+import { createSaveEncoder } from 'src/ts/storage/store2/saveEncoder'
+import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
 import { createPeerUi } from 'src/ts/storage/store2/ui/peerUi'
+import { createClock, seedTree, testEnv } from 'src/ts/storage/tests/store2SaveKit'
+import { buildSmall, fakeLists, seededEnv } from 'src/ts/storage/tests/store2/codecFixtures'
 
 /** The entry names written, and the busy kinds seen when the `database.risudat` entry was written. */
 let written: string[] = []
@@ -340,23 +347,54 @@ describe('exportThisTabBackup', () => {
     })
 })
 
+/** msgpackr under Node rejects strings of 64 or more characters, so the fixture keeps them short. */
+function shortened(value: unknown): unknown {
+    if (typeof value === 'string') {
+        return value.slice(0, 50)
+    }
+    if (Array.isArray(value)) {
+        return value.map(shortened)
+    }
+    if (typeof value === 'object' && value !== null) {
+        return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, shortened(inner)]))
+    }
+    return value
+}
+
+/**
+ * Registers a real residency over a seeded memory backend whose acknowledged encoding holds no entry for `m-b`, so the
+ * page's stub `m-b` has no stored module: the snapshot stops it as unreadable before anything opens.
+ */
+async function registerResidencyWithoutEntry(): Promise<void> {
+    const memory = createMemoryBackend()
+    const env = testEnv(createClock(), 4242)
+    const seeded = await seedTree(memory, JSON.parse(JSON.stringify(shortened(buildSmall(1)))) as Database, env, fakeLists)
+    const read = await readTreeBytes(memory, seeded.manifestKey)
+    if (read.status !== 'ok') {
+        throw new Error(`The seeded tree read ${read.status}.`)
+    }
+    const previous = previousOfTree(read.tree)
+    const context = { lists: fakeLists, env: seededEnv(77), encoder: createSaveEncoder({ previous, lists: fakeLists, env: seededEnv(77), now: () => 1_700_000_000_000 }) }
+    registerResidency(createResidency({ backend: memory, context }))
+}
+
+// Re-hosting, not a reproducer: these rows passed before the copy read on a loader double and pass now on a real
+// residency. They keep the MC-649 rescue assertions (named alert, nothing written, autoExport failed).
 describe('exportThisTabBackup with an unreadable module', () => {
-    function arrangeBrokenModule(): void {
+    async function arrangeBrokenModule(): Promise<void> {
         const db = world.db as { modules?: unknown[] }
         db.modules = [{ id: 'm-b', name: 'Broken Module', [MODULE_STUB_KEY]: MODULE_STUB_VALUE }]
         DBState.db = world.db as Database
-        registerModuleLoader(async () => {
-            throw new Error('read failed')
-        })
+        await registerResidencyWithoutEntry()
         vi.mocked(alertError).mockClear()
     }
 
     afterEach(() => {
-        unregisterModuleLoader()
+        resetResidencyForTest()
     })
 
     test('unreadable-module-names-it: the alert names the module, not the generic text, and nothing is written', async () => {
-        arrangeBrokenModule()
+        await arrangeBrokenModule()
 
         const outcome = await exportThisTabBackup()
 
@@ -370,7 +408,7 @@ describe('exportThisTabBackup with an unreadable module', () => {
     })
 
     test('unreadable-module-names-it: the rescue autoExport reports failed, which the loop words as not finished, and shows the named alert', async () => {
-        arrangeBrokenModule()
+        await arrangeBrokenModule()
         const peer = createPeerUi({ reload: vi.fn(), exportAvailable: true, exportThisTab: async () => await exportThisTabBackup() })
 
         await expect(peer.autoExport?.('manifest')).resolves.toBe('failed')

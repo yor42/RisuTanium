@@ -3,8 +3,10 @@
  * the export's module snapshot. The page is booted through the real dispatch over a memory backend, the database is a
  * reactive `$state` list, chosen modules are turned into their recorded stubs, and the unit read can be held so the list
  * changes while a load is in flight. What these cases pin: the module a caller gets is the live slot of the list (a write
- * through it lands in the list), and a stub deleted during its load while another module holds its id fails every caller
- * with the loader's `replaced` error and never hands out the other module.
+ * through it lands in the list), a stub deleted during its load while another module holds its id fails every editor and
+ * tool caller with the loader's `replaced` error and never hands out the other module, and the export snapshot, which
+ * reads a stub's stored body as a copy and installs nothing, leaves the slot a stub and ends `changed` only when a save
+ * pass moved the entry.
  * Labels: reproducer (fails when the loader is missing or the named mutant is applied), guard (passes before and after).
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -158,6 +160,20 @@ async function bootWorld(modules: Obj[], stubIndex = 1): Promise<World> {
 
 const text = (responses: unknown): string => ((responses as RPCToolCallTextContent[])[0]).text
 
+/** One module-flagged save pass through the active save context, committed and acknowledged. */
+async function savePass(db: Database): Promise<void> {
+    const active = getActiveStore2Save()
+    if (active?.encoder === undefined) {
+        throw new Error('No save context.')
+    }
+    const plan = await active.encoder.plan(db, { marked: new Set(), modules: true, whole: true })
+    const result = await active.session.committer.commit(await active.session.committer.readCommit(), plan.commitRequest())
+    if (result.status !== 'committed') {
+        throw new Error(`The pass came to ${result.status}.`)
+    }
+    plan.acknowledge()
+}
+
 beforeEach(() => {
     h.alerts.length = 0
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -196,13 +212,16 @@ describe('a caller gets the live slot of the list', () => {
         expect(world.live.modules[1].description).toBe('rewritten by a tool')
     })
 
-    test('an export snapshot holds the loaded body, and the slot the list holds is the same module', async () => {
+    test('an export snapshot holds a copy of the stored body that is not the slot, and the slot stays the stub', async () => {
         const world = await bootWorld([moduleBody('a'), moduleBody('b'), moduleBody('c')])
+        const stub = world.live.modules[1]
         const snapshot = await snapshotModuleList(world.live as unknown as Database)
-        expect(snapshot.modules?.[1]).toBe(world.live.modules[1])
-        expect(isModuleStub(snapshot.modules?.[1])).toBe(false)
         expect(snapshot.modules).toHaveLength(3)
-        snapshot.release()
+        expect(snapshot.modules?.[1]).not.toBe(stub)
+        expect(isModuleStub(snapshot.modules?.[1])).toBe(false)
+        expect(snapshot.modules?.[1].description).toBe('about b')
+        expect(world.live.modules[1]).toBe(stub)
+        expect(isModuleStub(world.live.modules[1])).toBe(true)
     })
 })
 
@@ -242,16 +261,40 @@ describe('a stub deleted during its load while another module holds its id fails
         expect(world.live.modules[world.live.modules.length - 1].description).toBe('another module of the same id')
     })
 
-    test('the export snapshot stops with an unreadable module whose cause is the replaced failure', async () => {
-        const { world, release } = await replacedDuringLoad()
-        const loading = snapshotModuleList(world.live as unknown as Database).then(() => null, (thrown: unknown) => thrown)
+})
+
+// The export snapshot never installs a module, so the loader's `replaced` failure cannot reach it; the two rows above
+// keep `replaced` for the editor and tool paths. What the snapshot does with the same swap is pinned here.
+describe('a stub deleted while the export snapshot reads it, another module holding its id', () => {
+    function swapStubForOtherHolder(world: World): void {
+        world.live.modules.splice(1, 1)
+        world.live.modules.push({ ...moduleBody('b'), description: 'another module of the same id' })
+    }
+
+    test('without a save pass the snapshot is the list at the call: the stub\'s stored body is exported and the other holder is not mixed in', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b'), moduleBody('c'), moduleBody('d')])
+        const release = world.hold()
+        const loading = snapshotModuleList(world.live as unknown as Database)
         await sleep(10)
         swapStubForOtherHolder(world)
         release()
+        const snapshot = await loading
+        expect(snapshot.modules?.map(slot => slot.description)).toEqual(['about a', 'about b', 'about c', 'about d'])
+    })
+
+    test('with the delete saved before the read ends, the snapshot stops as changed and names the module', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b'), moduleBody('c'), moduleBody('d')])
+        const release = world.hold()
+        const loading = snapshotModuleList(world.live as unknown as Database).then(() => null, (thrown: unknown) => thrown)
+        await sleep(10)
+        world.live.modules.splice(1, 1)
+        await savePass(world.live as unknown as Database)
+        release()
         const error = await loading
         expect(error).toBeInstanceOf(ExportModuleUnreadableError)
+        expect((error as ExportModuleUnreadableError).reason).toBe('changed')
         expect((error as ExportModuleUnreadableError).cause).toBeInstanceOf(ModuleLoadError)
-        expect(((error as ExportModuleUnreadableError).cause as ModuleLoadError).reason).toBe('replaced')
-        expect(((error as ExportModuleUnreadableError).cause as ModuleLoadError).moduleName).toBe('b')
+        expect(((error as ExportModuleUnreadableError).cause as ModuleLoadError).reason).toBe('stale')
+        expect((error as ExportModuleUnreadableError).moduleName).toBe('b')
     })
 })
