@@ -661,6 +661,7 @@ Session: a new lane C (cloud) session in a Linux container. Lane A's brief, 2026
   - `5b97aad7b`: the round 4 editorial points, and the round 4 verdict kept in `Agents/Lanes/lane-C-chore215-g2r4-verdict.md`.
 - **State: technically accepted on the lane branch.**
   - **Still open:** lane A's merge review, the Windows full checks, the phone re-measurement, the maintainer's merge approval (prompt assembly) and the open question below. Not COMPLETE until lane A folds these records in.
+  - **Correction (2026-10-27, lane A records batch 15; doc-verifier, lane A log line 825):** the list above was true at hand-back and is stale. Lane A's integration review was [APPROVE WITH NITS] (lane A ledger row 3275); the phone 1 re-measure was done (lane A ledger row 3276); the maintainer answered the question below with "Accept" (`MC-429`) and approved the merge ("Merge and push"); merged as `a68f969f3` after full checks of 2 x 23,957 passed (lane A ledger row 3278). Lane A's records hold the closeout state.
 - **Gates.**
   - Gate 1 (`opus-reviewer`): `[APPROVE]` with binding amendments A1 to A4, all applied (row 3377).
   - Gate 2 (a fresh `opus-reviewer` each round):
@@ -674,7 +675,7 @@ Session: a new lane C (cloud) session in a Linux container. Lane A's brief, 2026
   - `src/ts/process/tests/sendChatContextTrim.svelte.test.ts` (43 tests): 41 guards frozen on the base, the reproducer, and one `precondition:` test.
   - On the base the send file fails exactly 2: the reproducer (6007 `tokenizeChat` calls against a bound of 52) and the `precondition:` test (see the deviation below). On the fix, both files pass 61 of 61.
 - **Measured.**
-  - No device run.
+  - No device run by lane C. **Correction (2026-10-27):** lane A re-measured on phone 1 on 2026-10-26 (APK `21A54865…85975`, `c215-device\result.md`, lane A log line 825): the send-time long task went from 5977 to 6257 ms down to 1578 to 1912 ms, tiktoken from 3.8 to 4.3 s down to 23 to 49 ms warm, and a small chat took 156 ms; `processScriptFull` at 0.73 to 0.98 s is now about half of the long task.
   - Diagnostic D1 (Node, real tiktoken cl100k, 3,000 messages of about 500 B, 20 kept):
     - today's pattern: 5,980 encodes, 1.0 to 1.4 s;
     - the lazy pattern: 21 encodes, 3 to 5 ms.
@@ -686,8 +687,8 @@ Session: a new lane C (cloud) session in a Linux container. Lane A's brief, 2026
   - `pnpm build`: exit 0.
 - **Next step (lane A).**
   - The merge review, the Windows full checks, and the phone re-measurement of the 3,000-message send.
-  - The maintainer's answer to the question below.
-- **Open product question for the maintainer (not decided).**
+  - The maintainer's answer to the question below. (Done 2026-10-26: "Accept", `MC-429`.)
+- **Open product question for the maintainer (not decided at hand-back; answered 2026-10-26, "Accept", `MC-429`: the behaviour change is accepted and the send no longer fails for a dropped, uncounted old message).**
   - **Today:** a message whose token count throws fails every send of that chat. For example, tiktoken refuses special-token text such as `<|endoftext|>` on the lazy-path tokenizers.
   - **With the fix:** a dropped message that the trim never counts no longer fails the send.
   - **The choice:** accept this behaviour change, or keep today's failure. Keeping it would mean counting every message again.
@@ -711,7 +712,7 @@ Session: a new lane C (cloud) session in a Linux container. Lane A's brief, 2026
    - The dropped-message throw case is the open question above.
    - `stage1Duration` no longer includes the lazy counting on the trim path. It is a timing field only; the prompt is unaffected.
 
-**Deviation.** The base-frozen guard `nan-default` became a `precondition:` test. It covers the stand-in tokenizer returning NaN for an old text message under the default tokenizer, where the base sent all 61 messages. Gate 2 round 1 verified that every lazy-path `encode` branch returns an array, so a text chat's count is a whole number and this input cannot happen. Gate 2 accepted the deviation.
+**Deviation.** The base-frozen guard `nan-default` became a `precondition:` test. It covers the stand-in tokenizer returning NaN for an old text message under the default tokenizer, where the base sent all 61 messages. Gate 2 round 4 verified that every lazy-path `encode` branch returns an array (section 5 of `Agents/Lanes/lane-C-chore215-g2r4-verdict.md`; corrected 2026-10-27, this said round 1), so a text chat's count is a whole number and this input cannot happen. Gate 2 accepted the deviation.
 
 **Gate 2 history, for a fresh reviewer:**
 
@@ -741,7 +742,7 @@ Scratch paths are under the session scratchpad, outside the repository. The plan
 | 3382 | 2026-10-26 | Gate 2 round 3 | opus-reviewer | `c215\g2r3\verdict.md`, `cx3.mjs`, `cx4.mjs` | `[REJECT]`: counted multimodal counts, mixed-sign after-counts and prefix counts are unbounded; M7 (13.1) unpinned; the JSDoc was misplaced. Second substantive rejection. |
 | 3383 | 2026-10-26 | Mechanism reconsidered, round 4 revision | orchestrator | `70ea3ed22`; `c215\mut4\` | One uniform contract (counts in [0, 2^32], fewer than 2^18 entries, \|before\| at most 2^51). The round 3 counterexamples are tests. All 11 checks pinned. 1,080-case search: 0 differences. 60 of 60. `pnpm check` 0/0. |
 | 3384 | 2026-10-26 | Full test, round 3 snapshot | orchestrator | `c215\full-test.out` | 1039 files: 9 failed (`replay/actors`, known Linux), 23,628 passed, 23 skipped. It predates `70ea3ed22`'s `contextTrim.ts`, so it is not a final-snapshot check. |
-| 3385 | 2026-10-26 | Gate 2 round 4 | opus-reviewer | `Agents/Lanes/lane-C-chore215-g2r4-verdict.md` (copy of `c215\g2r4\verdict.md`) | `[EDITORIAL]`.<br>**Closed:** round 3's finding; the contract is exact on every lazy path.<br>**Property classes, against the current helper:** cx4 0 of 125,820; cx3 and f4cx all match; prop4 and prop2 0; about 1.6M new cases with 0 mismatches inside the precondition; 61 worst-case bound checks exact against BigInt.<br>**Caller precondition:** traced, met.<br>**Editorial:** the negative side of the `before` bound was unpinned (mutant X1); the `LAZY_ENTRY_LIMIT` doc was off by one. |
+| 3385 | 2026-10-26 | Gate 2 round 4 | opus-reviewer | `Agents/Lanes/lane-C-chore215-g2r4-verdict.md` (copy of `c215\g2r4\verdict.md`) | `[EDITORIAL]`.<br>**Closed:** round 3's finding; the contract is exact on every lazy path.<br>**Property classes, against the current helper:** cx4 0 of 125,820; cx3 and f4cx all match; prop4 and prop2 0; about 1.6M new cases with 0 mismatches inside the precondition (the "about 1.6M" total is not independently verified: the verdict file lists per-script case counts and states no sum; doc-verifier, 2026-10-27); 61 worst-case bound checks exact against BigInt.<br>**Caller precondition:** traced, met.<br>**Editorial:** the negative side of the `before` bound was unpinned (mutant X1); the `LAZY_ENTRY_LIMIT` doc was off by one. |
 | 3386 | 2026-10-26 | Round 4 editorial points | orchestrator | `5b97aad7b` | A test at `-LAZY_BEFORE_LIMIT - 2`, which now catches X1 (1 of 18 fails). A test that the bounds' sum is below 2^53, which pins the reviewer's X7 and X8. The doc reads "fewer than". 61 of 61. |
 | 3387 | 2026-10-26 | Full checks on the final snapshot | orchestrator | `c215\final-status.txt`, `final-test.out`, `final-check.out`, `final-build.out` | HEAD `5b97aad7b`, clean tree.<br>`NODE_OPTIONS=--max-old-space-size=8192 pnpm test`: 1039 files; 9 failed, 23,632 passed, 23 skipped; 1541 s. All 9 failures are in `store2/replay/actors.test.ts` (known Linux).<br>`pnpm check` 0/0. `pnpm build` exit 0 (`dist/assets/glue-Dlydm7r2.wasm` emitted). Linux only. |
 
