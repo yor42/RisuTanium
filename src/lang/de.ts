@@ -1912,6 +1912,11 @@ export const languageGerman = {
     "restoreSavedReloadOrRestart": "Ihr Backup wurde wiederhergestellt und gespeichert, aber die App konnte nicht automatisch neu geladen werden. Bitte laden Sie die Seite neu (oder starten Sie die App neu), um den Vorgang abzuschließen.",
     "restoreAssetsSkipped": (count: number, names: string[]) =>
         `Das Backup wurde wiederhergestellt, mit Ausnahme von ${count} Asset-Datei(en), deren Namen diese App nicht speichern kann. Ein Charakter, der eine davon verwendet, zeigt sie als fehlend an. Übersprungen:\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "restoreOpenedBackupConfirm": (name: string) => `${name} wiederherstellen? Alle aktuellen Daten werden ersetzt.`,
+    "openedBackupNotAlone": (names: string[]) =>
+        `Nicht wiederhergestellt: Ein Backup wird nur wiederhergestellt, wenn es allein geöffnet wird, nicht zusammen mit anderen Dateien. Öffnen Sie es erneut einzeln.\n\n${names.join('\n')}`,
+    "openedBackupOneAtATime": (names: string[]) =>
+        `Nicht wiederhergestellt: Es kann nur ein Backup auf einmal wiederhergestellt werden. Öffnen Sie es erneut, nachdem die Wiederherstellung abgeschlossen ist.\n\n${names.join('\n')}`,
     "backupFileChangedWhileReading": "Die Backup-Datei hat sich während des Lesens geändert, daher wurde die Wiederherstellung abgebrochen. Möglicherweise wurden bereits einige Bilder oder Kaltlager-Einträge hinzugefügt oder ersetzt. Ihre aktuelle Datenbank wurde nicht verändert.",
     "restoreOversizedAssetsConfirm": (count: number, names: string[], limitBytes: number) =>
         `${count} Asset-Datei(en) in diesem Backup sind größer als die ${Math.floor(limitBytes / (1024 * 1024))} MB, die dieser Server für ein Asset akzeptiert, und können daher hier nicht wiederhergestellt werden. Ein Charakter, der eine davon verwendet, zeigt sie als fehlend an. Ohne diese Dateien fortfahren?\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,

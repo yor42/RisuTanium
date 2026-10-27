@@ -1,4 +1,4 @@
-import { alertError, alertNormal, alertNormalWait, alertStore, alertWait, alertMd, alertConfirm } from "../alert";
+import { alertError, alertNormal, alertNormalWait, alertStore, alertWait, alertMd, alertConfirm, alertClear } from "../alert";
 import { remove } from "@tauri-apps/plugin-fs";
 import { cancelledFileState, takeExportWriteStats, webWriterNeedsGesture, type ExportByteWriter, type ExportWriteCall } from "../exportWriters";
 import { ExportCancelledError, ExportCancelToken, createExportWaitGate, type ExportWaitGate } from "../exportCancel";
@@ -38,7 +38,10 @@ import { characterListNeedsRepair, kvBlockNamesOf, collectBackupColdStorage, inl
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
 import { convertPluginStorageIndex, unavailableKeysOfMissing } from "../process/pluginStorageIndex";
 import { v4 } from "uuid";
-import { BACKUP_ENCRYPTION_MARKER_NAME, BACKUP_NAME_PREFIX_BYTES, MAX_MARKER_NAME_BYTES, backupCopyWindowBytes, createBlobWindowReader, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry } from "./backupContainer";
+import { BACKUP_ENCRYPTION_MARKER_NAME, BACKUP_NAME_PREFIX_BYTES, MAX_MARKER_NAME_BYTES, backupCopyWindowBytes, createBlobWindowReader, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry, type BinFile } from "./backupContainer";
+import { binFileOfSource, type SourceBinFile } from "./binFileSource";
+import { openDesktopImportSource, type ImportSource } from "../importSource";
+import { getStartupCleanup } from "../storage/startupCleanupState";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
 import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
 import { beginBusy, withBusy, type BusyHandle } from "../process/memory/busyActions";
@@ -1581,6 +1584,75 @@ export function loadBackupAtBoot(target: BootImportTarget): Promise<BootImportEn
     });
 }
 
+/**
+ * Restores a `.bin` another Android app opened, after one confirmation that names the file. Never rejects.
+ * Nothing is opened or written until the person has confirmed: a busy app, a read-only page and a decline each end it
+ * first. The restore takes its own busy entry (`LoadLocalBackup`), so none is held here, where it would refuse that very
+ * restore. The source is closed however this ends.
+ */
+export async function restoreOpenedBackup(entry: { name: string, path: string }): Promise<void> {
+    let source: ImportSource | null = null;
+    try {
+        if (refuseBackupLoadWhileBusy()) {
+            return;
+        }
+        if (await refuseOnReadOnlyPage()) {
+            return;
+        }
+        if (!await alertConfirm(language.restoreOpenedBackupConfirm(entry.name))) {
+            return;
+        }
+        // A restore must not start while a recorded start-up clean-up still runs; the person may stop waiting.
+        const startupCleanup = getStartupCleanup();
+        if (startupCleanup) {
+            let cancelWait: () => void = () => { };
+            const cancelled = new Promise<'cancelled'>((resolve) => {
+                cancelWait = () => resolve('cancelled');
+            });
+            alertWait(language.internalBackupWaitingForCleanup, () => cancelWait());
+            const outcome = await Promise.race([startupCleanup.then(() => 'settled' as const), cancelled]);
+            if (outcome === 'cancelled') {
+                alertClear();
+                return;
+            }
+            // From here the restore cannot be cancelled, so the wait loses its Cancel button.
+            alertWait('Loading backup...');
+        }
+        try {
+            source = await openDesktopImportSource(entry.path);
+        } catch (error) {
+            console.error(error);
+            alertError(error);
+            return;
+        }
+        let lastModified = 0;
+        try {
+            lastModified = (await source.stat()).modified ?? 0;
+        } catch (error) {
+            console.error(error);
+        }
+        await LoadLocalBackup(undefined, { source, name: entry.name, lastModified });
+    } catch (error) {
+        console.error(error);
+        alertError(error);
+    } finally {
+        if (source !== null) {
+            try {
+                await source.close();
+            } catch (error) {
+                console.error(error);
+            }
+        }
+    }
+}
+
+/** A `.bin` another app handed to this one: the open source, the name to show, and its modification time (0 when unknown). */
+export interface OpenedBin {
+    source: ImportSource;
+    name: string;
+    lastModified: number;
+}
+
 /** How a `.bin` import ended, for the shell's caller. */
 export type LocalBackupEnd = OperationEnd<ImportFacts>;
 
@@ -1592,8 +1664,11 @@ export type LocalBackupEnd = OperationEnd<ImportFacts>;
  *
  * The promise may stay pending: it settles on the picker's `change` or `cancel` event, and a browser that fires
  * neither on dismissal never settles it. No caller may hold a lock or a busy state across it.
+ *
+ * With `opened` (never together with `boot`) there is no picker: the same restore runs over the file the caller opened,
+ * under a busy entry of its own, and the promise settles when the restore ends. The caller owns and closes the source.
  */
-export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
+export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin): Promise<LocalBackupEnd> {
     const operation: OperationName = boot === undefined ? 'import' : 'boot-import';
     // Created before anything can await, so the picker opens in this call's own turn.
     let resolveEnd: (end: LocalBackupEnd) => void = () => { };
@@ -1612,9 +1687,11 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
         return pending;
     }
     try {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.bin';
+        const input = opened === undefined ? document.createElement('input') : null;
+        if (input !== null) {
+            input.type = 'file';
+            input.accept = '.bin';
+        }
         // What a boot import came to; `cancelled` until the boot's installer answers.
         let bootEnd: BootImportEnd = { kind: 'cancelled' };
         const restoreSelectedFile = async (busy: BusyHandle): Promise<LocalBackupEnd> => {
@@ -1627,14 +1704,27 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
             const refused = (cause: OperationCause | null = null): LocalBackupEnd => ended('nothing-replaced', cause);
             // The person declined a question: nothing was replaced, and nothing was written only while no write may have begun.
             const declined = (): LocalBackupEnd => ended(writeMayHaveBegun ? 'nothing-replaced' : 'canceled');
-            if (!input.files || input.files.length === 0) {
+            // What the restore reads: a picked `File`, or the adapter over a file another app opened (which can tell whether it changed).
+            let file: BinFile;
+            let openedFile: SourceBinFile | null = null;
+            if (opened !== undefined) {
+                openedFile = binFileOfSource(opened.source);
+                file = openedFile;
+                target = opened.name;
+                facts.source = { kind: 'file', name: opened.name, size: opened.source.size, lastModified: opened.lastModified };
+            } else {
+                if (input === null || !input.files || input.files.length === 0) {
+                    input?.remove();
+                    return ended('canceled');
+                }
+                const picked = input.files[0];
                 input.remove();
-                return ended('canceled');
+                file = picked;
+                target = picked.name;
+                facts.source = { kind: 'file', name: picked.name, size: picked.size, lastModified: picked.lastModified };
             }
-            const file = input.files[0];
-            input.remove();
-            target = file.name;
-            facts.source = { kind: 'file', name: file.name, size: file.size, lastModified: file.lastModified };
+            // A picked file reports a change by failing its reads; an opened one is asked.
+            const openedFileChanged = async (): Promise<boolean> => openedFile !== null && await openedFile.changed();
 
             // A page that runs from OPFS this time writes nothing, and a restore is refused before it reads or writes anything.
             if (await refuseOnReadOnlyPage()) {
@@ -1877,7 +1967,9 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                 const openRestoreStream = (key: string): ChunkedWriter => nodeRestoreStore !== null ? nodeRestoreStore.openWriter!(key) : openAssetStream(key);
                 // On the browser's IndexedDB (a store that keeps Blobs) an entry of ASSET_PIECE_SAVE_MIN_BYTES or more is stored as a
                 // slice of the backup file, so the page never reads it into memory. No other page streams this way.
-                const webBlobRestoreStore = streamLargeAssets ? null : await getAppStore();
+                // Only a real Blob can be handed on as a slice; a file another app opened is always read into memory piece by piece.
+                const fileBlob: Blob | null = file instanceof Blob ? file : null;
+                const webBlobRestoreStore = streamLargeAssets || fileBlob === null ? null : await getAppStore();
                 const blobRestoreStore = webBlobRestoreStore !== null && webBlobRestoreStore.readBlob !== undefined && webBlobRestoreStore.writeBlob !== undefined ? webBlobRestoreStore : null;
                 let stopMessage: string | null = null;
                 let passFailure: { error: unknown } | null = null;
@@ -2035,11 +2127,11 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                         // The browser's IndexedDB: a large asset entry is stored as a slice of the backup file. The database and the
                         // cold-storage entries stay whole-decoded below. A browser that cannot keep a Blob falls through to the
                         // whole-entry path below, which restores an asset of any size and checks the file as it reads.
-                        if (blobRestoreStore !== null && entry.dataLength >= ASSET_PIECE_SAVE_MIN_BYTES
+                        if (blobRestoreStore !== null && fileBlob !== null && entry.dataLength >= ASSET_PIECE_SAVE_MIN_BYTES
                                 && name !== 'database.risudat' && !getColdStorageBackupKey(name)) {
                             const assetKey = 'assets/' + name;
                             noteAssetWrittenThisPage(assetKey);
-                            const entryData = file.slice(dataStart, dataStart + entry.dataLength);
+                            const entryData = fileBlob.slice(dataStart, dataStart + entry.dataLength);
                             if (entryData.size !== entry.dataLength) {
                                 stopMessage = language.backupFileChangedWhileReading;
                                 break;
@@ -2185,7 +2277,12 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                 // Reached only for a walk that ended on an entry boundary and
                 // holds a database, so every inlay part the file has is
                 // complete; a part that is missing keeps its whole inlay out.
-                // Additive, like the assets.
+                // Additive, like the assets. A file another app opened is checked first: every part is read after the pass
+                // that located it, so a file replaced meanwhile must stop the restore before an inlay is written.
+                if (await openedFileChanged()) {
+                    alertError(language.backupFileChangedWhileReading);
+                    return refused();
+                }
                 const inlayOutcome = await restoreCollectedInlays(inlayCollector);
                 if (inlayOutcome.changed) {
                     alertError(language.backupFileChangedWhileReading);
@@ -2240,6 +2337,11 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                     }
                     if (!await store2Import.guard.check()) {
                         return declined();
+                    }
+                    // The commit decodes the database and reads the units from the file again: it must still be the file that was walked.
+                    if (await openedFileChanged()) {
+                        alertError(language.backupFileChangedWhileReading);
+                        return refused();
                     }
                     alertWait('Loading backup...');
                     noteImportPhase('loading backup');
@@ -2380,6 +2482,11 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                     return refused('busy');
                 }
 
+                if (await openedFileChanged()) {
+                    alertError(language.backupFileChangedWhileReading);
+                    return refused();
+                }
+
                 replaceStarted = true;
                 const written = await replaceWithRestoredSet(restoredSet, () => !refuseBackupLoadWhileBusy(busy));
                 if (written.kind === 'not-happened') {
@@ -2507,6 +2614,23 @@ export function LoadLocalBackup(boot?: BootBinRun): Promise<LocalBackupEnd> {
                 }
             }
         };
+        if (input === null) {
+            // A file another app opened: no picker. The busy entry is taken after the check above and ended however the restore leaves.
+            const busy = beginBusy('backupLoad');
+            void (async () => {
+                let end: LocalBackupEnd = unfinished('failed');
+                try {
+                    end = await restoreSelectedFile(busy);
+                } catch (error) {
+                    console.error(error);
+                    alertError('Failed, Is file corrupted?');
+                } finally {
+                    busy.end();
+                    settle(end);
+                }
+            })();
+            return pending;
+        }
         // Registered on the picker's change event (never at picker open, which a cancelled pick never resolves), and ended however the restore leaves.
         input.onchange = async () => {
             const busy = beginBusy('backupLoad');

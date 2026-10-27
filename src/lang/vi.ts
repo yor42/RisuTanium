@@ -1910,6 +1910,11 @@ export const languageVietnamese = {
     "restoreSavedReloadOrRestart": "Bản sao lưu của bạn đã được khôi phục và lưu, nhưng ứng dụng không thể tự động tải lại. Vui lòng tải lại trang (hoặc khởi động lại ứng dụng) để hoàn tất.",
     "restoreAssetsSkipped": (count: number, names: string[]) =>
         `Bản sao lưu đã được khôi phục, trừ ${count} tệp tài nguyên (asset) có tên mà ứng dụng này không thể lưu. Nhân vật nào dùng một trong các tệp đó sẽ hiển thị tệp đó là bị thiếu. Các tệp đã bỏ qua:\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} tệp nữa` : ''}`,
+    "restoreOpenedBackupConfirm": (name: string) => `Khôi phục ${name}? Tất cả dữ liệu hiện tại sẽ bị thay thế.`,
+    "openedBackupNotAlone": (names: string[]) =>
+        `Chưa khôi phục: bản sao lưu chỉ được khôi phục khi được mở riêng, không phải mở cùng các tệp khác. Hãy mở lại riêng bản sao lưu đó.\n\n${names.join('\n')}`,
+    "openedBackupOneAtATime": (names: string[]) =>
+        `Chưa khôi phục: mỗi lần chỉ có thể khôi phục một bản sao lưu. Hãy mở lại sau khi quá trình khôi phục hoàn tất.\n\n${names.join('\n')}`,
     "backupFileChangedWhileReading": "Tệp sao lưu đã thay đổi trong khi đang được đọc nên việc khôi phục đã dừng lại. Một số hình ảnh hoặc mục bộ nhớ lạnh có thể đã được thêm hoặc thay thế. Cơ sở dữ liệu hiện tại của bạn không bị thay đổi.",
     "restoreOversizedAssetsConfirm": (count: number, names: string[], limitBytes: number) =>
         `${count} tệp tài nguyên (asset) trong bản sao lưu này lớn hơn ${Math.floor(limitBytes / (1024 * 1024))} MB mà máy chủ này chấp nhận cho mỗi tệp tài nguyên (asset), nên không thể khôi phục tại đây. Nhân vật nào dùng một trong các tệp đó sẽ hiển thị tệp đó là bị thiếu. Tiếp tục mà không có các tệp này?\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} tệp nữa` : ''}`,

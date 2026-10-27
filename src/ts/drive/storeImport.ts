@@ -23,7 +23,7 @@ import { estimateImportSeconds, IMPORT_TIME_WARNING_BYTES, importAssetBytes, imp
 import { transportKind } from '../storage/tauriByteTransport'
 import { readAppDataFreeBytes } from '../storage/appFreeSpace'
 import type { BusyHandle } from '../process/memory/busyActions'
-import { parseBackupEntryHeader, BACKUP_ENCRYPTION_MARKER_NAME, BACKUP_INDEX_SHORT_NAME_BYTES, type BackupIndexEntry } from './backupContainer'
+import { parseBackupEntryHeader, BACKUP_ENCRYPTION_MARKER_NAME, BACKUP_INDEX_SHORT_NAME_BYTES, type BackupIndexEntry, type BinFile } from './backupContainer'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
 import { currentCharacterNames, leftOutQuestion } from './restoreReplace'
 
@@ -196,7 +196,7 @@ export function binChangeText(error: BinFileChangedError): string {
     return error.reason === 'marker' ? language.encryptedBackupImportStopped : language.backupFileChangedWhileReading
 }
 
-async function readIndexedHeader(file: Blob, entry: BackupIndexEntry, where: string): Promise<{ name: string }> {
+async function readIndexedHeader(file: BinFile, entry: BackupIndexEntry, where: string): Promise<{ name: string }> {
     let bytes: Uint8Array
     try {
         bytes = new Uint8Array(await file.slice(entry.headerOffset, entry.headerOffset + entry.headerLength).arrayBuffer())
@@ -269,7 +269,7 @@ export function hasDatabaseEntry(entries: readonly BackupIndexEntry[], names: Re
 }
 
 /** The database entry's bytes, with its header checked again against the walk. Throws `BinFileChangedError`. */
-export async function readBinDatabase(file: Blob, entry: BackupIndexEntry): Promise<Uint8Array> {
+export async function readBinDatabase(file: BinFile, entry: BackupIndexEntry): Promise<Uint8Array> {
     await readIndexedHeader(file, entry, DATABASE_ENTRY_NAME)
     const start = entry.headerOffset + entry.headerLength
     let bytes: Uint8Array
@@ -285,7 +285,7 @@ export async function readBinDatabase(file: Blob, entry: BackupIndexEntry): Prom
 }
 
 /** The cold-storage units of a `.bin`: the file's own entries first, the page's legacy unit for an id the file holds no accepted entry for. */
-export function createBinImportReader(file: Blob, index: ColdEntryIndex, readFallback: (key: string) => Promise<ColdUnitRead> = readColdStorageItem): LegacyEntryReader {
+export function createBinImportReader(file: BinFile, index: ColdEntryIndex, readFallback: (key: string) => Promise<ColdUnitRead> = readColdStorageItem): LegacyEntryReader {
     return createBinEntryReader({ file, index, fallback: createLegacyStoreReader(readFallback) })
 }
 
@@ -325,7 +325,7 @@ export function decodeBinDatabaseOmitted(bytes: Uint8Array): Promise<ReadonlyMap
  * The database entry read from the file again and decoded; only the tree outlives the call (in the raw msgpack format its
  * binary values are views of the read bytes). Throws `BinFileChangedError`.
  */
-export async function readBinDatabaseTree(file: Blob, entry: BackupIndexEntry): Promise<Database> {
+export async function readBinDatabaseTree(file: BinFile, entry: BackupIndexEntry): Promise<Database> {
     return (await decodeBinDatabase(await readBinDatabase(file, entry))).tree
 }
 
@@ -334,7 +334,7 @@ export async function readBinDatabaseTree(file: Blob, entry: BackupIndexEntry): 
  * the long async function that asks, so neither they nor the tree stay reachable across its later awaits. Throws
  * `BinFileChangedError`.
  */
-export async function readBinDatabaseOmitted(file: Blob, entry: BackupIndexEntry): Promise<ReadonlyMap<string, SalvageOmittedBlock>> {
+export async function readBinDatabaseOmitted(file: BinFile, entry: BackupIndexEntry): Promise<ReadonlyMap<string, SalvageOmittedBlock>> {
     return await decodeBinDatabaseOmitted(await readBinDatabase(file, entry))
 }
 

@@ -3,11 +3,15 @@
  * system hands the activity (a view or share intent) as batches of content
  * URIs with their display names. The page takes the queue with `take()` and
  * imports each batch one after another through `importOpenedSources`, which
- * accepts only the card, module and preset kinds. Everywhere the host bridge is
+ * accepts only the card, module and preset kinds. A `.bin` backup is restored only when it is the one file of its
+ * batch and the drain imports nothing else; the first such backup goes to `restoreOpenedBackup`, every other `.bin`
+ * is refused with a notice. Everywhere the host bridge is
  * absent (web, desktop, iOS, an old host) it does nothing.
  */
-import { importOpenedSources } from '../characterCards'
+import { alertNormalWait } from '../alert'
+import { importOpenedSources, isOpenedSourceImportable } from '../characterCards'
 import { getDatabase } from '../storage/database.svelte'
+import { language } from 'src/lang'
 
 /** The host object `OpenedFilesBridge` exposes to the page. */
 export interface OpenedFilesHost {
@@ -104,12 +108,63 @@ async function drain(): Promise<void> {
         console.warn('Opened files could not be taken', error)
         return
     }
-    for (const batch of parseBatches(raw)) {
+    const batches = parseBatches(raw)
+    // A restore replaces everything an import in the same drain just added, so a backup is restored only when this
+    // drain imports nothing; a name the import would refuse as unsupported does not count.
+    const importsSomething = batches.some((batch) => batch.some((entry) => isOpenedSourceImportable(entry.name)))
+    const importBatches: OpenedEntry[][] = []
+    const notAlone: string[] = []
+    const oneAtATime: string[] = []
+    let restoreCandidate: OpenedEntry | null = null
+    for (const batch of batches) {
+        const backups = batch.filter(isBackupEntry)
+        if (backups.length > 0) {
+            if (batch.length > 1 || importsSomething) {
+                notAlone.push(...backups.map((entry) => entry.name))
+            } else if (restoreCandidate === null) {
+                restoreCandidate = backups[0]
+            } else {
+                oneAtATime.push(backups[0].name)
+            }
+        }
+        const rest = batch.filter((entry) => !isBackupEntry(entry))
+        if (rest.length > 0) {
+            importBatches.push(rest)
+        }
+    }
+    for (const batch of importBatches) {
         try {
             await importOpenedSources(batch)
         } catch (error) {
             console.warn('Opened files were not imported', error)
         }
+    }
+    // One notice for all refusals of a kind, awaited so a later notice or the restore's question cannot replace it unread.
+    if (notAlone.length > 0) {
+        await notifyRefused(language.openedBackupNotAlone(notAlone))
+    }
+    if (restoreCandidate !== null) {
+        if (oneAtATime.length > 0) {
+            await notifyRefused(language.openedBackupOneAtATime(oneAtATime))
+        }
+        try {
+            const { restoreOpenedBackup } = await import('../drive/backuplocal')
+            await restoreOpenedBackup(restoreCandidate)
+        } catch (error) {
+            console.warn('An opened backup was not restored', error)
+        }
+    }
+}
+
+function isBackupEntry(entry: OpenedEntry): boolean {
+    return entry.name.toLowerCase().endsWith('.bin')
+}
+
+async function notifyRefused(message: string): Promise<void> {
+    try {
+        await alertNormalWait(message)
+    } catch (error) {
+        console.warn('Opened files notice failed', error)
     }
 }
 

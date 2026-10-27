@@ -26,17 +26,6 @@
                 <!-- AndroidTV support -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
-            <!-- tauri-file-associations. AUTO-GENERATED. DO NOT REMOVE. -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:pathPattern=".*\\.risum" />
-                <data android:pathPattern=".*\\.risup" />
-                <data android:pathPattern=".*\\.charx" />
-            </intent-filter>
-            
-            <!-- tauri-file-associations. AUTO-GENERATED. DO NOT REMOVE. -->
             <!-- Files other apps open or share: a content URI of a generic binary or zip type; the page checks the name. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -60,6 +49,17 @@
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/x-zip-compressed" />
             </intent-filter>
+            <!-- tauri-file-associations. AUTO-GENERATED. DO NOT REMOVE. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:pathPattern=".*\\.risum" />
+                <data android:pathPattern=".*\\.risup" />
+                <data android:pathPattern=".*\\.charx" />
+            </intent-filter>
+            
+            <!-- tauri-file-associations. AUTO-GENERATED. DO NOT REMOVE. -->
         </activity>
 
         <service

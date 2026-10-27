@@ -234,7 +234,7 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 
 //#endregion
 
-import { importCharacter, importCharacterProcess, importOpenedFiles, importOpenedSources } from 'src/ts/characterCards'
+import { importCharacter, importCharacterProcess, importOpenedFiles, importOpenedSources, isOpenedSourceImportable } from 'src/ts/characterCards'
 import { importPreset } from 'src/ts/storage/database.svelte'
 import { open } from '@tauri-apps/plugin-fs'
 import { charxLimits } from 'src/ts/process/processzip'
@@ -688,6 +688,18 @@ describe('importOpenedSources', () => {
 
         expect(names()).toEqual(['Kept'])
         expect(h.last).toBe('error:' + language.importFilesNotImported(1, 2, 'backup.bin: ' + language.importUnsupportedFile))
+    })
+
+    // Guard: the drain routing asks this predicate, and the import must agree with it for every name.
+    test('isOpenedSourceImportable is true exactly for the names the import does not refuse', async () => {
+        for (const name of ['a.charx', 'A.CHARX', 'b.risum', 'c.risup', 'd.risupreset', 'e.preset', 'notes.png', 'backup.bin', 'x.charx.zip', 'noextension', '']) {
+            vi.mocked(open).mockClear()
+            h.files.set('content://p/9', new U8([1, 2, 3]))
+            h.last = 'none'
+            await importOpenedSources([{ name, path: 'content://p/9' }])
+            const refused = h.last === 'error:' + language.importFilesNotImported(1, 1, name + ': ' + language.importUnsupportedFile)
+            expect(isOpenedSourceImportable(name)).toBe(!refused)
+        }
     })
 
     test('a URI that cannot be opened is reported for that file and never rejects', async () => {

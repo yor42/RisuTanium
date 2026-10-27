@@ -1912,6 +1912,11 @@ export const languageSpanish = {
     "restoreSavedReloadOrRestart": "Tu copia de seguridad se restauró y guardó, pero la aplicación no pudo recargarse automáticamente. Recarga la página (o reinicia la aplicación) para finalizar.",
     "restoreAssetsSkipped": (count: number, names: string[]) =>
         `La copia de seguridad se restauró, excepto ${count} archivo(s) de recursos cuyos nombres esta aplicación no puede guardar. Un personaje que use alguno de ellos lo mostrará como faltante. Omitidos:\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
+    "restoreOpenedBackupConfirm": (name: string) => `¿Restaurar ${name}? Todos los datos actuales serán reemplazados.`,
+    "openedBackupNotAlone": (names: string[]) =>
+        `No se restauró: una copia de seguridad solo se restaura cuando se abre sola, no junto con otros archivos. Ábrela de nuevo por separado.\n\n${names.join('\n')}`,
+    "openedBackupOneAtATime": (names: string[]) =>
+        `No se restauró: solo se puede restaurar una copia de seguridad a la vez. Ábrela de nuevo cuando termine la restauración.\n\n${names.join('\n')}`,
     "backupFileChangedWhileReading": "El archivo de copia de seguridad cambió mientras se leía, por lo que la restauración se detuvo. Es posible que ya se hayan agregado o reemplazado algunas imágenes o entradas del almacenamiento frío. Tu base de datos actual no se modificó.",
     "restoreOversizedAssetsConfirm": (count: number, names: string[], limitBytes: number) =>
         `${count} archivo(s) de recursos de esta copia de seguridad superan los ${Math.floor(limitBytes / (1024 * 1024))} MB que este servidor acepta para un recurso, por lo que no se pueden restaurar aquí. Un personaje que use alguno de ellos lo mostrará como faltante. ¿Continuar sin ellos?\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,

@@ -1,4 +1,4 @@
-import type { BackupIndexEntry } from './backupContainer'
+import type { BackupIndexEntry, BinFile, BinSlice } from './backupContainer'
 import { inlayMetaKey } from '../process/files/inlayKeys'
 import {
     InlayUnreadableError,
@@ -20,7 +20,7 @@ import {
 } from './inlayBackupCodec'
 
 /**
- * The inlays of a local backup on restore. Part entries are kept as Blob
+ * The inlays of a local backup on restore. Part entries are kept as
  * slices of the backup file, never as bytes, and an inlay is written (one
  * `writeAppInlay` commit under its id lock) only after every part of it has
  * been seen and checked. Anything that does not add up writes nothing for that
@@ -68,7 +68,7 @@ interface InlayGroup {
     firstName: string
     header: InlayEntryHeader | null
     /** Body slices by part index. */
-    parts: Map<number, Blob>
+    parts: Map<number, BinSlice>
     /** Set once the group cannot be written. */
     skip: InlaySkipped | null
 }
@@ -102,7 +102,7 @@ export class InlayRestoreCollector {
     }
 
     /** Takes one part entry's data; `'unreadable'` when the file cannot be read. Never throws. */
-    async add(name: string, hash: string, index: number, data: Blob): Promise<'ok' | 'unreadable'> {
+    async add(name: string, hash: string, index: number, data: BinSlice): Promise<'ok' | 'unreadable'> {
         const group = this.group(hash, name)
         if (group.skip !== null) {
             return 'ok'
@@ -118,12 +118,20 @@ export class InlayRestoreCollector {
         let headerBytes: Uint8Array
         let headerLength: number | null
         try {
-            headerLength = headerLengthOf(new Uint8Array(await data.slice(0, 4).arrayBuffer()))
+            const lengthBytes = new Uint8Array(await data.slice(0, 4).arrayBuffer())
+            // A read that comes back shorter than the part covers is a file that changed, not a damaged inlay.
+            if (lengthBytes.length < Math.min(4, data.size)) {
+                return 'unreadable'
+            }
+            headerLength = headerLengthOf(lengthBytes)
             if (headerLength === null || 4 + headerLength > data.size) {
                 this.invalidate(group)
                 return 'ok'
             }
             headerBytes = new Uint8Array(await data.slice(4, 4 + headerLength).arrayBuffer())
+            if (headerBytes.length < headerLength) {
+                return 'unreadable'
+            }
         } catch (error) {
             console.error(error)
             return 'unreadable'
@@ -175,11 +183,33 @@ export class InlayRestoreCollector {
     }
 
     private async writeGroup(store: ByteStore, group: InlayGroup, header: InlayEntryHeader): Promise<'written' | 'changed' | 'refused'> {
-        const slices: Blob[] = []
+        const slices: BinSlice[] = []
         for (let index = 0; index < header.parts; index++) {
             slices.push(group.parts.get(index)!)
         }
-        const body = new Blob(slices, { type: header.repr === 'blob' ? header.mime : '' })
+        const type = header.repr === 'blob' ? header.mime : ''
+        let body: Blob
+        if (slices.every((slice): slice is BinSlice & Blob => slice instanceof Blob)) {
+            body = new Blob(slices, { type })
+        } else {
+            // A source-backed part is read here, one at a time, and kept as a Blob of its own, so the heap never holds more
+            // than one part of this inlay. A part that cannot be read, or comes back short, means the file changed.
+            const pieces: Blob[] = []
+            try {
+                for (const slice of slices) {
+                    const bytes = await slice.arrayBuffer()
+                    if (bytes.byteLength !== slice.size) {
+                        console.error(`Inlay part of ${header.id} read ${bytes.byteLength} of ${slice.size} bytes`)
+                        return 'changed'
+                    }
+                    pieces.push(new Blob([bytes]))
+                }
+            } catch (error) {
+                console.error(error)
+                return 'changed'
+            }
+            body = new Blob(pieces, { type })
+        }
         try {
             // A text inlay's bytes travel as the Blob they arrived in; the record keeps its repr, so it reads back as a string.
             const textRepr = header.repr === 'blob' ? undefined : header.repr
@@ -221,7 +251,7 @@ function isWhole(group: InlayGroup, header: InlayEntryHeader): boolean {
  * part 0 headers, so a Node restore can name them before anything is written.
  * Only entries whose name length can be an inlay name are read.
  */
-export async function listOversizedInlays(file: Blob, entries: readonly BackupIndexEntry[], limit: number | InlayLimitOf): Promise<{ hash: string, id: string, limit: number }[]> {
+export async function listOversizedInlays(file: BinFile, entries: readonly BackupIndexEntry[], limit: number | InlayLimitOf): Promise<{ hash: string, id: string, limit: number }[]> {
     const limitOf = limitFunction(limit)
     const found: { hash: string, id: string, limit: number }[] = []
     for (const entry of entries) {
