@@ -2,35 +2,43 @@
  * A full and a partial local export (`SaveLocalBackup`, `SavePartialLocalBackup`, `src/ts/drive/backuplocal.ts`) read
  * every module body before anything is opened (`snapshotModuleList`, `src/ts/drive/exportModules.ts`) and write that
  * snapshot, not the live list, as the database entry's `modules`. A module that cannot be read stops the export before
- * the file or the save dialog, naming the module. The harness is the one `exportStreamedEntry.test.ts` documents; the
- * loader double installs a body by replacing the stub slot of its id in the live list, as the real loader does.
- * A passing test here is not evidence about the Tauri or Node backends.
+ * the file or the save dialog, naming the module. A module stub is read as a copy of its stored body through the page's
+ * real residency (`createResidency` over a seeded memory backend, booted through the real dispatch), so the rows here
+ * exercise the real read, not a loader double; the rows that pin what the copy read installs (nothing) and the race
+ * outcomes live in `exportByCopy.test.ts`. A passing test is not evidence about the Tauri or Node backends.
+ *
+ * Labels in the titles: G rows are compatibility guards that pass before and after the copy read (the snapshot of a
+ * list with no stub, the V0 bytes, the alert wording); the stub rows are re-hosted on the real residency from the
+ * loader-double rows they replace, so they keep the property the old row pinned and are not reproducers.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { writable } from 'svelte/store'
-import { decompressSync } from 'fflate'
-import type { Database } from 'src/ts/storage/database.svelte'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-//#region module mocks
-
-const platformBox = vi.hoisted(() => {
-    // globalApi.svelte.ts reads navigator.locks once, at module evaluation:
-    // without it restore takes its no-Web-Locks branch and never waits on
-    // another tab, which is outside what this file exercises.
+const h = vi.hoisted(() => {
+    // globalApi.svelte reads navigator.locks once at module evaluation; without it the backup paths take their no-Web-Locks branch.
     Object.defineProperty(navigator, 'locks', { value: undefined, configurable: true })
-    return { isTauri: false }
+    // The legacy OPFS stand-in: no legacy unit file exists, so every read falls through to "not found".
+    class NotFoundError extends Error {
+        name = 'NotFoundError'
+    }
+    Object.defineProperty(globalThis.navigator, 'storage', {
+        configurable: true,
+        value: {
+            getDirectory: async () => ({
+                async getFileHandle(name: string) {
+                    throw new NotFoundError(`not found: ${name}`)
+                },
+                async removeEntry() { },
+                entries: () => ({ [Symbol.asyncIterator]: () => ({ next: async () => ({ done: true as const, value: undefined }) }) }),
+            }),
+        },
+    })
+    return {
+        // A parser effect reads the live list as soon as it is imported, so the slot is never undefined.
+        state: { db: { characters: [], modules: [] } } as { db: unknown },
+        platform: { isTauri: false },
+        sink: { writes: [] as Uint8Array[], opened: 0 },
+    }
 })
-
-const backupSink = vi.hoisted(() => ({ writes: [] as Uint8Array[], opened: 0 }))
-const releaseLog = vi.hoisted(() => ({ released: [] as string[] }))
-const forageKeysMock = vi.hoisted(() => vi.fn(async (): Promise<string[]> => []))
-const forageGetItemMock = vi.hoisted(() => vi.fn(async (_key: string): Promise<Uint8Array | null> => null))
-const forageSetItemMock = vi.hoisted(() => vi.fn(async (_key: string, _data: Uint8Array): Promise<void> => {}))
-const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as unknown as Database))
-const alertConfirmMock = vi.hoisted(() => vi.fn(async (_message: string) => true))
-const alertErrorMock = vi.hoisted(() => vi.fn())
-const alertMdMock = vi.hoisted(() => vi.fn())
-const alertNormalMock = vi.hoisted(() => vi.fn())
 
 vi.mock('localforage', () => ({
     default: {
@@ -42,13 +50,11 @@ vi.mock('localforage', () => ({
         }),
     },
 }))
-
 vi.mock(import('src/ts/platform'), () => ({
-    get isTauri() { return platformBox.isTauri },
+    get isTauri() { return h.platform.isTauri },
     isNodeServer: false,
     isIOS: () => false,
 }) as unknown as typeof import('src/ts/platform'))
-
 vi.mock('@tauri-apps/plugin-fs', () => ({
     BaseDirectory: { AppData: 0, Download: 1 },
     writeFile: vi.fn(async () => { }),
@@ -60,46 +66,18 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
     mkdir: vi.fn(async () => { }),
     remove: vi.fn(async () => { }),
 }))
-
-vi.mock('@tauri-apps/plugin-process', () => ({
-    relaunch: vi.fn(async () => { }),
-}))
-
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-    save: vi.fn(async () => 'backup-output.bin'),
-}))
-
-/** The real acquire with each handle's release recorded, so a test sees which handles were let go. */
-vi.mock(import('src/ts/storage/store2/moduleAcquire'), async (importOriginal) => {
-    const original = await importOriginal()
-    return {
-        ...original,
-        acquireModule: async (id: string, signal?: AbortSignal) => {
-            const acquired = await original.acquireModule(id, signal)
-            if (acquired === null) {
-                return null
-            }
-            return {
-                module: acquired.module,
-                release: () => {
-                    releaseLog.released.push(id)
-                    acquired.release()
-                },
-            }
-        },
-    }
-})
-
+vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: vi.fn(async () => { }) }))
+vi.mock('@tauri-apps/plugin-dialog', () => ({ save: vi.fn(async () => 'backup-output.bin') }))
 vi.mock('src/ts/vendor/streamSaver', () => ({
     default: {
         useBlobFallback: false,
         createWriteStream: () => {
-            backupSink.opened++
+            h.sink.opened++
             return {
                 ready: Promise.resolve(),
                 writable: {
                     getWriter: () => ({
-                        write: async (chunk: Uint8Array) => { backupSink.writes.push(chunk) },
+                        write: async (chunk: Uint8Array) => { h.sink.writes.push(chunk.slice()) },
                         close: async () => { },
                     }),
                 },
@@ -107,698 +85,659 @@ vi.mock('src/ts/vendor/streamSaver', () => ({
         },
     },
 }))
-
-vi.mock(import('src/ts/storage/database.svelte'), () => ({
-    getDatabase: getDatabaseMock,
-    setDatabase: vi.fn(),
-    presetTemplate: { name: 'test-preset' },
-    defaultSdDataFunc: vi.fn(() => ({})),
-    appVer: 'test',
-    appSubVer: 'test',
-    getCurrentCharacter: vi.fn(),
-}) as unknown as typeof import('src/ts/storage/database.svelte'))
-
-vi.mock(import('src/ts/stores.svelte'), () => ({
-    DBState: { db: {} as unknown as Database },
-    selectedCharID: writable(-1),
-    selIdState: { selId: -1 },
-    alertStore: writable({ type: 'none', msg: '' }),
-    MobileGUI: writable(false),
-    botMakerMode: writable(false),
-    loadedStore: writable(false),
-    LoadingStatusState: { text: '' },
-    ReloadGUIPointer: writable(0),
-    bodyIntercepterStore: writable(null),
-    savingStoppedReason: writable(null),
-}) as unknown as typeof import('src/ts/stores.svelte'))
-
-vi.mock(import('src/ts/process/index.svelte'), () => ({
-    doingChat: writable(false),
-}) as unknown as typeof import('src/ts/process/index.svelte'))
-
-vi.mock(import('src/ts/alert'), () => ({
-    alertClear: vi.fn(),
-    alertConfirm: alertConfirmMock,
-    alertError: alertErrorMock,
-    alertWait: vi.fn(),
-    alertMd: alertMdMock,
-    alertNormal: alertNormalMock,
-    alertSelect: vi.fn(),
-    alertToast: vi.fn(),
-    alertInput: vi.fn(),
-    alertNormalWait: vi.fn(),
-    alertAddCharacter: vi.fn(),
-    alertStore: writable({ type: 'none', msg: '' }),
-    waitAlert: vi.fn(async () => { }),
-}))
-
-vi.mock(import('src/ts/util'), () => ({
-    changeFullscreen: vi.fn(),
-    checkNullish: vi.fn((v: unknown) => v === null || v === undefined),
-    sleep: vi.fn(async () => { }),
-    sleepForever: vi.fn(async () => { }),
-}) as unknown as typeof import('src/ts/util'))
-
-vi.mock('@tauri-apps/api/core', () => ({
-    convertFileSrc: vi.fn((p: string) => p),
-    invoke: vi.fn(async () => undefined),
-}))
-
+vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: vi.fn((p: string) => p), invoke: vi.fn(async () => undefined) }))
 vi.mock('@tauri-apps/api/path', () => ({
     appDataDir: vi.fn(async () => '/appdata'),
     join: vi.fn(async (...p: string[]) => p.join('/')),
     basename: vi.fn(async (p: string) => p.split('/').pop()),
 }))
-
-vi.mock('@tauri-apps/plugin-shell', () => ({
-    open: vi.fn(async () => { }),
-}))
-
+vi.mock('@tauri-apps/plugin-shell', () => ({ open: vi.fn(async () => { }) }))
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
-    getCurrentWebviewWindow: vi.fn(() => ({
-        listen: vi.fn(),
-        setTitle: vi.fn(),
-    })),
+    getCurrentWebviewWindow: vi.fn(() => ({ listen: vi.fn(), setTitle: vi.fn() })),
 }))
-
-vi.mock('@tauri-apps/plugin-http', () => ({
-    fetch: vi.fn(async () => new Response(null, { status: 404 })),
-}))
-
-vi.mock('@tauri-apps/api/event', () => ({
-    listen: vi.fn(async () => vi.fn()),
-}))
-
-vi.mock(import('src/ts/update'), () => ({
-    checkRisuUpdate: vi.fn(async () => { }),
-}))
-
-vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
-    loadPlugins: vi.fn(async () => { }),
-}) as unknown as typeof import('src/ts/plugins/plugins.svelte'))
-
-vi.mock(import('src/ts/parser/parser.svelte'), () => ({
-    hasher: vi.fn((s: string) => s),
-}) as unknown as typeof import('src/ts/parser/parser.svelte'))
-
-vi.mock(import('src/ts/characterCards'), () => ({
-    characterURLImport: vi.fn(),
-    hubURL: 'https://example.invalid',
-}) as unknown as typeof import('src/ts/characterCards'))
-
-vi.mock(import('src/ts/storage/dbChangeEffects.svelte'), () => ({
-    registerDbChangeEffects: vi.fn(),
-}) as unknown as typeof import('src/ts/storage/dbChangeEffects.svelte'))
-
+vi.mock('@tauri-apps/plugin-http', () => ({ fetch: vi.fn(async () => new Response(null, { status: 404 })) }))
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => vi.fn()) }))
+vi.mock(import('src/ts/update'), () => ({ checkRisuUpdate: vi.fn(async () => { }) }))
+vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({ loadPlugins: vi.fn(async () => { }) }) as unknown as typeof import('src/ts/plugins/plugins.svelte'))
+vi.mock(import('src/ts/characterCards'), () => ({ characterURLImport: vi.fn(), hubURL: 'https://example.invalid' }) as unknown as typeof import('src/ts/characterCards'))
+vi.mock(import('src/ts/storage/dbChangeEffects.svelte'), () => ({ registerDbChangeEffects: vi.fn() }) as unknown as typeof import('src/ts/storage/dbChangeEffects.svelte'))
+vi.mock(import('src/ts/gui/animation'), () => ({ updateAnimationSpeed: vi.fn() }) as unknown as typeof import('src/ts/gui/animation'))
+vi.mock(import('src/ts/gui/colorscheme'), () => ({ updateColorScheme: vi.fn(), updateTextThemeAndCSS: vi.fn() }) as unknown as typeof import('src/ts/gui/colorscheme'))
+vi.mock(import('src/ts/observer.svelte'), () => ({ startObserveDom: vi.fn() }) as unknown as typeof import('src/ts/observer.svelte'))
+vi.mock(import('src/ts/gui/guisize'), () => ({ updateGuisize: vi.fn() }) as unknown as typeof import('src/ts/gui/guisize'))
+vi.mock(import('src/ts/hotkey'), () => ({ initMobileGesture: vi.fn() }) as unknown as typeof import('src/ts/hotkey'))
 vi.mock(import('src/ts/storage/autoStorage'), () => ({
     AutoStorage: class {
         realStorage: unknown = undefined
-        getItem = forageGetItemMock
-        setItem = forageSetItemMock
-        keys = forageKeysMock
+        getItem = vi.fn(async () => null)
+        setItem = vi.fn(async () => { })
+        keys = vi.fn(async () => [])
         removeItem = vi.fn(async () => { })
     },
 }) as unknown as typeof import('src/ts/storage/autoStorage'))
-
-vi.mock(import('src/ts/gui/animation'), () => ({
-    updateAnimationSpeed: vi.fn(),
-}) as unknown as typeof import('src/ts/gui/animation'))
-
-vi.mock(import('src/ts/gui/colorscheme'), () => ({
-    updateColorScheme: vi.fn(),
-    updateTextThemeAndCSS: vi.fn(),
-}) as unknown as typeof import('src/ts/gui/colorscheme'))
-
-vi.mock(import('src/ts/observer.svelte'), () => ({
-    startObserveDom: vi.fn(),
-}) as unknown as typeof import('src/ts/observer.svelte'))
-
-vi.mock(import('src/ts/gui/guisize'), () => ({
-    updateGuisize: vi.fn(),
-}) as unknown as typeof import('src/ts/gui/guisize'))
-
-vi.mock(import('src/ts/characters'), () => ({
-    updateLorebooks: vi.fn((v: unknown) => v),
-}) as unknown as typeof import('src/ts/characters'))
-
-vi.mock(import('src/ts/hotkey'), () => ({
-    initMobileGesture: vi.fn(),
-}) as unknown as typeof import('src/ts/hotkey'))
-
+vi.mock(import('src/ts/alert'), () => ({
+    alertClear: vi.fn(),
+    alertConfirm: vi.fn(async () => true),
+    alertError: vi.fn(),
+    alertWait: vi.fn(),
+    alertMd: vi.fn(),
+    alertNormal: vi.fn(),
+    alertSelect: vi.fn(),
+    alertToast: vi.fn(),
+    alertInput: vi.fn(),
+    alertNormalWait: vi.fn(),
+    alertAddCharacter: vi.fn(),
+    waitAlert: vi.fn(async () => { }),
+}) as unknown as typeof import('src/ts/alert'))
+vi.mock(import('src/ts/characters'), () => ({ updateLorebooks: vi.fn((book: unknown) => book) }) as unknown as typeof import('src/ts/characters'))
+vi.mock(import('src/ts/process/index.svelte'), async () => {
+    const { writable } = await import('svelte/store')
+    return { doingChat: writable(false) } as unknown as typeof import('src/ts/process/index.svelte')
+})
+vi.mock(import('src/ts/stores.svelte'), async () => {
+    const { writable } = await import('svelte/store')
+    return {
+        DBState: h.state,
+        selectedCharID: writable(-1),
+        selIdState: { selId: -1 },
+        alertStore: writable({ type: 'none', msg: '' }),
+        MobileGUI: writable(false),
+        botMakerMode: writable(false),
+        loadedStore: writable(false),
+        LoadingStatusState: { text: '' },
+        ReloadGUIPointer: writable(0),
+        bodyIntercepterStore: writable(null),
+        savingStoppedReason: writable(null),
+    } as unknown as typeof import('src/ts/stores.svelte')
+})
 vi.mock(import('src/ts/process/modules'), () => ({
+    refreshModules: vi.fn(),
+    bumpModuleGui: vi.fn(),
     moduleUpdate: vi.fn(async () => { }),
 }) as unknown as typeof import('src/ts/process/modules'))
 
-/** The characters a store2 entity stub reads back, by entity key; any other stub reads through the real unit store. */
-const entityBox = vi.hoisted(() => ({ characters: new Map<string, unknown>() }))
-
-vi.mock(import('src/ts/process/coldCharacterRestore'), async (importOriginal) => {
-    const original = await importOriginal()
-    return {
-        ...original,
-        readColdCharacterCopy: async (stub: Parameters<typeof original.readColdCharacterCopy>[0]) => {
-            const entity = entityBox.characters.get(String(stub.coldstorage))
-            return entity === undefined
-                ? original.readColdCharacterCopy(stub)
-                : { status: 'ok' as const, character: structuredClone(entity) as typeof stub }
-        },
-    }
-})
-
-//#endregion
-
-//#region units and the legacy OPFS stand-in
-
-/** The page store's units (coldstorage/<key>), kept apart from the assets, and every unit key read from it. */
-const unitMem = new Map<string, Uint8Array>()
-const unitReadLog: string[] = []
-
-function isUnitKey(key: string): boolean {
-    return key.startsWith('coldstorage/')
-}
-
-/** Places raw bytes as the page store's unit key. */
-function putRawUnit(key: string, bytes: Uint8Array): void {
-    unitMem.set('coldstorage/' + key, bytes)
-}
-
-class MockNotFoundError extends Error {
-    name = 'NotFoundError'
-}
-
-/** The legacy OPFS unit files: no test here places one, so every read falls through to "not found". */
-const mockDirectoryHandle = {
-    async getFileHandle(name: string) {
-        throw new MockNotFoundError("not found: " + name)
-    },
-    async removeEntry() { },
-    entries() {
-        return {
-            [Symbol.asyncIterator]() {
-                return {
-                    async next() {
-                        return { done: true as const, value: undefined }
-                    },
-                }
-            },
-        }
-    },
-}
-Object.defineProperty(globalThis.navigator, 'storage', {
-    configurable: true,
-    value: {
-        getDirectory: async () => mockDirectoryHandle,
-    },
-})
-
+import type { Database } from 'src/ts/storage/database.svelte'
 import { SaveLocalBackup, SavePartialLocalBackup } from 'src/ts/drive/backuplocal'
 import { ExportModuleUnreadableError, snapshotModuleList, type ExportModuleFailure } from 'src/ts/drive/exportModules'
+import type { ExportOutcome } from 'src/ts/drive/operationEnd'
+import { alertError } from 'src/ts/alert'
 import { dbWriteLock, LocalWriter } from 'src/ts/globalApi.svelte'
+import { language } from 'src/lang'
 import { isBusy } from 'src/ts/process/memory/busyActions'
-import { writeRisuSaveV0 } from 'src/ts/storage/risuSaveV0'
+import { crc32 } from 'src/ts/storage/blockFrame'
 import { decodeRisuSave } from 'src/ts/storage/risuSave'
-import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from 'src/ts/storage/moduleStub'
-import { ModuleAmbiguousError, ModuleLoadError, registerModuleLoader, unregisterModuleLoader, type ModuleLoadFailure } from 'src/ts/storage/store2/moduleAcquire'
-import { DBState } from 'src/ts/stores.svelte'
+import { writeRisuSaveV0 } from 'src/ts/storage/risuSaveV0'
+import { isModuleStub, MODULE_STUB_KEY, MODULE_STUB_VALUE, ModuleStubRefusal } from 'src/ts/storage/moduleStub'
+import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
+import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
-import { save } from '@tauri-apps/plugin-dialog'
-import { language } from 'src/lang'
-import { ModuleStubRefusal } from 'src/ts/storage/moduleStub'
+import { Store2BackendFailureError } from 'src/ts/storage/store2/backend/errors'
+import { resetStore2BootForTest, type Store2BootResult } from 'src/ts/storage/store2/bootActive'
+import { previousFrom } from 'src/ts/storage/store2/codec'
+import { keyOfRef, type ModuleEntry } from 'src/ts/storage/store2/format'
+import { createListDerivation } from 'src/ts/storage/store2/lists/derive'
+import { acquireModule, ModuleAmbiguousError, ModuleLoadError, type ModuleLoadFailure } from 'src/ts/storage/store2/moduleAcquire'
+import { resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
+import { getActiveStore2Save, resetStore2SaveForTest } from 'src/ts/storage/store2/saveActive'
+import { bootThroughDispatch, countedBackend, createClock, seedTree, testEnv, type CountedBackend, type DispatchedBoot } from 'src/ts/storage/tests/store2SaveKit'
+import { buildSmall, type Obj } from 'src/ts/storage/tests/store2/codecFixtures'
 
-//#region helpers
+type Plain = Record<string, unknown>
 
-const decoder = new TextDecoder()
+//#region the real-residency page
 
-function concat(parts: Uint8Array[]): Uint8Array {
-    const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
-    let offset = 0
-    for (const part of parts) {
-        out.set(part, offset)
-        offset += part.length
+interface Rig {
+    counted: CountedBackend
+    entries: ModuleEntry[]
+}
+
+function moduleBody(id: string, extra: Obj = {}): Obj {
+    return { id, name: `Module ${id}`, description: `about ${id}`, lorebook: [{ comment: 'c', content: `text ${id}`, key: 'k', alwaysActive: false, secondkey: '', selective: false, insertorder: 100, mode: 'normal', bookVersion: 2 }], regex: [{ comment: 'r', in: 'x', out: 'y', type: 'editinput' }], trigger: [], assets: [], cjs: `body of ${id}`, ...extra }
+}
+
+/** Five modules; the global lists of `REFERENCING` keep `ida` and `idb` (by namespace) resident and leave three unreferenced. */
+function fiveModules(): Obj[] {
+    return [moduleBody('idc'), moduleBody('ida'), moduleBody('idd'), moduleBody('idb', { namespace: 'ns-a' }), moduleBody('ide')]
+}
+
+const REFERENCING: Obj = { enabledModules: ['ida'], moduleIntergration: 'ns-a' }
+const UNREFERENCED = ['idc', 'idd', 'ide']
+const ORDER = ['idc', 'ida', 'idd', 'idb', 'ide']
+
+function plain<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T
+}
+
+/** msgpackr 1.10.1 under Node rejects strings of 64 or more characters, so the fixture keeps them short. */
+function shortened(value: unknown): unknown {
+    if (typeof value === 'string') {
+        return value.slice(0, 50)
     }
+    if (Array.isArray(value)) {
+        return value.map(shortened)
+    }
+    if (typeof value === 'object' && value !== null) {
+        return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, shortened(inner)]))
+    }
+    return value
+}
+
+/** Seeds the source with the real list derivation (so its module entries are stub-eligible) into a counted backend. */
+async function rigOf(modules: Obj[]): Promise<Rig> {
+    const counted = countedBackend()
+    const source = shortened({ ...(buildSmall(2) as unknown as Obj), archiveCharacters: true, enabledModules: [], moduleIntergration: '', modules, ...REFERENCING }) as Database
+    const seeded = await seedTree(counted.memory, plain(source), testEnv(createClock(), 4242), createListDerivation())
+    counted.reset()
+    return { counted, entries: previousFrom(seeded.tree).objects?.moduleIndex?.entries ?? [] }
+}
+
+function opened(result: Store2BootResult): Extract<Store2BootResult, { kind: 'store2' }> {
+    if (result.kind !== 'store2') {
+        throw new Error(`The boot answered ${result.kind}.`)
+    }
+    return result
+}
+
+function slotsOf(db: Database): Plain[] {
+    return db.modules as unknown as Plain[]
+}
+
+function stubIdsOf(db: Database): string[] {
+    return slotsOf(db).filter(slot => isModuleStub(slot as never)).map(slot => String(slot.id))
+}
+
+function entryOf(rig: Rig, id: string): ModuleEntry {
+    const found = rig.entries.find(entry => entry.id === id)
+    if (found === undefined) {
+        throw new Error(`The seed holds no module ${id}.`)
+    }
+    return found
+}
+
+function resetPage(): void {
+    resetStore2SaveForTest()
+    resetResidencyForTest()
+    resetStore2BootForTest()
+    resetPageBlockOwnerForTests()
+    resetPageStorageModeForTests()
+}
+
+/** The booted page: its database installed as the live one, the real residency and loader registered by the boot. */
+async function boot(rig: Rig): Promise<DispatchedBoot & { db: Database }> {
+    resetPage()
+    const booted = await bootThroughDispatch(rig.counted.backend, { lists: createListDerivation() })
+    const db = opened(booted.result).database
+    h.state.db = db
+    return Object.assign(booted, { db })
+}
+
+/** One module-flagged save pass through the active save context, committed and acknowledged. */
+async function pass(db: Database): Promise<void> {
+    const active = getActiveStore2Save()
+    if (active?.encoder === undefined) {
+        throw new Error('No save context.')
+    }
+    const plan = await active.encoder.plan(db, { marked: new Set(), modules: true, whole: true })
+    const result = await active.session.committer.commit(await active.session.committer.readCommit(), plan.commitRequest())
+    if (result.status !== 'committed') {
+        throw new Error(`The pass came to ${result.status}.`)
+    }
+    plan.acknowledge()
+}
+
+const withHeader = (bytes: Uint8Array, edit: (header: Uint8Array) => void): Uint8Array => {
+    const out = new Uint8Array(bytes)
+    edit(out.subarray(0, 12))
+    new DataView(out.buffer, out.byteOffset + 12, 4).setUint32(0, crc32(out.subarray(0, 12)), true)
     return out
 }
 
-/** The entries in the sink, parsed strictly from the bytes written. */
-function writtenEntries(): { name: string, data: Uint8Array }[] {
-    const bytes = concat(backupSink.writes)
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-    const entries: { name: string, data: Uint8Array }[] = []
+/** The stored module unit of `id` is gone, so the module reads as damaged. */
+function dropUnit(rig: Rig, id: string): void {
+    rig.counted.memory.poke(keyOfRef(entryOf(rig, id).unit as never), null)
+}
+
+/** The stored module unit of `id` is in a frame format newer than this build's. */
+function makeUnitNewer(rig: Rig, id: string): void {
+    const key = keyOfRef(entryOf(rig, id).unit as never)
+    rig.counted.memory.poke(key, withHeader(rig.counted.memory.snapshot().get(key) as Uint8Array, header => { header[4] = 9 }))
+}
+
+/** Runs `race` once, inside the first unit read the export makes (the read of the first stub, `idc`). */
+async function racingRead<T>(rig: Rig, race: () => Promise<void>, run: () => Promise<T>): Promise<T> {
+    const backend = rig.counted.backend
+    const realRead = backend.readUnits
+    let raced = false
+    let inRace = false
+    backend.readUnits = async (keys) => {
+        if (!raced && !inRace) {
+            inRace = true
+            await race()
+            inRace = false
+            raced = true
+        }
+        return realRead(keys)
+    }
+    try {
+        return await run()
+    } finally {
+        backend.readUnits = realRead
+        expect(raced, 'the race ran inside the first read').toBe(true)
+    }
+}
+
+//#endregion
+
+//#region the .bin export
+
+const decoder = new TextDecoder()
+
+function databaseEntryWritten(): Uint8Array {
+    const bytes = new Uint8Array(h.sink.writes.reduce((n, part) => n + part.length, 0))
+    let at = 0
+    for (const part of h.sink.writes) {
+        bytes.set(part, at)
+        at += part.length
+    }
+    const view = new DataView(bytes.buffer)
     let offset = 0
-    while (offset < bytes.length) {
+    while (offset + 4 <= bytes.length) {
         const nameLength = view.getUint32(offset, true)
         offset += 4
         const name = decoder.decode(bytes.subarray(offset, offset + nameLength))
         offset += nameLength
         const dataLength = view.getUint32(offset, true)
         offset += 4
-        entries.push({ name, data: bytes.slice(offset, offset + dataLength) })
+        if (name === 'database.risudat') {
+            return bytes.slice(offset, offset + dataLength)
+        }
         offset += dataLength
     }
-    return entries
+    throw new Error('The export wrote no database entry.')
 }
 
-function databaseEntry(): Uint8Array {
-    const entries = writtenEntries()
-    expect(entries.at(-1)?.name).toBe('database.risudat')
-    return entries.at(-1)!.data
+async function decodedDatabase(): Promise<Plain> {
+    return await decodeRisuSave(databaseEntryWritten()) as unknown as Plain
 }
 
-async function decodedDatabase(): Promise<Record<string, unknown>> {
-    return await decodeRisuSave(databaseEntry()) as Record<string, unknown>
+interface Profile {
+    name: string
+    run: () => Promise<ExportOutcome>
+    kv: boolean
 }
 
-type Slot = Database['modules'][number]
+const KV = { 'kv:bar': { version: 1, entries: [] } }
 
-function fullModule(id: string, name: string, extra: Record<string, unknown> = {}): Slot {
-    return { id, name, description: `${name} description`, ...extra } as unknown as Slot
-}
-
-function stubSlot(id: string, name: string): Slot {
-    return { id, name, [MODULE_STUB_KEY]: MODULE_STUB_VALUE } as unknown as Slot
-}
+const PROFILES: Profile[] = [
+    { name: 'full writer', run: () => SaveLocalBackup({ mode: 'inline' }), kv: false },
+    { name: 'partial writer', run: () => SavePartialLocalBackup({ mode: 'inline' }), kv: false },
+    { name: 'kv-block (V0)', run: () => SaveLocalBackup({ mode: 'inline' }), kv: true },
+]
 
 function makeLiveCharacter(chaId: unknown, name: string): Database['characters'][number] {
     return { chaId, name, type: 'character', chatPage: 0, chats: [] } as unknown as Database['characters'][number]
 }
 
-function databaseWith(fields: Record<string, unknown>): Database {
+const CHARACTER_SETS: [string, boolean][] = [
+    ['no repair', false],
+    ['repair needed', true],
+]
+
+/** The profile's extra field and, for a repair run, a character that has no id (the export mints one for it). */
+function applyProfile(db: Database, profile: Profile, repairNeeded = false): void {
+    if (profile.kv) {
+        (db as unknown as Plain).upstreamKvBlocks = KV
+    }
+    if (repairNeeded) {
+        db.characters.push(makeLiveCharacter(undefined, 'No Id'))
+    }
+}
+
+/** The repair mints a random id for a character that has none; the comparison sees a fixed one instead. */
+function withoutMintedIds(tree: Plain): Plain {
+    const characters = (tree.characters as { chaId: string, name: string }[]).map(c => c.name === 'No Id' ? { ...c, chaId: 'minted' } : c)
+    return { ...tree, characters }
+}
+
+async function exportedTree(profile: Profile): Promise<Plain> {
+    h.sink.writes.length = 0
+    const outcome = await profile.run()
+    expect(outcome.status).toBe('saved')
+    return withoutMintedIds(await decodedDatabase())
+}
+
+function stoppedReason(outcome: ExportOutcome): ExportModuleFailure | undefined {
+    return outcome.status === 'failed' && outcome.cause instanceof ExportModuleUnreadableError ? outcome.cause.reason : undefined
+}
+
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>
+
+/** Whether the console received an error whose message holds `text`. */
+function consoleErrorMentions(text: string): boolean {
+    return consoleErrorSpy.mock.calls.some(call => call.some(arg => arg instanceof Error && arg.message.includes(text)))
+}
+
+/** A list with no stub and no residency: the shapes the snapshot passes through untouched. */
+function databaseWith(fields: Plain): Database {
     return { characters: [makeLiveCharacter('a', 'A')], personas: [], characterOrder: ['a'], botPresets: [], ...fields } as unknown as Database
 }
 
 function useDatabase(db: Database): void {
-    getDatabaseMock.mockImplementation(() => db)
-    DBState.db = db
+    h.state.db = db
 }
 
-/** The bodies a loader double installs, by module id. */
-const bodies = new Map<string, Slot>()
-const loadLog: string[] = []
-
-/** Replaces the stub slot of the handle's id in the live list with its body and returns the slot read back. */
-function installBody(id: string): Slot | null {
-    const modules = DBState.db.modules
-    const index = modules.findIndex((slot) => slot.id === id)
-    if (index === -1) {
-        return null
-    }
-    modules[index] = bodies.get(id)!
-    return modules[index]
+function fullModule(id: string, name: string, extra: Plain = {}): Plain {
+    return { id, name, description: `${name} description`, ...extra }
 }
 
-/** Registers a loader that installs the body of the handle's id into the live list through `installBody`; `duringLoad` runs first. */
-function installLoaderDouble(duringLoad?: () => void): void {
-    registerModuleLoader(async (handle) => {
-        const id = handle.replace(/#0$/, '')
-        loadLog.push(id)
-        duringLoad?.()
-        if (!bodies.has(id)) {
-            throw new Error(`no body for ${id}`)
-        }
-        return installBody(id)
-    })
+function stubSlot(id: string, name: string): Plain {
+    return { id, name, [MODULE_STUB_KEY]: MODULE_STUB_VALUE }
 }
-
-interface Profile {
-    name: string
-    run: () => Promise<unknown>
-    kv: boolean
-}
-
-const PROFILES: Profile[] = [
-    { name: 'full writer', run: () => SaveLocalBackup(), kv: false },
-    { name: 'partial writer', run: () => SavePartialLocalBackup(), kv: false },
-    { name: 'kv-block (V0)', run: () => SaveLocalBackup(), kv: true },
-]
 
 //#endregion
 
 beforeEach(() => {
-    platformBox.isTauri = false
-    backupSink.writes.length = 0
-    backupSink.opened = 0
-    releaseLog.released.length = 0
-    loadLog.length = 0
-    bodies.clear()
-    unitMem.clear()
-    forageKeysMock.mockReset()
-    forageGetItemMock.mockReset()
-    alertConfirmMock.mockClear()
-    alertErrorMock.mockClear()
-    vi.mocked(save).mockClear()
-    forageKeysMock.mockImplementation(async () => [])
-    forageGetItemMock.mockImplementation(async () => null)
+    vi.clearAllMocks()
+    h.state.db = { characters: [], modules: [] }
+    h.platform.isTauri = false
+    h.sink.writes.length = 0
+    h.sink.opened = 0
+    resetPage()
     injectAppStore(createForageBackedStore({
-        getItem: async (key) => (isUnitKey(key) ? (unitMem.get(key) ?? null) : forageGetItemMock(key)),
-        setItem: async (key, value) => {
-            if (isUnitKey(key)) {
-                unitMem.set(key, value)
-                return
-            }
-            await forageSetItemMock(key, value)
-        },
-        keys: async () => [...(await forageKeysMock()), ...unitMem.keys()],
-        removeItem: async (key) => { unitMem.delete(key) },
+        getItem: async () => null,
+        setItem: async () => { },
+        keys: async () => [],
+        removeItem: async () => { },
     }))
-    getDatabaseMock.mockImplementation(() => databaseWith({}))
     vi.spyOn(console, 'log').mockImplementation(() => { })
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { })
     vi.spyOn(dbWriteLock, 'acquire').mockResolvedValue(() => { })
 })
 
 afterEach(() => {
-    unregisterModuleLoader()
+    resetPage()
     vi.restoreAllMocks()
 })
 
-let consoleErrorSpy: ReturnType<typeof vi.spyOn>
-
-/** Whether the console received an error whose message holds `text`. */
-function consoleErrorMentions(text: string): boolean {
-    return consoleErrorSpy.mock.calls.some((call) => call.some((arg) => arg instanceof Error && arg.message.includes(text)))
-}
-
-const BODY_A = fullModule('m-a', 'Module A', { cjs: 'a-body' })
-const BODY_B = fullModule('m-b', 'Module B', { regex: [{ comment: 'r', in: 'x', out: 'y', type: 'editinput' }] })
-
-/** The same tree with every module a body: the all-full control the stub export must unpack equal to. */
-function treeFor(profile: Profile, modules: Slot[], characters: unknown[]): Database {
-    return databaseWith({
-        modules,
-        characters,
-        characterOrder: ['a'],
-        ...(profile.kv ? { upstreamKvBlocks: { 'kv:bar': { version: 1, entries: [] } } } : {}),
-    })
-}
-
-async function exportedTree(profile: Profile, modules: Slot[], characters: unknown[]): Promise<Record<string, unknown>> {
-    backupSink.writes.length = 0
-    useDatabase(treeFor(profile, modules, characters))
-    const outcome = await profile.run() as { status: string }
-    expect(outcome.status).toBe('saved')
-    return withoutMintedIds(await decodedDatabase())
-}
-
-/** The repair mints a random id for a character that has none; the comparison sees a fixed one instead. */
-function withoutMintedIds(tree: Record<string, unknown>): Record<string, unknown> {
-    const characters = (tree.characters as { chaId: string, name: string }[]).map((c) => c.name === 'No Id' ? { ...c, chaId: 'minted' } : c)
-    return { ...tree, characters }
-}
-
-const CHARACTER_SETS: [string, () => unknown[]][] = [
-    ['no repair', () => [makeLiveCharacter('a', 'A')]],
-    ['repair needed', () => [makeLiveCharacter('a', 'A'), makeLiveCharacter(undefined, 'No Id')]],
-]
-
 describe.each(PROFILES)('$name', (profile) => {
-    describe.each(CHARACTER_SETS)('%s', (_label, characters) => {
+    describe.each(CHARACTER_SETS)('%s', (_label, repairNeeded) => {
         test('export-unpacks-equal-with-stub: a module stub in the list unpacks equal to an all-full export', async () => {
-            const control = await exportedTree(profile, [fullModule('m-r', 'Resident'), BODY_A, BODY_B], characters())
+            const rig = await rigOf(fiveModules())
+            const full = await boot(rig)
+            for (const id of UNREFERENCED) {
+                const acquired = await acquireModule(id)
+                expect(acquired, `the control loads ${id}`).not.toBeNull()
+                acquired?.release()
+            }
+            expect(stubIdsOf(full.db)).toEqual([])
+            applyProfile(full.db, profile, repairNeeded)
+            const control = await exportedTree(profile)
 
-            bodies.set('m-a', BODY_A)
-            bodies.set('m-b', BODY_B)
-            installLoaderDouble()
+            const stubbed = await boot(rig)
+            expect(stubIdsOf(stubbed.db)).toEqual(UNREFERENCED)
+            applyProfile(stubbed.db, profile, repairNeeded)
             // The live list is emptied once the writer is open, so only the list read before it opened can supply the modules.
             const realInit = LocalWriter.prototype.init
             vi.spyOn(LocalWriter.prototype, 'init').mockImplementation(async function (this: LocalWriter, ...args: Parameters<LocalWriter['init']>) {
                 const result = await realInit.apply(this, args)
-                DBState.db.modules.splice(0, DBState.db.modules.length)
+                slotsOf(stubbed.db).splice(0, slotsOf(stubbed.db).length)
                 return result
             })
-            const exported = await exportedTree(profile, [fullModule('m-r', 'Resident'), stubSlot('m-a', 'Module A'), stubSlot('m-b', 'Module B')], characters())
+            const exported = await exportedTree(profile)
 
-            expect(loadLog).toEqual(['m-a', 'm-b'])
+            expect((exported.modules as Plain[]).map(slot => slot.id)).toEqual(ORDER)
             expect(exported.modules).toEqual(control.modules)
             expect(exported).toEqual(control)
         })
     })
 
     test('guard: duplicate resident ids are kept as separate slots, in order', async () => {
-        const first = fullModule('dup', 'First', { cjs: '1' })
-        const second = fullModule('dup', 'Second', { cjs: '2' })
-        const exported = await exportedTree(profile, [first, second], [makeLiveCharacter('a', 'A')])
-
-        expect((exported.modules as { name: string }[]).map((m) => m.name)).toEqual(['First', 'Second'])
-    })
-
-    test('unreadable-module-stops-before-open: a failing loader names the module in the console and nothing is opened', async () => {
-        useDatabase(treeFor(profile, [stubSlot('m-a', 'Module A'), stubSlot('m-b', 'Broken Module')], [makeLiveCharacter('a', 'A')]))
-        bodies.set('m-a', BODY_A)
-        registerModuleLoader(async (handle) => {
-            if (handle === 'm-b#0') {
-                throw new Error('read failed')
-            }
-            return installBody('m-a')
-        })
-        const openSpy = vi.spyOn(LocalWriter.prototype, 'init')
-
-        const outcome = await profile.run() as { status: string, file?: string }
-
-        expect(outcome.status).toBe('failed')
-        expect(outcome.file).toBe('untouched')
-        expect(openSpy).not.toHaveBeenCalled()
-        expect(backupSink.opened).toBe(0)
-        expect(backupSink.writes.length).toBe(0)
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
-        const shown = String(alertErrorMock.mock.calls[0][0])
-        // The alert names the module and is not the generic text; a plain loader failure claims no cause.
-        expect(shown).toContain('Broken Module')
-        expect(shown).not.toBe(language.backupFailedNothingWritten())
-        expect(shown).toBe(language.backupFailedModuleUnreadable('Broken Module', 'unreadable'))
-        expect(consoleErrorMentions('Broken Module')).toBe(true)
-        expect(releaseLog.released).toEqual(['m-a'])
-    })
-
-    test('a stub removed from the live list during an earlier load stops the export before anything opens and is named in the console', async () => {
-        const db = treeFor(profile, [stubSlot('m-a', 'Module A'), stubSlot('m-b', 'Vanished')], [makeLiveCharacter('a', 'A')])
+        const db = databaseWith({ modules: [fullModule('dup', 'First', { cjs: '1' }), fullModule('dup', 'Second', { cjs: '2' })] })
+        applyProfile(db, profile)
         useDatabase(db)
-        bodies.set('m-a', BODY_A)
-        installLoaderDouble(() => {
-            const index = DBState.db.modules.findIndex((slot) => slot.id === 'm-b')
-            if (index !== -1) {
-                DBState.db.modules.splice(index, 1)
-            }
-        })
+
+        const exported = await exportedTree(profile)
+
+        expect((exported.modules as { name: string }[]).map(m => m.name)).toEqual(['First', 'Second'])
+    })
+
+    test('unreadable-module-stops-before-open: a module whose unit is gone names the module in the console and nothing is opened', async () => {
+        const rig = await rigOf(fiveModules())
+        const booted = await boot(rig)
+        applyProfile(booted.db, profile)
+        dropUnit(rig, 'idd')
         const openSpy = vi.spyOn(LocalWriter.prototype, 'init')
 
-        const outcome = await profile.run() as { status: string }
+        const outcome = await profile.run()
 
         expect(outcome.status).toBe('failed')
+        expect(outcome.status === 'failed' ? outcome.file : undefined).toBe('untouched')
         expect(openSpy).not.toHaveBeenCalled()
-        expect(backupSink.writes.length).toBe(0)
-        expect(consoleErrorMentions('Vanished')).toBe(true)
+        expect(h.sink.opened).toBe(0)
+        expect(h.sink.writes.length).toBe(0)
+        expect(vi.mocked(alertError)).toHaveBeenCalledTimes(1)
+        const shown = String(vi.mocked(alertError).mock.calls[0][0])
+        // The alert names the module and is not the generic text.
+        expect(shown).toContain('Module idd')
+        expect(shown).not.toBe(language.backupFailedNothingWritten())
+        expect(shown).toBe(language.backupFailedModuleUnreadable('Module idd', 'damaged'))
+        expect(consoleErrorMentions('Module idd')).toBe(true)
+    })
+
+    test('a stub removed from the live list and the removal saved during an earlier read stops the export before anything opens and is named in the console', async () => {
+        const rig = await rigOf(fiveModules())
+        const booted = await boot(rig)
+        applyProfile(booted.db, profile)
+        const openSpy = vi.spyOn(LocalWriter.prototype, 'init')
+
+        const outcome = await racingRead(rig, async () => {
+            const at = slotsOf(booted.db).findIndex(slot => slot.id === 'idd')
+            slotsOf(booted.db).splice(at, 1)
+            await pass(booted.db)
+        }, () => profile.run())
+
+        expect(outcome.status).toBe('failed')
+        expect(stoppedReason(outcome)).toBe('changed')
+        expect(openSpy).not.toHaveBeenCalled()
+        expect(h.sink.writes.length).toBe(0)
+        expect(consoleErrorMentions('Module idd')).toBe(true)
     })
 
     test('guard: a kept stub that has left the live list is refused from the snapshot before anything opens', async () => {
+        // No residency: the snapshot keeps the stub as it was at the call. The first read of the list (the snapshot)
+        // sees the stub; every later read (the live check) sees it gone, so only the snapshot-list check can refuse it.
         const stub = stubSlot('m-b', 'Foreign Marker')
-        const db = treeFor(profile, [], [makeLiveCharacter('a', 'A')])
-        // The first read (the snapshot) sees the stub; every later read (the early check) sees it gone.
+        const db = databaseWith({})
         let reads = 0
         Object.defineProperty(db, 'modules', { get: () => (reads++ === 0 ? [stub] : []), configurable: true })
-        getDatabaseMock.mockImplementation(() => db)
-        DBState.db = { modules: [stub] } as unknown as Database
+        useDatabase(db)
         const openSpy = vi.spyOn(LocalWriter.prototype, 'init')
 
-        const outcome = await profile.run() as { status: string, cause?: unknown }
+        const outcome = await profile.run()
 
         expect(outcome.status).toBe('failed')
-        expect(outcome.cause).toBeInstanceOf(ModuleStubRefusal)
+        expect(outcome.status === 'failed' ? outcome.cause : undefined).toBeInstanceOf(ModuleStubRefusal)
         expect(openSpy).not.toHaveBeenCalled()
-        expect(backupSink.writes.length).toBe(0)
+        expect(h.sink.writes.length).toBe(0)
     })
 
-    test('a marker with no module loader registered reaches the early check and is refused as any marker', async () => {
-        useDatabase(treeFor(profile, [BODY_A, stubSlot('m-b', 'Foreign Marker')], [makeLiveCharacter('a', 'A')]))
+    test('a marker on a page with no residency reaches the live check and is refused as any marker', async () => {
+        useDatabase(databaseWith({ modules: [fullModule('m-a', 'Module A'), stubSlot('m-b', 'Foreign Marker')] }))
         const openSpy = vi.spyOn(LocalWriter.prototype, 'init')
 
-        const outcome = await profile.run() as { status: string, cause?: unknown }
+        const outcome = await profile.run()
 
         expect(outcome.status).toBe('failed')
-        expect(outcome.cause).toBeInstanceOf(ModuleStubRefusal)
+        expect(outcome.status === 'failed' ? outcome.cause : undefined).toBeInstanceOf(ModuleStubRefusal)
         expect(openSpy).not.toHaveBeenCalled()
-        expect(backupSink.writes.length).toBe(0)
-        expect(String(alertErrorMock.mock.calls[0][0])).toBe(language.backupFailedNothingWritten())
+        expect(h.sink.writes.length).toBe(0)
+        expect(String(vi.mocked(alertError).mock.calls[0][0])).toBe(language.backupFailedNothingWritten())
     })
 })
 
 describe('unreadable module on the Tauri backend', () => {
     test('unreadable-module-stops-before-open: the save dialog is never shown', async () => {
-        platformBox.isTauri = true
-        useDatabase(databaseWith({ modules: [stubSlot('m-b', 'Broken Module')] }))
-        registerModuleLoader(async () => null)
+        const { save } = await import('@tauri-apps/plugin-dialog')
+        const rig = await rigOf(fiveModules())
+        await boot(rig)
+        dropUnit(rig, 'idd')
+        h.platform.isTauri = true
 
-        const outcome = await SaveLocalBackup() as { status: string }
+        const outcome = await SaveLocalBackup({ mode: 'inline' })
 
         expect(outcome.status).toBe('failed')
         expect(save).not.toHaveBeenCalled()
-        const shown = String(alertErrorMock.mock.calls[0][0])
-        expect(shown).toContain('Broken Module')
+        const shown = String(vi.mocked(alertError).mock.calls[0][0])
+        expect(shown).toContain('Module idd')
         expect(shown).not.toBe(language.backupFailedNothingWritten())
-        expect(shown).toBe(language.backupFailedModuleUnreadable('Broken Module', 'missing'))
+        expect(shown).toBe(language.backupFailedModuleUnreadable('Module idd', 'damaged'))
     })
 })
 
 describe('module list changes after the export started', () => {
-    test.each([['full writer', () => SaveLocalBackup()], ['partial writer', () => SavePartialLocalBackup()]])('module-deleted-after-start-still-exported (%s)', async (_name, run) => {
-        const db = databaseWith({ modules: [fullModule('m-r', 'Resident'), stubSlot('m-a', 'Module A'), fullModule('m-z', 'Last')] })
-        useDatabase(db)
-        bodies.set('m-a', BODY_A)
-        installLoaderDouble()
+    test.each([['full writer', () => SaveLocalBackup({ mode: 'inline' })], ['partial writer', () => SavePartialLocalBackup({ mode: 'inline' })]])('module-deleted-after-start-still-exported (%s)', async (_name, run) => {
+        const rig = await rigOf(fiveModules())
+        const booted = await boot(rig)
+        expect(stubIdsOf(booted.db)).toEqual(UNREFERENCED)
         const realInit = LocalWriter.prototype.init
         vi.spyOn(LocalWriter.prototype, 'init').mockImplementation(async function (this: LocalWriter, ...args: Parameters<LocalWriter['init']>) {
             const result = await realInit.apply(this, args)
-            db.modules.splice(0, db.modules.length)
+            slotsOf(booted.db).splice(0, slotsOf(booted.db).length)
             return result
         })
 
-        const outcome = await run() as { status: string }
+        const outcome = await run()
 
         expect(outcome.status).toBe('saved')
         const exported = await decodedDatabase()
-        expect((exported.modules as { id: string }[]).map((m) => m.id)).toEqual(['m-r', 'm-a', 'm-z'])
-        expect((exported.modules as { cjs?: string }[])[1].cjs).toBe('a-body')
+        expect((exported.modules as { id: string }[]).map(m => m.id)).toEqual(ORDER)
+        expect((exported.modules as { cjs?: string }[])[0].cjs).toBe('body of idc')
     })
 })
 
 describe('busy state during the snapshot', () => {
-    test('auto-gc-off-during-export: the export is busy while a module loads and while the database entry is written', async () => {
+    test('auto-gc-off-during-export: the export is busy while a module is read and while the database entry is written', async () => {
+        const rig = await rigOf(fiveModules())
+        await boot(rig)
         const seen: boolean[] = []
-        useDatabase(databaseWith({ modules: [stubSlot('m-a', 'Module A')] }))
-        bodies.set('m-a', BODY_A)
-        installLoaderDouble(() => { seen.push(isBusy()) })
+        const backend = rig.counted.backend
+        const realRead = backend.readUnits
+        backend.readUnits = async (keys) => {
+            seen.push(isBusy())
+            return realRead(keys)
+        }
         const realWrite = LocalWriter.prototype.writeBackupHeader
+        const atDatabaseEntry: boolean[] = []
         vi.spyOn(LocalWriter.prototype, 'writeBackupHeader').mockImplementation(function (this: LocalWriter, ...args: Parameters<LocalWriter['writeBackupHeader']>) {
             if (args[0] === 'database.risudat') {
-                seen.push(isBusy())
+                atDatabaseEntry.push(isBusy())
             }
             return realWrite.apply(this, args)
         })
 
-        await SaveLocalBackup()
+        const outcome = await SaveLocalBackup({ mode: 'inline' })
 
-        expect(seen).toEqual([true, true])
+        expect(outcome.status).toBe('saved')
+        expect(seen.length, 'unit reads made by the export').toBeGreaterThan(0)
+        expect(seen.every(busy => busy), 'busy at every unit read').toBe(true)
+        expect(atDatabaseEntry).toEqual([true])
         expect(isBusy()).toBe(false)
     })
 })
 
 describe('v0-path-unchanged', () => {
     test('guard: resident modules in the kv-block profile are the V0 bytes of the same tree', async () => {
-        const kv = { 'kv:bar': { version: 1, entries: [] } }
         const modules = [fullModule('m-r', 'Resident', { cjs: 'x' })]
-        const db = databaseWith({ modules, upstreamKvBlocks: kv })
+        const db = databaseWith({ modules, upstreamKvBlocks: KV })
         useDatabase(db)
 
-        await SaveLocalBackup()
+        await SaveLocalBackup({ mode: 'inline' })
 
-        const { upstreamKvBlocks: _field, ...withoutKv } = db as unknown as Record<string, unknown>
-        const expected = writeRisuSaveV0({ ...withoutKv, account: undefined }, kv)
-        expect(Buffer.from(databaseEntry()).equals(Buffer.from(expected))).toBe(true)
+        const { upstreamKvBlocks: _field, ...withoutKv } = db as unknown as Plain
+        const expected = writeRisuSaveV0({ ...withoutKv, account: undefined }, KV)
+        expect(Buffer.from(databaseEntryWritten()).equals(Buffer.from(expected))).toBe(true)
     })
 
     test('guard: no module list adds no modules key', async () => {
-        const kv = { 'kv:bar': { version: 1, entries: [] } }
-        const db = databaseWith({ upstreamKvBlocks: kv })
-        delete (db as unknown as Record<string, unknown>).modules
+        const db = databaseWith({ upstreamKvBlocks: KV })
+        delete (db as unknown as Plain).modules
         useDatabase(db)
 
-        await SaveLocalBackup()
+        await SaveLocalBackup({ mode: 'inline' })
 
-        const { upstreamKvBlocks: _field, ...withoutKv } = db as unknown as Record<string, unknown>
-        const expected = writeRisuSaveV0({ ...withoutKv, account: undefined }, kv)
-        expect(Buffer.from(databaseEntry()).equals(Buffer.from(expected))).toBe(true)
+        const { upstreamKvBlocks: _field, ...withoutKv } = db as unknown as Plain
+        const expected = writeRisuSaveV0({ ...withoutKv, account: undefined }, KV)
+        expect(Buffer.from(databaseEntryWritten()).equals(Buffer.from(expected))).toBe(true)
         expect(Object.hasOwn(await decodedDatabase(), 'modules')).toBe(false)
     })
 })
 
-describe('release-on-every-exit', () => {
-    function arrange(): void {
-        useDatabase(databaseWith({ modules: [stubSlot('m-a', 'Module A'), stubSlot('m-b', 'Module B')] }))
-        bodies.set('m-a', BODY_A)
-        bodies.set('m-b', BODY_B)
-        installLoaderDouble()
-    }
-
-    test('success releases every acquired handle', async () => {
-        arrange()
-        await SaveLocalBackup()
-        expect(releaseLog.released).toEqual(['m-a', 'm-b'])
-    })
-
-    test('a failure after the snapshot releases every acquired handle', async () => {
-        arrange()
-        vi.spyOn(LocalWriter.prototype, 'writeBackupHeader').mockRejectedValue(new Error('disk full'))
-        const outcome = await SaveLocalBackup() as { status: string }
-        expect(outcome.status).toBe('failed')
-        expect(releaseLog.released).toEqual(['m-a', 'm-b'])
-    })
-
-    test('a cancelled save dialog releases every acquired handle', async () => {
-        arrange()
-        vi.spyOn(LocalWriter.prototype, 'init').mockResolvedValue(false)
-        const outcome = await SaveLocalBackup() as { status: string, cause?: string }
-        expect(outcome.cause).toBe('save-dialog-cancelled')
-        expect(releaseLog.released).toEqual(['m-a', 'm-b'])
-    })
-
-    test('a snapshot that fails part way releases the handles it acquired and none twice', async () => {
-        useDatabase(databaseWith({ modules: [stubSlot('m-a', 'Module A'), stubSlot('m-b', 'Module B')] }))
-        bodies.set('m-a', BODY_A)
-        installLoaderDouble()
-        const snapshotError = await snapshotModuleList(DBState.db).catch((error: unknown) => error)
-        expect(snapshotError).toMatchObject({ name: 'ExportModuleUnreadableError', moduleId: 'm-b', moduleName: 'Module B' })
-        expect(releaseLog.released).toEqual(['m-a'])
-    })
-
-    test('release() lets go once however often it is called', async () => {
-        useDatabase(databaseWith({ modules: [stubSlot('m-a', 'Module A')] }))
-        bodies.set('m-a', BODY_A)
-        installLoaderDouble()
-        const snapshot = await snapshotModuleList(DBState.db)
-        snapshot.release()
-        snapshot.release()
-        expect(releaseLog.released).toEqual(['m-a'])
-    })
-})
-
 describe('snapshotModuleList', () => {
-    test('guard: a loader that returns null for a stub still in the list is a read failure', async () => {
-        useDatabase(databaseWith({ modules: [stubSlot('gone', 'Gone')] }))
-        registerModuleLoader(async () => null)
-        await expect(snapshotModuleList(DBState.db)).rejects.toMatchObject({ name: 'ExportModuleUnreadableError', moduleName: 'Gone' })
-    })
-
-    test('a stub whose id another slot holds is refused without a load', async () => {
-        useDatabase(databaseWith({ modules: [stubSlot('dup', 'Stub'), fullModule('dup', 'Other')] }))
-        installLoaderDouble()
-        await expect(snapshotModuleList(DBState.db)).rejects.toMatchObject({ name: 'ExportModuleUnreadableError', moduleName: 'Stub' })
-        expect(loadLog).toEqual([])
-    })
-
-    test('a stub after a resident module of the same id is refused without a load', async () => {
-        useDatabase(databaseWith({ modules: [fullModule('dup', 'Other'), stubSlot('dup', 'Stub')] }))
-        installLoaderDouble()
-        await expect(snapshotModuleList(DBState.db)).rejects.toMatchObject({ name: 'ExportModuleUnreadableError', moduleName: 'Stub' })
-        expect(loadLog).toEqual([])
-    })
-
-    type Reason = ExportModuleFailure
-
-    /** The reason a snapshot of one stub gives when the loader fails with `thrown`, or resolves null for `null`. */
-    async function reasonFor(thrown: Error | null): Promise<unknown> {
-        useDatabase(databaseWith({ modules: [stubSlot('m-x', 'Broken Module')] }))
-        registerModuleLoader(async () => {
-            if (thrown === null) {
-                return null
-            }
-            throw thrown
-        })
-        const error = await snapshotModuleList(DBState.db).catch((caught: unknown) => caught)
-        expect(error).toBeInstanceOf(ExportModuleUnreadableError)
-        return (error as ExportModuleUnreadableError).reason
+    async function bootedPage(): Promise<{ rig: Rig, db: Database }> {
+        const rig = await rigOf(fiveModules())
+        const booted = await boot(rig)
+        expect(stubIdsOf(booted.db)).toEqual(UNREFERENCED)
+        rig.counted.reset()
+        return { rig, db: booted.db }
     }
 
-    const loaderRows: [string, ModuleLoadFailure, Reason][] = [
+    async function errorOf(db: Database): Promise<ExportModuleUnreadableError> {
+        const error = await snapshotModuleList(db).catch((caught: unknown) => caught)
+        expect(error).toBeInstanceOf(ExportModuleUnreadableError)
+        return error as ExportModuleUnreadableError
+    }
+
+    test('guard: a stub with no stored entry on a page with a residency is a read failure naming it', async () => {
+        const { db } = await bootedPage()
+        slotsOf(db).push(stubSlot('gone', 'Gone'))
+        const error = await errorOf(db)
+        expect(error.moduleName).toBe('Gone')
+        expect(error.reason).toBe('unreadable')
+    })
+
+    test('a stub whose id another slot holds is refused without a read', async () => {
+        const { rig, db } = await bootedPage()
+        slotsOf(db).push(fullModule('idc', 'Other'))
+        const error = await errorOf(db)
+        expect(error.moduleName).toBe('Module idc')
+        expect(rig.counted.reads, 'unit reads').toEqual([])
+    })
+
+    test('a stub after a resident module of the same id is refused without a read', async () => {
+        const { rig, db } = await bootedPage()
+        slotsOf(db).unshift(fullModule('idc', 'Other'))
+        const error = await errorOf(db)
+        expect(error.moduleName).toBe('Module idc')
+        expect(rig.counted.reads, 'unit reads').toEqual([])
+    })
+
+    const readRows: [string, (rig: Rig, db: Database) => void, ExportModuleFailure, string | undefined][] = [
+        ['unreadable (the store fails the read)', (rig) => {
+            rig.counted.backend.readUnits = async () => {
+                throw new Store2BackendFailureError('the backend failed')
+            }
+        }, 'unreadable', 'unreadable'],
+        ['damaged (the unit is gone)', (rig) => dropUnit(rig, 'idc'), 'damaged', 'damaged'],
+        ['newer (the unit is in a newer frame format)', (rig) => makeUnitNewer(rig, 'idc'), 'newer', 'too-new'],
+        ['unreadable (no entry for the stub id at the call)', (_rig, db) => {
+            slotsOf(db)[slotsOf(db).findIndex(slot => slot.id === 'idc')] = stubSlot('idz', 'Module idz')
+        }, 'unreadable', 'no-entry'],
+        ['unreadable (an edited marker)', (_rig, db) => {
+            const at = slotsOf(db).findIndex(slot => slot.id === 'idc')
+            slotsOf(db)[at] = { ...slotsOf(db)[at], name: 'Renamed' }
+        }, 'unreadable', 'edited'],
+    ]
+
+    test.each(readRows)('unreadable-reason: a stub that reads %s maps to its reason through the real residency', async (_label, damage, reason, inner) => {
+        const { rig, db } = await bootedPage()
+        damage(rig, db)
+        const error = await errorOf(db)
+        expect(error.reason).toBe(reason)
+        expect((error.cause as ModuleLoadError).reason).toBe(inner)
+    })
+
+    const mappingRows: [string, ModuleLoadFailure, ExportModuleFailure][] = [
         ['unreadable', 'unreadable', 'unreadable'],
         ['damaged', 'damaged', 'damaged'],
         ['too-new', 'too-new', 'newer'],
@@ -806,30 +745,25 @@ describe('snapshotModuleList', () => {
         ['edited', 'edited', 'unreadable'],
         ['stale', 'stale', 'changed'],
         ['replaced', 'replaced', 'changed'],
-        // Double-driven: the snapshot's own duplicate check preempts the loader's ambiguous answer in production.
-        ['ambiguous (loader double)', 'ambiguous', 'duplicate'],
+        ['ambiguous', 'ambiguous', 'duplicate'],
     ]
 
-    test.each(loaderRows)('unreadable-reason: loader failure %s maps to its reason', async (_label, failure, reason) => {
-        expect(await reasonFor(new ModuleLoadError(failure, 'm-x', 'Broken Module'))).toBe(reason)
+    test.each(mappingRows)('guard unreadable-reason: the loader failure %s maps to its reason (the table the copy read shares with the loader)', (_label, failure, reason) => {
+        expect(new ExportModuleUnreadableError('m-x', 'Broken Module', new ModuleLoadError(failure, 'm-x', 'Broken Module')).reason).toBe(reason)
+        expect(new ExportModuleUnreadableError('m-x', 'Broken Module', new Error('read failed')).reason).toBe('unreadable')
     })
 
     test('unreadable-reason: a real two-slot duplicate list is duplicate', async () => {
-        useDatabase(databaseWith({ modules: [stubSlot('dup', 'Broken Module'), fullModule('dup', 'Other')] }))
-        installLoaderDouble()
-        const error = await snapshotModuleList(DBState.db).catch((caught: unknown) => caught)
-        expect((error as ExportModuleUnreadableError).cause).toBeInstanceOf(ModuleAmbiguousError)
-        expect((error as ExportModuleUnreadableError).reason).toBe('duplicate')
-    })
-
-    test('unreadable-reason: a null body is missing and a plain error is unreadable', async () => {
-        expect(await reasonFor(null)).toBe('missing')
-        expect(await reasonFor(new Error('read failed'))).toBe('unreadable')
+        const { db } = await bootedPage()
+        slotsOf(db).push(fullModule('idc', 'Other'))
+        const error = await errorOf(db)
+        expect(error.cause).toBeInstanceOf(ModuleAmbiguousError)
+        expect(error.reason).toBe('duplicate')
     })
 
     test('unreadable-reason: every reason words a different alert that names the module and never advises reload', () => {
-        const reasons: Reason[] = ['damaged', 'missing', 'newer', 'changed', 'duplicate', 'unreadable']
-        const texts = reasons.map((reason) => language.backupFailedModuleUnreadable('Broken Module', reason))
+        const reasons: ExportModuleFailure[] = ['damaged', 'missing', 'newer', 'changed', 'duplicate', 'unreadable']
+        const texts = reasons.map(reason => language.backupFailedModuleUnreadable('Broken Module', reason))
         expect(new Set(texts).size).toBe(reasons.length)
         for (const text of texts) {
             expect(text).toContain('"Broken Module"')
@@ -840,19 +774,20 @@ describe('snapshotModuleList', () => {
     })
 
     test('unreadable-reason: a duplicate list stops a full export with the duplicate text', async () => {
-        useDatabase(databaseWith({ modules: [stubSlot('dup', 'Broken Module'), stubSlot('dup', 'Twin')] }))
-        installLoaderDouble()
-        const outcome = await SaveLocalBackup() as { status: string }
+        const { db } = await bootedPage()
+        slotsOf(db).push(fullModule('idc', 'Other'))
+        const outcome = await SaveLocalBackup({ mode: 'inline' })
         expect(outcome.status).toBe('failed')
-        expect(String(alertErrorMock.mock.calls[0][0])).toBe(language.backupFailedModuleUnreadable('Broken Module', 'duplicate'))
+        expect(String(vi.mocked(alertError).mock.calls[0][0])).toBe(language.backupFailedModuleUnreadable('Module idc', 'duplicate'))
     })
 
-    test('resident slots are the same objects, in order, in a new array', async () => {
+    test('guard: resident slots are the same objects, in order, in a new array', async () => {
         const one = fullModule('x', 'One')
         const two = fullModule('x', 'Two')
-        useDatabase(databaseWith({ modules: [one, two] }))
-        const snapshot = await snapshotModuleList(DBState.db)
-        expect(snapshot.modules).not.toBe(DBState.db.modules)
+        const db = databaseWith({ modules: [one, two] })
+        useDatabase(db)
+        const snapshot = await snapshotModuleList(db)
+        expect(snapshot.modules).not.toBe(db.modules)
         expect(snapshot.modules?.[0]).toBe(one)
         expect(snapshot.modules?.[1]).toBe(two)
     })
