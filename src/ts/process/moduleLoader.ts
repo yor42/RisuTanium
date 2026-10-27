@@ -1,4 +1,5 @@
 import { DBState } from '../stores.svelte'
+import { AssetList, toAssetList } from '../storage/assetList'
 import { isModuleStub } from '../storage/moduleStub'
 import { keyOfRef, type ModuleEntry } from '../storage/store2/format'
 import { ModuleLoadError } from '../storage/store2/moduleAcquire'
@@ -165,6 +166,12 @@ async function loadInto(flight: Flight, residency: Residency): Promise<RisuModul
     }
 
     const index = found.recorded[0]
+    // Svelte's proxy leaves a value with a non-plain prototype unwrapped, so an AssetList keeps its tuples out of the
+    // reactive graph only when it is in place before the slot write; a plain array written first is proxied deeply.
+    // This mirrors the boot path's wrapModuleAssets. A body without assets gets no field.
+    if (Array.isArray(body.assets) && !(body.assets instanceof AssetList)) {
+        body.assets = toAssetList(body.assets)
+    }
     DBState.db.modules[index] = body
     // A repaired body is deliberately left without its module unit's digest, so the next pass writes it; the lists are
     // untouched by the repair and keep theirs.
