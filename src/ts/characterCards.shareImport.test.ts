@@ -204,10 +204,10 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 //#endregion
 
 import { characterURLImport, importCharacterFile, importOpenedFiles } from 'src/ts/characterCards'
-import { CharXImporter, CharXWriter } from 'src/ts/process/processzip'
+import { CharXImporter } from 'src/ts/process/processzip'
+import { fflateZipArchive, type ZipEntry } from 'src/ts/process/tests/zipFixtures'
 import { PngChunk } from 'src/ts/pngChunk'
 import { ModuleRefusal } from 'src/ts/process/moduleRefusal'
-import type { VirtualWriter } from 'src/ts/globalApi.svelte'
 import { language } from 'src/lang'
 import { MODULE_STUB_KEY } from 'src/ts/storage/moduleStub'
 import { busyKinds, isBusy } from 'src/ts/process/memory/busyActions'
@@ -240,12 +240,7 @@ const v3Card = (name: string) => JSON.stringify({
 })
 
 async function charxBytes(name: string): Promise<Uint8Array> {
-    const chunks: Uint8Array[] = []
-    const sink = { write: async (b: Uint8Array) => { chunks.push(new U8(b)) }, close: async () => {} }
-    const writer = new CharXWriter(sink as unknown as VirtualWriter)
-    await writer.write('card.json', v3Card(name), 6)
-    await writer.end()
-    return concat(chunks)
+    return fflateZipArchive([['card.json', enc.encode(v3Card(name)), 6]])
 }
 
 function pngChunk(type: string, body: Uint8Array): Uint8Array {
@@ -1018,15 +1013,11 @@ describe('a .risum module and the low-level-access prompt', () => {
 
 describe('the charx low-level-access prompt label (feature tests)', () => {
     async function lowLevelCharx(name: string, embeddedModule?: Uint8Array): Promise<File> {
-        const chunks: Uint8Array[] = []
-        const sink = { write: async (b: Uint8Array) => { chunks.push(new U8(b)) }, close: async () => {} }
-        const writer = new CharXWriter(sink as unknown as VirtualWriter)
         const card = JSON.parse(v3Card(name))
         card.data.extensions.risuai.lowLevelAccess = true
-        await writer.write('card.json', JSON.stringify(card), 6)
-        if (embeddedModule) await writer.write('module.risum', embeddedModule, 6)
-        await writer.end()
-        return new File([new U8(concat(chunks))], 'card.charx', { type: 'application/zip' })
+        const entries: ZipEntry[] = [['card.json', enc.encode(JSON.stringify(card)), 6]]
+        if (embeddedModule) entries.push(['module.risum', embeddedModule, 6])
+        return new File([new U8(fflateZipArchive(entries))], 'card.charx', { type: 'application/zip' })
     }
 
     test('guard: without a label the prompt is the plain question (passes before and after the label existed)', async () => {
