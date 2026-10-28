@@ -423,7 +423,7 @@ Q-F6b, asked: "When several files are picked at once and some are too large, wha
 
 ### Import batch (CHORE-470 to CHORE-475; worktree `.claude/worktrees/Lane-F-import`, branch `lane-f/import-formats` from `2648a7ce5`, 2026-10-28)
 
-Lane F's next IDs for this batch: MC-761, CHORE-376, row 3788 (lane A's brief, 2026-10-28). After MC-768 the MC-750 to MC-769 block has only MC-769 left. Lane A assigned a new MC block, MC-810 to MC-829 (2026-10-28; lane A records it in batch 19). MC-769, MC-810 and MC-811 are used (CHORE-473), so the next MC ID was MC-812. MC-812, MC-813 and MC-814 are used (CHORE-470), and MC-815, MC-816 and MC-817 are used (CHORE-474, CHORE-475), so the next is MC-818. CHORE-377 is used, so the next CHORE ID is CHORE-378. Rows up to 3837 are used (CHORE-470 stage 1, CHORE-474 and CHORE-475 sizing, CHORE-474 S1 and S2), so the next row is 3838. CHORE IDs run to 389 and rows to 3899. The old `.claude/worktrees/Lane-F` holds uncommitted edits to this file that this copy does not include.
+Lane F's next IDs for this batch: MC-761, CHORE-376, row 3788 (lane A's brief, 2026-10-28). After MC-768 the MC-750 to MC-769 block has only MC-769 left. Lane A assigned a new MC block, MC-810 to MC-829 (2026-10-28; lane A records it in batch 19). MC-769, MC-810 and MC-811 are used (CHORE-473), so the next MC ID was MC-812. MC-812, MC-813 and MC-814 are used (CHORE-470), and MC-815 to MC-824 are used (CHORE-474, CHORE-475), so the next is MC-825. CHORE-377 is used, so the next CHORE ID is CHORE-378. Rows up to 3849 are used (CHORE-470 stage 1, CHORE-474 and CHORE-475 sizing, CHORE-474 S1, S2 and S4A), so the next row is 3850. CHORE IDs run to 389 and rows to 3899. The old `.claude/worktrees/Lane-F` holds uncommitted edits to this file that this copy does not include.
 
 Standing rule from 2026-10-28 (the maintainer's "Branch commits OK (Recommended)", relayed by lane A):
 - After a stage passes Gate 2, lane F may commit to its own branch `lane-f/import-formats`, but must not push.
@@ -647,7 +647,7 @@ Standing rule from 2026-10-28 (the maintainer's "Branch commits OK (Recommended)
 ### MC-816 — maintainer in lane A, 2026-10-28: SillyTavern sysprompt and master-bundle preset import (CHORE-475 sizing questions Q1 to Q6)
 
 - Tag: decision (answers relayed by lane A; every answer is the recommended option). Date: 2026-10-28. Sweep ref: none.
-- Source: lane A's relay, 2026-10-28. Sizing: `%TEMP%\risu-lane-f\c475\result.md`; verified by a `doc-verifier` whose verdicts exist only as its hand-back in lane F's session (row 3828). Correction from the verifier: the Playground STCHAT conversion names the preset "Converted from JSON". The name is not left empty.
+- Source: lane A's relay, 2026-10-28. Sizing: `%TEMP%\risu-lane-f\c475\result.md`; verified by a `doc-verifier` whose verdicts exist only as its hand-back in lane F's session (row 3828). The verifier's "correction", that the Playground STCHAT conversion names the preset "Converted from JSON", was itself wrong. The STCHAT branch of `promptConvertion` pushes the preset and returns before the `preset.name ||= 'Converted from JSON'` line, so the name stays empty. Lane F's check only found that line and did not trace the return path. The CHORE-475 planner found this, and lane F confirmed it by reading the branch on 2026-10-28. The sizing's original "empty name" claim stands.
 - Answers:
   1. The import makes a new preset, named after the file.
   2. `post_history` goes to the jailbreak item. It is left out when empty.
@@ -668,6 +668,86 @@ Standing rule from 2026-10-28 (the maintainer's "Branch commits OK (Recommended)
 - Accepted from the plan's source reading (`MC-815` 3): a disabled message stays visible with the dashed rule and is left out of the prompt.
 - Gate tier: opus-reviewer at Gate 2 (lane A).
 - Related: `MC-815`, CHORE-478.
+
+### MC-818 — maintainer in lane A, 2026-10-28: CHORE-475 open questions Q-A to Q-F (amends `MC-816` 2)
+
+- Tag: decision (option labels relayed by lane A; every answer is the recommended option). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28. Plan: `%TEMP%\risu-lane-f\c475p\plan.md`, section 13.
+- Answers:
+  1. Q-A, "Yes, convert". A lone SillyTavern instruct, context or text-completion `.json` imported through Settings also converts, using the same detectors as the bundle.
+  2. Q-B, "Read values directly, both". Sampler values are read directly in the bundle and in the Playground PARAMETERS path. This replaces the `samplers.includes` rule, which current SillyTavern files defeat.
+  3. Q-C, "Name after the file". The Playground STCHAT preset, whose name is empty today, is named after the file.
+  4. Q-D, "Keep it, fix only NaN". The `* 0.7` presence-penalty factor stays.
+  5. Q-E, "Plain item after chat". `post_history` goes into a plain system item placed right after the chat, so it always applies. It does not go into the jailbreak item, which reaches the prompt only while the global Jailbreak toggle is on. This replaces `MC-816` 2.
+  6. Q-F, "Refuse mix; first wins". In one Playground run, a sysprompt file together with an STCHAT file is refused as a type conflict. With two sysprompt files, the first one wins.
+- Related: `MC-816`.
+
+### MC-819 — maintainer in lane A, 2026-10-28: CHORE-474 stage 4 (Ooba, Agnai, Kobold Lite, Character.AI) questions Q1 to Q8
+
+- Tag: decision (option labels relayed by lane A; every answer is the recommended option). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28. Sizing: `%TEMP%\risu-lane-f\c474s4\result.md`; its independent verification `c474s4\verify\result.md` corrected the Ooba, Agnai, CAI Tools and licence premises before the questions were sent.
+- Answers:
+  1. Q1 (a). Character.AI files are the JSON exports of Morse, characterai-dumper and Lianne. CAI Tools' `.jsonl` already imports through S2. Its "Tavern history" zip is not accepted, and its offline `.html` is not added.
+  2. Q2 (a). A file holding several chats imports only the chats whose character name matches the open character; the notice says how many were left out.
+  3. Q3 (a). Kobold Lite story and adventure saves are refused with a message; only chat and instruct saves import.
+  4. Q4 (a). Without a settings block, the Kobold mode is inferred: `{{[INPUT]}}`/`{{[OUTPUT]}}` markers mean instruct, `"\n<name>: "` line prefixes mean chat, anything else is a story and is refused under Q3.
+  5. Q5 (a). Agnai keeps the leaf path: it walks back from `treeLeafId` when parents resolve. Otherwise it keeps messages in date order up to the `treeLeafId` message, then the last message of each run of character messages. Messages left out count as unkept swipes in the existing notice (`MC-817` 2); there is no separate branch notice.
+  6. Q6 (a). An Agnai `ooc` message imports as an ordinary user message.
+  7. Q7 (a). Ooba user lines come from `visible`, HTML-unescaped; character lines come from `internal`.
+  8. Q8 (a). Gate 1 and Gate 2 at `opus-reviewer` for each of stages 4A to 4D, in that order. Each stage sends lane A a merge request after Gate 2 (`MC-780`).
+- Already decided, not asked: Character.AI is in scope (`MC-815` 4), and the chat is named after the file (`MC-815` 7); the name also drops a `.json` extension.
+- Related: `MC-815`, `MC-817`.
+
+### MC-820 — maintainer in lane A, 2026-10-28: CHORE-475 Gate 1 questions Q-G and Q-H
+
+- Tag: decision (option labels relayed by lane A; both answers are the recommended option). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28. Gate 1 round 1 verdict: `%TEMP%\risu-lane-f\c475p\g1\result.md` (N2, N4). Lane F confirmed N2 in `promptConvertion`: the file replaces the default sequence fields, and the Jinja builder concatenates `system_sequence_prefix`/`system_sequence_suffix` that current SillyTavern instruct files do not have.
+- Answers:
+  1. Q-G (a). The literal `undefined` around system messages is fixed in both the Playground and the new Settings import. A missing sequence field becomes empty, and `wrap: true` puts a newline after each sequence, as SillyTavern does. Same cause (`MC-091`); the Playground's instruct output changes.
+  2. Q-H (a). One pure converter is called by both entry points, so the same files give the same preset. With an instruct template, the result is a Jinja instruct preset with model `openrouter`. Without one (sysprompt, text-completion or context only), it is a plain preset that keeps the template's model. The Playground's output changes for runs without an instruct file.
+- Accepted with these answers: CHORE-475 splits into S2a (new Settings paths and the shared converter) and S2b (Playground output changes); the gate tier stays `opus-reviewer`.
+- Related: `MC-816`, `MC-818`.
+
+### MC-821 — maintainer in lane A, 2026-10-28: CHORE-474 S4A question Q-I (empty Ooba `visible` user line)
+
+- Tag: decision (option label relayed by lane A; the recommended option). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28. Gate 1 round 1 verdict: `%TEMP%\risu-lane-f\c474s4a\g1\result.md` (N2).
+- Answer: Q-I (a). When an Ooba user line's `visible` text is empty and `internal` holds text, the `internal` text imports as it is, with no notice, the same as when `visible` is missing. This extends `MC-819` 7.
+- Accepted with it: Ooba regenerated replies (`metadata.assistant_<i>.versions` longer than 1) count toward the existing unkept-swipes notice (`MC-817` 2); edited user lines do not.
+- Related: `MC-817`, `MC-819`.
+
+### MC-822 — maintainer in lane A, 2026-10-28: CHORE-475 plan revision 2 questions P1 to P6
+
+- Tag: decision (option labels relayed by lane A; every answer is the recommended option). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28. Plan: `%TEMP%\risu-lane-f\c475p\plan-r2.md`, section 12 (its Q-I to Q-N, relabelled P1 to P6 because Q-I is `MC-821`).
+- Answers:
+  1. P1 (a). A lone context template, or a bundle with nothing else usable, still creates the plain preset; the skipped notice names "Context Template".
+  2. P2 (a). `system_same_as_user` follows SillyTavern: the system prefix and suffix use the input sequence and the input suffix.
+  3. P3 (a). Ooba's extra sampler arguments are read by value, like the eight main samplers (`MC-818` 2).
+  4. P4 (a). A lone SillyTavern reasoning or "start reply with" file imported in Settings is refused with the "nothing to import" error.
+  5. P5 (a). The preset is named after the first supported file in the order given; inner names are not used.
+  6. P6 (a). The Settings SillyTavern chat-completion import also goes through the shared converter, so one file gives one result (`MC-820` 2). Its size was not measured when asked; the revised plan sizes it.
+- Related: `MC-816`, `MC-818`, `MC-820`.
+
+### MC-823 — maintainer in lane A, 2026-10-28: CHORE-475 P7, presence-penalty factor (amends `MC-818` 4)
+
+- Tag: decision (option label relayed by lane A; the recommended option). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28. Plan: `%TEMP%\risu-lane-f\c475p\plan-r3.md`, P7. Lane F confirmed both lines: Settings `importPreset` computes `presence_penalty * 0.7 * 100` (`database.svelte.ts`); the Playground computes `* 100` (`prompt.ts`). Lane A confirmed that requests send the stored value divided by 100.
+- Answer: P7 (a). The converter's `* 100` wins and the Settings `* 0.7` is retired, so a SillyTavern `presence_penalty` of 0.5 gives 50 in both entry points and requests send the file's own value. This replaces `MC-818` 4 (Q-D) for the converter; until S2c lands, the interim S2a NaN fix keeps the old factor.
+- Accepted with it: CHORE-475 runs in three stages, S2a, S2b and S2c.
+- Related: `MC-818`, `MC-822`.
+
+### MC-824 — maintainer in lane A, 2026-10-28: CHORE-475 P8, SillyTavern macros in instruct sequences
+
+- Tag: decision (option label relayed by lane A; the recommended option). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28. Gate 1 round 2 verdict: `%TEMP%\risu-lane-f\c475p\g1r2\result.md` (N11). Four of SillyTavern's 38 shipped instruct presets carry `{{...}}` in their sequences. Pasted into the Jinja template as code, this text loses headers, prints `[object Object]`, or, for `{%`, makes every generation throw (reviewer EXEC with `@huggingface/jinja` 0.2.2).
+- Answer: P8 (a). Macros are substituted as SillyTavern does:
+  - `{{user}}` becomes the user's name and `{{char}}` the character's name.
+  - `{{name}}` becomes the speaker: the user's name in user turns, the character's in character turns, "System" in system turns.
+  - Any other `{{...}}` stays literal.
+  The Jinja render already passes `risu_user` and `risu_char` (`chatTemplate.ts`), and each sequence sits in its own role branch.
+- Lane F's, under `MC-091` (same cause as `MC-820` 1): every imported string is embedded as a Jinja string literal, so it renders verbatim apart from these macros. Also lane F's, within `MC-822` 2: the `system_same_as_user` mapping drops the extra `system_suffix` that doubled the end token (Gate 1 round 2 N10).
+- Related: `MC-820`, `MC-822`.
 
 ## CHORE changes
 
@@ -942,7 +1022,7 @@ In the shared Investigation-Ledger format. Token counts were not measured for th
 | 3825 | 2026-10-28 | CHORE-474 sizing (chat import) | `investigator` | 67,694 (subagent) | no | Upstream has the same `.jsonl` branch defects, and the fork's Message type has no swipe field. Chub's object `mes` throws; Ooba, Agnai and Kobold Lite get `noData`. Stages S1 to S4 and seven questions; the answers are `MC-815`. Evidence: `%TEMP%\risu-lane-f\c474\result.md`. |
 | 3826 | 2026-10-28 | CHORE-474 sizing verification | `doc-verifier` | 61,298 (subagent) | no | Claims 1 to 3 CONFIRMED. The S2 tier wording is OVERSTATED: it writes saved messages but adds no field. `.bin` travel is UNSUPPORTED (not traced at field level). One option was missing from Q3 (skip `is_system` lines). Evidence: the verifier's hand-back in lane F's session only. The `doc-verifier` role has no Write tool, so the `c474\verify\result.md` its brief and hand-back named was never written (found by CHORE-474 S2 Gate 1, K14). |
 | 3827 | 2026-10-28 | CHORE-475 sizing (preset import) | `investigator` | 71,310 (subagent) | no | Gap CONFIRMED for SillyTavern sysprompt presets and the master bundle. Also found: Playground STCHAT sampler loss, the `presence_penalty` NaN, and no PARAMETERS, STCONTEXT or STINST path in `importPreset`. Six questions; the answers are `MC-816`. The investigator left a stray copy of the upstream DB file in `%TEMP%`; lane F checked it and deleted it. Evidence: `%TEMP%\risu-lane-f\c475\result.md`. |
-| 3828 | 2026-10-28 | CHORE-475 sizing verification | `doc-verifier` | 50,607 (subagent) | no | WRONG: "STCHAT leaves the name empty"; the name is "Converted from JSON" (lane F checked `prompt.ts`). The format shapes are UNSUPPORTED (not fetched again). Unknown botPreset keys survive the store2 round trip. The verifier rated the S2 tier OVERSTATED; lane A kept opus-reviewer. Evidence: the verifier's hand-back in lane F's session only. The `doc-verifier` role has no Write tool, so `c475\verify\result.md` was never written (CHORE-474 S2 Gate 1, K14). |
+| 3828 | 2026-10-28 | CHORE-475 sizing verification | `doc-verifier` | 50,607 (subagent) | no | The verifier marked "STCHAT leaves the name empty" as WRONG. That verdict was itself wrong: the STCHAT branch returns before the `||= 'Converted from JSON'` line. Lane F's check had only found that line. The CHORE-475 planner corrected it, and lane F re-read `promptConvertion`. The format shapes are UNSUPPORTED (not fetched again). Unknown botPreset keys survive the store2 round trip. The verifier rated the S2 tier OVERSTATED; lane A kept opus-reviewer. Evidence: the verifier's hand-back in lane F's session only. The `doc-verifier` role has no Write tool, so `c475\verify\result.md` was never written (CHORE-474 S2 Gate 1, K14). |
 | 3829 | 2026-10-28 | CHORE-474 S1 Gate 1 | `adversarial-reviewer` | 41,742 (subagent) | no | [EDITORIAL], H1 to H7. Folded in: truthy `is_user`, a leading BOM stripped, count assertions, and a singular/plural string. No simpler path found. Evidence: `%TEMP%\risu-lane-f\c474s1\plan.md`, `g1\result.md`. |
 | 3830 | 2026-10-28 | CHORE-474 S1 implementation | `sonnet-coder` | 59,393 (subagent) | no | Exact five-file grant, revoked after the hand-back; lane F converted the two new files to CRLF with the CR-stripped hash unchanged. On the base, R1 to R3 and the BOM case fail by assertion and R4 passes. 28 tests pass; `pnpm check` 0 errors. Evidence: `%TEMP%\risu-lane-f\c474s1\impl\result.md`. |
 | 3831 | 2026-10-28 | CHORE-474 S1 Gate 2 | `opus-reviewer` (lane A's tier: saved lines change) | 75,579 (subagent) | no | [EDITORIAL]. Compared HEAD and the new reader on 200,000 random synthetic files with 0 violations. Red before green reproduced on HEAD. 7 of 8 mutants killed; the CRLF-strip survivor is harmless. 225 targeted tests pass; `pnpm check` 0 errors. Lane F applied J6 (the BOM test labelled as a reproducer) and J7 (literal BOMs replaced by `﻿` escapes); 26 of 26 pass. J8: the plan wrongly called upstream's branch identical, and that claim stays out of the commit. Evidence: `%TEMP%\risu-lane-f\c474s1\g2\result.md`. |
@@ -952,6 +1032,18 @@ In the shared Investigation-Ledger format. Token counts were not measured for th
 | 3835 | 2026-10-28 | CHORE-474 S2 Gate 1 round 2 | `opus-reviewer` | 138,376 (subagent) | no | [EDITORIAL]; the reject streak ends. K1, K2 and K4 were resolved by running them against the reviewer's own prototype. L3 (A1 cancelled D-e) was fixed by lane F in A1; L5 and L6 bound the coder. Evidence: `%TEMP%\risu-lane-f\c474s2\g1r2\result.md`. |
 | 3836 | 2026-10-28 | CHORE-474 S2 implementation | `sonnet-coder` | 132,417 (subagent) | no | Exact five-file grant, revoked after the hand-back; all five files stayed CRLF. On the base, 155 of 193 tests failed: the importChat reproducers by assertion, and the unit tests of new exports by TypeError (labelled). 49 of 49 mutants were killed on scratch copies, with the repo hashes unchanged. 385 tests pass; `pnpm check` 0 errors. Evidence: `%TEMP%\risu-lane-f\c474s2\impl\result.md`. |
 | 3837 | 2026-10-28 | CHORE-474 S2 Gate 2 | `opus-reviewer` | 148,748 (subagent) | no | [EDITORIAL]. The randomized differential run covered 200,000 files in each of three time zones, with 0 violations. Reproducers are red on HEAD by assertion. 25 of 26 reviewer mutants were killed. Lane F applied M1 (G2, G3 and G8 relabelled as reproducers; T8 and the extension-only test as guards) and M2 (the bound comment says "at or below"); 203 of 203 pass. Advisories recorded, not fixed: M3 (no test pins the chat-name regex anchor; the code is correct) and M4 (a one-digit meridiem minute gets no `time` while the message is kept; SillyTavern's writer pads minutes). Evidence: `%TEMP%\risu-lane-f\c474s2\g2\result.md`. |
+| 3838 | 2026-10-28 | CHORE-474 S4 sizing (Ooba, Agnai, Kobold Lite, Character.AI) | `investigator` | not recorded (the hand-back fell before a context compaction) | no | Stages 4A to 4D (about 250, 190, 220 and 300 source lines), detection by shape, seven questions. Samples from public GitHub are scratch data only; field names and marker tokens recorded, no AGPL code copied. Evidence: `%TEMP%\risu-lane-f\c474s4\result.md`. |
+| 3839 | 2026-10-28 | CHORE-474 S4 sizing verification | `investigator` | 106,032 (subagent) | no | Claims 5 and 8 CONFIRMED except the Lianne licence (MIT in its README, not "none"). WRONG or OVERSTATED: Ooba `internal` can carry injected text (2448 against 49 characters in a real sample); Agnai `parent` is the message's own text prefix (32 of 32), the leaf sits at index 16 of 0..32, and only exports since 2026-01-20 hold every branch; CAI Tools' Tavern history is a zip. Lane F re-ran the Agnai and Ooba points on the samples. Questions rewritten to eight; the answers are `MC-819`. Evidence: `%TEMP%\risu-lane-f\c474s4\verify\result.md`. |
+| 3840 | 2026-10-28 | CHORE-474 S4A plan (revision 1) | `investigator` | 77,866 (subagent) | no | Pure `detectJsonChatFormat` and a shared `ChatImportResult`; the jsonl body moves into `addImportedChat`; `readOobaChat` with a DOM-free unescape and a 24-hour date parser; `chatNameFromFile` strips `.json`; no new strings. Evidence: `%TEMP%\risu-lane-f\c474s4a\plan.md`. |
+| 3841 | 2026-10-28 | CHORE-474 S4A Gate 1 round 1 | `opus-reviewer` | 116,874 (subagent) | no | [REJECT], N1 to N9 (substantive N1 to N4): Ooba regenerated replies in `metadata.assistant_<i>.versions` were dropped with no notice; an empty `visible` user line dropped a line the model saw (question Q-I, answered `MC-821`); the rejected date `Dec 31, 1969 23:59` is accepted in Los Angeles; no guard for `changeChatTo(0)` or the all-invalid jsonl. Evidence: `%TEMP%\risu-lane-f\c474s4a\g1\result.md`. |
+| 3842 | 2026-10-28 | CHORE-474 S4A plan revision 2 | `investigator` | 61,417 (subagent) | no | N1 to N9 folded in; the rejected date is `Dec 31, 1969 00:00`, negative in every offset from -12 to +14 (EXEC in 9 zones). Evidence: `%TEMP%\risu-lane-f\c474s4a\plan-r2.md`. |
+| 3843 | 2026-10-28 | CHORE-474 S4A Gate 1 round 2 | `opus-reviewer` (fresh) | 93,613 (subagent) | no | [REJECT], N10 to N16 (substantive N10 and N11): an empty shown Ooba reply with alternates was dropped with no notice, against S2's `hasOtherReplies` rule; G4's empty `internal` fixtures could not kill M21. At the second rejection lane F reconsidered the mechanism: both findings were local, so the mechanism stood, and N10 follows `MC-817` 2 without a new question. Evidence: `%TEMP%\risu-lane-f\c474s4a\g1r2\result.md`. |
+| 3844 | 2026-10-28 | CHORE-474 S4A plan revision 3 | `investigator` | 65,459 (subagent) | no | `hasOtherOobaVersions` mirrors `hasOtherReplies`; M25 inverted, M30 added, R13 and R14 added; G4 fixtures non-empty; `changeChatTo` cleared in each `beforeEach`. Evidence: `%TEMP%\risu-lane-f\c474s4a\plan-r3.md`. |
+| 3845 | 2026-10-28 | CHORE-474 S4A Gate 1 round 3 | `opus-reviewer` (fresh) | 117,993 (subagent) | no | [EDITORIAL], E1 to E6, binding on the coder; the rejection streak ends. Scratch vitest against base 029c97f94: 37 tests, 6 failed by assertion as intended, the guards green; every planned mutant killed in a scratch stand-in. Evidence: `%TEMP%\risu-lane-f\c474s4a\g1r3\result.md`. |
+| 3846 | 2026-10-28 | CHORE-474 S4A implementation | `sonnet-coder` | 126,568 (subagent) | no | Exact four-file grant, revoked after the hand-back; CR equals LF in all four files. Red on base: the 17 Ooba reproducers fail by assertion, the `.json` name rows by assertion, the new-API unit tests by missing export; the guards pass. 382 of 382 pass; `pnpm check` 0 errors. M1 to M31 killed in scratch copies only, the repo hashes unchanged. Evidence: `%TEMP%\risu-lane-f\c474s4a\impl\result.md`. |
+| 3847 | 2026-10-28 | CHORE-474 S4A Gate 2 | `opus-reviewer` | 114,387 (subagent) | no | [EDITORIAL], no substantive finding. The reviewer's own `git archive` HEAD copy reproduced the base result; the builder move is verbatim apart from the file-name parameter; four of its five mutants killed (`unshift` to `push` survived); `pnpm check` 0 errors. Findings 1 (no test pins index 0 and the open chat) and 3 (a wrong test-file header) were applied in row 3848. Evidence: `%TEMP%\risu-lane-f\c474s4a\g2\result.md`. |
+| 3848 | 2026-10-28 | CHORE-474 S4A Gate 2 test fixes | `sonnet-coder` | 61,470 (subagent) | no | Exact two-test-file grant, revoked after the hand-back; `characters.ts` and `chatImport.ts` hashes unchanged. A `.jsonl` and an Ooba case pin the imported chat at index 0 and `changeChatTo(0)`; the `unshift` to `push` mutant fails both in a scratch copy. The `chatImport.test.ts` header is corrected. 384 of 384 pass; `pnpm check` 0 errors. Evidence: `%TEMP%\risu-lane-f\c474s4a\g2fix\result.md`. |
+| 3849 | 2026-10-28 | CHORE-474 S4A test fixes review | `opus-reviewer` (fresh) | 60,436 (subagent) | no | [EDITORIAL]. The new test is isolated (alone and shuffled) and kills the `unshift` to `push` mutant, but it is a guard: the `.jsonl` case passes on HEAD, and the Ooba case fails there only because HEAD imports no Ooba file. Of the `chatImport.test.ts` unit tests only the `.json` `chatNameFromFile` rows fail by assertion on the base. Lane F relabelled both comments to the reviewer's wording; 384 of 384 pass, no bare LF. Evidence: `%TEMP%\risu-lane-f\c474s4a\g2fixr\result.md`. |
 
 ## Handoff
 

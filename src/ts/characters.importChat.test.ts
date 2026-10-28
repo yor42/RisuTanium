@@ -138,6 +138,7 @@ import { selectSingleFile } from 'src/ts/util'
 import { alertError, alertNormal } from 'src/ts/alert'
 import { language } from 'src/lang'
 import { selectedCharID } from 'src/ts/stores.svelte'
+import { changeChatTo } from 'src/ts/globalApi.svelte'
 import { importChat } from './characters'
 
 //#region fixture helpers
@@ -698,5 +699,436 @@ describe('importChat -- SillyTavern JSONL field fidelity', () => {
         expect(messages[1]).not.toHaveProperty('time')
         expect(messages[2].time).toBe(253402300799999)
         expect(() => new Intl.DateTimeFormat().format(messages[2].time)).not.toThrow()
+    })
+})
+
+describe('importChat -- Ooba JSON', () => {
+    const marker = '<|BEGIN-VISIBLE-CHAT|>'
+    const stamp = (minute: number) => new Date(2025, 9, 24, 1, minute).getTime()
+
+    beforeEach(() => {
+        vi.mocked(alertError).mockClear()
+        vi.mocked(alertNormal).mockClear()
+        vi.mocked(changeChatTo).mockClear()
+        vi.mocked(selectSingleFile).mockReset()
+        testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+    })
+
+    async function runOoba(body: unknown, fileName = 'ooba.json') {
+        vi.mocked(selectSingleFile).mockResolvedValue({ name: fileName, data: utf8(JSON.stringify(body)) })
+        await importChat()
+    }
+
+    function chatList() {
+        return (testDb.db.characters[0] as character).chats
+    }
+
+    function importedMessages() {
+        const chats = chatList()
+        return chats.length === 0 ? [] : chats[0].message
+    }
+
+    function noticeText() {
+        expect(alertNormal).toHaveBeenCalledTimes(1)
+        return String(vi.mocked(alertNormal).mock.calls[0][0])
+    }
+
+    const greetingAndTwoTurns = {
+        internal: [[marker, 'Welcome'], ['hello', 'first reply'], ['more', 'second reply']],
+        visible: [['', 'Welcome'], ['hello', 'first reply'], ['more', 'second reply']],
+    }
+
+    // R1: regression reproducer. An Ooba chat file imports as one chat.
+    test('R1: an Ooba file imports its messages without the marker row', async () => {
+        await runOoba(greetingAndTwoTurns)
+
+        expect(chatList()).toHaveLength(1)
+        expect(importedMessages().map((m) => [m.role, m.data])).toEqual([
+            ['char', 'Welcome'],
+            ['user', 'hello'],
+            ['char', 'first reply'],
+            ['user', 'more'],
+            ['char', 'second reply'],
+        ])
+        expect(alertError).not.toHaveBeenCalled()
+        expect(noticeText()).toBe(language.successImport)
+        expect(changeChatTo).toHaveBeenCalledTimes(1)
+        expect(changeChatTo).toHaveBeenCalledWith(0)
+    })
+
+    // R1 variant: regression reproducer. The marker is read from the internal cell.
+    test('R1: a marker row with a non-empty visible cell is still the marker row', async () => {
+        await runOoba({
+            internal: [[marker, 'Welcome'], ['hello', 'reply']],
+            visible: [['shown', 'Welcome'], ['hello', 'reply']],
+        })
+
+        expect(importedMessages().map((m) => [m.role, m.data])).toEqual([
+            ['char', 'Welcome'],
+            ['user', 'hello'],
+            ['char', 'reply'],
+        ])
+    })
+
+    // R2: regression reproducer. The typed text is the visible cell.
+    test('R2: the user text comes from visible and is unescaped, the character text from internal as is', async () => {
+        await runOoba({
+            internal: [['INJECTED CONTEXT typed', 'a &amp; b']],
+            visible: [['it&#x27;s &quot;ok&quot;', 'ignored']],
+        })
+
+        expect(importedMessages().map((m) => [m.role, m.data])).toEqual([
+            ['user', 'it\'s "ok"'],
+            ['char', 'a &amp; b'],
+        ])
+    })
+
+    // R3: regression reproducer. The chat is named after the file.
+    test('R3: the chat is named after the file without its extension', async () => {
+        await runOoba(greetingAndTwoTurns, 'My Ooba.json')
+
+        expect(chatList()).toHaveLength(1)
+        expect(chatList()[0].name).toBe('My Ooba')
+    })
+
+    // R4: regression reproducer. The older data / data_visible pair imports.
+    test('R4: the legacy data and data_visible pair imports', async () => {
+        await runOoba({
+            data: [['hello', 'reply']],
+            data_visible: [['hello', 'reply']],
+        })
+
+        expect(chatList()).toHaveLength(1)
+        expect(importedMessages().map((m) => [m.role, m.data])).toEqual([
+            ['user', 'hello'],
+            ['char', 'reply'],
+        ])
+    })
+
+    // R5: regression reproducer. Times come from the row-indexed metadata.
+    test('R5: user_ and assistant_ timestamps give each message its own local time', async () => {
+        await runOoba({
+            ...greetingAndTwoTurns,
+            metadata: {
+                assistant_0: { timestamp: 'Oct 24, 2025 01:04', model_name: 'ignored' },
+                user_1: { timestamp: 'Oct 24, 2025 01:05' },
+                assistant_1: { timestamp: 'Oct 24, 2025 01:06' },
+            },
+        })
+
+        const messages = importedMessages()
+        expect(messages).toHaveLength(5)
+        expect(messages[0].time).toBe(stamp(4))
+        expect(messages[1].time).toBe(stamp(5))
+        expect(messages[2].time).toBe(stamp(6))
+        expect(messages[3]).not.toHaveProperty('time')
+        expect(messages[4]).not.toHaveProperty('time')
+    })
+
+    // R6: regression reproducer. Unreadable rows do not discard the chat.
+    test('R6: unreadable rows are skipped, counted, and the valid rows import', async () => {
+        await runOoba({
+            internal: [['x'], ['hello', 'reply'], 'str', null],
+            visible: [['x'], ['hello', 'reply'], 'str', null],
+        })
+
+        expect(importedMessages().map((m) => m.role)).toEqual(['user', 'char'])
+        expect(noticeText()).toBe(language.chatImportSkippedLines(3))
+    })
+
+    // R7: regression reproducer. Cells beyond the second are ignored without a count.
+    test('R7: a row with extra cells imports its two messages and counts nothing', async () => {
+        await runOoba({
+            internal: [['hello', 'reply', 'extra', 'more']],
+            visible: [['hello', 'reply', 'extra', 'more']],
+        })
+
+        expect(importedMessages().map((m) => [m.role, m.data])).toEqual([
+            ['user', 'hello'],
+            ['char', 'reply'],
+        ])
+        expect(noticeText()).toBe(language.successImport)
+    })
+
+    // R9: regression reproducer. Regenerated replies are not imported, and the notice says so.
+    test('R9: a regenerated reply imports its shown text and the notice names the count', async () => {
+        await runOoba({
+            internal: [['hello', 'shown reply']],
+            visible: [['hello', 'shown reply']],
+            metadata: { assistant_0: { versions: [{ content: 'old reply' }, { content: 'shown reply' }], current_version_index: 1 } },
+        })
+
+        expect(importedMessages().map((m) => [m.role, m.data])).toEqual([
+            ['user', 'hello'],
+            ['char', 'shown reply'],
+        ])
+        expect(noticeText()).toBe(language.chatImportDone + ' ' + language.chatImportSwipesNotKept(1))
+    })
+
+    test('R9: two regenerated rows are counted together', async () => {
+        await runOoba({
+            internal: [['a', 'b'], ['c', 'd']],
+            visible: [['a', 'b'], ['c', 'd']],
+            metadata: {
+                assistant_0: { versions: [{ content: 'b0' }, { content: 'b' }] },
+                assistant_1: { versions: [{ content: 'd0' }, { content: 'd' }] },
+            },
+        })
+
+        expect(importedMessages()).toHaveLength(4)
+        expect(noticeText()).toBe(language.chatImportDone + ' ' + language.chatImportSwipesNotKept(2))
+    })
+
+    test('R9: a skipped row and a regenerated row show both sentences', async () => {
+        await runOoba({
+            internal: [['x'], ['a', 'b']],
+            visible: [['x'], ['a', 'b']],
+            metadata: { assistant_1: { versions: [{ content: 'b0' }, { content: 'b' }] } },
+        })
+
+        expect(importedMessages()).toHaveLength(2)
+        expect(noticeText()).toBe(language.chatImportSkippedLines(1) + ' ' + language.chatImportSwipesNotKept(1))
+    })
+
+    // R10: boundary pairing with R9. Passes only once the feature exists, because the base never imports.
+    test('R10: one version, or malformed versions, add no swipe notice', async () => {
+        for(const versions of [[{ content: 'shown' }], 'x', {}]){
+            vi.mocked(alertNormal).mockClear()
+            testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+            await runOoba({
+                internal: [['hello', 'shown']],
+                visible: [['hello', 'shown']],
+                metadata: { assistant_0: { versions } },
+            })
+
+            expect(importedMessages()).toHaveLength(2)
+            expect(noticeText()).toBe(language.successImport)
+        }
+    })
+
+    // R11: regression reproducer. An empty visible user cell falls back to the raw internal text.
+    test('R11: an empty or missing visible user cell falls back to the internal text, raw', async () => {
+        for(const visible of [[['', 'reply']], [], [[]]]){
+            vi.mocked(alertNormal).mockClear()
+            testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+            await runOoba({ internal: [['typed &amp; kept', 'reply']], visible })
+
+            expect(importedMessages().map((m) => [m.role, m.data])).toEqual([
+                ['user', 'typed &amp; kept'],
+                ['char', 'reply'],
+            ])
+            expect(noticeText()).toBe(language.successImport)
+        }
+    })
+
+    test('R11: empty user cells on both sides give no user message and no count', async () => {
+        await runOoba({ internal: [['', 'reply']], visible: [['', 'reply']] })
+
+        expect(importedMessages().map((m) => [m.role, m.data])).toEqual([['char', 'reply']])
+        expect(noticeText()).toBe(language.successImport)
+    })
+
+    // R12: guard. Versions on the user entry are never a swipe loss.
+    test('R12: versions on the user entry add no swipe notice', async () => {
+        await runOoba({
+            internal: [['hello', 'reply']],
+            visible: [['hello', 'reply']],
+            metadata: { user_0: { versions: [{ content: 'a' }, { content: 'b' }, { content: 'c' }] } },
+        })
+
+        expect(importedMessages()).toHaveLength(2)
+        expect(noticeText()).toBe(language.successImport)
+    })
+
+    // R13: regression reproducer. A stopped generation keeps its old reply only as an unimported version.
+    test('R13: an empty shown reply with a non-empty alternate adds no message and is counted', async () => {
+        await runOoba({
+            internal: [[marker, 'Welcome'], ['hello', '']],
+            visible: [['', 'Welcome'], ['hello', '']],
+            metadata: { assistant_1: { versions: [{ content: '' }, { content: 'old reply' }] } },
+        })
+
+        expect(importedMessages().map((m) => [m.role, m.data])).toEqual([
+            ['char', 'Welcome'],
+            ['user', 'hello'],
+        ])
+        expect(noticeText()).toBe(language.chatImportDone + ' ' + language.chatImportSwipesNotKept(1))
+    })
+
+    // R14: boundary pairing with R13. Red on the base only because the base never imports.
+    test('R14: an empty shown reply without a non-empty alternate is not counted', async () => {
+        const cases: unknown[] = [
+            { versions: [{ content: '' }, { content: '' }] },
+            { versions: [{ content: 'old reply' }] },
+            { versions: 'old reply' },
+        ]
+        for(const entry of cases){
+            vi.mocked(alertNormal).mockClear()
+            testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+            await runOoba({
+                internal: [['hello', '']],
+                visible: [['hello', '']],
+                metadata: { assistant_0: entry },
+            })
+
+            expect(importedMessages().map((m) => [m.role, m.data])).toEqual([['user', 'hello']])
+            expect(noticeText()).toBe(language.successImport)
+        }
+    })
+})
+
+describe('importChat -- unchanged routing and the shared chat builder', () => {
+    const marker = '<|BEGIN-VISIBLE-CHAT|>'
+    const oobaRows = [['hi', 'there']]
+
+    beforeEach(() => {
+        vi.mocked(alertError).mockClear()
+        vi.mocked(alertNormal).mockClear()
+        vi.mocked(changeChatTo).mockClear()
+        vi.mocked(selectSingleFile).mockReset()
+        testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+    })
+
+    async function runFile(name: string, text: string) {
+        vi.mocked(selectSingleFile).mockResolvedValue({ name, data: utf8(text) })
+        await importChat()
+    }
+
+    function chatList() {
+        return (testDb.db.characters[0] as character).chats
+    }
+
+    function expectNoData() {
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(alertError).toHaveBeenCalledWith(language.errors.noData)
+        expect(chatList()).toHaveLength(0)
+        expect(changeChatTo).not.toHaveBeenCalled()
+    }
+
+    // G1: guard (passes before and after). A Risu v1 chat keeps its route.
+    test('G1: a valid risuChat v1 file imports with a fresh id and the success notice', async () => {
+        await runFile('chat.json', JSON.stringify({
+            type: 'risuChat',
+            ver: 1,
+            data: { message: [], note: 'n', name: 'Risu Chat', localLore: [], id: 'file-id' },
+        }))
+
+        expect(chatList()).toHaveLength(1)
+        expect(chatList()[0].name).toBe('Risu Chat')
+        expect(chatList()[0].id).not.toBe('file-id')
+        expect(alertNormal).toHaveBeenCalledWith(language.successImport)
+    })
+
+    // G2: guard (passes before and after). A ver 2 file carrying Ooba arrays still takes the ver 2 route.
+    test('G2: risuChat and risuAllChats v2 files carrying internal and visible keep their route', async () => {
+        const chat = { message: [], note: 'n', name: 'Risu V2', localLore: [], id: 'file-id' }
+        await runFile('chat.json', JSON.stringify({ type: 'risuChat', ver: 2, data: chat, internal: oobaRows, visible: oobaRows }))
+        expect(chatList()).toHaveLength(1)
+        expect(chatList()[0].name).toBe('Risu V2')
+        expect(chatList()[0].message).toHaveLength(0)
+
+        testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+        await runFile('all.json', JSON.stringify({ type: 'risuAllChats', ver: 2, data: [chat], internal: oobaRows, visible: oobaRows }))
+        expect(chatList()).toHaveLength(1)
+        expect(chatList()[0].name).toBe('Risu V2')
+        expect(chatList()[0].message).toHaveLength(0)
+    })
+
+    // G3: guard (passes before and after). A Risu type is never read as Ooba.
+    test('G3: a risuChat v3 file carrying Ooba arrays is no data', async () => {
+        await runFile('chat.json', JSON.stringify({ type: 'risuChat', ver: 3, internal: oobaRows, visible: oobaRows }))
+
+        expectNoData()
+    })
+
+    test('G3: a risuChat v1 file with a null message is no data even carrying Ooba arrays', async () => {
+        await runFile('chat.json', JSON.stringify({
+            type: 'risuChat',
+            ver: 1,
+            data: { message: null, note: 'n', name: 'x', localLore: [] },
+            internal: oobaRows,
+            visible: oobaRows,
+        }))
+
+        expectNoData()
+    })
+
+    // G4: guard (passes before and after; kills a detector that accepts one half of a pair).
+    const unknownShapes: Array<[string, unknown]> = [
+        ['an empty object', {}],
+        ['an empty array', []],
+        ['a string', 'text'],
+        ['internal alone', { internal: oobaRows }],
+        ['internal with a non-array visible', { internal: oobaRows, visible: 'x' }],
+        ['visible alone', { visible: oobaRows }],
+        ['data alone', { data: oobaRows }],
+        ['data_visible alone', { data_visible: oobaRows }],
+        ['internal crossed with data_visible', { internal: oobaRows, data_visible: oobaRows }],
+    ]
+    test.each(unknownShapes)('G4: %s is no data', async (_label, body) => {
+        await runFile('chat.json', JSON.stringify(body))
+
+        expectNoData()
+    })
+
+    // G5: guard (passes before and after). The ST route keeps calling changeChatTo and its notices.
+    test('G5: a SillyTavern file opens the new chat', async () => {
+        await runFile('chat.jsonl', JSON.stringify({ name: 'Solo', is_user: false, mes: 'a' }))
+
+        expect(chatList()).toHaveLength(1)
+        expect(changeChatTo).toHaveBeenCalledTimes(1)
+        expect(changeChatTo).toHaveBeenCalledWith(0)
+    })
+
+    test('G5: a skipped line with a swipe line shows both sentences', async () => {
+        const swipeLine = JSON.stringify({ name: 'Solo', is_user: false, mes: 'a', swipes: ['a', 'b'] })
+        await runFile('chat.jsonl', `${swipeLine}\n{bad`)
+
+        expect(chatList()).toHaveLength(1)
+        expect(alertNormal).toHaveBeenCalledWith(language.chatImportSkippedLines(1) + ' ' + language.chatImportSwipesNotKept(1))
+    })
+
+    // G7: guard (passes before and after). Nothing readable means no chat and no chat switch.
+    test('G7: a SillyTavern file with only invalid lines is no data', async () => {
+        await runFile('chat.jsonl', '{bad\nalso bad')
+
+        expectNoData()
+    })
+
+    // G8: guard (passes before and after; kills a builder that imports an empty chat).
+    test('G8: an Ooba file whose every row is unreadable is no data', async () => {
+        await runFile('ooba.json', JSON.stringify({ internal: [['x'], 'str', null], visible: [['x'], 'str', null] }))
+
+        expectNoData()
+    })
+
+    test('G8: an Ooba file holding only a marker row with an empty character cell is no data', async () => {
+        await runFile('ooba.json', JSON.stringify({ internal: [[marker, '']], visible: [['', '']] }))
+
+        expectNoData()
+    })
+})
+
+describe('importChat -- the imported chat goes first and is the chat opened', () => {
+    beforeEach(() => {
+        vi.mocked(changeChatTo).mockClear()
+        vi.mocked(selectSingleFile).mockReset()
+        testDb.db = { characters: [makeCharacter([makeChat('chat-existing', 'Existing Chat')])] } as unknown as Database
+    })
+
+    // Guard: pins index-0 placement and changeChatTo(0) for both formats; an append would
+    // leave the existing chat at index 0.
+    test.each([
+        ['a SillyTavern JSONL file', 'new.jsonl', JSON.stringify({ name: 'Solo', is_user: false, mes: 'a' })],
+        ['an Ooba file', 'new.json', JSON.stringify({ internal: [['hi', 'there']], visible: [['hi', 'there']] })],
+    ])('%s is inserted at index 0 ahead of the existing chat and opened', async (_label, name, text) => {
+        vi.mocked(selectSingleFile).mockResolvedValue({ name, data: utf8(text) })
+
+        await importChat()
+
+        const chats = (testDb.db.characters[0] as character).chats
+        expect(chats.map((c) => c.name)).toEqual(['new', 'Existing Chat'])
+        expect(changeChatTo).toHaveBeenCalledTimes(1)
+        expect(changeChatTo).toHaveBeenCalledWith(0)
     })
 })

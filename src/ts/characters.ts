@@ -23,7 +23,7 @@ import { beginBusy } from "./process/memory/busyActions";
 import { queueInlayCleanupForChat, queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
 import { escapeHtmlText } from "./htmlEscape";
 import { isHiddenSystemCharacter } from "./hiddenCharacters";
-import { chatNameFromFile, readTavernJsonl, tavernMessageName } from "./chatImport";
+import { chatNameFromFile, detectJsonChatFormat, readOobaChat, readTavernJsonl, tavernMessageName, type ChatImportResult } from "./chatImport";
 
 export function createNewCharacter() {
     DBState.db.characters.push(createBlankChar())
@@ -511,6 +511,59 @@ export async function exportChat(page:number){
     }
 }
 
+// Builds the chat from a reader's result, opens it and reports what was skipped
+// or not kept. A result without messages is no data and changes nothing.
+function addImportedChat(result: ChatImportResult, fileName: string, selectedID: number){
+    const { messages, skipped, swipesNotKept, header } = result
+    let newChat:Chat = {
+        message: [],
+        note: "",
+        name: chatNameFromFile(fileName),
+        localLore: [],
+        fmIndex: -1,
+        id: v4()
+    }
+
+    const ownNames = { userName: getUserName(), characterName: DBState.db.characters[selectedID].name }
+    for(const line of messages){
+        const message: Chat['message'][number] = {
+            role: line.isUser ? "user" : 'char',
+            data: formatTavernChat(line.mes, ownNames.characterName)
+        }
+        if(line.sendDate !== undefined){
+            message.time = line.sendDate
+        }
+        const name = tavernMessageName(line, header, ownNames)
+        if(name !== undefined){
+            message.name = name
+        }
+        if(line.isSystem){
+            message.disabled = true
+        }
+        newChat.message.push(message)
+    }
+
+    if(newChat.message.length === 0){
+        alertError(language.errors.noData)
+        return
+    }
+
+    if(DBState.db.characters[selectedID].chatFolders
+        .filter(folder => folder.id === newChat.folderId).length === 0) {
+        newChat.folderId = null
+    }
+
+    DBState.db.characters[selectedID].chats.unshift(newChat)
+    changeChatTo(0)
+    if(swipesNotKept > 0){
+        const swipeNotice = language.chatImportSwipesNotKept(swipesNotKept)
+        alertNormal((skipped > 0 ? language.chatImportSkippedLines(skipped) : language.chatImportDone) + ' ' + swipeNotice)
+    }
+    else{
+        alertNormal(skipped > 0 ? language.chatImportSkippedLines(skipped) : language.successImport)
+    }
+}
+
 export async function importChat(){
     const dat =await selectSingleFile(['json','jsonl','html'])
     if(!dat){
@@ -521,54 +574,7 @@ export async function importChat(){
         const lowerName = dat.name.toLowerCase()
 
         if(lowerName.endsWith('jsonl')){
-            const { messages, skipped, swipesNotKept, header } = readTavernJsonl(Buffer.from(dat.data).toString('utf-8'))
-            let newChat:Chat = {
-                message: [],
-                note: "",
-                name: chatNameFromFile(dat.name),
-                localLore: [],
-                fmIndex: -1,
-                id: v4()
-            }
-
-            const ownNames = { userName: getUserName(), characterName: DBState.db.characters[selectedID].name }
-            for(const line of messages){
-                const message: Chat['message'][number] = {
-                    role: line.isUser ? "user" : 'char',
-                    data: formatTavernChat(line.mes, ownNames.characterName)
-                }
-                if(line.sendDate !== undefined){
-                    message.time = line.sendDate
-                }
-                const name = tavernMessageName(line, header, ownNames)
-                if(name !== undefined){
-                    message.name = name
-                }
-                if(line.isSystem){
-                    message.disabled = true
-                }
-                newChat.message.push(message)
-            }
-
-            if(newChat.message.length === 0){
-                alertError(language.errors.noData)
-                return
-            }
-
-            if(DBState.db.characters[selectedID].chatFolders
-                .filter(folder => folder.id === newChat.folderId).length === 0) {
-                newChat.folderId = null
-            }
-
-            DBState.db.characters[selectedID].chats.unshift(newChat)
-            changeChatTo(0)
-            if(swipesNotKept > 0){
-                const swipeNotice = language.chatImportSwipesNotKept(swipesNotKept)
-                alertNormal((skipped > 0 ? language.chatImportSkippedLines(skipped) : language.chatImportDone) + ' ' + swipeNotice)
-            }
-            else{
-                alertNormal(skipped > 0 ? language.chatImportSkippedLines(skipped) : language.successImport)
-            }
+            addImportedChat(readTavernJsonl(Buffer.from(dat.data).toString('utf-8')), dat.name, selectedID)
         }
         else if(lowerName.endsWith('json')){
             const json = JSON.parse(Buffer.from(dat.data).toString('utf-8'))
@@ -634,6 +640,10 @@ export async function importChat(){
                 }
             }
             else{
+                if(detectJsonChatFormat(json) === 'ooba'){
+                    addImportedChat(readOobaChat(json), dat.name, selectedID)
+                    return
+                }
                 alertError(language.errors.noData)
                 return
             }

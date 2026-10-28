@@ -13,13 +13,15 @@ export type TavernHeader = {
     characterName?: string
 }
 
-export type TavernJsonlResult = {
+export type ChatImportResult = {
     messages: TavernLine[]
     skipped: number
-    /** Lines whose swipes other than the shown reply were not kept. */
+    /** Messages whose swipes other than the shown reply were not kept. */
     swipesNotKept: number
     header?: TavernHeader
 }
+
+export type TavernJsonlResult = ChatImportResult
 
 export type TavernOwnNames = {
     userName: string
@@ -213,9 +215,9 @@ export function hasOtherReplies(swipes: unknown): boolean {
     })
 }
 
-/** The chat name for an imported `.jsonl` file: its name without the extension. */
+/** The chat name for an imported `.jsonl` or `.json` file: its name without the extension. */
 export function chatNameFromFile(fileName: string): string {
-    const name = fileName.replace(/\.jsonl$/i, '').trim()
+    const name = fileName.replace(/\.jsonl?$/i, '').trim()
     return name === '' ? defaultChatName : name
 }
 
@@ -334,6 +336,188 @@ export function readTavernJsonl(text: string): TavernJsonlResult {
     const result: TavernJsonlResult = { messages, skipped, swipesNotKept }
     if(header !== undefined){
         result.header = header
+    }
+    return result
+}
+
+export type JsonChatFormat = 'ooba'
+
+const oobaMarker = '<|BEGIN-VISIBLE-CHAT|>'
+const oobaTimestampPattern = /^([A-Za-z]+) (\d{1,2}), (\d{4}) (\d{1,2}):(\d{2})$/
+const htmlEntityPattern = /&(#x[0-9a-fA-F]+|#[0-9]+|amp|lt|gt|quot|apos);/g
+const namedEntities: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
+
+// The pairs never cross: `internal` with `data_visible` is not a pair, and
+// `internal`/`visible` wins over the older `data`/`data_visible`.
+function oobaRowSets(value: unknown): { internal: unknown[], visible: unknown[] } | undefined {
+    if(!isPlainObject(value)){
+        return undefined
+    }
+    if(Array.isArray(value.internal) && Array.isArray(value.visible)){
+        return { internal: value.internal, visible: value.visible }
+    }
+    if(Array.isArray(value.data) && Array.isArray(value.data_visible)){
+        return { internal: value.data, visible: value.data_visible }
+    }
+    return undefined
+}
+
+/**
+ * Names the chat format of a parsed `.json` file that is not a Risu export, or
+ * `undefined` when it is none of them. A Risu `type` is never reinterpreted.
+ * Later formats keep the exclusive-first order: a format with a unique tag or
+ * key is tested before one recognised only by row shape (Ooba).
+ */
+export function detectJsonChatFormat(value: unknown): JsonChatFormat | undefined {
+    if(!isPlainObject(value) || value.type === 'risuChat' || value.type === 'risuAllChats'){
+        return undefined
+    }
+    if(oobaRowSets(value) !== undefined){
+        return 'ooba'
+    }
+    return undefined
+}
+
+/**
+ * Decodes the HTML entities Ooba stores in its visible text: `&amp; &lt; &gt;
+ * &quot; &apos;` and numeric references to a valid, non-surrogate code point.
+ * One pass, so `&amp;lt;` becomes `&lt;`; anything else stays literal. No DOM
+ * is involved, so the result does not depend on the runtime.
+ */
+export function unescapeHtmlEntities(text: string): string {
+    return text.replace(htmlEntityPattern, (match, body: string) => {
+        if(body.charAt(0) !== '#'){
+            return namedEntities[body]
+        }
+        const codePoint = body.charAt(1) === 'x' ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10)
+        if(codePoint < 1 || codePoint > 0x10FFFF || (codePoint >= 0xD800 && codePoint <= 0xDFFF)){
+            return match
+        }
+        return String.fromCodePoint(codePoint)
+    })
+}
+
+/**
+ * Reads an Ooba message time such as `Oct 24, 2025 01:04` as local time. English
+ * month names and a 24-hour clock only; anything else, a calendar-invalid
+ * date, or a time outside 1970..9999 gives `undefined`.
+ */
+export function parseOobaTimestamp(value: unknown): number | undefined {
+    if(typeof value !== 'string'){
+        return undefined
+    }
+    const match = oobaTimestampPattern.exec(value.trim())
+    if(!match){
+        return undefined
+    }
+    const month = monthNumbers[match[1].toLowerCase()]
+    const day = Number(match[2])
+    const year = Number(match[3])
+    const hour = Number(match[4])
+    const minute = Number(match[5])
+    if(month === undefined || !isCalendarDate(year, month, day) || !isClockTime(hour, minute, 0)){
+        return undefined
+    }
+    return boundTime(localTime(year, month, day, hour, minute, 0, 0))
+}
+
+// True when `versions` holds more than one entry and at least one has non-empty
+// text, i.e. a reply exists besides an empty shown one.
+function hasOtherOobaVersions(versions: unknown): boolean {
+    if(!Array.isArray(versions) || versions.length < 2){
+        return false
+    }
+    return versions.some((version) => isPlainObject(version) && typeof version.content === 'string' && version.content !== '')
+}
+
+function oobaMetadataEntry(metadata: unknown, key: string): Record<string, unknown> | undefined {
+    if(!isPlainObject(metadata)){
+        return undefined
+    }
+    const entry = metadata[key]
+    return isPlainObject(entry) ? entry : undefined
+}
+
+function oobaSendDate(entry: Record<string, unknown> | undefined): number | undefined {
+    return entry === undefined ? undefined : parseOobaTimestamp(entry.timestamp)
+}
+
+/**
+ * Reads an Ooba chat file row by row. A row holds the user cell then the
+ * character cell; the user text is the `visible` cell (entities decoded), or
+ * the raw `internal` cell when `visible` has none, and the character text is the
+ * `internal` cell as stored. The row whose internal user cell is the start
+ * marker gives only its character message. A row that cannot be read is
+ * counted in `skipped`; cells beyond the second are ignored. Only the shown
+ * reply is read: `swipesNotKept` counts the rows whose other versions are
+ * therefore lost. Message times come from the row-indexed `metadata` entries.
+ */
+export function readOobaChat(value: unknown): ChatImportResult {
+    const result: ChatImportResult = { messages: [], skipped: 0, swipesNotKept: 0 }
+    const sets = oobaRowSets(value)
+    if(sets === undefined){
+        return result
+    }
+    const metadata: unknown = isPlainObject(value) ? value.metadata : undefined
+
+    for(let index = 0; index < sets.internal.length; index++){
+        const row: unknown = sets.internal[index]
+        if(!Array.isArray(row) || row.length < 2){
+            result.skipped++
+            continue
+        }
+        const internalUser: unknown = row[0]
+        const internalCharacter: unknown = row[1]
+        const visibleRow: unknown = sets.visible[index]
+        const visibleUser: unknown = Array.isArray(visibleRow) ? visibleRow[0] : undefined
+        let unreadable = false
+
+        let userText: string | undefined
+        if(internalUser === oobaMarker){
+            userText = undefined
+        }
+        else if(typeof visibleUser === 'string' && visibleUser !== ''){
+            userText = unescapeHtmlEntities(visibleUser)
+        }
+        else if(typeof internalUser === 'string'){
+            userText = internalUser
+        }
+        else if(typeof visibleUser !== 'string'){
+            unreadable = true
+        }
+        if(userText !== undefined && userText !== ''){
+            const message: TavernLine = { isUser: true, mes: userText }
+            const sendDate = oobaSendDate(oobaMetadataEntry(metadata, `user_${index}`))
+            if(sendDate !== undefined){
+                message.sendDate = sendDate
+            }
+            result.messages.push(message)
+        }
+
+        if(typeof internalCharacter !== 'string'){
+            unreadable = true
+        }
+        else {
+            const entry = oobaMetadataEntry(metadata, `assistant_${index}`)
+            const versions: unknown = entry?.versions
+            if(internalCharacter !== ''){
+                const message: TavernLine = { isUser: false, mes: internalCharacter }
+                const sendDate = oobaSendDate(entry)
+                if(sendDate !== undefined){
+                    message.sendDate = sendDate
+                }
+                result.messages.push(message)
+                if(Array.isArray(versions) && versions.length > 1){
+                    result.swipesNotKept++
+                }
+            }
+            else if(hasOtherOobaVersions(versions)){
+                result.swipesNotKept++
+            }
+        }
+        if(unreadable){
+            result.skipped++
+        }
     }
     return result
 }

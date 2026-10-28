@@ -1,15 +1,21 @@
 /**
- * Unit tests of `readTavernJsonl` (`src/ts/chatImport.ts`). They exercise the
- * new pure module directly and are not regression reproducers; the reproducers
- * run through `importChat` in `characters.importChat.test.ts`.
+ * Unit tests of `src/ts/chatImport.ts`, exercising the pure module directly.
+ * Most are specification tests of its exports. The `chatNameFromFile` rows for
+ * `.json` names are regression reproducers: a reader that keeps the extension
+ * fails them by assertion. Behaviour through `importChat` is tested in
+ * `characters.importChat.test.ts`.
  */
-import { describe, test, expect, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
     chatNameFromFile,
+    detectJsonChatFormat,
     hasOtherReplies,
+    parseOobaTimestamp,
     parseTavernSendDate,
+    readOobaChat,
     readTavernJsonl,
     tavernMessageName,
+    unescapeHtmlEntities,
 } from './chatImport'
 
 // Restoring by assignment: deleting TZ does not re-zone Date on every host.
@@ -198,6 +204,19 @@ describe('chatNameFromFile (unit)', () => {
         expect(chatNameFromFile('.jsonl')).toBe('Imported Chat')
         expect(chatNameFromFile('  .jsonl')).toBe('Imported Chat')
     })
+
+    test('a .json extension is removed case-insensitively, and only the last one', () => {
+        expect(chatNameFromFile('a.json')).toBe('a')
+        expect(chatNameFromFile('CHAT.JSON')).toBe('CHAT')
+        expect(chatNameFromFile('a.b.json')).toBe('a.b')
+        expect(chatNameFromFile('a.json.json')).toBe('a.json')
+    })
+
+    test('a .json name with nothing before the dot falls back to Imported Chat', () => {
+        expect(chatNameFromFile('.json')).toBe('Imported Chat')
+        expect(chatNameFromFile('  .json')).toBe('Imported Chat')
+        expect(chatNameFromFile('chatjson')).toBe('chatjson')
+    })
 })
 
 describe('tavernMessageName (unit)', () => {
@@ -353,5 +372,291 @@ describe.each(['Asia/Seoul', 'America/Los_Angeles'])('parseTavernSendDate in %s 
             expect(time).toBeDefined()
             expect(() => new Intl.DateTimeFormat().format(time)).not.toThrow()
         }
+    })
+
+    test('a SillyTavern date in the Ooba form stays unreadable', () => {
+        expect(parseTavernSendDate('Oct 24, 2025 13:04')).toBeUndefined()
+    })
+})
+
+// The expected instants are computed inside each test, after the zone's beforeEach.
+describe.each(['Asia/Seoul', 'America/Los_Angeles', 'Etc/GMT+12', 'Pacific/Kiritimati'])('parseOobaTimestamp in %s (unit)', (zone) => {
+    beforeEach(() => {
+        process.env.TZ = zone
+    })
+    afterEach(() => {
+        process.env.TZ = originalZone
+    })
+
+    // [label, input, year, month index, day, hour, minute]
+    const accepted: Array<[string, string, number, number, number, number, number]> = [
+        ['24-hour morning', 'Oct 24, 2025 01:04', 2025, 9, 24, 1, 4],
+        ['24-hour afternoon', 'Oct 24, 2025 13:04', 2025, 9, 24, 13, 4],
+        ['single-digit day and hour', 'Oct 4, 2025 0:00', 2025, 9, 4, 0, 0],
+        ['zero-padded day as the writer produces it', 'Oct 04, 2025 01:04', 2025, 9, 4, 1, 4],
+        ['end of year', 'Dec 31, 2025 23:59', 2025, 11, 31, 23, 59],
+        ['leap day', 'Feb 29, 2024 12:00', 2024, 1, 29, 12, 0],
+        ['full month name', 'October 24, 2025 01:04', 2025, 9, 24, 1, 4],
+        ['surrounding spaces are trimmed', '  Oct 24, 2025 01:04  ', 2025, 9, 24, 1, 4],
+    ]
+    test.each(accepted)('%s', (_label, input, year, month, day, hour, minute) => {
+        expect(parseOobaTimestamp(input)).toBe(new Date(year, month, day, hour, minute).getTime())
+    })
+
+    const rejected: Array<[string, unknown]> = [
+        ['hour 24', 'Oct 24, 2025 24:00'],
+        ['minute 60', 'Oct 24, 2025 01:60'],
+        ['calendar-invalid Feb 30', 'Feb 30, 2025 01:04'],
+        ['non-leap Feb 29', 'Feb 29, 2025 01:04'],
+        ['unknown month', 'Foo 1, 2025 01:04'],
+        ['12-hour form', 'Oct 24, 2025 1:04pm'],
+        ['with seconds', 'Oct 24, 2025 01:04:05'],
+        ['ISO form', '2025-10-24 01:04'],
+        ['year 0050 is below the bound', 'Jan 1, 0050 10:00'],
+        ['local midnight before 1970 in every zone', 'Dec 31, 1969 00:00'],
+        ['empty string', ''],
+        ['number', 5],
+        ['null', null],
+        ['undefined', undefined],
+        ['object', { a: 1 }],
+        ['double space', 'Oct  24, 2025 01:04'],
+    ]
+    test.each(rejected)('%s gives no time', (_label, input) => {
+        expect(parseOobaTimestamp(input)).toBeUndefined()
+    })
+})
+
+describe('unescapeHtmlEntities (unit)', () => {
+    const decoded: Array<[string, string, string]> = [
+        ['hex apostrophe', '&#x27;', "'"],
+        ['decimal apostrophe', '&#39;', "'"],
+        ['quot', '&quot;', '"'],
+        ['apos', '&apos;', "'"],
+        ['lt', '&lt;', '<'],
+        ['gt', '&gt;', '>'],
+        ['amp', '&amp;', '&'],
+        ['astral hex code point', '&#x1F600;', '\u{1F600}'],
+        ['one pass only: &amp;lt;', '&amp;lt;', '&lt;'],
+        ['one pass only: &amp;amp;', '&amp;amp;', '&amp;'],
+        ['inside a sentence', 'it&#x27;s &quot;fine&quot; &amp; done', 'it\'s "fine" & done'],
+    ]
+    test.each(decoded)('%s', (_label, input, expected) => {
+        expect(unescapeHtmlEntities(input)).toBe(expected)
+    })
+
+    const untouched = ['&nbsp;', '&#0;', '&#xD800;', '&#x110000;', '&#xZZ;', '&bogus;', 'a & b', '&amp', '&AMP;', 'plain']
+    test.each(untouched)('%s stays literal', (input) => {
+        expect(unescapeHtmlEntities(input)).toBe(input)
+    })
+
+    describe('without a DOM', () => {
+        afterEach(() => {
+            vi.restoreAllMocks()
+            vi.unstubAllGlobals()
+        })
+
+        test('no element or parser is created', () => {
+            const createElement = vi.spyOn(document, 'createElement')
+            vi.stubGlobal('DOMParser', vi.fn(function () {
+                throw new Error('DOM used')
+            }))
+            expect(unescapeHtmlEntities('&lt;b&gt; &#x27;')).toBe("<b> '")
+            expect(createElement).not.toHaveBeenCalled()
+        })
+    })
+})
+
+describe('detectJsonChatFormat (unit)', () => {
+    const rows = [['a', 'b']]
+
+    test('internal with visible, and the legacy data with data_visible, are Ooba', () => {
+        expect(detectJsonChatFormat({ internal: rows, visible: rows })).toBe('ooba')
+        expect(detectJsonChatFormat({ data: rows, data_visible: rows })).toBe('ooba')
+    })
+
+    test('one half of a pair, or a mixed pair, is not Ooba', () => {
+        expect(detectJsonChatFormat({})).toBeUndefined()
+        expect(detectJsonChatFormat([])).toBeUndefined()
+        expect(detectJsonChatFormat('text')).toBeUndefined()
+        expect(detectJsonChatFormat(null)).toBeUndefined()
+        expect(detectJsonChatFormat({ internal: [['hi', 'there']] })).toBeUndefined()
+        expect(detectJsonChatFormat({ visible: rows })).toBeUndefined()
+        expect(detectJsonChatFormat({ internal: [['hi', 'there']], visible: 'x' })).toBeUndefined()
+        expect(detectJsonChatFormat({ data: rows })).toBeUndefined()
+        expect(detectJsonChatFormat({ data_visible: rows })).toBeUndefined()
+        expect(detectJsonChatFormat({ internal: rows, data_visible: rows })).toBeUndefined()
+        expect(detectJsonChatFormat({ data: rows, visible: rows })).toBeUndefined()
+    })
+
+    test('a Risu export type is never detected, even carrying both arrays', () => {
+        expect(detectJsonChatFormat({ type: 'risuChat', internal: [], visible: [] })).toBeUndefined()
+        expect(detectJsonChatFormat({ type: 'risuChat', internal: rows, visible: rows })).toBeUndefined()
+        expect(detectJsonChatFormat({ type: 'risuAllChats', internal: rows, visible: rows })).toBeUndefined()
+    })
+})
+
+describe('readOobaChat (unit)', () => {
+    const marker = '<|BEGIN-VISIBLE-CHAT|>'
+    const ooba = (internal: unknown, visible: unknown, metadata?: unknown) => ({ internal, visible, metadata })
+
+    test('an unrecognised value reads as an empty result', () => {
+        expect(readOobaChat({})).toEqual({ messages: [], skipped: 0, swipesNotKept: 0 })
+        expect(readOobaChat(null)).toEqual({ messages: [], skipped: 0, swipesNotKept: 0 })
+    })
+
+    test('the marker row gives only its character message, in file order, with no header', () => {
+        const r = readOobaChat(ooba(
+            [[marker, 'Hello'], ['hi', 'yo']],
+            [['', 'Hello'], ['hi', 'yo']],
+        ))
+        expect(r.messages).toEqual([
+            { isUser: false, mes: 'Hello' },
+            { isUser: true, mes: 'hi' },
+            { isUser: false, mes: 'yo' },
+        ])
+        expect(r.skipped).toBe(0)
+        expect(r.swipesNotKept).toBe(0)
+        expect(r).not.toHaveProperty('header')
+    })
+
+    test('the marker is recognised in the internal cell even when visible is not empty', () => {
+        const r = readOobaChat(ooba([[marker, 'Hello']], [['shown', 'Hello']]))
+        expect(r.messages).toEqual([{ isUser: false, mes: 'Hello' }])
+    })
+
+    test('the user text comes from visible and is unescaped; the character text is internal as is', () => {
+        const r = readOobaChat(ooba(
+            [['INJECTED CONTEXT typed', 'a &amp; b']],
+            [['it&#x27;s &quot;ok&quot;', 'ignored']],
+        ))
+        expect(r.messages).toEqual([
+            { isUser: true, mes: 'it\'s "ok"' },
+            { isUser: false, mes: 'a &amp; b' },
+        ])
+    })
+
+    test('an empty, missing or non-string visible user cell falls back to the raw internal text', () => {
+        const rows = [['typed &amp; kept', 'r']]
+        for(const visible of [[['', 'r']], [], [[]], [[5, 'r']], [null]]){
+            const r = readOobaChat(ooba(rows, visible))
+            expect(r.messages).toEqual([{ isUser: true, mes: 'typed &amp; kept' }, { isUser: false, mes: 'r' }])
+            expect(r.skipped).toBe(0)
+        }
+    })
+
+    test('an empty internal user cell with an empty visible cell gives no user message and no count', () => {
+        const r = readOobaChat(ooba([['', 'r']], [['', 'r']]))
+        expect(r.messages).toEqual([{ isUser: false, mes: 'r' }])
+        expect(r.skipped).toBe(0)
+    })
+
+    test('a user cell that is not a string on either side is only a silent gap when the other cell is empty', () => {
+        const r = readOobaChat(ooba([[7, 'r']], [['', 'r']]))
+        expect(r.messages).toEqual([{ isUser: false, mes: 'r' }])
+        expect(r.skipped).toBe(0)
+        const both = readOobaChat(ooba([[7, 'r']], [[8, 'r']]))
+        expect(both.messages).toEqual([{ isUser: false, mes: 'r' }])
+        expect(both.skipped).toBe(1)
+    })
+
+    test('an empty character cell gives no message and no count; a non-string one is counted once', () => {
+        const r = readOobaChat(ooba([['hi', ''], ['hi2', 5]], [['hi', ''], ['hi2', 5]]))
+        expect(r.messages).toEqual([{ isUser: true, mes: 'hi' }, { isUser: true, mes: 'hi2' }])
+        expect(r.skipped).toBe(1)
+    })
+
+    test('short, non-array and null rows are counted and valid rows still import', () => {
+        const r = readOobaChat(ooba(
+            [['x'], 'str', null, ['hi', 'yo']],
+            [['x'], 'str', null, ['hi', 'yo']],
+        ))
+        expect(r.messages).toEqual([{ isUser: true, mes: 'hi' }, { isUser: false, mes: 'yo' }])
+        expect(r.skipped).toBe(3)
+    })
+
+    test('cells beyond the second are neither read nor counted', () => {
+        const r = readOobaChat(ooba([['hi', 'yo', 'extra', 'more']], [['hi', 'yo', 'extra', 'more']]))
+        expect(r.messages).toEqual([{ isUser: true, mes: 'hi' }, { isUser: false, mes: 'yo' }])
+        expect(r.skipped).toBe(0)
+    })
+
+    test('the legacy data and data_visible pair reads the same way', () => {
+        const r = readOobaChat({ data: [['hi', 'yo']], data_visible: [['hi', 'yo']] })
+        expect(r.messages).toEqual([{ isUser: true, mes: 'hi' }, { isUser: false, mes: 'yo' }])
+    })
+
+    test('a file carrying both pairs reads internal and visible', () => {
+        const r = readOobaChat({
+            internal: [['new', 'newer']],
+            visible: [['new', 'newer']],
+            data: [['old', 'older']],
+            data_visible: [['old', 'older']],
+        })
+        expect(r.messages.map((m) => m.mes)).toEqual(['new', 'newer'])
+    })
+
+    test('metadata timestamps are keyed by the row index, user_ and assistant_ separately', () => {
+        const r = readOobaChat(ooba(
+            [[marker, 'Hello'], ['hi', 'yo']],
+            [['', 'Hello'], ['hi', 'yo']],
+            {
+                assistant_0: { timestamp: 'Oct 24, 2025 01:04' },
+                user_1: { timestamp: 'Oct 24, 2025 01:05' },
+                assistant_1: { timestamp: 'Oct 24, 2025 01:06' },
+            },
+        ))
+        expect(r.messages[0].sendDate).toBe(new Date(2025, 9, 24, 1, 4).getTime())
+        expect(r.messages[1].sendDate).toBe(new Date(2025, 9, 24, 1, 5).getTime())
+        expect(r.messages[2].sendDate).toBe(new Date(2025, 9, 24, 1, 6).getTime())
+    })
+
+    test('a missing, malformed or unparseable metadata entry leaves the time out', () => {
+        const shapes: unknown[] = [undefined, null, [], 'x', { user_0: 'x', assistant_0: { timestamp: 5 } }, { user_0: { timestamp: 'garbage' } }]
+        for(const metadata of shapes){
+            const r = readOobaChat(ooba([['hi', 'yo']], [['hi', 'yo']], metadata))
+            expect(r.messages).toHaveLength(2)
+            expect(r.messages[0]).not.toHaveProperty('sendDate')
+            expect(r.messages[1]).not.toHaveProperty('sendDate')
+        }
+    })
+
+    describe('swipesNotKept', () => {
+        const versionsOf = (...contents: string[]) => ({ versions: contents.map((content) => ({ content })) })
+        const count = (character: unknown, entry: unknown, userEntry?: unknown) =>
+            readOobaChat(ooba([['hi', character]], [['hi', 'x']], { assistant_0: entry, user_0: userEntry })).swipesNotKept
+
+        test('a shown reply with more than one version is counted once per row', () => {
+            expect(count('yo', versionsOf('yo', 'alt'))).toBe(1)
+            const r = readOobaChat(ooba(
+                [['a', 'b'], ['c', 'd']],
+                [['a', 'b'], ['c', 'd']],
+                { assistant_0: versionsOf('b', 'b2'), assistant_1: versionsOf('d', 'd2', 'd3') },
+            ))
+            expect(r.swipesNotKept).toBe(2)
+        })
+
+        test('a shown reply with one version, no versions or malformed versions is not counted', () => {
+            expect(count('yo', versionsOf('yo'))).toBe(0)
+            expect(count('yo', { versions: 'x' })).toBe(0)
+            expect(count('yo', { versions: {} })).toBe(0)
+            expect(count('yo', {})).toBe(0)
+            expect(count('yo', undefined)).toBe(0)
+        })
+
+        test('an empty shown reply is counted only when another version holds text', () => {
+            expect(count('', versionsOf('', 'old'))).toBe(1)
+            expect(count('', versionsOf('', ''))).toBe(0)
+            expect(count('', versionsOf('old'))).toBe(0)
+            expect(count('', { versions: 'old' })).toBe(0)
+            expect(count('', undefined)).toBe(0)
+        })
+
+        test('versions on the user entry are never counted', () => {
+            expect(count('yo', undefined, versionsOf('a', 'b', 'c'))).toBe(0)
+        })
+
+        test('a non-string character cell is not counted for its versions', () => {
+            expect(count(5, versionsOf('a', 'b'))).toBe(0)
+        })
     })
 })
