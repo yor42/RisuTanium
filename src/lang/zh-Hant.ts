@@ -1131,6 +1131,7 @@ export const languageChineseTraditional = {
     "exportLargeAssetNeedsCharx": (names: string[]) => `未匯出任何內容。${names.slice(0, 5).join(', ')}${names.length > 5 ? ` 等另外 ${names.length - 5} 項` : ''}大於 64 MiB，此格式無法承載。請改為匯出 CharX。`,
     "realmLargeAssetRefused": (names: string[]) => `未分享任何內容。${names.slice(0, 5).join(', ')}${names.length > 5 ? ` 等另外 ${names.length - 5} 項` : ''}大於 64 MiB，Realm 卡片無法承載。請移除或縮小後再試一次。`,
     "exportCharxTooLarge": (total: number) => `未匯出任何內容。此 CharX 約為 ${(total / (1024 * 1024 * 1024)).toFixed(2)} GiB，已過於接近此處 CharX 檔案可容納的上限（4 GiB）。請移除部分資源後再試一次。`,
+    "exportCharxTooManyEntries": (count: number, limit: number) => `未匯出任何內容。此 CharX 最多可能包含 ${count} 個檔案，超過了 CharX 檔案可容納的 ${limit} 個。請移除部分資源後再試一次。`,
     "successImport": "匯入成功",
     "importedCharacter": "已匯入角色",
     "alwaysActive": "一律啟用",

@@ -1086,6 +1086,7 @@ export const languageKorean = {
     "exportLargeAssetNeedsCharx": (names: string[]) => `아무것도 내보내지 않았습니다. ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` 외 ${names.length - 5}개` : ''}의 크기가 64 MiB를 넘어 이 형식에 담을 수 없습니다. 대신 CharX로 내보내 주세요.`,
     "realmLargeAssetRefused": (names: string[]) => `아무것도 공유하지 않았습니다. ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` 외 ${names.length - 5}개` : ''}의 크기가 64 MiB를 넘어 Realm 카드에 담을 수 없습니다. 삭제하거나 크기를 줄인 뒤 다시 시도해 주세요.`,
     "exportCharxTooLarge": (total: number) => `아무것도 내보내지 않았습니다. 이 CharX는 약 ${(total / (1024 * 1024 * 1024)).toFixed(2)} GiB가 되어, 여기서 CharX 파일이 담을 수 있는 크기(4 GiB)에 너무 가깝습니다. 에셋을 일부 제거한 뒤 다시 시도해 주세요.`,
+    "exportCharxTooManyEntries": (count: number, limit: number) => `아무것도 내보내지 않았습니다. 이 CharX에는 최대 ${count}개의 파일이 담길 수 있어, CharX 파일이 담을 수 있는 ${limit}개를 넘습니다. 에셋을 일부 제거한 뒤 다시 시도해 주세요.`,
     "successImport": "성공적으로 임포트했습니다.",
     "importedCharacter": "성공적으로 임포트 됨.",
     "alwaysActive": "언제나 활성화",

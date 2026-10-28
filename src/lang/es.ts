@@ -1086,6 +1086,7 @@ export const languageSpanish = {
     "exportLargeAssetNeedsCharx": (names: string[]) => `No se exportó nada. ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` y ${names.length - 5} más` : ''} ${names.length === 1 ? 'es' : 'son'} ${names.length === 1 ? 'mayor' : 'mayores'} de 64 MiB, que este formato no puede contener. Exporta como CharX en su lugar.`,
     "realmLargeAssetRefused": (names: string[]) => `No se compartió nada. ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` y ${names.length - 5} más` : ''} ${names.length === 1 ? 'es' : 'son'} ${names.length === 1 ? 'mayor' : 'mayores'} de 64 MiB, que una tarjeta de Realm no puede contener. Elimínal${names.length === 1 ? 'o' : 'os'} o redúcel${names.length === 1 ? 'o' : 'os'} e inténtalo de nuevo.`,
     "exportCharxTooLarge": (total: number) => `No se exportó nada. Este CharX ocuparía unos ${(total / (1024 * 1024 * 1024)).toFixed(2)} GiB, demasiado cerca de lo que un archivo CharX puede contener aquí (4 GiB). Elimina algunos recursos e inténtalo de nuevo.`,
+    "exportCharxTooManyEntries": (count: number, limit: number) => `No se exportó nada. Este CharX podría contener hasta ${count} archivos, más de los ${limit} que puede contener un archivo CharX. Elimina algunos recursos e inténtalo de nuevo.`,
     "successImport": "Importado exitosamente",
     "importedCharacter": "Personaje Importado",
     "alwaysActive": "Siempre Activo",
