@@ -21,12 +21,13 @@ import { PngChunk, type PngLayoutChunk } from "./pngChunk"
 import { ASSET_KEY_PREFIX, PngCardSourceChanged, PngCardValueTooLarge, assetIndexOfKey, isEmptyCardValue, readCardValue, selectCardChunk, walkPngCard } from "./pngCardImport"
 import { decodeBase64Bytes } from "./base64Bytes"
 import type { OnnxModelFiles } from "./process/transformers"
-import { CharXImporter, CharXParseError, CharXWriter, assetByteLimit, hasZipEndRecord } from "./process/processzip"
+import { CharXImporter, CharXParseError, CharXWriter, assetByteLimit, charxLimits, hasZipEndRecord, type EntryRouter } from "./process/processzip"
+import { buildByafCard, isByafJsonEntry, planByaf, type ByafPlan, type ByafRefusal } from "./byafImport"
 import { exportModuleLegacy, readModule, type RisuModule } from "./process/modules"
 import { ModuleRefusal, importErrorMessage } from "./process/moduleRefusal"
 import { hasModuleStubKey } from "./storage/moduleStub"
 import { ModuleImportStopped, confirmRisumLowLevel } from "./process/moduleImportStop"
-import { importSourceOfBytes, importSourceOfFile, isImportSource, openDesktopImportSource, type ImportSource } from "./importSource"
+import { importSourceOfBytes, importSourceOfFile, isImportSource, openDesktopImportSource, type ImportSource, type ImportSourceStat } from "./importSource"
 import { beginBusy, withBusy } from "./process/memory/busyActions"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportItem, type ImportOutcome } from "./importBatch"
 import { markBootWrite } from "./bootWindow"
@@ -319,6 +320,10 @@ async function readCharacterFile(f:{
     let db = getDatabase()
     db.statics.imports += 1
 
+    if(lower.endsWith('.byaf')){
+        return await importByafArchive(f, run)
+    }
+
     if(lower.endsWith('charx') || lower.endsWith('jpg') || lower.endsWith('jpeg')){
         console.log('reading charx')
         alertStore.set({
@@ -412,6 +417,126 @@ async function readCharacterFile(f:{
         ? new File([await new Response(f.data).blob()], f.name, {type: 'image/png'})
         : f.data
     return await importPngCard(f.name, pngData, run)
+}
+
+//First pass over a Backyard archive: the manifest, character and scenario JSON are kept, every other entry is read to its end and dropped, whatever its size.
+const byafReadRoute:EntryRouter = (name) => isByafJsonEntry(name)
+    ? {kind: 'text', limitBytes: charxLimits.metadataBytes}
+    : {kind: 'drop', limitBytes: Infinity}
+
+type ByafRead = {ok: true, plan: ByafPlan, imageSizes: {[key:string]:number}} | {ok: false, refusal: ByafRefusal}
+
+//Reads the whole archive once and plans the import. Only the plan and the sizes of the listed images leave this function, so the JSON the first pass retained is released before anything is saved.
+//A listed image's size is the largest the archive states or delivers for its name, which is what the second pass is bounded by, apart from the central directory's size that the second pass refuses on before it reads any chunk.
+async function readByafPlan(data:File|Uint8Array|ImportSource):Promise<ByafRead> {
+    const importer = new CharXImporter(byafReadRoute)
+    try {
+        await importer.parse(data)
+        const planned = planByaf(importer.texts)
+        if('refusal' in planned){
+            return {ok: false, refusal: planned.refusal}
+        }
+        const imageSizes:{[key:string]:number} = {}
+        for(const image of planned.plan.images){
+            if(importer.sizes[image.key] !== undefined){
+                imageSizes[image.key] = importer.sizes[image.key]
+            }
+        }
+        return {ok: true, plan: planned.plan, imageSizes}
+    } finally {
+        importer.abandon()
+    }
+}
+
+function byafRefusalMessage(refusal:ByafRefusal):string {
+    switch(refusal){
+        case 'version': return language.byafUnsupportedVersion
+        case 'severalCharacters': return language.byafSeveralCharacters
+        case 'invalid': return language.errors.noData
+    }
+}
+
+//A source that cannot be read again, or whose size or modification time moved since `first`, counts as changed.
+async function sourceUnchanged(source:ImportSource, first:ImportSourceStat):Promise<boolean> {
+    try {
+        const now = await source.stat()
+        return now.size === first.size && now.modified === first.modified
+    } catch {
+        return false
+    }
+}
+
+//Imports a Backyard archive in two passes over the same input. The first reads the JSON and the size of every entry and decides every refusal; the second saves only the images the character lists. Nothing is saved before the first pass has accepted the whole archive.
+async function importByafArchive(f:{
+    name: string;
+    data: Uint8Array|File|ImportSource|ReadableStream<Uint8Array>
+    returnCharacter?:boolean
+}, run:ImportArchiveRun|null):Promise<ImportOutcome>{
+    alertStore.set({
+        type: 'wait',
+        msg: language.alerts.readingCard
+    })
+    let importer:CharXImporter|undefined
+    try {
+        //A stream is buffered into a Blob-backed File first: both passes need the whole input, and the end-of-archive check needs its tail.
+        const data:File|Uint8Array|ImportSource = f.data instanceof ReadableStream
+            ? new File([await new Response(f.data).blob()], f.name, {type: 'application/zip'})
+            : f.data
+        if(!(await hasZipEndRecord(data))){
+            return refusedOutcome(language.cardFileIncomplete)
+        }
+        const source = isImportSource(data) ? data : data instanceof Uint8Array ? importSourceOfBytes(f.name, data) : importSourceOfFile(data)
+        const first = await source.stat()
+        if(first.size !== source.size){
+            return refusedOutcome(language.cardFileChanged)
+        }
+        const read = await readByafPlan(data)
+        if('refusal' in read){
+            return refusedOutcome(byafRefusalMessage(read.refusal))
+        }
+        const { plan } = read
+        const limit = assetByteLimit()
+        for(const image of plan.images){
+            if(read.imageSizes[image.key] > limit){
+                return refusedOutcome(language.cardFileEntryTooLarge(image.key, Math.round(limit / (1024 * 1024))))
+            }
+        }
+        if(!(await sourceUnchanged(source, first))){
+            return refusedOutcome(language.cardFileChanged)
+        }
+        const wanted = new Set(plan.images.map((image) => image.key))
+        importer = new CharXImporter((name) => wanted.has(name)
+            ? {kind: 'asset', limitBytes: assetByteLimit()}
+            : {kind: 'drop', limitBytes: Infinity})
+        importer.alertInfo = true
+        await importer.parse(data)
+        await importer.done()
+        if(!(await sourceUnchanged(source, first))){
+            return refusedOutcome(language.cardFileChanged)
+        }
+        const v = await importCharacterCardSpec(buildByafCard(plan, importer.assets), undefined, 'normal', importer.assets, null, f.returnCharacter, false, undefined, run)
+        if(v === null){
+            return refusedOutcome(language.errors.noData)
+        }
+        if(v === false){
+            return {kind: 'declined'}
+        }
+        if(typeof v === 'number'){
+            return {kind: 'imported', index: v}
+        }
+        return {kind: 'imported', index: null, character: v}
+    } catch (error) {
+        if(error instanceof CharXParseError && error.origin === 'size'){
+            return refusedOutcome(language.cardFileEntryTooLarge(error.entryName ?? '', Math.round((error.limitBytes ?? 0) / (1024 * 1024))))
+        }
+        if(error instanceof CharXParseError && error.origin === 'zip'){
+            return refusedOutcome(language.cardFileIncomplete)
+        }
+        return outcomeOfError(error)
+    } finally {
+        //Asset saves that have not started do not start, and no progress message replaces what the import shows next.
+        importer?.abandon()
+    }
 }
 
 //The outcome of `importCharacterCardSpec` for a card that was added: `false` is a declined prompt, `null` a card of no known spec.
@@ -808,7 +933,7 @@ type ShareIndexEntry = {key: string, name: string, type: string}
 //A file's kind is decided by its name suffix, compared without regard to case, whatever the form field or link it came from.
 //The returned name carries the lower-case suffix, which the preset importer still needs because it compares case-sensitively; `readCharacterFile` compares card suffixes in lower case itself.
 const importSuffixes:Array<[string, ClassifiedImport['kind']]> = [
-    ['.charx', 'card'], ['.png', 'card'], ['.jpg', 'card'], ['.jpeg', 'card'], ['.json', 'card'], ['.yaml', 'card'], ['.yml', 'card'],
+    ['.charx', 'card'], ['.byaf', 'card'], ['.png', 'card'], ['.jpg', 'card'], ['.jpeg', 'card'], ['.json', 'card'], ['.yaml', 'card'], ['.yml', 'card'],
     ['.risupreset', 'preset'], ['.risup', 'preset'], ['.preset', 'preset'],
     ['.risum', 'module'],
 ]
