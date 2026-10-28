@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, test } from 'vitest'
-import { readOldCard } from 'src/ts/oldCardFormat'
+import { readOldCard, yamlCardValue } from 'src/ts/oldCardFormat'
 
 const entry = { keys: ['k'], content: 'c', insertion_order: 1, enabled: true }
 
@@ -128,5 +128,32 @@ describe('readOldCard purity', () => {
         const tags = ['a']
         const card = readOldCard({ char_name: 'P', tags })
         expect(card?.tags).not.toBe(tags)
+    })
+})
+
+describe('yamlCardValue (unit)', () => {
+    test('an object maps name, context and greeting to the v1 name, description and first_mes', () => {
+        expect(yamlCardValue({ name: 'N', context: 'C', greeting: 'G' })).toEqual({ name: 'N', description: 'C', first_mes: 'G' })
+    })
+
+    test('a missing key stays missing in the mapped value', () => {
+        expect(yamlCardValue({ name: 'N' })).toEqual({ name: 'N', description: undefined, first_mes: undefined })
+    })
+
+    test.each([['null', null], ['undefined', undefined], ['a list', [{ name: 'N' }]], ['a string', 'name: N'], ['a number', 7], ['a boolean', true]])('%s is no card value', (_, value) => {
+        expect(yamlCardValue(value)).toBeNull()
+    })
+
+    test('keys other than name, context and greeting are not copied', () => {
+        const mapped = yamlCardValue({ name: 'N', description: 'D', first_mes: 'F', char_name: 'C', spec_version: '2.0', data: { name: 'Other' }, tags: ['t'] })
+        expect(mapped).toEqual({ name: 'N', description: undefined, first_mes: undefined })
+        expect(readOldCard(mapped)).toMatchObject({ name: 'N', desc: '', firstMessage: '', tags: [] })
+    })
+
+    test('the input is not mutated', () => {
+        const input = { name: 'N', context: 'C', greeting: 'G', extra: { a: [1] } }
+        const before = JSON.stringify(input)
+        yamlCardValue(input)
+        expect(JSON.stringify(input)).toBe(before)
     })
 })

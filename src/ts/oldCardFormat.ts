@@ -86,6 +86,17 @@ function fill(primary: TextFields, fallback: TextFields): TextFields {
 }
 
 /**
+ * Maps a parsed YAML card (`name`, `context`, `greeting`) to the v1 shape `readOldCard` reads; null when the value is not an
+ * object. Only those three keys are carried over, so no other key of the file can reach the card. The input is not changed.
+ */
+export function yamlCardValue(value: unknown): unknown {
+    if (!isObject(value)) {
+        return null
+    }
+    return { name: value.name, description: value.context, first_mes: value.greeting }
+}
+
+/**
  * Reads a parsed JSON value as an old card; null when it is not one. A card needs a name (text that is not blank, under
  * `name` or `char_name`) and nothing else. A v2 wrapper is read through its `data`; when `data` gives no name the top
  * level supplies it, and fills every text field `data` leaves empty. The input is not changed.
