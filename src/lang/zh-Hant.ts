@@ -1111,6 +1111,7 @@ export const languageChineseTraditional = {
     "emptyTrashConfirmMatching": (count: number) => `確定要永久刪除符合的 ${count} 個角色嗎？`,
     "emptyTrashCannotUndo": "此操作無法復原。",
     "backupLoadWorkInProgress": "仍有作業正在執行（對話回覆、匯入或匯出、正在新增的圖片或資源、清理作業，或外掛請求），因此未載入備份。請等待其完成或將其停止，然後再試一次。重新載入頁面也會結束所有作業。",
+    "backupLoadRefusedLine": "未載入另一個備份：仍有其他作業正在執行。",
     "insertOrder": "插入順序",
     "activationKeys": "啟用關鍵字",
     "activationKeysInfo": "以逗號分隔",

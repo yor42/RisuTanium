@@ -1066,6 +1066,7 @@ export const languageChinese = {
     "emptyTrashConfirmMatching": (count: number) => `确定要永久删除匹配的 ${count} 个角色吗？`,
     "emptyTrashCannotUndo": "此操作无法撤销。",
     "backupLoadWorkInProgress": "仍有操作正在运行（聊天回复、导入或导出、正在添加的图片或资源、清理操作，或插件请求），因此未读取备份。请等待其完成或将其停止，然后重试。重新加载页面也会结束所有操作。",
+    "backupLoadRefusedLine": "未读取另一个备份：仍有其他操作正在运行。",
     "insertOrder": "插入顺序",
     "activationKeys": "关键词",
     "activationKeysInfo": "使用逗号分隔",

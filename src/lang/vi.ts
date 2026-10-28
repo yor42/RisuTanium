@@ -1066,6 +1066,7 @@ export const languageVietnamese = {
     "emptyTrashConfirmMatching": (count: number) => `Bạn có chắc muốn xóa vĩnh viễn ${count} nhân vật khớp không?`,
     "emptyTrashCannotUndo": "Không thể hoàn tác thao tác này.",
     "backupLoadWorkInProgress": "Vẫn còn tác vụ đang chạy (phản hồi trò chuyện, nhập hoặc xuất, hình ảnh hoặc tài nguyên đang được thêm, dọn dẹp, hoặc yêu cầu của plugin), nên bản sao lưu chưa được tải. Hãy đợi tác vụ hoàn tất hoặc dừng nó, rồi thử lại. Tải lại trang cũng sẽ kết thúc mọi tác vụ.",
+    "backupLoadRefusedLine": "Một bản sao lưu khác chưa được tải: vẫn còn tác vụ khác đang chạy.",
     "insertOrder": "Thứ tự chèn",
     "activationKeys": "Phím kích hoạt",
     "activationKeysInfo": "Được phân tách bằng dấu phẩy",

@@ -1,7 +1,7 @@
 import { alertError } from "../alert";
 import { language } from "src/lang";
 import { isWorkInProgress } from "../process/chatOrigin";
-import { anyChokePointInFlight, isBusy, type BusyHandle } from "../process/memory/busyActions";
+import { anyChokePointInFlight, busyRefusalLine, isBusy, type BusyHandle } from "../process/memory/busyActions";
 
 /**
  * Whether a backup load must not go ahead right now. A load replaces the whole
@@ -12,11 +12,17 @@ import { anyChokePointInFlight, isBusy, type BusyHandle } from "../process/memor
  * entry does not refuse the load it belongs to.
  * True when the caller must stop, with the message already shown; false, and
  * silent, when nothing is running.
+ * When another registered action runs, its next wait or progress alert replaces
+ * the message, so the refusal also sets a line those alerts show until the last
+ * entry ends. Chat work and choke-point writes set no line: no entry would end it.
  */
 export function refuseBackupLoadWhileBusy(own?: BusyHandle): boolean {
     if(!isWorkInProgress() && !isBusy({ except: own }) && !anyChokePointInFlight()){
         return false
     }
     alertError(language.backupLoadWorkInProgress)
+    if(isBusy({ except: own })){
+        busyRefusalLine.set(language.backupLoadRefusedLine)
+    }
     return true
 }

@@ -1066,6 +1066,7 @@ export const languageSpanish = {
     "emptyTrashConfirmMatching": (count: number) => count === 1 ? `¿Eliminar permanentemente 1 personaje coincidente?` : `¿Eliminar permanentemente los ${count} personajes coincidentes?`,
     "emptyTrashCannotUndo": "Esta acción no se puede deshacer.",
     "backupLoadWorkInProgress": "Todavía hay algo en ejecución (una respuesta del chat, una importación o exportación, una imagen o un recurso que se está añadiendo, una limpieza o una solicitud de un plugin), por lo que no se cargó el respaldo. Espera a que termine o deténlo, y luego vuelve a intentarlo. Recargar la página también finaliza todo el trabajo.",
+    "backupLoadRefusedLine": "No se cargó otro respaldo: todavía hay otro trabajo en ejecución.",
     "insertOrder": "Orden de Inserción",
     "activationKeys": "Claves de Activación",
     "activationKeysInfo": "Separado por comas",

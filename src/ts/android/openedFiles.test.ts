@@ -23,6 +23,7 @@ vi.mock('../characterCards', () => ({
 }))
 vi.mock('../alert', () => ({
     alertNormalWait: alertNormalWaitMock,
+    waitUnreadNotice: async () => { },
 }))
 vi.mock('../drive/backuplocal', () => ({
     restoreOpenedBackup: restoreOpenedBackupMock,

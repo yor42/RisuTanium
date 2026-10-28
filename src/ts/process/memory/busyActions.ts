@@ -9,6 +9,7 @@
  * resolves) and ends in a `finally`. A stale entry only ever answers "busy".
  */
 
+import { writable } from 'svelte/store'
 import { beginInFlight } from '../inFlightWork'
 
 /** Names the kind of work in an entry, so entries can be told apart. */
@@ -25,6 +26,13 @@ export interface BusyHandle {
 
 const entries = new Set<BusyHandle>()
 
+/**
+ * A line saying a backup load was refused while other registered work ran. The
+ * wait and progress alerts show it under their message until the last entry
+ * ends, so the job's next progress write cannot hide the refusal.
+ */
+export const busyRefusalLine = writable<string | null>(null)
+
 // Every entry also holds an in-flight token, so the page stays alive while a
 // data action runs. The max age is a backstop for a stale entry (see above); the
 // write choke points are not mirrored.
@@ -36,6 +44,9 @@ export function beginBusy(kind: BusyKind): BusyHandle {
         kind,
         end: () => {
             entries.delete(handle)
+            if (entries.size === 0) {
+                busyRefusalLine.set(null)
+            }
             const endToken = inFlightTokens.get(handle)
             if (endToken) {
                 inFlightTokens.delete(handle)
@@ -136,6 +147,7 @@ export function resetBusyActionsForTest(): void {
     }
     inFlightTokens.clear()
     entries.clear()
+    busyRefusalLine.set(null)
     inFlightByPoint.asset = 0
     inFlightByPoint.inlay = 0
     inFlightByPoint.coldStorage = 0

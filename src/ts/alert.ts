@@ -114,6 +114,17 @@ export async function waitAlert(): Promise<void> {
     await alertEndMessage()
 }
 
+/** Alerts that are not a notice to read: nothing, a toast that closes itself, and a job's own wait or progress. */
+const NOT_A_NOTICE: ReadonlySet<alertData['type']> = new Set(['none', 'toast', 'wait', 'progress'])
+
+/** When the alert on screen is a notice to read, waits until the store next takes `none`; otherwise returns at once. */
+export async function waitUnreadNotice(): Promise<void> {
+    if(NOT_A_NOTICE.has(get(alertStoreImported).type)){
+        return
+    }
+    await alertEndMessage()
+}
+
 export function alertNormal(msg:string){
     alertStoreImported.set({
         'type': 'normal',
@@ -243,6 +254,18 @@ export function alertWait(msg:string, onCancel?: () => void): alertData {
     }
     alertStoreImported.set(data)
     return data
+}
+
+/**
+ * The text an alert shows. A wait or progress alert also shows `line` (a busy
+ * refusal) under its message. The stored alert is never changed, so a caller that
+ * compares the store with the object it posted still finds its own.
+ */
+export function displayAlertText(value: alertData, line: string | null): string {
+    if(line && (value.type === 'wait' || value.type === 'progress')){
+        return value.msg + '\n' + line
+    }
+    return value.msg
 }
 
 
