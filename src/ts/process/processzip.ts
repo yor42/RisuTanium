@@ -7,6 +7,7 @@ import { language } from "src/lang";
 import { fillLang } from "src/lang/fill";
 import { storeAssetLimitBytes } from "../storage/assetLimit";
 import { isImportSource, type ImportSource } from "../importSource";
+import { IMAGE_TYPE_HEAD_BYTES, IMAGE_TYPE_TAIL_BYTES, imageTypeOfEnds } from "../media/imageType";
 
 const MIB = 1024 * 1024;
 const CHUNK_SIZE_BYTES = MIB; // 1MB
@@ -218,6 +219,17 @@ export class CharxNameTooLongError extends Error {
     }
 }
 
+/**
+ * A streamed asset did not stay what the export first measured: it changed size or content between the two passes, or
+ * could not be read to its end. The export stops; `assetName` is the name the person knows it by (never the store key).
+ */
+export class ExportAssetChangedError extends Error {
+    constructor(public readonly assetName:string, options?:{ cause?:unknown }){
+        super(`The asset ${assetName} changed or could not be read while it was being exported`, options)
+        this.name = 'ExportAssetChangedError'
+    }
+}
+
 /** The most entries a plain zip's end record can count. */
 export const ZIP_MAX_ENTRIES = 0xFFFF
 
@@ -252,8 +264,13 @@ export const charxCodec = {
         deflater.push(data, true)
         return joinBytes(parts)
     },
-    crc32(data:Uint8Array):number {
-        return crc32(Buffer.from(data.buffer, data.byteOffset, data.byteLength))
+    /**
+     * `previous` is the CRC-32 of the bytes before `data` when folding, and `undefined` for the first piece. The `crc`
+     * package starts from an all-zero state when it is given 0, but the state that follows a checksum of 0 is the one
+     * a fresh start has, so a 0 is passed on as no previous value.
+     */
+    crc32(data:Uint8Array, previous?:number):number {
+        return crc32(Buffer.from(data.buffer, data.byteOffset, data.byteLength), previous === 0 ? undefined : previous)
     },
 }
 
@@ -290,6 +307,7 @@ const ZIP_END_RECORD_BYTES = 22
 const ZIP_DESCRIPTOR_BYTES = 16
 const ZIP_VERSION = 20
 const ZIP_METHOD_DEFLATE = 8
+const ZIP_METHOD_STORE = 0
 const ZIP_FLAG_DESCRIPTOR = 0x08
 const ZIP_FLAG_UTF8_HIGH = 0x08
 
@@ -320,6 +338,8 @@ interface CharxEntryRecord {
     // low and high byte of the general-purpose flag of the central record
     flagLow:number
     flagHigh:number
+    // ZIP_METHOD_DEFLATE for an entry of `write`, ZIP_METHOD_STORE for a streamed asset
+    method:number
     // one timestamp per entry, used by both its local header and its central record
     stamp:number
     crc:number
@@ -330,6 +350,37 @@ interface CharxEntryRecord {
     // the local header says "sizes follow" and a data descriptor follows the body (a zero-length entry only)
     descriptor:boolean
 }
+
+/** One piece of a streamed asset, with the size of the whole asset as of that read. */
+export interface CharxStreamPiece {
+    bytes:Uint8Array
+    total:number
+}
+
+/**
+ * One read of a streamed asset. `rest` is closed by the writer. `identity` is what the store said about the file at
+ * this read (equal on both reads of an unchanged file); `undefined` where the store says nothing.
+ */
+export interface CharxStreamOpened {
+    first:CharxStreamPiece
+    rest:AsyncGenerator<CharxStreamPiece, void, undefined>
+    identity?:string
+}
+
+/** `check` is the first pass over an asset (size, checksum, type), `stream` the second (the bytes are written). */
+export type CharxStreamPhase = 'check' | 'stream'
+
+/** Bytes read (`check`) or written (`stream`) so far, and the asset's size. */
+export type CharxStreamProgress = (phase:CharxStreamPhase, doneBytes:number, totalBytes:number) => void
+
+/**
+ * The size of every write a streamed asset's bytes reach the file writer in (the last may be smaller). The same number
+ * as `TAURI_WRITE_CHUNK_BYTES` of `exportWriters.ts`, which is not imported here; a test keeps the two equal.
+ */
+export const CHARX_STREAM_HAND_ON_BYTES = 4 * MIB
+
+/** The least time between two progress reports of one phase of a streamed asset (its first and last always report). */
+export const CHARX_STREAM_PROGRESS_INTERVAL_MS = 250
 
 /**
  * Writes a CharX (zip) archive. Every entry is framed without a data descriptor: its local header carries the CRC-32 and
@@ -350,6 +401,8 @@ export class CharXWriter{
     #ended:boolean = false
     // The error that stopped the export; every later call throws it before anything else is written.
     #latch:{ error:unknown }|undefined
+    // Settles when the call running last has finished; the next call starts after it, so calls never overlap.
+    #queue:Promise<void> = Promise.resolve()
     /**
      * `limit` is the strict backstop: a chunk that would make an archive offset or an entry's size reach it is never
      * handed on. The default is the ZIP64 sentinel; a test passes a small one.
@@ -369,17 +422,30 @@ export class CharXWriter{
         })
     }
 
-    /** Runs one step; an error it throws is latched, and every later step throws the same error without running. */
+    /**
+     * Runs one step after every earlier step has finished: an entry records its offset before the awaited hand-on that
+     * advances the offset, so two overlapping steps would record the same offset. An error a step throws is latched,
+     * and every later step throws the same error without running.
+     */
     async #run<T>(step:() => Promise<T>):Promise<T> {
-        if(this.#latch){
-            throw this.#latch.error
-        }
+        const earlier = this.#queue
+        let finished!:() => void
+        this.#queue = new Promise<void>((resolve) => { finished = resolve })
+        await earlier
         try{
-            return await step()
+            if(this.#latch){
+                throw this.#latch.error
+            }
+            try{
+                return await step()
+            }
+            catch(error){
+                this.#latch = { error }
+                throw error
+            }
         }
-        catch(error){
-            this.#latch = { error }
-            throw error
+        finally{
+            finished()
         }
     }
 
@@ -402,53 +468,277 @@ export class CharXWriter{
         this.#zipOffset += zipBytes
     }
 
+    /**
+     * Hands exactly `bytes` to the writer: no copy and no JPEG in front (a streamed asset's header, which goes through
+     * `#flush`, has already taken it). The same backstop as `#flush`. The array is the caller's and is never written into
+     * afterwards.
+     */
+    async #flushExact(bytes:Uint8Array){
+        if(this.#zipOffset + bytes.length >= this.limit){
+            throw new CharxTooLargeError(this.limit)
+        }
+        await this.writer.write(bytes)
+        this.#zipOffset += bytes.length
+    }
+
     async write(key:string,data:Uint8Array|string, level?:CharxZipLevel){
+        await this.#run(() => this.#writeEntry(key, data, level))
+    }
+
+    async #writeEntry(key:string,data:Uint8Array|string, level?:CharxZipLevel){
+        if(this.#ended){
+            throw new Error('The CharX archive is already finished')
+        }
+        const entryName = this.#sanitizeZipFilename(key)
+        const name = new TextEncoder().encode(entryName)
+        if(name.length > ZIP_MAX_NAME_BYTES){
+            throw new CharxNameTooLongError(name.length, ZIP_MAX_NAME_BYTES)
+        }
+        if(this.#entries.length >= ZIP_MAX_ENTRIES){
+            throw new CharxTooManyEntriesError(ZIP_MAX_ENTRIES)
+        }
+        let dat:Uint8Array
+        if(typeof data === 'string'){
+            dat = new TextEncoder().encode(data)
+        }
+        else{
+            dat = data
+        }
+        if(dat.length >= this.limit){
+            throw new CharxTooLargeError(this.limit)
+        }
+        const zipLevel = level ?? 0
+        const body = charxCodec.deflate(dat, zipLevel)
+        const empty = dat.length === 0
+        const record:CharxEntryRecord = {
+            name,
+            flagLow: (deflateOptionBits(zipLevel) << 1) | (empty ? ZIP_FLAG_DESCRIPTOR : 0),
+            // UTF-8 flag exactly when the UTF-8 byte length differs from the string length, as fflate sets it
+            flagHigh: name.length !== entryName.length ? ZIP_FLAG_UTF8_HIGH : 0,
+            method: ZIP_METHOD_DEFLATE,
+            stamp: dosTimestamp(Date.now()),
+            crc: empty ? 0 : charxCodec.crc32(dat),
+            compressedSize: body.length,
+            size: dat.length,
+            offset: this.#zipOffset,
+            descriptor: empty,
+        }
+        // The header and the body go out in one hand-on, which `#flush` checks first: a size or an offset that reaches
+        // the limit also makes the hand-on reach it.
+        const parts = [this.#localHeader(record), body]
+        if(empty){
+            parts.push(this.#descriptor(record))
+        }
+        await this.#flush(parts)
+        this.#entries.push(record)
+    }
+
+    /**
+     * Writes one large asset as a STORE entry without holding it: two passes over `open()`, which reads the asset from its
+     * start each time and whose `rest` this method closes.
+     *
+     * - Pass 1 (`check`) folds the CRC-32 and counts the bytes, keeps the ends the image type is read from, and checks
+     *   the asset is `expectedTotal` bytes long. If `options.metaPath` is given, the type-only `x_meta` entry is written
+     *   next, before the asset's own entry (the order of the small-asset path).
+     * - Pass 2 (`stream`) reads again, requires the same size and file identity, writes the local header (method 0, the
+     *   CRC and both sizes from pass 1, no data descriptor) and then the bytes in hand-ons of exactly
+     *   `CHARX_STREAM_HAND_ON_BYTES` (the last may be smaller). Each hand-on is a view of one piece the source
+     *   yielded or a new array joining the end of the last piece with the next bytes; no array is reused or written into
+     *   after it is handed on, and the source must not write into an array it yielded. A byte past `expectedTotal` is never
+     *   handed on. When the asset's size is not a multiple of the hand-on size, the last hand-on waits until the count
+     *   and the CRC of this pass equal pass 1's; otherwise every byte may be handed on before a difference is found. A
+     *   difference leaves the entry's bytes without a central directory, so the archive written so far is never complete.
+     *
+     * Any difference between the passes, a short or long read, or a rejection of the source's `next()` throws
+     * `ExportAssetChangedError(options.name)`. An error of the source's `open()`, a writer error (including
+     * `CharxTooLargeError`) and a cancel thrown by `onProgress` pass on unchanged. `onProgress` is called for the first
+     * and the last piece of each phase and at most once per `CHARX_STREAM_PROGRESS_INTERVAL_MS` between them.
+     */
+    async writeStream(key:string, open:() => Promise<CharxStreamOpened>, expectedTotal:number, onProgress?:CharxStreamProgress, options:{ name?:string, metaPath?:string } = {}){
         await this.#run(async () => {
             if(this.#ended){
                 throw new Error('The CharX archive is already finished')
             }
+            const assetName = options.name ?? key
             const entryName = this.#sanitizeZipFilename(key)
             const name = new TextEncoder().encode(entryName)
             if(name.length > ZIP_MAX_NAME_BYTES){
                 throw new CharxNameTooLongError(name.length, ZIP_MAX_NAME_BYTES)
             }
-            if(this.#entries.length >= ZIP_MAX_ENTRIES){
+            if(this.#entries.length + (options.metaPath === undefined ? 1 : 2) > ZIP_MAX_ENTRIES){
                 throw new CharxTooManyEntriesError(ZIP_MAX_ENTRIES)
             }
-            let dat:Uint8Array
-            if(typeof data === 'string'){
-                dat = new TextEncoder().encode(data)
-            }
-            else{
-                dat = data
-            }
-            if(dat.length >= this.limit){
+            // Before any pass: an entry that cannot fit is refused without reading it.
+            if(this.#zipOffset + ZIP_LOCAL_HEADER_BYTES + name.length + expectedTotal >= this.limit){
                 throw new CharxTooLargeError(this.limit)
             }
-            const zipLevel = level ?? 0
-            const body = charxCodec.deflate(dat, zipLevel)
-            const empty = dat.length === 0
+            const changed = (cause?:unknown) => new ExportAssetChangedError(assetName, cause === undefined ? undefined : { cause })
+            const report = this.#progressReporter(onProgress)
+
+            // Pass 1
+            let crc:number|undefined
+            let counted = 0
+            let head:Uint8Array = new Uint8Array(0)
+            let tail:Uint8Array = new Uint8Array(0)
+            let identity:string|undefined
+            await this.#readPass(open, changed, async (opened) => {
+                identity = opened.identity
+                if(opened.first.total !== expectedTotal){
+                    throw changed()
+                }
+            }, async (bytes) => {
+                counted += bytes.length
+                if(counted > expectedTotal){
+                    throw changed()
+                }
+                crc = charxCodec.crc32(bytes, crc)
+                if(head.length < IMAGE_TYPE_HEAD_BYTES){
+                    head = joinBytes([head, bytes.subarray(0, IMAGE_TYPE_HEAD_BYTES - head.length)])
+                }
+                if(bytes.length > 0){
+                    tail = bytes.length >= IMAGE_TYPE_TAIL_BYTES ? bytes.slice(bytes.length - IMAGE_TYPE_TAIL_BYTES) : joinBytes([tail, bytes]).slice(-IMAGE_TYPE_TAIL_BYTES)
+                }
+                report('check', counted, expectedTotal, false)
+            })
+            if(counted !== expectedTotal){
+                throw changed()
+            }
+            report('check', counted, expectedTotal, true)
+            const checksum = crc ?? 0
+            if(options.metaPath !== undefined){
+                await this.#writeEntry(options.metaPath, JSON.stringify({ type: imageTypeOfEnds(head, tail) }), 6)
+            }
+
+            // Pass 2
             const record:CharxEntryRecord = {
                 name,
-                flagLow: (deflateOptionBits(zipLevel) << 1) | (empty ? ZIP_FLAG_DESCRIPTOR : 0),
-                // UTF-8 flag exactly when the UTF-8 byte length differs from the string length, as fflate sets it
+                flagLow: 0,
                 flagHigh: name.length !== entryName.length ? ZIP_FLAG_UTF8_HIGH : 0,
+                method: ZIP_METHOD_STORE,
                 stamp: dosTimestamp(Date.now()),
-                crc: empty ? 0 : charxCodec.crc32(dat),
-                compressedSize: body.length,
-                size: dat.length,
+                crc: checksum,
+                compressedSize: expectedTotal,
+                size: expectedTotal,
                 offset: this.#zipOffset,
-                descriptor: empty,
+                descriptor: false,
             }
-            // The header and the body go out in one hand-on, which `#flush` checks first: a size or an offset that reaches
-            // the limit also makes the hand-on reach it.
-            const parts = [this.#localHeader(record), body]
-            if(empty){
-                parts.push(this.#descriptor(record))
+            const held:Uint8Array[] = []
+            let heldBytes = 0
+            let written = 0
+            let passCrc:number|undefined
+            const handOn = async (bytes:Uint8Array) => {
+                await this.#flushExact(bytes)
             }
-            await this.#flush(parts)
+            await this.#readPass(open, changed, async (opened) => {
+                if(opened.identity !== identity || opened.first.total !== expectedTotal){
+                    throw changed()
+                }
+                const header = this.#localHeader(record)
+                // The header, the whole body and the offset they reach are checked before the header is handed on.
+                if(this.#zipOffset + header.length + expectedTotal >= this.limit){
+                    throw new CharxTooLargeError(this.limit)
+                }
+                await this.#flush([header])
+            }, async (bytes) => {
+                if(written + bytes.length > expectedTotal){
+                    throw changed()
+                }
+                written += bytes.length
+                passCrc = charxCodec.crc32(bytes, passCrc)
+                let at = 0
+                if(heldBytes > 0){
+                    const need = CHARX_STREAM_HAND_ON_BYTES - heldBytes
+                    if(bytes.length < need){
+                        held.push(bytes)
+                        heldBytes += bytes.length
+                    }
+                    else{
+                        const joined = joinBytes([...held, bytes.subarray(0, need)])
+                        held.length = 0
+                        heldBytes = 0
+                        at = need
+                        await handOn(joined)
+                    }
+                }
+                if(heldBytes === 0){
+                    while(bytes.length - at >= CHARX_STREAM_HAND_ON_BYTES){
+                        await handOn(bytes.subarray(at, at + CHARX_STREAM_HAND_ON_BYTES))
+                        at += CHARX_STREAM_HAND_ON_BYTES
+                    }
+                    if(at < bytes.length){
+                        held.push(bytes.subarray(at))
+                        heldBytes = bytes.length - at
+                    }
+                }
+                report('stream', written, expectedTotal, false)
+            })
+            if(written !== expectedTotal || (passCrc ?? 0) !== checksum){
+                throw changed()
+            }
+            if(heldBytes > 0){
+                await handOn(held.length === 1 ? held[0] : joinBytes(held))
+            }
+            report('stream', written, expectedTotal, true)
             this.#entries.push(record)
         })
+    }
+
+    /**
+     * One read of a streamed asset: opens it, lets `begin` look at the first read, then gives `take` every piece in order
+     * (the first included) and closes the generator whatever happens. A rejection of the generator's `next()` becomes
+     * `ExportAssetChangedError` (the cause goes to the console). An error of `begin` or `take` (a writer error, a cancel
+     * thrown by the progress callback) is not the generator's and passes on unchanged.
+     */
+    async #readPass(
+        open:() => Promise<CharxStreamOpened>,
+        changed:(cause?:unknown) => ExportAssetChangedError,
+        begin:(opened:CharxStreamOpened) => Promise<void>,
+        take:(bytes:Uint8Array) => Promise<void>,
+    ){
+        let rest:AsyncGenerator<CharxStreamPiece, void, undefined>|undefined
+        try{
+            const opened = await open()
+            rest = opened.rest
+            await begin(opened)
+            await take(opened.first.bytes)
+            for(;;){
+                let next:IteratorResult<CharxStreamPiece, void>
+                try{
+                    next = await rest.next()
+                }
+                catch(error){
+                    console.error(error)
+                    throw changed(error)
+                }
+                if(next.done === true){
+                    break
+                }
+                await take(next.value.bytes)
+            }
+        }
+        finally{
+            await rest?.return(undefined).catch(() => { })
+        }
+    }
+
+    /**
+     * The throttled form of `onProgress`: the first report of each phase goes out at once, the others at most once per
+     * interval by `performance.now()`, and the report marked `last` always does (unless the same count has just gone out).
+     */
+    #progressReporter(onProgress:CharxStreamProgress|undefined){
+        const reported = new Map<CharxStreamPhase, { at:number, done:number }>()
+        return (phase:CharxStreamPhase, done:number, total:number, last:boolean) => {
+            if(!onProgress){
+                return
+            }
+            const now = performance.now()
+            const before = reported.get(phase)
+            const due = before === undefined || now - before.at >= CHARX_STREAM_PROGRESS_INTERVAL_MS
+            if(last ? before?.done !== done : due){
+                reported.set(phase, { at: now, done })
+                onProgress(phase, done, total)
+            }
+        }
     }
 
     #localHeader(record:CharxEntryRecord):Uint8Array {
@@ -458,7 +748,7 @@ export class CharXWriter{
         view.setUint16(4, ZIP_VERSION, true)
         header[6] = record.flagLow
         header[7] = record.flagHigh
-        view.setUint16(8, ZIP_METHOD_DEFLATE, true)
+        view.setUint16(8, record.method, true)
         view.setUint32(10, record.stamp, true)
         if(!record.descriptor){
             view.setUint32(14, record.crc, true)
@@ -497,7 +787,7 @@ export class CharXWriter{
             view.setUint16(at + 6, ZIP_VERSION, true)
             out[at + 8] = record.flagLow
             out[at + 9] = record.flagHigh
-            view.setUint16(at + 10, ZIP_METHOD_DEFLATE, true)
+            view.setUint16(at + 10, record.method, true)
             view.setUint32(at + 12, record.stamp, true)
             view.setUint32(at + 16, record.crc, true)
             view.setUint32(at + 20, record.compressedSize, true)

@@ -157,6 +157,14 @@ export async function exportAssetPieceSource(store: ByteStore): Promise<ExportAs
     return web === null ? null : { kind: 'web', pieces: web, store }
 }
 
+/**
+ * The file identity a piece carries when it came from the app's files store (`readRangedPieces` yields it on every
+ * piece, and the source-neutral `ReadPiece` does not declare it); `undefined` for the Node and browser stores.
+ */
+function pieceIdentity(piece: ReadPiece): string | undefined {
+    return 'identity' in piece && typeof piece.identity === 'string' ? piece.identity : undefined
+}
+
 /** The first piece of an asset could not be read: the key is absent or unreadable. An export never skips such an asset. */
 export class ExportAssetMissingError extends Error {
     constructor(public readonly key: string, cause?: unknown) {
@@ -169,11 +177,13 @@ export class ExportAssetMissingError extends Error {
  * Opens `key` and awaits its first piece; the caller writes `first`, then every piece of `rest`. A missing or
  * unreadable first piece throws `ExportAssetMissingError`. On a Node source a first range that fails twice throws
  * `ExportReadError` instead (the network failed, not the value). The generator is closed whenever this throws.
+ * `identity` is the file identity the app's files store reported with the first piece (the same on every piece of one
+ * read); it is `undefined` on a source that reports none, so two opens compare equal there.
  */
 export async function openExportAssetPieces(
     key: string,
     source: ExportAssetSource,
-): Promise<{ first: ReadPiece, rest: AsyncGenerator<ReadPiece, void, undefined> }> {
+): Promise<{ first: ReadPiece, rest: AsyncGenerator<ReadPiece, void, undefined>, identity?: string }> {
     if (source.kind === 'node') {
         const opened = await openFirstPiece(source.pieces.open, key)
         if (opened === null) {
@@ -196,7 +206,7 @@ export async function openExportAssetPieces(
     if (first.done === true) {
         throw new ExportAssetMissingError(key)
     }
-    return { first: first.value, rest: pieces }
+    return { first: first.value, rest: pieces, identity: pieceIdentity(first.value) }
 }
 
 /**
