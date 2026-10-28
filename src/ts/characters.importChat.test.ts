@@ -1121,6 +1121,7 @@ describe('importChat -- the imported chat goes first and is the chat opened', ()
     test.each([
         ['a SillyTavern JSONL file', 'new.jsonl', JSON.stringify({ name: 'Solo', is_user: false, mes: 'a' })],
         ['an Ooba file', 'new.json', JSON.stringify({ internal: [['hi', 'there']], visible: [['hi', 'there']] })],
+        ['an Agnai file', 'new.json', JSON.stringify({ name: 'Exported', messages: [{ msg: 'hi', userId: 'u1' }] })],
     ])('%s is inserted at index 0 ahead of the existing chat and opened', async (_label, name, text) => {
         vi.mocked(selectSingleFile).mockResolvedValue({ name, data: utf8(text) })
 
@@ -1130,5 +1131,382 @@ describe('importChat -- the imported chat goes first and is the chat opened', ()
         expect(chats.map((c) => c.name)).toEqual(['new', 'Existing Chat'])
         expect(changeChatTo).toHaveBeenCalledTimes(1)
         expect(changeChatTo).toHaveBeenCalledWith(0)
+    })
+})
+
+describe('importChat -- Agnai JSON', () => {
+    const fileName = 'chat-4f2a.json'
+    const stamp = (minute: number) => new Date(Date.UTC(2025, 0, 1, 0, minute)).toISOString()
+    type Row = Record<string, unknown>
+
+    // Every row carries the message text `m-<id>`, so an expectation reads as a list of ids.
+    const row = (id: string, parent: string | undefined, minute: number, extra: Row = {}): Row => ({
+        _id: id, parent, msg: `m-${id}`, createdAt: stamp(minute), characterId: 'imported', ...extra,
+    })
+    const agnaiFile = (messages: unknown[], treeLeafId?: unknown) => ({
+        name: 'Exported',
+        greeting: '',
+        messages: treeLeafId === undefined ? messages : messages.map((m) => ({ ...(m as Row), treeLeafId })),
+    })
+    const branched = (): Row[] => [row('r0', undefined, 0), row('a1', 'r0', 1), row('b2', 'a1', 2), row('c3', 'a1', 3), row('d4', 'c3', 4), row('e5', 'b2', 5)]
+
+    beforeEach(() => {
+        vi.mocked(alertError).mockClear()
+        vi.mocked(alertNormal).mockClear()
+        vi.mocked(changeChatTo).mockClear()
+        vi.mocked(selectSingleFile).mockReset()
+        testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+    })
+
+    async function runAgnai(body: unknown, name = fileName) {
+        vi.mocked(selectSingleFile).mockResolvedValue({ name, data: utf8(JSON.stringify(body)) })
+        await importChat()
+    }
+
+    function chatList() {
+        return (testDb.db.characters[0] as character).chats
+    }
+
+    function importedMessages() {
+        const chats = chatList()
+        return chats.length === 0 ? [] : chats[0].message
+    }
+
+    function importedTexts() {
+        return importedMessages().map((m) => m.data)
+    }
+
+    function noticeText() {
+        expect(alertNormal).toHaveBeenCalledTimes(1)
+        return String(vi.mocked(alertNormal).mock.calls[0][0])
+    }
+
+    // The notice addImportedChat builds for `skipped` unreadable elements and `swipes` messages not kept.
+    function expectedNotice(skipped: number, swipes: number) {
+        const lead = skipped > 0 ? language.chatImportSkippedLines(skipped) : language.chatImportDone
+        if(swipes > 0){
+            return lead + ' ' + language.chatImportSwipesNotKept(swipes)
+        }
+        return skipped > 0 ? language.chatImportSkippedLines(skipped) : language.successImport
+    }
+
+    function expectNoData() {
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(alertError).toHaveBeenCalledWith(language.errors.noData)
+        expect(chatList()).toHaveLength(0)
+        expect(changeChatTo).not.toHaveBeenCalled()
+    }
+
+    // Reproducers: on the base an Agnai file is no data, so each fails by assertion.
+    test('E0: a file without ids keeps all messages in file order with no time', async () => {
+        await runAgnai({
+            name: 'Exported',
+            messages: [
+                { msg: 'hello there', userId: 'u1', characterId: 'imported' },
+                { msg: 'first reply', characterId: 'c-1' },
+                { msg: 'second reply', characterId: 'c-2' },
+            ],
+        })
+
+        expect(importedMessages().map((m) => [m.role, m.data])).toEqual([['user', 'hello there'], ['char', 'first reply'], ['char', 'second reply']])
+        expect(importedMessages().every((m) => m.time === undefined)).toBe(true)
+        expect(alertError).not.toHaveBeenCalled()
+        expect(noticeText()).toBe(language.successImport)
+    })
+
+    test('E1: parents that are text prefixes keep all messages in file order', async () => {
+        const texts = ['Once upon a time', 'The knight rode out', 'A dragon woke up', 'Fire filled the sky', 'The knight fled', 'Peace returned', 'A feast began', 'Everyone slept']
+        const rows = texts.map((text, index) => row(`e1a0000${index}`, index === 0 ? undefined : text.slice(0, 8), index, { msg: text }))
+
+        await runAgnai(agnaiFile(rows, 'e1a00002'))
+
+        expect(importedTexts()).toEqual(texts)
+        expect(noticeText()).toBe(language.successImport)
+    })
+
+    test.each([['an ancestor', 'r0'], ['a missing id', undefined]])('E2: a real chain imports whole when treeLeafId is %s', async (_label, leaf) => {
+        const rows = [row('r0', undefined, 0), row('a1', 'r0', 1), row('b2', 'a1', 2), row('c3', 'b2', 3)]
+
+        await runAgnai(agnaiFile(rows, leaf))
+
+        expect(importedTexts()).toEqual(['m-r0', 'm-a1', 'm-b2', 'm-c3'])
+        expect(noticeText()).toBe(language.successImport)
+    })
+
+    test('E3: a branched file imports the path to the newest tip and reports the rest', async () => {
+        await runAgnai(agnaiFile(branched(), 'd4'))
+
+        expect(importedTexts()).toEqual(['m-r0', 'm-a1', 'm-b2', 'm-e5'])
+        expect(noticeText()).toBe(expectedNotice(0, 2))
+    })
+
+    test('E3: the same file in reverse order gives the same chat', async () => {
+        await runAgnai(agnaiFile(branched().reverse(), 'd4'))
+
+        expect(importedTexts()).toEqual(['m-r0', 'm-a1', 'm-b2', 'm-e5'])
+        expect(noticeText()).toBe(expectedNotice(0, 2))
+    })
+
+    test('FC: fork and continue imports the newer branch although treeLeafId names the older tip', async () => {
+        const rows = [row('r0', undefined, 0), row('a1', 'r0', 1), row('b2', 'a1', 2), row('d4', 'b2', 3), row('e5', 'a1', 4), row('f6', 'e5', 5)]
+
+        await runAgnai(agnaiFile(rows, 'd4'))
+
+        expect(importedTexts()).toEqual(['m-r0', 'm-a1', 'm-e5', 'm-f6'])
+        expect(noticeText()).toBe(expectedNotice(0, 2))
+    })
+
+    test.each([['a tip', 'd4'], ['an ancestor', 'a1'], ['an unknown id', 'zzzzzzzz'], ['a number', 7], ['a missing value', undefined]])(
+        'TL1: treeLeafId as %s does not change the result', async (_label, leaf) => {
+            await runAgnai(agnaiFile(branched(), leaf))
+
+            expect(importedTexts()).toEqual(['m-r0', 'm-a1', 'm-b2', 'm-e5'])
+            expect(noticeText()).toBe(expectedNotice(0, 2))
+        })
+
+    test('ties: equal creation times pick the later element in the file', async () => {
+        await runAgnai(agnaiFile([row('r0', undefined, 0), row('c3', 'r0', 5), row('b2', 'r0', 5)]))
+
+        expect(importedTexts()).toEqual(['m-r0', 'm-b2'])
+        expect(noticeText()).toBe(expectedNotice(0, 1))
+    })
+
+    const undatedCases: Array<[string, string[], string[]]> = [
+        ['undated tip last', ['r0', 'x1', 'y2'], ['m-r0', 'm-y2']],
+        ['undated tip before the dated one', ['r0', 'y2', 'x1'], ['m-r0', 'm-x1']],
+    ]
+    test.each(undatedCases)('ties: %s, the greatest file index wins', async (_label, order, expected) => {
+        const byId: Record<string, Row> = {
+            r0: row('r0', undefined, 0),
+            x1: row('x1', 'r0', 9),
+            y2: row('y2', 'r0', 0, { createdAt: 'not a date' }),
+        }
+
+        await runAgnai(agnaiFile(order.map((id) => byId[id])))
+
+        expect(importedTexts()).toEqual(expected)
+        expect(noticeText()).toBe(expectedNotice(0, 1))
+    })
+
+    test('O1: a newer orphan subtree is imported and the main chain is counted', async () => {
+        const rows = [row('r0', undefined, 0), row('a1', 'r0', 1), row('b2', 'a1', 2), row('c3', 'b2', 3), row('x9', 'zzzzzzzz', 4), row('y8', 'x9', 5)]
+
+        await runAgnai(agnaiFile(rows))
+
+        expect(importedTexts()).toEqual(['m-x9', 'm-y8'])
+        expect(noticeText()).toBe(expectedNotice(0, 4))
+    })
+
+    test('O2: an older orphan subtree is counted and the main chain is imported', async () => {
+        const rows = [row('r0', undefined, 0), row('a1', 'r0', 1), row('b2', 'a1', 2), row('c3', 'b2', 3), row('x9', 'zzzzzzzz', 1), row('y8', 'x9', 2)]
+
+        await runAgnai(agnaiFile(rows))
+
+        expect(importedTexts()).toEqual(['m-r0', 'm-a1', 'm-b2', 'm-c3'])
+        expect(noticeText()).toBe(expectedNotice(0, 2))
+    })
+
+    test('E1c: one coincidental text prefix equal to an id makes the file branched (accepted risk)', async () => {
+        const rows = Array.from({ length: 12 }, (_, index) => {
+            const text = index === 4 ? 'e1a00002 and more' : `Line ${index} of the story`
+            return row(`e1a0000${(index + 1).toString(16)}`, text.slice(0, 8), index, { msg: text })
+        })
+
+        await runAgnai(agnaiFile(rows))
+
+        expect(importedTexts()).toEqual(['Line 11 of the story'])
+        expect(noticeText()).toBe(expectedNotice(0, 11))
+    })
+
+    test('D1: a repeated id inside a tree imports everything in file order', async () => {
+        const rows = [row('r0', undefined, 0), row('x1', 'r0', 1, { msg: 'first x1' }), row('x1', 'r0', 2, { msg: 'second x1' }), row('c3', 'x1', 3)]
+
+        await runAgnai(agnaiFile(rows))
+
+        expect(importedTexts()).toEqual(['m-r0', 'first x1', 'second x1', 'm-c3'])
+        expect(noticeText()).toBe(language.successImport)
+    })
+
+    const loopCases: Array<[string, Row[], string[]]> = [
+        ['D2: a two-message cycle and a separate message', [row('A', 'B', 0), row('B', 'A', 1), row('C', undefined, 2)], ['m-A', 'm-B', 'm-C']],
+        ['D3: a self-parent and a separate chain', [row('S', 'S', 0), row('a1', undefined, 1), row('b2', 'a1', 2)], ['m-S', 'm-a1', 'm-b2']],
+        // The loop check, or failing it the bounded path walk, ends this case as file order; D2 and D3 pin the loop check.
+        ['D4: a cycle above two tips', [row('A', 'B', 0), row('B', 'A', 1), row('C', 'A', 2), row('D', 'A', 3)], ['m-A', 'm-B', 'm-C', 'm-D']],
+    ]
+    test.each(loopCases)('%s imports in file order with no swipe sentence', async (_label, rows, expected) => {
+        await runAgnai(agnaiFile(rows))
+
+        expect(importedTexts()).toEqual(expected)
+        expect(noticeText()).toBe(language.successImport)
+    })
+
+    test('K2: a skipped element inside a chain keeps the chain whole', async () => {
+        const rows = [row('a1', undefined, 0), row('b2', 'a1', 1, { msg: 5 }), row('c3', 'b2', 2), row('d4', 'c3', 3)]
+
+        await runAgnai(agnaiFile(rows))
+
+        expect(importedTexts()).toEqual(['m-a1', 'm-c3', 'm-d4'])
+        expect(noticeText()).toBe(expectedNotice(1, 0))
+    })
+
+    test('K1: a numeric msg off the path is skipped, not counted as a swipe', async () => {
+        const rows = [row('r0', undefined, 0), row('a1', 'r0', 1), row('b2', 'r0', 2, { msg: 5 }), row('c3', 'a1', 3), null]
+
+        await runAgnai(agnaiFile(rows))
+
+        expect(importedTexts()).toEqual(['m-r0', 'm-a1', 'm-c3'])
+        expect(noticeText()).toBe(expectedNotice(2, 0))
+    })
+
+    test('K1b: the same tree with a newer tip reports both sentences', async () => {
+        const rows = [row('r0', undefined, 0), row('a1', 'r0', 1), row('b2', 'r0', 2, { msg: 5 }), row('c3', 'a1', 3), null, row('d4', 'r0', 4)]
+
+        await runAgnai(agnaiFile(rows))
+
+        expect(importedTexts()).toEqual(['m-r0', 'm-d4'])
+        expect(noticeText()).toBe(expectedNotice(2, 2))
+    })
+
+    test('E1x-a: an empty msg in a chain keeps it whole and is uncounted; all-empty is no data', async () => {
+        await runAgnai(agnaiFile([row('a1', undefined, 0), row('b2', 'a1', 1, { msg: '' }), row('c3', 'b2', 2)]))
+
+        expect(importedTexts()).toEqual(['m-a1', 'm-c3'])
+        expect(noticeText()).toBe(language.successImport)
+
+        testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+        vi.mocked(alertNormal).mockClear()
+        vi.mocked(alertError).mockClear()
+        vi.mocked(changeChatTo).mockClear()
+        await runAgnai(agnaiFile([row('a1', undefined, 0, { msg: '' }), row('b2', 'a1', 1, { msg: '' })]))
+        expectNoData()
+    })
+
+    test('E1x-b: an empty msg off the path is not counted', async () => {
+        const rows = [row('r0', undefined, 0), row('a1', 'r0', 1), row('b2', 'r0', 2, { msg: '' }), row('c3', 'a1', 3), row('d4', 'r0', 4)]
+
+        await runAgnai(agnaiFile(rows))
+
+        expect(importedTexts()).toEqual(['m-r0', 'm-d4'])
+        expect(noticeText()).toBe(expectedNotice(0, 2))
+    })
+
+    test('M1x: several characters in a linear chat are all kept', async () => {
+        const rows = [
+            row('a1', undefined, 0, { userId: 'u1' }),
+            row('b2', 'a1', 1, { characterId: 'c-1' }),
+            row('c3', 'b2', 2, { characterId: 'c-2' }),
+            row('d4', 'c3', 3, { userId: 'u1' }),
+            row('e5', 'd4', 4, { characterId: 'c-1' }),
+            row('f6', 'e5', 5, { characterId: 'c-3' }),
+        ]
+
+        await runAgnai(agnaiFile(rows))
+
+        expect(importedTexts()).toEqual(['m-a1', 'm-b2', 'm-c3', 'm-d4', 'm-e5', 'm-f6'])
+        expect(noticeText()).toBe(language.successImport)
+    })
+
+    test('S1: speaker is decided by userId and names follow the line kind', async () => {
+        await runAgnai({
+            name: 'Exported',
+            messages: [
+                { msg: 'u1', userId: 'U1', characterId: 'imported', name: 'Sam' },
+                { msg: 'u2', userId: 'U1', characterId: 'c-2', name: 'Narrator' },
+                { msg: 'u3', userId: 'U1', name: 'handle' },
+                { msg: 'u4', userId: 'U1', characterId: 'imported', name: 'User' },
+                { msg: 'c1', characterId: 'imported', name: 'Bot' },
+                { msg: 'c2', characterId: 'c-2', name: 'Ann' },
+                { msg: 'c3', characterId: 'c-2', name: 'Solo' },
+                { msg: 'c4' },
+            ],
+        })
+
+        expect(importedMessages().map((m) => [m.data, m.role, m.name])).toEqual([
+            ['u1', 'user', 'Sam'],
+            ['u2', 'user', 'Narrator'],
+            ['u3', 'user', undefined],
+            ['u4', 'user', undefined],
+            ['c1', 'char', undefined],
+            ['c2', 'char', 'Ann'],
+            ['c3', 'char', undefined],
+            ['c4', 'char', undefined],
+        ])
+    })
+
+    test('OOC1: ooc is an ordinary user message, never disabled', async () => {
+        await runAgnai({ name: 'Exported', messages: [{ msg: 'a', ooc: true }, { msg: 'b', ooc: true, userId: 'U1' }] })
+
+        expect(importedMessages().map((m) => [m.data, m.role])).toEqual([['a', 'user'], ['b', 'user']])
+        expect(importedMessages().every((m) => !('disabled' in m))).toBe(true)
+    })
+
+    test('T1: a readable createdAt becomes time exactly; unreadable and year 10000 give none', async () => {
+        const rows = [
+            row('a1', undefined, 0, { createdAt: '2025-03-04T05:06:07.000Z' }),
+            row('b2', 'a1', 1, { createdAt: 'later' }),
+            row('c3', 'b2', 2, { createdAt: '10000-01-01T00:00:00.000Z' }),
+        ]
+
+        await runAgnai(agnaiFile(rows))
+
+        expect(importedMessages().map((m) => m.time)).toEqual([Date.UTC(2025, 2, 4, 5, 6, 7), undefined, undefined])
+    })
+
+    test('N1: the chat is named after the file and opened first', async () => {
+        await runAgnai(agnaiFile([row('a1', undefined, 0)]))
+
+        expect(chatList().map((c) => c.name)).toEqual(['chat-4f2a'])
+        expect(changeChatTo).toHaveBeenCalledTimes(1)
+        expect(changeChatTo).toHaveBeenCalledWith(0)
+    })
+
+    test('F1: a written message holds exactly role, data, time and name', async () => {
+        await runAgnai({
+            name: 'Exported',
+            messages: [{ _id: 'a1', msg: 'hi', userId: 'U1', characterId: 'c-2', name: 'Narrator', createdAt: '2025-03-04T05:06:07.000Z', ooc: true, extras: { x: 1 }, json: {}, values: {}, handle: 'h', state: 's' }],
+        })
+
+        expect(importedMessages()).toEqual([{ role: 'user', data: 'hi', time: Date.UTC(2025, 2, 4, 5, 6, 7), name: 'Narrator' }])
+    })
+
+    // Guards: these pass before and after the Agnai route exists.
+    test('G-risu: Risu exports carrying a messages array still import as Risu', async () => {
+        const chat = { message: [], note: 'n', name: 'Risu Chat', localLore: [], id: 'file-id' }
+        await runAgnai({ type: 'risuChat', ver: 1, data: chat, messages: [{ msg: 'x' }] })
+        expect(chatList()).toHaveLength(1)
+        expect(chatList()[0].name).toBe('Risu Chat')
+        expect(chatList()[0].message).toHaveLength(0)
+
+        testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+        await runAgnai({ type: 'risuAllChats', ver: 2, data: [chat], folders: [], messages: [{ msg: 'x' }] })
+        expect(chatList()).toHaveLength(1)
+        expect(chatList()[0].name).toBe('Risu Chat')
+        expect(chatList()[0].message).toHaveLength(0)
+    })
+
+    test('G-ooba: an Ooba file with an added messages array still imports as Ooba', async () => {
+        await runAgnai({ internal: [['hi', 'there']], visible: [['hi', 'there']], messages: [{ msg: 'x' }] })
+
+        expect(importedMessages().map((m) => [m.role, m.data])).toEqual([['user', 'hi'], ['char', 'there']])
+    })
+
+    test('G-jsonl: a .jsonl file holding an Agnai-looking object goes to the SillyTavern reader and is no data', async () => {
+        vi.mocked(selectSingleFile).mockResolvedValue({ name: 'chat.jsonl', data: utf8('{"messages":[{"msg":"x"}]}') })
+
+        await importChat()
+
+        expectNoData()
+    })
+
+    const notAgnai: Array<[string, unknown]> = [
+        ['a Lianne-like file', { messages: [{ msg: 'x', candidates: ['a'] }] }],
+        ['an OpenAI-like file', { messages: [{ role: 'user', content: 'x' }] }],
+        ['a Kobold-like file', { gamestarted: true, prompt: 'x', actions: ['a'] }],
+        ['an empty messages array', { messages: [] }],
+    ]
+    test.each(notAgnai)('G-other: %s is no data', async (_label, body) => {
+        await runAgnai(body)
+
+        expectNoData()
     })
 })

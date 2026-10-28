@@ -23,7 +23,7 @@ import { beginBusy } from "./process/memory/busyActions";
 import { queueInlayCleanupForChat, queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
 import { escapeHtmlText } from "./htmlEscape";
 import { isHiddenSystemCharacter } from "./hiddenCharacters";
-import { chatNameFromFile, detectJsonChatFormat, readOobaChat, readTavernJsonl, tavernMessageName, type ChatImportResult } from "./chatImport";
+import { chatNameFromFile, detectJsonChatFormat, readAgnaiChat, readOobaChat, readTavernJsonl, tavernMessageName, type ChatImportResult } from "./chatImport";
 
 export function createNewCharacter() {
     DBState.db.characters.push(createBlankChar())
@@ -642,6 +642,10 @@ export async function importChat(){
             else{
                 if(detectJsonChatFormat(json) === 'ooba'){
                     addImportedChat(readOobaChat(json), dat.name, selectedID)
+                    return
+                }
+                if(detectJsonChatFormat(json) === 'agnai'){
+                    addImportedChat(readAgnaiChat(json), dat.name, selectedID)
                     return
                 }
                 alertError(language.errors.noData)
