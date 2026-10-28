@@ -6,14 +6,21 @@
  *
  * Labels, per test title:
  * - (R) REGRESSION REPRODUCER: fails by assertion on the commit before the change (the asset is cut short, or the
- *   import is refused, or a bogus entry starts in a JPEG prefix).
- * - (G) COMPATIBILITY GUARD: holds before and after the change. A "(G) damaged ..." test pins that the file is read
- *   as it always was when the directory disagrees with it (MC-802); its clean twin is the (R) test next to it.
+ *   import is refused, or a bogus entry starts in a JPEG prefix, or a stored entry framed with a data descriptor is
+ *   imported at the wrong length from an archive whose directory cannot be used).
+ * - (G) COMPATIBILITY GUARD: holds before and after the change. The deflate fallback family pins, per input row, what a
+ *   deflate-framed archive gives when its directory disagrees with it (MC-802: read as it always was); every case
+ *   there also asserts the result is not 'layout'.
  * - (N) NEW BEHAVIOUR: has no counterpart before the change (an entry the directory does not list is skipped,
  *   MC-803; a header that changed after validation; a validation read that throws; the number of validation reads; how
  *   far the splice reads ahead of the importer; a clean archive whose stream ends at an entry boundary or in the
- *   directory, which the scanning reader imported as if it were complete).
+ *   directory, which the scanning reader imported as if it were complete; a stored entry with a data descriptor on the
+ *   fallback path is refused with origin 'layout', MC-804 and MC-805).
  *   A stream that ends inside an entry is refused as a ZIP failure before and after, so that test is (G).
+ *
+ * The check cannot fire for an entry the directory lists on the spliced path (the splice gives each its sizes), so for
+ * these fixtures, which hold no unlisted local header, a 'layout' result proves the planner rejected the directory
+ * and the file took the fallback.
  *
  * The importer runs for real on `Uint8Array`, `File`, a `File` whose stream gives pieces of a chosen size
  * ('chunked-file') and an `ImportSource`, at piece sizes 1, 7, 29, 4096 and 1 MiB; the asset writes, the alerts and the
@@ -271,12 +278,12 @@ function withOrphan(bytes: Uint8Array, where: 'before' | 'between' | 'after'): U
  * every check but the overlap passes for it. The outer entry is framed as upstream writes it: an outer entry without a
  * descriptor is read the same with or without the plan, so no outcome would tell the two apart.
  */
-function nestedArchive(listed: boolean): { bytes: Uint8Array, outerData: Uint8Array } {
-    const donor = upstreamArchive([['assets/other/inner.bin', random(200, 9), 'store']])
+function nestedArchive(listed: boolean, kind: Kind = 'store'): { bytes: Uint8Array, outerData: Uint8Array } {
+    const donor = upstreamArchive([['assets/other/inner.bin', random(200, 9), kind]])
     const donorLayout = layoutOf(donor)
     const outerData = donor.slice(0, donorLayout.directoryStart)
     const innerRecord = donor.slice(donorLayout.directoryStart, donorLayout.endRecord)
-    const outer = upstreamArchive([['card.json', CARD, 'deflate-6'], [SIG_NAME, outerData, 'store'], [SMALL_NAME, SMALL_ASSET, 'deflate-6']])
+    const outer = upstreamArchive([['card.json', CARD, 'deflate-6'], [SIG_NAME, outerData, kind], [SMALL_NAME, SMALL_ASSET, 'deflate-6']])
     if (!listed) {
         return { bytes: outer, outerData }
     }
@@ -522,7 +529,7 @@ describe('an archive framed as the ZIP format also allows', () => {
             expect(importedWhole(outcome, SMALL_NAME, SMALL_ASSET)).toBe(true)
         })
 
-        test('(G) damaged: a descriptor CRC that differs from the central CRC (12 bytes) is read as it always was', async () => {
+        test('(N) damaged: a descriptor CRC that differs from the central CRC (12 bytes) takes the fallback and is refused as a layout failure', async () => {
             const damaged = patched(clean, (view, layout) => {
                 view.setUint8(layout.entries[1].bodyEnd, view.getUint8(layout.entries[1].bodyEnd) ^ 1)
             })
@@ -530,7 +537,8 @@ describe('an archive framed as the ZIP format also allows', () => {
             for (const [label, inputKind, chunk] of INPUTS) {
                 h.saved.clear()
                 const outcome = await runImport(makeInput(inputKind, damaged, chunk))
-                expect(importedWhole(outcome, SIG_NAME, BLOB_ASSET), label).toBe(false)
+                expect(originOf(outcome), label).toBe('layout')
+                expect(h.saved.size, label).toBe(0)
             }
         })
     })
@@ -576,49 +584,59 @@ describe('an asset past the piece threshold on a store that writes in pieces', (
     )
 })
 
-describe('a directory that disagrees with the file (MC-802): the file is read as it always was', () => {
-    // Each damage is applied to a copy of the same archive; with the damage the signature asset is not imported whole.
-    // The clean archive is the (R) test above.
-    const damages: Array<[string, (bytes: Uint8Array) => Uint8Array]> = [
-        ['a central compressed size off by one', bytes => patched(bytes, (view, layout) => {
-            const at = layout.entries[1].central + 20
-            view.setUint32(at, view.getUint32(at, true) + 1, true)
-        })],
-        ['a central name that differs from the local name', bytes => patched(bytes, (view, layout) => {
-            const at = layout.entries[1].central + 46 + layout.entries[1].nameLength - 1
-            view.setUint8(at, view.getUint8(at) ^ 1)
-        })],
-        ['a central method that differs from the local method', bytes => patched(bytes, (view, layout) => {
-            view.setUint16(layout.entries[1].central + 10, 8, true)
-        })],
-        ['a central bit 3 that differs from the local bit 3', bytes => patched(bytes, (view, layout) => {
-            const at = layout.entries[1].central + 8
-            view.setUint16(at, view.getUint16(at, true) & ~8, true)
-        })],
-        ['a descriptor CRC that differs from the central CRC', bytes => patched(bytes, (view, layout) => {
-            view.setUint8(layout.entries[1].bodyEnd + 4, view.getUint8(layout.entries[1].bodyEnd + 4) ^ 1)
-        })],
-        ['a descriptor compressed size that differs from the central one', bytes => patched(bytes, (view, layout) => {
-            view.setUint8(layout.entries[1].bodyEnd + 8, view.getUint8(layout.entries[1].bodyEnd + 8) ^ 1)
-        })],
-        ['a central offset into the middle of another entry', bytes => patched(bytes, (view, layout) => {
-            view.setUint32(layout.entries[2].central + 42, layout.entries[1].localOffset + 10, true)
-        })],
-        ['a directory entry listed twice, so two entries start at one offset', bytes => patched(bytes, (view, layout) => {
-            // the second record becomes a copy of the first: the same name, offset and sizes (both names have one length)
-            const [first, second] = [layout.entries[1], layout.entries[2]]
-            const length = 46 + first.nameLength
-            expect(second.nameLength).toBe(first.nameLength)
-            new Uint8Array(view.buffer).copyWithin(second.central, first.central, first.central + length)
-        })],
-    ]
+/**
+ * The damages that make the directory disagree with the file. `centralMethod` is the method the "central method"
+ * damage writes: the one that differs from the local method (8 for a stored entry, 0 for a deflate entry).
+ */
+const damagesFor = (centralMethod: number): Array<[string, (bytes: Uint8Array) => Uint8Array]> => [
+    ['a central compressed size off by one', bytes => patched(bytes, (view, layout) => {
+        const at = layout.entries[1].central + 20
+        view.setUint32(at, view.getUint32(at, true) + 1, true)
+    })],
+    ['a central name that differs from the local name', bytes => patched(bytes, (view, layout) => {
+        const at = layout.entries[1].central + 46 + layout.entries[1].nameLength - 1
+        view.setUint8(at, view.getUint8(at) ^ 1)
+    })],
+    ['a central method that differs from the local method', bytes => patched(bytes, (view, layout) => {
+        view.setUint16(layout.entries[1].central + 10, centralMethod, true)
+    })],
+    ['a central bit 3 that differs from the local bit 3', bytes => patched(bytes, (view, layout) => {
+        const at = layout.entries[1].central + 8
+        view.setUint16(at, view.getUint16(at, true) & ~8, true)
+    })],
+    ['a descriptor CRC that differs from the central CRC', bytes => patched(bytes, (view, layout) => {
+        view.setUint8(layout.entries[1].bodyEnd + 4, view.getUint8(layout.entries[1].bodyEnd + 4) ^ 1)
+    })],
+    ['a descriptor compressed size that differs from the central one', bytes => patched(bytes, (view, layout) => {
+        view.setUint8(layout.entries[1].bodyEnd + 8, view.getUint8(layout.entries[1].bodyEnd + 8) ^ 1)
+    })],
+    ['a central offset into the middle of another entry', bytes => patched(bytes, (view, layout) => {
+        view.setUint32(layout.entries[2].central + 42, layout.entries[1].localOffset + 10, true)
+    })],
+    ['a directory entry listed twice, so two entries start at one offset', bytes => patched(bytes, (view, layout) => {
+        // the second record becomes a copy of the first: the same name, offset and sizes (both names have one length)
+        const [first, second] = [layout.entries[1], layout.entries[2]]
+        const length = 46 + first.nameLength
+        expect(second.nameLength).toBe(first.nameLength)
+        new Uint8Array(view.buffer).copyWithin(second.central, first.central, first.central + length)
+    })],
+]
 
-    test.each(damages)('(G) damaged: %s', async (_label, damage) => {
-        const bytes = damage(upstreamArchive([['card.json', CARD, 'deflate-6'], [SIG_NAME, BLOB_ASSET, 'store'], ['assets/other/siq.bin', SMALL_ASSET, 'store']]))
+/** The damage applied to an archive whose second and third entries use `kind`. */
+const damagedArchive = (kind: Kind, damage: (bytes: Uint8Array) => Uint8Array) =>
+    damage(upstreamArchive([['card.json', CARD, 'deflate-6'], [SIG_NAME, BLOB_ASSET, kind], ['assets/other/siq.bin', SMALL_ASSET, kind]]))
+
+describe('a directory that disagrees with the file (MC-802, MC-804, MC-805)', () => {
+    // Each damage is applied to a copy of the same archive; the planner rejects the directory, so the file takes the
+    // fallback, where a stored entry with a descriptor is refused as 'layout'. The clean archive is the (R) test above.
+
+    test.each(damagesFor(8))('(N) damaged: %s is refused as a layout failure, and nothing is saved', async (_label, damage) => {
+        const bytes = damagedArchive('store', damage)
         for (const [label, inputKind, chunk] of INPUTS) {
             h.saved.clear()
             const outcome = await runImport(makeInput(inputKind, bytes, chunk))
-            expect(importedWhole(outcome, SIG_NAME, BLOB_ASSET), label).toBe(false)
+            expect(originOf(outcome), label).toBe('layout')
+            expect(h.saved.size, label).toBe(0)
         }
     })
 
@@ -631,23 +649,28 @@ describe('a directory that disagrees with the file (MC-802): the file is read as
         }
     })
 
-    test('(G) damaged: a listed entry that lies inside another entry\'s data (overlap)', async () => {
+    test('(N) damaged: a listed entry that lies inside another entry\'s data (overlap) is refused as a layout failure, and nothing is saved', async () => {
         const overlapping = nestedArchive(true)
         for (const [label, inputKind, chunk] of INPUTS) {
             h.saved.clear()
             const outcome = await runImport(makeInput(inputKind, overlapping.bytes, chunk))
-            expect(importedWhole(outcome, SIG_NAME, overlapping.outerData), label).toBe(false)
+            expect(originOf(outcome), label).toBe('layout')
+            expect(h.saved.size, label).toBe(0)
         }
     })
 
-    test('(G) damaged: a wrong offset field on a JPEG-prefixed archive', async () => {
+    // The JPEG prefix holds a local header signature whose name and extra lengths read 0x1111 each, so the scanning
+    // reader waits for header bytes the archive never supplies and starts no entry: the check never runs, here or before.
+    test('(G) damaged: a wrong offset field on a JPEG-prefixed archive fails nowhere and saves nothing', async () => {
         const bytes = patched(standardArchive('store', BLOB_ASSET, JPEG_PREFIX), (view, layout) => {
             view.setUint32(layout.endRecord + 16, view.getUint32(layout.endRecord + 16, true) + 1, true)
         })
         for (const [label, inputKind, chunk] of INPUTS) {
             h.saved.clear()
             const outcome = await runImport(makeInput(inputKind, bytes, chunk))
-            expect(importedWhole(outcome, SIG_NAME, BLOB_ASSET), label).toBe(false)
+            expect(outcome.failure, label).toBeUndefined()
+            expect(savedEntry(outcome, SIG_NAME), label).toBeUndefined()
+            expect(h.saved.size, label).toBe(0)
         }
     })
 
@@ -666,6 +689,219 @@ describe('a directory that disagrees with the file (MC-802): the file is read as
             const outcome = await runImport(makeInput(inputKind, damaged, chunk))
             expect(importedWhole(outcome, SIG_NAME, BLOB_ASSET), label).toBe(false)
         }
+    })
+})
+
+describe('a stored entry framed with a data descriptor on the fallback path (MC-804, MC-805)', () => {
+    /** The archive with a complete bit-3-clear stored entry (zipSync framing) listed after the last listed entry. */
+    function withListedClean(bytes: Uint8Array, tail: Uint8Array): Uint8Array {
+        const layout = layoutOf(bytes)
+        const donor = fflate.zipSync({ 'assets/other/tail.bin': [tail, { level: 0 }] })
+        const donorLayout = layoutOf(donor)
+        const local = donor.slice(0, donorLayout.directoryStart)
+        const central = donor.slice(donorLayout.directoryStart, donorLayout.endRecord)
+        new DataView(central.buffer).setUint32(42, layout.directoryStart - layout.zipStart, true)
+        const out = joined(bytes.subarray(0, layout.directoryStart), local, bytes.subarray(layout.directoryStart, layout.endRecord), central, bytes.subarray(layout.endRecord))
+        const view = new DataView(out.buffer)
+        const end = layout.endRecord + local.length + central.length
+        view.setUint16(end + 8, view.getUint16(end + 8, true) + 1, true)
+        view.setUint16(end + 10, view.getUint16(end + 10, true) + 1, true)
+        view.setUint32(end + 12, view.getUint32(end + 12, true) + central.length, true)
+        view.setUint32(end + 16, view.getUint32(end + 16, true) + local.length, true)
+        return out
+    }
+
+    /** The end record states one more entry than the directory holds, so the directory is not used. */
+    const countPlusOne = (bytes: Uint8Array) => patched(bytes, (view, layout) => {
+        view.setUint16(layout.endRecord + 8, view.getUint16(layout.endRecord + 8, true) + 1, true)
+        view.setUint16(layout.endRecord + 10, view.getUint16(layout.endRecord + 10, true) + 1, true)
+    })
+
+    /** A stream of two pieces, cut `cut` bytes into the archive. */
+    function twoPieceSource(bytes: Uint8Array, cut: number): ImportSource {
+        return sourceOf(bytes, cut, {
+            stream: () => {
+                let step = 0
+                return new ReadableStream<Uint8Array>({
+                    pull(controller) {
+                        if (step === 0) {
+                            controller.enqueue(bytes.subarray(0, cut))
+                        } else if (step === 1) {
+                            controller.enqueue(bytes.subarray(cut))
+                        } else {
+                            controller.close()
+                        }
+                        step++
+                    },
+                })
+            },
+        })
+    }
+
+    describe('the last entry is stored, with 12-byte descriptors', () => {
+        const clean = withShortDescriptors(upstreamArchive([['card.json', CARD, 'deflate-6'], [SMALL_NAME, SMALL_ASSET, 'deflate-6'], [SIG_NAME, BLOB_ASSET, 'store']]))
+        const damages: Array<[string, (bytes: Uint8Array) => Uint8Array]> = [
+            ['a wrong offset field', bytes => patched(bytes, (view, layout) => {
+                view.setUint32(layout.endRecord + 16, view.getUint32(layout.endRecord + 16, true) + 1, true)
+            })],
+            ['an entry count that differs from the directory', countPlusOne],
+            ['a central compressed size that disagrees', bytes => patched(bytes, (view, layout) => {
+                const at = layout.entries[2].central + 20
+                view.setUint32(at, view.getUint32(at, true) + 1, true)
+            })],
+        ]
+
+        test('(G) the fixture: the undamaged twin is valid and imports whole through the splice', async () => {
+            const files = fflate.unzipSync(clean)
+            expect(same(files[SIG_NAME], BLOB_ASSET)).toBe(true)
+            expect(same(files[SMALL_NAME], SMALL_ASSET)).toBe(true)
+            const layout = layoutOf(clean)
+            expect(layout.entries[2].bodyEnd + 12).toBe(layout.directoryStart)
+            for (const [label, inputKind, chunk] of INPUTS) {
+                h.saved.clear()
+                const outcome = await runImport(makeInput(inputKind, clean, chunk))
+                expect(importedWhole(outcome, SIG_NAME, BLOB_ASSET), label).toBe(true)
+            }
+        })
+
+        test.each(damages)('(R) damaged by %s: the asset is not imported cut short, the file is refused as a layout failure', async (_label, damage) => {
+            const bytes = damage(clean)
+            for (const [label, inputKind, chunk] of INPUTS) {
+                h.saved.clear()
+                const outcome = await runImport(makeInput(inputKind, bytes, chunk))
+                expect(originOf(outcome), label).toBe('layout')
+                expect(savedEntry(outcome, SIG_NAME), label).toBeUndefined()
+            }
+        })
+    })
+
+    describe('a stored middle entry with 12-byte descriptors, then a listed entry that ends cleanly', () => {
+        const MIDDLE = random(900, 78)
+        const TAIL = random(300, 6)
+        const clean = withListedClean(withShortDescriptors(upstreamArchive([['card.json', CARD, 'deflate-6'], [SIG_NAME, MIDDLE, 'store']])), TAIL)
+        const damaged = countPlusOne(clean)
+        // Boundaries inside the middle entry's descriptor (+5, +8), at the next header (+12) and inside it (+16).
+        const CUTS = [5, 8, 12, 16]
+
+        test('(G) the fixture: the undamaged twin is valid, and the cuts land inside the descriptor, at the next header and inside it', () => {
+            const files = fflate.unzipSync(clean)
+            expect(same(files[SIG_NAME], MIDDLE)).toBe(true)
+            expect(same(files['assets/other/tail.bin'], TAIL)).toBe(true)
+            const layout = layoutOf(clean)
+            expect(layout.entries).toHaveLength(3)
+            const view = new DataView(clean.buffer, clean.byteOffset, clean.byteLength)
+            // the middle entry has a descriptor, the last entry has none
+            expect(view.getUint16(layout.entries[1].local + 6, true) & 8).toBe(8)
+            expect(view.getUint16(layout.entries[2].local + 6, true) & 8).toBe(0)
+            expect(layout.entries[2].local).toBe(layout.entries[1].bodyEnd + 12)
+            expect(CUTS.map(cut => layout.entries[1].bodyEnd + cut < layout.entries[2].local)).toEqual([true, true, false, false])
+        })
+
+        test('(G) the undamaged twin imports whole through the splice', async () => {
+            h.saved.clear()
+            const outcome = await runImport(makeInput('import-source', clean, 29))
+            expect(importedWhole(outcome, SIG_NAME, MIDDLE)).toBe(true)
+            expect(same(savedEntry(outcome, 'assets/other/tail.bin'), TAIL)).toBe(true)
+        })
+
+        test.each(CUTS)('(R) damaged, read in two pieces cut %i bytes after the middle body: refused as a layout failure, nothing saved', async (cut) => {
+            // the damaged directory states one entry too many, so the boundaries come from the undamaged twin
+            const layout = layoutOf(clean)
+            h.saved.clear()
+            const outcome = await runImport(twoPieceSource(damaged, layout.entries[1].bodyEnd + cut))
+            expect(originOf(outcome)).toBe('layout')
+            expect(savedEntry(outcome, SIG_NAME)).toBeUndefined()
+            expect(h.saved.size).toBe(0)
+        })
+    })
+
+    test('(N) a ReadableStream input with a stored entry and the standard 16-byte descriptor is refused as a layout failure', async () => {
+        const bytes = standardArchive('store')
+        const outcome = await runImport(new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(bytes); controller.close() } }))
+
+        expect(originOf(outcome)).toBe('layout')
+        expect(savedEntry(outcome, SIG_NAME)).toBeUndefined()
+        expect(h.saved.size).toBe(0)
+    })
+
+    test('(N) an entry routed as drop is refused too, and an entry the same archive frames with a deflate method is not', async () => {
+        const router = (name: string) => name === 'card.json'
+            ? { kind: 'card' as const, limitBytes: MIB }
+            : { kind: 'drop' as const, limitBytes: Infinity }
+        const parseWith = async (bytes: Uint8Array) => {
+            const importer = new CharXImporter(router)
+            try {
+                await importer.parse(bytes)
+                await importer.done()
+                return undefined
+            } catch (error) {
+                return error
+            }
+        }
+        const dropped = random(100, 5)
+        const stored = upstreamArchive([['card.json', CARD, 'deflate-6'], ['assets/other/drop.bin', dropped, 'store']])
+        const deflated = upstreamArchive([['card.json', CARD, 'deflate-6'], ['assets/other/drop.bin', dropped, 'deflate-0']])
+
+        // a valid directory is spliced, so the stored entry has its sizes and is read
+        expect(await parseWith(stored)).toBeUndefined()
+        expect(await parseWith(countPlusOne(deflated))).toBeUndefined()
+        const failure = await parseWith(countPlusOne(stored))
+        expect(failure).toBeInstanceOf(CharXParseError)
+        expect((failure as CharXParseError).origin).toBe('layout')
+    })
+
+    // The deflate framing keeps the raw signatures but not a stored method, so the check never fires. Each row is what
+    // the commit before MC-804 gave for that input: the family pins "read as it always was" (MC-802).
+    describe('the same damages on a deflate-0 asset: read as before', () => {
+        const damagedCases = (): Array<[string, Uint8Array, Uint8Array]> => {
+            const cases: Array<[string, Uint8Array, Uint8Array]> = damagesFor(0).map(([label, damage]) => [label, damagedArchive('deflate-0', damage), BLOB_ASSET])
+            const nested = nestedArchive(true, 'deflate-0')
+            cases.push(['overlap', nested.bytes, nested.outerData])
+            cases.push(['jpg wrong offset', patched(standardArchive('deflate-0', BLOB_ASSET, JPEG_PREFIX), (view, layout) => {
+                view.setUint32(layout.endRecord + 16, view.getUint32(layout.endRecord + 16, true) + 1, true)
+            }), BLOB_ASSET])
+            cases.push(['12-byte CRC', patched(withShortDescriptors(standardArchive('deflate-0')), (view, layout) => {
+                view.setUint8(layout.entries[1].bodyEnd, view.getUint8(layout.entries[1].bodyEnd) ^ 1)
+            }), BLOB_ASSET])
+            return cases
+        }
+
+        const ALL = 'all'
+        const FAILS = 'origin=zip sig=none assets=0'
+        const WHOLE_ROWS = 'bytes,file,chunked-file 4096,chunked-file 1048576,import-source 4096,import-source 1048576'
+        const EXPECTED: Array<[caseLabel: string, result: string, inputs: string]> = [
+            ['a central compressed size off by one', FAILS, ALL],
+            ['a central name that differs from the local name', FAILS, ALL],
+            ['a central method that differs from the local method', FAILS, ALL],
+            ['a central bit 3 that differs from the local bit 3', FAILS, ALL],
+            ['a descriptor CRC that differs from the central CRC', FAILS, ALL],
+            ['a descriptor compressed size that differs from the central one', FAILS, ALL],
+            ['a central offset into the middle of another entry', FAILS, ALL],
+            ['a directory entry listed twice, so two entries start at one offset', FAILS, ALL],
+            ['overlap', 'origin=imported sig=273(whole) assets=3', WHOLE_ROWS],
+            ['overlap', FAILS, 'chunked-file 1,chunked-file 7,chunked-file 29,import-source 1,import-source 7,import-source 29'],
+            ['jpg wrong offset', 'origin=imported sig=none assets=0', ALL],
+            ['12-byte CRC', FAILS, ALL],
+        ]
+
+        test('(G) every case gives what the commit before MC-804 gave, per input row, and never a layout failure', async () => {
+            const actual: Array<[string, string, string]> = []
+            for (const [caseLabel, bytes, expected] of damagedCases()) {
+                const rows = new Map<string, string[]>()
+                for (const [label, inputKind, chunk] of INPUTS) {
+                    h.saved.clear()
+                    const outcome = await runImport(makeInput(inputKind, bytes, chunk))
+                    expect(originOf(outcome), `${caseLabel} ${label}`).not.toBe('layout')
+                    const saved = savedEntry(outcome, SIG_NAME)
+                    const result = `origin=${originOf(outcome) ?? 'imported'} sig=${saved === undefined ? 'none' : saved.length}${same(saved, expected) ? '(whole)' : ''} assets=${h.saved.size}`
+                    rows.set(result, [...(rows.get(result) ?? []), label])
+                }
+                for (const [result, inputs] of rows) {
+                    actual.push([caseLabel, result, inputs.length === INPUTS.length ? ALL : inputs.join(',')])
+                }
+            }
+            expect(actual).toEqual(EXPECTED)
+        }, 300_000)
     })
 })
 
@@ -827,7 +1063,7 @@ describe('compatibility', () => {
     test('(G) duplicate names: the entry saved last is the one kept, as the stream gives them', async () => {
         const first = random(200, 41)
         const second = random(300, 42)
-        const bytes = upstreamArchive([['card.json', CARD, 'deflate-6'], [SMALL_NAME, first, 'store'], [SMALL_NAME, second, 'store']])
+        const bytes = upstreamArchive([['card.json', CARD, 'deflate-6'], [SMALL_NAME, first, 'deflate-0'], [SMALL_NAME, second, 'deflate-0']])
         const reference = await runImport(new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(bytes); controller.close() } }))
         h.saved.clear()
         const outcome = await runImport(bytes)
@@ -838,10 +1074,11 @@ describe('compatibility', () => {
 
     test('(G) a ReadableStream input is read as it comes: a clean archive imports, a signature asset is not read by the directory', async () => {
         const stream = (bytes: Uint8Array) => new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(bytes); controller.close() } })
-        const clean = standardArchive('store', random(2000, 51))
+        // deflate-0 keeps the raw signatures and is not a stored method, so the layout check does not apply
+        const clean = standardArchive('deflate-0', random(2000, 51))
         expect(importedWhole(await runImport(stream(clean)), SIG_NAME, random(2000, 51))).toBe(true)
         h.saved.clear()
-        expect(importedWhole(await runImport(stream(standardArchive('store'))), SIG_NAME, BLOB_ASSET)).toBe(false)
+        expect(importedWhole(await runImport(stream(standardArchive('deflate-0'))), SIG_NAME, BLOB_ASSET)).toBe(false)
     })
 
     test('(G) the asset limit refuses an entry the directory lists above it before an entry is read', async () => {
@@ -944,7 +1181,8 @@ describe('validation reads', () => {
 
 describe('read-ahead of the spliced stream', () => {
     const ASSET = random(20_000, 7)
-    const bytes = upstreamArchive([['card.json', CARD, 'deflate-6'], [SIG_NAME, ASSET, 'store'], [SMALL_NAME, SMALL_ASSET, 'deflate-6']])
+    // zipSync states the sizes in the local headers and writes no descriptor, so both readers end the stored asset by its size.
+    const bytes = fflate.zipSync({ 'card.json': [CARD, { level: 6 }], [SIG_NAME]: [ASSET, { level: 0 }], [SMALL_NAME]: [SMALL_ASSET, { level: 6 }] })
 
     /**
      * Imports `bytes` from a stream of 4096-byte pieces while the save of the big asset takes nothing, so its queued bytes
