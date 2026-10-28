@@ -17707,3 +17707,438 @@ Q-F6b, asked: "When several files are picked at once and some are too large, wha
     - `getFileSrc` without a budget behaves as before, and the parser passes none. The parser, `cbs.ts`, `process/*` and `request.ts` changes since CONTROL are all from main (S4a).
     - Lane A's result: not a regression. Test character 5's chat has fmIndex 1 with only one alternate first message, and the send fails the same way on CONTROL and AFTER.
 - Lane A fast-forwarded main to ca84ad6ba from 2ee5ff5b2 and pushed it, with the maintainer's "Merge and push" (2026-10-27). These records fold into lane A's records batch 15.
+
+### MC-779 — Lane A, 2026-10-28: flaky-test fixes are batched, and the global test timeout is 20 s instead of per-file warm-ups
+
+- Tag: decisions (a maintainer message and two `AskUserQuestion` answers in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A session; draft `%TEMP%\risu-b715\records-b19\draft.md`; investigation `%TEMP%\risu-b715\flakes-cloud2\report.md` with its verification `flakes-cloud2\verify\result.md`; Gate 2 records `%TEMP%\risu-b715\flakefix-g2\result.md` and `timeout-g2\result.md`.
+- Alternatives rejected: per-file `beforeAll` warm-ups for the roughly 40 sibling test files (the maintainer chose the global timeout over them).
+- Related: `MC-694`, `MC-500`; CHORE-410, CHORE-466, CHORE-477, CHORE-464.
+
+**What was decided (maintainer; the message is as lane A recorded it, the option labels are verbatim).**
+1. Message in lane A: the flaky-test fixes are folded into one batch. CHORE-477 waits for the second account 2 cloud report (CHORE-410, CHORE-466 with `selIdState`, `backendIndexedDb` "hazard is real", `saveYieldMeter`, `nodeRetire`); the verified causes then go into one fix stage (test-only where the cause is a test bug; a product bug goes through its own gates), with one Gate 2 and one trial merge.
+2. "Merge; follow-up for siblings (Recommended)": the flaky-test batch was merged, and a follow-up would look for every test file with the same pattern (module reset plus a cold bootstrap graph, and a stores mock lacking `selIdState`) to give it the same warm-up, with its own review and trial.
+3. "Raise the global timeout (Recommended)": instead of per-file warm-ups for the sibling files found by a survey, `vitest.config.ts` sets `testTimeout` to 20000 ms. It was merged under the standing approval (test configuration only).
+
+- Notes, not the maintainer's words:
+  - The batch and the timeout are merged: see Roadmap CHORE-477 and the ledger rows for the flake batch and the timeout. The flake classes are recorded as fixed pending later full runs, not as proven closed.
+  - The candidate flakes `saveLoopHoldNet` and `recoveryPick` are not part of the batch; their causes are inferred and not yet independently verified (Roadmap).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-780 — Lane A, 2026-10-28: lane F may commit to its own branch after Gate 2
+
+- Tag: decision (`AskUserQuestion` option label "Branch commits OK (Recommended)"; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A session; draft `%TEMP%\risu-b715\records-b19\draft.md`; lane F's record `Agents/Lanes/lane-F-records.md` ("branch-commit rule", committed in `2955bd6b4`).
+- Alternatives rejected: lane A commits every lane F change.
+- Related: `MC-500`, `MC-694`; CHORE-470 to CHORE-475.
+
+**What was decided (maintainer).** Lane F may commit to its own branch `lane-f/import-formats` after Gate 2, staging named paths only, with no push. Merges into main still go through lane A's trial and the maintainer's approval.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes a push or a merge into main.
+
+### MC-761 — Lane F, 2026-10-28: disabled lorebook entries import kept but inert, as `@@dont_activate` (CHORE-472)
+
+- Tag: decision (`AskUserQuestion` Q1, option label "Keep them inert (Recommended)"; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record `Agents/Lanes/lane-F-records.md`, section "MC-761" (committed in `2955bd6b4`), which holds the full wording; draft `%TEMP%\risu-b715\records-b19\draft.md`.
+- Alternatives rejected: see the lane F record.
+- Related: `MC-762`, `MC-763`, `MC-175`; CHORE-472.
+
+**What was decided (maintainer).** Disabled lorebook entries import kept but inert, as `@@dont_activate`.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-762 — Lane F, 2026-10-28: SillyTavern before/after-character positions map to `@@position before_desc`/`after_desc`; other non-depth positions are dropped (CHORE-472)
+
+- Tag: decision (`AskUserQuestion` Q2, option label "Map two, drop rest (Recommended)"; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-762" (committed in `2955bd6b4`).
+- Alternatives rejected: see the lane F record.
+- Related: `MC-764` (amends this entry), `MC-765`; CHORE-472.
+
+**What was decided (maintainer).** SillyTavern before/after-character positions map to `@@position before_desc` and `@@position after_desc`; other non-depth positions are dropped. Amended by `MC-764` (2026-10-28; the text above is unchanged): only position 1 maps. Also amended by `MC-765` (2026-10-28): depth positions import as `@@reverse_depth`/`@@depth 0`.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-763 — Lane F, 2026-10-28: card-embedded lorebook entries with `enabled: false` get the same `@@dont_activate` import (CHORE-472, shared cause)
+
+- Tag: decision (`AskUserQuestion` Q3, option label "Yes, fold it in (Recommended)"; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-763" (committed in `2955bd6b4`).
+- Alternatives rejected: see the lane F record.
+- Related: `MC-761`, `MC-091`; CHORE-472.
+
+**What was decided (maintainer).** `convertCharbook` (card-embedded lorebooks) imports entries with `enabled: false` as `@@dont_activate`, the same as the external import (a shared cause, `MC-091`).
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-764 — Lane F, 2026-10-28: only SillyTavern position 1 maps, to `@@position after_desc`, on both import paths; position 0 stays in the normal lorebook slot (CHORE-472; amends `MC-762`)
+
+- Tag: decision (`AskUserQuestion` Q4, option label "Map only 1, both paths (Recommended)"; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-764" (committed in `2955bd6b4`).
+- Alternatives rejected: see the lane F record.
+- Related: `MC-762`, `MC-765`; CHORE-472.
+
+**What was decided (maintainer).** Position 0 stays in the normal lorebook slot; only position 1 maps, to `@@position after_desc`, in both the external and the card-embedded import. This amends `MC-762`.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-765 — Lane F, 2026-10-28: SillyTavern "at depth N" imports as `@@reverse_depth N` for N > 0 and `@@depth 0` for 0, on both import paths (CHORE-472; amends `MC-762`)
+
+- Tag: decision (`AskUserQuestion` Q5, option label "Use reverse_depth (Recommended)"; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-765" (committed in `2955bd6b4`); draft `%TEMP%\risu-b715\records-b19\draft.md`.
+- Alternatives rejected: see the lane F record.
+- Related: `MC-764`, `MC-766`, `MC-767`; CHORE-472.
+
+**What was decided (maintainer).** SillyTavern depth N > 0 imports as `@@reverse_depth N`, depth 0 as `@@depth 0`, for external and card-embedded books. This amends `MC-762`: depth positions no longer map through it.
+
+**Finding behind the decision (lane F's source reading, as the draft records it).** Our and upstream's `@@depth N` counts from the chat start (the splice in `process/index.svelte.ts`). An off-by-one without a prompt template was unverified at the time and was to be settled before Gate 2. Gate 1 round 1 on CHORE-472 was [REJECT] (F1 depth, `selective:false`, seams, engine tests, decorator order).
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-766 — Lane F, 2026-10-28: the three `@@reverse_depth` engine quirks are fixed within CHORE-472, not ticketed separately
+
+- Tag: decision (`AskUserQuestion` option label "Fix in CHORE-472"; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-766" (committed in `2955bd6b4`); draft `%TEMP%\risu-b715\records-b19\draft.md`.
+- Alternatives rejected: see the lane F record. Lane A suggested a separate stage 2 after the import stage, with sizing and `MC-778` grilling first; that became CHORE-472 stage 2 (`MC-767`).
+- Related: `MC-765`, `MC-767`, `MC-768`, `MC-778`; CHORE-472.
+
+**What was decided (maintainer).** The three `@@reverse_depth` engine quirks that the Gate 1 round 2 reviewer found (source reading, not run; shared with upstream `f50b5942e`) are fixed within CHORE-472: (1) with no template, the last message is moved to `lastChat` before the splice (`index.svelte.ts` `lastChat`/`formatingOrder`), so N+1 messages follow; (2) with N at or above the chat length, the negative splice start lands at max(0, 2*len - N); (3) sequential splices shift deeper entries by one. Lane F confirmed quirk 1 in source; quirks 2 and 3 are the reviewer's reading. CHORE-472 Gate 1 round 2 was [REJECT] (the second); revision 3 keeps `convertCharbook`'s existing migration.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-767 — Lane F, 2026-10-28: the target placement for `@@reverse_depth` (CHORE-472 stage 2, `MC-778` questions Q6 to Q12)
+
+- Tag: decisions (seven `AskUserQuestion` answers, all the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-767" (committed in `2955bd6b4`); draft `%TEMP%\risu-b715\records-b19\draft.md`; sizing `%TEMP%\risu-lane-f\c472s2\sizing\result.md` (a 28-case probe; doc-verifier 17 of 20 claims confirmed, 0 refuted).
+- Alternatives rejected: see the lane F record.
+- Related: `MC-765`, `MC-766`, `MC-768`, `MC-778`, `MC-500`; CHORE-472, CHORE-376.
+
+**What was decided (maintainer, option labels as recorded).**
+1. Q6 "Exactly N after (Recommended)": with and without a template.
+2. Q7 "Keep today's count (Recommended)": examples, separator and first message keep today's count.
+3. Q8 "Top of the chat (Recommended)": when N is greater than the chat length.
+4. Q9 "Each keeps its N (Recommended)": positions are computed before insertion; the same depth keeps priority-then-order.
+5. Q10 "After last message (Recommended)": in both modes.
+6. Q11 "Leave all alone (Recommended)": `@@depth N` with N > 0, `@@depth 0`, negatives and template chat ranges. Amended for mixed sends by `MC-768`.
+7. Q12 "Leave it out (Recommended)": the card `depth_prompt`.
+8. New ticket, "Ticket it (Recommended)": lane F CHORE-376, prompt-template runs never send trigger `start`/`historyend` (`lastChat`) text (no `lastChat` case in the template switch; verifier CONFIRMED by code trace); after CHORE-472.
+
+- Notes, not the maintainer's words:
+  - The stage 2 merge needs `MC-500`. Lane F's next IDs after this entry were MC-768 and CHORE-377.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-768 — Lane F, 2026-10-28: in a send that mixes `@@depth` and `@@reverse_depth` entries, `@@depth N` always sits at index N (CHORE-472 stage 2 Q13; amends `MC-767` Q11)
+
+- Tag: decision (`AskUserQuestion` Q13, option label "Accept: always at N (Recommended)"; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-768" (committed in `4c518fc54`); draft `%TEMP%\risu-b715\records-b19\draft.md`.
+- Alternatives rejected: see the lane F record.
+- Related: `MC-767`; CHORE-472.
+
+**What was decided (maintainer).** `@@depth N` always lands at list index N, independent of processing order. Today it can land at N+1 when processed before a `@@reverse_depth` entry that lands at or above N (round 2 reviewer: 216 mixed sends through `sendChat`, 23 of 108 no-template and 19 of 108 template cases, always +1). Only sends with both kinds change. Stage 2 Gate 1 rounds 1 and 2 were [REJECT].
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-769 — Lane F, 2026-10-28: old-format cards import every field SillyTavern maps; a name is enough; nameless cards are refused on JSON and PNG alike; no dropped-key warning; card suffixes match in any case (CHORE-473 stage 1, `MC-778` questions Q14 to Q16, Q18, Q19)
+
+- Tag: decisions (`AskUserQuestion` answers, all the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-769" (committed in `785f6f69c`); draft `%TEMP%\risu-b715\records-b19\draft.md`; basis `%TEMP%\risu-lane-f\c473\sizing\result.md` (verified: 8 confirmed, 4 with corrections, 0 refuted; executed: a Pygmalion JSON imports as "unknown name" with a success alert).
+- Alternatives rejected: see the lane F record.
+- Related: `MC-810`, `MC-811`, `MC-778`; CHORE-473.
+
+**What was decided (maintainer, option labels as recorded).**
+1. Q14 "All, as SillyTavern (Recommended)": `char_name`, `char_persona`, `char_greeting`, `world_scenario`, `example_dialogue`, `creator_notes`/`creatorcomment`.
+2. Q15 and Q16 "Name required, both paths (Recommended)": `name` or `char_name` suffices; missing fields are empty without placeholders; one shared check refuses nameless old cards on JSON and PNG; the null-PNG TypeError becomes that refusal.
+3. Q18 and Q19 "No warning; any case (Recommended)".
+4. Staging: stage 1 is Q14, Q15, Q16 and Q19; stage 2 is YAML (`MC-810`); `opus-reviewer`.
+
+- Notes, not the maintainer's words:
+  - The draft reads "lane F records them as `MC-769` and `MC-810` or split"; the lane F record holds Q14 to Q16, Q18 and Q19 here, Q17 as `MC-810` and Q20 and Q21 as `MC-811`.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-810 — Lane F, 2026-10-28: YAML cards (`.yaml`/`.yml`) import SillyTavern's three keys through the `yaml` npm package as a new dependency (CHORE-473 stage 2, `MC-778` question Q17)
+
+- Tag: decision (`AskUserQuestion` Q17, option label "Use the yaml package (Recommended)"; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-810" (committed in `785f6f69c`); draft `%TEMP%\risu-b715\records-b19\draft.md`.
+- Alternatives rejected: see the lane F record.
+- Related: `MC-769`; CHORE-473.
+
+**What was decided (maintainer).** A new dependency, `yaml` (ISC, no dependencies); SillyTavern reads `name`, `context` and `greeting` from a YAML card.
+
+**Lane A's conditions on the dependency (lane A, not the maintainer's words).** An exact pin at least two weeks old; installed in lane F's own worktree only; the lockfile diff shown in the merge request; other worktrees re-install after the merge. The merged dependency is `yaml@2.9.1` exact (ISC, no dependencies, published 2026-09-11).
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-811 — Lane F, 2026-10-28: mixed old-format cards take each field from either key; a v2 wrapper with a nameless `data` falls back to the top level once; the null-data crashes become CHORE-377 (CHORE-473 stage 1, `MC-778` questions Q20 and Q21; refines `MC-769`)
+
+- Tag: decisions (`AskUserQuestion` answers, all the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-811" (committed in `785f6f69c`); draft `%TEMP%\risu-b715\records-b19\draft.md`.
+- Alternatives rejected: see the lane F record.
+- Related: `MC-769`; CHORE-473, CHORE-377.
+
+**What was decided (maintainer, option labels as recorded).**
+1. Q20 "Per field, either key (Recommended)": the Pygmalion key, else the v1 key, per field.
+2. Q21 "Fall back to top level (Recommended)": a v2 wrapper with nameless data falls back once to a valid top-level v1 card.
+3. "Ticket the crash (Recommended)": lane F CHORE-377, the null-data crashes in `planRccCard` (`metaData.usePassword`) and in v2/v3 cards without `data` or `extensions`. The case-sensitive `.json` entry check in `processzip` is noted only (harmless).
+
+**Consequences of `MC-769` accepted without a question (as the draft records them).** Non-string fields import as empty; whitespace-only or numeric names are refused; the Pygmalion creator and tags are copied; a JSON v2 wrapper without `spec` is accepted. Gate 1 round 1 was [REJECT] (F1 double v2-wrapper decision; orphaned PNG image).
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-812 — Lane F, 2026-10-28: Backyard `.byaf` character import, stage 1 (CHORE-470, `MC-778` questions Q22 to Q37)
+
+- Tag: decisions (sixteen `AskUserQuestion` answers, all the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-812" (committed in `ea659354f`); draft `%TEMP%\risu-b715\records-b19\draft.md`; basis `%TEMP%\risu-lane-f\c470\grill\result.md`.
+- Alternatives rejected: see the lane F record.
+- Related: `MC-813`, `MC-814`, `MC-575`, `MC-778`, `MC-500`; CHORE-470, CHORE-471.
+
+**What was decided (maintainer, as lane A recorded the questions; the lane F record holds the wording).**
+1. Q22: two passes (JSON first, then only the listed images); a refusal saves nothing.
+2. Q23: a missing, unsafe or unsupported image is skipped; the next usable one becomes the avatar.
+3. Q24: `schemaVersion` other than 1 is refused with a new string.
+4. Q25: more than one character is refused with a new string.
+5. Q26: name = `displayName`; nickname = short name when different; one blank uses the other; both blank is refused.
+6. Q27: the first scenario gives scenario, system prompt, examples and first message; later scenarios give only alternate first messages (deduplicated); the rest is dropped silently.
+7. Q28: `images[0]` is the avatar, the rest are alternate icons by label; no image means no avatar.
+8. Q29: lore keys split on commas and trimmed, not always active, order = position, comment = the original key.
+9. Q30: `{user}`, `{character}`, `#{user}:` and `#{character}:` convert to `{{user}}` and `{{char}}` (not names).
+10. Q31: `isNSFW` adds the tag `nsfw`.
+11. Q32: `author.name` = creator; `backyardURL` goes into the creator notes.
+12. Q33: ISO `createdAt`/`updatedAt` convert to unix seconds; unparsable = 0.
+13. Q34: the existing 50 MiB metadata cap for JSON and the existing asset limit; no new numbers.
+14. Q35: the existing messages otherwise (incomplete-file, invalid-card); a bad later scenario is skipped.
+15. Q36: `.byaf` in the classifier; Android open-with unchanged (`MC-575`, CHORE-471). Corrected by `MC-814`.
+16. Q37: exact entry names as the spec.
+
+- Notes, not the maintainer's words:
+  - The merge needs `MC-500`; two new strings need translation before the trial.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-813 — Lane F, 2026-10-28: in a `.byaf` import, unlisted entries are not size-limited, and pass 1 keeps every matching JSON entry (CHORE-470 stage 1, follow-ups Q38 and Q39; refines `MC-812`)
+
+- Tag: decisions (`AskUserQuestion` answers; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-813" (committed in `ea659354f`); draft `%TEMP%\risu-b715\records-b19\draft.md`.
+- Alternatives rejected: see the lane F record.
+- Related: `MC-812`; CHORE-470.
+
+**What was decided (maintainer, option labels as recorded).**
+1. Q38 "Ignore its size": an unlisted entry over the asset limit is read through and dropped, not refused.
+2. Q39 "Accept it": pass 1 keeps every manifest, character and scenario JSON entry, each up to 50 MiB, with no total cap.
+
+- Notes, not the maintainer's words:
+  - New English strings `byafUnsupportedVersion` and `byafSeveralCharacters` need the translator before the trial.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-814 — Lane F, 2026-10-28: `.byaf` stage 1 is TypeScript only; desktop open-with for `.byaf` moves to CHORE-471 (CHORE-470 Q40; corrects `MC-812` item 15)
+
+- Tag: decision (`AskUserQuestion` Q40, option label "TS only; desktop later (Recommended)"; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-814" (committed in `ea659354f`); draft `%TEMP%\risu-b715\records-b19\draft.md`.
+- Alternatives rejected: see the lane F record.
+- Related: `MC-812`, `MC-575`; CHORE-470, CHORE-471.
+
+**What was decided (maintainer, as lane A recorded it).** Stage 1 imports `.byaf` from the picker, by drag and drop and from shared links; the classifier (`importSuffixes`) entry serves shared links, URL imports and the PWA launch queue (a drop calls `importCharacterProcess` directly), not desktop open-with (the desktop filter is in `src-tauri` `launch_inputs.rs` and the `tauri.conf.json` `fileAssociations`, limited to `risum`, `risup` and `charx`). Stage 1 stays TypeScript-only (picker, drag and drop, shared links); desktop `.byaf` open-with joins CHORE-471 with Android open-with.
+
+**Later correction from Gate 1 round 2 (lane F's record, as the draft summarises it).** The `importSuffixes` entry serves shared links, URL imports and the PWA launch queue, not drag and drop (a drop calls `importCharacterProcess` directly); lane A asked lane F to show or make a dropped `.byaf` import, per this entry.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-815 — Lane F, 2026-10-28: chat import scope and mapping (CHORE-474 sizing questions Q1 to Q7)
+
+- Tag: decisions (`AskUserQuestion` answers; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-815" (committed in `932aa37fc`); draft `%TEMP%\risu-b715\records-b19\draft.md`; basis `%TEMP%\risu-lane-f\c474\result.md`. The cited `c474\verify\result.md` was never written (the verifier has no Write tool); the verification verdicts exist only in lane F's session, and lane F corrected the citation in its uncommitted records file.
+- Alternatives rejected: for Q4, the recommended option (see below); the rest are in the lane F record.
+- Related: `MC-816`, `MC-817` (amends items 2 and 6); CHORE-474, CHORE-478.
+
+**What was decided (maintainer, as lane A recorded it).**
+1. Q1: the shown swipe only for now (swipes become CHORE-478).
+2. Q2: drop chat metadata with a notice for now; implement them with CHORE-478. Amended by `MC-817`.
+3. Q3: `is_system`/narrator messages import as disabled (a display check first).
+4. Q4, option label "All, including CAI" (not the recommended option): SillyTavern, Chub, Ooba, Agnai, Kobold Lite and Character.AI export-tool formats, using public samples as data and synthetic fixtures.
+5. Q5: skip bad JSONL lines and report the count.
+6. Q6: `send_date` becomes the message time; a name is kept only for speakers other than the chat's user and character. Amended by `MC-817` (the speaker rule).
+7. Q7: the chat is named after the file without its extension.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-816 — Lane F, 2026-10-28: SillyTavern sysprompt and master-bundle preset import (CHORE-475 sizing questions Q1 to Q6)
+
+- Tag: decisions (`AskUserQuestion` answers, all the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-816" (committed in `932aa37fc`); draft `%TEMP%\risu-b715\records-b19\draft.md`; basis `%TEMP%\risu-lane-f\c475\result.md`. The cited `c475\verify\result.md` was never written (same cause as `MC-815`); lane F corrected the citation in its uncommitted records file.
+- Alternatives rejected: see the lane F record.
+- Related: `MC-815`; CHORE-475.
+
+**What was decided (maintainer, as lane A recorded it).**
+1. A new preset named after the file.
+2. `post_history` goes to the jailbreak item (omitted when empty).
+3. The master bundle imports as one combined preset, with no picker.
+4. Settings and Playground share one converter; a dropped `.json` stays a card import.
+5. The S3 fixes are folded in (STCHAT sampler loss, `presence_penalty` NaN).
+6. A warning names the skipped sections.
+7. Stage S2 goes to `opus-reviewer`.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-817 — Lane F, 2026-10-28: the chat's own speakers for the CHORE-474 name rule, and when the dropped-data notice appears (CHORE-474 S2; amends `MC-815` items 2 and 6)
+
+- Tag: decisions (two `AskUserQuestion` answers, both the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A session; draft `%TEMP%\risu-b715\records-b19\draft.md`; plan `%TEMP%\risu-lane-f\c474s2\plan.md` (about 450 to 550 lines, `opus-reviewer` Gate 2). Lane F's own record of this entry is not committed: TODO(evidence).
+- Alternatives rejected: not recorded.
+- Related: `MC-815`, `MC-778`; CHORE-474, CHORE-478.
+
+**What was decided (maintainer, as lane A recorded it).**
+1. Q-A: the chat's own speakers are the persona name and the selected character's name, plus the file header's `user_name` and `character_name` (amends `MC-815` item 6).
+2. Q-B: the dropped-data notice appears only when swipes other than the shown one are dropped; `extra`, generation timings and `chat_metadata` are dropped silently. It is combined with the S1 skipped-lines count (amends `MC-815` item 2).
+
+**Display check (source only, as the draft records it).** Disabled messages stay visible with a dashed rule, are excluded from the prompt, the prompt-view macros and the lorebook scan, and can be re-enabled; the message name is never shown or sent (only the lorebook scan prefix reads it). The Chub shape is inferred from SillyTavern's flatten code; no public sample was found.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-796 — Lane G, 2026-10-28: CHORE-395 stage B: a `.bin` opened during backup work is refused, not held; the busy notice stays until OK; the unsupported-files notice closes before the restore question
+
+- Tag: decisions (three `AskUserQuestion` answers, all the recommended option, in the lane G session; confirmed in lane A, 2026-10-28, "Yes, record them"). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes `%TEMP%\risu-lane-g\android\notes.md`, section "MC-796"; raised by the stage B sizing (`c395b-sizing/result.md`) and the CHORE-395 A Gate 2 finding F1 (`gate2-c395a/result.md`).
+- Alternatives rejected: not recorded.
+- Related: `MC-577`, `MC-578`, `MC-797`, `MC-798`, `MC-800`; CHORE-395.
+
+**What was decided (maintainer, option labels as lane G recorded them).**
+1. "Refuse, as now": a `.bin` opened during busy work is refused, not held (a hold would not survive a restore that reloads the app).
+2. "Pin until OK": the busy refusal notice stays on top until OK; the running job keeps running, and its progress and Cancel return after OK, also when the running job is a restore. All the `refuseBackupLoadWhileBusy` callers are affected (the draft says 14 here and 17 callers under `MC-797`; the count is unresolved: TODO(evidence)). **Replaced by `MC-798`.**
+3. "Close it first": when a `.bin` is shared with unsupported files, their "not imported" notice is closed before the restore question appears.
+
+*Later decisions (2026-10-28; the text above is unchanged): `MC-798` replaces item 2 and makes `MC-797` moot; items 1 and 3 stand; `MC-799` and `MC-800` set the final mechanism and `MC-801` the line text.*
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-797 — Lane G, 2026-10-28: CHORE-395 stage B: how the pinned busy notice closes, and toasts that arrive meanwhile (amends `MC-796` item 2; moot after `MC-798`)
+
+- Tag: decisions (two `AskUserQuestion` answers, both the recommended option; maintainer in lane A, 2026-10-28, asked by lane A; relayed to lane G). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes, section "MC-797"; draft `%TEMP%\risu-b715\records-b19\draft.md`. Context: Gate 1 round 1 on stage B was [REJECT] (a re-post ping-pong with the stale-account notice; 17 callers, 6 test files); plan v2 held alert writes in the store (latest only). Lane A asked round 2 to check that held errors, confirms and awaited prompts are not lost or left hanging.
+- Alternatives rejected: not recorded.
+- Related: `MC-796`, `MC-798`; CHORE-395.
+
+**What was decided (maintainer, option labels as recorded).**
+1. "Back and Escape count (Recommended)": Escape and Android Back close the pinned busy notice as OK does.
+2. "Drop it (Recommended)": a toast posted while the notice is up is dropped.
+
+*Made moot by `MC-798` (no pinned notice).*
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-798 — Lane G, 2026-10-28: CHORE-395 stage B: the busy refusal is a line inside the running job's progress, with no separate pop-up (replaces `MC-796` item 2; `MC-797` moot)
+
+- Tag: decision (`AskUserQuestion`, option label "Line in the progress (Recommended)"; maintainer in lane A, 2026-10-28, offered by lane A after two substantive Gate 1 REJECTs on stage B). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes, section "MC-798"; draft `%TEMP%\risu-b715\records-b19\draft.md`. The simpler-constraint offer follows the `MC-100` precedent.
+- Alternatives rejected: the pinned notice of `MC-796` item 2.
+- Related: `MC-796`, `MC-797`, `MC-799`, `MC-800`; CHORE-395.
+
+**What was decided (maintainer).** The busy refusal appears as a line inside the running job's progress message until the job ends; no separate pop-up, no held alerts. `MC-796` items 1 and 3 stand. The first-error question had no preference and is moot. Lane G sizes the 17 callers for a visible progress message. **Item 1 of `MC-799` and this entry's "no separate pop-up" are amended by `MC-800`.**
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-799 — Lane G, 2026-10-28: CHORE-395 stage B: today's pop-up as the fallback, and one generic progress line (refines `MC-798`)
+
+- Tag: decisions (two `AskUserQuestion` answers, both the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes, section "MC-799"; draft `%TEMP%\risu-b715\records-b19\draft.md`; sizing `c395b-sizing2/result.md` under `%TEMP%\risu-lane-g\android\`.
+- Alternatives rejected: not recorded.
+- Related: `MC-798`, `MC-800`, `MC-801`; CHORE-395.
+
+**What was decided (maintainer, option labels as recorded).**
+1. "Today's pop-up (Recommended)": when no wait or progress alert is visible, the current error pop-up (`backupLoadWorkInProgress`) is the fallback. Amended by `MC-800`.
+2. "One generic line (Recommended)": one new English key for the progress line; the translator does the six locales.
+
+**Mechanism (lane G, technical; not a maintainer decision).** A `busyRefusalLine` store appended by `AlertComp` to wait/progress text and cleared by `busyActions.end()`; seven mid-job sites clear their own wait before refusing.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-800 — Lane G, 2026-10-28: CHORE-395 stage B: every busy refusal shows today's pop-up, and other running backup work also carries the generic line (amends `MC-798` and `MC-799` item 1)
+
+- Tag: decision (`AskUserQuestion`, option label "Pop-up plus line (Recommended)"; maintainer in the lane G session, confirmed in lane A, 2026-10-28, "Yes, record it"). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes, section "MC-800"; raised by the senior-advisor after three substantive Gate 1 REJECTs on stage B (round 3 on plan v4: a stale line without a busy entry, `storeImport` wait tracking, test reset; P1).
+- Alternatives rejected: not recorded.
+- Related: `MC-798`, `MC-799`, `MC-801`; CHORE-395.
+
+**What was decided (maintainer).** Every busy refusal shows today's error pop-up. While other backup work (a busy entry) keeps running, its wait and progress messages also carry the generic line until that work ends. No restore code changes and none of the 17 sites change. Accepted cost: the pop-up covers the other job's progress until its next update, as today. Plan v5 Gate 1 round 4 was running when this was recorded (its verdict is not in the draft: TODO(evidence)).
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-801 — Lane G, 2026-10-28: CHORE-395 stage B: the progress line reads "Another backup was not loaded: other work is still running."; translate first (refines `MC-799` item 2)
+
+- Tag: decisions (two `AskUserQuestion` answers: "Name the new one" and "Translate first (Recommended)"; maintainer in lane G, confirmed in lane A, 2026-10-28, "Yes, record it"). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes, section "MC-801"; raised by stage B Gate 1 round 4 (a restore's own progress could read "Backup not loaded" as if it failed). Draft `%TEMP%\risu-b715\records-b19\draft.md`.
+- Alternatives rejected: not recorded.
+- Related: `MC-799`, `MC-800`; CHORE-395.
+
+**What was decided (maintainer, option labels as recorded).**
+1. "Name the new one": the line is "Another backup was not loaded: other work is still running." (key `backupLoadRefusedLine`).
+2. "Translate first (Recommended)": the translator writes the six locales to scratch, lane G adds them to its commit, and lane A re-runs the check before the merge approval.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-802 — Lane G, 2026-10-28: CHORE-394: when a CharX's central directory disagrees with an entry, the importer falls back to streaming
+
+- Tag: decision (`AskUserQuestion`, option label "Fall back"; recommended; maintainer in lane G, confirmed in lane A, 2026-10-28, "Yes, record both (Recommended)"). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes `%TEMP%\risu-lane-g\android\notes.md`, section "MC-802"; sizing `%TEMP%\risu-lane-g\android\c394-size\result.md` (investigator, not independently verified by lane A).
+- Alternatives rejected: not recorded.
+- Related: `MC-803`, `MC-804`, `MC-805`, `MC-793`, `MC-223`; CHORE-394.
+
+**What was decided (maintainer).** When the central directory disagrees with an entry's local header (offset, name or size), the import reads by streaming as today, with no notice. Files that import today keep importing; only a file with both a bad directory and a zip signature inside an asset still fails, as today. Amended by `MC-804` and `MC-805` (the fallback refuses STORE entries with a data descriptor).
+
+**Lane G's notes (not maintainer decisions).** Not asked, because nothing changes from today: duplicate names keep the last-saved behaviour; zip64 or an unreadable directory falls back to streaming. Branch `lane-g/chore394` was cut at `79a9d7186`.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-803 — Lane G, 2026-10-28: CHORE-394: with a valid central directory, entries not listed in it are skipped silently
+
+- Tag: decision (`AskUserQuestion`, option label "Index wins"; recommended; maintainer in lane G, confirmed in lane A, 2026-10-28, "Yes, record both (Recommended)"). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes, section "MC-803".
+- Alternatives rejected: not recorded.
+- Related: `MC-802`; CHORE-394.
+
+**What was decided (maintainer).** When the directory is valid, an entry that is in the file but not listed in the directory is skipped silently, as standard zip readers do. After the CHORE-470 merge this also covers `.byaf` (both passes share `parse()`; lane G's reviewer judged orphan skipping invisible for real Backyard archives).
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-804 — Lane G, 2026-10-28: CHORE-394 follow-up: the MC-802 fallback refuses archives whose STORE entry has a data descriptor (amends `MC-802`)
+
+- Tag: decision (`AskUserQuestion`, option label "Refuse, follow-up stage (Recommended)"; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes, section "MC-804"; source is CHORE-394 Gate 2 round 2 finding O1 (`gate2-c394/result-r2.md`). Draft `%TEMP%\risu-b715\records-b19\draft.md`.
+- Alternatives rejected: not recorded.
+- Related: `MC-802`, `MC-805`; CHORE-394.
+
+**What was decided (maintainer).** Today an archive whose last entry is STORE with 12-byte (signature-less) data descriptors imports with that asset silently corrupted (fflate 0.8.3); CHORE-394 imports it whole when the central directory validates, but the `MC-802` fallback still takes the corrupting path. The fallback is to refuse such archives instead, in a small follow-up stage after CHORE-394 (detection reliability sized first, own gates); CHORE-394 merges unchanged. Upstream writes 16-byte descriptors, so only other tools produce these files. Lane G's sizing of detection: `%TEMP%\risu-lane-g\android\c394b-size\result.md`. The coverage rule is `MC-805`.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-805 — Lane G, 2026-10-28: CHORE-394 follow-up: on the fallback path, any archive with a STORE entry that has a data descriptor is refused (amends `MC-804`)
+
+- Tag: decision (`AskUserQuestion`, option label "Refuse STORE+descriptor (Recommended)", option (b) of `c394b-question.md`; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes, section "MC-805"; question `%TEMP%\risu-lane-g\android\c394b-question.md`; plan `chore394b-plan.md` in the same directory. Draft `%TEMP%\risu-b715\records-b19\draft.md`.
+- Alternatives rejected: not recorded here (the question file lists the options).
+- Related: `MC-802`, `MC-804`; CHORE-394.
+
+**What was decided (maintainer).** On the `MC-802` fallback, any archive with a STORE entry that has a data descriptor is refused, detected from fflate's per-entry report as each entry starts. There are no known false negatives; a fallback file with STORE and 16-byte descriptors and a damaged directory could be refused wrongly (fork exports never hit this). Assets saved before the refusal stay, as with today's in-stream refusals; no card is created. The decision was conditional on lane G checking that upstream never writes STORE with descriptors, else back to the maintainer.
+
+**Upstream check (lane G, passed).** Across 26 local upstream refs (`upstream/main` `f50b5942e`, 2026-10-23, not re-fetched) CharX is written only through fflate `ZipDeflate` (method 8 even at level 0), `ZipPassThrough` has 0 hits, so upstream writes no STORE entries. The plan: `#handleFile` with `compression === 0` and `size === undefined` gives an origin layout (fallback only); a new English key `cardFileUnsafeLayout`; `.byaf` is refused in pass 1 before any save. The new key goes through the translator route.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
