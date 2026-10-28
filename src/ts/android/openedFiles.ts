@@ -3,8 +3,9 @@
  * system hands the activity (a view or share intent) as batches of content
  * URIs with their display names. The page takes the queue with `take()` and
  * imports each batch one after another through `importOpenedSources`, which
- * accepts only the card, module and preset kinds. A `.bin` backup is restored only when it is the one file of its
- * batch and the drain imports nothing else; the first such backup goes to `restoreOpenedBackup`, every other `.bin`
+ * accepts only the card, module and preset kinds. A `.bin` backup is restored only when it is the one backup of its
+ * batch and the drain imports nothing else (a name the import refuses as unsupported does not count, in its batch or
+ * another); the first such backup goes to `restoreOpenedBackup`, every other `.bin`
  * is refused with a notice. Everywhere the host bridge is
  * absent (web, desktop, iOS, an old host) it does nothing.
  */
@@ -119,7 +120,7 @@ async function drain(): Promise<void> {
     for (const batch of batches) {
         const backups = batch.filter(isBackupEntry)
         if (backups.length > 0) {
-            if (batch.length > 1 || importsSomething) {
+            if (backups.length > 1 || importsSomething) {
                 notAlone.push(...backups.map((entry) => entry.name))
             } else if (restoreCandidate === null) {
                 restoreCandidate = backups[0]
