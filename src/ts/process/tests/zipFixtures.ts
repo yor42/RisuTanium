@@ -9,6 +9,17 @@
  */
 import * as fflate from 'fflate'
 
+/**
+ * An asset body that holds the zip signatures a streaming reader ends an entry at: the data descriptor, the local
+ * header and the central record signatures, in the middle of binary data.
+ */
+export const ZIP_SIGNATURE_BLOB = Uint8Array.from([
+    0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0x21,
+    0x50, 0x4b, 0x07, 0x08, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+    0x50, 0x4b, 0x03, 0x04, 20, 0, 8, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0x50, 0x4b, 0x01, 0x02, 99, 98, 97,
+])
+
 export type ZipLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
 /** One archive entry: the name, its bytes and the deflate level (0, a stored body, when omitted). */
