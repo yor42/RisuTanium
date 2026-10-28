@@ -1195,6 +1195,7 @@ export const languageEnglish = {
     emptyTrashConfirmMatching: (count: number) => count === 1 ? `Delete 1 matching character permanently?` : `Delete ${count} matching characters permanently?`,
     emptyTrashCannotUndo: "This cannot be undone.",
     backupLoadWorkInProgress: "Something is still running (a chat reply, an import or export, an image or asset being added, a clean-up, or a plugin request), so the backup was not loaded. Wait for it to finish or stop it, then try again. Reloading the page also ends all work.",
+    backupLoadRefusedLine: "Another backup was not loaded: other work is still running.",
     insertOrder: "Insertion Order",
     activationKeys: "Activation keys",
     activationKeysInfo: "Comma seperated",

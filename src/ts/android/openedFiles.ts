@@ -9,7 +9,7 @@
  * is refused with a notice. Everywhere the host bridge is
  * absent (web, desktop, iOS, an old host) it does nothing.
  */
-import { alertNormalWait } from '../alert'
+import { alertNormalWait, waitUnreadNotice } from '../alert'
 import { importOpenedSources, isOpenedSourceImportable } from '../characterCards'
 import { getDatabase } from '../storage/database.svelte'
 import { language } from 'src/lang'
@@ -139,6 +139,7 @@ async function drain(): Promise<void> {
         } catch (error) {
             console.warn('Opened files were not imported', error)
         }
+        await readLeftNotice()
     }
     // One notice for all refusals of a kind, awaited so a later notice or the restore's question cannot replace it unread.
     if (notAlone.length > 0) {
@@ -159,6 +160,19 @@ async function drain(): Promise<void> {
 
 function isBackupEntry(entry: OpenedEntry): boolean {
     return entry.name.toLowerCase().endsWith('.bin')
+}
+
+/**
+ * An import posts its outcome (the unsupported-files summary, a success or an
+ * error) without waiting for it, so the next import, notice or restore question
+ * would replace it unread.
+ */
+async function readLeftNotice(): Promise<void> {
+    try {
+        await waitUnreadNotice()
+    } catch (error) {
+        console.warn('Opened files notice failed', error)
+    }
 }
 
 async function notifyRefused(message: string): Promise<void> {

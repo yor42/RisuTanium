@@ -1,6 +1,7 @@
 <script lang="ts">
     import { untrack } from "svelte";
-    import { alertGenerationInfoStore, STALE_ACCOUNT_NOTICE_ACK, type alertData } from "../../ts/alert";
+    import { alertGenerationInfoStore, displayAlertText, STALE_ACCOUNT_NOTICE_ACK, type alertData } from "../../ts/alert";
+    import { busyRefusalLine } from "../../ts/process/memory/busyActions";
     import { ANSWER_GUARD_MS, isConsentType, isPromptType } from "../../ts/alertPrompts";
     import { coversPage } from "../../ts/alertEscape";
     import { UPSTREAM_AGREEMENT_ACCEPT, UPSTREAM_AGREEMENT_DECLINE } from "../../ts/upstreamAgreement";
@@ -307,7 +308,7 @@
                     <p class="confirm-message">{confirmMessage}</p>
                 </div>
             {:else if a.type !== 'select' && a.type !== 'requestdata' && a.type !== 'addchar' && a.type !== 'hypaV2' && a.type !== 'chatOptions'}
-                <span class="text-gray-300 whitespace-pre-wrap">{a.msg}</span>
+                <span class="text-gray-300 whitespace-pre-wrap">{displayAlertText(a, $busyRefusalLine)}</span>
                 {#if a.submsg && a.type !== 'progress'}
                     <span class="text-gray-500 text-sm">{a.submsg}</span>
                 {/if}
