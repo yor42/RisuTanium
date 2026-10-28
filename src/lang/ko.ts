@@ -2307,6 +2307,7 @@ export const languageKorean = {
     cardFileIncomplete: "이 카드 파일이 불완전하거나 손상되어 임포트하지 않았습니다.",
     cardFileEntryTooLarge: (fileName: string, limitMiB: number) => `이 카드 안의 "${fileName}" 파일이 ${limitMiB} MB 제한보다 커서 카드를 임포트하지 않았습니다.`,
     cardFileChanged: "임포트하는 동안 카드 파일이 변경되었거나 읽을 수 없어 임포트하지 않았습니다. 다시 임포트해 보세요.",
+    cardFileUnsafeLayout: "이 파일은 내용 일부를 이 앱이 안전하게 읽을 수 없는 방식으로 저장하고 있어 아무것도 임포트하지 않았습니다. 다른 도구로 zip 파일로 다시 저장한 후 다시 시도해 보세요.",
     byafUnsupportedVersion: "이 Backyard 아카이브는 이 앱에서 읽을 수 없는 형식 버전을 사용하므로 임포트하지 않았습니다.",
     byafSeveralCharacters: "이 Backyard 아카이브에는 캐릭터가 둘 이상 들어 있어 이 앱에서 임포트할 수 없으므로 임포트하지 않았습니다.",
     cardImageTooLarge: (limitMiB: number) => `이 카드의 이미지가 ${limitMiB} MB 제한보다 커서 카드를 임포트하지 않았습니다.`,
