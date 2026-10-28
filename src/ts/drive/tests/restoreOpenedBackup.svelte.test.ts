@@ -497,7 +497,7 @@ describe('restoreOpenedBackup', () => {
     test('a source that cannot be opened gives an error alert and writes nothing', async () => {
         openSourceMock.mockRejectedValue(new Error('scratch: no such document'))
 
-        await expect(restoreOpenedBackup(entry)).resolves.toBeUndefined()
+        await expect(restoreOpenedBackup(entry)).resolves.toBe('pageLive')
 
         expect(alertErrorMock).toHaveBeenCalledTimes(1)
         expectNothingInstalled()
@@ -520,7 +520,71 @@ describe('restoreOpenedBackup', () => {
         const failing: ImportSource = { ...probe.source, close: async () => { throw new Error('scratch: close failed') } }
         openSourceMock.mockResolvedValue(failing)
 
-        await expect(restoreOpenedBackup(entry)).resolves.toBeUndefined()
+        await expect(restoreOpenedBackup(entry)).resolves.toBe('pageEnding')
         expect(setDatabaseMock).toHaveBeenCalled()
+    })
+
+    // Reproducers for the page-ending mapping: red against a mapping that reports 'pageLive' for a committed restore, and
+    // against one that reports 'pageEnding' for a decline of the opened-file question, a refusal or a cancelled wait. The
+    // outcomes `LoadLocalBackup` itself ends with before anything is installed (`canceled`, `failed`) have their own tests below.
+    test('a committed restore reports that the page is ending', async () => {
+        openSourceMock.mockResolvedValue(probeSource(smallBin()).source)
+
+        await expect(restoreOpenedBackup(entry)).resolves.toBe('pageEnding')
+        expect(reloadMark.marked).toBe(true)
+    })
+
+    test('a decline, a busy refusal, a read-only refusal and a stopped clean-up wait report that the page is live', async () => {
+        alertConfirmMock.mockResolvedValue(false)
+        await expect(restoreOpenedBackup(entry)).resolves.toBe('pageLive')
+
+        alertConfirmMock.mockResolvedValue(true)
+        const busy = beginBusy('backupSave')
+        await expect(restoreOpenedBackup(entry)).resolves.toBe('pageLive')
+        busy.end()
+
+        readOnlyBox.readOnly = true
+        await expect(restoreOpenedBackup(entry)).resolves.toBe('pageLive')
+        readOnlyBox.readOnly = false
+
+        recordStartupCleanup(new Promise<void>(() => { }))
+        const running = restoreOpenedBackup(entry)
+        await settle()
+        const cancel = alertWaitMock.mock.calls.find((call) => call[0] === language.internalBackupWaitingForCleanup)?.[1] as (() => void) | undefined
+        cancel?.()
+        await expect(running).resolves.toBe('pageLive')
+    })
+
+    test('a file that is not a backup is refused before anything is installed and reports that the page is live', async () => {
+        openSourceMock.mockResolvedValue(probeSource(new Uint8Array(64).fill(7)).source)
+
+        await expect(restoreOpenedBackup(entry)).resolves.toBe('pageLive')
+        expectNothingInstalled()
+    })
+
+    // Reproducer: red against a mapping that reports 'pageEnding' for the `canceled` end of `LoadLocalBackup`; the page is
+    // live after a decline, so a later opened file must still be taken.
+    test('a decline of a question inside the restore, before any write, reports that the page is live', async () => {
+        // Without Tauri and without the Web Locks API the restore asks the no-lock warning before it writes anything.
+        platformBox.isTauri = false
+        openSourceMock.mockResolvedValue(probeSource(smallBin()).source)
+        alertConfirmMock.mockResolvedValueOnce(true).mockResolvedValue(false)
+
+        await expect(restoreOpenedBackup(entry)).resolves.toBe('pageLive')
+
+        expect(alertConfirmMock).toHaveBeenCalledWith(language.restoreNoLockWarningConfirm)
+        expectNothingInstalled()
+    })
+
+    // Reproducer: red against a mapping that reports 'pageEnding' for the `failed` end of `LoadLocalBackup`; a backup whose
+    // database entry cannot be decoded throws before anything is installed and leaves the page live.
+    test('a backup whose database entry cannot be decoded fails before anything is installed and reports that the page is live', async () => {
+        // No asset entry: assets are written before the database entry is decoded, and this test asserts nothing was installed.
+        openSourceMock.mockResolvedValue(probeSource(buildChunk('database.risudat', new Uint8Array(64).fill(7))).source)
+
+        await expect(restoreOpenedBackup(entry)).resolves.toBe('pageLive')
+
+        expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
+        expectNothingInstalled()
     })
 })
