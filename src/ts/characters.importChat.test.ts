@@ -9,7 +9,7 @@
  * `characters.saveMarks.svelte.test.ts` (same source file, same import set).
  */
 import { writable } from 'svelte/store'
-import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { Database, character, Chat } from './storage/database.svelte'
 
 //#region module mocks -- copied from characters.saveMarks.svelte.test.ts
@@ -352,9 +352,10 @@ describe('importChat -- SillyTavern JSONL reading', () => {
         expect(alertNormal).toHaveBeenCalledWith(language.chatImportSkippedLines(1))
     })
 
-    // R3: regression reproducer. A line whose `mes` is an object must not fail the import.
-    test('R3: a line with an object mes is skipped and does not fail the import', async () => {
-        const chubLine = JSON.stringify({ name: 'C', is_user: false, mes: { message: 'nested' } })
+    // R3: regression reproducer relative to the pre-reader import. A line whose `mes`
+    // is an object without a string `message` must not fail the import.
+    test('R3: a line with an object mes and no message is skipped and does not fail the import', async () => {
+        const chubLine = JSON.stringify({ name: 'C', is_user: false, mes: { other: 1 } })
         vi.mocked(selectSingleFile).mockResolvedValue({
             name: 'chat.jsonl',
             data: utf8(`${header}\n${first}\n${chubLine}\n${second}`),
@@ -366,7 +367,9 @@ describe('importChat -- SillyTavern JSONL reading', () => {
         expect(importedMessages()).toHaveLength(2)
     })
 
-    // R4: compatibility guard. Passes before and after the fix.
+    // R4: compatibility guard. Passes before and after the fix. The lines are named `C` and
+    // `U`, the header's own names, so no `name` key is stored and the objects stay exactly
+    // `role` and `data`.
     test('R4: a header file imports the same roles and data as before and reports success', async () => {
         vi.mocked(selectSingleFile).mockResolvedValue({
             name: 'chat.jsonl',
@@ -394,5 +397,306 @@ describe('importChat -- SillyTavern JSONL reading', () => {
         expect(alertError).not.toHaveBeenCalled()
         expect(importedMessages()).toHaveLength(2)
         expect(alertNormal).toHaveBeenCalledWith(language.successImport)
+    })
+})
+
+describe('importChat -- SillyTavern JSONL field fidelity', () => {
+    // The selected character is `Solo` and the mocked app user is `User`.
+    const header = JSON.stringify({ user_name: 'U', character_name: 'C', create_date: '2024-01-01', chat_metadata: {} })
+    const originalZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+    const charLine = (mes: unknown, extra: Record<string, unknown> = {}) =>
+        JSON.stringify({ name: 'Solo', is_user: false, mes, ...extra })
+    const userLine = (mes: unknown, extra: Record<string, unknown> = {}) =>
+        JSON.stringify({ name: 'User', is_user: true, mes, ...extra })
+
+    beforeEach(() => {
+        vi.mocked(alertError).mockClear()
+        vi.mocked(alertNormal).mockClear()
+        vi.mocked(selectSingleFile).mockReset()
+        testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+    })
+
+    afterEach(() => {
+        // Restored by assignment: deleting TZ does not re-zone Date on every host.
+        process.env.TZ = originalZone
+    })
+
+    async function runImport(lines: string[], fileName = 'chat.jsonl') {
+        vi.mocked(selectSingleFile).mockResolvedValue({ name: fileName, data: utf8(lines.join('\n')) })
+        await importChat()
+    }
+
+    function importedChat() {
+        return (testDb.db.characters[0] as character).chats[0]
+    }
+
+    function importedMessages() {
+        const chats = (testDb.db.characters[0] as character).chats
+        return chats.length === 0 ? [] : chats[0].message
+    }
+
+    function noticeText() {
+        expect(alertNormal).toHaveBeenCalledTimes(1)
+        return String(vi.mocked(alertNormal).mock.calls[0][0])
+    }
+
+    // T1: regression reproducer. The message time comes from `send_date`.
+    test('T1: an ISO send_date becomes the message time', async () => {
+        await runImport([header, charLine('a', { send_date: '2024-07-12T01:31:37.123Z' }), userLine('b')])
+
+        expect(importedMessages()[0].time).toBe(Date.UTC(2024, 6, 12, 1, 31, 37, 123))
+        expect(importedMessages()[1]).not.toHaveProperty('time')
+    })
+
+    describe.each(['Asia/Seoul', 'America/Los_Angeles'])('local-time forms in %s', (zone) => {
+        beforeEach(() => {
+            process.env.TZ = zone
+        })
+
+        // T2: regression reproducer. The pre-3.x meridiem form is read as local time.
+        test('T2: a meridiem send_date is read as local time', async () => {
+            await runImport([header, charLine('a', { send_date: 'June 19, 2023 2:20pm' })])
+
+            expect(importedMessages()[0].time).toBe(
+                zone === 'Asia/Seoul' ? Date.UTC(2023, 5, 19, 5, 20, 0) : Date.UTC(2023, 5, 19, 21, 20, 0)
+            )
+        })
+
+        test('an ISO send_date without an offset is read as local time', async () => {
+            await runImport([header, charLine('a', { send_date: '2024-07-12T10:31:37' })])
+
+            expect(importedMessages()[0].time).toBe(
+                zone === 'Asia/Seoul' ? Date.UTC(2024, 6, 12, 1, 31, 37) : Date.UTC(2024, 6, 12, 17, 31, 37)
+            )
+        })
+    })
+
+    // T3: regression reproducer. `is_system` lines import as disabled messages.
+    test('T3: an is_system line imports as a disabled message and its neighbours do not', async () => {
+        await runImport([header, charLine('a'), charLine('narration', { is_system: true }), userLine('b')])
+
+        const messages = importedMessages()
+        expect(messages).toHaveLength(3)
+        expect(messages[1].disabled).toBe(true)
+        expect(messages[0]).not.toHaveProperty('disabled')
+        expect(messages[2]).not.toHaveProperty('disabled')
+    })
+
+    // T4: regression reproducer. A speaker other than the app's own names is kept.
+    test('T4: a line named Narrator keeps its name', async () => {
+        await runImport([header, charLine('a', { name: 'Narrator' }), userLine('b')])
+
+        expect(importedMessages()[0].name).toBe('Narrator')
+    })
+
+    // T5: regression reproducer. The chat is named after the file.
+    test('T5: the chat name is the file name without its extension', async () => {
+        await runImport([header, charLine('a')], 'my chat.jsonl')
+        expect(importedChat().name).toBe('my chat')
+
+        testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+        await runImport([header, charLine('a')], 'CHAT.JSONL')
+        expect(importedChat().name).toBe('CHAT')
+    })
+
+    // Compatibility guard: passes before and after; the base names every chat with the default.
+    test('a file name that is only the extension keeps the default chat name', async () => {
+        await runImport([header, charLine('a')], '.jsonl')
+
+        expect(importedChat().name).toBe('Imported Chat')
+    })
+
+    // T6: regression reproducer. A Chub line with an object `mes` imports its message.
+    test('T6: a Chub object mes imports as its message with the success notice', async () => {
+        await runImport([header, charLine('a'), charLine({ message: 'hi' }), userLine('b')])
+
+        expect(alertError).not.toHaveBeenCalled()
+        expect(importedMessages().map((m) => m.data)).toEqual(['a', 'hi', 'b'])
+        expect(noticeText()).toBe(language.successImport)
+    })
+
+    // T7: regression reproducers by assertion on observables that exist on the base.
+    test('T7: dropped swipes change the notice and name the count', async () => {
+        await runImport([header, charLine('a', { swipes: ['a', 'b', 'c'] }), userLine('b')])
+
+        const text = noticeText()
+        expect(text).not.toBe(language.successImport)
+        expect(text).toContain('1 message')
+        expect(text).toContain('other swipes were not imported')
+    })
+
+    test('T7: several swipe lines are counted together', async () => {
+        await runImport([header, charLine('a', { swipes: ['a', 'b', 'c'] }), charLine('b', { swipes: ['b', 'x'] }), charLine('c', { swipes: ['c', 'x'] })])
+
+        const text = noticeText()
+        expect(text).not.toBe(language.successImport)
+        expect(text).toContain('3 messages')
+        expect(text).toContain('other swipes were not imported')
+    })
+
+    test('T7: a skipped line and a swipe line show both sentences', async () => {
+        await runImport([header, charLine('a', { swipes: ['a', 'b'] }), '{broken', userLine('b')])
+
+        const text = noticeText()
+        expect(text).toContain(language.chatImportSkippedLines(1))
+        expect(text).toContain('other swipes were not imported')
+    })
+
+    test('T7: a single swipe line uses the singular sentence', async () => {
+        await runImport([header, charLine('a', { swipes: ['a', 'b'] })])
+
+        const text = noticeText()
+        expect(text).toContain('1 message')
+        expect(text).toContain('its other swipes')
+    })
+
+    // Green only: the exact strings use the new language keys, which the base lacks.
+    test('green-only: the exact swipe notice strings', async () => {
+        await runImport([header, charLine('a', { swipes: ['a', 'b', 'c'] }), charLine('b', { swipes: ['b', 'x'] }), charLine('c', { swipes: ['c', 'x'] })])
+        expect(noticeText()).toBe(language.chatImportDone + ' ' + language.chatImportSwipesNotKept(3))
+
+        vi.mocked(alertNormal).mockClear()
+        testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+        await runImport([header, charLine('a', { swipes: ['a', 'b', 'c'] }), charLine('b', { swipes: ['b', 'x'] }), charLine('c', { swipes: ['c', 'x'] }), '{broken'])
+        expect(noticeText()).toBe(language.chatImportSkippedLines(1) + ' ' + language.chatImportSwipesNotKept(3))
+    })
+
+    // T8: regression reproducers. An empty shown reply with other swipes still reports them.
+    test('T8: an empty-shown line with another non-empty swipe adds no message but is counted', async () => {
+        await runImport([header, charLine('a'), charLine('', { swipes: ['', 'x'] }), userLine('b')])
+
+        expect(importedMessages()).toHaveLength(2)
+        const text = noticeText()
+        expect(text).toContain('1 message')
+        expect(text).toContain('other swipes were not imported')
+    })
+
+    test('T8: the Chub form of an empty-shown line is counted too', async () => {
+        await runImport([header, charLine('a'), charLine({ message: '' }, { swipes: [{ message: 'a' }, { message: 'b' }] })])
+
+        expect(importedMessages()).toHaveLength(1)
+        const text = noticeText()
+        expect(text).toContain('1 message')
+        expect(text).toContain('other swipes were not imported')
+    })
+
+    // Compatibility guard: passes before and after; nothing is lost, so no swipe notice.
+    test('T8: empty-shown lines whose swipes are all empty, or single, show the plain success notice', async () => {
+        await runImport([header, charLine('a'), charLine('', { swipes: ['', ''] }), charLine('', { swipes: ['x'] })])
+
+        expect(noticeText()).toBe(language.successImport)
+    })
+
+    // G1: guard. Passes before and after.
+    test('G1: a plain file yields exactly role and data on every message', async () => {
+        await runImport([header, charLine('a'), userLine('b')])
+
+        expect(importedMessages()).toStrictEqual([
+            { role: 'char', data: 'a' },
+            { role: 'user', data: 'b' },
+        ])
+        expect(noticeText()).toBe(language.successImport)
+        expect(Object.keys(importedChat()).sort()).toEqual(['fmIndex', 'folderId', 'id', 'localLore', 'message', 'name', 'note'])
+    })
+
+    // G2: guard. Passes before and after; the paired mutants prove it.
+    test('G2: the app names and the header names are not stored as name', async () => {
+        await runImport([
+            header,
+            charLine('a'),
+            charLine('b', { name: 'C' }),
+            charLine('c', { name: ' Solo ' }),
+            userLine('d'),
+            userLine('e', { name: 'U' }),
+        ])
+
+        expect(importedMessages()).toHaveLength(5)
+        for (const message of importedMessages()) {
+            expect(message).not.toHaveProperty('name')
+        }
+    })
+
+    test('G2: padded and unused header names are own names too', async () => {
+        const padded = JSON.stringify({ user_name: ' U ', character_name: ' C ' })
+        await runImport([padded, charLine('a', { name: 'C' }), userLine('b', { name: 'U' })])
+        for (const message of importedMessages()) {
+            expect(message).not.toHaveProperty('name')
+        }
+
+        testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+        const unused = JSON.stringify({ user_name: 'unused', character_name: 'unused' })
+        await runImport([unused, charLine('a', { name: 'unused' }), userLine('b', { name: 'unused' })])
+        for (const message of importedMessages()) {
+            expect(message).not.toHaveProperty('name')
+        }
+    })
+
+    // Regression reproducer: fails on the base, which stores no name.
+    test('G2: a name that is the other side\'s own name is kept', async () => {
+        await runImport([header, charLine('a', { name: 'User' }), userLine('b', { name: 'Solo' })])
+
+        expect(importedMessages().map((m) => m.name)).toEqual(['User', 'Solo'])
+    })
+
+    // G3: guard. No swipe structure or foreign field is stored.
+    test('G3: a swipe line stores no swipe data and no foreign field', async () => {
+        await runImport([header, charLine('a', { swipes: ['a', 'b', 'c'], swipe_id: 1, extra: { x: 1 }, swipe_info: [{}] })])
+
+        expect(Object.keys(importedMessages()[0]).sort()).toEqual(['data', 'role'])
+    })
+
+    // Regression reproducer: fails on the base, which writes only role and data.
+    test('G3: every field written together is exactly role, data, time, name and disabled', async () => {
+        await runImport([header, charLine('a', { name: 'Narrator', is_system: true, send_date: '2024-07-12T01:31:37.123Z', swipes: ['a', 'b'] })])
+
+        expect(importedMessages()[0]).toStrictEqual({
+            role: 'char',
+            data: 'a',
+            time: Date.UTC(2024, 6, 12, 1, 31, 37, 123),
+            name: 'Narrator',
+            disabled: true,
+        })
+    })
+
+    // G5: guard. Swipes are counted only where something is lost.
+    test('G5: a skipped line, a one-entry swipes array and extra adds no swipe notice', async () => {
+        await runImport([header, charLine('a', { swipes: ['a'] }), charLine('b', { extra: {} }), charLine(5, { swipes: ['a', 'b'] })])
+
+        expect(noticeText()).toBe(language.chatImportSkippedLines(1))
+    })
+
+    // G6: guard. An unparseable date does not drop the message.
+    test('G6: an unparseable send_date still imports the message, without a time', async () => {
+        await runImport([header, charLine('a', { send_date: 'not a date' }), charLine('b', { send_date: 7.5e300 })])
+
+        expect(importedMessages()).toHaveLength(2)
+        expect(importedMessages()[0]).not.toHaveProperty('time')
+        expect(importedMessages()[1]).not.toHaveProperty('time')
+        expect(noticeText()).toBe(language.successImport)
+    })
+
+    // G7: guard. Dropped extra, generation and metadata keys are silent.
+    test('G7: extra, gen_started, gen_finished and chat_metadata alone keep the success notice', async () => {
+        const noisy = JSON.stringify({ user_name: 'U', character_name: 'C', chat_metadata: { note: { a: 1 } } })
+        await runImport([noisy, charLine('a', { extra: { api: 'x' }, gen_started: '2024-07-12', gen_finished: '2024-07-13' })])
+
+        expect(noticeText()).toBe(language.successImport)
+    })
+
+    // G8: regression reproducer (fails on the base, which stores no time). A saved time can always be formatted.
+    test('G8: an out-of-range send_date stores no time and an accepted one formats', async () => {
+        await runImport([
+            header,
+            charLine('a', { send_date: '99999999999999999999' }),
+            charLine('b', { send_date: 8.64e15 + 1 }),
+            charLine('c', { send_date: 253402300799999 }),
+        ])
+
+        const messages = importedMessages()
+        expect(messages[0]).not.toHaveProperty('time')
+        expect(messages[1]).not.toHaveProperty('time')
+        expect(messages[2].time).toBe(253402300799999)
+        expect(() => new Intl.DateTimeFormat().format(messages[2].time)).not.toThrow()
     })
 })

@@ -1138,6 +1138,8 @@ export const languageChineseTraditional = {
     "exportStreamingAsset": (name: string, writtenMiB: number, totalMiB: number) => `正在寫入 ${name}（${writtenMiB} / ${totalMiB} MiB）...`,
     "successImport": "匯入成功",
     "chatImportSkippedLines": (count: number) => count === 1 ? `已匯入聊天。有 1 行無法讀取，已略過。` : `已匯入聊天。有 ${count} 行無法讀取，已略過。`,
+    "chatImportDone": `已匯入聊天。`,
+    "chatImportSwipesNotKept": (count: number) => count === 1 ? `有 1 則訊息僅保留了目前顯示的回覆，其他滑動回覆未匯入。` : `有 ${count} 則訊息僅保留了目前顯示的回覆，其他滑動回覆未匯入。`,
     "importedCharacter": "已匯入角色",
     "alwaysActive": "一律啟用",
     "additionalPrompt": "額外提示詞",

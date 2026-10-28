@@ -23,7 +23,7 @@ import { beginBusy } from "./process/memory/busyActions";
 import { queueInlayCleanupForChat, queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
 import { escapeHtmlText } from "./htmlEscape";
 import { isHiddenSystemCharacter } from "./hiddenCharacters";
-import { readTavernJsonl } from "./chatImport";
+import { chatNameFromFile, readTavernJsonl, tavernMessageName } from "./chatImport";
 
 export function createNewCharacter() {
     DBState.db.characters.push(createBlankChar())
@@ -521,21 +521,33 @@ export async function importChat(){
         const lowerName = dat.name.toLowerCase()
 
         if(lowerName.endsWith('jsonl')){
-            const { messages, skipped } = readTavernJsonl(Buffer.from(dat.data).toString('utf-8'))
+            const { messages, skipped, swipesNotKept, header } = readTavernJsonl(Buffer.from(dat.data).toString('utf-8'))
             let newChat:Chat = {
                 message: [],
                 note: "",
-                name: "Imported Chat",
+                name: chatNameFromFile(dat.name),
                 localLore: [],
                 fmIndex: -1,
                 id: v4()
             }
 
+            const ownNames = { userName: getUserName(), characterName: DBState.db.characters[selectedID].name }
             for(const line of messages){
-                newChat.message.push({
+                const message: Chat['message'][number] = {
                     role: line.isUser ? "user" : 'char',
-                    data: formatTavernChat(line.mes, DBState.db.characters[selectedID].name)
-                })
+                    data: formatTavernChat(line.mes, ownNames.characterName)
+                }
+                if(line.sendDate !== undefined){
+                    message.time = line.sendDate
+                }
+                const name = tavernMessageName(line, header, ownNames)
+                if(name !== undefined){
+                    message.name = name
+                }
+                if(line.isSystem){
+                    message.disabled = true
+                }
+                newChat.message.push(message)
             }
 
             if(newChat.message.length === 0){
@@ -550,7 +562,13 @@ export async function importChat(){
 
             DBState.db.characters[selectedID].chats.unshift(newChat)
             changeChatTo(0)
-            alertNormal(skipped > 0 ? language.chatImportSkippedLines(skipped) : language.successImport)
+            if(swipesNotKept > 0){
+                const swipeNotice = language.chatImportSwipesNotKept(swipesNotKept)
+                alertNormal((skipped > 0 ? language.chatImportSkippedLines(skipped) : language.chatImportDone) + ' ' + swipeNotice)
+            }
+            else{
+                alertNormal(skipped > 0 ? language.chatImportSkippedLines(skipped) : language.successImport)
+            }
         }
         else if(lowerName.endsWith('json')){
             const json = JSON.parse(Buffer.from(dat.data).toString('utf-8'))
