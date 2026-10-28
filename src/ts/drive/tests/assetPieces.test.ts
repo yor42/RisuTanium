@@ -134,6 +134,29 @@ describe('openExportAssetPieces (new behaviour)', () => {
         expect((await rest.next()).done).toBe(true)
     })
 
+    test('tauri: the identity the files store reported with the first piece is returned; ReadPiece itself is unchanged', async () => {
+        const withIdentity = { ...piece('ab', 2), offset: 0, identity: '00ff10' }
+        const { gen } = trackedPieces([withIdentity])
+        const source: ExportAssetSource = { kind: 'tauri', pieces: { open: () => gen(), node: false }, store: bareStore() }
+        const opened = await openExportAssetPieces('assets/a', source)
+        expect(opened.identity).toBe('00ff10')
+        expect(opened.first).toBe(withIdentity)
+    })
+
+    test('a source that reports no identity (web, node) returns none, so two opens compare equal', async () => {
+        for (const kind of ['web', 'node'] as const) {
+            const { gen } = trackedPieces([piece('ab', 2)])
+            const source: ExportAssetSource = { kind, pieces: { open: () => gen(), node: kind === 'node' }, store: bareStore() }
+            expect((await openExportAssetPieces('assets/a', source)).identity).toBeUndefined()
+        }
+    })
+
+    test('a piece whose identity is not a string is not taken for one', async () => {
+        const { gen } = trackedPieces([{ ...piece('ab', 2), identity: 7 } as unknown as ReadPiece])
+        const source: ExportAssetSource = { kind: 'tauri', pieces: { open: () => gen(), node: false }, store: bareStore() }
+        expect((await openExportAssetPieces('assets/a', source)).identity).toBeUndefined()
+    })
+
     test('web: a missing first piece throws ExportAssetMissingError and closes the generator', async () => {
         const { gen, state } = trackedPieces([])
         const source: ExportAssetSource = { kind: 'web', pieces: { open: () => gen(), node: false }, store: bareStore() }

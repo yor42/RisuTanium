@@ -52,14 +52,24 @@ export interface ExportAssetEntry {
 }
 
 export type PreflightResult =
-    | { kind: 'ok', large: Map<string, number> }
+    /**
+     * `large` maps every large key to its stored size. `source` is the piece source those sizes were read through, which
+     * a streaming CharX export reads the same asset's pieces from; `null` when no source applies (nothing is then large).
+     */
+    | { kind: 'ok', large: Map<string, number>, source: ExportAssetSource | null }
     | { kind: 'refuse-large', names: string[] }
+    | { kind: 'refuse-cap', names: string[] }
     | { kind: 'refuse-count', count: number, limit: number }
     | { kind: 'refuse-total', total: number }
 
 export type PreflightOk = Extract<PreflightResult, { kind: 'ok' }>
 
 export interface PreflightExtra {
+    /**
+     * The largest asset a CharX import takes (`assetByteLimit()` of `process/processzip.ts`, passed in by the caller so
+     * that this file does not import it). A CharX with a sized asset above it is refused (`refuse-cap`). Absent: no cap.
+     */
+    charxAssetCap?: number
     /** Bytes of the card portrait, counted once per occurrence (`ccdefault:` entry). */
     portraitBytes?: number
     /** Bytes of the portrait written in front of the archive by a `charxJpeg` export. */
@@ -198,10 +208,11 @@ export function estimateCharxBytes(
 /**
  * Sizes the assets of an export through the source its pieces would come from, and decides before anything opens.
  * A size that cannot be read is unknown, which counts as not large (the asset then takes the whole-read path). A PNG,
- * JSON, `.risum` or Realm export with any large asset is refused (`refuse-large`, names in list order, once each); a
- * CharX with more zip entries than an archive can count is refused (`refuse-count`), and one whose estimate reaches the
- * headroom is refused (`refuse-total`); otherwise `ok` carries the size of every large
- * key, which a streaming write takes as the size it expects.
+ * JSON, `.risum` or Realm export with any large asset is refused (`refuse-large`, names in list order, once each). A
+ * CharX is checked in this order: an asset above `extra.charxAssetCap` is refused (`refuse-cap`, names in list order,
+ * once each), then more zip entries than an archive can count (`refuse-count`), then an estimate that reaches the
+ * headroom (`refuse-total`). Otherwise `ok` carries the size of every large key, which a streaming write takes as the
+ * size it expects, and the source those sizes came from.
  */
 export async function preflightExport(
     entries: ReadonlyArray<ExportAssetEntry>,
@@ -211,11 +222,11 @@ export async function preflightExport(
 ): Promise<PreflightResult> {
     const sizable = entries.filter((entry) => !entry.portrait && isSizableKey(entry.key))
     const sizes = new Map<string, number | null>()
+    let source: ExportAssetSource | null = null
     if (sizable.length > 0) {
         // Imported at call time so that importing the preflight adds nothing to its callers' import graph; the app has it loaded already.
         const { assetStoredSize, exportAssetPieceSource } = await import("./assetPieces")
         const store = await getStore()
-        let source: ExportAssetSource | null = null
         if (store !== null) {
             try {
                 source = await exportAssetPieceSource(store)
@@ -241,7 +252,21 @@ export async function preflightExport(
         }
     }
     if (format !== 'charx') {
-        return large.size > 0 ? { kind: 'refuse-large', names } : { kind: 'ok', large }
+        return large.size > 0 ? { kind: 'refuse-large', names } : { kind: 'ok', large, source }
+    }
+    // First, so that a card with an asset the importer would refuse is not reported as too many files or too large in total.
+    const cap = extra.charxAssetCap
+    if (cap !== undefined) {
+        const overCap: string[] = []
+        for (const entry of sizable) {
+            const size = sizes.get(entry.key)
+            if (size !== null && size !== undefined && size > cap && !overCap.includes(entry.name)) {
+                overCap.push(entry.name)
+            }
+        }
+        if (overCap.length > 0) {
+            return { kind: 'refuse-cap', names: overCap }
+        }
     }
     // An upper bound: every asset is an entry plus its `x_meta`, and `card.json` and `module.risum` are the fixed two.
     const count = charxEntryCount(entries.length)
@@ -252,7 +277,7 @@ export async function preflightExport(
     if (total >= ZIP_SENTINEL - CHARX_HEADROOM_MARGIN) {
         return { kind: 'refuse-total', total }
     }
-    return { kind: 'ok', large }
+    return { kind: 'ok', large, source }
 }
 
 /**
@@ -266,6 +291,9 @@ export async function refuseExport(result: PreflightResult, forRealm: boolean = 
     }
     if (result.kind === 'refuse-total') {
         await alertNormalWait(language.exportCharxTooLarge(result.total))
+    }
+    else if (result.kind === 'refuse-cap') {
+        await alertNormalWait(language.exportCharxAssetTooLarge(result.names))
     }
     else if (result.kind === 'refuse-count') {
         await alertNormalWait(language.exportCharxTooManyEntries(result.count, result.limit))
