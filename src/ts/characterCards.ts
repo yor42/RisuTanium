@@ -353,6 +353,9 @@ async function readCharacterFile(f:{
             if(error instanceof CharXParseError && error.origin === 'zip'){
                 return refusedOutcome(language.cardFileIncomplete)
             }
+            if(error instanceof CharXParseError && error.origin === 'layout'){
+                return refusedOutcome(language.cardFileUnsafeLayout)
+            }
             return outcomeOfError(error)
         }
         //Whichever way this ends, the importer is finished with: asset saves that have not started do not start, and no progress message replaces what the import shows next.
@@ -532,6 +535,9 @@ async function importByafArchive(f:{
         }
         if(error instanceof CharXParseError && error.origin === 'zip'){
             return refusedOutcome(language.cardFileIncomplete)
+        }
+        if(error instanceof CharXParseError && error.origin === 'layout'){
+            return refusedOutcome(language.cardFileUnsafeLayout)
         }
         return outcomeOfError(error)
     } finally {

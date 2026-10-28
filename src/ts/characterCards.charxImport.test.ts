@@ -224,7 +224,7 @@ vi.mock('fflate', async (importOriginal) => {
 
 //#endregion
 
-import { downloadRisuHub, importCharacterProcess } from 'src/ts/characterCards'
+import { downloadRisuHub, importCharacterFile, importCharacterProcess } from 'src/ts/characterCards'
 import { CharXImporter, EntryBuffer, charxLimits, hasZipEndRecord, type CharXParseError } from 'src/ts/process/processzip'
 import { fflateZipArchive, type ZipEntry } from 'src/ts/process/tests/zipFixtures'
 import { checkCharOrder } from 'src/ts/globalApi.svelte'
@@ -1438,5 +1438,108 @@ describe('charx size limits: archives the central directory pre-check must not b
         await importCharacterProcess({ name: 'card.charx', data: f })
         expect(h.errors).toEqual(['directory unreadable'])
         expect(h.saveCalls).toBe(0)
+    })
+})
+
+// ---------------------------------------------------------------------------------------------
+// A stored entry framed with a data descriptor on the fallback path (MC-804, MC-805)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A streaming archive (flag bit 3, a descriptor after each entry) in which the entries named in `stored` use the
+ * stored method (`ZipPassThrough`) and the others the deflate method at level 0, which keeps the raw bytes.
+ */
+function mixedMethodArchive(entries: Entry[], stored: Set<string>): Uint8Array {
+    const chunks: Uint8Array[] = []
+    const zip = new fflate.Zip((error, data) => {
+        if (error) throw error
+        chunks.push(data.slice())
+    })
+    for (const [name, data] of entries) {
+        const file = stored.has(name) ? new fflate.ZipPassThrough(name) : new fflate.ZipDeflate(name, { level: 0 })
+        zip.add(file)
+        file.push(typeof data === 'string' ? enc.encode(data) : data, true)
+    }
+    zip.end()
+    return concat(chunks)
+}
+
+/** The end record states a directory one byte too large, so the directory is not used and every entry is streamed. */
+function unusableDirectory(z: Uint8Array): Uint8Array {
+    const c = z.slice()
+    const { eocd } = geometry(c)
+    const dv = new DataView(c.buffer, c.byteOffset, c.byteLength)
+    dv.setUint32(eocd + 12, dv.getUint32(eocd + 12, true) + 1, true)
+    return c
+}
+
+describe('a stored entry with a data descriptor on the fallback path is refused with its own message', () => {
+    const inputs: Input[] = ['uint8array', 'file', 'chunked-file', 'source', 'stream']
+
+    test.each(inputs)('(N) charx, %s input: the card is refused with cardFileUnsafeLayout and nothing is saved', async (input) => {
+        const z = unusableDirectory(mixedMethodArchive(cardEntries(), new Set(['card.json'])))
+        const out = await runImport(z, 'card.charx', input)
+
+        expectRefusedBeforeSaving(out, input, language.cardFileUnsafeLayout)
+        expect(out.log.filter((line) => line.startsWith('error:'))).toEqual(['error:' + language.cardFileUnsafeLayout])
+    })
+
+    test('(G) the same archive imports when its directory is usable, and when its entries are deflated on the fallback path', async () => {
+        const stored = mixedMethodArchive(cardEntries(), new Set(['card.json']))
+        for (const [label, z] of [['usable directory, stored card.json', stored], ['unusable directory, deflate-0 card.json', unusableDirectory(mixedMethodArchive(cardEntries(), new Set()))]] as Array<[string, Uint8Array]>) {
+            reset()
+            const out = await runImport(z, 'card.charx', 'uint8array')
+            expect(out.thrown, label).toBeNull()
+            expect(out.errors, label).toEqual([])
+            expect(out.characters, label).toHaveLength(1)
+            expect(out.savedIds, label).toEqual(assetIds)
+        }
+    })
+
+    // The Backyard text entries are the card JSON, so the stored entry here is an unlisted background the import drops.
+    describe('byaf', () => {
+        const AVATAR_PATH = 'characters/c1/images/avatar.png'
+        const avatar = body(1500, 9, 'PNGa')
+        const byafEntries = (): Entry[] => [
+            ['manifest.json', JSON.stringify({ schemaVersion: 1, createdAt: '2025-06-12T19:03:56.873Z', author: { name: 'Ann Author' }, characters: ['characters/c1/character.json'], scenarios: ['scenarios/s1.json'] })],
+            [AVATAR_PATH, avatar],
+            ['backgrounds/bg.bin', body(3000, 7, 'BGbg')],
+            ['characters/c1/character.json', JSON.stringify({ schemaVersion: 1, id: 'c1', name: 'Annie', displayName: 'Ann', persona: 'Persona', createdAt: '2025-06-12T19:03:56.873Z', updatedAt: '2025-06-13T19:03:56.873Z', loreItems: [], images: [{ path: 'images/avatar.png', label: 'avatar' }] })],
+            ['scenarios/s1.json', JSON.stringify({ schemaVersion: 1, title: 'T', narrative: 'N', formattingInstructions: 'F', exampleMessages: [], firstMessages: [{ characterID: 'c1', text: 'Hello' }] })],
+        ]
+
+        test('(N) a stored dropped entry with a descriptor refuses the archive with cardFileUnsafeLayout, saving nothing and creating no character', async () => {
+            const z = unusableDirectory(mixedMethodArchive(byafEntries(), new Set(['backgrounds/bg.bin'])))
+            // The real clone, as in the guard below, so that without the refusal the archive imports rather than fails.
+            const original = globalThis.safeStructuredClone
+            globalThis.safeStructuredClone = structuredClone
+            try {
+                for (const input of ['uint8array', 'file', 'source'] as Input[]) {
+                    reset()
+                    const out = await importCharacterFile({ name: 'card.byaf', data: dataFor(z, 'card.byaf', input) })
+
+                    expect(out, input).toEqual({ kind: 'refused', reason: language.cardFileUnsafeLayout })
+                    expect(h.saveCalls, input).toBe(0)
+                    expect(h.characters, input).toEqual([])
+                }
+            } finally {
+                globalThis.safeStructuredClone = original
+            }
+        })
+
+        test('(G) the same archive with a deflate-0 background imports on the fallback path, so the refusal comes from the stored entry', async () => {
+            const z = unusableDirectory(mixedMethodArchive(byafEntries(), new Set()))
+            // The production safeStructuredClone returns undefined for undefined; the setup stub is a JSON round trip.
+            const original = globalThis.safeStructuredClone
+            globalThis.safeStructuredClone = structuredClone
+            try {
+                const out = await importCharacterFile({ name: 'card.byaf', data: new U8(z) })
+
+                expect(out, JSON.stringify(out)).toMatchObject({ kind: 'imported' })
+                expect(h.saveCalls).toBe(1)
+            } finally {
+                globalThis.safeStructuredClone = original
+            }
+        })
     })
 })

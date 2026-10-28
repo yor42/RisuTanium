@@ -52,7 +52,7 @@
  * such leftover subscription with the real acknowledgement value so it
  * unsubscribes before the next test runs.
  */
-import { describe, test, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { STALE_ACCOUNT_NOTICE_ACK } from './alert'
 import type { AssetVerifyResult } from './storage/assetIntegrity'
@@ -169,6 +169,8 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
     selectedCharID: writable(-1),
     loadedStore: writable(false),
     alertStore: writable({ type: 'none', msg: 'n' }),
+    // The real parser.svelte module-level effect reads this binding when the unmocked graph loads.
+    selIdState: { selId: -1 },
 }) as unknown as typeof import('src/ts/stores.svelte'))
 
 vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
@@ -444,6 +446,14 @@ async function freshLoadData() {
     alertStore.set({ type: 'none', msg: 'n' })
     return { loadData, alertStore, loadedStore }
 }
+
+// The first import of the real bootstrap graph transforms it; paying that inside a test's default timeout flakes
+// under load. The transform cache survives vi.resetModules(), so one warm import here moves the cost into a hook
+// with its own timeout.
+beforeAll(async () => {
+    await freshLoadData()
+    vi.resetModules()
+}, 60_000)
 
 beforeEach(() => {
     localStorage.clear()

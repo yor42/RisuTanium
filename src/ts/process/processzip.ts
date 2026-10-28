@@ -851,8 +851,9 @@ export class CharXWriter{
  * - 'importer': the importer's own handlers threw (for example an allocation failure while buffering an entry).
  * - 'zip': the ZIP library reported the archive as unreadable.
  * - 'size': an entry is larger than its limit in `charxLimits`; `entryName` and `limitBytes` say which and how large.
+ * - 'layout': the archive frames an uncompressed entry with a data descriptor, which the streaming reader cannot end reliably.
  */
-export type CharXFailureOrigin = 'input' | 'importer' | 'zip' | 'size'
+export type CharXFailureOrigin = 'input' | 'importer' | 'zip' | 'size' | 'layout'
 
 /** What a 'size' failure names: the entry (its path inside the archive) and the limit it passed. */
 export type CharXSizeDetail = { entryName: string, limitBytes: number }
@@ -1715,6 +1716,14 @@ export class CharXImporter{
             return
         }
         const assetIndex = file.name
+        // The splice gives every entry the directory lists its sizes, so an uncompressed entry without a declared size
+        // reaches here on the fallback path, or from a local header the directory does not list (for example one
+        // inside the archive comment). The reader ends such an entry at the first descriptor-like signature in its
+        // data, which cuts a stored entry holding such bytes short. It is refused before anything is buffered.
+        if(file.compression === 0 && file.size === undefined){
+            this.#record('layout', new Error(`${assetIndex} is stored uncompressed with a data descriptor`))
+            return
+        }
         this.sizes[assetIndex] = Math.max(this.sizes[assetIndex] ?? 0, file.originalSize ?? 0)
         // An entry the local header declares above its limit is refused here. An entry is always started or the parse
         // ends, because the ZIP library keeps the compressed bytes of an entry that was never started.

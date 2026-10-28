@@ -33,7 +33,7 @@
  * characters as remote blocks, as an earlier build wrote them, so the load of
  * such a snapshot is shown to store them inline.
  */
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from '../../storage/database.svelte'
 import type { toSaveType } from '../../storage/risuSave'
 import { NodeStorageConflictError } from '../../storage/nodeStorage'
@@ -933,6 +933,14 @@ function exclusiveRequests(): number {
 
 let reloadSpy: ReturnType<typeof vi.spyOn>
 let replaceStateSpy: ReturnType<typeof vi.spyOn>
+
+// The first boot transforms the heavy module graph; paying that inside a test's default timeout flakes under load.
+// boot() resets the module registry per test but the transform cache survives, so one warm boot here moves the cost
+// into a hook with its own timeout.
+beforeAll(async () => {
+    await boot()
+    vi.resetModules()
+}, 60_000)
 
 beforeEach(() => {
     alertBox.history.length = 0
