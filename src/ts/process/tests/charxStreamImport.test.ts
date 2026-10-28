@@ -5,8 +5,8 @@
  * it goes through `saveAssetFromPieces` fed by a queue, on every store that writes in pieces
  * (the desktop files store over the in-memory file system of `tauriFsFake.ts`, and the Node
  * store over the real `server/node/server.cjs` with small limits). The fixtures are written by
- * `CharXWriter`, whose streaming `Zip` states no entry size in the local header (data
- * descriptors), so the importer cannot decide from a header. A pass here says nothing about the
+ * `fflateZipArchive` (`zipFixtures.ts`), whose streaming `Zip` states no entry size in the local
+ * header (data descriptors), so the importer cannot decide from a header. A pass here says nothing about the
  * Rust commands or a real proxy.
  *
  * Titles say what a test pins: `reproducer` fails on the commit before the change (every
@@ -191,8 +191,9 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({ getColdStorageItem
 
 //#endregion
 
-import { saveAsset, type VirtualWriter } from 'src/ts/globalApi.svelte'
-import { CharXImporter, CharXWriter, EntryBuffer, charxLimits } from 'src/ts/process/processzip'
+import { saveAsset } from 'src/ts/globalApi.svelte'
+import { CharXImporter, EntryBuffer, charxLimits } from 'src/ts/process/processzip'
+import { fflateZipArchive, type ZipEntry } from './zipFixtures'
 import type { Semaphore } from 'src/ts/util'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
@@ -247,20 +248,9 @@ function patterned(length: number, seed: number): Uint8Array {
     return Uint8Array.from({ length }, (_, index) => (index * 7 + seed) & 255)
 }
 
-function concat(parts: Uint8Array[]): Uint8Array {
-    return Buffer.concat(parts)
-}
-
-/** A CharX written by the fork's own writer: a streaming `Zip` that states no entry size before the data. */
+/** A CharX in the descriptor framing (`fflateZipArchive`): a streaming `Zip` that states no entry size before the data. */
 async function buildCharx(entries: Array<[string, Uint8Array | string]>): Promise<Uint8Array> {
-    const parts: Uint8Array[] = []
-    const sink = { write: async (data: Uint8Array) => { parts.push(data.slice()) }, close: async () => { } }
-    const writer = new CharXWriter(sink as unknown as VirtualWriter)
-    for (const [name, data] of entries) {
-        await writer.write(name, data, 0)
-    }
-    await writer.end()
-    return concat(parts)
+    return fflateZipArchive(entries.map(([name, data]): ZipEntry => [name, typeof data === 'string' ? new TextEncoder().encode(data) : data, 0]))
 }
 
 /** The archive as a stream of slices, so the importer sees an entry's data arrive in several chunks. */
@@ -341,7 +331,7 @@ const CARD = JSON.stringify({ spec: 'chara_card_v3', data: { name: 'x' } })
 //#endregion
 
 describe('fixture', () => {
-    test('guard: a CharXWriter archive states no entry size in the local header', async () => {
+    test('guard: a descriptor-framed archive states no entry size in the local header', async () => {
         const archive = await buildCharx([['assets/a.png', patterned(BIG,1)]])
         const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength)
         expect(view.getUint32(0, true)).toBe(0x04034b50)

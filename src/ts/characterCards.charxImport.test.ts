@@ -2,7 +2,7 @@
  * CharX and jpg-charx import through `importCharacterProcess` and `downloadRisuHub` in `src/ts/characterCards.ts`,
  * and the failure labelling of `CharXImporter` in `src/ts/process/processzip.ts`.
  *
- * The real `characterCards.ts`, the real `processzip.ts` (with the real `CharXWriter` building the fixtures) and the
+ * The real `characterCards.ts`, the real `processzip.ts` (with `fflateZipArchive` building the descriptor-framed fixtures) and the
  * real fflate run against synthetic archives built here. Everything the import reaches around them (the database,
  * asset storage, alerts) is replaced by recorders, so each test can compare what was saved, what the user was shown
  * last and which character came out.
@@ -225,8 +225,9 @@ vi.mock('fflate', async (importOriginal) => {
 //#endregion
 
 import { downloadRisuHub, importCharacterProcess } from 'src/ts/characterCards'
-import { CharXImporter, CharXWriter, EntryBuffer, charxLimits, hasZipEndRecord, type CharXParseError } from 'src/ts/process/processzip'
-import { checkCharOrder, type VirtualWriter } from 'src/ts/globalApi.svelte'
+import { CharXImporter, EntryBuffer, charxLimits, hasZipEndRecord, type CharXParseError } from 'src/ts/process/processzip'
+import { fflateZipArchive, type ZipEntry } from 'src/ts/process/tests/zipFixtures'
+import { checkCharOrder } from 'src/ts/globalApi.svelte'
 import { changeChar } from 'src/ts/characters'
 import { importSourceOfBytes, type ImportSource } from 'src/ts/importSource'
 import { language } from 'src/lang'
@@ -295,15 +296,12 @@ const cardEntries = (withModule = false): Entry[] => [
     ...ASSETS.map((a) => [a.name, a.data] as Entry),
 ]
 
-/** An archive written by the real CharXWriter (data descriptors, deflate method with the given level). */
+/** An archive in the descriptor framing of `fflateZipArchive` (data descriptors, deflate method with the given level). */
 async function writerArchive(entries: Entry[], level: 0 | 6, opts: { prefix?: Uint8Array, comment?: Uint8Array } = {}): Promise<Uint8Array> {
-    const chunks: Uint8Array[] = []
-    const sink = { write: async (b: Uint8Array) => { chunks.push(new U8(b)) }, close: async () => {} }
-    const writer = new CharXWriter(sink as unknown as VirtualWriter)
-    if (opts.prefix) writer.apb.append(opts.prefix)
-    for (const [key, data] of entries) await writer.write(key, data, level)
-    await writer.end()
-    const out = concat(chunks)
+    const out = fflateZipArchive(
+        entries.map(([key, data]): ZipEntry => [key, typeof data === 'string' ? enc.encode(data) : data, level]),
+        { prefix: opts.prefix },
+    )
     if (opts.comment) {
         new DataView(out.buffer, out.byteOffset, out.byteLength).setUint16(out.length - 2, opts.comment.length, true)
         return concat([out, opts.comment])
@@ -520,10 +518,10 @@ function expectRefusedBeforeSaving(out: Outcome, label: string, message = langua
 // ---------------------------------------------------------------------------------------------
 
 const completeArchives: Array<[string, string, () => Promise<Uint8Array>, boolean]> = [
-    ['CharXWriter archive, stored (level 0)', 'card.charx', () => writerArchive(cardEntries(), 0), false],
-    ['CharXWriter archive, deflated (level 6)', 'card.charx', () => writerArchive(cardEntries(), 6), false],
-    ['CharXWriter archive with an archive comment', 'card.charx', () => writerArchive(cardEntries(), 6, { comment: enc.encode('synthetic archive comment') }), false],
-    ['CharXWriter archive with module.risum', 'card.charx', () => writerArchive(cardEntries(true), 6), true],
+    ['descriptor archive, stored (level 0)', 'card.charx', () => writerArchive(cardEntries(), 0), false],
+    ['descriptor archive, deflated (level 6)', 'card.charx', () => writerArchive(cardEntries(), 6), false],
+    ['descriptor archive with an archive comment', 'card.charx', () => writerArchive(cardEntries(), 6, { comment: enc.encode('synthetic archive comment') }), false],
+    ['descriptor archive with module.risum', 'card.charx', () => writerArchive(cardEntries(true), 6), true],
     ['other-tool archive with a stored entry', 'card.charx', async () => otherToolArchive(cardEntries()), false],
     ['jpg-charx (.jpg)', 'card.jpg', () => writerArchive(cardEntries(), 6, { prefix: JPEG_HEAD }), false],
     ['jpg-charx (.jpeg), module.risum', 'card.jpeg', () => writerArchive(cardEntries(true), 0, { prefix: JPEG_HEAD }), true],
@@ -609,8 +607,8 @@ const cuts: CutKind[] = [
 
 describe('import of cut charx archives (regression reproducer)', () => {
     const makers: Array<[string, () => Promise<Uint8Array>]> = [
-        ['CharXWriter level 0', () => writerArchive(cardEntries(), 0)],
-        ['CharXWriter level 6', () => writerArchive(cardEntries(), 6)],
+        ['descriptor archive level 0', () => writerArchive(cardEntries(), 0)],
+        ['descriptor archive level 6', () => writerArchive(cardEntries(), 6)],
         ['other tool', async () => otherToolArchive(cardEntries())],
     ]
     for (const [label, make] of makers) {
@@ -662,7 +660,7 @@ describe('import of damaged charx archives with an intact end record (regression
         ['a reserved deflate block type on the first asset', (z) => badBlockType(z, 'assets/a.bin')],
     ]
 
-    test.each(damages)('a CharXWriter archive with %s is refused as an incomplete file', async (_label, damage) => {
+    test.each(damages)('a descriptor archive with %s is refused as an incomplete file', async (_label, damage) => {
         const z = damage(await writerArchive(cardEntries(), 6))
         for (const input of ['file', 'chunked-file', 'uint8array', 'stream'] as const) {
             reset()
@@ -893,8 +891,8 @@ describe('CharXImporter.parse rejections', () => {
     })
 
     test.each([
-        ['CharXWriter level 6', () => writerArchive(cardEntries(), 6)],
-        ['CharXWriter level 0', () => writerArchive(cardEntries(), 0)],
+        ['descriptor archive level 6', () => writerArchive(cardEntries(), 6)],
+        ['descriptor archive level 0', () => writerArchive(cardEntries(), 0)],
         ['other-tool archive with a stored entry', async () => otherToolArchive(cardEntries())],
     ] as Array<[string, () => Promise<Uint8Array>]>)('an exception raised by the importer\'s own buffer rejects with origin importer and the original error (%s)', async (_label, make) => {
         h.appendFailWhen = startsWithTag('ASSc')
