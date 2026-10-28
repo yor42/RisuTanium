@@ -13602,7 +13602,7 @@ Folded in from `Agents/Lanes/lane-B-records.md` on 2026-10-24 (merge `15777155a`
 - Briefs: "Yes, write briefs (Recommended)": "Lane A writes Agents/Lanes/lane-F-brief.md (and G if picked): scope, ID blocks from MC-520/CHORE-370/row 3700, scratch root, ports, merge rules, the standing gated-batch approval. You create each worktree and start a session rooted in it." And "I'll brief them myself": "Lane A gives you only the ID blocks and port ranges."
 
 - Notes, not the maintainer's words:
-  - CHORE-30's retitle and the plugin batch come from `MC-501` answer 4. CHORE-41's phone repro, if needed, goes through lane A.
+  - CHORE-30's retitle and the plugin batch come from `MC-501` answer 4. CHORE-41's phone repro, if needed, goes through lane A. *Later decision (2026-10-28; the text above is unchanged): "Both lanes have no phone access" is amended for the 1028 Note 9 phone run only. The maintainer chose "Lane G drives them (Recommended)", so lane G owned both spare Note 9s until it handed them back (`MC-782` item 2, lane G's `MC-806`). Lane A drives the phones again.*
   - Nothing here authorizes a commit or a push.
 
 ### MC-504 — Lane A, 2026-10-24: S4-6 and list windowing stay parked to the UI overhaul; A-lite stage 5b stays parked behind CHORE-205's L3 and per-chat work; the `AGENTS.md` sentence on V2.1 plugins is updated
@@ -18141,4 +18141,415 @@ Q-F6b, asked: "When several files are picked at once and some are too large, wha
 **Upstream check (lane G, passed).** Across 26 local upstream refs (`upstream/main` `f50b5942e`, 2026-10-23, not re-fetched) CharX is written only through fflate `ZipDeflate` (method 8 even at level 0), `ZipPassThrough` has 0 hits, so upstream writes no STORE entries. The plan: `#handleFile` with `compression === 0` and `size === undefined` gives an origin layout (fallback only); a new English key `cardFileUnsafeLayout`; `.byaf` is refused in pass 1 before any save. The new key goes through the translator route.
 
 - Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-781 — Lane A, 2026-10-28: CHORE-478 direction: chats become a tree of messages, with the answers that settle where alternatives are stored and how they leave through `.bin`
+
+- Tag: decisions (the maintainer's free text, then `AskUserQuestion` answers in lane A; every answer is the option labelled "(Recommended)" unless noted). Date: 2026-10-28 (the draft heads the entry "2026-10-28/29"; every lane A log line for these answers is dated 2026-10-28). Sweep ref: none.
+- Source: lane A session; draft `%TEMP%\risu-b715\records-b20\draft.md` (section 2) and lane A's log extract `handoff-extract.md` in the same folder. Evidence, all read from the draft and not reopened for this record: sizing `%TEMP%\risu-b715\c478-size\result.md` (investigator; doc-verifier: claims 2, 4 and 6 CONFIRMED, 1, 3 and 5 PARTIAL; corrections: the codec path is `src/ts/storage/store2/codec/chat.ts`, and the `.message` reader count does not reproduce, about 300 to 500); the senior-advisor challenge (in lane A's conversation and not saved to a file: TODO(evidence) for its path); follow-up `%TEMP%\risu-b715\c478-elite\result.md` (investigator; doc-verifier: claims 1 to 5 CONFIRMED, 6 to 8 PARTIAL).
+- Alternatives rejected: for the storage question (item 4, P2) the senior-advisor weighed the options F, E and B; the draft records that it recommended "E-lite", and that F is quadratic when rerolls are unbounded. The option texts are in the advisor's report, not in the draft: TODO(evidence). Item 1 ("Branches as extra chats") was narrowed by item 7.
+- Related: `MC-815`, `MC-817`, `MC-345`, `MC-774`; CHORE-478, CHORE-474.
+
+**What the maintainer said (verbatim free text).** "I think branch can be reworked into what seems to be similar with agnai. 1. reroll/swipes are stored on previous messages, which user can go back to any time. 2. replying to previous reroll, or hitting branch button creates new branch so in a nutshell - chat becomes tree graph. on upstream, each of these 'branches' would need to be converted back, so that would be the tricky part."
+
+**What was decided (maintainer, option labels as lane A's draft records them).**
+1. Upstream export: "Branches as extra chats (Recommended)". Amended by item 7.
+2. Next step: "Record + read-only sizing (Recommended)".
+3. P1: "Yes, owns its continuation (Recommended)": an alternative reply owns the messages after it.
+4. P2 (where non-active branches live): "Advisor challenge first (Recommended)"; item 5 and item 6 settled it.
+5. P3: "Per-branch memory (Recommended)": copy-on-write, parked per tail head, as the advisor advised.
+6. Q-A: "Unbounded, side list (Recommended)": every alternative is kept until deleted. Storage is the advisor's "E-lite": a fork-only per-chat side list of off-path messages with parent pointers, stored as ordinary type-8 chat chunks under a new `ChatEntry` reference, one `REFS_TABLE` row and a `req` token.
+7. Q-B: "Continuations only (Recommended)": at `.bin` export only alternatives that have a continuation become upstream Branch chats; continuation-less rerolls are omitted behind a warning that names the count. This amends item 1.
+8. Q-C: "Same chat (Recommended)": a branch switch keeps the same chat id and list row.
+9. N1: "Yes, only when branches exist (Recommended)": the `req` token is written only once a chat has kept alternatives. Older builds, the MVP on the Fold 7 among them, open such a profile read-only and delete nothing; `MC-345` item 4's frozen `fmt = 1` is unchanged.
+10. N2: "Leave out + named warning (Recommended)": until the export stage exists, `.bin` export omits alternatives behind a warning that names them (`MC-774`).
+11. N3: "Keep the list (Recommended)": a plugin whole-chat replace keeps the alternatives unless it supplies them.
+12. N4: "Keep, re-attach (Recommended)": Lua full-chat rewrites never delete alternatives; orphans re-attach to the nearest surviving earlier message.
+13. N5: "Drop and flag (Recommended)": a damaged alternatives chunk is dropped, with a notice that names the chat.
+
+- Notes, not the maintainer's words (lane A's draft, from the two investigator reports above):
+  - Measured on the i9-13900KF (best-case hardware; synthetic): the alternatives list for 4000 alternatives is 6.48 MB and 38.8 ms; full copies are 5.89 GiB and about 35 s (scaled).
+  - Lua `setFullChatMain` keeps only `{role, data}`; the plugin `setChatToIndexImpl` replaces the whole chat; `lastDate` is written only by cold-storage restores.
+  - Stage S1 estimate: 450 to 600 source lines and 1300 to 1800 test lines. Gates: `opus-reviewer` at every persistence stage plus `senior-advisor` on S1's shape. The S2 memory rule must precede S3 (advisor).
+  - Not started; no plan is written. Nothing here authorizes application code, a commit or a push.
+
+### MC-782 — Lane A, 2026-10-28: conduct of the 1028 Note 9 phone run: lane G drives both phones, the snapshot and clean-install rules, one Back, the CHORE-396 probe
+
+- Tag: decisions (six `AskUserQuestion` answers, all the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A session; draft `%TEMP%\risu-b715\records-b20\draft.md` (section 2); lane A's log extract. Lane G recorded the ownership answer as `MC-806` in its own notes.
+- Alternatives rejected: not recorded.
+- Related: `MC-503` (amended for this run), `MC-806`, `MC-807`, `MC-510`; CHORE-396, CHORE-397.
+
+**What was decided (maintainer, option labels as lane A recorded them).**
+1. Lane G's next task: "Note 9 phone run (Recommended)".
+2. "Lane G drives them (Recommended)": this amends `MC-503` for this run. Lane G owned both spare Note 9s until it handed them back (lane G recorded this as `MC-806`).
+3. Phone 2 wipe: "Yes, after .bin export (Recommended)". Phone 1: "-AllowClear (Recommended)" for the clean installs of item 7.
+4. Phone 2 snapshot: "Partial backup (Recommended)", excluding character assets (`local-partial-20261028.bin`, 138,206,686 B).
+5. 9d: "Allow one Back (Recommended)".
+6. CHORE-396 probe: "Allow the probe (Recommended)" (phone 1, about 10 minutes, read-only).
+
+- Notes, not the maintainer's words:
+  - Both phones were handed back to lane A on 2026-10-28, which ended `MC-806`. Results are in the Live-State phone-run paragraph and ledger row 4598.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-783 — Lane A, 2026-10-29: after a fourth substantive `[REJECT]` that followed a senior-advisor consult, CHORE-396 and CHORE-397 take plan v5 at once and go to the advisor only at the next reject
+
+- Tag: decisions (two `AskUserQuestion` answers, the option label "v5 now, advisor at next reject (Recommended)", given separately for each ticket; maintainer in lane A, 2026-10-29). Date: 2026-10-29. Sweep ref: none.
+- Source: lane A session; draft `%TEMP%\risu-b715\records-b20\draft.md` (section 2); lane A's log extract. Lane G recorded the CHORE-397 side in `MC-833` (streak ruling).
+- Alternatives rejected: not recorded.
+- Related: `MC-831`, `MC-833`; CHORE-396, CHORE-397.
+
+**What was decided (maintainer).** Gate 1 round 4 was `[REJECT]` for both tickets, the fourth substantive reject for each, after a senior-advisor consult (for CHORE-397 also after the maintainer's design change `MC-831`). The maintainer chose "v5 now, advisor at next reject (Recommended)" for each: round 5 goes to a fresh `opus-reviewer`, and a further reject goes to the advisor before v6.
+
+- Notes, not the maintainer's words:
+  - Both happened: round 5 was `[REJECT]` for both tickets and both went to the advisor; round 6 was `[EDITORIAL]` for both (Roadmap CHORE-396, CHORE-397).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-784 — Lane A, 2026-10-28: the maintainer's Fold 7 gets very warm while browsing earlier messages; filed for later investigation as CHORE-482
+
+- Tag: maintainer report (free text and short answers; maintainer in lane A, 2026-10-28). Date: 2026-10-28 (the draft heads it "2026-10-28/29"; the log line is dated 2026-10-28). Sweep ref: none.
+- Source: lane A session; draft `%TEMP%\risu-b715\records-b20\draft.md` (section 2); lane A's log extract. The questions behind the short answers are not in the draft; the answers are quoted as the draft gives them.
+- Alternatives rejected: none.
+- Related: `MC-475`, `MC-350`; CHORE-482, CHORE-241.
+
+**What the maintainer said (verbatim free text).** "i noticed device(Fold 7) getting very warm while doing something that should be relatively lightweight, such as browsing previous messages. I think these deserves investigations later."
+
+**Short answers (as the draft quotes them).** Chat size: "moderately long, about 200k tokens". Images: "yes, but fairly simple image CSS". The MVP on the Fold 7 was updated: "yes. when we declared that it is safe to update after module unloading and export fix."
+
+- Notes, not the maintainer's words:
+  - The update therefore happened after S4d-1m/S4d-1b and the export fix were declared safe, so the installed build is newer than `f0e397aae`. The exact installed commit and APK hash are not recorded: TODO(evidence). This corrects the Live-State line that said the update was not recorded.
+  - Filed as CHORE-482 (candidate, Roadmap). The Fold 7 is observation only (no adb); the reproduction plan uses a Note 9 with a synthetic chat. The cause is unknown.
+  - Other lane A answers recorded inside rows and entries, not as separate decisions: CHORE-479 owner "Lane F (Recommended)"; the S2b flakes "Merge, ticket the flakes (Recommended)" (CHORE-480, CHORE-481); the notice wording "Add a final period (Recommended)" (lane F recorded it as `MC-828`).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-818 — Lane F, 2026-10-28: CHORE-475 open questions Q-A to Q-F (amends `MC-816` item 2; Q-D replaced by `MC-823`)
+
+- Tag: decisions (`AskUserQuestion` answers, all the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record `Agents/Lanes/lane-F-records.md`, section "MC-818" (committed in `e427c0527`); plan `%TEMP%\risu-lane-f\c475p\plan.md`, section 13.
+- Alternatives rejected: see the lane F record.
+- Related: `MC-816`, `MC-820`, `MC-822`, `MC-823`; CHORE-475.
+
+**What was decided (maintainer, option labels as lane F recorded them).**
+1. Q-A, "Yes, convert": a lone SillyTavern instruct, context or text-completion `.json` imported through Settings also converts, with the same detectors as the bundle.
+2. Q-B, "Read values directly, both": sampler values are read directly in the bundle and in the Playground PARAMETERS path. This replaces the `samplers.includes` rule, which current SillyTavern files defeat.
+3. Q-C, "Name after the file": the Playground STCHAT preset, whose name is empty today, is named after the file.
+4. Q-D, "Keep it, fix only NaN": the `* 0.7` presence-penalty factor stays. **Replaced by `MC-823` (P7) for the converter: the factor is retired.**
+5. Q-E, "Plain item after chat": `post_history` goes into a plain system item placed right after the chat, so it always applies; it does not go into the jailbreak item, which reaches the prompt only while the global Jailbreak toggle is on. This replaces `MC-816` item 2.
+6. Q-F, "Refuse mix; first wins": in one Playground run, a sysprompt file together with an STCHAT file is refused as a type conflict; with two sysprompt files, the first wins.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-819 — Lane F, 2026-10-28: CHORE-474 stage 4 (Ooba, Agnai, Kobold Lite, Character.AI) questions Q1 to Q8 (item 4 amended by `MC-829`; item 5 replaced by `MC-826`)
+
+- Tag: decisions (`AskUserQuestion` answers, all the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-819" (committed in `e427c0527`); sizing `%TEMP%\risu-lane-f\c474s4\result.md`; its verification `c474s4\verify\result.md` corrected the Ooba, Agnai, CAI Tools and licence premises before the questions were sent. The `verify\result.md` citation has the same caveat as `MC-815` (the verifier has no Write tool): TODO(evidence) whether the file exists.
+- Alternatives rejected: see the lane F record.
+- Related: `MC-815`, `MC-817`, `MC-821`, `MC-825`, `MC-826`, `MC-829`; CHORE-474.
+
+**What was decided (maintainer, as lane F recorded it).**
+1. Q1 (a): Character.AI files are the JSON exports of Morse, characterai-dumper and Lianne. CAI Tools' `.jsonl` already imports through S2. Its "Tavern history" zip is not accepted, and its offline `.html` is not added.
+2. Q2 (a): a file holding several chats imports only the chats whose character name matches the open character; the notice says how many were left out.
+3. Q3 (a): Kobold Lite story and adventure saves are refused with a message; only chat and instruct saves import.
+4. Q4 (a): without a settings block, the Kobold mode is inferred: `{{[INPUT]}}`/`{{[OUTPUT]}}` markers mean instruct, `"\n<name>: "` line prefixes mean chat, anything else is a story and is refused under Q3. **Amended by `MC-829` K0 (2026-10-29; the text above is unchanged): a save with no settings block is refused with a message to re-save with "Export Settings" on; the inference no longer applies, and K1 is moot.**
+5. Q5 (a): Agnai keeps the leaf path: it walks back from `treeLeafId` when parents resolve; otherwise it keeps messages in date order up to the `treeLeafId` message, then the last message of each run of character messages. Messages left out count as unkept swipes in the existing notice (`MC-817` item 2); there is no separate branch notice. **Replaced for Agnai by `MC-826` (2026-10-28; the text above is unchanged), after `MC-825`.**
+6. Q6 (a): an Agnai `ooc` message imports as an ordinary user message.
+7. Q7 (a): Ooba user lines come from `visible`, HTML-unescaped; character lines come from `internal`.
+8. Q8 (a): Gate 1 and Gate 2 at `opus-reviewer` for each of stages 4A to 4D, in that order. Each stage sends lane A a merge request after Gate 2 (`MC-780`).
+
+Already decided, not asked (lane F's note): Character.AI is in scope (`MC-815` item 4), and the chat is named after the file (`MC-815` item 7); the name also drops a `.json` extension.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-820 — Lane F, 2026-10-28: CHORE-475 Gate 1 questions Q-G and Q-H
+
+- Tag: decisions (`AskUserQuestion` answers, both the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-820" (committed in `e427c0527`); Gate 1 round 1 verdict `%TEMP%\risu-lane-f\c475p\g1\result.md` (N2, N4). Lane F confirmed N2 in `promptConvertion`: the file replaces the default sequence fields, and the Jinja builder concatenates `system_sequence_prefix`/`system_sequence_suffix`, which current SillyTavern instruct files do not have.
+- Alternatives rejected: see the lane F record.
+- Related: `MC-816`, `MC-818`, `MC-091`; CHORE-475.
+
+**What was decided (maintainer, as lane F recorded it).**
+1. Q-G (a): the literal `undefined` around system messages is fixed in both the Playground and the new Settings import. A missing sequence field becomes empty, and `wrap: true` puts a newline after each sequence, as SillyTavern does. Same cause (`MC-091`); the Playground's instruct output changes.
+2. Q-H (a): one pure converter is called by both entry points, so the same files give the same preset. With an instruct template, the result is a Jinja instruct preset with model `openrouter`; without one (sysprompt, text-completion or context only), it is a plain preset that keeps the template's model. The Playground's output changes for runs without an instruct file.
+
+Accepted with these answers (lane F): CHORE-475 splits into S2a (new Settings paths and the shared converter) and S2b (Playground output changes); the gate tier stays `opus-reviewer`.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-821 — Lane F, 2026-10-28: CHORE-474 S4A question Q-I (empty Ooba `visible` user line)
+
+- Tag: decision (option label relayed by lane A; the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-821" (committed in `e427c0527`); Gate 1 round 1 verdict `%TEMP%\risu-lane-f\c474s4a\g1\result.md` (N2).
+- Alternatives rejected: see the lane F record.
+- Related: `MC-817`, `MC-819`; CHORE-474.
+
+**What was decided (maintainer, as lane F recorded it).** Q-I (a): when an Ooba user line's `visible` text is empty and `internal` holds text, the `internal` text imports as it is, with no notice, the same as when `visible` is missing. This extends `MC-819` item 7. Accepted with it (lane F): Ooba regenerated replies (`metadata.assistant_<i>.versions` longer than 1) count toward the existing unkept-swipes notice (`MC-817` item 2); edited user lines do not.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-822 — Lane F, 2026-10-28: CHORE-475 plan revision 2 questions P1 to P6
+
+- Tag: decisions (`AskUserQuestion` answers, all the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-822" (committed in `e427c0527`); plan `%TEMP%\risu-lane-f\c475p\plan-r2.md`, section 12 (its Q-I to Q-N, relabelled P1 to P6 because Q-I is `MC-821`).
+- Alternatives rejected: see the lane F record.
+- Related: `MC-816`, `MC-818`, `MC-820`; CHORE-475.
+
+**What was decided (maintainer, as lane F recorded it).**
+1. P1 (a): a lone context template, or a bundle with nothing else usable, still creates the plain preset; the skipped notice names "Context Template".
+2. P2 (a): `system_same_as_user` follows SillyTavern: the system prefix and suffix use the input sequence and the input suffix.
+3. P3 (a): Ooba's extra sampler arguments are read by value, like the eight main samplers (`MC-818` item 2).
+4. P4 (a): a lone SillyTavern reasoning or "start reply with" file imported in Settings is refused with the "nothing to import" error.
+5. P5 (a): the preset is named after the first supported file in the order given; inner names are not used.
+6. P6 (a): the Settings SillyTavern chat-completion import also goes through the shared converter, so one file gives one result (`MC-820` item 2). Its size was not measured when asked; the revised plan sizes it.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-823 — Lane F, 2026-10-28: CHORE-475 P7, presence-penalty factor (amends `MC-818` item 4)
+
+- Tag: decision (option label relayed by lane A; the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-823" (committed in `e427c0527`); plan `%TEMP%\risu-lane-f\c475p\plan-r3.md`, P7. Lane F confirmed both lines (Settings `importPreset` computes `presence_penalty * 0.7 * 100` in `database.svelte.ts`; the Playground computes `* 100` in `prompt.ts`); lane A confirmed that requests send the stored value divided by 100.
+- Alternatives rejected: see the lane F record.
+- Related: `MC-818`, `MC-822`; CHORE-475.
+
+**What was decided (maintainer, as lane F recorded it).** P7 (a): the converter's `* 100` wins and the Settings `* 0.7` is retired, so a SillyTavern `presence_penalty` of 0.5 gives 50 in both entry points and requests send the file's own value. This replaces `MC-818` item 4 (Q-D) for the converter; until S2c landed, the interim S2a NaN fix kept the old factor. Accepted with it (lane F): CHORE-475 runs in three stages, S2a, S2b and S2c.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-824 — Lane F, 2026-10-28: CHORE-475 P8, SillyTavern macros in instruct sequences
+
+- Tag: decision (option label relayed by lane A; the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-824" (committed in `e427c0527`); Gate 1 round 2 verdict `%TEMP%\risu-lane-f\c475p\g1r2\result.md` (N11). Four of SillyTavern's 38 shipped instruct presets carry `{{...}}` in their sequences; pasted into the Jinja template as code, this text loses headers, prints `[object Object]`, or, for `{%`, makes every generation throw (reviewer EXEC with `@huggingface/jinja` 0.2.2).
+- Alternatives rejected: see the lane F record.
+- Related: `MC-820`, `MC-822`, `MC-091`; CHORE-475.
+
+**What was decided (maintainer, as lane F recorded it).** P8 (a): macros are substituted as SillyTavern does. `{{user}}` becomes the user's name and `{{char}}` the character's name; `{{name}}` becomes the speaker (the user's name in user turns, the character's in character turns, "System" in system turns); any other `{{...}}` stays literal. Lane F's, under `MC-091` (same cause as `MC-820` item 1): every imported string is embedded as a Jinja string literal, so it renders verbatim apart from these macros. Also lane F's, within `MC-822` item 2: the `system_same_as_user` mapping drops the extra `system_suffix` that doubled the end token (Gate 1 round 2 N10).
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-825 — Lane F, 2026-10-28: CHORE-474 S4B (Agnai) questions A1 and A2 (A1 replaced by `MC-826`)
+
+- Tag: decisions (`AskUserQuestion` answers, both the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-825" (committed in `a5dc083c4`); plan `%TEMP%\risu-lane-f\c474s4b\plan.md`, section 9.
+- Alternatives rejected: see the lane F record. A2 differs from the plan's default.
+- Related: `MC-815`, `MC-819`, `MC-826`; CHORE-474.
+
+**What was decided (maintainer, as lane F recorded it).**
+1. A1 (a), "Import by date": when an Agnai export has no usable `treeLeafId` (missing, or naming no message in the file), every message imports in date order, only the last of each run of character messages is kept, and the dropped ones count toward the unkept-swipes notice (`MC-817` item 2). **Replaced by `MC-826` item 1 (2026-10-28; the text above is unchanged).**
+2. A2 (a), "Keep that name": an Agnai user line sent as another speaker, for example "Narrator", keeps that name; a line sent as the persona keeps none. This is `MC-815` item 6 read literally and differs from the plan's default.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-826 — Lane F, 2026-10-28: CHORE-474 S4B Agnai path rule, classified by links (amends `MC-819` item 5 and `MC-825` item 1; amended by `MC-827`)
+
+- Tag: decisions (option labels relayed by lane A; every answer the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-826" (committed in `a5dc083c4`); Gate 1 round 1 verdict `%TEMP%\risu-lane-f\c474s4b\g1\result.md`.
+- Alternatives rejected: the walk from `treeLeafId` of `MC-819` item 5 and the date rule of `MC-825` item 1.
+- Related: `MC-815`, `MC-817`, `MC-819`, `MC-825`, `MC-827`; CHORE-474.
+
+**Why it changed (lane F's record).** `MC-819` item 5 and `MC-825` item 1 were decided on a premise from the sizing verification (`c474s4\verify\result.md`) that was wrong: that Agnai exports from 2024-11 to 2025-07 contain every branch, with the sample's runs of character messages taken as alternate replies. The S4B Gate 1 reviewer traced Agnai's export of that era: it is the displayed path only. Lane F confirmed it on the sample (messages 12 to 32 alternate between two characters, Sam and Devin, with rising times: a two-character chat, not swipes). Lane F's earlier re-check had covered the leaf index and the parent prefix, not this claim. Under the old rule the sample would keep 13 of 33 messages and label the rest as swipes. The reviewer also found that `treeLeafId` updates only when the chat is opened, in exports before 2026-06-03, so it can name an ancestor. Correction from S4B Gate 1 round 2 (finding 13): the in-memory leaf update on send exists at Agnai `3e23dbc59`, so the date is about 2026-05-28, not 2026-06-03.
+
+**What was decided (maintainer, as lane F recorded it).**
+1. Agnai rule, "Classify by links": replaces `MC-819` item 5 and `MC-825` item 1 for Agnai. A file in which no parent link resolves imports every message in file order, with no notice. A file whose links form one unbranched chain imports that chain and ignores `treeLeafId`. A branched file walks back from `treeLeafId` when it names a tip, and the other branches count toward the unkept-swipes notice (`MC-817` item 2). **Items 1 and 2 are amended by `MC-827`.**
+2. B1, "Newest tip": in a branched file, a stale `treeLeafId` (one with descendants) takes the newest-created tip below it, and an unmatched one takes the newest-created tip overall. The other branches are counted.
+3. B2, "File order, no count": repeated ids or looping links import every message in file order, and nothing is counted.
+4. A2 sub-case, "Keep the name": a user line sent as the Agnai chat's own character (`characterId: imported`, for example "Sam") keeps its name; a user line with no `characterId` keeps none. This extends `MC-825` item 2.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-827 — Lane F, 2026-10-28: CHORE-474 S4B B3, a branched Agnai file imports the newest tip (amends `MC-826` items 1 and 2)
+
+- Tag: decision (option label relayed by lane A; the recommended option; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-827" (committed in `a5dc083c4`); Gate 1 round 2 verdict `%TEMP%\risu-lane-f\c474s4b\g1r2\result.md` (finding 9). In Agnai exports from 2026-01-20 to about 2026-05-28, a user could fork to an older branch and keep chatting while `treeLeafId` stayed on the old tip; walking from the leaf would import the abandoned branch and count the branch on screen as swipes (reviewer, traced in Agnai source and run on the prototype). At the second consecutive rejection, lane F offered the simplest rule.
+- Alternatives rejected: the leaf walk of `MC-826` item 1 and its stale and unmatched rules (item 2).
+- Related: `MC-817`, `MC-826`; CHORE-474.
+
+**What was decided (maintainer, as lane F recorded it).** B3 (a), "Always newest tip": a branched Agnai file always imports the path to its newest-created tip; `treeLeafId` is ignored. This replaces `MC-826` item 1's walk from a leaf tip and item 2's stale and unmatched rules. The other branches still count toward the unkept-swipes notice. Cost accepted: a user who went back to an older branch and stopped there without sending gets the newest branch instead.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-828 — Lane F, 2026-10-28: CHORE-475 S2b Gate 2 finding 3, `presetConverted` ends with a final period
+
+- Tag: decision (option label "Add a final period (Recommended)"; maintainer in lane A, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-828" (committed in `d42d75598`); S2b Gate 2 verdict `%TEMP%\risu-lane-f\c475s2b\g2\result.md` (finding 3). The Playground success notice joins `presetConverted` and `stPartsSkipped` with a space (plan 4.7); `presetConverted` had no final punctuation, so the joined notice ran on. Translator strings `%TEMP%\risu-b715\translate-c475s2c\strings.md`.
+- Alternatives rejected: see the lane F record.
+- Related: `MC-822`; CHORE-475.
+
+**What was decided (maintainer, as lane F recorded it).** Lane F adds the period in en; the translator supplied the lines for ko, cn, zh-Hant, de, es and vi (lane A found that ko, cn and zh-Hant also lacked it), pasted verbatim in S2c. The join stays a space.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-829 — Lane F, 2026-10-29: CHORE-474 S4C (Kobold Lite) questions K0 to K7 (K0 amends `MC-819` item 4)
+
+- Tag: decisions (`AskUserQuestion` answers relayed by lane A on 2026-10-29; the relay gives the option labels without saying which were recommended). Date: 2026-10-29. Sweep ref: none.
+- Source: lane A's relay of 2026-10-29 (coordinator message; lane A's log line, 2026-10-29). Lane F's own record of `MC-829` is not on `main` (`Agents/Lanes/lane-F-records.md` has no `MC-829`): TODO(evidence); recorded here from lane A's relay. The question texts behind the labels were not relayed: TODO(evidence).
+- Alternatives rejected: for K7, the planner's silent strip of the image tokens (lane A's log: "not the planner's silent strip"). The rest are not recorded.
+- Related: `MC-819`, `MC-815`, `MC-817`; CHORE-474.
+
+**What was decided (maintainer, option labels as lane A relayed them).**
+1. K0, "Refuse, ask to re-save": a save with no settings block is refused with a message to re-save with "Export Settings" on. This amends `MC-819` item 4. K1 is moot.
+2. K2, "Count differing messages".
+3. K3, "Story-save refusal".
+4. K4, "Import as disabled".
+5. K5, "First character message".
+6. K6, "Not recognised".
+7. K7, "Strip + count in notice" (not the planner's silent strip): the image tokens are stripped and the notice counts the pictures not kept. Lane A's log adds that the new notice needs locale keys.
+
+- Notes, not the maintainer's words:
+  - Which options were marked recommended is not in the relay: TODO(evidence) from lane F's record.
+  - Context from the relay: S4C Gate 1 was rejected three rounds in a row, and the senior-advisor was consulted; lane A's log gives its root cause as normalising stored strings before comparing them.
+  - Lane F's block `MC-810` to `MC-829` is now full; lane A assigned lane F the new block `MC-850` to `MC-869` (checked unused in `Agents/*.md` and `Agents/Lanes/*.md`).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-806 — Lane G, 2026-10-28: lane G drives both spare Note 9s for the 1028 phone run (amends `MC-503` for this run)
+
+- Tag: decisions (`AskUserQuestion` answers "Note 9 phone run (Recommended)" and "Lane G drives them (Recommended)", plus the run answers below; maintainer in lane A, relayed to lane G, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes `%TEMP%\risu-lane-g\android\notes.md`, section "MC-806"; lane A recorded the same answers as `MC-782`. Results: `%TEMP%\risu-lane-g\android\phone-run-1028\result.md`.
+- Alternatives rejected: not recorded.
+- Related: `MC-503` (amended for this run), `MC-782`, `MC-807`, `MC-510`; CHORE-396, CHORE-397.
+
+**What was decided (maintainer, as lane G recorded it).** Lane G owns phone 1 (`29f3cde9193f7ece`) and phone 2 (`2ac80128013f7ece`) until it hands back; lane A stays off them. The device rules are unchanged: synthetic data and throwaway keys; no adb to the Fold 7; the Tab S9 untouched; its own ports (6500 to 6519) checked free; a serial and package identity check before each command; kill own processes only; no `logcat -c`; no Back key except the C3 Back-cancel check (single keyevent); Wi-Fi off before opening any build; app ID and release key unchanged, no signing secrets; test-only profile with no hand-edited app state; JDK 21 (Gradle's Zulu); no `pnpm install` through a junction. Builds: main `62af604a1`, plus the pre-CHORE-394 base for item 7.
+
+Run answers (maintainer via lane A, 2026-10-28): the procedure was approved by lane A. Phone 2: "Yes, after .bin export (Recommended)": `.bin` export first, `-AllowClear` only if the signer mismatches, the CHORE-166 2C profile not needed, the `.bin` export the only rollback (accepted). Phone 1: "-AllowClear (Recommended)" for item 7: clean install of BASE, then MAIN, no in-place downgrade; if MAIN is slower, ask lane A before re-running in reverse order. Phone 2 snapshot, "Partial backup (Recommended)": "Save Partial Backup Locally (Excluding Character Assets)" is the snapshot (name, size and SHA-256 recorded PC-side); the five large synthetic assets (about 4.5 GiB) are not in it; then MAIN in place.
+
+Both phones were handed back to lane A on 2026-10-28 (phone 2 after item 9d, phone 1 after the CHORE-396 probe), which ended this ownership.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-807 — Lane G, 2026-10-28: a `.bin` opened while a restore question is up is refused as busy (CHORE-397; amended by `MC-808`, partly replaced by `MC-831`)
+
+- Tag: decision (`AskUserQuestion`, option label "Refuse with notice (Recommended)"; maintainer in lane A, relayed to lane G, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes, section "MC-807"; found by phone run 1028 phone 1 (the second `.bin` opened over the first's restore question was silently lost).
+- Alternatives rejected: not recorded.
+- Related: `MC-796`, `MC-799`, `MC-800`, `MC-808`, `MC-831`; CHORE-397.
+
+**What was decided (maintainer, as lane G recorded it).** A `.bin` opened while a restore question is on screen counts as busy and is refused at once with the existing busy refusal (the `MC-799`/`MC-800` pop-up and line), consistent with `MC-796` item 1, and is never silently dropped. The question-phase rule stands after `MC-831`.
+
+- Notes, not the maintainer's words:
+  - Item 4 proper (a second `.bin` after a confirmed first restore, after the reload) was unrun at this point and passed later in the run (Live-State phone-run paragraph).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-808 — Lane G, 2026-10-28: CHORE-397 scope (amends `MC-807`; after-YES refusal replaced by `MC-831`)
+
+- Tag: decisions (`AskUserQuestion` answers "Refuse all with notice" and "Confirm all three", all recommended; maintainer in lane A, relayed to lane G, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes, section "MC-808".
+- Alternatives rejected: not recorded.
+- Related: `MC-807`, `MC-809`, `MC-831`; CHORE-397.
+
+**What was decided (maintainer, as lane G recorded it).**
+1. Q1, "Refuse all with notice": anything arriving while a restore question is open, cards and mixed shares included, is refused with the busy notice.
+2. Q2 to Q4, "Confirm all three": a `.bin` opened during the restore itself is busy and refused the same way; one pop-up as today, no file name, no new strings; after NO, the second `.bin` stays refused.
+
+**Superseded in part by `MC-831` (2026-10-28; the text above is unchanged):** the after-YES refusal is replaced; the question-phase rule (item 1) stands.
+
+- Notes, not the maintainer's words:
+  - The same notes section records the 9d answer "Allow one Back" (`MC-782` item 5) and that the `chatFolders` finding 8e became lane A's CHORE-479, owned by lane F.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-809 — Lane G, 2026-10-28: CHORE-397 questions Q1 to Q3 (replaced by `MC-831`; Q3 timing settled by `MC-830`)
+
+- Tag: decisions (`AskUserQuestion` answers "Refuse it", "Refused with batch" and "Hold pop-up until closed"; maintainer in lane A, relayed to lane G, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes, section "MC-809"; Gate 1 round 1 verdict `gate1-c397\result.md` under `%TEMP%\risu-lane-g\android\`. This closed lane G's block `MC-790` to `MC-809`; lane A assigned the new block `MC-830` to `MC-849`.
+- Alternatives rejected: not recorded.
+- Related: `MC-808`, `MC-830`, `MC-831`; CHORE-397.
+
+**What was decided (maintainer, as lane G recorded it).**
+1. Q1, "Refuse it": a card, module or preset opened during the restore after YES is refused like everything else.
+2. Q2, "Refused with batch": an earlier queued file is refused with the batch; no Kotlin change.
+3. Q3, "Hold pop-up until closed": the refusal pop-up waits until any restore notice is closed.
+
+**Replaced by `MC-831` (2026-10-28; the text above is unchanged):** after YES a file is neither taken nor refused.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-830 — Lane G, 2026-10-28: CHORE-397 pop-up timing "At the end" (settles round 2; after-YES end point replaced by `MC-831`)
+
+- Tag: decision (`AskUserQuestion`, option label "At the end (Recommended)"; maintainer in lane A, relayed to lane G, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes, section "MC-830"; Gate 1 round 2 verdict `gate1-c397-r2\result.md` (N1, N2, questions Q-A and Q-B). First entry of lane G's new block `MC-830` to `MC-849`, assigned by lane A on 2026-10-28.
+- Alternatives rejected: a corrected delivery rule (option b of the round 2 question; its text is in the notes, not reproduced here).
+- Related: `MC-809`, `MC-831`; CHORE-397.
+
+**What was decided (maintainer, as lane G recorded it).** During the restore question the pop-up shows at once. After YES the refusal line shows on the progress at once, and the pop-up comes at one fixed end point: just before the reload (which waits for its OK), or when the restore ends without a reload. A button-less final message the pop-up covered is shown again after OK.
+
+**Superseded in part by `MC-831` (2026-10-28; the text above is unchanged):** the after-YES end point is replaced; the question-phase rule stands.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-831 — Lane G, 2026-10-28: CHORE-397 design B, "refuse only at the question", and PQ1 "Show at once" (replaces `MC-808` after-YES, `MC-809` and the after-YES end point of `MC-830`)
+
+- Tag: decisions (`AskUserQuestion` answers "B: refuse only at the question" and "Show at once"; maintainer in lane A, relayed to lane G, 2026-10-28, after the senior-advisor's consult on Gate 1 round 3). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes, section "MC-831"; advisor consult recorded in the notes ("senior-advisor on CHORE-397 (after 3 rejects)"; the advisor's report path is not in the notes: TODO(evidence)). Lane A confirmed in source that the native queue is a companion-object list.
+- Alternatives rejected: the advisor's options A (never refuse) and C (the round-3 simpler path plus a join rule), and the earlier designs of `MC-808`, `MC-809` and `MC-830`.
+- Related: `MC-807`, `MC-808`, `MC-809`, `MC-830`, `MC-832`, `MC-833`; CHORE-397.
+
+**What was decided (maintainer, as lane G recorded it).** While the restore's question is on screen, including its own inner encrypted or peer question, a file is refused at once with the busy pop-up and the question comes back. After YES, a file is neither taken nor refused: it stays in Android's process-wide native queue and is handled when the restore ends (in the same page after a return with no reload) or by the new page after the reload. PQ1, "Show at once": the pop-up for a refusal while one of the restore's inner questions is on screen shows at once (the notes describe PQ1 as "inner asks after YES: at once vs end point"). This supersedes `MC-808`'s after-YES refusal, `MC-809` Q1 to Q3 and `MC-830`'s after-YES end point; `MC-807` and `MC-830`'s question-phase rule stand.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-832 — Lane G, 2026-10-28: a card opened during a Settings `.bin` restore or a restore-point load is a separate ticket, CHORE-398
+
+- Tag: decision (`AskUserQuestion` PQ2, option label "Separate ticket"; maintainer in lane A, relayed to lane G, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes, section "MC-832".
+- Alternatives rejected: refusing while a `.bin` load is running (the other PQ2 option, as the notes' round 3 entry describes it: "refuse while backupLoad").
+- Related: `MC-831`; CHORE-397, CHORE-398.
+
+**What was decided (maintainer, as lane G recorded it).** A card opened during a Settings `.bin` restore or a restore-point load (imported, then replaced) is CHORE-398, not CHORE-397. CHORE-398 is not started.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-833 — Lane G, 2026-10-29: CHORE-397 outside prompts during the restore's working phase are a recorded limitation, with the progress line still set (extended by `MC-834` and `MC-835`)
+
+- Tag: decision (`AskUserQuestion` PQ-A, option label "Limitation + progress line"; maintainer in lane A, relayed to lane G, 2026-10-29). Date: 2026-10-29. Sweep ref: none.
+- Source: lane G notes, section "MC-833". Its streak ruling is the lane A decision `MC-783`.
+- Alternatives rejected: not recorded.
+- Related: `MC-783`, `MC-831`, `MC-834`, `MC-835`; CHORE-397.
+
+**What was decided (maintainer, as lane G recorded it).** An outside prompt (a V3 plugin confirm or permission) on screen during the restore's working phase is accepted as a recorded limitation; when the hook takes and refuses it, it also sets the existing `busyRefusalLine` so the progress still shows it. No new strings. Streak ruling for both tickets: v5 now to a fresh `opus-reviewer` as round 5; a further `[REJECT]` goes to the senior-advisor before v6 (`MC-783`). CHORE-397 v5 takes the round-4 simpler path (a `pageEnding` flag from `LocalBackupEnd`; no sticky flag in `restoreReload.ts`).
+
+**Extended by `MC-834` and `MC-835` (2026-10-29; the text above is unchanged):** two further windows are accepted as limitations.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-834 — Lane G, 2026-10-29: CHORE-397 the pre-busy window after YES is covered by `MC-833`'s acceptance
+
+- Tag: decision (`AskUserQuestion`, option label "Yes, record as limitation"; maintainer in lane A, relayed to lane G, 2026-10-29). Date: 2026-10-29. Sweep ref: none.
+- Source: lane G notes, section "MC-834" (finding E3.2, per the handoff and the notes).
+- Alternatives rejected: not recorded.
+- Related: `MC-833`, `MC-835`; CHORE-397.
+
+**What was decided (maintainer, as lane G recorded it).** `MC-833`'s acceptance also covers the short window after YES and before `beginBusy('backupLoad')`: an at-once refusal there sets no `busyRefusalLine` (`isBusy()` is false) and its pop-up may be replaced unread by the next `alertWait` or progress. Recorded limitation; no fix.
+
+- Notes, not the maintainer's words:
+  - The same notes section records that lane A agreed CHORE-399 as a candidate (finding O1 of the CHORE-396 Gate 1 round 6): on `main` a zip whose many tiny entries arrive in one large stream chunk overflows the stack and is refused as an invalid zip; a visible refusal, not silent loss; real-card likelihood unmeasured; not scheduled until lane A or the maintainer schedules it.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-835 — Lane G, 2026-10-29: CHORE-397 a restore that throws after replacing data drops a file waiting for the restart (limitation accepted; lane G parked)
+
+- Tag: decisions (the throw-after-install limitation accepted; "Park after the coder ends" chosen; maintainer in lane A, relayed to lane G, 2026-10-29). Date: 2026-10-29. Sweep ref: none.
+- Source: lane G notes, section "MC-835"; Gate 1 round 6 finding E2 of CHORE-397; handoff `Agents/Handoff-2026-10-28-laneG.md` (living and uncommitted; read only).
+- Alternatives rejected: not recorded.
+- Related: `MC-833`, `MC-834`; CHORE-396, CHORE-397.
+
+**What was decided (maintainer, as lane G recorded it).**
+1. A restore that throws after replacing data ends committed (`pageEnding`): a file that arrives then waits in the native queue for the restart, and the restart drops it. Accepted as a recorded limitation.
+2. Lane G's account was at 99%. "Park after the coder ends": the CHORE-396 coder finishes and commits its named paths to `lane-g/chore396` (no push); nothing new starts (no Gate 2, no CHORE-397 coder); if the coder died partway the worktree stays as it is and is recorded half-applied. Resume after the quota reset from the handoff.
+
+- Notes, not the maintainer's words:
+  - Later, 2026-10-29, the maintainer directly told lane G to launch CHORE-396 Gate 2 round 1 (lane G's handoff); its outcome is pending. Item 2's "no Gate 2" is unchanged above. on `lane-g/chore396` (parent `a1991d7db`), not pushed (the handoff, and `git rev-parse` in this checkout resolves the hash).
+  - Lane A's note N1 (pre-existing, no ticket): an ordinary drain during a non-restore app reload takes the file into the dying page; the reviewer judged it effectively unreachable on Android.
   - Nothing here authorizes application code, a commit or a push.
