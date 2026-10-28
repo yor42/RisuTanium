@@ -2446,6 +2446,7 @@ export const languageEnglish = {
     assetIntegrityWarnOnStartup: "Warn on startup if a quick sample check finds corruption",
     assetIntegrityVerifyButton: "Verify Asset Cache Now",
     cardFileIncomplete: "This card file is incomplete or damaged, so it was not imported.",
+    cardFileUnsafeLayout: "This file stores some of its contents in a way this app cannot read safely, so nothing was imported from it. Re-save it as a zip with another tool and try again.",
     cardFileEntryTooLarge: (fileName: string, limitMiB: number) =>
         `The file "${fileName}" inside this card is larger than the ${limitMiB} MB limit, so the card was not imported.`,
     cardFileChanged: "The card file changed or could not be read while it was being imported, so it was not imported. Try importing it again.",
