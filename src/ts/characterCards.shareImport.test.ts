@@ -424,6 +424,31 @@ describe('#import= links', () => {
         expect(window.location.hash).toBe('')
     })
 
+    // Classification: the suffix table maps .byaf to a card, so the link reaches the card import (a base classifies it as an unsupported file).
+    test('a .byaf link is classified as a card and imports as a character (two passes read the same File)', async () => {
+        const setupClone = globalThis.safeStructuredClone
+        globalThis.safeStructuredClone = structuredClone
+        try {
+            const manifest = { schemaVersion: 1, characters: ['characters/c1/character.json'], scenarios: ['scenarios/s1.json'] }
+            const character = { schemaVersion: 1, id: 'c1', name: 'Linked', images: [] }
+            const scenario = { schemaVersion: 1, narrative: 'n', firstMessages: [{ text: 'hi' }] }
+            const bytes = fflateZipArchive([
+                ['manifest.json', enc.encode(JSON.stringify(manifest))],
+                ['characters/c1/character.json', enc.encode(JSON.stringify(character))],
+                ['scenarios/s1.json', enc.encode(JSON.stringify(scenario))],
+            ])
+            const res = new Response(new U8(bytes), { headers: { 'content-disposition': 'attachment; filename="cool.byaf"' } })
+            routes.set('https://files.test/dl', () => res)
+            setUrl('/#import=https://files.test/dl')
+            await characterURLImport()
+            expect(h.errors).toEqual([])
+            expect(charName(0)).toBe('Linked')
+            expect(parseArgs.map((a) => (a as File).name)).toEqual(['cool.byaf', 'cool.byaf'])
+        } finally {
+            globalThis.safeStructuredClone = setupClone
+        }
+    })
+
     test('a link answered with a non-2xx status is refused with noData and its body is never read', async () => {
         const res = new Response(new U8(await charxBytes('Linked')), { status: 404, headers: { 'content-disposition': 'attachment; filename="cool.charx"' } })
         const reads = watched(res)

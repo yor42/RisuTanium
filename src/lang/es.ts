@@ -2309,6 +2309,8 @@ export const languageSpanish = {
     cardFileIncomplete: "Este archivo de tarjeta está incompleto o dañado, por lo que no se importó.",
     cardFileEntryTooLarge: (fileName: string, limitMiB: number) => `El archivo "${fileName}" dentro de esta tarjeta supera el límite de ${limitMiB} MB, por lo que la tarjeta no se importó.`,
     cardFileChanged: "El archivo de la tarjeta cambió o no se pudo leer durante la importación, por lo que no se importó. Inténtalo de nuevo.",
+    byafUnsupportedVersion: "Este archivo de Backyard usa una versión de formato que esta aplicación no puede leer, por lo que no se importó.",
+    byafSeveralCharacters: "Este archivo de Backyard contiene más de un personaje, algo que esta aplicación no puede importar, por lo que no se importó.",
     cardImageTooLarge: (limitMiB: number) => `La imagen de esta tarjeta supera el límite de ${limitMiB} MB, por lo que la tarjeta no se importó.`,
     assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) => `"${fileName}" supera los ${limitMiB} MB que este navegador puede almacenar, por lo que no se guardó.`,
     assetFilesTooLargeForLimit: (fileNames: string[], limitMiB: number) => {

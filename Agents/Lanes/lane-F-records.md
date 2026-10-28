@@ -423,7 +423,7 @@ Q-F6b, asked: "When several files are picked at once and some are too large, wha
 
 ### Import batch (CHORE-470 to CHORE-475; worktree `.claude/worktrees/Lane-F-import`, branch `lane-f/import-formats` from `2648a7ce5`, 2026-10-28)
 
-Lane F's next IDs for this batch: MC-761, CHORE-376, row 3788 (lane A's brief, 2026-10-28). After MC-768 the MC-750 to MC-769 block has only MC-769 left. Lane A assigned a new MC block, MC-810 to MC-829 (2026-10-28; lane A records it in batch 19). MC-769, MC-810 and MC-811 are used (CHORE-473), so the next MC ID is MC-812. CHORE-377 is used, so the next CHORE ID is CHORE-378. CHORE IDs run to 389 and rows to 3899. The old `.claude/worktrees/Lane-F` holds uncommitted edits to this file that this copy does not include.
+Lane F's next IDs for this batch: MC-761, CHORE-376, row 3788 (lane A's brief, 2026-10-28). After MC-768 the MC-750 to MC-769 block has only MC-769 left. Lane A assigned a new MC block, MC-810 to MC-829 (2026-10-28; lane A records it in batch 19). MC-769, MC-810 and MC-811 are used (CHORE-473), so the next MC ID was MC-812. MC-812, MC-813 and MC-814 are used (CHORE-470), so the next is MC-815. CHORE-377 is used, so the next CHORE ID is CHORE-378. Rows up to 3824 are used (CHORE-470 stage 1), so the next row is 3825. CHORE IDs run to 389 and rows to 3899. The old `.claude/worktrees/Lane-F` holds uncommitted edits to this file that this copy does not include.
 
 Standing rule from 2026-10-28 (the maintainer's "Branch commits OK (Recommended)", relayed by lane A):
 - After a stage passes Gate 2, lane F may commit to its own branch `lane-f/import-formats`, but must not push.
@@ -561,6 +561,75 @@ Standing rule from 2026-10-28 (the maintainer's "Branch commits OK (Recommended)
   - a JSON v2 wrapper without `spec` is read through its `data`.
 - Related: `MC-769`, CHORE-377.
 
+### MC-812 — maintainer in lane A, 2026-10-28: Backyard `.byaf` character import, stage 1 (CHORE-470, MC-778 questions Q22 to Q37)
+
+- Tag: decisions (`AskUserQuestion` answers by option label, relayed by lane A). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28. All 16 answers were the recommended option (a).
+- The questions were listed by an independent investigator for the MC-778 grilling step (`%TEMP%\risu-lane-f\c470\grill\result.md`). That step re-verified the sizing at `179821d2c` and the MIT spec copies.
+- Lane F also read the spec repo's three sample archives as data (`%TEMP%\risu-lane-f\c470\samples\inspect.txt`). Each is stored, with no data descriptors. Each has directory entries, and `character.json` comes after the images in zip order. None contains a placeholder.
+- Answers:
+  1. **Q22 "Two passes":** the JSON entries are read first, then only the images `character.json` lists. A refusal saves nothing, and unlisted entries (backgrounds, directory entries, stray files) are never saved.
+  2. **Q23 "Skip the image":** a listed image is skipped, and the rest imports, when it is missing, its path is unsafe (it escapes `characters/<id>/` or has a backslash), or its extension is unsupported. If the first image is skipped, the next usable one becomes the avatar.
+  3. **Q24 "Refuse, new message":** a `schemaVersion` other than 1 in the manifest, the character or a scenario refuses the archive with a new string saying it uses a format version this app can't read.
+  4. **Q25 "Refuse, new message":** more than one character in the manifest refuses the archive with a new string.
+  5. **Q26 "displayName plus nickname":** the card name is `displayName` and the nickname is the short `name` when it differs. `{{char}}` uses the nickname. When one is blank the other is used; when both are blank the archive is refused.
+  6. **Q27 "First scenario plus alternate first messages, no notice":**
+     - The first scenario gives the scenario (`narrative`), the system prompt (`formattingInstructions`), the example messages (`<START>`-joined) and the first message. If its first message is empty, the first non-empty one in scenario order is used.
+     - Later scenarios give only their first messages, as alternate first messages, deduplicated.
+     - Their other fields are dropped silently.
+  7. **Q28 "Avatar plus alternate icons, no default avatar":** `images[0]` is the avatar, and the rest go to the alternate-icon gallery (`ccAssets`), named by their labels. A character with no usable image imports with no avatar.
+  8. **Q29 "Split keys on commas":**
+     - Each lore item becomes one entry. Its key is split on commas and trimmed, and empty parts are dropped. This is SillyTavern's choice, not the spec's.
+     - The entry is not always active, its order is the item's position, its comment is the original key and its content is the value.
+     - An entry whose key list ends up empty imports with an empty key.
+  9. **Q30 "Convert placeholders":**
+     - `{user}`, `{character}`, `#{user}:` and `#{character}:` become `{{user}}`/`{{char}}`. Matching is case-insensitive, and doubled braces are left alone.
+     - This applies to the persona, narrative, formatting instructions, first messages, examples and lore, not to the names.
+     - The only evidence for the syntax is SillyTavern's importer.
+  10. **Q31 "Tag nsfw":** `isNSFW: true` adds the tag `nsfw`.
+  11. **Q32 "Creator, URL in creator notes":** `author.name` becomes the creator and `author.backyardURL` goes into the creator notes.
+  12. **Q33 "Parse ISO dates":** `createdAt`/`updatedAt` become the creation and modification dates in unix seconds. An unparsable date becomes 0, with no refusal.
+  13. **Q34 "Existing caps":** manifest, character and scenario JSON get the existing 50 MiB metadata cap and its too-large message. Images keep the existing asset limit. No new numbers, and no entry-count cap.
+  14. **Q35 "Reuse existing messages":** new strings only for Q24 and Q25.
+      - No end record, or an unreadable zip, shows the incomplete-file message.
+      - A missing or invalid manifest, `character.json` or first scenario shows the invalid-card message.
+      - A missing or invalid later scenario is skipped silently.
+      - Unknown extra properties are ignored, and non-string fields import as `''`.
+  15. **Q36 "Classifier, Android unchanged":** `.byaf` goes in `importSuffixes`, so desktop-opened files and shared links import it. The Android open-with allow-list is unchanged (`MC-575`; CHORE-471).
+  16. **Q37 "Exact entry names":** `manifest.json` is at the root, names use forward slashes and are case-sensitive, as the spec writes them.
+- Lane A's conditions:
+  - The two new strings go into `en.ts`; the other locales come through lane A's translator before the trial.
+  - The merge needs `MC-500`.
+- Related: `MC-575`, `MC-769`, `MC-811`, `MC-778`, `MC-500`, `MC-813`.
+
+### MC-813 — maintainer in lane A, 2026-10-28: in a `.byaf` import, unlisted entries are not size-limited, and pass 1 keeps every matching JSON entry (CHORE-470 stage 1, MC-778 follow-ups Q38 and Q39; refines `MC-812` 1 and 13)
+
+- Tag: decisions (`AskUserQuestion` answers by option label, relayed by lane A). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28. Both answers were the recommended option. The questions came from the stage 1 plan draft (`%TEMP%\risu-lane-f\c470\plan\plan.md`, section 13).
+- Answers:
+  1. **Q38 "Ignore its size":** an entry the archive does not list is read through and dropped, and the asset size limit does not apply to it. This includes backgrounds, directory entries and stray files.
+  2. **Q39 "Accept it":** pass 1 keeps every entry named `manifest.json`, `characters/<x>/character.json` or `scenarios/<x>.json`, whether or not the manifest lists it. Each is capped at 50 MiB, with no total cap.
+- Alternatives rejected:
+  - Q38: refuse the archive with the too-large message, as CharX does for any entry.
+  - Q39: a total cap on kept JSON (a new number), or keeping only the entries the manifest lists.
+- Lane A confirmed lane F's reading of `MC-812`:
+  - a later scenario whose `schemaVersion` is not 1 refuses the archive (Q24);
+  - a missing or unparsable later scenario is skipped (Q35).
+- Related: `MC-812`.
+
+### MC-814 — maintainer in lane A, 2026-10-28: `.byaf` stage 1 is TypeScript only; desktop open-with for `.byaf` moves to CHORE-471 (CHORE-470, MC-778 follow-up Q40; corrects `MC-812` 15)
+
+- Tag: decision (`AskUserQuestion` answer by option label, relayed by lane A). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28: "TS only; desktop later (Recommended)".
+- The question came from CHORE-470 stage 1 Gate 1 round 1, B2 (`%TEMP%\risu-lane-f\c470\g1\result.md`). `MC-812` 15 had said that `.byaf` in `importSuffixes` makes desktop-opened files import it. That was lane F's error in the question text. Desktop open-with is filtered on the Rust side (`src-tauri/src/launch_inputs.rs` and the `tauri.conf.json` `fileAssociations`), which pass on only risum, risup and charx.
+- Answer:
+  - stage 1 imports `.byaf` from the picker, by drag and drop, and from shared links;
+  - the `importSuffixes` entry stays, for shared links, URL imports and the PWA launch queue (drag and drop calls `importCharacterProcess` directly, so it needs no suffix entry);
+  - desktop open-with for `.byaf` moves to CHORE-471, together with Android open-with.
+- Alternative rejected: add `byaf` to the Rust filter and `fileAssociations` in stage 1.
+- `MC-812` 15 is corrected accordingly; its Android part (`MC-575` unchanged) stands.
+- Related: `MC-812`, `MC-575`, CHORE-471.
+
 ## CHORE changes
 
 ### CHORE-373 — Android video inlays are displayed by reading the whole file (new; follow-up to CHORE-372)
@@ -684,6 +753,11 @@ Standing rule from 2026-10-28 (the maintainer's "Branch commits OK (Recommended)
   - Text that triggers add to `unformated.lastChat` is never sent in a prompt-template run, because the template switch in `src/ts/process/index.svelte.ts` has no `lastChat` case.
   - The non-template path walks `formatOrder` through `unformated[...]`, so it does send that text.
 - Status (2026-10-28): open, not sized. Upstream compatibility is to be checked when sized.
+
+### CHORE-471 — scope update (Android open-with; import batch, 2026-10-28)
+
+- Added by `MC-814`: desktop open-with for `.byaf` is now in CHORE-471's scope, together with Android open-with. That covers the Rust filter in `src-tauri/src/launch_inputs.rs` and the `tauri.conf.json` `fileAssociations`. Lane A carries this to the Roadmap in batch 19.
+- Noted by lane F, 2026-10-28, from CHORE-470 plan revision 2: the PWA open-with list (`public/manifest.json` `file_handlers`) also names only `.charx`, `.risup` and `.risum`. That is a third open-with surface for `.byaf`, in the same spirit as `MC-814`, and it stays out of CHORE-470 stage 1. A desktop file association for `.byaf` would also make the installer claim a type the Backyard app opens, which is a user-visible trade-off for that decision.
 
 ### CHORE-377 — Card imports with null or missing nested data throw instead of refusing (new; import batch, 2026-10-28)
 
@@ -815,6 +889,17 @@ In the shared Investigation-Ledger format. Token counts were not measured for th
 | 3811 | 2026-10-28 | CHORE-473 stage 2 Gate 1 round 2 | `opus-reviewer` | not measured | no | [EDITORIAL], Z1 to Z7, folded in. The expected lock diff matches the probe exactly. In a scratch copy, 20 reproducers were red by assertion, 3 guards green and 169 of 169 tests passed with the plan applied, with 9 of 9 mutants killed. Evidence: `%TEMP%\risu-lane-f\c473s2\g1r2\result.md`. |
 | 3812 | 2026-10-28 | CHORE-473 stage 2 implementation | lane F (dependency); `sonnet-coder` (code) | not measured | no | Lane F ran `pnpm add yaml@2.9.1 --save-exact` in its own worktree, and `git hash-object` of both files matched the probe. The coder worked under an exact five-file grant, revoked after the hand-back. Red on the untouched source: 21 reproducers failed by assertion and 3 guards passed; 10 unit tests could not run on the base and are not counted. Lane F converted the new test file to CRLF (hash unchanged). It then ran 32 files and 742 tests, all passed; `pnpm check`, 0 errors; and `pnpm build`, where the parser is only in `browser-DY5MMOYx.js` (94.6 KB), loaded by a dynamic import. Evidence: `%TEMP%\risu-lane-f\c473s2\impl\`, `red\stage2.log`, `dep\deps.diff`. |
 | 3813 | 2026-10-28 | CHORE-473 stage 2 Gate 2 | `opus-reviewer` | not measured | no | [APPROVE]. The red run was rebuilt by module substitution: 21 reproducers red by assertion, 3 guards green. 17 of 20 mutants were killed. The survivors are the branch placed after the write-only `statics.imports`, `uniqueKeys: false` (no duplicate-key fixture) and a buffered stream (no caller passes one); none was required. The dependency is exactly as planned and the installed files are hash-identical to the tarball. G4, a raw BOM fixture, was changed to a `﻿` escape by lane F (test only; 126 passed). Evidence: `%TEMP%\risu-lane-f\c473s2\g2\result.md`. |
+| 3814 | 2026-10-28 | CHORE-470 stage 1 MC-778 grilling | subagent (independent of the draft) | not measured | no | Draft `%TEMP%\risu-lane-f\c470\draft-plan.md` produced C1 to C25, S1 to S17 and questions Q1 to Q16. They went to the maintainer through lane A, and the answers are `MC-812`. The spec's three sample archives were read as data in scratch only. Evidence: `%TEMP%\risu-lane-f\c470\grill\result.md`, `samples\inspect.txt`. |
+| 3815 | 2026-10-28 | CHORE-470 stage 1 plan revision 1 | `investigator` | not measured | no | Two streaming passes through one generalised `CharXImporter`. Ran a scratch fflate probe on the directory, stored and deflated entries, placeholder conversion and dates. Evidence: `%TEMP%\risu-lane-f\c470\plan\plan.md`, `plan\probe.mjs`. |
+| 3816 | 2026-10-28 | CHORE-470 stage 1 Gate 1 round 1 | `opus-reviewer` | not measured | no | [REJECT], B1 to B8 (substantive 1 of 3). The follow-up questions Q38 to Q40 went to the maintainer and became `MC-813` and `MC-814`. Evidence: `%TEMP%\risu-lane-f\c470\g1\result.md`. |
+| 3817 | 2026-10-28 | CHORE-470 stage 1 plan revision 2 | `investigator` | not measured | no | Folded in B1 to B8, `MC-813` and `MC-814`; source reads only, nothing run. Evidence: `%TEMP%\risu-lane-f\c470\plan2\plan.md`. |
+| 3818 | 2026-10-28 | CHORE-470 stage 1 Gate 1 round 2 | `opus-reviewer` | 178,980 (subagent) | no | [REJECT], D1 to D5 (substantive 2 of 3). D1: pass 1's sizes did not match what pass 2 compares. D2: R11 could not catch M4. D3: editorial. D4: check order, settled by lane F with version checks first; lane A agreed. D5: lane F's `MC-814` wording, corrected. At the second rejection lane F reconsidered the mechanism and kept it: neither reviewer found a simpler one, and D1's fix closes the class. Evidence: `%TEMP%\risu-lane-f\c470\g1r2\result.md`, `g1r2\probe\`. |
+| 3819 | 2026-10-28 | CHORE-470 stage 1 plan revision 3 | `investigator` | 138,881 (subagent) | no | D1: sizes are the maximum of declared and decoded, across duplicates; R14 and R15 added. D2: R11 with an unlisted filler of at least 1.5 MiB. D3 pinned in G-ROUTE. D4 reorder plus R4b. Section 2.2 gives the route chains (picker, drag and drop, shared links), and R16 is the dropped-`.byaf` test (lane A's request). Ran a scratch vitest probe of stand-ins: 5 of 5 passed. Evidence: `%TEMP%\risu-lane-f\c470\plan3\plan.md`, `p3-run.txt`. |
+| 3820 | 2026-10-28 | CHORE-470 stage 1 Gate 1 round 3 | `opus-reviewer` | 183,205 (subagent) | no | [EDITORIAL], E1 to E5, all binding on the coder; the rejection streak ends. R16 was executed: it loads and is red on HEAD by assertion. Evidence: `%TEMP%\risu-lane-f\c470\g1r3\result.md`. |
+| 3821 | 2026-10-28 | CHORE-470 stage 1 implementation | `sonnet-coder` | 235,063 (subagent) | no | Exact ten-file grant, revoked after the hand-back; lane F converted the five new files to CRLF with the CR-stripped hash unchanged. Red on the base: 64 tests failed by assertion and the guards passed. M1 to M8 ran on scratch copies only, each killed by at least one test, with the repo hashes unchanged. `pnpm check`: 0 errors. localeParity fails until the translator adds the two keys. Evidence: `%TEMP%\risu-lane-f\c470\impl\result.md`. |
+| 3822 | 2026-10-28 | CHORE-470 stage 1 Gate 2 round 1 | `opus-reviewer` | 206,348 (subagent) | no | [REJECT], F1 to F7 (substantive: F1 only). F1: the R11 descriptor variant kept a trusted directory, so it passed under M4 and under X4 (no decoded-size write). F2: lore `insertion_order` counted only object items, against `MC-812`. F3: listed path shapes were not checked. F4 to F7 editorial or notes. The reviewer reproduced the 64 base failures, and M1 = 14, M4 = 4, M7 = 5 tests killed. moduleInstallRace fails on HEAD too (load timeout). Evidence: `%TEMP%\risu-lane-f\c470\g2\result.md`. |
+| 3823 | 2026-10-28 | CHORE-470 stage 1 Gate 2 remediation | `sonnet-coder` | 100,235 (subagent) | no | Exact seven-file grant, revoked after the hand-back. F1: the variant is now `untrusted()`; M4 fails 5 tests and X4 fails it, each with saveCalls 1. F2 and F3 fixed, red first. F5 and F6 done. `pnpm check`: 0 errors. One unused scratch script broke the double-quote rule; it was never run. Evidence: `%TEMP%\risu-lane-f\c470\fix1\result.md`. |
+| 3824 | 2026-10-28 | CHORE-470 stage 1 Gate 2 round 2 | `opus-reviewer` | 136,691 (subagent) | no | [EDITORIAL], G1 and G2. F1 to F6 were verified by scratch runs. Targeted runs: 4,401 passed. The default-settings timeouts in mcpRegistry and moduleInstallRace are unrelated: those files do not import the changed modules and pass alone. `pnpm check`: 0 errors. Lane F applied G1 (R11 retitled as a mutant control) and G2 (the refusal-table title prints the label only); the two files pass, 120 of 120. Evidence: `%TEMP%\risu-lane-f\c470\g2r2\result.md`. |
 
 ## Handoff
 

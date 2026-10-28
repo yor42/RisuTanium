@@ -668,7 +668,7 @@ describe('importOpenedSources', () => {
     })
 
     test('names outside the allow-list are refused with the unsupported-file reason and never opened', async () => {
-        for (const name of ['notes.png', 'card.json', 'backup.bin', 'noextension', '', 'photo.jpg', 'x.charx.zip']) {
+        for (const name of ['notes.png', 'card.json', 'backup.bin', 'noextension', '', 'photo.jpg', 'x.charx.zip', 'a.byaf', 'A.BYAF']) {
             vi.mocked(open).mockClear()
             h.last = 'none'
             await importOpenedSources([{ name, path: 'content://p/9' }])
@@ -692,7 +692,7 @@ describe('importOpenedSources', () => {
 
     // Guard: the drain routing asks this predicate, and the import must agree with it for every name.
     test('isOpenedSourceImportable is true exactly for the names the import does not refuse', async () => {
-        for (const name of ['a.charx', 'A.CHARX', 'b.risum', 'c.risup', 'd.risupreset', 'e.preset', 'notes.png', 'backup.bin', 'x.charx.zip', 'noextension', '']) {
+        for (const name of ['a.charx', 'A.CHARX', 'b.risum', 'c.risup', 'd.risupreset', 'e.preset', 'notes.png', 'backup.bin', 'x.charx.zip', 'a.byaf', 'A.BYAF', 'noextension', '']) {
             vi.mocked(open).mockClear()
             h.files.set('content://p/9', new U8([1, 2, 3]))
             h.last = 'none'

@@ -130,18 +130,33 @@ export function assetByteLimit(): number {
     return Math.min(charxLimits.assetBytes, storeAssetLimitBytes());
 }
 
-function entryLimit(name: string): number {
-    return name === 'card.json' || name === 'module.risum' ? charxLimits.metadataBytes : assetByteLimit();
-}
+/**
+ * What the importer does with an entry: `card` keeps it as the card JSON, `module` keeps it as the module bytes, `asset`
+ * saves it, `text` keeps its bytes in `CharXImporter.texts`, `drop` reads it to its end and keeps nothing.
+ */
+export type EntryKind = 'card' | 'module' | 'asset' | 'text' | 'drop'
 
-// An entry that is saved as an asset (not card.json, module.risum or other JSON).
-function isStreamableAsset(name: string): boolean {
-    return name !== 'card.json' && name !== 'module.risum' && !isIgnoredJson(name)
-}
+/**
+ * A route is the kind of an entry together with the largest size the entry may have. `Infinity` is legal only for
+ * `drop`: the limit is compared with `>`, so it never refuses.
+ */
+export type EntryRoute = { kind: EntryKind, limitBytes: number }
+export type EntryRouter = (name: string) => EntryRoute
 
-// JSON other than card.json is not used by the import.
+// JSON other than card.json is not used by the CharX import.
 function isIgnoredJson(name: string): boolean {
     return name.endsWith('.json') && name !== 'card.json';
+}
+
+// The CharX routing. Limits are read on every call because they are mutable.
+const defaultRoute: EntryRouter = (name) => {
+    if(name === 'card.json'){
+        return { kind: 'card', limitBytes: charxLimits.metadataBytes }
+    }
+    if(name === 'module.risum'){
+        return { kind: 'module', limitBytes: charxLimits.metadataBytes }
+    }
+    return { kind: isIgnoredJson(name) ? 'drop' : 'asset', limitBytes: assetByteLimit() }
 }
 
 // The upper bound of a central directory that is read ahead of the import.
@@ -1371,10 +1386,22 @@ export class CharXImporter{
     // Extracted module binary data
     moduleData:Uint8Array|undefined
 
+    // Bytes of the entries routed as `text`, by entry name (the last copy of a name wins)
+    texts:{[key:string]:Uint8Array} = {}
+
+    // Per entry name, the largest of the sizes any copy of the name declared in its local header (0 when it declares none)
+    // and the decoded length any copy reached. These are the quantities the size checks of a later pass over the same
+    // bytes compare, so a caller can refuse an oversize entry before that pass saves anything. The central directory's
+    // size is not recorded: the later pass refuses on it before it reads any chunk.
+    sizes:{[key:string]:number} = {}
+
     // Configuration
     alertInfo:boolean = false  // Show progress alerts to user
 
-    constructor(){
+    readonly #route: EntryRouter
+
+    constructor(route: EntryRouter = defaultRoute){
+        this.#route = route
         this.unzip = new fflate.Unzip()
         this.unzip.register(fflate.UnzipInflate)
         this.unzip.onfile = (file) => this.#handleFile(file)
@@ -1406,7 +1433,7 @@ export class CharXImporter{
      * parse() rejects with a CharXParseError whose origin says where the first failure came from. Nothing is
      * started, queued or shown after that failure, and the completion promise is never settled.
      *
-     * An entry larger than its limit in `charxLimits` fails the parse with origin 'size'. When the central directory
+     * An entry larger than the limit its route gives fails the parse with origin 'size'. When the central directory
      * of a Uint8Array or File can be read, that is decided before any entry is read, so nothing has been saved.
      * Otherwise (a stream, or a directory that cannot be trusted) it is decided while the entry streams in, so assets
      * of earlier entries may already have been saved.
@@ -1440,7 +1467,7 @@ export class CharXImporter{
         if(!(data instanceof ReadableStream)){
             try {
                 const directory = await readZipDirectory(data)
-                const oversize = directory?.entries.find(entry => entry.size > entryLimit(entry.name))
+                const oversize = directory?.entries.find(entry => entry.size > this.#route(entry.name).limitBytes)
                 if(oversize){
                     this.#recordSize(oversize.name)
                 }
@@ -1523,7 +1550,7 @@ export class CharXImporter{
 
     /** Records that the entry `entryName` is larger than its limit. */
     #recordSize(entryName:string) {
-        const limitBytes = entryLimit(entryName)
+        const limitBytes = this.#route(entryName).limitBytes
         this.#record('size', new Error(`${entryName} is larger than ${limitBytes} bytes`), { entryName, limitBytes })
     }
 
@@ -1687,15 +1714,16 @@ export class CharXImporter{
             return
         }
         const assetIndex = file.name
+        this.sizes[assetIndex] = Math.max(this.sizes[assetIndex] ?? 0, file.originalSize ?? 0)
         // An entry the local header declares above its limit is refused here. An entry is always started or the parse
         // ends, because the ZIP library keeps the compressed bytes of an entry that was never started.
-        if((file.originalSize ?? 0) > entryLimit(assetIndex)){
+        if((file.originalSize ?? 0) > this.#route(assetIndex).limitBytes){
             this.#recordSize(assetIndex)
             return
         }
         try {
-            // JSON other than card.json is not used, so its bytes are counted against the limit and not kept
-            this.assetBuffers[assetIndex] = new EntryBuffer(!isIgnoredJson(assetIndex))
+            // An entry routed as `drop` is not used, so its bytes are counted against the limit and not kept
+            this.assetBuffers[assetIndex] = new EntryBuffer(this.#route(assetIndex).kind !== 'drop')
 
             file.ondata = (err, dat, final) => this.#handleFileData(assetIndex, err, dat, final)
         } catch (error) {
@@ -1723,7 +1751,8 @@ export class CharXImporter{
         }
         try {
             const buffer = this.assetBuffers[fileName]
-            if(buffer.byteLength + data.byteLength > entryLimit(fileName)){
+            const route = this.#route(fileName)
+            if(buffer.byteLength + data.byteLength > route.limitBytes){
                 this.#recordSize(fileName)
                 return
             }
@@ -1734,7 +1763,7 @@ export class CharXImporter{
             if(queue){
                 queue.push(data)
             }
-            else if(this.#streamPieces && isStreamableAsset(fileName) && buffer.byteLength > charxLimits.streamAfterBytes){
+            else if(this.#streamPieces && route.kind === 'asset' && buffer.byteLength > charxLimits.streamAfterBytes){
                 this.#switchToPieces(fileName, buffer)
             }
             if(final){
@@ -1747,7 +1776,7 @@ export class CharXImporter{
 
     /**
      * Called when a file has been completely read from the ZIP.
-     * Routes files to appropriate handlers based on filename/extension.
+     * Hands the entry to the handler its route kind names: card, module, asset, text or drop.
      */
     #handleFileComplete(fileName: string) {
         if(this.#failure){
@@ -1755,28 +1784,36 @@ export class CharXImporter{
         }
         const buffer = this.assetBuffers[fileName]
         delete this.assetBuffers[fileName]
+        // In the piece case the counting buffer of #switchToPieces still holds the full decoded length.
+        this.sizes[fileName] = Math.max(this.sizes[fileName] ?? 0, buffer.byteLength)
 
         const queue = this.#receiving.get(fileName)
         if(queue){
             // The entry is complete: the consumer drains what is queued and finishes the save.
             this.#receiving.delete(fileName)
             queue.end()
+            return
         }
-        else if(isIgnoredJson(fileName)){
-            // Other JSON files are not used
-        }
-        else if(fileName === 'card.json'){
-            this.cardData = new TextDecoder().decode(buffer.take())
-        }
-        else if(fileName === 'module.risum'){
-            this.moduleData = buffer.take()
-        }
-        else{
-            // All other files are treated as assets (images, etc.)
-            this.#processAssetQueue({
-                id: fileName,
-                data: buffer.take()
-            })
+        switch(this.#route(fileName).kind){
+            case 'drop':
+                // Not used
+                break
+            case 'card':
+                this.cardData = new TextDecoder().decode(buffer.take())
+                break
+            case 'module':
+                this.moduleData = buffer.take()
+                break
+            case 'text':
+                this.texts[fileName] = buffer.take()
+                break
+            case 'asset':
+                // All other files are treated as assets (images, etc.)
+                this.#processAssetQueue({
+                    id: fileName,
+                    data: buffer.take()
+                })
+                break
         }
     }
 
@@ -1817,7 +1854,7 @@ export class CharXImporter{
                 return
             }
             // No file name: the key is the one `saveAsset` gives the same bytes.
-            this.assets[fileName] = await saveAssetFromPieces(queue, { sizeBound: entryLimit(fileName) })
+            this.assets[fileName] = await saveAssetFromPieces(queue, { sizeBound: this.#route(fileName).limitBytes })
         } catch (error) {
             this.errors.push(error instanceof Error ? error : new Error(String(error)))
         } finally {
