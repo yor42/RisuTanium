@@ -67,8 +67,13 @@ vi.mock('../../saveYield', async (importOriginal) => {
 type Entry = Record<string, unknown>
 
 const MODE_KEY = 'risu-measure-yield-mode'
-const DELAY_MS = 150
+const DELAY_MS = 400
 const SEGMENT_LIMIT_MS = 100
+/** planMs spans the planning yields, which run on real timers; an injected DELAY_MS wait exceeds this bound, and the planning yields stay well under it. */
+const PLAN_LIMIT_MS = DELAY_MS - 100
+/** Synchronous work the committer or budget spins, and the bounds that tell it from load: a lower bound just under the spin, and for the bulk path an upper bound well under the spin but above an ordinary build. */
+const SPIN_MS = 60
+const COMMIT_SPIN_MS = 200
 const SETTLE_MS = 250
 
 const stops: Array<() => void> = []
@@ -288,7 +293,7 @@ describe('segments hold no I/O wait', () => {
         expect(record.bulk).toBe(false)
         expect(record.maxSegmentMs).toBeLessThan(SEGMENT_LIMIT_MS)
         expect(record.planMs).not.toBeNull()
-        expect(record.planMs as number).toBeLessThan(SEGMENT_LIMIT_MS)
+        expect(record.planMs as number).toBeLessThan(PLAN_LIMIT_MS)
         expect(record.buildMs).toBeGreaterThan(0)
         expect(record.buildMs).toBeLessThan(SEGMENT_LIMIT_MS)
         expect(record.segmentMaxMs.c).toBeGreaterThanOrEqual(record.buildMs)
@@ -297,12 +302,12 @@ describe('segments hold no I/O wait', () => {
     })
 
     test('reproducer: a known stretch before a real yield is the longest segment, in the planning part', async () => {
-        budget.spinMs = 30
+        budget.spinMs = SPIN_MS
         const run = await startRun()
         run.whole()
         await until(() => run.saved() >= 1, 'the metered whole pass to save', 8000)
         const record = records()[0]
-        expect(record.maxSegmentMs).toBeGreaterThanOrEqual(28)
+        expect(record.maxSegmentMs).toBeGreaterThanOrEqual(SPIN_MS - 10)
         expect(['a', 'b']).toContain(record.maxSegmentLabel)
         expect(record.segmentMaxMs.d).toBeLessThan(SEGMENT_LIMIT_MS)
     })
@@ -351,20 +356,20 @@ describe('segments hold no I/O wait', () => {
     }, 30000)
 
     test('reproducer: the committer\'s own work before an ordinary build is inside segment c, and before a bulk build is not', async () => {
-        const ordinary = await startRun({ commitSpinMs: 40 })
+        const ordinary = await startRun({ commitSpinMs: COMMIT_SPIN_MS })
         ordinary.whole()
         await until(() => ordinary.saved() >= 1, 'the ordinary pass to save', 8000)
         const ordinaryRecord = records()[0]
         expect(ordinaryRecord.bulk).toBe(false)
-        expect(ordinaryRecord.segmentMaxMs.c).toBeGreaterThanOrEqual(38)
+        expect(ordinaryRecord.segmentMaxMs.c).toBeGreaterThanOrEqual(COMMIT_SPIN_MS - 10)
 
         yieldGapMeterHandle.reset()
-        const bulk = await startRun({ commitSpinMs: 40, liveUnits: 40 })
+        const bulk = await startRun({ commitSpinMs: COMMIT_SPIN_MS, liveUnits: 40 })
         bulk.whole()
         await until(() => bulk.saved() >= 1, 'the bulk pass to save', 15000)
         const bulkRecord = records()[0]
         expect(bulkRecord.bulk).toBe(true)
-        expect(bulkRecord.segmentMaxMs.c).toBeLessThan(38)
+        expect(bulkRecord.segmentMaxMs.c).toBeLessThan(COMMIT_SPIN_MS - 50)
     }, 30000)
 
     test('reproducer: a stub load that waits appears in no segment', async () => {
