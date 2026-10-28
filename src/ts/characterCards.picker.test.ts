@@ -708,3 +708,15 @@ describe('importOpenedSources', () => {
         expect(h.openHandles).toBe(0)
     })
 })
+
+// ---------------------------------------------------------------------------------------------
+// A card file name is matched without regard to case
+// ---------------------------------------------------------------------------------------------
+
+describe('importCharacterProcess with an upper-case suffix', () => {
+    test('an incomplete X.CHARX reaches the archive importer and is reported as incomplete, not as another kind of file (reproducer)', async () => {
+        const whole = new U8(await charx('Cut').arrayBuffer())
+        await importCharacterProcess({ name: 'X.CHARX', data: whole.subarray(0, 40) })
+        expect(h.last).toBe('error:' + language.cardFileIncomplete)
+    })
+})
