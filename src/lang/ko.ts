@@ -1066,6 +1066,7 @@ export const languageKorean = {
     "emptyTrashConfirmMatching": (count: number) => `일치하는 캐릭터 ${count}개를 영구 삭제하시겠습니까?`,
     "emptyTrashCannotUndo": "이 작업은 되돌릴 수 없습니다.",
     "backupLoadWorkInProgress": "아직 실행 중인 작업(채팅 응답, 임포트 또는 내보내기, 이미지나 에셋 추가, 정리 작업, 플러그인 요청)이 있어 백업을 불러오지 않았습니다. 작업이 끝날 때까지 기다리거나 작업을 중지한 뒤 다시 시도하세요. 페이지를 새로고침해도 모든 작업이 종료됩니다.",
+    "backupLoadRefusedLine": "다른 백업을 불러오지 않았습니다: 다른 작업이 아직 실행 중입니다.",
     "insertOrder": "배치 순서",
     "activationKeys": "활성화 키",
     "activationKeysInfo": "\",\"로 나눠주세요",

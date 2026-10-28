@@ -1066,6 +1066,7 @@ export const languageGerman = {
     "emptyTrashConfirmMatching": (count: number) => count === 1 ? `1 passenden Charakter dauerhaft löschen?` : `${count} passende Charaktere dauerhaft löschen?`,
     "emptyTrashCannotUndo": "Dies kann nicht rückgängig gemacht werden.",
     "backupLoadWorkInProgress": "Es läuft noch etwas (eine Chat-Antwort, ein Import oder Export, ein Bild oder Asset, das hinzugefügt wird, eine Bereinigung oder eine Plugin-Anfrage), daher wurde das Backup nicht geladen. Warten Sie, bis der Vorgang abgeschlossen ist, oder beenden Sie ihn, und versuchen Sie es dann erneut. Das Neuladen der Seite beendet ebenfalls alle laufenden Vorgänge.",
+    "backupLoadRefusedLine": "Ein anderes Backup wurde nicht geladen: Es läuft noch andere Arbeit.",
     "insertOrder": "Einfügereihenfolge",
     "activationKeys": "Aktivierungsschlüssel",
     "activationKeysInfo": "Kommagetrennt",
