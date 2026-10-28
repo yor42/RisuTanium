@@ -423,7 +423,7 @@ Q-F6b, asked: "When several files are picked at once and some are too large, wha
 
 ### Import batch (CHORE-470 to CHORE-475; worktree `.claude/worktrees/Lane-F-import`, branch `lane-f/import-formats` from `2648a7ce5`, 2026-10-28)
 
-Lane F's next IDs for this batch: MC-761, CHORE-376, row 3788 (lane A's brief, 2026-10-28). After MC-768 the MC-750 to MC-769 block has only MC-769 left. Lane A assigned a new MC block, MC-810 to MC-829 (2026-10-28; lane A records it in batch 19). So the next MC IDs are MC-769, then MC-810. CHORE IDs run to 389 and rows to 3899. The old `.claude/worktrees/Lane-F` holds uncommitted edits to this file that this copy does not include.
+Lane F's next IDs for this batch: MC-761, CHORE-376, row 3788 (lane A's brief, 2026-10-28). After MC-768 the MC-750 to MC-769 block has only MC-769 left. Lane A assigned a new MC block, MC-810 to MC-829 (2026-10-28; lane A records it in batch 19). MC-769, MC-810 and MC-811 are used (CHORE-473), so the next MC ID is MC-812. CHORE-377 is used, so the next CHORE ID is CHORE-378. CHORE IDs run to 389 and rows to 3899. The old `.claude/worktrees/Lane-F` holds uncommitted edits to this file that this copy does not include.
 
 Standing rule from 2026-10-28 (the maintainer's "Branch commits OK (Recommended)", relayed by lane A):
 - After a stage passes Gate 2, lane F may commit to its own branch `lane-f/import-formats`, but must not push.
@@ -518,6 +518,48 @@ Standing rule from 2026-10-28 (the maintainer's "Branch commits OK (Recommended)
 - Alternatives rejected: (b) keep today's order-dependent +1, which would need the sequential splice that Q9 ruled out.
 - Consequence: only prompts that mix both kinds change. Sends with only `@@depth` entries are unchanged.
 - Related: `MC-767` (Q11 amended for the mixed case), `MC-766`, `MC-500`.
+
+### MC-769 — maintainer in lane A, 2026-10-28: old-format cards import every field SillyTavern maps; a name is enough; nameless cards are refused on JSON and PNG alike; no dropped-key warning; card suffixes match in any case (CHORE-473 stage 1, MC-778 questions Q14 to Q16, Q18, Q19)
+
+- Tag: decisions (`AskUserQuestion` answers by option label, relayed by lane A). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28. Every answer was the recommended option. The questions were Lane F's, built from the CHORE-473 sizing (`%TEMP%\risu-lane-f\c473\sizing\result.md`, verified by doc-verifier) and the SillyTavern format notes (`%TEMP%\risu-lane-f\c473\st-facts.md`; formats only, no code copied).
+- Answers:
+  1. **Q14 "All, as SillyTavern":** Pygmalion cards map `char_name` to name, `char_persona` to description, `char_greeting` to first message, `example_dialogue` to example messages, `world_scenario` to scenario and `creatorcomment`/`creator_notes` to creator notes.
+  2. **Q15/Q16 "Name required, both paths":** an old-format card with a name is accepted; missing fields import empty, with no "unknown" placeholders. One shared check refuses a nameless card on both the JSON and the PNG path, so the PNG `null` crash becomes that refusal.
+  3. **Q18 "No warning":** keys that are not placed are dropped without a warning, as in SillyTavern.
+  4. **Q19 "Any case":** suffixes on the card import path match case-insensitively.
+- Alternatives rejected: Q14 name and description only; Q15 keep requiring the three fields; Q16 JSON only; Q18 warn on dropped keys; Q19 keep exact case.
+- Lane A's conditions: stage 1 is Q14, Q15, Q16 and Q19; the reviewer is `opus-reviewer`; the converter's missing `fmIndex` is traced in stage 1.
+- Related: `MC-810` (stage 2, YAML), `MC-778`, `MC-175`.
+
+### MC-810 — maintainer in lane A, 2026-10-28: YAML cards (`.yaml`/`.yml`) import SillyTavern's three keys through the `yaml` npm package as a new dependency (CHORE-473 stage 2, MC-778 question Q17)
+
+- Tag: decisions (`AskUserQuestion` answer by option label, relayed by lane A). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28: "Use the yaml package", the recommended option.
+- Answer: `name` maps to name, `context` to description and `greeting` to first message; acceptance follows `MC-769` 2.
+- Alternatives rejected: (b) a hand-written parser; (c) no YAML support.
+- Lane A's conditions for the dependency:
+  - Add it only in lane F's own worktree, never through a junction, pinned to an exact version at least two weeks old.
+  - The merge request reports the version, the licence and the full `pnpm-lock.yaml` diff.
+  - `pnpm add` may read the npm registry.
+  - After the merge every other worktree needs a fresh frozen install; the merge request says so.
+- Related: `MC-769`.
+
+### MC-811 — maintainer in lane A, 2026-10-28: mixed old-format cards take each field from either key; a v2 wrapper with a nameless `data` falls back to the top level once; the null-data crashes become CHORE-377 (CHORE-473 stage 1, MC-778 questions Q20 and Q21; refines `MC-769`)
+
+- Tag: decisions (`AskUserQuestion` answers by option label, relayed by lane A). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28. Every answer was the recommended option. The questions came from CHORE-473 stage 1 Gate 1 round 1 (`%TEMP%\risu-lane-f\c473\g1\result.md`, F3, F4, F9).
+- Answers:
+  1. **Q20 "Per field, either key":** a card read as Pygmalion takes each field from its Pygmalion key, and otherwise from the TavernAI v1 key. So a card with `char_name` and v1 keys for the rest keeps what it imports today.
+  2. **Q21 "Fall back to top level":** when a `spec_version: '2.0'` wrapper's `data` gives no name, the top level is read once with the same rules.
+  3. **Side tickets "Ticket the crash":** the null-data crashes in `planRccCard` (`metaData.usePassword`) and in v2/v3 cards with no `data` or `extensions` become CHORE-377, owned by lane F. The case-sensitive `.json` entry check in `processzip.ts` is a note only.
+- Alternatives rejected: Q20 strict SillyTavern (drop the v1 keys); Q21 refuse.
+- Lane A also confirmed that four consequences of `MC-769` need no question:
+  - a non-string field imports as `''`;
+  - a whitespace-only or non-string name is refused;
+  - Pygmalion `creator` and `tags` are copied;
+  - a JSON v2 wrapper without `spec` is read through its `data`.
+- Related: `MC-769`, CHORE-377.
 
 ## CHORE changes
 
@@ -643,6 +685,16 @@ Standing rule from 2026-10-28 (the maintainer's "Branch commits OK (Recommended)
   - The non-template path walks `formatOrder` through `unformated[...]`, so it does send that text.
 - Status (2026-10-28): open, not sized. Upstream compatibility is to be checked when sized.
 
+### CHORE-377 — Card imports with null or missing nested data throw instead of refusing (new; import batch, 2026-10-28)
+
+- Filed by `MC-811` 3 (maintainer's "Ticket the crash", relayed by lane A). Owner: lane F.
+- Defect, by code trace in CHORE-473 stage 1 Gate 1 round 1 (`%TEMP%\risu-lane-f\c473\g1\result.md`, F9; not run), all in `src/ts/characterCards.ts`:
+  - `planRccCard` reads `metaData.usePassword` without a guard, so rcc metadata that parses to `null` throws.
+  - v2/v3 cards with no `data` or no `data.extensions` are read without a guard in `firstMissingAssetKey`, `planSpecCard` and `importCharacterCardSpec`.
+  - The v2/v3 spec path saves its assets before `convertCharbook` runs, so a malformed `character_book` can fail the import after assets are saved (CHORE-473 stage 1 Gate 1 round 2, N6; traced).
+- Not in scope: `processzip.ts` checks a charx entry's `.json` suffix case-sensitively. That is a note only, by the same decision.
+- Status (2026-10-28): open, not sized. Upstream compatibility is to be checked when sized.
+
 ## Ledger rows
 
 In the shared Investigation-Ledger format. Token counts were not measured for these rows.
@@ -752,6 +804,13 @@ In the shared Investigation-Ledger format. Token counts were not measured for th
 | 3800 | 2026-10-28 | CHORE-472 stage 2 Gate 1 round 3 | `adversarial-reviewer` | not measured | no | [EDITORIAL], M1 (a guard's mode not stated), folded in. N1 is resolved, executed against a scratch model of the plan; the MC-768 mixed pairs are order-independent. Evidence: `%TEMP%\risu-lane-f\c472s2\g1r3\result.md`. |
 | 3801 | 2026-10-28 | CHORE-472 stage 2 implementation | `sonnet-coder` | not measured | no | Done under an exact grant, revoked after hand-back. Red on the untouched source: 17 reproducers failed with assertion errors and 13 guards passed. Two relabels were approved by lane F beforehand. The final bytes were re-run against the base with the same result. Lane F converted the three new LF files to CRLF (hash unchanged), then re-ran `pnpm check` (0 errors) and the sendChat, lorebook and depthPlacement tests (34 files, 784 passed). Evidence: `%TEMP%\risu-lane-f\c472s2\impl\result.md`, `red\engine.log`. |
 | 3802 | 2026-10-28 | CHORE-472 stage 2 Gate 2 | `adversarial-reviewer` | not measured | no | [APPROVE]. Red was re-run with a base file byte-identical to HEAD's: 17 failed, exactly the reproducers, and 13 passed. 6 of 7 mutants were caught; the 7th is equivalent. All four files are CRLF. Non-blocking: no engine-level test for an empty `chats` or for Infinity/fractional depths. Evidence: `%TEMP%\risu-lane-f\c472s2\g2\result.md`. |
+| 3803 | 2026-10-28 | CHORE-473 sizing (old-format card import) | `investigator` | not measured | no | Packet accepted as input after row 3804. It is the basis for MC-778 questions Q14 to Q19, which became MC-769 and MC-810. Evidence: `%TEMP%\risu-lane-f\c473\sizing\result.md`. |
+| 3804 | 2026-10-28 | Verify the CHORE-473 sizing packet | `doc-verifier` | not measured | no | Confirmed the sizing with no claim refuted, running the real import in a scratch harness. The `null` PNG crash was by code trace. Evidence: the verifier's hand-back in lane F's session. |
+| 3805 | 2026-10-28 | CHORE-473 stage 1 Gate 1 round 1 | `opus-reviewer` | not measured | no | [REJECT], F1 to F9, with an executed base probe. F1: the v2 wrapper was unwrapped in two places, so a card could pass the first pass and throw after its image was saved. F3, F4 and F9 went to the maintainer as Q20, Q21 and a side ticket; they became MC-811 and CHORE-377. The fmIndex conclusion was confirmed by trace. Evidence: `%TEMP%\risu-lane-f\c473\g1\result.md`. |
+| 3806 | 2026-10-28 | CHORE-473 stage 1 Gate 1 round 2 | `opus-reviewer` | not measured | no | [REJECT], N1 to N6, with an executed base probe (39 cases). N1: a malformed `character_book` threw in the PNG second pass after the image was saved. At this second rejection the mechanism was reconsidered: the character is built completely in the first pass. Evidence: `%TEMP%\risu-lane-f\c473\g1r2\result.md`. |
+| 3807 | 2026-10-28 | CHORE-473 stage 1 Gate 1 round 3 | `opus-reviewer` | not measured | no | [EDITORIAL], M1 to M4 folded in as revision 4. M1 was resolved as "`data` first, the top level fills the gaps", which loses nothing by construction. M5 traced that building early changes nothing the save or archive sees. Evidence: `%TEMP%\risu-lane-f\c473\g1r3\result.md`. |
+| 3808 | 2026-10-28 | CHORE-473 stage 1 implementation | `sonnet-coder` | not measured | no | Done under an exact five-file grant, revoked after the hand-back. Red on the untouched source: 35 reproducers failed by assertion (34 old-format, plus the picker `X.CHARX`) and the guards passed; 4 `planOldCard` unit tests can't run on the base and aren't counted. Lane F converted the three new LF files to CRLF (content hash unchanged), then re-ran the card import set (31 files, 708 passed) and `pnpm check` (0 errors). Evidence: `%TEMP%\risu-lane-f\c473\impl\result.md`, `red\stage1.log`, `impl\laneF-green.log`. |
+| 3809 | 2026-10-28 | CHORE-473 stage 1 Gate 2 | `opus-reviewer` | not measured | no | [APPROVE]. The base red run was rebuilt by module substitution: 35 reproducers failed by assertion and 16 guards passed. All 16 scratch mutants were caught, and all five files are CRLF. G1, an advisory comment wording, was folded in by lane F as a comment-only edit. G3: `characterBook: unknown` at the parsed-JSON boundary is acceptable. G5: a JSON card with a malformed `data.character_book` now ends `noData` instead of `failed`, and nothing is saved. Evidence: `%TEMP%\risu-lane-f\c473\g2\result.md`. |
 
 ## Handoff
 

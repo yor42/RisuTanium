@@ -39,6 +39,7 @@ import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
 import { normalizeOnboarding } from "./onboardingData"
 import { splitLoreKeys } from "./process/loreKeys"
 import { placeDisabledMarker } from "./process/lorebookImportDecorators"
+import { readOldCard, type OldCardFields } from "./oldCardFormat"
 import { appStoreOrNull, listExportAssets, preflightExport, refuseExport, type ExportFormat, type PreflightOk, type PreflightResult } from "./drive/exportPreflight"
 
 
@@ -276,7 +277,9 @@ async function readCharacterFile(f:{
     returnCharacter?:boolean
     lowLevelLabel?:LowLevelLabel
 }, run:ImportArchiveRun|null):Promise<ImportOutcome>{
-    if(f.name.endsWith('json')){
+    //Every suffix is matched without regard to case; the name itself is passed on unchanged.
+    const lower = f.name.toLowerCase()
+    if(lower.endsWith('json')){
         if(!f.data || f.data instanceof ReadableStream){
             return refusedOutcome(language.errors.noData)
         }
@@ -289,17 +292,18 @@ async function readCharacterFile(f:{
         if(spec === false){
             return {kind: 'declined'}
         }
-        if((da?.char_name || da?.name) && (da.char_persona || da.description) && (da.char_greeting || da.first_mes)){
-            const index = await addImportedCharacter(convertOffSpecCards(da), run)
-            alertNormal(language.importedCharacter)
-            return {kind: 'imported', index}
+        const oldCard = planOldCard(da)
+        if(oldCard === null){
+            return refusedOutcome(language.errors.noData)
         }
-        return refusedOutcome(language.errors.noData)
+        const index = await addImportedCharacter(oldCard, run)
+        alertNormal(language.importedCharacter)
+        return {kind: 'imported', index}
     }
     let db = getDatabase()
     db.statics.imports += 1
 
-    if(f.name.endsWith('charx') || f.name.endsWith('jpg') || f.name.endsWith('jpeg')){
+    if(lower.endsWith('charx') || lower.endsWith('jpg') || lower.endsWith('jpeg')){
         console.log('reading charx')
         alertStore.set({
             type: 'wait',
@@ -317,7 +321,7 @@ async function readCharacterFile(f:{
                 : f.data
             //An archive without its end record was cut short. A jpg or jpeg without one is treated as a plain image (a jpg-charx cut short cannot be told apart by its tail).
             if(!(await hasZipEndRecord(charxData))){
-                return refusedOutcome(f.name.endsWith('charx') ? language.cardFileIncomplete : language.errors.noData)
+                return refusedOutcome(lower.endsWith('charx') ? language.cardFileIncomplete : language.errors.noData)
             }
             await importer.parse(charxData)
         } catch (error) {
@@ -376,7 +380,7 @@ async function readCharacterFile(f:{
         }
     }
 
-    if(!f.name.endsWith('png')){
+    if(!lower.endsWith('png')){
         return refusedOutcome(language.importNotCardFile)
     }
     
@@ -404,12 +408,13 @@ function cardSpecOutcome(result:number|false|null, notACard:string = language.er
 
 /**
  * Where a PNG card stands after its first pass: a refusal or a declined prompt (an `ImportOutcome`), or the card to
- * import. `spec` is a v2 or v3 card; `tavern` is a card of an older format that carries no assets.
+ * import. `spec` is a v2 or v3 card; `tavern` is a card of an older format that carries no assets, already built into
+ * its character (only its image is still to be saved).
  */
 type PngCardPlan =
     | ImportOutcome
     | {kind: 'spec', card: CharacterCardV2Risu|CharacterCardV3}
-    | {kind: 'tavern', card: OldTavernChar}
+    | {kind: 'tavern', character: character}
 
 //A string longer than the engine builds throws a RangeError; it is the same refusal as a card value known to be too long up front.
 function guardStringLength<T>(build:() => T):T {
@@ -577,9 +582,13 @@ async function planCardJson(json:string, assetKeys:Set<string>):Promise<PngCardP
         (parsed as CharacterCardV2Risu).data.character_version = (parsed as CharacterCardV2Risu).data.character_version.toString()
     }
 
-    if(parsed.spec !== 'chara_card_v2' && parsed.spec !== 'chara_card_v3'){
-        const charaData:OldTavernChar = JSON.parse(json)
-        return {kind: 'tavern', card: charaData}
+    //The card JSON may be any value (null, a number, an array); only an object can carry a spec.
+    if(typeof parsed !== 'object' || parsed === null || (parsed.spec !== 'chara_card_v2' && parsed.spec !== 'chara_card_v3')){
+        const oldCard = planOldCard(parsed)
+        if(oldCard === null){
+            return refusedOutcome(language.errors.noData)
+        }
+        return {kind: 'tavern', character: oldCard}
     }
     return await planSpecCard(parsed, assetKeys, language.errors.noData)
 }
@@ -694,8 +703,8 @@ async function importPngCard(name:string, data:File|Uint8Array|ImportSource, run
         })
 
         if(plan.kind === 'tavern'){
-            const imgp = await saveAsset(img)
-            const index = await addImportedCharacter(convertOffSpecCards(plan.card, imgp), run)
+            plan.character.image = await saveAsset(img)
+            const index = await addImportedCharacter(plan.character, run)
             alertNormal(language.importedCharacter)
             return {kind: 'imported', index}
         }
@@ -781,7 +790,7 @@ type ClassifiedImport = {kind: 'card'|'preset'|'module', name: string}
 type ShareIndexEntry = {key: string, name: string, type: string}
 
 //A file's kind is decided by its name suffix, compared without regard to case, whatever the form field or link it came from.
-//The returned name carries the lower-case suffix because the importers compare suffixes case-sensitively.
+//The returned name carries the lower-case suffix, which the preset importer still needs because it compares case-sensitively; `readCharacterFile` compares card suffixes in lower case itself.
 const importSuffixes:Array<[string, ClassifiedImport['kind']]> = [
     ['.charx', 'card'], ['.png', 'card'], ['.jpg', 'card'], ['.jpeg', 'card'], ['.json', 'card'],
     ['.risupreset', 'preset'], ['.risup', 'preset'], ['.preset', 'preset'],
@@ -1045,9 +1054,22 @@ export async function characterURLImport() {
 }
 
 
-function convertOffSpecCards(charaData:OldTavernChar|CharacterCardV2Risu, imgp:string|undefined = undefined):character{
-    const data = charaData.spec_version === '2.0' ? charaData.data : charaData
-    const charbook = charaData.spec_version === '2.0' ? charaData.data.character_book : null
+//Builds the character of an old-format card completely, or null when the value is no old card or its character book cannot be converted. Nothing is saved here, so a refusal leaves nothing behind.
+export function planOldCard(value:unknown):character|null {
+    const fields = readOldCard(value)
+    if(fields === null){
+        return null
+    }
+    try {
+        return convertOffSpecCards(fields)
+    } catch (error) {
+        console.error(error)
+        return null
+    }
+}
+
+function convertOffSpecCards(fields:OldCardFields):character{
+    const charbook = fields.characterBook ? fields.characterBook as CharacterBook : null
     let lorebook:loreBook[] = []
     let loresettings:undefined|loreSettings = undefined
     let loreExt:undefined|any = undefined
@@ -1065,9 +1087,9 @@ function convertOffSpecCards(charaData:OldTavernChar|CharacterCardV2Risu, imgp:s
     }
 
     return {
-        name: data.name ?? 'unknown name',
-        firstMessage: data.first_mes ?? 'unknown first message',
-        desc:  data.description ?? '',
+        name: fields.name,
+        firstMessage: fields.firstMessage,
+        desc: fields.desc,
         notes: '',
         chats: [{
             id: uuidv4(),
@@ -1077,7 +1099,7 @@ function convertOffSpecCards(charaData:OldTavernChar|CharacterCardV2Risu, imgp:s
             localLore: []
         }],
         chatPage: 0,
-        image: imgp,
+        image: undefined,
         emotionImages: [],
         bias: [],
         globalLore: lorebook,
@@ -1086,16 +1108,16 @@ function convertOffSpecCards(charaData:OldTavernChar|CharacterCardV2Risu, imgp:s
         sdData: defaultSdDataFunc(),
         utilityBot: false,
         customscript: [],
-        exampleMessage: data.mes_example,
-        creatorNotes:'',
-        systemPrompt: (charaData.spec_version === '2.0' ? charaData.data.system_prompt : '') ?? '',
-        postHistoryInstructions: (charaData.spec_version === '2.0' ? charaData.data.post_history_instructions : '') ?? '',
+        exampleMessage: fields.exampleMessage,
+        creatorNotes: fields.creatorNotes,
+        systemPrompt: fields.systemPrompt,
+        postHistoryInstructions: fields.postHistoryInstructions,
         alternateGreetings:[],
-        tags:[],
-        creator:"",
+        tags: fields.tags,
+        creator: fields.creator,
         characterVersion: '',
-        personality: data.personality ?? '',
-        scenario:data.scenario ?? '',
+        personality: fields.personality,
+        scenario: fields.scenario,
         firstMsgIndex: -1,
         replaceGlobalNote: "",
         triggerscript: [],
@@ -2533,19 +2555,6 @@ type CharacterCardV2Risu = {
 }  
 
 
-interface OldTavernChar{
-    avatar: "none"
-    chat: string
-    create_date: string
-    description: string
-    first_mes: string
-    mes_example: string
-    name: string
-    personality: string
-    scenario: string
-    talkativeness: "0.5"
-    spec_version?: '1.0'
-}
 type CharacterBook = {
     name?: string
     description?: string
