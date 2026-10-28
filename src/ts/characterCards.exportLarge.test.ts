@@ -24,6 +24,8 @@ const h = vi.hoisted(() => ({
     stacks: [] as string[],
     notices: [] as string[],
     waits: [] as string[],
+    // for each wait dialog in `waits`, whether it carried a Cancel
+    waitCancels: [] as boolean[],
     reads: [] as string[],
     saved: 0,
     png: new Uint8Array() as Uint8Array,
@@ -106,7 +108,7 @@ vi.mock(import('src/ts/alert'), () => {
         alertNormal: vi.fn(),
         alertNormalWait: vi.fn(async (msg: string) => { h.notices.push(msg) }),
         alertStore: { set: vi.fn(), subscribe: vi.fn(), update: vi.fn() },
-        alertWait: vi.fn((msg: string) => { h.waits.push(msg) }),
+        alertWait: vi.fn((msg: string, onCancel?: () => void) => { h.waits.push(msg); h.waitCancels.push(typeof onCancel === 'function') }),
     } as unknown as typeof import('src/ts/alert')
 })
 
@@ -172,6 +174,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
         }
         async close() { }
         useCancel() { }
+        abort() { }
     }
     return {
         AppendableBuffer,
@@ -392,6 +395,7 @@ beforeEach(() => {
     h.stacks.length = 0
     h.notices.length = 0
     h.waits.length = 0
+    h.waitCancels.length = 0
     h.reads.length = 0
     h.saved = 0
     h.png = syntheticPng()
@@ -623,11 +627,7 @@ describe('a large CharX asset is streamed', () => {
     })
 
     describe('progress', () => {
-        test('(R) on the web the wait text shows the checking pass and then the writing pass', async () => {
-            env.isTauri = false
-            useSource('web')
-            serveBig()
-            expect(await exportCharacterCard(card([BIG]), 'charx', { spec: 'v3' })).toBe(true)
+        function expectTwoPhaseText(): void {
             const phases = h.waits.filter(text => text.startsWith('Checking') || text.startsWith('Writing Big'))
             const firstWriting = phases.findIndex(text => text.startsWith('Writing'))
             expect(firstWriting).toBeGreaterThan(0)
@@ -637,12 +637,29 @@ describe('a large CharX asset is streamed', () => {
             expect(phases[firstWriting - 1]).toBe(language.exportCheckingAsset('Big Video', 65, 65))
             expect(phases[firstWriting]).toBe(language.exportStreamingAsset('Big Video', 4, 65))
             expect(phases[phases.length - 1]).toBe(language.exportStreamingAsset('Big Video', 65, 65))
-        })
+        }
 
-        test('(G) on Tauri the wait gate is not used until the Cancel stage; the per-asset percentage stays', async () => {
+        test('(R) on the web the wait text shows the checking pass and then the writing pass', async () => {
+            env.isTauri = false
+            useSource('web')
             serveBig()
             expect(await exportCharacterCard(card([BIG]), 'charx', { spec: 'v3' })).toBe(true)
-            expect(h.waits).toEqual([])
+            expectTwoPhaseText()
+        })
+
+        test('(R) on Tauri a large-asset CharX shows the same two-phase text on a wait dialog that carries a Cancel', async () => {
+            serveBig()
+            expect(await exportCharacterCard(card([BIG]), 'charx', { spec: 'v3' })).toBe(true)
+            expectTwoPhaseText()
+            expect(h.waitCancels.length).toBeGreaterThan(0)
+            expect(h.waitCancels.every(Boolean)).toBe(true)
+        })
+
+        test('(R) on Tauri a large-asset module CharX shows the same two-phase text with a Cancel', async () => {
+            serveBig()
+            await exportModule(moduleOf([BIG]), { alertEnd: false })
+            expectTwoPhaseText()
+            expect(h.waitCancels.every(Boolean)).toBe(true)
         })
     })
 

@@ -7,8 +7,9 @@
  * byte it was handed, so the file written can be compared with what the exporter produced. A mocked file system is
  * not evidence of native file behaviour.
  *
- * Labels: (R) fails when a PNG export does not wait for its writer to close, or when a card image read error does
- * not reject the export; (G) is a guard that passes with or without the change.
+ * Labels: (R) fails when a PNG export does not wait for its writer to close, when a card image read error does
+ * not reject the export, or when a failure after a desktop write does not add the incomplete-file sentence; (G) is a
+ * guard that passes with or without the change.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -90,6 +91,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
             await this.writer.write(data)
         }
         async close() { await this.writer.close() }
+        abort(reason: unknown) { void this.writer.abort(reason) }
     }
     return {
         AppendableBuffer,
@@ -163,6 +165,9 @@ import { LocalWriter, readImage } from 'src/ts/globalApi.svelte'
 import type { character } from 'src/ts/storage/database.svelte'
 import { language } from 'src/lang'
 
+// The failing call has already reached the file system, so the desktop file counts as kept and the notice says so.
+const failedWithFileKept = 'synthetic write failure\n' + language.exportFailedFileIncomplete
+
 function syntheticPng(): Uint8Array {
     const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
     const ihdr = [0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0, 0x90, 0x77, 0x53, 0xde]
@@ -215,7 +220,7 @@ describe('PNG export onto a TauriWriter', () => {
     test('(R) a failing final flush shows the error and never the success message', async () => {
         h.failCall = () => true
         await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })
-        expect(h.errors).toEqual(['synthetic write failure'])
+        expect(h.errors).toEqual([failedWithFileKept])
         expect(h.log).not.toContain('normal:' + language.successExport)
     })
 })
@@ -278,14 +283,14 @@ describe('exportCharacterCard result for a caller that supplies its own writer',
         h.failCall = () => true
         const result = await exportCharacterCard(syntheticCharacter(), 'charx', { spec: 'v3', writer: new LocalWriter() })
         expect(result).toBe(false)
-        expect(h.errors).toEqual(['synthetic write failure'])
+        expect(h.errors).toEqual([failedWithFileKept])
     })
 
     test('(R) a failing png export has shown its error when the false result arrives', async () => {
         h.failCall = () => true
         const result = await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3', writer: new LocalWriter() })
         expect(result).toBe(false)
-        expect(h.log).toEqual(['error:synthetic write failure'])
+        expect(h.log).toEqual(['error:' + failedWithFileKept])
     })
 
     test('(R) a completed png export resolves true, with and without a supplied writer', async () => {
@@ -316,7 +321,7 @@ describe('CharX export onto a TauriWriter', () => {
     test('(G) a failing final flush shows the error and never the success message', async () => {
         h.failCall = () => true
         await exportCharacterCard(syntheticCharacter(), 'charx', { spec: 'v3' })
-        expect(h.errors).toEqual(['synthetic write failure'])
+        expect(h.errors).toEqual([failedWithFileKept])
         expect(h.log).not.toContain('normal:' + language.successExport)
     })
 })

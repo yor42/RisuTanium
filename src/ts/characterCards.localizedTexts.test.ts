@@ -121,6 +121,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
             async init(name: string, ext: string[]) { h.pickerInits.push([name, ext]); return true }
             async write() {}
             async close() {}
+            abort() {}
         },
         VirtualWriter: class {},
         checkCharOrder: vi.fn(),
