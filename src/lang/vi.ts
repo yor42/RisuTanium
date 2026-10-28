@@ -1092,6 +1092,8 @@ export const languageVietnamese = {
     "exportStreamingAsset": (name: string, writtenMiB: number, totalMiB: number) => `Đang ghi ${name} (${writtenMiB} / ${totalMiB} MiB)...`,
     "successImport": "Đã nhập thành công",
     "chatImportSkippedLines": (count: number) => `Đã nhập cuộc trò chuyện. Có ${count} dòng không đọc được và đã bị bỏ qua.`,
+    "chatImportDone": `Đã nhập cuộc trò chuyện.`,
+    "chatImportSwipesNotKept": (count: number) => `Với ${count} tin nhắn, chỉ giữ lại phản hồi đang hiển thị; các phản hồi thay thế khác không được nhập.`,
     "importedCharacter": "Ký tự đã nhập",
     "alwaysActive": "Luôn luôn hoạt động",
     "additionalPrompt": "Lời nhắc bổ sung",
