@@ -1091,6 +1091,7 @@ export const languageVietnamese = {
     "exportCheckingAsset": (name: string, readMiB: number, totalMiB: number) => `Đang kiểm tra ${name} (${readMiB} / ${totalMiB} MiB)...`,
     "exportStreamingAsset": (name: string, writtenMiB: number, totalMiB: number) => `Đang ghi ${name} (${writtenMiB} / ${totalMiB} MiB)...`,
     "successImport": "Đã nhập thành công",
+    "chatImportSkippedLines": (count: number) => `Đã nhập cuộc trò chuyện. Có ${count} dòng không đọc được và đã bị bỏ qua.`,
     "importedCharacter": "Ký tự đã nhập",
     "alwaysActive": "Luôn luôn hoạt động",
     "additionalPrompt": "Lời nhắc bổ sung",

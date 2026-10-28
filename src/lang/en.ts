@@ -1220,6 +1220,7 @@ export const languageEnglish = {
     exportCheckingAsset: (name: string, readMiB: number, totalMiB: number) => `Checking ${name} (${readMiB} of ${totalMiB} MiB)...`,
     exportStreamingAsset: (name: string, writtenMiB: number, totalMiB: number) => `Writing ${name} (${writtenMiB} of ${totalMiB} MiB)...`,
     successImport: "Successfuly imported",
+    chatImportSkippedLines: (count: number) => count === 1 ? 'Imported the chat. 1 line could not be read and was skipped.' : `Imported the chat. ${count} lines could not be read and were skipped.`,
     importedCharacter: "Imported Character",
     alwaysActive: "Always Active",
     additionalPrompt: "Additional Prompt",

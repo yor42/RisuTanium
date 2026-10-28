@@ -1136,6 +1136,7 @@ export const languageChineseTraditional = {
     "exportCheckingAsset": (name: string, readMiB: number, totalMiB: number) => `正在檢查 ${name}（${readMiB} / ${totalMiB} MiB）...`,
     "exportStreamingAsset": (name: string, writtenMiB: number, totalMiB: number) => `正在寫入 ${name}（${writtenMiB} / ${totalMiB} MiB）...`,
     "successImport": "匯入成功",
+    "chatImportSkippedLines": (count: number) => count === 1 ? `已匯入聊天。有 1 行無法讀取，已略過。` : `已匯入聊天。有 ${count} 行無法讀取，已略過。`,
     "importedCharacter": "已匯入角色",
     "alwaysActive": "一律啟用",
     "additionalPrompt": "額外提示詞",

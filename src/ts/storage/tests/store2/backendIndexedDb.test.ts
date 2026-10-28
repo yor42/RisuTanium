@@ -119,7 +119,8 @@ describe('IndexedDB backend: transactions', () => {
             const transaction = database.transaction(STORE, 'readwrite')
             const objects = transaction.objectStore(STORE)
             await request(objects.put(bytesOf(1), 'a'))
-            await new Promise((resolve) => setTimeout(resolve, 0))
+            // setImmediate is a macrotask queued after fake-indexeddb's own queued transaction step, so it runs after that step; a timer could run first.
+            await new Promise((resolve) => setImmediate(resolve))
             expect(() => objects.put(bytesOf(2), 'b')).toThrowError(expect.objectContaining({ name: 'TransactionInactiveError' }))
         } finally {
             database.close()

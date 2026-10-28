@@ -685,7 +685,7 @@ describe('byaf size rules', () => {
         extra: [FILLER, [B_KEY, b]],
     })
 
-    // A descriptor-framed entry declares size 0 in its local header, so the decoded length is the only size pass 1 has for it.
+    // A descriptor-framed entry declares size 0 in its local header. With a valid central directory the importer reads it with the central sizes written in, so pass 1 also records the central size; with an untrusted directory the decoded length is the only size pass 1 has for it.
     const descriptorLayout = () => zip(entries({ ...twoImages(), images: [[KEY('a.png'), A], [B_KEY, BIG]], extra: [] }), 'descriptor')
 
     test.each(['untrusted directory', 'untrusted descriptor framing'] as const)('R11 reproducer: an oversize listed image is refused before anything is saved (%s)', async (variant) => {

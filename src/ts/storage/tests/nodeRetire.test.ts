@@ -10,7 +10,7 @@
  * New-behaviour tests are red on a server without the guarded routes. Cases
  * marked as guards pass on both servers.
  */
-import { readFile, writeFile } from 'node:fs/promises'
+import { access, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, test } from 'vitest'
@@ -113,6 +113,15 @@ async function snapshotKeys(fx: NodeServerFixture): Promise<string[]> {
     return Object.keys(JSON.parse(await readFile(snapshotPath(fx), 'utf-8')))
 }
 
+async function pathExists(path: string): Promise<boolean> {
+    try {
+        await access(path)
+        return true
+    } catch {
+        return false
+    }
+}
+
 const unit = (name: string) => `store2/${name}`
 
 describe('retire', () => {
@@ -183,18 +192,16 @@ describe('retire', () => {
         const retired = unit('retired')
         await put(fx, retired)
         expect((await removeChecked(fx, [retired], { guard: [[commit, 1]] })).status).toBe(200)
+        // The server removes the revision log only after the compacted snapshot has replaced the old one, so the log's
+        // absence is the completion signal; the snapshot itself is read once, after it, never while it is being replaced.
         const deadline = Date.now() + 10_000
-        while (Date.now() < deadline) {
-            try {
-                if (!(await snapshotKeys(fx)).includes(hexOfKey(retired)) && (await snapshotKeys(fx)).includes(hexOfKey(commit))) {
-                    break
-                }
-            } catch {
-                // The snapshot is not written yet.
-            }
+        while (Date.now() < deadline && await pathExists(logPath(fx))) {
             await new Promise((resolve) => setTimeout(resolve, 50))
         }
-        expect(await snapshotKeys(fx)).not.toContain(hexOfKey(retired))
+        expect(await pathExists(logPath(fx))).toBe(false)
+        const compacted = await snapshotKeys(fx)
+        expect(compacted).not.toContain(hexOfKey(retired))
+        expect(compacted).toContain(hexOfKey(commit))
         await fx.restart()
         expect(await readState(fx, retired)).toEqual({ revision: 0, exists: false })
         expect(await snapshotKeys(fx)).not.toContain(hexOfKey(retired))

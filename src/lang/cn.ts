@@ -1091,6 +1091,7 @@ export const languageChinese = {
     "exportCheckingAsset": (name: string, readMiB: number, totalMiB: number) => `正在检查 ${name}（${readMiB} / ${totalMiB} MiB）...`,
     "exportStreamingAsset": (name: string, writtenMiB: number, totalMiB: number) => `正在写入 ${name}（${writtenMiB} / ${totalMiB} MiB）...`,
     "successImport": "成功导入",
+    "chatImportSkippedLines": (count: number) => count === 1 ? `已导入聊天。有 1 行无法读取，已跳过。` : `已导入聊天。有 ${count} 行无法读取，已跳过。`,
     "importedCharacter": "导入角色",
     "alwaysActive": "始终激活",
     "additionalPrompt": "附加提示词",

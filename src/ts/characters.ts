@@ -23,6 +23,7 @@ import { beginBusy } from "./process/memory/busyActions";
 import { queueInlayCleanupForChat, queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
 import { escapeHtmlText } from "./htmlEscape";
 import { isHiddenSystemCharacter } from "./hiddenCharacters";
+import { readTavernJsonl } from "./chatImport";
 
 export function createNewCharacter() {
     DBState.db.characters.push(createBlankChar())
@@ -520,7 +521,7 @@ export async function importChat(){
         const lowerName = dat.name.toLowerCase()
 
         if(lowerName.endsWith('jsonl')){
-            const lines = Buffer.from(dat.data).toString('utf-8').split('\n')
+            const { messages, skipped } = readTavernJsonl(Buffer.from(dat.data).toString('utf-8'))
             let newChat:Chat = {
                 message: [],
                 note: "",
@@ -530,23 +531,11 @@ export async function importChat(){
                 id: v4()
             }
 
-            let isFirst = true
-            for(const line of lines){
-                if(line.trim() === ''){
-                    continue
-                }
-
-                const presedLine = JSON.parse(line)
-                if(presedLine.name && presedLine.is_user, presedLine.mes){
-                    if(!isFirst){
-                        newChat.message.push({
-                            role: presedLine.is_user ? "user" : 'char',
-                            data: formatTavernChat(presedLine.mes, DBState.db.characters[selectedID].name)
-                        })
-                    }
-                }
-
-                isFirst = false
+            for(const line of messages){
+                newChat.message.push({
+                    role: line.isUser ? "user" : 'char',
+                    data: formatTavernChat(line.mes, DBState.db.characters[selectedID].name)
+                })
             }
 
             if(newChat.message.length === 0){
@@ -561,7 +550,7 @@ export async function importChat(){
 
             DBState.db.characters[selectedID].chats.unshift(newChat)
             changeChatTo(0)
-            alertNormal(language.successImport)
+            alertNormal(skipped > 0 ? language.chatImportSkippedLines(skipped) : language.successImport)
         }
         else if(lowerName.endsWith('json')){
             const json = JSON.parse(Buffer.from(dat.data).toString('utf-8'))
