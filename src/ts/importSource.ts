@@ -15,6 +15,12 @@ export interface ImportSource {
     /** The size when the source was opened. `stat()` reports the size now. */
     readonly size: number
     /**
+     * Set when the cost of a call dominates the cost of its bytes: validation may then read up to `windowBytes` ahead
+     * through bodies no longer than `windowGapBytes`. A source that leaves them unset is read by the default window.
+     */
+    readonly windowBytes?: number
+    readonly windowGapBytes?: number
+    /**
      * The bytes in [start, end), clamped to [0, size]. Fewer bytes than asked come back only when the source ends or
      * shrank. A view into the source's own memory is only valid as long as the caller does not change it.
      */
@@ -90,8 +96,18 @@ export function importSourceOfBytes(name: string, bytes: Uint8Array): ImportSour
     }
 }
 
-export function importSourceOfFile(file: File): ImportSource {
+/**
+ * The read-ahead of a picked File. Every `slice().arrayBuffer()` costs about the same whatever its size, so a run of
+ * small entries is read in one call. A body is read through only while it is no longer than the gap: at the per-call
+ * cost and the per-byte rate of a phone's picker File, a body of about 2.4 MiB costs as much as the call it saves.
+ */
+export const PICKED_FILE_WINDOW_BYTES = 8 * 1024 * 1024
+export const PICKED_FILE_GAP_BYTES = 1024 * 1024
+
+export function importSourceOfFile(file: File, windowBytes: number = PICKED_FILE_WINDOW_BYTES, windowGapBytes: number = PICKED_FILE_GAP_BYTES): ImportSource {
     return {
+        windowBytes,
+        windowGapBytes,
         name: file.name,
         size: file.size,
         read: async (start, end) => {
@@ -213,7 +229,13 @@ export class WindowedReader {
         private readonly windowBytes: number = IMPORT_WINDOW_BYTES,
     ) {}
 
-    async read(start: number, end: number): Promise<Uint8Array> {
+    /**
+     * `aheadOf` returns where a planned read may extend to. The read then covers up to that end, clamped to `limit`
+     * and to `windowBytes` past `start`, and becomes the window; an end at or below the request reads exactly the
+     * request. The function is called only when the window misses, because it walks the run. Without it, the read
+     * guesses from the last skip.
+     */
+    async read(start: number, end: number, aheadOf?: () => number): Promise<Uint8Array> {
         const to = Math.min(end, this.limit)
         if (start >= to) {
             return new Uint8Array(0)
@@ -222,6 +244,15 @@ export class WindowedReader {
         this.#lastEnd = to
         if (start >= this.#start && to <= this.#start + this.#bytes.length) {
             return this.#bytes.subarray(start - this.#start, to - this.#start)
+        }
+        if (aheadOf !== undefined) {
+            const planEnd = Math.min(this.limit, Math.max(to, Math.min(aheadOf(), start + this.windowBytes)))
+            if (planEnd <= to) {
+                return await this.source.read(start, to)
+            }
+            this.#bytes = await this.source.read(start, planEnd)
+            this.#start = start
+            return this.#bytes.subarray(0, Math.min(to - start, this.#bytes.length))
         }
         const length = to - start
         const skipped = lastEnd === null ? Infinity : start - lastEnd
