@@ -2304,6 +2304,8 @@ export const languageChinese = {
     "cardFileIncomplete": "此角色卡文件不完整或已损坏，因此未导入。",
     "cardFileEntryTooLarge": (fileName: string, limitMiB: number) => `此角色卡内的文件“${fileName}”超过了 ${limitMiB} MB 的限制，因此该角色卡未导入。`,
     "cardFileChanged": "导入过程中角色卡文件发生了变化或无法读取，因此未导入。请重新导入。",
+    "byafUnsupportedVersion": "此 Backyard 压缩包使用的格式版本本应用无法读取，因此未导入。",
+    "byafSeveralCharacters": "此 Backyard 压缩包包含多个角色，本应用无法导入，因此未导入。",
     "cardImageTooLarge": (limitMiB: number) => `此角色卡的图片超过了 ${limitMiB} MB 的限制，因此该角色卡未导入。`,
     "assetFileTooLargeForBrowserStorage": (fileName: string, limitMiB: number) => `“${fileName}”超过了此浏览器可存储的 ${limitMiB} MB，因此未保存。`,
     "assetFilesTooLargeForLimit": (fileNames: string[], limitMiB: number) => {

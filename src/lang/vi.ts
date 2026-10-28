@@ -2304,6 +2304,8 @@ export const languageVietnamese = {
     cardFileIncomplete: "Tệp thẻ này không đầy đủ hoặc bị hỏng nên không được nhập.",
     cardFileEntryTooLarge: (fileName: string, limitMiB: number) => `Tệp "${fileName}" bên trong thẻ này lớn hơn giới hạn ${limitMiB} MB nên thẻ không được nhập.`,
     cardFileChanged: "Tệp thẻ đã thay đổi hoặc không thể đọc được trong khi nhập nên không được nhập. Hãy thử nhập lại.",
+    byafUnsupportedVersion: "Kho lưu trữ Backyard này dùng phiên bản định dạng mà ứng dụng không đọc được nên không được nhập.",
+    byafSeveralCharacters: "Kho lưu trữ Backyard này chứa nhiều hơn một nhân vật, ứng dụng không thể nhập nên không được nhập.",
     cardImageTooLarge: (limitMiB: number) => `Ảnh của thẻ này lớn hơn giới hạn ${limitMiB} MB nên thẻ không được nhập.`,
     assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) => `Tệp "${fileName}" lớn hơn ${limitMiB} MB mà trình duyệt này có thể lưu trữ nên không được lưu.`,
     assetFilesTooLargeForLimit: (fileNames: string[], limitMiB: number) => {
