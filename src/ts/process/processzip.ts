@@ -6,7 +6,7 @@ import { alertStore } from "../alert";
 import { language } from "src/lang";
 import { fillLang } from "src/lang/fill";
 import { storeAssetLimitBytes } from "../storage/assetLimit";
-import { importSourceOfBytes, importSourceOfFile, isImportSource, WindowedReader, type ImportSource } from "../importSource";
+import { IMPORT_WINDOW_BYTES, importSourceOfBytes, importSourceOfFile, isImportSource, WindowedReader, type ImportSource } from "../importSource";
 import { IMAGE_TYPE_HEAD_BYTES, IMAGE_TYPE_TAIL_BYTES, imageTypeOfEnds } from "../media/imageType";
 
 const MIB = 1024 * 1024;
@@ -1095,8 +1095,10 @@ function inputSizeOf(data: Uint8Array | File | ImportSource): number {
  * offset, a name, a method, bit 3, a CRC or a size) or two entries overlap. Bytes outside every listed entry (a JPEG
  * prefix, gaps, entries the directory does not list) are not part of the plan.
  *
- * Reads only headers and descriptors, one read per boundary: entry i-1's descriptor and entry i's header together,
- * through a `WindowedReader`, so packed small entries share a window and a big body is skipped without being read.
+ * Reads only headers and descriptors: entry i-1's descriptor and entry i's header together, through a `WindowedReader`.
+ * A source that carries a window (a picked File) gets one read per run of small entries, planned from the directory;
+ * any other source gets one read per boundary, so packed small entries share a window. A big body is skipped without
+ * being read.
  *
  * Rejects with a `CharXParseError` of origin 'input' when bytes cannot be read.
  */
@@ -1105,8 +1107,34 @@ async function planDirectoryRead(data: Uint8Array | File | ImportSource, directo
         return null
     }
     const inputSize = inputSizeOf(data)
-    const reader = new WindowedReader(importSourceOfInput(data), inputSize)
+    const source = importSourceOfInput(data)
+    const reader = new WindowedReader(source, inputSize, source.windowBytes ?? IMPORT_WINDOW_BYTES)
     const sorted = [...directory.entries].sort((a, b) => a.localOffset - b.localOffset)
+    const planWindow = source.windowBytes
+    const planGap = source.windowGapBytes ?? 0
+    // An end at or below the request: the read covers exactly the request.
+    const READ_EXACT = 0
+    const headerAt = (k: number) => directory.zipStart + sorted[k].localOffset
+    const wantedAt = (k: number) => headerAt(k) + ZIP_LOCAL_HEADER_SIZE + sorted[k].nameBytes.byteLength + sorted[k].extraLength + ZIP_HEADER_READ_SLACK
+    // Where a read for entry `index` at `from` may extend to: the wanted header bytes of the last entry whose distance from
+    // the one before it (unlisted bytes and longer local extras included) is at most the gap, within the window of `from`.
+    // The run covers the bodies up to the last entry's, not including it. It does not read the sizes of the directory.
+    const aheadOf = (index: number, from: number): number => {
+        if (headerAt(index) - from > planGap) {
+            return READ_EXACT
+        }
+        let k = index
+        while (k + 1 < sorted.length && headerAt(k + 1) - wantedAt(k) <= planGap && wantedAt(k + 1) - from <= (planWindow ?? 0)) {
+            k++
+        }
+        return wantedAt(k)
+    }
+    // Every read of a windowed source is planned. `aheadOf` is referenced only in the closure: the reader calls it when
+    // its window misses, and an evaluation outside the closure would walk the run on every read.
+    const planRead = (index: number, start: number, to: number): Promise<Uint8Array> => planWindow === undefined
+        ? reader.read(start, to)
+        : reader.read(start, to, () => aheadOf(index, start))
+    let entryIndex = -1
     const planned: PlannedEntry[] = []
     // The entry whose data descriptor is the next thing to read, and where it starts.
     let pending: { entry: ZipDirectoryEntry, at: number } | null = null
@@ -1114,6 +1142,7 @@ async function planDirectoryRead(data: Uint8Array | File | ImportSource, directo
     let previousEnd = directory.zipStart
     try {
         for (const entry of sorted) {
+            entryIndex++
             const start = directory.zipStart + entry.localOffset
             const wanted = ZIP_LOCAL_HEADER_SIZE + entry.nameBytes.byteLength + entry.extraLength + ZIP_HEADER_READ_SLACK
             let bytes: Uint8Array
@@ -1123,18 +1152,18 @@ async function planDirectoryRead(data: Uint8Array | File | ImportSource, directo
                 }
                 // A descriptor and the header after it are one read when nothing but a gap shorter than a descriptor lies between them.
                 const together = start >= pending.at && start - pending.at <= ZIP_DESCRIPTOR_SIZE
-                const first = await reader.read(pending.at, together ? start + wanted : pending.at + ZIP_DESCRIPTOR_SIZE)
+                const first = await planRead(entryIndex, pending.at, together ? start + wanted : pending.at + ZIP_DESCRIPTOR_SIZE)
                 const length = descriptorLength(first, pending.entry)
                 if (length === 0 || pending.at + length > start) {
                     return null
                 }
-                bytes = together ? first.subarray(start - pending.at) : await reader.read(start, start + wanted)
+                bytes = together ? first.subarray(start - pending.at) : await planRead(entryIndex, start, start + wanted)
                 pending = null
             } else {
                 if (previousEnd > start) {
                     return null
                 }
-                bytes = await reader.read(start, start + wanted)
+                bytes = await planRead(entryIndex, start, start + wanted)
             }
             if (bytes.byteLength < ZIP_LOCAL_HEADER_SIZE) {
                 return null
@@ -1142,7 +1171,7 @@ async function planDirectoryRead(data: Uint8Array | File | ImportSource, directo
             let view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
             const headerLength = ZIP_LOCAL_HEADER_SIZE + view.getUint16(26, true) + view.getUint16(28, true)
             if (bytes.byteLength < headerLength) {
-                bytes = await reader.read(start, start + headerLength)
+                bytes = await planRead(entryIndex, start, start + headerLength)
                 if (bytes.byteLength < headerLength) {
                     return null
                 }
@@ -1179,7 +1208,7 @@ async function planDirectoryRead(data: Uint8Array | File | ImportSource, directo
             }
         }
         if (pending) {
-            const length = descriptorLength(await reader.read(pending.at, pending.at + ZIP_DESCRIPTOR_SIZE), pending.entry)
+            const length = descriptorLength(await planRead(entryIndex, pending.at, pending.at + ZIP_DESCRIPTOR_SIZE), pending.entry)
             if (length === 0) {
                 return null
             }

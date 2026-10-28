@@ -36,6 +36,33 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 const h = vi.hoisted(() => ({
     saved: new Map<string, Uint8Array>(),
     pieces: false,
+    /** The plugin-fs fake behind a desktop source: the file it serves and what was asked of it. */
+    desktop: { file: new Uint8Array(0) as Uint8Array, reads: 0, seeks: 0, bytes: 0 },
+}))
+
+vi.mock('@tauri-apps/plugin-fs', () => ({
+    SeekMode: { Start: 0, Current: 1, End: 2 },
+    open: vi.fn(async () => {
+        let position = 0
+        return {
+            read: async (buffer: Uint8Array) => {
+                h.desktop.reads++
+                if (position >= h.desktop.file.length) return null
+                const count = Math.min(buffer.byteLength, h.desktop.file.length - position)
+                buffer.set(h.desktop.file.subarray(position, position + count), 0)
+                position += count
+                h.desktop.bytes += count
+                return count
+            },
+            seek: async (offset: number) => {
+                h.desktop.seeks++
+                position = offset
+                return position
+            },
+            stat: async () => ({ size: h.desktop.file.length, mtime: null }),
+            close: async () => { },
+        }
+    }),
 }))
 
 vi.mock(import('src/ts/alert'), () => ({
@@ -92,7 +119,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 //#endregion
 
 import { saveAssetFromPieces } from 'src/ts/globalApi.svelte'
-import { importSourceOfBytes, type ImportSource } from 'src/ts/importSource'
+import { importSourceOfBytes, importSourceOfFile, openDesktopImportSource, WindowedReader, type ImportSource } from 'src/ts/importSource'
 import { CharXImporter, CharXParseError, CharXWriter, charxLimits, type CharxStreamOpened } from 'src/ts/process/processzip'
 import { ZIP_SIGNATURE_BLOB } from './zipFixtures'
 
@@ -1149,12 +1176,18 @@ describe('validation reads', () => {
 
         expect(originOf(outcome) ?? 'imported').toBe('imported')
         expect(Object.keys(outcome.importer.assets)).toHaveLength(bigEntries.length - 1)
-        // the first header, every later boundary, and the last descriptor
-        expect(reads.length).toBeGreaterThanOrEqual(bigEntries.length)
-        expect(reads.length).toBeLessThanOrEqual(bigEntries.length + 1)
+        if (kind === 'file') {
+            // a picked File reads the run of small bodies in one call: the whole archive is far inside one window
+            expect(reads.length).toBeGreaterThanOrEqual(1)
+            expect(reads.length).toBeLessThanOrEqual(3)
+        } else {
+            // the first header, every later boundary, and the last descriptor
+            expect(reads.length).toBeGreaterThanOrEqual(bigEntries.length)
+            expect(reads.length).toBeLessThanOrEqual(bigEntries.length + 1)
+        }
         // no read takes a body: a read of the whole file or of an entry would be far over this
         for (const [start, end] of reads) {
-            expect(end - start).toBeLessThan(1024)
+            expect(end - start).toBeLessThan(kind === 'file' ? bytes.length : 1024)
         }
         if (kind === 'import-source') {
             // the bodies come only from the stream
@@ -1173,9 +1206,326 @@ describe('validation reads', () => {
         expect(originOf(outcome) ?? 'imported').toBe('imported')
         expect(Object.keys(outcome.importer.assets)).toHaveLength(packedEntries.length - 1)
         // one 256 KiB window per 30 entries, with a few reads for the first header and the last descriptor
-        expect(reads.length).toBeGreaterThanOrEqual(3)
+        expect(reads.length).toBeGreaterThanOrEqual(kind === 'file' ? 1 : 3)
         expect(reads.length).toBeLessThanOrEqual(Math.ceil(packedEntries.length / 30) + 3)
         expect(readBytes).toBeLessThanOrEqual(bytes.length + 256 * 1024)
+    })
+})
+
+describe('validation reads of a picked File', () => {
+    const KIB = 1024
+    /** The header bytes validation asks for beyond the fixed part and the name; the reader's own constant. */
+    const HEADER_SLACK = 64
+
+    /** The reads validation made: all but the tail read and the directory read. */
+    function validationReadsOf(reads: Array<[number, number]>, bytes: Uint8Array): Array<[number, number]> {
+        const layout = layoutOf(bytes)
+        const tailStart = Math.max(0, bytes.length - (22 + 0xFFFF))
+        return reads.filter(([start, end]) => !(start === tailStart && end === bytes.length) && !(start === layout.directoryStart && end === layout.endRecord))
+    }
+
+    /**
+     * A File whose `slice` calls are listed. Its stream gives pieces of 64 KiB: a browser stream does, and fflate recurses
+     * per entry within one piece. `slicesAtStream` is how many slices were taken when the import first streamed the file,
+     * that is, the calls validation (and the tail and directory reads) made.
+     */
+    function listedFile(bytes: Uint8Array) {
+        const reads: Array<[number, number]> = []
+        const file = new File([new Uint8Array(bytes)], 'card.charx')
+        const slice = file.slice.bind(file)
+        const counters: { slicesAtStream: number | null } = { slicesAtStream: null }
+        file.slice = ((start?: number, end?: number) => { reads.push([start ?? 0, end ?? bytes.length]); return slice(start, end) }) as File['slice']
+        file.stream = (() => { counters.slicesAtStream ??= reads.length; return chunkedStream(bytes, 64 * KIB) }) as File['stream']
+        return { file, reads, counters }
+    }
+
+    /** The validation reads of the same archive through a source that carries no window (the reads before the change). */
+    async function unplannedReadsOf(bytes: Uint8Array): Promise<Array<[number, number]>> {
+        const reads: Array<[number, number]> = []
+        const base = importSourceOfBytes('card.charx', bytes)
+        await runImport({ ...base, read: async (start, end) => { reads.push([start, end]); return base.read(start, end) }, stream: () => chunkedStream(bytes, 4096) })
+        return validationReadsOf(reads, bytes)
+    }
+
+    function entriesOf(count: number, size: number, seed: number): Entry[] {
+        return [['card.json', CARD, 'store'], ...Array.from({ length: count }, (_, i): Entry => [`assets/other/body${i}.bin`, random(size, seed + i), 'store'])]
+    }
+
+    function bytesRead(reads: Array<[number, number]>): number {
+        return reads.reduce((total, [start, end]) => total + (end - start), 0)
+    }
+
+    /** The archive with a complete unlisted local entry of `size` data bytes in front of listed entry `before`. */
+    function withSizedOrphan(bytes: Uint8Array, before: number, size: number): Uint8Array {
+        const layout = layoutOf(bytes)
+        const donor = fflate.zipSync({ 'assets/orphan.bin': [random(size, 5), { level: 0 }] })
+        const orphan = donor.slice(0, layoutOf(donor).directoryStart)
+        const at = layout.entries[before].local
+        const out = joined(bytes.subarray(0, at), orphan, bytes.subarray(at))
+        const view = new DataView(out.buffer)
+        view.setUint32(layout.endRecord + orphan.length + 16, view.getUint32(layout.endRecord + orphan.length + 16, true) + orphan.length, true)
+        let central = layout.directoryStart + orphan.length
+        for (let i = 0; i < layout.entries.length; i++) {
+            const offset = view.getUint32(central + 42, true)
+            if (layout.zipStart + offset >= at) {
+                view.setUint32(central + 42, offset + orphan.length, true)
+            }
+            central += 46 + view.getUint16(central + 28, true) + view.getUint16(central + 30, true) + view.getUint16(central + 32, true)
+        }
+        return out
+    }
+
+    function cardOfLength(length: number): Uint8Array {
+        const empty = new TextEncoder().encode(JSON.stringify({ spec: 'chara_card_v3', data: { name: 'x', description: '' } })).length
+        const card = new TextEncoder().encode(JSON.stringify({ spec: 'chara_card_v3', data: { name: 'x', description: 'a'.repeat(length - empty) } }))
+        expect(card.length).toBe(length)
+        return card
+    }
+
+    test('(R) 60 stored entries of 40 KiB take at most three calls', async () => {
+        const entries = entriesOf(60, 40 * KIB, 200)
+        const bytes = upstreamArchive(entries)
+        const subject = listedFile(bytes)
+
+        const outcome = await runImport(importSourceOfFile(subject.file))
+        const reads = validationReadsOf(subject.reads, bytes)
+
+        expect(originOf(outcome) ?? 'imported').toBe('imported')
+        expect(Object.keys(outcome.importer.assets)).toHaveLength(entries.length - 1)
+        expect(reads.length).toBeLessThanOrEqual(3)
+    })
+
+    test('(N) alternating small and big bodies cost no more calls than a source without a window, and never a wasted window', async () => {
+        // the picked File's sizes at 1/64: window 8 MiB -> 128 KiB, gap 1 MiB -> 16 KiB, bodies 512 KiB / 9 MiB -> 8 KiB / 144 KiB
+        const window = 128 * KIB
+        const entries: Entry[] = [['card.json', CARD, 'store']]
+        for (let i = 0; i < 12; i++) {
+            entries.push([`assets/other/small${i}.bin`, random(8 * KIB, 300 + i), 'store'], [`assets/other/big${i}.bin`, random(144 * KIB, 400 + i), 'store'])
+        }
+        const bytes = upstreamArchive(entries)
+        const windowed = listedFile(bytes)
+
+        const outcome = await runImport(importSourceOfFile(windowed.file, window, 16 * KIB))
+        const reads = validationReadsOf(windowed.reads, bytes)
+
+        expect(originOf(outcome) ?? 'imported').toBe('imported')
+        expect(Object.keys(outcome.importer.assets)).toHaveLength(entries.length - 1)
+        expect(reads.length).toBeLessThanOrEqual((await unplannedReadsOf(bytes)).length)
+        expect(bytesRead(reads)).toBeLessThanOrEqual(2 * window)
+    })
+
+    test('(N) 4 bodies of 3 MiB: one small read per boundary, and no read spans a body', async () => {
+        const bytes = upstreamArchive(entriesOf(4, 3 * MIB, 500))
+        const subject = listedFile(bytes)
+
+        const outcome = await runImport(importSourceOfFile(subject.file))
+        const reads = validationReadsOf(subject.reads, bytes)
+
+        expect(originOf(outcome) ?? 'imported').toBe('imported')
+        expect(reads.length).toBe(5)
+        for (const [start, end] of reads) {
+            expect(end - start).toBeLessThan(3 * MIB)
+        }
+    })
+
+    test('(N) bodies whose header is exactly the gap from the one before are read through together', async () => {
+        const gap = 16 * KIB
+        // the distance from one header\'s wanted end to the next header is the body plus the descriptor minus the slack
+        const body = gap + HEADER_SLACK - 16
+        const entries: Entry[] = [['card.json', cardOfLength(body), 'store'], ['assets/other/a.bin', random(body, 600), 'store'], ['assets/other/b.bin', random(body, 601), 'store']]
+        const bytes = upstreamArchive(entries)
+        const layout = layoutOf(bytes)
+        expect(layout.entries[1].local - (layout.entries[0].local + 30 + layout.entries[0].nameLength + HEADER_SLACK)).toBe(gap)
+        const subject = listedFile(bytes)
+
+        const outcome = await runImport(importSourceOfFile(subject.file, 64 * KIB, gap))
+        const reads = validationReadsOf(subject.reads, bytes)
+
+        expect(originOf(outcome) ?? 'imported').toBe('imported')
+        expect(Object.keys(outcome.importer.assets)).toHaveLength(entries.length - 1)
+        expect(reads.length).toBeLessThanOrEqual(2)
+    })
+
+    test('(N) local extras longer than the directory\'s do not carry a read through a body', async () => {
+        const bodySize = 300 * KIB
+        let bytes = upstreamArchive(entriesOf(4, bodySize, 700))
+        for (let i = 1; i <= 4; i++) {
+            bytes = withLocalExtra(bytes, i, 200)
+        }
+        const subject = listedFile(bytes)
+
+        const outcome = await runImport(importSourceOfFile(subject.file, MIB, 16 * KIB))
+        const reads = validationReadsOf(subject.reads, bytes)
+
+        expect(originOf(outcome) ?? 'imported').toBe('imported')
+        expect(Object.keys(outcome.importer.assets)).toHaveLength(4)
+        expect(reads.length).toBeGreaterThan(0)
+        for (const [start, end] of reads) {
+            expect(end - start).toBeLessThanOrEqual(16 * KIB + 2 * 64 * KIB + HEADER_SLACK)
+        }
+    })
+
+    // A short body ends within a read-ahead guess of the header before it: only a planned, exact descriptor read stays clear of the gap.
+    test.each([
+        [3, 2 * KIB],
+        [7, 2 * KIB],
+        [3, 40 * KIB],
+        [7, 40 * KIB],
+    ])('(G) an unlisted entry of %i MiB between listed bodies of %i bytes is not read, and the import is whole', async (orphanMiB, bodySize) => {
+        const plain = upstreamArchive(entriesOf(5, bodySize, 800))
+        const bytes = withSizedOrphan(plain, 3, orphanMiB * MIB)
+        const subject = listedFile(bytes)
+
+        const outcome = await runImport(importSourceOfFile(subject.file))
+        const reads = validationReadsOf(subject.reads, bytes)
+
+        expect(originOf(outcome) ?? 'imported').toBe('imported')
+        expect(Object.keys(outcome.importer.assets)).toHaveLength(5)
+        for (const [start, end] of reads) {
+            expect(end - start).toBeLessThan(orphanMiB * MIB)
+        }
+        expect(reads.length).toBeLessThanOrEqual((await unplannedReadsOf(bytes)).length)
+    })
+
+    test('(N) validation walks the run only for the reads that miss the window: the extent functions run at most once per file call', async () => {
+        const entries: Entry[] = [['card.json', CARD, 'store'], ...Array.from({ length: 3000 }, (_, i): Entry => [`assets/other/tiny${i}.bin`, random(1024, 3000 + i), 'store'])]
+        const bytes = upstreamArchive(entries)
+        const subject = listedFile(bytes)
+        const prototype = WindowedReader.prototype
+        const original = prototype.read
+        let reads = 0
+        let functionReads = 0
+        let invocations = 0
+        prototype.read = function (this: WindowedReader, start: number, end: number, aheadOf?: () => number) {
+            reads++
+            let counted = aheadOf
+            if (typeof aheadOf === 'function') {
+                functionReads++
+                counted = () => { invocations++; return aheadOf() }
+            }
+            return original.call(this, start, end, counted)
+        }
+        let outcome: Outcome
+        try {
+            outcome = await runImport(importSourceOfFile(subject.file, 64 * KIB, 16 * KIB))
+        } finally {
+            prototype.read = original
+        }
+
+        expect(originOf(outcome) ?? 'imported').toBe('imported')
+        expect(Object.keys(outcome.importer.assets)).toHaveLength(entries.length - 1)
+        expect(reads).toBeGreaterThanOrEqual(entries.length)
+        // dozens of 64 KiB windows over about 3 MiB of headers and bodies
+        expect(subject.counters.slicesAtStream).not.toBeNull()
+        expect(subject.counters.slicesAtStream).toBeGreaterThanOrEqual(20)
+        // every read of a windowed source is planned
+        expect(functionReads).toBe(reads)
+        // and the walk is paid per file call, not per read
+        expect(invocations).toBeGreaterThan(0)
+        expect(invocations).toBeLessThanOrEqual(subject.counters.slicesAtStream ?? 0)
+        expect(WindowedReader.prototype.read).toBe(original)
+    })
+
+    describe('across several windows', () => {
+        const entries = entriesOf(40, 100 * KIB, 1000)
+        const bytes = upstreamArchive(entries)
+        const layout = layoutOf(bytes)
+
+        test('(N) a File of several small windows imports whole', async () => {
+            const subject = listedFile(bytes)
+
+            const outcome = await runImport(importSourceOfFile(subject.file, 256 * KIB, 16 * KIB))
+
+            expect(originOf(outcome) ?? 'imported').toBe('imported')
+            expect(Object.keys(outcome.importer.assets)).toHaveLength(entries.length - 1)
+            expect(importedWhole(outcome, 'assets/other/body20.bin', entries[21][1])).toBe(true)
+            expect(validationReadsOf(subject.reads, bytes).length).toBeGreaterThan(1)
+        })
+
+        test('(N) a File of 12 MB at the default sizes imports whole in several windows', async () => {
+            const big = entriesOf(12, MIB, 1100)
+            const archive = upstreamArchive(big)
+            const subject = listedFile(archive)
+
+            const outcome = await runImport(importSourceOfFile(subject.file))
+
+            expect(originOf(outcome) ?? 'imported').toBe('imported')
+            expect(Object.keys(outcome.importer.assets)).toHaveLength(12)
+            expect(importedWhole(outcome, 'assets/other/body11.bin', big[12][1])).toBe(true)
+            expect(validationReadsOf(subject.reads, archive).length).toBeGreaterThanOrEqual(2)
+        })
+
+        test('(N) a header that changed between validation and the splice is a ZIP failure', async () => {
+            const changed = new Uint8Array(bytes)
+            changed[layout.entries[20].local + 10] ^= 1
+            const subject = listedFile(bytes)
+            const source: ImportSource = { ...importSourceOfFile(subject.file, 256 * KIB, 16 * KIB), stream: () => chunkedStream(changed, 64 * KIB) }
+
+            const outcome = await runImport(source)
+
+            expect(originOf(outcome)).toBe('zip')
+        })
+
+        test('(N) a validation read that rejects is an input failure and nothing is saved', async () => {
+            const subject = listedFile(bytes)
+            const base = importSourceOfFile(subject.file, 256 * KIB, 16 * KIB)
+            let calls = 0
+            // the tail and the directory are the first two reads; the next is validation's
+            const source: ImportSource = { ...base, read: async (start, end) => {
+                if (++calls > 3) {
+                    throw new Error('the picker went away')
+                }
+                return base.read(start, end)
+            } }
+
+            const outcome = await runImport(source)
+
+            expect(originOf(outcome)).toBe('input')
+            expect((outcome.failure as Error).message).toBe('the picker went away')
+            expect(h.saved.size).toBe(0)
+        })
+    })
+})
+
+describe('sources without a window are read as before', () => {
+    // Read counts and bytes recorded before the window existed. A picked File's window must not reach other sources.
+    const RECORDED = { sixtyBytes: [58, 339051], mixedBytes: [6, 817826], sixtyDesktop: [59, 59, 2805087] }
+    const sixty: Entry[] = [['card.json', CARD, 'store'], ...Array.from({ length: 60 }, (_, i): Entry => [`assets/other/body${i}.bin`, random(40 * 1024, 200 + i), 'store'])]
+    const mixed: Entry[] = [['card.json', CARD, 'deflate-6'], ...Array.from({ length: 90 }, (_, i): Entry => [`assets/other/mixed${i}.bin`, random(8 * 1024, 80 + i), i % 3 === 2 ? 'deflate-6' : 'store'])]
+
+    async function bytesSourceReads(entries: Entry[]) {
+        const bytes = upstreamArchive(entries)
+        const reads: Array<[number, number]> = []
+        const base = importSourceOfBytes('card.charx', bytes)
+        const outcome = await runImport({ ...base, read: async (start, end) => { reads.push([start, end]); return base.read(start, end) }, stream: () => chunkedStream(bytes, 4096) })
+        expect(originOf(outcome) ?? 'imported').toBe('imported')
+        return reads
+    }
+
+    test('(G) a byte source reads 60 entries of 40 KiB as it did', async () => {
+        const reads = await bytesSourceReads(sixty)
+        expect([reads.length, reads.reduce((total, [start, end]) => total + (end - start), 0)]).toEqual(RECORDED.sixtyBytes)
+    })
+
+    test('(G) a byte source reads 90 entries of 8 KiB, every third deflated, as it did', async () => {
+        const reads = await bytesSourceReads(mixed)
+        expect([reads.length, reads.reduce((total, [start, end]) => total + (end - start), 0)]).toEqual(RECORDED.mixedBytes)
+    })
+
+    test('(G) a desktop source reads 60 entries of 40 KiB as it did, and carries no window', async () => {
+        const bytes = upstreamArchive(sixty)
+        h.desktop.file = bytes
+        h.desktop.reads = 0
+        h.desktop.seeks = 0
+        h.desktop.bytes = 0
+        const source = await openDesktopImportSource('/mods/card.charx')
+        const outcome = await runImport(source)
+        await source.close()
+
+        expect(originOf(outcome) ?? 'imported').toBe('imported')
+        expect(source.windowBytes).toBeUndefined()
+        // the plugin bytes are the whole stream plus validation's reads
+        expect([h.desktop.reads, h.desktop.seeks, h.desktop.bytes]).toEqual(RECORDED.sixtyDesktop)
     })
 })
 
