@@ -1264,10 +1264,16 @@ describe('saveAssetFromBlob names the bytes the store holds', () => {
         const extensionOnly = api.saveAsset(bytes, '', 'png')
         const unnamed = api.saveAsset(bytes)
 
-        await expect(named).rejects.toThrow(/^"a\.png" could not be saved because your browser storage is full\./)
-        await expect(named).rejects.toMatchObject({ cause: quota })
-        await expect(extensionOnly).rejects.toThrow(/^"unnamed file" could not be saved/)
-        await expect(unnamed).rejects.toThrow(/^"unnamed file" could not be saved/)
+        // All three rejections get a handler before the first await, so none is unhandled while another is awaited.
+        const settled = await Promise.allSettled([named, extensionOnly, unnamed])
+
+        expect(settled.map((entry) => entry.status)).toEqual(['rejected', 'rejected', 'rejected'])
+        const [namedReason, extensionOnlyReason, unnamedReason] = settled.map((entry) => (entry as PromiseRejectedResult).reason)
+        expect(namedReason).toBeInstanceOf(Error)
+        expect(namedReason.message).toMatch(/^"a\.png" could not be saved because your browser storage is full\./)
+        expect(namedReason).toMatchObject({ cause: quota })
+        expect(extensionOnlyReason.message).toMatch(/^"unnamed file" could not be saved/)
+        expect(unnamedReason.message).toMatch(/^"unnamed file" could not be saved/)
     })
 
     test('guard: saveAsset passes a failure that is not a quota error through as it is', async () => {
