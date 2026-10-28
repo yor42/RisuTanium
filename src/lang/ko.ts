@@ -1091,6 +1091,7 @@ export const languageKorean = {
     "exportCheckingAsset": (name: string, readMiB: number, totalMiB: number) => `${name} 확인 중 (${readMiB} / ${totalMiB} MiB)...`,
     "exportStreamingAsset": (name: string, writtenMiB: number, totalMiB: number) => `${name} 쓰는 중 (${writtenMiB} / ${totalMiB} MiB)...`,
     "successImport": "성공적으로 임포트했습니다.",
+    "chatImportSkippedLines": (count: number) => `채팅을 임포트했습니다. 읽을 수 없는 ${count}줄은 건너뛰었습니다.`,
     "importedCharacter": "성공적으로 임포트 됨.",
     "alwaysActive": "언제나 활성화",
     "additionalPrompt": "추가 프롬프트",

@@ -135,7 +135,8 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 //#endregion
 
 import { selectSingleFile } from 'src/ts/util'
-import { alertError } from 'src/ts/alert'
+import { alertError, alertNormal } from 'src/ts/alert'
+import { language } from 'src/lang'
 import { selectedCharID } from 'src/ts/stores.svelte'
 import { importChat } from './characters'
 
@@ -305,5 +306,93 @@ describe('importChat -- file type selection', () => {
         const chats = (testDb.db.characters[0] as character).chats
         expect(chats).toHaveLength(1)
         expect(chats[0].message).toHaveLength(1)
+    })
+})
+
+describe('importChat -- SillyTavern JSONL reading', () => {
+    const header = JSON.stringify({ user_name: 'U', character_name: 'C', create_date: '2024-01-01', chat_metadata: {} })
+    const first = JSON.stringify({ name: 'C', is_user: false, mes: 'first message' })
+    const second = JSON.stringify({ name: 'U', is_user: true, mes: 'second message' })
+
+    beforeEach(() => {
+        vi.mocked(alertError).mockClear()
+        vi.mocked(alertNormal).mockClear()
+        vi.mocked(selectSingleFile).mockReset()
+        testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+    })
+
+    function importedMessages() {
+        const chats = (testDb.db.characters[0] as character).chats
+        return chats.length === 0 ? [] : chats[0].message
+    }
+
+    // R1: regression reproducer. A file without a header keeps its first line.
+    test('R1: a header-less two-message file imports both messages', async () => {
+        vi.mocked(selectSingleFile).mockResolvedValue({ name: 'chat.jsonl', data: utf8(`${first}\n${second}`) })
+
+        await importChat()
+
+        expect(importedMessages()).toHaveLength(2)
+        expect(importedMessages().map((m) => m.role)).toEqual(['char', 'user'])
+    })
+
+    // R2: regression reproducer. One unreadable line must not discard the chat.
+    test('R2: an invalid line among valid lines is skipped, the valid lines import and the count is reported', async () => {
+        vi.mocked(selectSingleFile).mockResolvedValue({
+            name: 'chat.jsonl',
+            data: utf8(`${header}\n${first}\n{not json\n${second}`),
+        })
+
+        await importChat()
+
+        expect(alertError).not.toHaveBeenCalled()
+        expect(importedMessages()).toHaveLength(2)
+        expect(alertNormal).toHaveBeenCalledTimes(1)
+        // Green-only extra: the notice names the skipped count.
+        expect(alertNormal).toHaveBeenCalledWith(language.chatImportSkippedLines(1))
+    })
+
+    // R3: regression reproducer. A line whose `mes` is an object must not fail the import.
+    test('R3: a line with an object mes is skipped and does not fail the import', async () => {
+        const chubLine = JSON.stringify({ name: 'C', is_user: false, mes: { message: 'nested' } })
+        vi.mocked(selectSingleFile).mockResolvedValue({
+            name: 'chat.jsonl',
+            data: utf8(`${header}\n${first}\n${chubLine}\n${second}`),
+        })
+
+        await importChat()
+
+        expect(alertError).not.toHaveBeenCalled()
+        expect(importedMessages()).toHaveLength(2)
+    })
+
+    // R4: compatibility guard. Passes before and after the fix.
+    test('R4: a header file imports the same roles and data as before and reports success', async () => {
+        vi.mocked(selectSingleFile).mockResolvedValue({
+            name: 'chat.jsonl',
+            data: utf8(`${header}\n${first}\n${second}`),
+        })
+
+        await importChat()
+
+        expect(importedMessages()).toEqual([
+            { role: 'char', data: 'first message' },
+            { role: 'user', data: 'second message' },
+        ])
+        expect(alertNormal).toHaveBeenCalledWith(language.successImport)
+    })
+
+    // Regression reproducer: a BOM-prefixed header file imports instead of failing on the BOM.
+    test('a BOM-prefixed header file imports its messages with the success notice', async () => {
+        vi.mocked(selectSingleFile).mockResolvedValue({
+            name: 'chat.jsonl',
+            data: utf8(`\uFEFF${header}\n${first}\n${second}`),
+        })
+
+        await importChat()
+
+        expect(alertError).not.toHaveBeenCalled()
+        expect(importedMessages()).toHaveLength(2)
+        expect(alertNormal).toHaveBeenCalledWith(language.successImport)
     })
 })
