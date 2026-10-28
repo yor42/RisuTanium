@@ -1,46 +1,64 @@
 export type ImageType = 'JPEG' | 'PNG' | 'GIF' | 'BMP' | 'AVIF' | 'WEBP' | 'Unknown'
 
-export function getImageType(arr: Uint8Array): ImageType {
+/** How many leading bytes the type rules read. */
+export const IMAGE_TYPE_HEAD_BYTES = 12
+
+/** How many trailing bytes the type rules read. */
+export const IMAGE_TYPE_TAIL_BYTES = 2
+
+/**
+ * The type of an image from the ends of its bytes: `head` holds the first bytes (at least the first
+ * `IMAGE_TYPE_HEAD_BYTES` when the image has that many) and `tail` the last `IMAGE_TYPE_TAIL_BYTES` (all of an image
+ * shorter than that). A caller that cannot hold the whole image, such as a streamed export, passes the ends it kept;
+ * the rules are the ones `getImageType` applies to a whole array.
+ */
+export function imageTypeOfEnds(head: Uint8Array, tail: Uint8Array): ImageType {
+    const last = tail[tail.length - 1]
+    const beforeLast = tail[tail.length - 2]
     switch (true) {
-        case arr[0] === 0xff && arr[1] === 0xd8 && arr[arr.length - 2] === 0xff && arr[arr.length - 1] === 0xd9:
+        case head[0] === 0xff && head[1] === 0xd8 && beforeLast === 0xff && last === 0xd9:
             return 'JPEG'
-        case arr[0] === 0x89 &&
-            arr[1] === 0x50 &&
-            arr[2] === 0x4e &&
-            arr[3] === 0x47 &&
-            arr[4] === 0x0d &&
-            arr[5] === 0x0a &&
-            arr[6] === 0x1a &&
-            arr[7] === 0x0a:
+        case head[0] === 0x89 &&
+            head[1] === 0x50 &&
+            head[2] === 0x4e &&
+            head[3] === 0x47 &&
+            head[4] === 0x0d &&
+            head[5] === 0x0a &&
+            head[6] === 0x1a &&
+            head[7] === 0x0a:
             return 'PNG'
-        case arr[0] === 0x47 &&
-            arr[1] === 0x49 &&
-            arr[2] === 0x46 &&
-            arr[3] === 0x38 &&
-            (arr[4] === 0x37 || arr[4] === 0x39) &&
-            arr[5] === 0x61:
+        case head[0] === 0x47 &&
+            head[1] === 0x49 &&
+            head[2] === 0x46 &&
+            head[3] === 0x38 &&
+            (head[4] === 0x37 || head[4] === 0x39) &&
+            head[5] === 0x61:
             return 'GIF'
-        case arr[0] === 0x42 && arr[1] === 0x4d:
+        case head[0] === 0x42 && head[1] === 0x4d:
             return 'BMP'
-        case arr[4] === 0x66 &&
-            arr[5] === 0x74 &&
-            arr[6] === 0x79 &&
-            arr[7] === 0x70 &&
-            arr[8] === 0x61 &&
-            arr[9] === 0x76 &&
-            arr[10] === 0x69 &&
-            arr[11] === 0x66:
+        case head[4] === 0x66 &&
+            head[5] === 0x74 &&
+            head[6] === 0x79 &&
+            head[7] === 0x70 &&
+            head[8] === 0x61 &&
+            head[9] === 0x76 &&
+            head[10] === 0x69 &&
+            head[11] === 0x66:
             return 'AVIF'
-        case arr[0] === 0x52 &&
-            arr[1] === 0x49 &&
-            arr[2] === 0x46 &&
-            arr[3] === 0x46 &&
-            arr[8] === 0x57 &&
-            arr[9] === 0x45 &&
-            arr[10] === 0x42 &&
-            arr[11] === 0x50:
+        case head[0] === 0x52 &&
+            head[1] === 0x49 &&
+            head[2] === 0x46 &&
+            head[3] === 0x46 &&
+            head[8] === 0x57 &&
+            head[9] === 0x45 &&
+            head[10] === 0x42 &&
+            head[11] === 0x50:
             return 'WEBP'
     }
 
     return 'Unknown'
+}
+
+export function getImageType(arr: Uint8Array): ImageType {
+    return imageTypeOfEnds(arr.subarray(0, IMAGE_TYPE_HEAD_BYTES), arr.subarray(Math.max(0, arr.length - IMAGE_TYPE_TAIL_BYTES)))
 }

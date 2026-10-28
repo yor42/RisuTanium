@@ -159,7 +159,7 @@ describe('preflightExport sizes (new behaviour)', () => {
         test(`${source}: exactly 64 MiB is not large and one byte more is`, async () => {
             const getStore = storeFor(source)
             env.sizes.set(key('edge'), LARGE_EXPORT_ASSET_BYTES)
-            expect(await preflightExport([entry('edge')], 'png', getStore)).toEqual({ kind: 'ok', large: new Map() })
+            expect(await preflightExport([entry('edge')], 'png', getStore)).toMatchObject({ kind: 'ok', large: new Map(), source: { kind: source } })
             env.sizes.set(key('edge'), LARGE_EXPORT_ASSET_BYTES + 1)
             expect(await preflightExport([entry('edge')], 'png', getStore)).toEqual({ kind: 'refuse-large', names: ['edge'] })
         })
@@ -178,7 +178,7 @@ describe('preflightExport sizes (new behaviour)', () => {
         for (const format of ['png', 'json', 'risum', 'realm'] as const) {
             expect(await preflightExport([entry('big')], format, getStore)).toEqual({ kind: 'refuse-large', names: ['big'] })
         }
-        expect(await preflightExport([entry('big')], 'charx', getStore)).toEqual({ kind: 'ok', large: new Map([[key('big'), 70 * MIB]]) })
+        expect(await preflightExport([entry('big')], 'charx', getStore)).toMatchObject({ kind: 'ok', large: new Map([[key('big'), 70 * MIB]]), source: { kind: 'tauri' } })
     })
 
     test('names are listed once each, in list order', async () => {
@@ -301,7 +301,86 @@ describe('CharX entry count (new behaviour)', () => {
     })
 })
 
+describe('CharX import cap (new behaviour)', () => {
+    // The caller passes the importer's own limit (`assetByteLimit()`); the pre-check does not import it.
+    const CAP = GIB
+    const extra = { charxAssetCap: CAP }
+
+    test('exactly at the cap is accepted and one byte above is refused, naming the asset', async () => {
+        const getStore = storeFor('tauri')
+        env.sizes.set(key('edge'), CAP)
+        expect((await preflightExport([entry('edge')], 'charx', getStore, extra)).kind).toBe('ok')
+        env.sizes.set(key('edge'), CAP + 1)
+        expect(await preflightExport([entry('edge')], 'charx', getStore, extra)).toEqual({ kind: 'refuse-cap', names: ['edge'] })
+    })
+
+    test('without a cap in the extra nothing is refused for its size', async () => {
+        const getStore = storeFor('tauri')
+        env.sizes.set(key('huge'), 2 * GIB)
+        expect((await preflightExport([entry('huge')], 'charx', getStore)).kind).toBe('ok')
+    })
+
+    test('names are listed once each, in list order, and the same key listed twice is named once', async () => {
+        const getStore = storeFor('tauri')
+        env.sizes.set(key('b'), CAP + 1)
+        env.sizes.set(key('a'), CAP + 2)
+        env.sizes.set(key('small'), 5)
+        const result = await preflightExport([entry('b', 0), entry('small', 1), entry('a', 2), entry('b', 3)], 'charx', getStore, extra)
+        expect(result).toEqual({ kind: 'refuse-cap', names: ['b', 'a'] })
+    })
+
+    test('the cap is checked before the count and before the total', async () => {
+        const getStore = storeFor('tauri')
+        const assets = Array.from({ length: 32767 }, (_, i) => entry(`a${i}`, i))
+        env.sizes.set(assets[0].key, CAP + 1)
+        expect((await preflightExport(assets, 'charx', getStore, extra)).kind).toBe('refuse-cap')
+        // the same list without the oversized asset is refused for its count
+        env.sizes.clear()
+        expect((await preflightExport(assets, 'charx', getStore, extra)).kind).toBe('refuse-count')
+        // five assets of 0.9 GiB each are under the cap and past the 4 GiB headroom
+        const five = Array.from({ length: 5 }, (_, i) => entry('v', i))
+        env.sizes.set(key('v'), Math.floor(0.9 * GIB))
+        expect((await preflightExport(five, 'charx', getStore, extra)).kind).toBe('refuse-total')
+        env.sizes.set(key('v'), CAP + 1)
+        expect((await preflightExport(five, 'charx', getStore, extra)).kind).toBe('refuse-cap')
+    })
+
+    test('four assets of 0.9 GiB are accepted and five are refused as a total', async () => {
+        const getStore = storeFor('tauri')
+        env.sizes.set(key('v'), Math.floor(0.9 * GIB))
+        const entries = (n: number) => Array.from({ length: n }, (_, i) => entry('v', i))
+        expect((await preflightExport(entries(4), 'charx', getStore, extra)).kind).toBe('ok')
+        expect((await preflightExport(entries(5), 'charx', getStore, extra)).kind).toBe('refuse-total')
+    })
+
+    test('the portrait and a size that cannot be read are never refused by the cap', async () => {
+        const getStore = storeFor('tauri')
+        expect((await preflightExport([entry('p', 0, true), entry('unknown', 1)], 'charx', getStore, { ...extra, portraitBytes: 10 })).kind).toBe('ok')
+    })
+
+    test('only a CharX has the cap', async () => {
+        const getStore = storeFor('tauri')
+        env.sizes.set(key('big'), CAP + 1)
+        for (const format of ['png', 'json', 'risum', 'realm'] as const) {
+            expect(await preflightExport([entry('big')], format, getStore, extra)).toEqual({ kind: 'refuse-large', names: ['big'] })
+        }
+    })
+
+    test('the result carries the source the sizes were read through, or null when there is none', async () => {
+        env.sizes.set(key('big'), 70 * MIB)
+        expect(await preflightExport([entry('big')], 'charx', storeFor('node'), extra)).toMatchObject({ kind: 'ok', source: { kind: 'node' } })
+        expect(await preflightExport([entry('big')], 'charx', async () => null, extra)).toEqual({ kind: 'ok', large: new Map(), source: null })
+    })
+})
+
 describe('refuseExport (new behaviour)', () => {
+    test('a cap refusal shows one notice naming the assets', async () => {
+        expect(await refuseExport({ kind: 'refuse-cap', names: ['Big Video', 'Other'] })).toBe(true)
+        expect(env.notices).toHaveLength(1)
+        expect(env.notices[0]).toContain('Big Video')
+        expect(env.notices[0]).toContain('Other')
+    })
+
     test('a count refusal shows one notice naming the count and the limit', async () => {
         expect(await refuseExport({ kind: 'refuse-count', count: 65536, limit: 65535 })).toBe(true)
         expect(env.notices).toHaveLength(1)
@@ -310,7 +389,7 @@ describe('refuseExport (new behaviour)', () => {
     })
 
     test('an ok result shows nothing and is not a refusal', async () => {
-        expect(await refuseExport({ kind: 'ok', large: new Map() })).toBe(false)
+        expect(await refuseExport({ kind: 'ok', large: new Map(), source: null })).toBe(false)
         expect(env.notices).toEqual([])
     })
 

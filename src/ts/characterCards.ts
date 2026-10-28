@@ -21,7 +21,7 @@ import { PngChunk, type PngLayoutChunk } from "./pngChunk"
 import { ASSET_KEY_PREFIX, PngCardSourceChanged, PngCardValueTooLarge, assetIndexOfKey, isEmptyCardValue, readCardValue, selectCardChunk, walkPngCard } from "./pngCardImport"
 import { decodeBase64Bytes } from "./base64Bytes"
 import type { OnnxModelFiles } from "./process/transformers"
-import { CharXImporter, CharXParseError, CharXWriter, assetByteLimit, hasZipEndRecord } from "./process/processzip"
+import { CharXImporter, CharXParseError, CharXWriter, assetByteLimit, hasZipEndRecord, type CharxStreamProgress } from "./process/processzip"
 import { exportModuleLegacy, readModule, type RisuModule } from "./process/modules"
 import { ModuleRefusal, importErrorMessage } from "./process/moduleRefusal"
 import { hasModuleStubKey } from "./storage/moduleStub"
@@ -40,7 +40,8 @@ import { normalizeOnboarding } from "./onboardingData"
 import { splitLoreKeys } from "./process/loreKeys"
 import { placeDisabledMarker } from "./process/lorebookImportDecorators"
 import { readOldCard, type OldCardFields } from "./oldCardFormat"
-import { appStoreOrNull, listExportAssets, preflightExport, refuseExport, type ExportFormat, type PreflightOk, type PreflightResult } from "./drive/exportPreflight"
+import { appStoreOrNull, listExportAssets, preflightExport, refuseExport, type ExportAssetEntry, type ExportFormat, type PreflightOk, type PreflightResult } from "./drive/exportPreflight"
+import type { ExportAssetSource } from "./drive/assetPieces"
 
 
 const EXTERNAL_HUB_URL = 'https://sv.risuai.xyz';
@@ -1756,6 +1757,46 @@ function createBaseV2(char:character) {
 }
 
 
+/** The bytes of an asset the export holds; only a streamed CharX asset is not held, and it never reaches a caller of this. */
+function heldBytes(data:Uint8Array|null):Uint8Array {
+    if(data === null){
+        throw new Error('A streamed asset was read whole')
+    }
+    return data
+}
+
+/** A size in whole MiB for the progress text. */
+function wholeMiB(bytes:number):number {
+    return Math.round(bytes / (1024 * 1024))
+}
+
+/**
+ * Streams one large asset into the CharX in two passes (see `CharXWriter.writeStream`). The asset is read through the
+ * source its size came from. An error that names the store key is replaced by one that names the asset by its display
+ * name (the key and the original go to the console), so the notice an export failure shows never contains the key.
+ */
+async function writeLargeCharxAsset(writer:CharXWriter, entry:ExportAssetEntry, source:ExportAssetSource, total:number, path:string, metaPath:string, onProgress:CharxStreamProgress|undefined){
+    const { openExportAssetPieces, ExportAssetMissingError } = await import("./drive/assetPieces")
+    const { ExportReadError } = await import("./drive/inlayBackupExport")
+    const open = async () => {
+        try{
+            return await openExportAssetPieces(entry.key, source)
+        }
+        catch(error){
+            if(error instanceof ExportAssetMissingError){
+                console.error(error)
+                throw new ExportAssetMissingError(entry.name, error.cause)
+            }
+            if(error instanceof ExportReadError){
+                console.error(error)
+                throw new ExportReadError(entry.name, error.cause)
+            }
+            throw error
+        }
+    }
+    await writer.writeStream(path, open, total, onProgress, { name: entry.name, metaPath })
+}
+
 /**
  * Sizes the assets a card export would read and decides before anything opens: a refusal result, or `ok` with the size
  * of every large asset. `portraitBytes` is the card image the export has already read (counted by a CharX estimate).
@@ -1770,6 +1811,8 @@ export async function preflightCardExport(char:character, type:'png'|'json'|'cha
     const entries = listExportAssets(char, spec, type, v3?.data.assets ?? [])
     const portraitBytes = options.portraitBytes ?? 0
     return preflightExport(entries, format, appStoreOrNull, format === 'charx' ? {
+        // the importer's own limit, so an asset this export writes is one the import takes back
+        charxAssetCap: assetByteLimit(),
         portraitBytes,
         jpegPrefixBytes: type === 'charxJpeg' ? portraitBytes : 0,
         // card.json plus module.risum, estimated from the compact card as built (3 bytes per character) with room for the entry paths; the indented card.json can exceed it, which the headroom margin and the writer's backstop cover
@@ -1820,8 +1863,14 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
     let localWriter: LocalWriter|VirtualWriter|undefined
     try{
         // Before any writer, dialog or file: a caller that already checked (a module export, a Realm share) passes its result on.
-        if(arg.checked === undefined && await refuseExport(await preflightCardExport(char, type, spec, {portraitBytes: img.length}))){
-            return false
+        let checked = arg.checked
+        if(checked === undefined){
+            const result = await preflightCardExport(char, type, spec, {portraitBytes: img.length})
+            if(result.kind !== 'ok'){
+                await refuseExport(result)
+                return false
+            }
+            checked = result
         }
         char.image = ''
         img = type === 'png' ? (await reencodeImage(img)) : img
@@ -1908,24 +1957,31 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                 for(let i=0;i<card.data.assets.length;i++){
                     showProgress(language.alerts.addingCardAssets, (i / card.data.assets.length * 100).toFixed(2))
                     const entry = entryAt.get(i)
-                    let rData:Uint8Array
+                    // A large asset of a CharX is streamed from the source its size was read through and never held; every
+                    // other asset is read whole as before.
+                    const largeSize = entry === undefined ? undefined : checked.large.get(entry.key)
+                    const streamSource = writer instanceof CharXWriter && largeSize !== undefined && checked.source ? checked.source : null
+                    let rData:Uint8Array|null
                     if(entry === undefined){
                         continue
                     }
                     else if(entry.portrait){
                         rData = img
                     }
+                    else if(streamSource !== null){
+                        rData = null
+                    }
                     else{
                         rData = await readImage(entry.key)
                     }
                     assetIndex++
                     if(type === 'png'){
-                        const b64encoded = Buffer.from(await compressImage(rData)).toString('base64')
+                        const b64encoded = Buffer.from(await compressImage(heldBytes(rData))).toString('base64')
                         card.data.assets[i].uri = `__asset:${assetIndex}`
                         await writer.write("chara-ext-asset_:" + assetIndex, b64encoded)
                     }
                     else if(type === 'json'){
-                        const b64encoded = Buffer.from(await compressImage(rData)).toString('base64')
+                        const b64encoded = Buffer.from(await compressImage(heldBytes(rData))).toString('base64')
                         card.data.assets[i].uri = `data:application/octet-stream;base64,${b64encoded}`
                     }
                     else{
@@ -2009,8 +2065,22 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                         seenPaths.add(path)
 
                         card.data.assets[i].uri = 'embeded://' + path
-                        const imageType = getImageType(rData)
                         const metaPath = `x_meta/${uniqueName}.json`
+                        if(rData === null){
+                            // Streamed: the type-only `x_meta` is written by the writer between its two passes, before the asset.
+                            if(!(writer instanceof CharXWriter) || !entry || !streamSource || largeSize === undefined){
+                                throw new Error('A streamed asset has no writer or source')
+                            }
+                            const gateProgress: CharxStreamProgress | undefined = cancel && gate ? (phase, done, total) => {
+                                cancel.throwIfCancelled()
+                                gate.wait(phase === 'check'
+                                    ? language.exportCheckingAsset(entry.name, wholeMiB(done), wholeMiB(total))
+                                    : language.exportStreamingAsset(entry.name, wholeMiB(done), wholeMiB(total)))
+                            } : undefined
+                            await writeLargeCharxAsset(writer, entry, streamSource, largeSize, path, metaPath, gateProgress)
+                            continue
+                        }
+                        const imageType = getImageType(rData)
                         if(imageType === 'PNG' && writer instanceof CharXWriter){
                             const metadatas:Record<string,string> = {}
                             const gen = PngChunk.readGenerator(rData)
