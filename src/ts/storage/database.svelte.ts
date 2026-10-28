@@ -2498,111 +2498,19 @@ export async function importPreset(f:{
         return
     }
 
-    if(Array.isArray(pre?.prompt_order?.[0]?.order) && Array.isArray(pre?.prompts)){
-        //ST preset
-        const pr = safeStructuredClone(presetTemplate)
-        pr.promptTemplate = []
-
-        function findPrompt(identifier:number){
-            return pre.prompts.find((p:any) => p.identifier === identifier)
+    if(stKind === 'STCHAT' && Array.isArray(pre?.prompt_order?.[0]?.order)){
+        //ST chat-completion preset: the same converter as the Playground, so both entry points give one preset
+        const converted = convertStFiles([{name: f.name, parsed: stRaw}], safeStructuredClone(presetTemplate))
+        if('reason' in converted){
+            throw new Error(converted.reason === 'nothing' ? language.errors.stNothingToImport
+                : converted.reason === 'bundleAlone' ? language.errors.stBundleAlone
+                : fillLang(language.errors.promptTypeConflict, {type: converted.withType}))
         }
-        pr.temperature = (pre.temperature ?? 0.8) * 100
-        pr.frequencyPenalty = (pre.frequency_penalty ?? 0.7) * 100
-        if(typeof pre.presence_penalty === 'number' && Number.isFinite(pre.presence_penalty)){
-            pr.PresensePenalty = (pre.presence_penalty * 0.7) * 100
+        converted.preset.promptTemplate = normalizePromptTemplate(converted.preset.promptTemplate) ?? undefined
+        if(!Array.isArray(db.botPresets)){
+            db.botPresets = []
         }
-        pr.top_p = pre.top_p ?? 1
-
-        for(const prompt of pre.prompt_order[0].order){
-            if(!prompt?.enabled){
-                continue
-            }
-            const p = findPrompt(prompt?.identifier ?? '')
-            if(p){
-                switch(p.identifier){
-                    case 'main':{
-                        pr.promptTemplate.push({
-                            type: 'plain',
-                            type2: 'main',
-                            text: p.content ?? "",
-                            role: p.role ?? "system"
-                        })
-                        break
-                    }
-                    case 'jailbreak':
-                    case 'nsfw':{
-                        pr.promptTemplate.push({
-                            type: 'jailbreak',
-                            type2: 'normal',
-                            text: p.content ?? "",
-                            role: p.role ?? "system"
-                        })
-                        break
-                    }
-                    case 'dialogueExamples':
-                    case 'charPersonality':
-                    case 'scenario':{
-                        break //ignore
-                    }
-                    case 'chatHistory':{
-                        pr.promptTemplate.push({
-                            type: 'chat',
-                            rangeEnd: 'end',
-                            rangeStart: 0
-                        })
-                        break
-                    }
-                    case 'worldInfoBefore':{
-                        pr.promptTemplate.push({
-                            type: 'lorebook'
-                        })
-                        break
-                    }
-                    case 'worldInfoAfter':{
-                        break
-                    }
-                    case 'charDescription':{
-                        pr.promptTemplate.push({
-                            type: 'description'
-                        })
-                        break
-                    }
-                    case 'personaDescription':{
-                        pr.promptTemplate.push({
-                            type: 'persona'
-                        })
-                        break
-                    }
-                    default:{
-                        console.log(p)
-                        pr.promptTemplate.push({
-                            type: 'plain',
-                            type2: 'normal',
-                            text: p.content ?? "",
-                            role: p.role ?? "system"
-                        })
-                    }
-                }
-            }
-            else{
-                console.log("Prompt not found", prompt)
-
-            }
-        }
-        if(pre?.assistant_prefill){
-            pr.promptTemplate.push({
-                type: 'postEverything'
-            })
-            pr.promptTemplate.push({
-                type: 'plain',
-                type2: 'main',
-                text: `{{#if {{prefill_supported}}}}${pre?.assistant_prefill}{{/if}}`,
-                role: 'bot'
-            })
-        }
-        pr.promptTemplate = normalizePromptTemplate(pr.promptTemplate)
-        pr.name = "Imported ST Preset"
-        db.botPresets.push(pr)
+        db.botPresets.push(converted.preset)
         return
     }
     if(stKind !== null && stKind !== 'STCHAT'){

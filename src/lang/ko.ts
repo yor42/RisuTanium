@@ -231,7 +231,7 @@ export const languageKorean = {
         "addingAssets": "불러오는 중... (에셋 추가 중 {completed} / {total})",
         "writingExif": "불러오는 중... (Exif 기록 중)",
         "writingPng": "불러오는 중... (기록 중)",
-        "presetConverted": "프리셋을 변환했습니다. 봇 설정의 프리셋에서 확인할 수 있습니다",
+        "presetConverted": "프리셋을 변환했습니다. 봇 설정의 프리셋에서 확인할 수 있습니다.",
         "stPartsSkipped": "이 SillyTavern 파일의 일부는 여기서 사용할 수 없어 건너뛰었습니다: {sections}.",
         "presetNotFound": "프리셋을 찾을 수 없습니다: {name}",
         "readingCard": "불러오는 중... (읽는 중)",

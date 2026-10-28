@@ -231,7 +231,7 @@ export const languageVietnamese = {
         "addingAssets": "Đang tải... (Đang thêm tài sản {completed} / {total})",
         "writingExif": "Đang tải... (Đang ghi Exif)",
         "writingPng": "Đang tải... (Đang ghi)",
-        "presetConverted": "Đã chuyển đổi cài đặt trước thành công. Bạn có thể tìm thấy nó trong các cài đặt trước của cài đặt bot",
+        "presetConverted": "Đã chuyển đổi cài đặt trước thành công. Bạn có thể tìm thấy nó trong các cài đặt trước của cài đặt bot.",
         "stPartsSkipped": "Một số phần của tệp SillyTavern này không thể dùng ở đây và đã bị bỏ qua: {sections}.",
         "presetNotFound": "Không tìm thấy cài đặt trước: {name}",
         "readingCard": "Đang tải... (Đang đọc)",

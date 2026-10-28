@@ -474,6 +474,33 @@ describe('parity with the Settings import', () => {
     })
 })
 
+describe('chat file converter behaviour', () => {
+    test('[G] a chat file with a context file names Context Template as skipped', () => {
+        run([{ name: 'my-chat.json', json: chatFile }, { name: 'c.json', json: emptyContext }])
+        expect(pushed()).toHaveLength(1)
+        expect(alertNormal).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(alertNormal).mock.calls[0][0]).toContain('Context Template')
+    })
+
+    test('[G] assistant_prefill adds postEverything followed by the bot prefill item', () => {
+        run([{ name: 'my-chat.json', json: { ...chatFile, assistant_prefill: 'PRE' } }])
+        const template = only()?.promptTemplate ?? []
+        expect(template.slice(-2)).toEqual([
+            { type: 'postEverything' },
+            { type: 'plain', type2: 'main', text: '{{#if {{prefill_supported}}}}PRE{{/if}}', role: 'bot' },
+        ])
+    })
+
+    test('[G] non-string chat content becomes an empty text', () => {
+        const json = {
+            ...chatFile,
+            prompts: [{ identifier: 'main', content: 42, role: 'system' }, { identifier: 'chatHistory' }],
+        }
+        run([{ name: 'my-chat.json', json }])
+        expect(only()?.promptTemplate?.[0]).toMatchObject({ type: 'plain', text: '' })
+    })
+})
+
 describe('exports', () => {
     test('[G] G5 OobaParams is still exported from prompt.ts', () => {
         expect(OobaParams).toHaveLength(33)

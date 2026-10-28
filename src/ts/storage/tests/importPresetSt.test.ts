@@ -478,14 +478,16 @@ describe('[R] text-completion presets and naming', () => {
         expect(lastPreset()?.name).toBe(expected)
     })
 
-    test('A10 an ST chat file without presence_penalty never stores NaN (interim value)', async () => {
+    test('A10 an ST chat file without presence_penalty stores the unset value, never NaN', async () => {
         await importPreset(fileOf('chat.json', stChat))
-        expect(lastPreset()?.PresensePenalty).toBe(70)
+        expect(Number.isFinite(lastPreset()?.PresensePenalty)).toBe(true)
+        expect(lastPreset()?.PresensePenalty).toBe(-1000)
     })
 
-    test('G7 [G] presence_penalty 0.5 keeps the interim factor', async () => {
+    // Red on the S2b base since S2c, which retired the Settings 0.7 factor.
+    test('G7 [R] presence_penalty 0.5 is scaled by 100 only (MC-823)', async () => {
         await importPreset(fileOf('chat.json', { ...stChat, presence_penalty: 0.5 }))
-        expect(lastPreset()?.PresensePenalty).toBe(35)
+        expect(lastPreset()?.PresensePenalty).toBe(50)
     })
 })
 
@@ -524,11 +526,13 @@ describe('[G] compatibility guards (pass before and after)', () => {
         expect(vi.mocked(alertNormalWait)).not.toHaveBeenCalled()
     })
 
-    test('G4 an ST chat-completion file and an NAI file import as before', async () => {
+    // Red on the S2b base since S2c: the chat half pins the converter's name and model (MC-822 P6).
+    test('G4 an ST chat-completion file imports through the converter and an NAI file as before', async () => {
         await importPreset(fileOf('chat.json', { ...stChat, temperature: 0.5, frequency_penalty: 0.2, top_p: 0.8 }))
         let preset = lastPreset()
-        expect(preset?.name).toBe('Imported ST Preset')
-        expect(preset?.aiModel).toBe(presetTemplate.aiModel)
+        // MC-822 P5/P6 and MC-820 Q-H: named after the file, model openrouter.
+        expect(preset?.name).toBe('chat')
+        expect(preset?.aiModel).toBe('openrouter')
         expect(preset?.temperature).toBe(0.5 * 100)
         expect(preset?.frequencyPenalty).toBe(0.2 * 100)
         expect(preset?.top_p).toBe(0.8)

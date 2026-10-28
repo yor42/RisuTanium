@@ -231,7 +231,7 @@ export const languageChineseTraditional = {
         "addingAssets": "載入中...（正在新增資源 {completed} / {total}）",
         "writingExif": "載入中...（正在寫入 Exif）",
         "writingPng": "載入中...（正在寫入）",
-        "presetConverted": "預設集轉換成功。您可以在 Bot 設定的預設集中找到它",
+        "presetConverted": "預設集轉換成功。您可以在 Bot 設定的預設集中找到它。",
         "stPartsSkipped": "此 SillyTavern 檔案的部分內容無法在此處使用，已略過：{sections}。",
         "presetNotFound": "找不到預設集：{name}",
         "readingCard": "載入中...（正在讀取）",

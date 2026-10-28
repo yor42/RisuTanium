@@ -236,7 +236,7 @@ export const languageEnglish = {
         addingAssets: "Loading... (Adding Assets {completed} / {total})",
         writingExif: "Loading... (Writing Exif)",
         writingPng: "Loading... (Writing)",
-        presetConverted: "Preset converted successfully. You can find it in bot setting presets",
+        presetConverted: "Preset converted successfully. You can find it in bot setting presets.",
         stPartsSkipped: "Some parts of this SillyTavern file cannot be used here and were skipped: {sections}.",
         presetNotFound: "Cannot find preset: {name}",
         readingCard: "Loading... (Reading)",
