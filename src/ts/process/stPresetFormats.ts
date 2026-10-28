@@ -1,10 +1,10 @@
 import type { botPreset } from '../storage/database.svelte'
-import type { PromptItem } from './prompt'
+import type { PromptItem, PromptRole } from './prompt'
 import type { OobaChatCompletionRequestParams } from '../model/ooba'
 
 /**
  * Converter for SillyTavern preset files (instruct, context, system prompt,
- * text-completion presets, settings bundles) into one Risu bot preset.
+ * text-completion and chat-completion presets, settings bundles) into one Risu bot preset.
  *
  * Pure: no I/O, store access, alert or language lookup. The caller passes the
  * preset to fill and decides how results and notices are shown.
@@ -256,7 +256,7 @@ export function fileBaseName(name: string): string {
     return name.replace(/\.json$/i, '')
 }
 
-type PartKind = 'instruct' | 'context' | 'sysprompt' | 'params' | 'none'
+type PartKind = 'instruct' | 'context' | 'sysprompt' | 'params' | 'chat' | 'none'
 
 interface Entry {
     label: string
@@ -269,6 +269,7 @@ const standaloneEntry: Partial<Record<StKind, { label: string, part: PartKind }>
     STCONTEXT: { label: 'Context Template', part: 'context' },
     STSYSPROMPT: { label: 'System Prompt', part: 'sysprompt' },
     PARAMETERS: { label: 'Text Completion Preset', part: 'params' },
+    STCHAT: { label: 'Chat Completion Preset', part: 'chat' },
     STREASONING: { label: 'Reasoning Formatting', part: 'none' },
     STSRW: { label: 'Start Reply With', part: 'none' },
 }
@@ -328,6 +329,109 @@ function applyParameters(preset: botPreset, data: JsonObject) {
     preset.reverseProxyOobaArgs = args as unknown as OobaChatCompletionRequestParams
 }
 
+function unsetSamplers(preset: botPreset) {
+    preset.temperature = -1000
+    preset.top_p = -1000
+    preset.top_k = -1000
+    preset.top_a = -1000
+    preset.min_p = -1000
+    preset.repetition_penalty = -1000
+    preset.frequencyPenalty = -1000
+    preset.PresensePenalty = -1000
+}
+
+function finiteNumber(source: JsonObject, key: string, multiplier: number): number | undefined {
+    const value = source[key]
+    return typeof value === 'number' && Number.isFinite(value) ? value * multiplier : undefined
+}
+
+// A chat file overwrites only the samplers it carries; the rest keep the parameters value, or stay unset.
+function applyChatSamplers(preset: botPreset, data: JsonObject) {
+    preset.temperature = finiteNumber(data, 'temperature', 100) ?? preset.temperature
+    preset.top_p = finiteNumber(data, 'top_p', 1) ?? preset.top_p
+    preset.top_k = finiteNumber(data, 'top_k', 1) ?? preset.top_k
+    preset.top_a = finiteNumber(data, 'top_a', 1) ?? preset.top_a
+    preset.min_p = finiteNumber(data, 'min_p', 1) ?? preset.min_p
+    preset.repetition_penalty = finiteNumber(data, 'repetition_penalty', 1) ?? preset.repetition_penalty
+    preset.frequencyPenalty = finiteNumber(data, 'frequency_penalty', 100) ?? preset.frequencyPenalty
+    preset.PresensePenalty = finiteNumber(data, 'presence_penalty', 100) ?? preset.PresensePenalty
+}
+
+function normalizeImportedPromptRole(role: unknown): PromptRole {
+    if(role === 'user' || role === 'bot' || role === 'system'){
+        return role
+    }
+    if(role === 'assistant' || role === 'char'){
+        return 'bot'
+    }
+    return 'system'
+}
+
+/** Prompt items of a SillyTavern chat-completion file: the enabled entries of its first prompt order. */
+export function stChatConvert(pre: JsonObject): PromptItem[] {
+    const promptTemplate: PromptItem[] = []
+    const prompts = (Array.isArray(pre.prompts) ? pre.prompts : []).filter(isObject)
+    const orders = Array.isArray(pre.prompt_order) ? pre.prompt_order : []
+    const first = orders[0]
+    const order: unknown[] = isObject(first) && Array.isArray(first.order) ? first.order : []
+
+    for(const entry of order){
+        if(!isObject(entry) || !entry.enabled){
+            continue
+        }
+        const p = prompts.find(candidate => candidate.identifier === (entry.identifier ?? ''))
+        if(!p){
+            continue
+        }
+        switch(p.identifier){
+            case 'main':{
+                promptTemplate.push({ type: 'plain', type2: 'main', text: text(p.content), role: normalizeImportedPromptRole(p.role) })
+                break
+            }
+            case 'jailbreak':
+            case 'nsfw':{
+                promptTemplate.push({ type: 'jailbreak', type2: 'normal', text: text(p.content), role: normalizeImportedPromptRole(p.role) })
+                break
+            }
+            case 'dialogueExamples':
+            case 'charPersonality':
+            case 'scenario':
+            case 'worldInfoAfter':{
+                break
+            }
+            case 'chatHistory':{
+                promptTemplate.push({ type: 'chat', rangeEnd: 'end', rangeStart: 0 })
+                break
+            }
+            case 'worldInfoBefore':{
+                promptTemplate.push({ type: 'lorebook' })
+                break
+            }
+            case 'charDescription':{
+                promptTemplate.push({ type: 'description' })
+                break
+            }
+            case 'personaDescription':{
+                promptTemplate.push({ type: 'persona' })
+                break
+            }
+            default:{
+                promptTemplate.push({ type: 'plain', type2: 'normal', text: text(p.content), role: normalizeImportedPromptRole(p.role) })
+            }
+        }
+    }
+    if(pre.assistant_prefill){
+        promptTemplate.push({ type: 'postEverything' })
+        promptTemplate.push({
+            type: 'plain',
+            type2: 'main',
+            text: `{{#if {{prefill_supported}}}}${String(pre.assistant_prefill)}{{/if}}`,
+            role: 'bot',
+        })
+    }
+    return promptTemplate
+}
+
 function plainTemplate(mainText: string, postHistory: string): PromptItem[] {
     const items: PromptItem[] = [
         { type: 'plain', type2: 'main', text: mainText, role: 'system' },
@@ -347,7 +451,8 @@ function plainTemplate(mainText: string, postHistory: string): PromptItem[] {
 /**
  * Builds ONE preset from the supported files (or the sections of one bundle).
  * `base` is filled in place of a fresh template; files of kind null are ignored.
- * Chat-completion files (STCHAT) only take part in conflict detection here.
+ * A chat-completion file (STCHAT) supplies the prompt items and its own samplers;
+ * it cannot be combined with an instruct or system prompt file.
  */
 export function convertStFiles(files: { name: string, parsed: unknown }[], base: botPreset): StConvertResult {
     const supported = files
@@ -398,7 +503,8 @@ export function convertStFiles(files: { name: string, parsed: unknown }[], base:
     const context = parts.get('context')
     const sysprompt = parts.get('sysprompt')
     const params = parts.get('params')
-    if(!instruct && !context && !sysprompt && !params){
+    const chat = parts.get('chat')
+    if(!instruct && !context && !sysprompt && !params && !chat){
         return { ok: false, reason: 'nothing' }
     }
 
@@ -412,7 +518,7 @@ export function convertStFiles(files: { name: string, parsed: unknown }[], base:
 
     const content = sysprompt ? text(sysprompt.content) : ''
     const postHistory = sysprompt ? text(sysprompt.post_history) : ''
-    preset.promptTemplate = plainTemplate(content, postHistory)
+    preset.promptTemplate = chat ? stChatConvert(chat) : plainTemplate(content, postHistory)
     if(sysprompt){
         preset.mainPrompt = content
         preset.jailbreak = ''
@@ -420,6 +526,14 @@ export function convertStFiles(files: { name: string, parsed: unknown }[], base:
 
     if(params){
         applyParameters(preset, params)
+    }
+    else if(chat){
+        unsetSamplers(preset)
+    }
+    if(chat){
+        applyChatSamplers(preset, chat)
+        preset.aiModel = 'openrouter'
+        preset.subModel = 'openrouter'
     }
 
     if(instruct){

@@ -220,13 +220,14 @@ const instructPromptTemplate: botPreset['promptTemplate'] = [
     { type: 'plain', type2: 'globalNote', text: '', role: 'system' },
 ]
 
+// Intended-diff row "JinjaTemplate text of every instruct case" (MC-824): imported text is emitted as quoted
+// literals; the rendering below (legacyRender) is unchanged.
 const legacyJinja =
-    'SYS PROMPT\n\nUser is .\n***\n'
-    + '{% for message in messages %}'
-    + '{% if message.role == \'user\' %}### User:{{ message.content }}\n{% endif %}'
-    + '{% if message.role == \'assistant\' %}### Assistant:{{ message.content }}</s>\n{% endif %}'
-    + '{% if message.role == \'system\' %}### System:[[{{ message.content }}]]\n{% endif %}'
-    + '{% endfor %}### Assistant:'
+    `{{ 'SYS PROMPT\\n\\nUser is .\\n' }}{{ '***\\n' }}{% for message in messages %}`
+    + `{% if message.role == 'user' %}{{ '### User:' }}{{ message.content }}{{ '\\n' }}{% endif %}`
+    + `{% if message.role == 'assistant' %}{{ '### Assistant:' }}{{ message.content }}{{ '</s>\\n' }}{% endif %}`
+    + `{% if message.role == 'system' %}{{ '### System:[[' }}{{ message.content }}{{ ']]\\n' }}{% endif %}`
+    + `{% endfor %}{{ '### Assistant:' }}`
 
 const legacyRender =
     'SYS PROMPT\n\nUser is .\n***\n'
@@ -257,7 +258,7 @@ describe('promptConvertion base output', () => {
             { name: 'c.json', json: legacyParameters },
         ])
         expect(pushedPresets()).toEqual([expectedPreset({
-            name: 'LegacyInst',
+            name: 'a', // intended-diff row "name (Q-C/P5)": the first file's base name, not the inner name
             promptTemplate: instructPromptTemplate,
             reverseProxyOobaArgs: { mode: 'instruct', min_p: 0.05, top_k: 40, top_a: 0, min_length: 0, typical_p: 0.95 },
             temperature: 75,
@@ -293,7 +294,9 @@ describe('promptConvertion base output', () => {
             { name: 'b.json', json: legacyContext },
             { name: 'c.json', json: legacyParameters },
         ])
-        expect(reversed).toEqual(pushedPresets()[0])
+        // Only the name follows input order (intended-diff row "name (Q-C/P5)").
+        expect(reversed.name).toBe('c')
+        expect({ ...reversed, name: '' }).toEqual({ ...pushedPresets()[0], name: '' })
     })
 
     test('[G] (ii) legacy instruct + context without parameters keeps the template samplers', () => {
@@ -302,7 +305,7 @@ describe('promptConvertion base output', () => {
             { name: 'b.json', json: legacyContext },
         ])
         expect(pushedPresets()).toEqual([expectedPreset({
-            name: 'LegacyInst',
+            name: 'a', // intended-diff row "name (Q-C/P5)"
             promptTemplate: instructPromptTemplate,
             reverseProxyOobaArgs: { mode: 'instruct' },
             instructChatTemplate: 'jinja',
@@ -315,19 +318,20 @@ describe('promptConvertion base output', () => {
         expect(alertNormal).toHaveBeenCalledTimes(1)
     })
 
-    test('[G] (iii) chat file alone: unnamed, all eight samplers unset', () => {
+    test('[G] (iii) chat file alone: named after the file, its eight samplers applied', () => {
         convert([{ name: 'my-chat.json', json: chatFile }])
+        // Intended-diff rows "name (Q-C/P5)" and "STCHAT samplers present now applied (F1)".
         expect(pushedPresets()).toEqual([expectedPreset({
-            name: '',
+            name: 'my-chat',
             promptTemplate: chatPromptTemplate,
-            temperature: -1000,
-            top_p: -1000,
-            top_k: -1000,
-            top_a: -1000,
-            min_p: -1000,
-            repetition_penalty: -1000,
-            frequencyPenalty: -1000,
-            PresensePenalty: -1000,
+            temperature: 80,
+            top_p: 0.9,
+            top_k: 40,
+            top_a: 0.1,
+            min_p: 0.05,
+            repetition_penalty: 1.1,
+            frequencyPenalty: 50,
+            PresensePenalty: 25,
             aiModel: 'openrouter',
             subModel: 'openrouter',
         })])
@@ -335,22 +339,25 @@ describe('promptConvertion base output', () => {
         expect(alertNormal).toHaveBeenCalledWith(language.alerts.presetConverted)
     })
 
-    test('[G] (iv) chat file + parameters: the chat file leaves every sampler unset', () => {
+    test('[G] (iv) chat file + parameters: the chat samplers win, the parameters supply the Ooba arguments', () => {
         convert([
             { name: 'c.json', json: legacyParameters },
             { name: 'my-chat.json', json: chatFile },
         ])
+        // Intended-diff rows "name (Q-C/P5)", "STCHAT samplers present now applied (F1)" and
+        // "a chat run carries the parameters' Ooba arguments" (plan 4.1/6.3, P3; the base's early STCHAT return dropped them).
         expect(pushedPresets()).toEqual([expectedPreset({
-            name: '',
+            name: 'c',
             promptTemplate: chatPromptTemplate,
-            temperature: -1000,
-            top_p: -1000,
-            top_k: -1000,
-            top_a: -1000,
-            min_p: -1000,
-            repetition_penalty: -1000,
-            frequencyPenalty: -1000,
-            PresensePenalty: -1000,
+            reverseProxyOobaArgs: { mode: 'instruct', min_p: 0.05, top_k: 40, top_a: 0, min_length: 0, typical_p: 0.95 },
+            temperature: 80,
+            top_p: 0.9,
+            top_k: 40,
+            top_a: 0.1,
+            min_p: 0.05,
+            repetition_penalty: 1.1,
+            frequencyPenalty: 50,
+            PresensePenalty: 25,
             aiModel: 'openrouter',
             subModel: 'openrouter',
         })])
