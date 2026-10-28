@@ -32,6 +32,12 @@ const ZIP_END_RECORD = 22
 const STORED_BLOCK_BYTES = 65536
 const STORED_BLOCK_OVERHEAD = 5
 
+/**
+ * The most entries a CharX can hold (a plain zip's end record counts entries in 16 bits). The same number as the
+ * writer's own limit in `process/processzip.ts`, which is not imported here; a test keeps the two equal.
+ */
+export const CHARX_MAX_ENTRIES = 65535
+
 export type ExportFormat = 'png' | 'json' | 'risum' | 'charx' | 'realm'
 
 /** One asset an export reads, in the exact order the export loop reads it. */
@@ -48,6 +54,7 @@ export interface ExportAssetEntry {
 export type PreflightResult =
     | { kind: 'ok', large: Map<string, number> }
     | { kind: 'refuse-large', names: string[] }
+    | { kind: 'refuse-count', count: number, limit: number }
     | { kind: 'refuse-total', total: number }
 
 export type PreflightOk = Extract<PreflightResult, { kind: 'ok' }>
@@ -134,8 +141,9 @@ function utf8Length(text: string): number {
 }
 
 /**
- * Bytes an archive spends on one entry besides its data: the local header, the data descriptor, the central record,
- * the name in both, and the stored-block framing of its data. `nameBytes` is an upper bound of the entry path.
+ * Bytes an archive spends on one entry besides its data: the local header, the data descriptor (written for an empty
+ * entry only, so counted here as an upper bound), the central record, the name in both, and the stored-block framing
+ * of its data. `nameBytes` is an upper bound of the entry path.
  */
 function entryOverhead(nameBytes: number, dataBytes: number): number {
     return ZIP_LOCAL_HEADER + ZIP_DATA_DESCRIPTOR + ZIP_CENTRAL_RECORD + 2 * nameBytes
@@ -150,6 +158,11 @@ function assetPathBound(name: string): number {
 /** An upper bound of the path of the entry's `x_meta/<name>_<n>.json`. */
 function metaPathBound(name: string): number {
     return 7 + Math.min(utf8Length(name.slice(0, 100)), 400) + 8 + 5
+}
+
+/** The most entries a CharX of `assetCount` listed assets can hold: two per asset (the asset and its `x_meta`) plus `card.json` and `module.risum`. */
+export function charxEntryCount(assetCount: number): number {
+    return 2 * assetCount + 2
 }
 
 /**
@@ -186,7 +199,8 @@ export function estimateCharxBytes(
  * Sizes the assets of an export through the source its pieces would come from, and decides before anything opens.
  * A size that cannot be read is unknown, which counts as not large (the asset then takes the whole-read path). A PNG,
  * JSON, `.risum` or Realm export with any large asset is refused (`refuse-large`, names in list order, once each); a
- * CharX whose estimate reaches the headroom is refused (`refuse-total`); otherwise `ok` carries the size of every large
+ * CharX with more zip entries than an archive can count is refused (`refuse-count`), and one whose estimate reaches the
+ * headroom is refused (`refuse-total`); otherwise `ok` carries the size of every large
  * key, which a streaming write takes as the size it expects.
  */
 export async function preflightExport(
@@ -229,6 +243,11 @@ export async function preflightExport(
     if (format !== 'charx') {
         return large.size > 0 ? { kind: 'refuse-large', names } : { kind: 'ok', large }
     }
+    // An upper bound: every asset is an entry plus its `x_meta`, and `card.json` and `module.risum` are the fixed two.
+    const count = charxEntryCount(entries.length)
+    if (count > CHARX_MAX_ENTRIES) {
+        return { kind: 'refuse-count', count, limit: CHARX_MAX_ENTRIES }
+    }
     const total = estimateCharxBytes(entries, sizes, extra)
     if (total >= ZIP_SENTINEL - CHARX_HEADROOM_MARGIN) {
         return { kind: 'refuse-total', total }
@@ -247,6 +266,9 @@ export async function refuseExport(result: PreflightResult, forRealm: boolean = 
     }
     if (result.kind === 'refuse-total') {
         await alertNormalWait(language.exportCharxTooLarge(result.total))
+    }
+    else if (result.kind === 'refuse-count') {
+        await alertNormalWait(language.exportCharxTooManyEntries(result.count, result.limit))
     }
     else {
         await alertNormalWait(forRealm

@@ -1,5 +1,6 @@
-import { AppendableBuffer, pieceStoreOrNull, saveAsset, saveAssetFromPieces, type LocalWriter, type VirtualWriter } from "../globalApi.svelte";
+import { pieceStoreOrNull, saveAsset, saveAssetFromPieces, type LocalWriter, type VirtualWriter } from "../globalApi.svelte";
 import * as fflate from "fflate";
+import crc32 from "crc/crc32";
 import { asBuffer, Semaphore, sleep } from "../util";
 import { alertStore } from "../alert";
 import { language } from "src/lang";
@@ -186,46 +187,71 @@ export class CharxTooLargeError extends Error {
     }
 }
 
-export class CharXWriter{
-    zip:fflate.Zip
-    writeEnd:boolean = false
-    apb = new AppendableBuffer()
-    #takenFilenames:Set<string> = new Set()
-    // The first error fflate reported; every later write throws it before anything else is written.
-    #failure:Error|undefined
-    // Archive offset: the bytes of the zip handed to the writer. A `charxJpeg` prefix is not part of the zip's offsets,
-    // so `writeJpeg` takes it back out of this count.
-    #offset:number = 0
-    /**
-     * `limit` is the strict backstop: a chunk that would make an archive offset or an entry's size reach it is never
-     * handed on. The default is the ZIP64 sentinel; a test passes a small one.
-     */
-    constructor(private writer:LocalWriter|WritableStreamDefaultWriter<Uint8Array>|VirtualWriter, private readonly limit:number = ZIP_SIZE_SENTINEL){
-        const handlerAsync = (err:Error|null, dat:Uint8Array, final:boolean) => {
-            if(err){
-                this.#failure ??= err
-                return
-            }
-            if(dat){
-                this.apb.append(dat)
-            }
-            if(final){
-                this.writeEnd = true
-            }
-        }
-
-        this.zip = new fflate.Zip()
-        this.zip.ondata = handlerAsync
+/** The archive would hold more entries than a plain zip's end record can count (the 65,536th entry). */
+export class CharxTooManyEntriesError extends Error {
+    constructor(public readonly limit:number){
+        super(`A CharX file cannot hold more than ${limit} entries`)
+        this.name = 'CharxTooManyEntriesError'
     }
-    async init(){
-        //do nothing, just to make compatible with other writer
-    }
+}
 
-    async writeJpeg(img: Uint8Array){
+/** An entry name is longer than a plain zip header can record. */
+export class CharxNameTooLongError extends Error {
+    constructor(public readonly nameBytes:number, public readonly limit:number){
+        super(`A CharX entry name of ${nameBytes} bytes is longer than the ${limit} bytes a zip header can record`)
+        this.name = 'CharxNameTooLongError'
+    }
+}
+
+/** The most entries a plain zip's end record can count. */
+export const ZIP_MAX_ENTRIES = 0xFFFF
+
+/** The longest entry name, in UTF-8 bytes, that a plain zip header can record. */
+export const ZIP_MAX_NAME_BYTES = 0xFFFF
+
+export type CharxZipLevel = 0|1|2|3|4|5|6|7|8|9
+
+function joinBytes(parts:ReadonlyArray<Uint8Array>):Uint8Array {
+    let length = 0
+    for(const part of parts){
+        length += part.length
+    }
+    const out = new Uint8Array(length)
+    let at = 0
+    for(const part of parts){
+        out.set(part, at)
+        at += part.length
+    }
+    return out
+}
+
+/**
+ * The compression and checksum steps of a CharX entry, as mutable hooks so that a test can make either throw. `deflate`
+ * is fflate's streaming `Deflate` with one final push, whose body is byte-identical to the `ZipDeflate` body (the
+ * synchronous `deflateSync` differs for large inputs). `crc32` is the unsigned CRC-32 of the bytes.
+ */
+export const charxCodec = {
+    deflate(data:Uint8Array, level:CharxZipLevel):Uint8Array {
+        const parts:Uint8Array[] = []
+        const deflater = new fflate.Deflate({ level }, (part) => { parts.push(part) })
+        deflater.push(data, true)
+        return joinBytes(parts)
+    },
+    crc32(data:Uint8Array):number {
+        return crc32(Buffer.from(data.buffer, data.byteOffset, data.byteLength))
+    },
+}
+
+/**
+ * The canvas work of a `charxJpeg` export as one mutable hook: the card portrait re-encoded as JPEG bytes. Resolves to
+ * `null` when the page has no 2D canvas context (the archive is then written with no JPEG in front).
+ */
+export const charxEncode = {
+    async jpeg(img:Uint8Array):Promise<Uint8Array|null> {
         const canvas = document.createElement('canvas')
         const ctx = canvas.getContext('2d')
         if(!ctx){
-            return
+            return null
         }
         const imgBlob = new Blob([asBuffer(img)], {type: 'image/jpeg'})
         const imgURL = URL.createObjectURL(imgBlob)
@@ -239,55 +265,240 @@ export class CharXWriter{
             canvas.toBlob(res, 'image/jpeg')
         }))
         const buf = await blob.arrayBuffer()
-        this.apb.append(new Uint8Array(buf))
-        this.#offset -= buf.byteLength
+        return new Uint8Array(buf)
+    },
+}
+
+const ZIP_LOCAL_HEADER_BYTES = 30
+const ZIP_CENTRAL_RECORD_BYTES = 46
+const ZIP_END_RECORD_BYTES = 22
+const ZIP_DESCRIPTOR_BYTES = 16
+const ZIP_VERSION = 20
+const ZIP_METHOD_DEFLATE = 8
+const ZIP_FLAG_DESCRIPTOR = 0x08
+const ZIP_FLAG_UTF8_HIGH = 0x08
+
+/**
+ * The deflate-option bits of the general-purpose flag, as fflate sets them per level (`dbf` of fflate 0.8.3): 0x04 at
+ * level 0, and so on. They sit in bits 1-2 of the low flag byte.
+ */
+function deflateOptionBits(level:number):number {
+    return level === 1 ? 3 : level < 6 ? 2 : level === 9 ? 1 : 0
+}
+
+/**
+ * The DOS date and time of an entry as fflate packs them (`wzh` of fflate 0.8.3): local time, two-second resolution,
+ * the year from 1980 to 2099.
+ */
+function dosTimestamp(ms:number):number {
+    const date = new Date(ms)
+    const year = date.getFullYear() - 1980
+    if(year < 0 || year > 119){
+        throw new RangeError('The clock is outside the 1980 to 2099 years that a zip entry can record')
+    }
+    return ((year << 25) | ((date.getMonth() + 1) << 21) | (date.getDate() << 16) | (date.getHours() << 11) | (date.getMinutes() << 5) | (date.getSeconds() >> 1)) >>> 0
+}
+
+/** What the central directory needs of one written entry; the CRC and sizes are those of the entry's central record. */
+interface CharxEntryRecord {
+    name:Uint8Array
+    // low and high byte of the general-purpose flag of the central record
+    flagLow:number
+    flagHigh:number
+    // one timestamp per entry, used by both its local header and its central record
+    stamp:number
+    crc:number
+    compressedSize:number
+    size:number
+    // zip-relative offset of the local header
+    offset:number
+    // the local header says "sizes follow" and a data descriptor follows the body (a zero-length entry only)
+    descriptor:boolean
+}
+
+/**
+ * Writes a CharX (zip) archive. Every entry is framed without a data descriptor: its local header carries the CRC-32 and
+ * both sizes, so a streaming reader that ends an entry at the first zip signature inside its data (fflate's `Unzip`,
+ * which the fork and upstream importers use) never cuts a binary asset short. The one exception is a zero-length entry,
+ * which is written as fflate writes it (flag bit 3, zeros in the local header, a descriptor) because upstream's start
+ * check never starts a descriptor-free empty entry.
+ */
+export class CharXWriter{
+    writeEnd:boolean = false
+    #takenFilenames:Set<string> = new Set()
+    #entries:CharxEntryRecord[] = []
+    // Archive offset: the zip bytes handed to the writer. A `charxJpeg` prefix is not part of the zip's offsets, so it
+    // never advances this count.
+    #zipOffset:number = 0
+    // The JPEG written in front of the zip; it goes out with the next hand-on.
+    #prefix:Uint8Array|undefined
+    #ended:boolean = false
+    // The error that stopped the export; every later call throws it before anything else is written.
+    #latch:{ error:unknown }|undefined
+    /**
+     * `limit` is the strict backstop: a chunk that would make an archive offset or an entry's size reach it is never
+     * handed on. The default is the ZIP64 sentinel; a test passes a small one.
+     */
+    constructor(private writer:LocalWriter|WritableStreamDefaultWriter<Uint8Array>|VirtualWriter, private readonly limit:number = ZIP_SIZE_SENTINEL){
+    }
+    async init(){
+        //do nothing, just to make compatible with other writer
     }
 
-    #throwIfFailed(){
-        if(this.#failure){
-            throw this.#failure
+    async writeJpeg(img: Uint8Array){
+        await this.#run(async () => {
+            const jpeg = await charxEncode.jpeg(img)
+            if(jpeg){
+                this.#prefix = this.#prefix ? joinBytes([this.#prefix, jpeg]) : jpeg
+            }
+        })
+    }
+
+    /** Runs one step; an error it throws is latched, and every later step throws the same error without running. */
+    async #run<T>(step:() => Promise<T>):Promise<T> {
+        if(this.#latch){
+            throw this.#latch.error
+        }
+        try{
+            return await step()
+        }
+        catch(error){
+            this.#latch = { error }
+            throw error
         }
     }
 
     /**
-     * Hands the collected archive bytes to the writer. A chunk that would make the archive offset reach the limit is
-     * not handed on.
+     * Hands the given zip bytes (with a pending JPEG in front) to the writer as one fresh array. Bytes that would make
+     * the archive offset reach the limit are not handed on.
      */
-    async #flush(){
-        this.#throwIfFailed()
-        const out = this.apb.buffer
-        if(this.#offset + out.length >= this.limit){
+    async #flush(parts:ReadonlyArray<Uint8Array>){
+        let zipBytes = 0
+        for(const part of parts){
+            zipBytes += part.length
+        }
+        if(this.#zipOffset + zipBytes >= this.limit){
             throw new CharxTooLargeError(this.limit)
         }
+        const prefix = this.#prefix
+        const out = joinBytes(prefix ? [prefix, ...parts] : parts)
         await this.writer.write(out)
-        this.#offset += out.length
-        this.apb.clear()
+        this.#prefix = undefined
+        this.#zipOffset += zipBytes
     }
 
-    async write(key:string,data:Uint8Array|string, level?:0|1|2|3|4|5|6|7|8|9){
-        this.#throwIfFailed()
-        key = this.#sanitizeZipFilename(key)
-        let dat:Uint8Array
-        if(typeof data === 'string'){
-            dat = new TextEncoder().encode(data)
-        }
-        else{
-            dat = data
-        }
-        if(dat.length >= this.limit){
-            throw new CharxTooLargeError(this.limit)
-        }
-        this.writeEnd = false
-        const file = new fflate.ZipDeflate(key, {
-            level: level ?? 0
-        });
-        this.zip.add(file)
-        file.push(dat, true)
-        await this.#flush()
-        if(this.writeEnd){
-            await this.writer.close()
-        }
+    async write(key:string,data:Uint8Array|string, level?:CharxZipLevel){
+        await this.#run(async () => {
+            if(this.#ended){
+                throw new Error('The CharX archive is already finished')
+            }
+            const entryName = this.#sanitizeZipFilename(key)
+            const name = new TextEncoder().encode(entryName)
+            if(name.length > ZIP_MAX_NAME_BYTES){
+                throw new CharxNameTooLongError(name.length, ZIP_MAX_NAME_BYTES)
+            }
+            if(this.#entries.length >= ZIP_MAX_ENTRIES){
+                throw new CharxTooManyEntriesError(ZIP_MAX_ENTRIES)
+            }
+            let dat:Uint8Array
+            if(typeof data === 'string'){
+                dat = new TextEncoder().encode(data)
+            }
+            else{
+                dat = data
+            }
+            if(dat.length >= this.limit){
+                throw new CharxTooLargeError(this.limit)
+            }
+            const zipLevel = level ?? 0
+            const body = charxCodec.deflate(dat, zipLevel)
+            const empty = dat.length === 0
+            const record:CharxEntryRecord = {
+                name,
+                flagLow: (deflateOptionBits(zipLevel) << 1) | (empty ? ZIP_FLAG_DESCRIPTOR : 0),
+                // UTF-8 flag exactly when the UTF-8 byte length differs from the string length, as fflate sets it
+                flagHigh: name.length !== entryName.length ? ZIP_FLAG_UTF8_HIGH : 0,
+                stamp: dosTimestamp(Date.now()),
+                crc: empty ? 0 : charxCodec.crc32(dat),
+                compressedSize: body.length,
+                size: dat.length,
+                offset: this.#zipOffset,
+                descriptor: empty,
+            }
+            // The header and the body go out in one hand-on, which `#flush` checks first: a size or an offset that reaches
+            // the limit also makes the hand-on reach it.
+            const parts = [this.#localHeader(record), body]
+            if(empty){
+                parts.push(this.#descriptor(record))
+            }
+            await this.#flush(parts)
+            this.#entries.push(record)
+        })
+    }
 
+    #localHeader(record:CharxEntryRecord):Uint8Array {
+        const header = new Uint8Array(ZIP_LOCAL_HEADER_BYTES + record.name.length)
+        const view = new DataView(header.buffer)
+        view.setUint32(0, 0x04034B50, true)
+        view.setUint16(4, ZIP_VERSION, true)
+        header[6] = record.flagLow
+        header[7] = record.flagHigh
+        view.setUint16(8, ZIP_METHOD_DEFLATE, true)
+        view.setUint32(10, record.stamp, true)
+        if(!record.descriptor){
+            view.setUint32(14, record.crc, true)
+            view.setUint32(18, record.compressedSize, true)
+            view.setUint32(22, record.size, true)
+        }
+        view.setUint16(26, record.name.length, true)
+        header.set(record.name, ZIP_LOCAL_HEADER_BYTES)
+        return header
+    }
+
+    #descriptor(record:CharxEntryRecord):Uint8Array {
+        const descriptor = new Uint8Array(ZIP_DESCRIPTOR_BYTES)
+        const view = new DataView(descriptor.buffer)
+        view.setUint32(0, 0x08074B50, true)
+        view.setUint32(4, record.crc, true)
+        view.setUint32(8, record.compressedSize, true)
+        view.setUint32(12, record.size, true)
+        return descriptor
+    }
+
+    /** The central directory and the end record, as one fresh array. */
+    #centralDirectory():Uint8Array {
+        let directoryBytes = 0
+        for(const record of this.#entries){
+            directoryBytes += ZIP_CENTRAL_RECORD_BYTES + record.name.length
+        }
+        const out = new Uint8Array(directoryBytes + ZIP_END_RECORD_BYTES)
+        const view = new DataView(out.buffer)
+        let at = 0
+        for(const record of this.#entries){
+            view.setUint32(at, 0x02014B50, true)
+            // version made by 20, host system 0 (MS-DOS)
+            out[at + 4] = ZIP_VERSION
+            out[at + 5] = 0
+            view.setUint16(at + 6, ZIP_VERSION, true)
+            out[at + 8] = record.flagLow
+            out[at + 9] = record.flagHigh
+            view.setUint16(at + 10, ZIP_METHOD_DEFLATE, true)
+            view.setUint32(at + 12, record.stamp, true)
+            view.setUint32(at + 16, record.crc, true)
+            view.setUint32(at + 20, record.compressedSize, true)
+            view.setUint32(at + 24, record.size, true)
+            view.setUint16(at + 28, record.name.length, true)
+            // extra field, comment, disk number, internal and external attributes: all zero
+            view.setUint32(at + 42, record.offset, true)
+            out.set(record.name, at + ZIP_CENTRAL_RECORD_BYTES)
+            at += ZIP_CENTRAL_RECORD_BYTES + record.name.length
+        }
+        view.setUint32(at, 0x06054B50, true)
+        view.setUint16(at + 8, this.#entries.length, true)
+        view.setUint16(at + 10, this.#entries.length, true)
+        view.setUint32(at + 12, directoryBytes, true)
+        view.setUint32(at + 16, this.#zipOffset, true)
+        return out
     }
 
     #sanitizeZipFilename(filename:string) {
@@ -316,12 +527,16 @@ export class CharXWriter{
     }
 
     async end(){
-        this.#throwIfFailed()
-        this.zip.end()
-        await this.#flush()
-        if(this.writeEnd){
+        await this.#run(async () => {
+            if(this.#ended){
+                throw new Error('The CharX archive is already finished')
+            }
+            const directory = this.#centralDirectory()
+            this.#ended = true
+            this.writeEnd = true
+            await this.#flush([directory])
             await this.writer.close()
-        }
+        })
     }
 }
 

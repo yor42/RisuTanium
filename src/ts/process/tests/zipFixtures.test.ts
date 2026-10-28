@@ -2,7 +2,7 @@
  * Guards for `fflateZipArchive` in `zipFixtures.ts`, the reference descriptor framing.
  *
  * All tests are COMPATIBILITY GUARDS of the helper itself. They use no `CharXWriter` internal except the
- * `write(key, data, level)` call shape and `writeJpeg`, so they pass before and after the writer's framing changes.
+ * `write(key, data, level)` call shape and the `charxEncode.jpeg` hook, so they pass before and after the writer's framing changes.
  * - Every local header the helper writes sets flag bit 3 (a data descriptor).
  * - A prefix goes in front of the archive, and the entries read back.
  * - Replaying the entry names (read from the exported archive's central directory), the data and the levels of the
@@ -200,7 +200,7 @@ vi.mock(import('src/ts/rpack/rpack_js'), () => ({
 import crc32 from 'crc/crc32'
 import { exportCharacterCard } from 'src/ts/characterCards'
 import { exportModule } from 'src/ts/process/modules'
-import { CharXWriter } from 'src/ts/process/processzip'
+import { CharXWriter, charxEncode } from 'src/ts/process/processzip'
 import type { character } from 'src/ts/storage/database.svelte'
 import type { RisuModule } from 'src/ts/process/modules'
 
@@ -306,7 +306,7 @@ function syntheticModule(): RisuModule {
 
 const FIXED_INSTANT = '2026-03-04T05:06:07.000Z'
 
-// The jpeg prefix that stands in for the canvas output of `CharXWriter.writeJpeg`.
+// The jpeg prefix that stands in for the canvas output of the `charxEncode.jpeg` hook.
 const JPEG_STAND_IN = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 4, 0x4a, 0x50, 0xff, 0xd9])
 
 // The stage A SHA-256 of each CharX export of card A, taken on the base before CHORE-375. They are the reference for the
@@ -366,9 +366,9 @@ async function exportAndRecord(run: () => Promise<unknown>): Promise<{ bytes: Ui
         writes.push({ data: typeof data === 'string' ? new TextEncoder().encode(data) : data.slice(), level })
         return write.call(this, key, data, level)
     })
-    vi.spyOn(CharXWriter.prototype, 'writeJpeg').mockImplementation(async function (this: CharXWriter) {
+    vi.spyOn(charxEncode, 'jpeg').mockImplementation(async () => {
         prefix = JPEG_STAND_IN
-        this.apb.append(JPEG_STAND_IN)
+        return JPEG_STAND_IN
     })
     await run()
     expect(h.errors).toEqual([])
