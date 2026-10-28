@@ -38,6 +38,7 @@ import { applyCharacterDefaults, resetChatStreamingState } from "./storage/chara
 import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
 import { normalizeOnboarding } from "./onboardingData"
 import { splitLoreKeys } from "./process/loreKeys"
+import { placeDisabledMarker } from "./process/lorebookImportDecorators"
 import { appStoreOrNull, listExportAssets, preflightExport, refuseExport, type ExportFormat, type PreflightOk, type PreflightResult } from "./drive/exportPreflight"
 
 
@@ -1516,7 +1517,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
 
 }
 
-function convertCharbook(arg:{
+export function convertCharbook(arg:{
     lorebook:loreBook[]
     charbook:CharacterBook
     loresettings:loreSettings
@@ -1552,10 +1553,17 @@ function convertCharbook(arg:{
             delete extensions.probability
         }
         if(extensions.position === 4 && typeof extensions.depth === 'number' && typeof(extensions.role) === 'number'){
-            content = `@@depth ${extensions.depth}\n@@role ${['system','user','assistant'][extensions.role]}\n` + content
+            const depthName = extensions.depth > 0 ? 'reverse_depth' : 'depth'
+            content = `@@${depthName} ${extensions.depth}\n@@role ${['system','user','assistant'][extensions.role]}\n` + content
             delete extensions.position
             delete extensions.depth
             delete extensions.role
+        }
+        else if(extensions.position === 1 || (typeof extensions.position !== 'number' && book.position === 'after_char')){
+            content = `@@position after_desc\n` + content
+            if(extensions.position === 1){
+                delete extensions.position
+            }
         }
         if(typeof(extensions.selectiveLogic) === 'number' && book.secondary_keys && book.secondary_keys.length > 0){
             switch(extensions.selectiveLogic){
@@ -1597,6 +1605,9 @@ function convertCharbook(arg:{
         if(extensions.match_whole_words === false){
             content = `@@match_partial_word\n` + content
             delete extensions.match_whole_words
+        }
+        if(book.enabled === false){
+            content = placeDisabledMarker(content)
         }
 
         lorebook.push({
