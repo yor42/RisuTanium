@@ -39,7 +39,7 @@ import { filterBlockedRealmCards, isRealmCreatorBlocked } from "./realmBlocking"
 import { normalizeOnboarding } from "./onboardingData"
 import { splitLoreKeys } from "./process/loreKeys"
 import { placeDisabledMarker } from "./process/lorebookImportDecorators"
-import { readOldCard, type OldCardFields } from "./oldCardFormat"
+import { readOldCard, yamlCardValue, type OldCardFields } from "./oldCardFormat"
 import { appStoreOrNull, listExportAssets, preflightExport, refuseExport, type ExportAssetEntry, type ExportFormat, type PreflightOk, type PreflightResult } from "./drive/exportPreflight"
 import type { ExportAssetSource } from "./drive/assetPieces"
 
@@ -294,6 +294,22 @@ async function readCharacterFile(f:{
             return {kind: 'declined'}
         }
         const oldCard = planOldCard(da)
+        if(oldCard === null){
+            return refusedOutcome(language.errors.noData)
+        }
+        const index = await addImportedCharacter(oldCard, run)
+        alertNormal(language.importedCharacter)
+        return {kind: 'imported', index}
+    }
+    if(lower.endsWith('.yaml') || lower.endsWith('.yml')){
+        if(!f.data || f.data instanceof ReadableStream){
+            return refusedOutcome(language.errors.noData)
+        }
+        const data = f.data instanceof Uint8Array ? f.data : isImportSource(f.data) ? await f.data.read(0, f.data.size) : new Uint8Array(await f.data.arrayBuffer())
+        //The parser is fetched only when a YAML card is imported. A parse error is not caught here: it ends the import as a failure, like malformed JSON.
+        const { parse } = await import('yaml')
+        const parsed: unknown = parse(Buffer.from(data).toString('utf-8'))
+        const oldCard = planOldCard(yamlCardValue(parsed))
         if(oldCard === null){
             return refusedOutcome(language.errors.noData)
         }
@@ -793,7 +809,7 @@ type ShareIndexEntry = {key: string, name: string, type: string}
 //A file's kind is decided by its name suffix, compared without regard to case, whatever the form field or link it came from.
 //The returned name carries the lower-case suffix, which the preset importer still needs because it compares case-sensitively; `readCharacterFile` compares card suffixes in lower case itself.
 const importSuffixes:Array<[string, ClassifiedImport['kind']]> = [
-    ['.charx', 'card'], ['.png', 'card'], ['.jpg', 'card'], ['.jpeg', 'card'], ['.json', 'card'],
+    ['.charx', 'card'], ['.png', 'card'], ['.jpg', 'card'], ['.jpeg', 'card'], ['.json', 'card'], ['.yaml', 'card'], ['.yml', 'card'],
     ['.risupreset', 'preset'], ['.risup', 'preset'], ['.preset', 'preset'],
     ['.risum', 'module'],
 ]
