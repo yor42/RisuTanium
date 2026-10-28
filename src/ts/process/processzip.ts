@@ -6,7 +6,7 @@ import { alertStore } from "../alert";
 import { language } from "src/lang";
 import { fillLang } from "src/lang/fill";
 import { storeAssetLimitBytes } from "../storage/assetLimit";
-import { isImportSource, type ImportSource } from "../importSource";
+import { importSourceOfBytes, importSourceOfFile, isImportSource, WindowedReader, type ImportSource } from "../importSource";
 import { IMAGE_TYPE_HEAD_BYTES, IMAGE_TYPE_TAIL_BYTES, imageTypeOfEnds } from "../media/imageType";
 
 const MIB = 1024 * 1024;
@@ -912,19 +912,42 @@ function findEndRecord(tail: Uint8Array): number {
 
 const ZIP_CENTRAL_RECORD_SIZE = 46
 
+/** One entry of a central directory: what the record declares, and where its local header starts relative to the archive. */
+type ZipDirectoryEntry = {
+    name: string
+    nameBytes: Uint8Array
+    size: number
+    compressedSize: number
+    crc: number
+    method: number
+    flags: number
+    localOffset: number
+    /** The length of the central record's own extra field; the local header's may differ. */
+    extraLength: number
+}
+
+/** The entries of a central directory, and where the archive and its directory start in the input. */
+type ZipDirectory = {
+    entries: ZipDirectoryEntry[]
+    /** Where the archive starts: the input is longer than the archive when a JPEG precedes it. */
+    zipStart: number
+    directoryStart: number
+}
+
 /**
- * The entries a ZIP central directory lists, with the uncompressed size each declares.
+ * The entries a ZIP central directory lists, with what each declares, and where the archive starts.
  *
- * The directory is located as the bytes just before the end record, with the length the end record gives; the offset
- * field never locates it (it is only read as a zip64 sentinel), because it is relative to the archive and an
- * archive written after a JPEG has a prefix.
+ * The directory is located as the bytes just before the end record, with the length the end record gives. The offset
+ * field gives the archive's start (`zipStart`): it is relative to the archive, and an archive written after a JPEG has
+ * a prefix.
  * Returns null, and the caller falls back to checking sizes while streaming, whenever the directory cannot be trusted:
- * zip64 fields or a zip64 locator, a multi-disk archive, a directory larger than MAX_DIRECTORY_BYTES, or one that does
- * not parse into exactly the entry count of the end record and end exactly at the end record.
+ * zip64 fields or a zip64 locator, a multi-disk archive, a directory larger than MAX_DIRECTORY_BYTES, an entry whose
+ * sizes or offset reach the zip64 sentinel, an offset field that puts the archive before the input, or a directory
+ * that does not parse into exactly the entry count of the end record and end exactly at the end record.
  *
  * Rejects with a `CharXParseError` of origin 'input' when bytes cannot be read.
  */
-async function readZipDirectory(data: Uint8Array | File | ImportSource): Promise<Array<{ name: string, size: number }> | null> {
+async function readZipDirectory(data: Uint8Array | File | ImportSource): Promise<ZipDirectory | null> {
     const { tail, start } = await readZipTail(data)
     const end = findEndRecord(tail)
     if (end < 0) {
@@ -955,27 +978,288 @@ async function readZipDirectory(data: Uint8Array | File | ImportSource): Promise
     } catch (error) {
         throw new CharXParseError('input', error)
     }
+    const zipStart = directoryStart - record.getUint32(16, true)
+    if (zipStart < 0) {
+        return null
+    }
     const view = new DataView(directory.buffer, directory.byteOffset, directory.byteLength)
-    const entries: Array<{ name: string, size: number }> = []
+    const entries: ZipDirectoryEntry[] = []
     let at = 0
     for (let i = 0; i < count; i++) {
         if (at + ZIP_CENTRAL_RECORD_SIZE > directory.byteLength || view.getUint32(at, true) !== 0x02014b50) {
             return null
         }
         const flags = view.getUint16(at + 8, true)
+        const method = view.getUint16(at + 10, true)
+        const crc = view.getUint32(at + 16, true)
+        const compressedSize = view.getUint32(at + 20, true)
         const size = view.getUint32(at + 24, true)
         const nameLength = view.getUint16(at + 28, true)
         const extraLength = view.getUint16(at + 30, true)
         const commentLength = view.getUint16(at + 32, true)
+        const localOffset = view.getUint32(at + 42, true)
         const next = at + ZIP_CENTRAL_RECORD_SIZE + nameLength + extraLength + commentLength
-        if (size === 0xFFFFFFFF || next > directory.byteLength) {
+        if (size === ZIP_SIZE_SENTINEL || compressedSize === ZIP_SIZE_SENTINEL || localOffset === ZIP_SIZE_SENTINEL || next > directory.byteLength) {
             return null
         }
+        const nameBytes = directory.subarray(at + ZIP_CENTRAL_RECORD_SIZE, at + ZIP_CENTRAL_RECORD_SIZE + nameLength)
         // fflate reads an entry name as UTF-8 only when the flag is set, and as Latin-1 otherwise
-        entries.push({ name: fflate.strFromU8(directory.subarray(at + ZIP_CENTRAL_RECORD_SIZE, at + ZIP_CENTRAL_RECORD_SIZE + nameLength), !(flags & 2048)), size })
+        entries.push({ name: fflate.strFromU8(nameBytes, !(flags & 2048)), nameBytes, size, compressedSize, crc, method, flags, localOffset, extraLength })
         at = next
     }
-    return at === directory.byteLength ? entries : null
+    return at === directory.byteLength ? { entries, zipStart, directoryStart } : null
+}
+
+const ZIP_LOCAL_HEADER_SIZE = 30
+const ZIP_DESCRIPTOR_SIZE = 16
+/** Bytes read past a local header's expected end, so a local extra field a little longer than the central one needs no second read. */
+const ZIP_HEADER_READ_SLACK = 64
+
+/** An entry of the plan: the bytes the splice drops, replaces or passes on, as absolute positions in the input. */
+type PlannedEntry = {
+    /** Where the local header starts. */
+    start: number
+    /** The local header as the file holds it: the splice compares the source's bytes with it. */
+    header: Uint8Array
+    /** The header the importer's ZIP reader gets: bit 3 cleared, the central CRC and sizes written in. */
+    rewrittenHeader: Uint8Array
+    bodyStart: number
+    bodyEnd: number
+}
+
+/** How the importer reads an archive through its central directory: the entries in file order, and where the directory starts. */
+type DirectoryReadPlan = {
+    entries: PlannedEntry[]
+    directoryStart: number
+    /** The input's full size, through the end record. */
+    inputSize: number
+}
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.byteLength !== b.byteLength) {
+        return false
+    }
+    for (let i = 0; i < a.byteLength; i++) {
+        if (a[i] !== b[i]) {
+            return false
+        }
+    }
+    return true
+}
+
+/**
+ * The length of the data descriptor at the start of `bytes` when it states the entry's central CRC and sizes: 16 with
+ * the signature, 12 without, tried in that order; 0 when it states anything else or `bytes` is too short.
+ */
+function descriptorLength(bytes: Uint8Array, entry: ZipDirectoryEntry): number {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    if (bytes.byteLength >= ZIP_DESCRIPTOR_SIZE && view.getUint32(0, true) === 0x08074b50
+        && view.getUint32(4, true) === entry.crc && view.getUint32(8, true) === entry.compressedSize && view.getUint32(12, true) === entry.size) {
+        return ZIP_DESCRIPTOR_SIZE
+    }
+    if (bytes.byteLength >= ZIP_DESCRIPTOR_SIZE - 4 && view.getUint32(0, true) === entry.crc
+        && view.getUint32(4, true) === entry.compressedSize && view.getUint32(8, true) === entry.size) {
+        return ZIP_DESCRIPTOR_SIZE - 4
+    }
+    return 0
+}
+
+/** A view of the input as a source: a source as it is, a `File` and bytes through the adapters of `importSource.ts`. */
+function importSourceOfInput(data: Uint8Array | File | ImportSource): ImportSource {
+    return isImportSource(data) ? data : data instanceof File ? importSourceOfFile(data) : importSourceOfBytes('charx', data)
+}
+
+function inputSizeOf(data: Uint8Array | File | ImportSource): number {
+    return data instanceof File || isImportSource(data) ? data.size : data.byteLength
+}
+
+/**
+ * Checks the archive against its central directory and plans reading it by the directory. Returns null, and the file is
+ * read as it is without the plan, whenever the local headers or data descriptors disagree with the directory (an
+ * offset, a name, a method, bit 3, a CRC or a size) or two entries overlap. Bytes outside every listed entry (a JPEG
+ * prefix, gaps, entries the directory does not list) are not part of the plan.
+ *
+ * Reads only headers and descriptors, one read per boundary: entry i-1's descriptor and entry i's header together,
+ * through a `WindowedReader`, so packed small entries share a window and a big body is skipped without being read.
+ *
+ * Rejects with a `CharXParseError` of origin 'input' when bytes cannot be read.
+ */
+async function planDirectoryRead(data: Uint8Array | File | ImportSource, directory: ZipDirectory): Promise<DirectoryReadPlan | null> {
+    if (directory.entries.length === 0) {
+        return null
+    }
+    const inputSize = inputSizeOf(data)
+    const reader = new WindowedReader(importSourceOfInput(data), inputSize)
+    const sorted = [...directory.entries].sort((a, b) => a.localOffset - b.localOffset)
+    const planned: PlannedEntry[] = []
+    // The entry whose data descriptor is the next thing to read, and where it starts.
+    let pending: { entry: ZipDirectoryEntry, at: number } | null = null
+    // Where the previous entry ends, when it has no descriptor to read.
+    let previousEnd = directory.zipStart
+    try {
+        for (const entry of sorted) {
+            const start = directory.zipStart + entry.localOffset
+            const wanted = ZIP_LOCAL_HEADER_SIZE + entry.nameBytes.byteLength + entry.extraLength + ZIP_HEADER_READ_SLACK
+            let bytes: Uint8Array
+            if (pending) {
+                if (start < pending.at) {
+                    return null
+                }
+                // A descriptor and the header after it are one read when nothing but a gap shorter than a descriptor lies between them.
+                const together = start >= pending.at && start - pending.at <= ZIP_DESCRIPTOR_SIZE
+                const first = await reader.read(pending.at, together ? start + wanted : pending.at + ZIP_DESCRIPTOR_SIZE)
+                const length = descriptorLength(first, pending.entry)
+                if (length === 0 || pending.at + length > start) {
+                    return null
+                }
+                bytes = together ? first.subarray(start - pending.at) : await reader.read(start, start + wanted)
+                pending = null
+            } else {
+                if (previousEnd > start) {
+                    return null
+                }
+                bytes = await reader.read(start, start + wanted)
+            }
+            if (bytes.byteLength < ZIP_LOCAL_HEADER_SIZE) {
+                return null
+            }
+            let view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+            const headerLength = ZIP_LOCAL_HEADER_SIZE + view.getUint16(26, true) + view.getUint16(28, true)
+            if (bytes.byteLength < headerLength) {
+                bytes = await reader.read(start, start + headerLength)
+                if (bytes.byteLength < headerLength) {
+                    return null
+                }
+                view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+            }
+            const nameLength = view.getUint16(26, true)
+            const flags = view.getUint16(6, true)
+            if (view.getUint32(0, true) !== 0x04034b50
+                || nameLength !== entry.nameBytes.byteLength
+                || !bytesEqual(bytes.subarray(ZIP_LOCAL_HEADER_SIZE, ZIP_LOCAL_HEADER_SIZE + nameLength), entry.nameBytes)
+                || view.getUint16(8, true) !== entry.method
+                || (flags & 8) !== (entry.flags & 8)) {
+                return null
+            }
+            const hasDescriptor = (flags & 8) !== 0
+            if (!hasDescriptor && (view.getUint32(14, true) !== entry.crc || view.getUint32(18, true) !== entry.compressedSize || view.getUint32(22, true) !== entry.size)) {
+                return null
+            }
+            // The header is copied out: the reader and the bytes of a source give views that the next read replaces.
+            const header = new Uint8Array(bytes.subarray(0, headerLength))
+            const rewrittenHeader = new Uint8Array(header)
+            const rewrittenView = new DataView(rewrittenHeader.buffer)
+            rewrittenView.setUint16(6, flags & ~8, true)
+            rewrittenView.setUint32(14, entry.crc, true)
+            rewrittenView.setUint32(18, entry.compressedSize, true)
+            rewrittenView.setUint32(22, entry.size, true)
+            const bodyStart = start + headerLength
+            const bodyEnd = bodyStart + entry.compressedSize
+            planned.push({ start, header, rewrittenHeader, bodyStart, bodyEnd })
+            if (hasDescriptor) {
+                pending = { entry, at: bodyEnd }
+            } else {
+                previousEnd = bodyEnd
+            }
+        }
+        if (pending) {
+            const length = descriptorLength(await reader.read(pending.at, pending.at + ZIP_DESCRIPTOR_SIZE), pending.entry)
+            if (length === 0) {
+                return null
+            }
+            previousEnd = pending.at + length
+        }
+    } catch (error) {
+        throw new CharXParseError('input', error)
+    }
+    return previousEnd <= directory.directoryStart ? { entries: planned, directoryStart: directory.directoryStart, inputSize } : null
+}
+
+/**
+ * The bytes of an archive read by its plan, as a sequence of chunks for the ZIP reader. Anything outside the entries of
+ * the plan is dropped; a header is replaced by its rewritten form; a body passes through as views of the source's
+ * chunks; the data from the central directory on passes through, so the last header always has bytes after it.
+ * `push` gives the parts of one chunk, in order; `#spliceStream` joins them into one chunk for the ZIP reader.
+ *
+ * Throws `DirectorySpliceError` when a header differs from the one validation read.
+ */
+class DirectorySplice {
+    #next = 0
+    /** The absolute position of the next byte the source gives. */
+    #position = 0
+    #headerParts: Uint8Array[] = []
+    #headerHave = 0
+
+    constructor(private readonly plan: DirectoryReadPlan) {}
+
+    /** The source ended: whether it reached the input's full size. */
+    get complete(): boolean {
+        return this.#position >= this.plan.inputSize
+    }
+
+    push(chunk: Uint8Array): Uint8Array[] {
+        const out: Uint8Array[] = []
+        const base = this.#position
+        let at = 0
+        while (at < chunk.byteLength) {
+            const entry = this.plan.entries[this.#next]
+            if (!entry) {
+                const from = Math.max(at, this.plan.directoryStart - base)
+                if (from < chunk.byteLength) {
+                    out.push(chunk.subarray(from))
+                }
+                break
+            }
+            const absolute = base + at
+            if (absolute < entry.start) {
+                at = Math.min(chunk.byteLength, entry.start - base)
+            } else if (absolute < entry.bodyStart) {
+                const to = Math.min(chunk.byteLength, entry.bodyStart - base)
+                const part = chunk.subarray(at, to)
+                at = to
+                const whole = this.#headerHave === 0 && part.byteLength === entry.header.byteLength
+                if (!whole) {
+                    this.#headerParts.push(new Uint8Array(part))
+                    this.#headerHave += part.byteLength
+                }
+                if (base + at === entry.bodyStart) {
+                    const seen = whole ? part : this.#joinedHeader()
+                    if (!bytesEqual(seen, entry.header)) {
+                        throw new DirectorySpliceError('A local header changed after the archive was checked')
+                    }
+                    out.push(entry.rewrittenHeader)
+                }
+            } else if (absolute < entry.bodyEnd) {
+                const to = Math.min(chunk.byteLength, entry.bodyEnd - base)
+                out.push(chunk.subarray(at, to))
+                at = to
+            } else {
+                this.#next++
+            }
+        }
+        this.#position += chunk.byteLength
+        return out
+    }
+
+    #joinedHeader(): Uint8Array {
+        const joined = new Uint8Array(this.#headerHave)
+        let at = 0
+        for (const part of this.#headerParts) {
+            joined.set(part, at)
+            at += part.byteLength
+        }
+        this.#headerParts = []
+        this.#headerHave = 0
+        return joined
+    }
+}
+
+/** A local header differs from the one validation read: the file changed between the two reads. */
+class DirectorySpliceError extends Error {
+    constructor(message: string) {
+        super(message)
+        this.name = 'DirectorySpliceError'
+    }
 }
 
 /**
@@ -1115,6 +1399,10 @@ export class CharXImporter{
      * - File: Uses built-in stream() method
      * - ImportSource: Uses its stream() method; its directory is read by range like a File's
      *
+     * A Uint8Array, File or ImportSource whose central directory agrees with every local header and data descriptor is
+     * read by that directory (`planDirectoryRead`, `DirectorySplice`), so an entry whose data holds a ZIP signature is
+     * not cut short. Any other archive, and a ReadableStream, is read as it comes.
+     *
      * parse() rejects with a CharXParseError whose origin says where the first failure came from. Nothing is
      * started, queued or shown after that failure, and the completion promise is never settled.
      *
@@ -1148,11 +1436,16 @@ export class CharXImporter{
         }
 
         // An entry the central directory lists above its limit refuses the card before any entry is read
+        let plan:DirectoryReadPlan|null = null
         if(!(data instanceof ReadableStream)){
             try {
-                const oversize = (await readZipDirectory(data))?.find(entry => entry.size > entryLimit(entry.name))
+                const directory = await readZipDirectory(data)
+                const oversize = directory?.entries.find(entry => entry.size > entryLimit(entry.name))
                 if(oversize){
                     this.#recordSize(oversize.name)
+                }
+                else if(directory){
+                    plan = await planDirectoryRead(data, directory)
                 }
             } catch (error) {
                 this.#failure = error instanceof CharXParseError ? error : new CharXParseError('input', error)
@@ -1165,7 +1458,8 @@ export class CharXImporter{
         // Convert all input types to ReadableStream for uniform processing
         let reader:ReadableStreamDefaultReader<Uint8Array>
         try {
-            reader = this.#toStream(data).getReader()
+            const source = this.#toStream(data)
+            reader = (plan ? this.#spliceStream(source, plan) : source).getReader()
         } catch (error) {
             this.#record('input', error)
             throw this.#failure
@@ -1300,6 +1594,54 @@ export class CharXImporter{
             }
             this.completionResolver?.()
         }
+    }
+
+    /**
+     * The archive read by its plan (see `DirectorySplice`): the ZIP reader gets every entry with its sizes in the header
+     * and no data descriptor, so it counts an entry's bytes and never scans them for a signature. The source's own
+     * read failure passes on unchanged. A header that changed since validation, or a source that ends before the
+     * input's full size, is a ZIP failure, recorded here because the caller would record the stream's error as 'input'.
+     * It queues nothing ahead of the importer (highWaterMark 0), so the source is read no further ahead than without the splice.
+     */
+    #spliceStream(source: ReadableStream<Uint8Array>, plan: DirectoryReadPlan): ReadableStream<Uint8Array> {
+        const inner = source.getReader()
+        const splice = new DirectorySplice(plan)
+        return new ReadableStream<Uint8Array>({
+            pull: async (controller) => {
+                for(;;){
+                    let chunk:ReadableStreamReadResult<Uint8Array>
+                    try {
+                        chunk = await inner.read()
+                    } catch (error) {
+                        controller.error(error)
+                        return
+                    }
+                    let out:Uint8Array[]
+                    try {
+                        if(chunk.done){
+                            if(!splice.complete){
+                                throw new DirectorySpliceError('The archive ended before the end of its central directory')
+                            }
+                            controller.close()
+                            return
+                        }
+                        out = splice.push(chunk.value)
+                    } catch (error) {
+                        this.#record('zip', error)
+                        controller.error(error)
+                        inner.cancel().catch(() => {})
+                        return
+                    }
+                    if(out.length > 0){
+                        // One chunk per source chunk, as an unspliced source gives it: the entries a chunk holds are
+                        // started in one push, so the count of queued saves and the failure order do not depend on the splice.
+                        controller.enqueue(out.length === 1 ? out[0] : joinBytes(out))
+                        return
+                    }
+                }
+            },
+            cancel: (reason) => inner.cancel(reason),
+        }, { highWaterMark: 0 })
     }
 
     /**

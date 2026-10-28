@@ -213,7 +213,7 @@ import { exportModule, type RisuModule } from 'src/ts/process/modules'
 import { CharXImporter, CharXWriter, charxEncode } from 'src/ts/process/processzip'
 import type { character } from 'src/ts/storage/database.svelte'
 import { CharxFramingError, parseCharx, type ParsedArchive } from './charxFramingParser'
-import { fflateZipArchive, type ZipEntry } from './zipFixtures'
+import { fflateZipArchive, ZIP_SIGNATURE_BLOB, type ZipEntry } from './zipFixtures'
 
 //#region synthetic card A (the stage A card)
 
@@ -243,14 +243,7 @@ function syntheticPng(seed: number, text?: [string, string]): Uint8Array {
     return Buffer.concat(parts)
 }
 
-// An Unknown blob that holds the zip signatures a streaming reader ends an entry at: the data descriptor, the local
-// header and the central record signatures, in the middle of binary data.
-const SIGNATURE_BLOB = Uint8Array.from([
-    0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0x21,
-    0x50, 0x4b, 0x07, 0x08, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-    0x50, 0x4b, 0x03, 0x04, 20, 0, 8, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0x50, 0x4b, 0x01, 0x02, 99, 98, 97,
-])
+const SIGNATURE_BLOB = ZIP_SIGNATURE_BLOB
 
 const ASSETS: Record<string, Uint8Array> = {
     portrait: syntheticPng(1),
@@ -418,7 +411,7 @@ describe('(R) a binary asset that holds zip signatures', () => {
         expect(Buffer.from(bytes).includes(Buffer.from([0x50, 0x4b, 0x07, 0x08]))).toBe(true)
         expect(Buffer.from(bytes).includes(Buffer.from([0x50, 0x4b, 0x03, 0x04, 20, 0, 8, 0, 8]))).toBe(true)
         const outcome = await importCharx(bytes)
-        // on the descriptor framing the streaming reader ends the entry at the first signature and refuses the archive as 'zip'
+        // this runs the fork's writer, which states every size in the local header and writes no descriptor, so the signatures cannot end the entry; archives in upstream's descriptor framing are in charxDirectoryImport.test.ts
         expect(outcome.failure ?? 'imported').toBe('imported')
         expect([...h.saved.values()].some(saved => bytesEqual(saved, SIGNATURE_BLOB))).toBe(true)
     })
