@@ -35,6 +35,8 @@ Every dispatch states effort only when overriding the role default (MC-321 4). `
 
 Campaign briefs, reports and replies use English; localized UI strings follow their locale requirements. A brief states: one unresolved question or writing scope; exact files/search boundary; allowed tools and write ownership; invariants and acceptance scenarios; applicable evidence and provenance; compact return format; stopping/escalation conditions. Proposed mechanisms are non-normative unless the accepted requirement actually mandates them. Equality-based skips include the change-and-return-to-origin scenario. Disproof is an acceptable investigation result.
 
+Before Gate 1 on substantial work, a fresh agent that did not write the plan lists the product and error-behaviour ambiguities with a recommended option each, and the orchestrator asks the maintainer what existing MCs do not settle (the grilling step, `MC-778`; see [gates](gates.md)). The lister reads and reports; it does not decide.
+
 Shared procedures: `campaign-context`, `evidence-reporting`, `review-change`, `campaign-records`. Main entry: `campaign-workflow`. Actionable fork skills: `search-repository` → code-searcher, `triage-artifacts` → haiku-triager, `mechanical-edit` → haiku-editor. Skills remain short procedures; this document and [gates](gates.md) own detailed policy.
 
 ## Bounded nesting

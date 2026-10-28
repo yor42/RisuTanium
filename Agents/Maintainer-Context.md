@@ -15414,6 +15414,8 @@ Folded in from `Agents/Lanes/lane-F-records.md` on 2026-10-25 (merge `95a24de3e`
 - *In practice lane A has also handled `internalBackupSnapshotLoad` (CHORE-410) as a known class since batch 15. That is practice, not a recorded maintainer decision.*
 - *CHORE-468 (Node server test timing: `nodeEnvSecret`, `nodeRetire`, `nodeServerFixture`) is opened as a ticket only; it is not added to the known classes. `docs/workflow/gates.md` cites `MC-694` for the flake-class rule and keeps no list; this note is where the classes are recorded, and gates.md is not edited.*
 
+*Dated amendment, 2026-10-28 (the text above is unchanged): another known flake class was added by the maintainer ("Merge, add CHORE-464 class (Recommended)", lane A, 2026-10-28, at the CHORE-375 stage A merge): CHORE-464 (the `charxStreamImport` size-limit test reads its staging file after a fixed 50 ms wait). It is recorded as a note here, not as a separate MC. At that merge it appeared once in the full run (trial `91bbe2080`: 25,538 passed, 5 failed = CHORE-466 x2, CHORE-410 x2, CHORE-464 x1; the files alone passed 158/158 three times). Lane A source: batch 18 draft.*
+
 ### MC-695 — Lane A, 2026-10-27: theme packs: acceptance set, pack rules and font policy (amends `MC-691` and `MC-692`)
 
 - Tag: decisions (eight maintainer answers, 2026-10-27). Date: 2026-10-27. Sweep ref: none.
@@ -15504,6 +15506,8 @@ On lane A's proposal of the rule below: "yes, put it in the next records batch. 
 - `AGENTS.md`: line 3. `CLAUDE.md` only imports `AGENTS.md` and is not edited.
 
 *Amended by `MC-777` (2026-10-27; the text above is unchanged): every Gate 1 verdict carries an advisory "Simpler path" section, and a substantiated structural finding lets the orchestrator ask for the rewrite alternative at any rejection, not only at the second.*
+
+*Amended by `MC-778` (2026-10-28; the text above is unchanged): a grilling step before Gate 1 settles product and error-behaviour ambiguity with the maintainer, and a product question that grilling missed does not count toward the three-reject escalation. The bounded-rewrite rule itself is unchanged.*
 
 **Lane A's notes (not the maintainer's decisions).**
 - The first candidate for the rule is the multi-tab store2 review. `MC-699` records that review's outcome: no rewrite now.
@@ -15714,6 +15718,26 @@ On lane A's proposal of the rule below: "yes, put it in the next records batch. 
 3. Applied in records batch 17: `docs/workflow/gates.md`, the `review-change` skill, and the Gate 1 reviewer profiles (`.claude/agents/adversarial-reviewer.md`, `.claude/agents/opus-reviewer.md`), with a doc-verifier pass. A note was added at `MC-697`; its text is unchanged.
 
 - Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-778 — Lane A, 2026-10-28: a grilling step between sizing and Gate 1 pins down product and error-behaviour ambiguity, with recommended options (amends `MC-697`)
+
+- Tag: decision (maintainer proposal in chat and four `AskUserQuestion` answers, 2026-10-28). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A session; draft `%TEMP%\risu-b715\records-b18\draft.md`.
+- Alternatives rejected: not recorded.
+- Related: `MC-697`, `MC-777`; examples: the CHORE-375 Gate 1 rounds raised the `MC-579` and `MC-790` questions.
+
+**The maintainer's words (2026-10-28):** "another idea on the workflow: I think we can officially add 'grilling session' around(probably before) the gate 1, where we use ask tool with recommendations to pin down as much of ambiguity as possible instead of gate raising the product decisions and questions."
+
+**The four `AskUserQuestion` answers (option labels):** "Fresh agent lists, orchestrator asks (Recommended)"; "After sizing, before Gate 1 (Recommended)"; "Ask, don't count it (Recommended)"; "Substantial work, batch 18 (Recommended)".
+
+**What was decided (maintainer, as lane A recorded it).**
+1. For work that needs a Gate 1 plan review, after sizing and before Gate 1, an independent agent (not the plan author) reads the sizing and the draft plan and lists every product or error-behaviour ambiguity, each with a recommended option. The orchestrator drops what existing MCs already settle and asks the maintainer the rest with `AskUserQuestion` (recommended option first). The plan is finalised with the answers, then goes to Gate 1. This formalises the existing "settle decision-critical behaviour before Gate 1" step.
+2. If Gate 1 still raises a product question that grilling missed, the orchestrator asks the maintainer. The missed question alone is not a substantive REJECT and does not count toward the three-reject escalation. Plan defects count as before.
+3. The tiny low-risk carve-out stays. Applied in records batch 18: `docs/workflow/gates.md`, `docs/workflow/routing.md` and the prepare-gate skill (`.claude/skills/prepare-gate/SKILL.md`), with a doc-verifier pass. Relayed decisions from lanes still need lane A confirmation before recording.
+
+- Notes, not the maintainer's words:
+  - The CHORE-464 known-flake-class addition of the same day is recorded as a note on `MC-694`, not as `MC-778`.
   - Nothing here authorizes application code, a commit or a push.
 
 ### MC-494 — Lane B, 2026-10-25: try L3; a throwaway phone diagnostic before any real code
@@ -16862,6 +16886,150 @@ Nothing here authorizes code, a commit or a push.
 
 Nothing here authorizes code, a commit or a push.
 
+*Folded in from `Agents/Lanes/lane-B-records.md` by lane A in records batch 18 (lane B committed the reserved text in `43310c81e`; merged in `b53729375`). The entries `MC-669` to `MC-677` below are lane B's reserved text from `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md`; the dated "Notes that are not the maintainer's words" are lane B's. Lane A has not re-verified the figures and file readings in them.*
+
+### MC-669 — Lane B, 2026-10-27: accepted limit: a character switch during the first message's module load, when that load then fails, can send one wasted translation request (S4d-1p-4c)
+
+- **Tag:** decision (the maintainer's answer to the S4d-1p-4c Gate 1 round 3 finding E1, in the lane B session on account 2, 2026-10-27; the question text is not reproduced here)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** the orchestrator's note `%TEMP%\risu-lane-b\c205-next\b2a-notes\mc-reservations.md` ("S4d-1p-4c Gate 1 r3 answer", MC-669); `s4d1p4c-gate1r3\result.md` (E1); `s4d1p4c\plan-r3-addendum.md` (E1). Inputs: row 4177.
+- **Related:** `MC-668`, `MC-658`, `MC-662`; CHORE-205 S4d-1p-4c; CHORE-415 (the F7 candidate named in the same note).
+
+1. **As reserved (verbatim from the note):** "(E1): accepted limit. The first-message Chat keeps its ChatBody across a character/chat switch. If the user switches while character A's module load is in flight and that load fails, the old run proceeds past its wait, builds A's message with B's modules, passes B's translator check, and sends one wasted paid request (cached under a key nothing reads; in cached-only mode it can overwrite B's translated decision). HEAD stops there; 4c is still a net improvement (on a successful load HEAD sends a wrong request, 4c none). No lastCharArg-based stop (it could blank a live run)."
+
+**Notes that are not the maintainer's words:**
+- Gate 1 round 3 labelled E1 "editorial; disclosure required" and left to the orchestrator whether it needs the maintainer as a recorded limit (`s4d1p4c-gate1r3\result.md`, line 12 and the E1 heading). The first-message Chat is not remounted by a switch (reviewer's reading of `DefaultChatScreen.svelte`, in the same file). The plan addendum corrects the plan wording: "load fails: no request" applies only while the instance stays on the same character or chat (`plan-r3-addendum.md`, E1).
+- Implemented in `14c77f3ed` (row 4177), whose commit message lists this as an accepted limit.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-670 — Lane B, 2026-10-27: during a backup, a stub whose marker is not the recorded one, or that has no stored entry, stops the export with the named "unreadable" failure (S4d-1b OQ1)
+
+- **Tag:** decision (the maintainer's answer to open question 1 of the S4d-1b plan, in the lane B session on account 2, 2026-10-27; the question text is not reproduced here)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `b2a-notes\mc-reservations.md` ("S4d-1b open questions", MC-670); plan `%TEMP%\risu-lane-b\c205-next\s4d1b-plan\plan.md` section 10. Inputs: rows 4181 to 4183.
+- **Related:** `MC-647`, `MC-649`, `MC-583`; CHORE-205 S4d-1b.
+
+1. **As reserved (verbatim from the note):** "(OQ1): during a backup, a stub slot whose marker is not the recorded one, or that has no stored entry, stops the export with the existing named 'unreadable' failure naming the module (today's behaviour), not the generic refusal."
+
+**Notes that are not the maintainer's words:**
+- Implemented in `608a552c2`: its commit message says a stub that has no entry or is not the recorded stub fails "with the MC-670 reasons". Gate 2 finding 5(b) notes that the duplicate-id case ends `duplicate`, not `unreadable` (`s4d1b-gate2b\result.md`); the committed message (`git log`) keeps the duplicate case apart ("fails there as duplicate") from the MC-670 cases.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-671 — Lane B, 2026-10-27: a module whose stored lorebook is unrepaired is copied exactly as stored by a backup, with no UI text (S4d-1b OQ2)
+
+- **Tag:** decision (the maintainer's answer to open question 2 of the S4d-1b plan, in the lane B session on account 2, 2026-10-27; the question text is not reproduced here)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `b2a-notes\mc-reservations.md` ("S4d-1b open questions", MC-671, and the "MC-671 note" under "S4d-1b Gate 1 r1 follow-up"); `s4d1b-gate1\result.md` (finding 3). Inputs: rows 4181 to 4183.
+- **Related:** `MC-647`, `MC-674`, `MC-672`; CHORE-205 S4d-1b.
+
+1. **As reserved (verbatim from the note):** "(OQ2): a module whose stored lorebook is unrepaired (after a 'keep' answer) is copied exactly as stored with no UI text; recorded in code, tests and this note (MC-647)."
+2. **The MC-671 note (verbatim; recorded with `MC-674`, 2026-10-27; the maintainer kept the answer "Keep no UI text"):** "(corrected reach, maintainer kept the answer "Keep no UI text"): an unmigrated stored lorebook is the normal case for any module created, imported or lore-edited since its last resident boot (no creator sets bookVersion), not only after a 'keep' answer. The backup copies it as stored; it is migrated when the backup is read."
+
+**Notes that are not the maintainer's words:**
+- Gate 1 round 1 found the plan's premise wrong (an unrepaired lorebook is the normal case, not a rare one) and that U2 could be answered from source (`s4d1b-gate1\result.md`, finding 3 and the "Section 0 item 6" line). The corrected reach above came from that finding.
+- The last clause of the note ("it is migrated when the backup is read") is not explained in the note. The `608a552c2` commit message says: "the first load repairs it and the next save pass stores the repaired body". Which reading the maintainer meant is not stated: TODO(evidence).
+- Implemented in `608a552c2` (row 4183); the copy is the module as stored and no corrupted-lorebook question is asked during an export.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-672 — Lane B, 2026-10-27: a backup reads module data in a check pass and then again in a write pass, one module in memory at a time (S4d-1b OQ3; amended by `MC-674` and `MC-677`: not built)
+
+- **Tag:** decision (the maintainer's answer to open question 3 of the S4d-1b plan, in the lane B session on account 2, 2026-10-27; the question text is not reproduced here)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `b2a-notes\mc-reservations.md` ("S4d-1b open questions", MC-672). Inputs: rows 4181 and 4185.
+- **Related:** `MC-497`, `MC-674`, `MC-677`, `MC-647`; CHORE-205 S4d-1b, S4d-1c.
+
+1. **As reserved (verbatim from the note):** "(OQ3; maintainer chose 'Stream instead', then 'Check pass, then write'): the backup does not hold every module in memory at once. A check pass reads and checks every module's stored copy and discards it (keeps MC-497 item 3: nothing written if one fails, named); then a write pass reads each copy again and writes it, one module in memory at a time. Backups read module data twice (slower). The unpacked data must still equal today's (MC-497 item 1)."
+
+*Amended by `MC-674` (2026-10-27) and `MC-677` (2026-10-28); the text above is unchanged: the streaming moved to a separate stage S4d-1c and was then not built.*
+
+**Notes that are not the maintainer's words:**
+- The lane B handoff marks this answer "DIFFERENT from the plan" (`Agents/Handoff-2026-10-27-laneB.md`, section 6); the plan's questions are in `s4d1b-plan\plan.md` section 10, which was not reopened for this record.
+- Superseded in scope by `MC-674` (the streaming moved to stage S4d-1c) and then by `MC-677` (S4d-1c is not built). The text above is unchanged; the export therefore keeps reading every module's stored copy in 1b's read-all-first order.
+- Nothing here authorizes code, a commit or a push.
+
+### MC-673 — Lane B, 2026-10-27: single-module export, Realm share and apply keep installing the module; only full, partial and rescue backups read the stored copy (S4d-1b OQ4)
+
+- **Tag:** decision (the maintainer's answer to open question 4 of the S4d-1b plan, in the lane B session on account 2, 2026-10-27; the question text is not reproduced here)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `b2a-notes\mc-reservations.md` ("S4d-1b open questions", MC-673). Inputs: row 4183.
+- **Related:** `MC-647`, `MC-628`, `MC-631`, `MC-633`; CHORE-205 S4d-1b.
+
+1. **As reserved (verbatim from the note):** "(OQ4): single-module export (.risum), Realm share and apply keep installing the module as today; only full, partial and rescue backups read the stored copy."
+
+**Notes that are not the maintainer's words:**
+- The same note adds, after `MC-673`: "P3 now includes the MVP upgrade (MC-775, lane A's ID; cite, do not mint)." `MC-775` is lane A's (heading "MC-775 — Lane A, 2026-10-27: P3 includes the MVP upgrade check ..."). Lane B cites it and does not mint it (row 4186).
+- Nothing here authorizes code, a commit or a push.
+
+### MC-674 — Lane B, 2026-10-27: S4d-1b is the export by copy in today's read-all-first order; the streaming of `MC-672` moves to a separate stage S4d-1c before P3 (amends `MC-672`'s scope; amended by `MC-677`)
+
+- **Tag:** decision (the maintainer's follow-up after the S4d-1b Gate 1 round 1 rejection, in the lane B session on account 2, 2026-10-27; the question text is not reproduced here)
+- **Date:** 2026-10-27
+- **Sweep ref:** none
+- **Source:** `b2a-notes\mc-reservations.md` ("S4d-1b Gate 1 r1 follow-up", MC-674); `s4d1b-gate1\result.md`. Inputs: rows 4181 to 4183, 4185.
+- **Related:** `MC-672`, `MC-671`, `MC-657`, `MC-677`, `MC-091`; CHORE-205 S4d-1b, S4d-1c.
+
+1. **As reserved (verbatim from the note):** "(amends MC-672 scope): split. S4d-1b = export by copy with today's read-all-first order (the Gate 1 prototype is proven). Streaming per MC-672 (check pass, then write pass) becomes stage S4d-1c, right after 1b and before P3; the MC-657 install hold lasts until 1c. Gate 1's streaming findings (async producer, consistency of characters after module awaits, partial file -> file-deleted text, V0 SaveKV path cannot stream, compressed pieces still held, read by checked entry) are 1c's planning input."
+
+*Amended by `MC-677` (2026-10-28; the text above is unchanged): S4d-1c is not built, and the `MC-657` install hold is lifted (it lasted until 1b, merged in `232342b49`).*
+
+**Notes that are not the maintainer's words:**
+- Gate 1 round 1 returned `[REJECT]`; the streaming findings it lists are in `s4d1b-gate1\result.md` ("OQ3 changed the mechanism" and the blocking list).
+- At the 1b merge lane A said the `MC-657` install hold was lifted; lane B corrected this to "until 1c" under this entry (handoff, section 6), and lane A's batch 18 draft carries the same correction. `MC-677` later lifts the hold (rows 4183 and 4185). Whether the split is an `MC-091` amendment is not stated in the sources: TODO(evidence).
+- Nothing here authorizes code, a commit or a push.
+
+### MC-675 — Lane B, 2026-10-28: the setting "Archive characters at startup" says characters and modules, in every locale; an existing profile gets no new notice (S4d-2 text, advisor Q3 with Q7)
+
+- **Tag:** decision (the maintainer's S4d-2 text answers, in the lane B session on account 2, 2026-10-28; the question text is not reproduced here)
+- **Date:** 2026-10-28
+- **Sweep ref:** none
+- **Source:** `b2a-notes\mc-reservations.md` ("S4d-2 text answers", MC-675); `%TEMP%\risu-lane-b\c205-next\s4d-prep\result.md` (Q3 and Q6, as cited by the note); the translator's strings `s4d2-tl\strings.md`. Inputs: row 4184.
+- **Related:** `MC-643`, `MC-644`, `MC-058`; CHORE-205 S4d-2.
+
+1. **As reserved (verbatim from the note):** "(Q3 A, with Q7): the setting "Archive characters at startup" (labelKey coldStorage, helpKey coldstorage) says characters and modules. The en label and help text are reworded; the translator does the six locales (MC-058). An existing profile gets no new first-start notice. Proposed en wording, open to Gate 2 review: label "Archive characters and modules at startup". Help text: modules that no setting uses are also left unloaded until a character or chat needs them; turning the setting off loads every module at startup."
+
+**Notes that are not the maintainer's words:**
+- The committed English label reads "Archive characters and modules at startup"; the help-text wording is in `en.ts` of `1d4b231f0` (the commit message restates it). The Gate 2 review confirmed the help text against source: "off loads every module at startup" takes effect at the next boot (`s4d2-gate2\result.md`, section 1). It also noted, as low and unfixed, that "no setting uses" means only the global lists, and that modules that are not stub-eligible stay resident even when unreferenced.
+- S4d-2 was merged as `4ad6ece37` (lane B `1d4b231f0`; text and test only; trial `d0b530637`: 25,498 passed, 3 failed = known CHORE-466 and CHORE-410; the files alone 145/145; standing `MC-500` approval, not save or persistence work).
+- Nothing here authorizes code, a commit or a push.
+
+### MC-676 — Lane B, 2026-10-28: the reactive trigger's module-load failure alert keeps replacing whatever alert is showing; one test pins that the trigger loads nothing at the end of a normal boot (S4d-2 Q6)
+
+- **Tag:** decision (the maintainer's S4d-2 text answers, in the lane B session on account 2, 2026-10-28; the question text is not reproduced here)
+- **Date:** 2026-10-28
+- **Sweep ref:** none
+- **Source:** `b2a-notes\mc-reservations.md` ("S4d-2 text answers", MC-676); `s4d-prep\result.md` (Q6, as cited by the note). Inputs: row 4184.
+- **Related:** `MC-675`, `MC-639`, `MC-667`; CHORE-205 S4d-2.
+
+1. **As reserved (verbatim from the note):** "(Q6 A): the reactive trigger's module-load failure alert (ensureSelectedModules) keeps replacing whatever alert is showing. One test pins that the trigger loads nothing at the end of a normal boot. Recorded limit: a plugin-written global module reference that is a stub can still replace a boot or consent notice."
+2. **The same note adds:** "Q5 (MC-621 "Load, then Save mine") is not part of S4d-2. The advisor routes it to the multi-tab mechanism review."
+
+**Notes that are not the maintainer's words:**
+- Implemented as one G row in `moduleEnsure.test.ts` (commit `1d4b231f0`): after a normal boot `ensureSelectedModules(true)` starts no load and raises no alert. The Gate 2 reviewer's own mutant (`unloadedModulesOf` returns every stub) turned that row and four existing rows red (`s4d2-gate2\result.md`, section 3).
+- Nothing here authorizes code, a commit or a push.
+
+### MC-677 — Lane B, 2026-10-28: S4d-1c (streaming the export's module reads) is not built; the export keeps 1b's read-all-first order as a recorded limit (amends `MC-672` and `MC-674`)
+
+- **Tag:** decision (the maintainer's S4d-1c decision, in the lane B session on account 2, 2026-10-28, confirmed in lane A's session on 2026-10-28, "Yes, record it"; the question text is not reproduced here)
+- **Date:** 2026-10-28
+- **Sweep ref:** none
+- **Source:** `b2a-notes\mc-reservations.md` ("S4d-1c decision", MC-677); plan `%TEMP%\risu-lane-b\c205-next\s4d1c\plan.md` (Q1); measurement `s4d1c-measure\result.md`; verification `s4d1c-measure-verify\result.md`. Inputs: row 4185.
+- **Related:** `MC-672`, `MC-674`, `MC-657`, `MC-497`; CHORE-205 S4d-1b, S4d-1c; `MC-775` (lane A's ID, P3).
+
+1. **As reserved (verbatim from the note):** "(amends MC-672 and MC-674): S4d-1c (streaming the export's module reads, check pass then write pass) is not built. The export keeps 1b's read-all-first order as a recorded limit. Verified PC figures (i9, synthetic profile shaped like the maintainer's): the true peak is about 265 MiB, during the character cold collection; module bodies are 36.5 MiB and stay alive to the end of the export; the compressed database is 27.4 MiB; character payloads are 103 MiB. 1c would have saved about 35 MiB (about 13%) for a second read of every module, a key-order change and a new post-open failure path. The MC-657 install hold lasts until 1b, which is merged, so it is lifted; P3 (MC-775) is next. Not chosen: build 1c as planned; skip 1c plus drop the module references after the encode (frees 36 MiB after the encode, no peak change). A later item may target the character payloads."
+
+**Notes that are not the maintainer's words:**
+- The figures are the verifier's, not the first measurement's: the first report put the peak at about 243 MiB in the encode window; the verification found about 265.5 MiB inside the cold collection (four runs, 265.5 to 265.6), which the first harness could not sample (`s4d1c-measure-verify\result.md`, item 3). The bodies' retention to the end of the export was proven by a variant that nulls the references after the encode (the heap fell 36.4 MiB; the sampled peak stayed 265.6 against 265.5).
+- **Measured against estimated.** Measured on the PC: the peak 265.5 MiB, the decoded bodies 36.5 MiB, the compressed database 27.4 MiB and the character payloads 103 MiB. "1c would have saved about 35 MiB (about 13%)" in the verbatim text is the verifier's estimate by reasoning on those parts, with garbage behaviour assumed unchanged (about 229 MiB at the collection, about 222 to 231 MiB at the encode); it is not measured. The "ideal" saving at the encode point is likewise reasoned, 27 to 32 MiB and not 31.8 MiB (`s4d1c-measure-verify\result.md`, item 4). The verbatim text says "Verified PC figures"; that label covers the measured numbers only.
+- **Sampling limits.** The peak inside the cold collection is sampled (two samples per character, around `deflateSync`), not continuous, so the true maximum may be a little higher. The no-gc post-encode peaks did not reliably fall (259.4 MiB in the variant against 245.1 MiB in the base, with about 15 MiB of arrayBuffer garbage timing); the drop from dropping the references is clear only in the gc'd retained figures (`s4d1c-measure-verify\result.md`, items 3 and 5, "Uncertain").
+- The figures are PC best-case (an i9, Node, vitest, `--expose-gc`, synthetic profile); phone, Tauri and Node-server paths are unmeasured (`s4d1c-measure-verify\result.md`, "Uncertain").
+- The "key-order change" and "post-open failure path" are costs listed in the plan (`s4d1c\plan.md`, Q2 and section 2.5), not measured.
+- Nothing here authorizes code, a commit or a push.
+
 ### MC-560 — Lane G, 2026-10-25: the uncommitted `modules.test.ts.snap` change stays in the worktree; the branch is fast-forwarded to main around it
 
 - Tag: decision (maintainer's `AskUserQuestion` answer by option label, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
@@ -17071,10 +17239,176 @@ Nothing here authorizes code, a commit or a push.
 3. Big exports: "Stream it". Card PNG, CharX and `.risum` exporters write assets in pieces (as the `.bin` export does); no size limit short of format caps; persistence-grade review.
 4. Huge images: "Bounded thumbnail". Grid and list thumbnails above 64 MiB are decoded from a bounded read so huge avatars get a preview; full-size display stays withheld (amends `MC-756` for thumbnails).
 
+*Amended by `MC-579` (2026-10-28; the text above is unchanged): item 3 ("Stream it") is narrowed to CharX only. Card PNG, JSON and `.risum` exports keep their current code and refuse an export with an asset above 64 MiB before it starts, naming the asset and suggesting CharX.*
+
 **Lane G's notes (not maintainer decisions).**
 - Stage 1 of CHORE-219 is a device run through lane A (Note 9, synthetic mp4 over 200 MiB, play past 1 MB and seek, with the `inlays.ts` skip removed in a probe build), after `MC-657` allows installs.
 - Not yet asked (stage 3 defaults to propose later): `MC-757` "B" (author `<video>` raw path), the chat-card 15 MiB pre-fetch check, whether 64 MiB itself stays, uncovered `readImage` callers and `.risum` and card import whole reads.
 - Lane G re-verified the `assetUrlGate.ts` 64 MiB constant, the `inlays.ts` Android-video URL skip in `deliverStoredInlay`, the tauri 2.12.1 `asset.rs` `MAX_LEN`, and the wry 0.57.1 `RustWebViewClient.kt` `wrapPartialContentBody`.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-577 — Lane G, 2026-10-27: CHORE-218 stage 2: a `.bin` is restored only when no card, module or preset waits in the same drain; otherwise every `.bin` is refused
+
+- Tag: decision (one `AskUserQuestion` answer, then a chat amendment and a second answer by the maintainer in the lane G session; confirmed in lane A, 2026-10-27, "Yes, record it"). Date: 2026-10-27. Sweep ref: none.
+- Source: lane G notes `%TEMP%\risu-lane-g\android\notes.md`, section "MC-577"; raised by the CHORE-218 stage 2 sizing (a restore reloads the page, so entries already taken from the queue would be lost).
+- Alternatives rejected: not recorded beyond the first answer below, which the amendment replaced.
+- Related: `MC-574`, `MC-575`, `MC-578`, `MC-683`; CHORE-218.
+
+**What was decided (maintainer).**
+1. First answer: "Cards first, one .bin". Waiting cards, modules and presets import first; then the first waiting `.bin` gets the named restore confirmation (`MC-574` item 3); any further `.bin` is refused with a message to open it again after the restore.
+2. Amendment, the same day (chat message, then the answer "Refuse the .bin"). The maintainer's words: "wait, if it imports the card, and restored from .bin, cards are lost anyway. I think it should refuse instead if user wants to restore.bin with cards." Resulting rule: a `.bin` is restored only when no card, module or preset waits in the same drain; otherwise those import and every `.bin` is refused with a message to open it again on its own. With only `.bin` opens waiting, the first gets the named confirmation and the rest are refused.
+
+*Amended by `MC-578` (2026-10-27; the text above is unchanged): lane G's reading that an unsupported file does not block the restore is settled by the maintainer. Only files that would import block it.*
+
+**Lane G's notes (not maintainer decisions).**
+- Lane G scope note: the Settings "load backup" button keeps its two existing confirmations; the single named confirmation of `MC-574` applies to `.bin` files opened from other apps only.
+- Lane G's reading that an unsupported file such as `.png` does not block the restore was not part of this decision; the maintainer chose "Yes, record it" at the time, and `MC-578` later settled it.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-578 — Lane G, 2026-10-27: CHORE-218 stage 2: only files that would import block a `.bin` restore; an unsupported file is refused as unsupported and the `.bin` still gets its named confirmation
+
+- Tag: decision (one `AskUserQuestion` answer, confirmed in lane A, 2026-10-28, "Yes, record it"). Date: 2026-10-27 (lane G's date for the answer). Sweep ref: none.
+- Source: lane G notes `%TEMP%\risu-lane-g\android\notes.md`, section "MC-578"; lane A asked for the reading noted under `MC-577` to be confirmed directly.
+- Alternatives rejected: not recorded.
+- Related: `MC-577`, `MC-575`; CHORE-218, CHORE-395.
+
+**What was decided (maintainer).** Answer "No, restore the .bin". Only files that would actually import (cards, modules and presets on the stage 1 allow-list) block a `.bin` restore. An unsupported file such as `.png` or `.txt` in the same drain is refused as unsupported, and the `.bin` still gets its named confirmation. This settles lane G's reading noted under `MC-577`.
+
+**Lane A's notes (not the maintainer's words).**
+- The P3 device run (phone 1, 2026-10-28) found a `.bin` and a `.png` in one share refusing the `.bin`, which fails this rule on the safe side (`openedFiles.ts` refuses when `batch.length > 1`, checked by lane A). The maintainer's answer on 2026-10-28 ("Yes, A then B") opened CHORE-395 for the fix. Evidence `%TEMP%\risu-b715\p3\device2\result.md`.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-579 — Lane G, 2026-10-28: CHORE-375 product answers: big image assets stream uncompressed, only CharX streams, 4 GiB CharX refused, other exports refuse large assets (amends `MC-576` item 3)
+
+- Tag: decisions (four `AskUserQuestion` answers, then five follow-up answers in the same entry; all recommended; confirmed in lane A, 2026-10-28, "Yes, record it"). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes `%TEMP%\risu-lane-g\android\notes.md`, section "MC-579"; sizing report `%TEMP%\risu-lane-g\android\chore375-sizing\result.md` (not independently verified here). Lane G re-verified `compressImage` passthrough types, the `imageCompression` default (true), fflate's ZIP64 support (read-only) and `CharXWriter` `push(dat, true)`.
+- Alternatives rejected: not recorded.
+- Related: `MC-576`, `MC-790`, `MC-791` to `MC-795`; CHORE-375, CHORE-219.
+
+**What was decided (maintainer, option labels as lane G recorded them).**
+1. Compression: "Big ones go uncompressed". In an export, image assets above 64 MiB are written as their original bytes, streamed; smaller ones compress as today, so small-card output stays byte-identical.
+2. PNG and `.risum`: "Large: CharX only". PNG card and `.risum` (legacy) exports keep their current code; an export with an asset above 64 MiB is refused before it starts, naming the asset and suggesting CharX. Only CharX streams (narrows `MC-576` item 3, "Stream it").
+3. 4 GiB CharX: "Refuse before export". Asset sizes are summed first; a CharX that would pass 4 GiB (fflate 0.8.3 writes no ZIP64) is refused with a message naming the total, nothing written.
+4. Web fallback: "Keep the warning". Without the download helper the export stays held in memory behind the existing `exportHeldInMemory` warning; no size refusal.
+5. JSON card: "Same as PNG". A JSON export with an asset above 64 MiB is refused before it starts, naming the asset and suggesting CharX.
+6. Mid-export failure: "Fail, name the asset". A large asset that changes or cannot be read during a streamed CharX export stops the export with an error naming it; the partial file is left as any failed export leaves it today.
+7. Unknown size: "Today's path". An asset whose size cannot be read up front is treated as not large and read whole as now.
+8. Realm share: "Refuse, Realm wording". Sharing a character with an asset above 64 MiB to Realm is refused before anything is built, naming the asset; no CharX suggestion.
+9. `x_meta`: "Text up to 16 MiB". For a large PNG asset, text chunks are collected during the single streaming pass; past 16 MiB in total, `x_meta` records only the type. Small assets are unchanged.
+
+*Amended by `MC-790` (2026-10-28; the text above is unchanged): item 9 is replaced for CharX exports. Every asset above 64 MiB gets an `x_meta` entry holding only its image type; there is no PNG text walk.*
+
+**Lane A's notes (not the maintainer's decisions).**
+- The lane G block `MC-560` to `MC-579` is full. Lane A assigned the new lane G block `MC-790` to `MC-809` on 2026-10-28 (checked unused in `Agents/*.md` and `Agents/Lanes/*.md`).
+- CHORE-375 plan v2 (`%TEMP%\risu-lane-g\android\chore375-plan.md`) entered Gate 1 round 2 after round 1 returned REJECT (12 changes folded). Stages: A moves the asset piece sources to `drive/assetPieces.ts`; B is the size pre-check and refusals; C is CharX streaming; D (thumbnails, `MC-576` item 4) is separate. Lane G starts from main `232342b49`; stage C uses `opus-reviewer` at Gate 2 and per-merge approval through lane A.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-790 — Lane G, 2026-10-28: CHORE-375: `x_meta` for large CharX assets is type-only (amends `MC-579` item 9)
+
+- Tag: decision (one `AskUserQuestion` answer; confirmed in lane A, 2026-10-28, "Yes, record it"). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes `%TEMP%\risu-lane-g\android\notes.md`, section "MC-790". Raised by CHORE-375 Gate 1 round 2 (the second REJECT): the streamed PNG text walk, its cap and its size estimate were most of the rejected detail, and lane G reports that nothing in this fork reads `x_meta`.
+- Alternatives rejected: not recorded.
+- Related: `MC-579`, `MC-576`; CHORE-375.
+
+**What was decided (maintainer).** Answer "Type only for large". In a CharX export, every asset above 64 MiB gets an `x_meta` entry holding only its image type, with no PNG text walk. Assets at or below 64 MiB are unchanged.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-791 — Lane G, 2026-10-28: CHORE-375 stage C: progress shows the asset name and MiB, Cancel for large CharX exports, a failed export says the file is incomplete, no notice for uncompressed images
+
+- Tag: decisions (four `AskUserQuestion` answers in the lane G session, all recommended; confirmed in lane A, 2026-10-28, "Yes, record them"). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes `%TEMP%\risu-lane-g\android\notes.md`, section "MC-791"; grill packet `%TEMP%\risu-lane-g\android\c375-c-grill\result.md` (the fresh `MC-778` agent's questions; two of its six were already settled by `MC-579` item 6 and by the existing refusal of a restore while an export runs).
+- Alternatives rejected: not recorded.
+- Related: `MC-579`, `MC-792`, `MC-793`, `MC-794`, `MC-778`; CHORE-375.
+
+**What was decided (maintainer, option labels as lane G recorded them).**
+1. Progress: "Name + MiB written". While a large asset streams into a CharX, the dialog shows its display name and "written MiB of total MiB", updated as it goes; small assets keep today's text.
+2. Cancel: "Cancel for large CharX". A desktop or Android CharX export with a large asset gets the same Cancel as the web. After a cancel, if part of the file was written, the existing `exportCancelledFileIncomplete` notice shows (the app does not delete the file). Small exports keep no Cancel there.
+3. Failure: "Say file is incomplete". A failed export stops the web download, and when part of the file was written the error adds that the saved file is incomplete and should be deleted. This applies to small-card failures too (shared cause).
+4. Uncompressed: "No notice". Large images exported uncompressed get no extra message; the usual success message stays.
+
+*Amended by `MC-794` (2026-10-28; the text above is unchanged): item 1 is extended to two phases, "Checking {name}: x of y MiB" and then "Writing {name}: x of y MiB". `MC-792` item 1 and `MC-793` item 2 reword the incomplete-file notices of items 2 and 3 (platform-neutral, "If a file was saved, it is incomplete: delete it and do not use it").*
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-792 — Lane G, 2026-10-28: CHORE-375 stage C: the incomplete-file notices are platform-neutral; on Android a returned `content://` save target counts as a saved file (item 1 amended by `MC-793`)
+
+- Tag: decisions (two `AskUserQuestion` answers, both recommended; confirmed in lane A, 2026-10-28, "Yes, record them"). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes `%TEMP%\risu-lane-g\android\notes.md`, section "MC-792". Raised by stage C Gate 1 round 1 (`gate1-c375c/result.md`, a substantive REJECT with 8 changes folded) as product questions under `MC-778`.
+- Alternatives rejected: not recorded.
+- Related: `MC-791`, `MC-793`, `MC-778`, `MC-777`; CHORE-375.
+
+**What was decided (maintainer, option labels as lane G recorded them).**
+1. Wording: "Platform-neutral". The existing `exportCancelledFileIncomplete` and the new `exportFailedFileIncomplete` say the saved file is incomplete and should be deleted, with no mention of a browser; the translator updates the six other locales.
+2. Empty file: "Count as saved file". Once the Android save picker has returned a place (a `content://` target), a cancel or failure shows the incomplete-file notice even if nothing was written yet.
+
+*Amended by `MC-793` (2026-10-28; the text above is unchanged): item 1's wording is replaced by "If a file was saved, it is incomplete: delete it and do not use it", still with no mention of a browser.*
+
+**Lane G's notes (not maintainer decisions).**
+- The `MC-777` "Simpler path" advice to write large entries as STORE (`ZipPassThrough`) was rejected after a lane G probe: fflate's streaming Unzip (this fork's importer and upstream's) cuts a stored entry with a data descriptor at the first `PK\x07\x08` inside its data (`%TEMP%\risu-lane-g\android\c375-c-probe\store-sig.mjs`). An earlier lane G note that large entries could stay at deflate level 0 and read in every probe was wrong and is superseded by `MC-793`.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-793 — Lane G, 2026-10-28: CharX entries whose data holds a zip signature: fix the writer and the importer; keep the condition in the notice wording (amends `MC-792` item 1)
+
+- Tag: decisions (two `AskUserQuestion` answers, both recommended; confirmed in lane A, 2026-10-28, "Yes, record them"). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes `%TEMP%\risu-lane-g\android\notes.md`, section "MC-793"; raised by stage C Gate 1 round 2 (the second substantive REJECT, `gate1r-c375c/result.md`) with lane G's re-check probe `gate1r-c375c/probe-sig-deflate0.txt`.
+- Alternatives rejected: not recorded.
+- Related: `MC-792`, `MC-794`, `MC-223`; CHORE-375, CHORE-394.
+
+**Finding behind the decision (lane G's re-check, not independently verified by lane A; the senior-advisor challenge followed).** fflate's streaming Zip always writes a data descriptor, and its streaming Unzip (this fork's `CharXImporter` and upstream's) ends such an entry at the first zip signature inside its data. Level 0 (raw bytes) and STORE both fail. Today's single-push entries fail too, so the defect predates stage C and is shared with upstream. The reviewer's estimate is about 5% of random-looking assets at 64 MiB, 20% at 300 MiB and 53% at 1 GiB. `MC-794`'s advisor note records that the senior-advisor re-ran all four probes and confirmed the truncation premise, and that descriptor-free entries read through the streaming Unzip.
+
+**What was decided (maintainer, option labels as lane G recorded them).**
+1. Fix: "Fix writer and importer".
+   - (a) The CharX writer puts each entry's sizes and CRC in its local header, with no data descriptor, so this fork and upstream both read it. Small entries are written from memory; large entries are read twice (a CRC pass, then the write pass). Small-card export bytes change in the zip headers only.
+   - (b) The fork's CharX importer reads entries by the central directory, so upstream CharX files hit by the bug import here too (`MC-223`). This is its own ticket and stage, CHORE-394.
+2. Wording: "Keep the condition". The incomplete-file notices say "If a file was saved, it is incomplete: delete it and do not use it", with no mention of a browser (amends `MC-792` item 1).
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-794 — Lane G, 2026-10-28: CHORE-375 stage C: progress in two phases during the CRC pass; a CharX that could pass 65,535 entries is refused up front (extends `MC-791` item 1)
+
+- Tag: decisions (two `AskUserQuestion` answers, both recommended; confirmed in lane A, 2026-10-28, "Yes, record them"). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes `%TEMP%\risu-lane-g\android\notes.md`, section "MC-794"; raised by the senior-advisor challenge of `MC-793` (two passes per large asset; an own zip writer can no longer write a wrong entry count). Advisor report `%TEMP%\risu-lane-g\android\advisor-c375c\result.md`.
+- Alternatives rejected: not recorded.
+- Related: `MC-791`, `MC-793`; CHORE-375, CHORE-394.
+
+**What was decided (maintainer, option labels as lane G recorded them).**
+1. Progress: "Two phases". For an asset above 64 MiB the line shows "Checking {name}: x of y MiB" during the CRC pass, then "Writing {name}: x of y MiB" during the write pass.
+2. Entry limit: "Refuse up front". A CharX whose entries could pass 65,535 is refused by the pre-check before anything opens, with a new notice naming the count and the limit. The count is an upper bound: every fixed entry plus two per asset (the asset and its `x_meta`). The writer also throws at 65,536 entries as a backstop.
+
+**Lane A's notes (not the maintainer's decisions).**
+- Plan v3, from lane G's relay: stage C splits into C1 (own zip framing with CRC and sizes in the local header; fixes the existing signature bug), C2 (large assets as STORE, two passes) and C3 (Tauri Cancel, notices, the dismissed dialog), each with its own Gate 2 and `MC-500` merge. CHORE-394 follows C1.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-795 — Lane G, 2026-10-28: CHORE-375: a CharX export refuses an asset above the fork's CharX import cap, before anything opens
+
+- Tag: decision (one `AskUserQuestion` answer, the recommended option; confirmed in lane A, 2026-10-28, "Yes, record it"). Date: 2026-10-28. Sweep ref: none.
+- Source: lane G notes `%TEMP%\risu-lane-g\android\notes.md`, section "MC-795"; raised by the senior-advisor after stage C Gate 1 round 3 (`gate1r3-c375c`); advisor report `advisor2-c375c/result.md`, re-checked by lane G.
+- Alternatives rejected: not recorded.
+- Related: `MC-793`, `MC-794`, `MC-579`; CHORE-375.
+
+**Basis (lane G's check, not independently verified by lane A).** A `.bin` restore applies the per-asset store limit only on Node (`nodeRestoreAssetLimit` returns null elsewhere), and the Android MVP build `f0e397aae` had no such limit, so a Tauri store can hold an asset above 1 GiB, which the fork's CharX import refuses (`charxLimits.assetBytes`).
+
+**What was decided (maintainer).** "Refuse up front": the export pre-check refuses a CharX (character or module) that has an asset above the fork's CharX import cap, before anything opens. The notice names the asset(s). There is one new English key, and the translator does the other locales. This also bounds C2's double read at 1 GiB per asset.
+
+**Lane A's notes (not the maintainer's decisions).**
+- Advisor escalation after three substantive Gate 1 REJECTs: no mechanism change. The `charxJpeg` prefix is untestable through happy-dom `getContext` (null), so C1 uses an injectable encode step. Plan v4: a test-only C0 (today's fflate framing as a fixture helper, descriptor tests moved, stage A pins reproduced) comes before C1, C2 and C3, each its own merge request.
+- Not ticketed (lane G, from a code read, unverified by lane A): assets above 1 GiB on Tauri and Android stores. A `.bin` export streams them (only the 4 GiB per-entry container cap, named by the pre-flight); PNG, JSON, `.risum` and Realm refuse above 64 MiB; CharX refuses above the import cap (this entry). UNTRACED: opening or displaying such an asset in the UI, and re-importing a `.bin` that holds one on a non-Node store.
 
 - Notes, not the maintainer's words:
   - Nothing here authorizes application code, a commit or a push.
