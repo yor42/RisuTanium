@@ -4003,13 +4003,21 @@ export class LocalWriter {
         cancel.onCancel(() => this.abortInner())
     }
 
-    private abortInner(): void {
+    /**
+     * Tells the opened writer to give up after a failure, without awaiting it. A later cancel or a second abort does
+     * nothing, and the file the writer already handed on stays as it is.
+     */
+    abort(reason: unknown): void {
+        this.abortInner(reason)
+    }
+
+    private abortInner(reason: unknown = new ExportCancelledError()): void {
         if (this.abortRequested || this.writer === undefined) {
             return
         }
         this.abortRequested = true
         try {
-            void this.writer.abort?.(new ExportCancelledError())?.catch((error: unknown) => console.error(error))
+            void this.writer.abort?.(reason)?.catch((error: unknown) => console.error(error))
         } catch (error) {
             console.error(error)
         }

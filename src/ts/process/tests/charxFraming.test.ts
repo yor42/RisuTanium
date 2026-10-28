@@ -143,6 +143,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
         async write(data: Uint8Array) { h.chunks.push(data.slice()) }
         async close() { }
         useCancel() { }
+        abort() { }
     }
     return {
         AppendableBuffer,

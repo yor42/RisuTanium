@@ -25,6 +25,7 @@ const platformBox = vi.hoisted(() => {
 const world = vi.hoisted(() => ({
     png: new Uint8Array() as Uint8Array,
     stallAfter: Number.POSITIVE_INFINITY,
+    failAfter: Number.POSITIVE_INFINITY,
     writes: [] as Uint8Array[],
     closes: 0,
     aborts: 0,
@@ -278,6 +279,7 @@ beforeEach(() => {
     platformBox.isTauri = false
     world.png = syntheticPng()
     world.stallAfter = Number.POSITIVE_INFINITY
+    world.failAfter = Number.POSITIVE_INFINITY
     world.writes = []
     world.closes = 0
     world.aborts = 0
@@ -290,6 +292,9 @@ beforeEach(() => {
             getWriter: () => ({
                 write: (data: Uint8Array) => {
                     world.writes.push(data.slice())
+                    if (world.writes.length > world.failAfter) {
+                        return Promise.reject(new Error('synthetic stream failure'))
+                    }
                     if (world.writes.length > world.stallAfter) {
                         return new Promise<void>((resolve) => { world.releases.push(resolve) })
                     }
@@ -429,6 +434,16 @@ describe('guards', () => {
 
         expect(shown.filter((value) => value.onCancel !== undefined)).toEqual([])
         expect(shown.filter((value) => value.type === 'progress').length).toBeGreaterThan(0)
+    })
+
+    test('(R) a failure after the stream opened aborts the stream once and adds the incomplete-file sentence to the one error', async () => {
+        world.failAfter = 2
+        expect(await exportCharacterCard(syntheticCharacter(), 'png', { spec: 'v3' })).toBe(false)
+
+        expect(world.errors).toEqual(['synthetic stream failure\n' + language.exportFailedFileIncomplete])
+        expect(world.aborts).toBe(1)
+        expect(world.closes).toBe(0)
+        expect(busyKinds()).not.toContain('export')
     })
 
     test('(G) a desktop card export keeps its progress bar and offers no Cancel', async () => {

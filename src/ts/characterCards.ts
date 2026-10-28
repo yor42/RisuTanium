@@ -10,8 +10,8 @@ import { changeChar, characterFormatUpdate } from "./characters"
 import { ASSET_PIECE_SAVE_MIN_BYTES } from "./assetHash"
 import { AppendableBuffer, AssetSourceChangedError, BlankWriter, checkCharOrder, downloadFile, loadAsset, LocalWriter, readImage, saveAsset, saveAssetFromPieces, VirtualWriter } from "./globalApi.svelte"
 import { isTauri, isNodeServer } from "src/ts/platform"
-import { ExportCancelledError, ExportCancelToken, createExportWaitGate } from "./exportCancel"
-import { cancelledFileState } from "./exportWriters"
+import { ExportCancelledError, ExportCancelToken, createExportWaitGate, type ExportWaitGate } from "./exportCancel"
+import { exportFileState } from "./exportWriters"
 import { compressImage, getImageType } from "./media"
 import { DBState, SettingsMenuIndex, ShowRealmFrameStore, selectedCharID, settingsOpen } from "./stores.svelte"
 import { hasher } from "./parser/parser.svelte"
@@ -1984,11 +1984,9 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
 }):Promise<boolean> {
     const spec:'v2'|'v3' = arg.spec ?? 'v2' //backward compatibility
     let img = await readCardExportImage(char.image)
-    // A web export through a browser download can stall behind the browser's own prompt, so its dialog carries a Cancel
-    // (a percentage as text stands in for the bar, which cannot show one). A desktop file, a JSON card and a writer that
-    // is not a `LocalWriter` keep the dialogs they always had.
-    const cancel = (arg.writer === undefined || arg.writer instanceof LocalWriter) && type !== 'json' && !isTauri ? new ExportCancelToken() : null
-    const gate = cancel ? createExportWaitGate(cancel, true) : null
+    // Created once the preflight has passed (see `exportOffersCancel`); the progress dialogs read them when called.
+    let cancel: ExportCancelToken | null = null
+    let gate: ExportWaitGate | null = null
     const showProgress = (msg:string, percent:string) => {
         if(cancel && gate){
             cancel.throwIfCancelled()
@@ -2019,6 +2017,10 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             }
             checked = result
         }
+        if(exportOffersCancel({writer: arg.writer, type, tauri: isTauri, largeAssetCount: checked.large.size})){
+            cancel = new ExportCancelToken()
+            gate = createExportWaitGate(cancel, true)
+        }
         char.image = ''
         img = type === 'png' ? (await reencodeImage(img)) : img
         localWriter = arg.writer ?? (new LocalWriter())
@@ -2038,7 +2040,11 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                 'charxJpeg': ['CharX Embedded Jpeg', 'jpeg']
             }
             const ext = nameExt[type]
-            await (localWriter as LocalWriter).init(ext[0], [ext[1]], undefined, cancel ?? undefined)
+            if(!(await (localWriter as LocalWriter).init(ext[0], [ext[1]], undefined, cancel ?? undefined))){
+                //the person dismissed the save dialog: nothing was exported, so nothing is said
+                gate?.clear()
+                return false
+            }
         }
         const writer = (type === 'charx' || type === 'charxJpeg') ? (new CharXWriter(localWriter)) : type === 'json' ? (new BlankWriter()) : (new PngChunk.streamWriter(img, localWriter))
         await writer.init()
@@ -2303,14 +2309,57 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
     catch(e){
         if(cancel && (cancel.cancelled || e instanceof ExportCancelledError)){
             // The person's choice, not a failure. The notice is posted before this resolves so the caller's next dialog waits for it.
-            if(cancelledFileState(localWriter instanceof LocalWriter ? localWriter.writer : undefined) === 'kept'){
+            if(exportFileState(localWriter instanceof LocalWriter ? localWriter.writer : undefined) === 'kept'){
                 alertNormal(language.exportCancelledFileIncomplete)
             }
             return false
         }
+        if(localWriter instanceof LocalWriter){
+            //A failed export gives up on its file; the abort is not awaited because it may stay pending behind a write the browser never takes.
+            localWriter.abort(e)
+            if(exportFileState(localWriter.writer) === 'kept'){
+                alertError(withFileIncompleteSentence(e))
+                return false
+            }
+        }
         alertError(e)
         return false
     }
+}
+
+/**
+ * Whether an export gets a Cancel on its wait dialog. A web export through a browser download can stall behind the
+ * browser's own prompt, so it always has one (a percentage as text stands in for the bar, which cannot show one). A
+ * desktop or Android file export has one only for a CharX that streams a large asset, the only export long enough to
+ * need it. A JSON card and a writer that is not a `LocalWriter` keep the dialogs they always had.
+ */
+export function exportOffersCancel(arg:{writer?:LocalWriter|VirtualWriter, type:'png'|'json'|'charx'|'charxJpeg', tauri:boolean, largeAssetCount:number}):boolean{
+    return (arg.writer === undefined || arg.writer instanceof LocalWriter) && arg.type !== 'json'
+        && (!arg.tauri || ((arg.type === 'charx' || arg.type === 'charxJpeg') && arg.largeAssetCount > 0))
+}
+
+/** One `Error` that carries the failure's own text, as `alertError` would show it, followed by the sentence that the file is incomplete. */
+function withFileIncompleteSentence(e:unknown):Error{
+    let text:string
+    if(typeof e === 'string'){
+        text = e
+    }
+    else if(e instanceof Error){
+        text = e.message
+    }
+    else{
+        try{
+            text = JSON.stringify(e) ?? `${e}`
+        }
+        catch{
+            text = `${e}`
+        }
+    }
+    const result = new Error(`${text.trim()}\n${language.exportFailedFileIncomplete}`)
+    if(e instanceof Error){
+        result.stack = e.stack
+    }
+    return result
 }
 
 // Extended LorebookEntry with Risuai specific fields
