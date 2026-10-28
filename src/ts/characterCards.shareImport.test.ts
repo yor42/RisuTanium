@@ -579,6 +579,16 @@ describe('#share= hash', () => {
         expect(shares.has(id)).toBe(false)
     })
 
+    test('a .YML file is sorted as a card whatever its type and imports through the YAML route', async () => {
+        const id = seedShare([{ name: 'x.YML', type: 'application/octet-stream', bytes: enc.encode('name: FromYaml\ncontext: ctx\ngreeting: hi\n') }])
+        setUrl('/#share=' + id)
+        await characterURLImport()
+        expect(h.errors).toEqual([])
+        expect(charName(0)).toBe('FromYaml')
+        expect(h.characters).toHaveLength(1)
+        expect(shares.has(id)).toBe(false)
+    })
+
     test('a file that fails to import reports its own failure and does not stop the files after it', async () => {
         const id = seedShare([
             { name: 'broken.charx', type: '', bytes: new U8(10).fill(7) },
