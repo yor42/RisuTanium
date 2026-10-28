@@ -421,6 +421,95 @@ Q-F6b, asked: "When several files are picked at once and some are too large, wha
     - Lane A's result: not a regression. Test character 5's chat has fmIndex 1 with only one alternate first message, and the send fails the same way on CONTROL and AFTER.
 - Lane A fast-forwarded main to ca84ad6ba from 2ee5ff5b2 and pushed it, with the maintainer's "Merge and push" (2026-10-27). These records fold into lane A's records batch 15.
 
+### Import batch (CHORE-470 to CHORE-475; worktree `.claude/worktrees/Lane-F-import`, branch `lane-f/import-formats` from `2648a7ce5`, 2026-10-28)
+
+Lane F's next IDs for this batch: MC-761, CHORE-376, row 3788 (lane A's brief, 2026-10-28). The old `.claude/worktrees/Lane-F` holds uncommitted edits to this file that this copy does not include.
+
+Standing rule from 2026-10-28 (the maintainer's "Branch commits OK (Recommended)", relayed by lane A):
+- After a stage passes Gate 2, lane F may commit to its own branch `lane-f/import-formats`, but must not push.
+- Stage only named paths: no blanket staging, no index tricks.
+- Send lane A the merge request with the commit SHAs.
+- Merges into `main` go through lane A's trial-merge full check and the maintainer's approval. A commit that changes behaviour for existing content needs `MC-500` approval (for CHORE-472 stage 1, the card-path commit).
+
+### MC-761 — maintainer in lane A, 2026-10-28: disabled lorebook entries import kept but inert, as `@@dont_activate` (CHORE-472)
+
+- Tag: decisions (`AskUserQuestion` answer by option label, relayed by lane A). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay to lane F, 2026-10-28: "Q1 'Keep them inert': disabled entries import with @@dont_activate." The question was Lane F's: "Disabled entries: import them as `@@dont_activate` (kept, inert, can be re-enabled by deleting the line), or skip them?"
+- Alternatives rejected: skip disabled entries on import.
+- Scope: SillyTavern world info `disable: true`, NovelAI and Agnai `enabled: false` in the external lorebook import, and (by `MC-763`) `enabled: false` on card-embedded books.
+- Differs from upstream: yes. Upstream imports these entries as active. The decorator is one upstream's lorebook engine already reads, so the entry stays inert in upstream after a `.bin` or card export.
+- Related: `MC-175`, `MC-762`, `MC-763`.
+
+### MC-762 — maintainer in lane A, 2026-10-28: SillyTavern before/after-character positions map to `@@position before_desc`/`after_desc`; other non-depth positions are dropped (CHORE-472)
+
+- Tag: decisions (`AskUserQuestion` answer by option label, relayed by lane A). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28: "Q2 'Map two, drop rest': before/after char map to @@position before_desc/after_desc; the other positions are dropped." The question was Lane F's: "ST positions other than 'at depth' (before/after char, author's note top/bottom, example messages, outlet): we have no exact equivalent. Drop them silently, or map before_char/after_char to `@@position before_desc`/`after_desc` and drop the rest?"
+- Alternatives rejected: drop every non-depth position.
+- Dropped positions: author's note top and bottom, example messages top and bottom, outlet. "At depth" maps to `@@depth` and `@@role` as `convertCharbook` already does.
+- Related: `MC-761`, `MC-763`.
+
+### MC-763 — maintainer in lane A, 2026-10-28: card-embedded lorebook entries with `enabled: false` get the same `@@dont_activate` import (CHORE-472, shared cause, `MC-091`)
+
+- Tag: decisions (`AskUserQuestion` answer by option label, relayed by lane A). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28: "Q3 'Yes, fold it in': convertCharbook's enabled:false gets the same fix." The question was Lane F's: "`convertCharbook` also ignores V2 `enabled:false` on card-embedded books (shared cause). Fold the same `@@dont_activate` fix in here?"
+- Alternatives rejected: a separate ticket.
+- Compatibility note (Lane F, from source): our and upstream's card export write `enabled: true` on every entry, so cards made by RisuAI are unaffected.
+- Related: `MC-761`, `MC-091`.
+
+### MC-764 — maintainer in lane A, 2026-10-28: only SillyTavern position 1 maps, to `@@position after_desc`, in both the external and card-embedded import; position 0 stays in the normal lorebook slot (CHORE-472; amends `MC-762`)
+
+- Tag: decisions (`AskUserQuestion` answer by option label, relayed by lane A). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28: the maintainer answered "Map only 1, both paths (Recommended)". The question was Lane F's Q4: position 0 is SillyTavern's default, so `MC-762` as worded would put `@@position before_desc` on almost every imported entry and move it out of the normal lorebook slot, while card-embedded books ignore positions 0 and 1.
+- Alternatives rejected: (b) map 0 and 1 in the external import only, as `MC-762` said; (c) map 0 and 1 in both paths; (d) map neither.
+- What changes from `MC-762`: position 0 gets no position line. Position 1 maps to `@@position after_desc` in `convertExternalLorebook` and in `convertCharbook`. Position 4 ("at depth") is as amended by `MC-765`; the dropped positions are as `MC-762`.
+- Lane A, 2026-10-28: the V2 spec field `position: 'after_char'` on card entries is read as position 1 under this decision. Lane A told the maintainer and will pass on any objection.
+- Related: `MC-762` (amended), `MC-761`, `MC-763`, `MC-765`.
+
+### MC-765 — maintainer in lane A, 2026-10-28: SillyTavern "at depth N" imports as `@@reverse_depth N` for N > 0 and `@@depth 0` for 0, in both the external and card-embedded import (CHORE-472; amends `MC-762`)
+
+- Tag: decisions (`AskUserQuestion` answer by option label, relayed by lane A). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28: the maintainer answered "Use reverse_depth (Recommended)". The question was Lane F's Q5, raised by Gate 1 finding F1 (verified by Lane F in `process/index.svelte.ts`): `@@depth N` is spliced N entries from the start of the chats, `@@reverse_depth N` from the end, and ST's depth counts from the end. The card path, ours and upstream's, writes `@@depth N`.
+- Alternatives rejected: (b) leave position 4 out of this stage; (c) keep `@@depth N`.
+- Consequence: where card-embedded SillyTavern depth lore lands on import changes, for upstream-made cards too. The merge needs `MC-500` approval (lane A).
+- Open, from lane A: the one-message offset without a prompt template is unverified. Lane F settles it by engine-level test or code reading before Gate 2, states the result in the merge request, and tells lane A before any workaround.
+- Related: `MC-762` (amended), `MC-764`, `MC-500`, `MC-766`.
+- Offset result (Gate 1 round 2 reviewer's reading, `g1r2/result.md`; the first point was confirmed by Lane F in source): without a prompt template the last message moves to `lastChat` before the depth splice, so `@@reverse_depth N` has N+1 messages after it. With a template it matches SillyTavern. Reported to lane A on 2026-10-28, with two more quirks; see `MC-766`.
+
+### MC-766 — maintainer in lane A, 2026-10-28: the three `@@reverse_depth` engine quirks are fixed within CHORE-472, not ticketed separately
+
+- Tag: decisions (`AskUserQuestion` answer by option label, relayed by lane A). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28: the maintainer chose "Fix in CHORE-472".
+- Alternatives rejected: a separate engine ticket (Lane F's suggestion).
+- The quirks, all reported by lane F from the Gate 1 round 2 reviewer's reading. Only the first was confirmed by Lane F in source. Upstream `f50b5942e` has the same lines.
+  1. Without a prompt template, the last message is split into `lastChat` before the splice. That gives N+1 messages after the entry.
+  2. When N is at least the chat length, the negative splice start places the entry at `max(0, 2·len − N)` instead of the top.
+  3. Sequential splices let an earlier-inserted entry count as a message for later ones.
+- Shape (lane A's suggestion, adopted by Lane F): CHORE-472 stage 2. Stage 1, the import changes, merges first.
+  - Stage 2 is sized first: the mechanism, the code paths, and other readers of the same splice.
+  - The MC-778 grilling questions go to lane A before Gate 1.
+  - Engine-level tests must fail on the current code.
+- Consequence: prompts change for every existing `@@reverse_depth` user, including upstream cards.
+- Related: `MC-765`, `MC-767`, `MC-778`, `MC-500`.
+
+### MC-767 — maintainer in lane A, 2026-10-28: the target placement for `@@reverse_depth` (CHORE-472 stage 2, MC-778 questions Q6 to Q12)
+
+- Tag: decisions (`AskUserQuestion` answers by option label, relayed by lane A). Date: 2026-10-28. Sweep ref: none.
+- Source: lane A's relay, 2026-10-28. Every answer was the recommended option. The questions were Lane F's, built from the stage 2 sizing (`%TEMP%\risu-lane-f\c472s2\sizing\result.md`, investigator) and its independent check (doc-verifier, by code trace; 17 of 20 claims confirmed, none refuted).
+- Answers:
+  1. **Q6 "Exactly N after":** `@@reverse_depth N` has exactly N chat-list entries after it, with and without a prompt template.
+  2. **Q7 "Keep today's count":** example messages, the `[Start a new chat]` separator and the first message count as entries.
+  3. **Q8 "Top of the chat":** when N is greater than the chat-list length, the entry goes at the top.
+  4. **Q9 "Each keeps its N":** every position is computed against the list before any insertion. Entries at the same depth keep today's processing order (priority, then order).
+  5. **Q10 "After last message":** `@@reverse_depth 0` goes after the last message in both modes.
+  6. **Q11 "Leave all alone":** stage 2 changes only `@@reverse_depth`. Untouched: `@@depth N > 0`, `@@depth 0`, negative values, and template `chat` cards whose ranges cut depth entries.
+  7. **Q12 "Leave it out":** the character `depth_prompt` is not in stage 2.
+- Alternatives rejected: Q6 keep the no-template N+1; Q7 count only sent messages; Q8 drop the entry; Q9 keep sequential shifting; Q10 route like `@@depth 0`; Q11 include named items; Q12 clamp the `depth_prompt` wrap here.
+- Lane A's conditions:
+  - Stage 2 is planned after stage 1.
+  - Its merge needs `MC-500` approval.
+  - Engine tests must fail on the current code for each of Q6, Q8, Q9 and Q10.
+- Related: `MC-766`, `MC-765`, `MC-500`, CHORE-376 (filed with these answers).
+
 ## CHORE changes
 
 ### CHORE-373 — Android video inlays are displayed by reading the whole file (new; follow-up to CHORE-372)
@@ -536,6 +625,14 @@ Q-F6b, asked: "When several files are picked at once and some are too large, wha
 - Status (2026-10-24, Lane F): open, in this batch (`MC-520` 4). Found by the CHORE-30 sizing (TRACED, not run): it assigns `DBState.db.characters[charId]` directly and does not call `setDatabaseLite`, unlike `setChar`. Whether the write is saved is unverified; the check comes first.
 - Status (2026-10-25, Lane F): premise refuted; no fix needed (`MC-520` 4 called for a fix only if the write is not saved). The sizing's premise that `setChar` marks characters through `setDatabaseLite` was wrong: the `setDatabaseLite` that `setChar` calls (`src/ts/storage/database.svelte.ts`) only wraps module asset lists and assigns `DBState.db`; it marks no characters. Both `setChar` and `setCharacterToIndex` are saved by the identity tracker in `src/ts/storage/dbChangeEffects.svelte.ts`, which marks any replaced element of `DBState.db.characters` by `chaId`; its comment names V3 `setCharacterToIndex` (TRACED). The existing guard `src/ts/plugins/apiV3/tests/v3SaveMarks.svelte.test.ts` drives `setCharacterToIndex` through the real effects and the real encoder round trip: 2 passed, run by Lane F on `df408f8de` on 2026-10-25 (EXECUTED). Packet: the investigator's hand-back, with `%TEMP%\risu-lane-f\save-mark\neg1.out.json` for the `-1` case.
 - Residual, not sized: when the replacing object carries a different `chaId` from the slot it replaces, the tracker does not delete the old `chaId`'s block (TRACED: the tracker only appends marks). `MC-520` 1 covers `setChar`/`setCharacter` only, so `setCharacterToIndex` still accepts a different `chaId`. Whether the old block comes back on reload was not checked. TODO(evidence).
+
+### CHORE-376 — Prompt-template runs drop trigger `start`/`historyend` text (new; import batch, 2026-10-28)
+
+- Filed by the maintainer's "Ticket it" (relayed by lane A, 2026-10-28). Owner: lane F, after CHORE-472.
+- Defect, by code trace from the CHORE-472 stage 2 verification (doc-verifier, 2026-10-28; not run):
+  - Text that triggers add to `unformated.lastChat` is never sent in a prompt-template run, because the template switch in `src/ts/process/index.svelte.ts` has no `lastChat` case.
+  - The non-template path walks `formatOrder` through `unformated[...]`, so it does send that text.
+- Status (2026-10-28): open, not sized. Upstream compatibility is to be checked when sized.
 
 ## Ledger rows
 
