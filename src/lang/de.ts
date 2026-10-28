@@ -1092,6 +1092,8 @@ export const languageGerman = {
     "exportStreamingAsset": (name: string, writtenMiB: number, totalMiB: number) => `${name} wird geschrieben (${writtenMiB} von ${totalMiB} MiB)...`,
     "successImport": "Erfolgreich importiert",
     "chatImportSkippedLines": (count: number) => count === 1 ? `Chat importiert. 1 Zeile konnte nicht gelesen werden und wurde übersprungen.` : `Chat importiert. ${count} Zeilen konnten nicht gelesen werden und wurden übersprungen.`,
+    "chatImportDone": `Chat importiert.`,
+    "chatImportSwipesNotKept": (count: number) => count === 1 ? `Bei 1 Nachricht wurde nur die angezeigte Antwort behalten; die alternativen Antworten wurden nicht importiert.` : `Bei ${count} Nachrichten wurde nur die angezeigte Antwort behalten; die alternativen Antworten wurden nicht importiert.`,
     "importedCharacter": "Importierter Charakter",
     "alwaysActive": "Immer aktiv",
     "additionalPrompt": "Zusätzliche Anweisung",
