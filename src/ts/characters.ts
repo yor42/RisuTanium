@@ -548,8 +548,9 @@ function addImportedChat(result: ChatImportResult, fileName: string, selectedID:
         return
     }
 
-    if(DBState.db.characters[selectedID].chatFolders
-        .filter(folder => folder.id === newChat.folderId).length === 0) {
+    // Characters saved before chat folders existed have no `chatFolders`.
+    if(!DBState.db.characters[selectedID].chatFolders
+        ?.some(folder => folder.id === newChat.folderId)) {
         newChat.folderId = null
     }
 

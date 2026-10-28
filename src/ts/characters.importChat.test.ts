@@ -310,6 +310,34 @@ describe('importChat -- file type selection', () => {
     })
 })
 
+describe('importChat -- character saved before chat folders existed', () => {
+    const header = JSON.stringify({ user_name: 'U', character_name: 'C' })
+    const message = JSON.stringify({ name: 'C', is_user: false, mes: 'hello there' })
+
+    beforeEach(() => {
+        vi.mocked(alertError).mockClear()
+        vi.mocked(changeChatTo).mockClear()
+        vi.mocked(selectSingleFile).mockReset()
+    })
+
+    // Regression reproducer: a character without `chatFolders` made the import throw,
+    // so the user saw an error and no chat was added.
+    test('a character with no chatFolders field still imports the chat', async () => {
+        const cha = makeCharacter([])
+        delete (cha as { chatFolders?: unknown }).chatFolders
+        testDb.db = { characters: [cha] } as unknown as Database
+        vi.mocked(selectSingleFile).mockResolvedValue({ name: 'chat.jsonl', data: utf8(`${header}\n${message}`) })
+
+        await importChat()
+
+        expect(alertError).not.toHaveBeenCalled()
+        const chats = (testDb.db.characters[0] as character).chats
+        expect(chats).toHaveLength(1)
+        expect(chats[0].folderId ?? null).toBeNull()
+        expect(changeChatTo).toHaveBeenCalledWith(0)
+    })
+})
+
 describe('importChat -- SillyTavern JSONL reading', () => {
     const header = JSON.stringify({ user_name: 'U', character_name: 'C', create_date: '2024-01-01', chat_metadata: {} })
     const first = JSON.stringify({ name: 'C', is_user: false, mes: 'first message' })
