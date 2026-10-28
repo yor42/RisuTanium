@@ -231,7 +231,7 @@ export const languageGerman = {
         "addingAssets": "Wird geladen... (Medien werden hinzugefügt {completed} / {total})",
         "writingExif": "Wird geladen... (Exif wird geschrieben)",
         "writingPng": "Wird geladen... (Wird geschrieben)",
-        "presetConverted": "Voreinstellung erfolgreich konvertiert. Sie finden sie in den Voreinstellungen der Bot-Einstellungen",
+        "presetConverted": "Voreinstellung erfolgreich konvertiert. Sie finden sie in den Voreinstellungen der Bot-Einstellungen.",
         "stPartsSkipped": "Einige Teile dieser SillyTavern-Datei können hier nicht verwendet werden und wurden übersprungen: {sections}.",
         "presetNotFound": "Voreinstellung nicht gefunden: {name}",
         "readingCard": "Wird geladen... (Wird gelesen)",

@@ -231,7 +231,7 @@ export const languageChinese = {
         "addingAssets": "加载中...（正在添加资源 {completed} / {total}）",
         "writingExif": "加载中...（正在写入 Exif）",
         "writingPng": "加载中...（正在写入）",
-        "presetConverted": "预设转换成功。您可以在机器人设置的预设中找到它",
+        "presetConverted": "预设转换成功。您可以在机器人设置的预设中找到它。",
         "stPartsSkipped": "此 SillyTavern 文件的部分内容无法在此处使用，已跳过：{sections}。",
         "presetNotFound": "找不到预设：{name}",
         "readingCard": "加载中...（正在读取）",

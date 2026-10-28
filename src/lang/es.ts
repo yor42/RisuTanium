@@ -231,7 +231,7 @@ export const languageSpanish = {
         "addingAssets": "Cargando... (Añadiendo activos {completed} / {total})",
         "writingExif": "Cargando... (Escribiendo Exif)",
         "writingPng": "Cargando... (Escribiendo)",
-        "presetConverted": "Preset convertido correctamente. Puedes encontrarlo en los presets de la configuración del bot",
+        "presetConverted": "Preset convertido correctamente. Puedes encontrarlo en los presets de la configuración del bot.",
         "stPartsSkipped": "Algunas partes de este archivo de SillyTavern no se pueden usar aquí y se omitieron: {sections}.",
         "presetNotFound": "No se encontró el preset: {name}",
         "readingCard": "Cargando... (Leyendo)",

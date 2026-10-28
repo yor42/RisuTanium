@@ -119,17 +119,28 @@ function expectedPreset(overrides: Partial<botPreset> & Record<string, unknown>)
     return { ...JSON.parse(JSON.stringify(presetTemplate)), ...overrides }
 }
 
-const IMPORTED_NAME = 'Imported ST Preset'
-
 /**
- * The file is merged over `presetTemplate` before the branch runs, and the
- * template carries a temperature (80) but no frequency_penalty. An absent
- * temperature therefore becomes 80 x 100, while an absent frequency_penalty
- * takes the branch's own 0.7 fallback. Pinned as today's behaviour, not as
- * correct.
+ * The chat file is converted like the Playground converts it (MC-822 P6): the
+ * preset is named after the file (MC-822 P5), the model is openrouter (MC-820
+ * Q-H), and a sampler key the file lacks is unset, -1000 (MC-823), instead of a
+ * template or branch default.
  */
-const DEFAULT_TEMPERATURE = presetTemplate.temperature * 100
-const DEFAULT_FREQUENCY = 0.7 * 100
+const UNSET_SAMPLERS = {
+    aiModel: 'openrouter',
+    subModel: 'openrouter',
+    temperature: -1000,
+    top_p: -1000,
+    top_k: -1000,
+    top_a: -1000,
+    min_p: -1000,
+    repetition_penalty: -1000,
+    frequencyPenalty: -1000,
+    PresensePenalty: -1000,
+}
+
+function expectedChat(name: string, overrides: Partial<botPreset> & Record<string, unknown>): botPreset {
+    return expectedPreset({ name, ...UNSET_SAMPLERS, ...overrides })
+}
 
 /** A chat-shaped file whose order enables the given identifiers, in order. */
 function chatFile(
@@ -149,7 +160,7 @@ beforeEach(() => {
     DBState.db = { botPresets: [] } as unknown as typeof DBState.db
 })
 
-describe('[G] Settings chat-completion import today', () => {
+describe('Settings chat-completion import (baseline; rows edited by S2c cite their decision)', () => {
     test('(i) every enabled prompt kind, role spellings and assistant_prefill', async () => {
         const prompts = [
             { identifier: 'main', content: 'MAIN', role: 'system' },
@@ -170,10 +181,7 @@ describe('[G] Settings chat-completion import today', () => {
         ]
         const order = prompts.map(p => String(p.identifier))
         await importPreset(fileOf('chat-all.json', chatFile(prompts, order, { assistant_prefill: 'PREFILL' })))
-        expect(pushedPresets()).toEqual([expectedPreset({
-            name: IMPORTED_NAME,
-            temperature: DEFAULT_TEMPERATURE,
-            frequencyPenalty: DEFAULT_FREQUENCY,
+        expect(pushedPresets()).toEqual([expectedChat('chat-all', {
             promptTemplate: [
                 { type: 'plain', type2: 'main', text: 'MAIN', role: 'system' },
                 { type: 'jailbreak', type2: 'normal', text: 'JB', role: 'bot' },
@@ -192,7 +200,7 @@ describe('[G] Settings chat-completion import today', () => {
         })])
     })
 
-    test('(ii) all 8 sampler keys: only temperature, frequency, presence (x0.7) and top_p are read', async () => {
+    test('(ii) all 8 sampler keys are applied by value', async () => {
         const file = chatFile([{ identifier: 'main', content: 'M' }], ['main'], {
             temperature: 0.5,
             frequency_penalty: 0.2,
@@ -203,34 +211,34 @@ describe('[G] Settings chat-completion import today', () => {
             min_p: 0.07,
             repetition_penalty: 1.23,
         })
-        // The four unread keys must differ from the template, or the test cannot tell "kept" from "applied".
+        // The four keys the previous branch never read must differ from the template, or the test cannot tell "kept" from "applied".
         expect(presetTemplate.top_k).not.toBe(33)
         expect(presetTemplate.top_a).not.toBe(0.31)
         expect(presetTemplate.min_p).not.toBe(0.07)
         expect(presetTemplate.repetition_penalty).not.toBe(1.23)
         await importPreset(fileOf('chat-samplers.json', file))
-        expect(pushedPresets()).toEqual([expectedPreset({
-            name: IMPORTED_NAME,
+        expect(pushedPresets()).toEqual([expectedChat('chat-samplers', {
             temperature: 50,
             frequencyPenalty: 20,
-            // 0.5 * 0.7 * 100: the 0.7 presence factor is part of today's output.
-            PresensePenalty: 0.5 * 0.7 * 100,
+            // MC-823 (a): presence is scaled by 100 only; the 0.7 factor is retired.
+            PresensePenalty: 50,
             top_p: 0.9,
+            // 6.3: top_k, top_a, min_p and repetition_penalty are applied from the file, unscaled.
+            top_k: 33,
+            top_a: 0.31,
+            min_p: 0.07,
+            repetition_penalty: 1.23,
             promptTemplate: [{ type: 'plain', type2: 'main', text: 'M', role: 'system' }],
         })])
     })
 
-    test('(iii) no presence_penalty keeps the template value; absent temperature, frequency and top_p take their defaults', async () => {
+    test('(iii) no sampler keys: every sampler is unset, presence stays finite', async () => {
         await importPreset(fileOf('chat-nopresence.json', chatFile([{ identifier: 'main', content: 'M' }], ['main'])))
         const [preset] = pushedPresets()
-        // Pinned as today's behaviour, not as correct: the template value (70) survives,
-        // and the result must stay finite (never NaN).
-        expect(Number.isNaN(preset.PresensePenalty)).toBe(false)
-        expect(preset.PresensePenalty).toBe(presetTemplate.PresensePenalty)
-        expect(pushedPresets()).toEqual([expectedPreset({
-            name: IMPORTED_NAME,
-            temperature: DEFAULT_TEMPERATURE,
-            frequencyPenalty: DEFAULT_FREQUENCY,
+        // MC-823 / F2: an absent presence_penalty is the slider's disabled value, never NaN.
+        expect(Number.isFinite(preset.PresensePenalty)).toBe(true)
+        expect(preset.PresensePenalty).toBe(-1000)
+        expect(pushedPresets()).toEqual([expectedChat('chat-nopresence', {
             promptTemplate: [{ type: 'plain', type2: 'main', text: 'M', role: 'system' }],
         })])
     })
@@ -239,10 +247,7 @@ describe('[G] Settings chat-completion import today', () => {
         const file = chatFile([{ identifier: 'main', content: 'M' }], ['main'])
         delete file.chat_completion_source
         await importPreset(fileOf('chat-nosource.json', file))
-        expect(pushedPresets()).toEqual([expectedPreset({
-            name: IMPORTED_NAME,
-            temperature: DEFAULT_TEMPERATURE,
-            frequencyPenalty: DEFAULT_FREQUENCY,
+        expect(pushedPresets()).toEqual([expectedChat('chat-nosource', {
             promptTemplate: [{ type: 'plain', type2: 'main', text: 'M', role: 'system' }],
         })])
     })
@@ -270,23 +275,19 @@ describe('[G] Settings chat-completion import today', () => {
         const order = (file.prompt_order as { order: { identifier: string, enabled: boolean }[] }[])[0].order
         order.push({ identifier: 'custom-off', enabled: false })
         await importPreset(fileOf('chat-disabled.json', file))
-        expect(pushedPresets()).toEqual([expectedPreset({
-            name: IMPORTED_NAME,
-            temperature: DEFAULT_TEMPERATURE,
-            frequencyPenalty: DEFAULT_FREQUENCY,
+        expect(pushedPresets()).toEqual([expectedChat('chat-disabled', {
             promptTemplate: [{ type: 'plain', type2: 'main', text: 'M', role: 'system' }],
         })])
     })
 
-    test('(vii) a chat-shaped file that also carries mainPrompt is still imported by the chat branch; mainPrompt is dropped', async () => {
+    test('(vii) a chat-shaped file that also carries mainPrompt is a Risu preset: the raw fallback keeps every file key', async () => {
         const file = chatFile([{ identifier: 'main', content: 'M' }], ['main'], { mainPrompt: 'RISU MAIN' })
         expect(presetTemplate.mainPrompt).not.toBe('RISU MAIN')
         await importPreset(fileOf('chat-with-mainprompt.json', file))
+        // N16 / MC-822 P6: one rule for "this is a Risu preset" at every entry point, so the chat branch is not taken.
         expect(pushedPresets()).toEqual([expectedPreset({
-            name: IMPORTED_NAME,
-            temperature: DEFAULT_TEMPERATURE,
-            frequencyPenalty: DEFAULT_FREQUENCY,
-            promptTemplate: [{ type: 'plain', type2: 'main', text: 'M', role: 'system' }],
+            ...file,
+            name: presetTemplate.name,
         })])
     })
 })
