@@ -257,6 +257,24 @@ export class TauriWriter {
         return this.attempted
     }
 
+    /** Whether the target is the Android save dialog's `content://` document, which exists from the moment the picker returned, before any byte is written. */
+    get documentExists(): boolean {
+        return this.viaAppendCommand
+    }
+
+    /**
+     * Gives up on the file without completing it. Only a call already in flight finishes; every later `write` and
+     * `close` rejects with the first reason the writer failed with, and the collected bytes are dropped.
+     */
+    async abort(reason: unknown = new Error('The export was aborted')): Promise<void> {
+        if (!this.failed) {
+            this.failed = true
+            this.failure = reason
+        }
+        this.pending = null
+        this.pendingLength = 0
+    }
+
     /**
      * One chunk of base64 text to `export_append_b64`. The encode, the call and the length check are all inside the
      * caller's failure handling, so the bytes taken off the buffer are never dropped without the writer failing.
@@ -297,6 +315,9 @@ export class TauriWriter {
     }
 
     private async put(data: Uint8Array, closing = false) {
+        if (this.failed) {
+            throw this.failure
+        }
         this.attempted = true
         const append = !this.firstWrite
         const timing = MEASURE ? startWriteTiming(data.byteLength, append, closing) : null
@@ -312,8 +333,10 @@ export class TauriWriter {
             }
             timing?.settled()
         } catch (error) {
-            this.failed = true
-            this.failure = error
+            if (!this.failed) {
+                this.failed = true
+                this.failure = error
+            }
             throw error
         }
         this.firstWrite = false
@@ -431,16 +454,23 @@ class HeldInMemoryStreamWriter implements ExportByteWriter {
 }
 
 /**
- * What a cancelled export may have left: `kept` when a download stream was opened (the browser may already hold a file,
- * even with no byte written), `untouched` when there is no writer, it holds everything in memory, or it is a desktop
- * file writer (a desktop export offers no Cancel).
+ * What a cancelled or failed export may have left: `kept` when a download stream was opened (the browser may already
+ * hold a file, even with no byte written), when a desktop file writer has made a call that reaches the file, or when
+ * the target is an Android `content://` document (created when the picker returned, saved even if empty).
+ * `untouched` when there is no writer, it holds everything in memory, or a desktop file has not been written to yet.
  */
-export function cancelledFileState(target: ExportByteWriter | undefined): 'untouched' | 'kept' {
-    if (target === undefined || target instanceof TauriWriter || target.heldInMemory === true) {
+export function exportFileState(target: ExportByteWriter | undefined): 'untouched' | 'kept' {
+    if (target === undefined) {
         return 'untouched'
     }
-    return 'kept'
+    if (target instanceof TauriWriter) {
+        return target.touchedFile || target.documentExists ? 'kept' : 'untouched'
+    }
+    return target.heldInMemory === true ? 'untouched' : 'kept'
 }
+
+/** The name the `.bin` backup's cancel path uses; the state of a cancelled export is the state of a failed one. */
+export const cancelledFileState = exportFileState
 
 /** The helper page the application serves itself; used on a secure page, where a service worker can run. */
 export const SELF_HOSTED_HELPER_URL = '/streamsaver/mitm.html'

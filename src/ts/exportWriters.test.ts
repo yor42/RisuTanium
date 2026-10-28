@@ -6,7 +6,9 @@
  *
  * Labels: (R) marks a test that fails against the export path before this change (a `TauriWriter` that writes every
  * chunk at once with a `close` that does nothing, a chunk writer whose `end` does not await `close`, or a
- * `writeBackupEntry` that issues the four-write layout); (G) is a guard that passes with or without the change.
+ * `writeBackupEntry` that issues the four-write layout, or a `cancelledFileState` that calls every desktop file
+ * untouched); (N) is new behaviour with nothing on the base to fail against; (G) is a guard that passes with or
+ * without the change.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
@@ -18,6 +20,7 @@ import {
     TauriWriter,
     cancelledFileState,
     encodeBackupEntryHeader,
+    exportFileState,
     openWebExportWriter,
     resetExportWriteStatsForTest,
     setExportWriteClockForTest,
@@ -441,10 +444,87 @@ describe('cancelledFileState', () => {
         expect(cancelledFileState({ write: async () => { }, close: async () => { } })).toBe('kept')
     })
 
-    test('(N) a writer that holds everything in memory, no writer, and a desktop file writer leave no file', () => {
+    test('(N) a writer that holds everything in memory, no writer, and a desktop file writer not yet written to leave no file', () => {
         expect(cancelledFileState({ write: async () => { }, close: async () => { }, heldInMemory: true })).toBe('untouched')
         expect(cancelledFileState(undefined)).toBe('untouched')
         expect(cancelledFileState(new TauriWriter('out.bin'))).toBe('untouched')
+    })
+
+    test('(R) a desktop file writer that made a file-system call has a file, and so has an Android document before any call', async () => {
+        const touched = new TauriWriter(PATH)
+        await touched.write(new Uint8Array(TAURI_WRITE_CHUNK_BYTES))
+        expect(cancelledFileState(touched)).toBe('kept')
+
+        android.os = 'android'
+        expect(cancelledFileState(new TauriWriter(URI))).toBe('kept')
+    })
+})
+
+describe('exportFileState', () => {
+    test('(N) the web, memory and absent-writer cases', () => {
+        expect(exportFileState(undefined)).toBe('untouched')
+        expect(exportFileState({ write: async () => { }, close: async () => { }, heldInMemory: true })).toBe('untouched')
+        expect(exportFileState({ write: async () => { }, close: async () => { } })).toBe('kept')
+    })
+
+    test('(N) a desktop file is untouched until its first call, then kept', async () => {
+        const writer = new TauriWriter('out.bin')
+        expect(exportFileState(writer)).toBe('untouched')
+        await writer.write(new Uint8Array(TAURI_WRITE_CHUNK_BYTES))
+        expect(exportFileState(writer)).toBe('kept')
+    })
+
+    test('(N) a content:// document is kept from the start on the Android transport only', () => {
+        expect(exportFileState(new TauriWriter(URI))).toBe('untouched')
+        android.os = 'android'
+        expect(exportFileState(new TauriWriter(URI))).toBe('kept')
+        expect(exportFileState(new TauriWriter('/storage/emulated/0/out.bin'))).toBe('untouched')
+    })
+})
+
+describe('TauriWriter.abort', () => {
+    test('(N) after an abort write and close reject with its reason, and nothing more reaches the file', async () => {
+        const writer = new TauriWriter(PATH)
+        await writer.write(new Uint8Array(16))
+        const reason = new ExportCancelledError()
+        await writer.abort(reason)
+
+        await expect(writer.write(new Uint8Array(16))).rejects.toBe(reason)
+        await expect(writer.close()).rejects.toBe(reason)
+        expect(fs.calls).toEqual([])
+    })
+
+    test('(N) the first reason stays when a call in flight fails after the abort', async () => {
+        const writer = new TauriWriter(PATH)
+        const reason = new ExportCancelledError()
+        fs.failCall = () => {
+            void writer.abort(reason)
+            return true
+        }
+
+        await expect(writer.write(new Uint8Array(TAURI_WRITE_CHUNK_BYTES))).rejects.toThrow('synthetic write failure')
+        await expect(writer.close()).rejects.toBe(reason)
+    })
+
+    test('(N) an abort during a write of several slices lets only the slice in flight run', async () => {
+        const writer = new TauriWriter(PATH)
+        fs.failCall = (index) => {
+            if (index === 0) {
+                void writer.abort(new ExportCancelledError())
+            }
+            return false
+        }
+
+        await expect(writer.write(new Uint8Array(3 * TAURI_WRITE_CHUNK_BYTES))).rejects.toBeInstanceOf(ExportCancelledError)
+        expect(fs.calls).toHaveLength(1)
+    })
+
+    test('(N) an abort before any call leaves the file untouched', async () => {
+        const writer = new TauriWriter(PATH)
+        await writer.abort()
+        expect(writer.touchedFile).toBe(false)
+        await expect(writer.close()).rejects.toThrow()
+        expect(writer.touchedFile).toBe(false)
     })
 })
 
