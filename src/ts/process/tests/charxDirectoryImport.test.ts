@@ -18,6 +18,10 @@
  *   fallback path is refused with origin 'layout', MC-804 and MC-805).
  *   A stream that ends inside an entry is refused as a ZIP failure before and after, so that test is (G).
  *
+ * The rows of 'validation reads of a picked File' (the picked File's planned windows) follow the same labels: (R) when
+ * the row fails by assertion with the sources from before the change (too many reads, a read spanning a body, no
+ * window formed), (G) when it holds before and after (a whole import, a changed header, an exact-gap layout).
+ *
  * The check cannot fire for an entry the directory lists on the spliced path (the splice gives each its sizes), so for
  * these fixtures, which hold no unlisted local header, a 'layout' result proves the planner rejected the directory
  * and the file took the fallback.
@@ -1295,7 +1299,7 @@ describe('validation reads of a picked File', () => {
         expect(reads.length).toBeLessThanOrEqual(3)
     })
 
-    test('(N) alternating small and big bodies cost no more calls than a source without a window, and never a wasted window', async () => {
+    test('(R) alternating small and big bodies cost no more calls than a source without a window, and never a wasted window', async () => {
         // the picked File's sizes at 1/64: window 8 MiB -> 128 KiB, gap 1 MiB -> 16 KiB, bodies 512 KiB / 9 MiB -> 8 KiB / 144 KiB
         const window = 128 * KIB
         const entries: Entry[] = [['card.json', CARD, 'store']]
@@ -1314,7 +1318,7 @@ describe('validation reads of a picked File', () => {
         expect(bytesRead(reads)).toBeLessThanOrEqual(2 * window)
     })
 
-    test('(N) 4 bodies of 3 MiB: one small read per boundary, and no read spans a body', async () => {
+    test('(R) 4 bodies of 3 MiB: one small read per boundary, and no read spans a body', async () => {
         const bytes = upstreamArchive(entriesOf(4, 3 * MIB, 500))
         const subject = listedFile(bytes)
 
@@ -1328,7 +1332,7 @@ describe('validation reads of a picked File', () => {
         }
     })
 
-    test('(N) bodies whose header is exactly the gap from the one before are read through together', async () => {
+    test('(G) bodies whose header is exactly the gap from the one before are read through together', async () => {
         const gap = 16 * KIB
         // the distance from one header\'s wanted end to the next header is the body plus the descriptor minus the slack
         const body = gap + HEADER_SLACK - 16
@@ -1346,7 +1350,7 @@ describe('validation reads of a picked File', () => {
         expect(reads.length).toBeLessThanOrEqual(2)
     })
 
-    test('(N) local extras longer than the directory\'s do not carry a read through a body', async () => {
+    test('(R) local extras longer than the directory\'s do not carry a read through a body', async () => {
         const bodySize = 300 * KIB
         let bytes = upstreamArchive(entriesOf(4, bodySize, 700))
         for (let i = 1; i <= 4; i++) {
@@ -1387,7 +1391,7 @@ describe('validation reads of a picked File', () => {
         expect(reads.length).toBeLessThanOrEqual((await unplannedReadsOf(bytes)).length)
     })
 
-    test('(N) validation walks the run only for the reads that miss the window: the extent functions run at most once per file call', async () => {
+    test('(R) validation walks the run only for the reads that miss the window: the extent functions run at most once per file call', async () => {
         const entries: Entry[] = [['card.json', CARD, 'store'], ...Array.from({ length: 3000 }, (_, i): Entry => [`assets/other/tiny${i}.bin`, random(1024, 3000 + i), 'store'])]
         const bytes = upstreamArchive(entries)
         const subject = listedFile(bytes)
@@ -1427,22 +1431,53 @@ describe('validation reads of a picked File', () => {
     })
 
     describe('across several windows', () => {
-        const entries = entriesOf(40, 100 * KIB, 1000)
+        // Bodies no larger than the gap, so the planner runs through them and validation reads whole windows.
+        const WINDOW = 64 * KIB
+        const GAP = 16 * KIB
+        const entries = entriesOf(40, 4 * KIB, 1000)
         const bytes = upstreamArchive(entries)
         const layout = layoutOf(bytes)
 
-        test('(N) a File of several small windows imports whole', async () => {
+        /** A validation read longer than this covers more than one header and its neighbours: a window fill. */
+        const WINDOW_FILL = 8 * KIB
+
+        function windowFillsOf(reads: Array<[number, number]>): Array<[number, number]> {
+            return validationReadsOf(reads, bytes).filter(([start, end]) => end - start > WINDOW_FILL)
+        }
+
+        /** The first entry whose local header lies strictly inside a window fill, not at its start. */
+        function entryInsideWindow(fills: Array<[number, number]>): number {
+            return layout.entries.findIndex(entry => fills.some(([start, end]) => entry.local > start && entry.local + 30 + entry.nameLength <= end))
+        }
+
+        /** An import of the archive that makes the windows form; the fills it made are what the rows below aim at. */
+        async function plainImport() {
             const subject = listedFile(bytes)
+            const outcome = await runImport(importSourceOfFile(subject.file, WINDOW, GAP))
+            return { subject, outcome, fills: windowFillsOf(subject.reads) }
+        }
 
-            const outcome = await runImport(importSourceOfFile(subject.file, 256 * KIB, 16 * KIB))
+        test('(R) the windows form: validation reads more than one header at a time, in several windows, and no window exceeds W', async () => {
+            const { subject, fills } = await plainImport()
 
+            expect(fills.length).toBeGreaterThan(1)
+            expect(validationReadsOf(subject.reads, bytes).length).toBeLessThan(entries.length / 2)
+            for (const [start, end] of fills) {
+                expect(end - start).toBeLessThanOrEqual(WINDOW)
+            }
+            expect(entryInsideWindow(fills)).toBeGreaterThan(0)
+        })
+
+        test('(R) a File of small bodies in several windows imports whole', async () => {
+            const { outcome, fills } = await plainImport()
+
+            expect(fills.length).toBeGreaterThan(1)
             expect(originOf(outcome) ?? 'imported').toBe('imported')
             expect(Object.keys(outcome.importer.assets)).toHaveLength(entries.length - 1)
             expect(importedWhole(outcome, 'assets/other/body20.bin', entries[21][1])).toBe(true)
-            expect(validationReadsOf(subject.reads, bytes).length).toBeGreaterThan(1)
         })
 
-        test('(N) a File of 12 MB at the default sizes imports whole in several windows', async () => {
+        test('(G) a File of 12 MB at the default sizes imports whole in several windows', async () => {
             const big = entriesOf(12, MIB, 1100)
             const archive = upstreamArchive(big)
             const subject = listedFile(archive)
@@ -1455,34 +1490,44 @@ describe('validation reads of a picked File', () => {
             expect(validationReadsOf(subject.reads, archive).length).toBeGreaterThanOrEqual(2)
         })
 
-        test('(N) a header that changed between validation and the splice is a ZIP failure', async () => {
+        test('(G) a header served from inside a window that changed between validation and the splice is a ZIP failure', async () => {
+            const { fills } = await plainImport()
+            const inside = entryInsideWindow(fills)
+            expect(inside).toBeGreaterThan(0)
             const changed = new Uint8Array(bytes)
-            changed[layout.entries[20].local + 10] ^= 1
+            changed[layout.entries[inside].local + 10] ^= 1
             const subject = listedFile(bytes)
-            const source: ImportSource = { ...importSourceOfFile(subject.file, 256 * KIB, 16 * KIB), stream: () => chunkedStream(changed, 64 * KIB) }
+            const source: ImportSource = { ...importSourceOfFile(subject.file, WINDOW, GAP), stream: () => chunkedStream(changed, 64 * KIB) }
 
             const outcome = await runImport(source)
 
             expect(originOf(outcome)).toBe('zip')
         })
 
-        test('(N) a validation read that rejects is an input failure and nothing is saved', async () => {
-            const subject = listedFile(bytes)
-            const base = importSourceOfFile(subject.file, 256 * KIB, 16 * KIB)
-            let calls = 0
-            // the tail and the directory are the first two reads; the next is validation's
-            const source: ImportSource = { ...base, read: async (start, end) => {
-                if (++calls > 3) {
-                    throw new Error('the picker went away')
-                }
-                return base.read(start, end)
-            } }
+        test('(R) a window fill that rejects is an input failure, and nothing is saved, whichever window it is', async () => {
+            const { fills } = await plainImport()
+            expect(fills.length).toBeGreaterThan(1)
+            for (let which = 0; which < fills.length; which++) {
+                const subject = listedFile(bytes)
+                const base = importSourceOfFile(subject.file, WINDOW, GAP)
+                let fillsSeen = 0
+                let rejected = false
+                const source: ImportSource = { ...base, read: async (start, end) => {
+                    if (windowFillsOf([[start, end]]).length === 1 && fillsSeen++ === which) {
+                        rejected = true
+                        throw new Error('the picker went away ' + which)
+                    }
+                    return base.read(start, end)
+                } }
+                h.saved.clear()
 
-            const outcome = await runImport(source)
+                const outcome = await runImport(source)
 
-            expect(originOf(outcome)).toBe('input')
-            expect((outcome.failure as Error).message).toBe('the picker went away')
-            expect(h.saved.size).toBe(0)
+                expect(rejected).toBe(true)
+                expect(originOf(outcome)).toBe('input')
+                expect((outcome.failure as Error).message).toBe('the picker went away ' + which)
+                expect(h.saved.size).toBe(0)
+            }
         })
     })
 })
