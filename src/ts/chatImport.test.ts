@@ -12,6 +12,7 @@ import {
     hasOtherReplies,
     parseOobaTimestamp,
     parseTavernSendDate,
+    readAgnaiChat,
     readOobaChat,
     readTavernJsonl,
     tavernMessageName,
@@ -657,6 +658,306 @@ describe('readOobaChat (unit)', () => {
 
         test('a non-string character cell is not counted for its versions', () => {
             expect(count(5, versionsOf('a', 'b'))).toBe(0)
+        })
+    })
+})
+
+describe('detectJsonChatFormat Agnai (unit)', () => {
+    // Reproducers: a detector without the Agnai branch returns undefined and fails by assertion.
+    test('a file with messages that carry a string msg is Agnai, with or without ids', () => {
+        expect(detectJsonChatFormat({ name: 'Exported', greeting: 'Hi', messages: [{ _id: 'a1b2c3d4', msg: 'hello', userId: 'u1' }] })).toBe('agnai')
+        expect(detectJsonChatFormat({ name: 'Exported', messages: [{ msg: 'old export without ids', characterId: 'imported' }] })).toBe('agnai')
+    })
+
+    test('an element without a string msg does not block detection when another has one', () => {
+        expect(detectJsonChatFormat({ messages: [5, { msg: 7 }, { msg: 'text' }] })).toBe('agnai')
+    })
+
+    // Guards: these pass before and after the Agnai branch exists.
+    test('a Risu export type is never detected, even carrying messages', () => {
+        expect(detectJsonChatFormat({ type: 'risuChat', messages: [{ msg: 'x' }] })).toBeUndefined()
+        expect(detectJsonChatFormat({ type: 'risuAllChats', messages: [{ msg: 'x' }] })).toBeUndefined()
+    })
+
+    test('an Ooba pair keeps precedence over a messages array', () => {
+        const rows = [['a', 'b']]
+        expect(detectJsonChatFormat({ internal: rows, visible: rows, messages: [{ msg: 'x' }] })).toBe('ooba')
+    })
+
+    const notAgnai: Array<[string, unknown]> = [
+        ['an element with candidates (Lianne)', { messages: [{ msg: 'x', candidates: ['a'] }] }],
+        ['candidates on another element', { messages: [{ msg: 'x' }, { candidates: [] }] }],
+        ['OpenAI role and content', { messages: [{ role: 'user', content: 'x' }] }],
+        ['an empty messages array', { messages: [] }],
+        ['messages of non-objects only', { messages: [1, 'a', null, [{ msg: 'x' }]] }],
+        ['messages that is not an array', { messages: { msg: 'x' } }],
+        ['elements without a string msg', { messages: [{ msg: 5 }, { content: 'x' }] }],
+        ['a Kobold save', { gamestarted: true, prompt: 'x', actions: ['a'] }],
+        ['a histories file', { histories: [{ msg: 'x' }] }],
+        ['an array', [{ msg: 'x' }]],
+        ['a string', 'text'],
+        ['null', null],
+    ]
+    test.each(notAgnai)('%s is not Agnai', (_label, body) => {
+        expect(detectJsonChatFormat(body)).toBeUndefined()
+    })
+})
+
+describe('readAgnaiChat (unit)', () => {
+    // The reader specification tests import a function that does not exist on the base, so
+    // there they fail at setup, which is not regression evidence. The reproducers are the
+    // detection tests above and the importChat tests in characters.importChat.test.ts.
+    const stamp = (minute: number) => new Date(Date.UTC(2025, 0, 1, 0, minute)).toISOString()
+    const row = (id: string, parent: string | undefined, minute: number, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+        _id: id, parent, msg: `m-${id}`, createdAt: stamp(minute), characterId: 'imported', ...extra,
+    })
+    const read = (rows: unknown[]) => readAgnaiChat({ name: 'Exported', messages: rows })
+    const texts = (rows: unknown[]) => read(rows).messages.map((m) => m.mes)
+    const withLeaf = (rows: Array<Record<string, unknown>>, leaf: unknown) => rows.map((r) => leaf === undefined ? r : { ...r, treeLeafId: leaf })
+
+    // Root r0; a1 under r0; b2 and c3 under a1; d4 under c3 (older tip); e5 under b2 (newest tip).
+    const branched = () => [row('r0', undefined, 0), row('a1', 'r0', 1), row('b2', 'a1', 2), row('c3', 'a1', 3), row('d4', 'c3', 4), row('e5', 'b2', 5)]
+    // The older branch b2-d4 is abandoned for e5-f6, which grows from the shared ancestor a1.
+    const forkAndContinue = () => [row('r0', undefined, 0), row('a1', 'r0', 1), row('b2', 'a1', 2), row('d4', 'b2', 3), row('e5', 'a1', 4), row('f6', 'e5', 5)]
+
+    test('an unrecognised value reads as an empty result without a header', () => {
+        for(const value of [undefined, null, 'text', 5, [], {}, { messages: 'x' }, { messages: {} }]){
+            const result = readAgnaiChat(value)
+            expect(result).toEqual({ messages: [], skipped: 0, swipesNotKept: 0 })
+            expect('header' in result).toBe(false)
+        }
+    })
+
+    test('a file without ids keeps every message in file order and counts nothing', () => {
+        const result = read([
+            { msg: 'hello', userId: 'u1', characterId: 'imported' },
+            { msg: 'first', characterId: 'c-1' },
+            { msg: 'second', characterId: 'c-2' },
+        ])
+        expect(result.messages.map((m) => [m.isUser, m.mes])).toEqual([[true, 'hello'], [false, 'first'], [false, 'second']])
+        expect(result.messages.every((m) => m.sendDate === undefined)).toBe(true)
+        expect(result.skipped).toBe(0)
+        expect(result.swipesNotKept).toBe(0)
+        expect('header' in result).toBe(false)
+    })
+
+    test('parents that are text prefixes resolve to nothing: every message in file order', () => {
+        const rows = ['Once upon a time', 'The knight rode', 'A dragon woke', 'Fire filled the sky'].map((text, index, all) =>
+            row(`e1a0000${index}`, index === 0 ? undefined : all[index].slice(0, 8), index, { msg: text }))
+        expect(texts(rows)).toEqual(['Once upon a time', 'The knight rode', 'A dragon woke', 'Fire filled the sky'])
+        expect(read(rows).swipesNotKept).toBe(0)
+    })
+
+    test('one text prefix that equals a real id makes one link and many roots: the newest tip alone is kept', () => {
+        const rows = Array.from({ length: 12 }, (_, index) => {
+            const text = index === 4 ? 'e1a00002 and more' : `Line ${index} of the story`
+            return row(`e1a0000${(index + 1).toString(16)}`, text.slice(0, 8), index, { msg: text })
+        })
+        const result = read(rows)
+        expect(result.messages.map((m) => m.mes)).toEqual(['Line 11 of the story'])
+        expect(result.swipesNotKept).toBe(11)
+    })
+
+    test('a chain given out of file order is imported in link order', () => {
+        const rows = [row('c3', 'b2', 2), row('a1', undefined, 0), row('b2', 'a1', 1)]
+        const result = read(rows)
+        expect(result.messages.map((m) => m.mes)).toEqual(['m-a1', 'm-b2', 'm-c3'])
+        expect(result.swipesNotKept).toBe(0)
+    })
+
+    test('a branched file imports the path to the newest tip and counts the messages off it', () => {
+        const result = read(branched())
+        expect(result.messages.map((m) => m.mes)).toEqual(['m-r0', 'm-a1', 'm-b2', 'm-e5'])
+        expect(result.swipesNotKept).toBe(2)
+        expect(texts([...branched()].reverse())).toEqual(['m-r0', 'm-a1', 'm-b2', 'm-e5'])
+        expect(read([...branched()].reverse()).swipesNotKept).toBe(2)
+    })
+
+    test('fork and continue: the newer branch wins and the abandoned one is counted', () => {
+        const result = read(withLeaf(forkAndContinue(), 'd4'))
+        expect(result.messages.map((m) => m.mes)).toEqual(['m-r0', 'm-a1', 'm-e5', 'm-f6'])
+        expect(result.swipesNotKept).toBe(2)
+    })
+
+    test('treeLeafId never changes the result', () => {
+        const expected = read(branched())
+        for(const leaf of [undefined, 'd4', 'e5', 'a1', 'unknownx', 7, null]){
+            expect(read(withLeaf(branched(), leaf))).toEqual(expected)
+        }
+    })
+
+    test('equal creation times: the later element in the file wins', () => {
+        const rows = [row('r0', undefined, 0), row('c3', 'r0', 5), row('b2', 'r0', 5)]
+        const result = read(rows)
+        expect(result.messages.map((m) => m.mes)).toEqual(['m-r0', 'm-b2'])
+        expect(result.swipesNotKept).toBe(1)
+    })
+
+    test('a tip without a readable time makes the greatest file index win', () => {
+        const dated = row('x1', 'r0', 9)
+        const undated = row('y2', 'r0', 0, { createdAt: 'not a date' })
+        const root = row('r0', undefined, 0)
+        expect(texts([root, dated, undated])).toEqual(['m-r0', 'm-y2'])
+        expect(texts([root, undated, dated])).toEqual(['m-r0', 'm-x1'])
+        expect(read([root, undated, dated]).swipesNotKept).toBe(1)
+    })
+
+    test('an orphan subtree is its own component and the newest tip across components wins', () => {
+        const main = [row('r0', undefined, 0), row('a1', 'r0', 1), row('b2', 'a1', 2), row('c3', 'b2', 3)]
+        const orphanNewer = [row('x9', 'zzzzzzzz', 4), row('y8', 'x9', 5)]
+        const newer = read([...main, ...orphanNewer])
+        expect(newer.messages.map((m) => m.mes)).toEqual(['m-x9', 'm-y8'])
+        expect(newer.swipesNotKept).toBe(4)
+        const orphanOlder = [row('x9', 'zzzzzzzz', 1), row('y8', 'x9', 2)]
+        const older = read([...main, ...orphanOlder])
+        expect(older.messages.map((m) => m.mes)).toEqual(['m-r0', 'm-a1', 'm-b2', 'm-c3'])
+        expect(older.swipesNotKept).toBe(2)
+    })
+
+    test('a repeated id in a tree is file order with nothing counted', () => {
+        const rows = [row('r0', undefined, 0), row('x1', 'r0', 1, { msg: 'first x1' }), row('x1', 'r0', 2, { msg: 'second x1' }), row('c3', 'x1', 3)]
+        const result = read(rows)
+        expect(result.messages.map((m) => m.mes)).toEqual(['m-r0', 'first x1', 'second x1', 'm-c3'])
+        expect(result.swipesNotKept).toBe(0)
+    })
+
+    test('a loop is file order with nothing counted, wherever the tips are', () => {
+        const pair = [row('A', 'B', 0), row('B', 'A', 1), row('C', undefined, 2)]
+        expect(read(pair).messages.map((m) => m.mes)).toEqual(['m-A', 'm-B', 'm-C'])
+        expect(read(pair).swipesNotKept).toBe(0)
+
+        const loopWithTips = [row('A', 'B', 0), row('B', 'A', 1), row('C', 'A', 2), row('D', 'A', 3)]
+        expect(read(loopWithTips).messages.map((m) => m.mes)).toEqual(['m-A', 'm-B', 'm-C', 'm-D'])
+        expect(read(loopWithTips).swipesNotKept).toBe(0)
+
+        const self = [row('S', 'S', 0), row('a1', undefined, 1), row('b2', 'a1', 2)]
+        expect(read(self).messages.map((m) => m.mes)).toEqual(['m-S', 'm-a1', 'm-b2'])
+        expect(read(self).swipesNotKept).toBe(0)
+    })
+
+    test('a skipped element stays in the link map: its children stay linked', () => {
+        const rows = [row('a1', undefined, 0), row('b2', 'a1', 1, { msg: 5 }), row('c3', 'b2', 2), row('d4', 'c3', 3)]
+        const result = read(rows)
+        expect(result.messages.map((m) => m.mes)).toEqual(['m-a1', 'm-c3', 'm-d4'])
+        expect(result.skipped).toBe(1)
+        expect(result.swipesNotKept).toBe(0)
+    })
+
+    test('a skipped element off the path is neither counted as a swipe nor imported', () => {
+        const base = [row('r0', undefined, 0), row('a1', 'r0', 1), row('b2', 'r0', 2, { msg: 5 }), row('c3', 'a1', 3)]
+        const result = read([...base, null])
+        expect(result.messages.map((m) => m.mes)).toEqual(['m-r0', 'm-a1', 'm-c3'])
+        expect(result.skipped).toBe(2)
+        expect(result.swipesNotKept).toBe(0)
+
+        const longer = read([...base, null, row('d4', 'r0', 4)])
+        expect(longer.messages.map((m) => m.mes)).toEqual(['m-r0', 'm-d4'])
+        expect(longer.skipped).toBe(2)
+        expect(longer.swipesNotKept).toBe(2)
+    })
+
+    test('an empty msg emits no line, is uncounted and keeps the chain', () => {
+        expect(texts([row('a1', undefined, 0), row('b2', 'a1', 1, { msg: '' }), row('c3', 'b2', 2)])).toEqual(['m-a1', 'm-c3'])
+        const offPath = read([row('r0', undefined, 0), row('a1', 'r0', 1), row('b2', 'r0', 2, { msg: '' }), row('c3', 'a1', 3), row('d4', 'r0', 4)])
+        expect(offPath.messages.map((m) => m.mes)).toEqual(['m-r0', 'm-d4'])
+        expect(offPath.swipesNotKept).toBe(2)
+        expect(read([row('a1', undefined, 0, { msg: '' }), row('b2', 'a1', 1, { msg: '' })])).toEqual({ messages: [], skipped: 0, swipesNotKept: 0 })
+    })
+
+    test('an element that is not an object is skipped in every class', () => {
+        const result = read([null, 'text', 4, [], { msg: 'only' }])
+        expect(result.messages.map((m) => m.mes)).toEqual(['only'])
+        expect(result.skipped).toBe(4)
+    })
+
+    test('several characters in a linear chat are all kept', () => {
+        const rows = [
+            row('a1', undefined, 0, { userId: 'u1', characterId: 'imported' }),
+            row('b2', 'a1', 1, { characterId: 'c-1' }),
+            row('c3', 'b2', 2, { characterId: 'c-2' }),
+            row('d4', 'c3', 3, { userId: 'u1' }),
+            row('e5', 'd4', 4, { characterId: 'c-1' }),
+        ]
+        const result = read(rows)
+        expect(result.messages.map((m) => m.mes)).toEqual(['m-a1', 'm-b2', 'm-c3', 'm-d4', 'm-e5'])
+        expect(result.swipesNotKept).toBe(0)
+    })
+
+    test('speaker and name: userId decides, a user line keeps a name only with a characterId', () => {
+        const result = readAgnaiChat({
+            name: 'Exported',
+            messages: [
+                { msg: 'u1', userId: 'U1', characterId: 'imported', name: 'Sam' },
+                { msg: 'u2', userId: 'U1', characterId: 'c-2', name: 'Narrator' },
+                { msg: 'u3', userId: 'U1', name: 'handle' },
+                { msg: 'u4', userId: 'U1', characterId: 'c-2', name: '   ' },
+                { msg: 'c1', characterId: 'imported', name: 'Bot' },
+                { msg: 'c2', characterId: 'c-2', name: ' Ann ' },
+                { msg: 'c3' },
+                { msg: 'c4', name: 'Exported' },
+            ],
+        })
+        expect(result.messages.map((m) => [m.mes, m.isUser, m.name])).toEqual([
+            ['u1', true, 'Sam'],
+            ['u2', true, 'Narrator'],
+            ['u3', true, undefined],
+            ['u4', true, undefined],
+            ['c1', false, undefined],
+            ['c2', false, 'Ann'],
+            ['c3', false, undefined],
+            ['c4', false, 'Exported'],
+        ])
+        expect('header' in result).toBe(false)
+    })
+
+    test('ooc is an ordinary user message and never system', () => {
+        const result = readAgnaiChat({ messages: [{ msg: 'a', ooc: true }, { msg: 'b', ooc: true, userId: 'U1' }, { msg: 'c', ooc: false }] })
+        expect(result.messages.map((m) => [m.mes, m.isUser])).toEqual([['a', true], ['b', true], ['c', false]])
+        expect(result.messages.every((m) => m.isSystem === undefined)).toBe(true)
+    })
+
+    test('createdAt becomes sendDate when readable and is absent otherwise', () => {
+        const result = read([
+            row('a1', undefined, 0, { createdAt: '2025-03-04T05:06:07.000Z' }),
+            row('b2', 'a1', 1, { createdAt: 'later' }),
+            row('c3', 'b2', 2, { createdAt: '10000-01-01T00:00:00.000Z' }),
+        ])
+        expect(result.messages.map((m) => m.sendDate)).toEqual([Date.UTC(2025, 2, 4, 5, 6, 7), undefined, undefined])
+    })
+
+    describe('large inputs', () => {
+        const count = 50000
+
+        test('a chain returns every message with nothing counted', () => {
+            const rows = Array.from({ length: count }, (_, index) => row(`n${index}`, index === 0 ? undefined : `n${index - 1}`, index))
+            const result = read(rows)
+            expect(result.messages).toHaveLength(count)
+            expect(result.messages[0].mes).toBe('m-n0')
+            expect(result.messages[count - 1].mes).toBe(`m-n${count - 1}`)
+            expect(result.swipesNotKept).toBe(0)
+        })
+
+        test('a spine with a side tip every ten nodes returns the spine and counts the side tips', () => {
+            const rows: Array<Record<string, unknown>> = []
+            for(let index = 0; index < count; index++){
+                rows.push(row(`s${index}`, index === 0 ? undefined : `s${index - 1}`, index + 1))
+                if(index % 10 === 0){
+                    rows.push(row(`t${index}`, `s${index}`, 0))
+                }
+            }
+            const result = read(rows)
+            expect(result.messages).toHaveLength(count)
+            expect(result.messages[count - 1].mes).toBe(`m-s${count - 1}`)
+            expect(result.swipesNotKept).toBe(count / 10)
+        })
+
+        test('a ring is a loop: file order with nothing counted', () => {
+            const rows = Array.from({ length: count }, (_, index) => row(`n${index}`, `n${(index + 1) % count}`, index))
+            const result = read(rows)
+            expect(result.messages).toHaveLength(count)
+            expect(result.messages[0].mes).toBe('m-n0')
+            expect(result.messages[count - 1].mes).toBe(`m-n${count - 1}`)
+            expect(result.swipesNotKept).toBe(0)
         })
     })
 })

@@ -340,7 +340,7 @@ export function readTavernJsonl(text: string): TavernJsonlResult {
     return result
 }
 
-export type JsonChatFormat = 'ooba'
+export type JsonChatFormat = 'ooba' | 'agnai'
 
 const oobaMarker = '<|BEGIN-VISIBLE-CHAT|>'
 const oobaTimestampPattern = /^([A-Za-z]+) (\d{1,2}), (\d{4}) (\d{1,2}):(\d{2})$/
@@ -366,7 +366,9 @@ function oobaRowSets(value: unknown): { internal: unknown[], visible: unknown[] 
  * Names the chat format of a parsed `.json` file that is not a Risu export, or
  * `undefined` when it is none of them. A Risu `type` is never reinterpreted.
  * Later formats keep the exclusive-first order: a format with a unique tag or
- * key is tested before one recognised only by row shape (Ooba).
+ * key is tested before one recognised only by row shape (Ooba). Agnai is
+ * recognised by shape alone and comes last, so a format with a tag of its own
+ * that also has a `messages` array is inserted ahead of it.
  */
 export function detectJsonChatFormat(value: unknown): JsonChatFormat | undefined {
     if(!isPlainObject(value) || value.type === 'risuChat' || value.type === 'risuAllChats'){
@@ -375,7 +377,32 @@ export function detectJsonChatFormat(value: unknown): JsonChatFormat | undefined
     if(oobaRowSets(value) !== undefined){
         return 'ooba'
     }
+    if(isAgnaiShape(value)){
+        return 'agnai'
+    }
     return undefined
+}
+
+// A non-empty `messages` array with at least one object whose `msg` is a string,
+// and no object carrying a `candidates` array (another format's marker).
+function isAgnaiShape(value: Record<string, unknown>): boolean {
+    const messages = value.messages
+    if(!Array.isArray(messages) || messages.length === 0){
+        return false
+    }
+    let hasMessageText = false
+    for(const element of messages as unknown[]){
+        if(!isPlainObject(element)){
+            continue
+        }
+        if(Array.isArray(element.candidates)){
+            return false
+        }
+        if(typeof element.msg === 'string'){
+            hasMessageText = true
+        }
+    }
+    return hasMessageText
 }
 
 /**
@@ -520,4 +547,180 @@ export function readOobaChat(value: unknown): ChatImportResult {
         }
     }
     return result
+}
+
+// One plain-object element of an Agnai file. `text` is set only when `msg` is a
+// string; a node without it stays in the link map but emits no line.
+type AgnaiNode = {
+    index: number
+    id: string | undefined
+    parent: string | undefined
+    when: number | undefined
+    text: string | undefined
+    source: Record<string, unknown>
+}
+
+const agnaiOnWalk = 1
+const agnaiFinished = 2
+
+function nonEmptyString(value: unknown): string | undefined {
+    return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+// The speaker is decided by `userId` (or `ooc`), never by `characterId`. A user
+// line keeps its name only when it was sent as a character; a character line
+// drops the placeholder `'imported'` character.
+function agnaiLine(node: AgnaiNode, text: string): TavernLine {
+    const source = node.source
+    const characterId = nonEmptyString(source.characterId)
+    const isUser = source.ooc === true || nonEmptyString(source.userId) !== undefined
+    const line: TavernLine = { isUser, mes: text }
+    if(node.when !== undefined){
+        line.sendDate = node.when
+    }
+    const name = typeof source.name === 'string' ? source.name.trim() : ''
+    const keepsName = isUser ? characterId !== undefined : characterId !== 'imported'
+    if(keepsName && name !== ''){
+        line.name = name
+    }
+    return line
+}
+
+// The newest-created candidate: by time when every candidate has one, ties and
+// all-undated choices going to the greatest file index.
+function newestAgnaiNode(candidates: AgnaiNode[]): AgnaiNode | undefined {
+    const allDated = candidates.every((candidate) => candidate.when !== undefined)
+    let newest: AgnaiNode | undefined
+    for(const candidate of candidates){
+        if(newest === undefined){
+            newest = candidate
+            continue
+        }
+        const candidateWhen = candidate.when ?? 0
+        const newestWhen = newest.when ?? 0
+        const isNewer = allDated
+            ? candidateWhen > newestWhen || (candidateWhen === newestWhen && candidate.index > newest.index)
+            : candidate.index > newest.index
+        if(isNewer){
+            newest = candidate
+        }
+    }
+    return newest
+}
+
+/**
+ * Reads an Agnai chat export. Each message is a node linked to its parent by
+ * `_id`/`parent`; export eras without resolvable links (no ids, or parents that
+ * are text prefixes) import every message in file order. A branched file
+ * imports the path from the newest-created tip back to its root, and
+ * `swipesNotKept` is the number of importable messages off that path (other
+ * branches and orphan subtrees). A repeated `_id` or a parent loop gives file
+ * order with nothing counted. `treeLeafId` is never read. An element whose
+ * `msg` is not a string is counted in `skipped` but stays a link, so its
+ * children stay attached; an empty `msg` emits no line and is uncounted. Every
+ * pass is iterative and linear in the number of messages.
+ */
+export function readAgnaiChat(value: unknown): ChatImportResult {
+    const result: ChatImportResult = { messages: [], skipped: 0, swipesNotKept: 0 }
+    if(!isPlainObject(value) || !Array.isArray(value.messages)){
+        return result
+    }
+    const elements: unknown[] = value.messages
+
+    const nodes: AgnaiNode[] = []
+    for(let index = 0; index < elements.length; index++){
+        const element = elements[index]
+        if(!isPlainObject(element)){
+            result.skipped++
+            continue
+        }
+        if(typeof element.msg !== 'string'){
+            result.skipped++
+        }
+        nodes.push({
+            index,
+            id: nonEmptyString(element._id),
+            parent: nonEmptyString(element.parent),
+            when: parseTavernSendDate(element.createdAt),
+            text: typeof element.msg === 'string' ? element.msg : undefined,
+            source: element,
+        })
+    }
+
+    const emit = (list: AgnaiNode[]) => {
+        for(const node of list){
+            if(node.text !== undefined && node.text !== ''){
+                result.messages.push(agnaiLine(node, node.text))
+            }
+        }
+        return result
+    }
+
+    const byId = new Map<string, AgnaiNode>()
+    for(const node of nodes){
+        if(node.id === undefined){
+            continue
+        }
+        if(byId.has(node.id)){
+            return emit(nodes)
+        }
+        byId.set(node.id, node)
+    }
+
+    const up = new Map<AgnaiNode, AgnaiNode>()
+    const childCount = new Map<AgnaiNode, number>()
+    for(const node of nodes){
+        const parent = node.parent === undefined ? undefined : byId.get(node.parent)
+        if(parent !== undefined){
+            up.set(node, parent)
+            childCount.set(parent, (childCount.get(parent) ?? 0) + 1)
+        }
+    }
+    if(up.size === 0){
+        return emit(nodes)
+    }
+
+    // Colour walk: a walk that ends on a node of its own walk is a loop. Every
+    // node is coloured once, so the check is linear whatever the depth.
+    const colour = new Map<AgnaiNode, number>()
+    for(const start of nodes){
+        if(colour.has(start)){
+            continue
+        }
+        const walk: AgnaiNode[] = []
+        let current: AgnaiNode | undefined = start
+        while(current !== undefined && !colour.has(current)){
+            colour.set(current, agnaiOnWalk)
+            walk.push(current)
+            current = up.get(current)
+        }
+        if(current !== undefined && colour.get(current) === agnaiOnWalk){
+            return emit(nodes)
+        }
+        for(const visited of walk){
+            colour.set(visited, agnaiFinished)
+        }
+    }
+
+    const tip = newestAgnaiNode(nodes.filter((node) => !childCount.has(node)))
+    if(tip === undefined){
+        return emit(nodes)
+    }
+    // Bounded by the node count, so a loop the check above missed ends as file order.
+    const path: AgnaiNode[] = []
+    for(let current: AgnaiNode | undefined = tip; current !== undefined; current = up.get(current)){
+        if(path.length >= nodes.length){
+            return emit(nodes)
+        }
+        path.push(current)
+    }
+    path.reverse()
+
+    const onPath = new Set<AgnaiNode>(path)
+    for(const node of nodes){
+        if(!onPath.has(node) && node.text !== undefined && node.text !== ''){
+            result.swipesNotKept++
+        }
+    }
+    return emit(path)
 }
