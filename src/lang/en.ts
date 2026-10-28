@@ -2448,6 +2448,8 @@ export const languageEnglish = {
     cardFileEntryTooLarge: (fileName: string, limitMiB: number) =>
         `The file "${fileName}" inside this card is larger than the ${limitMiB} MB limit, so the card was not imported.`,
     cardFileChanged: "The card file changed or could not be read while it was being imported, so it was not imported. Try importing it again.",
+    byafUnsupportedVersion: "This Backyard archive uses a format version this app cannot read, so it was not imported.",
+    byafSeveralCharacters: "This Backyard archive holds more than one character, which this app cannot import, so it was not imported.",
     cardImageTooLarge: (limitMiB: number) =>
         `The image of this card is larger than the ${limitMiB} MB limit, so the card was not imported.`,
     assetFileTooLargeForBrowserStorage: (fileName: string, limitMiB: number) =>

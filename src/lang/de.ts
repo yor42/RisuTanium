@@ -2309,6 +2309,8 @@ export const languageGerman = {
     "cardFileIncomplete": "Diese Kartendatei ist unvollständig oder beschädigt und wurde daher nicht importiert.",
     "cardFileEntryTooLarge": (fileName: string, limitMiB: number) => `Die Datei "${fileName}" in dieser Karte ist größer als das Limit von ${limitMiB} MB, daher wurde die Karte nicht importiert.`,
     "cardFileChanged": "Die Kartendatei wurde während des Imports geändert oder konnte nicht gelesen werden und wurde daher nicht importiert. Versuchen Sie, sie erneut zu importieren.",
+    "byafUnsupportedVersion": "Dieses Backyard-Archiv verwendet eine Formatversion, die diese App nicht lesen kann, und wurde daher nicht importiert.",
+    "byafSeveralCharacters": "Dieses Backyard-Archiv enthält mehr als einen Charakter, was diese App nicht importieren kann, und wurde daher nicht importiert.",
     "cardImageTooLarge": (limitMiB: number) => `Das Bild dieser Karte ist größer als das Limit von ${limitMiB} MB, daher wurde die Karte nicht importiert.`,
     "assetFileTooLargeForBrowserStorage": (fileName: string, limitMiB: number) => `"${fileName}" ist größer als die ${limitMiB} MB, die dieser Browser speichern kann, und wurde daher nicht gespeichert.`,
     "assetFilesTooLargeForLimit": (fileNames: string[], limitMiB: number) => {
