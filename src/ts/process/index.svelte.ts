@@ -23,6 +23,7 @@ import { supaMemory } from "./memory/supaMemory";
 import { writeSupaMemoryData } from "./memory/supaResume";
 import { v4 } from "uuid";
 import { groupOrder } from "./group";
+import { placeReverseDepth, type ReverseDepthEntry } from "./depthPlacement";
 import { runTrigger } from "./triggers";
 import { HypaProcesser } from "./memory/hypamemory";
 import { additionalInformations } from "./embedding/addinfo";
@@ -1700,7 +1701,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
 
 
 
+    let splitLastChat:OpenAIChat|undefined
     if(!promptTemplate){
+        splitLastChat = chats[chats.length - 1]
         unformated.lastChat.push(chats[chats.length - 1])
         chats.splice(chats.length - 1, 1)
     }
@@ -1724,13 +1727,32 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         return v.content.trim() !== '' || (v.multimodals && v.multimodals.length > 0)
     })
 
+    // The split last message is one of the entries after a reverse depth
+    // prompt only when it is sent: not blank, and the format order has lastChat.
+    const lastChatIsSent = !promptTemplate && !!splitLastChat
+        && !!DBState.db.formatingOrder?.includes('lastChat')
+        && (splitLastChat.content.trim() !== '' || (splitLastChat.multimodals && splitLastChat.multimodals.length > 0))
+    const reverseDepthEntries:ReverseDepthEntry<OpenAIChat>[] = []
+    const forwardDepthEntries:ReverseDepthEntry<OpenAIChat>[] = []
     for(const depthPrompt of depthPrompts){
         const chat:OpenAIChat = {
             role: depthPrompt.role,
             content: risuChatParser(resolvePosition(depthPrompt.prompt), {chara: currentChar, subject, promptView})
         }
-        const depth = depthPrompt.pos === 'depth' ? (depthPrompt.depth) : (unformated.chats.length - depthPrompt.depth)
-        unformated.chats.splice(depth,0,chat)
+        if(depthPrompt.pos === 'depth'){
+            forwardDepthEntries.push({depth: depthPrompt.depth, chat})
+        }
+        else{
+            reverseDepthEntries.push({depth: depthPrompt.depth, chat})
+        }
+    }
+
+    const reversePlaced = placeReverseDepth(unformated.chats, reverseDepthEntries, {tail: lastChatIsSent ? 1 : 0})
+    unformated.chats = reversePlaced.chats
+    unformated.lastChat.push(...reversePlaced.lastChatAppend)
+
+    for(const entry of forwardDepthEntries){
+        unformated.chats.splice(entry.depth,0,entry.chat)
     }
 
     if(triggerResult){
