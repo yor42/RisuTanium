@@ -5,7 +5,9 @@ import type { RisuPlugin } from '../plugins/plugins.svelte';
 import type {triggerscript as triggerscriptMain} from '../process/triggers';
 import { downloadFile, saveAsset as saveImageGlobal } from '../globalApi.svelte';
 import { defaultAutoSuggestPrompt, defaultJailbreak, defaultMainPrompt } from './defaultPrompts';
-import { alertNormal } from '../alert';
+import { alertNormal, alertNormalWait } from '../alert';
+import { fillLang } from '../../lang/fill';
+import { convertStFiles, detectStKind, type StKind } from '../process/stPresetFormats';
 import type { NAISettings } from '../process/models/nai';
 import { prebuiltNAIpresets, prebuiltPresets } from '../process/templates/templates';
 import { defaultColorScheme, type ColorScheme } from '../gui/colorscheme';
@@ -2449,6 +2451,8 @@ export async function importPreset(f:{
         return
     }
     let pre:any
+    let stRaw:unknown = undefined
+    let stKind:StKind|null = null
     if(f.name.endsWith('.risupreset') || f.name.endsWith('.risup')){
         let data = f.data
         if(f.name.endsWith('.risup')){
@@ -2461,7 +2465,9 @@ export async function importPreset(f:{
         }
     }
     else{
-        pre = {...presetTemplate,...(JSON.parse(Buffer.from(f.data).toString('utf-8')))}
+        stRaw = JSON.parse(Buffer.from(f.data).toString('utf-8'))
+        stKind = detectStKind(stRaw)
+        pre = {...presetTemplate,...(stRaw as object)}
         console.log(pre)
     }
     if(pre?.promptTemplate !== undefined){
@@ -2502,7 +2508,9 @@ export async function importPreset(f:{
         }
         pr.temperature = (pre.temperature ?? 0.8) * 100
         pr.frequencyPenalty = (pre.frequency_penalty ?? 0.7) * 100
-        pr.PresensePenalty = (pre.presence_penalty * 0.7) * 100
+        if(typeof pre.presence_penalty === 'number' && Number.isFinite(pre.presence_penalty)){
+            pr.PresensePenalty = (pre.presence_penalty * 0.7) * 100
+        }
         pr.top_p = pre.top_p ?? 1
 
         for(const prompt of pre.prompt_order[0].order){
@@ -2595,6 +2603,24 @@ export async function importPreset(f:{
         pr.promptTemplate = normalizePromptTemplate(pr.promptTemplate)
         pr.name = "Imported ST Preset"
         db.botPresets.push(pr)
+        return
+    }
+    if(stKind !== null && stKind !== 'STCHAT'){
+        //SillyTavern instruct, context, system prompt, text completion preset or settings bundle
+        const converted = convertStFiles([{name: f.name, parsed: stRaw}], safeStructuredClone(presetTemplate))
+        if('reason' in converted){
+            throw new Error(converted.reason === 'nothing' ? language.errors.stNothingToImport
+                : converted.reason === 'bundleAlone' ? language.errors.stBundleAlone
+                : fillLang(language.errors.promptTypeConflict, {type: converted.withType}))
+        }
+        converted.preset.promptTemplate = normalizePromptTemplate(converted.preset.promptTemplate) ?? undefined
+        if(!Array.isArray(db.botPresets)){
+            db.botPresets = []
+        }
+        db.botPresets.push(converted.preset)
+        if(converted.skipped.length > 0){
+            await alertNormalWait(fillLang(language.alerts.stPartsSkipped, {sections: converted.skipped.join(', ')}))
+        }
         return
     }
     pre.name ??= "Imported"

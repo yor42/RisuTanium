@@ -5,6 +5,7 @@ import { language } from "../../lang";
 import { fillLang } from "../../lang/fill";
 import type { OobaChatCompletionRequestParams } from "../model/ooba";
 import { DBState } from "../stores.svelte";
+import { OobaParams } from "./stPresetFormats";
 
 export type PromptItem = PromptItemPlain|PromptItemTyped|PromptItemChat|PromptItemAuthorNote|PromptItemChatML|PromptItemCache
 export type PromptType = PromptItem['type'];
@@ -252,41 +253,7 @@ export function stChatConvert(pre:any){
     return promptTemplate
 }
 
-export const OobaParams = [
-    "tokenizer",
-    "min_p",
-    "top_k",
-    "repetition_penalty",
-    "repetition_penalty_range",
-    "typical_p",
-    "tfs",
-    "top_a",
-    "epsilon_cutoff",
-    "eta_cutoff",
-    "guidance_scale",
-    "negative_prompt",
-    "penalty_alpha",
-    "mirostat_mode",
-    "mirostat_tau",
-    "mirostat_eta",
-    "temperature_last",
-    "do_sample",
-    "seed",
-    "encoder_repetition_penalty",
-    "no_repeat_ngram_size",
-    "min_length",
-    "num_beams",
-    "length_penalty",
-    "early_stopping",
-    "truncation_length",
-    "max_tokens_second",
-    "custom_token_bans",
-    "auto_max_new_tokens",
-    "ban_eos_token",
-    "add_bos_token",
-    "skip_special_tokens",
-    "grammar_string"
-]
+export { OobaParams }
 
 export function promptConvertion(files:{ name: string, content: string, type:string }[]){
     let preset = safeStructuredClone(presetTemplate)
