@@ -13,6 +13,7 @@ import { get } from 'svelte/store'
 import { alertNormalWait, waitUnreadNotice, alertStore as alertWrapper, type alertData } from '../alert'
 import { isConsentType, isPromptType } from '../alertPrompts'
 import { importOpenedSources, isOpenedSourceImportable } from '../characterCards'
+import type { OpenedRestoreEnd } from '../drive/backuplocal'
 import { busyRefusalLine, isBusy } from '../process/memory/busyActions'
 import { isAppInitiatedReload } from '../reloadGuard'
 import { alertStore as shownAlert } from '../stores.svelte'
@@ -42,13 +43,14 @@ interface OpenedEntry {
 //Drains run one at a time, in arrival order; a failed drain never stops the next one.
 let chain: Promise<void> = Promise.resolve()
 
-//True while `restoreOpenedBackup` runs. A file that arrives then is refused at once only over a restore question, and
-//otherwise stays in the native queue: the restore may reload the page, and a take in a dying page loses the file.
+//True while `restoreOpenedBackup` runs. A file that arrives then is refused at once over any non-consent prompt (an
+//approximation of "a restore question", accepted in MC-833) and otherwise stays in the native queue: the restore may
+//reload the page, and a take in a dying page loses the file.
 let restoreOpen = false
 //A file arrived while the restore ran and was left in the queue; one drain runs when the restore returns.
 let arrivedDuringRestore = false
-//The restore ended in a way that leaves this page unable to take a file again (a reload was requested, or the write is
-//unconfirmed). Everything that arrives later waits in the native queue for the next page.
+//The restore ended in a way that leaves this page unable to take a file again: the restored data landed (whether or not a
+//reload was requested) or the write is unconfirmed. Everything that arrives later waits in the native queue for the next page.
 let pageEnding = false
 //The refusal pop-up this module posted, kept so a second batch over the same pop-up posts nothing new.
 let ownRefusal: alertData | null = null
@@ -179,7 +181,7 @@ async function drain(): Promise<void> {
             await notifyRefused(language.openedBackupOneAtATime(oneAtATime))
         }
         // A rejection means nothing of the restore ran, so the page stays live.
-        let result: 'pageLive' | 'pageEnding' = 'pageLive'
+        let result: OpenedRestoreEnd = 'pageLive'
         try {
             const { restoreOpenedBackup } = await import('../drive/backuplocal')
             restoreOpen = true

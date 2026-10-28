@@ -1455,8 +1455,9 @@ export function loadBackupAtBoot(target: BootImportTarget): Promise<BootImportEn
 }
 
 /**
- * Whether the page may take another opened file after `restoreOpenedBackup`: `pageEnding` once a reload was requested
- * or a write is unconfirmed, `pageLive` for a decline, a refusal or a failure before anything was installed.
+ * Whether the page may take another opened file after `restoreOpenedBackup`: `pageEnding` when the restored data landed
+ * (whether or not a reload was requested) or the write is unconfirmed, `pageLive` for a decline, a refusal or a failure
+ * before anything was installed.
  */
 export type OpenedRestoreEnd = 'pageLive' | 'pageEnding';
 

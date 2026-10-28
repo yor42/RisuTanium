@@ -747,7 +747,7 @@ describe('a file opened during an opened-file restore', () => {
         expect(native.length).toBe(0)
     })
 
-    test('U1:a reload mark set for an unrelated reason while the restore question is on screen: the card is deferred; after NO the same page imports it once', async () => {
+    test('U1: a reload mark set for an unrelated reason while the restore question is on screen: the card is deferred; after NO the same page imports it once', async () => {
         const question = gateOf()
         planConfirms([{ screen: 'ask', gate: question.gate, answer: false }])
         openSourceMock.mockImplementation(async () => binSource())
