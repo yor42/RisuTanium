@@ -1086,6 +1086,7 @@ export const languageVietnamese = {
     "exportLargeAssetNeedsCharx": (names: string[]) => `Chưa xuất gì cả. ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` và ${names.length - 5} mục khác` : ''} lớn hơn 64 MiB, định dạng này không thể chứa được. Hãy xuất dưới dạng CharX.`,
     "realmLargeAssetRefused": (names: string[]) => `Chưa chia sẻ gì cả. ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` và ${names.length - 5} mục khác` : ''} lớn hơn 64 MiB, thẻ Realm không thể chứa được. Hãy xóa hoặc thu nhỏ rồi thử lại.`,
     "exportCharxTooLarge": (total: number) => `Chưa xuất gì cả. CharX này sẽ nặng khoảng ${(total / (1024 * 1024 * 1024)).toFixed(2)} GiB, quá gần với dung lượng một tệp CharX có thể chứa ở đây (4 GiB). Hãy xóa bớt một số tài nguyên rồi thử lại.`,
+    "exportCharxTooManyEntries": (count: number, limit: number) => `Chưa xuất gì cả. CharX này có thể chứa tới ${count} tệp, nhiều hơn ${limit} tệp mà một tệp CharX có thể chứa. Hãy xóa bớt một số tài nguyên rồi thử lại.`,
     "successImport": "Đã nhập thành công",
     "importedCharacter": "Ký tự đã nhập",
     "alwaysActive": "Luôn luôn hoạt động",

@@ -54,8 +54,10 @@ vi.mock(import('src/ts/util'), () => ({
 
 import {
     CHARX_HEADROOM_MARGIN,
+    CHARX_MAX_ENTRIES,
     LARGE_EXPORT_ASSET_BYTES,
     ZIP_SENTINEL,
+    charxEntryCount,
     estimateCharxBytes,
     listExportAssets,
     listModuleAssets,
@@ -266,7 +268,47 @@ describe('CharX estimate (new behaviour)', () => {
     })
 })
 
+describe('CharX entry count (new behaviour)', () => {
+    // every listed asset is an entry plus its x_meta, and card.json and module.risum are two more
+    const assets = (n: number) => Array.from({ length: n }, (_, i) => entry(`a${i}`, i))
+    const noStore = async () => null
+
+    test('the count is 2N + 2', () => {
+        expect(charxEntryCount(0)).toBe(2)
+        expect(charxEntryCount(32766)).toBe(65534)
+        expect(charxEntryCount(32767)).toBe(65536)
+        expect(CHARX_MAX_ENTRIES).toBe(65535)
+    })
+
+    test('65,534 entries are accepted and 65,536 are refused with the count and the limit', async () => {
+        expect((await preflightExport(assets(32766), 'charx', noStore)).kind).toBe('ok')
+        expect(await preflightExport(assets(32767), 'charx', noStore)).toEqual({ kind: 'refuse-count', count: 65536, limit: 65535 })
+    })
+
+    test('the count is checked before the size estimate', async () => {
+        // a size estimate far past the headroom does not hide the count refusal
+        const getStore = storeFor('tauri')
+        for (const e of assets(32767)) {
+            env.sizes.set(e.key, 1.4 * GIB)
+        }
+        expect((await preflightExport(assets(32767), 'charx', getStore)).kind).toBe('refuse-count')
+    })
+
+    test('only a CharX is counted', async () => {
+        for (const format of ['png', 'json', 'risum', 'realm'] as const) {
+            expect((await preflightExport(assets(32767), format, noStore)).kind).toBe('ok')
+        }
+    })
+})
+
 describe('refuseExport (new behaviour)', () => {
+    test('a count refusal shows one notice naming the count and the limit', async () => {
+        expect(await refuseExport({ kind: 'refuse-count', count: 65536, limit: 65535 })).toBe(true)
+        expect(env.notices).toHaveLength(1)
+        expect(env.notices[0]).toContain('65536')
+        expect(env.notices[0]).toContain('65535')
+    })
+
     test('an ok result shows nothing and is not a refusal', async () => {
         expect(await refuseExport({ kind: 'ok', large: new Map() })).toBe(false)
         expect(env.notices).toEqual([])

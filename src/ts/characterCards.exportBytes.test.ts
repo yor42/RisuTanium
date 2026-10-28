@@ -8,14 +8,14 @@
  * reproducer of any defect.
  *
  * What runs for real: `exportCharacterCard` and its asset loops, `exportModule`/`writeModuleCard`,
- * `exportModuleLegacy`, `CharXWriter` on the real fflate, the PNG chunk writer, `compressImage` and `getImageType`, and the
+ * `exportModuleLegacy`, `CharXWriter` (its own framing over the real fflate `Deflate`), the PNG chunk writer, `compressImage` and `getImageType`, and the
  * importers used for the round trips (`CharXImporter`, `PngChunk.read`, `readModule`).
  * What is replaced: the asset reads (`readImage`, `loadAsset`) and the writer (`LocalWriter` records every chunk it is
  * handed, `downloadFile` records its bytes), the alerts, the database, and the lossy codec. The RPack permutation is
  * replaced by a fixed invertible byte map, so the `.risum` hash pins the container layout and not the real table.
  * "Compression on" is the real `compressImage` with `imageCompression` set and `doLossyCompression` replaced by a fixed
  * byte transform: it pins the code path (which image types go to the codec, and in which order), not real codec bytes.
- * `charxJpeg` replaces `CharXWriter.writeJpeg` (a canvas and image decode) with fixed bytes, so it pins the call
+ * `charxJpeg` replaces the `charxEncode.jpeg` hook (a canvas and image decode) with fixed bytes, so it pins the call
  * position and the zip that follows, not the canvas output. A mocked writer is not evidence of native file behaviour.
  *
  * Determinism: the time zone is pinned before any import (zip header times are local-time fields), `Date` is faked at a
@@ -219,7 +219,7 @@ vi.mock(import('src/ts/rpack/rpack_js'), () => ({
 
 import { exportCharacterCard } from 'src/ts/characterCards'
 import { exportModule, exportModuleLegacy, readModule, type RisuModule } from 'src/ts/process/modules'
-import { CharXImporter, CharXWriter } from 'src/ts/process/processzip'
+import { CharXImporter, charxEncode } from 'src/ts/process/processzip'
 import { PngChunk } from 'src/ts/pngChunk'
 import type { character } from 'src/ts/storage/database.svelte'
 
@@ -374,7 +374,7 @@ const exporters: Record<Format, (withUriEntries: boolean) => Promise<unknown>> =
     'module charx': (u) => exportModule(syntheticModule(u), { alertEnd: false }),
 }
 
-// The jpeg prefix that stands in for the canvas output of `CharXWriter.writeJpeg`.
+// The jpeg prefix that stands in for the canvas output of the `charxEncode.jpeg` hook.
 const JPEG_STAND_IN = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 4, 0x4a, 0x50, 0xff, 0xd9])
 
 beforeEach(() => {
@@ -383,9 +383,7 @@ beforeEach(() => {
     h.saved.clear()
     h.db.imageCompression = false
     fillStore()
-    vi.spyOn(CharXWriter.prototype, 'writeJpeg').mockImplementation(async function (this: CharXWriter) {
-        this.apb.append(JPEG_STAND_IN)
-    })
+    vi.spyOn(charxEncode, 'jpeg').mockImplementation(async () => JPEG_STAND_IN)
 })
 
 afterEach(() => {
@@ -404,12 +402,15 @@ describe('fixed environment', () => {
 
 //#region pinned hashes
 
-// SHA-256 of the bytes written for card A, per format and compression setting, taken on the base before CHORE-375.
+// SHA-256 of the bytes written for card A, per format and compression setting, taken on the base before CHORE-375. The six
+// CharX pins (character, charxJpeg, module; plain and lossy) were retaken in stage C1 (MC-793) for the framing without data
+// descriptors, after `charxFraming.test.ts` showed the new archive equals the descriptor framing in every other field;
+// the descriptor-framing hashes stay as `STAGE_A_REFERENCE` in `zipFixtures.test.ts`. PNG, JSON and `.risum` are unchanged.
 const PINNED: Record<string, string> = {
-    'charx v3 plain': '470145053f3c090b4ffb52f96f10c961782c7fe104c3ebc51d2affbdfb94acf7',
-    'charx v3 lossy': '74d8c70f1bc5c2db701f65875f637c91203dcd15f1f9e38a934e082ff1cd8a62',
-    'charxJpeg v3 plain': 'e17b3cd2c8bb26df2476ca9587dfc81c421ac26fd011cc9e5a25bacefd75a720',
-    'charxJpeg v3 lossy': '200718f3c4b5fb4f436aaaaccf5dbe4cb6a451888ab2dc67fb1475c325e9c60a',
+    'charx v3 plain': '5a55d34fb999f9a1cdac02e2af66fada4c0e3799ee33fc30309ebfa879415c2a',
+    'charx v3 lossy': 'db7227d7d2057985f975bf35f00a6cea65a31df32672d3aa4c2da728d12bf532',
+    'charxJpeg v3 plain': '9d7f6f3307643ecbaab40acd07da1d7cc91bd8b50dffe0d3c6433fca76813dfe',
+    'charxJpeg v3 lossy': '080ce13e4349bfe9726551c6b7f7b2eb38ed1735ba21b835335dbb675e6b77cf',
     'png v2 plain': 'bf1f5809a4aca7185c051cb4d21ed1a599391ff0bc7e80baa71e36fada60ae40',
     'png v2 lossy': 'bf1f5809a4aca7185c051cb4d21ed1a599391ff0bc7e80baa71e36fada60ae40',
     'png v3 plain': '05dcd5b3d1f7f69ae7fd9bedf4f7968fb063dba020e8c90763678366b4d1678e',
@@ -420,8 +421,8 @@ const PINNED: Record<string, string> = {
     'json v3 lossy': 'be4f6af46cbb559ae3d4652ed697e5e8f5fa7df8143a749fdc5f79f68159d80d',
     'risum plain': '6d4db874da25ca330bfc040b35ea4b218ac083f176f2a55b50035babc7449427',
     'risum lossy': '6bbb60cace0a475761df14b2c1f4633d56b62dded2f6632187505d394f4784d8',
-    'module charx plain': 'c9378ae767038ae9eb839985618141043223060f05dcad1881fc8ec2af26e9f8',
-    'module charx lossy': '4a5eae90fec7eebf8f72623af54a0be79e9c03dc52939462484dd11559772871',
+    'module charx plain': '050b94a836c9d91b365d5afcca07cb182b6422ee844bf8cdbb3fccc383998e9a',
+    'module charx lossy': 'b36ddc4d90850e216ee2c7a610cd496bdfea6a3df22cabebea35f2fa7f61ed99',
 }
 
 describe('(G) exported bytes of card A are pinned', () => {

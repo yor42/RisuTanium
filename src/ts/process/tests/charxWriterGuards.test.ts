@@ -1,12 +1,14 @@
 /**
- * `CharXWriter` in `src/ts/process/processzip.ts`: the strict size backstop and the handling of an fflate error.
- * Every test here is NEW BEHAVIOUR (CHORE-375 stage B): on the base the writer has neither, so there is nothing to be
- * red against. The real writer runs on the real fflate; the file writer is a recorder, and the fflate error is
- * injected by calling the zip's own `ondata` the way the library does. The browser canvas of `writeJpeg` is replaced by
- * a stub that returns fixed bytes. A mocked writer is not evidence of native file behaviour.
+ * `CharXWriter` in `src/ts/process/processzip.ts`: the strict size backstop, the entry and name limits, and the latch
+ * that keeps a failed export failed. Every test here is NEW BEHAVIOUR (CHORE-375 stages B and C1): on the base the writer
+ * has no such limit or latch, so there is nothing to be red against. The real writer runs on the real fflate `Deflate`;
+ * the file writer is a recorder, and a compression or checksum failure is injected through the `charxCodec` hook. The
+ * browser canvas behind `charxEncode.jpeg` is replaced by a stub that returns fixed bytes. A mocked writer is not
+ * evidence of native file behaviour.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import type * as fflate from 'fflate'
+import { CHARX_MAX_ENTRIES } from 'src/ts/drive/exportPreflight'
+import { parseCharx } from './charxFramingParser'
 
 vi.mock(import('src/ts/platform'), () => ({
     isTauri: false,
@@ -33,7 +35,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
     } as unknown as typeof import('src/ts/globalApi.svelte')
 })
 
-import { CharXWriter, CharxTooLargeError } from '../processzip'
+import { CharXWriter, CharxNameTooLongError, CharxTooLargeError, CharxTooManyEntriesError, ZIP_MAX_ENTRIES, charxCodec, charxEncode } from '../processzip'
 
 function recorder() {
     const chunks: Uint8Array[] = []
@@ -132,32 +134,187 @@ describe('CharXWriter backstop (new behaviour)', () => {
     })
 })
 
-describe('CharXWriter fflate errors (new behaviour)', () => {
-    const failure = Object.assign(new Error('synthetic fflate failure'), { code: 0 }) as fflate.FlateError
+describe('CharXWriter header check before hand-on (new behaviour)', () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
 
-    function failingWriter() {
+    test('a compressed size that reaches the limit is refused before anything is handed on', async () => {
         const out = recorder()
-        const writer = new CharXWriter(out.writer as unknown as Target)
-        const add = writer.zip.add.bind(writer.zip)
-        vi.spyOn(writer.zip, 'add').mockImplementation((file) => {
-            add(file)
-            writer.zip.ondata(failure, new Uint8Array(0), false)
-        })
-        return { out, writer }
-    }
-
-    test('the export rejects with the error and writes nothing', async () => {
-        const { out, writer } = failingWriter()
-        await expect(writer.write('a.bin', new Uint8Array(10))).rejects.toBe(failure)
+        const writer = new CharXWriter(out.writer as unknown as Target, 3000)
+        // the data is small; only the body the codec returns is over the limit
+        vi.spyOn(charxCodec, 'deflate').mockReturnValue(new Uint8Array(3500))
+        await expect(writer.write('a.bin', new Uint8Array(10))).rejects.toBeInstanceOf(CharxTooLargeError)
         expect(out.writer.write).not.toHaveBeenCalled()
     })
 
-    test('every later write and the end throw the recorded error and write nothing', async () => {
-        const { out, writer } = failingWriter()
-        await expect(writer.write('a.bin', new Uint8Array(10))).rejects.toBe(failure)
-        await expect(writer.write('b.bin', new Uint8Array(10))).rejects.toBe(failure)
-        await expect(writer.end()).rejects.toBe(failure)
-        expect(out.writer.write).not.toHaveBeenCalled()
+    test('an entry whose bytes would carry the archive over the limit is refused before they are handed on', async () => {
+        const out = recorder()
+        const writer = new CharXWriter(out.writer as unknown as Target, 300)
+        await writer.write('a.bin', new Uint8Array(150).fill(1))
+        const handedOn = out.bytes()
+        await expect(writer.write('b.bin', new Uint8Array(150).fill(2))).rejects.toBeInstanceOf(CharxTooLargeError)
+        expect(out.bytes()).toBe(handedOn)
+        expect(out.writer.write).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('CharXWriter entry and name limits (new behaviour)', () => {
+    function writerOf(out: ReturnType<typeof recorder>) {
+        return new CharXWriter(out.writer as unknown as Target)
+    }
+
+    test('the limit is the 16-bit entry count of the end record, and the pre-check uses the same number', () => {
+        expect(ZIP_MAX_ENTRIES).toBe(65535)
+        expect(CHARX_MAX_ENTRIES).toBe(ZIP_MAX_ENTRIES)
+    })
+
+    test('65,535 entries are written and counted by the end record', async () => {
+        const out = recorder()
+        const writer = writerOf(out)
+        for (let i = 0; i < ZIP_MAX_ENTRIES; i++) {
+            await writer.write(`e${i}.bin`, new Uint8Array([i & 255]))
+        }
+        await writer.end()
+        expect(out.isClosed()).toBe(true)
+        expect(parseCharx(Buffer.concat(out.chunks)).end.entries).toBe(ZIP_MAX_ENTRIES)
+    }, 60_000)
+
+    test('the 65,536th entry throws CharxTooManyEntriesError, hands nothing on and fails the export', async () => {
+        const out = recorder()
+        const writer = writerOf(out)
+        for (let i = 0; i < ZIP_MAX_ENTRIES; i++) {
+            await writer.write(`e${i}.bin`, new Uint8Array([i & 255]))
+        }
+        const handedOn = out.writer.write.mock.calls.length
+        await expect(writer.write('one-too-many.bin', new Uint8Array([1]))).rejects.toBeInstanceOf(CharxTooManyEntriesError)
+        expect(out.writer.write.mock.calls.length).toBe(handedOn)
+        await expect(writer.end()).rejects.toBeInstanceOf(CharxTooManyEntriesError)
         expect(out.isClosed()).toBe(false)
+    }, 60_000)
+
+    test('a name of 65,535 bytes is written; one of 65,536 bytes throws CharxNameTooLongError', async () => {
+        const out = recorder()
+        const writer = writerOf(out)
+        await writer.write('a'.repeat(65535 - 4) + '.bin', new Uint8Array([1]))
+        const handedOn = out.writer.write.mock.calls.length
+        await expect(writer.write('b'.repeat(65536 - 4) + '.bin', new Uint8Array([1]))).rejects.toBeInstanceOf(CharxNameTooLongError)
+        expect(out.writer.write.mock.calls.length).toBe(handedOn)
+    })
+
+    test('the name limit counts UTF-8 bytes, not characters', async () => {
+        const out = recorder()
+        const writer = writerOf(out)
+        // 21,844 three-byte characters and '.bin' are 65,536 bytes, with far fewer than 65,535 characters
+        await expect(writer.write('한'.repeat(21844) + '.bin', new Uint8Array([1]))).rejects.toBeInstanceOf(CharxNameTooLongError)
+        expect(out.writer.write).not.toHaveBeenCalled()
+    })
+})
+
+describe('CharXWriter entry timestamp (new behaviour)', () => {
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    test('an entry has one timestamp, in its local header and in its central record, and the next entry has its own', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] })
+        vi.setSystemTime(new Date(2026, 2, 4, 5, 6, 8))
+        const out = recorder()
+        const writer = new CharXWriter(out.writer as unknown as Target)
+        await writer.write('a.bin', new Uint8Array([1]))
+        vi.setSystemTime(new Date(2026, 2, 4, 5, 6, 30))
+        await writer.write('b.bin', new Uint8Array([2]))
+        // the clock moves again before the central directory is written
+        vi.setSystemTime(new Date(2026, 5, 7, 8, 9, 10))
+        await writer.end()
+        const [first, second] = parseCharx(Buffer.concat(out.chunks)).entries
+        expect(first.local.stamp).toBe(first.central.stamp)
+        expect(second.local.stamp).toBe(second.central.stamp)
+        expect(second.central.stamp).not.toBe(first.central.stamp)
+        // DOS fields: year since 1980, month, day, hour, minute, seconds / 2
+        const fields = (stamp: number) => [(stamp >>> 25) + 1980, (stamp >>> 21) & 15, (stamp >>> 16) & 31, (stamp >>> 11) & 31, (stamp >>> 5) & 63, (stamp & 31) * 2]
+        expect(fields(first.central.stamp)).toEqual([2026, 3, 4, 5, 6, 8])
+        expect(fields(second.central.stamp)).toEqual([2026, 3, 4, 5, 6, 30])
+    })
+
+    test('a clock past the year 2099 cannot be recorded: the export fails and nothing is handed on', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] })
+        const out = recorder()
+        const writer = new CharXWriter(out.writer as unknown as Target)
+        vi.setSystemTime(new Date(2099, 11, 31, 12, 0, 0))
+        await writer.write('a.bin', new Uint8Array([1]))
+        vi.setSystemTime(new Date(2100, 0, 1, 12, 0, 0))
+        await expect(writer.write('b.bin', new Uint8Array([1]))).rejects.toBeInstanceOf(RangeError)
+        expect(out.writer.write).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('CharXWriter latch (new behaviour)', () => {
+    const failure = new Error('synthetic compressor failure')
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    // The injected failure happens once; only the latch can make a later call fail.
+    const seams: Array<[string, () => void]> = [
+        ['the compressor', () => { vi.spyOn(charxCodec, 'deflate').mockImplementationOnce(() => { throw failure }) }],
+        ['the checksum', () => { vi.spyOn(charxCodec, 'crc32').mockImplementationOnce(() => { throw failure }) }],
+    ]
+
+    for (const [seam, inject] of seams) {
+        test(`a throwing ${seam} rejects the export and writes nothing`, async () => {
+            const out = recorder()
+            const writer = new CharXWriter(out.writer as unknown as Target)
+            inject()
+            await expect(writer.write('a.bin', new Uint8Array(10))).rejects.toBe(failure)
+            expect(out.writer.write).not.toHaveBeenCalled()
+        })
+
+        test(`after a throwing ${seam}, every later write and the end rethrow the same error and write nothing`, async () => {
+            const out = recorder()
+            const writer = new CharXWriter(out.writer as unknown as Target)
+            inject()
+            await expect(writer.write('a.bin', new Uint8Array(10))).rejects.toBe(failure)
+            await expect(writer.write('b.bin', new Uint8Array(10))).rejects.toBe(failure)
+            await expect(writer.writeJpeg(new Uint8Array(10))).rejects.toBe(failure)
+            await expect(writer.end()).rejects.toBe(failure)
+            expect(out.writer.write).not.toHaveBeenCalled()
+            expect(out.isClosed()).toBe(false)
+        })
+    }
+
+    test('an error from the file writer latches too', async () => {
+        const out = recorder()
+        const writer = new CharXWriter(out.writer as unknown as Target)
+        const writeFailure = new Error('disk full')
+        out.writer.write.mockRejectedValueOnce(writeFailure)
+        await expect(writer.write('a.bin', new Uint8Array(10))).rejects.toBe(writeFailure)
+        await expect(writer.write('b.bin', new Uint8Array(10))).rejects.toBe(writeFailure)
+        await expect(writer.end()).rejects.toBe(writeFailure)
+        expect(out.isClosed()).toBe(false)
+    })
+
+    test('a writer that never failed is unaffected by another writer\'s latch', async () => {
+        const failed = new CharXWriter(recorder().writer as unknown as Target)
+        vi.spyOn(charxCodec, 'deflate').mockImplementationOnce(() => { throw failure })
+        await expect(failed.write('a.bin', new Uint8Array(10))).rejects.toBe(failure)
+        const out = recorder()
+        const fresh = new CharXWriter(out.writer as unknown as Target)
+        await fresh.write('a.bin', new Uint8Array(10))
+        await fresh.end()
+        expect(out.isClosed()).toBe(true)
+    })
+
+    test('a hook that returns no JPEG leaves the archive with no prefix', async () => {
+        vi.spyOn(charxEncode, 'jpeg').mockResolvedValue(null)
+        const out = recorder()
+        const writer = new CharXWriter(out.writer as unknown as Target)
+        await writer.writeJpeg(new Uint8Array(10))
+        await writer.write('a.bin', new Uint8Array(10))
+        await writer.end()
+        const bytes = Buffer.concat(out.chunks)
+        expect(Array.from(bytes.subarray(0, 4))).toEqual([0x50, 0x4b, 0x03, 0x04])
+        expect(parseCharx(bytes).prefixLength).toBe(0)
     })
 })

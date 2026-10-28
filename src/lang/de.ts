@@ -1086,6 +1086,7 @@ export const languageGerman = {
     "exportLargeAssetNeedsCharx": (names: string[]) => `Es wurde nichts exportiert. ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` und ${names.length - 5} weitere` : ''} ${names.length === 1 ? 'ist' : 'sind'} größer als 64 MiB, was dieses Format nicht aufnehmen kann. Exportieren Sie stattdessen als CharX.`,
     "realmLargeAssetRefused": (names: string[]) => `Es wurde nichts geteilt. ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` und ${names.length - 5} weitere` : ''} ${names.length === 1 ? 'ist' : 'sind'} größer als 64 MiB, was eine Realm-Karte nicht aufnehmen kann. Entfernen oder verkleinern Sie ${names.length === 1 ? 'es' : 'sie'} und versuchen Sie es erneut.`,
     "exportCharxTooLarge": (total: number) => `Es wurde nichts exportiert. Dieses CharX wäre etwa ${(total / (1024 * 1024 * 1024)).toFixed(2)} GiB groß und damit zu nah an dem, was eine CharX-Datei hier fassen kann (4 GiB). Entfernen Sie einige Assets und versuchen Sie es erneut.`,
+    "exportCharxTooManyEntries": (count: number, limit: number) => `Es wurde nichts exportiert. Dieses CharX könnte bis zu ${count} Dateien enthalten, mehr als die ${limit}, die eine CharX-Datei fassen kann. Entfernen Sie einige Assets und versuchen Sie es erneut.`,
     "successImport": "Erfolgreich importiert",
     "importedCharacter": "Importierter Charakter",
     "alwaysActive": "Immer aktiv",
