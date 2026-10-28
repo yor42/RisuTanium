@@ -10,9 +10,11 @@ import {
     chatNameFromFile,
     detectJsonChatFormat,
     hasOtherReplies,
+    loadKoboldSettings,
     parseOobaTimestamp,
     parseTavernSendDate,
     readAgnaiChat,
+    readKoboldChat,
     readOobaChat,
     readTavernJsonl,
     tavernMessageName,
@@ -692,7 +694,6 @@ describe('detectJsonChatFormat Agnai (unit)', () => {
         ['messages of non-objects only', { messages: [1, 'a', null, [{ msg: 'x' }]] }],
         ['messages that is not an array', { messages: { msg: 'x' } }],
         ['elements without a string msg', { messages: [{ msg: 5 }, { content: 'x' }] }],
-        ['a Kobold save', { gamestarted: true, prompt: 'x', actions: ['a'] }],
         ['a histories file', { histories: [{ msg: 'x' }] }],
         ['an array', [{ msg: 'x' }]],
         ['a string', 'text'],
@@ -959,5 +960,245 @@ describe('readAgnaiChat (unit)', () => {
             expect(result.messages[count - 1].mes).toBe(`m-n${count - 1}`)
             expect(result.swipesNotKept).toBe(0)
         })
+    })
+})
+
+describe('detectJsonChatFormat Kobold (unit)', () => {
+    // Reproducers: a detector without the Kobold branch returns undefined and fails by assertion.
+    test('a prompt string with an actions array is Kobold, even when both are empty', () => {
+        expect(detectJsonChatFormat({ prompt: '', actions: [] })).toBe('kobold')
+        expect(detectJsonChatFormat({ gamestarted: true, prompt: 'x', actions: ['a'] })).toBe('kobold')
+    })
+
+    test('a savedsettings object with an actions array is Kobold without a prompt', () => {
+        expect(detectJsonChatFormat({ actions: ['a'], savedsettings: {} })).toBe('kobold')
+    })
+
+    // Guards: these pass before and after the Kobold branch exists.
+    test('an actions array alone, or a prompt beside a non-array actions, is not Kobold', () => {
+        expect(detectJsonChatFormat({ actions: ['a'] })).toBeUndefined()
+        expect(detectJsonChatFormat({ prompt: 'x', actions: { 0: 'a' } })).toBeUndefined()
+        expect(detectJsonChatFormat({ prompt: 'x' })).toBeUndefined()
+        expect(detectJsonChatFormat({ actions: [], savedsettings: null })).toBeUndefined()
+        expect(detectJsonChatFormat({ actions: [], savedsettings: [] })).toBeUndefined()
+    })
+
+    test('a Risu export type is never detected, even carrying a Kobold shape', () => {
+        expect(detectJsonChatFormat({ type: 'risuChat', prompt: 'x', actions: [] })).toBeUndefined()
+    })
+
+    test('an Ooba or Agnai shape keeps precedence over a Kobold shape in the same object', () => {
+        const rows = [['a', 'b']]
+        expect(detectJsonChatFormat({ internal: rows, visible: rows, prompt: 'x', actions: ['a'] })).toBe('ooba')
+        expect(detectJsonChatFormat({ messages: [{ msg: 'x' }], prompt: 'x', actions: ['a'] })).toBe('agnai')
+    })
+})
+
+describe('loadKoboldSettings (unit)', () => {
+    const settings = (extra: Record<string, unknown>) => loadKoboldSettings({ opmode: 4, ...extra })
+
+    test('a missing block, a non-object block or an unusable opmode gives no settings', () => {
+        for(const raw of [undefined, null, [], 'x', 4, {}, { opmode: 5 }, { opmode: 'x' }, { opmode: 3.5 }, { opmode: true }, { opmode: null }, { opmode: 0 }]){
+            expect(loadKoboldSettings(raw)).toBeUndefined()
+        }
+    })
+
+    test('opmode accepts a number or a numeric string', () => {
+        expect(loadKoboldSettings({ opmode: 3 })?.mode).toBe(3)
+        expect(loadKoboldSettings({ opmode: '4' })?.mode).toBe(4)
+        expect(loadKoboldSettings({ opmode: ' 1 ' })?.mode).toBe(1)
+    })
+
+    test('absent keys take Lite\'s defaults', () => {
+        const loaded = settings({ instruct_has_markdown: true })
+        expect(loaded).toMatchObject({
+            userName: 'User',
+            opponents: ['KoboldAI'],
+            startTag: '{{[INPUT]}}',
+            endTag: '{{[OUTPUT]}}',
+            systemTag: '{{[SYSTEM]}}',
+            startEndTag: '',
+            endEndTag: '',
+            systemEndTag: '',
+        })
+    })
+
+    // The loader wraps the start and end tags when instruct_has_newlines is loosely true or neither flag is present.
+    const legacyCases: Array<[string, Record<string, unknown>, boolean]> = [
+        ['newlines true', { instruct_has_newlines: true, instruct_has_markdown: true }, true],
+        ['newlines 1', { instruct_has_newlines: 1, instruct_has_markdown: true }, true],
+        ['newlines "1"', { instruct_has_newlines: '1', instruct_has_markdown: true }, true],
+        ['newlines false, markdown true', { instruct_has_newlines: false, instruct_has_markdown: true }, false],
+        ['newlines false, markdown absent', { instruct_has_newlines: false }, false],
+        ['newlines "0"', { instruct_has_newlines: '0' }, false],
+        ['newlines "true"', { instruct_has_newlines: 'true', instruct_has_markdown: true }, false],
+        ['newlines absent, markdown true', { instruct_has_markdown: true }, false],
+        ['newlines absent, markdown false', { instruct_has_markdown: false }, false],
+        ['neither flag', {}, true],
+        ['both null', { instruct_has_newlines: null, instruct_has_markdown: null }, true],
+        ['newlines null, markdown true', { instruct_has_newlines: null, instruct_has_markdown: true }, false],
+    ]
+    test.each(legacyCases)('legacy condition: %s', (_label, flags, wrapped) => {
+        const loaded = settings({ instruct_starttag: 'A', instruct_endtag: 'B', ...flags })
+        expect(loaded?.startTag).toBe(wrapped ? '\\nA\\n' : 'A')
+        expect(loaded?.endTag).toBe(wrapped ? '\\nB\\n' : 'B')
+    })
+
+    test('only the start and end tags are wrapped', () => {
+        const loaded = settings({
+            instruct_starttag: 'A', instruct_endtag: 'B', instruct_systag: 'S',
+            instruct_starttag_end: 'E1', instruct_endtag_end: 'E2', instruct_systag_end: 'E3',
+        })
+        expect(loaded).toMatchObject({ startTag: '\\nA\\n', endTag: '\\nB\\n', systemTag: 'S', startEndTag: 'E1', endEndTag: 'E2', systemEndTag: 'E3' })
+    })
+
+    test('a tag that already holds a backslash-n is not wrapped, and an absent tag is wrapped as its default', () => {
+        const loaded = settings({ instruct_starttag: '\\nA', instruct_has_newlines: true })
+        expect(loaded?.startTag).toBe('\\nA')
+        expect(loaded?.endTag).toBe('\\n{{[OUTPUT]}}\\n')
+    })
+
+    test('a non-string tag or name is read as absent', () => {
+        const loaded = settings({ instruct_has_markdown: true, instruct_starttag: null, instruct_endtag: 5, chatname: 7, chatopponent: {} })
+        expect(loaded).toMatchObject({ startTag: '{{[INPUT]}}', endTag: '{{[OUTPUT]}}', userName: 'User', opponents: ['KoboldAI'] })
+    })
+
+    test('names are kept as stored; an empty user name is User', () => {
+        expect(settings({ chatname: ' Dana ' })?.userName).toBe(' Dana ')
+        expect(settings({ chatname: '' })?.userName).toBe('User')
+        expect(settings({ chatopponent: ' Mira ' })?.opponents).toEqual([' Mira '])
+    })
+
+    test('a blank opponent declares nobody; a list is split, sanitised and stripped of empty entries', () => {
+        expect(settings({ chatopponent: '' })?.opponents).toEqual([])
+        expect(settings({ chatopponent: '  ' })?.opponents).toEqual([])
+        expect(settings({ chatopponent: '||$||' })?.opponents).toEqual([])
+        expect(settings({ chatopponent: 'A\nB' })?.opponents).toEqual(['AB'])
+        expect(settings({ chatopponent: ' Mira  K ||$||\nTess\n||$||' })?.opponents).toEqual(['Mira K', 'Tess'])
+    })
+})
+
+describe('readKoboldChat (unit)', () => {
+    // Reproducers: on the base `readKoboldChat` is not exported, so these fail at setup, not by assertion.
+    const NLI = '\n{{[INPUT]}}\n'
+    const kobold = (savedsettings: unknown, prompt = NLI + 'hi', actions: unknown[] = []) => ({ prompt, actions, savedsettings })
+
+    const modes: Array<[unknown, 'story' | 'settings' | 'instruct' | 'chat']> = [
+        [4, 'instruct'], ['4', 'instruct'], [' 4 ', 'instruct'], ['0x4', 'instruct'], [3, 'chat'], ['3', 'chat'],
+        [1, 'story'], [2, 'story'], ['2', 'story'],
+        [3.5, 'settings'], ['x', 'settings'], ['', 'settings'], [null, 'settings'], [0, 'settings'], [5, 'settings'], [true, 'settings'], [[4], 'settings'], [undefined, 'settings'],
+    ]
+    test.each(modes)('opmode %j reads as %s', (opmode, expected) => {
+        const result = readKoboldChat(kobold({ opmode, instruct_has_markdown: true }))
+        if(expected === 'story' || expected === 'settings'){
+            expect(result.refusal).toBe(expected)
+            expect(result.messages).toEqual([])
+        }
+        else {
+            expect(result.refusal).toBeUndefined()
+            expect(result.messages).toEqual(expected === 'instruct' ? [{ isUser: true, mes: 'hi' }] : [{ isUser: false, mes: '{{[INPUT]}}\nhi' }])
+        }
+    })
+
+    test('the refusal order is empty story, then settings, then mode', () => {
+        expect(readKoboldChat({ prompt: ' ', actions: [5] }).refusal).toBe('story')
+        expect(readKoboldChat({ prompt: '', actions: [], savedsettings: { opmode: 4 } }).refusal).toBe('story')
+        expect(readKoboldChat({ prompt: 'x', actions: [] }).refusal).toBe('settings')
+        expect(readKoboldChat({ prompt: 'x', actions: [], savedsettings: { opmode: 1 } }).refusal).toBe('story')
+        expect(readKoboldChat({ prompt: 'x', actions: [], savedsettings: { opmode: 9 } }).refusal).toBe('settings')
+    })
+
+    test('input that is not Kobold-shaped gives an empty result with no refusal', () => {
+        for(const value of [undefined, null, [], 'x', {}, { actions: ['a'] }, { prompt: 'x' }, { prompt: 'x', actions: 'a' }]){
+            const result = readKoboldChat(value)
+            expect(result).toEqual({ messages: [], skipped: 0, swipesNotKept: 0 })
+        }
+    })
+
+    test('non-string actions are counted and the other elements still read', () => {
+        const result = readKoboldChat(kobold({ opmode: 4, instruct_has_markdown: true }, '', [NLI + 'a', 1, null, {}, [NLI + 'b']]))
+        expect(result.messages).toEqual([{ isUser: true, mes: 'a' }])
+        expect(result.skipped).toBe(4)
+    })
+
+    describe('header', () => {
+        const header = (extra: Record<string, unknown>) =>
+            readKoboldChat(kobold({ opmode: 3, instruct_has_markdown: true, ...extra }, 'Dana: hi')).header
+
+        test('the effective names are used as stored, padding included', () => {
+            expect(header({ chatname: ' Dana ', chatopponent: ' Mira ' })).toEqual({ userName: ' Dana ', characterName: ' Mira ' })
+        })
+
+        test('absent keys give Lite\'s defaults', () => {
+            expect(header({})).toEqual({ userName: 'User', characterName: 'KoboldAI' })
+        })
+
+        test('a blank opponent leaves characterName out and a list gives its first entry', () => {
+            expect(header({ chatname: 'Dana', chatopponent: '' })).toEqual({ userName: 'Dana' })
+            expect(header({ chatname: 'Dana', chatopponent: '||$||' })).not.toHaveProperty('characterName')
+            expect(header({ chatname: 'Dana', chatopponent: 'Mira||$||Tess' })).toEqual({ userName: 'Dana', characterName: 'Mira' })
+        })
+
+        // The import trims a stored name again, so only the reader's own output shows whether it trimmed.
+        test('a speaker name is returned trimmed, and a whitespace-only name returns none', () => {
+            const read = (text: string) => readKoboldChat(kobold({ opmode: 3, instruct_has_markdown: true, chatname: 'Dana', chatopponent: 'Mira' }, text)).messages
+            expect(read('\n Tess : hello')).toEqual([{ isUser: false, mes: 'hello', name: 'Tess' }])
+            expect(read('\n : x')).toEqual([{ isUser: false, mes: 'x' }])
+        })
+
+        test('instruct mode gives no header', () => {
+            const result = readKoboldChat(kobold({ opmode: 4, instruct_has_markdown: true }))
+            expect(result.header).toBeUndefined()
+        })
+    })
+
+    describe('picture tokens', () => {
+        const strip = (text: string) => readKoboldChat(kobold({ opmode: 3, instruct_has_markdown: true, chatname: 'Dana', chatopponent: 'Mira' }, text))
+
+        test('h, d and p tokens are removed in the bracketed and bare forms; h and d are counted, p is not', () => {
+            const result = strip('Mira: x[<|h|a|h|>]y<|d|b|d|>z[<|p|c|p|>]w<|p|d|p|>v')
+            expect(result.messages).toEqual([{ isUser: false, mes: 'xyzwv', name: 'Mira' }])
+            expect(result.mediaNotKept).toBe(2)
+        })
+
+        test('a repeated hash counts each occurrence', () => {
+            expect(strip('Mira: [<|h|same|h|>][<|h|same|h|>]t').mediaNotKept).toBe(2)
+        })
+
+        test('an unclosed, cross-line or mismatched-letter token stays text and is not counted', () => {
+            const text = 'Mira: <|h|abc <|h|x\ny|h|> <|h|z|d|> <|q|w|q|>'
+            const result = strip(text)
+            expect(result.messages[0].mes).toBe(text.slice('Mira: '.length))
+            expect(result.mediaNotKept ?? 0).toBe(0)
+        })
+
+        test('a bracket is removed only when both sides hold one', () => {
+            expect(strip('Mira: a[<|h|x|h|>b').messages[0].mes).toBe('a[b')
+            expect(strip('Mira: a<|h|x|h|>]b').messages[0].mes).toBe('a]b')
+        })
+    })
+
+    describe('swipes', () => {
+        test('a branch with messages after the shown prefix is counted; an equal or prefix branch is not', () => {
+            const settings = { opmode: 4, instruct_has_markdown: true }
+            const result = readKoboldChat({
+                prompt: '',
+                actions: [NLI + 'q', '\n{{[OUTPUT]}}\na'],
+                savedsettings: settings,
+                altbranches: [['', NLI + 'q'], ['', NLI + 'q', '\n{{[OUTPUT]}}\na'], ['', NLI + 'q', '\n{{[OUTPUT]}}\nother']],
+            })
+            expect(result.swipesNotKept).toBe(1)
+        })
+    })
+
+    test('a 20,000-turn chat reads in file order (an exercise of the line scan, not performance evidence)', () => {
+        const lines: string[] = []
+        for(let index = 0; index < 20000; index++){
+            lines.push(`Dana: u${index}`, `Mira: c${index}`)
+        }
+        const result = readKoboldChat(kobold({ opmode: 3, instruct_has_markdown: true, chatname: 'Dana', chatopponent: 'Mira' }, lines.join('\n')))
+        expect(result.messages).toHaveLength(40000)
+        expect(result.messages[0]).toMatchObject({ isUser: true, mes: 'u0' })
+        expect(result.messages[39999]).toMatchObject({ isUser: false, mes: 'c19999' })
     })
 })
