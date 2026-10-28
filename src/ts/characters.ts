@@ -23,7 +23,7 @@ import { beginBusy } from "./process/memory/busyActions";
 import { queueInlayCleanupForChat, queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
 import { escapeHtmlText } from "./htmlEscape";
 import { isHiddenSystemCharacter } from "./hiddenCharacters";
-import { chatNameFromFile, detectJsonChatFormat, readAgnaiChat, readOobaChat, readTavernJsonl, tavernMessageName, type ChatImportResult } from "./chatImport";
+import { chatNameFromFile, detectJsonChatFormat, readAgnaiChat, readKoboldChat, readOobaChat, readTavernJsonl, tavernMessageName, type ChatImportResult } from "./chatImport";
 
 export function createNewCharacter() {
     DBState.db.characters.push(createBlankChar())
@@ -514,7 +514,7 @@ export async function exportChat(page:number){
 // Builds the chat from a reader's result, opens it and reports what was skipped
 // or not kept. A result without messages is no data and changes nothing.
 function addImportedChat(result: ChatImportResult, fileName: string, selectedID: number){
-    const { messages, skipped, swipesNotKept, header } = result
+    const { messages, skipped, swipesNotKept, header, mediaNotKept = 0 } = result
     let newChat:Chat = {
         message: [],
         note: "",
@@ -556,9 +556,15 @@ function addImportedChat(result: ChatImportResult, fileName: string, selectedID:
 
     DBState.db.characters[selectedID].chats.unshift(newChat)
     changeChatTo(0)
+    const notices: string[] = []
     if(swipesNotKept > 0){
-        const swipeNotice = language.chatImportSwipesNotKept(swipesNotKept)
-        alertNormal((skipped > 0 ? language.chatImportSkippedLines(skipped) : language.chatImportDone) + ' ' + swipeNotice)
+        notices.push(language.chatImportSwipesNotKept(swipesNotKept))
+    }
+    if(mediaNotKept > 0){
+        notices.push(language.chatImportMediaNotKept(mediaNotKept))
+    }
+    if(notices.length > 0){
+        alertNormal((skipped > 0 ? language.chatImportSkippedLines(skipped) : language.chatImportDone) + ' ' + notices.join(' '))
     }
     else{
         alertNormal(skipped > 0 ? language.chatImportSkippedLines(skipped) : language.successImport)
@@ -647,6 +653,15 @@ export async function importChat(){
                 }
                 if(detectJsonChatFormat(json) === 'agnai'){
                     addImportedChat(readAgnaiChat(json), dat.name, selectedID)
+                    return
+                }
+                if(detectJsonChatFormat(json) === 'kobold'){
+                    const result = readKoboldChat(json)
+                    if(result.refusal !== undefined){
+                        alertError(result.refusal === 'story' ? language.chatImportKoboldStory : language.chatImportKoboldSettings)
+                        return
+                    }
+                    addImportedChat(result, dat.name, selectedID)
                     return
                 }
                 alertError(language.errors.noData)

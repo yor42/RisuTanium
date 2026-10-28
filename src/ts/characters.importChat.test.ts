@@ -1529,12 +1529,604 @@ describe('importChat -- Agnai JSON', () => {
     const notAgnai: Array<[string, unknown]> = [
         ['a Lianne-like file', { messages: [{ msg: 'x', candidates: ['a'] }] }],
         ['an OpenAI-like file', { messages: [{ role: 'user', content: 'x' }] }],
-        ['a Kobold-like file', { gamestarted: true, prompt: 'x', actions: ['a'] }],
         ['an empty messages array', { messages: [] }],
     ]
     test.each(notAgnai)('G-other: %s is no data', async (_label, body) => {
         await runAgnai(body)
 
         expectNoData()
+    })
+})
+
+describe('importChat -- Kobold Lite JSON', () => {
+    const fileName = 'session-7c1e.json'
+    // The forms Lite's writer stores for the six role markers (non-raw mode).
+    const NLI = '\n{{[INPUT]}}\n'
+    const NLO = '\n{{[OUTPUT]}}\n'
+    const NLS = '\n{{[SYSTEM]}}\n'
+    type Settings = Record<string, unknown>
+
+    // A current Lite save always carries `instruct_has_markdown`. A block with neither flag is a legacy save whose
+    // start and end tags Lite's loader wraps in newlines, so only `legacySettings` leaves both flags out.
+    const instructSettings = (extra: Settings = {}): Settings => ({ opmode: 4, instruct_has_markdown: true, ...extra })
+    const chatSettings = (extra: Settings = {}): Settings => ({ opmode: 3, instruct_has_markdown: true, chatname: 'Dana', chatopponent: 'Mira', ...extra })
+    const legacySettings = (extra: Settings = {}): Settings => ({ opmode: 4, ...extra })
+    const koboldFile = (parts: { prompt?: string, actions?: unknown[], savedsettings?: unknown, altbranches?: unknown[] }) => ({
+        gamestarted: true,
+        prompt: parts.prompt ?? '',
+        actions: parts.actions ?? [],
+        savedsettings: parts.savedsettings === undefined ? instructSettings() : parts.savedsettings,
+        ...(parts.altbranches === undefined ? {} : { altbranches: parts.altbranches }),
+    })
+
+    beforeEach(() => {
+        vi.mocked(alertError).mockClear()
+        vi.mocked(alertNormal).mockClear()
+        vi.mocked(changeChatTo).mockClear()
+        vi.mocked(selectSingleFile).mockReset()
+        testDb.db = { characters: [makeCharacter([])] } as unknown as Database
+    })
+
+    async function runKobold(body: unknown, name = fileName) {
+        vi.mocked(selectSingleFile).mockResolvedValue({ name, data: utf8(JSON.stringify(body)) })
+        await importChat()
+    }
+
+    function chatList() {
+        return (testDb.db.characters[0] as character).chats
+    }
+
+    function importedMessages() {
+        const chats = chatList()
+        return chats.length === 0 ? [] : chats[0].message
+    }
+
+    function roleAndData() {
+        return importedMessages().map((m) => [m.role, m.data])
+    }
+
+    function noticeText() {
+        expect(alertNormal).toHaveBeenCalledTimes(1)
+        return String(vi.mocked(alertNormal).mock.calls[0][0])
+    }
+
+    function expectRefusal(message: string) {
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(alertError).toHaveBeenCalledWith(message)
+        expect(chatList()).toHaveLength(0)
+        expect(alertNormal).not.toHaveBeenCalled()
+        expect(changeChatTo).not.toHaveBeenCalled()
+    }
+
+    // Reproducers: on the base a Kobold file reaches the no-data error, so each fails by assertion.
+    describe('instruct mode', () => {
+        test('INS1: the writer\'s placeholders split user and character turns', async () => {
+            await runKobold(koboldFile({ actions: [NLI + 'hello', NLO + 'reply', NLI + 'q2', NLO + 'a2'] }))
+
+            expect(roleAndData()).toEqual([['user', 'hello'], ['char', 'reply'], ['user', 'q2'], ['char', 'a2']])
+            expect(alertError).not.toHaveBeenCalled()
+            expect(noticeText()).toBe(language.successImport)
+            expect(changeChatTo).toHaveBeenCalledWith(0)
+        })
+
+        test('INS1: the prompt and every action are one story, joined without a separator', async () => {
+            await runKobold(koboldFile({ prompt: NLI + 'hel', actions: ['lo', NLO + 'rep', 'ly'] }))
+
+            expect(roleAndData()).toEqual([['user', 'hello'], ['char', 'reply']])
+        })
+
+        test('LEAD1: text before the first marker is the first character message', async () => {
+            await runKobold(koboldFile({ prompt: 'Greeting. ', actions: [NLI + 'hi'] }))
+
+            expect(roleAndData()).toEqual([['char', 'Greeting.'], ['user', 'hi']])
+        })
+
+        test('ALP-NONRAW: a non-raw save splits on the placeholders whatever tags are configured', async () => {
+            const savedsettings = instructSettings({ instruct_starttag: '\\n### Instruction:\\n', instruct_endtag: '\\n### Response:\\n' })
+            await runKobold(koboldFile({ actions: [NLI + 'hi', NLO + 'yo'], savedsettings }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', 'yo']])
+        })
+
+        test('ALP-RAW: a raw save splits on the configured tags and keeps a mid-line mention of one', async () => {
+            const savedsettings = instructSettings({ instruct_starttag: '\\n### Instruction:\\n', instruct_endtag: '\\n### Response:\\n' })
+            await runKobold(koboldFile({
+                actions: ['\n### Instruction:\nhi\n### Response:\nsee the ### Instruction: header\n### Instruction:\nq2'],
+                savedsettings,
+            }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', 'see the ### Instruction: header'], ['user', 'q2']])
+        })
+
+        test('VIC1: a tag is compared as stored, so a name without its trailing space is no marker', async () => {
+            const savedsettings = instructSettings({ instruct_starttag: '\\nUSER: ', instruct_endtag: '\\nASSISTANT: ' })
+            await runKobold(koboldFile({ actions: ['\nUSER: hi\nASSISTANT: yo\nUSER:nospace\nUSER: q'], savedsettings }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', 'yo\nUSER:nospace'], ['user', 'q']])
+        })
+
+        test('SPC1: the spaces inside a tag are part of the match', async () => {
+            const savedsettings = instructSettings({ instruct_starttag: 'User> ', instruct_endtag: 'Bot> ' })
+            await runKobold(koboldFile({ actions: ['User> hi Bot> yo Bot>x'], savedsettings }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', 'yo Bot>x']])
+        })
+
+        test('RAW-DEF: absent tag keys are Lite\'s default tags, which are the bare placeholders', async () => {
+            await runKobold(koboldFile({ actions: ['{{[INPUT]}}hi{{[OUTPUT]}}yo'] }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', 'yo']])
+        })
+
+        test('RAW-DEF2: an absent tag key beside a configured one takes the default', async () => {
+            const savedsettings = instructSettings({ instruct_starttag: 'USER:' })
+            await runKobold(koboldFile({ actions: ['USER: hi{{[OUTPUT]}}yo'], savedsettings }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', 'yo']])
+        })
+
+        test('BARE1: a bare placeholder typed in prose is text when the configured tag is another one', async () => {
+            const savedsettings = instructSettings({ instruct_starttag: '\\n### Instruction:\\n', instruct_endtag: '\\n### Response:\\n' })
+            await runKobold(koboldFile({ actions: ['a {{[INPUT]}} b'], savedsettings }))
+
+            expect(roleAndData()).toEqual([['char', 'a {{[INPUT]}} b']])
+        })
+
+        test('INS3: a default tag typed inline splits there while the default tags are configured', async () => {
+            await runKobold(koboldFile({ actions: [NLI + 'say {{[OUTPUT]}} now'] }))
+
+            expect(roleAndData()).toEqual([['user', 'say'], ['char', 'now']])
+        })
+
+        test('SEP1: the end tokens are removed and do not change the speaker', async () => {
+            const savedsettings = instructSettings({ separate_end_tags: true, instruct_starttag_end: '</s>' })
+            await runKobold(koboldFile({ actions: [NLI + 'hi</s>' + NLO + 'yo\n{{[OUTPUT_END]}}\n'], savedsettings }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', 'yo']])
+        })
+
+        test('END1: text after an end token joins the open turn', async () => {
+            await runKobold(koboldFile({ actions: [NLO + 'q\n{{[INPUT_END]}}\nuser tail'] }))
+
+            expect(roleAndData()).toEqual([['char', 'quser tail']])
+        })
+
+        test('D3: a whitespace-only tag is no marker', async () => {
+            const savedsettings = instructSettings({ instruct_endtag: '   ' })
+            await runKobold(koboldFile({ actions: [NLO + 'a   b   c'], savedsettings }))
+
+            expect(roleAndData()).toEqual([['char', 'a   b   c']])
+        })
+
+        test('SYS1: a system turn imports as a disabled message', async () => {
+            await runKobold(koboldFile({ actions: [NLS + 'be kind', NLI + 'hi'] }))
+
+            expect(roleAndData()).toEqual([['char', 'be kind'], ['user', 'hi']])
+            expect(importedMessages()[0].disabled).toBe(true)
+            expect(importedMessages()[1].disabled).toBeUndefined()
+        })
+
+        test('F1: the written fields are exactly role, data, name and disabled', async () => {
+            await runKobold(koboldFile({ actions: [NLS + 'be kind', NLI + 'hi', NLO + 'yo'] }))
+
+            expect(importedMessages().map((m) => Object.keys(m).sort())).toEqual([['data', 'disabled', 'role'], ['data', 'role'], ['data', 'role']])
+        })
+    })
+
+    describe('legacy saves: Lite\'s loader wraps the start and end tags in newlines', () => {
+        const legacyText = '\nUSER:\nwho are you\nASSISTANT:\nI log in as ADMIN_USER: root, then ASSISTANT: mode.\nUSER:\nq2\nASSISTANT:\na2'
+        const expectedLegacy = [['user', 'who are you'], ['char', 'I log in as ADMIN_USER: root, then ASSISTANT: mode.'], ['user', 'q2'], ['char', 'a2']]
+        const tags = { instruct_starttag: 'USER:', instruct_endtag: 'ASSISTANT:' }
+
+        test('LEG1: neither flag present wraps the tags, so a reply quoting both tags mid-line stays one reply', async () => {
+            await runKobold(koboldFile({ actions: [legacyText], savedsettings: legacySettings(tags) }))
+
+            expect(roleAndData()).toEqual(expectedLegacy)
+        })
+
+        test('LEG2: instruct_has_newlines true wraps the tags', async () => {
+            const savedsettings = instructSettings({ ...tags, instruct_has_newlines: true })
+            await runKobold(koboldFile({ actions: [legacyText], savedsettings }))
+
+            expect(roleAndData()).toEqual(expectedLegacy)
+        })
+
+        test('LEG3: a tag already holding a backslash-n is not wrapped twice', async () => {
+            const savedsettings = instructSettings({ instruct_has_newlines: true, instruct_starttag: '\\n### Instruction:\\n', instruct_endtag: '\\n### Response:\\n' })
+            await runKobold(koboldFile({
+                actions: ['\n### Instruction:\nhi\n### Response:\nyo\n### Instruction:\nq\n### Response:\nr'],
+                savedsettings,
+            }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', 'yo'], ['user', 'q'], ['char', 'r']])
+        })
+
+        test('LEG4: a current save does not wrap, so the same text splits mid-line', async () => {
+            await runKobold(koboldFile({ actions: [legacyText], savedsettings: instructSettings({ ...tags, instruct_has_newlines: false }) }))
+
+            expect(roleAndData()).toEqual([
+                ['user', 'who are you'], ['char', 'I log in as ADMIN_'], ['user', 'root, then'], ['char', 'mode.'], ['user', 'q2'], ['char', 'a2'],
+            ])
+        })
+
+        test('LEG4b: newlines false with no markdown flag is not legacy either', async () => {
+            await runKobold(koboldFile({ actions: [legacyText], savedsettings: legacySettings({ ...tags, instruct_has_newlines: false }) }))
+
+            expect(roleAndData()).toHaveLength(6)
+        })
+
+        test('LEG5: the system tag is never wrapped', async () => {
+            await runKobold(koboldFile({
+                actions: ['SYSTEM:be kind\nUSER:\nhi'],
+                savedsettings: legacySettings({ ...tags, instruct_systag: 'SYSTEM:' }),
+            }))
+
+            expect(roleAndData()).toEqual([['char', 'be kind'], ['user', 'hi']])
+            expect(importedMessages()[0].disabled).toBe(true)
+        })
+
+        test('LEG6: with absent tag keys a legacy save wraps the defaults, so a typed bare token is text', async () => {
+            await runKobold(koboldFile({ actions: ['a {{[INPUT]}} b'], savedsettings: legacySettings() }))
+
+            expect(roleAndData()).toEqual([['char', 'a {{[INPUT]}} b']])
+        })
+
+        test('LEG7: the string "1" is a true flag', async () => {
+            const savedsettings = instructSettings({ ...tags, instruct_has_newlines: '1' })
+            await runKobold(koboldFile({ actions: [legacyText], savedsettings }))
+
+            expect(roleAndData()).toEqual(expectedLegacy)
+        })
+
+        test('LEG8: null flags count as absent', async () => {
+            const savedsettings = legacySettings({ ...tags, instruct_has_newlines: null, instruct_has_markdown: null })
+            await runKobold(koboldFile({ actions: [legacyText], savedsettings }))
+
+            expect(roleAndData()).toEqual(expectedLegacy)
+        })
+    })
+
+    describe('chat mode', () => {
+        test('CHT-1: lines split at the known names, the first turn text is the first character message', async () => {
+            await runKobold(koboldFile({
+                prompt: 'Welcome to the room.',
+                actions: ['\nDana: hi there', '\nMira: hello Dana\nsecond line', '\nTess: from afar'],
+                savedsettings: chatSettings(),
+            }))
+
+            expect(roleAndData()).toEqual([['char', 'Welcome to the room.'], ['user', 'hi there'], ['char', 'hello Dana\nsecond line'], ['char', 'from afar']])
+            expect(importedMessages().map((m) => m.name)).toEqual([undefined, undefined, undefined, 'Tess'])
+            expect(noticeText()).toBe(language.successImport)
+        })
+
+        test('N1: the user name is compared as stored, double spaces included', async () => {
+            await runKobold(koboldFile({
+                actions: ['\nDana  Lee: loud', '\nMira: ok\nDana Lee: collapsed form'],
+                savedsettings: chatSettings({ chatname: 'Dana  Lee' }),
+            }))
+
+            expect(roleAndData()).toEqual([['user', 'loud'], ['char', 'ok\nDana Lee: collapsed form']])
+        })
+
+        test('N1b: a padded user name matches only with its padding', async () => {
+            await runKobold(koboldFile({
+                actions: ['\n Dana : hi', '\nMira: yo\nDana: not a turn'],
+                savedsettings: chatSettings({ chatname: ' Dana ' }),
+            }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', 'yo\nDana: not a turn']])
+        })
+
+        test('N2: a single opponent is compared as stored', async () => {
+            await runKobold(koboldFile({
+                actions: ['\nDana: q', '\nMira  K: a\nMira K: not a turn'],
+                savedsettings: chatSettings({ chatopponent: 'Mira  K' }),
+            }))
+
+            expect(roleAndData()).toEqual([['user', 'q'], ['char', 'a\nMira K: not a turn']])
+        })
+
+        test('SGL1: a single opponent declares no other speaker', async () => {
+            await runKobold(koboldFile({ actions: ['\nDana: hi\nTess: no'], savedsettings: chatSettings() }))
+
+            expect(roleAndData()).toEqual([['user', 'hi\nTess: no']])
+        })
+
+        test('LST1: every name of a participant list is a known speaker and the first is the character', async () => {
+            await runKobold(koboldFile({
+                actions: ['\nDana: hi\nTess: from the list\nMira: first'],
+                savedsettings: chatSettings({ chatopponent: 'Mira||$||Tess' }),
+            }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', 'from the list'], ['char', 'first']])
+            expect(importedMessages().map((m) => m.name)).toEqual([undefined, 'Tess', undefined])
+        })
+
+        test('LST2: list entries are sanitised and empty entries dropped', async () => {
+            await runKobold(koboldFile({
+                actions: ['\nDana: hi\nMira K: yo\nTess: x'],
+                savedsettings: chatSettings({ chatopponent: 'Mira  K ||$||  ||$||Tess' }),
+            }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', 'yo'], ['char', 'x']])
+            expect(importedMessages().map((m) => m.name)).toEqual([undefined, undefined, 'Tess'])
+        })
+
+        test('TS1: a timestamp after the name does not start a turn', async () => {
+            await runKobold(koboldFile({
+                actions: ['\nDana: hi', '\nMira: 10:30 later\nDana: 11:45:12 ok'],
+                savedsettings: chatSettings(),
+            }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', '10:30 later'], ['user', '11:45:12 ok']])
+        })
+
+        test('MID1: a name inside a line, a longer word or a name without a space after the colon is text', async () => {
+            await runKobold(koboldFile({
+                actions: ['\nDana: hi', '\nMira: he said Dana: hello\nDanaa: x\nMira:nospace'],
+                savedsettings: chatSettings(),
+            }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', 'he said Dana: hello\nDanaa: x\nMira:nospace']])
+        })
+
+        test('CASE1: the name match is case-sensitive', async () => {
+            await runKobold(koboldFile({ actions: ['\nDana: hi\nmira: lower'], savedsettings: chatSettings() }))
+
+            expect(roleAndData()).toEqual([['user', 'hi\nmira: lower']])
+        })
+
+        test('LONG1: the longest known name wins when one name contains a colon', async () => {
+            await runKobold(koboldFile({
+                actions: ['\nDana: hi', '\nMira: Jr: hello'],
+                savedsettings: chatSettings({ chatopponent: 'Mira||$||Mira: Jr' }),
+            }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', 'hello']])
+            expect(importedMessages()[1].name).toBe('Mira: Jr')
+        })
+
+        test('P8: a speaker that opens an element is known, and is a character line even if it was the user before a rename', async () => {
+            await runKobold(koboldFile({ actions: ['\nOld Name: earlier', '\nDana: now'], savedsettings: chatSettings() }))
+
+            expect(roleAndData()).toEqual([['char', 'earlier'], ['user', 'now']])
+            expect(importedMessages().map((m) => m.name)).toEqual(['Old Name', undefined])
+        })
+
+        test('BLK1: a blank opponent declares nobody, so the character\'s element-opening lines keep their name', async () => {
+            await runKobold(koboldFile({
+                actions: ['\nMira: first', '\nDana: hi', '\nMira: again'],
+                savedsettings: chatSettings({ chatopponent: '' }),
+            }))
+
+            expect(roleAndData()).toEqual([['char', 'first'], ['user', 'hi'], ['char', 'again']])
+            expect(importedMessages().map((m) => m.name)).toEqual(['Mira', undefined, 'Mira'])
+        })
+
+        test.each([['an empty opponent', ''], ['a list of empty entries', '||$||']])('BLK2/BLK3: %s does not make the default name a speaker', async (_label, chatopponent) => {
+            await runKobold(koboldFile({
+                actions: ['\nDana: hi\nKoboldAI: not a turn'],
+                savedsettings: chatSettings({ chatopponent }),
+            }))
+
+            expect(roleAndData()).toEqual([['user', 'hi\nKoboldAI: not a turn']])
+        })
+
+        test('TRIM1: a speaker name is stored trimmed', async () => {
+            await runKobold(koboldFile({ actions: ['\n Tess : hello'], savedsettings: chatSettings() }))
+
+            expect(roleAndData()).toEqual([['char', 'hello']])
+            expect(importedMessages()[0].name).toBe('Tess')
+        })
+
+        test('TRIM2: a whitespace-only speaker name stores no name', async () => {
+            await runKobold(koboldFile({ actions: ['\n : x'], savedsettings: chatSettings() }))
+
+            expect(roleAndData()).toEqual([['char', 'x']])
+            expect(importedMessages()[0]).not.toHaveProperty('name')
+        })
+
+        test('ABS1: absent name keys are Lite\'s defaults User and KoboldAI', async () => {
+            await runKobold(koboldFile({ prompt: 'User: hi\nKoboldAI: yo', savedsettings: { opmode: 3, instruct_has_markdown: true } }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', 'yo']])
+            expect(importedMessages().map((m) => m.name)).toEqual([undefined, undefined])
+        })
+
+        test('NOT1: the save\'s mode decides, so instruct placeholders in a chat save stay text', async () => {
+            await runKobold(koboldFile({ actions: [NLI + 'hi'], savedsettings: chatSettings() }))
+
+            expect(roleAndData()).toEqual([['char', '{{[INPUT]}}\nhi']])
+        })
+    })
+
+    describe('refusals', () => {
+        const noSettings: Array<[string, unknown]> = [
+            ['NOS1: no settings block', undefined],
+            ['NOS2: a settings block without opmode', {}],
+            ['NOS3: a non-numeric opmode', { opmode: 'x' }],
+            ['NOS4: a null settings block', null],
+        ]
+        test.each(noSettings)('%s is refused with the settings message', async (_label, savedsettings) => {
+            await runKobold({ prompt: 'text', actions: ['more'], ...(savedsettings === undefined ? {} : { savedsettings }) })
+
+            expectRefusal(language.chatImportKoboldSettings)
+        })
+
+        test.each([['MODE1: story mode', 1], ['MODE2: adventure mode', 2]])('%s is refused with the story message', async (_label, opmode) => {
+            await runKobold(koboldFile({ actions: ['text'], savedsettings: { opmode } }))
+
+            expectRefusal(language.chatImportKoboldStory)
+        })
+
+        const emptySaves: Array<[string, unknown]> = [
+            ['EMP1: nothing at all', koboldFile({})],
+            ['EMP2: whitespace only', koboldFile({ prompt: ' \n', actions: ['\t', '  '] })],
+            ['EMP3: only non-string actions', koboldFile({ actions: [1, null] })],
+            ['EMP3: empty and no settings', { prompt: '', actions: [] }],
+        ]
+        test.each(emptySaves)('%s is refused with the story message', async (_label, body) => {
+            await runKobold(body)
+
+            expectRefusal(language.chatImportKoboldStory)
+        })
+
+        test('STRAY1: any file with a prompt string and an actions array but no settings gets the settings message', async () => {
+            await runKobold({ title: 'notes', prompt: 'hello', actions: ['x'] })
+
+            expectRefusal(language.chatImportKoboldSettings)
+        })
+
+        test('NOT-Kobold: an actions array with no prompt string and no settings object is no data', async () => {
+            await runKobold({ actions: ['a'] })
+
+            expect(alertError).toHaveBeenCalledWith(language.errors.noData)
+            expect(chatList()).toHaveLength(0)
+        })
+
+        test('SK1: a non-string action is counted as skipped lines', async () => {
+            await runKobold(koboldFile({ actions: [NLI + 'hi', 5, null, NLO + 'yo'] }))
+
+            expect(roleAndData()).toEqual([['user', 'hi'], ['char', 'yo']])
+            expect(noticeText()).toBe(language.chatImportSkippedLines(2))
+        })
+    })
+
+    describe('pictures and audio', () => {
+        const media = (hash: string) => `[<|h|${hash}|h|>]`
+        const dataImage = '[<|d|data:image/png;base64,AAAA|d|>]'
+        const pending = '[<|p|request-9|p|>]'
+
+        test('MED1: h and d tokens are removed and counted, a pending p token is removed and not counted', async () => {
+            await runKobold(koboldFile({
+                actions: [NLI + `a ${media('h1')} b ${dataImage}`, NLO + `c ${media('h1')} d ${dataImage} e ${pending}`],
+            }))
+
+            expect(roleAndData()).toEqual([['user', 'a  b'], ['char', 'c  d  e']])
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportMediaNotKept(4)}`)
+        })
+
+        test('MED2: the bracket-less form is removed and a single token uses the singular notice', async () => {
+            await runKobold(koboldFile({ actions: [NLO + 'x<|h|abc|h|>y'] }))
+
+            expect(roleAndData()).toEqual([['char', 'xy']])
+            expect(noticeText()).toBe('Imported the chat. 1 picture or audio clip in the chat was not imported.')
+        })
+
+        test('MED3: an unclosed, cross-line or mismatched token stays text and is not counted', async () => {
+            const text = 'a <|h|abc b <|h|x\ny|h|> c <|h|z|d|> d'
+            await runKobold(koboldFile({ actions: [NLO + text] }))
+
+            expect(roleAndData()).toEqual([['char', text]])
+            expect(noticeText()).toBe(language.successImport)
+        })
+
+        test('MED4: a turn holding only a token is dropped', async () => {
+            await runKobold(koboldFile({ actions: [NLI + 'hi', NLO + media('only')] }))
+
+            expect(roleAndData()).toEqual([['user', 'hi']])
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportMediaNotKept(1)}`)
+        })
+
+        test('MED5: chat mode strips and counts too, and a token with no table entry still counts', async () => {
+            await runKobold(koboldFile({
+                prompt: `Mira: look ${media('gone')}`,
+                savedsettings: chatSettings({ completed_imgs_meta: {} }),
+            }))
+
+            expect(roleAndData()).toEqual([['char', 'look']])
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportMediaNotKept(1)}`)
+        })
+
+        test('MED6: a token inside another branch is not counted', async () => {
+            await runKobold(koboldFile({
+                actions: [NLI + 'q', NLO + 'a'],
+                altbranches: [['', NLI + 'q', NLO + `b ${media('alt')}`]],
+            }))
+
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(1)}`)
+        })
+
+        test('the notice lists swipes before pictures', async () => {
+            await runKobold(koboldFile({
+                actions: [NLI + 'q', NLO + `a ${media('x')}`],
+                altbranches: [['', NLI + 'q', NLO + 'other']],
+            }))
+
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(1)} ${language.chatImportMediaNotKept(1)}`)
+        })
+
+        test('the notice follows the skipped-line sentence when lines were skipped', async () => {
+            await runKobold(koboldFile({ actions: [NLI + `q ${media('x')}`, 7] }))
+
+            expect(noticeText()).toBe(`${language.chatImportSkippedLines(1)} ${language.chatImportMediaNotKept(1)}`)
+        })
+
+        // Without pictures the notice is the existing sentence; the Ooba and Agnai tests guard the shared path.
+        test('guard: a swipe-only import keeps today\'s sentence', async () => {
+            await runKobold(koboldFile({ actions: [NLI + 'q', NLO + 'a'], altbranches: [['', NLI + 'q', NLO + 'other']] }))
+
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(1)}`)
+        })
+
+        test('guard: a skipped-only import keeps today\'s sentence', async () => {
+            await runKobold(koboldFile({ actions: [NLI + 'q', 3] }))
+
+            expect(noticeText()).toBe(language.chatImportSkippedLines(1))
+        })
+    })
+
+    describe('other branches (altbranches)', () => {
+        const shown = ['', NLI + 'q', NLO + 'a1', NLI + 'q2', NLO + 'a2']
+        const withBranches = (altbranches: unknown[]) => koboldFile({ prompt: shown[0], actions: shown.slice(1), altbranches })
+
+        test('ALT1: a branch counts its messages after the common message prefix', async () => {
+            await runKobold(withBranches([
+                ['', NLI + 'q', NLO + 'a1', NLI + 'q2', NLO + 'b2', NLI + 'q3', NLO + 'b3'],
+                ['', NLI + 'z', NLO + 'y'],
+            ]))
+
+            expect(roleAndData()).toHaveLength(4)
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(5)}`)
+        })
+
+        test('ALT3: a branch that is an element-wise prefix of the shown story is an older snapshot', async () => {
+            await runKobold(withBranches([shown.slice(0, 3), shown]))
+
+            expect(noticeText()).toBe(language.successImport)
+        })
+
+        test('ALT3b: an older snapshot cut inside a turn is not a swipe of that turn', async () => {
+            await runKobold(koboldFile({
+                actions: [NLI + 'q', NLO + 'a1', ' and more'],
+                altbranches: [['', NLI + 'q', NLO + 'a1']],
+            }))
+
+            expect(roleAndData()).toEqual([['user', 'q'], ['char', 'a1 and more']])
+            expect(noticeText()).toBe(language.successImport)
+        })
+
+        test('ALT5: a branch changed in one element counts the messages from the change on', async () => {
+            await runKobold(withBranches([['', NLI + 'q', NLO + 'a1', NLI + 'q2 changed', NLO + 'a2']]))
+
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(2)}`)
+        })
+
+        test('non-array branches and branches of empty strings add nothing', async () => {
+            await runKobold(withBranches(['x', 4, null, ['', ''], []]))
+
+            expect(noticeText()).toBe(language.successImport)
+        })
+    })
+
+    // Dropped silently by decision (MC-817): the story context fields that RisuAI has no counterpart for.
+    test('memory, author\'s note and world info are neither imported nor reported', async () => {
+        await runKobold({
+            ...koboldFile({ actions: [NLI + 'hi'] }),
+            memory: 'remember', authorsnote: 'note', worldinfo: [{ key: 'k', content: 'c' }], anotetemplate: 't', actions_metadata: {},
+        })
+
+        expect(roleAndData()).toEqual([['user', 'hi']])
+        expect(noticeText()).toBe(language.successImport)
     })
 })

@@ -19,6 +19,8 @@ export type ChatImportResult = {
     /** Messages whose swipes other than the shown reply were not kept. */
     swipesNotKept: number
     header?: TavernHeader
+    /** Picture or audio tokens removed from the text, which the import does not keep. */
+    mediaNotKept?: number
 }
 
 export type TavernJsonlResult = ChatImportResult
@@ -340,7 +342,7 @@ export function readTavernJsonl(text: string): TavernJsonlResult {
     return result
 }
 
-export type JsonChatFormat = 'ooba' | 'agnai'
+export type JsonChatFormat = 'ooba' | 'agnai' | 'kobold'
 
 const oobaMarker = '<|BEGIN-VISIBLE-CHAT|>'
 const oobaTimestampPattern = /^([A-Za-z]+) (\d{1,2}), (\d{4}) (\d{1,2}):(\d{2})$/
@@ -368,7 +370,9 @@ function oobaRowSets(value: unknown): { internal: unknown[], visible: unknown[] 
  * Later formats keep the exclusive-first order: a format with a unique tag or
  * key is tested before one recognised only by row shape (Ooba). Agnai is
  * recognised by shape alone and comes last, so a format with a tag of its own
- * that also has a `messages` array is inserted ahead of it.
+ * that also has a `messages` array is inserted ahead of it. Kobold Lite is
+ * recognised by shape alone as well and comes after both, so a file that
+ * carries an Ooba or Agnai shape is never read as Kobold.
  */
 export function detectJsonChatFormat(value: unknown): JsonChatFormat | undefined {
     if(!isPlainObject(value) || value.type === 'risuChat' || value.type === 'risuAllChats'){
@@ -379,6 +383,9 @@ export function detectJsonChatFormat(value: unknown): JsonChatFormat | undefined
     }
     if(isAgnaiShape(value)){
         return 'agnai'
+    }
+    if(isKoboldShape(value)){
+        return 'kobold'
     }
     return undefined
 }
@@ -723,4 +730,389 @@ export function readAgnaiChat(value: unknown): ChatImportResult {
         }
     }
     return emit(path)
+}
+
+export type KoboldChatResult = ChatImportResult & {
+    /** Set when the save cannot be imported as a chat; `messages` is then empty. */
+    refusal?: 'story' | 'settings'
+}
+
+type KoboldShape = Record<string, unknown> & { actions: unknown[] }
+
+type KoboldMode = 1 | 2 | 3 | 4
+
+/** What Kobold Lite holds in its settings once its loader has run (the tags are not yet newline-expanded). */
+export type KoboldSettings = {
+    /** 1 story, 2 adventure, 3 chat, 4 instruct. */
+    mode: KoboldMode
+    userName: string
+    /** Declared opponent names, the first being the character's own; empty when the save declares none. */
+    opponents: string[]
+    startTag: string
+    endTag: string
+    systemTag: string
+    startEndTag: string
+    endEndTag: string
+    systemEndTag: string
+}
+
+const koboldDefaultUser = 'User'
+const koboldDefaultOpponent = 'KoboldAI'
+const koboldParticipantSeparator = '||$||'
+// Names beyond this are ignored, which bounds the colon scan of every line.
+const koboldMaxNameLength = 100
+// A speaker that opens an element is printed `\nName: ` by Lite's writer.
+const koboldOpeningNamePattern = /^\n([^\n:]{1,40}): /
+const koboldMediaOpenerPattern = /<\|([hpd])\|/g
+
+const koboldPlaceholders = {
+    user: '\n{{[INPUT]}}\n',
+    character: '\n{{[OUTPUT]}}\n',
+    system: '\n{{[SYSTEM]}}\n',
+    ends: ['\n{{[INPUT_END]}}\n', '\n{{[OUTPUT_END]}}\n', '\n{{[SYSTEM_END]}}\n'],
+}
+
+// A story save is any object with an `actions` array and a string `prompt` or a
+// `savedsettings` object. Whether it can be read as a chat is decided by the reader.
+function isKoboldShape(value: Record<string, unknown>): value is KoboldShape {
+    return Array.isArray(value.actions) && (typeof value.prompt === 'string' || isPlainObject(value.savedsettings))
+}
+
+function koboldMode(value: unknown): KoboldMode | undefined {
+    let mode: number
+    if(typeof value === 'number'){
+        mode = value
+    }
+    else if(typeof value === 'string' && value.trim() !== ''){
+        mode = Number(value)
+    }
+    else {
+        return undefined
+    }
+    return mode === 1 || mode === 2 || mode === 3 || mode === 4 ? mode : undefined
+}
+
+// Lite's check for the legacy flag is a loose comparison with true.
+function isLooselyTrue(value: unknown): boolean {
+    return value === true || value === 1 || value === '1'
+}
+
+function koboldText(raw: Record<string, unknown>, key: string, fallback: string): string {
+    const value = raw[key]
+    return typeof value === 'string' ? value : fallback
+}
+
+function sanitizeKoboldName(name: string): string {
+    return name.replace(/\s+/g, ' ').trim()
+}
+
+// A `||$||` list is split with empty entries dropped and each entry sanitised;
+// a single name is used as stored. Blank names declare nobody, and only an absent
+// or non-string key means Lite's default opponent.
+function koboldOpponents(value: unknown): string[] {
+    if(typeof value !== 'string'){
+        return [koboldDefaultOpponent]
+    }
+    if(value.includes(koboldParticipantSeparator)){
+        return value.split(koboldParticipantSeparator).filter((entry) => entry !== '').map(sanitizeKoboldName).filter((entry) => entry !== '')
+    }
+    const single = value.split('\n').join('')
+    return single.trim() === '' ? [] : [single]
+}
+
+// Lite wraps a tag in a literal backslash-n on both sides unless it already holds one.
+function wrapKoboldTag(tag: string): string {
+    return tag.includes('\\n') ? tag : '\\n' + tag + '\\n'
+}
+
+/**
+ * Turns a save's `savedsettings` into the settings Lite holds after loading it,
+ * or `undefined` when the block is not an object or its `opmode` is not 1 to 4.
+ * An absent key takes Lite's default. When `instruct_has_newlines` is loosely
+ * true, or the save carries neither it nor `instruct_has_markdown`, the loader
+ * wraps the start and end tags in newlines; the system tag and the three end
+ * tags are never wrapped. The splitters read only this result.
+ */
+export function loadKoboldSettings(raw: unknown): KoboldSettings | undefined {
+    if(!isPlainObject(raw)){
+        return undefined
+    }
+    const mode = koboldMode(raw.opmode)
+    if(mode === undefined){
+        return undefined
+    }
+    const newlines = raw.instruct_has_newlines
+    const markdown = raw.instruct_has_markdown
+    const legacy = isLooselyTrue(newlines) || ((newlines === undefined || newlines === null) && (markdown === undefined || markdown === null))
+    const startTag = koboldText(raw, 'instruct_starttag', '{{[INPUT]}}')
+    const endTag = koboldText(raw, 'instruct_endtag', '{{[OUTPUT]}}')
+    const name = raw.chatname
+    return {
+        mode,
+        userName: typeof name === 'string' && name !== '' ? name : koboldDefaultUser,
+        opponents: koboldOpponents(raw.chatopponent),
+        startTag: legacy ? wrapKoboldTag(startTag) : startTag,
+        endTag: legacy ? wrapKoboldTag(endTag) : endTag,
+        systemTag: koboldText(raw, 'instruct_systag', '{{[SYSTEM]}}'),
+        startEndTag: koboldText(raw, 'instruct_starttag_end', ''),
+        endEndTag: koboldText(raw, 'instruct_endtag_end', ''),
+        systemEndTag: koboldText(raw, 'instruct_systag_end', ''),
+    }
+}
+
+type KoboldRole = 'user' | 'character' | 'system' | 'end'
+
+function escapeRegExp(text: string): string {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Every token that marks a role: the newline-bounded placeholder Lite's writer
+// stores in non-raw mode and the configured tag with its literal backslash-n
+// expanded. A blank tag marks nothing. The longest token wins at one position.
+function koboldMarkers(settings: KoboldSettings): Array<[string, KoboldRole]> {
+    const tag = (value: string) => {
+        const text = value.split('\\n').join('\n')
+        return text.trim() === '' ? '' : text
+    }
+    const groups: Array<[KoboldRole, string[]]> = [
+        ['user', [koboldPlaceholders.user, tag(settings.startTag)]],
+        ['character', [koboldPlaceholders.character, tag(settings.endTag)]],
+        ['system', [koboldPlaceholders.system, tag(settings.systemTag)]],
+        ['end', [...koboldPlaceholders.ends, tag(settings.startEndTag), tag(settings.endEndTag), tag(settings.systemEndTag)]],
+    ]
+    const roles = new Map<string, KoboldRole>()
+    for(const [role, tokens] of groups){
+        for(const token of tokens){
+            if(token !== '' && !roles.has(token)){
+                roles.set(token, role)
+            }
+        }
+    }
+    return [...roles].sort((a, b) => b[0].length - a[0].length)
+}
+
+function splitKoboldInstruct(text: string, settings: KoboldSettings): TavernLine[] {
+    const markers = koboldMarkers(settings)
+    const endTokens = markers.filter(([, role]) => role === 'end').map(([token]) => token)
+    const body = endTokens.length === 0 ? text : text.replace(new RegExp(endTokens.map(escapeRegExp).join('|'), 'g'), '')
+    const live = markers.filter(([, role]) => role !== 'end')
+    const lines: TavernLine[] = []
+    const push = (role: KoboldRole | undefined, segment: string) => {
+        const mes = segment.trim()
+        if(mes === ''){
+            return
+        }
+        if(role === 'system'){
+            lines.push({ isUser: false, mes, isSystem: true })
+        }
+        else {
+            lines.push({ isUser: role === 'user', mes })
+        }
+    }
+    if(live.length === 0){
+        push(undefined, body)
+        return lines
+    }
+    const pattern = new RegExp(live.map(([token]) => escapeRegExp(token)).join('|'), 'g')
+    const roles = new Map(live)
+    let role: KoboldRole | undefined
+    let start = 0
+    for(let match = pattern.exec(body); match !== null; match = pattern.exec(body)){
+        push(role, body.slice(start, match.index))
+        role = roles.get(match[0])
+        start = match.index + match[0].length
+    }
+    push(role, body.slice(start))
+    return lines
+}
+
+// A line starts a turn when the text before one of its first colons is exactly a
+// known name and a space follows; the longest such name wins. Text before the
+// first turn is the first character message.
+function splitKoboldChat(text: string, settings: KoboldSettings, openingNames: string[]): TavernLine[] {
+    const names = new Set([settings.userName, ...settings.opponents, ...openingNames].filter((name) => name.length <= koboldMaxNameLength))
+    const lines: TavernLine[] = []
+    const lead: string[] = []
+    let current: { name: string, body: string[] } | undefined
+    const close = () => {
+        if(current === undefined){
+            return
+        }
+        const mes = current.body.join('\n').trim()
+        if(mes !== ''){
+            const line: TavernLine = { isUser: current.name === settings.userName, mes }
+            const name = current.name.trim()
+            if(name !== ''){
+                line.name = name
+            }
+            lines.push(line)
+        }
+    }
+    for(const row of text.split('\n')){
+        let hit = -1
+        const limit = Math.min(row.length, koboldMaxNameLength + 1)
+        for(let colon = row.indexOf(':'); colon !== -1 && colon <= limit; colon = row.indexOf(':', colon + 1)){
+            if(row.charAt(colon + 1) === ' ' && names.has(row.slice(0, colon))){
+                hit = colon
+            }
+        }
+        if(hit !== -1){
+            close()
+            current = { name: row.slice(0, hit), body: [row.slice(hit + 2)] }
+        }
+        else if(current !== undefined){
+            current.body.push(row)
+        }
+        else {
+            lead.push(row)
+        }
+    }
+    close()
+    const leadText = lead.join('\n').trim()
+    if(leadText !== ''){
+        lines.unshift({ isUser: false, mes: leadText })
+    }
+    return lines
+}
+
+// Removes picture and audio tokens (`<|h|..|h|>`, `<|d|..|d|>` and the pending
+// `<|p|..|p|>`, with their brackets when both are present) that close on the same
+// line with the same letter. h and d tokens are counted, a pending one is not.
+// Every cached search position only moves forward, so the scan is linear.
+function stripKoboldMedia(text: string): { text: string, counted: number } {
+    const closers: Record<string, number> = { h: -2, p: -2, d: -2 }
+    const opener = new RegExp(koboldMediaOpenerPattern.source, 'g')
+    let newline = -2
+    let out = ''
+    let last = 0
+    let counted = 0
+    for(let match = opener.exec(text); match !== null; match = opener.exec(text)){
+        const letter = match[1]
+        const closer = `|${letter}|>`
+        const from = match.index + match[0].length
+        let at = closers[letter]
+        if(at === -2 || (at !== -1 && at < from + 1)){
+            at = text.indexOf(closer, from + 1)
+            closers[letter] = at
+        }
+        if(at === -1){
+            continue
+        }
+        if(newline === -2 || (newline !== -1 && newline < from)){
+            newline = text.indexOf('\n', from)
+        }
+        if(newline !== -1 && at > newline){
+            continue
+        }
+        let start = match.index
+        let end = at + closer.length
+        if(start - 1 >= last && text.charAt(start - 1) === '[' && text.charAt(end) === ']'){
+            start--
+            end++
+        }
+        out += text.slice(last, start)
+        last = end
+        opener.lastIndex = end
+        if(letter !== 'p'){
+            counted++
+        }
+    }
+    return { text: out + text.slice(last), counted }
+}
+
+// The story is the prompt followed by every string action, joined without a separator.
+function readKoboldStory(elements: string[], settings: KoboldSettings): { messages: TavernLine[], counted: number } {
+    const stripped = stripKoboldMedia(elements.join(''))
+    if(settings.mode === 4){
+        return { messages: splitKoboldInstruct(stripped.text, settings), counted: stripped.counted }
+    }
+    const openingNames: string[] = []
+    for(const element of elements){
+        const opening = koboldOpeningNamePattern.exec(element)
+        if(opening !== null){
+            openingNames.push(opening[1])
+        }
+    }
+    return { messages: splitKoboldChat(stripped.text, settings, openingNames), counted: stripped.counted }
+}
+
+function sameKoboldLine(a: TavernLine, b: TavernLine): boolean {
+    return a.isUser === b.isUser && a.mes === b.mes && Boolean(a.isSystem) === Boolean(b.isSystem)
+}
+
+/**
+ * Reads a Kobold Lite story save as a chat. The mode comes only from
+ * `savedsettings.opmode`: 3 is chat, 4 is instruct, and a save in story or
+ * adventure mode, an empty save, or one without a usable settings block is
+ * refused with `refusal` set. Splitting compares exactly what Lite's writer
+ * stores, using the settings after `loadKoboldSettings`. Non-string actions are
+ * counted in `skipped`; picture and audio tokens are removed and counted in
+ * `mediaNotKept`. A branch in `altbranches` that is not an older snapshot of the
+ * shown story counts its messages after the common message prefix in
+ * `swipesNotKept`. Memory, author's note and world info are not read.
+ */
+export function readKoboldChat(value: unknown): KoboldChatResult {
+    const result: KoboldChatResult = { messages: [], skipped: 0, swipesNotKept: 0 }
+    if(!isPlainObject(value) || !isKoboldShape(value)){
+        return result
+    }
+    const elements: string[] = []
+    if(typeof value.prompt === 'string'){
+        elements.push(value.prompt)
+    }
+    for(const action of value.actions){
+        if(typeof action === 'string'){
+            elements.push(action)
+        }
+        else {
+            result.skipped++
+        }
+    }
+    if(elements.every((element) => element.trim() === '')){
+        result.refusal = 'story'
+        return result
+    }
+    const settings = loadKoboldSettings(value.savedsettings)
+    if(settings === undefined){
+        result.refusal = 'settings'
+        return result
+    }
+    if(settings.mode === 1 || settings.mode === 2){
+        result.refusal = 'story'
+        return result
+    }
+
+    const shown = readKoboldStory(elements, settings)
+    result.messages = shown.messages
+    if(shown.counted > 0){
+        result.mediaNotKept = shown.counted
+    }
+    if(settings.mode === 3){
+        result.header = { userName: settings.userName }
+        if(settings.opponents.length > 0){
+            result.header.characterName = settings.opponents[0]
+        }
+    }
+
+    if(Array.isArray(value.altbranches)){
+        for(const branch of value.altbranches as unknown[]){
+            if(!Array.isArray(branch)){
+                continue
+            }
+            const strings = (branch as unknown[]).filter((element): element is string => typeof element === 'string')
+            if(strings.every((element) => element === '')){
+                continue
+            }
+            if(strings.length <= elements.length && strings.every((element, index) => element === elements[index])){
+                continue
+            }
+            const other = readKoboldStory(strings.filter((element) => element !== ''), settings).messages
+            let common = 0
+            while(common < other.length && common < shown.messages.length && sameKoboldLine(other[common], shown.messages[common])){
+                common++
+            }
+            result.swipesNotKept += other.length - common
+        }
+    }
+    return result
 }
