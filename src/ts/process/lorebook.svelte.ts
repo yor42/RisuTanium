@@ -17,6 +17,7 @@ import { markCharacterForSave } from "../storage/characterSaveMarks";
 import type { PromptView } from "../cbs";
 import { beginBusy } from "./memory/busyActions";
 import { splitLoreKeys } from "./loreKeys";
+import { externalEntryDecorators, placeDisabledMarker } from "./lorebookImportDecorators";
 
 /**
  * A fixed stand-in for `RunSubject` that always resolves to `ctx`, captured
@@ -842,6 +843,15 @@ export interface CCLorebook{
     keys:string[]
     displayName:string
     text:string
+    disable?:boolean
+    enabled?:boolean
+    useProbability?:boolean
+    probability?:number|null
+    position?:number|string|null
+    depth?:number|null
+    role?:number|null
+    selectiveLogic?:number
+    keysecondary?:string[]
     contextConfig?: {
         budgetPriority:number
         prefix:string
@@ -853,17 +863,25 @@ export function convertExternalLorebook(entries:{[key:string]:CCLorebook}){
     let lore:loreBook[] = []
     for(const key in entries){
         const currentLore = entries[key]
+        const decorators = externalEntryDecorators(currentLore)
+        let content = currentLore.content || currentLore.entry || currentLore.text || ''
+        if(decorators.lines.length > 0){
+            content = decorators.lines.join('\n') + '\n' + content
+        }
+        if(decorators.disabled){
+            content = placeDisabledMarker(content)
+        }
         lore.push({
             key: currentLore.key ? currentLore.key.join(', ') :
                 currentLore.keys ? currentLore.keys.join(', ') :
                 currentLore.keywords ? currentLore.keywords.join(', ') : '',
             insertorder: currentLore.order ?? currentLore.priority ?? currentLore?.contextConfig?.budgetPriority ?? 0,
             comment: currentLore.comment || currentLore.name || currentLore.displayName || '',
-            content: currentLore.content || currentLore.entry || currentLore.text || '',
+            content: content,
             mode: "normal",
             alwaysActive: currentLore.constant ?? currentLore.forceActivation ?? false,
-            secondkey: currentLore.secondary_keys ? currentLore.secondary_keys.join(', ') : "",
-            selective: currentLore.selective ?? false
+            secondkey: (currentLore.secondary_keys ?? currentLore.keysecondary)?.join(', ') ?? "",
+            selective: decorators.selective
         })
     }
     return lore
