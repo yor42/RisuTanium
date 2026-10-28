@@ -2,7 +2,7 @@
 
 /**
  * Where a `.bin` opened from another Android app goes. A drain is one `take()`. A backup is restored only when it is the
- * one file of its batch and the drain imports nothing else (a restore would replace what the imports just added); an
+ * one backup of its batch and the drain imports nothing else (a restore would replace what the imports just added); an
  * unsupported name such as a PNG does not count as an import. Every other `.bin` is refused, all refusals of a kind in one
  * awaited notice: the notice that a backup was not opened alone comes after every import of the drain, and the notice that
  * only one backup restores at a time is closed before the restore asks its confirmation.
@@ -159,12 +159,32 @@ describe('a .bin opened from another app', () => {
         expect(alertNormalWaitMock).toHaveBeenCalledWith(language.openedBackupNotAlone(['backup.bin']))
     })
 
-    test('a .bin in a multi-entry batch is refused even when nothing else in the drain imports', async () => {
+    test('reproducer: a .png shared in the same batch as one .bin does not block the restore, and the .png goes to the import to be refused', async () => {
         queued = [[entry('backup.bin'), entry('notes.png')]]
         androidOpenedFilesImport()
         await settle()
+        expect(restoreOpenedBackupMock).toHaveBeenCalledTimes(1)
+        expect(restoreOpenedBackupMock).toHaveBeenCalledWith({ name: 'backup.bin', path: 'content://provider/backup.bin' })
+        expect(importOpenedSourcesMock).toHaveBeenCalledWith([{ name: 'notes.png', path: 'content://provider/notes.png' }])
+        expect(order).toEqual(['import:notes.png', 'restore:backup.bin'])
+        expect(alertNormalWaitMock).not.toHaveBeenCalled()
+    })
+
+    test('a .bin shared with an unsupported file and a card in one batch is refused while the card imports', async () => {
+        queued = [[entry('backup.bin'), entry('notes.txt'), entry('card.charx')]]
+        androidOpenedFilesImport()
+        await settle()
         expect(restoreOpenedBackupMock).not.toHaveBeenCalled()
+        expect(importOpenedSourcesMock.mock.calls[0][0].map((item: { name: string }) => item.name)).toEqual(['notes.txt', 'card.charx'])
         expect(alertNormalWaitMock).toHaveBeenCalledWith(language.openedBackupNotAlone(['backup.bin']))
+    })
+
+    test('two .bin in one batch beside an unsupported file are both refused and nothing is restored', async () => {
+        queued = [[entry('one.bin'), entry('two.bin'), entry('notes.png')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(restoreOpenedBackupMock).not.toHaveBeenCalled()
+        expect(alertNormalWaitMock).toHaveBeenCalledWith(language.openedBackupNotAlone(['one.bin', 'two.bin']))
     })
 
     test('two lone .bin: the first restores, and the one-at-a-time notice is closed before the restore starts', async () => {
