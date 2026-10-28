@@ -1391,8 +1391,9 @@ export class CharXImporter{
 
     // Per entry name, the largest of the sizes any copy of the name declared in its local header (0 when it declares none)
     // and the decoded length any copy reached. These are the quantities the size checks of a later pass over the same
-    // bytes compare, so a caller can refuse an oversize entry before that pass saves anything. The central directory's
-    // size is not recorded: the later pass refuses on it before it reads any chunk.
+    // bytes compare, so a caller can refuse an oversize entry before that pass saves anything. With a validated central
+    // directory the local header carries the central sizes, so the central size is recorded too; on the fallback path it
+    // is not, and the later pass refuses on it before it reads any chunk.
     sizes:{[key:string]:number} = {}
 
     // Configuration

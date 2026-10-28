@@ -428,7 +428,7 @@ const byafReadRoute:EntryRouter = (name) => isByafJsonEntry(name)
 type ByafRead = {ok: true, plan: ByafPlan, imageSizes: {[key:string]:number}} | {ok: false, refusal: ByafRefusal}
 
 //Reads the whole archive once and plans the import. Only the plan and the sizes of the listed images leave this function, so the JSON the first pass retained is released before anything is saved.
-//A listed image's size is the largest the archive states or delivers for its name, which is what the second pass is bounded by, apart from the central directory's size that the second pass refuses on before it reads any chunk.
+//A listed image's size is the largest the archive states or delivers for its name, which is what the second pass is bounded by. With a validated central directory that includes the central size; on the fallback path the central size is not included, and the second pass refuses on it before it reads any chunk.
 async function readByafPlan(data:File|Uint8Array|ImportSource):Promise<ByafRead> {
     const importer = new CharXImporter(byafReadRoute)
     try {
