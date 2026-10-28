@@ -1455,22 +1455,28 @@ export function loadBackupAtBoot(target: BootImportTarget): Promise<BootImportEn
 }
 
 /**
+ * Whether the page may take another opened file after `restoreOpenedBackup`: `pageEnding` once a reload was requested
+ * or a write is unconfirmed, `pageLive` for a decline, a refusal or a failure before anything was installed.
+ */
+export type OpenedRestoreEnd = 'pageLive' | 'pageEnding';
+
+/**
  * Restores a `.bin` another Android app opened, after one confirmation that names the file. Never rejects.
  * Nothing is opened or written until the person has confirmed: a busy app, a read-only page and a decline each end it
  * first. The restore takes its own busy entry (`LoadLocalBackup`), so none is held here, where it would refuse that very
  * restore. The source is closed however this ends.
  */
-export async function restoreOpenedBackup(entry: { name: string, path: string }): Promise<void> {
+export async function restoreOpenedBackup(entry: { name: string, path: string }): Promise<OpenedRestoreEnd> {
     let source: ImportSource | null = null;
     try {
         if (refuseBackupLoadWhileBusy()) {
-            return;
+            return 'pageLive';
         }
         if (await refuseOnReadOnlyPage()) {
-            return;
+            return 'pageLive';
         }
         if (!await alertConfirm(language.restoreOpenedBackupConfirm(entry.name))) {
-            return;
+            return 'pageLive';
         }
         // A restore must not start while a recorded start-up clean-up still runs; the person may stop waiting.
         const startupCleanup = getStartupCleanup();
@@ -1483,7 +1489,7 @@ export async function restoreOpenedBackup(entry: { name: string, path: string })
             const outcome = await Promise.race([startupCleanup.then(() => 'settled' as const), cancelled]);
             if (outcome === 'cancelled') {
                 alertClear();
-                return;
+                return 'pageLive';
             }
             // From here the restore cannot be cancelled, so the wait loses its Cancel button.
             alertWait('Loading backup...');
@@ -1493,7 +1499,7 @@ export async function restoreOpenedBackup(entry: { name: string, path: string })
         } catch (error) {
             console.error(error);
             alertError(error);
-            return;
+            return 'pageLive';
         }
         let lastModified = 0;
         try {
@@ -1501,10 +1507,21 @@ export async function restoreOpenedBackup(entry: { name: string, path: string })
         } catch (error) {
             console.error(error);
         }
-        await LoadLocalBackup(undefined, { source, name: entry.name, lastModified });
+        const end = await LoadLocalBackup(undefined, { source, name: entry.name, lastModified });
+        switch (end.outcome) {
+            case 'committed':
+            case 'permitted-partial':
+            case 'unknown':
+                return 'pageEnding';
+            case 'canceled':
+            case 'nothing-replaced':
+            case 'failed':
+                return 'pageLive';
+        }
     } catch (error) {
         console.error(error);
         alertError(error);
+        return 'pageLive';
     } finally {
         if (source !== null) {
             try {

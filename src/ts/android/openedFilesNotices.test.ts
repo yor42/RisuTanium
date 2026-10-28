@@ -47,7 +47,7 @@ vi.mock('../storage/database.svelte', () => ({
 import { alertError, alertToast, alertWait } from '../alert'
 import { alertStore } from '../stores.svelte'
 
-const { androidOpenedFilesImport } = await import('./openedFiles')
+const { androidOpenedFilesImport, resetOpenedFilesForTests } = await import('./openedFiles')
 
 interface HostEntry {
     uri: string
@@ -79,7 +79,9 @@ beforeEach(() => {
     })
     restoreOpenedBackupMock.mockReset().mockImplementation(async (item: { name: string }) => {
         order.push('restore:' + item.name + ' over ' + get(alertStore).type)
+        return 'pageLive'
     })
+    resetOpenedFilesForTests()
     window.__risuTaniumOpenedFilesHost = { take: takeMock }
     vi.spyOn(console, 'warn').mockImplementation(() => { })
     vi.spyOn(console, 'error').mockImplementation(() => { })

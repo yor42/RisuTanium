@@ -9,8 +9,13 @@
  * is refused with a notice. Everywhere the host bridge is
  * absent (web, desktop, iOS, an old host) it does nothing.
  */
-import { alertNormalWait, waitUnreadNotice } from '../alert'
+import { get } from 'svelte/store'
+import { alertNormalWait, waitUnreadNotice, alertStore as alertWrapper, type alertData } from '../alert'
+import { isConsentType, isPromptType } from '../alertPrompts'
 import { importOpenedSources, isOpenedSourceImportable } from '../characterCards'
+import { busyRefusalLine, isBusy } from '../process/memory/busyActions'
+import { isAppInitiatedReload } from '../reloadGuard'
+import { alertStore as shownAlert } from '../stores.svelte'
 import { getDatabase } from '../storage/database.svelte'
 import { language } from 'src/lang'
 
@@ -36,6 +41,25 @@ interface OpenedEntry {
 
 //Drains run one at a time, in arrival order; a failed drain never stops the next one.
 let chain: Promise<void> = Promise.resolve()
+
+//True while `restoreOpenedBackup` runs. A file that arrives then is refused at once only over a restore question, and
+//otherwise stays in the native queue: the restore may reload the page, and a take in a dying page loses the file.
+let restoreOpen = false
+//A file arrived while the restore ran and was left in the queue; one drain runs when the restore returns.
+let arrivedDuringRestore = false
+//The restore ended in a way that leaves this page unable to take a file again (a reload was requested, or the write is
+//unconfirmed). Everything that arrives later waits in the native queue for the next page.
+let pageEnding = false
+//The refusal pop-up this module posted, kept so a second batch over the same pop-up posts nothing new.
+let ownRefusal: alertData | null = null
+
+/** Clears the restore state a test leaves behind; the drain chain is not touched. */
+export function resetOpenedFilesForTests(): void {
+    restoreOpen = false
+    arrivedDuringRestore = false
+    pageEnding = false
+    ownRefusal = null
+}
 
 /** The display name without any directory or document-id prefix a provider may put in front of it. */
 function baseName(name: unknown): string {
@@ -101,6 +125,11 @@ async function drain(): Promise<void> {
     if (typeof host?.take !== 'function') {
         return
     }
+    // After a page-ending restore every later file stays queued; this is the only check, because every drain after
+    // the ending is chained behind the drain that set it.
+    if (pageEnding) {
+        return
+    }
     let raw: unknown
     try {
         // Called as a method: the host bridge object needs its receiver.
@@ -149,11 +178,26 @@ async function drain(): Promise<void> {
         if (oneAtATime.length > 0) {
             await notifyRefused(language.openedBackupOneAtATime(oneAtATime))
         }
+        // A rejection means nothing of the restore ran, so the page stays live.
+        let result: 'pageLive' | 'pageEnding' = 'pageLive'
         try {
             const { restoreOpenedBackup } = await import('../drive/backuplocal')
-            await restoreOpenedBackup(restoreCandidate)
+            restoreOpen = true
+            try {
+                result = await restoreOpenedBackup(restoreCandidate)
+            } finally {
+                restoreOpen = false
+            }
         } catch (error) {
             console.warn('An opened backup was not restored', error)
+        }
+        // Set before this drain settles, so no chained drain can take after an ending.
+        if (result === 'pageEnding') {
+            pageEnding = true
+        }
+        if (arrivedDuringRestore) {
+            arrivedDuringRestore = false
+            scheduleDrain()
         }
     }
 }
@@ -189,7 +233,52 @@ function scheduleDrain(): void {
     })
 }
 
+/**
+ * A file arrived over a restore question: takes everything now and refuses it with one pop-up; the question comes back
+ * once the pop-up is closed. An empty take shows nothing. The refusal line also goes on the restore's progress, which may
+ * replace the pop-up before it is read.
+ */
+function refuseNow(): void {
+    const host = window.__risuTaniumOpenedFilesHost
+    if (typeof host?.take !== 'function') {
+        return
+    }
+    let raw: unknown
+    try {
+        raw = host.take()
+    } catch (error) {
+        console.warn('Opened files could not be taken', error)
+        return
+    }
+    if (parseBatches(raw).length === 0) {
+        return
+    }
+    if (isBusy()) {
+        busyRefusalLine.set(language.backupLoadRefusedLine)
+    }
+    if (ownRefusal !== null && get(shownAlert) === ownRefusal) {
+        return
+    }
+    ownRefusal = { type: 'error', msg: language.backupLoadWorkInProgress }
+    alertWrapper.set(ownRefusal)
+}
+
 const openedFilesHook = (): void => {
+    if (restoreOpen) {
+        // A reload the restore asked for may be pending: nothing is taken into the dying page.
+        if (isAppInitiatedReload()) {
+            arrivedDuringRestore = true
+            return
+        }
+        const shown = get(shownAlert)
+        const atOnce = (isPromptType(shown.type) && !isConsentType(shown.type)) || (ownRefusal !== null && shown === ownRefusal)
+        if (!atOnce) {
+            arrivedDuringRestore = true
+            return
+        }
+        refuseNow()
+        return
+    }
     scheduleDrain()
 }
 
