@@ -638,7 +638,7 @@ const setPasswordRouteLimiter = rateLimit({
     message: { error: 'Too many attempts. Please wait and try again later.' }
 });
 function isHex(str) {
-    return hexRegex.test(str.toUpperCase().trim()) || str === '__password';
+    return hexRegex.test(str.toUpperCase().trim());
 }
 
 async function hashJSON(json){
@@ -647,7 +647,12 @@ async function hashJSON(json){
     return hash.digest('hex');
 }
 
+// The direct-password comparison never authorizes before a password exists: a
+// blank supplied value would otherwise equal the blank configured one.
 function isAuthorizedRequest(req) {
+    if (password.trim() === '') {
+        return false;
+    }
     const authHeader = normalizeAuthHeader(req.headers['risu-auth']);
     return !!authHeader && authHeader.trim() === password.trim();
 }
