@@ -17,11 +17,12 @@ $target = Join-Path $repo 'src/example.ts'
 [IO.Directory]::CreateDirectory((Split-Path $target)) | Out-Null
 $sentinel = 'PRIVATE_CONTENT_SENTINEL_DO_NOT_EMIT'
 $passed = 0; $skipped = 0
-function Invoke-FixtureProcess([string]$Script, [string[]]$Arguments = @(), [string]$InputText = '') {
+function Invoke-FixtureProcess([string]$Script, [string[]]$Arguments = @(), [string]$InputText = '', [hashtable]$Environment = @{}) {
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = $pwshPath; $start.UseShellExecute = $false; $start.CreateNoWindow = $true
     $start.RedirectStandardInput = $true; $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
     $start.StandardInputEncoding = [Text.UTF8Encoding]::new($false)
+    foreach ($name in $Environment.Keys) { $start.Environment[$name] = [string]$Environment[$name] }
     foreach ($arg in @('-NoProfile', '-File', $Script) + $Arguments) { $start.ArgumentList.Add($arg) }
     $process = [Diagnostics.Process]::Start($start)
     $process.StandardInput.Write($InputText); $process.StandardInput.Close()
@@ -56,9 +57,9 @@ function New-FixtureMain([string]$Path = $target) {
     $payload.Remove('agent_id'); $payload.Remove('agent_type')
     return $payload
 }
-function Test-FixtureHook([string]$Name, [object]$Payload, [int]$Expected = 2, [string]$Script = $guard) {
+function Test-FixtureHook([string]$Name, [object]$Payload, [int]$Expected = 2, [string]$Script = $guard, [hashtable]$Environment = @{}) {
     $inputText = if ($Payload -is [string]) { $Payload } else { $Payload | ConvertTo-Json -Depth 10 -Compress }
-    $result = Invoke-FixtureProcess $Script -InputText $inputText
+    $result = Invoke-FixtureProcess $Script -InputText $inputText -Environment $Environment
     if ($result.ExitCode -ne $Expected) { throw "$Name expected exit $Expected, got $($result.ExitCode): $($result.Stderr)" }
     if ($result.Stdout -or ($Expected -eq 2 -and -not $result.Stderr) -or ($Expected -eq 0 -and $result.Stderr)) { throw "$Name produced an unexpected output shape." }
     if (($result.Stdout + $result.Stderr).Contains($sentinel)) { throw "$Name leaked tool content." }
@@ -128,8 +129,89 @@ foreach ($path in @($manifestPath, (Join-Path $repo 'src/lang/en.ts'), (Join-Pat
     Test-FixtureRegistrationDenial 'target bounds at registration' $path $deniedRole
 }
 Test-FixtureRegistrationDenial 'document writer code scope' $target 'doc-writer'
+function New-RolePayload([string]$Path, [string]$Role, [string]$AgentId, [string]$Tool = 'Write') {
+    $rolePayload = New-FixturePayload $Path
+    $rolePayload.agent_id = $AgentId; $rolePayload.agent_type = $Role; $rolePayload.tool_name = $Tool
+    return $rolePayload
+}
+# Documentation roles: Markdown-only inside the repository, any extension for external TEMP scratch outside every repository.
+$docAgent = 'doc-agent'; $clerkAgent = 'clerk-agent'
+Register-Fixture (Join-Path $repo 'docs/granted.md') -Role 'doc-writer' -AgentId $docAgent
+Register-Fixture (Join-Path $repo 'Agents/granted.md') -Role 'record-clerk' -AgentId $clerkAgent
+$externalNotes = Join-Path $fixture 'notes.txt'
+Test-FixtureHook 'granted doc-writer external non-Markdown Write' (New-RolePayload $externalNotes 'doc-writer' $docAgent) 0
+Test-FixtureHook 'granted doc-writer external non-Markdown Edit' (New-RolePayload $externalNotes 'doc-writer' $docAgent 'Edit') 0
+Test-FixtureHook 'granted record-clerk external non-Markdown Write' (New-RolePayload (Join-Path $fixture 'commit-msg.txt') 'record-clerk' $clerkAgent) 0
+Test-FixtureHook 'granted record-clerk external non-Markdown Edit' (New-RolePayload (Join-Path $fixture 'commit-msg.txt') 'record-clerk' $clerkAgent 'Edit') 0
+Test-FixtureHook 'ungranted doc-writer external non-Markdown' (New-RolePayload (Join-Path $fixture 'work-1.txt') 'doc-writer' 'ungranted-doc-agent') 0
+Test-FixtureHook 'ungranted record-clerk external non-Markdown' (New-RolePayload (Join-Path $fixture 'work-1.txt') 'record-clerk' 'ungranted-clerk-agent') 0
+Test-FixtureHook 'doc-writer external extensionless' (New-RolePayload (Join-Path $fixture 'commit-msg') 'doc-writer' $docAgent) 0
+Test-FixtureHook 'doc-writer non-repository nested directory under TEMP' (New-RolePayload (Join-Path $fixture 'sub/dir/notes.json') 'doc-writer' $docAgent) 0
+Test-FixtureHook 'doc-writer external lower-cased TEMP path' (New-RolePayload $externalNotes.ToLowerInvariant() 'doc-writer' $docAgent) 0
+Test-FixtureHook 'doc-writer external Markdown' (New-RolePayload (Join-Path $fixture 'result.md') 'doc-writer' $docAgent) 0
 foreach ($documentRole in @('doc-writer', 'record-clerk')) {
-    Test-FixtureRegistrationDenial 'external Markdown-only writer scope' (Join-Path $fixture 'draft.txt') $documentRole
+    Register-Fixture (Join-Path $fixture 'draft.txt') -Role $documentRole -AgentId "register-$documentRole"
+    $passed++
+}
+Test-FixtureHook 'doc-writer repository non-Markdown beside a granted file' (New-RolePayload (Join-Path $repo 'docs/granted.txt') 'doc-writer' $docAgent)
+Test-FixtureHook 'doc-writer repository non-Markdown ungranted' (New-RolePayload (Join-Path $repo 'docs/notes.txt') 'doc-writer' $docAgent)
+Test-FixtureHook 'record-clerk repository non-Markdown' (New-RolePayload (Join-Path $repo 'Agents/notes.txt') 'record-clerk' $clerkAgent)
+$forgedDocs = @(@{ Role='doc-writer'; Agent='forged-doc'; File=(Join-Path $repo 'src/example.ts') }, @{ Role='record-clerk'; Agent='forged-clerk'; File=(Join-Path $repo 'Agents/notes.txt') })
+foreach ($forgedDoc in $forgedDocs) {
+    $forgedManifest = @{ version=1; sessionId=$session; agentId=$forgedDoc.Agent; role=$forgedDoc.Role; repositoryRoot=$repo; files=@($forgedDoc.File) }
+    [IO.File]::WriteAllText((Get-GuardManifestPath $session $forgedDoc.Agent $forgedDoc.Role), ($forgedManifest | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+    Test-FixtureHook "forged $($forgedDoc.Role) repository non-Markdown manifest" (New-RolePayload $forgedDoc.File $forgedDoc.Role $forgedDoc.Agent)
+}
+Test-FixtureRegistrationDenial 'record-clerk repository non-Markdown registration' (Join-Path $repo 'Agents/notes.txt') 'record-clerk'
+Test-FixtureRegistrationDenial 'case-variant repository non-Markdown registration' (Join-Path $fixture 'REPOSITORY/DOCS/NOTES.TXT') 'doc-writer'
+Test-FixtureRegistrationDenial 'ignored scratch directory in the repository registration' (Join-Path $repo '.claude/scratch/notes.txt') 'doc-writer'
+Test-FixtureRegistrationDenial 'directory named like Markdown registration' (Join-Path $repo 'docs/x.md/notes.txt') 'doc-writer'
+Test-FixtureRegistrationDenial 'double extension ending outside Markdown registration' (Join-Path $repo 'Agents/notes.md.txt') 'record-clerk'
+Register-Fixture (Join-Path $repo 'docs/NOTES.MD') -Role 'doc-writer' -AgentId 'upper-md-doc'
+$passed++
+Test-FixtureRegistrationDenial 'outside TEMP non-Markdown registration' (Join-Path $env:USERPROFILE 'outside-temp.txt') 'doc-writer'
+$docForeign = Join-Path $fixture 'doc-foreign-repository'; [IO.Directory]::CreateDirectory((Join-Path $docForeign '.git')) | Out-Null
+Test-FixtureRegistrationDenial 'foreign repository non-Markdown registration' (Join-Path $docForeign 'notes.txt') 'record-clerk'
+Test-FixtureHook 'ungranted doc-writer ignored repository scratch' (New-RolePayload (Join-Path $repo '.claude/scratch/notes.txt') 'doc-writer' 'ungranted-doc-agent')
+Test-FixtureHook 'granted doc-writer ungranted ignored repository Markdown scratch' (New-RolePayload (Join-Path $repo '.claude/scratch/notes.md') 'doc-writer' $docAgent)
+Test-FixtureHook 'doc-writer outside TEMP' (New-RolePayload (Join-Path $env:USERPROFILE 'outside-temp.txt') 'doc-writer' $docAgent)
+Test-FixtureHook 'record-clerk outside TEMP' (New-RolePayload (Join-Path $env:USERPROFILE 'outside-temp.txt') 'record-clerk' $clerkAgent)
+Test-FixtureHook 'doc-writer job-like directory outside TEMP' (New-RolePayload (Join-Path $env:USERPROFILE '.claude/jobs/fixture/notes.txt') 'doc-writer' $docAgent)
+Test-FixtureHook 'doc-writer foreign repository under TEMP' (New-RolePayload (Join-Path $docForeign 'notes.txt') 'doc-writer' $docAgent)
+Test-FixtureHook 'record-clerk foreign repository under TEMP' (New-RolePayload (Join-Path $docForeign 'notes.txt') 'record-clerk' $clerkAgent)
+Test-FixtureHook 'doc-writer traversal into the repository' (New-RolePayload ($fixture + '\x\..\repository\src\notes.txt') 'doc-writer' $docAgent)
+Test-FixtureHook 'doc-writer traversal out of TEMP' (New-RolePayload ($env:TEMP + '\..\escape-notes.txt') 'doc-writer' $docAgent)
+Test-FixtureHook 'doc-writer case-variant repository path' (New-RolePayload (Join-Path $fixture 'REPOSITORY/DOCS/NOTES.TXT') 'doc-writer' $docAgent)
+Test-FixtureHook 'doc-writer alternate stream' (New-RolePayload ($fixture + '\notes.md:s.txt') 'doc-writer' $docAgent)
+Test-FixtureHook 'doc-writer ungranted directory named like Markdown' (New-RolePayload (Join-Path $repo 'docs/x.md') 'doc-writer' $docAgent)
+Test-FixtureHook 'doc-writer secret-pattern key name' (New-RolePayload (Join-Path $fixture 'notes.key') 'doc-writer' $docAgent)
+Test-FixtureHook 'doc-writer secret-pattern env name' (New-RolePayload (Join-Path $fixture '.env') 'doc-writer' $docAgent)
+Test-FixtureHook 'record-clerk secret-pattern key name' (New-RolePayload (Join-Path $fixture 'notes.key') 'record-clerk' $clerkAgent)
+# Junction cases: the links live inside this fixture and only the link itself is removed.
+$srcAlias = Join-Path $fixture 'src-alias'
+try { New-Item -ItemType Junction -Path $srcAlias -Target (Join-Path $repo 'src') -ErrorAction Stop | Out-Null }
+catch { $skipped++; Write-Output 'SKIP documentation-role junction cases: creation unavailable.' }
+if (Test-Path -LiteralPath $srcAlias) {
+    try {
+        Test-FixtureHook 'doc-writer junction to a repository subdirectory' (New-RolePayload (Join-Path $srcAlias 'notes.txt') 'doc-writer' $docAgent)
+        Test-FixtureHook 'record-clerk junction to a repository subdirectory' (New-RolePayload (Join-Path $srcAlias 'notes.txt') 'record-clerk' $clerkAgent)
+    } finally {
+        if (-not [IO.Path]::GetFullPath($srcAlias).StartsWith([IO.Path]::GetFullPath($fixture) + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe fixture cleanup path.' }
+        Remove-Item -LiteralPath $srcAlias -Force
+    }
+}
+$tempRootOverride = Join-Path $fixture 'temp-root'; $outsideDir = Join-Path $fixture 'outside-dir'
+[IO.Directory]::CreateDirectory($tempRootOverride) | Out-Null; [IO.Directory]::CreateDirectory($outsideDir) | Out-Null
+$escapeAlias = Join-Path $tempRootOverride 'outside-alias'
+try { New-Item -ItemType Junction -Path $escapeAlias -Target $outsideDir -ErrorAction Stop | Out-Null }
+catch { $skipped++; Write-Output 'SKIP TEMP-escape junction case: creation unavailable.' }
+if (Test-Path -LiteralPath $escapeAlias) {
+    try {
+        Test-FixtureHook 'doc-writer junction escaping TEMP' (New-RolePayload (Join-Path $escapeAlias 'notes.txt') 'doc-writer' $docAgent) -Environment @{ TEMP = $tempRootOverride }
+    } finally {
+        if (-not [IO.Path]::GetFullPath($escapeAlias).StartsWith([IO.Path]::GetFullPath($fixture) + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe fixture cleanup path.' }
+        Remove-Item -LiteralPath $escapeAlias -Force
+    }
 }
 Test-FixtureRegistrationDenial 'clerk governance scope' (Join-Path $repo 'AGENTS.md') 'record-clerk'
 Test-FixtureHook 'registry self grant' (New-FixturePayload $manifestPath)
