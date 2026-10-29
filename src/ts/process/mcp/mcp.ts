@@ -1,7 +1,9 @@
 import { getDatabase } from "src/ts/storage/database.svelte";
 import { MCPClient, type JsonRPC, type MCPTool, type RPCToolCallContent } from "./mcplib";
 import { DBState } from "src/ts/stores.svelte";
-import { getModuleMcps } from "../modules";
+import { getModuleMcpEntries, getModuleMcps } from "../modules";
+import { parseMcpUrl } from "./stdioSpec";
+import { admitStdio, type StdioOwner } from "./stdioApproval";
 import { alertError, alertInput, alertNormal } from "src/ts/alert";
 import { language } from "src/lang";
 import { fillLang } from "src/lang/fill";
@@ -144,16 +146,13 @@ async function createMCPClient(mcp:string):Promise<MCPClientInstance | undefined
         }
     }
     if(mcp.startsWith('stdio:')){
-        const MCPJSON = mcp.slice('stdio:'.length);
         try {
-            const MCPData = JSON.parse(MCPJSON);
-            if(MCPData.url) {
-                mcpUrl = MCPData.url;
+            const parsed = parseMcpUrl(mcp);
+            if(parsed.kind === 'stdio-url') {
+                mcpUrl = parsed.url;
             }
-            else if(MCPData.command && MCPData.args) {
-                const command = MCPData.command as string;
-                const args: string[] = Array.isArray(MCPData.args) ? MCPData.args : [MCPData.args];
-                const env: Record<string, string> = MCPData.env || {};
+            else if(parsed.kind === 'stdio-spawn') {
+                const { command, args, env } = parsed.spec;
 
                 if(!isTauri){
                     throw new Error('stdio MCPs are only supported in Local Version');
@@ -228,7 +227,7 @@ async function createMCPClient(mcp:string):Promise<MCPClientInstance | undefined
                 return client;
             }
             else {
-                throw new Error('MCP JSON does not contain a valid URL');
+                throw new Error(parsed.kind === 'stdio-invalid' ? parsed.reason : 'MCP JSON does not contain a valid URL');
             }
         }
         catch (error) {
@@ -270,9 +269,13 @@ async function createMCPClient(mcp:string):Promise<MCPClientInstance | undefined
 /**
  * The live client of `url`, created when there is none. Concurrent callers share one creation, and a
  * creation is forgotten once it settles, so a failed one can be retried. A network failure yields no
- * client; an unknown `internal:` URL or a `stdio:` URL outside the desktop app rejects.
+ * client; an unknown `internal:` URL or a `stdio:` URL outside the desktop app rejects. A URL that names a
+ * program to start yields no client, live or new, unless `stdioAdmitted`, which only the consent gate sets.
  */
-async function ensureMCP(url:string):Promise<MCPClientInstance | undefined> {
+async function ensureMCP(url:string, stdioAdmitted:boolean):Promise<MCPClientInstance | undefined> {
+    if(isTauri && !stdioAdmitted && parseMcpUrl(url).kind === 'stdio-spawn') {
+        return undefined;
+    }
     const live = MCPs[url];
     if(live) {
         stampMCP(url);
@@ -300,30 +303,48 @@ async function ensureMCP(url:string):Promise<MCPClientInstance | undefined> {
  * The URLs one activity works on: its module set (the subject's, or the selection's without a subject), then
  * `extraUrls`, without repeats. `selectionUrls` is what the selection lists, which no sweep takes.
  */
-function activityUrlsOf(extraUrls:string[], subject?:RunSubject) {
-    const own = getModuleMcps(subject);
+function activityUrlsOf(extraUrls:string[], subject?:RunSubject, extraOwners?:Map<string, StdioOwner[]>) {
+    const entries = getModuleMcpEntries(subject);
+    const own = entries.map(entry => entry.url);
     const urls = Array.from(new Set(own));
+    const owners = new Map<string, StdioOwner[]>();
+    for(const entry of entries) {
+        const list = owners.get(entry.url) ?? [];
+        list.push({ moduleId: entry.moduleId, moduleName: entry.moduleName });
+        owners.set(entry.url, list);
+    }
     for(const url of extraUrls) {
         if(!urls.includes(url)) {
             urls.push(url);
         }
     }
+    for(const [url, list] of extraOwners ?? []) {
+        owners.set(url, [...(owners.get(url) ?? []), ...list]);
+    }
     const selectionUrls = subject ? getModuleMcps() : own;
-    return { urls, selectionUrls };
+    return { urls, selectionUrls, owners };
 }
 
 /**
  * Starts an activity: stamps the clients it lists, sweeps, then ensures `ensureUrls` (its whole list unless
- * given). Returns the client each ensure returned, in list order, skipping a URL that yielded none.
+ * given). Returns the client each ensure returned, in list order, skipping a URL that yielded none. A URL that
+ * names a program to start is ensured only after the consent gate admitted it for one of its `owners`.
  */
-async function beginMCPActivity(urls:string[], selectionUrls:string[], ensureUrls:string[] = urls) {
+async function beginMCPActivity(urls:string[], selectionUrls:string[], owners:Map<string, StdioOwner[]>, ensureUrls:string[] = urls) {
     for(const url of urls) {
         stampMCP(url);
     }
     sweepMCPs(selectionUrls, urls);
     const ensured:[string, MCPClientInstance][] = [];
     for(const url of ensureUrls) {
-        const client = await ensureMCP(url);
+        let admitted = false;
+        if(isTauri) {
+            const parsed = parseMcpUrl(url);
+            if(parsed.kind === 'stdio-spawn') {
+                admitted = await admitStdio(parsed.spec, owners.get(url) ?? []);
+            }
+        }
+        const client = await ensureMCP(url, admitted);
         if(client) {
             ensured.push([url, client]);
         }
@@ -332,13 +353,13 @@ async function beginMCPActivity(urls:string[], selectionUrls:string[], ensureUrl
 }
 
 export async function initializeMCPs(additionalMCPs?:string[], subject?:RunSubject) {
-    const { urls, selectionUrls } = activityUrlsOf(additionalMCPs ?? [], subject);
-    await beginMCPActivity(urls, selectionUrls);
+    const { urls, selectionUrls, owners } = activityUrlsOf(additionalMCPs ?? [], subject);
+    await beginMCPActivity(urls, selectionUrls, owners);
 }
 
 export async function getMCPTools(additionalMCPs?:string[], subject?:RunSubject) {
-    const { urls, selectionUrls } = activityUrlsOf(additionalMCPs ?? [], subject);
-    const ensured = await beginMCPActivity(urls, selectionUrls);
+    const { urls, selectionUrls, owners } = activityUrlsOf(additionalMCPs ?? [], subject);
+    const ensured = await beginMCPActivity(urls, selectionUrls, owners);
     const tools:MCPToolWithURL[] = [];
     for(const [url, client] of ensured) {
         stampMCP(url);
@@ -354,9 +375,9 @@ export async function getMCPTools(additionalMCPs?:string[], subject?:RunSubject)
     return tools;
 }
 
-export async function getMCPMeta(additionalMCPs?:string[], subject?:RunSubject) {
-    const { urls, selectionUrls } = activityUrlsOf(additionalMCPs ?? [], subject);
-    const ensured = await beginMCPActivity(urls, selectionUrls);
+export async function getMCPMeta(additionalMCPs?:string[], subject?:RunSubject, extraOwners?:Map<string, StdioOwner[]>) {
+    const { urls, selectionUrls, owners } = activityUrlsOf(additionalMCPs ?? [], subject, extraOwners);
+    const ensured = await beginMCPActivity(urls, selectionUrls, owners);
     const meta:Record<string, typeof MCPClient.prototype.serverInfo> = {};
     for(const [url, client] of ensured) {
         stampMCP(url);
@@ -390,8 +411,8 @@ async function callOnClient(url:string, client:MCPClientInstance, methodName:str
 export async function callMCPTool(methodName:string, args:any, ctx?:MCPCallContext):Promise<RPCToolCallContent[]> {
     const subject = ctx?.subject;
     const mcpURL = ctx?.mcpURL;
-    const { urls, selectionUrls } = activityUrlsOf(mcpURL ? [mcpURL, ...callOnlyMCPUrls] : callOnlyMCPUrls, subject);
-    const ensured = await beginMCPActivity(urls, selectionUrls, mcpURL ? [mcpURL] : urls);
+    const { urls, selectionUrls, owners } = activityUrlsOf(mcpURL ? [mcpURL, ...callOnlyMCPUrls] : callOnlyMCPUrls, subject);
+    const ensured = await beginMCPActivity(urls, selectionUrls, owners, mcpURL ? [mcpURL] : urls);
     if(mcpURL) {
         const routed = ensured.find(([url]) => url === mcpURL);
         if(routed) {
@@ -451,7 +472,8 @@ export async function importMCPModule(){
         return;
     }
     try {
-        const metas = (await getMCPMeta([x]))
+        const id = v4()
+        const metas = (await getMCPMeta([x], undefined, new Map([[x, [{ moduleId: id, moduleName: x }]]])))
         console.log(metas)
         const meta = metas[x];
         if(!meta) {
@@ -465,7 +487,7 @@ export async function importMCPModule(){
             mcp: {
                 url: x
             },
-            id: v4(),
+            id,
             lorebook: [{
                 comment: "MCP Info",
                 content: `@@mcp\n\n<MCP Info>Name:${meta.serverInfo.name}\nVersion:${meta.serverInfo.version}\nInst:${meta.instructions ?? 'None'}</MCP Info>`,

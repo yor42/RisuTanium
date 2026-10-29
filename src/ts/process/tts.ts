@@ -317,6 +317,10 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                     }
                     apiKey = await resolveSecret(apiKey)
                 }
+                // The same binding for a plaintext app-wide key: a card that names another host gets no key it did not carry itself.
+                else if(!cfg?.apiKey && apiKey && !isDefaultOpenAIHost(baseURL)){
+                    throw new Error(language.errors.ttsAppKeyForeignHost)
+                }
                 const model  = cfg?.model || 'tts-1'
                 const voice   = cfg?.voice || character.oaiVoice || 'alloy'
                 const format  = cfg?.format || 'mp3'

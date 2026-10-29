@@ -38,6 +38,7 @@ export const languageEnglish = {
             `Environment variable ${name} is only sent to its own provider, so it was not used for this request.`,
         secretRefInRequest: (name: string) =>
             `A request still contains the environment variable reference ${name}. It was not sent.`,
+        ttsAppKeyForeignHost: "This character sends text-to-speech requests to another server, so the app-wide OpenAI key was not sent. Enter an API key in the character's text-to-speech settings to use that server.",
         storageServerNeedsUpdate: "This server is too old for the new storage format: it must be updated or restarted before it can save or clean up. Restart the Node server (update it first if you have not), then reload this page.",
         coldStorageRestoreFailed: "Cold storage data could not be loaded. The affected character's data may be permanently lost.",
         coldStorageRestoreUnreadable: "This character could not be loaded right now. Nothing was changed. Please try again.",
@@ -229,6 +230,14 @@ export const languageEnglish = {
         installingPythonDependency: "Installing Python Dependencies ({dependency})",
         mcpEnterModuleUrl: "Please enter the URL of the MCP module to import:",
         mcpModuleImported: "MCP module imported successfully!\nName: {name}",
+        mcpStdioConsent: (moduleName: string) =>
+            `The module ${moduleName} wants to start a program on this device to provide MCP tools.`,
+        mcpStdioConsentCommand: (command: string) => `Command: ${command}`,
+        mcpStdioConsentArgument: (index: number, argument: string) => `Argument ${index}: ${argument}`,
+        mcpStdioConsentEnvironment: (name: string, value: string) => `Environment ${name}: ${value}`,
+        mcpStdioConsentQuestion: "Start this program with these arguments? Only allow it if you trust where this module came from: a program you start can read and change files on this device.",
+        mcpStdioApprovalsUnreadable: (location: string) =>
+            `The saved approvals for MCP programs could not be read, so they were left untouched and no approval will be saved until the app is restarted. You will be asked again for each program. Location: ${location}`,
         googleSearchEnterApiKey: "Please enter your Google Custom Search API Key:",
         googleSearchEnterEngineId: "Please enter your Google Custom Search Engine ID:",
         mcpInputAuthorizationCode: "Input Authorization Code",

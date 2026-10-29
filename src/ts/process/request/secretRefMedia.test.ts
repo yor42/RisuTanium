@@ -446,13 +446,14 @@ describe('OpenAI TTS key sources', () => {
         expect(h.calls[0].headers['authorization']).toBe('Bearer ' + h.resolved)
     })
 
-    test('guard: a plain app-wide key is still sent to a card-chosen host as typed', async () => {
+    // Also pinned in ttsKeyDestination.test.ts; kept here beside the reference cases of the same key source.
+    test('a plain app-wide key is refused with a named error before any request to a card-chosen host', async () => {
         await sayTTS(arrangeOpenAI({ baseURL: 'https://tts.example/v1', dbKey: PLAIN }), 'hello')
 
         expect(h.resolveCalls).toEqual([])
-        expect(h.calls).toHaveLength(1)
-        expect(h.calls[0].url).toBe('https://tts.example/v1/audio/speech')
-        expect(h.calls[0].headers['authorization']).toBe('Bearer ' + PLAIN)
+        expect(h.calls).toEqual([])
+        expect(h.calls.map((call) => serialized(call)).join('\n')).not.toContain(PLAIN)
+        expect(h.alerts.some((message) => message.includes(language.errors.ttsAppKeyForeignHost))).toBe(true)
     })
 
     test.each([
