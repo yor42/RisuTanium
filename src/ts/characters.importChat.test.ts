@@ -134,7 +134,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 
 //#endregion
 
-import { selectSingleFile } from 'src/ts/util'
+import { getUserName, selectSingleFile } from 'src/ts/util'
 import { alertError, alertNormal } from 'src/ts/alert'
 import { language } from 'src/lang'
 import { selectedCharID } from 'src/ts/stores.svelte'
@@ -2128,5 +2128,434 @@ describe('importChat -- Kobold Lite JSON', () => {
 
         expect(roleAndData()).toEqual([['user', 'hi']])
         expect(noticeText()).toBe(language.successImport)
+    })
+})
+
+describe('importChat -- Character.AI JSON', () => {
+    const fileName = 'cai-export-7c1e.json'
+    const openName = 'Mira'
+
+    // Fixtures follow the writers: raw turns with `author`, `candidates` and `primary_candidate_id`
+    // (a human turn has no author name), Morse oldest first, Lianne newest first, the dumper anonymised.
+    type TurnOptions = { id?: string, human?: boolean, name?: string, text?: string, time?: string, candidates?: Array<Record<string, unknown>>, primary?: string }
+    function turn(options: TurnOptions): Record<string, unknown> {
+        const key = options.id ?? 't'
+        const made: Record<string, unknown> = {
+            author: options.human === true
+                ? { author_id: 'a', is_human: true }
+                : { author_id: 'a', is_human: false, ...(options.name === undefined ? {} : { name: options.name }) },
+            candidates: options.candidates ?? [{ candidate_id: `${key}-1`, raw_content: options.text ?? 'x' }],
+            primary_candidate_id: options.primary ?? `${key}-1`,
+        }
+        if(options.id !== undefined){
+            made.turn_key = { chat_id: 'chat-1', turn_id: options.id }
+        }
+        if(options.time !== undefined){
+            made.create_time = options.time
+        }
+        return made
+    }
+    const user = (text: string, extra: TurnOptions = {}) => turn({ human: true, text, ...extra })
+    const bot = (name: string, text: string, extra: TurnOptions = {}) => turn({ name, text, ...extra })
+    const alternates = (...texts: string[]) => texts.map((raw_content, index) => ({ candidate_id: `c${index}`, raw_content }))
+    const lianneFile = (turns: unknown[]) => ({ chat_id: 'chat-1', exported_at: '2026-07-26T00:00:00Z', message_count: turns.length, messages: turns })
+    const morseChat = (turns: unknown[], extra: Record<string, unknown> = {}) => ({ chat_id: 'c', create_time: '2026-01-01T00:00:00Z', turns, ...extra })
+    const morseEntry = (name: string | undefined, chats: unknown[]) => ({ character: name === undefined ? {} : { name }, avatar: null, chats })
+    const morseFile = (entries: unknown[], extra: Record<string, unknown> = {}) => ({
+        format: 'morse.cai-export', version: 1, exportedAt: 'x', source: 'x', user: {}, personas: [], characters: entries, ...extra,
+    })
+    const dumperMsg = (name: string, human: boolean, text: string, extra: Record<string, unknown> = {}) => ({
+        text, src: { is_human: human, name: human ? '[NAME_REDACTED]' : name }, ...extra,
+    })
+    const dumperFile = (infoName: string, histories: unknown[][]) => ({
+        info: { character: { name: infoName } },
+        histories: { histories: histories.map((msgs) => ({ msgs })) },
+    })
+    const oneExchange = [bot('Mira', 'greeting'), user('hello')]
+
+    beforeEach(() => {
+        vi.mocked(alertError).mockClear()
+        vi.mocked(alertNormal).mockClear()
+        vi.mocked(changeChatTo).mockClear()
+        vi.mocked(selectSingleFile).mockReset()
+        testDb.db = { characters: [{ ...makeCharacter([]), name: openName }] } as unknown as Database
+    })
+
+    async function run(body: unknown, name = fileName) {
+        vi.mocked(selectSingleFile).mockResolvedValue({ name, data: utf8(JSON.stringify(body)) })
+        await importChat()
+    }
+
+    function chatList() {
+        return (testDb.db.characters[0] as character).chats
+    }
+
+    function dataOf(chat: Chat) {
+        return chat.message.map((m) => [m.role, m.data])
+    }
+
+    function noticeText() {
+        expect(alertNormal).toHaveBeenCalledTimes(1)
+        return String(vi.mocked(alertNormal).mock.calls[0][0])
+    }
+
+    // A refusal returns before any mutation: the chats the character already had stay as they were.
+    function expectRefusal(message: string, before = 0) {
+        expect(alertError).toHaveBeenCalledTimes(1)
+        expect(alertError).toHaveBeenCalledWith(message)
+        expect(chatList()).toHaveLength(before)
+        expect(alertNormal).not.toHaveBeenCalled()
+        expect(changeChatTo).not.toHaveBeenCalled()
+    }
+
+    // On the base a CAI file reaches the no-data error and adds no chat. LI1, LI2, MO1, MO4, MO5, MO6, MO9, MO13, DU1 and DU2
+    // are reproducers that fail by assertion on that. The other tests that index the chat list (LI3 to LI8, LI10, LI11, G4,
+    // DU5 to DU7) and the refusal tests MO3, MO3b, MO3c and DU4 are specification tests of one rule each: on the base they
+    // fail only because there is no chat (or no notice text), and scratch mutants of the reader are their discriminating
+    // evidence. MO7, MO15 and DU9 are guards that pass before and after.
+    describe('Lianne export', () => {
+        test('LI1: a newest-first file imports oldest first, as one chat named after the file, which is opened', async () => {
+            await run(lianneFile([bot('Mira', 'third'), user('second'), bot('Mira', 'first')]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(chatList()[0].name).toBe('cai-export-7c1e')
+            expect(dataOf(chatList()[0])).toEqual([['char', 'first'], ['user', 'second'], ['char', 'third']])
+            expect(changeChatTo).toHaveBeenCalledTimes(1)
+            expect(changeChatTo).toHaveBeenCalledWith(0)
+            expect(noticeText()).toBe(language.successImport)
+        })
+
+        test('LI2: a bare turn array (no metadata) imports the same way', async () => {
+            await run([bot('Mira', 'b'), user('a')])
+
+            expect(chatList()).toHaveLength(1)
+            expect(dataOf(chatList()[0])).toEqual([['user', 'a'], ['char', 'b']])
+        })
+
+        test('LI3: the primary candidate is shown and one swipe is reported', async () => {
+            await run(lianneFile([bot('Mira', '', { candidates: alternates('older', 'shown', 'newer'), primary: 'c1' })]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(dataOf(chatList()[0])).toEqual([['char', 'shown']])
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(1)}`)
+        })
+
+        // Kills a swipe count that also covers human turns.
+        test('LI4: alternates on a human turn are not reported', async () => {
+            await run(lianneFile([bot('Mira', 'b'), user('', { candidates: alternates('mine', 'other'), primary: 'c0' })]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(dataOf(chatList()[0])).toEqual([['user', 'mine'], ['char', 'b']])
+            expect(noticeText()).toBe(language.successImport)
+        })
+
+        test('LI5: a turn with no matching primary candidate is skipped and reported', async () => {
+            await run(lianneFile([bot('Mira', 'b'), bot('Mira', 'x', { primary: 'nope' }), user('a')]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(dataOf(chatList()[0])).toEqual([['user', 'a'], ['char', 'b']])
+            expect(noticeText()).toBe(language.chatImportSkippedLines(1))
+        })
+
+        test('LI6: the turn time becomes the message time, also in the microsecond-and-offset form', async () => {
+            await run(lianneFile([bot('Mira', 'b', { time: '2026-07-25T12:58:04Z' }), user('a', { time: '2026-07-25T12:58:03.123456+00:00' })]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(chatList()[0].message.map((m) => m.time)).toEqual([Date.UTC(2026, 6, 25, 12, 58, 3, 123), Date.UTC(2026, 6, 25, 12, 58, 4)])
+        })
+
+        // Kills a missing header: Rex is the open character, so only the header drops the name Mira.
+        test('LI7: user lines carry no name, the chat\'s own character name is dropped and another bot keeps its name', async () => {
+            testDb.db.characters[0].name = 'Rex'
+            await run(lianneFile([bot('Zed', 'z'), user('u'), bot('Mira', 'greeting')]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(chatList()[0].message.map((m) => m.name)).toEqual([undefined, undefined, 'Zed'])
+        })
+
+        test('LI8: markdown in the reply stays as written', async () => {
+            await run(lianneFile([bot('Mira', '*waves* **hi**')]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(dataOf(chatList()[0])).toEqual([['char', '*waves* **hi**']])
+        })
+
+        test('LI10: a picture path is reported and the text stays', async () => {
+            await run(lianneFile([bot('Mira', '', { candidates: [{ candidate_id: 'a', raw_content: 'look', tti_image_rel_path: 'img/1.png' }], primary: 'a' })]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(dataOf(chatList()[0])).toEqual([['char', 'look']])
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportMediaNotKept(1)}`)
+        })
+
+        test('LI11: a turn id read twice is imported once', async () => {
+            await run(lianneFile([bot('Mira', 'c', { id: 'k2' }), bot('Mira', 'dup', { id: 'k1' }), bot('Mira', 'b', { id: 'k1' }), user('a', { id: 'k0' })]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(dataOf(chatList()[0])).toEqual([['user', 'a'], ['char', 'b'], ['char', 'c']])
+        })
+
+        test('G4: a CAI message carries exactly role, data, time and name', async () => {
+            await run(lianneFile([bot('Zed', 'z', { time: '2026-07-25T12:58:03Z' }), bot('Mira', 'm')]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(chatList()[0].message).toEqual([
+                { role: 'char', data: 'm' },
+                { role: 'char', data: 'z', time: Date.UTC(2026, 6, 25, 12, 58, 3), name: 'Zed' },
+            ])
+        })
+    })
+
+    describe('Morse export', () => {
+        test('MO1: a file with one chat imports for any open character', async () => {
+            await run(morseFile([morseEntry('Dana', [morseChat([bot('Dana', 'hello'), user('hi')])])]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(dataOf(chatList()[0])).toEqual([['char', 'hello'], ['user', 'hi']])
+            expect(noticeText()).toBe(language.successImport)
+        })
+
+        test('MO2: several chats import those of the open character, each as its own chat in file order, first opened', async () => {
+            testDb.db.characters[0].chats = [makeChat('old', 'Old')]
+            await run(morseFile([
+                morseEntry('Mira', [morseChat([bot('Mira', 'm1')]), morseChat([bot('Mira', 'm2')])]),
+                morseEntry('Dana', [morseChat([bot('Dana', 'd1')]), morseChat([bot('Dana', 'd2')])]),
+            ]))
+
+            expect(chatList().map((c) => c.name)).toEqual(['cai-export-7c1e (1)', 'cai-export-7c1e (2)', 'Old'])
+            expect(chatList().slice(0, 2).map((c) => dataOf(c))).toEqual([[['char', 'm1']], [['char', 'm2']]])
+            expect(new Set(chatList().map((c) => c.id)).size).toBe(3)
+            expect(changeChatTo).toHaveBeenCalledTimes(1)
+            expect(changeChatTo).toHaveBeenCalledWith(0)
+            expect(noticeText()).toBe(`${language.chatImportChats(2)} ${language.chatImportLeftOut(2)}`)
+        })
+
+        // Specification test (the key is missing on the base); killed by a zero match that imports everything or a refusal after the mutation.
+        test('MO3: no chat for the open character refuses, names the characters found and changes nothing', async () => {
+            testDb.db.characters[0].chats = [makeChat('old', 'Old')]
+            await run(morseFile([morseEntry('Dana', [morseChat([bot('Dana', 'd')])]), morseEntry('Tess', [morseChat([bot('Tess', 't')])])]))
+
+            expectRefusal(language.chatImportCaiNoMatch(openName, 'Dana, Tess'), 1)
+        })
+
+        // Specification test; killed by a changed name limit.
+        test('MO3b: at most five names are listed, with the count of the rest', async () => {
+            const names = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+            await run(morseFile(names.map((n) => morseEntry(n, [morseChat([bot(n, 'x')])]))))
+
+            expectRefusal(language.chatImportCaiNoMatch(openName, 'A, B, C, D, E (+2)'))
+        })
+
+        // Pins the boundary: exactly five names carry no count of the rest.
+        test('MO3d: exactly five names are listed with no count of the rest', async () => {
+            const names = ['A', 'B', 'C', 'D', 'E']
+            await run(morseFile(names.map((n) => morseEntry(n, [morseChat([bot(n, 'x')])]))))
+
+            expectRefusal(language.chatImportCaiNoMatch(openName, 'A, B, C, D, E'))
+        })
+
+        // Specification test; killed by a refusal that returns no-data when there are no names.
+        test('MO3c: a multi-chat file that names no character refuses with the no-names text', async () => {
+            await run(morseFile([morseEntry(undefined, [morseChat([bot('A', 'a')]), morseChat([bot('B', 'b')])])]))
+
+            expectRefusal(language.chatImportCaiNoMatch(openName, ''))
+        })
+
+        test('MO4: names compare trimmed and case-sensitive', async () => {
+            const file = morseFile([morseEntry(' Mira ', [morseChat([bot('Mira', 'a')])]), morseEntry('Dana', [morseChat([bot('Dana', 'b')])])])
+            await run(file)
+            expect(chatList()).toHaveLength(1)
+
+            testDb.db.characters[0].name = 'mira'
+            testDb.db.characters[0].chats = []
+            vi.mocked(alertError).mockClear()
+            await run(file)
+            expect(chatList()).toHaveLength(0)
+            expect(alertError).toHaveBeenCalledTimes(1)
+        })
+
+        test('MO5: a participant__name is the character name when there is no name', async () => {
+            await run(morseFile([
+                { character: { participant__name: 'Mira' }, chats: [morseChat([bot('Mira', 'a')])] },
+                morseEntry('Dana', [morseChat([bot('Dana', 'b')])]),
+            ]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(dataOf(chatList()[0])).toEqual([['char', 'a']])
+        })
+
+        // Kills a count taken before empty chats are dropped: the one readable chat must import under any open name.
+        test('MO6: one readable chat beside empty ones imports whatever the open character is called', async () => {
+            testDb.db.characters[0].name = 'Zed'
+            await run(morseFile([morseEntry('Dana', [morseChat([bot('Dana', 'd')])]), morseEntry('Tess', [morseChat([])])]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(noticeText()).toBe(language.successImport)
+        })
+
+        // Guard: passes before and after the CAI branches exist.
+        test('MO7: a one-chat file whose chat has no message is no data', async () => {
+            await run(morseFile([morseEntry('Mira', [morseChat([])])]))
+
+            expectRefusal(language.errors.noData)
+        })
+
+        test('MO8: the file name numbers only the chats that were added', async () => {
+            await run(morseFile([morseEntry('Mira', [morseChat([]), morseChat([bot('Mira', 'one')]), morseChat([bot('Mira', 'two')])]), morseEntry('Dana', [morseChat([bot('Dana', 'd')])])]))
+
+            expect(chatList().map((c) => c.name)).toEqual(['cai-export-7c1e (1)', 'cai-export-7c1e (2)'])
+        })
+
+        test('MO9: a part file imports alone, and personas, user and avatar add no notice', async () => {
+            await run(morseFile([morseEntry('Mira', [morseChat([bot('Mira', 'a')])])], { part: 2, partial: true, personas: [{ name: 'P' }], user: { name: 'U' } }))
+
+            expect(chatList()).toHaveLength(1)
+            expect(noticeText()).toBe(language.successImport)
+        })
+
+        test('MO10: swipe, picture and skipped counts add up over the added chats only', async () => {
+            await run(morseFile([
+                morseEntry('Mira', [
+                    morseChat([bot('Mira', '', { candidates: alternates('a', 'b'), primary: 'c0' }), bot('Mira', 'x', { primary: 'nope' })]),
+                    morseChat([bot('Mira', '', { candidates: [{ candidate_id: 'p', raw_content: 'pic', tti_image_rel_path: 'i.png' }, { candidate_id: 'q', raw_content: 'alt' }], primary: 'p' }), bot('Mira', 'y', { primary: 'nope' })]),
+                ]),
+                morseEntry('Dana', [morseChat([bot('Dana', '', { candidates: alternates('a', 'b'), primary: 'c0' })])]),
+            ]))
+
+            expect(chatList()).toHaveLength(2)
+            expect(noticeText()).toBe([
+                language.chatImportChats(2),
+                language.chatImportSwipesNotKept(2),
+                language.chatImportMediaNotKept(1),
+                language.chatImportLeftOut(1),
+                language.chatImportLinesSkipped(2),
+            ].join(' '))
+        })
+
+        // Q8: the memory box is not imported; one line says how many imported chats had one.
+        test('MO11: the memory line follows the left-out line, counts imported chats only and is never the plain success text', async () => {
+            await run(morseFile([
+                morseEntry('Mira', [morseChat([bot('Mira', 'a')], { memory: 'Dana likes tea' }), morseChat([bot('Mira', 'b')], { memory: '  ' }), morseChat([bot('Mira', 'c')])]),
+                morseEntry('Dana', [morseChat([bot('Dana', 'd')], { memory: 'left out' })]),
+            ]))
+
+            expect(chatList()).toHaveLength(3)
+            expect(chatList().every((c) => c.note === '')).toBe(true)
+            expect(noticeText()).toBe(`${language.chatImportChats(3)} ${language.chatImportLeftOut(1)} ${language.chatImportMemoryNotKept(1)}`)
+        })
+
+        test('MO12: one chat with a memory is Done plus the memory line, never successImport', async () => {
+            await run(morseFile([morseEntry('Mira', [morseChat([bot('Mira', 'a')], { memory: 'remember' })])]))
+
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportMemoryNotKept(1)}`)
+        })
+
+        test('MO13: one added chat with other chats left out says so and is never successImport', async () => {
+            await run(morseFile([morseEntry('Mira', [morseChat([bot('Mira', 'a')])]), morseEntry('Dana', [morseChat([bot('Dana', 'd')]), morseChat([bot('Dana', 'e')])])]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(chatList()[0].name).toBe('cai-export-7c1e')
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportLeftOut(2)}`)
+        })
+
+        test('MO14: one added chat with skipped lines and a left-out chat keeps the skipped-lines base', async () => {
+            await run(morseFile([morseEntry('Mira', [morseChat([bot('Mira', 'a'), bot('Mira', 'x', { primary: 'nope' })])]), morseEntry('Dana', [morseChat([bot('Dana', 'd')])])]))
+
+            expect(noticeText()).toBe(`${language.chatImportSkippedLines(1)} ${language.chatImportLeftOut(1)}`)
+        })
+
+        // Guard: passes before and after the CAI branches exist; a detector that skips the version or format check fails it.
+        test('MO15: a Morse file with another version, or another site, is no data', async () => {
+            await run(morseFile([morseEntry('Mira', [morseChat([bot('Mira', 'a')])])], { version: 2 }))
+            expectRefusal(language.errors.noData)
+
+            vi.mocked(alertError).mockClear()
+            await run(morseFile([morseEntry('Mira', [morseChat([bot('Mira', 'a')])])], { format: 'morse.export' }))
+            expectRefusal(language.errors.noData)
+        })
+    })
+
+    describe('characterai-dumper export', () => {
+        // The open name differs from info.character.name: a one-history file must still import.
+        test('DU1: a file with one history imports for any open character', async () => {
+            await run(dumperFile('Dana', [[dumperMsg('Dana', false, 'greeting'), dumperMsg('Dana', true, 'hi')]]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(dataOf(chatList()[0])).toEqual([['char', 'greeting'], ['user', 'hi']])
+            expect(chatList()[0].message.every((m) => m.time === undefined)).toBe(true)
+            expect(noticeText()).toBe(language.successImport)
+        })
+
+        test('DU2: several histories import as separate chats when info names the open character', async () => {
+            await run(dumperFile('Mira', [[dumperMsg('Mira', false, 'one')], [dumperMsg('Mira', false, 'two')]]))
+
+            expect(chatList().map((c) => c.name)).toEqual(['cai-export-7c1e (1)', 'cai-export-7c1e (2)'])
+            expect(noticeText()).toBe(language.chatImportChats(2))
+        })
+
+        // Specification test; killed by a name match on the bot's src.name or an untrimmed open name.
+        test('DU4: several histories of another character are refused, whatever the bot src.name says', async () => {
+            await run(dumperFile('Dana', [[dumperMsg('Mira', false, 'one')], [dumperMsg('Mira', false, 'two')]]))
+
+            expectRefusal(language.chatImportCaiNoMatch(openName, 'Dana'))
+        })
+
+        // The token is converted to the user placeholder, which the import renders as the current persona name.
+        test('DU5: the redaction token becomes the current persona name', async () => {
+            vi.mocked(getUserName).mockReturnValue('Tess')
+            try {
+                await run(dumperFile('Mira', [[dumperMsg('Mira', false, 'Hello [NAME_IN_MESSAGE_REDACTED]!'), dumperMsg('Mira', true, 'I am [NAME_IN_MESSAGE_REDACTED]')]]))
+            }
+            finally {
+                vi.mocked(getUserName).mockReturnValue('User')
+            }
+
+            expect(chatList()).toHaveLength(1)
+            expect(dataOf(chatList()[0])).toEqual([['char', 'Hello Tess!'], ['user', 'I am Tess']])
+        })
+
+        test('DU6: human lines carry no name although the writer stores a redaction text there', async () => {
+            await run(dumperFile('Mira', [[dumperMsg('Mira', false, 'a'), dumperMsg('Mira', true, 'b')]]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(chatList()[0].message.map((m) => m.name)).toEqual([undefined, undefined])
+        })
+
+        test('DU7: alternates are not imported and a run of them is reported once', async () => {
+            const alt = (text: string) => dumperMsg('Mira', false, text, { is_alternative: true })
+            await run(dumperFile('Mira', [[dumperMsg('Mira', false, 'shown'), alt('a1'), alt('a2'), alt('a3'), dumperMsg('Mira', true, 'q'), alt('a4')]]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(dataOf(chatList()[0])).toEqual([['char', 'shown'], ['user', 'q']])
+            expect(noticeText()).toBe(`${language.chatImportDone} ${language.chatImportSwipesNotKept(2)}`)
+        })
+
+        // Only character messages count toward the swipes notice, as for the other two writers.
+        test('DU7b: alternates of a human message are not reported', async () => {
+            await run(dumperFile('Mira', [[dumperMsg('Mira', false, 'shown'), dumperMsg('Mira', true, 'q'), dumperMsg('Mira', true, 'q2', { is_alternative: true })]]))
+
+            expect(chatList()).toHaveLength(1)
+            expect(dataOf(chatList()[0])).toEqual([['char', 'shown'], ['user', 'q']])
+            expect(noticeText()).toBe(language.successImport)
+        })
+
+        // Guard: passes before and after the CAI branches exist.
+        test('DU9: a raw histories response ({ histories: [...] }) is no data', async () => {
+            await run({ histories: [{ msgs: [dumperMsg('Mira', false, 'x')] }] })
+
+            expectRefusal(language.errors.noData)
+        })
+    })
+
+    // Guards: these pass before and after the CAI branches exist.
+    describe('other files', () => {
+        test('G5: an object with turns lacking raw_content, and a bare array of non-turns, stay no data', async () => {
+            await run({ messages: [{ candidates: [{ text: 'x' }] }] })
+            expectRefusal(language.errors.noData)
+
+            vi.mocked(alertError).mockClear()
+            await run([{ mes: 'x' }])
+            expectRefusal(language.errors.noData)
+        })
     })
 })

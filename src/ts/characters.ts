@@ -23,7 +23,7 @@ import { beginBusy } from "./process/memory/busyActions";
 import { queueInlayCleanupForChat, queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
 import { escapeHtmlText } from "./htmlEscape";
 import { isHiddenSystemCharacter } from "./hiddenCharacters";
-import { chatNameFromFile, detectJsonChatFormat, readAgnaiChat, readKoboldChat, readOobaChat, readTavernJsonl, tavernMessageName, type ChatImportResult } from "./chatImport";
+import { chatNameFromFile, detectJsonChatFormat, readAgnaiChat, readCaiTurnsChat, readDumperChats, readKoboldChat, readMorseChats, readOobaChat, readTavernJsonl, tavernMessageName, type CaiChatsResult, type ChatImportResult } from "./chatImport";
 
 export function createNewCharacter() {
     DBState.db.characters.push(createBlankChar())
@@ -511,14 +511,13 @@ export async function exportChat(page:number){
     }
 }
 
-// Builds the chat from a reader's result, opens it and reports what was skipped
-// or not kept. A result without messages is no data and changes nothing.
-function addImportedChat(result: ChatImportResult, fileName: string, selectedID: number){
-    const { messages, skipped, swipesNotKept, header, mediaNotKept = 0 } = result
+// Builds one chat from a reader's result, or `undefined` when it has no messages.
+function buildImportedChat(result: ChatImportResult, name: string, selectedID: number): Chat | undefined {
+    const { messages, header } = result
     let newChat:Chat = {
         message: [],
         note: "",
-        name: chatNameFromFile(fileName),
+        name,
         localLore: [],
         fmIndex: -1,
         id: v4()
@@ -544,8 +543,7 @@ function addImportedChat(result: ChatImportResult, fileName: string, selectedID:
     }
 
     if(newChat.message.length === 0){
-        alertError(language.errors.noData)
-        return
+        return undefined
     }
 
     // Characters saved before chat folders existed have no `chatFolders`.
@@ -553,9 +551,43 @@ function addImportedChat(result: ChatImportResult, fileName: string, selectedID:
         ?.some(folder => folder.id === newChat.folderId)) {
         newChat.folderId = null
     }
+    return newChat
+}
 
-    DBState.db.characters[selectedID].chats.unshift(newChat)
+// Adds the chats of one file in file order, opens the first and reports what was
+// skipped or not kept. Without a message in any result it is no data and nothing
+// changes; every refusal returns before the single `unshift`.
+function addImportedChats(results: ChatImportResult[], fileName: string, selectedID: number, leftOut = 0, memoryNotKept = 0){
+    const baseName = chatNameFromFile(fileName)
+    const added: Array<{ chat: Chat, result: ChatImportResult }> = []
+    for(const result of results){
+        const chat = buildImportedChat(result, baseName, selectedID)
+        if(chat !== undefined){
+            added.push({ chat, result })
+        }
+    }
+    if(added.length === 0){
+        alertError(language.errors.noData)
+        return
+    }
+    // Numbered after chats without a message were dropped, so the numbers have no gaps.
+    if(added.length > 1){
+        added.forEach(({ chat }, index) => {
+            chat.name = `${baseName} (${index + 1})`
+        })
+    }
+
+    DBState.db.characters[selectedID].chats.unshift(...added.map(({ chat }) => chat))
     changeChatTo(0)
+
+    let skipped = 0
+    let swipesNotKept = 0
+    let mediaNotKept = 0
+    for(const { result } of added){
+        skipped += result.skipped
+        swipesNotKept += result.swipesNotKept
+        mediaNotKept += result.mediaNotKept ?? 0
+    }
     const notices: string[] = []
     if(swipesNotKept > 0){
         notices.push(language.chatImportSwipesNotKept(swipesNotKept))
@@ -563,12 +595,44 @@ function addImportedChat(result: ChatImportResult, fileName: string, selectedID:
     if(mediaNotKept > 0){
         notices.push(language.chatImportMediaNotKept(mediaNotKept))
     }
-    if(notices.length > 0){
+    if(leftOut > 0){
+        notices.push(language.chatImportLeftOut(leftOut))
+    }
+    if(memoryNotKept > 0){
+        notices.push(language.chatImportMemoryNotKept(memoryNotKept))
+    }
+    if(added.length > 1){
+        if(skipped > 0){
+            notices.push(language.chatImportLinesSkipped(skipped))
+        }
+        alertNormal([language.chatImportChats(added.length), ...notices].join(' '))
+    }
+    else if(notices.length > 0){
         alertNormal((skipped > 0 ? language.chatImportSkippedLines(skipped) : language.chatImportDone) + ' ' + notices.join(' '))
     }
     else{
         alertNormal(skipped > 0 ? language.chatImportSkippedLines(skipped) : language.successImport)
     }
+}
+
+function addImportedChat(result: ChatImportResult, fileName: string, selectedID: number){
+    addImportedChats([result], fileName, selectedID)
+}
+
+// A file that may hold several chats: nothing is added when no chat belongs to
+// the open character, and the refusal names the characters the file does hold.
+function addCaiChats(read: CaiChatsResult, fileName: string, selectedID: number){
+    if(read.chats.length === 0){
+        if(read.total === 0){
+            alertError(language.errors.noData)
+            return
+        }
+        const shown = read.names.slice(0, 5).join(', ')
+        const found = read.names.length > 5 ? `${shown} (+${read.names.length - 5})` : shown
+        alertError(language.chatImportCaiNoMatch(DBState.db.characters[selectedID].name, found))
+        return
+    }
+    addImportedChats(read.chats, fileName, selectedID, read.leftOut, read.memoryNotKept)
 }
 
 export async function importChat(){
@@ -662,6 +726,18 @@ export async function importChat(){
                         return
                     }
                     addImportedChat(result, dat.name, selectedID)
+                    return
+                }
+                if(detectJsonChatFormat(json) === 'cai-turns'){
+                    addImportedChat(readCaiTurnsChat(json), dat.name, selectedID)
+                    return
+                }
+                if(detectJsonChatFormat(json) === 'cai-morse'){
+                    addCaiChats(readMorseChats(json, DBState.db.characters[selectedID].name), dat.name, selectedID)
+                    return
+                }
+                if(detectJsonChatFormat(json) === 'cai-dumper'){
+                    addCaiChats(readDumperChats(json, DBState.db.characters[selectedID].name), dat.name, selectedID)
                     return
                 }
                 alertError(language.errors.noData)

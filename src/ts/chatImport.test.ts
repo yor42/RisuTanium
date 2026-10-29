@@ -14,7 +14,10 @@ import {
     parseOobaTimestamp,
     parseTavernSendDate,
     readAgnaiChat,
+    readCaiTurnsChat,
+    readDumperChats,
     readKoboldChat,
+    readMorseChats,
     readOobaChat,
     readTavernJsonl,
     tavernMessageName,
@@ -1200,5 +1203,371 @@ describe('readKoboldChat (unit)', () => {
         expect(result.messages).toHaveLength(40000)
         expect(result.messages[0]).toMatchObject({ isUser: true, mes: 'u0' })
         expect(result.messages[39999]).toMatchObject({ isUser: false, mes: 'c19999' })
+    })
+})
+
+// Character.AI fixtures are built the way the three writers store them: raw turns
+// with `author`, `candidates` and `primary_candidate_id` (a human turn carries no
+// author name), Morse oldest first, Lianne newest first, the dumper's anonymised
+// `{ info, histories }`.
+type CaiTurnOptions = {
+    id?: string
+    human?: boolean | string
+    name?: string
+    text?: string
+    time?: string
+    candidates?: Array<Record<string, unknown>>
+    primary?: string
+}
+
+function caiTurn(options: CaiTurnOptions): Record<string, unknown> {
+    const turn: Record<string, unknown> = {
+        author: options.human === undefined || options.human === false
+            ? { author_id: 'a', is_human: false, ...(options.name === undefined ? {} : { name: options.name }) }
+            : { author_id: 'a', is_human: options.human },
+        candidates: options.candidates ?? [{ candidate_id: `${options.id ?? 't'}-1`, raw_content: options.text ?? 'x' }],
+        primary_candidate_id: options.primary ?? `${options.id ?? 't'}-1`,
+    }
+    if(options.id !== undefined){
+        turn.turn_key = { chat_id: 'chat-1', turn_id: options.id }
+    }
+    if(options.time !== undefined){
+        turn.create_time = options.time
+    }
+    return turn
+}
+
+const caiUser = (text: string, extra: CaiTurnOptions = {}) => caiTurn({ human: true, text, ...extra })
+const caiChar = (name: string, text: string, extra: CaiTurnOptions = {}) => caiTurn({ name, text, ...extra })
+const caiMorseChat = (turns: unknown[], extra: Record<string, unknown> = {}) => ({ chat_id: 'c', create_time: '2026-01-01T00:00:00Z', turns, ...extra })
+const caiMorseEntry = (character: Record<string, unknown>, chats: unknown[]) => ({ character, avatar: null, chats })
+const caiMorseFile = (characters: unknown[]) => ({ format: 'morse.cai-export', version: 1, exportedAt: 'x', source: 'x', user: {}, personas: [], characters })
+const dumperMsg = (name: string, human: boolean, text: string, extra: Record<string, unknown> = {}) => ({
+    text, src: { is_human: human, name: human ? '[NAME_REDACTED]' : name }, ...extra,
+})
+const dumperFile = (infoName: string | undefined, histories: unknown[][]) => ({
+    info: infoName === undefined ? {} : { character: { name: infoName } },
+    histories: { histories: histories.map((msgs) => ({ msgs })) },
+})
+
+describe('detectJsonChatFormat Character.AI (unit)', () => {
+    // Reproducers, this test and the next: on a detector without the CAI branches each fails by assertion
+    // (a case returns undefined here, or another format in the next test).
+    test('a wrapped Lianne export, a bare turn array, a Morse file and a dumper file are named', () => {
+        const turns = [caiChar('Mira', 'hi')]
+        expect(detectJsonChatFormat({ chat_id: 'c', exported_at: 'x', message_count: 1, messages: turns })).toBe('cai-turns')
+        expect(detectJsonChatFormat(turns)).toBe('cai-turns')
+        expect(detectJsonChatFormat(caiMorseFile([]))).toBe('cai-morse')
+        expect(detectJsonChatFormat(dumperFile('Mira', [[]]))).toBe('cai-dumper')
+    })
+
+    test('a CAI shape beside an Ooba, Agnai or Kobold shape in one object is read as CAI', () => {
+        const turns = [caiChar('Mira', 'hi')]
+        const rows = [['a', 'b']]
+        expect(detectJsonChatFormat({ internal: rows, visible: rows, messages: turns })).toBe('cai-turns')
+        expect(detectJsonChatFormat({ messages: [...turns, { msg: 'x' }] })).toBe('cai-turns')
+        expect(detectJsonChatFormat({ prompt: 'x', actions: ['a'], messages: turns })).toBe('cai-turns')
+        expect(detectJsonChatFormat({ ...caiMorseFile([]), internal: rows, visible: rows, prompt: 'x', actions: [] })).toBe('cai-morse')
+        expect(detectJsonChatFormat({ ...dumperFile('Mira', [[]]), prompt: 'x', actions: [] })).toBe('cai-dumper')
+    })
+
+    // Guards: these pass before and after the CAI branches exist.
+    test('files that only look like CAI stay undetected', () => {
+        expect(detectJsonChatFormat({ ...caiMorseFile([]), format: 'morse.export' })).toBeUndefined()
+        expect(detectJsonChatFormat({ ...caiMorseFile([]), version: 2 })).toBeUndefined()
+        expect(detectJsonChatFormat({ ...caiMorseFile([]), characters: {} })).toBeUndefined()
+        expect(detectJsonChatFormat({ histories: [{ msgs: [] }] })).toBeUndefined()
+        expect(detectJsonChatFormat({ info: {}, histories: { histories: {} } })).toBeUndefined()
+        expect(detectJsonChatFormat([])).toBeUndefined()
+        expect(detectJsonChatFormat([{ mes: 'x' }, 4, null])).toBeUndefined()
+        expect(detectJsonChatFormat({ messages: [{ candidates: [{ text: 'x' }] }] })).toBeUndefined()
+        expect(detectJsonChatFormat({ type: 'risuChat', ...caiMorseFile([]) })).toBeUndefined()
+    })
+
+    test('Ooba, Agnai and Kobold files keep their format', () => {
+        const rows = [['a', 'b']]
+        expect(detectJsonChatFormat({ internal: rows, visible: rows })).toBe('ooba')
+        expect(detectJsonChatFormat({ messages: [{ msg: 'x' }] })).toBe('agnai')
+        expect(detectJsonChatFormat({ prompt: 'x', actions: ['a'] })).toBe('kobold')
+    })
+})
+
+// Reader tests: on the base these fail at setup ("is not a function"), so they are specification tests,
+// not red-by-assertion reproducers. The integration reproducers are in characters.importChat.test.ts.
+describe('readCaiTurnsChat (unit)', () => {
+    test('a newest-first file reads oldest first, from a wrapped file and from a bare array', () => {
+        const turns = [caiChar('Mira', 'third'), caiUser('second'), caiChar('Mira', 'first')]
+        const wrapped = readCaiTurnsChat({ messages: turns })
+        expect(wrapped.messages.map((m) => m.mes)).toEqual(['first', 'second', 'third'])
+        expect(readCaiTurnsChat(turns).messages.map((m) => m.mes)).toEqual(['first', 'second', 'third'])
+    })
+
+    test('the shown reply is the primary candidate and no other candidate is read as the reply', () => {
+        const turn = caiChar('Mira', '', {
+            candidates: [{ candidate_id: 'a', raw_content: 'older' }, { candidate_id: 'b', raw_content: 'shown' }, { candidate_id: 'c', raw_content: 'newer' }],
+            primary: 'b',
+        })
+        const result = readCaiTurnsChat([turn])
+        expect(result.messages.map((m) => m.mes)).toEqual(['shown'])
+        expect(result.swipesNotKept).toBe(1)
+    })
+
+    test('a character turn with alternates counts once, a human turn with alternates counts nothing', () => {
+        const candidates = [{ candidate_id: 'a', raw_content: 'one' }, { candidate_id: 'b', raw_content: 'two' }, { candidate_id: 'c', raw_content: 'three' }]
+        expect(readCaiTurnsChat([caiChar('Mira', '', { candidates, primary: 'a' })]).swipesNotKept).toBe(1)
+        const human = readCaiTurnsChat([caiUser('', { candidates, primary: 'a' })])
+        expect(human.messages.map((m) => m.mes)).toEqual(['one'])
+        expect(human.swipesNotKept).toBe(0)
+    })
+
+    test('a turn with no primary_candidate_id is skipped even when a candidate has no candidate_id', () => {
+        const turn = { author: { is_human: false, name: 'Mira' }, candidates: [{ raw_content: 'orphan' }] }
+        const result = readCaiTurnsChat([turn, caiChar('Mira', 'ok')])
+        expect(result.messages.map((m) => m.mes)).toEqual(['ok'])
+        expect(result.skipped).toBe(1)
+    })
+
+    test('a blank alternate is not a swipe; an empty shown reply with a real alternate adds no message and still counts', () => {
+        const blank = caiChar('Mira', '', { candidates: [{ candidate_id: 'a', raw_content: 'shown' }, { candidate_id: 'b', raw_content: '  ' }], primary: 'a' })
+        expect(readCaiTurnsChat([blank]).swipesNotKept).toBe(0)
+        const emptyShown = caiChar('Mira', '', { candidates: [{ candidate_id: 'a', raw_content: '' }, { candidate_id: 'b', raw_content: 'other' }], primary: 'a' })
+        const result = readCaiTurnsChat([emptyShown])
+        expect(result.messages).toEqual([])
+        expect(result.swipesNotKept).toBe(1)
+        expect(result.skipped).toBe(0)
+    })
+
+    test('a turn without a matching primary, without candidates or a non-object counts as skipped', () => {
+        const noPrimary = caiChar('Mira', 'x', { primary: 'nope' })
+        const noText = caiChar('Mira', '', { candidates: [{ candidate_id: 'a', raw_content: 4 }], primary: 'a' })
+        const result = readCaiTurnsChat([noPrimary, noText, { author: {} }, 'x', caiChar('Mira', 'ok')])
+        expect(result.messages.map((m) => m.mes)).toEqual(['ok'])
+        expect(result.skipped).toBe(4)
+    })
+
+    // Kills a truthy test of `is_human`: the string 'false' is truthy but is not the boolean true.
+    test('only the boolean true makes a user line; a string flag, a missing author or a missing flag is a character line', () => {
+        const result = readCaiTurnsChat([
+            caiTurn({ human: 'false', text: 'string' }),
+            { candidates: [{ candidate_id: 'a', raw_content: 'noauthor' }], primary_candidate_id: 'a' },
+            { author: {}, candidates: [{ candidate_id: 'a', raw_content: 'noflag' }], primary_candidate_id: 'a' },
+            caiUser('real'),
+        ])
+        expect(result.messages.map((m) => [m.isUser, m.mes])).toEqual([[true, 'real'], [false, 'noflag'], [false, 'noauthor'], [false, 'string']])
+    })
+
+    test('a turn id already read is skipped and a turn without an id is never deduplicated', () => {
+        const turns = [caiChar('Mira', 'newest', { id: 'k3' }), caiChar('Mira', 'dup-later-page', { id: 'k2' }), caiChar('Mira', 'dup', { id: 'k2' }), caiUser('noid'), caiUser('noid'), caiChar('Mira', 'first', { id: 'k1' })]
+        const result = readCaiTurnsChat(turns)
+        expect(result.messages.map((m) => m.mes)).toEqual(['first', 'noid', 'noid', 'dup', 'newest'])
+    })
+
+    test('the turn time is kept, a bad one leaves the message without a time', () => {
+        const result = readCaiTurnsChat([caiChar('Mira', 'b', { time: 'garbage' }), caiUser('a', { time: '2026-07-25T12:58:03.123456+00:00' })])
+        expect(result.messages[0].sendDate).toBe(Date.UTC(2026, 6, 25, 12, 58, 3, 123))
+        expect(result.messages[1].sendDate).toBeUndefined()
+    })
+
+    // Kills a missing header: with it, the first speaker's name is dropped and a second bot keeps its name.
+    test('user lines carry no name, the header holds the first character name, another bot keeps its name through tavernMessageName', () => {
+        const result = readCaiTurnsChat([caiChar('Zed', 'z'), caiUser('u'), caiChar('Mira', 'greeting')])
+        expect(result.header).toEqual({ characterName: 'Mira' })
+        expect(result.messages.map((m) => m.name)).toEqual(['Mira', undefined, 'Zed'])
+        const own = { userName: 'Dana', characterName: 'Rex' }
+        expect(result.messages.map((m) => tavernMessageName(m, result.header, own))).toEqual([undefined, undefined, 'Zed'])
+    })
+
+    test('markdown stays and a picture path on the shown candidate is counted while the text is kept', () => {
+        const picture = caiChar('Mira', '', { candidates: [{ candidate_id: 'a', raw_content: '*waves* hi', tti_image_rel_path: 'img/1.png' }], primary: 'a' })
+        const plain = caiChar('Mira', '', { candidates: [{ candidate_id: 'a', raw_content: 'no pic', tti_image_rel_path: '' }], primary: 'a' })
+        const result = readCaiTurnsChat([picture, plain])
+        expect(result.messages.map((m) => m.mes)).toEqual(['no pic', '*waves* hi'])
+        expect(result.mediaNotKept).toBe(1)
+        expect(readCaiTurnsChat([plain]).mediaNotKept).toBeUndefined()
+    })
+})
+
+describe('readCaiTurnsChat user lines (unit)', () => {
+    // The writers store no human author name; if one is present it is not a display name and is never read.
+    test('a human turn keeps no name even when its author carries one', () => {
+        const human = { author: { is_human: true, name: 'Dana' }, candidates: [{ candidate_id: 'a', raw_content: 'hi' }], primary_candidate_id: 'a' }
+        const result = readCaiTurnsChat([human])
+        expect(result.messages).toEqual([{ isUser: true, mes: 'hi' }])
+    })
+})
+
+describe('readMorseChats (unit)', () => {
+    const hello = [caiChar('Mira', 'hello'), caiUser('hi')]
+
+    test('turns keep the file order and are not deduplicated, and the entry name is the header', () => {
+        const file = caiMorseFile([caiMorseEntry({ name: ' Mira ' }, [caiMorseChat([caiChar('Mira', 'a', { id: 'k' }), caiUser('b'), caiChar('Mira', 'a2', { id: 'k' })])])])
+        const read = readMorseChats(file, 'Whoever')
+        expect(read.chats).toHaveLength(1)
+        expect(read.chats[0].messages.map((m) => m.mes)).toEqual(['a', 'b', 'a2'])
+        expect(read.chats[0].header).toEqual({ characterName: 'Mira' })
+    })
+
+    test('a file holding one chat is imported whatever the open character is called', () => {
+        const read = readMorseChats(caiMorseFile([caiMorseEntry({ name: 'Mira' }, [caiMorseChat(hello)])]), 'Dana')
+        expect(read).toMatchObject({ total: 1, leftOut: 0, names: ['Mira'] })
+        expect(read.chats).toHaveLength(1)
+    })
+
+    test('several chats are matched by the trimmed, case-sensitive character name, in file order', () => {
+        const file = caiMorseFile([
+            caiMorseEntry({ name: 'Mira' }, [caiMorseChat([caiChar('Mira', 'm1')]), caiMorseChat([caiChar('Mira', 'm2')])]),
+            caiMorseEntry({ name: 'Dana' }, [caiMorseChat([caiChar('Dana', 'd1')])]),
+        ])
+        const read = readMorseChats(file, ' Mira ')
+        expect(read.chats.map((c) => c.messages[0].mes)).toEqual(['m1', 'm2'])
+        expect(read).toMatchObject({ total: 3, leftOut: 1, names: ['Mira', 'Dana'] })
+        const wrongCase = readMorseChats(file, 'mira')
+        expect(wrongCase.chats).toEqual([])
+        expect(wrongCase).toMatchObject({ total: 3, leftOut: 3 })
+    })
+
+    test('the name falls back to participant__name; an entry with neither is unnamed and is left out of a multi-chat file', () => {
+        const file = caiMorseFile([
+            caiMorseEntry({ participant__name: ' Mira ' }, [caiMorseChat([caiChar('Mira', 'p')])]),
+            caiMorseEntry({ name: '  ' }, [caiMorseChat([caiChar('Mira', 'blank')])]),
+            caiMorseEntry({}, [caiMorseChat([caiChar('Mira', 'none')])]),
+        ])
+        const read = readMorseChats(file, 'Mira')
+        expect(read.chats.map((c) => c.messages[0].mes)).toEqual(['p'])
+        expect(read).toMatchObject({ total: 3, leftOut: 2, names: ['Mira'] })
+        expect(readMorseChats(caiMorseFile([
+            caiMorseEntry({}, [caiMorseChat([caiChar('A', 'a')])]),
+            caiMorseEntry({}, [caiMorseChat([caiChar('B', 'b')])]),
+        ]), 'Mira')).toMatchObject({ chats: [], total: 2, leftOut: 2, names: [] })
+    })
+
+    // Chats without a message are neither counted nor left out, so one readable chat plus empty ones is a one-chat file.
+    test('chats with no importable message are not counted: one readable chat beside empty ones imports whatever the open name', () => {
+        const file = caiMorseFile([
+            caiMorseEntry({ name: 'Mira' }, [caiMorseChat(hello), caiMorseChat([])]),
+            caiMorseEntry({ name: 'Dana' }, [caiMorseChat([caiUser('')]), caiMorseChat([caiChar('Dana', 'x', { primary: 'nope' })])]),
+        ])
+        const read = readMorseChats(file, 'Zed')
+        expect(read).toMatchObject({ total: 1, leftOut: 0, names: ['Mira'] })
+        expect(read.chats).toHaveLength(1)
+        expect(readMorseChats(caiMorseFile([caiMorseEntry({ name: 'Mira' }, [caiMorseChat([])])]), 'Mira')).toMatchObject({ chats: [], total: 0 })
+    })
+
+    test('the memory box is counted for imported chats only, and only when it holds text', () => {
+        const file = caiMorseFile([
+            caiMorseEntry({ name: 'Mira' }, [
+                caiMorseChat(hello, { memory: 'Dana likes tea' }),
+                caiMorseChat(hello, { memory: '   ' }),
+                caiMorseChat(hello, { memory: 7 }),
+                caiMorseChat(hello),
+            ]),
+            caiMorseEntry({ name: 'Dana' }, [caiMorseChat(hello, { memory: 'not imported' })]),
+        ])
+        expect(readMorseChats(file, 'Mira').memoryNotKept).toBe(1)
+        expect(readMorseChats(file, 'Dana').memoryNotKept).toBe(1)
+        expect(readMorseChats(file, 'Zed').memoryNotKept).toBe(0)
+    })
+
+    test('entries that are not objects, and chats without a turns array, are not chats', () => {
+        const file = caiMorseFile([4, null, { character: { name: 'Mira' }, chats: 'x' }, caiMorseEntry({ name: 'Mira' }, [null, { turns: 'x' }, caiMorseChat(hello)])])
+        expect(readMorseChats(file, 'Mira')).toMatchObject({ total: 1, leftOut: 0 })
+    })
+})
+
+describe('readDumperChats (unit)', () => {
+    const history = [dumperMsg('Mira', false, 'greeting'), dumperMsg('Mira', true, 'hi')]
+
+    // Kills a reader that insists on a name match for a one-chat file: the open name differs from info.character.name.
+    test('DU1: a file with one chat is imported although the open character has another name', () => {
+        const read = readDumperChats(dumperFile('Mira', [history]), 'Dana')
+        expect(read).toMatchObject({ total: 1, leftOut: 0, names: ['Mira'] })
+        expect(read.chats).toHaveLength(1)
+        expect(read.chats[0].header).toEqual({ characterName: 'Mira' })
+    })
+
+    test('several histories are all or nothing on info.character.name, even when a bot src.name equals the open name', () => {
+        const file = dumperFile('Mira', [history, [dumperMsg('Dana', false, 'x')]])
+        const match = readDumperChats(file, ' Mira ')
+        expect(match.chats).toHaveLength(2)
+        expect(match).toMatchObject({ total: 2, leftOut: 0 })
+        const refused = readDumperChats(file, 'Dana')
+        expect(refused.chats).toEqual([])
+        expect(refused).toMatchObject({ total: 2, leftOut: 2, names: ['Mira'] })
+        expect(readDumperChats(dumperFile(undefined, [history, history]), 'Mira')).toMatchObject({ chats: [], total: 2, names: [] })
+    })
+
+    test('histories with no importable message are not counted', () => {
+        const read = readDumperChats(dumperFile('Mira', [[], history, [dumperMsg('Mira', false, '')]]), 'Zed')
+        expect(read).toMatchObject({ total: 1, leftOut: 0 })
+        expect(read.chats).toHaveLength(1)
+        expect(readDumperChats(dumperFile('Mira', [[]]), 'Mira')).toMatchObject({ chats: [], total: 0 })
+    })
+
+    test('the stored order is kept, human lines carry no name, bot names are trimmed and no time is read', () => {
+        const read = readDumperChats(dumperFile('Mira', [[dumperMsg(' Mira ', false, 'one'), dumperMsg('', true, 'two'), dumperMsg('Zed', false, 'three')]]), 'Mira')
+        const lines = read.chats[0].messages
+        expect(lines.map((m) => [m.isUser, m.mes, m.name, m.sendDate])).toEqual([
+            [false, 'one', 'Mira', undefined],
+            [true, 'two', undefined, undefined],
+            [false, 'three', 'Zed', undefined],
+        ])
+    })
+
+    test('the redaction token becomes the user placeholder in every message', () => {
+        const read = readDumperChats(dumperFile('Mira', [[
+            dumperMsg('Mira', false, 'Hello [NAME_IN_MESSAGE_REDACTED], [NAME_IN_MESSAGE_REDACTED]!'),
+            dumperMsg('Mira', true, 'I am [NAME_IN_MESSAGE_REDACTED]'),
+        ]]), 'Mira')
+        expect(read.chats[0].messages.map((m) => m.mes)).toEqual(['Hello {{user}}, {{user}}!', 'I am {{user}}'])
+    })
+
+    test('an alternate message is not imported and a run of consecutive alternates counts once', () => {
+        const alt = (text: string) => dumperMsg('Mira', false, text, { is_alternative: true })
+        const read = readDumperChats(dumperFile('Mira', [[
+            dumperMsg('Mira', false, 'shown'), alt('a1'), alt('a2'), alt('a3'),
+            dumperMsg('Mira', true, 'reply'), alt('a4'), alt('  '),
+        ]]), 'Mira')
+        expect(read.chats[0].messages.map((m) => m.mes)).toEqual(['shown', 'reply'])
+        expect(read.chats[0].swipesNotKept).toBe(2)
+    })
+
+    test('alternates of a human message are not swipes, and do not break a run of reply alternates', () => {
+        const alt = (human: boolean, text: string) => dumperMsg('Mira', human, text, { is_alternative: true })
+        const read = readDumperChats(dumperFile('Mira', [[dumperMsg('Mira', false, 'shown'), alt(true, 'h1'), alt(true, 'h2')]]), 'Mira')
+        expect(read.chats[0].swipesNotKept).toBe(0)
+        const mixed = readDumperChats(dumperFile('Mira', [[dumperMsg('Mira', false, 'shown'), alt(false, 'a1'), alt(true, 'h1'), alt(false, 'a2')]]), 'Mira')
+        expect(mixed.chats[0].swipesNotKept).toBe(1)
+    })
+
+    // Kills a truthy test of `src.is_human`: the string 'false' is truthy but is not the boolean true.
+    test('only the boolean true makes a user line in a dumper history', () => {
+        const odd = { text: 'string flag', src: { is_human: 'false', name: 'Mira' } }
+        const read = readDumperChats(dumperFile('Mira', [[odd, dumperMsg('Mira', true, 'real')]]), 'Mira')
+        expect(read.chats[0].messages.map((m) => [m.isUser, m.mes])).toEqual([[false, 'string flag'], [true, 'real']])
+    })
+
+    test('a message that is not an object ends a run of alternates, so the next alternate counts again', () => {
+        const alt = (text: string) => dumperMsg('Mira', false, text, { is_alternative: true })
+        const read = readDumperChats(dumperFile('Mira', [[dumperMsg('Mira', false, 'shown'), alt('a1'), 'x', alt('a2')]]), 'Mira')
+        expect(read.chats[0].swipesNotKept).toBe(2)
+        expect(read.chats[0].skipped).toBe(1)
+    })
+
+    test('a message without a string text, and entries that are not objects, count as skipped', () => {
+        const read = readDumperChats(dumperFile('Mira', [[dumperMsg('Mira', false, 'ok'), { src: { is_human: false } }, 'x', null]]), 'Mira')
+        expect(read.chats[0].messages.map((m) => m.mes)).toEqual(['ok'])
+        expect(read.chats[0].skipped).toBe(3)
+    })
+})
+
+describe('Character.AI readers on large input (unit)', () => {
+    test('a 200,000-turn Lianne file reads in full (an exercise of the single pass, not performance evidence)', () => {
+        const turns: unknown[] = []
+        for(let index = 0; index < 200000; index++){
+            turns.push(index % 2 === 0 ? caiChar('Mira', `c${index}`, { id: `k${index}` }) : caiUser(`u${index}`, { id: `k${index}` }))
+        }
+        const result = readCaiTurnsChat(turns)
+        expect(result.messages).toHaveLength(200000)
+        expect(result.messages[0].mes).toBe('u199999')
     })
 })
