@@ -2440,6 +2440,13 @@ export async function downloadPreset(id:number, type:'json'|'risupreset'|'return
 }
 
 
+const importBlankedDestinationFields = [
+    'forceReplaceUrl',
+    'forceReplaceUrl2',
+    'textgenWebUIStreamURL',
+    'textgenWebUIBlockingURL',
+] as const
+
 export async function importPreset(f:{
     name:string
     data:Uint8Array
@@ -2535,8 +2542,18 @@ export async function importPreset(f:{
     if(!Array.isArray(db.botPresets)){
         db.botPresets = []
     }
-    pre.openAIKey = blankSecretRef(pre.openAIKey)
-    pre.proxyKey = blankSecretRef(pre.proxyKey)
+    //An imported preset never chooses where the user's stored keys and headers are sent. This holds
+    //for every model, sub-model, auxiliary or fallback model and format, because selecting the preset
+    //copies these fields into the working settings and a later model switch can consume any of them,
+    //so no field of the preset or the user may decide whether the rule applies. The blanked fields
+    //match what downloadPreset writes; koboldURL is removed so selecting the preset keeps the
+    //user's own Kobold URL.
+    for(const field of importBlankedDestinationFields){
+        pre[field] = ''
+    }
+    delete pre.koboldURL
+    pre.openAIKey = typeof pre.openAIKey === 'string' ? blankSecretRef(pre.openAIKey) : ''
+    pre.proxyKey = typeof pre.proxyKey === 'string' ? blankSecretRef(pre.proxyKey) : ''
     db.botPresets.push(pre)
 }
 
