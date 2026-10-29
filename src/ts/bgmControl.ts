@@ -20,3 +20,11 @@ export function parseBgmControl(ctrlName: string): BgmControl | null {
         src: split.slice(2).join(SEPARATOR),
     }
 }
+
+/**
+ * A control can be played only with a finite volume in [0, 1] and a non-empty
+ * source. Anything else is silence, never a clamp or a fallback.
+ */
+export function isWellFormedBgm(bgm: BgmControl): boolean {
+    return Number.isFinite(bgm.volume) && bgm.volume >= 0 && bgm.volume <= 1 && bgm.src.length > 0
+}

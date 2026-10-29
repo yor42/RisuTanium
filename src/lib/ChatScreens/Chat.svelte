@@ -17,6 +17,7 @@
     import { ensureModulesOrAlert } from 'src/ts/process/moduleEnsure'
     import { hasModuleStubs } from 'src/ts/process/moduleRefList'
     import { sayTTS } from "src/ts/process/tts"
+    import { registerMessageRoot } from "src/ts/messageRootRegistry"
     import { buildDisplayParseOptions } from "src/ts/process/displayParseOptions"
     import { isTTSVoiceMode } from "src/ts/process/ttsModes"
     import { DBState, ReloadChatPointer, CurrentTriggerIdStore, popupStore } from 'src/ts/stores.svelte'
@@ -106,6 +107,7 @@
         interrupted = false,
     }: Props = $props();
 
+    let rootChatId = $derived(DBState.db.characters?.[selIdState.selId]?.chats?.[DBState.db.characters?.[selIdState.selId]?.chatPage]?.message?.[idx]?.chatId ?? '')
     let msgDisplay = $state('')
     let translated = $state(false)
     let partialEditEnabled = $state(true)
@@ -1552,7 +1554,8 @@
 {/if}
 <div class="flex max-w-full justify-center risu-chat"
      data-chat-index={idx}
-     data-chat-id={DBState.db.characters?.[selIdState.selId]?.chats?.[DBState.db.characters?.[selIdState.selId]?.chatPage]?.message?.[idx]?.chatId ?? ''}
+     data-chat-id={rootChatId}
+     use:registerMessageRoot={{ index: idx, chatId: rootChatId }}
      style={isLastMemory ? `border-top:${DBState.db.memoryLimitThickness}px solid rgba(98, 114, 164, 0.7);` : ''}
      onclickcapture={handleButtonTriggerWithin}
      onsubmitcapture={handleFormTriggerWithin}>

@@ -140,6 +140,7 @@ import { getFileSrc } from 'src/ts/globalApi.svelte'
 import { ParseMarkdown } from 'src/ts/parser/parser.svelte'
 import { alertClear, alertNormal, alertWait } from 'src/ts/alert'
 import { language } from 'src/lang'
+import { messageRootOf } from 'src/ts/messageRootRegistry'
 import Chat from './Chat.svelte'
 
 //#region fixtures and helpers
@@ -538,5 +539,37 @@ describe('the status line of a copy', () => {
         await vi.advanceTimersByTimeAsync(60_000)
         flushSync()
         expect(statusText(root)).toBe('')
+    })
+})
+
+describe('the message root registration', () => {
+    function rootOf(target: HTMLElement): HTMLElement {
+        const root = target.querySelector<HTMLElement>('.risu-chat')
+        expect(root, 'the message root').not.toBeNull()
+        return root!
+    }
+
+    test('G-root registers the root with its index and chat id, and unregisters on unmount', async () => {
+        const target = await mountChat()
+        const root = rootOf(target)
+
+        expect(root.getAttribute('data-chat-index')).toBe('0')
+        expect(root.getAttribute('data-chat-id')).toBe('id-1')
+        expect(messageRootOf(root)?.info).toEqual({ index: 0, chatId: 'id-1' })
+
+        await unmount(mountedInstances.pop() as never)
+        expect(messageRootOf(root)).toBeNull()
+    })
+
+    test('G-root-u follows a chat id change in the database', async () => {
+        const target = await mountChat()
+        const root = rootOf(target)
+
+        DBState.db.characters[0].chats[0].message[0].chatId = 'id-2'
+        flushSync()
+        await settle()
+
+        expect(root.getAttribute('data-chat-id')).toBe('id-2')
+        expect(messageRootOf(root)?.info).toEqual({ index: 0, chatId: 'id-2' })
     })
 })
