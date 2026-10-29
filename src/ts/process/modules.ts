@@ -829,10 +829,22 @@ export function getModuleToggles(subject?: RunSubject) {
     return costomModuleToggles
 }
 
-export function getModuleMcps(subject?: RunSubject) {
+/** The MCP URL of each referenced non-stub module, with the module that names it. */
+export function getModuleMcpEntries(subject?: RunSubject) {
     const modules = getModules(subject)
 
-    return modules.filter((v) => !isModuleStub(v)).map((v) => v.mcp?.url).filter((v) => v)
+    const entries: { moduleId: string, moduleName: string, url: string }[] = []
+    for (const module of modules) {
+        if (isModuleStub(module) || !module.mcp?.url) {
+            continue
+        }
+        entries.push({ moduleId: module.id, moduleName: module.name, url: module.mcp.url })
+    }
+    return entries
+}
+
+export function getModuleMcps(subject?: RunSubject) {
+    return getModuleMcpEntries(subject).map((v) => v.url)
 }
 
 export async function applyModule() {
