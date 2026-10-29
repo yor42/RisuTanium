@@ -794,7 +794,7 @@ for (let i = 0; i < db.characters.length; i++) {
 - An update or a new plugin is read from the `//@` header of its `script`, not from the other fields of the entry. The header `//@name` must equal the entry's `name`, and a new plugin must declare `//@api 3.0` (2.0 and 2.1 are refused). The user is asked once per update or install, in list order, and the prompt names the plugins and, for an update, the versions.
 - An update keeps the saved argument values for arguments the new header still declares with the same type, and keeps the on/off state. A new plugin starts switched on with the header's default values, whatever `realArg` and `enabled` you sent. The new script runs after the next `loadPlugins()`.
 - If any change is declined, is refused (a header that does not parse, names another plugin or is not 3.0), or cannot be applied once the prompts are answered, no change to the list is applied. The other keys of the call are still saved, and the call rejects with an `Error` whose message names the plugin and the reason. A `plugins` value that is not an array is handled the same way. Your own entry with a different script that is not newer than the installed one rejects with "not newer than installed", so a self-updater can tell that its update did not happen.
-- `setDatabaseLite()` prompts for these changes too. It saves the call's data before it returns when nothing needs asking, and after the prompts otherwise.
+- `setDatabaseLite()` prompts for these changes too. It saves the call's data only after the `'db'` permission check: right after it when nothing else needs asking, and after the plugin-list prompts otherwise, in either case before its promise settles. It never saves before it returns and never throws synchronously; a refusal is a rejected promise. (The V2 plugin API's `setDatabaseLite` saves before it returns when nothing needs asking; that order does not apply here.)
 - The Update button, re-importing a plugin and `//@update-url` updates keep the saved values and the on/off state in the same way. Hot reload keeps the saved values and switches the plugin on.
 - `installPlugin()` returns the plugins the user accepted and writes nothing. It only offers plugins whose name is not installed, and its header must name the entry.
 
@@ -835,6 +835,8 @@ await Risuai.setCharacter(character);
 
 **Fork-specific note (not upstream RisuAI):** `setCharacter()` and `setChar()` write only the currently selected character. They reject with an `Error`, and write nothing, when no character is selected, or when `character` has a `chaId` that differs from the selected character's (for example because the user switched characters after your `getCharacter()` call). A `character` with no `chaId` still replaces the selected character. Upstream writes into whatever is selected, or into an invalid slot when nothing is.
 
+**Fork-specific note (not upstream RisuAI):** `getCharacter()` and `getChar()` need the `'db'` permission. The user is asked when no grant from the last 3 days is stored, and the answer holds for the rest of the session. When it is denied the promise resolves to `null`. `setCharacter()` and `setChar()` need the same permission: they write only after that check and before their promise settles, and when it is denied the promise rejects with an `Error` naming the permission and nothing is written.
+
 **Fork-specific note (not upstream RisuAI):** `getArg()` and `setArg()` reach only your own plugin's arguments. A key that does not start with your plugin's name followed by `::` throws an `Error`; upstream let a plugin read and change another plugin's arguments. Use `getArgument()` / `setArgument()`.
 
 ### Character & Chat by Index
@@ -864,6 +866,8 @@ await Risuai.setChatToIndex(charIndex, chatIndex, chat);
 ```
 
 `chat.id` and a character's `chaId` must be unique across the database, so a copy of a chat or character passed to any of the APIs above must drop or regenerate them rather than carry over the original's. Keep the original `chat.id` or `chaId` when you are replacing that same chat or character; an object installed without one gets a fresh id, so it is treated as a different chat or character from anything that already existed.
+
+**Fork-specific note (not upstream RisuAI):** `getCharacterFromIndex()` and `getChatFromIndex()` need the `'db'` permission. The user is asked when no grant from the last 3 days is stored, and the answer holds for the rest of the session. When it is denied the promise resolves to `null`. `setCharacterToIndex()` and `setChatToIndex()` need the same permission: they write only after that check and before their promise settles, and when it is denied the promise rejects with an `Error` naming the permission and nothing is written.
 
 **Fork-specific note (not upstream RisuAI):** these calls treat an archived character (one whose entry in `getDatabase()` has `coldstorage` set) differently from upstream. A character can be archived.
 
@@ -1239,6 +1243,8 @@ if (granted) {
 ```
 
 **Available permissions:** `'fetchLogs'`, `'db'`, `'mainDom'`, `'replacer'`
+
+**Fork-specific note (not upstream RisuAI):** `'db'` covers `getDatabase()`, `setDatabase()`, `setDatabaseLite()`, `getCharacter()`, `setCharacter()`, `getChar()`, `setChar()`, `getCharacterFromIndex()`, `setCharacterToIndex()`, `getChatFromIndex()` and `setChatToIndex()`. `parseRisuChat()` and `getCurrentLorebookEntries()` read the selected character without it.
 
 ### Fetch Logs
 

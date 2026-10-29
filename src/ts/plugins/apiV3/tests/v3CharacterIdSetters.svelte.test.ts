@@ -21,8 +21,16 @@ import type { Database } from '../../../storage/database.svelte'
 
 vi.mock('localforage', () => ({
     default: {
-        createInstance: () => ({
-            getItem: vi.fn(async () => null),
+        createInstance: (options?: { name?: string }) => ({
+            getItem: vi.fn(async (key: string) => {
+                // A stored recent 'db' grant keeps the character and database APIs
+                // from prompting; every other key is absent.
+                if (options?.name === 'plugin_permissions') {
+                    if (key.endsWith('_db_lastGrantTime')) return Date.now()
+                    if (key.endsWith('_db')) return true
+                }
+                return null
+            }),
             setItem: vi.fn(async () => {}),
             removeItem: vi.fn(async () => {}),
         }),
@@ -216,32 +224,32 @@ describe('V3 setCharacterToIndex (S11, S20)', () => {
         ['an id that is a block name', { chaId: 'preset', name: 'x', type: 'character', chats: [] }],
         ['an id of 300 characters', { chaId: 'x'.repeat(300), name: 'x', type: 'character', chats: [] }],
         ['an id that is a Symbol', { chaId: Symbol('id'), name: 'x', type: 'character', chats: [] }],
-    ])('(R) rejects %s and leaves the slot as it was', (_label, bad) => {
-        expect(() => api().setCharacterToIndex(1, bad)).toThrow()
+    ])('(R) rejects %s and leaves the slot as it was', async (_label, bad) => {
+        await expect(api().setCharacterToIndex(1, bad)).rejects.toThrow()
         expect(live()[1].chaId).toBe('b')
         expect(live()[1].name).toBe('B')
     })
 
-    test('(G) accepts a well-formed replacement, a missing id (filled) and a numeric id', () => {
-        api().setCharacterToIndex(1, { chaId: 'b', name: 'B edited', type: 'character', chats: [] })
+    test('(G) accepts a well-formed replacement, a missing id (filled) and a numeric id', async () => {
+        await api().setCharacterToIndex(1, { chaId: 'b', name: 'B edited', type: 'character', chats: [] })
         expect(live()[1].name).toBe('B edited')
-        api().setCharacterToIndex(0, { name: 'No id', type: 'character', chats: [] })
+        await api().setCharacterToIndex(0, { name: 'No id', type: 'character', chats: [] })
         expect(typeof live()[0].chaId).toBe('string')
         expect(live()[0].chaId).not.toBe('')
-        api().setCharacterToIndex(1, { chaId: 7, name: 'Seven', type: 'character', chats: [] })
+        await api().setCharacterToIndex(1, { chaId: 7, name: 'Seven', type: 'character', chats: [] })
         expect(live()[1].chaId).toBe(7)
     })
 
-    test('(G) while the slot holds an id that cannot be saved, a write carrying that id back is accepted', () => {
+    test('(G) while the slot holds an id that cannot be saved, a write carrying that id back is accepted', async () => {
         live()[1].chaId = 'config'
-        expect(() => api().setCharacterToIndex(1, { chaId: 'config', name: 'B edited', type: 'character', chats: [] })).not.toThrow()
+        await expect(api().setCharacterToIndex(1, { chaId: 'config', name: 'B edited', type: 'character', chats: [] })).resolves.toBeUndefined()
         expect(live()[1].name).toBe('B edited')
     })
 
-    test('(R) that id cannot be moved onto another slot, and another unusable id is refused', () => {
+    test('(R) that id cannot be moved onto another slot, and another unusable id is refused', async () => {
         live()[1].chaId = 'config'
-        expect(() => api().setCharacterToIndex(0, { chaId: 'config', name: 'A renamed', type: 'character', chats: [] })).toThrow()
-        expect(() => api().setCharacterToIndex(1, { chaId: 'preset', name: 'B renamed', type: 'character', chats: [] })).toThrow()
+        await expect(api().setCharacterToIndex(0, { chaId: 'config', name: 'A renamed', type: 'character', chats: [] })).rejects.toThrow()
+        await expect(api().setCharacterToIndex(1, { chaId: 'preset', name: 'B renamed', type: 'character', chats: [] })).rejects.toThrow()
         expect(live()[0].chaId).toBe('a')
         expect(live()[1].chaId).toBe('config')
     })

@@ -40,10 +40,21 @@ const readColdStorageItemMock = vi.hoisted(() => vi.fn())
 /** Every text shown to the user, except progress notices. */
 const notices = vi.hoisted(() => ({ texts: [] as string[] }))
 
+/** Whether the stored recent 'db' grant exists; off, the 'db' check prompts. */
+const permissionGrants = vi.hoisted(() => ({ db: true }))
+
 vi.mock('localforage', () => ({
     default: {
-        createInstance: () => ({
-            getItem: vi.fn(async () => null),
+        createInstance: (options?: { name?: string }) => ({
+            getItem: vi.fn(async (key: string) => {
+                // A stored recent 'db' grant keeps the character and database APIs
+                // from prompting.
+                if (permissionGrants.db && options?.name === 'plugin_permissions') {
+                    if (key.endsWith('_db_lastGrantTime')) return Date.now()
+                    if (key.endsWith('_db')) return true
+                }
+                return null
+            }),
             setItem: vi.fn(async () => {}),
             removeItem: vi.fn(async () => {}),
         }),
@@ -376,6 +387,7 @@ function warnedAbout(chaId: string): boolean {
 }
 
 beforeEach(() => {
+    permissionGrants.db = true
     units.clear()
     notices.texts.length = 0
     readColdStorageItemMock.mockReset()
@@ -737,7 +749,7 @@ describe('plugin setters and incoming stubs: the refusal rule by chaId', () => {
         expect(liveOf('hero').desc).toBe('written by the plugin')
 
         installDb([fullCharacter('warm'), stubOf(full, 'unit-hero')])
-        api.setCharacterToIndex(1, fullCharacter('hero', { desc: 'written by index' }))
+        await api.setCharacterToIndex(1, fullCharacter('hero', { desc: 'written by index' }))
         expect(liveOf('hero').coldstorage).toBeUndefined()
         expect(liveOf('hero').desc).toBe('written by index')
     })
@@ -793,6 +805,30 @@ describe('V3 setChatToIndex on an archived character', () => {
         expect(liveOf('hero').chats[1].message[0].data).toBe('written by the plugin')
         expect(liveOf('inserted').chats[1].message[0].data).toBe('second')
         expect(liveOf('warm').chats[1].message[0].data).toBe('second')
+    })
+
+    test('guard: the live list is read only after the open "db" prompt is answered, so a restore needed by then is not missed', async () => {
+        const full = fullCharacter('hero')
+        putUnit('unit-hero', full)
+        installDb([fullCharacter('warm'), fullCharacter('hero')])
+        permissionGrants.db = false
+        let answerDbPrompt!: (granted: boolean) => void
+        alertConfirmMock.mockImplementationOnce(() => new Promise<boolean>((resolve) => { answerDbPrompt = resolve }))
+        const api = makeRisuaiAPIV3({} as HTMLIFrameElement, { ...makePlugin(), script: 'p13-held-db-prompt' })
+
+        const pending = api.setChatToIndex(1, 1, makeChat('hero-chat-1', 'written by the plugin'))
+        for (let i = 0; i < 50 && alertConfirmMock.mock.calls.length === 0; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 0))
+        }
+        expect(alertConfirmMock).toHaveBeenCalledTimes(1)
+        installDb([fullCharacter('warm'), stubOf(full, 'unit-hero')])
+        answerDbPrompt(true)
+        await pending
+
+        expect(readColdStorageItemMock).toHaveBeenCalledWith('unit-hero')
+        expect(liveOf('hero').coldstorage).toBeUndefined()
+        expect(liveOf('hero').chats).toHaveLength(3)
+        expect(liveOf('hero').chats[1].message[0].data).toBe('written by the plugin')
     })
 
     test.each([

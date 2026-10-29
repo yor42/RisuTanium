@@ -844,6 +844,24 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
     const getPermission = async (permissionDesc: PluginPermission, reconfirm: boolean|'periodically' = false) => {
         return getPluginPermission(plugin.name, await getPluginScriptHash(), permissionDesc, reconfirm)
     }
+    // Fork-specific: the character, chat and database APIs need the 'db'
+    // permission. A getter resolves null when it is denied; a setter rejects
+    // and writes nothing. No live state is read before the permission settles.
+    const requireDatabasePermission = async (apiName:string) => {
+        if(!await getPermission('db', 'periodically')){
+            throw new Error(`${apiName} needs the 'db' permission, which was not granted.`)
+        }
+    }
+    const getGatedChar = async () => {
+        if(!await getPermission('db', 'periodically')){
+            return null
+        }
+        return oldApis.getChar()
+    }
+    const setGatedChar = async (char:any) => {
+        await requireDatabasePermission('setChar')
+        setSelectedCharacter(char, plugin.name)
+    }
     return {
 
         //Old APIs from v2.1
@@ -880,8 +898,8 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             }
             return oldApis.nativeFetch(url, options);
         },
-        getChar: oldApis.getChar,
-        setChar: (char:any) => setSelectedCharacter(char, plugin.name),
+        getChar: getGatedChar,
+        setChar: setGatedChar,
         addProvider: (name: string, func: (arg: PluginV2ProviderArgument, abortSignal?: AbortSignal) => Promise<{ success: boolean, content: string | ReadableStream<string> }>, options?: PluginV3ProviderOptions) => {
             console.warn(`[WARN] addProvider is a powerful API that can potentially be unsafe if used incorrectly. addProvider's functionality might be limited or changed in future updates to ensure security. please use other APIs if possible.`);
             let provs = get(customProviderStore)
@@ -951,8 +969,14 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             addPluginUnloadCallback(plugin.name, () => oldApis.removeRisuChatListener(mode, func as any));
         },
         removeRisuChatListener: oldApis.removeRisuChatListener,
-        setDatabaseLite: (newDb:any) => oldApis.setDatabaseLite(newDb, plugin.name),
-        setDatabase: (newDb:any) => oldApis.setDatabase(newDb, plugin.name),
+        setDatabaseLite: async (newDb:any) => {
+            await requireDatabasePermission('setDatabaseLite')
+            return oldApis.setDatabaseLite(newDb, plugin.name)
+        },
+        setDatabase: async (newDb:any) => {
+            await requireDatabasePermission('setDatabase')
+            return oldApis.setDatabase(newDb, plugin.name)
+        },
         loadPlugins: oldApis.loadPlugins,
         readImage: oldApis.readImage,
         readInlay: async (id: string) => {
@@ -1080,7 +1104,10 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 }
             }
         },
-        getCharacterFromIndex: (index:number) => {
+        getCharacterFromIndex: async (index:number) => {
+            if(!await getPermission('db', 'periodically')){
+                return null
+            }
             const db = DBState.db
             const charIds = Object.keys(db.characters);
             const charId = charIds[index];
@@ -1097,7 +1124,8 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             }
             return null;
         },
-        setCharacterToIndex: (index:number, char:any) => {
+        setCharacterToIndex: async (index:number, char:any) => {
+            await requireDatabasePermission('setCharacterToIndex')
             const db = DBState.db
             const charIds = Object.keys(db.characters);
             const charId = charIds[index];
@@ -1118,7 +1146,10 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 clearSupaMemoryIfEmptyIn([DBState.db.characters[charId]])
             }
         },
-        getChatFromIndex: (characterIndex:number, chatIndex:number) => {
+        getChatFromIndex: async (characterIndex:number, chatIndex:number) => {
+            if(!await getPermission('db', 'periodically')){
+                return null
+            }
             const db = DBState.db
             const charIds = Object.keys(db.characters);
             const charId = charIds[characterIndex];
@@ -1176,7 +1207,8 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
 
             return (await processScriptFull(char, parsed, 'editprocess', chatID, cbsConditions)).data;
         },
-        setChatToIndex: (characterIndex:number, chatIndex:number, chat:any) => {
+        setChatToIndex: async (characterIndex:number, chatIndex:number, chat:any) => {
+            await requireDatabasePermission('setChatToIndex')
             // Fork-specific: a write to an archived character restores it
             // first and lands on the restored character, found again by its
             // chaId because the list may change during the read. A failed
@@ -1209,8 +1241,8 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             return $state.snapshot(characterLore.concat(chatLore).concat(moduleLore))
         },
         //New names for character APIs, to match API naming conventions
-        getCharacter: oldApis.getChar,
-        setCharacter: (char:any) => setSelectedCharacter(char, plugin.name),
+        getCharacter: getGatedChar,
+        setCharacter: setGatedChar,
 
         showContainer: (
             //more types may be added in future

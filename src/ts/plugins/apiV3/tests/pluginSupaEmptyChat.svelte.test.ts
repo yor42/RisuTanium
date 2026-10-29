@@ -32,8 +32,16 @@ const notices = vi.hoisted(() => ({ texts: [] as string[] }))
 
 vi.mock('localforage', () => ({
     default: {
-        createInstance: () => ({
-            getItem: vi.fn(async () => null),
+        createInstance: (options?: { name?: string }) => ({
+            getItem: vi.fn(async (key: string) => {
+                // A stored recent 'db' grant keeps the character and database APIs
+                // from prompting; every other key is absent.
+                if (options?.name === 'plugin_permissions') {
+                    if (key.endsWith('_db_lastGrantTime')) return Date.now()
+                    if (key.endsWith('_db')) return true
+                }
+                return null
+            }),
             setItem: vi.fn(async () => {}),
             removeItem: vi.fn(async () => {}),
         }),
@@ -386,15 +394,15 @@ describe.each(KINDS)('a plugin write that empties a chat with %j', (data) => {
         expect(chatAt(1).supaMemoryData).toBe('n1\nkept')
     })
 
-    test('V3 setChar (site b)', () => {
+    test('V3 setChar (site b)', async () => {
         installTwo()
-        api3().setChar(detached('a', [], data, 'm1'))
+        await api3().setChar(detached('a', [], data, 'm1'))
         expectCleared(chatAt(0))
     })
 
-    test('V3 setCharacter (site b)', () => {
+    test('V3 setCharacter (site b)', async () => {
         installTwo()
-        api3().setCharacter(detached('a', [], data, 'm1'))
+        await api3().setCharacter(detached('a', [], data, 'm1'))
         expectCleared(chatAt(0))
     })
 
@@ -413,9 +421,9 @@ describe.each(KINDS)('a plugin write that empties a chat with %j', (data) => {
         expectCleared(chatAt(1))
     })
 
-    test('V3 setCharacterToIndex (site d)', () => {
+    test('V3 setCharacterToIndex (site d)', async () => {
         installTwo()
-        api3().setCharacterToIndex(1, detached('b', [], data, 'n1'))
+        await api3().setCharacterToIndex(1, detached('b', [], data, 'n1'))
         expectCleared(chatAt(1))
         expect(chatAt(0).supaMemoryData).toBe(`m1\n${SUMMARY}`)
     })
@@ -458,10 +466,10 @@ describe('a non-empty plugin replacement that lacks the pointer is left untouche
 
     test('guard: V3 setChar, setCharacter, setDatabaseLite and setDatabase', async () => {
         installTwo()
-        api3().setChar(lacking())
+        await api3().setChar(lacking())
         expectUntouched()
         installTwo()
-        api3().setCharacter(lacking())
+        await api3().setCharacter(lacking())
         expectUntouched()
         installTwo()
         await api3().setDatabaseLite({ characters: [lacking()] })
@@ -476,7 +484,7 @@ describe('a non-empty plugin replacement that lacks the pointer is left untouche
         await api3().setChatToIndex(0, 0, (lacking().chats as Entry[])[0])
         expectUntouched()
         installTwo()
-        api3().setCharacterToIndex(0, lacking())
+        await api3().setCharacterToIndex(0, lacking())
         expectUntouched()
     })
 })

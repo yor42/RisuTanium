@@ -38,8 +38,16 @@ const memStore = new Map<string, unknown>()
 
 vi.mock('localforage', () => ({
     default: {
-        createInstance: () => ({
-            getItem: vi.fn(async (key: string) => memStore.get(key) ?? null),
+        createInstance: (options?: { name?: string }) => ({
+            getItem: vi.fn(async (key: string) => {
+                // A stored recent 'db' grant keeps the character and database APIs
+                // from prompting.
+                if (options?.name === 'plugin_permissions') {
+                    if (key.endsWith('_db_lastGrantTime')) return Date.now()
+                    if (key.endsWith('_db')) return true
+                }
+                return memStore.get(key) ?? null
+            }),
             setItem: vi.fn(async (key: string, value: unknown) => {
                 memStore.set(key, value)
             }),
@@ -279,7 +287,7 @@ describe('V3 setCharacterToIndex (persisted via the identity tracker, no explici
 
         const api = makeRisuaiAPIV3({} as HTMLIFrameElement, { name: 'test-plugin' } as never)
         const replacement = makeCharacter('char-1', 'Character One (REPLACED by plugin)')
-        api.setCharacterToIndex(1, replacement)
+        await api.setCharacterToIndex(1, replacement)
         flushSync()
 
         const toSave = structuredClone(tracker) as toSaveType

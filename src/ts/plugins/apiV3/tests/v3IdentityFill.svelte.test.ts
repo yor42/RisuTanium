@@ -35,8 +35,16 @@ const memStore = new Map<string, unknown>()
 
 vi.mock('localforage', () => ({
     default: {
-        createInstance: () => ({
-            getItem: vi.fn(async (key: string) => memStore.get(key) ?? null),
+        createInstance: (options?: { name?: string }) => ({
+            getItem: vi.fn(async (key: string) => {
+                // A stored recent 'db' grant keeps the character and database APIs
+                // from prompting.
+                if (options?.name === 'plugin_permissions') {
+                    if (key.endsWith('_db_lastGrantTime')) return Date.now()
+                    if (key.endsWith('_db')) return true
+                }
+                return memStore.get(key) ?? null
+            }),
             setItem: vi.fn(async (key: string, value: unknown) => {
                 memStore.set(key, value)
             }),
@@ -312,14 +320,14 @@ describe('setChatToIndexImpl never inherits the replaced chat\'s id', () => {
 })
 
 describe('installing a character with an id-less unshifted chat, via setCharacterToIndex and via setChar', () => {
-    function runVariant(install: (char: CharacterFixture) => void) {
+    async function runVariant(install: (char: CharacterFixture) => Promise<void>) {
         installDb()
         const api = makeApi()
-        const snapshot = api.getCharacterFromIndex(0) as CharacterFixture
+        const snapshot = await api.getCharacterFromIndex(0) as CharacterFixture
         const existingIds = snapshot.chats.map(c => c.id)
         snapshot.chats.unshift(makeChat(undefined, 'unshifted copy'))
 
-        install(snapshot)
+        await install(snapshot)
 
         const installedChats = DBState.db.characters[0].chats
         expect(typeof installedChats[0].id).toBe('string')
@@ -331,48 +339,48 @@ describe('installing a character with an id-less unshifted chat, via setCharacte
         expect(new Set(ids).size).toBe(ids.length)
     }
 
-    test('via setCharacterToIndex', () => {
+    test('via setCharacterToIndex', async () => {
         const api = makeApi()
-        runVariant((char) => api.setCharacterToIndex(0, char))
+        await runVariant((char) => api.setCharacterToIndex(0, char))
     })
 
-    test('via setChar', () => {
+    test('via setChar', async () => {
         selectedCharID.set(0)
         const api = makeApi()
-        runVariant((char) => api.setChar(char))
+        await runVariant((char) => api.setChar(char))
     })
 })
 
 describe('setCharacterToIndex and setChar never inherit the replaced character\'s chaId', () => {
-    test('via setCharacterToIndex: the installed character gets a fresh chaId, never the replaced one\'s', () => {
+    test('via setCharacterToIndex: the installed character gets a fresh chaId, never the replaced one\'s', async () => {
         installDb()
         const api = makeApi()
         const originalChaId = DBState.db.characters[1].chaId
         const replacement = makeCharacter(undefined, 'Replacement')
-        api.setCharacterToIndex(1, replacement)
+        await api.setCharacterToIndex(1, replacement)
         expect(DBState.db.characters[1].chaId).not.toBe(originalChaId)
         expect(typeof DBState.db.characters[1].chaId).toBe('string')
         expect((DBState.db.characters[1].chaId as string).length).toBeGreaterThan(0)
     })
 
-    test('via setChar: the installed character gets a fresh chaId, never the replaced one\'s', () => {
+    test('via setChar: the installed character gets a fresh chaId, never the replaced one\'s', async () => {
         installDb()
         selectedCharID.set(1)
         const api = makeApi()
         const originalChaId = DBState.db.characters[1].chaId
         const replacement = makeCharacter(undefined, 'Replacement')
-        api.setChar(replacement)
+        await api.setChar(replacement)
         expect(DBState.db.characters[1].chaId).not.toBe(originalChaId)
         expect(typeof DBState.db.characters[1].chaId).toBe('string')
         expect((DBState.db.characters[1].chaId as string).length).toBeGreaterThan(0)
     })
 
-    test('setChar with nothing selected is refused before any id is filled or any slot is written', () => {
+    test('setChar with nothing selected is refused before any id is filled or any slot is written', async () => {
         installDb()
         selectedCharID.set(-1)
         const api = makeApi()
         const replacement = makeCharacter(undefined, 'Replacement')
-        expect(() => api.setChar(replacement)).toThrow(/no character is selected/i)
+        await expect(api.setChar(replacement)).rejects.toThrow(/no character is selected/i)
         expect(replacement.chaId).toBeUndefined()
         expect(Object.keys(DBState.db.characters)).toEqual(['0', '1'])
         expect(DBState.db.characters.map((c) => c.chaId)).toEqual(['char-0', 'char-1'])
@@ -388,14 +396,14 @@ describe('a character swap between an id-less side and a chaId-bearing side neve
         ] as unknown as Database['characters']
     }
 
-    test('chaId-bearing side installed first: neither slot duplicates a chaId, and the id-less side gets a fresh one', () => {
+    test('chaId-bearing side installed first: neither slot duplicates a chaId, and the id-less side gets a fresh one', async () => {
         makeXAndK()
         const api = makeApi()
-        const xClone = api.getCharacterFromIndex(0) as CharacterFixture
-        const kClone = api.getCharacterFromIndex(1) as CharacterFixture
+        const xClone = await api.getCharacterFromIndex(0) as CharacterFixture
+        const kClone = await api.getCharacterFromIndex(1) as CharacterFixture
 
-        api.setCharacterToIndex(0, kClone)
-        api.setCharacterToIndex(1, xClone)
+        await api.setCharacterToIndex(0, kClone)
+        await api.setCharacterToIndex(1, xClone)
 
         const chaIds = DBState.db.characters.map((c) => c.chaId)
         expect(new Set(chaIds).size).toBe(chaIds.length)
@@ -407,14 +415,14 @@ describe('a character swap between an id-less side and a chaId-bearing side neve
 
     // A missing chaId is always fresh, so no installation order can hand an
     // existing chaId to a second holder.
-    test('id-less side installed first: neither slot duplicates a chaId, and the id-less side gets a fresh one', () => {
+    test('id-less side installed first: neither slot duplicates a chaId, and the id-less side gets a fresh one', async () => {
         makeXAndK()
         const api = makeApi()
-        const xClone = api.getCharacterFromIndex(0) as CharacterFixture
-        const kClone = api.getCharacterFromIndex(1) as CharacterFixture
+        const xClone = await api.getCharacterFromIndex(0) as CharacterFixture
+        const kClone = await api.getCharacterFromIndex(1) as CharacterFixture
 
-        api.setCharacterToIndex(1, xClone)
-        api.setCharacterToIndex(0, kClone)
+        await api.setCharacterToIndex(1, xClone)
+        await api.setCharacterToIndex(0, kClone)
 
         const chaIds = DBState.db.characters.map((c) => c.chaId)
         expect(new Set(chaIds).size).toBe(chaIds.length)
@@ -431,11 +439,11 @@ describe('a character swap between an id-less side and a chaId-bearing side neve
     test('chaId-bearing side installed first: both characters survive a full encode and decode', async () => {
         makeXAndK()
         const api = makeApi()
-        const xClone = api.getCharacterFromIndex(0) as CharacterFixture
-        const kClone = api.getCharacterFromIndex(1) as CharacterFixture
+        const xClone = await api.getCharacterFromIndex(0) as CharacterFixture
+        const kClone = await api.getCharacterFromIndex(1) as CharacterFixture
 
-        api.setCharacterToIndex(0, kClone)
-        api.setCharacterToIndex(1, xClone)
+        await api.setCharacterToIndex(0, kClone)
+        await api.setCharacterToIndex(1, xClone)
 
         const encoder = new RisuSaveEncoder()
         await encoder.init(snapshotDb(DBState.db), { compression: false })
@@ -452,11 +460,11 @@ describe('a character swap between an id-less side and a chaId-bearing side neve
     test('id-less side installed first: both characters survive a full encode and decode', async () => {
         makeXAndK()
         const api = makeApi()
-        const xClone = api.getCharacterFromIndex(0) as CharacterFixture
-        const kClone = api.getCharacterFromIndex(1) as CharacterFixture
+        const xClone = await api.getCharacterFromIndex(0) as CharacterFixture
+        const kClone = await api.getCharacterFromIndex(1) as CharacterFixture
 
-        api.setCharacterToIndex(1, xClone)
-        api.setCharacterToIndex(0, kClone)
+        await api.setCharacterToIndex(1, xClone)
+        await api.setCharacterToIndex(0, kClone)
 
         const encoder = new RisuSaveEncoder()
         await encoder.init(snapshotDb(DBState.db), { compression: false })
@@ -469,16 +477,16 @@ describe('a character swap between an id-less side and a chaId-bearing side neve
     // Coverage, not proof: same reasoning as the encode/decode test above --
     // an unfilled id-less chaId is undefined, which is still distinct from
     // 'char-1', so this passes without any fill ever running.
-    test('via setChar under a changing selection, chaId-bearing side installed first: neither slot duplicates a chaId', () => {
+    test('via setChar under a changing selection, chaId-bearing side installed first: neither slot duplicates a chaId', async () => {
         makeXAndK()
         const api = makeApi()
         const kSnapshot = { ...DBState.db.characters[1] } as CharacterFixture
         const xSnapshot = { ...DBState.db.characters[0] } as CharacterFixture
 
         selectedCharID.set(0)
-        api.setChar(kSnapshot)
+        await api.setChar(kSnapshot)
         selectedCharID.set(1)
-        api.setChar(xSnapshot)
+        await api.setChar(xSnapshot)
 
         const chaIds = DBState.db.characters.map((c) => c.chaId)
         expect(new Set(chaIds).size).toBe(chaIds.length)
@@ -490,16 +498,16 @@ describe('a character swap between an id-less side and a chaId-bearing side neve
     // same reasoning as the chaId-bearing-first variant above -- an
     // unfilled id-less chaId stays undefined, still distinct from
     // 'char-1', so this passes without any fill ever running.
-    test('via setChar under a changing selection, id-less side installed first: neither slot duplicates a chaId', () => {
+    test('via setChar under a changing selection, id-less side installed first: neither slot duplicates a chaId', async () => {
         makeXAndK()
         const api = makeApi()
         const kSnapshot = { ...DBState.db.characters[1] } as CharacterFixture
         const xSnapshot = { ...DBState.db.characters[0] } as CharacterFixture
 
         selectedCharID.set(1)
-        api.setChar(xSnapshot)
+        await api.setChar(xSnapshot)
         selectedCharID.set(0)
-        api.setChar(kSnapshot)
+        await api.setChar(kSnapshot)
 
         const chaIds = DBState.db.characters.map((c) => c.chaId)
         expect(new Set(chaIds).size).toBe(chaIds.length)
@@ -519,13 +527,13 @@ describe('a three-way character rotation with one id-less member never leaves a 
             makeCharacter('char-2', 'J'),
         ] as unknown as Database['characters']
         const api = makeApi()
-        const xClone = api.getCharacterFromIndex(0) as CharacterFixture
-        const kClone = api.getCharacterFromIndex(1) as CharacterFixture
-        const jClone = api.getCharacterFromIndex(2) as CharacterFixture
+        const xClone = await api.getCharacterFromIndex(0) as CharacterFixture
+        const kClone = await api.getCharacterFromIndex(1) as CharacterFixture
+        const jClone = await api.getCharacterFromIndex(2) as CharacterFixture
 
-        api.setCharacterToIndex(0, jClone)
-        api.setCharacterToIndex(1, xClone)
-        api.setCharacterToIndex(2, kClone)
+        await api.setCharacterToIndex(0, jClone)
+        await api.setCharacterToIndex(1, xClone)
+        await api.setCharacterToIndex(2, kClone)
 
         const chaIds = DBState.db.characters.map((c) => c.chaId)
         expect(new Set(chaIds).size).toBe(3)
@@ -633,7 +641,7 @@ describe('installing a character or chat fills its id before installing it into 
         expect(liveSlotAtFillTime).not.toBe(replacement)
     })
 
-    test('setCharacterToIndex fills before installing the character', () => {
+    test('setCharacterToIndex fills before installing the character', async () => {
         installDb()
         const api = makeApi()
         const replaced = DBState.db.characters[1]
@@ -645,14 +653,14 @@ describe('installing a character or chat fills its id before installing it into 
             return original(...args)
         })
 
-        api.setCharacterToIndex(1, replacement)
+        await api.setCharacterToIndex(1, replacement)
 
         spy.mockRestore()
         expect(liveSlotAtFillTime).toBe(replaced)
         expect(liveSlotAtFillTime).not.toBe(replacement)
     })
 
-    test('setChar fills before installing the character', () => {
+    test('setChar fills before installing the character', async () => {
         installDb()
         selectedCharID.set(1)
         const api = makeApi()
@@ -665,7 +673,7 @@ describe('installing a character or chat fills its id before installing it into 
             return original(...args)
         })
 
-        api.setChar(replacement)
+        await api.setChar(replacement)
 
         spy.mockRestore()
         expect(liveSlotAtFillTime).toBe(replaced)
@@ -694,7 +702,7 @@ describe('reinstalling an object with its own unchanged id never warns', () => {
         expect(called).toBe(false)
     })
 
-    test('setCharacterToIndex: reinstalling a character with its own chaId does not warn about a duplicate elsewhere', () => {
+    test('setCharacterToIndex: reinstalling a character with its own chaId does not warn about a duplicate elsewhere', async () => {
         installDb()
         DBState.db.characters = [
             makeCharacter('dup', 'First'),
@@ -704,7 +712,7 @@ describe('reinstalling an object with its own unchanged id never warns', () => {
         const sameChar = { ...DBState.db.characters[0] }
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-        api.setCharacterToIndex(0, sameChar)
+        await api.setCharacterToIndex(0, sameChar)
 
         const called = warnSpy.mock.calls.length > 0
         warnSpy.mockRestore()
@@ -719,7 +727,7 @@ describe('a chat-id duplicate check is skipped entirely once a chaId has more th
     // twice in the reinstalled character's own chats) goes unreported.
     // Excluding this case from the skip should make this call warn about
     // that duplicate.
-    test('once a chaId has more than one holder, a chat-id duplicate installed into one of them is not reported', () => {
+    test('once a chaId has more than one holder, a chat-id duplicate installed into one of them is not reported', async () => {
         installDb()
         DBState.db.characters = [
             makeCharacter('k', 'Holds The Duplicate', [
@@ -733,7 +741,7 @@ describe('a chat-id duplicate check is skipped entirely once a chaId has more th
         const api = makeApi()
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-        api.setCharacterToIndex(1, makeCharacter('k', 'Reinstalled', [
+        await api.setCharacterToIndex(1, makeCharacter('k', 'Reinstalled', [
             makeChat('a', 'a1-new'),
             makeChat('a', 'a2-new'),
         ]))
@@ -775,7 +783,7 @@ describe('duplicate chat id warnings on a v3 install', () => {
     // Exercises the real api.setChatToIndex wrapper from makeRisuaiAPIV3,
     // not setChatToIndexImpl directly: that wrapper is the only place the
     // plugin's own name reaches setChatToIndexImpl's pluginName parameter.
-    test('a duplicate introduced through the v3 setChatToIndex wrapper warns and names the plugin', () => {
+    test('a duplicate introduced through the v3 setChatToIndex wrapper warns and names the plugin', async () => {
         installDb()
         DBState.db.characters[0].chats = [
             makeChat('x', 'x'),
@@ -785,7 +793,7 @@ describe('duplicate chat id warnings on a v3 install', () => {
         const kChat = DBState.db.characters[0].chats[1]
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-        api.setChatToIndex(0, 0, { ...kChat })
+        await api.setChatToIndex(0, 0, { ...kChat })
 
         const warnedWithPluginName = warnSpy.mock.calls.some((args) =>
             args.some((a) => typeof a === 'string' && a.includes('naming-test-plugin')))
@@ -824,16 +832,16 @@ describe('duplicate id warnings on a v3 install', () => {
     // Coverage, not proof: an implementation that never touches a present id
     // would also satisfy this, so it does not by itself prove ids are
     // preserved specifically when duplicated.
-    test('a copy-idiom install through setCharacter keeps both ids, and the surrounding fill changes nothing else', () => {
+    test('a copy-idiom install through setCharacter keeps both ids, and the surrounding fill changes nothing else', async () => {
         installDb()
         selectedCharID.set(0)
         const api = makeApi()
-        const snapshot = api.getCharacterFromIndex(0) as CharacterFixture
+        const snapshot = await api.getCharacterFromIndex(0) as CharacterFixture
         const copiedId = snapshot.chats[0].id
         const copiedName = snapshot.chats[0].name
         snapshot.chats.unshift({ ...snapshot.chats[0] })
 
-        api.setCharacter(snapshot)
+        await api.setCharacter(snapshot)
 
         expect(DBState.db.characters[0].chats[0].id).toBe(copiedId)
         expect(DBState.db.characters[0].chats[1].id).toBe(copiedId)
@@ -841,15 +849,15 @@ describe('duplicate id warnings on a v3 install', () => {
         expect(DBState.db.characters[0].chats[1].name).toBe(copiedName)
     })
 
-    test('the same install logs a duplicate warning naming the plugin', () => {
+    test('the same install logs a duplicate warning naming the plugin', async () => {
         installDb()
         selectedCharID.set(0)
         const api = makeApi('test-plugin')
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-        const snapshot = api.getCharacterFromIndex(0) as CharacterFixture
+        const snapshot = await api.getCharacterFromIndex(0) as CharacterFixture
         snapshot.chats.unshift({ ...snapshot.chats[0] })
 
-        api.setCharacter(snapshot)
+        await api.setCharacter(snapshot)
 
         const warnedWithPluginName = warnSpy.mock.calls.some(args =>
             args.some(a => typeof a === 'string' && a.includes('test-plugin')))
@@ -861,7 +869,7 @@ describe('duplicate id warnings on a v3 install', () => {
     // inspects character 1's chats, never character 0's, so this passes
     // whether or not the "already held" exemption exists -- it does not
     // exercise that exemption on the duplicate below.
-    test('a duplicate present before the call is not blamed on a later, unrelated install', () => {
+    test('a duplicate present before the call is not blamed on a later, unrelated install', async () => {
         installDb()
         // The duplicate is made directly on the fixture, never through any
         // install call, so no call has ever "introduced" it.
@@ -870,7 +878,7 @@ describe('duplicate id warnings on a v3 install', () => {
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
         // An unrelated install that does not touch the duplicated chats at all.
-        api.setCharacterToIndex(1, api.getCharacterFromIndex(1) as CharacterFixture)
+        await api.setCharacterToIndex(1, await api.getCharacterFromIndex(1) as CharacterFixture)
 
         const called = warnSpy.mock.calls.length > 0
         warnSpy.mockRestore()
@@ -880,29 +888,29 @@ describe('duplicate id warnings on a v3 install', () => {
     // Coverage, not proof: an implementation that never warns about anything
     // would also satisfy this, so passing here does not by itself prove the
     // "already held" exemption -- only that this call does not warn.
-    test('reinstalling a character whose own chats already had a duplicate id does not warn about it', () => {
+    test('reinstalling a character whose own chats already had a duplicate id does not warn about it', async () => {
         installDb()
         DBState.db.characters[0].chats.unshift({ ...DBState.db.characters[0].chats[0] })
         const api = makeApi()
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-        const snapshot = api.getCharacterFromIndex(0) as CharacterFixture
-        api.setCharacterToIndex(0, snapshot)
+        const snapshot = await api.getCharacterFromIndex(0) as CharacterFixture
+        await api.setCharacterToIndex(0, snapshot)
 
         const called = warnSpy.mock.calls.length > 0
         warnSpy.mockRestore()
         expect(called).toBe(false)
     })
 
-    test('a character swap made with two setCharacterToIndex calls: the first call warns with wording marking it as possibly transient, and the second does not warn again for the same duplicate', () => {
+    test('a character swap made with two setCharacterToIndex calls: the first call warns with wording marking it as possibly transient, and the second does not warn again for the same duplicate', async () => {
         installDb()
         const api = makeApi()
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-        const char0 = api.getCharacterFromIndex(0) as CharacterFixture
-        const char1 = api.getCharacterFromIndex(1) as CharacterFixture
+        const char0 = await api.getCharacterFromIndex(0) as CharacterFixture
+        const char1 = await api.getCharacterFromIndex(1) as CharacterFixture
 
         // First call: char1's chaId now lives at both slot 0 and slot 1.
-        api.setCharacterToIndex(0, char1)
+        await api.setCharacterToIndex(0, char1)
         const callsAfterFirst = warnSpy.mock.calls.length
         const transientWording = warnSpy.mock.calls.some(args =>
             args.some(a => typeof a === 'string' && /transient/i.test(a)))
@@ -912,7 +920,7 @@ describe('duplicate id warnings on a v3 install', () => {
         // Second call completes the swap; the duplicate the first call made
         // is still present until this call resolves it, so no new warning
         // is expected for it.
-        api.setCharacterToIndex(1, char0)
+        await api.setCharacterToIndex(1, char0)
         const callsAfterSecond = warnSpy.mock.calls.length
 
         warnSpy.mockRestore()
@@ -940,15 +948,15 @@ describe('a chat-id duplicate that predates a character swap is not blamed when 
     // logged at all. It guards the per-owner attribution: it fails if the
     // check compares against the slot's previous occupant instead of the
     // same chaId's prior holder.
-    test('via setCharacterToIndex: no chat-id warning when the character carrying the duplicate is installed first', () => {
+    test('via setCharacterToIndex: no chat-id warning when the character carrying the duplicate is installed first', async () => {
         installMovedDuplicate()
         const api = makeApi()
-        const char0 = api.getCharacterFromIndex(0) as CharacterFixture
-        const char1 = api.getCharacterFromIndex(1) as CharacterFixture
+        const char0 = await api.getCharacterFromIndex(0) as CharacterFixture
+        const char1 = await api.getCharacterFromIndex(1) as CharacterFixture
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-        api.setCharacterToIndex(0, char1)
-        api.setCharacterToIndex(1, char0)
+        await api.setCharacterToIndex(0, char1)
+        await api.setCharacterToIndex(1, char0)
 
         const warnedAboutChatIdD = warnSpy.mock.calls.some((args) =>
             args.some((a) => typeof a === 'string' && a.includes('chat id (d)')))
@@ -959,7 +967,7 @@ describe('a chat-id duplicate that predates a character swap is not blamed when 
     // setChar cannot place one present chaId onto another character's slot,
     // so this swap is refused at its first call; the attribution coverage
     // for a swap is the setCharacterToIndex test above.
-    test('via setChar under a changing selection: the first call of the swap is refused and both slots are unchanged', () => {
+    test('via setChar under a changing selection: the first call of the swap is refused and both slots are unchanged', async () => {
         installMovedDuplicate()
         const api = makeApi()
         const char1Snapshot = { ...DBState.db.characters[1] } as CharacterFixture
@@ -967,7 +975,7 @@ describe('a chat-id duplicate that predates a character swap is not blamed when 
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
         selectedCharID.set(0)
-        expect(() => api.setChar(char1Snapshot)).toThrow(/not the selected character/i)
+        await expect(api.setChar(char1Snapshot)).rejects.toThrow(/not the selected character/i)
 
         warnSpy.mockRestore()
         expect(snapshotDb(DBState.db).characters).toEqual(before)
@@ -989,15 +997,15 @@ describe('a chat-id duplicate that predates a character swap, when the character
     // slot being replaced, not to the chaId's real prior holder. A warning
     // that fires here reports the duplicate's state; it must not assert
     // that this call, or the swap, produced it.
-    test('via setCharacterToIndex: a chat-id warning here does not blame the swap, and says the duplicate may predate the call', () => {
+    test('via setCharacterToIndex: a chat-id warning here does not blame the swap, and says the duplicate may predate the call', async () => {
         installMovedDuplicateOnCharacterZero()
         const api = makeApi()
-        const char0 = api.getCharacterFromIndex(0) as CharacterFixture
-        const char1 = api.getCharacterFromIndex(1) as CharacterFixture
+        const char0 = await api.getCharacterFromIndex(0) as CharacterFixture
+        const char1 = await api.getCharacterFromIndex(1) as CharacterFixture
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-        api.setCharacterToIndex(0, char1)
-        api.setCharacterToIndex(1, char0)
+        await api.setCharacterToIndex(0, char1)
+        await api.setCharacterToIndex(1, char0)
 
         const chatIdDWarnings = warnSpy.mock.calls
             .flat()
@@ -1008,7 +1016,7 @@ describe('a chat-id duplicate that predates a character swap, when the character
         expect(chatIdDWarnings.some((msg) => /installed a duplicate|introduced/i.test(msg))).toBe(false)
     })
 
-    test('via setChar under a changing selection: the first call of the swap is refused and both slots are unchanged', () => {
+    test('via setChar under a changing selection: the first call of the swap is refused and both slots are unchanged', async () => {
         installMovedDuplicateOnCharacterZero()
         const api = makeApi()
         const char1Snapshot = { ...DBState.db.characters[1] } as CharacterFixture
@@ -1016,7 +1024,7 @@ describe('a chat-id duplicate that predates a character swap, when the character
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
         selectedCharID.set(0)
-        expect(() => api.setChar(char1Snapshot)).toThrow(/not the selected character/i)
+        await expect(api.setChar(char1Snapshot)).rejects.toThrow(/not the selected character/i)
 
         warnSpy.mockRestore()
         expect(snapshotDb(DBState.db).characters).toEqual(before)
@@ -1024,15 +1032,15 @@ describe('a chat-id duplicate that predates a character swap, when the character
 })
 
 describe('the duplicate-id warning reports state after the call, not blame', () => {
-    test('a chat-id duplicate warning contains the full wording contract', () => {
+    test('a chat-id duplicate warning contains the full wording contract', async () => {
         installDb()
         selectedCharID.set(0)
         const api = makeApi('wording-test-plugin')
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-        const snapshot = api.getCharacterFromIndex(0) as CharacterFixture
+        const snapshot = await api.getCharacterFromIndex(0) as CharacterFixture
         snapshot.chats.unshift({ ...snapshot.chats[0] })
 
-        api.setCharacter(snapshot)
+        await api.setCharacter(snapshot)
 
         const messages = warnSpy.mock.calls
             .flat()
@@ -1048,12 +1056,12 @@ describe('the duplicate-id warning reports state after the call, not blame', () 
         }
     })
 
-    test('a chaId duplicate warning contains the full wording contract, including the save-pause consequence', () => {
+    test('a chaId duplicate warning contains the full wording contract, including the save-pause consequence', async () => {
         installDb()
         const api = makeApi('wording-test-plugin-2')
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-        api.setCharacterToIndex(1, makeCharacter('char-0', 'Duplicate Zero'))
+        await api.setCharacterToIndex(1, makeCharacter('char-0', 'Duplicate Zero'))
 
         const messages = warnSpy.mock.calls
             .flat()
@@ -1076,16 +1084,16 @@ describe('a duplicate introduced through each v3 install path warns and names th
     const pluginName = 'route-naming-plugin'
     type ApiUnderTest = ReturnType<typeof makeApi>
     const cases: Array<[string, (api: ApiUnderTest) => void | Promise<void>]> = [
-        ['setChar', (api) => {
+        ['setChar', async (api) => {
             // setChar writes a present chaId only into a selected slot that
             // has none of its own, so slot 1 loses its chaId first; slot 0
             // keeps 'char-0'.
             delete (DBState.db.characters[1] as { chaId?: string }).chaId
             selectedCharID.set(1)
-            api.setChar(makeCharacter('char-0', 'Duplicate Zero'))
+            await api.setChar(makeCharacter('char-0', 'Duplicate Zero'))
         }],
-        ['setDatabaseLite', (api) => {
-            api.setDatabaseLite({
+        ['setDatabaseLite', async (api) => {
+            await api.setDatabaseLite({
                 characters: [
                     makeCharacter('char-0', 'Copy A'),
                     makeCharacter('char-0', 'Copy B'),
@@ -1100,11 +1108,11 @@ describe('a duplicate introduced through each v3 install path warns and names th
                 ],
             })
         }],
-        ['setCharacterToIndex, the chaId warning', (api) => {
-            api.setCharacterToIndex(1, makeCharacter('char-0', 'Duplicate Zero'))
+        ['setCharacterToIndex, the chaId warning', async (api) => {
+            await api.setCharacterToIndex(1, makeCharacter('char-0', 'Duplicate Zero'))
         }],
-        ['setCharacterToIndex, the within-character chat-id warning', (api) => {
-            api.setCharacterToIndex(1, makeCharacter(undefined, 'Dup Chats', [
+        ['setCharacterToIndex, the within-character chat-id warning', async (api) => {
+            await api.setCharacterToIndex(1, makeCharacter(undefined, 'Dup Chats', [
                 makeChat('dup-chat', 'a'),
                 makeChat('dup-chat', 'b'),
             ]))
@@ -1177,10 +1185,10 @@ describe('chat and character swaps and sorts done with per-slot v3 setters keep 
     test('a character swap made with two setCharacterToIndex calls, then a full encode and decode: each character appears once with its own chaId', async () => {
         installDb()
         const api = makeApi()
-        const char0 = api.getCharacterFromIndex(0) as CharacterFixture
-        const char1 = api.getCharacterFromIndex(1) as CharacterFixture
-        api.setCharacterToIndex(0, char1)
-        api.setCharacterToIndex(1, char0)
+        const char0 = await api.getCharacterFromIndex(0) as CharacterFixture
+        const char1 = await api.getCharacterFromIndex(1) as CharacterFixture
+        await api.setCharacterToIndex(0, char1)
+        await api.setCharacterToIndex(1, char0)
 
         const encoder = new RisuSaveEncoder()
         await encoder.init(snapshotDb(DBState.db), { compression: false })
@@ -1199,17 +1207,17 @@ describe('chat and character swaps and sorts done with per-slot v3 setters keep 
 // so passing here does not by itself prove the fill tolerates malformed
 // input -- only that nothing in these three routes throws on it.
 describe('malformed input does not throw in these routes', () => {
-    test('setCharacterToIndex with a character that has no chats', () => {
+    test('setCharacterToIndex with a character that has no chats', async () => {
         installDb()
         const api = makeApi()
-        expect(() => api.setCharacterToIndex(1, { chaId: 'no-chats' } as unknown as CharacterFixture)).not.toThrow()
+        await expect(api.setCharacterToIndex(1, { chaId: 'no-chats' } as unknown as CharacterFixture)).resolves.toBeUndefined()
     })
 
-    test('setChar with a character that has no chats', () => {
+    test('setChar with a character that has no chats', async () => {
         installDb()
         selectedCharID.set(1)
         const api = makeApi()
-        expect(() => api.setChar({ chaId: 'char-1' } as unknown as CharacterFixture)).not.toThrow()
+        await expect(api.setChar({ chaId: 'char-1' } as unknown as CharacterFixture)).resolves.toBeUndefined()
     })
 
     test('setChatToIndexImpl with a chat missing every field', () => {
@@ -1219,35 +1227,35 @@ describe('malformed input does not throw in these routes', () => {
 })
 
 describe('setChar and setCharacter refuse a character that is not the selected one', () => {
-    const cases: Array<[string, (api: ReturnType<typeof makeApi>, char: CharacterFixture) => void]> = [
+    const cases: Array<[string, (api: ReturnType<typeof makeApi>, char: CharacterFixture) => Promise<void>]> = [
         ['setChar', (api, char) => api.setChar(char)],
         ['setCharacter', (api, char) => api.setCharacter(char)],
     ]
 
-    test.each(cases)('(R) %s with a different chaId throws and changes nothing', (_label, call) => {
+    test.each(cases)('(R) %s with a different chaId rejects and changes nothing', async (_label, call) => {
         installDb()
         selectedCharID.set(1)
         const api = makeApi()
         const before = snapshotDb(DBState.db).characters
-        expect(() => call(api, makeCharacter('char-0', 'Moved'))).toThrow(/not the selected character/i)
+        await expect(call(api, makeCharacter('char-0', 'Moved'))).rejects.toThrow(/not the selected character/i)
         expect(snapshotDb(DBState.db).characters).toEqual(before)
     })
 
-    test.each(cases)('(R) %s with nothing selected throws and changes nothing', (_label, call) => {
+    test.each(cases)('(R) %s with nothing selected rejects and changes nothing', async (_label, call) => {
         installDb()
         selectedCharID.set(-1)
         const api = makeApi()
         const before = snapshotDb(DBState.db).characters
-        expect(() => call(api, makeCharacter('char-0', 'Nowhere'))).toThrow(/no character is selected/i)
+        await expect(call(api, makeCharacter('char-0', 'Nowhere'))).rejects.toThrow(/no character is selected/i)
         expect(snapshotDb(DBState.db).characters).toEqual(before)
         expect(Object.keys(DBState.db.characters)).toEqual(['0', '1'])
     })
 
-    test.each(cases)('(G) %s with the selected character\'s own id is written', (_label, call) => {
+    test.each(cases)('(G) %s with the selected character\'s own id is written', async (_label, call) => {
         installDb()
         selectedCharID.set(1)
         const api = makeApi()
-        call(api, makeCharacter('char-1', 'Edited'))
+        await call(api, makeCharacter('char-1', 'Edited'))
         expect(DBState.db.characters[1].name).toBe('Edited')
         expect(DBState.db.characters[0].name).toBe('Character Zero')
     })

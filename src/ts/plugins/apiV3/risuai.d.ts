@@ -1316,6 +1316,11 @@ interface RisuaiPluginAPI {
      * Gets the current character
      * @returns Current character object
      *
+     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
+     * permission. The user is asked when no grant from the last 3 days is
+     * stored, and the answer holds for the rest of the session. When it is
+     * denied the promise resolves to `null`.
+     *
      * @example
      * ```typescript
      * const char = await risuai.getCharacter();
@@ -1348,11 +1353,22 @@ interface RisuaiPluginAPI {
      * differs from the selected character's (for example after the user
      * switched characters). A `character` with no `chaId` still replaces the
      * selected character.
+     *
+     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
+     * permission (asked as for `getCharacter`). The call writes only after
+     * that check and before its promise settles; when it is denied the
+     * promise rejects with an `Error` naming the permission and nothing is
+     * written.
      */
     setCharacter(character: any): Promise<void>;
 
     /**
      * @deprecated Use getCharacter() instead
+     *
+     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
+     * permission. The user is asked when no grant from the last 3 days is
+     * stored, and the answer holds for the rest of the session. When it is
+     * denied the promise resolves to `null`.
      */
     getChar(): Promise<any>;
 
@@ -1368,6 +1384,12 @@ interface RisuaiPluginAPI {
      * live character is still archived under that unit, and so is a full
      * character. It also rejects when no character is selected or when
      * `character.chaId` differs from the selected character's.
+     *
+     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
+     * permission (asked as for `getCharacter`). The call writes only after
+     * that check and before its promise settles; when it is denied the
+     * promise rejects with an `Error` naming the permission and nothing is
+     * written.
      */
     setChar(character: any): Promise<void>;
 
@@ -1382,6 +1404,11 @@ interface RisuaiPluginAPI {
      * returns the placeholder. If the archive is missing, unreadable, or does
      * not hold that character, the promise rejects and the user sees one alert
      * naming the character.
+     *
+     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
+     * permission. The user is asked when no grant from the last 3 days is
+     * stored, and the answer holds for the rest of the session. When it is
+     * denied the promise resolves to `null`.
      */
     getCharacterFromIndex(index: number): Promise<any|null>;
 
@@ -1398,6 +1425,12 @@ interface RisuaiPluginAPI {
      * `getDatabase` is accepted while the live character is still archived
      * under that unit, and so is a full character. An out-of-range `index` does
      * nothing and does not reject.
+     *
+     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
+     * permission (asked as for `getCharacter`). The call writes only after
+     * that check and before its promise settles; when it is denied the
+     * promise rejects with an `Error` naming the permission and nothing is
+     * written.
      */
     setCharacterToIndex(index: number, character: any): Promise<void>;
 
@@ -1414,6 +1447,11 @@ interface RisuaiPluginAPI {
      * the promise rejects and the user sees one alert naming the character.
      * Upstream returns the placeholder's own dummy chat for chat index 0 and
      * null for any other index.
+     *
+     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
+     * permission. The user is asked when no grant from the last 3 days is
+     * stored, and the answer holds for the rest of the session. When it is
+     * denied the promise resolves to `null`.
      */
     getChatFromIndex(characterIndex: number, chatIndex: number): Promise<any|null>;
 
@@ -1472,6 +1510,12 @@ interface RisuaiPluginAPI {
      * the list or can no longer be loaded. As upstream does, an out-of-range
      * chat index does nothing, so a call that resolves does not guarantee the
      * write.
+     *
+     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
+     * permission (asked as for `getCharacter`). The call writes only after
+     * that check and before its promise settles; when it is denied the
+     * promise rejects with an `Error` naming the permission and nothing is
+     * written.
      */
     setChatToIndex(characterIndex: number, chatIndex: number, chat: any): Promise<void>;
 
@@ -1641,8 +1685,20 @@ interface RisuaiPluginAPI {
      *   of the call are still saved, and the call rejects with an `Error` whose
      *   message names the plugin and the reason. A `plugins` value that is not
      *   an array is handled the same way.
-     * `setDatabaseLite` saves the call's data before it returns when nothing
-     * needs asking, and after the prompts otherwise.
+     *
+     * `setDatabaseLite` saves the call's data only after the `'db'` permission
+     * check: right after it when nothing else needs asking, and after the
+     * plugin-list prompts otherwise, in either case before its promise
+     * settles. It never saves before it returns and never throws
+     * synchronously; a refusal is a rejected promise. (The V2 plugin API's
+     * `setDatabaseLite` saves before it returns when nothing needs asking;
+     * that order does not apply here.)
+     *
+     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
+     * permission (asked as for `getCharacter`). The call writes only after
+     * that check and before its promise settles; when it is denied the
+     * promise rejects with an `Error` naming the permission and nothing is
+     * written.
      */
     setDatabaseLite(db: DatabaseSubset): Promise<void>;
 
@@ -1685,6 +1741,12 @@ interface RisuaiPluginAPI {
      *   of the call are still saved, and the call rejects with an `Error` whose
      *   message names the plugin and the reason. A `plugins` value that is not
      *   an array is handled the same way.
+     *
+     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
+     * permission (asked as for `getCharacter`). The call writes only after
+     * that check and before its promise settles; when it is denied the
+     * promise rejects with an `Error` naming the permission and nothing is
+     * written.
      */
     setDatabase(db: DatabaseSubset): Promise<void>;
 
