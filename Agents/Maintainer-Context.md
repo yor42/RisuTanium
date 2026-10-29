@@ -18390,24 +18390,25 @@ Accepted with these answers (lane F): CHORE-475 splits into S2a (new Settings pa
 
 ### MC-829 — Lane F, 2026-10-29: CHORE-474 S4C (Kobold Lite) questions K0 to K7 (K0 amends `MC-819` item 4)
 
-- Tag: decisions (`AskUserQuestion` answers relayed by lane A on 2026-10-29; the relay gives the option labels without saying which were recommended). Date: 2026-10-29. Sweep ref: none.
-- Source: lane A's relay of 2026-10-29 (coordinator message; lane A's log line, 2026-10-29). Lane F's own record of `MC-829` is not on `main` (`Agents/Lanes/lane-F-records.md` has no `MC-829`): TODO(evidence); recorded here from lane A's relay. The question texts behind the labels were not relayed: TODO(evidence).
-- Alternatives rejected: for K7, the planner's silent strip of the image tokens (lane A's log: "not the planner's silent strip"). The rest are not recorded.
-- Related: `MC-819`, `MC-815`, `MC-817`; CHORE-474.
+- Tag: decisions (`AskUserQuestion` answers relayed by lane A on 2026-10-29; lane F's record states that every answer is the recommended option). Date: 2026-10-29. Sweep ref: none.
+- Source: lane A's relay of 2026-10-29 (coordinator message; lane A's log line, 2026-10-29) and lane F's own record, section "MC-829" in `Agents/Lanes/lane-F-records.md` (committed in `1fd45f198`, merged with S4C as `08aa6db57`), which this entry now follows. Gate 1 verdicts `%TEMP%\risu-lane-f\c474s4c\g1\result.md`, `g1r2\result.md` and `g1r3\result.md`; the senior-advisor was consulted after the third consecutive rejection and proposed K0. Facts behind the questions (lane F's record): Kobold Lite saves carry no speakers, and the settings block is exported by default. The verbatim question texts are in neither the relay nor lane F's record: TODO(evidence).
+- Alternatives rejected: for K0, the mode inference of `MC-819` item 4 (replaced); for K7, the planner's silent strip of the image tokens (lane A's log: "not the planner's silent strip"). The rest are not recorded.
+- Related: `MC-819`, `MC-815`, `MC-817`, `MC-826`, `MC-827`, `MC-850`; CHORE-474.
 
-**What was decided (maintainer, option labels as lane A relayed them).**
-1. K0, "Refuse, ask to re-save": a save with no settings block is refused with a message to re-save with "Export Settings" on. This amends `MC-819` item 4. K1 is moot.
-2. K2, "Count differing messages".
-3. K3, "Story-save refusal".
-4. K4, "Import as disabled".
-5. K5, "First character message".
-6. K6, "Not recognised".
-7. K7, "Strip + count in notice" (not the planner's silent strip): the image tokens are stripped and the notice counts the pictures not kept. Lane A's log adds that the new notice needs locale keys.
+**What was decided (maintainer, option labels as lane A relayed them and lane F recorded them).**
+1. K0 (a), "Refuse, ask to re-save": a save with no settings block is refused with a message asking the user to re-save in Kobold Lite with "Export Settings" on. This amends `MC-819` item 4 (the mode inference no longer applies). K1 (unknown speakers without settings) is moot.
+2. K2 (b), "Count differing messages": branch messages that differ from the shown story count toward the existing unkept notice; a branch that is an older snapshot of the shown story counts 0 (the `MC-826`/`MC-827` precedent).
+3. K3 (a), "Story-save refusal": an empty save gets the story-save refusal.
+4. K4 (b), "Import as disabled": `{{[SYSTEM]}}` turns import as disabled messages, as SillyTavern narrator lines do (`MC-815` item 3).
+5. K5 (a), "First character message": text before the first turn becomes the first character message.
+6. K6 (a), "Not recognised": legacy KoboldAI client saves are not recognised.
+7. K7 (c), "Strip + count in notice" (not the planner's silent strip): image tokens are stripped, and the notice says how many pictures were not kept, through the shared notice and new locale keys (translator via lane A). Nothing is dropped silently.
 
 - Notes, not the maintainer's words:
-  - Which options were marked recommended is not in the relay: TODO(evidence) from lane F's record.
-  - Context from the relay: S4C Gate 1 was rejected three rounds in a row, and the senior-advisor was consulted; lane A's log gives its root cause as normalising stored strings before comparing them.
-  - Lane F's block `MC-810` to `MC-829` is now full; lane A assigned lane F the new block `MC-850` to `MC-869` (checked unused in `Agents/*.md` and `Agents/Lanes/*.md`).
+  - Reconciled in records batch 21 against lane F's record. The batch 20 entry carried TODO(evidence) markers for the missing lane F record and for which options were recommended. Lane F's record exists on `main` and states that every answer is the recommended option; lane A's relay text itself gave bare labels (batch 20's verifier had removed "(Recommended)" labels the relay did not carry), so the recommended flag rests on lane F's record. The option letters and expanded wording above come from that record; the batch 20 wording is superseded by this text, not kept alongside it.
+  - Context: S4C Gate 1 was rejected three rounds in a row and the senior-advisor was consulted; lane A's log gives its root cause as normalising stored strings before comparing them.
+  - S4C merged as `08aa6db57` (ledger row 4604); translator keys: 3 keys in six locales. Not run on a device: no real chat-mode Kobold save was available (synthetic fixtures).
+  - Lane F's block `MC-810` to `MC-829` is now full; lane A assigned lane F the new block `MC-850` to `MC-869` (checked unused in `Agents/*.md` and `Agents/Lanes/*.md`). Lane F's S4D answers are `MC-850`.
   - Nothing here authorizes application code, a commit or a push.
 
 ### MC-806 — Lane G, 2026-10-28: lane G drives both spare Note 9s for the 1028 phone run (amends `MC-503` for this run)
@@ -18552,4 +18553,87 @@ Both phones were handed back to lane A on 2026-10-28 (phone 2 after item 9d, pho
 - Notes, not the maintainer's words:
   - Later, 2026-10-29, the maintainer directly told lane G to launch CHORE-396 Gate 2 round 1 (lane G's handoff); its outcome is pending. Item 2's "no Gate 2" is unchanged above. on `lane-g/chore396` (parent `a1991d7db`), not pushed (the handoff, and `git rev-parse` in this checkout resolves the hash).
   - Lane A's note N1 (pre-existing, no ticket): an ordinary drain during a non-restore app reload takes the file into the dying page; the reviewer judged it effectively unreachable on Android.
+  - Nothing here authorizes application code, a commit or a push.
+  - Update (records batch 21, 2026-10-29): lane G ran out of quota and the maintainer's instruction, relayed by lane G, handed its items to lane A. CHORE-396 was merged as `6d4bb4299` and CHORE-397 as `b0f9bb60b` (ledger rows 4603 and 4606); CHORE-398 is not started and CHORE-399 stays a candidate. The earlier text above is unchanged.
+
+### MC-785 — Lane A, 2026-10-29: designer workflow: an Opus-tier designer role turns sizing findings into the plan and required tests, and every subagent writes its full report to a file
+
+- Tag: decisions (a free-text proposal and seven `AskUserQuestion` answers; maintainer in lane A, 2026-10-29). Date: 2026-10-29. Sweep ref: none.
+- Source: lane A session; draft `%TEMP%\risu-b715\records-b21\draft.md` (section 1) and lane A's log extract. Evidence: draft v1 `%TEMP%\risu-b715\wf-designer\result.md`; the senior-advisor challenge, verdict "SOUND WITH CHANGES" with 12 items (`wf-designer\advisor.md`, transcribed by lane A); draft v2 `wf-designer\v2.md`; doc-verifier "PASS with 4 items" (`wf-designer\apply-notes.md`); the applied documents verified "PASS", 0 defects (`wf-apply-docs-verify\result.md`, 3,186 B, SHA-256 prefix `11733A77DB9AFEAD`); the scripts (`wf-apply-scripts\result.md`) with a Gate 2 `opus-reviewer` verdict of `[EDITORIAL]` (`wf-scripts-g2\result.md`, 13,056 B, SHA-256 prefix `1BB9316D83862908`; no `SUBSTANTIVE` finding, 217 probes, repository registration refused for all five scratch-only roles; finding F1, an indentation, was fixed by lane A); guard test 116 passed and the validator passed (17 agents, 13 skills), per lane A's log.
+- Alternatives rejected: not recorded for the answers below (only the chosen labels are in the log).
+- Related: `MC-786`, `MC-787`; the committed result is `214df8e43`.
+
+**What the maintainer proposed (verbatim).** "How about we do this: 1. we use sonnet as orchestrator. 2. but instead of sonnet handling everything, including architecturer changes and design, we create separate opus tier designer. 3. after sizing, we hand over findings to this designer. which will report back required test and proposed plan. also we create each full reports as markdown file(write access to all related subagents), and only include extremely short summary on Agent handback tool."
+
+**Purpose, added later (verbatim).** "the goal of 'full report as file' is to avoid subagent reciting full report for handback, and unnecessary details flooding the orchestrator's context window."
+
+**What was decided (maintainer; option labels as lane A's log gives them).**
+1. Designer scope: "Plans + revisions (Recommended)".
+2. Arbitration: "Escalate to Opus (Recommended)". As implemented after the senior-advisor challenge: plan and verdict-classification disputes go to a fresh `opus-reviewer`, factual or causal disputes to `deep-investigator`; the designer never arbitrates.
+3. Handback: "Path + verdict + 3 lines (Recommended)".
+4. Rollout: "Draft, advisor, then all (Recommended)".
+5. After the doc-verifier flagged that Gate 2 re-engagement of the designer exceeded the stated scope: "Yes, plan-level only (Recommended)". A Gate 2 `[REJECT]` finding marked plan-level, or an implementer's `AMENDMENT REQUESTED`, re-engages the designer; ordinary code and test remediation stays with the coder.
+6. Apply: "Approve, staged apply (Recommended)".
+7. Commit: "Commit now, records later (Recommended)". Lane A committed `214df8e43` (23 files, `git show --stat` read for this record) and, per its log, pushed it.
+
+- Notes, not the maintainer's words:
+  - What `214df8e43` changed, per its message: a new `.claude/agents/designer.md`; `code-searcher`, `haiku-triager`, `doc-verifier` and `senior-advisor` gain Write for `%TEMP%` scratch only (the guard still refuses repository writes for them, and refuses the designer any repository registration); the validator checks that profile Write grants and guard roles agree; the identity hook no longer tells scratch-only roles to wait for a grant; edits to `AGENTS.md`, `docs/workflow/gates.md`, `routing.md` and `ownership.md` and four skills. This entry records the decision, not the files' current text: read them for the rules.
+  - Orchestrator sessions on the Sonnet tier are practice the maintainer chooses when starting a session. No rule depends on it: `routing.md` does not state it and `AGENTS.md` keeps "Do not assume the orchestrator's model identity" (lane A's log: the doc-verifier's item to drop the Sonnet-tier sentence from `routing.md` was applied, with the point recorded here).
+  - No saving is claimed. The designer's cost and context use are TODO(evidence) until two lanes have used it and the numbers are measured.
+  - Nothing here authorizes application code, a commit or a push beyond the commit named above.
+
+### MC-786 — Lane A, 2026-10-29: a workflow token audit is folded into the next records batch, window "since the 10-08 audit", lanes A, F and G
+
+- Tag: maintainer request and `AskUserQuestion` answers (maintainer in lane A, 2026-10-29). Date: 2026-10-29. Sweep ref: none.
+- Source: lane A session; draft `%TEMP%\risu-b715\records-b21\draft.md` (section 1) and lane A's log extract. Measurement `%TEMP%\risu-b715\wf-audit\result.md`; independent recount `wf-audit-verify\result.md`; corrected measurement `wf-audit-v2\result.md`; the document `docs/workflow/audit-2026-10-29.md` (committed in `214df8e43`).
+- Alternatives rejected: for the window, the recommended "Since batch 19" was not chosen. The other options are not recorded.
+- Related: `MC-785`; ledger row 4608.
+
+**What the maintainer asked (verbatim).** "do we have access to token usages of our workflow? if so, can we fold in workflow audit into the next record batch?"
+
+**What was decided (maintainer; option labels as lane A's log gives them).**
+1. Window: "Since the 10-08 audit" (not the recommended "Since batch 19").
+2. Lanes: "Lanes A, F and G (Recommended)".
+3. Output: "docs/workflow audit file (Recommended)".
+
+- Notes, not the maintainer's words:
+  - Result: `docs/workflow/audit-2026-10-29.md`, committed in `214df8e43`. The independent recount found the first measurement's lane F mapping wrong (the subagents of session `02da88e4` before 2026-10-27T03:00Z belong to lane B); the corrected measurement is `wf-audit-v2\result.md`. A doc-verifier passed the document (about 120 numbers, 0 wrong); lane A then filled one n/a cell (716,386, from `agents.csv`) and removed the writer notes.
+  - Limits stated by the audit: quota percentage, dollar cost, Codex usage and account switches are unavailable; the figures are unweighted token counts from transcript usage fields. The audit document holds the numbers; none is restated here.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-787 — Lane A, 2026-10-29: lane F is paused after CHORE-474 until the maintainer says otherwise
+
+- Tag: decision (`AskUserQuestion` answer "Pause lane F"; maintainer in lane A, 2026-10-29). Date: 2026-10-29. Sweep ref: none.
+- Source: lane A session; draft `%TEMP%\risu-b715\records-b21\draft.md` (section 1) and lane A's log extract.
+- Alternatives rejected: the recommended option "CHORE-471 open-with" was not chosen. The other options are not recorded.
+- Related: `MC-785`; CHORE-471, CHORE-474.
+
+**What was decided (maintainer, as lane A's log gives it).** Asked what lane F should do after CHORE-474, the maintainer chose "Pause lane F": lane F starts nothing new until the designer workflow is adopted (`MC-785`).
+
+- Notes, not the maintainer's words:
+  - Lane F confirmed the pause: its branch `lane-f/import-formats` is at `38d2e2317` (in `main` through `5c1498907`), the tree is clean, its records are current (next `MC-851`, CHORE-378, row 3897), and it holds no grants and no agents.
+  - The workflow is now committed (`214df8e43`). Whether that counts as "adopted" is the maintainer's to say: resuming lane F needs his word (lane A's draft).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-850 — Lane F, 2026-10-29: CHORE-474 S4D (Character.AI exports) questions Q1 to Q10 (cross-note: Q8 follows `MC-829` K7)
+
+- Tag: decisions (`AskUserQuestion` answers; maintainer in lane A, relayed to lane F on 2026-10-29). Lane F's record states that every answer is the recommended option except Q8. Date: 2026-10-29. Sweep ref: none.
+- Source: fold-in of lane F's record, section "MC-850" in `Agents/Lanes/lane-F-records.md` (committed in `710c62ac0`, merged with S4D as `5c1498907`), and lane A's log (2026-10-29), which gives the same answers. Gate 1 verdicts `%TEMP%\risu-lane-f\c474s4d\g1\result.md` and `g1r2\result.md`; every question's premise was verified against the writers' source (lane F's record). Q5 (dumper order) was not asked: the dumper's author also wrote a reader that reads every history in stored order, so the stored order is a plan default.
+- Alternatives rejected: for Q8, the planner's silent drop and the author-note option (lane A's log: its own pick was shown first, to match `MC-829` K7). The other questions' alternatives are not recorded in either source.
+- Related: `MC-815`, `MC-817`, `MC-819`, `MC-821`, `MC-829`; CHORE-474.
+
+**What was decided (maintainer, as lane F recorded it).**
+1. Q1 (a): a file holding exactly one chat imports whatever its character name; `MC-819` Q2's name match applies to multi-chat files only.
+2. Q2 (a): names are compared trimmed and case-sensitive.
+3. Q3 (a): several matching chats each become their own chat, in file order, named "file (n)"; the first is opened.
+4. Q4 (a): no match: refuse and list the character names found.
+5. Q6 (a): the dumper's redaction token becomes the user's name (converted at import to the current persona name).
+6. Q7 (a): Lianne's bare-array export is supported.
+7. Q8 (a2), "Drop + notice line": the Morse memory box is not imported, and one notice line says so (one new string, in all seven languages per lane A's log).
+8. Q9 (a): no notice for a Morse part 2 or partial file.
+9. Q10 (a): raw developer-tools dumper files are out of scope (no data).
+
+- Notes, not the maintainer's words:
+  - Plan defaults, not asked (lane F's record): stored dumper order is trusted; chat counts include only chats with at least one message; only character turns count toward the swipes notice (`MC-817` item 2, `MC-821`).
+  - S4D merged as `5c1498907` (ledger row 4607); not run on a device; only synthetic fixtures exist (no real Character.AI export was available). Lane F's block `MC-850` to `MC-869` has `MC-850` used; next `MC-851`.
   - Nothing here authorizes application code, a commit or a push.
