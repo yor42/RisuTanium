@@ -121,6 +121,19 @@ foreach ($agent in $agents.Values) {
         if (-not $skills.ContainsKey($skill)) { Problem "Unresolved preloaded skill $skill in $($agent.Path)" }
     }
 }
+. (Join-Path $PSScriptRoot 'write-guard-common.ps1')
+$guardGranted = $GuardWriterRoles + $GuardScratchRoles
+foreach ($agent in $agents.Values) {
+    $roleName = $agent.Fields['name']
+    $roleTools = @(Inline-List $agent.Fields['tools'] "$roleName tools")
+    $hasWriteTool = ($roleTools -contains 'Write') -or ($roleTools -contains 'Edit')
+    if ($roleName -cnotin $GuardKnownRoles) { Problem "Agent role unknown to the write guard: $roleName" }
+    if ($hasWriteTool -and $roleName -cnotin $guardGranted) { Problem "Profile has Write/Edit but no guard writer or scratch role: $roleName" }
+    if (-not $hasWriteTool -and $roleName -cin $guardGranted) { Problem "Guard writer or scratch role has no Write/Edit tool: $roleName" }
+}
+foreach ($roleName in $guardGranted) {
+    if (-not $agents.ContainsKey($roleName)) { Problem "Guard writer or scratch role has no profile: $roleName" }
+}
 
 try {
     $configText = [IO.File]::ReadAllText((Join-Path $taskRoot '.claude/settings.json'))

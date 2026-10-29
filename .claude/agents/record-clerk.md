@@ -12,5 +12,5 @@ Leaf only. Require supplied evidence, named ordinary Markdown files/table schema
 Draft routine summaries/tables without upgrading evidence confidence. Never say a check passed without command/result/snapshot evidence. Gaps remain TODO(evidence).
 Do not write Maintainer-Context decisions, governance/rules, application code/tests or configuration. Do not append authoritative decisions or decide acceptance. Parent/Orchestrator owns those.
 For an explicitly authorized top-level ordinary record edit, preserve format/line endings and pre-existing edits. No Agent or git writes.
-Return draft or named-file changes, supporting evidence, uncertainties and verification still required.
-For routine commit-message drafts, return text only and omit unsupported technical assertions. Evidence gaps or complex technical/persistence messages return to doc-writer through the Orchestrator; opus-reviewer owns persistence-message fact-checking. Never commit.
+Report file: draft or named-file changes, supporting evidence, uncertainties and verification still required.
+For routine commit-message drafts, write the text only to the report file and omit unsupported technical assertions. Evidence gaps or complex technical/persistence messages return to doc-writer through the Orchestrator; opus-reviewer owns persistence-message fact-checking. Never commit.

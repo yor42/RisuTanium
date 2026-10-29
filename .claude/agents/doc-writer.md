@@ -11,8 +11,8 @@ skills: [campaign-context, evidence-reporting, campaign-records, write-ownership
 Write only named Markdown files: reports, records, wiki or API docs and drafts. Every factual claim comes from supplied evidence or source opened yourself. Preserve uncertainty, dates, scope and provenance. Missing evidence becomes TODO(evidence); report citation mismatches rather than silently hiding them.
 Match surrounding headings/tables/style and line endings; preserve pre-existing edits. Append-only records stay append-only. Edit governance only when the brief explicitly names it. No app code, tests, config or src/lang edits. docs/wiki belongs to another session unless explicitly named.
 For user references, show syntax, minimal examples and edge cases; suspected bugs are never intended behaviour. Mark fork differences as the packet states.
-Return commit drafts to the parent, never commit. The Orchestrator independently dispatches doc-verifier; do not claim review occurred or dispatch it yourself.
-Return FILES CHANGED, CLAIMS NOT FROM THE BRIEF with source, CITATION MISMATCHES, TODO(evidence) LEFT, OMITTED SUSPECTED BUGS and DRAFT TEXT.
+Put commit drafts in the report file for the parent, never commit. The Orchestrator independently dispatches doc-verifier; do not claim review occurred or dispatch it yourself.
+Report file (result.md): FILES CHANGED, CLAIMS NOT FROM THE BRIEF with source, CITATION MISMATCHES, TODO(evidence) LEFT, OMITTED SUSPECTED BUGS and DRAFT TEXT; handback per evidence-reporting.
 Own complex technical and persistence commit-message drafts from evidence; routine evidence-complete drafts can come from record-clerk. The Orchestrator routes ordinary factual review to doc-verifier and persistence-message review to opus-reviewer.
 
 ## Bounded leaf delegation

@@ -147,8 +147,15 @@ Test-FixtureRegistrationDenial 'external outside TEMP registration' $readonly.to
 $unregistered = New-FixturePayload (Join-Path $fixture 'ad-hoc-probe.txt'); $unregistered.agent_id = 'unregistered-agent'; $unregistered.agent_type = 'opus-reviewer'
 Test-FixtureHook 'ungranted external temporary scratch for a scratch role' $unregistered 0
 $unregistered.agent_type = 'sonnet-coder'; Test-FixtureHook 'ungranted external temporary scratch for a writer role' $unregistered 0
-$unregistered.agent_type = 'code-searcher'; Test-FixtureHook 'read-only role external scratch' $unregistered
+$unregistered.agent_type = 'code-reader'; Test-FixtureHook 'read-only role external scratch' $unregistered
 $unregistered.agent_type = 'opus-reviewer'; $unregistered.tool_input.file_path = Join-Path $repo 'src/unregistered.ts'; Test-FixtureHook 'ungranted repository target for a scratch role' $unregistered
+foreach ($scratchOnlyRole in @('designer', 'code-searcher', 'haiku-triager', 'doc-verifier', 'senior-advisor')) {
+    $probe = New-FixturePayload (Join-Path $fixture 'scratch-only-probe.md'); $probe.agent_id = 'scratch-only-agent'; $probe.agent_type = $scratchOnlyRole
+    Test-FixtureHook "scratch-only role $scratchOnlyRole external temporary scratch" $probe 0
+    $probe.tool_input.file_path = Join-Path $repo 'src/scratch-only.ts'; Test-FixtureHook "scratch-only role $scratchOnlyRole repository target" $probe
+    $probe.tool_input.file_path = Join-Path $env:USERPROFILE 'outside-temp.md'; Test-FixtureHook "scratch-only role $scratchOnlyRole outside TEMP" $probe
+    Test-FixtureRegistrationDenial "scratch-only role $scratchOnlyRole repository registration" (Join-Path $repo 'src/scratch-only.ts') $scratchOnlyRole
+}
 $foreign = Join-Path $fixture 'foreign-repository'; [IO.Directory]::CreateDirectory((Join-Path $foreign '.git')) | Out-Null
 Test-FixtureHook 'foreign checkout' (New-FixturePayload (Join-Path $foreign 'file.ts'))
 Test-FixtureRegistrationDenial 'foreign checkout registration' (Join-Path $foreign 'file.ts')
@@ -205,11 +212,23 @@ $passed++
 $identity = Invoke-FixtureProcess (Join-Path $scripts 'subagent-identity.ps1') -InputText $startPayload
 if ($identity.ExitCode -ne 0 -or $identity.Stderr -or (Read-GuardObject $identity.Stdout).hookSpecificOutput.additionalContext -notmatch 'fixture-agent') { throw 'Subagent identity context failed.' }
 $passed++
-$readerPayload = @{ session_id=$session; agent_id='reader-instance'; agent_type='code-searcher'; hook_event_name='SubagentStart' } | ConvertTo-Json -Compress
+$readerPayload = @{ session_id=$session; agent_id='reader-instance'; agent_type='code-reader'; hook_event_name='SubagentStart' } | ConvertTo-Json -Compress
 $reader = Invoke-FixtureProcess (Join-Path $scripts 'subagent-identity.ps1') -InputText $readerPayload
 $readerContext = (Read-GuardObject $reader.Stdout).hookSpecificOutput.additionalContext
 if ($reader.ExitCode -ne 0 -or $readerContext -notmatch 'Proceed with authorized reads' -or $readerContext -notmatch 'no registration pause' -or $readerContext -match 'wait for the parent') { throw 'Read-only identity context imposed an unnecessary registration pause.' }
 $passed++
+foreach ($identityRole in @('designer', 'opus-reviewer', 'sonnet-coder')) {
+    $identityPayload = @{ session_id=$session; agent_id="identity-$identityRole"; agent_type=$identityRole; hook_event_name='SubagentStart' } | ConvertTo-Json -Compress
+    $identityResult = Invoke-FixtureProcess (Join-Path $scripts 'subagent-identity.ps1') -InputText $identityPayload
+    if ($identityResult.ExitCode -ne 0 -or $identityResult.Stderr) { throw "Identity context failed for $identityRole." }
+    $identityContext = (Read-GuardObject $identityResult.Stdout).hookSpecificOutput.additionalContext
+    if ($identityRole -eq 'sonnet-coder') {
+        if ($identityContext -notmatch 'wait for the parent' -or $identityContext -match 'never receives a repository grant') { throw 'Writer identity context lost its registration pause or gained the scratch-only sentence.' }
+    } elseif ($identityContext -notmatch 'Scratch files under %TEMP%' -or $identityContext -notmatch 'never receives a repository grant' -or $identityContext -match 'no Write/Edit authorization' -or $identityContext -match 'wait for the parent') {
+        throw "Scratch-only identity context is wrong for $identityRole."
+    }
+    $passed++
+}
 $malformedStart = @{ session_id=$session; agent_id=$agent; agent_type=$role; hook_event_name=@('SubagentStart') } | ConvertTo-Json -Compress
 $startFailure = Invoke-FixtureProcess (Join-Path $scripts 'subagent-identity.ps1') -InputText $malformedStart
 if ($startFailure.ExitCode -ne 0 -or $startFailure.Stdout -or -not $startFailure.Stderr) { throw 'Wrong-type SubagentStart emitted misleading identity context.' }

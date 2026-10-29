@@ -35,6 +35,7 @@ This is a targeted stabilization and improvement campaign, not a wholesale rewri
 ## Gates and evidence
 
 - Every AI-authored application-code change gets a fresh independent post-implementation review. Nontrivial changes also get an independent plan review; uncertain risk uses both.
+- Plans and their required tests come from the `designer`, which never reviews or arbitrates its own work; the orchestrator routes and decides routine arbitration, and sends disputed claims and borderline verdicts to a fresh `opus-reviewer` or `deep-investigator` (MC-785). Subagents write full reports to files and hand back three lines (path, status, blockers); a handback is never evidence.
 - Save/persistence, save format, reactive database, asset caching or silent data-loss risk use `opus-reviewer`. Expensive-to-reverse plans receive `senior-advisor` challenge before implementation.
 - Three consecutive substantive `[REJECT]` rounds require advisor escalation before a fourth revision. `[EDITORIAL]` neither counts nor breaks the streak. At the second rejection, reconsider the mechanism.
 - Every AI-authored investigative report requires independent verification before final acceptance. Raw helper location/triage packets are inputs, not independently accepted reports. Documentation flow: evidence/code-reader → doc-writer → independent doc-verifier → orchestrator. Reviewers never mutate repository files; scratch experiments stay outside the tree.
