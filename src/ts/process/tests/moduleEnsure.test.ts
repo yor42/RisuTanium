@@ -11,7 +11,7 @@
  * M row is a named mutant.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import { MODULE_STUB_KEY } from '../../storage/moduleStub'
 
 //#region module mocks
@@ -27,6 +27,7 @@ const h = vi.hoisted(() => ({
 vi.mock(import('../../stores.svelte'), () => ({
     DBState: h.state,
     selectedCharID: writable(0),
+    ReloadGUIPointer: writable(0),
 }) as unknown as typeof import('../../stores.svelte'))
 
 vi.mock(import('../../alert'), () => ({
@@ -57,7 +58,7 @@ vi.mock(import('../../storage/database.svelte'), () => {
 
 import {
     createModuleFailureMemory, ensureCurrentModules, ensureCurrentModulesOrAlert, ensureModulesForOrigin,
-    ensureModulesOrAlert, ensureSelectedModules, ModuleEnsureError,
+    ensureModulesOrAlert, ensureSelectedModules, ModuleEnsureError, moduleRunVersion, selectedModulesPending,
 } from '../moduleEnsure'
 import { hasModuleStubs } from '../moduleRefList'
 import { ModuleLoadError, registerModuleLoader, unregisterModuleLoader } from '../../storage/store2/moduleAcquire'
@@ -583,5 +584,74 @@ describe('ensureCurrentModules with a failure memory', () => {
         release('m1')
         await expect(third).resolves.toBe(true)
         expect(calls).toEqual(['m1', 'm2', 'm1'])
+    })
+})
+
+describe('selectedModulesPending', () => {
+    test('G no stubs and no run read false', () => {
+        installDb([resident('m1', 'Alpha')], { enabled: ['m1'] })
+        expect(selectedModulesPending()).toBe(false)
+    })
+
+    test('G a referenced stub that no run has claimed yet reads pending', () => {
+        installDb([stub('m1', 'Alpha')], { enabled: ['m1'] })
+        expect(selectedModulesPending()).toBe(true)
+    })
+
+    test('G a stub the selection does not reference does not gate it', () => {
+        installDb([stub('m1', 'Alpha')])
+        expect(selectedModulesPending()).toBe(false)
+    })
+
+    test('M T14 an unavailable database reads false instead of throwing', () => {
+        installDb([stub('m1', 'Alpha')], { enabled: ['m1'] })
+        h.breakDatabase = true
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+        expect(selectedModulesPending()).toBe(false)
+        expect(error).toHaveBeenCalled()
+        error.mockRestore()
+    })
+
+    test('M a failed stub stops reading pending, and the version store announces the end of the run', async () => {
+        installDb([stub('m1', 'Alpha')], { enabled: ['m1'] })
+        registerInstallingLoader({ fail: failingLoader() })
+        const before = get(moduleRunVersion)
+        ensureSelectedModules(true)
+        expect(selectedModulesPending()).toBe(true)
+        await settleTasks()
+        expect(calls).toEqual(['m1'])
+        expect(selectedModulesPending()).toBe(false)
+        expect(get(moduleRunVersion)).toBeGreaterThan(before)
+    })
+
+    test('M T15 a run for another chat does not gate a chat that shares none of its ids', async () => {
+        installDb([stub('m1', 'Alpha')], { enabled: ['m1'] })
+        let release: () => void = () => {}
+        registerInstallingLoader({ hold: () => new Promise<void>((resolve) => { release = resolve }) })
+        ensureSelectedModules(true)
+        await settleTasks()
+        expect(selectedModulesPending()).toBe(true)
+
+        h.state.db.enabledModules = []
+        expect(selectedModulesPending()).toBe(false)
+        h.state.db.enabledModules = ['m1']
+        release()
+        await settleTasks()
+    })
+
+    test('M T16 the id stays pending after the last install until the run ends', async () => {
+        installDb([stub('m1', 'Alpha')], { enabled: ['m1'] })
+        let insideLoader: boolean | null = null
+        registerModuleLoader(async (handle) => {
+            const id = handle.slice(0, handle.lastIndexOf('#'))
+            const index = slots().findIndex((m) => m.id === id)
+            slots()[index] = resident(id, id)
+            insideLoader = selectedModulesPending()
+            return slots()[index] as never
+        })
+        ensureSelectedModules(true)
+        await settleTasks()
+        expect(insideLoader).toBe(true)
+        expect(selectedModulesPending()).toBe(false)
     })
 })

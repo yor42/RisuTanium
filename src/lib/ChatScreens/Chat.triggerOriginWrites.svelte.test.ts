@@ -281,6 +281,7 @@ import { alertError } from 'src/ts/alert'
 import { runLuaButtonTrigger, runLuaInteractionTrigger } from 'src/ts/process/scriptings'
 import { MODULE_STUB_KEY } from 'src/ts/storage/moduleStub'
 import { ModuleLoadError, registerModuleLoader, unregisterModuleLoader } from 'src/ts/storage/store2/moduleAcquire'
+import { ensureSelectedModules } from 'src/ts/process/moduleEnsure'
 
 //#region fixtures
 
@@ -624,8 +625,20 @@ describe('A manual fire waits for the modules it needs', () => {
     let loaderCalls: string[] = []
     let releaseLoad: () => void = () => {}
 
-    /** Registers a loader that waits for `releaseLoad` (or fails), then replaces the stub with a resident module. */
-    function registerGatedLoader(failure: Error | null = null) {
+    /**
+     * Registers a loader that waits for `releaseLoad` (or fails), then replaces the stub with a resident module.
+     * Bodies gate their first render while the selected modules are pending, so the buttons and forms these rows click
+     * exist only after the trigger has failed for the stub. A first loader fails once through the real trigger, and what
+     * it recorded is cleared, so each row's assertions stay about the click-time wait.
+     */
+    async function registerGatedLoader(failure: Error | null = null) {
+        registerModuleLoader(async (handle) => {
+            const id = handle.slice(0, handle.lastIndexOf('#'))
+            throw new ModuleLoadError('unreadable', id, id)
+        })
+        ensureSelectedModules(true)
+        await settle()
+        vi.mocked(alertError).mockClear()
         loaderCalls = []
         registerModuleLoader(async (handle) => {
             const id = handle.slice(0, handle.lastIndexOf('#'))
@@ -662,7 +675,7 @@ describe('A manual fire waits for the modules it needs', () => {
             v2('v2SetVar', { operator: '=', var: 'x', valueType: 'value', value: '1' }),
         ]))
         installStubbedDb(char)
-        registerGatedLoader()
+        await registerGatedLoader()
         const liveChar = DBState.db.characters[0]
 
         const { target } = await mountChat({ idx: 0, message: a1.message[0].data, isLastMemory: false })
@@ -680,7 +693,7 @@ describe('A manual fire waits for the modules it needs', () => {
         const a1 = makeChat('a1')
         a1.message.push({ role: 'char', data: '<button risu-btn="go">Go</button>' })
         installStubbedDb(makeCharacter('char-lua', [a1]))
-        registerGatedLoader()
+        await registerGatedLoader()
 
         const { target } = await mountChat({ idx: 0, message: a1.message[0].data, isLastMemory: false })
         target.querySelector<HTMLButtonElement>('[risu-btn="go"]')!.click()
@@ -699,7 +712,7 @@ describe('A manual fire waits for the modules it needs', () => {
         const a1 = makeChat('a1')
         a1.message.push({ role: 'char', data: '<form risu-form="f"><input name="q" value="v"><button type="submit">Send</button></form>' })
         installStubbedDb(makeCharacter('char-form', [a1]))
-        registerGatedLoader()
+        await registerGatedLoader()
 
         const { target } = await mountChat({ idx: 0, message: a1.message[0].data, isLastMemory: false })
         target.querySelector<HTMLFormElement>('[risu-form="f"]')!.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true }))
@@ -716,7 +729,7 @@ describe('A manual fire waits for the modules it needs', () => {
         const a1 = makeChat('a1')
         a1.message.push({ role: 'char', data: '<form risu-form="f"><input name="q" value="v"><button type="submit">Send</button></form>' })
         installStubbedDb(makeCharacter('char-form-fail', [a1]))
-        registerGatedLoader(new ModuleLoadError('unreadable', 'm1', 'Alpha'))
+        await registerGatedLoader(new ModuleLoadError('unreadable', 'm1', 'Alpha'))
 
         const { target } = await mountChat({ idx: 0, message: a1.message[0].data, isLastMemory: false })
         target.querySelector<HTMLFormElement>('[risu-form="f"]')!.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true }))
@@ -737,7 +750,7 @@ describe('A manual fire waits for the modules it needs', () => {
             v2('v2SetVar', { operator: '=', var: 'x', valueType: 'value', value: '1' }),
         ]))
         installStubbedDb(char)
-        registerGatedLoader(new ModuleLoadError('unreadable', 'm1', 'Alpha'))
+        await registerGatedLoader(new ModuleLoadError('unreadable', 'm1', 'Alpha'))
         const liveChar = DBState.db.characters[0]
 
         const { target } = await mountChat({ idx: 0, message: a1.message[0].data, isLastMemory: false })
@@ -774,7 +787,7 @@ describe('A manual fire waits for the modules it needs', () => {
             v2('v2SetVar', { operator: '=', var: 'x', valueType: 'value', value: '1' }),
         ]))
         installDuplicatedDb(char)
-        registerGatedLoader()
+        await registerGatedLoader()
 
         const { target } = await mountChat({ idx: 0, message: a1.message[0].data, isLastMemory: false })
         target.querySelector<HTMLButtonElement>('[risu-trigger="setx"]')!.click()
@@ -789,7 +802,7 @@ describe('A manual fire waits for the modules it needs', () => {
         const a1 = makeChat('a1')
         a1.message.push({ role: 'char', data: '<form risu-form="f"><input name="q" value="v"><button type="submit">Send</button></form>' })
         installDuplicatedDb(makeCharacter('char-dup-form', [a1]))
-        registerGatedLoader()
+        await registerGatedLoader()
 
         const { target } = await mountChat({ idx: 0, message: a1.message[0].data, isLastMemory: false })
         target.querySelector<HTMLFormElement>('[risu-form="f"]')!.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true }))
