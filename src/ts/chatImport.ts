@@ -342,7 +342,7 @@ export function readTavernJsonl(text: string): TavernJsonlResult {
     return result
 }
 
-export type JsonChatFormat = 'ooba' | 'agnai' | 'kobold'
+export type JsonChatFormat = 'ooba' | 'agnai' | 'kobold' | 'cai-morse' | 'cai-dumper' | 'cai-turns'
 
 const oobaMarker = '<|BEGIN-VISIBLE-CHAT|>'
 const oobaTimestampPattern = /^([A-Za-z]+) (\d{1,2}), (\d{4}) (\d{1,2}):(\d{2})$/
@@ -372,11 +372,26 @@ function oobaRowSets(value: unknown): { internal: unknown[], visible: unknown[] 
  * recognised by shape alone and comes last, so a format with a tag of its own
  * that also has a `messages` array is inserted ahead of it. Kobold Lite is
  * recognised by shape alone as well and comes after both, so a file that
- * carries an Ooba or Agnai shape is never read as Kobold.
+ * carries an Ooba or Agnai shape is never read as Kobold. The Character.AI
+ * formats have a tag or key of their own and are tested first, so an object that
+ * also carries another format's shape is read as Character.AI. A top-level array
+ * is a bare Lianne export when it holds a turn, and nothing otherwise.
  */
 export function detectJsonChatFormat(value: unknown): JsonChatFormat | undefined {
+    if(Array.isArray(value)){
+        return hasCaiTurn(value) ? 'cai-turns' : undefined
+    }
     if(!isPlainObject(value) || value.type === 'risuChat' || value.type === 'risuAllChats'){
         return undefined
+    }
+    if(value.format === 'morse.cai-export' && value.version === 1 && Array.isArray(value.characters)){
+        return 'cai-morse'
+    }
+    if(isPlainObject(value.histories) && Array.isArray(value.histories.histories)){
+        return 'cai-dumper'
+    }
+    if(hasCaiTurn(value.messages)){
+        return 'cai-turns'
     }
     if(oobaRowSets(value) !== undefined){
         return 'ooba'
@@ -1115,4 +1130,248 @@ export function readKoboldChat(value: unknown): KoboldChatResult {
         }
     }
     return result
+}
+
+const caiRedactionToken = '[NAME_IN_MESSAGE_REDACTED]'
+
+// A turn holds a candidate with a string `raw_content`: the shape both neo
+// exporters (Lianne, Morse) store for every message.
+function isCaiTurn(value: unknown): boolean {
+    return isPlainObject(value) && Array.isArray(value.candidates)
+        && value.candidates.some((candidate) => isPlainObject(candidate) && typeof candidate.raw_content === 'string')
+}
+
+function hasCaiTurn(value: unknown): boolean {
+    return Array.isArray(value) && value.some(isCaiTurn)
+}
+
+function trimmedName(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+}
+
+type CaiTurnRead = {
+    line?: TavernLine
+    skipped: boolean
+    /** A character turn with a non-empty reply besides the shown one. */
+    swipe: boolean
+    media: boolean
+}
+
+// The shown reply is the candidate named by `primary_candidate_id`. Only the
+// boolean `true` makes a user line; a human turn's author name is never read.
+// Only character turns count toward `swipe`: a human turn's alternates are not
+// swipes of a reply.
+function readCaiTurn(turn: unknown): CaiTurnRead {
+    if(!isPlainObject(turn) || !Array.isArray(turn.candidates)){
+        return { skipped: true, swipe: false, media: false }
+    }
+    const candidates: unknown[] = turn.candidates
+    const shown = turn.primary_candidate_id === undefined ? undefined : candidates.find(
+        (candidate): candidate is Record<string, unknown> => isPlainObject(candidate) && candidate.candidate_id === turn.primary_candidate_id
+    )
+    if(shown === undefined || typeof shown.raw_content !== 'string'){
+        return { skipped: true, swipe: false, media: false }
+    }
+    const author = isPlainObject(turn.author) ? turn.author : undefined
+    const isUser = author?.is_human === true
+    const swipe = !isUser && candidates.some((candidate) =>
+        candidate !== shown && isPlainObject(candidate) && typeof candidate.raw_content === 'string' && candidate.raw_content.trim() !== '')
+    if(shown.raw_content.trim() === ''){
+        return { skipped: false, swipe, media: false }
+    }
+    const line: TavernLine = { isUser, mes: shown.raw_content }
+    const sendDate = parseTavernSendDate(turn.create_time)
+    if(sendDate !== undefined){
+        line.sendDate = sendDate
+    }
+    const name = isUser ? undefined : trimmedName(author?.name)
+    if(name !== undefined){
+        line.name = name
+    }
+    return { line, skipped: false, swipe, media: trimmedName(shown.tti_image_rel_path) !== undefined }
+}
+
+// `dedupe` skips a turn whose `turn_key.turn_id` was already read (the first
+// copy in reading order is kept); a turn without an id is never skipped.
+function readCaiTurns(turns: unknown[], newestFirst: boolean, dedupe: boolean): ChatImportResult {
+    const result: ChatImportResult = { messages: [], skipped: 0, swipesNotKept: 0 }
+    const seen = new Set<string>()
+    let media = 0
+    for(let index = 0; index < turns.length; index++){
+        const turn = turns[newestFirst ? turns.length - 1 - index : index]
+        if(dedupe && isPlainObject(turn) && isPlainObject(turn.turn_key)){
+            const id = turn.turn_key.turn_id
+            if(typeof id === 'string' && id !== ''){
+                if(seen.has(id)){
+                    continue
+                }
+                seen.add(id)
+            }
+        }
+        const read = readCaiTurn(turn)
+        if(read.skipped){
+            result.skipped++
+        }
+        if(read.swipe){
+            result.swipesNotKept++
+        }
+        if(read.media){
+            media++
+        }
+        if(read.line !== undefined){
+            result.messages.push(read.line)
+        }
+    }
+    if(media > 0){
+        result.mediaNotKept = media
+    }
+    return result
+}
+
+/**
+ * Reads a Lianne export (`cai_export`): `{ messages }` or the bare list of raw
+ * turns, both newest first. The chat has no character name of its own, so the
+ * header names the first character line's author and the chat's own two names
+ * drop from the lines. Repeated turn ids are read once.
+ */
+export function readCaiTurnsChat(value: unknown): ChatImportResult {
+    const turns: unknown[] = Array.isArray(value) ? value : isPlainObject(value) && Array.isArray(value.messages) ? value.messages : []
+    const result = readCaiTurns(turns, true, true)
+    const characterName = result.messages.find((line) => !line.isUser && line.name !== undefined)?.name
+    if(characterName !== undefined){
+        result.header = { characterName }
+    }
+    return result
+}
+
+/**
+ * The chats of a file that may hold several. `total` and `leftOut` count only
+ * chats with at least one importable message, so empty chats never turn a
+ * one-chat file into a multi-chat file. `memoryNotKept` counts the returned
+ * chats that had a memory box, which is not imported.
+ */
+export type CaiChatsResult = {
+    chats: ChatImportResult[]
+    total: number
+    leftOut: number
+    /** Distinct character names among the counted chats, in file order. */
+    names: string[]
+    memoryNotKept: number
+}
+
+type CaiFoundChat = { name: string | undefined, result: ChatImportResult, hasMemory: boolean }
+
+// One chat in all is imported whatever its character is called. Several chats
+// are matched to the open character by name, trimmed and case-sensitive; a chat
+// with no readable name never matches.
+function pickCaiChats(found: CaiFoundChat[], openName: string): CaiChatsResult {
+    const importable = found.filter((chat) => chat.result.messages.length > 0)
+    const open = openName.trim()
+    const picked = importable.length <= 1 ? importable : importable.filter((chat) => chat.name !== undefined && chat.name === open)
+    const names = new Set<string>()
+    for(const chat of importable){
+        if(chat.name !== undefined){
+            names.add(chat.name)
+        }
+    }
+    return {
+        chats: picked.map((chat) => chat.result),
+        total: importable.length,
+        leftOut: importable.length - picked.length,
+        names: [...names],
+        memoryNotKept: picked.filter((chat) => chat.hasMemory).length,
+    }
+}
+
+/**
+ * Reads a Morse export (`morse.cai-export`, version 1), turns oldest first. An
+ * entry's character name is `name`, else `participant__name`. Personas, user,
+ * avatar and the memory box are not imported.
+ */
+export function readMorseChats(value: unknown, openName: string): CaiChatsResult {
+    const found: CaiFoundChat[] = []
+    if(isPlainObject(value) && Array.isArray(value.characters)){
+        for(const entry of value.characters as unknown[]){
+            if(!isPlainObject(entry) || !Array.isArray(entry.chats)){
+                continue
+            }
+            const character = isPlainObject(entry.character) ? entry.character : undefined
+            const name = trimmedName(character?.name) ?? trimmedName(character?.participant__name)
+            for(const chat of entry.chats as unknown[]){
+                if(!isPlainObject(chat) || !Array.isArray(chat.turns)){
+                    continue
+                }
+                const result = readCaiTurns(chat.turns, false, false)
+                if(name !== undefined){
+                    result.header = { characterName: name }
+                }
+                found.push({ name, result, hasMemory: trimmedName(chat.memory) !== undefined })
+            }
+        }
+    }
+    return pickCaiChats(found, openName)
+}
+
+// A run of consecutive alternate messages counts once, as one reply with its
+// alternates. Only a character message's alternates count; a human message's
+// alternate is dropped without a count and leaves the run as it was. Message
+// text is kept in stored order.
+function readDumperHistory(msgs: unknown[]): ChatImportResult {
+    const result: ChatImportResult = { messages: [], skipped: 0, swipesNotKept: 0 }
+    let inAlternates = false
+    for(const msg of msgs){
+        if(!isPlainObject(msg) || typeof msg.text !== 'string'){
+            result.skipped++
+            inAlternates = false
+            continue
+        }
+        if(msg.is_alternative === true){
+            const fromUser = isPlainObject(msg.src) && msg.src.is_human === true
+            if(!fromUser && msg.text.trim() !== ''){
+                if(!inAlternates){
+                    result.swipesNotKept++
+                }
+                inAlternates = true
+            }
+            continue
+        }
+        inAlternates = false
+        if(msg.text.trim() === ''){
+            continue
+        }
+        const src = isPlainObject(msg.src) ? msg.src : undefined
+        const isUser = src?.is_human === true
+        const line: TavernLine = { isUser, mes: msg.text.split(caiRedactionToken).join('{{user}}') }
+        const name = isUser ? undefined : trimmedName(src?.name)
+        if(name !== undefined){
+            line.name = name
+        }
+        result.messages.push(line)
+    }
+    return result
+}
+
+/**
+ * Reads a characterai-dumper file, `{ info, histories: { histories } }`. Every
+ * history belongs to the character `info.character.name`, so several histories
+ * are imported together or refused together. The writer's redaction token for
+ * the user's name becomes `{{user}}`, which the import renders as the current
+ * persona name. The stored message order is kept.
+ */
+export function readDumperChats(value: unknown, openName: string): CaiChatsResult {
+    const found: CaiFoundChat[] = []
+    if(isPlainObject(value) && isPlainObject(value.histories) && Array.isArray(value.histories.histories)){
+        const info = isPlainObject(value.info) && isPlainObject(value.info.character) ? trimmedName(value.info.character.name) : undefined
+        for(const history of value.histories.histories as unknown[]){
+            if(!isPlainObject(history)){
+                continue
+            }
+            const result = readDumperHistory(Array.isArray(history.msgs) ? history.msgs : [])
+            if(info !== undefined){
+                result.header = { characterName: info }
+            }
+            found.push({ name: info, result, hasMemory: false })
+        }
+    }
+    return pickCaiChats(found, openName)
 }
