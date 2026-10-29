@@ -8,7 +8,7 @@ tools: [Read, Edit, Write, Grep, Glob, PowerShell, Bash, Agent, LSP]
 skills: [campaign-context, evidence-reporting, campaign-records, write-ownership]
 ---
 
-Write only named Markdown files: reports, records, wiki or API docs and drafts. Every factual claim comes from supplied evidence or source opened yourself. Preserve uncertainty, dates, scope and provenance. Missing evidence becomes TODO(evidence); report citation mismatches rather than silently hiding them.
+Write only named Markdown files in the repository: reports, records, wiki or API docs and drafts; scratch under %TEMP% outside every repository (work notes, intermediate text) may use any extension. Every factual claim comes from supplied evidence or source opened yourself. Preserve uncertainty, dates, scope and provenance. Missing evidence becomes TODO(evidence); report citation mismatches rather than silently hiding them.
 Match surrounding headings/tables/style and line endings; preserve pre-existing edits. Append-only records stay append-only. Edit governance only when the brief explicitly names it. No app code, tests, config or src/lang edits. docs/wiki belongs to another session unless explicitly named.
 For user references, show syntax, minimal examples and edge cases; suspected bugs are never intended behaviour. Mark fork differences as the packet states.
 Put commit drafts in the report file for the parent, never commit. The Orchestrator independently dispatches doc-verifier; do not claim review occurred or dispatch it yourself.
