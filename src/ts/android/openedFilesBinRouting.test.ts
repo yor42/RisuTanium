@@ -10,6 +10,7 @@
  * These tests pin the routing rules; they are not labelled one by one as reproducers or guards.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { writable } from 'svelte/store'
 import { language } from 'src/lang'
 
 const h = vi.hoisted(() => ({
@@ -19,6 +20,9 @@ const importOpenedSourcesMock = vi.hoisted(() => vi.fn())
 const alertNormalWaitMock = vi.hoisted(() => vi.fn())
 const restoreOpenedBackupMock = vi.hoisted(() => vi.fn())
 
+vi.mock(import('../stores.svelte'), () => ({
+    alertStore: writable({ type: 'none', msg: '' }),
+}) as unknown as typeof import('../stores.svelte'))
 vi.mock('../characterCards', () => ({
     importOpenedSources: importOpenedSourcesMock,
     // Stand-in for the shared allow-list; the real list is pinned against the import in characterCards.picker.test.ts.
@@ -35,7 +39,7 @@ vi.mock('../storage/database.svelte', () => ({
     getDatabase: () => ({ didFirstSetup: h.didFirstSetup }),
 }))
 
-const { androidOpenedFilesImport } = await import('./openedFiles')
+const { androidOpenedFilesImport, resetOpenedFilesForTests } = await import('./openedFiles')
 
 interface HostEntry {
     uri: string
@@ -74,7 +78,9 @@ beforeEach(() => {
     })
     restoreOpenedBackupMock.mockReset().mockImplementation(async (item: { name: string }) => {
         order.push('restore:' + item.name)
+        return 'pageLive'
     })
+    resetOpenedFilesForTests()
     delete window.__risuTaniumOpenedFiles
     window.__risuTaniumOpenedFilesHost = { take: takeMock }
     vi.spyOn(console, 'warn').mockImplementation(() => { })
@@ -230,5 +236,19 @@ describe('a .bin opened from another app', () => {
         window.__risuTaniumOpenedFiles?.()
         await settle()
         expect(restoreOpenedBackupMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('after a restore that ended the page, a later hook with a card takes nothing and imports nothing', async () => {
+        restoreOpenedBackupMock.mockResolvedValueOnce('pageEnding')
+        queued = [[entry('backup.bin')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(takeMock).toHaveBeenCalledTimes(1)
+        queued = [[entry('card.charx')]]
+        window.__risuTaniumOpenedFiles?.()
+        await settle()
+        expect(takeMock).toHaveBeenCalledTimes(1)
+        expect(importOpenedSourcesMock).not.toHaveBeenCalled()
+        expect(queued).toHaveLength(1)
     })
 })

@@ -7,6 +7,7 @@
  * These are feature tests: the module they exercise is new, so they have no pre-fix defect to reproduce.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { writable } from 'svelte/store'
 
 const h = vi.hoisted(() => ({
     didFirstSetup: false,
@@ -16,6 +17,9 @@ const importOpenedSourcesMock = vi.hoisted(() => vi.fn())
 const alertNormalWaitMock = vi.hoisted(() => vi.fn())
 const restoreOpenedBackupMock = vi.hoisted(() => vi.fn())
 
+vi.mock(import('../stores.svelte'), () => ({
+    alertStore: writable({ type: 'none', msg: '' }),
+}) as unknown as typeof import('../stores.svelte'))
 vi.mock('../characterCards', () => ({
     importOpenedSources: importOpenedSourcesMock,
     // Stand-in for the shared allow-list; the real list is pinned in characterCards.picker.test.ts.
@@ -32,7 +36,7 @@ vi.mock('../storage/database.svelte', () => ({
     getDatabase: () => ({ didFirstSetup: h.didFirstSetup }),
 }))
 
-const { androidOpenedFilesImport } = await import('./openedFiles')
+const { androidOpenedFilesImport, resetOpenedFilesForTests } = await import('./openedFiles')
 
 interface HostEntry {
     uri: string
@@ -62,7 +66,8 @@ beforeEach(() => {
     takeMock.mockClear()
     importOpenedSourcesMock.mockReset().mockResolvedValue(undefined)
     alertNormalWaitMock.mockReset().mockResolvedValue(undefined)
-    restoreOpenedBackupMock.mockReset().mockResolvedValue(undefined)
+    restoreOpenedBackupMock.mockReset().mockResolvedValue('pageLive')
+    resetOpenedFilesForTests()
     delete window.__risuTaniumOpenedFiles
     window.__risuTaniumOpenedFilesHost = { take: takeMock }
     vi.spyOn(console, 'warn').mockImplementation(() => { })
