@@ -67,8 +67,16 @@ const runs = vi.hoisted(() => [] as string[])
 
 vi.mock('localforage', () => ({
     default: {
-        createInstance: () => ({
-            getItem: vi.fn(async () => null),
+        createInstance: (options?: { name?: string }) => ({
+            getItem: vi.fn(async (key: string) => {
+                // A stored recent 'db' grant keeps the character and database APIs
+                // from prompting; every other key is absent.
+                if (options?.name === 'plugin_permissions') {
+                    if (key.endsWith('_db_lastGrantTime')) return Date.now()
+                    if (key.endsWith('_db')) return true
+                }
+                return null
+            }),
             setItem: vi.fn(async () => {}),
             removeItem: vi.fn(async () => {}),
         }),
@@ -412,7 +420,7 @@ function apiFor(name: string): CallerApi {
 
 let warnSpy: MockInstance<typeof console.warn>
 
-/** Calls a setter. A synchronous throw becomes a rejection, a synchronous write still happens before this returns. */
+/** Calls a setter. A failure is a rejection; the write has happened by the time the promise settles. */
 async function send(kind: SetterKind, api: CallerApi, payload: Record<string, unknown>): Promise<unknown> {
     warnSpy.mockClear()
     return await (api[kind] as (db: unknown) => unknown)(payload)
@@ -728,17 +736,17 @@ describe.each(SETTERS)('S5 a list that omits an installed plugin through %s', (k
 })
 
 describe('S5 setDatabaseLite with only ignored plugin entries', () => {
-    test('guard: writes its other keys before it returns', async () => {
+    test('guard: writes its other keys by the time it settles', async () => {
         installBase([fullCharacter('char-0')])
         const before = liveSummary()
         const edited = plain(DBState.db.characters)
         edited[0].name = 'edited by plugin'
 
-        const returned = (apiFor(A).setDatabaseLite as (db: unknown) => unknown)({ plugins: before, characters: edited })
+        const returned = (apiFor(A).setDatabaseLite as (db: unknown) => Promise<unknown>)({ plugins: before, characters: edited })
 
+        expect(await failure(returned)).toBeNull()
         expect(liveCharacter('char-0').name).toBe('edited by plugin')
         expect(liveSummary()).toEqual(before)
-        await returned
     })
 })
 
@@ -788,7 +796,7 @@ describe.each(SETTERS)('S6 a plugin installs another plugin through %s', (kind) 
 })
 
 describe('S6 setDatabaseLite with a plugin list that cannot be applied', () => {
-    test('never throws synchronously: the other keys are written before it returns and the failure is a rejected promise', async () => {
+    test('never throws synchronously: the other keys are written by the time it settles and the failure is a rejected promise', async () => {
         installBase([fullCharacter('char-0')])
         const edited = plain(DBState.db.characters)
         edited[0].name = 'renamed by plugin'
@@ -798,9 +806,9 @@ describe('S6 setDatabaseLite with a plugin list that cannot be applied', () => {
             outcome = (apiFor(A).setDatabaseLite as (db: unknown) => Promise<unknown>)({ plugins: 'not-a-list', characters: edited })
         }).not.toThrow()
 
-        expect(liveCharacter('char-0').name).toBe('renamed by plugin')
         expect(outcome).toBeInstanceOf(Promise)
         expect(await failure(outcome as Promise<unknown>)).not.toBeNull()
+        expect(liveCharacter('char-0').name).toBe('renamed by plugin')
     })
 })
 

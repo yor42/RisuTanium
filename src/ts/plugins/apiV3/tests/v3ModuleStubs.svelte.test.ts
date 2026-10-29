@@ -26,8 +26,16 @@ const notices = vi.hoisted(() => ({ texts: [] as string[] }))
 
 vi.mock('localforage', () => ({
     default: {
-        createInstance: () => ({
-            getItem: vi.fn(async () => null),
+        createInstance: (options?: { name?: string }) => ({
+            getItem: vi.fn(async (key: string) => {
+                // A stored recent 'db' grant keeps the character and database APIs
+                // from prompting; every other key is absent.
+                if (options?.name === 'plugin_permissions') {
+                    if (key.endsWith('_db_lastGrantTime')) return Date.now()
+                    if (key.endsWith('_db')) return true
+                }
+                return null
+            }),
             setItem: vi.fn(async () => {}),
             removeItem: vi.fn(async () => {}),
         }),
