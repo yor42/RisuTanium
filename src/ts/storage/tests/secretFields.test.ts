@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 
 /**
- * Two things around environment-variable references in secret fields, both
+ * Three things: two around environment-variable references in secret fields,
+ * and one about preset destinations, all
  * driven against the REAL `database.svelte.ts` (the module mocks below cover
  * only its other imports, none of them secret-related):
  *
@@ -10,7 +11,10 @@
  *   `SECRET_FIELDS`, either resolved or excluded with a reason;
  * - preset import: `importPreset` blanks a whole-field reference in
  *   `openAIKey` and `proxyKey`, so an imported file never carries a
- *   reference that would pick up the importing user's environment.
+ *   reference that would pick up the importing user's environment;
+ * - preset destinations: `importPreset` blanks the four destination URL fields,
+ *   removes `koboldURL` and stores non-string keys as '', whatever the preset's
+ *   models or format.
  */
 
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -98,7 +102,10 @@ vi.mock('src/ts/rpack/rpack_js.js', () => ({
 //#endregion
 
 import { DBState } from 'src/ts/stores.svelte'
-import { getDatabase, importPreset, presetTemplate, setDatabase, type Database } from 'src/ts/storage/database.svelte'
+import { downloadFile } from 'src/ts/globalApi.svelte'
+import { changeToPreset, downloadPreset, getDatabase, importPreset, presetFromWorkingSettings, presetTemplate, setDatabase, type Database } from 'src/ts/storage/database.svelte'
+import { encode as encodeMsgpack } from 'msgpackr/index-no-eval'
+import * as fflate from 'fflate'
 import { SECRET_FIELDS, secretFieldPath, type SecretFieldEntry } from 'src/ts/secretFields'
 
 const CREDENTIAL_LOOKING = /key|token|secret|password/i
@@ -236,5 +243,222 @@ describe('importPreset blanks whole-field references', () => {
         const [imported] = DBState.db.botPresets
         expect(imported.openAIKey).toBe('')
         expect(imported.proxyKey).toBe('')
+    })
+})
+
+describe('importPreset never lets a preset choose where stored secrets are sent', () => {
+    type Loose = Record<string, unknown>
+
+    // The user's working settings: their own keys, headers and destinations.
+    function userDb(extra: Loose = {}): Loose {
+        return {
+            botPresets: [], botPresetsId: -1, NAIsettings: {},
+            proxyKey: 'sk-user-proxy', forceReplaceUrl: 'https://user-proxy.test/v1',
+            google: { accessToken: 'user-gemini-key' }, mancerHeader: 'user-mancer-key',
+            textgenWebUIBlockingURL: 'https://user-ooba.test/api/', textgenWebUIStreamURL: 'wss://user-ooba.test/api/',
+            koboldURL: 'http://user-kobold.test/api/v1', openAIKey: 'sk-user-openai',
+            additionalParams: [['header::Authorization', 'Bearer user-proxy-secret']],
+            ooba: {}, ainconfig: {}, reverseProxyOobaArgs: { mode: 'instruct' }, promptSettings: { assistantPrefill: '' },
+            customAPIFormat: 0, customFlags: [], seperateModels: { memory: '', emotion: '', translate: '', otherAx: '' },
+            fallbackModels: { memory: [], emotion: [], translate: [], otherAx: [], model: [] }, seperateParameters: null,
+            modelTools: [], presetRegex: [], promptTemplate: null, mainPrompt: 'm', jailbreak: 'j', formatingOrder: [], aiModel: 'gpt-x',
+            apiType: 'x', temperature: 80, maxContext: 4000, maxResponse: 300, frequencyPenalty: 70, PresensePenalty: 70,
+            ...extra,
+        }
+    }
+
+    // A real export: what `presetFromWorkingSettings` produces with the six fields `downloadPreset` blanks.
+    function exportedBase(): Loose {
+        const exported = presetFromWorkingSettings(userDb() as unknown as Database, 'Shared', '') as unknown as Loose
+        for (const field of ['openAIKey', 'forceReplaceUrl', 'forceReplaceUrl2', 'proxyKey', 'textgenWebUIStreamURL', 'textgenWebUIBlockingURL']) {
+            exported[field] = ''
+        }
+        return exported
+    }
+
+    const asJson = (o: unknown) => new TextEncoder().encode(JSON.stringify(o, null, 2))
+    const asRisupreset = (o: unknown) => fflate.compressSync(encodeMsgpack({ presetVersion: 2, type: 'preset', preset: encodeMsgpack(o) }))
+    const working = () => DBState.db as unknown as Loose
+
+    async function importFile(name: string, data: Uint8Array): Promise<Loose> {
+        await importPreset({ name, data })
+        const list = DBState.db.botPresets as unknown as Loose[]
+        return list[list.length - 1]
+    }
+
+    beforeEach(() => {
+        DBState.db = userDb() as unknown as typeof DBState.db
+        vi.mocked(downloadFile).mockClear()
+    })
+
+    const attackerA1 = () => ({
+        ...exportedBase(), aiModel: 'reverse_proxy', forceReplaceUrl: 'https://attacker.test/v1',
+        forceReplaceUrl2: 'https://attacker2.test/v1', proxyKey: null,
+    })
+
+    test('T1 json: attacker proxy URLs are blanked and select keeps nothing of them', async () => {
+        const stored = await importFile('shared.json', asJson(attackerA1()))
+        expect(stored.forceReplaceUrl2).toBe('')
+        changeToPreset(0)
+        expect(working().forceReplaceUrl).toBe('')
+        expect(stored.forceReplaceUrl).toBe('')
+        expect(stored.proxyKey).toBe('')
+    })
+
+    test('T2 risupreset wrapper', async () => {
+        await importFile('imported.risupreset', asRisupreset(attackerA1()))
+        changeToPreset(0)
+        expect(working().forceReplaceUrl).toBe('')
+    })
+
+    test('T3 risup wrapper', async () => {
+        await importFile('p.risup', asRisupreset(attackerA1()))
+        changeToPreset(0)
+        expect(working().forceReplaceUrl).toBe('')
+    })
+
+    test('T4 Google format with a blank proxy key', async () => {
+        await importFile('g.json', asJson({
+            ...exportedBase(), aiModel: 'reverse_proxy', customAPIFormat: 5,
+            forceReplaceUrl: 'https://attacker.test/v1beta', proxyKey: '',
+        }))
+        changeToPreset(0)
+        expect(working().forceReplaceUrl).toBe('')
+    })
+
+    test('T5 mancer textgen URLs', async () => {
+        await importFile('m.json', asJson({
+            ...exportedBase(), aiModel: 'mancer',
+            textgenWebUIBlockingURL: 'https://attacker.test/api/', textgenWebUIStreamURL: 'wss://attacker.test/api/',
+        }))
+        changeToPreset(0)
+        expect(working().textgenWebUIBlockingURL).toBe('')
+        expect(working().textgenWebUIStreamURL).toBe('')
+    })
+
+    test('T6 non-string keys are stored blank', async () => {
+        const stored = await importFile('k.json', asJson({ ...exportedBase(), openAIKey: 7, proxyKey: null }))
+        expect(stored.openAIKey).toBe('')
+        expect(stored.proxyKey).toBe('')
+    })
+
+    test('T7 reverse_proxy with the Kobold format keeps the user Kobold URL', async () => {
+        const stored = await importFile('kf.json', asJson({
+            ...exportedBase(), aiModel: 'reverse_proxy', customAPIFormat: 14, koboldURL: 'http://attacker-kobold.test/api/v1',
+        }))
+        expect(stored.koboldURL).toBeUndefined()
+        changeToPreset(0)
+        expect(working().customAPIFormat).toBe(14)
+        expect(working().koboldURL).toBe('http://user-kobold.test/api/v1')
+    })
+
+    test('T8 risupreset with the Kobold format keeps the user Kobold URL', async () => {
+        await importFile('imported.risupreset', asRisupreset({
+            ...exportedBase(), aiModel: 'reverse_proxy', customAPIFormat: 14, koboldURL: 'http://attacker-kobold.test/api/v1',
+        }))
+        changeToPreset(0)
+        expect(working().koboldURL).toBe('http://user-kobold.test/api/v1')
+    })
+
+    test('T9 a reverse_proxy sub-model under a non-proxy main model', async () => {
+        await importFile('sub.json', asJson({
+            ...exportedBase(), aiModel: 'gpt-x', subModel: 'reverse_proxy', forceReplaceUrl: 'https://attacker.test/v1',
+        }))
+        changeToPreset(0)
+        expect(working().subModel).toBe('reverse_proxy')
+        expect(working().forceReplaceUrl).toBe('')
+    })
+
+    test('T10 native kobold model with an attacker koboldURL', async () => {
+        DBState.db = userDb({ applyAdditionalParamsToAll: true }) as unknown as typeof DBState.db
+        const stored = await importFile('nk.json', asJson({
+            ...exportedBase(), aiModel: 'kobold', koboldURL: 'http://attacker-kobold.test/api/v1',
+        }))
+        changeToPreset(0)
+        expect(working().koboldURL).toBe('http://user-kobold.test/api/v1')
+        expect(stored.koboldURL).toBeUndefined()
+    })
+
+    // The rule must not depend on the preset's models or format: every shape, including one whose
+    // models consume none of the fields, ends up with the same stored destinations.
+    const attackAll = {
+        forceReplaceUrl: 'https://attacker.test/v1', forceReplaceUrl2: 'https://attacker2.test/v1',
+        textgenWebUIStreamURL: 'wss://attacker.test/api/', textgenWebUIBlockingURL: 'https://attacker.test/api/',
+        koboldURL: 'http://attacker-kobold.test/api/v1', proxyKey: null,
+    }
+    const shapes: [string, Loose][] = [
+        ['a reverse_proxy with the Kobold format', { aiModel: 'reverse_proxy', customAPIFormat: 14 }],
+        ['b inert: no model consumes a destination field', { aiModel: 'gpt-x', subModel: 'gpt-x', customAPIFormat: 0 }],
+        ['c native kobold', { aiModel: 'kobold' }],
+        ['d sub-model reverse_proxy', { aiModel: 'gpt-x', subModel: 'reverse_proxy' }],
+        ['e separate model for memory', {
+            aiModel: 'gpt-x', seperateModelsForAxModels: true,
+            seperateModels: { memory: 'reverse_proxy', emotion: '', translate: '', otherAx: '' },
+        }],
+        ['f fallback model', {
+            aiModel: 'gpt-x',
+            fallbackModels: { memory: [], emotion: [], translate: [], otherAx: [], model: ['reverse_proxy'] },
+        }],
+        ['g mancer', { aiModel: 'mancer' }],
+    ]
+
+    test.each(shapes)('T11 row %s', async (_label, shape) => {
+        const stored = await importFile('t11.json', asJson({ ...exportedBase(), ...attackAll, ...shape }))
+        expect(stored.forceReplaceUrl).toBe('')
+        expect(stored.forceReplaceUrl2).toBe('')
+        expect(stored.textgenWebUIStreamURL).toBe('')
+        expect(stored.textgenWebUIBlockingURL).toBe('')
+        expect(stored.koboldURL).toBeUndefined()
+        expect(stored.proxyKey).toBe('')
+    })
+
+    // Round trip: an upstream or fork export imports unchanged except for the dropped `koboldURL`.
+    function sourceDb(): Loose {
+        return userDb({
+            botPresetsId: 0, botPresets: [{ name: 'Src' }], mainPrompt: 'custom main', temperature: 55, top_k: 40,
+            presetRegex: [{ comment: 'r', in: 'a', out: 'b', type: 'editinput' }], koboldURL: 'http://src-kobold.test/api/v1',
+            proxyKey: 'sk-src', forceReplaceUrl: 'https://src.test/v1',
+        })
+    }
+
+    function expectImportsAsExported(stored: Loose, exported: Loose) {
+        for (const key of Object.keys(exported)) {
+            if (key !== 'koboldURL') {
+                expect(stored[key], key).toEqual(exported[key])
+            }
+        }
+        for (const key of Object.keys(presetTemplate)) {
+            if (!(key in exported)) {
+                expect(stored[key], key).toEqual((presetTemplate as unknown as Loose)[key])
+            }
+        }
+    }
+
+    test('G1 guard: a json export imports equal on every key except koboldURL', async () => {
+        DBState.db = sourceDb() as unknown as typeof DBState.db
+        await downloadPreset(0, 'json')
+        const bytes = vi.mocked(downloadFile).mock.calls[0][1] as Uint8Array
+        const exported = JSON.parse(Buffer.from(bytes).toString('utf-8')) as Loose
+        DBState.db = userDb() as unknown as typeof DBState.db
+        expectImportsAsExported(await importFile('Src_preset.json', bytes), exported)
+    })
+
+    test('G2 guard: a risup export imports equal on every key except koboldURL', async () => {
+        DBState.db = sourceDb() as unknown as typeof DBState.db
+        const result = await downloadPreset(0, 'return')
+        const exported = JSON.parse(JSON.stringify(result.data)) as Loose
+        DBState.db = userDb() as unknown as typeof DBState.db
+        expectImportsAsExported(await importFile('x.risup', result.buf as Uint8Array), exported)
+    })
+
+    test('G4 guard: selecting a preset the user saved applies its own destinations', () => {
+        const own = presetFromWorkingSettings(userDb({
+            forceReplaceUrl: 'https://own.test/v1', proxyKey: 'sk-own', koboldURL: 'http://own-kobold.test/api/v1',
+        }) as unknown as Database, 'Own', '')
+        DBState.db.botPresets.push(own)
+        changeToPreset(0)
+        expect(working().forceReplaceUrl).toBe('https://own.test/v1')
+        expect(working().proxyKey).toBe('sk-own')
+        expect(working().koboldURL).toBe('http://own-kobold.test/api/v1')
     })
 })
