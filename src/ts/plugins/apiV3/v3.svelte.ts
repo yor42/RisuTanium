@@ -21,6 +21,7 @@ import { sleep } from "src/ts/util";
 import { alertConfirm, alertError, alertNormal } from "src/ts/alert";
 import { language } from "src/lang";
 import { checkCharOrder, getFetchLogs } from "src/ts/globalApi.svelte";
+import { untrustedGlobalFetch, untrustedNativeFetch } from "src/ts/network/untrustedFetch";
 import { changeColorScheme, updateColorScheme, updateTextThemeAndCSS, type ColorScheme } from "src/ts/gui/colorscheme";
 import { isNodeServer, isTauri } from "src/ts/platform";
 import { get } from "svelte/store";
@@ -550,7 +551,19 @@ const makeMenuUnloadCallback = (menuId:string, menuStore: MenuDef[]) =>{
     }
 }
 
+// Per panel id, the latest set or removal. A detached mainDom upgrade applies
+// only while its own number is still current, so a late grant never revives a
+// panel that was replaced or removed meanwhile.
+const chatPanelSeq = new Map<string, number>();
+
+const bumpChatPanelSeq = (id: string) => {
+    const seq = (chatPanelSeq.get(id) ?? 0) + 1;
+    chatPanelSeq.set(id, seq);
+    return seq;
+}
+
 const removeChatPanel = (id: string) => {
+    bumpChatPanelSeq(id);
     const index = chatPanelStore.findIndex(item => item.id === id);
     if(index !== -1){
         chatPanelStore.splice(index, 1);
@@ -560,6 +573,7 @@ const removeChatPanel = (id: string) => {
 const removePluginChatPanels = (pluginName: string) => {
     for(let i = chatPanelStore.length - 1; i >= 0; i--){
         if(chatPanelStore[i].pluginName === pluginName){
+            bumpChatPanelSeq(chatPanelStore[i].id);
             chatPanelStore.splice(i, 1);
         }
     }
@@ -880,7 +894,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                     console.warn(`Request contains potentially sensitive header '${headerName}'. handling of such headers may be changed to only work with nativeFetch.`);
                 }
             }
-            return oldApis.risuFetch(url, options);
+            return untrustedGlobalFetch(url, options);
         },
         nativeFetch: (url, options) => {
             for(const blocked of urlBlacklist){
@@ -896,7 +910,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                     console.warn(`Request contains potentially sensitive header '${headerName}'. handling of such headers may be changed to use server-side approch with write-only api access in the future for better security.`);
                 }
             }
-            return oldApis.nativeFetch(url, options);
+            return untrustedNativeFetch(url, options);
         },
         getChar: getGatedChar,
         setChar: setGatedChar,
@@ -1440,15 +1454,23 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 throw new Error("content must be a string or null");
             }
 
+            // A <style> element in a panel restyles the whole app, so the panel
+            // is stored without it at once and gets it back only if the plugin
+            // holds the mainDom permission.
+            const full = DOMPurify.sanitize(content);
+            const stripped = DOMPurify.sanitize(content, {FORBID_TAGS: ['style']});
+            const hasStyle = stripped !== full;
+
             const panel = {
                 id,
                 pluginName: plugin.name,
-                html: DOMPurify.sanitize(content),
+                html: stripped,
                 className: typeof options.className === 'string'
                     ? DOMPurify.sanitize(options.className, {ALLOWED_TAGS: [], ALLOWED_ATTR: []})
                     : undefined,
             }
 
+            const seq = bumpChatPanelSeq(id);
             const existingIndex = chatPanelStore.findIndex(item => item.id === id);
             if(existingIndex !== -1){
                 chatPanelStore[existingIndex] = panel;
@@ -1457,6 +1479,19 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 chatPanelStore.push(panel);
             }
             addPluginUnloadCallback(plugin.name, () => removePluginChatPanels(plugin.name));
+
+            if(hasStyle){
+                void (async () => {
+                    if(await getPermission('mainDom') && chatPanelSeq.get(id) === seq){
+                        const index = chatPanelStore.findIndex(item => item.id === id);
+                        if(index !== -1){
+                            chatPanelStore[index] = {...chatPanelStore[index], html: full};
+                        }
+                    }
+                })().catch((error) => {
+                    console.error(`Error upgrading chat panel ${id} for plugin ${plugin.name}:`, error);
+                });
+            }
             return {id};
         },
         registerMCP: registerMCPModule,

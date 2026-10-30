@@ -14,6 +14,11 @@ vi.mock('@tauri-apps/api/path', () => ({
     appDataDir: vi.fn(async () => '/fake/appdata'),
     join: vi.fn(async (...parts: string[]) => parts.join('/')),
 }))
+vi.mock('@tauri-apps/api/event', () => ({
+    listen: vi.fn(async () => () => {}),
+}))
+// completed.txt is absent, so the install path runs; the consent is accepted so it reaches the
+// second key fetch, where the localized failure is thrown.
 vi.mock('@tauri-apps/plugin-fs', () => ({
     exists: vi.fn(async () => false),
     readTextFile: vi.fn(async () => 'fake-key'),
@@ -25,6 +30,7 @@ vi.mock(
             alertClear: vi.fn(),
             alertError: vi.fn(),
             alertWait: vi.fn(),
+            alertConfirm: vi.fn(async (_msg: string) => true),
         }) as unknown as typeof import('src/ts/alert'),
 )
 vi.mock(

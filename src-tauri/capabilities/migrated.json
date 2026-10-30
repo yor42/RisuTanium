@@ -14,9 +14,7 @@
     "fs:allow-fstat",
     "fs:allow-write-file",
     "fs:allow-read-dir",
-    "fs:allow-copy-file",
     "fs:allow-mkdir",
-    "fs:allow-remove",
     "fs:allow-remove",
     "fs:allow-rename",
     "fs:allow-exists",
@@ -27,8 +25,7 @@
         "$APPDATA/*",
         "$APPDATA/**/*",
         "$DOWNLOAD/*",
-        "/data/**/*",
-        "$RESOURCE/*"
+        "/data/**/*"
       ]
     },
     "core:window:allow-maximize",
@@ -37,7 +34,6 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-message",
-    "dialog:allow-ask",
     "dialog:allow-confirm",
     {
       "identifier": "http:default",
@@ -66,16 +62,10 @@
     "os:allow-arch",
     "os:allow-exe-extension",
     "os:allow-locale",
-    "os:allow-hostname",
     "process:allow-restart",
-    "core:app:allow-app-show",
-    "core:app:allow-app-hide",
     "fs:default",
     "os:default",
-    "dialog:default",
-    "process:default",
     "shell:default",
-    "http:default",
     {
       "identifier": "shell:allow-spawn",
       "allow": [
@@ -107,7 +97,6 @@
       ]
     },
     "shell:allow-kill",
-    "shell:allow-open",
     "shell:allow-stdin-write"
   ]
 }

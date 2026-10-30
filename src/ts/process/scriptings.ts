@@ -16,7 +16,8 @@ import { v4 } from "uuid";
 import { getModuleLorebooks, getModuleTriggers } from "./modules";
 import { Mutex } from "../mutex";
 import { tokenize } from "../tokenizer";
-import { fetchNative, readImage } from "../globalApi.svelte";
+import { readImage } from "../globalApi.svelte";
+import { untrustedNativeFetch } from "../network/untrustedFetch";
 import { loadLoreBookV3Prompt, snapshotSubject } from './lorebook.svelte';
 import { getPersonaPrompt, getUserName, getUserIcon, parseKeyValue } from '../util';
 import { createRunSubject, type Origin, type RunSubject } from "./chatOrigin";
@@ -528,7 +529,7 @@ export async function runScripted(code:string, arg:{
                     }
 
                     //browser fetch
-                    const d = await fetchNative(url, {
+                    const d = await untrustedNativeFetch(url, {
                         method: "GET"
                     })
                     const text = await d.text()

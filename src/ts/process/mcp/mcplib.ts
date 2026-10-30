@@ -1,5 +1,6 @@
 import { v4 } from "uuid"
-import { fetchNative, openURL } from "../../globalApi.svelte"
+import { openURL } from "../../globalApi.svelte"
+import { untrustedNativeFetch } from "../../network/untrustedFetch"
 import { alertInput } from "../../alert";
 import { language } from "src/lang";
 import type { RunSubject } from "../chatOrigin";
@@ -360,7 +361,7 @@ export class MCPClient{
                 })
             }
 
-            const response = await fetchNative(url, requestParams)
+            const response = await untrustedNativeFetch(url, requestParams)
 
             if(this.sseEndpoint && options.notifications){
                 return {
@@ -544,7 +545,7 @@ export class MCPClient{
                 headers['Authorization'] = `Bearer ${this.accessToken}`
             }
 
-            const connection = await fetchNative(this.url, {
+            const connection = await untrustedNativeFetch(this.url, {
                 method: "GET",
                 headers: headers
             })
@@ -635,7 +636,7 @@ export class MCPClient{
             const refreshTokenData = await this.getRefreshToken()
             if(refreshTokenData){
                 //get access token using refresh token
-                const tokenResponse = await fetchNative(refreshTokenData.tokenUrl, {
+                const tokenResponse = await untrustedNativeFetch(refreshTokenData.tokenUrl, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/x-www-form-urlencoded"
@@ -657,7 +658,7 @@ export class MCPClient{
 
         const OauthDiscovery = new URL(this.url)
         OauthDiscovery.pathname = "/.well-known/oauth-authorization-server"
-        const oauthResponse = await fetchNative(OauthDiscovery.toString(), {
+        const oauthResponse = await untrustedNativeFetch(OauthDiscovery.toString(), {
             method: "GET",
             headers: {
                 "Accept": "application/json"
@@ -677,7 +678,7 @@ export class MCPClient{
 
         const redirectURL = "https://account.sionyw.com/oauthhelper" //Just a placeholder, should be replaced with actual redirect URL
 
-        const registerResponse = await fetchNative(discoveryURLS.registration_endpoint, {
+        const registerResponse = await untrustedNativeFetch(discoveryURLS.registration_endpoint, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -714,7 +715,7 @@ export class MCPClient{
         openURL(authUrl.toString())
         const code = await alertInput(language.alerts.mcpInputAuthorizationCode)
 
-        const authHelperResponse = await fetchNative("https://account.sionyw.com/oauthhelper/api", {
+        const authHelperResponse = await untrustedNativeFetch("https://account.sionyw.com/oauthhelper/api", {
             method: "POST",
             body: JSON.stringify({
                 code: code,
@@ -732,7 +733,7 @@ export class MCPClient{
 
         const payload = authHelperResponseJson.payload
 
-        const tokenResponse = await fetchNative(discoveryURLS.token_endpoint, {
+        const tokenResponse = await untrustedNativeFetch(discoveryURLS.token_endpoint, {
             method: "POST",
             headers: {
                 "Content-Type": "application/x-www-form-urlencoded"

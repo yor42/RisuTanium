@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import * as path from "@tauri-apps/api/path";
 import { exists, readTextFile } from "@tauri-apps/plugin-fs";
-import { alertClear, alertError, alertWait } from "src/ts/alert";
+import { alertClear, alertConfirm, alertError, alertWait } from "src/ts/alert";
 import { language } from "src/lang";
 import { fillLang } from "src/lang/fill";
 import { getDatabase } from "src/ts/storage/database.svelte";
@@ -30,13 +31,17 @@ async function installPython():Promise<boolean>{
     const appDir = await path.appDataDir()
     const completedPath = await path.join(appDir, 'python', 'completed.txt')
     if(await exists(completedPath)){
+        // completed.txt is written only after Python, pip and every dependency are installed.
         alertWait(language.alerts.pythonAlreadyInstalled)
     }
     else{
+        if(!await alertConfirm(language.alerts.localPythonInstallConsent)){
+            initPython = false
+            alertClear()
+            return false
+        }
         alertWait(language.alerts.installingPython)
-        const installed = await invoke<boolean>("install_python", {
-            path: appDir
-        })
+        const installed = await invoke<boolean>("install_python")
         if(!installed){
             initPython = false
             alertClear()
@@ -45,9 +50,7 @@ async function installPython():Promise<boolean>{
         }
         alertWait(language.alerts.installingPip)
         try{
-            const pipInstalled = await invoke<boolean>("install_pip", {
-                path: appDir
-            })
+            const pipInstalled = await invoke<boolean>("install_pip")
             if(!pipInstalled){
                 initPython = false
                 alertClear()
@@ -63,9 +66,7 @@ async function installPython():Promise<boolean>{
         }
         alertWait(language.alerts.rewritingRequirements)
         try{
-            const postInstalled = await invoke<boolean>('post_py_install', {
-                path: appDir
-            })
+            const postInstalled = await invoke<boolean>('post_py_install')
             if(!postInstalled){
                 initPython = false
                 alertClear()
@@ -80,38 +81,30 @@ async function installPython():Promise<boolean>{
             return false
         }
 
-        alertClear()
-    }
-    const dependencies = [
-        'pydantic',
-        'scikit-build',
-        'scikit-build-core',
-        'pyproject_metadata',
-        'pathspec',
-        'llama-cpp-python',
-        'uvicorn[standard]',
-        'fastapi'
-    ]
-    for(const dep of dependencies){
-        alertWait(fillLang(language.alerts.installingPythonDependency, { dependency: dep }))
+        // The native side installs the fixed dependency list and announces each name.
+        let currentDependency = ''
+        let unlisten: (() => void) | undefined
         try{
-            await invoke('install_py_dependencies', {
-                path: appDir,
-                dependency: dep
+            unlisten = await listen<string>('py_dependency_installing', (event) => {
+                currentDependency = event.payload
+                alertWait(fillLang(language.alerts.installingPythonDependency, { dependency: currentDependency }))
             })
+            await invoke('install_py_dependencies')
         }
         catch(error){
             initPython = false
             alertClear()
-            alertError(fillLang(language.errors.pythonDependencyFailed, { dependency: dep, error: `${error}` }))
+            alertError(fillLang(language.errors.pythonDependencyFailed, { dependency: currentDependency, error: `${error}` }))
             return false
         }
+        finally{
+            unlisten?.()
+        }
+        alertClear()
     }
 
     try{
-        await invoke('run_py_server', {
-            pyPath: appDir,
-        })
+        await invoke('run_py_server')
     }
     catch(error){
         initPython = false

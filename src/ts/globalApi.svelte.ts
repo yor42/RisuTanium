@@ -3237,6 +3237,12 @@ function buildTimeoutSignal(originalSignal?: AbortSignal, timeoutMs?: number) {
 }
 
 /**
+ * Internal third parameter of `globalFetch` and `fetchNative`: the native destination policy of an
+ * untrusted caller. Only `network/untrustedFetch` supplies it; it is not part of the options bag.
+ */
+export type NativeInternal = { nativePolicy: { allowPrivate: boolean } };
+
+/**
  * Interface representing the arguments for the global fetch function.
  * 
  * @interface GlobalFetchArgs
@@ -3329,7 +3335,7 @@ export function addFetchLog(arg: {
  * @param {GlobalFetchArgs} [arg={}] - The arguments for the fetch request.
  * @returns {Promise<GlobalFetchResult>} - The result of the fetch request.
  */
-export async function globalFetch(url: string, arg: GlobalFetchArgs = {}): Promise<GlobalFetchResult> {
+export async function globalFetch(url: string, arg: GlobalFetchArgs = {}, internal?: NativeInternal): Promise<GlobalFetchResult> {
     // Every fetchWith* reads the body before it returns, so the token covers
     // the whole transfer.
     const endInFlight = beginInFlight('request')
@@ -3367,6 +3373,11 @@ export async function globalFetch(url: string, arg: GlobalFetchArgs = {}): Promi
             : { ...arg, abortSignal: timeoutSignal.signal }
 
         try {
+            // An untrusted request is decided by the native destination policy alone: the plain-fetch,
+            // userscript and local-network routes would bypass it.
+            if (internal && isTauri) {
+                return await fetchWithNativeEvents(url, requestArg, internal);
+            }
             if (useLocalNetworkRoute) {
                 if (isTauri) {
                     return await fetchWithTauri(url, requestArg);
@@ -3517,7 +3528,7 @@ const pluginDefaultUserAgent = 'tauri-plugin-http/2.8.0';
  * @param {GlobalFetchArgs} arg - The arguments for the fetch request.
  * @returns {Promise<GlobalFetchResult>} - The result of the fetch request.
  */
-async function fetchWithNativeEvents(url: string, arg: GlobalFetchArgs): Promise<GlobalFetchResult> {
+async function fetchWithNativeEvents(url: string, arg: GlobalFetchArgs, internal?: NativeInternal): Promise<GlobalFetchResult> {
     try {
         const headers: { [key: string]: string } = { 'Content-Type': 'application/json', ...arg.headers };
         if (!Object.keys(headers).some((key) => key.toLowerCase() === 'user-agent')) {
@@ -3532,8 +3543,8 @@ async function fetchWithNativeEvents(url: string, arg: GlobalFetchArgs): Promise
             chatId: arg.chatId,
             logFetch: false,
             noNativeTimeout: true,
-        });
-        const data = await parseJsonBody(response);
+        }, internal);
+        const data = arg.rawResponse ? new Uint8Array(await response.arrayBuffer()) : await parseJsonBody(response);
         // A stop after the head closes the stream cleanly, so a cut-off body must not pass as a reply.
         if (arg.abortSignal?.aborted) {
             return { ok: false, data: 'aborted', headers: {}, status: 400 };
@@ -4480,7 +4491,7 @@ export async function fetchNative(url: string, arg: {
     networkRoute?: 'auto' | 'local_network'
     /** Sends the native no-limit sentinel instead of the 240 s default; a given `requestTimeoutMs` still wins. */
     noNativeTimeout?: boolean
-}): Promise<Response> {
+}, internal?: NativeInternal): Promise<Response> {
 
     assertNoSecretRef(arg.headers, url)
     const useInterceptor = !!arg.interceptor
@@ -4552,7 +4563,8 @@ export async function fetchNative(url: string, arg: {
     // Later fetches add entries in front, so the entry is held by reference.
     const logEntry = fetchLogIndex !== null ? fetchLog[fetchLogIndex] : undefined
     try {
-        if (window.userScriptFetch && !throughProxy) {
+        // The userscript hook has no destination policy, so an untrusted request on Tauri never takes it.
+        if (window.userScriptFetch && !throughProxy && !(internal && isTauri)) {
             return await window.userScriptFetch(url, {
             body: realBody as any,
             headers: headers,
@@ -4628,6 +4640,8 @@ export async function fetchNative(url: string, arg: {
                 headers: JSON.stringify(headers),
                 body: realBody ? Buffer.from(realBody).toString('base64') : '',
                 method: arg.method,
+                // Only `internal` carries a policy: it is never read from `arg`, so a plugin cannot set it.
+                policy: internal?.nativePolicy ?? null,
                 // Tauri names the Rust argument `timeout_secs` as `timeoutSecs`. The native limit covers the
                 // whole request, body included; 0 is no limit and an absent value is the 240 s default.
                 timeoutSecs: arg.requestTimeoutMs
