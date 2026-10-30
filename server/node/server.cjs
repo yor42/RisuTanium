@@ -3111,6 +3111,9 @@ async function startServer() {
             console.warn('[Server] WARNING: save/__password holds the digest of an empty password, so anyone who can reach this server can sign in without a password. To set a new one, stop the server, delete save/__password, start it again and set the password from the app.');
         }
         const port = process.env.PORT || 6001;
+        // HOST narrows the address the server binds; unset, it listens on every interface.
+        const host = (process.env.HOST || '').trim();
+        const listenArguments = host === '' ? [port] : [port, host];
         const httpsOptions = await getHttpsOptions();
         let server = null;
 
@@ -3118,7 +3121,7 @@ async function startServer() {
             // HTTPS
             server = https.createServer(httpsOptions, app);
             setupProxyStreamWebSocket(server);
-            server.listen(port, () => {
+            server.listen(...listenArguments, () => {
                 console.log("[Server] HTTPS server is running.");
                 console.log(`[Server] https://localhost:${port}/`);
             });
@@ -3126,7 +3129,7 @@ async function startServer() {
             // HTTP
             server = http.createServer(app);
             setupProxyStreamWebSocket(server);
-            server.listen(port, () => {
+            server.listen(...listenArguments, () => {
                 console.log("[Server] HTTP server is running.");
                 console.log(`[Server] http://localhost:${port}/`);
             });
