@@ -27,6 +27,7 @@ const NAMES = {
     'public.test': [['93.184.216.34']],
     'multi.test': [['93.184.216.34', '10.0.0.9']],
     'rebind.test': [['127.0.0.1'], ['10.0.0.8']],
+    'pooled.test': [['127.0.0.1'], ['93.184.216.34']],
 }
 
 interface Hit {
@@ -176,6 +177,25 @@ describe('a destination the policy refuses', { timeout: 30_000 }, () => {
             expect(response.status, url).toBe(403)
             expect(await response.json()).toMatchObject({ code: 'PROXY_DESTINATION_BLOCKED' })
         }
+    })
+
+    test('S4b-T6b a stream job to a name a /proxy request already connected to is still checked', async () => {
+        hits = []
+        const url = `http://pooled.test:${targetPort}/t`
+        // The /proxy request resolves the name to loopback and leaves a keep-alive socket behind.
+        const first = await proxy(main, url)
+        expect(first.status).toBe(200)
+        expect(await first.text()).toBe('echo-ok')
+        expect(hits).toHaveLength(1)
+        // The name now resolves to a public address, which a stream job must refuse; a reused socket would skip that check.
+        const created = await fetch(`${main.baseUrl}/proxy-stream-jobs`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'risu-auth': await main.authHeader() },
+            body: JSON.stringify({ url, method: 'POST', bodyBase64: '', headers: {} }),
+        })
+        expect(created.status).toBe(200)
+        await new Promise((resolve) => setTimeout(resolve, 750))
+        expect(hits).toHaveLength(1)
     })
 })
 

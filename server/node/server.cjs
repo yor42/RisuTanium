@@ -869,6 +869,18 @@ const PROXY_ALLOW_PRIVATE = process.env.RISU_PROXY_ALLOW_PRIVATE === '1';
 const PROXY_ROUTE_POLICY = { allowPrivate: PROXY_ALLOW_PRIVATE, allowPublic: true };
 const PROXY_JOB_POLICY = { allowPrivate: PROXY_ALLOW_PRIVATE, allowPublic: false };
 
+// A pooled keep-alive socket skips the connect-time lookup that enforces a policy,
+// so each policy owns its agents and a socket never serves a request of another policy.
+const POLICY_AGENTS = new WeakMap();
+function agentForPolicy(policy, protocol) {
+    let agents = POLICY_AGENTS.get(policy);
+    if (agents === undefined) {
+        agents = { 'http:': new http.Agent({ keepAlive: true }), 'https:': new https.Agent({ keepAlive: true }) };
+        POLICY_AGENTS.set(policy, agents);
+    }
+    return agents[protocol];
+}
+
 function normalizeProxyResponseHeaders(headers) {
     const normalized = {};
     for (const [key, value] of Object.entries(headers || {})) {
@@ -944,6 +956,7 @@ function requestOnce(url, arg) {
         const req = client.request(url, {
             method: arg.method,
             headers,
+            agent: agentForPolicy(arg.policy, url.protocol),
             lookup: createCheckedLookup(arg.policy)
         }, (res) => {
             upstream = res;
