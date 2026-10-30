@@ -224,3 +224,26 @@ restoration was checked, not assumed.
 ## `device/` - device-check scripts
 
 PowerShell scripts that run one capped phone check and write `result.json`: see [device/README.md](device/README.md).
+
+## `external/` - read-only dispatch to Codex and Antigravity
+
+Two scripts for sending a bounded, read-only question to an external model over a clean copy of the repository. Neither CLI returns a pollable result, so the dispatch script owns the wait and the timeout.
+
+1. `Export-ExtSnapshot.ps1 -Dest <empty dir outside the repo> [-Ref HEAD] [-Extra <files>]` exports tracked files only (`git archive`), removes `.env*`, signing material and the two MC-027 community-code directories, verifies the removal, and copies `-Extra` files into `ext-in\` (a second file with the same leaf becomes `<parent>-<leaf>`).
+2. `Invoke-ExtModel.ps1 -Provider codex|agy -Workdir <the copy> -PromptFile <file> -OutFile <answer.md> [-Model] [-Effort] [-TimeoutMinutes]` runs one task and writes the answer to `-OutFile` (`.log` and `.err` beside it). Codex runs `exec --ephemeral -s read-only` (default model `gpt-6.1-sol`, the cheaper tier; it needs a current CLI and account). Antigravity runs `--print --mode plan` (default `gemini-3.8-flash-high`); the prompt is a command-line argument, so a task over about 28k characters belongs in a file in the copy, and headless `agy` auto-denies shell tools.
+
+Rules: the repository and any folder inside it are never the workdir or export destination (both scripts refuse it before writing); `Invoke-ExtModel.ps1` exits 1 for no answer, 2 for a timeout and 3 for a provider quota/service error; the answer is an AI-authored input, not an accepted report, so verify decision-critical claims against source; no signing material, real backups or real-data scans in `-Extra`; a run is one question with cited `file:line` evidence, labelled VERIFIED / INFERENCE / UNKNOWN. Measured on 2026-10-29: Codex medium effort verified a 100-line document in 137 s; Antigravity flash answered a three-line file question in 33 s.
+
+Waking the orchestrator: a process started with `Start-Process` is invisible to the harness, so its finish never re-triggers the session. Start the dispatch (or a small waiter that polls for `-OutFile` and exits) with the PowerShell tool's `run_in_background`, and the harness notifies on exit. Several tasks can each run in their own background call.
+
+Antigravity also serves other model families: `agy models` lists `claude-opus-5-5-{low,medium,high}`, `claude-sonnet-5-5-{low,medium,high}`, `gemini-4-argon-*`, `gemini-3.8-flash-*` and `gpt-oss-120b-medium`. `Invoke-ExtModel.ps1 -Provider agy -Model claude-opus-5-5-high` works (tested 2026-10-29: a file question answered in 15 s). Per the maintainer, Antigravity keeps separate quota pools for the Gemini models, Argon / the Claude models, and GPT-OSS, so heavy runs on one do not drain the others (and none draws on the Claude Max pool).
+
+## `run-mutants.mjs` - mutant runner
+
+`node Agents/Tools/run-mutants.mjs --spec <spec.json> [--repo <root>] [--out <dir>] [--timeout-s N]` breaks one source file in memory, once per mutant, and runs only the named vitest files against it. Spec: `{ "source", "tests": [explicit test files], "mutants": [{ "id", "find", "replace", "occurrence"?, "note"? }] }`. The full contract is in the script's header comment.
+
+- Nothing in the repository is written, renamed or copied. A scratch vitest config under `--out` (default `%TEMP%\risu-mutants\<timestamp>`; a dir inside the repo is refused) extends the repo's `vitest.config.ts` and adds a Vite plugin whose `load()` returns the mutated text for the source path. `include` is pinned to the named files, so a folder or glob is refused.
+- A baseline run with no mutant goes first; a red baseline, one with zero passed tests, or one that never loads the source stops the tool (exit 2). Mutants then run one at a time.
+- `find` must match exactly once in the text as read from disk (use `occurrence`, 0-based, to pick among repeats); otherwise the mutant is INVALID and not run. A CRLF file needs `\r\n` inside a multi-line `find`.
+- KILLED means a test failed (vitest JSON reporter, failed tests > 0). A collection, import or transform error leaves no failed test and is ERROR, as is a run with zero passed tests (none ran, or all skipped). Failed tests whose every failure message is a transform, syntax, parse or module-load error ("Transform failed", "SyntaxError", "Failed to load url", "Cannot find module"...) are also ERROR; any other message (an assertion, "x is not a function", a fast-check "Property failed" wrapper) stays KILLED. The plugin records whether the source module was requested: a baseline that never loads it stops with exit 2 ("source not loaded by the named tests"), and a mutant run that did not load it is NOT-LOADED. Every row and `results.json` carry passed/failed/skipped counts (`p/f/s`). TIMEOUT kills only the process tree the tool started. SURVIVED means at least one test passed, none failed and the source was loaded.
+- Exit 0 only when every mutant is KILLED; 1 otherwise; 2 on baseline failure or usage error. `--repo` points at a worktree (default: git toplevel of the cwd).

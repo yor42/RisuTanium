@@ -19,8 +19,14 @@
 import { createRawSnippet, flushSync, mount, unmount, untrack } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
+const timers = vi.hoisted(() => ({ pending: new Set<Promise<void>>() }))
+
 vi.mock(import('src/ts/util'), () => ({
-    sleep: vi.fn((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))),
+    sleep: vi.fn((ms: number) => {
+        const timer: Promise<void> = new Promise<void>((resolve) => setTimeout(resolve, ms)).then(() => { timers.pending.delete(timer) })
+        timers.pending.add(timer)
+        return timer
+    }),
 }) as unknown as typeof import('src/ts/util'))
 
 // Shaped like `popupStore` in `src/ts/stores.svelte.ts`.
@@ -86,12 +92,16 @@ afterEach(() => {
 
 /**
  * Lets every pending timer and promise continuation run, then flushes the DOM.
- * `PopupList` registers its outside-click listener a timer after it mounts, so
- * the wait must outlast that timer before the next click.
+ * `PopupList` registers its outside-click listener a `sleep` after it mounts, so
+ * the wait lasts until no `sleep` is pending (a flush may start the next one),
+ * never a fixed span that a starved mount can outlast.
  */
 async function settle(): Promise<void> {
-    await new Promise((resolve) => setTimeout(resolve, 60))
-    flushSync()
+    do {
+        await Promise.all([...timers.pending])
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        flushSync()
+    } while (timers.pending.size > 0)
 }
 
 function menuButton(): HTMLElement {

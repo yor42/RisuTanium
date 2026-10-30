@@ -321,6 +321,21 @@ async function stagingFiles(): Promise<string[]> {
     return (await readdir(server.saveDir)).filter((name) => name.startsWith('__upload-'))
 }
 
+/**
+ * The abort request that removes a staging file is sent, and settles, after the failing parse() has already rejected;
+ * the staging file may not even exist yet. The cleanup is therefore awaited by its own effects, never by a clock:
+ * first the abort request, then the staging file's removal.
+ */
+async function untilUploadAborted(routes: string[]): Promise<void> {
+    const deadline = Date.now() + 10_000
+    while (!routes.includes('/api/upload/abort') && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 25))
+    }
+    while ((await stagingFiles()).length > 0 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 25))
+    }
+}
+
 /** The most bytes any `EntryBuffer.take()` returned: an entry collected whole shows as its full length. */
 function largestTaken(take: { mock: { results: Array<{ value?: Uint8Array }> } }): number {
     return Math.max(0, ...take.mock.results.map((result) => result.value?.length ?? 0))
@@ -428,7 +443,7 @@ describe('an entry past one chunk is saved in pieces on the Node store', () => {
     })
 
     test('data safety: an entry that passes its size limit while it streams stores no asset', async () => {
-        await nodeStore()
+        const { routes } = await nodeStore()
         charxLimits.assetBytes = 300
         const archive = await buildCharx([['card.json', CARD], ['assets/big.png', patterned(BIG,6)]])
 
@@ -436,7 +451,7 @@ describe('an entry past one chunk is saved in pieces on the Node store', () => {
         const outcome = await importer.parse(streamOf(archive)).then(() => null, (error: unknown) => error)
 
         expect(outcome).toMatchObject({ name: 'CharXParseError', origin: 'size' })
-        await new Promise((resolve) => setTimeout(resolve, 50))
+        await untilUploadAborted(routes)
         expect(await storedAssetKeys()).toEqual([])
         expect(await stagingFiles()).toEqual([])
     })
@@ -481,7 +496,7 @@ describe('an entry past one chunk is saved in pieces on the Node store', () => {
         let release: () => void = () => { }
         const stalled = new Promise<void>((resolve) => { release = resolve })
         let appends = 0
-        await nodeStore(async (url) => {
+        const { routes } = await nodeStore(async (url) => {
             if (new URL(url).pathname === '/api/upload/append') {
                 appends++
                 if (appends === 2) {
@@ -497,7 +512,7 @@ describe('an entry past one chunk is saved in pieces on the Node store', () => {
         await importer.parse(streamOf(archive))
         importer.abandon()
         release()
-        await new Promise((resolve) => setTimeout(resolve, 300))
+        await untilUploadAborted(routes)
 
         expect(await storedAssetKeys()).toEqual([])
         expect(await stagingFiles()).toEqual([])
