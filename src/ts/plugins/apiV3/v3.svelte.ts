@@ -437,6 +437,7 @@ type SafeMutationRecordObject = {
     type: string;
     target: SafeElement;
     addedNodes: SafeElement[];
+    removedNodes: SafeElement[];
 }
 
 class SafeClassArray<T> {
@@ -461,10 +462,12 @@ class SafeMutationRecord{
     #type: string;
     #target: SafeElement;
     #addedNodes: SafeClassArray<SafeElement>;
-    constructor(type: string, target: SafeElement, addedNodes: SafeElement[]) {
+    #removedNodes: SafeClassArray<SafeElement>;
+    constructor(type: string, target: SafeElement, addedNodes: SafeElement[], removedNodes: SafeElement[]) {
         this.#type = type;
         this.#target = target;
         this.#addedNodes = new SafeClassArray<SafeElement>(addedNodes);
+        this.#removedNodes = new SafeClassArray<SafeElement>(removedNodes);
     }
     getType(): string {
         return this.#type;
@@ -474,6 +477,9 @@ class SafeMutationRecord{
     }
     getAddedNodes(): SafeClassArray<SafeElement> {
         return this.#addedNodes;
+    }
+    getRemovedNodes(): SafeClassArray<SafeElement> {
+        return this.#removedNodes;
     }
 }
 
@@ -510,7 +516,8 @@ class SafeMutationObserver {
                 safeClassed.push(new SafeMutationRecord(
                     record.type,
                     record.target,
-                    record.addedNodes
+                    record.addedNodes,
+                    record.removedNodes,
                 ));
             }
             callback(safeClassed);
@@ -971,6 +978,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 return;
             }
             oldApis.addRisuReplacer(name, func as any);
+            addPluginUnloadCallback(plugin.name, () => oldApis.removeRisuReplacer(name, func as any));
         },
         removeRisuReplacer: oldApis.removeRisuReplacer,
         addRisuChatListener: async (mode:'output', func:Function) => {
@@ -1785,7 +1793,8 @@ type V3PluginInstance = {
 const v3PluginInstances: V3PluginInstance[] = [];
 
 export async function loadV3Plugins(plugins:RisuPlugin[]){
-    await Promise.all(v3PluginInstances.map(async (instance) => {
+    // iterate over a copy: unloadV3Plugin removes the instance from v3PluginInstances
+    await Promise.all([...v3PluginInstances].map(async (instance) => {
         await unloadV3Plugin(instance.name);
     }));
 

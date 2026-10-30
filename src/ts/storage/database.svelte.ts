@@ -27,7 +27,7 @@ import {
 
 //APP_VERSION_POINT is to locate the app version in the database file for version bumping
 export let appVer = "0.1.0" //<APP_VERSION_POINT>
-export let appSubVer = 'up2026.10.220'
+export let appSubVer = 'up2026.10.292'
 
 export type StreamingDisplayOptimizationMode = 'off'|'balanced'|'strong'
 
