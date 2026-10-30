@@ -1701,8 +1701,27 @@ app.post('/api/set_password', setPasswordRouteLimiter, publicJsonParser, asyncRo
             res.status(400).send({error: 'Password missing or invalid'})
             return;
         }
-        password = req.body.password
-        writeFileSync(passwordPath, password, 'utf-8')
+        // Synchronous from the check above to the assignment below, so two
+        // concurrent requests cannot both pass the check. The password is
+        // accepted only after the file holds it: a failed write leaves it unset.
+        const newPassword = req.body.password
+        const tempPath = path.join(process.cwd(), 'save', `__password.tmp-${crypto.randomBytes(8).toString('hex')}`)
+        try {
+            const fd = openSync(tempPath, 'w')
+            try {
+                writeFileSync(fd, newPassword, 'utf-8')
+                fsyncSync(fd)
+            } finally {
+                closeSync(fd)
+            }
+            renameSync(tempPath, passwordPath)
+        } catch (error) {
+            try { unlinkSync(tempPath) } catch (unlinkError) {}
+            console.error(`Cannot write ${passwordPath} (${error?.code ?? error?.message ?? 'unknown'}); the password was not set.`)
+            res.status(500).send({error: 'Password could not be saved'})
+            return;
+        }
+        password = newPassword
         res.send({status: 'success'})
     }
     else{
