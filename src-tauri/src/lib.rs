@@ -884,7 +884,7 @@ async fn streamed_fetch(
     app: AppHandle,
     method: String,
     timeout_secs: Option<u64>,
-    policy: Option<Value>,
+    policy: Option<net_policy::NetPolicy>,
 ) -> String {
     let registry = app
         .state::<streamed_fetch::FetchRegistry>()
@@ -897,7 +897,7 @@ async fn streamed_fetch(
         body,
         method,
         timeout_secs,
-        policy: net_policy::NetPolicy::from_argument(policy),
+        policy,
     };
     streamed_fetch::run_registered(&registry, request, |payload| {
         app.emit("streamed_fetch", &payload)

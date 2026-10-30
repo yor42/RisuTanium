@@ -9,7 +9,7 @@
 //   be re-resolved to a different address after the check.
 
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
-use serde_json::Value;
+use serde::Deserialize;
 use std::io;
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
@@ -24,33 +24,12 @@ pub enum Kind {
     Public,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The wire form is `{"allowPrivate": bool}`. A malformed policy fails the
+/// command's argument deserialization, so no request is made.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NetPolicy {
     pub allow_private: bool,
-}
-
-impl NetPolicy {
-    /// The wire form is `{"allowPrivate": bool}` (camelCase, as the command
-    /// argument arrives from TypeScript). Anything else is an error.
-    pub fn from_value(value: &Value) -> Result<NetPolicy, String> {
-        match value.get("allowPrivate").and_then(Value::as_bool) {
-            Some(allow_private) => Ok(NetPolicy { allow_private }),
-            None => Err("policy needs a boolean allowPrivate".to_string()),
-        }
-    }
-
-    /// Command argument to policy. An absent argument means no policy; a
-    /// malformed one fails closed to the strictest policy.
-    pub fn from_argument(argument: Option<Value>) -> Option<NetPolicy> {
-        match argument {
-            None | Some(Value::Null) => None,
-            Some(value) => Some(
-                NetPolicy::from_value(&value).unwrap_or(NetPolicy {
-                    allow_private: false,
-                }),
-            ),
-        }
-    }
 }
 
 /// Name lookup, injectable so tests need no real DNS.
@@ -281,27 +260,39 @@ mod tests {
 
     #[test]
     fn net_policy_reads_camel_case_only() {
-        let parse_policy = |text: &str| {
-            NetPolicy::from_value(&serde_json::from_str::<Value>(text).unwrap())
-        };
-        assert_eq!(parse_policy("{\"allowPrivate\":false}"), Ok(NetPolicy { allow_private: false }));
-        assert_eq!(parse_policy("{\"allowPrivate\":true}"), Ok(NetPolicy { allow_private: true }));
-        assert!(parse_policy("{\"allow_private\":true}").is_err());
-        assert!(parse_policy("{\"allowPrivate\":\"yes\"}").is_err());
+        let parse_policy = |value: serde_json::Value| serde_json::from_value::<NetPolicy>(value);
+        assert_eq!(
+            parse_policy(serde_json::json!({ "allowPrivate": false })).unwrap(),
+            NetPolicy { allow_private: false }
+        );
+        assert_eq!(
+            parse_policy(serde_json::json!({ "allowPrivate": true })).unwrap(),
+            NetPolicy { allow_private: true }
+        );
+        assert!(parse_policy(serde_json::json!({ "allow_private": true })).is_err());
     }
 
     #[test]
-    fn command_argument_fails_closed_when_malformed() {
-        assert_eq!(NetPolicy::from_argument(None), None);
-        assert_eq!(NetPolicy::from_argument(Some(Value::Null)), None);
-        assert_eq!(
-            NetPolicy::from_argument(Some(serde_json::json!({ "allow_private": true }))),
-            Some(NetPolicy { allow_private: false })
+    fn malformed_policy_is_rejected_not_defaulted() {
+        let parse_policy = |value: serde_json::Value| serde_json::from_value::<NetPolicy>(value);
+        // Wrong type, missing field, null inside the object, non-object.
+        assert!(parse_policy(serde_json::json!({ "allowPrivate": "yes" })).is_err());
+        assert!(parse_policy(serde_json::json!({})).is_err());
+        assert!(parse_policy(serde_json::json!({ "allowPrivate": null })).is_err());
+        assert!(parse_policy(serde_json::json!(true)).is_err());
+        // An unknown field next to a valid one is still refused.
+        assert!(
+            parse_policy(serde_json::json!({ "allowPrivate": true, "extra": 1 })).is_err()
         );
-        assert_eq!(
-            NetPolicy::from_argument(Some(serde_json::json!({ "allowPrivate": true }))),
-            Some(NetPolicy { allow_private: true })
-        );
+    }
+
+    #[test]
+    fn optional_policy_maps_null_to_none() {
+        let absent: Option<NetPolicy> = serde_json::from_value(serde_json::Value::Null).unwrap();
+        assert_eq!(absent, None);
+        let present: Option<NetPolicy> =
+            serde_json::from_value(serde_json::json!({ "allowPrivate": true })).unwrap();
+        assert_eq!(present, Some(NetPolicy { allow_private: true }));
     }
 
     fn fixed_lookup(address: IpAddr) -> Lookup {
