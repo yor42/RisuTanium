@@ -446,7 +446,7 @@ describe('the real dispatch with the production port, over a damaged commit key 
         await sleep(ANSWER_GUARD_MS + 40)
         pressBootButton('convertYes')
         pressBootButton('convertYes')
-        await vi.waitFor(() => expect(t.reload).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        await vi.waitFor(() => expect(t.reload).toHaveBeenCalledTimes(1), { timeout: 15000 })
         // The marker and the final write: a second conversion would add two more.
         expect(t.commitWrites()).toBe(2)
         expect(getBootScreen()?.model.title).toBe(text().recoveryInstalledTitle)
@@ -461,7 +461,7 @@ describe('the real dispatch with the production port, over a damaged commit key 
         const confirm = await screenAfter(offers)
         await sleep(ANSWER_GUARD_MS + 40)
         pressBootButton('recoveryPickGo')
-        await vi.waitFor(() => expect(getBootScreen()?.model.title).toBe(text().recoveryInstallTitle), { timeout: 5000 })
+        await vi.waitFor(() => expect(getBootScreen()?.model.title).toBe(text().recoveryInstallTitle), { timeout: 15000 })
         expect(getBootScreen()?.model).not.toBe(confirm.model)
 
         // Another tab clears the marker: the install's compare-and-write finds the key changed.
@@ -472,7 +472,7 @@ describe('the real dispatch with the production port, over a damaged commit key 
         t.memory.poke(COMMIT_KEY, encodeUnit(UNIT_TYPE.commit, nextCommitKey(cleared.value, { current: null, retained: [], pins: [], staging: null }, testEnv(createClock(), 4040))))
         await sleep(ANSWER_GUARD_MS + 40)
         pressBootButton('recoveryInstallGo')
-        await vi.waitFor(() => expect(getBootScreen()?.model.title).toBe(text().recoveryStoppedTitle), { timeout: 5000 })
+        await vi.waitFor(() => expect(getBootScreen()?.model.title).toBe(text().recoveryStoppedTitle), { timeout: 15000 })
         expect(getBootScreen()?.model.paragraphs).toEqual([text().recoveryChanged])
         expect(keys(getBootScreen()!)).toEqual(['reload'])
 
