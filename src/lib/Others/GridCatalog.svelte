@@ -40,6 +40,7 @@
     import { tileKeyAt, type GridGeometry } from "./gridTarget";
     import { registerBackHandler } from "../../ts/backHandlers";
     import { pageCovered } from "../../ts/alertPrompts";
+    import { recordCaughtError } from "../../ts/caughtErrors";
     interface Props {
         endGrid?: any;
     }
@@ -312,6 +313,7 @@
             centreRowIfHidden(geometry, index, gridScroller)
         } catch (error) {
             console.error('Grid scroll to the held tile failed:', error)
+            recordCaughtError('grid.scrollToHeld', error)
         }
     }
 
@@ -346,6 +348,7 @@
             centreRowIfHidden(geometry, index, gridScroller)
         } catch (error) {
             console.error('Grid scroll to the new folder failed:', error)
+            recordCaughtError('grid.scrollToNewFolder', error)
         }
     }
 
