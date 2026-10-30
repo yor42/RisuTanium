@@ -42,6 +42,13 @@ describe('T7 caught-error record', () => {
         expect(records()[0]).toMatchObject({ site: 'chat.parse', name: 'NonError', message: 'plain text', stack: '' })
     })
 
+    test('R a value without a string form is recorded with a fixed text and the recorder does not throw', async () => {
+        const { recordCaughtError } = await freshModule()
+        expect(() => recordCaughtError('chat.parse', Object.create(null))).not.toThrow()
+        expect(records()[0]).toMatchObject({ site: 'chat.parse', name: 'NonError', stack: '' })
+        expect(records()[0].message.length).toBeGreaterThan(0)
+    })
+
     test('a long message is truncated', async () => {
         const { recordCaughtError } = await freshModule()
         recordCaughtError('chat.parse', new Error('x'.repeat(1000)))

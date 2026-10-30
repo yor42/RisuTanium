@@ -4,7 +4,7 @@
         throw from Chat's script-level effects or from its children is then handled here and never reaches the flush
         that runs every message, so the other messages keep updating.
     */
-    import type { ComponentProps } from 'svelte';
+    import { untrack, type ComponentProps } from 'svelte';
     import type { StreamingDisplayOptimizationMode } from 'src/ts/storage/database.svelte';
     import { language } from '../../lang';
     import { recordCaughtError } from 'src/ts/caughtErrors';
@@ -15,13 +15,14 @@
 
     let inner: ReturnType<typeof Chat> | undefined = $state();
 
-    // Absent while the fallback is shown, because the Chat is gone then.
+    // Absent while the fallback is shown, because the Chat is gone then. The caller runs inside an effect, so the
+    // read of `inner` is untracked: a trip or a Retry must not re-run the caller's effect.
     export function updateStreamingDisplay(state: {
         isOptimizedStreamingMessage: boolean
         streamingOptimizationMode: StreamingDisplayOptimizationMode
         rawStreamingText: string
     }) {
-        inner?.updateStreamingDisplay?.(state)
+        untrack(() => inner?.updateStreamingDisplay?.(state))
     }
 </script>
 

@@ -28,6 +28,7 @@ declare global {
 export const MAX_RECORDS = 50
 const MAX_MESSAGE_LENGTH = 300
 const MAX_STACK_LINES = 4
+const UNPRINTABLE_MESSAGE = '(value without a string form)'
 // Bounds the memory of what was already printed; a full set starts over.
 const MAX_PRINTED_KEYS = 200
 
@@ -45,7 +46,14 @@ function describe(error: unknown): { name: string, message: string, stack: strin
             stack: (error.stack ?? '').split('\n').slice(0, MAX_STACK_LINES).join('\n'),
         }
     }
-    return { name: 'NonError', message: String(error), stack: '' }
+    // A value without a string form (for example a null-prototype object) must not make the recorder throw.
+    let message: string
+    try {
+        message = String(error)
+    } catch {
+        message = UNPRINTABLE_MESSAGE
+    }
+    return { name: 'NonError', message, stack: '' }
 }
 
 /**

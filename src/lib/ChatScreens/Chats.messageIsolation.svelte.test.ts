@@ -22,20 +22,19 @@ import type { character, Chat as ChatData } from 'src/ts/storage/database.svelte
 import { language } from 'src/lang'
 import { draftContentOrphanGate } from 'src/ts/draftContentOrphanGate'
 import { resetLocalDraftsForTest } from 'src/ts/localDrafts'
+import type { MountHolderRun, MountHolders } from './chatMountHolders'
 
 //#region module mocks
 
 interface Held {
     args: unknown[]
     resolve: (value: string) => void
-    reject: (error: Error) => void
 }
 
 const h = vi.hoisted(() => ({
     parses: [] as Held[],
-    translations: [] as Held[],
-    // 'hold' gives every ParseMarkdown call a fresh deferred; 'reject' fails the call at once.
-    parseMode: 'hold' as 'hold' | 'reject',
+    // Holders of mounted message roots that are attached and not yet destroyed.
+    liveHolders: 0,
     // The display parser throws for a message with exactly this text (null: never).
     parseThrowOn: null as string | null,
     // The model lookup of the generation-info badge throws (null: never); it runs in Chat's template, outside displaya.
@@ -46,12 +45,8 @@ vi.mock(import('src/ts/parser/parser.svelte'), () => ({
     hasher: vi.fn((s: string) => s),
     risuChatParser: vi.fn((text: string) => text ?? ''),
     assetRegex: /{{asset:[^}]+}}/g,
-    ParseMarkdown: vi.fn((...args: unknown[]) => {
-        if (h.parseMode === 'reject') {
-            return Promise.reject(new Error('parse failed'))
-        }
-        return new Promise<string>((resolve, reject) => { h.parses.push({ args, resolve, reject }) })
-    }),
+    // Every ParseMarkdown call gets a fresh deferred that the test answers.
+    ParseMarkdown: vi.fn((...args: unknown[]) => new Promise<string>((resolve) => { h.parses.push({ args, resolve }) })),
     addMetadataToElement: vi.fn((html: string) => html),
     postTranslationParse: vi.fn((html: string) => html),
     trimMarkdown: vi.fn((html: string) => html),
@@ -147,7 +142,7 @@ vi.mock(import('src/ts/translator/translator'), () => ({
     getLLMCache: vi.fn(async () => null),
     setLLMCache: vi.fn(async () => {}),
     waitForTranslatorModules: vi.fn(async () => {}),
-    translateHTML: vi.fn((...args: unknown[]) => new Promise<string>((resolve, reject) => { h.translations.push({ args, resolve, reject }) })),
+    translateHTML: vi.fn(() => new Promise<string>(() => {})),
 }) as unknown as typeof import('src/ts/translator/translator'))
 
 // The real parser reads chat and database state; reading one field here makes a write to it re-parse every message.
@@ -285,6 +280,32 @@ vi.mock(import('src/ts/process/scriptings'), () => ({
     runLuaInteractionTrigger: vi.fn(async () => undefined),
 }) as unknown as typeof import('src/ts/process/scriptings'))
 
+// The real helper, with a count of the holders that were attached and not yet destroyed.
+vi.mock(import('./chatMountHolders'), async (importOriginal) => {
+    const original = await importOriginal()
+    return {
+        createMountHolders: <K,>(): MountHolders<K> => {
+            const real = original.createMountHolders<K>()
+            return {
+                ...real,
+                begin: (): MountHolderRun<K> => {
+                    const run = real.begin()
+                    return {
+                        ...run,
+                        attach: (destroy) => {
+                            h.liveHolders += 1
+                            run.attach(() => {
+                                h.liveHolders -= 1
+                                destroy()
+                            })
+                        },
+                    }
+                },
+            }
+        },
+    }
+})
+
 //#endregion
 
 //#region fixtures
@@ -358,8 +379,7 @@ beforeEach(() => {
     selectedCharID.set(0)
     selIdState.selId = 0
     h.parses.length = 0
-    h.translations.length = 0
-    h.parseMode = 'hold'
+    h.liveHolders = 0
     h.parseThrowOn = null
     h.modelThrows = false
     ReloadGUIPointer.set(0)
@@ -658,6 +678,110 @@ describe('S2 a message that throws does not stop the other messages', () => {
         const row = messageRow(target, 1)
         expect(row.querySelector('[role="status"]')?.textContent).toContain(language.draftRestored)
         expect(row.querySelector<HTMLTextAreaElement>('.message-edit-area')!.value).toBe('typed before the trip')
+    })
+
+    test('R X1: a throw from a script-level effect of one message is contained; the list mounts and the other messages edit', async () => {
+        // The second matchMedia call is the reduced-motion effect in Chat's script, not its template.
+        let calls = 0
+        const real = window.matchMedia.bind(window)
+        const spy = vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
+            calls += 1
+            if (calls === 2) throw new Error('script boom')
+            return real(query)
+        })
+        let mounted: ReturnType<typeof mountChats> | undefined
+        let thrown: unknown = null
+        try {
+            mounted = mountChats([{ role: 'user', data: 'A' }, { role: 'char', data: 'B' }, { role: 'user', data: 'C' }])
+            await wait(20)
+        } catch (error) {
+            thrown = error
+        } finally {
+            spy.mockRestore()
+        }
+        expect(thrown).toBeNull()
+        const { target } = mounted!
+        await answerAllParses()
+        expect(calls).toBeGreaterThanOrEqual(3)
+        expect(target.querySelectorAll('[data-chat-failed]').length).toBe(1)
+        const failedIndex = Number(target.querySelector('[data-chat-failed]')!.getAttribute('data-chat-failed'))
+        for (const index of [0, 1, 2].filter((i) => i !== failedIndex)) {
+            expect(await editOpens(target, index)).toBe(true)
+        }
+        expect(errorsAt('chat.message').length).toBeGreaterThan(0)
+    })
+})
+
+//#endregion
+
+//#region S3 streaming forwarding, message order and holder lifetime
+
+function domOrder(target: HTMLElement) {
+    return [...target.querySelectorAll<HTMLElement>('.risu-chat')].map((row) => Number(row.dataset.chatIndex))
+}
+
+describe('S3 the Chats effect keeps its streaming, order and holder behaviour', () => {
+    test('G X2: in strong streaming mode a new chunk reaches the mounted message without a remount (passes before and after)', async () => {
+        const { target, chat } = mountChats(
+            [{ role: 'user', data: 'A' }, { role: 'char', data: 'chunk1' }],
+            { streamingDisplayOptimizationMode: 'strong' },
+        )
+        await wait(20)
+        await answerAllParses()
+        chat.isStreaming = true
+        flushSync()
+        await wait(20)
+        await answerAllParses()
+        const rowBefore = messageRow(target, 1)
+        chat.message[1].data = 'chunk1 chunk2'
+        flushSync()
+        await tick()
+        expect(messageRow(target, 1)).toBe(rowBefore)
+        expect(messageRow(target, 1).textContent).toContain('chunk1 chunk2')
+    })
+
+    test('G X3: the newest message stays first in the DOM after the first mount, a middle remount and appends (passes before and after)', async () => {
+        const { target, chat } = mountChats([{ role: 'user', data: 'A' }, { role: 'char', data: 'B' }, { role: 'user', data: 'C' }])
+        await wait(20)
+        await answerAllParses()
+        expect(domOrder(target)).toEqual([2, 1, 0])
+
+        chat.message[1].data = 'B2'
+        flushSync()
+        await wait(20)
+        await answerAllParses()
+        expect(domOrder(target)).toEqual([2, 1, 0])
+
+        chat.message.push({ role: 'char', data: 'D' }, { role: 'user', data: 'E' })
+        flushSync()
+        await wait(20)
+        await answerAllParses()
+        expect(domOrder(target)).toEqual([4, 3, 2, 1, 0])
+
+        chat.message[0].data = 'A2'
+        chat.message[3].data = 'D2'
+        flushSync()
+        await wait(20)
+        await answerAllParses()
+        expect(domOrder(target)).toEqual([4, 3, 2, 1, 0])
+        expect(target.querySelectorAll('.chat-message-container').length).toBe(5)
+    })
+
+    test('G E1: a holder is destroyed once all its roots are remounted, and every holder is destroyed with Chats', async () => {
+        const { chat } = mountChats([{ role: 'user', data: 'A' }, { role: 'char', data: 'B' }])
+        await wait(20)
+        await answerAllParses()
+        expect(h.liveHolders).toBe(1)
+
+        chat.message[0].data = 'A2'
+        chat.message[1].data = 'B2'
+        flushSync()
+        await wait(20)
+        await answerAllParses()
+        expect(h.liveHolders).toBe(1)
+
+        await unmount(mountedInstances.pop() as never)
+        expect(h.liveHolders).toBe(0)
     })
 })
 
