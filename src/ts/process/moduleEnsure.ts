@@ -1,10 +1,13 @@
 import { untrack } from 'svelte'
+import { writable } from 'svelte/store'
 import { acquireModule, ModuleLoadError } from '../storage/store2/moduleAcquire'
 import { createRunSubject, createSendSubject, originOf, type Origin, type OriginHint } from './chatOrigin'
 import { alertError } from '../alert'
 import { getCurrentChat, getCurrentCharacter } from '../storage/database.svelte'
 import type { RisuModule } from './modules'
-import { hasModuleStubs, moduleLoadFailedText, unloadedModulesOf } from './moduleRefList'
+import { hasModuleStubs, moduleListOf, moduleLoadFailedText, moduleRefIdsOf, unloadedModulesOf } from './moduleRefList'
+import { holdModuleGuiBumps } from './moduleGuiBump'
+import { isModuleStub } from '../storage/moduleStub'
 
 // Brings in the bodies of the module stubs a run references. Nothing here may import process/modules at run time
 // (see moduleRefList), and no closeless cover (a wait or progress notice without a cancel) may be held across an
@@ -35,16 +38,23 @@ export async function ensureModulesForOrigin(origin: Origin, signal?: AbortSigna
     const subject = hint ? createSendSubject(origin, hint) : createRunSubject(origin)
     const names: string[] = []
     const failedSlotObjects: object[] = []
-    for(const slot of unloadedModulesOf(subject)){
-        try {
-            await acquireModule(slot.id, signal)
-        } catch (error) {
-            if(signal?.aborted){
-                throw signal.reason
+    // Every exit releases the hold, so the installs are announced once before the caller continues and a throw never
+    // leaves later bumps suppressed.
+    const release = holdModuleGuiBumps()
+    try {
+        for(const slot of unloadedModulesOf(subject)){
+            try {
+                await acquireModule(slot.id, signal)
+            } catch (error) {
+                if(signal?.aborted){
+                    throw signal.reason
+                }
+                names.push(slot.name)
+                failedSlotObjects.push(slot)
             }
-            names.push(slot.name)
-            failedSlotObjects.push(slot)
         }
+    } finally {
+        release()
     }
     if(names.length > 0){
         throw new ModuleEnsureError(names, failedSlotObjects)
@@ -196,6 +206,53 @@ const failedSlots = new WeakMap<object, string>()
 // Slots a trigger run owns, claimed before its first await so a re-run during a held load cannot start the queued
 // ones in parallel.
 const loadingSlots = new WeakSet<object>()
+// Module ids claimed by background runs that have not finished, refcounted. An id stays here until the run's single
+// coalesced bump has been sent, so the gap between the last install and that bump still reads as pending.
+const activeIds = new Map<string, number>()
+
+/** Set when a background run ends, so a derived that tracks it re-evaluates `selectedModulesPending` even when nothing was installed. */
+export const moduleRunVersion = writable(0)
+
+function claimActiveIds(slots: RisuModule[]): void {
+    for(const slot of slots){
+        activeIds.set(slot.id, (activeIds.get(slot.id) ?? 0) + 1)
+    }
+}
+
+function releaseActiveIds(slots: RisuModule[]): void {
+    for(const slot of slots){
+        const left = (activeIds.get(slot.id) ?? 0) - 1
+        if(left > 0){
+            activeIds.set(slot.id, left)
+        }
+        else{
+            activeIds.delete(slot.id)
+        }
+    }
+}
+
+/**
+ * True while the selected origin's modules are not yet usable: a referenced stub that has not failed, or an id a
+ * running background load still holds. A chat unrelated to every run and every stub reads false. Synchronous, so a
+ * derived that calls it tracks the database reads it makes; it never throws and fails open on an error, because
+ * rendering without a module is better than loading forever.
+ */
+export function selectedModulesPending(): boolean {
+    try {
+        if(!hasModuleStubs() && activeIds.size === 0){
+            return false
+        }
+        return moduleListOf(moduleRefIdsOf()).some((row) => {
+            if(activeIds.has(row.id)){
+                return true
+            }
+            return isModuleStub(row) && failedSlots.get(row) !== row.id
+        })
+    } catch (error) {
+        console.error(error)
+        return false
+    }
+}
 
 /**
  * The reactive load trigger, called from the module effect. Inert until boot has finished (`ready`); the effect
@@ -219,6 +276,7 @@ export function ensureSelectedModules(ready: boolean): void {
             for(const slot of slots){
                 loadingSlots.add(slot)
             }
+            claimActiveIds(slots)
             void loadSlotsInBackground(slots)
         })
     } catch (error) {
@@ -228,17 +286,25 @@ export function ensureSelectedModules(ready: boolean): void {
 
 async function loadSlotsInBackground(slots: RisuModule[]): Promise<void> {
     const names: string[] = []
-    for(const slot of slots){
-        try {
-            await acquireModule(slot.id)
-        } catch (error) {
-            failedSlots.set(slot, slot.id)
-            if(!(error instanceof ModuleLoadError && error.reason === 'edited')){
-                names.push(slot.name)
+    const release = holdModuleGuiBumps()
+    try {
+        for(const slot of slots){
+            try {
+                await acquireModule(slot.id)
+            } catch (error) {
+                failedSlots.set(slot, slot.id)
+                if(!(error instanceof ModuleLoadError && error.reason === 'edited')){
+                    names.push(slot.name)
+                }
+            } finally {
+                loadingSlots.delete(slot)
             }
-        } finally {
-            loadingSlots.delete(slot)
         }
+    } finally {
+        // The coalesced bump goes out before the ids leave the active set, so a body never sees pending end first.
+        release()
+        releaseActiveIds(slots)
+        moduleRunVersion.update((v) => v + 1)
     }
     if(names.length > 0){
         alertError(moduleLoadFailedText(names))

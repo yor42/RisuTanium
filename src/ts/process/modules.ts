@@ -16,6 +16,7 @@ import { convertCharacterToModule, convertModuleToCharacter } from "../interchan
 import { exportCharacterCard, importCharacterFile, preflightCardExport } from "../characterCards"
 import { appStoreOrNull, listModuleAssets, preflightExport, refuseExport } from "../drive/exportPreflight"
 import { moduleListOf, moduleRefIdsOf } from "./moduleRefList"
+import { bumpModuleGui } from "./moduleGuiBump"
 import { ModuleRefusal } from "./moduleRefusal"
 import { ModuleImportStopped, confirmRisumLowLevel } from "./moduleImportStop"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportOutcome } from "../importBatch"
@@ -537,10 +538,8 @@ function importedOutcome(notes:string[]):ImportOutcome {
     return notes.length > 0 ? {kind: 'imported', index: null, notes} : {kind: 'imported', index: null}
 }
 
-/** The module screens read ids, which a replace keeps, so they are told once that the content changed. */
-export function bumpModuleGui(){
-    ReloadGUIPointer.set(get(ReloadGUIPointer) + 1)
-}
+/** The module screens read ids, which a replace keeps, so they are told once that the content changed. Held by moduleGuiBump while a load loop runs. */
+export { bumpModuleGui }
 
 /**
  * Imports one picked file as a module and reports how it ended. It never rejects and shows nothing itself. `batch` is

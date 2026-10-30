@@ -1,7 +1,7 @@
 <script lang="ts">
-    import { onDestroy } from "svelte"
+    import { onDestroy, untrack } from "svelte"
     import isEqual from "lodash/isEqual"
-    import { DBState } from 'src/ts/stores.svelte'
+    import { DBState, selectedCharID } from 'src/ts/stores.svelte'
     import { sleep } from "src/ts/util"
     import { alertError } from "../../ts/alert"
     import { language } from "src/lang"
@@ -9,9 +9,14 @@
     import { addMetadataToElement, getDistance, ParseMarkdown, postTranslationParse, trimMarkdown, type CbsConditions, type simpleCharacterArgument } from "../../ts/parser/parser.svelte"
     import { getLLMCache, translateHTML, waitForTranslatorModules } from "../../ts/translator/translator"
     import { getModuleAssets } from "src/ts/process/modules";
-    import { getCurrentCharacter } from "src/ts/storage/database.svelte";
+    import { getCurrentChat, getCurrentCharacter } from "src/ts/storage/database.svelte";
     import { getFileSrc } from "src/ts/globalApi.svelte";
+    import { moduleRunVersion, selectedModulesPending } from "src/ts/process/moduleEnsure";
     import { UNRESOLVED_IMAGE_SELECTOR } from "./imageRepairSelector";
+    import {
+        AWAITING, lookup, pendingDisplay, record, runShowsSpinner, scopeOf, slotKeyOf,
+        type CacheLookup, type PendingDisplay, type RenderFingerprint,
+    } from "./chatBodyRenderCache";
 
     interface Props {
         character?: simpleCharacterArgument|string|null
@@ -46,8 +51,16 @@
         rawStreamingText = '',
     }: Props =  $props()
 
-    // svelte-ignore non_reactive_update
-    let lastParsed = ''
+    const SPINNER_HTML = `<div style="display:flex;justify-content:center;align-items:center;height:48px;"><div style="animation: spin 1s linear infinite; border-radius: 50%; height: 32px; width: 32px; border: 2px solid #3b82f6; border-top: 2px solid transparent;"></div></div><style>@keyframes spin { to { transform: rotate(360deg); } }</style>`
+
+    // Plain state, read when a pending or empty branch is created: this instance's own last rendered string (written only
+    // by a string result) and the facts of its latest run, captured when that run started.
+    let shown: string | null = null
+    let runSpinner = false
+    let runPending = false
+    let runStreamingTail = false
+    let runFingerprint: RenderFingerprint | null = null
+    let currentRun: Promise<string | undefined> | null = null
     let lastCharArg:string|simpleCharacterArgument = null
     let lastChatId = -10
     let lastRenderedRevision: number | null = null
@@ -80,12 +93,9 @@
         // track 'translated' and 'retranslate' state
         translated;
         retranslate;
-        const preservePendingContent = lastRenderedRevision !== null && requestedRevision !== lastRenderedRevision
-        let lastParsedQueue = ''
         let mode = 'notrim' as const
         try {
             if((!isEqual(lastCharArg, charArg)) || (chatID !== lastChatId)){
-                lastParsedQueue = ''
                 lastCharArg = charArg
                 lastChatId = chatID
                 let translateText = false
@@ -128,10 +138,6 @@
                 }
             }
             if(retranslate || translated){
-                if (DBState.db.showTranslationLoading && !preservePendingContent) {
-                    lastParsed = `<div style="display:flex;justify-content:center;align-items:center;height:48px;"><div style="animation: spin 1s linear infinite; border-radius: 50%; height: 32px; width: 32px; border: 2px solid #3b82f6; border-top: 2px solid transparent;"></div></div><style>@keyframes spin { to { transform: rotate(360deg); } }</style>`
-                }
-
                 let transResult
                 
                 if(DBState.db.translatorType === 'llm' && DBState.db.translateBeforeHTMLFormatting){
@@ -140,7 +146,6 @@
                     data = await translateHTML(data, false, charArg, chatID, retranslate)
                     translating = false
                     const marked = await ParseMarkdown(data, charArg, mode, chatID, getCbsCondition())
-                    lastParsedQueue = marked
                     lastCharArg = charArg
                     transResult = marked
                 }
@@ -155,7 +160,6 @@
                     translating = true
                     const translated = await postTranslationParse(await translateHTML(marked, false, charArg, chatID, retranslate))
                     translating = false
-                    lastParsedQueue = translated
                     lastCharArg = charArg
                     transResult = translated
                 }
@@ -170,7 +174,6 @@
                     translating = true
                     const translated = await translateHTML(marked, false, charArg, chatID, retranslate)
                     translating = false
-                    lastParsedQueue = translated
                     lastCharArg = charArg
                     transResult = translated
                 }
@@ -183,7 +186,6 @@
             }
             else{
                 const marked = await ParseMarkdown(data, charArg, mode, chatID, getCbsCondition())
-                lastParsedQueue = marked
                 lastCharArg = charArg
                 return marked
             }   
@@ -198,15 +200,9 @@
                 alertError(wrapped)
                 return data
             }
-            const retried = await markParsing(data, charArg, chatID, requestedRevision, (tries ?? 0) + 1)
-            if (retried !== undefined) {
-                lastParsedQueue = retried
-            }
-            return retried
+            return await markParsing(data, charArg, chatID, requestedRevision, (tries ?? 0) + 1)
         }
         finally{
-            //since trimMarkdown is fast, we don't need to cache it
-            lastParsed = lastParsedQueue
             lastRenderedRevision = requestedRevision
         }
     }
@@ -291,24 +287,130 @@
         }
     }
 
-    let markParsingResult = $derived.by(() => markParsing(msgDisplay, character, idx, renderRevision))
+    // The selection and the run version are read first and unconditionally, so the derived re-evaluates when the chat
+    // changes or a load ends even though the pending check itself is synchronous.
+    let gatePending = $derived.by(() => {
+        $selectedCharID
+        $moduleRunVersion
+        return selectedModulesPending()
+    })
+
+    // Untracked: the cache scope and the streaming-tail fact are captured per run and never re-run the parse.
+    const captureRunContext = () => untrack(() => {
+        let scope: string | null = null
+        let streamingTail = false
+        try {
+            const owner = getCurrentCharacter()
+            const chat = getCurrentChat()
+            if(owner && chat){
+                scope = scopeOf(owner.chaId, chat.id, owner.chatPage)
+                streamingTail = !!chat.isStreaming && idx >= 0 && idx === chat.message.length - 1
+            }
+        } catch (error) {
+            scope = null
+        }
+        return { scope, streamingTail }
+    })
+
+    const startRun = (data: string, charArg: simpleCharacterArgument|string|null, chatID: number, revision: number, gate: boolean) => {
+        const { scope, streamingTail } = captureRunContext()
+        const fingerprint: RenderFingerprint | null = scope === null ? null : untrack(() => ({
+            scope,
+            slot: slotKeyOf(firstMessage, chatID, charArg),
+            source: data,
+            role,
+            charArg,
+        }))
+        const seen: CacheLookup = fingerprint ? lookup(fingerprint) : { kind: 'none' }
+        runFingerprint = fingerprint
+        runPending = gate
+        runStreamingTail = streamingTail
+        if(gate){
+            // No parse and no translation start while the selected modules load. This instance has no correct render for
+            // the fingerprint, so its own string must not come back after the gate opens.
+            runSpinner = false
+            if(fingerprint && seen.kind !== 'html'){
+                record(fingerprint, AWAITING)
+                shown = null
+            }
+            currentRun = Promise.resolve(undefined)
+            return currentRun
+        }
+        runSpinner = runShowsSpinner({
+            translateRun: retranslate || translated,
+            showTranslationLoading: untrack(() => !!DBState.db.showTranslationLoading),
+            revisionChanged: lastRenderedRevision !== null && revision !== lastRenderedRevision,
+            shown,
+            lookup: seen,
+        })
+        currentRun = markParsing(data, charArg, chatID, revision)
+        return currentRun
+    }
+
+    // Only the latest run of a live instance records what its {:then} renders, and only a string result: an
+    // undefined result renders the pending display instead, so it is not a rendering.
+    const commitRun = (run: Promise<string | undefined>, md: string | undefined) => {
+        if(currentRun !== run || destroyed || typeof md !== 'string'){
+            return
+        }
+        shown = md
+        if(runFingerprint){
+            record(runFingerprint, md)
+        }
+    }
+
+    const displayNow = (): PendingDisplay => pendingDisplay({
+        pending: runPending,
+        runSpinner,
+        shown,
+        lookup: runFingerprint ? lookup(runFingerprint) : { kind: 'none' },
+        streamingTail: runStreamingTail,
+    })
+
+    const htmlOf = (display: PendingDisplay): string => {
+        if(display.kind === 'html'){
+            return display.html
+        }
+        return display.kind === 'spinner' ? SPINNER_HTML : ''
+    }
+
+    let markParsingResult = $derived.by(() => startRun(msgDisplay, character, idx, renderRevision, gatePending))
 
     $effect(() => {
         if(shouldRenderRawStreaming){
             return
         }
-        markParsingResult
+        const run = markParsingResult
         checkImg()
-        markParsingResult.then(checkImg)
+        run.then((md) => {
+            commitRun(run, md)
+            checkImg()
+        })
     })
 </script>
+
+{#snippet showing(display: PendingDisplay)}
+    {#if display.kind === 'indicator'}
+        <span role="status" aria-label={language.loading} class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-textcolor2 border-t-transparent align-middle"></span>
+    {:else}
+        {@html addMetadataToElement(trimMarkdown(htmlOf(display)), modelShortName)}
+    {/if}
+{/snippet}
 
 {#if shouldRenderRawStreaming}
     <span class="whitespace-pre-wrap">{rawStreamingText}</span>
 {:else}
     {#await markParsingResult}
-        {@html addMetadataToElement(trimMarkdown(lastParsed), modelShortName)}
+        {@render showing(displayNow())}
     {:then md}
-        {@html addMetadataToElement(trimMarkdown(md), modelShortName)}
+        {#if md === undefined}
+            <!-- Two consecutive runs can both resolve undefined, which keeps this branch and its value unchanged; the key
+                 makes every run re-evaluate the display. -->
+            {#key markParsingResult}
+                {@render showing(displayNow())}
+            {/key}
+        {:else}
+            {@html addMetadataToElement(trimMarkdown(md), modelShortName)}
+        {/if}
     {/await}
 {/if}

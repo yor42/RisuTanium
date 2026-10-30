@@ -199,9 +199,14 @@ async function mountRow(options: RowOptions = {}): Promise<Mounted> {
     let release: () => void = () => {}
     const gate = new Promise<void>((resolve) => { release = resolve })
     const slots = () => (DBState.db as unknown as { modules: Plain[] }).modules
+    let failTriggerRun = options.stubs !== false
     acquire.registerModuleLoader(async (handle: string) => {
         const id = handle.slice(0, handle.lastIndexOf('#'))
         h.loaderCalls.push(id)
+        if (failTriggerRun) {
+            failTriggerRun = false
+            throw new acquire.ModuleLoadError('unreadable', id, id)
+        }
         if (options.loader === 'failing') {
             throw new acquire.ModuleLoadError('unreadable', id, id)
         }
@@ -210,6 +215,17 @@ async function mountRow(options: RowOptions = {}): Promise<Mounted> {
         slots()[index] = { id, name: id, description: '', lorebook: [] }
         return slots()[index] as never
     })
+
+    if (options.stubs !== false) {
+        // The body gates its first parse while the selected modules are pending, so it reaches the translator's module
+        // wait only once the trigger has failed for the stub: the gate then opens with the stub still unloaded.
+        // The recordings of that failed run are cleared, so every assertion below stays about the wait itself.
+        const ensureModule = await import('src/ts/process/moduleEnsure')
+        ensureModule.ensureSelectedModules(true)
+        await settle()
+        h.loaderCalls.length = 0
+        h.alerts.length = 0
+    }
 
     const target = document.createElement('div')
     document.body.appendChild(target)
