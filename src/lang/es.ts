@@ -1257,6 +1257,7 @@ export const languageSpanish = {
     "allowPrivateNetworkNative": "Permitir la red privada para plugins, tarjetas y MCP",
     "allowPrivateNetworkNativeHelp": "Permite que los plugins, las tarjetas de personaje y los servidores MCP envíen solicitudes desde este dispositivo a dispositivos de tu red local. Desactivado por defecto; el ajuste se aplica solo a este dispositivo.",
     "allowPrivateNetworkNativeWarning": "Los plugins, las tarjetas de personaje y los servidores MCP podrán enviar solicitudes desde este dispositivo a dispositivos de tu red local (por ejemplo, routers, impresoras y otros ordenadores). Todo lo que puedan alcanzar de esta forma podrán leerlo y enviarlo a otros destinos. Actívalo solo si confías en todos los plugins, tarjetas y servidores MCP que usas. ¿Quieres activarlo?",
+    "allowPrivateNetworkNativeNotSaved": "No se pudo guardar el ajuste de la red privada en este dispositivo y el ajuste guardado se dejó sin cambios. Si el valor guardado no se puede leer, tu elección se aplica solo hasta que se reinicie la aplicación y luego vuelve a desactivado; en caso contrario, el ajuste muestra su estado guardado actual y las solicitudes a la red privada siguen ese estado.",
     "nativePrivateNetworkBlocked": (host: string) => `Bloqueado: ${host} es una dirección de red privada. Los plugins, las tarjetas y MCP solo pueden acceder a este dispositivo, salvo que "Permitir la red privada para plugins, tarjetas y MCP" esté activado en Configuraciones Avanzadas.`,
     "simple": "Simple",
     "advanced": "Avanzado",

@@ -1257,6 +1257,7 @@ export const languageGerman = {
     "allowPrivateNetworkNative": "Privates Netzwerk für Plugins, Karten und MCP erlauben",
     "allowPrivateNetworkNativeHelp": "Erlaubt Plugins, Charakterkarten und MCP-Servern, von diesem Gerät aus Anfragen an Geräte in Ihrem lokalen Netzwerk zu senden. Standardmäßig deaktiviert; die Einstellung gilt nur für dieses Gerät.",
     "allowPrivateNetworkNativeWarning": "Plugins, Charakterkarten und MCP-Server können von diesem Gerät aus Anfragen an Geräte in Ihrem lokalen Netzwerk senden (zum Beispiel Router, Drucker und andere Computer). Alles, was sie auf diese Weise erreichen, können sie lesen und weiterleiten. Aktivieren Sie dies nur, wenn Sie jedem verwendeten Plugin, jeder Karte und jedem MCP-Server vertrauen. Aktivieren?",
+    "allowPrivateNetworkNativeNotSaved": "Die Einstellung für das private Netzwerk konnte auf diesem Gerät nicht gespeichert werden; die gespeicherte Einstellung blieb unverändert. Ist der gespeicherte Wert nicht lesbar, gilt Ihre Auswahl nur bis zum Neustart der App und wird dann auf deaktiviert zurückgesetzt; andernfalls zeigt die Einstellung ihren aktuell gespeicherten Zustand, und Anfragen an das private Netzwerk folgen diesem Zustand.",
     "nativePrivateNetworkBlocked": (host: string) => `Blockiert: ${host} ist eine Adresse im privaten Netzwerk. Plugins, Karten und MCP dürfen nur dieses Gerät erreichen, solange „Privates Netzwerk für Plugins, Karten und MCP erlauben“ nicht unter Erweitert aktiviert ist.`,
     "simple": "Einfach",
     "advanced": "Erweitert",

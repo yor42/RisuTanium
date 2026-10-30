@@ -1257,6 +1257,7 @@ export const languageKorean = {
     "allowPrivateNetworkNative": "플러그인, 카드, MCP에 사설 네트워크 허용",
     "allowPrivateNetworkNativeHelp": "이 기기에서 플러그인, 캐릭터 카드, MCP 서버가 로컬 네트워크의 기기로 요청을 보낼 수 있게 합니다. 기본값은 꺼짐이며, 이 설정은 이 기기에만 적용됩니다.",
     "allowPrivateNetworkNativeWarning": "플러그인, 캐릭터 카드, MCP 서버가 이 기기에서 로컬 네트워크의 기기(예: 공유기, 프린터, 다른 컴퓨터)로 요청을 보낼 수 있게 됩니다. 이런 방식으로 접근할 수 있는 모든 것을 이들이 읽고 외부로 전송할 수 있습니다. 사용하는 모든 플러그인, 카드, MCP 서버를 신뢰하는 경우에만 켜세요. 켜시겠습니까?",
+    "allowPrivateNetworkNativeNotSaved": "이 기기에 사설 네트워크 설정을 저장하지 못했으며, 저장된 설정은 변경되지 않았습니다. 저장된 값을 읽을 수 없는 경우 선택한 내용은 앱을 다시 시작할 때까지만 적용되고 이후 꺼짐으로 되돌아갑니다. 그렇지 않으면 설정에는 현재 저장된 상태가 표시되며 사설 네트워크 요청도 그 상태를 따릅니다.",
     "nativePrivateNetworkBlocked": (host: string) => `차단됨: ${host}은(는) 사설 네트워크 주소입니다. 고급 설정에서 "플러그인, 카드, MCP에 사설 네트워크 허용"을 켜지 않으면 플러그인, 카드, MCP는 이 기기에만 접근할 수 있습니다.`,
     "simple": "간단",
     "advanced": "고급",

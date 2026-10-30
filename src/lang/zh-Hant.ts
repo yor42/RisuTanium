@@ -1302,6 +1302,7 @@ export const languageChineseTraditional = {
     "allowPrivateNetworkNative": "允許外掛、卡片和 MCP 存取私有網路",
     "allowPrivateNetworkNativeHelp": "允許外掛、角色卡和 MCP 伺服器從此裝置向您本機網路中的裝置發送請求。預設為關閉；此設定僅對此裝置生效。",
     "allowPrivateNetworkNativeWarning": "外掛、角色卡和 MCP 伺服器將能夠從此裝置向您本機網路中的裝置（例如路由器、印表機和其他電腦）發送請求。透過這種方式能存取到的任何內容，它們都可以讀取並向外傳送。僅當您信任所使用的每一個外掛、卡片和 MCP 伺服器時才啟用。要啟用嗎？",
+    "allowPrivateNetworkNativeNotSaved": "無法在此裝置上儲存私有網路設定，已儲存的設定保持不變。如果已儲存的值無法讀取，您的選擇僅在應用程式重新啟動前有效，之後會恢復為關閉；否則該設定會顯示其目前已儲存的狀態，私有網路請求將遵循該狀態。",
     "nativePrivateNetworkBlocked": (host: string) => `已封鎖：${host} 是私有網路位址。除非在進階設定中開啟「允許外掛、卡片和 MCP 存取私有網路」，否則外掛、卡片和 MCP 只能存取此裝置。`,
     "simple": "簡易",
     "advanced": "進階",

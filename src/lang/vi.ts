@@ -1257,6 +1257,7 @@ export const languageVietnamese = {
     "allowPrivateNetworkNative": "Cho phép mạng riêng cho plugin, thẻ và MCP",
     "allowPrivateNetworkNativeHelp": "Cho phép plugin, thẻ nhân vật và máy chủ MCP gửi yêu cầu từ thiết bị này đến các thiết bị trong mạng cục bộ của bạn. Mặc định tắt; cài đặt này chỉ áp dụng cho thiết bị này.",
     "allowPrivateNetworkNativeWarning": "Plugin, thẻ nhân vật và máy chủ MCP sẽ có thể gửi yêu cầu từ thiết bị này đến các thiết bị trong mạng cục bộ của bạn (ví dụ bộ định tuyến, máy in và các máy tính khác). Mọi thứ chúng truy cập được theo cách này đều có thể bị chúng đọc và gửi đi nơi khác. Chỉ bật tùy chọn này nếu bạn tin tưởng mọi plugin, thẻ và máy chủ MCP mà bạn dùng. Bật không?",
+    "allowPrivateNetworkNativeNotSaved": "Không thể lưu cài đặt mạng riêng trên thiết bị này, và cài đặt đã lưu được giữ nguyên. Nếu giá trị đã lưu không đọc được, lựa chọn của bạn chỉ có hiệu lực cho đến khi ứng dụng khởi động lại rồi trở về tắt; nếu không, cài đặt sẽ hiển thị trạng thái đã lưu hiện tại và các yêu cầu mạng riêng sẽ theo trạng thái đó.",
     "nativePrivateNetworkBlocked": (host: string) => `Đã chặn: ${host} là địa chỉ mạng riêng. Plugin, thẻ và MCP chỉ có thể truy cập thiết bị này, trừ khi bật "Cho phép mạng riêng cho plugin, thẻ và MCP" trong Cài đặt nâng cao.`,
     "simple": "Đơn giản",
     "advanced": "Trình độ cao",

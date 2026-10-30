@@ -1257,6 +1257,7 @@ export const languageChinese = {
     "allowPrivateNetworkNative": "允许插件、卡片和 MCP 访问私有网络",
     "allowPrivateNetworkNativeHelp": "允许插件、角色卡和 MCP 服务器从此设备向您本地网络中的设备发送请求。默认关闭；该设置仅对此设备生效。",
     "allowPrivateNetworkNativeWarning": "插件、角色卡和 MCP 服务器将能够从此设备向您本地网络中的设备（例如路由器、打印机和其他计算机）发送请求。通过这种方式能访问到的任何内容，它们都可以读取并向外发送。仅当您信任所使用的每一个插件、卡片和 MCP 服务器时才启用。要启用吗？",
+    "allowPrivateNetworkNativeNotSaved": "无法在此设备上保存私有网络设置，已保存的设置保持不变。如果已保存的值无法读取，您的选择仅在应用重新启动前有效，之后会恢复为关闭；否则该设置会显示其当前已保存的状态，私有网络请求将遵循该状态。",
     "nativePrivateNetworkBlocked": (host: string) => `已拦截：${host} 是私有网络地址。除非在高级设置中开启“允许插件、卡片和 MCP 访问私有网络”，否则插件、卡片和 MCP 只能访问此设备。`,
     "simple": "基本",
     "advanced": "高级",
