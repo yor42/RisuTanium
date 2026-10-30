@@ -115,6 +115,14 @@ describe('graph memory read', () => {
         expect(namesOf(results)).toEqual(['twin', 'other'])
     })
 
+    test('a name repeated among the closest matches does not displace the next distinct entry from the three returned', async () => {
+        h.vectors = { q: at(0), a: at(0.1), b: at(0.2), c: at(0.3), d: at(0.4) }
+
+        const { results } = await read([entry('a'), entry('a'), entry('b'), entry('c'), entry('d')], ['q'])
+
+        expect(namesOf(results)).toEqual(['a', 'b', 'c'])
+    })
+
     test('guard: a read of an empty graph answers that there are no entries', async () => {
         const { text } = await read([], ['q'])
 

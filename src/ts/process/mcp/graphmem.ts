@@ -13,7 +13,7 @@ type GraphIndex = {
 // A search ranks every stored entry; each query term and each connection hop keeps only its closest few.
 const TOP_MATCHES_PER_SEARCH = 3;
 
-// A chat with no stored graph,or one that is not a list, has an empty graph.
+// A chat with no stored graph, or one that is not a list, has an empty graph.
 function readGraph(subject?: RunSubject): GraphIndex[] {
     try {
         const graph = JSON.parse(getChatVar("graphmem_graph", subject));
