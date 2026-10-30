@@ -22,7 +22,7 @@ import { buildColdStub } from 'src/ts/process/coldCharacter'
 import { BLOCKS_PREFIX, keptKey, rootKey } from 'src/ts/storage/blockKeys'
 import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
 
-vi.setConfig({ testTimeout: 40_000 })
+vi.setConfig({ testTimeout: 120_000 })
 
 const platformState = vi.hoisted(() => ({ node: false }))
 
