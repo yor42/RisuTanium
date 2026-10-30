@@ -19193,3 +19193,107 @@ Both phones were handed back to lane A on 2026-10-28 (phone 2 after item 9d, pho
   - Q4 closes the "later upstream syncs" gap noted in `MC-440` and left open in the `MC-441` follow-up text; those entries are not rewritten.
   - Follow-up tickets from the Gate 1 and Gate 2 findings (`set_password` write order, late V3 replacer registration) belong to the Roadmap, not to this entry.
   - Nothing here authorizes application code, a commit or a push beyond the merge and push the maintainer approved.
+
+### MC-902 — Lane A, 2026-10-30: long-term-memory direction (the maintainer's answers to section 6 of the LTM research report)
+
+- Tag: decisions (maintainer answers to the five questions in section 6 of the report). Date: 2026-10-30. Sweep ref: none.
+- Source: the maintainer's words (maintainer chat message, 2026-10-30, relayed by lane A); `Agents/Handoff-2026-10-30-laneA.md` (event log, context only). The LTM research report (2026-10-30, off-repo) is the maintainer's copy and is not in the repository; it was independently checked by `doc-verifier` (PASS WITH CORRECTIONS, 7 edits applied; AI-authored).
+- Alternatives rejected: not recorded.
+- Related: `MC-900` (the research direction these answers follow; research only), `MC-774` (what `.bin` carries), `MC-350` (Android forward migration); CHORE-591.
+
+**What was decided (maintainer, verbatim).** "1. yes, LTM Evolution is in consideration as hypaV3 has its own sets of quirks, but low priority. 2. I am thinking about this as entirely new fork only engine under new name. 3. other LTM engine does not mandate review but still allows user to review the memory. 4. fork only format is accepted. 5. I don't think retirement of any engine is necessary."
+
+- Notes, not the maintainer's words (lane A's reading of the answers):
+  - Effect: a new fork-only memory engine under a new name, coexisting with Supa, HypaV2, HypaV3 and Hanurai. Priority LOW; not scheduled.
+  - Memory review is optional but always available to the user.
+  - A fork-only stored format is accepted. It falls under `MC-774` (left out of `.bin` with a warning naming it) and the `MC-350` Android forward-migration rules apply.
+  - No engine is retired.
+  - This adopts no design; an implementation would still need a plan and the maintainer's approval.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-903 — Lane A, 2026-10-30: CHORE-560 deferred; check back later and keep details out of the public records
+
+- Tag: decision (maintainer instruction). Date: 2026-10-30. Sweep ref: none.
+- Source: the maintainer's words (maintainer chat message, 2026-10-30, relayed by lane A).
+- Alternatives rejected: not recorded.
+- Related: CHORE-560.
+
+**What was decided (maintainer, verbatim).** "let's just mark it as something that we should check back in later. let's just keep details out of the commit in the meantime."
+
+- Notes, not the maintainer's words:
+  - Recorded as: CHORE-560 is deferred, to be checked again later; its details stay out of the public records in the meantime. Nothing further is recorded here by design.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-904 — Lane A, 2026-10-30: CHORE-591 GraphMem read limit (top few results per term; lane A set the number to 3)
+
+- Tag: decision (maintainer answer to an ask-tool question; the number is lane A's). Date: 2026-10-30. Sweep ref: none.
+- Source: the maintainer's answer (maintainer chat message, 2026-10-30, relayed by lane A). The question was how a fixed read limits its results; the options offered were top few per term, a threshold, both, or later.
+- Alternatives rejected: by the options offered, not the maintainer's reasons: a threshold, both a limit and a threshold, and deferring the question.
+- Related: CHORE-591.
+
+**What was decided (maintainer).** "Top few per term (Recommended)".
+
+- Lane A's choice (not the maintainer's): the number is 3, a module constant with no schema field and no threshold. It can be tuned later.
+- Notes, not the maintainer's words:
+  - Context: the read's search has no cut-off of its own, so without a limit every read would return the whole graph.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-905 — Lane A, 2026-10-30: LTM measurements go ahead; host for the weak-model extraction test
+
+- Tag: decisions (maintainer request, plus a host allowance). Date: 2026-10-30. Sweep ref: none.
+- Source: the maintainer's words (maintainer chat message, 2026-10-30, relayed by lane A). The host's address and name are deliberately not recorded.
+- Alternatives rejected: not recorded.
+- Related: `MC-900`, `MC-902`.
+
+**What was decided (maintainer).** "can we go through the measurements from reports, as both phones are idle as now?"
+
+- The weak-model extraction test (M3) runs on the maintainer's own Ollama host on their private network (an RTX 2070 Super).
+- Installing Ollama locally on this PC (RTX 3090) is allowed if needed.
+
+- Notes, not the maintainer's words:
+  - Measurement results are not part of this entry.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-906 — Lane A, 2026-10-30: B3 stale closures (CHORE-457, the CHORE-460 formatHexStemFast part, the CHORE-461 CharListAvatar and recoveryPick parts)
+
+- Tag: decision (maintainer answer to an ask-tool question). Date: 2026-10-30. Sweep ref: none.
+- Source: the maintainer's answer to a question lane A asked (maintainer chat message, 2026-10-30, relayed by lane A). The B3 diagnosis is cited for the non-reproduction.
+- Alternatives rejected: not recorded.
+- Related: CHORE-457, CHORE-460, CHORE-461.
+
+**What was decided (maintainer).** Question: "Close them in batch 24? CHORE-457 (likely already fixed by MC-779), CHORE-460's formatHexStemFast part, and CHORE-461's CharListAvatar and recoveryPick parts." Answer: "Close them (Recommended)".
+
+- Notes, not the maintainer's words:
+  - Recorded as: those items are closed as not reproduced or stale, citing the B3 diagnosis. They reopen if a failure recurs.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-907 — Lane A, 2026-10-30: CHORE-590 answers (actions finishing after unload, open permission prompt, registerMCP cleanup)
+
+- Tag: decisions (maintainer answers to three ask-tool questions). Date: 2026-10-30. Sweep ref: none.
+- Source: the maintainer's answers to questions lane A asked (maintainer chat message, 2026-10-30, relayed by lane A).
+- Alternatives rejected: not recorded.
+- Related: CHORE-590.
+
+**What was decided (maintainer, verbatim).**
+- "What should happen to other granted actions that finish after unload (database/character writes, plugin storage, sendChat)?" = "Let them finish (Recommended)".
+- "Should unloading a plugin also close its open permission prompt?" = "Leave it open (Recommended)".
+- registerMCP has no unload cleanup: "Fold into CHORE-590 (Recommended)".
+
+- Notes, not the maintainer's words:
+  - CHORE-590 status: plan ready (designer). Mechanism CONFIRMED by reading: `addRisuReplacer`, `addRisuChatListener` and `registerBodyIntercepter` register after the permission await, so an unload during the prompt leaves a hook on a dead iframe that hangs its consumers. Coder in worktree Lane-A-590 (branch lane-a/chore590); outcome TODO(evidence).
+  - Earlier, the maintainer picked CHORE-590 to fix now among open security work.
+  - Nothing here authorizes application code, a commit or a push beyond what the maintainer already approved for CHORE-590.
+
+### MC-908 — Lane A, 2026-10-30: Android bridge and capability scope hardening (CHORE-592)
+
+- Tag: decisions (maintainer approval as security hardening, plus two ask-tool answers). Date: 2026-10-30. Sweep ref: none.
+- Source: the maintainer's approval and answers to questions lane A asked (maintainer chat message, 2026-10-30, relayed by lane A).
+- Alternatives rejected: not recorded.
+- Related: CHORE-592.
+
+**What was decided (maintainer).** CHORE-592 was approved on 2026-10-30 as security hardening. Answers (option labels): shell spawn, kill and stdin-write permissions move to desktop only: "Yes, after a survey (Recommended)"; dev-server origin, no take timeout and simulated old-WebView fallback: "Accept all (Recommended)".
+
+- Notes, not the maintainer's words (neutral scope only):
+  - The app's own Android native bridges answer only the app's main frame, and desktop capabilities grant nothing to remote content. Card iframes stay (YouTube embeds). There is no frame-src allow-list. Old WebViews keep the current bridges.
+  - CHORE-592 status: plan ready, Gate 1 pending. Outcome TODO(evidence).
+  - Nothing here authorizes application code, a commit or a push.
