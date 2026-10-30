@@ -23,6 +23,7 @@ mod env_secret;
 mod export_append;
 mod free_space;
 mod launch_inputs;
+mod net_policy;
 mod store2_gate;
 mod streamed_fetch;
 use launch_inputs::LaunchInputs;
@@ -883,6 +884,7 @@ async fn streamed_fetch(
     app: AppHandle,
     method: String,
     timeout_secs: Option<u64>,
+    policy: Option<Value>,
 ) -> String {
     let registry = app
         .state::<streamed_fetch::FetchRegistry>()
@@ -895,6 +897,7 @@ async fn streamed_fetch(
         body,
         method,
         timeout_secs,
+        policy: net_policy::NetPolicy::from_argument(policy),
     };
     streamed_fetch::run_registered(&registry, request, |payload| {
         app.emit("streamed_fetch", &payload)

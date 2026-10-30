@@ -8,6 +8,9 @@
 // - A cancelled request drops its reqwest future, which closes the socket.
 
 use base64::{engine::general_purpose, Engine as _};
+use crate::net_policy::{
+    blocked_message, literal_refusal, system_lookup, CheckedResolver, Lookup, NetPolicy,
+};
 use futures::future::{AbortHandle, AbortRegistration, Abortable};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{json, Value};
@@ -19,6 +22,7 @@ use std::time::{Duration, Instant};
 pub const TOMBSTONE_CAP: usize = 64;
 pub const TOMBSTONE_TTL: Duration = Duration::from_secs(10);
 const DEFAULT_TIMEOUT_SECS: u64 = 240;
+const MAX_REDIRECTS: usize = 10;
 
 struct RegistryState {
     next_serial: u64,
@@ -144,6 +148,8 @@ pub struct FetchRequest {
     pub body: String,
     pub method: String,
     pub timeout_secs: Option<u64>,
+    /// `None` keeps the unrestricted client; only untrusted callers set it.
+    pub policy: Option<NetPolicy>,
 }
 
 fn failure(message: &str) -> String {
@@ -217,11 +223,48 @@ fn decode_body(body: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| e.to_string())
 }
 
+/// With a policy the client ignores system proxies (a proxy would resolve and
+/// dial on its own), resolves names through the checking resolver and refuses
+/// redirects to disallowed IP literals; without one it is the plain client.
+fn build_client(policy: Option<&NetPolicy>, lookup: Lookup) -> reqwest::Result<reqwest::Client> {
+    let Some(policy) = policy.copied() else {
+        return reqwest::Client::builder().build();
+    };
+    reqwest::Client::builder()
+        .no_proxy()
+        .dns_resolver(Arc::new(CheckedResolver { policy, lookup }))
+        .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+            if attempt.previous().len() >= MAX_REDIRECTS {
+                return attempt.error("too many redirects");
+            }
+            if let Some(host) = literal_refusal(attempt.url(), &policy) {
+                return attempt.error(blocked_message(&host));
+            }
+            attempt.follow()
+        }))
+        .build()
+}
+
 async fn run_fetch<F>(request: &FetchRequest, emit: &F) -> String
 where
     F: Fn(String) -> Result<(), String>,
 {
-    let client = match reqwest::Client::builder().build() {
+    run_fetch_with(request, emit, system_lookup()).await
+}
+
+async fn run_fetch_with<F>(request: &FetchRequest, emit: &F, lookup: Lookup) -> String
+where
+    F: Fn(String) -> Result<(), String>,
+{
+    // Hyper never consults the resolver for an IP literal, so check it here.
+    if let Some(policy) = request.policy.as_ref() {
+        if let Ok(url) = url::Url::parse(&request.url) {
+            if let Some(host) = literal_refusal(&url, policy) {
+                return failure(&blocked_message(&host));
+            }
+        }
+    }
+    let client = match build_client(request.policy.as_ref(), lookup) {
         Ok(client) => client,
         Err(e) => return failure(&error_text(e)),
     };
@@ -294,8 +337,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{Read, Write};
-    use std::net::{TcpListener, TcpStream};
+    use std::io::{self, Read, Write};
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc;
     use std::thread;
@@ -355,6 +398,7 @@ mod tests {
             body: String::new(),
             method: "GET".to_string(),
             timeout_secs: Some(20),
+            policy: None,
         }
     }
 
@@ -697,6 +741,188 @@ mod tests {
             registry.register_at("once", now),
             Registration::Live(..)
         ));
+    }
+
+    /// Accepts one connection, or gives up so that a refused request cannot
+    /// leave the stub thread blocked forever.
+    fn accept_within(listener: &TcpListener, wait: Duration) -> Option<TcpStream> {
+        listener.set_nonblocking(true).ok()?;
+        let deadline = Instant::now() + wait;
+        while Instant::now() < deadline {
+            if let Ok((stream, _)) = listener.accept() {
+                let _ = stream.set_nonblocking(false);
+                return Some(stream);
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        None
+    }
+
+    fn serve_bounded<H>(handler: H) -> (u16, thread::JoinHandle<()>)
+    where
+        H: FnOnce(TcpStream) + Send + 'static,
+    {
+        let (listener, port) = bind_stub();
+        let join = thread::spawn(move || {
+            if let Some(mut stream) = accept_within(&listener, Duration::from_secs(5)) {
+                read_request(&mut stream);
+                handler(stream);
+            }
+        });
+        (port, join)
+    }
+
+    fn with_policy(allow_private: bool, mut req: FetchRequest) -> FetchRequest {
+        req.policy = Some(NetPolicy { allow_private });
+        req
+    }
+
+    fn names_lookup() -> Lookup {
+        Arc::new(|host: &str, port: u16| match host {
+            "private.test" => Ok(vec![SocketAddr::new(
+                IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+                port,
+            )]),
+            "loop.test" => Ok(vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port)]),
+            _ => Err(io::Error::new(io::ErrorKind::NotFound, "unknown test host")),
+        })
+    }
+
+    fn run_with_lookup(req: FetchRequest, lookup: Lookup) -> (String, Events) {
+        let (events, emit) = collector();
+        let result = tauri::async_runtime::block_on(run_fetch_with(&req, &emit, lookup));
+        (result, events)
+    }
+
+    fn blocked_body(result: &str) -> String {
+        let parsed = parse(result);
+        assert_eq!(parsed["success"], json!(false), "got: {}", result);
+        let text = parsed["body"].as_str().unwrap().to_string();
+        assert!(text.contains("NATIVE_DESTINATION_BLOCKED (private)"), "got: {}", text);
+        text
+    }
+
+    fn write_redirect(stream: &mut TcpStream, location: &str) {
+        let _ = stream.write_all(
+            format!(
+                "HTTP/1.1 302 Found\r\nLocation: {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                location
+            )
+            .as_bytes(),
+        );
+    }
+
+    #[test]
+    fn private_literal_is_refused_before_connecting() {
+        let started = Instant::now();
+        let req = with_policy(false, request("p1", "http://10.255.255.1:9/".to_string()));
+        let (result, events) = run_with_lookup(req, names_lookup());
+        let text = blocked_body(&result);
+        assert!(text.contains("10.255.255.1"), "got: {}", text);
+        assert!(started.elapsed() < Duration::from_secs(2), "the request waited on a connect");
+        assert!(events.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn private_literal_is_allowed_with_the_toggle() {
+        let req = with_policy(true, request("p2", "http://127.0.0.1:9/".to_string()));
+        let (result, _) = run_with_lookup(req, names_lookup());
+        // Loopback is allowed; the connection itself fails on the closed port.
+        let parsed = parse(&result);
+        assert!(!parsed["body"].as_str().unwrap_or("").contains("NATIVE_DESTINATION_BLOCKED"));
+    }
+
+    #[test]
+    fn redirect_to_a_private_literal_is_refused() {
+        let (port, join) =
+            serve_bounded(|mut stream| write_redirect(&mut stream, "http://10.0.0.1/"));
+        let req = with_policy(false, request("r3", format!("http://127.0.0.1:{}/", port)));
+        let (result, events) = run_with_lookup(req, names_lookup());
+        join.join().unwrap();
+        blocked_body(&result);
+        assert!(events.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn redirect_to_loopback_is_followed() {
+        let (listener, port) = bind_stub();
+        let join = thread::spawn(move || {
+            for hop in 0..2 {
+                let Some(mut stream) = accept_within(&listener, Duration::from_secs(5)) else {
+                    return;
+                };
+                read_request(&mut stream);
+                if hop == 0 {
+                    write_redirect(&mut stream, "/ok");
+                } else {
+                    let _ = stream.write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+                    );
+                }
+            }
+        });
+        let req = with_policy(false, request("r4", format!("http://127.0.0.1:{}/", port)));
+        let (result, events) = run_with_lookup(req, names_lookup());
+        join.join().unwrap();
+        assert_eq!(parse(&result), json!({ "success": true }));
+        assert_eq!(events.lock().unwrap()[0]["status"], json!(200));
+    }
+
+    #[test]
+    fn private_name_is_refused_without_a_connection() {
+        let (listener, port) = bind_stub();
+        listener.set_nonblocking(true).unwrap();
+        let req = with_policy(false, request("n1", format!("http://private.test:{}/", port)));
+        let (result, events) = run_with_lookup(req, names_lookup());
+        let text = blocked_body(&result);
+        assert!(!text.contains("http://"), "URL leaked: {}", text);
+        assert!(events.lock().unwrap().is_empty());
+        assert!(listener.accept().is_err(), "the stub saw a connection");
+    }
+
+    #[test]
+    fn checked_loopback_address_is_the_one_dialled() {
+        let (port, join) = serve_bounded(|mut stream| {
+            write_head(&mut stream);
+            write_chunk(&mut stream, b"hi");
+            let _ = stream.write_all(b"0\r\n\r\n");
+        });
+        let req = with_policy(false, request("n2", format!("http://loop.test:{}/", port)));
+        let (result, events) = run_with_lookup(req, names_lookup());
+        join.join().unwrap();
+        assert_eq!(parse(&result), json!({ "success": true }));
+        assert_eq!(types(&events).first().map(String::as_str), Some("headers"));
+    }
+
+    #[test]
+    fn redirect_to_a_private_name_is_refused() {
+        let (port, join) = serve_bounded(move |mut stream| {
+            let own_port = port_of(&stream);
+            write_redirect(&mut stream, &format!("http://private.test:{}/x", own_port));
+        });
+        let req = with_policy(false, request("n3", format!("http://loop.test:{}/", port)));
+        let (result, _) = run_with_lookup(req, names_lookup());
+        join.join().unwrap();
+        blocked_body(&result);
+    }
+
+    fn port_of(stream: &TcpStream) -> u16 {
+        stream.local_addr().unwrap().port()
+    }
+
+    #[test]
+    fn no_policy_client_is_unrestricted_by_the_lookup() {
+        let (port, join) = serve_bounded(|mut stream| {
+            write_head(&mut stream);
+            let _ = stream.write_all(b"0\r\n\r\n");
+        });
+        let refusing: Lookup = Arc::new(|_: &str, _: u16| {
+            Err(io::Error::new(io::ErrorKind::Other, "must not be consulted"))
+        });
+        let req = request("u1", format!("http://127.0.0.1:{}/", port));
+        let (result, _) = run_with_lookup(req, refusing);
+        join.join().unwrap();
+        assert_eq!(parse(&result), json!({ "success": true }));
     }
 
     #[test]
