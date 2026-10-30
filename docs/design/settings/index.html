@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>설정 · Settings</title>
+<link rel="icon" href="data:,">
+<!-- DS-148: the stable entry page for Home's Settings links. It forwards to the newest Settings slice and keeps the query and the hash unchanged.
+     Slice 5c-2 later changes the one constant below. The noscript link points at the target with no query (a link cannot read location without script); the visible note says so. location.replace adds no history entry. Nothing else is loaded. -->
+<script>
+(function () {
+  var TARGET = 'slice5c1.html';   // the newest slice; the only line a later slice changes
+  location.replace(TARGET + location.search + location.hash);
+})();
+</script>
+</head>
+<body>
+<noscript><p><a href="slice5c1.html">설정 · Settings</a> (스크립트가 꺼져 있어서 주소의 옵션은 넘기지 못해요 · JavaScript is off, so the address options are not passed on)</p></noscript>
+</body>
+</html>

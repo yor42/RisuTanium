@@ -1,0 +1,4 @@
+/* POSITIVE fixture (DS-074): the index on the right. Role tokens only, under the root and the layout attribute; DOM order and focus order do not change. The page list gets its border on the other side with a part rule that is on the allowlist. */
+:root { --body-columns: minmax(0, 1fr) var(--index-width); --index-column: 2; --page-column: 1; }
+html[data-layout="mid"] { --body-columns-mid: minmax(0, 1fr) var(--index-width-mid); }
+[data-part="settings-index"] { border-left: 1px solid var(--nexus-edge); border-right: 0; }

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chat toggles panel · mockup</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="../theme/nexus-tokens.css">
+<link rel="stylesheet" href="theme-tokens.css">
+<link rel="stylesheet" href="slice1.css">
+<link rel="stylesheet" href="slice2.css">
+<link rel="stylesheet" href="toggles.css">
+<script src="theme.js"></script>
+</head>
+<body class="nexus-canvas">
+<a href="#scroller" class="skip" id="skip">Skip to chat</a>
+<div class="app" id="app" data-part="chat-shell">
+  <aside class="sidebar" id="sidebar" aria-label="Sidebar" data-part="chat-sidebar" inert>
+    <div class="sb-head" data-part="chat-sidebar-header">
+      <strong>RisuTanium</strong>
+      <button type="button" class="btn sb-close" data-label="closeSidebar" data-ic="panel-left"></button>
+    </div>
+    <div class="s2-top">
+      <div class="s2-search">
+        <span class="s2-search-ic" aria-hidden="true"></span>
+        <input id="s2Search" data-part="chat-sidebar-search" type="search" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="s2List" aria-autocomplete="list" spellcheck="false">
+        <button type="button" class="btn s2-clear" id="s2Clear" hidden></button>
+      </div>
+      <div class="s2-strip" id="s2Strip" data-part="chat-sidebar-strip" role="group"></div>
+    </div>
+    <div class="s2-head" id="s2Head"></div>
+    <div class="s2-list" id="s2List" data-part="chat-list" role="listbox" tabindex="-1"><div class="s2-canvas" id="s2Canvas"></div></div>
+    <div class="s2-empty" id="s2Empty" hidden></div>
+    <div id="s2Count" class="sr-only" role="status" aria-live="polite"></div>
+    <div class="s2-foot" data-part="chat-sidebar-footer">
+      <button type="button" class="btn s2-foot-btn" id="s2Home"></button>
+      <button type="button" class="btn s2-foot-btn" id="s2Settings"></button>
+    </div>
+    <details class="s2-ctl" id="tgCtl">
+      <summary id="tgCtlSum"></summary>
+      <div class="s2-ctl-body"><div id="tgDemo"></div></div>
+    </details>
+    <details class="s2-ctl" id="s2Ctl">
+      <summary id="s2CtlSum"></summary>
+      <div class="s2-ctl-body">
+        <div id="s2Demo"></div>
+        <ul hidden><li><button type="button" id="chat1"></button><button type="button" id="chat2"></button><button type="button" id="chat3"></button></li></ul>
+        <h2 id="sbChats" hidden></h2>
+        <section class="sb-sec ctl" aria-labelledby="ctlTitle">
+          <h2 id="ctlTitle">Mockup controls</h2>
+          <p class="banner" id="banner"></p>
+          <div id="controls"></div>
+        </section>
+      </div>
+    </details>
+  </aside>
+  <div class="sb-backdrop" id="sbBackdrop" aria-hidden="true"></div>
+  <div class="inset-strip" id="insetStrip" aria-hidden="true"></div>
+  <div class="inset-strip r" id="insetStripR" aria-hidden="true"></div>
+
+  <main class="main" id="main">
+    <header class="hdr" id="hdr" data-part="chat-header">
+      <div class="hdr-row">
+        <button type="button" class="btn sbbtn" id="sbBtn" data-part="chat-sidebar-toggle" data-label="openSidebar" data-ic="panel-left" aria-controls="sidebar" aria-expanded="false"></button>
+        <div class="title" data-part="chat-header-title"><span class="avatar" id="hdrAv" data-part="chat-header-avatar" aria-hidden="true">S</span><span class="ttxt"><strong id="hdrName">Seraphina</strong><small id="hdrChat"></small></span></div>
+        <button type="button" class="btn" id="moreBtn" data-part="chat-header-menu" data-label="chatOptions" data-ic="ellipsis-vertical" aria-haspopup="dialog"></button>
+      </div>
+</header>
+    <div class="genstrip" id="genStrip" data-part="chat-gen-strip" role="group" hidden>
+      <span class="gs-ic" aria-hidden="true"></span>
+      <span class="gs-text" id="gsText"><span class="gs-name"></span><span class="gs-status"></span></span>
+      <button type="button" class="btn gs-fail" id="gsFail" hidden></button>
+      <button type="button" class="btn gs-view" id="gsView"></button>
+      <button type="button" class="btn gs-stop" id="gsStop"></button>
+      <button type="button" class="btn gs-x" id="gsX" hidden></button>
+    </div>
+    <div class="scroller" id="scroller" data-part="chat-transcript" role="log" aria-live="off" aria-label="Chat transcript">
+      <div class="thread" id="thread"></div>
+    </div>
+    <div class="extras s2-sugg" id="s2Sugg" hidden></div>
+    <div class="extras" id="extras"></div>
+    <form class="composer" id="composer" data-part="chat-composer" autocomplete="off">
+      <button type="button" class="btn plus" id="plusBtn" data-part="chat-composer-plus" data-label="more" data-ic="plus" aria-haspopup="menu"></button>
+      <button type="button" class="btn persona" id="personaBtn" data-part="chat-composer-persona" aria-haspopup="dialog"><span id="personaLbl"></span><span data-ic="chevron-down" data-size="16"></span></button>
+      <textarea id="input" data-part="chat-composer-input" rows="1" enterkeyhint="enter" autocapitalize="sentences"></textarea>
+      <button type="submit" class="btn send" id="sendBtn" data-part="chat-send" aria-disabled="true"><span class="i-send" data-ic="send"></span><span class="i-stop" data-ic="square"></span></button>
+    </form>
+  </main>
+  <aside class="tgd" id="tgDock" hidden aria-labelledby="tgTitle"></aside>
+
+  <section class="s2-home" id="s2HomeScreen" role="region" hidden></section>
+
+  <div class="sheet-root" id="sheetRoot" hidden>
+    <div class="sheet-backdrop" data-part="chat-sheet-scrim"></div>
+    <div class="sheet" data-part="chat-sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" tabindex="-1">
+      <div class="grab" data-part="chat-sheet-header"><i data-part="chat-sheet-handle"></i><h2 id="sheetTitle" data-part="chat-sheet-title"></h2></div>
+      <div class="sheet-body" data-part="chat-sheet-body"></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" data-part="chat-toast" role="status"></div>
+  <div class="haptic" id="haptic" aria-hidden="true"></div>
+</div>
+<div class="kbd" id="kbd" hidden>
+  <span class="kbd-note" id="kbdNote"></span>
+  <div class="kbd-gap"></div>
+  <div class="krow"><span class="k">q</span><span class="k">w</span><span class="k">e</span><span class="k">r</span><span class="k">t</span><span class="k">y</span><span class="k">u</span><span class="k">i</span><span class="k">o</span><span class="k">p</span></div>
+  <div class="krow"><span class="k">a</span><span class="k">s</span><span class="k">d</span><span class="k">f</span><span class="k">g</span><span class="k">h</span><span class="k">j</span><span class="k">k</span><span class="k">l</span></div>
+  <div class="krow"><span class="k">z</span><span class="k">x</span><span class="k">c</span><span class="k">v</span><span class="k">b</span><span class="k">n</span><span class="k">m</span></div>
+  <button type="button" class="btn kbd-hide solid" id="kbdHide" data-label="hideKbd" data-ic="chevron-down"></button>
+</div>
+<div id="live" class="sr-only" aria-live="polite"></div>
+<script src="slice1.js"></script>
+<script src="slice2.js"></script>
+<script src="toggles.js"></script>
+</body>
+</html>

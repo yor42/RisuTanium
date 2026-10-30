@@ -1,0 +1,154 @@
+/* BANANA COCOA for Home, a rough acceptance probe of the theming contract (THEMING.md, DD-142): Home as a messenger. Blue canvas, white rows, yellow for "mine" (the current tab, the thumb, the Send button, the run bubbles), cocoa for edges
+   and selection. Palette and the contrast choices are chat/themes/banana-cocoa.css; colours are stated once as channels (DD-146). Loaded by ?theme=banana-cocoa (theme.js). Not a finished pack.
+   What it does (all with part and state selectors; DOM order, focus order and roles never change, THEMING rule 5):
+     Roleplay  the Continue shelf and the character grid read as chat-list rows (round avatar, name, last line, tag and time); the folders and library tabs are chips with a yellow current tab;
+               the rail is a white strip with a yellow tab for the current item; the library search is a full-width pill.
+     Hybrid    the companion card is a profile header with a round portrait; the composer is a white message box with a yellow Send (reach tier: colour and radius only, DD-241); run cards are bubbles on the right, yellow with a dark mark disc.
+     Utility   the same composer with four tool buttons and a taller field; the chips and thread rows are list rows.
+     Critical surfaces (the dialogs, the consent gate, the setup note, the draft choice, the composer note, the trash buttons and notes, run errors and retries) are never named below: they take the tokens only.
+   WALLS the lint put in front of this layout (nothing was weakened; each is a rule of packlint.mjs, DD-149 / DD-155 / DD-161):
+     1. A bottom tab bar on a phone is impossible. It needs position: fixed + inset on the rail, and the safe tier has no position or inset (DD-161 allows only the six named leaves). The page's own phone rail is a fixed drawer
+        moved off screen with transform, which a pack may not set (transform is banned on every subject). So on a phone the rail stays a hamburger drawer; only its look (white sheet, yellow current row) changes.
+     2. The reach-tier parts (home-shell, home-main, home-library, home-library-tools, home-empty-hero, home-realm, home-trash-row, home-tasks-panel, home-run-card, home-run-actions, home-dialog*) take only colour, border, radius,
+        font, spacing and a few widths: no display, flex, grid, order, height or overflow. So the library toolbar cannot be re-laid out, the run bubbles cannot flip their mark to the other side (a bubble is moved right with
+        margin-left: auto and width: fit-content, which the allowlist does admit), and the shell cannot give the rail a top strip (.shell is a reach-tier grid).
+     3. No pseudo-elements, :not, :nth-child or :first-child, so no unread dots drawn with ::before, no tail drawn with ::after (a tail is a smaller corner radius), no "first row of the list" rules.
+     4. No transition or animation on any subject (they are banned globally), so hover and selection changes are instant in this pack.
+     5. The page's own rules are class-compound selectors of up to three classes (for example .modes[data-current] .mode-thumb), so a bare [data-part] rule loses; the pack prefixes html[data-theme] and repeats state attributes to win.
+        That is a pack-author cost the contract does not say out loud.
+     6. A hidden label (font-size: 0 on the Send button at 360) is the only way to get an icon-only button, because the label is a bare text node with no part; it keeps its accessible name. */
+:root {
+  color-scheme: light;
+  --color-scheme: light;
+
+  /* pack-local tokens (read only by the part rules below) */
+  --pack-yellow: #fee500;
+  --pack-yellow-deep: #ffd400;
+  --pack-ink: #191919;
+  --pack-cocoa: #6b3f18;
+  --pack-cocoa-dark: #3a2412;
+  --pack-avatar: 56px;                      /* the round avatar of a chat-list row */
+  --pack-avatar-small: 44px;
+      
+  /* canvas and surfaces (the same as chat's pack) */
+  --nexus-canvas: #b2c7da;
+  --nexus-canvas-bloom: transparent;
+  --nexus-canvas-warm: transparent;
+  --nexus-surface: rgb(255 255 255 / 0.55);
+  --nexus-surface-raised: rgb(0 0 0 / 0.07);
+  --nexus-surface-flat: #ffffff;
+  --nexus-edge: rgb(0 0 0 / 0.1);
+  --nexus-edge-strong: rgb(0 0 0 / 0.4);
+  --nexus-field-border: rgb(0 0 0 / 0.55);    /* a field's own border (DD-160): 3:1 on the blue and on the white cards */
+  --color-placeholder: var(--nexus-text-secondary);
+  --color-surface-sheet: #ffffff;
+  --color-surface-toast: #fffbe0;
+  --nexus-overlay-rgb: 0 0 0;                 /* glass tints and hover fills become dark-on-light */
+  --nexus-shade-rgb: 0 0 0;
+
+  /* text */
+  --nexus-text: #191919;
+  --nexus-text-secondary: #333d47;
+  --nexus-text-muted: #374150;
+
+  /* accent: cocoa (selection bars, badges, primary buttons), the warm identity colour and the run bar */
+  --nexus-accent-rgb: 107 63 24;
+  --nexus-accent: rgb(var(--nexus-accent-rgb));
+  --nexus-ring: #3a2412;
+  --nexus-core-from: #8a5a1c;                 /* the run bar's fill (on a yellow bubble) and the realm card's top line */
+  --nexus-core-to: #3a2412;
+  --nexus-warm: #5a4632;
+  --nexus-warm-from: #fff0a0;
+  --nexus-warm-to: #ffd84a;
+  --nexus-danger-rgb: 128 18 18;              /* 5:1 on a raised card over the blue canvas, as the registry asks (chat's #c62828 is 3.6:1 on the blue) */
+  --nexus-danger: rgb(var(--nexus-danger-rgb));
+  --nexus-network-node: 255 255 255;
+  --nexus-network-link: 255 255 255;
+
+  /* Home-only colour tokens */
+  --home-ring-rgb: 58 36 18;
+  --home-warm-rgb: 90 70 50;
+  --home-warm-bloom-rgb: 255 255 255;
+  --home-bloom-alpha-rp: 0; --home-bloom-alpha-hybrid: 0; --home-bloom-alpha-utility: 0;
+  --home-success-rgb: 18 110 60;
+  --home-warning-rgb: 138 90 0;
+  --home-scrim-rgb: 20 24 32;
+  --home-composer-bg: #ffffff;
+  --home-on-accent: #ffffff;
+  --home-well-bg: rgb(0 0 0 / 0.06);
+  --home-track: rgb(0 0 0 / 0.14);
+  --home-presence-glow: rgb(var(--home-warm-rgb) / 0);   /* no glow on a light canvas */
+
+  /* corners (role tokens, DD-148) */
+  --radius-field: 20px;
+  --radius-sheet: 20px;
+  --home-control-radius: 14px;
+  --home-card-radius: 20px;
+  --home-dialog-radius: 20px;
+  --home-rail-radius: 24px;
+  --home-mode-radius: 24px;
+  --home-mode-option-radius: 20px;
+}
+/* two input classes: a mouse gets denser rows, a finger taller ones (DD-213 keeps 44 / 40 dp controls) */
+html[data-input="hover"] { --home-row-height: 52px; --pack-avatar: 52px; }
+html[data-input="touch"] { --home-row-height: 60px; }
+
+/* ---- the rail: a white strip, a yellow tab for the current item ---- */
+html[data-theme="banana-cocoa"] [data-part="home-rail"] { background: var(--nexus-surface-flat); }
+html[data-theme="banana-cocoa"] [data-part="home-rail-item"] { border-radius: var(--home-control-radius); }
+html[data-theme="banana-cocoa"] [data-part="home-rail-item"]:hover { background: var(--nexus-surface-raised); color: var(--nexus-text); }
+html[data-theme="banana-cocoa"] [data-part="home-rail-item"][data-current="true"], html[data-theme="banana-cocoa"] [data-part="home-rail-avatar"][data-current="true"] { background: var(--pack-yellow); color: var(--pack-ink); border-color: var(--pack-cocoa); }
+html[data-theme="banana-cocoa"] [data-part="home-rail-avatar"] [data-part="home-avatar"][data-size][data-shape] { border-radius: var(--home-radius-round); }
+html[data-theme="banana-cocoa"] [data-part="home-rail-new"] { background: var(--pack-yellow); color: var(--pack-ink); border-color: var(--pack-cocoa); }
+html[data-theme="banana-cocoa"] [data-part="home-tag"] { background: var(--nexus-surface-raised); }
+
+/* ---- top bar: the mode switch is a pill with a yellow thumb (the cocoa bar stays: the selection cue is 3:1) ---- */
+html[data-theme="banana-cocoa"] [data-part="home-mode-switch"][data-current] [data-part="home-mode-thumb"] { background: var(--pack-yellow); }
+html[data-theme="banana-cocoa"] [data-part="home-mode-switch"] { background: var(--nexus-surface-flat); }
+html[data-theme="banana-cocoa"] [data-part="home-pill"], html[data-theme="banana-cocoa"] [data-part="home-tasks-button"] { background: var(--nexus-surface-flat); }
+
+/* ---- Roleplay: the Continue shelf as chat-list rows ---- */
+html[data-theme="banana-cocoa"] [data-part="home-shelf"] { grid-template-columns: minmax(0, 1fr); gap: var(--home-space-2); overflow-x: visible; scroll-snap-type: none; padding-bottom: 0; }
+html[data-theme="banana-cocoa"] [data-part="home-story"] { flex-direction: row; align-items: center; gap: var(--home-space-6); padding: var(--home-space-5) var(--home-space-6); background: var(--nexus-surface-flat); }
+html[data-theme="banana-cocoa"] [data-part="home-story"]:hover { background: var(--nexus-surface); }
+html[data-theme="banana-cocoa"] [data-part="home-story-portrait"] { flex: none; width: var(--pack-avatar); height: var(--pack-avatar); padding: 0; place-items: center; border-radius: var(--home-radius-round); font-size: var(--home-text-avatar-lg); color: var(--home-on-avatar);
+  background: linear-gradient(var(--home-angle-avatar), hsl(var(--h) var(--home-avatar-sat-a) var(--home-avatar-light-a)), hsl(calc(var(--h) + var(--home-avatar-hue-shift)) var(--home-avatar-sat-b) var(--home-avatar-light-b))); }
+html[data-theme="banana-cocoa"] [data-part="home-story-body"] { flex: 1; min-width: 0; padding: 0; gap: var(--home-space-1); }
+
+/* ---- the library: chips and a chat-list of characters ---- */
+html[data-theme="banana-cocoa"] [data-part="home-lib-tab"][data-selected="true"], html[data-theme="banana-cocoa"] [data-part="home-folder-chip"][data-selected="true"] { background: var(--pack-yellow); color: var(--pack-ink); }
+html[data-theme="banana-cocoa"] [data-part="home-lib-tab"][data-selected="true"] [data-part="home-count"], html[data-theme="banana-cocoa"] [data-part="home-folder-chip"][data-selected="true"] [data-part="home-count"] { color: var(--pack-ink); }
+html[data-theme="banana-cocoa"] [data-part="home-search"] { flex: 1 1 100%; border-radius: var(--home-radius-pill); background: var(--nexus-surface-flat); }
+html[data-theme="banana-cocoa"] [data-part="home-char-grid"] { grid-template-columns: minmax(0, 1fr); gap: var(--home-space-2); }
+html[data-theme="banana-cocoa"] [data-part="home-char-card"] { flex-direction: row; align-items: flex-start; gap: var(--home-space-6); padding: var(--home-space-3) var(--home-space-6); min-height: var(--home-row-height); text-align: left; background: var(--nexus-surface-flat); }
+html[data-theme="banana-cocoa"] [data-part="home-char-card"]:hover { background: var(--nexus-surface); }
+html[data-theme="banana-cocoa"] [data-part="home-char-card"] [data-part="home-avatar"][data-size][data-shape] { align-self: center; width: var(--pack-avatar-small); height: var(--pack-avatar-small); border-radius: var(--home-radius-round); font-size: var(--home-text-avatar-md); }
+html[data-theme="banana-cocoa"] [data-part="home-char-row"] [data-part="home-avatar"][data-size][data-shape] { border-radius: var(--home-radius-round); }
+
+/* ---- Hybrid and Utility: the composer is reach tier (DD-241, DD-243), so it is re-skinned with colour, radius and role tokens only: a white message box, a yellow Send, pill tool buttons ---- */
+html[data-theme="banana-cocoa"] [data-part="home-composer"] { background: var(--nexus-surface-flat); border-radius: var(--home-card-radius); }
+html[data-theme="banana-cocoa"] [data-part="home-send"], html[data-theme="banana-cocoa"] [data-part="home-send"][data-variant="primary"] { background: var(--pack-yellow); color: var(--pack-ink); border-radius: var(--home-radius-pill); }
+html[data-theme="banana-cocoa"] [data-part="home-composer-button"] { border-radius: var(--home-radius-pill); }
+html[data-theme="banana-cocoa"] [data-part="home-composer-button"][data-selected="true"] { background: var(--pack-yellow); color: var(--pack-ink); }
+html[data-theme="banana-cocoa"] [data-part="home-presence"] { background: var(--nexus-surface-flat); }
+html[data-theme="banana-cocoa"] [data-part="home-companion-portrait"] { border-radius: var(--home-radius-round); }
+html[data-theme="banana-cocoa"] [data-part="home-framing-option"][data-selected="true"] { background: var(--pack-yellow); color: var(--pack-ink); }
+
+/* ---- run cards as bubbles (the reach tier admits colour, border, radius, margin and a bounded width, so a bubble sits on the right) ---- */
+html[data-theme="banana-cocoa"] [data-part="home-run-card"] { background: var(--pack-yellow); border-color: transparent; border-radius: var(--home-radius-7); border-bottom-right-radius: var(--home-radius-1); width: fit-content; max-width: 92%; margin-left: auto; }
+html[data-theme="banana-cocoa"] [data-part="home-run-mark"] { flex: none; background: var(--pack-cocoa-dark); border-radius: var(--home-radius-round); padding: var(--home-space-2); }
+html[data-theme="banana-cocoa"] [data-part="home-run-stop"] { background: var(--nexus-surface-flat); border-radius: var(--home-radius-pill); }
+html[data-theme="banana-cocoa"] [data-part="home-thread-row"] { border-bottom: var(--home-hairline) solid var(--nexus-edge); border-radius: 0; }
+html[data-theme="banana-cocoa"] [data-part="home-thread-row"]:hover { background: var(--nexus-surface-raised); }
+html[data-theme="banana-cocoa"] [data-part="home-quick-start"] { background: var(--nexus-surface-flat); border-radius: var(--home-radius-pill); }
+html[data-theme="banana-cocoa"] [data-part="home-chip"] { background: var(--nexus-surface-flat); }
+
+/* ---- the card surfaces that are not rows ---- */
+html[data-theme="banana-cocoa"] [data-part="home-library"], html[data-theme="banana-cocoa"] [data-part="home-realm"], html[data-theme="banana-cocoa"] [data-part="home-tasks-panel"] { background: var(--nexus-surface); }
+html[data-theme="banana-cocoa"] [data-part="home-toast"] { background: var(--color-surface-toast); }
+
+/* ---- forced colours: fills are dropped, so give the bubbles and the yellow controls an outline ---- */
+@media (forced-colors: active) {
+  [data-part="home-run-card"] { border: var(--home-hairline) solid CanvasText; }
+  [data-part="home-send"], [data-part="home-rail-new"] { border: var(--home-hairline) solid ButtonText; }
+}

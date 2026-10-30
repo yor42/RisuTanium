@@ -1,0 +1,66 @@
+/* Chat hooks batch 1 styles: the preset chip, the stand-in switcher / model picker, the demo controls. Only transform and opacity animate; no blur.
+   The failed-reply card, the Settings return row and the action toast are in slice1.css (they ship with slice 1). Synthetic mockup. */
+
+/* ---------- the chip: a 44 dp target around a 36 dp pill ---------- */
+.hk-chip { flex: 0 1 auto; min-width: var(--size-touch); min-height: var(--size-touch); padding: var(--space-3) var(--space-1); justify-content: center; }
+.hk-in { display: inline-flex; align-items: center; gap: var(--space-5); min-width: 0; max-width: 100%; height: var(--size-17); padding: 0 var(--space-10) 0 var(--space-8); border-radius: var(--radius-11); background: var(--nexus-surface-flat); border: 1px solid var(--nexus-edge-strong); font-size: var(--font-size-sm); line-height: 1; white-space: nowrap; }
+.hk-ic { flex: none; display: inline-flex; color: var(--nexus-accent); }
+.hk-pn { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: var(--font-weight-semibold); }
+.hk-md-w { display: inline-flex; flex: 0 1 auto; gap: var(--space-5); min-width: 0; overflow: hidden; color: var(--nexus-text-secondary); }
+.hk-md { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hk-sep { flex: none; }
+.hk-chip[data-mode="name"] .hk-md-w, .hk-chip[data-mode="icon"] .hk-md-w, .hk-chip[data-mode="icon"] .hk-pn { display: none; }
+.hk-chip[data-mode="icon"] .hk-in { width: var(--size-17); padding: 0; justify-content: center; }
+.hk-chip[aria-expanded="true"] .hk-in { border-color: var(--nexus-accent); }
+.hk-chip.alert .hk-in { border-color: var(--danger); }
+.hk-chip.alert .hk-ic { color: var(--danger); }
+.hk-chip:focus-visible { outline-offset: 0; }
+
+/* ---------- the stand-in switcher and model picker ---------- */
+.hk-body { padding: var(--space-3) var(--space-8) calc(var(--space-10) + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; min-height: 0; }
+.hk-search { position: relative; flex: none; margin: 0 0 var(--space-5); }
+.hk-si { position: absolute; left: var(--offset-9); top: 0; bottom: 0; display: grid; place-items: center; color: var(--nexus-text-secondary); pointer-events: none; }
+.hk-search input { width: 100%; min-height: var(--size-touch); padding: 0 var(--space-10) 0 var(--space-19); border-radius: var(--radius-8); border: 1px solid var(--nexus-field-border); background: var(--nexus-surface-flat); color: var(--nexus-text); }
+.hk-search input:focus-visible { outline: var(--focus-ring-w) solid var(--nexus-ring); outline-offset: 1px; }
+.hk-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.hk-gh { padding: var(--space-7) var(--space-7) var(--space-1); font-size: var(--font-size-xs); color: var(--nexus-text-secondary); }
+.hk-opt { position: relative; display: flex; align-items: center; gap: var(--space-7); min-height: var(--size-touch-lg); padding: var(--space-3) var(--space-7); border-radius: var(--radius-6); cursor: pointer; }
+html.hover-ui .hk-opt { min-height: var(--size-touch); }
+.hk-opt.kb { background: var(--nexus-surface-raised); box-shadow: inset var(--stroke-heavy) 0 0 var(--nexus-accent); }
+.hk-on { flex: 1 1 auto; min-width: 0; display: grid; line-height: var(--leading-130); }
+.hk-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-base); }
+.hk-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-xs); color: var(--nexus-text-secondary); }
+.hk-slot { flex: none; padding: 1px var(--space-5); border: 1px solid var(--nexus-edge-strong); border-radius: var(--radius-4); font-size: var(--font-size-2xs); color: var(--nexus-text-secondary); }
+.hk-ck { flex: none; width: var(--size-9); color: var(--nexus-accent); }
+.hk-none { padding: var(--space-13) var(--space-8); color: var(--nexus-text-secondary); font-size: var(--font-size-md); text-align: center; }
+.hk-foot { flex: none; margin-top: var(--space-5); border-top: 1px solid var(--nexus-edge); padding-top: var(--space-5); }
+.hk-alertrow { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-7); margin: 0 0 var(--space-7); padding: var(--space-3) var(--space-3) var(--space-3) var(--space-8); border: 1px solid var(--color-danger-edge); border-radius: var(--radius-8); background: var(--color-danger-tint); font-size: var(--font-size-md); }
+.hk-ai { color: var(--danger); display: inline-flex; }
+.hk-at { display: flex; align-items: center; gap: var(--space-7); flex: 1 1 100%; min-width: 0; padding: var(--space-3) 0; }
+.hk-ab { padding: 0 var(--space-10); gap: var(--space-5); border: 1px solid var(--nexus-edge-strong); font-size: var(--font-size-sm); }
+.sheet.hk-sheet .hk-body { flex: 1 1 auto; }
+html.is-desktop .sheet.hk-pop { max-height: 70%; }
+/* Ctrl+P on a wide screen: a palette, 560 px, centred near the top */
+html.is-desktop .sheet.panel.hk-pal { left: 50%; right: auto; top: 12%; bottom: auto; width: var(--sheet-width-wide); max-width: 94%; height: auto; max-height: 70%; border-radius: var(--radius-9); border: 1px solid var(--nexus-edge-strong); transform: translate(-50%, calc(var(--size-3) * -1)); }
+html.is-desktop .sheet-root.open .sheet.panel.hk-pal { transform: translate(-50%, 0); }
+html.rm.is-desktop .sheet.panel.hk-pal { transform: translate(-50%, 0); }
+html.nexus-low-power.is-desktop .sheet.panel.hk-pal { transition: none; }
+html.is-desktop .sheet-root:has(.sheet.panel.hk-pal) .sheet-backdrop { background: var(--color-scrim); }
+
+/* the failed-save guard (DD-134): three stacked choices */
+.hk-guard { display: grid; gap: var(--space-5); padding: var(--space-3) 0 var(--space-1); }
+.hk-guard .item { border: 1px solid var(--nexus-edge-strong); }
+
+/* ---------- forced colours ---------- */
+@media (forced-colors: active) {
+  .hk-in { border: 1px solid CanvasText; background: Canvas; }
+  .hk-chip.alert .hk-in { border: var(--stroke-heavy) double CanvasText; }
+  .hk-chip.alert .hk-ic, .hk-ic, .hk-ai { color: CanvasText; }
+  .hk-chip:focus-visible { outline: var(--focus-ring-w-forced) solid Highlight; }
+  .hk-chip[aria-expanded="true"] .hk-in { border-color: Highlight; }
+  .hk-search input { border: 1px solid CanvasText; background: Canvas; }
+  .hk-opt.kb { outline: var(--focus-ring-w) solid Highlight; outline-offset: var(--focus-ring-offset-inset); background: Canvas; box-shadow: none; }
+  .hk-slot { border-color: CanvasText; }
+  .hk-alertrow { border: var(--stroke-bold) solid CanvasText; background: Canvas; }
+  .hk-ab { border: 1px solid CanvasText; }
+}

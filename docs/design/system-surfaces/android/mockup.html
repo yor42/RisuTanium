@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Android system surfaces mockup (RisuTanium)</title>
+<link rel="stylesheet" href="../../theme/nexus-tokens.css">
+<link rel="stylesheet" href="mockup.css">
+</head>
+<body class="nexus-canvas">
+
+<!-- Shared SVG defs: reused with <use>. Geometry from icons/*.svg (SPEC §2.2, §7). -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="g-bg" x2="1" y2="1"><stop offset="0" stop-color="#00a1ad"/><stop offset="1" stop-color="#587bff"/></linearGradient>
+    <linearGradient id="g-av" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffc58f"/><stop offset="1" stop-color="#ff9a7a"/></linearGradient>
+    <!-- 24 dp small icon, currentColor so the host can tint it -->
+    <g id="stat"><path fill="currentColor" fill-rule="evenodd" d="M2,3.34 L22,3.34 L12,20.66 Z M6.62,6.01 L17.38,6.01 L12,15.32 Z"/><path fill="currentColor" d="M9.92,7.91 L14.08,7.91 L12,11.52 Z"/></g>
+    <!-- 108 dp mark (white) with gradient core -->
+    <g id="mark108"><path fill="#fff" fill-rule="evenodd" d="M27,38.41 L81,38.41 L54,85.18 Z M39.48,45.62 L68.52,45.62 L54,70.77 Z"/><path fill="#fff" d="M48.38,50.75 L59.62,50.75 L54,60.49 Z"/><path fill="url(#g-bg)" d="M50.41,51.93 L57.59,51.93 L54,58.14 Z"/></g>
+    <g id="adaptive"><rect width="108" height="108" fill="url(#g-bg)"/><use href="#mark108"/></g>
+    <!-- themed monochrome layer: currentColor -->
+    <g id="mono"><path fill="currentColor" fill-rule="evenodd" d="M27,38.41 L81,38.41 L54,85.18 Z M39.48,45.62 L68.52,45.62 L54,70.77 Z"/><path fill="currentColor" d="M48.38,50.75 L59.62,50.75 L54,60.49 Z"/></g>
+    <!-- synthetic avatar: no real image -->
+    <g id="avatar"><rect width="48" height="48" fill="url(#g-av)"/><circle cx="24" cy="19" r="8" fill="#fff" fill-opacity=".92"/><path d="M8 48c1-10 8-15 16-15s15 5 16 15z" fill="#fff" fill-opacity=".92"/></g>
+  </defs>
+</svg>
+
+<header class="page-head">
+  <h1>Android system surfaces <span class="muted">(RisuTanium)</span></h1>
+  <p class="disclaimer" role="note"><strong>Android-like illustration, not pixel-exact; not proof of native behavior.</strong>
+    Synthetic data only (character Seraphina / 세라피나, chat Moonlit library / 달빛 도서관). Proposal per <a href="SPEC.md">SPEC.md</a>; every <span class="open">OPEN</span> item needs the maintainer.</p>
+  <nav aria-label="Sections">
+    <a href="#sec-gallery">Notifications</a>
+    <a href="#sec-story">Storyboard</a>
+    <a href="#sec-launcher">Launcher icon</a>
+    <a href="#sec-splash">Splash</a>
+    <a href="#sec-toast">Quit toast</a>
+  </nav>
+</header>
+
+<main>
+<!-- ============ Variant controls ============ -->
+<section class="panel" id="controls" aria-labelledby="h-controls">
+  <h2 id="h-controls">Variant controls</h2>
+  <div class="toolbar" role="toolbar" aria-label="Notification variants">
+    <fieldset class="grp"><legend>Language</legend>
+      <button type="button" class="btn" data-set="lang" data-val="en" aria-pressed="true">EN</button>
+      <button type="button" class="btn" data-set="lang" data-val="ko" aria-pressed="false">KO</button>
+    </fieldset>
+    <fieldset class="grp"><legend>Shade theme</legend>
+      <button type="button" class="btn icon" data-set="theme" data-val="light" aria-pressed="false" aria-label="Light shade" data-tip="Light shade">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-17.07 1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+      <button type="button" class="btn icon" data-set="theme" data-val="dark" aria-pressed="true" aria-label="Dark shade" data-tip="Dark shade">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
+    </fieldset>
+    <fieldset class="grp"><legend>Platform</legend>
+      <button type="button" class="btn" data-set="platform" data-val="10" aria-pressed="false">Android 10 <span class="sub">(One UI 2-like)</span></button>
+      <button type="button" class="btn" data-set="platform" data-val="12" aria-pressed="true">Android 12+</button>
+      <button type="button" class="btn" data-set="platform" data-val="16" aria-pressed="false">Android 16 Live Update</button>
+    </fieldset>
+    <fieldset class="grp"><legend>Phone width</legend>
+      <button type="button" class="btn" data-set="width" data-val="360" aria-pressed="false">360 px</button>
+      <button type="button" class="btn" data-set="width" data-val="412" aria-pressed="true">412 px</button>
+    </fieldset>
+    <fieldset class="grp wide"><legend>Open decisions (proposed content)</legend>
+      <button type="button" class="btn tog" data-toggle="identity" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Identity <span class="dbadge">D-1</span><span class="dbadge">decided DD-003</span></button>
+      <button type="button" class="btn tog" data-toggle="subtext" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Chat name <span class="dbadge">D-2</span><span class="dbadge">decided DD-003</span></button>
+      <button type="button" class="btn tog" data-toggle="preview" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 6H3M15 12H3M17 18H3"/></svg>
+        Reply preview <span class="dbadge">D-3</span><span class="dbadge">decided DD-003</span></button>
+      <button type="button" class="btn tog" data-toggle="numbers" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
+        Live numbers <span class="dbadge">D-4</span><span class="dbadge">decided DD-004</span></button>
+    </fieldset>
+    <fieldset class="grp"><legend>Context</legend>
+      <button type="button" class="btn icon" data-toggle="lock" aria-pressed="false" aria-label="Lock screen view (public version)" data-tip="Lock screen view (public version)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></button>
+      <button type="button" class="btn icon" data-toggle="denied" aria-pressed="false" aria-label="Notification permission denied (Android 13+)" data-tip="Notification permission denied (Android 13+)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.7 3A6 6 0 0 1 18 8a21.3 21.3 0 0 0 .6 5"/><path d="M17 17H3s3-2 3-9a4.67 4.67 0 0 1 .3-1.7"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="m2 2 20 20"/></svg></button>
+    </fieldset>
+    <fieldset class="grp" id="lockstop-grp" hidden><legend>Stop on lock screen <span class="dbadge">D-13</span><span class="dbadge">decided DD-005</span></legend>
+      <button type="button" class="btn" data-set="lockstop" data-val="keep" aria-pressed="false">Keep</button>
+      <button type="button" class="btn" data-set="lockstop" data-val="unlock" aria-pressed="true">Require unlock <span class="sub">(Android 12+)</span></button>
+      <button type="button" class="btn" data-set="lockstop" data-val="remove" aria-pressed="false">Remove</button>
+      <span class="hint inline" id="lockstop-note" hidden>Not available on Android 10, falls back to Keep.</span>
+    </fieldset>
+  </div>
+  <p class="hint" id="state-hint" hidden></p>
+</section>
+
+<!-- ============ 1. Gallery ============ -->
+<section class="panel" id="sec-gallery" aria-labelledby="h-gallery">
+  <h2 id="h-gallery">1. Notification gallery <span class="muted">(SPEC §3)</span></h2>
+  <div class="gallery-wrap">
+    <div class="shade-col">
+      <div class="shade-set" id="shade"></div>
+      <p class="status-line" id="gallery-status" role="status" aria-live="polite"></p>
+      <p class="hint">Brand #587BFF is passed to setColor and the system adjusts text contrast; action labels here use #4361EE (light) and #8AA2FF (dark), the author's hypothesis of that adjustment, not a measured system value. Unverified on One UI.</p>
+    </div>
+    <aside class="notes" aria-label="How to read this view" id="gallery-notes"></aside>
+  </div>
+</section>
+
+<!-- ============ 3. Storyboard ============ -->
+<section class="panel" id="sec-story" aria-labelledby="h-story">
+  <h2 id="h-story">2. Interactive storyboard <span class="muted">(SPEC §3.3, §3.4, §3.6)</span></h2>
+  <div class="story-grid">
+    <div>
+      <div class="row">
+        <button type="button" class="btn primary" id="play-stop">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg> Play: Generating, tap Stop</button>
+        <button type="button" class="btn primary" id="play-speak">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg> Play: Generating, Speaking, linger</button>
+        <button type="button" class="btn tog" id="story-fail" aria-pressed="false">Stop path ends with an error</button>
+        <button type="button" class="btn tog" id="story-notake" aria-pressed="false">Abort does not take</button>
+      </div>
+      <ol class="steps" id="steps" aria-label="Storyboard steps"></ol>
+      <p class="status-line" id="story-status" role="status" aria-live="polite">Press a Play button.</p>
+      <p class="status-line" id="story-note" aria-live="off"></p>
+    </div>
+    <div class="shade small" id="story-shade" data-theme="dark" role="region" aria-label="Storyboard notification (illustration)">
+      <div id="story-slot" tabindex="-1"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4. Launcher ============ -->
+<section class="panel" id="sec-launcher" aria-labelledby="h-launcher">
+  <h2 id="h-launcher">3. Launcher icon <span class="muted">(SPEC §7)</span></h2>
+  <div class="launcher-grid" id="launcher-grid"></div>
+  <p class="hint">Masks are approximations (squircle is a plain rounded rectangle at 34%). The current icon is a legacy square PNG, so it is shown clipped by each mask; real launchers may shrink or backplate it. Themed monochrome is shown on two example wallpaper tints (Android 13+).</p>
+</section>
+
+<!-- ============ 5. Splash ============ -->
+<section class="panel" id="sec-splash" aria-labelledby="h-splash">
+  <h2 id="h-splash">4. Splash <span class="muted">(SPEC §8, D-10 OPEN)</span></h2>
+  <div class="row">
+    <button type="button" class="btn primary" id="splash-replay">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Replay</button>
+    <span class="dbadge">D-10</span><span class="open">OPEN</span>
+    <span class="hint inline">Sequence: splash, loading background until first paint, then the boot screen. Instant colour swaps; a short crossfade only without reduced motion.</span>
+  </div>
+  <div class="splash-row" id="splash-row"></div>
+  <p class="status-line" id="splash-status" role="status" aria-live="polite"></p>
+</section>
+
+<!-- ============ 6. Toast ============ -->
+<section class="panel" id="sec-toast" aria-labelledby="h-toast">
+  <h2 id="h-toast">5. Back / quit toast <span class="muted">(SPEC §9, D-11 OPEN)</span></h2>
+  <div class="row">
+    <button type="button" class="btn primary" id="press-back">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg> Press Back</button>
+    <span class="dbadge">D-11</span><span class="open">OPEN</span>
+    <span class="hint inline">First press opens the 2 s quit window; a second press inside it quits (simulated). Language follows the EN/KO control.</span>
+  </div>
+  <div class="toast-row">
+    <figure class="screen-fig">
+      <figcaption>Current: bottom-right, ~1 s fade</figcaption>
+      <div class="screen" id="screen-cur" aria-hidden="false"><div class="app-bar"></div><div class="app-lines"></div>
+        <div class="toast-cur" id="toast-cur" aria-hidden="true"></div></div>
+    </figure>
+    <figure class="screen-fig">
+      <figcaption>Proposed: centred pill, 150 ms in, hold, 200 ms out ending at 2000 ms</figcaption>
+      <div class="screen" id="screen-new"><div class="app-bar"></div><div class="app-lines"></div>
+        <div class="toast-new" id="toast-new" role="status" aria-live="polite"><span class="toast-inner" id="toast-new-inner" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+          <span id="toast-new-text"></span></span></div></div>
+    </figure>
+  </div>
+  <div class="timeline" aria-hidden="true">
+    <div class="tl-row"><span class="tl-label">Quit window (2000 ms)</span>
+      <div class="tl-track"><div class="tl-fill" id="tl-window"></div></div></div>
+    <div class="tl-row"><span class="tl-label">Current toast (~1000 ms)</span>
+      <div class="tl-track"><div class="tl-seg cur"></div></div></div>
+    <div class="tl-row"><span class="tl-label">Proposed toast (150 + hold + 200)</span>
+      <div class="tl-track"><div class="tl-seg new"><i class="in"></i><i class="out"></i></div></div></div>
+    <div class="tl-scale"><span>0</span><span>1 s</span><span>2 s</span></div>
+  </div>
+  <p class="status-line" id="toast-status" role="status" aria-live="polite">Quit window closed.</p>
+</section>
+</main>
+
+<footer class="page-foot"><p>Mockup only. Android-like illustration, not pixel-exact; not proof of native behavior. Stills: <code>?lang=en|ko &amp; theme=light|dark &amp; platform=10|12|16 &amp; state=&lt;state&gt; &amp; identity=1 &amp; lock=1 &amp; denied=1 &amp; width=360|412 &amp; freeze=1</code> (also <code>subtext=1 preview=1 numbers=1</code>). States: generating, generating-bar, speaking, image, translating, other, stopping, failed, stopped. An unknown state shows the whole gallery.</footer>
+
+<script src="mockup.js"></script>
+</body>
+</html>

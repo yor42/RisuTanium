@@ -1,0 +1,1083 @@
+{
+ "area": "lte",
+ "parts": [
+  {
+   "name": "studio-lt-field",
+   "el": "div.lt",
+   "role": "the long-text field: head, stage, problems, note (in slice 4 forms the same element wears studio-field-control, st4-core.js mountLT)",
+   "states": [
+    "data-collapsed",
+    "data-capped",
+    "data-focused",
+    "data-dirty",
+    "data-composing",
+    "data-nohl",
+    "data-focus-mode",
+    "data-mode"
+   ]
+  },
+  {
+   "name": "studio-lt-head",
+   "el": "div.lt-head",
+   "role": "label, token chip and tools row",
+   "states": []
+  },
+  {
+   "name": "studio-lt-label",
+   "el": "span.lt-lab",
+   "role": "the label when the field has no <label> of its own (slice 4: studio-field-label)",
+   "states": []
+  },
+  {
+   "name": "studio-lt-tools",
+   "el": "span.lt-tools",
+   "role": "the tools row of a field",
+   "states": []
+  },
+  {
+   "name": "studio-lt-tool",
+   "el": "button.btn[data-lt-act]",
+   "role": "macro, preview, find, focus button of a field",
+   "states": []
+  },
+  {
+   "name": "studio-lt-stage",
+   "el": "div.lt-stage",
+   "role": "the box that holds the text and its highlight mirror",
+   "states": []
+  },
+  {
+   "name": "studio-lt-text",
+   "el": "textarea.lt-in",
+   "role": "the text itself",
+   "states": []
+  },
+  {
+   "name": "studio-lt-mirror",
+   "el": "pre.lt-mirror",
+   "role": "the highlight overlay (aria-hidden)",
+   "states": []
+  },
+  {
+   "name": "studio-lt-cap-grip",
+   "el": "div.lt-capgrip[role=separator]",
+   "role": "the grip that sets the field's height cap",
+   "states": []
+  },
+  {
+   "name": "studio-lt-problems",
+   "el": "div.lt-probs",
+   "role": "the problems under the field",
+   "states": []
+  },
+  {
+   "name": "studio-lt-problem-list",
+   "el": "ul.lt-plist",
+   "role": "list of up to three problems",
+   "states": []
+  },
+  {
+   "name": "studio-lt-problem",
+   "el": "li.lt-prob",
+   "role": "one problem",
+   "states": [
+    "data-severity"
+   ]
+  },
+  {
+   "name": "studio-lt-problem-go",
+   "el": "button.lt-pgo",
+   "role": "jump to the problem",
+   "states": []
+  },
+  {
+   "name": "studio-lt-problem-line",
+   "el": "span.ln",
+   "role": "line number",
+   "states": []
+  },
+  {
+   "name": "studio-lt-problem-text",
+   "el": "span.m",
+   "role": "message",
+   "states": []
+  },
+  {
+   "name": "studio-lt-problem-fix",
+   "el": "button.lt-pfix",
+   "role": "one-click fix of an old macro form",
+   "states": []
+  },
+  {
+   "name": "studio-lt-problem-more",
+   "el": "p.lt-pmore",
+   "role": "\"N more\" note",
+   "states": []
+  },
+  {
+   "name": "studio-lt-note",
+   "el": "p.lt-note[role=status]",
+   "role": "highlighting-off or windowed-colouring note",
+   "states": [
+    "data-k"
+   ]
+  },
+  {
+   "name": "studio-lt-chip-host",
+   "el": "span.lt-tokw",
+   "role": "the box the token chip is drawn into (slice 4: studio-field-chip)",
+   "states": []
+  },
+  {
+   "name": "studio-lt-chip",
+   "el": "span.lt-tok",
+   "role": "the token count chip",
+   "states": [
+    "data-state",
+    "data-vary"
+   ]
+  },
+  {
+   "name": "studio-lt-chip-text",
+   "el": "span.lt-toktx",
+   "role": "the count text",
+   "states": []
+  },
+  {
+   "name": "studio-lt-chip-mock",
+   "el": "span.lt-mock",
+   "role": "\"sample\" tag of a mock exact count",
+   "states": []
+  },
+  {
+   "name": "studio-lt-chip-action",
+   "el": "button.lt-tokgo",
+   "role": "\"tap to count\" (low-power mode)",
+   "states": []
+  },
+  {
+   "name": "studio-lt-chip-info",
+   "el": "button.lt-tokinfo",
+   "role": "opens the explanation",
+   "states": [
+    "data-expanded"
+   ]
+  },
+  {
+   "name": "studio-lt-tip",
+   "el": "div.lt-tip",
+   "role": "the explanation popover",
+   "states": []
+  },
+  {
+   "name": "studio-lt-popup",
+   "el": "div#ltAc.lt-ac",
+   "role": "the {{ autocomplete list (popup under the caret, or a strip above the keyboard)",
+   "states": [
+    "data-variant"
+   ]
+  },
+  {
+   "name": "studio-lt-option",
+   "el": "div.lt-aco[role=option]",
+   "role": "one macro in the autocomplete list",
+   "states": [
+    "data-selected"
+   ]
+  },
+  {
+   "name": "studio-lt-option-name",
+   "el": "span.n",
+   "role": "macro name",
+   "states": []
+  },
+  {
+   "name": "studio-lt-option-sig",
+   "el": "span.sig",
+   "role": "macro signature",
+   "states": []
+  },
+  {
+   "name": "studio-lt-option-desc",
+   "el": "span.d",
+   "role": "macro description",
+   "states": []
+  },
+  {
+   "name": "studio-lt-macro-top",
+   "el": "div.ms-top",
+   "role": "search row of the macro sheet",
+   "states": []
+  },
+  {
+   "name": "studio-lt-macro-search",
+   "el": "input.ms-q",
+   "role": "macro search field",
+   "states": []
+  },
+  {
+   "name": "studio-lt-macro-list",
+   "el": "div.ms-list",
+   "role": "the groups",
+   "states": []
+  },
+  {
+   "name": "studio-lt-macro-group",
+   "el": "section.ms-g",
+   "role": "one group",
+   "states": []
+  },
+  {
+   "name": "studio-lt-macro-group-title",
+   "el": "h3",
+   "role": "group title",
+   "states": []
+  },
+  {
+   "name": "studio-lt-macro-item",
+   "el": "button.ms-it",
+   "role": "one macro",
+   "states": []
+  },
+  {
+   "name": "studio-lt-macro-item-name",
+   "el": "span.n",
+   "role": "macro name",
+   "states": []
+  },
+  {
+   "name": "studio-lt-macro-item-sig",
+   "el": "span.sig",
+   "role": "macro signature",
+   "states": []
+  },
+  {
+   "name": "studio-lt-macro-item-desc",
+   "el": "span.d",
+   "role": "macro description",
+   "states": []
+  },
+  {
+   "name": "studio-lt-macro-none",
+   "el": "p.ms-none",
+   "role": "no match",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox",
+   "el": "section#ltSb.sb",
+   "role": "the preview sandbox in the Test panel",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-title",
+   "el": "h3.sb-h",
+   "role": "section title (two)",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-note",
+   "el": "p.sb-note",
+   "role": "\"values are not saved\" note",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-row",
+   "el": "div.sb-row",
+   "role": "label and input of one sample value",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-label",
+   "el": "label",
+   "role": "label of a sample value",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-input",
+   "el": "input[data-sb]",
+   "role": "sample value input",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-toggle",
+   "el": "label.sw.sb-sw",
+   "role": "a toggle used by the text",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-none",
+   "el": "p.sb-none",
+   "role": "the text uses no values",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-actions",
+   "el": "div.sb-acts",
+   "role": "copy-from-chat row",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-copy",
+   "el": "button[data-sb-act=copy]",
+   "role": "copy the chat's values into the sandbox",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-why",
+   "el": "span.sb-why",
+   "role": "why copy is unavailable",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-writes",
+   "el": "p.sb-writes",
+   "role": "variables the text sets",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-unknown",
+   "el": "p.sb-unk",
+   "role": "unknown macros",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-outhead",
+   "el": "div.sb-outhead",
+   "role": "output title, rendered/raw switch, refresh",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-modes",
+   "el": "div.sb-seg",
+   "role": "rendered/raw switch",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-mode",
+   "el": "button[data-sb-act=rendered],[data-sb-act=raw]",
+   "role": "one mode",
+   "states": [
+    "data-pressed"
+   ]
+  },
+  {
+   "name": "studio-lt-sandbox-run",
+   "el": "button[data-sb-act=run]",
+   "role": "refresh",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-stale",
+   "el": "p.sb-stale",
+   "role": "\"preview is out of date\"",
+   "states": []
+  },
+  {
+   "name": "studio-lt-sandbox-output",
+   "el": "div#sbOut.sb-out",
+   "role": "the filled text",
+   "states": [
+    "data-raw",
+    "data-stale"
+   ]
+  },
+  {
+   "name": "studio-lt-focus",
+   "el": "div#ltFocus.lt-focus[role=dialog]",
+   "role": "the focus mode screen (contains the critical revert and replace-all, so it is not safe)",
+   "states": [
+    "data-open",
+    "data-split",
+    "data-tab"
+   ]
+  },
+  {
+   "name": "studio-lt-focus-header",
+   "el": "header.ltf-hdr",
+   "role": "back, title, status, undo/redo",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-back",
+   "el": "button#ltfBack",
+   "role": "back / close",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-titles",
+   "el": "div.ltf-ttl",
+   "role": "title and crumb",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-title",
+   "el": "h2#ltfTitle",
+   "role": "field name",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-crumb",
+   "el": "div.ltf-crumb",
+   "role": "owner and item",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-crumb-tag",
+   "el": "span.tag",
+   "role": "owner tag",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-crumb-name",
+   "el": "span",
+   "role": "item name",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-status",
+   "el": "span.ltf-status",
+   "role": "save status copy",
+   "states": [
+    "data-state"
+   ]
+  },
+  {
+   "name": "studio-lt-focus-undo",
+   "el": "button#ltfUndo",
+   "role": "undo",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-redo",
+   "el": "button#ltfRedo",
+   "role": "redo",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-tools",
+   "el": "div.ltf-tools",
+   "role": "the tools row (contains the critical revert, not safe)",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-toolbar",
+   "el": "div#ltfTools",
+   "role": "find, macro, preview buttons",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-tool",
+   "el": "button.btn.sm",
+   "role": "a tool button of the toolbar",
+   "states": [
+    "data-pressed"
+   ]
+  },
+  {
+   "name": "studio-lt-focus-toolbar-end",
+   "el": "div#ltfToolsR",
+   "role": "revert and more (contains the critical revert, not safe)",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-more",
+   "el": "button#ltfMore",
+   "role": "the more menu",
+   "states": []
+  },
+  {
+   "name": "studio-lt-revert",
+   "el": "button#ltfRevert",
+   "role": "CRITICAL: put the text back to how it was when focus mode opened",
+   "states": []
+  },
+  {
+   "name": "studio-lt-find",
+   "el": "div.ltf-find[role=search]",
+   "role": "the find bar (contains the critical replace-all, not safe)",
+   "states": []
+  },
+  {
+   "name": "studio-lt-find-row",
+   "el": "div.ltf-frow",
+   "role": "query row",
+   "states": []
+  },
+  {
+   "name": "studio-lt-find-input",
+   "el": "input#ltfQ",
+   "role": "query",
+   "states": []
+  },
+  {
+   "name": "studio-lt-find-count",
+   "el": "span.ltf-cnt",
+   "role": "match count",
+   "states": []
+  },
+  {
+   "name": "studio-lt-find-step",
+   "el": "button#ltfPrev,#ltfNext",
+   "role": "previous / next match",
+   "states": [
+    "data-step"
+   ]
+  },
+  {
+   "name": "studio-lt-find-toggle",
+   "el": "button#ltfCase,#ltfRT",
+   "role": "match case, show replace",
+   "states": [
+    "data-toggle",
+    "data-pressed"
+   ]
+  },
+  {
+   "name": "studio-lt-find-close",
+   "el": "button#ltfFClose",
+   "role": "close the bar",
+   "states": []
+  },
+  {
+   "name": "studio-lt-find-replace-row",
+   "el": "div#ltfRrow",
+   "role": "replace row (contains the critical replace-all, not safe)",
+   "states": []
+  },
+  {
+   "name": "studio-lt-find-replace-input",
+   "el": "input#ltfR",
+   "role": "replacement",
+   "states": []
+  },
+  {
+   "name": "studio-lt-find-replace",
+   "el": "button#ltfRep1",
+   "role": "replace this match",
+   "states": []
+  },
+  {
+   "name": "studio-lt-replace-all",
+   "el": "button#ltfRepAll",
+   "role": "CRITICAL: replace every match",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-tabs",
+   "el": "div.ltf-tabs",
+   "role": "edit / preview switch (phone)",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-tab",
+   "el": "button[data-ltf-tab]",
+   "role": "one tab",
+   "states": [
+    "data-pressed"
+   ]
+  },
+  {
+   "name": "studio-lt-focus-body",
+   "el": "div.ltf-body",
+   "role": "editor and preview",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-editor",
+   "el": "div.ltf-ed",
+   "role": "holds the full-size field",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-preview",
+   "el": "div.ltf-pv",
+   "role": "the preview pane",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-preview-head",
+   "el": "div.ltf-pvh",
+   "role": "preview title and refresh",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-preview-title",
+   "el": "h3.sb-h",
+   "role": "preview title",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-preview-run",
+   "el": "button#ltfPvRun",
+   "role": "refresh",
+   "states": []
+  },
+  {
+   "name": "studio-lt-focus-preview-output",
+   "el": "div#ltfPvOut.sb-out",
+   "role": "filled text",
+   "states": [
+    "data-raw",
+    "data-stale"
+   ]
+  },
+  {
+   "name": "studio-lt-list",
+   "el": "section.lt-sec",
+   "role": "the alternative-greetings or example-dialog list",
+   "states": [
+    "data-lt-list"
+   ]
+  },
+  {
+   "name": "studio-lt-list-head",
+   "el": "div.lt-sech",
+   "role": "title, count, total chip, view switch",
+   "states": []
+  },
+  {
+   "name": "studio-lt-list-title",
+   "el": "h3.lt-sect",
+   "role": "list title",
+   "states": []
+  },
+  {
+   "name": "studio-lt-list-count",
+   "el": "span.lt-secn",
+   "role": "number of cards",
+   "states": []
+  },
+  {
+   "name": "studio-lt-view",
+   "el": "div.lt-vseg",
+   "role": "list / text view switch (examples)",
+   "states": []
+  },
+  {
+   "name": "studio-lt-view-button",
+   "el": "button[data-lt-view]",
+   "role": "one view",
+   "states": [
+    "data-pressed"
+   ]
+  },
+  {
+   "name": "studio-lt-cards",
+   "el": "div.lt-cards[role=list]",
+   "role": "the cards",
+   "states": []
+  },
+  {
+   "name": "studio-lt-card",
+   "el": "article.lt-card",
+   "role": "one card",
+   "states": [
+    "data-open",
+    "data-opening",
+    "data-dragging",
+    "data-drop",
+    "data-lt-kind"
+   ]
+  },
+  {
+   "name": "studio-lt-card-head",
+   "el": "header.lt-chead",
+   "role": "grip, number, titles, chip, tools",
+   "states": []
+  },
+  {
+   "name": "studio-lt-card-grip",
+   "el": "button.lt-grip",
+   "role": "drag / Alt+Arrow handle",
+   "states": []
+  },
+  {
+   "name": "studio-lt-card-number",
+   "el": "span.lt-no",
+   "role": "card number",
+   "states": []
+  },
+  {
+   "name": "studio-lt-card-titles",
+   "el": "div.lt-cttl",
+   "role": "title and sub",
+   "states": []
+  },
+  {
+   "name": "studio-lt-card-title",
+   "el": "h4.lt-ct",
+   "role": "first line as title",
+   "states": []
+  },
+  {
+   "name": "studio-lt-card-sub",
+   "el": "span.lt-cs",
+   "role": "turns / card number",
+   "states": []
+  },
+  {
+   "name": "studio-lt-card-tools",
+   "el": "span.lt-tools",
+   "role": "card tools row",
+   "states": []
+  },
+  {
+   "name": "studio-lt-card-tool",
+   "el": "button[data-lt-card-act]",
+   "role": "preview, focus, menu",
+   "states": []
+  },
+  {
+   "name": "studio-lt-card-body",
+   "el": "div.lt-cbody",
+   "role": "holds the card's field",
+   "states": []
+  },
+  {
+   "name": "studio-lt-add-row",
+   "el": "div.lt-addrow",
+   "role": "add / paste row",
+   "states": []
+  },
+  {
+   "name": "studio-lt-add",
+   "el": "button[data-lt-add],[data-lt-pastemany]",
+   "role": "add a card, paste several",
+   "states": []
+  },
+  {
+   "name": "studio-lt-empty",
+   "el": "p.lt-empty",
+   "role": "no cards yet",
+   "states": []
+  },
+  {
+   "name": "studio-lt-text-view",
+   "el": "div.lt-textv",
+   "role": "examples as one text",
+   "states": []
+  },
+  {
+   "name": "studio-lt-text-view-note",
+   "el": "p.hint",
+   "role": "note under it",
+   "states": []
+  },
+  {
+   "name": "studio-lt-paste-option",
+   "el": "label.pm-opt",
+   "role": "\"split at dashes\" option of the paste-many sheet",
+   "states": []
+  },
+  {
+   "name": "studio-lt-paste-hint",
+   "el": "p.pm-hint",
+   "role": "its hint",
+   "states": []
+  },
+  {
+   "name": "studio-lt-paste-count",
+   "el": "p.pm-count",
+   "role": "count",
+   "states": []
+  },
+  {
+   "name": "studio-lt-paste-preview",
+   "el": "ol.pm-prev",
+   "role": "preview list",
+   "states": []
+  },
+  {
+   "name": "studio-lt-paste-item",
+   "el": "li",
+   "role": "one new card",
+   "states": []
+  },
+  {
+   "name": "studio-lt-paste-item-title",
+   "el": "span.pm-t",
+   "role": "its first line",
+   "states": []
+  },
+  {
+   "name": "studio-lt-paste-more",
+   "el": "li.pm-more",
+   "role": "\"N more\"",
+   "states": []
+  }
+ ],
+ "safe": [
+  "studio-lt-field",
+  "studio-lt-head",
+  "studio-lt-label",
+  "studio-lt-tools",
+  "studio-lt-tool",
+  "studio-lt-stage",
+  "studio-lt-text",
+  "studio-lt-mirror",
+  "studio-lt-cap-grip",
+  "studio-lt-problems",
+  "studio-lt-problem-list",
+  "studio-lt-problem",
+  "studio-lt-problem-go",
+  "studio-lt-problem-line",
+  "studio-lt-problem-text",
+  "studio-lt-problem-fix",
+  "studio-lt-problem-more",
+  "studio-lt-note",
+  "studio-lt-chip-host",
+  "studio-lt-chip",
+  "studio-lt-chip-text",
+  "studio-lt-chip-mock",
+  "studio-lt-chip-action",
+  "studio-lt-chip-info",
+  "studio-lt-tip",
+  "studio-lt-popup",
+  "studio-lt-option",
+  "studio-lt-option-name",
+  "studio-lt-option-sig",
+  "studio-lt-option-desc",
+  "studio-lt-macro-top",
+  "studio-lt-macro-search",
+  "studio-lt-macro-list",
+  "studio-lt-macro-group",
+  "studio-lt-macro-group-title",
+  "studio-lt-macro-item",
+  "studio-lt-macro-item-name",
+  "studio-lt-macro-item-sig",
+  "studio-lt-macro-item-desc",
+  "studio-lt-macro-none",
+  "studio-lt-sandbox",
+  "studio-lt-sandbox-title",
+  "studio-lt-sandbox-note",
+  "studio-lt-sandbox-row",
+  "studio-lt-sandbox-label",
+  "studio-lt-sandbox-input",
+  "studio-lt-sandbox-toggle",
+  "studio-lt-sandbox-none",
+  "studio-lt-sandbox-actions",
+  "studio-lt-sandbox-copy",
+  "studio-lt-sandbox-why",
+  "studio-lt-sandbox-writes",
+  "studio-lt-sandbox-unknown",
+  "studio-lt-sandbox-outhead",
+  "studio-lt-sandbox-modes",
+  "studio-lt-sandbox-mode",
+  "studio-lt-sandbox-run",
+  "studio-lt-sandbox-stale",
+  "studio-lt-sandbox-output",
+  "studio-lt-focus-header",
+  "studio-lt-focus-back",
+  "studio-lt-focus-titles",
+  "studio-lt-focus-title",
+  "studio-lt-focus-crumb",
+  "studio-lt-focus-crumb-tag",
+  "studio-lt-focus-crumb-name",
+  "studio-lt-focus-status",
+  "studio-lt-focus-undo",
+  "studio-lt-focus-redo",
+  "studio-lt-focus-toolbar",
+  "studio-lt-focus-tool",
+  "studio-lt-focus-more",
+  "studio-lt-find-row",
+  "studio-lt-find-input",
+  "studio-lt-find-count",
+  "studio-lt-find-step",
+  "studio-lt-find-toggle",
+  "studio-lt-find-close",
+  "studio-lt-find-replace-input",
+  "studio-lt-find-replace",
+  "studio-lt-focus-tabs",
+  "studio-lt-focus-tab",
+  "studio-lt-focus-body",
+  "studio-lt-focus-editor",
+  "studio-lt-focus-preview",
+  "studio-lt-focus-preview-head",
+  "studio-lt-focus-preview-title",
+  "studio-lt-focus-preview-run",
+  "studio-lt-focus-preview-output",
+  "studio-lt-list",
+  "studio-lt-list-head",
+  "studio-lt-list-title",
+  "studio-lt-list-count",
+  "studio-lt-view",
+  "studio-lt-view-button",
+  "studio-lt-cards",
+  "studio-lt-card",
+  "studio-lt-card-head",
+  "studio-lt-card-grip",
+  "studio-lt-card-number",
+  "studio-lt-card-titles",
+  "studio-lt-card-title",
+  "studio-lt-card-sub",
+  "studio-lt-card-tools",
+  "studio-lt-card-tool",
+  "studio-lt-card-body",
+  "studio-lt-add-row",
+  "studio-lt-add",
+  "studio-lt-empty",
+  "studio-lt-text-view",
+  "studio-lt-text-view-note",
+  "studio-lt-paste-option",
+  "studio-lt-paste-hint",
+  "studio-lt-paste-count",
+  "studio-lt-paste-preview",
+  "studio-lt-paste-item",
+  "studio-lt-paste-item-title",
+  "studio-lt-paste-more"
+ ],
+ "critical": [
+  "studio-lt-revert",
+  "studio-lt-replace-all"
+ ],
+ "criticalChildren": [],
+ "states": [
+  {
+   "attr": "data-collapsed",
+   "on": "studio-lt-field",
+   "values": "present"
+  },
+  {
+   "attr": "data-capped",
+   "on": "studio-lt-field",
+   "values": "present"
+  },
+  {
+   "attr": "data-focused",
+   "on": "studio-lt-field",
+   "values": "present"
+  },
+  {
+   "attr": "data-dirty",
+   "on": "studio-lt-field",
+   "values": "present"
+  },
+  {
+   "attr": "data-composing",
+   "on": "studio-lt-field",
+   "values": "present"
+  },
+  {
+   "attr": "data-nohl",
+   "on": "studio-lt-field",
+   "values": "present"
+  },
+  {
+   "attr": "data-focus-mode",
+   "on": "studio-lt-field",
+   "values": "present"
+  },
+  {
+   "attr": "data-mode",
+   "on": "studio-lt-field",
+   "values": "cbs|plain|html+cbs|lore|ex"
+  },
+  {
+   "attr": "data-severity",
+   "on": "studio-lt-problem",
+   "values": "error|warning|info"
+  },
+  {
+   "attr": "data-state",
+   "on": "studio-lt-chip",
+   "values": "exact|est|stale|busy"
+  },
+  {
+   "attr": "data-vary",
+   "on": "studio-lt-chip",
+   "values": "present"
+  },
+  {
+   "attr": "data-expanded",
+   "on": "studio-lt-chip-info",
+   "values": "present"
+  },
+  {
+   "attr": "data-variant",
+   "on": "studio-lt-popup",
+   "values": "popup|strip"
+  },
+  {
+   "attr": "data-selected",
+   "on": "studio-lt-option",
+   "values": "present"
+  },
+  {
+   "attr": "data-pressed",
+   "on": "studio-lt-sandbox-mode|studio-lt-focus-tool|studio-lt-find-toggle|studio-lt-focus-tab|studio-lt-view-button",
+   "values": "present"
+  },
+  {
+   "attr": "data-raw",
+   "on": "studio-lt-sandbox-output|studio-lt-focus-preview-output",
+   "values": "present"
+  },
+  {
+   "attr": "data-stale",
+   "on": "studio-lt-sandbox-output|studio-lt-focus-preview-output",
+   "values": "present"
+  },
+  {
+   "attr": "data-open",
+   "on": "studio-lt-focus|studio-lt-card",
+   "values": "present"
+  },
+  {
+   "attr": "data-split",
+   "on": "studio-lt-focus",
+   "values": "0|1"
+  },
+  {
+   "attr": "data-tab",
+   "on": "studio-lt-focus",
+   "values": "edit|preview"
+  },
+  {
+   "attr": "data-state",
+   "on": "studio-lt-focus-status",
+   "values": "save state of the shell"
+  },
+  {
+   "attr": "data-step",
+   "on": "studio-lt-find-step",
+   "values": "prev|next"
+  },
+  {
+   "attr": "data-toggle",
+   "on": "studio-lt-find-toggle",
+   "values": "case|replace"
+  },
+  {
+   "attr": "data-opening",
+   "on": "studio-lt-card",
+   "values": "present"
+  },
+  {
+   "attr": "data-dragging",
+   "on": "studio-lt-card",
+   "values": "present"
+  },
+  {
+   "attr": "data-drop",
+   "on": "studio-lt-card",
+   "values": "before|after"
+  },
+  {
+   "attr": "data-lt-kind",
+   "on": "studio-lt-card",
+   "values": "alts|ex"
+  },
+  {
+   "attr": "data-lt-list",
+   "on": "studio-lt-list",
+   "values": "alts|examples"
+  },
+  {
+   "attr": "data-k",
+   "on": "studio-lt-note",
+   "values": "message key"
+  }
+ ],
+ "decisions": "CRITICAL (data-part-critical, DD-149): studio-lt-revert (focus-mode revert button: replaces everything written since focus mode opened with the opened text; the way back is one history step, but no Undo toast is offered) and studio-lt-replace-all (replace all: rewrites every match in one go). Both are single icon buttons without part-bearing children, so there are no protected children (criticalChildren is empty). Their ancestors are therefore NOT safe: studio-lt-focus, studio-lt-focus-tools, studio-lt-focus-toolbar-end, studio-lt-find, studio-lt-find-replace-row. Everything else is safe: it is never a critical element, never inside one and never contains one.\nNOT critical, with reasons: card delete (menu item; the change shows the shell's Undo toast, which is already studio-undo-toast critical); card split, convert to start block, move, duplicate, make main (swap; nothing is dropped, each is one history step); paste-many sheet (appends new cards, replaces nothing; ordinary sheet, kind lt-paste); macro sheet (inserts at the caret; ordinary sheet, kind lt-macros); problem one-click fix (replaces one old-form macro with its new form, one history step, like a spelling suggestion; the author can see the text); replace one (a single match, selected and visible); sandbox 'copy chat values' (changes sandbox values only, never the author's data); cap-grip reset. If the maintainer wants more caution, the first candidates to promote are the problem fix and replace one (each needs its own part name and would make studio-lt-problem and studio-lt-find-row unsafe ancestors).\nLT inside slice 4: the editor is mounted in slice 4 forms by st4-core.js mountLT, which overwrites the data-part of three of my elements: the wrapper (studio-lt-field becomes studio-field-control), the label span (studio-lt-label becomes studio-field-label) and the chip host (studio-lt-chip-host becomes studio-field-chip; drawChip only sets a name when none is there). All other studio-lt-* parts and all state attributes stay. No LT field can sit inside studio-risky (that section holds switches only), inside a question sheet or any other critical element: the field markup is only built in #formHost / focus mode, and the shared sheet's body is rebuilt on every open.\nNot given a part (aria-hidden or per-token): highlight spans inside the mirror (class c1..c11, em, mk: colours stay tokens), the hidden measuring twins (lt-probe, lt-measure), the sr-only description, the spacer span (lt-sp), the plain wrappers .lt-textv > .fld and the paste sheet's display: contents wrapper, small icons, the demo-panel controls (#ltDemo, mockup chrome). Not changed: the focus mode's 'more' menu offers revert as an ordinary menu item of the shared sheet (slice1.js openMenu), so that copy of revert is not critical (see the report)."
+}

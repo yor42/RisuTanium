@@ -1,0 +1,3 @@
+/* NEGATIVE fixture (T-02): swaps Cancel and Delete through the footer (the review used .dlg-f under the frame; the part name is the pack-visible form). Must be rejected. */
+[data-part="settings-critical-actions"] { flex-direction: row-reverse; }
+[data-part="settings-frame"] .dlg-f { flex-direction: row-reverse; }

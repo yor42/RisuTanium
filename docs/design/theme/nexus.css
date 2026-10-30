@@ -1,0 +1,31 @@
+/*
+  Tailwind CSS 4 mapping for the DEEP NEXUS tokens. Intended location after integration:
+  src/styles/nexus.css, imported from src/styles.css directly after `@import "tailwindcss";`.
+  Follows the existing pattern there: theme colours reference CSS variables, so opacity
+  modifiers such as bg-nexus-canvas/80 keep working.
+*/
+@import "./nexus-tokens.css";
+
+@custom-variant lowpower (&:where(.nexus-low-power, .nexus-low-power *));
+
+@theme {
+  --color-nexus-canvas: var(--nexus-canvas);
+  --color-nexus-bloom: var(--nexus-canvas-bloom);
+  --color-nexus-text: var(--nexus-text);
+  --color-nexus-text-secondary: var(--nexus-text-secondary);
+  --color-nexus-text-muted: var(--nexus-text-muted);
+  --color-nexus-accent: var(--nexus-accent);
+  --color-nexus-ring: var(--nexus-ring);
+  --color-nexus-core-from: var(--nexus-core-from);
+  --color-nexus-core-to: var(--nexus-core-to);
+  --color-nexus-warm: var(--nexus-warm);
+  --color-nexus-warm-from: var(--nexus-warm-from);
+  --color-nexus-warm-to: var(--nexus-warm-to);
+
+  --blur-nexus: var(--nexus-blur);
+  --ease-nexus: var(--nexus-ease);
+
+  /* Indirect so prefers-reduced-motion (handled in nexus-tokens.css) also covers the utilities. */
+  --animate-nexus-enter: var(--nexus-animate-enter);
+  --animate-nexus-breathe: var(--nexus-animate-breathe);
+}

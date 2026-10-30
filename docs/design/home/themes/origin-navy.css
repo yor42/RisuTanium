@@ -1,0 +1,54 @@
+/* ORIGIN NAVY for Home (the maintainer's pack name; the colours are upstream's default scheme, a charcoal slate with a blue cast: DD-150 as amended, Settings DS-076). Same palette as chat/themes/origin-navy.css.
+   A rough acceptance probe of the theming contract (THEMING.md, DD-142): TOKENS ONLY, no part CSS, no selector but :root. If Home cannot be recoloured without editing it, a token is missing; this file records none missing.
+   Source values (read-only reference, src/ts/gui/colorscheme.ts in this clone): defaultColorScheme  bgcolor #282a36  darkbg #21222c  borderc #6272a4  selected #44475a  draculared #ff5555  textcolor #f8f8f2;
+   the "galaxy" scheme's #8be9fd as the cyan accent. Choices that are mine, not upstream's: #ffb86c warm; two lighter greys for secondary and muted text (upstream's textcolor2 #64748b is 2.9:1 on #282a36);
+   dracula green and yellow for the success and warning edges; the focus ring is the accent.
+   What this pack does not recolour, on purpose: the brand mark (brand/nexus-mark.css has literal cyan and white values) and the seasonal wordmark (seasonal/seasonal-wordmark.css). Both live outside Home's tokens and stay Deep Nexus cyan.
+   The character avatars and portraits are the character's own hue (data-hue); only their S and L are tokens and this pack keeps the defaults.
+   Loaded by ?theme=origin-navy (theme.js). Not a finished pack. */
+:root {
+  /* shared Deep Nexus tokens (../../theme/nexus-tokens.css), the same values as chat's pack (DD-145: one meaning per name) */
+  --nexus-canvas: #21222c;                    /* darkbg */
+  --nexus-canvas-bloom: #282a36;              /* bgcolor */
+  --nexus-canvas-warm: transparent;           /* upstream has no warm bloom (Home sets it per mode from the three alphas below) */
+  --nexus-surface: rgb(98 114 164 / 0.1);     /* borderc at 10% */
+  --nexus-surface-raised: rgb(98 114 164 / 0.22);
+  --nexus-surface-flat: #282a36;
+  --nexus-edge: rgb(98 114 164 / 0.32);
+  --nexus-edge-strong: #6272a4;
+  --nexus-field-border: var(--nexus-edge-strong);      /* the pack keeps its own field border (DD-160 moved the default only) */
+  --color-placeholder: var(--nexus-text-secondary);    /* and its own placeholder colour */
+  --nexus-text: #f8f8f2;
+  --nexus-text-secondary: #c3c9de;
+  --nexus-text-muted: #9aa5c8;
+  --nexus-accent-rgb: 139 233 253;            /* stated once as channels (DD-146): the solid and every accent tint follow */
+  --nexus-accent: rgb(var(--nexus-accent-rgb));
+  --nexus-ring: #8be9fd;
+  --nexus-core-from: #6272a4;                 /* the run bar's gradient and the realm card's top line */
+  --nexus-core-to: #44475a;
+  --nexus-warm: #ffb86c;
+  --nexus-warm-from: #ffb86c;
+  --nexus-warm-to: #ffd9a8;
+  --nexus-danger-rgb: 255 128 128;            /* draculared #ff5555 lifted so it is 4.5:1 on a raised card inside a glass card, where Home shows the restore error (#ff5555 is 3.9:1 there), once; --nexus-danger and every danger edge follow */
+  --nexus-danger: rgb(var(--nexus-danger-rgb));
+  --nexus-network-node: 98 114 164;           /* the canvas network field (a script reads these two) */
+  --nexus-network-link: 98 114 164;
+  --color-surface-sheet: #21222c;             /* the dialogs' opaque sheet (--home-dialog-bg) and the realm list well */
+  --color-surface-toast: #343746;             /* the toast, the rail tooltip, the background badge */
+  --radius-field: 8px;                        /* upstream's fields and controls are less round than Deep Nexus */
+  --radius-sheet: 12px;
+
+  /* Home-only colour tokens (home/home-tokens.css), so nothing in Home stays Deep Nexus coloured */
+  --home-ring-rgb: 139 233 253;               /* the memory tag tint = the ring */
+  --home-warm-rgb: 255 184 108;               /* the upstream tag edge and the companion portrait glow */
+  --home-warm-bloom-rgb: 255 184 108;
+  --home-bloom-alpha-rp: 0; --home-bloom-alpha-hybrid: 0; --home-bloom-alpha-utility: 0;   /* no warm bloom per mode: the canvas is flat charcoal */
+  --home-success-rgb: 80 250 123;             /* a finished background reply, the ok library message edge */
+  --home-warning-rgb: 241 250 140;            /* the realm gate and the setup note edge */
+  --home-scrim-rgb: 21 22 30;                 /* the modal scrim, and the dark text on a character's pastel avatar and portrait */
+  --home-composer-bg: rgb(40 42 54 / 0.92);   /* the composer card: an opaque-ish slate instead of Deep Nexus's deep blue */
+  --home-on-accent: #21222c;                  /* text on the accent fill (the primary button, the badge): 12:1 on the cyan */
+  --home-control-radius: 8px;                 /* role tokens, not the internal ladder (DD-148): upstream's controls, cards and dialogs are squarer */
+  --home-card-radius: 12px;
+  --home-dialog-radius: 12px;
+}

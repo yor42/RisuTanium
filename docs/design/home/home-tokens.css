@@ -1,0 +1,151 @@
+/* Home design tokens: THE token block for the Home mockup (THEMING.md, DD-142/143/145/146/147/148). Every value equals the literal the page used before the theme pass (mockups/home.html)
+   unless a comment says it changed on purpose (DD-198..214). Components read only these names plus the shared --nexus-* / --font / --color-* / --radius-* names of ../theme/nexus-tokens.css.
+   Load order: nexus-tokens.css, this file, home.css, then a theme (themes/*.css, loaded by theme.js from ?theme=). Shared names are not redefined here (DD-145); Home-only values are --home-*.
+   Packs set role tokens (sections marked ROLE); the ladders (--home-space-N, --home-radius-N) are internal and may be renumbered (DD-148). */
+:root {
+  color-scheme: dark;
+  --color-scheme: dark;
+
+  /* ---- type ---- */
+  --home-font: "NanumSquare Neo UI", "NanumSquare Neo", "NanumSquareNeo", var(--font);   /* DD-034/DD-202: Neo first, then the shared stack. No Gothic on Home (DD-036). */
+  --home-mono: ui-monospace, "Cascadia Mono", Consolas, "D2Coding", monospace;
+  --home-text-xs: 12px; --home-text-sm: 13px; --home-text-md: 14px; --home-text-base: 15px; --home-text-lg: 16px; --home-text-xl: 22px; --home-text-2xl: 26px; --home-text-hero: 34px;
+  --home-text-glyph: 13px; --home-text-avatar-xs: 11px; --home-text-avatar-sm: 12px; --home-text-avatar-md: 16px; --home-text-avatar-lg: 22px; --home-text-avatar-xl: 26px;
+  --home-weight-regular: 400; --home-weight-strong: 700;       /* NanumSquare Neo has 300/400/700/800/900: the old 600 and 500 map to 700 / 400 */
+  --home-leading-body: 1.5; --home-leading-tight: 1.25; --home-leading-field: 1.5;
+  --home-tracking-eyebrow: 0.06em; --home-tracking-brand: 0.02em; --home-tracking-h1: -0.01em;
+  --home-eyebrow-transform: uppercase;
+  --home-h1-size: var(--home-text-2xl); --home-h1-sm-size: var(--home-text-xl);
+
+  /* ---- spacing ladder (internal) ---- */
+  --home-space-1: 2px; --home-space-2: 4px; --home-space-3: 6px; --home-space-4: 8px; --home-space-5: 10px; --home-space-6: 12px; --home-space-7: 14px; --home-space-8: 16px;
+  --home-space-9: 18px; --home-space-10: 20px; --home-space-11: 24px; --home-space-12: 28px; --home-space-13: 32px; --home-space-14: 40px; --home-space-15: 48px;
+  --home-radius-1: 6px; --home-radius-2: 9px; --home-radius-3: 10px; --home-radius-4: 12px; --home-radius-5: 14px; --home-radius-6: 16px; --home-radius-7: 18px; --home-radius-pill: 999px; --home-radius-round: 50%;
+
+  /* ---- ROLE: controls (DD-213: 44 dp under touch, 40 under hover; Deep Nexus keeps both, DD-151 lets a pack go lower) ---- */
+  --home-touch: var(--nexus-touch); --home-hover-control: 40px;
+  --home-control-height: var(--home-touch);
+  --home-control-radius: var(--home-radius-3);
+  --home-control-pad-x: var(--home-space-6);
+  --home-control-gap: var(--home-space-4);
+  --home-card-radius: var(--home-radius-6);
+  --home-card-pad: var(--home-space-8);
+  --home-card-pad-lg: var(--home-space-9);
+  --home-card-gap: var(--home-space-5);
+  --home-row-height: 56px;
+  --home-pill-height: var(--home-control-height);
+  --home-pill-label-max: 260px;
+  --home-field-radius: var(--radius-field);
+  --home-field-border: var(--nexus-field-border);            /* DD-160: a field's boundary is 3:1; cards and dividers keep --nexus-edge-strong */
+  --home-focus-w: var(--nexus-focus-ring-width); --home-focus-offset: var(--nexus-focus-ring-offset);
+  --home-hairline: 1px;
+  --home-bar-w: 3px;                                          /* the inset selection bar */
+  --home-disabled-opacity: 0.55;
+
+  /* ---- ROLE: shell geometry ---- */
+  --home-rail-width-rp: 76px; --home-rail-width-hybrid: 220px; --home-rail-width-utility: 240px; --home-rail-width-collapsed: 64px; --home-drawer-width: 240px;      /* DD-208: the phone drawer is 240 in every mode */
+  --home-rail-inset: 16px; --home-rail-pad-y: var(--home-space-7); --home-rail-pad-x: var(--home-space-5); --home-rail-radius: var(--home-radius-7);
+  --home-rail-icon-size: 44px; --home-rail-avatar-pad: 3px; --home-rail-avatar-ring: 2px; --home-rail-sep-width: 32px;
+  --home-topbar-pad-top: 16px; --home-topbar-pad-bottom: 4px; --home-topbar-pad-x: 24px; --home-topbar-gap-y: 8px; --home-topbar-gap-x: 12px;
+  --home-main-pad-top: 16px; --home-main-pad-bottom: 32px; --home-main-pad-x: 24px;
+  --home-center-width: 900px; --home-center-width-narrow: 760px; --home-side-width: 320px;
+  --home-dialog-width: 420px; --home-dialog-width-wide: 460px; --home-dialog-margin: 32px; --home-dialog-radius: var(--home-radius-7); --home-dialog-pad: var(--home-space-9);
+  --home-picker-max-height: 50vh;
+  --home-mode-option-min: 84px; --home-mode-clamp-gap: 12px; --home-mode-pad: 3px; --home-mode-gap: 2px; --home-mode-radius: var(--home-radius-4); --home-mode-option-radius: var(--home-radius-2);
+
+  /* ---- ROLE: cards and avatars ---- */
+  --home-portrait-height: 120px; --home-presence-portrait: 72px; --home-presence-radius: var(--home-radius-7);
+  --home-avatar-xs: 24px; --home-avatar-sm: 28px; --home-avatar-md: 44px; --home-avatar-lg: 64px; --home-avatar-rail: 44px;
+  --home-avatar-radius-sq: var(--home-radius-4); --home-avatar-radius-lg: var(--home-radius-7); --home-avatar-radius-md: var(--home-radius-5);
+  --home-char-card-min: 132px; --home-shelf-columns: 3; --home-shelf-card-min: 220px; --home-shelf-card-share: 78%;
+  --home-realm-min-height: 296px; --home-realm-list-max: 150px; --home-realm-status-min: 120px; --home-realm-mark-size: 32px;
+  --home-hero-mark: 56px; --home-hero-mark-icon: 26px; --home-hero-pad-y: 28px;
+  --home-composer-note-pull: var(--home-space-5);
+  --home-composer-min: 72px; --home-composer-hero-min: 112px;
+  --home-run-mark-size: 64px; --home-task-mark-size: 28px; --home-brand-mark-size: 32px; --home-brand-mark-size-phone: 28px;
+  --home-bar-height: 4px; --home-dot-size: 8px; --home-run-dot: 7px; --home-badge-size: 20px; --home-icon-size: 18px; --home-icon-size-sm: 16px; --home-icon-size-hero: 26px; --home-icon-stroke: 1.8;
+  --home-live-dot: 8px; --home-bg-dot: 12px;
+  --home-sel-size: 44px; --home-sel-box: 20px;
+  --home-tip-gap: 8px;
+  --home-toast-offset: 24px;
+  --home-mock-size: 44px;
+  --home-quick-min: 220px;
+  --home-search-basis: 220px; --home-count-basis: 200px; --home-note-basis: 240px; --home-measure: 44ch; --home-measure-narrow: 30ch; --home-mock-panel-min: 300px; --home-mock-panel-max: 70vh;
+  --home-angle-avatar: 135deg; --home-angle-bar: 90deg;
+
+  /* ---- colour: tints and roles not covered by --nexus-* ---- */
+  --home-ring-rgb: 127 233 255;                         /* = --nexus-ring; the memory tag tint */
+  --home-warm-rgb: var(--nexus-warm-rgb);                         /* = --nexus-warm; the upstream tag and the presence glow */
+  --home-warm-bloom-rgb: 255 154 122;
+  --home-success-rgb: var(--nexus-success-rgb); --home-warning-rgb: var(--nexus-warning-rgb);        /* DD-235 aliases (theme/checks/ALIASES.md): packs state each value once, in the shared name */
+  --home-scrim-rgb: 0 1 28;
+  --home-scrim: rgb(var(--home-scrim-rgb) / 0.6);
+  --home-on-avatar: rgb(var(--home-scrim-rgb) / 0.82);
+  --home-on-portrait: rgb(var(--nexus-overlay-rgb) / 0.8);   /* was dark at 55%: the initial was unreadable on the dark half of the gradient */
+  --home-on-presence: rgb(var(--home-scrim-rgb) / 0.6);
+  --home-on-accent: var(--nexus-canvas);
+  --home-dialog-bg: var(--color-surface-sheet);                    /* an opaque sheet (was surface-flat at 94%: a visible change of about 1% in lightness) */
+  --home-composer-bg: rgb(6 7 34 / 0.88);
+  --home-well-bg: rgb(var(--nexus-shade-rgb) / 0.25);
+  --home-track: rgb(var(--nexus-overlay-rgb) / 0.08);
+  --home-accent-fill: rgb(var(--nexus-accent-rgb) / 0.15);
+  --home-accent-edge: rgb(var(--nexus-accent-rgb) / 0.4);
+  --home-memory-edge: rgb(var(--nexus-accent-rgb) / 0.35);           /* was a ring-coloured tint at 35%: now the accent channel (DD-146) */
+  --home-upstream-edge: rgb(var(--home-warm-rgb) / 0.45);
+  --home-presence-glow: rgb(var(--home-warm-rgb) / 0.25);
+  --home-danger-edge: rgb(var(--nexus-danger-rgb) / 0.6);
+  --home-danger-edge-strong: rgb(var(--nexus-danger-rgb) / 0.7);
+  --home-danger-text: var(--nexus-danger);                          /* was #ff8fa0: the shared danger solid, which is lighter than its edge */
+  --home-success-edge: rgb(var(--home-success-rgb) / 0.55);
+  --home-warning-edge: rgb(var(--home-warning-rgb) / 0.5);
+  --home-bg-queued: var(--nexus-text-muted); --home-bg-running: var(--nexus-accent); --home-bg-done: rgb(var(--home-success-rgb)); --home-bg-failed: var(--nexus-danger);
+  --home-mode-bar: var(--nexus-accent); --home-mode-bar-rp: var(--nexus-warm);
+  --home-select-bar: var(--nexus-accent); --home-select-bar-warm: var(--nexus-warm); --home-select-edge: var(--nexus-edge-strong);
+  --home-selection-bg: rgb(var(--nexus-accent-rgb) / 0.3); --home-selection-text: var(--nexus-text);          /* DD-156 */
+  /* the hue gradients of avatars and portraits: only S and L are tokens; the hue is the character's own (data-hue) */
+  --home-avatar-sat-a: 72%; --home-avatar-light-a: 70%; --home-avatar-sat-b: 58%; --home-avatar-light-b: 42%; --home-avatar-hue-shift: 40;
+  --home-portrait-sat-a: 80%; --home-portrait-light-a: 74%; --home-portrait-sat-b: 60%; --home-portrait-light-b: 45%; --home-portrait-sat-c: 55%; --home-portrait-light-c: 18%; --home-portrait-hue-a: 30; --home-portrait-hue-c: -20;
+  --home-portrait-start-hue: 20;
+  --home-bloom-alpha-rp: 0.18; --home-bloom-alpha-hybrid: 0.13; --home-bloom-alpha-utility: 0.04;
+
+  /* ---- motion (JS reads the numbers from here, DD-143) ---- */
+  --home-dur-stage: 220ms; --home-dur-topbar: 180ms; --home-dur-mode-bar: 180ms; --home-dur-bloom: 360ms; --home-dur-rail: 220ms; --home-dur-rail-fade: 180ms; --home-dur-progress: 400ms; --home-dur-toast: 150ms;
+  --home-stage-shift: 14px; --home-topbar-shift: 8px;
+  --home-toast-ms: 2500ms;                              /* DD-008: how long the Back toast stays, and the window for the second Back */
+  --home-mode-settle: 400ms;        /* DD-263: a second pointer click this soon after a mode change is ignored */
+  --home-tap-slop: 10px; --home-tap-ms: 500ms;          /* DD-212: a touch wave is raised on release after a short press with little travel */
+
+  /* ---- layering ---- */
+  --home-z-sticky: 5; --home-z-mock: 20; --home-z-scrim: 24; --home-z-drawer: 25; --home-z-skip: 30; --home-z-tip: 40; --home-z-toast: 45;
+
+  /* ---- band documentation (the script owns the numbers: media queries cannot read tokens) ---- */
+  --home-rail-col: calc(var(--home-rail-inset) + var(--home-rail-width-rp));   /* the page column starts after the rail; set per mode on body (DD-247) */
+  --home-bp-mid: 768px; --home-bp-wide: 1280px;
+}
+
+/* Hover input: 40 dp controls (DD-213). The rail's icon squares stay 44. */
+html[data-input="hover"] { --home-control-height: var(--home-hover-control); }
+
+/* Korean: no tracking, no capitals (DD-202) */
+html[data-lang="ko"] { --home-tracking-eyebrow: 0; --home-tracking-brand: 0; --home-tracking-h1: 0; --home-eyebrow-transform: none; --home-leading-body: 1.55; }
+
+/* Per-mode ambient bloom (the shared --nexus-canvas-warm is the Hybrid default; body[data-mode] sets the alpha) */
+body[data-mode="rp"] { --nexus-canvas-warm: rgb(var(--home-warm-bloom-rgb) / var(--home-bloom-alpha-rp)); }
+body[data-mode="hybrid"] { --nexus-canvas-warm: rgb(var(--home-warm-bloom-rgb) / var(--home-bloom-alpha-hybrid)); }
+body[data-mode="utility"] { --nexus-canvas-warm: rgb(var(--home-warm-bloom-rgb) / var(--home-bloom-alpha-utility)); }
+
+/* Layout bands (DD-147/DD-209): the same attribute set as chat and Settings. A pack may set tokens under these selectors (DD-159). */
+html[data-layout="mid"] { --home-topbar-pad-x: 24px; }
+html[data-layout="phone"] {
+  --home-topbar-pad-top: 12px; --home-topbar-pad-x: 16px; --home-main-pad-top: 12px; --home-main-pad-x: 16px; --home-main-pad-bottom: 96px;
+  --home-h1-size: var(--home-text-xl);
+}
+html[data-layout="wide"] { --home-realm-min-height: 380px; --home-realm-list-max: 200px; }          /* MC-053 pair: the card and its list cap move together */
+
+/* Low power: flat surfaces come from the shared file; the status mark keeps moving (DD-211) */
+html[data-power="low"] { --home-blur: 0px; }
+
+/* Forced colours: selection must not depend on the sliding bar or a fill, which are dropped (review M3) */
+@media (forced-colors: active) {
+  :root { --home-select-bar: Highlight; --home-select-bar-warm: Highlight; --home-select-edge: Highlight; --home-mode-bar: Highlight; --home-mode-bar-rp: Highlight; --home-fc-edge: CanvasText; --home-fc-selected: Highlight; --home-danger-edge: CanvasText; --home-danger-edge-strong: CanvasText; }
+}

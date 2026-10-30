@@ -1,0 +1,2 @@
+/* NEGATIVE fixture (T-02): moves the dialog to the top of the screen through its backdrop. Must be rejected. */
+[data-part="settings-dialog-backdrop"] { align-items: flex-start; padding-top: 2rem; }

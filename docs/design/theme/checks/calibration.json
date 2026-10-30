@@ -1,0 +1,462 @@
+{
+ "rows": [
+  {
+   "area": "chat",
+   "id": "slice1 confirm (delete messages)",
+   "part": "chat-sheet",
+   "measured": 185,
+   "modelled": 240,
+   "ratio": 1.3,
+   "params": {
+    "title": 5,
+    "body": 36,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "chat",
+   "id": "slice2 delete (a chat)",
+   "part": "chat-sheet",
+   "measured": 164,
+   "modelled": 240,
+   "ratio": 1.46,
+   "params": {
+    "title": 5,
+    "body": 28,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "chat",
+   "id": "slice2 fallback (stop a reply and switch)",
+   "part": "chat-sheet",
+   "measured": 164,
+   "modelled": 219,
+   "ratio": 1.34,
+   "params": {
+    "title": 11,
+    "body": 11,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "chat",
+   "id": "slice3 g-redo-confirm",
+   "part": "chat-sheet",
+   "measured": 220,
+   "modelled": 240,
+   "ratio": 1.09,
+   "params": {
+    "title": 8,
+    "body": 25,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "chat",
+   "id": "slice3 g-earlier (regenerate an earlier reply)",
+   "part": "chat-sheet",
+   "measured": 212,
+   "modelled": 240,
+   "ratio": 1.13,
+   "params": {
+    "title": 4,
+    "body": 28,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "chat",
+   "id": "slice3 g-member-menu-missing",
+   "part": "chat-sheet",
+   "measured": 154,
+   "modelled": 163,
+   "ratio": 1.06,
+   "params": {
+    "title": 7,
+    "body": 16,
+    "nBtn": 1,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "chat",
+   "id": "slice4 s4-editor-draft (discard a draft)",
+   "part": "chat-sheet",
+   "measured": 161,
+   "modelled": 198,
+   "ratio": 1.23,
+   "params": {
+    "title": 13,
+    "body": 0,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "chat",
+   "id": "hooks1 failed-save guard",
+   "part": "chat-sheet",
+   "measured": 260,
+   "modelled": 296,
+   "ratio": 1.14,
+   "params": {
+    "title": 11,
+    "body": 24,
+    "nBtn": 3,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "settings",
+   "id": "slice2 delete-preset",
+   "part": "settings-dialog",
+   "measured": 258,
+   "modelled": 201,
+   "ratio": 0.78,
+   "params": {
+    "title": 15,
+    "body": 44,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "settings",
+   "id": "slice2 last-preset",
+   "part": "settings-dialog",
+   "measured": 181,
+   "modelled": 179,
+   "ratio": 0.99,
+   "params": {
+    "title": 15,
+    "body": 38,
+    "nBtn": 1,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "settings",
+   "id": "slice2 delete-folder",
+   "part": "settings-dialog",
+   "measured": 181,
+   "modelled": 201,
+   "ratio": 1.11,
+   "params": {
+    "title": 11,
+    "body": 42,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "settings",
+   "id": "slice2 restore-points",
+   "part": "settings-dialog",
+   "measured": 366,
+   "modelled": 364,
+   "ratio": 0.99,
+   "params": {
+    "title": 9,
+    "body": 0,
+    "nBtn": 4,
+    "small": 0,
+    "extra": 230
+   }
+  },
+  {
+   "area": "settings",
+   "id": "slice2 import-preview",
+   "part": "settings-dialog",
+   "measured": 536,
+   "modelled": 535,
+   "ratio": 1,
+   "params": {
+    "title": 10,
+    "body": 0,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 401
+   }
+  },
+  {
+   "area": "settings",
+   "id": "slice2 export-preview",
+   "part": "settings-dialog",
+   "measured": 235,
+   "modelled": 179,
+   "ratio": 0.76,
+   "params": {
+    "title": 11,
+    "body": 39,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "settings",
+   "id": "slice2 failed-save guard",
+   "part": "settings-dialog",
+   "measured": 181,
+   "modelled": 179,
+   "ratio": 0.99,
+   "params": {
+    "title": 15,
+    "body": 33,
+    "nBtn": 3,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "settings",
+   "id": "slice2 lock-off-ask",
+   "part": "settings-dialog",
+   "measured": 181,
+   "modelled": 227,
+   "ratio": 1.25,
+   "params": {
+    "title": 18,
+    "body": 49,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "settings",
+   "id": "slice2 key-swap",
+   "part": "settings-dialog",
+   "measured": 203,
+   "modelled": 249,
+   "ratio": 1.23,
+   "params": {
+    "title": 26,
+    "body": 61,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "settings",
+   "id": "slice3 delete-connection",
+   "part": "settings-dialog",
+   "measured": 444,
+   "modelled": 468,
+   "ratio": 1.05,
+   "params": {
+    "title": 21,
+    "body": 0,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 309
+   }
+  },
+  {
+   "area": "settings",
+   "id": "slice3 clear-key",
+   "part": "settings-dialog",
+   "measured": 158,
+   "modelled": 156,
+   "ratio": 0.99,
+   "params": {
+    "title": 14,
+    "body": 16,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "settings",
+   "id": "slice3 unverified-model",
+   "part": "settings-dialog",
+   "measured": 231,
+   "modelled": 204,
+   "ratio": 0.88,
+   "params": {
+    "title": 23,
+    "body": 28,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "settings",
+   "id": "slice1 reset-confirm",
+   "part": "settings-dialog",
+   "measured": 158,
+   "modelled": 179,
+   "ratio": 1.13,
+   "params": {
+    "title": 9,
+    "body": 22,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "studio",
+   "id": "conflict-view",
+   "part": "studio-critical-sheet",
+   "measured": 693,
+   "modelled": 713,
+   "ratio": 1.03,
+   "params": {
+    "title": 21,
+    "body": 173,
+    "nBtn": 4,
+    "small": 0,
+    "extra": 251
+   }
+  },
+  {
+   "area": "studio",
+   "id": "apply",
+   "part": "studio-critical-sheet",
+   "measured": 175,
+   "modelled": 221,
+   "ratio": 1.26,
+   "params": {
+    "title": 6,
+    "body": 48,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "studio",
+   "id": "risky ask",
+   "part": "studio-risky-confirm",
+   "measured": 235,
+   "modelled": 260,
+   "ratio": 1.11,
+   "params": {
+    "title": 14,
+    "body": 89,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "studio",
+   "id": "private ask",
+   "part": "studio-private-confirm",
+   "measured": 235,
+   "modelled": 260,
+   "ratio": 1.11,
+   "params": {
+    "title": 8,
+    "body": 77,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "home",
+   "id": "rp trash confirm (sim)",
+   "part": "home-confirm",
+   "measured": 268,
+   "modelled": 336,
+   "ratio": 1.25,
+   "params": {
+    "title": 20,
+    "body": 128,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  },
+  {
+   "area": "home",
+   "id": "agree dialog",
+   "part": "home-agree-dialog",
+   "measured": 325,
+   "modelled": 338,
+   "ratio": 1.04,
+   "params": {
+    "title": 0,
+    "body": 91,
+    "nBtn": 4,
+    "small": 0,
+    "extra": 98
+   }
+  },
+  {
+   "area": "home",
+   "id": "leave dialog",
+   "part": "home-leave-dialog",
+   "measured": 175,
+   "modelled": 196,
+   "ratio": 1.12,
+   "params": {
+    "title": 20,
+    "body": 30,
+    "nBtn": 2,
+    "small": 0,
+    "extra": 0
+   }
+  }
+ ],
+ "refs": {
+  "chat": {
+   "reference": 296,
+   "tallest": {
+    "id": "hooks1 failed-save guard",
+    "measured": 260
+   },
+   "ratio": 1.14,
+   "allUnder": true
+  },
+  "settings": {
+   "reference": 647,
+   "tallest": {
+    "id": "slice2 import-preview",
+    "measured": 536
+   },
+   "ratio": 1.21,
+   "allUnder": true
+  },
+  "studio": {
+   "reference": 713,
+   "tallest": {
+    "id": "conflict-view",
+    "measured": 693
+   },
+   "ratio": 1.03,
+   "allUnder": true
+  },
+  "home": {
+   "reference": 407,
+   "tallest": {
+    "id": "agree dialog",
+    "measured": 325
+   },
+   "ratio": 1.25,
+   "allUnder": true
+  }
+ }
+}

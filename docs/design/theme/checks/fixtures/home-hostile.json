@@ -1,0 +1,1130 @@
+[
+ {
+  "id": "A1",
+  "name": "A1 hide the Move to Recently deleted confirm title",
+  "css": "[data-part=\"home-confirm-title\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "A2",
+  "name": "A2 hide agree-dialog via attribute prefix",
+  "css": "[data-part^=\"home-agree\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "A3",
+  "name": "A3 hide critical with [data-part-critical]",
+  "css": "[data-part-critical]{visibility:hidden}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "A4",
+  "name": "A4 hide critical with :is()",
+  "css": ":is([data-part=\"home-trash-scope\"], [data-part=\"home-trash-empty\"]){display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "A5",
+  "name": "A5 hide critical with :where() wildcard substring",
+  "css": "[data-part*=\"confirm\"]{opacity:0}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "A6",
+  "name": "A6 hide universal selector",
+  "css": "*{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "A7",
+  "name": "A7 hide composer note via structural combinator from a safe ancestor",
+  "css": "[data-part=\"home-composer\"] + p{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "A8",
+  "name": "A8 hide home-dialog-actions (reach tier) with clip-path",
+  "css": "[data-part=\"home-dialog-actions\"]{clip-path:inset(100%)}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "N1",
+  "name": "N1 hide the phone menu button: no way to reach the drawer",
+  "css": "[data-part=\"home-menu-button\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "N2",
+  "name": "N2 hide the whole rail: no Settings, Studio, character access",
+  "css": "[data-part=\"home-rail\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "N3",
+  "name": "N3 hide the mode switch",
+  "css": "[data-part=\"home-mode-switch\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "N4",
+  "name": "N4 hide the Tasks button",
+  "css": "[data-part=\"home-tasks-button\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "N5",
+  "name": "N5 hide the Stop control on run cards",
+  "css": "[data-part=\"home-run-stop\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "N6",
+  "name": "N6 hide Send and the composer field",
+  "css": "[data-part=\"home-send\"], [data-part=\"home-composer-field\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "N7",
+  "name": "N7 hide persona chip + pills",
+  "css": "[data-part=\"home-pill\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "N8",
+  "name": "N8 hide the skip link permanently and the focus ring on every safe leaf",
+  "css": "[data-part=\"home-skip-link\"]{display:none} [data-part=\"home-rail-item\"]:focus-visible{outline:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "N9",
+  "name": "N9 remove focus ring on rail items and tasks button",
+  "css": "[data-part=\"home-tasks-button\"]:focus-visible{outline:0}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "N10",
+  "name": "N10 pointer-events none on the mode switch",
+  "css": "[data-part=\"home-mode-switch\"]{pointer-events:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "M1",
+  "name": "M1 move Send off screen by position",
+  "css": "[data-part=\"home-send\"]{position:absolute;left:-9999px}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "M2",
+  "name": "M2 move Send by transform",
+  "css": "[data-part=\"home-send\"]{transform:translateX(-9999px)}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "M3",
+  "name": "M3 move the rail by negative margin",
+  "css": "[data-part=\"home-rail\"]{margin-left:-9999px}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "M4",
+  "name": "M4 move the rail by inset on fixed",
+  "css": "[data-part=\"home-rail\"]{position:fixed;top:-9999px}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "M5",
+  "name": "M5 move a critical dialog child via a safe parent: translate home-dialog (reach)",
+  "css": "[data-part=\"home-dialog\"]{transform:translateY(100vh)}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "M6",
+  "name": "M6 translate property (not transform) on a safe leaf",
+  "css": "[data-part=\"home-send\"]{translate:-9999px 0}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "M7",
+  "name": "M7 margin-inline-start on mode switch",
+  "css": "[data-part=\"home-mode-switch\"]{margin-inline-start:-9999px}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "M8",
+  "name": "M8 order/grid-area trick to push composer note out: position the shell",
+  "css": "[data-part=\"home-shell\"]{display:grid;grid-template-columns:0 0}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "M9",
+  "name": "M9 font-size 0 on a safe leaf with text (Send label)",
+  "css": "[data-part=\"home-send\"]{font-size:0}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "M10",
+  "name": "M10 colour transparent on Send label",
+  "css": "[data-part=\"home-send\"]{color:transparent}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "M11",
+  "name": "M11 width 0 + overflow hidden on rail",
+  "css": "[data-part=\"home-rail\"]{width:0;overflow:hidden}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F1",
+  "name": "F1 control-height via 3-step var chain",
+  "css": ":root{--x1:var(--x2);--x2:var(--x3);--x3:6px;--home-control-height:var(--x1)}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F2",
+  "name": "F2 control-height under touch attribute",
+  "css": "html[data-input=\"touch\"]{--home-control-height:8px}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F3",
+  "name": "F3 control-height under @media (max-width)",
+  "css": "@media (max-width:400px){:root{--home-control-height:8px}}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F4",
+  "name": "F4 control-height under @container",
+  "css": "@container page (max-width:500px){:root{--home-control-height:8px}}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F5",
+  "name": "F5 control-height via calc multiply by 0",
+  "css": ":root{--z:0;--home-control-height:calc(44px * var(--z))}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F6",
+  "name": "F6 control-height via min()",
+  "css": ":root{--home-control-height:min(2px, 44px)}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F7",
+  "name": "F7 control-height via clamp()",
+  "css": ":root{--home-control-height:clamp(1px, 1px, 2px)}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F8",
+  "name": "F8 control-height via unresolved var fallback",
+  "css": ":root{--home-control-height:var(--nope, 3px)}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F9",
+  "name": "F9 hover-control under data-layout=phone",
+  "css": "html[data-layout=\"phone\"]{--home-hover-control:4px; --home-touch:4px}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F10",
+  "name": "F10 row-height in rem",
+  "css": ":root{--home-row-height:0.1rem}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F11",
+  "name": "F11 control-height under @supports",
+  "css": "@supports (display:grid){:root{--home-control-height:5px}}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F12",
+  "name": "F12 control-height under @layer",
+  "css": "@layer pack{:root{--home-control-height:5px}}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F13",
+  "name": "F13 control-height via body[data-mode] token",
+  "css": "body[data-mode=\"hybrid\"]{--home-control-height:5px}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F14",
+  "name": "F14 control-height via nested CSS",
+  "css": ":root{ & {--home-control-height:5px} }",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F15",
+  "name": "F15 pill-height under forced-colors",
+  "css": "@media (forced-colors:active){:root{--home-pill-height:4px}}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F16",
+  "name": "F16 control-height via @property initial-value",
+  "css": "@property --home-control-height{syntax:\"<length>\";inherits:true;initial-value:3px}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F17",
+  "name": "F17 control-height via env()",
+  "css": ":root{--home-control-height:env(safe-area-inset-top, 3px)}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F18",
+  "name": "F18 focus ring width 0 via var chain",
+  "css": ":root{--w:0px;--home-focus-w:var(--w)}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F19",
+  "name": "F19 focus-w via attr touch + @media prefers-contrast",
+  "css": "@media (prefers-contrast:more){html[data-input=\"touch\"]{--home-focus-w:0px}}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "F20",
+  "name": "F20 tap-ms behavior token huge via chain",
+  "css": ":root{--t:9000ms;--home-tap-ms:var(--t)}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "C1",
+  "name": "C1 text equals canvas through chain",
+  "css": ":root{--b:var(--nexus-canvas);--nexus-text:var(--b)}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "C2",
+  "name": "C2 danger transparent",
+  "css": ":root{--nexus-danger:transparent}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "C3",
+  "name": "C3 danger via color-mix",
+  "css": ":root{--nexus-danger:color-mix(in srgb, #fff 3%, #000)}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "C4",
+  "name": "C4 text under prefers-color-scheme",
+  "css": "@media (prefers-color-scheme:dark){:root{--nexus-text:#111}}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "C5",
+  "name": "C5 ring invisible under data-power=low",
+  "css": "html[data-power=\"low\"]{--nexus-ring:transparent}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "C6",
+  "name": "C6 canvas change under data-motion",
+  "css": "html[data-motion=\"reduced\"]{--nexus-canvas:#fff}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "C7",
+  "name": "C7 field border zero",
+  "css": ":root{--nexus-field-border:rgb(0 0 0 / .01)}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "C8",
+  "name": "C8 text via light-dark()",
+  "css": ":root{--nexus-text:light-dark(#000, #010101)}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "R1",
+  "name": "R1 url() on a safe leaf",
+  "css": "[data-part=\"home-greeting\"]{background:url(https://example.invalid/x.png)}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "R2",
+  "name": "R2 @import",
+  "css": "@import url(\"https://example.invalid/x.css\");",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "R3",
+  "name": "R3 content text on a safe leaf pseudo-element",
+  "css": "[data-part=\"home-send\"]::after{content:\"Delete everything\"}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "R4",
+  "name": "R4 fake critical text overlay: ::before on home-main covering",
+  "css": "[data-part=\"home-main\"]::before{content:\"\";position:fixed;inset:0;background:#000}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "R5",
+  "name": "R5 safe leaf as full-screen overlay (position fixed inset 0 on home-network)",
+  "css": "[data-part=\"home-network\"]{position:fixed;inset:0;z-index:99;background:#000;pointer-events:auto}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "R6",
+  "name": "R6 a safe leaf with huge z-index overlapping a dialog trigger (home-scrim)",
+  "css": "[data-part=\"home-drawer-scrim\"]{position:fixed;inset:0;z-index:9999;display:block}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "R7",
+  "name": "R7 animation on a safe leaf making it flash",
+  "css": "[data-part=\"home-brand\"]{animation:blink .05s infinite alternate}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "R8",
+  "name": "R8 transition on the mode thumb",
+  "css": "[data-part=\"home-mode-thumb\"]{transition:all 4s}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "S1",
+  "name": "S1 descendant of a critical part through a safe ancestor",
+  "css": "[data-part=\"home-library\"] button{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "S2",
+  "name": "S2 native-tag selector under reach tier",
+  "css": "[data-part=\"home-main\"] dialog{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "S3",
+  "name": "S3 select the native radio input of the mode switch",
+  "css": "[data-part=\"home-mode-option\"] input{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "S4",
+  "name": "S4 select by id (#leave)",
+  "css": "#leave{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "S5",
+  "name": "S5 select by class .glass hide",
+  "css": ".glass{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "S6",
+  "name": "S6 :has() hide of a container holding a critical child",
+  "css": "[data-part=\"home-library\"]:has([data-part=\"home-trash-empty\"]){display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "S7",
+  "name": "S7 dialog backdrop pseudo on dialogs",
+  "css": "dialog::backdrop{background:#fff}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "S8",
+  "name": "S8 attribute-state hide of critical via :not()",
+  "css": ":not([data-part-critical]) > [data-part=\"home-confirm-actions\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "S9",
+  "name": "S9 html/body level hide",
+  "css": "body{overflow:hidden;height:0}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "S10",
+  "name": "S10 touch-action none on main",
+  "css": "[data-part=\"home-main\"]{touch-action:none}",
+  "source": "reviews/home-rereview/hostile-packs.json"
+ },
+ {
+  "id": "K1",
+  "name": "K1 --nexus-danger: color-mix(in srgb, #fff 3%, #000)",
+  "css": ":root{--nexus-danger:color-mix(in srgb, #fff 3%, #000)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K2",
+  "name": "K2 --nexus-danger: oklch(0.1 0 0)",
+  "css": ":root{--nexus-danger:oklch(0.1 0 0)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K3",
+  "name": "K3 --nexus-text: black",
+  "css": ":root{--nexus-text:black}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K4",
+  "name": "K4 --nexus-text: hsl(0 0% 5%)",
+  "css": ":root{--nexus-text:hsl(0 0% 5%)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K5",
+  "name": "K5 --nexus-text: rgb(from var(--nexus-canvas) r g b)",
+  "css": ":root{--nexus-text:rgb(from var(--nexus-canvas) r g b)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K6",
+  "name": "K6 --nexus-text: currentcolor",
+  "css": ":root{--nexus-text:currentcolor}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K7",
+  "name": "K7 --nexus-text: inherit",
+  "css": ":root{--nexus-text:inherit}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K8",
+  "name": "K8 --nexus-text: color(srgb 0 0 0.1)",
+  "css": ":root{--nexus-text:color(srgb 0 0 0.1)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K9",
+  "name": "K9 --nexus-text: light-dark(#000, #010101)",
+  "css": ":root{--nexus-text:light-dark(#000, #010101)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K10",
+  "name": "K10 --nexus-text-secondary: color-mix(in srgb, #000 90%, #fff)",
+  "css": ":root{--nexus-text-secondary:color-mix(in srgb, #000 90%, #fff)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K11",
+  "name": "K11 --nexus-text-muted: oklab(0.1 0 0)",
+  "css": ":root{--nexus-text-muted:oklab(0.1 0 0)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K12",
+  "name": "K12 --nexus-ring: color-mix(in srgb, #000 90%, #fff)",
+  "css": ":root{--nexus-ring:color-mix(in srgb, #000 90%, #fff)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K13",
+  "name": "K13 --nexus-ring: transparent",
+  "css": ":root{--nexus-ring:transparent}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K14",
+  "name": "K14 --nexus-ring: rgb(var(--nexus-canvas-rgb))",
+  "css": ":root{--nexus-ring:rgb(var(--nexus-canvas-rgb))}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K15",
+  "name": "K15 --color-surface-sheet: transparent",
+  "css": ":root{--color-surface-sheet:transparent}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K16",
+  "name": "K16 --color-surface-sheet: color-mix(in srgb, #fff 50%, #000)",
+  "css": ":root{--color-surface-sheet:color-mix(in srgb, #fff 50%, #000)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K17",
+  "name": "K17 --nexus-canvas: color-mix(in srgb, #fff 80%, #000)",
+  "css": ":root{--nexus-canvas:color-mix(in srgb, #fff 80%, #000)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K18",
+  "name": "K18 --nexus-warm: hwb(0 0% 100%)",
+  "css": ":root{--nexus-warm:hwb(0 0% 100%)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K19",
+  "name": "K19 --nexus-field-border: color-mix(in srgb, #000 5%, #fff)",
+  "css": ":root{--nexus-field-border:color-mix(in srgb, #000 5%, #fff)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K20",
+  "name": "K20 --home-on-accent: color-mix(in srgb, var(--nexus-accent) 100%, #000)",
+  "css": ":root{--home-on-accent:color-mix(in srgb, var(--nexus-accent) 100%, #000)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K21",
+  "name": "K21 --nexus-text: lch(5 0 0)",
+  "css": ":root{--nexus-text:lch(5 0 0)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K22",
+  "name": "K22 --nexus-danger: rgb(255 255 255 / calc(0.1 * 1))",
+  "css": ":root{--nexus-danger:rgb(255 255 255 / calc(0.1 * 1))}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K23",
+  "name": "K23 --nexus-surface-raised: color-mix(in srgb, white 90%, black)",
+  "css": ":root{--nexus-surface-raised:color-mix(in srgb, white 90%, black)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "K24",
+  "name": "K24 --nexus-edge-strong: transparent",
+  "css": ":root{--nexus-edge-strong:transparent}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "L1",
+  "name": "L1 outline none on a safe leaf :focus-visible",
+  "css": "[data-part=\"home-rail-item\"]:focus-visible{outline:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "L2",
+  "name": "L2 outline-color transparent on Send",
+  "css": "[data-part=\"home-send\"]:focus-visible{outline-color:transparent}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "L3",
+  "name": "L3 outline-width 0 on composer field :focus",
+  "css": "[data-part=\"home-composer-field\"]:focus{outline-width:0}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "L4",
+  "name": "L4 composer-field box-shadow none on :focus-within",
+  "css": "[data-part=\"home-composer\"]:focus-within{box-shadow:none;border-color:transparent}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "L5",
+  "name": "L5 outline-offset huge",
+  "css": "[data-part=\"home-send\"]:focus-visible{outline-offset:900px}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "L6",
+  "name": "L6 outline style none on mode option",
+  "css": "[data-part=\"home-mode-option\"]:focus-within{outline-style:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "L7",
+  "name": "L7 tabindex-like: pointer-events none + visibility on menu button",
+  "css": "[data-part=\"home-menu-button\"]{visibility:hidden}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H1",
+  "name": "H1 Send { opacity:0 }",
+  "css": "[data-part=\"home-send\"]{opacity:0}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H2",
+  "name": "H2 Send { visibility:hidden }",
+  "css": "[data-part=\"home-send\"]{visibility:hidden}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H3",
+  "name": "H3 Send { display:none }",
+  "css": "[data-part=\"home-send\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H4",
+  "name": "H4 Send { display:contents }",
+  "css": "[data-part=\"home-send\"]{display:contents}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H5",
+  "name": "H5 Send { width:0;padding:0;overflow:hidden;border:0 }",
+  "css": "[data-part=\"home-send\"]{width:0;padding:0;overflow:hidden;border:0}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H6",
+  "name": "H6 Send { height:0;padding:0;overflow:hidden }",
+  "css": "[data-part=\"home-send\"]{height:0;padding:0;overflow:hidden}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H7",
+  "name": "H7 Send { max-width:0;overflow:hidden }",
+  "css": "[data-part=\"home-send\"]{max-width:0;overflow:hidden}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H8",
+  "name": "H8 Send { line-height:0;font-size:0 }",
+  "css": "[data-part=\"home-send\"]{line-height:0;font-size:0}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H9",
+  "name": "H9 Send { text-indent:-9999px;overflow:hidden }",
+  "css": "[data-part=\"home-send\"]{text-indent:-9999px;overflow:hidden}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H10",
+  "name": "H10 Send { clip:rect(0,0,0,0) }",
+  "css": "[data-part=\"home-send\"]{clip:rect(0,0,0,0)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H11",
+  "name": "H11 Send { content-visibility:hidden }",
+  "css": "[data-part=\"home-send\"]{content-visibility:hidden}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H12",
+  "name": "H12 Send { contain:strict }",
+  "css": "[data-part=\"home-send\"]{contain:strict}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H13",
+  "name": "H13 Send { scale:0 }",
+  "css": "[data-part=\"home-send\"]{scale:0}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H14",
+  "name": "H14 Send { rotate:90deg }",
+  "css": "[data-part=\"home-send\"]{rotate:90deg}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H15",
+  "name": "H15 Send { zoom:0 }",
+  "css": "[data-part=\"home-send\"]{zoom:0}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H16",
+  "name": "H16 Send { filter:opacity(0) }",
+  "css": "[data-part=\"home-send\"]{filter:opacity(0)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H17",
+  "name": "H17 Send { mask:none }",
+  "css": "[data-part=\"home-send\"]{mask:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H18",
+  "name": "H18 Send { mix-blend-mode:difference }",
+  "css": "[data-part=\"home-send\"]{mix-blend-mode:difference}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H19",
+  "name": "H19 Send { background:transparent;color:transparent;border-color:transparent }",
+  "css": "[data-part=\"home-send\"]{background:transparent;color:transparent;border-color:transparent}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H20",
+  "name": "H20 Send { pointer-events:none }",
+  "css": "[data-part=\"home-send\"]{pointer-events:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H21",
+  "name": "H21 Send { user-select:none }",
+  "css": "[data-part=\"home-send\"]{user-select:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H22",
+  "name": "H22 Send { cursor:none }",
+  "css": "[data-part=\"home-send\"]{cursor:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H23",
+  "name": "H23 Send { z-index:-1 }",
+  "css": "[data-part=\"home-send\"]{z-index:-1}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H24",
+  "name": "H24 Send { position:relative;left:-9999px }",
+  "css": "[data-part=\"home-send\"]{position:relative;left:-9999px}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H25",
+  "name": "H25 Send { position:relative;top:9999px }",
+  "css": "[data-part=\"home-send\"]{position:relative;top:9999px}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H26",
+  "name": "H26 Send { inset:-9999px }",
+  "css": "[data-part=\"home-send\"]{inset:-9999px}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H27",
+  "name": "H27 Send { margin-top:-9999px }",
+  "css": "[data-part=\"home-send\"]{margin-top:-9999px}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H28",
+  "name": "H28 Send { margin-block-start:-9999px }",
+  "css": "[data-part=\"home-send\"]{margin-block-start:-9999px}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H29",
+  "name": "H29 Send { margin:-64px }",
+  "css": "[data-part=\"home-send\"]{margin:-64px}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H30",
+  "name": "H30 Send { padding-left:9999px }",
+  "css": "[data-part=\"home-send\"]{padding-left:9999px}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H31",
+  "name": "H31 Send { float:right }",
+  "css": "[data-part=\"home-send\"]{float:right}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H32",
+  "name": "H32 Send { order:99 }",
+  "css": "[data-part=\"home-send\"]{order:99}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H33",
+  "name": "H33 Send { grid-area:9/9 }",
+  "css": "[data-part=\"home-send\"]{grid-area:9/9}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H34",
+  "name": "H34 Send { flex:0 0 0 }",
+  "css": "[data-part=\"home-send\"]{flex:0 0 0}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H35",
+  "name": "H35 Send { overflow:clip }",
+  "css": "[data-part=\"home-send\"]{overflow:clip}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H36",
+  "name": "H36 Send { transform-origin:0 0 }",
+  "css": "[data-part=\"home-send\"]{transform-origin:0 0}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H37",
+  "name": "H37 Send { perspective:1px }",
+  "css": "[data-part=\"home-send\"]{perspective:1px}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H38",
+  "name": "H38 Send { clip-path:circle(0) }",
+  "css": "[data-part=\"home-send\"]{clip-path:circle(0)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H39",
+  "name": "H39 Send { backdrop-filter:blur(100px) }",
+  "css": "[data-part=\"home-send\"]{backdrop-filter:blur(100px)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H40",
+  "name": "H40 Send { font-size:1px }",
+  "css": "[data-part=\"home-send\"]{font-size:1px}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H41",
+  "name": "H41 Send { letter-spacing:-9px }",
+  "css": "[data-part=\"home-send\"]{letter-spacing:-9px}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H42",
+  "name": "H42 Send { word-spacing:-99px }",
+  "css": "[data-part=\"home-send\"]{word-spacing:-99px}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H43",
+  "name": "H43 Send { text-overflow:clip;white-space:nowrap;max-width:1px;overflow:hidden }",
+  "css": "[data-part=\"home-send\"]{text-overflow:clip;white-space:nowrap;max-width:1px;overflow:hidden}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H44",
+  "name": "H44 Send { appearance:none;background:none }",
+  "css": "[data-part=\"home-send\"]{appearance:none;background:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H45",
+  "name": "H45 Send { transition:none }",
+  "css": "[data-part=\"home-send\"]{transition:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H46",
+  "name": "H46 Send { color:var(--nexus-canvas) }",
+  "css": "[data-part=\"home-send\"]{color:var(--nexus-canvas)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H47",
+  "name": "H47 Send { background:var(--nexus-text);color:var(--nexus-text) }",
+  "css": "[data-part=\"home-send\"]{background:var(--nexus-text);color:var(--nexus-text)}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H48",
+  "name": "H48 Send { -webkit-text-fill-color:transparent }",
+  "css": "[data-part=\"home-send\"]{-webkit-text-fill-color:transparent}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H49",
+  "name": "H49 Send { writing-mode:vertical-rl;width:1px }",
+  "css": "[data-part=\"home-send\"]{writing-mode:vertical-rl;width:1px}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H50",
+  "name": "H50 Send { direction:rtl;unicode-bidi:bidi-override }",
+  "css": "[data-part=\"home-send\"]{direction:rtl;unicode-bidi:bidi-override}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H51",
+  "name": "H51 Send { text-shadow:0 0 99px #000 }",
+  "css": "[data-part=\"home-send\"]{text-shadow:0 0 99px #000}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H52",
+  "name": "H52 Send { font-family:\"Wingdings\" }",
+  "css": "[data-part=\"home-send\"]{font-family:\"Wingdings\"}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H53",
+  "name": "H53 Send { font-variant:small-caps;font-size:1px }",
+  "css": "[data-part=\"home-send\"]{font-variant:small-caps;font-size:1px}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "H54",
+  "name": "H54 Send { text-transform:uppercase;font-size:0 }",
+  "css": "[data-part=\"home-send\"]{text-transform:uppercase;font-size:0}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "V1",
+  "name": "V1 menu button { display:none }",
+  "css": "[data-part=\"home-menu-button\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "W1",
+  "name": "W1 rail item { display:none }",
+  "css": "[data-part=\"home-rail-item\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "T1",
+  "name": "T1 tasks button { display:none }",
+  "css": "[data-part=\"home-tasks-button\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "V2",
+  "name": "V2 menu button { opacity:0 }",
+  "css": "[data-part=\"home-menu-button\"]{opacity:0}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "W2",
+  "name": "W2 rail item { opacity:0 }",
+  "css": "[data-part=\"home-rail-item\"]{opacity:0}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "T2",
+  "name": "T2 tasks button { opacity:0 }",
+  "css": "[data-part=\"home-tasks-button\"]{opacity:0}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "V3",
+  "name": "V3 menu button { visibility:hidden }",
+  "css": "[data-part=\"home-menu-button\"]{visibility:hidden}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "W3",
+  "name": "W3 rail item { visibility:hidden }",
+  "css": "[data-part=\"home-rail-item\"]{visibility:hidden}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "T3",
+  "name": "T3 tasks button { visibility:hidden }",
+  "css": "[data-part=\"home-tasks-button\"]{visibility:hidden}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "V4",
+  "name": "V4 menu button { font-size:0;width:0;overflow:hidden }",
+  "css": "[data-part=\"home-menu-button\"]{font-size:0;width:0;overflow:hidden}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "W4",
+  "name": "W4 rail item { font-size:0;width:0;overflow:hidden }",
+  "css": "[data-part=\"home-rail-item\"]{font-size:0;width:0;overflow:hidden}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "T4",
+  "name": "T4 tasks button { font-size:0;width:0;overflow:hidden }",
+  "css": "[data-part=\"home-tasks-button\"]{font-size:0;width:0;overflow:hidden}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "V5",
+  "name": "V5 menu button { color:transparent;background:transparent;border-color:transparent }",
+  "css": "[data-part=\"home-menu-button\"]{color:transparent;background:transparent;border-color:transparent}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "W5",
+  "name": "W5 rail item { color:transparent;background:transparent;border-color:transparent }",
+  "css": "[data-part=\"home-rail-item\"]{color:transparent;background:transparent;border-color:transparent}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "T5",
+  "name": "T5 tasks button { color:transparent;background:transparent;border-color:transparent }",
+  "css": "[data-part=\"home-tasks-button\"]{color:transparent;background:transparent;border-color:transparent}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "G1",
+  "name": "G1 hide menu button on phone via html[data-layout] descendant",
+  "css": "html[data-layout=\"phone\"] [data-part=\"home-menu-button\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "G2",
+  "name": "G2 hide rail under @media (max-width:767px)",
+  "css": "@media (max-width:767px){[data-part=\"home-rail\"]{display:none}}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "G3",
+  "name": "G3 hide Send under @media (hover:none)",
+  "css": "@media (hover:none){[data-part=\"home-send\"]{display:none}}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "G4",
+  "name": "G4 hide mode switch under @media (prefers-reduced-motion:reduce)",
+  "css": "@media (prefers-reduced-motion:reduce){[data-part=\"home-mode-switch\"]{display:none}}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "G5",
+  "name": "G5 hide tasks button under html[data-power=low]",
+  "css": "html[data-power=\"low\"] [data-part=\"home-tasks-button\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "G6",
+  "name": "G6 hide run stop under html[data-motion=reduced]",
+  "css": "html[data-motion=\"reduced\"] [data-part=\"home-run-stop\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "G7",
+  "name": "G7 hide rail under @media print",
+  "css": "@media print{[data-part=\"home-rail\"]{display:none}}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "G8",
+  "name": "G8 hide menu button under @media (forced-colors:active)",
+  "css": "@media (forced-colors:active){[data-part=\"home-menu-button\"]{display:none}}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "G9",
+  "name": "G9 hide skip link",
+  "css": "[data-part=\"home-skip-link\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "G10",
+  "name": "G10 hide the tasks panel stop+retry: run-actions (reach tier)",
+  "css": "[data-part=\"home-run-actions\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "G11",
+  "name": "G11 home-dialog-action hidden (reach tier)",
+  "css": "[data-part=\"home-dialog-action\"]{display:none}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "G12",
+  "name": "G12 home-run-card hidden (reach tier)",
+  "css": "[data-part=\"home-run-card\"]{opacity:0}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ },
+ {
+  "id": "G13",
+  "name": "G13 home-tasks-panel hidden",
+  "css": "[data-part=\"home-tasks-panel\"]{visibility:hidden}",
+  "source": "reviews/home-rereview/hostile-packs2.json"
+ }
+]

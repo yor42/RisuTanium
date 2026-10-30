@@ -1,0 +1,44 @@
+/* ORIGIN NAVY (the maintainer's pack name; the colours are upstream's default scheme, a charcoal-slate with a blue cast, DD-150), a rough acceptance probe of the theming contract (THEMING.md, DD-142): tokens only, no part CSS, no selectors but :root.
+   A nod to upstream's own palette. Source values (read-only reference, src/ts/gui/colorscheme.ts in this clone):
+     defaultColorScheme  :26 bgcolor #282a36   :27 darkbg #21222c   :28 borderc #6272a4   :29 selected #44475a   :30 draculared #ff5555   :31 textcolor #f8f8f2   :32 textcolor2 #64748b   :33 darkBorderc #4b5563
+     "galaxy" scheme     :77 bgcolor #0f172a (the navy)   :79 borderc #8be9fd (the cyan accent)
+   Choices that are mine, not upstream's: #ffb86c as the warm colour (the palette's own family, not in colorscheme.ts); the two lighter greys for secondary and muted text
+   (upstream's textcolor2 #64748b is about 2.9:1 on #282a36, below AA for body text); the send button gradient.
+   Loaded by ?theme=origin-navy (theme.js). Not a finished pack. */
+:root {
+  /* shared Deep Nexus tokens (../../theme/nexus-tokens.css) */
+  --nexus-canvas: #21222c;                    /* darkbg :27 */
+  --nexus-canvas-bloom: #282a36;              /* bgcolor :26 */
+  --nexus-canvas-warm: transparent;           /* upstream has no warm bloom */
+  --nexus-surface: rgb(98 114 164 / 0.1);     /* borderc :28 at 10% */
+  --nexus-surface-raised: rgb(98 114 164 / 0.22);
+  --nexus-surface-flat: #282a36;              /* bgcolor :26 */
+  --nexus-edge: rgb(98 114 164 / 0.32);
+  --nexus-edge-strong: #6272a4;               /* borderc :28 */
+  --nexus-field-border: var(--nexus-edge-strong);  /* the pack keeps its own field border (DD-160 moved the default only) */
+  --color-placeholder: var(--nexus-text-secondary);   /* and its own placeholder colour */
+  --nexus-text: #f8f8f2;                      /* textcolor :31 */
+  --nexus-text-secondary: #c3c9de;
+  --nexus-text-muted: #9aa5c8;
+  --nexus-accent-rgb: 139 233 253;            /* galaxy borderc :79; stated once as channels (DD-146): the solid and every accent tint follow */
+  --nexus-accent: rgb(var(--nexus-accent-rgb));
+  --nexus-ring: #8be9fd;
+  --nexus-core-from: #6272a4;                 /* send button */
+  --nexus-core-to: #44475a;                   /* selected :29 */
+  --nexus-warm: #ffb86c;
+  --nexus-warm-from: #ffb86c;
+  --nexus-warm-to: #ffd9a8;
+
+  /* chat tokens (theme-tokens.css) */
+  --nexus-danger-rgb: 255 85 85;              /* draculared :30, once; --danger and every danger tint follow */
+  --nexus-danger: rgb(var(--nexus-danger-rgb));
+  --color-surface-sheet: #21222c;
+  --color-surface-bar: #2f3140;
+  --color-surface-toast: #343746;
+  --color-surface-kbd: #1e1f29;
+  --color-key: #44475a;
+  --color-syntax-keyword: #bd93f9;
+  --radius-control: 8px;                      /* upstream's controls are less round than Deep Nexus */
+  --radius-sheet: 12px;
+  --radius-popup: 10px;
+}

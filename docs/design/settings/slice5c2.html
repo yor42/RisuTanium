@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>설정 슬라이스 5c-2 · 데이터·백업, 고급, 언어 목업 (Settings slice 5c-2 mockup)</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="../theme/nexus-tokens.css">
+<!-- the shared warning and task-progress pattern, in the order patterns/README.md gives; loaded, never copied -->
+<link rel="stylesheet" href="../theme/pattern-tokens.css">
+<link rel="stylesheet" href="../brand/nexus-mark.css">
+<link rel="stylesheet" href="../patterns/pattern.css">
+<link rel="stylesheet" href="../patterns/motion.css">
+<link rel="stylesheet" href="theme-tokens.css">
+<link rel="stylesheet" href="slice1.css">
+<link rel="stylesheet" href="slice2.css">
+<link rel="stylesheet" href="slice3.css">
+<link rel="stylesheet" href="slice4.css">
+<link rel="stylesheet" href="slice5a.css">
+<link rel="stylesheet" href="slice5b.css">
+<link rel="stylesheet" href="slice5c1.css">
+<link rel="stylesheet" href="slice5c2.css">
+<script src="theme.js"></script>
+</head>
+<body class="nexus-canvas">
+<a href="#page" class="skip" id="skip">본문으로 건너뛰기</a>
+<div class="app" id="app" data-part="settings-frame">
+  <!-- Origin stub: a minimal chat / home / studio screen that Settings replaces and returns to -->
+  <section class="origin" id="origin" data-part="settings-origin" aria-label="Origin"></section>
+
+  <!-- Settings (full page at every width, DS-009) -->
+  <div class="settings" id="settings" data-part="settings-shell" hidden>
+    <header class="hdr" id="hdr" data-part="settings-header" role="banner">
+      <button type="button" class="btn back" id="backBtn" data-part="settings-button"></button>
+      <div class="hdr-title" id="hdrTitleBox"><div class="h-title" id="hdrTitle"></div><span class="sub" id="hdrSub"></span></div>
+      <div class="search" id="searchBox" data-part="settings-search">
+        <span class="s-ic" aria-hidden="true"></span>
+        <input id="q" type="text" role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" autocomplete="off" spellcheck="false" enterkeyhint="search">
+        <button type="button" class="btn s-clear" id="qClear" data-part="settings-button" hidden></button>
+      </div>
+      <button type="button" class="btn" id="searchOpen" data-part="settings-button"></button>
+    </header>
+    <div class="body" id="body" data-part="settings-body" data-view="index">
+      <nav class="index" id="index" data-part="settings-index" aria-label="설정 메뉴">
+        <p class="banner warn idx-notice" id="idxNotice" data-part="settings-warning-banner" data-part-critical role="status" hidden></p>
+        <ul id="indexList"></ul>
+      </nav>
+      <main class="page" id="page" data-part="settings-page" aria-labelledby="pgTitle">
+        <div class="pagescroll" id="pageScroll"></div>
+      </main>
+      <section class="results" id="results" data-part="settings-results" aria-label="검색 결과" hidden>
+        <div class="res-scroll" id="resScroll"></div>
+      </section>
+      <div class="index-foot" id="indexFoot" data-part="settings-index-foot"></div>
+    </div>
+  </div>
+
+  <div class="sr-only" id="live" role="status" aria-live="polite"></div>
+  <div class="toast" id="toast" data-part="settings-toast" role="status" aria-live="polite"></div>
+  <div id="layer"></div>
+</div>
+
+<!-- Demo controls (collapsed) -->
+<button type="button" class="btn demo-btn" id="demoBtn" aria-expanded="false" aria-controls="demoPanel"></button>
+<div class="demo-panel" id="demoPanel" role="region" hidden></div>
+
+<script src="../mockups/nexusMark.iife.js"></script>
+<script src="../patterns/pattern.js"></script>
+<script src="data.js"></script>
+<script src="data2.js"></script>
+<script src="data3.js"></script>
+<script src="data4.js"></script>
+<script src="data5a.js"></script>
+<script src="data5b.js"></script>
+<script src="data5c1.js"></script>
+<script src="data5c2.js"></script>
+<script src="slice2.js"></script>
+<script src="slice3.js"></script>
+<script src="slice4.js"></script>
+<script src="slice5a.js"></script>
+<script src="slice5b.js"></script>
+<script src="slice5c1.js"></script>
+<script src="slice5c2.js"></script>
+<script src="slice1.js"></script>
+</body>
+</html>

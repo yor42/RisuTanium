@@ -1,0 +1,2 @@
+/* NEGATIVE fixture: hides the save-failed retry. Must be rejected. */
+[data-part="settings-save-retry"] { visibility: hidden; }

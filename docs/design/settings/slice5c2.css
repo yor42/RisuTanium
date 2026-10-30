@@ -1,0 +1,96 @@
+/* Settings slice 5c-2 (데이터·백업, 고급, 언어) styles. Loaded after slice1.css .. slice5c1.css and after the pattern's own stylesheets. Synthetic mockup; not proof of native behaviour or performance.
+   Only transform and opacity are ever transitioned or animated (checks/ss5c2/modes.mjs scans for it). No backdrop blur anywhere. No literal colour, size, radius, shadow or duration in a component rule (0, 1px and layout percentages excepted): every value is a token.
+   Floor devices (Note 9 / Android 10 WebView, Raspberry Pi 3): no `inset` property, no flex `gap` (margins instead; grid-gap on grids), :focus rings with a :focus-visible fallback rule, no :is / :where / :has, no min() / max() / clamp().
+   The role tokens below are new in slice 5c-2 and live here, not in theme-tokens.css, so the earlier slices and their suites are untouched; the main session merges them into the shared Settings token block (SLICE5C2_SPEC Appendix).
+   A pack sets them on :root like any other role token; every size token has a ceiling and a floor, --p5c2-bar a floor of 2px (checks/th5c2/registry5c2.mjs, DD-182, DD-195, DD-260).
+   The pattern's own parts (pattern-*) are styled by patterns/pattern.css and motion.css; nothing here names them. The only pattern token this file sets is the stacking order: Settings' own toast sits at 96 and its menus at 90, so the sheet layer is raised above them (patterns/README.md 8). */
+:root {
+  --p5c2-bar: var(--stroke-xheavy);                 /* the edge bar of a chosen option and a ticked script (4px; floor 2px, ceiling 12px) */
+  --p5c2-snap-max: var(--size-rel-x10);             /* the tallest the snapshot list gets before it scrolls (18rem; floor 128px, ceiling 480px) */
+  --p5c2-log-max: var(--size-rel-x8);               /* the tallest the request log gets before it scrolls (14rem; floor 96px, ceiling 480px) */
+  --p5c2-ban-min: var(--size-rel-x5);               /* the narrowest a script option of the ban list gets (10rem; floor 96px, ceiling 240px) */
+  --p5c2-lift: var(--size-rel-x2);                  /* how far Settings' toast rises on a phone or tablet while the pattern's task chip is showing (5.5rem; floor 32px, ceiling 240px) */
+  --settings-warn-edge-width: var(--pattern-warn-edge-width);   /* the restart banner is a caution: its edge is the pattern's, so the page and the sheet speak with one warning edge (DD-217) */
+  --settings-warn-edge: var(--pattern-warn-edge-caution);
+  --pattern-z-layer: 97;
+  --pattern-z-toast: 98;
+}
+
+/* blocks that are not catalogue rows sit inside the rows frame with the rows' own side padding */
+.p5c2 .rows > *:not(.row) { margin-left: var(--settings-row-padding-start); margin-right: var(--settings-row-padding-end); }
+.p5c2 .rows > *:first-child:not(.row) { margin-top: var(--space-7); }
+.p5c2 .rows > *:last-child:not(.row) { margin-bottom: var(--space-7); }
+.p5c2 .p5c2-h3 { margin: var(--space-7) var(--settings-row-padding-end) var(--space-3) var(--settings-row-padding-start); }
+.p5c2-calm { margin-top: var(--space-5); }
+
+/* ---------- rows that open a sheet or start an operation ---------- */
+.p5c2-oprow .r-lw { display: flex; flex-wrap: wrap; align-items: center; }
+.p5c2-oprow .r-text { display: flex; flex-direction: column; min-width: 0; }
+.p5c2-oprow .rl-end { display: flex; align-items: center; }
+.p5c2-oprow .rl-txt { margin-right: var(--space-5); }
+.p5c2-dim .rl { opacity: var(--param-dim-opacity); cursor: default; }
+.p5c2-dim .p5b-reason { margin: 0 var(--settings-row-padding-end) var(--space-5) var(--settings-row-padding-start); }
+.p5c2 .rows > .p5c2-seban { margin-top: var(--space-5); margin-bottom: var(--space-5); padding: 0; }
+
+/* ---------- the backup sheet: format and scope as radio cards ---------- */
+.p5c2-choices { border: 0; padding: 0; margin: 0 0 var(--space-8); min-width: 0; }
+.p5c2-opt { display: flex; align-items: flex-start; margin: 0 0 var(--space-5); padding: var(--space-7) var(--space-8); min-height: var(--size-touch); border: 1px solid var(--nexus-edge); border-radius: var(--radius-card); background: var(--nexus-surface); cursor: pointer; }
+.p5c2-opt.cur { border-color: var(--nexus-accent); box-shadow: inset var(--p5c2-bar) 0 0 var(--nexus-accent); }
+.p5c2-opt .p5c-rad { margin-top: var(--space-2); }
+.p5c2-optb { display: flex; flex-direction: column; min-width: 0; }
+.p5c2-optn { font-weight: var(--font-weight-semibold); color: var(--nexus-text); }
+.p5c2-optd { color: var(--nexus-text-secondary); font-size: var(--font-size-sm); word-break: keep-all; overflow-wrap: anywhere; }
+.p5c2-bknotes { margin-top: var(--space-7); }
+.p5c2-bknotes > * { margin-bottom: var(--space-5); }
+
+/* ---------- automatic snapshots ---------- */
+.p5c2-snaps { list-style: none; margin: var(--space-7) 0 0; padding: 0; max-height: var(--p5c2-snap-max); overflow-y: auto; }
+.p5c2-snaps li { margin: 0 0 var(--space-5); }
+.p5c2-snap { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; width: 100%; min-height: var(--size-touch); padding: var(--space-7) var(--space-8); text-align: left; font: inherit; color: var(--nexus-text); background: var(--nexus-surface); border: 1px solid var(--nexus-edge); border-radius: var(--radius-card); cursor: pointer; }
+.p5c2-snap:hover { background: var(--color-hover-card); }
+.p5c2-snd, .p5c2-snm { display: flex; flex-wrap: wrap; align-items: center; }
+.p5c2-snabs { font-weight: var(--font-weight-semibold); }
+.p5c2-snrel { margin-left: var(--space-7); color: var(--nexus-text-secondary); font-size: var(--font-size-sm); }
+.p5c2-snsafe { margin-left: var(--space-7); }
+.p5c2-snm { color: var(--nexus-text-secondary); font-size: var(--font-size-md); }
+.p5c2-snm > span + span::before { content: "·"; margin: 0 var(--space-5); }
+.p5c2-empty { margin: var(--space-8) 0; color: var(--nexus-text-secondary); }
+
+/* ---------- tables, the log, a short list (dialogs) ---------- */
+.p5c2-table { width: 100%; border-collapse: collapse; margin: var(--space-7) 0; font-size: var(--font-size-md); }
+.p5c2-table th, .p5c2-table td { padding: var(--space-5) var(--space-7); text-align: left; border-bottom: 1px solid var(--nexus-edge); }
+.p5c2-table thead th { color: var(--nexus-text-secondary); font-size: var(--font-size-sm); font-weight: var(--font-weight-bold); }
+.p5c2-table tbody th { font-weight: var(--font-weight-semibold); overflow-wrap: anywhere; }
+.p5c2-log { margin: var(--space-7) 0 0; padding: var(--space-7) var(--space-8); max-height: var(--p5c2-log-max); overflow: auto; font-family: var(--mono); font-size: var(--font-size-sm); color: var(--nexus-text); background: var(--color-field); border: 1px solid var(--nexus-edge); border-radius: var(--radius-5); white-space: pre; }
+.p5c2-log:focus, .p5c2-snap:focus { outline: var(--focus-ring-w) solid var(--nexus-ring); outline-offset: var(--focus-ring-offset); }
+.p5c2-log:focus:not(:focus-visible), .p5c2-snap:focus:not(:focus-visible) { outline: none; }
+.p5c2-list { margin: var(--space-7) 0; padding-left: var(--space-16); }
+.p5c2-list li { margin: 0 0 var(--space-3); color: var(--nexus-text-secondary); }
+
+/* ---------- the restart banner (after a restore) ---------- */
+.p5c2-restart { display: flex; flex-wrap: wrap; align-items: center; border-left-width: var(--settings-warn-edge-width); border-left-color: var(--settings-warn-edge); }
+.p5c2-rt { flex: 1 1 var(--size-rel-x5); display: flex; flex-direction: column; min-width: 0; }
+.p5c2-rt strong { color: var(--nexus-text); font-weight: var(--font-weight-bold); }
+.p5c2-rt span { color: var(--nexus-text-secondary); }
+.p5c2-restart .btn { margin-left: var(--space-7); }
+
+/* ---------- 고급: the gate sections, the ban list ---------- */
+.p5c2-gsec .p5b-details { margin: var(--space-7) var(--settings-row-padding-end) var(--space-7) var(--settings-row-padding-start); }
+.p5c2-ban { border: 0; padding: 0; margin: var(--space-7) var(--settings-row-padding-end) var(--space-7) var(--settings-row-padding-start); min-width: 0; }
+.p5c2-bandesc, .p5c2-bancount { margin: 0 0 var(--space-5); color: var(--nexus-text-secondary); font-size: var(--font-size-sm); }
+.p5c2-bangrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--p5c2-ban-min), 1fr)); grid-gap: var(--space-5); }
+.p5c2-banopt { display: flex; align-items: center; min-height: var(--size-touch); padding: var(--space-3) var(--space-7); border: 1px solid var(--nexus-edge); border-radius: var(--radius-card); background: var(--nexus-surface); cursor: pointer; }
+.p5c2-banopt.cur { border-color: var(--nexus-accent); box-shadow: inset var(--p5c2-bar) 0 0 var(--nexus-accent); }
+.p5c2-banopt .p5c-chk { margin-right: var(--space-5); }
+.p5c2-banb { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+.p5c2-bannm { font-size: var(--font-size-md); color: var(--nexus-text); word-break: keep-all; overflow-wrap: anywhere; }
+.p5c2-bansample { color: var(--nexus-text-secondary); font-size: var(--font-size-sm); }
+
+/* ---------- 언어: the line that says when a language applies ---------- */
+.p5c2-langnote { display: flex; flex-wrap: wrap; align-items: center; margin: var(--space-5) var(--settings-row-padding-end) var(--space-7) var(--settings-row-padding-start); color: var(--nexus-text-secondary); font-size: var(--font-size-md); }
+.p5c2-langnote .ic { flex: none; margin-right: var(--space-5); }
+.p5c2-langnote.ok .ic { color: var(--color-success); }
+.p5c2-reopen { margin-left: var(--space-7); }
+
+/* ---------- Settings' own toast above the pattern's task chip (phone and tablet) ---------- */
+html[data-layout="phone"] .ps-toast.p5c2-lift, html[data-layout="mid"] .ps-toast.p5c2-lift { bottom: calc(var(--offset-20) + var(--p5c2-lift)); }

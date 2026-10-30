@@ -1,0 +1,177 @@
+/* Chat toggles panel mockup styles (TOGGLES_SPEC.md, DD-077..DD-080). Synthetic mockup; not proof of native behaviour or performance.
+   Builds on nexus-tokens.css, slice1.css and slice2.css. Only transform and opacity are transitioned or animated. No blur filters. */
+
+/* ---------- hosts: the shared sheet on narrow screens, a docked 400 px panel on wide ones ---------- */
+.sheet.tgp-sheet .grab h2 { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.sheet.tgp-sheet .grab { padding-bottom: 0; }
+.is-desktop .sheet.panel.tgp-sheet .grab { display: none; }
+.tgp-body { padding: 0 !important; overflow: hidden !important; display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
+.tgd { flex: 0 0 var(--sheet-width-dock); width: var(--sheet-width-dock); min-height: 0; display: flex; flex-direction: column; background: var(--color-surface-sheet); border-left: 1px solid var(--nexus-edge-strong); animation: tgd-in var(--chat-dur-base) var(--chat-ease-out) both; }
+.tgd[inert] .tgp-list { opacity: 1; }
+@keyframes tgd-in { from { opacity: 0; transform: translateX(var(--size-8)); } to { opacity: 1; transform: none; } }
+@keyframes tgd-fade { from { opacity: 0; } to { opacity: 1; } }
+html.rm .tgd { animation-name: tgd-fade; animation-duration: var(--chat-dur-fast); }
+html.nexus-low-power .tgd { animation: none; }
+.tgp { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
+
+/* ---------- title bar, search row ---------- */
+.tgp-head { flex: none; display: flex; align-items: center; gap: var(--space-7); min-height: var(--size-25); padding: 0 var(--space-3) 0 var(--space-11); }
+.tgp-head h2 { font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); }
+.tgp-tag[hidden] { display: none; }
+.tgp-flash { margin-left: auto; font-size: var(--font-size-xs); color: var(--nexus-accent); min-width: 0; text-align: right; }
+.tgp-x { flex: none; }
+.tgp-pin { flex: none; display: flex; align-items: center; gap: var(--space-7); padding: var(--space-3) var(--space-8) var(--space-7); border-bottom: 1px solid var(--nexus-edge); }
+.tgp-search { position: relative; flex: 1; min-width: 0; }
+.tgp-search input { width: 100%; min-height: var(--size-touch); padding: 0 var(--space-21) 0 var(--space-19); border-radius: var(--radius-8); border: 1px solid var(--nexus-field-border); background: var(--color-field); color: inherit; font: inherit; -webkit-appearance: none; appearance: none; }
+.tgp-search input::-webkit-search-cancel-button { display: none; }
+.tgp-search input:focus-visible { outline: var(--focus-ring-w) solid var(--nexus-ring); outline-offset: 1px; }
+.tgp-sic { position: absolute; left: var(--offset-8); top: 50%; transform: translateY(-50%); color: var(--nexus-text-secondary); pointer-events: none; display: flex; }
+.tgp-clear { position: absolute; right: 0; top: 0; }
+.tgp-chip { flex: none; min-height: var(--size-touch); padding: 0 var(--space-11); gap: var(--space-5); border: 1px solid var(--nexus-edge-strong); border-radius: var(--radius-pill); font-size: var(--font-size-sm); white-space: nowrap; }
+.tgp-chip[aria-pressed="true"] { border-color: var(--nexus-accent); color: var(--nexus-accent); background: var(--color-accent-tint); }
+.tgp-chip[aria-pressed="true"] span::before { content: "✓ "; }
+.tgp-res { flex: none; padding: var(--space-3) var(--space-12) 0; font-size: var(--font-size-xs); color: var(--nexus-text-secondary); }
+
+/* ---------- list, scope row ---------- */
+.tgp-list { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--space-5) calc(var(--space-16) + env(safe-area-inset-bottom, 0px)); outline: none; }
+.tgp-scope { padding: var(--space-5) var(--space-3) var(--space-7); }
+.tgp-scsw { padding: 0 var(--space-7); min-height: var(--size-touch-lg); }
+.tgp-note { padding: 0 var(--space-7) var(--space-3) var(--space-7); font-size: var(--font-size-sm); color: var(--nexus-text-secondary); line-height: var(--leading-135); }
+.tgp-undo { margin: var(--space-3) var(--space-3) 0; }
+.tgp-sec { padding-bottom: var(--space-5); }
+.tgp-sec + .tgp-sec { border-top: 1px solid var(--nexus-edge); }
+.tgp-sh { position: sticky; top: 0; z-index: 3; background: var(--color-surface-sheet); margin: 0; }
+.tgp-sbtn { width: 100%; justify-content: flex-start; gap: var(--space-8); min-height: var(--size-touch-lg); padding: 0 var(--space-7); text-align: left; border-radius: var(--radius-6); font-size: var(--font-size-base); }
+.tgp-sbtn.static { cursor: default; display: flex; align-items: center; }
+.tgp-sn { font-weight: var(--font-weight-semibold); flex: none; }
+.tgp-ss { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-xs); color: var(--nexus-text-muted); }
+.tgp-cnt { margin-left: auto; flex: none; font-size: var(--font-size-xs); color: var(--nexus-text-secondary); font-weight: var(--font-weight-regular); padding-left: var(--space-7); }
+.tgp-kic { color: var(--nexus-text-secondary); }
+.tgp-star { color: var(--nexus-warm); }
+.tgp-chev { flex: none; color: var(--nexus-text-secondary); transition: transform var(--chat-dur-fast) var(--chat-ease-out); }
+[aria-expanded="false"] > .tgp-chev, [aria-expanded="false"] .tgp-chev { transform: rotate(var(--angle-start)); }
+.tgp-sbtn[aria-disabled="true"], .tgp-gbtn[aria-disabled="true"] { opacity: 1; cursor: default; }
+.tgp-sbtn[aria-disabled="true"] .tgp-chev, .tgp-gbtn[aria-disabled="true"] .tgp-chev { opacity: var(--opacity-subtle); }
+.tgp-gh { margin: 0; }
+.tgp-gbtn { width: 100%; justify-content: flex-start; gap: var(--space-7); min-height: var(--size-touch); padding: 0 var(--space-7) 0 var(--space-13); text-align: left; font-size: var(--font-size-md); border-radius: var(--radius-6); }
+.tgp-gbtn .tgp-sn { font-weight: var(--font-weight-medium); }
+.tgp-grows { padding-left: var(--space-8); border-left: var(--stroke-bold) solid var(--nexus-edge); margin-left: var(--space-10); }
+.tgp-capt { padding: var(--space-3) var(--space-8) var(--space-5); font-size: var(--font-size-sm); color: var(--nexus-text-secondary); }
+.tgp-div { display: flex; align-items: center; gap: var(--space-8); padding: var(--space-7) var(--space-8) var(--space-1); font-size: var(--font-size-xs); color: var(--nexus-text-secondary); text-transform: none; }
+.tgp-div::after { content: ""; flex: 1; border-top: 1px solid var(--nexus-edge-strong); }
+.tgp-rows.enter, .tgp-grows.enter { animation: tg-enter var(--chat-dur-base) var(--chat-ease-out) both; }
+@keyframes tg-enter { from { opacity: 0; transform: translateY(calc(var(--size-3) * -1)); } to { opacity: 1; transform: none; } }
+html.rm .tgp-rows.enter, html.rm .tgp-grows.enter, html.nexus-low-power .tgp-rows.enter, html.nexus-low-power .tgp-grows.enter { animation: none; }
+[data-flip].flipping { transition: transform var(--chat-dur-base) var(--chat-ease-out); }
+html.rm [data-flip].flipping, html.nexus-low-power [data-flip].flipping { transition: none; }
+html.rm .tgp-chev, html.nexus-low-power .tgp-chev { transition: none; }
+
+/* ---------- rows: 48 dp minimum, label left, control right ---------- */
+.tg-row { display: grid; grid-template-columns: 1fr auto; align-items: center; min-height: var(--size-25); position: relative; content-visibility: auto; contain-intrinsic-size: auto var(--size-27); border-radius: var(--radius-6); }
+.tg-row.tgseg { grid-template-areas: "hit more" "seg seg"; }
+.tg-row.tgseg .tg-hit { grid-area: hit; } .tg-row.tgseg .tg-more { grid-area: more; } .tg-row.tgseg .tg-segw { grid-area: seg; }
+.tg-row.editing { grid-template-columns: 1fr; }
+.tg-hit { display: flex; align-items: center; gap: var(--space-8); min-height: var(--size-25); padding: var(--space-5) var(--space-3) var(--space-5) var(--space-7); width: 100%; text-align: left; justify-content: flex-start; border-radius: var(--radius-6); font-size: var(--font-size-base); position: relative; }
+.tg-hit.sw { font-size: var(--font-size-base); padding-right: 0; }
+.tg-hit.sw .sw-ui { order: 2; margin-left: var(--space-3); }
+.tg-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); text-align: left; order: 1; }
+.tg-line { display: flex; align-items: flex-start; gap: var(--space-7); min-width: 0; }
+.tg-dot { flex: none; width: var(--size-3); height: var(--size-3); border-radius: var(--radius-circle); background: var(--nexus-accent); margin-top: var(--size-rel-3); visibility: hidden; }
+.changed > .tg-hit .tg-dot, .changed .tg-static .tg-dot { visibility: visible; }
+.tg-name { min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; line-height: var(--leading-135); }
+.tg-starred { display: none; flex: none; color: var(--nexus-warm); margin-top: var(--size-rel-2); }
+.tg-row.starred .tg-starred { display: inline-flex; }
+.tg-meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-7); align-items: center; padding-left: var(--space-11); font-size: var(--font-size-xs); color: var(--nexus-text-secondary); min-width: 0; }
+.tg-crumb { color: var(--nexus-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.tg-dup { display: inline-flex; align-items: center; gap: var(--space-3); color: var(--nexus-text-secondary); }
+.tg-chat { padding: 0 var(--space-6); border: 1px solid var(--nexus-accent); border-radius: var(--radius-pill); color: var(--nexus-accent); font-size: var(--font-size-2xs); line-height: var(--leading-150); font-weight: var(--font-weight-medium); }
+.tg-val { flex: none; order: 2; display: inline-flex; align-items: center; gap: var(--space-5); max-width: 46%; color: var(--nexus-text-secondary); font-size: var(--font-size-sm); }
+.tg-vt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--nexus-text); }
+.tg-vt.empty { color: var(--nexus-text-muted); }
+.tg-val.textarea .tg-vt { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-align: right; max-width: var(--size-rel-16); }
+.tg-more { grid-column: 2; min-width: var(--size-touch); min-height: var(--size-touch); padding: 0; color: var(--nexus-text-secondary); opacity: 0; }
+html.touch-ui .tg-more { opacity: var(--opacity-near); }
+.tg-row:hover .tg-more, .tg-row:focus-within .tg-more, .tg-more:focus-visible, .tg-more[aria-expanded="true"] { opacity: 1; }
+.tg-row.hl::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius-6); border: var(--stroke-bold) solid var(--nexus-accent); pointer-events: none; animation: tg-hl var(--dur-highlight) var(--chat-ease-out) both; }
+@keyframes tg-hl { 0% { opacity: 1; } 100% { opacity: 0; } }
+html.rm .tg-row.hl::after, html.nexus-low-power .tg-row.hl::after { animation: none; opacity: 1; }
+.tg-segw { display: flex; gap: var(--space-5); padding: 0 var(--space-7) var(--space-7) var(--space-7); }
+.tg-segw .btn { flex: 1; min-width: 0; min-height: var(--size-touch); border: 1px solid var(--nexus-edge-strong); padding: 0 var(--space-5); font-size: var(--font-size-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-segw .btn[aria-checked="true"] { box-shadow: inset 0 calc(var(--stroke-heavy) * -1) 0 var(--nexus-accent); background: var(--nexus-surface-raised); }
+.tg-edit { grid-column: 1 / -1; display: grid; gap: var(--space-3); padding: var(--space-5) var(--space-7) var(--space-7); }
+.tg-edit label, .tg-ed-l { font-size: var(--font-size-sm); color: var(--nexus-text-secondary); }
+.tg-edit input, .tg-ta { width: 100%; padding: var(--space-7) var(--space-8); border-radius: var(--radius-6); border: 1px solid var(--nexus-accent); background: var(--color-field); color: inherit; font: inherit; min-height: var(--size-touch); }
+.tg-editor { padding: var(--space-7) var(--space-11) var(--space-11); display: grid; gap: var(--space-5); }
+.tg-ta { min-height: var(--size-37); resize: vertical; border-color: var(--nexus-edge-strong); }
+.tg-ta:focus-visible, .tg-edit input:focus-visible { outline: var(--focus-ring-w) solid var(--nexus-ring); outline-offset: 1px; }
+.tg-editor .confirm-row { position: static; border-top: 0; padding: var(--space-3) 0 0; background: none; }
+
+/* favourites, empty, no results */
+.tgp-favs { padding-bottom: var(--space-7); }
+.tgp-favs .tg-meta .tg-crumb { color: var(--nexus-text-secondary); }
+.tgp-empty { display: grid; justify-items: center; gap: var(--space-7); text-align: center; padding: var(--space-24) var(--space-16); color: var(--nexus-text-secondary); }
+.tgp-empty h3 { font-size: var(--font-size-xl); color: var(--nexus-text); } .tgp-empty p { font-size: var(--font-size-md); max-width: var(--size-rel-19); }
+.tgp-eic { color: var(--nexus-text-muted); }
+.tgp-nomatch { display: grid; justify-items: center; gap: var(--space-8); text-align: center; padding: var(--space-20) var(--space-12); }
+.tgp-nomatch h3 { font-size: var(--font-size-lg); }
+.tgp-nm-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-7); }
+.tgp-nm { min-height: var(--size-touch); padding: 0 var(--space-11); gap: var(--space-5); border: 1px solid var(--nexus-edge-strong); border-radius: var(--radius-pill); font-size: var(--font-size-md); }
+
+/* ---------- the This chat sheet summary row ---------- */
+.tg-sum { min-height: var(--size-touch-lg); height: auto; padding-top: var(--space-3); padding-bottom: var(--space-3); }
+.tg-sum .l { gap: var(--space-3) var(--space-10); flex-wrap: wrap; flex: 1; min-width: 0; }
+.tg-sum .l > span:first-of-type { white-space: nowrap; flex: none; }
+.tg-sum .l .s2-scope { margin-left: var(--space-1); flex: none; }
+.tg-sum .r { white-space: nowrap; }
+
+/* ---------- + sheet: toggles item and favourite chips ---------- */
+.item .tg-plusval { margin-left: auto; font-size: var(--font-size-sm); color: var(--nexus-text-secondary); white-space: nowrap; }
+.tg-chips { padding: var(--space-7) var(--space-5) var(--space-5); border-top: 1px solid var(--nexus-edge); margin-top: var(--space-3); }
+.tg-chips-h { font-size: var(--font-size-xs); color: var(--nexus-text-secondary); padding: 0 var(--space-3) var(--space-5); }
+.tg-chiprow { display: flex; flex-wrap: wrap; gap: var(--space-5); }
+.tg-chip2 { min-height: var(--size-touch); padding: 0 var(--space-10); gap: var(--space-5); border: 1px solid var(--nexus-edge-strong); border-radius: var(--radius-pill); font-size: var(--font-size-sm); max-width: 100%; }
+.tg-chip2.on { border-color: var(--nexus-accent); background: var(--color-accent-tint-strong); color: var(--nexus-text); }
+.tg-chip2 .tg-cl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: var(--size-rel-18); }
+.tg-chip2 .tg-chk { display: inline-flex; width: var(--size-7); justify-content: center; color: var(--nexus-accent); }
+.tg-chip2:not(.on) .tg-chk:empty { display: none; }
+.tg-chip2:focus-visible { outline: var(--focus-ring-w) solid var(--nexus-ring); outline-offset: var(--focus-ring-offset); }
+
+/* ---------- forced colours: borders and Highlight instead of tints ---------- */
+@media (forced-colors: active) {
+  .tgd, .tgp-head, .tgp-pin, .tgp-sh { background: Canvas; }
+  .tgd { border-left: 1px solid CanvasText; }
+  .tgp-search input, .tg-edit input, .tg-ta, .tgp-chip, .tg-segw .btn, .tg-chip2, .tgp-nm { border: 1px solid CanvasText; }
+  .tgp-chip[aria-pressed="true"], .tg-chip2.on, .tg-segw .btn[aria-checked="true"] { border: var(--stroke-bold) solid Highlight; background: Canvas; color: CanvasText; forced-color-adjust: none; }
+  .tg-segw .btn[aria-checked="true"] { box-shadow: none; }
+  .tg-dot { background: Highlight; forced-color-adjust: none; }
+  .tg-chat { border: 1px solid Highlight; color: CanvasText; }
+  .tgp-sec + .tgp-sec, .tgp-sh, .tgp-grows { border-color: CanvasText; }
+  .tgp-div::after { border-color: CanvasText; }
+  .tg-row:focus-within { outline: 1px solid CanvasText; }
+  .tg-hit:focus-visible, .tgp-sbtn:focus-visible, .tgp-gbtn:focus-visible { outline: var(--focus-ring-w-forced) solid Highlight; outline-offset: var(--focus-ring-offset); }
+  .tg-row.hl::after { border-color: Highlight; }
+  .tg-starred, .tgp-star { color: CanvasText; }
+}
+
+/* ---------- fix round (review F-05..F-11, DD-081) ---------- */
+.tgp-pill { display: inline-flex; align-items: center; min-height: var(--size-touch); padding: 0 var(--space-1); border: 0; background: none; font: inherit; cursor: pointer; color: var(--nexus-accent); }
+.tgp-pill .pl { display: inline-flex; align-items: center; gap: var(--space-3); min-height: var(--size-14); padding: 0 var(--space-8); border: 1px solid var(--nexus-accent); border-radius: var(--radius-pill); background: var(--color-accent-tint); font-size: var(--font-size-xs); font-weight: var(--font-weight-medium); }
+.tgp-pill:focus-visible .pl { outline: var(--focus-ring-w) solid var(--nexus-ring); outline-offset: var(--focus-ring-offset); }
+.tgp-hint { padding: var(--space-8) var(--space-10) var(--space-3); font-size: var(--font-size-xs); line-height: var(--leading-140); color: var(--nexus-text-secondary); }
+.tg-chat { font-size: var(--font-size-xs); }
+.tg-dup.warn { color: var(--color-warning); }
+/* two short options: the segmented control sits on the label's line when it fits (F-09) */
+.tg-row.tgseg.inline { grid-template-columns: 1fr auto auto; grid-template-areas: "hit seg more"; }
+.tg-row.tgseg.inline .tg-segw { padding: 0 var(--space-1) 0 0; }
+.tg-row.tgseg.inline .tg-segw .btn { flex: none; min-width: var(--size-25); }
+/* floor WebViews (Android 10 / Chrome < 84, Chrome < 85 for content-visibility): content-visibility is ignored (rows just render), flex gap falls back to margins */
+@supports not (gap: 1px) {
+  .tg-segw > * + *, .tg-chiprow > *, .tg-meta > * { margin: 0 var(--space-5) var(--space-3) 0; }
+  .tg-line > * + * { margin-left: var(--space-7); } .tgp-sbtn > * + *, .tg-hit > * + * { margin-left: var(--space-8); }
+}
+@media (forced-colors: active) { .tgp-pill .pl { border: 1px solid Highlight; color: CanvasText; background: Canvas; forced-color-adjust: none; } .tg-dup.warn { color: CanvasText; } }
+
+/* ---------- final round: keyboard hint under the search row, only for a fine pointer (slice 1's html.hover-ui); moved slice 2 rows ---------- */
+.tgp-hint { display: none; flex: none; padding: var(--space-1) var(--space-11) var(--space-5); margin: 0; border-bottom: 1px solid var(--nexus-edge); }
+html.hover-ui .tgp-hint { display: block; }
+.tg-moved { margin-left: var(--space-7); align-self: center; flex: none; }

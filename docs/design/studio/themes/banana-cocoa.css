@@ -1,0 +1,108 @@
+/* BANANA COCOA probe for Studio, slices 1-4 (THEMING.md, DD-142, DD-200): a light, warm look: a blue-grey canvas, white panels, cocoa text accents and banana-yellow selection. Colours are stated once as channels (DD-146).
+   Studio is a tool, not a messenger, so the "rearranged layout" of the chat probe becomes bubble-like rows: round, banana-filled selection in the tree, step bubbles in the history, a pill save chip, white rounded cards.
+   Tokens first; part CSS only on safe leaf parts (data-part selectors, DD-144 / DD-153 data-* states); no protected surface (data-part-critical, studio-critical-*, studio-undo-toast*, studio-alert-banner*, studio-restore-list*,
+   studio-tgb-carry*, studio-risky*, ...) is named, so they take the tokens and keep their structure (DD-149). The file passes checks/th4/packlint-studio.mjs. DOM order never changes.
+   Loaded by ?theme=banana-cocoa (st4-theme.js) on slice1.html to slice4.html. Not a finished pack. */
+:root {
+  color-scheme: light;
+
+  /* canvas and surfaces */
+  --nexus-canvas: #b2c7da;
+  --nexus-canvas-bloom: transparent;
+  --nexus-canvas-warm: transparent;
+  --nexus-surface: rgb(255 255 255 / 0.55);
+  --nexus-surface-raised: rgb(254 229 0 / 0.38);
+  --nexus-surface-flat: #ffffff;
+  --nexus-edge: rgb(0 0 0 / 0.1);
+  --nexus-edge-strong: rgb(0 0 0 / 0.4);
+  --nexus-field-border: var(--nexus-edge-strong);
+  --color-placeholder: var(--nexus-text-secondary);
+  --color-surface-sheet: #ffffff;
+  --color-surface-toast: #fffbe0;
+  --alpha-switch-off: 0.4;
+
+  /* text */
+  --nexus-text: #191919;
+  --nexus-text-secondary: #3c4650;
+  --nexus-text-muted: #46505b;
+
+  /* accent (cocoa), warm identity colour, danger */
+  --nexus-accent-rgb: 107 63 24;
+  --nexus-accent: rgb(var(--nexus-accent-rgb));
+  --nexus-ring: #3a2412;
+  --nexus-core-from: #fee500;
+  --nexus-core-to: #ffd400;
+  --nexus-warm: #5a4632;
+  --nexus-warm-from: #fff0a0;
+  --nexus-warm-to: #ffd84a;
+  --nexus-danger-rgb: 140 16 24;
+  --nexus-danger: rgb(var(--nexus-danger-rgb));
+  --nexus-overlay-rgb: 0 0 0;
+  --nexus-shade-rgb: 0 0 0;
+  --radius-sheet: 16px;
+
+  /* slices 1-3: Studio-only channels, on-colours, editor wells and syntax, all dark-on-light */
+  --nexus-warning-rgb: 138 90 0;
+  --studio-ok-rgb: 20 110 80;
+  --studio-info-rgb: 30 80 170;
+  --studio-ring-rgb: 58 36 18;
+  --studio-warm-rgb: 90 70 50;
+  --studio-canvas-rgb: 255 255 255;
+  --studio-sheet-rgb: 255 255 255;
+  --studio-muted-rgb: 70 80 91;
+  --studio-well-rgb: 255 255 255;
+  --studio-on-accent: #ffffff;
+  --studio-on-danger: #ffffff;
+  --studio-on-warning: #ffffff;
+  --studio-knob: #ffffff;
+  --studio-lt-bg: #fffdf2;
+  --studio-gutter-bg: #f3efd8;
+  --studio-tgb-gutter-bg: #f3efd8;
+  --studio-popup-bg: #ffffff;
+  --studio-strip-bg: #fff6c2;
+  --studio-syn-keyword: #5b3fa0;
+  --studio-syn-argument: #1b5e8a;
+  --studio-syn-string: #7a5200;
+  --studio-diff-del: #9b1c1c;
+  --studio-diff-add: #0b6b3a;
+  --studio-lt-hl-1: #3f4fb0;
+  --studio-lt-hl-4: #7a3fa0;
+  --studio-lt-hl-5: #46505b;
+  --studio-lt-hl-6: #0b6b3a;
+  --studio-lt-hl-9: #7a5200;
+  --studio-lt-hl-10: #1b5e8a;
+  --studio-lt-hl-7: #8a5a00;
+  --studio-lt-hl-8: #1e50aa;
+  --studio-syn-operator: #8a4b00;
+  --studio-syn-macro: #6b3f18;
+  --studio-syn-decorator: #0b6b3a;
+
+  /* role tokens: round, roomy rows */
+  --studio-radius-row: 18px;
+  --studio-radius-card: 18px;
+}
+
+/* the tree: banana pill for the selected row, owners in cocoa */
+[data-part="studio-tree-row"] { border-radius: var(--studio-radius-pill); }
+[data-part="studio-tree-row"][data-selected] { background: #fee500; color: #191919; }
+[data-part="studio-tree-row"][data-kind="owner"] { font-weight: 600; }
+
+/* the save chip: a pill */
+/* the save chip is protected (a failed save is a data-loss cue): it takes the tokens only, no part rule (review M2) */
+
+/* history steps as bubbles; the current one is banana, steps that were undone are dashed */
+[data-part="studio-history-step"] { border-radius: var(--studio-radius-card); background: #ffffff; border: 1px solid var(--nexus-edge); }
+[data-part="studio-history-step"][data-current] { background: #fee500; }
+[data-part="studio-history-step"][data-future] { border-style: dashed; background: transparent; }
+
+/* search results, kind rows, tabs and field cards */
+[data-part="studio-search-result"] { border-radius: var(--studio-radius-card); }
+[data-part="studio-search-result"][data-selected] { background: #fee500; }
+[data-part="studio-kind-row"] { border-radius: var(--studio-radius-card); background: #ffffff; }
+[data-part="studio-side-tab"][data-selected] { background: #fee500; }
+[data-part="studio-field-control"] { border-radius: var(--studio-radius-card); }
+
+/* toggle builder rows and long-text cards */
+[data-part="studio-tgb-row"] { border-radius: var(--studio-radius-card); background: #ffffff; }
+[data-part="studio-tgb-row"][data-selected] { background: #fee500; }
+[data-part="studio-lt-card"] { border-radius: var(--studio-radius-card); background: #ffffff; }

@@ -1,0 +1,330 @@
+/* Studio tokens shared by slices 1-4 (THEMING.md rules 1-2, DD-142, DD-143, DD-145, DD-148, DD-200).
+   Loaded after ../theme/nexus-tokens.css and before the slice stylesheets. Shared Deep Nexus names (--nexus-*, --font, --color-surface-sheet, --color-surface-toast, --color-warning, --radius-field, --radius-sheet ...) are USED here and never redefined.
+   Everything Studio adds is prefixed --studio-. The role tokens are the contract a pack sets (DD-148); the ladders underneath are internal and the number in a ladder name is its Deep Nexus pixel value, so a pack must not set them.
+   The "shared with slice 4" block moved here unchanged from st4.css so slices 1-3 use the same names (one name, one meaning, DD-145). The generated sections come from checks/th/tokenize-studio.mjs (run once, then frozen). */
+:root {
+  --risu-animation-speed: 1;
+  color-scheme: dark;
+
+  /* ---- shared with slice 4 (moved from st4.css, unchanged) ---- */
+  --studio-space-1: 4px; --studio-space-2: 6px; --studio-space-3: 8px; --studio-space-4: 12px; --studio-space-5: 16px; --studio-space-6: 20px; --studio-space-7: 24px; --studio-space-8: 32px;
+  --studio-radius-1: 8px; --studio-radius-2: 12px; --studio-radius-3: 16px; --studio-radius-pill: 999px;
+  --studio-font-xs: 0.6875rem; --studio-font-sm: 0.75rem; --studio-font-md: 0.8125rem; --studio-font-base: 0.875rem; --studio-font-lg: 1rem; --studio-font-xl: 1.125rem;
+  --studio-weight-medium: 500; --studio-weight-strong: 600;
+  --studio-leading-tight: 1.3; --studio-leading-body: 1.55;
+  --studio-font-mono: ui-monospace, "Cascadia Mono", Consolas, "D2Coding", monospace;
+  --studio-alpha-1: 0.06; --studio-alpha-2: 0.1; --studio-alpha-3: 0.16; --studio-alpha-4: 0.28; --studio-alpha-5: 0.5; --studio-alpha-disabled: 0.45; --studio-alpha-dim: 0.7;
+  --studio-size-touch: 44px; --studio-size-icon-sm: 14px; --studio-size-hairline: 1px; --studio-size-ring: 2px; --studio-size-drop: 3px;
+  --studio-z-toast: 90;
+  --studio-angle-tile: 135deg; --studio-ratio-tall: 2 / 3; --studio-ratio-square: 1;
+  --studio-dur-fast: var(--nexus-duration-press); --studio-ease: var(--nexus-ease);
+
+  /* ---- studio-only channels (triplets) and solids: a pack states each once (DD-146). the warning channel is the shared --nexus-warning-rgb (DD-217) ---- */
+  --studio-ok-rgb: 94 234 212;
+  --studio-info-rgb: 138 180 255;
+  --studio-ring-rgb: 127 233 255;
+  --studio-warm-rgb: 255 179 138;
+  --studio-canvas-rgb: 0 1 28;
+  --studio-sheet-rgb: 14 15 42;
+  --studio-muted-rgb: 154 159 196;
+  --studio-well-rgb: 2 4 24;
+  --studio-ok: rgb(var(--studio-ok-rgb));
+  --studio-info: rgb(var(--studio-info-rgb));
+  --studio-lt-bg: #0a0b26;
+  --studio-lt-font-size: 15px;
+
+  /* ---- motion: durations follow the animation-speed setting; reduced motion and low power pull them in (rules below) ---- */
+  --studio-dur-quick: calc(120ms * var(--risu-animation-speed));
+  --studio-dur-base: calc(200ms * var(--risu-animation-speed));
+  --studio-ease-enter: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---- shell widths (the tree width is also written by the splitter) ---- */
+  --studio-tree-width: 280px;   /* the pack's default; the splitter writes the user's width to --studio-tree-user-width (M6) and falls back to this */
+  --studio-count-error-bg: var(--studio-tint-danger-25);   /* the tab's error count badge: a pack with a light tab fill sets a fainter tint (review m1) */
+  --studio-critical-min-width: 160px;   /* M3: a protected banner, Undo toast or question never gets narrower than this, whatever its ancestors' padding adds up to (capped by the viewport) */
+  --studio-side-width: 360px;
+
+  /* ---- role tokens a pack sets (DD-148): shell, tree, header, sheet, editor sizes and radii ---- */
+  --studio-code-card-min-height: var(--studio-sz-340px);
+  --studio-code-min-height: var(--studio-sz-260px);
+  --studio-content-max-width: var(--studio-sz-760px);
+  --studio-dialog-width: var(--studio-sz-460px);
+  --studio-gutter-width: var(--studio-sz-46px);
+  --studio-header-height: var(--studio-sz-48px);
+  --studio-menu-width: var(--studio-sz-300px);
+  --studio-radius-card: 14px;
+  --studio-radius-row: 10px;
+  --studio-search-width: var(--studio-sz-640px);
+  --studio-size-touch-lg: 48px;
+  --studio-size-touch-sm: 36px;
+  --studio-skip-hidden-offset: calc(var(--studio-sz-60px) * -1);
+  --studio-splitter-width: var(--studio-sz-6px);
+  --studio-tab-height: var(--studio-sz-40px);
+  --studio-toast-max-width: var(--studio-sz-520px);
+  --studio-tree-head-height: var(--studio-sz-40px);
+  --studio-tree-row-height: var(--studio-size-touch);
+  --studio-tree-row-height-fine: var(--studio-sz-32px);
+  --studio-tree-row-height-owner: var(--studio-size-touch-lg);
+  --studio-tree-row-height-owner-fine: var(--studio-sz-40px);
+
+  /* ---- studio-only colours (derived from the channels where one exists) ---- */
+  --studio-diff-add: #7ff0c8;
+  --studio-diff-del: #ff9aa9;
+  --studio-gutter-bg: #060824;
+  --studio-knob: #fff;
+  --studio-on-accent: var(--nexus-canvas);
+  --studio-on-danger: #1a0008;
+  --studio-on-warning: #1a1300;
+  --studio-popup-bg: #0e1030;
+  --studio-scrim: rgb(var(--nexus-shade-rgb));
+  --studio-strip-bg: #12143a;
+  --studio-syn-argument: #a5f3fc;
+  --studio-syn-decorator: var(--studio-ok);
+  --studio-syn-keyword: #c084fc;
+  --studio-syn-macro: var(--nexus-accent);
+  --studio-syn-operator: var(--nexus-warm);
+  --studio-syn-string: #fde68a;
+  --studio-tgb-gutter-bg: #0b0c26;
+  --studio-lt-hl-1: #8d9bff;
+  --studio-lt-hl-4: #d9b0ff;
+  --studio-lt-hl-5: #9a9fc4;
+  --studio-lt-hl-6: #7ee0a8;
+  --studio-lt-hl-7: var(--color-warning);
+  --studio-lt-hl-8: var(--studio-info);
+  --studio-lt-hl-9: #ffe08a;
+  --studio-lt-hl-10: #a9f0ff;
+
+  /* ---- tints: a channel with an alpha (a pack sets the channel once, DD-146) ---- */
+  --studio-tint-accent-1: rgb(var(--nexus-accent-rgb) / 0.1);
+  --studio-tint-info-1: rgb(var(--studio-info-rgb) / 0.1);
+  --studio-tint-accent-2: rgb(var(--nexus-accent-rgb) / 0.2);
+  --studio-tint-overlay-02: rgb(var(--nexus-overlay-rgb) / 0.02);
+  --studio-tint-accent-3: rgb(var(--nexus-accent-rgb) / 0.3);
+  --studio-tint-danger-3: rgb(var(--nexus-danger-rgb) / 0.3);
+  --studio-tint-overlay-03: rgb(var(--nexus-overlay-rgb) / 0.03);
+  --studio-tint-warning-3: rgb(var(--nexus-warning-rgb) / 0.3);
+  --studio-tint-accent-4: rgb(var(--nexus-accent-rgb) / 0.4);
+  --studio-tint-ok-4: rgb(var(--studio-ok-rgb) / 0.4);
+  --studio-tint-overlay-04: rgb(var(--nexus-overlay-rgb) / 0.04);
+  --studio-tint-ring-4: rgb(var(--studio-ring-rgb) / 0.4);
+  --studio-tint-accent-5: rgb(var(--nexus-accent-rgb) / 0.5);
+  --studio-tint-danger-5: rgb(var(--nexus-danger-rgb) / 0.5);
+  --studio-tint-info-5: rgb(var(--studio-info-rgb) / 0.5);
+  --studio-tint-overlay-05: rgb(var(--nexus-overlay-rgb) / 0.05);
+  --studio-tint-ring-5: rgb(var(--studio-ring-rgb) / 0.5);
+  --studio-tint-shade-5: rgb(var(--nexus-shade-rgb) / 0.5);
+  --studio-tint-warm-5: rgb(var(--studio-warm-rgb) / 0.5);
+  --studio-tint-warning-5: rgb(var(--nexus-warning-rgb) / 0.5);
+  --studio-tint-canvas-6: rgb(var(--studio-canvas-rgb) / 0.6);
+  --studio-tint-overlay-06: rgb(var(--nexus-overlay-rgb) / 0.06);
+  --studio-tint-shade-6: rgb(var(--nexus-shade-rgb) / 0.6);
+  --studio-tint-warm-6: rgb(var(--studio-warm-rgb) / 0.6);
+  --studio-tint-canvas-7: rgb(var(--studio-canvas-rgb) / 0.7);
+  --studio-tint-ok-07: rgb(var(--studio-ok-rgb) / 0.07);
+  --studio-tint-overlay-07: rgb(var(--nexus-overlay-rgb) / 0.07);
+  --studio-tint-ring-7: rgb(var(--studio-ring-rgb) / 0.7);
+  --studio-tint-warning-7: rgb(var(--nexus-warning-rgb) / 0.7);
+  --studio-tint-danger-08: rgb(var(--nexus-danger-rgb) / 0.08);
+  --studio-tint-info-08: rgb(var(--studio-info-rgb) / 0.08);
+  --studio-tint-muted-8: rgb(var(--studio-muted-rgb) / 0.8);
+  --studio-tint-overlay-08: rgb(var(--nexus-overlay-rgb) / 0.08);
+  --studio-tint-warning-08: rgb(var(--nexus-warning-rgb) / 0.08);
+  --studio-tint-accent-12: rgb(var(--nexus-accent-rgb) / 0.12);
+  --studio-tint-info-12: rgb(var(--studio-info-rgb) / 0.12);
+  --studio-tint-overlay-12: rgb(var(--nexus-overlay-rgb) / 0.12);
+  --studio-tint-accent-14: rgb(var(--nexus-accent-rgb) / 0.14);
+  --studio-tint-warning-14: rgb(var(--nexus-warning-rgb) / 0.14);
+  --studio-tint-accent-16: rgb(var(--nexus-accent-rgb) / 0.16);
+  --studio-tint-warning-16: rgb(var(--nexus-warning-rgb) / 0.16);
+  --studio-tint-danger-18: rgb(var(--nexus-danger-rgb) / 0.18);
+  --studio-tint-overlay-18: rgb(var(--nexus-overlay-rgb) / 0.18);
+  --studio-tint-ring-22: rgb(var(--studio-ring-rgb) / 0.22);
+  --studio-tint-danger-25: rgb(var(--nexus-danger-rgb) / 0.25);
+  --studio-tint-overlay-025: rgb(var(--nexus-overlay-rgb) / 0.025);
+  --studio-tint-warning-25: rgb(var(--nexus-warning-rgb) / 0.25);
+  --studio-tint-accent-28: rgb(var(--nexus-accent-rgb) / 0.28);
+  --studio-tint-ok-28: rgb(var(--studio-ok-rgb) / 0.28);
+  --studio-tint-ring-28: rgb(var(--studio-ring-rgb) / 0.28);
+  --studio-tint-warning-28: rgb(var(--nexus-warning-rgb) / 0.28);
+  --studio-tint-info-45: rgb(var(--studio-info-rgb) / 0.45);
+  --studio-tint-ok-45: rgb(var(--studio-ok-rgb) / 0.45);
+  --studio-tint-warm-45: rgb(var(--studio-warm-rgb) / 0.45);
+  --studio-tint-warning-45: rgb(var(--nexus-warning-rgb) / 0.45);
+  --studio-tint-canvas-55: rgb(var(--studio-canvas-rgb) / 0.55);
+  --studio-tint-danger-55: rgb(var(--nexus-danger-rgb) / 0.55);
+  --studio-tint-ring-55: rgb(var(--studio-ring-rgb) / 0.55);
+  --studio-tint-shade-55: rgb(var(--nexus-shade-rgb) / 0.55);
+  --studio-tint-warning-55: rgb(var(--nexus-warning-rgb) / 0.55);
+  --studio-tint-warning-62: rgb(var(--nexus-warning-rgb) / 0.62);
+  --studio-tint-well-72: rgb(var(--studio-well-rgb) / 0.72);
+  --studio-tint-canvas-75: rgb(var(--studio-canvas-rgb) / 0.75);
+  --studio-tint-sheet-92: rgb(var(--studio-sheet-rgb) / 0.92);
+
+  /* ---- ladder: spacing (internal; the number is the Deep Nexus pixel value) ---- */
+  --studio-sp-2px: 2px;
+  --studio-sp-3px: 3px;
+  --studio-sp-5px: 5px;
+  --studio-sp-7px: 7px;
+  --studio-sp-9px: 9px;
+  --studio-sp-10px: 10px;
+  --studio-sp-11px: 11px;
+  --studio-sp-14px: 14px;
+  --studio-sp-18px: 18px;
+  --studio-sp-22px: 22px;
+  --studio-sp-30px: 30px;
+  --studio-sp-40px: 40px;
+
+  /* ---- ladder: sizes and offsets ---- */
+  --studio-offscreen-distance: 9999px;
+  --studio-viewport-width: 100vw;
+  --studio-sz-1p2em: 1.2em;
+  --studio-sz-1p5em: 1.5em;
+  --studio-sz-1p5px: 1.5px;
+  --studio-sz-2px: 2px;
+  --studio-sz-3px: 3px;
+  --studio-sz-3p4em: 3.4em;
+  --studio-sz-3p5em: 3.5em;
+  --studio-sz-4px: 4px;
+  --studio-sz-4p5em: 4.5em;
+  --studio-sz-5em: 5em;
+  --studio-sz-6px: 6px;
+  --studio-sz-7px: 7px;
+  --studio-sz-7p5em: 7.5em;
+  --studio-sz-8em: 8em;
+  --studio-sz-8px: 8px;
+  --studio-sz-8vh: 8vh;
+  --studio-sz-12px: 12px;
+  --studio-sz-12vh: 12vh;
+  --studio-sz-14px: 14px;
+  --studio-sz-16ch: 16ch;
+  --studio-sz-16px: 16px;
+  --studio-sz-18px: 18px;
+  --studio-sz-20px: 20px;
+  --studio-sz-20p8px: 20.8px;
+  --studio-sz-22px: 22px;
+  --studio-sz-24px: 24px;
+  --studio-sz-26px: 26px;
+  --studio-sz-28ch: 28ch;
+  --studio-sz-28px: 28px;
+  --studio-sz-30vh: 30vh;
+  --studio-sz-32px: 32px;
+  --studio-sz-34px: 34px;
+  --studio-sz-36px: 36px;
+  --studio-sz-38px: 38px;
+  --studio-sz-38vh: 38vh;
+  --studio-sz-40px: 40px;
+  --studio-sz-44px: 44px;
+  --studio-sz-46px: 46px;
+  --studio-sz-46vh: 46vh;
+  --studio-sz-48px: 48px;
+  --studio-sz-52px: 52px;
+  --studio-sz-56px: 56px;
+  --studio-sz-56vh: 56vh;
+  --studio-sz-60px: 60px;
+  --studio-sz-64px: 64px;
+  --studio-sz-70px: 70px;
+  --studio-sz-72px: 72px;
+  --studio-sz-76px: 76px;
+  --studio-sz-80px: 80px;
+  --studio-sz-84px: 84px;
+  --studio-sz-88px: 88px;
+  --studio-sz-96px: 96px;
+  --studio-sz-120px: 120px;
+  --studio-sz-140px: 140px;
+  --studio-sz-150px: 150px;
+  --studio-sz-160px: 160px;
+  --studio-sz-188px: 188px;
+  --studio-sz-200px: 200px;
+  --studio-sz-220px: 220px;
+  --studio-sz-230px: 230px;
+  --studio-sz-260px: 260px;
+  --studio-sz-292px: 292px;
+  --studio-sz-300px: 300px;
+  --studio-sz-320px: 320px;
+  --studio-sz-340px: 340px;
+  --studio-sz-400px: 400px;
+  --studio-sz-430px: 430px;
+  --studio-sz-440px: 440px;
+  --studio-sz-460px: 460px;
+  --studio-sz-520px: 520px;
+  --studio-sz-640px: 640px;
+  --studio-sz-720px: 720px;
+  --studio-sz-760px: 760px;
+  --studio-sz-900px: 900px;
+  --studio-sz-1040px: 1040px;
+
+  /* ---- ladder: corner radii ---- */
+  --studio-rd-2px: 2px;
+  --studio-rd-3px: 3px;
+  --studio-rd-4px: 4px;
+  --studio-rd-5px: 5px;
+  --studio-rd-6px: 6px;
+  --studio-rd-7px: 7px;
+  --studio-rd-9px: 9px;
+  --studio-rd-11px: 11px;
+  --studio-rd-18px: 18px;
+  --studio-rd-20px: 20px;
+
+  /* ---- ladder: type ---- */
+  --studio-weight-bold: 700;
+  --studio-weight-regular: 400;
+  --studio-font-0p9375: 0.9375rem;
+  --studio-tracking-02: 0.02em;
+  --studio-fs-9px: 9px;
+  --studio-fs-10px: 10px;
+  --studio-fs-12px: 12px;
+  --studio-fs-13px: 13px;
+  --studio-lh-16px: 16px;
+  --studio-lh-18px: 18px;
+  --studio-lh-20px: 20px;
+  --studio-leading-120: 1.2;
+  --studio-leading-135: 1.35;
+  --studio-leading-140: 1.4;
+  --studio-leading-150: 1.5;
+  --studio-leading-160: 1.6;
+  --studio-leading-170: 1.7;
+
+  /* ---- ladder: stroke widths ---- */
+  --studio-ring-offset: 2px;
+  --studio-ring-offset-inset: -2px;
+  --studio-stroke-2px: 2px;
+  --studio-stroke-3px: 3px;
+
+  /* ---- ladder: shadow offsets and blurs ---- */
+  --studio-sh-10px: 10px;
+  --studio-sh-12px: 12px;
+  --studio-sh-16px: 16px;
+  --studio-sh-24px: 24px;
+  --studio-sh-28px: 28px;
+  --studio-sh-32px: 32px;
+  --studio-sh-40px: 40px;
+
+  /* ---- ladder: opacity amounts ---- */
+  --studio-opacity-09: 0.09;
+  --studio-opacity-16: 0.16;
+  --studio-opacity-40: 0.4;
+  --studio-opacity-45: 0.45;
+  --studio-opacity-55: 0.55;
+  --studio-opacity-60: 0.6;
+  --studio-opacity-65: 0.65;
+  --studio-opacity-70: 0.7;
+  --studio-opacity-75: 0.75;
+  --studio-opacity-85: 0.85;
+  --studio-opacity-90: 0.9;
+  --studio-opacity-92: 0.92;
+
+  /* ---- ladder: durations ---- */
+  --studio-dur-spin: 1s;
+  --studio-ease-linear: linear;
+
+  /* ---- ladder: angles ---- */
+  --studio-angle-90: 90deg;
+  --studio-angle-360: 360deg;
+
+  /* ---- ladder: scale factors ---- */
+  --studio-scale-press: 0.96;
+}
+html.rm, html.nexus-low-power { --studio-dur-fast: 0s; }
+html.rm { --studio-dur-quick: 0s; --studio-dur-base: 0s; }   /* M5: reduced motion removes the animation (0 s), it does not shorten it; a pack that sets --risu-animation-speed cannot bring it back */
+html.nexus-low-power { --studio-dur-base: min(calc(200ms * var(--risu-animation-speed)), 120ms); }
+@media (prefers-reduced-motion: reduce) { :root { --studio-dur-quick: 0s; --studio-dur-base: 0s; } }

@@ -1,0 +1,133 @@
+/* BANANA COCOA for Settings, a rough acceptance probe of the theming contract (THEMING.md, DD-142): light pastel, card-style index and rows.
+   Cream canvas, cocoa text and accent, banana yellow for the selected item. The Settings screen has no chat layout, so the rearrangement is the shell and the rows: the screen is a padded sheet with a
+   floating header, the index a stack of rounded cards (the current one yellow), every settings row its own card with a gap, section titles yellow pills.
+   Tokens first; part CSS only where a layout has to move, and only with what a pack install accepts (checks/th/packlint, DD-149, DD-155): [data-*] selectors, :hover, and declarations on the allowlist
+   (colours, borders, radii, shadows, bounded spacing). Everything that needs display, overflow or a pseudo-element is a role token of the screen instead: --settings-rows-gap, --settings-rows-overflow,
+   --settings-row-last-border-width, --settings-row-ring-radius, --settings-section-title-width. Critical parts (data-part-critical: dialogs and their backdrop, the failed-save retry, the failed row and chip,
+   the Undo toast after a delete, the fix banner, the chat error card) are never named by a rule below. DOM order is never changed.
+   Each colour is stated once (DD-146): the accent, danger, overlay and shade channels. Loaded by ?theme=banana-cocoa (theme.js). Not a finished pack. */
+:root {
+  --nexus-field-border: var(--nexus-edge-strong);   /* already 3:1 in this pack; stated so the default look's DS-077 value does not move it */
+  --color-scheme: light;
+
+  /* pack-local tokens (read only by the part rules below) */
+  --pack-banana: #fee500;
+  --pack-cream: #fff3c4;
+  --pack-cocoa: #3b2a1e;
+  --pack-card: #ffffff;
+  --pack-field-edge: rgb(91 62 36 / 0.65);   /* slice 5b: the border of the preset select and the model list, 3:1 on the tinted ground */
+  --pack-gap: var(--space-5);                   /* between cards */
+  --pack-pad: var(--space-10);                  /* around the sheet */
+
+  /* canvas and surfaces */
+  --nexus-canvas: #fff3c4;
+  --nexus-canvas-bloom: #fff8dc;
+  --nexus-canvas-warm: transparent;
+  --nexus-surface: rgb(255 255 255 / 0.7);
+  --nexus-surface-raised: rgb(254 229 0 / 0.3);
+  --nexus-surface-flat: #fffdf3;
+  --nexus-edge: rgb(91 62 36 / 0.16);
+  --nexus-edge-strong: rgb(91 62 36 / 0.55);
+  --panel: #fff3c4;
+  --settings-canvas-rgb: 255 243 196;
+  --settings-scrim-rgb: 59 42 30;
+  --color-surface-sheet: #ffffff;
+  --color-surface-toast: #fff7c2;
+  --color-surface-menu: #ffffff;
+  --color-surface-drag: #fffdf3;
+  --color-surface-selbar: #fff8dc;
+  --color-surface-demo: #fffdf3;
+  --color-chip-hover: #ffe680;
+  --color-option-bg: #ffffff;
+  --color-option-text: #3b2a1e;
+  --settings-surface-opaque: #fffbed;         /* what the glass becomes in low power and with reduced transparency */
+  --settings-surface-raised-opaque: #fff0a0;
+
+  /* text */
+  --nexus-text: #3b2a1e;
+  --nexus-text-secondary: #5a4636;
+  --nexus-text-muted: #6b5646;
+  --color-placeholder: #6b5646;
+  --color-link: #8a4b12;
+
+  /* the channels, once each: cocoa for the accent, red, cocoa-brown for glass tints and shadows */
+  --nexus-accent-rgb: 138 75 18;
+  --nexus-danger-rgb: 198 40 40;
+  --nexus-overlay-rgb: 91 62 36;
+  --nexus-shade-rgb: 91 62 36;
+  --nexus-ring: #3a2412;
+  --nexus-core-from: #fee500;
+  --nexus-core-to: #ffd400;
+  --nexus-warm: #6b4a1a;
+  --nexus-warm-from: #fff0a0;
+  --nexus-warm-to: #ffd84a;
+  --color-on-avatar: #3a2f1a;
+  --color-on-accent: #ffffff;
+  --color-warning: #8a5a00;
+  --nexus-warning-rgb: 138 90 0;                /* the channel the pattern's caution and skipped-list edges read (patterns/README adoption step 4); same colour as --color-warning */
+  --pattern-on-accent: #ffffff;                 /* label of a confirm button on the accent (4.5:1) */
+  --pattern-on-danger: #ffffff;                 /* label of a danger button on the danger fill (4.5:1) */
+  --color-success: #1b7a43;
+  --alpha-switch-off: 0.6;                    /* the off track needs 3:1 against a white card (WCAG 1.4.11) */
+  --alpha-text-dim: 0.92;                     /* dim text on the yellow search highlight keeps 4.5:1 */
+  --alpha-text-dim-strong: 0.95;
+  --color-accent-tint-mark-soft: rgb(254 229 0 / 0.5);       /* the search highlight is banana yellow, not the accent */
+  --color-accent-tint-mark: rgb(254 229 0 / 0.75);
+
+  /* corners and strokes */
+  --radius-control: 14px;
+  --radius-field: 14px;
+  --radius-card: 18px;
+  --radius-sheet: 20px;
+  --radius-search: 22px;
+  --icon-stroke: 1.75px;                      /* lighter icon strokes */
+
+  /* the roles the part rules below could not reach: opened here as tokens */
+  --settings-rows-gap: var(--pack-gap);                         /* rows are separate cards */
+  --settings-rows-overflow: visible;
+  --settings-row-last-border-width: 1px;                      /* every card keeps its border */
+  --settings-row-ring-radius: var(--radius-9);
+  --settings-section-title-width: fit-content;                /* a pill, not a bar */
+  --settings-section-gap: var(--space-16);
+}
+
+/* ---- the shell: a padded sheet, a floating header, the index and the page as separate areas ---- */
+[data-part="settings-shell"] { padding: 0 var(--pack-pad) var(--pack-pad); gap: var(--pack-gap); }
+[data-part="settings-header"] { margin-top: var(--pack-pad); border: 1px solid var(--nexus-edge); border-radius: var(--radius-13); background: var(--pack-card); }
+[data-part="settings-body"] { column-gap: var(--pack-pad); }
+[data-part="settings-page"] { border-radius: var(--radius-card); }
+
+/* ---- the index: a stack of rounded cards, the current one banana yellow ---- */
+[data-part="settings-index"] { background: var(--pack-card); border: 1px solid var(--nexus-edge); border-radius: var(--radius-card); }
+[data-part="settings-index-item"] { margin-bottom: var(--pack-gap); }
+[data-part="settings-index-link"] { background: var(--nexus-surface-flat); border: 1px solid var(--nexus-edge); border-radius: var(--radius-9); }
+[data-part="settings-index-item"][data-current] > [data-part="settings-index-link"] { background: var(--pack-banana); color: var(--pack-cocoa); border-color: var(--nexus-edge-strong); box-shadow: none; }
+[data-part="settings-index-foot"] { border-radius: 0 0 var(--radius-card) var(--radius-card); }
+
+/* ---- rows: every row is its own card; changed rows get a banana edge; hover darkens the border ---- */
+[data-part="settings-rows"] { border: 0; background: none; border-radius: 0; }
+[data-part="settings-row"], [data-part="settings-toggle-row"], [data-part="settings-model-row"], [data-part="settings-connection-card"], [data-part="settings-list-item"] { background: var(--pack-card); border: 1px solid var(--nexus-edge); border-radius: var(--radius-9); }
+[data-part="settings-row"][data-changed], [data-part="settings-toggle-row"][data-changed] { border-color: var(--pack-banana); background: var(--nexus-surface-flat); }
+[data-part="settings-row"]:hover, [data-part="settings-toggle-row"]:hover { border-color: var(--nexus-edge-strong); }
+/* slice 4 (parameters): each group, the 고급 group and the preview are cards like the rows; a row inside keeps the hairline between rows; the changed rows carry the banana dot; the warning is not touched */
+[data-part="settings-param-group"], [data-part="settings-param-advanced"], [data-part="settings-param-preview"], [data-part="settings-service-group"] { background: var(--pack-card); border: 1px solid var(--nexus-edge); border-radius: var(--radius-9); margin-bottom: var(--pack-gap); }
+[data-part="settings-param-header"] { background: var(--pack-card); border: 1px solid var(--nexus-edge); border-radius: var(--radius-9); margin-bottom: var(--pack-gap); }
+[data-part="settings-param-row"][data-changed] { background: var(--nexus-surface-flat); }
+[data-part="settings-task-mode"] { background: var(--nexus-surface-flat); }
+[data-part="settings-section-title"] { margin-bottom: var(--space-8); padding: var(--space-1) var(--space-8); border-radius: var(--radius-pill); background: var(--pack-banana); color: var(--pack-cocoa); }
+
+/* slice 5a (단축키, 페르소나, 확장): the shortcut rows and the plugin argument rows are cards like the settings rows; the persona editor, the plugin and module lists and the where-block are white cards; the selected persona card and a changed row carry the banana edge. No rule names a critical part (the chord, the conflict warning, the access line, the badge, the active mark ...). */
+[data-part="settings-hotkey-row"], [data-part="settings-plugin-arg"] { background: var(--pack-card); border: 1px solid var(--nexus-edge); border-radius: var(--radius-9); }
+[data-part="settings-hotkey-row"][data-changed], [data-part="settings-plugin-arg"][data-changed] { border-color: var(--pack-banana); background: var(--nexus-surface-flat); }
+[data-part="settings-persona-card"], [data-part="settings-plugin-list"], [data-part="settings-module-list"], [data-part="settings-module-where"] { background: var(--pack-card); border: 1px solid var(--nexus-edge); border-radius: var(--radius-9); }
+[data-part="settings-persona-card"][data-selected] { border-color: var(--pack-banana); background: var(--nexus-surface-flat); }
+[data-part="settings-persona-editor"] { background: var(--pack-card); border: 1px solid var(--nexus-edge); border-radius: var(--radius-9); padding: var(--space-10); }
+/* slice 5b (대화 기능, 번역, 임베딩): the radio option cards, the service and voice lists, the prompt view, the cache block and the link card are white cards like the rows; the chosen option carries the banana edge. No rule names a critical part (the legacy mark, the missing connection, the test result, the guard, the reason of a dimmed row). */
+[data-part="settings-choice"], [data-part="settings-service-list"], [data-part="settings-voice-list"], [data-part="settings-prompt-view"], [data-part="settings-cache-block"], [data-part="settings-link-card"] { background: var(--pack-card); border: 1px solid var(--nexus-edge); border-radius: var(--radius-9); }
+[data-part="settings-choice"][data-current] { border-color: var(--pack-banana); background: var(--nexus-surface-flat); }
+/* slice 5b: the preset select and the model list sit on the tinted raised ground, where --nexus-edge-strong (alpha 0.55) falls to 2.86:1; their border is darker here only. Earlier slices keep the shared field border. */
+[data-part="settings-preset-bar"] [data-part="settings-button"], [data-part="settings-model-list"] { border-color: var(--pack-field-edge); }
+/* slice 5c-1 (화면·읽기, 입력·접근성): the theme cards, the swatches, the position cards, the colour fields, the background block, the sidebar list and the quote boxes are white cards like the rows; the chosen card carries the banana edge. No rule names a critical part (the repair banner, the mode boxes and button and status, the notification status, the instant-remove caution, the reason lines). Pack-private helpers only (DD-258). */
+[data-part="settings-theme-card"], [data-part="settings-swatch"], [data-part="settings-position-option"], [data-part="settings-color-field"], [data-part="settings-bg-file"], [data-part="settings-sidebar-list"], [data-part="settings-quote-boxes"] { background: var(--pack-card); border: 1px solid var(--nexus-edge); border-radius: var(--radius-9); }
+[data-part="settings-color-field"], [data-part="settings-bg-file"], [data-part="settings-sidebar-list"], [data-part="settings-quote-boxes"] { padding: var(--pack-gap) var(--pack-pad); }
+[data-part="settings-theme-card"][data-current], [data-part="settings-swatch"][data-current], [data-part="settings-position-option"][data-current] { border-color: var(--pack-banana); background: var(--nexus-surface-flat); }

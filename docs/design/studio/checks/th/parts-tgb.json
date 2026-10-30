@@ -1,0 +1,1390 @@
+{
+ "area": "tgb",
+ "parts": [
+  {
+   "name": "studio-tgb",
+   "el": "div.tgb",
+   "role": "the builder page body: the list/editor columns or the text view or the page editor",
+   "states": [
+    "data-mode",
+    "data-view"
+   ]
+  },
+  {
+   "name": "studio-tgb-banners",
+   "el": "div#tgBanners.tgb-banners",
+   "role": "the strip of banners above the builder: carry-over question, open-group alert, notes",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-banner",
+   "el": "div.tgb-banner (info, ok)",
+   "role": "an informational note (group split, swallowed, source off, \"left as is\")",
+   "states": [
+    "data-kind"
+   ]
+  },
+  {
+   "name": "studio-tgb-banner-text",
+   "el": "span.t in a banner",
+   "role": "the note text",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-alert",
+   "el": "div.tgb-banner.err[role=alert]",
+   "role": "CRITICAL: a group was never closed (list builder and combined view); offers to close it",
+   "states": [
+    "data-kind",
+    "data-severity"
+   ]
+  },
+  {
+   "name": "studio-tgb-alert-text",
+   "el": "span.t in the alert",
+   "role": "protected child: the alert text",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-alert-action",
+   "el": "button in the alert",
+   "role": "protected child: the \"close the group\" button",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-carry",
+   "el": "div.tgb-banner.tgn",
+   "role": "CRITICAL: the carry-over question (key rename / option reorder / type change) and its answer \"carried, undo\"",
+   "states": [
+    "data-state"
+   ]
+  },
+  {
+   "name": "studio-tgb-carry-body",
+   "el": "div.tgn-b",
+   "role": "protected child: body wrapper",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-carry-title",
+   "el": "strong#tgnT-*",
+   "role": "protected child: heading",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-carry-list",
+   "el": "ul.tgn-l",
+   "role": "protected child: list of changes",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-carry-line",
+   "el": "li in ul.tgn-l",
+   "role": "protected child: one change",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-carry-text",
+   "el": "p / span.t",
+   "role": "protected child: explanation paragraph (also the \"carried\" status text)",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-carry-warn",
+   "el": "p.tgn-warn",
+   "role": "protected child: overwrite / shared-key warning",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-carry-hint",
+   "el": "p.hint",
+   "role": "protected child: hint under the choices",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-carry-refs",
+   "el": "div.tgn-refs",
+   "role": "protected child: places that read the old key",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-carry-refs-title",
+   "el": "strong in div.tgn-refs",
+   "role": "protected child: references heading",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-carry-ref",
+   "el": "button.btn-txt",
+   "role": "protected child: open one reference",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-carry-actions",
+   "el": "div.tgn-acts",
+   "role": "protected child: row of choices",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-carry-action",
+   "el": "button.btn in the notice",
+   "role": "protected child: a choice (carry over, keep, update references, search, undo)",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-bar",
+   "el": "div.tgb-bar",
+   "role": "the view switch and the combined-view button",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-view-seg",
+   "el": "div.seg.tgb-seg",
+   "role": "the List / Text switch",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-view-button",
+   "el": "button in the switch",
+   "role": "one view of the switch",
+   "states": [
+    "data-active"
+   ]
+  },
+  {
+   "name": "studio-tgb-merged-button",
+   "el": "button[data-tg-act=merged]",
+   "role": "opens the combined view",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-cols",
+   "el": "div.tgb-cols",
+   "role": "list column (+ editor column on wide)",
+   "states": [
+    "data-split"
+   ]
+  },
+  {
+   "name": "studio-tgb-listcol",
+   "el": "section#tgListWrap",
+   "role": "the list column",
+   "states": [
+    "data-empty"
+   ]
+  },
+  {
+   "name": "studio-tgb-note",
+   "el": "p#tgNote",
+   "role": "transient note (a group cannot go inside a group)",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-bad-count",
+   "el": "p#tgBadN",
+   "role": "count of unreadable lines",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-empty",
+   "el": "div#tgEmpty",
+   "role": "the empty state of the list",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-empty-title",
+   "el": "h2 in the empty state",
+   "role": "empty-state heading",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-empty-text",
+   "el": "p in the empty state",
+   "role": "empty-state text",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-empty-grid",
+   "el": "div.tgb-empty-grid",
+   "role": "the kinds you can start with",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-empty-kind",
+   "el": "button[data-tg-act=add-kind]",
+   "role": "add the first row of a kind",
+   "states": [
+    "data-kind"
+   ]
+  },
+  {
+   "name": "studio-tgb-list",
+   "el": "div#tgList[role=tree]",
+   "role": "the list of rows",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-group",
+   "el": "div.tgg",
+   "role": "a group row together with its kids",
+   "states": [
+    "data-open"
+   ]
+  },
+  {
+   "name": "studio-tgb-kids",
+   "el": "div.tgr-kids",
+   "role": "the rows inside a group",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-row",
+   "el": "div.tgr[role=treeitem]",
+   "role": "one row of the builder list",
+   "states": [
+    "data-kind",
+    "data-selected",
+    "data-open",
+    "data-invalid",
+    "data-dragging",
+    "data-drop"
+   ]
+  },
+  {
+   "name": "studio-tgb-row-grip",
+   "el": "span.grip",
+   "role": "drag handle",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-row-chevron",
+   "el": "button.tgr-chev",
+   "role": "fold / unfold a group",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-row-icon",
+   "el": "span.tgr-ic",
+   "role": "icon of the row kind",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-row-text",
+   "el": "span.tgr-tx",
+   "role": "label, key and flags column",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-row-label",
+   "el": "span.tgr-l",
+   "role": "the row name",
+   "states": [
+    "data-muted"
+   ]
+  },
+  {
+   "name": "studio-tgb-row-key",
+   "el": "small.tgr-k",
+   "role": "the key line",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-row-raw",
+   "el": "code.tgr-raw",
+   "role": "the raw text of an unreadable line",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-row-flags",
+   "el": "span.tgr-flags",
+   "role": "the flags of a row",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-row-flag",
+   "el": "span.tgr-flag",
+   "role": "one flag (error, warning, info) on a list row or a combined-view row",
+   "states": [
+    "data-tone"
+   ]
+  },
+  {
+   "name": "studio-tgb-row-summary",
+   "el": "span.tgr-sum",
+   "role": "short description of the kind",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-row-add",
+   "el": "button.tgr-add",
+   "role": "add inside a group",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-row-more",
+   "el": "button.tgr-more",
+   "role": "row menu",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-addrow",
+   "el": "div.tgb-addrow",
+   "role": "the add button strip below the list",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-add",
+   "el": "button#tgAddEnd",
+   "role": "add a row",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-pick-grid",
+   "el": "div.tgpick-grid",
+   "role": "the kinds in the add sheet",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-pick-kind",
+   "el": "button.tgpick-b",
+   "role": "one kind in the add sheet",
+   "states": [
+    "data-kind",
+    "data-disabled"
+   ]
+  },
+  {
+   "name": "studio-tgb-pick-name",
+   "el": "span.n in the add sheet",
+   "role": "kind name",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-pick-hint",
+   "el": "span.h in the add sheet",
+   "role": "kind hint",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-pick-paste",
+   "el": "button.tgpick-paste",
+   "role": "paste text instead",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-paste-field",
+   "el": "div.fld.tgpaste-fld",
+   "role": "the paste sheet field",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-paste-label",
+   "el": "label[for=tgPasteTa]",
+   "role": "paste field label",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-paste-input",
+   "el": "textarea#tgPasteTa",
+   "role": "paste field",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-editor",
+   "el": "div/section#tgEd",
+   "role": "host of the row editor (inline column, sheet or page); can hold the carry question in the sheet",
+   "states": [
+    "data-in"
+   ]
+  },
+  {
+   "name": "studio-tgb-editor-none",
+   "el": "div.tge-none",
+   "role": "no row selected",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-edit",
+   "el": "div.tge",
+   "role": "the editor of one row",
+   "states": [
+    "data-kind"
+   ]
+  },
+  {
+   "name": "studio-tgb-edit-head",
+   "el": "div.tge-head",
+   "role": "editor heading line",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-edit-title",
+   "el": "strong in the editor head",
+   "role": "kind or row name",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-edit-why",
+   "el": "p.tge-why",
+   "role": "why a line is unreadable",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-edit-warn",
+   "el": "p.tge-warn",
+   "role": "warning in the editor",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-field",
+   "el": "div.fld",
+   "role": "one field of the editor",
+   "states": [
+    "data-field"
+   ]
+  },
+  {
+   "name": "studio-tgb-field-label",
+   "el": "label / span.lab",
+   "role": "field label",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-field-input",
+   "el": "input / select",
+   "role": "field control",
+   "states": [
+    "data-invalid"
+   ]
+  },
+  {
+   "name": "studio-tgb-field-error",
+   "el": "div.tge-err",
+   "role": "field error line",
+   "states": [
+    "data-shown"
+   ]
+  },
+  {
+   "name": "studio-tgb-opts",
+   "el": "div.fld.tge-optsw",
+   "role": "the options of a choice row",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-opt-list",
+   "el": "ol.tge-opts",
+   "role": "options list",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-opt",
+   "el": "li in the options list",
+   "role": "one option",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-opt-button",
+   "el": "button in an option",
+   "role": "move up / down / delete an option",
+   "states": [
+    "data-disabled"
+   ]
+  },
+  {
+   "name": "studio-tgb-opt-add",
+   "el": "button[data-tg-act=opt-add]",
+   "role": "add an option",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-adv",
+   "el": "details.tge-adv",
+   "role": "the key section (advanced)",
+   "states": [
+    "data-open"
+   ]
+  },
+  {
+   "name": "studio-tgb-adv-summary",
+   "el": "summary of the key section",
+   "role": "its toggle",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-adv-dup",
+   "el": "p.tge-dup",
+   "role": "duplicate-key message",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-adv-hints",
+   "el": "div#tgKeyHints",
+   "role": "key hints host",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-adv-hint",
+   "el": "p.hint",
+   "role": "a key hint",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-snippet",
+   "el": "div.tge-snip",
+   "role": "the CBS snippet line",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-snippet-code",
+   "el": "code#tgSnip",
+   "role": "the snippet",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-snippet-copy",
+   "el": "button[data-tg-act=copy]",
+   "role": "copy the snippet",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-edit-actions",
+   "el": "div.tge-acts",
+   "role": "editor action row",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-edit-duplicate",
+   "el": "button[data-tg-act=dup]",
+   "role": "duplicate the row",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-edit-delete",
+   "el": "button.danger[data-tg-act=del]",
+   "role": "delete the row (its Undo toast is critical)",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-page",
+   "el": "div.tgb-page",
+   "role": "the page editor on a phone",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-page-head",
+   "el": "div.tgb-pagehd",
+   "role": "page editor header",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-page-back",
+   "el": "button[data-tg-act=page-back]",
+   "role": "back to the list",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-page-title",
+   "el": "strong in the page header",
+   "role": "row name",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-text",
+   "el": "div#tgText",
+   "role": "the text view",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-help",
+   "el": "details#tgHelp",
+   "role": "the syntax help",
+   "states": [
+    "data-open"
+   ]
+  },
+  {
+   "name": "studio-tgb-help-summary",
+   "el": "summary of the help",
+   "role": "its toggle",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-help-lead",
+   "el": "p.hint in the help",
+   "role": "lead text",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-help-list",
+   "el": "dl.tgt-hl",
+   "role": "examples list",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-help-term",
+   "el": "dt",
+   "role": "kind of an example",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-help-desc",
+   "el": "dd",
+   "role": "example and description",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-text-wrap",
+   "el": "div#tgWrap",
+   "role": "scroll box of gutter and text",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-gutter",
+   "el": "div#tgGut",
+   "role": "line numbers",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-gutter-line",
+   "el": "div.gl",
+   "role": "one gutter line (the highlight of a problem line)",
+   "states": [
+    "data-sev"
+   ]
+  },
+  {
+   "name": "studio-tgb-gutter-mark",
+   "el": "span.gm",
+   "role": "problem mark in the gutter",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-gutter-num",
+   "el": "span.gn",
+   "role": "line number",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-text-input",
+   "el": "textarea#tgTa",
+   "role": "the toggle text",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-text-hint",
+   "el": "p#tgTaHint",
+   "role": "hint under the text",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-lint",
+   "el": "div.tgt-lintw",
+   "role": "the line check",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-lint-title",
+   "el": "h3 in the line check",
+   "role": "its heading",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-lint-list",
+   "el": "ul#tgLint",
+   "role": "findings list",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-lint-item",
+   "el": "button.tgt-li",
+   "role": "one finding (goes to its line)",
+   "states": [
+    "data-sev"
+   ]
+  },
+  {
+   "name": "studio-tgb-lint-line",
+   "el": "span.ln",
+   "role": "finding line number",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-lint-msg",
+   "el": "span.lm",
+   "role": "finding message",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-lint-ok",
+   "el": "li.tgt-ok",
+   "role": "no findings",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-merged",
+   "el": "div.tgm",
+   "role": "the combined view",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-merged-top",
+   "el": "div.tgm-top",
+   "role": "its lead and preview button",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-merged-lead",
+   "el": "p.hint",
+   "role": "lead text",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-merged-preview",
+   "el": "button[data-tg-act=pv-all]",
+   "role": "open the preview panel",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-merged-none",
+   "el": "p.tgm-none",
+   "role": "no toggle lists",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-merged-section",
+   "el": "section.tgm-sec",
+   "role": "one source of toggles",
+   "states": [
+    "data-off"
+   ]
+  },
+  {
+   "name": "studio-tgb-merged-head",
+   "el": "h2.tgm-h",
+   "role": "source heading",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-merged-order",
+   "el": "span.ord",
+   "role": "join order number",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-merged-name",
+   "el": "span.n",
+   "role": "source name",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-merged-tag",
+   "el": "span.tag",
+   "role": "source type / off tag",
+   "states": [
+    "data-tone"
+   ]
+  },
+  {
+   "name": "studio-tgb-merged-list",
+   "el": "ul.tgm-list",
+   "role": "rows of a source",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-merged-item",
+   "el": "li.tgm-r",
+   "role": "one row entry",
+   "states": [
+    "data-level"
+   ]
+  },
+  {
+   "name": "studio-tgb-merged-row",
+   "el": "button.tgm-row",
+   "role": "open that row",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-merged-label",
+   "el": "span.l",
+   "role": "row name",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-merged-key",
+   "el": "small.k",
+   "role": "row key",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-merged-note",
+   "el": "p.hint",
+   "role": "unreadable count",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-merged-offhead",
+   "el": "h3.tgm-offh",
+   "role": "heading of the off sources",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview",
+   "el": "section#panelPreview",
+   "role": "the preview side panel",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-head",
+   "el": "div.panel-head",
+   "role": "panel header",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-title",
+   "el": "h2#pv-title",
+   "role": "panel title",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-owner",
+   "el": "span.hint in the header",
+   "role": "the source being previewed",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-frame",
+   "el": "div.tframe.pv-frame",
+   "role": "the sandbox frame",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-scope",
+   "el": "div.seg.pv-scope",
+   "role": "this source / all sources switch",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-scope-button",
+   "el": "button[data-pv]",
+   "role": "one scope",
+   "states": [
+    "data-active"
+   ]
+  },
+  {
+   "name": "studio-tgb-preview-note",
+   "el": "p.pv-note",
+   "role": "sandbox note",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-warn",
+   "el": "p.pv-bad",
+   "role": "unreadable lines are left out",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-panel",
+   "el": "div#pvPanel",
+   "role": "the preview controls",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-none",
+   "el": "p.pv-none",
+   "role": "nothing to preview",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-section",
+   "el": "section.pv-sec",
+   "role": "controls of one source",
+   "states": [
+    "data-current"
+   ]
+  },
+  {
+   "name": "studio-tgb-preview-section-head",
+   "el": "h3.pv-sh",
+   "role": "source heading",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-section-name",
+   "el": "span.n",
+   "role": "source name",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-section-tag",
+   "el": "span.tag",
+   "role": "source type",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-group",
+   "el": "div.pv-grp",
+   "role": "a group of controls",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-group-head",
+   "el": "button.pv-gh",
+   "role": "fold the group",
+   "states": [
+    "data-open"
+   ]
+  },
+  {
+   "name": "studio-tgb-preview-group-body",
+   "el": "div.pv-gk",
+   "role": "the group controls",
+   "states": [
+    "data-open"
+   ]
+  },
+  {
+   "name": "studio-tgb-preview-row",
+   "el": "label/div.pv-row",
+   "role": "one control of the preview",
+   "states": [
+    "data-kind",
+    "data-current",
+    "data-selected"
+   ]
+  },
+  {
+   "name": "studio-tgb-preview-divider",
+   "el": "div.pv-div",
+   "role": "a divider",
+   "states": [
+    "data-current"
+   ]
+  },
+  {
+   "name": "studio-tgb-preview-caption",
+   "el": "p.pv-cap",
+   "role": "a caption",
+   "states": [
+    "data-current"
+   ]
+  },
+  {
+   "name": "studio-tgb-preview-label",
+   "el": "span.pv-l",
+   "role": "control label",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-key",
+   "el": "small.pv-k",
+   "role": "key under a repeated label",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-seg",
+   "el": "div.pv-seg",
+   "role": "short choice as a segmented control",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-seg-button",
+   "el": "button[role=radio]",
+   "role": "one choice",
+   "states": [
+    "data-checked"
+   ]
+  },
+  {
+   "name": "studio-tgb-preview-input",
+   "el": "input / select / textarea",
+   "role": "sandbox control",
+   "states": []
+  },
+  {
+   "name": "studio-tgb-preview-switch",
+   "el": "span.sw-ui",
+   "role": "the switch track",
+   "states": []
+  }
+ ],
+ "safe": [
+  "studio-tgb-banner",
+  "studio-tgb-banner-text",
+  "studio-tgb-bar",
+  "studio-tgb-view-seg",
+  "studio-tgb-view-button",
+  "studio-tgb-merged-button",
+  "studio-tgb-listcol",
+  "studio-tgb-note",
+  "studio-tgb-bad-count",
+  "studio-tgb-empty",
+  "studio-tgb-empty-title",
+  "studio-tgb-empty-text",
+  "studio-tgb-empty-grid",
+  "studio-tgb-empty-kind",
+  "studio-tgb-list",
+  "studio-tgb-group",
+  "studio-tgb-kids",
+  "studio-tgb-row",
+  "studio-tgb-row-grip",
+  "studio-tgb-row-chevron",
+  "studio-tgb-row-icon",
+  "studio-tgb-row-text",
+  "studio-tgb-row-label",
+  "studio-tgb-row-key",
+  "studio-tgb-row-raw",
+  "studio-tgb-row-flags",
+  "studio-tgb-row-flag",
+  "studio-tgb-row-summary",
+  "studio-tgb-row-add",
+  "studio-tgb-row-more",
+  "studio-tgb-addrow",
+  "studio-tgb-add",
+  "studio-tgb-pick-grid",
+  "studio-tgb-pick-kind",
+  "studio-tgb-pick-name",
+  "studio-tgb-pick-hint",
+  "studio-tgb-pick-paste",
+  "studio-tgb-paste-field",
+  "studio-tgb-paste-label",
+  "studio-tgb-paste-input",
+  "studio-tgb-editor-none",
+  "studio-tgb-edit",
+  "studio-tgb-edit-head",
+  "studio-tgb-edit-title",
+  "studio-tgb-edit-why",
+  "studio-tgb-edit-warn",
+  "studio-tgb-field",
+  "studio-tgb-field-label",
+  "studio-tgb-field-input",
+  "studio-tgb-field-error",
+  "studio-tgb-opts",
+  "studio-tgb-opt-list",
+  "studio-tgb-opt",
+  "studio-tgb-opt-button",
+  "studio-tgb-opt-add",
+  "studio-tgb-adv",
+  "studio-tgb-adv-summary",
+  "studio-tgb-adv-dup",
+  "studio-tgb-adv-hints",
+  "studio-tgb-adv-hint",
+  "studio-tgb-snippet",
+  "studio-tgb-snippet-code",
+  "studio-tgb-snippet-copy",
+  "studio-tgb-edit-actions",
+  "studio-tgb-edit-duplicate",
+  "studio-tgb-edit-delete",
+  "studio-tgb-page-head",
+  "studio-tgb-page-back",
+  "studio-tgb-page-title",
+  "studio-tgb-text",
+  "studio-tgb-help",
+  "studio-tgb-help-summary",
+  "studio-tgb-help-lead",
+  "studio-tgb-help-list",
+  "studio-tgb-help-term",
+  "studio-tgb-help-desc",
+  "studio-tgb-text-wrap",
+  "studio-tgb-gutter",
+  "studio-tgb-gutter-line",
+  "studio-tgb-gutter-mark",
+  "studio-tgb-gutter-num",
+  "studio-tgb-text-input",
+  "studio-tgb-text-hint",
+  "studio-tgb-lint",
+  "studio-tgb-lint-title",
+  "studio-tgb-lint-list",
+  "studio-tgb-lint-item",
+  "studio-tgb-lint-line",
+  "studio-tgb-lint-msg",
+  "studio-tgb-lint-ok",
+  "studio-tgb-merged-top",
+  "studio-tgb-merged-lead",
+  "studio-tgb-merged-preview",
+  "studio-tgb-merged-none",
+  "studio-tgb-merged-head",
+  "studio-tgb-merged-order",
+  "studio-tgb-merged-name",
+  "studio-tgb-merged-tag",
+  "studio-tgb-merged-list",
+  "studio-tgb-merged-item",
+  "studio-tgb-merged-row",
+  "studio-tgb-merged-label",
+  "studio-tgb-merged-key",
+  "studio-tgb-merged-note",
+  "studio-tgb-merged-offhead",
+  "studio-tgb-preview",
+  "studio-tgb-preview-head",
+  "studio-tgb-preview-title",
+  "studio-tgb-preview-owner",
+  "studio-tgb-preview-frame",
+  "studio-tgb-preview-scope",
+  "studio-tgb-preview-scope-button",
+  "studio-tgb-preview-note",
+  "studio-tgb-preview-warn",
+  "studio-tgb-preview-panel",
+  "studio-tgb-preview-none",
+  "studio-tgb-preview-section",
+  "studio-tgb-preview-section-head",
+  "studio-tgb-preview-section-name",
+  "studio-tgb-preview-section-tag",
+  "studio-tgb-preview-group",
+  "studio-tgb-preview-group-head",
+  "studio-tgb-preview-group-body",
+  "studio-tgb-preview-row",
+  "studio-tgb-preview-divider",
+  "studio-tgb-preview-caption",
+  "studio-tgb-preview-label",
+  "studio-tgb-preview-key",
+  "studio-tgb-preview-seg",
+  "studio-tgb-preview-seg-button",
+  "studio-tgb-preview-input",
+  "studio-tgb-preview-switch"
+ ],
+ "critical": [
+  "studio-tgb-carry",
+  "studio-tgb-alert"
+ ],
+ "criticalChildren": [
+  "studio-tgb-alert-text",
+  "studio-tgb-alert-action",
+  "studio-tgb-carry-body",
+  "studio-tgb-carry-title",
+  "studio-tgb-carry-list",
+  "studio-tgb-carry-line",
+  "studio-tgb-carry-text",
+  "studio-tgb-carry-warn",
+  "studio-tgb-carry-hint",
+  "studio-tgb-carry-refs",
+  "studio-tgb-carry-refs-title",
+  "studio-tgb-carry-ref",
+  "studio-tgb-carry-actions",
+  "studio-tgb-carry-action"
+ ],
+ "states": [
+  {
+   "attr": "data-mode",
+   "on": "studio-tgb",
+   "values": "inline|sheet|page"
+  },
+  {
+   "attr": "data-view",
+   "on": "studio-tgb",
+   "values": "list|text"
+  },
+  {
+   "attr": "data-kind",
+   "on": "studio-tgb-banner",
+   "values": "per part: row/edit check|select|text|textarea|group|divider|caption|bad|groupEnd; banner info|ok; alert open-group; pick/empty kinds"
+  },
+  {
+   "attr": "data-kind",
+   "on": "studio-tgb-alert",
+   "values": "per part: row/edit check|select|text|textarea|group|divider|caption|bad|groupEnd; banner info|ok; alert open-group; pick/empty kinds"
+  },
+  {
+   "attr": "data-severity",
+   "on": "studio-tgb-alert",
+   "values": "error|warning"
+  },
+  {
+   "attr": "data-state",
+   "on": "studio-tgb-carry",
+   "values": "ask|done"
+  },
+  {
+   "attr": "data-active",
+   "on": "studio-tgb-view-button",
+   "values": "present when pressed"
+  },
+  {
+   "attr": "data-split",
+   "on": "studio-tgb-cols",
+   "values": "present when the editor sits beside the list"
+  },
+  {
+   "attr": "data-empty",
+   "on": "studio-tgb-listcol",
+   "values": "1|0"
+  },
+  {
+   "attr": "data-kind",
+   "on": "studio-tgb-empty-kind",
+   "values": "per part: row/edit check|select|text|textarea|group|divider|caption|bad|groupEnd; banner info|ok; alert open-group; pick/empty kinds"
+  },
+  {
+   "attr": "data-open",
+   "on": "studio-tgb-group",
+   "values": "present when expanded"
+  },
+  {
+   "attr": "data-kind",
+   "on": "studio-tgb-row",
+   "values": "per part: row/edit check|select|text|textarea|group|divider|caption|bad|groupEnd; banner info|ok; alert open-group; pick/empty kinds"
+  },
+  {
+   "attr": "data-selected",
+   "on": "studio-tgb-row",
+   "values": "present"
+  },
+  {
+   "attr": "data-open",
+   "on": "studio-tgb-row",
+   "values": "present when expanded"
+  },
+  {
+   "attr": "data-invalid",
+   "on": "studio-tgb-row",
+   "values": "row: unreadable|field; control: present"
+  },
+  {
+   "attr": "data-dragging",
+   "on": "studio-tgb-row",
+   "values": "present while dragged"
+  },
+  {
+   "attr": "data-drop",
+   "on": "studio-tgb-row",
+   "values": "before|after"
+  },
+  {
+   "attr": "data-muted",
+   "on": "studio-tgb-row-label",
+   "values": "present (no name)"
+  },
+  {
+   "attr": "data-tone",
+   "on": "studio-tgb-row-flag",
+   "values": "err|warn|info (flag), off (merged tag)"
+  },
+  {
+   "attr": "data-kind",
+   "on": "studio-tgb-pick-kind",
+   "values": "per part: row/edit check|select|text|textarea|group|divider|caption|bad|groupEnd; banner info|ok; alert open-group; pick/empty kinds"
+  },
+  {
+   "attr": "data-disabled",
+   "on": "studio-tgb-pick-kind",
+   "values": "present"
+  },
+  {
+   "attr": "data-in",
+   "on": "studio-tgb-editor",
+   "values": "sheet|page|inline"
+  },
+  {
+   "attr": "data-kind",
+   "on": "studio-tgb-edit",
+   "values": "per part: row/edit check|select|text|textarea|group|divider|caption|bad|groupEnd; banner info|ok; alert open-group; pick/empty kinds"
+  },
+  {
+   "attr": "data-field",
+   "on": "studio-tgb-field",
+   "values": "label|key|type|raw"
+  },
+  {
+   "attr": "data-invalid",
+   "on": "studio-tgb-field-input",
+   "values": "row: unreadable|field; control: present"
+  },
+  {
+   "attr": "data-shown",
+   "on": "studio-tgb-field-error",
+   "values": "present when the line has a message"
+  },
+  {
+   "attr": "data-disabled",
+   "on": "studio-tgb-opt-button",
+   "values": "present"
+  },
+  {
+   "attr": "data-open",
+   "on": "studio-tgb-adv",
+   "values": "present when expanded"
+  },
+  {
+   "attr": "data-open",
+   "on": "studio-tgb-help",
+   "values": "present when expanded"
+  },
+  {
+   "attr": "data-sev",
+   "on": "studio-tgb-gutter-line",
+   "values": "error|warning|info"
+  },
+  {
+   "attr": "data-sev",
+   "on": "studio-tgb-lint-item",
+   "values": "error|warning|info"
+  },
+  {
+   "attr": "data-off",
+   "on": "studio-tgb-merged-section",
+   "values": "present"
+  },
+  {
+   "attr": "data-tone",
+   "on": "studio-tgb-merged-tag",
+   "values": "err|warn|info (flag), off (merged tag)"
+  },
+  {
+   "attr": "data-level",
+   "on": "studio-tgb-merged-item",
+   "values": "0|1"
+  },
+  {
+   "attr": "data-active",
+   "on": "studio-tgb-preview-scope-button",
+   "values": "present when pressed"
+  },
+  {
+   "attr": "data-current",
+   "on": "studio-tgb-preview-section",
+   "values": "present"
+  },
+  {
+   "attr": "data-open",
+   "on": "studio-tgb-preview-group-head",
+   "values": "present when expanded"
+  },
+  {
+   "attr": "data-open",
+   "on": "studio-tgb-preview-group-body",
+   "values": "present when expanded"
+  },
+  {
+   "attr": "data-kind",
+   "on": "studio-tgb-preview-row",
+   "values": "per part: row/edit check|select|text|textarea|group|divider|caption|bad|groupEnd; banner info|ok; alert open-group; pick/empty kinds"
+  },
+  {
+   "attr": "data-current",
+   "on": "studio-tgb-preview-row",
+   "values": "present"
+  },
+  {
+   "attr": "data-selected",
+   "on": "studio-tgb-preview-row",
+   "values": "present"
+  },
+  {
+   "attr": "data-current",
+   "on": "studio-tgb-preview-divider",
+   "values": "present"
+  },
+  {
+   "attr": "data-current",
+   "on": "studio-tgb-preview-caption",
+   "values": "present"
+  },
+  {
+   "attr": "data-checked",
+   "on": "studio-tgb-preview-seg-button",
+   "values": "present"
+  }
+ ],
+ "decisions": "CRITICAL (data-part-critical): (1) studio-tgb-carry, the carry-over question (switching between builder and text view, or editing a key/option/type, raises \"carry the rename over?\"): answering \"carry\" rewrites other values and references, \"keep\" drops the old values, and the \"carried\" state holds the only way back (Undo). Both states, ask and done, are one part with data-state; every explanation, list, warning, reference button and choice inside is a protected child studio-tgb-carry-*. (2) studio-tgb-alert, the \"group never closed\" alert (role=alert, a warning, with a button that edits the text): hard errors change what the chat reads, so a pack may give it tokens only. Both appear in the list builder (#tgBanners, also inside the row-editor sheet for the carry) and in the combined view.\nAlready critical by the shell and reused unchanged: studio-undo-toast (a toast with an action) carries the way back of: delete a row, change type that drops options, close a group, carry over, update references. The shell passes critical only through A.openSheet({critical:true}); no sheet of the builder is critical (see below).\nLEFT NON-CRITICAL: studio-tgb-banner (info notes: group split, swallowed, source off, \"left as is\"): informational, offer no choice, change nothing. The add sheet and the paste sheet (add rows, nothing is dropped). The row-editor sheet (tgside): it carries a Delete button (danger), but Delete is immediate with a critical Undo toast, and the carry question inside it is its own critical part; marking the whole editor sheet critical would force every field to be named studio-critical-*. Editor Delete, option delete, duplicate: immediate, undoable through the header Undo and (for rows) the Undo toast. The row menu (\"Delete\" item, class danger) comes from A.openMenu in slice1.js and I could not make it critical without editing that file (see the report question). Combined-view and preview parts: nothing there writes or drops author data (the preview sandbox values are synthetic).\nNOT SAFE (ancestors, or can hold a critical element in some state): studio-tgb (page body), studio-tgb-banners (holds the carry and the alert), studio-tgb-cols and studio-tgb-editor and studio-tgb-page (in an edge case, resizing while the editor sheet is open, #tgEd of the page or inline editor receives the carry question because inSheet() is still true), studio-tgb-merged and studio-tgb-merged-section (hold the alert), and every protected child. SAFE: everything else; none of them is ever a critical element, inside one, or an ancestor of one (checked with the census in the states listed in the report; the resize edge case is a code-reading argument, not a runtime check)."
+}

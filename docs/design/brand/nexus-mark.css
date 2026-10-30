@@ -1,0 +1,311 @@
+/*
+  DEEP NEXUS status mark motion. Markup comes from nexusMark.ts; the root <svg> carries
+  class="nexus-mark" and data-status, plus optional data-low-power and data-still.
+
+  Motion uses transform and opacity only. Every part has two layers:
+  - a pose layer (a <g>) that the status sets and that transitions, so a status change morphs the
+    shape (the triangle drops its top side to become an arrow, the arrow swings round to point up).
+    With motion off, only opacity transitions and the poses snap;
+  - a loop layer inside it that the status animates.
+  Base styles of loop layers are their still pose, and a status may set its own (the status rules
+  below that set transform without animation; these snap rather than morph): with motion off (reduced motion, data-still) each
+  status still reads as a distinct shape. Staggers use negative delays so no side waits in its
+  still pose before its loop starts.
+
+  Magnitudes are deliberately large (whole-ring rotation, 7 to 14 unit offsets on a 128 unit box)
+  so the motion stays readable at 20 to 32 CSS pixels on a phone.
+*/
+
+.nexus-mark {
+  --nm-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --nm-morph: 0.45s;
+  display: block;
+  overflow: visible;
+}
+
+.nexus-mark * {
+  transform-box: view-box;
+  transform-origin: 0 0;
+}
+
+/* The centroid is the origin; the arrow turns about the frame's bounding-box centre so it stays in the box. */
+.nexus-mark .nm-pose { transform-origin: 0 16.12px; }
+.nexus-mark .nm-fill-a { transform-origin: 0 -17.34px; }
+
+/* A thin stroke in the fill colour closes the antialiasing seams between the three frame sides. */
+.nexus-mark .nm-a { fill: #fff; stroke: #fff; stroke-width: 0.5; transition: fill var(--nm-morph) var(--nm-ease), stroke var(--nm-morph) var(--nm-ease); }
+.nexus-mark .nm-echo-a { fill: none; stroke: #7fe9ff; stroke-width: 4; stroke-linejoin: round; }
+
+/*
+  Moves along the frame sides' outward normals (top 0,-1; right 0.866,0.5; left -0.866,0.5) are written
+  out per side as pixel offsets. Custom properties inside @keyframes on SVG children interpolate badly in
+  WebKitGTK (Linux Tauri), WKWebView and older Android System WebViews (audit AUD-07).
+*/
+
+.nexus-mark .nm-pose,
+.nexus-mark .nm-p,
+.nexus-mark .nm-ghost,
+.nexus-mark .nm-echo,
+.nexus-mark .nm-particles,
+.nexus-mark .nm-scan,
+.nexus-mark .nm-fill,
+.nexus-mark .nm-midg,
+.nexus-mark .nm-coreg,
+.nexus-mark .nm-core,
+.nexus-mark .nm-warn,
+.nexus-mark .nm-glow,
+.nexus-mark .nm-progress {
+  transition: transform var(--nm-morph) var(--nm-ease), opacity var(--nm-morph) var(--nm-ease);
+}
+
+/* Rest pose: only the logo and a faint glow. */
+.nexus-mark .nm-glow { opacity: 0.35; }
+.nexus-mark .nm-ghost,
+.nexus-mark .nm-echo,
+.nexus-mark .nm-particles,
+.nexus-mark .nm-scan,
+.nexus-mark .nm-fill,
+.nexus-mark .nm-warn,
+.nexus-mark .nm-progress { opacity: 0; }
+
+/* Still poses of the loop layers. */
+.nexus-mark .nm-echo-a { transform: scale(1.7); opacity: 0.6; }
+.nexus-mark .nm-particles-a { transform: scale(0.65); opacity: 0.8; }
+.nexus-mark .nm-scan-a { transform: translateY(42px); }
+.nexus-mark .nm-fill-a { transform: scale(1, 0.6); opacity: 0.85; }
+.nexus-mark .nm-ghost-a,
+.nexus-mark .nm-late { opacity: 0; }
+
+/* waiting: queued, rate limited or retrying. Dim, slow pulse. */
+.nexus-mark[data-status="waiting"] .nm-body { animation: nm-wait 1.6s var(--nm-ease) infinite alternate; }
+.nexus-mark[data-status="waiting"] .nm-pose { opacity: 0.9; }
+.nexus-mark[data-status="waiting"] .nm-glow { opacity: 0; }
+
+/* preparing: the frame sides fly in, hold, and fly out again in turn. */
+.nexus-mark[data-status="preparing"] .nm-p .nm-a { animation: nm-assemble-top 2.4s var(--nm-ease) infinite; }
+.nexus-mark[data-status="preparing"] .nm-right .nm-a { animation-name: nm-assemble-right; animation-delay: -2.2s; }
+.nexus-mark[data-status="preparing"] .nm-left .nm-a { animation-name: nm-assemble-left; animation-delay: -2s; }
+.nexus-mark[data-status="preparing"] .nm-left .nm-a { transform: translate(-10.4px, 6px); opacity: 0.35; }
+
+/* memory: the sides clamp inward together while particles are drawn in and the centre grows. */
+.nexus-mark[data-status="memory"] .nm-p .nm-a { animation: nm-clamp-top 2.4s var(--nm-ease) infinite; }
+.nexus-mark[data-status="memory"] .nm-right .nm-a { animation-name: nm-clamp-right; }
+.nexus-mark[data-status="memory"] .nm-left .nm-a { animation-name: nm-clamp-left; }
+.nexus-mark[data-status="memory"] .nm-particles { opacity: 1; }
+.nexus-mark[data-status="memory"] .nm-particles-a { animation: nm-converge 2.4s var(--nm-ease) infinite; }
+.nexus-mark[data-status="memory"] .nm-particles-a.nm-late { animation-delay: -1.2s; }
+.nexus-mark[data-status="memory"] .nm-mid { transform: scale(1.3); }
+.nexus-mark[data-status="memory"] .nm-mid { animation: nm-absorb 2.4s var(--nm-ease) infinite; }
+.nexus-mark[data-status="memory"] .nm-glow { opacity: 0.7; }
+
+/* thinking: the frame breathes deeply, the centre counter-breathes. */
+.nexus-mark[data-status="thinking"] .nm-ring { animation: nm-breathe 2.4s var(--nm-ease) infinite alternate; }
+.nexus-mark[data-status="thinking"] .nm-mid { animation: nm-counter 2.4s var(--nm-ease) infinite alternate; }
+.nexus-mark[data-status="thinking"] .nm-ring { transform: scale(0.9); }
+.nexus-mark[data-status="thinking"] .nm-glow { opacity: 0.8; animation: nm-glow 2.4s var(--nm-ease) infinite alternate; }
+
+/* generating: a pulse runs round the frame, one side after another, like output being emitted. */
+.nexus-mark[data-status="generating"] .nm-p .nm-a { animation: nm-emit-top 1.2s var(--nm-ease) infinite; }
+.nexus-mark[data-status="generating"] .nm-right .nm-a { animation-name: nm-emit-right; animation-delay: -0.8s; }
+.nexus-mark[data-status="generating"] .nm-left .nm-a { animation-name: nm-emit-left; animation-delay: -0.4s; }
+.nexus-mark[data-status="generating"] .nm-top .nm-a { transform: translateY(-8px); }
+.nexus-mark[data-status="generating"] .nm-glow { animation: nm-glow 0.6s var(--nm-ease) infinite alternate; }
+
+/* tool_call: the frame turns a third at a time like a gear; the centre turns the other way. */
+.nexus-mark[data-status="tool_call"] .nm-ring { transform: rotate(60deg); }
+.nexus-mark[data-status="tool_call"] .nm-ring { animation: nm-turn 1.6s var(--nm-ease) infinite; }
+.nexus-mark[data-status="tool_call"] .nm-midg { animation: nm-unturn 1.6s var(--nm-ease) infinite; }
+
+/* translating: the whole mark flips over; the core gradient comes back reversed. */
+.nexus-mark[data-status="translating"] .nm-body { transform: scaleX(0.4); }
+.nexus-mark[data-status="translating"] .nm-body { animation: nm-flip 2.4s var(--nm-ease) infinite; }
+
+/* imaging: the hole fills from the top with the core gradient, then clears. */
+.nexus-mark[data-status="imaging"] .nm-fill { opacity: 1; }
+.nexus-mark[data-status="imaging"] .nm-fill-a { animation: nm-develop 2s var(--nm-ease) infinite; }
+
+/* speaking: outlines of the centre ripple out like sound. */
+.nexus-mark[data-status="speaking"] .nm-echo { opacity: 1; }
+.nexus-mark[data-status="speaking"] .nm-echo-a { animation: nm-echo 1.6s cubic-bezier(0.2, 0.6, 0.4, 1) infinite; }
+.nexus-mark[data-status="speaking"] .nm-echo-a.nm-late { animation-delay: -0.8s; }
+
+/* finishing: post-reply steps. A slower inward tick runs round the frame. */
+.nexus-mark[data-status="finishing"] .nm-p .nm-a { animation: nm-settle-top 1.8s var(--nm-ease) infinite; }
+.nexus-mark[data-status="finishing"] .nm-right .nm-a { animation-name: nm-settle-right; animation-delay: -1.2s; }
+.nexus-mark[data-status="finishing"] .nm-left .nm-a { animation-name: nm-settle-left; animation-delay: -0.6s; }
+.nexus-mark[data-status="finishing"] .nm-right .nm-a { transform: translate(-8.7px, -5px); opacity: 0.6; }
+
+/* transfer_in / transfer_out: the top side drops away, leaving a chevron that streams in the
+   direction of travel. Out swings the whole arrow round to point up. */
+.nexus-mark[data-status^="transfer"] .nm-top { transform: translateY(-12px); opacity: 0; }
+.nexus-mark[data-status^="transfer"] .nm-ghost { opacity: 1; }
+.nexus-mark[data-status^="transfer"] .nm-right .nm-a,
+.nexus-mark[data-status^="transfer"] .nm-left .nm-a,
+.nexus-mark[data-status^="transfer"] .nm-ghost-a { animation: nm-flow 1.4s linear infinite; }
+.nexus-mark[data-status^="transfer"] .nm-ghost-a { animation-delay: -0.7s; }
+.nexus-mark[data-status^="transfer"] .nm-glow { opacity: 0; }
+/* The centre stays put as the anchor the chevron streams past; the core pulses outward twice per stream. */
+.nexus-mark[data-status^="transfer"] .nm-core { animation: nm-core-pulse 0.7s var(--nm-ease) infinite; }
+.nexus-mark[data-status="transfer_out"] .nm-pose { transform: rotate(180deg); }
+
+/* scanning: a band of light runs down the mark. */
+.nexus-mark[data-status="scanning"] .nm-scan { opacity: 1; }
+.nexus-mark[data-status="scanning"] .nm-scan-a { animation: nm-scan 1.8s var(--nm-ease) infinite; }
+
+/* Outcomes: done pops once, error shakes once and turns the centre warm, stopped dims. */
+.nexus-mark[data-status="done"] .nm-body { animation: nm-pop 0.6s var(--nm-ease); }
+.nexus-mark[data-status="done"] .nm-glow { opacity: 0.9; animation: nm-flash 0.9s var(--nm-ease); }
+/* done also differs from idle without the glow (low power hides it): the frame turns ring cyan and the
+   centre grows, so the two still poses never coincide (audit AUD-03). */
+.nexus-mark[data-status="done"] .nm-a { fill: #7fe9ff; stroke: #7fe9ff; }
+.nexus-mark[data-status="done"] .nm-midg { transform: scale(1.18); }
+.nexus-mark[data-status="error"] .nm-body { animation: nm-shake 0.5s var(--nm-ease); }
+.nexus-mark[data-status="error"] .nm-midg,
+.nexus-mark[data-status="error"] .nm-core { opacity: 0; }
+.nexus-mark[data-status="error"] .nm-warn { opacity: 1; }
+.nexus-mark[data-status="error"] .nm-glow { opacity: 0; }
+.nexus-mark[data-status="stopped"] .nm-pose { opacity: 0.5; }
+.nexus-mark[data-status="stopped"] .nm-core { opacity: 0.25; }
+.nexus-mark[data-status="stopped"] .nm-glow { opacity: 0; }
+
+/*
+  Determinate progress (audit AUD-04): an outer triangle outside the moving pose, shown only when the root
+  carries data-progress. The component writes --nm-progress-offset (100 minus whole percent) because the
+  path has pathLength="100". It sits outside .nm-pose so transfer_out's turn and tool_call's gear leave it put.
+  Only marks of 40 px and up get data-progress (review F-1); smaller ones show the percentage as text.
+  Some poses reach past the ring (review N-4): generating and preparing push the top side out, tool_call turns
+  the corners out, and the transfer chevron streams down across the bottom. They cross the ring briefly; accepted.
+*/
+.nexus-mark[data-progress] .nm-progress { opacity: 1; }
+.nexus-mark .nm-progress-track,
+.nexus-mark .nm-progress-a { fill: none; stroke-width: 4; stroke-linejoin: round; }
+.nexus-mark .nm-progress-track { stroke: rgb(255 255 255 / 0.16); }
+.nexus-mark .nm-progress-a {
+  stroke: #38d9ff;
+  stroke-dasharray: 100;
+  stroke-dashoffset: var(--nm-progress-offset, 100);
+  transition: stroke-dashoffset 0.3s var(--nm-ease);
+}
+
+@keyframes nm-wait { from { opacity: 0.5; } to { opacity: 1; } }
+@keyframes nm-assemble-top {
+  0%, 100% { transform: translate(0px, -12px); opacity: 0; }
+  30%, 75% { transform: none; opacity: 1; }
+}
+@keyframes nm-assemble-right {
+  0%, 100% { transform: translate(10.39px, 6px); opacity: 0; }
+  30%, 75% { transform: none; opacity: 1; }
+}
+@keyframes nm-assemble-left {
+  0%, 100% { transform: translate(-10.39px, 6px); opacity: 0; }
+  30%, 75% { transform: none; opacity: 1; }
+}
+@keyframes nm-clamp-top { 0%, 100% { transform: none; } 40%, 65% { transform: translate(0px, 7px); } }
+@keyframes nm-clamp-right { 0%, 100% { transform: none; } 40%, 65% { transform: translate(-6.06px, -3.5px); } }
+@keyframes nm-clamp-left { 0%, 100% { transform: none; } 40%, 65% { transform: translate(6.06px, -3.5px); } }
+@keyframes nm-converge {
+  0% { transform: scale(1); opacity: 0; }
+  20% { opacity: 0.9; }
+  100% { transform: scale(0.3); opacity: 0; }
+}
+@keyframes nm-absorb { 0%, 100% { transform: scale(1); } 55% { transform: scale(1.3); } }
+@keyframes nm-breathe { from { transform: scale(0.84); opacity: 0.55; } to { transform: scale(1.04); opacity: 1; } }
+@keyframes nm-counter { from { transform: scale(1.2); } to { transform: scale(0.88); } }
+@keyframes nm-glow { from { opacity: 0.2; } to { opacity: 0.95; } }
+@keyframes nm-emit-top { 0%, 55%, 100% { transform: none; } 25% { transform: translate(0px, -8px); } }
+@keyframes nm-emit-right { 0%, 55%, 100% { transform: none; } 25% { transform: translate(6.93px, 4px); } }
+@keyframes nm-emit-left { 0%, 55%, 100% { transform: none; } 25% { transform: translate(-6.93px, 4px); } }
+@keyframes nm-turn { 0%, 20% { transform: rotate(0deg); } 70%, 100% { transform: rotate(120deg); } }
+@keyframes nm-unturn { 0%, 30% { transform: rotate(0deg); } 80%, 100% { transform: rotate(-120deg); } }
+@keyframes nm-flip {
+  0%, 25% { transform: scaleX(1); }
+  50%, 75% { transform: scaleX(-1); }
+  100% { transform: scaleX(1); }
+}
+@keyframes nm-develop {
+  0% { transform: scale(1, 0); opacity: 0.9; }
+  60% { transform: scale(1, 1); opacity: 0.9; }
+  100% { transform: scale(1, 1); opacity: 0; }
+}
+@keyframes nm-echo { from { transform: scale(1.2); opacity: 1; } to { transform: scale(2.4); opacity: 0; } }
+/* Opacity is set at every stop: a stop without it would fall back to the still pose's 0.6. */
+@keyframes nm-settle-top {
+  0%, 60%, 100% { transform: none; opacity: 1; }
+  30% { transform: translate(0px, 10px); opacity: 0.6; }
+}
+@keyframes nm-settle-right {
+  0%, 60%, 100% { transform: none; opacity: 1; }
+  30% { transform: translate(-8.66px, -5px); opacity: 0.6; }
+}
+@keyframes nm-settle-left {
+  0%, 60%, 100% { transform: none; opacity: 1; }
+  30% { transform: translate(8.66px, -5px); opacity: 0.6; }
+}
+@keyframes nm-flow {
+  0% { transform: translateY(-14px); opacity: 0; }
+  45%, 55% { transform: none; opacity: 1; }
+  100% { transform: translateY(14px); opacity: 0; }
+}
+@keyframes nm-core-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  45% { transform: scale(1.45); opacity: 0.75; }
+}
+@keyframes nm-scan { from { transform: translateY(-6px); } to { transform: translateY(100px); } }
+@keyframes nm-pop { 0% { transform: scale(1); } 35% { transform: scale(1.1); } 100% { transform: scale(1); } }
+@keyframes nm-flash { 0% { opacity: 0.35; } 30% { opacity: 1; } 100% { opacity: 0.9; } }
+@keyframes nm-shake {
+  0%, 100% { transform: none; }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3.5px); }
+  80% { transform: translateX(3.5px); }
+}
+
+/* Low power: no blurred glow and one copy of each repeated layer. */
+.nexus-mark[data-low-power] .nm-glow,
+.nexus-mark[data-low-power] .nm-late { display: none; }
+
+/*
+  Light backdrops (audit AUD-01): the white frame and centre vanish on light colour schemes. Opt in with
+  data-tone="light" on the <svg> (the component's tone prop) or a .nexus-mark-light class on it or an
+  ancestor. Contexts sit in :where() so each rule keeps the specificity of the dark rule it replaces and
+  wins by source order; the forced-colors block below still comes last.
+*/
+.nexus-mark:where([data-tone="light"], .nexus-mark-light, .nexus-mark-light *) .nm-a,
+.nexus-mark:where([data-tone="light"], .nexus-mark-light, .nexus-mark-light *) .nm-mid { fill: #0f172a; stroke: #0f172a; }
+.nexus-mark:where([data-tone="light"], .nexus-mark-light, .nexus-mark-light *) .nm-echo-a,
+.nexus-mark:where([data-tone="light"], .nexus-mark-light, .nexus-mark-light *) .nm-particles-a path { stroke: #0e7490; }
+.nexus-mark:where([data-tone="light"], .nexus-mark-light, .nexus-mark-light *) .nm-particles-a circle { fill: #0e7490; }
+.nexus-mark:where([data-tone="light"], .nexus-mark-light, .nexus-mark-light *) .nm-warn { fill: #be123c; }
+.nexus-mark:where([data-tone="light"], .nexus-mark-light, .nexus-mark-light *) .nm-progress-track { stroke: rgb(15 23 42 / 0.16); }
+.nexus-mark:where([data-tone="light"], .nexus-mark-light, .nexus-mark-light *) .nm-progress-a { stroke: #0e7490; }
+.nexus-mark[data-status="done"]:where([data-tone="light"], .nexus-mark-light, .nexus-mark-light *) .nm-a { fill: #0e7490; stroke: #0e7490; }
+
+/* Still: for lists of many marks. Poses and fades remain; loops and moving morphs stop. */
+.nexus-mark[data-still] * {
+  animation: none !important;
+  transition-property: opacity !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nexus-mark * {
+    animation: none !important;
+    transition-property: opacity !important;
+  }
+}
+
+@media (forced-colors: active) {
+  /* [data-status] matches the done tint's specificity so system colours still win. */
+  .nexus-mark[data-status] .nm-a,
+  .nexus-mark .nm-mid { fill: CanvasText; stroke: CanvasText; }
+  .nexus-mark .nm-progress-track { stroke: GrayText; }
+  .nexus-mark .nm-progress-a { stroke: Highlight; }
+  .nexus-mark .nm-core,
+  .nexus-mark .nm-warn,
+  .nexus-mark .nm-fill-a { fill: Highlight; }
+  .nexus-mark .nm-echo-a,
+  .nexus-mark .nm-particles-a path { stroke: Highlight; }
+  .nexus-mark .nm-particles-a circle,
+  .nexus-mark .nm-scan-a { fill: Highlight; }
+  .nexus-mark .nm-glow { display: none; }
+}

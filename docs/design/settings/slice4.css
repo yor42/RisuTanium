@@ -1,0 +1,224 @@
+/* Settings slice 4 (parameters) styles. Loaded after slice1.css, slice2.css and slice3.css. Synthetic mockup; not proof of native behaviour or performance.
+   Only transform and opacity are ever transitioned or animated (checks/ss4/modes.mjs scans for it). No backdrop blur anywhere. No literal colour, size, radius, shadow or duration in a component rule (0, 1px and layout percentages excepted): every value is a token.
+   Floor devices (Note 9 / Android 10 WebView, Raspberry Pi 3): no `inset` shorthand, no flex `gap` (margins instead), :focus rings with a :focus-visible fallback, no :is / :where / :has.
+   The role tokens below are new in slice 4 and live here, not in theme-tokens.css, so the earlier slices and their suites are untouched; the main session merges them into the shared Settings token block (SLICE4_SPEC Appendix). A pack sets them on :root like any other role token. */
+:root {
+  --param-dim-opacity: var(--opacity-disabled);          /* the sliders, segmented controls and switches of an unsupported or unsent row; the text beside them and the value in a dimmed field keep their contrast (secondary colour instead of opacity, DS-099) */
+  --param-field-width: var(--size-rel-x3);               /* the number field of a row (8rem) */
+  --param-enter-offset: var(--size-3);                   /* an opening panel (help, 고급, preview) slides in by this much */
+  --param-warn-bar: var(--stroke-xheavy);                /* the bar on the start edge of an over-limit warning */
+  --param-dim-bar: var(--stroke-bold);                   /* the dashed bar on the start edge of an unsupported row */
+  --param-pre-max-height: var(--size-rel-x12);           /* the request preview scrolls after this */
+  --param-list-gap: var(--space-7);                      /* between the cells of an editor row (bias, additional parameters) */
+  --param-key-width: var(--size-rel-x5);                 /* a key or text cell in an editor row */
+}
+
+/* ---------- page header and groups ---------- */
+.p4-top { padding: var(--space-10) var(--settings-row-padding-end) var(--space-10) var(--settings-row-padding-start); }
+.p4-title { font-weight: var(--font-weight-bold); font-size: var(--font-size-lg); }
+.p4-modelrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-top: var(--space-5); }
+.p4-mname { display: inline-flex; align-items: center; min-width: 0; margin-right: var(--space-10); }
+.p4-mname .ic { margin-right: var(--space-5); color: var(--nexus-text-secondary); }
+.p4-mlab, .p4-mconn { color: var(--nexus-text-secondary); font-size: var(--font-size-sm); }
+.p4-chg { margin: var(--space-3) 0; }
+.p4-grp { border-top: 1px solid var(--nexus-edge); }
+.p4-gh { display: flex; align-items: center; padding: var(--space-10) var(--settings-row-padding-end) var(--space-3) var(--settings-row-padding-start); }
+.p4-gt { flex: 1 1 auto; min-width: 0; margin: 0; font-size: var(--font-size-sm); font-weight: var(--font-weight-bold); color: var(--nexus-text-secondary); overflow-wrap: anywhere; }
+.p4-gmore, .p4-fold { flex: none; margin: calc(var(--space-5) * -1) calc(var(--space-7) * -1) calc(var(--space-5) * -1) 0; color: var(--nexus-text-secondary); }
+.p4-coll { display: flex; align-items: center; width: 100%; min-height: var(--size-touch); padding: var(--space-3) var(--settings-row-padding-end) var(--space-3) var(--settings-row-padding-start); border: 0; background: none; color: var(--nexus-text-secondary); text-align: left; cursor: pointer; font-size: var(--font-size-md); }
+.p4-coll .ic { margin-right: var(--space-5); }
+@media (hover: hover) { .p4-coll:hover { background: var(--color-hover-soft); } }
+.p4 > .p4-grp:last-child { border-bottom: 0; }
+.p4-svc { background: var(--color-accent-tint-faint); }
+.p4-svcnote { border-top: 1px solid var(--nexus-edge); }
+
+/* ---------- a parameter row ---------- */
+.p4-row { padding-top: var(--space-8); padding-bottom: var(--space-8); }
+.p4-main { display: flex; flex-direction: column; min-width: 0; }   /* a column, so a pack can move the hint or the help with order (DOM order stays: THEMING rule 5) */
+.p4-main > .p4-moreb, .p4-main > .p4-add { align-self: flex-start; }
+.p4-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+.p4-lw { flex: 1 1 var(--size-rel-x5); display: inline-flex; flex-wrap: wrap; align-items: center; min-width: 0; margin-right: var(--space-10); }
+.p4-label { font-weight: var(--font-weight-semibold); overflow-wrap: anywhere; cursor: default; margin-right: var(--space-7); }
+.p4-shared { margin: var(--space-1) 0; }
+.p4-ctl { flex: 0 1 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; min-width: 0; }
+.p4-ctl > * + * { margin-left: var(--space-7); }
+.p4-sendbox { display: inline-flex; align-items: center; cursor: pointer; }
+.p4-sendl { margin-left: var(--space-1); font-size: var(--font-size-sm); color: var(--nexus-text-secondary); }
+.p4-field { width: var(--param-field-width); text-align: right; font-variant-numeric: tabular-nums; }
+.p4-field[aria-invalid="true"], .p4-ap-val[aria-invalid="true"], .p4-bt-num[aria-invalid="true"] { border-color: var(--danger); }
+.p4-field[readonly] { cursor: default; }
+.p4-menu { flex: none; margin: calc(var(--space-3) * -1) calc(var(--space-7) * -1) calc(var(--space-3) * -1) 0; }
+@media (hover: hover) { .p4-menu.rest { opacity: 0; } .p4-row:hover .p4-menu.rest, .p4-row:focus-within .p4-menu.rest { opacity: 1; } }
+@media (hover: none) { .p4-menu.rest { display: none; } }
+.p4-sentence { margin-top: var(--space-1); }
+.p4-hint { display: flex; flex-wrap: wrap; align-items: baseline; margin-top: var(--space-1); color: var(--nexus-text-secondary); font-size: var(--font-size-sm); overflow-wrap: anywhere; }
+.p4-hint > span { margin-right: var(--space-10); }
+.p4-def { color: var(--nexus-text-secondary); font-variant-numeric: tabular-nums; }
+.p4-mainv { color: var(--nexus-accent); }
+.p4-hint.notsent { color: var(--nexus-text); font-weight: var(--font-weight-semibold); }
+.p4-slidebox { margin-top: var(--space-3); }
+.p4-range { display: block; width: 100%; min-height: var(--size-touch); margin: 0; accent-color: var(--nexus-accent); background: none; }
+.p4-range:focus { outline: var(--focus-ring-w) solid var(--nexus-ring); outline-offset: var(--focus-ring-offset); }
+.p4-range:focus:not(:focus-visible) { outline: none; }
+.p4-seg { display: flex; margin-top: var(--space-5); width: 100%; }
+.p4-seg .seg-b { min-width: 0; overflow-wrap: anywhere; }
+.p4-err { margin-top: var(--space-3); color: var(--danger); font-size: var(--font-size-sm); }
+
+/* the states of a row: dimmed (unsupported, unsent), over the limit, under a lock */
+.p4-row[data-unsupported] { background: var(--color-tint-faint); }
+.p4-row[data-unsupported] .p4-label, .p4-row[data-unsupported] .p4-sentence, .p4-row[data-unsupported] .p4-hint { color: var(--nexus-text-secondary); }
+.p4-row[data-unsupported]::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; border-left: var(--param-dim-bar) dashed var(--nexus-edge-strong); }
+.p4-row[data-unsupported] .p4-slidebox, .p4-row[data-unsupported] .p4-seg, .p4-row[data-unsupported] .p4-sendbox .sw, .p4-row[data-unsupported] .p4-valsw { opacity: var(--param-dim-opacity); }   /* the controls dim; the words beside them keep their contrast */
+.p4-row[data-not-sent] .p4-slidebox { opacity: var(--param-dim-opacity); }
+/* DS-099: the value in a dimmed field is information (the value is kept), so the field is dimmed by its colour and a dashed edge, not by opacity: the text stays at least 3:1 in every look (checks/th4/dimmed.mjs) */
+.p4-row[data-unsupported] .p4-field, .p4-row[data-not-sent] .p4-field, .p4-trows.inactive .p4-field, .p4-row[data-unsupported] .p4-bt-text, .p4-row[data-unsupported] .p4-bt-num { color: var(--nexus-text-secondary); border-style: dashed; }
+.p4-row[data-not-sent] .p4-range, .p4-row[data-unsupported] .p4-range { pointer-events: none; }
+.p4-row[data-over] { box-shadow: inset var(--param-warn-bar) 0 0 var(--danger); }
+.p4-row[data-locked] .p4-shared { border-color: var(--nexus-accent); }
+.p4-reason { display: flex; flex-wrap: wrap; align-items: center; margin-top: var(--space-5); color: var(--nexus-text-secondary); font-size: var(--font-size-sm); }
+.p4-reason .ic { margin-right: var(--space-5); }
+.p4-rt { font-weight: var(--font-weight-semibold); color: var(--nexus-text); margin-right: var(--space-7); }
+.p4-rm { overflow-wrap: anywhere; }
+.p4-reason.flag .p4-rt { color: var(--nexus-text-secondary); font-weight: var(--font-weight-medium); }
+.p4-warn { display: flex; flex-wrap: wrap; align-items: center; margin-top: var(--space-5); padding: var(--space-7) var(--space-8); border-left: var(--param-warn-bar) solid var(--danger); background: var(--color-danger-tint); border-radius: 0 var(--radius-5) var(--radius-5) 0; font-size: var(--font-size-md); }
+.p4-wt { display: inline-flex; align-items: center; flex: 1 1 var(--size-rel-x5); min-width: 0; margin-right: var(--space-7); font-weight: var(--font-weight-semibold); }
+.p4-wt .ic { margin-right: var(--space-5); color: var(--danger); }
+.p4-fit { flex: none; }
+.p4-wn { flex: 1 1 100%; margin-top: var(--space-3); color: var(--nexus-text-secondary); font-size: var(--font-size-sm); }
+.p4-warn.flagwarn { align-items: flex-start; margin-bottom: var(--space-5); }
+.p4-warn.flagwarn .ic { margin: var(--space-1) var(--space-5) 0 0; color: var(--danger); }
+.p4-moreb { display: inline-flex; align-items: center; min-height: var(--size-touch-sm); margin-top: var(--space-3); padding: 0 var(--space-5) 0 0; border: 0; background: none; color: var(--nexus-text-secondary); cursor: pointer; font-size: var(--font-size-sm); }
+.p4-moreb .ic { margin-right: var(--space-3); }
+.p4-moreb[aria-expanded="true"] { color: var(--nexus-accent); }
+@media (pointer: coarse) { .p4-moreb { min-height: var(--size-touch); } }
+.p4-help { margin-top: var(--space-3); padding: var(--space-8) var(--space-10); border-radius: var(--radius-6); background: var(--color-field); color: var(--nexus-text-secondary); font-size: var(--font-size-md); border-left: var(--stroke-bold) solid var(--nexus-edge-strong); }
+.p4-help:not([hidden]), .p4-advbody:not([hidden]), .p4-pvbody:not([hidden]) { animation: p4-in var(--chat-dur-base) var(--chat-ease-out) both; }
+@keyframes p4-in { from { opacity: 0; transform: translateY(var(--param-enter-offset)); } to { opacity: 1; transform: none; } }
+html.rm .p4-help:not([hidden]), html.rm .p4-advbody:not([hidden]), html.rm .p4-pvbody:not([hidden]) { animation: ss-fade var(--chat-dur-fast) var(--ease-linear) both; }
+html.nexus-low-power .p4-help:not([hidden]), html.nexus-low-power .p4-advbody:not([hidden]), html.nexus-low-power .p4-pvbody:not([hidden]) { animation: none; }
+
+/* ---------- focus (floor devices: :focus with a :focus-visible fallback; rings of elements that fill a clipping parent are drawn inside) ---------- */
+.p4-moreb:focus, .p4-coll:focus, .p4-advb:focus, .p4-checkmark:focus, .p4-flag:focus-within { outline: var(--focus-ring-w) solid var(--nexus-ring); outline-offset: var(--focus-ring-offset); }
+.p4-moreb:focus:not(:focus-visible), .p4-coll:focus:not(:focus-visible), .p4-advb:focus:not(:focus-visible), .p4-checkmark:focus:not(:focus-visible) { outline: none; }
+.p4-coll:focus, .p4-advb:focus { outline-offset: var(--focus-ring-offset-inset); }
+.p4-flag:focus-within { outline-offset: var(--focus-ring-offset-inset); }
+.p4-flag:focus-within:not(:focus) { outline: none; }
+.p4-field:focus, .p4-text:focus, .p4-stopin:focus, .p4-bt-text:focus, .p4-bt-num:focus, .p4-ap-key:focus, .p4-ap-val:focus, .p4-ap-type:focus, .p4-modin:focus, .p4-pre:focus { outline: var(--focus-ring-w) solid var(--nexus-ring); outline-offset: var(--focus-ring-offset); }
+.p4-field:focus:not(:focus-visible), .p4-text:focus:not(:focus-visible), .p4-stopin:focus:not(:focus-visible), .p4-bt-text:focus:not(:focus-visible), .p4-bt-num:focus:not(:focus-visible), .p4-ap-key:focus:not(:focus-visible), .p4-ap-val:focus:not(:focus-visible), .p4-ap-type:focus:not(:focus-visible), .p4-modin:focus:not(:focus-visible) { outline: none; }
+
+/* ---------- 고급 and the preview ---------- */
+.p4-adv, .p4-pv { background: none; }
+.p4-adv > .p4-gh, .p4-pv > .p4-gh { padding: 0; }
+.p4-advb { display: flex; align-items: center; width: 100%; min-height: var(--size-touch); padding: var(--space-3) var(--settings-row-padding-end) var(--space-3) var(--settings-row-padding-start); border: 0; background: none; color: var(--nexus-text); text-align: left; cursor: pointer; flex-wrap: wrap; }
+.p4-advb .ic { margin-right: var(--space-5); color: var(--nexus-text-secondary); }
+.p4-advt { font-size: var(--font-size-sm); font-weight: var(--font-weight-bold); color: var(--nexus-text-secondary); margin-right: var(--space-10); }
+.p4-advh { font-size: var(--font-size-sm); font-weight: var(--font-weight-regular); color: var(--nexus-text-secondary); overflow-wrap: anywhere; min-width: 0; flex: 1 1 var(--size-rel-x5); }
+@media (hover: hover) { .p4-advb:hover { background: var(--color-hover-soft); } }
+.p4-advbody > .p4-adv-row { border-top: 1px solid var(--nexus-edge); }
+.p4-pvbody { padding: 0 var(--settings-row-padding-end) var(--space-10) var(--settings-row-padding-start); }
+.p4-pre { margin: var(--space-5) 0 0; padding: var(--space-8) var(--space-10); border: 1px solid var(--nexus-edge); border-radius: var(--radius-6); background: var(--color-field); color: var(--nexus-text); font-family: var(--mono); font-size: var(--font-size-sm); line-height: var(--leading-150); white-space: pre-wrap; overflow-wrap: anywhere; max-height: var(--param-pre-max-height); overflow: auto; }
+.p4-empty { margin-top: var(--space-5); color: var(--nexus-text-secondary); font-size: var(--font-size-md); }
+.p4-add { margin-top: var(--space-7); }
+.p4-bt, .p4-apt, .p4-sl { margin-top: var(--space-7); }
+.p4-bi, .p4-sli { display: flex; flex-wrap: wrap; align-items: center; }
+.p4-bi + .p4-bi, .p4-sli + .p4-sli, .p4-ai + .p4-ai { margin-top: var(--space-5); }
+.p4-bt-text, .p4-stopin { flex: 1 1 var(--param-key-width); width: auto; margin-right: var(--param-list-gap); }
+.p4-bt-num { width: var(--size-rel-x2); margin-right: var(--param-list-gap); text-align: right; }
+.p4-ai-row { display: flex; flex-wrap: wrap; align-items: center; }
+.p4-ap-key { flex: 1 1 var(--param-key-width); width: auto; margin-right: var(--param-list-gap); }
+.p4-ap-val { flex: 2 1 var(--param-key-width); width: auto; margin-right: var(--param-list-gap); }
+.p4-ap-type { flex: 0 0 auto; min-height: var(--field-min-height); margin-right: var(--param-list-gap); }
+.p4-del, .p4-ibtn { flex: none; }
+.p4-note { display: flex; align-items: flex-start; margin-top: var(--space-3); color: var(--nexus-text-secondary); font-size: var(--font-size-sm); }
+.p4-note .ic { margin: var(--space-1) var(--space-5) 0 0; }
+.p4-note.bad { color: var(--nexus-text); }
+.p4-note.bad .ic { color: var(--danger); }
+.p4-flags { margin-top: var(--space-7); }
+.p4-fgt { margin: var(--space-8) 0 var(--space-3); font-size: var(--font-size-sm); font-weight: var(--font-weight-bold); color: var(--nexus-text-secondary); }
+.p4-flag { display: flex; align-items: flex-start; min-height: var(--size-touch); padding: var(--space-3) 0; cursor: pointer; }
+.p4-flag .sw { margin-right: var(--space-5); }
+.p4-ft { display: flex; flex-direction: column; min-width: 0; padding-top: var(--space-5); }
+.p4-fn { font-weight: var(--font-weight-semibold); overflow-wrap: anywhere; }
+.p4-enum { display: inline-block; margin-left: var(--space-5); font-family: var(--mono); font-size: var(--font-size-xs); font-weight: var(--font-weight-regular); color: var(--nexus-text-secondary); }
+.p4-fl { color: var(--nexus-text-secondary); font-size: var(--font-size-sm); }
+.p4-frev { color: var(--nexus-accent); font-size: var(--font-size-sm); }
+.p4-modin { width: 100%; margin-top: var(--space-5); }
+.p4-impl { margin-top: var(--space-7); }
+.p4-impl li { display: flex; justify-content: space-between; padding: var(--space-3) 0; border-bottom: 1px solid var(--nexus-edge); font-size: var(--font-size-md); }
+.p4-pt { overflow-wrap: anywhere; margin-right: var(--space-7); }
+.p4-pn { font-variant-numeric: tabular-nums; color: var(--nexus-text-secondary); }
+.p4-pm { color: var(--nexus-text-secondary); border-bottom: 0; }
+.p4-sample { margin-top: var(--space-7); }
+.dlg-b .p4-imperr { color: var(--danger); }
+
+/* ---------- per-task lines on the models page and the sub-page ---------- */
+.p4-taskline { padding-top: 0; padding-bottom: var(--space-8); min-height: 0; background: var(--color-tint-faint); }
+.p4-tl { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+.p4-tl-title { flex: 1 1 var(--size-rel-x5); min-width: 0; margin-right: var(--space-10); }
+.p4-tl-text { color: var(--nexus-text-secondary); font-size: var(--font-size-md); overflow-wrap: anywhere; }
+.p4-lockchip { margin-left: var(--space-7); border-color: var(--nexus-accent); }
+.p4-tl-title .ps-shared-chip { position: absolute; width: 1px; height: 1px; margin: calc(var(--hairline) * -1); padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }   /* read aloud by slice 2's chip; the visible badge is .p4-lockchip */
+.p4-tl-ctl { display: flex; align-items: center; flex: none; }
+.p4-tl-ctl > * + * { margin-left: var(--space-7); }
+.p4-tseg { width: auto; }
+.p4-tseg .seg-b[aria-checked="true"] { background: var(--nexus-accent); color: var(--color-on-accent); font-weight: var(--font-weight-bold); }
+.p4-tedit { flex: none; }
+.p4-checkline { padding: 0; min-height: 0; background: var(--color-danger-tint); }
+.p4-checkmark { display: inline-flex; align-items: center; min-height: var(--size-touch); padding: 0 var(--settings-row-padding-end) 0 var(--settings-row-padding-start); border: 0; background: none; color: var(--nexus-text); cursor: pointer; font-weight: var(--font-weight-semibold); }
+.p4-checkmark .ic { margin-right: var(--space-5); color: var(--danger); }
+.p4-taskpg .pg-head { margin-bottom: var(--space-7); }
+.p4-tmodel { display: flex; align-items: center; margin: 0 0 var(--space-7); color: var(--nexus-text-secondary); }
+.p4-tmodel .ic { margin-right: var(--space-5); }
+.p4-tlock { display: flex; flex-wrap: wrap; align-items: center; margin-bottom: var(--space-7); }
+.p4-tlock .chip { margin-right: var(--space-7); }
+.p4-trows .p4-grp:first-child { border-top: 0; }
+.p4-trows.inactive .p4-slidebox, .p4-trows.inactive .p4-seg, .p4-trows.inactive .p4-sendbox .sw { opacity: var(--param-dim-opacity); }
+.p4-tfoot { display: flex; flex-wrap: wrap; margin-top: var(--space-10); }
+.p4-tfoot > .btn { margin: 0 var(--space-7) var(--space-7) 0; }
+
+/* ---------- layouts ---------- */
+html[data-layout="phone"] .p4-line { flex-direction: column; align-items: stretch; }
+html[data-layout="phone"] .p4-lw { flex: 0 0 auto; margin-right: 0; }
+html[data-layout="phone"] .p4-ctl { width: 100%; justify-content: flex-end; margin-top: var(--space-3); }
+html[data-layout="phone"] .p4-bt-text, html[data-layout="phone"] .p4-stopin { flex: 1 1 100%; margin-right: 0; margin-bottom: var(--space-3); }
+html[data-layout="phone"] .p4-ap-key, html[data-layout="phone"] .p4-ap-val { flex: 1 1 100%; margin-right: 0; margin-bottom: var(--space-3); }
+html[data-layout="phone"] .p4-ap-type { margin-bottom: var(--space-3); }
+html[data-layout="phone"] .p4-tl-ctl { width: 100%; justify-content: flex-end; margin-top: var(--space-3); }
+html.big .p4-ctl, html.big .p4-tl-ctl, html.big .p4-modelrow { flex-wrap: wrap; }
+html.big .p4-field { width: 100%; max-width: 100%; }
+html.big .p4-seg { flex-wrap: wrap; }
+html.big .p4-advb { flex-wrap: wrap; }
+html.big .p4-bt-text, html.big .p4-stopin, html.big .p4-ap-key, html.big .p4-ap-val { flex: 1 1 100%; margin-right: 0; margin-bottom: var(--space-3); }
+.no-flexgap .p4-ctl > * + *, .no-flexgap .p4-tl-ctl > * + * { margin-left: var(--space-7); }
+
+/* ---------- reduced motion and low power: nothing of this slice transitions; the press feedback of .btn is slice 1's ---------- */
+html.nexus-low-power .p4-menu, html.nexus-low-power .p4-moreb, html.nexus-low-power .p4-coll, html.nexus-low-power .p4-advb { transition: none; }
+
+/* ---------- forced colours: state is carried by borders and text as well as colour ---------- */
+@media (forced-colors: active) {
+  .p4-row[data-unsupported]::before { border-left-color: CanvasText; }
+  .p4-row[data-unsupported], .p4-row[data-over] { border-left: var(--param-warn-bar) solid CanvasText; box-shadow: none; }
+  .p4-row[data-unsupported] { border-left-style: dashed; }
+  .p4-row[data-not-sent] .p4-hint { border: 1px solid CanvasText; border-radius: var(--radius-pill); padding: 0 var(--space-5); }
+  .p4-warn { border: 1px solid CanvasText; border-left: var(--param-warn-bar) solid CanvasText; }
+  .p4-warn .ic, .p4-checkmark .ic { color: CanvasText; }
+  .p4-checkmark { border: 1px solid CanvasText; }
+  .p4-help { border-left-color: CanvasText; }
+  .p4-moreb:focus, .p4-coll:focus, .p4-advb:focus, .p4-checkmark:focus, .p4-range:focus, .p4-field:focus { outline: var(--focus-ring-w-forced) solid Highlight; }
+  .p4-tseg .seg-b[aria-checked="true"] { background: Highlight; color: HighlightText; }
+  .p4-shared, .p4-lockchip { border-color: CanvasText; }
+  .p4-field[aria-invalid="true"] { border-width: var(--stroke-bold); }
+}
+
+/* fix round 1: 보낼 값 보기 estimate label and left-out list (DS-095), dimmed bias (R4-4), read-only task rows while 같음 (R4-8) */
+.p4-estimate { display: flex; align-items: center; margin: var(--space-5) 0 0; color: var(--nexus-text); font-size: var(--font-size-md); font-weight: var(--font-weight-medium); }
+.p4-estimate .ic { margin-right: var(--space-5); flex: none; }
+.p4-left { margin-top: var(--space-8); }
+.p4-lot { margin: 0 0 var(--space-3); color: var(--nexus-text); font-size: var(--font-size-md); font-weight: var(--font-weight-medium); }
+.p4-lol-l { margin: 0; padding: 0; list-style: none; }
+.p4-lo { display: flex; flex-direction: column; padding: var(--space-3) 0; font-size: var(--font-size-sm); color: var(--nexus-text-secondary); }
+.p4-low { color: var(--nexus-text); }
+.p4-lonone { margin: 0; color: var(--nexus-text-secondary); font-size: var(--font-size-sm); }
+.p4-row[data-unsupported] .p4-bt .p4-del { opacity: var(--param-dim-opacity); }
+.p4-trows.inactive { pointer-events: none; }
+.p4-taskpg .p4-tfoot { margin-top: var(--space-8); }

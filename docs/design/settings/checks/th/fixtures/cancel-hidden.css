@@ -1,0 +1,2 @@
+/* NEGATIVE fixture (T-02): removes Cancel through an attribute selector that names no part. A subject that names no part may be anything, so its declarations are judged against the allowlist. Must be rejected. */
+[data-dlg="cancel"] { display: none; }

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko" data-lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>홈 · RisuTanium</title>
+<link rel="icon" href="data:,">
+<!-- Home (main menu), retrofitted 2026-10-28 from mockups/home.html (kept there as a redirect). Synthetic data. Query parameters are listed in README.md:
+     mode, only, lang=ko|en (Korean is the default, DD-202), realm, name, lowpower, motion, input, theme=origin-navy|banana-cocoa, fixture, runs=sample, controls=0, still=1, occasion, date, first, wave, pointer, t. -->
+<link rel="stylesheet" href="../theme/nexus-tokens.css">
+<link rel="stylesheet" href="../brand/nexus-mark.css">
+<link rel="stylesheet" href="../seasonal/seasonal-wordmark.css">
+<link rel="stylesheet" href="home-tokens.css">
+<link rel="stylesheet" href="home.css">
+<script src="theme.js"></script>
+<script src="../seasonal/sprites.generated.js"></script>
+<script src="../seasonal/seasonal-wordmark.js"></script>
+<script src="../seasonal/scenes/load.js"></script>
+</head>
+<body class="nexus-canvas" data-mode="rp">
+<canvas id="network" data-part="home-network" aria-hidden="true"></canvas>
+<a class="skip" data-part="home-skip-link" href="#main" data-i18n="skip"></a>
+<div class="scrim" id="scrim" data-part="home-drawer-scrim"></div>
+<div class="shell" data-part="home-shell">
+  <nav class="rail glass" id="rail" data-part="home-rail" data-mode="rp"></nav>
+  <div class="page">
+    <header class="topbar" data-part="home-topbar" data-modes="all" data-seasonal-panel-anchor>
+      <div class="topbar-left" data-part="home-topbar-left" data-seasonal-fit>
+        <button type="button" id="menu-button" class="btn icon-btn" data-part="home-menu-button" aria-controls="rail" aria-expanded="false"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span class="sr-only" data-i18n="menu"></span></button>
+        <div class="brand" data-part="home-brand"><span id="brand-mark" data-part="home-brand-mark"></span><span id="seasonal-wordmark"><span>RisuTanium</span></span></div>
+      </div>
+      <div class="modes-wrap" id="modes-wrap" data-part="home-modes-wrap">
+        <fieldset class="modes glass" id="modes" data-part="home-mode-switch" data-current="rp">
+          <legend data-i18n="mode.legend"></legend>
+          <span class="mode-thumb" data-part="home-mode-thumb" aria-hidden="true"></span>
+          <label class="mode-option" data-part="home-mode-option" data-mode="rp"><input type="radio" name="mode" value="rp"><span class="glyph" aria-hidden="true">✦</span><span data-i18n="mode.rp"></span></label>
+          <label class="mode-option" data-part="home-mode-option" data-mode="hybrid"><input type="radio" name="mode" value="hybrid"><span class="glyph" aria-hidden="true">◆</span><span data-i18n="mode.hybrid"></span></label>
+          <label class="mode-option" data-part="home-mode-option" data-mode="utility"><input type="radio" name="mode" value="utility"><span class="glyph" aria-hidden="true">⌘</span><span data-i18n="mode.utility"></span></label>
+        </fieldset>
+      </div>
+      <div class="topbar-right" id="topbar-right" data-part="home-topbar-right"></div>
+    </header>
+    <main id="main" data-part="home-main" tabindex="-1"></main>
+  </div>
+</div>
+<div class="sr-only" role="status" id="mode-status"></div>
+<div class="sr-only" role="status" id="run-live"></div>
+<div id="rail-tip" data-part="home-rail-tooltip" aria-hidden="true"></div>
+<div id="toast" class="toast" data-part="home-toast" role="status" aria-live="polite"></div>
+
+<!-- Companion picker (DD-203: there is no persona picker any more; the persona chip links to Settings). -->
+<dialog id="picker" data-part="home-dialog" aria-labelledby="picker-title">
+  <h2 id="picker-title" data-part="home-dialog-title" data-i18n="pick.companion"></h2>
+  <p class="muted small" id="picker-sub" data-i18n="pick.companionSub"></p>
+  <div class="picker" id="picker-list" data-part="home-picker" data-scroll></div>
+  <div class="dialog-foot" data-part="home-dialog-actions"><button type="button" class="btn" data-variant="raised" id="picker-close" data-i18n="pick.close"></button></div>
+</dialog>
+
+<dialog id="tasks" data-part="home-dialog" aria-labelledby="tasks-title">
+  <h2 id="tasks-title" data-part="home-dialog-title" data-i18n="tasks"></h2>
+  <p class="muted small" data-i18n="tasks.sub"></p>
+  <p class="muted small" id="tasks-cap"></p>
+  <div class="task-list" id="task-list" data-part="home-task-list" data-scroll></div>
+  <div class="dialog-foot" data-part="home-dialog-actions"><button type="button" class="btn" data-variant="raised" id="tasks-close" data-i18n="tasks.close"></button></div>
+</dialog>
+
+<dialog id="leave" data-part="home-leave-dialog" data-part-critical aria-labelledby="leave-title" aria-describedby="leave-text">
+  <h2 id="leave-title" data-part="home-confirm-title"></h2>
+  <p class="muted" id="leave-text" data-part="home-confirm-body" data-i18n="leave.text"></p>
+  <div class="dialog-foot" data-part="home-confirm-actions">
+    <button type="button" class="btn" data-part="home-confirm-action" data-variant="raised" id="leave-stay" data-i18n="leave.stay"></button>
+    <button type="button" class="btn" data-part="home-confirm-action" data-variant="primary" id="leave-go"></button>
+  </div>
+</dialog>
+
+<!-- Simulates askUpstreamAgreement() with the app's strings (en.ts upstreamAgreement*). Only Accept loads RisuRealm content (MC-086/087). Initial focus: Do not accept (review m7). -->
+<dialog id="agree" data-part="home-agree-dialog" data-part-critical aria-labelledby="agree-text">
+  <p id="agree-text" data-part="home-confirm-body" data-i18n="agree.text"></p>
+  <div class="agree-links" role="group" data-part="home-agree-links">
+    <a class="link-row" data-part="home-agree-link" href="#" data-demo-ext data-i18n="agree.terms"></a>
+    <a class="link-row" data-part="home-agree-link" href="#" data-demo-ext data-i18n="agree.privacy"></a>
+  </div>
+  <p class="muted small" data-i18n="agree.linksNote"></p>
+  <p class="muted small" data-mock data-i18n="mock.agreeNote"></p>
+  <div class="dialog-foot" data-part="home-confirm-actions">
+    <button type="button" class="btn" data-part="home-confirm-action" data-variant="raised" id="agree-decline" data-i18n="agree.decline"></button>
+    <button type="button" class="btn" data-part="home-confirm-action" data-variant="primary" id="agree-accept" data-i18n="agree.accept"></button>
+  </div>
+</dialog>
+
+<dialog id="sim" aria-labelledby="sim-title" aria-describedby="sim-text">
+  <h2 id="sim-title"></h2>
+  <p class="muted" id="sim-text"></p>
+  <p class="muted small" id="sim-mock" data-mock hidden></p>
+  <div class="dialog-foot" id="sim-actions"></div>
+</dialog>
+
+<details class="mock-controls glass" id="mock-controls" data-mock>
+  <summary id="mock-summary"><span aria-hidden="true">⚙</span><span class="sr-only" data-i18n="mock.controls"></span></summary>
+  <div class="mock-rows" id="mock-rows"></div>
+</details>
+
+<script src="lib/nexusNetwork.iife.js"></script>
+<script src="lib/nexusMark.iife.js"></script>
+<script src="strings.js"></script>
+<script src="data.js"></script>
+<script src="tasks.js"></script>
+<script src="nav.js"></script>
+<script src="render.js"></script>
+<script src="lib.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

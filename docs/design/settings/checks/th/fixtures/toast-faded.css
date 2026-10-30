@@ -1,0 +1,2 @@
+/* NEGATIVE fixture: fades the Undo toast after a delete from anywhere. Must be rejected. */
+[data-part="settings-preset-toast"] { opacity: 0; }

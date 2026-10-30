@@ -1,0 +1,2 @@
+/* NEGATIVE fixture (T-02): a plausible "no scrim" rule. The review showed it hides a critical delete dialog while the page stays inert. Must be rejected at install. */
+[data-part="settings-dialog-backdrop"] { display: none; }

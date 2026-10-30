@@ -1,0 +1,130 @@
+/* BANANA COCOA, a rough acceptance probe of the theming contract (THEMING.md, DD-142): the chat screen as a messenger. Colours are stated once as channels (DD-146).
+   Blue background, yellow bubbles for the user on the right, white bubbles for the character on the left with the avatar beside them and the name above the first bubble,
+   compact actions, rounded bubbles with one small corner as the tail. Tokens first; part CSS only where a layout has to move.
+   Selectors: data-* attribute selectors only (parts, roles and the DD-144 / DD-153 state attributes). The whole file passes checks/th/packlint.mjs, the stand-in for the pack-install rule (DD-149). Critical parts (data-part-critical: the failed-reply card, delete / data-loss / failed-save sheets) are never matched by a rule below,
+   so they take the tokens and keep their structure. DOM order is never changed: layout moves with padding, absolute placement and margins.
+   Loaded by ?theme=banana-cocoa (theme.js). Not a finished pack. */
+:root {
+  --color-scheme: light;
+
+  /* pack-local layout tokens (read only by the part rules below) */
+  --pack-msg-gutter: 46px;                         /* room for the avatar beside a character bubble */
+  --pack-msg-avatar: 36px;
+  --pack-msg-gap: var(--space-7);
+  --cl-spacer-display: none;                  /* no room is reserved inside a bubble for the floating action cluster */
+
+  /* canvas and surfaces */
+  --nexus-canvas: #b2c7da;
+  --nexus-canvas-bloom: transparent;
+  --nexus-canvas-warm: transparent;
+  --nexus-surface: rgb(255 255 255 / 0.55);
+  --nexus-surface-raised: rgb(0 0 0 / 0.07);
+  --nexus-surface-flat: #ffffff;
+  --nexus-edge: rgb(0 0 0 / 0.1);
+  --nexus-edge-strong: rgb(0 0 0 / 0.4);
+  --nexus-field-border: var(--nexus-edge-strong);  /* the pack keeps its own field border (DD-160 moved the default only) */
+  --color-placeholder: var(--nexus-text-secondary);   /* and its own placeholder colour */
+  --color-surface-sheet: #ffffff;
+  --color-surface-bar: #f6f7f9;
+  --color-surface-toast: #fffbe0;
+  --color-surface-kbd: #d9dde3;
+  --color-key: #ffffff;
+
+  /* text */
+  --nexus-text: #191919;
+  --nexus-text-secondary: #3c4650;
+  --nexus-text-muted: #46505b;
+
+  /* accent (cocoa), the send button and the warm identity colour */
+  --nexus-accent-rgb: 107 63 24;
+  --nexus-accent: rgb(var(--nexus-accent-rgb));
+  --nexus-ring: #3a2412;
+  --nexus-core-from: #fee500;
+  --nexus-core-to: #ffd400;
+  --color-on-brand: #191919;
+  --nexus-warm: #5a4632;
+  --nexus-warm-from: #fff0a0;
+  --nexus-warm-to: #ffd84a;
+  --color-on-avatar: #3a2f1a;
+  --color-on-accent: #ffffff;
+  --nexus-danger-rgb: 198 40 40;
+  --nexus-danger: rgb(var(--nexus-danger-rgb));
+  --nexus-overlay-rgb: 0 0 0;                 /* glass tints become dark-on-light tints */
+
+  /* what the channels do not give: the shimmer stays light, code wells are lighter than the dark default, syntax and the three tinted highlights */
+  --color-shimmer: rgb(255 255 255 / 0.6);
+  --color-code-bg-inline: rgb(0 0 0 / 0.08);
+  --color-code-bg: rgb(0 0 0 / 0.06);
+  --color-syntax-keyword: #5b3fa0;  --color-warning: #8a5a00;
+  --color-hit: #b06a00;
+  --color-hit-rgb: 254 229 0;
+  --color-hit-bg: rgb(var(--color-hit-rgb) / 0.55);
+
+  /* the group-chat speaker colours and the scope tags are pastels for a dark canvas; on blue and white they need their dark counterparts */
+  --chat-speaker-0: #7a3b12; --chat-speaker-1: #1f3f8a; --chat-speaker-2: #0d5434; --chat-speaker-3: #6b4a00; --chat-speaker-4: #5b2f9e; --chat-speaker-5: #8c1a42; --chat-speaker-6: #0a4f61; --chat-speaker-7: #7a2a8f;
+  --color-scope-character-text: #4b2a8a;
+  --color-scope-character-edge: #7a55d6;
+  --color-scope-character-rgb: 122 85 214;
+  --color-scope-all-text: #7a4a00;
+  --color-scope-all-edge: #c27c00;
+  --color-scope-all-rgb: 194 124 0;
+
+  /* the bubbles */
+  --color-bubble-char: #ffffff;
+  --color-bubble-char-text: #191919;
+  --color-bubble-user: #fee500;
+  --color-bubble-user-text: #191919;
+  --radius-bubble: var(--radius-10);
+  --radius-bubble-tail: var(--radius-3);
+  --bubble-pad-y: var(--space-7);
+  --bubble-pad-start: var(--space-10);
+  --bubble-pad-end: var(--space-10);
+  --bubble-max-width: 92%;
+
+  /* corners and type */
+  --radius-control: 14px;
+  --radius-field: 20px;
+  --radius-sheet: 20px;
+
+  /* states that read as "disabled" or "paused" stay legible on the blue (review m2) */
+  --opacity-dim: 0.78;
+  --opacity-soft: 0.82;
+}
+
+/* ---- messages: gutter, avatar beside the bubble, name above it ---- */
+[data-part="chat-message"] { margin-bottom: var(--pack-msg-gap); }
+[data-part="chat-message"][data-role="char"] { padding-left: var(--pack-msg-gutter); }
+[data-part="chat-message"][data-role="user"] { padding-left: var(--pack-msg-gutter); }
+[data-role="char"] [data-part="chat-message-avatar"] { position: absolute; left: 0; top: 0; width: var(--pack-msg-avatar); height: var(--pack-msg-avatar); font-size: var(--font-size-base); border-radius: var(--radius-9); }
+[data-part="chat-message-name-row"] { padding-left: var(--space-1); min-height: var(--space-16); }
+[data-part="chat-message-name"] { font-size: var(--font-size-sm); font-weight: var(--font-weight-regular); }
+/* the user's own bubbles carry no avatar or name; both stay in the accessibility tree (the message is labelled by the name) */
+[data-role="user"] [data-part="chat-message-avatar"] { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+[data-role="user"] [data-part="chat-message-name"] { width: 1px; height: 1px; overflow: hidden; opacity: 0; white-space: nowrap; }   /* no position: only the avatar and the actions may be positioned (DD-161) */
+
+/* ---- bubbles: right for the user, left for the character; the small corner is the tail, on the first bubble of a run only (DD-144: data-run) ---- */
+[data-part="chat-message-body"] { width: fit-content; border-left-width: 0; }
+[data-role="user"] [data-part="chat-message-body"] { margin-left: auto; }
+[data-role="char"][data-run="first"] [data-part="chat-message-body"], [data-role="char"][data-run="single"] [data-part="chat-message-body"] { border-top-left-radius: var(--radius-bubble-tail); }
+[data-role="user"][data-run="first"] [data-part="chat-message-body"], [data-role="user"][data-run="single"] [data-part="chat-message-body"] { border-top-right-radius: var(--radius-bubble-tail); }
+/* a failed reply keeps the full column, so its card has the width and the one-row buttons it has in the default look (data-fail) */
+[data-fail] [data-part="chat-message-body"] { width: auto; max-width: none; }
+/* ---- compact actions: quiet until the message is hovered or focused ---- */
+[data-part="chat-message-actions"] { opacity: var(--opacity-icon-off); margin-right: calc(var(--space-3) * -1); }
+[data-part="chat-message"]:hover [data-part="chat-message-actions"], [data-part="chat-message"]:focus-within [data-part="chat-message-actions"] { opacity: 1; }
+/* the pager and New reply span the whole row, gutter included, so a narrow screen does not overflow (review m1) */
+[data-part="chat-message-alts"] { margin-left: calc(var(--pack-msg-gutter) * -1); padding-left: var(--space-8); flex-wrap: wrap; }
+/* a turn without a name row (data-meta="none") on a touch screen shows its actions as a line above the bubble instead of floating over it; on a hover device they stay a hover overlay and take no room (data-input) */
+[data-input="touch"] [data-meta="none"] [data-part="chat-message-actions-float"] { position: relative; top: auto; right: auto; }
+
+/* ---- own messages, mouse input (DD-152): the actions sit beside the bubble. The name row has no role or label, so display: contents lets its children (badges, actions) join the
+   message's own row; DOM order is unchanged. On touch the actions stay on the line above the bubble. Only turns that show a name row; a turn without one keeps the hover overlay. ---- */
+[data-input="hover"] [data-part="chat-message"][data-role="user"][data-meta="shown"] { display: flex; flex-wrap: nowrap; align-items: flex-start; justify-content: flex-end; }
+[data-input="hover"] [data-role="user"][data-meta="shown"] [data-part="chat-message-name-row"] { display: contents; }
+[data-input="hover"] [data-role="user"][data-meta="shown"] [data-part="chat-message-stage"] { flex: 0 1 auto; min-width: 0; }
+
+/* ---- the system note as a centred pill; its text is the main colour so it clears 4.5:1 on the tint (review m2) ---- */
+[data-part="chat-message"][data-role="system"] { width: fit-content; max-width: 92%; margin: 0 auto var(--pack-msg-gap); padding: var(--space-1) var(--space-8); border-radius: var(--radius-pill); background: var(--color-tint-strong); color: var(--nexus-text); font-size: var(--font-size-xs); }
+
+/* ---- forced colours: bubble fills are dropped by the browser, so give them an outline (review m8) ---- */
+@media (forced-colors: active) { [data-part="chat-message-body"] { border: 1px solid CanvasText; } }

@@ -1,0 +1,64 @@
+/* ORIGIN NAVY probe for Studio, slices 1-4: tokens only, no part CSS, no selector but :root (THEMING.md, DD-142, DD-200). The shared Deep Nexus names carry the values of chat/themes/origin-navy.css and settings/themes/origin-navy.css,
+   so the three screens agree; the Studio-only names (--studio-*-rgb channels, on-colours, syntax and editor surfaces) are the ones studio-tokens.css added for slices 1-3 (listed in THEME_AUDIT.md).
+   Loaded by ?theme=origin-navy (st4-theme.js) on slice1.html to slice4.html. Not a finished pack. Slices 1-3 now recolour with tokens alone (DD-200); the ladder tokens (--studio-sp-*, --studio-sz-* ...) are not set. */
+:root {
+  --nexus-canvas: #21222c;
+  --nexus-canvas-bloom: #282a36;
+  --nexus-canvas-warm: transparent;
+  --nexus-surface: rgb(98 114 164 / 0.08);
+  --nexus-surface-raised: rgb(98 114 164 / 0.22);
+  --nexus-surface-flat: #282a36;
+  --nexus-edge: rgb(98 114 164 / 0.32);
+  --nexus-edge-strong: #7482b8;
+  --nexus-text: #f8f8f2;
+  --nexus-text-secondary: #c3c9de;
+  --nexus-text-muted: #9aa5c8;
+  --nexus-accent-rgb: 139 233 253;
+  --nexus-ring: #8be9fd;
+  --nexus-core-from: #6272a4;
+  --nexus-core-to: #44475a;
+  --nexus-warm: #ffb86c;
+  --nexus-warm-from: #ffb86c;
+  --nexus-warm-to: #ffd9a8;
+  --nexus-danger-rgb: 255 140 140;   /* lighter than chat and Settings: small danger text (count badges, tree marks) keeps 4.5:1 on the blue-grey selected fills (review m1) */
+  --studio-count-error-bg: transparent;
+  --nexus-overlay-rgb: 248 248 242;
+  --nexus-field-border: var(--nexus-edge-strong);
+  --alpha-switch-off: 0.4;
+  --color-surface-sheet: #21222c;
+  --color-surface-toast: #343746;
+  --color-placeholder: #9aa5c8;
+  --radius-sheet: 12px;
+
+  /* slices 1-3: the channels the shell states once (a channel is a triplet; the solids and tints derive from it) */
+  --nexus-warning-rgb: 255 184 108;
+  --studio-ok-rgb: 80 250 123;
+  --studio-info-rgb: 189 147 249;
+  --studio-ring-rgb: 139 233 253;
+  --studio-warm-rgb: 255 184 108;
+  --studio-canvas-rgb: 33 34 44;
+  --studio-sheet-rgb: 33 34 44;
+  --studio-muted-rgb: 154 165 200;
+  --studio-well-rgb: 25 26 34;
+  /* on-colours (text on an accent, danger or warning fill), the knob, editor wells and syntax colours */
+  --studio-on-accent: #21222c;
+  --studio-on-danger: #21222c;
+  --studio-on-warning: #21222c;
+  --studio-knob: #f8f8f2;
+  --studio-lt-bg: #1d1e26;
+  --studio-gutter-bg: #1d1e26;
+  --studio-tgb-gutter-bg: #1d1e26;
+  --studio-popup-bg: #282a36;
+  --studio-strip-bg: #343746;
+  --studio-syn-keyword: #ff79c6;
+  --studio-syn-argument: #8be9fd;
+  --studio-syn-string: #f1fa8c;
+  --studio-diff-del: #ffb2b2;
+  --studio-diff-add: #8affb0;
+  --studio-lt-hl-1: #bd93f9;
+  --studio-lt-hl-4: #ff79c6;
+  --studio-lt-hl-5: #9aa5c8;
+  --studio-lt-hl-6: #50fa7b;
+  --studio-lt-hl-9: #f1fa8c;
+  --studio-lt-hl-10: #8be9fd;
+}

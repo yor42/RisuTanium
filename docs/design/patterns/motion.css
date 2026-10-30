@@ -1,0 +1,138 @@
+/*
+  PATTERN MOTION (patterns/MOTION_CONTRACT.md; DD-222, DD-231, DD-233, DD-234). Every transition and animation of the warning and task pattern lives here; pattern.css has none.
+  Rules: only transform and opacity animate (colour, border and height snap); durations, delays, distances and easings are tokens (theme/pattern-tokens.css, theme/nexus-tokens.css);
+  one infinite animation outside .nexus-mark per surface (the sweep or the hold pulse); no backdrop-filter anywhere; will-change only on the fill and the sweep while they work.
+
+  Modes without duplicated rules. The five --pm-* switches below are the whole difference between full motion, low power and reduced motion; the part rules read them and never branch.
+    low power        html.nexus-low-power, or [data-low-power] on a part: no movement, durations capped, loops become a still tint; the status mark keeps animating (DD-211, brand rule)
+    reduced motion   @media (prefers-reduced-motion: reduce) OR html.rm (the mockups' toggle): the same states, opacity only at the press duration, no loops, the fill snaps; the mark stops (data-still, set by pattern.js)
+  Reduced motion wins over low power when both apply. Both selectors below must stay identical. The --pm-* names are internal: a pack cannot set them (registry.mjs rejects them).
+*/
+:root {
+  --pm-move: 1;                   /* multiplies every translate distance */
+  --pm-cap: 3600s;                /* upper bound of every non-loop duration */
+  --pm-stagger: 1;                /* multiplies every delay and stagger */
+  --pm-scale: 1;                  /* 1 = scale from the token value; 0 = no scale */
+  --pm-fill-on: 1;                /* 0 = the bar fill snaps */
+  --pm-detail-on: 1;              /* 0 = the disclosure is instant */
+  --pm-press: var(--warning-press-scale);
+  --pm-sweep-anim: pattern-sweep;
+  --pm-hold-anim: pattern-hold;
+  --pm-halo-anim: pattern-halo;
+  --pm-sweep-from: -100%;
+  --pm-sweep-bg: linear-gradient(90deg, transparent, var(--pattern-task-bar-sweep), transparent);
+  --pm-exit-distance: 4px;        /* exits move 4 px (MOTION_CONTRACT T6) */
+  --pm-caret-turn: 90deg;         /* the disclosure caret turns a quarter (W2) */
+}
+html.nexus-low-power, [data-low-power] {
+  --pm-move: 0; --pm-cap: var(--nexus-duration-lowpower-cap); --pm-stagger: 0; --pm-scale: 0; --pm-detail-on: 0;
+  --pm-sweep-anim: none; --pm-hold-anim: none; --pm-halo-anim: none; --pm-sweep-from: 0%; --pm-sweep-bg: var(--pattern-task-bar-sweep);
+}
+@media (prefers-reduced-motion: reduce) {
+  html:root, :root [data-low-power] {
+    --pm-move: 0; --pm-cap: var(--nexus-duration-press); --pm-stagger: 0; --pm-scale: 0; --pm-fill-on: 0; --pm-detail-on: 0; --pm-press: 1;
+    --pm-sweep-anim: none; --pm-hold-anim: none; --pm-halo-anim: none; --pm-sweep-from: 0%; --pm-sweep-bg: var(--pattern-task-bar-sweep);
+  }
+}
+html.rm, html.rm [data-low-power] {
+  --pm-move: 0; --pm-cap: var(--nexus-duration-press); --pm-stagger: 0; --pm-scale: 0; --pm-fill-on: 0; --pm-detail-on: 0; --pm-press: 1;
+  --pm-sweep-anim: none; --pm-hold-anim: none; --pm-halo-anim: none; --pm-sweep-from: 0%; --pm-sweep-bg: var(--pattern-task-bar-sweep);
+}
+
+/* Derived values, computed where they are used so a [data-low-power] part gets its own cap. */
+:where([data-part^="pattern-"]) {
+  --d-enter: calc(min(var(--nexus-duration-enter), var(--pm-cap)) * var(--risu-animation-speed, 1));
+  --d-exit: calc(min(var(--nexus-duration-exit), var(--pm-cap)) * var(--risu-animation-speed, 1));
+  --d-scrim: calc(min(var(--nexus-scrim-duration), var(--pm-cap)) * var(--risu-animation-speed, 1));
+  --d-glyph: calc(min(var(--warning-glyph-dur), var(--pm-cap)) * var(--risu-animation-speed, 1));
+  --d-bullet: calc(min(var(--warning-bullet-dur), var(--pm-cap)) * var(--risu-animation-speed, 1));
+  --d-detail: calc(min(var(--warning-detail-dur), var(--pm-cap)) * var(--pm-detail-on) * var(--risu-animation-speed, 1));
+  --d-press: calc(min(var(--warning-press-dur), var(--pm-cap)) * var(--risu-animation-speed, 1));
+  --d-swapout: calc(min(var(--warning-swap-out-dur), var(--pm-cap)) * var(--risu-animation-speed, 1));
+  --d-swapin: calc(min(var(--warning-swap-in-dur), var(--pm-cap)) * var(--risu-animation-speed, 1));
+  --d-step: calc(min(var(--task-step-enter-dur), var(--pm-cap)) * var(--risu-animation-speed, 1));
+  --d-tick: calc(min(var(--task-tick-dur), var(--pm-cap)) * var(--risu-animation-speed, 1));
+  --d-fill: calc(min(var(--task-fill-dur), var(--pm-cap)) * var(--pm-fill-on) * var(--risu-animation-speed, 1));
+  --d-state: calc(min(var(--task-state-dur), var(--pm-cap)) * var(--risu-animation-speed, 1));
+  --d-badge: calc(min(var(--task-badge-dur), var(--pm-cap)) * var(--risu-animation-speed, 1));
+  --d-result: calc(min(var(--task-result-enter-dur), var(--pm-cap)) * var(--risu-animation-speed, 1));
+  --d-toast: calc(min(var(--task-toast-enter-dur), var(--pm-cap)) * var(--risu-animation-speed, 1));
+  --l-glyph: calc(var(--warning-glyph-delay) * var(--pm-stagger));
+  --l-bullet: calc((var(--warning-bullet-delay) + var(--i, 0) * var(--warning-bullet-stagger)) * var(--pm-stagger));
+  --l-step: calc(min(var(--i, 0) * var(--task-step-stagger), var(--task-step-stagger-max)) * var(--pm-stagger));
+  --l-row: calc((var(--task-result-row-delay) + var(--i, 0) * var(--task-result-row-stagger)) * var(--pm-stagger));
+  --l-badge: calc(var(--task-badge-delay) * var(--pm-stagger));
+  --m-dialog: calc(var(--nexus-dialog-enter-distance) * var(--pm-move));
+  --m-sheet: calc(var(--nexus-sheet-enter-distance) * var(--pm-move));
+  --m-bullet: calc(var(--warning-bullet-distance) * var(--pm-move));
+  --m-step: calc(var(--task-step-enter-distance) * var(--pm-move));
+  --m-result: calc(var(--task-result-distance) * var(--pm-move));
+  --m-toast: calc(var(--task-toast-distance) * var(--pm-move));
+  --m-exit: calc(var(--pm-exit-distance) * var(--pm-move));
+  --s-glyph: calc(1 - (1 - var(--warning-glyph-scale-from)) * var(--pm-scale));
+  --s-tick: calc(1 - (1 - var(--task-tick-scale-from)) * var(--pm-scale));
+  --s-badge: calc(1 - (1 - var(--task-badge-scale-from)) * var(--pm-scale));
+}
+
+@keyframes pattern-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pattern-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes pattern-rise-dialog { from { opacity: 0; transform: translateY(var(--m-dialog)); } to { opacity: 1; transform: none; } }
+@keyframes pattern-rise-sheet { from { opacity: 0; transform: translateY(var(--m-sheet)); } to { opacity: 1; transform: none; } }
+@keyframes pattern-rise-bullet { from { opacity: 0; transform: translateY(var(--m-bullet)); } to { opacity: 1; transform: none; } }
+@keyframes pattern-rise-step { from { opacity: 0; transform: translateY(var(--m-step)); } to { opacity: 1; transform: none; } }
+@keyframes pattern-rise-result { from { opacity: 0; transform: translateY(var(--m-result)); } to { opacity: 1; transform: none; } }
+@keyframes pattern-rise-toast { from { opacity: 0; transform: translateY(var(--m-toast)); } to { opacity: 1; transform: none; } }
+@keyframes pattern-exit { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(var(--m-exit)); } }
+@keyframes pattern-glyph { from { opacity: 0; transform: scale(var(--s-glyph)); } to { opacity: 1; transform: none; } }
+@keyframes pattern-halo { from { opacity: var(--warning-halo-opacity); transform: scale(1); } to { opacity: 0; transform: scale(var(--warning-halo-scale-to)); } }
+@keyframes pattern-badge { from { opacity: 0; transform: scale(var(--s-badge)); } to { opacity: 1; transform: none; } }
+@keyframes pattern-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@keyframes pattern-hold { from { opacity: 0.25; } to { opacity: 1; } }
+
+/* ---- W1: a warning opens (scrim, panel, glyph, bullets, one danger ring) ---- */
+[data-part="pattern-scrim"] { animation: pattern-fade-in var(--d-scrim) var(--nexus-ease) both; }
+[data-part="pattern-dialog"] { animation: pattern-rise-dialog var(--d-enter) var(--nexus-ease-out) both; }
+[data-layout="phone"] [data-part="pattern-dialog"] { animation-name: pattern-rise-sheet; }
+[data-part="pattern-layer"][data-closing] [data-part="pattern-scrim"] { animation: pattern-fade-out var(--d-exit) var(--nexus-ease-in) both; }
+[data-part="pattern-layer"][data-closing] [data-part="pattern-dialog"] { animation: pattern-exit var(--d-exit) var(--nexus-ease-in) both; }
+[data-part="pattern-warn-root"][data-form="banner"] { animation: pattern-rise-dialog var(--d-enter) var(--nexus-ease-out) both; }
+[data-form="sheet"] > [data-part="pattern-warn-mark"] { animation: pattern-glyph var(--d-glyph) var(--nexus-ease-out) var(--l-glyph) both; }
+[data-form="sheet"][data-pattern-severity="danger"] > [data-part="pattern-warn-mark"]::after { animation: var(--pm-halo-anim) var(--warning-halo-dur) var(--nexus-ease-out) var(--warning-halo-delay) 1 forwards; }
+[data-form="sheet"] [data-part="pattern-warn-consequence"] { animation: pattern-rise-bullet var(--d-bullet) var(--nexus-ease-out) var(--l-bullet) both; }
+/* W2: the disclosure. The height snaps; the content fades in; the caret turns. */
+[data-part="pattern-warn-detail"]:not([hidden]) { animation: pattern-fade-in var(--d-detail) var(--nexus-ease-out) both; }
+[data-part="pattern-warn-caret"] { transition: transform var(--d-detail) var(--nexus-ease); }
+[aria-expanded="true"] > [data-part="pattern-warn-caret"] { transform: rotate(var(--pm-caret-turn)); }
+/* W3: press. The only scale in the pattern besides the glyph, the ring, the tick and the badge, all small boxes. */
+.pattern-button { transition: transform var(--d-press) var(--nexus-ease), opacity var(--d-state) var(--nexus-ease); }
+.pattern-button:active { transform: scale(var(--pm-press)); }
+/* T1: a confirm starts the task in place: the warning body fades out, the progress body fades in. */
+[data-part="pattern-dialog"][data-swap="out"] > * { animation: pattern-fade-out var(--d-swapout) var(--nexus-ease-in) both; }
+[data-part="pattern-dialog"][data-swap="in"] > * { animation: pattern-fade-in var(--d-swapin) var(--nexus-ease-out) both; }
+
+/* ---- T1/T2: steps, the tick, the bar ---- */
+[data-part="pattern-task-step"] { animation: pattern-rise-step var(--d-step) var(--nexus-ease-out) var(--l-step) both; }
+[data-part="pattern-task-step-icon"] .g { transition: opacity var(--d-tick) var(--nexus-ease-out), transform var(--d-tick) var(--nexus-ease-out); }
+[data-part="pattern-task-step-icon"] .g-done { transform: scale(var(--s-tick)); }
+[data-step-state="done"] .g-done { transform: none; }
+[data-part="pattern-task-bar-fill"] { transition: transform var(--d-fill) var(--task-fill-ease), opacity var(--d-state) var(--nexus-ease); }
+[data-part="pattern-task-bar"][data-task-state="running"] [data-part="pattern-task-bar-fill"], [data-part="pattern-task-bar"][data-task-state="paused"] [data-part="pattern-task-bar-fill"] { will-change: transform; }
+[data-part="pattern-task-bar-sweep"] { transition: opacity var(--d-state) var(--nexus-ease); }
+[data-part="pattern-task-bar-sweep"]::before { background: var(--pm-sweep-bg); }
+/* working: an indeterminate step sweeps inside its share. Waiting on a condition (paused, cancelling): the share pulses in place (T3, T4). Only one of the two ever runs. */
+[data-part="pattern-task-bar"][data-task-state="running"][data-task-mode="indeterminate"] > [data-part="pattern-task-bar-sweep"] { opacity: 1; }
+[data-part="pattern-task-bar"][data-task-state="running"][data-task-mode="indeterminate"] > [data-part="pattern-task-bar-sweep"]::before { transform: translateX(var(--pm-sweep-from)); animation: var(--pm-sweep-anim) var(--task-sweep-period) var(--nexus-ease) infinite; will-change: transform; }
+[data-part="pattern-task-bar"][data-task-state="paused"] > [data-part="pattern-task-bar-sweep"], [data-part="pattern-task-bar"][data-task-state="cancelling"] > [data-part="pattern-task-bar-sweep"] { opacity: 1; }
+[data-part="pattern-task-bar"][data-task-state="paused"] > [data-part="pattern-task-bar-sweep"]::before, [data-part="pattern-task-bar"][data-task-state="cancelling"] > [data-part="pattern-task-bar-sweep"]::before { animation: var(--pm-hold-anim) var(--task-hold-period) var(--nexus-ease) infinite alternate; }
+
+/* ---- T5: the finish. The badge for skips, the result card and its first five rows. ---- */
+[data-part="pattern-task-mark-badge"]:not([hidden]) { animation: pattern-badge var(--d-badge) var(--nexus-ease-out) var(--l-badge) both; }
+[data-part="pattern-task-result"] { animation: pattern-rise-result var(--d-result) var(--nexus-ease-out) both; }
+[data-part="pattern-task-result-skip"]:nth-child(-n+5) { animation: pattern-rise-step var(--d-step) var(--nexus-ease-out) var(--l-row) both; }
+/* DD-231: the brand's error pose shakes once; in this pattern it does not (specificity 0,4,0 beats the brand's 0,3,0). */
+[data-part="pattern-task-mark"] .nexus-mark[data-status="error"] .nm-body { animation: none; }
+
+/* ---- T6: the background toast ---- */
+[data-part="pattern-task-toast"] { animation: pattern-rise-toast var(--d-toast) var(--nexus-ease-out) both; }
+[data-part="pattern-task-toast"][data-closing] { animation: pattern-exit var(--d-exit) var(--nexus-ease-in) both; }
+[data-part="pattern-task-toast-line"][data-swap] { animation: pattern-fade-in var(--d-state) var(--nexus-ease) both; }

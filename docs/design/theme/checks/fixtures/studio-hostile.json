@@ -1,0 +1,422 @@
+[
+ {
+  "id": "H01",
+  "name": "H01 hide save-failed chip",
+  "css": "[data-part=\"studio-save-chip\"][data-state=\"failed\"]{display:none}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "H02",
+  "name": "H02 hide save retry",
+  "css": "[data-part=\"studio-save-retry\"]{display:none}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "H03",
+  "name": "H03 transparent chip text",
+  "css": "[data-part=\"studio-save-chip\"]{color:transparent;font-size:0}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "H04",
+  "name": "H04 hide apply why + apply",
+  "css": "[data-part=\"studio-item-apply-why\"]{display:none}[data-part=\"studio-item-apply\"]{visibility:hidden}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "H05",
+  "name": "H05 hide undo/redo",
+  "css": "[data-part=\"studio-header-undo\"]{display:none}[data-part=\"studio-header-redo\"]{display:none}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "H06",
+  "name": "H06 hide draft banner + problems",
+  "css": "[data-part=\"studio-info-banner\"]{display:none}[data-part=\"studio-problems-list\"]{display:none}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "H07",
+  "name": "H07 hide tgb banners/warn/errors",
+  "css": "[data-part=\"studio-tgb-banner\"]{display:none}[data-part=\"studio-tgb-edit-warn\"]{display:none}[data-part=\"studio-tgb-field-error\"]{display:none}[data-part=\"studio-tgb-preview-warn\"]{opacity:0}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "H08",
+  "name": "H08 hide lt problems",
+  "css": "[data-part=\"studio-lt-problem\"]{display:none}[data-part=\"studio-lt-problem-fix\"]{display:none}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S01",
+  "name": "S01 :has() on sheet root",
+  "css": "[data-part=\"studio-sheet-root\"]:has([data-part-critical]){display:none}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S02",
+  "name": "S02 :is()",
+  "css": ":is([data-part=\"studio-toast\"],[data-part=\"studio-toast-box\"]){display:none}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S03",
+  "name": "S03 :where() star",
+  "css": ":where([data-part=\"studio-toast-box\"]) *{display:none}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S04",
+  "name": "S04 sibling from safe scrim",
+  "css": "[data-part=\"studio-sheet-scrim\"] ~ [data-kind=\"restore\"]{background:transparent}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S05",
+  "name": "S05 sibling + from safe toast",
+  "css": "[data-part=\"studio-toast\"] + [data-part=\"studio-undo-toast\"]{display:none}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S06",
+  "name": "S06 ::before overlay from safe part",
+  "css": "[data-part=\"studio-sheet-scrim\"]::before{content:\"\";position:fixed;inset:0;background:#fff}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S07",
+  "name": "S07 ::after on safe toast",
+  "css": "[data-part=\"studio-toast\"]::after{content:\"\";display:block;height:400px}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S08",
+  "name": "S08 escaped pseudo",
+  "css": "[data-part=\"studio-sheet-scrim\"]\\3a :before{content:\"x\"}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S09",
+  "name": "S09 @container",
+  "css": "@container (min-width:1px){[data-part=\"studio-toast\"]{display:none}}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S10",
+  "name": "S10 @media wrapper",
+  "css": "@media (min-width:1px){[data-part=\"studio-save-chip\"][data-state=\"failed\"]{display:none}}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S11",
+  "name": "S11 attribute operator ^=",
+  "css": "[data-part^=\"studio-critical\"]{display:none}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S12",
+  "name": "S12 attr state only: failed",
+  "css": "[data-state=\"failed\"]{background:transparent;border-color:transparent}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S13",
+  "name": "S13 attr kind only: restore",
+  "css": "[data-kind=\"restore\"]{background:transparent}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S14",
+  "name": "S14 attr kind: conflict/leave/apply bg transparent",
+  "css": "[data-kind=\"conflict\"],[data-kind=\"leave\"],[data-kind=\"apply\"],[data-kind=\"restore\"]{background-color:transparent;border:0;box-shadow:none}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S15",
+  "name": "S15 attr kind peer banner",
+  "css": "[data-kind=\"peer\"],[data-kind=\"draft-store\"]{background:transparent}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S16",
+  "name": "S16 attr kind ask (carry)",
+  "css": "[data-state=\"ask\"]{background:transparent}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S17",
+  "name": "S17 attr: data-open scrim",
+  "css": "[data-open]{background:transparent}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S18",
+  "name": "S18 slice 4 question sheet transparent",
+  "css": "[data-kind=\"question\"]{background:transparent;box-shadow:none}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "S19",
+  "name": "S19 transparent + contrast-safe colour on same rule",
+  "css": "[data-kind=\"restore\"],[data-kind=\"apply\"],[data-kind=\"leave\"],[data-kind=\"conflict\"],[data-kind=\"question\"]{background:rgb(0 0 0 / 0);border-color:transparent}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P01",
+  "name": "P01 z-index from safe",
+  "css": "[data-part=\"studio-sheet-scrim\"]{z-index:9999}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P02",
+  "name": "P02 position from safe",
+  "css": "[data-part=\"studio-toast\"]{position:absolute;top:0;left:0}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P03",
+  "name": "P03 position relative + inset",
+  "css": "[data-part=\"studio-sheet-scrim\"]{position:relative;top:-9999px}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P04",
+  "name": "P04 big ordinary toast",
+  "css": "[data-part=\"studio-toast\"]{height:480px;width:480px;padding:4000px}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P05",
+  "name": "P05 huge padding on safe header",
+  "css": "[data-part=\"studio-header\"]{padding:5000px}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P06",
+  "name": "P06 min-height on safe sheet-body",
+  "css": "[data-part=\"studio-sheet-body\"]{min-height:480px}[data-part=\"studio-sheet\"]{max-height:1px}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P07",
+  "name": "P07 pointer-events none safe scrim",
+  "css": "[data-part=\"studio-sheet-scrim\"]{pointer-events:none}[data-part=\"studio-scrim\"]{pointer-events:none}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P08",
+  "name": "P08 safe scrim opaque",
+  "css": "[data-part=\"studio-sheet-scrim\"]{background:#fff;opacity:1}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P09",
+  "name": "P09 order/flex on safe",
+  "css": "[data-part=\"studio-sheet-actions\"]{order:-1;flex-direction:column}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P10",
+  "name": "P10 display:contents safe toast",
+  "css": "[data-part=\"studio-toast\"]{display:contents}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P11",
+  "name": "P11 overflow hidden + height 1px on safe ordinary toast",
+  "css": "[data-part=\"studio-toast-text\"]{height:1px;overflow:hidden}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P12",
+  "name": "P12 safe tree col width 100%",
+  "css": "[data-part=\"studio-tree-col\"]{width:100%;max-width:none;min-width:100%}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P13",
+  "name": "P13 transform from safe",
+  "css": "[data-part=\"studio-toast\"]{transform:scale(40)}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P14",
+  "name": "P14 scale prop",
+  "css": "[data-part=\"studio-toast\"]{scale:40}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P15",
+  "name": "P15 negative margin safe",
+  "css": "[data-part=\"studio-toast\"]{margin-top:-400px}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P16",
+  "name": "P16 outline 64px",
+  "css": "[data-part=\"studio-toast\"]{outline:64px solid #fff}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "P17",
+  "name": "P17 box-shadow 64px spread",
+  "css": "[data-part=\"studio-sheet-scrim\"]{box-shadow:0 0 0 64px #fff}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T01",
+  "name": "T01 on-accent transparent",
+  "css": ":root{--studio-on-accent:transparent}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T02",
+  "name": "T02 on-accent = accent",
+  "css": ":root{--studio-on-accent:#8be9fd}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T03",
+  "name": "T03 diff transparent",
+  "css": ":root{--studio-diff-add:transparent;--studio-diff-del:transparent}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T04",
+  "name": "T04 ring size 0",
+  "css": ":root{--studio-size-ring:0px}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T05",
+  "name": "T05 animation speed 100",
+  "css": ":root{--risu-animation-speed:100}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T06",
+  "name": "T06 sz-12vh 3000",
+  "css": ":root{--studio-sz-12vh:3000px}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T07",
+  "name": "T07 font-0p9375 0",
+  "css": ":root{--studio-font-0p9375:0px}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T08",
+  "name": "T08 leading-150 100",
+  "css": ":root{--studio-leading-150:100}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T09",
+  "name": "T09 scale-press 100",
+  "css": ":root{--studio-scale-press:100}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T10",
+  "name": "T10 z-toast 0",
+  "css": ":root{--studio-z-toast:0}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T11",
+  "name": "T11 offscreen-distance 0",
+  "css": ":root{--studio-offscreen-distance:0px}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T12",
+  "name": "T12 viewport-width 0",
+  "css": ":root{--studio-viewport-width:0px}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T13",
+  "name": "T13 under html[data-layout=phone]",
+  "css": "html[data-layout=\"phone\"]{--studio-on-accent:transparent;--studio-size-ring:0px}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T14",
+  "name": "T14 under @media",
+  "css": "@media (max-width:2000px){:root{--studio-on-accent:transparent}}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T15",
+  "name": "T15 via var chain",
+  "css": ":root{--x:transparent;--studio-on-accent:var(--x)}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T16",
+  "name": "T16 muted/warning vs sheet",
+  "css": ":root{--nexus-warning-rgb:33 34 44;--nexus-text-muted:#21222c}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T17",
+  "name": "T17 danger on toast/sheet text-secondary",
+  "css": ":root{--nexus-text-secondary:#21222c}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T18",
+  "name": "T18 tree width 3000",
+  "css": ":root{--studio-tree-width:3000px;--studio-side-width:3000px}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T19",
+  "name": "T19 warning = canvas",
+  "css": ":root{--nexus-warning-rgb:0 1 28}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T20",
+  "name": "T20 ok/info/warm = canvas",
+  "css": ":root{--studio-ok-rgb:0 1 28;--studio-info-rgb:0 1 28;--studio-warm-rgb:0 1 28}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T21",
+  "name": "T21 studio-ring-rgb",
+  "css": ":root{--studio-ring-rgb:0 1 28;--studio-tint-ring-55:transparent}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T22",
+  "name": "T22 scrim transparent",
+  "css": ":root{--studio-scrim:transparent;--studio-tint-shade-5:transparent}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T23",
+  "name": "T23 opacity-60 0",
+  "css": ":root{--studio-opacity-60:0}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T24",
+  "name": "T24 canvas-rgb white on dark",
+  "css": ":root{--studio-canvas-rgb:255 255 255}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T25",
+  "name": "T25 sheet-rgb vs text",
+  "css": ":root{--studio-sheet-rgb:248 248 242}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ },
+ {
+  "id": "T26",
+  "name": "T26 toast bg = text",
+  "css": ":root{--color-surface-toast:#f8f8f2}",
+  "source": "reviews/studio-theme-review/hostile.mjs"
+ }
+]

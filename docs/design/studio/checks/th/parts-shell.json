@@ -1,0 +1,809 @@
+{
+ "area": "shell",
+ "states": 53,
+ "parts": [
+  {
+   "name": "studio-alert-banner",
+   "critical": true,
+   "child": false
+  },
+  {
+   "name": "studio-alert-banner-action",
+   "critical": false,
+   "child": true
+  },
+  {
+   "name": "studio-alert-banner-text",
+   "critical": false,
+   "child": true
+  },
+  {
+   "name": "studio-body",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-code-card",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-code-chips",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-code-editor",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-code-find",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-code-gutter",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-code-popup",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-code-statusbar",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-code-tools",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-critical-action",
+   "critical": false,
+   "child": true
+  },
+  {
+   "name": "studio-critical-actions",
+   "critical": false,
+   "child": true
+  },
+  {
+   "name": "studio-critical-body",
+   "critical": false,
+   "child": true
+  },
+  {
+   "name": "studio-critical-content",
+   "critical": false,
+   "child": true
+  },
+  {
+   "name": "studio-critical-handle",
+   "critical": false,
+   "child": true
+  },
+  {
+   "name": "studio-critical-header",
+   "critical": false,
+   "child": true
+  },
+  {
+   "name": "studio-critical-sheet",
+   "critical": true,
+   "child": true
+  },
+  {
+   "name": "studio-critical-title",
+   "critical": false,
+   "child": true
+  },
+  {
+   "name": "studio-deep-notice",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-demo",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-empty",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-field",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-field-control",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-field-label",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-field-note",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-header",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-header-back",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-header-crumb",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-header-crumb-sep",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-header-crumbs",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-header-menu",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-header-redo",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-header-search",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-header-side-toggle",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-header-title",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-header-title-button",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-header-title-short",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-header-tree-toggle",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-header-undo",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-history-list",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-history-note",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-history-owner",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-history-panel",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-history-step",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-history-step-time",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-info-banner",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-item-actions",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-item-apply",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-item-apply-why",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-item-check",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-item-head",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-item-menu",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-item-name",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-item-sub",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-item-tag",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-item-title",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-kind-list",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-kind-row",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-main",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-problem",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-problems-list",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-problems-panel",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-problems-toolbar",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-restore-list",
+   "critical": true,
+   "child": false
+  },
+  {
+   "name": "studio-restore-list-action",
+   "critical": false,
+   "child": true
+  },
+  {
+   "name": "studio-restore-list-text",
+   "critical": false,
+   "child": true
+  },
+  {
+   "name": "studio-save-chip",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-save-retry",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-save-slot",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-scrim",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-search",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-search-chips",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-search-count",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-search-empty",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-search-group",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-search-input",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-search-panel",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-search-result",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-search-results",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-search-scrim",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-sheet",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-sheet-actions",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-sheet-body",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-sheet-button",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-sheet-handle",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-sheet-header",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-sheet-item",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-sheet-root",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-sheet-scrim",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-sheet-text",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-sheet-title",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-shell",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-side",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-side-body",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-side-close",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-side-grab",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-side-tab",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-side-tabs",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-splitter",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-test-actions",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-test-frame",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-test-input",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-test-lowlevel",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-test-meta",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-test-output",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-test-panel",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-test-run",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-test-scope",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-test-stack",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-test-stop",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-test-switches",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-test-vars",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-toast",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-toast-box",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-toast-text",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-tree",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-tree-col",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-tree-head",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-tree-menu",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-tree-row",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-tree-row-add",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-tree-row-chevron",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-tree-row-count",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-tree-row-icon",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-tree-row-label",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-tree-row-mark",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-tree-row-tag",
+   "critical": false,
+   "child": false
+  },
+  {
+   "name": "studio-undo-toast",
+   "critical": true,
+   "child": false
+  },
+  {
+   "name": "studio-undo-toast-action",
+   "critical": false,
+   "child": true
+  },
+  {
+   "name": "studio-undo-toast-text",
+   "critical": false,
+   "child": true
+  }
+ ],
+ "safe": [
+  "studio-code-card",
+  "studio-code-chips",
+  "studio-code-editor",
+  "studio-code-find",
+  "studio-code-gutter",
+  "studio-code-popup",
+  "studio-code-statusbar",
+  "studio-code-tools",
+  "studio-deep-notice",
+  "studio-demo",
+  "studio-empty",
+  "studio-field",
+  "studio-field-control",
+  "studio-field-label",
+  "studio-field-note",
+  "studio-header",
+  "studio-header-back",
+  "studio-header-crumb",
+  "studio-header-crumb-sep",
+  "studio-header-crumbs",
+  "studio-header-menu",
+  "studio-header-redo",
+  "studio-header-search",
+  "studio-header-side-toggle",
+  "studio-header-title",
+  "studio-header-title-button",
+  "studio-header-title-short",
+  "studio-header-tree-toggle",
+  "studio-header-undo",
+  "studio-history-list",
+  "studio-history-note",
+  "studio-history-owner",
+  "studio-history-panel",
+  "studio-history-step",
+  "studio-history-step-time",
+  "studio-info-banner",
+  "studio-item-actions",
+  "studio-item-apply",
+  "studio-item-apply-why",
+  "studio-item-check",
+  "studio-item-head",
+  "studio-item-menu",
+  "studio-item-name",
+  "studio-item-sub",
+  "studio-item-tag",
+  "studio-item-title",
+  "studio-kind-list",
+  "studio-kind-row",
+  "studio-problem",
+  "studio-problems-list",
+  "studio-problems-panel",
+  "studio-problems-toolbar",
+  "studio-save-chip",
+  "studio-save-retry",
+  "studio-save-slot",
+  "studio-scrim",
+  "studio-search",
+  "studio-search-chips",
+  "studio-search-count",
+  "studio-search-empty",
+  "studio-search-group",
+  "studio-search-input",
+  "studio-search-panel",
+  "studio-search-result",
+  "studio-search-results",
+  "studio-search-scrim",
+  "studio-sheet",
+  "studio-sheet-actions",
+  "studio-sheet-body",
+  "studio-sheet-button",
+  "studio-sheet-handle",
+  "studio-sheet-header",
+  "studio-sheet-item",
+  "studio-sheet-scrim",
+  "studio-sheet-text",
+  "studio-sheet-title",
+  "studio-side",
+  "studio-side-body",
+  "studio-side-close",
+  "studio-side-grab",
+  "studio-side-tab",
+  "studio-side-tabs",
+  "studio-splitter",
+  "studio-test-actions",
+  "studio-test-frame",
+  "studio-test-input",
+  "studio-test-lowlevel",
+  "studio-test-meta",
+  "studio-test-output",
+  "studio-test-panel",
+  "studio-test-run",
+  "studio-test-scope",
+  "studio-test-stack",
+  "studio-test-stop",
+  "studio-test-switches",
+  "studio-test-vars",
+  "studio-toast",
+  "studio-toast-text",
+  "studio-tree",
+  "studio-tree-col",
+  "studio-tree-head",
+  "studio-tree-menu",
+  "studio-tree-row",
+  "studio-tree-row-add",
+  "studio-tree-row-chevron",
+  "studio-tree-row-count",
+  "studio-tree-row-icon",
+  "studio-tree-row-label",
+  "studio-tree-row-mark",
+  "studio-tree-row-tag"
+ ],
+ "critical": [
+  "studio-alert-banner",
+  "studio-critical-sheet",
+  "studio-restore-list",
+  "studio-undo-toast"
+ ],
+ "touching": [
+  "studio-alert-banner",
+  "studio-alert-banner-action",
+  "studio-alert-banner-text",
+  "studio-body",
+  "studio-critical-action",
+  "studio-critical-actions",
+  "studio-critical-body",
+  "studio-critical-content",
+  "studio-critical-handle",
+  "studio-critical-header",
+  "studio-critical-sheet",
+  "studio-critical-title",
+  "studio-form-host",
+  "studio-main",
+  "studio-restore-list",
+  "studio-restore-list-action",
+  "studio-restore-list-text",
+  "studio-sheet-root",
+  "studio-shell",
+  "studio-toast-box",
+  "studio-undo-toast",
+  "studio-undo-toast-action",
+  "studio-undo-toast-text"
+ ]
+}

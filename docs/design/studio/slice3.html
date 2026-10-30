@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>스튜디오 · 3단계 목업 (긴 글 편집기)</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="../theme/nexus-tokens.css">
+<link rel="stylesheet" href="studio-tokens.css">
+<link rel="stylesheet" href="slice1.css">
+<link rel="stylesheet" href="tgb.css">
+<link rel="stylesheet" href="lte.css">
+<script src="st4-theme.js"></script>
+</head>
+<body class="nexus-canvas">
+<a href="#main" class="skip" id="skip">본문으로 건너뛰기</a>
+
+<!-- Stub of the screen Studio was opened from (chat / library / settings); built by slice1.js. Synthetic. -->
+<div id="origin" class="origin" hidden></div>
+
+<div id="studio" class="studio" data-layout="wide" data-phone="tree" data-part="studio-shell">
+  <header class="hdr" id="hdr" data-part="studio-header">
+    <button type="button" class="btn" id="backBtn" data-ic="arrow-left" data-label="back" data-part="studio-header-back"></button>
+    <button type="button" class="btn" id="drawerBtn" data-ic="panel-left" data-label="openTree" aria-controls="treeCol" aria-expanded="false" data-part="studio-header-tree-toggle"></button>
+    <div class="crumbs" id="crumbs" data-part="studio-header-title">
+      <nav class="crumb-full" id="crumbFull" aria-label="위치" data-part="studio-header-crumbs"></nav>
+      <div class="crumb-short" id="crumbShort" data-part="studio-header-title-short"></div>
+    </div>
+    <div class="save-slot" id="saveSlot" data-part="studio-save-slot">
+      <span class="status" id="saveStatus" data-state="saved" data-part="studio-save-chip"></span>
+      <button type="button" class="btn sm retry" id="retryBtn" data-ic="rotate-ccw" data-label="retry" hidden data-part="studio-save-retry"></button>
+    </div>
+    <button type="button" class="btn" id="undoBtn" data-ic="undo-2" data-label="undo" aria-disabled="true" data-part="studio-header-undo"></button>
+    <button type="button" class="btn" id="redoBtn" data-ic="redo-2" data-label="redo" aria-disabled="true" data-part="studio-header-redo"></button>
+    <button type="button" class="btn" id="sideToggle" data-ic="panel-right" data-label="toggleSide" aria-controls="side" aria-expanded="true" data-part="studio-header-side-toggle"></button>
+    <button type="button" class="btn" id="searchBtn" data-ic="search" data-label="search" aria-haspopup="dialog" data-part="studio-header-search"></button>
+    <button type="button" class="btn" id="moreBtn" data-ic="ellipsis" data-label="more" aria-haspopup="menu" data-part="studio-header-menu"></button>
+  </header>
+  <div class="deep-notice" id="deepNotice" role="status" hidden data-part="studio-deep-notice"></div>
+  <div class="body" id="body" data-part="studio-body">
+    <aside class="tree-col" id="treeCol" aria-label="소유자 목록" data-part="studio-tree-col">
+      <div class="tree-head" data-part="studio-tree-head">
+        <h2 id="treeTitle"></h2>
+        <button type="button" class="btn sm" id="treeMenuBtn" data-ic="ellipsis" data-label="treeOptions" aria-haspopup="menu" data-part="studio-tree-menu"></button>
+      </div>
+      <div class="tree" id="tree" role="tree" aria-labelledby="treeTitle" data-part="studio-tree"></div>
+      <details class="demo" id="demo" data-part="studio-demo">
+        <summary id="demoSum"></summary>
+        <div class="demo-body" id="demoBody"></div>
+      </details>
+    </aside>
+    <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" tabindex="0" aria-valuemin="220" aria-valuemax="400" aria-valuenow="280" data-part="studio-splitter"></div>
+
+    <main class="edit-col" id="main" tabindex="-1" aria-label="편집" data-part="studio-main">
+      <div class="item-head" id="itemHead" tabindex="-1" data-part="studio-item-head"></div>
+      <div id="formHost" class="form-host" data-part="studio-form-host"></div>
+      <section class="code-card" id="editor-panel" hidden aria-label="코드 편집기" data-part="studio-code-card">
+        <div class="edit-tools" role="toolbar" aria-label="편집 도구" data-part="studio-code-tools">
+          <button type="button" class="btn sm" id="btn-undo" data-ic="undo-2" disabled></button>
+          <button type="button" class="btn sm" id="btn-redo" data-ic="redo-2" disabled></button>
+          <span class="sep" aria-hidden="true"></span>
+          <button type="button" class="btn sm" id="btn-outdent" data-ic="indent-decrease" data-label="outdent"></button>
+          <button type="button" class="btn sm" id="btn-indent" data-ic="indent-increase" data-label="indent"></button>
+          <span class="sep" aria-hidden="true"></span>
+          <button type="button" class="btn sm" id="btn-find" data-ic="search" data-label="findInCode"></button>
+          <button type="button" class="btn sm" id="btn-goto" data-ic="arrow-down-to-line" data-label="gotoLine"></button>
+        </div>
+        <div class="find-bar" id="find-bar" role="search" aria-label="코드에서 찾기와 바꾸기" hidden data-part="studio-code-find">
+          <div class="find-row">
+            <input type="text" id="find-q" data-ph="find" autocomplete="off" spellcheck="false">
+            <span class="find-count" id="find-count" aria-live="polite"></span>
+            <button type="button" class="btn sm" id="find-prev" data-ic="chevron-up" data-label="prevMatch"></button>
+            <button type="button" class="btn sm" id="find-next" data-ic="chevron-down" data-label="nextMatch"></button>
+            <button type="button" class="btn sm txt" id="find-case" aria-pressed="false" data-label="matchCase">Aa</button>
+            <button type="button" class="btn sm txt" id="find-word" aria-pressed="false" data-label="wholeWord">ab</button>
+            <button type="button" class="btn sm" id="find-toggle-rep" data-ic="replace" data-label="showReplace" aria-pressed="false" aria-controls="find-rep-row"></button>
+            <button type="button" class="btn sm" id="find-close" data-ic="x" data-label="closeFind"></button>
+          </div>
+          <div class="find-row" id="find-rep-row" hidden>
+            <input type="text" id="find-r" data-ph="replaceWith" autocomplete="off" spellcheck="false">
+            <button type="button" class="btn sm" id="rep-one" data-ic="replace" data-label="replaceOne"></button>
+            <button type="button" class="btn sm" id="rep-all" data-ic="list" data-label="replaceAll"></button>
+          </div>
+          <div class="find-row">
+            <label for="goto-line" class="hint" id="gotoLbl"></label>
+            <input type="number" class="goto" id="goto-line" min="1" step="1" inputmode="numeric">
+            <button type="button" class="btn sm" id="goto-go" data-ic="check" data-label="go"></button>
+            <span class="goto-msg" id="goto-msg" hidden></span>
+          </div>
+        </div>
+        <div class="check-chips" id="check-chips" role="list" aria-label="검사 결과 요약" data-part="studio-code-chips"></div>
+        <div class="editor-wrap" id="editor-wrap" data-part="studio-code-editor">
+          <div class="gutter" id="gutter" aria-hidden="true" data-part="studio-code-gutter"></div>
+          <div class="code-stage" id="code-stage">
+            <pre class="code-layer" id="backdrop" aria-hidden="true"></pre>
+            <pre class="code-layer marks" id="marks" aria-hidden="true"></pre>
+            <textarea class="code-input" id="editor" spellcheck="false" wrap="off" autocomplete="off" autocapitalize="off" aria-describedby="sr-summary editor-hint" aria-autocomplete="list" aria-controls="ac-list"></textarea>
+            <div class="measure" id="measure" aria-hidden="true"><span id="measure-span"></span></div>
+          </div>
+        </div>
+        <p class="sr-only" id="editor-hint"></p>
+        <div class="ac-pop" id="ac-pop" hidden data-part="studio-code-popup">
+          <div class="ac-list" id="ac-list" role="listbox" aria-label="자동 완성"></div>
+          <div class="ac-doc" id="ac-doc" lang="en"></div>
+        </div>
+        <div class="editor-statusbar" data-part="studio-code-statusbar">
+          <div class="status-left">
+            <div class="status-counts" id="status-counts"></div>
+            <button type="button" class="btn sm" id="btn-prev-prob" data-ic="chevron-up" data-label="prevProblem"></button>
+            <button type="button" class="btn sm" id="btn-next-prob" data-ic="chevron-down" data-label="nextProblem"></button>
+          </div>
+          <div class="status-right">
+            <span id="cursor-pos" role="status"></span>
+            <label class="sr-only" for="sel-indent" id="indentLbl"></label>
+            <select id="sel-indent"><option value="s2" selected>2</option><option value="s4">4</option><option value="tab">Tab</option></select>
+            <button type="button" class="btn sm txt" id="btn-tabmode" aria-pressed="false"></button>
+            <button type="button" class="btn sm txt" id="btn-toggle-ac" aria-pressed="true" data-label="autoComplete" data-ic="sparkles"></button>
+            <span class="tab-hint hide-narrow" id="tab-hint"></span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <aside class="side" id="side" aria-label="보조 패널" data-part="studio-side">
+      <div class="side-grab" id="sideGrab" data-part="studio-side-grab"><i></i></div>
+      <div class="side-tabs" role="tablist" id="sideTabs" aria-label="보조 패널" data-part="studio-side-tabs">
+        <button type="button" role="tab" id="tabProblems" aria-controls="panelProblems" aria-selected="true" class="stab" data-part="studio-side-tab" data-tab="problems"><span data-ic="triangle-alert" data-size="16"></span><span class="tl" data-t="tabProblems"></span><span class="cnt" id="cntProblems"></span></button>
+        <button type="button" role="tab" id="tabTest" aria-controls="panelTest" aria-selected="false" tabindex="-1" class="stab" data-part="studio-side-tab" data-tab="test"><span data-ic="flask-conical" data-size="16"></span><span class="tl" data-t="tabTest"></span></button>
+        <button type="button" role="tab" id="tabPreview" aria-controls="panelPreview" aria-selected="false" tabindex="-1" class="stab" hidden><span data-ic="eye" data-size="16"></span><span class="tl" data-t="tabPreview"></span></button>
+        <button type="button" role="tab" id="tabHistory" aria-controls="panelHistory" aria-selected="false" tabindex="-1" class="stab" data-part="studio-side-tab" data-tab="history"><span data-ic="history" data-size="16"></span><span class="tl" data-t="tabHistory"></span></button>
+        <button type="button" class="btn sm side-close" id="sideClose" data-ic="x" data-label="closeSide" data-part="studio-side-close"></button>
+      </div>
+      <div class="side-body" data-part="studio-side-body">
+        <section role="tabpanel" id="panelProblems" aria-labelledby="tabProblems" class="spanel" data-part="studio-problems-panel">
+          <div id="probForm"></div>
+          <div id="probCode" hidden>
+            <div class="panel-head"><h2 class="panel-title" id="diag-title" tabindex="-1"></h2><span id="diag-badge" class="hint"></span></div>
+            <div class="prob-toolbar" id="prob-toolbar" role="group" aria-label="심각도로 거르기" data-part="studio-problems-toolbar">
+              <button type="button" data-filter="all" aria-pressed="true"></button>
+              <button type="button" data-filter="error" aria-pressed="false"></button>
+              <button type="button" data-filter="warning" aria-pressed="false"></button>
+              <button type="button" data-filter="info" aria-pressed="false"></button>
+              <span class="spacer"></span>
+              <button type="button" class="btn sm" id="btn-fix-all" data-ic="wand" data-label="fixAll"></button>
+            </div>
+            <p class="prob-note" id="prob-note" hidden></p>
+            <ul class="prob-list" id="diag-list" aria-label="문제 목록" data-part="studio-problems-list"></ul>
+            <p class="hint eng-hint" id="engHint"></p>
+          </div>
+        </section>
+        <section role="tabpanel" id="panelTest" aria-labelledby="tabTest" class="spanel" hidden data-part="studio-test-panel">
+          <div class="panel-head"><h2 class="panel-title" id="sim-title" tabindex="-1"></h2><span class="hint" id="sim-sub"></span></div>
+          <div class="tframe" data-part="studio-test-frame">
+            <p class="test-scope" id="test-scope" data-part="studio-test-scope"></p>
+            <div class="tin" id="tIn" data-part="studio-test-input">
+              <label for="tMsg" id="tMsgLbl"></label>
+              <textarea id="tMsg" rows="2"></textarea>
+            </div>
+            <div class="tsw" id="tSw" hidden data-part="studio-test-switches"></div>
+            <label class="lowlevel" id="lowlevel-wrap" hidden data-part="studio-test-lowlevel"><input type="checkbox" id="chk-lowlevel"><span id="lowLbl"></span></label>
+            <div class="var-grid" id="var-grid" role="group" aria-label="가상 대화 변수" hidden data-part="studio-test-vars">
+              <div class="var-cell"><label for="v-hp">hp</label><input id="v-hp" type="text" data-var="hp" value="85"></div>
+              <div class="var-cell"><label for="v-stance">stance</label><input id="v-stance" type="text" data-var="stance" value="ally"></div>
+            </div>
+            <div class="tact" data-part="studio-test-actions">
+              <button type="button" class="btn solid" id="btn-run-test" data-ic="play" data-label="runTest" data-part="studio-test-run"></button>
+              <button type="button" class="btn solid" id="btn-stop-test" data-ic="square" data-label="stopTest" disabled aria-disabled="true" data-part="studio-test-stop"></button>
+            </div>
+            <div class="test-meta" id="test-meta" data-part="studio-test-meta"></div>
+            <div class="preview-out" id="preview-out" tabindex="0" data-part="studio-test-output"></div>
+            <div class="stack-list" id="test-stack" role="group" hidden data-part="studio-test-stack"></div>
+            <p class="hint" id="sim-note"></p>
+            <p class="tph" id="tPlaceholder" hidden></p>
+            <select id="sel-outcome" class="sr-only" tabindex="-1" aria-hidden="true"><option value="normal" selected>normal</option><option value="thrown">thrown</option><option value="timeout">timeout</option><option value="stopped">stopped</option><option value="diag">diag</option></select>
+          </div>
+        </section>
+        <section role="tabpanel" id="panelHistory" aria-labelledby="tabHistory" class="spanel" hidden data-part="studio-history-panel"></section>
+        <section role="tabpanel" id="panelPreview" aria-labelledby="tabPreview" class="spanel" hidden></section>
+      </div>
+    </aside>
+  </div>
+  <div class="scrim" id="drawerBackdrop" aria-hidden="true" data-part="studio-scrim"></div>
+  <div class="scrim" id="sideBackdrop" aria-hidden="true" data-part="studio-scrim"></div>
+
+  <div class="search-root" id="searchRoot" hidden data-part="studio-search">
+    <div class="scrim open" id="searchBackdrop" aria-hidden="true" data-part="studio-search-scrim"></div>
+    <div class="search-panel" role="dialog" aria-modal="true" aria-labelledby="searchTitle" id="searchPanel" data-part="studio-search-panel">
+      <h2 class="sr-only" id="searchTitle"></h2>
+      <div class="search-top">
+        <span class="s-ic" data-ic="search"></span>
+        <input type="text" id="searchInput" role="combobox" aria-expanded="true" aria-controls="searchList" aria-autocomplete="list" autocomplete="off" spellcheck="false" enterkeyhint="search" data-part="studio-search-input">
+        <button type="button" class="btn sm" id="searchClear" data-ic="x" data-label="clearSearch" hidden></button>
+        <button type="button" class="btn sm" id="searchClose" data-ic="x" data-label="closeSearch"></button>
+      </div>
+      <div class="chips" id="searchChips" role="group" aria-label="종류로 거르기" data-part="studio-search-chips"></div>
+      <label class="sw" id="searchWide"><input type="checkbox" id="searchWideBox"><span class="sw-ui"></span><span class="lbl" id="searchWideLbl"></span></label>
+      <p class="hint" id="searchWideHint"></p>
+      <div class="s-results" id="searchList" role="listbox" aria-label="검색 결과" data-part="studio-search-results"></div>
+      <p class="s-count" id="searchCount" role="status" aria-live="polite" data-part="studio-search-count"></p>
+    </div>
+  </div>
+
+  <div class="sheet-root" id="sheetRoot" hidden data-part="studio-sheet-root">
+    <div class="sheet-backdrop" id="sheetBackdrop" data-part="studio-sheet-scrim"></div>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" tabindex="-1" id="sheet" data-part="studio-sheet">
+      <div class="grab" data-part="studio-sheet-header"><i data-part="studio-sheet-handle"></i><h2 id="sheetTitle" data-part="studio-sheet-title"></h2></div>
+      <div class="sheet-body" id="sheetBody" data-part="studio-sheet-body"></div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite" data-part="studio-toast-box"></div>
+</div>
+<div class="sr-only" id="srLive" role="status" aria-live="polite" aria-atomic="true"></div>
+<div class="sr-only" id="saveLive" role="status" aria-live="polite" aria-atomic="true"></div>
+<div class="sr-only" id="sr-summary" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<script src="icons.js"></script>
+<script src="icons2.js"></script>
+<script src="icons3.js"></script>
+<script src="lint.js"></script>
+<script src="editor.js"></script>
+<script src="data.js"></script>
+<script src="data2.js"></script>
+<script src="lte-core.js"></script>
+<script src="data3.js"></script>
+<script src="lte-early.js"></script>
+<script src="tgb-core.js"></script>
+<script src="slice1.js"></script>
+<script src="tgb.js"></script>
+<script src="tgb-view.js"></script>
+<script src="lte.js"></script>
+<script src="lte-focus.js"></script>
+<script src="lte-lists.js"></script>
+<script src="lte-states.js"></script>
+</body>
+</html>

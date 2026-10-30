@@ -1,0 +1,2 @@
+/* NEGATIVE fixture: a rule on a part that can be, hold or sit inside a critical element (a row can be the failed row) with a layout declaration. Must be rejected. */
+[data-part="settings-row"] { display: none; }

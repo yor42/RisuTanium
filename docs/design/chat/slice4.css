@@ -1,0 +1,148 @@
+/* Chat slice 4 mockup styles (long chats). Synthetic mockup; not proof of native behaviour or performance.
+   Only transform and opacity are ever transitioned or animated. Motion tokens come from slice 1 (SLICE4_SPEC section 12). */
+
+/* ---------- Bounded list: mounted messages carry their bottom gap as padding so the measured height includes it ---------- */
+.msg.s4m { margin: 0; padding-bottom: var(--message-gap); }
+.msg.s4m.cv { content-visibility: auto; }
+.scroller { overflow-anchor: none; }                  /* the list keeps its own anchor (SLICE4_SPEC section 1); native scroll anchoring would double-correct */
+#thread { position: relative; }
+.s4-startline { text-align: center; font-size: var(--font-size-sm); color: var(--nexus-text-secondary); padding: var(--space-11) 0 var(--space-15); display: flex; align-items: center; gap: var(--space-10); }
+.s4-startline::before, .s4-startline::after { content: ""; flex: 1; height: 1px; background: var(--nexus-edge-strong); }
+.s4-ph { position: relative; overflow: hidden; pointer-events: none; }
+/* skeleton lines: static (no shimmer), only while a fast scroll or a scrubber drag is under way */
+.scroller.s4-fast .s4-ph::before {
+  content: ""; position: absolute; inset: 0 8% 0 8%;
+  background: linear-gradient(to bottom, transparent 0 var(--size-8), var(--s4-sk) var(--size-8) var(--size-13), transparent var(--size-13) var(--size-20), var(--s4-sk) var(--size-20) var(--size-26), transparent var(--size-26) var(--size-30), var(--s4-sk) var(--size-30) var(--size-33), transparent var(--size-33) var(--size-35)) 0 0 / 100% var(--size-35) repeat-y;
+  -webkit-mask: linear-gradient(var(--angle-right), var(--mask-opaque) 0 100%);
+}
+.s4m .meta .avatar { overflow: hidden; }
+.s4m .meta .avatar img.s4-av { width: 100%; height: 100%; display: block; border-radius: var(--radius-circle); object-fit: cover; }
+.s4m figure.img { margin: var(--space-7) 0; width: var(--size-38); height: var(--size-38); border-radius: var(--radius-5); overflow: hidden; background: var(--nexus-surface-raised); }
+.s4m figure.img img { display: block; width: var(--size-38); height: var(--size-38); }
+.s4-hid { display: inline-block; margin-left: var(--space-7); font-size: var(--font-size-xs); color: var(--nexus-text-secondary); border: 1px dashed var(--nexus-edge-strong); border-radius: var(--radius-6); padding: 0 var(--space-7); line-height: var(--leading-field-20); }
+mark.s4-mark { background: var(--color-hit-bg); color: inherit; outline: var(--focus-ring-w) solid var(--color-hit); outline-offset: 1px; border-radius: var(--radius-2); padding: 0 1px; }
+
+/* ---------- Jump to latest (round 48 dp, bottom right above the composer) ---------- */
+.s4-latest {
+  position: absolute; z-index: 8; right: var(--offset-12); bottom: calc(var(--dock, var(--offset-19)) + var(--offset-9)); width: var(--size-23); height: var(--size-23); min-width: var(--size-touch-lg); min-height: var(--size-touch-lg); padding: 0; border-radius: var(--radius-circle);
+  background: var(--nexus-surface-flat); border: 1px solid var(--nexus-edge-strong); color: var(--nexus-text); box-shadow: var(--shadow-float);
+  animation: s4-in var(--chat-dur-fast) var(--chat-ease-out);
+}
+.s4-badge { position: absolute; top: calc(var(--offset-6) * -1); right: calc(var(--offset-5) * -1); min-width: var(--size-11); height: var(--size-11); padding: 0 var(--space-5); border-radius: var(--radius-7); background: var(--nexus-accent); color: var(--color-on-accent); font-size: var(--font-size-xs); font-weight: var(--font-weight-bold); line-height: var(--leading-field-22); text-align: center; white-space: nowrap; }
+@keyframes s4-in { from { opacity: 0; transform: translateY(var(--size-4)); } to { opacity: 1; transform: none; } }
+
+/* ---------- Long-chat line ---------- */
+/* bottom left over the transcript, above the composer: clear of the sender names at the top of each message and of the jump button on the right */
+.s4-long { position: absolute; z-index: 6; left: var(--offset-9); bottom: calc(var(--dock, var(--offset-19)) + var(--offset-9)); max-width: calc(100% - var(--size-34)); padding: var(--space-5) var(--space-11); border-radius: var(--radius-10); background: var(--nexus-surface-flat); border: 1px solid var(--nexus-edge-strong); font-size: var(--font-size-sm); line-height: var(--leading-130); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; animation: s4-fade var(--chat-dur-fast) var(--ease-linear); }
+
+/* ---------- Position scrubber: thumb inset 28 dp from the edge, only the thumb is a touch target ---------- */
+.s4-scrub { position: absolute; z-index: 7; right: 0; top: var(--offset-15); bottom: calc(var(--dock, var(--offset-19)) + var(--offset-20)); width: 0; pointer-events: none; opacity: 0; transition: opacity var(--chat-dur-fast) var(--ease-linear); }
+.main.has-strip .s4-scrub { top: var(--transcript-padding-top-strip); }
+.s4-scrub.on { opacity: 1; }
+.s4-track { position: absolute; top: 0; bottom: 0; right: var(--offset-11); width: var(--size-2); border-radius: var(--radius-1); background: var(--nexus-edge-strong); pointer-events: none; }
+.s4-thumb { position: absolute; top: 0; right: var(--offset-13); width: var(--size-21); height: var(--scrub-thumb-height); border-radius: var(--radius-13); background: var(--nexus-surface-flat); border: 1px solid var(--nexus-edge-strong); box-shadow: var(--shadow-float-sm); display: grid; place-items: center; pointer-events: auto; touch-action: none; cursor: grab; will-change: transform; }
+.s4-scrub:not(.on) .s4-thumb { pointer-events: none; }
+/* a mouse can click the track (page-jump towards the click); on touch screens only the thumb is a target */
+@media (hover: hover) and (pointer: fine) { .s4-scrub.on .s4-track { pointer-events: auto; cursor: pointer; } .s4-track::before { content: ""; position: absolute; top: 0; bottom: 0; left: calc(var(--offset-7) * -1); right: calc(var(--offset-7) * -1); } }
+.s4-grip { width: var(--size-2); height: var(--size-10); border-radius: var(--radius-1); background: var(--nexus-text-secondary); box-shadow: calc(var(--space-6) * -1) 0 0 var(--nexus-text-secondary), var(--space-6) 0 0 var(--nexus-text-secondary); }
+.s4-thumb:focus-visible { outline: var(--focus-ring-w) solid var(--nexus-ring); outline-offset: var(--focus-ring-offset); }
+.s4-bubble { position: absolute; top: var(--offset-9); right: var(--offset-21); padding: var(--space-5) var(--space-10); min-height: var(--size-15); border-radius: var(--radius-10); background: var(--nexus-surface-flat); border: 1px solid var(--nexus-edge-strong); font-size: var(--font-size-sm); white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none; will-change: transform; }
+.s4-scrub.drag .s4-thumb { cursor: grabbing; border-color: var(--nexus-accent); }
+.main.s4-searching .s4-scrub, .s4-scrub[hidden] { display: none; }
+
+/* ---------- "돌아가기" chip ---------- */
+.s4-backchip { position: absolute; z-index: 8; left: 50%; bottom: calc(var(--dock, var(--offset-19)) + var(--offset-9)); margin-left: calc(var(--space-25) * -1); min-width: var(--size-35); height: var(--size-21); padding: 0 var(--space-12); border-radius: var(--radius-13); gap: var(--space-7); background: var(--nexus-surface-flat); border: 1px solid var(--nexus-edge-strong); box-shadow: var(--shadow-float); font-size: var(--font-size-md); animation: s4-fade var(--chat-dur-fast) var(--ease-linear); }
+@keyframes s4-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* ---------- Search bar (replaces the header) ---------- */
+.s4-bar { position: absolute; z-index: 9; top: 0; left: 0; right: 0; display: flex; flex-direction: column; background: var(--nexus-surface-flat); border-bottom: 1px solid var(--nexus-edge); }
+.s4-brow { display: flex; align-items: center; gap: var(--space-1); height: var(--size-23); padding: 0 var(--space-3) 0 var(--space-10); }
+.s4-brow2 { display: flex; align-items: center; justify-content: space-between; gap: var(--space-7); height: var(--size-17); padding: 0 var(--space-7) 0 var(--space-11); border-top: 1px solid var(--nexus-edge); }
+.s4-all { min-height: var(--size-touch); margin: calc(var(--space-3) * -1) 0; padding: 0 var(--space-10); gap: var(--space-5); font-size: var(--font-size-sm); border: 1px solid var(--nexus-edge-strong); border-radius: var(--radius-13); }
+.s4-all[aria-disabled="true"] { opacity: var(--opacity-disabled); cursor: default; }
+.main.s4-searching .hdr { visibility: hidden; }
+.s4-sic { display: grid; place-items: center; color: var(--nexus-text-secondary); }
+.s4-bar input[type="search"] { flex: 1; min-width: 0; height: var(--size-19); padding: 0 var(--space-7); background: transparent; border: 0; color: var(--nexus-text); font-size: var(--font-size-base); outline: none; -webkit-appearance: none; appearance: none; }
+.s4-bar input[type="search"]:focus-visible { outline: var(--focus-ring-w) solid var(--nexus-ring); outline-offset: var(--focus-ring-offset-inset); border-radius: var(--radius-5); }
+.s4-bar input::-webkit-search-cancel-button { display: none; }
+.s4-cnt { flex: none; font-size: var(--font-size-sm); font-variant-numeric: tabular-nums; color: var(--nexus-text); white-space: nowrap; }
+.s4-sb { flex: none; padding: 0; }
+.s4-sb.on { color: var(--nexus-accent); box-shadow: inset 0 calc(var(--stroke-heavy) * -1) 0 var(--nexus-accent); border-radius: 0; }
+.s4-noresults { position: absolute; z-index: 6; left: var(--offset-9); right: var(--offset-9); top: var(--offset-22); max-width: calc(var(--size-rel-21) + var(--size-2)); margin: 0 auto; padding: var(--space-11) var(--space-12); border-radius: var(--radius-8); background: var(--color-surface-sheet); border: 1px solid var(--nexus-edge-strong); text-align: center; display: grid; gap: var(--space-8); justify-items: center; }
+.s4-noresults .btn { padding: 0 var(--space-12); }
+
+/* ---------- Sheets: results, filters, jump ---------- */
+.sheet-body.s4-results { padding: 0; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.s4-rl { position: relative; flex: 1 1 auto; min-height: var(--size-39); overflow-y: auto; overscroll-behavior: contain; }
+.s4-rsp { width: 1px; }
+.s4-rrow { position: absolute; left: 0; right: 0; top: 0; height: var(--size-32); min-height: var(--size-32); justify-content: flex-start; align-items: flex-start; gap: var(--space-10); padding: var(--space-8) var(--space-10); text-align: left; border-bottom: 1px solid var(--nexus-edge); border-radius: 0; will-change: transform; }
+.s4-rrow .avatar { margin-top: var(--space-1); }
+.s4-rt { display: grid; gap: var(--space-1); min-width: 0; flex: 1; }
+.s4-rh { display: flex; gap: var(--space-7); align-items: baseline; min-width: 0; }
+.s4-rh b { font-weight: var(--font-weight-semibold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s4-rh small { color: var(--nexus-text-secondary); font-size: var(--font-size-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s4-rs { font-size: var(--font-size-sm); color: var(--nexus-text-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: var(--leading-135); }
+.s4-filters, .s4-jump { display: grid; gap: var(--space-3); align-content: start; }
+.s4-frow { display: grid; gap: var(--space-5); padding: var(--space-5) var(--space-3); }
+.s4-fl { font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); color: var(--nexus-text-secondary); }
+.s4-seg { display: flex; flex-wrap: wrap; gap: var(--space-5); }
+.s4-seg .btn { min-height: var(--size-touch); padding: 0 var(--space-11); border: 1px solid var(--nexus-edge-strong); border-radius: var(--radius-13); font-size: var(--font-size-md); }
+.s4-seg .btn[aria-checked="true"] { background: var(--nexus-surface-raised); border-color: var(--nexus-accent); box-shadow: inset 0 0 0 1px var(--nexus-accent); }
+.s4-jin { display: flex; gap: var(--space-7); flex-wrap: wrap; align-items: center; }
+.s4-jin label { display: grid; gap: var(--space-1); font-size: var(--font-size-xs); color: var(--nexus-text-secondary); }
+.s4-jin input, .s4-frow input, .s4-jrow input { min-height: var(--size-touch); padding: 0 var(--space-8); background: var(--nexus-surface); color: var(--nexus-text); border: 1px solid var(--nexus-field-border); border-radius: var(--radius-6); color-scheme: var(--color-scheme); }
+.s4-jin input[type="number"] { width: var(--size-rel-14); }
+.s4-jrow { display: grid; gap: var(--space-5); padding: var(--space-7) var(--space-3); border-top: 1px solid var(--nexus-edge); }
+.s4-jrow > label { font-size: var(--font-size-md); }
+.s4-jrow .btn { padding: 0 var(--space-12); }
+.s4-note { font-size: var(--font-size-sm); color: var(--nexus-text-secondary); }
+.s4-jh { font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); color: var(--nexus-text-secondary); padding: var(--space-8) var(--space-3) var(--space-1); border-top: 1px solid var(--nexus-edge); margin-top: var(--space-5); }
+.s4-bmrow { width: 100%; justify-content: flex-start; gap: var(--space-10); padding: var(--space-5) var(--space-8); text-align: left; min-height: var(--size-25); }
+.s4-bmt { display: grid; min-width: 0; }
+.s4-bmn { font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); }
+.s4-bmx { font-size: var(--font-size-sm); color: var(--nexus-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- Editor on a message (pinned while open) ---------- */
+.s4-editor { display: grid; gap: var(--space-5); margin: var(--space-7) 0 0; padding: var(--space-7); border: 1px solid var(--nexus-accent); border-radius: var(--radius-5); background: var(--nexus-surface-raised); }
+.s4-editor textarea { width: 100%; resize: vertical; min-height: var(--size-31); padding: var(--space-7); background: var(--nexus-surface); color: var(--nexus-text); border: 1px solid var(--nexus-field-border); border-radius: var(--radius-5); }
+.s4-edrow { display: flex; gap: var(--space-7); align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.s4-edrow .btn { padding: 0 var(--space-11); }
+
+/* ---------- Demo panel ---------- */
+.s4-read { margin: 0 var(--space-3) var(--space-5); padding: var(--space-5) var(--space-7); border-radius: var(--radius-5); background: var(--nexus-surface); border: 1px solid var(--nexus-edge); }
+.s4-dl { display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-8); margin: 0; font-size: var(--font-size-sm); }
+.s4-dl dt { color: var(--nexus-text-secondary); } .s4-dl dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; } .s4-rnote { margin: var(--space-5) var(--space-3) 0; font-size: var(--font-size-xs); line-height: var(--leading-135); color: var(--nexus-text-secondary); }
+.s4-dl small { color: var(--nexus-text-secondary); }
+.s4-chats { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); padding: 0 0 var(--space-3); }
+.s4-chats .btn { border: 1px solid var(--nexus-edge-strong); font-size: var(--font-size-sm); padding: 0 var(--space-5); }
+
+/* ---------- Modes ---------- */
+html.rm .s4-latest, html.rm .s4-backchip { animation: none; }
+html.rm .s4-scrub { transition: none; } html.rm .s4-long { animation: none; }
+html.nexus-low-power .s4-latest, html.nexus-low-power .s4-backchip { animation-duration: var(--dur-lowpower-cap); }
+@media (prefers-reduced-motion: reduce) { .s4-latest, .s4-backchip { animation: none; } .s4-scrub { transition: none; } }
+@media (forced-colors: active) {
+  .s4-latest, .s4-thumb, .s4-bubble, .s4-bar, .s4-long, .s4-noresults, .s4-backchip, .s4-editor, .s4-rrow, .s4-read { border: 1px solid CanvasText; background: Canvas; color: CanvasText; }
+  .s4-track { background: GrayText; } .s4-grip { background: CanvasText; box-shadow: calc(var(--space-6) * -1) 0 0 CanvasText, var(--space-6) 0 0 CanvasText; }
+  .s4-badge { background: Highlight; color: HighlightText; }
+  mark.s4-mark { background: Mark; color: MarkText; outline: var(--focus-ring-w) solid CanvasText; }
+  /* forced colours: authors' gradients are dropped unless forced-color-adjust is none; the same three lines per 120 px, in GrayText */
+  .scroller.s4-fast .s4-ph, .scroller.s4-fast .s4-ph::before { forced-color-adjust: none; }
+  .scroller.s4-fast .s4-ph::before { background: linear-gradient(to bottom, transparent 0 var(--size-8), GrayText var(--size-8) var(--size-13), transparent var(--size-13) var(--size-20), GrayText var(--size-20) var(--size-26), transparent var(--size-26) var(--size-30), GrayText var(--size-30) var(--size-33), transparent var(--size-33) var(--size-35)) 0 0 / 100% var(--size-35) repeat-y; }
+  .s4-sb.on { box-shadow: inset 0 calc(var(--stroke-heavy) * -1) 0 Highlight; }
+  .s4-seg .btn[aria-checked="true"] { border-color: Highlight; box-shadow: inset 0 0 0 var(--stroke-bold) Highlight; }
+  .s4-hid { border-color: CanvasText; }
+}
+
+/* ---------- Screen-reader stops at the edge of a gap (not a Tab stop; shown if focused) ---------- */
+.s4-edbtns { display: inline-flex; gap: var(--space-5); }
+@media (forced-colors: active) { .s4-brow2 { border-top-color: CanvasText; } .s4-all { border-color: CanvasText; } }
+
+/* ---------- screen-reader stops at the edge of a gap: a real-size row (full width, 44 dp), transparent, never a pointer target, tabindex -1 ---------- */
+.s4-sent { position: absolute; left: 0; width: 100%; height: var(--size-21); margin: 0; padding: 0 var(--space-10); border: 0; background: transparent; color: transparent; text-align: left; overflow: hidden; pointer-events: none; -webkit-user-select: none; user-select: none; z-index: 1; }
+.s4-sent:focus { color: var(--nexus-text); background: var(--nexus-surface-flat); border: 1px solid var(--nexus-edge-strong); border-radius: var(--radius-8); font-size: var(--font-size-sm); }
+/* labels for screen readers are not part of copied text (N-03) */
+.s4m .sr-only, .s4m .ps { -webkit-user-select: none; user-select: none; }
+.s4-hitmsg { outline: var(--focus-ring-w) solid var(--color-hit); outline-offset: var(--focus-ring-offset); border-radius: var(--radius-5); }
+.s4-hitnote { display: inline-block; margin: 0 0 var(--space-5); padding: var(--space-1) var(--space-8); border: 1px solid var(--color-hit); border-radius: var(--radius-6); font-size: var(--font-size-xs); color: var(--nexus-text); }
+@media (forced-colors: active) { .s4-hitmsg { outline-color: Highlight; } .s4-hitnote { border-color: CanvasText; } .s4-sent:focus { border-color: CanvasText; background: Canvas; color: CanvasText; } }
