@@ -23,12 +23,17 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 
 class MainActivity : TauriActivity() {
   private var backWebView: WebView? = null
   private val mainHandler = Handler(Looper.getMainLooper())
   private val gestureInsets = GestureInsetHolder()
   private var lastBarColor = DEFAULT_BAR_COLOR
+
+  // The message channel's handler while the channel is in use; main thread only.
+  private var hostListener: HostMessageListener? = null
 
   // A live system day/night switch changes the navigation-bar rule on API 35+; the activity is
   // not recreated (uiMode is in configChanges), so the last colour is applied again.
@@ -77,6 +82,10 @@ class MainActivity : TauriActivity() {
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
+    // Until the bridge mode is decided, the launch intent's force request is the one that counts.
+    if (latchedBridgeMode == null) {
+      forceLegacyRequested = intent.getBooleanExtra(EXTRA_FORCE_LEGACY_BRIDGES, false)
+    }
     // Must precede super.onCreate: it switches the starting theme (Theme.risuai.Starting) to
     // Theme.risuai, which the activity's own theme handling has to see.
     installSplashScreen()
@@ -104,6 +113,7 @@ class MainActivity : TauriActivity() {
       view.setPadding(bars.left, bars.top, bars.right, bottom)
       val gestures = insets.getInsets(WindowInsetsCompat.Type.systemGestures())
       gestureInsets.leftDp = (maxOf(0, gestures.left - bars.left) / resources.displayMetrics.density).toDouble()
+      hostListener?.pushGestureInset(gestureInsets.leftDp)
       insets.inset(bars.left, bars.top, bars.right, bottom)
     }
     // Until the page reports its scheme the bars match the default dark scheme.
@@ -135,6 +145,33 @@ class MainActivity : TauriActivity() {
     backWebView = webView
     // Until the page paints, the WebView shows the loading screen's colour, so no white or black frame appears.
     webView.setBackgroundColor(ContextCompat.getColor(this, R.color.loading_background))
+    hostListener = null
+    if (bridgeMode() == BridgeMode.LISTENER) {
+      val listener = HostMessageListener(
+        APP_ORIGIN,
+        gestureInsets,
+        SystemBarsBridge(::applyBarColor),
+        KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce),
+        OpenedFilesBridge(contentResolver)
+      )
+      try {
+        WebViewCompat.addWebMessageListener(webView, HOST_OBJECT_NAME, setOf(APP_ORIGIN), listener)
+        hostListener = listener
+      } catch (error: Exception) {
+        Log.w("MainActivity", "host message channel unavailable, using the separate host objects", error)
+        addSeparateHostObjects(webView)
+      }
+    } else {
+      addSeparateHostObjects(webView)
+    }
+    if (previous != null && previous !== webView && sameId(previous, webView)) {
+      mainHandler.post { retire(previous) }
+    }
+  }
+
+  // The separate host objects, one per bridge; the registration used where the message channel
+  // is not available.
+  private fun addSeparateHostObjects(webView: WebView) {
     webView.addJavascriptInterface(GestureInsetBridge(gestureInsets), "__risuTaniumGestureInset")
     webView.addJavascriptInterface(SystemBarsBridge(::applyBarColor), "__risuTaniumSystemBars")
     webView.addJavascriptInterface(
@@ -142,9 +179,19 @@ class MainActivity : TauriActivity() {
       "__risuTaniumKeepAlive"
     )
     webView.addJavascriptInterface(OpenedFilesBridge(contentResolver), "__risuTaniumOpenedFilesHost")
-    if (previous != null && previous !== webView && sameId(previous, webView)) {
-      mainHandler.post { retire(previous) }
-    }
+  }
+
+  // Decided once per process, so every WebView of the process gets the same bridges. The force
+  // request is read from the launch intent in onCreate.
+  private fun bridgeMode(): BridgeMode {
+    latchedBridgeMode?.let { return it }
+    val mode = chooseBridgeMode(
+      WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER),
+      BuildConfig.DEBUG,
+      forceLegacyRequested
+    )
+    latchedBridgeMode = mode
+    return mode
   }
 
   // The service never outlives its activity. A recreated activity's page stops it at init when no
@@ -220,6 +267,10 @@ class MainActivity : TauriActivity() {
     // The WebView of the latest onWebViewCreate; read and written on the main thread only. It
     // outlives the activity, which is how a recreation finds the view it supersedes.
     private var liveWebView: WebView? = null
+
+    // The bridge mode of this process, set when the first WebView is created; main thread only.
+    private var latchedBridgeMode: BridgeMode? = null
+    private var forceLegacyRequested = false
 
     // The service's stop action and time limit reach the page through the live WebView, on the
     // main thread. False when there is no page to act on it or the call failed.

@@ -20,8 +20,23 @@ class OpenedFilesBridge(private val resolver: ContentResolver) {
   // Returns every queued batch (one per intent that carried content URIs) as
   // [[{uri, name}]] and empties the queue; "[]" when nothing waits.
   @JavascriptInterface
-  fun take(): String {
-    val batches = takeBatches()
+  fun take(): String = batchesJson(queue.takeAll())
+
+  // The message channel's take: the same JSON, but the batches stay queued until confirm. through
+  // is the highest batch sequence the JSON includes; 0 when it is empty.
+  class HeldTake(val json: String, val through: Long)
+
+  fun takeHeld(): HeldTake {
+    val snapshot = queue.snapshot()
+    return HeldTake(batchesJson(snapshot.batches), snapshot.through)
+  }
+
+  // Removes every batch up to the sequence; repeating it is harmless.
+  fun confirm(through: Long) {
+    queue.confirm(through)
+  }
+
+  private fun batchesJson(batches: List<List<Uri>>): String {
     val result = JSONArray()
     for (batch in batches) {
       val entries = JSONArray()
@@ -55,22 +70,15 @@ class OpenedFilesBridge(private val resolver: ContentResolver) {
   // The queue is shared by every bridge instance, so a recreated WebView finds what its
   // predecessor's page had not taken yet.
   companion object {
-    // One entry per intent; guarded by queueLock.
-    private val queue = ArrayList<List<Uri>>()
-    private val queueLock = Any()
-
-    private fun takeBatches(): List<List<Uri>> = synchronized(queueLock) {
-      val taken = ArrayList(queue)
-      queue.clear()
-      taken
-    }
+    // One entry per intent.
+    private val queue = PendingBatches<List<Uri>>()
 
     // Called on the main thread. Only content URIs are kept: a file:// URI from another app
     // cannot be read, and any other scheme is not a file handed to the app.
     fun enqueue(intent: Intent?) {
       val uris = urisOf(intent)
       if (uris.isEmpty()) return
-      synchronized(queueLock) { queue.add(uris) }
+      queue.enqueue(uris)
     }
 
     private fun urisOf(intent: Intent?): List<Uri> {
