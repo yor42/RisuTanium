@@ -10,7 +10,10 @@ type GraphIndex = {
     connections: string[];
 };
 
-// A chat with no stored graph, or one that is not a list, has an empty graph.
+// A search ranks every stored entry; each query term and each connection hop keeps only its closest few.
+const TOP_MATCHES_PER_SEARCH = 3;
+
+// A chat with no stored graph,or one that is not a list, has an empty graph.
 function readGraph(subject?: RunSubject): GraphIndex[] {
     try {
         const graph = JSON.parse(getChatVar("graphmem_graph", subject));
@@ -141,8 +144,10 @@ export class GraphMemClient extends MCPClientLike {
             return [{ type: 'text', text: `No memory entries found in the graph database.` }];
         }
 
+        // The search ranks only what `addText` has stored, and it stores a repeated name once per occurrence,
+        // so each name is added once.
         const processer = new HypaProcesser();
-        await processer.embedDocuments(graph.map(g => g.name));
+        await processer.addText([...new Set(graph.map(g => g.name))]);
 
         let results: {
             queryTerm: string;
@@ -155,10 +160,10 @@ export class GraphMemClient extends MCPClientLike {
             for(let depth = 0; depth < search_depth; depth++){
                 const newEntries: GraphIndex[] = [];
                 for(const searchTerm of toSearch){
-                    const searched = await processer.similaritySearch(searchTerm);
+                    const searched = (await processer.similaritySearch(searchTerm)).slice(0, TOP_MATCHES_PER_SEARCH);
                     for(const entry of searched){
                         const found = graph.find(g => g.name === entry);
-                        if(found && !currentEntries.includes(found)){
+                        if(found && !currentEntries.includes(found) && !newEntries.includes(found)){
                             newEntries.push(found);
                         }
                     }
