@@ -2068,6 +2068,8 @@ export const languageVietnamese = {
     "keepAliveFinishing": "Đang hoàn tất…",
     "keepAliveSavePending": "Phản hồi đã sẵn sàng. Hãy mở ứng dụng để hoàn tất việc lưu.",
     "messageInterrupted": "Đã bị gián đoạn — phản hồi có thể chưa đầy đủ",
+    "messageRenderFailed": "Không thể hiển thị tin nhắn này đúng cách nên văn bản gốc được hiển thị.",
+    "messageRenderRetry": "Thử lại",
     "nanoGPTLoadingAccountInfo": "Đang tải thông tin tài khoản…",
     "nanoGPTCreditBalance": "Số dư tín dụng:",
     "nanoGPTSubscription": "Đăng ký",

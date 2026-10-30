@@ -1,6 +1,7 @@
 import { flushSync } from 'svelte'
 import { closeDialogForBack } from './alertBack'
 import { pageCovered } from './alertPrompts'
+import { recordCaughtError } from './caughtErrors'
 
 declare global {
     interface Window {
@@ -54,6 +55,7 @@ export function dispatchBack(): boolean {
             closeDialogForBack()
         } catch (error) {
             console.error('Back dialog close failed', error)
+            recordCaughtError('back.dialogClose', error)
         }
         return true
     }
@@ -67,6 +69,7 @@ export function dispatchBack(): boolean {
             }
         } catch (error) {
             console.error('Back handler failed', error)
+            recordCaughtError('back.handler', error)
         }
     }
     return unhandledPress()
@@ -81,6 +84,7 @@ function scheduleFlush(flush: (() => void) | undefined): void {
             flush()
         } catch (error) {
             console.error('Back flush failed', error)
+            recordCaughtError('back.flush', error)
         }
     }, 0)
 }
@@ -102,6 +106,7 @@ function unhandledPress(): boolean {
         guard.showToast()
     } catch (error) {
         console.error('Back warning failed', error)
+        recordCaughtError('back.warning', error)
         armedAt = null
         return false
     }
@@ -175,6 +180,7 @@ export function backCloseHandler(options: BackCloseOptions): BackHandler {
             options.close()
         } catch (error) {
             console.error('Back close failed', error)
+            recordCaughtError('back.close', error)
         }
         return options.snapshot() !== before
     }

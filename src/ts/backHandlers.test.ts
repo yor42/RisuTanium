@@ -12,6 +12,21 @@ const { covered, closeDialog } = vi.hoisted(() => ({ covered: vi.fn(() => false)
 vi.mock('./alertPrompts', () => ({ pageCovered: covered }))
 vi.mock('./alertBack', () => ({ closeDialogForBack: closeDialog }))
 
+// flushSync runs for real unless a test arms a failure.
+const flushFailure = vi.hoisted(() => ({ error: null as Error | null }))
+vi.mock('svelte', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('svelte')>()
+    return {
+        ...actual,
+        flushSync: (...args: Parameters<typeof actual.flushSync>) => {
+            if (flushFailure.error) {
+                throw flushFailure.error
+            }
+            return actual.flushSync(...args)
+        },
+    }
+})
+
 import {
     QUIT_WINDOW_MS,
     backCloseHandler,
@@ -514,5 +529,80 @@ describe('backCloseHandler', () => {
         expect(showToast).not.toHaveBeenCalled()
         expect(dispatchBack()).toBe(true)
         expect(showToast).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('caught errors are recorded where the console line is printed', () => {
+    // Assertions read only the public record, so a base without the calls fails on a missing entry.
+    const recordedMessages = (): string[] => (window.__risuTaniumErrors ?? []).map((record) => record.message)
+    const MARK = 'T8 marker '
+
+    beforeEach(() => {
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+        flushFailure.error = null
+    })
+
+    afterEach(() => {
+        flushFailure.error = null
+        vi.restoreAllMocks()
+    })
+
+    test('(R) a throwing handler is recorded and the press carries on', () => {
+        registerBackHandler(() => {
+            throw new Error(`${MARK}handler`)
+        })
+        expect(dispatchBack()).toBe(false)
+        expect(recordedMessages()).toContain(`${MARK}handler`)
+    })
+
+    test('(R) a throwing dialog close is recorded and the press is consumed', () => {
+        covered.mockReturnValue(true)
+        closeDialog.mockImplementation(() => {
+            throw new Error(`${MARK}dialog`)
+        })
+        expect(dispatchBack()).toBe(true)
+        expect(recordedMessages()).toContain(`${MARK}dialog`)
+    })
+
+    test('(R) a throwing surface close is recorded and judged by the snapshot', () => {
+        registerBackHandler(backCloseHandler({
+            isOpen: () => true,
+            snapshot: () => 0,
+            close: () => {
+                throw new Error(`${MARK}close`)
+            },
+        }))
+        expect(dispatchBack()).toBe(false)
+        expect(recordedMessages()).toContain(`${MARK}close`)
+    })
+
+    test('(R) flushSync throwing inside the close handler is recorded', () => {
+        const close = vi.fn()
+        registerBackHandler(backCloseHandler({ isOpen: () => true, snapshot: () => 0, close }))
+        flushFailure.error = new Error(`${MARK}flushSync`)
+        expect(dispatchBack()).toBe(false)
+        expect(close).not.toHaveBeenCalled()
+        expect(recordedMessages()).toContain(`${MARK}flushSync`)
+    })
+
+    test('(R) a throwing save request is recorded after the answer', () => {
+        installBackGuard({
+            showToast,
+            flush: () => {
+                throw new Error(`${MARK}flush`)
+            },
+        })
+        expect(dispatchBack()).toBe(true)
+        vi.runAllTimers()
+        expect(recordedMessages()).toContain(`${MARK}flush`)
+    })
+
+    test('(R) a throwing warning is recorded and the press quits', () => {
+        showToast.mockImplementation(() => {
+            throw new Error(`${MARK}warning`)
+        })
+        installBackGuard({ showToast })
+        expect(dispatchBack()).toBe(false)
+        expect(recordedMessages()).toContain(`${MARK}warning`)
     })
 })
