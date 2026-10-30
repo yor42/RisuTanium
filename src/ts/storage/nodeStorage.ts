@@ -421,6 +421,24 @@ export async function getNodeServerProxyAuth() {
 }
 
 /**
+ * Whether the server's proxy may reach the local network (`RISU_PROXY_ALLOW_PRIVATE`),
+ * read from `/api/caps`. Any failure answers false: the warning is shown only
+ * for a state the server confirmed.
+ */
+export async function nodeServerPrivateProxyEnabled(): Promise<boolean> {
+    try {
+        const response = await fetch('/api/caps', { headers: { 'risu-auth': await sharedNodeStorage.authHeader() } })
+        if (!response.ok) {
+            return false
+        }
+        const body: unknown = await response.json()
+        return typeof body === 'object' && body !== null && 'privateProxy' in body && body.privateProxy === true
+    } catch {
+        return false
+    }
+}
+
+/**
  * Asks until the answer has a non-whitespace character. A blank or non-string
  * answer is never hashed (the digest of an empty password is a usable login);
  * an accepted answer is returned exactly as typed, because stored digests

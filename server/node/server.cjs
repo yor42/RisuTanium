@@ -15,10 +15,11 @@ const fs = require('fs/promises')
 const crypto = require('crypto')
 const rateLimit = require('express-rate-limit');
 const { WebSocketServer } = require('ws');
-const { NODE_BODY_LIMIT_BYTES, NODE_ASSET_LIMIT_BYTES, NODE_UPLOAD_CHUNK_MAX_BYTES } = require('./bodyLimit.cjs');
+const { NODE_BODY_LIMIT_BYTES, NODE_PUBLIC_BODY_LIMIT_BYTES, NODE_ASSET_LIMIT_BYTES, NODE_UPLOAD_CHUNK_MAX_BYTES } = require('./bodyLimit.cjs');
 const { hubTargetURL, hubRedirectTarget, hubRequestHeaders, hubResponseHeaders, hubForwardBody } = require('./hubProxy.cjs');
 const { ASSET_READ_AUDIENCE, assetKeyFromHex, contentTypeForKey, sniffContentType, cacheControlForKey } = require('./assetRoute.cjs');
 const { store2KeyFromHex } = require('./store2Keys.cjs');
+const { isKindAllowed, literalHostKind, createCheckedLookup, blockedError, ProxyPolicyError, InvalidHeaderError, sanitizeOutboundHeaders } = require('./proxyPolicy.cjs');
 
 // A positive integer from the environment, else `fallback`. The environment
 // overrides exist so tests can use small limits and short timers.
@@ -37,50 +38,57 @@ const UPLOAD_TOMBSTONE_MS = positiveIntegerFromEnv('RISU_UPLOAD_TOMBSTONE_MS', 1
 // Under capacity pressure only uploads idle at least this long may be evicted.
 const UPLOAD_EVICT_IDLE_MS = positiveIntegerFromEnv('RISU_UPLOAD_EVICT_IDLE_MS', 5 * 60 * 1000);
 
+// Response headers on every answer, static files and errors included. The app
+// frames its own StreamSaver helper page, so framing is limited to the same
+// origin rather than denied. A proxied response may overwrite these with the
+// target's own values; it is fetched, not framed.
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+});
 app.use(express.static(path.join(process.cwd(), 'dist'), {index: false}));
 // Upload requests are tracked from their arrival (trackUploadArrival, defined
-// with the upload routes), and an append body is read by its own parser with
-// the chunk maximum as the limit. That parser runs first and marks the request
-// as parsed, so the global parsers below skip it and an over-size chunk is
-// refused before more than the chunk maximum is buffered.
+// with the upload routes), before their body is read.
 app.use('/api/upload', trackUploadArrival);
-app.use('/api/upload/append', express.raw({ type: () => true, limit: UPLOAD_CHUNK_MAX_BYTES }));
-// The hub proxy forwards the request body as the client sent it, so it is
-// captured as raw bytes before any parser can replace it with a parsed value.
-app.use('/hub-proxy', express.raw({ type: () => true, limit: NODE_BODY_LIMIT_BYTES }));
-app.use(express.json({ limit: NODE_BODY_LIMIT_BYTES }));
-app.use(express.raw({ type: 'application/octet-stream', limit: NODE_BODY_LIMIT_BYTES }));
-app.use(express.text({ limit: NODE_BODY_LIMIT_BYTES }));
-// A body over the parsers' limit is refused before any route handler runs, so
-// the storage write routes answer it here, as JSON and without the framework's
-// error page (which carries a stack and absolute paths). /api/write-checked is
-// a guarded route and keeps its marker on the answer.
-app.use((error, req, res, next) => {
-    if (error?.type === 'entity.too.large' && req.path === '/api/upload/append') {
-        res.status(413).send({
-            error: 'Upload chunk is too large',
-            code: 'PAYLOAD_TOO_LARGE',
-            message: `Upload chunks are limited to ${UPLOAD_CHUNK_MAX_BYTES} bytes.`,
-        });
-        return;
-    }
-    if (error?.type === 'entity.too.large' && (req.path === '/api/write' || req.path === '/api/write-checked')) {
-        console.error('[Storage] Rejected oversized request:', {
-            size: error.length,
-            limit: error.limit,
-        });
-        if (req.path === '/api/write-checked') {
-            markGuarded(res);
+// The hub proxy is anonymous and forwards the request body as the client sent
+// it, so it is captured as raw bytes under the small public limit.
+app.use('/hub-proxy', express.raw({ type: () => true, limit: NODE_PUBLIC_BODY_LIMIT_BYTES }));
+// No body is read before the request is authorised, except under the small
+// public limit. A route that reads a body mounts one of these after its gate
+// (authBeforeBody), so an unauthenticated client cannot make the server buffer
+// or wait for a large body. Each parser sets an empty body when it does not
+// apply, and the handlers rely on that.
+const authenticatedBodyParsers = [
+    express.json({ limit: NODE_BODY_LIMIT_BYTES }),
+    express.raw({ type: 'application/octet-stream', limit: NODE_BODY_LIMIT_BYTES }),
+    express.text({ limit: NODE_BODY_LIMIT_BYTES }),
+];
+const publicJsonParser = express.json({ limit: NODE_PUBLIC_BODY_LIMIT_BYTES });
+// An append body is read by its own parser with the chunk maximum as the limit,
+// so an over-size chunk is refused before more than the chunk maximum is buffered.
+const uploadChunkParser = express.raw({ type: () => true, limit: UPLOAD_CHUNK_MAX_BYTES });
+// Hands a rejected promise of an async route handler to the final error handler,
+// so a failure after an await answers the request instead of ending the process.
+function asyncRoute(handler) {
+    return (req, res, next) => {
+        Promise.resolve().then(() => handler(req, res, next)).catch(next);
+    };
+}
+// The authorisation check sends its own refusal; the request continues to the
+// body parsers only when it passed.
+function authBeforeBody(check) {
+    return async (req, res, next) => {
+        try {
+            if (await check(req, res)) {
+                next();
+            }
+        } catch (error) {
+            next(error);
         }
-        res.status(413).send({
-            error: 'Storage payload is too large',
-            code: 'PAYLOAD_TOO_LARGE',
-            message: `Storage writes are limited to ${NODE_BODY_LIMIT_BYTES / (1024 * 1024)} MiB.`,
-        });
-        return;
-    }
-    next(error);
-});
+    };
+}
 const {pipeline} = require('stream/promises')
 const https = require('https');
 const sslPath = path.join(process.cwd(), 'server/node/ssl/certificate');
@@ -589,9 +597,14 @@ const PROXY_STREAM_MAX_TIMEOUT_MS = 3600000;
 const PROXY_STREAM_DEFAULT_HEARTBEAT_SEC = 15;
 const PROXY_STREAM_HEARTBEAT_MIN_SEC = 5;
 const PROXY_STREAM_HEARTBEAT_MAX_SEC = 60;
-const PROXY_STREAM_GC_INTERVAL_MS = 60000;
-const PROXY_STREAM_DONE_GRACE_MS = 30000;
-const PROXY_STREAM_MAX_ACTIVE_JOBS = 64;
+// The environment overrides let tests use short timers and small bounds.
+const PROXY_STREAM_GC_INTERVAL_MS = positiveIntegerFromEnv('RISU_PROXY_STREAM_GC_INTERVAL_MS', 60000);
+const PROXY_STREAM_DONE_GRACE_MS = positiveIntegerFromEnv('RISU_PROXY_STREAM_DONE_GRACE_MS', 30000);
+const PROXY_STREAM_MAX_ACTIVE_JOBS = positiveIntegerFromEnv('RISU_PROXY_STREAM_MAX_ACTIVE_JOBS', 64);
+// Sockets that may follow one job, and the bytes a follower may have queued
+// before it is cut off (a stalled reader must not make the server hold the stream).
+const PROXY_STREAM_MAX_CLIENTS_PER_JOB = positiveIntegerFromEnv('RISU_PROXY_STREAM_MAX_CLIENTS_PER_JOB', 4);
+const PROXY_STREAM_MAX_CLIENT_BUFFER_BYTES = positiveIntegerFromEnv('RISU_PROXY_STREAM_MAX_CLIENT_BUFFER_BYTES', 4 * 1024 * 1024);
 const PROXY_STREAM_MAX_PENDING_EVENTS = 512;
 const PROXY_STREAM_MAX_PENDING_BYTES = 2 * 1024 * 1024;
 const PROXY_STREAM_MAX_BODY_BASE64_BYTES = 8 * 1024 * 1024;
@@ -644,6 +657,15 @@ const setPasswordRouteLimiter = rateLimit({
     legacyHeaders: false,
     message: { error: 'Too many attempts. Please wait and try again later.' }
 });
+// The digest helper is public, so it has a bucket of its own: a burst on it
+// uses up neither the login nor the password-setup attempts.
+const cryptoRouteLimiter = rateLimit({
+    windowMs: 30 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many attempts. Please wait and try again later.' }
+});
 function isHex(str) {
     return hexRegex.test(str.toUpperCase().trim());
 }
@@ -680,6 +702,7 @@ function normalizeAuthHeader(authHeader) {
 // expires, or one minted for another purpose, opens none of the storage, proxy
 // or websocket routes. With `audience` the token must carry exactly that `aud`;
 // its `exp` may be absent, but a present one must be numeric and not passed.
+const MAX_TOKEN_LIFETIME_SECONDS = 3600;
 async function verifyJwt(authHeader, audience) {
     try {
         const [
@@ -711,6 +734,13 @@ async function verifyJwt(authHeader, audience) {
             const now = Math.floor(Date.now() / 1000);
             if (jsonPayload.exp < now) {
                 return { ok: false, status: 400, error: 'Token Expired', log: 'Token expired' };
+            }
+            // An ordinary token lives minutes; the cap bounds what a leaked one is
+            // worth. A client token that is refused here while its own clock is
+            // right means this server's clock is behind. Asset tokens (with an
+            // audience) are not capped.
+            if (audience === undefined && jsonPayload.exp - now > MAX_TOKEN_LIFETIME_SECONDS) {
+                return { ok: false, status: 400, error: 'Token Lifetime Too Long', log: `Token exp is more than ${MAX_TOKEN_LIFETIME_SECONDS} s after the server clock; the server clock may be behind` };
             }
         }
 
@@ -749,7 +779,8 @@ async function verifyJwt(authHeader, audience) {
         }
         return { ok: true };
     } catch (error) {
-        return { ok: false, status: 500, error: 'Internal Server Error', log: error };
+        // A token that cannot be parsed is the client's fault; one line, no stack.
+        return { ok: false, status: 400, error: 'Invalid Token', log: 'Invalid token (unparseable)' };
     }
 }
 
@@ -830,107 +861,24 @@ function normalizeHeartbeatSec(heartbeatSec) {
     return Math.min(PROXY_STREAM_HEARTBEAT_MAX_SEC, Math.max(PROXY_STREAM_HEARTBEAT_MIN_SEC, parsed));
 }
 
-function isPrivateIPv4Host(hostname) {
-    const parts = hostname.split('.');
-    if (parts.length !== 4) {
-        return false;
-    }
-    const octets = parts.map((part) => Number.parseInt(part, 10));
-    if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
-        return false;
-    }
-    const [a, b] = octets;
-    if (a === 10) {
-        return true;
-    }
-    if (a === 127) {
-        return true;
-    }
-    if (a === 0) {
-        return true;
-    }
-    if (a === 192 && b === 168) {
-        return true;
-    }
-    if (a === 172 && b >= 16 && b <= 31) {
-        return true;
-    }
-    if (a === 169 && b === 254) {
-        return true;
-    }
-    return false;
-}
+// The destination rule of the proxy (see proxyPolicy.cjs): loopback is always
+// allowed, a private-network address only when the operator sets
+// RISU_PROXY_ALLOW_PRIVATE=1, a public address on /proxy and /proxy2 but never
+// for a stream job (jobs exist for local model servers).
+const PROXY_ALLOW_PRIVATE = process.env.RISU_PROXY_ALLOW_PRIVATE === '1';
+const PROXY_ROUTE_POLICY = { allowPrivate: PROXY_ALLOW_PRIVATE, allowPublic: true };
+const PROXY_JOB_POLICY = { allowPrivate: PROXY_ALLOW_PRIVATE, allowPublic: false };
 
-function isLocalNetworkHost(hostname) {
-    if (typeof hostname !== 'string' || hostname.trim() === '') {
-        return false;
+// A pooled keep-alive socket skips the connect-time lookup that enforces a policy,
+// so each policy owns its agents and a socket never serves a request of another policy.
+const POLICY_AGENTS = new WeakMap();
+function agentForPolicy(policy, protocol) {
+    let agents = POLICY_AGENTS.get(policy);
+    if (agents === undefined) {
+        agents = { 'http:': new http.Agent({ keepAlive: true }), 'https:': new https.Agent({ keepAlive: true }) };
+        POLICY_AGENTS.set(policy, agents);
     }
-
-    const normalizedHost = hostname.toLowerCase().replace(/\.$/, '').split('%')[0];
-    if (normalizedHost === 'localhost' || normalizedHost === '::1' || normalizedHost.endsWith('.local')) {
-        return true;
-    }
-
-    if (net.isIP(normalizedHost) === 4) {
-        return isPrivateIPv4Host(normalizedHost);
-    }
-
-    if (net.isIP(normalizedHost) === 6) {
-        if (normalizedHost.startsWith('::ffff:')) {
-            const mapped = normalizedHost.substring(7);
-            return net.isIP(mapped) === 4 && isPrivateIPv4Host(mapped);
-        }
-        if (normalizedHost.startsWith('fc') || normalizedHost.startsWith('fd')) {
-            return true;
-        }
-        if (/^fe[89ab]/.test(normalizedHost)) {
-            return true;
-        }
-        return normalizedHost === '::1';
-    }
-
-    return false;
-}
-
-function sanitizeTargetUrl(raw) {
-    if (typeof raw !== 'string' || raw.trim() === '') {
-        return null;
-    }
-    try {
-        const parsed = new URL(raw);
-        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            return null;
-        }
-        if (!isLocalNetworkHost(parsed.hostname)) {
-            return null;
-        }
-        parsed.username = '';
-        parsed.password = '';
-        return parsed.toString();
-    } catch {
-        return null;
-    } // lgtm[js/request-forgery]
-}
-
-function normalizeForwardHeaders(input) {
-    if (!input || typeof input !== 'object' || Array.isArray(input)) {
-        return {};
-    }
-    const normalized = {};
-    for (const [key, value] of Object.entries(input)) {
-        if (typeof key !== 'string') {
-            continue;
-        }
-        if (typeof value === 'string') {
-            normalized[key] = value;
-        }
-    }
-    delete normalized['risu-auth'];
-    delete normalized['risu-timeout-ms'];
-    delete normalized['host'];
-    delete normalized['connection'];
-    delete normalized['content-length'];
-    return normalized;
+    return agents[protocol];
 }
 
 function normalizeProxyResponseHeaders(headers) {
@@ -944,73 +892,249 @@ function normalizeProxyResponseHeaders(headers) {
     return normalized;
 }
 
-function requestLocalTargetStream(targetUrl, arg) {
+// The one outbound transport of the proxy routes and the stream jobs. Every
+// hop is checked twice: the URL gate refuses a bad URL and an address literal
+// the policy does not allow, and the checked lookup refuses a name that resolves
+// to such an address and hands the connection exactly the addresses it checked.
+const MAX_PROXY_REDIRECTS = 5;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+// Headers that describe the body of a request; a redirect that drops the body drops them.
+const REDIRECT_BODY_HEADERS = ['content-encoding', 'content-language', 'content-location', 'content-type', 'content-length'];
+// Headers of an upstream response that belong to its own connection.
+const HOP_BY_HOP_RESPONSE_HEADERS = new Set(['connection', 'keep-alive', 'transfer-encoding', 'proxy-connection', 'trailer', 'upgrade', 'te']);
+
+function proxyAbortError(message) {
+    const error = new Error(message);
+    error.name = 'AbortError';
+    return error;
+}
+
+function abortErrorOf(signal) {
+    return signal.reason instanceof Error ? signal.reason : proxyAbortError('Proxy request aborted');
+}
+
+function gateProxyUrl(raw, policy, isRedirect) {
+    let url;
+    try {
+        url = new URL(raw);
+    } catch {
+        url = null;
+    }
+    if (url === null || (url.protocol !== 'http:' && url.protocol !== 'https:') || url.username !== '' || url.password !== '') {
+        throw isRedirect
+            ? new ProxyPolicyError('PROXY_REDIRECT_INVALID', 502, 'Redirect target is not a valid http(s) URL')
+            : new ProxyPolicyError('PROXY_URL_INVALID', 400, 'Invalid risu-url');
+    }
+    const kind = literalHostKind(url.hostname);
+    if (kind !== null && !isKindAllowed(kind, policy)) {
+        throw blockedError(kind);
+    }
+    return url;
+}
+
+// One request to one URL. Resolves once the response headers are in, with the
+// response stream; the abort signal keeps governing the request until that
+// stream ends, and every upstream object has an error listener for its lifetime
+// (an unhandled error on a destroyed upstream request would end the process).
+function requestOnce(url, arg) {
     return new Promise((resolve, reject) => {
-        const parsedUrl = new URL(targetUrl);
-        const client = parsedUrl.protocol === 'https:' ? https : http;
-        const headers = normalizeForwardHeaders(arg.headers);
-        if (!headers['host']) {
-            headers['host'] = parsedUrl.host;
+        if (arg.signal.aborted) {
+            reject(abortErrorOf(arg.signal));
+            return;
         }
-        if (arg.bodyBuffer && !headers['content-length']) {
-            headers['content-length'] = String(arg.bodyBuffer.length);
+        const client = url.protocol === 'https:' ? https : http;
+        const headers = { ...arg.headers, host: url.host };
+        if (arg.body !== undefined) {
+            headers['content-length'] = String(arg.body.length);
         }
-
         let settled = false;
-        let cleanupAbort = () => {};
-        const finishReject = (error) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            cleanupAbort();
-            reject(error);
+        let upstream;
+        const onAbort = () => {
+            req.destroy(abortErrorOf(arg.signal));
         };
-
-        const req = client.request(parsedUrl, {
+        const detach = () => arg.signal.removeEventListener('abort', onAbort);
+        const req = client.request(url, {
             method: arg.method,
-            headers
+            headers,
+            agent: agentForPolicy(arg.policy, url.protocol),
+            lookup: createCheckedLookup(arg.policy)
         }, (res) => {
-            if (settled) {
-                res.destroy();
-                return;
-            }
+            upstream = res;
+            res.on('error', () => {});
+            res.once('close', detach);
             settled = true;
-            cleanupAbort();
             resolve({
                 status: res.statusCode || 502,
-                headers: normalizeProxyResponseHeaders(res.headers),
+                headers: res.headers,
                 body: res
             });
         });
-
         req.on('error', (error) => {
-            finishReject(error);
-        });
-
-        req.setTimeout(arg.timeoutMs, () => {
-            req.destroy(new Error(`Upstream request timed out after ${arg.timeoutMs}ms`));
-        });
-
-        if (arg.signal) {
-            const onAbort = () => {
-                const abortError = new Error('Proxy stream job aborted');
-                abortError.name = 'AbortError';
-                req.destroy(abortError);
-            };
-            if (arg.signal.aborted) {
-                onAbort();
+            if (!settled) {
+                settled = true;
+                detach();
+                reject(error);
                 return;
             }
-            arg.signal.addEventListener('abort', onAbort, { once: true });
-            cleanupAbort = () => arg.signal.removeEventListener('abort', onAbort);
+            // After the headers the failure ends the body stream the caller reads.
+            upstream?.destroy();
+        });
+        if (arg.idleTimeoutMs) {
+            req.setTimeout(arg.idleTimeoutMs, () => {
+                req.destroy(new Error(`Upstream request timed out after ${arg.idleTimeoutMs}ms`));
+            });
         }
-
-        if (arg.bodyBuffer && arg.method !== 'GET' && arg.method !== 'HEAD') {
-            req.write(arg.bodyBuffer);
-        }
-        req.end();
+        arg.signal.addEventListener('abort', onAbort, { once: true });
+        req.end(arg.body);
     });
+}
+
+// `arg`: method, headers (already sanitized), body (a Buffer or undefined), signal,
+// policy, maxRedirects (0 passes a 3xx through) and idleTimeoutMs (optional).
+// Redirects follow undici's rules: a 301/302 on POST and a 303 become a GET with
+// no body, and a hop to another origin drops the credentials.
+async function requestChecked(startUrl, arg) {
+    let url = gateProxyUrl(startUrl, arg.policy, false);
+    let method = arg.method;
+    let body = arg.body;
+    const headers = { ...arg.headers };
+    for (let redirects = 0; ; ) {
+        const response = await requestOnce(url, {
+            method,
+            headers,
+            body,
+            signal: arg.signal,
+            policy: arg.policy,
+            idleTimeoutMs: arg.idleTimeoutMs
+        });
+        const location = response.headers.location;
+        if (arg.maxRedirects === 0 || !REDIRECT_STATUSES.has(response.status) || typeof location !== 'string') {
+            return response;
+        }
+        if (redirects >= arg.maxRedirects) {
+            response.body.destroy();
+            throw new ProxyPolicyError('PROXY_TOO_MANY_REDIRECTS', 502, 'Too many redirects');
+        }
+        let next;
+        try {
+            next = gateProxyUrl(new URL(location, url).toString(), arg.policy, true);
+        } catch (error) {
+            response.body.destroy();
+            throw error instanceof ProxyPolicyError ? error : new ProxyPolicyError('PROXY_REDIRECT_INVALID', 502, 'Redirect target is not a valid http(s) URL');
+        }
+        response.body.resume();
+        redirects++;
+        const dropsBody = ((response.status === 301 || response.status === 302) && method === 'POST')
+            || (response.status === 303 && method !== 'GET' && method !== 'HEAD');
+        if (dropsBody) {
+            method = 'GET';
+            body = undefined;
+            for (const name of REDIRECT_BODY_HEADERS) {
+                delete headers[name];
+            }
+        }
+        if (next.origin !== url.origin) {
+            delete headers['authorization'];
+            delete headers['proxy-authorization'];
+            delete headers['cookie'];
+        }
+        url = next;
+    }
+}
+
+// One abort signal for a proxied request: it fires at the total deadline (not
+// cleared at the response headers) and when the client goes away before the
+// answer is complete, so no upstream request outlives its client.
+function createProxyAbort(res, timeoutMs) {
+    const controller = new AbortController();
+    const timer = timeoutMs
+        ? setTimeout(() => controller.abort(proxyAbortError(`Proxy request timed out after ${timeoutMs}ms`)), timeoutMs)
+        : undefined;
+    const onClose = () => {
+        if (!res.writableFinished) {
+            controller.abort(proxyAbortError('Proxy request aborted'));
+        }
+    };
+    res.on('close', onClose);
+    return {
+        signal: controller.signal,
+        cleanup: () => {
+            clearTimeout(timer);
+            res.off('close', onClose);
+        }
+    };
+}
+
+function policyErrorBody(error) {
+    if (error.code === 'PROXY_URL_INVALID') {
+        return { error: error.message };
+    }
+    const body = { error: error.message, code: error.code };
+    if (error.code === 'PROXY_DESTINATION_BLOCKED' && error.details?.kind === 'private') {
+        body.hint = 'Local network targets need RISU_PROXY_ALLOW_PRIVATE=1 on the server.';
+    }
+    return body;
+}
+
+// The headers of a proxied response for the browser: the upstream's own, minus
+// the policy and connection headers, never cacheable. The content encoding and
+// length pass through, since the body is not decoded here.
+function proxyResponseHeaders(upstreamHeaders) {
+    const out = {};
+    for (const [name, value] of Object.entries(upstreamHeaders)) {
+        const key = name.toLowerCase();
+        if (key === 'content-security-policy' || key === 'content-security-policy-report-only' || key === 'clear-site-data'
+            || key === 'cache-control' || HOP_BY_HOP_RESPONSE_HEADERS.has(key)) {
+            continue;
+        }
+        out[key] = Array.isArray(value) ? (key === 'set-cookie' ? value[value.length - 1] : value.join(', ')) : value;
+    }
+    // The target is chosen by a request header, so one URL stands for many
+    // responses: none may be stored or reused by the browser.
+    out['cache-control'] = 'no-store';
+    return out;
+}
+
+async function forwardProxyRequest(res, next, arg) {
+    const abort = createProxyAbort(res, arg.timeoutMs);
+    const appliedHeaders = [];
+    try {
+        const upstream = await requestChecked(arg.urlParam, {
+            method: arg.method,
+            headers: arg.header,
+            body: arg.body,
+            signal: abort.signal,
+            policy: PROXY_ROUTE_POLICY,
+            maxRedirects: MAX_PROXY_REDIRECTS
+        });
+        const headObj = proxyResponseHeaders(upstream.headers);
+        res.header(headObj);
+        appliedHeaders.push(...Object.keys(headObj));
+        res.status(upstream.status);
+        await pipeline(upstream.body, res);
+    }
+    catch (err) {
+        if (res.headersSent) {
+            // A stream cut short must never look complete to the client.
+            res.destroy();
+            return;
+        }
+        for (const name of appliedHeaders) {
+            res.removeHeader(name);
+        }
+        if (err instanceof ProxyPolicyError) {
+            res.status(err.status).send(policyErrorBody(err));
+            return;
+        }
+        if (err?.name === 'AbortError') {
+            res.status(504).send({ error: err.message });
+            return;
+        }
+        next(err);
+        return;
+    } finally {
+        abort.cleanup();
+    }
 }
 
 function createProxyStreamJob(arg) {
@@ -1021,6 +1145,8 @@ function createProxyStreamJob(arg) {
     const createdAt = Date.now();
     const job = {
         id: jobId,
+        // The credential of this job's WebSocket: the general token never goes into a URL.
+        wsTicket: crypto.randomBytes(32).toString('hex'),
         createdAt,
         updatedAt: createdAt,
         done: false,
@@ -1056,6 +1182,10 @@ function pushJobEvent(job, event) {
         return;
     }
     for (const client of job.clients) {
+        if (client.bufferedAmount > PROXY_STREAM_MAX_CLIENT_BUFFER_BYTES) {
+            client.terminate();
+            continue;
+        }
         if (client.readyState === client.OPEN) {
             client.send(text);
         }
@@ -1077,7 +1207,7 @@ function cleanupJob(jobId) {
     }
     for (const client of job.clients) {
         try {
-            client.close();
+            client.close(1000);
         } catch {
             // ignore
         }
@@ -1086,34 +1216,26 @@ function cleanupJob(jobId) {
 }
 
 async function runProxyStreamJob(job, arg) {
-    const targetUrl = sanitizeTargetUrl(arg.targetUrl);
-    if (!targetUrl) {
-        pushJobEvent(job, {
-            type: 'error',
-            status: 400,
-            message: 'Blocked non-local target URL'
-        });
-        markJobDone(job);
-        return;
-    }
-
-    const headers = normalizeForwardHeaders(arg.headers);
+    // The headers arrive sanitized from job creation.
+    const headers = { ...arg.headers };
     if (!headers['x-forwarded-for']) {
         headers['x-forwarded-for'] = arg.clientIp;
     }
     const bodyBuffer = arg.bodyBase64 ? Buffer.from(arg.bodyBase64, 'base64') : undefined;
 
     try {
-        const upstreamResponse = await requestLocalTargetStream(targetUrl, {
+        const upstreamResponse = await requestChecked(arg.targetUrl, {
             method: arg.method,
             headers,
-            bodyBuffer,
-            timeoutMs: job.timeoutMs,
-            signal: job.abortController.signal
+            body: bodyBuffer,
+            idleTimeoutMs: job.timeoutMs,
+            signal: job.abortController.signal,
+            policy: PROXY_JOB_POLICY,
+            maxRedirects: 0
         });
 
         const filteredHeaders = {};
-        for (const [key, value] of Object.entries(upstreamResponse.headers)) {
+        for (const [key, value] of Object.entries(normalizeProxyResponseHeaders(upstreamResponse.headers))) {
             if (key === 'content-security-policy' || key === 'content-security-policy-report-only' || key === 'clear-site-data') {
                 continue;
             }
@@ -1142,11 +1264,14 @@ async function runProxyStreamJob(job, arg) {
         pushJobEvent(job, { type: 'done' });
         markJobDone(job);
     } catch (error) {
-        const message = error?.name === 'AbortError' ? 'Proxy stream job aborted' : `${error}`;
+        // A DELETE aborts the job; the body stream then fails with a premature
+        // close, which is reported as the abort it was.
+        const aborted = error?.name === 'AbortError' || job.abortController.signal.aborted;
+        const blocked = error instanceof ProxyPolicyError;
         pushJobEvent(job, {
             type: 'error',
-            status: 504,
-            message
+            status: blocked ? error.status : 504,
+            message: aborted ? 'Proxy stream job aborted' : (blocked ? error.message : `${error}`)
         });
         markJobDone(job);
     }
@@ -1221,7 +1346,7 @@ async function forwardUpstreamResponse(originalResponse, res) {
     }
 }
 
-app.get('/', async (req, res, next) => {
+app.get('/', asyncRoute(async (req, res, next) => {
 
     const clientIP = req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress || 'Unknown IP';
     const timestamp = new Date().toISOString();
@@ -1238,7 +1363,7 @@ app.get('/', async (req, res, next) => {
         console.log(error)
         next(error)
     }
-})
+}))
 
 async function checkAuth(req, res, returnOnlyStatus = false){
     const authHeader = normalizeAuthHeader(req.headers['risu-auth']);
@@ -1264,146 +1389,89 @@ async function checkAuth(req, res, returnOnlyStatus = false){
     return false
 }
 
-const reverseProxyFunc = async (req, res, next) => {
-    if(!await checkProxyAuth(req, res)){
-        return;
+// The target and the outbound headers of a /proxy or /proxy2 request, or null
+// after the 400 answer for an input that cannot be read. With `risu-header` the
+// client's map is the source of the outbound headers; without it the browser's
+// own request headers are (sanitizeOutboundHeaders drops the credentials and the
+// framing in both cases).
+function readProxyRequest(req, res, hasBody) {
+    let urlParam;
+    try {
+        urlParam = req.headers['risu-url'] ? decodeURIComponent(req.headers['risu-url']) : req.query.url;
+    } catch {
+        res.status(400).send({ error: 'Invalid risu-url' });
+        return null;
     }
-    
-    const urlParam = req.headers['risu-url'] ? decodeURIComponent(req.headers['risu-url']) : req.query.url;
-
     if (!urlParam) {
         res.status(400).send({
             error:'URL has no param'
         });
-        return;
+        return null;
     }
-    const header = req.headers['risu-header'] ? JSON.parse(decodeURIComponent(req.headers['risu-header'])) : req.headers;
-    if(!header['x-forwarded-for']){
-        header['x-forwarded-for'] = req.ip
+    if (typeof urlParam !== 'string') {
+        res.status(400).send({ error: 'Invalid risu-url' });
+        return null;
     }
-
-    const timeoutMs = getRequestTimeoutMs(req.headers['risu-timeout-ms']);
-    const timeout = createTimeoutController(timeoutMs);
-    let originalResponse;
+    let source = req.headers;
+    let fromBrowser = true;
+    if (req.headers['risu-header']) {
+        try {
+            source = JSON.parse(decodeURIComponent(req.headers['risu-header']));
+        } catch {
+            source = undefined;
+        }
+        fromBrowser = false;
+    }
+    let header;
     try {
-        // make request to original server
-        originalResponse = await fetch(urlParam, {
-            method: req.method,
-            headers: header,
-            body: JSON.stringify(req.body),
-            signal: timeout.signal
-        });
-        // get response body as stream
-        const originalBody = originalResponse.body;
-        // get response headers
-        const head = new Headers(originalResponse.headers);
-        head.delete('content-security-policy');
-        head.delete('content-security-policy-report-only');
-        head.delete('clear-site-data');
-        head.delete('Cache-Control');
-        // The target is chosen by a request header, so one URL stands for many
-        // responses: none may be stored or reused by the browser.
-        head.set('Cache-Control', 'no-store');
-        head.delete('Content-Encoding');
-        const headObj = {};
-        for (let [k, v] of head) {
-            headObj[k] = v;
+        header = sanitizeOutboundHeaders(source, { fromBrowser, fetchDefaults: true, hasBody });
+    } catch (error) {
+        if (error instanceof InvalidHeaderError) {
+            res.status(400).send({ error: 'Invalid risu-header' });
+            return null;
         }
-        // send response headers to client
-        res.header(headObj);
-        // send response status to client
-        res.status(originalResponse.status);
-        // send response body to client
-        await pipeline(originalResponse.body, res);
+        throw error;
+    }
+    if (!header['x-forwarded-for'] && typeof req.ip === 'string') {
+        header['x-forwarded-for'] = req.ip;
+    }
+    return { urlParam, header };
+}
 
-    }
-    catch (err) {
-        if (err?.name === 'AbortError') {
-            if (!res.headersSent) {
-                res.status(504).send({
-                    error: timeoutMs
-                        ? `Proxy request timed out after ${timeoutMs}ms`
-                        : 'Proxy request aborted'
-                });
-            } else {
-                res.end();
-            }
-            return;
-        }
-        next(err);
+const reverseProxyFunc = async (req, res, next) => {
+    if(!await checkProxyAuth(req, res)){
         return;
-    } finally {
-        timeout.cleanup();
     }
+
+    const proxyRequest = readProxyRequest(req, res, true);
+    if (proxyRequest === null) {
+        return;
+    }
+    await forwardProxyRequest(res, next, {
+        urlParam: proxyRequest.urlParam,
+        header: proxyRequest.header,
+        method: req.method,
+        body: Buffer.from(JSON.stringify(req.body ?? {})),
+        timeoutMs: getRequestTimeoutMs(req.headers['risu-timeout-ms'])
+    });
 }
 
 const reverseProxyFunc_get = async (req, res, next) => {
     if(!await checkProxyAuth(req, res)){
         return;
     }
-    
-    const urlParam = req.headers['risu-url'] ? decodeURIComponent(req.headers['risu-url']) : req.query.url;
 
-    if (!urlParam) {
-        res.status(400).send({
-            error:'URL has no param'
-        });
+    const proxyRequest = readProxyRequest(req, res, false);
+    if (proxyRequest === null) {
         return;
     }
-    const header = req.headers['risu-header'] ? JSON.parse(decodeURIComponent(req.headers['risu-header'])) : req.headers;
-    if(!header['x-forwarded-for']){
-        header['x-forwarded-for'] = req.ip
-    }
-    const timeoutMs = getRequestTimeoutMs(req.headers['risu-timeout-ms']);
-    const timeout = createTimeoutController(timeoutMs);
-    let originalResponse;
-    try {
-        // make request to original server
-        originalResponse = await fetch(urlParam, {
-            method: 'GET',
-            headers: header,
-            signal: timeout.signal
-        });
-        // get response body as stream
-        const originalBody = originalResponse.body;
-        // get response headers
-        const head = new Headers(originalResponse.headers);
-        head.delete('content-security-policy');
-        head.delete('content-security-policy-report-only');
-        head.delete('clear-site-data');
-        head.delete('Cache-Control');
-        // See reverseProxyFunc: the response must never be cached.
-        head.set('Cache-Control', 'no-store');
-        head.delete('Content-Encoding');
-        const headObj = {};
-        for (let [k, v] of head) {
-            headObj[k] = v;
-        }
-        // send response headers to client
-        res.header(headObj);
-        // send response status to client
-        res.status(originalResponse.status);
-        // send response body to client
-        await pipeline(originalResponse.body, res);
-    }
-    catch (err) {
-        if (err?.name === 'AbortError') {
-            if (!res.headersSent) {
-                res.status(504).send({
-                    error: timeoutMs
-                        ? `Proxy request timed out after ${timeoutMs}ms`
-                        : 'Proxy request aborted'
-                });
-            } else {
-                res.end();
-            }
-            return;
-        }
-        next(err);
-        return;
-    } finally {
-        timeout.cleanup();
-    }
+    await forwardProxyRequest(res, next, {
+        urlParam: proxyRequest.urlParam,
+        header: proxyRequest.header,
+        method: 'GET',
+        body: undefined,
+        timeoutMs: getRequestTimeoutMs(req.headers['risu-timeout-ms'])
+    });
 }
 
 async function hubProxyFunc(req, res) {
@@ -1460,23 +1528,31 @@ async function hubProxyFunc(req, res) {
     }
 }
 
-app.get('/proxy', authenticatedRouteLimiter, reverseProxyFunc_get);
-app.get('/proxy2', authenticatedRouteLimiter, reverseProxyFunc_get);
+app.get('/proxy', authenticatedRouteLimiter, asyncRoute(reverseProxyFunc_get));
+app.get('/proxy2', authenticatedRouteLimiter, asyncRoute(reverseProxyFunc_get));
 app.get('/hub-proxy/*', authenticatedRouteLimiter, hubProxyFunc);
 
-app.post('/proxy', authenticatedRouteLimiter, reverseProxyFunc);
-app.post('/proxy2', authenticatedRouteLimiter, reverseProxyFunc);
+app.post('/proxy', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, asyncRoute(reverseProxyFunc));
+app.post('/proxy2', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, asyncRoute(reverseProxyFunc));
 app.post('/hub-proxy/*', authenticatedRouteLimiter, hubProxyFunc);
-app.post('/proxy-stream-jobs', authenticatedRouteLimiter, async (req, res) => {
+app.post('/proxy-stream-jobs', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, asyncRoute(async (req, res) => {
     if (!await checkProxyAuth(req, res)) {
         return;
     }
 
     const rawUrl = typeof req.body?.url === 'string' ? req.body.url : '';
-    const encodedUrl = encodeURIComponent(rawUrl);
-    const url = sanitizeTargetUrl(decodeURIComponent(encodedUrl));
-    if (!url) {
-        res.status(400).send({ error: 'Invalid target URL. Only local/private network http(s) endpoints are allowed.' });
+    let url;
+    try {
+        url = gateProxyUrl(rawUrl, PROXY_JOB_POLICY, false).toString();
+    } catch (error) {
+        if (!(error instanceof ProxyPolicyError)) {
+            throw error;
+        }
+        if (error.code === 'PROXY_URL_INVALID') {
+            res.status(400).send({ error: 'Invalid target URL. Only local network http(s) endpoints are allowed.' });
+        } else {
+            res.status(error.status).send(policyErrorBody(error));
+        }
         return;
     }
 
@@ -1495,7 +1571,16 @@ app.post('/proxy-stream-jobs', authenticatedRouteLimiter, async (req, res) => {
         res.status(429).send({ error: 'Too many active stream jobs. Retry shortly.' });
         return;
     }
-    const headers = normalizeForwardHeaders(req.body?.headers);
+    let headers;
+    try {
+        headers = sanitizeOutboundHeaders(req.body?.headers ?? {}, { fromBrowser: false, fetchDefaults: false, hasBody: bodyBase64 !== '' });
+    } catch (error) {
+        if (!(error instanceof InvalidHeaderError)) {
+            throw error;
+        }
+        res.status(400).send({ error: 'Invalid risu-header' });
+        return;
+    }
     const heartbeatSec = normalizeHeartbeatSec(Number(req.body?.heartbeatSec));
     const job = createProxyStreamJob({
         heartbeatSec,
@@ -1512,12 +1597,13 @@ app.post('/proxy-stream-jobs', authenticatedRouteLimiter, async (req, res) => {
 
     res.send({
         jobId: job.id,
+        wsTicket: job.wsTicket,
         heartbeatSec: job.heartbeatSec
     });
-});
+}));
 
 // A name that is not allowed and one that is not set answer identically, so names cannot be probed.
-app.post('/api/env-secret', authenticatedRouteLimiter, async (req, res) => {
+app.post('/api/env-secret', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, asyncRoute(async (req, res) => {
     if (!await checkProxyAuth(req, res)) {
         return;
     }
@@ -1533,9 +1619,9 @@ app.post('/api/env-secret', authenticatedRouteLimiter, async (req, res) => {
         return;
     }
     res.send({ value });
-});
+}));
 
-app.delete('/proxy-stream-jobs/:jobId', authenticatedRouteLimiter, async (req, res) => {
+app.delete('/proxy-stream-jobs/:jobId', authenticatedRouteLimiter, asyncRoute(async (req, res) => {
     if (!await checkProxyAuth(req, res)) {
         return;
     }
@@ -1548,7 +1634,7 @@ app.delete('/proxy-stream-jobs/:jobId', authenticatedRouteLimiter, async (req, r
     markJobDone(job);
     cleanupJob(job.id);
     res.send({ success: true });
-});
+}));
 
 // app.get('/api/password', async(req, res)=> {
 //     if(password === ''){
@@ -1562,7 +1648,7 @@ app.delete('/proxy-stream-jobs/:jobId', authenticatedRouteLimiter, async (req, r
 //     }
 // })
 
-app.get('/api/test_auth', authRouteLimiter, async(req, res) => {
+app.get('/api/test_auth', authRouteLimiter, asyncRoute(async(req, res) => {
 
     if(!password){
         res.send({status: 'unset'})
@@ -1573,9 +1659,9 @@ app.get('/api/test_auth', authRouteLimiter, async(req, res) => {
     else{
         res.send({status: 'success'})
     }
-})
+}))
 
-app.post('/api/login', loginRouteLimiter, async (req, res) => {
+app.post('/api/login', loginRouteLimiter, publicJsonParser, asyncRoute(async (req, res) => {
     if(password === ''){
         res.status(400).send({error: 'Password not set'})
         return;
@@ -1596,9 +1682,9 @@ app.post('/api/login', loginRouteLimiter, async (req, res) => {
     else{
         res.status(400).send({error: 'Password incorrect'})
     }
-})
+}))
 
-app.post('/api/crypto', async (req, res) => {
+app.post('/api/crypto', cryptoRouteLimiter, publicJsonParser, asyncRoute(async (req, res) => {
     try {
         const hash = crypto.createHash('sha256')
         hash.update(Buffer.from(req.body.data, 'utf-8'))
@@ -1606,10 +1692,10 @@ app.post('/api/crypto', async (req, res) => {
     } catch (error) {
         res.status(500).send({ error: 'Crypto operation failed' });
     }
-})
+}))
 
 
-app.post('/api/set_password', setPasswordRouteLimiter, async (req, res) => {
+app.post('/api/set_password', setPasswordRouteLimiter, publicJsonParser, asyncRoute(async (req, res) => {
     if(password === ''){
         if(typeof req.body?.password !== 'string' || req.body.password.trim() === '' || isEmptyPasswordDigest(req.body.password)){
             res.status(400).send({error: 'Password missing or invalid'})
@@ -1622,14 +1708,14 @@ app.post('/api/set_password', setPasswordRouteLimiter, async (req, res) => {
     else{
         res.status(400).send("already set")
     }
-})
+}))
 
 // Whether a key holds a value, without reading it: the answer of HEAD. It is
 // registered before the GET route so express does not serve a HEAD request
 // through the GET handler, which reads the whole file. The revision and the
 // size are taken under the same per-key lock as the GET route's snapshot, so
 // the pair is as consistent as a read's.
-app.head('/api/read', storageRouteLimiter, async (req, res, next) => {
+app.head('/api/read', storageRouteLimiter, asyncRoute(async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
@@ -1658,9 +1744,9 @@ app.head('/api/read', storageRouteLimiter, async (req, res, next) => {
     } catch (error) {
         next(error);
     }
-});
+}));
 
-app.get('/api/read', storageRouteLimiter, async (req, res, next) => {
+app.get('/api/read', storageRouteLimiter, asyncRoute(async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
@@ -1732,7 +1818,7 @@ app.get('/api/read', storageRouteLimiter, async (req, res, next) => {
     } catch (error) {
         next(error);
     }
-});
+}));
 
 // Reads the first bytes of a file for content-type sniffing; null when it cannot.
 async function readFileHead(fullPath, length) {
@@ -1754,7 +1840,7 @@ async function readFileHead(fullPath, length) {
 // the key must be one `isRouteServedKey` allows. The file streams from disk
 // with range support and is read under none of the per-key write locks, so a
 // client that stops reading never holds a write or remove of that key.
-app.get('/api/asset/:hex', assetRouteLimiter, async (req, res) => {
+app.get('/api/asset/:hex', assetRouteLimiter, asyncRoute(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', 'sandbox');
     const refuse = (status, error) => {
@@ -1793,7 +1879,7 @@ app.get('/api/asset/:hex', assetRouteLimiter, async (req, res) => {
             refuse(missing ? 404 : 500, missing ? 'Not Found' : 'Internal Server Error');
         }
     });
-});
+}));
 
 // The body of /api/remove and /api/remove-checked. With `guarded` false it is
 // the original route: it reads neither the check-only nor the retire headers and
@@ -2061,17 +2147,17 @@ async function handleRemove(req, res, next, guarded){
     }
 }
 
-app.get('/api/remove', storageRouteLimiter, (req, res, next) => handleRemove(req, res, next, false));
-app.get('/api/remove-checked', storageRouteLimiter, (req, res, next) => handleRemove(req, res, next, true));
+app.get('/api/remove', storageRouteLimiter, asyncRoute((req, res, next) => handleRemove(req, res, next, false)));
+app.get('/api/remove-checked', storageRouteLimiter, asyncRoute((req, res, next) => handleRemove(req, res, next, true)));
 
 // What this server's guarded routes can do. The client reads it by shape.
-app.get('/api/caps', storageRouteLimiter, async (req, res, next) => {
+app.get('/api/caps', storageRouteLimiter, asyncRoute(async (req, res, next) => {
     markGuarded(res);
     if(!await checkAuth(req, res)){
         return;
     }
-    res.send({ checkOnly: true, retire: true, pieces: true, listPrefix: true });
-});
+    res.send({ checkOnly: true, retire: true, pieces: true, listPrefix: true, privateProxy: PROXY_ALLOW_PRIVATE });
+}));
 
 // Only whole, even-length hex names are keys. Everything else in the
 // directory (write temps `<hex>.tmp-<random>`, the revision snapshot
@@ -2082,7 +2168,7 @@ app.get('/api/caps', storageRouteLimiter, async (req, res, next) => {
 // no real file exists.
 const keyFileNamePattern = /^(?:[0-9a-fA-F]{2})+$/;
 
-app.get('/api/list', storageRouteLimiter, async (req, res, next) => {
+app.get('/api/list', storageRouteLimiter, asyncRoute(async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
@@ -2099,12 +2185,12 @@ app.get('/api/list', storageRouteLimiter, async (req, res, next) => {
     } catch (error) {
         next(error);
     }
-});
+}));
 
 // The keys whose hex name starts with `prefix` (even-length hex, empty for all),
 // matched case-insensitively against the same key-file filter as /api/list. With
 // `count=1` only the number of matching files is answered.
-app.get('/api/list-prefix', storageRouteLimiter, async (req, res, next) => {
+app.get('/api/list-prefix', storageRouteLimiter, asyncRoute(async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
@@ -2173,7 +2259,7 @@ app.get('/api/list-prefix', storageRouteLimiter, async (req, res, next) => {
     } catch (error) {
         next(error);
     }
-});
+}));
 
 // The body of /api/write and /api/write-checked; see handleRemove for what
 // `guarded` changes.
@@ -2358,8 +2444,9 @@ async function handleWrite(req, res, next, guarded){
     }
 }
 
-app.post('/api/write', storageRouteLimiter, (req, res, next) => handleWrite(req, res, next, false));
-app.post('/api/write-checked', storageRouteLimiter, (req, res, next) => handleWrite(req, res, next, true));
+app.post('/api/write', storageRouteLimiter, authBeforeBody(checkAuth), authenticatedBodyParsers, asyncRoute((req, res, next) => handleWrite(req, res, next, false)));
+// The marker goes on before the gate, so a refusal and a too-large answer carry it too.
+app.post('/api/write-checked', storageRouteLimiter, (req, res, next) => { markGuarded(res); next(); }, authBeforeBody(checkAuth), authenticatedBodyParsers, asyncRoute((req, res, next) => handleWrite(req, res, next, true)));
 
 // ---------------------------------------------------------------------------
 // Chunked asset upload and ranged read.
@@ -2538,7 +2625,7 @@ const uploadReapTimer = setInterval(() => {
 }, Math.max(20, Math.min(60000, Math.floor(UPLOAD_IDLE_REAP_MS / 4))))
 uploadReapTimer.unref()
 
-app.post('/api/upload/begin', storageRouteLimiter, async (req, res) => {
+app.post('/api/upload/begin', storageRouteLimiter, asyncRoute(async (req, res) => {
     if(!await checkAuth(req, res)){
         return
     }
@@ -2552,7 +2639,7 @@ app.post('/api/upload/begin', storageRouteLimiter, async (req, res) => {
     }
     uploads.set(id, { stagingPath, ack: 0, reserved: 0, lastTouch: Date.now(), inFlight: 0, chain: Promise.resolve() })
     res.send({ id })
-})
+}))
 
 // One append, in the upload's chain. A chunk at `ack` is written there and
 // extends `ack`; the chunk that ends exactly at `ack` is a replay of the last
@@ -2627,7 +2714,7 @@ async function appendInChain(id, entry, offset, chunk){
     return { status: 409, body: { error: 'Upload offset mismatch', code: 'upload-offset', size: entry.ack } }
 }
 
-app.post('/api/upload/append', storageRouteLimiter, async (req, res) => {
+app.post('/api/upload/append', storageRouteLimiter, authBeforeBody(checkAuth), uploadChunkParser, asyncRoute(async (req, res) => {
     if(!await checkAuth(req, res)){
         return
     }
@@ -2669,7 +2756,7 @@ app.post('/api/upload/append', storageRouteLimiter, async (req, res) => {
     } finally {
         entry.reserved -= reserved
     }
-})
+}))
 
 // Bumps and logs `filePath`'s revision the way handleWrite does for an
 // unconditional write; the caller holds the key's write lock.
@@ -2764,7 +2851,7 @@ async function commitInChain(id, entry, finalName, size, ifAbsent){
     return { status: 200, body }
 }
 
-app.post('/api/upload/commit', storageRouteLimiter, async (req, res) => {
+app.post('/api/upload/commit', storageRouteLimiter, asyncRoute(async (req, res) => {
     if(!await checkAuth(req, res)){
         return
     }
@@ -2794,9 +2881,9 @@ app.post('/api/upload/commit', storageRouteLimiter, async (req, res) => {
     } catch (error) {
         sendUploadAnswer(res, uploadFailureAnswer(error, 'Failed to commit upload'))
     }
-})
+}))
 
-app.post('/api/upload/abort', storageRouteLimiter, async (req, res) => {
+app.post('/api/upload/abort', storageRouteLimiter, asyncRoute(async (req, res) => {
     if(!await checkAuth(req, res)){
         return
     }
@@ -2815,14 +2902,14 @@ app.post('/api/upload/abort', storageRouteLimiter, async (req, res) => {
         })
     }
     res.send({ success: true })
-})
+}))
 
 // One bounded piece of a stored asset (or inlay body) and the facts a reader
 // needs to assemble pieces: the revision, the whole size and whether the key
 // holds a value. All of it is taken under the key's write lock, so each piece's
 // revision belongs to the bytes in it; the lock covers one bounded read, never
 // the client's pace.
-app.get('/api/read-range', storageRouteLimiter, async (req, res, next) => {
+app.get('/api/read-range', storageRouteLimiter, asyncRoute(async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return
     }
@@ -2882,7 +2969,57 @@ app.get('/api/read-range', storageRouteLimiter, async (req, res, next) => {
     } catch (error) {
         next(error)
     }
-})
+}))
+
+// A body over a parser's limit is refused before the route handler runs, so it
+// is answered here, as JSON and without the framework's error page (which
+// carries a stack and absolute paths). A route-level parser's error reaches only
+// handlers registered after that route, so this stays after the last route.
+// /api/write-checked is a guarded route and keeps its marker on the answer.
+app.use((error, req, res, next) => {
+    if (error?.type === 'entity.too.large' && req.path === '/api/upload/append') {
+        res.status(413).send({
+            error: 'Upload chunk is too large',
+            code: 'PAYLOAD_TOO_LARGE',
+            message: `Upload chunks are limited to ${UPLOAD_CHUNK_MAX_BYTES} bytes.`,
+        });
+        return;
+    }
+    if (error?.type === 'entity.too.large' && (req.path === '/api/write' || req.path === '/api/write-checked')) {
+        console.error('[Storage] Rejected oversized request:', {
+            size: error.length,
+            limit: error.limit,
+        });
+        if (req.path === '/api/write-checked') {
+            markGuarded(res);
+        }
+        res.status(413).send({
+            error: 'Storage payload is too large',
+            code: 'PAYLOAD_TOO_LARGE',
+            message: `Storage writes are limited to ${NODE_BODY_LIMIT_BYTES / (1024 * 1024)} MiB.`,
+        });
+        return;
+    }
+    if (error?.type === 'entity.too.large') {
+        res.status(413).send({
+            error: 'Request body is too large',
+            code: 'PAYLOAD_TOO_LARGE',
+        });
+        return;
+    }
+    // Any other failure: a client-caused one (a body that does not parse) keeps
+    // its 4xx status, the rest is a 500. The answer is JSON with no stack, one
+    // line is logged, and headers already set (the guarded marker) stay.
+    console.error(`[Server] ${req.method} ${req.path} failed: ${error?.name ?? 'Error'}: ${error?.message ?? error}`);
+    if (res.headersSent) {
+        res.destroy();
+        return;
+    }
+    const status = Number.isInteger(error?.status) && error.status >= 400 && error.status < 500 ? error.status : 500;
+    res.status(status).send({
+        error: status === 500 ? 'Internal Server Error' : (error?.type === 'entity.parse.failed' ? 'Invalid request body' : (http.STATUS_CODES[status] ?? 'Bad Request')),
+    });
+});
 
 async function getHttpsOptions() {
 
@@ -2908,6 +3045,12 @@ async function getHttpsOptions() {
     }
 }
 
+function wsTicketMatches(expected, given) {
+    const expectedBytes = Buffer.from(expected, 'utf8');
+    const givenBytes = Buffer.from(given, 'utf8');
+    return expectedBytes.length === givenBytes.length && crypto.timingSafeEqual(expectedBytes, givenBytes);
+}
+
 function setupProxyStreamWebSocket(server) {
     const wsServer = new WebSocketServer({ noServer: true });
     server.on('upgrade', async (req, socket, head) => {
@@ -2918,18 +3061,28 @@ function setupProxyStreamWebSocket(server) {
                 return;
             }
 
-            const auth = reqUrl.searchParams.get('risu-auth') || req.headers['risu-auth'];
-            if (!await isAuthorizedProxyRequest({ headers: { 'risu-auth': auth } })) {
+            const pathParts = reqUrl.pathname.split('/').filter(Boolean);
+            const jobId = pathParts.length >= 3 ? pathParts[1] : '';
+            const job = proxyStreamJobs.get(jobId);
+            // The job's own ticket opens only that job. A request without one
+            // still presents the general token, as before.
+            const ticket = reqUrl.searchParams.get('ticket');
+            const authorized = ticket !== null
+                ? job !== undefined && wsTicketMatches(job.wsTicket, ticket)
+                : await isAuthorizedProxyRequest({ headers: { 'risu-auth': reqUrl.searchParams.get('risu-auth') || req.headers['risu-auth'] } });
+            if (!authorized) {
                 socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
                 socket.destroy();
                 return;
             }
 
-            const pathParts = reqUrl.pathname.split('/').filter(Boolean);
-            const jobId = pathParts.length >= 3 ? pathParts[1] : '';
-            const job = proxyStreamJobs.get(jobId);
             if (!job) {
                 socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+                socket.destroy();
+                return;
+            }
+            if (job.clients.size >= PROXY_STREAM_MAX_CLIENTS_PER_JOB) {
+                socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
                 socket.destroy();
                 return;
             }
@@ -2993,6 +3146,9 @@ async function startServer() {
             console.warn('[Server] WARNING: save/__password holds the digest of an empty password, so anyone who can reach this server can sign in without a password. To set a new one, stop the server, delete save/__password, start it again and set the password from the app.');
         }
         const port = process.env.PORT || 6001;
+        // HOST narrows the address the server binds; unset, it listens on every interface.
+        const host = (process.env.HOST || '').trim();
+        const listenArguments = host === '' ? [port] : [port, host];
         const httpsOptions = await getHttpsOptions();
         let server = null;
 
@@ -3000,7 +3156,7 @@ async function startServer() {
             // HTTPS
             server = https.createServer(httpsOptions, app);
             setupProxyStreamWebSocket(server);
-            server.listen(port, () => {
+            server.listen(...listenArguments, () => {
                 console.log("[Server] HTTPS server is running.");
                 console.log(`[Server] https://localhost:${port}/`);
             });
@@ -3008,7 +3164,7 @@ async function startServer() {
             // HTTP
             server = http.createServer(app);
             setupProxyStreamWebSocket(server);
-            server.listen(port, () => {
+            server.listen(...listenArguments, () => {
                 console.log("[Server] HTTP server is running.");
                 console.log(`[Server] http://localhost:${port}/`);
             });
@@ -3026,7 +3182,9 @@ async function startServer() {
             if (!job.done && now >= job.deadlineAt && !job.abortController.signal.aborted) {
                 job.abortController.abort();
             }
-            if (job.done && job.clients.size === 0 && job.cleanupAt > 0 && now >= job.cleanupAt) {
+            // A done job is retired once its grace has passed, whether or not
+            // sockets still follow it; they are closed with it.
+            if (job.done && job.cleanupAt > 0 && now >= job.cleanupAt) {
                 cleanupJob(jobId);
                 continue;
             }

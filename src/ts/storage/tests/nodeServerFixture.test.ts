@@ -13,6 +13,7 @@
  * restart retry they fail. Case 5 releases the port on an observed relaunch
  * count, not on a clock.
  */
+import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer, type Server } from 'node:net'
@@ -141,7 +142,8 @@ function portOf(baseUrl: string): number {
     return Number(new URL(baseUrl).port)
 }
 
-describe('compatibility guards: first launch on a held port', () => {
+// Each test launches a server, whose start alone may take up to the fixture's ready timeout.
+describe('compatibility guards: first launch on a held port', { timeout: 60_000 }, () => {
     test('1. a port held on all interfaces: the fixture takes the next port from the source', async () => {
         const held = await holdPort()
         const free = await unusedPort()
@@ -173,7 +175,7 @@ describe('compatibility guards: first launch on a held port', () => {
     })
 })
 
-describe('regression reproducers: identity and restart', () => {
+describe('regression reproducers: identity and restart', { timeout: 60_000 }, () => {
     test('4. a 127.0.0.1-only squatter on the offered port is not taken for the server', async () => {
         const squatted = await squatLoopback()
         const free = await unusedPort()
@@ -231,5 +233,30 @@ describe('regression reproducers: identity and restart', () => {
         expect(await launchCount(log)).toBe(1)
         await expect(fixture.restart({ nodeArgs: ['--require', exit3] })).rejects.toThrow(/exited with code 3/)
         expect(await launchCount(log)).toBe(2)
+    })
+})
+
+// SIGTERM is forceful on Windows, so a child that ignores it exists only on POSIX.
+describe.skipIf(process.platform === 'win32')('diagnostic: stop() ends a child that ignores the graceful signal', { timeout: 60_000 }, () => {
+    test('F-D1. the child is killed and the working directory is removed', async () => {
+        const dir = await scratchDir()
+        const pidFile = join(dir, 'child.pid')
+        const script = join(dir, 'ignoreTerm.cjs')
+        await writeFile(script, `process.on('SIGTERM', () => {})\nrequire('node:fs').writeFileSync(process.env.PID_FILE, String(process.pid))\n`)
+        fixture = await startNodeServer({ env: { PID_FILE: pidFile }, nodeArgs: ['--require', script] })
+        const pid = Number(await readFile(pidFile, 'utf-8'))
+        const workDir = join(fixture.saveDir, '..')
+        await fixture.stop()
+        fixture = undefined
+        const alive = (() => {
+            try {
+                process.kill(pid, 0)
+                return true
+            } catch {
+                return false
+            }
+        })()
+        expect(alive).toBe(false)
+        expect(existsSync(workDir)).toBe(false)
     })
 })
