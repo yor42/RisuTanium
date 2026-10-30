@@ -1132,6 +1132,8 @@ function createProxyStreamJob(arg) {
     const createdAt = Date.now();
     const job = {
         id: jobId,
+        // The credential of this job's WebSocket: the general token never goes into a URL.
+        wsTicket: crypto.randomBytes(32).toString('hex'),
         createdAt,
         updatedAt: createdAt,
         done: false,
@@ -1582,6 +1584,7 @@ app.post('/proxy-stream-jobs', authenticatedRouteLimiter, authBeforeBody(checkPr
 
     res.send({
         jobId: job.id,
+        wsTicket: job.wsTicket,
         heartbeatSec: job.heartbeatSec
     });
 }));
@@ -3029,6 +3032,12 @@ async function getHttpsOptions() {
     }
 }
 
+function wsTicketMatches(expected, given) {
+    const expectedBytes = Buffer.from(expected, 'utf8');
+    const givenBytes = Buffer.from(given, 'utf8');
+    return expectedBytes.length === givenBytes.length && crypto.timingSafeEqual(expectedBytes, givenBytes);
+}
+
 function setupProxyStreamWebSocket(server) {
     const wsServer = new WebSocketServer({ noServer: true });
     server.on('upgrade', async (req, socket, head) => {
@@ -3039,16 +3048,21 @@ function setupProxyStreamWebSocket(server) {
                 return;
             }
 
-            const auth = reqUrl.searchParams.get('risu-auth') || req.headers['risu-auth'];
-            if (!await isAuthorizedProxyRequest({ headers: { 'risu-auth': auth } })) {
+            const pathParts = reqUrl.pathname.split('/').filter(Boolean);
+            const jobId = pathParts.length >= 3 ? pathParts[1] : '';
+            const job = proxyStreamJobs.get(jobId);
+            // The job's own ticket opens only that job. A request without one
+            // still presents the general token, as before.
+            const ticket = reqUrl.searchParams.get('ticket');
+            const authorized = ticket !== null
+                ? job !== undefined && wsTicketMatches(job.wsTicket, ticket)
+                : await isAuthorizedProxyRequest({ headers: { 'risu-auth': reqUrl.searchParams.get('risu-auth') || req.headers['risu-auth'] } });
+            if (!authorized) {
                 socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
                 socket.destroy();
                 return;
             }
 
-            const pathParts = reqUrl.pathname.split('/').filter(Boolean);
-            const jobId = pathParts.length >= 3 ? pathParts[1] : '';
-            const job = proxyStreamJobs.get(jobId);
             if (!job) {
                 socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
                 socket.destroy();

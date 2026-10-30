@@ -7,17 +7,30 @@
  * about 55 minutes still works. Asset-read tokens (with an audience) are not
  * capped. Tokens are signed by the fixture's logged-in key pair.
  */
+import { createServer, type Server } from 'node:http'
+import { connect, type AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { startNodeServer, type NodeServerFixture } from './nodeServerFixture'
 
 let fixture: NodeServerFixture
+let target: Server
+let targetPort = 0
 
 beforeAll(async () => {
+    target = createServer((incoming, response) => {
+        incoming.resume()
+        response.writeHead(200, { 'content-type': 'text/event-stream' })
+        response.write('data: first\n\n')
+    })
+    await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve))
+    targetPort = (target.address() as AddressInfo).port
     fixture = await startNodeServer()
 }, 60_000)
 
 afterAll(async () => {
     await fixture?.stop()
+    target?.closeAllConnections()
+    await new Promise<void>((resolve) => target?.close(() => resolve()))
 }, 30_000)
 
 const now = () => Math.floor(Date.now() / 1000)
@@ -70,5 +83,66 @@ describe('the one-hour cap on an ordinary token', { timeout: 30_000 }, () => {
     test('S7-G1b an expired token is still refused as expired', async () => {
         const result = await verdict({ iat: now() - 600, exp: now() - 10 })
         expect(JSON.parse(result.listBody)).toEqual({ error: 'Token Expired' })
+    })
+})
+
+describe('the job-scoped WebSocket ticket', { timeout: 30_000 }, () => {
+    async function createJob(): Promise<{ jobId: string, wsTicket: string }> {
+        const response = await fetch(`${fixture.baseUrl}/proxy-stream-jobs`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'risu-auth': await fixture.authHeader() },
+            body: JSON.stringify({ url: `http://127.0.0.1:${targetPort}/s`, method: 'POST', bodyBase64: '', headers: {} }),
+        })
+        expect(response.status).toBe(200)
+        return await response.json() as { jobId: string, wsTicket: string }
+    }
+
+    /** The status line the server answers a WebSocket upgrade with. */
+    function upgrade(path: string, query: string, headers: Record<string, string> = {}): Promise<string> {
+        const url = new URL(fixture.baseUrl)
+        return new Promise((resolve) => {
+            const socket = connect(Number(url.port), '127.0.0.1')
+            let received = ''
+            socket.on('data', (chunk) => {
+                received += chunk.toString('latin1')
+                if (received.includes('\r\n')) {
+                    socket.destroy()
+                    resolve(received.split('\r\n')[0])
+                }
+            })
+            socket.on('connect', () => {
+                socket.write([
+                    `GET ${path}?${query} HTTP/1.1`,
+                    `Host: 127.0.0.1:${url.port}`,
+                    'Connection: Upgrade',
+                    'Upgrade: websocket',
+                    'Sec-WebSocket-Version: 13',
+                    'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+                    ...Object.entries(headers).map(([name, value]) => `${name}: ${value}`),
+                    '',
+                    '',
+                ].join('\r\n'))
+            })
+        })
+    }
+
+    test('S7-T2 the ticket from job creation opens its job; a wrong ticket or another job\'s ticket is refused', async () => {
+        const first = await createJob()
+        const second = await createJob()
+        expect(first.wsTicket).toMatch(/^[0-9a-f]{64}$/)
+        expect(first.wsTicket).not.toBe(second.wsTicket)
+        const pathOf = (jobId: string) => `/proxy-stream-jobs/${jobId}/ws`
+        expect(await upgrade(pathOf(first.jobId), `ticket=${first.wsTicket}`)).toBe('HTTP/1.1 101 Switching Protocols')
+        expect(await upgrade(pathOf(first.jobId), 'ticket=wrong')).toBe('HTTP/1.1 401 Unauthorized')
+        expect(await upgrade(pathOf(first.jobId), `ticket=${second.wsTicket}`)).toBe('HTTP/1.1 401 Unauthorized')
+        expect(await upgrade(pathOf('no-such-job'), `ticket=${first.wsTicket}`)).toBe('HTTP/1.1 401 Unauthorized')
+    })
+
+    test('S7-G5 the general token still opens a job, now under the lifetime cap', async () => {
+        const { jobId } = await createJob()
+        const path = `/proxy-stream-jobs/${jobId}/ws`
+        expect(await upgrade(path, `risu-auth=${encodeURIComponent(await fixture.authHeader())}`)).toBe('HTTP/1.1 101 Switching Protocols')
+        const tooLong = await fixture.signToken({ iat: now(), exp: now() + 7200 })
+        expect(await upgrade(path, `risu-auth=${encodeURIComponent(tooLong)}`)).toBe('HTTP/1.1 401 Unauthorized')
     })
 })

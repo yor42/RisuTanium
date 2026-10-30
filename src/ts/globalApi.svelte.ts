@@ -4304,14 +4304,18 @@ async function fetchViaProxyJobWs(url: string, arg: {
         throw new Error(`Proxy stream job creation failed: ${createRes.status} ${errText}`);
     }
 
-    const created = await createRes.json() as { jobId?: string };
+    const created = await createRes.json() as { jobId?: string, wsTicket?: string };
     if (!created.jobId) {
         throw new Error('Proxy stream job creation returned no jobId');
     }
+    if (!created.wsTicket) {
+        throw new Error('Proxy stream job creation returned no WebSocket ticket');
+    }
     jobId = created.jobId;
 
+    // The job's own ticket opens its WebSocket; the general token stays out of the URL.
     const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${location.host}/proxy-stream-jobs/${encodeURIComponent(jobId)}/ws?risu-auth=${encodeURIComponent(auth)}`;
+    const wsUrl = `${wsProtocol}//${location.host}/proxy-stream-jobs/${encodeURIComponent(jobId)}/ws?ticket=${encodeURIComponent(created.wsTicket)}`;
 
     let headersReady = false;
     let status = 200;
