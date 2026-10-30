@@ -1297,7 +1297,7 @@ export const languageChineseTraditional = {
     "setNodePassword": "設定密碼以提升安全性",
     "inputNodePassword": "輸入您的密碼。若忘記密碼，請刪除伺服器檔案中的 save/__password 後重新啟動伺服器",
     "nodePasswordEmpty": "密碼不能為空",
-    "nodePrivateProxyWarning": "此伺服器的代理可以存取您本機網路中的裝置(RISU_PROXY_ALLOW_PRIVATE 已開啟)。角色卡、腳本和外掛程式可以透過它向這些裝置發送請求。",
+    "nodePrivateProxyWarning": "此伺服器的代理可以存取您本機網路中的裝置(RISU_PROXY_ALLOW_PRIVATE 已開啟)。角色卡、腳本和外掛可以透過它向這些裝置發送請求。",
     "simple": "簡易",
     "advanced": "進階",
     "askReRollAutoSuggestions": "重新產生自動建議",

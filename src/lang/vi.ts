@@ -1252,7 +1252,7 @@ export const languageVietnamese = {
     "setNodePassword": "Đặt mật khẩu của bạn để bảo mật",
     "inputNodePassword": "Nhập mật khẩu của bạn. nếu bạn không nhớ, hãy xóa save/__password trong tệp máy chủ của bạn và khởi động lại máy chủ.",
     "nodePasswordEmpty": "Mật khẩu không được để trống",
-    "nodePrivateProxyWarning": "Proxy của máy chủ này có thể truy cập các thiết bị trong mạng cục bộ của bạn (RISU_PROXY_ALLOW_PRIVATE đang bật). Thẻ nhân vật, script và plugin có thể gửi yêu cầu đến các thiết bị đó thông qua nó.",
+    "nodePrivateProxyWarning": "Proxy của máy chủ này có thể truy cập các thiết bị trong mạng cục bộ của bạn (RISU_PROXY_ALLOW_PRIVATE đang bật). Thẻ nhân vật, tập lệnh và plugin có thể gửi yêu cầu đến các thiết bị đó thông qua nó.",
     "simple": "Đơn giản",
     "advanced": "Trình độ cao",
     "askReRollAutoSuggestions": "Đề xuất tự động cuộn lại",
