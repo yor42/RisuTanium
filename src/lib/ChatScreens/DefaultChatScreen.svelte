@@ -808,8 +808,10 @@
             {#if chatPanelStore.length > 0}
                 <div class="mx-4 my-2 flex flex-col gap-2">
                     {#each chatPanelStore as panel (panel.id)}
-                        <section class={`rounded-md border border-darkborderc bg-darkbg/80 p-3 text-textcolor ${panel.className ?? ''}`} data-plugin-chat-panel={panel.id}>
-                            {@html panel.html}
+                        <section class="rounded-md border border-darkborderc bg-darkbg/80 p-3 text-textcolor" style="contain: paint; isolation: isolate;" data-plugin-chat-panel={panel.id}>
+                            <div class={panel.className ?? ''} data-plugin-chat-panel-body>
+                                {@html panel.html}
+                            </div>
                         </section>
                     {/each}
                 </div>
