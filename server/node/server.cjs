@@ -37,6 +37,16 @@ const UPLOAD_TOMBSTONE_MS = positiveIntegerFromEnv('RISU_UPLOAD_TOMBSTONE_MS', 1
 // Under capacity pressure only uploads idle at least this long may be evicted.
 const UPLOAD_EVICT_IDLE_MS = positiveIntegerFromEnv('RISU_UPLOAD_EVICT_IDLE_MS', 5 * 60 * 1000);
 
+// Response headers on every answer, static files and errors included. The app
+// frames its own StreamSaver helper page, so framing is limited to the same
+// origin rather than denied. A proxied response may overwrite these with the
+// target's own values; it is fetched, not framed.
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+});
 app.use(express.static(path.join(process.cwd(), 'dist'), {index: false}));
 // Upload requests are tracked from their arrival (trackUploadArrival, defined
 // with the upload routes), before their body is read.
@@ -58,6 +68,13 @@ const publicJsonParser = express.json({ limit: NODE_PUBLIC_BODY_LIMIT_BYTES });
 // An append body is read by its own parser with the chunk maximum as the limit,
 // so an over-size chunk is refused before more than the chunk maximum is buffered.
 const uploadChunkParser = express.raw({ type: () => true, limit: UPLOAD_CHUNK_MAX_BYTES });
+// Hands a rejected promise of an async route handler to the final error handler,
+// so a failure after an await answers the request instead of ending the process.
+function asyncRoute(handler) {
+    return (req, res, next) => {
+        Promise.resolve().then(() => handler(req, res, next)).catch(next);
+    };
+}
 // The authorisation check sends its own refusal; the request continues to the
 // body parsers only when it passed.
 function authBeforeBody(check) {
@@ -748,7 +765,8 @@ async function verifyJwt(authHeader, audience) {
         }
         return { ok: true };
     } catch (error) {
-        return { ok: false, status: 500, error: 'Internal Server Error', log: error };
+        // A token that cannot be parsed is the client's fault; one line, no stack.
+        return { ok: false, status: 400, error: 'Invalid Token', log: 'Invalid token (unparseable)' };
     }
 }
 
@@ -1220,7 +1238,7 @@ async function forwardUpstreamResponse(originalResponse, res) {
     }
 }
 
-app.get('/', async (req, res, next) => {
+app.get('/', asyncRoute(async (req, res, next) => {
 
     const clientIP = req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress || 'Unknown IP';
     const timestamp = new Date().toISOString();
@@ -1237,7 +1255,7 @@ app.get('/', async (req, res, next) => {
         console.log(error)
         next(error)
     }
-})
+}))
 
 async function checkAuth(req, res, returnOnlyStatus = false){
     const authHeader = normalizeAuthHeader(req.headers['risu-auth']);
@@ -1263,23 +1281,79 @@ async function checkAuth(req, res, returnOnlyStatus = false){
     return false
 }
 
-const reverseProxyFunc = async (req, res, next) => {
-    if(!await checkProxyAuth(req, res)){
-        return;
-    }
-    
-    const urlParam = req.headers['risu-url'] ? decodeURIComponent(req.headers['risu-url']) : req.query.url;
+// Headers a proxied request never carries from the browser: the app's own
+// credentials (risu-*, cookie), the connection's framing and hop-by-hop headers.
+const PROXY_BROWSER_DROPPED_HEADERS = new Set([
+    'cookie', 'host', 'content-length', 'connection', 'keep-alive', 'proxy-connection',
+    'transfer-encoding', 'te', 'trailer', 'upgrade', 'proxy-authorization',
+]);
 
+function isOwnProxyHeaderName(name) {
+    return name.toLowerCase().startsWith('risu-');
+}
+
+// The target and the outbound headers of a /proxy or /proxy2 request, or null
+// after the 400 answer for an input that cannot be read. With `risu-header` the
+// client's map is forwarded (minus the app's own risu-* names); without it the
+// browser's own headers are forwarded minus the credentials and framing above.
+function readProxyRequest(req, res) {
+    let urlParam;
+    try {
+        urlParam = req.headers['risu-url'] ? decodeURIComponent(req.headers['risu-url']) : req.query.url;
+    } catch {
+        res.status(400).send({ error: 'Invalid risu-url' });
+        return null;
+    }
     if (!urlParam) {
         res.status(400).send({
             error:'URL has no param'
         });
-        return;
+        return null;
     }
-    const header = req.headers['risu-header'] ? JSON.parse(decodeURIComponent(req.headers['risu-header'])) : req.headers;
+    if (typeof urlParam !== 'string') {
+        res.status(400).send({ error: 'Invalid risu-url' });
+        return null;
+    }
+    const header = {};
+    if (req.headers['risu-header']) {
+        let parsed;
+        try {
+            parsed = JSON.parse(decodeURIComponent(req.headers['risu-header']));
+        } catch {
+            parsed = undefined;
+        }
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+            res.status(400).send({ error: 'Invalid risu-header' });
+            return null;
+        }
+        for (const [name, value] of Object.entries(parsed)) {
+            if (!isOwnProxyHeaderName(name)) {
+                header[name] = value;
+            }
+        }
+    } else {
+        for (const [name, value] of Object.entries(req.headers)) {
+            if (!isOwnProxyHeaderName(name) && !PROXY_BROWSER_DROPPED_HEADERS.has(name.toLowerCase())) {
+                header[name] = value;
+            }
+        }
+    }
     if(!header['x-forwarded-for']){
         header['x-forwarded-for'] = req.ip
     }
+    return { urlParam, header };
+}
+
+const reverseProxyFunc = async (req, res, next) => {
+    if(!await checkProxyAuth(req, res)){
+        return;
+    }
+
+    const proxyRequest = readProxyRequest(req, res);
+    if (proxyRequest === null) {
+        return;
+    }
+    const { urlParam, header } = proxyRequest;
 
     const timeoutMs = getRequestTimeoutMs(req.headers['risu-timeout-ms']);
     const timeout = createTimeoutController(timeoutMs);
@@ -1340,19 +1414,12 @@ const reverseProxyFunc_get = async (req, res, next) => {
     if(!await checkProxyAuth(req, res)){
         return;
     }
-    
-    const urlParam = req.headers['risu-url'] ? decodeURIComponent(req.headers['risu-url']) : req.query.url;
 
-    if (!urlParam) {
-        res.status(400).send({
-            error:'URL has no param'
-        });
+    const proxyRequest = readProxyRequest(req, res);
+    if (proxyRequest === null) {
         return;
     }
-    const header = req.headers['risu-header'] ? JSON.parse(decodeURIComponent(req.headers['risu-header'])) : req.headers;
-    if(!header['x-forwarded-for']){
-        header['x-forwarded-for'] = req.ip
-    }
+    const { urlParam, header } = proxyRequest;
     const timeoutMs = getRequestTimeoutMs(req.headers['risu-timeout-ms']);
     const timeout = createTimeoutController(timeoutMs);
     let originalResponse;
@@ -1459,14 +1526,14 @@ async function hubProxyFunc(req, res) {
     }
 }
 
-app.get('/proxy', authenticatedRouteLimiter, reverseProxyFunc_get);
-app.get('/proxy2', authenticatedRouteLimiter, reverseProxyFunc_get);
+app.get('/proxy', authenticatedRouteLimiter, asyncRoute(reverseProxyFunc_get));
+app.get('/proxy2', authenticatedRouteLimiter, asyncRoute(reverseProxyFunc_get));
 app.get('/hub-proxy/*', authenticatedRouteLimiter, hubProxyFunc);
 
-app.post('/proxy', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, reverseProxyFunc);
-app.post('/proxy2', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, reverseProxyFunc);
+app.post('/proxy', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, asyncRoute(reverseProxyFunc));
+app.post('/proxy2', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, asyncRoute(reverseProxyFunc));
 app.post('/hub-proxy/*', authenticatedRouteLimiter, hubProxyFunc);
-app.post('/proxy-stream-jobs', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, async (req, res) => {
+app.post('/proxy-stream-jobs', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, asyncRoute(async (req, res) => {
     if (!await checkProxyAuth(req, res)) {
         return;
     }
@@ -1513,10 +1580,10 @@ app.post('/proxy-stream-jobs', authenticatedRouteLimiter, authBeforeBody(checkPr
         jobId: job.id,
         heartbeatSec: job.heartbeatSec
     });
-});
+}));
 
 // A name that is not allowed and one that is not set answer identically, so names cannot be probed.
-app.post('/api/env-secret', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, async (req, res) => {
+app.post('/api/env-secret', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, asyncRoute(async (req, res) => {
     if (!await checkProxyAuth(req, res)) {
         return;
     }
@@ -1532,9 +1599,9 @@ app.post('/api/env-secret', authenticatedRouteLimiter, authBeforeBody(checkProxy
         return;
     }
     res.send({ value });
-});
+}));
 
-app.delete('/proxy-stream-jobs/:jobId', authenticatedRouteLimiter, async (req, res) => {
+app.delete('/proxy-stream-jobs/:jobId', authenticatedRouteLimiter, asyncRoute(async (req, res) => {
     if (!await checkProxyAuth(req, res)) {
         return;
     }
@@ -1547,7 +1614,7 @@ app.delete('/proxy-stream-jobs/:jobId', authenticatedRouteLimiter, async (req, r
     markJobDone(job);
     cleanupJob(job.id);
     res.send({ success: true });
-});
+}));
 
 // app.get('/api/password', async(req, res)=> {
 //     if(password === ''){
@@ -1561,7 +1628,7 @@ app.delete('/proxy-stream-jobs/:jobId', authenticatedRouteLimiter, async (req, r
 //     }
 // })
 
-app.get('/api/test_auth', authRouteLimiter, async(req, res) => {
+app.get('/api/test_auth', authRouteLimiter, asyncRoute(async(req, res) => {
 
     if(!password){
         res.send({status: 'unset'})
@@ -1572,9 +1639,9 @@ app.get('/api/test_auth', authRouteLimiter, async(req, res) => {
     else{
         res.send({status: 'success'})
     }
-})
+}))
 
-app.post('/api/login', loginRouteLimiter, publicJsonParser, async (req, res) => {
+app.post('/api/login', loginRouteLimiter, publicJsonParser, asyncRoute(async (req, res) => {
     if(password === ''){
         res.status(400).send({error: 'Password not set'})
         return;
@@ -1595,9 +1662,9 @@ app.post('/api/login', loginRouteLimiter, publicJsonParser, async (req, res) => 
     else{
         res.status(400).send({error: 'Password incorrect'})
     }
-})
+}))
 
-app.post('/api/crypto', cryptoRouteLimiter, publicJsonParser, async (req, res) => {
+app.post('/api/crypto', cryptoRouteLimiter, publicJsonParser, asyncRoute(async (req, res) => {
     try {
         const hash = crypto.createHash('sha256')
         hash.update(Buffer.from(req.body.data, 'utf-8'))
@@ -1605,10 +1672,10 @@ app.post('/api/crypto', cryptoRouteLimiter, publicJsonParser, async (req, res) =
     } catch (error) {
         res.status(500).send({ error: 'Crypto operation failed' });
     }
-})
+}))
 
 
-app.post('/api/set_password', setPasswordRouteLimiter, publicJsonParser, async (req, res) => {
+app.post('/api/set_password', setPasswordRouteLimiter, publicJsonParser, asyncRoute(async (req, res) => {
     if(password === ''){
         if(typeof req.body?.password !== 'string' || req.body.password.trim() === '' || isEmptyPasswordDigest(req.body.password)){
             res.status(400).send({error: 'Password missing or invalid'})
@@ -1621,14 +1688,14 @@ app.post('/api/set_password', setPasswordRouteLimiter, publicJsonParser, async (
     else{
         res.status(400).send("already set")
     }
-})
+}))
 
 // Whether a key holds a value, without reading it: the answer of HEAD. It is
 // registered before the GET route so express does not serve a HEAD request
 // through the GET handler, which reads the whole file. The revision and the
 // size are taken under the same per-key lock as the GET route's snapshot, so
 // the pair is as consistent as a read's.
-app.head('/api/read', storageRouteLimiter, async (req, res, next) => {
+app.head('/api/read', storageRouteLimiter, asyncRoute(async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
@@ -1657,9 +1724,9 @@ app.head('/api/read', storageRouteLimiter, async (req, res, next) => {
     } catch (error) {
         next(error);
     }
-});
+}));
 
-app.get('/api/read', storageRouteLimiter, async (req, res, next) => {
+app.get('/api/read', storageRouteLimiter, asyncRoute(async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
@@ -1731,7 +1798,7 @@ app.get('/api/read', storageRouteLimiter, async (req, res, next) => {
     } catch (error) {
         next(error);
     }
-});
+}));
 
 // Reads the first bytes of a file for content-type sniffing; null when it cannot.
 async function readFileHead(fullPath, length) {
@@ -1753,7 +1820,7 @@ async function readFileHead(fullPath, length) {
 // the key must be one `isRouteServedKey` allows. The file streams from disk
 // with range support and is read under none of the per-key write locks, so a
 // client that stops reading never holds a write or remove of that key.
-app.get('/api/asset/:hex', assetRouteLimiter, async (req, res) => {
+app.get('/api/asset/:hex', assetRouteLimiter, asyncRoute(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', 'sandbox');
     const refuse = (status, error) => {
@@ -1792,7 +1859,7 @@ app.get('/api/asset/:hex', assetRouteLimiter, async (req, res) => {
             refuse(missing ? 404 : 500, missing ? 'Not Found' : 'Internal Server Error');
         }
     });
-});
+}));
 
 // The body of /api/remove and /api/remove-checked. With `guarded` false it is
 // the original route: it reads neither the check-only nor the retire headers and
@@ -2060,17 +2127,17 @@ async function handleRemove(req, res, next, guarded){
     }
 }
 
-app.get('/api/remove', storageRouteLimiter, (req, res, next) => handleRemove(req, res, next, false));
-app.get('/api/remove-checked', storageRouteLimiter, (req, res, next) => handleRemove(req, res, next, true));
+app.get('/api/remove', storageRouteLimiter, asyncRoute((req, res, next) => handleRemove(req, res, next, false)));
+app.get('/api/remove-checked', storageRouteLimiter, asyncRoute((req, res, next) => handleRemove(req, res, next, true)));
 
 // What this server's guarded routes can do. The client reads it by shape.
-app.get('/api/caps', storageRouteLimiter, async (req, res, next) => {
+app.get('/api/caps', storageRouteLimiter, asyncRoute(async (req, res, next) => {
     markGuarded(res);
     if(!await checkAuth(req, res)){
         return;
     }
     res.send({ checkOnly: true, retire: true, pieces: true, listPrefix: true });
-});
+}));
 
 // Only whole, even-length hex names are keys. Everything else in the
 // directory (write temps `<hex>.tmp-<random>`, the revision snapshot
@@ -2081,7 +2148,7 @@ app.get('/api/caps', storageRouteLimiter, async (req, res, next) => {
 // no real file exists.
 const keyFileNamePattern = /^(?:[0-9a-fA-F]{2})+$/;
 
-app.get('/api/list', storageRouteLimiter, async (req, res, next) => {
+app.get('/api/list', storageRouteLimiter, asyncRoute(async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
@@ -2098,12 +2165,12 @@ app.get('/api/list', storageRouteLimiter, async (req, res, next) => {
     } catch (error) {
         next(error);
     }
-});
+}));
 
 // The keys whose hex name starts with `prefix` (even-length hex, empty for all),
 // matched case-insensitively against the same key-file filter as /api/list. With
 // `count=1` only the number of matching files is answered.
-app.get('/api/list-prefix', storageRouteLimiter, async (req, res, next) => {
+app.get('/api/list-prefix', storageRouteLimiter, asyncRoute(async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
@@ -2172,7 +2239,7 @@ app.get('/api/list-prefix', storageRouteLimiter, async (req, res, next) => {
     } catch (error) {
         next(error);
     }
-});
+}));
 
 // The body of /api/write and /api/write-checked; see handleRemove for what
 // `guarded` changes.
@@ -2357,9 +2424,9 @@ async function handleWrite(req, res, next, guarded){
     }
 }
 
-app.post('/api/write', storageRouteLimiter, authBeforeBody(checkAuth), authenticatedBodyParsers, (req, res, next) => handleWrite(req, res, next, false));
+app.post('/api/write', storageRouteLimiter, authBeforeBody(checkAuth), authenticatedBodyParsers, asyncRoute((req, res, next) => handleWrite(req, res, next, false)));
 // The marker goes on before the gate, so a refusal and a too-large answer carry it too.
-app.post('/api/write-checked', storageRouteLimiter, (req, res, next) => { markGuarded(res); next(); }, authBeforeBody(checkAuth), authenticatedBodyParsers, (req, res, next) => handleWrite(req, res, next, true));
+app.post('/api/write-checked', storageRouteLimiter, (req, res, next) => { markGuarded(res); next(); }, authBeforeBody(checkAuth), authenticatedBodyParsers, asyncRoute((req, res, next) => handleWrite(req, res, next, true)));
 
 // ---------------------------------------------------------------------------
 // Chunked asset upload and ranged read.
@@ -2538,7 +2605,7 @@ const uploadReapTimer = setInterval(() => {
 }, Math.max(20, Math.min(60000, Math.floor(UPLOAD_IDLE_REAP_MS / 4))))
 uploadReapTimer.unref()
 
-app.post('/api/upload/begin', storageRouteLimiter, async (req, res) => {
+app.post('/api/upload/begin', storageRouteLimiter, asyncRoute(async (req, res) => {
     if(!await checkAuth(req, res)){
         return
     }
@@ -2552,7 +2619,7 @@ app.post('/api/upload/begin', storageRouteLimiter, async (req, res) => {
     }
     uploads.set(id, { stagingPath, ack: 0, reserved: 0, lastTouch: Date.now(), inFlight: 0, chain: Promise.resolve() })
     res.send({ id })
-})
+}))
 
 // One append, in the upload's chain. A chunk at `ack` is written there and
 // extends `ack`; the chunk that ends exactly at `ack` is a replay of the last
@@ -2627,7 +2694,7 @@ async function appendInChain(id, entry, offset, chunk){
     return { status: 409, body: { error: 'Upload offset mismatch', code: 'upload-offset', size: entry.ack } }
 }
 
-app.post('/api/upload/append', storageRouteLimiter, authBeforeBody(checkAuth), uploadChunkParser, async (req, res) => {
+app.post('/api/upload/append', storageRouteLimiter, authBeforeBody(checkAuth), uploadChunkParser, asyncRoute(async (req, res) => {
     if(!await checkAuth(req, res)){
         return
     }
@@ -2669,7 +2736,7 @@ app.post('/api/upload/append', storageRouteLimiter, authBeforeBody(checkAuth), u
     } finally {
         entry.reserved -= reserved
     }
-})
+}))
 
 // Bumps and logs `filePath`'s revision the way handleWrite does for an
 // unconditional write; the caller holds the key's write lock.
@@ -2764,7 +2831,7 @@ async function commitInChain(id, entry, finalName, size, ifAbsent){
     return { status: 200, body }
 }
 
-app.post('/api/upload/commit', storageRouteLimiter, async (req, res) => {
+app.post('/api/upload/commit', storageRouteLimiter, asyncRoute(async (req, res) => {
     if(!await checkAuth(req, res)){
         return
     }
@@ -2794,9 +2861,9 @@ app.post('/api/upload/commit', storageRouteLimiter, async (req, res) => {
     } catch (error) {
         sendUploadAnswer(res, uploadFailureAnswer(error, 'Failed to commit upload'))
     }
-})
+}))
 
-app.post('/api/upload/abort', storageRouteLimiter, async (req, res) => {
+app.post('/api/upload/abort', storageRouteLimiter, asyncRoute(async (req, res) => {
     if(!await checkAuth(req, res)){
         return
     }
@@ -2815,14 +2882,14 @@ app.post('/api/upload/abort', storageRouteLimiter, async (req, res) => {
         })
     }
     res.send({ success: true })
-})
+}))
 
 // One bounded piece of a stored asset (or inlay body) and the facts a reader
 // needs to assemble pieces: the revision, the whole size and whether the key
 // holds a value. All of it is taken under the key's write lock, so each piece's
 // revision belongs to the bytes in it; the lock covers one bounded read, never
 // the client's pace.
-app.get('/api/read-range', storageRouteLimiter, async (req, res, next) => {
+app.get('/api/read-range', storageRouteLimiter, asyncRoute(async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return
     }
@@ -2882,7 +2949,7 @@ app.get('/api/read-range', storageRouteLimiter, async (req, res, next) => {
     } catch (error) {
         next(error)
     }
-})
+}))
 
 // A body over a parser's limit is refused before the route handler runs, so it
 // is answered here, as JSON and without the framework's error page (which
@@ -2920,7 +2987,18 @@ app.use((error, req, res, next) => {
         });
         return;
     }
-    next(error);
+    // Any other failure: a client-caused one (a body that does not parse) keeps
+    // its 4xx status, the rest is a 500. The answer is JSON with no stack, one
+    // line is logged, and headers already set (the guarded marker) stay.
+    console.error(`[Server] ${req.method} ${req.path} failed: ${error?.name ?? 'Error'}: ${error?.message ?? error}`);
+    if (res.headersSent) {
+        res.destroy();
+        return;
+    }
+    const status = Number.isInteger(error?.status) && error.status >= 400 && error.status < 500 ? error.status : 500;
+    res.status(status).send({
+        error: status === 500 ? 'Internal Server Error' : (error?.type === 'entity.parse.failed' ? 'Invalid request body' : (http.STATUS_CODES[status] ?? 'Bad Request')),
+    });
 });
 
 async function getHttpsOptions() {
