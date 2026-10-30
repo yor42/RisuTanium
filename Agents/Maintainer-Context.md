@@ -19297,3 +19297,50 @@ Both phones were handed back to lane A on 2026-10-28 (phone 2 after item 9d, pho
   - The app's own Android native bridges answer only the app's main frame, and desktop capabilities grant nothing to remote content. Card iframes stay (YouTube embeds). There is no frame-src allow-list. Old WebViews keep the current bridges.
   - CHORE-592 status: plan ready, Gate 1 pending. Outcome TODO(evidence).
   - Nothing here authorizes application code, a commit or a push.
+
+### MC-909 — Lane A, 2026-10-30: CHORE-592 open rule O1 (a file opened with the app that the page confirmed but native did not receive the confirmation for)
+
+- Tag: decision (maintainer answer to an ask-tool question). Date: 2026-10-30. Sweep ref: none.
+- Source: the maintainer's answer to a question lane A asked (maintainer chat message, 2026-10-30, relayed by lane A).
+- Alternatives rejected: "Drop it" (at-most-once delivery).
+- Related: CHORE-592, MC-908.
+
+**What was decided (maintainer, verbatim).** Question: "Android bridge plan, one open rule. You open a card or .bin with RisuTanium. The page tells native 'got it', and the page closes or reloads before native receives that confirmation. Should native offer the same file again next time?" Answer: "Offer it again (Recommended)".
+
+- Notes, not the maintainer's words:
+  - Effect: at-least-once delivery of opened files. In the worst case a card is imported twice or a .bin asks its restore question again; nothing is silently lost (the option text).
+
+### MC-910 — Lane A, 2026-10-30: CHORE-41 unparked (amends MC-540 3 for CHORE-41 only)
+
+- Tag: decision (maintainer report that reopens a parked item). Date: 2026-10-30. Sweep ref: none.
+- Source: the maintainer's chat messages of 2026-10-30, relayed by lane A.
+- Alternatives rejected: not recorded.
+- Related: CHORE-41, MC-540 3 (answer "Not seen lately", which kept CHORE-41 parked), MC-199 1, MC-475.
+
+**What was decided (maintainer, verbatim).** "I think I found more clue on that 'edit button not opening' glitch. it still exists on MVP. and tapping edit button does trigger the save(visible save indicator on top right). but text box either does not appear or immediately closes."
+
+Follow-up answers, same day, verbatim:
+- "2. every 2nd taps" / "'closes immediately' is a theory. I see no box at all.."
+- "there is no error line ... theme is default, and message I am trying to edit has no images nor HTML."
+- "clicking edit on another message opens edit box on the stuck message."
+- Later: "but one thing to point out is that back fix does not seem like a full picture. as this bug also exists upstream. and yes, it was." (the "yes, it was" confirms that the stuck message was the older, upper one).
+
+- Notes, not the maintainer's words:
+  - Recorded as: the freeze still exists on the Android MVP, so MC-540 3 (CHORE-41 stays parked) no longer applies to CHORE-41. The rest of MC-540 is unchanged. Fix direction and scope: MC-911.
+
+### MC-911 — Lane A, 2026-10-30: CHORE-41 fix direction and scope (contain errors, group message views per refresh, raw-text fallback, record caught errors)
+
+- Tag: decisions (maintainer answers to four ask-tool questions). Date: 2026-10-30. Sweep ref: none.
+- Source: the maintainer's answers to questions lane A asked (maintainer chat message, 2026-10-30, relayed by lane A).
+- Alternatives rejected: not recorded.
+- Related: CHORE-41, MC-910.
+
+**What was decided (maintainer, verbatim).**
+- "For the Edit freeze (CHORE-41): one silent error in one message's redraw can freeze the messages drawn after it, but what threw is still unknown. How should we proceed?" = "Contain it now (Recommended)".
+- "CHORE-41 fix scope: the freeze reproduces with no error at all (a Svelte quirk with the chat's hand-built message views). Should the fix change how the chat list builds message views, beyond just containing errors?" = "Yes, group per refresh (Recommended)".
+- "When one message fails to draw (an error in its display), what should it show?" = "Raw text, note, Edit works (Recommended)".
+- "How should caught errors (failed messages, swallowed Back-press errors) be surfaced?" = "Record + console line (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The maintainer's upstream remark in MC-910 made the Back-press catch secondary hardening; the primary fix is the shared per-refresh grouping plus per-message containment.
+  - Nothing here authorizes a commit or a push beyond what the maintainer already approved for CHORE-41.

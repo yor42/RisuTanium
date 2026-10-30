@@ -233,6 +233,8 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 
 ### CHORE-41 — Bug: the edit button on earlier messages sometimes opens no editor
 
+**Status (2026-10-31, lane A records batch 25): UNPARKED (MC-910), fixed and merged 48c4b2878; see the Roadmap.** The fix direction is `MC-911`. The entry below is kept as history.
+
 **Status (2026-10-25, lane A records batch 12): PARKED (`MC-540` 3).** The maintainer answered "Not seen lately" to lane G; lane G did not work it. Low priority (`MC-199` 1). Can return on a maintainer decision or report.
 
 **Status (2026-10-24, lane A records batch 10):** open; assigned to lane G's parity batch with CHORE-45 and CHORE-178 (`MC-503`). The premise in `MC-199` 1 (revisit after the Android Tauri build works) may now be satisfied (MVP installed, `MC-475`); the revisit still waits for the maintainer's report.
