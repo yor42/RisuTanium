@@ -7,6 +7,7 @@
     import { chatFoldedStateMessageIndex } from 'src/ts/globalApi.svelte';
     import { get } from 'svelte/store';
     import { isActiveStreamReply } from 'src/ts/process/activeStreams';
+    import { createMountHolders, type MountHolderRun } from './chatMountHolders';
 
     const getCurrentChatRoomId = () => {
         const charId = get(selectedCharID);
@@ -59,6 +60,9 @@
         }) => void
     }
     let mountInstances: Map<number, ChatInstance> = new Map();
+    // Every run of the effect below that mounts anything mounts all of its roots under one holder, so
+    // each run adds at most one child effect to the effect and the roots of a run stay children of one parent.
+    const mountHolders = createMountHolders<number>();
 
     //Non-cryptographic hash function to generate a unique hash for each message
     function hashCode(str:string):number {
@@ -101,6 +105,8 @@
         }
 
         const reloadPointerMap = get(ReloadChatPointer);
+        // The loop keeps every reactive read; mounting is deferred to one holder after it, in the same order.
+        const pendingMounts: Array<(run: MountHolderRun<number>) => void> = [];
 
         for(let i=loadStart ; i >= loadEnd; i--){
             if(i < 0) break; // Prevent out of bounds
@@ -121,39 +127,40 @@
                 const b = document.createElement('div');
                 b.setAttribute('x-hashed', currentHash.toString());
                 b.classList.add('chat-message-container');
-                const inst = mount(Chat, {
-                    target: b,
-                    props: {
-                        message: message.data,
-                        isLastMemory: false,
-                        idx: i,
-                        totalLength: messages.length,
-                        img: message.role === 'user' ? userImage : charImage,
-                        onReroll: onReroll,
-                        unReroll: unReroll,
-                        rerollIcon: 'dynamic',
-                        character: simpleChar,
-                        largePortrait: messageLargePortrait,
-                        messageGenerationInfo: message.generationInfo,
-                        role: message.role,
-                        name: message.role === 'user' ? currentUsername : currentCharacter.name,
-                        isComment: message.isComment ?? false,
-                        disabled: message.disabled ?? false,
-                        isOptimizedStreamingMessage: activeStreamingMessage,
-                        streamingOptimizationMode: performanceMode,
-                        rawStreamingText: message.data,
-                        interrupted,
-                    },
-
+                const props = {
+                    message: message.data,
+                    isLastMemory: false,
+                    idx: i,
+                    totalLength: messages.length,
+                    img: message.role === 'user' ? userImage : charImage,
+                    onReroll: onReroll,
+                    unReroll: unReroll,
+                    rerollIcon: 'dynamic' as const,
+                    character: simpleChar,
+                    largePortrait: messageLargePortrait,
+                    messageGenerationInfo: message.generationInfo,
+                    role: message.role,
+                    name: message.role === 'user' ? currentUsername : currentCharacter.name,
+                    isComment: message.isComment ?? false,
+                    disabled: message.disabled ?? false,
+                    isOptimizedStreamingMessage: activeStreamingMessage,
+                    streamingOptimizationMode: performanceMode,
+                    rawStreamingText: message.data,
+                    interrupted,
+                }
+                const previousHash = nextHash;
+                pendingMounts.push((run) => {
+                    const inst = mount(Chat, { target: b, props })
+                    run.add(currentHash);
+                    mountInstances.set(currentHash, inst);
+                    const nextElement = previousHash === 0 ? null : chatBody.querySelector(`[x-hashed="${previousHash}"]`);
+                    if(nextElement){
+                        chatBody.insertBefore(b, nextElement?.nextSibling);
+                    }
+                    else{
+                        chatBody.prepend(b);
+                    }
                 })
-                mountInstances.set(currentHash, inst);
-                const nextElement = nextHash === 0 ? null : chatBody.querySelector(`[x-hashed="${nextHash}"]`);
-                if(nextElement){
-                    chatBody.insertBefore(b, nextElement?.nextSibling);
-                }
-                else{
-                    chatBody.prepend(b);
-                }
             }
             else{
                 mountInstances.get(currentHash)?.updateStreamingDisplay?.({
@@ -166,6 +173,21 @@
             
         }
 
+        if(pendingMounts.length > 0){
+            const run = mountHolders.begin();
+            try{
+                // Untracked: nothing the mounted components read may become a dependency of the Chats effect.
+                run.attach($effect.root(() => untrack(() => {
+                    for(const mountOne of pendingMounts){
+                        mountOne(run);
+                    }
+                })));
+            }
+            finally{
+                run.finish();
+            }
+        }
+
         //@ts-expect-error Set<T> requires type arg, and Set.difference needs 'esnext' lib (polyfilled by Core-js)
         const toRemove:Set = hashes.difference(currentHashes);
         toRemove.forEach((hash) => {
@@ -174,6 +196,7 @@
                 unmount(inst);
                 mountInstances.delete(hash);
             }
+            mountHolders.release(hash);
             const element = chatBody.querySelector(`[x-hashed="${hash}"]`);
             if(element){
                 chatBody.removeChild(element);
@@ -191,6 +214,7 @@
             unmount(inst);
         });
         mountInstances.clear();
+        mountHolders.destroyAll();
     })
 
     function checkIfAtBottom() {
