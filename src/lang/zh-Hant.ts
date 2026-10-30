@@ -2113,6 +2113,8 @@ export const languageChineseTraditional = {
     "keepAliveFinishing": "收尾中…",
     "keepAliveSavePending": "回覆已就緒。請開啟應用程式以完成儲存。",
     "messageInterrupted": "已中斷 — 回覆可能不完整",
+    "messageRenderFailed": "此訊息無法正常顯示，因此顯示的是原始文字。",
+    "messageRenderRetry": "重試",
     "loadouts": "設定組合",
     "nanoGPTLoadingAccountInfo": "正在載入帳號資訊…",
     "nanoGPTCreditBalance": "帳戶餘額：",

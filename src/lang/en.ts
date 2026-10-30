@@ -2206,6 +2206,8 @@ export const languageEnglish = {
     keepAliveSavePending: "Reply ready. Open the app to finish saving.",
     keepAliveStop: "Stop",
     messageInterrupted: "Interrupted — the reply may be incomplete",
+    messageRenderFailed: "This message could not be displayed properly, so its original text is shown.",
+    messageRenderRetry: "Retry",
     // NanoGPT Dashboard
     nanoGPTLoadingAccountInfo: "Loading account info…",
     nanoGPTCreditBalance: "Credit Balance:",

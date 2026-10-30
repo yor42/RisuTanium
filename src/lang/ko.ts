@@ -2068,6 +2068,8 @@ export const languageKorean = {
     "keepAliveFinishing": "마무리 중…",
     "keepAliveSavePending": "답변이 준비되었습니다. 앱을 열어 저장을 완료하세요.",
     "messageInterrupted": "중단됨 — 답변이 완전하지 않을 수 있습니다",
+    "messageRenderFailed": "이 메시지를 제대로 표시할 수 없어 원문을 표시합니다.",
+    "messageRenderRetry": "재시도",
     "nanoGPTLoadingAccountInfo": "계정 정보 불러오는 중…",
     "nanoGPTCreditBalance": "크레딧 잔액:",
     "nanoGPTSubscription": "구독",

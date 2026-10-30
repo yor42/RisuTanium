@@ -2070,6 +2070,8 @@ export const languageGerman = {
     "keepAliveFinishing": "Wird abgeschlossen…",
     "keepAliveSavePending": "Antwort bereit. Öffnen Sie die App, um das Speichern abzuschließen.",
     "messageInterrupted": "Unterbrochen – die Antwort ist möglicherweise unvollständig",
+    "messageRenderFailed": "Diese Nachricht konnte nicht korrekt angezeigt werden, daher wird ihr Originaltext angezeigt.",
+    "messageRenderRetry": "Erneut versuchen",
     "nanoGPTLoadingAccountInfo": "Kontodaten werden geladen…",
     "nanoGPTCreditBalance": "Guthaben:",
     "nanoGPTSubscription": "Abonnement",

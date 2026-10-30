@@ -19,6 +19,9 @@ import { DBState, ReloadChatPointer, ReloadGUIPointer, selIdState, selectedCharI
 import Chats from './Chats.svelte'
 import { clearChatBodyRenderCache } from './chatBodyRenderCache'
 import type { character, Chat as ChatData } from 'src/ts/storage/database.svelte'
+import { language } from 'src/lang'
+import { draftContentOrphanGate } from 'src/ts/draftContentOrphanGate'
+import { resetLocalDraftsForTest } from 'src/ts/localDrafts'
 
 //#region module mocks
 
@@ -33,6 +36,10 @@ const h = vi.hoisted(() => ({
     translations: [] as Held[],
     // 'hold' gives every ParseMarkdown call a fresh deferred; 'reject' fails the call at once.
     parseMode: 'hold' as 'hold' | 'reject',
+    // The display parser throws for a message with exactly this text (null: never).
+    parseThrowOn: null as string | null,
+    // The model lookup of the generation-info badge throws (null: never); it runs in Chat's template, outside displaya.
+    modelThrows: false,
 }))
 
 vi.mock(import('src/ts/parser/parser.svelte'), () => ({
@@ -143,9 +150,19 @@ vi.mock(import('src/ts/translator/translator'), () => ({
     translateHTML: vi.fn((...args: unknown[]) => new Promise<string>((resolve, reject) => { h.translations.push({ args, resolve, reject }) })),
 }) as unknown as typeof import('src/ts/translator/translator'))
 
-vi.mock(import('src/ts/process/scripts'), () => ({
-    risuChatParser: vi.fn((text: string) => text ?? ''),
-}) as unknown as typeof import('src/ts/process/scripts'))
+// The real parser reads chat and database state; reading one field here makes a write to it re-parse every message.
+vi.mock(import('src/ts/process/scripts'), async () => {
+    const stores = await import('src/ts/stores.svelte')
+    return {
+        risuChatParser: vi.fn((text: string) => {
+            void (stores.DBState as unknown as { db: { zoomsize?: number } }).db.zoomsize
+            if (h.parseThrowOn !== null && text === h.parseThrowOn) {
+                throw new Error('parse boom')
+            }
+            return text ?? ''
+        }),
+    } as unknown as typeof import('src/ts/process/scripts')
+})
 
 vi.mock(import('src/ts/process/tts'), () => ({
     sayTTS: vi.fn(async () => {}),
@@ -159,9 +176,18 @@ vi.mock(import('src/ts/gui/longtouch'), () => ({
     longpress: vi.fn(() => ({ destroy: () => {} })),
 }) as unknown as typeof import('src/ts/gui/longtouch'))
 
-vi.mock(import('src/ts/model/modellist'), () => ({
-    getModelInfo: vi.fn(() => ({ shortName: 'test-model' })),
-}) as unknown as typeof import('src/ts/model/modellist'))
+vi.mock(import('src/ts/model/modellist'), async () => {
+    const stores = await import('src/ts/stores.svelte')
+    return {
+        getModelInfo: vi.fn(() => {
+            void (stores.DBState as unknown as { db: { zoomsize?: number } }).db.zoomsize
+            if (h.modelThrows) {
+                throw new Error('model boom')
+            }
+            return { shortName: 'test-model' }
+        }),
+    } as unknown as typeof import('src/ts/model/modellist')
+})
 
 vi.mock(import('src/ts/util'), () => ({
     capitalize: vi.fn((s: string) => s),
@@ -315,32 +341,6 @@ async function wait(ms = 0) {
     flushSync()
 }
 
-/** One macrotask of the body's markup: text and html of the message body span. */
-async function sampleBody(target: HTMLElement, selector = '.chattext') {
-    flushSync()
-    await tick()
-    await wait(0)
-    await tick()
-    const bodies = [...target.querySelectorAll(selector)]
-    return {
-        text: bodies.map((b) => b.textContent ?? '').join('|'),
-        html: bodies.map((b) => b.innerHTML).join('|'),
-        indicators: target.querySelectorAll(`${selector} [role="status"]`).length,
-    }
-}
-
-async function answerParse(index: number, text: string) {
-    h.parses[index].resolve(text)
-    await wait(0)
-    await tick()
-}
-
-async function answerTranslation(index: number, text: string) {
-    h.translations[index].resolve(text)
-    await wait(20)
-    await tick()
-}
-
 afterEach(async () => {
     const instances = mountedInstances.splice(0)
     for (const instance of instances) {
@@ -348,6 +348,8 @@ afterEach(async () => {
     }
     mountedTargets.splice(0).forEach((t) => t.remove())
     document.body.replaceChildren()
+    draftContentOrphanGate.clear()
+    resetLocalDraftsForTest()
     vi.clearAllMocks()
 })
 
@@ -358,6 +360,8 @@ beforeEach(() => {
     h.parses.length = 0
     h.translations.length = 0
     h.parseMode = 'hold'
+    h.parseThrowOn = null
+    h.modelThrows = false
     ReloadGUIPointer.set(0)
     ReloadChatPointer.set({})
     clearChatBodyRenderCache()
@@ -366,7 +370,10 @@ beforeEach(() => {
 
 //#endregion
 
-interface LiveMessage { role: 'user' | 'char', data: string, chatId?: string }
+interface LiveMessage { role: 'user' | 'char', data: string, chatId?: string, generationInfo?: { model: string } }
+
+// A message whose generation-info badge runs the model lookup that `h.modelThrows` makes throw.
+const BADGED = { model: 'bad' }
 
 let stopGuiReset: () => void = () => {}
 
@@ -379,8 +386,8 @@ afterEach(() => {
     stopGuiReset()
 })
 
-function mountChats(messages: LiveMessage[]) {
-    DBState.db = baseDb() as never
+function mountChats(messages: LiveMessage[], dbOverrides: Record<string, unknown> = {}) {
+    DBState.db = baseDb(dbOverrides) as never
     DBState.db.characters = [makeCharacter('a', [makeChat('cA', { message: messages })], { image: '' })] as never
     const live = (DBState.db.characters as unknown as Array<{ chats: Array<{ message: LiveMessage[], isStreaming?: boolean }> }>)[0]
     const target = document.createElement('div')
@@ -462,4 +469,197 @@ describe('S1 messages mounted by one run of the Chats effect share one parent', 
         expect(await editOpens(target, 0)).toBe(true)
     })
 })
+
+//#region S2 a failing message is contained
+
+function failedPanel(target: HTMLElement, index: number) {
+    return target.querySelector(`[data-chat-failed="${index}"]`)
+}
+
+function renderFailedNote(target: HTMLElement, index: number) {
+    return messageRow(target, index).querySelector('.render-failed-note')
+}
+
+function bodyFontSize(target: HTMLElement, index: number) {
+    return parseFloat(messageRow(target, index).querySelector<HTMLElement>('.chattext')!.style.fontSize)
+}
+
+async function typeInto(target: HTMLElement, index: number, value: string) {
+    const area = messageRow(target, index).querySelector<HTMLTextAreaElement>('.message-edit-area')!
+    area.value = value
+    area.dispatchEvent(new Event('input', { bubbles: true }))
+    flushSync()
+    await tick()
+}
+
+function errorsAt(site: string) {
+    return (window.__risuTaniumErrors ?? []).filter((entry) => entry.site === site)
+}
+
+describe('S2 a message that throws does not stop the other messages', () => {
+    test('R T2: a throw in one message during a shared write is contained, recorded, and leaves the others updating', async () => {
+        const { target, chat } = mountChats(
+            [{ role: 'user', data: 'A' }, { role: 'char', data: 'BAD', chatId: 'c1', generationInfo: BADGED }],
+            { requestInfoInsideChat: true },
+        )
+        await wait(20)
+        await answerAllParses()
+        await detach(target)
+        chat.message.push({ role: 'char', data: 'C' })
+        flushSync()
+        await wait(20)
+        await answerAllParses()
+        await detach(target)
+
+        const recordedBefore = errorsAt('chat.message').length
+        h.modelThrows = true
+        expect(() => {
+            DBState.db.zoomsize = 120
+            flushSync()
+        }).not.toThrow()
+        await tick()
+
+        expect(failedPanel(target, 1)).not.toBeNull()
+        expect(errorsAt('chat.message').length).toBeGreaterThan(recordedBefore)
+
+        // A later write still reaches the other messages.
+        DBState.db.zoomsize = 140
+        flushSync()
+        await tick()
+        expect(bodyFontSize(target, 0)).toBeCloseTo(0.875 * 1.4, 5)
+        expect(bodyFontSize(target, 2)).toBeCloseTo(0.875 * 1.4, 5)
+
+        expect(await editOpens(target, 0)).toBe(true)
+        expect(await editOpens(target, 2)).toBe(true)
+    })
+
+    test('R T3: a message that throws on its first render leaves the list mounted and the others editable', async () => {
+        h.modelThrows = true
+        let mounted: ReturnType<typeof mountChats> | undefined
+        expect(() => {
+            mounted = mountChats(
+                [{ role: 'user', data: 'A' }, { role: 'char', data: 'BAD', generationInfo: BADGED }, { role: 'user', data: 'C' }],
+                { requestInfoInsideChat: true },
+            )
+        }).not.toThrow()
+        const { target } = mounted!
+        await wait(20)
+        await answerAllParses()
+
+        expect(failedPanel(target, 1)).not.toBeNull()
+        expect(target.querySelectorAll('.risu-chat').length).toBe(2)
+        expect(await editOpens(target, 0)).toBe(true)
+        expect(await editOpens(target, 2)).toBe(true)
+        expect(errorsAt('chat.message').length).toBeGreaterThan(0)
+    })
+
+    test('G the fallback shows the raw message as plain text and Retry mounts the message again', async () => {
+        h.modelThrows = true
+        const { target } = mountChats(
+            [{ role: 'user', data: 'A' }, { role: 'char', data: '<b>raw</b> text', generationInfo: BADGED }],
+            { requestInfoInsideChat: true },
+        )
+        await wait(20)
+        await answerAllParses()
+
+        const panel = failedPanel(target, 1)!
+        expect(panel.textContent).toContain('<b>raw</b> text')
+        expect(panel.querySelector('b')).toBeNull()
+        expect(panel.textContent).toContain(language.messageRenderFailed)
+
+        h.modelThrows = false
+        const retry = [...panel.querySelectorAll('button')].find((b) => b.textContent === language.messageRenderRetry)!
+        retry.click()
+        flushSync()
+        await wait(20)
+        await answerAllParses()
+        expect(failedPanel(target, 1)).toBeNull()
+        expect(await editOpens(target, 1)).toBe(true)
+    })
+
+    test('R T4: a parse failure keeps the whole message alive: raw text, a note, working Edit, and the note clears on the next good parse', async () => {
+        h.parseThrowOn = 'BAD'
+        let mounted: ReturnType<typeof mountChats> | undefined
+        expect(() => {
+            mounted = mountChats([{ role: 'user', data: 'A' }, { role: 'char', data: 'BAD' }, { role: 'user', data: 'C' }])
+        }).not.toThrow()
+        const { target } = mounted!
+        await wait(20)
+        await answerAllParses()
+
+        expect(messageRow(target, 1).textContent).toContain('P:BAD')
+        expect(renderFailedNote(target, 1)).not.toBeNull()
+        expect(renderFailedNote(target, 0)).toBeNull()
+        expect(errorsAt('chat.parse').length).toBeGreaterThan(0)
+
+        h.parseThrowOn = null
+        ReloadGUIPointer.set(1)
+        flushSync()
+        await wait(20)
+        await answerAllParses()
+        expect(renderFailedNote(target, 1)).toBeNull()
+    })
+
+    test('R T4: a message whose parse failed still opens its editor with the raw text', async () => {
+        h.parseThrowOn = 'BAD'
+        const { target } = mountChats([{ role: 'user', data: 'A' }, { role: 'char', data: 'BAD' }])
+        await wait(20)
+        await answerAllParses()
+
+        expect(await editOpens(target, 1)).toBe(true)
+        expect(messageRow(target, 1).querySelector<HTMLTextAreaElement>('.message-edit-area')!.value).toBe('BAD')
+    })
+
+    test('R D: a parse failure while the editor is open does not close it or lose the typed text', async () => {
+        const { target } = mountChats([{ role: 'user', data: 'A' }, { role: 'char', data: 'X' }])
+        await wait(20)
+        await answerAllParses()
+        expect(await editOpens(target, 1)).toBe(true)
+        await typeInto(target, 1, 'typed text')
+
+        h.parseThrowOn = 'X'
+        ReloadGUIPointer.set(1)
+        flushSync()
+        await wait(20)
+
+        const area = messageRow(target, 1).querySelector<HTMLTextAreaElement>('.message-edit-area')
+        expect(area).not.toBeNull()
+        expect(area!.value).toBe('typed text')
+    })
+
+    test('R D: a boundary trip while the editor is open loses only the textarea; after Retry the restore marker offers the typed text', async () => {
+        const { target } = mountChats(
+            [{ role: 'user', data: 'A' }, { role: 'char', data: 'original', chatId: 'c1', generationInfo: BADGED }],
+            { requestInfoInsideChat: true },
+        )
+        await wait(20)
+        await answerAllParses()
+        expect(await editOpens(target, 1)).toBe(true)
+        await typeInto(target, 1, 'typed before the trip')
+
+        h.modelThrows = true
+        DBState.db.zoomsize = 120
+        flushSync()
+        await tick()
+        const panel = failedPanel(target, 1)
+        expect(panel).not.toBeNull()
+        expect(messageRow(target, 0)).not.toBeNull()
+
+        h.modelThrows = false
+        const retry = [...panel!.querySelectorAll('button')].find((b) => b.textContent === language.messageRenderRetry)!
+        retry.click()
+        flushSync()
+        await wait(20)
+        await answerAllParses()
+
+        messageRow(target, 1).querySelector<HTMLElement>('.button-icon-edit')!.click()
+        flushSync()
+        await tick()
+        const row = messageRow(target, 1)
+        expect(row.querySelector('[role="status"]')?.textContent).toContain(language.draftRestored)
+        expect(row.querySelector<HTMLTextAreaElement>('.message-edit-area')!.value).toBe('typed before the trip')
+    })
+})
+
+//#endregion
 

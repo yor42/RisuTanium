@@ -1,7 +1,7 @@
 <script lang="ts">
     import type { character, groupChat, Message, StreamingDisplayOptimizationMode } from 'src/ts/storage/database.svelte';
     import { mount, onDestroy, unmount, untrack } from 'svelte';
-    import Chat from './Chat.svelte';
+    import ChatMessageBoundary from './ChatMessageBoundary.svelte';
     import { getCharImage } from 'src/ts/characters';
     import { createSimpleCharacter, DBState, selectedCharID, ReloadChatPointer } from 'src/ts/stores.svelte';
     import { chatFoldedStateMessageIndex } from 'src/ts/globalApi.svelte';
@@ -150,7 +150,7 @@
                 }
                 const previousHash = nextHash;
                 pendingMounts.push((run) => {
-                    const inst = mount(Chat, { target: b, props })
+                    const inst = mount(ChatMessageBoundary, { target: b, props })
                     run.add(currentHash);
                     mountInstances.set(currentHash, inst);
                     const nextElement = previousHash === 0 ? null : chatBody.querySelector(`[x-hashed="${previousHash}"]`);

@@ -9,6 +9,7 @@
     import { getModelInfo } from "src/ts/model/modellist"
     import { runLuaButtonTrigger, runLuaInteractionTrigger } from 'src/ts/process/scriptings'
     import { risuChatParser } from "src/ts/process/scripts"
+    import { recordCaughtError } from "src/ts/caughtErrors"
     import { MEASURE } from "src/ts/process/memory/measureFlag"
     import { withSupaRepoint } from "src/ts/process/memory/supaResume"
     import { noteEditConfirm } from "src/ts/process/chatPhaseRing"
@@ -109,6 +110,7 @@
 
     let rootChatId = $derived(DBState.db.characters?.[selIdState.selId]?.chats?.[DBState.db.characters?.[selIdState.selId]?.chatPage]?.message?.[idx]?.chatId ?? '')
     let msgDisplay = $state('')
+    let renderFailed = $state(false)
     let translated = $state(false)
     let partialEditEnabled = $state(true)
     let translationViewControlsDisabled = $derived(editMode || editTranslationMode || loadingTranslationEdit)
@@ -629,8 +631,20 @@
         return buildDisplayParseOptions({chara: name, chatID: idx, firstmsg: conditions.firstmsg, chatRole: conditions.chatRole ?? null})
     }
 
+    // A parse failure keeps this Chat alive: the raw text is shown with a note, and Edit and the buttons still work.
+    // While `renderFailed`, `msgDisplay` holds the unparsed text, so the translation cache key and the copied text
+    // are the raw message too. `msgDisplay` is display state only and is never persisted; saves write `message`.
+    // The next successful parse clears the flag.
     function displaya(message:string){
-        msgDisplay = risuChatParser(message, displayParseOptions())
+        try{
+            msgDisplay = risuChatParser(message, displayParseOptions())
+            renderFailed = false
+        }
+        catch(error){
+            recordCaughtError('chat.parse', error)
+            msgDisplay = message
+            renderFailed = true
+        }
     }
 
     // At most one status timer is pending, and it only clears the status text it was
@@ -1143,6 +1157,9 @@
         </span>
         {#if interrupted && !isOptimizedStreamingMessage}
             <div class="text-xs text-textcolor2 italic interrupted-note" role="note">{language.messageInterrupted}</div>
+        {/if}
+        {#if renderFailed}
+            <div class="text-xs text-textcolor2 italic render-failed-note" role="note">{language.messageRenderFailed}</div>
         {/if}
         {#if idx >= 0 && !editMode && !editTranslationMode && !isOptimizedStreamingMessage && partialEditEnabled && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit)}
             <PartialEditController

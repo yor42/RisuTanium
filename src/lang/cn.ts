@@ -2068,6 +2068,8 @@ export const languageChinese = {
     "keepAliveFinishing": "正在收尾…",
     "keepAliveSavePending": "回复已就绪。请打开应用以完成保存。",
     "messageInterrupted": "已中断 — 回复可能不完整",
+    "messageRenderFailed": "此消息无法正常显示，因此显示的是原始文本。",
+    "messageRenderRetry": "重试",
     "nanoGPTLoadingAccountInfo": "正在加载账户信息…",
     "nanoGPTCreditBalance": "余额:",
     "nanoGPTSubscription": "订阅",
