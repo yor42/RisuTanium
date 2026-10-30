@@ -23,14 +23,20 @@
     });
 
     async function changeAllowPrivateNative(enabled: boolean) {
-        const { alertConfirm } = await import("src/ts/alert");
-        const { setAllowPrivate } = await import("src/ts/network/privateNetworkConsent");
+        const { alertConfirm, alertError } = await import("src/ts/alert");
+        const { getAllowPrivate, setAllowPrivate } = await import("src/ts/network/privateNetworkConsent");
         // Enabling needs the warning accepted; disabling never asks.
         if (enabled && !(await alertConfirm(language.allowPrivateNetworkNativeWarning))) {
             allowPrivateNative = false;
             return;
         }
-        await setAllowPrivate(enabled);
+        const { persisted } = await setAllowPrivate(enabled);
+        if (!persisted) {
+            // A failed write leaves the stored value as it was, while an unreadable store holds the choice in
+            // memory for this session; re-reading shows which one is in effect.
+            allowPrivateNative = await getAllowPrivate();
+            alertError(language.allowPrivateNetworkNativeNotSaved);
+        }
     }
 </script>
 

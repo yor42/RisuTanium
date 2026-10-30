@@ -1388,6 +1388,7 @@ export const languageEnglish = {
     allowPrivateNetworkNative: "Allow private network for plugins, cards and MCP",
     allowPrivateNetworkNativeHelp: "Lets plugins, character cards and MCP servers send requests to devices on your local network from this device. Off by default; the setting applies to this device only.",
     allowPrivateNetworkNativeWarning: "Plugins, character cards and MCP servers will be able to send requests to devices on your local network (for example routers, printers and other computers) from this device. Anything they can reach this way can be read by them and sent onward. Only enable this if you trust every plugin, card and MCP server you use. Enable it?",
+    allowPrivateNetworkNativeNotSaved: "The private network setting could not be saved on this device, and the stored setting was left unchanged. If the stored value is unreadable, your choice applies only until the app restarts and then reverts to off; otherwise the setting shows its current stored state and private-network requests follow that state.",
     nativePrivateNetworkBlocked: (host: string) => `Blocked: ${host} is a private-network address. Plugins, cards and MCP may reach only this device unless "Allow private network for plugins, cards and MCP" is on in Advanced Settings.`,
     simple: "Simple",
     advanced: "Advanced",

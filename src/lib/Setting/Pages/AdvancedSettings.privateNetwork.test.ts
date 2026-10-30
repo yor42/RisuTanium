@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
     isTauri: true,
     stored: false,
     confirm: vi.fn(async (_msg: string) => true),
+    error: vi.fn((_msg: string) => undefined),
     get: vi.fn(async () => false),
     set: vi.fn(async (_value: boolean) => ({ persisted: true })),
 }))
@@ -33,6 +34,7 @@ vi.mock(import('src/ts/storage/nodeStorage'), () => ({
 
 vi.mock(import('src/ts/alert'), () => ({
     alertConfirm: h.confirm,
+    alertError: h.error,
 }) as unknown as typeof import('src/ts/alert'))
 
 vi.mock(import('src/ts/network/privateNetworkConsent'), () => ({
@@ -85,6 +87,7 @@ beforeEach(() => {
     h.get.mockResolvedValue(false)
     h.set.mockReset()
     h.set.mockResolvedValue({ persisted: true })
+    h.error.mockReset()
 })
 
 afterEach(() => {
@@ -141,6 +144,32 @@ describe('the private-network toggle for plugins, cards and MCP', () => {
         await toggle(false)
         expect(h.confirm).not.toHaveBeenCalled()
         expect(h.set).toHaveBeenCalledWith(false)
+    })
+
+    test('a failed write shows the notice and the checkbox returns to the stored off state', async () => {
+        await render()
+        // The write failed: the stored value re-reads as off.
+        h.set.mockResolvedValue({ persisted: false })
+        h.get.mockResolvedValue(false)
+        await toggle(true)
+        expect(h.error).toHaveBeenCalledWith(language.allowPrivateNetworkNativeNotSaved)
+        expect(checkbox().checked).toBe(false)
+    })
+
+    test('an unreadable store shows the notice and keeps the session choice on', async () => {
+        await render()
+        // The store is unreadable: the choice is held in memory, so the effective value re-reads as on.
+        h.set.mockResolvedValue({ persisted: false })
+        h.get.mockResolvedValue(true)
+        await toggle(true)
+        expect(h.error).toHaveBeenCalledWith(language.allowPrivateNetworkNativeNotSaved)
+        expect(checkbox().checked).toBe(true)
+    })
+
+    test('a persisted choice shows no notice', async () => {
+        await render()
+        await toggle(true)
+        expect(h.error).not.toHaveBeenCalled()
     })
 
     test('guard: the warning names who gains access and what they reach', () => {

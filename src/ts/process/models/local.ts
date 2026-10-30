@@ -111,7 +111,8 @@ async function installPython():Promise<boolean>{
         alertClear()
         alertError(fillLang(language.errors.localServerStartFailed, { error: `${error}` }))
         return false
-    }    await sleep(4000)
+    }
+    await sleep(4000)
     alertClear()
     return true
 

@@ -295,6 +295,16 @@ mod tests {
         assert_eq!(present, Some(NetPolicy { allow_private: true }));
     }
 
+    #[test]
+    fn literal_refusal_honours_the_toggle_for_private_literals() {
+        let url = url::Url::parse("http://10.0.0.1/").unwrap();
+        assert_eq!(literal_refusal(&url, &NetPolicy { allow_private: true }), None);
+        assert_eq!(
+            literal_refusal(&url, &NetPolicy { allow_private: false }),
+            Some("10.0.0.1".to_string())
+        );
+    }
+
     fn fixed_lookup(address: IpAddr) -> Lookup {
         Arc::new(move |_host: &str, port: u16| Ok(vec![SocketAddr::new(address, port)]))
     }

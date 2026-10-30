@@ -234,7 +234,7 @@ fn build_client(policy: Option<&NetPolicy>, lookup: Lookup) -> reqwest::Result<r
         .no_proxy()
         .dns_resolver(Arc::new(CheckedResolver { policy, lookup }))
         .redirect(reqwest::redirect::Policy::custom(move |attempt| {
-            if attempt.previous().len() >= MAX_REDIRECTS {
+            if attempt.previous().len() > MAX_REDIRECTS {
                 return attempt.error("too many redirects");
             }
             if let Some(host) = literal_refusal(attempt.url(), &policy) {
@@ -824,7 +824,7 @@ mod tests {
     }
 
     #[test]
-    fn private_literal_is_allowed_with_the_toggle() {
+    fn loopback_literal_passes_the_literal_check() {
         let req = with_policy(true, request("p2", "http://127.0.0.1:9/".to_string()));
         let (result, _) = run_with_lookup(req, names_lookup());
         // Loopback is allowed; the connection itself fails on the closed port.
@@ -866,6 +866,43 @@ mod tests {
         join.join().unwrap();
         assert_eq!(parse(&result), json!({ "success": true }));
         assert_eq!(events.lock().unwrap()[0]["status"], json!(200));
+    }
+
+    // Serves one redirect per connection for the first `redirects` connections
+    // and a 200 afterwards; always accepts exactly MAX_REDIRECTS + 1 connections.
+    fn run_redirect_chain(redirects: usize) -> String {
+        let (listener, port) = bind_stub();
+        let join = thread::spawn(move || {
+            for hop in 0..=MAX_REDIRECTS {
+                let Some(mut stream) = accept_within(&listener, Duration::from_secs(5)) else {
+                    return;
+                };
+                read_request(&mut stream);
+                if hop < redirects {
+                    write_redirect(&mut stream, "/next");
+                } else {
+                    let _ = stream.write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+                    );
+                }
+            }
+        });
+        let req = with_policy(false, request("r5", format!("http://127.0.0.1:{}/", port)));
+        let (result, _) = run_with_lookup(req, names_lookup());
+        join.join().unwrap();
+        result
+    }
+
+    #[test]
+    fn the_tenth_redirect_is_followed() {
+        let result = run_redirect_chain(MAX_REDIRECTS);
+        assert_eq!(parse(&result), json!({ "success": true }), "got: {}", result);
+    }
+
+    #[test]
+    fn the_eleventh_redirect_is_refused() {
+        let result = run_redirect_chain(MAX_REDIRECTS + 1);
+        assert_eq!(parse(&result)["success"], json!(false), "got: {}", result);
     }
 
     #[test]
