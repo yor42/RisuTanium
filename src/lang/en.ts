@@ -228,6 +228,7 @@ export const languageEnglish = {
         installingPip: "Installing Pip",
         rewritingRequirements: "Rewriting requirements",
         installingPythonDependency: "Installing Python Dependencies ({dependency})",
+        localPythonInstallConsent: "Local inference needs a Python runtime that is not installed yet. Download and install it now?\n\nThis downloads Python 3.11.7 (embeddable) from python.org and get-pip.py from bootstrap.pypa.io, then uses pip to install these packages from PyPI: pydantic, scikit-build, scikit-build-core, pyproject_metadata, pathspec, llama-cpp-python (built from source), uvicorn[standard] and fastapi.\n\nEverything is installed into the \"python\" folder inside the app data folder and uses disk space there. The build of llama-cpp-python can take a long time.",
         mcpEnterModuleUrl: "Please enter the URL of the MCP module to import:",
         mcpModuleImported: "MCP module imported successfully!\nName: {name}",
         mcpStdioConsent: (moduleName: string) =>

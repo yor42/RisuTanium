@@ -1,15 +1,7 @@
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-use base64::{engine::general_purpose, Engine as _};
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::json;
 use serde_json::Value;
-use std::collections::HashMap;
 use std::io::Write;
-use std::{path::Path, time::Duration};
+use std::path::Path;
 use tauri::path::BaseDirectory;
 use tauri::Manager;
 use tauri::{AppHandle, Emitter};
@@ -363,114 +355,6 @@ fn take_launch_inputs(state: tauri::State<'_, PendingLaunch>) -> Value {
     json!({ "files": files, "urls": taken.urls })
 }
 
-#[tauri::command]
-async fn native_request(url: String, body: String, header: String, method: String) -> String {
-    let headers_json: Value = match serde_json::from_str(&header) {
-        Ok(h) => h,
-        Err(e) => return format!(r#"{{"success":false,"body":"{}"}}"#, e.to_string()),
-    };
-
-    let mut headers = HeaderMap::new();
-    let method = method.to_string();
-    if let Some(obj) = headers_json.as_object() {
-        for (key, value) in obj {
-            let header_name = match HeaderName::from_bytes(key.as_bytes()) {
-                Ok(name) => name,
-                Err(e) => return format!(r#"{{"success":false,"body":"{}"}}"#, e.to_string()),
-            };
-            let header_value = match HeaderValue::from_str(value.as_str().unwrap_or("")) {
-                Ok(value) => value,
-                Err(e) => return format!(r#"{{"success":false,"body":"{}"}}"#, e.to_string()),
-            };
-            headers.insert(header_name, header_value);
-        }
-    } else {
-        return format!(r#"{{"success":false,"body":"Invalid header JSON"}}"#);
-    }
-
-    let client = reqwest::Client::new();
-    let response: Result<reqwest::Response, reqwest::Error>;
-
-    if method == "POST" {
-        response = client
-            .post(&url)
-            .headers(headers)
-            .timeout(Duration::from_secs(120))
-            .body(body)
-            .send()
-            .await;
-    } else {
-        response = client
-            .get(&url)
-            .headers(headers)
-            .timeout(Duration::from_secs(120))
-            .send()
-            .await;
-    }
-
-    match response {
-        Ok(resp) => {
-            let headers = resp.headers();
-            let header_json = header_map_to_json(headers);
-            let status = resp.status().as_u16().to_string();
-            let bytes = match resp.bytes().await {
-                Ok(b) => b,
-                Err(e) => return format!(r#"{{"success":false,"body":"{}"}}"#, e.to_string()),
-            };
-            let encoded = general_purpose::STANDARD.encode(&bytes);
-
-            format!(
-                // r#"{{"success":true,"body":"{}","headers":{}}}"#,
-                r#"{{"success":true,"body":"{}","headers":{},"status":{}}}"#,
-                encoded, header_json, status
-            )
-        }
-        Err(e) => format!(r#"{{"success":false,"body":"{}","status":400}}"#, e.to_string()),
-    }
-}
-
-#[tauri::command]
-fn check_auth(fpath: String, auth: String) -> bool {
-    //check file exists
-    let path = Path::new(&fpath);
-    if !path.exists() {
-        println!("File {} does not exist", path.display());
-        return false;
-    }
-
-    // check file is a file
-    if !path.is_file() {
-        println!("File {} is not a file", path.display());
-        return false;
-    }
-
-    // check file size
-    let size = std::fs::metadata(&fpath).unwrap().len();
-
-    //check file size is less than 1000 bytes
-    if size > 1000 {
-        println!("File {} is too large", path.display());
-        return false;
-    }
-
-    // read file, return false when error
-    let got_auth = std::fs::read_to_string(&path);
-
-    // check read error
-    if got_auth.is_err() {
-        println!("Error reading file {}", path.display());
-        return false;
-    } else {
-        // check auth
-        if got_auth.unwrap() != auth {
-            println!("Auth does not match");
-            return false;
-        }
-        println!("Auth matches");
-        return true;
-    }
-}
-
 #[cfg(windows)]
 fn host_is_arm64() -> bool {
     use windows_sys::Win32::System::SystemInformation::IMAGE_FILE_MACHINE_ARM64;
@@ -503,8 +387,73 @@ fn local_inference_unsupported_reason() -> Option<String> {
     Some(format!("Local inference via the bundled Python server is only supported on Windows (detected OS: {}).", os))
 }
 
+/// Packages the local-inference server needs, installed in this order. The page asks for the whole
+/// set and names none of them, so a page cannot make pip install anything else.
+const PY_DEPENDENCIES: [&str; 8] = [
+    "pydantic",
+    "scikit-build",
+    "scikit-build-core",
+    "pyproject_metadata",
+    "pathspec",
+    "llama-cpp-python",
+    "uvicorn[standard]",
+    "fastapi",
+];
+
+/// Where the bundled Python runtime lives under the app data directory.
+struct PyLayout {
+    dir: std::path::PathBuf,
+    exe: std::path::PathBuf,
+    pth: std::path::PathBuf,
+    completed: std::path::PathBuf,
+}
+
+fn python_layout(base: &Path) -> PyLayout {
+    let dir = base.join("python");
+    PyLayout {
+        exe: dir.join("python.exe"),
+        pth: dir.join("python311._pth"),
+        completed: dir.join("completed.txt"),
+        dir,
+    }
+}
+
+/// The app data directory the page's `path.appDataDir()` also resolves to, so installs made
+/// before the page stopped sending a path are found in place.
+fn py_base(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path().app_data_dir().map_err(|e| e.to_string())
+}
+
+/// Installs every dependency in order through `run_one`, announcing each name through `emit` first.
+/// It stops at the first failure without writing anything. `layout.completed` is written only after
+/// all of them succeeded, so the file means: Python, pip and all dependencies are installed.
+fn install_dependencies_with(
+    layout: &PyLayout,
+    dependencies: &[&str],
+    mut run_one: impl FnMut(&Path, &str) -> Result<(), String>,
+    mut emit: impl FnMut(&str),
+) -> Result<(), String> {
+    for dependency in dependencies {
+        emit(dependency);
+        run_one(&layout.exe, dependency)?;
+    }
+    std::fs::write(&layout.completed, "python311")
+        .map_err(|e| format!("Failed to write completed.txt: {}", e))
+}
+
 #[tauri::command]
-async fn install_python(path: String) -> bool {
+async fn install_python(app: AppHandle) -> bool {
+    if let Some(reason) = local_inference_unsupported_reason() {
+        println!("{}", reason);
+        return false;
+    }
+    let path = match py_base(&app) {
+        Ok(base) => base,
+        Err(e) => {
+            println!("Failed to resolve the app data directory: {}", e);
+            return false;
+        }
+    };
     //get python embeddable depending on os and CPU architecture
     let os = std::env::consts::OS;
     // std::env::consts::ARCH is compile-time: it describes the build target,
@@ -515,7 +464,8 @@ async fn install_python(path: String) -> bool {
     // Studio or Clang, so the first-run `pip install llama-cpp-python`
     // source build cannot succeed there.
     let url;
-    let py_path = Path::new(&path).join("python");
+    let layout = python_layout(&path);
+    let py_path = layout.dir.clone();
     if !py_path.exists() {
         if let Err(e) = std::fs::create_dir_all(&py_path) {
             println!("Failed to create python directory: {}", e);
@@ -524,7 +474,7 @@ async fn install_python(path: String) -> bool {
     }
     let zip_path: std::path::PathBuf = Path::new(&path).join("python.zip");
 
-    println!("Path: {}", path);
+    println!("Path: {}", path.display());
     if os == "windows" {
         if host_is_arm64() {
             println!("Host is ARM64 Windows; refusing to install the bundled Python runtime because llama-cpp-python cannot be built natively on this machine");
@@ -633,10 +583,8 @@ async fn install_python(path: String) -> bool {
         return false;
     }
 
-    let py_exec_path = py_path.join("python.exe");
-
     //check python is installed
-    let mut py = Command::new(py_exec_path);
+    let mut py = Command::new(&layout.exe);
     let output = py.arg("--version").output();
     match output {
         Ok(o) => {
@@ -661,9 +609,19 @@ async fn install_python(path: String) -> bool {
 }
 
 #[tauri::command]
-async fn install_pip(path: String) -> bool {
-    let py_path = Path::new(&path).join("python");
-    let py_exec_path = py_path.join("python.exe");
+async fn install_pip(app: AppHandle) -> bool {
+    if let Some(reason) = local_inference_unsupported_reason() {
+        println!("{}", reason);
+        return false;
+    }
+    let path = match py_base(&app) {
+        Ok(base) => base,
+        Err(e) => {
+            println!("Failed to resolve the app data directory: {}", e);
+            return false;
+        }
+    };
+    let py_exec_path = python_layout(&path).exe;
     let get_pip_url = "https://bootstrap.pypa.io/get-pip.py";
     let mut resp = match reqwest::get(get_pip_url).await {
         Ok(r) => r,
@@ -672,7 +630,7 @@ async fn install_pip(path: String) -> bool {
             return false;
         }
     };
-    let get_pip_path = Path::new(&path).join("get-pip.py");
+    let get_pip_path = path.join("get-pip.py");
     let mut out = match std::fs::File::create(&get_pip_path) {
         Ok(f) => f,
         Err(e) => {
@@ -721,47 +679,21 @@ async fn install_pip(path: String) -> bool {
 use std::process::Command;
 
 #[tauri::command]
-fn check_requirements_local() -> String {
-    let mut py = Command::new("python");
-    let output = py.arg("--version").output();
-    match output {
-        Ok(o) => {
-            let res = String::from_utf8(o.stdout).unwrap();
-            if !res.starts_with("Python ") {
-                return "Python is not installed".to_string();
-            }
-            println!("{}", res);
-        }
-        Err(e) => {
-            println!("{}", e);
-            return "Python is not installed, or not loadable".to_string();
-        }
+fn post_py_install(app: AppHandle) -> bool {
+    if let Some(reason) = local_inference_unsupported_reason() {
+        println!("{}", reason);
+        return false;
     }
-
-    let mut git = Command::new("git");
-    let output = git.arg("--version").output();
-    match output {
-        Ok(o) => {
-            let res = String::from_utf8(o.stdout).unwrap();
-            if !res.starts_with("git version ") {
-                return "Git is not installed".to_string();
-            }
-            println!("{}", res);
-        }
+    let base = match py_base(&app) {
+        Ok(base) => base,
         Err(e) => {
-            println!("{}", e);
-            return "Git is not installed, or not loadable".to_string();
+            println!("Failed to resolve the app data directory: {}", e);
+            return false;
         }
-    }
-
-    return "success".to_string();
-}
-
-#[tauri::command]
-fn post_py_install(path: String) -> bool {
-    let py_path = Path::new(&path).join("python");
-    let py_pth_path = py_path.join("python311._pth");
-    let py_exec_path = py_path.join("python.exe");
+    };
+    let layout = python_layout(&base);
+    let py_pth_path = layout.pth;
+    let py_exec_path = layout.exe;
 
     //uncomment python libs
     let mut py_pth = match std::fs::read_to_string(&py_pth_path) {
@@ -799,26 +731,19 @@ fn post_py_install(path: String) -> bool {
         }
     }
 
-    //create "completed" file
-    let completed_path = py_path.join("completed.txt");
-    if let Err(e) = std::fs::write(&completed_path, "python311") {
-        println!("Failed to write completed.txt: {}", e);
-        return false;
-    }
+    //completed.txt is written by install_py_dependencies after the last dependency succeeded
     return true;
 }
 
-#[tauri::command]
-fn install_py_dependencies(path: String, dependency: String) -> Result<(), String> {
+/// Runs `pip install` for one dependency with the interpreter at `py_exec_path`.
+fn run_pip(py_exec_path: &Path, dependency: &str) -> Result<(), String> {
     println!("installing {}", dependency);
-    let py_path = Path::new(&path).join("python");
-    let py_exec_path = py_path.join("python.exe");
     let mut py = Command::new(py_exec_path);
     let output = py
         .arg("-m")
         .arg("pip")
         .arg("install")
-        .arg(&dependency)
+        .arg(dependency)
         .output();
     match output {
         Ok(o) => {
@@ -849,17 +774,41 @@ fn install_py_dependencies(path: String, dependency: String) -> Result<(), Strin
     }
 }
 
+/// Installs the fixed `PY_DEPENDENCIES` and then writes completed.txt. Each dependency is announced
+/// through the `py_dependency_installing` event with its name. pip runs on a blocking worker thread,
+/// so the events reach the page while it works.
 #[tauri::command]
-fn run_py_server(handle: tauri::AppHandle, py_path: String) {
-    let py_exec_path = Path::new(&py_path).join("python").join("python.exe");
+async fn install_py_dependencies(app: AppHandle) -> Result<(), String> {
+    if let Some(reason) = local_inference_unsupported_reason() {
+        return Err(reason);
+    }
+    let layout = python_layout(&py_base(&app)?);
+    tauri::async_runtime::spawn_blocking(move || {
+        install_dependencies_with(&layout, &PY_DEPENDENCIES, run_pip, |name| {
+            let _ = app.emit("py_dependency_installing", name);
+        })
+    })
+    .await
+    .map_err(|e| format!("the install task failed: {}", e))?
+}
+
+#[tauri::command]
+fn run_py_server(handle: tauri::AppHandle) -> Result<(), String> {
+    if let Some(reason) = local_inference_unsupported_reason() {
+        return Err(reason);
+    }
+    let py_exec_path = python_layout(&py_base(&handle)?).exe;
     let server_path = handle
         .path()
         .resolve("src-python/run.py", BaseDirectory::Resource)
-        .expect("failed to resolve resource");
+        .map_err(|e| e.to_string())?;
+    let server_dir = server_path
+        .parent()
+        .ok_or_else(|| "the server script has no directory".to_string())?;
 
     let mut py_server = Command::new(&py_exec_path);
     //set working directory to server path
-    py_server.current_dir(server_path.parent().unwrap());
+    py_server.current_dir(server_dir);
 
     println!("server_path: {}", server_path.display());
     println!("py_exec_path: {}", py_exec_path.display());
@@ -870,9 +819,9 @@ fn run_py_server(handle: tauri::AppHandle, py_path: String) {
         .arg("10026")
         .arg("main:app")
         .spawn()
-        .expect("failed to execute process");
+        .map_err(|e| format!("failed to start the local inference server: {}", e))?;
     println!("server started");
-    return;
+    Ok(())
 }
 
 #[tauri::command]
@@ -972,7 +921,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            greet,
             take_launch_inputs,
             read_env_secret,
             write_durable,
@@ -996,9 +944,6 @@ pub fn run() {
             read_range,
             read_range_text,
             export_append::export_append_b64,
-            native_request,
-            check_auth,
-            check_requirements_local,
             local_inference_unsupported_reason,
             install_python,
             install_pip,
@@ -1039,17 +984,6 @@ pub fn run() {
                 queue_launch_inputs(_app, inputs);
             }
         });
-}
-
-fn header_map_to_json(header_map: &HeaderMap) -> serde_json::Value {
-    let mut map = HashMap::new();
-    for (key, value) in header_map {
-        map.insert(
-            key.as_str().to_string(),
-            value.to_str().unwrap().to_string(),
-        );
-    }
-    json!(map)
 }
 
 #[cfg(test)]
@@ -1137,5 +1071,106 @@ mod dependency_guard_tests {
     fn desktop_reqwest_keeps_native_tls_backend() {
         let shown = format!("{:?}", reqwest::Client::builder());
         assert!(shown.contains("tls_backend: Default"), "unexpected reqwest builder: {}", shown);
+    }
+}
+
+#[cfg(test)]
+mod python_install_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn scratch_layout(tag: &str) -> PyLayout {
+        let base = std::env::temp_dir().join(format!("risuai-py-install-{}-{}", std::process::id(), tag));
+        let _ = std::fs::remove_dir_all(&base);
+        let layout = python_layout(&base);
+        std::fs::create_dir_all(&layout.dir).expect("create scratch python directory");
+        layout
+    }
+
+    #[test]
+    fn python_layout_matches_the_existing_install_location() {
+        let layout = python_layout(Path::new("X"));
+        assert_eq!(layout.dir, PathBuf::from("X").join("python"));
+        assert_eq!(layout.exe, PathBuf::from("X").join("python").join("python.exe"));
+        assert_eq!(layout.pth, PathBuf::from("X").join("python").join("python311._pth"));
+        assert_eq!(layout.completed, PathBuf::from("X").join("python").join("completed.txt"));
+    }
+
+    #[test]
+    fn dependency_list_is_the_fixed_eight_in_install_order() {
+        assert_eq!(
+            PY_DEPENDENCIES,
+            [
+                "pydantic",
+                "scikit-build",
+                "scikit-build-core",
+                "pyproject_metadata",
+                "pathspec",
+                "llama-cpp-python",
+                "uvicorn[standard]",
+                "fastapi",
+            ]
+        );
+    }
+
+    #[test]
+    fn completed_marker_is_written_only_after_every_dependency_succeeded() {
+        let layout = scratch_layout("marker-ok");
+        let mut ran: Vec<String> = Vec::new();
+        let result = install_dependencies_with(
+            &layout,
+            &PY_DEPENDENCIES,
+            |exe, name| {
+                assert_eq!(exe, layout.exe.as_path());
+                assert!(!layout.completed.exists(), "marker present while {} ran", name);
+                ran.push(name.to_string());
+                Ok(())
+            },
+            |_| {},
+        );
+        assert!(result.is_ok());
+        assert_eq!(ran.len(), 8);
+        assert_eq!(std::fs::read_to_string(&layout.completed).unwrap(), "python311");
+        let _ = std::fs::remove_dir_all(layout.dir.parent().unwrap());
+    }
+
+    #[test]
+    fn a_failing_dependency_leaves_no_marker_and_runs_no_later_dependency() {
+        let layout = scratch_layout("marker-fail");
+        let mut ran: Vec<String> = Vec::new();
+        let result = install_dependencies_with(
+            &layout,
+            &PY_DEPENDENCIES,
+            |_, name| {
+                ran.push(name.to_string());
+                if ran.len() == 3 {
+                    Err(format!("Failed to install {}", name))
+                } else {
+                    Ok(())
+                }
+            },
+            |_| {},
+        );
+        assert_eq!(result, Err("Failed to install scikit-build-core".to_string()));
+        assert_eq!(ran, ["pydantic", "scikit-build", "scikit-build-core"]);
+        assert!(!layout.completed.exists());
+        let _ = std::fs::remove_dir_all(layout.dir.parent().unwrap());
+    }
+
+    #[test]
+    fn each_name_is_announced_before_its_install_runs() {
+        let layout = scratch_layout("event-order");
+        let log = std::cell::RefCell::new(Vec::<String>::new());
+        let _ = install_dependencies_with(
+            &layout,
+            &["a", "b"],
+            |_, name| {
+                log.borrow_mut().push(format!("run {}", name));
+                Ok(())
+            },
+            |name| log.borrow_mut().push(format!("emit {}", name)),
+        );
+        assert_eq!(*log.borrow(), ["emit a", "run a", "emit b", "run b"]);
+        let _ = std::fs::remove_dir_all(layout.dir.parent().unwrap());
     }
 }

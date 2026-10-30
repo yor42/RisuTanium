@@ -27,6 +27,7 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 const alertClearMock = vi.fn()
 const alertErrorMock = vi.fn()
 const alertWaitMock = vi.fn()
+const alertConfirmMock = vi.fn(async (_msg: string) => true)
 vi.mock(
     import('src/ts/alert'),
     () =>
@@ -34,8 +35,28 @@ vi.mock(
             alertClear: alertClearMock,
             alertError: alertErrorMock,
             alertWait: alertWaitMock,
+            alertConfirm: alertConfirmMock,
         }) as unknown as typeof import('src/ts/alert'),
 )
+
+// The native side announces each dependency through this event while the single
+// install_py_dependencies invoke is pending.
+type DependencyHandler = (event: { payload: string }) => void
+const unlistenMock = vi.fn()
+let dependencyHandler: DependencyHandler | undefined
+const listenMock = vi.fn(async (_name: string, handler: DependencyHandler) => {
+    dependencyHandler = handler
+    return unlistenMock
+})
+vi.mock('@tauri-apps/api/event', () => ({
+    listen: listenMock,
+}))
+
+function announceDependencies(names: string[]) {
+    for (const name of names) {
+        dependencyHandler?.({ payload: name })
+    }
+}
 
 const getDatabaseMock = vi.fn(() => ({ aiModel: 'local_test-model.gguf', maxContext: 4096 }))
 vi.mock(
@@ -75,6 +96,8 @@ beforeEach(async () => {
     vi.resetModules()
     vi.clearAllMocks()
     existsMock.mockResolvedValue(false)
+    alertConfirmMock.mockResolvedValue(true)
+    dependencyHandler = undefined
     appDataDirMock.mockResolvedValue('/fake/appdata')
     readTextFileMock.mockResolvedValue('fake-key')
 })
@@ -125,13 +148,13 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
         expect(result).toEqual([1, 2, 3])
 
         // Full sequence: install_python -> install_pip -> post_py_install ->
-        // 8x install_py_dependencies -> run_py_server.
-        expect(invokeMock).toHaveBeenCalledWith('install_python', { path: '/fake/appdata' })
-        expect(invokeMock).toHaveBeenCalledWith('install_pip', { path: '/fake/appdata' })
-        expect(invokeMock).toHaveBeenCalledWith('post_py_install', { path: '/fake/appdata' })
-        expect(invokeMock).toHaveBeenCalledWith('run_py_server', { pyPath: '/fake/appdata' })
+        // one install_py_dependencies -> run_py_server.
+        expect(invokeMock).toHaveBeenCalledWith('install_python')
+        expect(invokeMock).toHaveBeenCalledWith('install_pip')
+        expect(invokeMock).toHaveBeenCalledWith('post_py_install')
+        expect(invokeMock).toHaveBeenCalledWith('run_py_server')
         const dependencyCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === 'install_py_dependencies')
-        expect(dependencyCalls).toHaveLength(8)
+        expect(dependencyCalls).toEqual([['install_py_dependencies']])
 
         // The success path sleeps 4s before declaring the server ready — must
         // not actually be waited on by the test.
@@ -183,7 +206,7 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
             'local_inference_unsupported_reason',
             'install_python',
         ])
-        expect(invokeMock).toHaveBeenCalledWith('install_python', { path: '/fake/appdata' })
+        expect(invokeMock).toHaveBeenCalledWith('install_python')
 
         // The module-private latch must have been reset on failure: a later
         // call should do real work again, not silently no-op.
@@ -224,13 +247,13 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
         const secondResult = await tokenizeGGUFModel('again')
 
         expect(secondResult).toEqual([9])
-        expect(invokeMock).toHaveBeenCalledWith('install_python', { path: '/fake/appdata' })
-        expect(invokeMock).toHaveBeenCalledWith('run_py_server', { pyPath: '/fake/appdata' })
+        expect(invokeMock).toHaveBeenCalledWith('install_python')
+        expect(invokeMock).toHaveBeenCalledWith('run_py_server')
         expect(sleepMock).toHaveBeenCalledWith(4000)
     })
 
     test('dependency install rejects (llama-cpp-python): alertError identifies the dependency, run_py_server is skipped, no retry fetch, error propagates, and the latch resets for a later attempt', async () => {
-        invokeMock.mockImplementation(async (cmd: string, args?: { dependency?: string }) => {
+        invokeMock.mockImplementation(async (cmd: string) => {
             if (cmd === 'local_inference_unsupported_reason') {
                 return null
             }
@@ -243,7 +266,8 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
             if (cmd === 'post_py_install') {
                 return true
             }
-            if (cmd === 'install_py_dependencies' && args?.dependency === 'llama-cpp-python') {
+            if (cmd === 'install_py_dependencies') {
+                announceDependencies(['pydantic', 'scikit-build', 'scikit-build-core', 'pyproject_metadata', 'pathspec', 'llama-cpp-python'])
                 throw new Error('native build failed')
             }
             return undefined
@@ -265,21 +289,13 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
 
         // run_py_server must never be reached once a dependency install
         // rejects mid-loop.
-        expect(invokeMock).not.toHaveBeenCalledWith('run_py_server', expect.anything())
+        expect(invokeMock).not.toHaveBeenCalledWith('run_py_server')
 
-        // The dependency loop ran the earlier dependencies and stopped at
-        // llama-cpp-python: uvicorn[standard] and fastapi never ran.
-        const dependencyCalls = invokeMock.mock.calls
-            .filter(([cmd]) => cmd === 'install_py_dependencies')
-            .map(([, args]) => (args as { dependency: string }).dependency)
-        expect(dependencyCalls).toEqual([
-            'pydantic',
-            'scikit-build',
-            'scikit-build-core',
-            'pyproject_metadata',
-            'pathspec',
-            'llama-cpp-python',
-        ])
+        // One native call installs the whole list; the last announced name is
+        // the one that failed, and the listener was released.
+        const dependencyCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === 'install_py_dependencies')
+        expect(dependencyCalls).toHaveLength(1)
+        expect(unlistenMock).toHaveBeenCalledTimes(1)
 
         expect(alertErrorMock).toHaveBeenCalledTimes(1)
         expect(alertErrorMock).toHaveBeenCalledWith(
@@ -335,8 +351,8 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
         const secondDependencyCalls = invokeMock.mock.calls.filter(
             ([cmd]) => cmd === 'install_py_dependencies',
         )
-        expect(secondDependencyCalls).toHaveLength(8)
-        expect(invokeMock).toHaveBeenCalledWith('run_py_server', { pyPath: '/fake/appdata' })
+        expect(secondDependencyCalls).toHaveLength(1)
+        expect(invokeMock).toHaveBeenCalledWith('run_py_server')
         expect(alertErrorMock).not.toHaveBeenCalled()
     })
 
@@ -377,8 +393,8 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
         // The full dependency loop ran (nothing there rejected) before
         // run_py_server was attempted and rejected.
         const dependencyCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === 'install_py_dependencies')
-        expect(dependencyCalls).toHaveLength(8)
-        expect(invokeMock).toHaveBeenCalledWith('run_py_server', { pyPath: '/fake/appdata' })
+        expect(dependencyCalls).toHaveLength(1)
+        expect(invokeMock).toHaveBeenCalledWith('run_py_server')
 
         expect(alertErrorMock).toHaveBeenCalledTimes(1)
         expect(alertErrorMock).toHaveBeenCalledWith(
@@ -430,7 +446,7 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
         const secondResult = await tokenizeGGUFModel('again')
 
         expect(secondResult).toEqual([9])
-        expect(invokeMock).toHaveBeenCalledWith('run_py_server', { pyPath: '/fake/appdata' })
+        expect(invokeMock).toHaveBeenCalledWith('run_py_server')
         expect(alertErrorMock).not.toHaveBeenCalled()
     })
 
@@ -528,9 +544,9 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
         // Writing completed.txt (post_py_install) after a false-returning
         // pip install is exactly what permanently bricks local inference —
         // it must never be reached.
-        expect(invokeMock).not.toHaveBeenCalledWith('post_py_install', expect.anything())
-        expect(invokeMock).not.toHaveBeenCalledWith('install_py_dependencies', expect.anything())
-        expect(invokeMock).not.toHaveBeenCalledWith('run_py_server', expect.anything())
+        expect(invokeMock).not.toHaveBeenCalledWith('post_py_install')
+        expect(invokeMock).not.toHaveBeenCalledWith('install_py_dependencies')
+        expect(invokeMock).not.toHaveBeenCalledWith('run_py_server')
         // Asserted as the exact ordered call sequence (rather than a raw
         // call count) so this stays correct if another leading gate check
         // is ever added.
@@ -539,8 +555,8 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
             'install_python',
             'install_pip',
         ])
-        expect(invokeMock).toHaveBeenCalledWith('install_python', { path: '/fake/appdata' })
-        expect(invokeMock).toHaveBeenCalledWith('install_pip', { path: '/fake/appdata' })
+        expect(invokeMock).toHaveBeenCalledWith('install_python')
+        expect(invokeMock).toHaveBeenCalledWith('install_pip')
 
         // Only the initial probe fetch happened — no retry after a
         // definitive pip install failure.
@@ -586,8 +602,8 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
         const secondResult = await tokenizeGGUFModel('again')
 
         expect(secondResult).toEqual([9])
-        expect(invokeMock).toHaveBeenCalledWith('post_py_install', { path: '/fake/appdata' })
-        expect(invokeMock).toHaveBeenCalledWith('run_py_server', { pyPath: '/fake/appdata' })
+        expect(invokeMock).toHaveBeenCalledWith('post_py_install')
+        expect(invokeMock).toHaveBeenCalledWith('run_py_server')
         expect(alertErrorMock).not.toHaveBeenCalled()
     })
 
@@ -627,8 +643,8 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
             expect.stringContaining('Failed to finalize the bundled Python runtime installation'),
         )
 
-        expect(invokeMock).not.toHaveBeenCalledWith('install_py_dependencies', expect.anything())
-        expect(invokeMock).not.toHaveBeenCalledWith('run_py_server', expect.anything())
+        expect(invokeMock).not.toHaveBeenCalledWith('install_py_dependencies')
+        expect(invokeMock).not.toHaveBeenCalledWith('run_py_server')
         // Asserted as the exact ordered call sequence (rather than a raw
         // call count) so this stays correct if another leading gate check
         // is ever added.
@@ -638,9 +654,9 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
             'install_pip',
             'post_py_install',
         ])
-        expect(invokeMock).toHaveBeenCalledWith('install_python', { path: '/fake/appdata' })
-        expect(invokeMock).toHaveBeenCalledWith('install_pip', { path: '/fake/appdata' })
-        expect(invokeMock).toHaveBeenCalledWith('post_py_install', { path: '/fake/appdata' })
+        expect(invokeMock).toHaveBeenCalledWith('install_python')
+        expect(invokeMock).toHaveBeenCalledWith('install_pip')
+        expect(invokeMock).toHaveBeenCalledWith('post_py_install')
 
         // Only the initial probe fetch happened — no retry after a
         // definitive finalize-install failure.
@@ -686,7 +702,7 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
         const secondResult = await tokenizeGGUFModel('again')
 
         expect(secondResult).toEqual([9])
-        expect(invokeMock).toHaveBeenCalledWith('run_py_server', { pyPath: '/fake/appdata' })
+        expect(invokeMock).toHaveBeenCalledWith('run_py_server')
         expect(alertErrorMock).not.toHaveBeenCalled()
     })
 
@@ -726,9 +742,9 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
             expect.stringContaining('Failed to install Pip'),
         )
 
-        expect(invokeMock).not.toHaveBeenCalledWith('post_py_install', expect.anything())
-        expect(invokeMock).not.toHaveBeenCalledWith('install_py_dependencies', expect.anything())
-        expect(invokeMock).not.toHaveBeenCalledWith('run_py_server', expect.anything())
+        expect(invokeMock).not.toHaveBeenCalledWith('post_py_install')
+        expect(invokeMock).not.toHaveBeenCalledWith('install_py_dependencies')
+        expect(invokeMock).not.toHaveBeenCalledWith('run_py_server')
         // Asserted as the exact ordered call sequence (rather than a raw
         // call count) so this stays correct if another leading gate check
         // is ever added.
@@ -782,8 +798,8 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
         const secondResult = await tokenizeGGUFModel('again')
 
         expect(secondResult).toEqual([9])
-        expect(invokeMock).toHaveBeenCalledWith('post_py_install', { path: '/fake/appdata' })
-        expect(invokeMock).toHaveBeenCalledWith('run_py_server', { pyPath: '/fake/appdata' })
+        expect(invokeMock).toHaveBeenCalledWith('post_py_install')
+        expect(invokeMock).toHaveBeenCalledWith('run_py_server')
         expect(alertErrorMock).not.toHaveBeenCalled()
     })
 
@@ -823,8 +839,8 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
             expect.stringContaining('Failed to finalize the bundled Python runtime installation'),
         )
 
-        expect(invokeMock).not.toHaveBeenCalledWith('install_py_dependencies', expect.anything())
-        expect(invokeMock).not.toHaveBeenCalledWith('run_py_server', expect.anything())
+        expect(invokeMock).not.toHaveBeenCalledWith('install_py_dependencies')
+        expect(invokeMock).not.toHaveBeenCalledWith('run_py_server')
         // Asserted as the exact ordered call sequence (rather than a raw
         // call count) so this stays correct if another leading gate check
         // is ever added.
@@ -879,7 +895,7 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
         const secondResult = await tokenizeGGUFModel('again')
 
         expect(secondResult).toEqual([9])
-        expect(invokeMock).toHaveBeenCalledWith('run_py_server', { pyPath: '/fake/appdata' })
+        expect(invokeMock).toHaveBeenCalledWith('run_py_server')
         expect(alertErrorMock).not.toHaveBeenCalled()
     })
 
@@ -917,7 +933,7 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
             /local inference sidecar could not be started/,
         )
 
-        expect(invokeMock).not.toHaveBeenCalledWith('post_py_install', expect.anything())
+        expect(invokeMock).not.toHaveBeenCalledWith('post_py_install')
     })
 
     test('unsupported platform: gate resolves a reason string, bails before any download even when completed.txt already exists, and does not latch initPython off for a later call', async () => {
@@ -963,11 +979,11 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
         // No other invoke happens at all.
         expect(invokeMock).toHaveBeenCalledTimes(1)
         expect(invokeMock).toHaveBeenCalledWith('local_inference_unsupported_reason')
-        expect(invokeMock).not.toHaveBeenCalledWith('install_python', expect.anything())
-        expect(invokeMock).not.toHaveBeenCalledWith('install_pip', expect.anything())
-        expect(invokeMock).not.toHaveBeenCalledWith('post_py_install', expect.anything())
-        expect(invokeMock).not.toHaveBeenCalledWith('install_py_dependencies', expect.anything())
-        expect(invokeMock).not.toHaveBeenCalledWith('run_py_server', expect.anything())
+        expect(invokeMock).not.toHaveBeenCalledWith('install_python')
+        expect(invokeMock).not.toHaveBeenCalledWith('install_pip')
+        expect(invokeMock).not.toHaveBeenCalledWith('post_py_install')
+        expect(invokeMock).not.toHaveBeenCalledWith('install_py_dependencies')
+        expect(invokeMock).not.toHaveBeenCalledWith('run_py_server')
 
         // No retry fetch was performed — only the initial probe.
         expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -1016,8 +1032,8 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
         const secondResult = await tokenizeGGUFModel('again')
 
         expect(secondResult).toEqual([9])
-        expect(invokeMock).toHaveBeenCalledWith('install_python', { path: '/fake/appdata' })
-        expect(invokeMock).toHaveBeenCalledWith('run_py_server', { pyPath: '/fake/appdata' })
+        expect(invokeMock).toHaveBeenCalledWith('install_python')
+        expect(invokeMock).toHaveBeenCalledWith('run_py_server')
         expect(alertErrorMock).not.toHaveBeenCalled()
     })
 
@@ -1052,11 +1068,11 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
 
         expect(invokeMock).toHaveBeenCalledTimes(1)
         expect(invokeMock).toHaveBeenCalledWith('local_inference_unsupported_reason')
-        expect(invokeMock).not.toHaveBeenCalledWith('install_python', expect.anything())
-        expect(invokeMock).not.toHaveBeenCalledWith('install_pip', expect.anything())
-        expect(invokeMock).not.toHaveBeenCalledWith('post_py_install', expect.anything())
-        expect(invokeMock).not.toHaveBeenCalledWith('install_py_dependencies', expect.anything())
-        expect(invokeMock).not.toHaveBeenCalledWith('run_py_server', expect.anything())
+        expect(invokeMock).not.toHaveBeenCalledWith('install_python')
+        expect(invokeMock).not.toHaveBeenCalledWith('install_pip')
+        expect(invokeMock).not.toHaveBeenCalledWith('post_py_install')
+        expect(invokeMock).not.toHaveBeenCalledWith('install_py_dependencies')
+        expect(invokeMock).not.toHaveBeenCalledWith('run_py_server')
 
         // No retry fetch after a definitive gate-check failure.
         expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -1130,5 +1146,158 @@ describe('tokenizeGGUFModel — bundled Python sidecar install flow', () => {
         expect(installPythonCalls).toHaveLength(1)
         expect(runServerCalls).toHaveLength(1)
         expect(sleepMock).toHaveBeenCalledTimes(1)
+    })
+
+    describe('consent before installing (MC-879) and the fixed native commands', () => {
+        function stubProbeFailingThenWorking() {
+            let probes = 0
+            const fetchMock = vi.fn<(url: string) => Promise<Response>>(async (url) => {
+                if (url === LOCAL_KEY_URL) {
+                    probes++
+                    if (probes === 1) {
+                        throw networkError()
+                    }
+                    return jsonResponse({ dir: '/fake/appdata/key.txt' })
+                }
+                if (url === TOKENIZE_URL) {
+                    return jsonResponse([5])
+                }
+                throw new Error(`unexpected fetch url: ${url}`)
+            })
+            vi.stubGlobal('fetch', fetchMock)
+            return fetchMock
+        }
+
+        function stubAlwaysFailingProbe() {
+            const fetchMock = vi.fn<(url: string) => Promise<Response>>(async () => {
+                throw networkError()
+            })
+            vi.stubGlobal('fetch', fetchMock)
+            return fetchMock
+        }
+
+        function installSucceeds(onDependencies?: () => void) {
+            invokeMock.mockImplementation(async (cmd: string) => {
+                if (cmd === 'local_inference_unsupported_reason') {
+                    return null
+                }
+                if (cmd === 'install_python' || cmd === 'install_pip' || cmd === 'post_py_install') {
+                    return true
+                }
+                if (cmd === 'install_py_dependencies') {
+                    onDependencies?.()
+                }
+                return undefined
+            })
+        }
+
+        test('P1: declining the consent installs nothing, names everything in the prompt, shows the sidecar error and asks again next time', async () => {
+            installSucceeds()
+            alertConfirmMock.mockResolvedValue(false)
+            stubAlwaysFailingProbe()
+
+            const { tokenizeGGUFModel } = await import('../local')
+            await expect(tokenizeGGUFModel('hello')).rejects.toMatch(
+                /local inference sidecar could not be started/,
+            )
+
+            expect(alertConfirmMock).toHaveBeenCalledTimes(1)
+            const prompt = alertConfirmMock.mock.calls[0][0]
+            for (const needle of [
+                'Python 3.11.7',
+                'python.org',
+                'get-pip.py',
+                'bootstrap.pypa.io',
+                'PyPI',
+                'pydantic',
+                'scikit-build',
+                'scikit-build-core',
+                'pyproject_metadata',
+                'pathspec',
+                'llama-cpp-python',
+                'uvicorn[standard]',
+                'fastapi',
+                'app data folder',
+            ]) {
+                expect(prompt).toContain(needle)
+            }
+            expect(invokeMock.mock.calls.map(([cmd]) => cmd)).toEqual(['local_inference_unsupported_reason'])
+            expect(alertErrorMock).not.toHaveBeenCalled()
+            expect(alertClearMock).toHaveBeenCalled()
+
+            await expect(tokenizeGGUFModel('again')).rejects.toMatch(
+                /local inference sidecar could not be started/,
+            )
+            expect(alertConfirmMock).toHaveBeenCalledTimes(2)
+            expect(invokeMock).not.toHaveBeenCalledWith('install_python')
+        })
+
+        test('P2/P2b: an existing install is not asked about, skips the installers and the dependencies, and starts the server', async () => {
+            existsMock.mockResolvedValue(true)
+            installSucceeds()
+            stubProbeFailingThenWorking()
+
+            const { tokenizeGGUFModel } = await import('../local')
+            expect(await tokenizeGGUFModel('hello')).toEqual([5])
+
+            expect(alertConfirmMock).not.toHaveBeenCalled()
+            expect(invokeMock.mock.calls.map(([cmd]) => cmd)).toEqual([
+                'local_inference_unsupported_reason',
+                'run_py_server',
+            ])
+            expect(listenMock).not.toHaveBeenCalled()
+        })
+
+        test('P3: no python command carries a path, pyPath or dependency argument', async () => {
+            installSucceeds()
+            stubProbeFailingThenWorking()
+
+            const { tokenizeGGUFModel } = await import('../local')
+            await tokenizeGGUFModel('hello')
+
+            const pythonCalls = invokeMock.mock.calls.filter(([cmd]) => cmd !== 'local_inference_unsupported_reason')
+            expect(pythonCalls.map(([cmd]) => cmd)).toEqual([
+                'install_python',
+                'install_pip',
+                'post_py_install',
+                'install_py_dependencies',
+                'run_py_server',
+            ])
+            for (const call of pythonCalls) {
+                expect(call).toHaveLength(1)
+            }
+        })
+
+        test('P4: each announced dependency is shown and the listener is released once', async () => {
+            installSucceeds(() => announceDependencies(['pydantic', 'scikit-build']))
+            stubProbeFailingThenWorking()
+
+            const { tokenizeGGUFModel } = await import('../local')
+            await tokenizeGGUFModel('hello')
+
+            expect(listenMock).toHaveBeenCalledWith('py_dependency_installing', expect.any(Function))
+            expect(alertWaitMock).toHaveBeenCalledWith('Installing Python Dependencies (pydantic)')
+            expect(alertWaitMock).toHaveBeenCalledWith('Installing Python Dependencies (scikit-build)')
+            expect(unlistenMock).toHaveBeenCalledTimes(1)
+        })
+
+        test('P6: a failed dependency install leaves no completed.txt, so the next fallback asks for consent again', async () => {
+            let failDependencies = true
+            installSucceeds(() => {
+                if (failDependencies) {
+                    throw new Error('native build failed')
+                }
+            })
+            stubAlwaysFailingProbe()
+
+            const { tokenizeGGUFModel } = await import('../local')
+            await expect(tokenizeGGUFModel('hello')).rejects.toMatch(/sidecar could not be started/)
+            expect(alertConfirmMock).toHaveBeenCalledTimes(1)
+
+            failDependencies = false
+            stubProbeFailingThenWorking()
+            expect(await tokenizeGGUFModel('again')).toEqual([5])
+            expect(alertConfirmMock).toHaveBeenCalledTimes(2)
+        })
     })
 })
