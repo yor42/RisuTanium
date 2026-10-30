@@ -28,6 +28,8 @@ const replacers = vi.hoisted(() => ({
     beforeRequest: new Set<unknown>(),
     throwOnRemove: false,
 }))
+const chatListeners = vi.hoisted(() => new Set<unknown>())
+const mcpClients = vi.hoisted(() => new Map<string, object>())
 
 const memStore = new Map<string, unknown>()
 
@@ -63,6 +65,12 @@ vi.mock(import('../plugins.svelte'), () => ({
         removeRisuReplacer: (name: string, func: unknown) => {
             if (replacers.throwOnRemove) throw new Error('unload callback failure')
             if (name === 'beforeRequest') replacers.beforeRequest.delete(func)
+        },
+        addRisuChatListener: (_mode: string, func: unknown) => {
+            chatListeners.add(func)
+        },
+        removeRisuChatListener: (_mode: string, func: unknown) => {
+            chatListeners.delete(func)
         },
     }),
     handlePluginInstallViaPlugin: vi.fn(),
@@ -136,8 +144,13 @@ vi.mock(import('../../platform'), () => ({
 }) as unknown as typeof import('../../platform'))
 
 vi.mock(import('../../process/mcp/pluginmcp'), () => ({
-    registerMCPModule: vi.fn(),
-    unregisterMCPModule: vi.fn(),
+    registeredCustomPluginMCPs: mcpClients,
+    registerMCPModule: vi.fn(async (arg: { identifier: string }) => {
+        mcpClients.set(arg.identifier, {})
+    }),
+    unregisterMCPModule: vi.fn(async (identifier: string) => {
+        mcpClients.delete(identifier)
+    }),
 }) as unknown as typeof import('../../process/mcp/pluginmcp'))
 
 vi.mock(import('../../process/coldstorage.svelte'), () => ({
@@ -196,6 +209,7 @@ vi.mock(import('../../process/ttsHooks'), () => ({
 
 //#endregion
 
+import { bodyIntercepterStore } from '../../stores.svelte'
 import { executePluginV3, getV3PluginInstance, loadV3Plugins, makeRisuaiAPIV3 } from './v3.svelte'
 
 //#region fixtures
@@ -230,6 +244,9 @@ beforeEach(() => {
     hostTerminateMock.mockReset()
     replacers.beforeRequest.clear()
     replacers.throwOnRemove = false
+    chatListeners.clear()
+    mcpClients.clear()
+    bodyIntercepterStore.length = 0
     alertConfirmMock.mockReset()
     alertConfirmMock.mockImplementation(async () => true)
     vi.stubGlobal('ImageBitmap', class {})
@@ -317,6 +334,150 @@ describe('replacer unload', () => {
         expect(getV3PluginInstance(plugin.name)).toBeUndefined()
     })
 })
+
+//#region hooks requested while a permission prompt is open
+
+/** Holds the next permission prompt open until `settle` is called. */
+function holdPrompt() {
+    let settle: (granted: boolean) => void = () => {}
+    const answer = new Promise<boolean>((resolve) => { settle = resolve })
+    alertConfirmMock.mockImplementation(() => answer)
+    return {
+        settle,
+        shown: () => vi.waitFor(() => expect(alertConfirmMock).toHaveBeenCalled()),
+    }
+}
+
+describe('registration after unload', () => {
+    test('R9: a replacer granted after the plugin unloaded is not registered', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        const api = makeApi(plugin)
+        const replacer = async (content: string) => content
+        const prompt = holdPrompt()
+
+        const pending = api.addRisuReplacer('beforeRequest', replacer)
+        await prompt.shown()
+        await loadV3Plugins([])
+        prompt.settle(true)
+        await pending
+
+        expect(replacers.beforeRequest.has(replacer)).toBe(false)
+    })
+
+    test('R9b: after a reload the old instance registers nothing while the new instance registers normally', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        const api = makeApi(plugin)
+        const stale = async (content: string) => content
+        const fresh = async (content: string) => content
+        const prompt = holdPrompt()
+
+        const pending = api.addRisuReplacer('beforeRequest', stale)
+        await prompt.shown()
+        await loadV3Plugins([plugin])
+        prompt.settle(true)
+        await pending
+        expect(replacers.beforeRequest.has(stale)).toBe(false)
+
+        alertConfirmMock.mockImplementation(async () => true)
+        await makeApi(plugin).addRisuReplacer('beforeRequest', fresh)
+        expect(replacers.beforeRequest.has(fresh)).toBe(true)
+    })
+
+    test('R10: a chat listener granted after the plugin unloaded is not registered', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        const api = makeApi(plugin)
+        const listener = async (content: string) => content
+        const prompt = holdPrompt()
+
+        const pending = api.addRisuChatListener('output', listener)
+        await prompt.shown()
+        await loadV3Plugins([])
+        prompt.settle(true)
+        await pending
+
+        expect(chatListeners.has(listener)).toBe(false)
+    })
+
+    test('R11: a body interceptor granted after the plugin unloaded is not registered', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        const api = makeApi(plugin)
+        const prompt = holdPrompt()
+
+        const pending = api.registerBodyIntercepter(async (body) => body)
+        await prompt.shown()
+        await loadV3Plugins([])
+        prompt.settle(true)
+        await pending
+
+        expect(bodyIntercepterStore).toHaveLength(0)
+    })
+
+    test('G-e: a grant that arrives while the plugin is live registers the hook, and unload removes it', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        const api = makeApi(plugin)
+        const replacer = async (content: string) => content
+        const prompt = holdPrompt()
+
+        const pending = api.addRisuReplacer('beforeRequest', replacer)
+        await prompt.shown()
+        prompt.settle(true)
+        await pending
+        expect(replacers.beforeRequest.has(replacer)).toBe(true)
+
+        await loadV3Plugins([])
+        expect(replacers.beforeRequest.has(replacer)).toBe(false)
+    })
+})
+
+describe('MCP client unload', () => {
+    const description = { name: 'n', version: '1', description: 'd' }
+    const tools = async () => []
+    const call = async () => []
+
+    test('R12: an MCP client the plugin registered is unregistered when the plugin unloads', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        const api = makeApi(plugin)
+
+        await api.registerMCP({ identifier: 'plugin:r12', ...description }, tools, call)
+        expect(mcpClients.has('plugin:r12')).toBe(true)
+
+        await loadV3Plugins([])
+
+        expect(mcpClients.has('plugin:r12')).toBe(false)
+    })
+
+    test('G-f: the MCP client of a live plugin stays registered', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        const api = makeApi(plugin)
+
+        await api.registerMCP({ identifier: 'plugin:gf', ...description }, tools, call)
+        await Promise.resolve()
+
+        expect(mcpClients.has('plugin:gf')).toBe(true)
+    })
+
+    test('G-g: an unload leaves a client that another registration replaced under the same identifier', async () => {
+        const running = makePlugin()
+        await executePluginV3(running)
+        const other = makePlugin()
+        await makeApi(running).registerMCP({ identifier: 'plugin:gg', ...description }, tools, call)
+        await makeApi(other).registerMCP({ identifier: 'plugin:gg', ...description }, tools, call)
+        const replacement = mcpClients.get('plugin:gg')
+
+        await loadV3Plugins([])
+
+        expect(mcpClients.get('plugin:gg')).toBe(replacement)
+    })
+})
+
+//#endregion
 
 //#region real SandboxHost for the mutation observer
 

@@ -12,7 +12,12 @@
  * Labels: R = regression reproducer (fails on the pre-fix bridge), G =
  * compatibility guard (passes before and after).
  */
+import v8 from 'node:v8'
+import vm from 'node:vm'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+
+v8.setFlagsFromString('--expose-gc')
+const gc = vm.runInNewContext('gc') as () => void
 
 const busy = vi.hoisted(() => ({ begun: 0, ended: 0 }))
 
@@ -233,7 +238,12 @@ function readGuestScript(): string {
     return srcdoc.slice(start, end + endMarker.length) + '\n})();'
 }
 
-async function startGuest(): Promise<Guest> {
+/**
+ * `collectable` makes the fake registry record only the held values, so the
+ * test can observe garbage collection of a proxy; by default it keeps the
+ * targets, which the registration assertions need.
+ */
+async function startGuest(options: { collectable?: boolean } = {}): Promise<Guest> {
     const script = readGuestScript()
     const handlers: ((event: Msg) => Promise<void>)[] = []
     const posted: Msg[] = []
@@ -259,7 +269,9 @@ async function startGuest(): Promise<Guest> {
     }
     class FakeFinalizationRegistry {
         constructor(callback: (held: unknown) => void) { cleanup = callback }
-        register(target: unknown, held: unknown) { registered.push({ target, held }) }
+        register(target: unknown, held: unknown) {
+            registered.push({ target: options.collectable ? undefined : target, held })
+        }
     }
     const deliver = async (data: Msg) => {
         for (const handler of handlers) await handler({ source: parent, data, ports: [] })
@@ -361,6 +373,46 @@ describe('guest bridge', () => {
         const explicit = guest.posted.filter((m) => m.type === 'RELEASE_INSTANCE').pop()!
         expect(explicit.id).toBe('ref_1')
         expect(explicit.ids).toBeUndefined()
+    })
+
+    // A WeakRef target stays alive until the end of the job that created or
+    // read it, so each round yields to a macrotask before collecting.
+    const collect = async (ref: WeakRef<object>) => {
+        for (let round = 0; round < 20 && ref.deref() !== undefined; round++) {
+            await new Promise((resolve) => setTimeout(resolve, 0))
+            gc()
+        }
+    }
+    const proxyWeakRef = async (guest: Guest, refId: string) => new WeakRef(await receiveProxy(guest, refId))
+    const proxyWithMethod = async (guest: Guest, refId: string) => {
+        const proxy = await receiveProxy(guest, refId)
+        return { ref: new WeakRef(proxy), method: proxy.someMethod }
+    }
+
+    test('G-h: a guest proxy that nothing references is collectable', async () => {
+        const guest = await startGuest({ collectable: true })
+        const ref = await proxyWeakRef(guest, 'ref_h')
+
+        await collect(ref)
+
+        expect(ref.deref()).toBeUndefined()
+    })
+
+    test('G-i: a method extracted from a proxy keeps the proxy alive until the method is dropped', async () => {
+        const guest = await startGuest({ collectable: true })
+        let held: { ref: WeakRef<object>, method: (...args: unknown[]) => Promise<unknown> } | null = await proxyWithMethod(guest, 'ref_i')
+
+        await collect(held.ref)
+        expect(held.ref.deref()).toBeDefined()
+        void held.method().catch(() => {})
+        const call = guest.posted.find((m) => m.type === 'CALL_INSTANCE')!
+        expect(call.id).toBe('ref_i')
+        expect(call.method).toBe('someMethod')
+
+        const ref = held.ref
+        held = null
+        await collect(ref)
+        expect(ref.deref()).toBeUndefined()
     })
 
     test('G-b: a proxy passed as an argument is serialized back to its REMOTE_REF', async () => {

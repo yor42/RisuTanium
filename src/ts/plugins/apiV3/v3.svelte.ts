@@ -25,7 +25,7 @@ import { untrustedGlobalFetch, untrustedNativeFetch } from "src/ts/network/untru
 import { changeColorScheme, updateColorScheme, updateTextThemeAndCSS, type ColorScheme } from "src/ts/gui/colorscheme";
 import { isNodeServer, isTauri } from "src/ts/platform";
 import { get } from "svelte/store";
-import { registerMCPModule, unregisterMCPModule } from "src/ts/process/mcp/pluginmcp";
+import { registerMCPModule, registeredCustomPluginMCPs, unregisterMCPModule } from "src/ts/process/mcp/pluginmcp";
 import { setColdStorageItem, readColdStorageItem } from "src/ts/process/coldstorage.svelte";
 import { readArchivedCharacter, restoreArchivedForWrite } from "src/ts/process/coldCharacterAccess";
 import { incomingCharacterRefusal } from "../stubDowngrade";
@@ -843,6 +843,13 @@ async function materialiseModuleStubs(liveModules: readonly RisuModule[] | undef
 export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
 
     const oldApis = getV2PluginAPIs();
+    // Once this plugin instance's unload has begun, its API object adds no
+    // replacer, chat listener or body interceptor: a registration made after a
+    // permission prompt that outlived the instance would never be removed, and
+    // its host wrapper would never settle. A reloaded instance of the same name
+    // gets its own API object and its own flag.
+    let pluginUnloaded = false
+    addPluginUnloadCallback(plugin.name, () => { pluginUnloaded = true })
     // Fork-specific: unlike the V2 `setChar`, which ignores an archived-character
     // placeholder that may not replace the selected character, the V3 call
     // rejects.
@@ -974,7 +981,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         addRisuReplacer: async (name:string,func:Function) => {
             //permission check for replacer
             const conf = await getPermission('replacer', 'periodically');
-            if(!conf){
+            if(!conf || pluginUnloaded){
                 return;
             }
             oldApis.addRisuReplacer(name, func as any);
@@ -984,7 +991,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         addRisuChatListener: async (mode:'output', func:Function) => {
             //permission check, lets use same as replacer
             const conf = await getPermission('replacer', 'periodically');
-            if(!conf){
+            if(!conf || pluginUnloaded){
                 return;
             }
             oldApis.addRisuChatListener(mode, func as any);
@@ -1345,10 +1352,10 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         },
         registerBodyIntercepter: async (callback: (body: any, type: string) => any) => {
 
-            if(await getPermission('replacer') === false){
+            if(await getPermission('replacer') === false || pluginUnloaded){
                 return null;
             }
-            
+
             const id = v4();
             bodyIntercepterStore.push({
                 id,
@@ -1502,7 +1509,25 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             }
             return {id};
         },
-        registerMCP: registerMCPModule,
+        registerMCP: async (
+            arg: Parameters<typeof registerMCPModule>[0],
+            getToolList: Parameters<typeof registerMCPModule>[1],
+            callTool: Parameters<typeof registerMCPModule>[2],
+        ) => {
+            // The registration is synchronous inside the call, so the cleanup
+            // is queued in the same step with no window for an unload between.
+            // The client calls back into this plugin's iframe, so it is removed
+            // when the instance unloads; a client another registration has
+            // since replaced under the same identifier stays.
+            const registration = registerMCPModule(arg, getToolList, callTool);
+            const client = registeredCustomPluginMCPs.get(arg.identifier);
+            addPluginUnloadCallback(plugin.name, () => {
+                if (registeredCustomPluginMCPs.get(arg.identifier) === client) {
+                    return unregisterMCPModule(arg.identifier);
+                }
+            });
+            await registration;
+        },
         unregisterMCP: unregisterMCPModule,
         unregisterUIPart: (id: string) => {
             const removeFromMenuStore = (menuStore: MenuDef[]) => {
