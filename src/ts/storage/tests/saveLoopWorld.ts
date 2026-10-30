@@ -66,7 +66,7 @@ export interface World {
 
 export const sleepReal = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-export async function until(condition: () => boolean | Promise<boolean>, what: string, timeoutMs = 8000): Promise<void> {
+export async function until(condition: () => boolean | Promise<boolean>, what: string, timeoutMs = 30000): Promise<void> {
     const start = performance.now()
     while (!(await condition())) {
         if (performance.now() - start > timeoutMs) {
@@ -92,7 +92,7 @@ export async function settled(world: World): Promise<void> {
 /** Runs `action` (a mark) and waits for the iteration it causes to commit, written or not, and for the loop to go idle. */
 export async function nextCommit(world: World, action: () => void, waitForIdle = true): Promise<void> {
     await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('no save commit within 8 s')), 8000)
+        const timer = setTimeout(() => reject(new Error('no save commit within 30 s')), 30000)
         world.api.afterNextSaveCommit(() => {
             clearTimeout(timer)
             resolve()

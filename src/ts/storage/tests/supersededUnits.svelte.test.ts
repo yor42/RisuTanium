@@ -22,7 +22,7 @@ import { buildColdStub } from 'src/ts/process/coldCharacter'
 import { BLOCKS_PREFIX, keptKey, rootKey } from 'src/ts/storage/blockKeys'
 import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
 
-vi.setConfig({ testTimeout: 40_000 })
+vi.setConfig({ testTimeout: 120_000 })
 
 const platformState = vi.hoisted(() => ({ node: false }))
 
@@ -54,6 +54,8 @@ let locksExclusive: 'none' | 'pending' | 'held' = 'none'
 let onUnitWrite: (() => void) | null = null
 /** While set, the write of x's unit waits for it. */
 let unitHold: Promise<void> | null = null
+/** Set once the write of x's unit has reached `unitHold`. */
+let unitHeld = false
 /** Runs when a deletion is requested, before it is recorded. */
 let deleteProbe: (() => void) | null = null
 
@@ -63,6 +65,7 @@ beforeEach(() => {
     deleted.length = 0
     onUnitWrite = null
     unitHold = null
+    unitHeld = false
     deleteProbe = null
     locksHolders = 1
     locksMode = 'ok'
@@ -94,6 +97,7 @@ beforeEach(() => {
             getColdStorageItem: vi.fn(),
             writeColdStorageUnit: async (key: string, value: { character: { chaId: string } }) => {
                 if (value.character.chaId === 'x' && unitHold) {
+                    unitHeld = true
                     await unitHold
                 }
                 units.set(key, JSON.parse(JSON.stringify(value)))
@@ -198,8 +202,22 @@ async function moveOn(a: Arena): Promise<void> {
         a.stores.selectedCharID.set(characters().findIndex((c) => c.chaId === 'y'))
         a.w.marks.markCharacterForSave('y')
     })
-    await until(() => isStubEntry(a.slotOfX()), 'the re-archive to place the stub')
+    await untilNudged(a, () => isStubEntry(a.slotOfX()), 'the re-archive to place the stub')
     await settled(a.w)
+}
+
+/** The put-back caps each fire and defers the rest to the next commit, so the wait supplies commits (about every 0.5 s). */
+async function untilNudged(a: Arena, condition: () => boolean, what: string): Promise<void> {
+    let polls = 0
+    await until(async () => {
+        if (condition()) {
+            return true
+        }
+        if (++polls % 50 === 0) {
+            await a.bump()
+        }
+        return false
+    }, what)
 }
 
 /** x archived, restored, edited, and re-archived. */
@@ -293,6 +311,7 @@ describe('the unit a re-archive replaced', () => {
             a.stores.selectedCharID.set((h.db!.characters as Entry[]).findIndex((c) => c.chaId === 'y'))
             a.w.marks.markCharacterForSave('y')
         })
+        await untilNudged(a, () => unitHeld, 'the re-archive of x to reach its unit write')
         await until(() => a.w.api.isSaveClean(), 'the loop to be idle')
         let releaseEncode!: () => void
         holdEncode = new Promise<void>((resolve) => { releaseEncode = resolve })

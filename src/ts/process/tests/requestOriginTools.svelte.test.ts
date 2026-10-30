@@ -273,7 +273,7 @@ vi.mock('../memory/hypamemory', async (importOriginal) => {
     const orig = await importOriginal<Record<string, unknown>>()
     class StubProcesser {
         private documents: string[] = []
-        async embedDocuments(documents: string[]) { this.documents = documents }
+        async addText(documents: string[]) { this.documents = documents }
         async similaritySearch(_query: string) { return this.documents }
     }
     return { ...orig, HypaProcesser: StubProcesser }
