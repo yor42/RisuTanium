@@ -21,6 +21,7 @@ import { sleep } from "src/ts/util";
 import { alertConfirm, alertError, alertNormal } from "src/ts/alert";
 import { language } from "src/lang";
 import { checkCharOrder, getFetchLogs } from "src/ts/globalApi.svelte";
+import { untrustedGlobalFetch, untrustedNativeFetch } from "src/ts/network/untrustedFetch";
 import { changeColorScheme, updateColorScheme, updateTextThemeAndCSS, type ColorScheme } from "src/ts/gui/colorscheme";
 import { isNodeServer, isTauri } from "src/ts/platform";
 import { get } from "svelte/store";
@@ -880,7 +881,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                     console.warn(`Request contains potentially sensitive header '${headerName}'. handling of such headers may be changed to only work with nativeFetch.`);
                 }
             }
-            return oldApis.risuFetch(url, options);
+            return untrustedGlobalFetch(url, options);
         },
         nativeFetch: (url, options) => {
             for(const blocked of urlBlacklist){
@@ -896,7 +897,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                     console.warn(`Request contains potentially sensitive header '${headerName}'. handling of such headers may be changed to use server-side approch with write-only api access in the future for better security.`);
                 }
             }
-            return oldApis.nativeFetch(url, options);
+            return untrustedNativeFetch(url, options);
         },
         getChar: getGatedChar,
         setChar: setGatedChar,
