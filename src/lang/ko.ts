@@ -1251,6 +1251,7 @@ export const languageKorean = {
     "enableDragPartialEdit": "드래그 부분 수정 활성화 (텍스트 선택 후 수정)",
     "setNodePassword": "보안을 위해 비밀번호를 정해주세요",
     "inputNodePassword": "비밀번호를 입력해주세요. 기억이 안나신다면, save/__password를 지우고 서버를 재시작해주세요.",
+    "nodePasswordEmpty": "비밀번호는 비워 둘 수 없습니다",
     "simple": "간단",
     "advanced": "고급",
     "askReRollAutoSuggestions": "자동 제안 다시 뽑기",

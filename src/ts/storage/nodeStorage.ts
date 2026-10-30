@@ -389,7 +389,7 @@ export class NodeStorage{
         })).json()
 
         if(data.status === 'unset'){
-            const digest = await digestPassword(await alertInput(language.setNodePassword))
+            const digest = await digestPassword(await promptNonBlankPassword(language.setNodePassword))
             const set = await fetch('/api/set_password',{
                 method: "POST",
                 body:JSON.stringify({
@@ -407,7 +407,7 @@ export class NodeStorage{
             await this.login(digest)
         }
         else if(data.status === 'incorrect'){
-            await this.login(await digestPassword(await alertInput(language.inputNodePassword)))
+            await this.login(await digestPassword(await promptNonBlankPassword(language.inputNodePassword)))
         }
     }
 
@@ -418,6 +418,23 @@ const sharedNodeStorage = new NodeStorage()
 
 export async function getNodeServerProxyAuth() {
     return await sharedNodeStorage.getProxyAuth()
+}
+
+/**
+ * Asks until the answer has a non-whitespace character. A blank or non-string
+ * answer is never hashed (the digest of an empty password is a usable login);
+ * an accepted answer is returned exactly as typed, because stored digests
+ * depend on the exact input.
+ */
+async function promptNonBlankPassword(message:string): Promise<string> {
+    for(;;){
+        const answer: unknown = await alertInput(message)
+        if(typeof answer === 'string' && answer.trim() !== ''){
+            return answer
+        }
+        alertError(language.nodePasswordEmpty)
+        await waitAlert()
+    }
 }
 
 async function digestPassword(message:string) {

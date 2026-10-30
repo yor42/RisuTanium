@@ -67,6 +67,8 @@ export interface NodeServerFixture {
      * survives: the server keeps the fixture's key hash on disk.
      */
     restart(options?: NodeServerLaunchOptions): Promise<void>
+    /** Everything the current run has written to stdout and stderr so far; a restart starts it afresh. */
+    output(): string
     /** Stops the server and removes its working directory. Safe to call twice. */
     stop(): Promise<void>
 }
@@ -356,6 +358,7 @@ export async function startNodeServer(options: NodeServerOptions = {}): Promise<
                     }
                 }
             },
+            output: () => output,
             stop,
         }
     } catch (error) {
