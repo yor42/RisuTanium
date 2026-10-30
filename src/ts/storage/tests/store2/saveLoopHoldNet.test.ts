@@ -39,6 +39,8 @@ interface Loop {
     state: { due: boolean, saved: number }
     crashed: unknown[]
     tracker: toSaveType
+    /** True while the loop waits in its idle; a stopped loop that is parked has finished every pass and tick. */
+    parked: boolean
     stop(): void
 }
 
@@ -52,11 +54,15 @@ async function startLoop(db: Database): Promise<Loop> {
     let stopped = false
     let tail: Promise<void> = Promise.resolve()
     const tracker: toSaveType = { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
-    const loop: Loop = { kit, state: { due: false, saved: 0 }, crashed: [], tracker, stop: () => { stopped = true } }
+    const loop: Loop = { kit, state: { due: false, saved: 0 }, crashed: [], tracker, parked: false, stop: () => { stopped = true } }
     const idle = () => new Promise<void>((resolve) => {
-        if (!stopped) {
-            setTimeout(resolve, 2)
-        }
+        loop.parked = true
+        setTimeout(() => {
+            if (!stopped) {
+                loop.parked = false
+                resolve()
+            }
+        }, 2)
     })
     const port: Store2LoopPort = {
         tracker,
@@ -128,9 +134,14 @@ beforeEach(() => {
     setNetHoldCheck(null)
 })
 
-afterEach(() => {
+afterEach(async () => {
     for (const loop of loops) {
         loop.stop()
+    }
+    // A tick still in flight would note its counts after the next test reset them.
+    const deadline = Date.now() + 10_000
+    while (loops.some((loop) => !loop.parked) && Date.now() < deadline) {
+        await pause(5)
     }
     loops.length = 0
     for (const handle of handles) {
@@ -175,11 +186,14 @@ describe('the idle-net hold while an export is busy', () => {
         installNetHold(busyKinds, () => 'on')
         busy('backupSave')
         const loop = await startLoop(clone(buildSmall(4)))
+        const startedAt = performance.now()
         await pause(10 * NET_INTERVAL_MS)
+        const elapsed = performance.now() - startedAt
 
         // The loop iterates about every 2 ms, so a clock that did not advance would count a hold per iteration.
+        // A late timer lets more intervals elapse, so the bound follows the measured time.
         expect(peekNetTickStats().held).toBeGreaterThan(0)
-        expect(peekNetTickStats().held).toBeLessThanOrEqual(12)
+        expect(peekNetTickStats().held).toBeLessThanOrEqual(Math.ceil(elapsed / NET_INTERVAL_MS) + 2)
         expect(loop.crashed).toEqual([])
     })
 
