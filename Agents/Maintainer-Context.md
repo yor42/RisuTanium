@@ -19114,3 +19114,82 @@ Both phones were handed back to lane A on 2026-10-28 (phone 2 after item 9d, pho
 - Notes, not the maintainer's words:
   - `Cargo.lock` is gitignored (`.gitignore` line 54; commit `3ded54ec4` "Remove cargo.lock due to build bug"), so a lock-only update fixes this PC's builds, not what git ships.
   - Nothing here authorizes application code, a commit or a push.
+
+### MC-898 — Lane A, 2026-10-30: CHORE-552 and CHORE-148 plan answers (Q1 to Q8, card Lua follows the `MC-878` rule, no CSP, `serde` for the policy, merge on green)
+
+- Tag: decisions (maintainer answers through the ask tool, recorded by lane A in `answers-r1.md`, plus three maintainer statements in the handoff). Date: 2026-10-30. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\plans\chore552\answers-r1.md` (lane A's record of Q1 to Q8, the CSP line and the card Lua answer; the option texts offered are not reproduced there); `Agents/Handoff-2026-10-30-laneA.md` (line 100 "CHORE-552: Gate 1 r1 REJECT", line 104 and line 115, "if green, merge and push"); the `serde` instruction is quoted as the id-map for this batch gives it. The designer's CSP reasoning is in `plans\chore552\result.md` (lines 198 to 204) and `result-r2.md` (AI-authored).
+- Alternatives rejected: not recorded for Q1 to Q8. For the CSP the designer's alternative, setting one, was rejected on the designer's reasons below, not on a maintainer statement.
+- Related: `MC-878`, `MC-879`, `MC-873`, `MC-877`, `MC-175`, `MC-350`; CHORE-552, CHORE-148, CHORE-560.
+
+**What was decided (maintainer, as `answers-r1.md` gives it).**
+1. Q1: `MC-878` on Tauri covers plugin-originated requests (V3 `nativeFetch`/`risuFetch` including plugin providers) and all HTTP MCP; app requests to user-configured provider URLs are unchanged.
+2. Q2: the toggle is a device-local, fork-only store key (not in `.bin`, not writable by a preset or plugin), default off, in Advanced settings on desktop and Android, with a confirmation warning on enable.
+3. Q3: a blocked request fails with the recommended error text; there is no per-request prompt.
+4. Q4: checked plugin and MCP requests bypass the OS proxy; app requests keep it.
+5. Q5: one confirmation before the first Python install, naming Python 3.11.7 embeddable, `get-pip.py`, the 8 PyPI packages (including the `llama-cpp-python` source build) and the disk use; declining shows the existing sidecar-not-started error.
+6. Q6: `setChatPanel` keeps `<style>` only after the `mainDom` permission (asked once), else strips it; the panel is painted inside its own box, with `className` inside.
+7. Q7: `customCSS` and `guiHTML`: no change.
+8. Q8: if R2 and no `WEB_MESSAGE_LISTENER`: the sensitive bridges are not exposed; the keep-alive and opened-file handoff degrade.
+9. CSP: the designer's "do not set one" is accepted as part of the plan, pending Gate 1 (the answers file says so; who accepted it is not stated in answers-r1.md: TODO(evidence)). Designer's reasons (not the maintainer's words): V3 plugins run in a `srcdoc` iframe that inherits the parent's CSP, Tauri 2.12.1 adds `'self'` and nonces to `script-src` when a CSP is set, which turns off `'unsafe-inline'` under CSP3, and any CSP compatible with `MC-175` would need `*` for resources and inline script, so it would not meaningfully reduce B-05's risk.
+10. After Gate 1 r1 `[REJECT]`: card Lua `fetchNative` (`scriptings.ts`) follows the same `MC-878` rule as plugins and MCP, and the toggle is renamed to cover cards (the answers file's example: "Allow private network for plugins, cards and MCP").
+11. The policy parser: the maintainer's words, as the id-map gives them: "you can add serde to Cargo.toml instead of hand parsing if that reduces attack surface and our code work." (The handoff line 104 paraphrases the same instruction.)
+12. For the CHORE-552 trial the maintainer said "if green, merge and push" (handoff line 115).
+
+- Notes, not the maintainer's words:
+  - Lane A's decision, recorded as lane A's: E5 (`desktop.json` keeps an unscoped `http:default`) is left, because it has no effect (capabilities merge).
+  - Closures recorded with this entry (not maintainer decisions): CHORE-148 is closed, since the S5 template check found no adoptable delta (`plans\chore552\s5\result.md`; handoff line 112; debug APK SHA256 begins `BEAB65E1`, ends `2B5B`). The security-audit finding B-09 was closed as wrong and stale (`plans\chore552\result.md` line 42: the download extension is allowlisted). `deep-link:default` was removed from `desktop.json` in S4 (`a380db571`, handoff line 110).
+  - Open after the merge `00678a689`: the B5 device check (Note 9 R1 to R4, Windows W1 to W3; it decides S6; CHORE-560 covers the wry init-script escalation), the K1 desktop smoke, the Windows Python install check, the `contain:paint` real-browser check and the wording review of the new strings (Korean and the others).
+  - Nothing here authorizes application code, a commit or a push beyond what the quoted "if green, merge and push" covers for the CHORE-552 trial.
+
+### MC-899 — Lane A, 2026-10-30: the maintainer confirmed the `MC-895` reading of "where `gates.md` requires"
+
+- Tag: decision (maintainer confirmation). Date: 2026-10-30. Sweep ref: none.
+- Source: the maintainer's words as the id-map for this batch gives them: "confirmed, the MC-895 reading is correct". `Agents/Handoff-2026-10-30-laneA.md` (line 103) records the same confirmation in lane A's words and lists what it covers.
+- Alternatives rejected: not recorded.
+- Related: `MC-895` (the maintainer confirmed the three-case reading lane A put to the maintainer in routing.md, which drops the `MC-785` fresh-arbiter item that MC-895's lane A note listed; where the two differ, this entry governs and the MC-895 note is not rewritten), `MC-785`, `MC-894`; applied in `docs/workflow/routing.md` and `docs/workflow/gates.md`.
+
+**What was decided (maintainer).** "confirmed, the MC-895 reading is correct".
+
+- Notes, not the maintainer's words:
+  - The reading confirmed, as the handoff states it: `opus-reviewer` and `senior-advisor` remain only for persistence-class review, the `senior-advisor` challenge on expensive-to-reverse plans, and the three-reject escalation. The `MC-785` fresh arbiter for a disputed case is NOT in that list. MC-895's lane A note listed it; where the two differ, this entry governs and the MC-895 note is not rewritten.
+  - `MC-895` is not rewritten (append-only); its TODO(evidence) about the reading is closed by this entry. Effect: `routing.md` (Opus economy) drops "pending confirmation" and cites `MC-895` confirmed by this entry; `gates.md` gets a pointer at the resume-or-replace rule to that amendment.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-900 — Lane A, 2026-10-30: owed device checks clarified (the 64 MiB inlay check is the asset URL gate; large audio defined) and the long-term-memory research direction
+
+- Tag: decisions (maintainer clarifications, relayed in lane A's handoff of 2026-10-29, "late" entries). Date: 2026-10-29 (clarifications), recorded 2026-10-30. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (line 90, the clarification of the owed device checks; line 120 item 2, the long-term-memory research). The maintainer's own wording is not quoted in either line. Code references are lane A's, from that handoff line (`src/ts/storage/assetUrlGate.ts`); not re-opened for this entry.
+- Alternatives rejected: not recorded.
+- Related: `MC-756`, `MC-760`, `MC-531` (the inlay backup part size is a separate matter); `MC-876` (already records the web build retirement; see the notes).
+
+**What was decided (maintainer, as lane A's handoff gives it).**
+1. "64 MiB inlays" in the checks still owed from batch 20 means the limit imposed to keep the WebView from crashing, that is `MC-756` (Android withholds the file URL above 64 MiB from image, CSS, fetch and thumbnail uses; the user sees the empty missing-asset image; video and audio still get the URL) and `MC-760` (a 64 MiB per-list preview budget; rows past it show icon and name), implemented in `src/ts/storage/assetUrlGate.ts`. It is NOT the inlay backup part size chosen in c3; c3's backup-part procedure is a separate round-trip check.
+2. "Large audio" has no hard definition (the maintainer's report was rough, or AI wording). Lane A's proposal, not a maintainer decision: by `MC-756` audio keeps its URL above 64 MiB, so the check is that a large audio asset or inlay (one above the gate, for example a 100 MiB WAV, plus one just under) plays or loads without a WebView crash, and that an image inlay above 64 MiB shows the empty image without a crash.
+3. c3's device-check procedures 2 and 3 are to be rewritten around `assetUrlGate` and the `MC-756`/`MC-760` behaviour (a designer or Codex task, synthetic fixtures only, Note 9, after the quota reset).
+4. Long-term memory (LTM): after the quota reset, launch an Opus research subagent (native, or through `agy` `claude-opus-5-5` with web tools if available) to survey recent LLM long-term-memory papers and public proofs of concept that could be adopted. Seed topics: a fact/event ledger with supersession and source pointers, activation (spreading-heat) retrieval, hierarchical summaries with zoom-in, importance and reflection scoring, per-character knowledge, and an evaluation harness with planted facts. RoleplayEngine (cedenburn-ai, GPL-3.0, a Shadowrun Discord bot with energy-graph memory) is one reference; its core memory code was not read.
+
+- Notes, not the maintainer's words:
+  - Skipped as already recorded: the same handoff line 120 item 1 (the web build is not the largest group in this fork, and the maintainer was weighing dropping it) was an open question that the maintainer then decided in `MC-876` (retired the static web build). A search of this file before writing found no earlier entry for the 64 MiB clarification, the large-audio check or the LTM direction.
+  - The LTM item is research direction only: it adopts no design, and a memory-footprint or LTM implementation would still need the maintainer's approval.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-901 — Lane A, 2026-10-30: upstream `ea61945f9` merge answers (Node first-run setup, module MCP data, stdio MCP block, version suffix moves every sync) and the merge instruction
+
+- Tag: decisions (maintainer answers to an `AskUserQuestion` round, all four the recommended option; plus two chat instructions). Date: 2026-10-30. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\upstream-ea61945\maintainer-answers.md` (the four options as offered); `Agents/Handoff-2026-10-30-laneA.md` (line 115, "there was 25 commits upstream. can we dispatch triage on it for merge?"; line 122, "Merge and push"). The triage (`triage.md`, AI-authored investigator packet) was checked by `doc-verifier`: PASS WITH CORRECTIONS (`verify.md`; no disposition change).
+- Alternatives rejected: by the options offered, not the maintainer's reasons: a setup token for the Node first run, taking upstream's module MCP strip, taking upstream's stdio MCP block, and keeping the suffix fixed.
+- Related: `MC-440` (the open point Q4 settles), `MC-441`, `MC-523`, `MC-873`, `MC-877`; CHORE-552 (`migrated.json`); the Upstream-Merges record for this merge.
+
+**What was decided (maintainer).**
+1. Node first-run setup (upstream `f5c563110` item 4): "Keep first-client-wins (Recommended)". No setup token; `MC-523` stands; the 500-on-failed-write detail is optional.
+2. Module MCP data on import (`a0598d546`): "Keep fork behaviour (Recommended)". A module's `mcp` is kept; stdio needs consent (`MC-873`, `MC-877`); upstream's strip is not taken.
+3. Stdio MCP block (`41ea80377`): "Keep fork stdio (Recommended)". The block is skipped; the spawn allow-list stays as CHORE-552 left it; `migrated.json` resolves to the fork side.
+4. Version suffix (the `MC-440` open point): "Move every sync (Recommended)". `appSubVer`, `version.json` and the README line move to `up2026.10.292` now and on each later upstream merge.
+5. Chat instructions: "there was 25 commits upstream. can we dispatch triage on it for merge?" and, at the merge confirmation, "Merge and push (Recommended)" (the id-map's wording; the handoff line 122 quotes "Merge and push").
+
+- Notes, not the maintainer's words:
+  - Outcome per the handoff (line 122): `main` fast-forwarded `00678a689..9755ce9f7` and was pushed.
+  - Q4 closes the "later upstream syncs" gap noted in `MC-440` and left open in the `MC-441` follow-up text; those entries are not rewritten.
+  - Follow-up tickets from the Gate 1 and Gate 2 findings (`set_password` write order, late V3 replacer registration) belong to the Roadmap, not to this entry.
+  - Nothing here authorizes application code, a commit or a push beyond the merge and push the maintainer approved.
