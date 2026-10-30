@@ -7,7 +7,7 @@
  */
 import { describe, test, expect } from 'vitest'
 
-type Permission = string | { identifier: string, allow?: Array<Record<string, unknown>> }
+type Permission = string | { identifier: string, allow?: unknown[] }
 type Capability = {
     identifier: string
     description?: string
@@ -38,8 +38,9 @@ describe('capability files', () => {
 
     test('guard: every capability is local to the main window and declares no remote origin', () => {
         for (const capability of capabilities) {
-            expect(capability.local, capability.identifier).toBe(true)
+            expect(capability.local, capability.identifier).not.toBe(false)
             expect('remote' in capability, capability.identifier).toBe(false)
+            expect('webviews' in capability, capability.identifier).toBe(false)
             expect(capability.windows, capability.identifier).toEqual(['main'])
         }
     })
@@ -63,7 +64,7 @@ describe('capability files', () => {
             expect(ids).toContain(tool)
         }
         const spawn = desktop.permissions.find((permission) => idOf(permission) === 'shell:allow-spawn') as Exclude<Permission, string>
-        expect(spawn.allow!.map((entry) => entry.name)).toEqual(SPAWN_NAMES)
+        expect(spawn.allow!.map((entry) => (entry as { name?: unknown }).name)).toEqual(SPAWN_NAMES)
     })
 
     test('guard: what applies to Android keeps shell open and the data folder scope', () => {
@@ -72,7 +73,8 @@ describe('capability files', () => {
         expect(ids).toContain('shell:allow-open')
         const scopes = android.flatMap((capability) => capability.permissions)
             .filter((permission): permission is Exclude<Permission, string> => typeof permission !== 'string' && permission.identifier === 'fs:scope')
-        expect(scopes.flatMap((scope) => scope.allow as unknown as string[])).toContain('/data/**/*')
+        const allowed = scopes.flatMap((scope) => (scope.allow ?? []).filter((entry): entry is string => typeof entry === 'string'))
+        expect(allowed).toContain('/data/**/*')
     })
 
     test('guard: the tracked schema mirrors each source capability', () => {

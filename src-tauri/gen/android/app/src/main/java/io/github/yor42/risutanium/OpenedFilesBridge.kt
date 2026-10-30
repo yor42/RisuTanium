@@ -10,12 +10,15 @@ import android.webkit.JavascriptInterface
 import org.json.JSONArray
 import org.json.JSONObject
 
-// Exposed to the page as window.__risuTaniumOpenedFilesHost. Kept by name in proguard-rules.pro:
-// the page calls take() by name, so minification must not rename or drop it. The queue is
+// Reached by the page two ways. Legacy: exposed as window.__risuTaniumOpenedFilesHost, kept by
+// name in proguard-rules.pro because the page calls take() by name, so minification must not
+// rename or drop it; WebView calls take() on a bridge thread. Channel: the message listener calls
+// takeHeld() on its worker thread and confirm() when the page acknowledges. The queue is
 // process-wide: a file that arrives before the page exists, or before first setup is done, waits
-// here until the page takes it. The main thread only enqueues URIs; the display names are
-// resolved in take(), which WebView calls on a bridge thread, so a slow provider never blocks
-// the UI. Nothing here filters by file name: the page decides what is importable.
+// here until the page takes it (legacy) or confirms it (channel), so a batch the page never
+// confirmed is offered again. The main thread only enqueues URIs; the display names are resolved
+// in take() or takeHeld(), off the main thread, so a slow provider never blocks the UI. Nothing
+// here filters by file name: the page decides what is importable.
 class OpenedFilesBridge(private val resolver: ContentResolver) {
   // Returns every queued batch (one per intent that carried content URIs) as
   // [[{uri, name}]] and empties the queue; "[]" when nothing waits.

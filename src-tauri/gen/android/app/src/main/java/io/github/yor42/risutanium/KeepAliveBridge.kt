@@ -8,9 +8,9 @@ import android.webkit.JavascriptInterface
 import androidx.core.content.ContextCompat
 
 // Exposed to the page as window.__risuTaniumKeepAlive. Kept by name in proguard-rules.pro: the
-// page calls these methods by name, so minification must not rename or drop them. WebView calls
-// them on a bridge thread, so every call is posted to the main thread in order, where the service
-// and the activity may be touched. It holds the application context, never the activity.
+// page calls these methods by name, so minification must not rename or drop them. A call may
+// arrive on a bridge thread (legacy) or the main thread (message channel), so every call is posted
+// to the main thread in order, where the service and the activity may be touched. It holds the application context, never the activity.
 //
 // A start the system refuses (a background start that is not allowed, a quota, a missing
 // permission) is logged and recorded as "not running", so later updates do nothing and the app
