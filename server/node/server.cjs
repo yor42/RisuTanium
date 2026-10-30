@@ -99,6 +99,13 @@ if(existsSync(passwordPath)){
     password = readFileSync(passwordPath, 'utf-8')
 }
 
+// The server never stores the digest of an empty password; one that is already
+// stored (an upstream folder, a hand edit) is only warned about, never changed.
+const EMPTY_PASSWORD_DIGEST = crypto.createHash('sha256').update('').digest('hex')
+function isEmptyPasswordDigest(value) {
+    return typeof value === 'string' && value.trim().toLowerCase() === EMPTY_PASSWORD_DIGEST
+}
+
 const knownPublicKeysPath = path.join(process.cwd(), 'save', '__known_public_key_hashes.json')
 if(existsSync(knownPublicKeysPath)){
     const knownPublicKeysRaw = readFileSync(knownPublicKeysPath, 'utf-8');
@@ -1604,7 +1611,7 @@ app.post('/api/crypto', async (req, res) => {
 
 app.post('/api/set_password', setPasswordRouteLimiter, async (req, res) => {
     if(password === ''){
-        if(typeof req.body?.password !== 'string' || req.body.password.trim() === ''){
+        if(typeof req.body?.password !== 'string' || req.body.password.trim() === '' || isEmptyPasswordDigest(req.body.password)){
             res.status(400).send({error: 'Password missing or invalid'})
             return;
         }
@@ -2981,6 +2988,9 @@ async function startServer() {
         const versionWarning = nodeVersionWarning(process.versions.node);
         if (versionWarning) {
             console.warn(`[Server] WARNING: ${versionWarning}`);
+        }
+        if (isEmptyPasswordDigest(password)) {
+            console.warn('[Server] WARNING: save/__password holds the digest of an empty password, so anyone who can reach this server can sign in without a password. To set a new one, stop the server, delete save/__password, start it again and set the password from the app.');
         }
         const port = process.env.PORT || 6001;
         const httpsOptions = await getHttpsOptions();
