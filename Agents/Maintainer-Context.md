@@ -18637,3 +18637,480 @@ Both phones were handed back to lane A on 2026-10-28 (phone 2 after item 9d, pho
   - Plan defaults, not asked (lane F's record): stored dumper order is trusted; chat counts include only chats with at least one message; only character turns count toward the swipes notice (`MC-817` item 2, `MC-821`).
   - S4D merged as `5c1498907` (ledger row 4607); not run on a device; only synthetic fixtures exist (no real Character.AI export was available). Lane F's block `MC-850` to `MC-869` has `MC-850` used; next `MC-851`.
   - Nothing here authorizes application code, a commit or a push.
+
+### MC-788 — Lane A, 2026-10-30: doc-writer and record-clerk may write any file extension under `%TEMP%` outside every repository; the secret-name refusal stays for all roles
+
+- Tag: decisions (`AskUserQuestion` answers; maintainer in lane A, 2026-10-29 and 2026-10-30). Date: 2026-10-30. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (the entries "Write-guard incident (Owed item 8)" and "maintainer answers via the ask tool", lines 75 and 78 of the file as read 2026-10-30); `%TEMP%\risu-b715\plans\guard\answers.md`. Lane A's reading of `write-guard-common.ps1` (`Assert-GuardTarget` refuses every non-`.md` target for those two roles before the repository-versus-scratch branch) is lane A's, per the handoff.
+- Alternatives rejected: not recorded in either source.
+- Related: `MC-785`; the write-guard scratch change merged as `b293c6e3b` (commit `0913f40d2`, per `Agents/Handoff-2026-10-30-laneA.md`).
+
+**What was decided (maintainer, as lane A's handoff gives it).**
+1. `doc-writer` AND `record-clerk` may write any extension under `%TEMP%` outside every repository. Repository-side enforcement is unchanged: the `.md`-only rule is scoped to repository targets.
+2. 2026-10-30 (`plans\guard\answers.md`, O1): keep the secret-name refusal for all roles, the documentation roles included.
+
+- Notes, not the maintainer's words:
+  - The handoff says the change needed a designer plan, fixtures (a granted `doc-writer` writing external `notes.txt` must fail on the old base) and Gate 1 and Gate 2. It records Gate 1 r1 `[APPROVE]` and the merge above; Gate 2 is `[APPROVE]` (`plans\guard\gate2-r1.md` line 1).
+  - Orchestrator decisions in `answers.md`, not the maintainer's: O2 no wording change to the commit-draft lines of `doc-writer.md` and `record-clerk.md`; O4 a non-repository directory under `%TEMP%` is allowed and a test states it; O5 no notice to other lanes.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-789 — Lane A, 2026-10-30: CHORE-483 background-music rules (newest message governs; replay while mounted; stop on removal; silent on failure) and the plan's open questions OQ-1 to OQ-6
+
+- Tag: decisions (`AskUserQuestion` answers; maintainer in lane A, 2026-10-29 and 2026-10-30). Date: 2026-10-30. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (the "maintainer answers via the ask tool" entry, CHORE-483 BGM paragraph, line 79); `%TEMP%\risu-b715\plans\chore483\answers.md`.
+- Alternatives rejected: not recorded, except that OQ-1 names option "B" and the other letters are not given.
+- Related: `MC-873` (the BGM URL fetch rule feeds the same code); CHORE-483; CHORE-555.
+
+**What was decided (maintainer; the first group as lane A's handoff gives it).**
+1. Several mounted controls: the NEWEST MESSAGE's control governs. It uses message order, not DOM order; older messages prepended on scroll-back must not change the track.
+2. Replay after the track ended while the governing control is mounted: yes (loop).
+3. Governing control removed: stop immediately.
+4. A malformed control or a denied `play()`: stay silent, no retry, no fallback.
+5. The packet also requires an idempotent contextmenu listener, a connected observer with an initial scan and nested-subtree handling, and an idle-CPU with/without comparison before any saving is claimed (the handoff attributes this to the packet, not to a maintainer choice).
+6. 2026-10-30 (`answers.md`): OQ-1 B, a bounded hold keyed to message identity (the same non-empty `data-chat-id` still mounted, no control yet), at most 2000 ms; the same src returning continues, a different src switches, otherwise stop; a chat switch or deletion stops at once. OQ-2 a BGM control outside any message ranks below every message control. OQ-4 two controls in one message: the first in document (text) order. OQ-5 a new attempt only on a different governing src or a control that disappears and later reappears; the same src (a remount within the hold included) never re-attempts. OQ-3 yes, fix B-09 now (the download extension allowlist is the parser's emitted extensions, fallback `txt`). OQ-6 ties between equal-rank controls in different roots, or between two controls outside any message: first in document order.
+
+- Notes, not the maintainer's words:
+  - Orchestrator (`answers.md`): the OQ-1 B hold is keyed by the registry chat id. The handoff records the merge as `0aa7440f3` (commit `6253fb61f`) with D-1 and D-2 idle-CPU diagnostics still owed and no CPU claim made.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-870 — Lane A, 2026-10-29: the `.bin` export/import Rust-to-WebView-to-base64-to-Rust round trip is to be lifted (Rust preferred on all platforms; a dual path is acceptable)
+
+- Tag: decision (`AskUserQuestion` answer, maintainer in lane A, on the Rust-migration survey). Date: 2026-10-29. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (the "maintainer answers on the Rust survey" entry, line 95); the survey is `%TEMP%\risu-b715\ext-trial\v3\rust-argon.out.md` (Argon, AI-authored, unverified; lane A spot-checked two claims against `src-tauri`: `tiktoken-rs` appears only in `Cargo.toml` with no use in `src-tauri/src`, and every command calls `app.path().app_data_dir()` with no `OnceLock` cache).
+- Alternatives rejected: not recorded.
+- Related: `MC-871`, `MC-872`; `MC-175` and `MC-223` (byte compatibility with upstream), `MC-350`.
+
+**What was decided (maintainer, as lane A's handoff gives it).** Lift the round trip in which every exported byte goes Rust to WebView to base64 to Rust. Preference: Rust on all platforms. If that is not available (web and Node cannot call Tauri commands; WASM or a native Node module would be separate work), a dual path is acceptable: a Rust fast path on Tauri desktop and Android, TypeScript kept elsewhere. Byte-for-byte `.bin` compatibility and the `opus-reviewer` persistence gate stand. Before design: size it (a designer packet), start with the cheap enablers (cache `app_data_dir` in a `OnceLock`; let `get_assets_batch` read `store2/` keys), and run the owed Note 9 benchmarks.
+
+- Notes, not the maintainer's words:
+  - The survey's own figures (a Note 9 export of 3,000 assets/500 stubs at 932 s; 38.5 min for a 100k-entry 6.8 GiB import) are the survey's, unverified.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-871 — Lane A, 2026-10-29: Android avatars over 4 MiB get the skip fixed, "whichever the faster"
+
+- Tag: decision (maintainer answer; the reading of "faster" is lane A's, flagged below). Date: 2026-10-29. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (line 96); same survey as `MC-870`.
+- Alternatives rejected: not recorded; the options named in the handoff are skip, bounded TypeScript and Rust.
+- Related: `MC-870`.
+
+**What was decided (maintainer, as lane A's handoff gives it).** Fix the skip of Android avatars over 4 MiB, by a bounded TypeScript decode or a Rust downscaler, "whichever the faster".
+
+- Notes, not the maintainer's words:
+  - Open, lane A's reading: "faster" is not defined (faster to build or faster at run time). Lane A's proposed reading is faster measured on the Note 9, which needs a small spike of both on the same synthetic fixtures (more than 4 MiB PNG/WebP avatars) before choosing. The maintainer has not confirmed this reading (TODO(evidence)).
+  - The thumbnail store is a disposable cache (no `.bin` impact), per the handoff.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-872 — Lane A, 2026-10-29: remove the unused `tiktoken-rs` from `src-tauri/Cargo.toml`
+
+- Tag: decision (maintainer answer). Date: 2026-10-29. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (line 97).
+- Alternatives rejected: not recorded.
+- Related: `MC-870`; `MC-887` (the Rust dependency batch).
+
+**What was decided (maintainer, as lane A's handoff gives it).** Remove the unused `tiktoken-rs` from `src-tauri/Cargo.toml`. Lane A's check (per the handoff): no use in `src-tauri/src`.
+
+- Notes, not the maintainer's words:
+  - The handoff says it needs a build with the lockfile update, and that `src-tauri/Cargo.lock` must be checked for what else it pulls before any build-size saving is claimed.
+  - Whether the removal was carried out is not read for this entry; `Agents/Handoff-2026-10-30-laneA.md` records the RUST-DEPS change (`eventsource-client` dropped, reqwest 0.12, zip bump) merged as `499cbcea1` but does not mention `tiktoken-rs` (TODO(evidence)).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-873 — Lane A, 2026-10-29: a module or card MCP stdio command never runs without the user's consent; the V3 `setDatabase`/`setDatabaseLite` permission gap is in scope
+
+- Tag: decision (maintainer answer on the security audit; the quoted phrase is the handoff's). Date: 2026-10-29. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (lines 99 to 105 and 109 to 110). The audit input is `%TEMP%\risu-b715\ext-trial\v3\sec-argon.out.md` (11 findings) and `tauri-argon.out.md`, both AI-authored and unverified; lane A confirmed the F-01 chain in source (module import asks only for `lowLevelAccess`; `getModuleMcps` returns every module's `mcp.url`; `createMCPClient` spawns `stdio:` commands; `capabilities/migrated.json` allows `node`/`npm`/`npx`/`docker`/`uvx` with `args: true`), and corrected Argon on the Python commands (they are called from `local.ts`).
+- Alternatives rejected: not recorded.
+- Related: `MC-877`, `MC-883`; CHORE-550.
+
+**What was decided (maintainer, as lane A's handoff gives it).** A module or card MCP stdio command must never run without the user's consent ("no, of course not"). The fix covers the import, enable and run paths (CHORE-550), plus the V3 `setDatabase`/`setDatabaseLite` permission gap. Filed as HIGH PRIORITY. CHORE-550 and the Node fixes were to be first in line for designer plans after the 2026-10-30 reset.
+
+- Notes, not the maintainer's words:
+  - Candidate tickets were filed from lane A's block; the ledger rows are in the part-2 records. Ticket scope split (per the handoff, lane A's): CHORE-550 module/card MCP consent, V3 database permission and plugin writes of secret references; CHORE-551 Node; CHORE-552 Tauri hardening; CHORE-553 `cargo audit` and `npm audit`; CHORE-554 preset import (new, `MC-882`).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-874 — Lane A, 2026-10-29: harden the Node server in general; remote reachability stays and the server must be safe behind its password
+
+- Tag: decision (maintainer answer on the security audit). Date: 2026-10-29. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (line 103; the full Node pass is `%TEMP%\risu-b715\ext-trial\v3\codex-node.out.md`, AI-authored, spot-checked by lane A per line 136).
+- Alternatives rejected: not recorded.
+- Related: `MC-191`, `MC-884`, `MC-885`, `MC-886`; CHORE-551.
+
+**What was decided (maintainer, as lane A's handoff gives it).** Harden the Node server in general. The maintainer's view is that a localhost default is acceptable, but Node's main selling point to the community is reaching the same save data from other devices without migration, so remote reachability stays and the server must be safe behind its password: do not rely on a bind address for safety. Whether the default bind changes is a design question for CHORE-551's plan; the auth, path and proxy fixes are not conditional on it.
+
+- Notes, not the maintainer's words:
+  - The handoff's reading: CHORE-551 widens to a full Node pass (priority list in line 104). The later answers settled the bind question (`MC-884`: no bind change, an optional `HOST` variable).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-875 — Lane A, 2026-10-29: the CORS proxy (the plain-web `proxy2` route) is toggleable and OFF by default, with a disclosure (points 1 to 5 confirmed); SUPERSEDED by `MC-876`
+
+- Tag: decisions (maintainer answers; revised in the same session, then confirmed point by point). Date: 2026-10-29. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (lines 112 to 118). Lane A's code reading: the existing toggle is the advanced setting "Force plain fetch" (`usePlainFetch`, setting id `adv.plainFetch`); `getProxy2Url`, `fetchWithProxy` and `fetchNative` route through proxy2 when `!isTauri && !isNodeServer && !usePlainFetch`, default false, so the proxy is ON today.
+- Alternatives rejected: the first wording, "either at startup or on use", was replaced by the revision below.
+- Related: `MC-086`, `MC-876` (supersedes this entry); CHORE-555.
+
+**What was decided (maintainer).**
+1. First wording: the plain-web `proxy2` route exists to get around provider CORS limits and must be DISCLOSED outright, either at startup or when the user chooses to use the proxy.
+2. REVISED: the CORS proxy is toggleable and must be OFF BY DEFAULT; turning it on shows help text and a pop-up that state outright that requests, including the API key and prompts, pass through upstream's server.
+3. Confirmed as recommended: (1) the saved field `usePlainFetch` keeps its name and meaning (a default flip for new profiles and a relabelled, inverted toggle, no schema change); (2) existing profiles get a ONE-TIME pop-up at their first proxied request (consent keeps the proxy on; no silent switch-off, so no request suddenly fails); (3) the CORS-failure message says how to enable the proxy; (4) all proxied paths honour the new default; (5) Node and Tauri are unchanged.
+
+- Notes, not the maintainer's words:
+  - SUPERSEDED: `MC-876` (2026-10-29, same session) retires the static web build and removes the `proxy2` route, so this entry is not a live decision; the handoff says to record it as superseded.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-876 — Lane A, 2026-10-29: the static browser-storage web build is RETIRED (hosted https and plain-HTTP local static); the Node-hosted front end, Tauri and Android stay (supersedes `MC-875`)
+
+- Tag: decision (maintainer answers over three exchanges, the last labelled "DECISION (record as MC-876)" in the handoff). Date: 2026-10-29. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (lines 120 to 134). Sizing inputs: `%TEMP%\risu-b715\ext-trial\v3\drop-web-flash.out.md` (Gemini Flash, AI-authored, unverified); lane A's script and grep counts quoted in the handoff (the six store and service-worker files sum to 2,291 raw lines; about 1,831 removable; 63 test files reference these stores or `fake-indexeddb`). `drop-web-opus.out.md` died on the Claude pool quota.
+- Alternatives rejected: keeping the web build; the maintainer first called dropping it "a direction, not a decision". Dev-loop option A (a root script) was chosen over the `pnpm tauri dev` alternative.
+- Related: `MC-875` (superseded here), `MC-350`, `MC-011`; CHORE-555, CHORE-557.
+
+**What was decided (maintainer, as lane A's handoff gives it).**
+1. Scope: the STATIC browser-storage build (hosted https and plain-HTTP local static). The plain-HTTP local mode may go too if removal shows a practical benefit, since Tauri exists. The Node-hosted front end stays. Importing upstream data (`.bin`) must keep working.
+2. Dev loop: option A, a root script (for example `dev:server`) that runs the Node server plus the Vite dev server with a proxy, so web front-end development stays seamless; `pnpm tauri dev` remains for native.
+3. No migration banner: the maintainer's Android MVP is the only deployment (`MC-350` still applies to it; it never used the IndexedDB/OPFS stores).
+4. New ticket CHORE-557 (candidate, medium-high, large, staged and gated), "Retire the static web build", stages in Flash's order, each independently shippable: (1) service worker, web share target and manifest `share_target`; (2) base64 plain-HTTP file cache in `globalApi.svelte.ts`; (3) the upstream `proxy2` route and the `usePlainFetch`/`requestLocation` settings (keep `fetchViaProxyJobWs` for Node); (4) IndexedDB byte store, OPFS transitional store and copy-back, `appStore` selection collapsed to Tauri/Node, `autoStorage` localforage branch; (5) `buildsite` script, `fake-indexeddb` and the 63 affected test files, plus `dev:server`. Keep: `storageTabLocks.ts` (shared), localforage/IndexedDB for caches and plugin storage, DPoPDB, `nodeHttpStore`, `assetObjectUrls`.
+5. Effect on other tickets (lane A's reading in the handoff, following the decision): `MC-875` is superseded; CHORE-555 shrinks to the Node-hosted front-end items; its service-worker share-route and `proxy2` items drop with CHORE-557; the Store2 browser multi-tab loss-path investigation loses its browser-byte-store scope.
+
+- Notes, not the maintainer's words:
+  - Needs before any stage (handoff): a verified inventory script first (imports of the removed files, every `!isTauri && !isNodeServer` branch), a designer plan per stage, `opus-reviewer` for stage 4 (persistence), and a check that no Android or Node path reaches a removed branch. `MC-888` places CHORE-557 before the rest of CHORE-555.
+  - Flash's 3,700 to 4,200 line total rests on unverified estimates and is not a recorded figure.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-877 — Lane A, 2026-10-29: MCP stdio approval is command-specific and must not break upstream compatibility
+
+- Tag: decision (maintainer answer to the Tauri/Node audit questions; the design constraints are lane A's, flagged below). Date: 2026-10-29. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (line 140).
+- Alternatives rejected: not recorded.
+- Related: `MC-873`, `MC-883`, `MC-175`; CHORE-550.
+
+**What was decided (maintainer, as lane A's handoff gives it).** MCP stdio approval is COMMAND-SPECIFIC (it names the executable and arguments), with the maintainer's concern that it must not break upstream compatibility.
+
+- Notes, not the maintainer's words (lane A's design constraints for the CHORE-550 plan, per the handoff):
+  - The module, `.risum`, `.bin` and preset formats and module fields do not change (an upstream-exported module with an stdio MCP still imports unchanged).
+  - The approval lives in fork-only local data keyed by module id plus a hash of the command and arguments; it is never inside the module, so it is not exported to upstream and an imported or plugin-written module cannot pre-approve itself. A changed command invalidates it; an upstream-originated module simply prompts on first use. A test keeps an upstream `.bin` round trip byte-identical for the module fields.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-878 — Lane A, 2026-10-29: native network authority for plugins, imported MCP and the Node generic proxy is LOCALHOST by default; other private/LAN destinations sit behind a warned toggle
+
+- Tag: decision (maintainer answer; the reading is lane A's, flagged below). Date: 2026-10-29. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (line 140); the findings it settles are Codex N-05 (Node) and B-03 (Tauri) in `codex-node.out.md` and `codex-tauri.out.md` (AI-authored; lane A spot-checked).
+- Alternatives rejected: not recorded.
+- Related: `MC-143`, `MC-144`, `MC-191` (as cited by Codex N-05; local-model access is intentional), `MC-884`, `MC-886`; CHORE-551, CHORE-552.
+
+**What was decided (maintainer, as lane A's handoff gives it).** Native network authority (plugins, imported MCP, and the Node generic proxy): LOCALHOST by default; other private/LAN destinations are locked behind a toggle that shows a warning.
+
+- Notes, not the maintainer's words (lane A's reading to confirm in the plan, per the handoff): the rule is about private-address destinations, and public internet LLM providers stay as they are; for the Node proxy "localhost" means the server's own loopback, so a local model on another LAN machine needs the toggle; redirects and resolved addresses are checked against the same rule.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-879 — Lane A, 2026-10-29: the first local-model Python install needs explicit consent, and the native commands derive paths themselves
+
+- Tag: decision (maintainer answer). Date: 2026-10-29. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (line 140); the finding is Codex B-07 in `codex-tauri.out.md` (`run_py_server` executes `<caller dir>/python.exe`; `local.ts` auto-installs on a fetch-error fallback).
+- Alternatives rejected: not recorded.
+- Related: `MC-873`, `MC-878`; CHORE-552.
+
+**What was decided (maintainer, as lane A's handoff gives it).** The first local-model Python install needs explicit consent (no automatic install on the fetch-error fallback), and the native commands derive paths themselves.
+
+- Notes, not the maintainer's words:
+  - Per the handoff, designer plans for CHORE-550, 551, 552 and 554 followed the 2026-10-30 reset; the CHORE-552 plan is in progress per `Agents/Handoff-2026-10-30-laneA.md` (line 92).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-880 — Lane A, 2026-10-29: CHORE-478 S1 alternatives-chunk handling (a damaged chunk is omitted from the view with its bytes kept; Branch chats stay separate)
+
+- Tag: decisions (maintainer answers via the ask tool). Date: 2026-10-29. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (line 80; the open questions are in line 75). The packet is the Codex sizing packet `s2-chore478.out.md` (AI-authored, unverified, not an accepted report).
+- Alternatives rejected: not recorded.
+- Related: `MC-781` (the "dropped" damaged-chunk wording the packet asked about), `MC-350`; CHORE-478.
+
+**What was decided (maintainer, as lane A's handoff gives it).**
+1. A damaged alternatives chunk is omitted from the loaded view, its bytes are kept (`MC-350`), and the notice names the chat.
+2. A readable chunk with missing, duplicate or cyclic parent pointers follows the same rule as a damaged one.
+3. Existing separate Branch chats stay separate (no conversion in S1).
+
+- Notes, not the maintainer's words:
+  - The handoff's next step was a designer plan for S1 after the 2026-10-30 reset. CHORE-478 S1 is queued after the Node and Tauri batches (`MC-888`).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-881 — Lane A, 2026-10-30: CHORE-556 (chat bodies vanish while a chat's modules load): show a loading state then one render; plan answers Q1 to Q5 and the N1 and N2 boundaries
+
+- Tag: decisions (maintainer answers via the ask tool, 2026-10-29 and 2026-10-30). Date: 2026-10-30. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (lines 126 to 130, bug report and cause); `%TEMP%\risu-b715\plans\chore556\answers.md`. The cause (a per-module `bumpModuleGui()` in `moduleLoader.ts` remounting every message body through the `{#key}` in `Chat.svelte`) is lane A's source trace, marked VERIFIED in the handoff; the maintainer's report: Android, about 10 modules, a regex script emitting CBS that loops `{{#each {{assetlist}}}}` and `{{#each {{module_assetlist::MangaKyo}}}}`.
+- Alternatives rejected: for the loading question, "raw text" and "nothing" (named by lane A's open question; the maintainer chose the loading state).
+- Related: `MC-091` (the shared-cause fold below); CHORE-556; merged as `becdc37f9` (447c74143), per `Agents/Handoff-2026-10-30-laneA.md`.
+
+**What was decided (maintainer).**
+1. 2026-10-29: while the chat's selected modules load for the first time, show a loading state, then one render (no raw text, no blank).
+2. 2026-10-30 `answers.md`: Q1 A, a per-message inline indicator (`role=status`, `aria-label` `language.loading`), only while the chat's selected modules are pending and until that message's first render. Q2 A, loading ends and bodies render without the failed module(s); the existing single alert names them; no in-chat retry. Q3 A, no display timeout. Q4: keep the translated content shown across a bump (as the translation-edit revision does). Q5 (after plan r3): the streaming reply's per-chunk remount stays as today (no indicator per chunk); D7 is skipped while streaming the last message.
+
+- Notes, not the maintainer's words (orchestrator items in `answers.md`):
+  - N1: the existing `showTranslationLoading` spinner stays on a user-initiated translate or retranslate of an already-rendered message. N2: "no bump blanks a shown body" holds for every bump that leaves the message's source text, role and character argument unchanged; when one of those changes and the body is remounted, the instance shows the per-message indicator until the new parse resolves, and blank is acceptable only where the indicator is unreachable and the plan says so. The handoff says N2 was reported to the maintainer.
+  - The send/translator ensure-hold fold was provisionally accepted as a shared-cause fold (`MC-091`); Gate 1 judged it. The reviewer route was `opus-reviewer` (parser asset-cache timing treated as asset caching).
+  - A Note 9 check (`c556-device\result.md`) is recorded in the handoff: after the fix, 0 content-to-empty in 5 of 5 runs. Not covered: module-load failure, asset-heavy regex, other `ReloadGUIPointer` bumpers.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-882 — Lane A, 2026-10-30: CHORE-554 preset import blanks the four destination fields silently and DROPS `koboldURL` (the second answer supersedes the first)
+
+- Tag: decisions (maintainer answers via the ask tool; Q2 asked twice). Date: 2026-10-30. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\plans\chore554\answers.md`; `Agents/Handoff-2026-10-29-laneA.md` (lines 109 to 110, 138, 143, 145); `Agents/Handoff-2026-10-30-laneA.md` (merge row). The vector description in the handoff was corrected by the Codex Tauri pass (B-04): the user's proxy key, not the ordinary `openAIKey`, goes to the attacker URL (AI-authored; lane A verified the Kobold residual in `shared.ts` and `request.ts`).
+- Alternatives rejected: Q2 first answer (i) keep `koboldURL` as imported, replaced by (ii) after Gate 1 r1 found the Kobold header leak.
+- Related: `MC-873`; CHORE-554, merged as `690ce03f5`.
+
+**What was decided (maintainer).**
+1. Q1 A: blank the four destination fields (`forceReplaceUrl`, `forceReplaceUrl2`, `textgenWebUIStreamURL`, `textgenWebUIBlockingURL`, per the designer's plan as the handoff lists them) silently at import, like the exporter. No notice.
+2. Q2, re-asked with the corrected residual (a `reverse_proxy` plus Kobold-format preset sends `db.additionalParams` `header::` values to the preset's `koboldURL` without opt-in): (ii) DROP `koboldURL` on import (set `undefined`, so `setPreset` keeps the user's current Kobold URL). This supersedes the earlier Q2 answer (i) "keep `koboldURL` as imported".
+
+- Notes, not the maintainer's words:
+  - Q3 was not asked: lane A applied the designer's recommendation, no treatment for presets imported before the fix (AGENTS.md: no recovery design for fork-local state).
+  - Lane A: `db.additionalParams` `header::` values count as stored user secrets under the plan's R1. Orchestrator decision N4 after Gate 1 r2: the user's proxy key going to Google's FIXED endpoint for an imported `reverse_proxy` plus Google-format preset is outside R1 (the destination is not preset-chosen).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-883 — Lane A, 2026-10-30: CHORE-550 answers Q1 to Q6 (MCP spawn consent, V3 `db` permission, TTS key), the accepted V3 contract change and the documented residual
+
+- Tag: decisions (maintainer answers via the ask tool). Date: 2026-10-30. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\plans\chore550\answers.md`; `Agents/Handoff-2026-10-29-laneA.md` (line 144); `Agents/Handoff-2026-10-30-laneA.md` (merge rows); `Agents/Handoff-2026-10-29-laneA.md` (line 157, the V3 contract change). The survey `plans\survey1\result.md` (a `code-searcher` packet, PARTIAL for Q-C) is an input, not an accepted report.
+- Alternatives rejected: not recorded (the answers name the recommended option A each time).
+- Related: `MC-873`, `MC-877`, `MC-091`; CHORE-550, merged as `30cf811e8` (stage 2a) and `7901c1f77` (stages 1 and 2b).
+
+**What was decided (maintainer).**
+1. Q1 A: ask only before the first spawn, on every route; import and enable ask nothing new.
+2. Q2 A: decline means the module's MCP tools are off for the rest of the page session with no second prompt; the next start or a changed command asks again; nothing is persisted.
+3. Q3 A: environment names and values are in the hash and shown in the prompt.
+4. Q4 A: all seven V3 APIs (`getCharacterFromIndex`, `getChatFromIndex`, `setCharacterToIndex`, `getChar`, `setChar`, `setDatabase`, `setDatabaseLite`) need the `db` permission; a denied getter returns null, a denied setter rejects.
+5. Q5 A: refuse with a named error before the request when a non-default TTS `baseURL` would receive the app-wide key.
+6. Q6 A: no `.bin` export warning for the device-local approvals.
+7. After Gate 1 r2: ACCEPT the V3 contract change (`setDatabase`/`setDatabaseLite` and the other gated setters resolve after the permission check; the `risuai.d.ts` sentence "before it returns" is scoped to V2 and V3 is documented as "after the permission check"). `parseRisuChat` and `getCurrentLorebookEntries` stay ungated as a documented residual.
+
+- Notes, not the maintainer's words:
+  - Orchestrator decision, a shared-cause amendment under `MC-091` after Gate 1 r1 F1 (lane A verified in `v3.svelte.ts`): the aliases `getCharacter` and `setCharacter` and the ungated `setChatToIndex` join the `db`-gated set, within the maintainer's Q4 intent "all character/chat index readers and setters"; the handoff says this was reported to the maintainer.
+  - The handoff records owed diagnostic T22 (native desktop) and the residual R2-E1 (concurrent asks can cover the one-time unreadable notice), documented in code.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-884 — Lane A, 2026-10-30: CHORE-551 stage 1 answers (blank-password fail-closed, startup warning, private-proxy variable, token cap, bind and `.bat` unchanged)
+
+- Tag: decisions (maintainer answers via the ask tool). Date: 2026-10-30. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\plans\chore551\answers.md`; `Agents/Handoff-2026-10-29-laneA.md` (lines 144 and 146); `Agents/Handoff-2026-10-30-laneA.md` (line 9). Survey `plans\survey1\result.md` (input, not an accepted report).
+- Alternatives rejected: not recorded.
+- Related: `MC-874`, `MC-878`, `MC-191`, `MC-885`, `MC-886` (Q7 amended there); CHORE-551, stage 1 merged as `cf80cfcd9`.
+
+**What was decided (maintainer).**
+1. Q1: refuse a blank password before hashing and re-prompt with "Password cannot be empty" (a new `en.ts` key).
+2. Q2: a startup console warning naming `save/__password`; no lockout, no file change.
+3. Q3: a server-side environment variable (for example `RISU_PROXY_ALLOW_PRIVATE=1`), reported via `/api/caps`; the client shows the warning in settings when on.
+4. Q4: the same `MC-878` rule for `/proxy-stream-jobs` (loopback by default, LAN behind the same toggle).
+5. Q7: a 1 hour cap on `exp - now`; `iat` at most 5 minutes in the future (the `iat` half was dropped later, see `MC-886`).
+6. Q8: no bind change (`MC-191`); an optional `HOST` environment variable for loopback-only.
+7. Q9: no change to the Windows `.bat` helper.
+8. Stage 1 "Simpler path" (drop the raw-digest bearer): the maintainer keeps the plan and revisits it in stage 7 (Handoff-2026-10-29 line 146).
+
+- Notes, not the maintainer's words:
+  - Q5 and Q6 were not asked; lane A applied defaults from its survey: Q5 keep the fallback and strip `risu-*`, cookie, host and hop-by-hop headers (every production `/proxy2` caller sets `risu-header`); Q6 keep `/hub-proxy` anonymous with a lower anonymous body cap (its clients send no `risu-auth`, and `img` tags cannot).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-885 — Lane A, 2026-10-30: CHORE-551 stage 2 refuses a blank password at BOTH the set-password and the login prompts; the `inputNodePassword` text fix is folded in
+
+- Tag: decision (maintainer answer via the ask tool). Date: 2026-10-30. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\plans\chore551\s2\answers-r1.md`; `Agents/Handoff-2026-10-30-laneA.md` (lines 49 and 61).
+- Alternatives rejected: not recorded; the answer is "OPEN-1: Option A".
+- Related: `MC-884`, `MC-058` (locale edits); CHORE-551 stage 2, merged as `1f0cae2dc` (commit `45a0581bc`).
+
+**What was decided (maintainer).**
+1. OPEN-1 Option A: refuse blank input at BOTH the set-password and the login prompts. The startup warning keeps its last sentence telling the operator to delete `save/__password` and set a new password. S2-T3 stays in scope; CM2 as the plan states for option A.
+2. The `en` text of `inputNodePassword` (and `cn`, `zh-Hant`, `vi`, `de`, `es`) names `save/__password.txt`; the file is `save/__password`. Correct the `en` text in this stage; the Translator corrects the five locales in the same branch (`ko` is already correct); preserve maintainer edits, keys, interpolations and line endings (`MC-058`). No test pins this text unless a grep finds one.
+3. Client-mutant route: lane A provides a disposable scratch copy outside the tree (or the reviewer builds its own); no temporary repository edits.
+
+- Notes, not the maintainer's words:
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-886 — Lane A, 2026-10-30: CHORE-551 stages 3 to 7 combined-plan answers (node:http lookup, CGNAT private, defaults accepted, the `iat` bound dropped, O-13 to O-17)
+
+- Tag: decisions (maintainer answers via the ask tool, three rounds). Date: 2026-10-30. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\plans\chore551\s3\answers-r1.md`; `Agents/Handoff-2026-10-30-laneA.md` (lines 65, 68, 71, 72, 76, 82, 88).
+- Alternatives rejected: not recorded; O-5 option (b) was chosen over unnamed alternatives.
+- Related: `MC-878`, `MC-884`, `MC-874`; CHORE-551 stages 3 to 7 and the CHORE-555 Node headers; merged as `4cc5a7f9b`.
+
+**What was decided (maintainer).**
+1. O-5: option (b), `node:http`/`node:https` with a checked lookup (as the stream jobs), no new dependency.
+2. O-11: CGNAT `100.64.0.0/10` counts as private (behind `RISU_PROXY_ALLOW_PRIVATE` and its warning).
+3. All other defaults accepted as the plan recommends: O-1 64 KiB public JSON and `/hub-proxy` cap; O-2 and O-6 error shapes; O-3 `/api/crypto` 10 per 30 s; O-4 upload-append parser behind the gate; O-7 WebSocket keeps `risu-auth` capped at 1 h beside the ticket; O-8 4 sockets per job and 4 MiB queued per subscriber; O-9 `Referrer-Policy strict-origin-when-cross-origin`, `X-Frame-Options SAMEORIGIN`, `nosniff`; O-10 optional `HOST` environment variable; O-12 strip `risu-*` names from the client's `risu-header` map; Q4 reading: jobs keep refusing public targets.
+4. After Gate 1 r1 `[REJECT]` (S-4 / Q7): DROP the `iat` bound; keep only the 1-hour `exp` cap (`exp - now <= 1 h`). This amends `MC-884` item 5. Revise the whole combined plan in one designer round; the batch stays together.
+5. After plan r2: O-13, O-14, O-15, O-16 and O-17 accepted as `result-r2.md` recommends (their text is in that plan file; not copied here).
+
+- Notes, not the maintainer's words:
+  - The handoff records Gate 1 r3 `[ACCEPT WITH CONDITIONS]`, Gate 2 r1 `APPROVE WITH CONDITIONS`, remediation commits `da19ed314` and `2de6dd318` (the `vi` and `zh-Hant` terms per `locales-review.md`), Gate 2 r2 `APPROVE`, and a green trial before the merge.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-887 — Lane A, 2026-10-30: RUST-DEPS answers (one `example.com` GET, the python.org embed zip once in scratch, the tested `Cargo.lock` copied over main's local lock)
+
+- Tag: decisions (maintainer answers via the ask tool). Date: 2026-10-30. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\plans\rustdeps\answers-r1.md`; `Agents/Handoff-2026-10-30-laneA.md` (lines 50 to 52, 59, 62, 66 to 70, 74, 75, 79).
+- Alternatives rejected: not recorded.
+- Related: `MC-872`, `MC-897`, `MC-888`; RUST-DEPS (ticket id pending in the handoff).
+
+**What was decided (maintainer).**
+1. S2 host: one HTTPS GET to `https://example.com/` via `streamed_fetch` on the Note 9 (synthetic profile) is allowed.
+2. D3/S5: download the real python.org embed zip (the app's own vendor URL) once into scratch to test zip 9 extraction on Windows: allowed.
+3. `Cargo.lock`: after the merge, lane A copies the worktree's tested lock (the hash recorded at Gate 2) over main's local gitignored `src-tauri/Cargo.lock`, backing the old one up in scratch, before the next Android build.
+4. Batching: RUST-DEPS is the first part of batch B2 (Tauri/Rust); CHORE-552 and CHORE-148 follow as B2's second pass.
+
+- Notes, not the maintainer's words:
+  - Per the handoff: the plan changes `Cargo.toml` only (drops `eventsource-client`, reqwest 0.12, zip bump); merged as `499cbcea1`; Gate 2 r1 `[APPROVE]`; a Note 9 smoke passed (APK `AD3E1CF7`). `Cargo.lock` is gitignored (`.gitignore` line 54), so a lock change is local to this PC's builds, not shipped in git.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-888 — Lane A, 2026-10-30: the work order is accepted: one queue run by lane A, at most two code tracks, one combined pass per batch, per-ticket commits, one worktree per item, and CHORE-557 before the rest of CHORE-555; parallel sessions stay limited by the weekly quota
+
+- Tag: decisions (maintainer statements and an approval via the ask tool, 2026-10-30). Date: 2026-10-30. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\batching\work-order-proposal.md` (lane A's draft, accepted); `Agents/Handoff-2026-10-30-laneA.md` (lines 64 and 65) and `Agents/Handoff-2026-10-29-laneA.md` (line 146); inventory `batching\inventory.md` (AI-authored input).
+- Alternatives rejected: the draft left the CHORE-557 timing open ("your call"); the maintainer settled it below.
+- Related: `MC-694` (the trial merge), `MC-876`, `MC-785`; CHORE-551, 552, 555, 557, 148, 478.
+
+**What was decided (maintainer, as lane A's handoff gives it).**
+1. Limit multi-session parallelism because of the weekly quota cut; batch tickets into combined passes (one plan, one gate, one run per batch). Lane A removed clean merged worktrees as part of this.
+2. ACCEPTED work order (the proposal file): one ordered queue for lane A with background subagents; one combined pass per batch (one plan, one Gate 1, one implementation, one Gate 2, one full run plus trial, one merge) with commits per ticket or stage inside the batch; at most two implementation tracks at once, only on disjoint files in separate worktrees, plus the document track. Batches: B1 Node (CHORE-551 stages 3 to 7, CHORE-555 Node response headers, CHORE-468 and 459) in parallel with B2 Tauri/Rust (RUST-DEPS, then CHORE-552 and CHORE-148); gap fillers B3 test flakes and B4 records batch 22; B5 one Note 9 session; B9 small product bugs; B7 CHORE-478 S1; then CHORE-557 BEFORE the rest of CHORE-555. Proposed order: B1 and B2 in parallel, then B3 and B4 in the gaps, then B5, B9, B7, then B6/B8 (CHORE-557 timing decides).
+3. Earlier, 2026-10-30: one worktree per item (Handoff-2026-10-29 line 146).
+
+- Notes, not the maintainer's words:
+  - The handoff records that Lane C's six unanswered hand-back questions go to the maintainer in one batch of questions. Lanes B and F are not resumed as sessions; their items join the queue when reached.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-889 — Lane A, 2026-10-30: designer cost levers 1 to 3 approved (pre-locate with a `code-searcher`, batched range reads, plans of about 15 KB with revisions by reference)
+
+- Tag: decision (maintainer approval of lane A's proposal). Date: 2026-10-30. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-29-laneA.md` (lines 148 and 149); measurement script `plans\Measure-AgentTools.ps1` (not read for this entry).
+- Alternatives rejected: an `Agent` grant for designers (lane A advised against it: search is a minority of the tool results and `MC-785` removed `Agent` on purpose). Lever 4 (one designer per stage) was not asked.
+- Related: `MC-785` (its "cost is TODO(evidence)" note), `MC-894`, `MC-895`; `Agents/Handoff-2026-10-30-laneA.md` "Designer dispatch rules".
+
+**What was decided (maintainer, as lane A's handoff gives it).** The designer cost levers 1 to 3 are approved for the next dispatches: pre-locate with a Haiku `code-searcher`, batched range reads, and plans of about 15 KB with by-reference revisions. Lever 4 (one designer per stage) was not asked: apply it where a ticket clearly splits.
+
+- Notes, not the maintainer's words:
+  - Baseline (lane A's measurement, n=4 designers; per-transcript, not re-measured here): 74 to 126 API turns, final context 131 to 204k, cache reads 5.4 to 15.2M, output 79 to 144k; tool-result volume Read 70 to 84%, Grep 9 to 29%. The handoff compares CHORE-550 plan r2 (86.7k tokens, 20 tool calls against r1 205k, 81) and says that is a revision, not like-for-like. Savings are not claimed until compared against the baseline; the `MC-785` TODO(evidence) stands.
+  - Lane A's dispatch rule (handoff, "Designer dispatch rules"): location search goes to Gemini 3.8 Flash through the antigravity plugin; lane A runs the pre-location pass; every agy `file:line` is confirmed by a range read before it enters a plan or brief; designers keep no `Agent` grant.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-890 — Lane A, 2026-10-30: the UI overhaul runs as gated engine batches in lane A's single queue; core restructure accepted; `MC-516` AMENDED so an additive UI-S0 may precede the overhaul gate
+
+- Tag: decisions (`AskUserQuestion` answers; maintainer in lane A, 2026-10-30). Date: 2026-10-30. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\ui-audit\answers.md` (the maintainer's answers, recorded by lane A). Basis: the senior-advisor audit `ui-audit\result.md` of the separate design repository `C:\Projects\Risutanium-UI-Rework` (master `19834f4`), verified by `ui-audit\verify.md` (an `investigator`: 9 of 10 checked claims confirmed, claim 1 corrected: 11 comment lines in 4 files cite `src/` paths, so the sentence is "no code import of `src/`"; the engine log cites 6 DD ids and 3 DS ids, not 4 DS; tracked check-result JSON is 122.4 MB of the 127.5 MB JSON total). The verifier did not check the "about 460 decisions in four days" figure, the review-round counts, the roughly 860 "(Recommended)" count, the 15 MB import size or the 22 versus 17 profile counts.
+- Alternatives rejected: not recorded for each answer; the audit named options per decision in its section 5, which this entry does not copy.
+- Related: `MC-516` (amended here), `MC-517`, `MC-689`, `MC-778`, `MC-089`; the verifier's note that the S0-before-gate decision "goes beyond MC-516" and that "S0 is design-neutral" is the audit's own judgement, not a maintainer ruling.
+
+**What was decided (maintainer, as lane A's `answers.md` gives it).**
+1. Core: ACCEPT ALL. Import a curated subset of about 15 MB into the engine `docs/design` (DD/DS decision logs, specs, theme tokens, the pack validator, 3 Svelte components, the slice mockups as frozen reference); retire the mockup check suites and results (the old repository is kept tagged); UI work runs as gated batches in lane A's single queue; no separate UI session.
+2. Leftovers: ARCHIVE BOTH. No legacy 10-17 theme pass (startup, onboarding and data-and-backups keep spec status); Settings 5c-2 is spec input, reviewed as code in UI-S2.
+3. Decisions: LAZY + CAP 10. Each surface sizing cites the DD/DS ids it relies on; one MC per surface adopts them; uncited ones stay advisory. At most 10 new maintainer questions per UI batch; defaults stand unless objected to.
+4. UI-S0 timing, AMEND `MC-516`: an additive S0 (tokens, the nexus preset, 3 components mounted nowhere) may run before the gate, queued after B1/B2 (`MC-888`); S1 and later still wait for the `MC-516` gate. Migration mechanism: a per-surface in-app switch, no long-lived UI branch.
+5. Next before sizing S0: the audit's NEXT INVESTIGATION A to D (mount point; `nexus.css` against current styles and Tailwind; S1 engine-row prerequisites; Svelte components type-check).
+
+- Notes, not the maintainer's words:
+  - `MC-516` item 1 ("the UI overhaul starts once the save and data-loss tickets and CHORE-205's memory work are done") and its note "Nothing here authorizes UI application code" stand for everything except the additive S0 above. This entry is the amendment record.
+  - Per the handoff, the design snapshot is `19834f4` in the old repository (902 new files and 4 modified, about 75 MB; the engine copy left untracked), and the curated import was committed to `main` as `2b6a28822` (227 files under `docs/design`, list `ui-audit\import\paths.txt`). The handoff lists follow-ups, not yet done: a `DESIGN_PHILOSOPHY.md:76` correction and a `docs/design/README.md` state page (doc-writer then doc-verifier), and an old-repository tag `design-parked-2026-10-28` that needs the maintainer's OK because it is their repository.
+  - Nothing here authorizes UI application code, a commit or a push.
+
+### MC-891 — Lane A, 2026-10-30: UI import open items (the validator keeps its layout and is verified, `AUDIT_RESPONSE.md` and `research/` imported, stills skipped, pattern and motion CSS imported as frozen reference)
+
+- Tag: decisions (`AskUserQuestion` answers). Date: 2026-10-30. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\ui-audit\answers.md`, section "Import open items"; `Agents/Handoff-2026-10-30-laneA.md` (lines 85, 90, 91, 93). The validator dependency check is `ui-audit\h-deps\result.md` (executed by a helper agent; lane A's handoff states the result, this entry did not re-run it).
+- Alternatives rejected: not recorded.
+- Related: `MC-890`.
+
+**What was decided (maintainer, as lane A's `answers.md` gives it).**
+1. Validator (H): keep the design-repository layout; verify first (a cheap pass from a scratch copy finds the closed dependency set; add it to the manifest). Porting into `src/` waits for UI-S6.
+2. `AUDIT_RESPONSE.md` and `research/*.md`: import both.
+3. Group N stills: skip.
+4. `patterns/pattern.css`, `motion.css` and `README.md`: import as frozen reference; `home/registry-home.mjs` goes with the validator (H).
+
+- Notes, not the maintainer's words (handoff, lane A):
+  - The dependency check adds 22 files (about 143 KB); `node theme/checks/run.mjs` then exits 0 with 853 of 853 passing, with no browser or network. `results.json` and `results.log` are ignored through `docs/design/.gitignore`.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-892 — Lane A, 2026-10-30: UI overhaul ticket-mapping answers (library in UI-S4, patterns built in UI-S0, Back mechanism at UI-S4 sizing, Trash 30 days, retired settings keep their data, device-local settings, split T12 and T2)
+
+- Tag: decisions (`AskUserQuestion` answers; numbering as `answers-tickets.md`). Date: 2026-10-30. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\ui-audit\answers-tickets.md`. Inputs: `ui-audit\tickets\result.md` (43 tickets), `ui-audit\engine-rows\result.md` (136 rows, T1 to T21), checked by `ui-audit\verify-inventories.md` (AI-authored; lane A applied the verifier's corrections listed in `answers-tickets.md`, which are not product calls). Answer 4 is recorded separately as `MC-893`.
+- Alternatives rejected: not recorded.
+- Related: `MC-890`, `MC-278` (item 4, the Android-first Back decision), `MC-517`; `docs/design/DECISIONS.md` DD-001, DD-207, DD-214.
+
+**What was decided (maintainer, as lane A's `answers-tickets.md` gives it).**
+1. Character library: part of UI-S4 Home. Grid mounting and windowing (CHORE-170/177) are designed at UI-S4 sizing; CHORE-171/173 fold into UI-S4. This supersedes DD-001's "not scheduled" line.
+2. Patterns: UI-S0 builds the pattern tokens and components, including a cancellable select/input dialog; each surface batch migrates its own call sites; CHORE-351 folds into that.
+3. Browser Back: decide at UI-S4 sizing (one mechanism for all new screens and Android, as one of that batch's questions); the DD-207 and `MC-278` item 4 tension is recorded now (see the notes).
+5. Trash retention: 30 days everywhere (DD-214 / S2-4), implemented in UI-S4; CHORE-172 folds in (it replaces the 3-day boot purge).
+6. Retired settings (G16, `useLegacyGUI` S5c1-10): keep the fields and data, drop only the controls; no save-format change; the round trip to upstream is unchanged.
+7. Low-power (T18) and the update-check last-check (S5a-6): both device-local, not in the profile or the `.bin`.
+8. Split T12 (a connections store plus migration [`opus-reviewer`], and a service-key migration) and T2 (one ticket per storage home).
+
+- Notes, not the maintainer's words:
+  - Lane A's corrections applied before the answers (per `answers-tickets.md`): CHORE-03 STANDS (save-path defect: the restored character never enters `toSave.character`; `opus-reviewer` on the fix; UI-S4 re-touches the same restore path); CHORE-158 STANDS; CHORE-170/177 were already parked into the overhaul (`MC-517`); "gate as stored data" items S3-10 (joins the T7 hotkey migration), S5a-6, S5c1-10, G16, G27 (`.gif` emotion names, check `.bin`/upstream equivalence) and S5c2-10 (the default flip affects unset values only); S5c2-2 is not covered by `MC-774` alone, so a new ticket covers the export leave-out list and translation (DD-227/251; a lane A deliverable); T11 builds on CHORE-475's converter; T20 cites CHORE-103/141/159/70; CHORE-211 and CHORE-168 are re-checked at UI-S1/S2 acceptance.
+  - The Back tension, as the sources state it: `DECISIONS.md` DD-207 (hub and Trash push history entries; Back at the root uses the DD-008 toast) against `MC-278` D2 (Android app first; the option text says it "doesn't touch browser history"). No resolution is recorded; answer 3 defers it to UI-S4 sizing.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-893 — Lane A, 2026-10-30: CHORE-154 items 1 to 4 are unparked as standing engine work (amends `MC-517` for those items)
+
+- Tag: decision (`AskUserQuestion` answer 4 in `answers-tickets.md`). Date: 2026-10-30. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\ui-audit\answers-tickets.md`, answer 4. The text of CHORE-154's items 1 to 4 is not read for this entry (TODO(evidence): the Roadmap row).
+- Alternatives rejected: not recorded.
+- Related: `MC-517` (parked CHORE-154 and 155 into the overhaul, item 1 of its decisions), `MC-516`, `MC-890`, `MC-892`.
+
+**What was decided (maintainer, as lane A's file gives it).** CHORE-154: unpark items 1 to 4 as standing engine work; the rest stays parked into UI-S1.
+
+- Notes, not the maintainer's words:
+  - `MC-517` parked the chat-render group (CHORE-154, 155) into the overhaul. This entry amends that park for items 1 to 4 of CHORE-154 only; everything else in `MC-517` is unchanged.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-894 — Lane A, 2026-10-30: workflow rule: one fresh coder per stage, one combined Gate 2, one fresh remediation coder, and stage-sectioned designer plans
+
+- Tag: decision (maintainer rule, relayed in the records-batch brief and recorded in the handoff; the maintainer's own wording is not quoted in either source). Date: 2026-10-30. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-30-laneA.md` (line 86, "Workflow refinement (maintainer, 2026-10-30)" and the memory note it names, `feedback-coder-per-substage`); the records-batch 22 brief (lane A, 2026-10-30).
+- Alternatives rejected: not recorded.
+- Related: `MC-785`, `MC-694`, `MC-888`, `MC-895`; applied in `docs/workflow/routing.md` (section "Stage coders, Opus economy and workflow review").
+
+**What was decided (maintainer, as the brief and handoff give it).** After Gate 1, one fresh coder per stage, run serially in the batch's one worktree, with a per-stage write grant revoked before the next coder starts; tiny stages are grouped. One combined Gate 2 follows. One fresh remediation coder, seeded with the verdict, fixes a rejection. Designers write stage-sectioned plans whose stage sections stand alone. The maintainer said to fold this into `docs/workflow/routing.md` and record it as an MC entry.
+
+- Notes, not the maintainer's words:
+  - Amendment (stated at the rule source in `routing.md`): `gates.md` says a Gate 2 `[REJECT]` "is remediated by the implementing worker under the accepted plan". Under this rule that worker is a fresh remediation coder seeded with the verdict file, the diff and the acceptance requirements, not the stage coder that wrote the code. The `gates.md` sentence itself is not edited here (outside this records pass's grant); `routing.md` carries the amendment and cites this entry.
+  - Nothing here changes `ownership.md`: one application-code writer per checkout still holds, since the stage coders run one after another with a grant each.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-895 — Lane A, 2026-10-30: workflow rule: reduce Opus-or-higher calls on redundant or detailed items (searches, edits, repeated reviews, report verification)
+
+- Tag: decision (maintainer rule, relayed in the records-batch brief; the maintainer's wording is not quoted in the sources). Date: 2026-10-30. Sweep ref: none.
+- Source: the records-batch 22 brief (lane A, 2026-10-30); `Agents/Handoff-2026-10-30-laneA.md` (line 89, "reserve Opus-or-higher calls for judgement", memory note `feedback-reserve-opus-for-judgement`).
+- Alternatives rejected: not recorded.
+- Related: `MC-785`, `MC-889`, `MC-894`, `MC-896`; applied in `docs/workflow/routing.md`.
+
+**What was decided (maintainer, as the brief gives it).** Reduce calls to Opus-tier or higher roles (`designer`, `opus-reviewer`, `deep-investigator`, `senior-advisor`, and the orchestrator) on redundant or detailed items: (1) searches go to `code-searcher` (Haiku) or to a Gemini pre-locate handed to the designer; (2) code edits go to `sonnet-coder` or `haiku-editor`; (3) no repeat expensive review of the same diff: a remediation re-check goes to a Sonnet `adversarial-reviewer`, and `opus-reviewer` or `senior-advisor` run only where `gates.md` requires them; (4) an Opus report is verified by a Sonnet `investigator` scoped to the decision-critical claims.
+
+- Notes, not the maintainer's words:
+  - Lane A's reading, not confirmed by the maintainer (TODO(evidence)): "where `gates.md` requires" covers the save/persistence, save-format, reactive-database and asset-caching review by `opus-reviewer`, the senior-advisor challenge of an expensive-to-reverse plan, the senior-advisor step after three consecutive substantive rejects, and the fresh arbiter for a disputed case (`MC-785`). For those, the existing `gates.md` rules (including the 5-minute resume rule for a remediation re-check) are unchanged.
+  - Amendment: for any other change, the `gates.md` rule that a remediation re-check goes back to the same reviewer role is replaced by a Sonnet `adversarial-reviewer` re-check seeded with the verdict, per item 3. The `gates.md` text is not edited here; `routing.md` carries the amendment and cites this entry.
+  - The Gemini route is the one lane A runs through the antigravity plugin (`MC-889` notes); every agy `file:line` is a lead until confirmed by a range read.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-896 — Lane A, 2026-10-30: workflow rule: the orchestrator watches subagent token, tool and time data and proposes cheaper or faster workflow changes with the numbers; adoption is the maintainer's
+
+- Tag: decision (maintainer rule, relayed in the records-batch brief). Date: 2026-10-30. Sweep ref: none.
+- Source: the records-batch 22 brief (lane A, 2026-10-30).
+- Alternatives rejected: not recorded.
+- Related: `MC-785` (its "cost is TODO(evidence)" note), `MC-786`, `MC-889`, `MC-895`; applied in `docs/workflow/routing.md`.
+
+**What was decided (maintainer, as the brief gives it).** The orchestrator watches subagent token, tool-call and time data. When it sees a cheaper or faster way of working, it proposes the workflow change together with the numbers. Adopting a change is the maintainer's decision.
+
+- Notes, not the maintainer's words:
+  - Numbers stay measured: where a figure is unavailable the proposal says so (`MC-785`, `MC-786`: quota percentage, dollar cost and Codex usage were unavailable to the 2026-10-29 audit).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-897 — Lane A, 2026-10-30: dependency triage answers (npm Dependabot items LOW priority; `cargo-audit` install and a lock-only `rustls` update approved)
+
+- Tag: decisions (maintainer statements, 2026-10-30). Date: 2026-10-30. Sweep ref: none.
+- Source: `Agents/Handoff-2026-10-30-laneA.md` (lines 46 to 52, 58 and 59); results `%TEMP%\risu-b715\deps-2026-10-30\result.md` (investigator, AI-authored; lane A spot-verified the lock versions and the audit counts) and `deps-2026-10-30\rust\result.md`. Dependabot alerts read directly with `gh` (lane A): #174 `deepmerge` low (GHSA-gcqx-w48m-w2h4, no fix), #173 `qs` medium (GHSA-6pq8-jhm2-2vcw, fix 6.16.1), #172 `postcss-selector-parser` medium (GHSA-rj75-hqrm-r3gf, fix 6.1.5).
+- Alternatives rejected: an optional `qs` override (the investigator's recommendation) was not taken now.
+- Related: `MC-887`, `MC-872`.
+
+**What was decided (maintainer, as lane A's handoff gives it).**
+1. Skip `qs`, `postcss-selector-parser`, `deepmerge` and `sharp` for now, LOW priority (lane A's note: record them as a low-priority ledger note).
+2. `cargo-audit` 0.22.2 installed (maintainer OK).
+3. First, the maintainer said they would run the Rust steps (`cargo update` of `rustls` and related crates) themselves; then, "maintainer OK", lane A ran step 1 locally: `cargo update -p rustls@0.23.45 -p rustls-webpki@0.103.15 -p webpki-roots@1.0.9 -p webpki-root-certs`, moving the lock from `EB8B19C1` to `E5B44A7A` and `cargo audit` from 23 to 16 vulnerabilities (the lock is untracked and local; backup in scratch). The Android cross-build was not compiled at that point.
+4. The maintainer will check the `gh` / Dependabot list later.
+5. Code steps (drop `eventsource-client`, reqwest 0.12, zip bump) were then approved as a designer-planned change (RUST-DEPS, `MC-887`).
+
+- Notes, not the maintainer's words:
+  - `Cargo.lock` is gitignored (`.gitignore` line 54; commit `3ded54ec4` "Remove cargo.lock due to build bug"), so a lock-only update fixes this PC's builds, not what git ships.
+  - Nothing here authorizes application code, a commit or a push.

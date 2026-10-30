@@ -142,6 +142,8 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 
 ### CHORE-135 — Sidebar Stage 4: the panel does not follow the finger
 
+**Status (2026-10-30, lane A records batch 22): PARKED; CLOSES WHEN UI-S1 SHIPS (proposed disposition, `MC-892`).** The chat spec `docs/design/chat/SLICE1_SPEC.md` section 4 (lines 112 to 119: "Sidebar that follows the finger", a transform-based panel) replaces the old CSS-keyframe design; the verifier confirmed the spec lines (`%TEMP%\risu-b715\ui-audit\verify-inventories.md`, item 1). Nothing is implemented, so the ticket is not closed today. The backdrop half is also in the spec (line 115).
+
 **Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group C).** Can return on a maintainer decision.
 
 **Status (2026-10-08): open; not scheduled.** Type: feature remainder. Stage 4 chose "Triggers now, follow later" (`MC-250` 6): the swipe triggers open and close, and a finger-following animation was left for later (Maybe-Later QOL-07 (c) remainder).
@@ -150,11 +152,15 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 
 ### CHORE-140 — Rail: Home leaves 12 px hidden; verify smooth scroll-to-active into a closed folder
 
+**Status (2026-10-30, lane A records batch 22): MOOT when UI-S1 ships (proposed disposition, `MC-892`).** `docs/design/chat/SLICE2_SPEC.md:46` replaces the avatar rail with a recent-characters strip (four or five avatars) plus "모든 캐릭터" linking to the Home library, so the rail-only problem disappears; the verifier confirmed the spec line (`%TEMP%\risu-b715\ui-audit\verify-inventories.md`, item 1). Nothing is implemented yet, so the ticket is not closed today.
+
 **Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group C).** Can return on a maintainer decision.
 
 **Status (2026-10-08): open.** Type: verification and bug, low. Stage 3 accepted that Home leaves 12 px hidden (`MC-249`). Scroll-to-active into a closed folder was fixed for instant jumps by Stage 5 amendment 2 (restore errors at or under 0.5 px on the Note 9); the smooth (near) case is uncovered and needs a check.
 
 ### CHORE-150 — A custom page colour near middle grey may give low button contrast on Android 15+
+
+**Status (2026-10-30, lane A records batch 22): STAYS PARKED; re-check when UI-S0 adds the `nexus` colour-scheme preset (proposed, `MC-892`).** Per the ticket inventory (`ui-audit\tickets\result.md`, AI-authored, not independently verified for this row) `docs/design/system-surfaces/android/SPEC.md` covers notifications only, so the preset's new page colours would be the first change to the inputs of this problem.
 
 **Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D).** Can return on a maintainer decision.
 
@@ -184,6 +190,8 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 
 ### CHORE-171 — A long plain-text List description clips its third line mid-glyph, with "Show more" directly under it
 
+**Status (2026-10-30, lane A records batch 22): FOLDS INTO UI-S4 (`MC-892` answer 1).** The character library is part of UI-S4 Home; the library list view is designed there, so this ticket is re-checked against it. Still parked until UI-S4 is sized.
+
 **Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group C).** Can return on a maintainer decision.
 
 **Status (2026-10-10): open; cosmetic; not planned.** Type: visual defect (Stage 1c).
@@ -193,6 +201,8 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 
 ### CHORE-172 — Trash tab flings show 13 to 17% janky frames on the Note 9
 
+**Status (2026-10-30, lane A records batch 22): FOLDS INTO UI-S4, with 30-day retention (`MC-892` answers 1 and 5).** Home's Trash is designed (`docs/design/DECISIONS.md` DD-214, line 1275, aligned with Settings' 최근 삭제), but its list mounting model is not; the fling numbers below are a perf input for UI-S4 sizing. The maintainer fixed Trash retention at 30 days everywhere (DD-214 / S2-4), implemented in UI-S4; this replaces the 3-day boot purge this entry names. Still parked until UI-S4 is sized.
+
 **Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group D).** Can return on a maintainer decision.
 
 **Status (2026-10-10): open; observation; cause UNCERTAIN; needs a larger trash to settle; not planned.** Type: performance, Android.
@@ -201,6 +211,8 @@ there is no working Hugging Face key. It stays open and unscheduled until one is
 - **Needed:** a Trash with about 1000 rows on the phone (also listed as not observed in 2a and 2b), with recent trash times (the app purges trash older than 3 days at boot; `note9-2a.md` item 4).
 
 ### CHORE-173 — A zoom or font-scale change that does not resize the scroller is not picked up until the next resize
+
+**Status (2026-10-30, lane A records batch 22): FOLDS INTO UI-S4 (`MC-892` answer 1).** The library scroller is designed in UI-S4. Still parked until UI-S4 is sized.
 
 **Status (2026-10-24, lane A records batch 10): PARKED (`MC-501`, group C).** Can return on a maintainer decision.
 
@@ -254,6 +266,8 @@ output (below).
 
 ### CHORE-179 — Phone-browser Back closes neither the sidebar nor Grid edit mode
 
+**Status (2026-10-30, lane A records batch 22): STAYS PARKED; the Back mechanism is decided at UI-S4 sizing (`MC-892` answer 3).** One mechanism for all new screens and Android is one of that batch's questions. A recorded tension: `docs/design/DECISIONS.md` DD-207 (line 1268) has Home's hub and Trash push history entries, while `MC-278` item 4 (below) chose the app-level Back hook over history entries for the Android sidebar and edit mode and declined "Both now via browser history". The verifier read this as a mechanism tension, not a reopened declined alternative, because DD-207 is a different surface (`%TEMP%\risu-b715\ui-audit\verify-inventories.md`, item 2).
+
 **Status (2026-10-25, lane A records batch 12): PARKED (`MC-505`).** The maintainer chose "180 + 352, park 179", which returns it from lane A's Android Back batch to parked. Can return on a maintainer decision.
 
 **Status (2026-10-24, lane A records batch 10):** open; in the Android Back batch (`MC-501`, group F), which follows batch T.
@@ -292,15 +306,21 @@ output (below).
 
 The maintainer parked CHORE-154, 155, 170, 177, 05 and 111 into the UI overhaul in the decision sweep ("Chat render: 154, 155", "Grid/list: 170, 177", "Wording: 05, 111"). CHORE-351, 68 and 92 were offered and NOT parked; they stay open in the Roadmap. CHORE-05's entry is about 480 lines and stays in the [Roadmap](Roadmap.md) with its PARKED line (not moved byte for byte); the other five are moved below with their text unchanged.
 
-- **CHORE-05 — Translation coverage: much of the UI is English-only.** PARKED (`MC-517`, `MC-516`); the entry stays in the Roadmap; its table row was removed. See its PARKED line there. Not a release blocker (`MC-501`); can return on a maintainer decision.
+- **CHORE-05 — Translation coverage: much of the UI is English-only.** PARKED (`MC-517`, `MC-516`); the entry stays in the Roadmap; its table row was removed. See its PARKED line there. Not a release blocker (`MC-501`); can return on a maintainer decision. **Batch 22 (2026-10-30):** proposed to fold into UI-S1 to UI-S4, each surface shipping its strings through the translator (`MC-058`, `MC-892`); see the Roadmap entry.
+
+**Batch 22 (2026-10-30, `MC-890`, `MC-892`, `MC-893`):** the UI overhaul now has an epic and stage tickets UI-S0 to UI-S6 in the [Roadmap](Roadmap.md). The dated status lines added below record each parked ticket's proposed disposition; nothing here is closed, and the one change of parking is `MC-893` (CHORE-154 items 1 to 4 unparked).
 
 ### CHORE-111 — Native-speaker review of the Stage 1c, `.bin` and importer strings
+
+**Status (2026-10-30, lane A records batch 22): FOLDS INTO UI-S2 (proposed disposition, `MC-892`).** The data-and-backups page (DS-176 to DS-191) rewrites these strings; the review follows the rewritten strings. Still parked.
 
 **Status (2026-10-25, lane A records batch 14): PARKED into the UI overhaul (`MC-517`, `MC-516`).** The overhaul rewrites the strings. Can return on a maintainer decision.
 
 **Status (2026-10-06): open, low priority, the same deferral as CHORE-05 (`MC-212`).** The translators flagged low-confidence wording in the strings added by these changes: the lists in Report 59 section 8 (Stage 1c slices, QOL-06) and the `.bin` speed change (cn and zh-Hant "saved as it is made", vi, de and es "download helper", de "Kaltlager"), the bounded-IPC messages (ko 이(가) and 에셋, es "tú mismo" gender, vi stiffness, cn and zh-Hant, de "Asset") and the importer strings (the de, vi and es asset term; ko 이(가)).
 
 ### CHORE-154 — Output-identical cheap fixes in the chat parse pipeline
+
+**Status (2026-10-30, lane A records batch 22): ITEMS 1 TO 4 UNPARKED as standing engine work (`MC-893`, amends `MC-517` for those items); item 5 stays parked into UI-S1.** Items 1 to 4 live in `parser.svelte.ts` and `scripts.ts`, which the chat spec keeps (`docs/design/chat/SLICE4_SPEC.md` keeps the display pipeline), so "the overhaul rebuilds chat rendering" does not hold for them. The open ticket is tracked in the [Roadmap](Roadmap.md) (table row CHORE-154 and the batch 22 section); the item text below stays here unchanged. Item 5 (the `RegexData` OUT-field bump) is re-decided at UI-S3 sizing: no spec text removes its writer.
 
 **Status (2026-10-25, lane A records batch 14): PARKED into the UI overhaul (`MC-517`, `MC-516`).** The overhaul rebuilds chat rendering. Can return on a maintainer decision.
 
@@ -313,6 +333,8 @@ The maintainer parked CHORE-154, 155, 170, 177, 05 and 111 into the UI overhaul 
 5. **Every keystroke in a regex OUT field bumps `ReloadGUIPointer` (N4).** `RegexData.svelte:130-131` (the `onInput` of the OUT field) re-parses the whole window and wipes the script cache on each keystroke; the comment and type fields bump at `:114` and `:118`. Related to CHORE-155.
 
 ### CHORE-155 — The full chat re-renders on every `ReloadGUIPointer` bump
+
+**Status (2026-10-30, lane A records batch 22): STAYS PARKED; becomes an explicit UI-S1 acceptance criterion (proposed disposition, `MC-892`).** The consumer side is replaced by `docs/design/chat/SLICE4_SPEC.md` (a stream tick touches only the streaming message, line 87); the writer side is only partly replaced (the sidebar and chat-list writers go with the chat spec, the `RegexData` and `ModuleSettings` writers belong to UI-S3, the engine writers in `modules.ts`, `scriptings.ts`, `triggers.ts` and `changeChatTo` are untouched). The UI-S1 plan needs a stated rule for how a bump reaches the mounted messages without remounting. Related: CHORE-556 (merged `becdc37f9`) fixed the blank chat body while modules load; its Note 9 check covered that case only (0 content-to-empty transitions in 5 of 5 runs; other bump writers were not covered).
 
 **Status (2026-10-25, lane A records batch 14): PARKED into the UI overhaul (`MC-517`, `MC-516`).** The overhaul rebuilds chat rendering. Can return on a maintainer decision.
 
@@ -329,6 +351,8 @@ The maintainer parked CHORE-154, 155, 170, 177, 05 and 111 into the UI overhaul 
 
 ### CHORE-170 — Grid fling long tasks of up to 153 to 227 ms on the Note 9; try a smaller grid overscan after profiling
 
+**Status (2026-10-30, lane A records batch 22): STAYS PARKED; Grid mounting and windowing are designed at UI-S4 sizing (`MC-892` answer 1).** The character library is part of UI-S4 Home (this supersedes DD-001's "not scheduled yet" line, `docs/design/DECISIONS.md:15`). No spec text states a library mounting model.
+
 **Status (2026-10-25, lane A records batch 14): PARKED into the UI overhaul (`MC-517`, `MC-516`).** List windowing is already parked to the overhaul (`MC-504`). Can return on a maintainer decision.
 
 **Status (2026-10-10): open; observation with a partial attribution; not planned.** Type: performance, Android (Note 9; the i9 desktop says nothing about this).
@@ -338,6 +362,8 @@ The maintainer parked CHORE-154, 155, 170, 177, 05 and 111 into the UI overhaul 
 - **Proposal (the coder's, untested):** profile one fling first; if mounting dominates, try about 0.5 viewport of overscan for the grid only, accepting more blank edge at fast flings. `stage2b-report.md` "Overscan" says not to change it blind.
 
 ### CHORE-177 — Grid fling jank with every folder open on the Note 9 (the scroller's layer height; the browser re-fetches CSS background images when tiles are re-created)
+
+**Status (2026-10-30, lane A records batch 22): STAYS PARKED; designed with the library at UI-S4 sizing (`MC-892` answer 1).** The compositor-layer finding below applies to any tall single scroller, so it carries to the new library as a design input.
 
 **Status (2026-10-25, lane A records batch 14): PARKED into the UI overhaul (`MC-517`, `MC-516`).** Its earlier plan was to revisit it with the list-windowing work, which is parked to the overhaul (`MC-504`). Can return on a maintainer decision.
 
