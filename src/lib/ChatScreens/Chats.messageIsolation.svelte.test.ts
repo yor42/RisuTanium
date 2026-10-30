@@ -682,6 +682,7 @@ describe('S2 a message that throws does not stop the other messages', () => {
 
     test('R X1: a throw from a script-level effect of one message is contained; the list mounts and the other messages edit', async () => {
         // The second matchMedia call is the reduced-motion effect in Chat's script, not its template.
+        const recordedBefore = errorsAt('chat.message').length
         let calls = 0
         const real = window.matchMedia.bind(window)
         const spy = vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
@@ -708,7 +709,7 @@ describe('S2 a message that throws does not stop the other messages', () => {
         for (const index of [0, 1, 2].filter((i) => i !== failedIndex)) {
             expect(await editOpens(target, index)).toBe(true)
         }
-        expect(errorsAt('chat.message').length).toBeGreaterThan(0)
+        expect(errorsAt('chat.message').length).toBeGreaterThan(recordedBefore)
     })
 })
 
@@ -737,6 +738,38 @@ describe('S3 the Chats effect keeps its streaming, order and holder behaviour', 
         flushSync()
         await tick()
         expect(messageRow(target, 1)).toBe(rowBefore)
+        expect(messageRow(target, 1).textContent).toContain('chunk1 chunk2')
+    })
+
+    test('G X4: a message that is retried while it streams shows the current streaming text at once (guard for the boundary forwarder)', async () => {
+        const { target, chat } = mountChats(
+            [{ role: 'user', data: 'A' }, { role: 'char', data: 'chunk1', generationInfo: BADGED }],
+            { streamingDisplayOptimizationMode: 'strong', requestInfoInsideChat: true },
+        )
+        await wait(20)
+        await answerAllParses()
+        chat.isStreaming = true
+        flushSync()
+        await wait(20)
+        await answerAllParses()
+
+        h.modelThrows = true
+        DBState.db.zoomsize = 120
+        flushSync()
+        await tick()
+        const panel = failedPanel(target, 1)
+        expect(panel).not.toBeNull()
+
+        chat.message[1].data = 'chunk1 chunk2'
+        flushSync()
+        await tick()
+
+        h.modelThrows = false
+        const retry = [...panel!.querySelectorAll('button')].find((b) => b.textContent === language.messageRenderRetry)!
+        retry.click()
+        flushSync()
+        await wait(20)
+        await answerAllParses()
         expect(messageRow(target, 1).textContent).toContain('chunk1 chunk2')
     })
 
