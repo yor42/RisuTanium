@@ -214,7 +214,15 @@ export async function startNodeServer(options: NodeServerOptions = {}): Promise<
         stopped = true
         process.removeListener('exit', exitHook)
         await halt()
-        await rm(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+        // A child that outlived the graceful halt still holds its working directory
+        // (EBUSY on Windows): end it forcefully before removing the directory.
+        if (child !== undefined && child.exitCode === null && child.signalCode === null) {
+            killChild('SIGKILL')
+            if (exited !== undefined) {
+                await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, EXIT_TIMEOUT_MS))])
+            }
+        }
+        await rm(workDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
     }
 
     // The server listens on all interfaces, but another socket can hold the same

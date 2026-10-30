@@ -44,7 +44,8 @@ async function ask(fx: NodeServerFixture, payload: unknown, authenticated = true
     return { status: response.status, body: await response.text(), cacheControl: response.headers.get('cache-control') }
 }
 
-describe('/api/env-secret', () => {
+// Each test starts a server, whose launch alone may take up to the fixture's ready timeout.
+describe('/api/env-secret', { timeout: 60_000 }, () => {
     test('refuses an unauthenticated request without revealing the value', async () => {
         const fx = await start()
         const answer = await ask(fx, { name: 'RISU_TEST_KEY' }, false)
