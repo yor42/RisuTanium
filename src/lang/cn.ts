@@ -1252,6 +1252,7 @@ export const languageChinese = {
     "setNodePassword": "设置密码以提升安全性",
     "inputNodePassword": "输入密码。如果忘记密码，请删除服务器文档中的 save/__password 并重启服务器。",
     "nodePasswordEmpty": "密码不能为空",
+    "nodePrivateProxyWarning": "此服务器的代理可以访问您本地网络中的设备(RISU_PROXY_ALLOW_PRIVATE 已开启)。角色卡、脚本和插件可以通过它向这些设备发送请求。",
     "simple": "基本",
     "advanced": "高级",
     "askReRollAutoSuggestions": "自动滚动建议",

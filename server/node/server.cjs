@@ -19,6 +19,7 @@ const { NODE_BODY_LIMIT_BYTES, NODE_PUBLIC_BODY_LIMIT_BYTES, NODE_ASSET_LIMIT_BY
 const { hubTargetURL, hubRedirectTarget, hubRequestHeaders, hubResponseHeaders, hubForwardBody } = require('./hubProxy.cjs');
 const { ASSET_READ_AUDIENCE, assetKeyFromHex, contentTypeForKey, sniffContentType, cacheControlForKey } = require('./assetRoute.cjs');
 const { store2KeyFromHex } = require('./store2Keys.cjs');
+const { isKindAllowed, literalHostKind, createCheckedLookup, blockedError, ProxyPolicyError, InvalidHeaderError, sanitizeOutboundHeaders } = require('./proxyPolicy.cjs');
 
 // A positive integer from the environment, else `fallback`. The environment
 // overrides exist so tests can use small limits and short timers.
@@ -847,108 +848,13 @@ function normalizeHeartbeatSec(heartbeatSec) {
     return Math.min(PROXY_STREAM_HEARTBEAT_MAX_SEC, Math.max(PROXY_STREAM_HEARTBEAT_MIN_SEC, parsed));
 }
 
-function isPrivateIPv4Host(hostname) {
-    const parts = hostname.split('.');
-    if (parts.length !== 4) {
-        return false;
-    }
-    const octets = parts.map((part) => Number.parseInt(part, 10));
-    if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
-        return false;
-    }
-    const [a, b] = octets;
-    if (a === 10) {
-        return true;
-    }
-    if (a === 127) {
-        return true;
-    }
-    if (a === 0) {
-        return true;
-    }
-    if (a === 192 && b === 168) {
-        return true;
-    }
-    if (a === 172 && b >= 16 && b <= 31) {
-        return true;
-    }
-    if (a === 169 && b === 254) {
-        return true;
-    }
-    return false;
-}
-
-function isLocalNetworkHost(hostname) {
-    if (typeof hostname !== 'string' || hostname.trim() === '') {
-        return false;
-    }
-
-    const normalizedHost = hostname.toLowerCase().replace(/\.$/, '').split('%')[0];
-    if (normalizedHost === 'localhost' || normalizedHost === '::1' || normalizedHost.endsWith('.local')) {
-        return true;
-    }
-
-    if (net.isIP(normalizedHost) === 4) {
-        return isPrivateIPv4Host(normalizedHost);
-    }
-
-    if (net.isIP(normalizedHost) === 6) {
-        if (normalizedHost.startsWith('::ffff:')) {
-            const mapped = normalizedHost.substring(7);
-            return net.isIP(mapped) === 4 && isPrivateIPv4Host(mapped);
-        }
-        if (normalizedHost.startsWith('fc') || normalizedHost.startsWith('fd')) {
-            return true;
-        }
-        if (/^fe[89ab]/.test(normalizedHost)) {
-            return true;
-        }
-        return normalizedHost === '::1';
-    }
-
-    return false;
-}
-
-function sanitizeTargetUrl(raw) {
-    if (typeof raw !== 'string' || raw.trim() === '') {
-        return null;
-    }
-    try {
-        const parsed = new URL(raw);
-        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-            return null;
-        }
-        if (!isLocalNetworkHost(parsed.hostname)) {
-            return null;
-        }
-        parsed.username = '';
-        parsed.password = '';
-        return parsed.toString();
-    } catch {
-        return null;
-    } // lgtm[js/request-forgery]
-}
-
-function normalizeForwardHeaders(input) {
-    if (!input || typeof input !== 'object' || Array.isArray(input)) {
-        return {};
-    }
-    const normalized = {};
-    for (const [key, value] of Object.entries(input)) {
-        if (typeof key !== 'string') {
-            continue;
-        }
-        if (typeof value === 'string') {
-            normalized[key] = value;
-        }
-    }
-    delete normalized['risu-auth'];
-    delete normalized['risu-timeout-ms'];
-    delete normalized['host'];
-    delete normalized['connection'];
-    delete normalized['content-length'];
-    return normalized;
-}
+// The destination rule of the proxy (see proxyPolicy.cjs): loopback is always
+// allowed, a private-network address only when the operator sets
+// RISU_PROXY_ALLOW_PRIVATE=1, a public address on /proxy and /proxy2 but never
+// for a stream job (jobs exist for local model servers).
+const PROXY_ALLOW_PRIVATE = process.env.RISU_PROXY_ALLOW_PRIVATE === '1';
+const PROXY_ROUTE_POLICY = { allowPrivate: PROXY_ALLOW_PRIVATE, allowPublic: true };
+const PROXY_JOB_POLICY = { allowPrivate: PROXY_ALLOW_PRIVATE, allowPublic: false };
 
 function normalizeProxyResponseHeaders(headers) {
     const normalized = {};
@@ -961,73 +867,248 @@ function normalizeProxyResponseHeaders(headers) {
     return normalized;
 }
 
-function requestLocalTargetStream(targetUrl, arg) {
+// The one outbound transport of the proxy routes and the stream jobs. Every
+// hop is checked twice: the URL gate refuses a bad URL and an address literal
+// the policy does not allow, and the checked lookup refuses a name that resolves
+// to such an address and hands the connection exactly the addresses it checked.
+const MAX_PROXY_REDIRECTS = 5;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+// Headers that describe the body of a request; a redirect that drops the body drops them.
+const REDIRECT_BODY_HEADERS = ['content-encoding', 'content-language', 'content-location', 'content-type', 'content-length'];
+// Headers of an upstream response that belong to its own connection.
+const HOP_BY_HOP_RESPONSE_HEADERS = new Set(['connection', 'keep-alive', 'transfer-encoding', 'proxy-connection', 'trailer', 'upgrade', 'te']);
+
+function proxyAbortError(message) {
+    const error = new Error(message);
+    error.name = 'AbortError';
+    return error;
+}
+
+function abortErrorOf(signal) {
+    return signal.reason instanceof Error ? signal.reason : proxyAbortError('Proxy request aborted');
+}
+
+function gateProxyUrl(raw, policy, isRedirect) {
+    let url;
+    try {
+        url = new URL(raw);
+    } catch {
+        url = null;
+    }
+    if (url === null || (url.protocol !== 'http:' && url.protocol !== 'https:') || url.username !== '' || url.password !== '') {
+        throw isRedirect
+            ? new ProxyPolicyError('PROXY_REDIRECT_INVALID', 502, 'Redirect target is not a valid http(s) URL')
+            : new ProxyPolicyError('PROXY_URL_INVALID', 400, 'Invalid risu-url');
+    }
+    const kind = literalHostKind(url.hostname);
+    if (kind !== null && !isKindAllowed(kind, policy)) {
+        throw blockedError(kind);
+    }
+    return url;
+}
+
+// One request to one URL. Resolves once the response headers are in, with the
+// response stream; the abort signal keeps governing the request until that
+// stream ends, and every upstream object has an error listener for its lifetime
+// (an unhandled error on a destroyed upstream request would end the process).
+function requestOnce(url, arg) {
     return new Promise((resolve, reject) => {
-        const parsedUrl = new URL(targetUrl);
-        const client = parsedUrl.protocol === 'https:' ? https : http;
-        const headers = normalizeForwardHeaders(arg.headers);
-        if (!headers['host']) {
-            headers['host'] = parsedUrl.host;
+        if (arg.signal.aborted) {
+            reject(abortErrorOf(arg.signal));
+            return;
         }
-        if (arg.bodyBuffer && !headers['content-length']) {
-            headers['content-length'] = String(arg.bodyBuffer.length);
+        const client = url.protocol === 'https:' ? https : http;
+        const headers = { ...arg.headers, host: url.host };
+        if (arg.body !== undefined) {
+            headers['content-length'] = String(arg.body.length);
         }
-
         let settled = false;
-        let cleanupAbort = () => {};
-        const finishReject = (error) => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            cleanupAbort();
-            reject(error);
+        let upstream;
+        const onAbort = () => {
+            req.destroy(abortErrorOf(arg.signal));
         };
-
-        const req = client.request(parsedUrl, {
+        const detach = () => arg.signal.removeEventListener('abort', onAbort);
+        const req = client.request(url, {
             method: arg.method,
-            headers
+            headers,
+            lookup: createCheckedLookup(arg.policy)
         }, (res) => {
-            if (settled) {
-                res.destroy();
-                return;
-            }
+            upstream = res;
+            res.on('error', () => {});
+            res.once('close', detach);
             settled = true;
-            cleanupAbort();
             resolve({
                 status: res.statusCode || 502,
-                headers: normalizeProxyResponseHeaders(res.headers),
+                headers: res.headers,
                 body: res
             });
         });
-
         req.on('error', (error) => {
-            finishReject(error);
-        });
-
-        req.setTimeout(arg.timeoutMs, () => {
-            req.destroy(new Error(`Upstream request timed out after ${arg.timeoutMs}ms`));
-        });
-
-        if (arg.signal) {
-            const onAbort = () => {
-                const abortError = new Error('Proxy stream job aborted');
-                abortError.name = 'AbortError';
-                req.destroy(abortError);
-            };
-            if (arg.signal.aborted) {
-                onAbort();
+            if (!settled) {
+                settled = true;
+                detach();
+                reject(error);
                 return;
             }
-            arg.signal.addEventListener('abort', onAbort, { once: true });
-            cleanupAbort = () => arg.signal.removeEventListener('abort', onAbort);
+            // After the headers the failure ends the body stream the caller reads.
+            upstream?.destroy();
+        });
+        if (arg.idleTimeoutMs) {
+            req.setTimeout(arg.idleTimeoutMs, () => {
+                req.destroy(new Error(`Upstream request timed out after ${arg.idleTimeoutMs}ms`));
+            });
         }
-
-        if (arg.bodyBuffer && arg.method !== 'GET' && arg.method !== 'HEAD') {
-            req.write(arg.bodyBuffer);
-        }
-        req.end();
+        arg.signal.addEventListener('abort', onAbort, { once: true });
+        req.end(arg.body);
     });
+}
+
+// `arg`: method, headers (already sanitized), body (a Buffer or undefined), signal,
+// policy, maxRedirects (0 passes a 3xx through) and idleTimeoutMs (optional).
+// Redirects follow undici's rules: a 301/302 on POST and a 303 become a GET with
+// no body, and a hop to another origin drops the credentials.
+async function requestChecked(startUrl, arg) {
+    let url = gateProxyUrl(startUrl, arg.policy, false);
+    let method = arg.method;
+    let body = arg.body;
+    const headers = { ...arg.headers };
+    for (let redirects = 0; ; ) {
+        const response = await requestOnce(url, {
+            method,
+            headers,
+            body,
+            signal: arg.signal,
+            policy: arg.policy,
+            idleTimeoutMs: arg.idleTimeoutMs
+        });
+        const location = response.headers.location;
+        if (arg.maxRedirects === 0 || !REDIRECT_STATUSES.has(response.status) || typeof location !== 'string') {
+            return response;
+        }
+        if (redirects >= arg.maxRedirects) {
+            response.body.destroy();
+            throw new ProxyPolicyError('PROXY_TOO_MANY_REDIRECTS', 502, 'Too many redirects');
+        }
+        let next;
+        try {
+            next = gateProxyUrl(new URL(location, url).toString(), arg.policy, true);
+        } catch (error) {
+            response.body.destroy();
+            throw error instanceof ProxyPolicyError ? error : new ProxyPolicyError('PROXY_REDIRECT_INVALID', 502, 'Redirect target is not a valid http(s) URL');
+        }
+        response.body.resume();
+        redirects++;
+        const dropsBody = ((response.status === 301 || response.status === 302) && method === 'POST')
+            || (response.status === 303 && method !== 'GET' && method !== 'HEAD');
+        if (dropsBody) {
+            method = 'GET';
+            body = undefined;
+            for (const name of REDIRECT_BODY_HEADERS) {
+                delete headers[name];
+            }
+        }
+        if (next.origin !== url.origin) {
+            delete headers['authorization'];
+            delete headers['proxy-authorization'];
+            delete headers['cookie'];
+        }
+        url = next;
+    }
+}
+
+// One abort signal for a proxied request: it fires at the total deadline (not
+// cleared at the response headers) and when the client goes away before the
+// answer is complete, so no upstream request outlives its client.
+function createProxyAbort(res, timeoutMs) {
+    const controller = new AbortController();
+    const timer = timeoutMs
+        ? setTimeout(() => controller.abort(proxyAbortError(`Proxy request timed out after ${timeoutMs}ms`)), timeoutMs)
+        : undefined;
+    const onClose = () => {
+        if (!res.writableFinished) {
+            controller.abort(proxyAbortError('Proxy request aborted'));
+        }
+    };
+    res.on('close', onClose);
+    return {
+        signal: controller.signal,
+        cleanup: () => {
+            clearTimeout(timer);
+            res.off('close', onClose);
+        }
+    };
+}
+
+function policyErrorBody(error) {
+    if (error.code === 'PROXY_URL_INVALID') {
+        return { error: error.message };
+    }
+    const body = { error: error.message, code: error.code };
+    if (error.code === 'PROXY_DESTINATION_BLOCKED' && error.details?.kind === 'private') {
+        body.hint = 'Local network targets need RISU_PROXY_ALLOW_PRIVATE=1 on the server.';
+    }
+    return body;
+}
+
+// The headers of a proxied response for the browser: the upstream's own, minus
+// the policy and connection headers, never cacheable. The content encoding and
+// length pass through, since the body is not decoded here.
+function proxyResponseHeaders(upstreamHeaders) {
+    const out = {};
+    for (const [name, value] of Object.entries(upstreamHeaders)) {
+        const key = name.toLowerCase();
+        if (key === 'content-security-policy' || key === 'content-security-policy-report-only' || key === 'clear-site-data'
+            || key === 'cache-control' || HOP_BY_HOP_RESPONSE_HEADERS.has(key)) {
+            continue;
+        }
+        out[key] = Array.isArray(value) ? (key === 'set-cookie' ? value[value.length - 1] : value.join(', ')) : value;
+    }
+    // The target is chosen by a request header, so one URL stands for many
+    // responses: none may be stored or reused by the browser.
+    out['cache-control'] = 'no-store';
+    return out;
+}
+
+async function forwardProxyRequest(res, next, arg) {
+    const abort = createProxyAbort(res, arg.timeoutMs);
+    const appliedHeaders = [];
+    try {
+        const upstream = await requestChecked(arg.urlParam, {
+            method: arg.method,
+            headers: arg.header,
+            body: arg.body,
+            signal: abort.signal,
+            policy: PROXY_ROUTE_POLICY,
+            maxRedirects: MAX_PROXY_REDIRECTS
+        });
+        const headObj = proxyResponseHeaders(upstream.headers);
+        res.header(headObj);
+        appliedHeaders.push(...Object.keys(headObj));
+        res.status(upstream.status);
+        await pipeline(upstream.body, res);
+    }
+    catch (err) {
+        if (res.headersSent) {
+            // A stream cut short must never look complete to the client.
+            res.destroy();
+            return;
+        }
+        for (const name of appliedHeaders) {
+            res.removeHeader(name);
+        }
+        if (err instanceof ProxyPolicyError) {
+            res.status(err.status).send(policyErrorBody(err));
+            return;
+        }
+        if (err?.name === 'AbortError') {
+            res.status(504).send({ error: err.message });
+            return;
+        }
+        next(err);
+        return;
+    } finally {
+        abort.cleanup();
+    }
 }
 
 function createProxyStreamJob(arg) {
@@ -1103,34 +1184,26 @@ function cleanupJob(jobId) {
 }
 
 async function runProxyStreamJob(job, arg) {
-    const targetUrl = sanitizeTargetUrl(arg.targetUrl);
-    if (!targetUrl) {
-        pushJobEvent(job, {
-            type: 'error',
-            status: 400,
-            message: 'Blocked non-local target URL'
-        });
-        markJobDone(job);
-        return;
-    }
-
-    const headers = normalizeForwardHeaders(arg.headers);
+    // The headers arrive sanitized from job creation.
+    const headers = { ...arg.headers };
     if (!headers['x-forwarded-for']) {
         headers['x-forwarded-for'] = arg.clientIp;
     }
     const bodyBuffer = arg.bodyBase64 ? Buffer.from(arg.bodyBase64, 'base64') : undefined;
 
     try {
-        const upstreamResponse = await requestLocalTargetStream(targetUrl, {
+        const upstreamResponse = await requestChecked(arg.targetUrl, {
             method: arg.method,
             headers,
-            bodyBuffer,
-            timeoutMs: job.timeoutMs,
-            signal: job.abortController.signal
+            body: bodyBuffer,
+            idleTimeoutMs: job.timeoutMs,
+            signal: job.abortController.signal,
+            policy: PROXY_JOB_POLICY,
+            maxRedirects: 0
         });
 
         const filteredHeaders = {};
-        for (const [key, value] of Object.entries(upstreamResponse.headers)) {
+        for (const [key, value] of Object.entries(normalizeProxyResponseHeaders(upstreamResponse.headers))) {
             if (key === 'content-security-policy' || key === 'content-security-policy-report-only' || key === 'clear-site-data') {
                 continue;
             }
@@ -1159,11 +1232,14 @@ async function runProxyStreamJob(job, arg) {
         pushJobEvent(job, { type: 'done' });
         markJobDone(job);
     } catch (error) {
-        const message = error?.name === 'AbortError' ? 'Proxy stream job aborted' : `${error}`;
+        // A DELETE aborts the job; the body stream then fails with a premature
+        // close, which is reported as the abort it was.
+        const aborted = error?.name === 'AbortError' || job.abortController.signal.aborted;
+        const blocked = error instanceof ProxyPolicyError;
         pushJobEvent(job, {
             type: 'error',
-            status: 504,
-            message
+            status: blocked ? error.status : 504,
+            message: aborted ? 'Proxy stream job aborted' : (blocked ? error.message : `${error}`)
         });
         markJobDone(job);
     }
@@ -1281,22 +1357,12 @@ async function checkAuth(req, res, returnOnlyStatus = false){
     return false
 }
 
-// Headers a proxied request never carries from the browser: the app's own
-// credentials (risu-*, cookie), the connection's framing and hop-by-hop headers.
-const PROXY_BROWSER_DROPPED_HEADERS = new Set([
-    'cookie', 'host', 'content-length', 'connection', 'keep-alive', 'proxy-connection',
-    'transfer-encoding', 'te', 'trailer', 'upgrade', 'proxy-authorization',
-]);
-
-function isOwnProxyHeaderName(name) {
-    return name.toLowerCase().startsWith('risu-');
-}
-
 // The target and the outbound headers of a /proxy or /proxy2 request, or null
 // after the 400 answer for an input that cannot be read. With `risu-header` the
-// client's map is forwarded (minus the app's own risu-* names); without it the
-// browser's own headers are forwarded minus the credentials and framing above.
-function readProxyRequest(req, res) {
+// client's map is the source of the outbound headers; without it the browser's
+// own request headers are (sanitizeOutboundHeaders drops the credentials and the
+// framing in both cases).
+function readProxyRequest(req, res, hasBody) {
     let urlParam;
     try {
         urlParam = req.headers['risu-url'] ? decodeURIComponent(req.headers['risu-url']) : req.query.url;
@@ -1314,32 +1380,28 @@ function readProxyRequest(req, res) {
         res.status(400).send({ error: 'Invalid risu-url' });
         return null;
     }
-    const header = {};
+    let source = req.headers;
+    let fromBrowser = true;
     if (req.headers['risu-header']) {
-        let parsed;
         try {
-            parsed = JSON.parse(decodeURIComponent(req.headers['risu-header']));
+            source = JSON.parse(decodeURIComponent(req.headers['risu-header']));
         } catch {
-            parsed = undefined;
+            source = undefined;
         }
-        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        fromBrowser = false;
+    }
+    let header;
+    try {
+        header = sanitizeOutboundHeaders(source, { fromBrowser, fetchDefaults: true, hasBody });
+    } catch (error) {
+        if (error instanceof InvalidHeaderError) {
             res.status(400).send({ error: 'Invalid risu-header' });
             return null;
         }
-        for (const [name, value] of Object.entries(parsed)) {
-            if (!isOwnProxyHeaderName(name)) {
-                header[name] = value;
-            }
-        }
-    } else {
-        for (const [name, value] of Object.entries(req.headers)) {
-            if (!isOwnProxyHeaderName(name) && !PROXY_BROWSER_DROPPED_HEADERS.has(name.toLowerCase())) {
-                header[name] = value;
-            }
-        }
+        throw error;
     }
-    if(!header['x-forwarded-for']){
-        header['x-forwarded-for'] = req.ip
+    if (!header['x-forwarded-for'] && typeof req.ip === 'string') {
+        header['x-forwarded-for'] = req.ip;
     }
     return { urlParam, header };
 }
@@ -1349,65 +1411,17 @@ const reverseProxyFunc = async (req, res, next) => {
         return;
     }
 
-    const proxyRequest = readProxyRequest(req, res);
+    const proxyRequest = readProxyRequest(req, res, true);
     if (proxyRequest === null) {
         return;
     }
-    const { urlParam, header } = proxyRequest;
-
-    const timeoutMs = getRequestTimeoutMs(req.headers['risu-timeout-ms']);
-    const timeout = createTimeoutController(timeoutMs);
-    let originalResponse;
-    try {
-        // make request to original server
-        originalResponse = await fetch(urlParam, {
-            method: req.method,
-            headers: header,
-            body: JSON.stringify(req.body),
-            signal: timeout.signal
-        });
-        // get response body as stream
-        const originalBody = originalResponse.body;
-        // get response headers
-        const head = new Headers(originalResponse.headers);
-        head.delete('content-security-policy');
-        head.delete('content-security-policy-report-only');
-        head.delete('clear-site-data');
-        head.delete('Cache-Control');
-        // The target is chosen by a request header, so one URL stands for many
-        // responses: none may be stored or reused by the browser.
-        head.set('Cache-Control', 'no-store');
-        head.delete('Content-Encoding');
-        const headObj = {};
-        for (let [k, v] of head) {
-            headObj[k] = v;
-        }
-        // send response headers to client
-        res.header(headObj);
-        // send response status to client
-        res.status(originalResponse.status);
-        // send response body to client
-        await pipeline(originalResponse.body, res);
-
-    }
-    catch (err) {
-        if (err?.name === 'AbortError') {
-            if (!res.headersSent) {
-                res.status(504).send({
-                    error: timeoutMs
-                        ? `Proxy request timed out after ${timeoutMs}ms`
-                        : 'Proxy request aborted'
-                });
-            } else {
-                res.end();
-            }
-            return;
-        }
-        next(err);
-        return;
-    } finally {
-        timeout.cleanup();
-    }
+    await forwardProxyRequest(res, next, {
+        urlParam: proxyRequest.urlParam,
+        header: proxyRequest.header,
+        method: req.method,
+        body: Buffer.from(JSON.stringify(req.body ?? {})),
+        timeoutMs: getRequestTimeoutMs(req.headers['risu-timeout-ms'])
+    });
 }
 
 const reverseProxyFunc_get = async (req, res, next) => {
@@ -1415,61 +1429,17 @@ const reverseProxyFunc_get = async (req, res, next) => {
         return;
     }
 
-    const proxyRequest = readProxyRequest(req, res);
+    const proxyRequest = readProxyRequest(req, res, false);
     if (proxyRequest === null) {
         return;
     }
-    const { urlParam, header } = proxyRequest;
-    const timeoutMs = getRequestTimeoutMs(req.headers['risu-timeout-ms']);
-    const timeout = createTimeoutController(timeoutMs);
-    let originalResponse;
-    try {
-        // make request to original server
-        originalResponse = await fetch(urlParam, {
-            method: 'GET',
-            headers: header,
-            signal: timeout.signal
-        });
-        // get response body as stream
-        const originalBody = originalResponse.body;
-        // get response headers
-        const head = new Headers(originalResponse.headers);
-        head.delete('content-security-policy');
-        head.delete('content-security-policy-report-only');
-        head.delete('clear-site-data');
-        head.delete('Cache-Control');
-        // See reverseProxyFunc: the response must never be cached.
-        head.set('Cache-Control', 'no-store');
-        head.delete('Content-Encoding');
-        const headObj = {};
-        for (let [k, v] of head) {
-            headObj[k] = v;
-        }
-        // send response headers to client
-        res.header(headObj);
-        // send response status to client
-        res.status(originalResponse.status);
-        // send response body to client
-        await pipeline(originalResponse.body, res);
-    }
-    catch (err) {
-        if (err?.name === 'AbortError') {
-            if (!res.headersSent) {
-                res.status(504).send({
-                    error: timeoutMs
-                        ? `Proxy request timed out after ${timeoutMs}ms`
-                        : 'Proxy request aborted'
-                });
-            } else {
-                res.end();
-            }
-            return;
-        }
-        next(err);
-        return;
-    } finally {
-        timeout.cleanup();
-    }
+    await forwardProxyRequest(res, next, {
+        urlParam: proxyRequest.urlParam,
+        header: proxyRequest.header,
+        method: 'GET',
+        body: undefined,
+        timeoutMs: getRequestTimeoutMs(req.headers['risu-timeout-ms'])
+    });
 }
 
 async function hubProxyFunc(req, res) {
@@ -1539,10 +1509,18 @@ app.post('/proxy-stream-jobs', authenticatedRouteLimiter, authBeforeBody(checkPr
     }
 
     const rawUrl = typeof req.body?.url === 'string' ? req.body.url : '';
-    const encodedUrl = encodeURIComponent(rawUrl);
-    const url = sanitizeTargetUrl(decodeURIComponent(encodedUrl));
-    if (!url) {
-        res.status(400).send({ error: 'Invalid target URL. Only local/private network http(s) endpoints are allowed.' });
+    let url;
+    try {
+        url = gateProxyUrl(rawUrl, PROXY_JOB_POLICY, false).toString();
+    } catch (error) {
+        if (!(error instanceof ProxyPolicyError)) {
+            throw error;
+        }
+        if (error.code === 'PROXY_URL_INVALID') {
+            res.status(400).send({ error: 'Invalid target URL. Only local network http(s) endpoints are allowed.' });
+        } else {
+            res.status(error.status).send(policyErrorBody(error));
+        }
         return;
     }
 
@@ -1561,7 +1539,16 @@ app.post('/proxy-stream-jobs', authenticatedRouteLimiter, authBeforeBody(checkPr
         res.status(429).send({ error: 'Too many active stream jobs. Retry shortly.' });
         return;
     }
-    const headers = normalizeForwardHeaders(req.body?.headers);
+    let headers;
+    try {
+        headers = sanitizeOutboundHeaders(req.body?.headers ?? {}, { fromBrowser: false, fetchDefaults: false, hasBody: bodyBase64 !== '' });
+    } catch (error) {
+        if (!(error instanceof InvalidHeaderError)) {
+            throw error;
+        }
+        res.status(400).send({ error: 'Invalid risu-header' });
+        return;
+    }
     const heartbeatSec = normalizeHeartbeatSec(Number(req.body?.heartbeatSec));
     const job = createProxyStreamJob({
         heartbeatSec,
@@ -2136,7 +2123,7 @@ app.get('/api/caps', storageRouteLimiter, asyncRoute(async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
-    res.send({ checkOnly: true, retire: true, pieces: true, listPrefix: true });
+    res.send({ checkOnly: true, retire: true, pieces: true, listPrefix: true, privateProxy: PROXY_ALLOW_PRIVATE });
 }));
 
 // Only whole, even-length hex names are keys. Everything else in the

@@ -1383,6 +1383,7 @@ export const languageEnglish = {
     setNodePassword: "Set your password to security",
     inputNodePassword: "Input your password. if you can't remember, remove save/__password in your server files and restart the server.",
     nodePasswordEmpty: "Password cannot be empty",
+    nodePrivateProxyWarning: "This server's proxy can reach devices on your local network (RISU_PROXY_ALLOW_PRIVATE is on). Character cards, scripts and plugins can send requests to those devices through it.",
     simple: "Simple",
     advanced: "Advanced",
     askReRollAutoSuggestions: "Re-Roll Auto Suggestions",

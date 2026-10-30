@@ -1252,6 +1252,7 @@ export const languageSpanish = {
     "setNodePassword": "Establece tu contraseña para la seguridad",
     "inputNodePassword": "Ingresa tu contraseña. si no la recuerdas, elimina save/__password en tus archivos de servidor y reinicia el servidor.",
     "nodePasswordEmpty": "La contraseña no puede estar vacía",
+    "nodePrivateProxyWarning": "El proxy de este servidor puede acceder a dispositivos de tu red local (RISU_PROXY_ALLOW_PRIVATE está activado). Las tarjetas de personaje, los scripts y los plugins pueden enviar solicitudes a esos dispositivos a través de él.",
     "simple": "Simple",
     "advanced": "Avanzado",
     "askReRollAutoSuggestions": "Regenerar Auto Sugerencias",
