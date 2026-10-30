@@ -23,6 +23,7 @@ import '../../polyfill'
 
 const h = vi.hoisted(() => ({
     tauri: true,
+    android: false,
     /** Prompt texts, in order. */
     prompts: [] as string[],
     /** Everything observable in order: `prompt` and `spawn:<command>`. */
@@ -48,6 +49,10 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({ getCurrentWebviewWindow: vi.fn
 vi.mock('src/lib/UI/PopupList.svelte', () => ({ default: class {} }))
 vi.mock('dompurify', () => ({ default: { addHook: vi.fn(), sanitize: (html: string) => html } }))
 vi.mock('../../platform', () => ({ get isTauri() { return h.tauri }, isNodeServer: false }))
+vi.mock('../../storage/tauriByteTransport', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../../storage/tauriByteTransport')>()),
+    isAndroidTransport: () => h.android,
+}))
 vi.mock('../../storage/characterSaveMarks', () => ({ markCharacterForSave: (id: string) => { h.marks.push(id) } }))
 vi.mock('../../storage/store/appStore', () => ({ getAppStore: async () => h.store }))
 
@@ -192,6 +197,7 @@ async function boot() {
 
 beforeEach(async () => {
     h.tauri = true
+    h.android = false
     h.prompts.length = 0
     h.events.length = 0
     h.answers = [true]
@@ -469,6 +475,16 @@ describe('what is not a spawn is unchanged', () => {
         install([['m1']], [mod('m1', 'Mod One', STDIO_URL)])
 
         await expect(mcp.getMCPTools()).rejects.toThrow(/only supported in Local Version/)
+
+        expect(h.prompts).toEqual([])
+        expect(shell.created).toEqual([])
+    })
+
+    test('on Android a stdio program is refused with the desktop-app text before any prompt or spawn', async () => {
+        h.android = true
+        install([['m1']], [mod('m1', 'Mod One', STDIO_URL)])
+
+        await expect(mcp.getMCPTools()).rejects.toThrow(/desktop app/)
 
         expect(h.prompts).toEqual([])
         expect(shell.created).toEqual([])
