@@ -597,9 +597,14 @@ const PROXY_STREAM_MAX_TIMEOUT_MS = 3600000;
 const PROXY_STREAM_DEFAULT_HEARTBEAT_SEC = 15;
 const PROXY_STREAM_HEARTBEAT_MIN_SEC = 5;
 const PROXY_STREAM_HEARTBEAT_MAX_SEC = 60;
-const PROXY_STREAM_GC_INTERVAL_MS = 60000;
-const PROXY_STREAM_DONE_GRACE_MS = 30000;
-const PROXY_STREAM_MAX_ACTIVE_JOBS = 64;
+// The environment overrides let tests use short timers and small bounds.
+const PROXY_STREAM_GC_INTERVAL_MS = positiveIntegerFromEnv('RISU_PROXY_STREAM_GC_INTERVAL_MS', 60000);
+const PROXY_STREAM_DONE_GRACE_MS = positiveIntegerFromEnv('RISU_PROXY_STREAM_DONE_GRACE_MS', 30000);
+const PROXY_STREAM_MAX_ACTIVE_JOBS = positiveIntegerFromEnv('RISU_PROXY_STREAM_MAX_ACTIVE_JOBS', 64);
+// Sockets that may follow one job, and the bytes a follower may have queued
+// before it is cut off (a stalled reader must not make the server hold the stream).
+const PROXY_STREAM_MAX_CLIENTS_PER_JOB = positiveIntegerFromEnv('RISU_PROXY_STREAM_MAX_CLIENTS_PER_JOB', 4);
+const PROXY_STREAM_MAX_CLIENT_BUFFER_BYTES = positiveIntegerFromEnv('RISU_PROXY_STREAM_MAX_CLIENT_BUFFER_BYTES', 4 * 1024 * 1024);
 const PROXY_STREAM_MAX_PENDING_EVENTS = 512;
 const PROXY_STREAM_MAX_PENDING_BYTES = 2 * 1024 * 1024;
 const PROXY_STREAM_MAX_BODY_BASE64_BYTES = 8 * 1024 * 1024;
@@ -1154,6 +1159,10 @@ function pushJobEvent(job, event) {
         return;
     }
     for (const client of job.clients) {
+        if (client.bufferedAmount > PROXY_STREAM_MAX_CLIENT_BUFFER_BYTES) {
+            client.terminate();
+            continue;
+        }
         if (client.readyState === client.OPEN) {
             client.send(text);
         }
@@ -1175,7 +1184,7 @@ function cleanupJob(jobId) {
     }
     for (const client of job.clients) {
         try {
-            client.close();
+            client.close(1000);
         } catch {
             // ignore
         }
@@ -3037,6 +3046,11 @@ function setupProxyStreamWebSocket(server) {
                 socket.destroy();
                 return;
             }
+            if (job.clients.size >= PROXY_STREAM_MAX_CLIENTS_PER_JOB) {
+                socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
+                socket.destroy();
+                return;
+            }
 
             wsServer.handleUpgrade(req, socket, head, (ws) => {
                 wsServer.emit('connection', ws, req, jobId);
@@ -3130,7 +3144,9 @@ async function startServer() {
             if (!job.done && now >= job.deadlineAt && !job.abortController.signal.aborted) {
                 job.abortController.abort();
             }
-            if (job.done && job.clients.size === 0 && job.cleanupAt > 0 && now >= job.cleanupAt) {
+            // A done job is retired once its grace has passed, whether or not
+            // sockets still follow it; they are closed with it.
+            if (job.done && job.cleanupAt > 0 && now >= job.cleanupAt) {
                 cleanupJob(jobId);
                 continue;
             }
