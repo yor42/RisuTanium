@@ -19,6 +19,7 @@ import { isAppInitiatedReload } from '../reloadGuard'
 import { alertStore as shownAlert } from '../stores.svelte'
 import { getDatabase } from '../storage/database.svelte'
 import { language } from 'src/lang'
+import { hasOpenedFilesHost, openedFilesTake, type OpenedFilesTake } from './hostBridge'
 
 /** The host object `OpenedFilesBridge` exposes to the page. */
 export interface OpenedFilesHost {
@@ -123,24 +124,24 @@ async function drain(): Promise<void> {
     if (!getDatabase().didFirstSetup) {
         return
     }
-    const host = window.__risuTaniumOpenedFilesHost
-    if (typeof host?.take !== 'function') {
-        return
-    }
     // After a page-ending restore every later file stays queued; this is the only check, because every drain after
     // the ending is chained behind the drain that set it.
     if (pageEnding) {
         return
     }
-    let raw: unknown
+    let taken: OpenedFilesTake | undefined
     try {
-        // Called as a method: the host bridge object needs its receiver.
-        raw = host.take()
+        taken = await openedFilesTake()
     } catch (error) {
         console.warn('Opened files could not be taken', error)
         return
     }
-    const batches = parseBatches(raw)
+    if (!taken) {
+        return
+    }
+    // Received: the host may drop what it held for this take, before anything is parsed or imported.
+    taken.confirm()
+    const batches = parseBatches(taken.raw)
     // A restore replaces everything an import in the same drain just added, so a backup is restored only when this
     // drain imports nothing; a name the import would refuse as unsupported does not count.
     const importsSomething = batches.some((batch) => batch.some((entry) => isOpenedSourceImportable(entry.name)))
@@ -240,19 +241,29 @@ function scheduleDrain(): void {
  * once the pop-up is closed. An empty take shows nothing. The refusal line also goes on the restore's progress, which may
  * replace the pop-up before it is read.
  */
-function refuseNow(): void {
-    const host = window.__risuTaniumOpenedFilesHost
-    if (typeof host?.take !== 'function') {
-        return
-    }
-    let raw: unknown
+async function refuseNow(): Promise<void> {
+    let taken: OpenedFilesTake | undefined
     try {
-        raw = host.take()
+        taken = await openedFilesTake()
     } catch (error) {
         console.warn('Opened files could not be taken', error)
         return
     }
-    if (parseBatches(raw).length === 0) {
+    if (!taken) {
+        return
+    }
+    // The host kept what it handed over, and the restore may have moved on while the reply was on its way: when a
+    // refusal no longer fits, nothing is confirmed and the files are offered again after the restore.
+    if (taken.held && !refusalAppliesNow()) {
+        if (restoreOpen) {
+            arrivedDuringRestore = true
+        } else {
+            scheduleDrain()
+        }
+        return
+    }
+    taken.confirm()
+    if (parseBatches(taken.raw).length === 0) {
         return
     }
     if (isBusy()) {
@@ -265,20 +276,25 @@ function refuseNow(): void {
     alertWrapper.set(ownRefusal)
 }
 
+/**
+ * True while a restore runs and a file arriving now is refused at once: no reload is pending (nothing is taken into a
+ * dying page) and the pop-up shown is one of the restore's own questions or this module's refusal.
+ */
+function refusalAppliesNow(): boolean {
+    if (!restoreOpen || isAppInitiatedReload()) {
+        return false
+    }
+    const shown = get(shownAlert)
+    return (isPromptType(shown.type) && !isConsentType(shown.type)) || (ownRefusal !== null && shown === ownRefusal)
+}
+
 const openedFilesHook = (): void => {
     if (restoreOpen) {
-        // A reload the restore asked for may be pending: nothing is taken into the dying page.
-        if (isAppInitiatedReload()) {
+        if (!refusalAppliesNow()) {
             arrivedDuringRestore = true
             return
         }
-        const shown = get(shownAlert)
-        const atOnce = (isPromptType(shown.type) && !isConsentType(shown.type)) || (ownRefusal !== null && shown === ownRefusal)
-        if (!atOnce) {
-            arrivedDuringRestore = true
-            return
-        }
-        refuseNow()
+        void refuseNow()
         return
     }
     scheduleDrain()
@@ -290,7 +306,7 @@ const openedFilesHook = (): void => {
  * second drain finds the queue empty.
  */
 export function androidOpenedFilesImport(): void {
-    if (!window.__risuTaniumOpenedFilesHost) {
+    if (!hasOpenedFilesHost()) {
         return
     }
     window.__risuTaniumOpenedFiles = openedFilesHook

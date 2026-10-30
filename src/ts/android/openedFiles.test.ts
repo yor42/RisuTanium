@@ -8,6 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
+import { createHostChannelFake, type HostChannelFake } from './hostChannelFake'
 
 const h = vi.hoisted(() => ({
     didFirstSetup: false,
@@ -221,6 +222,114 @@ describe('androidOpenedFilesImport', () => {
         androidOpenedFilesImport()
         await settle()
         expect(window.__risuTaniumOpenedFiles).toBe(hook)
+        expect(importOpenedSourcesMock).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('androidOpenedFilesImport over the host channel', () => {
+    let fake: HostChannelFake
+    const order: string[] = []
+
+    /** The host answers the nth take it received. */
+    const answer = async (n: number, result: unknown, through: number) => {
+        expect(fake.postedTo('openedFiles', 'take').length, 'the take the host answers was sent').toBeGreaterThan(n)
+        const id = fake.postedTo('openedFiles', 'take')[n].id
+        fake.deliver(JSON.stringify({ id, result, through }))
+        await settle()
+    }
+
+    beforeEach(() => {
+        order.length = 0
+        delete window.__risuTaniumOpenedFilesHost
+        fake = createHostChannelFake()
+        fake.channel.postMessage.mockImplementation((message: string) => {
+            const parsed = JSON.parse(message) as { method: string }
+            order.push(parsed.method)
+        })
+        window.__risuTaniumHost = fake.channel
+        importOpenedSourcesMock.mockImplementation(async () => { order.push('import') })
+    })
+
+    afterEach(() => {
+        delete window.__risuTaniumHost
+    })
+
+    test('(R) the first drain asks for a take with an id, imports what the reply holds, and confirms the batch it was given', async () => {
+        androidOpenedFilesImport()
+        await settle()
+        const takes = fake.postedTo('openedFiles', 'take')
+        expect(takes).toHaveLength(1)
+        expect(takes[0]).toEqual({ bridge: 'openedFiles', method: 'take', args: [], id: expect.any(Number) })
+        expect(importOpenedSourcesMock).not.toHaveBeenCalled()
+
+        await answer(0, [[{ uri: 'content://x/1', name: 'a.charx' }]], 4)
+        expect(importOpenedSourcesMock).toHaveBeenCalledTimes(1)
+        expect(importOpenedSourcesMock).toHaveBeenCalledWith([{ name: 'a.charx', path: 'content://x/1' }])
+        expect(fake.postedTo('openedFiles', 'confirm')).toEqual([{ bridge: 'openedFiles', method: 'confirm', args: [4] }])
+    })
+
+    test('the confirm is sent before the import starts', async () => {
+        androidOpenedFilesImport()
+        await settle()
+        await answer(0, [[{ uri: 'content://x/1', name: 'a.charx' }]], 1)
+        expect(order.filter((step) => step !== 'subscribe')).toEqual(['take', 'confirm', 'import'])
+    })
+
+    test('an empty reply imports nothing and confirms nothing', async () => {
+        androidOpenedFilesImport()
+        await settle()
+        await answer(0, [], 0)
+        expect(importOpenedSourcesMock).not.toHaveBeenCalled()
+        expect(fake.postedTo('openedFiles', 'confirm')).toEqual([])
+    })
+
+    test('the hook the host calls takes again; each take has its own id', async () => {
+        androidOpenedFilesImport()
+        await settle()
+        await answer(0, [], 0)
+        window.__risuTaniumOpenedFiles?.()
+        await settle()
+        const takes = fake.postedTo('openedFiles', 'take')
+        expect(takes).toHaveLength(2)
+        expect(takes[1].id).not.toBe(takes[0].id)
+        await answer(1, [[{ uri: 'content://x/2', name: 'later.risum' }]], 2)
+        expect(importOpenedSourcesMock).toHaveBeenCalledWith([{ name: 'later.risum', path: 'content://x/2' }])
+    })
+
+    test('before first setup nothing is taken', async () => {
+        h.didFirstSetup = false
+        androidOpenedFilesImport()
+        window.__risuTaniumOpenedFiles?.()
+        await settle()
+        expect(fake.postedTo('openedFiles', 'take')).toEqual([])
+    })
+
+    test('the channel wins over the separate host object, which is never taken from', async () => {
+        window.__risuTaniumOpenedFilesHost = { take: takeMock }
+        queued = [[entry('legacy.charx')]]
+        androidOpenedFilesImport()
+        await settle()
+        await answer(0, [], 0)
+        expect(takeMock).not.toHaveBeenCalled()
+        expect(importOpenedSourcesMock).not.toHaveBeenCalled()
+    })
+
+    test('a channel that throws on a take is logged and the next trigger still works', async () => {
+        let failed = false
+        fake.channel.postMessage.mockImplementation((message: string) => {
+            const parsed = JSON.parse(message) as { method: string }
+            if (parsed.method === 'take' && !failed) {
+                failed = true
+                throw new Error('host failed')
+            }
+        })
+        androidOpenedFilesImport()
+        await settle()
+        expect(importOpenedSourcesMock).not.toHaveBeenCalled()
+        window.__risuTaniumOpenedFiles?.()
+        await settle()
+        expect(fake.postedTo('openedFiles', 'take'), 'the failed take and the retry were both sent').toHaveLength(2)
+        await answer(1, [[{ uri: 'content://x/3', name: 'ok.charx' }]], 1)
         expect(importOpenedSourcesMock).toHaveBeenCalledTimes(1)
     })
 })

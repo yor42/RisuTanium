@@ -1,3 +1,5 @@
+import { systemBarsHost } from '../android/hostBridge'
+
 declare global {
     interface Window {
         /**
@@ -60,7 +62,7 @@ export function cssColorToRgb(value: string): Rgb {
  */
 export function syncSystemBars(color: string): void {
     try {
-        const bridge = window.__risuTaniumSystemBars
+        const bridge = systemBarsHost()
         if (!bridge || typeof bridge.setBackground !== 'function') {
             return
         }

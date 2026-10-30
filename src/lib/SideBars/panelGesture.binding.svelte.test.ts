@@ -72,6 +72,7 @@ import Sidebar from './Sidebar.svelte'
 import SideBarArrow from '../UI/GUI/SideBarArrow.svelte'
 import { dispatchBack, resetBackHandlersForTests } from '../../ts/backHandlers'
 import { installPanelGesture } from './panelGestureBinding'
+import { createHostChannelFake, type HostChannelFake } from '../../ts/android/hostChannelFake'
 import { EDGE_ZONE_PX, INSET_MAX_CSS, INSET_PROBE_MAX_CSS } from './panelGesture'
 
 let clock = 0
@@ -385,6 +386,90 @@ describe('host gesture inset', () => {
         expect(strokeOpens(96)).toBe(true)
         expect(strokeOpens(INSET_PROBE_MAX_CSS - 1)).toBe(true)
         expect(strokeOpens(INSET_PROBE_MAX_CSS)).toBe(false)
+    })
+})
+
+describe('host gesture inset over the host channel', () => {
+    let fake: HostChannelFake
+
+    /** One rightward stroke from `x`; reports whether it opened, then returns to the closed state. */
+    function strokeOpens(x: number): boolean {
+        const f = new Finger(chat, x, 300)
+        f.down(0)
+        f.moveTo(x + 15, 300, 40)
+        f.moveTo(x + 60, 300, 80)
+        f.up(100)
+        const result = opened()
+        sideBarStore.set(false)
+        sideBarClosing.set(false)
+        return result
+    }
+
+    beforeEach(() => {
+        fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+    })
+
+    afterEach(() => {
+        delete window.__risuTaniumHost
+    })
+
+    test('(R) the host is asked for the inset once the gesture is installed, before any touch; a pushed value moves the zone', () => {
+        mountSidebar()
+        expect(fake.posted()).toEqual([{ bridge: 'gestureInset', method: 'subscribe', args: [] }])
+
+        fake.deliver('{"event":"gestureInset","value":40}')
+        expect(strokeOpens(10)).toBe(false)
+        expect(strokeOpens(50)).toBe(true)
+        expect(fake.postedTo('gestureInset', 'subscribe')).toHaveLength(1)
+    })
+
+    test('guard: before the first push the inset reads 0, as with no host', () => {
+        mountSidebar()
+        expect(strokeOpens(10)).toBe(true)
+    })
+
+    test('the latest push wins, and an unusable push leaves the value alone', () => {
+        mountSidebar()
+        fake.deliver('{"event":"gestureInset","value":40}')
+        fake.deliver('{"event":"gestureInset","value":"7"}')
+        fake.deliver('{"event":"gestureInset","value":null}')
+        fake.deliver('not json')
+        fake.deliver('{"event":"other","value":0}')
+        expect(strokeOpens(10)).toBe(false)
+        fake.deliver('{"event":"gestureInset","value":0}')
+        expect(strokeOpens(10)).toBe(true)
+    })
+
+    test('the pushed value is clamped like any other answer', () => {
+        mountSidebar()
+        fake.deliver('{"event":"gestureInset","value":500}')
+        expect(strokeOpens(95)).toBe(false)
+        expect(strokeOpens(96)).toBe(true)
+    })
+
+    test('the channel wins over the separate host object, which is never read', () => {
+        const left = vi.fn(() => 0)
+        window.__risuTaniumGestureInset = { left }
+        mountSidebar()
+        fake.deliver('{"event":"gestureInset","value":40}')
+        expect(strokeOpens(10)).toBe(false)
+        expect(left).not.toHaveBeenCalled()
+    })
+
+    test('a different channel object is subscribed again and starts from 0', () => {
+        mountSidebar()
+        fake.deliver('{"event":"gestureInset","value":40}')
+        expect(strokeOpens(10)).toBe(false)
+
+        const next = createHostChannelFake()
+        window.__risuTaniumHost = next.channel
+        expect(strokeOpens(10)).toBe(true)
+        expect(next.postedTo('gestureInset', 'subscribe')).toHaveLength(1)
+        expect(fake.listeners()).toBe(0)
+        fake.deliver('{"event":"gestureInset","value":40}')
+        next.deliver('{"event":"gestureInset","value":30}')
+        expect(strokeOpens(10)).toBe(false)
     })
 })
 

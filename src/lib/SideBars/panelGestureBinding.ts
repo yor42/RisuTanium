@@ -1,6 +1,7 @@
 import { get, type Readable } from 'svelte/store'
 import { pageCovered } from '../../ts/alertPrompts'
 import { registerBackHandler } from '../../ts/backHandlers'
+import { connectHostBridge, gestureInsetLeft } from '../../ts/android/hostBridge'
 import { sideBarClosing, sideBarStore } from '../../ts/stores.svelte'
 import { inEdgeZone, INSET_MAX_CSS, INSET_PROBE_MAX_CSS, PanelGesture, type PanelIntent } from './panelGesture'
 
@@ -60,18 +61,14 @@ function findTouch(list: TouchList, id: number): Touch | null {
 }
 
 /**
- * The host's left gesture inset, sanitised to `[0, INSET_MAX_CSS]`. Read per call because no
- * change event exists (navigation mode and rotation change it); callers gate the call so
- * touches far from the edge never cross the host bridge.
+ * The host's left gesture inset, sanitised to `[0, INSET_MAX_CSS]`. Read per call: with the
+ * host channel it is the last pushed value, with the separate host object a fresh answer
+ * (navigation mode and rotation change it). Callers gate the call so touches far from the
+ * edge never reach the host.
  */
 function readGestureInsetLeft(): number {
     try {
-        const bridge = window.__risuTaniumGestureInset
-        if (!bridge || typeof bridge.left !== 'function') {
-            return 0
-        }
-        // Called as a method: the host bridge object needs its receiver.
-        const value: unknown = bridge.left()
+        const value: unknown = gestureInsetLeft()
         if (typeof value !== 'number' || !Number.isFinite(value)) {
             return 0
         }
@@ -133,6 +130,8 @@ function closeOverlay() {
  * window (covers retargeting). A stroke only ever calls today's open or close path, once.
  */
 export function installPanelGesture(options: PanelGestureOptions = {}): () => void {
+    // Binds the host channel before any touch can reach the inset read, so the host's first push is already on its way.
+    connectHostBridge()
     const now = options.now ?? (() => performance.now())
     const machine = new PanelGesture()
     let stroke: Stroke | null = null

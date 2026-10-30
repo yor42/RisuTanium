@@ -297,6 +297,7 @@ import { resetAssetBatchAvailabilityForTests } from 'src/ts/storage/tauriAssetBa
 import { importSourceOfBytes, type ImportSource } from 'src/ts/importSource'
 import { resetStartupCleanupForTests } from 'src/ts/storage/startupCleanupState'
 import { alertStore as pageStore } from 'src/ts/stores.svelte'
+import { createHostChannelFake, type HostChannelFake } from './hostChannelFake'
 
 //#region helpers
 
@@ -765,5 +766,104 @@ describe('a file opened during an opened-file restore', () => {
         await settleFew()
         expect(importedMock, 'imported once after NO').toHaveBeenCalledTimes(1)
         expect(native.length).toBe(0)
+    })
+})
+
+/**
+ * The same window over the host channel. The host keeps what a take handed over until the page confirms it, so a reply that
+ * arrives after the restore moved on replaces nothing and the files are offered again; the replies here are sent by the test
+ * so it controls when each one lands.
+ */
+describe('a file opened during an opened-file restore, over the host channel', () => {
+    let fake: HostChannelFake
+    let queue: { seq: number, batch: NativeBatch }[]
+    let lastSeq: number
+    let answered: number
+
+    const enqueue = (batch: NativeBatch) => { queue.push({ seq: ++lastSeq, batch }) }
+    const takesAsked = () => fake.postedTo('openedFiles', 'take').length
+    const confirmsSent = () => fake.postedTo('openedFiles', 'confirm').map((message) => (message.args as number[])[0])
+    /** The host answers the oldest unanswered take with everything it still holds. */
+    const answerNextTake = async () => {
+        expect(takesAsked(), 'the take the host answers was sent').toBeGreaterThan(answered)
+        const id = fake.postedTo('openedFiles', 'take')[answered++].id
+        fake.deliver(JSON.stringify({ id, result: queue.map((item) => item.batch), through: queue.length > 0 ? queue[queue.length - 1].seq : 0 }))
+        await settleFew()
+    }
+
+    beforeEach(() => {
+        delete window.__risuTaniumOpenedFilesHost
+        queue = []
+        lastSeq = 0
+        answered = 0
+        fake = createHostChannelFake()
+        fake.channel.postMessage.mockImplementation((message: string) => {
+            const parsed = JSON.parse(message) as { method: string, args: number[] }
+            if (parsed.method === 'confirm') {
+                queue = queue.filter((item) => item.seq > parsed.args[0])
+            }
+        })
+        window.__risuTaniumHost = fake.channel
+    })
+
+    afterEach(() => {
+        delete window.__risuTaniumHost
+    })
+
+    /** A restore question is up and a card has arrived over it, so a take for the refusal is waiting for its reply. */
+    async function cardArrivesOverTheQuestion() {
+        const question = gateOf()
+        planConfirms([{ screen: 'ask', gate: question.gate, answer: false }])
+        enqueue(openedFile('bin2.bin'))
+        const { androidOpenedFilesImport } = await loadOpenedFiles()
+        androidOpenedFilesImport()
+        await waitForCondition(() => takesAsked() >= 1)
+        await answerNextTake()
+        await waitForCondition(() => confirmsAsked.length >= 1)
+        enqueue(openedFile('card1.charx'))
+        window.__risuTaniumOpenedFiles?.()
+        await waitForCondition(() => takesAsked() >= 2)
+        return question
+    }
+
+    test('a reply that lands after a consent prompt replaced the question confirms nothing and refuses nothing; the card is taken again after the restore', async () => {
+        const question = await cardArrivesOverTheQuestion()
+        setShown('tos')
+        await answerNextTake()
+        expect({ confirms: confirmsSent(), refusals: refusalsSeen(), shown: shown().type }, 'the late reply replaces nothing').toEqual({ confirms: [1], refusals: 0, shown: 'tos' })
+        expect(importedMock).not.toHaveBeenCalled()
+
+        question.open()
+        await waitForCondition(() => takesAsked() >= 3)
+        await answerNextTake()
+        await waitForCondition(() => importedMock.mock.calls.length >= 1)
+        expect(importedMock).toHaveBeenCalledWith([{ name: 'card1.charx', path: 'content://p/card1.charx' }])
+        expect(confirmsSent(), 'the card is confirmed by the take after the restore').toEqual([1, 2])
+    })
+
+    test('a reply that lands after the restore ended confirms nothing yet; the card is taken again and imported in the same page', async () => {
+        const question = await cardArrivesOverTheQuestion()
+        question.open()
+        await settleFew()
+        await answerNextTake()
+        expect(confirmsSent(), 'the late reply confirms nothing').toEqual([1])
+        expect(refusalsSeen()).toBe(0)
+
+        await waitForCondition(() => takesAsked() >= 3)
+        await answerNextTake()
+        await waitForCondition(() => importedMock.mock.calls.length >= 1)
+        expect(importedMock).toHaveBeenCalledWith([{ name: 'card1.charx', path: 'content://p/card1.charx' }])
+        expect(confirmsSent()).toEqual([1, 2])
+    })
+
+    test('a reply that lands with the question still up refuses the card with one pop-up and confirms it', async () => {
+        const question = await cardArrivesOverTheQuestion()
+        await answerNextTake()
+        expect({ confirms: confirmsSent(), refusals: refusalsSeen(), shown: shown().type }).toEqual({ confirms: [1, 2], refusals: 1, shown: 'error' })
+        expect(importedMock).not.toHaveBeenCalled()
+        setShown('none')
+        question.open()
+        await settleFew()
+        expect(takesAsked(), 'a confirmed card is not taken again').toBe(2)
     })
 })
