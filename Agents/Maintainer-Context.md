@@ -19068,6 +19068,7 @@ Both phones were handed back to lane A on 2026-10-28 (phone 2 after item 9d, pho
   - Amendment (stated at the rule source in `routing.md`): `gates.md` says a Gate 2 `[REJECT]` "is remediated by the implementing worker under the accepted plan". Under this rule that worker is a fresh remediation coder seeded with the verdict file, the diff and the acceptance requirements, not the stage coder that wrote the code. The `gates.md` sentence itself is not edited here (outside this records pass's grant); `routing.md` carries the amendment and cites this entry.
   - Nothing here changes `ownership.md`: one application-code writer per checkout still holds, since the stage coders run one after another with a grant each.
   - Nothing here authorizes application code, a commit or a push.
+  - Recovered maintainer wording (added 2026-10-31; the entry above is unchanged): the maintainer's words of 2026-10-30T02:59:19Z, verbatim: "additional refinement on our workflow- instead of 1 coder doing everything, how about this: after gate 1, 1 coder tackles each substages. and combined code gets combined gate 2 with 1 coder going through gate 2 fixes." Source: lane A session transcript 699e09a3, as recovered in the batch 26 role-recovery pass.
 
 ### MC-895 — Lane A, 2026-10-30: workflow rule: reduce Opus-or-higher calls on redundant or detailed items (searches, edits, repeated reviews, report verification)
 
@@ -19083,6 +19084,7 @@ Both phones were handed back to lane A on 2026-10-28 (phone 2 after item 9d, pho
   - Amendment: for any other change, the `gates.md` rule that a remediation re-check goes back to the same reviewer role is replaced by a Sonnet `adversarial-reviewer` re-check seeded with the verdict, per item 3. The `gates.md` text is not edited here; `routing.md` carries the amendment and cites this entry.
   - The Gemini route is the one lane A runs through the antigravity plugin (`MC-889` notes); every agy `file:line` is a lead until confirmed by a range read.
   - Nothing here authorizes application code, a commit or a push.
+  - Recovered maintainer wording (added 2026-10-31; the entry above is unchanged): the maintainer's words of 2026-10-30T03:13:13Z, verbatim: "1. to reword the earlier 'reduce model call' rule a bit: reduce expensive model call(opus or higher) over redundant or detailed items, such as file searching, code edits. redundant reviews, etc." Source: lane A session transcript 699e09a3, as recovered in the batch 26 role-recovery pass. The four-item list above is lane A's reading of this sentence.
 
 ### MC-896 — Lane A, 2026-10-30: workflow rule: the orchestrator watches subagent token, tool and time data and proposes cheaper or faster workflow changes with the numbers; adoption is the maintainer's
 
@@ -19120,7 +19122,7 @@ Both phones were handed back to lane A on 2026-10-28 (phone 2 after item 9d, pho
 - Tag: decisions (maintainer answers through the ask tool, recorded by lane A in `answers-r1.md`, plus three maintainer statements in the handoff). Date: 2026-10-30. Sweep ref: none.
 - Source: `%TEMP%\risu-b715\plans\chore552\answers-r1.md` (lane A's record of Q1 to Q8, the CSP line and the card Lua answer; the option texts offered are not reproduced there); `Agents/Handoff-2026-10-30-laneA.md` (line 100 "CHORE-552: Gate 1 r1 REJECT", line 104 and line 115, "if green, merge and push"); the `serde` instruction is quoted as the id-map for this batch gives it. The designer's CSP reasoning is in `plans\chore552\result.md` (lines 198 to 204) and `result-r2.md` (AI-authored).
 - Alternatives rejected: not recorded for Q1 to Q8. For the CSP the designer's alternative, setting one, was rejected on the designer's reasons below, not on a maintainer statement.
-- Related: `MC-878`, `MC-879`, `MC-873`, `MC-877`, `MC-175`, `MC-350`; CHORE-552, CHORE-148, CHORE-560.
+- Related: `MC-878`, `MC-879`, `MC-873`, `MC-877`, `MC-175`, `MC-350`; CHORE-552, CHORE-148.
 
 **What was decided (maintainer, as `answers-r1.md` gives it).**
 1. Q1: `MC-878` on Tauri covers plugin-originated requests (V3 `nativeFetch`/`risuFetch` including plugin providers) and all HTTP MCP; app requests to user-configured provider URLs are unchanged.
@@ -19139,7 +19141,7 @@ Both phones were handed back to lane A on 2026-10-28 (phone 2 after item 9d, pho
 - Notes, not the maintainer's words:
   - Lane A's decision, recorded as lane A's: E5 (`desktop.json` keeps an unscoped `http:default`) is left, because it has no effect (capabilities merge).
   - Closures recorded with this entry (not maintainer decisions): CHORE-148 is closed, since the S5 template check found no adoptable delta (`plans\chore552\s5\result.md`; handoff line 112; debug APK SHA256 begins `BEAB65E1`, ends `2B5B`). The security-audit finding B-09 was closed as wrong and stale (`plans\chore552\result.md` line 42: the download extension is allowlisted). `deep-link:default` was removed from `desktop.json` in S4 (`a380db571`, handoff line 110).
-  - Open after the merge `00678a689`: the B5 device check (Note 9 R1 to R4, Windows W1 to W3; it decides S6; CHORE-560 covers the wry init-script escalation), the K1 desktop smoke, the Windows Python install check, the `contain:paint` real-browser check and the wording review of the new strings (Korean and the others).
+  - Open after the merge `00678a689`: the B5 device check (Note 9 R1 to R4, Windows W1 to W3; it decides S6), the K1 desktop smoke, the Windows Python install check, the `contain:paint` real-browser check and the wording review of the new strings (Korean and the others).
   - Nothing here authorizes application code, a commit or a push beyond what the quoted "if green, merge and push" covers for the CHORE-552 trial.
 
 ### MC-899 — Lane A, 2026-10-30: the maintainer confirmed the `MC-895` reading of "where `gates.md` requires"
@@ -19209,19 +19211,6 @@ Both phones were handed back to lane A on 2026-10-28 (phone 2 after item 9d, pho
   - A fork-only stored format is accepted. It falls under `MC-774` (left out of `.bin` with a warning naming it) and the `MC-350` Android forward-migration rules apply.
   - No engine is retired.
   - This adopts no design; an implementation would still need a plan and the maintainer's approval.
-  - Nothing here authorizes application code, a commit or a push.
-
-### MC-903 — Lane A, 2026-10-30: CHORE-560 deferred; check back later and keep details out of the public records
-
-- Tag: decision (maintainer instruction). Date: 2026-10-30. Sweep ref: none.
-- Source: the maintainer's words (maintainer chat message, 2026-10-30, relayed by lane A).
-- Alternatives rejected: not recorded.
-- Related: CHORE-560.
-
-**What was decided (maintainer, verbatim).** "let's just mark it as something that we should check back in later. let's just keep details out of the commit in the meantime."
-
-- Notes, not the maintainer's words:
-  - Recorded as: CHORE-560 is deferred, to be checked again later; its details stay out of the public records in the meantime. Nothing further is recorded here by design.
   - Nothing here authorizes application code, a commit or a push.
 
 ### MC-904 — Lane A, 2026-10-30: CHORE-591 GraphMem read limit (top few results per term; lane A set the number to 3)
@@ -19344,3 +19333,17 @@ Follow-up answers, same day, verbatim:
 - Notes, not the maintainer's words:
   - The maintainer's upstream remark in MC-910 made the Back-press catch secondary hardening; the primary fix is the shared per-refresh grouping plus per-message containment.
   - Nothing here authorizes a commit or a push beyond what the maintainer already approved for CHORE-41.
+
+### MC-912 — Lane A, 2026-10-31: workflow rule: a change to a single point that enforces a security boundary gets an Opus Gate 2
+
+- Tag: decision (maintainer answer to an ask-tool question). Date: 2026-10-31. Sweep ref: none.
+- Source: the maintainer's answer to a question lane A asked (maintainer chat message, 2026-10-31, relayed by lane A).
+- Alternatives rejected: not recorded.
+- Related: MC-895 as confirmed by MC-899 (this entry adds a trigger to the Opus list), MC-321 3 (a fresh same-role reviewer continues the round count), CHORE-552, CHORE-592, CHORE-41; applied in `docs/workflow/routing.md` and `docs/workflow/gates.md`.
+
+**What was decided (maintainer, verbatim).** Question: "Gate 2 for CHORE-552 (the native network policy that all untrusted card/plugin requests pass through) went to an Opus reviewer. The written rules give Opus Gate 2 only to save/persistence and silent data-loss risk, so that choice isn't covered. Should security-critical changes like that get an Opus Gate 2 too?" Answer: "Yes, add security chokepoints (Recommended)". Option text: "Record a rule: changes to a single point that enforces a security boundary (network policy, permission gates, native bridges) get opus-reviewer at Gate 2. CHORE-552 becomes compliant."
+
+- Notes, not the maintainer's words:
+  - Effect: `opus-reviewer` at Gate 2 is also required for a change to a single point that enforces a security boundary (the option text names network policy, permission gates and native bridges). CHORE-552's Opus Gate 2 is compliant with the rule.
+  - CHORE-592 and CHORE-41 also went to `opus-reviewer` at Gate 2, under the existing "silent data-loss risk" trigger (CHORE-592: opened-files restore; CHORE-41: message text and drafts). That is an orchestrator classification the rule allows, not a new trigger. CHORE-41's Gate 2 round 2 used a fresh `opus-reviewer`, per MC-321 3.
+  - Nothing here authorizes application code, a commit or a push.
