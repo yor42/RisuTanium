@@ -15,7 +15,7 @@ const fs = require('fs/promises')
 const crypto = require('crypto')
 const rateLimit = require('express-rate-limit');
 const { WebSocketServer } = require('ws');
-const { NODE_BODY_LIMIT_BYTES, NODE_ASSET_LIMIT_BYTES, NODE_UPLOAD_CHUNK_MAX_BYTES } = require('./bodyLimit.cjs');
+const { NODE_BODY_LIMIT_BYTES, NODE_PUBLIC_BODY_LIMIT_BYTES, NODE_ASSET_LIMIT_BYTES, NODE_UPLOAD_CHUNK_MAX_BYTES } = require('./bodyLimit.cjs');
 const { hubTargetURL, hubRedirectTarget, hubRequestHeaders, hubResponseHeaders, hubForwardBody } = require('./hubProxy.cjs');
 const { ASSET_READ_AUDIENCE, assetKeyFromHex, contentTypeForKey, sniffContentType, cacheControlForKey } = require('./assetRoute.cjs');
 const { store2KeyFromHex } = require('./store2Keys.cjs');
@@ -39,48 +39,38 @@ const UPLOAD_EVICT_IDLE_MS = positiveIntegerFromEnv('RISU_UPLOAD_EVICT_IDLE_MS',
 
 app.use(express.static(path.join(process.cwd(), 'dist'), {index: false}));
 // Upload requests are tracked from their arrival (trackUploadArrival, defined
-// with the upload routes), and an append body is read by its own parser with
-// the chunk maximum as the limit. That parser runs first and marks the request
-// as parsed, so the global parsers below skip it and an over-size chunk is
-// refused before more than the chunk maximum is buffered.
+// with the upload routes), before their body is read.
 app.use('/api/upload', trackUploadArrival);
-app.use('/api/upload/append', express.raw({ type: () => true, limit: UPLOAD_CHUNK_MAX_BYTES }));
-// The hub proxy forwards the request body as the client sent it, so it is
-// captured as raw bytes before any parser can replace it with a parsed value.
-app.use('/hub-proxy', express.raw({ type: () => true, limit: NODE_BODY_LIMIT_BYTES }));
-app.use(express.json({ limit: NODE_BODY_LIMIT_BYTES }));
-app.use(express.raw({ type: 'application/octet-stream', limit: NODE_BODY_LIMIT_BYTES }));
-app.use(express.text({ limit: NODE_BODY_LIMIT_BYTES }));
-// A body over the parsers' limit is refused before any route handler runs, so
-// the storage write routes answer it here, as JSON and without the framework's
-// error page (which carries a stack and absolute paths). /api/write-checked is
-// a guarded route and keeps its marker on the answer.
-app.use((error, req, res, next) => {
-    if (error?.type === 'entity.too.large' && req.path === '/api/upload/append') {
-        res.status(413).send({
-            error: 'Upload chunk is too large',
-            code: 'PAYLOAD_TOO_LARGE',
-            message: `Upload chunks are limited to ${UPLOAD_CHUNK_MAX_BYTES} bytes.`,
-        });
-        return;
-    }
-    if (error?.type === 'entity.too.large' && (req.path === '/api/write' || req.path === '/api/write-checked')) {
-        console.error('[Storage] Rejected oversized request:', {
-            size: error.length,
-            limit: error.limit,
-        });
-        if (req.path === '/api/write-checked') {
-            markGuarded(res);
+// The hub proxy is anonymous and forwards the request body as the client sent
+// it, so it is captured as raw bytes under the small public limit.
+app.use('/hub-proxy', express.raw({ type: () => true, limit: NODE_PUBLIC_BODY_LIMIT_BYTES }));
+// No body is read before the request is authorised, except under the small
+// public limit. A route that reads a body mounts one of these after its gate
+// (authBeforeBody), so an unauthenticated client cannot make the server buffer
+// or wait for a large body. Each parser sets an empty body when it does not
+// apply, and the handlers rely on that.
+const authenticatedBodyParsers = [
+    express.json({ limit: NODE_BODY_LIMIT_BYTES }),
+    express.raw({ type: 'application/octet-stream', limit: NODE_BODY_LIMIT_BYTES }),
+    express.text({ limit: NODE_BODY_LIMIT_BYTES }),
+];
+const publicJsonParser = express.json({ limit: NODE_PUBLIC_BODY_LIMIT_BYTES });
+// An append body is read by its own parser with the chunk maximum as the limit,
+// so an over-size chunk is refused before more than the chunk maximum is buffered.
+const uploadChunkParser = express.raw({ type: () => true, limit: UPLOAD_CHUNK_MAX_BYTES });
+// The authorisation check sends its own refusal; the request continues to the
+// body parsers only when it passed.
+function authBeforeBody(check) {
+    return async (req, res, next) => {
+        try {
+            if (await check(req, res)) {
+                next();
+            }
+        } catch (error) {
+            next(error);
         }
-        res.status(413).send({
-            error: 'Storage payload is too large',
-            code: 'PAYLOAD_TOO_LARGE',
-            message: `Storage writes are limited to ${NODE_BODY_LIMIT_BYTES / (1024 * 1024)} MiB.`,
-        });
-        return;
-    }
-    next(error);
-});
+    };
+}
 const {pipeline} = require('stream/promises')
 const https = require('https');
 const sslPath = path.join(process.cwd(), 'server/node/ssl/certificate');
@@ -638,6 +628,15 @@ const loginRouteLimiter = rateLimit({
 // Same budget as the login route, counted separately so a burst on one route
 // does not use up the other's attempts.
 const setPasswordRouteLimiter = rateLimit({
+    windowMs: 30 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many attempts. Please wait and try again later.' }
+});
+// The digest helper is public, so it has a bucket of its own: a burst on it
+// uses up neither the login nor the password-setup attempts.
+const cryptoRouteLimiter = rateLimit({
     windowMs: 30 * 1000,
     max: 10,
     standardHeaders: true,
@@ -1464,10 +1463,10 @@ app.get('/proxy', authenticatedRouteLimiter, reverseProxyFunc_get);
 app.get('/proxy2', authenticatedRouteLimiter, reverseProxyFunc_get);
 app.get('/hub-proxy/*', authenticatedRouteLimiter, hubProxyFunc);
 
-app.post('/proxy', authenticatedRouteLimiter, reverseProxyFunc);
-app.post('/proxy2', authenticatedRouteLimiter, reverseProxyFunc);
+app.post('/proxy', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, reverseProxyFunc);
+app.post('/proxy2', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, reverseProxyFunc);
 app.post('/hub-proxy/*', authenticatedRouteLimiter, hubProxyFunc);
-app.post('/proxy-stream-jobs', authenticatedRouteLimiter, async (req, res) => {
+app.post('/proxy-stream-jobs', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, async (req, res) => {
     if (!await checkProxyAuth(req, res)) {
         return;
     }
@@ -1517,7 +1516,7 @@ app.post('/proxy-stream-jobs', authenticatedRouteLimiter, async (req, res) => {
 });
 
 // A name that is not allowed and one that is not set answer identically, so names cannot be probed.
-app.post('/api/env-secret', authenticatedRouteLimiter, async (req, res) => {
+app.post('/api/env-secret', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, async (req, res) => {
     if (!await checkProxyAuth(req, res)) {
         return;
     }
@@ -1575,7 +1574,7 @@ app.get('/api/test_auth', authRouteLimiter, async(req, res) => {
     }
 })
 
-app.post('/api/login', loginRouteLimiter, async (req, res) => {
+app.post('/api/login', loginRouteLimiter, publicJsonParser, async (req, res) => {
     if(password === ''){
         res.status(400).send({error: 'Password not set'})
         return;
@@ -1598,7 +1597,7 @@ app.post('/api/login', loginRouteLimiter, async (req, res) => {
     }
 })
 
-app.post('/api/crypto', async (req, res) => {
+app.post('/api/crypto', cryptoRouteLimiter, publicJsonParser, async (req, res) => {
     try {
         const hash = crypto.createHash('sha256')
         hash.update(Buffer.from(req.body.data, 'utf-8'))
@@ -1609,7 +1608,7 @@ app.post('/api/crypto', async (req, res) => {
 })
 
 
-app.post('/api/set_password', setPasswordRouteLimiter, async (req, res) => {
+app.post('/api/set_password', setPasswordRouteLimiter, publicJsonParser, async (req, res) => {
     if(password === ''){
         if(typeof req.body?.password !== 'string' || req.body.password.trim() === '' || isEmptyPasswordDigest(req.body.password)){
             res.status(400).send({error: 'Password missing or invalid'})
@@ -2358,8 +2357,9 @@ async function handleWrite(req, res, next, guarded){
     }
 }
 
-app.post('/api/write', storageRouteLimiter, (req, res, next) => handleWrite(req, res, next, false));
-app.post('/api/write-checked', storageRouteLimiter, (req, res, next) => handleWrite(req, res, next, true));
+app.post('/api/write', storageRouteLimiter, authBeforeBody(checkAuth), authenticatedBodyParsers, (req, res, next) => handleWrite(req, res, next, false));
+// The marker goes on before the gate, so a refusal and a too-large answer carry it too.
+app.post('/api/write-checked', storageRouteLimiter, (req, res, next) => { markGuarded(res); next(); }, authBeforeBody(checkAuth), authenticatedBodyParsers, (req, res, next) => handleWrite(req, res, next, true));
 
 // ---------------------------------------------------------------------------
 // Chunked asset upload and ranged read.
@@ -2627,7 +2627,7 @@ async function appendInChain(id, entry, offset, chunk){
     return { status: 409, body: { error: 'Upload offset mismatch', code: 'upload-offset', size: entry.ack } }
 }
 
-app.post('/api/upload/append', storageRouteLimiter, async (req, res) => {
+app.post('/api/upload/append', storageRouteLimiter, authBeforeBody(checkAuth), uploadChunkParser, async (req, res) => {
     if(!await checkAuth(req, res)){
         return
     }
@@ -2883,6 +2883,45 @@ app.get('/api/read-range', storageRouteLimiter, async (req, res, next) => {
         next(error)
     }
 })
+
+// A body over a parser's limit is refused before the route handler runs, so it
+// is answered here, as JSON and without the framework's error page (which
+// carries a stack and absolute paths). A route-level parser's error reaches only
+// handlers registered after that route, so this stays after the last route.
+// /api/write-checked is a guarded route and keeps its marker on the answer.
+app.use((error, req, res, next) => {
+    if (error?.type === 'entity.too.large' && req.path === '/api/upload/append') {
+        res.status(413).send({
+            error: 'Upload chunk is too large',
+            code: 'PAYLOAD_TOO_LARGE',
+            message: `Upload chunks are limited to ${UPLOAD_CHUNK_MAX_BYTES} bytes.`,
+        });
+        return;
+    }
+    if (error?.type === 'entity.too.large' && (req.path === '/api/write' || req.path === '/api/write-checked')) {
+        console.error('[Storage] Rejected oversized request:', {
+            size: error.length,
+            limit: error.limit,
+        });
+        if (req.path === '/api/write-checked') {
+            markGuarded(res);
+        }
+        res.status(413).send({
+            error: 'Storage payload is too large',
+            code: 'PAYLOAD_TOO_LARGE',
+            message: `Storage writes are limited to ${NODE_BODY_LIMIT_BYTES / (1024 * 1024)} MiB.`,
+        });
+        return;
+    }
+    if (error?.type === 'entity.too.large') {
+        res.status(413).send({
+            error: 'Request body is too large',
+            code: 'PAYLOAD_TOO_LARGE',
+        });
+        return;
+    }
+    next(error);
+});
 
 async function getHttpsOptions() {
 
