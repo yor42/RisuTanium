@@ -11,6 +11,7 @@ import { v4 } from "uuid";
 import type { MCPClientLike } from "./internalmcp";
 import localforage from "localforage";
 import { isTauri } from "src/ts/platform"
+import { isAndroidTransport } from "src/ts/storage/tauriByteTransport";
 import { sleep } from "src/ts/util";
 import { registeredCustomPluginMCPs } from "./pluginmcp";
 import type { RunSubject } from "../chatOrigin";
@@ -94,6 +95,17 @@ function sweepMCPs(selectionUrls:string[], activityUrls:string[]) {
     }
 }
 
+/**
+ * Why this build cannot start a program for a `stdio:` MCP, or null when it can. Only the desktop app starts
+ * programs; the refusal comes before any consent prompt, so nothing is asked that could not be honoured.
+ */
+function stdioSpawnRefusal():string|null {
+    if(!isTauri){
+        return 'stdio MCPs are only supported in Local Version';
+    }
+    return isAndroidTransport() ? 'stdio MCPs are only supported in the desktop app' : null;
+}
+
 async function createMCPClient(mcp:string):Promise<MCPClientInstance | undefined> {
     let mcpUrl = mcp;
 
@@ -154,8 +166,9 @@ async function createMCPClient(mcp:string):Promise<MCPClientInstance | undefined
             else if(parsed.kind === 'stdio-spawn') {
                 const { command, args, env } = parsed.spec;
 
-                if(!isTauri){
-                    throw new Error('stdio MCPs are only supported in Local Version');
+                const refusal = stdioSpawnRefusal();
+                if(refusal !== null){
+                    throw new Error(refusal);
                 }
 
                 const { Command } = await import('@tauri-apps/plugin-shell');
@@ -273,7 +286,7 @@ async function createMCPClient(mcp:string):Promise<MCPClientInstance | undefined
  * program to start yields no client, live or new, unless `stdioAdmitted`, which only the consent gate sets.
  */
 async function ensureMCP(url:string, stdioAdmitted:boolean):Promise<MCPClientInstance | undefined> {
-    if(isTauri && !stdioAdmitted && parseMcpUrl(url).kind === 'stdio-spawn') {
+    if(stdioSpawnRefusal() === null && !stdioAdmitted && parseMcpUrl(url).kind === 'stdio-spawn') {
         return undefined;
     }
     const live = MCPs[url];
@@ -338,7 +351,7 @@ async function beginMCPActivity(urls:string[], selectionUrls:string[], owners:Ma
     const ensured:[string, MCPClientInstance][] = [];
     for(const url of ensureUrls) {
         let admitted = false;
-        if(isTauri) {
+        if(stdioSpawnRefusal() === null) {
             const parsed = parseMcpUrl(url);
             if(parsed.kind === 'stdio-spawn') {
                 admitted = await admitStdio(parsed.spec, owners.get(url) ?? []);

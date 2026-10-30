@@ -11,6 +11,7 @@ import {
     createKeepAliveConsumer, KEEP_ALIVE_LINGER_MS, startKeepAliveService,
     type KeepAliveConsumer, type KeepAliveHost,
 } from './keepAliveService'
+import { createHostChannelFake } from './hostChannelFake'
 
 const platform = vi.hoisted(() => ({ android: true }))
 
@@ -501,6 +502,71 @@ describe('startKeepAliveService', () => {
         beginInFlight('chat')()
 
         expect(host.update).toHaveBeenLastCalledWith('Finishing up…', '')
+    })
+})
+
+describe('startKeepAliveService over the host channel', () => {
+    afterEach(() => {
+        delete window.__risuTaniumHost
+    })
+
+    test('(R) the service is driven by messages: a stop at start, then permission and start for work, update and stopAfter at its end', () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        consumer = startKeepAliveService()
+        expect(consumer).not.toBeNull()
+        expect(fake.postedTo('keepAlive', 'stop')).toEqual([{ bridge: 'keepAlive', method: 'stop', args: [] }])
+
+        const end = beginInFlight('chat')
+        expect(fake.postedTo('keepAlive', 'requestNotificationPermissionOnce')).toEqual([
+            { bridge: 'keepAlive', method: 'requestNotificationPermissionOnce', args: [] },
+        ])
+        expect(fake.postedTo('keepAlive', 'start')).toEqual([
+            { bridge: 'keepAlive', method: 'start', args: ['Generating a reply…', 'Stop'] },
+        ])
+
+        end()
+        expect(fake.postedTo('keepAlive', 'update').at(-1)).toEqual({ bridge: 'keepAlive', method: 'update', args: ['Finishing up…', ''] })
+        expect(fake.postedTo('keepAlive', 'stopAfter')).toEqual([
+            { bridge: 'keepAlive', method: 'stopAfter', args: [KEEP_ALIVE_LINGER_MS] },
+        ])
+    })
+
+    test('(R) the channel wins over the separate host object, which is never called', () => {
+        const fake = createHostChannelFake()
+        const host = fakeHost()
+        window.__risuTaniumHost = fake.channel
+        window.__risuTaniumKeepAlive = host
+        consumer = startKeepAliveService()
+        beginInFlight('chat')
+
+        expect(fake.postedTo('keepAlive', 'start')).toHaveLength(1)
+        for (const method of [host.start, host.update, host.stop, host.stopAfter, host.requestNotificationPermissionOnce]) {
+            expect(method).not.toHaveBeenCalled()
+        }
+    })
+
+    test('(R) the Stop hook still reaches the running work', async () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        consumer = startKeepAliveService()
+        beginInFlight('chat')
+        window.__risuTaniumKeepAliveStop?.()
+
+        await vi.waitFor(() => {
+            expect(abortChatMock).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    test('(R) a channel that throws is logged and never breaks the work', () => {
+        const fake = createHostChannelFake()
+        fake.channel.postMessage.mockImplementation(() => { throw new Error('host failed') })
+        window.__risuTaniumHost = fake.channel
+        const error = vi.spyOn(console, 'error').mockImplementation(() => { })
+        consumer = startKeepAliveService()
+
+        expect(() => beginInFlight('chat')).not.toThrow()
+        expect(error).toHaveBeenCalled()
     })
 })
 

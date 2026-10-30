@@ -9,6 +9,7 @@
 import { language } from 'src/lang'
 import { inFlightKinds, subscribeInFlight, type InFlightKind } from '../process/inFlightWork'
 import { isAndroidTransport } from '../storage/tauriByteTransport'
+import { keepAliveHost } from './hostBridge'
 
 /** The host object `KeepAliveBridge` exposes to the page. */
 export interface KeepAliveHost {
@@ -211,7 +212,7 @@ export function startKeepAliveService(): KeepAliveConsumer | null {
     if (!isAndroidTransport()) {
         return null
     }
-    const host = window.__risuTaniumKeepAlive
+    const host = keepAliveHost()
     if (!host) {
         return null
     }

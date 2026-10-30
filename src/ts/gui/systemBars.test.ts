@@ -51,6 +51,7 @@ vi.mock(import('../stores.svelte'), () => ({
 import { cssColorToRgb, FALLBACK_BAR_COLOR, syncSystemBars } from './systemBars'
 import { changeColorScheme, colorSchemePresets, defaultColorScheme, updateColorScheme } from './colorscheme'
 import { isLite } from '../lite'
+import { createHostChannelFake } from '../android/hostChannelFake'
 
 const FALLBACK = { red: 0x28, green: 0x2a, blue: 0x36 }
 
@@ -132,6 +133,40 @@ describe('syncSystemBars', () => {
         window.__risuTaniumSystemBars = { setBackground: 5 as unknown as () => unknown }
         expect(() => syncSystemBars('#112233')).not.toThrow()
         window.__risuTaniumSystemBars = { setBackground: () => { throw new Error('host failed') } }
+        expect(() => syncSystemBars('#112233')).not.toThrow()
+    })
+})
+
+describe('syncSystemBars over the host channel', () => {
+    afterEach(() => {
+        delete window.__risuTaniumHost
+        delete window.__risuTaniumSystemBars
+    })
+
+    test('(R) the colour goes out as one message with integer channels', () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        syncSystemBars('#ffffff')
+
+        expect(fake.postedTo('systemBars', 'setBackground')).toEqual([{ bridge: 'systemBars', method: 'setBackground', args: [255, 255, 255] }])
+    })
+
+    test('(R) the channel wins over the separate host object, which is never called', () => {
+        const fake = createHostChannelFake()
+        const setBackground = vi.fn()
+        window.__risuTaniumHost = fake.channel
+        window.__risuTaniumSystemBars = { setBackground }
+        syncSystemBars('#112233')
+
+        expect(fake.postedTo('systemBars', 'setBackground')).toHaveLength(1)
+        expect(setBackground).not.toHaveBeenCalled()
+    })
+
+    test('(G) a channel that throws changes nothing and throws nothing', () => {
+        const fake = createHostChannelFake()
+        fake.channel.postMessage.mockImplementation(() => { throw new Error('host failed') })
+        window.__risuTaniumHost = fake.channel
+
         expect(() => syncSystemBars('#112233')).not.toThrow()
     })
 })

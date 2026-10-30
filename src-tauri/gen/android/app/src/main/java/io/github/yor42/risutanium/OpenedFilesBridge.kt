@@ -10,18 +10,36 @@ import android.webkit.JavascriptInterface
 import org.json.JSONArray
 import org.json.JSONObject
 
-// Exposed to the page as window.__risuTaniumOpenedFilesHost. Kept by name in proguard-rules.pro:
-// the page calls take() by name, so minification must not rename or drop it. The queue is
+// Reached by the page two ways. Legacy: exposed as window.__risuTaniumOpenedFilesHost, kept by
+// name in proguard-rules.pro because the page calls take() by name, so minification must not
+// rename or drop it; WebView calls take() on a bridge thread. Channel: the message listener calls
+// takeHeld() on its worker thread and confirm() when the page acknowledges. The queue is
 // process-wide: a file that arrives before the page exists, or before first setup is done, waits
-// here until the page takes it. The main thread only enqueues URIs; the display names are
-// resolved in take(), which WebView calls on a bridge thread, so a slow provider never blocks
-// the UI. Nothing here filters by file name: the page decides what is importable.
+// here until the page takes it (legacy) or confirms it (channel), so a batch the page never
+// confirmed is offered again. The main thread only enqueues URIs; the display names are resolved
+// in take() or takeHeld(), off the main thread, so a slow provider never blocks the UI. Nothing
+// here filters by file name: the page decides what is importable.
 class OpenedFilesBridge(private val resolver: ContentResolver) {
   // Returns every queued batch (one per intent that carried content URIs) as
   // [[{uri, name}]] and empties the queue; "[]" when nothing waits.
   @JavascriptInterface
-  fun take(): String {
-    val batches = takeBatches()
+  fun take(): String = batchesJson(queue.takeAll())
+
+  // The message channel's take: the same JSON, but the batches stay queued until confirm. through
+  // is the highest batch sequence the JSON includes; 0 when it is empty.
+  class HeldTake(val json: String, val through: Long)
+
+  fun takeHeld(): HeldTake {
+    val snapshot = queue.snapshot()
+    return HeldTake(batchesJson(snapshot.batches), snapshot.through)
+  }
+
+  // Removes every batch up to the sequence; repeating it is harmless.
+  fun confirm(through: Long) {
+    queue.confirm(through)
+  }
+
+  private fun batchesJson(batches: List<List<Uri>>): String {
     val result = JSONArray()
     for (batch in batches) {
       val entries = JSONArray()
@@ -55,22 +73,15 @@ class OpenedFilesBridge(private val resolver: ContentResolver) {
   // The queue is shared by every bridge instance, so a recreated WebView finds what its
   // predecessor's page had not taken yet.
   companion object {
-    // One entry per intent; guarded by queueLock.
-    private val queue = ArrayList<List<Uri>>()
-    private val queueLock = Any()
-
-    private fun takeBatches(): List<List<Uri>> = synchronized(queueLock) {
-      val taken = ArrayList(queue)
-      queue.clear()
-      taken
-    }
+    // One entry per intent.
+    private val queue = PendingBatches<List<Uri>>()
 
     // Called on the main thread. Only content URIs are kept: a file:// URI from another app
     // cannot be read, and any other scheme is not a file handed to the app.
     fun enqueue(intent: Intent?) {
       val uris = urisOf(intent)
       if (uris.isEmpty()) return
-      synchronized(queueLock) { queue.add(uris) }
+      queue.enqueue(uris)
     }
 
     private fun urisOf(intent: Intent?): List<Uri> {

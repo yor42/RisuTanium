@@ -1,5 +1,6 @@
 {
   "identifier": "desktop-capability",
+  "local": true,
   "windows": [
     "main"
   ],
@@ -12,6 +13,38 @@
     "updater:default",
     "process:allow-restart",
     "shell:default",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "node",
+          "cmd": "node",
+          "args": true
+        },
+        {
+          "name": "npm",
+          "cmd": "npm",
+          "args": true
+        },
+        {
+          "name": "npx",
+          "cmd": "npx",
+          "args": true
+        },
+        {
+          "name": "docker",
+          "cmd": "docker",
+          "args": true
+        },
+        {
+          "name": "uvx",
+          "cmd": "uvx",
+          "args": true
+        }
+      ]
+    },
+    "shell:allow-kill",
+    "shell:allow-stdin-write",
     "http:default"
   ]
 }
