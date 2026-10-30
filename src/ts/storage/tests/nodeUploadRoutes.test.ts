@@ -747,7 +747,7 @@ describe('authentication', () => {
         await append(main, id, 0, patterned(20, 72))
         // Well formed, unexpired, but signed by a key the server does not know.
         const part = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url')
-        const forged = { 'risu-auth': [part({ alg: 'ES256', typ: 'JWT' }), part({ pub: 'unknown', exp: 4102444800 }), 'AAAA'].join('.') }
+        const forged = { 'risu-auth': [part({ alg: 'ES256', typ: 'JWT' }), part({ pub: 'unknown', exp: Math.floor(Date.now() / 1000) + 300 }), 'AAAA'].join('.') }
         const refusals = await Promise.all([
             request(main, '/api/upload/append', 'POST', { ...forged, 'upload-id': id, 'upload-offset': '20', 'content-type': 'application/octet-stream' }, patterned(5, 73), false),
             request(main, '/api/upload/commit', 'POST', { ...forged, 'upload-id': id, 'file-path': hexOfKey(assetKey('auth-forged')), 'upload-size': '20' }, undefined, false),

@@ -702,6 +702,7 @@ function normalizeAuthHeader(authHeader) {
 // expires, or one minted for another purpose, opens none of the storage, proxy
 // or websocket routes. With `audience` the token must carry exactly that `aud`;
 // its `exp` may be absent, but a present one must be numeric and not passed.
+const MAX_TOKEN_LIFETIME_SECONDS = 3600;
 async function verifyJwt(authHeader, audience) {
     try {
         const [
@@ -733,6 +734,13 @@ async function verifyJwt(authHeader, audience) {
             const now = Math.floor(Date.now() / 1000);
             if (jsonPayload.exp < now) {
                 return { ok: false, status: 400, error: 'Token Expired', log: 'Token expired' };
+            }
+            // An ordinary token lives minutes; the cap bounds what a leaked one is
+            // worth. A client token that is refused here while its own clock is
+            // right means this server's clock is behind. Asset tokens (with an
+            // audience) are not capped.
+            if (audience === undefined && jsonPayload.exp - now > MAX_TOKEN_LIFETIME_SECONDS) {
+                return { ok: false, status: 400, error: 'Token Lifetime Too Long', log: `Token exp is more than ${MAX_TOKEN_LIFETIME_SECONDS} s after the server clock; the server clock may be behind` };
             }
         }
 
