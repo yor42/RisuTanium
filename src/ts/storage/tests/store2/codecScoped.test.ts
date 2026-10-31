@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest'
 import {
-    assembleDatabase, bucketOfKey, CodecAssembleError, CodecInputError, COLD_POINTER_HEADER, emitCharacter, encodeCharacter,
+    acknowledgedBytesOf, assembleDatabase, bucketOfKey, characterMatchesAcknowledged, CodecAssembleError, CodecInputError, COLD_POINTER_HEADER, emitCharacter, encodeCharacter,
     Encoder, encodeScoped, IDENTITY, isSkippableCharacterFault, normalizeCharacter, planScopedEncode, previousFrom, shardOfU,
-    SharedChaIdStubError, StubRefusedError, unitsToWrite,
-    type EncodedTree, type EncodeOptions, type EncodeScope, type ListDerivation,
+    SharedChaIdStubError, StubRefusedError, unitMapSource, unitsToWrite,
+    type EncodedTree, type EncodeOptions, type EncodeScope, type ListDerivation, type PreviousEncoding,
 } from '../../store2/codec'
 import { planWholeTreeInstall } from '../../store2/legacy/install'
 import { buildColdStub } from '../../../process/coldCharacter'
@@ -223,6 +223,86 @@ describe('new behaviour: a named character is re-encoded', () => {
                 expect(tree.units.find(unit => unit.identity === identity)?.reused, identity).toBe(true)
             }
         }
+    })
+})
+
+describe('chat alternatives in a scoped encode', () => {
+    function withAlt(): { db: Database, chaId: string } {
+        const db = buildSmall(3) as unknown as Obj
+        const target = (db.characters as Obj[])[1]
+        ;(target.chats as Obj[])[0].alt = [
+            { m: { role: 'char', data: 'first alternative', time: 1, chatId: 'alt-1' }, p: null, a: 1 },
+            { m: { role: 'char', data: 'second alternative', time: 2, chatId: 'alt-2' }, p: 'x', a: 2 },
+        ]
+        return { db: asDatabase(db), chaId: String(target.chaId) }
+    }
+    const altIdentitiesOf = (tree: EncodedTree) => [...tree.index.units.keys()].filter(identity => identity.includes(':alt:')).sort()
+
+    test('a character that is carried keeps its alternatives units and the manifest keeps the chat-alt token (new-rule guard)', async () => {
+        const { db } = withAlt()
+        const first = encodeWith(db)
+        expect(first.manifest.req).toEqual(['chat-alt'])
+        const tree = await encodeScoped(db, scopedOptions(2, first), { modules: false, characters: new Set() })
+        expect(altIdentitiesOf(tree)).toEqual(altIdentitiesOf(first))
+        expect(altIdentitiesOf(tree)).toHaveLength(1)
+        expect(tree.manifest.req).toEqual(['chat-alt'])
+        expect(written(tree).filter(identity => identity.includes(':alt:'))).toEqual([])
+    })
+
+    test('a named character is encoded with its alternatives, and a change to them alone makes it dirty (new-rule guard)', async () => {
+        const { db, chaId } = withAlt()
+        const first = encodeWith(db)
+        const next = clone(db)
+        const chat = ((next.characters as Obj[])[1].chats as Obj[])[0]
+        ;(chat.alt as Obj[]).push({ m: { role: 'char', data: 'third', time: 3, chatId: 'alt-3' }, p: null, a: 3 })
+        const tree = await encodeScoped(asDatabase(next), scopedOptions(2, first), { modules: false, characters: new Set([chaId]) })
+        const u = first.index.entities.get(`${chaId}#0`) as string
+        expect(written(tree).filter(identity => identity.startsWith(`${IDENTITY.chat}${u}:`))).toEqual([`${IDENTITY.chat}${u}:${(chat as { id: string }).id}:alt:0`])
+    })
+
+    function verdictFor(mutate: (slot: Obj) => void, built: Database = withAlt().db, tweak: (previous: PreviousEncoding) => void = () => undefined): string {
+        const first = encodeWith(built)
+        const slot = (assembleDatabase(first.manifest, unitMapSource(first.units)).characters as unknown as Obj[])[1]
+        mutate(slot)
+        const previous = previousFrom(first)
+        tweak(previous)
+        return characterMatchesAcknowledged(slot as unknown as character, { env: seededEnv(5), lists: fakeLists, previous })
+    }
+    const firstAlt = (slot: Obj): Obj => ((slot.chats as Obj[])[0].alt as Obj[])[0]
+
+    test.each<[string, (slot: Obj) => void, string]>([
+        ['the character as acknowledged', () => undefined, 'clean'],
+        ['an edit inside one record', (slot) => { (firstAlt(slot).m as Obj).data = 'edited' }, 'dirty'],
+        ['an added record', (slot) => { ((slot.chats as Obj[])[0].alt as Obj[]).push({ m: { role: 'char', data: 'z', time: 9 }, p: null, a: 9 }) }, 'dirty'],
+        ['a removed record', (slot) => { ((slot.chats as Obj[])[0].alt as Obj[]).pop() }, 'dirty'],
+        ['all alternatives removed', (slot) => { delete (slot.chats as Obj[])[0].alt }, 'dirty'],
+        ['only the departure stamp of a record', (slot) => { firstAlt(slot).a = 7 }, 'dirty'],
+    ])('the verdict for %s is %s', (_label, mutate, expected) => {
+        expect(verdictFor(mutate)).toBe(expected)
+    })
+
+    test('an alternatives unit without a digest (a unit the boot did not hash) leaves the verdict unknown', () => {
+        const dropDigest = (previous: PreviousEncoding): void => {
+            const identity = [...previous.units.keys()].find(candidate => candidate.includes(':alt:')) as string
+            delete previous.units.get(identity)!.digest
+        }
+        expect(verdictFor(() => undefined, withAlt().db, dropDigest)).toBe('unknown')
+    })
+
+    test('the acknowledged size of an entity includes its alternatives units', () => {
+        const { db, chaId } = withAlt()
+        const without = clone(db)
+        delete (((without.characters as Obj[])[1].chats as Obj[])[0]).alt
+        const sizeOf = (built: Database): number => {
+            const first = encodeWith(built)
+            return acknowledgedBytesOf(previousFrom(first), indexEntry(first, chaId))
+        }
+        const altUnit = encodeWith(db).units.find(unit => unit.type === UNIT_TYPE.chatAlt)!
+        expect(sizeOf(db) - sizeOf(asDatabase(without))).toBe(altUnit.ref[1])
+    })
+
+    test('an empty alt on a chat that has none is as clean as an absent one', () => {
+        expect(verdictFor((slot) => { (slot.chats as Obj[])[0].alt = [] }, buildSmall(3))).toBe('clean')
     })
 })
 

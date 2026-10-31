@@ -28,6 +28,7 @@ import { get } from "svelte/store";
 import { registerMCPModule, registeredCustomPluginMCPs, unregisterMCPModule } from "src/ts/process/mcp/pluginmcp";
 import { setColdStorageItem, readColdStorageItem } from "src/ts/process/coldstorage.svelte";
 import { readArchivedCharacter, restoreArchivedForWrite } from "src/ts/process/coldCharacterAccess";
+import { captureChatAlt, keepCapturedChatAlt, keepLiveAlt, overwritesPlaceholder, placeholderAgainMessage, restoreArchivedTargets, withoutAlt, withoutAltChat, withoutAltIn } from "src/ts/plugins/chatAltBridge";
 import { incomingCharacterRefusal } from "../stubDowngrade";
 import { singleCharacterProblem } from "../characterWriteCheck";
 import { isColdChat } from "src/ts/process/coldstorageData";
@@ -744,8 +745,11 @@ export function setChatToIndexImpl(characterIndex: number, chatIndex: number, ch
         const chats = db.characters[charId].chats;
         if(chats && chats[chatIndex]){
             const replaced = chats[chatIndex]
+            // Read before the assignment: the live alternatives are the only copy.
+            const liveAlt = captureChatAlt(replaced)
             fillMissingChatSlotId(chat)
             warnIfChatSlotIdDuplicated(chats, chatIndex, chat?.id, replaced?.id, pluginName)
+            keepCapturedChatAlt(liveAlt, chat)
             DBState.db.characters[charId].chats[chatIndex] = chat
             clearSupaMemoryIfEmpty(DBState.db.characters[charId].chats[chatIndex])
             markCharacterForSave(DBState.db.characters[charId]?.chaId)
@@ -780,7 +784,7 @@ async function setChatOfArchivedCharacter(chaId: string, chatIndex: number, chat
 
 function snapshotChat(chats: Chat[] | undefined, chatIndex: number) {
     if(chats && chats[chatIndex]){
-        return $state.snapshot(chats[chatIndex]);
+        return withoutAltChat($state.snapshot(chats[chatIndex]));
     }
     return null;
 }
@@ -884,10 +888,19 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         if(!await getPermission('db', 'periodically')){
             return null
         }
-        return oldApis.getChar()
+        const current = oldApis.getChar()
+        return current ? withoutAlt(current) : current
     }
     const setGatedChar = async (char:any) => {
         await requireDatabasePermission('setChar')
+        // A full character over the selected archived-character placeholder restores it first.
+        const selected = DBState.db.characters[get(selectedCharID)]
+        if(overwritesPlaceholder(selected, char)){
+            const problem = await restoreArchivedTargets([char.chaId])
+            if(problem !== null){
+                throw new Error(problem)
+            }
+        }
         setSelectedCharacter(char, plugin.name)
     }
     return {
@@ -1030,6 +1043,11 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 }
                 (liteDB as any)[key] = $state.snapshot((db as any)[key]);
             }
+            // The chats of the copy lose their alternatives; the live ones stay.
+            const copiedCharacters = (liteDB as { characters?: unknown }).characters
+            if(Array.isArray(copiedCharacters)){
+                withoutAltIn(copiedCharacters)
+            }
             // A plugin only ever receives full modules: each module stub in the
             // live list is loaded and its body copied into the same index of the copy.
             const copiedModules = (liteDB as { modules?: RisuModule[] }).modules
@@ -1147,14 +1165,23 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 // the placeholder.
                 const stored = db.characters[charId]
                 if(stored?.coldstorage){
-                    return readArchivedCopyOrThrow(stored)
+                    return readArchivedCopyOrThrow(stored).then((copy) => withoutAlt(copy))
                 }
-                return $state.snapshot(stored);
+                return withoutAlt($state.snapshot(stored));
             }
             return null;
         },
         setCharacterToIndex: async (index:number, char:any) => {
             await requireDatabasePermission('setCharacterToIndex')
+            // A full character over an archived-character placeholder restores it first; the slot is read
+            // again afterwards, because the list may have changed while the restore waited.
+            const slotBefore = DBState.db.characters[Object.keys(DBState.db.characters)[index]]
+            if(overwritesPlaceholder(slotBefore, char)){
+                const problem = await restoreArchivedTargets([char.chaId])
+                if(problem !== null){
+                    throw new Error(problem)
+                }
+            }
             const db = DBState.db
             const charIds = Object.keys(db.characters);
             const charId = charIds[index];
@@ -1168,9 +1195,14 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 if(problem !== null){
                     throw new Error(problem)
                 }
+                // A target put back into storage while the restore waited refuses the write.
+                if(overwritesPlaceholder(replaced, char)){
+                    throw new Error(placeholderAgainMessage(char.chaId))
+                }
                 fillMissingCharacterInstallIds(char)
                 warnIfCharacterChaIdDuplicated(db.characters, index, char?.chaId, replaced?.chaId, plugin.name)
                 warnIfCharacterInstallDuplicatesChatIds(char?.chats, char?.chaId, db.characters, replaced?.chats, plugin.name)
+                keepLiveAlt([replaced], [char])
                 DBState.db.characters[charId] = char
                 clearSupaMemoryIfEmptyIn([DBState.db.characters[charId]])
             }

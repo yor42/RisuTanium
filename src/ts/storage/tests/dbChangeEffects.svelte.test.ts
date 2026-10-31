@@ -1784,7 +1784,7 @@ describe('registerDbChangeEffects — selected-character partition rebuild count
         return DBState.db.characters[1] as unknown as Record<string, any>
     }
 
-    type PartitionRun = { kind: 'front' | 'char' | 'field' | 'chats' | 'chat' | 'message'; index?: number }
+    type PartitionRun = { kind: 'front' | 'char' | 'field' | 'chats' | 'chat' | 'message' | 'alt'; index?: number }
 
     function countKind(log: PartitionRun[], kind: PartitionRun['kind']): number {
         return log.filter((e) => e.kind === kind).length
@@ -1962,6 +1962,65 @@ describe('registerDbChangeEffects — selected-character partition rebuild count
         expect(countKind(log, 'chats')).toBe(0)
         expect(countKind(log, 'char')).toBe(0)
         expect(tracker.character[0]).toBe('char-1')
+    })
+
+    function altRecord(n: number): Record<string, unknown> {
+        return { m: makeMessage(`alt-${n}`), p: null, a: n + 1 }
+    }
+
+    // The alternatives of a chat are partitioned like its messages: one child per record, so a write inside one record
+    // re-runs that child alone and still marks the character, and the chat effect that holds the other fields is spared.
+    test("a write inside one alternative record: exactly one 'alt' run with its index, no chat run, and the character is marked", () => {
+        const { tracker, markChanged, log } = setupWithLog()
+        selectedChar().chats[0].alt = [altRecord(0), altRecord(1)]
+        flushSync()
+        log.length = 0
+        markChanged.mockClear()
+
+        selectedChar().chats[0].alt[1].m.data = 'edited alternative'
+        flushSync()
+
+        expect(log.filter((e) => e.kind === 'alt')).toEqual([{ kind: 'alt', index: 1 }])
+        expect(countKind(log, 'chat')).toBe(0)
+        expect(countKind(log, 'chats')).toBe(0)
+        expect(countKind(log, 'char')).toBe(0)
+        expect(countKind(log, 'message')).toBe(0)
+        expect(markChanged.mock.calls.some((call) => call[0] === true)).toBe(true)
+        expect(tracker.character[0]).toBe('char-1')
+    })
+
+    test("appending a record and giving a chat its first alternatives re-run that chat once and create the new 'alt' children", () => {
+        const { markChanged, log } = setupWithLog()
+
+        selectedChar().chats[0].alt = [altRecord(0)]
+        flushSync()
+        expect(log.filter((e) => e.kind === 'chat')).toEqual([{ kind: 'chat', index: 0 }])
+        expect(log.filter((e) => e.kind === 'alt')).toEqual([{ kind: 'alt', index: 0 }])
+        expect(markChanged).toHaveBeenCalled()
+
+        log.length = 0
+        markChanged.mockClear()
+        selectedChar().chats[0].alt.push(altRecord(1))
+        flushSync()
+        expect(log.filter((e) => e.kind === 'chat')).toEqual([{ kind: 'chat', index: 0 }])
+        expect(markChanged).toHaveBeenCalled()
+        expect(log.some((e) => e.kind === 'alt' && e.index === 1)).toBe(true)
+    })
+
+    // A value that is not a list is snapshotted whole by the chat effect, so narrowing never drops what it holds.
+    test('an alt that is not a list, mutated in place, still marks the character', () => {
+        const { markChanged, log } = setupWithLog()
+        selectedChar().chats[0].alt = { holder: { n: 1 } }
+        flushSync()
+        log.length = 0
+        markChanged.mockClear()
+
+        selectedChar().chats[0].alt.holder.n = 2
+        flushSync()
+
+        expect(countKind(log, 'chat')).toBe(1)
+        expect(countKind(log, 'alt')).toBe(0)
+        expect(markChanged.mock.calls.some((call) => call[0] === true)).toBe(true)
     })
 
     test('a message edited in a non-active chat: exactly one message run', () => {

@@ -43,6 +43,9 @@ export const languageKorean = {
             `보관된 캐릭터 ${characterName}을(를) 지금은 불러올 수 없습니다. 변경된 내용은 없습니다. 다시 시도하세요.`,
         "coldStorageRestoreUnavailable": "이 페이지에서는 보관된 캐릭터를 열 수 없습니다. 이 브라우저는 여기서 보관된 캐릭터를 위한 저장소를 제공하지 않습니다 (예: 일반 HTTP 주소). 변경된 내용은 없습니다.",
         "coldStorageRestoreDamaged": "이 캐릭터의 보관된 사본을 읽을 수 없습니다. 손상되었을 수 있습니다. 변경되거나 삭제된 내용은 없습니다.",
+        "coldStorageAltRepliesDropped": (characterName: string, chatNames: string) =>
+            `${characterName}의 다음 채팅에 있는 다른 답변을 읽을 수 없어 제외했습니다: ${chatNames}. 대화 자체는 온전히 불러왔습니다.`,
+        "chatAltUnreadable": "이 채팅의 다른 답변을 읽을 수 없어 재생성하거나 분기할 수 없습니다. 변경된 내용은 없습니다.",
         "coldStorageNamedRestoreUnavailable": (characterName: string) =>
             `보관된 캐릭터 ${characterName}을(를) 이 페이지에서는 열 수 없습니다. 이 브라우저는 여기서 보관된 캐릭터를 위한 저장소를 제공하지 않습니다 (예: 일반 HTTP 주소). 변경된 내용은 없습니다.`,
         "coldStorageNamedRestoreDamaged": (characterName: string) =>
@@ -1987,6 +1990,10 @@ export const languageKorean = {
         `${items.length}개 항목이 4 GiB 이상이라 백업 파일의 항목 하나에 담을 수 있는 크기를 넘으므로 해당 내용은 백업에 들어 있지 않습니다(캐릭터에는 자리 표시자만 남습니다):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `이 백업의 항목 ${count}개가 100 MiB보다 큽니다. 업스트림 RisuAI Node 서버는 이만큼 큰 항목을 복원할 수 없어, 이 백업을 그곳에서 복원하면 해당 항목을 건너뜁니다. 이 앱과 다른 플랫폼에서는 복원됩니다. 해당 항목을 포함하여 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "backupAlternativesConfirm": (count: number, names: string[]) =>
+        `채팅 ${count}개에 다른 답변이 있으며, 백업 파일에는 이를 담을 공간이 없어 이 백업에서 제외됩니다 (채팅과 메시지는 저장됩니다). 다른 답변은 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "backupAlternativesLeftOut": (count: number, names: string[]) =>
+        `백업이 진행되는 동안 채팅 ${count}개에서 다른 답변이 발견되었으며, 백업 파일에는 이를 담을 공간이 없어 백업에 포함되지 않았습니다 (채팅과 메시지는 저장됩니다):\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupReadyToSave": () =>
         "백업을 저장할 준비가 되었습니다. 저장을 시작하려면 확인을 누르세요.",
     "backupFailedNothingWritten": () =>
@@ -2270,6 +2277,7 @@ export const languageKorean = {
             : part === 'scripts' ? '캐릭터의 스크립트'
             : part === 'chat' ? '채팅'
             : part === 'chatPart' ? '채팅의 일부'
+            : part === 'chatAlternatives' ? '채팅의 다른 답변'
             : part === 'module' ? '모듈'
             : part === 'moduleList' ? '모듈 목록'
             : part === 'settings' ? '일반 설정'
@@ -2729,6 +2737,7 @@ export const languageKorean = {
         flaggedChatPosition: (position: number) => `채팅 ${position}`,
         flaggedChatId: (id: string) => `채팅 (ID ${id})`,
         flaggedChatLine: (chat: string, state: string, parts: number) => parts > 1 ? `${chat}: ${state} (${parts}개 부분)` : `${chat}: ${state}`,
+        flaggedChatAltLine: (chat: string, state: string) => `${chat}: 다른 답변 ${state}, 대화 자체는 온전합니다`,
         foreignTitle: "완료되지 않은 작업이 기록되어 있습니다",
         foreignBody: (operation: string, when: string) => `저장소에 기록된 작업(${operation}, ${when}에 시작)이 끝나지 않았습니다. 다른 RisuTanium 창이나 탭에서 아직 실행 중이라면 끝날 때까지 기다리세요. 기록을 지워도 저장된 데이터는 절대 삭제되지 않습니다.`,
         foreignWait: "기다리기",

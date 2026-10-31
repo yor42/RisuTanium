@@ -77,6 +77,11 @@ export interface ChatEntry {
     core: Ref
     /** Required, oldest to newest, the last is the tail; an empty chat has one chunk with count 0. */
     chunks: ChunkRef[]
+    /**
+     * Type 25 units holding the chat's alternatives, oldest record first; the count of each Ref is its record count.
+     * Present only when non-empty: an empty list is written as no field and read as none.
+     */
+    alt?: ChunkRef[]
 }
 
 export interface ShardEntry {
@@ -119,6 +124,23 @@ export interface ChatChunk {
     v: 1
     msgs: JsonObject[]
     st?: JsonObject
+}
+
+/**
+ * One alternative message of a chat: `m` the message, `p` the `chatId` of the message it follows (null: the root), `a`
+ * the departure stamp. The record is open: any other key travels untouched.
+ */
+export interface AltRecord {
+    m: JsonObject
+    p: string | null
+    a: number
+    [field: string]: JsonValue
+}
+
+/** Type 25: records in ascending departure order; never empty. */
+export interface ChatAltUnit {
+    v: 1
+    recs: AltRecord[]
 }
 
 export interface ModuleEntry {
@@ -229,5 +251,5 @@ export interface ContentBody {
 }
 
 export type UnitBody =
-    | CommitKey | Manifest | Shard | ChatCore | ChatChunk | ModuleIndex | AssetList
+    | CommitKey | Manifest | Shard | ChatCore | ChatChunk | ChatAltUnit | ModuleIndex | AssetList
     | LegacyList | InlayList | SweepRecord | FenceRecord | DeletionSnapshot | PluginBucket | ContentBody

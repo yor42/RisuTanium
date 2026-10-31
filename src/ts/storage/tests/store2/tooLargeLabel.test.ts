@@ -18,6 +18,7 @@ describe('the part a refused body was', () => {
         ['scripts', UNIT_TYPE.scripts, 'scripts'],
         ['chatCore', UNIT_TYPE.chatCore, 'chat'],
         ['chatChunk', UNIT_TYPE.chatChunk, 'chatPart'],
+        ['chatAlt', UNIT_TYPE.chatAlt, 'chatAlternatives'],
         ['module', UNIT_TYPE.module, 'module'],
         ['moduleIndex', UNIT_TYPE.moduleIndex, 'moduleList'],
         ['configRoot', UNIT_TYPE.configRoot, 'settings'],
@@ -39,7 +40,7 @@ describe('the part a refused body was', () => {
     })
 
     test('the table above covers every unit type of the format', () => {
-        expect(UNIT_TYPE_IDS).toHaveLength(24)
+        expect(UNIT_TYPE_IDS).toHaveLength(25)
         for (const type of UNIT_TYPE_IDS) {
             expect(tooLargePartOf('store2/example', type)).toBeTypeOf('string')
         }
@@ -65,6 +66,11 @@ describe('the words and the size of a refused body', () => {
         expect(tooLargeLabel(error)).toBe(language.saveUnitLabel('chatPart', 3 * MIB))
         expect(tooLargeLabel(error)).toBe('a part of a chat (3.0 MiB)')
         expect(tooLargeLabel(new Store2PayloadTooLargeError('413', COMMIT_KEY, MIB, null))).toBe('the save record (1.0 MiB)')
+    })
+
+    test('an alternatives unit is worded as the alternative replies of a chat', () => {
+        const error = new Store2PayloadTooLargeError('413', 'store2/example', 2 * MIB, UNIT_TYPE.chatAlt)
+        expect(tooLargeLabel(error)).toBe('the alternative replies of a chat (2.0 MiB)')
     })
 
     test('a size is rounded up to one decimal, never down to the limit it exceeds', () => {

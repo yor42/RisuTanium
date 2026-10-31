@@ -10,7 +10,7 @@ import { UNIT_TYPE, isKnownUnitType, type UnitType } from './format/versions'
 export type TooLargePart =
     | 'saveRecord' | 'saveIndex' | 'characterList' | 'character' | 'lorebook' | 'scripts' | 'chat' | 'chatPart'
     | 'module' | 'moduleList' | 'settings' | 'preset' | 'plugin' | 'pluginData' | 'fileList' | 'characterOrder'
-    | 'loadouts' | 'generic'
+    | 'loadouts' | 'chatAlternatives' | 'generic'
 
 /** Every unit type names one part; a new unit type does not compile until it is placed here. */
 const PART_OF_UNIT_TYPE: Record<UnitType, TooLargePart> = {
@@ -22,6 +22,7 @@ const PART_OF_UNIT_TYPE: Record<UnitType, TooLargePart> = {
     [UNIT_TYPE.scripts]: 'scripts',
     [UNIT_TYPE.chatCore]: 'chat',
     [UNIT_TYPE.chatChunk]: 'chatPart',
+    [UNIT_TYPE.chatAlt]: 'chatAlternatives',
     [UNIT_TYPE.module]: 'module',
     [UNIT_TYPE.moduleIndex]: 'moduleList',
     [UNIT_TYPE.configRoot]: 'settings',

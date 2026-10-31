@@ -1,11 +1,13 @@
 import type { JsonObject, JsonValue } from '../../blockFrame'
-import { canonicalJson, type ChatChunk, type ChatCore } from '../format'
+import { canonicalJson, isAltRecord, type AltRecord, type ChatAltUnit, type ChatChunk, type ChatCore } from '../format'
 import { defineOwn, isJsonObject, listOrEmpty, omitFields, pickFields, utf8Length } from './normalize'
 import { CodecAssembleError, CodecInputError } from './types'
 
 /**
  * Chats: a chat core (type 7) plus message chunks (type 8). The chunks are the
- * unit of change, so an appended message rewrites only the last one.
+ * unit of change, so an appended message rewrites only the last one. The
+ * alternatives of a chat (`alt`) are units of their own (type 25), so no reader
+ * can take an alternative record for a message or the other way round.
  */
 
 /**
@@ -23,9 +25,24 @@ export const TAIL_STATE_FIELDS = ['lastMemory', 'scriptstate', 'suggestMessages'
 /** Volatile chat fields, never stored. */
 export const VOLATILE_CHAT_FIELDS = ['isStreaming', 'activeStreamingDisplayOptimizationMode'] as const
 
-/** The chat fields the core holds: all but the messages, the tail state and the volatile fields. */
+/**
+ * Whether `value` is a list of alternative records (the empty list included). A value of any other shape is not
+ * interpreted: it stays a core field, travels unchanged and sets no token.
+ */
+export function isWellFormedAlt(value: JsonValue | undefined): value is AltRecord[] {
+    return Array.isArray(value) && value.every(record => isAltRecord(record))
+}
+
+/**
+ * The chat fields the core holds: all but the messages, the tail state, the volatile fields and a well-formed `alt`
+ * (the empty list included, which therefore encodes like an absent one).
+ */
 export function chatCoreFields(chat: JsonObject): JsonObject {
-    return omitFields(chat, ['message', ...TAIL_STATE_FIELDS, ...VOLATILE_CHAT_FIELDS])
+    const omitted: string[] = ['message', ...TAIL_STATE_FIELDS, ...VOLATILE_CHAT_FIELDS]
+    if (isWellFormedAlt(chat.alt)) {
+        omitted.push('alt')
+    }
+    return omitFields(chat, omitted)
 }
 
 /** The per-send fields of a chat that it has, or undefined when it has none. */
@@ -86,9 +103,11 @@ export function sealChunks(messages: readonly JsonObject[], cap: number = CHUNK_
 export interface SplitChat {
     core: ChatCore
     chunks: ChatChunk[]
+    /** The alternatives units, oldest record first; none when the chat has no alternatives. */
+    alt: ChatAltUnit[]
 }
 
-/** The chat core and chunk bodies of `chat` (a plain JSON object). `st` is written in the last chunk only. */
+/** The chat core, chunk bodies and alternatives units of `chat` (a plain JSON object). `st` is written in the last chunk only. */
 export function splitChat(chat: JsonObject, where: string, cap: number = CHUNK_CAP_BYTES): SplitChat {
     const groups = sealChunks(chatMessages(chat, where), cap)
     const st = tailState(chat)
@@ -99,13 +118,30 @@ export function splitChat(chat: JsonObject, where: string, cap: number = CHUNK_C
         }
         return body
     })
-    return { core: { v: 1, f: chatCoreFields(chat) }, chunks }
+    return { core: { v: 1, f: chatCoreFields(chat) }, chunks, alt: splitAlt(chat, cap) }
 }
 
-/** The chat the core and its chunks (oldest first) describe: `{ ...core.f, ...tail.st, message }`. */
-export function assembleChat(core: ChatCore, chunks: readonly ChatChunk[], where: string): JsonObject {
+/** The alternatives of `chat` sealed like its messages, in list order; a missing, empty or malformed `alt` gives none. */
+function splitAlt(chat: JsonObject, cap: number): ChatAltUnit[] {
+    if (!isWellFormedAlt(chat.alt) || chat.alt.length === 0) {
+        return []
+    }
+    const records = chat.alt.map(record => omitFields(record, []))
+    // Every record passed `isAltRecord`, and `sealChunks` keeps the objects it is given.
+    return sealChunks(records, cap).map((recs): ChatAltUnit => ({ v: 1, recs: recs as AltRecord[] }))
+}
+
+/**
+ * The chat the core, its chunks (oldest first) and its alternatives units describe:
+ * `{ ...core.f, ...tail.st, message, alt }`. `alt` is defined only when there are units; a core that also holds an
+ * `alt` field is inconsistent, because the writer takes a well-formed one out of the core.
+ */
+export function assembleChat(core: ChatCore, chunks: readonly ChatChunk[], where: string, alt: readonly ChatAltUnit[] = []): JsonObject {
     if (chunks.length === 0) {
         throw new CodecAssembleError(`${where} has no chunk.`)
+    }
+    if (alt.length > 0 && Object.hasOwn(core.f, 'alt')) {
+        throw new CodecAssembleError(`${where}: alternatives are held both in the core and in their own units.`)
     }
     const message: JsonObject[] = []
     chunks.forEach((chunk, index) => {
@@ -127,5 +163,8 @@ export function assembleChat(core: ChatCore, chunks: readonly ChatChunk[], where
         }
     }
     defineOwn(chat, 'message', message)
+    if (alt.length > 0) {
+        defineOwn(chat, 'alt', alt.flatMap(unit => unit.recs))
+    }
     return chat
 }

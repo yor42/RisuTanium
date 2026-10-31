@@ -1903,6 +1903,36 @@ export interface Chat{
     useLocallySetGlobalVariables?: boolean
     GLGlobalVariables?: { [key: string]: string }
     onboardingDone?: boolean
+    /**
+     * The messages that are not on the active path (`message`), oldest departure first. Absent when the chat has none;
+     * the store keeps them in units of their own (type 25) and an empty list saves exactly like an absent one.
+     */
+    alt?: ChatAlt[]
+}
+
+/**
+ * One message off the active path: `m` the message, `p` the `chatId` of the message it follows (null: the first
+ * message), `a` the departure stamp. The store round-trips any further key of the record untouched.
+ */
+export interface ChatAlt{
+    m: Message
+    p: string|null
+    a: number
+    /** The branch state parked when this record's chain was left; removed again on arrival. */
+    mem?: ChatAltMemory
+}
+
+/**
+ * The per-branch state of a departed chain, parked on its first record. A field that is absent was not parked;
+ * `null` parks "the chat had none".
+ */
+export interface ChatAltMemory{
+    supaMemoryData?: string|null
+    supaMemoryCoveredId?: string|null
+    lastMemory?: string|null
+    scriptstate?: {[key:string]:string|number|boolean}|null
+    hypaV2Data?: SerializableHypaV2Data|null
+    hypaV3Data?: SerializableHypaV3Data|null
 }
 
 export interface OnboardingOption{

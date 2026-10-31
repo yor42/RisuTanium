@@ -43,6 +43,9 @@ export const languageGerman = {
             `Der archivierte Charakter ${characterName} konnte gerade nicht geladen werden. Es wurde nichts verändert. Versuchen Sie es bitte erneut.`,
         "coldStorageRestoreUnavailable": "Archivierte Charaktere können auf dieser Seite nicht geöffnet werden: Dieser Browser bietet hier keinen Speicher dafür (zum Beispiel bei einer einfachen HTTP-Adresse). Es wurde nichts verändert.",
         "coldStorageRestoreDamaged": "Die archivierte Kopie dieses Charakters konnte nicht gelesen werden: Sie ist möglicherweise beschädigt. Es wurde nichts verändert oder gelöscht.",
+        "coldStorageAltRepliesDropped": (characterName: string, chatNames: string) =>
+            `Die alternativen Antworten der folgenden Chats von ${characterName} konnten nicht gelesen werden und wurden ausgelassen: ${chatNames}. Die Unterhaltungen selbst wurden unversehrt geladen.`,
+        "chatAltUnreadable": "Die alternativen Antworten dieses Chats können nicht gelesen werden, daher kann er nicht neu generiert oder verzweigt werden. Es wurde nichts verändert.",
         "coldStorageNamedRestoreUnavailable": (characterName: string) =>
             `Der archivierte Charakter ${characterName} kann auf dieser Seite nicht geöffnet werden: Dieser Browser bietet hier keinen Speicher für archivierte Charaktere (zum Beispiel bei einer einfachen HTTP-Adresse). Es wurde nichts verändert.`,
         "coldStorageNamedRestoreDamaged": (characterName: string) =>
@@ -1990,6 +1993,10 @@ export const languageGerman = {
         `${items.length} Element(e) sind 4 GiB oder größer, was mehr ist, als ein einzelner Eintrag einer Backup-Datei fassen kann, daher ist ihr Inhalt nicht im Backup enthalten (ein Charakter behält nur einen Platzhalter):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `${count} Element(e) in diesem Backup sind größer als 100 MiB. Ein Upstream-RisuAI-Node-Server kann ein so großes Element nicht wiederherstellen und würde es daher überspringen, wenn dieses Backup dort wiederhergestellt wird; diese App und die anderen Plattformen stellen es wieder her. Das Backup mit diesen Elementen erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "backupAlternativesConfirm": (count: number, names: string[]) =>
+        `${count} Chat(s) haben alternative Antworten, und eine Backup-Datei hat keinen Platz dafür, daher würden sie in diesem Backup fehlen (die Chats und ihre Nachrichten werden gespeichert). Die Alternativen bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "backupAlternativesLeftOut": (count: number, names: string[]) =>
+        `${count} Chat(s) hatten alternative Antworten, die während des Backups gefunden wurden, und eine Backup-Datei hat keinen Platz dafür, daher sind sie nicht im Backup enthalten (die Chats und ihre Nachrichten werden gespeichert):\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "backupReadyToSave": () =>
         "Das Backup ist bereit zum Speichern. Klicken Sie auf OK, um das Speichern zu starten.",
     "backupFailedNothingWritten": () =>
@@ -2272,6 +2279,7 @@ export const languageGerman = {
             : part === 'scripts' ? 'die Skripte eines Charakters'
             : part === 'chat' ? 'ein Chat'
             : part === 'chatPart' ? 'ein Teil eines Chats'
+            : part === 'chatAlternatives' ? 'die alternativen Antworten eines Chats'
             : part === 'module' ? 'ein Modul'
             : part === 'moduleList' ? 'Ihre Modulliste'
             : part === 'settings' ? 'Ihre allgemeinen Einstellungen'
@@ -2733,6 +2741,7 @@ export const languageGerman = {
         "flaggedChatPosition": (position: number) => `Chat ${position}`,
         "flaggedChatId": (id: string) => `Chat (ID ${id})`,
         "flaggedChatLine": (chat: string, state: string, parts: number) => parts > 1 ? `${chat}: ${state} (${parts} Teile)` : `${chat}: ${state}`,
+        "flaggedChatAltLine": (chat: string, state: string) => `${chat}: Die alternativen Antworten sind ${state}; die Unterhaltung selbst ist unversehrt`,
         "foreignTitle": "Ein unvollendeter Vorgang ist vermerkt",
         "foreignBody": (operation: string, when: string) => `Ein in Ihrem Speicher vermerkter Vorgang (${operation}, gestartet ${when}) wurde nie abgeschlossen. Wenn ein anderes RisuTanium-Fenster oder ein anderer Tab ihn noch ausführt, warten Sie. Das Löschen des Vermerks löscht niemals Ihre gespeicherten Daten.`,
         "foreignWait": "Warten",

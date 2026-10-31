@@ -3,7 +3,7 @@ import { getChatVar, getGlobalChatVar, setChatVar } from "../parser/chatVar.svel
 import { hasher, type simpleCharacterArgument, risuChatParser } from "../parser/parser.svelte";
 import { LuaEngine, LuaFactory } from "wasmoon";
 import luaWasmUrl from "wasmoon/dist/glue.wasm?url";
-import { getCurrentCharacter, getCurrentChat, getDatabase, setDatabase, type Chat, type character, type groupChat, type triggerscript } from "../storage/database.svelte";
+import { getCurrentCharacter, getCurrentChat, getDatabase, setDatabase, type Chat, type character, type Message, type groupChat, type triggerscript } from "../storage/database.svelte";
 import { get } from "svelte/store";
 import { ReloadChatPointer, ReloadGUIPointer, selectedCharID } from "../stores.svelte";
 import { alertSelect, alertError, alertInput, alertNormal, alertConfirm } from "../alert";
@@ -22,6 +22,7 @@ import { loadLoreBookV3Prompt, snapshotSubject } from './lorebook.svelte';
 import { getPersonaPrompt, getUserName, getUserIcon, parseKeyValue } from '../util';
 import { createRunSubject, type Origin, type RunSubject } from "./chatOrigin";
 import { clearSupaMemoryIfEmpty, withSupaRepoint } from "./memory/supaResume";
+import { clearAltOnFullClear, reattachOrphans } from "./chatTree";
 let luaFactory:LuaFactory
 let ScriptingSafeIds = new Set<string>()
 let ScriptingEditDisplayIds = new Set<string>()
@@ -436,13 +437,32 @@ export async function runScripted(code:string, arg:{
                     return
                 }
 
-                target.message = realValue.map((v) => {
-                    return {
+                // A rebuilt message at the same index with the same role and data is the same message: it keeps
+                // its id and time, so the alternatives that follow it stay attached.
+                const previousPath = target.message.slice()
+                target.message = realValue.map((v, index) => {
+                    const message:Message = {
                         role: v.role,
                         data: v.data
                     }
+                    const previous = previousPath[index]
+                    if(previous && previous.role === v.role && previous.data === v.data){
+                        if(previous.chatId !== undefined){
+                            message.chatId = previous.chatId
+                        }
+                        if(previous.time !== undefined){
+                            message.time = previous.time
+                        }
+                    }
+                    return message
                 })
                 clearSupaMemoryIfEmpty(target)
+                if(target.message.length === 0 && previousPath.length > 0){
+                    clearAltOnFullClear(target)
+                }
+                else{
+                    reattachOrphans(target, previousPath)
+                }
                 markWriteFor(ScriptingEngineState)
             })
 

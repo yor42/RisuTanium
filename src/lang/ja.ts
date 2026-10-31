@@ -48,6 +48,9 @@ export const languageJapanese = {
             `アーカイブされたキャラクター ${characterName} は現在読み込めません。何も変更されていません。もう一度お試しください。`,
         coldStorageRestoreUnavailable: "アーカイブされたキャラクターはこのページでは開けません：このブラウザではここでのストレージが提供されていません（例：通常のHTTPアドレスなど）。何も変更されていません。",
         coldStorageRestoreDamaged: "このキャラクターのアーカイブされたコピーを読み込めませんでした：破損している可能性があります。何も変更または削除されていません。",
+        coldStorageAltRepliesDropped: (characterName: string, chatNames: string) =>
+            `${characterName}の次のチャットの代替の返信を読み込めなかったため、除外しました：${chatNames}。会話自体は問題なく読み込まれています。`,
+        chatAltUnreadable: "このチャットの代替の返信を読み込めないため、再生成やブランチ作成はできません。何も変更されていません。",
         coldStorageNamedRestoreUnavailable: (characterName: string) =>
             `アーカイブされたキャラクター ${characterName} はこのページでは開けません：このブラウザではアーカイブされたキャラクター用のストレージが提供されていません（例：通常のHTTPアドレスなど）。何も変更されていません。`,
         coldStorageNamedRestoreDamaged: (characterName: string) =>
@@ -2126,6 +2129,10 @@ export const languageJapanese = {
         `${items.length}件の項目が4 GiB以上あり、バックアップファイルの1エントリに収まる容量を超えているため、それらの内容はバックアップに含まれていません（キャラクターにはプレースホルダーのみが残ります）：\n\n${items.join('\n')}`,
     backupUpstreamOversizeConfirm: (count: number, names: string[]) =>
         `このバックアップ内の${count}件の項目が100 MiBを超えています。アップストリームのRisuAI Nodeサーバーはこれほど大きな項目を復元できないため、そちらでこのバックアップを復元するとそれらはスキップされます。このアプリや他のプラットフォームでは復元可能です。これらを含めてバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,
+    backupAlternativesConfirm: (count: number, names: string[]) =>
+        `${count}件のチャットに代替の返信がありますが、バックアップファイルにはそれらを格納する場所がないため、このバックアップには含まれません（チャットとメッセージは保存されます）。代替の返信はこのアプリに残り、バックアップにのみ含まれません。これらを除外してバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,
+    backupAlternativesLeftOut: (count: number, names: string[]) =>
+        `バックアップの実行中に、${count}件のチャットで代替の返信が見つかりました。バックアップファイルにはそれらを格納する場所がないため、バックアップには含まれていません（チャットとメッセージは保存されます）：\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,
     backupReadyToSave: () =>
         "バックアップを保存する準備ができました。保存を開始するにはOKを押してください。",
     backupFailedNothingWritten: () =>
@@ -2411,6 +2418,7 @@ export const languageJapanese = {
             : part === 'scripts' ? 'キャラクターのスクリプト'
             : part === 'chat' ? 'チャット'
             : part === 'chatPart' ? 'チャットの一部'
+            : part === 'chatAlternatives' ? 'チャットの代替の返信'
             : part === 'module' ? 'モジュール'
             : part === 'moduleList' ? 'モジュールリスト'
             : part === 'settings' ? '全般設定'
@@ -2882,6 +2890,7 @@ export const languageJapanese = {
         flaggedChatPosition: (position: number) => `チャット ${position}`,
         flaggedChatId: (id: string) => `チャット (id ${id})`,
         flaggedChatLine: (chat: string, state: string, parts: number) => parts > 1 ? `${chat}: ${state} (${parts}個の部分)` : `${chat}: ${state}`,
+        flaggedChatAltLine: (chat: string, state: string) => `${chat}: 代替の返信が${state}しています。会話自体は無事です`,
         foreignTitle: "未完了の操作が記録されています",
         foreignBody: (operation: string, when: string) => `ストレージに記録された操作（${operation}、${when}に開始）が完了していません。別のRisuTaniumウィンドウまたはタブでまだ実行中の場合は、完了するまでお待ちください。記録を消去しても、保存されたデータが削除されることはありません。`,
         foreignWait: "待機",

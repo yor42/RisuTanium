@@ -48,6 +48,9 @@ export const languageEnglish = {
             `The archived character ${characterName} could not be loaded right now. Nothing was changed. Please try again.`,
         coldStorageRestoreUnavailable: "Archived characters can't be opened on this page: this browser offers no storage for them here (for example on a plain-HTTP address). Nothing was changed.",
         coldStorageRestoreDamaged: "This character's archived copy could not be read: it may be damaged. Nothing was changed or deleted.",
+        coldStorageAltRepliesDropped: (characterName: string, chatNames: string) =>
+            `The alternative replies of these chats of ${characterName} could not be read and were left out: ${chatNames}. The conversations themselves were loaded intact.`,
+        chatAltUnreadable: "The alternative replies of this chat cannot be read, so it cannot be rerolled or branched. Nothing was changed.",
         coldStorageNamedRestoreUnavailable: (characterName: string) =>
             `The archived character ${characterName} can't be opened on this page: this browser offers no storage for archived characters here (for example on a plain-HTTP address). Nothing was changed.`,
         coldStorageNamedRestoreDamaged: (characterName: string) =>
@@ -2126,6 +2129,10 @@ export const languageEnglish = {
         `${items.length} item(s) are 4 GiB or more, which is more than one entry of a backup file can hold, so their content is not in the backup (a character keeps only a placeholder):\n\n${items.join('\n')}`,
     backupUpstreamOversizeConfirm: (count: number, names: string[]) =>
         `${count} item(s) in this backup are larger than 100 MiB. An upstream RisuAI Node server cannot restore an item that large, so it would skip them when this backup is restored there; this app and the other platforms restore them. Create the backup with them included? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    backupAlternativesConfirm: (count: number, names: string[]) =>
+        `${count} chat(s) have alternative replies, and a backup file has no place for them, so they would be left out of this backup (the chats and their messages are saved). The alternatives stay in this app; only the backup lacks them. Create the backup without them? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    backupAlternativesLeftOut: (count: number, names: string[]) =>
+        `${count} chat(s) had alternative replies that were found while the backup ran, and a backup file has no place for them, so they are not in the backup (the chats and their messages are saved):\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     backupReadyToSave: () =>
         "The backup is ready to save. Press OK to start saving it.",
     backupFailedNothingWritten: () =>
@@ -2411,6 +2418,7 @@ export const languageEnglish = {
             : part === 'scripts' ? 'the scripts of a character'
             : part === 'chat' ? 'a chat'
             : part === 'chatPart' ? 'a part of a chat'
+            : part === 'chatAlternatives' ? 'the alternative replies of a chat'
             : part === 'module' ? 'a module'
             : part === 'moduleList' ? 'your module list'
             : part === 'settings' ? 'your general settings'
@@ -2882,6 +2890,7 @@ export const languageEnglish = {
         flaggedChatPosition: (position: number) => `chat ${position}`,
         flaggedChatId: (id: string) => `chat (id ${id})`,
         flaggedChatLine: (chat: string, state: string, parts: number) => parts > 1 ? `${chat}: ${state} (${parts} parts)` : `${chat}: ${state}`,
+        flaggedChatAltLine: (chat: string, state: string) => `${chat}: its alternative replies are ${state}; the conversation itself is intact`,
         foreignTitle: "An unfinished operation is recorded",
         foreignBody: (operation: string, when: string) => `An operation recorded in your storage (${operation}, started ${when}) never finished. If another RisuTanium window or tab is still running it, wait for it. Clearing the record never deletes your saved data.`,
         foreignWait: "Wait",

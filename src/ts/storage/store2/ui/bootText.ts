@@ -8,7 +8,7 @@ import type { IncompleteItem } from '../legacy/resolve'
 import type { FlaggedItem } from '../leafFallback'
 import type { ScreenOffers } from '../recovery'
 import type { MissingCounts, PickProblem } from '../recoveryPick'
-import type { CharacterPart } from '../treeBytes'
+import type { CharacterPart, ChatPart } from '../treeBytes'
 
 /**
  * The text and shape of every boot screen, as plain data. A screen is a model (title, paragraphs, lists of names,
@@ -205,7 +205,7 @@ function flaggedChatLabel(chatId: string): string {
 interface FlaggedGroup {
     name: string
     parts: Map<CharacterPart, Set<FlaggedState>>
-    chats: Map<string, { count: number, states: Set<FlaggedState> }>
+    chats: Map<string, { count: number, states: Set<FlaggedState>, parts: Set<ChatPart> }>
 }
 
 /** The damaged or missing parts, one list per character: its own parts by name, then its chats, several parts of one chat as one row. */
@@ -224,9 +224,10 @@ export function flaggedLists(items: readonly FlaggedItem[]): BootList[] {
             states.add(item.why)
             group.parts.set(item.part, states)
         } else {
-            const row = group.chats.get(item.chatId) ?? { count: 0, states: new Set<FlaggedState>() }
+            const row = group.chats.get(item.chatId) ?? { count: 0, states: new Set<FlaggedState>(), parts: new Set<ChatPart>() }
             row.count += 1
             row.states.add(item.why)
+            row.parts.add(item.part)
             group.chats.set(item.chatId, row)
         }
     }
@@ -235,7 +236,10 @@ export function flaggedLists(items: readonly FlaggedItem[]): BootList[] {
         heading: displayName(group.name, chaId),
         items: [
             ...[...group.parts].map(([part, states]) => text.flaggedPartLine(flaggedPartName(part), flaggedStateText(states))),
-            ...[...group.chats].map(([chatId, row]) => text.flaggedChatLine(flaggedChatLabel(chatId), flaggedStateText(row.states), row.count)),
+            // The conversation is stated intact only when every flag of the chat is an alternatives unit.
+            ...[...group.chats].map(([chatId, row]) => row.parts.size === 1 && row.parts.has('alt')
+                ? text.flaggedChatAltLine(flaggedChatLabel(chatId), flaggedStateText(row.states))
+                : text.flaggedChatLine(flaggedChatLabel(chatId), flaggedStateText(row.states), row.count)),
         ],
     }))
 }

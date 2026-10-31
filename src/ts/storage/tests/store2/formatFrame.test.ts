@@ -23,7 +23,7 @@ describe('frame encode', () => {
 
     test('an unknown type is refused by the writer', () => {
         expect(() => encodeFrame(0 as UnitType, TEXT.encode(PAYLOAD))).toThrow(RangeError)
-        expect(() => encodeFrame(25 as UnitType, TEXT.encode(PAYLOAD))).toThrow(RangeError)
+        expect(() => encodeFrame(99 as UnitType, TEXT.encode(PAYLOAD))).toThrow(RangeError)
     })
 })
 
@@ -48,7 +48,7 @@ describe('frame decode: too-new is never damaged', () => {
         ['fmt 2', { fmt: 2 }, 1],
         ['fmt 255', { fmt: 255 }, 1],
         ['type 0', {}, 0],
-        ['type 25', {}, 25],
+        ['type 99', {}, 99],
         ['type 255', {}, 255],
     ])('valid header CRC with %s is too-new', (_name, header, type) => {
         expect(decodeFrame(oracleFrame(type, PAYLOAD, header)).status).toBe('too-new')

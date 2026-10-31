@@ -11,6 +11,7 @@ import { isComposerWindowOpen } from "./generationOwnership.svelte";
 import { LOW_LEVEL_NESTED_TRIGGER_LIMIT, NORMAL_NESTED_TRIGGER_LIMIT } from "./triggerLimits";
 import { language } from "src/lang";
 import { clearSupaMemoryIfEmpty, withSupaRepoint } from "./memory/supaResume";
+import { clearAltOnFullClear } from "./chatTree";
 
 /**
  * What a command line runs against. Every field is fixed when the line
@@ -292,8 +293,12 @@ async function processCommand(command:string, pipe:string, ctx:CommandContext, s
                     break
                 }
                 if(clearMode){
+                    const hadMessages = target.chat.message.length > 0
                     target.chat.message = []
                     clearSupaMemoryIfEmpty(target.chat)
+                    if(hadMessages){
+                        clearAltOnFullClear(target.chat)
+                    }
                 }
                 target.chat.message.push({
                     role: 'user',

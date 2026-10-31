@@ -2,14 +2,14 @@ import type { JsonObject } from '../blockFrame'
 import { isStore2Key } from '../store/keyRules'
 import { Store2BackendError } from './backend/errors'
 import type { Store2Backend } from './backend/types'
-import { checkUnit, chunkCountMismatch, type UnitCheck } from './codec/assemble'
+import { bodyCountMismatch, checkUnit, type UnitCheck } from './codec/assemble'
 import type { ConfigBody, PluginBody } from './codec/bodies'
 import { moduleHandles } from './codec/modules'
 import type { UnitSource } from './codec/types'
 import { classifyCommitRead } from './commitKey'
 import {
     keyOfRef, readUnit, UNIT_TYPE,
-    type ChatChunk, type Manifest, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType,
+    type Manifest, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitBody, type UnitType,
 } from './format'
 import type { StoredTree } from './previousOfTree'
 import { checkManifestKey, readBatch } from './tree'
@@ -33,8 +33,11 @@ import { checkManifestKey, readBatch } from './tree'
 
 export type CharacterPart = 'core' | 'lore' | 'scripts' | 'al' | 'il'
 
+/** The unit of a chat a flag names: its core, a message chunk, or an alternatives unit. */
+export type ChatPart = 'core' | 'chunk' | 'alt'
+
 export type FlaggedLeaf =
-    | { kind: 'chat', chaId: string, chatId: string, part: 'core' | 'chunk', key: string, why: 'missing' | 'damaged' }
+    | { kind: 'chat', chaId: string, chatId: string, part: ChatPart, key: string, why: 'missing' | 'damaged' }
     | { kind: 'character-part', chaId: string, part: CharacterPart, key: string, why: 'missing' | 'damaged' }
 
 export type TreeBytesRead =
@@ -101,8 +104,8 @@ interface Wanted {
     ref: Ref
     type: UnitType
     role: Role
-    /** Chat chunks only: the message count the Ref holds is checked against the body. */
-    chunk: boolean
+    /** Chat chunks and alternatives units only: the type whose item count the Ref holds, checked against the body. */
+    count: UnitType | null
 }
 
 interface Findings {
@@ -191,13 +194,13 @@ function checkWanted(wanted: readonly Wanted[], reader: ByteReader, findings: Fi
     return bodies
 }
 
-/** The second half of `checkWanted`, run once the chunk bodies are known: a chunk of the wrong message count is damaged. */
+/** The second half of `checkWanted`, run once the bodies are known: a chunk or alternatives unit of the wrong item count is damaged. */
 function checkChunkCounts(wanted: readonly Wanted[], bodies: Map<string, unknown>, reader: ByteReader, findings: Findings): void {
     for (const item of wanted) {
         const key = keyOfRef(item.ref)
         const body = bodies.get(key)
-        if (item.chunk && body !== undefined && chunkCountMismatch(body as ChatChunk, item.ref)) {
-            record(findings, item, key, { status: 'damaged', reason: 'The chunk holds a different number of messages than its Ref says.', byRef: false }, reader.bytes)
+        if (item.count !== null && body !== undefined && bodyCountMismatch(item.count, body as UnitBody, item.ref)) {
+            record(findings, item, key, { status: 'damaged', reason: 'The unit holds a different number of items than its Ref says.', byRef: false }, reader.bytes)
             bodies.delete(key)
         }
     }
@@ -241,17 +244,17 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
     }
 
     const fixedUnits: Wanted[] = [
-        { ref: manifest.fixed.config, type: UNIT_TYPE.configRoot, role: fixed, chunk: false },
-        { ref: manifest.fixed.configAl, type: UNIT_TYPE.assetList, role: fixed, chunk: false },
-        { ref: manifest.fixed.il, type: UNIT_TYPE.inlayList, role: fixed, chunk: false },
-        { ref: manifest.fixed.statics, type: UNIT_TYPE.statics, role: fixed, chunk: false },
-        { ref: manifest.fixed.order, type: UNIT_TYPE.order, role: fixed, chunk: false },
-        { ref: manifest.fixed.loadouts, type: UNIT_TYPE.loadouts, role: fixed, chunk: false },
-        { ref: manifest.fixed.moduleIndex, type: UNIT_TYPE.moduleIndex, role: fixed, chunk: false },
-        ...manifest.fixed.presets.map((ref): Wanted => ({ ref, type: UNIT_TYPE.preset, role: fixed, chunk: false })),
-        ...manifest.fixed.plugins.map((ref): Wanted => ({ ref, type: UNIT_TYPE.plugin, role: fixed, chunk: false })),
-        ...manifest.fixed.pluginStorage.refs.map((ref): Wanted => ({ ref, type: UNIT_TYPE.pluginStorageBucket, role: fixed, chunk: false })),
-        ...manifest.shards.map((ref): Wanted => ({ ref, type: UNIT_TYPE.shard, role: fixed, chunk: false })),
+        { ref: manifest.fixed.config, type: UNIT_TYPE.configRoot, role: fixed, count: null },
+        { ref: manifest.fixed.configAl, type: UNIT_TYPE.assetList, role: fixed, count: null },
+        { ref: manifest.fixed.il, type: UNIT_TYPE.inlayList, role: fixed, count: null },
+        { ref: manifest.fixed.statics, type: UNIT_TYPE.statics, role: fixed, count: null },
+        { ref: manifest.fixed.order, type: UNIT_TYPE.order, role: fixed, count: null },
+        { ref: manifest.fixed.loadouts, type: UNIT_TYPE.loadouts, role: fixed, count: null },
+        { ref: manifest.fixed.moduleIndex, type: UNIT_TYPE.moduleIndex, role: fixed, count: null },
+        ...manifest.fixed.presets.map((ref): Wanted => ({ ref, type: UNIT_TYPE.preset, role: fixed, count: null })),
+        ...manifest.fixed.plugins.map((ref): Wanted => ({ ref, type: UNIT_TYPE.plugin, role: fixed, count: null })),
+        ...manifest.fixed.pluginStorage.refs.map((ref): Wanted => ({ ref, type: UNIT_TYPE.pluginStorageBucket, role: fixed, count: null })),
+        ...manifest.shards.map((ref): Wanted => ({ ref, type: UNIT_TYPE.shard, role: fixed, count: null })),
     ]
     const first = await readAndCheck(fixedUnits)
     if (first.status === 'unreadable') {
@@ -264,7 +267,7 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
     for (const ref of manifest.fixed.pluginStorage.refs) {
         const bucket = first.bodies.get(keyOfRef(ref)) as PluginBucket | undefined
         for (const entry of bucket?.entries ?? []) {
-            second.push({ ref: entry.ref, type: UNIT_TYPE.pluginStorageValue, role: fixed, chunk: false })
+            second.push({ ref: entry.ref, type: UNIT_TYPE.pluginStorageValue, role: fixed, count: null })
         }
     }
     const shards = manifest.shards.map(ref => first.bodies.get(keyOfRef(ref)) as Shard | undefined)
@@ -291,10 +294,10 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
         if (residentModules !== null && !residentModules.has(moduleHandleList[position])) {
             continue
         }
-        second.push({ ref: entry.unit, type: UNIT_TYPE.module, role: fixed, chunk: false })
-        second.push({ ref: entry.al, type: UNIT_TYPE.assetList, role: fixed, chunk: false })
+        second.push({ ref: entry.unit, type: UNIT_TYPE.module, role: fixed, count: null })
+        second.push({ ref: entry.al, type: UNIT_TYPE.assetList, role: fixed, count: null })
         if (entry.il !== null) {
-            second.push({ ref: entry.il, type: UNIT_TYPE.inlayList, role: fixed, chunk: false })
+            second.push({ ref: entry.il, type: UNIT_TYPE.inlayList, role: fixed, count: null })
         }
     }
     for (const shard of shards) {
@@ -329,10 +332,15 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
 }
 
 export type EntityBytesRead =
-    /** Every unit of the entity checked; `source` holds their bytes and `bytes` is their total length. */
-    | { status: 'ok', source: UnitSource, bytes: number }
-    /** A unit is absent or damaged (a flag of the boot read, whatever its role). */
+    /**
+     * Every unit of the entity checked, except that an alternatives unit may be absent or damaged: `source` holds the
+     * bytes of the units that checked, `bytes` is their total length, and `droppedAlt` lists the alternatives units left out.
+     */
+    | { status: 'ok', source: UnitSource, bytes: number, droppedAlt: readonly FlaggedLeaf[] }
+    /** A unit other than an alternatives unit is absent or damaged (a flag of the boot read, whatever its role). */
     | { status: 'damaged', flagged: readonly FlaggedLeaf[], reason: string }
+    /** Alternatives units were to be dropped, but the commit key no longer names the tree the entry came from: nothing is read as damage. */
+    | { status: 'moved' }
     | { status: 'too-new', keys: string[], reason: string }
     /** The backend failed: nothing is known about the entity. */
     | { status: 'unreadable', cause: Store2BackendError }
@@ -340,9 +348,14 @@ export type EntityBytesRead =
 /**
  * Reads the units of one entity for a load. It judges them as the boot read judges the leaves of a resident entity
  * (the same check and the same flags), but an entity that is opened as a whole cannot go on without a part: any
- * absent or damaged unit makes the read `damaged`, with no fallback and no partial result.
+ * absent or damaged unit makes the read `damaged`, with no fallback and no partial result. The one exception is an
+ * alternatives unit: the conversation opens without it, which `droppedAlt` reports. `manifestKey` is the manifest of the
+ * encoding the entry came from; with it, a read that drops alternatives first confirms that the commit key still names
+ * that manifest, because a moved key is a peer commit or a collection pass, not damage.
  */
-export async function readEntityBytes(backend: Store2Backend, entry: ShardEntry, options: { yield?: () => Promise<void> } = {}): Promise<EntityBytesRead> {
+export async function readEntityBytes(
+    backend: Store2Backend, entry: ShardEntry, options: { yield?: () => Promise<void>, manifestKey?: string } = {},
+): Promise<EntityBytesRead> {
     const reader = createByteReader(backend, options.yield)
     const wanted = leavesOf(entry)
     const loaded = await reader.load(wanted.map(item => keyOfRef(item.ref)))
@@ -354,15 +367,19 @@ export async function readEntityBytes(backend: Store2Backend, entry: ShardEntry,
     if (findings.tooNew.length > 0) {
         return { status: 'too-new', keys: findings.tooNew, reason: findings.tooNewReason }
     }
-    if (findings.flagged.length > 0) {
-        const first = findings.flagged[0]
+    const droppedAlt = findings.flagged.filter(leaf => leaf.kind === 'chat' && leaf.part === 'alt')
+    if (findings.flagged.length > droppedAlt.length) {
+        const first = findings.flagged.find(leaf => !droppedAlt.includes(leaf)) ?? findings.flagged[0]
         return { status: 'damaged', flagged: findings.flagged, reason: first.why === 'missing' ? `${first.key} is missing.` : `${first.key} is damaged.` }
+    }
+    if (droppedAlt.length > 0 && options.manifestKey !== undefined && !await commitNames(backend, options.manifestKey)) {
+        return { status: 'moved' }
     }
     let total = 0
     for (const unit of reader.bytes.values()) {
         total += unit.length
     }
-    return { status: 'ok', source: reader.source, bytes: total }
+    return { status: 'ok', source: reader.source, bytes: total, droppedAlt }
 }
 
 export type ModuleBytesRead =
@@ -430,23 +447,26 @@ export async function readModuleBytes(backend: Store2Backend, entry: ModuleEntry
 function leavesOf(entry: ShardEntry): Wanted[] {
     const part = (name: CharacterPart) => (key: string, why: Why): FlaggedLeaf => ({ kind: 'character-part', chaId: entry.chaId, part: name, key, why })
     const wanted: Wanted[] = [
-        { ref: entry.core, type: UNIT_TYPE.characterCore, role: { kind: 'leaf', flag: part('core') }, chunk: false },
+        { ref: entry.core, type: UNIT_TYPE.characterCore, role: { kind: 'leaf', flag: part('core') }, count: null },
     ]
     if (entry.lore !== null) {
-        wanted.push({ ref: entry.lore, type: UNIT_TYPE.lore, role: { kind: 'leaf', flag: part('lore') }, chunk: false })
+        wanted.push({ ref: entry.lore, type: UNIT_TYPE.lore, role: { kind: 'leaf', flag: part('lore') }, count: null })
     }
     if (entry.scripts !== null) {
-        wanted.push({ ref: entry.scripts, type: UNIT_TYPE.scripts, role: { kind: 'leaf', flag: part('scripts') }, chunk: false })
+        wanted.push({ ref: entry.scripts, type: UNIT_TYPE.scripts, role: { kind: 'leaf', flag: part('scripts') }, count: null })
     }
-    wanted.push({ ref: entry.al, type: UNIT_TYPE.assetList, role: { kind: 'leaf', flag: part('al') }, chunk: false })
+    wanted.push({ ref: entry.al, type: UNIT_TYPE.assetList, role: { kind: 'leaf', flag: part('al') }, count: null })
     if (entry.il !== null) {
-        wanted.push({ ref: entry.il, type: UNIT_TYPE.inlayList, role: { kind: 'leaf', flag: part('il') }, chunk: false })
+        wanted.push({ ref: entry.il, type: UNIT_TYPE.inlayList, role: { kind: 'leaf', flag: part('il') }, count: null })
     }
     for (const chat of entry.chats) {
-        const flag = (chatPart: 'core' | 'chunk') => (key: string, why: Why): FlaggedLeaf => ({ kind: 'chat', chaId: entry.chaId, chatId: chat.cid, part: chatPart, key, why })
-        wanted.push({ ref: chat.core, type: UNIT_TYPE.chatCore, role: { kind: 'leaf', flag: flag('core') }, chunk: false })
+        const flag = (chatPart: ChatPart) => (key: string, why: Why): FlaggedLeaf => ({ kind: 'chat', chaId: entry.chaId, chatId: chat.cid, part: chatPart, key, why })
+        wanted.push({ ref: chat.core, type: UNIT_TYPE.chatCore, role: { kind: 'leaf', flag: flag('core') }, count: null })
         for (const ref of chat.chunks) {
-            wanted.push({ ref, type: UNIT_TYPE.chatChunk, role: { kind: 'leaf', flag: flag('chunk') }, chunk: true })
+            wanted.push({ ref, type: UNIT_TYPE.chatChunk, role: { kind: 'leaf', flag: flag('chunk') }, count: UNIT_TYPE.chatChunk })
+        }
+        for (const ref of chat.alt ?? []) {
+            wanted.push({ ref, type: UNIT_TYPE.chatAlt, role: { kind: 'leaf', flag: flag('alt') }, count: UNIT_TYPE.chatAlt })
         }
     }
     return wanted
@@ -487,6 +507,11 @@ function record(findings: Findings, item: Wanted, key: string, checked: UnitChec
  * throws `CommitKeyRecheckError`, which is neither `moved` nor damage.
  */
 async function recheck(backend: Store2Backend, manifestKey: string, finding: TreeBytesRead): Promise<TreeBytesRead> {
+    return await commitNames(backend, manifestKey) ? finding : { status: 'moved' }
+}
+
+/** Whether the commit key, read again now, still names `manifestKey` as `current`. A failed read throws `CommitKeyRecheckError`. */
+async function commitNames(backend: Store2Backend, manifestKey: string): Promise<boolean> {
     let bytes: Uint8Array | null
     try {
         bytes = (await backend.readCommit()).bytes
@@ -497,8 +522,5 @@ async function recheck(backend: Store2Backend, manifestKey: string, finding: Tre
         throw error
     }
     const parsed = classifyCommitRead({ bytes })
-    if (parsed.status === 'parsed' && parsed.value.current?.key === manifestKey) {
-        return finding
-    }
-    return { status: 'moved' }
+    return parsed.status === 'parsed' && parsed.value.current?.key === manifestKey
 }

@@ -67,6 +67,7 @@ const PATH_TYPES: Readonly<Record<string, UnitType>> = {
     'entries[].il': UNIT_TYPE.inlayList,
     'entries[].chats[].core': UNIT_TYPE.chatCore,
     'entries[].chats[].chunks[]': UNIT_TYPE.chatChunk,
+    'entries[].chats[].alt[]': UNIT_TYPE.chatAlt,
     'entries[].unit': UNIT_TYPE.module,
     'entries[].ref': UNIT_TYPE.pluginStorageValue,
 }

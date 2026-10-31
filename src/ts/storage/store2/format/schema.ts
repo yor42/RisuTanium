@@ -6,7 +6,7 @@ import { isOldDataKey, isSnapshotUnitKey, isStagingPrefix } from './keys'
 import { encodeCanonicalJson } from './canonicalJson'
 import {
     DELETION_SNAPSHOT_KINDS, STAGING_LABELS,
-    type AssetList, type ChatChunk, type ChatCore, type ChatEntry, type ChunkRef, type CommitKey, type ContentBody,
+    type AltRecord, type AssetList, type ChatAltUnit, type ChatChunk, type ChatCore, type ChatEntry, type ChunkRef, type CommitKey, type ContentBody,
     type DeletionSnapshot, type DeletionSnapshotKind, type FenceRecord, type InlayList, type LegacyKeepFile, type LegacyList, type ListRef, type Manifest, type ModuleEntry,
     type ModuleIndex, type PluginBucket, type Ref, type Shard, type SnapshotPointer, type ShardEntry, type StagingLabel, type SweepRecord,
     type UnitBody,
@@ -79,7 +79,7 @@ export const KNOWN_FIELDS = {
         'u', 'type', 'name', 'image', 'chaId', 'lastInteraction', 'trashTime', 'characters', 'creatorNotes', 'chatPage',
         'firstMsgIndex', 'tags', 'creator', 'core', 'lore', 'scripts', 'al', 'il', 'dsp', 'chats',
     ],
-    chatEntry: ['cid', 'core', 'chunks'],
+    chatEntry: ['cid', 'core', 'chunks', 'alt'],
     moduleIndex: ['v', 'entries'],
     moduleEntry: ['id', 'unit', 'al', 'il', 'name', 'description', 'namespace', 'icon', 'hideIcon', 'lowLevelAccess', 'mcp', 'hasToggle', 'dsp'],
     fenceRecord: ['v', 'at', 'priorCommits', 'keys', 'priorFences'],
@@ -413,7 +413,15 @@ function readChatEntry(value: JsonValue, where: string): ChatEntry {
     if (chunks.length === 0) {
         bad(`${where}.chunks is empty: every chat has at least one chunk.`)
     }
-    return { ...extras(o, KNOWN_FIELDS.chatEntry), cid: str(o.cid, `${where}.cid`), core: readTailedRef(o.core, `${where}.core`), chunks }
+    const entry: ChatEntry = { ...extras(o, KNOWN_FIELDS.chatEntry), cid: str(o.cid, `${where}.cid`), core: readTailedRef(o.core, `${where}.core`), chunks }
+    // An empty list reads as none: the writer never emits one, and a hand-written shard that does means no alternatives.
+    if (o.alt !== undefined) {
+        const alt = arr(o.alt, `${where}.alt`).map((unit, index) => readChunkRef(unit, `${where}.alt[${index}]`))
+        if (alt.length > 0) {
+            entry.alt = alt
+        }
+    }
+    return entry
 }
 
 function readShardEntry(value: JsonValue, where: string): ShardEntry {
@@ -495,6 +503,35 @@ export function parseChatChunk(value: JsonValue): Parsed<ChatChunk> {
             chunk.st = obj(raw.st, 'st')
         }
         return chunk
+    })
+}
+
+/**
+ * Whether `value` is an alternative record: `m` an object, `p` a string or null, `a` a finite number. Any other key is
+ * allowed and travels untouched, so a later build can add record fields without a format step.
+ */
+export function isAltRecord(value: JsonValue | undefined): value is AltRecord {
+    if (!isPlainObject(value)) {
+        return false
+    }
+    return isPlainObject(value.m) && (value.p === null || typeof value.p === 'string') && typeof value.a === 'number' && Number.isFinite(value.a)
+}
+
+/** Type 25: a non-empty list of alternative records; every record is checked and keeps its unknown keys. */
+export function parseChatAlt(value: JsonValue): Parsed<ChatAltUnit> {
+    return plain(() => {
+        const raw = obj(value, 'chat alternatives')
+        gateV(raw, 'chat alternatives')
+        const recs = arr(raw.recs, 'recs')
+        if (recs.length === 0) {
+            bad('recs is empty: an alternatives unit holds at least one record.')
+        }
+        recs.forEach((rec, index) => {
+            if (!isAltRecord(rec)) {
+                bad(`recs[${index}] is not an alternative record.`)
+            }
+        })
+        return { ...extras(raw, ['v', 'recs']), v: 1, recs: recs as AltRecord[] }
     })
 }
 
@@ -751,6 +788,7 @@ export function parseUnitBody(type: UnitType, value: JsonValue): Parsed<UnitBody
         case UNIT_TYPE.shard: return parseShard(value)
         case UNIT_TYPE.chatCore: return parseChatCore(value)
         case UNIT_TYPE.chatChunk: return parseChatChunk(value)
+        case UNIT_TYPE.chatAlt: return parseChatAlt(value)
         case UNIT_TYPE.moduleIndex: return parseModuleIndex(value)
         case UNIT_TYPE.assetList: return parseAssetList(value)
         case UNIT_TYPE.legacyList: return parseLegacyList(value)

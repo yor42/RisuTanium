@@ -58,6 +58,7 @@ export const REFS_TABLE: readonly RefRow[] = [
     { type: UNIT_TYPE.shard, path: 'entries[].il', mode: 'ref' },
     { type: UNIT_TYPE.shard, path: 'entries[].chats[].core', mode: 'ref' },
     { type: UNIT_TYPE.shard, path: 'entries[].chats[].chunks[]', mode: 'ref' },
+    { type: UNIT_TYPE.shard, path: 'entries[].chats[].alt[]', mode: 'ref' },
 
     { type: UNIT_TYPE.moduleIndex, path: 'entries[].unit', mode: 'ref' },
     { type: UNIT_TYPE.moduleIndex, path: 'entries[].al', mode: 'ref' },

@@ -1361,6 +1361,19 @@ interface RisuaiPluginAPI {
      * that check and before its promise settles; when it is denied the
      * promise rejects with an `Error` naming the permission and nothing is
      * written.
+     *
+     * **Fork-specific note (not upstream RisuAI):** a chat's alternative
+     * replies (this fork's `alt` field) are never returned by the character,
+     * chat and database getters, and a write keeps the ones the replaced
+     * chat holds (matched by chat `id`). Whatever `alt` a write carries is
+     * dropped. A `character` whose `chats` list leaves a chat out deletes that
+     * chat's alternatives with it, and a chat written with an empty `message`
+     * over a non-empty one clears them.
+     *
+     * **Fork-specific note (not upstream RisuAI):** when the selected character
+     * is an archived-character placeholder, a full `character` with the same
+     * `chaId` first restores the archived character, so its alternatives are
+     * kept. If the restore fails the promise rejects and nothing is written.
      */
     setCharacter(character: any): Promise<void>;
 
@@ -1432,6 +1445,13 @@ interface RisuaiPluginAPI {
      * permission (asked as for `getCharacter`). The call writes only after
      * that check and before its promise settles; when it is denied the
      * promise rejects with an `Error` naming the permission and nothing is
+     * written.
+     *
+     * **Fork-specific note (not upstream RisuAI):** the alternative replies of
+     * the chats are kept as for `setCharacter`. When the character at `index`
+     * is an archived-character placeholder, a full `character` with the same
+     * `chaId` first restores it. If the restore fails, or the character is
+     * archived again before the write, the promise rejects and nothing is
      * written.
      */
     setCharacterToIndex(index: number, character: any): Promise<void>;
@@ -1688,6 +1708,14 @@ interface RisuaiPluginAPI {
      *   message names the plugin and the reason. A `plugins` value that is not
      *   an array is handled the same way.
      *
+     * **Fork-specific note (not upstream RisuAI):** the alternative replies of
+     * every chat are kept as for `setCharacter`. A full character in `characters`
+     * whose `chaId` an archived-character placeholder holds first restores
+     * that character; `setDatabaseLite` then saves after the restore and
+     * before its promise settles. If a restore fails, or a target is archived
+     * again before the write, the promise rejects and nothing is written,
+     * the plugin list included.
+     *
      * `setDatabaseLite` saves the call's data only after the `'db'` permission
      * check: right after it when nothing else needs asking, and after the
      * plugin-list prompts otherwise, in either case before its promise
@@ -1749,6 +1777,13 @@ interface RisuaiPluginAPI {
      * that check and before its promise settles; when it is denied the
      * promise rejects with an `Error` naming the permission and nothing is
      * written.
+     *
+     * **Fork-specific note (not upstream RisuAI):** the alternative replies of
+     * every chat are kept as for `setCharacter`. A full character in `characters`
+     * whose `chaId` an archived-character placeholder holds first restores
+     * that character. If a restore fails, or a target is archived again before
+     * the write, the promise rejects and nothing is written, the plugin list
+     * included.
      */
     setDatabase(db: DatabaseSubset): Promise<void>;
 

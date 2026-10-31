@@ -196,3 +196,56 @@ describe('writeSupaMemoryData (the send writer)', () => {
         expect(chat.supaMemoryCoveredId).toBe('x')
     })
 })
+
+describe('withSupaRepoint and the alternatives of the chat', () => {
+    const withAlt = (ids: string[], supaMemoryData?: string): Chat => {
+        const chat = chatOf(ids, supaMemoryData)
+        chat.alt = [
+            { m: msg('x'), p: 'c', a: 1 },
+            { m: msg('y'), p: 'b', a: 2 },
+            { m: msg('z'), p: 'x', a: 3 },
+        ]
+        return chat
+    }
+
+    // regression reproducer: without the wrap the records keep naming the removed message
+    it('a removal re-attaches the records of the removed message to the nearest earlier survivor, with no SupaMemory data', () => {
+        const chat = withAlt(['a', 'b', 'c', 'd'])
+        withSupaRepoint(chat, removeAt(chat, 2))
+        expect(chat.alt?.map((r) => r.p)).toEqual(['b', 'b', 'x'])
+        expect(chat.alt).toHaveLength(3)
+    })
+
+    it('a removal re-attaches and still repoints SupaMemory', () => {
+        const chat = withAlt(['a', 'b', 'c', 'd'], 'c\nsummary')
+        withSupaRepoint(chat, removeAt(chat, 2))
+        expect(chat.alt?.map((r) => r.p)).toEqual(['b', 'b', 'x'])
+        expect(chat.supaMemoryData).toBe('d\nsummary')
+    })
+
+    it('a range cut moves the records to the root when no earlier message survives', () => {
+        const chat = withAlt(['b', 'c'])
+        withSupaRepoint(chat, () => { chat.message.splice(0) ; chat.message.push(msg('q')) })
+        expect(chat.alt?.map((r) => r.p)).toEqual([null, null, 'x'])
+    })
+
+    // regression reproducer: the last-message delete is a full clear
+    it('a removal that empties a non-empty path clears the alternatives', () => {
+        const chat = withAlt(['c'])
+        withSupaRepoint(chat, removeAt(chat, 0))
+        expect('alt' in chat).toBe(false)
+    })
+
+    it('guard: a path that was already empty keeps its alternatives', () => {
+        const chat = withAlt([])
+        withSupaRepoint(chat, () => {})
+        expect(chat.alt).toHaveLength(3)
+    })
+
+    it('guard: an alt that cannot be read is left as it is', () => {
+        const chat = chatOf(['a', 'b'])
+        Object.assign(chat, { alt: 'text' })
+        withSupaRepoint(chat, removeAt(chat, 1))
+        expect(chat.alt).toBe('text')
+    })
+})

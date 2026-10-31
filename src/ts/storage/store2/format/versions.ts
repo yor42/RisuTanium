@@ -23,8 +23,12 @@ export const IL_REF_V = 1
 /** `v` of every other versioned body. */
 export const BODY_V = 1
 
-/** The `req` tokens this build understands. Empty in format 1. */
-export const KNOWN_REQ: ReadonlySet<string> = new Set<string>()
+/**
+ * The `req` tokens this build understands. `chat-alt` marks a store in which some chat has alternatives (type 25 units):
+ * a build without the token goes read-only before it reads a unit, so it can neither drop nor garbage-collect them.
+ */
+export const REQ_CHAT_ALT = 'chat-alt'
+export const KNOWN_REQ: ReadonlySet<string> = new Set<string>([REQ_CHAT_ALT])
 
 export const UNIT_TYPE = {
     commit: 1,
@@ -51,6 +55,7 @@ export const UNIT_TYPE = {
     sweepRecord: 22,
     fenceRecord: 23,
     deletionSnapshot: 24,
+    chatAlt: 25,
 } as const
 
 export type UnitType = typeof UNIT_TYPE[keyof typeof UNIT_TYPE]

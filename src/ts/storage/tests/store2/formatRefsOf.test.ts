@@ -61,7 +61,7 @@ const entry = (u: string): JsonObject => ({
     u, type: 'character', name: 'n', chaId: 'x', creatorNotes: '', chatPage: 0, firstMsgIndex: 0, dsp: false,
     core: ref(`${u}core`), lore: ref(`${u}lore`), scripts: ref(`${u}scripts`), al: list(`${u}al`), il: list(`${u}il`),
     chats: [
-        { cid: 'c1', core: ref(`${u}c1core`), chunks: [chunk(`${u}c1k1`, 5), chunk(`${u}c1k2`, 3)] },
+        { cid: 'c1', core: ref(`${u}c1core`), chunks: [chunk(`${u}c1k1`, 5), chunk(`${u}c1k2`, 3)], alt: [chunk(`${u}c1a1`, 2), chunk(`${u}c1a2`, 1)] },
         { cid: 'c2', core: ref(`${u}c2core`), chunks: [chunk(`${u}c2k1`, 0)] },
     ],
 })
@@ -73,6 +73,7 @@ const SHARD_SAMPLE: Sample = {
         ['entries[].core', 'acore'], ['entries[].lore', 'alore'], ['entries[].scripts', 'ascripts'], ['entries[].al', 'aal'],
         ['entries[].il', 'ail'], ['entries[].chats[].core', 'ac1core'], ['entries[].chats[].core', 'ac2core'],
         ['entries[].chats[].chunks[]', 'ac1k1'], ['entries[].chats[].chunks[]', 'ac1k2'], ['entries[].chats[].chunks[]', 'ac2k1'],
+        ['entries[].chats[].alt[]', 'ac1a1'], ['entries[].chats[].alt[]', 'ac1a2'],
     ].map(([path, name]) => `${path}:${tailOf(name)}`),
 }
 
@@ -123,7 +124,7 @@ describe('refsOf guard', () => {
             [UNIT_TYPE.manifest, ['shards[]', 'fixed.config', 'fixed.configAl', 'fixed.il', 'fixed.statics', 'fixed.order', 'fixed.loadouts',
                 'fixed.moduleIndex', 'fixed.presets[]', 'fixed.plugins[]', 'fixed.pluginStorage.refs[]', 'fixed.legacyKeep.unit']],
             [UNIT_TYPE.shard, ['entries[].core', 'entries[].lore', 'entries[].scripts', 'entries[].al', 'entries[].il',
-                'entries[].chats[].core', 'entries[].chats[].chunks[]']],
+                'entries[].chats[].core', 'entries[].chats[].chunks[]', 'entries[].chats[].alt[]']],
             [UNIT_TYPE.moduleIndex, ['entries[].unit', 'entries[].al', 'entries[].il']],
             [UNIT_TYPE.pluginStorageBucket, ['entries[].ref']],
         ]

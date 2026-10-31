@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { buildManifest, MANIFEST_REQ, PLUGIN_STORAGE_BUCKETS, SHARD_COUNT, type EncodedTree } from '../../store2/codec'
-import { parseManifest, readUnit, refsOf, UNIT_TYPE, type Manifest, type UnitType } from '../../store2/format'
+import { parseManifest, readUnit, refsOf, REQ_CHAT_ALT, UNIT_TYPE, type Manifest, type UnitType } from '../../store2/format'
 import type { Database } from '../../database.svelte'
 import {
     asDatabase, bodyOf, buildLegacyCases, buildSmall, buildT4, bytesOf, chat, dbWithCharacters, encodeWith, loreEntry, message, mulberry32,
@@ -95,9 +95,17 @@ describe('the manifest', () => {
     test('buildManifest copies its parts and never shares the req list', () => {
         const ref: Manifest['fixed']['config'] = ['u-aaaaaaaaaaaaaaaaaaaaaaaaaa', 1, 2]
         const list: Manifest['fixed']['configAl'] = ['u-bbbbbbbbbbbbbbbbbbbbbbbbbb', 1, 2, 1]
-        const one = buildManifest({ seq: 1, createdAt: 2, shards: [], config: ref, configAl: list, il: list, statics: ref, order: ref, loadouts: ref, moduleIndex: ref, presets: [], plugins: [], pluginStorageRefs: [] })
+        const one = buildManifest({ chatAlt: false, seq: 1, createdAt: 2, shards: [], config: ref, configAl: list, il: list, statics: ref, order: ref, loadouts: ref, moduleIndex: ref, presets: [], plugins: [], pluginStorageRefs: [] })
         one.req.push('x')
-        expect(buildManifest({ seq: 1, createdAt: 2, shards: [], config: ref, configAl: list, il: list, statics: ref, order: ref, loadouts: ref, moduleIndex: ref, presets: [], plugins: [], pluginStorageRefs: [] }).req).toEqual([])
+        expect(buildManifest({ chatAlt: false, seq: 1, createdAt: 2, shards: [], config: ref, configAl: list, il: list, statics: ref, order: ref, loadouts: ref, moduleIndex: ref, presets: [], plugins: [], pluginStorageRefs: [] }).req).toEqual([])
+    })
+
+    test('the chat-alt token is written exactly when the parts say a chat has alternatives', () => {
+        const ref: Manifest['fixed']['config'] = ['u-aaaaaaaaaaaaaaaaaaaaaaaaaa', 1, 2]
+        const list: Manifest['fixed']['configAl'] = ['u-bbbbbbbbbbbbbbbbbbbbbbbbbb', 1, 2, 1]
+        const parts = { seq: 1, createdAt: 2, shards: [], config: ref, configAl: list, il: list, statics: ref, order: ref, loadouts: ref, moduleIndex: ref, presets: [], plugins: [], pluginStorageRefs: [] }
+        expect(buildManifest({ ...parts, chatAlt: true }).req).toEqual([REQ_CHAT_ALT])
+        expect(buildManifest({ ...parts, chatAlt: false }).req).toEqual([])
     })
 })
 

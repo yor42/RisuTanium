@@ -134,6 +134,8 @@ export class Encoder {
     readonly carried = new Map<string, ReusableUnit>()
     /** The names (else ids) of the module stubs carried by `carry`, taken when each was carried. */
     readonly carriedModuleNames: string[] = []
+    /** Whether a character this encode wrote has a chat with alternatives; `finishTree` turns it into the manifest's `chat-alt` token. */
+    chatAlt = false
     private readonly occurrences = new Map<string, number>()
     private readonly usedU = new Set<string>()
 
@@ -264,7 +266,7 @@ export function normalizeCharacterFromPlain(slot: Slot, chaId: string, plain: Js
         return chat
     })
     const split = chatObjects.map((chat, index) => splitChat(chat, `${where}.chats[${index}]`))
-    const listOwner: JsonObject = { ...owner, chats: split.map((one, index) => assembleChat(one.core, one.chunks, `${where}.chats[${index}]`)) }
+    const listOwner: JsonObject = { ...owner, chats: split.map((one, index) => assembleChat(one.core, one.chunks, `${where}.chats[${index}]`, one.alt)) }
     return { slot, chaId, owner, chatObjects, split, listOwner }
 }
 
@@ -316,7 +318,15 @@ export function emitCharacter(normalized: NormalizedCharacter, encoder: Encoder)
             const unit = encoder.put(`${IDENTITY.chat}${u}:${cid}:chunk:${k}`, UNIT_TYPE.chatChunk, chunk)
             return chunkRefTuple(unit.ref, chunk.msgs.length)
         })
-        return { cid, core: refTuple(coreUnit.ref), chunks }
+        const entry: ChatEntry = { cid, core: refTuple(coreUnit.ref), chunks }
+        if (one.alt.length > 0) {
+            encoder.chatAlt = true
+            entry.alt = one.alt.map((unitBody, k) => {
+                const unit = encoder.put(`${IDENTITY.chat}${u}:${cid}:alt:${k}`, UNIT_TYPE.chatAlt, unitBody)
+                return chunkRefTuple(unit.ref, unitBody.recs.length)
+            })
+        }
+        return entry
     })
 
     const entry: ShardEntry = {
@@ -747,6 +757,7 @@ export function finishTree(
     }
     const manifestStarted = MEASURE && split !== undefined ? split.now() : 0
     const manifest = carryManifest(encoder.previous?.objects?.manifest, buildManifest({
+        chatAlt: encoder.chatAlt,
         seq: options.seq,
         createdAt: options.createdAt,
         shards,

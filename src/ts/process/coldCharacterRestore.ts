@@ -1,5 +1,6 @@
 import { DBState } from "../stores.svelte"
-import { alertError } from "../alert"
+import { alertError, alertNormal } from "../alert"
+import type { FlaggedLeaf } from "../storage/store2/treeBytes"
 import { language } from "../../lang"
 import type { character, groupChat } from "../storage/database.svelte"
 import { readColdStorageItem, type ColdReadErrorKind, type ColdStorageReadResult } from "./coldstorage.svelte"
@@ -190,6 +191,28 @@ function refuse(options: ColdRestoreOptions, reason: ColdRestoreFailure): ColdRe
     return { status: 'refused', reason }
 }
 
+/**
+ * Tells the person which chats of `restored` lost their alternative replies to a damaged or missing unit, and logs each
+ * one. A chat is named by its name, else its id; a positional handle (`~<index>`) is the chat at that position.
+ */
+function announceDroppedAlt(restored: Slot, dropped: readonly FlaggedLeaf[]): void {
+    const chats = restored.chats ?? []
+    const names: string[] = []
+    for (const leaf of dropped) {
+        if (leaf.kind !== 'chat') {
+            continue
+        }
+        const position = /^~(\d+)$/.exec(leaf.chatId)
+        const chat = position !== null ? chats[Number(position[1])] : chats.find(candidate => candidate.id === leaf.chatId)
+        const name = `"${chat?.name || leaf.chatId}"`
+        if (!names.includes(name)) {
+            names.push(name)
+        }
+        console.warn(`The alternative replies of chat ${leaf.chatId} of ${restored.name} (${leaf.key}) are ${leaf.why} and were left out.`)
+    }
+    alertNormal(language.errors.coldStorageAltRepliesDropped(restored.name, names.join(', ')))
+}
+
 async function restoreOnce(stub: Slot, options: ColdRestoreOptions): Promise<ColdRestoreOutcome> {
     const key = stub.coldstorage
     if (!key) {
@@ -249,6 +272,11 @@ async function restoreOnce(stub: Slot, options: ColdRestoreOptions): Promise<Col
         residency.hydrate(loaded)
         retainOnLoad(characters[index], chaId, loaded.entry.u)
         markIdentitySeen(characters[index])
+        if (loaded.droppedAlt.length > 0) {
+            // Whatever the caller asked (`quiet` included): a dropped unit is not a failure any caller reports, and the
+            // next save writes the chat without it.
+            announceDroppedAlt(characters[index], loaded.droppedAlt)
+        }
     } else {
         // Over the plain object the unit decoded to, in the step that installs it:
         // nothing has changed it yet, so the fingerprint is what a put-back compares to.
