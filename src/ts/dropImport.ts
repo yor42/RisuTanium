@@ -10,12 +10,17 @@ import { DBState } from "./stores.svelte"
 import { importPreset } from "./storage/database.svelte"
 import { withBusy } from "./process/memory/busyActions"
 import { importSourceOfFile } from "./importSource"
+import { refuseImportWhileRestoring } from "./drive/backupWorkGuard"
 
 /**
  * Imports the one file dropped on the app, by its name: a preset, a module, or otherwise a character card.
  * A failure shows its reason and never rejects, so a drop has no unhandled rejection.
  */
 export function importDroppedFile(file:File){
+    //A restore replaces the whole database under an import, so a drop during one is refused and nothing is read.
+    if(refuseImportWhileRestoring()){
+        return Promise.resolve()
+    }
     return withBusy('import', () => importDropped(file))
 }
 

@@ -17,6 +17,10 @@ vi.mock('../../alert', () => ({
     alertNormal: vi.fn(),
     alertStore: { set: vi.fn(), subscribe: () => () => { } },
 }))
+vi.mock('../../stores.svelte', async () => {
+    const { writable } = await import('svelte/store')
+    return { alertStore: writable({ type: 'none', msg: '' }) }
+})
 vi.mock('../../process/chatOrigin', () => ({ isWorkInProgress: () => false }))
 vi.mock('../backuplocal', () => ({ LoadLocalBackup: localLoaderMock }))
 vi.mock('../internalBackup', () => ({ loadInternalBackup: internalLoaderMock }))

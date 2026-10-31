@@ -8,7 +8,7 @@
  *   the write is unconfirmed). Sticky until the page is replaced.
  * A run is never a busy entry: it would refuse the very restore it stands for.
  */
-import { busyKinds } from '../process/memory/busyActions'
+import { busyKinds, busyRefusalLine, isBusy } from '../process/memory/busyActions'
 import type { OperationOutcome } from './operationEnd'
 
 export type RestorePhase = 'none' | 'asking' | 'working' | 'pageEnding'
@@ -20,6 +20,7 @@ export interface RestoreRun {
 
 let openRuns = 0
 let pageEnding = false
+let refusalLineSet = false
 const liveEndListeners = new Set<() => void>()
 
 /** Opens a run for a restore flow; the flow ends it with the outcome its loader reported. */
@@ -37,6 +38,13 @@ export function beginRestoreRun(): RestoreRun {
                 pageEnding = true
             }
             if (openRuns === 0 && restorePhase() === 'none') {
+                // A refusal line nothing else will clear: with no busy entry left, its end already ran.
+                if (refusalLineSet) {
+                    refusalLineSet = false
+                    if (!isBusy()) {
+                        busyRefusalLine.set(null)
+                    }
+                }
                 for (const listener of [...liveEndListeners]) {
                     try {
                         listener()
@@ -72,8 +80,17 @@ export function onRestoreEndedLive(listener: () => void): () => void {
     }
 }
 
+/**
+ * Records that a refusal set `busyRefusalLine` while a restore was open. The line stays under the final message of a
+ * page that is ending; when a run ends and the page stays live, it is cleared here unless a busy entry still owns it.
+ */
+export function noteRefusalLineSet(): void {
+    refusalLineSet = true
+}
+
 /** Clears runs and the page-ending mark a test leaves behind; registered listeners stay. */
 export function resetRestoreInProgressForTests(): void {
     openRuns = 0
     pageEnding = false
+    refusalLineSet = false
 }
