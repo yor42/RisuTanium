@@ -295,13 +295,7 @@ export class WindowedReader {
         private readonly windowBytes: number = IMPORT_WINDOW_BYTES,
     ) {}
 
-    /**
-     * `aheadOf` returns where a planned read may extend to. The read then covers up to that end, clamped to `limit`
-     * and to `windowBytes` past `start`, and becomes the window; an end at or below the request reads exactly the
-     * request. The function is called only when the window misses, because it walks the run. Without it, the read
-     * guesses from the last skip.
-     */
-    async read(start: number, end: number, aheadOf?: () => number): Promise<Uint8Array> {
+    async read(start: number, end: number): Promise<Uint8Array> {
         const to = Math.min(end, this.limit)
         if (start >= to) {
             return new Uint8Array(0)
@@ -310,15 +304,6 @@ export class WindowedReader {
         this.#lastEnd = to
         if (start >= this.#start && to <= this.#start + this.#bytes.length) {
             return this.#bytes.subarray(start - this.#start, to - this.#start)
-        }
-        if (aheadOf !== undefined) {
-            const planEnd = Math.min(this.limit, Math.max(to, Math.min(aheadOf(), start + this.windowBytes)))
-            if (planEnd <= to) {
-                return await this.source.read(start, to)
-            }
-            this.#bytes = await this.source.read(start, planEnd)
-            this.#start = start
-            return this.#bytes.subarray(0, Math.min(to - start, this.#bytes.length))
         }
         const length = to - start
         const skipped = lastEnd === null ? Infinity : start - lastEnd

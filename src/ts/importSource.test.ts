@@ -338,66 +338,18 @@ describe('the read-ahead window', () => {
         expect((await reader.read(1000, 1010)).length).toBe(0)
     })
 
-    describe('a planned read', () => {
+    test('a chosen window size bounds the read-ahead and a request inside it costs no call', async () => {
         const W = 64 * 1024
+        const { source, calls, bytes } = countingSource(MIB)
+        const reader = new WindowedReader(source, MIB, W)
+        await reader.read(0, 5)
 
-        test('covers up to the planned end and serves later requests inside it without a call', async () => {
-            const { source, calls, bytes } = countingSource(MIB)
-            const reader = new WindowedReader(source, MIB, W)
+        const first = await reader.read(100, 105)
+        const inside = await reader.read(20_000, 20_005)
 
-            const first = await reader.read(100, 105, () => 40_000)
-            const inside = await reader.read(20_000, 20_005, () => { throw new Error('a hit must not walk the run') })
-
-            expect(calls).toEqual([[100, 40_000]])
-            expect(same(first, bytes.subarray(100, 105))).toBe(true)
-            expect(same(inside, bytes.subarray(20_000, 20_005))).toBe(true)
-        })
-
-        test('the end is clamped to the window, to the limit, and is at least the request', async () => {
-            const { source, calls } = countingSource(MIB)
-
-            await new WindowedReader(source, MIB, W).read(0, 5, () => 10 * MIB)
-            await new WindowedReader(source, 1000, W).read(0, 5, () => 10 * MIB)
-            await new WindowedReader(source, MIB, W).read(0, 5000, () => 10)
-
-            expect(calls).toEqual([[0, W], [0, 1000], [0, 5000]])
-        })
-
-        test('an end at or below the request reads exactly the request and leaves the window as it was', async () => {
-            const { source, calls, bytes } = countingSource(MIB)
-            const reader = new WindowedReader(source, MIB, W)
-            await reader.read(0, 5, () => 1000)
-
-            const exact = await reader.read(500_000, 500_005, () => 0)
-            const back = await reader.read(10, 15, () => { throw new Error('a hit must not walk the run') })
-
-            expect(calls).toEqual([[0, 1000], [500_000, 500_005]])
-            expect(same(exact, bytes.subarray(500_000, 500_005))).toBe(true)
-            expect(same(back, bytes.subarray(10, 15))).toBe(true)
-        })
-
-        test('a later planned end past the limit stops at the limit', async () => {
-            const { source, calls } = countingSource(MIB)
-            const reader = new WindowedReader(source, 1000, W)
-            await reader.read(0, 5, () => 10)
-
-            await reader.read(900, 905, () => 5000)
-
-            expect(calls).toEqual([[0, 10], [900, 1000]])
-        })
-
-        test('the function is not called when the window serves the request or the request is empty', async () => {
-            const { source } = countingSource(MIB)
-            const reader = new WindowedReader(source, MIB, W)
-            let invocations = 0
-            const counted = () => { invocations++; return 30_000 }
-            await reader.read(0, 5, counted)
-
-            await reader.read(10, 20, counted)
-            await reader.read(30, 30, counted)
-
-            expect(invocations).toBe(1)
-        })
+        expect(calls).toEqual([[0, 5], [100, 100 + W]])
+        expect(same(first, bytes.subarray(100, 105))).toBe(true)
+        expect(same(inside, bytes.subarray(20_000, 20_005))).toBe(true)
     })
 })
 
