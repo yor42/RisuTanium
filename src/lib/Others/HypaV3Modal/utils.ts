@@ -13,6 +13,7 @@ import { findResumeIndex } from "src/ts/process/memory/hypaResume";
 import { alertConfirm } from "src/ts/alert";
 import { DBState, selectedCharID } from "src/ts/stores.svelte";
 import { language } from "src/lang";
+import { firstMessageOf } from "src/ts/process/firstMessage";
 
 export async function alertConfirmTwice(
   firstMessage: string,
@@ -97,11 +98,7 @@ export function getFirstMessage(): string | null {
   const char = DBState.db.characters[get(selectedCharID)];
   const chat = char.chats[DBState.db.characters[get(selectedCharID)].chatPage];
 
-  return chat.fmIndex === -1
-    ? char.firstMessage
-    : char.alternateGreetings?.[chat.fmIndex]
-    ? char.alternateGreetings[chat.fmIndex]
-    : null;
+  return firstMessageOf(char, chat);
 }
 
 export type NextSummarizationTarget =

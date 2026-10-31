@@ -6,6 +6,7 @@ import type { RunSubject } from './process/chatOrigin';
 import { LLMFlags, LLMFormat } from './model/types';
 import { get } from 'svelte/store';
 import { CurrentTriggerIdStore } from './stores.svelte';
+import { firstMessageIndexOf, firstMessageOf } from './process/firstMessage';
 
 export const defaultCBSRegisterArg: CBSRegisterArg = {
     registerFunction: () => { throw new Error('registerFunction not implemented') },
@@ -311,7 +312,7 @@ export function registerCBS(arg:CBSRegisterArg) {
             if(view && !view.firstSent){
                 return ''
             }
-            return chat.fmIndex === -1 ? selchar.firstMessage : selchar.alternateGreetings[chat.fmIndex]
+            return firstMessageOf(selchar, chat)
         },
         alias: ['previouscharchat', 'lastcharmessage'],
         description: 'Returns the last message sent by the character in the current chat. Searches backwards from the current message position to find the most recent character message. If no character messages exist, returns the first message or selected alternate greeting.\n\nUsage:: {{previouscharchat}}',
@@ -334,7 +335,7 @@ export function registerCBS(arg:CBSRegisterArg) {
                 if(view && !view.firstSent){
                     return ''
                 }
-                return chat.fmIndex === -1 ? selchar.firstMessage : selchar.alternateGreetings[chat.fmIndex]
+                return firstMessageOf(selchar, chat)
             }
             return ''
         },
@@ -524,8 +525,8 @@ export function registerCBS(arg:CBSRegisterArg) {
     registerFunction({
         name: 'firstmsgindex',
         callback: (str, matcherArg, args, vars) => {
-            const chat = targetCtx(matcherArg).chat
-            return chat.fmIndex.toString()
+            const { char, chat } = targetCtx(matcherArg)
+            return firstMessageIndexOf(char, chat).toString()
         },
         alias: ['firstmessageindex', 'first_msg_index'],
         description: 'Returns the index of the selected first message/alternate greeting as a string. -1 indicates the default first message is used.\n\nUsage:: {{firstmsgindex}}',
@@ -1614,7 +1615,7 @@ export function registerCBS(arg:CBSRegisterArg) {
                 const { char: selchar, chat } = targetCtx(matcherArg)
                 const first = {
                     role: 'char',
-                    data: chat.fmIndex === -1 ? selchar.firstMessage : selchar.alternateGreetings[chat.fmIndex]
+                    data: firstMessageOf(selchar, chat)
                 }
                 const shown = view ? chat.message.filter((v) => !view.hidden(v)) : chat.message
                 return makeArray((view && !view.firstSent ? [] : [first]).concat(shown).map((v) => {

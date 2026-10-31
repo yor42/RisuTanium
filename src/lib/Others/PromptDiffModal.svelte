@@ -374,7 +374,7 @@
             item.type === 'chat'
         
         const db = getDatabase()
-        const formated = safeStructuredClone(db.botPresets[id].promptTemplate)
+        const formated = safeStructuredClone(db.botPresets[id].promptTemplate ?? [])
         const cards: PromptCard[] = []
 
         for(let i=0;i<formated.length;i++){

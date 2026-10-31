@@ -40,6 +40,7 @@
     import SliderInput from "../UI/GUI/SliderInput.svelte";
     import Toggles from "./Toggles.svelte";
     import { convertCharacterToModule } from "src/ts/interchangeability";
+    import { writeLiveCharacter } from "src/ts/liveCharacterWrite";
 
     let iconRemoveMode = $state(false)
     let viewSubMenu = $state(0)
@@ -657,8 +658,8 @@
                         <th class="font-medium cursor-pointer w-10">
                             <button class="hover:text-green-500" onclick={async () => {
                                 if(DBState.db.characters[$selectedCharID].type === 'character'){
+                                    const chaId = DBState.db.characters[$selectedCharID].chaId
                                     const da = await selectMultipleFileObjects(['png', 'webp', 'mp4', 'mp3', 'gif', 'jpeg', 'jpg', 'ttf', 'otf', 'css', 'webm', 'woff', 'woff2', 'svg', 'avif'])
-                                    DBState.db.characters[$selectedCharID].additionalAssets = DBState.db.characters[$selectedCharID].additionalAssets ?? []
                                     if(!da){
                                         return
                                     }
@@ -674,8 +675,15 @@
                                             const name = f.name
                                             const extension = name.split('.').pop().toLowerCase()
                                             const imgp = await saveAssetFromBlob(f, extension)
-                                            DBState.db.characters[$selectedCharID].additionalAssets.push([name, imgp, extension])
-                                            DBState.db.characters[$selectedCharID].additionalAssets = DBState.db.characters[$selectedCharID].additionalAssets
+                                            const landed = writeLiveCharacter(chaId, (c) => {
+                                                if(c.type === 'character'){
+                                                    c.additionalAssets ??= []
+                                                    c.additionalAssets.push([name, imgp, extension])
+                                                }
+                                            })
+                                            if(!landed){
+                                                break
+                                            }
                                         }
                                     } catch (error) {
                                         warnRefusedAssets(refused, limit)
@@ -790,7 +798,14 @@
                 exportRegex(DBState.db.characters[$selectedCharID].customscript)
             }}><DownloadIcon /></button>
             <button class="font-medium cursor-pointer hover:text-green-500" onclick={async () => {
-                DBState.db.characters[$selectedCharID].customscript = await importRegex(DBState.db.characters[$selectedCharID].customscript)
+                const chaId = DBState.db.characters[$selectedCharID].chaId
+                const added = await importRegex([])
+                if(added.length === 0){
+                    return
+                }
+                writeLiveCharacter(chaId, (c) => {
+                    c.customscript = [...(c.customscript ?? []), ...added]
+                })
             }}><HardDriveUploadIcon /></button>
         </div>
 
@@ -994,9 +1009,17 @@
                 <span class="text-textcolor">{language.sidebarUi.noModel}</span>
             {/if}
             <Button onclick={async () => {
+                if(DBState.db.characters[$selectedCharID].type !== 'character'){
+                    return
+                }
+                const chaId = DBState.db.characters[$selectedCharID].chaId
                 const model = await registerOnnxModel()
-                if(model && DBState.db.characters[$selectedCharID].type === 'character'){
-                    DBState.db.characters[$selectedCharID].vits = model
+                if(model){
+                    writeLiveCharacter(chaId, (c) => {
+                        if(c.type === 'character'){
+                            c.vits = model
+                        }
+                    })
                 }
             }}>{language.selectModel}</Button>
         {:else if DBState.db.characters[$selectedCharID].ttsMode === 'gptsovits'}
@@ -1018,6 +1041,7 @@
 
             <span class="text-textcolor">{language.sidebarUi.ttsRefAudioData}</span>
             <Button onclick={async () => {
+                const chaId = DBState.db.characters[$selectedCharID].chaId
                 const audio = await selectSingleFileObject([
                     'wav',
                     'ogg',
@@ -1033,10 +1057,14 @@
                     return null
                 }
                 const saveId = await saveAssetFromBlob(audio)
-                DBState.db.characters[$selectedCharID].gptSoVitsConfig.ref_audio_data = {
-                    fileName: audio.name,
-                    assetId: saveId
-                }
+                writeLiveCharacter(chaId, (c) => {
+                    if(c.type === 'character'){
+                        c.gptSoVitsConfig.ref_audio_data = {
+                            fileName: audio.name,
+                            assetId: saveId
+                        }
+                    }
+                })
 
             }}
             className="h-10">

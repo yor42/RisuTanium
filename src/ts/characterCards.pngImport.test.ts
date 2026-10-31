@@ -155,6 +155,7 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 
 import { downloadRisuHub, importCharacterProcess } from 'src/ts/characterCards'
 import { language } from 'src/lang'
+import { alertConfirm } from 'src/ts/alert'
 import { noteSelectedStore } from 'src/ts/storage/assetLimit'
 import type { AppStoreKind } from 'src/ts/storage/store/appStore'
 import type { ByteStore } from 'src/ts/storage/store/contract'
@@ -508,11 +509,11 @@ const specCard = (opts: { lowLevelAccess?: boolean, missingAsset?: boolean } = {
 })
 
 /** A card image whose `chara` chunk is an rcc value; the encrypted part is the card text itself (decryption is the identity). */
-function rccCard(opts: { usePassword: boolean, content?: string, type?: string }): Uint8Array {
+function rccCard(opts: { usePassword: boolean, content?: string, type?: string, rawMeta?: string }): Uint8Array {
     const encrypted = Buffer.from(opts.content ?? specCard())
     const value = [
         'rcc', opts.type ?? 'rccv1', encrypted.toString('base64'), `len${encrypted.length}`,
-        Buffer.from(JSON.stringify({ usePassword: opts.usePassword })).toString('base64'),
+        Buffer.from(opts.rawMeta ?? JSON.stringify({ usePassword: opts.usePassword })).toString('base64'),
     ].join('||')
     return build([ihdr(), idat(), text('chara', value), iend()], []).bytes
 }
@@ -703,5 +704,150 @@ describe('PNG card image size on the browser store', () => {
         const out = await importUnderGiB('tauri')
         expect(out.errors).toEqual([])
         expect(out.characters).toHaveLength(1)
+    })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Card shape and character book refusals: a card that cannot be imported is refused before anything is saved
+// ---------------------------------------------------------------------------------------------
+
+describe('card shape and character book refusals', () => {
+    //The setup file's clone is a JSON round trip, which throws on undefined; the import's own clone is the native one.
+    const setupClone = globalThis.safeStructuredClone
+
+    beforeEach(() => {
+        vi.stubGlobal('safeStructuredClone', <T>(value: T): T => structuredClone(value))
+    })
+
+    afterEach(() => {
+        vi.stubGlobal('safeStructuredClone', setupClone)
+    })
+
+    type CardJson = { data?: Record<string, unknown> } & Record<string, unknown>
+    const badBook = { entries: [{ content: 'c' }] }
+    const withBook = (card: CardJson, book: unknown): CardJson => ({ ...card, data: { ...card.data, character_book: book } })
+    const pngOf = (card: unknown) => build([ihdr(), idat(), text('chara', b64(JSON.stringify(card))), iend()], []).bytes
+    /** The assets first and the card chunk last, as the exporter writes them. */
+    const exportOrderPng = (card: unknown) => build([
+        ihdr(), idat(), ...ASSET_SIZES.map((s, i) => assetText(i, s)), text('chara', b64(JSON.stringify(card))), iend(),
+    ], ASSET_SIZES).bytes
+
+    async function runPng(bytes: Uint8Array) {
+        const out = await runWith(bytes)
+        return { ...out, saved: [...h.saved] }
+    }
+
+    async function runJsonCard(card: unknown) {
+        reset()
+        let returned: unknown
+        let thrown: string | null = null
+        try {
+            returned = await importCharacterProcess({ name: 'card.json', data: new U8(Buffer.from(JSON.stringify(card))) })
+        } catch (e) {
+            thrown = e instanceof Error ? e.message : String(e)
+        }
+        return { returned, thrown, last: h.last, errors: [...h.errors], characters: h.characters.length, saved: [...h.saved] }
+    }
+
+    function expectRefusedNoData(out: { thrown: string | null, last: string, errors: string[], characters: number, saved: unknown[] }) {
+        expect(out.thrown).toBeNull()
+        expect(out.last).toBe('error:' + language.errors.noData)
+        expect(out.errors).toEqual([language.errors.noData])
+        expect(out.characters).toBe(0)
+        expect(out.saved).toEqual([])
+    }
+
+    test('reproducer: an rcc card whose metadata is JSON null is refused with noData, not a TypeError', async () => {
+        expectRefusedNoData(await runPng(rccCard({ usePassword: false, rawMeta: 'null' })))
+    })
+
+    test('reproducer: a PNG v2 card without data is refused with noData', async () => {
+        expectRefusedNoData(await runPng(pngOf({ spec: 'chara_card_v2', spec_version: '2.0' })))
+    })
+
+    test.each([['missing', undefined], ['null', null]])('reproducer: a PNG v2 card whose extensions are %s imports as if they were empty', async (_name, extensions) => {
+        const card = JSON.parse(v2Card(0)) as CardJson
+        card.data!.extensions = extensions
+        const out = await runPng(pngOf(card))
+        expect(out.thrown).toBeNull()
+        expect(out.errors).toEqual([])
+        expect(out.returned).toBe(0)
+        expect(out.characters).toBe(1)
+    })
+
+    test('reproducer: a JSON v2 card without extensions imports as if they were empty', async () => {
+        const out = await runJsonCard({ spec: 'chara_card_v2', spec_version: '2.0', data: { name: 'J', description: 'd', first_mes: 'hi', character_version: '1' } })
+        expect(out.thrown).toBeNull()
+        expect(out.errors).toEqual([])
+        expect(out.characters).toBe(1)
+    })
+
+    test('reproducer: an export-order PNG whose character book cannot convert saves no asset and no image', async () => {
+        const card = withBook(JSON.parse(v2Card(ASSET_SIZES.length)) as CardJson, badBook)
+        expectRefusedNoData(await runPng(exportOrderPng(card)))
+    })
+
+    test('reproducer: a JSON v2 card with an inline emotion and a book that cannot convert saves nothing', async () => {
+        const card = withBook({
+            spec: 'chara_card_v2', spec_version: '2.0',
+            data: { name: 'J', extensions: { risuai: { emotions: [['happy', Buffer.from('emo').toString('base64')]] } } },
+        }, badBook)
+        expectRefusedNoData(await runJsonCard(card))
+    })
+
+    test('reproducer: a JSON v3 card with top-level v1 fields and a book that cannot convert is refused, not imported as an old card', async () => {
+        const out = await runJsonCard({
+            spec: 'chara_card_v3', spec_version: '3.0', name: 'Top', description: 'd', first_mes: 'f',
+            data: { name: 'Top', extensions: {}, character_book: badBook },
+        })
+        expectRefusedNoData(out)
+    })
+
+    test('reproducer: a JSON v3 card without data is refused, not imported as an old card', async () => {
+        const out = await runJsonCard({ spec: 'chara_card_v3', spec_version: '3.0', name: 'Top', description: 'd', first_mes: 'f' })
+        expectRefusedNoData(out)
+    })
+
+    test('reproducer: a hub JSON card without extensions imports', async () => {
+        const card = { spec: 'chara_card_v3', spec_version: '3.0', data: { name: 'Hub', description: 'd', first_mes: 'hi', character_version: '1' } }
+        vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => String(url).includes('/resource/')
+            ? new Response(new U8([1, 2, 3]), { status: 200 })
+            : new Response(JSON.stringify({ card, img: 'x' }), { status: 200, headers: { 'content-type': 'application/json' } })))
+        await downloadRisuHub('some-id', { creator: 'some-creator' })
+        expect(h.errors).toEqual([])
+        expect(h.characters).toHaveLength(1)
+    })
+
+    test('reproducer: a hub JSON card with an image and a book that cannot convert saves no image and imports nothing', async () => {
+        const card = { spec: 'chara_card_v3', spec_version: '3.0', data: { name: 'Hub', description: 'd', first_mes: 'hi', character_version: '1', extensions: {}, character_book: badBook } }
+        vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => String(url).includes('/resource/')
+            ? new Response(new U8([1, 2, 3]), { status: 200 })
+            : new Response(JSON.stringify({ card, img: 'x' }), { status: 200, headers: { 'content-type': 'application/json' } })))
+        await downloadRisuHub('some-id', { creator: 'some-creator' })
+        expect(h.saved).toEqual([])
+        expect(h.characters).toHaveLength(0)
+    })
+
+    test('reproducer: a card that needs the low-level-access prompt and has a book that cannot convert is refused without the prompt', async () => {
+        const base = JSON.parse(v2Card(ASSET_SIZES.length)) as CardJson
+        const risuai = (base.data!.extensions as { risuai: Record<string, unknown> }).risuai
+        risuai.lowLevelAccess = true
+        //The prompt mock keeps its history across tests.
+        vi.mocked(alertConfirm).mockClear()
+        const out = await runPng(exportOrderPng(withBook(base, badBook)))
+        expect(alertConfirm).not.toHaveBeenCalled()
+        expectRefusedNoData(out)
+    })
+
+    test('guard (passes before and after): a valid book keeps its position and depth conversion exactly once', async () => {
+        const card = withBook(JSON.parse(v2Card(0)) as CardJson, {
+            entries: [{ content: 'c', keys: ['k'], insertion_order: 1, extensions: { position: 4, depth: 2, role: 0 } }],
+        })
+        const out = await runPng(pngOf(card))
+        expect(out.errors).toEqual([])
+        expect(out.characters).toBe(1)
+        const lore = (h.characters[0].globalLore as Array<{ content: string }>)
+        expect(lore).toHaveLength(1)
+        expect(lore[0].content).toBe('@@reverse_depth 2\n@@role system\nc')
     })
 })

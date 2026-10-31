@@ -11,6 +11,7 @@ import { parseKeyValue, sleep } from "../util";
 import { alertError, alertInput, alertNormal, alertSelect } from "../alert";
 import type { OpenAIChat } from "./index.svelte";
 import { HypaProcesser } from "./memory/hypamemory";
+import { firstMessageOf } from "./firstMessage";
 import { requestChatData } from "./request/request";
 import { generateAIImage } from "./stableDiff";
 import { writeInlayImage } from "./files/inlays";
@@ -2507,7 +2508,7 @@ export async function runTrigger(char:character,mode:triggerMode, arg: RunTrigge
                     break
                 }
                 case 'v2GetFirstMessage':{
-                    setVar(risuChatParser(effect.outputVar, {chara:char, subject}), chat.fmIndex === -1 ? char.firstMessage : char.alternateGreetings[chat.fmIndex])
+                    setVar(risuChatParser(effect.outputVar, {chara:char, subject}), firstMessageOf(char, chat))
                     break
                 }
                 case 'v2GetAlertInput':{

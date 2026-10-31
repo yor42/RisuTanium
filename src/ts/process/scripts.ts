@@ -16,6 +16,7 @@ import { createRunSubject, type Origin, type RunSubject } from "./chatOrigin";
 import { leadingLazyDotCannotMatch } from "./regexEarlyReject";
 import { MEASURE } from "./memory/measureFlag";
 import { noteScriptPass, type ScriptCacheOutcome } from "./chatPhaseRing";
+import { firstMessageOf } from "./firstMessage";
 
 const dreg = /{{data}}/g
 const randomness = /\|\|\|/g
@@ -485,7 +486,7 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
                             owner = db.characters[get(selectedCharID)]
                             chat = owner.chats[owner.chatPage]
                         }
-                        let lastChat = chat.fmIndex === -1 ? owner.firstMessage : owner.alternateGreetings[chat.fmIndex]
+                        let lastChat = firstMessageOf(owner, chat)
                         let pointer = at - 1
                         let earlierFound = false
                         while(pointer >= 0){

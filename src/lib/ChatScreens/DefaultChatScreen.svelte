@@ -9,6 +9,7 @@
     import { DBState } from 'src/ts/stores.svelte';
     import { getCharImage } from "../../ts/characters";
     import { chatProcessStage, doingChat } from "../../ts/process/index.svelte";
+    import { firstMessageIndexOf, firstMessageOf, nextFirstMessageIndex } from "../../ts/process/firstMessage";
     import { findCharacterbyId, livePersona, sleep } from "../../ts/util";
     import { language } from "../../lang";
     import { alertError, alertNormal, alertWait, showHypaV2Alert } from "../../ts/alert";
@@ -895,8 +896,7 @@
                     <Chat
                         character={createSimpleCharacter(DBState.db.characters[$selectedCharID])}
                         name={DBState.db.characters[$selectedCharID].name}
-                        message={DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].fmIndex === -1 ? DBState.db.characters[$selectedCharID].firstMessage :
-                            DBState.db.characters[$selectedCharID].alternateGreetings[DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].fmIndex]}
+                        message={firstMessageOf(DBState.db.characters[$selectedCharID], DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage])}
                         role='char'
                         img={getCharImage(DBState.db.characters[$selectedCharID].image, 'css')}
                         idx={-1}
@@ -907,12 +907,7 @@
                             const cha = DBState.db.characters[$selectedCharID]
                             const chat = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage]
                             if(cha.type !== 'group'){
-                                if (chat.fmIndex >= (cha.alternateGreetings.length - 1)){
-                                    chat.fmIndex = -1
-                                }
-                                else{
-                                    chat.fmIndex += 1
-                                }
+                                chat.fmIndex = nextFirstMessageIndex(cha, chat, 1)
                             }
                             DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage] = chat
                         }}
@@ -920,17 +915,12 @@
                             const cha = DBState.db.characters[$selectedCharID]
                             const chat = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage]
                             if(cha.type !== 'group'){
-                                if (chat.fmIndex === -1){
-                                    chat.fmIndex = (cha.alternateGreetings.length - 1)
-                                }
-                                else{
-                                    chat.fmIndex -= 1
-                                }
+                                chat.fmIndex = nextFirstMessageIndex(cha, chat, -1)
                             }
                             DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage] = chat
                         }}
                         isLastMemory={false}
-                        currentPage={(DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].fmIndex ?? -1) + 2}
+                        currentPage={firstMessageIndexOf(DBState.db.characters[$selectedCharID], DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage]) + 2}
                         totalPages={DBState.db.characters[$selectedCharID].alternateGreetings.length + 1}
 
                     />

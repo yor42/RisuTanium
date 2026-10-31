@@ -158,3 +158,21 @@ describe('exportChat HTML export', () => {
     expect(html).toContain(`<div>${parseMarkdownSafe('Answer **two**')}</div>`)
   })
 })
+
+describe('exportChat first message', () => {
+  it('regression reproducer: a stale fmIndex exports the default first message', async () => {
+    const { DBState } = await import('./stores.svelte')
+    const owner = DBState.db.characters[0]
+    const chat = owner.chats[0]
+    const saved = { fmIndex: chat.fmIndex, alternateGreetings: owner.alternateGreetings }
+    owner.alternateGreetings = ['Alt zero']
+    chat.fmIndex = 3
+    try {
+      const html = await exportHtml(false)
+      expect(html).toContain(`<div>${parseMarkdownSafe('Hello there')}</div>`)
+    } finally {
+      chat.fmIndex = saved.fmIndex
+      owner.alternateGreetings = saved.alternateGreetings
+    }
+  })
+})

@@ -255,3 +255,21 @@ describe('processScriptFull early rejection', () => {
         expect(injectedOn).toBe(injectedOff)
     })
 })
+
+describe('@@repeat_back first-message fallback', () => {
+    const repeatBackWithFirstMessage = async (fmIndex: number): Promise<string> => {
+        const owner = h.db.characters as { firstMessage: string, alternateGreetings: string[], chats: { fmIndex: number }[] }[]
+        owner[0].firstMessage = 'DEFAULT#alpha'
+        owner[0].alternateGreetings = ['ALT0#beta']
+        owner[0].chats[0].fmIndex = fmIndex
+        return run('current', { in: realShapedPattern, out: '@@repeat_back end', ableFlag: true, flag: 's' }, 'editinput', 0)
+    }
+
+    test('regression reproducer: a stale fmIndex repeats the default first message', async () => {
+        expect(await repeatBackWithFirstMessage(3)).toBe('currentDEFAULT#alpha')
+    })
+
+    test('guard: an in-range fmIndex repeats that alternate greeting (passes before and after)',async () => {
+        expect(await repeatBackWithFirstMessage(0)).toBe('currentALT0#beta')
+    })
+})
