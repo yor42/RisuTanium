@@ -43,6 +43,7 @@ import { binFileOfSource, type SourceBinFile } from "./binFileSource";
 import { openDesktopImportSource, type ImportSource } from "../importSource";
 import { getStartupCleanup } from "../storage/startupCleanupState";
 import { refuseBackupLoadWhileBusy } from "./backupWorkGuard";
+import { beginRestoreRun } from "./restoreInProgress";
 import { refuseOnReadOnlyPage } from "../storage/readOnlyPage";
 import { beginBusy, withBusy, type BusyHandle } from "../process/memory/busyActions";
 import { inlayAttachmentLimit } from "../process/files/inlayStore";
@@ -1515,6 +1516,9 @@ export type OpenedRestoreEnd = 'pageLive' | 'pageEnding';
  */
 export async function restoreOpenedBackup(entry: { name: string, path: string }): Promise<OpenedRestoreEnd> {
     let source: ImportSource | null = null;
+    // The run makes a dropped file or a PWA launch refuse while this restore asks, works or ends the page.
+    const run = beginRestoreRun();
+    let runOutcome: OperationOutcome = 'canceled';
     try {
         if (refuseBackupLoadWhileBusy()) {
             return 'pageLive';
@@ -1554,7 +1558,9 @@ export async function restoreOpenedBackup(entry: { name: string, path: string })
         } catch (error) {
             console.error(error);
         }
+        runOutcome = 'failed';
         const end = await LoadLocalBackup(undefined, { source, name: entry.name, lastModified });
+        runOutcome = end.outcome;
         switch (end.outcome) {
             case 'committed':
             case 'permitted-partial':
@@ -1577,6 +1583,7 @@ export async function restoreOpenedBackup(entry: { name: string, path: string })
                 console.error(error);
             }
         }
+        run.end(runOutcome);
     }
 }
 

@@ -29,6 +29,7 @@ import { hasModuleStubKey } from "./storage/moduleStub"
 import { ModuleImportStopped, confirmRisumLowLevel } from "./process/moduleImportStop"
 import { importSourceOfBytes, importSourceOfFile, isImportSource, openDesktopImportSource, type ImportSource, type ImportSourceStat } from "./importSource"
 import { beginBusy, withBusy } from "./process/memory/busyActions"
+import { refuseImportWhileRestoring } from "./drive/backupWorkGuard"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportItem, type ImportOutcome } from "./importBatch"
 import { markBootWrite } from "./bootWindow"
 import { canBootArchive } from "./process/memory/bootArchiveState"
@@ -1140,6 +1141,10 @@ export async function characterURLImport() {
         //@ts-expect-error launchQueue is File Handling API for PWA, not yet in TypeScript's Window interface
         window.launchQueue.setConsumer((launchParams) => {
             if (launchParams.files && launchParams.files.length) {
+                //The launch is delivered once; a restore in progress refuses it and nothing is imported.
+                if (refuseImportWhileRestoring()) {
+                    return
+                }
                 const files = launchParams.files as FileSystemFileHandle[]
                 return handleFiles(files)
             }

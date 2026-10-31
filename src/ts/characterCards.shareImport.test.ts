@@ -46,6 +46,19 @@ const h = vi.hoisted(() => ({
     isTauri: false,
     /** what readFile answers per path; an Error is thrown */
     tauriFiles: {} as Record<string, Uint8Array | Error>,
+    /** whether the mocked restore guard refuses a file-handler launch, and how many launches it refused */
+    restoring: false,
+    refusals: 0,
+}))
+
+vi.mock(import('src/ts/drive/backupWorkGuard'), async (importOriginal) => ({
+    ...await importOriginal(),
+    refuseImportWhileRestoring: () => {
+        if (h.restoring) {
+            h.refusals++
+        }
+        return h.restoring
+    },
 }))
 
 vi.mock('uuid', () => ({
@@ -371,6 +384,8 @@ beforeEach(() => {
     h.presetFails = null
     h.isTauri = false
     h.tauriFiles = {}
+    h.restoring = false
+    h.refusals = 0
     shares.clear()
     routes.clear()
     fetchCalls = []
@@ -774,6 +789,24 @@ describe('launchQueue', () => {
         consumer!({ files: [{ name: 'q.charx', getFile: async () => file }] })
         await vi.waitFor(() => expect(h.characters).toHaveLength(1))
         expect(parseArgs[0]).toBeInstanceOf(File)
+        expect(charName(0)).toBe('Queued')
+    })
+
+    test('a launch during a restore is refused and nothing is imported; once the restore is over the same launch imports', async () => {
+        let consumer: ((params: LaunchParams) => void) | null = null
+        ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => void) => { consumer = fn } }
+        await characterURLImport()
+        const file = new File([new U8(await charxBytes('Queued'))], 'q.charx', { type: 'application/octet-stream' })
+        h.restoring = true
+        consumer!({ files: [{ name: 'q.charx', getFile: async () => file }] })
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        expect(h.refusals).toBe(1)
+        expect(h.characters).toHaveLength(0)
+        expect(parseArgs).toHaveLength(0)
+
+        h.restoring = false
+        consumer!({ files: [{ name: 'q.charx', getFile: async () => file }] })
+        await vi.waitFor(() => expect(h.characters).toHaveLength(1))
         expect(charName(0)).toBe('Queued')
     })
 

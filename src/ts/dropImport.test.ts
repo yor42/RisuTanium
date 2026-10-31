@@ -22,7 +22,19 @@ const h = vi.hoisted(() => ({
     prompts: [] as string[],
     /** the module list's length at each markBootWrite call */
     marks: [] as number[],
+    /** whether the mocked restore guard refuses a drop, and how many drops it refused */
+    restoring: false,
+    refusals: 0,
 }))
+
+vi.mock(import('src/ts/drive/backupWorkGuard'), () => ({
+    refuseImportWhileRestoring: () => {
+        if (h.restoring) {
+            h.refusals++
+        }
+        return h.restoring
+    },
+}) as unknown as typeof import('src/ts/drive/backupWorkGuard'))
 
 vi.mock(import('src/ts/alert'), () => {
     const text = (msg: string | Error) => msg instanceof Error ? msg.message : String(msg)
@@ -83,11 +95,32 @@ beforeEach(() => {
     h.confirm = false
     h.prompts = []
     h.marks = []
+    h.restoring = false
+    h.refusals = 0
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 afterEach(() => {
     vi.restoreAllMocks()
+})
+
+describe('a file dropped during a restore', () => {
+    test.each(['m.risum', 'p.risup', 'c.charx'])('%s is refused, nothing is read or imported, and the drop resolves', async (name) => {
+        h.restoring = true
+        await expect(importDroppedFile(file(name))).resolves.toBeUndefined()
+        expect(h.refusals).toBe(1)
+        expect(h.moduleInput).toBeUndefined()
+        expect(h.modules).toEqual([])
+        expect(h.presets).toEqual([])
+        expect(h.ordered).toBe(0)
+        expect(h.log).toEqual([])
+    })
+
+    test('the same drop imports once the restore is over (compatibility pairing)', async () => {
+        await importDroppedFile(file('c.charx'))
+        expect(h.refusals).toBe(0)
+        expect(h.ordered).toBe(1)
+    })
 })
 
 describe('a dropped file that cannot be imported', () => {
