@@ -123,7 +123,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 //#endregion
 
 import { saveAssetFromPieces } from 'src/ts/globalApi.svelte'
-import { importSourceOfBytes, importSourceOfFile, openDesktopImportSource, WindowedReader, type ImportSource } from 'src/ts/importSource'
+import { importSourceOfBytes, importSourceOfFile, openDesktopImportSource, RANGE_BATCH_MAX_RANGES, RangeBatchReader, type ImportSource } from 'src/ts/importSource'
 import { CharXImporter, CharXParseError, CharXWriter, charxLimits, type CharxStreamOpened } from 'src/ts/process/processzip'
 import { ZIP_SIGNATURE_BLOB } from './zipFixtures'
 
@@ -136,6 +136,7 @@ beforeEach(() => {
     h.saved.clear()
     h.pieces = false
     vi.mocked(saveAssetFromPieces).mockClear()
+    rangeCalls.length = 0
 })
 
 afterEach(() => {
@@ -396,7 +397,23 @@ function chunkedStream(bytes: Uint8Array, size: number, failAfterPieces?: number
     })
 }
 
-type InputKind = 'bytes' | 'file' | 'chunked-file' | 'import-source'
+type InputKind = 'bytes' | 'file' | 'chunked-file' | 'import-source' | 'batched-file'
+
+/** The ranges of every `readRanges` call a 'batched-file' source made since the test began. */
+const rangeCalls: Array<ReadonlyArray<readonly [number, number]>> = []
+
+/**
+ * A picked File whose window is 64 KiB with no gap, so that validation of a small fixture asks for a batch of several
+ * segments, and whose `readRanges` is recorded in `rangeCalls`.
+ */
+function batchedFileSource(bytes: Uint8Array): ImportSource {
+    const base = importSourceOfFile(new File([new Uint8Array(bytes)], 'card.charx'), 64 * 1024, 0)
+    const readRanges = base.readRanges
+    if (readRanges === undefined) {
+        throw new Error('a picked File carries readRanges')
+    }
+    return { ...base, readRanges: async (ranges) => { rangeCalls.push(ranges); return await readRanges(ranges) } }
+}
 
 /** `over` replaces members of the `ImportSource`; `size` and `read` stay those of `bytes` unless it says otherwise. */
 function sourceOf(bytes: Uint8Array, chunk: number, over: Partial<ImportSource> = {}): ImportSource {
@@ -416,6 +433,8 @@ function makeInput(kind: InputKind, bytes: Uint8Array, chunk: number): Uint8Arra
         }
         case 'import-source':
             return sourceOf(bytes, chunk)
+        case 'batched-file':
+            return batchedFileSource(bytes)
     }
 }
 
@@ -425,6 +444,7 @@ const INPUTS: Array<[label: string, kind: InputKind, chunk: number]> = [
     ['file', 'file', 0],
     ...CHUNKS.map((chunk): [string, InputKind, number] => [`chunked-file ${chunk}`, 'chunked-file', chunk]),
     ...CHUNKS.map((chunk): [string, InputKind, number] => [`import-source ${chunk}`, 'import-source', chunk]),
+    ['batched-file', 'batched-file', 0],
 ]
 
 type Outcome = { importer: CharXImporter, failure?: unknown }
@@ -899,7 +919,7 @@ describe('a stored entry framed with a data descriptor on the fallback path (MC-
 
         const ALL = 'all'
         const FAILS = 'origin=zip sig=none assets=0'
-        const WHOLE_ROWS = 'bytes,file,chunked-file 4096,chunked-file 1048576,import-source 4096,import-source 1048576'
+        const WHOLE_ROWS = 'bytes,file,chunked-file 4096,chunked-file 1048576,import-source 4096,import-source 1048576,batched-file'
         const EXPECTED: Array<[caseLabel: string, result: string, inputs: string]> = [
             ['a central compressed size off by one', FAILS, ALL],
             ['a central name that differs from the local name', FAILS, ALL],
@@ -1286,6 +1306,143 @@ describe('validation reads of a picked File', () => {
         return card
     }
 
+    /**
+     * An import of `bytes` through `sourceOf(file)` with the picked File's `Blob.prototype.arrayBuffer` calls counted.
+     * A burst starts with a call begun while no other counted call is pending: a reader that awaits each read gives bursts
+     * of one, and one that starts its reads together gives one burst. The tail read and the directory read (the first two
+     * calls, awaited one after the other) and every call from the first `stream()` on are left out. `calls` holds the byte
+     * length of each counted call and `slices` every `slice` of the File, in order.
+     */
+    async function importCounted(bytes: Uint8Array, makeSource: (file: File) => ImportSource) {
+        const subject = listedFile(bytes)
+        const stream = subject.file.stream.bind(subject.file)
+        const all: Array<{ idle: boolean, length: number }> = []
+        let streamedAt: number | null = null
+        subject.file.stream = (() => { streamedAt ??= all.length; return stream() }) as File['stream']
+        const original = Blob.prototype.arrayBuffer
+        let pending = 0
+        Blob.prototype.arrayBuffer = function (this: Blob) {
+            all.push({ idle: pending === 0, length: this.size })
+            pending++
+            return original.call(this).finally(() => { pending-- })
+        }
+        let outcome: Outcome
+        try {
+            outcome = await runImport(makeSource(subject.file))
+        } finally {
+            Blob.prototype.arrayBuffer = original
+        }
+        expect(streamedAt).not.toBeNull()
+        expect(all.slice(0, 2).map(call => call.idle)).toEqual([true, true])
+        const counted = all.slice(2, streamedAt ?? 0)
+        const bursts: number[] = []
+        for (const call of counted) {
+            if (call.idle) {
+                bursts.push(1)
+            } else {
+                bursts[bursts.length - 1]++
+            }
+        }
+        return { outcome, bursts, calls: counted.map(call => call.length), slices: validationReadsOf(subject.reads, bytes) }
+    }
+
+    describe('validation reads start together', () => {
+        const WINDOW = 128 * KIB
+        const GAP = 16 * KIB
+        const picked = (file: File) => importSourceOfFile(file, WINDOW, GAP)
+
+        test.each(['store', 'deflate-0'] as Kind[])('(R) 100 %s bodies longer than the gap are validated in one burst of four reads', async (kind) => {
+            const entries: Entry[] = [['card.json', CARD, 'store'], ...Array.from({ length: 100 }, (_, i): Entry => [`assets/other/body${i}.bin`, random(64 * KIB, 2000 + i), kind])]
+            const bytes = upstreamArchive(entries)
+
+            const { outcome, bursts, calls } = await importCounted(bytes, picked)
+
+            expect(originOf(outcome) ?? 'imported').toBe('imported')
+            expect(Object.keys(outcome.importer.assets)).toHaveLength(100)
+            expect(importedWhole(outcome, 'assets/other/body57.bin', entries[58][1])).toBe(true)
+            expect(bursts).toEqual([4])
+            expect(calls.reduce((total, length) => total + length, 0)).toBeLessThanOrEqual(WINDOW)
+        })
+
+        test('(R) twelve bodies of 4 MiB at the default sizes take at most two bursts of at most four reads', async () => {
+            const entries: Entry[] = [['card.json', CARD, 'store'], ...Array.from({ length: 12 }, (_, i): Entry => [`assets/other/body${i}.bin`, random(4 * MIB, 2200 + i), 'deflate-0'])]
+            const bytes = upstreamArchive(entries)
+
+            const { outcome, bursts } = await importCounted(bytes, file => importSourceOfFile(file))
+
+            expect(originOf(outcome) ?? 'imported').toBe('imported')
+            expect(Object.keys(outcome.importer.assets)).toHaveLength(12)
+            expect(bursts.length).toBeLessThanOrEqual(2)
+            for (const burst of bursts) {
+                expect(burst).toBeLessThanOrEqual(4)
+            }
+        }, 60_000)
+
+        test('(R) the fork\'s own export of 40 bodies of 64 KiB is validated in one burst of four reads', async () => {
+            const chunks: Uint8Array[] = []
+            const writer = new CharXWriter({ write: async (data: Uint8Array) => { chunks.push(data) }, close: async () => { } } as unknown as ConstructorParameters<typeof CharXWriter>[0])
+            await writer.write('card.json', '{"spec":"chara_card_v3"}', 6)
+            const bodies = Array.from({ length: 40 }, (_, i) => random(64 * KIB, 2300 + i))
+            for (let i = 0; i < bodies.length; i++) {
+                await writer.write(`assets/other/body${i}.bin`, bodies[i], 0)
+            }
+            await writer.end()
+            const bytes = joined(...chunks)
+
+            const { outcome, bursts } = await importCounted(bytes, picked)
+
+            expect(originOf(outcome) ?? 'imported').toBe('imported')
+            expect(Object.keys(outcome.importer.assets)).toHaveLength(40)
+            expect(importedWhole(outcome, 'assets/other/body21.bin', bodies[21])).toBe(true)
+            expect(bursts).toEqual([4])
+        })
+
+        test('(R) alternating small and big bodies start at most one burst of at most four reads, and no more reads than a source without a window', async () => {
+            const entries: Entry[] = [['card.json', CARD, 'store']]
+            for (let i = 0; i < 12; i++) {
+                entries.push([`assets/other/small${i}.bin`, random(8 * KIB, 300 + i), 'store'], [`assets/other/big${i}.bin`, random(144 * KIB, 400 + i), 'store'])
+            }
+            const bytes = upstreamArchive(entries)
+
+            const { outcome, bursts, calls } = await importCounted(bytes, picked)
+
+            expect(originOf(outcome) ?? 'imported').toBe('imported')
+            expect(Object.keys(outcome.importer.assets)).toHaveLength(entries.length - 1)
+            expect(bursts.length).toBeLessThanOrEqual(1)
+            for (const burst of bursts) {
+                expect(burst).toBeLessThanOrEqual(4)
+            }
+            expect(calls.length).toBeLessThanOrEqual((await unplannedReadsOf(bytes)).length)
+        })
+
+        test('(R) a body longer than the gap and a body longer than the window are never read, and the reads start together', async () => {
+            // runs of small bodies are three segments: before the 64 KiB body, between it and the 512 KiB body, and after it
+            const entries: Entry[] = [
+                ['card.json', CARD, 'store'],
+                ['assets/other/a1.bin', random(8 * KIB, 500), 'store'], ['assets/other/a2.bin', random(8 * KIB, 501), 'store'],
+                ['assets/other/mid.bin', random(64 * KIB, 502), 'store'],
+                ['assets/other/b1.bin', random(8 * KIB, 503), 'store'], ['assets/other/b2.bin', random(8 * KIB, 504), 'store'],
+                ['assets/other/huge.bin', random(512 * KIB, 505), 'store'],
+                ['assets/other/c1.bin', random(8 * KIB, 506), 'store'], ['assets/other/c2.bin', random(8 * KIB, 507), 'store'],
+            ]
+            const bytes = upstreamArchive(entries)
+            const layout = layoutOf(bytes)
+
+            const { outcome, bursts, slices } = await importCounted(bytes, picked)
+
+            expect(originOf(outcome) ?? 'imported').toBe('imported')
+            expect(Object.keys(outcome.importer.assets)).toHaveLength(entries.length - 1)
+            // guard, passes before and after: no slice touches the inside of a body longer than the gap
+            for (const name of ['assets/other/mid.bin', 'assets/other/huge.bin']) {
+                const body = layout.entries.find(entry => entry.name === name)!
+                for (const [start, end] of slices) {
+                    expect(start < body.bodyEnd && end > body.bodyStart + HEADER_SLACK, `${name} ${start}-${end}`).toBe(false)
+                }
+            }
+            expect(bursts).toEqual([3])
+        })
+    })
+
     test('(R) 60 stored entries of 40 KiB take at most three calls', async () => {
         const entries = entriesOf(60, 40 * KIB, 200)
         const bytes = upstreamArchive(entries)
@@ -1391,23 +1548,18 @@ describe('validation reads of a picked File', () => {
         expect(reads.length).toBeLessThanOrEqual((await unplannedReadsOf(bytes)).length)
     })
 
-    test('(R) validation walks the run only for the reads that miss the window: the extent functions run at most once per file call', async () => {
+    test('(N) validation builds one batch reader and its work grows with the ranges and the requests, not their product', async () => {
         const entries: Entry[] = [['card.json', CARD, 'store'], ...Array.from({ length: 3000 }, (_, i): Entry => [`assets/other/tiny${i}.bin`, random(1024, 3000 + i), 'store'])]
         const bytes = upstreamArchive(entries)
         const subject = listedFile(bytes)
-        const prototype = WindowedReader.prototype
+        const prototype = RangeBatchReader.prototype
         const original = prototype.read
-        let reads = 0
-        let functionReads = 0
-        let invocations = 0
-        prototype.read = function (this: WindowedReader, start: number, end: number, aheadOf?: () => number) {
-            reads++
-            let counted = aheadOf
-            if (typeof aheadOf === 'function') {
-                functionReads++
-                counted = () => { invocations++; return aheadOf() }
-            }
-            return original.call(this, start, end, counted)
+        const readers = new Set<RangeBatchReader>()
+        let requests = 0
+        prototype.read = function (this: RangeBatchReader, start: number, end: number) {
+            readers.add(this)
+            requests++
+            return original.call(this, start, end)
         }
         let outcome: Outcome
         try {
@@ -1418,18 +1570,185 @@ describe('validation reads of a picked File', () => {
 
         expect(originOf(outcome) ?? 'imported').toBe('imported')
         expect(Object.keys(outcome.importer.assets)).toHaveLength(entries.length - 1)
-        expect(reads).toBeGreaterThanOrEqual(entries.length)
-        // dozens of 64 KiB windows over about 3 MiB of headers and bodies
+        // the entry count of the fixture: one range per header, and the last entry's descriptor
+        const ranges = entries.length + 1
+        expect(requests).toBeGreaterThanOrEqual(entries.length)
+        expect(readers.size).toBe(1)
+        const [reader] = [...readers]
+        expect(reader.steps).toBeGreaterThan(0)
+        expect(reader.steps).toBeLessThanOrEqual(4 * (ranges + requests))
+        // dozens of 64 KiB batches over about 3 MiB of headers and bodies
         expect(subject.counters.slicesAtStream).not.toBeNull()
         expect(subject.counters.slicesAtStream).toBeGreaterThanOrEqual(20)
-        // every read of a windowed source is planned
-        expect(functionReads).toBe(reads)
-        // and the walk is paid per file call, not per read
-        expect(invocations).toBeGreaterThan(0)
-        expect(invocations).toBeLessThanOrEqual(subject.counters.slicesAtStream ?? 0)
-        expect(WindowedReader.prototype.read).toBe(original)
+        expect(RangeBatchReader.prototype.read).toBe(original)
+    })
+    /** The File as a source whose `read` and `readRanges` are recorded: the ranges of each `readRanges` call and each `read`. */
+    function recordedSource(base: ImportSource) {
+        const baseReadRanges = base.readRanges
+        if (baseReadRanges === undefined) {
+            throw new Error('a picked File carries readRanges')
+        }
+        const rangeBatches: Array<Array<[number, number]>> = []
+        const reads: Array<[number, number]> = []
+        const source: ImportSource = {
+            ...base,
+            read: async (start, end) => { reads.push([start, end]); return await base.read(start, end) },
+            readRanges: async (ranges) => { rangeBatches.push(ranges.map(([start, end]): [number, number] => [start, end])); return await baseReadRanges(ranges) },
+        }
+        return { source, rangeBatches, reads }
+    }
+
+    const totalOf = (batch: Array<[number, number]>) => batch.reduce((total, [start, end]) => total + (end - start), 0)
+
+    describe('batches of segments', () => {
+        const WINDOW = 128 * KIB
+        const GAP = 16 * KIB
+        const bodies = (count: number, size: number, seed: number): Entry[] => [['card.json', CARD, 'store'], ...Array.from({ length: count }, (_, i): Entry => [`assets/other/body${i}.bin`, random(size, seed + i), 'store'])]
+
+        test('(N) a batch that comes back one byte short is dropped, the rest of validation reads exactly, and the import is whole', async () => {
+            const entries = bodies(100, 64 * KIB, 5000)
+            const bytes = upstreamArchive(entries)
+            const subject = listedFile(bytes)
+            const recorded = recordedSource(importSourceOfFile(subject.file, WINDOW, GAP))
+            const source: ImportSource = { ...recorded.source, readRanges: async (ranges) => {
+                const parts = await recorded.source.readRanges!(ranges)
+                parts[parts.length - 1] = parts[parts.length - 1].subarray(0, parts[parts.length - 1].length - 1)
+                return parts
+            } }
+
+            const outcome = await runImport(source)
+
+            expect(originOf(outcome) ?? 'imported').toBe('imported')
+            expect(Object.keys(outcome.importer.assets)).toHaveLength(100)
+            expect(importedWhole(outcome, 'assets/other/body40.bin', entries[41][1])).toBe(true)
+            expect(recorded.rangeBatches).toHaveLength(1)
+            // every request after the short batch is its own exact read
+            expect(validationReadsOf(recorded.reads, bytes).length).toBeGreaterThan(90)
+        })
+
+        test('(N) a batch that rejects is an input failure with its own message, and nothing is saved', async () => {
+            const bytes = upstreamArchive(bodies(100, 64 * KIB, 5200))
+            const subject = listedFile(bytes)
+            const recorded = recordedSource(importSourceOfFile(subject.file, WINDOW, GAP))
+            const source: ImportSource = { ...recorded.source, readRanges: async () => { throw new Error('the picker went away') } }
+
+            const outcome = await runImport(source)
+
+            expect(originOf(outcome)).toBe('input')
+            expect((outcome.failure as Error).message).toBe('the picker went away')
+            expect(h.saved.size).toBe(0)
+        })
+
+        test('(N) no read of the plan is over the window: 300 entries with names of 1 KiB', async () => {
+            const entries: Entry[] = [['card.json', CARD, 'store'], ...Array.from({ length: 300 }, (_, i): Entry => [`assets/other/${String(i).padStart(4, '0')}${'n'.repeat(1020)}.bin`, random(1024, 5400 + i), 'store'])]
+            const bytes = upstreamArchive(entries)
+            const subject = listedFile(bytes)
+            const recorded = recordedSource(importSourceOfFile(subject.file, WINDOW, GAP))
+
+            const outcome = await runImport(recorded.source)
+
+            expect(originOf(outcome) ?? 'imported').toBe('imported')
+            expect(Object.keys(outcome.importer.assets)).toHaveLength(300)
+            const sizes = [...recorded.rangeBatches.map(totalOf), ...validationReadsOf(recorded.reads, bytes).map(([start, end]) => end - start)]
+            expect(sizes.length).toBeGreaterThanOrEqual(3)
+            for (const size of sizes) {
+                expect(size).toBeLessThanOrEqual(WINDOW)
+            }
+            expect(subject.counters.slicesAtStream).toBeGreaterThanOrEqual(3)
+        })
+
+        test('(N) a batch holds at most RANGE_BATCH_MAX_RANGES ranges: 600 segments (the card joins the first body) are 256, 256 and 88', async () => {
+            const bytes = upstreamArchive(bodies(599, 20 * KIB, 5800))
+            const subject = listedFile(bytes)
+            const recorded = recordedSource(importSourceOfFile(subject.file, 8 * MIB, 0))
+
+            const outcome = await runImport(recorded.source)
+
+            expect(originOf(outcome) ?? 'imported').toBe('imported')
+            expect(Object.keys(outcome.importer.assets)).toHaveLength(599)
+            expect(recorded.rangeBatches.map(batch => batch.length)).toEqual([RANGE_BATCH_MAX_RANGES, RANGE_BATCH_MAX_RANGES, 88])
+        }, 30_000)
+
+        test.each([16 * KIB, 0])('(G) 3000 entries of 16-byte bodies, whose header ranges overlap, are read in batches of at most the window (gap %i)', async (gap) => {
+            const entries: Entry[] = [['card.json', CARD, 'store'], ...Array.from({ length: 3000 }, (_, i): Entry => [`assets/other/t${i}.bin`, random(16, 6000 + i), 'store'])]
+            const bytes = upstreamArchive(entries)
+            let recorded: ReturnType<typeof recordedSource> | undefined
+
+            const { outcome, calls } = await importCounted(bytes, file => {
+                recorded = recordedSource(importSourceOfFile(file, 64 * KIB, gap))
+                return recorded.source
+            })
+
+            expect(originOf(outcome) ?? 'imported').toBe('imported')
+            expect(Object.keys(outcome.importer.assets)).toHaveLength(3000)
+            for (const batch of recorded?.rangeBatches ?? []) {
+                expect(totalOf(batch)).toBeLessThanOrEqual(64 * KIB)
+            }
+            for (const length of calls) {
+                expect(length).toBeLessThanOrEqual(64 * KIB)
+            }
+        }, 30_000)
+
+        test('(G) four entries with names longer than the window are read exactly, in no batch over the window, and the import is whole', async () => {
+            const entries: Entry[] = [['card.json', CARD, 'store'], ...Array.from({ length: 4 }, (_, i): Entry => [`assets/other/${i}${'n'.repeat(4090)}.bin`, random(2 * KIB, 6400 + i), 'store'])]
+            const bytes = upstreamArchive(entries)
+            const subject = listedFile(bytes)
+            const recorded = recordedSource(importSourceOfFile(subject.file, 4 * KIB, KIB))
+
+            const outcome = await runImport(recorded.source)
+
+            expect(originOf(outcome) ?? 'imported').toBe('imported')
+            expect(Object.keys(outcome.importer.assets)).toHaveLength(4)
+            for (const batch of recorded.rangeBatches) {
+                expect(totalOf(batch)).toBeLessThanOrEqual(4 * KIB)
+            }
+        })
+
+        test('(N) an unlisted entry of 3 MiB between two listed bodies costs one batch and one exact read', async () => {
+            const plain = upstreamArchive(entriesOf(5, 2 * KIB, 6800))
+            const bytes = withSizedOrphan(plain, 3, 3 * MIB)
+            const subject = listedFile(bytes)
+            const recorded = recordedSource(importSourceOfFile(subject.file))
+
+            const outcome = await runImport(recorded.source)
+
+            expect(originOf(outcome) ?? 'imported').toBe('imported')
+            expect(Object.keys(outcome.importer.assets)).toHaveLength(5)
+            expect(recorded.rangeBatches).toHaveLength(1)
+            expect(validationReadsOf(recorded.reads, bytes)).toHaveLength(1)
+        })
     })
 
+    describe('a batched picked File reaches the batch path on the fixtures of the decision rows', () => {
+        const countPlusOne = (bytes: Uint8Array) => patched(bytes, (view, layout) => {
+            view.setUint16(layout.endRecord + 8, view.getUint16(layout.endRecord + 8, true) + 1, true)
+            view.setUint16(layout.endRecord + 10, view.getUint16(layout.endRecord + 10, true) + 1, true)
+        })
+        // 'reach': validation asked for a batch of at least two ranges. 'refused': the directory was refused before planning, so no batch.
+        const FIXTURES: Array<[string, () => Uint8Array, 'reach' | 'refused']> = [
+            ['a stored asset with signatures', () => standardArchive('store'), 'reach'],
+            ['a deflate-0 asset with signatures', () => standardArchive('deflate-0'), 'reach'],
+            ['a JPEG prefix', () => standardArchive('store', BLOB_ASSET, JPEG_PREFIX), 'reach'],
+            ['12-byte descriptors', () => withShortDescriptors(standardArchive('store')), 'reach'],
+            ['a long local extra', () => withLocalExtra(standardArchive('store'), 1, 200), 'reach'],
+            ['an unlisted entry between listed ones', () => withOrphan(standardArchive('store'), 'between'), 'reach'],
+            ['the clean twin of the overlap case', () => nestedArchive(false).bytes, 'reach'],
+            ['a central compressed size off by one', () => damagedArchive('store', damagesFor(8)[0][1]), 'reach'],
+            ['an entry count one too high', () => countPlusOne(standardArchive('store')), 'refused'],
+        ]
+
+        test.each(FIXTURES)('(N) %s', async (_label, build, category) => {
+            const outcome = await runImport(makeInput('batched-file', build(), 0))
+
+            expect(originOf(outcome)).not.toBe('input')
+            if (category === 'reach') {
+                expect(rangeCalls.length).toBeGreaterThanOrEqual(1)
+                expect(rangeCalls.every(ranges => ranges.length >= 2)).toBe(true)
+            } else {
+                expect(rangeCalls).toHaveLength(0)
+            }
+        })
+    })
     describe('across several windows', () => {
         // Bodies no larger than the gap, so the planner runs through them and validation reads whole windows.
         const WINDOW = 64 * KIB
