@@ -1,5 +1,7 @@
 import { v4 } from "uuid";
-import type { Chat, ChatAlt, Message } from "../storage/database.svelte";
+import type { Chat, ChatAlt, ChatAltMemory, Message } from "../storage/database.svelte";
+import type { SerializableHypaV2Data } from "./memory/hypav2";
+import type { SerializableHypaV3Data } from "./memory/hypav3";
 
 /**
  * A chat is a tree of messages. The active path is `chat.message`; every other
@@ -171,12 +173,234 @@ export function siblingsAt(chat: Chat, i: number): Message[] {
     return heads.sort(byDisplayOrder);
 }
 
+type BranchFields = Pick<Chat, "supaMemoryData" | "supaMemoryCoveredId" | "lastMemory" | "scriptstate" | "hypaV2Data" | "hypaV3Data">;
+
+export interface BranchStateResult {
+    /** What the chat holds afterwards; `null` removes the field. */
+    next: ChatAltMemory;
+    /** What the departing chain keeps: the small fields always, a summary store only when the switch changes it. */
+    park: ChatAltMemory;
+}
+
+/** A deep copy that reads through reactive proxies and keeps own keys such as `__proto__` as data. */
+function deepCopy<T>(value: T): T;
+function deepCopy(value: unknown): unknown {
+    if (Array.isArray(value)) {
+        return value.map((item: unknown) => deepCopy(item));
+    }
+    if (isObjectValue(value)) {
+        return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, deepCopy(item)]));
+    }
+    return value;
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function pickBranchFields(chat: BranchFields): BranchFields {
+    return {
+        supaMemoryData: chat.supaMemoryData,
+        supaMemoryCoveredId: chat.supaMemoryCoveredId,
+        lastMemory: chat.lastMemory,
+        scriptstate: chat.scriptstate,
+        hypaV2Data: chat.hypaV2Data,
+        hypaV3Data: chat.hypaV3Data,
+    };
+}
+
 /**
- * Where the state of a branch (memory, script state) is parked and restored. `departedHead` is the
- * record that now holds the departed chain's first message and `arrivedHead` the record the arriving
- * chain's first message came from, each null when that side was empty.
+ * Whether `supaMemory` can resume from `data` on a path whose messages carry exactly the chat ids
+ * `pathIds`: false for the data that would end in "the saved resume point ... cannot be found" (plain)
+ * or "hypaMemory: chat ID not found" (legacy `hypa:`). Data the resolver ignores or reports
+ * differently (empty, too short, not parseable, not a list) is left alone and counts as resumable.
+ * The seams of this section live here, not beside the memory code, so that the tree module stays
+ * free of the memory modules' imports.
  */
-function carryBranchState(_chat: Chat, _departedHead: ChatAlt | null, _arrivedHead: ChatAlt | null): void {
+export function supaResumeResolvable(data: string | undefined, pathIds: ReadonlySet<string>): boolean {
+    if (!data || data.length <= 4) {
+        return true;
+    }
+    const newline = data.indexOf("\n");
+    const id = newline === -1 ? data : data.slice(0, newline);
+    if (!id.startsWith("hypa:")) {
+        return pathIds.has(id);
+    }
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(data.slice(newline + 1).trim());
+    } catch {
+        return true;
+    }
+    if (!Array.isArray(parsed)) {
+        return true;
+    }
+    return parsed.some((entry: unknown) => isObjectValue(entry) && typeof entry.id === "string" && pathIds.has(entry.id));
+}
+
+/**
+ * HypaV2 data without the summaries that name a chat id of `ids`, their retrieval chunks, and
+ * `lastMainChunkID` as the send-time cleanup recomputes it. Returns `data` itself when nothing is
+ * removed. Ignores `preserveOrphanedMemory`: summaries of a departed branch are parked, not orphaned.
+ */
+export function hypaV2WithoutMemos(data: SerializableHypaV2Data, ids: ReadonlySet<string>): SerializableHypaV2Data {
+    if (!Array.isArray(data.mainChunks) || !Array.isArray(data.chunks)) {
+        return data;
+    }
+    const mainChunks = data.mainChunks.filter((mainChunk) => {
+        return !(Array.isArray(mainChunk.chatMemos) && mainChunk.chatMemos.some((memo) => ids.has(memo)));
+    });
+    if (mainChunks.length === data.mainChunks.length) {
+        return data;
+    }
+    const keptIds = new Set(mainChunks.map((mainChunk) => mainChunk.id));
+    return {
+        ...data,
+        mainChunks,
+        chunks: data.chunks.filter((chunk) => keptIds.has(chunk.mainChunkID)),
+        lastMainChunkID: mainChunks.length > 0 ? mainChunks[mainChunks.length - 1].id : 0,
+    };
+}
+
+/**
+ * HypaV3 data without the summaries that name a chat id of `ids`; categories, metrics and modal
+ * settings stay. Returns `data` itself when nothing is removed. Ignores `preserveOrphanedMemory`.
+ */
+export function hypaV3WithoutMemos(data: SerializableHypaV3Data, ids: ReadonlySet<string>): SerializableHypaV3Data {
+    if (!Array.isArray(data.summaries)) {
+        return data;
+    }
+    const summaries = data.summaries.filter((summary) => {
+        return !(Array.isArray(summary.chatMemos) && summary.chatMemos.some((memo) => ids.has(memo)));
+    });
+    return summaries.length === data.summaries.length ? data : { ...data, summaries };
+}
+
+function parkedText(mem: ChatAltMemory | undefined, key: "supaMemoryData" | "supaMemoryCoveredId" | "lastMemory"): string | null | undefined {
+    const value: unknown = mem?.[key];
+    if (typeof value === "string") {
+        return value;
+    }
+    return value === null ? null : undefined;
+}
+
+function parkedObject<K extends "scriptstate" | "hypaV2Data" | "hypaV3Data">(mem: ChatAltMemory | undefined, key: K): ChatAltMemory[K] {
+    const value: unknown = mem?.[key];
+    return (value === null || isObjectValue(value) ? value : undefined) as ChatAltMemory[K];
+}
+
+/**
+ * The state a chat holds after a switch, and the state the departing chain keeps. `departing` is the
+ * set of chat ids of the departing chain, `arrivingPathIds` those of the path afterwards, `parked` the
+ * state the arriving chain left behind (a field it lacks is carried instead of restored).
+ *
+ * Per field: the SupaMemory pair (plain or legacy `hypa:`), `lastMemory` and `scriptstate` are always
+ * parked, an absent value as `null`; HypaV2 and HypaV3 are parked only when the switch changes them.
+ * Carried without a parked copy: the pair only while `supaResumeResolvable` holds on the new path
+ * (otherwise both fields go), `lastMemory` unless it names a departing message, `scriptstate` as it is
+ * when `keepLiveScriptState` and removed otherwise, the summary stores minus what names a departing
+ * message. A restored pair that does not resolve on the new path is dropped too, so a later send never
+ * meets the "reset SupaMemory data" error. `next` and `park` share no object with each other, with
+ * `live` or with `parked`.
+ */
+export function branchState(
+    live: BranchFields,
+    departing: ReadonlySet<string>,
+    arrivingPathIds: ReadonlySet<string>,
+    parked: ChatAltMemory | undefined,
+    keepLiveScriptState: boolean,
+): BranchStateResult {
+    const mine = deepCopy(pickBranchFields(live));
+    const work = deepCopy(pickBranchFields(live));
+    const park: ChatAltMemory = {
+        supaMemoryData: mine.supaMemoryData ?? null,
+        supaMemoryCoveredId: mine.supaMemoryCoveredId ?? null,
+        lastMemory: mine.lastMemory ?? null,
+        scriptstate: mine.scriptstate ?? null,
+    };
+
+    const parkedData = parkedText(parked, "supaMemoryData");
+    let data = parkedData !== undefined ? parkedData : work.supaMemoryData ?? null;
+    let covered = parkedData !== undefined ? parkedText(parked, "supaMemoryCoveredId") ?? null : work.supaMemoryCoveredId ?? null;
+    if (data !== null && !supaResumeResolvable(data, arrivingPathIds)) {
+        data = null;
+        covered = null;
+    }
+
+    const parkedLast = parkedText(parked, "lastMemory");
+    const liveLast = work.lastMemory ?? null;
+    const lastMemory = parkedLast !== undefined ? parkedLast : (liveLast !== null && departing.has(liveLast) ? null : liveLast);
+
+    const parkedScript = parkedObject(parked, "scriptstate");
+    const scriptstate = parkedScript !== undefined ? deepCopy(parkedScript) : (keepLiveScriptState ? work.scriptstate ?? null : null);
+
+    const parkedV2 = parkedObject(parked, "hypaV2Data");
+    const hypaV2Data = parkedV2 !== undefined ? deepCopy(parkedV2) : (work.hypaV2Data === undefined ? null : hypaV2WithoutMemos(work.hypaV2Data, departing));
+    if (!sameValue(hypaV2Data ?? undefined, live.hypaV2Data)) {
+        park.hypaV2Data = mine.hypaV2Data ?? null;
+    }
+
+    const parkedV3 = parkedObject(parked, "hypaV3Data");
+    const hypaV3Data = parkedV3 !== undefined ? deepCopy(parkedV3) : (work.hypaV3Data === undefined ? null : hypaV3WithoutMemos(work.hypaV3Data, departing));
+    if (!sameValue(hypaV3Data ?? undefined, live.hypaV3Data)) {
+        park.hypaV3Data = mine.hypaV3Data ?? null;
+    }
+
+    return {
+        next: { supaMemoryData: data, supaMemoryCoveredId: covered, lastMemory, scriptstate, hypaV2Data, hypaV3Data },
+        park,
+    };
+}
+
+function setBranchField<K extends keyof BranchFields>(chat: Chat, key: K, value: Chat[K] | null): void {
+    if (value === null || value === undefined) {
+        if (chat[key] !== undefined) {
+            Reflect.deleteProperty(chat, key);
+        }
+        return;
+    }
+    if (!sameValue(chat[key], value)) {
+        chat[key] = value;
+    }
+}
+
+/**
+ * Parks and restores the state of a branch around a switch. `departed` are the records now holding the
+ * departed chain (the first one gets the parked state), `arrivedHead` the record the arriving chain's
+ * first message came from, null when nothing arrives. An arrival without departing messages discards the
+ * live values it replaces: no message holds them. The suggestions never follow a branch.
+ */
+function carryBranchState(chat: Chat, departed: readonly ChatAlt[], arrivedHead: ChatAlt | null, keepLiveScriptState: boolean): void {
+    const departing = new Set<string>();
+    for (const record of departed) {
+        if (record.m.chatId) {
+            departing.add(record.m.chatId);
+        }
+    }
+    const pathIds = new Set<string>();
+    for (const message of chat.message) {
+        if (message.chatId) {
+            pathIds.add(message.chatId);
+        }
+    }
+    const mem: unknown = arrivedHead?.mem;
+    const parked = isObjectValue(mem) ? (mem as ChatAltMemory) : undefined;
+    const { next, park } = branchState(chat, departing, pathIds, parked, keepLiveScriptState);
+    if (departed.length > 0 && chat.alt !== undefined) {
+        chat.alt[chat.alt.length - departed.length].mem = park;
+    }
+    if (arrivedHead !== null) {
+        delete arrivedHead.mem;
+    }
+    setBranchField(chat, "supaMemoryData", next.supaMemoryData ?? null);
+    setBranchField(chat, "supaMemoryCoveredId", next.supaMemoryCoveredId ?? null);
+    setBranchField(chat, "lastMemory", next.lastMemory ?? null);
+    setBranchField(chat, "scriptstate", next.scriptstate ?? null);
+    setBranchField(chat, "hypaV2Data", next.hypaV2Data ?? null);
+    setBranchField(chat, "hypaV3Data", next.hypaV3Data ?? null);
+    if (chat.suggestMessages !== undefined) {
+        delete chat.suggestMessages;
+    }
 }
 
 function departRecords(chat: Chat, tail: readonly Message[], parentId: string | null): ChatAlt[] {
@@ -207,7 +431,7 @@ export function detachTail(chat: Chat, i: number): boolean {
     const tail = path.slice(i);
     path.splice(i);
     const records = departRecords(chat, tail, i === 0 ? null : path[i - 1].chatId ?? null);
-    carryBranchState(chat, records[0], null);
+    carryBranchState(chat, records, null, true);
     return true;
 }
 
@@ -262,7 +486,7 @@ export function switchTo(chat: Chat, i: number, headId: string): boolean {
     }
     const departed = tail.length === 0 ? [] : departRecords(chat, tail, parentId);
     path.push(...arriving.map((record) => record.m));
-    carryBranchState(chat, departed[0] ?? null, arriving[0]);
+    carryBranchState(chat, departed, arriving[0], false);
     return true;
 }
 

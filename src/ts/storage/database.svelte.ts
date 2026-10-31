@@ -1918,6 +1918,21 @@ export interface ChatAlt{
     m: Message
     p: string|null
     a: number
+    /** The branch state parked when this record's chain was left; removed again on arrival. */
+    mem?: ChatAltMemory
+}
+
+/**
+ * The per-branch state of a departed chain, parked on its first record. A field that is absent was not parked;
+ * `null` parks "the chat had none".
+ */
+export interface ChatAltMemory{
+    supaMemoryData?: string|null
+    supaMemoryCoveredId?: string|null
+    lastMemory?: string|null
+    scriptstate?: {[key:string]:string|number|boolean}|null
+    hypaV2Data?: SerializableHypaV2Data|null
+    hypaV3Data?: SerializableHypaV3Data|null
 }
 
 export interface OnboardingOption{
