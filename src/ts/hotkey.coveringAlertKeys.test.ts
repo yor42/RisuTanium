@@ -489,6 +489,7 @@ describe('keys that must keep working over an alert that covers the page', () =>
         'ask', 'pluginconfirm', 'select', 'input', 'selectChar', 'addchar', 'chatOptions', 'cardexport',
         'selectModule', 'tos', 'staleAccountNotice', 'progress', 'normal', 'error', 'markdown',
         'requestdata', 'hypaV2', 'branches', 'requestlogs', 'pukmakkurit', 'wait2', 'wait',
+        'patternSelect', 'patternInput',
     ]
     /** The types Escape closes; every other covering type keeps what is on screen. */
     const ESCAPE_CLOSES: Array<alertData['type']> = [

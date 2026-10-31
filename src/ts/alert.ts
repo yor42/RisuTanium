@@ -10,10 +10,12 @@ export interface alertData{
             |'input'|'toast'|'wait2'|'markdown'|'select'
             |'tos'|'cardexport'|'requestdata'|'addchar'|'hypaV2'|'selectModule'
             |'chatOptions'|'pukmakkurit'|'branches'|'progress'|'pluginconfirm'|'requestlogs'
-            |'staleAccountNotice',
+            |'staleAccountNotice'|'patternSelect'|'patternInput',
     msg: string,
     submsg?: string
     datalist?: [string, string][],
+    /** Options of a `patternSelect` prompt, carried structured rather than joined into `msg`. */
+    choices?: string[],
     stackTrace?: string;
     defaultValue?: string
     /** Set on a wait alert that can be cancelled: the action that ends the wait early. */

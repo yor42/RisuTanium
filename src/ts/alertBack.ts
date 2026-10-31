@@ -1,6 +1,7 @@
 import { get } from 'svelte/store'
 import type { alertData } from './alert'
 import { answerShownPrompt } from './alertPrompts'
+import { PATTERN_PROMPT_CANCEL } from './patternPromptAnswer'
 import { alertStore } from './stores.svelte'
 
 /**
@@ -33,6 +34,8 @@ export const ALERT_BACK_ACTIONS: Record<alertData['type'], BackAction> = {
     cardexport: { kind: 'answer', message: JSON.stringify({ type: 'cancel', type2: '' }) },
     addchar: { kind: 'answer', message: 'cancel' },
     chatOptions: { kind: 'answer', message: 'cancel' },
+    patternSelect: { kind: 'answer', message: PATTERN_PROMPT_CANCEL },
+    patternInput: { kind: 'answer', message: PATTERN_PROMPT_CANCEL },
     normal: CLOSE,
     error: CLOSE,
     markdown: CLOSE,
