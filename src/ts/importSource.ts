@@ -25,6 +25,13 @@ export interface ImportSource {
      * shrank. A view into the source's own memory is only valid as long as the caller does not change it.
      */
     read(start: number, end: number): Promise<Uint8Array>
+    /**
+     * The bytes of several ranges in one call, one part per range in input order. Each range is clamped as `read`
+     * clamps it, and `[]` makes no call. A part is shorter than its clamped range only when the source ended or shrank.
+     * A rejection is the source's own error, raised only when nothing the call started is still pending. A wrapper that
+     * replaces `read` must replace or drop `readRanges`.
+     */
+    readRanges?(ranges: ReadonlyArray<readonly [number, number]>): Promise<Uint8Array[]>
     /** The whole source as a forward-only stream. A desktop source is read in pieces of at most `CHUNK_MAX`. */
     stream(): ReadableStream<Uint8Array>
     /** The size and modification time of the underlying file now; `modified` is null when the platform has none. */
@@ -97,12 +104,70 @@ export function importSourceOfBytes(name: string, bytes: Uint8Array): ImportSour
 }
 
 /**
- * The read-ahead of a picked File. Every `slice().arrayBuffer()` costs about the same whatever its size, so a run of
- * small entries is read in one call. A body is read through only while it is no longer than the gap: at the per-call
- * cost and the per-byte rate of a phone's picker File, a body of about 2.4 MiB costs as much as the call it saves.
+ * The read-ahead of a picked File. The cost of a read is per Blob item rather than per byte, and the items of
+ * separate composite Blobs are read in parallel, so a batch of ranges is read as a few composites together. A body is
+ * read through only while it is no longer than the gap: at the per-item cost and the per-byte rate of a phone's picker
+ * File, a body of about 2.4 MiB costs as much as the item it saves.
  */
 export const PICKED_FILE_WINDOW_BYTES = 8 * 1024 * 1024
 export const PICKED_FILE_GAP_BYTES = 1024 * 1024
+
+/** The composite Blobs one `readRanges` call of a picked File reads together. */
+export const RANGE_READ_PARALLEL = 4
+
+/**
+ * Reads the clamped, non-empty items as `min(RANGE_READ_PARALLEL, n)` composite Blobs of consecutive items, balanced
+ * by item count and started together; the first `n mod m` groups take one extra item. It settles after every composite
+ * has settled, so nothing is pending when it rejects, and the rejection is the lowest-index group's own error. Parts
+ * are indexed by input range. A group whose bytes differ in count from its clamped ranges returns only empty parts,
+ * so the caller sees a mismatch and no byte of that group is served.
+ */
+async function readFileRanges(file: File, ranges: ReadonlyArray<readonly [number, number]>): Promise<Uint8Array[]> {
+    const parts: Uint8Array[] = ranges.map(() => new Uint8Array(0))
+    const items: { index: number, from: number, to: number }[] = []
+    ranges.forEach(([start, end], index) => {
+        const { from, to } = clampRange(start, end, file.size)
+        if (to > from) {
+            items.push({ index, from, to })
+        }
+    })
+    if (items.length === 0) {
+        return parts
+    }
+    const groupCount = Math.min(RANGE_READ_PARALLEL, items.length)
+    const perGroup = Math.floor(items.length / groupCount)
+    const extra = items.length % groupCount
+    const groups: typeof items[] = []
+    let at = 0
+    for (let g = 0; g < groupCount; g++) {
+        const count = perGroup + (g < extra ? 1 : 0)
+        groups.push(items.slice(at, at + count))
+        at += count
+    }
+    const settled = await Promise.allSettled(groups.map(async (group) => {
+        return await new Blob(group.map((item) => file.slice(item.from, item.to))).arrayBuffer()
+    }))
+    for (const result of settled) {
+        if (result.status === 'rejected') {
+            throw result.reason
+        }
+    }
+    settled.forEach((result, g) => {
+        if (result.status !== 'fulfilled') {
+            return
+        }
+        const group = groups[g]
+        if (result.value.byteLength !== group.reduce((sum, item) => sum + (item.to - item.from), 0)) {
+            return
+        }
+        let offset = 0
+        for (const item of group) {
+            parts[item.index] = new Uint8Array(result.value, offset, item.to - item.from)
+            offset += item.to - item.from
+        }
+    })
+    return parts
+}
 
 export function importSourceOfFile(file: File, windowBytes: number = PICKED_FILE_WINDOW_BYTES, windowGapBytes: number = PICKED_FILE_GAP_BYTES): ImportSource {
     return {
@@ -117,6 +182,7 @@ export function importSourceOfFile(file: File, windowBytes: number = PICKED_FILE
             }
             return new Uint8Array(await file.slice(from, to).arrayBuffer())
         },
+        readRanges: (ranges) => readFileRanges(file, ranges),
         stream: () => file.stream(),
         stat: async () => ({ size: file.size, modified: file.lastModified }),
         close: async () => undefined,
@@ -263,5 +329,155 @@ export class WindowedReader {
         this.#bytes = await this.source.read(start, windowEnd)
         this.#start = start
         return this.#bytes.subarray(0, Math.min(length, this.#bytes.length))
+    }
+}
+
+/** The most segments, and so Blob items, one batch of `RangeBatchReader` holds. */
+export const RANGE_BATCH_MAX_RANGES = 256
+
+/**
+ * Turns ranges into the segments a batch reads. `ranges` is flat [start, end, ...], sorted by start and clamped to the
+ * source; empty ranges are skipped. A range joins the current segment when the gap to it is at most `gapBytes` and the
+ * segment stays within `windowBytes`; an overlap counts as a gap of zero, so the cap applies to it too. Otherwise a new
+ * segment opens, cut to `windowBytes`: bytes of a range past the cut belong to no segment. The result is flat
+ * [start, end, ...], sorted, disjoint, each segment at most `windowBytes` long.
+ */
+export function rangeSegments(ranges: Float64Array, windowBytes: number, gapBytes: number): Float64Array {
+    const out: number[] = []
+    let open = false
+    let s = 0
+    let e = 0
+    for (let i = 0; i + 1 < ranges.length; i += 2) {
+        const a = ranges[i]
+        const b = ranges[i + 1]
+        if (b <= a) {
+            continue
+        }
+        const from = open ? Math.max(a, e) : a
+        if (open && b <= from) {
+            continue
+        }
+        if (open && from - e <= gapBytes && b - s <= windowBytes) {
+            e = b
+            continue
+        }
+        if (open) {
+            out.push(s, e)
+        }
+        open = true
+        s = from
+        e = Math.min(b, from + windowBytes)
+    }
+    if (open) {
+        out.push(s, e)
+    }
+    return Float64Array.from(out)
+}
+
+/**
+ * Serves a walk's reads from batches of planned segments. The segments are built once from the planned ranges. A
+ * request inside one segment is answered from the batch holding it; a miss fetches that segment and the following ones
+ * that fit within `RANGE_BATCH_MAX_RANGES` segments and `windowBytes` in total, in one `readRanges` call when the
+ * source has it. A request that is longer than `windowBytes`, or that no single segment covers, is read exactly and
+ * leaves the batch as it was. A batch with a part of the wrong length is dropped, and every later request is read
+ * exactly, so a short batch is never served. A source error propagates.
+ *
+ * A returned view is only valid until the next call.
+ */
+export class RangeBatchReader {
+    /** Steps of work taken building and searching the segment table, which a test bounds. */
+    steps = 0
+    readonly #segments: Float64Array
+    #cursor = 0
+    #batchFrom = 0
+    #parts: Uint8Array[] = []
+    #exact = false
+
+    constructor(
+        private readonly source: ImportSource,
+        private readonly limit: number,
+        ranges: Float64Array,
+        private readonly windowBytes: number,
+        gapBytes: number,
+    ) {
+        this.steps += ranges.length / 2
+        this.#segments = rangeSegments(ranges, windowBytes, gapBytes)
+    }
+
+    #find(start: number, to: number): number {
+        const segments = this.#segments
+        const count = segments.length / 2
+        if (count === 0) {
+            return -1
+        }
+        let found = this.#cursor
+        this.steps++
+        if (segments[2 * found] > start) {
+            let low = 0
+            let high = found - 1
+            found = -1
+            while (low <= high) {
+                const middle = (low + high) >> 1
+                this.steps++
+                if (segments[2 * middle] <= start) {
+                    found = middle
+                    low = middle + 1
+                } else {
+                    high = middle - 1
+                }
+            }
+            if (found < 0) {
+                return -1
+            }
+        } else {
+            while (found + 1 < count && segments[2 * (found + 1)] <= start) {
+                found++
+                this.steps++
+            }
+        }
+        this.#cursor = found
+        return to <= segments[2 * found + 1] ? found : -1
+    }
+
+    async read(start: number, end: number): Promise<Uint8Array> {
+        const to = Math.min(end, this.limit)
+        if (start >= to) {
+            return new Uint8Array(0)
+        }
+        if (this.#exact || to - start > this.windowBytes) {
+            return await this.source.read(start, to)
+        }
+        const k = this.#find(start, to)
+        if (k < 0) {
+            return await this.source.read(start, to)
+        }
+        const segments = this.#segments
+        if (k < this.#batchFrom || k >= this.#batchFrom + this.#parts.length) {
+            const count = segments.length / 2
+            const wanted: [number, number][] = []
+            let total = 0
+            const maxItems = this.source.readRanges === undefined ? 1 : RANGE_BATCH_MAX_RANGES
+            for (let j = k; j < count && wanted.length < maxItems; j++) {
+                const length = segments[2 * j + 1] - segments[2 * j]
+                if (total + length > this.windowBytes) {
+                    break
+                }
+                total += length
+                wanted.push([segments[2 * j], segments[2 * j + 1]])
+                this.steps++
+            }
+            const parts = wanted.length >= 2 && this.source.readRanges !== undefined
+                ? await this.source.readRanges(wanted)
+                : [await this.source.read(wanted[0][0], wanted[0][1])]
+            if (parts.length !== wanted.length || parts.some((part, i) => part.length !== wanted[i][1] - wanted[i][0])) {
+                this.#parts = []
+                this.#exact = true
+                return await this.source.read(start, to)
+            }
+            this.#parts = parts
+            this.#batchFrom = k
+        }
+        const offset = start - segments[2 * k]
+        return this.#parts[k - this.#batchFrom].subarray(offset, offset + (to - start))
     }
 }
