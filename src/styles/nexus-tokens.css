@@ -1,9 +1,9 @@
 /*
-  DEEP NEXUS tokens. Plain CSS so it works without a build step (the mockups link it directly);
+  DEEP NEXUS tokens. Plain CSS, so it works without a build step;
   nexus.css maps the same variables into Tailwind. Values are static: they do not follow the
   user's colour scheme (--risu-theme-*), and nothing here switches themes.
 */
-/* Registered so the ambient bloom can crossfade between modes (home.html transitions it on body.nexus-canvas). */
+/* Registered so the ambient bloom can crossfade between modes. */
 @property --nexus-canvas-warm { syntax: '<color>'; inherits: true; initial-value: rgb(255 154 122 / 0.13); }
 
 :root {
@@ -20,7 +20,7 @@
   --nexus-surface-flat: rgb(14 15 42 / 0.94);
   --nexus-edge: rgb(255 255 255 / 0.07);
   --nexus-edge-strong: rgb(255 255 255 / 0.16);
-  --nexus-field-border: rgb(var(--nexus-overlay-rgb) / 0.36);  /* a text field's border: 3:1 against the canvas (DD-160 / DS-077; 34% measured 2.92:1, raised to 36% by DD-236). --nexus-edge-strong stays at 16% for cards and dividers */
+  --nexus-field-border: rgb(var(--nexus-overlay-rgb) / 0.36);  /* a text field's border: at least 3:1 against the canvas (34% measures 2.92:1, so 36%). --nexus-edge-strong stays at 16% for cards and dividers */
   --nexus-blur: 12px;
 
   /* Text. Nothing below white at 55%: lower alphas fail WCAG AA on this canvas. */
@@ -51,40 +51,39 @@
      so the reduced-motion override applies to every consumer. */
   --nexus-animate-enter: nexus-enter var(--nexus-duration-enter) var(--nexus-ease) both;
   --nexus-animate-breathe: nexus-breathe 2.4s var(--nexus-ease) infinite alternate;
-  /* ---- Added 2026-10-27 (DD-145, DD-146): shared across screens. Additive: nothing above changed. ---- */
-  /* Colour channels (DD-146). Tinted versions are written rgb(var(--nexus-<name>-rgb) / <alpha>), so a theme pack states each colour once, as a channel triplet.
+  /* ---- Shared across screens. ---- */
+  /* Colour channels. Tinted versions are written rgb(var(--nexus-<name>-rgb) / <alpha>), so a theme pack states each colour once, as a channel triplet.
      A pack that changes --nexus-accent also sets --nexus-accent-rgb, and may set --nexus-accent: rgb(var(--nexus-accent-rgb)) to derive the solid from it. */
   --nexus-accent-rgb: 56 217 255;             /* = --nexus-accent */
   --nexus-danger: rgb(var(--nexus-danger-rgb));
   --nexus-danger-rgb: 255 107 129;            /* = --nexus-danger */
   --nexus-overlay-rgb: 255 255 255;           /* the colour glass tints and hover fills are drawn in (white on the dark canvas; a light pack sets 0 0 0) */
   --nexus-shade-rgb: 0 0 0;                   /* the colour shadows and inset wells are drawn in */
-  --nexus-warning-rgb: 255 209 102;           /* = --color-warning (DD-217) */
+  --nexus-warning-rgb: 255 209 102;           /* = --color-warning */
 
-  /* Names shared with chat (and read by Settings) with one meaning and one default app-wide (DD-145). Values are chat's. */
+  /* Names shared with chat (and read by Settings) with one meaning and one default app-wide. Values are chat's. */
   --font: system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
-  --alpha-switch-off: 0.36;                   /* the off track of a switch, in the overlay colour: 3:1 (DS-077) */
-  --color-placeholder: #888aaa;               /* placeholder text: 4.5:1 on a field (DS-077) */
+  --alpha-switch-off: 0.36;                   /* the off track of a switch, in the overlay colour: 3:1 */
+  --color-placeholder: #888aaa;               /* placeholder text: 4.5:1 on a field */
   --color-surface-sheet: #0e0f2a;             /* an opaque sheet, panel or well */
   --color-surface-toast: #1c1e45;             /* a toast or a small floating chip */
-  --color-warning: rgb(var(--nexus-warning-rgb));   /* derived from its channel (DD-158, DD-217) */
+  --color-warning: rgb(var(--nexus-warning-rgb));   /* derived from its channel */
   --color-accent-tint-faint: rgb(var(--nexus-accent-rgb) / 0.06);
   --color-accent-tint-strong: rgb(var(--nexus-accent-rgb) / 0.14);
   --radius-field: 14px;                       /* text fields */
   --radius-sheet: 20px;                       /* the top corners of a bottom sheet */
 
-  /* ---- Added 2026-10-28 (DD-235): roles that chat, Settings and Home each defined with their own name. Additive: nothing above changed except --nexus-field-border (DD-236).
-     Values: chat's, Settings' and Home's definitions agree on touch size and the focus ring, so those are copied as they are. Warm is the shared --nexus-warm as a channel (Home and Studio already hold 255 179 138).
-     Success is Settings' --color-success (#6ee7a8): Home's 111 227 160 is within 2 per channel of it, and Settings' packs already restate that name. The areas adopt these in their next rounds
-     (the aliases are listed in theme/checks/ALIASES.md); a pack states each once. --nexus-warm itself stays a literal here so this change stays additive: deriving it from its channel is the DD-158 step. ---- */
+  /* ---- Roles that chat, Settings and Home share. A pack states each once. ----
+     Touch size and the focus ring agree across those areas. Warm is the --nexus-warm colour as a channel.
+     Success is Settings' --color-success (#6ee7a8). --nexus-warm itself stays a literal; the channel is its source of truth. ---- */
   --nexus-warm-rgb: 255 179 138;              /* = --nexus-warm; the upstream tag edge, the presence glow, the greeting tint */
   --nexus-success-rgb: 110 231 168;           /* = Settings' --color-success; a finished reply, a passed test, a success edge */
   --nexus-touch: 44px;                        /* the touch hit area (chat --size-touch, Settings --size-touch, Home --home-touch). The -sm 36 and -lg 48 variants stay per area */
   --nexus-focus-ring-width: 2px;              /* the focus ring pair (chat --focus-ring-w, Settings --focus-ring-w, Home --home-focus-w) */
   --nexus-focus-ring-offset: 2px;             /* (chat --focus-ring-offset, Settings --focus-ring-offset, Home --home-focus-offset) */
 
-  /* ---- Added 2026-10-28 (DD-226): the 7 shared motion basics of the warning and task-progress pattern (patterns/MOTION_CONTRACT.md section 2a). Additive: nothing above changed.
-     Floors and ceilings live in patterns/checks/registry.mjs; the pattern's own tokens are in theme/pattern-tokens.css. ---- */
+  /* ---- The shared motion basics of the warning and task-progress pattern.
+     The pattern's own tokens are in pattern-tokens.css. ---- */
   --nexus-ease-out: cubic-bezier(0.2, 0, 0, 1);       /* entrances */
   --nexus-ease-in: cubic-bezier(0.4, 0, 1, 1);        /* exits */
   --nexus-duration-exit: 160ms;                       /* dialog, sheet and toast exit */

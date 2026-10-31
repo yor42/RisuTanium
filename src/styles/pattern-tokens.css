@@ -1,15 +1,14 @@
 /*
-  PATTERN tokens: the visual warning and task-progress pattern (patterns/WARNINGS_AND_PROGRESS.md, patterns/MOTION_CONTRACT.md; DD-219..234, home decided by DD-226).
-  One shared file; each lane aliases what it needs, the way DD-217 did for the warning channel. Needs theme/nexus-tokens.css first (channels, ease-out, exit and scrim tokens).
-  Rules (DD-143, DD-146, DD-158): every colour is derived from a --nexus-*-rgb channel, so a pack states each colour once; every duration, distance and size is a token; the floors and ceilings
-  for packs are in patterns/checks/registry.mjs (one fragment that every lane merges into its own registry).
-  Three groups: --pattern-* (look), --warning-* (warning motion) and --task-* (task motion). The motion groups follow MOTION_CONTRACT.md section 2b / 2c. They were specified for patterns/motion.css; they
-  live here instead (the maintainer's DD-226 says one shared file), and motion.css only reads them. A component uses calc(var(--token) * var(--risu-animation-speed, 1)) where speed applies.
+  PATTERN tokens: the visual warning and task-progress pattern.
+  One shared file; each lane aliases what it needs. Needs nexus-tokens.css first (channels, ease-out, exit and scrim tokens).
+  Rules: every colour is derived from a --nexus-*-rgb channel, so a pack states each colour once; every duration, distance and size is a token.
+  Three groups: --pattern-* (look), --warning-* (warning motion) and --task-* (task motion). The motion groups live only here; stylesheets read them.
+  A component uses calc(var(--token) * var(--risu-animation-speed, 1)) where speed applies.
 */
 :root {
   --pattern-ease: var(--nexus-ease);
 
-  /* ---- Warning: severity channels, edges and the tint (DD-220, spec 3.2 / 6.4). notice = overlay, caution = warning (DD-217), confirm = accent, danger and blocked = danger. ---- */
+  /* ---- Warning: severity channels, edges and the tint. notice = overlay, caution = warning, confirm = accent, danger and blocked = danger. ---- */
   --pattern-warn-rgb-notice: var(--nexus-overlay-rgb);
   --pattern-warn-rgb-caution: var(--nexus-warning-rgb);
   --pattern-warn-rgb-confirm: var(--nexus-accent-rgb);
@@ -33,17 +32,17 @@
   --pattern-warn-body-leading: 1.4;
   --pattern-warn-gap: 8px;
   --pattern-warn-padding: 16px;
-  --pattern-warn-action-height: 44px;         /* touch; 40 on hover input (DD-213), set below */
+  --pattern-warn-action-height: 44px;         /* touch; 40 on hover input, set below */
   --pattern-warn-action-radius: 12px;
   --pattern-warn-scrim: rgb(var(--nexus-shade-rgb) / 0.62);
-  --pattern-surface: var(--color-surface-sheet);        /* opaque: no backdrop-filter anywhere in the pattern (MOTION_CONTRACT 7) */
+  --pattern-surface: var(--color-surface-sheet);        /* opaque: no backdrop-filter anywhere in the pattern */
   --pattern-surface-toast: var(--color-surface-toast);
-  --pattern-on-accent: #001018;               /* the label of a confirm button on --nexus-accent (4.5:1, checked by the registry supplement) */
+  --pattern-on-accent: #001018;               /* the label of a confirm button on --nexus-accent (4.5:1) */
   --pattern-on-danger: #1c0309;               /* the label of a danger button on the danger fill */
   --pattern-z-layer: 60;                      /* dialog layer; the toast stack sits one above */
   --pattern-z-toast: 61;
 
-  /* ---- Task: bar, steps, mark, count, skipped list (DD-221, spec 4 / 6.4) ---- */
+  /* ---- Task: bar, steps, mark, count, skipped list ---- */
   --pattern-task-bar-height: 6px;
   --pattern-task-bar-height-compact: 3px;     /* the mini bar of a toast */
   --pattern-task-bar-track: rgb(var(--nexus-overlay-rgb) / 0.16);
@@ -62,7 +61,7 @@
   --pattern-toast-width: 360px;
   --pattern-toast-gap: 8px;
 
-  /* ---- Fills, tints and geometry the component rules read, so no rule carries a literal (DD-143). All absolute units, so the registry can bound them. ---- */
+  /* ---- Fills, tints and geometry the component rules read, so no rule carries a literal. All absolute units, so the registry can bound them. ---- */
   --pattern-fill-confirm: rgb(var(--nexus-accent-rgb));
   --pattern-fill-danger: rgb(var(--nexus-danger-rgb));
   --pattern-tint-notice: rgb(var(--pattern-warn-rgb-notice) / var(--pattern-warn-tint-alpha));
@@ -75,7 +74,7 @@
   --pattern-weight-strong: 600;
   --pattern-focus-width: 2px;
   --pattern-focus-offset: 2px;
-  --pattern-ring-width: 2px;                  /* the danger ring (DD-233) */
+  --pattern-ring-width: 2px;                  /* the danger ring */
   --pattern-icon-size: 16px;
   --pattern-step-icon-size: 18px;
   --pattern-step-dot: 10px;
@@ -96,15 +95,15 @@
   --pattern-fail-sweep-opacity: 0.6;
 }
 
-/* DD-213: 44 dp on touch, 40 on hover input. Packs may set tokens under the root attributes too (DD-159). */
+/* 44 dp on touch, 40 on hover input. Packs may set tokens under the root attributes too. */
 html[data-input="hover"] { --pattern-warn-action-height: 40px; }
 
 :root {
-  /* ---- Warning motion (MOTION_CONTRACT 2c) ---- */
+  /* ---- Warning motion ---- */
   --warning-glyph-delay: 60ms;
   --warning-glyph-dur: 220ms;
   --warning-glyph-scale-from: 0.85;
-  --warning-halo-delay: 280ms;                /* DD-233: one faint ring on open, danger only */
+  --warning-halo-delay: 280ms;                /* one faint ring on open, danger only */
   --warning-halo-dur: 600ms;
   --warning-halo-scale-to: 1.4;
   --warning-halo-opacity: 0.5;
@@ -115,11 +114,11 @@ html[data-input="hover"] { --pattern-warn-action-height: 40px; }
   --warning-detail-dur: 150ms;
   --warning-press-scale: 0.97;
   --warning-press-dur: var(--nexus-duration-press);
-  --warning-arm-delay: 250ms;                 /* DD-233: confirm ignores input this long after opening (read by pattern.js) */
+  --warning-arm-delay: 250ms;                 /* confirm ignores input this long after opening (read by pattern.js) */
   --warning-swap-out-dur: 120ms;
   --warning-swap-in-dur: 180ms;
 
-  /* ---- Task motion (MOTION_CONTRACT 2b) ---- */
+  /* ---- Task motion ---- */
   --task-step-enter-dur: 180ms;
   --task-step-enter-distance: 4px;
   --task-step-stagger: 30ms;
@@ -144,5 +143,5 @@ html[data-input="hover"] { --pattern-warn-action-height: 40px; }
   --task-toast-enter-dur: 220ms;
   --task-toast-distance: 12px;
   --task-toast-overlap: 40ms;
-  --task-toast-done-hold: 6000ms;             /* DD-234: a clean finish hides after this; paused while hovered or focused (read by pattern.js) */
+  --task-toast-done-hold: 6000ms;             /* a clean finish hides after this; paused while hovered or focused (read by pattern.js) */
 }

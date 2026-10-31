@@ -669,11 +669,16 @@ describe('RangeBatchReader', () => {
     })
 
     test('a request below the cursor is found again', async () => {
-        const { source } = fakeSource()
-        const reader = new RangeBatchReader(source, 1000, flat([[0, 20], [200, 220], [400, 420], [600, 620]]), 30, 0)
-        for (const start of [600, 400, 0, 200, 0, 600]) {
+        const { source, calls } = fakeSource()
+        const reader = new RangeBatchReader(source, 1000, flat([[0, 20], [200, 220], [400, 420], [600, 620]]), 100, 0)
+        const starts = [0, 600, 400, 0, 200, 0, 600]
+        for (const start of starts) {
             expect(isBytes(await reader.read(start, start + 20), start, start + 20)).toBe(true)
         }
+        // The window holds all four segments, so the first request fills one batch and every later request, forward or
+        // below the cursor, is served from it: no exact read and no second batch.
+        expect(calls.reads).toEqual([])
+        expect(calls.batches).toEqual([[[0, 20], [200, 220], [400, 420], [600, 620]]])
     })
 
     test('a part of the wrong length drops the batch and every later request is read exactly', async () => {

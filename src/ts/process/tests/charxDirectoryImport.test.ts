@@ -1669,7 +1669,7 @@ describe('validation reads of a picked File', () => {
             expect(recorded.rangeBatches.map(batch => batch.length)).toEqual([RANGE_BATCH_MAX_RANGES, RANGE_BATCH_MAX_RANGES, 88])
         }, 30_000)
 
-        test.each([16 * KIB, 0])('(G) 3000 entries of 16-byte bodies, whose header ranges overlap, are read in batches of at most the window (gap %i)', async (gap) => {
+        test.each([16 * KIB, 0])('(N) 3000 entries of 16-byte bodies, whose header ranges overlap, are read in batches of at most the window (gap %i)', async (gap) => {
             const entries: Entry[] = [['card.json', CARD, 'store'], ...Array.from({ length: 3000 }, (_, i): Entry => [`assets/other/t${i}.bin`, random(16, 6000 + i), 'store'])]
             const bytes = upstreamArchive(entries)
             let recorded: ReturnType<typeof recordedSource> | undefined
@@ -1689,7 +1689,7 @@ describe('validation reads of a picked File', () => {
             }
         }, 30_000)
 
-        test('(G) four entries with names longer than the window are read exactly, in no batch over the window, and the import is whole', async () => {
+        test('(N) four entries with names longer than the window are read exactly, in no batch over the window, and the import is whole', async () => {
             const entries: Entry[] = [['card.json', CARD, 'store'], ...Array.from({ length: 4 }, (_, i): Entry => [`assets/other/${i}${'n'.repeat(4090)}.bin`, random(2 * KIB, 6400 + i), 'store'])]
             const bytes = upstreamArchive(entries)
             const subject = listedFile(bytes)
