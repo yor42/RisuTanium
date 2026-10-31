@@ -15,6 +15,7 @@ import { isPluginStorageIndex, largeIdsOfIndex } from "./pluginStorageIndex"
 import { classifyColdDecodeFailure, classifyColdDecompressFailure, coldStorageHeader, getColdStorageAffectedCharacters, getColdStorageBackupName, isColdStorageBackupData, isRestorableColdStorageKey, listColdBackupRoots, listColdDataKeysFromDb, listInnerColdStorageKeys, matchColdStorageLoadErrorKey, mergeRetriedColdChatSideFields, type ColdBackupRoot, type ColdReadErrorKind, type PreLoadChatResult, type RetryLegacyColdChatLoadResult } from "./coldstorageData"
 import { doingChat } from "./index.svelte"
 import { isSafeColdStorageKey } from "./coldStorageKey"
+import { withoutColdValueAlternatives } from "../drive/exportAlternatives"
 import { coldUnitStoreKey, coldUnitStoreRefusal, legacyOpfsUnitName } from "./coldUnitLocation"
 import { beginChokePoint } from "./memory/busyActions"
 import { noteReadSize, noteRestoredBytes, readSizeOf } from "./memory/restoredBytes"
@@ -576,6 +577,8 @@ export type ColdStorageBackupCollection = {
     owners?: Map<string, string[]>
     /** Every key this collection carried or reported as unavailable. */
     settledKeys?: Set<string>
+    /** Labels of the chats whose alternatives were left out of the carried units; absent when none were. */
+    omittedAlternatives?: string[]
 }
 
 export type ColdStorageBackupCollectOptions = {
@@ -620,6 +623,7 @@ export async function collectColdStorageBackupPayloads(
     const alreadySettled = options.settledKeys
 
     const payloads: ColdStorageBackupPayload[] = []
+    const omittedAlternatives: string[] = []
     const queue: string[] = []
     const scheduled = new Set<string>()
     const normalKeys = new Set<string>()
@@ -709,10 +713,14 @@ export async function collectColdStorageBackupPayloads(
             continue
         }
 
+        // A `.bin` carries no chat alternatives; the strip works on a copy, so the parsed value (which the reference
+        // listing below also reads) and any cached value are never changed.
+        const carried = isSearchable ? withoutColdValueAlternatives(value) : { value, labels: [] }
+        omittedAlternatives.push(...carried.labels)
         payloads.push({
             key,
             backupName: getColdStorageBackupName(key),
-            encoded: new TextEncoder().encode(JSON.stringify(value)),
+            encoded: new TextEncoder().encode(JSON.stringify(carried.value)),
         })
 
         if (pluginIndex !== null) {
@@ -770,7 +778,7 @@ export async function collectColdStorageBackupPayloads(
         ? resolveColdStorageOwners([...missingKeys, ...invalidKeys], rootOwners, references)
         : undefined
 
-    return { payloads, missingKeys, invalidKeys, owners, settledKeys }
+    return { payloads, missingKeys, invalidKeys, owners, settledKeys, ...(omittedAlternatives.length > 0 ? { omittedAlternatives } : {}) }
 }
 
 /**

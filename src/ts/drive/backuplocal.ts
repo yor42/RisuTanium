@@ -34,7 +34,7 @@ import { repairDatabaseIds } from "../process/chatIds";
 import { reloadAfterRestore } from "./restoreReload";
 import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
-import { characterListNeedsRepair, kvBlockNamesOf, collectBackupColdStorage, inlinedCharacter, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, takeStubReadStats, unpackStubEntry, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
+import { characterListNeedsRepair, kvBlockNamesOf, collectBackupColdStorage, inlinedCharacter, exportAlternativeLabels, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, takeStubReadStats, unpackStubEntry, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
 import { convertPluginStorageIndex, unavailableKeysOfMissing } from "../process/pluginStorageIndex";
 import { v4 } from "uuid";
@@ -60,6 +60,8 @@ import type { BootImportEnd, BootImportTarget } from "../storage/store2/legacy/b
 import { emptyImportFacts, outcomeOfBootFinish, type ExportFile, type ExportOmitted, type ExportOutcome, type ImportFacts, type OperationCause, type OperationEnd, type OperationName, type OperationOutcome } from "./operationEnd";
 import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmImportScale, confirmLeftOut, createBinImportReader, hasDatabaseEntry, IMPORT_COPY_PHASE_EVERY, noteImportPhase, readBinDatabaseOmitted, readBinDatabaseTree, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
 
+import { alternativeChatLabels, withoutChatAlternatives } from "./exportAlternatives";
+
 function getBasename(data:string){
     const baseNameRegex = /\\/g
     const splited = data.replace(baseNameRegex, '/').split('/')
@@ -80,8 +82,8 @@ function getBasename(data:string){
  * database entry. `stubPayloads` are the entries of the stubs that are in the encoded tree, in `stub` mode: an entry
  * exists exactly when a stub with its uuid is written, so a character loaded while the export ran leaves no orphan.
  */
-async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdStorage, modules: RisuModule[] | null){
-    const { tree: exportCopy, notice: repairNotice } = await exportCopyOf(db, cold.inlined, cold.stubEntries, modules)
+async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdStorage, modules: RisuModule[] | null, confirmedAlternatives: ReadonlySet<string>){
+    const { tree: exportCopy, notice: repairNotice, omittedAlternatives } = await exportCopyOf(db, cold.inlined, cold.stubEntries, modules)
     // Plugin values of a store2 page become units here; the exported copy carries no plain key for them.
     const plugin = pluginStorageForExport(exportCopy, cold.collected.settledKeys)
     const dbWithoutAccount = plugin.tree
@@ -102,7 +104,9 @@ async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdS
         settledKeys: lateSettledKeys(cold.collected, cold.failedKeys, cold.stubEntries),
     })
     const late = mergePluginStorage(lateCollected, plugin)
-    return { dbData, late, repairNotice, stubPayloads }
+    // Alternatives found only now (a character loaded or a unit first referenced after the prompt) were not named in it.
+    const lateAlternatives = [...new Set([...omittedAlternatives, ...(late.omittedAlternatives ?? [])])].filter((label) => !confirmedAlternatives.has(label))
+    return { dbData, late, repairNotice, stubPayloads, lateAlternatives }
 }
 
 /**
@@ -228,7 +232,7 @@ function describeWriteMeasure(): string {
  * repair, is inlined instead. This function never refuses;
  * `notice` says what was done.
  */
-async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>, modules: RisuModule[] | null): Promise<{ tree: Database, notice: string | null }> {
+async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>, modules: RisuModule[] | null): Promise<{ tree: Database, notice: string | null, omittedAlternatives: string[] }> {
     const plain = { ...db, account: undefined }
     // Set before either return below, so every encoder gets the module list read before the export opened, never the live one.
     if (modules !== null) {
@@ -246,9 +250,18 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
             plain.characters = db.characters.map((slot) => inlinedFromMinted(slot, stubEntries) ?? inlinedCharacter(slot, inlined))
         }
     }
+    // A `.bin` carries no chat alternatives. Only a character with some is copied; the page's characters are never changed.
+    const omittedAlternatives: string[] = []
+    if (Array.isArray(plain.characters)) {
+        const bare = plain.characters.map((slot) => withoutChatAlternatives(slot))
+        if (bare.some((slot, index) => slot !== plain.characters[index])) {
+            omittedAlternatives.push(...plain.characters.flatMap((slot) => alternativeChatLabels(slot)))
+            plain.characters = bare
+        }
+    }
     const list: unknown = plain.characters
     if (!Array.isArray(list) || !characterListNeedsRepair(list, reserved)) {
-        return { tree: plain, notice: null }
+        return { tree: plain, notice: null, omittedAlternatives }
     }
     const repair = await repairCharacterTree(plain, 'export', { readUnitCharacter: readArchivedUnitCharacter, reservedBlockNames: reserved })
     const count = (kind: string) => repair.notices.filter((notice) => notice.kind === kind).length
@@ -261,6 +274,7 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
         notice: recovered + filled + replaced + unrestorable.length > 0
             ? language.exportIdsRepairedNotice(recovered, filled, replaced, unrestorable.join(', '))
             : null,
+        omittedAlternatives,
     }
 }
 
@@ -630,6 +644,14 @@ async function confirmUpstreamOversize(session: ExportSession, items: readonly s
 }
 
 /**
+ * Asks, before the writer opens, whether to create the backup without the alternative replies of the named chats (a
+ * `.bin` has no place for them). `true` when there are none or the person confirms; declining writes nothing.
+ */
+async function confirmOmitAlternatives(session: ExportSession, labels: readonly string[]): Promise<boolean> {
+    return await confirmDuringExport(session, labels.length > 0, async () => labels.length === 0 || await alertConfirm(language.backupAlternativesConfirm(labels.length, shownPromptNames(labels))))
+}
+
+/**
  * Called as the last step before the writer opens. Where opening the browser writer needs a fresh user gesture (the
  * popup helper of a plain-HTTP page) and the size passes and prompts before it have let the last one lapse, asks for a
  * click whose handler is the open itself.
@@ -857,6 +879,12 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         return { status: 'declined', cause: 'oversize-declined' }
     }
 
+    // A `.bin` has no place for chat alternatives; name the chats that lose theirs before the writer opens.
+    const alternativeLabels = exportAlternativeLabels(db, cold)
+    if (!await confirmOmitAlternatives(session, alternativeLabels)) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
+
     session.cancel.throwIfCancelled()
     await ensureGestureForWriter(session)
     const writer = new LocalWriter()
@@ -967,7 +995,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         // The write counts of the notes below start here, so they hold the stub, late and database writes only.
         takeExportWriteStats()
     }
-    const { dbData, late, repairNotice, stubPayloads } = await encodeDatabaseWithLateColdStorage(db, cold, modules)
+    const { dbData, late, repairNotice, stubPayloads, lateAlternatives } = await encodeDatabaseWithLateColdStorage(db, cold, modules, new Set(alternativeLabels))
     session.cancel.throwIfCancelled()
     noteImportPhase('export database encoded')
     await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving local Backup Cold data...', session.gate.wait)
@@ -995,7 +1023,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         oldStoreUnlisted: inlayResult.oldStoreUnlisted,
         repaired: repairNotice,
     }
-    if (missingAssets.length > 0 || lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted || repairNotice || leftOut.length > 0) {
+    if (missingAssets.length > 0 || lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted || repairNotice || leftOut.length > 0 || lateAlternatives.length > 0) {
         let message = missingAssets.length > 0
             ? 'Backup Successful, but the following assets were missing and skipped:\n\n'
             : (lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted || leftOut.length > 0)
@@ -1030,6 +1058,9 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         }
         if (leftOut.length > 0) {
             message += (message.endsWith('\n') ? '\n' : '\n\n') + language.backupOversizeLeftOut(leftOut)
+        }
+        if (lateAlternatives.length > 0) {
+            message += (message.endsWith('\n') ? '\n' : '\n\n') + language.backupAlternativesLeftOut(lateAlternatives.length, shownPromptNames(lateAlternatives))
         }
         alertMd(message)
         return { status: 'saved', notices: [message], omitted, inlays: inlayResult }
@@ -1171,6 +1202,12 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         return { status: 'declined', cause: 'oversize-declined' }
     }
 
+    // A `.bin` has no place for chat alternatives; name the chats that lose theirs before the writer opens.
+    const alternativeLabels = exportAlternativeLabels(db, cold)
+    if (!await confirmOmitAlternatives(session, alternativeLabels)) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
+
     session.cancel.throwIfCancelled()
     await ensureGestureForWriter(session)
     const writer = new LocalWriter()
@@ -1236,7 +1273,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
-    const { dbData, late, repairNotice, stubPayloads } = await encodeDatabaseWithLateColdStorage(db, cold, modules)
+    const { dbData, late, repairNotice, stubPayloads, lateAlternatives } = await encodeDatabaseWithLateColdStorage(db, cold, modules, new Set(alternativeLabels))
     session.cancel.throwIfCancelled()
     await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving partial local Backup Cold data...', session.gate.wait)
     for(let i=0;i<late.payloads.length;i++){
@@ -1260,7 +1297,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         oldStoreUnlisted: false,
         repaired: repairNotice,
     }
-    if (missingAssets.length > 0 || lateColdStorageReport || repairNotice || leftOut.length > 0) {
+    if (missingAssets.length > 0 || lateColdStorageReport || repairNotice || leftOut.length > 0 || lateAlternatives.length > 0) {
         let message = missingAssets.length > 0
             ? 'Partial backup successful, but the following profile images were missing and skipped:\n\n'
             : (lateColdStorageReport || leftOut.length > 0)
@@ -1283,6 +1320,9 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         }
         if (leftOut.length > 0) {
             message += `\n\n${language.backupOversizeLeftOut(leftOut)}`
+        }
+        if (lateAlternatives.length > 0) {
+            message += `\n\n${language.backupAlternativesLeftOut(lateAlternatives.length, shownPromptNames(lateAlternatives))}`
         }
         message += `\n\n${language.partialBackupInlaysNotIncluded}`
         alertMd(message)
