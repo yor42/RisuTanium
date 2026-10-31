@@ -14,6 +14,7 @@ import { requestChatData } from "./request/request";
 import { stableDiff } from "./stableDiff";
 import { processScript, processScriptFull, risuChatParser, type MessageLocator, type MessageRef } from "./scripts";
 import { exampleMessage } from "./exampleMessages";
+import { firstMessageOf } from "./firstMessage";
 import { sayTTS } from "./tts";
 import { beginInFlight } from "./inFlightWork";
 import { isTTSVoiceMode } from "./ttsModes";
@@ -1319,7 +1320,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     promptView = promptViewOf(sentSplit, firstMessageSent)
 
     if(firstMessageSent){
-        const firstMsg = currentChat.fmIndex === -1 ? nowChatroom.firstMessage : nowChatroom.alternateGreetings[currentChat.fmIndex]
+        const firstMsg = firstMessageOf(nowChatroom, currentChat)
 
         const chat:OpenAIChat = {
             role: 'assistant',

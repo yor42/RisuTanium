@@ -9,6 +9,7 @@ import { getImageType } from "./media";
 import { CharEmotion, DBState, MobileGUIStack, OpenRealmStore, selectedCharID } from "./stores.svelte";
 import { AppendableBuffer, changeChatTo, checkCharOrder, downloadFile, getFileSrc, pickedAssetLimitBytes, requiresFullEncoderReload } from "./globalApi.svelte";
 import { updateInlayScreen } from "./process/inlayScreen";
+import { firstMessageOf } from "./process/firstMessage";
 import { parseMarkdownSafe, sanitizeMarkdownSafe } from "./parser/parser.svelte";
 import { translateHTML } from "./translator/translator";
 import { doingChat } from "./process/index.svelte";
@@ -432,7 +433,7 @@ export async function exportChat(page:number){
                             <div class="chat">
                                 <h2>${escapeHtmlText(char.name)}</h2>
                                 <div>${await htmlChatParse(
-                                    chat.fmIndex === -1 ? char.firstMessage : char.alternateGreetings?.[chat.fmIndex ?? 0]
+                                    firstMessageOf(char, chat)
                                 )}</div>
                             </div>
                             ${chatContentHTML}

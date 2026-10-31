@@ -152,3 +152,22 @@ describe('lorebook @@scan_depth decorator', () => {
         expect(await isActivated(lore, chatWithKeywordAt(5, 1), 1)).toBe(false)
     })
 })
+
+describe('lorebook @@is_greeting decorator', () => {
+    function sceneWithFirstMessage(fmIndex: number, greetings: string[]): void {
+        setScene([withDecorators('@@is_greeting 0')], ['a dragon here'])
+        const character = h.db.characters[0] as { alternateGreetings: string[], chats: { fmIndex: number }[] }
+        character.alternateGreetings = greetings
+        character.chats[0].fmIndex = fmIndex
+    }
+
+    test('regression reproducer: a stale fmIndex counts as the default first message', async () => {
+        sceneWithFirstMessage(3, ['Alt0'])
+        expect((await loadLoreBookV3Prompt()).actives.length).toBe(1)
+    })
+
+    test('guard: an in-range fmIndex does not match the default-message value', async () => {
+        sceneWithFirstMessage(0, ['Alt0'])
+        expect((await loadLoreBookV3Prompt()).actives.length).toBe(0)
+    })
+})

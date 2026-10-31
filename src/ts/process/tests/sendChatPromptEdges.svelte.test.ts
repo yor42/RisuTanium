@@ -404,13 +404,20 @@ interface Scenario {
     template?: Record<string, unknown>[]
     /** Trigger `start` result texts; omitted for no trigger text. */
     trigger?: { start?: string, historyend?: string }
+    /** The chat's stored first-message index; omitted keeps the default message (-1). */
+    fmIndex?: number
+    /** The owner's alternate greetings. */
+    greetings?: string[]
 }
 
 /** One real `sendChat` over 5 messages M1..M5; returns the sent contents in order. */
 async function sentSequence(scenario: Scenario): Promise<string[]> {
     const messages = Array.from({ length: 5 }, (_, i) => msg(i % 2 === 0 ? 'user' : 'char', `M${i + 1}`))
     const chat = makeChat(messages)
-    const owner = makeChar(chat)
+    if (scenario.fmIndex !== undefined) {
+        chat.fmIndex = scenario.fmIndex
+    }
+    const owner = makeChar(chat, { alternateGreetings: scenario.greetings ?? [] })
     const extra: Record<string, unknown> = {}
     if (scenario.template) {
         extra.promptTemplate = scenario.template
@@ -501,5 +508,15 @@ describe('trigger start and historyend text in a prompt-template send', () => {
 
     test('guard (passes before and after): without a template TS sits directly before the last message and HE after it', async () => {
         expect(await sentSequence({ trigger: bothTexts })).toEqual(seq('S H M1 M2 M3 M4 TS M5 HE'))
+    })
+})
+
+describe('first message of a send', () => {
+    test('reproducer: a stale fmIndex sends the default first message', async () => {
+        expect(await sentSequence({ fmIndex: 3, greetings: ['Alt0'] })).toEqual(seq('S H M1 M2 M3 M4 M5'))
+    })
+
+    test('guard (passes before and after): an in-range fmIndex sends that alternate greeting', async () => {
+        expect(await sentSequence({ fmIndex: 0, greetings: ['Alt0'] })).toEqual(seq('S Alt0 M1 M2 M3 M4 M5'))
     })
 })
