@@ -964,3 +964,32 @@ describe('new behaviour: one character with an unusable id does not suspend orde
         expect(order).not.toContain(gone)
     })
 })
+
+describe('guard: restoring a trashed character carries the restore into the saved state', () => {
+    test('the real restore of a non-selected trashed character marks it, so the committed character holds no trashTime', async () => {
+        // The shared mocks stub `src/ts/characters`; the real module is needed here, and the stub returns afterwards.
+        vi.doUnmock('src/ts/characters')
+        // Modules the restore never touches, kept out of the real module's import graph.
+        vi.doMock('src/ts/process/index.svelte', async () => ({ doingChat: (await import('svelte/store')).writable(false) }))
+        vi.doMock('src/ts/process/coldCharacterRestore', () => ({ findChaIdHolders: vi.fn(() => []), restoreColdCharacter: vi.fn() }))
+        vi.doMock('src/ts/plugins/apiV3/v3.svelte', async () => ({ customV3ProviderMetaStore: (await import('svelte/store')).writable({}), loadV3Plugins: vi.fn() }))
+        vi.doMock('src/ts/characterCards', () => ({ importCharacter: vi.fn() }))
+        vi.doMock('src/ts/translator/translator', () => ({ translateHTML: vi.fn() }))
+        try {
+            const db = small()
+            characters(db as unknown as Entry)[2].trashTime = 1_700_000_000_000
+            const page = await startPage(db)
+            await settled(page.w)
+            expect((await page.k.saved()).characters[2].trashTime).toBe(1_700_000_000_000)
+            // The function runs in the page's own module graph, so its mark reaches the loop's tracker.
+            const { restoreCharacterFromTrash } = await import('src/ts/characters')
+            // Resolved by reference: the world's shared mocks replace the id lookup of `src/ts/util`.
+            const trashed = characters(page.db)[2] as unknown as character
+            await commitAfter(page, () => restoreCharacterFromTrash(trashed))
+            expect(characters(page.db)[2].trashTime).toBeUndefined()
+            expect((await page.k.saved()).characters[2].trashTime).toBeUndefined()
+        } finally {
+            vi.doMock('src/ts/characters', () => ({ updateLorebooks: vi.fn((v: unknown) => v) }))
+        }
+    })
+})
