@@ -348,6 +348,44 @@ describe('an id-less copy written over a character with an id raises one notice'
         expect(toasts()).toHaveLength(1)
         expect(toasts()[0]).toContain('"Copy"')
     })
+
+    test('(R) a replaced character whose id is a finite number is announced', async () => {
+        ;(DBState.db.characters[1] as unknown as { chaId: number }).chaId = 42
+        const api = makeApi()
+        await api.setCharacterToIndex(1, makeCharacter(undefined, 'Replacement'))
+        vi.advanceTimersByTime(1000)
+        expect(toasts()).toHaveLength(1)
+        expect(toasts()[0]).toContain('"Replacement"')
+    })
+
+    test('(R) writes that keep arriving inside the quiet window are flushed at the hard limit', async () => {
+        const api = makeApi()
+        for (let i = 0; i < 6; i++) {
+            await api.setCharacterToIndex(1, makeCharacter(`keep-${i}`, `Keeper ${i}`))
+            await api.setCharacterToIndex(1, makeCharacter(undefined, `Copy ${i}`))
+            if (i < 5) {
+                vi.advanceTimersByTime(900)
+            }
+        }
+        vi.advanceTimersByTime(499)
+        expect(toasts()).toHaveLength(0)
+        vi.advanceTimersByTime(1)
+        expect(toasts()).toHaveLength(1)
+        expect(toasts()[0]).toContain('"Copy 0"')
+    })
+
+    test('(R) a burst over more slots than the toast names says how many more', async () => {
+        DBState.db.characters = [0, 1, 2, 3, 4].map((i) => makeCharacter(`slot-${i}`, `Slot ${i}`))
+        const api = makeApi()
+        for (let i = 0; i < 5; i++) {
+            await api.setCharacterToIndex(i, makeCharacter(undefined, `Copy ${i}`))
+        }
+        vi.advanceTimersByTime(1000)
+        expect(toasts()).toHaveLength(1)
+        expect(toasts()[0]).toContain('"Copy 0", "Copy 1", "Copy 2"')
+        expect(toasts()[0]).not.toContain('Copy 3')
+        expect(toasts()[0]).toContain('and 2 more')
+    })
 })
 
 describe('no notice when nothing was replaced by an id-less copy', () => {

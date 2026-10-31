@@ -2,6 +2,7 @@ import { get } from "svelte/store"
 import { language } from "../../lang"
 import { alertToast, doingAlert } from "../alert"
 import { alertStore } from "../stores.svelte"
+import { isUsableCharacterId } from "../storage/characterIds"
 
 /**
  * Tells the user that a plugin wrote an id-less character over an existing one.
@@ -24,7 +25,7 @@ type Burst = {
     hard: ReturnType<typeof setTimeout> | null
 }
 
-type NoticeReplaced = { chaId?: string } | null | undefined
+type NoticeReplaced = { chaId?: string | number } | null | undefined
 type NoticeWritten = { name?: string, chaId?: string }
 
 const minted = new Map<string, Set<string>>()
@@ -73,7 +74,9 @@ export function noteIdlessCopyWrite(pluginName: string, replaced: NoticeReplaced
         minted.set(plugin, own)
     }
     const replacedId = replaced?.chaId
-    const announce = typeof replacedId === 'string' && replacedId !== '' && !own.has(replacedId)
+    // Any id the save keeps counts as present: a usable id (string or finite number) or any non-empty string.
+    const hadId = isUsableCharacterId(replacedId) || (typeof replacedId === 'string' && replacedId !== '')
+    const announce = hadId && !own.has(String(replacedId))
     if (typeof written.chaId === 'string' && written.chaId !== '') {
         own.add(written.chaId)
         if (own.size > MINTED_CAP) {
