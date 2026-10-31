@@ -272,6 +272,8 @@ import { resetAssetBatchAvailabilityForTests } from 'src/ts/storage/tauriAssetBa
 import { beginBusy, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 import { importSourceOfBytes, type ImportSource } from 'src/ts/importSource'
 import { recordStartupCleanup, resetStartupCleanupForTests } from 'src/ts/storage/startupCleanupState'
+import { refuseImportWhileRestoring } from 'src/ts/drive/backupWorkGuard'
+import { resetRestoreInProgressForTests, restorePhase } from 'src/ts/drive/restoreInProgress'
 
 //#region helpers
 
@@ -377,9 +379,49 @@ beforeEach(() => {
 
 afterEach(() => {
     resetBusyActionsForTest()
+    resetRestoreInProgressForTests()
     resetStartupCleanupForTests()
     dbWriteLockSpy.mockRestore()
     vi.restoreAllMocks()
+})
+
+describe('restoreOpenedBackup and a file dropped meanwhile', () => {
+    // Reproducer: red against the mutant that opens no run, which leaves the drop guard open during the confirmation.
+    test('a drop during the confirmation is refused, and once the person declines the page takes drops again', async () => {
+        let answer: (value: boolean) => void = () => { }
+        alertConfirmMock.mockImplementationOnce(() => new Promise<boolean>((resolve) => { answer = resolve }))
+
+        const done = restoreOpenedBackup(entry)
+        await settle()
+        expect(restorePhase()).toBe('asking')
+        expect(refuseImportWhileRestoring()).toBe(true)
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupLoadWorkInProgress)
+
+        answer(false)
+        await done
+        expect(restorePhase()).toBe('none')
+        alertErrorMock.mockClear()
+        expect(refuseImportWhileRestoring()).toBe(false)
+        expect(alertErrorMock).not.toHaveBeenCalled()
+    })
+
+    // Reproducer: red against the mutant that ends the run `canceled` after a landed restore.
+    test('a restore that landed leaves the page ending, so drops stay refused until the reload', async () => {
+        openSourceMock.mockResolvedValue(probeSource(smallBin()).source)
+
+        expect(await restoreOpenedBackup(entry)).toBe('pageEnding')
+
+        expect(restorePhase()).toBe('pageEnding')
+        expect(refuseImportWhileRestoring()).toBe(true)
+    })
+
+    test('a source that cannot be opened ends the run live', async () => {
+        openSourceMock.mockRejectedValue(new Error('scratch: cannot open'))
+
+        expect(await restoreOpenedBackup(entry)).toBe('pageLive')
+
+        expect(restorePhase()).toBe('none')
+    })
 })
 
 describe('restoreOpenedBackup', () => {
