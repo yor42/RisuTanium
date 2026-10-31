@@ -5894,6 +5894,7 @@ S2, after the investigation was started (after the context compaction):
   lifetime. `MC-100` 1 (the composer lock) is unchanged.
 - **Related:** MC-100, MC-168, CHORE-43, CHORE-54; commit `71e75d9d`, made at the maintainer's word "looks good to me. go
   ahead and commit."; ledger rows 637 to 641.
+- **Superseded in part (2026-10-31, records batch 27):** the maintainer's answer PQ17 (2026-10-31) is that `MC-781` item 6 supersedes this entry: a chat's earlier replies are kept as alternatives in the chat's own tree (CHORE-478), not in the five-chat reroll history this entry describes. Record: `MC-916`. Until CHORE-478 Batch B ships, this entry's behaviour is what the app still does (Batch A is dormant); the exact point at which the old history is retired is the CHORE-478 Batch B plan's to state: TODO(evidence).
 
 **What was decided** (the question verbatim, then the answer and the option text):
 1. **Each recent chat keeps its own left and right history.** The question: "The ← / → history remembers one chat at a
@@ -12978,6 +12979,7 @@ Round 2:
 4. Every message of a chat that has a SupaMemory summary is deleted (no message ID is left to point at). Answer: **"Clear the memory (Recommended)"**. The option said: every message the summary covered is gone, so clear the chat's SupaMemory data, as HypaV3 drops summaries whose messages were deleted; the next long chat starts a new summary; no error.
 
 **What was decided.** The `MC-715` case keeps an upstream-readable resume ID and adds one fork-only chat field. The field is a save-format addition subject to opus-reviewer and a senior-advisor plan challenge. Upstream degrades to re-summarising one message. A hidden resume message resolves at send time. Whole-list replacement falls back to the `MC-714` error and reset path. Deleting every message clears `supaMemoryData` (answer 4, asked after the senior-advisor challenge).
+- **Superseded in part (2026-10-31, records batch 27):** for CHORE-478 branch and reroll operations, the maintainer's answer OQ-C2 ("Accept (Recommended)", `MC-916`) is that Branch and reroll do not apply `MC-715` to the live SupaMemory pair; the new branch re-summarises. The packet says to record this "with `MC-720` 3's supersession"; which parts of item 3 (whole-list replacement: error and reset) change beyond that is not stated: TODO(evidence). Items 1, 2 and 4 are unchanged.
 
 ### MC-721 — Lane Cloud, 2026-10-23: CHORE-10 SupaMemory clear mode and reset placement
 
@@ -18172,6 +18174,7 @@ Q-F6b, asked: "When several files are picked at once and some are too large, wha
   - Lua `setFullChatMain` keeps only `{role, data}`; the plugin `setChatToIndexImpl` replaces the whole chat; `lastDate` is written only by cold-storage restores.
   - Stage S1 estimate: 450 to 600 source lines and 1300 to 1800 test lines. Gates: `opus-reviewer` at every persistence stage plus `senior-advisor` on S1's shape. The S2 memory rule must precede S3 (advisor).
   - Not started; no plan is written. Nothing here authorizes application code, a commit or a push.
+  - **Amended (2026-10-31, records batch 27; record `MC-916`):** item 6's storage is amended by the senior-advisor's challenge, accepted by the maintainer on 2026-10-31: the alternatives live in their own unit type (`chatAlt`, the advisor's suggested id 25) instead of "ordinary type-8 chat chunks"; the record shape is declared open (extra keys round-trip). The rest of item 6 (an unbounded side list with parent pointers, a `ChatEntry` reference, a `REFS_TABLE` row and the `req` token) stands. Item 13's damaged-chunk wording is extended by `MC-916` (F2). `MC-781` item 6 also supersedes `MC-169` (PQ17, `MC-916`).
 
 ### MC-782 — Lane A, 2026-10-28: conduct of the 1028 Note 9 phone run: lane G drives both phones, the snapshot and clean-install rules, one Back, the CHORE-396 probe
 
@@ -19347,3 +19350,136 @@ Follow-up answers, same day, verbatim:
   - Effect: `opus-reviewer` at Gate 2 is also required for a change to a single point that enforces a security boundary (the option text names network policy, permission gates and native bridges). CHORE-552's Opus Gate 2 is compliant with the rule.
   - CHORE-592 and CHORE-41 also went to `opus-reviewer` at Gate 2, under the existing "silent data-loss risk" trigger (CHORE-592: opened-files restore; CHORE-41: message text and drafts). That is an orchestrator classification the rule allows, not a new trigger. CHORE-41's Gate 2 round 2 used a fresh `opus-reviewer`, per MC-321 3.
   - Nothing here authorizes application code, a commit or a push.
+
+### MC-913 — Lane A, 2026-10-31: CHORE-478 branch rework comes before the UI rework: engine stages first, a minimal UI now, the full branch UI inside UI-S1
+
+- Tag: decision (the maintainer's question, lane A's recommendation, the maintainer's agreement). Date: 2026-10-31. Sweep ref: none.
+- Source: the maintainer's chat messages of 2026-10-31, relayed by lane A (`Agents/Handoff-2026-10-30-laneA.md`, the 2026-10-31 line "maintainer agreed: CHORE-478 engine before UI-S1"; inputs `%TEMP%\risu-b715\records27\inputs.md`).
+- Alternatives rejected: not recorded (the question was open: before or after; the sources list no option texts).
+- Related: CHORE-478, `MC-781`, `MC-916` (the product answers, including PQ1 on existing cloned-chat branches), `MC-350`, `MC-516` (the UI overhaul gate), UI-S1.
+
+**What was decided (maintainer, verbatim).** Question: "about the branch rework(from cloned chat with branch marker to tree) - should it happen before UI rework, or after?" Lane A recommended doing it before. The maintainer: "agreed, record it in the next records batch."
+
+- Notes, not the maintainer's words (lane A's recommendation as inputs.md records it):
+  - CHORE-478 engine stages (tree storage, the E-lite side list, `.bin` export, importer swipes) come before UI-S1. The current screens get only a minimal UI: the existing reroll arrows and the branch button work on the tree, with no new chat clone per branch. The full branch UI (switcher, tree view) is designed inside UI-S1.
+  - Lane A listed one open question to ask at S1 planning: whether to convert existing cloned-chat branches into trees (`MC-350`). It was answered the same day as PQ1 in `MC-916` ("leave existing branch-marker chats as is"; no conversion; a manual convert may come in UI-S1).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-914 — Lane A, 2026-10-31: engine work and other tickets may run while a device run is in flight
+
+- Tag: decision (a maintainer instruction). Date: 2026-10-31. Sweep ref: none.
+- Source: the maintainer's chat message of 2026-10-31, relayed by lane A (`inputs.md`; handoff line "Maintainer: run branch engine work or other tickets while the device run is in flight").
+- Alternatives rejected: not recorded.
+- Related: `MC-913`, CHORE-478, the B5 device session (`MC-918`).
+
+**What was decided (maintainer, verbatim).** "since device checks takes a long time, see if we can run either branch engine work or other tickets while device run is in flight."
+
+- Notes, not the maintainer's words:
+  - Lane A's operating rule while phone 1 timing windows ran (handoff, 2026-10-31, corrected after the maintainer pointed out that the timings run on the Note 9, not on the PC): during a phone 1 timing window, no other adb or USB device traffic, and no full-suite `pnpm test` or parallel APK builds that saturate every core; coder stages and targeted tests may run. The quiet-machine full `pnpm test` on `main` was run after the window (ledger row 4650).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-915 — Lane A, 2026-10-31: B9 small-bug batch answers (CHORE-456, 376, 04, 211, 377, 351 and three plan questions)
+
+- Tag: decisions (`AskUserQuestion` answers, 2026-10-31; labelled "(Recommended)" unless the text shows otherwise). Date: 2026-10-31. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\b9\answers.md` (sizing answers); `%TEMP%\risu-b715\plans\chore478\answers.md` (the "B9 answers" lines: Q1 to Q3, and Q3 re-asked), both relayed by lane A.
+- Alternatives rejected: not recorded.
+- Related: CHORE-211, 174, 377, 376, 456, 04, 351; `MC-767` (CHORE-376), `MC-811` (CHORE-377); ledger row 4650.
+
+**What was decided (maintainer, option labels as the answer files record them).**
+1. CHORE-456 (Q-C): "Use default first message (Recommended)": a read-time fallback to the default first message everywhere; no saved data change.
+2. CHORE-376 (Q-E): "Around chat history (Recommended)": trigger `start` before the first chat-history block and `historyend` after the last one.
+3. CHORE-04 (Q-D): "Profile first (Recommended)": no code now; the ticket stays open; profile in a device or perf session (answers lane C Q4).
+4. Scope: "Fix CHORE-211 now (Recommended)" and "CHORE-377 lorebook-after-assets": the item where `character_book` fails after assets are saved is included; the asset ordering goes to `opus-reviewer`.
+5. CHORE-351 is dropped, absorbed into UI-S0 (the answer file's wording; the Roadmap's CHORE-351 row is not edited by this batch).
+6. Plan Q1: import a card with a missing `data.extensions` as `{}`. Plan Q2: prompt templates with no chat card: `start` and `historyend` are not sent, as today. Plan Q3: accept the rare lost write, no notice, no new key.
+7. Plan Q3 is SUPERSEDED (2026-10-31, re-asked after Gate 1 S1-2 showed one-step element replacement, for example the V3 `setCharacterToIndex`): "Re-look-up by id (Recommended)": the `selectCharImg`/`liveIndexOf` pattern. After each `await`, re-find the character by `chaId`, write, and `markCharacterForSave`; only a deleted character drops the write, with a console warning; no `en.ts` key.
+
+- Notes, not the maintainer's words:
+  - Which of the plan questions Q1 to Q3 belongs to which ticket is not stated in the answer files; the mapping is not asserted here.
+  - The batch merged as `6e4f4ebc0` (CHORE-211, 174, 377, 376, 456 COMPLETE in the Roadmap, batch 27). Gates and runs: ledger row 4650.
+  - Nothing here authorizes application code, a commit or a push beyond what the maintainer approved for this batch.
+
+### MC-916 — Lane A, 2026-10-31: CHORE-478 product answers (PQ1 to PQ17, the chatAlt storage amendment, and the later plan-round answers)
+
+- Tag: decisions (`AskUserQuestion` answers; every answer is the option labelled "(Recommended)" unless the text says otherwise, and R3-1 is the maintainer's own text). Date: 2026-10-31. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\plans\chore478\answers.md` (the whole file, relayed by lane A), with the plan and gate files named in ledger rows 4651 and 4652.
+- Alternatives rejected: not recorded (the option texts are in the plan files, not the answer file).
+- Related: `MC-781` (amended; item 6), `MC-169` (superseded), `MC-720` 3 (superseded in part), `MC-714`, `MC-715`, `MC-774`, `MC-223`, `MC-350`, `MC-913`, `MC-917`, `MC-175`; CHORE-478.
+
+**What was decided (maintainer, option labels as the answer file records them).**
+1. PQ1: leave existing branch-marker chats as they are (no conversion; a manual convert may come in UI-S1; re-imports are not rebuilt).
+2. PQ2: reply arrows show on any message that has siblings. PQ3: a counter shows when Swipe is on (the first-message counter style). PQ4: Branch is disabled on the last message. PQ5: after Branch the chat ends at that message; the old tail is reached with the arrows.
+3. PQ6: no delete of alternatives until UI-S1. PQ7: script state is parked per branch like memory; suggestions are cleared on a switch; bookmarks are kept and the list shows the active path only.
+4. PQ8: pre-reroll candidates are persisted as siblings. PQ9: a named warning and a confirmation before an export starts (`MC-223`, `MC-774`). PQ10: the `req` token is permanent.
+5. PQ11: Lua `setFullChat` carries the chat id where index, role and data are unchanged. PQ12: alternatives are hidden from the plugin `getChatFromIndex`; whole-character replaces (`setCharacterToIndex`, `setChar`) keep them, matched by chat id.
+6. PQ13: the fork JSON single-chat export carries alternatives; the HTML export shows the active path only. PQ14: `createFolderOnBranch` is hidden. PQ15: S5 branch chats are named "(Branch n)", with no folder. PQ16: with Swipe off, rerolls still persist siblings.
+7. PQ17: `MC-781` item 6 supersedes `MC-169`.
+8. Advisor amendment accepted: alternatives get their own unit type (`chatAlt`, the advisor suggests id 25) instead of type-8 chunks; a technical amendment to `MC-781` item 6; the record shape is declared open (extra keys round-trip).
+9. OQ1 (plan v2): "Hide everywhere (Recommended)": alternatives are hidden in every plugin read (`getCharacterFromIndex`, `getChar`, the `getDatabase` snapshot); on a plugin write the live alternatives always win.
+10. After Gate 1 r1: F2: a lazily loaded (residency) character with a damaged alternatives unit opens with its main conversation; the damaged alternatives are dropped with a notice naming the chat (as `MC-781` item 13 at boot). F11: alternatives in cold-storage units found only after the `.bin` writer opens are stripped and named in a post-export notice; everything known up front is confirmed before the export starts. F15: `/clear` and other full clears also clear that chat's alternatives (the bytes remain in restore points).
+11. OQ2 (v3): "No rollback (Recommended)": reroll and Branch keep the current script state; the departing state is parked on the replaced reply and restored by the arrow. OQ3 (v3): "Restore, then merge (Recommended)": a plugin full-character write over an archived placeholder restores the archive first (`restoreArchivedForWrite`), re-finds by `chaId`, then merges, keeping alternatives.
+12. Gate 1 r2 N2: "Lock while generating (Recommended)": Branch and the arrows are disabled for a chat while a generation whose origin is that chat runs, using the same gate as reroll.
+13. OQ4 (v4): "Discard them (Recommended)": an empty-departure arrival restores the arriving parked state; live changes since the detach are discarded. OQ5 (v4): "Yes, like /clear (Recommended)": deleting the last remaining message is a full clear and clears alternatives.
+14. Gate 1 r3 R3-1, the maintainer's own text: "Reroll only on last, but it needs visual feedback(different color, perhaps) that pressing would regenerate new reply." Applied as: on the last message, the forward arrow with no later sibling rerolls and is styled distinctly (for example a different theme colour); on any other message, a forward arrow with no later sibling is disabled.
+15. Batch B plan v5b: OQ-B1 "On the turn's first msg (Recommended)": group-chat sibling arrows and counter on the head row; only the last row's forward arrow generates, regenerating the whole piece. OQ-B2 "Separate <- control (Recommended)": a separate back control (count when Swipe is on) inside the last row below its buttons, shown only when the path ends with side children; it arrives at the newest. OQ-B3 "Yes, no counter (Recommended)": with Swipe off, non-last rows with siblings and the OQ-B2 control still show arrows, without a counter.
+16. After Gate 1 on plan v6s2: F2 (return to a message the chat ended at after Branch or a stopped reroll, after leaving it via reroll or the arrows): "As I left it (Recommended)": the chat ends at that message with the memory and script state it had when left; the old continuation stays one press of the end control away, and OQ4 applies at that press. F1 (the end control's target): "Most recently left (Recommended)": the end control brings back the most recently departed continuation (highest stamp); older ones are reached with the reply arrows on that message; the plan v5b rule "last one in display order" is superseded.
+17. Plan v7s2 item 4 (a parked SupaMemory pointer whose message is deleted): "Keep and repoint (Recommended)": `withSupaRepoint` applies `MC-714` and `MC-715` to each parked pair along that branch's own path (a Batch B item, `supaResume.ts`).
+18. Plan v5c: OQ-C1 "Assign id, press again (Recommended)": the press stamps ids, refuses once, and the row remounts with its id. OQ-C2 "Accept (Recommended)": Branch and reroll do not apply `MC-715` to the live SupaMemory pair; the new branch re-summarises (recorded with `MC-720` 3's supersession in part; see the note on that entry).
+
+- Notes, not the maintainer's words:
+  - A maintainer statement about the installed Fold 7 build, 2026-10-31 (answer file, N3), verbatim: "current build is built on aug.28. and last creation time appears as 11:14 AM." The commit it maps to is not recorded: TODO(evidence). The senior-advisor's corrected premise (the installed build is newer than `f0e397aae`) is in the handoff; the conclusion held.
+  - Amended or superseded at the source in this batch: `MC-781` (note after item 13's notes), `MC-169` and `MC-720` (notes after their text).
+  - Nothing here authorizes application code, a commit or a push beyond the stages named in ledger rows 4651 and 4652.
+
+### MC-917 — Lane A, 2026-10-31: CHORE-478 process decisions: the fork-backup gate (set, then withdrawn), the `.rtb` backup priority, the Batch B fold-in exception, park-always, and the dedup ticket
+
+- Tag: decisions (maintainer answers) and lane A rulings (marked as such). Date: 2026-10-31. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\plans\chore478\answers.md` ("After Gate 1 r1", the last lines), `plans\chore478\gate1r4b\result.md`, `plans\chore478\escalation\result.md`, `plans\chore478\escalation2\result.md`, inputs.md, relayed by lane A.
+- Alternatives rejected: not recorded.
+- Related: CHORE-478, CHORE-128 (the `.rtb` backup), CHORE-602, `MC-774`, `MC-223`, `MC-916`, `MC-321` 3; `docs/workflow/gates.md` (the escalation rules).
+
+**What was decided (maintainer, verbatim where quoted).**
+1. Backup gap advisory, set first (maintainer, 2026-10-31, "all Recommended"): open a ticket for a fork backup that keeps alternatives; Batch B (the feature on) does not ship until it exists.
+2. That gate is SUPERSEDED (maintainer, 2026-10-31, verbatim): "on second thought, alternatives are not saved anyway and I do not have any branches, so I think it is okay to lose them. I agree that we still need to bump priority of .rtb backup, though." Effect: Batch B is not gated on a fork backup; `.bin` keeps omitting alternatives after the named confirmation; the `.rtb` backup ticket (CHORE-128) gets a raised priority, not blocking. The sources assign no ticket ID to the fork backup of item 1: TODO(evidence) whether one was ever opened. The inputs say "open the .rtb backup ticket at raised priority"; the Roadmap's existing `.rtb` ticket is CHORE-128 (`MC-686`), and this batch raises that one (the identification is the record writer's, from the Roadmap).
+3. Batch B Gate 1 r4 `[REJECT]` on B4-1 only (messages without ids from `/send` and `/sendas` before `detachTail` or `switchTo`) plus nine editorial items. The maintainer: "Fold into the coder brief (Recommended)": B4-1 and the nine editorials become required items in the S3 and S4 coder briefs; the Batch B combined Gate 2 (`opus-reviewer`) must confirm them; no further plan round. This is a one-time exception to the escalation's no-patch branch.
+
+- Notes, not the maintainer's words:
+  - Escalation 1 (senior-advisor, after Gate 1 r1 to r3 were three consecutive substantive rejects): route (b) amended; the mechanism is converging; Batch A (S1a, S1b, S1c, S2) approved on the r3 scoping by an orchestrator ruling under `gates.md`, with the r3 items R3-3 to R3-7 plus R3-4.1 and R3-6 as a required checklist; Batch B gets a standalone S3/S4 plan and its own Gate 1.
+  - Escalation 2 (senior-advisor, after three consecutive substantive rejects on S2: Gate 2 r1 G2-1, Gate 1 on v6s2 F1/F2, Gate 1 on v7s2 F-A): change the mechanism to park-always (all six fields snapshotted on every departure head; run-only arrival and the end-target refusal kept; nothing deleted in S2). The remediation is `497f49076`. Lane A's inputs record "park-always accepted"; whether the maintainer was asked is not in the sources: TODO(evidence).
+  - Size scan (maintainer's `.bin`, harness `e6e2b71ed`; ledger row 4653): decision per escalation 2: park-always accepted; open a low-priority dedup ticket for parked memory copies (CHORE-602). Caveat from the sources: the library is chat-light.
+  - Open Batch B checklist (inputs.md): the end-target, the item 4 repoint, and archived chats without ids (the Batch A Gate 2 note 4(a)).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-918 — Lane A, 2026-10-31: B5 device session answers and follow-ups (CHORE-396, 397, 483, 556, 375, 372, and three new tickets)
+
+- Tag: decisions (`AskUserQuestion` answers, all "(Recommended)"). Date: 2026-10-31. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\b5session\answers.md` (session setup); the maintainer's follow-ups in inputs.md and the handoff (2026-10-31 lines); verified report `%TEMP%\risu-b715\b5session\verify\result.md` (PARTIAL-ACCEPT); cell C re-run `b5session\c396rerun\result.md` and its verification `c396rerun\verify\result.md` (ACCEPT WITH CORRECTIONS).
+- Alternatives rejected: not recorded.
+- Related: CHORE-396, 397, 483, 556, 375, 372, 470, 472, 473, 394, CHORE-598 to CHORE-601; `MC-831`, `MC-775`, `MC-782`, `MC-510`, `MC-914`.
+
+**What was decided (maintainer, option labels as the answer files record them).**
+1. Session setup: wipe phones: "Wipe both, use release (Recommended)" (test-key release builds with `-AllowClear` on both spares; phone 2 gets an in-app partial `.bin` snapshot first). CHORE-483 builds: "Exact pair (Recommended)" (`7884536ee` against `6253fb61f`). CHORE-396 baseline: "Re-run BASE (Recommended)". Extras, all four: "556 broken-module fixture", "TLS smoke (Wi-Fi ~15 s)", "372 tail (MEASURE APK)", "470/472/473 smoke".
+2. CHORE-556 case (a) (a broken module while chat bodies load) was NOT REACHED on phone 1: the duplicate-id fixture was restored with module A usable, no alert, nothing edited. The maintainer: "Debug fault switch (Recommended)": a test-only switch compiled only into debug and test builds that makes one named module fail to load, through the normal gates, then a later device check. New ticket CHORE-598.
+3. CHORE-396 cell C, first route: "Investigate first" (re-run three times per build on phone 1, bisect if it holds; CHORE-396 stays open). After the re-run (REAL, verified), the maintainer: "Ticket a fix (Recommended)". New ticket CHORE-601: group the CharX validation reads into fewer picker calls, then re-run cell C on the device.
+4. Two new tickets (all Recommended): the CharX export passes no suggested filename (Android writes "(invalid)"): CHORE-599; the "Not restored" notice lists a file twice (no de-dup): CHORE-600.
+5. CHORE-375 9c and the CHORE-372 skipped items stay open for the next Note 9 session, with a slower export fixture for 9c.
+
+- Notes, not the maintainer's words:
+  - Verifier findings carried into the Roadmap: 396 A and B medians CONFIRMED PASS; the original phone 1 cell C verdict "PASS" was NOT CONFIRMED; 375 9c NOT CONFIRMED (no Cancel seen; 232 ms from the first to the last state); 556(c) PARTIAL (the module-list bump was not run); 483 numbers recompute. The `(invalid)` string itself (platform or plugin behaviour) is not traced; the app-side cause (no suggested name passed) is source-confirmed.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-919 — Lane A, 2026-10-31: Japanese UI language and the Gemini 3.8 Flash translation trial
+
+- Tag: decisions (the maintainer's request and `AskUserQuestion` answers). Date: 2026-10-31. Sweep ref: none.
+- Source: the maintainer's chat messages of 2026-10-31 relayed by lane A (handoff lines on the translation trial and the Japanese wiring; inputs.md); the trial files under `%TEMP%\risu-b715\tltrial\` and `jawire\`.
+- Alternatives rejected: not recorded.
+- Related: CHORE-603 (Japanese UI language), CHORE-604 (native review), `MC-058` (the Translator owns non-English locales).
+
+**What was decided (maintainer).**
+1. The request: to trial Gemini 3.8 Flash for translations; then, verbatim: "add japanese to the language picker once it's checked."
+2. Trial scale: "Both, small first (Recommended)" (a small trial on six strings, then Japanese). Japanese quality: "Claude spot-check only" (no native review before wiring).
+3. The Airisu Japanese name: アイリス (the maintainer's choice).
+
+- Notes, not the maintainer's words:
+  - Results are in ledger rows 4656 and 4657; the merge is `fc5229918`. Because no native reader checked the file, lane A opened CHORE-604 for a native-speaker review of the flagged lines (the maintainer chose spot-check only, so this follow-up is lane A's, not a maintainer decision).
+  - Nothing here authorizes application code, a commit or a push beyond what the maintainer approved for this item.
