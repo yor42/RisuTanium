@@ -1,0 +1,163 @@
+/*
+  Startup progress bar. Needs nexus-tokens.css. Set on .nexus-boot-bar:
+    --nexus-boot-fill   shown fraction, 0 to 1 (only ever grows)
+    --nexus-boot-index  index of the current step
+    --nexus-boot-steps  number of steps
+  and data-state (running, waiting, failed, ready) and, for low power, data-low-power.
+  Every animation is transform or opacity. The fill is a scaled bar, not a changing width.
+
+  Cascade rule: every selector that paints the same element has the same specificity (contexts go
+  inside :where()), so source order alone decides. The order is base, waiting, still (low power,
+  then reduced motion), failed, then forced colours. A later tier wins over an earlier one; do not
+  raise specificity or add :not() to change that, move the rule instead.
+*/
+.nexus-boot-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 0.08);
+  box-shadow: inset 0 0 0 1px var(--nexus-edge);
+}
+
+/* The current step's share of the bar. */
+.nexus-boot-sweep {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(100% * var(--nexus-boot-index, 0) / var(--nexus-boot-steps, 1));
+  width: calc(100% / var(--nexus-boot-steps, 1));
+  overflow: hidden;
+}
+
+:where(.nexus-boot-bar[data-state='ready']) .nexus-boot-sweep {
+  display: none;
+}
+
+/* Step boundaries, so the bar reads as "step 3 of 7" rather than as a time estimate. */
+.nexus-boot-ticks {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg,
+    transparent 0 calc(100% / var(--nexus-boot-steps, 1) - 2px),
+    var(--nexus-canvas) calc(100% / var(--nexus-boot-steps, 1) - 2px) calc(100% / var(--nexus-boot-steps, 1)));
+  pointer-events: none;
+}
+
+/* Fill: base, failed, forced colours. */
+.nexus-boot-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--nexus-core-from), var(--nexus-accent) 70%, var(--nexus-ring));
+  transform-origin: left center;
+  transform: scaleX(var(--nexus-boot-fill, 0));
+  transition: transform 0.45s var(--nexus-ease);
+}
+
+:where(.nexus-boot-bar[data-state='failed']) .nexus-boot-fill {
+  background: #ff6b81;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nexus-boot-fill {
+    transition: none;
+  }
+}
+
+/* Sweep, tier 1, base: motion inside the current share. Without a count there is nothing honest to fill. */
+.nexus-boot-sweep::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 1;
+  background: linear-gradient(90deg, transparent, rgb(127 233 255 / 0.75), transparent);
+  transform: translateX(-100%);
+  animation: nexus-boot-sweep 1.4s var(--nexus-ease) infinite;
+}
+
+@keyframes nexus-boot-sweep {
+  to { transform: translateX(100%); }
+}
+
+/* Tier 2, waiting: the share pulses in place. */
+:where(.nexus-boot-bar[data-state='waiting']) .nexus-boot-sweep::before {
+  transform: none;
+  background: rgb(127 233 255 / 0.4);
+  animation: nexus-boot-hold 1.6s var(--nexus-ease) infinite alternate;
+}
+
+@keyframes nexus-boot-hold {
+  from { opacity: 0.25; }
+  to { opacity: 1; }
+}
+
+/* Tier 3, still: low power and reduced motion show a steady tint (4:1 against the track) instead of motion. */
+:where(.nexus-low-power, .nexus-boot-bar[data-low-power]) .nexus-boot-sweep::before {
+  animation: none;
+  transform: none;
+  opacity: 1;
+  background: rgb(127 233 255 / 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nexus-boot-sweep::before {
+    animation: none;
+    transform: none;
+    opacity: 1;
+    background: rgb(127 233 255 / 0.5);
+  }
+}
+
+/* Tier 4, failed: the step it stopped at turns red, visible even at the first step where nothing is filled. */
+:where(.nexus-boot-bar[data-state='failed']) .nexus-boot-sweep::before {
+  animation: none;
+  transform: none;
+  opacity: 1;
+  background: rgb(255 107 129 / 0.6);
+}
+
+/* Tier 5, forced colours, last. forced-color-adjust: none keeps these system colours and gradients
+   from being rewritten; the outline is a border because forced colours removes box-shadow. */
+@media (forced-colors: active) {
+  .nexus-boot-bar {
+    box-shadow: none;
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
+
+  .nexus-boot-fill {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+
+  :where(.nexus-boot-bar[data-state='failed']) .nexus-boot-fill {
+    background: Highlight;
+  }
+
+  .nexus-boot-ticks {
+    forced-color-adjust: none;
+    background: repeating-linear-gradient(90deg,
+      transparent 0 calc(100% / var(--nexus-boot-steps, 1) - 2px),
+      Canvas calc(100% / var(--nexus-boot-steps, 1) - 2px) calc(100% / var(--nexus-boot-steps, 1)));
+  }
+
+  .nexus-boot-sweep::before,
+  :where(.nexus-boot-bar[data-state='waiting']) .nexus-boot-sweep::before,
+  :where(.nexus-low-power, .nexus-boot-bar[data-low-power]) .nexus-boot-sweep::before {
+    forced-color-adjust: none;
+    animation: none;
+    transform: none;
+    opacity: 1;
+    background: GrayText;
+  }
+
+  :where(.nexus-boot-bar[data-state='failed']) .nexus-boot-sweep::before {
+    forced-color-adjust: none;
+    animation: none;
+    transform: none;
+    opacity: 1;
+    background: LinkText;
+    background: Mark;
+  }
+}
