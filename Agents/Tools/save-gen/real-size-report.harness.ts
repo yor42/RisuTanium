@@ -21,6 +21,14 @@
  * not retained and their owners skipped. RISU_SIZE_OUTPUT_DIR overrides the
  * output directory (the synthetic fixture test uses it).
  *
+ * The report also holds a `chatMemory` section: per chat memory field
+ * (hypaV2Data, hypaV3Data, supaMemoryData, lastMemory) over live and archived
+ * chats, the number of chats holding it, p50/p95/max JSON bytes, the top 10
+ * sizes with each chat's message count, a 64 KiB / 256 KiB / 1 MiB histogram,
+ * and entry-count distributions (HypaV3 summaries, HypaV2 mainChunks, chunks).
+ * Sizes and counts only. The same per-chat figures also appear under
+ * `kinds` as `chat.mem.*` and `archivedChat.mem.*`.
+ *
  * Guarantees:
  * - The input is opened read-only (`fs.openSync(..., 'r')`) and never written,
  *   renamed or touched. The only file written is
@@ -423,8 +431,66 @@ const CHARACTER_SCRIPT_KEYS = ['customscript', 'triggerscript', 'virtualscript']
 const CHARACTER_SPLIT_OUT = new Set<string>(['chats', 'globalLore', ...CHARACTER_SCRIPT_KEYS])
 const CHAT_SPLIT_OUT = new Set<string>(['message'])
 
+/** Chat-level memory stores; only their sizes and entry counts are ever read. */
+const CHAT_MEMORY_FIELDS = ['hypaV2Data', 'hypaV3Data', 'supaMemoryData', 'lastMemory'] as const
+const MEMORY_HISTOGRAM_BUCKETS: readonly { label: string; min: number; max: number }[] = [
+    { label: '<64KiB', min: 0, max: 64 * KIB - 1 },
+    { label: '64KiB-256KiB', min: 64 * KIB, max: 256 * KIB - 1 },
+    { label: '256KiB-1MiB', min: 256 * KIB, max: MIB - 1 },
+    { label: '>=1MiB', min: MIB, max: Infinity },
+]
+
 let messagesOver128KiB = 0
 let pointerChats = 0
+
+/**
+ * Per memory field across live and archived chats: chats holding it, p50, p95,
+ * max, top 10 sizes with the chat's message count, a size histogram and the
+ * entry-count distributions. No ordinals, ids or content are emitted.
+ */
+function summarizeChatMemory(): Rec {
+    const scopes = ['chat', 'archivedChat']
+    const out: Rec = {}
+    for (const field of CHAT_MEMORY_FIELDS) {
+        const entries: { size: number; messages: number }[] = []
+        for (const scope of scopes) {
+            const stats = kinds.get(`${scope}.mem.${field}`)
+            if (!stats) continue
+            const messageByOrdinal = new Map<string, number>()
+            const messages = kinds.get(`${scope}.messages`)
+            if (messages) messages.ordinals.forEach((o, i) => messageByOrdinal.set(o, messages.sizes[i]))
+            stats.ordinals.forEach((o, i) => entries.push({ size: stats.sizes[i], messages: messageByOrdinal.get(o) ?? 0 }))
+        }
+        const sorted = entries.map((e) => e.size).sort((a, b) => a - b)
+        const histogram: Record<string, number> = {}
+        for (const bucket of MEMORY_HISTOGRAM_BUCKETS) {
+            histogram[bucket.label] = sorted.filter((n) => n >= bucket.min && n <= bucket.max).length
+        }
+        const counts: Rec = {}
+        for (const suffix of ['summaries', 'mainChunks', 'chunks']) {
+            const parts = scopes.flatMap((scope) => kinds.get(`${scope}.mem.${field}.${suffix}`)?.sizes ?? [])
+            if (parts.length === 0) continue
+            const countsSorted = [...parts].sort((a, b) => a - b)
+            counts[suffix] = {
+                chatsWithField: parts.length,
+                total: parts.reduce((a, b) => a + b, 0),
+                p50: percentile(countsSorted, 0.5),
+                p95: percentile(countsSorted, 0.95),
+                max: countsSorted[countsSorted.length - 1],
+            }
+        }
+        out[field] = {
+            chatsWithField: entries.length,
+            p50: percentile(sorted, 0.5),
+            p95: percentile(sorted, 0.95),
+            max: sorted.length ? sorted[sorted.length - 1] : 0,
+            top10: [...entries].sort((a, b) => b.size - a.size).slice(0, 10),
+            histogramBytes: histogram,
+            entryCounts: counts,
+        }
+    }
+    return out
+}
 
 /** Greedy packing of whole messages into byte-capped chunks. */
 function countChunks(messageSizes: readonly number[]): number {
@@ -466,6 +532,17 @@ function measureChat(scope: string, ordinal: string, chatValue: unknown): number
     record(`${scope}.chunks`, ordinal, countChunks(messageSizes), 'count')
     record(`${scope}.messages`, ordinal, messageSizes.length, 'count')
     record(`${scope}.largestMessage`, ordinal, messageSizes.length ? Math.max(...messageSizes) : 0)
+    for (const field of CHAT_MEMORY_FIELDS) {
+        const value = chat[field]
+        if (value === undefined || value === null) continue
+        record(`${scope}.mem.${field}`, ordinal, jsonBytes(value))
+        const holder = asRec(value)
+        if (field === 'hypaV3Data') record(`${scope}.mem.${field}.summaries`, ordinal, asArr(holder?.summaries).length, 'count')
+        if (field === 'hypaV2Data') {
+            record(`${scope}.mem.${field}.mainChunks`, ordinal, asArr(holder?.mainChunks).length, 'count')
+            record(`${scope}.mem.${field}.chunks`, ordinal, asArr(holder?.chunks).length, 'count')
+        }
+    }
     return whole
 }
 
@@ -1205,6 +1282,7 @@ describe('real-size-report (read-only size census of a real .bin)', () => {
                     },
                     scalars,
                     kinds: Object.fromEntries([...kinds.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, stats]) => [name, summarize(stats)])),
+                    chatMemory: summarizeChatMemory(),
                     assets: assetSummary,
                     assetRefs,
                     store2: store2Section,
