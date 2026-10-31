@@ -43,6 +43,9 @@ export function scopeOf(chaId: string, chatId: string | undefined, chatPage: num
     return chaId + '\u0000' + (chatId ?? ('page:' + chatPage))
 }
 
+/** The slot of the card background in the open chat's scope. It contains no `|`, so `slotKeyOf` can never produce it. */
+export const BACKGROUND_SLOT = 'background'
+
 // A group bookmark passes a string where Chats passes an object; the two are different inputs for the same index.
 export function slotKeyOf(firstMessage: boolean, idx: number, charArg: CharArg): string {
     const charTag = charArg !== null && typeof charArg === 'object' ? 'o' : 's:' + (charArg ?? '')

@@ -4,7 +4,7 @@
  */
 import { beforeEach, describe, expect, test } from 'vitest'
 import {
-    AWAITING, clearChatBodyRenderCache, lookup, pendingDisplay, record, RENDER_CACHE_CAPACITY, runShowsSpinner,
+    AWAITING, BACKGROUND_SLOT, clearChatBodyRenderCache, lookup, pendingDisplay, record, RENDER_CACHE_CAPACITY, runShowsSpinner,
     scopeOf, slotKeyOf, type CacheLookup, type DisplayInput, type RenderFingerprint, type SpinnerInput,
 } from './chatBodyRenderCache'
 
@@ -23,6 +23,27 @@ function fp(over: Partial<RenderFingerprint> = {}): RenderFingerprint {
 
 beforeEach(() => {
     clearChatBodyRenderCache()
+})
+
+describe('G T13 the background slot never collides with a message slot', () => {
+    test('no slotKeyOf output equals BACKGROUND_SLOT', () => {
+        expect(typeof BACKGROUND_SLOT).toBe('string')
+        expect(BACKGROUND_SLOT).not.toContain('|')
+        for (const first of [true, false]) {
+            for (const idx of [-1, 0, 3, 42]) {
+                for (const charArg of [null, 'bookmark', '', { name: 'c' } as never]) {
+                    expect(slotKeyOf(first, idx, charArg)).not.toBe(BACKGROUND_SLOT)
+                }
+            }
+        }
+    })
+
+    test('a background entry and a message entry of one scope coexist', () => {
+        record(fp({ slot: BACKGROUND_SLOT, source: 'bg', role: null, charArg: null }), '<p>BG</p>')
+        record(fp(), '<p>H</p>')
+        expect(lookup(fp({ slot: BACKGROUND_SLOT, source: 'bg', role: null, charArg: null }))).toEqual({ kind: 'html', html: '<p>BG</p>' })
+        expect(lookup(fp())).toEqual({ kind: 'html', html: '<p>H</p>' })
+    })
 })
 
 describe('G T18 the cache returns an entry only for the input that produced it', () => {
