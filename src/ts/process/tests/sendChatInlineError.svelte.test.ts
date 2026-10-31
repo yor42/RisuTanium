@@ -196,7 +196,8 @@ vi.mock(import('../inlayScreen'), () => ({
     runInlayScreen: runInlayScreenMock,
 }) as unknown as typeof import('../inlayScreen'))
 
-vi.mock(import('../prereroll'), () => ({
+vi.mock(import('../prereroll'), async (importOriginal) => ({
+    renameContinuedMessage: (await importOriginal()).renameContinuedMessage,
     addRerolls: vi.fn(),
 }) as unknown as typeof import('../prereroll'))
 

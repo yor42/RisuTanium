@@ -5,8 +5,8 @@
  * - A: no token is lost unless it was created, or still live, while the chat ended at a message with children;
  * - B: no token at all is lost by any operation other than the end press;
  * - S: every record with `mem` holds the six branch keys and is a run head, and no arrived record keeps `mem`.
- * A SupaMemory token whose only holders point at a deleted message is the pointer-repoint seam of a middle delete;
- * it is counted and logged, not asserted.
+ * The delete removes the last message or a middle one. A SupaMemory token whose only holders point at a deleted
+ * message would be a pair the delete failed to repoint, live or parked; it is counted and asserted to be zero.
  */
 import { describe, expect, it } from 'vitest'
 import type { Chat, ChatAlt } from '../../storage/database.svelte'
@@ -16,7 +16,7 @@ import { withSupaRepoint } from '../memory/supaResume'
 const FIELDS = ['supaMemoryData', 'supaMemoryCoveredId', 'lastMemory', 'scriptstate', 'hypaV2Data', 'hypaV3Data'] as const
 const SIX_KEYS = [...FIELDS].sort().join(',')
 
-type Config = { endBias: number, endAnyChild: boolean, withDelete: boolean }
+type Config = { endBias: number, endAnyChild: boolean, withDelete: 'off' | 'last' | 'middle' }
 type Outcome = {
     nonEndLosses: number
     strictLosses: number
@@ -152,12 +152,14 @@ function runConfig(config: Config, rounds: number, steps: number): Outcome {
                 }
                 continue
             }
-            if (r >= 0.55 && r < 0.62 && config.withDelete) {
-                const last = chat.message[chat.message.length - 1].chatId
-                if (last !== undefined) {
-                    deleted.add(last)
+            if (r >= 0.55 && r < 0.62 && config.withDelete !== 'off') {
+                // The index is drawn only for a middle delete, so the 'last' stream stays unchanged.
+                const removeAt = config.withDelete === 'middle' ? pick(chat.message.length) : chat.message.length - 1
+                const removedId = chat.message[removeAt].chatId
+                if (removedId !== undefined) {
+                    deleted.add(removedId)
                 }
-                withSupaRepoint(chat, () => chat.message.pop())
+                withSupaRepoint(chat, () => chat.message.splice(removeAt, 1))
                 if (endsAtChildren()) {
                     // A value live when a delete leaves the chat ending at a message with children belongs to a path
                     // the user shortened; the end press may discard it.
@@ -241,20 +243,20 @@ describe('reach of parked branch state over seeded sequences', () => {
     const configs: Config[] = []
     for (const endBias of [0, 0.5]) {
         for (const endAnyChild of [false, true]) {
-            for (const withDelete of [false, true]) {
+            for (const withDelete of ['off', 'last', 'middle'] as const) {
                 configs.push({ endBias, endAnyChild, withDelete })
             }
         }
     }
 
-    it.each(configs)('T79 no loss and a sound structure: endBias $endBias, any end child $endAnyChild, delete of the last message $withDelete', (config) => {
+    it.each(configs)('T79 no loss and a sound structure: endBias $endBias, any end child $endAnyChild, delete $withDelete', (config) => {
         const outcome = runConfig(config, 600, 30)
-        console.info('T79', JSON.stringify(config), 'supaDeleteRounds', outcome.supaDeleteRounds)
         expect({
             nonEndLosses: outcome.nonEndLosses,
             strictLosses: outcome.strictLosses,
             structuralFailures: outcome.structuralFailures,
+            supaDeleteRounds: outcome.supaDeleteRounds,
             first: [outcome.firstNonEnd, outcome.firstStrict, outcome.firstStructural],
-        }).toEqual({ nonEndLosses: 0, strictLosses: 0, structuralFailures: 0, first: [null, null, null] })
+        }).toEqual({ nonEndLosses: 0, strictLosses: 0, structuralFailures: 0, supaDeleteRounds: 0, first: [null, null, null] })
     }, 60000)
 })

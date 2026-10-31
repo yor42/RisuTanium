@@ -224,7 +224,8 @@ let DBState: { db: any }
 let selectedCharID: ReturnType<typeof writable<number>>
 let beginWork: typeof import('./chatOrigin').beginWork
 let supaMemory: typeof import('./memory/supaMemory').supaMemory
-let beginRegeneration: typeof import('./rerollHistory').beginRegeneration
+let rerollBase: typeof import('./rerollHistory').rerollBase
+let detachTail: typeof import('./chatTree').detachTail
 
 beforeAll(async () => {
     const jsonLua = await readFile(resolve(process.cwd(), 'public/lua/json.lua'), 'utf8')
@@ -238,7 +239,8 @@ beforeAll(async () => {
     const origin = await import('./chatOrigin')
     beginWork = origin.beginWork
     supaMemory = (await import('./memory/supaMemory')).supaMemory
-    beginRegeneration = (await import('./rerollHistory')).beginRegeneration
+    rerollBase = (await import('./rerollHistory')).rerollBase
+    detachTail = (await import('./chatTree')).detachTail
 })
 
 //#region fixtures
@@ -496,17 +498,16 @@ describe('setFullChat', () => {
 })
 
 describe('reroll', () => {
-    // guard: passes before and after (reversible cut, MC-720 3)
-    test('guard: the reroll cut keeps the pointer even when it cuts the pointer message', async () => {
+    // The reroll cut is a tree departure: the pair that names a departing message is cleared live
+    // and parked exactly on the departed head, so arriving there restores it.
+    test('the reroll cut clears a pointer that names the cut message and parks it exactly', async () => {
         const { char, chat } = setup(`m2\n${SUMMARY}`, [{ chatId: 'm1' }, { chatId: 'm2' }])
         chat.message[1].role = 'char'
-        const handle = beginWork(char, chat)
-        try {
-            expect(beginRegeneration(handle!.origin)).not.toBeNull()
-        } finally {
-            handle!.end()
-        }
+        const base = rerollBase(chat.message)
+        expect(base).toBe(1)
+        expect(detachTail(chat, base!)).toBe(true)
         expect(chat.message.map((m) => m.chatId)).toEqual(['m1'])
-        expect(chat.supaMemoryData).toBe(`m2\n${SUMMARY}`)
+        expect(chat.supaMemoryData).toBeUndefined()
+        expect(chat.alt![0].mem?.supaMemoryData).toBe(`m2\n${SUMMARY}`)
     })
 })

@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { ArrowLeft, ArrowLeftRightIcon, ArrowRight, BookmarkIcon, BotIcon, CopyIcon, IdCardIcon, PowerOff, GitBranch, HamburgerIcon, History, LanguagesIcon, MenuIcon, PencilIcon, RefreshCcwIcon, RotateCcw, SplitIcon, TrashIcon, UserIcon, Volume2Icon, Scissors } from "@lucide/svelte"
-    import { aiLawApplies, changeChatTo, foldChatToMessage, createChatCopyName, getFileSrc } from "src/ts/globalApi.svelte"
+    import { ArrowLeft, ArrowLeftToLine, ArrowLeftRightIcon, ArrowRight, BookmarkIcon, BotIcon, CopyIcon, IdCardIcon, PowerOff, GitBranch, HamburgerIcon, History, LanguagesIcon, MenuIcon, PencilIcon, RefreshCcwIcon, RotateCcw, SplitIcon, TrashIcon, UserIcon, Volume2Icon, Scissors } from "@lucide/svelte"
+    import { aiLawApplies, changeChatTo, foldChatToMessage, getFileSrc } from "src/ts/globalApi.svelte"
     import { copyPlainText, stripThoughtsForCopy, type CopyOutcome } from "src/ts/chatCopy"
     import { CARD_DEADLINE_MS, CARD_PENDING_MARGIN_MS, captureCardTheme, noteNewerPlainCopy, startCardCopy, type CardReport } from "src/ts/chatCard"
     import { ColorSchemeTypeStore } from "src/ts/gui/colorscheme"
@@ -12,6 +12,9 @@
     import { recordCaughtError } from "src/ts/caughtErrors"
     import { MEASURE } from "src/ts/process/memory/measureFlag"
     import { withSupaRepoint } from "src/ts/process/memory/supaResume"
+    import { endTarget, siblingsAt } from "src/ts/process/chatTree"
+    import { rerollBase } from "src/ts/process/rerollHistory"
+    import type { TreeView } from "src/ts/process/chatTreeView"
     import { noteEditConfirm } from "src/ts/process/chatPhaseRing"
     import { runTrigger } from 'src/ts/process/triggers'
     import { beginWork, originStatus } from 'src/ts/process/chatOrigin'
@@ -80,6 +83,16 @@
         rawStreamingText?: string;
         /** The reply was left unfinished when the page last ran; shows a note under it. */
         interrupted?: boolean;
+        /** The chat id this row's message had when the row was mounted; a tree press acts only while the message at `idx` still has it. */
+        expectedId?: string;
+        /** Steps the sibling at `idx`: the arrows and the end control press through it. */
+        onStep?: (index: number, expectedId: string | undefined, direction: 'back' | 'forward') => void;
+        /** Ends the path at the message at `idx`. */
+        onBranch?: (index: number, expectedId: string | undefined) => void;
+        /** The chat's sibling view, read live so a row never remounts for it. */
+        getTreeView?: () => TreeView | null;
+        /** True while a generation or a composer action runs. */
+        getBusy?: () => boolean;
     }
 
     let {
@@ -106,7 +119,26 @@
         streamingOptimizationMode = 'off',
         rawStreamingText = message,
         interrupted = false,
+        expectedId = undefined,
+        onStep = undefined,
+        onBranch = undefined,
+        getTreeView = undefined,
+        getBusy = undefined,
     }: Props = $props();
+
+    // The tree controls read the live chat, never the mount-time props: `totalLength` and the sibling view
+    // are fixed or shared, and a row must not remount when a send or a switch changes them.
+    let liveChat = $derived(DBState.db.characters?.[selIdState.selId]?.chats?.[DBState.db.characters?.[selIdState.selId]?.chatPage])
+    let liveLength = $derived(liveChat?.message?.length ?? 0)
+    let isLastRow = $derived(idx > -1 && idx === liveLength - 1)
+    let treeBusy = $derived(getBusy?.() ?? false)
+    let treeControls = $derived(rerollIcon !== false && !altGreeting && onStep !== undefined)
+    let sibling = $derived(getTreeView?.()?.at(idx) ?? null)
+    let siblingIndex = $derived(sibling?.index ?? 1)
+    let siblingCount = $derived(sibling?.count ?? 1)
+    let willGenerate = $derived(isLastRow && siblingIndex >= siblingCount && !!liveChat && rerollBase(liveChat.message) !== null)
+    let endCount = $derived(treeControls && isLastRow && liveChat && endTarget(liveChat) !== null ? siblingsAt(liveChat, liveLength).length : 0)
+    let branchDisabled = $derived(treeBusy || !(idx < liveLength - 1))
 
     let rootChatId = $derived(DBState.db.characters?.[selIdState.selId]?.chats?.[DBState.db.characters?.[selIdState.selId]?.chatPage]?.message?.[idx]?.chatId ?? '')
     let msgDisplay = $state('')
@@ -317,11 +349,11 @@
     }
 
     async function edit(){
-        // `selId`/`chatPage` are read live here, not frozen -- copy and
-        // branch both `unshift` a new chat and `changeChatTo(0)` while
-        // reusing this mounted instance, so a frozen `chatPage` would write
-        // into whatever chat now sits at the old index instead of the one
-        // the user is looking at.
+        // `selId`/`chatPage` are read live here, not frozen -- copy
+        // `unshift`s a new chat and `changeChatTo(0)` while reusing this
+        // mounted instance, so a frozen `chatPage` would write into
+        // whatever chat now sits at the old index instead of the one the
+        // user is looking at.
         const newText = editBuffer
         message = newText
         const edited = DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx]
@@ -1177,7 +1209,7 @@
 {/snippet}
 
 {#snippet iconButtons(options:{applyTextColors?:boolean} = {})}
-    <div class="grow flex items-center justify-end" class:text-textcolor2={options?.applyTextColors !== false}>
+    <div class="grow flex flex-wrap items-center justify-end" class:text-textcolor2={options?.applyTextColors !== false}>
         {#if isComment}
             <button
                 class="flex items-center hover:text-blue-500 transition-colors button-icon-remove"
@@ -1214,6 +1246,16 @@
                 {@render rerolls()}
 
             </div>
+            {#if endCount > 0}
+                <div class="w-full flex justify-end mt-1 button-end-control-row">
+                    <button class="flex items-center gap-1 hover:text-blue-500 transition-colors button-icon-end-control" disabled={treeBusy} onclick={() => onStep?.(liveLength, expectedId, 'back')}>
+                        <ArrowLeftToLine size={20}/>
+                        {#if DBState.db.swipe}
+                            <span class="text-xs text-textcolor2">{endCount}</span>
+                        {/if}
+                    </button>
+                </div>
+            {/if}
         {/if}
     </div>
 {/snippet}
@@ -1282,8 +1324,41 @@
     {/if}
 {/snippet}
 
+{#snippet treeRerolls()}
+    {#if DBState.db.swipe}
+        {#if isLastRow || siblingCount > 1}
+            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-unreroll" disabled={treeBusy || siblingIndex <= 1} onclick={() => onStep?.(idx, expectedId, 'back')}>
+                <ArrowLeft size={22}/>
+            </button>
+            {#if siblingCount > 1}
+                <span class="flex items-center text-xs text-textcolor2">{siblingIndex}/{siblingCount}</span>
+            {/if}
+            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-reroll" class:text-draculared={willGenerate} data-generates={willGenerate ? 'true' : undefined} disabled={treeBusy || (siblingIndex >= siblingCount && !willGenerate)} onclick={() => onStep?.(idx, expectedId, 'forward')}>
+                <ArrowRight size={22}/>
+            </button>
+        {/if}
+    {:else}
+        {#if siblingCount > 1}
+            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-unreroll" disabled={treeBusy || siblingIndex <= 1} onclick={() => onStep?.(idx, expectedId, 'back')}>
+                <ArrowLeft size={22}/>
+            </button>
+        {/if}
+        {#if isLastRow}
+            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-reroll" class:text-draculared={willGenerate} data-generates={willGenerate ? 'true' : undefined} disabled={treeBusy || (siblingIndex >= siblingCount && !willGenerate)} onclick={() => onStep?.(idx, expectedId, 'forward')}>
+                <RefreshCcwIcon size={20}/>
+            </button>
+        {:else if siblingCount > 1}
+            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-reroll" disabled={treeBusy || siblingIndex >= siblingCount} onclick={() => onStep?.(idx, expectedId, 'forward')}>
+                <ArrowRight size={22}/>
+            </button>
+        {/if}
+    {/if}
+{/snippet}
+
 {#snippet rerolls()}
-    {#if rerollIcon || altGreeting}
+    {#if treeControls}
+        {@render treeRerolls()}
+    {:else if rerollIcon || altGreeting}
         {#if DBState.db.swipe || altGreeting}
             <button class="flex items-center hover:text-blue-500 transition-colors button-icon-unreroll" class:dyna-icon={rerollIcon === 'dynamic'} onclick={unReroll}>
                 <ArrowLeft size={22}/>
@@ -1316,39 +1391,9 @@
         </button>
     {/if}
 
-    <button class="flex items-center hover:text-blue-500 transition-colors" onclick={async () => {
+    <button class="flex items-center hover:text-blue-500 transition-colors button-icon-branch" disabled={onBranch === undefined || branchDisabled} onclick={async () => {
         await sleep(1)
-        const currentChat = DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage]
-        
-        if(DBState.db.createFolderOnBranch && !currentChat.folderId){
-            const folderId = v4()
-            DBState.db.characters[selIdState.selId].chatFolders ??= []
-            DBState.db.characters[selIdState.selId].chatFolders.unshift({
-                id: folderId,
-                name: `Branches of ${currentChat.name}`,
-                folded: false,
-            })
-            currentChat.folderId = folderId
-        }
-        
-        const currentMessage = currentChat.message[idx]
-        const newChat = $state.snapshot(currentChat)
-        newChat.name = createChatCopyName(newChat.name, 'Branch')
-        newChat.id = v4()
-        // Repointed against the full pre-slice list, which lacks the branch comment pushed below.
-        withSupaRepoint(newChat, () => {
-            newChat.message = newChat.message.slice(0, idx + 1)
-        })
-        newChat.message.push({
-            role: 'char',
-            data: '{{specialcomment::branchedfrom::' + currentChat.id + '::' + currentChat.name + '::' + currentMessage.chatId + '::}}',
-            isComment: true,
-            disabled: true,
-            chatId: v4(),
-        })
-
-        DBState.db.characters[selIdState.selId].chats.unshift(newChat)
-        changeChatTo(0)
+        onBranch?.(idx, expectedId)
     }}>
         <SplitIcon size={20}/>
         {#if showNames}
