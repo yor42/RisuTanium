@@ -6161,6 +6161,8 @@ same and stage 2 does not change the cost (ledger row 679).
 
 *Amended by `MC-349` (2026-10-23): V2.1 plugins no longer "continue to work". Once CHORE-206 lands, a V2.1 plugin is never executed, and its data stays untouched in the database and `.bin` (the round trip stays intact). Versions 1, 2 and 3.0 are unchanged. CHORE-206 is post-MVP, so the current code still runs V2.1 plugins.*
 
+*Amendment (2026-10-31, records batch 29; see `MC-923`): the last sentence of the note above, "the current code still runs V2.1 plugins", no longer holds on main. `loadPlugins` loads only plugins with `version === 2` and `'3.0'`, and `togglePluginEnabled` returns at once for `'2.1'` (`src/ts/plugins/plugins.svelte.ts`, lines 355 to 359 and 367 to 369, re-read on 2026-10-31 on `7928b5bb1`; the senior-advisor packet `plans\chore117\advisor\result.md` cites the same lines). The 2026-10-23 text is kept as written.*
+
 - **Tag:** stated in chat (a correction of how the campaign had read the compatibility invariant), and a request (item 2)
 - **Date:** 2026-10-03
 - **Sweep ref:** none (stated directly this session)
@@ -12160,6 +12162,7 @@ Round 2:
   - The `enabled` flag of an existing 2.1 entry is written automatically in one place; the toggle, the 3.0 hot-reload, new entries and the list merge are the other writers (verifier's correction 5).
   - Open for the maintainer, as UI questions: a notice at boot, the toggle, the localized refusal text, and what to do with the dead `PluginAlertModal` (nothing opens it).
   - The implementation is CHORE-206, post-MVP.
+  - Amendment (2026-10-31, records batch 29; see `MC-923`): the note under `MC-175` that "the current code still runs V2.1 plugins" no longer holds on main; a V2.1 plugin is not loaded (`loadPlugins` filters on `version === 2` and `'3.0'`; `togglePluginEnabled` returns for `'2.1'`; `plugins.svelte.ts`, lines 355 to 359 and 367 to 369, re-read on 2026-10-31). The data-kept rule of this entry is unchanged. The text above is kept as written.
   - No historical decision text is rewritten.
 
 ---
@@ -13165,6 +13168,8 @@ Round 2:
   - Nothing here authorizes a commit or a push beyond the labels quoted.
 
 ### MC-475 — Lane A, 2026-10-24: the MVP baseline, and the cloud lane C set up
+
+*Amendment (2026-10-31, records batch 29): `MC-922` records the current MVP version, main `7928b5bb1`, installed on 2026-10-31. This entry stays the first baseline (`f0e397aae`); the `MC-350` carry-forward applies to the later install as to this one.*
 
 - Tag: decisions and statements (chat messages and `AskUserQuestion` answers by option label, 2026-10-24). Date: 2026-10-24. Sweep ref: none.
 - Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` and `Agents/Handoff-2026-10-23-laneA.md`. Quoted replies and option labels are the maintainer's. Question texts are lane A's paraphrase.
@@ -14752,6 +14757,8 @@ Folded in from `Agents/Lanes/lane-F-records.md` on 2026-10-25 (merge `95a24de3e`
 *Records batch 15 notes (2026-10-27; the text above is unchanged): (1) `MC-519` (2026-10-25) files the feature-triage tickets now and builds them after the overhaul starts, with UI-heavy ones inside the overhaul. (2) `MC-689` (2026-10-26) makes custom theme packs an end goal of the overhaul, with a theming contract as its first implementation stage. Neither changes the gate in item 1 of this entry.*
 
 ### MC-517 — Lane A, 2026-10-25: the decision sweep: park groups for the overhaul, CHORE-166 stage S1, dependencies, CHORE-08 closed, CHORE-117, CHORE-35 and the Android boot questions
+
+*Amended by `MC-923` (2026-10-31): item 5 (CHORE-117, "Keep old id + notice") is withdrawn. The question was asked on an incomplete premise: on main the only way a plugin renames a saved character to an empty id is a setter write that omits `chaId`, which is also the documented first half of a swap. The maintainer chose "Fresh id + warning (Recommended)": today's fresh id plus a notice naming the plugin and character. The rest of this entry is unchanged.*
 
 - Tag: decisions (eight `AskUserQuestion` answers in two calls, 2026-10-25). Date: 2026-10-25. Sweep ref: none.
 - Source: the lane A session transcript `b5cab228-8a55-52b1-ad5f-7d7f8695b2a6` (calls at lines 8784 and 8792); the extract `%TEMP%\risu-b715\records-b14\questions-b14-sweep.md`; lane A's draft, `%TEMP%\risu-b715\decision-sweep\result.md`. The option labels are the maintainer's; the question texts and option descriptions are lane A's wording. Extract timestamps are UTC.
@@ -19026,6 +19033,8 @@ Both phones were handed back to lane A on 2026-10-28 (phone 2 after item 9d, pho
 
 ### MC-892 — Lane A, 2026-10-30: UI overhaul ticket-mapping answers (library in UI-S4, patterns built in UI-S0, Back mechanism at UI-S4 sizing, Trash 30 days, retired settings keep their data, device-local settings, split T12 and T2)
 
+*Amendment (2026-10-31, records batch 29; see `MC-925`): the note below that "CHORE-03 STANDS (a restored character never enters `toSave.character`)" was stale for the restore button. `restoreCharacterFromTrash` has marked the character for save since commit `152cc5633` (2026-09-22), an ancestor of the first MVP `f0e397aae` (verified in `%TEMP%\risu-b715\gate03\verify\result.md`). The maintainer chose to add a store2 restore test and close CHORE-03. Answers 5 (30 days everywhere, CHORE-172) and the UI-S4 restore wiring are unchanged. The text below is kept as written.*
+
 - Tag: decisions (`AskUserQuestion` answers; numbering as `answers-tickets.md`). Date: 2026-10-30. Sweep ref: none.
 - Source: `%TEMP%\risu-b715\ui-audit\answers-tickets.md`. Inputs: `ui-audit\tickets\result.md` (43 tickets), `ui-audit\engine-rows\result.md` (136 rows, T1 to T21), checked by `ui-audit\verify-inventories.md` (AI-authored; lane A applied the verifier's corrections listed in `answers-tickets.md`, which are not product calls). Answer 4 is recorded separately as `MC-893`.
 - Alternatives rejected: not recorded.
@@ -19517,3 +19526,134 @@ Follow-up answers, same day, verbatim:
   - The pre-plan checks (verified, claims 1 to 5 confirmed) found that a preset added to the colour-scheme table is selectable at once, which is why the hidden-preset question was asked; they also found that a new root settings field would be dirty-tracked by the generic effect on both save paths (the plan adds no such field).
   - Results are in the Roadmap batch 28 section and ledger row 4659.
   - Nothing here authorizes application code, a commit or a push.
+
+### MC-922 — Lane A, 2026-10-31: the MVP version is now main `7928b5bb1` (supersedes `MC-475` as the current MVP version; `MC-475` stays the first baseline)
+
+- Tag: decisions and statements (chat messages, 2026-10-31). Date: 2026-10-31. Sweep ref: none.
+- Source: the maintainer's messages in the lane A chat, relayed by lane A in the records brief (`%TEMP%\risu-b715\records29\brief.md`); the update-safety packet `%TEMP%\risu-b715\mvp-update\result.md` and its independent verification `mvp-update\verify\result.md` (ACCEPT WITH CAVEATS). The quoted words are the maintainer's. No `AskUserQuestion` was used.
+- Alternatives rejected: none recorded.
+- Related: `MC-475` (the first baseline, amended by a dated line at its source), `MC-350`, `MC-784`, `MC-775`, `MC-011`; CHORE-478, CHORE-601, CHORE-03, CHORE-398, CHORE-117.
+
+**What the maintainer said (verbatim).**
+1. The instruction: "building release on current main. you can mark current commit as MVP version". Main was `7928b5bb1` then.
+2. The build: "apk build is complete, and here is the sha-256: apkSha256=8b5e0ec8f7f4c2b514244c6f4b8f04b7bb2bf75b744773971dd25cb9383ed9a0".
+3. The install: "MVP updated at Oct.31st 7:50PM KST, counts match after relaunch."
+4. The maintainer also said the pre-update `.bin` was exported first (paraphrase from the brief; no verbatim words are in the sources read).
+
+**The current MVP version (lane A's recording of the statements above).**
+- date: 2026-10-31 (the maintainer's time: 7:50 PM KST);
+- source: main `7928b5bb1` (the CHORE-601 merge);
+- APK sha256: `8b5e0ec8f7f4c2b514244c6f4b8f04b7bb2bf75b744773971dd25cb9383ed9a0`, as the maintainer gave it. Lane A did not recompute it from the file: TODO(evidence);
+- installed on the maintainer's phone; the maintainer reports that the counts matched after a relaunch. What was counted against what is not stated: TODO(evidence).
+- `MC-475` stays the first baseline (`f0e397aae`, 2026-10-24). The `MC-350` carry-forward applies to this install as it did to the first.
+
+**Update-safety verification (caveats, quoted briefly).** The packet's verdict was SAFE WITH STEPS and the verifier's ACCEPT WITH CAVEATS: no store-format change was found that stops `7928b5bb1` reading data written by `f0e397aae`, and no first-boot or first-save rewrite that drops data. Source reading plus targeted tests (5 files, 143 tests, `7928b5bb1` code only); no old build ran and nothing ran on a device. The caveats were about the steps and the rollback window:
+- C1: the `chat-alt` requirement token is set by an ordinary send that returns more than one candidate too, not only by rerolls and branches. The rollback window closes at the first chat alternative or multi-candidate send; after that an older APK opens the store read-only (no loss; the way back is the pre-update `.bin`).
+- C2: build from a clean checkout of `7928b5bb1` and record the commit and the APK sha256; check the APK certificate against the installed release key; stop and never uninstall if the installer refuses the update; check that the pre-update export finished and was copied off the phone.
+- Not covered by any device run: an in-place upgrade across the CHORE-478 alternatives, and a restart after alternatives exist.
+
+- Notes, not the maintainer's words:
+  - `MC-784` records that an MVP update happened around 2026-10-28/29 to a build newer than `f0e397aae`, with the installed commit and APK hash not recorded. That gap is still open: `MC-784`'s build is not identified, so this entry's baseline is the first one whose commit and hash are both recorded after `f0e397aae`. The `MC-784` TODO(evidence) stays as written.
+  - The verifier recorded that the only release build on record before this one (`c195f46df`, 2026-10-28) was built from a dirty tree and cannot be tied to the install. Whether the 2026-10-31 build was made from a clean checkout is not stated in the sources: TODO(evidence).
+  - The three open data-loss tickets at the time of the update were CHORE-117 (stage 1b), CHORE-03 and CHORE-398; all are closed or recorded in this batch (`MC-923` to `MC-926`).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-923 — Lane A, 2026-10-31: CHORE-117 stage 1b answers; "fresh id + warning" withdraws `MC-517` item 5, Q-S and Q-D (amends `MC-517`)
+
+- Tag: decisions (`AskUserQuestion` answers, 2026-10-31, all the recommended option). Date: 2026-10-31. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\gate117\answers.md` (the quoted option labels are the maintainer's; the question texts are lane A's wording). Basis: sizing `gate117\sizing\result.md`, verified by `gate117\verify\result.md`; plans `plans\chore117\v1`, `v2`, `v3`; Gate 1 `gate1` (`[REJECT]`), `gate1r2` (`[REJECT]`), `gate1r3` (`[EDITORIAL]`); the senior-advisor challenge `plans\chore117\advisor\result.md`.
+- Alternatives rejected: for the correction question the options were "Fresh id + warning (Recommended)", "Keep old id anyway", "Fresh id, move the slot" and "Refuse the write" (the advisor's proposed set; the answer file records only the chosen label).
+- Related: `MC-517` (item 5, amended), `MC-247` (D3, D5), `MC-079`, `MC-082` (the duplicate-id freeze, unchanged), `MC-175`, `MC-349`, `MC-350`, `MC-091`; CHORE-117.
+
+**What was decided (maintainer, option labels as the answer file records them).** In the order asked:
+1. Stage 1b plan questions. Keep-old-id scope: "Any unusable id (Recommended)". Never-saved character with an unusable id: "Give a fresh id (Recommended)". Export while a live id is bad: "Last saved id (Recommended)". Fold-ins chosen: (a) the store2 cleanup stall (one bad id suspends order and folder pruning for all characters) and (b) cold-chat speaker ids after a re-id; (c) manual cleanup refusing during a pause was not chosen.
+2. Plan v1 questions. Q-S, a plugin single-slot write with no `chaId` over an already-saved character: "Keep saved id (Recommended)". Q-W, a whole-list `setDatabase` entry with no id: "Fresh id (Recommended)" (today's rule). Q-D, a never-saved character duplicating a saved character's id: "Newcomer gets fresh id (Recommended)"; two never-saved duplicates keep `MC-082`.
+3. **The correction, after Gate 1 round 1 `[REJECT]` and the advisor (the decision of record).** The question was re-asked with the swap consequence (no in-place writer exists on main; an id-less setter copy is the documented swap or rotation half). Answer, verbatim: "Fresh id + warning (Recommended)". Effect as the answer file records it: keep today's fresh id for an id-less copy; show a notice naming the plugin and the character when that copy replaces an existing character; duplicates stay frozen (`MC-079`, `MC-082`). **This withdraws `MC-517` item 5, Q-S and Q-D.** Q-W is unchanged (today's rule). Stage 1b becomes the notice, the store2 cleanup-stall fix and the cold-chat speaker remap.
+4. Plan v2 questions. OQ-1, whose name the notice shows: "The written copy (Recommended)". OQ-2, repeats: "Once per plugin per session (Recommended)", which the answer file glosses as "once per plugin per page for ids this path minted".
+
+**`MC-517` item 5 was asked on an incomplete premise.** It was put as "a plugin renames an already-saved character to an empty id". On main the only way a plugin does that is a setter write that omits `chaId`, and that call shape is also the documented first half of a swap or rotation (`plugins.md`). The question framed one call shape as two intents. Recorded under `MC-091` (the failure, the causal connection and the smallest correction).
+
+**Answers 1 to 3 (item 1 above) are unreachable on main.** The advisor's route table (`plans\chore117\advisor\result.md`, Question 1; its checks are source reading, not executed; the import row is marked PARTIAL there) found no route on main (14db2a6c9) that renames or blanks an already-saved character's `chaId` in place:
+- V3 plugins hold structured clones across the iframe boundary; their setters fill a missing id with a fresh one, refuse a newly unusable id, and pass an explicit usable duplicate with a warning (then frozen by `MC-079`/`MC-082`);
+- V2.0 plugin code no longer executes; V2.1 never loads (`loadPlugins` loads only `version === 2` and `'3.0'`, and `togglePluginEnabled` returns for `'2.1'`; re-read in this batch at `plugins.svelte.ts` lines 355 to 359 and 367 to 369);
+- every in-app `chaId` assignment found is a fill of a missing id or a repair; Lua and triggers expose no character-id write; imports mint fresh ids.
+So answer 1 (keep the saved id on an unusable rename), answer 2 (never-saved with an unusable id) and answer 3 (export with a live bad id) have no live route; the setter route for answer 1 is the re-asked question. Fold-in (a) stays as one flag with a diagnostic test; fold-in (b) is reachable through tree repair of loaded or imported data and became its own small stage (1c, `MC-924`).
+
+**OQ-2 as built (corrects the wording of the answer).** One notice per burst: writes are coalesced by a 1000 ms quiet timer with a 5000 ms cap. A write is not announced again only when the character it replaces carries an id this path minted for the same plugin earlier in the page. Copies over ids the same plugin minted earlier are not announced again; a copy over another character whose id the plugin did not mint is announced. The stage 1 commit message `02107af3c` says "once per plugin per session", which overstates this; the merge `95d68c29b` corrects it (Gate 2 finding 1, `chore117impl\gate2\result.md`). The commit was not amended.
+
+- Notes, not the maintainer's words:
+  - A swap in progress is a duplicate id; the advisor's reasoning is that the existing freeze is the correct wait state, and no mechanism that renames a holder of a duplicate id in the save loop or at setter time was built.
+  - Results are in ledger rows 4663 to 4668 and the Roadmap batch 29 section.
+  - Nothing here authorizes application code, a commit or a push beyond what the maintainer approved for this item.
+
+### MC-924 — Lane A, 2026-10-31: CHORE-117 stage 1c (the cold-chat speaker remap): OQ-3 no conversion notice; the backup scan; stage 1c deferred
+
+- Tag: decisions (`AskUserQuestion` answers and a chat answer). Date: 2026-10-31. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\gate117\answers-1c.md` (its CHORE-117 lines and its last section, the disposition after the scan; the CHORE-03 line is `MC-925`); the count-only scan `scan1c\real-2026-10-31.json`, its independent check `scan1c\verify\result.md` and lane A's re-check `scan1c\verify\lane-a-recheck.md`.
+- Alternatives rejected: (a) close 1c as not needed and (c) something else were offered; the maintainer chose (b).
+- Related: `MC-923`, `MC-517`, `MC-223`, `MC-175`; CHORE-117 (stage 1c), CHORE-610.
+
+**What was decided (maintainer).**
+1. OQ-3, the notice for re-ids at conversion: "no conversion notice" (the answer file's words: "CHORE-117 1c OQ-3 = no conversion notice").
+2. The backup scan: "run the count-only scan (counts only; no names, text or settings fields)".
+3. The disposition after the scan. Lane A offered (a) close 1c as not needed and leave the 462 dangling references, (b) defer 1c and open a low-priority investigation into how a message's saying ends up naming no character and what the person sees, or (c) something else, and recommended (b). The maintainer, verbatim: "b, open the investigation as a low-priority ticket." Stage 1c is therefore deferred and the investigation is CHORE-610. The reason (0 speaker references to a character with an unusable id) is from the scan counts below.
+
+**The scan (counts only; the maintainer's 2026-10-31 backup; no names, text or settings fields were read or written).** Characters 489 (0 missing `chaId`, 0 unusable); chats 841; messages 3,225; `saying` carriers 1,611, of which 1,149 resolve to a character, 462 are dangling, 0 resolve to a character with an unusable id; group members 0; 30 distinct dangling ids; 116 chats hold at least one dangling reference. Coverage: 489 stub bodies read, 0 unavailable, 0 decode failures, the source file unchanged during the scan.
+- Verification (`scan1c\verify\result.md`): first verdict REJECT for a substantive privacy leak (application `console.error` calls print decoded data and block names when the harness's decode check fails); the correctness check was APPROVE (counts reproduce, a mutant moves them, no missed character-id field found). The fix was a harness-only change that silences console output around the scan. The re-check (`scan1c\verify\lane-a-recheck.md`) found 0 planted markers in the outputs, and the synthetic fixture re-run passed (1 file, 2 tests, counts matching the hand-count table). It was run by lane A, not by a separate verifier; the verifier's own verdict stays REJECT.
+- The dangling references are not references to a character with an unusable id; how a message's `saying` comes to name no character is CHORE-610 (low priority, investigation only).
+
+- Notes, not the maintainer's words:
+  - Stage 1c is a new Roadmap row, DEFERRED, low priority (Roadmap batch 29 section). The deferral does not remove the imports-keep-stranding-references case that `plans\chore117\v3\plan.md` names for upstream-to-fork imports (`MC-223`); that case is unmeasured.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-925 — Lane A, 2026-10-31: CHORE-03 closed: the premise was refuted; add a restore test, then close (corrects `MC-892` and Roadmap row 59)
+
+- Tag: decision (`AskUserQuestion` answer, option label "Add a test, then close"). Date: 2026-10-31. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\gate117\answers-1c.md` ("CHORE-03 = add a store2 restore-marker test, then close"); sizing `gate03\sizing\result.md`; verification `gate03\verify\result.md` (VERIFIED with one gap; the store2 test was not run there).
+- Alternatives rejected: not recorded.
+- Related: `MC-892` (its note that CHORE-03 STANDS is corrected by a dated line at its source), `MC-920`, `MC-475`, `MC-350`; CHORE-03, CHORE-172, UI-S4.
+
+**What was decided (maintainer).** CHORE-03 gets one store2 restore test and is then closed. The maintainer's label: "Add a test, then close".
+
+**The correction this rests on (verified).** `MC-892`'s note "CHORE-03 STANDS (a restored character never enters `toSave.character`)" came from the Roadmap row's 2026-09-21 reproduction, not a re-read of source. `restoreCharacterFromTrash` marks the character for save (`markCharacterForSave`) from its first version, commit `152cc5633` (2026-09-22), an ancestor of the first MVP `f0e397aae`; commit `2420d717c` (2026-09-25) widened the function and is also an ancestor (both `git merge-base --is-ancestor`, exit 0, per the verifier). The 2026-09-21 reproduction predates `152cc5633`, which fits a defect that was real and then fixed. The maintainer's MVP therefore already has the fix.
+
+- Notes, not the maintainer's words:
+  - Not part of the closure and left open by the verifier: the boot purge of expired trash on the legacy path (a purged character's block may remain; severity low, a storage leak; not traced on store2), the `removeChar('permanent')` in-flight case, and the Q3 product gap (restore position and folder memory; `MC-892` is silent). Retention (30 days, CHORE-172) is decided by `MC-892` item 5.
+  - Results: test commit `4f986561d`, Gate 2 `[APPROVE]`, merge `f4f2e2c0f` (Roadmap batch 29 section; ledger rows 4673 to 4675).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-926 — Lane A, 2026-10-31: CHORE-398 answers (an Android card during a restore stays queued; drops and the PWA file handler are refused; the pre-pick moment; no owed pop-up)
+
+- Tag: decisions (`AskUserQuestion` answers, 2026-10-31, all the recommended option). Date: 2026-10-31. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\gate398\answers.md` (option labels are the maintainer's; question texts are lane A's wording). Basis: sizing `gate398\sizing\result.md`, verified by `gate398\verify\result.md`; plan rounds and Gate 1 `plans\chore398\gate1` (`[REJECT]`), `gate1r2` (`[REJECT]`), `gate1r3` (`[EDITORIAL]`).
+- Alternatives rejected: not recorded in the answer file.
+- Related: `MC-831`, `MC-832` (CHORE-398 filed), `MC-808` item 2, `MC-833`; CHORE-398, CHORE-397, CHORE-600.
+
+**What was decided (maintainer, option labels as the answer file records them).**
+1. An Android-opened card during a Settings `.bin` restore or a restore-point load (store2 point or legacy snapshot): "Same as MC-831 (Recommended)". While the restore's confirms or picker are up: refuse with the existing busy notice. From the pick to the end, including after the restore lands and the page reloads: leave the card in Android's queue, imported when the restore ends or into the restored profile by the next page.
+2. Drag-and-drop and the PWA file handler: "Refuse with notice (Recommended)". While any restore is in progress (confirms, picker, working, page ending), refuse with the existing busy notice; no new strings.
+3. Plan v2 PQ1, an Android card in a pre-pick moment with no question on screen (system picker, read-only check, store2 save-first wait, list reads): "Leave it queued (Recommended)". Refusal only over an actual question on screen; this amends answer 1's word "picker".
+4. Plan v2 PQ2, a drop or PWA refusal over an unclosable progress or wait cover: "Existing line under it (Recommended)". No pop-up, no new strings.
+5. After Gate 1 round 3, O6, the catch-up ("owed") refusal pop-up after a live end: "Line only (Recommended)". No owed pop-up; a refusal may go unseen if the line is cleared quickly (a recorded limitation); the owed mechanism is removed from stage 2.
+Not asked (the verifier found them already answered or design matters): Q5 (`MC-832` already schedules the imported-then-replaced case), Q6 (the unsaved-changes guard is a design question), Q7 (no new strings follows `MC-808` item 2 and `MC-833`).
+
+- Notes, not the maintainer's words:
+  - Accepted limitation (Gate 1 r3 editorial 3, as the records brief gives it): the boot notice. Owed device checks include D6, the picker cancel (plan O3).
+  - Results are in the Roadmap batch 29 section and ledger rows 4669 to 4672.
+  - Nothing here authorizes application code, a commit or a push beyond what the maintainer approved for this item.
+
+### MC-927 — Lane A, 2026-10-31: CHORE-609 card and plugin CSS flicker on opening a chat: the report, the wanted look and the plan answers
+
+- Tag: decisions and statements (the maintainer's report and `AskUserQuestion` answers, 2026-10-31). Date: 2026-10-31. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\cssflicker\answers.md`; the investigation `cssflicker\result.md` (STATUS: PARTIAL; mechanism read, nothing run); the plan and Gate 1 `plans\cssflicker\v1`, `gate1` (`[EDITORIAL]`). The quoted words are the maintainer's.
+- Alternatives rejected: not recorded in the answer file beyond the option labels.
+- Related: CHORE-556 (the module-bump body blanking fix; the investigation finds the background flash pre-dates it), CHORE-609.
+
+**What the maintainer said (verbatim).** The report: "asset flickering is fixed, but now flickering happens on CSS added by cards or plugin." When: "Opening a chat". Source: "Card background/CSS" and "Regex/module output". Repeat: "First open only". Wanted look: "Hold, then show final (Recommended)", which the answer file glosses as: background and messages hidden behind one loading state until modules load, then the final look once, with no in-between restyling.
+
+**Plan v1 questions (answers).** OQ1, the background area while modules load: "Empty (Recommended)"; body indicators unchanged. OQ2, `moduleBackgroundEmbedding` stale carry: "Yes, fold in (Recommended)". OQ3, the same frame: "Split second is fine (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The investigation's mechanism (READ and INFERRED, not reproduced): `BackgroundDom` had no module gate and no pending display, so every `ReloadGUIPointer` bump remounted it and removed the card style until a new parse resolved; `moduleBackgroundEmbedding` was never cleared, so it could carry into the next chat. CHORE-556 had reduced the number of bumps, not removed the background's exposure.
+  - Results are in the Roadmap CHORE-609 row and ledger rows 4678 and 4679. The device check is owed.
+  - Nothing here authorizes application code, a commit or a push beyond what the maintainer approved for this item.
