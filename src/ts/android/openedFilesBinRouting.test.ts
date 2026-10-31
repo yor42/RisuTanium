@@ -212,6 +212,24 @@ describe('a .bin opened from another app', () => {
         expect(alertNormalWaitMock).toHaveBeenCalledTimes(1)
     })
 
+    test('reproducer: a .bin named twice in one drain is listed once in the not-alone notice, and a distinct name is still listed', async () => {
+        queued = [[entry('backup.bin'), entry('a.charx')], [entry('backup.bin')], [entry('other.bin')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(alertNormalWaitMock).toHaveBeenCalledTimes(1)
+        expect(alertNormalWaitMock).toHaveBeenCalledWith(language.openedBackupNotAlone(['backup.bin', 'other.bin']))
+        expect(restoreOpenedBackupMock).not.toHaveBeenCalled()
+    })
+
+    test('reproducer: a .bin repeated after the restore candidate is listed once in the one-at-a-time notice', async () => {
+        queued = [[entry('a.bin')], [entry('b.bin')], [entry('b.bin')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(alertNormalWaitMock).toHaveBeenCalledTimes(1)
+        expect(alertNormalWaitMock).toHaveBeenCalledWith(language.openedBackupOneAtATime(['b.bin']))
+        expect(restoreOpenedBackupMock).toHaveBeenCalledWith({ name: 'a.bin', path: 'content://provider/a.bin' })
+    })
+
     test('a restore that throws is logged and a later drain still works', async () => {
         restoreOpenedBackupMock.mockRejectedValueOnce(new Error('boom'))
         queued = [[entry('backup.bin')]]

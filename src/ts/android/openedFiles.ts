@@ -119,6 +119,13 @@ function parseBatches(raw: unknown): OpenedEntry[][] {
     return batches
 }
 
+/** A refusal notice names each file once, in first-seen order; the same name arriving twice is one line. */
+function pushOnce(names: string[], name: string): void {
+    if (!names.includes(name)) {
+        names.push(name)
+    }
+}
+
 async function drain(): Promise<void> {
     // Before first setup the entries stay in the host; first setup triggers the drain again.
     if (!getDatabase().didFirstSetup) {
@@ -153,11 +160,13 @@ async function drain(): Promise<void> {
         const backups = batch.filter(isBackupEntry)
         if (backups.length > 0) {
             if (backups.length > 1 || importsSomething) {
-                notAlone.push(...backups.map((entry) => entry.name))
+                for (const backup of backups) {
+                    pushOnce(notAlone, backup.name)
+                }
             } else if (restoreCandidate === null) {
                 restoreCandidate = backups[0]
             } else {
-                oneAtATime.push(backups[0].name)
+                pushOnce(oneAtATime, backups[0].name)
             }
         }
         const rest = batch.filter((entry) => !isBackupEntry(entry))
