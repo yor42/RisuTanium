@@ -36,6 +36,8 @@
         sendContinue as composerSendContinue,
         reroll as composerReroll,
         unReroll as composerUnReroll,
+        stepSibling as composerStepSibling,
+        branchAt as composerBranchAt,
         runAutoMode as composerRunAutoMode,
         abortChat as composerAbortChat,
         updateInputTransateMessage as composerUpdateInputTransateMessage,
@@ -343,8 +345,8 @@
     // The live view of this component's own composer state that
     // src/ts/process/composerActions.svelte.ts reads and writes through: the
     // menu-close hook. The three text/file values are reached by key through
-    // composerDrafts.svelte.ts, the reroll histories are per chat in
-    // rerollHistory.ts, and auto mode's running state and the current
+    // composerDrafts.svelte.ts, the alternative replies are siblings in the
+    // chat's own tree (chatTree.ts), and auto mode's running state and the current
     // generation's abort controller are composerActions' own state, so none
     // of them live here.
     const composerSource: ComposerActionsSource = {
@@ -363,6 +365,14 @@
     async function unReroll() {
         return composerUnReroll(composerSource)
     }
+    async function stepRow(index: number, expectedId: string | undefined, direction: 'back' | 'forward') {
+        return composerStepSibling(composerSource, index, expectedId, direction)
+    }
+    async function branchRow(index: number, expectedId: string | undefined) {
+        return composerBranchAt(composerSource, index, expectedId)
+    }
+    // Rendered state of the tree controls; the composer's own gate still decides each press.
+    const treeControlsBusy = () => $doingChat || isComposerBusy()
     function abortChat(){
         composerAbortChat()
     }
@@ -884,6 +894,9 @@
                 windowResetToken={windowResetToken}
                 onReroll={reroll}
                 unReroll={unReroll}
+                onStep={stepRow}
+                onBranch={branchRow}
+                getBusy={treeControlsBusy}
                 currentCharacter={currentCharacter}
                 currentUsername={currentUsername}
                 userIcon={userIcon}

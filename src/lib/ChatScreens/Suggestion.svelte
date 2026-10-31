@@ -100,7 +100,13 @@
         progress = true
         progressChatPage = requestChatPage
 
-        const isStillCurrentRequest = () => suggestionRequestId === requestId && $selectedCharID === requestCharId && DBState.db.characters[requestCharId]?.chatPage === requestChatPage
+        // A tree switch changes the last message; the suggestions of the departed path must not land.
+        const requestTailId = currentChat.message[currentChat.message.length - 1]?.chatId
+        const tailIdOf = () => {
+            const messages = DBState.db.characters[requestCharId]?.chats[requestChatPage]?.message
+            return messages?.[messages.length - 1]?.chatId
+        }
+        const isStillCurrentRequest = () => suggestionRequestId === requestId && $selectedCharID === requestCharId && DBState.db.characters[requestCharId]?.chatPage === requestChatPage && tailIdOf() === requestTailId
 
         requestSuggestionData(promptbody, currentChar as character, requestController?.signal ?? null, isStillCurrentRequest).then(rq2=>{
             if(!rq2){
