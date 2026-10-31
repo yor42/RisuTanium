@@ -19483,3 +19483,37 @@ Follow-up answers, same day, verbatim:
 - Notes, not the maintainer's words:
   - Results are in ledger rows 4656 and 4657; the merge is `fc5229918`. Because no native reader checked the file, lane A opened CHORE-604 for a native-speaker review of the flagged lines (the maintainer chose spot-check only, so this follow-up is lane A's, not a maintainer decision).
   - Nothing here authorizes application code, a commit or a push beyond what the maintainer approved for this item.
+
+### MC-920 — Lane A, 2026-10-31: the MC-516 gate list (CHORE-205, 117, 03, 398) and what "CHORE-205 done" means
+
+- Tag: decisions (`AskUserQuestion` answers, both "(Recommended)"). Date: 2026-10-31. Sweep ref: `MC-516` (this entry names the tickets that gate UI-S1; it does not supersede `MC-516`).
+- Source: `%TEMP%\risu-b715\gate-sweep\answers.md`; the sweep packet `gate-sweep\result.md` and its independent verification `gate-sweep\verify\result.md` (COMPLETE with corrections). The maintainer's chat words that started it are in the notes.
+- Alternatives rejected: not recorded in the answer file beyond the option labels quoted below.
+- Related: `MC-516`, `MC-517`, `MC-346` (Q-A), `MC-890`; CHORE-205, CHORE-117, CHORE-03, CHORE-398, CHORE-225, CHORE-223, CHORE-412, CHORE-350.
+
+**What was decided (maintainer, option labels as the answer file records them).**
+1. Gate list. Question (as the answer file quotes it): "Which save/data-loss tickets must finish before UI-S1...". Answer, verbatim: "205, 117, 03, 398 (Recommended)". The answer file records that the other tickets stay open and do not gate: CHORE-412 (overhaul engine work), CHORE-350 (per `MC-346` Q-A), CHORE-556 and CHORE-598, 114, 221, 70, 101 "etc."; the full "others" list beyond these is not in the file: TODO(evidence).
+2. What "CHORE-205 done" means. Question (as quoted): "What counts as CHORE-205 memory work done?". Answer, verbatim: "Device cases only (Recommended)". The answer file records the effect as: run the uncovered P3 cases on phone 1 in the next device batch (an M9 generator and a store-level damage tool are needed); S5, J1, CHORE-225 and CHORE-223 become ordinary non-gating tickets.
+
+- Notes, not the maintainer's words:
+  - The sweep was prepared at the maintainer's request ("yes, start the UI-S0 checks and prepare the sweep"); after the answers they asked lane A to run the records batch and cleanup and then start the gate tickets ("yes, run the records batch and cleanup, then start the gate tickets. while we are at it, is it safe to update my MVP to d1f11ea18?"). Both quotes are from the maintainer's messages in the lane A chat, relayed by lane A (maintainer, lane A chat; relayed by lane A). These are instructions, not product decisions; the MVP-update question is unanswered in the sources: TODO(evidence).
+  - Verification corrections that the answers rest on: CHORE-350 is not purely "not loss" (its entry says it blocks saves for every character; the loss is conditional on an unstorable value, and the maintainer chose "leave as today" under `MC-346` Q-A); CHORE-117 stage 1b's remaining scope is wider than the empty-id rename (whether the other gaps stay in scope after `MC-517` is not recorded: TODO(evidence)); the packet's claim that P3's uncovered items ran on the maintainer's phone is UNSUPPORTED (the installed commit and APK hash are unrecorded: TODO(evidence)); CHORE-225, CHORE-223 and CHORE-227 had not been weighed by the packet.
+  - The stray branch `lane-b-p1-preCHORE206` (commit `916adac48`, no patch-equivalent on `main`) was kept; its content is superseded by `976993c3f` per the verifier. Disposition: TODO(evidence) (proposal CHORE-605).
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-921 — Lane A, 2026-10-31: UI-S0 answers (the nexus preset stays hidden; plan open items Q1 to Q4)
+
+- Tag: decisions (`AskUserQuestion` answers, all "(Recommended)"). Date: 2026-10-31. Sweep ref: none.
+- Source: `%TEMP%\risu-b715\ui-s0\answers.md`; the plan `ui-s0\plan\result.md` (the question texts, lines 178 to 183, are the designer's wording) and the verified pre-plan checks `ui-s0\verify\result.md`.
+- Alternatives rejected: for the preset question the options were "Hidden until UI-S1 (Recommended)", "Selectable now" and "Dev/debug builds only"; for Q1 to Q4 the answer file records only the chosen labels.
+- Related: `MC-890` (UI-S0 and its item 3), `MC-892`, `MC-516`, CHORE-351, CHORE-463, UI-S0, UI-S1.
+
+**What was decided (maintainer, option labels as the answer file records them).**
+1. The `nexus` colour-scheme preset in S0. Question: "How should the preset behave in S0?". Answer, verbatim: "Hidden until UI-S1 (Recommended)". S0 ships the preset data; the Settings picker does not list it until UI-S1 enables it.
+2. Plan v1 open items. Q1 "Shell, warning, prompt (Recommended)"; Q2 "Not in S0, decide at UI-S1 (Recommended)"; Q3 "Nexus colours (Recommended)"; Q4 (scrim tap) "Nothing (Recommended)". Meaning, from the designer's plan text and not the maintainer's words: Q1 the scope of the pattern components built in S0 (the shell, the warning sheet and the select/input prompt; the task card, banners, toasts and Undo toast are built by their first adopter); Q2 whether the nexus preset becomes the default for new installs (not in S0; decided at UI-S1 sizing); Q3 the prompt palette (the fixed nexus tokens, which do not follow the user's scheme); Q4 tapping the scrim of the select/input prompt does nothing (Cancel, Escape and Back cancel).
+3. Q5 and Q6 were not asked; the plan defaults stand under `MC-890` item 3. Q5: the three components' built-in English stays in S0 and moves to the language files at the mounting batch. Q6: CHORE-351 stays "FOLDS INTO UI-S0" until the last select/input call site migrates.
+
+- Notes, not the maintainer's words:
+  - The pre-plan checks (verified, claims 1 to 5 confirmed) found that a preset added to the colour-scheme table is selectable at once, which is why the hidden-preset question was asked; they also found that a new root settings field would be dirty-tracked by the generic effect on both save paths (the plan adds no such field).
+  - Results are in the Roadmap batch 28 section and ledger row 4659.
+  - Nothing here authorizes application code, a commit or a push.
