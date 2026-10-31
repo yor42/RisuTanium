@@ -818,6 +818,16 @@ describe('card shape and character book refusals', () => {
         expect(h.characters).toHaveLength(1)
     })
 
+    test('reproducer: a hub JSON card with an image and a book that cannot convert saves no image and imports nothing', async () => {
+        const card = { spec: 'chara_card_v3', spec_version: '3.0', data: { name: 'Hub', description: 'd', first_mes: 'hi', character_version: '1', extensions: {}, character_book: badBook } }
+        vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => String(url).includes('/resource/')
+            ? new Response(new U8([1, 2, 3]), { status: 200 })
+            : new Response(JSON.stringify({ card, img: 'x' }), { status: 200, headers: { 'content-type': 'application/json' } })))
+        await downloadRisuHub('some-id', { creator: 'some-creator' })
+        expect(h.saved).toEqual([])
+        expect(h.characters).toHaveLength(0)
+    })
+
     test('reproducer: a card that needs the low-level-access prompt and has a book that cannot convert is refused without the prompt', async () => {
         const base = JSON.parse(v2Card(ASSET_SIZES.length)) as CardJson
         const risuai = (base.data!.extensions as { risuai: Record<string, unknown> }).risuai

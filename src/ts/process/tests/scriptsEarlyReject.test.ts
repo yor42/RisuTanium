@@ -269,7 +269,7 @@ describe('@@repeat_back first-message fallback', () => {
         expect(await repeatBackWithFirstMessage(3)).toBe('currentDEFAULT#alpha')
     })
 
-    test('guard: an in-range fmIndex repeats that alternate greeting', async () => {
+    test('guard: an in-range fmIndex repeats that alternate greeting (passes before and after)',async () => {
         expect(await repeatBackWithFirstMessage(0)).toBe('currentALT0#beta')
     })
 })

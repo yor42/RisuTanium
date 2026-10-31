@@ -412,4 +412,24 @@ describe('an await-spanning CharConfig writer follows the clicked character by i
         expect(h.mark).not.toHaveBeenCalled()
         expect(warn).toHaveBeenCalledTimes(1)
     })
+
+    test('regression reproducer: with two files picked and the clicked character removed during the first save, the second file is not saved', async () => {
+        CharConfigSubMenu.set(1)
+        const { b } = installTwo()
+        const release = deferredSave()
+        h.selectMultipleFileObjects.mockResolvedValue([
+            new File([new Uint8Array([1])], 'ok1.png'),
+            new File([new Uint8Array([2])], 'ok2.png'),
+        ])
+        await clickAssetAdd()
+
+        DBState.db.characters.splice(0, 1)
+        flushSync()
+        release('assets/saved')
+        await settle()
+
+        expect(h.saveAssetFromBlob).toHaveBeenCalledTimes(1)
+        expect(b.additionalAssets).toEqual([])
+        expect(warn).toHaveBeenCalledTimes(1)
+    })
 })

@@ -36,7 +36,7 @@ describe('HypaV3 getFirstMessage', () => {
         expect(getFirstMessage()).toBe('Default hello')
     })
 
-    test('guard: an in-range fmIndex reads that alternate greeting and -1 the default', () => {
+    test('guard: an in-range fmIndex reads that alternate greeting and -1 the default (passes before and after)',() => {
         installCharacter(0)
         expect(getFirstMessage()).toBe('Alt0')
         installCharacter(-1)

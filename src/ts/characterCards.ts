@@ -1621,7 +1621,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
             return false
         }
     }
-    let ext =safeStructuredClone(data?.extensions ?? {})
+    let ext = safeStructuredClone(data?.extensions ?? {})
 
     for(const key in ext){
         if(key === 'risuai'){

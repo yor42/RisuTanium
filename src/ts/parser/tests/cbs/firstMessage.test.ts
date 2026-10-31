@@ -86,7 +86,7 @@ describe('first message reads with a stale fmIndex', () => {
     expect(risuChatParser('{{firstmsgindex}}', { chatID: 0 })).toBe('-1')
   })
 
-  test('guard (passes before and after): an in-range fmIndex reads that alternate greeting and its index', () => {
+  test('guard: an in-range fmIndex reads that alternate greeting and its index (passes before and after)',() => {
     installChat(0)
     expect(risuChatParser('{{lastcharmessage}}', { chatID: 0 })).toBe('ALT_ZERO')
     expect(risuChatParser('{{firstmsgindex}}', { chatID: 0 })).toBe('0')

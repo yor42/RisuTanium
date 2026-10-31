@@ -166,7 +166,7 @@ describe('lorebook @@is_greeting decorator', () => {
         expect((await loadLoreBookV3Prompt()).actives.length).toBe(1)
     })
 
-    test('guard: an in-range fmIndex does not match the default-message value', async () => {
+    test('guard: an in-range fmIndex does not match the default-message value (passes before and after)',async () => {
         sceneWithFirstMessage(0, ['Alt0'])
         expect((await loadLoreBookV3Prompt()).actives.length).toBe(0)
     })

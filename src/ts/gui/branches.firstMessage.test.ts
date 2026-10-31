@@ -27,7 +27,7 @@ describe('getChatBranches first message root', () => {
         expect(rendered.filter((branch) => branch.y === 0)).toHaveLength(1)
     })
 
-    test('guard: an in-range fmIndex roots its chat at the alternate greeting', () => {
+    test('guard: an in-range fmIndex roots its chat at the alternate greeting (passes before and after)',() => {
         h.character = {
             firstMessage: 'Hello',
             alternateGreetings: ['Alt0'],
