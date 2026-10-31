@@ -1,5 +1,5 @@
 import { get, writable } from "svelte/store";
-import { type character, type groupChat, type MessageGenerationInfo, type Chat, type MessagePresetInfo, changeToPreset, type Message, type StreamingDisplayOptimizationMode } from "../storage/database.svelte";
+import { type character, type groupChat, type ChatAltMemory, type MessageGenerationInfo, type Chat, type MessagePresetInfo, changeToPreset, type Message, type StreamingDisplayOptimizationMode } from "../storage/database.svelte";
 import { DBState } from '../stores.svelte';
 import { CharEmotion, selectedCharID } from "../stores.svelte";
 import { ChatTokenizer, tokenize, tokenizeNum } from "../tokenizer";
@@ -31,7 +31,7 @@ import { additionalInformations } from "./embedding/addinfo";
 import { getInlayAsset } from "./files/inlays";
 import { getGenerationModelString } from "./models/modelString";
 import { runInlayScreen } from "./inlayScreen";
-import { addRerolls } from "./prereroll";
+import { addRerolls, renameContinuedMessage } from "./prereroll";
 import { runImageEmbedding } from "./transformers";
 import { hanuraiMemory } from "./memory/hanuraiMemory";
 import { hypaMemoryV2 } from "./memory/hypav2";
@@ -2141,9 +2141,21 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         return true
     }
 
-    if(!subject.resolve()){
+    const requestCtx = subject.resolve()
+    if(!requestCtx){
         return endGone()
     }
+    // The branch state of the chat as the request starts, with this send's own
+    // memory already written: a candidate of this reply is a sibling that, once
+    // arrived at, restores it whole (all six fields, an absent one as null).
+    const candidateStartState: ChatAltMemory = $state.snapshot({
+        supaMemoryData: requestCtx.chat.supaMemoryData ?? null,
+        supaMemoryCoveredId: requestCtx.chat.supaMemoryCoveredId ?? null,
+        lastMemory: requestCtx.chat.lastMemory ?? null,
+        scriptstate: requestCtx.chat.scriptstate ?? null,
+        hypaV2Data: requestCtx.chat.hypaV2Data ?? null,
+        hypaV3Data: requestCtx.chat.hypaV3Data ?? null,
+    })
 
     const req = await requestChatData({
         formated: formated,
@@ -2432,7 +2444,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         // that goes missing later (a trigger rebuilding the chat without ids) does
         // not stop the steps that follow, which write nothing to it.
         if(!replyGone && resolveReply()){
-            addRerolls(generationId, Object.values(lastResponseChunk), { chaId: origin.chaId, chatId: origin.chatId })
+            addRerolls(generationId, Object.values(lastResponseChunk), { chaId: origin.chaId, chatId: origin.chatId }, candidateStartState)
 
             const parsedChat = runCurrentChatFunction()
             if(!parsedChat){
@@ -2502,6 +2514,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             if(continuing){
                 const replaceTarget = resolveReply()
                 if(replaceTarget){
+                    const continuedOldId = replaceTarget.ctx.chat.message[replaceTarget.index].chatId
                     replaceTarget.ctx.chat.message[replaceTarget.index] = {
                         role: 'char',
                         data: result,
@@ -2510,6 +2523,11 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                         generationInfo,
                         promptInfo,
                         chatId: generationId,
+                    }
+                    // The message has a new id: what named the old one follows it, in
+                    // the same synchronous run as the swap.
+                    if(continuedOldId){
+                        renameContinuedMessage(replaceTarget.ctx.chat, continuedOldId, generationId)
                     }
                     trackReply(replaceTarget.ctx.chat, replaceTarget.index)
                     if(inlayResult.promise){
@@ -2561,7 +2579,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         flushPageReplyEndWhenHidden(origin)
 
         if(mrerolls.length >1){
-            addRerolls(generationId, mrerolls, { chaId: origin.chaId, chatId: origin.chatId })
+            addRerolls(generationId, mrerolls, { chaId: origin.chaId, chatId: origin.chatId }, candidateStartState)
         }
 
         const parsedChat = runCurrentChatFunction()
