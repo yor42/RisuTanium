@@ -71,6 +71,7 @@ export function registerEntityUnits(entry: ShardEntry, register: (identity: stri
     for (const chat of entry.chats) {
         register(`${IDENTITY.chat}${entry.u}:${chat.cid}:core`, UNIT_TYPE.chatCore, chat.core)
         chat.chunks.forEach((chunk, k) => register(`${IDENTITY.chat}${entry.u}:${chat.cid}:chunk:${k}`, UNIT_TYPE.chatChunk, chunk))
+        chat.alt?.forEach((unit, k) => register(`${IDENTITY.chat}${entry.u}:${chat.cid}:alt:${k}`, UNIT_TYPE.chatAlt, unit))
     }
 }
 

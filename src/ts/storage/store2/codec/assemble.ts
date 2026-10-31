@@ -2,7 +2,7 @@ import type { JsonObject, JsonValue } from '../../blockFrame'
 import type { Database } from '../../database.svelte'
 import {
     FRAME_OVERHEAD, keyOfRef, readUnit, refOfFrame, UNIT_TYPE,
-    type ChatChunk, type ChatCore, type ContentBody, type Manifest, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard,
+    type ChatAltUnit, type ChatChunk, type ChatCore, type ContentBody, type Manifest, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard,
     type ShardEntry, type UnitBody, type UnitType,
 } from '../format'
 import {
@@ -82,9 +82,17 @@ export function checkUnit(source: UnitSource, ref: Ref, type: UnitType): UnitChe
     }
 }
 
-/** Whether a chat chunk holds a different number of messages than the Ref that names it says. */
-export function chunkCountMismatch(chunk: ChatChunk, ref: Ref): boolean {
-    return chunk.msgs.length !== ref[3]
+/**
+ * Whether the body of a counted unit holds a different number of items than the Ref that names it says: the messages of
+ * a chat chunk (type 8), the records of an alternatives unit (type 25). The count is read from the field of the unit's
+ * own type, so it never runs on a body of the wrong shape; any other type has no count and never mismatches.
+ */
+export function bodyCountMismatch(type: UnitType, body: UnitBody, ref: Ref): boolean {
+    switch (type) {
+        case UNIT_TYPE.chatChunk: return (body as ChatChunk).msgs.length !== ref[3]
+        case UNIT_TYPE.chatAlt: return (body as ChatAltUnit).recs.length !== ref[3]
+        default: return false
+    }
 }
 
 function readChecked(source: UnitSource, ref: Ref, type: UnitType, where: string): UnitBody {
@@ -157,12 +165,19 @@ export function assembleCharacter(entry: ShardEntry, source: UnitSource): JsonOb
         const core = readChecked(source, chatEntry.core, UNIT_TYPE.chatCore, `${chatWhere} core`) as ChatCore
         const chunks = chatEntry.chunks.map((ref, chunkIndex) => {
             const chunk = readChecked(source, ref, UNIT_TYPE.chatChunk, `${chatWhere} chunk ${chunkIndex}`) as ChatChunk
-            if (chunkCountMismatch(chunk, ref)) {
+            if (bodyCountMismatch(UNIT_TYPE.chatChunk, chunk, ref)) {
                 throw new CodecAssembleError(`${chatWhere} chunk ${chunkIndex} holds ${chunk.msgs.length} messages, its Ref says ${ref[3]}.`)
             }
             return chunk
         })
-        return assembleChat(core, chunks, chatWhere)
+        const alt = (chatEntry.alt ?? []).map((ref, altIndex) => {
+            const unit = readChecked(source, ref, UNIT_TYPE.chatAlt, `${chatWhere} alternatives ${altIndex}`) as ChatAltUnit
+            if (bodyCountMismatch(UNIT_TYPE.chatAlt, unit, ref)) {
+                throw new CodecAssembleError(`${chatWhere} alternatives ${altIndex} holds ${unit.recs.length} records, its Ref says ${ref[3]}.`)
+            }
+            return unit
+        })
+        return assembleChat(core, chunks, chatWhere, alt)
     })
     defineOwn(character, 'chats', chats)
     return character

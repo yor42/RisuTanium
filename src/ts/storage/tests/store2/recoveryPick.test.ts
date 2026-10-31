@@ -10,8 +10,9 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
     Store2BackendFailureError, Store2CommitConflictError, Store2UnknownOutcomeError, type Store2Backend, type Store2Read,
 } from 'src/ts/storage/store2/backend'
+import { encodeDatabase } from 'src/ts/storage/store2/codec'
 import { classifyCommitRead, firstCommitKey, nextCommitKey } from 'src/ts/storage/store2/commitKey'
-import { isStagingPrefix, type CommitKey } from 'src/ts/storage/store2/format'
+import { isStagingPrefix, UNIT_TYPE, type CommitKey } from 'src/ts/storage/store2/format'
 import {
     installPick, pickCandidate, PresenceProbeError, unmappedRefPaths, type AssetsPresent, type InlayPrefixesPresent, type InlaysPresent, type MissingCounts,
     type PickReady, type PickResult,
@@ -20,6 +21,7 @@ import { inlayIdFromMetaKey, inlayMetaKey } from 'src/ts/process/files/inlayKeys
 import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { createPresenceProbes } from 'src/ts/storage/store2/ui/presenceProbes'
 import { readTree } from 'src/ts/storage/store2/tree'
+import { buildSmall, bytesOf, fakeLists } from './codecFixtures'
 import { createClock, hooked, parsedCommit, plantKey, testEnv, type Hooks } from './commitFixtures'
 import { FENCE_BACKENDS, plantCommit, traced, type OpenedBackend } from './fenceFixtures'
 import {
@@ -148,6 +150,47 @@ function writesAfterMarker(log: readonly string[]): string[] {
 describe('pick tables', () => {
     test('every reference position the walk descends has a unit type', () => {
         expect(unmappedRefPaths()).toEqual([])
+    })
+})
+
+describe('a candidate whose chats have alternatives (new-rule guard)', () => {
+    async function altScene(damage: boolean) {
+        const backend = await openBackend(0)
+        const clock = createClock()
+        const db = buildSmall(2) as unknown as Record<string, unknown>
+        ;(((db.characters as Record<string, unknown>[])[0].chats as Record<string, unknown>[])[0]).alt = [
+            { m: { role: 'char', data: 'alternative', time: 1 }, p: null, a: 1 },
+        ]
+        const tree = encodeDatabase(db as never, { env: testEnv(clock, 3), lists: fakeLists, seq: 1, createdAt: 1 })
+        const altKey = tree.units.find(unit => unit.type === UNIT_TYPE.chatAlt)!.key
+        for (const unit of tree.units) {
+            const bytes = bytesOf(unit)
+            if (damage && unit.key === altKey) {
+                const flipped = new Uint8Array(bytes)
+                flipped[20] ^= 0xff
+                await backend.putUnit(unit.key, flipped)
+            } else {
+                await backend.putUnit(unit.key, bytes)
+            }
+        }
+        await plantCommit(backend, DAMAGED_COMMIT)
+        return { backend, tree, altKey, read: await backend.readCommit(), clock }
+    }
+    const nothingStored = { assets: new Set<string>(), inlays: new Set<string>() }
+
+    test('the closure walk reads every unit including the alternatives units', async () => {
+        const { backend, tree, read, clock } = await altScene(false)
+        const ready = expectReady(await pickCandidate(backend, read, tree.manifestKey, options(clock, probes(nothingStored))))
+        expect(ready.units).toBe(tree.units.length)
+    })
+
+    test('a damaged alternatives unit makes the candidate invalid and names that unit', async () => {
+        const { backend, tree, altKey, read, clock } = await altScene(true)
+        const result = await pickCandidate(backend, read, tree.manifestKey, options(clock, probes(nothingStored)))
+        expect(result.status).toBe('invalid')
+        if (result.status === 'invalid') {
+            expect(result.problem).toMatchObject({ kind: 'damaged', key: altKey })
+        }
     })
 })
 

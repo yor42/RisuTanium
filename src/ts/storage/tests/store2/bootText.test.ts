@@ -202,7 +202,7 @@ describe('the name rule: the name when there is one, otherwise the id and "(name
 })
 
 describe('flagged items are grouped by character, then chat', () => {
-    function chat(chaId: string, chatId: string, part: 'core' | 'chunk', why: 'missing' | 'damaged', name = 'Ann'): FlaggedItem {
+    function chat(chaId: string, chatId: string, part: 'core' | 'chunk' | 'alt', why: 'missing' | 'damaged', name = 'Ann'): FlaggedItem {
         return { kind: 'chat', chaId, chatId, part, key: `${chaId}/${chatId}/${part}`, why, name }
     }
 
@@ -237,6 +237,20 @@ describe('flagged items are grouped by character, then chat', () => {
             { kind: 'character-part', chaId: 'c1', part: 'core', key: 'b', why: 'damaged', name: 'Ann' },
         ])
         expect(mixed.items).toEqual([language.store2Boot.flaggedPartLine(language.store2Boot.flaggedPartCore, language.store2Boot.flaggedBoth)])
+    })
+
+    test('a chat whose only flags are alternatives says its conversation is intact; any other flag on the chat uses the plain line (new-rule guard)', () => {
+        const text = language.store2Boot
+        const [alone] = flaggedLists([chat('c1', '~0', 'alt', 'damaged'), chat('c1', '~0', 'alt', 'missing')])
+        expect(alone.items).toEqual([text.flaggedChatAltLine(text.flaggedChatPosition(1), text.flaggedBoth)])
+        expect(alone.items[0]).toContain('conversation itself is intact')
+        const [mixed] = flaggedLists([chat('c1', '~0', 'alt', 'damaged'), chat('c1', '~0', 'chunk', 'damaged')])
+        expect(mixed.items).toEqual([text.flaggedChatLine(text.flaggedChatPosition(1), text.flaggedDamaged, 2)])
+        const [separate] = flaggedLists([chat('c1', '~0', 'alt', 'damaged'), chat('c1', '~1', 'core', 'damaged')])
+        expect(separate.items).toEqual([
+            text.flaggedChatAltLine(text.flaggedChatPosition(1), text.flaggedDamaged),
+            text.flaggedChatLine(text.flaggedChatPosition(2), text.flaggedDamaged, 1),
+        ])
     })
 
     test('a "~" id without a position is shown as an id, not as chat NaN', () => {

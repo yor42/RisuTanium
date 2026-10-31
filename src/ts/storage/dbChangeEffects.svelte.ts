@@ -25,9 +25,9 @@ export interface DbChangeEffectOptions {
      * without that count being observable through `tracker`/`markChanged`
      * (e.g. "a chatPage change creates no message children", "replacing chat
      * i re-runs only chat i's child"). `index` is the array index for the
-     * 'chat' and 'message' kinds, and is omitted otherwise.
+     * 'chat', 'message' and 'alt' kinds, and is omitted otherwise.
      */
-    onPartitionRun?: (kind: 'front' | 'char' | 'field' | 'chats' | 'chat' | 'message', index?: number) => void
+    onPartitionRun?: (kind: 'front' | 'char' | 'field' | 'chats' | 'chat' | 'message' | 'alt', index?: number) => void
 }
 
 /** The identity tracker's "already seen" set of the latest registration; null before one exists. */
@@ -376,9 +376,32 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
                             // nothing to also depend on those same values
                             // through the descriptor trap.
                             for (const key of Object.keys(chat)) {
-                                if (key !== 'message') {
+                                if (key !== 'message' && key !== 'alt') {
                                     $state.snapshot(chat[key])
                                 }
+                            }
+                            // The alternatives are partitioned like the
+                            // messages: a write inside one record re-runs
+                            // only that record's child, and a replaced or
+                            // resized list re-runs this effect through the
+                            // reads of `chat.alt` and its length. A value
+                            // that is not a list is snapshotted whole, so
+                            // narrowing never drops what it holds.
+                            const alt = chat.alt
+                            if (Array.isArray(alt)) {
+                                const alen = alt.length
+                                for (let k = 0; k < alen; k++) {
+                                    let altRanOnce = false
+                                    $effect(() => {
+                                        opts.onPartitionRun?.('alt', k)
+                                        $state.snapshot(alt[k])
+                                        frontUnshiftSelected(char)
+                                        opts.markChanged(altRanOnce)
+                                        altRanOnce = true
+                                    })
+                                }
+                            } else {
+                                $state.snapshot(alt)
                             }
                             const message = chat.message
                             if (Array.isArray(message)) {

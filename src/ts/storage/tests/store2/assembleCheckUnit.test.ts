@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'vitest'
 import { crc32 } from 'src/ts/storage/blockFrame'
 import {
-    assembleDatabase, checkUnit, chunkCountMismatch, CodecAssembleError,
+    assembleDatabase, bodyCountMismatch, checkUnit, CodecAssembleError,
     type EncodedTree, type EncodedUnit, type UnitSource,
 } from 'src/ts/storage/store2/codec'
 import {
@@ -140,11 +140,19 @@ describe('new behaviour: checkUnit answers without throwing', () => {
         if (checked.status !== 'ok') {
             throw new Error('The fixture chunk does not check.')
         }
-        const chunk = checked.body as { msgs: unknown[] } & Parameters<typeof chunkCountMismatch>[0]
+        const chunk = checked.body as { msgs: unknown[] } & Parameters<typeof bodyCountMismatch>[1]
         const right: ChunkRef = [unit.ref[0], unit.ref[1], unit.ref[2], chunk.msgs.length]
-        expect(chunkCountMismatch(chunk, right)).toBe(false)
+        expect(bodyCountMismatch(UNIT_TYPE.chatChunk, chunk, right)).toBe(false)
         const wrong: ChunkRef = [unit.ref[0], unit.ref[1], unit.ref[2], chunk.msgs.length + 1]
-        expect(chunkCountMismatch(chunk, wrong)).toBe(true)
+        expect(bodyCountMismatch(UNIT_TYPE.chatChunk, chunk, wrong)).toBe(true)
+    })
+
+    test('an alternatives unit is counted by its records, and a type with no count never mismatches', () => {
+        const alt = { v: 1 as const, recs: [{ m: { role: 'char', data: 'x' }, p: null, a: 1 }, { m: { role: 'char', data: 'y' }, p: null, a: 2 }] }
+        const ref = (count: number): ChunkRef => ['u-aaaaaaaaaaaaaaaaaaaaaaaaaa', 1, 2, count]
+        expect(bodyCountMismatch(UNIT_TYPE.chatAlt, alt, ref(2))).toBe(false)
+        expect(bodyCountMismatch(UNIT_TYPE.chatAlt, alt, ref(1))).toBe(true)
+        expect(bodyCountMismatch(UNIT_TYPE.lore, alt, ref(7))).toBe(false)
     })
 
     test('the tail of a Ref is the key without the store2 prefix, so the check reads the unit the Ref names', () => {

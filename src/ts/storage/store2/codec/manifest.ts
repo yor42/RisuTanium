@@ -1,4 +1,4 @@
-import { carryUnknownFields, KNOWN_FIELDS, unionReq, type ListRef, type Manifest, type Ref } from '../format'
+import { carryUnknownFields, KNOWN_FIELDS, REQ_CHAT_ALT, unionReq, type ListRef, type Manifest, type Ref } from '../format'
 import { PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 import { SHARD_COUNT } from './shard'
 
@@ -9,10 +9,12 @@ import { SHARD_COUNT } from './shard'
  * not grow with the number of characters, chats or modules.
  */
 
-/** This step uses no feature a reader must know: the `req` of every manifest it writes. */
+/** A store with no feature a reader must know: the `req` of a manifest that needs none. */
 export const MANIFEST_REQ: readonly string[] = []
 
 export interface ManifestParts {
+    /** Whether any chat of this encode has alternatives; it adds the `chat-alt` token, which a later write never lowers. */
+    chatAlt: boolean
     seq: number
     createdAt: number
     shards: Ref[]
@@ -58,7 +60,7 @@ export function carryManifest(prev: Manifest | undefined, next: Manifest): Manif
 export function buildManifest(parts: ManifestParts): Manifest {
     return {
         fmt: 1,
-        req: [...MANIFEST_REQ],
+        req: parts.chatAlt ? unionReq(MANIFEST_REQ, [REQ_CHAT_ALT]) : [...MANIFEST_REQ],
         seq: parts.seq,
         createdAt: parts.createdAt,
         shardCount: SHARD_COUNT,

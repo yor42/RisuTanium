@@ -82,6 +82,44 @@ describe('guard: the previous of a stored tree is the previous of its own encode
     })
 })
 
+describe('chat alternatives units are registered like every other unit of a stored tree', () => {
+    function withAlt(): Database {
+        const db = clone(buildSmall(3))
+        ;(((db.characters as Obj[])[1].chats as Obj[])[0]).alt = [
+            { m: { role: 'char', data: 'alternative', time: 1, chatId: 'alt-1' }, p: null, a: 1 },
+        ]
+        return asDatabase(db)
+    }
+
+    test('the previous of a stored tree with alternatives is the previous of its own encode (new-rule guard)', () => {
+        const first = encodeWith(withAlt())
+        expect([...first.index.units.keys()].some(identity => identity.includes(':alt:'))).toBe(true)
+        expectSamePrevious(previousOfTree(storedOf(first)), previousFrom(first))
+    })
+
+    test('a first pass after a boot reuses the alternatives units it read (new-rule guard)', async () => {
+        const first = encodeWith(withAlt())
+        const stored = storedOf(first)
+        const decoded = assembleDatabase(first.manifest, stored.source)
+        const whole = await encoderOver(previousOfTree(stored)).plan(decoded, { ...NOTHING_MARKED, whole: true })
+        expect(whole.unchanged).toBe(true)
+        expect(whole.newUnits).toBe(1)
+    })
+
+    test('the alternatives unit of a loaded entity takes its digest on hydration (new-rule guard)', () => {
+        const first = encodeWith(withAlt())
+        const previous = previousOfTree(storedOf(first))
+        const identity = [...previous.units.keys()].find(candidate => candidate.includes(':alt:')) as string
+        const registered = previous.units.get(identity) as ReusableUnit
+        const digest = registered.digest
+        expect(digest).toBeDefined()
+        delete registered.digest
+        const entry = (previous.objects?.shards ?? []).flatMap(shard => shard.entries).find(candidate => candidate.chats.some(chat => chat.alt !== undefined)) as ShardEntry
+        hydrateEntityDigests(previous, entry, unitMapSource(first.units))
+        expect(previous.units.get(identity)?.digest).toEqual(digest)
+    })
+})
+
 describe('guard: a first pass after a boot reuses every unit it read', () => {
     test('a decoded small tree, a no-change pass and a whole-resident pass both write only the manifest', async () => {
         const first = encodeWith(buildSmall(6))

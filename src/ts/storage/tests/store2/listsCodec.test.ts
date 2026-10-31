@@ -89,6 +89,20 @@ describe('the real derivation through the codec', () => {
         expect(mil).toEqual(deriveInlayList([module]))
     })
 
+    it('an inlay named only inside an alternative record is in the character inlay list (the list owner carries alt; the inlay assertion alone passes on the base through the core)', () => {
+        const rng = mulberry32(8)
+        const pool = prosePool(rng, 6, 20, 60)
+        const withAlt = chat(rng, 0, [message(rng, pool, 0, 40)])
+        withAlt.alt = [{ m: { role: 'char', data: inlayToken(UUID_B), time: 1 }, p: null, a: 1 }]
+        const slot = sparseCharacter(rng, pool, 'chaAlt', 'Alt holder', [withAlt], [])
+        const tree = encode(dbWithCharacters([slot]))
+        const entry = (tree.index.objects?.shards ?? []).flatMap(shard => shard.entries).find(candidate => candidate.chaId === 'chaAlt')
+        expect(entry).toBeDefined()
+        expect(entry!.chats[0].alt).toHaveLength(1)
+        const il = body<InlayList>(tree, entry!.il!, UNIT_TYPE.inlayList)
+        expect(il.u).toContain(UUID_B)
+    })
+
     it('encodes the same lists byte for byte twice', () => {
         const { db } = build()
         const a = encode(db)

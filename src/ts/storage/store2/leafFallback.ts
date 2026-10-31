@@ -1,10 +1,10 @@
 import type { JsonObject } from '../blockFrame'
 import { formatColdStorageLoadError } from '../../process/coldstorageData'
 import {
-    assembleChat, chunkCountMismatch, CodecAssembleError, defineOwn, ENTRY_MOVED_FIELDS, movedValueOf, readAbsentList,
+    assembleChat, bodyCountMismatch, CodecAssembleError, defineOwn, ENTRY_MOVED_FIELDS, movedValueOf, readAbsentList,
     readCheckedUnit, readObjectField, type UnitSource,
 } from './codec'
-import { keyOfRef, UNIT_TYPE, type ChatChunk, type ChatCore, type ContentBody, type ShardEntry } from './format'
+import { keyOfRef, UNIT_TYPE, type ChatAltUnit, type ChatChunk, type ChatCore, type ContentBody, type ShardEntry } from './format'
 import type { FlaggedLeaf } from './treeBytes'
 
 /**
@@ -18,6 +18,7 @@ import type { FlaggedLeaf } from './treeBytes'
  *   al, il          nothing: assembly never reads the lists, the first save derives them again
  *   chat core       empty core fields and one load-error message ahead of the first message
  *   chat chunk      one load-error message in the chunk's position; a damaged tail also loses the per-send state it held
+ *   chat alt        no records: the chat keeps every message and gets the alternatives of the units that checked
  * Only units named by a flag are replaced. Any other unit that fails the check still throws `CodecAssembleError`, because
  * a failure no flag explains is not an empty value.
  */
@@ -50,6 +51,9 @@ function keysOfEntry(entry: ShardEntry): Set<string> {
         keys.add(keyOfRef(chat.core))
         for (const chunk of chat.chunks) {
             keys.add(keyOfRef(chunk))
+        }
+        for (const unit of chat.alt ?? []) {
+            keys.add(keyOfRef(unit))
         }
     }
     return keys
@@ -135,7 +139,7 @@ export function createLeafFallback(flagged: readonly FlaggedLeaf[], now: () => n
                     return { v: 1, msgs: [loadError(key)] }
                 }
                 const chunk = readCheckedUnit(source, ref, UNIT_TYPE.chatChunk, `${chatWhere} chunk ${chunkIndex}`) as ChatChunk
-                if (chunkCountMismatch(chunk, ref)) {
+                if (bodyCountMismatch(UNIT_TYPE.chatChunk, chunk, ref)) {
                     throw new CodecAssembleError(`${chatWhere} chunk ${chunkIndex} holds ${chunk.msgs.length} messages, its Ref says ${ref[3]}.`)
                 }
                 return chunk
@@ -143,7 +147,19 @@ export function createLeafFallback(flagged: readonly FlaggedLeaf[], now: () => n
             if (coreDamaged && chunks.length > 0) {
                 chunks[0] = { ...chunks[0], msgs: [loadError(chatCoreKey), ...chunks[0].msgs] }
             }
-            return assembleChat(core, chunks, chatWhere)
+            // A damaged alternatives unit contributes no records: the conversation itself is intact without them.
+            const alt: ChatAltUnit[] = []
+            for (const [altIndex, ref] of (chatEntry.alt ?? []).entries()) {
+                if (damaged.has(keyOfRef(ref))) {
+                    continue
+                }
+                const unit = readCheckedUnit(source, ref, UNIT_TYPE.chatAlt, `${chatWhere} alternatives ${altIndex}`) as ChatAltUnit
+                if (bodyCountMismatch(UNIT_TYPE.chatAlt, unit, ref)) {
+                    throw new CodecAssembleError(`${chatWhere} alternatives ${altIndex} holds ${unit.recs.length} records, its Ref says ${ref[3]}.`)
+                }
+                alt.push(unit)
+            }
+            return assembleChat(core, chunks, chatWhere, alt)
         })
         defineOwn(result, 'chats', chats)
         return result

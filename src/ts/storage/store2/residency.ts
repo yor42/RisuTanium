@@ -6,10 +6,11 @@ import {
     type AcknowledgedVerdict, type UnitSource,
 } from './codec'
 import { defaultKeyEnv, type ModuleEntry, type ShardEntry } from './format'
+import { createLeafFallback } from './leafFallback'
 import { hydrateEntityDigests, hydrateModuleDigests } from './previousOfTree'
 import type { Store2SaveContext } from './saveActive'
 import type { SaveEncoder } from './saveEncoder'
-import { readEntityBytes, readModuleBytes } from './treeBytes'
+import { readEntityBytes, readModuleBytes, type FlaggedLeaf } from './treeBytes'
 
 /**
  * Residency: which characters of the acknowledged encoding are held by the page as stubs, and how one is loaded,
@@ -22,10 +23,12 @@ type Slot = character | groupChat
 /**
  * A character read from its units. It answers as the legacy cold-storage reader does, so one redirect can serve both:
  * a unit that is absent or damaged is `error` with kind `damaged`, and a failure of the store is `error` with no kind.
- * A store2 entity is many units, so one absent unit is partial damage and is never `missing`.
+ * A store2 entity is many units, so one absent unit is partial damage and is never `missing`. The one unit that is not
+ * damage to the character is an alternatives unit: the character reads `ok` with its main conversation, `droppedAlt`
+ * names the units left out, and their bytes are not in `source`, so the next pass writes the chat without them.
  */
 export type ResidencyRead =
-    | { status: 'ok', value: { character: JsonObject }, entry: ShardEntry, source: UnitSource, bytes: number }
+    | { status: 'ok', value: { character: JsonObject }, entry: ShardEntry, source: UnitSource, bytes: number, droppedAlt: readonly FlaggedLeaf[] }
     | { status: 'error', error: unknown, kind?: 'damaged' }
 
 /**
@@ -110,7 +113,8 @@ export function createResidency(options: ResidencyOptions): Residency {
             return { status: 'error', kind: 'damaged', error: new Error(`The acknowledged encoding holds no entity ${u}.`) }
         }
         try {
-            const read = await readEntityBytes(backend, entry)
+            const manifestKey = encoder.manifestKey
+            const read = await readEntityBytes(backend, entry, { manifestKey })
             switch (read.status) {
                 case 'damaged':
                     return { status: 'error', kind: 'damaged', error: new Error(read.reason) }
@@ -118,8 +122,15 @@ export function createResidency(options: ResidencyOptions): Residency {
                     return { status: 'error', error: new Error(read.reason) }
                 case 'unreadable':
                     return { status: 'error', error: read.cause }
-                case 'ok':
-                    return { status: 'ok', value: { character: assembleCharacter(entry, read.source) }, entry, source: read.source, bytes: read.bytes }
+                case 'moved':
+                    // The commit key moved while alternatives were to be dropped: a refusal that changes nothing, never damage.
+                    return { status: 'error', error: new Error('The saved data changed while the character was being read.') }
+                case 'ok': {
+                    const character = read.droppedAlt.length === 0
+                        ? assembleCharacter(entry, read.source)
+                        : createLeafFallback(read.droppedAlt, env.now).character(entry, read.source)
+                    return { status: 'ok', value: { character }, entry, source: read.source, bytes: read.bytes, droppedAlt: read.droppedAlt }
+                }
             }
         } catch (error) {
             // Units that passed their check but do not hold a character are damaged; anything else is the store failing.

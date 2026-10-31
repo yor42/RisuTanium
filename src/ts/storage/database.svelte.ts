@@ -1903,6 +1903,21 @@ export interface Chat{
     useLocallySetGlobalVariables?: boolean
     GLGlobalVariables?: { [key: string]: string }
     onboardingDone?: boolean
+    /**
+     * The messages that are not on the active path (`message`), oldest departure first. Absent when the chat has none;
+     * the store keeps them in units of their own (type 25) and an empty list saves exactly like an absent one.
+     */
+    alt?: ChatAlt[]
+}
+
+/**
+ * One message off the active path: `m` the message, `p` the `chatId` of the message it follows (null: the first
+ * message), `a` the departure stamp. The store round-trips any further key of the record untouched.
+ */
+export interface ChatAlt{
+    m: Message
+    p: string|null
+    a: number
 }
 
 export interface OnboardingOption{

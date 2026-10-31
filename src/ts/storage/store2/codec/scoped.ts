@@ -626,6 +626,7 @@ function identitiesOf(entry: ShardEntry): string[] {
     for (const chat of entry.chats) {
         identities.push(`${IDENTITY.chat}${entry.u}:${chat.cid}:core`)
         chat.chunks.forEach((_, k) => identities.push(`${IDENTITY.chat}${entry.u}:${chat.cid}:chunk:${k}`))
+        chat.alt?.forEach((_, k) => identities.push(`${IDENTITY.chat}${entry.u}:${chat.cid}:alt:${k}`))
     }
     return identities
 }
@@ -660,8 +661,11 @@ function sameKnownFields(fresh: ShardEntry, acknowledged: ShardEntry): boolean {
     }
     return fresh.chats.every((chat, index) => {
         const other = acknowledged.chats[index]
+        const alt = chat.alt ?? []
+        const otherAlt = other.alt ?? []
         return chat.cid === other.cid && sameRefFields(chat.core, other.core, 3) && chat.chunks.length === other.chunks.length
             && chat.chunks.every((chunk, k) => sameRefFields(chunk, other.chunks[k], 4))
+            && alt.length === otherAlt.length && alt.every((unit, k) => sameRefFields(unit, otherAlt[k], 4))
     })
 }
 

@@ -340,6 +340,83 @@ describe('new behaviour: a read that fails answers by the cold-storage vocabular
     })
 })
 
+describe('new behaviour: a damaged alternatives unit does not keep a character from opening', () => {
+    function archivingWithAlt(): Database {
+        const db = archiving() as unknown as Obj
+        for (const slot of db.characters as Obj[]) {
+            ;((slot.chats as Obj[])[0]).alt = [
+                { m: { role: 'char', data: 'first alternative', time: 1, chatId: 'alt-1' }, p: null, a: 1 },
+                { m: { role: 'char', data: 'second alternative', time: 2, chatId: 'alt-2' }, p: null, a: 2 },
+            ]
+        }
+        return db as unknown as Database
+    }
+
+    function flipByte(memory: MemoryBackend, key: string): void {
+        const bytes = new Uint8Array(memory.snapshot().get(key) as Uint8Array)
+        bytes[FRAME_HEADER_BYTES + 1] ^= 0xff
+        memory.poke(key, bytes)
+    }
+
+    const altIdentityOf = (entry: ShardEntry): string => `${IDENTITY.chat}${entry.u}:${entry.chats[0].cid}:alt:0`
+
+    test.each(['readCharacter', 'load'] as const)('%s: a damaged alternatives unit is dropped and named, the conversation is whole (regression reproducer)', async (how) => {
+        const booted = await bootOf(archivingWithAlt())
+        const entry = entryOf(booted, 0)
+        const altKey = keyOfRef((entry.chats[0].alt ?? [])[0])
+        const intact = assembleCharacter(entry, booted.source) as unknown as { chats: Obj[] }
+        flipByte(booted.memory, altKey)
+        const read = await booted.residency[how](entry.u)
+        expect(read.status).toBe('ok')
+        if (read.status !== 'ok') {
+            return
+        }
+        expect(read.droppedAlt).toHaveLength(1)
+        expect(read.droppedAlt[0]).toMatchObject({ kind: 'chat', chaId: entry.chaId, chatId: entry.chats[0].cid, part: 'alt', key: altKey })
+        const chats = (read.value.character as unknown as { chats: Obj[] }).chats
+        expect(chats[0].message).toEqual(intact.chats[0].message)
+        expect(Object.hasOwn(chats[0], 'alt')).toBe(false)
+        expect(chats.slice(1)).toEqual(intact.chats.slice(1))
+        expect(read.source.get(altKey)).toBeUndefined()
+        const dropped = booted.encoder.acknowledged().units.get(altIdentityOf(entry))
+        expect(dropped?.digest, how).toBeUndefined()
+    })
+
+    test('a load with nothing dropped reports none and hydrates the alternatives unit', async () => {
+        const booted = await bootOf(archivingWithAlt())
+        const entry = entryOf(booted, 1)
+        const read = await booted.residency.load(entry.u)
+        expect(read.status).toBe('ok')
+        if (read.status === 'ok') {
+            expect(read.droppedAlt).toEqual([])
+            expect((read.value.character as unknown as { chats: Obj[] }).chats[0].alt).toHaveLength(2)
+        }
+        expect(booted.encoder.acknowledged().units.get(altIdentityOf(entry))?.digest).toBeDefined()
+    })
+
+    test('a damaged message chunk still makes the read damaged when an alternatives unit is damaged too', async () => {
+        const booted = await bootOf(archivingWithAlt())
+        const entry = entryOf(booted, 0)
+        flipByte(booted.memory, keyOfRef((entry.chats[0].alt ?? [])[0]))
+        flipByte(booted.memory, keyOfRef(entry.chats[0].chunks[0]))
+        const read = await booted.residency.load(entry.u)
+        expect(read).toMatchObject({ status: 'error', kind: 'damaged' })
+    })
+
+    test('when the commit key no longer names the tree, the read refuses without damage and hydrates nothing', async () => {
+        const booted = await bootOf(archivingWithAlt(), {
+            backend: memory => ({ ...memory, readCommit: async () => ({ ...(await memory.readCommit()), bytes: null }) }),
+        })
+        const entry = entryOf(booted, 0)
+        flipByte(booted.memory, keyOfRef((entry.chats[0].alt ?? [])[0]))
+        const read = await booted.residency.load(entry.u)
+        expect(read.status).toBe('error')
+        expect(read).not.toHaveProperty('kind')
+        const hydrated = [...booted.encoder.acknowledged().units].filter(([identity, unit]) => identity.includes(entry.u) && unit.digest !== undefined)
+        expect(hydrated).toEqual([])
+    })
+})
+
 describe('new behaviour: the stub for a live character', () => {
     test('it names the acknowledged entry\'s entity and carries the live fields a stub may change', async () => {
         const booted = await bootOf(archiving())

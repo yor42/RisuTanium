@@ -89,6 +89,7 @@ async function buildTree(fx: Fx, options: BuildOptions): Promise<BuiltTree> {
                 cid: 'c1',
                 core: await put(S, 'entries[].chats[].core', UNIT_TYPE.chatCore),
                 chunks: [[...await put(S, 'entries[].chats[].chunks[]', UNIT_TYPE.chatChunk, { v: 1, msgs: [], tag }), 0]],
+                alt: [[...await put(S, 'entries[].chats[].alt[]', UNIT_TYPE.chatAlt, { v: 1, recs: [{ m: { role: 'char', data: tag }, p: null, a: 1 }], tag }), 1]],
             }],
         }
         chunkKey = keyOfTail(entry.chats[0].chunks[0][0] as string)

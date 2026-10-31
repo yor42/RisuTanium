@@ -48,6 +48,8 @@ export const languageEnglish = {
             `The archived character ${characterName} could not be loaded right now. Nothing was changed. Please try again.`,
         coldStorageRestoreUnavailable: "Archived characters can't be opened on this page: this browser offers no storage for them here (for example on a plain-HTTP address). Nothing was changed.",
         coldStorageRestoreDamaged: "This character's archived copy could not be read: it may be damaged. Nothing was changed or deleted.",
+        coldStorageAltRepliesDropped: (characterName: string, chatNames: string) =>
+            `The alternative replies of these chats of ${characterName} could not be read and were left out: ${chatNames}. The conversations themselves were loaded intact.`,
         coldStorageNamedRestoreUnavailable: (characterName: string) =>
             `The archived character ${characterName} can't be opened on this page: this browser offers no storage for archived characters here (for example on a plain-HTTP address). Nothing was changed.`,
         coldStorageNamedRestoreDamaged: (characterName: string) =>
@@ -2411,6 +2413,7 @@ export const languageEnglish = {
             : part === 'scripts' ? 'the scripts of a character'
             : part === 'chat' ? 'a chat'
             : part === 'chatPart' ? 'a part of a chat'
+            : part === 'chatAlternatives' ? 'the alternative replies of a chat'
             : part === 'module' ? 'a module'
             : part === 'moduleList' ? 'your module list'
             : part === 'settings' ? 'your general settings'
@@ -2882,6 +2885,7 @@ export const languageEnglish = {
         flaggedChatPosition: (position: number) => `chat ${position}`,
         flaggedChatId: (id: string) => `chat (id ${id})`,
         flaggedChatLine: (chat: string, state: string, parts: number) => parts > 1 ? `${chat}: ${state} (${parts} parts)` : `${chat}: ${state}`,
+        flaggedChatAltLine: (chat: string, state: string) => `${chat}: its alternative replies are ${state}; the conversation itself is intact`,
         foreignTitle: "An unfinished operation is recorded",
         foreignBody: (operation: string, when: string) => `An operation recorded in your storage (${operation}, started ${when}) never finished. If another RisuTanium window or tab is still running it, wait for it. Clearing the record never deletes your saved data.`,
         foreignWait: "Wait",
