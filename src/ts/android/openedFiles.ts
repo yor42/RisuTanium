@@ -15,6 +15,7 @@ import { isConsentType, isPromptType } from '../alertPrompts'
 import { importOpenedSources, isOpenedSourceImportable } from '../characterCards'
 import type { OpenedRestoreEnd } from '../drive/backuplocal'
 import { busyRefusalLine, isBusy } from '../process/memory/busyActions'
+import { onRestoreEndedLive, restoreInProgress, restorePhase } from '../drive/restoreInProgress'
 import { isAppInitiatedReload } from '../reloadGuard'
 import { alertStore as shownAlert } from '../stores.svelte'
 import { getDatabase } from '../storage/database.svelte'
@@ -53,6 +54,9 @@ let arrivedDuringRestore = false
 //The restore ended in a way that leaves this page unable to take a file again: the restored data landed (whether or not a
 //reload was requested) or the write is unconfirmed. Everything that arrives later waits in the native queue for the next page.
 let pageEnding = false
+//A file arrived, or a drain was due, while a restore of the Settings kind was under way and was left in the native queue;
+//one drain runs when that restore ends with the page still live.
+let waitingForRestoreEnd = false
 //The refusal pop-up this module posted, kept so a second batch over the same pop-up posts nothing new.
 let ownRefusal: alertData | null = null
 
@@ -61,6 +65,7 @@ export function resetOpenedFilesForTests(): void {
     restoreOpen = false
     arrivedDuringRestore = false
     pageEnding = false
+    waitingForRestoreEnd = false
     ownRefusal = null
 }
 
@@ -136,6 +141,11 @@ async function drain(): Promise<void> {
     if (pageEnding) {
         return
     }
+    // A restore begun by the Settings flows (or a boot restore) owns the queue until it ends; nothing is taken meanwhile.
+    if (restoreInProgress()) {
+        waitingForRestoreEnd = true
+        return
+    }
     let taken: OpenedFilesTake | undefined
     try {
         taken = await openedFilesTake()
@@ -144,6 +154,12 @@ async function drain(): Promise<void> {
         return
     }
     if (!taken) {
+        return
+    }
+    // A restore may have begun while the reply was on its way: a held take is then not confirmed, so the host offers it
+    // again after the restore.
+    if (taken.held && restoreInProgress()) {
+        waitingForRestoreEnd = true
         return
     }
     // Received: the host may drop what it held for this take, before anything is parsed or imported.
@@ -209,7 +225,7 @@ async function drain(): Promise<void> {
         }
         if (arrivedDuringRestore) {
             arrivedDuringRestore = false
-            scheduleDrain()
+            scheduleDrainAfterNotice()
         }
     }
 }
@@ -246,6 +262,26 @@ function scheduleDrain(): void {
 }
 
 /**
+ * The only re-drain after a restore: it first waits for the notice the restore left on screen (a failure message, a
+ * skipped-asset list), because an import's wait or a restore question would replace it unread.
+ */
+function scheduleDrainAfterNotice(): void {
+    chain = chain.then(async () => {
+        await readLeftNotice()
+        await drain()
+    }).catch((error) => {
+        console.warn('Opened files were not handled', error)
+    })
+}
+
+onRestoreEndedLive(() => {
+    if (waitingForRestoreEnd) {
+        waitingForRestoreEnd = false
+        scheduleDrainAfterNotice()
+    }
+})
+
+/**
  * A file arrived over a restore question: takes everything now and refuses it with one pop-up; the question comes back
  * once the pop-up is closed. An empty take shows nothing. The refusal line also goes on the restore's progress, which may
  * replace the pop-up before it is read.
@@ -266,8 +302,10 @@ async function refuseNow(): Promise<void> {
     if (taken.held && !refusalAppliesNow()) {
         if (restoreOpen) {
             arrivedDuringRestore = true
+        } else if (restorePhase() !== 'none') {
+            waitingForRestoreEnd = true
         } else {
-            scheduleDrain()
+            scheduleDrainAfterNotice()
         }
         return
     }
@@ -286,11 +324,12 @@ async function refuseNow(): Promise<void> {
 }
 
 /**
- * True while a restore runs and a file arriving now is refused at once: no reload is pending (nothing is taken into a
- * dying page) and the pop-up shown is one of the restore's own questions or this module's refusal.
+ * True while an opened-file restore runs, or a Settings restore is still asking, and a file arriving now is refused at
+ * once: no reload is pending (nothing is taken into a dying page) and the pop-up shown is one of the restore's own
+ * questions or this module's refusal. Without a question on screen the file stays queued.
  */
 function refusalAppliesNow(): boolean {
-    if (!restoreOpen || isAppInitiatedReload()) {
+    if (!(restoreOpen || restorePhase() === 'asking') || isAppInitiatedReload()) {
         return false
     }
     const shown = get(shownAlert)
@@ -304,6 +343,15 @@ const openedFilesHook = (): void => {
             return
         }
         void refuseNow()
+        return
+    }
+    if (refusalAppliesNow()) {
+        void refuseNow()
+        return
+    }
+    // Any other moment of a Settings or boot restore: the file stays queued until the restore ends.
+    if (restoreInProgress()) {
+        waitingForRestoreEnd = true
         return
     }
     scheduleDrain()
