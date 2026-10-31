@@ -19657,3 +19657,38 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
   - The investigation's mechanism (READ and INFERRED, not reproduced): `BackgroundDom` had no module gate and no pending display, so every `ReloadGUIPointer` bump remounted it and removed the card style until a new parse resolved; `moduleBackgroundEmbedding` was never cleared, so it could carry into the next chat. CHORE-556 had reduced the number of bumps, not removed the background's exposure.
   - Results are in the Roadmap CHORE-609 row and ledger rows 4678 and 4679. The device check is owed.
   - Nothing here authorizes application code, a commit or a push beyond what the maintainer approved for this item.
+
+### MC-928 — Lane A, 2026-11-01: CHORE-605 the stray branch `lane-b-p1-preCHORE206` is deleted
+
+- Tag: decision (`AskUserQuestion` answer, option label "Delete it (Recommended)"). Date: answered 2026-10-31 (relayed in records30\answers.md); recorded 2026-11-01. Sweep ref: none.
+- Source: the records batch 30 brief `%TEMP%\risu-b715\records30\brief.md` (item 1), which relays the answer; answers copied from the session transcript to `%TEMP%\risu-b715\records30\answers.md` (2026-10-31, AskUserQuestion, lane A chat). Basis: the batch 28 PROPOSAL row (CHORE-605) and the sweep verification it cites.
+- Alternatives rejected: keep the branch (the question was keep or delete; answers.md records only the selected label, not the full option list).
+- Related: CHORE-605, CHORE-206 and `MC-349`/`MC-504` (V2.1 plugin execution retired).
+
+**What was decided (maintainer).** Lane A asked whether to keep or delete the stray branch `lane-b-p1-preCHORE206` (tip `916adac48`). The maintainer's label: "Delete it (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The branch's one useful commit was re-cut onto `main` as `976993c3f`; the rest of the branch is retired V2.1 execution code (the batch 28 sweep verification).
+  - The branch was local only (not on origin, no worktree) and was deleted on 2026-10-31. The records writer re-read at write time: `git branch --list lane-b-p1-preCHORE206` prints nothing, and `git cat-file -t` reports `916adac48` and `976993c3f` as commits. The commit stays recoverable by hash only while git keeps unreachable objects (no `git gc` guarantee is claimed).
+  - CHORE-605 is COMPLETE.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-929 — Lane A, 2026-11-01: CHORE-610 dangling `saying` ids: close with no action
+
+- Tag: decision (`AskUserQuestion` answer, option label "Close, no action (Recommended)"). Date: answered 2026-10-31 (relayed in records30\answers.md); recorded 2026-11-01. Sweep ref: none.
+- Source: the records batch 30 brief (item 2), which relays the answer; answers copied from the session transcript to `%TEMP%\risu-b715\records30\answers.md` (2026-10-31, AskUserQuestion, lane A chat). Basis: the investigation `%TEMP%\risu-b715\c610\result.md` (STATUS DONE, read-only) and its verification `c610\verify\result.md` (ACCEPT WITH CORRECTIONS).
+- Alternatives rejected: lane A offered three options; the other two were "stop new dangling ids at import" and "fix the exports only".
+- Related: CHORE-610, CHORE-117 stage 1c (`MC-924`; the real backup has 0 speaker references to an unusable-id character), `MC-223`.
+
+**What was decided (maintainer).** CHORE-610 is closed with no action. The maintainer's label: "Close, no action (Recommended)".
+
+**What the investigation and its verification found (not the maintainer's words).**
+- The main chat screen (`Chats.svelte`) and the single-character prompt path do not use `saying` for display or output; the speaker name computed from it in a non-group send is never used (R1, R2: CONFIRMED by the verifier).
+- The txt, HTML and clipboard chat exports print "Unknown Character" for a dangling id. The verifier ran a scratch test: the HTML export of a message with a dangling `saying` printed "Unknown Character" and nothing threw (RUN).
+- Group prompt building is affected for a dangling id, but the maintainer's 2026-10-31 backup has 0 groups. Scan counts (from the batch 29 row): 462 dangling references out of 1,611 carriers, 30 distinct ids, 116 of 841 chats; the verifier re-read the same scan file.
+- Likely producer (INFERRED): `importChat` never remaps `saying` (CONFIRMED that no remap exists on import; that it is the producer here is not proved).
+- The investigation's open item 1 (that commit `46992a13b` removed a speaker display) is REFUTED by the verifier: that commit touched no `saying` line, and upstream's main chat never showed a group speaker from `saying`.
+
+- Notes, not the maintainer's words:
+  - CHORE-610 is closed, no action; no repair, no scan extension and no export change is scheduled.
+  - Nothing here authorizes application code, a commit or a push.
