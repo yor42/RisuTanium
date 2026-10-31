@@ -923,9 +923,8 @@ export function moduleUpdate(){
         }
     })
 
-    if(backgroundEmbedding){
-        moduleBackgroundEmbedding.set(backgroundEmbedding)
-    }
+    // Always set, so a chat without an embedding module clears the previous chat's embedding.
+    moduleBackgroundEmbedding.set(backgroundEmbedding)
     HideIconStore.set(getCurrentCharacter()?.hideChatIcon || moduleHideIcon)
 
     if(lastModuleIds !== ids){
