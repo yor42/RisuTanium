@@ -50,20 +50,40 @@ export function withoutChatAlternatives<T>(character: T): T {
     return { ...character, chats: chats.map((chat) => carriesAltKey(chat) ? withoutAltKey(chat as Fields) : chat) } as T
 }
 
-/** The label (character, then chat) of each chat of `character` that holds alternatives. */
-export function alternativeChatLabels(character: unknown): string[] {
+/**
+ * A chat that loses its alternatives in an export. `text` is what the prompt shows (character, then chat); `key` tells
+ * chats apart, so two chats with the same text are counted twice and the same chat read through two sources once.
+ */
+export type AlternativeChatLabel = { key: string, text: string }
+
+function characterKeyOf(character: Fields): string {
+    return typeof character.chaId === 'string' ? `c:${character.chaId}` : `?:${typeof character.name === 'string' ? character.name : ''}`
+}
+
+/** The label of each chat of `character` that holds alternatives. */
+export function alternativeChatLabels(character: unknown): AlternativeChatLabel[] {
     const chats = chatsOf(character)
     if (chats === null || !isFields(character)) {
         return []
     }
-    return chats.filter(chatHoldsAlternatives).map((chat) => labelOf(character.name, isFields(chat) ? chat.name : undefined))
+    const characterKey = characterKeyOf(character)
+    const labels: AlternativeChatLabel[] = []
+    chats.forEach((chat, index) => {
+        if (!chatHoldsAlternatives(chat)) {
+            return
+        }
+        const chatId = isFields(chat) && typeof chat.id === 'string' && chat.id !== '' ? `id:${chat.id}` : `at:${index}`
+        labels.push({ key: `${characterKey}/${chatId}`, text: labelOf(character.name, isFields(chat) ? chat.name : undefined) })
+    })
+    return labels
 }
 
 /**
  * A cold-storage unit value (a character unit `{ character }`, or a chat unit `{ message }`) without the alternatives of
- * its chats, and the labels of the chats that held some. The value itself when it holds nothing to strip.
+ * its chats, and the labels of the chats that held some. The value itself when it holds nothing to strip. `unitKey` is
+ * the unit's storage key: a chat unit has no character, so it is keyed by the unit.
  */
-export function withoutColdValueAlternatives(value: unknown): { value: unknown, labels: string[] } {
+export function withoutColdValueAlternatives(value: unknown, unitKey: string): { value: unknown, labels: AlternativeChatLabel[] } {
     if (!isFields(value)) {
         return { value, labels: [] }
     }
@@ -72,7 +92,7 @@ export function withoutColdValueAlternatives(value: unknown): { value: unknown, 
         return { value: { ...value, character: withoutChatAlternatives(character) }, labels: alternativeChatLabels(character) }
     }
     if (Array.isArray(value.message) && 'alt' in value) {
-        return { value: withoutAltKey(value), labels: chatHoldsAlternatives(value) ? [labelOf(undefined, value.name)] : [] }
+        return { value: withoutAltKey(value), labels: chatHoldsAlternatives(value) ? [{ key: `u:${unitKey}`, text: labelOf(undefined, value.name) }] : [] }
     }
     return { value, labels: [] }
 }

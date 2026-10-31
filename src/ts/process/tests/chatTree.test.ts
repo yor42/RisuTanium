@@ -3,6 +3,7 @@ import type { Chat, ChatAlt, Message } from '../../storage/database.svelte'
 import {
     clearAltOnFullClear,
     detachTail,
+    endTarget,
     isChatAltReadable,
     reattachOrphans,
     refuseUnreadableAlt,
@@ -139,15 +140,34 @@ describe('switchTo', () => {
         expect(isAscending(chat.alt ?? [])).toBe(true)
     })
 
-    it('follows the highest stamp at each step, and the last in list order among equal stamps', () => {
+    // T76 regression reproducer: a higher-stamp grandchild is a side child that departed later, not part of the run
+    it('arrives along the run of equal stamps: a newer side child stays in alt', () => {
+        const chat = chatOf([msg('u'), msg('c')], [
+            record(msg('s'), 'u', 2),
+            record(msg('older'), 's', 1),
+            record(msg('t'), 's', 2),
+            record(msg('newer'), 't', 3),
+        ])
+        switchTo(chat, 1, 's')
+        expect(ids(chat.message)).toEqual(['u', 's', 't'])
+        expect(chat.alt?.some((r) => r.m.chatId === 'newer' && r.p === 't')).toBe(true)
+    })
+
+    it('guard: the last in list order wins among run records of equal stamp', () => {
         const chat = chatOf([msg('u'), msg('c')], [
             record(msg('s'), 'u', 1),
-            record(msg('older'), 's', 1),
-            record(msg('first'), 's', 3),
-            record(msg('last'), 's', 3),
+            record(msg('first'), 's', 1),
+            record(msg('last'), 's', 1),
         ])
         switchTo(chat, 1, 's')
         expect(ids(chat.message)).toEqual(['u', 's', 'last'])
+    })
+
+    it('accepts any child of the last message at message.length, not only the end target', () => {
+        const chat = chatOf([msg('u'), msg('c')], [record(msg('x'), 'c', 1), record(msg('y'), 'c', 2)])
+        expect(endTarget(chat)).toBe('y')
+        expect(switchTo(chat, 2, 'x')).toBe(true)
+        expect(ids(chat.message)).toEqual(['u', 'c', 'x'])
     })
 
     it('arrives at position message.length without departing anything', () => {
@@ -227,6 +247,27 @@ describe('switchTo', () => {
             }
             expect(isAscending(chat.alt ?? [])).toBe(true)
         }
+    })
+})
+
+describe('endTarget', () => {
+    // T75 new-rule unit (the export is new): the highest stamp wins, the last in list order among equals
+    it('names the record after the last message with the highest stamp, the last among equals', () => {
+        const chat = chatOf([msg('u'), msg('c')], [
+            record(msg('p'), 'c', 2),
+            record(msg('q'), 'c', 3),
+            record(msg('r'), 'c', 3),
+            record(msg('s'), 'c', 1),
+        ])
+        expect(endTarget(chat)).toBe('r')
+    })
+
+    it('is null without a following record, for the root of an empty path, and for an unreadable alt', () => {
+        expect(endTarget(chatOf([msg('u')]))).toBeNull()
+        expect(endTarget(chatOf([], [record(msg('x'), null, 1), record(msg('y'), null, 2)]))).toBe('y')
+        const bad = chatOf([msg('u')])
+        Object.assign(bad, { alt: [{ m: 'text', p: null, a: 1 }] })
+        expect(endTarget(bad)).toBeNull()
     })
 })
 

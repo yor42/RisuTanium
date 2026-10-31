@@ -7,7 +7,7 @@ import { getResidency, isEntityUnitKey } from '../storage/store2/residencyActive
 import { coldUnitCharacter } from '../process/coldCharacter'
 import { isCharacterEntry, isUsableCharacterId } from '../storage/characterIds'
 import { kvBlockNameOf } from '../storage/risuSaveV0'
-import { alternativeChatLabels, withoutChatAlternatives } from './exportAlternatives'
+import { alternativeChatLabels, withoutChatAlternatives, type AlternativeChatLabel } from './exportAlternatives'
 import { v4 as uuidv4 } from 'uuid'
 import { MEASURE } from '../process/memory/measureFlag'
 import { deflateSync, inflateSync } from 'fflate'
@@ -132,7 +132,7 @@ export interface MintedStubEntry {
     /** The body, raw-deflated; it holds no reference to the body's raw bytes. */
     packed: Uint8Array
     /** Labels of the chats whose alternatives the body leaves out; absent when none were left out. */
-    omittedAlternatives?: string[]
+    omittedAlternatives?: AlternativeChatLabel[]
 }
 
 export interface StubsForExport {
@@ -612,19 +612,24 @@ export function mergePluginStorage(collected: ColdStorageBackupCollection, plugi
  * characters, of the characters read for stubs (inlined or minted as unit entries) and of the units already collected.
  * Each label appears once. The prompt before the export names them; a label found only later is reported afterwards.
  */
-export function exportAlternativeLabels(db: Pick<Database, 'characters'>, cold: BackupColdStorage): string[] {
-    const labels = new Set<string>()
+export function exportAlternativeLabels(db: Pick<Database, 'characters'>, cold: BackupColdStorage): AlternativeChatLabel[] {
+    const labels = new Map<string, AlternativeChatLabel>()
+    const add = (label: AlternativeChatLabel) => {
+        if (!labels.has(label.key)) {
+            labels.set(label.key, label)
+        }
+    }
     for (const slot of Array.isArray(db.characters) ? db.characters : []) {
-        alternativeChatLabels(slot).forEach((label) => labels.add(label))
+        alternativeChatLabels(slot).forEach(add)
     }
     for (const character of cold.inlined.values()) {
-        alternativeChatLabels(character).forEach((label) => labels.add(label))
+        alternativeChatLabels(character).forEach(add)
     }
     for (const entry of cold.stubEntries.values()) {
-        entry.omittedAlternatives?.forEach((label) => labels.add(label))
+        entry.omittedAlternatives?.forEach(add)
     }
-    cold.collected.omittedAlternatives?.forEach((label) => labels.add(label))
-    return [...labels]
+    cold.collected.omittedAlternatives?.forEach(add)
+    return [...labels.values()]
 }
 
 /**

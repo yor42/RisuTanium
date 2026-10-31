@@ -173,12 +173,34 @@ export function siblingsAt(chat: Chat, i: number): Message[] {
     return heads.sort(byDisplayOrder);
 }
 
+/**
+ * The chat id of the record the end control arrives at: among the records that follow the last path
+ * message (the root for an empty path) the one with the highest stamp, the last in list order among
+ * equals. Null when no record follows it and for a chat whose `alt` cannot be read.
+ */
+export function endTarget(chat: Chat): string | null {
+    const path = chat.message;
+    const alt = chat.alt;
+    if (!isChatAltReadable(chat) || !Array.isArray(path) || alt === undefined) {
+        return null;
+    }
+    const index = indexTree(path, alt);
+    const owner = ownerBefore(path, index, path.length);
+    let best = -1;
+    for (const k of (owner === null ? [] : index.children.get(owner) ?? [])) {
+        if (best === -1 || alt[k].a >= alt[best].a) {
+            best = k;
+        }
+    }
+    return best === -1 ? null : alt[best].m.chatId ?? null;
+}
+
 type BranchFields = Pick<Chat, "supaMemoryData" | "supaMemoryCoveredId" | "lastMemory" | "scriptstate" | "hypaV2Data" | "hypaV3Data">;
 
 export interface BranchStateResult {
     /** What the chat holds afterwards; `null` removes the field. */
     next: ChatAltMemory;
-    /** What the departing chain keeps: the small fields always, a summary store only when the switch changes it. */
+    /** What the departing chain keeps: all six fields, a copy of the live values, an absent one as `null`. */
     park: ChatAltMemory;
 }
 
@@ -294,14 +316,16 @@ function parkedObject<K extends "scriptstate" | "hypaV2Data" | "hypaV3Data">(mem
  * set of chat ids of the departing chain, `arrivingPathIds` those of the path afterwards, `parked` the
  * state the arriving chain left behind (a field it lacks is carried instead of restored).
  *
- * Per field: the SupaMemory pair (plain or legacy `hypa:`), `lastMemory` and `scriptstate` are always
- * parked, an absent value as `null`; HypaV2 and HypaV3 are parked only when the switch changes them.
- * Carried without a parked copy: the pair only while `supaResumeResolvable` holds on the new path
- * (otherwise both fields go), `lastMemory` unless it names a departing message, `scriptstate` as it is
- * when `keepLiveScriptState` and removed otherwise, the summary stores minus what names a departing
- * message. A restored pair that does not resolve on the new path is dropped too, so a later send never
- * meets the "reset SupaMemory data" error. `next` and `park` share no object with each other, with
- * `live` or with `parked`.
+ * Every departure parks all six fields as copies of the live values, an absent value as `null`, so no
+ * parked branch shares a value with the live chat and a later change of the live store cannot alter
+ * what a branch left. For data this module produces every head's `mem` carries all six keys, and only
+ * run heads carry `mem`. A record without `mem`, or without a key (a never-shown sibling such as a
+ * prereroll candidate, or an imported record), carries the live value as a copy instead: the pair
+ * only while `supaResumeResolvable` holds on the new path (otherwise both fields go), `lastMemory`
+ * unless it names a departing message, `scriptstate` as it is when `keepLiveScriptState` and removed
+ * otherwise, the summary stores minus what names a departing message. A restored pair that does not
+ * resolve on the new path is dropped too, so a later send never meets the "reset SupaMemory data"
+ * error. `next` and `park` share no object with each other, with `live` or with `parked`.
  */
 export function branchState(
     live: BranchFields,
@@ -317,6 +341,8 @@ export function branchState(
         supaMemoryCoveredId: mine.supaMemoryCoveredId ?? null,
         lastMemory: mine.lastMemory ?? null,
         scriptstate: mine.scriptstate ?? null,
+        hypaV2Data: mine.hypaV2Data ?? null,
+        hypaV3Data: mine.hypaV3Data ?? null,
     };
 
     const parkedData = parkedText(parked, "supaMemoryData");
@@ -336,15 +362,9 @@ export function branchState(
 
     const parkedV2 = parkedObject(parked, "hypaV2Data");
     const hypaV2Data = parkedV2 !== undefined ? deepCopy(parkedV2) : (work.hypaV2Data === undefined ? null : hypaV2WithoutMemos(work.hypaV2Data, departing));
-    if (!sameValue(hypaV2Data ?? undefined, live.hypaV2Data)) {
-        park.hypaV2Data = mine.hypaV2Data ?? null;
-    }
 
     const parkedV3 = parkedObject(parked, "hypaV3Data");
     const hypaV3Data = parkedV3 !== undefined ? deepCopy(parkedV3) : (work.hypaV3Data === undefined ? null : hypaV3WithoutMemos(work.hypaV3Data, departing));
-    if (!sameValue(hypaV3Data ?? undefined, live.hypaV3Data)) {
-        park.hypaV3Data = mine.hypaV3Data ?? null;
-    }
 
     return {
         next: { supaMemoryData: data, supaMemoryCoveredId: covered, lastMemory, scriptstate, hypaV2Data, hypaV3Data },
@@ -367,8 +387,9 @@ function setBranchField<K extends keyof BranchFields>(chat: Chat, key: K, value:
 /**
  * Parks and restores the state of a branch around a switch. `departed` are the records now holding the
  * departed chain (the first one gets the parked state), `arrivedHead` the record the arriving chain's
- * first message came from, null when nothing arrives. An arrival without departing messages discards the
- * live values it replaces: no message holds them. The suggestions never follow a branch.
+ * first message came from, null when nothing arrives. Only that head's `mem` is restored, then deleted.
+ * An arrival without departing messages (the end press) replaces all six live fields with the head's
+ * copy and discards the live values: no message holds them. The suggestions never follow a branch.
  */
 function carryBranchState(chat: Chat, departed: readonly ChatAlt[], arrivedHead: ChatAlt | null, keepLiveScriptState: boolean): void {
     const departing = new Set<string>();
@@ -438,9 +459,11 @@ export function detachTail(chat: Chat, i: number): boolean {
 /**
  * Makes the sibling `headId` of position `i` the message there. The departing tail `message[i..]`
  * becomes records (as `detachTail` does); the arriving chain is the record with that head and, at each
- * step, its newest child (highest `a`, the last in list order among equals). Returns whether anything
- * changed: false when `headId` is already on the path at `i`, is no sibling of position `i`, or the
- * chat's `alt` cannot be read.
+ * step, the child with the same stamp `a` (the last in list order among equals), so it is the run that
+ * departed together and the chat ends as the user left it. Newer side children stay in `alt`. Any child
+ * of the last message is accepted at `message.length`; the end control passes `endTarget`. Returns
+ * whether anything changed: false when `headId` is already on the path at `i`, is no sibling of
+ * position `i`, or the chat's `alt` cannot be read.
  */
 export function switchTo(chat: Chat, i: number, headId: string): boolean {
     const path = chat.message;
@@ -465,7 +488,7 @@ export function switchTo(chat: Chat, i: number, headId: string): boolean {
     for (let cursor = target; ;) {
         let next = -1;
         for (const k of index.children.get(`A${cursor}`) ?? []) {
-            if (!seen.has(k) && (next === -1 || alt[k].a >= alt[next].a)) {
+            if (!seen.has(k) && alt[k].a === alt[cursor].a && (next === -1 || alt[k].a >= alt[next].a)) {
                 next = k;
             }
         }

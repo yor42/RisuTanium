@@ -369,7 +369,7 @@ describe('the cold-storage payloads of a .bin export carry no chat alternatives'
         expect(chats.every((chat) => !('alt' in chat))).toBe(true)
         expect(chats[0].message).toEqual([{ time: 1, data: 'First message', role: 'char' }])
         expect(new TextDecoder().decode(result.payloads[0].encoded)).not.toContain('ALTERNATIVE-REPLY-MARK')
-        expect(result.omittedAlternatives).toEqual(['Alice / First'])
+        expect(result.omittedAlternatives).toEqual([{ key: 'c:c1/id:id-First', text: 'Alice / First' }])
     })
 
     test('reproducer: a chat unit that holds alt is carried without it', async () => {
@@ -381,7 +381,7 @@ describe('the cold-storage payloads of a .bin export carry no chat alternatives'
         const unit = parsedPayload(result, KEY)
         expect('alt' in unit).toBe(false)
         expect(unit.message).toEqual([{ time: 1, data: 'archived', role: 'user' }])
-        expect(result.omittedAlternatives).toEqual(['Unknown Character / Loose'])
+        expect(result.omittedAlternatives).toEqual([{ key: `u:${KEY}`, text: 'Unknown Character / Loose' }])
     })
 
     test('reproducer: the stored value is not changed by the strip', async () => {

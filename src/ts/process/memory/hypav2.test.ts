@@ -46,7 +46,8 @@ vi.mock('src/ts/process/transformers', () => ({
     },
 }))
 
-import { hypaMemoryV2 } from './hypav2'
+import { cleanInvalidChunks, hypaMemoryV2, type HypaV2Data } from './hypav2'
+import { hypaV2WithoutMemos } from '../chatTree'
 
 const tokenizer = { tokenizeChat: async () => 10 } as unknown as ChatTokenizer
 const char = {} as character
@@ -506,5 +507,45 @@ describe('hypaMemoryV2 memo-less chats and resume', () => {
         expect(summarizer.inputs[0].startsWith('assistant: m2')).toBe(true)
         expect(fed('m1')).toBe(false)
         expect(fed('m2')).toBe(true)
+    })
+})
+
+// The tree module's `hypaV2WithoutMemos` stands in for the send-time cleanup on a branch switch; this ties the two together.
+describe('cleanInvalidChunks and hypaV2WithoutMemos', () => {
+    const pathIds = ['p1', 'p2', 'p3']
+    const departing = new Set(['d1'])
+
+    function withSets(rows: { id: number, memos: string[] }[]): HypaV2Data {
+        return {
+            lastMainChunkID: rows[rows.length - 1].id,
+            mainChunks: rows.map((row) => ({ id: row.id, text: `t${row.id}`, chatMemos: new Set(row.memos), lastChatMemo: row.memos[row.memos.length - 1] })),
+            chunks: rows.map((row) => ({ mainChunkID: row.id, text: `c${row.id}` })),
+        }
+    }
+
+    function asArrays(data: HypaV2Data): SerializableHypaV2Data {
+        return { ...data, mainChunks: data.mainChunks.map((mainChunk) => ({ ...mainChunk, chatMemos: [...mainChunk.chatMemos] })) }
+    }
+
+    function roomOf(ids: string[]): Chat {
+        return { message: ids.map((chatId) => ({ role: 'char', data: chatId, chatId }) as Message) } as Chat
+    }
+
+    // compatibility guard: passes before and after; a change to either side's rule breaks the equality
+    it('guard: both drop the summaries that name a departing message, with their chunks and the last id', () => {
+        const data = withSets([{ id: 1, memos: ['p1', 'p2'] }, { id: 2, memos: ['d1'] }, { id: 3, memos: ['p3', 'd1'] }, { id: 4, memos: ['p3'] }])
+        const expected = hypaV2WithoutMemos(asArrays(data), departing)
+        cleanInvalidChunks([], roomOf(pathIds), data)
+        expect(asArrays(data)).toEqual(expected)
+        expect(expected.mainChunks.map((mainChunk) => mainChunk.id)).toEqual([1, 4])
+    })
+
+    // compatibility guard: hypaV2WithoutMemos returns its input unchanged when nothing is removed, so its last id is the stored
+    // one, while cleanInvalidChunks recomputes it; the fixture's stored id is the last id, so the two agree
+    it('guard: both leave data alone when no summary names a departing message', () => {
+        const data = withSets([{ id: 1, memos: ['p1'] }, { id: 2, memos: ['p2', 'p3'] }])
+        const expected = hypaV2WithoutMemos(asArrays(data), departing)
+        cleanInvalidChunks([], roomOf(pathIds), data)
+        expect(asArrays(data)).toEqual(expected)
     })
 })

@@ -341,6 +341,9 @@ function installTwoWithAlt(): void {
     installDb([charWithAlt('a') as unknown as CharacterFixture, charWithAlt('b', [rec('y', 'm2', 1)]) as unknown as CharacterFixture])
 }
 
+/** A plugin list entry `planPluginListWrite` classifies as an install, so the write asks and then commits it. */
+const NEW_PLUGIN = { name: 'new-plug', script: '//@name new-plug\n//@api 3.0\n// body' }
+
 const A_ALT = [rec('x', 'm1', 1)]
 const B_ALT = [rec('y', 'm2', 1)]
 
@@ -531,7 +534,10 @@ describe('a full character written over an archived placeholder restores it firs
         const copyA = await api3().getCharacterFromIndex(0) as Entry
         const copyB = pluginCopy('hero-b')
         copyA.name = 'plugin edit'
-        await expect(api3().setDatabase({ characters: [copyA, copyB], zzMarker: 'written' })).rejects.toThrow()
+        const pluginsBefore = $state.snapshot(DBState.db.plugins)
+        await expect(api3().setDatabase({ characters: [copyA, copyB], plugins: [...(pluginsBefore ?? []), NEW_PLUGIN], zzMarker: 'written' })).rejects.toThrow()
+        expect(alertConfirmMock).toHaveBeenCalled()
+        expect($state.snapshot(DBState.db.plugins)).toEqual(pluginsBefore)
         expect((DBState.db.pluginCustomStorage as Entry).zzMarker).toBeUndefined()
         expect(DBState.db.characters[0].name).not.toBe('plugin edit')
     })
@@ -555,7 +561,10 @@ describe('a full character written over an archived placeholder restores it firs
             }
             return result
         })
-        await expect(api3().setDatabase({ characters: [copyA, copyB], zzMarker: 'written' })).rejects.toThrow(/archived again/)
+        const pluginsBefore = $state.snapshot(DBState.db.plugins)
+        await expect(api3().setDatabase({ characters: [copyA, copyB], plugins: [...(pluginsBefore ?? []), NEW_PLUGIN], zzMarker: 'written' })).rejects.toThrow(/archived again/)
+        expect(alertConfirmMock).toHaveBeenCalled()
+        expect($state.snapshot(DBState.db.plugins)).toEqual(pluginsBefore)
         expect((DBState.db.pluginCustomStorage as Entry).zzMarker).toBeUndefined()
         expect(DBState.db.characters[0].coldstorage).toBeTruthy()
     })
@@ -579,7 +588,10 @@ describe('a full character written over an archived placeholder restores it firs
             }
             return result
         })
-        await expect(api3().setDatabaseLite({ characters: [copyA, copyB], zzMarker: 'written' })).rejects.toThrow(/archived again/)
+        const pluginsBefore = $state.snapshot(DBState.db.plugins)
+        await expect(api3().setDatabaseLite({ characters: [copyA, copyB], plugins: [...(pluginsBefore ?? []), NEW_PLUGIN], zzMarker: 'written' })).rejects.toThrow(/archived again/)
+        expect(alertConfirmMock).toHaveBeenCalled()
+        expect($state.snapshot(DBState.db.plugins)).toEqual(pluginsBefore)
         expect((DBState.db.pluginCustomStorage as Entry).zzMarker).toBeUndefined()
         expect(DBState.db.characters[0].coldstorage).toBeTruthy()
     })

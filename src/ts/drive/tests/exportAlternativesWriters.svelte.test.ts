@@ -477,6 +477,8 @@ function watchStubStarts(): StartSeen[] {
 
 import { decodeRisuSave } from 'src/ts/storage/risuSave'
 import { setColdStorageItem } from 'src/ts/process/coldstorage.svelte'
+import { alternativeChatLabels } from 'src/ts/drive/exportAlternatives'
+import { exportAlternativeLabels } from 'src/ts/drive/exportInline'
 
 //#region alternatives fixtures
 
@@ -554,6 +556,18 @@ afterEach(() => {
     vi.restoreAllMocks()
 })
 
+describe('exportAlternativeLabels', () => {
+    // T80 regression reproducer: the list counts chats, not texts
+    test('reproducer: two characters with the same chat text give two labels, and one chat read through two sources gives one', () => {
+        const alice = (chaId: string) => ({ chaId, name: 'Alice', chats: [{ id: `${chaId}-chat`, name: 'Chat 1', alt: [altRecord()] }] })
+        const cold = { collected: { omittedAlternatives: alternativeChatLabels(alice('one')) }, inlined: new Map([['k', alice('one')]]), stubEntries: new Map() } as unknown as BackupColdStorage
+        const labels = exportAlternativeLabels({ characters: [alice('one'), alice('two')] } as unknown as Pick<Database, 'characters'>, cold)
+        expect(labels).toHaveLength(2)
+        expect(new Set(labels.map((label) => label.key)).size).toBe(2)
+        expect(labels.map((label) => label.text)).toEqual(['Alice / Chat 1', 'Alice / Chat 1'])
+    })
+})
+
 describe.each([
     ['SaveLocalBackup', SaveLocalBackup as Runner],
     ['SavePartialLocalBackup', SavePartialLocalBackup as Runner],
@@ -626,6 +640,25 @@ describe.each([
         const notice = (outcome as { notices: string[] }).notices.join('\n')
         expect(notice).toContain(ALT_NOTICE)
         expect(notice).toContain('Latecomer / ')
+        expect(await fileText()).not.toContain(ALT_MARK)
+    }, 120_000)
+
+    // T81 regression reproducer: the text alone cannot tell a latecomer from a chat the prompt named
+    test('reproducer: a latecomer whose chat text equals a confirmed chat, with another character id, is still reported', async () => {
+        const page = await pageOf({}, true)
+        const twin = JSON.parse(JSON.stringify(page.db.characters[0])) as Obj
+        captured.onOpen = () => {
+            twin.chaId = 'late-twin'
+            ;(page.db.characters as unknown[]).push(twin)
+        }
+
+        const outcome = await run(STUB)
+
+        expect(altPrompts()).toHaveLength(1)
+        expect(outcome).toMatchObject({ status: 'saved' })
+        const notice = (outcome as { notices: string[] }).notices.join('\n')
+        expect(notice).toContain(ALT_NOTICE)
+        expect(notice).toContain(`${String(twin.name)} / `)
         expect(await fileText()).not.toContain(ALT_MARK)
     }, 120_000)
 

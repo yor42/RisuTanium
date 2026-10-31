@@ -60,7 +60,7 @@ import type { BootImportEnd, BootImportTarget } from "../storage/store2/legacy/b
 import { emptyImportFacts, outcomeOfBootFinish, type ExportFile, type ExportOmitted, type ExportOutcome, type ImportFacts, type OperationCause, type OperationEnd, type OperationName, type OperationOutcome } from "./operationEnd";
 import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmImportScale, confirmLeftOut, createBinImportReader, hasDatabaseEntry, IMPORT_COPY_PHASE_EVERY, noteImportPhase, readBinDatabaseOmitted, readBinDatabaseTree, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
 
-import { alternativeChatLabels, withoutChatAlternatives } from "./exportAlternatives";
+import { alternativeChatLabels, withoutChatAlternatives, type AlternativeChatLabel } from "./exportAlternatives";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -105,7 +105,13 @@ async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdS
     })
     const late = mergePluginStorage(lateCollected, plugin)
     // Alternatives found only now (a character loaded or a unit first referenced after the prompt) were not named in it.
-    const lateAlternatives = [...new Set([...omittedAlternatives, ...(late.omittedAlternatives ?? [])])].filter((label) => !confirmedAlternatives.has(label))
+    const lateByKey = new Map<string, AlternativeChatLabel>()
+    for (const label of [...omittedAlternatives, ...(late.omittedAlternatives ?? [])]) {
+        if (!confirmedAlternatives.has(label.key) && !lateByKey.has(label.key)) {
+            lateByKey.set(label.key, label)
+        }
+    }
+    const lateAlternatives = [...lateByKey.values()].map((label) => label.text)
     return { dbData, late, repairNotice, stubPayloads, lateAlternatives }
 }
 
@@ -232,7 +238,7 @@ function describeWriteMeasure(): string {
  * repair, is inlined instead. This function never refuses;
  * `notice` says what was done.
  */
-async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>, modules: RisuModule[] | null): Promise<{ tree: Database, notice: string | null, omittedAlternatives: string[] }> {
+async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>, modules: RisuModule[] | null): Promise<{ tree: Database, notice: string | null, omittedAlternatives: AlternativeChatLabel[] }> {
     const plain = { ...db, account: undefined }
     // Set before either return below, so every encoder gets the module list read before the export opened, never the live one.
     if (modules !== null) {
@@ -251,7 +257,7 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
         }
     }
     // A `.bin` carries no chat alternatives. Only a character with some is copied; the page's characters are never changed.
-    const omittedAlternatives: string[] = []
+    const omittedAlternatives: AlternativeChatLabel[] = []
     if (Array.isArray(plain.characters)) {
         const bare = plain.characters.map((slot) => withoutChatAlternatives(slot))
         if (bare.some((slot, index) => slot !== plain.characters[index])) {
@@ -881,7 +887,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
 
     // A `.bin` has no place for chat alternatives; name the chats that lose theirs before the writer opens.
     const alternativeLabels = exportAlternativeLabels(db, cold)
-    if (!await confirmOmitAlternatives(session, alternativeLabels)) {
+    if (!await confirmOmitAlternatives(session, alternativeLabels.map((label) => label.text))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
@@ -995,7 +1001,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         // The write counts of the notes below start here, so they hold the stub, late and database writes only.
         takeExportWriteStats()
     }
-    const { dbData, late, repairNotice, stubPayloads, lateAlternatives } = await encodeDatabaseWithLateColdStorage(db, cold, modules, new Set(alternativeLabels))
+    const { dbData, late, repairNotice, stubPayloads, lateAlternatives } = await encodeDatabaseWithLateColdStorage(db, cold, modules, new Set(alternativeLabels.map((label) => label.key)))
     session.cancel.throwIfCancelled()
     noteImportPhase('export database encoded')
     await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving local Backup Cold data...', session.gate.wait)
@@ -1204,7 +1210,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
 
     // A `.bin` has no place for chat alternatives; name the chats that lose theirs before the writer opens.
     const alternativeLabels = exportAlternativeLabels(db, cold)
-    if (!await confirmOmitAlternatives(session, alternativeLabels)) {
+    if (!await confirmOmitAlternatives(session, alternativeLabels.map((label) => label.text))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
@@ -1273,7 +1279,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         await writer.writeBackup(payload.backupName, payload.encoded)
     }
 
-    const { dbData, late, repairNotice, stubPayloads, lateAlternatives } = await encodeDatabaseWithLateColdStorage(db, cold, modules, new Set(alternativeLabels))
+    const { dbData, late, repairNotice, stubPayloads, lateAlternatives } = await encodeDatabaseWithLateColdStorage(db, cold, modules, new Set(alternativeLabels.map((label) => label.key)))
     session.cancel.throwIfCancelled()
     await writeStubPayloadsAndRelease(writer, cold, stubPayloads, 'Saving partial local Backup Cold data...', session.gate.wait)
     for(let i=0;i<late.payloads.length;i++){

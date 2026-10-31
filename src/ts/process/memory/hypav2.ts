@@ -288,7 +288,7 @@ function convertOldToNewHypaV2Data(oldData: OldHypaV2Data, chats: OpenAIChat[]):
     return newData; // updated HypaV2Data
 }
 
-function cleanInvalidChunks(
+export function cleanInvalidChunks(
     chats: OpenAIChat[],
     room: Chat,
     data: HypaV2Data,
