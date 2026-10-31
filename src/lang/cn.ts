@@ -43,6 +43,9 @@ export const languageChinese = {
             `暂时无法加载已归档的角色 ${characterName}。未做任何更改。请重试。`,
         "coldStorageRestoreUnavailable": "无法在此页面打开已归档的角色：此浏览器在此处不提供用于存放它们的存储空间（例如在纯 HTTP 地址下）。未做任何更改。",
         "coldStorageRestoreDamaged": "无法读取此角色的归档副本：它可能已损坏。未做任何更改，也未删除任何内容。",
+        "coldStorageAltRepliesDropped": (characterName: string, chatNames: string) =>
+            `${characterName} 的以下聊天的备选回复无法读取，已被略过：${chatNames}。对话本身已完整加载。`,
+        "chatAltUnreadable": "无法读取此聊天的备选回复，因此无法重新生成或创建分支。未做任何更改。",
         "coldStorageNamedRestoreUnavailable": (characterName: string) =>
             `无法在此页面打开已归档的角色 ${characterName}：此浏览器在此处不提供用于存放已归档角色的存储空间（例如在纯 HTTP 地址下）。未做任何更改。`,
         "coldStorageNamedRestoreDamaged": (characterName: string) =>
@@ -1988,6 +1991,10 @@ export const languageChinese = {
         `有 ${items.length} 个项目达到或超过 4 GiB，超出了备份文件单个条目所能容纳的大小，因此它们的内容不在备份中（角色只保留一个占位符）：\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `此备份中有 ${count} 个项目大于 100 MiB。上游 RisuAI Node 服务器无法恢复如此大的项目，因此在那里恢复此备份时会跳过它们；本应用和其他平台则可以恢复。是否创建包含这些项目的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "backupAlternativesConfirm": (count: number, names: string[]) =>
+        `有 ${count} 个聊天含有备选回复，而备份文件中没有存放它们的位置，因此它们将不会包含在此备份中（聊天及其消息会被保存）。备选回复仍保留在本应用中，只是备份里没有。是否创建不含它们的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "backupAlternativesLeftOut": (count: number, names: string[]) =>
+        `备份运行期间发现有 ${count} 个聊天含有备选回复，而备份文件中没有存放它们的位置，因此它们不在备份中（聊天及其消息已保存）：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "backupReadyToSave": () =>
         "备份已准备好保存。请按“确定”开始保存。",
     "backupFailedNothingWritten": () =>
@@ -2270,6 +2277,7 @@ export const languageChinese = {
             : part === 'scripts' ? '某个角色的脚本'
             : part === 'chat' ? '一段聊天'
             : part === 'chatPart' ? '某段聊天的一部分'
+            : part === 'chatAlternatives' ? '某个聊天的备选回复'
             : part === 'module' ? '一个模块'
             : part === 'moduleList' ? '您的模块列表'
             : part === 'settings' ? '您的通用设置'
@@ -2729,6 +2737,7 @@ export const languageChinese = {
         "flaggedChatPosition": (position: number) => `聊天 ${position}`,
         "flaggedChatId": (id: string) => `聊天（ID ${id}）`,
         "flaggedChatLine": (chat: string, state: string, parts: number) => parts > 1 ? `${chat}：${state}（${parts} 个部分）` : `${chat}：${state}`,
+        "flaggedChatAltLine": (chat: string, state: string) => `${chat}：其备选回复${state}；对话本身完好`,
         "foreignTitle": "存在一项未完成的操作记录",
         "foreignBody": (operation: string, when: string) => `您的存储中记录了一项从未完成的操作（${operation}，开始于 ${when}）。如果其他 RisuTanium 窗口或标签页仍在运行它，请等待。清除该记录绝不会删除您已保存的数据。`,
         "foreignWait": "等待",

@@ -63,6 +63,13 @@ describe('keepLiveAlt', () => {
         expect($state.snapshot((state.characters[0].chats as Entry[])[0].alt)).toEqual([rec('x', 'm1', 1)])
     })
 
+    test('guard: a live element and its copy in one incoming list, behind another live character, keep the live alt', () => {
+        const live = $state([character('z', []), character('a', [chat('c', ['m1'], [rec('x', 'm1', 1)])])])
+        const copyOfA = $state.snapshot(live[1]) as Entry
+        expect(() => keepLiveAlt(live, [live[1], copyOfA])).not.toThrow()
+        expect($state.snapshot((live[1].chats as Entry[])[0].alt)).toEqual([rec('x', 'm1', 1)])
+    })
+
     test('a character continues the live one with its chaId at another index only when each list holds the id once', () => {
         const live = [character('a', [chat('c', ['m1'], [rec('x', 'm1', 1)])]), character('b', [])]
         const swapped = [character('b', []), character('a', [chat('c', ['m1'])])]

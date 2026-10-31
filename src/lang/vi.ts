@@ -43,6 +43,9 @@ export const languageVietnamese = {
             `Hiện không thể tải nhân vật đã lưu trữ ${characterName}. Không có gì bị thay đổi. Hãy thử lại.`,
         "coldStorageRestoreUnavailable": "Không thể mở các nhân vật đã lưu trữ trên trang này: trình duyệt này không cung cấp bộ nhớ cho chúng ở đây (ví dụ trên địa chỉ HTTP thông thường). Không có gì bị thay đổi.",
         "coldStorageRestoreDamaged": "Không thể đọc bản đã lưu trữ của nhân vật này: bản đó có thể đã bị hỏng. Không có gì bị thay đổi hoặc bị xóa.",
+        "coldStorageAltRepliesDropped": (characterName: string, chatNames: string) =>
+            `Không thể đọc các phản hồi thay thế của những cuộc trò chuyện sau của ${characterName} nên đã bỏ qua chúng: ${chatNames}. Bản thân các cuộc trò chuyện đã được tải nguyên vẹn.`,
+        "chatAltUnreadable": "Không thể đọc các phản hồi thay thế của cuộc trò chuyện này, nên không thể tạo lại hoặc rẽ nhánh. Không có gì bị thay đổi.",
         "coldStorageNamedRestoreUnavailable": (characterName: string) =>
             `Không thể mở nhân vật đã lưu trữ ${characterName} trên trang này: trình duyệt này không cung cấp bộ nhớ cho các nhân vật đã lưu trữ ở đây (ví dụ trên địa chỉ HTTP thông thường). Không có gì bị thay đổi.`,
         "coldStorageNamedRestoreDamaged": (characterName: string) =>
@@ -1988,6 +1991,10 @@ export const languageVietnamese = {
         `${items.length} mục có dung lượng từ 4 GiB trở lên, vượt quá mức mà một mục trong tệp sao lưu có thể chứa, nên nội dung của chúng không có trong bản sao lưu (nhân vật chỉ giữ lại một phần giữ chỗ):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `${count} mục trong bản sao lưu này lớn hơn 100 MiB. Máy chủ Node RisuAI upstream không thể khôi phục mục lớn như vậy, nên sẽ bỏ qua chúng khi bản sao lưu này được khôi phục ở đó; ứng dụng này và các nền tảng khác thì khôi phục được. Bạn có muốn tạo bản sao lưu có bao gồm chúng không? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} mục nữa` : ''}`,
+    "backupAlternativesConfirm": (count: number, names: string[]) =>
+        `${count} cuộc trò chuyện có các phản hồi thay thế, và tệp sao lưu không có chỗ chứa chúng, nên chúng sẽ bị bỏ qua khỏi bản sao lưu này (các cuộc trò chuyện và tin nhắn của chúng vẫn được lưu). Các phản hồi thay thế vẫn ở trong ứng dụng này; chỉ bản sao lưu không có chúng. Bạn có muốn tạo bản sao lưu không có chúng không? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} mục nữa` : ''}`,
+    "backupAlternativesLeftOut": (count: number, names: string[]) =>
+        `${count} cuộc trò chuyện có các phản hồi thay thế được phát hiện trong lúc sao lưu đang chạy, và tệp sao lưu không có chỗ chứa chúng, nên chúng không có trong bản sao lưu (các cuộc trò chuyện và tin nhắn của chúng vẫn được lưu):\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} mục nữa` : ''}`,
     "backupReadyToSave": () =>
         "Bản sao lưu đã sẵn sàng để lưu. Nhấn OK để bắt đầu lưu.",
     "backupFailedNothingWritten": () =>
@@ -2270,6 +2277,7 @@ export const languageVietnamese = {
             : part === 'scripts' ? 'các tập lệnh của một nhân vật'
             : part === 'chat' ? 'một cuộc trò chuyện'
             : part === 'chatPart' ? 'một phần của một cuộc trò chuyện'
+            : part === 'chatAlternatives' ? 'các phản hồi thay thế của một cuộc trò chuyện'
             : part === 'module' ? 'một mô-đun'
             : part === 'moduleList' ? 'danh sách mô-đun của bạn'
             : part === 'settings' ? 'cài đặt chung của bạn'
@@ -2729,6 +2737,7 @@ export const languageVietnamese = {
         flaggedChatPosition: (position: number) => `cuộc trò chuyện ${position}`,
         flaggedChatId: (id: string) => `cuộc trò chuyện (id ${id})`,
         flaggedChatLine: (chat: string, state: string, parts: number) => parts > 1 ? `${chat}: ${state} (${parts} phần)` : `${chat}: ${state}`,
+        flaggedChatAltLine: (chat: string, state: string) => `${chat}: các phản hồi thay thế ${state}; bản thân cuộc trò chuyện vẫn nguyên vẹn`,
         foreignTitle: "Có một thao tác chưa hoàn tất được ghi lại",
         foreignBody: (operation: string, when: string) => `Một thao tác được ghi trong bộ nhớ lưu trữ của bạn (${operation}, bắt đầu ${when}) chưa bao giờ hoàn tất. Nếu một cửa sổ hoặc tab RisuTanium khác vẫn đang chạy nó, hãy chờ. Xóa bản ghi này không bao giờ xóa dữ liệu đã lưu của bạn.`,
         foreignWait: "Chờ",

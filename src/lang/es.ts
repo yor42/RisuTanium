@@ -43,6 +43,9 @@ export const languageSpanish = {
             `No se pudo cargar el personaje archivado ${characterName} en este momento. No se cambió nada. Inténtalo de nuevo.`,
         "coldStorageRestoreUnavailable": "Los personajes archivados no se pueden abrir en esta página: este navegador no ofrece aquí almacenamiento para ellos (por ejemplo, en una dirección HTTP sin cifrar). No se cambió nada.",
         "coldStorageRestoreDamaged": "No se pudo leer la copia archivada de este personaje: puede estar dañada. No se cambió ni se eliminó nada.",
+        "coldStorageAltRepliesDropped": (characterName: string, chatNames: string) =>
+            `No se pudieron leer las respuestas alternativas de estos chats de ${characterName} y se omitieron: ${chatNames}. Las conversaciones en sí se cargaron intactas.`,
+        "chatAltUnreadable": "No se pueden leer las respuestas alternativas de este chat, así que no se puede regenerar ni ramificar. No se cambió nada.",
         "coldStorageNamedRestoreUnavailable": (characterName: string) =>
             `No se puede abrir el personaje archivado ${characterName} en esta página: este navegador no ofrece aquí almacenamiento para personajes archivados (por ejemplo, en una dirección HTTP sin cifrar). No se cambió nada.`,
         "coldStorageNamedRestoreDamaged": (characterName: string) =>
@@ -1990,6 +1993,10 @@ export const languageSpanish = {
         `${items.length} elemento(s) ocupan 4 GiB o más, que es más de lo que cabe en una sola entrada de un archivo de copia de seguridad, por lo que su contenido no está en la copia de seguridad (un personaje conserva solo un marcador de posición):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `${count} elemento(s) de esta copia de seguridad superan los 100 MiB. Un servidor Node de RisuAI upstream no puede restaurar un elemento tan grande, por lo que los omitiría al restaurar esta copia allí; esta aplicación y las demás plataformas sí los restauran. ¿Crear la copia de seguridad con ellos incluidos? Si lo rechazas, no se crea ningún archivo de copia de seguridad. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
+    "backupAlternativesConfirm": (count: number, names: string[]) =>
+        `${count} chat(s) tienen respuestas alternativas, y un archivo de copia de seguridad no tiene lugar para ellas, así que se omitirían de esta copia (los chats y sus mensajes se guardan). Las alternativas permanecen en esta aplicación; solo la copia no las incluye. ¿Crear la copia de seguridad sin ellas? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
+    "backupAlternativesLeftOut": (count: number, names: string[]) =>
+        `${count} chat(s) tenían respuestas alternativas que se encontraron mientras se ejecutaba la copia de seguridad, y un archivo de copia de seguridad no tiene lugar para ellas, así que no están en la copia (los chats y sus mensajes se guardan):\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "backupReadyToSave": () =>
         "La copia de seguridad está lista para guardarse. Pulsa OK para empezar a guardarla.",
     "backupFailedNothingWritten": () =>
@@ -2272,6 +2279,7 @@ export const languageSpanish = {
             : part === 'scripts' ? 'los scripts de un personaje'
             : part === 'chat' ? 'un chat'
             : part === 'chatPart' ? 'una parte de un chat'
+            : part === 'chatAlternatives' ? 'las respuestas alternativas de un chat'
             : part === 'module' ? 'un módulo'
             : part === 'moduleList' ? 'tu lista de módulos'
             : part === 'settings' ? 'tus ajustes generales'
@@ -2733,6 +2741,7 @@ export const languageSpanish = {
         flaggedChatPosition: (position: number) => `chat ${position}`,
         flaggedChatId: (id: string) => `chat (id ${id})`,
         flaggedChatLine: (chat: string, state: string, parts: number) => parts > 1 ? `${chat}: ${state} (${parts} partes)` : `${chat}: ${state}`,
+        flaggedChatAltLine: (chat: string, state: string) => `${chat}: respuestas alternativas: ${state}; la conversación en sí está intacta`,
         foreignTitle: "Hay una operación sin terminar registrada",
         foreignBody: (operation: string, when: string) => `Una operación registrada en tu almacenamiento (${operation}, iniciada ${when}) nunca terminó. Si otra ventana o pestaña de RisuTanium aún la está ejecutando, espera. Borrar el registro nunca elimina tus datos guardados.`,
         foreignWait: "Esperar",
