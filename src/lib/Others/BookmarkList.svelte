@@ -10,6 +10,8 @@
     import { keyEventBlocked } from "src/ts/keyEventBlocked";
     import { get } from "svelte/store";
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
+    import { branchAt, isComposerBusy } from "src/ts/process/composerActions.svelte";
+    import { doingChat } from "src/ts/process/index.svelte";
 
     const close = () => $bookmarkListOpen = false;
 
@@ -120,6 +122,14 @@
         }
     }
 
+    // A bookmarked row has no composer menu to close; the gate behind `branchAt` refuses the last message
+    // and a busy chat itself, and the row's Branch button disables itself on the last message.
+    function branchRow(index: number, expectedId: string | undefined) {
+        return branchAt({ closeMenu: () => {} }, index, expectedId);
+    }
+
+    const treeControlsBusy = () => $doingChat || isComposerBusy()
+
     function goToChat(index: number) {
         ScrollToMessageStore.value = index;
         close();
@@ -202,6 +212,9 @@
                                         largePortrait={msg.speaker?.largePortrait}
                                         character={msg.saying}
                                         isLastMemory={false}
+                                        expectedId={msg.chatId}
+                                        onBranch={branchRow}
+                                        getBusy={treeControlsBusy}
                                     />
                                 {:else}
                                     <Chat
@@ -215,6 +228,9 @@
                                         largePortrait={chara.largePortrait}
                                         character={simpleChar}
                                         isLastMemory={false}
+                                        expectedId={msg.chatId}
+                                        onBranch={branchRow}
+                                        getBusy={treeControlsBusy}
                                     />
                                 {/if}
                             </div>

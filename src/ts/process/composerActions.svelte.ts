@@ -1,6 +1,6 @@
 import { get } from 'svelte/store'
 import { DBState, selectedCharID } from '../stores.svelte'
-import type { Message, character, Chat } from '../storage/database.svelte'
+import type { Message, character, Chat, groupChat } from '../storage/database.svelte'
 import { doingChat, sendChat } from './index.svelte'
 import type { SendChatOriginHint } from './index.svelte'
 import { sleep } from '../util'
@@ -8,14 +8,14 @@ import { language } from '../../lang'
 import { alertError } from '../alert'
 import sendSound from '../../etc/send.mp3'
 import { sendCharacterMessage } from './sendCharacterMessage'
-import { PreUnreroll, Prereroll } from './prereroll'
 import { processMultiCommand } from './command'
 import { ensureModulesOrAlert } from './moduleEnsure'
 import { hasModuleStubs } from './moduleRefList'
 import { isColdChat } from './coldstorageData'
 import { isExpTranslator, translate } from '../translator/translator'
-import { beginWork, originOf, originStatus, writeAt, type Origin, type WorkHandle } from './chatOrigin'
-import { anchorAtHandOff, beginRegeneration, recordGeneration, resetRerollHistory, resetRerollHistoriesForTests, stepRerollHistory, type RerollTicket } from './rerollHistory'
+import { beginWork, originStatus, writeAt, type Origin, type WorkHandle } from './chatOrigin'
+import { rerollBase } from './rerollHistory'
+import { detachTail, endTarget, refuseUnreadableAlt, siblingsAt, stampMissingIds, switchTo } from './chatTree'
 import { markCharacterForSave } from '../storage/characterSaveMarks'
 import { abortUnitInProgress, isComposerWindowOpen, setComposerWindow, turnsReachedCount } from './generationOwnership.svelte'
 import { registerDraft, unregisterDraft, COMPOSER_DRAFT_KIND } from '../localDrafts'
@@ -54,15 +54,12 @@ let currentGenerationController: AbortController | null = null
 
 /**
  * The chat a generation writes into, and the objects it was read through.
- * `sendChatMain` hands both to `sendChat` and records the result against the
- * origin afterwards, so a switch of chat, character or Home while the reply is
- * generated changes neither where the reply goes nor which chat's reroll
- * history receives it. `reroll` is set only for a reroll that regenerates.
+ * `sendChatMain` hands both to `sendChat`, so a switch of chat, character or
+ * Home while the reply is generated does not change where the reply goes.
  */
 interface GenerationTarget {
     origin: Origin
     originHint: SendChatOriginHint
-    reroll?: RerollTicket
 }
 
 /**
@@ -129,9 +126,9 @@ function clearInflightIfCurrent(record: InflightRecord): void {
 /**
  * Test-only reset: clears whatever in-flight record a stuck test left
  * behind, closes the window and the lock, stops auto mode and drops the
- * current generation controller, and clears every stored composer draft and
- * every reroll history -- so a timed-out test cannot cascade into every test
- * that runs after it. Never called from production code.
+ * current generation controller, and clears every stored composer draft --
+ * so a timed-out test cannot cascade into every test that runs after it.
+ * Never called from production code.
  */
 export function resetComposerActionsForTests(): void {
     inflight = null
@@ -141,7 +138,6 @@ export function resetComposerActionsForTests(): void {
     autoModeRunning = false
     currentGenerationController = null
     composerDrafts.resetComposerDraftsForTests()
-    resetRerollHistoriesForTests()
 }
 
 /** True while the one-action window is open; the Send button's busy state. */
@@ -162,8 +158,7 @@ export function isAutoModeActive(): boolean {
 /**
  * The composer's live state, reached through its hooks. Only the menu-close
  * hook remains here: the three text/file values are reached by key through
- * `composerDrafts.svelte.ts`, the reroll histories are per chat in
- * `rerollHistory.ts`, and auto mode's running state and the current
+ * `composerDrafts.svelte.ts`, and auto mode's running state and the current
  * generation's abort controller are this module's own state, not per instance.
  */
 export interface ComposerActionsSource {
@@ -387,7 +382,6 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
         // put back once the message has landed.
         clearInflightIfCurrent(record)
         unregisterDraft(inflightDraftKey)
-        resetRerollHistory(workHandle.origin)
         await sleep(10)
         // The hand-off: the lock ends the moment before the generation
         // callback is called.
@@ -425,112 +419,235 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
 }
 
 /**
- * Shows the next or the previous candidate of the chat's last reply, when the
- * generation that produced that reply stored several for this very chat.
- * True when a candidate was shown.
+ * What a tree action holds once it has passed the gate: the selected chat
+ * under its work registration, and the path position it addresses. The caller
+ * ends `workHandle`.
  */
-function stepCandidates(origin: Origin, chat: Chat, direction: 'back' | 'forward'): boolean {
-    const last = chat.message.at(-1)
-    const genId = last?.generationInfo?.generationId
-    if(!last || !genId){
-        return false
-    }
-    const candidate = direction === 'forward' ? Prereroll(genId, origin, last.data) : PreUnreroll(genId, origin, last.data)
-    if(typeof candidate !== 'string'){
-        return false
-    }
-    writeAt(origin, (ctx) => {
-        const shown = ctx.chat.message[ctx.chat.message.length - 1]
-        shown.data = candidate
-        // A candidate the person stepped to has been looked at.
-        delete shown.interrupted
-    })
-    return true
+interface TreeEntry {
+    char: character | groupChat
+    chat: Chat
+    workHandle: WorkHandle
+    index: number
 }
 
-export async function reroll(source: ComposerActionsSource): Promise<void> {
+/**
+ * Which position a tree action addresses: the row `index` that was rendered
+ * for the message `expectedId` (the last message's id for the position at the
+ * end of the path), or the last message for the reroll and un-reroll buttons.
+ */
+type TreeTarget = { index: number, expectedId: string | undefined } | 'last'
+
+function notifyUnreadableAlt(): void {
+    alertError(language.errors.chatAltUnreadable)
+}
+
+/**
+ * The gate every tree action passes before it changes anything: it refuses
+ * while a generation or another composer action runs, when the selected chat
+ * cannot be resolved, when the addressed row is no longer what the person
+ * saw, and when the chat's alternatives cannot be read. It does not await, so
+ * the checks and the mutation that follows happen in one synchronous run.
+ * Null when refused; otherwise the caller owns the returned work handle.
+ */
+function enterTree(target: TreeTarget): TreeEntry | null {
     if(refuseColdSelectedChat()){
-        return
+        return null
     }
     if(get(doingChat)){
+        return null
+    }
+    if(isComposerWindowOpen()){
+        return null
+    }
+    const char = DBState.db.characters[get(selectedCharID)]
+    const chat = char?.chats?.[char.chatPage]
+    if(!char || !chat){
+        return null
+    }
+    // Fills a missing chat id, as a reroll always has: the records that follow
+    // are matched to their chat by it.
+    const workHandle = beginWork(char, chat)
+    if(!workHandle){
+        return null
+    }
+    const entry = admitTreeTarget(char, chat, workHandle, target)
+    if(!entry){
+        workHandle.end()
+    }
+    return entry
+}
+
+function admitTreeTarget(char: character | groupChat, chat: Chat, workHandle: WorkHandle, target: TreeTarget): TreeEntry | null {
+    const origin = workHandle.origin
+    if(originStatus(origin) !== 'ok'){
+        return null
+    }
+    const length = chat.message.length
+    if(target === 'last'){
+        if(length === 0){
+            return null
+        }
+        if(refuseUnreadableAlt(chat, notifyUnreadableAlt)){
+            return null
+        }
+        if(!chat.message[length - 1].chatId){
+            writeAt(origin, (ctx) => { stampMissingIds(ctx.chat) })
+        }
+        return { char, chat, workHandle, index: length - 1 }
+    }
+    const { index, expectedId } = target
+    if(!Number.isInteger(index) || index < 0 || index > length){
+        return null
+    }
+    if(length === 0){
+        return refuseUnreadableAlt(chat, notifyUnreadableAlt) ? null : { char, chat, workHandle, index }
+    }
+    const heldId = chat.message[index === length ? length - 1 : index].chatId
+    if(typeof expectedId === 'string' && heldId !== expectedId){
+        return null
+    }
+    if(refuseUnreadableAlt(chat, notifyUnreadableAlt)){
+        return null
+    }
+    if(typeof expectedId !== 'string'){
+        // A row mounted before its message had an id cannot be matched to it:
+        // the ids are given now and nothing else changes; the row remounts
+        // with its id and the next press acts.
+        writeAt(origin, (ctx) => { stampMissingIds(ctx.chat) })
+        return null
+    }
+    return { char, chat, workHandle, index }
+}
+
+/**
+ * Moves the addressed position one sibling back or forward. True when the
+ * press is a forward press past the last sibling of the last message that a
+ * reroll can regenerate: the caller then regenerates.
+ */
+function stepInTree(entry: TreeEntry, direction: 'back' | 'forward'): boolean {
+    const { chat, index } = entry
+    const origin = entry.workHandle.origin
+    if(index === chat.message.length){
+        // The path ends here and the last message has children: the end
+        // control brings back the most recently left continuation.
+        if(direction === 'back'){
+            const target = endTarget(chat)
+            if(target !== null){
+                writeAt(origin, (ctx) => { switchTo(ctx.chat, index, target) })
+            }
+        }
+        return false
+    }
+    const siblings = siblingsAt(chat, index)
+    const shownId = chat.message[index].chatId
+    const at = siblings.findIndex((message) => message.chatId === shownId)
+    if(at === -1){
+        return false
+    }
+    const to = direction === 'back' ? at - 1 : at + 1
+    if(to >= 0 && to < siblings.length){
+        const headId = siblings[to].chatId
+        if(headId){
+            writeAt(origin, (ctx) => { switchTo(ctx.chat, index, headId) })
+        }
+        return false
+    }
+    return direction === 'forward' && index === chat.message.length - 1 && rerollBase(chat.message) !== null
+}
+
+async function stepFrom(source: ComposerActionsSource, entry: TreeEntry, direction: 'back' | 'forward'): Promise<void> {
+    let regenerates = false
+    try {
+        regenerates = stepInTree(entry, direction)
+    }
+    finally {
+        entry.workHandle.end()
+    }
+    if(regenerates){
+        return regenerate(source)
+    }
+}
+
+/**
+ * Steps the position `index` to the previous or the next sibling. A forward
+ * press past the last sibling generates a new reply only on the last message;
+ * on any other row it changes nothing.
+ */
+export async function stepSibling(source: ComposerActionsSource, index: number, expectedId: string | undefined, direction: 'back' | 'forward'): Promise<void> {
+    const entry = enterTree({ index, expectedId })
+    if(!entry){
         return
     }
-    // The one-action window also covers reroll, so a Send while a reroll's
-    // own generation is running is refused the same way.
-    if(isComposerWindowOpen()){
+    return stepFrom(source, entry, direction)
+}
+
+/**
+ * Ends the path at message `index`: the messages after it leave the path and
+ * become the children of that message. Refused on the last message.
+ */
+export async function branchAt(source: ComposerActionsSource, index: number, expectedId: string | undefined): Promise<void> {
+    const entry = enterTree({ index, expectedId })
+    if(!entry){
+        return
+    }
+    try {
+        if(index >= entry.chat.message.length - 1){
+            return
+        }
+        writeAt(entry.workHandle.origin, (ctx) => { detachTail(ctx.chat, index + 1) })
+    }
+    finally {
+        entry.workHandle.end()
+    }
+}
+
+/**
+ * Replaces the last reply (the piece from `rerollBase`) with a new
+ * generation. The piece leaves the path before the request, so it is kept as
+ * a sibling whatever happens to the generation.
+ */
+async function regenerate(source: ComposerActionsSource): Promise<void> {
+    const entry = enterTree('last')
+    if(!entry){
         return
     }
     setComposerWindow(true)
-    let workHandle: WorkHandle | null = null
     try {
-        const char = DBState.db.characters[get(selectedCharID)]
-        const chat = char?.chats?.[char.chatPage]
-        if(!char || !chat){
+        const { char, chat, workHandle } = entry
+        const base = rerollBase(chat.message)
+        if(base === null){
             return
         }
-        // The chat the regenerated reply goes to is fixed here, before the
-        // chat is read or trimmed.
-        workHandle = beginWork(char, chat)
-        if(!workHandle){
-            return
-        }
-        const origin = workHandle.origin
-        if(originStatus(origin) !== 'ok'){
-            return
-        }
-        if(stepCandidates(origin, chat, 'forward')){
-            return
-        }
-        if(stepRerollHistory(origin, 'forward')){
-            return
-        }
-        if(chat.message.length === 0){
-            return
-        }
-        // Closed before the chat is cut back: nothing between the cut and the
-        // hand-off to generation may throw, or the cut chat goes unrecorded.
+        // Closed before the chat is cut: nothing between the cut and the
+        // hand-off to generation may throw.
         source.closeMenu()
-        const ticket = beginRegeneration(origin)
-        if(!ticket){
-            return
+        if(base < chat.message.length){
+            writeAt(workHandle.origin, (ctx) => { detachTail(ctx.chat, base) })
         }
-        await sendChatMain({ origin, originHint: { owner: char, chat }, reroll: ticket })
+        await sendChatMain({ origin: workHandle.origin, originHint: { owner: char, chat } })
     }
     finally {
-        workHandle?.end()
+        entry.workHandle.end()
         setComposerWindow(false)
     }
 }
 
+/** The forward press on the last message: the next sibling, else a new generation. */
+export async function reroll(source: ComposerActionsSource): Promise<void> {
+    const entry = enterTree('last')
+    if(!entry){
+        return
+    }
+    return stepFrom(source, entry, 'forward')
+}
+
+/** The back press on the last message: the previous sibling. */
 export async function unReroll(source: ComposerActionsSource): Promise<void> {
-    if(refuseColdSelectedChat()){
+    const entry = enterTree('last')
+    if(!entry){
         return
     }
-    if(get(doingChat)){
-        return
-    }
-    if(isComposerWindowOpen()){
-        return
-    }
-    setComposerWindow(true)
-    try {
-        const char = DBState.db.characters[get(selectedCharID)]
-        const chat = char?.chats?.[char.chatPage]
-        if(!char || !chat){
-            return
-        }
-        const origin = originOf(char, chat)
-        if(!origin || originStatus(origin) !== 'ok'){
-            return
-        }
-        if(stepCandidates(origin, chat, 'back')){
-            return
-        }
-        stepRerollHistory(origin, 'back')
-    }
-    finally {
-        setComposerWindow(false)
-    }
+    return stepFrom(source, entry, 'back')
 }
 
 /**
@@ -542,10 +659,7 @@ export async function sendChatMain(target: GenerationTarget, continued: boolean 
 
     // Every read around the send goes through the target's own chat, never
     // the selection, which may be another chat, another character or Home by
-    // the time the send is handed over or has finished. What the generation
-    // leaves after the chat's last message at the hand-off (the regenerated
-    // base, for a reroll) is recorded against that message.
-    const handOff = target.reroll ? { anchor: target.reroll.anchor } : anchorAtHandOff(target.origin)
+    // the time the send is handed over or has finished.
     // Only a take empties a record -- generation itself never writes one.
     const controller = existingController ?? new AbortController()
     // Module state, not per instance, so the busy button in any composer
@@ -563,16 +677,6 @@ export async function sendChatMain(target: GenerationTarget, continued: boolean 
     } catch (error) {
         console.error(error)
         alertError(error)
-    }
-    // Recorded however the generation settled: a stopped or failed reroll
-    // still leaves the reply it replaced reachable.
-    if(handOff){
-        try {
-            recordGeneration(target.origin, handOff.anchor, target.reroll)
-        } catch (error) {
-            console.error(error)
-            alertError(error)
-        }
     }
     if(DBState.db.playMessage){
         const audio = new Audio(sendSound);

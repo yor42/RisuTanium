@@ -1,18 +1,16 @@
 /**
- * Stepping to another candidate of the last reply (reroll forward, un-reroll
- * back) removes the reply's `interrupted` flag: the person has looked at the
- * candidate. Drives the REAL composer actions, work registry and origin
- * writer against a real `$state` database; the generation entry point, the
- * candidate store and the other collaborators are mocked.
+ * Stepping to another sibling of the last reply (reroll forward, un-reroll
+ * back) moves the reply on screen as a whole, so the `interrupted` flag stays
+ * with the message that carries it, on the path or parked in `alt`. Drives the
+ * REAL composer actions, work registry and origin writer against a real
+ * `$state` database; the generation entry point and the other collaborators
+ * are mocked.
  */
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database, Chat, Message } from 'src/ts/storage/database.svelte'
 
 //#region module mocks
-
-const prerollMock = vi.hoisted(() => vi.fn())
-const preUnrerollMock = vi.hoisted(() => vi.fn())
 
 vi.mock('localforage', () => ({
     default: {
@@ -69,8 +67,6 @@ vi.mock(import('src/ts/process/sendCharacterMessage'), () => ({
 
 vi.mock(import('src/ts/process/prereroll'), () => ({
     addRerolls: vi.fn(),
-    Prereroll: prerollMock,
-    PreUnreroll: preUnrerollMock,
 }) as unknown as typeof import('src/ts/process/prereroll'))
 
 vi.mock(import('src/ts/process/command'), () => ({
@@ -91,52 +87,68 @@ vi.mock(import('src/ts/process/coldstorageData'), () => ({
 import { reroll, unReroll, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 
-function installFlaggedReply(): Message {
-    const message = { role: 'char', data: 'Partial', time: 1, chatId: 'reply-1', interrupted: true, generationInfo: { generationId: 'gen-1' } } as unknown as Message
-    const chat = { id: 'chat-0', note: '', name: '', localLore: [], fmIndex: -1, message: [{ role: 'user', data: 'Hi', time: 1 }, message] } as unknown as Chat
+/** A chat whose last reply (time 5) is flagged, with `siblings` as records that follow the user message. */
+function installFlaggedReply(siblings: Message[] = []): Chat {
+    const message = { role: 'char', data: 'Partial', time: 5, chatId: 'reply-1', interrupted: true, generationInfo: { generationId: 'gen-1' } } as unknown as Message
+    const chat = {
+        id: 'chat-0', note: '', name: '', localLore: [], fmIndex: -1,
+        message: [{ role: 'user', data: 'Hi', time: 1, chatId: 'user-0' }, message],
+        alt: siblings.map((m) => ({ m, p: 'user-0', a: 1 })),
+    } as unknown as Chat
     DBState.db = {
         characters: [{ chaId: 'char-0', name: 'char-0', type: 'character', chatPage: 0, chats: [chat] }],
     } as unknown as Database
     selectedCharID.set(0)
-    return DBState.db.characters[0].chats[0].message[1]
+    return DBState.db.characters[0].chats[0]
+}
+
+function sibling(data: string, time: number, extra: Record<string, unknown> = {}): Message {
+    return { role: 'char', data, time, chatId: `sib-${data}`, ...extra } as unknown as Message
 }
 
 const source: ComposerActionsSource = { closeMenu: () => {} }
 
 beforeEach(() => {
-    prerollMock.mockReset()
-    preUnrerollMock.mockReset()
     resetComposerActionsForTests()
 })
 
-describe('stepping to another candidate of a flagged reply', () => {
-    test('un-reroll back to an earlier candidate removes the flag', async () => {
-        const reply = installFlaggedReply()
-        preUnrerollMock.mockReturnValue('Earlier candidate')
+describe('stepping to another sibling of a flagged reply', () => {
+    test('un-reroll back to an earlier sibling shows it and parks the flagged reply with its flag', async () => {
+        const chat = installFlaggedReply([sibling('Earlier candidate', 2)])
 
         await unReroll(source)
 
-        expect(reply.data).toBe('Earlier candidate')
-        expect('interrupted' in reply).toBe(false)
+        expect(chat.message[1].data).toBe('Earlier candidate')
+        expect('interrupted' in chat.message[1]).toBe(false)
+        const parked = chat.alt!.find((record) => record.m.chatId === 'reply-1')
+        expect(parked?.m.interrupted).toBe(true)
     })
 
-    test('reroll forward to a later candidate removes the flag', async () => {
-        const reply = installFlaggedReply()
-        prerollMock.mockReturnValue('Later candidate')
+    test('reroll forward to a later sibling shows it and parks the flagged reply with its flag', async () => {
+        const chat = installFlaggedReply([sibling('Later candidate', 9)])
 
         await reroll(source)
 
-        expect(reply.data).toBe('Later candidate')
-        expect('interrupted' in reply).toBe(false)
+        expect(chat.message[1].data).toBe('Later candidate')
+        const parked = chat.alt!.find((record) => record.m.chatId === 'reply-1')
+        expect(parked?.m.interrupted).toBe(true)
     })
 
-    test('guard: with no candidate to step to, the reply and its flag stay', async () => {
-        const reply = installFlaggedReply()
-        preUnrerollMock.mockReturnValue(undefined)
+    test('a sibling that was itself interrupted keeps its flag when it is shown', async () => {
+        const chat = installFlaggedReply([sibling('Stopped earlier', 2, { interrupted: true })])
 
         await unReroll(source)
 
-        expect(reply.data).toBe('Partial')
-        expect(reply.interrupted).toBe(true)
+        expect(chat.message[1].data).toBe('Stopped earlier')
+        expect(chat.message[1].interrupted).toBe(true)
+    })
+
+    test('guard: with no sibling to step to, the reply and its flag stay', async () => {
+        const chat = installFlaggedReply()
+
+        await unReroll(source)
+
+        expect(chat.message[1].data).toBe('Partial')
+        expect(chat.message[1].interrupted).toBe(true)
     })
 })

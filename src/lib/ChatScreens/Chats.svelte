@@ -8,6 +8,7 @@
     import { get } from 'svelte/store';
     import { isActiveStreamReply } from 'src/ts/process/activeStreams';
     import { createMountHolders, type MountHolderRun } from './chatMountHolders';
+    import { treeView } from 'src/ts/process/chatTreeView';
 
     const getCurrentChatRoomId = () => {
         const charId = get(selectedCharID);
@@ -27,7 +28,10 @@
         loadPages,
         windowResetToken = 0,
         userIconPortrait,
-        hasNewUnreadMessage = $bindable(false)
+        hasNewUnreadMessage = $bindable(false),
+        onStep = undefined,
+        onBranch = undefined,
+        getBusy = undefined
     }:{
         messages: Message[]
         currentCharacter: character|groupChat
@@ -39,7 +43,18 @@
         windowResetToken?: number
         userIconPortrait?: boolean
         hasNewUnreadMessage?: boolean
+        onStep?: (index: number, expectedId: string | undefined, direction: 'back' | 'forward') => void
+        onBranch?: (index: number, expectedId: string | undefined) => void
+        getBusy?: () => boolean
     } = $props();
+
+    // One sibling view per chat, rebuilt when the path ids or `alt` change. Rows read it through
+    // `getTreeView` at render time, so no tree data enters the row hash and no row remounts for it.
+    const chatTreeView = $derived.by(() => {
+        const chat = currentCharacter.chats?.[currentCharacter.chatPage];
+        return chat ? treeView(chat) : null;
+    });
+    const getTreeView = () => chatTreeView;
 
     // Stage A (A-lite) of the chat-list-window plan: bumped by
     // DefaultChatScreen only when a chat-window reset lowered loadPages.
@@ -147,6 +162,11 @@
                     streamingOptimizationMode: performanceMode,
                     rawStreamingText: message.data,
                     interrupted,
+                    expectedId: message.chatId,
+                    onStep: onStep,
+                    onBranch: onBranch,
+                    getTreeView: getTreeView,
+                    getBusy: getBusy,
                 }
                 const previousHash = nextHash;
                 pendingMounts.push((run) => {

@@ -1645,7 +1645,7 @@ describe('composerActions: refused actions change nothing', () => {
     })
 })
 
-describe('composerActions: what a Send records for the reroll and step-back buttons', () => {
+describe('composerActions: what a reroll keeps for the step-back button', () => {
     test('a completed send records only the messages generation appended, not the user\'s own', async () => {
         const char = makeCharacter('c-reroll-snapshot')
         installDb([char])
@@ -1669,7 +1669,7 @@ describe('composerActions: what a Send records for the reroll and step-back butt
         // those two and leaves the user's own message alone.
         sendChatMock.mockImplementationOnce(async () => {
             doingChatMock.set(true)
-            char.chats[char.chatPage].message.push({ role: 'char', data: 'again', saying: 'speaker-a', time: Date.now() } as unknown as Message)
+            char.chats[char.chatPage].message.push({ role: 'char', data: 'again', saying: 'speaker-a', time: Date.now() + 60_000 } as unknown as Message)
             doingChatMock.set(false)
             return true
         })
@@ -1685,16 +1685,16 @@ describe('composerActions: what a Send records for the reroll and step-back butt
         const char = makeCharacter('c-reroll-detached')
         installDb([char])
         seedDraft(char, char.chats[0], { messageInput: 'hello' })
-        const appendsReply = (text: string) => async () => {
+        const appendsReply = (text: string, laterBy = 0) => async () => {
             doingChatMock.set(true)
-            char.chats[char.chatPage].message.push({ role: 'char', data: text, saying: 'speaker-a', time: Date.now() } as unknown as Message)
+            char.chats[char.chatPage].message.push({ role: 'char', data: text, saying: 'speaker-a', time: Date.now() + laterBy } as unknown as Message)
             doingChatMock.set(false)
             return true
         }
         sendChatMock.mockImplementationOnce(appendsReply('original'))
         const { source } = makeSource()
         await send(source)
-        sendChatMock.mockImplementationOnce(appendsReply('second'))
+        sendChatMock.mockImplementationOnce(appendsReply('second', 60_000))
         await reroll(source)
         const data = () => char.chats[0].message.map((m) => m.data)
         expect(data()).toEqual(['hello', 'second'])
@@ -1989,7 +1989,7 @@ describe('composerActions: a switch around a Send', () => {
             showOriginChat()
             sendChatMock.mockImplementationOnce(async () => {
                 doingChatMock.set(true)
-                origin.chats[0].message.push({ ...textMessage('char', 'regenerated'), saying: 'speaker-a' })
+                origin.chats[0].message.push({ ...textMessage('char', 'regenerated'), saying: 'speaker-a', time: Date.now() + 60_000 })
                 doingChatMock.set(false)
                 return true
             })
@@ -2013,7 +2013,7 @@ describe('composerActions: a switch around a reroll and around auto mode', () =>
         vi.mocked(alertError).mockClear()
         sendChatMock.mockImplementationOnce(async () => {
             doingChatMock.set(true)
-            origin.chats[0].message.push(textMessage('char', 'new reply'))
+            origin.chats[0].message.push({ ...textMessage('char', 'new reply'), time: Date.now() + 60_000 })
             doSwitch()
             doingChatMock.set(false)
             return true

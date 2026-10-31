@@ -9,15 +9,16 @@
  * the message the pointer names leaves it on a surviving message with the summary unchanged (MC-714:
  * the next one in chat order; MC-715: nothing follows, so the last survivor plus a covered-ID field
  * naming it). A removal that empties the chat clears the data, plain or `hypa:`, and the covered-ID
- * field. A branch is a snapshot cut after the branch point: a pointer beyond it takes the MC-715 path
- * on the new chat, a pointer within the kept range is untouched, and the parent chat is untouched.
+ * field. A branch keeps the one chat: the messages after the branch point leave the path as records, a
+ * pointer beyond the new end is cleared live and parked exactly on the departed head, and a pointer
+ * within the kept range stays live.
  *
  * Test kinds: "guard:" rows are compatibility guards that pass before and after (including the two
- * "cutting after the pointer" rows, branch (b) x2 and branch (d)); every other row is a regression
- * reproducer that fails without the repoint at its site. Prompt wording is never asserted.
+ * "cutting after the pointer" rows); every other row is a regression reproducer that fails without the
+ * repoint at its site. Prompt wording is never asserted.
  */
 
-import { flushSync, mount, unmount } from 'svelte'
+import { flushSync, mount, unmount, type ComponentProps } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -171,10 +172,7 @@ import {
 } from 'src/ts/storage/characterSaveMarks'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { language } from 'src/lang'
-// Imported at the top so the cold module load happens at collection, never inside a timed test body.
-import { supaMemory } from 'src/ts/process/memory/supaMemory'
-import { writeSupaMemoryData } from 'src/ts/process/memory/supaResume'
-import { getDatabase } from 'src/ts/storage/database.svelte'
+import { detachTail } from 'src/ts/process/chatTree'
 import Chat from './Chat.svelte'
 import PopupList from '../UI/PopupList.svelte'
 
@@ -268,11 +266,11 @@ function setupDb(options: { second?: boolean, db?: Record<string, unknown> } = {
 const mountedTargets: HTMLElement[] = []
 const mountedInstances: unknown[] = []
 
-function mountChat(idx: number, message: string): HTMLElement {
+function mountChat(idx: number, message: string, extra: Partial<ComponentProps<typeof Chat>> = {}): HTMLElement {
     const target = document.createElement('div')
     document.body.appendChild(target)
     mountedTargets.push(target)
-    mountedInstances.push(mount(Chat, { target, props: { idx, message, isLastMemory: false } }))
+    mountedInstances.push(mount(Chat, { target, props: { idx, message, isLastMemory: false, ...extra } }))
     flushSync()
     return target
 }
@@ -512,9 +510,15 @@ describe('shift-click remove from here', () => {
 })
 
 describe('branch', () => {
-    /** The branch button lives in the message's popup menu: open it, render the popup list, click the button. */
+    /**
+     * The branch button lives in the message's popup menu: open it, render the popup list, click the button.
+     * The row's handler ends the path at the message the way the composer's `branchAt` does, through `detachTail`.
+     */
     async function branchAt(idx: number): Promise<void> {
-        const root = mountChat(idx, `m${idx + 1}`)
+        const root = mountChat(idx, `m${idx + 1}`, {
+            expectedId: `id-m${idx + 1}`,
+            onBranch: (index: number) => { detachTail(liveChat() as never, index + 1) },
+        })
         root.querySelector<HTMLButtonElement>('.button-icon-menu')!.click()
         await settle()
         expect(popupStore.children, 'the opened popup').not.toBeNull()
@@ -529,80 +533,73 @@ describe('branch', () => {
         await settle()
     }
 
-    const branched = () => (DBState.db.characters as unknown as FixtureCharacter[])[0].chats[0] as FixtureChat & SupaFields
-    const parent = () => (DBState.db.characters as unknown as FixtureCharacter[])[0].chats[1] as FixtureChat & SupaFields
+    interface ParkedPair {
+        supaMemoryData: string | null
+        supaMemoryCoveredId: string | null
+    }
+    interface FixtureAlt {
+        m: FixtureMessage
+        p: string | null
+        mem?: ParkedPair
+    }
 
-    test('(a) a pointer beyond the branch point becomes the branch point message with the covered field, overwriting an inherited value', async () => {
-        setupSupa({ supaMemoryData: `id-m4\n${SUMMARY}`, supaMemoryCoveredId: 'id-m4' })
-        await branchAt(1)
-        expect(branched().message.length).toBe(3)
-        expect(branched().supaMemoryData).toBe(`id-m2\n${SUMMARY}`)
-        expect(branched().supaMemoryCoveredId).toBe('id-m2')
-    })
+    const chatNow = () => (DBState.db.characters as unknown as FixtureCharacter[])[0].chats[0] as FixtureChat & SupaFields & { alt?: FixtureAlt[] }
 
-    test('guard: (b) a pointer within the kept range is untouched and an inherited valid covered value stays valid', async () => {
-        setupSupa({ supaMemoryData: `id-m1\n${SUMMARY}`, supaMemoryCoveredId: 'id-m1' })
-        await branchAt(2)
-        expect(branched().supaMemoryData).toBe(`id-m1\n${SUMMARY}`)
-        expect(branched().supaMemoryCoveredId).toBe('id-m1')
-    })
-
-    test('guard: (b) a pointer at the branch point is untouched', async () => {
-        setupSupa({ supaMemoryData: `id-m2\n${SUMMARY}` })
-        await branchAt(1)
-        expect(branched().supaMemoryData).toBe(`id-m2\n${SUMMARY}`)
-        expect(branched().supaMemoryCoveredId).toBeUndefined()
-    })
-
-    test('(c) a send over the branched chat: no error, nothing re-summarised, the branch point is dropped from the prompt', async () => {
-        setupSupa({ supaMemoryData: `id-m4\n${'S'.repeat(400)}` })
-        await branchAt(1)
-        const room = branched() as never
-        expect(branched().message[2]).toMatchObject({ disabled: true, isComment: true })
-
-        const sent = (id: string, tokens: number) => ({ role: 'user' as const, content: id.repeat(tokens), memo: id })
-        const chats = [sent('id-m1', 60), sent('id-m2', 10)]
-        const tokenizer = { tokenizeChat: async (chat: { content: string }) => chat.content.length } as never
-        vi.mocked(getDatabase).mockImplementation(() => ({
-            removePunctuationHypa: false,
-            maxSupaChunkSize: 1200,
-            supaModelType: 'subModel',
-            supaMemoryPrompt: '',
-            supaMemoryKey: '',
-            hypaModel: 'MiniLM',
-        }) as never)
-        let result: Awaited<ReturnType<typeof supaMemory>>
-        try {
-            result = await supaMemory(chats, 70, 60, room, { name: 'C', type: 'character' } as never, tokenizer)
-        } finally {
-            vi.mocked(getDatabase).mockImplementation(() => {
-                throw new Error('no live database in tests')
-            })
-        }
-
-        expect(result.error).toBeUndefined()
-        expect(result.chats.map((entry) => entry.memo)).toEqual(['supaMemory'])
-        writeSupaMemoryData(room, result.memory)
-        expect(pointerOfChat(branched())).toBe('id-m2')
-        expect(branched().supaMemoryCoveredId).toBe('id-m2')
-    })
-
-    test('guard: (d) the parent chat is untouched', async () => {
-        setupSupa({ supaMemoryData: `id-m4\n${SUMMARY}`, supaMemoryCoveredId: 'id-m4' })
-        await branchAt(1)
-        expect(parent().message.length).toBe(5)
-        expect(parent().supaMemoryData).toBe(`id-m4\n${SUMMARY}`)
-        expect(parent().supaMemoryCoveredId).toBe('id-m4')
-    })
-
-    test('guard: a chat without SupaMemory data branches without gaining any', async () => {
+    test('Branch keeps the one chat and moves the tail under the branch point', async () => {
         setupSupa({ supaMemoryData: '' })
         await branchAt(1)
-        expect(branched().supaMemoryData).toBe('')
-        expect('supaMemoryCoveredId' in branched()).toBe(false)
+        expect((DBState.db.characters as unknown as FixtureCharacter[])[0].chats.length).toBe(1)
+        expect(chatNow().id).toBe('chat-a')
+        expect(dataOf(chatNow())).toEqual(['m1', 'm2'])
+        expect(chatNow().alt?.map((r) => r.m.chatId)).toEqual(['id-m3', 'id-m4', 'id-m5'])
+        expect(chatNow().alt?.[0].p).toBe('id-m2')
+    })
+
+    test('a pointer beyond the branch point is cleared live and parked exactly on the departed head', async () => {
+        setupSupa({ supaMemoryData: `id-m4\n${SUMMARY}`, supaMemoryCoveredId: 'id-m4' })
+        await branchAt(1)
+        expect(chatNow().supaMemoryData).toBeUndefined()
+        expect(chatNow().supaMemoryCoveredId).toBeUndefined()
+        expect(chatNow().alt?.[0].mem).toMatchObject({ supaMemoryData: `id-m4\n${SUMMARY}`, supaMemoryCoveredId: 'id-m4' })
+    })
+
+    test('guard: a pointer within the kept range stays live, and the departed head holds the same copy', async () => {
+        setupSupa({ supaMemoryData: `id-m1\n${SUMMARY}`, supaMemoryCoveredId: 'id-m1' })
+        await branchAt(2)
+        expect(chatNow().supaMemoryData).toBe(`id-m1\n${SUMMARY}`)
+        expect(chatNow().supaMemoryCoveredId).toBe('id-m1')
+        expect(chatNow().alt?.[0].mem).toMatchObject({ supaMemoryData: `id-m1\n${SUMMARY}`, supaMemoryCoveredId: 'id-m1' })
+    })
+
+    test('guard: a pointer at the branch point stays live', async () => {
+        setupSupa({ supaMemoryData: `id-m2\n${SUMMARY}` })
+        await branchAt(1)
+        expect(chatNow().supaMemoryData).toBe(`id-m2\n${SUMMARY}`)
+        expect(chatNow().supaMemoryCoveredId).toBeUndefined()
+    })
+
+    test('guard: a chat without SupaMemory data gains none', async () => {
+        setupSupa({ supaMemoryData: '' })
+        await branchAt(1)
+        expect(chatNow().supaMemoryData ?? '').toBe('')
+        expect('supaMemoryCoveredId' in chatNow()).toBe(false)
+    })
+
+    test('Branch is disabled on the last message and presses nothing', async () => {
+        setupSupa({ supaMemoryData: '' })
+        const onBranch = vi.fn()
+        const root = mountChat(4, 'm5', { expectedId: 'id-m5', onBranch })
+        root.querySelector<HTMLButtonElement>('.button-icon-menu')!.click()
+        await settle()
+        const popupTarget = document.createElement('div')
+        document.body.appendChild(popupTarget)
+        mountedTargets.push(popupTarget)
+        mountedInstances.push(mount(PopupList, { target: popupTarget, props: {} }))
+        flushSync()
+        const button = popupTarget.querySelector('svg.lucide-split')!.closest('button')!
+        expect(button.disabled).toBe(true)
+        button.click()
+        await settle()
+        expect(onBranch).not.toHaveBeenCalled()
     })
 })
-
-function pointerOfChat(chat: SupaFields): string | undefined {
-    return chat.supaMemoryData?.split('\n')[0]
-}
