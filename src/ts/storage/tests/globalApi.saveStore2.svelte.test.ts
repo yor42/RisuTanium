@@ -945,3 +945,22 @@ describe('new behaviour: a module stub the pass cannot encode keeps the page uns
         expect(page.k.counted.writes.length).toBe(writesAfterPass)
     })
 })
+
+describe('new behaviour: one character with an unusable id does not suspend order pruning on store2', () => {
+    test('a removed character leaves the order once checkCharOrder runs, while another character carries an unusable id', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        const ids = characters(page.db).map(c => String(c.chaId))
+        await nextCommit(page.w, () => {
+            characters(page.db)[0].chaId = 'config'
+            characters(page.db)[1].personality = 'edit beside the unusable id'
+            page.w.marks.markCharacterForSave(ids[1])
+            page.flush()
+        }, false)
+        const gone = ids[2]
+        ;(page.db.characters as unknown[]).splice(2, 1)
+        page.w.api.checkCharOrder()
+        const order = page.stores.DBState.db.characterOrder as unknown[]
+        expect(order).not.toContain(gone)
+    })
+})
