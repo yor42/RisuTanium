@@ -41,6 +41,7 @@ export const languageSettingsItems: SettingItem[] = [
                 { value: 'zh-Hant', label: '中文(繁體)' },
                 { value: 'vi', label: 'Tiếng Việt' },
                 { value: 'es', label: 'Español' },
+                { value: 'ja', label: '日本語' },
                 { value: 'translang', label: '[Translate in your own language]', labelKey: 'translangOption' },
             ],
         },
@@ -52,7 +53,7 @@ export const languageSettingsItems: SettingItem[] = [
                 ]);
 
                 if (parseInt(j) === 0) {
-                    const langs = ['de', 'ko', 'cn', 'vi', 'zh-Hant', 'es'];
+                    const langs = ['de', 'ko', 'cn', 'vi', 'zh-Hant', 'es', 'ja'];
                     const lang = parseInt(await alertSelect(langs));
                     changeLanguage(langs[lang]);
                     downloadFile(

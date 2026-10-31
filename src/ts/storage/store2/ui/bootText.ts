@@ -55,7 +55,7 @@ export interface BootQuestion<T> {
 
 //#region language
 
-export const BOOT_LANGUAGES = ['de', 'en', 'ko', 'cn', 'vi', 'zh-Hant', 'es'] as const
+export const BOOT_LANGUAGES = ['de', 'en', 'ko', 'cn', 'vi', 'zh-Hant', 'es', 'ja'] as const
 
 export type BootLanguage = typeof BOOT_LANGUAGES[number]
 

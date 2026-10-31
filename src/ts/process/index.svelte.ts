@@ -14,6 +14,7 @@ import { requestChatData } from "./request/request";
 import { stableDiff } from "./stableDiff";
 import { processScript, processScriptFull, risuChatParser, type MessageLocator, type MessageRef } from "./scripts";
 import { exampleMessage } from "./exampleMessages";
+import { firstMessageOf } from "./firstMessage";
 import { sayTTS } from "./tts";
 import { beginInFlight } from "./inFlightWork";
 import { isTTSVoiceMode } from "./ttsModes";
@@ -1319,7 +1320,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     promptView = promptViewOf(sentSplit, firstMessageSent)
 
     if(firstMessageSent){
-        const firstMsg = currentChat.fmIndex === -1 ? nowChatroom.firstMessage : nowChatroom.alternateGreetings[currentChat.fmIndex]
+        const firstMsg = firstMessageOf(nowChatroom, currentChat)
 
         const chat:OpenAIChat = {
             role: 'assistant',
@@ -1755,6 +1756,10 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         unformated.chats.splice(entry.depth,0,entry.chat)
     }
 
+    // A template send places these around the first and last chat cards;
+    // the non-template send reads them back out of lastChat.
+    const historyStart:OpenAIChat[] = []
+    const historyEnd:OpenAIChat[] = []
     if(triggerResult){
         if(triggerResult.additonalSysPrompt.promptend){
             unformated.postEverything.push({
@@ -1763,16 +1768,20 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             })
         }
         if(triggerResult.additonalSysPrompt.historyend){
-            unformated.lastChat.push({
+            const historyEndChat:OpenAIChat = {
                 role: 'system',
                 content: triggerResult.additonalSysPrompt.historyend
-            })
+            }
+            historyEnd.push(historyEndChat)
+            unformated.lastChat.push(historyEndChat)
         }
         if(triggerResult.additonalSysPrompt.start){
-            unformated.lastChat.unshift({
+            const historyStartChat:OpenAIChat = {
                 role: 'system',
                 content: triggerResult.additonalSysPrompt.start
-            })
+            }
+            historyStart.push(historyStartChat)
+            unformated.lastChat.unshift(historyStartChat)
         }
     }
 
@@ -1831,6 +1840,12 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
 
     if(promptTemplate){
         const template = promptTemplate
+
+        // Trigger start/historyend text brackets the chat cards, whether or not
+        // their ranges select anything. A template without a chat card sends neither.
+        const chatCards = template.filter((c) => c.type === 'chat')
+        const firstChatCard = chatCards[0]
+        const lastChatCard = chatCards[chatCards.length - 1]
 
         for(const card of template){
             switch(card.type){
@@ -1942,6 +1957,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     break
                 }
                 case 'chat':{
+                    if(card === firstChatCard){
+                        pushPrompts(historyStart)
+                    }
                     let start = card.rangeStart
                     let end = (card.rangeEnd === 'end') ? unformated.chats.length : card.rangeEnd
                     if(start === -1000){
@@ -1962,6 +1980,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     }
                     
                     if(start >= end){
+                        if(card === lastChatCard){
+                            pushPrompts(historyEnd)
+                        }
                         break
                     }
 
@@ -1970,6 +1991,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                         chats = systemizeChat(chats)
                     }
                     pushPrompts(chats)
+                    if(card === lastChatCard){
+                        pushPrompts(historyEnd)
+                    }
 
                     if(DBState.db.automaticCachePoint && !hasCachePoint){
                         let pointer = formated.length - 1

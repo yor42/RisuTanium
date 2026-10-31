@@ -272,6 +272,7 @@ describe('bootLanguage', () => {
         ['de-AT', 'de'],
         ['ko-KR', 'ko'],
         ['es', 'es'],
+        ['ja-JP', 'ja'],
         ['vi-VN', 'vi'],
         ['en-GB', 'en'],
         ['fr-FR', 'en'],
@@ -293,7 +294,7 @@ describe('bootLanguage', () => {
         }
         changeLanguage('fr')
         expect(language).toBe(languageEnglish)
-        expect([...BOOT_LANGUAGES].sort()).toEqual(['cn', 'de', 'en', 'es', 'ko', 'vi', 'zh-Hant'])
+        expect([...BOOT_LANGUAGES].sort()).toEqual(['cn', 'de', 'en', 'es', 'ja', 'ko', 'vi', 'zh-Hant'])
     })
 })
 

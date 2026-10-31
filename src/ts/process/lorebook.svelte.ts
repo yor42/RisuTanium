@@ -18,6 +18,7 @@ import type { PromptView } from "../cbs";
 import { beginBusy } from "./memory/busyActions";
 import { splitLoreKeys } from "./loreKeys";
 import { externalEntryDecorators, placeDisabledMarker } from "./lorebookImportDecorators";
+import { firstMessageIndexOf } from "./firstMessage";
 
 /**
  * A fixed stand-in for `RunSubject` that always resolves to `ctx`, captured
@@ -472,7 +473,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                         if(Number.isNaN(int)){
                             return false
                         }
-                        if(((chat?.fmIndex ?? -1) + 1) !== int){
+                        if((chat ? firstMessageIndexOf(char, chat) : -1) + 1 !== int){
                             activated = false
                         }
                         return

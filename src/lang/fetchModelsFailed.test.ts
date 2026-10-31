@@ -11,6 +11,7 @@ import { languageChineseTraditional } from './zh-Hant'
 import { languageVietnamese } from './vi'
 import { languageGerman } from './de'
 import { languageSpanish } from './es'
+import { languageJapanese } from './ja'
 import { fillLang } from './fill'
 
 const locales: Array<[string, { errors: { fetchModelsFailed?: string } }]> = [
@@ -21,6 +22,7 @@ const locales: Array<[string, { errors: { fetchModelsFailed?: string } }]> = [
     ['vi', languageVietnamese],
     ['de', languageGerman],
     ['es', languageSpanish],
+    ['ja', languageJapanese],
 ]
 
 describe('guard: errors.fetchModelsFailed keeps the raw error text', () => {

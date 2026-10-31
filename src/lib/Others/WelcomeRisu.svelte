@@ -20,7 +20,7 @@
     {
         const browserLang = navigator.language
         const browserLangShort = browserLang.split('-')[0]
-        const usableLangs = ['de', 'en', 'ko', 'cn', 'vi', 'zh-Hant', 'es']
+        const usableLangs = ['de', 'en', 'ko', 'cn', 'vi', 'zh-Hant', 'es', 'ja']
         if(usableLangs.includes(browserLangShort)){
             changeLanguage(browserLangShort)
             DBState.db.language = browserLangShort
@@ -150,6 +150,10 @@
                             DBState.db.translator = 'zh-TW'
                             break
                         }
+                        case 'ja':{
+                            DBState.db.translator = 'ja'
+                            break
+                        }
                     }
                 }
                 if(chatLang === 1){
@@ -216,6 +220,11 @@
                             DBState.db.language='es'
                             step = 1
                         }}>• Español</button>
+                        <button class="hover:text-green-500 transition-colors" onclick={() => {
+                            changeLanguage('ja')
+                            DBState.db.language='ja'
+                            step = 1
+                        }}>• 日本語</button>
                     </div>
 
                 {:else}
