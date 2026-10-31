@@ -50,6 +50,7 @@ export const languageEnglish = {
         coldStorageRestoreDamaged: "This character's archived copy could not be read: it may be damaged. Nothing was changed or deleted.",
         coldStorageAltRepliesDropped: (characterName: string, chatNames: string) =>
             `The alternative replies of these chats of ${characterName} could not be read and were left out: ${chatNames}. The conversations themselves were loaded intact.`,
+        chatAltUnreadable: "The alternative replies of this chat cannot be read, so it cannot be rerolled or branched. Nothing was changed.",
         coldStorageNamedRestoreUnavailable: (characterName: string) =>
             `The archived character ${characterName} can't be opened on this page: this browser offers no storage for archived characters here (for example on a plain-HTTP address). Nothing was changed.`,
         coldStorageNamedRestoreDamaged: (characterName: string) =>

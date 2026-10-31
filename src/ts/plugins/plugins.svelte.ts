@@ -15,6 +15,7 @@ import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { incomingCharacterRefusal, withoutStubDowngrades } from "./stubDowngrade";
 import { withoutModuleStubDowngrades } from "./moduleStubGuard";
 import { databaseWriteProblem, selectedCharacterMismatch, singleCharacterProblem } from "./characterWriteCheck";
+import { keepLiveAlt, overwritesPlaceholder, placeholderAgainMessage, placeholderTargets, restoreArchivedTargets } from "./chatAltBridge";
 import { isCharacterEntry } from "../storage/characterIds";
 import { PLUGIN_STORAGE_INDEX_KEY, PLUGIN_STORAGE_LEGACY_MAP_KEY } from "../process/pluginStorageIndex";
 import { AssetList, type AssetTuple } from "../storage/assetList";
@@ -615,6 +616,9 @@ function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginN
         const beforeCharacters = db.characters
         fillMissingDatabaseInstallIds(newDb)
         warnDuplicatesInDatabaseInstall(newDb, beforeCharacters, pluginName)
+        // After the ids are filled and before any key is written: the live alternatives are read from the
+        // live list as it is now, and the incoming characters carry them into the new list.
+        keepLiveAlt(db.characters, newDb.characters)
     }
     for (const key of Object.keys(newDb)) {
         if (key === 'plugins') {
@@ -738,11 +742,17 @@ export const getV2PluginAPIs = () => {
             if (problem !== null) {
                 throw new Error(problem)
             }
+            // The alternatives of an archived character cannot be kept without restoring it, and this call
+            // cannot wait for a restore: the V3 callers restore first and a placeholder here is refused.
+            if (overwritesPlaceholder(replaced, char)) {
+                throw new Error(placeholderAgainMessage(char.chaId))
+            }
             fillMissingCharacterInstallIds(char)
             if (replaced) {
                 warnIfCharacterChaIdDuplicated(db.characters, charid, char?.chaId, replaced?.chaId, pluginName)
                 warnIfCharacterInstallDuplicatesChatIds(char?.chats, char?.chaId, db.characters, replaced?.chats, pluginName)
             }
+            keepLiveAlt([replaced], [char])
             db.characters[charid] = char
             clearSupaMemoryIfEmptyIn([db.characters[charid]])
             setDatabaseLite(db)
@@ -998,7 +1008,9 @@ export const getV2PluginAPIs = () => {
             const plan: PluginListPlan = Object.keys(newDb).includes('plugins')
                 ? planPluginListWrite(newDb.plugins, pluginName)
                 : { kind: 'idle' }
-            if (plan.kind !== 'changes') {
+            // A full character written over an archived-character placeholder restores it first, which waits.
+            const targets = placeholderTargets(getDatabase().characters, newDb.characters)
+            if (plan.kind !== 'changes' && targets.length === 0) {
                 // Nothing to ask: the other keys are written before this returns,
                 // and a plugin list that cannot be applied is a rejected promise,
                 // never a synchronous throw.
@@ -1008,17 +1020,37 @@ export const getV2PluginAPIs = () => {
                 markLiteCharacters(db, newDb)
                 return plan.kind === 'failed' ? Promise.reject(plan.error) : undefined
             }
-            const classified = plan.classified
+            const classified = plan.kind === 'changes' ? plan.classified : null
             return (async () => {
-                let failure = await askPluginChanges(classified, pluginName)
-                // The page may have changed while the prompt was open.
-                const lateRefusal = databaseWriteProblem(getDatabase(), newDb)
-                if (lateRefusal !== null) {
-                    throw new Error(lateRefusal)
+                let failure: Error | null = plan.kind === 'failed' ? plan.error : null
+                if (classified) {
+                    failure = await askPluginChanges(classified, pluginName)
+                    // The page may have changed while the prompt was open.
+                    const lateRefusal = databaseWriteProblem(getDatabase(), newDb)
+                    if (lateRefusal !== null) {
+                        throw new Error(lateRefusal)
+                    }
+                }
+                if (targets.length > 0) {
+                    const restoreProblem = await restoreArchivedTargets(targets)
+                    if (restoreProblem !== null) {
+                        throw new Error(restoreProblem)
+                    }
+                    const afterRestoreRefusal = databaseWriteProblem(getDatabase(), newDb)
+                    if (afterRestoreRefusal !== null) {
+                        throw new Error(afterRestoreRefusal)
+                    }
                 }
                 // From here to the key writes nothing awaits, so the list and the
                 // characters are checked and assigned against the same live state.
-                failure ??= commitPluginChanges(classified)
+                // A target put back into storage by a later restore refuses the whole write.
+                const placeholderAgain = placeholderTargets(getDatabase().characters, newDb.characters)[0]
+                if (placeholderAgain !== undefined) {
+                    throw new Error(placeholderAgainMessage(placeholderAgain))
+                }
+                if (classified) {
+                    failure ??= commitPluginChanges(classified)
+                }
                 const db = getDatabase()
                 newDb = writeSetterKeys(db, newDb, pluginName)
                 DBState.db = db
@@ -1045,8 +1077,26 @@ export const getV2PluginAPIs = () => {
                     throw new Error(lateRefusal)
                 }
             }
+            // A full character written over an archived-character placeholder restores it first; a failed
+            // restore refuses the whole write, the plugin list included.
+            const targets = placeholderTargets(getDatabase().characters, newDb.characters)
+            if (targets.length > 0) {
+                const restoreProblem = await restoreArchivedTargets(targets)
+                if (restoreProblem !== null) {
+                    throw new Error(restoreProblem)
+                }
+                const afterRestoreRefusal = databaseWriteProblem(getDatabase(), newDb)
+                if (afterRestoreRefusal !== null) {
+                    throw new Error(afterRestoreRefusal)
+                }
+            }
             // From here to the key writes nothing awaits, so the list and the
             // characters are checked and assigned against the same live state.
+            // A target put back into storage by a later restore refuses the whole write.
+            const placeholderAgain = placeholderTargets(getDatabase().characters, newDb.characters)[0]
+            if (placeholderAgain !== undefined) {
+                throw new Error(placeholderAgainMessage(placeholderAgain))
+            }
             if (plan.kind === 'changes' && failure === null) {
                 failure = commitPluginChanges(plan.classified)
             }

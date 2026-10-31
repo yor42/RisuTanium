@@ -1,5 +1,6 @@
 import { v4 } from "uuid";
 import type { Chat, Message } from "../../storage/database.svelte";
+import { clearAltOnFullClear, isChatAltReadable, reattachOrphans } from "../chatTree";
 
 /**
  * Plain SupaMemory resume pointer: `Chat.supaMemoryData` is `<chatId>\n<summary>`.
@@ -120,15 +121,33 @@ export function clearSupaMemoryIfEmptyIn(chars: readonly { chats?: Chat[] }[]): 
 
 /**
  * Run a removal on `chat.message` and keep the SupaMemory pointer valid.
- * The snapshot is skipped when there is no SupaMemory data; the empty-chat
- * rule still applies to `hypa:` data, which is otherwise never repointed.
+ * The snapshot is skipped when there is neither SupaMemory data nor
+ * alternatives; the empty-chat rule still applies to `hypa:` data, which is
+ * otherwise never repointed.
+ *
+ * Alternatives follow the path: a record whose parent the removal took off the
+ * path is attached to the nearest earlier survivor (`reattachOrphans`), and a
+ * removal that empties a non-empty path is a full clear, which clears them.
+ * A chat whose `alt` cannot be read keeps it as it is.
  */
 export function withSupaRepoint<T>(chat: Chat, mutate: () => T): T {
-    if (!chat.supaMemoryData) {
+    const tracksAlt = Array.isArray(chat.alt) && chat.alt.length > 0 && isChatAltReadable(chat);
+    const hadSupaMemory = Boolean(chat.supaMemoryData);
+    if (!hadSupaMemory && !tracksAlt) {
         return mutate();
     }
     const previous = chat.message.slice();
     const result = mutate();
+    if (tracksAlt) {
+        if (previous.length > 0 && chat.message.length === 0) {
+            clearAltOnFullClear(chat);
+        } else {
+            reattachOrphans(chat, previous);
+        }
+    }
+    if (!hadSupaMemory) {
+        return result;
+    }
     if (chat.message.length === 0) {
         clearSupaMemoryIfEmpty(chat);
         return result;
