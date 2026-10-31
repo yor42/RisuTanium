@@ -128,6 +128,21 @@ describe('PatternDialog', () => {
         expect(oncancel).not.toHaveBeenCalled()
     })
 
+    test('destroying the dialog removes the exact capturing key listener it added to the window', async () => {
+        const added = vi.spyOn(window, 'addEventListener')
+        const removed = vi.spyOn(window, 'removeEventListener')
+        const { target } = openDialog()
+        const keydownAdds = added.mock.calls.filter(call => call[0] === 'keydown')
+        expect(keydownAdds).toHaveLength(1)
+        const [, handler, capture] = keydownAdds[0]
+        expect(capture).toBe(true)
+        expect(removed.mock.calls.filter(call => call[0] === 'keydown')).toHaveLength(0)
+        const entry = mounted.pop()!
+        await unmount(entry.app as never)
+        target.remove()
+        expect(removed.mock.calls.filter(call => call[0] === 'keydown' && call[1] === handler && call[2] === true)).toHaveLength(1)
+    })
+
     test('Escape after focus has moved to the body still cancels, and no document listener sees it', () => {
         const oncancel = vi.fn()
         openDialog({ oncancel, cancelSafe: true })

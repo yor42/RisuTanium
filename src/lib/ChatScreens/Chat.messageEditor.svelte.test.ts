@@ -691,9 +691,9 @@ describe('Chat.svelte main editor: pin -- edit() reads chatPage live, not frozen
         flushSync()
         await tick()
 
-        // Perform the branch: unshift a new chat (a snapshot-like clone
-        // sharing the message's chatId) at the FRONT and changeChatTo(0),
-        // exactly as Chat.svelte's own branch button does. This shifts
+        // Perform a copy-style chat switch: unshift a new chat (a snapshot-like
+        // clone sharing the message's chatId) at the FRONT and changeChatTo(0),
+        // as the chat list's Copy does (Branch keeps one chat). This shifts
         // `decoyChat` from index 0 to index 1 -- the frozen-at-open page
         // number -- so a frozen read lands squarely on it.
         const branchedChat = makeChat(
