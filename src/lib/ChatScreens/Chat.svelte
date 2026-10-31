@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { ArrowLeft, ArrowLeftRightIcon, ArrowRight, BookmarkIcon, BotIcon, CopyIcon, IdCardIcon, PowerOff, GitBranch, HamburgerIcon, History, LanguagesIcon, MenuIcon, PencilIcon, RefreshCcwIcon, RotateCcw, SplitIcon, TrashIcon, UserIcon, Volume2Icon, Scissors } from "@lucide/svelte"
+    import { ArrowLeft, ArrowLeftToLine, ArrowLeftRightIcon, ArrowRight, BookmarkIcon, BotIcon, CopyIcon, IdCardIcon, PowerOff, GitBranch, HamburgerIcon, History, LanguagesIcon, MenuIcon, PencilIcon, RefreshCcwIcon, RotateCcw, SplitIcon, TrashIcon, UserIcon, Volume2Icon, Scissors } from "@lucide/svelte"
     import { aiLawApplies, changeChatTo, foldChatToMessage, getFileSrc } from "src/ts/globalApi.svelte"
     import { copyPlainText, stripThoughtsForCopy, type CopyOutcome } from "src/ts/chatCopy"
     import { CARD_DEADLINE_MS, CARD_PENDING_MARGIN_MS, captureCardTheme, noteNewerPlainCopy, startCardCopy, type CardReport } from "src/ts/chatCard"
@@ -349,11 +349,11 @@
     }
 
     async function edit(){
-        // `selId`/`chatPage` are read live here, not frozen -- copy and
-        // branch both `unshift` a new chat and `changeChatTo(0)` while
-        // reusing this mounted instance, so a frozen `chatPage` would write
-        // into whatever chat now sits at the old index instead of the one
-        // the user is looking at.
+        // `selId`/`chatPage` are read live here, not frozen -- copy
+        // `unshift`s a new chat and `changeChatTo(0)` while reusing this
+        // mounted instance, so a frozen `chatPage` would write into
+        // whatever chat now sits at the old index instead of the one the
+        // user is looking at.
         const newText = editBuffer
         message = newText
         const edited = DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx]
@@ -1209,7 +1209,7 @@
 {/snippet}
 
 {#snippet iconButtons(options:{applyTextColors?:boolean} = {})}
-    <div class="grow flex items-center justify-end" class:text-textcolor2={options?.applyTextColors !== false}>
+    <div class="grow flex flex-wrap items-center justify-end" class:text-textcolor2={options?.applyTextColors !== false}>
         {#if isComment}
             <button
                 class="flex items-center hover:text-blue-500 transition-colors button-icon-remove"
@@ -1246,6 +1246,16 @@
                 {@render rerolls()}
 
             </div>
+            {#if endCount > 0}
+                <div class="w-full flex justify-end mt-1 button-end-control-row">
+                    <button class="flex items-center gap-1 hover:text-blue-500 transition-colors button-icon-end-control" disabled={treeBusy} onclick={() => onStep?.(liveLength, expectedId, 'back')}>
+                        <ArrowLeftToLine size={20}/>
+                        {#if DBState.db.swipe}
+                            <span class="text-xs text-textcolor2">{endCount}</span>
+                        {/if}
+                    </button>
+                </div>
+            {/if}
         {/if}
     </div>
 {/snippet}
@@ -1315,14 +1325,6 @@
 {/snippet}
 
 {#snippet treeRerolls()}
-    {#if endCount > 0}
-        <button class="flex items-center hover:text-blue-500 transition-colors button-icon-end-control" disabled={treeBusy} onclick={() => onStep?.(liveLength, expectedId, 'back')}>
-            <ArrowLeft size={22}/>
-            {#if DBState.db.swipe}
-                <span class="text-xs text-textcolor2">{endCount}</span>
-            {/if}
-        </button>
-    {/if}
     {#if DBState.db.swipe}
         {#if isLastRow || siblingCount > 1}
             <button class="flex items-center hover:text-blue-500 transition-colors button-icon-unreroll" disabled={treeBusy || siblingIndex <= 1} onclick={() => onStep?.(idx, expectedId, 'back')}>

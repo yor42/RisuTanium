@@ -328,16 +328,18 @@ async function until(condition: () => boolean, what: string): Promise<void> {
 
 interface HeldStream {
     push(text: string): void
+    pushChunk(chunk: Record<string, string>): void
     close(): void
 }
 
 /** A streaming request the test feeds by hand; resolves once the request was made. */
 function holdNextRequest(): HeldStream {
-    let controller: ReadableStreamDefaultController<{ data: string }> | undefined
-    const stream = new ReadableStream<{ data: string }>({ start(c) { controller = c } })
+    let controller: ReadableStreamDefaultController<Record<string, string>> | undefined
+    const stream = new ReadableStream<Record<string, string>>({ start(c) { controller = c } })
     requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: stream })
     return {
         push(text) { try { controller?.enqueue({ data: text }) } catch { /* cancelled */ } },
+        pushChunk(chunk) { try { controller?.enqueue(chunk) } catch { /* cancelled */ } },
         close() { try { controller?.close() } catch { /* cancelled */ } },
     }
 }
@@ -698,13 +700,35 @@ describe('candidates of one generation', () => {
         await reroll(source)
         expect(requestChatDataMock.mock.calls.length).toBe(calls + 1)
     })
+
+    test('TB14: a streamed answer with two chunk keys stores the other key as a sibling that restores the start state', async () => {
+        const chat = simpleChat({ scriptstate: { start: 1 }, lastMemory: 'u0' })
+        const held = holdNextRequest()
+        const running = reroll(source)
+        await until(() => requestChatDataMock.mock.calls.length > 0, 'the request')
+        held.pushChunk({ one: 'first', two: 'second' })
+        await settle()
+        held.close()
+        await running
+        chat.scriptstate = { start: 1, written: 2 }
+
+        const candidates = chat.alt!.filter((record) => record.m.data === 'second')
+        expect(candidates).toHaveLength(1)
+        expect(chat.message[1].data).toBe('first')
+        expect(Object.keys(candidates[0].mem ?? {}).sort()).toEqual(['hypaV2Data', 'hypaV3Data', 'lastMemory', 'scriptstate', 'supaMemoryCoveredId', 'supaMemoryData'])
+        expect(candidates[0].mem?.scriptstate).toEqual({ start: 1 })
+
+        await reroll(source)
+        expect(chat.message[1].data).toBe('second')
+        expect(chat.scriptstate).toEqual({ start: 1 })
+    })
 })
 
 describe('Continue repoints what named the continued message', () => {
     test('TB23: after a non-streaming Continue the children and the parked pair follow the new id', async () => {
         const chat = install([
             node('user', 'u0', 1), node('char', 'c0', 2), node('user', 'u1', 3), node('char', 'c1', 4),
-        ], { supaMemoryData: 'c0\nLONG-SUMMARY-TEXT', supaMemoryCoveredId: null })
+        ], { supaMemoryData: 'c0\nLONG-SUMMARY-TEXT', supaMemoryCoveredId: 'c0' })
         await branchAt(source, 1, 'c0')
         expect(siblingsAt(chat, 2).map((m) => m.chatId)).toEqual(['u1'])
         mockReply(' and more')
@@ -717,6 +741,7 @@ describe('Continue repoints what named the continued message', () => {
         expect(siblingsAt(chat, 2).map((m) => m.chatId)).toEqual(['u1'])
         expect(chat.alt!.find((record) => record.m.chatId === 'u1')?.p).toBe(newId)
         expect(chat.alt![0].mem?.supaMemoryData).toBe(`${newId}\nLONG-SUMMARY-TEXT`)
+        expect(chat.alt![0].mem?.supaMemoryCoveredId).toBe(newId)
 
         await stepSibling(source, 2, newId, 'back')
         expect(pathIds(chat)).toEqual(['u0', newId, 'u1', 'c1'])

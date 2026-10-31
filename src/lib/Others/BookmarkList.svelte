@@ -10,7 +10,8 @@
     import { keyEventBlocked } from "src/ts/keyEventBlocked";
     import { get } from "svelte/store";
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
-    import { branchAt } from "src/ts/process/composerActions.svelte";
+    import { branchAt, isComposerBusy } from "src/ts/process/composerActions.svelte";
+    import { doingChat } from "src/ts/process/index.svelte";
 
     const close = () => $bookmarkListOpen = false;
 
@@ -127,6 +128,8 @@
         return branchAt({ closeMenu: () => {} }, index, expectedId);
     }
 
+    const treeControlsBusy = () => $doingChat || isComposerBusy()
+
     function goToChat(index: number) {
         ScrollToMessageStore.value = index;
         close();
@@ -211,6 +214,7 @@
                                         isLastMemory={false}
                                         expectedId={msg.chatId}
                                         onBranch={branchRow}
+                                        getBusy={treeControlsBusy}
                                     />
                                 {:else}
                                     <Chat
@@ -226,6 +230,7 @@
                                         isLastMemory={false}
                                         expectedId={msg.chatId}
                                         onBranch={branchRow}
+                                        getBusy={treeControlsBusy}
                                     />
                                 {/if}
                             </div>

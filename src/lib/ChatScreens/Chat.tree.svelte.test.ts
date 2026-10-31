@@ -516,6 +516,19 @@ describe('the end control', () => {
         expect(endControl(last.root)!.textContent?.trim()).toBe('2')
     })
 
+    test('sits on its own line below the row buttons, apart from the row arrow and with another icon', () => {
+        const chat = endingChat()
+        const last = mountRow(chat, 1)
+        const control = endControl(last.root)!
+        const rowArrow = back(last.root)!
+        const buttonGroup = rowArrow.parentElement!
+        expect(buttonGroup.contains(control)).toBe(false)
+        expect(control.parentElement).not.toBe(rowArrow.parentElement)
+        expect(buttonGroup.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+        expect(control.parentElement!.children.length).toBe(1)
+        expect(control.querySelector('svg')!.getAttribute('class')).not.toBe(rowArrow.querySelector('svg')!.getAttribute('class'))
+    })
+
     test('a press steps back at the end position with the last message id', () => {
         const chat = endingChat()
         const last = mountRow(chat, 1)
