@@ -235,9 +235,10 @@ import {
     reroll, unReroll, stepSibling, branchAt, abortChat, resetComposerActionsForTests, type ComposerActionsSource,
 } from 'src/ts/process/composerActions.svelte'
 import { setComposerWindow } from 'src/ts/process/generationOwnership.svelte'
-import { detachTail, siblingsAt, switchTo } from 'src/ts/process/chatTree'
+import { detachTail, endTarget, siblingsAt, switchTo } from 'src/ts/process/chatTree'
 import { treeView } from 'src/ts/process/chatTreeView'
 import { keepLiveAlt } from 'src/ts/plugins/chatAltBridge'
+import { addRerolls, renameContinuedMessage } from 'src/ts/process/prereroll'
 
 //#region fixtures
 
@@ -531,6 +532,40 @@ describe('rows other than the last', () => {
             expect(requestChatDataMock).not.toHaveBeenCalled()
         }
     })
+
+    test('TB22: storing candidates and renaming a continued message leave an unreadable alt as it is and warn', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        try {
+            for (const bad of ['broken', { not: 'a list' }]) {
+                const chat = simpleChat()
+                ;(chat as unknown as { alt: unknown }).alt = bad
+                const before = copyOf(chat)
+                warn.mockClear()
+
+                addRerolls('c0', ['c0', 'second'], { chaId: 'char-0', chatId: 'chat-0' })
+                renameContinuedMessage(chat, 'c0', 'renamed')
+
+                expect(copyOf(chat)).toEqual(before)
+                expect(warn).toHaveBeenCalledTimes(2)
+            }
+        } finally {
+            warn.mockRestore()
+        }
+    })
+
+    test('TB13: a generate press after stepping back on a middle row regenerates the last reply of the path now shown', async () => {
+        const chat = twoSiblingsAtFive()
+        await stepSibling(source, 5, 'm5', 'back')
+        expect(pathIds(chat).slice(5)).toEqual(['x5', 'x6', 'x7'])
+        mockReply('fresh')
+
+        await reroll(source)
+
+        expect(requestChatDataMock).toHaveBeenCalledTimes(1)
+        expect(pathIds(chat).slice(5, 7)).toEqual(['x5', 'x6'])
+        expect(chat.message[7].data).toBe('fresh')
+        expect(altData(chat)).toContain('x7')
+    })
 })
 
 describe('branchAt', () => {
@@ -555,9 +590,14 @@ describe('branchAt', () => {
     })
 
     test('end control: arrives at the most recently left continuation and restores all six live fields', async () => {
+        const parkedHypaV2 = { lastMainChunkID: 3, chunks: [], mainChunks: [] }
+        const parkedHypaV3 = { summaries: [], categories: [] }
         const chat = install([
             node('user', 'm0', 1), node('char', 'm1', 2), node('user', 'm2', 3), node('char', 'm3', 4),
-        ], { lastMemory: 'm0', scriptstate: { mark: 'first' }, supaMemoryData: 'm2\nFIRST-SUMMARY-TEXT', supaMemoryCoveredId: 'm0' })
+        ], {
+            lastMemory: 'm0', scriptstate: { mark: 'first' }, supaMemoryData: 'm2\nFIRST-SUMMARY-TEXT', supaMemoryCoveredId: 'm0',
+            hypaV2Data: parkedHypaV2, hypaV3Data: parkedHypaV3,
+        })
         await branchAt(source, 1, 'm1')
         chat.message.push(node('user', 'n2', 10))
         chat.scriptstate = { mark: 'second' }
@@ -569,12 +609,27 @@ describe('branchAt', () => {
         await branchAt(source, 1, 'm1')
         expect(treeView(chat).continuation).toBe(2)
 
+        // Every field changes after the cut: the press must bring back what the
+        // chat held at the cut, not what it holds now.
+        chat.scriptstate = { mark: 'after-cut' }
+        chat.lastMemory = 'after-cut'
+        chat.supaMemoryData = 'after-cut'
+        chat.supaMemoryCoveredId = 'after-cut'
+        ;(chat as unknown as Record<string, unknown>).hypaV2Data = { lastMainChunkID: 99, chunks: [], mainChunks: [] }
+        ;(chat as unknown as Record<string, unknown>).hypaV3Data = { summaries: [], categories: ['after-cut'] }
+
         await stepSibling(source, 2, 'm1', 'back')
 
         expect(pathIds(chat)).toEqual(['m0', 'm1', 'm2', 'm3'])
         expect(chat.scriptstate).toEqual({ mark: 'third' })
         expect(chat.supaMemoryData).toBe('m2\nFIRST-SUMMARY-TEXT')
         expect(chat.supaMemoryCoveredId).toBe('m0')
+        expect(chat.lastMemory).toBe('m0')
+        expect(chat.hypaV2Data).toEqual(parkedHypaV2)
+        expect(chat.hypaV3Data).toEqual(parkedHypaV3)
+        // The press consumed the only continuation: the control is gone.
+        expect(endTarget(chat)).toBeNull()
+        expect(treeView(chat).continuation).toBe(0)
     })
 })
 

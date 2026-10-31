@@ -307,8 +307,14 @@ vi.mock(import('src/ts/process/index.svelte'), () => ({
 // (the sticker picker) is left real: it is light once `getFileSrc` and
 // `saveAsset` are mocked above, and the sticker scenario below drives its
 // own `onSelect` callback through it.
+// Records the props the screen hands the message list, so a test can drive the
+// tree handlers exactly as a row would.
+const chatsPropsSeen = vi.hoisted(() => [] as Array<Record<string, unknown>>)
 vi.mock('./Chats.svelte', () => ({
-    default: (_target: unknown) => ({ destroy: () => {} }),
+    default: (_target: unknown, props: Record<string, unknown>) => {
+        chatsPropsSeen.push(props)
+        return { destroy: () => {} }
+    },
 }))
 vi.mock('./Chat.svelte', () => ({
     default: (_target: unknown) => ({ destroy: () => {} }),
@@ -697,9 +703,9 @@ describe('a freshly created chat starts with an empty composer', () => {
         await settle()
         expect(mainTextarea(target).value).toBe('pre-branch-text')
 
-        // Stands in for Branch/Copy/New Chat, each of which unshifts a fresh
-        // chat and switches to it (Chat.svelte's own branch button does
-        // exactly this: `chats.unshift(newChat); changeChatTo(0)`).
+        // Stands in for Copy/New Chat, each of which unshifts a fresh chat and
+        // switches to it (`chats.unshift(newChat); changeChatTo(0)`). Branch
+        // keeps one chat and does not do this.
         const newChat = makeChat(freshId('chat'), [])
         const char = liveChar(0)
         char.chats.unshift(newChat)
@@ -1550,5 +1556,44 @@ describe('the notice for an archived chat that cannot be loaded', () => {
         expect(target.textContent).toContain(language.errors.coldStorageLegacyChatDataMissing)
         expect(target.textContent).not.toContain(language.errors.coldStorageLegacyChatRetryNotice)
         expect(retryButton(target)).toBeUndefined()
+    })
+})
+
+describe('the tree handlers the screen gives the message list', () => {
+    // New-rule guard: the handlers and the busy getter did not exist before the chat tree.
+    test('step and branch reach the composer actions with their own arguments, and the busy getter follows generation', async () => {
+        const chat = makeChat(freshId('chat'), [
+            makeMessage('user', 'hello', { chatId: 'u0', time: 1 }),
+            makeMessage('char', 'reply', { chatId: 'c0', time: 3 }),
+        ], { alt: [{ m: makeMessage('char', 'older', { chatId: 'c-old', time: 2 }), p: 'u0', a: 1 }] })
+        installDb([makeCharacter(freshId('cha'), [chat])])
+        chatsPropsSeen.length = 0
+
+        mountScreen()
+        await settle()
+        const props = chatsPropsSeen[chatsPropsSeen.length - 1] as {
+            onStep: (index: number, expectedId: string | undefined, direction: 'back' | 'forward') => Promise<void>
+            onBranch: (index: number, expectedId: string | undefined) => Promise<void>
+            getBusy: () => boolean
+        }
+        expect(props).toBeDefined()
+        const live = () => liveChar(0).chats[0]
+
+        await props.onStep(1, 'c0', 'back')
+        expect(live().message.map((m: { chatId: string }) => m.chatId)).toEqual(['u0', 'c-old'])
+        await props.onStep(1, 'c-old', 'forward')
+        expect(live().message.map((m: { chatId: string }) => m.chatId)).toEqual(['u0', 'c0'])
+
+        await props.onBranch(0, 'u0')
+        expect(live().message.map((m: { chatId: string }) => m.chatId)).toEqual(['u0'])
+
+        expect(props.getBusy()).toBe(false)
+        doingChatMock.set(true)
+        try {
+            expect(props.getBusy()).toBe(true)
+        } finally {
+            doingChatMock.set(false)
+        }
+        expect(props.getBusy()).toBe(false)
     })
 })
