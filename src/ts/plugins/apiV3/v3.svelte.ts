@@ -14,6 +14,7 @@ import {
     warnIfChatSlotIdDuplicated,
 } from "src/ts/process/chatIds";
 import { SafeLocalPluginStorage, tagWhitelist } from "../pluginSafeClass";
+import { noteIdlessCopyWrite } from "../idlessCopyNotice";
 import DOMPurify from 'dompurify';
 import { additionalChatMenu, additionalFloatingActionButtons, additionalHamburgerMenu, additionalSettingsMenu, bodyIntercepterStore, chatPanelStore, DBState, selectedCharID, type MenuDef } from "src/ts/stores.svelte";
 import { v4 } from "uuid";
@@ -1199,11 +1200,13 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 if(overwritesPlaceholder(replaced, char)){
                     throw new Error(placeholderAgainMessage(char.chaId))
                 }
+                const wasIdless = !char?.chaId
                 fillMissingCharacterInstallIds(char)
                 warnIfCharacterChaIdDuplicated(db.characters, index, char?.chaId, replaced?.chaId, plugin.name)
                 warnIfCharacterInstallDuplicatesChatIds(char?.chats, char?.chaId, db.characters, replaced?.chats, plugin.name)
                 keepLiveAlt([replaced], [char])
                 DBState.db.characters[charId] = char
+                noteIdlessCopyWrite(plugin.name, replaced, char, wasIdless)
                 clearSupaMemoryIfEmptyIn([DBState.db.characters[charId]])
             }
         },

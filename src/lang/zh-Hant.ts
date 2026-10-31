@@ -2280,6 +2280,8 @@ export const languageChineseTraditional = {
         `儲存正在等待 ${names}：它的 ID 在儲存過程中發生了變化，因此該次嘗試已被捨棄並將重試。在它停止變化之前不會寫入任何內容。在此期間所做的變更會保留在此分頁中，但關閉分頁後將遺失。`,
     "saveRepairedEntriesNotice": (dropped: number, filled: number) =>
         `RisuAI 已修復角色列表：${dropped > 0 ? `${dropped} 個不是角色的項目已被排除` : ''}${dropped > 0 && filled > 0 ? '，並且' : ''}${filled > 0 ? `${filled} 個 ID 缺失或無法儲存的角色已被分配新的 ID` : ''}。${dropped > 0 ? '被排除的項目可能是外掛寫入的。' : ''}`,
+    "pluginIdlessCopyNotice": (plugin: string, names: string, more: number) =>
+        `${plugin ? `外掛「${plugin}」` : '某個外掛'}在沒有角色 ID 的情況下將 ${names}${more > 0 ? ` 等另外 ${more} 個` : ''}寫入並覆蓋了現有角色，因此每個都被儲存為帶有新 ID 的新角色。被取代角色的資料夾位置、群組成員身分和訊息發言者不會延續到它的副本。如果該外掛正在交換或重新排列角色，這屬於正常現象。`,
     "saveCharacterUnsavedNotice": (name: string) =>
         `RisuAI 目前無法儲存 ${name}：它的資料無效，可能是外掛修改了它。你對它所做的最新變更並未儲存，如果在問題解決之前關閉或重新整理分頁，這些變更將遺失。最後一次儲存的副本會保留，其他所有內容仍會正常儲存，RisuAI 會在背景持續重試。`,
     "saveCharacterNeverSavedNotice": (name: string) =>

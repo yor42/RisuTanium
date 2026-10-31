@@ -2235,6 +2235,8 @@ export const languageChinese = {
         `保存正在等待 ${names}：它的 ID 在保存过程中发生了变化，因此该次尝试已被丢弃并将重试。在它停止变化之前不会写入任何内容。在此期间所做的更改会保留在此标签页中，但关闭标签页后将丢失。`,
     "saveRepairedEntriesNotice": (dropped: number, filled: number) =>
         `RisuAI 已修复角色列表：${dropped > 0 ? `${dropped} 个不是角色的条目已被排除` : ''}${dropped > 0 && filled > 0 ? '，并且' : ''}${filled > 0 ? `${filled} 个 ID 缺失或无法保存的角色已分配了新的 ID` : ''}。${dropped > 0 ? '被排除的条目可能是插件写入的。' : ''}`,
+    "pluginIdlessCopyNotice": (plugin: string, names: string, more: number) =>
+        `${plugin ? `插件“${plugin}”` : '某个插件'}在没有角色 ID 的情况下将 ${names}${more > 0 ? ` 等另外 ${more} 个` : ''}写入并覆盖了现有角色，因此每个都被保存为带有新 ID 的新角色。被替换角色的文件夹位置、群组成员身份和消息发言者不会延续到它的副本。如果该插件正在交换或重新排列角色，这属于正常现象。`,
     "saveCharacterUnsavedNotice": (name: string) =>
         `RisuAI 目前无法保存 ${name}：它的数据无效，可能是插件修改了它。你对它所做的最新更改没有被保存，如果在问题解决之前关闭或刷新标签页，这些更改将丢失。最后一次保存的副本会保留，其他所有内容仍会正常保存，RisuAI 会在后台持续重试。`,
     "saveCharacterNeverSavedNotice": (name: string) =>

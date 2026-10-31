@@ -13,7 +13,7 @@
  * Title labels: (R) marks a reproducer that fails against a setter with no
  * check; (G) marks a guard that passes with or without it.
  */
-import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database } from '../../../storage/database.svelte'
 
@@ -85,6 +85,7 @@ vi.mock(import('../../../stores.svelte'), () => {
     return {
         DBState: state,
         selectedCharID: writable(-1),
+        alertStore: writable({ type: 'none', msg: '' }),
         additionalChatMenu: [],
         additionalFloatingActionButtons: [],
         additionalHamburgerMenu: [],
@@ -102,6 +103,8 @@ vi.mock(import('../../../alert'), () => ({
     alertConfirm: vi.fn(async () => true),
     alertError: vi.fn(),
     alertNormal: vi.fn(),
+    alertToast: vi.fn(),
+    doingAlert: vi.fn(() => false),
 }) as unknown as typeof import('../../../alert'))
 
 vi.mock(import('../../../globalApi.svelte'), () => ({
@@ -188,6 +191,12 @@ vi.mock(import('../../../process/ttsHooks'), () => ({
 
 import { makeRisuaiAPIV3 } from '../v3.svelte'
 import { DBState } from '../../../stores.svelte'
+import { resetIdlessCopyNoticeForTest } from '../../idlessCopyNotice'
+
+// The id-less write over slot 0 arms the notice's real flush timer; it must not outlive its test.
+afterEach(() => {
+    resetIdlessCopyNoticeForTest()
+})
 
 type Entry = Record<string, unknown>
 

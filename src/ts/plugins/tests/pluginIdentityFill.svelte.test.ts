@@ -61,6 +61,8 @@ vi.mock(import('../../alert'), () => ({
     alertConfirm: vi.fn(async () => true),
     alertError: vi.fn(),
     alertPluginConfirm: vi.fn(async () => true),
+    alertToast: vi.fn(),
+    doingAlert: vi.fn(() => false),
 }) as unknown as typeof import('../../alert'))
 
 vi.mock(import('../../util'), () => ({
@@ -88,6 +90,7 @@ vi.mock(import('../../stores.svelte'), () => {
         DBState: state,
         hotReloading: writable(false),
         selectedCharID: writable(-1),
+        alertStore: writable({ type: 'none', msg: '' }),
     } as unknown as typeof import('../../stores.svelte')
 })
 

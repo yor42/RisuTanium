@@ -2376,6 +2376,8 @@ export const languageEnglish = {
         `Saving is waiting on ${names}: its id changed while it was being saved, so that attempt was thrown away and is tried again. Nothing is written until it stops changing. Changes made in the meantime are kept in this tab but are lost if you close it.`,
     saveRepairedEntriesNotice: (dropped: number, filled: number) =>
         `RisuAI repaired the character list: ${dropped > 0 ? `${dropped} entr${dropped === 1 ? 'y that is' : 'ies that are'} not a character ${dropped === 1 ? 'was' : 'were'} left out` : ''}${dropped > 0 && filled > 0 ? ', and ' : ''}${filled > 0 ? `${filled} character${filled === 1 ? '' : 's'} whose id was missing or could not be saved ${filled === 1 ? 'was' : 'were'} given a new one` : ''}.${dropped > 0 ? ' A plugin may have written the entries that were left out.' : ''}`,
+    pluginIdlessCopyNotice: (plugin: string, names: string, more: number) =>
+        `${plugin ? `The plugin "${plugin}"` : 'A plugin'} wrote ${names}${more > 0 ? ` and ${more} more` : ''} over an existing character without a character id, so each was saved as a new character with a new id. The folder place, group memberships and message speakers of a replaced character do not carry over to its copy. If the plugin was swapping or reordering characters, this is expected.`,
     saveCharacterUnsavedNotice: (name: string) =>
         `RisuAI cannot save ${name} right now: its data is not valid, and a plugin may have changed it. Your latest changes to it are not being saved, and they will be lost if the tab closes or reloads before it is fixed. The last saved copy is kept, everything else is still saved, and RisuAI keeps trying quietly.`,
     saveCharacterNeverSavedNotice: (name: string) =>

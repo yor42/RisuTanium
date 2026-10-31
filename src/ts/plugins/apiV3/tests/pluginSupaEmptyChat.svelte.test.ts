@@ -99,6 +99,7 @@ vi.mock(import('../../../stores.svelte'), () => {
     return {
         DBState: state,
         selectedCharID: writable(-1),
+        alertStore: writable({ type: 'none', msg: '' }),
         hotReloading: writable(false),
         additionalChatMenu: [],
         additionalFloatingActionButtons: [],
@@ -124,6 +125,7 @@ vi.mock(import('../../../alert'), () => {
         alertNormal: vi.fn(show),
         alertNormalWait: vi.fn(async (msg: string) => { show(msg) }),
         alertMd: vi.fn(show),
+        doingAlert: vi.fn(() => false),
         alertToast: vi.fn(show),
         alertWait: vi.fn(() => ({})),
         alertClear: vi.fn(),
