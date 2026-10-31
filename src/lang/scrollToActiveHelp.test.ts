@@ -8,6 +8,7 @@ import { languageChinese } from './cn'
 import { languageGerman } from './de'
 import { languageEnglish } from './en'
 import { languageSpanish } from './es'
+import { languageJapanese } from './ja'
 import { languageKorean } from './ko'
 import { languageVietnamese } from './vi'
 import { languageChineseTraditional } from './zh-Hant'
@@ -22,6 +23,7 @@ const languages = [
     ['vi', languageVietnamese, /kéo/i],
     ['de', languageGerman, /zieh/i],
     ['es', languageSpanish, /arrastr/i],
+    ['ja', languageJapanese, /ドラッグ/],
 ] as const
 
 describe('enableScrollToActiveChar help text', () => {

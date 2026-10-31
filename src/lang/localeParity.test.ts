@@ -1,7 +1,7 @@
 /**
  * Locale parity. `src/lang/index.ts` deep-merges every locale over English, so a key a locale
  * lacks (or a placeholder a translation drops) renders English or broken text silently. The
- * seven locale modules are imported directly, never the merged `language`, so a missing key
+ * eight locale modules are imported directly, never the merged `language`, so a missing key
  * cannot be masked by the merge.
  *
  * Counting rules: objects are flattened to dotted paths; an array contributes one entry per
@@ -16,6 +16,7 @@ import { languageChineseTraditional } from './zh-Hant'
 import { languageVietnamese } from './vi'
 import { languageGerman } from './de'
 import { languageSpanish } from './es'
+import { languageJapanese } from './ja'
 
 type Kind = 'string' | 'function' | 'array-length' | 'other'
 
@@ -65,6 +66,7 @@ const locales: Array<[string, unknown]> = [
     ['vi', languageVietnamese],
     ['de', languageGerman],
     ['es', languageSpanish],
+    ['ja', languageJapanese],
 ]
 
 describe('guard: every locale mirrors the English locale structure', () => {

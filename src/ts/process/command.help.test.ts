@@ -70,6 +70,7 @@ import { languageEnglish } from 'src/lang/en'
 import { languageGerman } from 'src/lang/de'
 import { languageKorean } from 'src/lang/ko'
 import { languageSpanish } from 'src/lang/es'
+import { languageJapanese } from 'src/lang/ja'
 import { languageVietnamese } from 'src/lang/vi'
 import { processMultiCommand } from './command'
 
@@ -137,6 +138,7 @@ const locales = {
     cn: languageChinese,
     de: languageGerman,
     es: languageSpanish,
+    ja: languageJapanese,
     ko: languageKorean,
     vi: languageVietnamese,
     'zh-Hant': languageChineseTraditional,

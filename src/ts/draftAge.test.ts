@@ -54,6 +54,10 @@ describe('formatDraftAge: uiLanguage-to-Intl-tag mapping', () => {
         expect(formatDraftAge(0, 5 * 60_000, 'zh-Hant')).toBe(expectedRTF('zh-Hant', -5, 'minute'))
     })
 
+    test("'ja' passes straight through to Intl unmapped", () => {
+        expect(formatDraftAge(0, 5 * 60_000, 'ja')).toBe(expectedRTF('ja', -5, 'minute'))
+    })
+
     test('an unknown/unsupported language code falls back to "en"', () => {
         expect(formatDraftAge(0, 5 * 60_000, 'xx-not-a-real-code')).toBe(expectedRTF('en', -5, 'minute'))
     })
