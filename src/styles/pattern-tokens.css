@@ -1,0 +1,148 @@
+/*
+  PATTERN tokens: the visual warning and task-progress pattern (patterns/WARNINGS_AND_PROGRESS.md, patterns/MOTION_CONTRACT.md; DD-219..234, home decided by DD-226).
+  One shared file; each lane aliases what it needs, the way DD-217 did for the warning channel. Needs theme/nexus-tokens.css first (channels, ease-out, exit and scrim tokens).
+  Rules (DD-143, DD-146, DD-158): every colour is derived from a --nexus-*-rgb channel, so a pack states each colour once; every duration, distance and size is a token; the floors and ceilings
+  for packs are in patterns/checks/registry.mjs (one fragment that every lane merges into its own registry).
+  Three groups: --pattern-* (look), --warning-* (warning motion) and --task-* (task motion). The motion groups follow MOTION_CONTRACT.md section 2b / 2c. They were specified for patterns/motion.css; they
+  live here instead (the maintainer's DD-226 says one shared file), and motion.css only reads them. A component uses calc(var(--token) * var(--risu-animation-speed, 1)) where speed applies.
+*/
+:root {
+  --pattern-ease: var(--nexus-ease);
+
+  /* ---- Warning: severity channels, edges and the tint (DD-220, spec 3.2 / 6.4). notice = overlay, caution = warning (DD-217), confirm = accent, danger and blocked = danger. ---- */
+  --pattern-warn-rgb-notice: var(--nexus-overlay-rgb);
+  --pattern-warn-rgb-caution: var(--nexus-warning-rgb);
+  --pattern-warn-rgb-confirm: var(--nexus-accent-rgb);
+  --pattern-warn-rgb-danger: var(--nexus-danger-rgb);
+  --pattern-warn-rgb-blocked: var(--nexus-danger-rgb);
+  --pattern-warn-edge-notice: rgb(var(--pattern-warn-rgb-notice) / 0.65);
+  --pattern-warn-edge-caution: rgb(var(--pattern-warn-rgb-caution));
+  --pattern-warn-edge-confirm: rgb(var(--pattern-warn-rgb-confirm));
+  --pattern-warn-edge-danger: rgb(var(--pattern-warn-rgb-danger));
+  --pattern-warn-edge-blocked: rgb(var(--pattern-warn-rgb-blocked));
+  --pattern-warn-edge-width: 2px;
+  --pattern-warn-tint-alpha: 0.08;
+  --pattern-warn-radius: 16px;
+  --pattern-warn-width: 440px;                /* the centred dialog; a phone sheet is full width */
+  --pattern-warn-mark-size: 24px;             /* sheet */
+  --pattern-warn-mark-size-banner: 20px;
+  --pattern-warn-headline-size: 15px;
+  --pattern-warn-headline-weight: 600;
+  --pattern-warn-headline-leading: 1.3;
+  --pattern-warn-body-size: 13px;
+  --pattern-warn-body-leading: 1.4;
+  --pattern-warn-gap: 8px;
+  --pattern-warn-padding: 16px;
+  --pattern-warn-action-height: 44px;         /* touch; 40 on hover input (DD-213), set below */
+  --pattern-warn-action-radius: 12px;
+  --pattern-warn-scrim: rgb(var(--nexus-shade-rgb) / 0.62);
+  --pattern-surface: var(--color-surface-sheet);        /* opaque: no backdrop-filter anywhere in the pattern (MOTION_CONTRACT 7) */
+  --pattern-surface-toast: var(--color-surface-toast);
+  --pattern-on-accent: #001018;               /* the label of a confirm button on --nexus-accent (4.5:1, checked by the registry supplement) */
+  --pattern-on-danger: #1c0309;               /* the label of a danger button on the danger fill */
+  --pattern-z-layer: 60;                      /* dialog layer; the toast stack sits one above */
+  --pattern-z-toast: 61;
+
+  /* ---- Task: bar, steps, mark, count, skipped list (DD-221, spec 4 / 6.4) ---- */
+  --pattern-task-bar-height: 6px;
+  --pattern-task-bar-height-compact: 3px;     /* the mini bar of a toast */
+  --pattern-task-bar-track: rgb(var(--nexus-overlay-rgb) / 0.16);
+  --pattern-task-bar-fill-from: var(--nexus-core-from);
+  --pattern-task-bar-fill-to: rgb(var(--nexus-accent-rgb));
+  --pattern-task-bar-fill-end: var(--nexus-ring);
+  --pattern-task-bar-fill: linear-gradient(90deg, var(--pattern-task-bar-fill-from), var(--pattern-task-bar-fill-to) 70%, var(--pattern-task-bar-fill-end));
+  --pattern-task-bar-fail: rgb(var(--nexus-danger-rgb));
+  --pattern-task-bar-sweep: rgb(var(--nexus-accent-rgb) / 0.75);
+  --pattern-task-step-gap: 8px;
+  --pattern-task-mark-size: 48px;             /* dialog */
+  --pattern-task-mark-size-compact: 24px;     /* chip and toast */
+  --pattern-task-count-size: 12px;
+  --pattern-skip-edge: rgb(var(--nexus-warning-rgb));
+  --pattern-skip-edge-width: 3px;
+  --pattern-toast-width: 360px;
+  --pattern-toast-gap: 8px;
+
+  /* ---- Fills, tints and geometry the component rules read, so no rule carries a literal (DD-143). All absolute units, so the registry can bound them. ---- */
+  --pattern-fill-confirm: rgb(var(--nexus-accent-rgb));
+  --pattern-fill-danger: rgb(var(--nexus-danger-rgb));
+  --pattern-tint-notice: rgb(var(--pattern-warn-rgb-notice) / var(--pattern-warn-tint-alpha));
+  --pattern-tint-caution: rgb(var(--pattern-warn-rgb-caution) / var(--pattern-warn-tint-alpha));
+  --pattern-tint-confirm: rgb(var(--pattern-warn-rgb-confirm) / var(--pattern-warn-tint-alpha));
+  --pattern-tint-danger: rgb(var(--pattern-warn-rgb-danger) / var(--pattern-warn-tint-alpha));
+  --pattern-tint-blocked: rgb(var(--pattern-warn-rgb-blocked) / var(--pattern-warn-tint-alpha));
+  --pattern-warn-shadow: 0 24px 48px -12px rgb(var(--nexus-shade-rgb) / 0.6);
+  --pattern-toast-shadow: 0 12px 24px -8px rgb(var(--nexus-shade-rgb) / 0.55);
+  --pattern-weight-strong: 600;
+  --pattern-focus-width: 2px;
+  --pattern-focus-offset: 2px;
+  --pattern-ring-width: 2px;                  /* the danger ring (DD-233) */
+  --pattern-icon-size: 16px;
+  --pattern-step-icon-size: 18px;
+  --pattern-step-dot: 10px;
+  --pattern-step-dot-now: 9px;
+  --pattern-step-ring-width: 2px;
+  --pattern-bullet-size: 6px;
+  --pattern-bullet-top: 8px;
+  --pattern-bullet-inset: 2px;
+  --pattern-list-indent: 16px;
+  --pattern-ack-size: 20px;
+  --pattern-count-width: 56px;                /* room for "12 / 40" so the count never moves its neighbours */
+  --pattern-line-min: 20px;
+  --pattern-action-basis: 112px;
+  --pattern-pill-radius: 999px;
+  --pattern-tick-gap: 2px;
+  --pattern-disabled-opacity: 0.55;
+  --pattern-dim-opacity: 0.5;                 /* the fill of a cancelled task */
+  --pattern-fail-sweep-opacity: 0.6;
+}
+
+/* DD-213: 44 dp on touch, 40 on hover input. Packs may set tokens under the root attributes too (DD-159). */
+html[data-input="hover"] { --pattern-warn-action-height: 40px; }
+
+:root {
+  /* ---- Warning motion (MOTION_CONTRACT 2c) ---- */
+  --warning-glyph-delay: 60ms;
+  --warning-glyph-dur: 220ms;
+  --warning-glyph-scale-from: 0.85;
+  --warning-halo-delay: 280ms;                /* DD-233: one faint ring on open, danger only */
+  --warning-halo-dur: 600ms;
+  --warning-halo-scale-to: 1.4;
+  --warning-halo-opacity: 0.5;
+  --warning-bullet-delay: 80ms;
+  --warning-bullet-stagger: 40ms;
+  --warning-bullet-dur: 180ms;
+  --warning-bullet-distance: 4px;
+  --warning-detail-dur: 150ms;
+  --warning-press-scale: 0.97;
+  --warning-press-dur: var(--nexus-duration-press);
+  --warning-arm-delay: 250ms;                 /* DD-233: confirm ignores input this long after opening (read by pattern.js) */
+  --warning-swap-out-dur: 120ms;
+  --warning-swap-in-dur: 180ms;
+
+  /* ---- Task motion (MOTION_CONTRACT 2b) ---- */
+  --task-step-enter-dur: 180ms;
+  --task-step-enter-distance: 4px;
+  --task-step-stagger: 30ms;
+  --task-step-stagger-max: 150ms;
+  --task-tick-dur: 220ms;
+  --task-tick-scale-from: 0.6;
+  --task-fill-dur: 320ms;
+  --task-fill-ease: var(--nexus-ease-out);
+  --task-sweep-period: 1400ms;
+  --task-hold-period: 1600ms;
+  --task-state-dur: 150ms;
+  --task-mark-dwell: 600ms;                   /* read by pattern.js */
+  --task-count-interval: 250ms;               /* read by pattern.js */
+  --task-badge-delay: 300ms;
+  --task-badge-dur: 220ms;
+  --task-badge-scale-from: 0.6;
+  --task-result-delay: 450ms;                 /* read by pattern.js */
+  --task-result-enter-dur: 220ms;
+  --task-result-distance: 8px;
+  --task-result-row-delay: 60ms;
+  --task-result-row-stagger: 30ms;
+  --task-toast-enter-dur: 220ms;
+  --task-toast-distance: 12px;
+  --task-toast-overlap: 40ms;
+  --task-toast-done-hold: 6000ms;             /* DD-234: a clean finish hides after this; paused while hovered or focused (read by pattern.js) */
+}

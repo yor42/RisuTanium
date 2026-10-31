@@ -26,6 +26,8 @@ const SPECIFIED: Record<alertData['type'], AlertEscapeAction> = {
     selectModule: 'ignore',
     tos: 'ignore',
     staleAccountNotice: 'ignore',
+    patternSelect: 'ignore',
+    patternInput: 'ignore',
     progress: 'ignore',
     normal: 'close',
     error: 'close',

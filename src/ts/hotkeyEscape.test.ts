@@ -144,6 +144,7 @@ describe('Escape on an alert that waits for an answer', () => {
     test.each([
         'pluginconfirm', 'input', 'select', 'selectChar', 'addchar', 'chatOptions',
         'selectModule', 'cardexport', 'tos', 'staleAccountNotice', 'progress',
+        'patternSelect', 'patternInput',
     ] as Array<alertData['type']>)('a %s alert stays in the store as the same object and an open settings panel stays open', (type) => {
         const alert = alertOf(type)
         alertStore.set(alert)
