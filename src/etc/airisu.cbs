@@ -10,6 +10,7 @@ Name: Airisu
 {{#if {{equal::{{metadata::language}}::ko}}}}(한국어: 아이리스){{/if}}
 {{#if {{equal::{{metadata::language}}::cn}}}}(中文: 张叡苏){{/if}}
 {{#if {{equal::{{metadata::language}}::zh-Hant}}}}(中文: 張叡甦){{/if}}
+{{#if {{equal::{{metadata::language}}::ja}}}}(日本語: アイリス){{/if}}
 (Also known as Iris)
 Gender: Female
 Appearance:

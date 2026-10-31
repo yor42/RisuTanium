@@ -46,6 +46,7 @@ vi.mock(import('src/ts/translator/translator'), () => ({
 import { changeLanguage } from 'src/lang'
 import { languageEnglish } from 'src/lang/en'
 import { languageSpanish } from 'src/lang/es'
+import { languageJapanese } from 'src/lang/ja'
 import { languageSettingsItems } from './languageSettingsData.svelte'
 
 type OnChange = (val: string, ctx: { db: { language: string } }) => Promise<void>
@@ -85,11 +86,27 @@ describe('the UI-language select', () => {
         expect(options.find((o) => o.value === 'es')?.label).toBe('Español')
     })
 
+    test('regression reproducer: offers Japanese', () => {
+        const options = (uiLanguage as unknown as {
+            options: { selectOptions: { value: string; label?: string }[] }
+        }).options.selectOptions
+        expect(options.find((o) => o.value === 'ja')?.label).toBe('日本語')
+    })
+
     test('guard: selecting a shipped language switches the app to its translation', async () => {
         expect(languageSpanish.settingsPage.unknown).not.toBe(languageEnglish.settingsPage.unknown)
         await onChange('es', { db: { language: 'es' } })
         const { language } = await import('src/lang')
         expect(language.settingsPage.unknown).toBe(languageSpanish.settingsPage.unknown)
+    })
+})
+
+describe('the UI-language select, Japanese', () => {
+    test('regression reproducer: selecting Japanese switches the app to its translation', async () => {
+        expect(languageJapanese.settingsPage.unknown).not.toBe(languageEnglish.settingsPage.unknown)
+        await onChange('ja', { db: { language: 'ja' } })
+        const { language } = await import('src/lang')
+        expect(language.settingsPage.unknown).toBe(languageJapanese.settingsPage.unknown)
     })
 })
 
@@ -113,6 +130,15 @@ describe('continuing an existing translation through the UI-language setting', (
         expect(name).toBe('lang.json')
         const downloaded = JSON.parse(new TextDecoder().decode(bytes)) as typeof languageEnglish
         expect(downloaded.settingsPage.unknown).toBe(languageSpanish.settingsPage.unknown)
+    })
+
+    test('regression reproducer: choosing Japanese downloads the Japanese language JSON', async () => {
+        expect(languageJapanese.settingsPage.unknown).not.toBe(languageEnglish.settingsPage.unknown)
+        await chooseTranslation('ja')
+
+        const bytes = mocks.downloadFile.mock.calls[0][1] as Uint8Array
+        const downloaded = JSON.parse(new TextDecoder().decode(bytes)) as typeof languageEnglish
+        expect(downloaded.settingsPage.unknown).toBe(languageJapanese.settingsPage.unknown)
     })
 
     test('compatibility guard: choosing Korean downloads the Korean language JSON', async () => {

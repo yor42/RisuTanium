@@ -9,7 +9,7 @@
 // rather than adding a seventh set of hand-written phrases.
 
 // `src/lang/index.ts`'s app language codes are mostly valid BCP-47 tags
-// already ('ko', 'de', 'vi', 'zh-Hant', 'es'). 'cn' is the one exception --
+// already ('ko', 'de', 'vi', 'zh-Hant', 'es', 'ja'). 'cn' is the one exception --
 // it means Simplified Chinese in this codebase (see `changeLanguage`'s
 // `languageChinese` branch) but is not itself a valid `Intl` locale tag, so
 // it maps to 'zh-Hans' here.

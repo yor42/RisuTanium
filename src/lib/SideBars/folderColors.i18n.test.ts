@@ -65,7 +65,7 @@ describe('folder colour helper', () => {
     })
 
     test('guard: no label contains the "||" separator that the select list joins its entries with', () => {
-        for (const code of ['en', 'ko', 'cn', 'zh-Hant', 'vi', 'de', 'es']) {
+        for (const code of ['en', 'ko', 'cn', 'zh-Hant', 'vi', 'de', 'es', 'ja']) {
             changeLanguage(code)
             for (const label of getFolderColorLabels()) {
                 expect(label).not.toContain('||')
