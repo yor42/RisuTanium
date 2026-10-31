@@ -288,6 +288,10 @@ async function readCharacterFile(f:{
         const data = f.data instanceof Uint8Array ? f.data : isImportSource(f.data) ? await f.data.read(0, f.data.size) : new Uint8Array(await f.data.arrayBuffer())
         const da = JSON.parse(Buffer.from(data).toString('utf-8'))
         const spec = await importCharacterCardSpec(da, undefined, 'normal', undefined, undefined, undefined, undefined, undefined, run)
+        //A v2 or v3 card that was refused is not an old card: its top-level fields are not the card.
+        if(spec === null && (da?.spec === 'chara_card_v2' || da?.spec === 'chara_card_v3')){
+            return refusedOutcome(language.errors.noData)
+        }
         if(typeof spec === 'number'){
             return {kind: 'imported', index: spec}
         }
@@ -590,13 +594,18 @@ function pngCardOverLimit(chunks:PngLayoutChunk[], imageBytes:number, plainWebSt
     return imageBytes > imageLimit ? language.cardImageTooLarge(Math.round(imageLimit / (1024 * 1024))) : null
 }
 
+//A v2 or v3 card keeps its fields in `data`, which must be an object. A missing or null `data.extensions` is read as empty.
+function hasCardDataObject(card:{data?:unknown}):boolean {
+    return typeof card.data === 'object' && card.data !== null
+}
+
 /**
  * The first reference of a v2 or v3 card that the import resolves through the asset chunks and that has no chunk, as the
  * import itself reads them: in a v2 card the `__asset:` values of the emotions, additional assets and vits, in a v3 card
  * the `__asset:` and `embeded://` uris of its assets. Null when every one resolves.
  */
 function firstMissingAssetKey(card:CharacterCardV2Risu|CharacterCardV3, assetKeys:Set<string>):string|null {
-    const risuext = card.data.extensions.risuai
+    const risuext = card.data.extensions?.risuai
     if(risuext && card.spec === 'chara_card_v2'){
         if(risuext.emotions){
             for(let i=0;i<risuext.emotions.length;i++){
@@ -652,11 +661,23 @@ async function planSpecCard(card:CharacterCardV2Risu|CharacterCardV3, assetKeys:
     if(!card || (card.spec !== 'chara_card_v2' && card.spec !== 'chara_card_v3')){
         return refusedOutcome(notACard)
     }
+    if(!hasCardDataObject(card)){
+        return refusedOutcome(language.errors.noData)
+    }
+    //The import converts the book on the card itself and mutates it, so this check converts a copy. A book that cannot convert refuses the card before any asset is saved and before the low-level-access prompt.
+    if(card.data.character_book){
+        try {
+            convertCharbook({lorebook: [], charbook: safeStructuredClone(card.data.character_book), loresettings: undefined, loreExt: undefined})
+        } catch (error) {
+            console.error(error)
+            return refusedOutcome(language.errors.noData)
+        }
+    }
     const missing = firstMissingAssetKey(card, assetKeys)
     if(missing !== null){
         return refusedOutcome(fillLang(language.errors.importAssetNotFound, { key: missing }))
     }
-    const risuext = card.data.extensions.risuai
+    const risuext = card.data.extensions?.risuai
     if(risuext && risuext.lowLevelAccess){
         if(!await alertConfirm(language.lowLevelAccessConfirm)){
             return {kind: 'declined'}
@@ -688,6 +709,9 @@ async function planRccCard(value:string, assetKeys:Set<string>):Promise<PngCardP
             return refusedOutcome(language.errors.noData)
         }
         throw error
+    }
+    if(metaData === null || typeof metaData !== 'object'){
+        return refusedOutcome(language.errors.noData)
     }
     if(metaData.usePassword){
         const password = await alertInput(language.inputCardPassword)
@@ -1365,19 +1389,48 @@ async function readCardExportImage(image?: string) {
 }
 
 
-//Resolves to `null` when `card` is not a v2 or v3 card, to `false` when the user declined the low-level-access prompt, and otherwise to the card added (`true`), or with `returnValue` to the character built and not added.
+//Resolves to `null` when `card` is not a v2 or v3 card, has no `data` object or has a character book that cannot convert (nothing is saved), to `false` when the user declined the low-level-access prompt, and otherwise to the card added (`true`), or with `returnValue` to the character built and not added.
 //A caller that has already asked the low-level-access prompt for this card passes `lowLevelAccessAsked`, so the user is asked once.
 async function importCharacterCardSpec<T extends boolean = false>(card:CharacterCardV2Risu|CharacterCardV3, img?:Uint8Array, mode:'hub'|'normal' = 'normal', assetDict:{[key:string]:string} = {}, overrideLorebook: loreBook[] = null, returnValue:T = false as T, lowLevelAccessAsked:boolean = false, lowLevelLabel?:LowLevelLabel, archive:ImportArchiveRun|null = null):Promise<T extends true ? character|false|null : number|false|null>{
     if(!card ||(card.spec !== 'chara_card_v2' && card.spec !== 'chara_card_v3' )){
         return null
     }
 
+    if(!hasCardDataObject(card)){
+        return null
+    }
+
     console.log(`Importing ${card.spec}, mode is ${mode}`)
 
     const data = card.data
+    //The book is converted before any asset is saved: a book that cannot convert resolves to `null` with nothing saved.
+    const charbook = data.character_book
+    let lorebook:loreBook[] = overrideLorebook ?? []
+    let loresettings:undefined|loreSettings = undefined
+    let loreExt:undefined|any = undefined
+    if(charbook){
+        try {
+            const a = convertCharbook({
+                lorebook: overrideLorebook ? [] : lorebook,
+                charbook,
+                loresettings,
+                loreExt
+            })
+
+            if(!overrideLorebook){
+                lorebook = a.lorebook
+            }
+            loresettings = a.loresettings
+            loreExt = a.loreExt
+        } catch (error) {
+            console.error(error)
+            return null
+        }
+    }
+
     let im = img ? await saveAsset(img) : undefined
 
-    const risuext = safeStructuredClone(data.extensions.risuai)
+    const risuext = safeStructuredClone(data.extensions?.risuai)
     let emotions:[string, string][] = []
     let bias:[string, number][] = []
     let viewScreen: "none" | "emotion" | "imggen" = 'none'
@@ -1568,26 +1621,7 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
             return false
         }
     }
-    const charbook = data.character_book
-    let lorebook:loreBook[] = overrideLorebook ?? []
-    let loresettings:undefined|loreSettings = undefined
-    let loreExt:undefined|any = undefined
-    if(charbook){
-        const a = convertCharbook({
-            lorebook: overrideLorebook ? [] : lorebook,
-            charbook,
-            loresettings,
-            loreExt
-        })
-
-        if(!overrideLorebook){
-            lorebook = a.lorebook
-        }
-        loresettings = a.loresettings
-        loreExt = a.loreExt
-    }
-
-    let ext = safeStructuredClone(data?.extensions ?? {})
+    let ext =safeStructuredClone(data?.extensions ?? {})
 
     for(const key in ext){
         if(key === 'risuai'){
@@ -2717,6 +2751,7 @@ async function downloadRealmCard(id:string, arg:{
         const data:CharacterCardV3 = result.card
         const img:string = result.img
 
+        data.data.extensions ??= {}
         data.data.extensions.risuRealmImportId = id
     
         const added = await importCharacterCardSpec(data, await getHubResources(img), 'hub', undefined, undefined, undefined, undefined, undefined, opensAtOnce ? null : newImportArchiveRun())
