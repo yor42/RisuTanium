@@ -2376,6 +2376,8 @@ export const languageJapanese = {
         `保存は${names}を待機しています：保存中にidが変更されたため、その保存試行は破棄され、再試行されます。idの変更が止まるまで何も書き込まれません。その間の変更はこのタブ内に保持されますが、タブを閉じると失われます。`,
     saveRepairedEntriesNotice: (dropped: number, filled: number) =>
         `RisuAIがキャラクターリストを修復しました：${dropped > 0 ? `キャラクターではない${dropped}件のエントリを除外しました` : ''}${dropped > 0 && filled > 0 ? '。また、' : ''}${filled > 0 ? `idが存在しないか保存できなかった${filled}体のキャラクターに新しいidを付与しました` : ''}。${dropped > 0 ? '除外されたエントリはプラグインによって書き込まれた可能性があります。' : ''}`,
+    pluginIdlessCopyNotice: (plugin: string, names: string, more: number) =>
+        `${plugin ? `プラグイン「${plugin}」` : 'あるプラグイン'}がキャラクターidなしで${names}${more > 0 ? `ほか${more}体` : ''}を既存のキャラクターに上書きして書き込んだため、それぞれ新しいidを持つ新しいキャラクターとして保存されました。置き換えられたキャラクターのフォルダ位置、グループへの所属、メッセージの発話者は、そのコピーに引き継がれません。プラグインがキャラクターを入れ替えたり並べ替えたりしていた場合は、想定どおりの動作です。`,
     saveCharacterUnsavedNotice: (name: string) =>
         `RisuAIは現在${name}を保存できません：データが有効ではなく、プラグインによって変更された可能性があります。最新の変更は保存されておらず、修正される前にタブを閉じたり再読み込みしたりすると失われます。最後に保存されたコピーは保持され、他のデータはすべて通常どおり保存されており、RisuAIはバックグラウンドで保存を再試行し続けます。`,
     saveCharacterNeverSavedNotice: (name: string) =>

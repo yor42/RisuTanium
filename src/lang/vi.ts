@@ -2235,6 +2235,8 @@ export const languageVietnamese = {
         `Việc lưu đang chờ ${names}: id của nó đã thay đổi trong lúc đang lưu, nên lần thử đó bị hủy bỏ và sẽ được thử lại. Sẽ không có gì được ghi cho đến khi nó ngừng thay đổi. Các thay đổi thực hiện trong thời gian đó được giữ trong tab này nhưng sẽ bị mất nếu bạn đóng tab.`,
     saveRepairedEntriesNotice: (dropped: number, filled: number) =>
         `RisuAI đã sửa danh sách nhân vật: ${dropped > 0 ? `${dropped} mục không phải nhân vật đã bị loại bỏ` : ''}${dropped > 0 && filled > 0 ? ', và ' : ''}${filled > 0 ? `${filled} nhân vật có id bị thiếu hoặc không thể lưu đã được cấp id mới` : ''}.${dropped > 0 ? ' Có thể một plugin đã ghi các mục bị loại bỏ đó.' : ''}`,
+    pluginIdlessCopyNotice: (plugin: string, names: string, more: number) =>
+        `${plugin ? `Plugin "${plugin}"` : 'Một plugin'} đã ghi ${names}${more > 0 ? ` và ${more} nhân vật khác` : ''} đè lên nhân vật hiện có mà không có id nhân vật, nên mỗi bản được lưu thành một nhân vật mới với id mới. Vị trí thư mục, tư cách thành viên nhóm và người nói của tin nhắn của nhân vật bị thay thế không được chuyển sang bản sao của nó. Nếu plugin đang hoán đổi hoặc sắp xếp lại các nhân vật thì đây là điều bình thường.`,
     saveCharacterUnsavedNotice: (name: string) =>
         `RisuAI hiện không thể lưu ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Những thay đổi mới nhất của bạn đối với nhân vật này không được lưu, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước khi sự cố được khắc phục. Bản đã lưu gần nhất vẫn được giữ, mọi thứ khác vẫn được lưu, và RisuAI vẫn lặng lẽ tiếp tục thử lại.`,
     saveCharacterNeverSavedNotice: (name: string) =>

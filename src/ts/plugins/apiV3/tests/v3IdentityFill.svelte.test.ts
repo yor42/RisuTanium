@@ -22,7 +22,7 @@
  * module-init time, so the real circular pair loads the same way it does in
  * the app.
  */
-import { describe, test, expect, vi } from 'vitest'
+import { describe, test, expect, vi, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database } from '../../../storage/database.svelte'
 
@@ -112,6 +112,7 @@ vi.mock(import('../../../stores.svelte'), () => {
     return {
         DBState: state,
         selectedCharID: writable(-1),
+        alertStore: writable({ type: 'none', msg: '' }),
         hotReloading: writable(false),
         additionalChatMenu: [],
         additionalFloatingActionButtons: [],
@@ -132,6 +133,8 @@ vi.mock(import('../../../alert'), () => ({
     alertError: vi.fn(),
     alertNormal: vi.fn(),
     alertPluginConfirm: vi.fn(async () => true),
+    alertToast: vi.fn(),
+    doingAlert: vi.fn(() => false),
 }) as unknown as typeof import('../../../alert'))
 
 vi.mock(import('../../../globalApi.svelte'), () => ({
@@ -226,6 +229,12 @@ import { DBState, selectedCharID } from '../../../stores.svelte'
 import { RisuSaveEncoder, decodeRisuSave } from '../../../storage/risuSave'
 import { repairDatabaseIds } from '../../../process/chatIds'
 import * as chatIdsModule from '../../../process/chatIds'
+import { resetIdlessCopyNoticeForTest } from '../../idlessCopyNotice'
+
+// An id-less copy over a character arms the notice's real flush timer; it must not outlive its test.
+afterEach(() => {
+    resetIdlessCopyNoticeForTest()
+})
 
 //#region fixtures
 

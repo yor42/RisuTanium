@@ -3,6 +3,7 @@ import { language } from "../../lang";
 import { fillLang } from "../../lang/fill";
 import { getCurrentCharacter, getDatabase, setDatabase, setDatabaseLite } from "../storage/database.svelte";
 import { alertConfirm, alertError } from "../alert";
+import { noteIdlessCopyWrite } from "./idlessCopyNotice";
 import { selectFileByDom, sleep } from "../util";
 import type { OpenAIChat } from "../process/index.svelte";
 import { fetchNative, globalFetch, readImage, saveAsset, toGetter } from "../globalApi.svelte";
@@ -747,6 +748,7 @@ export const getV2PluginAPIs = () => {
             if (overwritesPlaceholder(replaced, char)) {
                 throw new Error(placeholderAgainMessage(char.chaId))
             }
+            const wasIdless = !char?.chaId
             fillMissingCharacterInstallIds(char)
             if (replaced) {
                 warnIfCharacterChaIdDuplicated(db.characters, charid, char?.chaId, replaced?.chaId, pluginName)
@@ -754,6 +756,7 @@ export const getV2PluginAPIs = () => {
             }
             keepLiveAlt([replaced], [char])
             db.characters[charid] = char
+            noteIdlessCopyWrite(pluginName ?? '', replaced, char, wasIdless)
             clearSupaMemoryIfEmptyIn([db.characters[charid]])
             setDatabaseLite(db)
         },

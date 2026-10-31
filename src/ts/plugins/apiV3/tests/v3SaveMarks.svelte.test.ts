@@ -106,6 +106,7 @@ vi.mock(import('../../../stores.svelte'), () => {
     return {
         DBState: state,
         selectedCharID: writable(-1),
+        alertStore: writable({ type: 'none', msg: '' }),
         additionalChatMenu: [],
         additionalFloatingActionButtons: [],
         additionalHamburgerMenu: [],
@@ -123,6 +124,8 @@ vi.mock(import('../../../alert'), () => ({
     alertConfirm: alertConfirmMock,
     alertError: vi.fn(),
     alertNormal: vi.fn(),
+    alertToast: vi.fn(),
+    doingAlert: vi.fn(() => false),
 }) as unknown as typeof import('../../../alert'))
 
 vi.mock(import('../../../globalApi.svelte'), () => ({

@@ -1910,8 +1910,12 @@ function nameOfEntry(entry: Record<string, unknown>): string {
  *   plugin's or the person's to undo.
  *
  * Tells the person once per pass at most.
+ *
+ * `holds: false` (the store2 loop) still returns the held entries but does not
+ * stop `checkCharOrder` from pruning: any string id is a legal store2 handle.
  */
-export function liveCharacterCheck(): { held: HeldSaveInfo[], repaired: boolean } {
+export function liveCharacterCheck(options: { holds?: boolean } = {}): { held: HeldSaveInfo[], repaired: boolean } {
+    const holds = options.holds ?? true
     const db = getDatabase()
     const list: unknown = db?.characters
     if (!Array.isArray(list)) {
@@ -1955,7 +1959,7 @@ export function liveCharacterCheck(): { held: HeldSaveInfo[], repaired: boolean 
         }
         held.push({ name: nameOfEntry(cha), kind: 'unusable-id', archived })
     }
-    loopHoldsSaving = held.length > 0
+    loopHoldsSaving = holds && held.length > 0
     const repaired = dropped > 0 || filled > 0
     if (repaired) {
         checkCharOrder(db)
@@ -2142,8 +2146,8 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         getDatabase,
         mergeBack: mergeUnsavedChanges,
         liveCheck() {
-            // Held ids are not a hold here: any string id is a legal store2 chaId. A repair sets the full-reload flag itself.
-            if (liveCharacterCheck().repaired) {
+            // Held ids are not a hold here: any string id is a legal store2 chaId, so they must not suspend order pruning. A repair sets the full-reload flag itself.
+            if (liveCharacterCheck({ holds: false }).repaired) {
                 saveMarkCount += 1
                 dirtySinceLastSave = true
                 changed = true
