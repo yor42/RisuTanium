@@ -49,6 +49,13 @@ function expectJsonWithoutStack(answer: Answer): void {
     expect(answer.text).not.toContain('SyntaxError')
 }
 
+/** Waits until the server's output after offset `since` contains `text`: its output reaches the test through a pipe, after the answer. */
+async function untilLogged(since: number, text: string): Promise<void> {
+    for (let wait = 0; wait < 100 && !fixture.output().slice(since).includes(text); wait++) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 20))
+    }
+}
+
 async function expectServerAlive(): Promise<void> {
     const answer = await send('GET', '/api/test_auth', { 'risu-auth': await fixture.authHeader() })
     expect(JSON.parse(answer.text)).toEqual({ status: 'success' })
@@ -75,9 +82,13 @@ describe('a malformed proxy input answers 400 and the server stays up', { timeou
 
 describe('other parse failures', { timeout: 30_000 }, () => {
     test('S4a-T3 a login body that is not JSON gets a 400 as JSON with no stack', async () => {
+        const logged = fixture.output().length
         const answer = await send('POST', '/api/login', { 'content-type': 'application/json' }, '{bad')
         expect(answer.status).toBe(400)
         expectJsonWithoutStack(answer)
+        // Its log line is taken in here, so it cannot arrive during the next test's own log window.
+        await untilLogged(logged, 'POST /api/login failed')
+        expect(fixture.output().slice(logged)).toContain('POST /api/login failed')
     })
 
     test('S4a-T4 an unparseable token gets a 400 and no stack in the log', async () => {
@@ -85,10 +96,7 @@ describe('other parse failures', { timeout: 30_000 }, () => {
         const answer = await send('GET', '/api/list', { 'risu-auth': 'abc' })
         expect(answer.status).toBe(400)
         expect(JSON.parse(answer.text)).toEqual({ error: 'Invalid Token' })
-        // The server's output reaches the test through a pipe, a moment after the answer.
-        for (let wait = 0; wait < 100 && !fixture.output().slice(logged).includes('Invalid token'); wait++) {
-            await new Promise<void>((resolve) => setTimeout(resolve, 20))
-        }
+        await untilLogged(logged, 'Invalid token')
         const added = fixture.output().slice(logged)
         expect(added).toContain('Invalid token')
         expect(added).not.toMatch(/\n\s+at /)

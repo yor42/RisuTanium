@@ -324,11 +324,17 @@ async function stagingFiles(): Promise<string[]> {
 /**
  * The abort request that removes a staging file is sent, and settles, after the failing parse() has already rejected;
  * the staging file may not even exist yet. The cleanup is therefore awaited by its own effects, never by a clock:
- * first the abort request, then the staging file's removal.
+ * first every begun upload's abort request, then the staging file's removal. The begin request is itself sent after the
+ * importer's promise has settled, so "none routed yet" does not show that no upload is coming: the caller states whether the
+ * entry reaches the piece path, and a run that expects no upload ends at once.
  */
-async function untilUploadAborted(routes: string[]): Promise<void> {
+async function untilUploadAborted(routes: string[], uploadExpected: boolean): Promise<void> {
+    if (!uploadExpected) {
+        return
+    }
+    const countOf = (path: string) => routes.filter((route) => route === path).length
     const deadline = Date.now() + 10_000
-    while (!routes.includes('/api/upload/abort') && Date.now() < deadline) {
+    while (countOf('/api/upload/abort') < Math.max(1, countOf('/api/upload/begin')) && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 25))
     }
     while ((await stagingFiles()).length > 0 && Date.now() < deadline) {
@@ -429,7 +435,7 @@ describe('an entry past one chunk is saved in pieces on the Node store', () => {
     })
 
     test('data safety: an archive cut short inside the entry stores no asset under any key', async () => {
-        await nodeStore()
+        const { routes } = await nodeStore()
         const bytes = patterned(BIG,5)
         const archive = await buildCharx([['card.json', CARD], ['assets/big.png', bytes]])
         const cut = archive.slice(0, Math.floor(archive.length * 0.7))
@@ -438,6 +444,7 @@ describe('an entry past one chunk is saved in pieces on the Node store', () => {
         const outcome = await importer.parse(streamOf(cut)).then(() => importer.done()).then(() => null, (error: unknown) => error)
 
         expect(outcome).not.toBeNull()
+        await untilUploadAborted(routes, true)
         expect(await storedAssetKeys()).toEqual([])
         expect(await stagingFiles()).toEqual([])
     })
@@ -451,7 +458,9 @@ describe('an entry past one chunk is saved in pieces on the Node store', () => {
         const outcome = await importer.parse(streamOf(archive)).then(() => null, (error: unknown) => error)
 
         expect(outcome).toMatchObject({ name: 'CharXParseError', origin: 'size' })
-        await untilUploadAborted(routes)
+        // The first decoded piece of this stored entry is already past the 300-byte limit, so nothing is appended, the entry never moves to the piece path and no upload is begun.
+        await untilUploadAborted(routes, false)
+        expect(routes).not.toContain('/api/upload/begin')
         expect(await storedAssetKeys()).toEqual([])
         expect(await stagingFiles()).toEqual([])
     })
@@ -512,7 +521,7 @@ describe('an entry past one chunk is saved in pieces on the Node store', () => {
         await importer.parse(streamOf(archive))
         importer.abandon()
         release()
-        await untilUploadAborted(routes)
+        await untilUploadAborted(routes, true)
 
         expect(await storedAssetKeys()).toEqual([])
         expect(await stagingFiles()).toEqual([])

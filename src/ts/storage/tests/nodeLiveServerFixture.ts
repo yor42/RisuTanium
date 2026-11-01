@@ -405,6 +405,8 @@ export interface LiveOptions {
     committers: number
     /** The fraction of the run after which the server restarts once. */
     restartAt: number
+    /** Diagnostic: each live removal is preceded by a starver commit, which makes the collector's token stale, so most removals lose to a conflict while the writers run. A starver commit whose read throws is swallowed, leaving that removal unpreceded. */
+    starveCollector?: boolean
 }
 
 export interface EndState {
@@ -429,7 +431,7 @@ export interface LiveReport {
     extendedMs: number
     /** The shared tally: the main run and every observer check; collection and retire counts of the retire phase are in phaseCounts. */
     counts: Record<string, number>
-    /** What the main run counted with the writers active, taken before the retire phase began. */
+    /** What the main run counted: live counts with the writers active, and the `-quiet` counts of passes applied after the writers paused, taken before the retire phase began. */
     mainCounts: Record<string, number>
     /** What the writer-free retire phase counted for its own collection passes and retires. */
     phaseCounts: Record<string, number>
@@ -449,6 +451,12 @@ export interface LiveReport {
 /** The main run is extended by at most this many times its length when the collector has applied no batch yet. */
 const MAX_EXTENSION_FACTOR = 3
 const EXTENSION_SLICE_MS = 5000
+/**
+ * When the collector has still applied no batch after the extensions, the writers pause and the collector alone runs for at most
+ * this many passes. Without writers only a dropped reply (one removal in four) stops a batch, and a pass retries once on a commit conflict, so a
+ * collector that works applies one within a few passes; the bound is passes, not time, so a slow machine does not exhaust it.
+ */
+const QUIET_GC_MAX_PASSES = 30
 const PARTIAL_RETIRE_TARGET = 3
 const PARTIAL_RETIRE_MAX_ROUNDS = 60
 /** How long after the server answers again a check that began during the restart may still report an unreachable server. */
@@ -462,14 +470,15 @@ function describeThrown(error: unknown): string {
     return error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error)
 }
 
-function tallyGc(tally: Tally, result: GcResult): void {
+/** `suffix` '-quiet' counts what the collector applied after the writers paused apart from what it applied under them. */
+function tallyGc(tally: Tally, result: GcResult, suffix = ''): void {
     if (result.status === 'refused') {
         tally.add(`gc:refused:${result.reason}`)
         return
     }
     tally.add(result.stopped === undefined ? 'gc:done' : `gc:done:${result.stopped}`)
-    tally.add('gc:keys-deleted', result.deleted)
-    tally.add('gc:batches-applied', result.batches)
+    tally.add(`gc:keys-deleted${suffix}`, result.deleted)
+    tally.add(`gc:batches-applied${suffix}`, result.batches)
 }
 
 function gcDepsOf(client: LiveClient, backend: Store2Backend) {
@@ -514,10 +523,44 @@ export async function runLiveWorkload(fixture: NodeServerFixture, options: LiveO
     }))
     const restorer = openLiveClient(fixture, 'restorer', env, { 'commit-write': (nth) => nth % 5 === 0 })
     const collector = openLiveClient(fixture, 'collector', env, { 'remove-checked': (nth) => nth % 4 === 0 })
-    const collectorBackend = instrumentRetires(collector.backend, window, observerStore, tally)
-    const clients = [...committers, restorer, collector]
+    const instrumentedCollector = instrumentRetires(collector.backend, window, observerStore, tally)
+    const starver = options.starveCollector === true ? openLiveClient(fixture, 'starver', env) : null
+    const clients = starver === null ? [...committers, restorer, collector] : [...committers, restorer, collector, starver]
 
     let running = true
+    // While the writers are paused the collector runs alone: `writersBusy` counts the writer turns still in flight, and `quiet`
+    // is set once none is, so a batch tallied under it was applied after the writers paused.
+    let writersPaused = false
+    let writersBusy = 0
+    let quiet = false
+    let quietPasses = 0
+
+    const collectorBackend: Store2Backend = starver === null ? instrumentedCollector : {
+        ...instrumentedCollector,
+        async removeBatch(keys, expectedCommit, expectedFence) {
+            if (!writersPaused) {
+                await guarded('starve', async () => {
+                    const read = await starver.committer.readCommit()
+                    tally.add(`starve:${outcomeOf(await starver.committer.commit(read, treeRequest(1, { tag: 'starve' })))}`)
+                })
+            }
+            return instrumentedCollector.removeBatch(keys, expectedCommit, expectedFence)
+        },
+    }
+
+    /** One turn of a committer or the restorer; a paused writer idles instead, and the pause waits for the turns in flight. */
+    async function writerTurn(turn: () => Promise<void>): Promise<void> {
+        if (writersPaused) {
+            await pause(20)
+            return
+        }
+        writersBusy++
+        try {
+            await turn()
+        } finally {
+            writersBusy--
+        }
+    }
 
     async function guarded(label: string, run: () => Promise<void>): Promise<void> {
         try {
@@ -574,37 +617,46 @@ export async function runLiveWorkload(fixture: NodeServerFixture, options: LiveO
     async function committerLoop(client: LiveClient, index: number): Promise<void> {
         const rng = seededRng(options.seed * 1000 + index)
         for (let n = 1; running; n++) {
-            const op = pick(rng, [['commit', 10], ['bulk', 1], ['pin', 2], ['unpin', 2]] as const)
-            await guarded(`${client.name}:${op}`, () => committerOperation(client, op, rng, `${client.name}-${n}`))
-            await observer.check(`${client.name}#${n}:${op}`)
-            await pause(rng() * 15)
+            await writerTurn(async () => {
+                const op = pick(rng, [['commit', 10], ['bulk', 1], ['pin', 2], ['unpin', 2]] as const)
+                await guarded(`${client.name}:${op}`, () => committerOperation(client, op, rng, `${client.name}-${n}`))
+                await observer.check(`${client.name}#${n}:${op}`)
+                await pause(rng() * 15)
+            })
         }
     }
 
     async function restorerLoop(): Promise<void> {
         const rng = seededRng(options.seed * 1000 + 100)
         for (let n = 1; running; n++) {
-            await guarded('restore', async () => {
-                const read = await restorer.committer.readCommit()
-                const classified = classifyCommitRead(read)
-                if (classified.status !== 'parsed' || classified.value.retained.length === 0) {
-                    tally.add('restore:nothing-retained')
-                    return
-                }
-                const retained = classified.value.retained
-                tally.add(`restore:${outcomeOf(await restorer.committer.restore(read, retained[Math.floor(rng() * retained.length)].key))}`)
+            await writerTurn(async () => {
+                await guarded('restore', async () => {
+                    const read = await restorer.committer.readCommit()
+                    const classified = classifyCommitRead(read)
+                    if (classified.status !== 'parsed' || classified.value.retained.length === 0) {
+                        tally.add('restore:nothing-retained')
+                        return
+                    }
+                    const retained = classified.value.retained
+                    tally.add(`restore:${outcomeOf(await restorer.committer.restore(read, retained[Math.floor(rng() * retained.length)].key))}`)
+                })
+                await observer.check(`restorer#${n}`)
+                await pause(20 + rng() * 60)
             })
-            await observer.check(`restorer#${n}`)
-            await pause(20 + rng() * 60)
         }
     }
 
     async function collectorLoop(): Promise<void> {
         const rng = seededRng(options.seed * 1000 + 200)
         for (let n = 1; running; n++) {
+            const startedQuiet = quiet
             await guarded('gc', async () => {
-                tallyGc(tally, await gcPass(gcDepsOf(collector, collectorBackend)))
+                const result = await gcPass(gcDepsOf(collector, collectorBackend))
+                tallyGc(tally, result, quiet ? '-quiet' : '')
             })
+            if (startedQuiet) {
+                quietPasses++
+            }
             await observer.check(`collector#${n}`)
             await pause(10 + rng() * 40)
         }
@@ -628,8 +680,8 @@ export async function runLiveWorkload(fixture: NodeServerFixture, options: LiveO
     const restart = restartOnce()
     await pause(options.seconds * 1000)
     // The collector must have applied a batch while the writers were active. When it has not, the writers and the collector keep
-    // running in short extensions, up to MAX_EXTENSION_FACTOR times the run length, before the run is judged; a run whose
-    // collector never applies a batch in that time is reported with its counts and fails the assertion on them.
+    // running in short extensions, up to MAX_EXTENSION_FACTOR times the run length, and the writer-free phase follows. A batch
+    // applied in that phase satisfies the assertion; a run that applies none is reported with its counts and fails on them.
     const extensionBudgetMs = options.seconds * 1000 * MAX_EXTENSION_FACTOR
     let extendedMs = 0
     let extensions = 0
@@ -638,6 +690,23 @@ export async function runLiveWorkload(fixture: NodeServerFixture, options: LiveO
         await pause(slice)
         extendedMs += slice
         extensions++
+    }
+    // The extensions cannot help a collector that the writers' commits starve: every removal it tries conflicts. With no live batch
+    // the writers pause, the observer and the collector keep running, and the collector gets a bounded number of passes. What it
+    // applies then is counted apart ('-quiet'), so a run that collected nothing under the writers stays visible in the report.
+    if (tally.get('gc:batches-applied') === 0) {
+        writersPaused = true
+        while (writersBusy > 0) {
+            await pause(20)
+        }
+        quiet = true
+        while (tally.get('gc:batches-applied-quiet') === 0 && quietPasses < QUIET_GC_MAX_PASSES) {
+            await pause(20)
+        }
+        tally.add('gc:quiet-passes', quietPasses)
+        if (tally.get('gc:batches-applied-quiet') === 0) {
+            tally.add('gc:quiet-exhausted')
+        }
     }
     running = false
     await Promise.all([...loops, restart])

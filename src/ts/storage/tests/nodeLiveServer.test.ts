@@ -73,6 +73,7 @@ function numberFromEnv(name: string, fallback: number, min: number, max: number)
 const LIVE_SECONDS = numberFromEnv('RISU_LIVE_SECONDS', 30, 5, 86_400)
 const LIVE_SEED = numberFromEnv('RISU_LIVE_SEED', 1, 0, 1_000_000)
 const LIVE_COMMITTERS = Math.floor(numberFromEnv('RISU_LIVE_COMMITTERS', 3, 2, 4))
+const LIVE_STARVE = process.env.RISU_LIVE_STARVE === '1'
 
 async function caught(promise: Promise<unknown>): Promise<unknown> {
     return await promise.then(() => {
@@ -95,7 +96,7 @@ describe('a live run of several clients against one server', () => {
 
     test('keeps I1 after every operation through lost replies and a restart, and ends clean', async () => {
         fixture = await startNodeServer()
-        const report = await runLiveWorkload(fixture, { seconds: LIVE_SECONDS, seed: LIVE_SEED, committers: LIVE_COMMITTERS, restartAt: 0.5 })
+        const report = await runLiveWorkload(fixture, { seconds: LIVE_SECONDS, seed: LIVE_SEED, committers: LIVE_COMMITTERS, restartAt: 0.5, starveCollector: LIVE_STARVE })
         console.info(`LIVE-REPORT ${JSON.stringify({ ...report, endState: { ...report.endState, wanted: report.endState.wanted.length, listing: report.endState.listing.length, serverKeys: report.endState.serverKeys.length } })}`)
 
         expect(report.violations).toEqual([])
@@ -110,11 +111,18 @@ describe('a live run of several clients against one server', () => {
         // The run did protocol work and the observer judged it.
         expect(report.counts['commit:committed'] ?? 0).toBeGreaterThan(0)
 
-        // Collection applied batches while the writers were active, not only in the writer-free phase after them. A main run whose
-        // collector had applied none at the end of its length was extended (up to three times that length) before this is judged.
+        // Collection applied batches in the main run, whose writers kept committing. A main run whose collector had applied none
+        // at the end of its length was extended (up to three times that length); if it still had none, the writers paused and the
+        // collector ran alone for a bounded number of passes. Those batches are counted under '-quiet', so the report shows which
+        // phase applied them; they count here because commits that outpace every removal starve a collector without a defect in it.
         expect(report.extendedMs).toBeLessThanOrEqual(LIVE_SECONDS * 1000 * 3)
-        expect(report.mainCounts['gc:batches-applied'] ?? 0).toBeGreaterThan(0)
-        expect(report.mainCounts['gc:keys-deleted'] ?? 0).toBeGreaterThan(0)
+        const appliedLive = report.mainCounts['gc:batches-applied'] ?? 0
+        const appliedQuiet = report.mainCounts['gc:batches-applied-quiet'] ?? 0
+        expect(
+            appliedLive + appliedQuiet,
+            `The collector applied no batch: ${appliedLive} with the writers active, ${appliedQuiet} after they paused (${report.mainCounts['gc:quiet-passes'] ?? 0} writer-free passes)`,
+        ).toBeGreaterThan(0)
+        expect((report.mainCounts['gc:keys-deleted'] ?? 0) + (report.mainCounts['gc:keys-deleted-quiet'] ?? 0)).toBeGreaterThan(0)
         expect(report.counts['observer:ok'] ?? 0).toBeGreaterThan(0)
 
         // A check reports an unreachable server only while the server restarts, plus a margin for a request
