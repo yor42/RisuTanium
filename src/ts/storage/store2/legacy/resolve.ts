@@ -443,6 +443,9 @@ export async function resolveLegacyTree(db: Database, reader: LegacyEntryReader,
     }
 
     const database = { ...db, characters, pluginCustomStorage } as unknown as Database
+    // Task presets are not part of a legacy tree or a `.bin`: a key of that name there (a hand edit, or a field a later
+    // upstream adds) must never become type 26 units. A caller that keeps the page's own list sets it after the resolve.
+    delete database.taskPresets
     assertResolved(database)
     return { database, incomplete }
 }

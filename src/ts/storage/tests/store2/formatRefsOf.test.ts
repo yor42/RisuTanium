@@ -44,7 +44,7 @@ const MANIFEST_SAMPLE: Sample = {
         fixed: {
             config: ref('config'), configAl: list('configal'), il: list('il'), statics: ref('statics'), order: ref('order'),
             loadouts: ref('loadouts'), moduleIndex: ref('moduleindex'),
-            presets: [ref('preset1'), ref('preset2')], plugins: [ref('plugin1'), ref('plugin2')],
+            presets: [ref('preset1'), ref('preset2')], taskPresets: [ref('taskpreset1'), ref('taskpreset2')], plugins: [ref('plugin1'), ref('plugin2')],
             pluginStorage: { buckets: 2, refs: [ref('bucket1'), ref('bucket2')] },
             legacyKeep: { unit: ref('legacy'), v: 1, files: [{ key: 'database/database.bin', status: 'ok' }] },
         },
@@ -52,7 +52,8 @@ const MANIFEST_SAMPLE: Sample = {
     expected: [
         ['shards[]', 'shard1'], ['shards[]', 'shard2'], ['fixed.config', 'config'], ['fixed.configAl', 'configal'], ['fixed.il', 'il'],
         ['fixed.statics', 'statics'], ['fixed.order', 'order'], ['fixed.loadouts', 'loadouts'], ['fixed.moduleIndex', 'moduleindex'],
-        ['fixed.presets[]', 'preset1'], ['fixed.presets[]', 'preset2'], ['fixed.plugins[]', 'plugin1'], ['fixed.plugins[]', 'plugin2'],
+        ['fixed.presets[]', 'preset1'], ['fixed.presets[]', 'preset2'], ['fixed.taskPresets[]', 'taskpreset1'], ['fixed.taskPresets[]', 'taskpreset2'],
+        ['fixed.plugins[]', 'plugin1'], ['fixed.plugins[]', 'plugin2'],
         ['fixed.pluginStorage.refs[]', 'bucket1'], ['fixed.pluginStorage.refs[]', 'bucket2'], ['fixed.legacyKeep.unit', 'legacy'],
     ].map(([path, name]) => `${path}:${tailOf(name)}`),
 }
@@ -122,7 +123,7 @@ describe('refsOf guard', () => {
         const required: [UnitType, string[]][] = [
             [UNIT_TYPE.commit, ['current.key', 'retained[].key', 'pins[].key']],
             [UNIT_TYPE.manifest, ['shards[]', 'fixed.config', 'fixed.configAl', 'fixed.il', 'fixed.statics', 'fixed.order', 'fixed.loadouts',
-                'fixed.moduleIndex', 'fixed.presets[]', 'fixed.plugins[]', 'fixed.pluginStorage.refs[]', 'fixed.legacyKeep.unit']],
+                'fixed.moduleIndex', 'fixed.presets[]', 'fixed.taskPresets[]', 'fixed.plugins[]', 'fixed.pluginStorage.refs[]', 'fixed.legacyKeep.unit']],
             [UNIT_TYPE.shard, ['entries[].core', 'entries[].lore', 'entries[].scripts', 'entries[].al', 'entries[].il',
                 'entries[].chats[].core', 'entries[].chats[].chunks[]', 'entries[].chats[].alt[]']],
             [UNIT_TYPE.moduleIndex, ['entries[].unit', 'entries[].al', 'entries[].il']],

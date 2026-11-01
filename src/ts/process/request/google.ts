@@ -347,7 +347,8 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
             'reasoning_effort': "thinkingConfig.thinkingLevel"
         }, arg.mode, {
             ignoreTopKIfZero: true,
-            modelId: arg.modelInfo.id
+            modelId: arg.modelInfo.id,
+            temperature: arg.temperatureOverride
         }),
         safetySettings: uncensoredCatagory,
         systemInstruction: {
@@ -553,7 +554,7 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
     }
 
     
-    if(db.jsonSchemaEnabled || arg.schema){
+    if((db.jsonSchemaEnabled || arg.schema) && !arg.noJsonSchema){
         body.generation_config.response_mime_type = "application/json"
         body.generation_config.response_schema = getGeneralJSONSchema(arg.schema, ['$schema','additionalProperties'], {subject: arg.subject})
         console.log(body.generation_config.response_schema)

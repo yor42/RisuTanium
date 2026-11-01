@@ -226,6 +226,11 @@ export interface AssembleOptions {
     character?: (entry: ShardEntry, source: UnitSource) => JsonObject
     /** Builds one module in place of `assembleModule`; called once per index entry, in index order, with the entry's handle. Absent: `assembleModule`. */
     module?: (entry: ModuleEntry, source: UnitSource, handle: string) => JsonObject
+    /**
+     * Keys of task-preset units the boot found damaged or missing and flagged: they are left out of the list without being
+     * read. Only the boot fallback passes it; every other caller stays strict and throws on such a unit.
+     */
+    skipTaskPresets?: ReadonlySet<string>
 }
 
 /** The database the manifest and its units describe. Characters come back in `characters` order, fully loaded. */
@@ -238,6 +243,18 @@ export function assembleDatabase(manifest: Manifest, source: UnitSource, options
 
     defineOwn(database, 'botPresets', fixed.presets.map((ref, index) =>
         readObjectField(readContent(source, ref, UNIT_TYPE.preset, `preset ${index}`), 'preset', `preset ${index}`)))
+    // Defined only when at least one task preset is named, so a store without any assembles to the object it always did.
+    // The preset object comes back whole: a key this build does not know is kept.
+    const taskPresets: JsonObject[] = []
+    const namedTaskPresets = fixed.taskPresets ?? []
+    namedTaskPresets.forEach((ref, index) => {
+        if (options.skipTaskPresets?.has(keyOfRef(ref)) !== true) {
+            taskPresets.push(readObjectField(readContent(source, ref, UNIT_TYPE.taskPreset, `task preset ${index}`), 'preset', `task preset ${index}`))
+        }
+    })
+    if (taskPresets.length > 0) {
+        defineOwn(database, 'taskPresets', taskPresets)
+    }
     const plugins = assemblePlugins(manifest, source)
     defineOwn(database, 'plugins', plugins.plugins)
     defineOwn(database, 'pluginV2', plugins.pluginV2)

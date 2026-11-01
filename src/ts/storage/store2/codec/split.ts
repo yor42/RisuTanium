@@ -633,12 +633,17 @@ export function checkDatabase(db: Database, options: EncodeOptions): void {
     if (!Array.isArray(db.botPresets)) {
         throw new CodecInputError('botPresets is not a list.')
     }
+    if (db.taskPresets !== undefined && !Array.isArray(db.taskPresets)) {
+        throw new CodecInputError('taskPresets is not a list.')
+    }
 }
 
 /** The units of the first part of the tree: presets, plugins and plugin storage. */
 export interface FrontParts {
     presets: Ref[]
     presetPlain: JsonObject[]
+    /** One type 26 unit per task preset; empty when the database has none. */
+    taskPresets: Ref[]
     plugins: { refs: Ref[], plain: JsonObject[] }
     pluginStorage: { refs: Ref[], plain: JsonObject }
 }
@@ -652,9 +657,14 @@ export function encodeFront(db: Database, encoder: Encoder): FrontParts {
         const body: PresetBody = { v: 1, preset: object }
         presets.push(refTuple(encoder.put(`preset:${index}`, UNIT_TYPE.preset, body).ref))
     })
+    // The preset object is written whole, as a bot preset is: a key this build does not know travels with it.
+    const taskPresets: Ref[] = (db.taskPresets ?? []).map((preset, index) => {
+        const body: PresetBody = { v: 1, preset: plainObject(preset, `taskPresets[${index}]`) }
+        return refTuple(encoder.put(`taskPreset:${index}`, UNIT_TYPE.taskPreset, body).ref)
+    })
     const plugins = encodePlugins(db, encoder)
     const pluginStorage = encodePluginStorage(db, encoder)
-    return { presets, presetPlain, plugins, pluginStorage }
+    return { presets, presetPlain, taskPresets, plugins, pluginStorage }
 }
 
 /** The module index as the manifest names it and as the next encode carries unknown fields from it. */
@@ -714,7 +724,7 @@ export function finishTree(
         split.section = 'finish'
     }
     const shardsStarted = MEASURE && split !== undefined ? split.now() : 0
-    const { presets, presetPlain, plugins, pluginStorage } = front
+    const { presets, presetPlain, taskPresets, plugins, pluginStorage } = front
     const shardBodies = carryShards(encoder.previous?.objects?.shards, groupIntoShards(entries, SHARD_COUNT), encoder.stableChats)
     const shards = shardBodies.map((shard, index) => refTuple(encoder.putParent(`shard:${index}`, UNIT_TYPE.shard, shard, 'shard').ref))
     const fixedStarted = MEASURE && split !== undefined ? split.now() : 0
@@ -769,6 +779,7 @@ export function finishTree(
         loadouts: refTuple(loadouts.ref),
         moduleIndex: refTuple(moduleSet.ref),
         presets,
+        taskPresets,
         plugins: plugins.refs,
         pluginStorageRefs: pluginStorage.refs,
     }))

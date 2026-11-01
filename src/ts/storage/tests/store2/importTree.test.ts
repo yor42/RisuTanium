@@ -603,3 +603,62 @@ describe('new behaviour: the commit outcomes are typed', () => {
     })
 })
 
+describe('task presets over an import: the page\'s list is kept by value, a tree\'s own key never lands', () => {
+    const OWN = [{ id: 'own-0', name: 'From the file', instructions: 'x', model: 'm' }]
+    const LIVE = [
+        { id: 'live-0', name: 'Live', instructions: 'a', model: 'm', futureKey: { n: [1] } },
+        { id: 'live-1', name: 'Unsaved edit', instructions: 'b', model: 'm' },
+    ]
+
+    /** A golden whose database entry was edited to carry its own `taskPresets`: a hand-edited `.bin`, or a later upstream field. */
+    async function goldenWithOwn(): Promise<Golden> {
+        const golden = await loadGolden('upstream-full.bin')
+        ;(golden.tree as unknown as Record<string, unknown>).taskPresets = JSON.parse(JSON.stringify(OWN))
+        return golden
+    }
+
+    function idsOf(db: Database): string[] {
+        return ((db as unknown as { taskPresets?: { id: string }[] }).taskPresets ?? []).map(preset => preset.id)
+    }
+
+    test('regression reproducer: with no list passed, the tree\'s own key creates no unit, no field and no token', async () => {
+        const test = await rig()
+        committedOf(await importLegacyTree(test.request(await goldenWithOwn()), accept))
+        const manifest = await currentManifest(test.memory)
+        expect(Object.hasOwn(manifest.fixed, 'taskPresets')).toBe(false)
+        expect(manifest.req).not.toContain('task-presets')
+        expect(Object.hasOwn(await storedDatabase(test.memory), 'taskPresets')).toBe(false)
+    })
+
+    test('regression reproducer: both lists present, only the page\'s land, by value with the unknown key, under fresh unit keys', async () => {
+        const test = await rig()
+        committedOf(await importLegacyTree(test.request(await goldenWithOwn(), { taskPresets: LIVE }), accept))
+        const stored = await storedDatabase(test.memory)
+        expect(idsOf(stored)).toEqual(['live-0', 'live-1'])
+        expect((stored as unknown as { taskPresets: Record<string, unknown>[] }).taskPresets[0].futureKey).toEqual({ n: [1] })
+        expect((await currentManifest(test.memory)).req).toContain('task-presets')
+    })
+
+    test('the caller\'s list is not changed by the import', async () => {
+        const test = await rig()
+        const before = JSON.stringify(LIVE)
+        committedOf(await importLegacyTree(test.request(await loadGolden('upstream-full.bin'), { taskPresets: LIVE }), accept))
+        expect(JSON.stringify(LIVE)).toBe(before)
+    })
+
+    test('guard: over a base that already holds the token, an empty list keeps the token and drops the field (the token is never lowered)', async () => {
+        const test = await rig()
+        committedOf(await importLegacyTree(test.request(await loadGolden('upstream-full.bin'), { taskPresets: LIVE }), accept))
+        committedOf(await importLegacyTree(test.request(await loadGolden('upstream-full.bin'), { taskPresets: [] }), accept))
+        const manifest = await currentManifest(test.memory)
+        expect(manifest.req).toContain('task-presets')
+        expect(Object.hasOwn(manifest.fixed, 'taskPresets')).toBe(false)
+    })
+
+    test('regression reproducer: resolveLegacyTree itself removes the key, so the boot conversion cannot adopt it either', async () => {
+        const golden = await goldenWithOwn()
+        const resolved = await resolveLegacyTree(golden.tree, readerOver(golden.units), OPTIONS)
+        expect(Object.hasOwn(resolved.database, 'taskPresets')).toBe(false)
+    })
+})
+

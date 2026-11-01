@@ -24,7 +24,9 @@
     import { getInlayAsset } from 'src/ts/process/files/inlays';
     import { coldStorageHeader, preLoadChat, retryLegacyColdChatLoad } from 'src/ts/process/coldstorage.svelte';
     import { coldChatNoticeText, legacyRetryStateFor, legacyRetryView, matchColdStorageLoadErrorKey, type LegacyRetryState } from 'src/ts/process/coldstorageData';
-    import { getPageStorageMode } from 'src/ts/storage/pageStorageMode';
+    import { getPageStorageMode, pageStorageModeStore } from 'src/ts/storage/pageStorageMode';
+    import UtilityScreen from '../Utility/UtilityScreen.svelte';
+    import { utilityOpen, utilityVisible } from '../Utility/utilityGate';
     import Chats from './Chats.svelte';
     import Button from '../UI/GUI/Button.svelte';
     import PluginDefinedIcon from '../Others/PluginDefinedIcon.svelte';
@@ -564,7 +566,11 @@
     {/if}
     {#if $selectedCharID < 0}
         {#if $PlaygroundStore === 0}
-            <MainMenu />
+            {#if $utilityOpen && utilityVisible($pageStorageModeStore)}
+                <UtilityScreen />
+            {:else}
+                <MainMenu />
+            {/if}
         {:else}
             {#await loadPlaygroundMenu() then PlaygroundMenu}
                 <PlaygroundMenu />

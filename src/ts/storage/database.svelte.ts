@@ -15,6 +15,7 @@ import type { PromptItem, PromptSettings } from '../process/prompt';
 import type { OobaChatCompletionRequestParams } from '../model/ooba';
 import { type HypaV3Settings, type HypaV3Preset, createHypaV3Preset } from '../process/memory/hypav3'
 import { normalizeTranslatorPresetState, type TranslatorPreset } from '../translator/presets'
+import type { TaskPreset } from '../process/utility/taskPreset'
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { blankSecretRef } from '../secretRef'
 import { safeStructuredClone } from '../polyfill';
@@ -901,6 +902,8 @@ export interface Database{
     waifuWidth2:number
     botPresets:botPreset[]
     botPresetsId:number
+    /** Desktop-only Utility task presets. Absent unless the user has made one; a fork-only field that no `.bin` or config carries. */
+    taskPresets?:TaskPreset[]
     sdProvider: string
     webUiUrl:string
     sdSteps:number

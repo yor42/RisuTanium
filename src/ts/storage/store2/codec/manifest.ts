@@ -1,4 +1,4 @@
-import { carryUnknownFields, KNOWN_FIELDS, REQ_CHAT_ALT, unionReq, type ListRef, type Manifest, type Ref } from '../format'
+import { carryUnknownFields, KNOWN_FIELDS, REQ_CHAT_ALT, REQ_TASK_PRESETS, unionReq, type ListRef, type Manifest, type Ref } from '../format'
 import { PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 import { SHARD_COUNT } from './shard'
 
@@ -26,6 +26,8 @@ export interface ManifestParts {
     loadouts: Ref
     moduleIndex: Ref
     presets: Ref[]
+    /** One Ref per task preset; a non-empty list adds the `task-presets` token, which a later write never lowers. */
+    taskPresets?: Ref[]
     plugins: Ref[]
     pluginStorageRefs: Ref[]
 }
@@ -58,9 +60,10 @@ export function carryManifest(prev: Manifest | undefined, next: Manifest): Manif
  * next manifest's `legacyKeep` itself (the conversion, the clearing of the old data).
  */
 export function buildManifest(parts: ManifestParts): Manifest {
-    return {
+    const hasTaskPresets = parts.taskPresets !== undefined && parts.taskPresets.length > 0
+    const manifest: Manifest = {
         fmt: 1,
-        req: parts.chatAlt ? unionReq(MANIFEST_REQ, [REQ_CHAT_ALT]) : [...MANIFEST_REQ],
+        req: unionReq(MANIFEST_REQ, parts.chatAlt ? [REQ_CHAT_ALT] : [], hasTaskPresets ? [REQ_TASK_PRESETS] : []),
         seq: parts.seq,
         createdAt: parts.createdAt,
         shardCount: SHARD_COUNT,
@@ -79,4 +82,8 @@ export function buildManifest(parts: ManifestParts): Manifest {
             legacyKeep: null,
         },
     }
+    if (hasTaskPresets && parts.taskPresets !== undefined) {
+        manifest.fixed.taskPresets = parts.taskPresets
+    }
+    return manifest
 }

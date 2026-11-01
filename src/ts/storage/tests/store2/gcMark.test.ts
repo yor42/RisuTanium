@@ -120,9 +120,10 @@ async function buildTree(fx: Fx, options: BuildOptions): Promise<BuiltTree> {
     }
 
     const preset = await put(M, 'fixed.presets[]', UNIT_TYPE.preset)
+    const taskPreset = await put(M, 'fixed.taskPresets[]', UNIT_TYPE.taskPreset)
     const body: Manifest = {
         fmt: 1,
-        req: [],
+        req: ['task-presets'],
         seq: 1,
         createdAt: 1,
         shardCount: 1,
@@ -136,6 +137,7 @@ async function buildTree(fx: Fx, options: BuildOptions): Promise<BuiltTree> {
             loadouts: await put(M, 'fixed.loadouts', UNIT_TYPE.loadouts),
             moduleIndex: moduleRef,
             presets: [preset],
+            taskPresets: [taskPreset],
             plugins: [await put(M, 'fixed.plugins[]', UNIT_TYPE.plugin)],
             pluginStorage: { buckets: 1, refs: [bucketRef] },
             legacyKeep: {

@@ -35,12 +35,13 @@ describe('the part a refused body was', () => {
         ['sweepRecord', UNIT_TYPE.sweepRecord, 'generic'],
         ['fenceRecord', UNIT_TYPE.fenceRecord, 'generic'],
         ['deletionSnapshot', UNIT_TYPE.deletionSnapshot, 'generic'],
+        ['taskPreset', UNIT_TYPE.taskPreset, 'generic'],
     ])('the %s unit type (%i) is the %s part', (_name, unitType, part) => {
         expect(tooLargePartOf('store2/example', unitType)).toBe(part)
     })
 
     test('the table above covers every unit type of the format', () => {
-        expect(UNIT_TYPE_IDS).toHaveLength(25)
+        expect(UNIT_TYPE_IDS).toHaveLength(26)
         for (const type of UNIT_TYPE_IDS) {
             expect(tooLargePartOf('store2/example', type)).toBeTypeOf('string')
         }

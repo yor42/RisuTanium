@@ -20,6 +20,7 @@ const inert = vi.hoisted(() => (): Record<string, unknown> => new Proxy({}, {
 }))
 vi.mock('src/ts/alert', inert)
 vi.mock('src/ts/globalApi.svelte', inert)
+vi.mock('src/ts/storage/database.svelte', () => ({ getDatabase: () => ({}) }))
 vi.mock('src/ts/process/coldstorage.svelte', inert)
 vi.mock('src/ts/drive/backupWorkGuard', inert)
 vi.mock('src/ts/drive/restoreReplace', inert)

@@ -406,7 +406,7 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
         body.seed = db.generationSeed
     }
 
-    if((db.jsonSchemaEnabled || arg.schema) && !arg.modelInfo.flags.includes(LLMFlags.noStructuredOutput)){
+    if((db.jsonSchemaEnabled || arg.schema) && !arg.noJsonSchema && !arg.modelInfo.flags.includes(LLMFlags.noStructuredOutput)){
         body.response_format = {
             "type": "json_schema",
             "json_schema": getOpenAIJSONSchema(arg.schema, {subject: arg.subject})
@@ -455,7 +455,8 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
         {},
         arg.mode,
         {
-            modelId: arg.modelInfo.id
+            modelId: arg.modelInfo.id,
+            temperature: arg.temperatureOverride
         }
     )
 

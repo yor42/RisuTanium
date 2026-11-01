@@ -144,9 +144,18 @@ export function applyParameters(
     arg: {
         ignoreTopKIfZero?: boolean
         modelId:string
+        // A per-request temperature (already on the provider's scale). It replaces the configured one for a model
+        // that takes a temperature, and is applied after the separate-parameters check, which still must pass.
+        temperature?: number
     },
 ): Record<string, any> {
     const db = getDatabase()
+    const applyTemperatureOverride = (body: Record<string, any>): Record<string, any> => {
+        if (arg.temperature === undefined || !parameters.includes('temperature')) {
+            return body
+        }
+        return setObjectValue(body, rename.temperature ?? 'temperature', arg.temperature)
+    }
     const reasoningDisabledEffort = parameters.includes('reasoning_effort_none') ? 'none' : 'minimal'
     const reasoningMinEffort = parameters.includes('reasoning_effort_min_medium') ? 'medium' : 'low'
     const supportsXHighReasoning = parameters.includes('reasoning_effort_xhigh')
@@ -272,7 +281,7 @@ export function applyParameters(
 
             data = setObjectValue(data, rename[parameter] ?? parameter, value)
         }
-        return data
+        return applyTemperatureOverride(data)
     }
 
     for (const parameter of parameters) {
@@ -341,5 +350,5 @@ export function applyParameters(
 
         data = setObjectValue(data, rename[parameter] ?? parameter, value)
     }
-    return data
+    return applyTemperatureOverride(data)
 }

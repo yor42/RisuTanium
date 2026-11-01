@@ -280,6 +280,9 @@ describe.each<[Damage]>([['flip'], ['missing']])('new behaviour: the fallback ta
         expect(result.items.map(item => item.key).sort()).toEqual([...damagedKeys].sort())
         for (const item of result.items) {
             expect(item.name).toBe('Leaf A')
+            if (item.kind === 'task-preset') {
+                throw new Error('A character fixture raised a task preset flag.')
+            }
             expect(item.chaId).toBe(A_CHA_ID)
             expect(item.why).toBe(how === 'flip' ? 'damaged' : 'missing')
             if (item.kind === 'chat') {

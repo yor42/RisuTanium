@@ -61,6 +61,10 @@ interface requestDataArgument{
     subject?: RunSubject
     // Set only by the main chat send. Never handed to a plugin: the plugin provider builds its own argument.
     mainSend?: boolean
+    // Set only by a Utility run. Replaces the configured temperature for the allowlisted providers' bodies.
+    temperatureOverride?: number
+    // Set only by a Utility run. Keeps the global JSON schema out of the request body.
+    noJsonSchema?: boolean
 }
 
 export interface RequestDataArgumentExtended extends requestDataArgument{

@@ -154,6 +154,37 @@ describe('vector contents that carry meaning', () => {
     })
 })
 
+describe('type 26, the task preset', () => {
+    test('new behaviour: the vector keeps a key this build does not know through a parse and a re-encode to the committed bytes', () => {
+        const read = readUnit(hexToBytes(byId('type-26-task-preset').hex), UNIT_TYPE.taskPreset)
+        expect(read.status).toBe('ok')
+        if (read.status !== 'ok') {
+            return
+        }
+        expect(JSON.parse(JSON.stringify(read.value.body))).toEqual({
+            v: 1, preset: { id: 't', name: 'n', instructions: 'i', model: 'm', futureKey: { n: [1] } },
+        })
+        expect(bytesToHex(encodeUnit(UNIT_TYPE.taskPreset, read.value.body))).toBe(byId('type-26-task-preset').hex)
+    })
+
+    test('new behaviour: a body version above this build is too-new, below 1 is damaged', () => {
+        expect(readUnit(oracleFrame(26, JSON.stringify({ v: 2, preset: {} }))).status).toBe('too-new')
+        expect(readUnit(oracleFrame(26, JSON.stringify({ v: 0, preset: {} }))).status).toBe('damaged')
+    })
+
+    test('new behaviour: the manifest vector names its task preset by fixed.taskPresets and carries the token', () => {
+        const read = readUnit(hexToBytes(byId('manifest-task-presets').hex), UNIT_TYPE.manifest)
+        expect(read.status).toBe('ok')
+        if (read.status !== 'ok') {
+            return
+        }
+        const manifest = read.value.body as { req: string[], fixed: { taskPresets?: unknown[] } }
+        expect(manifest.req).toEqual(['task-presets'])
+        expect(manifest.fixed.taskPresets).toHaveLength(1)
+        expect(refsOf(UNIT_TYPE.manifest, manifest).filter(target => target.path === 'fixed.taskPresets[]')).toHaveLength(1)
+    })
+})
+
 describe('type 24, the deletion snapshot', () => {
     const BODY = {
         v: 1,

@@ -39,6 +39,7 @@ const PART_OF_UNIT_TYPE: Record<UnitType, TooLargePart> = {
     [UNIT_TYPE.sweepRecord]: 'generic',
     [UNIT_TYPE.fenceRecord]: 'generic',
     [UNIT_TYPE.deletionSnapshot]: 'generic',
+    [UNIT_TYPE.taskPreset]: 'generic',
 }
 
 /** The part a refused body was: the save record for the commit key and the fence, else by unit type, else generic. */

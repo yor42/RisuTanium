@@ -47,6 +47,7 @@ export const REFS_TABLE: readonly RefRow[] = [
     { type: UNIT_TYPE.manifest, path: 'fixed.loadouts', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.moduleIndex', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.presets[]', mode: 'ref' },
+    { type: UNIT_TYPE.manifest, path: 'fixed.taskPresets[]', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.plugins[]', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.pluginStorage.refs[]', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.legacyKeep.unit', mode: 'ref' },
