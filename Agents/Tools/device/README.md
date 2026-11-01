@@ -99,6 +99,63 @@ another checkout.
 pwsh -NoProfile -File Agents\Tools\device\build-apk.ps1 -OutDir $env:TEMP\risu-b715\build-debug -Kind debug
 ```
 
+`-Kind release` has two extra rules. It refuses, before any prerequisite is looked at, `VITE_RISU_MODULE_FAULT` set to a
+non-empty value in `-BuildEnv` or in the inherited process environment, and refuses `-Config` (a config could point the web
+build at another `frontendDist`, so `<RepoRoot>\dist` would no longer be the folder checked). A refusal is a recorded `fail`
+whose reason names the cause. After a build that exits 0 it runs `node util/checkReleaseDist.mjs <RepoRoot>\dist` in default
+mode; on a hit (or a missing `dist`, or any non-zero checker exit) it rewrites `result.json` to `verdict=fail`, prints
+`verdict=fail reason=...`, exits 1, and the reason names the APK path, which must not be used.
+
+### Module fault switch build
+
+A debug-only build option that makes one chosen module fail to load, to check the load-failure path on a device. It is compiled
+in only when the build env flag `VITE_RISU_MODULE_FAULT=1` is set (exactly `1`; any other value leaves it out). Pass it
+through `-BuildEnv`, never through an `.env*` file:
+
+```
+pwsh -NoProfile -File Agents\Tools\device\build-apk.ps1 -OutDir $env:TEMP\risu-b715\build-fault -Kind debug `
+  -BuildEnv @{ VITE_RISU_MODULE_FAULT = '1' }
+```
+
+- **Confirm the build** on `<RepoRoot>\dist` right after it (Tauri embeds that folder in the APK, compressed in the native
+  library, so there is no APK assets directory to scan): `Get-ChildItem dist -Recurse -Filter 'moduleFaultFlag-*'` lists
+  `moduleFaultFlag-*.js` (and its `.map` when sourcemaps are on) in a flag build and nothing in a plain build. Or run
+  `node util/checkReleaseDist.mjs --fault-only dist`: exit 1 on a flag build, 0 on a plain build.
+- **Do not judge a debug build by the default checker mode.** An unminified debug build (`TAURI_ENV_DEBUG=true`) keeps five
+  known measurement-text hits (JSDoc in `backuplocal`, `database.svelte` and `storeImport`), so default mode exits 1 on it even
+  without the flag. `--fault-only` scans the fault markers alone. `.map` files and `//#region src/` comments in `dist/assets`
+  show that `TAURI_ENV_DEBUG` reached the Vite build.
+- **Set the switch** on the test phone over CDP (forward a port as the other scripts do, then use `cdp.mjs`): the localStorage
+  key `risu-fault-module-load`, value = the module id. The key is read at every module load and never written by the app, so it
+  persists until cleared and survives a reload.
+
+  ```
+  node Agents\Tools\device\cdp.mjs <port> -e "localStorage.setItem('risu-fault-module-load', '<module id>')"
+  node Agents\Tools\device\cdp.mjs <port> -e "localStorage.removeItem('risu-fault-module-load')"
+  ```
+
+  The value must equal the module id exactly (no prefix, no name match). Only that module fails; a missing or throwing
+  `localStorage` reads as off. In a build made without the flag the key does nothing.
+- **What the user sees:** the faulted load is reported as an unreadable read, so it goes through the existing module-load-failed
+  alert. The fault text `module fault switch` is part of the error text, so a failure caused by the switch is recognisable.
+  Nothing is written: the module's stored bytes and index entry are unchanged.
+- **After clearing the key** the background trigger does not retry a module it already saw fail until the slot object is
+  replaced or the page reloads; sending a message retries (`moduleEnsure.ts`). Opening, editing or Realm-uploading the faulted
+  module, and plugin-V3 or MCP access to it, also fail, since each goes through `acquireModule` to the same faulted read.
+- **Release and hosted builds carry no trace.** In a build without the flag the loader's branch folds out and the flag module is
+  never bundled: no chunk, no sourcemap entry for it, no key and no fault text. The only remnant is the guard line and the
+  env name in `moduleLoader.ts`'s sourcemap `sourcesContent`. `util/checkReleaseDist.mjs` enforces this: default mode scans the
+  measurement markers (executable files only) and the fault markers (`risu-fault-module-load`, `module fault switch`,
+  `moduleFaultFlag.ts`, in executable files and in `.map` files); `--fault-only` scans the fault markers alone; an unknown
+  `--` option exits 2. Exit codes: 0 clean, 1 marker found, 2 missing directory, nothing to scan or unknown option. CI runs
+  `pnpm build` then `pnpm check:dist` in default mode, which must exit 0.
+- **Release refusals.** `build-apk.ps1 -Kind release` and `sign-release.ps1` refuse the flag (see build-apk.ps1 above and
+  [SIGNING.md](SIGNING.md)); a debug kind is not refused. If the flag build is made some other way, the post-build dist check
+  still fails the release.
+- **Preconditions.** A spare Note 9 with a synthetic profile only, test-only profile as in Shared defaults; never the Fold 7 or
+  the MVP install (MC-350). Results from this build are a different build kind from release cells. The CHORE-556 (a) device
+  check that uses this switch is a separate run and is not described here.
+
 ### sign-install.ps1
 
 `-OutDir`, `-Kind debug|release` (both required), `-Apk`, `-Serial`, `-AllowedSerials`, `-Package`, `-ResignThrowaway`,

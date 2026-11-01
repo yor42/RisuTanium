@@ -105,6 +105,13 @@ All commands below are typed by you in a normal PowerShell 7 terminal.
    to install it with `adb -s`; a signature mismatch with the installed app is refused unless you add `-AllowClear`, which
    uninstalls the app and wipes its data.
 
+   The script also refuses a build that carries the module fault switch (debug-only; see the README section "Module fault
+   switch build"). `VITE_RISU_MODULE_FAULT` set in your shell environment is refused first, before the vault is read. After
+   the build and after the signing variables are removed, it runs `node util/checkReleaseDist.mjs` on `dist` in default mode
+   (measurement and fault markers). A hit, a missing `dist` or any non-zero checker exit prints `verdict=FAIL`, exit 1, with a
+   reason naming the APK; Gradle has already signed that file, so it stays on disk: do not use or install it. The check runs
+   before the hash, the certificate check and any `-Install`.
+
    The script refuses to run from Claude Code, the `!` prompt prefix included (any shell where `CLAUDECODE` or
    `CLAUDE_CODE_ENTRYPOINT` is set, or without interactive input). Run it in an ordinary PowerShell window; there is no
    override.

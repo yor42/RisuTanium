@@ -79,7 +79,36 @@ vi.mock(import('src/ts/process/modules'), () => ({
     bumpModuleGui: vi.fn(() => { h.bumped += 1 }),
 }) as unknown as typeof import('src/ts/process/modules'))
 
+// The real reader and error builder run, counted; the loader's build-flag branch is toggled per test with `vi.stubEnv`.
+const fault = vi.hoisted(() => ({ readerCalls: 0 }))
+
+vi.mock(import('src/ts/process/moduleFaultFlag'), async (importOriginal) => {
+    const original = await importOriginal()
+    return {
+        ...original,
+        moduleFaultActive: (id: string) => {
+            fault.readerCalls += 1
+            return original.moduleFaultActive(id)
+        },
+    } as typeof import('src/ts/process/moduleFaultFlag')
+})
+
+// The reference list reads the selected chat and the persona; this file selects modules by `enabledModules` alone.
+vi.mock(import('src/ts/process/moduleRefList'), async () => {
+    const { isModuleStub: isStub } = await import('src/ts/storage/moduleStub')
+    const rows = () => ((h.state.db as { modules?: { id: string }[] } | undefined)?.modules ?? [])
+    const ids = () => ((h.state.db as { enabledModules?: string[] } | undefined)?.enabledModules ?? [])
+    return {
+        moduleRefIdsOf: () => ids(),
+        moduleListOf: (wanted: string[]) => rows().filter(row => wanted.includes(row.id)),
+        hasModuleStubs: () => rows().some(row => isStub(row)),
+        unloadedModulesOf: () => rows().filter(row => ids().includes(row.id) && isStub(row)),
+        moduleLoadFailedText: (names: string[]) => `modules not loaded: ${names.join(', ')}`,
+    } as unknown as typeof import('src/ts/process/moduleRefList')
+})
+
 import { AssetList, toAssetList } from 'src/ts/storage/assetList'
+import { MODULE_FAULT_KEY, MODULE_FAULT_TEXT } from 'src/ts/process/moduleFaultFlag'
 import { crc32 } from 'src/ts/storage/blockFrame'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { isModuleStub } from 'src/ts/storage/moduleStub'
@@ -260,6 +289,15 @@ async function answerCorruptionQuestion(reset: boolean): Promise<void> {
     await answer(reset)
 }
 
+/** The page's localStorage as a map the test can set and clear; the node test environment has none. */
+function useStorage(items: Map<string, string>): Map<string, string> {
+    vi.stubGlobal('localStorage', {
+        getItem: (key: string) => items.get(key) ?? null,
+        removeItem: (key: string) => { items.delete(key) },
+    })
+    return items
+}
+
 const holdsFullBody = (slot: unknown) => typeof slot === 'object' && slot !== null && !isModuleStub(slot)
 
 beforeEach(() => {
@@ -269,6 +307,8 @@ beforeEach(() => {
     h.bumped = 0
     h.rejectConfirms = false
     migrate.mockClear()
+    fault.readerCalls = 0
+    useStorage(new Map())
     // The repair logs the module it asks about; those lines are not what the cases look at.
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -284,6 +324,9 @@ afterEach(() => {
     for (const world of worlds.splice(0)) {
         world.gate.hold = null
     }
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+    vi.doUnmock('src/ts/storage/database.svelte')
     unregisterModuleLoader()
     resetStore2SaveForTest()
     resetResidencyForTest()
@@ -866,6 +909,157 @@ describe('settled resolves whatever way the load ends', () => {
         const again = acquireModule(world.ids[1])
         await answerCorruptionQuestion(true)
         expect(holdsFullBody((await again)?.module)).toBe(true)
+    })
+})
+
+describe('the module fault switch fails the chosen module through the normal load-failure path', () => {
+    beforeEach(() => {
+        vi.stubEnv('VITE_RISU_MODULE_FAULT', '1')
+    })
+
+    function expectFaultError(error: unknown): void {
+        expect(error).toBeInstanceOf(ModuleLoadError)
+        expect((error as ModuleLoadError).reason).toBe('unreadable')
+        expect((error as ModuleLoadError).moduleId).toBe('id-b')
+        expect((error as ModuleLoadError).moduleName).toBe('b')
+        expect((error as ModuleLoadError).message).toContain(MODULE_FAULT_TEXT)
+    }
+
+    test('a load of the named module fails as unreadable with the entry name, writes nothing and leaves the identical stub', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b')])
+        stubOut(world, 0)
+        stubOut(world, 1)
+        const stubBefore = slots(world)[1]
+        useStorage(new Map([[MODULE_FAULT_KEY, world.ids[1]]]))
+        const error = await acquireModule(world.ids[1]).then(() => null, (thrown: unknown) => thrown)
+        expectFaultError(error)
+        expect(fault.readerCalls).toBeGreaterThan(0)
+        expect(slots(world)[1]).toBe(stubBefore)
+        expect(isModuleStub(slots(world)[1])).toBe(true)
+        expect(world.gate.reads).toBe(0)
+        expect(h.refreshed).toBe(0)
+        expect(digestOf(world, 1, IDENTITY.module)).toBeUndefined()
+        const other = await acquireModule(world.ids[0])
+        expect(other?.module).toBe(slots(world)[0])
+        expect(isModuleStub(slots(world)[0])).toBe(false)
+    })
+
+    test.each([
+        ['an absent key', null],
+        ['another module id', 'id-a'],
+        ['a prefix of the id', 'id-'],
+        ['the module name', 'b'],
+        ['the id with a trailing space', 'id-b '],
+    ])('%s does not fail the module', async (_title, value) => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b')])
+        stubOut(world, 1)
+        useStorage(new Map(value === null ? [] : [[MODULE_FAULT_KEY, value]]))
+        const got = await acquireModule(world.ids[1])
+        expect(got?.module.name).toBe('b')
+    })
+
+    test('a localStorage that throws does not fail the module', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b')])
+        stubOut(world, 1)
+        vi.stubGlobal('localStorage', { getItem: () => { throw new Error('storage blocked') } })
+        const got = await acquireModule(world.ids[1])
+        expect(got?.module.name).toBe('b')
+    })
+
+    test('clearing the key at once lets the next load through, and a set key keeps failing every load', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b')])
+        stubOut(world, 1)
+        const items = useStorage(new Map([[MODULE_FAULT_KEY, world.ids[1]]]))
+        expectFaultError(await acquireModule(world.ids[1]).then(() => null, (thrown: unknown) => thrown))
+        expectFaultError(await acquireModule(world.ids[1]).then(() => null, (thrown: unknown) => thrown))
+        expectFaultError(await acquireModule(world.ids[1]).then(() => null, (thrown: unknown) => thrown))
+        expect(items.get(MODULE_FAULT_KEY)).toBe(world.ids[1])
+        expect(world.gate.reads).toBe(0)
+        items.delete(MODULE_FAULT_KEY)
+        const got = await acquireModule(world.ids[1])
+        expect(got?.module.name).toBe('b')
+        expect(world.gate.reads).toBeGreaterThan(0)
+        // Set again on a fresh stub: the next load fails again without a reload.
+        stubOut(world, 1)
+        items.set(MODULE_FAULT_KEY, world.ids[1])
+        expectFaultError(await acquireModule(world.ids[1]).then(() => null, (thrown: unknown) => thrown))
+    })
+
+    test('an edited stub and two recorded copies keep their own refusals, with no read', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b')])
+        stubOut(world, 1)
+        useStorage(new Map([[MODULE_FAULT_KEY, world.ids[1]]]))
+        slots(world)[1].name = 'renamed by someone'
+        const edited = await acquireModule(world.ids[1]).then(() => null, (thrown: unknown) => thrown)
+        expect((edited as ModuleLoadError).reason).toBe('edited')
+        expect(world.gate.reads).toBe(0)
+
+        const { loadModule } = await import('src/ts/process/moduleLoader')
+        slots(world)[1].name = 'b'
+        slots(world).push(clone(slots(world)[1]))
+        const ambiguous = await loadModule(world.handles[1]).then(() => null, (thrown: unknown) => thrown)
+        expect((ambiguous as ModuleLoadError).reason).toBe('ambiguous')
+        expect(world.gate.reads).toBe(0)
+    })
+
+    test('the save loop valve is refused for the named module, the stub stays and nothing is read', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b')])
+        stubOut(world, 1)
+        const stubBefore = slots(world)[1]
+        useStorage(new Map([[MODULE_FAULT_KEY, world.ids[1]]]))
+        expect(await loadModuleStubsOf(world.ids[1])).toEqual({ kind: 'refused' })
+        expect(slots(world)[1]).toBe(stubBefore)
+        expect(world.gate.reads).toBe(0)
+    })
+
+    test('the background load installs the other module, alerts once naming the faulted one and ends the pending state', async () => {
+        // The ensure step imports the database module only for the selected-chat helpers, which the mocked list never calls.
+        vi.doMock('src/ts/storage/database.svelte', () => ({}))
+        const { ensureSelectedModules, selectedModulesPending } = await import('src/ts/process/moduleEnsure')
+        const world = await bootWorld([moduleBody('a'), moduleBody('b')])
+        ;(world.db as unknown as { enabledModules: string[] }).enabledModules = [world.ids[0], world.ids[1]]
+        stubOut(world, 0)
+        stubOut(world, 1)
+        useStorage(new Map([[MODULE_FAULT_KEY, world.ids[1]]]))
+        ensureSelectedModules(true)
+        expect(selectedModulesPending()).toBe(true)
+        await waitFor(() => !selectedModulesPending(), 'the background load to end')
+        await sleep(20)
+        const alerts = h.events.filter(event => event.startsWith('error:'))
+        expect(alerts).toEqual(['error:modules not loaded: b'])
+        expect(holdsFullBody(slots(world)[0])).toBe(true)
+        expect(isModuleStub(slots(world)[1])).toBe(true)
+    })
+
+    test('with the build flag off the key is ignored and the reader is never called', async () => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b')])
+        stubOut(world, 1)
+        vi.stubEnv('VITE_RISU_MODULE_FAULT', undefined)
+        useStorage(new Map([[MODULE_FAULT_KEY, world.ids[1]]]))
+        const got = await acquireModule(world.ids[1])
+        expect(got?.module.name).toBe('b')
+        expect(fault.readerCalls).toBe(0)
+    })
+
+    test.each([
+        ['1', true],
+        ['', false],
+        ['0', false],
+        ['true', false],
+        ['yes', false],
+        [' 1', false],
+        [undefined, false],
+    ])('the build flag %j fails the named module: %s', async (flag, fails) => {
+        const world = await bootWorld([moduleBody('a'), moduleBody('b')])
+        stubOut(world, 1)
+        vi.stubEnv('VITE_RISU_MODULE_FAULT', flag)
+        useStorage(new Map([[MODULE_FAULT_KEY, world.ids[1]]]))
+        const outcome = await acquireModule(world.ids[1]).then(got => got, (thrown: unknown) => thrown)
+        if (fails) {
+            expectFaultError(outcome)
+        } else {
+            expect((outcome as { module: { name: string } }).module.name).toBe('b')
+        }
     })
 })
 

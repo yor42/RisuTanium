@@ -116,6 +116,9 @@ function Test-ExpectedCert([string]$ExpectedFile, [string]$Digest) {
 }
 
 function Get-BuildPreflight([string]$Repo) {
+    # First, so a missing JDK or NDK on this machine can never mask it. The process environment is what the build inherits.
+    $flagRefusal = Get-FaultFlagRefusal @{}
+    if ($flagRefusal) { return $flagRefusal }
     if (-not (Test-Path -LiteralPath (Join-Path $script:SigningJdk 'bin\java.exe'))) { return ('JDK 21 not found at ' + $script:SigningJdk) }
     if (-not $env:NDK_HOME) { return 'NDK_HOME is not set' }
     $gen = @(Get-AndroidGeneratedMissing $Repo)
@@ -230,6 +233,7 @@ function Invoke-SignRelease {
         [Parameter(Mandatory)][scriptblock]$Reader,
         [Parameter(Mandatory)][scriptblock]$Preflight,
         [Parameter(Mandatory)][scriptblock]$Builder,
+        [Parameter(Mandatory)][scriptblock]$DistCheck,
         [Parameter(Mandatory)][scriptblock]$Verifier,
         [string]$ExpectedFile,
         [scriptblock]$Installer,
@@ -262,6 +266,10 @@ function Invoke-SignRelease {
     }
     $res.ApkPath = $build.ApkPath
     if ($build.ExitCode -ne 0) { $res.Reason = if ($build.Reason) { [string]$build.Reason } else { 'build failed' }; return $res }
+    # The web output the build embedded is judged after the signing variables are gone and before the APK is hashed, verified or
+    # installed. Gradle signs inside the build, so the signed file already exists: the reason names it so it is not used.
+    $distReason = & $DistCheck
+    if ($distReason) { $res.Reason = ([string]$distReason + ' Do not use or install the APK at ' + $build.ApkPath); return $res }
     if (-not (Test-Path -LiteralPath $build.ApkPath -PathType Leaf)) { $res.Reason = 'the signed APK was not produced'; return $res }
     $res.ApkSha256 = (Get-FileHash -LiteralPath $build.ApkPath -Algorithm SHA256).Hash.ToLowerInvariant()
     try { $res.CertSha256 = & $Verifier $build.ApkPath } catch { $res.Reason = 'signature verification failed: ' + $_.Exception.Message; return $res }
@@ -300,6 +308,7 @@ $result = Invoke-SignRelease -VaultName $Vault -SecretNames $names `
     -Reader { param($v, $n) Read-VaultSecret $v $n } `
     -Preflight { Get-BuildPreflight $RepoRoot } `
     -Builder { Invoke-ReleaseBuild $RepoRoot (Join-Path $OutDir 'build') $ScratchRoot $CargoTargetDir $MaxSeconds $Target } `
+    -DistCheck { Get-ReleaseDistRefusal $RepoRoot } `
     -Verifier { param($apk) Get-ApkCertDigest $apk (Join-Path $OutDir 'verify') } `
     -ExpectedFile $expected -Installer $installer `
     -Cleanup { Stop-ReleaseBuildLeftovers $RepoRoot (Join-Path $OutDir 'cleanup') }

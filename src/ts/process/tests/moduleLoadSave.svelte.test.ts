@@ -18,7 +18,9 @@ import { buildSmall } from 'src/ts/storage/tests/store2/codecFixtures'
 import { IDENTITY, moduleHandles } from 'src/ts/storage/store2/codec'
 import { createListDerivation } from 'src/ts/storage/store2/lists/derive'
 import { isModuleStub } from 'src/ts/storage/moduleStub'
+import { keyOfRef } from 'src/ts/storage/store2/format'
 import { moduleStubOf } from 'src/ts/storage/store2/moduleStubMatch'
+import { MODULE_FAULT_KEY } from 'src/ts/process/moduleFaultFlag'
 import type { Database } from 'src/ts/storage/database.svelte'
 
 vi.setConfig({ testTimeout: 40_000 })
@@ -88,6 +90,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    localStorage.removeItem(MODULE_FAULT_KEY)
+    vi.unstubAllEnvs()
     worlds.parkAll()
     vi.doMock('src/ts/platform', () => ({ isTauri: false, isNodeServer: false, isIOS: () => false }))
     vi.restoreAllMocks()
@@ -221,6 +225,41 @@ function withAssetModule(): Database {
 function holdsAssetList(value: unknown): boolean {
     return Array.isArray(value) && Object.getPrototypeOf(value) !== Array.prototype && Object.getPrototypeOf(value)?.constructor?.name === 'AssetList'
 }
+
+describe('a module the fault switch keeps from loading is carried through a save pass untouched', () => {
+    test('an edit of another module commits without rewriting the faulted stub\'s unit or changing its index entry', async () => {
+        const page = await startPage(current())
+        await stubOut(page, 1)
+        const entryOf = () => page.k.encoder.acknowledged().objects?.moduleIndex?.entries.find(held => held.id === page.ids[1])
+        const before = entryOf()
+        if (before === undefined) {
+            throw new Error('The faulted module has no index entry.')
+        }
+        const unitKey = keyOfRef(before.unit)
+        const bytesBefore = page.k.memory.snapshot().get(unitKey)
+        expect(bytesBefore).toBeDefined()
+        // The fault switch is on for this test; whether it fires is decided by the localStorage key alone.
+        vi.stubEnv('VITE_RISU_MODULE_FAULT', '1')
+        localStorage.setItem(MODULE_FAULT_KEY, page.ids[1])
+
+        await expect(page.acquire(page.ids[1])).rejects.toMatchObject({ reason: 'unreadable' })
+        expect(isModuleStub(modules(page)[1])).toBe(true)
+
+        const mark = page.k.memory.snapshot()
+        await nextCommit(page.w, () => {
+            modules(page)[0].name = 'edited while the other module cannot load'
+            page.flush()
+        })
+        await settled(page.w)
+
+        expect(entryOf()?.unit).toEqual(before.unit)
+        expect(entryOf()?.al).toEqual(before.al)
+        expect(page.k.memory.snapshot().get(unitKey)).toEqual(bytesBefore)
+        expect(page.k.writtenSince(mark)).toContain('module')
+        expect(isModuleStub(modules(page)[1])).toBe(true)
+        expect(page.valveOutcomes).not.toContain('loaded')
+    })
+})
 
 describe('a loaded module with assets', () => {
     test('a-loaded-module-has-an-AssetList-in-the-slot-and-its-tuples-are-not-proxied', async () => {

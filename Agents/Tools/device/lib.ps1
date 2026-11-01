@@ -379,6 +379,38 @@ function Get-AndroidGeneratedMissing([string]$RepoRoot) {
     return $missing
 }
 
+# ---------- release web-output guards ----------
+
+# Returns the reason to refuse, or $null, for the build flag that compiles the module fault switch into the web bundle. A release
+# build must never carry it. The flag is refused whether it comes from the -BuildEnv map or from the inherited process
+# environment, because Run-Check hands the child build the full environment. Only the name is reported, never a value.
+function Get-FaultFlagRefusal([hashtable]$BuildEnv) {
+    $name = 'VITE_RISU_MODULE_FAULT'
+    $fromMap = [bool]($BuildEnv -and $BuildEnv.ContainsKey($name) -and -not [string]::IsNullOrEmpty([string]$BuildEnv[$name]))
+    $fromEnv = -not [string]::IsNullOrEmpty([string][Environment]::GetEnvironmentVariable($name))
+    if (-not ($fromMap -or $fromEnv)) { return $null }
+    $where = if ($fromMap -and $fromEnv) { 'the build environment map and the process environment' } elseif ($fromMap) { 'the build environment map' } else { 'the process environment' }
+    return ('refused: ' + $name + ' is set in ' + $where + '. The module fault switch is for debug builds only; a release build must not carry it. Remove it and build again')
+}
+
+# Runs the default release dist check on <Repo>\dist, the folder Tauri embeds in the APK. Returns the reason to refuse, or $null
+# when the check exits 0. A missing dist, a missing node or any other non-zero exit refuses, so the check cannot be skipped by
+# failing to run.
+function Get-ReleaseDistRefusal([string]$Repo) {
+    $checker = Join-Path $Repo 'util\checkReleaseDist.mjs'
+    $dist = Join-Path $Repo 'dist'
+    $lines = @()
+    $code = 1
+    try {
+        $lines = @(& node $checker $dist 2>&1 | ForEach-Object { [string]$_ })
+        $code = $LASTEXITCODE
+    } catch {
+        $lines = @($_.Exception.Message)
+    }
+    if ($code -eq 0) { return $null }
+    return ('the release dist check failed with exit ' + $code + ' for ' + $dist + ': ' + (($lines | Select-Object -First 20) -join ' | '))
+}
+
 # ---------- lock ----------
 
 function Test-LockTextHeld([string]$Txt) {

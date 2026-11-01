@@ -114,7 +114,17 @@ async function loadInto(flight: Flight, residency: Residency): Promise<RisuModul
         throw new ModuleLoadError('ambiguous', id, before.name)
     }
 
-    const read = await residency.readModule(handle)
+    // A build made for load-failure checks answers the read of the chosen module with the failure a store gives, so the
+    // refusal below, the alert and the save valve see the real path. Nothing has been written when it is taken. The flag
+    // module is reached only through this branch, so a build without the flag holds no trace of it.
+    let read: ResidencyModuleRead | undefined
+    if (import.meta.env.VITE_RISU_MODULE_FAULT === '1') {
+        const flag = await import('./moduleFaultFlag')
+        if (flag.moduleFaultActive(id)) {
+            read = { status: 'error', reason: 'unreadable', error: flag.moduleFaultError(id) }
+        }
+    }
+    read ??= await residency.readModule(handle)
     if (read.status === 'error') {
         throw new ModuleLoadError(read.reason, id, entry.name, read.error instanceof Error ? read.error.message : undefined)
     }

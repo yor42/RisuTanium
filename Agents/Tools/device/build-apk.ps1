@@ -2,6 +2,8 @@
 # The Cargo target dir is warm by default: one dir per build kind under the scratch root; -CleanBuild empties it first.
 # One build per kind at a time: a held lock refuses the run instead of waiting on Cargo's own file lock.
 # A preflight fails early, naming the files, when the gitignored generated Android project files are missing from -RepoRoot.
+# -Kind release refuses VITE_RISU_MODULE_FAULT (in -BuildEnv or the environment) and -Config. After the build it checks
+# <RepoRoot>\dist with util/checkReleaseDist.mjs: a hit fails the run and rewrites result.json to fail.
 # Reads no signing material. A release build signs with src-tauri/gen/android/keystore.properties when that file exists
 # (existence is reported, the content is never read); sign-install.ps1 re-signs release output with the persistent test key.
 param(
@@ -22,7 +24,15 @@ if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\
 if (-not $ScratchRoot) { $ScratchRoot = $script:ScratchRoot }
 $jdk = 'C:\Users\yor42\.gradle\jdks\azul_systems__inc_-21-amd64-windows.2'
 $missing = $null
-if (-not (Test-Path -LiteralPath (Join-Path $jdk 'bin\java.exe'))) { $missing = 'JDK 21 not found at ' + $jdk }
+# A release APK must not carry the module fault switch, and -Config could point the web build at another frontendDist, which
+# would leave <RepoRoot>\dist the wrong folder to check afterwards. Both are refused before any prerequisite is looked at.
+$releaseRefusal = $null
+if ($Kind -eq 'release') {
+    $releaseRefusal = Get-FaultFlagRefusal $BuildEnv
+    if (-not $releaseRefusal -and $Config) { $releaseRefusal = 'refused: -Config is not accepted with -Kind release, because it can change the frontend folder the release dist check reads' }
+}
+if ($releaseRefusal) { $missing = $releaseRefusal }
+elseif (-not (Test-Path -LiteralPath (Join-Path $jdk 'bin\java.exe'))) { $missing = 'JDK 21 not found at ' + $jdk }
 elseif (-not $env:NDK_HOME) { $missing = 'NDK_HOME is not set' }
 else {
     # The generated Android project files are gitignored, so a git archive tree lacks them and Gradle would fail late. Nothing is
@@ -83,5 +93,26 @@ try {
     $code = $LASTEXITCODE
 } finally {
     Exit-Lock $lockPath
+}
+
+# The web output Tauri embedded is checked before the APK is accepted: a release build that carries the fault switch or the
+# measurement code fails here, and its result.json says so. The exit code and the result agree.
+if ($Kind -eq 'release' -and $code -eq 0) {
+    $distRefusal = Get-ReleaseDistRefusal $RepoRoot
+    if ($distRefusal) {
+        $reason = $distRefusal + ' Do not use the APK at ' + (Join-Path $apkDir $apkName)
+        $resultPath = Join-Path $OutDir 'result.json'
+        if (Test-Path -LiteralPath $resultPath -PathType Leaf) {
+            $res = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json -AsHashtable
+            $res['verdict'] = 'fail'
+            $res['reason'] = $reason
+            Write-JsonAtomic $resultPath $res
+        } else {
+            $r = New-Result -CheckId 'build-apk-release' -BuildKind 'release' -CapSec $MaxSeconds -Repo $RepoRoot -Serial $null
+            $null = Complete-Result $r 'fail' $reason $resultPath
+        }
+        Write-Output ('verdict=fail reason=' + $reason)
+        exit 1
+    }
 }
 exit $code
