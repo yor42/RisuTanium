@@ -19839,3 +19839,157 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
   - These answer plan-r2's new narrow questions. Plan-r2's own text calls Q14 option A and Q13 option A "recommended"; the labels match.
   - Gate 1 round 2 of plan-r2 was in flight at write time (`%TEMP%\risu-b715\b31\c616-plan\gate1-r2\`); a senior-advisor challenge follows because this is a format addition.
   - Nothing here authorizes application code, a commit or a push. Implementation has not started.
+
+### MC-938 — Lane A, 2026-11-01: CHORE-616 S2 plan, Gate 1 round 2 item Q17: a recovery-screen `.bin` import keeps no task presets
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's answer to Q17 in `%TEMP%\risu-b715\b32\records32\answers.md` (2026-11-01T01:12:22Z): "Accept (Recommended)". Lane A's living log `Agents/Handoff-2026-11-01-laneA.md` (log line 79) records it as "Maintainer Q17: accept that the recovery-screen .bin import keeps no task presets (record as MC in batch 32)". Basis: Gate 1 round 2 finding E3, `%TEMP%\risu-b715\b31\c616-plan\gate1-r2\result.md` ("the recovery-screen import exception to Q1 needs explicit maintainer acceptance"), and the senior-advisor challenge `%TEMP%\risu-b715\b31\c616-plan\advisor\result.md` (C2).
+- Alternatives rejected: E3 names the mechanism the plan had rejected, reading the damaged tree's type-26 units, which E3 says is the reason the exception is technically reasonable. The options shown to the maintainer are not recorded.
+- Related: CHORE-616, `MC-934` (Q1, keep task presets on a `.bin` import), `MC-936`, `MC-091`, CHORE-128.
+
+**What was decided (maintainer).**
+1. Q17 (the page import fills the incoming profile's task presets by value from the live list; the recovery-screen import has no page and no live list, so it passes none): accepted that the recovery-screen `.bin` import keeps no task presets. The accepted exception is to Q1 in `MC-934` item 1 ("keep them"), which had stated none.
+
+- Notes, not the maintainer's words:
+  - E3 describes the path as `legacy/bootImport.ts` using `prepareImport` and then `buildImport(prepared.plan)` with no base. In the merged source `bootImport.ts` calls both (lines 178 to 188), `importTree.ts` documents that the tree's own `taskPresets` key is removed either way, and a list is set on the copy only when the caller passes a non-empty one (`importTree.ts` lines 74 and 269 to 272); `storeImport.ts` line 523 passes the live list, so the page import keeps them. Read by the records writer at `502190194`.
+  - The advisor's C2 (`prepareImport` strips a `.bin`'s own `taskPresets` for both vehicles) is a designer change, not a maintainer decision.
+  - The release gate is unchanged: task presets gate release on CHORE-128 (`MC-936` item 3).
+
+### MC-939 — Lane A, 2026-11-01: CHORE-616 S2 Gate 2 and merge: the Q10 wording stays, merge and push
+
+- Tag: decisions (the maintainer's answers, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's answers in `%TEMP%\risu-b715\b32\records32\answers.md` (2026-11-01T04:05:56Z): Q10 "Keep as is (Recommended)" and, to the merge question, "Commit, merge + push (Recommended)". Lane A's living log (log lines 104 and 109) records them as "Maintainer: merge + push; Q10 keep as is". F1 is not a maintainer answer (see the notes). Basis: Gate 2 round 1 finding F1 `%TEMP%\risu-b715\b31\c616-gate2\result.md` (options (a) and (b)); Q10 is the open wording item of plans v1 to r3 (`b31\c616-plan\plan.md` open item Q10; `plan-r3.md` line 176).
+- Alternatives rejected: the options shown to the maintainer for Q10 and the merge are not recorded. (F1 option (b), an injected getter passed to the fill with exactly one fill site, as Gate 2 listed it, was set aside by lane A's arbitration; see the notes.)
+- Related: CHORE-616, `MC-934` (the Q10 reference), `MC-936`, `MC-937`, `MC-058` (locales).
+
+**What was decided (maintainer).**
+1. Q10 (the wording of the device-only note, the export confirm and the boot prompt's task-preset line, which the plans left to the maintainer and the translator): keep the current wording as written in `en.ts` ("Keep as is (Recommended)").
+2. The Utility S2 work is committed on its branch, merged into `main` and pushed ("Commit, merge + push (Recommended)"; the merge is described below).
+
+- Notes, not the maintainer's words:
+  - F1 was lane A's routine arbitration, not a maintainer decision. Gate 2 round 1 finding F1 (the S2a runtime import of `getDatabase` in `storeImport.ts` made three existing drive test files raise six unhandled errors, so Vitest exited 1) listed options (a) and (b); lane A approved option (a), mock `database.svelte` in those three test files, keeping one fill site (log line 104). Lane A's fix brief for this batch states that the session transcript shows the approval at 2026-11-01T03:25:52Z; the records writer did not read the transcript, and `answers.md` carries no F1 entry.
+  - The code was committed as `8c8211de2` on `lane-a/utility-s2` and merged into `main` as `502190194`, then pushed (log line 109). `git log --first-parent` and `git show --shortstat` at `502190194` show the merge and the branch tip (68 files changed).
+  - Q10 "keep as is" leaves the comment `// Q10 wording pending.` in `src/lang/en.ts` (two places) and in each of the seven locale files, now stale. The translator's drafts carried it by design (`%TEMP%\risu-b715\b31\c616-tl\result.md`). Removing it is a comment-only follow-up in `src/lang`, the translator's and the maintainer's files (`MC-058`); not done here.
+  - Gate 2 records items from plan-r3, Gate 1 round 3 and the Gate 2 reports are in the CHORE-616 Roadmap row (E8 the three-way prompt, R6 the rollback and the release gate, the C3 `.rtb` note, the G1 growth rule, the E5 disclosure).
+
+### MC-940 — Lane A, 2026-11-01: devbatch32 answers: the `-Measure` switch, measurement and fault keys on the spare Note 9s, the CHORE-596 Wi-Fi window and the CHORE-205 6a control
+
+- Tag: decisions (the maintainer's answers to the device-batch planning questions, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's answers in `%TEMP%\risu-b715\b32\records32\answers.md`: 2026-11-01T01:34:05Z "Opt-in measure switch (Recommended)", "Yes, spares only (Recommended)", "Allow a short window" and "Build the control (Recommended)"; then 2026-11-01T02:41:31Z "Allow app open briefly" for the CHORE-596 arm 2 question, which supersedes the app-closed condition. Lane A's living log (log lines 87 and 98) and `%TEMP%\risu-b715\devbatch32\decisions-r2.md` (Q-B) carry the same. Basis: the checklist `%TEMP%\risu-b715\devbatch32\checklist.md` and `checklist-r2.md`, which found the CHORE-598 tooling regression (a release plus MEASURE build failed the release dist check).
+- Alternatives rejected: not recorded. `checklist-r2.md` lists Q-B as an open question with "the short Wi-Fi window with the app open" against reducing arm 2 to a PC-side check.
+- Related: CHORE-598, CHORE-596, CHORE-205, CHORE-556, `MC-931`, `MC-510`, `MC-350`.
+
+**What was decided (maintainer).**
+1. The CHORE-598 release dist check also rejected MEASURE markers, so release plus MEASURE test-key builds for device timings failed: add an opt-in `-Measure` switch to `build-apk.ps1` (a fault-only check and a labelled measurement APK); `sign-release.ps1` keeps the full check.
+2. Measurement and fault keys are allowed on the two spare Note 9s, with synthetic data only.
+3. CHORE-596 arm 2 (the local-embeddings model download) gets a short Wi-Fi window, logged ("Allow a short window", 01:34:05Z). The 02:41:31Z answer, "Allow app open briefly", supersedes the earlier app-closed condition (log line 87): the app may be open with Wi-Fi on only for the model download, accepting one RisuRealm list load, then Wi-Fi off right after (log line 98 and `decisions-r2.md` Q-B).
+4. CHORE-205 6a: build an all-resident control ("Build the control (Recommended)"; the control's definition, a synthetic profile restored with archive-at-startup off, is lane A's) and run 6a.
+
+- Notes, not the maintainer's words:
+  - The following are lane A decisions in `decisions-r2.md` and log line 87, not maintainer answers: the no-app-code proxies for the CHORE-04 bump counts (Q-A), the 500-character profile for CHORE-17 (Q-C), copying the 6a definition from the `devbatch31` files and Roadmap row 126 (Q-D), the build command following the switch name (Q-E), picker dismissal by tapping the title, and not scheduling CHORE-202, CHORE-452 and CHORE-114 (no defined instrument).
+  - The `-Measure` code is `7cecc79ff` (Roadmap row CHORE-598). `checklist-r2.md` still words arm 2 as "app closed" and leaves Q-B open; `decisions-r2.md` is the later file.
+  - Nothing here authorizes a device run by itself; the run is lane A's next step.
+
+### MC-941 — Lane A, 2026-11-01: the perf order after the triage
+
+- Tag: decision (the maintainer's approval, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: lane A's living log (log lines 80 and 94): "Maintainer approved order: (1) close/re-scope stale rows, (2) one device measurement batch for measure-first tickets, (3) size shared-code groups one at a time via investigator" (line 80), and "maintainer approved the perf order: (1) -Measure fix + review, (2) four helper tools (PNG card generator, CDP profiler script, inlay fixture, truncated p3-small .bin), (3) devbatch32 when spares are connected, (4) size shared-code groups ... (5) records batch 32 after the S2 combined Gate 2" (line 94). The maintainer's answers in `%TEMP%\risu-b715\b32\records32\answers.md`: "go ahead with that order" at 2026-11-01T01:13:25Z and again at 2026-11-01T02:26:08Z (the second together with a request to show what `MC-119` is about), and "PC part now, device later (Recommended)" at 2026-11-01T01:23:01Z for the devbatch32 timing. The order itself is quoted from lane A's log lines, as above. Basis: the unverified triage `%TEMP%\risu-b715\b31\perf-triage\result.md` (batch 31) and the code-searcher check `b31\perf-verify\result.md` (PARTIAL).
+- Alternatives rejected: not recorded.
+- Related: `MC-119`, `MC-130`, the perf rows named in the Roadmap batch 32 section.
+
+**What was decided (maintainer).**
+1. The order of the perf work: close or re-scope the stale rows first; then one device measurement batch for the measure-first tickets (PC measurements ran first, the device batch is planned now and runs when the Note 9 spares are connected); then size the shared-code groups one at a time with an `investigator`.
+2. The implementation order (log line 94): the `-Measure` fix and review, the helper tools, the device batch when the spares are connected, then the group sizing, then records batch 32 after the S2 combined Gate 2.
+
+- Notes, not the maintainer's words:
+  - Log line 94 names "four helper tools (PNG card generator, CDP profiler script, inlay fixture, truncated p3-small .bin)". The tools actually built and committed in `47f6d7e88` are the CDP session client and long-task probe, the C17 plugin generator, the C04 fixture generator and the PNG card generator; the truncated `.bin` is a procedure (T6) and the inlay fixture was dropped with CHORE-114 (`devbatch32\checklist-r2.md` section 0 item 7; `b31\devtools\result.md`). Recorded as a mismatch between the log line and the built set.
+  - MC-119 check (the brief's item 5; the records writer's reading, not a decision): `MC-119` says the next focus is the memory footprint and that CHORE-45 is decided after that work. `MC-130` makes that work two changes: no whole-database boot walk, and each chat stored as its own unit loaded when opened. Evidence that the first half is met at the character grain: the Roadmap (Phase 2 status of 2026-10-24) records that store2 boots a stub for every non-resident character. Evidence for the second half: the store2 format has chat core and chunk units (`src/ts/storage/store2/format/schema.ts` lines 490 to 502); that a chat is loaded only when opened was not traced. Evidence against calling the work finished: the same Phase 2 status says items 3, 4 and 8 are open, the exit criterion "not recorded as met", and CHORE-205's per-chat blocks of item 9 were deferred. The precondition of `MC-119` is therefore NOT SHOWN MET by the records. TODO(evidence): the maintainer's statement that the memory-footprint work is done. CHORE-390 is not unblocked by this record; it also needs the maintainer's cache memory cap (Roadmap row CHORE-390).
+
+### MC-942 — Lane A, 2026-11-01: CHORE-159 is re-scoped to automatic GC on web and Node
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's answer in `%TEMP%\risu-b715\b32\records32\answers.md` (2026-11-01T02:15:11Z): "Ticket auto GC for web/Node (Recommended)". Lane A's living log (log line 92) words it as "re-scope CHORE-159 to 'enable automatic GC on web and Node' (low priority behind the MVP; investigator sizing later)"; the parenthesis is lane A's, not the answer. Basis: the PC measurement `%TEMP%\risu-b715\b31\perf-pc\result.md`, verified ACCEPT WITH CORRECTIONS at `b31\perf-pc\verify\result.md` (the corrections are applied in the Roadmap row).
+- Alternatives rejected: not recorded.
+- Related: CHORE-159.
+
+**What was decided (maintainer).**
+1. CHORE-159, which was filed as "every restore leaves a large `dbbackup-*.bin`", is re-scoped to a ticket for enabling automatic GC on web and Node.
+
+- Notes, not the maintainer's words:
+  - Lane A's wording, not the maintainer's answer: low priority behind the MVP, and an `investigator` sizes it later.
+  - The measured basis (PC, headless Chrome, synthetic, IndexedDB; the report's limits apply): zero `database/dbbackup-*` keys in 23 imports; each import adds about 62.45 MB of store data (about 3.05 times the 20.5 MB `.bin`) and nothing frees it, because the automatic collector returns unless the platform is Tauri (`autoGc.ts`; the only caller is `maintenance.ts`) and a measurement-only collector exists (`gcMeasure.ts`). Tauri, Android and Node were not run; the Android unit GC is unmeasured.
+  - This is the wording the verifier required (`perf-pc\verify\result.md` correction 4).
+
+### MC-943 — Lane A, 2026-11-01: CHORE-17 plugin saves feel slow; CHORE-594 stays a candidate
+
+- Tag: decisions (the maintainer's answers, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's answers in `%TEMP%\risu-b715\b32\records32\answers.md` (2026-11-01T02:30:29Z): to whether they have noticed slow plugin saves on their phone or tablet, "Yes, saves feel slow"; on CHORE-594, "Keep as candidate (Recommended)". Lane A's living log (log line 95) adds a plan, quoted in the notes: "Maintainer: plugin saves DO feel slow -> add a store2 plugin setDatabase cost measurement (CHORE-17 measure A) to devbatch32, then bring the layer-1 trade-off (deferral in save loop vs longer sync block, Roadmap ~1557-1563); CHORE-594 stays a low-priority candidate." Basis: perf group 1 `%TEMP%\risu-b715\b31\perf-g1\result.md`, UNVERIFIED (no independent verification was dispatched).
+- Alternatives rejected: not recorded.
+- Related: CHORE-17, CHORE-594, `MC-036`, `MC-037` (layer 2 only; layer 1 deferred, not rejected).
+
+**What was decided (maintainer).**
+1. CHORE-17: the maintainer has noticed slow saves from plugins that write the database ("Yes, saves feel slow"). The question recalled that layer 1 was put on hold until plugin saves still feel slow (the "Why layer 1 is on hold" section of the Roadmap CHORE-17 entry); the answer itself does not decide layer 1.
+2. CHORE-594 stays a candidate ("Keep as candidate (Recommended)").
+
+- Notes, not the maintainer's words:
+  - Lane A's plan, not the maintainer's answers (log line 95): a store2 plugin `setDatabase` cost measurement (CHORE-17 measure A) is added to the device batch first (the 500-character profile, `MC-940` notes); afterwards the layer-1 trade-off comes back to the maintainer (deferral in the save loop against a longer synchronous block). "Low-priority" for CHORE-594 is lane A's wording.
+  - perf-g1 (unverified) found CHORE-17 and CHORE-594 share only the file `v3.svelte.ts`, with no shared cause, and CHORE-17's mechanism and cost live in `plugins.svelte.ts` and `database.svelte.ts`; the CHORE-17 numbers were measured on the legacy `RisuSaveEncoder` path, and nothing measured the cost on a store2 page. They are therefore not batched.
+
+### MC-944 — Lane A, 2026-11-01: CHORE-04 module-toggle freeze: the narrowing is accepted, the priority is kept
+
+- Tag: decisions (the maintainer's answers to the two product questions of perf group 2, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's answers in `%TEMP%\risu-b715\b32\records32\answers.md` (2026-11-01T02:33:51Z): "Narrowing is OK (Recommended)"; to whether the freeze still happens on the phone, "yes, it is definitely shorter, but still noticeable.". Lane A's living log (log line 96) words it as "Maintainer: CHORE-04 narrowing OK (toggle without display-affecting change leaves shown messages until next re-render); freeze 'definitely shorter, but still noticeable' on phone -> keep priority"; "keep priority" is lane A's inference. Basis: perf group 2 `%TEMP%\risu-b715\b31\perf-g2\result.md` (UNVERIFIED; its Q4 questions 1 and 2) and the verified PC numbers `b31\perf-pc\verify\result.md`.
+- Alternatives rejected: perf-g2 Q4 question 1 frames the alternative as every toggle visibly re-rendering all mounted messages immediately.
+- Related: CHORE-04, CHORE-609, CHORE-556, CHORE-241.
+
+**What was decided (maintainer).**
+1. Q4.1: a module toggle may leave already-rendered messages un-rebuilt when no display-affecting field changed; a later re-render applies the toggled module. The narrowing is acceptable.
+2. Q4.2: the freeze on a module toggle is, on the phone, "yes, it is definitely shorter, but still noticeable." (the maintainer's words). Lane A kept the priority on this basis (log line 96); the answer does not mention priority.
+
+- Notes, not the maintainer's words:
+  - Devbatch32 measures toggle-to-frame (Settings and chat menu, character and chat level, 30 light and heavy messages), the bumps per toggle and per chat open (by proxy, `MC-940` notes), the chat-open second-rebuild share, and real-ish regex and asset modules (log line 96; `devbatch32\checklist-r2.md`).
+  - A narrowing touches the `BackgroundDom.svelte` effect's dependency on the pointer and CHORE-609's tests; perf-g2 says a CHORE-04 plan review must name them.
+
+### MC-945 — Lane A, 2026-11-01: CHORE-609 closes, with the device checks owed
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's answer in `%TEMP%\risu-b715\b32\records32\answers.md` (2026-11-01T02:33:51Z): "Close, checks owed (Recommended)". Lane A's living log (log line 96) words it as "CHORE-609 close, guard step + OQ2 stay owed in devbatch32". Basis: perf group 2 `%TEMP%\risu-b715\b31\perf-g2\result.md` (UNVERIFIED) and the devbatch32 checklist case V1 (`checklist-r2.md`: "ticket closes in the records on this; owed verification only").
+- Alternatives rejected: not recorded.
+- Related: CHORE-609, `MC-927`, CHORE-04.
+
+**What was decided (maintainer).**
+1. CHORE-609 (card and plugin CSS flicker on the first open of a chat) is closed. The guard step and the OQ2 stale-carry case remain owed as device verification in devbatch32.
+
+- Notes, not the maintainer's words:
+  - The code is merged (`1adfa88a9`, `d1ee51c9c`); the device criteria for the flicker passed on phone 1 in `devbatch31` (Roadmap row CHORE-609). The wrapper length 976 against 990 is unexplained there.
+  - perf-g2 found each pointer bump still re-runs the `BackgroundDom` effect (one parse per bump); the cost was not measured (UNCERTAIN).
+
+### MC-946 — Lane A, 2026-11-01: long-term-memory embedding tickets: file three; the decision-model hook is not filed for now
+
+- Tag: decisions (the maintainer's answers after the verified research pass, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's answer in `%TEMP%\risu-b715\b32\records32\answers.md` (2026-11-01T03:59:13Z) to "Which LTM follow-up tickets should I file?": "Per-model pooling fix, Model list refresh, Prefix consistency". The decision-model hook is not among the selected options. Lane A's wording, not the answer's: `%TEMP%\risu-b715\b31\ltm-research\ticket-drafts.md` ("The maintainer asked for these three tickets on 2026-11-01, after the verified research pass. They declined the decision-model hook for now") and log line 108 ("maintainer asked for 3 tickets (pooling, model list, prefixes; not the decision hook)"). Basis: the research report, an inline hand-back from agent a6effc4cbb80a046b, unverified on its own and not saved as a file; the verification `b31\ltm-research\verify-result.md`, lane A's transcription of an inline verdict (agent a8555cc155047074c, general-purpose with web access); lane A's inline check that `src/ts/process/transformers.ts` forces `pooling: 'mean'` and `dtype: 'q8'`.
+- Alternatives rejected: the decision-model hook ("decision models" are the closed API models jev, `typesafe/jev-1.14`, and Microsoft's `microsoft/microsoft-decision-1`, offered through Azure and OpenRouter; the maintainer's clarification, log line 106) was not selected in the answer; lane A records it as not filed for now. The drafts file's word "declined" is lane A's.
+- Related: CHORE-619, CHORE-620, CHORE-621, CHORE-596, `MC-350`, the long-term-memory direction of 2026-10-30 (new engine, low priority).
+
+**What was decided (maintainer).**
+1. File three tickets: per-model pooling (CHORE-619), the local model list refresh (CHORE-620) and prefix consistency (CHORE-621). Low priority, lane A owner, each needing sizing first.
+2. The decision-model hook is not selected; lane A records it as not filed for now. The verified facts on those models stay in the verification file only.
+
+- Notes, not the maintainer's words:
+  - Low priority, lane A as owner and "needs sizing first" come from the drafts file (lane A), not from the answer, which names only the three ticket titles.
+  - The ticket IDs and wording come from the drafts file; the IDs were allocated by the records writer from lane A's block (next free CHORE-619). Allocation is a records act, not a decision.
+  - The product question in CHORE-620 (the default model: size against Korean quality on the Note 9) is open and is the maintainer's.
+
+### MC-947 — Lane A, 2026-11-01: the Tab S9 stays out of the current performance batch (devbatch32)
+
+- Tag: decision (the maintainer's statement, recorded by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's message in `%TEMP%\risu-b715\b32\records32\answers.md` (2026-11-01T04:15:37Z): "tab 9 was meant to be used for tablet UI check when UI remake was handled by separate sessions. it is useable for dev, but I decided to not to go through it on current performance batch as we don't have baseline numbers for it." The maintainer wrote "tab 9"; reading it as the Tab S9 is lane A's.
+- Alternatives rejected: not recorded.
+- Related: `MC-940`, `MC-941`, devbatch32.
+
+**What was decided (maintainer).**
+1. The Tab S9 was meant for tablet UI checks by the separate UI-remake sessions. It is usable for development.
+2. It is not used in the current performance batch (devbatch32), because there are no baseline numbers for it.
+
+- Notes, not the maintainer's words:
+  - The devbatch32 device runs use the two spare Note 9s (`MC-940` item 2); this record adds no device to them.
