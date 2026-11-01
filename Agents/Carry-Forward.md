@@ -396,6 +396,17 @@ hardware (`MC-003`, `MC-010`, `MC-131`). No phone or Pi figure exists for any of
 - W1a's list of stale wiki claims is Report 33 section 13. The lists for W1b and the composer stage
   (`Settings-Hotkeys.md`, `RisuAI-Basics.md`) went to the Wiki session.
 
+## After records batch 34 (2026-11-02; CHORE-622, CHORE-04, CHORE-623, devbatch33)
+
+Source: the [Roadmap](Roadmap.md) batch 34 section and rows. All device figures are Note 9 only, PROPOSED or descriptive.
+
+- **CHORE-623 (RisuAI to RisuTanium).** Its scope packet (`%TEMP%\risu-b715\b34\risuai-names\result.md`) is a raw helper packet, not independently verified; the sizing re-checks counts and classes. Non-English locales (Korean included) go through the translator (`MC-058`); `Legal.svelte` and `docs/**` need their own authorization.
+- **CHORE-622 leaves.** A plugin write after load can still recreate an empty or out-of-range persona state (not selected, `MC-948`). Android MVP `7928b5bb1` has no format change from it; a device check is optional.
+- **CHORE-04 leaves.** A cold add of a stub module, regex and asset toggles, chat open and Settings return still rebuild by design. Settings return after an inert-module toggle was NOT MEASURED; the before and after builds were not like-for-like (R is `-Measure`, N is not).
+- **devbatch33 owed.** CHORE-205 6a item 6 (export); the CHORE-396 +30.8 MiB gap is still unattributed (BIS2 NOT TRIGGERED); the storage layer that holds the CHORE-596 model; the E3 device listing check at the start of the next phone 2 run.
+- **Phone 2 privacy rule.** The Download folder on phone 2 is not synthetic: no picker or restore work there (`MC-971`).
+- **Candidates for the maintainer (not ticketed):** a CHORE-17 ticket (plugin `getDatabase(characters)` read cost, idle module tick scaling with resident modules); the Settings-return rebuild after CHORE-04; the CHORE-396 gap.
+
 ## Not scheduled
 
 - **Suspected by the Wiki session while documenting (2026-09-30, wiki `5b366746`); not verified

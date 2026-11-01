@@ -20062,3 +20062,255 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 - Notes, not the maintainer's words:
   - The bisect plan (the CHORE-396 commit, its parent and current main, ABBA, n of at least 6 each, on phone 2 with the 0.8 s per-process sampler) is lane A's seed text (`devbatch33\c17-followup-seed.md`, second section), not the maintainer's.
   - Records batch 33 (07:54:44Z, "Start now (Recommended)"): the second answer started the batch. It is not a decision entry of its own. The question itself says the batch "will be verified" and that lane A will "ask before committing"; nothing here authorizes a commit or a push.
+
+### MC-953 — Lane A, 2026-11-02: CHORE-622 saves its persona repair
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01T08:20:26Z (UTC; `answers.md` line 32). Sweep ref: none.
+- Source: lane A's records batch 34 queue, `%TEMP%\risu-b715\b34\records34-queue.md` (queue line 2), which quotes the maintainer: "Save it (Recommended)". Answered 2026-11-01T08:20:26Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 32), to: "CHORE-622: after the load repair (ensure one persona, clamp the selected one, show a notice), should the repaired data be saved, or kept in memory until your next edit?"
+- Alternatives rejected: the other offered options, from the `answers.md` extract (line 32): "Memory only"; "Decide after sizing".
+- Related: CHORE-622, `MC-948`, `MC-955`, `MC-961`.
+
+**What was decided (maintainer).**
+1. CHORE-622 repair persistence: "Save it (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue states the meaning as: mark the repaired setting changed so the normal save writes it once; read-only profiles stay memory-only; the sizing confirms the mechanism and returns to the maintainer only on an obstacle. That gloss is lane A's queue text.
+
+### MC-954 — Lane A, 2026-11-02: CHORE-622 shows one new toast
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01T08:24:53Z (UTC; `answers.md` line 33). Sweep ref: none.
+- Source: the queue (queue line 4): "One new toast (Recommended)". Answered 2026-11-01T08:24:53Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 33), to: "CHORE-622: when a profile loads with no usable persona (empty or broken list) or with a selected persona that no longer exists, the app repairs it at load. What should the user see?"
+- Alternatives rejected: the other offered options, from the `answers.md` extract (line 33): "Single combined toast"; "Silent repair".
+- Related: CHORE-622, `MC-960`, `MC-962`.
+
+**What was decided (maintainer).**
+1. CHORE-622 notice: "One new toast (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss: keep the existing left-out-N toast; one new toast for "persona added / selection reset"; it never claims the repair was saved; at most two per boot; the same text on a read-only profile. `MC-960` refines how two applicable strings combine.
+
+### MC-955 — Lane A, 2026-11-02: CHORE-622 clamp "First persona" (SUPERSEDED by MC-961)
+
+- Tag: decision, superseded. Date: 2026-11-01T08:24:53Z (UTC; `answers.md` line 33). Sweep ref: none.
+- Source: the queue (queue line 5): "First persona (Recommended)". Answered 2026-11-01T08:24:53Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 33), to: "CHORE-622: if the selected persona index points past the end of a non-empty persona list, which persona should be selected after the repair?"
+- Alternatives rejected: the other offered options, from the `answers.md` extract (line 33): "Last persona".
+- Related: CHORE-622, `MC-961`. **Superseded by `MC-961`** (maintainer: "Add buffer as persona (Recommended)"); this entry is kept as history and no longer governs.
+
+**What was decided (maintainer).**
+1. CHORE-622 clamp: "First persona (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss: an out-of-range index on a non-empty list becomes 0; the live username, icon and prompt fields are not synced. The queue also records that the ensured persona is the `setDatabase` default (sizing recommendation 2, not asked; lane A's ruling, not the maintainer's).
+  - Gate 1 round 1 rejected the plan built on this clamp (finding F1: the clamp overwrote persona 0 through `saveUserPersona`; lane A confirmed it from the `util.ts` live-persona documentation and `persona.ts`; queue line 16).
+
+### MC-956 — Lane A, 2026-11-02: devbatch33 P6 gets one short Wi-Fi window
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01T08:28:44Z (UTC; `answers.md` line 34). Sweep ref: none.
+- Source: the queue (queue line 8): "Allow one short window". Answered 2026-11-01T08:28:44Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 34), to: "devbatch33: P6 (whether a downloaded model survives an app restart while offline) needs a short Wi-Fi window on one Note 9: download first, then restart with Wi-Fi off. devbatch32 used a 25 s window on phone 2. Include it?"
+- Alternatives rejected: the other offered options, from the `answers.md` extract (line 34): "Not this batch (Recommended)".
+- Related: CHORE-596, `MC-940`, `MC-970`, devbatch33.
+
+**What was decided (maintainer).**
+1. devbatch33 P6: "Allow one short window".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss: one Wi-Fi window on phone 2 for the P6 download only, synthetic data, logged like devbatch32. The first window closed at 11 s with the download NOT REACHED (queue line 31); `MC-970` is the second window.
+
+### MC-957 — Lane A, 2026-11-02: devbatch33 adopts the CHORE-205 6a criterion as proposed
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01T08:28:44Z (UTC; `answers.md` line 34). Sweep ref: none.
+- Source: the queue (queue line 9): "Adopt as proposed (Recommended)". Answered 2026-11-01T08:28:44Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 34), to: "devbatch33: the CHORE-205 6a check failed to test anything because its counter (textReads) only moves when the page is hidden. The planner proposes a new pass rule: after an archived boot, under 10% of modules resident and none written, and peak memory (PSS) and JS heap each at least 100 MiB/MB below an all-resident control (n=3). textReads becomes report-only. Adopt it?"
+- Alternatives rejected: Other offered options not recorded in the extract (line 34 is cut off before them); the chosen label is quoted.
+- Related: CHORE-205, devbatch33.
+
+**What was decided (maintainer).**
+1. devbatch33 6a criterion: "Adopt as proposed (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss (checklist section 4): module residency under 10%, write-quiet, and PSS and heap at least 100 MiB (MB for heap) below the all-resident control, n=3; textReads is report-only. The criterion is still a device-run threshold, not a shipped bound.
+
+### MC-958 — Lane A, 2026-11-02: devbatch33 V1b accepts a substitute case
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01T08:28:44Z (UTC; `answers.md` line 34). Sweep ref: none.
+- Source: the queue (queue line 10): "Accept substitute (Recommended)". Answered 2026-11-01T08:28:44Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 34), to: "devbatch33: the original stale-chat case (V1 OQ2, duplicating a chat) is still unreachable. The planner proposes substituting a chat switch in the C04 fixture (CL to CH) as a PROPOSED stand-in, with the original case kept as NOT REACHED. Accept the substitute?"
+- Alternatives rejected: Other offered options not recorded in the extract (line 34 is cut off before them); the chosen label is quoted.
+- Related: CHORE-609 (OQ2, the stale-carry case; `devbatch33\checklist.md`, row "V1b | CHORE-609 OQ2"), devbatch33.
+
+**What was decided (maintainer).**
+1. devbatch33 V1b: "Accept substitute (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss: the C04 CL-to-CH switch stands in as a PROPOSED substitute; the duplicate-chat case stays NOT REACHED.
+
+### MC-959 — Lane A, 2026-11-02: CHORE-04 sizing starts
+
+- Tag: decision (a maintainer instruction, relayed by lane A). Date: 2026-11-01T08:30:52Z (UTC; a free-text message, read by lane A from the session transcript; recorded 2026-11-02). Sweep ref: none.
+- Source: the queue (queue line 12), quoting the maintainer's word: "yes, start the CHORE-04 sizing."
+- Alternatives rejected: not applicable (free text).
+- Related: CHORE-04, `MC-944`.
+
+**What was decided (maintainer).**
+1. "yes, start the CHORE-04 sizing."
+
+- Notes, not the maintainer's words:
+  - The lane A rulings after the verified sizing (narrowing is the main lever per `MC-944`; the Settings-return rebuild is out of scope this round) are lane A's, not the maintainer's (queue line 13).
+
+### MC-960 — Lane A, 2026-11-02: CHORE-622 joins its toasts and uses the plan's wording and key
+
+- Tag: decision (the maintainer's answers, relayed by lane A). Date: 2026-11-01T08:37:37Z (UTC; `answers.md` line 35). Sweep ref: none.
+- Source: the queue (queue line 14): OQ1 "Join into one toast (Recommended)" and OQ2 "Use as proposed (Recommended)". Answered 2026-11-01T08:37:37Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 35), to: OQ1: "CHORE-622: the app's toast shows one message at a time, so two toasts posted at load show only the second (the existing 'left out N entries' toast is already hidden this way when the character-list toast follows). When both persona notices apply, what should happen?" OQ2: "CHORE-622 notice wording (English; translator does the other languages). Proposed: when a persona was added: "No usable persona was left in the persona list, so RisuAI added one from your user name and icon and selected it." When only the selection was fixed: "The selected persona was missing, so RisuAI selected the first persona." Use it?" (the proposed texts said "RisuAI"; see `MC-962`)
+- Alternatives rejected: the other offered options, from the `answers.md` extract (line 35): OQ1 "Two calls as decided"; the OQ2 alternatives are not in the extract (the line is cut off before them).
+- Related: CHORE-622, `MC-954`, `MC-962`.
+
+**What was decided (maintainer).**
+1. OQ1: "Join into one toast (Recommended)".
+2. OQ2: "Use as proposed (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss: both strings are kept and one joined toast shows when both apply (OQ1); the plan's `en.ts` wording and the key `personaSelectionRepairedNotice` (OQ2). `MC-961` and `MC-962` later changed the case the key covered (see them).
+
+### MC-961 — Lane A, 2026-11-02: CHORE-622 adds the live buffer as a persona (supersedes "First persona")
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01T08:45:56Z (UTC; `answers.md` line 36). Sweep ref: none.
+- Source: the queue (queue line 17): "Add buffer as persona (Recommended)". Answered 2026-11-01T08:45:56Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 36), to: "CHORE-622 plan review found a problem with the clamp you chose (out-of-range selection -> first persona, no field sync). The current name/icon/prompt/note fields are an edit buffer that the app writes into the selected persona at the next persona switch. So after the clamp, persona 0's saved name, icon, prompt and note would be silently overwritten by the buffer (today the same action crashes instead, losing nothing). I checked util.ts and persona.ts: confirmed. The same applies when the existing repair drops the selected entry. Which rule should apply to both cases?"
+- Alternatives rejected: the other offered options, from the `answers.md` extract (line 36): "Load persona 0 into buffer"; "Keep as decided". The earlier answer "First persona (Recommended)" (`MC-955`) is the one this replaces.
+- Related: CHORE-622, `MC-955`, `MC-962`. **Supersedes `MC-955`.**
+
+**What was decided (maintainer).**
+1. CHORE-622 clamp re-decision: "Add buffer as persona (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss: for a missing selected persona on a non-empty list, including the `repairPersonas` drop, add a persona from the live buffer and select it; persona 0 stays intact. The notice text for this case was to be re-approved (`MC-962`).
+  - Lane A's ruling OQ-B after Gate 1 round 2 (queue line 23): an in-range integer-string `selectedPersona` is normalised to that number with no append and no notice. That is lane A's ruling, not a maintainer decision.
+
+### MC-962 — Lane A, 2026-11-02: CHORE-622 notice wording uses "RisuTanium"
+
+- Tag: decision (a maintainer reply, relayed by lane A). Date: 2026-11-01T08:54:15Z (UTC; a free-text answer to the wording question, read by lane A from the session transcript; recorded 2026-11-02). Sweep ref: none.
+- Source: the queue (queue line 18): "proposed seems good. but shouldn't all of these refer RisuTanium instead of RisuAI?"
+- Alternatives rejected: not applicable (free text).
+- Related: CHORE-622, CHORE-623, `MC-961`, `MC-963`.
+
+**What was decided (maintainer).**
+1. The proposed notice texts are good; the maintainer asked whether all of them should say RisuTanium instead of RisuAI: "proposed seems good. but shouldn't all of these refer RisuTanium instead of RisuAI?"
+
+- Notes, not the maintainer's words:
+  - Lane A's reading, per the queue: both texts approved with "RisuTanium" in place of "RisuAI", under the keys `personaListEmptyNotice` and `personaSelectionMissingNotice`. The message is phrased as a question; the reading is lane A's.
+  - Lane A's check (queue line 18, not re-derived): `en.ts` already uses RisuTanium 74 times against RisuAI 35 times.
+
+### MC-963 — Lane A, 2026-11-02: file a ticket to replace the remaining RisuAI product-name mentions
+
+- Tag: decision (a maintainer instruction, relayed by lane A). Date: 2026-11-01T08:54:43Z (UTC; a free-text message, read by lane A from the session transcript; recorded 2026-11-02). Sweep ref: none.
+- Source: the queue (queue line 20): "file a ticket to replace the remaining RisuAI mentions".
+- Alternatives rejected: not applicable (free text).
+- Related: CHORE-623, `MC-962`, `MC-058`.
+
+**What was decided (maintainer).**
+1. "file a ticket to replace the remaining RisuAI mentions" (filed as CHORE-623).
+
+- Notes, not the maintainer's words:
+  - Scope, translator ownership (`MC-058`) and the separate authorization for `Legal.svelte` and `docs/**` are on the CHORE-623 Roadmap row; they are not this decision.
+
+### MC-964 — Lane A, 2026-11-02: devbatch33 tools commit, merge and push
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01T09:08:29Z (UTC; `answers.md` line 37). Sweep ref: none.
+- Source: the queue (queue line 24): "Commit, merge + push (Recommended)", for commit `48634bd7f`. Answered 2026-11-01T09:08:29Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 37), to: "The devbatch33 tool changes are reviewed and fixed: test-plugin variants, meter reader, memory sampler, debugger-free probe mode, README. 9 files under Agents/Tools only, on branch lane-a/devb33-tools. Commit, merge to main and push?"
+- Alternatives rejected: the other offered options, from the `answers.md` extract (line 37): "Commit only"; "Hold".
+- Related: `48634bd7f`, devbatch33.
+
+**What was decided (maintainer).**
+1. "Commit, merge + push (Recommended)" for the devbatch33 tools T1 to T4.
+
+- Notes, not the maintainer's words:
+  - Scope is this commit only. Gate 2 `tools-g2` was ACCEPT WITH CORRECTIONS (E1 and E2 fixed in `tools-fix`; E3, a device listing check, is the first phone 2 run step; queue line 24).
+
+### MC-965 — Lane A, 2026-11-02: devbatch33 starts both phones
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01T09:45:03Z (UTC; `answers.md` line 38). Sweep ref: none.
+- Source: the queue (queue line 26): "Start both phones (Recommended)". Answered 2026-11-01T09:45:03Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 38), to: "devbatch33 is ready to run on both Note 9s (both connected): all five builds passed. Phone 1 runs the C17 follow-up, then the C04/V1b/P1x and X1 613/P3x/V9R groups (~12 h serial). Phone 2 runs V2b, the CHORE-396 bisect, C17-E and P6 with its one Wi-Fi window (~6-8 h). One note: the two older builds (before/at CHORE-396) resolved a different native lockfile than current main, so the 396-vs-main step carries a native-dependency difference (the bisect's main question, before vs at 396, does not). Start the device runs?"
+- Alternatives rejected: the other offered options, from the `answers.md` extract (line 38): "Phone 2 only first"; "Hold".
+- Related: devbatch33.
+
+**What was decided (maintainer).**
+1. "Start both phones (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue records agents X-A and Y1 first. Lane A later changed the phone 2 order (Y3 before Y2a; queue line 28), a lane A ruling.
+
+### MC-966 — Lane A, 2026-11-02: CHORE-622 commit, merge and push
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01T09:47:04Z (UTC; `answers.md` line 39). Sweep ref: none.
+- Source: the queue (queue line 27): "Commit, merge + push (Recommended)", for commit `905719247` and merge `ec8480886`. Answered 2026-11-01T09:47:04Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 39), to: "CHORE-622 (persona crash) is done and accepted: Gate 2 by the storage reviewer (test fixes verified), full pnpm test/check/build passed (one load timeout that passes alone and on main). 21 files on lane-a/c622: loader repair + saved once via the normal boot save (read-only/no-lock pages memory-only), one joined toast, chat-screen guard, 2 new en.ts keys + 7 translations, tests. Commit, merge into main and push?"
+- Alternatives rejected: the other offered options, from the `answers.md` extract (line 39): "Commit only"; "Hold".
+- Related: CHORE-622.
+
+**What was decided (maintainer).**
+1. "Commit, merge + push (Recommended)" for CHORE-622.
+
+- Notes, not the maintainer's words:
+  - Scope is this change only. The queue states Android MVP: no format change, device check optional (a lane A statement).
+
+### MC-967 — Lane A, 2026-11-02: the pss-sampler header fix, commit, merge and push
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01T10:08:13Z (UTC; `answers.md` line 40). Sweep ref: none.
+- Source: the queue (queue line 28): "Commit, merge + push (Recommended)", for commit `fc93bde2e`. Answered 2026-11-01T10:08:13Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 40), to: "The PSS sampler fix (reads the browser-engine process from the per-package memory listing, which is where the Note 9 actually shows it) passed review, both corrections are in, and I re-ran its test: all passed. 3 files under Agents/Tools/device on lane-a/devb33-sampler. Commit, merge to main and push, so the CHORE-396 bisect can start on phone 2?"
+- Alternatives rejected: the other offered options, from the `answers.md` extract (line 40): "Commit only"; "Hold".
+- Related: devbatch33, `fc93bde2e`.
+
+**What was decided (maintainer).**
+1. "Commit, merge + push (Recommended)" for the `--package` header ownership fix in the sampler.
+
+- Notes, not the maintainer's words:
+  - Scope is this commit only. Review `sampler-fix\review` was ACCEPT WITH CORRECTIONS (queue line 28).
+
+### MC-968 — Lane A, 2026-11-02: CHORE-04 commit, merge and push
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01T10:43:55Z (UTC; `answers.md` line 41). Sweep ref: none.
+- Source: the queue (queue line 29): "Commit, merge + push (Recommended)", for commit `35ffbd8f5`. Answered 2026-11-01T10:43:55Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 41), to: "CHORE-04 (module toggle freeze) is done and accepted: Gate 2 by the storage reviewer (no substantive findings; its one test fix applied and re-run by me, 65/65), full pnpm test/check/build passed. 6 files on lane-a/c04: a toggle that only adds/removes display-inert modules no longer rebuilds the chat (MC-944); the duplicate rebuild trigger from the chat-menu handler is removed; anything that could affect display still rebuilds. Commit, merge into main and push?"
+- Alternatives rejected: the other offered options, from the `answers.md` extract (line 41): "Commit only"; "Hold".
+- Related: CHORE-04, `MC-944`, `MC-969`.
+
+**What was decided (maintainer).**
+1. "Commit, merge + push (Recommended)" for CHORE-04.
+
+- Notes, not the maintainer's words:
+  - Scope is this change only.
+
+### MC-969 — Lane A, 2026-11-02: devbatch33 adds the C04 after cells
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01T10:44:34Z (UTC; `answers.md` line 42). Sweep ref: none.
+- Source: the queue (queue line 30): "Add after cells (Recommended)". Answered 2026-11-01T10:44:34Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 42), to: "CHORE-04 is merged (35ffbd8f5). devbatch33's C04 group (phone 1, later today) currently measures only the 'before' build. Add 'after' cells on a new plain build of current main, same cells and instrument, so we get the before/after freeze numbers in this batch?"
+- Alternatives rejected: the other offered options, from the `answers.md` extract (line 42): "Next batch".
+- Related: CHORE-04, `MC-968`, devbatch33.
+
+**What was decided (maintainer).**
+1. devbatch33 C04 after cells: "Add after cells (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss: build N is `35ffbd8f5` as a plain release; the same C04x cells run on N in X-D, about 1.5 h more on phone 1.
+
+### MC-970 — Lane A, 2026-11-02: devbatch33 P6 retry gets one longer Wi-Fi window
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01T10:59:56Z (UTC; `answers.md` line 43). Sweep ref: none.
+- Source: the queue (queue line 31): "Allow one longer window (Recommended)". Answered 2026-11-01T10:59:56Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 43), to: "devbatch33 P6 (does the downloaded embedding model survive an app restart offline?) did not run: phone 2's single Wi-Fi window closed after 11 s, before the download finished ('Failed to fetch'). No compliance issue. The rest of phone 2's group ran (C17-E: current main matches the measured build within spread). Allow one more, longer Wi-Fi window on phone 2 for the P6 download only?"
+- Alternatives rejected: the other offered options, from the `answers.md` extract (line 43): "Skip P6 this batch".
+- Related: CHORE-596, `MC-956`.
+
+**What was decided (maintainer).**
+1. P6 retry: "Allow one longer window (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss: a second Wi-Fi window on phone 2 for the P6 download only, until complete or 5 minutes at most, after the bisect, logged. The first window (agent y3) closed at 11 s with the download NOT REACHED. Lane A allowed a lock hold up to 6 minutes for that window (queue line 44; a lane A ruling).
+
+### MC-971 — Lane A, 2026-11-02: the devbatch33 privacy incident, delete and redact
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01T13:15:42Z (UTC; `answers.md` line 44). Sweep ref: none.
+- Source: the queue (queue line 43): "Delete + redact (Recommended)". Answered 2026-11-01T13:15:42Z (UTC; `%TEMP%\risu-b715\b34\answers.md`, line 44), to: "Phone 2's scratch output captured real (non-synthetic) Korean file names from that phone's Download folder and file picker. This touches 14 raw files from 4 agents (y1, y2a, y2b and y3: the picker dumps plus the Download before/after listings). Some names may also be quoted in 4 report files (their names are omitted here). I haven't opened any of them. Everything is in local %TEMP% scratch only: nothing went into the repository or off the PC. How should I clean it up?"
+- Alternatives rejected: the other offered options, from the `answers.md` extract (line 44): "Delete raw dumps only"; "Leave as is".
+- Related: devbatch33, the Roadmap batch 34 section (incident log).
+
+**What was decided (maintainer).**
+1. After the devbatch33 privacy incident (phone 2 dumps held real, non-synthetic file names; no name is quoted here): "Delete + redact (Recommended)".
+
+- Notes, not the maintainer's words:
+  - Consequence (lane A, relayed): after the decision, lane A applied the same purge to one further unfiltered listing from the later P6-retry agent (y5), so 15 files were deleted in total; no file name is recorded.
+  - What lane A did, per the queue: deleted 15 files and redacted Hangul runs in about 64 scratch text files; screenshots were not inspected; a rule was added to the run brief. Counts are lane A's statement and were not re-derived.

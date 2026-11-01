@@ -847,3 +847,22 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-950](Maintainer-Context.md#mc-950--lane-a-2026-11-01-the-long-term-memory-m2-cross-reference-is-queued-with-the-device-batch-results) | Lane A, 2026-11-01: the long-term-memory M2 cross-reference is queued with the device batch results |
 | [MC-951](Maintainer-Context.md#mc-951--lane-a-2026-11-01-devbatch32-p2-and-p4-ran-on-phone-2) | Lane A, 2026-11-01: devbatch32 P2 and P4 ran on phone 2 |
 | [MC-952](Maintainer-Context.md#mc-952--lane-a-2026-11-01-the-chore-396-p2-attribution-is-a-bisect-in-the-next-device-batch) | Lane A, 2026-11-01: the CHORE-396 P2 attribution is a bisect in the next device batch |
+| [MC-953](Maintainer-Context.md#mc-953--lane-a-2026-11-02-chore-622-saves-its-persona-repair) | Lane A, 2026-11-02: CHORE-622 saves its persona repair |
+| [MC-954](Maintainer-Context.md#mc-954--lane-a-2026-11-02-chore-622-shows-one-new-toast) | Lane A, 2026-11-02: CHORE-622 shows one new toast |
+| [MC-955](Maintainer-Context.md#mc-955--lane-a-2026-11-02-chore-622-clamp-first-persona-superseded-by-mc-961) | Lane A, 2026-11-02: CHORE-622 clamp "First persona" (SUPERSEDED by MC-961) |
+| [MC-956](Maintainer-Context.md#mc-956--lane-a-2026-11-02-devbatch33-p6-gets-one-short-wi-fi-window) | Lane A, 2026-11-02: devbatch33 P6 gets one short Wi-Fi window |
+| [MC-957](Maintainer-Context.md#mc-957--lane-a-2026-11-02-devbatch33-adopts-the-chore-205-6a-criterion-as-proposed) | Lane A, 2026-11-02: devbatch33 adopts the CHORE-205 6a criterion as proposed |
+| [MC-958](Maintainer-Context.md#mc-958--lane-a-2026-11-02-devbatch33-v1b-accepts-a-substitute-case) | Lane A, 2026-11-02: devbatch33 V1b accepts a substitute case |
+| [MC-959](Maintainer-Context.md#mc-959--lane-a-2026-11-02-chore-04-sizing-starts) | Lane A, 2026-11-02: CHORE-04 sizing starts |
+| [MC-960](Maintainer-Context.md#mc-960--lane-a-2026-11-02-chore-622-joins-its-toasts-and-uses-the-plans-wording-and-key) | Lane A, 2026-11-02: CHORE-622 joins its toasts and uses the plan's wording and key |
+| [MC-961](Maintainer-Context.md#mc-961--lane-a-2026-11-02-chore-622-adds-the-live-buffer-as-a-persona-supersedes-first-persona) | Lane A, 2026-11-02: CHORE-622 adds the live buffer as a persona (supersedes "First persona") |
+| [MC-962](Maintainer-Context.md#mc-962--lane-a-2026-11-02-chore-622-notice-wording-uses-risutanium) | Lane A, 2026-11-02: CHORE-622 notice wording uses "RisuTanium" |
+| [MC-963](Maintainer-Context.md#mc-963--lane-a-2026-11-02-file-a-ticket-to-replace-the-remaining-risuai-product-name-mentions) | Lane A, 2026-11-02: file a ticket to replace the remaining RisuAI product-name mentions |
+| [MC-964](Maintainer-Context.md#mc-964--lane-a-2026-11-02-devbatch33-tools-commit-merge-and-push) | Lane A, 2026-11-02: devbatch33 tools commit, merge and push |
+| [MC-965](Maintainer-Context.md#mc-965--lane-a-2026-11-02-devbatch33-starts-both-phones) | Lane A, 2026-11-02: devbatch33 starts both phones |
+| [MC-966](Maintainer-Context.md#mc-966--lane-a-2026-11-02-chore-622-commit-merge-and-push) | Lane A, 2026-11-02: CHORE-622 commit, merge and push |
+| [MC-967](Maintainer-Context.md#mc-967--lane-a-2026-11-02-the-pss-sampler-header-fix-commit-merge-and-push) | Lane A, 2026-11-02: the pss-sampler header fix, commit, merge and push |
+| [MC-968](Maintainer-Context.md#mc-968--lane-a-2026-11-02-chore-04-commit-merge-and-push) | Lane A, 2026-11-02: CHORE-04 commit, merge and push |
+| [MC-969](Maintainer-Context.md#mc-969--lane-a-2026-11-02-devbatch33-adds-the-c04-after-cells) | Lane A, 2026-11-02: devbatch33 adds the C04 after cells |
+| [MC-970](Maintainer-Context.md#mc-970--lane-a-2026-11-02-devbatch33-p6-retry-gets-one-longer-wi-fi-window) | Lane A, 2026-11-02: devbatch33 P6 retry gets one longer Wi-Fi window |
+| [MC-971](Maintainer-Context.md#mc-971--lane-a-2026-11-02-the-devbatch33-privacy-incident-delete-and-redact) | Lane A, 2026-11-02: the devbatch33 privacy incident, delete and redact |
