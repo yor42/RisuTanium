@@ -20,6 +20,7 @@ scratch (`%TEMP%\risu-b715\devscripts\`, not in the repository). Where a stateme
 | `cold-start.ps1` | N cold starts: `am start -W` time, ready signal over CDP, settled PSS. |
 | `cdp.mjs` | `node` helper: evaluates one expression in the first page target of a forwarded WebView devtools port. |
 | `cdp-session.mjs` | `node` helper: persistent CDP client (eval, CPU profile, probe injection with console capture). Probe in `probes/`. |
+| `pss-sampler.ps1` | Samples the PSS of the app process and of its own WebView sandbox process over adb into a tab-separated log; mandatory `-Serial`. |
 | `snapshot.ps1` | Whole-app-data snapshot of the test profile (debug builds only). |
 | `restore-snapshot.ps1` | Restores a snapshot into the app data and verifies it against the manifest (debug builds only). |
 | `import-bin.ps1` | Drives the app's own "load local backup" UI for one `.bin` fixture and collects the import phase marks. |
@@ -259,6 +260,9 @@ target, 3 timed out, 4 connection, protocol or evaluation error. The scripts cal
   before the run (replayed when the tool enables the console) are dropped, so every kept event has `pageMs >= 0`. Without
   `--console-filter` the output file holds all console text of the page, which may include chat content; the "numbers, counts and
   labels only" statement below covers the probe JSON, not the events. Use a filter (such as `^c17-`) and keep the file in scratch.
+  `probe --no-runtime` (a flag without value) sends no `Runtime.enable` and collects no console events (`events` is `[]`); the probe is
+  still injected and stopped through `Runtime.evaluate`, the same route as `eval`. Use it for a measurement arm in which the page's
+  console must stay unobserved, so that an attached arm and a detached arm share the injection route.
 - `--timeout <ms>` (global; default per command is its duration plus 15 s). The process always ends by then.
 
 Exit codes: 0 done, 2 not exactly one `page` target (the targets are listed), 3 timed out, 4 connection, protocol, evaluation or usage
@@ -272,6 +276,15 @@ the added records of the MEASURE rings (`__risuChatPhases`, `__risuSavePassMeter
 It returns numbers, counts and labels only. `ringsPresent: false` plus a warning means the page is not a MEASURE build. It removes
 `window.__devb32Probe` on `stop()`. Ring deltas locate the last start record in the stop list (the rings hold 1000 records and drop
 the oldest), `wrapped: true` means start records were evicted and `lastStartFound: false` means the added count is a lower bound.
+
+`probes/read-meters.js` is a one-shot reader for `eval -f`, not for `probe`. Its file body is one function expression and it installs
+nothing on `window`; the caller builds `(<file text>` + newline + `)({"afterSeq": N})` as one expression and passes it to `eval -f`, which evaluates the file verbatim. It returns numbers,
+booleans and the pass `kind` label (`rewriteAll`, `whole`, `tick`, `edit`) only: `netSignals` (`partGlobal`, `partFirst`), `savePass`
+(records with `seq` greater than `afterSeq`, each with `kind`, `modules`, its numeric fields and the numbers of `split` and
+`split.finish`; the per-character list and every other string are dropped), `commit` (count, last units and ms) and `heap`. A
+section whose ring is absent reads `{ "present": false }`. A pass is an edit pass when `kind === 'edit'`; `modules` is a secondary
+label because a due tick encodes the modules, so an edit pass may also carry `modules: true`. Test:
+`node Agents\Tools\device\tests\read-meters.accept.mjs` (`READ_METERS_PATH` points at a mutant copy).
 
 Case notes. C17: the first plugin call can wait on the one-time `db` permission prompt, so tap through a warm-up run before the
 first timed one, or that timing is a person's reaction time. C04: remounts are counted only for elements matching the body
@@ -289,6 +302,31 @@ Acceptance tests (PC only, a fake CDP server and a headless Chrome the test star
 `node Agents\Tools\device\tests\cdp-session.accept.mjs` and `node Agents\Tools\device\tests\probe-longtask-rebuild.accept.mjs`
 (`CDP_ACCEPT_SCRATCH` names the scratch folder; `CDP_SESSION_PATH` and `PROBE_PATH` point at a mutant copy). They are not part of
 `Test-Runner.ps1`.
+
+C17 plugin. `node Agents\Tools\save-gen\make-c17-plugin.mjs --out <file.js outside the repo> [--trigger button|setting] [--variants base|all]`
+writes the synthetic V3 plugin. `base` (default, output unchanged) has FULL, ONE, NOCHARS and LITE; `all` adds NOCHARS-LITE
+(`setDatabaseLite` of `lineHeight`, which skips the normaliser), GET (`getDatabase` only, no setter; `c17-skipped get-only`) and
+CLONE (times `structuredClone` of the returned characters inside the iframe; `c17-clone-done <ms>`). Markers hold numbers and fixed
+reasons only. Test: `pnpm vitest run Agents/Tools/save-gen/make-c17-plugin.test.mjs` (name the file; never the whole `save-gen`
+folder, which rewrites goldens).
+
+### pss-sampler.ps1
+
+`pwsh -NoProfile -File Agents\Tools\device\pss-sampler.ps1 -Serial <adb serial> -LogPath <file outside the repo> [-Package <id>]
+[-MaxSeconds 7200] [-AllowedSerials a,b] [-SleepMs 300] [-StopFile <path>]` writes one line per cycle:
+`<unix ms><TAB><app KiB><TAB><sandbox KiB>`, from `dumpsys meminfo -s <pid>` (about 0.8 s per cycle on the Note 9).
+
+- `-Serial` is mandatory: empty, blank, malformed or outside `-AllowedSerials` exits 2 before the first adb call. There is no default
+  serial; every adb call is `adb -s <serial> ...`.
+- Sandbox ownership: the sandbox process is named after the WebView provider, not the app, so the owner is read from the app's own
+  `dumpsys meminfo <Package>` listing (the sandbox pids it prints). The sampled pid is the single `pgrep -f sandboxed_process` pid that
+  is also in that listing; the listing is read again on every resolve (first cycle, every 10th cycle, the cycle after any 0 reading),
+  never cached, and never printed. With none or several owned pids the cycle is logged as `<ms><TAB>0<TAB>0<TAB>DROP-owner` (no pick,
+  no size guess); three consecutive drops stop it with exit 3. The log holds pids' KiB only, never a package or process name.
+- Stop: create `<LogPath>.stop`, or stop the PID in `<LogPath>.pid` by exact PID; never by image name. Exit codes: 0 done, 2 refused
+  arguments, 3 three consecutive drops.
+- Test (no device, fake `-AdbExe`): `pwsh -NoProfile -File Agents\Tools\device\tests\pss-sampler.accept.ps1`
+  (`-SamplerPath` points at a mutant copy). Not part of `Test-Runner.ps1`.
 
 ### snapshot.ps1 and restore-snapshot.ps1
 

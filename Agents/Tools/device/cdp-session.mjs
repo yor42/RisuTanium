@@ -10,6 +10,9 @@
 //                                                          start(label, opts), collects matching console events with timestamps
 //                                                          from every execution context for n seconds, calls stop() and writes
 //                                                          the probe JSON together with the events
+//                                                          --no-runtime (flag, no value): sends no Runtime.enable and collects no
+//                                                          console events (events is []), so the page's console stays unobserved
+//                                                          while the probe is injected through Runtime.evaluate, as eval does
 //   --timeout <ms>                                         global; default per command is its duration + 15 s
 //
 // Invariant: the process always ends within the timeout, whatever the target does.
@@ -26,6 +29,8 @@ const ALLOWED_METHODS = new Set([
   'Profiler.enable', 'Profiler.disable', 'Profiler.setSamplingInterval', 'Profiler.start', 'Profiler.stop',
 ])
 
+const FLAG_OPTIONS = new Set(['--no-runtime'])
+
 const fail = (code, text) => { console.error(text); process.exit(code) }
 
 function parseArguments(argv) {
@@ -35,7 +40,8 @@ function parseArguments(argv) {
   for (let i = 2; i < argv.length; i++) {
     const name = argv[i]
     if (!name.startsWith('-')) fail(4, 'unexpected argument ' + name)
-    options[name] = argv[++i]
+    if (FLAG_OPTIONS.has(name)) options[name] = true
+    else options[name] = argv[++i]
   }
   return { port, command, options }
 }
@@ -179,14 +185,17 @@ async function runProbe() {
   const filter = options['--console-filter'] === undefined ? null : new RegExp(options['--console-filter'])
   const label = options['--label'] ?? 'probe'
   const probeOptions = options['--probe-opts'] === undefined ? {} : JSON.parse(options['--probe-opts'])
+  const noRuntime = options['--no-runtime'] === true
   const events = []
-  eventListeners.push((message) => {
-    if (message.method !== 'Runtime.consoleAPICalled') return
-    const text = consoleText(message.params.args ?? [])
-    if (filter !== null && !filter.test(text)) return
-    events.push({ timestamp: message.params.timestamp, executionContextId: message.params.executionContextId, type: message.params.type, text })
-  })
-  await send('Runtime.enable')
+  if (!noRuntime) {
+    eventListeners.push((message) => {
+      if (message.method !== 'Runtime.consoleAPICalled') return
+      const text = consoleText(message.params.args ?? [])
+      if (filter !== null && !filter.test(text)) return
+      events.push({ timestamp: message.params.timestamp, executionContextId: message.params.executionContextId, type: message.params.type, text })
+    })
+    await send('Runtime.enable')
+  }
   await evaluate(probeSource)
   // one read of both clocks maps an event's epoch timestamp (ms) onto the page clock: pageMs = pagePerfMs + (timestamp - pageDateMs)
   const clocks = await evaluate('({ pagePerfMs: performance.now(), pageDateMs: Date.now() })')

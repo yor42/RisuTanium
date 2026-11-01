@@ -140,6 +140,25 @@ function startFake({ pageCount = 1, mute = false } = {}) {
   fake.close()
 }
 
+// probe --no-runtime: no Runtime.enable (or any other Runtime.* control call) and no console events; without the flag exactly one Runtime.enable
+{
+  const probeInput = path.join(SCRATCH, 'fake', 'probe-input.js')
+  const withRuntime = await startFake()
+  const withRun = await runTool([String(withRuntime.port), 'probe', '--probe', probeInput, '--seconds', '1', '--out', path.join(SCRATCH, 'fake', 'probe-rt.json')])
+  check(withRun.code === 0 && withRuntime.methods.filter((m) => m === 'Runtime.enable').length === 1, '6a probe without the flag sends exactly one Runtime.enable', withRun.stderr + JSON.stringify(withRuntime.methods))
+  withRuntime.close()
+
+  const noRuntime = await startFake()
+  const noOut = path.join(SCRATCH, 'fake', 'probe-nort.json')
+  const noRun = await runTool([String(noRuntime.port), 'probe', '--no-runtime', '--probe', probeInput, '--seconds', '1', '--out', noOut, '--console-filter', '^c17-'])
+  check(noRun.code === 0, '6b probe --no-runtime exits 0 (the flag takes no value and does not swallow the next option)', noRun.stderr)
+  check(!noRuntime.methods.includes('Runtime.enable') && !noRuntime.methods.includes('Runtime.disable'), '6c probe --no-runtime sends neither Runtime.enable nor Runtime.disable', JSON.stringify(noRuntime.methods))
+  check(noRuntime.methods.includes('Runtime.evaluate'), '6d probe --no-runtime still injects and stops the probe through Runtime.evaluate', JSON.stringify(noRuntime.methods))
+  const noJson = JSON.parse(readFileSync(noOut, 'utf8'))
+  check(Array.isArray(noJson.events) && noJson.events.length === 0 && noJson.probe && noJson.probe.ok === true, '6e probe --no-runtime writes events [] and the probe JSON', JSON.stringify(noJson).slice(0, 200))
+  noRuntime.close()
+}
+
 {
   const fake = await startFake({ pageCount: 0 })
   const run = await runTool([String(fake.port), 'eval', '-e', '1+1'])
