@@ -19692,3 +19692,150 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 - Notes, not the maintainer's words:
   - CHORE-610 is closed, no action; no repair, no scan extension and no export change is scheduled.
   - Nothing here authorizes application code, a commit or a push.
+
+### MC-930 — Lane A, 2026-11-01: CHORE-611, CHORE-612 and CHORE-613: what to do after the traces
+
+- Tag: decisions (the maintainer's answers, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's `AskUserQuestion` answers, verbatim in `%TEMP%\risu-b715\b31\records31\answers.md` (stamped 2026-10-31T21:46:22Z, UTC, which is 2026-11-01 KST; lane A chat), relayed by the records batch 31 brief `%TEMP%\risu-b715\b31\records31\brief.md` (item 4). Basis: the traces `%TEMP%\risu-b715\b31\c611\result.md`, `c612\result.md` and `c613\result.md`. The quoted labels are the maintainer's.
+- Alternatives rejected: `answers.md` records only the selected labels, not the full option lists. The traces listed options (611: await the error in the restore path, make the drain wait, queue notices in the alert layer, or do nothing; 612: add a disabled style, optionally a refusal notice; 613: render nothing, keep the previous image, or fall back to the character avatar); which of them lane A showed the maintainer is not recorded.
+- Related: CHORE-611, CHORE-612, CHORE-613, CHORE-398 (D4), CHORE-478 (Plan B5).
+
+**What was decided (maintainer).**
+1. CHORE-613 (a character with no `neutral` emotion image shows a broken image in the emotion slot until an emotion is chosen, also after a failed emotion call; what should the slot show): render nothing. The maintainer's label: "Nothing (Recommended)".
+2. CHORE-611 (the alert slot is last-write-wins, so a file opened from Android after a restore can replace an unread restore error; how far the fix should go): the opened-files drain waits for an unread notice before the first import. The maintainer's label: "Opened-file wait (Recommended)".
+3. CHORE-612 (the Branch entry is disabled while a reply is pending, but no tree button looks different when disabled and the blue hover still shows; add a visible disabled style): add a faded disabled style to the tree buttons (arrows, end control, Branch). The maintainer's label: "Add faded style (Recommended)".
+
+- Notes, not the maintainer's words:
+  - CHORE-612's premise was REFUTED by the trace: the Branch entry was already bound to the busy signal; the gap was that no tree button had a disabled style.
+  - CHORE-613 is display only and the marker handling is inherited from upstream; the fix is fork-local and diverges from upstream (the trace). CHORE-611's single-slot alert store is also upstream's design; the fix covers only the opened-files drain, not a general notice queue.
+  - Results are in the Roadmap rows for CHORE-611 to CHORE-613 and ledger rows 4694 to 4696, 4699, 4704, 4710 and 4712. The code is committed as `634d9f728`.
+  - Nothing here authorizes application code, a commit or a push beyond what the maintainer approved for this item.
+
+### MC-931 — Lane A, 2026-11-01: CHORE-598 the module-load fault switch: build flag, sourcemaps, release guards and a plan revision
+
+- Tag: decisions (the maintainer's answers, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's `AskUserQuestion` answers, verbatim in `%TEMP%\risu-b715\b31\records31\answers.md` (stamped 2026-10-31T21:46:57Z, 21:55:20Z, 22:10:43Z and 23:44:50Z, UTC, which is 2026-11-01 KST; lane A chat), relayed by the records batch 31 brief (item 5). The brief quotes the last answer as "Revise plan"; the file's label is "Revise plan (Recommended)". Basis: the sizing `%TEMP%\risu-b715\b31\c598-size\result.md`, the plans `c598-plan\plan.md`, `plan-r2.md` and `plan-r3.md`, and the stop-rule report `c598-impl\result.md`.
+- Alternatives rejected: `answers.md` records only the selected labels, not the full option lists. For the D1 stop rule the coder offered a revised plan (keep the flag module out of the module graph when the flag is off) or accepting that sourcemap builds carry the flag module and relaxing the checker; the maintainer chose the revision. Which other options were shown for the first four answers is not recorded.
+- Related: `MC-918` (decided a debug fault switch compiled only into debug and test builds, with a later device check of CHORE-556 (a); its text is unchanged), CHORE-598, CHORE-556, `MC-350`.
+
+**What was decided (maintainer).**
+1. Which builds contain the switch (an Android debug APK is a production Vite build, so "debug build" needs its own definition): an opt-in build flag only (`VITE_RISU_MODULE_FAULT`); the label is "Opt-in build flag (Recommended)". How the failing module is chosen and how long the failure lasts: by id, for the whole session; the label is "By id, whole session (Recommended)".
+2. Plan open item O1 (builds that ship sourcemaps embed `moduleLoader.ts`'s source text, so the one guard line and its import name are readable in the `.map` files even without the flag; the executable code, the switch key and the fault text stay absent and checked, also in maps): accept the guard line in sourcemaps. The label: "Accept guard line in maps (Recommended)".
+3. Plan-r2 open item O7 (both scripts refuse the flag if it is set and run the release dist checker before the APK is signed or accepted; no secret handling changes; agents still never run `sign-release.ps1`): guard both `build-apk.ps1 -Kind release` and `sign-release.ps1`. The label: "Guard both scripts (Recommended)".
+4. After the plan's D1 stop rule fired (with the flag off the built JS is clean, but the sourcemaps of `pnpm build` and debug APKs contain the fault switch's source file, its localStorage key and fault text): revise the plan, so that no trace of the flag module remains in flag-off builds, maps included. The label: "Revise plan (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The sizing found that Vite's `import.meta.env.DEV` is false in an Android build, so "debug build" needed a new flag; the repository's `VITE_RISU_MEASURE` is the precedent.
+  - Gates: plan Gate 1 r1 `[REJECT]`, r2 and r3 `[EDITORIAL]`; Gate 2 `[EDITORIAL]`. Plan-r3 premise M25a was contradicted by execution and M25/I9 are amended on the Roadmap row. The code is committed as `894a4c825`.
+  - Disclosure: the full device Test-Runner starts `sign-release.ps1`, which refuses before any vault access.
+  - CHORE-556 (a) is unblocked: the device check is owed to the next device batch.
+  - Nothing here authorizes application code, a commit or a push beyond what the maintainer approved for this item.
+
+### MC-932 — Lane A, 2026-11-01: CHORE-459 the nodeLiveServer I1 flake: a test-only fixture fix, and a low-priority product note
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's `AskUserQuestion` answer, verbatim in `%TEMP%\risu-b715\b31\records31\answers.md` (stamped 2026-10-31T21:50:28Z, UTC, which is 2026-11-01 KST; lane A chat), relayed by the records batch 31 brief (item 3). The question said that on a slow CI machine the store2 cleanup pass (GC) never wins against three continuously committing writers, that fixing the test means pausing the writers until cleanup applies one batch, and that in the real app cleanup only competes with the maintainer's own saves (bursty, with idle gaps), so starvation there is unlikely but unproven. Basis: the investigation `%TEMP%\risu-b715\b31\c459\result.md`, whose smallest correction (its Option A: pause the writers, then let the collector run) matches the answer.
+- Alternatives rejected: `answers.md` records only the selected label, "Test fix + note (Recommended)", not the option list. The investigation named more extension time (shown ineffective) and loosening the assertion to `>= 0` (it removes the guard that collection works with writers present) as not recommended; whether the maintainer was shown them is not recorded.
+- Related: CHORE-459, CHORE-224, CHORE-614, CHORE-615.
+
+**What was decided (maintainer).**
+1. A test-only fixture fix: the writers pause until the collector applies a batch, with an opus-reviewer Gate 2 (the brief's wording; the answer's label is "Test fix + note (Recommended)").
+2. A low-priority product note: GC can starve under constant commit churn (the second half of the same label, "Test fix + note").
+
+- Notes, not the maintainer's words:
+  - The investigation REFUTED the fixed-window premise (the fixture already extends the run up to three times); starvation by commit churn is INFERRED and not reproduced locally.
+  - The product note is recorded as an open low-priority item on the CHORE-459 row. No new ticket was filed, as the brief directed; `docs/workflow/records.md` (searched at write time for "ticket", "follow-up" and "note") has no rule that requires one.
+  - Gate 2 (opus-reviewer) `[EDITORIAL]`; the 64 s versus 36 s runtime is machine load. The code is committed as `6f514e48e`.
+  - Nothing here authorizes application code, a commit or a push beyond what the maintainer approved for this item.
+
+### MC-933 — Lane A, 2026-11-01: CHORE-616 Utility mode: the first slice after the engine sizing
+
+- Tag: decisions (the maintainer's answers to the sizing's questions, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's `AskUserQuestion` answers, verbatim in `%TEMP%\risu-b715\b31\records31\answers.md`: the entry stamped 10/31/2026 22:25:12 (decisions 1, 2, 3 and 6, and the CHORE-617 ticketing word, which is the label of the first answer) and the entry stamped 11/01/2026 00:19:59 (decisions 4 and 7), relayed by the records batch 31 brief (item 6). Basis: the sizing `%TEMP%\risu-b715\b31\c616\sizing.md`, verified ACCEPT WITH CORRECTIONS (`c616\verify\result.md`), whose nine decisions are numbered below. The earlier version of `answers.md` marked its stamps as UTC; the regenerated file prints no zone.
+- Alternatives rejected: `answers.md` records only the selected labels, not the option lists. The sizing's options were: decision 1, pure chat with a task preset, chat with read-only tools or attachments, or chat with a project folder and tools; decision 3, ephemeral or persistent conversations; decision 4, a discriminated entry in `presets`, a new manifest key, or a module. The options actually shown are not recorded.
+- Related: CHORE-616, CHORE-617, CHORE-128, `MC-685`, `MC-298`, `MC-774`, `MC-350`, `docs/planning/2026-10-16-product-overhaul-direction.md` (a draft, not decisions).
+
+**What was decided (maintainer).**
+1. Sizing decision 1 (which single journey the first Utility slice delivers end to end): chat plus a task preset, no tools; the project folder and tools are ticketed as TODO (CHORE-617). The maintainer's answer: "chat+task preset, but ticket the project folder and tools as todo."
+2. Decision 2 (platform floor for the first Utility slice): desktop first. The label: "Desktop first".
+3. Decision 3 (whether Utility conversations persist, surviving a reload, in the first slice): ephemeral first. The label: "Ephemeral first".
+4. Decision 6 (how a Utility run reaches the model): a new Utility entry path, with no hidden character. The label: "New Utility entry".
+5. Decision 4 (task presets themselves must be saved; where should a preset live): presets are saved as a new store2 entry (its own manifest key; Tier 2 plus a `req` token). The label: "New store2 entry (Recommended)".
+6. Decision 7 (may a Utility run generate while an RP chat is generating, and vice versa): Utility runs are concurrent with RP (run identity plus per-run abort, replacing the global single-flight for Utility). The label: "Concurrent".
+
+- Notes, not the maintainer's words:
+  - Still open from the sizing: decisions 5, 8 and 9 (tool permission default and scope, instruction-file scope, MCP or stdio in presets); they travel with CHORE-617.
+  - The sizing key finding: chats live only under character or group shard entries, so a character-free persistent chat would need a new shard type; the ephemeral choice avoids that for this slice.
+  - Nothing here authorizes application code, a commit or a push. Implementation has not started.
+
+### MC-934 — Lane A, 2026-11-01: CHORE-616 S2 plan: answers to the plan's open questions
+
+- Tag: decisions (the maintainer's answers, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's `AskUserQuestion` answers, verbatim in `%TEMP%\risu-b715\b31\records31\answers.md` (stamped 2026-11-01T00:34:20Z, UTC; lane A chat), relayed by the records batch 31 brief (item 6). Basis: the open items of plan v1 `%TEMP%\risu-b715\b31\c616-plan\plan.md` (lines 187 to 198), read at write time.
+- Alternatives rejected: `answers.md` records only the selected labels. By the plan's own listing: Q1 option B (remove the task presets after a named confirm) and Q2 option B (a full parameter snapshot); whether they were shown as options is not recorded.
+- Related: CHORE-616, `MC-933`, `MC-936`, CHORE-128.
+
+**What was decided (maintainer).**
+1. Q1 (task presets are fork-only and a `.bin` cannot carry them; what happens to them when a `.bin` is imported or restored over a store that has them): keep them (the plan's option A). The label: "Keep them (Recommended)".
+2. Q2 (what a task preset stores besides its name and instructions): the model, the temperature and the maximum tokens; everything else stays global and is disclosed (option A). The label: "Model + temp + max tokens (Recommended)".
+3. Q9 (the plan gives Utility runs their own run id and abort, so a Utility run and an RP generation can run at the same time while RP-vs-RP stays one at a time with the existing lock for now; does that meet the "concurrent" decision): Utility-only run ids suffice. The label: "Yes, that's enough (Recommended)".
+4. Q3, Q4, Q5, Q6, Q7, Q8, Q11 and Q12: the designer's recommendations are accepted. The label: "Accept all (Recommended)". As the question and the plan state them: Q3 V3 plugin before and after request hooks are skipped on Utility runs (plugin providers stay selectable); Q4 formats that embed character or persona names, and instruct mode, are refused at send with a named message; Q5 plain-text replies; Q6 one conversation, New asks to confirm when it is non-empty and aborts its run, leaving the view keeps it; Q7 Stop keeps the partial text labelled stopped, a failure shows inline, no automatic retry; Q8 a preset deleted while in use makes the next send refuse, naming it; Q11 instructions are literal text with no CBS; Q12 no unload prompt, the screen says the conversation is not saved.
+5. Q10 (the wording of the device-only note and the export confirm) comes later.
+
+- Notes, not the maintainer's words:
+  - Gate 1 round 1 of the plan was `[REJECT]` after these answers; it found that Q4 needs an allowlist rather than a denylist (F2) and that the Q1 keep must be by value (F3). Whether those reviewer corrections change what the maintainer accepted is for plan-r2 and its gate; the maintainer answered the open items in `MC-936`.
+  - Amended 2026-11-01 (`MC-937`, Q15): the second half of Q3 (plugin model providers stay selectable on Utility runs) is replaced; plugin model providers are refused in S2. The first half of Q3 (V3 plugin before and after request hooks are skipped) is unchanged.
+  - Nothing here authorizes application code, a commit or a push. Implementation has not started.
+
+### MC-935 — Lane A, 2026-11-01: the record cleanup: CHORE-184, CHORE-188, CHORE-206 and CHORE-397
+
+- Tag: decisions (the maintainer's bulk answers to the cleanup questions, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's `AskUserQuestion` answers, verbatim in `%TEMP%\risu-b715\b31\records31\answers.md` (stamped 2026-11-01T00:36:06Z, UTC; lane A chat), relayed by the records batch 31 brief (items 9 and 10). Basis: the cleanup draft `%TEMP%\risu-b715\b31\records31\cleanup-draft.md` and its verification `cleanup-verify\result.md` (ACCEPT WITH CORRECTIONS).
+- Alternatives rejected: `answers.md` records only the selected labels. The draft's own alternatives were: for CHORE-206, accepting the deferral so the row closes, or splitting Stage 3 into a new ticket; for CHORE-397, whether the approximated case 4 and the skipped case 6 block COMPLETE. The question for CHORE-206 noted that no decision of the maintainer records the Stage 3 deferral.
+- Related: CHORE-184, CHORE-188, CHORE-206, CHORE-397, CHORE-618, `MC-349`, `MC-476`, `MC-831`, `MC-918`.
+
+**What was decided (maintainer).**
+1. CHORE-184 (Lua fix `2598f7089`, merged `dd704b9a7`; the Lua smoke passed on phone 1 offline; owner lane C retired; the row says only that the maintainer has not marked it closed): close as COMPLETE. The label: "Close".
+2. CHORE-188 (fix `da53ba045`, strings `23b61f6d0`; the same-name different-bytes case was never re-checked): close as COMPLETE and accept that gap as a residual. The label: "Close, accept gap".
+3. CHORE-206 (cuts A and B on main; Stage 3 and an optional `alertPluginConfirm` follow-up were deferred): split Stage 3 (remove the 2.1-only API members), plus the optional `alertPluginConfirm` follow-up, into a new low-priority ticket (CHORE-618) and close CHORE-206. The label: "Split Stage 3 out".
+4. CHORE-397 (merged `b0f9bb60b`; cases 1, 2, 3, 5 and 7 passed, case 4 was approximated and case 6 skipped; do those block COMPLETE): close the code ticket; cases 4 and 6 are owed to the next device batch. The label: "Owe them to a device batch".
+
+- Notes, not the maintainer's words:
+  - The verifier found three questions in the draft already decided: CHORE-478's branch conversion (`MC-916` item 1), CHORE-62's Translator terms (`MC-212`) and CHORE-216 (`MC-681`); they were not asked, and CHORE-216 closes under `MC-681`.
+  - The other dispositions of the 28-ticket cleanup (closes, keep-open obligations, and the reassignment of CHORE-241 and CHORE-350 to lane A) are lane A's records work from the verified draft, not maintainer decisions. Proposed splits were not filed.
+  - Nothing here authorizes application code, a commit or a push.
+
+### MC-936 — Lane A, 2026-11-01: CHORE-616 S2 plan, Gate 1 round 1 open items: a damaged task-preset unit, the preset temperature, and the release gate
+
+- Tag: decisions (the maintainer's answers, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's `AskUserQuestion` answers, verbatim in `%TEMP%\risu-b715\b31\records31\answers.md` (stamped 2026-11-01T00:51:52Z, UTC; lane A chat), relayed to the records writer by lane A during batch 31. Basis: the Gate 1 round 1 report `%TEMP%\risu-b715\b31\c616-plan\gate1\result.md` ([REJECT]), findings F6, F1 and F11, read at write time.
+- Alternatives rejected: `answers.md` records only the selected labels. The report's other options: for F6 a fixed boot role (a damaged unit routes to the recovery screen), which it says would block the whole RP profile; for F1 returning Q2's temperature to the maintainer as a global setting; for F11 shipping without the backup gate. Whether the maintainer was shown them is not recorded.
+- Related: CHORE-616, CHORE-128, `MC-933`, `MC-934`, `MC-091`, the N5 "drop and flag" precedent (alternatives chunk).
+
+**What was decided (maintainer).**
+1. F6 (task presets are a new store2 unit, type 26; under the current fixed-unit rule a damaged unit sends the whole profile to the recovery screen, every retained manifest shares the unit, and the `.bin` has no presets; what should boot do): a damaged type-26 task-preset unit is dropped and flagged at boot. A notice names it, and the bytes are kept and not overwritten (like N5). The label: "Drop and flag (Recommended)".
+2. F1 (the preset's temperature, the Q2 answer, never reaches the OpenAI-compatible, Anthropic or Google request bodies today, because they read temperature from the global settings; what should Utility do): thread the preset temperature through to those three request bodies. The label: "Thread it through (Recommended)".
+3. F11 (task presets live only in store2 and no backup keeps them until the fork backup format, CHORE-128, exists; for chat alternatives the maintainer ruled the feature does not ship until a backup keeps them; should task presets also gate release on CHORE-128, a question about shipping and not implementation): task presets gate release on CHORE-128, as chat alternatives do. The label: "Yes, gate on CHORE-128 (Recommended)".
+
+- Notes, not the maintainer's words:
+  - F11 blocks shipping, not implementation (the report cites `MC-091`).
+  - A fresh designer is writing plan-r2 (`%TEMP%\risu-b715\b31\c616-plan\plan-r2.md`); it was in flight at write time. The other four SUBSTANTIVE findings (F2 allowlist and JSON-schema, F3 keep by value, F4 non-streaming reply, F5 `isDesktopTransport()` gate) are designer corrections, not maintainer decisions.
+  - Nothing here authorizes application code, a commit or a push. Implementation has not started.
+
+### MC-937 — Lane A, 2026-11-01: CHORE-616 S2 plan-r2 questions Q13 to Q16: JSON schema, plugin providers, separate parameters and the damaged-preset bytes
+
+- Tag: decisions (`AskUserQuestion` answers). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's answers, verbatim in `%TEMP%\risu-b715\b31\records31\answers.md` (the entry stamped 11/01/2026 01:00:41; lane A chat), relayed to the records writer by lane A during batch 31. Basis: the open items Q13 to Q16 of plan-r2 `%TEMP%\risu-b715\b31\c616-plan\plan-r2.md` (lines 230 to 233), read at write time, and Gate 1 round 1 findings F2, F1 and F6 (`c616-plan\gate1\result.md`).
+- Alternatives rejected: `answers.md` records only the selected labels. By plan-r2's own listing: Q14 option B (refuse the send while the global JSON-schema setting is on, with a named message), Q13 option B (the preset's fields bypass the separate parameters), and for Q15 keeping plugin providers selectable (the Q3 recommendation); for Q16 keeping the damaged bytes indefinitely, which plan-r2 says needs a by-reference carry of the damaged Ref, a larger mechanism. Whether the maintainer was shown them is not recorded.
+- Related: CHORE-616, `MC-934` (Q3 is amended by Q15), `MC-936`, `MC-916` item 10 (the damaged-alternatives precedent plan-r2 cites for Q16), CHORE-128.
+
+**What was decided (maintainer).**
+1. Q14 (Utility requests should not carry the global JSON-schema and extraction setting, because that path reads the selected character and persona; what a Utility send does when JSON schema is on globally): force JSON schema and extraction off for Utility requests. The label: "Force it off (Recommended)".
+2. Q15 (the temperature decision covers the OpenAI-compatible, Anthropic and Google providers only, and plugin model providers cannot receive the preset temperature; should Utility refuse a preset that points at a plugin provider): refuse plugin model providers. The label: "Refuse plugin providers (Recommended)". This amends the second half of Q3 (`MC-934`).
+3. Q13 (with "separate parameters by model" on and no entry for the preset's pinned model, the request fails with an existing named error; where Utility shows it): the existing named error is shown inline in Utility. The label: "Inline in Utility (Recommended)".
+4. Q16 (a damaged task-preset unit is dropped and flagged and its bytes are never overwritten, but they stay recoverable only through restore points, so only as long as restore-point retention keeps them, the same as the rule for damaged alternatives; accept): accepted. The label: "Accept (Recommended)".
+
+- Notes, not the maintainer's words:
+  - These answer plan-r2's new narrow questions. Plan-r2's own text calls Q14 option A and Q13 option A "recommended"; the labels match.
+  - Gate 1 round 2 of plan-r2 was in flight at write time (`%TEMP%\risu-b715\b31\c616-plan\gate1-r2\`); a senior-advisor challenge follows because this is a format addition.
+  - Nothing here authorizes application code, a commit or a push. Implementation has not started.
