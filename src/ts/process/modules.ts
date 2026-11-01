@@ -12,6 +12,8 @@ import { compressImage } from '../media'
 import { decodeRPack, encodeRPack } from "../rpack/rpack_js"
 import { DBState, HideIconStore, moduleBackgroundEmbedding, ReloadGUIPointer } from "../stores.svelte"
 import {get} from "svelte/store"
+import { untrack } from "svelte"
+import { moduleChangeNeedsReload, type ModuleReloadBase } from "./moduleReloadNeed"
 import { convertCharacterToModule, convertModuleToCharacter } from "../interchangeability"
 import { exportCharacterCard, importCharacterFile, preflightCardExport } from "../characterCards"
 import { appStoreOrNull, listModuleAssets, preflightExport, refuseExport } from "../drive/exportPreflight"
@@ -900,13 +902,15 @@ export async function applyModule() {
 }
 
 let lastModuleIds:string = ''
+let lastBase:ModuleReloadBase | null = null
 
 export function moduleUpdate(){
 
 
     const m = getModules()
 
-    const ids = m.map((m) => m.id).join('-')
+    const idList = m.map((m) => m.id)
+    const ids = idList.join('-')
     
     let moduleHideIcon = false
     let backgroundEmbedding = ''
@@ -927,14 +931,31 @@ export function moduleUpdate(){
     moduleBackgroundEmbedding.set(backgroundEmbedding)
     HideIconStore.set(getCurrentCharacter()?.hideChatIcon || moduleHideIcon)
 
-    if(lastModuleIds !== ids){
-        ReloadGUIPointer.set(get(ReloadGUIPointer) + 1)
+    // Fork-specific: a set change that only adds or removes display-inert modules under the same selection skips the
+    // bump. The predicate's reads (module fields, the current character) are deliberately untracked, so the effect
+    // gains no dependency. The base is recorded on every call, so a switch with equal ids still refreshes the
+    // selection the next toggle is compared against.
+    const idsChanged = lastModuleIds !== ids
+    const { selection, need } = untrack(() => {
+        const char = getCurrentCharacter()
+        const selection = `${char?.chaId ?? ''}|${char?.chatPage ?? ''}`
+        const need = idsChanged && moduleChangeNeedsReload(lastBase, m, selection,
+            (id) => getDatabase().modules.filter((row) => row?.id === id))
+        return { selection, need }
+    })
+    lastBase = { ids: idList, selection }
+    if(idsChanged){
         lastModuleIds = ids
+        if(need){
+            ReloadGUIPointer.set(get(ReloadGUIPointer) + 1)
+        }
     }
 }
 
 // The reactive dependency list for the above lives in ./moduleUpdateDeps.ts.
-// If moduleUpdate() starts reading another module field, update it there too.
+// If moduleUpdate() starts reading another module field that selects modules or feeds the stores set above, update it
+// there too. The reload predicate's untracked reads are exempt: do not add them to moduleUpdateDeps, because tracking
+// them brings back the re-runs that file removed.
 
 export function refreshModules(){
     lastModules = ''

@@ -5,7 +5,7 @@
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
     import type { RisuModule } from "src/ts/process/modules";
     
-    import { DBState, ReloadGUIPointer } from 'src/ts/stores.svelte';
+    import { DBState } from 'src/ts/stores.svelte';
     import { selectedCharID } from "src/ts/stores.svelte";
     import { SettingsMenuIndex, settingsOpen } from "src/ts/stores.svelte";
 
@@ -92,7 +92,8 @@
                                         DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].modules.push(rmodule.id)
                                     }
                                     DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].modules = DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].modules
-                                    $ReloadGUIPointer += 1
+                                    // Fork-specific: no pointer bump here. The module effect announces the set change through
+                                    // moduleUpdate, which skips display-inert modules.
                                 }}
                                 oncontextmenu={(e) => {
                                     e.preventDefault()
@@ -106,7 +107,7 @@
                                     else{
                                         DBState.db.characters[$selectedCharID].modules.push(rmodule.id)
                                     }
-                                    $ReloadGUIPointer += 1
+                                    // Fork-specific: no pointer bump here; see the tap handler.
                                 }}>
 
                                     <CircleCheckIcon size={18}/>
