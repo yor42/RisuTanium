@@ -1248,7 +1248,7 @@
             </div>
             {#if endCount > 0}
                 <div class="w-full flex justify-end mt-1 button-end-control-row">
-                    <button class="flex items-center gap-1 hover:text-blue-500 transition-colors button-icon-end-control" disabled={treeBusy} onclick={() => onStep?.(liveLength, expectedId, 'back')}>
+                    <button class="flex items-center gap-1 enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-end-control" disabled={treeBusy} onclick={() => onStep?.(liveLength, expectedId, 'back')}>
                         <ArrowLeftToLine size={20}/>
                         {#if DBState.db.swipe}
                             <span class="text-xs text-textcolor2">{endCount}</span>
@@ -1327,28 +1327,28 @@
 {#snippet treeRerolls()}
     {#if DBState.db.swipe}
         {#if isLastRow || siblingCount > 1}
-            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-unreroll" disabled={treeBusy || siblingIndex <= 1} onclick={() => onStep?.(idx, expectedId, 'back')}>
+            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-unreroll" disabled={treeBusy || siblingIndex <= 1} onclick={() => onStep?.(idx, expectedId, 'back')}>
                 <ArrowLeft size={22}/>
             </button>
             {#if siblingCount > 1}
                 <span class="flex items-center text-xs text-textcolor2">{siblingIndex}/{siblingCount}</span>
             {/if}
-            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-reroll" class:text-draculared={willGenerate} data-generates={willGenerate ? 'true' : undefined} disabled={treeBusy || (siblingIndex >= siblingCount && !willGenerate)} onclick={() => onStep?.(idx, expectedId, 'forward')}>
+            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-reroll" class:text-draculared={willGenerate} data-generates={willGenerate ? 'true' : undefined} disabled={treeBusy || (siblingIndex >= siblingCount && !willGenerate)} onclick={() => onStep?.(idx, expectedId, 'forward')}>
                 <ArrowRight size={22}/>
             </button>
         {/if}
     {:else}
         {#if siblingCount > 1}
-            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-unreroll" disabled={treeBusy || siblingIndex <= 1} onclick={() => onStep?.(idx, expectedId, 'back')}>
+            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-unreroll" disabled={treeBusy || siblingIndex <= 1} onclick={() => onStep?.(idx, expectedId, 'back')}>
                 <ArrowLeft size={22}/>
             </button>
         {/if}
         {#if isLastRow}
-            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-reroll" class:text-draculared={willGenerate} data-generates={willGenerate ? 'true' : undefined} disabled={treeBusy || (siblingIndex >= siblingCount && !willGenerate)} onclick={() => onStep?.(idx, expectedId, 'forward')}>
+            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-reroll" class:text-draculared={willGenerate} data-generates={willGenerate ? 'true' : undefined} disabled={treeBusy || (siblingIndex >= siblingCount && !willGenerate)} onclick={() => onStep?.(idx, expectedId, 'forward')}>
                 <RefreshCcwIcon size={20}/>
             </button>
         {:else if siblingCount > 1}
-            <button class="flex items-center hover:text-blue-500 transition-colors button-icon-reroll" disabled={treeBusy || siblingIndex >= siblingCount} onclick={() => onStep?.(idx, expectedId, 'forward')}>
+            <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-reroll" disabled={treeBusy || siblingIndex >= siblingCount} onclick={() => onStep?.(idx, expectedId, 'forward')}>
                 <ArrowRight size={22}/>
             </button>
         {/if}
@@ -1391,7 +1391,7 @@
         </button>
     {/if}
 
-    <button class="flex items-center hover:text-blue-500 transition-colors button-icon-branch" disabled={onBranch === undefined || branchDisabled} onclick={async () => {
+    <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-branch" disabled={onBranch === undefined || branchDisabled} onclick={async () => {
         await sleep(1)
         onBranch?.(idx, expectedId)
     }}>

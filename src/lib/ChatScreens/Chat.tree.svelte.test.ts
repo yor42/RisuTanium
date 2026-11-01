@@ -459,6 +459,12 @@ describe('busy', () => {
         expect(forward(middle.root)!.disabled).toBe(true)
         expect(endControl(last.root)!.disabled).toBe(true)
         expect(branch.disabled).toBe(true)
+        // A disabled control looks faded and carries no hover colour: `disabled:opacity-40` fades it and the hover colour is limited to `enabled:`.
+        for (const button of [back(middle.root)!, forward(middle.root)!, endControl(last.root)!, branch]) {
+            expect(button.classList.contains('disabled:opacity-40')).toBe(true)
+            expect(button.classList.contains('hover:text-blue-500')).toBe(false)
+            expect(button.classList.contains('enabled:hover:text-blue-500')).toBe(true)
+        }
 
         busy.value = false
         flushSync()

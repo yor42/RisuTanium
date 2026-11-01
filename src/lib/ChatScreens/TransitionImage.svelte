@@ -17,7 +17,8 @@
         const resultSrc = await src
 
         let styl = styleType
-        if(resultSrc.length > 1){
+        // The leading entry is always the style marker, never an image; a lone marker leaves nothing to render.
+        if(resultSrc.length > 0){
             styl = resultSrc[0]
             resultSrc.splice(0, 1)
         }

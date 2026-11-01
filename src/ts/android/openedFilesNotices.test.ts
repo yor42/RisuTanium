@@ -3,8 +3,9 @@
 /**
  * An import of opened files posts its outcome (the unsupported-files summary, or
  * an error) without waiting for it to be read. The drain waits for such a notice
- * to close before it starts the next import or the restore, whose question would
- * otherwise replace the notice unread.
+ * to close before it starts the first import, the next import or the restore,
+ * whose outcome or question would otherwise replace the notice unread. A held
+ * take is confirmed to the host only after that wait.
  *
  * Drives the REAL `alert.ts` against a real `writable` standing in for
  * `alertStore` from `stores.svelte`. The import stand-in posts its outcome with
@@ -19,7 +20,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
     didFirstSetup: true,
+    heldRaw: null as string | null,
 }))
+const heldConfirmMock = vi.hoisted(() => vi.fn())
 const importOpenedSourcesMock = vi.hoisted(() => vi.fn())
 const restoreOpenedBackupMock = vi.hoisted(() => vi.fn())
 
@@ -40,12 +43,28 @@ vi.mock('../characterCards', () => ({
 vi.mock('../drive/backuplocal', () => ({
     restoreOpenedBackup: restoreOpenedBackupMock,
 }))
+// A held take is what the channel host gives; the rest of the bridge stays real.
+vi.mock('./hostBridge', async (importOriginal) => {
+    const original = await importOriginal<typeof import('./hostBridge')>()
+    return {
+        ...original,
+        openedFilesTake: (...args: Parameters<typeof original.openedFilesTake>) => {
+            if (h.heldRaw === null) {
+                return original.openedFilesTake(...args)
+            }
+            const raw = h.heldRaw
+            h.heldRaw = null
+            return Promise.resolve({ raw, held: true, confirm: heldConfirmMock })
+        },
+    }
+})
 vi.mock('../storage/database.svelte', () => ({
     getDatabase: () => ({ didFirstSetup: h.didFirstSetup }),
 }))
 
 import { alertError, alertToast, alertWait } from '../alert'
 import { alertStore } from '../stores.svelte'
+import { beginRestoreRun, resetRestoreInProgressForTests } from '../drive/restoreInProgress'
 
 const { androidOpenedFilesImport, resetOpenedFilesForTests } = await import('./openedFiles')
 
@@ -71,6 +90,9 @@ beforeEach(() => {
     h.didFirstSetup = true
     queued = []
     order = []
+    h.heldRaw = null
+    heldConfirmMock.mockReset().mockImplementation(() => { order.push('confirm') })
+    resetRestoreInProgressForTests()
     closeAlert()
     importOpenedSourcesMock.mockReset().mockImplementation(async (batch: { name: string }[]) => {
         const names = batch.map((item) => item.name).join(',')
@@ -133,6 +155,49 @@ describe('notices an import of opened files leaves up', () => {
         closeAlert()
         await settle()
         expect(order).toEqual(['import-failed', 'restore:backup.bin over none'])
+    })
+
+    test('reproducer: the first import waits until a notice already on screen is closed', async () => {
+        alertError('This file is cut short')
+        queued = [[entry('a.charx')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(order).toEqual([])
+        expect(get(alertStore)).toMatchObject({ type: 'error', msg: 'This file is cut short' })
+
+        closeAlert()
+        await settle()
+        expect(order).toEqual(['import:a.charx'])
+        closeAlert()
+        await settle()
+    })
+
+    test('reproducer: a held take is not confirmed while an unread notice holds the first import', async () => {
+        alertError('This file is cut short')
+        h.heldRaw = JSON.stringify([[entry('a.charx')]])
+        androidOpenedFilesImport()
+        await settle()
+        expect(order).toEqual([])
+
+        closeAlert()
+        await settle()
+        expect(order).toEqual(['confirm', 'import:a.charx'])
+        closeAlert()
+        await settle()
+    })
+
+    test('reproducer: a held take whose wait spans a restore start is parked, not confirmed', async () => {
+        alertError('This file is cut short')
+        h.heldRaw = JSON.stringify([[entry('a.charx')]])
+        androidOpenedFilesImport()
+        await settle()
+
+        const run = beginRestoreRun()
+        closeAlert()
+        await settle()
+        expect(order).toEqual([])
+        expect(heldConfirmMock).not.toHaveBeenCalled()
+        run.end('canceled')
     })
 
     test('guard: a wait or a toast left up does not hold the drain', async () => {

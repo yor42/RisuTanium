@@ -162,8 +162,6 @@ async function drain(): Promise<void> {
         waitingForRestoreEnd = true
         return
     }
-    // Received: the host may drop what it held for this take, before anything is parsed or imported.
-    taken.confirm()
     const batches = parseBatches(taken.raw)
     // A restore replaces everything an import in the same drain just added, so a backup is restored only when this
     // drain imports nothing; a name the import would refuse as unsupported does not count.
@@ -190,6 +188,23 @@ async function drain(): Promise<void> {
             importBatches.push(rest)
         }
     }
+    // A notice still unread (a failed restore's message, say) would be replaced by the first import's outcome. A held
+    // take stays unconfirmed during this wait, so a page that dies meanwhile gets the files offered again; a restore
+    // or page ending that began during the wait parks it like the check above.
+    if (importBatches.length > 0) {
+        await readLeftNotice()
+        if (taken.held) {
+            if (pageEnding) {
+                return
+            }
+            if (restoreInProgress()) {
+                waitingForRestoreEnd = true
+                return
+            }
+        }
+    }
+    // Received: the host may drop what it held for this take, before anything is imported.
+    taken.confirm()
     for (const batch of importBatches) {
         try {
             await importOpenedSources(batch)
