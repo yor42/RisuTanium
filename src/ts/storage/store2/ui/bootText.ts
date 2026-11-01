@@ -211,7 +211,15 @@ interface FlaggedGroup {
 /** The damaged or missing parts, one list per character: its own parts by name, then its chats, several parts of one chat as one row. */
 export function flaggedLists(items: readonly FlaggedItem[]): BootList[] {
     const groups = new Map<string, FlaggedGroup>()
+    // A task preset belongs to no character and has no readable name: it is named by its position in the saved list.
+    const taskPresets = new Map<number, Set<FlaggedState>>()
     for (const item of items) {
+        if (item.kind === 'task-preset') {
+            const states = taskPresets.get(item.position) ?? new Set<FlaggedState>()
+            states.add(item.why)
+            taskPresets.set(item.position, states)
+            continue
+        }
         let group = groups.get(item.chaId)
         if (group === undefined) {
             group = { name: item.name, parts: new Map(), chats: new Map() }
@@ -232,7 +240,7 @@ export function flaggedLists(items: readonly FlaggedItem[]): BootList[] {
         }
     }
     const text = language.store2Boot
-    return [...groups].map(([chaId, group]) => ({
+    const lists: BootList[] = [...groups].map(([chaId, group]) => ({
         heading: displayName(group.name, chaId),
         items: [
             ...[...group.parts].map(([part, states]) => text.flaggedPartLine(flaggedPartName(part), flaggedStateText(states))),
@@ -242,6 +250,13 @@ export function flaggedLists(items: readonly FlaggedItem[]): BootList[] {
                 : text.flaggedChatLine(flaggedChatLabel(chatId), flaggedStateText(row.states), row.count)),
         ],
     }))
+    if (taskPresets.size > 0) {
+        lists.push({
+            heading: text.flaggedTaskPresetsHeading,
+            items: [...taskPresets].map(([position, states]) => text.flaggedTaskPresetLine(position + 1, flaggedStateText(states))),
+        })
+    }
+    return lists
 }
 
 //#endregion

@@ -2,7 +2,7 @@
     import { DBState } from 'src/ts/stores.svelte';
     import Hub from "./Realm/RealmMain.svelte";
     import { OpenRealmStore, RealmInitialOpenChar } from "src/ts/stores.svelte";
-    import { ArrowLeft, ArrowRight, Compass, GlobeIcon, MailIcon, Send } from "@lucide/svelte";
+    import { ArrowLeft, ArrowRight, Compass, GlobeIcon, MailIcon, Send, Wrench } from "@lucide/svelte";
     import { getVersionString, openURL } from "src/ts/globalApi.svelte";
     import { language } from "src/lang";
     import { getRisuHub, type hubType } from "src/ts/characterCards";
@@ -11,6 +11,8 @@
     import RealmPreviewRow from "./Realm/RealmPreviewRow.svelte";
     import SourceDisclosure, { type Destination } from "./SourceDisclosure.svelte";
     import Title from "./Title.svelte";
+    import { pageStorageModeStore } from "src/ts/storage/pageStorageMode";
+    import { utilityOpen, utilityVisible } from "../Utility/utilityGate";
 
     // Discriminated on `kind` rather than a bare optional `href`, so a
     // disclosure entry can never also carry a direct-navigate href and vice
@@ -317,9 +319,27 @@
               </button>
             {/if}
           {/each}
+          {#if utilityVisible($pageStorageModeStore)}
+            <!-- Reads the reactive page-mode store, so the card follows the mode after mount: the app mounts before boot decides it. -->
+            <button
+              class={`${relatedCardClass} ${relatedCardTriggerClass}`}
+              data-testid="utility-card"
+              onclick={() => {
+                $utilityOpen = true
+              }}
+            >
+              <div class="relative z-10 w-[68%] sm:w-[70%]">
+                <h2 class="text-2xl font-bold tracking-tight text-textcolor break-keep">{language.homeLinkUtilityTitle}</h2>
+                <span class="mt-2 block text-base leading-relaxed text-textcolor2">{language.homeLinkUtilityDescription}</span>
+              </div>
+              <div aria-hidden="true" class="pointer-events-none absolute -right-12 top-1/2 -translate-y-1/2 text-textcolor">
+                <Wrench class={relatedLinkIconClass} strokeWidth={1} />
+              </div>
+            </button>
+          {/if}
           {#if !realmHidden}
             <!--
-              Fifth grid child, last in DOM order: on mobile every link card
+              Last grid child in DOM order (the fifth, or the sixth while the Utility card shows): on mobile every link card
               stacks above it, so the realm preview never pushes Related
               Links below the fold; on desktop it sits beside and below the
               link cards.

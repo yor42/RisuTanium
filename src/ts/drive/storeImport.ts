@@ -1,7 +1,7 @@
 import { alertConfirm, alertError, alertNormalWait, alertStore, alertWait } from '../alert'
 import { getSaveMarkCount, isSaveClean } from '../globalApi.svelte'
 import { language } from 'src/lang'
-import type { Database } from '../storage/database.svelte'
+import { getDatabase, type Database } from '../storage/database.svelte'
 import { describeOmitted } from '../storage/bootBlockLoad'
 import { decodeRisuSave, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock } from '../storage/risuSave'
 import { Store2StalePageError } from '../storage/store2/backend/errors'
@@ -18,6 +18,7 @@ import type { BootImportEnd, BootImportTarget } from '../storage/store2/legacy/b
 import { getActiveStore2Save } from '../storage/store2/saveActive'
 import { incompleteList } from '../storage/store2/ui/bootText'
 import { readColdStorageItem } from '../process/coldstorage.svelte'
+import { importableTaskPresets } from '../process/utility/taskPreset'
 import { noteMeasurePhase } from './importPhaseRing'
 import { estimateImportSeconds, IMPORT_TIME_WARNING_BYTES, importAssetBytes, importFreeGigabytesText, importFreeSpaceBytes, importGigabytesText, importSpaceVerdict, roundImportMinutes } from './importEstimate'
 import { transportKind } from '../storage/tauriByteTransport'
@@ -517,6 +518,9 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
     // The items the person accepted being left incomplete; kept for the landed end.
     let accepted: readonly IncompleteItem[] = []
     const committer = guardedAtFlip(request.target.committer, request.busy)
+    // A `.bin` carries no task presets, so the profile keeps the page's own, by value and as they are now (an unsaved edit
+    // included). Taken once: every attempt imports the same list.
+    const taskPresets = importableTaskPresets(getDatabase().taskPresets)
     for (let attempt = 1; ; attempt++) {
         // The library releases the tree it is handed once the tree is resolved; nothing here may keep another reference.
         let source: ImportSource
@@ -533,7 +537,7 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
         noteImportPhase(`decoded, attempt ${attempt}`)
         try {
             outcome = await importLegacyTree(
-                { source, reader: request.reader, committer, backend: request.target.backend, lists: getActiveStore2Save()?.lists ?? createListDerivation() },
+                { source, reader: request.reader, committer, backend: request.target.backend, lists: getActiveStore2Save()?.lists ?? createListDerivation(), taskPresets },
                 {
                     onPhase: (phase) => noteImportPhase(`${phase}, attempt ${attempt}`),
                     async confirmIncomplete(items) {

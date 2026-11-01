@@ -66,6 +66,8 @@ export interface Manifest {
         loadouts: Ref
         moduleIndex: Ref
         presets: Ref[]
+        /** Type 26 units, one per task preset. Present only when non-empty: an empty list is written as no field and read as none. */
+        taskPresets?: Ref[]
         plugins: Ref[]
         pluginStorage: { buckets: number, refs: Ref[] }
         legacyKeep: null | { unit: Ref, v: number, files: LegacyKeepFile[] }

@@ -40,6 +40,7 @@ vi.mock('src/ts/alert', () => ({
 }))
 vi.mock('src/lang', () => ({ language: named('language') }))
 vi.mock('src/ts/globalApi.svelte', inert)
+vi.mock('src/ts/storage/database.svelte', () => ({ getDatabase: () => ({}) }))
 vi.mock('src/ts/process/coldstorage.svelte', inert)
 vi.mock('src/ts/drive/backupWorkGuard', () => ({ refuseBackupLoadWhileBusy: () => world.busy }))
 vi.mock('src/ts/drive/restoreReplace', inert)

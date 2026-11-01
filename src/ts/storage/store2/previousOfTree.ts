@@ -174,6 +174,7 @@ export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions 
     register('statics', UNIT_TYPE.statics, fixed.statics)
     register('loadouts', UNIT_TYPE.loadouts, fixed.loadouts)
     fixed.presets.forEach((ref, index) => register(`preset:${index}`, UNIT_TYPE.preset, ref))
+    fixed.taskPresets?.forEach((ref, index) => register(`taskPreset:${index}`, UNIT_TYPE.taskPreset, ref))
 
     // A plugin's identity names its list, which only its body says: without every body the boundary between the lists is unknown.
     const lists: (PluginList | null)[] = fixed.plugins.map((ref) => {

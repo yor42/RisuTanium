@@ -57,7 +57,8 @@ import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { resetStore2BootForTest, type Store2BootResult } from 'src/ts/storage/store2/bootActive'
 import { previousFrom, stubFromEntry } from 'src/ts/storage/store2/codec'
-import { FRAME_HEADER_BYTES, keyOfRef, type Ref, type ShardEntry } from 'src/ts/storage/store2/format'
+import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
+import { FRAME_HEADER_BYTES, keyOfRef, readUnit, UNIT_TYPE, type Manifest, type Ref, type ShardEntry } from 'src/ts/storage/store2/format'
 import { createResidency } from 'src/ts/storage/store2/residency'
 import { getResidency, registerResidency, resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
 import { activateStore2Save, getActiveStore2Save, resetStore2SaveForTest } from 'src/ts/storage/store2/saveActive'
@@ -311,6 +312,104 @@ describe('MC-142 1: a profile that never chose archiving', () => {
             expect(opened(boot.result).database.archiveCharacters).toBe(chosen)
             expect(boot.notices.map(notice => notice.name)).toEqual([])
         }
+    })
+})
+
+describe('a damaged or missing task preset unit is a flagged leaf, never a reason for the recovery screen', () => {
+    const PRESETS = [0, 1, 2].map(n => ({ id: `task-${n}`, name: `Preset ${n}`, instructions: `Do ${n}.`, model: 'm' }))
+
+    async function seededWithPresets(): Promise<{ counted: CountedBackend, keys: string[], manifestKey: string }> {
+        const counted = countedBackend()
+        const source = { ...(buildSmall(2) as unknown as Obj), taskPresets: PRESETS } as unknown as Database
+        const seeded = await seedTree(counted.memory, JSON.parse(JSON.stringify(source)) as Database, testEnv(createClock(), 4242), fakeLists)
+        counted.reset()
+        return { counted, keys: (seeded.tree.manifest.fixed.taskPresets ?? []).map(keyOfRef), manifestKey: seeded.manifestKey }
+    }
+
+    function flip(counted: CountedBackend, key: string): void {
+        const flipped = new Uint8Array(counted.memory.snapshot().get(key) as Uint8Array)
+        flipped[FRAME_HEADER_BYTES + 1] ^= 0xff
+        counted.memory.poke(key, flipped)
+    }
+
+    test('regression reproducer: a damaged unit opens the profile without that preset when the person continues', async () => {
+        const world = await seededWithPresets()
+        flip(world.counted, world.keys[1])
+
+        const boot = await bootThroughDispatch(world.counted.backend, { flagged: 'continue' })
+
+        expect((opened(boot.result).database.taskPresets as unknown as Plain[]).map(preset => preset.id)).toEqual(['task-0', 'task-2'])
+    })
+
+    test('regression reproducer: a missing unit does the same', async () => {
+        const world = await seededWithPresets()
+        world.counted.memory.poke(world.keys[0], null)
+
+        const boot = await bootThroughDispatch(world.counted.backend, { flagged: 'continue' })
+
+        expect((opened(boot.result).database.taskPresets as unknown as Plain[]).map(preset => preset.id)).toEqual(['task-1', 'task-2'])
+    })
+
+    test('guard: an unchanged pass after the boot reuses every task preset unit, so the manifest names the same keys', async () => {
+        const world = await seededWithPresets()
+        const boot = await bootThroughDispatch(world.counted.backend)
+
+        await commitPass(opened(boot.result).database, [])
+
+        const key = classifyCommitRead(await world.counted.memory.readCommit())
+        expect(key.status).toBe('parsed')
+        if (key.status !== 'parsed') {
+            return
+        }
+        const current = readUnit(world.counted.memory.snapshot().get(key.value.current?.key ?? '') as Uint8Array, UNIT_TYPE.manifest)
+        expect(current.status === 'ok' ? (current.value.body as Manifest).fixed.taskPresets?.map(keyOfRef) : null).toEqual(world.keys)
+    })
+
+    test('guard: an edit and a new preset, with no mark at all, are committed by the next pass and survive a reload', async () => {
+        const world = await seededWithPresets()
+        const boot = await bootThroughDispatch(world.counted.backend)
+        const db = opened(boot.result).database as unknown as { taskPresets: Plain[] }
+
+        db.taskPresets[0].name = 'Edited name'
+        db.taskPresets.push({ id: 'task-3', name: 'Added', instructions: 'z', model: 'm' })
+        await commitPass(db as unknown as Database, [])
+
+        const saved = await savedDatabase(world.counted.memory)
+        expect((saved.taskPresets as unknown as Plain[]).map(preset => [preset.id, preset.name])).toEqual([
+            ['task-0', 'Edited name'], ['task-1', 'Preset 1'], ['task-2', 'Preset 2'], ['task-3', 'Added'],
+        ])
+    })
+
+    test('a decline changes nothing and opens nothing', async () => {
+        const world = await seededWithPresets()
+        flip(world.counted, world.keys[2])
+
+        const boot = await bootThroughDispatch(world.counted.backend, { flagged: 'decline' })
+
+        expect(boot.result.kind).not.toBe('store2')
+        expect(world.counted.writes).toEqual([])
+    })
+
+    test('regression reproducer: after a pass the new manifest omits the Ref, the old one stays retained and the damaged bytes are untouched', async () => {
+        const world = await seededWithPresets()
+        flip(world.counted, world.keys[1])
+        const damaged = new Uint8Array(world.counted.memory.snapshot().get(world.keys[1]) as Uint8Array)
+
+        const boot = await bootThroughDispatch(world.counted.backend, { flagged: 'continue' })
+        await commitPass(opened(boot.result).database, [])
+
+        const key = classifyCommitRead(await world.counted.memory.readCommit())
+        expect(key.status).toBe('parsed')
+        if (key.status !== 'parsed') {
+            return
+        }
+        expect(key.value.retained.map(entry => entry.key)).toContain(world.manifestKey)
+        expect(key.value.req).toContain('task-presets')
+        const saved = await savedDatabase(world.counted.memory)
+        expect((saved.taskPresets as unknown as Plain[]).map(preset => preset.id)).toEqual(['task-0', 'task-2'])
+        const current = readUnit(world.counted.memory.snapshot().get(key.value.current?.key ?? '') as Uint8Array, UNIT_TYPE.manifest)
+        expect(current.status === 'ok' ? (current.value.body as Manifest).fixed.taskPresets?.map(keyOfRef) : null).not.toContain(world.keys[1])
+        expect(Array.from(world.counted.memory.snapshot().get(world.keys[1]) as Uint8Array)).toEqual(Array.from(damaged))
     })
 })
 

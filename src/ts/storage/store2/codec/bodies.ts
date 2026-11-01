@@ -3,7 +3,7 @@ import type { ContentBody } from '../format'
 import { CodecAssembleError } from './types'
 
 /**
- * Bodies of the content units (types 4, 5, 6, 9, 11 to 14, 16 to 18). The
+ * Bodies of the content units (types 4, 5, 6, 9, 11 to 14, 16 to 18, 26). The
  * format module fixes only the frame and `{ v }`; the shapes here are this
  * build's choice and are amendable until the format freeze. Every body is
  * `{ v: 1, ... }` and holds fields verbatim, so a field the build does not know
@@ -12,7 +12,7 @@ import { CodecAssembleError } from './types'
 
 /** Database fields that live outside the config root; every other field, known or not, is in it. */
 export const CONFIG_PARTITIONED_FIELDS = [
-    'characters', 'botPresets', 'plugins', 'pluginV2', 'modules', 'pluginCustomStorage', 'characterOrder', 'loadouts', 'statics',
+    'characters', 'botPresets', 'taskPresets', 'plugins', 'pluginV2', 'modules', 'pluginCustomStorage', 'characterOrder', 'loadouts', 'statics',
 ] as const
 
 /** The two plugin lists of a database; each plugin is one unit that names its list. */
@@ -43,6 +43,7 @@ export interface StaticsBody { v: 1, value?: JsonValue }
 /** `chars` lists the entity id `u` of every character in `Database.characters` order. */
 export interface OrderBody { v: 1, chars: string[], characterOrder?: JsonValue }
 export interface LoadoutsBody { v: 1, items: JsonValue[] }
+/** Types 12 and 26. `preset` is an open object: every key it holds travels, whether or not this build knows it. */
 export interface PresetBody { v: 1, preset: JsonObject }
 export interface PluginBody { v: 1, list: PluginList, plugin: JsonObject }
 export interface PluginValueBody { v: 1, value: JsonValue }

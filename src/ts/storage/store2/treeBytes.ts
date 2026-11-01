@@ -21,7 +21,7 @@ import { checkManifestKey, readBatch } from './tree'
  *   fixed units (manifest, shards, config, lists of the config, statics, order, loadouts, module index and its units,
  *   presets, plugins, plugin-storage buckets and values) cannot be replaced by an empty value, so one that is missing
  *   or damaged makes the read `structure`;
- *   leaves (an entity's core, lore, scripts, lists, chat cores and chat chunks) are `flagged`, and the tree still
+ *   leaves (an entity's core, lore, scripts, lists, chat cores and chat chunks, and a task preset) are `flagged`, and the tree still
  *   reads `ok`;
  *   any unit a newer build wrote makes the read `too-new`, which wins over every other finding of the same read;
  *   a backend failure makes the read `unreadable` and is never read as damage or absence.
@@ -39,6 +39,8 @@ export type ChatPart = 'core' | 'chunk' | 'alt'
 export type FlaggedLeaf =
     | { kind: 'chat', chaId: string, chatId: string, part: ChatPart, key: string, why: 'missing' | 'damaged' }
     | { kind: 'character-part', chaId: string, part: CharacterPart, key: string, why: 'missing' | 'damaged' }
+    /** A task preset's unit; `position` is its place in the manifest's list. Its name is unreadable, so the position names it. */
+    | { kind: 'task-preset', position: number, key: string, why: 'missing' | 'damaged' }
 
 export type TreeBytesRead =
     /** `newerLists` holds the readable lists above this build's version: never flagged, and the profile opens. */
@@ -252,6 +254,11 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
         { ref: manifest.fixed.loadouts, type: UNIT_TYPE.loadouts, role: fixed, count: null },
         { ref: manifest.fixed.moduleIndex, type: UNIT_TYPE.moduleIndex, role: fixed, count: null },
         ...manifest.fixed.presets.map((ref): Wanted => ({ ref, type: UNIT_TYPE.preset, role: fixed, count: null })),
+        // A task preset is a leaf: a damaged one is dropped and named at open, not a reason to refuse the profile.
+        ...(manifest.fixed.taskPresets ?? []).map((ref, position): Wanted => ({
+            ref, type: UNIT_TYPE.taskPreset, count: null,
+            role: { kind: 'leaf', flag: (key, why): FlaggedLeaf => ({ kind: 'task-preset', position, key, why }) },
+        })),
         ...manifest.fixed.plugins.map((ref): Wanted => ({ ref, type: UNIT_TYPE.plugin, role: fixed, count: null })),
         ...manifest.fixed.pluginStorage.refs.map((ref): Wanted => ({ ref, type: UNIT_TYPE.pluginStorageBucket, role: fixed, count: null })),
         ...manifest.shards.map((ref): Wanted => ({ ref, type: UNIT_TYPE.shard, role: fixed, count: null })),

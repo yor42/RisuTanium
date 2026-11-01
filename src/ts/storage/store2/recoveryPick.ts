@@ -57,6 +57,7 @@ const PATH_TYPES: Readonly<Record<string, UnitType>> = {
     'fixed.loadouts': UNIT_TYPE.loadouts,
     'fixed.moduleIndex': UNIT_TYPE.moduleIndex,
     'fixed.presets[]': UNIT_TYPE.preset,
+    'fixed.taskPresets[]': UNIT_TYPE.taskPreset,
     'fixed.plugins[]': UNIT_TYPE.plugin,
     'fixed.pluginStorage.refs[]': UNIT_TYPE.pluginStorageBucket,
     'fixed.legacyKeep.unit': UNIT_TYPE.legacyList,

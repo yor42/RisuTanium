@@ -261,6 +261,38 @@ describe('the start-up .bin import never writes a cold-storage unit (Gate 1 C1)'
         expect(installed).not.toHaveBeenCalled()
     })
 
+    // The recovery-screen import has no page and so no live list (Q17): it passes no `taskPresets`, and the tree's own key,
+    // here put on the decoded database as a hand-edited `.bin` would carry it, must not become units or the token.
+    test('regression reproducer: a boot import of a file whose database carries taskPresets installs no type 26 unit and no token', async () => {
+        await openBoot()
+        const { prepareImport, buildImport } = await import('src/ts/storage/store2/legacy/importTree')
+        const { createKeyMint } = await import('src/ts/storage/store2/commit')
+        const { fakeLists, seededEnv } = await import('src/ts/storage/tests/store2/codecFixtures')
+        const { UNIT_TYPE } = await import('src/ts/storage/store2/format')
+        let built: Awaited<ReturnType<ReturnType<typeof buildImport>['build']>> | null = null
+        const target: BootImportTarget = {
+            readColdStorageItem: async () => ({ status: 'missing' }),
+            async install(source, reader, hooks) {
+                (source.tree as unknown as Entry).taskPresets = [{ id: 'own-0', name: 'From the file', instructions: 'x', model: 'm' }]
+                const prepared = await prepareImport({ source, reader, lists: fakeLists, env: seededEnv(5) }, hooks)
+                if ('status' in prepared) {
+                    throw new Error(`The import stopped: ${prepared.status}`)
+                }
+                built = await buildImport(prepared.plan).build({ mint: createKeyMint(seededEnv(6), null).mint, seq: 1, now: 1 })
+                return { status: 'blocked', reason: 'install-failed', detail: 'recorded' }
+            },
+        }
+
+        await pickAtBoot(target, golden('upstream-full.bin'))
+
+        const result = built as Awaited<ReturnType<ReturnType<typeof buildImport>['build']>> | null
+        expect(result).not.toBeNull()
+        expect(result?.units.length).toBeGreaterThan(0)
+        expect(Object.hasOwn(result?.manifest.body.fixed ?? {}, 'taskPresets')).toBe(false)
+        expect(result?.manifest.body.req).not.toContain('task-presets')
+        expect(result?.units.some(unit => unit.bytes[5] === UNIT_TYPE.taskPreset)).toBe(false)
+    })
+
     // A file whose first entry is an asset the store refuses by name, followed by the upstream golden (its database is the last entry).
     function withRefusedAsset(): Uint8Array {
         const name = new TextEncoder().encode('.badname')

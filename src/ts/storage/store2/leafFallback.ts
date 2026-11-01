@@ -19,6 +19,7 @@ import type { FlaggedLeaf } from './treeBytes'
  *   chat core       empty core fields and one load-error message ahead of the first message
  *   chat chunk      one load-error message in the chunk's position; a damaged tail also loses the per-send state it held
  *   chat alt        no records: the chat keeps every message and gets the alternatives of the units that checked
+ *   task preset     the preset is left out of the list; the units that checked keep their order
  * Only units named by a flag are replaced. Any other unit that fails the check still throws `CodecAssembleError`, because
  * a failure no flag explains is not an empty value.
  */
@@ -31,6 +32,8 @@ export interface LeafFallback {
     character: (entry: ShardEntry, source: UnitSource) => JsonObject
     /** The flags, each with the name of the entity that holds the unit; complete once the database is assembled. */
     items: () => readonly FlaggedItem[]
+    /** Keys of the flagged task-preset units; the `skipTaskPresets` option of `assembleDatabase` leaves them out of the list. */
+    skipTaskPresets: ReadonlySet<string>
 }
 
 function copyInto(target: JsonObject, bag: JsonObject): void {
@@ -167,6 +170,7 @@ export function createLeafFallback(flagged: readonly FlaggedLeaf[], now: () => n
 
     return {
         character,
+        skipTaskPresets: new Set(flagged.filter(leaf => leaf.kind === 'task-preset').map(leaf => leaf.key)),
         items: () => flagged.map(leaf => ({ ...leaf, name: names.get(leaf.key) ?? '' })),
     }
 }

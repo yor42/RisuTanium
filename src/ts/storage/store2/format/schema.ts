@@ -70,7 +70,7 @@ export const KNOWN_FIELDS = {
     commitPin: ['key', 'reason'],
     commitStaging: ['owner', 'prefix', 'startedAt', 'label'],
     manifest: ['fmt', 'req', 'seq', 'createdAt', 'shardCount', 'shards', 'fixed'],
-    manifestFixed: ['config', 'configAl', 'il', 'statics', 'order', 'loadouts', 'moduleIndex', 'presets', 'plugins', 'pluginStorage', 'legacyKeep'],
+    manifestFixed: ['config', 'configAl', 'il', 'statics', 'order', 'loadouts', 'moduleIndex', 'presets', 'taskPresets', 'plugins', 'pluginStorage', 'legacyKeep'],
     manifestPluginStorage: ['buckets', 'refs'],
     manifestLegacyKeep: ['unit', 'v', 'files'],
     manifestLegacyKeepFile: ['key', 'status'],
@@ -385,6 +385,13 @@ function readManifest(raw: JsonObject): Manifest {
         plugins: arr(fixedRaw.plugins, 'fixed.plugins').map((value, index) => readTailedRef(value, `fixed.plugins[${index}]`)),
         pluginStorage: { ...extras(storageRaw, KNOWN_FIELDS.manifestPluginStorage), buckets, refs: bucketRefs },
         legacyKeep,
+    }
+    // An empty or absent list reads as none, so a store without task presets assembles and re-encodes as it always did.
+    if (fixedRaw.taskPresets !== undefined) {
+        const taskPresets = arr(fixedRaw.taskPresets, 'fixed.taskPresets').map((value, index) => readTailedRef(value, `fixed.taskPresets[${index}]`))
+        if (taskPresets.length > 0) {
+            fixed.taskPresets = taskPresets
+        }
     }
     return {
         ...extras(raw, KNOWN_FIELDS.manifest),
@@ -771,7 +778,7 @@ export function parsePluginBucket(value: JsonValue): Parsed<PluginBucket> {
     })
 }
 
-/** Types 4, 5, 6, 9, 11 to 14, 16 to 18: a plain object with a numeric `v` this build knows. */
+/** Types 4, 5, 6, 9, 11 to 14, 16 to 18, 26: a plain object with a numeric `v` this build knows. */
 export function parseContentBody(value: JsonValue): Parsed<ContentBody> {
     return plain(() => {
         const raw = obj(value, 'unit body')

@@ -241,6 +241,8 @@ function describeWriteMeasure(): string {
  */
 async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>, modules: RisuModule[] | null): Promise<{ tree: Database, notice: string | null, omittedAlternatives: AlternativeChatLabel[] }> {
     const plain = { ...db, account: undefined }
+    // A `.bin` carries no task presets (the export confirm names them first); the key is removed, not set to undefined.
+    delete plain.taskPresets
     // Set before either return below, so every encoder gets the module list read before the export opened, never the live one.
     if (modules !== null) {
         plain.modules = modules
@@ -658,6 +660,20 @@ async function confirmOmitAlternatives(session: ExportSession, labels: readonly 
     return await confirmDuringExport(session, labels.length > 0, async () => labels.length === 0 || await alertConfirm(language.backupAlternativesConfirm(labels.length, shownPromptNames(labels))))
 }
 
+/** The labels of the task presets a `.bin` leaves out: each preset's name, or its position when it has no readable name. */
+function taskPresetLabels(db: Database): string[] {
+    const presets = Array.isArray(db.taskPresets) ? db.taskPresets : []
+    return presets.map((preset, index) => typeof preset?.name === 'string' && preset.name.trim() !== '' ? preset.name : `#${index + 1}`)
+}
+
+/**
+ * Asks, before the writer opens, whether to create the backup without the named task presets (a `.bin` has no place for
+ * them). `true` when there are none or the person confirms; declining writes nothing.
+ */
+async function confirmOmitTaskPresets(session: ExportSession, labels: readonly string[]): Promise<boolean> {
+    return await confirmDuringExport(session, labels.length > 0, async () => labels.length === 0 || await alertConfirm(language.backupTaskPresetsConfirm(labels.length, shownPromptNames(labels))))
+}
+
 /**
  * Called as the last step before the writer opens. Where opening the browser writer needs a fresh user gesture (the
  * popup helper of a plain-HTTP page) and the size passes and prompts before it have let the last one lapse, asks for a
@@ -889,6 +905,10 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     // A `.bin` has no place for chat alternatives; name the chats that lose theirs before the writer opens.
     const alternativeLabels = exportAlternativeLabels(db, cold)
     if (!await confirmOmitAlternatives(session, alternativeLabels.map((label) => label.text))) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
+    // Task presets are fork-only and device-local; a `.bin` has no place for them, so they are named before the writer opens.
+    if (!await confirmOmitTaskPresets(session, taskPresetLabels(db))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
@@ -1212,6 +1232,9 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     // A `.bin` has no place for chat alternatives; name the chats that lose theirs before the writer opens.
     const alternativeLabels = exportAlternativeLabels(db, cold)
     if (!await confirmOmitAlternatives(session, alternativeLabels.map((label) => label.text))) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
+    if (!await confirmOmitTaskPresets(session, taskPresetLabels(db))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 

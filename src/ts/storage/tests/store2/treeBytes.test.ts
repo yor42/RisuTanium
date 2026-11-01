@@ -348,6 +348,9 @@ describe('new behaviour: a leaf that fails the unit check is flagged, not a fail
             expect(flagged.key).toBe(leaf.key)
             expect(flagged.why).toBe(damage.why)
             expect(flagged.kind).toBe(leaf.kind)
+            if (flagged.kind === 'task-preset') {
+                throw new Error('A character fixture raised a task preset flag.')
+            }
             expect(flagged.chaId).toBe(entry.chaId)
             if (flagged.kind === 'chat') {
                 expect(flagged.chatId).toBe(leaf.chatId)

@@ -1,4 +1,6 @@
 import { repairDatabaseIds } from '../../../process/chatIds'
+import type { TaskPreset } from '../../../process/utility/taskPreset'
+import type { JsonObject } from '../../blockFrame'
 import type { Database } from '../../database.svelte'
 import { repairBotPresetsId } from '../../botPresetRepair'
 import { repairCharacterTree, summarizeRepair, type RepairRefusal } from '../../characterTreeRepair'
@@ -67,6 +69,11 @@ export interface ImportRequest {
      * manifest's `fixed.legacyKeep` in place of the carried one. Absent, the replaced manifest's keep set is carried.
      */
     legacyKeep?: LegacyList
+    /**
+     * The page's own task presets, kept by value: a `.bin` carries none, so the list the page holds is set on the imported
+     * tree. Absent or empty: the imported profile has none. The tree's own `taskPresets` key is removed either way.
+     */
+    taskPresets?: readonly JsonObject[]
 }
 
 export interface ImportHooks {
@@ -241,7 +248,7 @@ export type PrepareStop = Extract<ImportOutcome, { status: 'declined' | 'read-fa
  * question, the plan. Nothing is written. The decoded tree is released once resolved.
  */
 export async function prepareImport(
-    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve'>, hooks: ImportHooks,
+    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets'>, hooks: ImportHooks,
 ): Promise<PreparedImport | PrepareStop> {
     let tree = request.source.tree
     if (tree === null) {
@@ -259,6 +266,11 @@ export async function prepareImport(
         notePhase(hooks, 'import repaired')
         const resolved = await resolveLegacyTree(tree, request.reader, request.resolve)
         notePhase(hooks, 'import resolved')
+        // `resolveLegacyTree` has removed the tree's own `taskPresets`; only a list the caller passed is set, on the copy.
+        if (request.taskPresets !== undefined && request.taskPresets.length > 0) {
+            // The objects stay open: the type names the fields this build reads, the stored object keeps every key.
+            resolved.database.taskPresets = request.taskPresets.map(preset => structuredClone(preset) as unknown as TaskPreset)
+        }
         incomplete = resolved.incomplete
         hold.resolved = resolved
     } catch (error) {

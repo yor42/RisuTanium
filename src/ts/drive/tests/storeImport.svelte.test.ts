@@ -490,6 +490,71 @@ describe('preconditions are checked before the first asset is written', () => {
     })
 })
 
+describe('task presets over the .bin import of a store2 page', () => {
+    // The page's `getDatabase` is the reactive `DBState.db` object, so the list read for the import is a `$state` proxy.
+    const OWN = [{ id: 'own-0', name: 'From the file', instructions: 'x', model: 'm' }]
+
+    async function storedPresets(page: Page): Promise<Record<string, unknown>[]> {
+        const stored = await databaseOf(page, (await currentKey(page)) as string)
+        return ((stored as unknown as { taskPresets?: Record<string, unknown>[] }).taskPresets ?? [])
+    }
+
+    async function committedTaskPresetKeys(page: Page, manifestKey: string): Promise<string[]> {
+        const read = await readTreeBytes(page.k.memory, manifestKey)
+        if (read.status !== 'ok') {
+            throw new Error(`The stored tree reads ${read.status}.`)
+        }
+        return (read.tree.manifest.fixed.taskPresets ?? []).map(ref => ref[0])
+    }
+
+    async function binWith(page: Page, own: unknown): Promise<Uint8Array> {
+        const source = makeDb('backup', ['alpha'])
+        if (own !== undefined) {
+            source.taskPresets = own
+        }
+        return binOf(binEntry('golden-avatar.png', AVATAR), binEntry('database.risudat', await blockFileBytes(page, source)))
+    }
+
+    test('regression reproducer: the page\'s presets, an unknown key and an unsaved edit included, are kept under fresh unit keys; the file\'s own list adds nothing', async () => {
+        const page = await openPage()
+        await nextCommit(page.w, () => {
+            page.db.taskPresets = [
+                { id: 'live-0', name: 'Live', instructions: 'a', model: 'm', futureKey: { n: [1] } },
+                { id: 'live-1', name: 'Second', instructions: 'b', model: 'm' },
+            ]
+            page.flush()
+        })
+        const before = await currentKey(page) as string
+        const keysBefore = await committedTaskPresetKeys(page, before)
+        expect(keysBefore).toHaveLength(2)
+        ;(page.db.taskPresets as Record<string, unknown>[])[1].name = 'Unsaved edit'
+
+        await loadBin(page, await binWith(page, OWN))
+
+        const kept = await storedPresets(page)
+        expect(kept.map(preset => preset.id)).toEqual(['live-0', 'live-1'])
+        expect(kept[0].futureKey).toEqual({ n: [1] })
+        expect(kept[1].name).toBe('Unsaved edit')
+        const keysAfter = await committedTaskPresetKeys(page, await currentKey(page) as string)
+        expect(keysAfter).toHaveLength(2)
+        for (const key of keysAfter) {
+            expect(keysBefore).not.toContain(key)
+        }
+        expect(alertErrorTexts(page)).toEqual([])
+    })
+
+    test('regression reproducer: with no presets on the page, the file\'s own list creates none and no token', async () => {
+        const page = await openPage()
+
+        await loadBin(page, await binWith(page, OWN))
+
+        const manifestKey = await currentKey(page) as string
+        expect(await storedPresets(page)).toEqual([])
+        const read = await readTreeBytes(page.k.memory, manifestKey)
+        expect(read.status === 'ok' && read.tree.manifest.req).toEqual([])
+    })
+})
+
 describe('the database is decoded and confirmed before the copy', () => {
     /** A block-format backup of three characters with its last block damaged: the intact blocks can be salvaged. */
     async function damagedBackup(page: Page): Promise<{ bytes: Uint8Array, lines: string[] }> {

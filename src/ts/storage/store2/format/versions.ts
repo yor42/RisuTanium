@@ -26,9 +26,12 @@ export const BODY_V = 1
 /**
  * The `req` tokens this build understands. `chat-alt` marks a store in which some chat has alternatives (type 25 units):
  * a build without the token goes read-only before it reads a unit, so it can neither drop nor garbage-collect them.
+ *
+ * `task-presets` marks a store that holds a task preset (type 26 units); an older build goes read-only on it for the same reason.
  */
 export const REQ_CHAT_ALT = 'chat-alt'
-export const KNOWN_REQ: ReadonlySet<string> = new Set<string>([REQ_CHAT_ALT])
+export const REQ_TASK_PRESETS = 'task-presets'
+export const KNOWN_REQ: ReadonlySet<string> = new Set<string>([REQ_CHAT_ALT, REQ_TASK_PRESETS])
 
 export const UNIT_TYPE = {
     commit: 1,
@@ -56,6 +59,7 @@ export const UNIT_TYPE = {
     fenceRecord: 23,
     deletionSnapshot: 24,
     chatAlt: 25,
+    taskPreset: 26,
 } as const
 
 export type UnitType = typeof UNIT_TYPE[keyof typeof UNIT_TYPE]
