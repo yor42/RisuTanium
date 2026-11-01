@@ -347,16 +347,22 @@
         return currentRun
     }
 
-    // Only the latest run of a live instance records what its {:then} renders, and only a string result: an
-    // undefined result renders the pending display instead, so it is not a rendering.
+    // The resolution of the latest run, for any result including undefined: the display derived must re-evaluate when a
+    // run resolves, and an undefined result is not a rendering but re-reads the pending display.
+    let resolution = $state.raw<{ run: Promise<string | undefined>, md: string | undefined } | null>(null)
+
+    // Only the latest run of a live instance resolves; only a string result is remembered as what this instance shows.
     const commitRun = (run: Promise<string | undefined>, md: string | undefined) => {
-        if(currentRun !== run || destroyed || typeof md !== 'string'){
+        if(currentRun !== run || destroyed){
             return
         }
-        shown = md
-        if(runFingerprint){
-            record(runFingerprint, md)
+        if(typeof md === 'string'){
+            shown = md
+            if(runFingerprint){
+                record(runFingerprint, md)
+            }
         }
+        resolution = { run, md }
     }
 
     const displayNow = (): PendingDisplay => pendingDisplay({
@@ -376,6 +382,23 @@
 
     let markParsingResult = $derived.by(() => startRun(msgDisplay, character, idx, renderRevision, gatePending))
 
+    // The latest run is read before the pending display: starting the run sets the plain facts displayNow() reads. A
+    // string result of the latest run is shown as is; any other state (unresolved, undefined, superseded) shows the
+    // pending display evaluated afresh.
+    let display = $derived.by((): PendingDisplay => {
+        const run = markParsingResult
+        const done = resolution
+        if(done && done.run === run && typeof done.md === 'string'){
+            return { kind: 'html', html: done.md }
+        }
+        return displayNow()
+    })
+
+    // Two levels on purpose: the string is compared by value, so an equal result neither sanitizes again nor writes the
+    // DOM. The sanitize stays a tracked read of the hooks' DB flags (hideAllImages) through `sanitized`.
+    let displayHtml = $derived(htmlOf(display))
+    let sanitized = $derived(addMetadataToElement(trimMarkdown(displayHtml), modelShortName))
+
     $effect(() => {
         if(shouldRenderRawStreaming){
             return
@@ -384,33 +407,24 @@
         checkImg()
         run.then((md) => {
             commitRun(run, md)
-            checkImg()
         })
+    })
+
+    // Repairs images after the DOM holds the markup: every time the html site is created or its string changes. Raw
+    // streaming returns first so the parse derived is never read while no parse is wanted.
+    $effect(() => {
+        if(shouldRenderRawStreaming || display.kind === 'indicator'){
+            return
+        }
+        sanitized
+        untrack(() => checkImg())
     })
 </script>
 
-{#snippet showing(display: PendingDisplay)}
-    {#if display.kind === 'indicator'}
-        <span role="status" aria-label={language.loading} class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-textcolor2 border-t-transparent align-middle"></span>
-    {:else}
-        {@html addMetadataToElement(trimMarkdown(htmlOf(display)), modelShortName)}
-    {/if}
-{/snippet}
-
 {#if shouldRenderRawStreaming}
     <span class="whitespace-pre-wrap">{rawStreamingText}</span>
+{:else if display.kind === 'indicator'}
+    <span role="status" aria-label={language.loading} class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-textcolor2 border-t-transparent align-middle"></span>
 {:else}
-    {#await markParsingResult}
-        {@render showing(displayNow())}
-    {:then md}
-        {#if md === undefined}
-            <!-- Two consecutive runs can both resolve undefined, which keeps this branch and its value unchanged; the key
-                 makes every run re-evaluate the display. -->
-            {#key markParsingResult}
-                {@render showing(displayNow())}
-            {/key}
-        {:else}
-            {@html addMetadataToElement(trimMarkdown(md), modelShortName)}
-        {/if}
-    {/await}
+    {@html sanitized}
 {/if}

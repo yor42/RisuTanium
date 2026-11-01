@@ -208,6 +208,7 @@ describe('G T21 a user-initiated translate keeps the translation spinner', () =>
         const body = mountBody()
         await answerParse(0, 'P:FIRST')
         expect(await sample(body.target)).toContain('P:FIRST')
+        await new Promise<void>((resolve) => setTimeout(resolve, 30))
 
         ui.translated = true
         const seen = await sample(body.target)
