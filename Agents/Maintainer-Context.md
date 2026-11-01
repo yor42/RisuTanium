@@ -19993,3 +19993,72 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 
 - Notes, not the maintainer's words:
   - The devbatch32 device runs use the two spare Note 9s (`MC-940` item 2); this record adds no device to them.
+
+### MC-948 — Lane A, 2026-11-01: the persona crash is filed as one ticket, "B + A": ensure one persona and clamp the selection at load, and guard the chat-screen read (CHORE-622)
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's answer in `%TEMP%\risu-b715\b33\records33\answers.md` (2026-11-01T05:24:52Z) to "Persona crash (upstream-latent: an empty persona list or out-of-range selectedPersona kills chat open and Settings > Persona; no repair exists). How should I file it?": "Ticket B + A (Recommended)". Lane A's living log `Agents/Handoff-2026-11-01-laneA.md` (log line 116) records "maintainer: ticket B + A". Basis: the devbatch32 phone 1 finding F1 (`%TEMP%\risu-b715\devbatch32\p1b\result.md`), the source trace `%TEMP%\risu-b715\b32\persona-crash\result.md` (an investigator; its Q4 labels the candidates A, B and C) and its verification `%TEMP%\risu-b715\b32\persona-crash\verify.md` (ACCEPT WITH CORRECTIONS; a doc-verifier's inline verdict, transcribed by lane A, so the file is a transcription).
+- Alternatives rejected: the trace's candidate C (make plugin writes in `plugins.svelte.ts` reject or normalise `personas` and `selectedPersona`) was not selected; that is lane A's reading of the answer (the queue says "Plugin-write normalisation (C) not selected"). The option texts shown to the maintainer are not recorded beyond the label.
+- Related: CHORE-622, `MC-350`, `MC-011`, devbatch32 p1b F1, `MC-949` to `MC-952`.
+
+**What was decided (maintainer).**
+1. File the persona crash as a ticket, scope "B + A" (CHORE-622): B is the loader repair and A is the read guard, as the trace defines them.
+
+- Notes, not the maintainer's words (the scope wording below is the trace's candidates B and A as lane A's queue `%TEMP%\risu-b715\b32\records33-queue.md` states them):
+  - B: at load, ensure at least one persona (built from the username and icon, as `setDatabase` does) and clamp `selectedPersona` into range, with a notice. This includes the `repairPersonas` silent reset (a non-array `personas` becomes `[]` with no notice). A: guard the chat-screen read in `DefaultChatScreen.svelte`.
+  - Per the verification, a loader repair is probably not saved by itself (the dirty baseline is built after `checkNewFormat`), so the plan must choose between saving the repair explicitly and keeping it in memory until the next edit. That question is open and is not part of the answer. On a read-only page the repair is memory-only (`MC-350`).
+  - The load path is a persistence area: the gate is `opus-reviewer` (`rules/storage.md`, as the verification states).
+  - Priority and owner are not in the answer; the row says so (CHORE-622).
+
+### MC-949 — Lane A, 2026-11-01: devbatch32 follow-up: the CHORE-17 ticket waits for the missing measurements
+
+- Tag: decision (the maintainer's message, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's message in `%TEMP%\risu-b715\b33\records33\answers.md` (UTC): 2026-11-01T05:46:36Z "verify first, then file after the missing measurements." Lane A's log (`Agents/Handoff-2026-11-01-laneA.md`, log line 118) and the queue `%TEMP%\risu-b715\b32\records33-queue.md` carry the same.
+- Alternatives rejected: not recorded. The question that the 05:46:36Z message answers is not in `answers.md` (the message follows the C17 attribution, log line 118): TODO(evidence).
+- Related: CHORE-17, `MC-943`, `MC-946`, `MC-948`, `MC-950`, `MC-951`, `MC-952`, devbatch32, devbatch33.
+
+**What was decided (maintainer).**
+1. CHORE-17 (05:46:36Z, "verify first, then file after the missing measurements."): the C17 attribution is verified first (done: ACCEPT WITH CORRECTIONS, `%TEMP%\risu-b715\b32\c17-attr\verify\result.md`), and a ticket is filed only after the missing measurements. No CHORE-17 follow-up ticket is filed in this batch. Layer 1 stays on hold (the CHORE-17 row).
+
+- Notes, not the maintainer's words:
+  - Item 1: "No ticket yet" and "layer 1 stays on hold" are lane A's reading; the message names no ticket. The measurements were seeded for devbatch33 (`%TEMP%\risu-b715\devbatch33\c17-followup-seed.md`).
+
+### MC-950 — Lane A, 2026-11-01: the long-term-memory M2 cross-reference is queued with the device batch results
+
+- Tag: decision (the maintainer's messages, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's messages in `%TEMP%\risu-b715\b33\records33\answers.md` (UTC): 2026-11-01T04:39:04Z "about the LTM: didn't we have previous benchmark on current implementation of local embedding? doesn't our finding today invalidate those numbers?" and 04:40:59Z "yes, queue that with the device batch results". Lane A's log (log line 113) and the queue `%TEMP%\risu-b715\b32\records33-queue.md` carry the same.
+- Alternatives rejected: not recorded. The 04:40:59Z message answers lane A's reply to the 04:39:04Z question; that reply is not recorded in `answers.md`: TODO(evidence).
+- Related: CHORE-619, CHORE-621, `MC-902`, `MC-943`, `MC-946`, `MC-949`.
+
+**What was decided (maintainer).**
+1. Long-term-memory M2 cross-reference (04:40:59Z, "yes, queue that with the device batch results"): the finding that the M2 benchmark used mean pooling, where CLS pooling changes the numbers, is carried into records batch 33 together with the device results (CHORE-619 and CHORE-621 rows, the M2 Roadmap bullet and a ledger note row).
+
+- Notes, not the maintainer's words:
+  - The effect on the M2 conclusions is stated on the CHORE-619 and CHORE-621 rows and the batch 33 section of the Roadmap. No maintainer decision rested on the two weakened conclusions (`MC-902` sets direction only, as the queue states).
+
+### MC-951 — Lane A, 2026-11-01: devbatch32 P2 and P4 ran on phone 2
+
+- Tag: decision (the maintainer's question, acted on by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's message in `%TEMP%\risu-b715\b33\records33\answers.md` (UTC): 2026-11-01T06:17:21Z "wasn't phone 2 idle rn? can p2 and p4 run in phone 2?". Lane A's log (log line 121) records "maintainer: run P2 and P4 on idle phone 2" and the queue carries the same.
+- Alternatives rejected: not recorded.
+- Related: CHORE-396, CHORE-483, `MC-952`, devbatch32.
+
+**What was decided (maintainer).**
+1. P2 and P4 on phone 2 (06:17:21Z, a question: "wasn't phone 2 idle rn? can p2 and p4 run in phone 2?"). Both arms of both cases ran on phone 2, with no comparison against earlier phone 1 numbers.
+
+- Notes, not the maintainer's words:
+  - The maintainer's message is a question; whether "run" was an instruction is lane A's reading. The wording "run P2 and P4 on idle phone 2" is lane A's log text (log line 121), not the maintainer's.
+
+### MC-952 — Lane A, 2026-11-01: the CHORE-396 P2 attribution is a bisect in the next device batch
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-01. Sweep ref: none.
+- Source: the maintainer's answers in `%TEMP%\risu-b715\b33\records33\answers.md` (UTC), 2026-11-01T07:54:44Z: "Bisect next batch (Recommended)" to "P2 (CHORE-396 memory): current main peaks 30.8 MiB above the old base build, over the 24 MiB bound, but the gap spans everything merged since the base (Utility mode included), not just the 396 change. How should I treat it?", and "Start now (Recommended)" to "Device batch 32 is done. Start records batch 33 now? It covers the devbatch32 results, the persona-crash ticket (B+A), the LTM M2 cross-reference, the C17 attribution and its verification, and the devbatch33 seed. It will be verified, and I'll ask before committing." Lane A's log (log line 123) and the queue carry the same.
+- Alternatives rejected: not recorded; the option texts shown beyond the two labels are not in `answers.md`: TODO(evidence).
+- Related: CHORE-396, CHORE-483, `MC-949`, `MC-951`, devbatch32, devbatch33.
+
+**What was decided (maintainer).**
+1. CHORE-396 P2 (07:54:44Z, "Bisect next batch (Recommended)"): the +30.8 MiB peak-PSS gap is attributed by a bisect in the next device batch (devbatch33), and CHORE-396 stays open until then.
+
+- Notes, not the maintainer's words:
+  - The bisect plan (the CHORE-396 commit, its parent and current main, ABBA, n of at least 6 each, on phone 2 with the 0.8 s per-process sampler) is lane A's seed text (`devbatch33\c17-followup-seed.md`, second section), not the maintainer's.
+  - Records batch 33 (07:54:44Z, "Start now (Recommended)"): the second answer started the batch. It is not a decision entry of its own. The question itself says the batch "will be verified" and that lane A will "ask before committing"; nothing here authorizes a commit or a push.
