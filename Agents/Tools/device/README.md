@@ -19,6 +19,7 @@ scratch (`%TEMP%\risu-b715\devscripts\`, not in the repository). Where a stateme
 | `device-prep.ps1` | Keeps the phone awake and exempts the app from battery optimisation; `-Revert` restores the originals. |
 | `cold-start.ps1` | N cold starts: `am start -W` time, ready signal over CDP, settled PSS. |
 | `cdp.mjs` | `node` helper: evaluates one expression in the first page target of a forwarded WebView devtools port. |
+| `cdp-session.mjs` | `node` helper: persistent CDP client (eval, CPU profile, probe injection with console capture). Probe in `probes/`. |
 | `snapshot.ps1` | Whole-app-data snapshot of the test profile (debug builds only). |
 | `restore-snapshot.ps1` | Restores a snapshot into the app data and verifies it against the manifest (debug builds only). |
 | `import-bin.ps1` | Drives the app's own "load local backup" UI for one `.bin` fixture and collects the import phase marks. |
@@ -242,6 +243,52 @@ pwsh -NoProfile -File Agents\Tools\device\cold-start.ps1 -OutDir $env:TEMP\risu-
 `node Agents\Tools\device\cdp.mjs <port> [--timeout <ms>] (-e "<expression>" | -f <file.js>)`. Prints the JSON value of the
 expression (promises are awaited). Always ends within `--timeout` (default 10000 ms). Exit codes: 0 value printed, 2 no page
 target, 3 timed out, 4 connection, protocol or evaluation error. The scripts call it themselves; `-CdpScript` overrides the path.
+
+### cdp-session.mjs and probes/probe-longtask-rebuild.js
+
+`node Agents\Tools\device\cdp-session.mjs <port> <command> [options]` is a persistent CDP client for one forwarded devtools port
+(the caller's own `adb forward`; the tool connects to `127.0.0.1` only and forwards nothing). Commands:
+
+- `eval -e <expression> | -f <file>`: as `cdp.mjs`.
+- `profile --seconds <n> --out <file.cpuprofile> [--interval-us 1000]`: CPU sampling profile. Also writes `<out>.top.json` (top 20
+  functions by self time: name, url, line, self ms, self %) and `<out>.groups.json` (self time grouped by script URL).
+- `probe --probe <probe.js> --seconds <n> --out <file.json> [--console-filter <regex>] [--label <text>] [--probe-opts <json>]`: loads the
+  probe file, calls `window.__devb32Probe.start(label, opts)`, collects the console events that match the filter from every
+  execution context (iframes included) with their epoch `timestamp` and a `pageMs` placed on the page's `performance.now()`
+  clock, calls `stop()` after n seconds and writes the probe JSON together with the events. Console messages the page buffered
+  before the run (replayed when the tool enables the console) are dropped, so every kept event has `pageMs >= 0`. Without
+  `--console-filter` the output file holds all console text of the page, which may include chat content; the "numbers, counts and
+  labels only" statement below covers the probe JSON, not the events. Use a filter (such as `^c17-`) and keep the file in scratch.
+- `--timeout <ms>` (global; default per command is its duration plus 15 s). The process always ends by then.
+
+Exit codes: 0 done, 2 not exactly one `page` target (the targets are listed), 3 timed out, 4 connection, protocol, evaluation or usage
+error. Only `Runtime.enable/disable/evaluate` and `Profiler.enable/disable/setSamplingInterval/start/stop` are ever sent; no page is
+opened or navigated, no input is injected and no storage or network method is used. It prints paths and counts, never what the probe
+or the page returned. Write the outputs outside the repository.
+
+`probes/probe-longtask-rebuild.js` is the probe for `probe`: long tasks, rAF gap histogram with the 20 largest gaps, remounts of
+message bodies (selector `.chattext` unless `bodySelector` is given in `--probe-opts`; callbacks under 100 ms apart are one burst) and
+the added records of the MEASURE rings (`__risuChatPhases`, `__risuSavePassMeter`, `__risuCommitMeter`, `__risuYieldGapMeter`).
+It returns numbers, counts and labels only. `ringsPresent: false` plus a warning means the page is not a MEASURE build. It removes
+`window.__devb32Probe` on `stop()`. Ring deltas locate the last start record in the stop list (the rings hold 1000 records and drop
+the oldest), `wrapped: true` means start records were evicted and `lastStartFound: false` means the added count is a lower bound.
+
+Case notes. C17: the first plugin call can wait on the one-time `db` permission prompt, so tap through a warm-up run before the
+first timed one, or that timing is a person's reaction time. C04: remounts are counted only for elements matching the body
+selector being added or removed; a rebuild that rewrites the inside of a `.chattext` span and keeps the span reads as zero
+bursts. When the result looks too quiet, rerun with another selector, for example `--probe-opts '{"bodySelector":".chat-width"}'`
+(the probe falls back to `.chattext` when no `bodySelector` is given).
+
+```
+node Agents\Tools\device\cdp-session.mjs 6270 profile --seconds 30 --out $env:TEMP\risu-b715\devbatch32\p1\idle.cpuprofile
+node Agents\Tools\device\cdp-session.mjs 6270 probe --probe Agents\Tools\device\probes\probe-longtask-rebuild.js --seconds 20 `
+  --out $env:TEMP\risu-b715\devbatch32\p1\open.json --console-filter '^c17-'
+```
+
+Acceptance tests (PC only, a fake CDP server and a headless Chrome the test starts and stops by its own PID):
+`node Agents\Tools\device\tests\cdp-session.accept.mjs` and `node Agents\Tools\device\tests\probe-longtask-rebuild.accept.mjs`
+(`CDP_ACCEPT_SCRATCH` names the scratch folder; `CDP_SESSION_PATH` and `PROBE_PATH` point at a mutant copy). They are not part of
+`Test-Runner.ps1`.
 
 ### snapshot.ps1 and restore-snapshot.ps1
 
