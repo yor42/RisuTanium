@@ -319,9 +319,10 @@ folder, which rewrites goldens).
 - `-Serial` is mandatory: empty, blank, malformed or outside `-AllowedSerials` exits 2 before the first adb call. There is no default
   serial; every adb call is `adb -s <serial> ...`.
 - Sandbox ownership: the sandbox process is named after the WebView provider, not the app, so the owner is read from the app's own
-  `dumpsys meminfo <Package>` listing (the sandbox pids it prints). The sampled pid is the single `pgrep -f sandboxed_process` pid that
-  is also in that listing; the listing is read again on every resolve (first cycle, every 10th cycle, the cycle after any 0 reading),
-  never cached, and never printed. With none or several owned pids the cycle is logged as `<ms><TAB>0<TAB>0<TAB>DROP-owner` (no pick,
+  `dumpsys meminfo --package <Package>` listing (the plain `dumpsys meminfo <Package>` form prints no sandbox lines); the owned set
+  is the pids of its `** MEMINFO in pid N [...] **` headers whose name contains `sandboxed_process<digits>`. The sampled pid is the
+  single `pgrep -f sandboxed_process` pid that is also in that set; the listing is read again on every resolve (first cycle, every
+  10th cycle, the cycle after any 0 reading), never cached, and never printed. With none or several owned pids the cycle is logged as `<ms><TAB>0<TAB>0<TAB>DROP-owner` (no pick,
   no size guess); three consecutive drops stop it with exit 3. The log holds pids' KiB only, never a package or process name.
 - Stop: create `<LogPath>.stop`, or stop the PID in `<LogPath>.pid` by exact PID; never by image name. Exit codes: 0 done, 2 refused
   arguments, 3 three consecutive drops.

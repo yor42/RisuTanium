@@ -9,9 +9,10 @@
 #   before the first adb call. There is no default serial and every adb call is `adb -s <serial> ...`.
 # - Sandbox ownership is resolved again on every resolve (first cycle, every 10th cycle and the cycle after any 0 reading), never
 #   cached and never "first pgrep match". The sandbox process is named after the WebView provider package, not the app, so the
-#   owner is read from the app's own `dumpsys meminfo <Package>` listing, which prints the sandbox pids. The candidates are the
-#   `pgrep -f sandboxed_process` pids that are also in that listing: exactly one is sampled, none or several drop the cycle.
-#   The listing is filtered to pids at the source and is never printed or logged.
+#   owner is read from `dumpsys meminfo --package <Package>` (the plain `dumpsys meminfo <Package>` form prints no sandbox lines),
+#   whose per-process headers `** MEMINFO in pid N [<process name>] **` name the sandbox pids. The owned set is the header pids whose
+#   bracket name contains sandboxed_process<digits>. The candidates are the `pgrep -f sandboxed_process` pids that are also in
+#   that set: exactly one is sampled, none or several drop the cycle. The listing is parsed in memory and never printed or logged.
 # - Three consecutive dropped cycles stop the sampler with exit 3 and a one-line reason.
 # - Clean stop: create the stop file (default <LogPath>.stop), or stop the PID written to <LogPath>.pid by exact PID. Never kill
 #   by image name.
@@ -58,8 +59,8 @@ function Resolve-SamplerOwnership {
     $appPid = ((Invoke-SamplerAdb @('shell', 'pidof', $Package)) -join ' ').Trim().Split(' ')[0]
     if (-not $appPid) { return @{ App = ''; Sandbox = '' } }
     $owned = @()
-    foreach ($line in (Invoke-SamplerAdb @('shell', 'dumpsys', 'meminfo', $Package))) {
-        if ($line -match 'sandboxed_process\d+:.*\(pid (\d+)') { $owned += $Matches[1] }
+    foreach ($line in (Invoke-SamplerAdb @('shell', 'dumpsys', 'meminfo', '--package', $Package))) {
+        if ($line -match '^\*\* MEMINFO in pid (\d+) \[[^\]]*sandboxed_process\d+[^\]]*\]') { $owned += $Matches[1] }
     }
     $running = @(((Invoke-SamplerAdb @('shell', 'pgrep', '-f', 'sandboxed_process')) -join ' ').Trim() -split '\s+' | Where-Object { $_ -match '^\d+$' })
     $candidates = @($running | Where-Object { $owned -contains $_ } | Select-Object -Unique)

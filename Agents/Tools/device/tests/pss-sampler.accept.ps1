@@ -29,6 +29,7 @@ function Assert-Check([bool]$Condition, [string]$Message) {
 #   ambiguous   pgrep 2000 2001, listing owns both
 #   none        pgrep 2000, listing owns no sandbox pid
 #   foreign     pgrep 2000, listing owns 2005 only
+#   appinpgrep  pgrep 1000 2000 (the app's own non-sandbox header pid is also in the pgrep set), listing owns 2000
 $fakeAdbSource = @'
 $lineText = $args -join ' '
 Add-Content -LiteralPath $env:FAKE_CALLS -Value $lineText
@@ -44,6 +45,7 @@ if ($args[3] -eq 'pgrep') {
         'otherfirst' { '1999 2000' }
         'reresolve' { if ($cycle -ge 8) { '1999 2000 2001' } elseif ($cycle -ge 3) { '1999 2000' } else { '2000' } }
         'ambiguous' { '2000 2001' }
+        'appinpgrep' { '1000 2000' }
         default { '2000' }
     }
     exit 0
@@ -63,9 +65,28 @@ if ($args[4] -eq 'meminfo') {
         'foreign' { @('2005') }
         default { @('2000') }
     }
+    if ($args[5] -ne '--package') {
+        # Real Android 10 shape of the plain form: the app's own summary only, no sandbox lines.
+        'Applications Memory Usage (in Kilobytes):'
+        'Uptime: 1 Realtime: 1'
+        ''
+        '** MEMINFO in pid 1000 [io.github.yor42.risutanium] **'
+        '  190,187K: io.github.yor42.risutanium (pid 1000 / activities 1)'
+        exit 0
+    }
+    # Real shape of the --package form: one header per process; the sandbox pids are in the header brackets only.
+    'Applications Memory Usage (in Kilobytes):'
+    'Uptime: 1 Realtime: 1'
+    ''
+    foreach ($ownedPid in $ownedPids) {
+        ('** MEMINFO in pid ' + $ownedPid + ' [com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0] **')
+        '                   Pss  Private  Private  SwapPss     Heap     Heap     Heap'
+        '  TOTAL:   190187   100000'
+        ''
+    }
     '** MEMINFO in pid 1000 [io.github.yor42.risutanium] **'
-    '  190,187K: io.github.yor42.risutanium (pid 1000 / activities 1)'
-    foreach ($ownedPid in $ownedPids) { ('  190,187K: com.google.android.webview:sandboxed_process0:org.chromium.content.app.SandboxedProcessService0:0 (pid ' + $ownedPid + ')') }
+    '                   Pss  Private  Private  SwapPss     Heap     Heap     Heap'
+    '  TOTAL:   151492   100000'
     exit 0
 }
 'unexpected call'
@@ -111,6 +132,10 @@ $run = Invoke-SamplerRun 'otherfirst' ($commonArguments + @('-MaxCycles', '3')) 
 Assert-Check ($run.Rows.Count -eq 3 -and @($run.Rows | Where-Object { $_[2] -eq '190187' }).Count -eq 3 -and $run.Output -notmatch '190500') '4 the owned sandbox pid is sampled, not the first pgrep pid'
 Assert-Check (@($run.Rows | Where-Object { $_[2] -eq '190500' }).Count -eq 0) '4 the other app total never appears in the log'
 
+# 4b a non-sandbox header whose pid is also in the pgrep set is not owned: the sandbox pid is still the single candidate
+$run = Invoke-SamplerRun 'appinpgrep' ($commonArguments + @('-MaxCycles', '3')) 'appinpgrep'
+Assert-Check ($run.Rows.Count -eq 3 -and @($run.Rows | Where-Object { $_.Count -eq 3 -and $_[1] -eq '151492' -and $_[2] -eq '190187' }).Count -eq 3) '4b a non-sandbox header pid in the pgrep set is not treated as owned'
+
 # 5 re-resolve: 12 cycles, other pid first from cycle 3, a 0 reading at cycle 5, the owned pid changes at cycle 8
 $run = Invoke-SamplerRun 'reresolve' ($commonArguments + @('-MaxCycles', '12')) 'reresolve'
 $sandboxColumn = @($run.Rows | ForEach-Object { $_[2] })
@@ -118,8 +143,9 @@ Assert-Check ($run.Rows.Count -eq 12 -and -not ($sandboxColumn -contains '190500
 Assert-Check ($sandboxColumn.Count -eq 12 -and $sandboxColumn[5] -eq '0') '5 the 0 reading at cycle 5 is logged as 0'
 Assert-Check ($sandboxColumn.Count -eq 12 -and $sandboxColumn[6] -eq '190187' -and $sandboxColumn[7] -eq '190187') '5 the 0 reading forces a full ownership resolve that selects the owned pid, not the first pgrep pid'
 Assert-Check ($sandboxColumn.Count -eq 12 -and $sandboxColumn[10] -eq '177000' -and $sandboxColumn[11] -eq '177000') '5 the periodic resolve at cycle 10 reads the listing again and follows the changed owned pid'
-$listingCalls = @($run.Calls | Where-Object { $_ -like ('*meminfo ' + $packageId) }).Count
-Assert-Check ($listingCalls -eq 3) ('5 the package listing is fetched on every resolve (3 resolves: start, after the 0 reading, cycle 10; got ' + $listingCalls + ')')
+$listingCalls = @($run.Calls | Where-Object { $_ -like ('*meminfo --package ' + $packageId) }).Count
+Assert-Check ($listingCalls -eq 3) ('5 the --package listing is fetched on every resolve (3 resolves: start, after the 0 reading, cycle 10; got ' + $listingCalls + ')')
+Assert-Check (@($run.Calls | Where-Object { $_ -like ('*meminfo ' + $packageId) }).Count -eq 0) '5 the plain meminfo form, which prints no sandbox lines, is never used for ownership'
 
 # 6 ambiguity and absence: a dropped cycle, never a pick, and the third consecutive drop exits 3 (7)
 foreach ($scenarioName in @('ambiguous', 'none', 'foreign')) {
