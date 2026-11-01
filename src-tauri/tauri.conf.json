@@ -27,8 +27,8 @@
       }
     ]
   },
-  "productName": "Risutanium",
-  "mainBinaryName": "Risutanium",
+  "productName": "RisuTanium",
+  "mainBinaryName": "RisuTanium",
   "version": "0.1.0",
   "identifier": "io.github.yor42.risutanium",
   "plugins": {

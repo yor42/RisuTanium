@@ -135,8 +135,8 @@ metadata,"Get metadata value. argument can be:
 - mobile (is mobile)
 - local (is local)
 - node (is node)
-- version (version of Risuai)
-- major (Major version of risuai)
+- version (version of RisuTanium)
+- major (Major version of RisuTanium)
 - lang (current language code)
 - browserlang (same as navigator.language in js)
 - modelshortname (returns current model's short name)
@@ -144,7 +144,7 @@ metadata,"Get metadata value. argument can be:
 - modelformat (returns current model's format)
 - modelprovider (returns current model's provider)
 - modeltokenizer (returns current model's tokenizer)
-- risutype (returns current risuai type like node web and etc.)
+- risutype (returns current RisuTanium type like node web and etc.)
 - maxcontext (returns current max context)
 ","metadata","key","[[metadata::version]]"
 iserror,Check if string is error,"iserror","string","[[iserror::Error: Something]]"

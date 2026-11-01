@@ -203,7 +203,7 @@ describe('IrisModal intro dialogue', () => {
         const target = await mountIris('ko')
         const text = normalized(target)
         expect(text).toContain('안녕하세요. 아이리스라고 합니다~.')
-        expect(text).toContain('아이리스는 보조 모델을 사용하며, Risuai의 전반적인 데이터에 접근할 수 있습니다.')
+        expect(text).toContain(languageKorean.iris.introTip)
         expect(languageKorean.iris.introText).toBe('안녕하세요. 아이리스라고 합니다~.')
     })
 
@@ -211,7 +211,7 @@ describe('IrisModal intro dialogue', () => {
         const target = await mountIris('en')
         const text = normalized(target)
         expect(text).toContain("Hello there. I've been waiting for you.")
-        expect(text).toContain('Iris can access various data through the Risuai system. It uses ax model defined in config.')
+        expect(text).toContain('Iris can access various data through the RisuTanium system. It uses ax model defined in config.')
     })
 
     test('guard: a saved dialogue loads as saved in Vietnamese, with no intro line mixed in', async () => {

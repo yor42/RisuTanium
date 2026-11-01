@@ -2711,7 +2711,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         try {
             const permission = await Notification.requestPermission()
             if(permission === 'granted'){
-                const noti = new Notification('Risuai', {
+                const noti = new Notification('RisuTanium', {
                     body: result
                 })
                 noti.onclick = () => {

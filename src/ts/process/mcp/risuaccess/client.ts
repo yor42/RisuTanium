@@ -12,8 +12,8 @@ export class RisuAccessClient extends MCPClientLike {
 
   constructor() {
     const additionalServerInfo = `
-<About Risuai Features>
-Characters are the AI personas that Risuai users chat with. Fields:
+<About RisuTanium Features>
+Characters are the AI personas that RisuTanium users chat with. Fields:
 - 'name': The name of the character.
 - 'greeting': The greeting message of the character. This is the first message that the character will send when the chat starts.
 - 'description': The description of the character. This is used to describe the character in the chat.
@@ -70,7 +70,7 @@ backgroundEmbedding is an HTML string mainly for custom styling. It can, and mos
     this.serverInfo.serverInfo.name = 'Risuai Access MCP'
     this.serverInfo.serverInfo.version = '1.0.0'
     this.serverInfo.instructions =
-      "Risuai Access MCP provides access to Risuai's features and tools, which is the software currently running on. Use the available tools to interact with Risuai's functionalities." +
+      "Risuai Access MCP provides access to RisuTanium's features and tools, which is the software currently running on. Use the available tools to interact with RisuTanium's functionalities." +
       additionalServerInfo
 
     this.handlers = [new CharacterHandler(), new ChatHandler(), new ModuleHandler()]

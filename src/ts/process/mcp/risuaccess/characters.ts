@@ -15,7 +15,7 @@ export class CharacterHandler extends MCPToolHandler {
   getTools(): MCPTool[] {
     return [
       {
-        description: 'Get basic information about a Risuai character.',
+        description: 'Get basic information about a RisuTanium character.',
         inputSchema: {
           properties: {
             fields: {
@@ -45,7 +45,7 @@ export class CharacterHandler extends MCPToolHandler {
         name: 'risu-get-character-info',
       },
       {
-        description: 'List the lorebooks of a Risuai character.',
+        description: 'List the lorebooks of a RisuTanium character.',
         inputSchema: {
           properties: {
             count: {
@@ -68,7 +68,7 @@ export class CharacterHandler extends MCPToolHandler {
         name: 'risu-list-character-lorebooks',
       },
       {
-        description: 'Get lorebooks with specific names from a Risuai character.',
+        description: 'Get lorebooks with specific names from a RisuTanium character.',
         inputSchema: {
           properties: {
             id: {
@@ -87,7 +87,7 @@ export class CharacterHandler extends MCPToolHandler {
         name: 'risu-get-character-lorebook',
       },
       {
-        description: 'Set basic information about a Risuai character.',
+        description: 'Set basic information about a RisuTanium character.',
         inputSchema: {
           properties: {
             data: {
@@ -116,7 +116,7 @@ export class CharacterHandler extends MCPToolHandler {
         name: 'risu-set-character-info',
       },
       {
-        description: 'Update an existing lorebook of a Risuai character, or create a new one if it does not exist.',
+        description: 'Update an existing lorebook of a RisuTanium character, or create a new one if it does not exist.',
         inputSchema: {
           properties: {
             alwaysActive: {
@@ -152,7 +152,7 @@ export class CharacterHandler extends MCPToolHandler {
         name: 'risu-set-character-lorebook',
       },
       {
-        description: 'Delete a lorebook from a Risuai character.',
+        description: 'Delete a lorebook from a RisuTanium character.',
         inputSchema: {
           properties: {
             id: {
@@ -170,7 +170,7 @@ export class CharacterHandler extends MCPToolHandler {
         name: 'risu-delete-character-lorebook',
       },
       {
-        description: 'Get regex scripts from a Risuai character.',
+        description: 'Get regex scripts from a RisuTanium character.',
         inputSchema: {
           properties: {
             id: {
@@ -184,7 +184,7 @@ export class CharacterHandler extends MCPToolHandler {
         name: 'risu-get-character-regex-scripts',
       },
       {
-        description: 'Update an existing regex script in a Risuai character, or create a new one if it does not exist.',
+        description: 'Update an existing regex script in a RisuTanium character, or create a new one if it does not exist.',
         inputSchema: {
           properties: {
             ableFlag: {
@@ -228,7 +228,7 @@ export class CharacterHandler extends MCPToolHandler {
         name: 'risu-set-character-regex-scripts',
       },
       {
-        description: 'Delete a regex script from a Risuai character.',
+        description: 'Delete a regex script from a RisuTanium character.',
         inputSchema: {
           properties: {
             id: {
@@ -246,7 +246,7 @@ export class CharacterHandler extends MCPToolHandler {
         name: 'risu-delete-character-regex-scripts',
       },
       {
-        description: 'Get additional assets from a Risuai character.',
+        description: 'Get additional assets from a RisuTanium character.',
         inputSchema: {
           properties: {
             id: {
@@ -260,7 +260,7 @@ export class CharacterHandler extends MCPToolHandler {
         name: 'risu-get-character-additional-assets',
       },
       {
-        description: 'Get the Lua script from a Risuai character trigger.',
+        description: 'Get the Lua script from a RisuTanium character trigger.',
         inputSchema: {
           properties: {
             id: {
@@ -274,7 +274,7 @@ export class CharacterHandler extends MCPToolHandler {
         name: 'risu-get-character-lua-script',
       },
       {
-        description: 'Update the Lua script of a Risuai character.',
+        description: 'Update the Lua script of a RisuTanium character.',
         inputSchema: {
           properties: {
             code: {
@@ -292,7 +292,7 @@ export class CharacterHandler extends MCPToolHandler {
         name: 'risu-set-character-lua-script',
       },
       {
-        description: 'Delete an additional asset from a Risuai character.',
+        description: 'Delete an additional asset from a RisuTanium character.',
         inputSchema: {
           properties: {
             assetName: {
@@ -310,7 +310,7 @@ export class CharacterHandler extends MCPToolHandler {
         name: 'risu-delete-character-additional-assets',
       },
       {
-        description: 'List all Risuai characters.',
+        description: 'List all RisuTanium characters.',
         inputSchema: {
           properties: {
             count: {

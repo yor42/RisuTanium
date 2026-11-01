@@ -81,7 +81,7 @@ async function exportedReport(): Promise<Record<string, unknown>> {
     button!.click()
     await vi.waitFor(() => expect(downloadFileMock).toHaveBeenCalledTimes(1))
     const [name, bytes] = downloadFileMock.mock.calls[0]
-    expect(name).toBe('risuai-settings-report.json')
+    expect(name).toBe('risutanium-settings-report.json')
     const downloaded = new TextDecoder().decode(bytes)
     await vi.waitFor(() => expect(clipboardText).not.toBe(''))
     expect(clipboardText).toBe(downloaded)

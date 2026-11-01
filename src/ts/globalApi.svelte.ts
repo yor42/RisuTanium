@@ -1828,7 +1828,7 @@ export function publishFrozenSaveIndicator(encoder: RisuSaveEncoder, db: Databas
         entries.push({ chaId: key, names })
         if (!warnedFrozenKeys.has(key)) {
             warnedFrozenKeys.add(key)
-            console.warn(`RisuAI: saving is paused for a duplicated id (${key}): ${names.join(', ')}`)
+            console.warn(`RisuTanium: saving is paused for a duplicated id (${key}): ${names.join(', ')}`)
         }
     }
     if (!frozenSaveKeysEqual(entries, lastPublishedFrozenSaveKeys)) {

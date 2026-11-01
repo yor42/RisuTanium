@@ -108,7 +108,7 @@
             })
             if('mediaSession' in navigator){
                 navigator.mediaSession.metadata = new MediaMetadata({
-                    title: 'Risuai'
+                    title: 'RisuTanium'
                 })
             }
             break
@@ -181,7 +181,7 @@
                             aprilFoolsPage = 0
                             aprilFools = false
                         }}>
-                            Go to Risuai  
+                            Go to RisuTanium  
                         </a>
                     </p>
 

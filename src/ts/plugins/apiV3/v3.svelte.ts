@@ -1579,7 +1579,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             removeChatPanel(id);
         },
         log: (message:string) => {
-            console.log(`[RisuAI Plugin: ${plugin.name}] ${message}`);
+            console.log(`[RisuTanium Plugin: ${plugin.name}] ${message}`);
         },
         createMutationObserver(callback: SafeMutationCallback): SafeMutationObserver {
             const observer = new SafeMutationObserver(callback)
@@ -1814,17 +1814,17 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             const receiverPlugin = DBState.db.plugins.find(p => p.name === pluginName);
 
             if(!receiverPlugin){
-                console.warn(`[RisuAI Plugin: ${currentPluginName}] Attempted to send message to non-existent plugin '${pluginName}' on channel '${channelName}'.`);
+                console.warn(`[RisuTanium Plugin: ${currentPluginName}] Attempted to send message to non-existent plugin '${pluginName}' on channel '${channelName}'.`);
                 return;
             }
 
             if(!receiverPlugin.allowedIPC?.includes(currentPluginName)){
-                console.warn(`[RisuAI Plugin: ${currentPluginName}] Attempted to send message to plugin '${pluginName}' but receiver plugin does not allow IPC communication from this plugin. declare //@allowed-ipc ${currentPluginName} in the reciver plugin script to allow IPC communication.`);
+                console.warn(`[RisuTanium Plugin: ${currentPluginName}] Attempted to send message to plugin '${pluginName}' but receiver plugin does not allow IPC communication from this plugin. declare //@allowed-ipc ${currentPluginName} in the reciver plugin script to allow IPC communication.`);
                 return;
             }
 
             if(!plugin.allowedIPC?.includes(receiverPlugin.name)){
-                console.warn(`[RisuAI Plugin: ${currentPluginName}] Attempted to send message to plugin '${pluginName}' but the sender plugin does not allow IPC communication to this plugin. declare //@allowed-ipc ${receiverPlugin.name} in the sender plugin script to allow IPC communication.`);
+                console.warn(`[RisuTanium Plugin: ${currentPluginName}] Attempted to send message to plugin '${pluginName}' but the sender plugin does not allow IPC communication to this plugin. declare //@allowed-ipc ${receiverPlugin.name} in the sender plugin script to allow IPC communication.`);
                 return;
             }
 
@@ -1840,7 +1840,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         saveSecretHeader: async (key: string, value: string|string[]) => {
             //TODO: Implement server-side secret storage with write-only access for plugins, to enhance security when handling sensitive information like API keys.
             //This will have rate-limit, to prevent saving it publicly and writing as secret every time before using it.
-            console.warn(`[RisuAI Plugin: ${plugin.name}] saveServerSecret is not implemented yet. This API is intended for securely storing sensitive information like API keys with write-only access for plugins. Please avoid using this API until it is implemented.`);
+            console.warn(`[RisuTanium Plugin: ${plugin.name}] saveServerSecret is not implemented yet. This API is intended for securely storing sensitive information like API keys with write-only access for plugins. Please avoid using this API until it is implemented.`);
         }
     }
 }
@@ -1871,7 +1871,7 @@ export async function executePluginV3(plugin:RisuPlugin){
 
     const alreadyRunning = v3PluginInstances.find(p => p.name === plugin.name);
     if(alreadyRunning){
-        console.log(`[RisuAI Plugin: ${plugin.name}] Plugin is already running. Skipping load.`);
+        console.log(`[RisuTanium Plugin: ${plugin.name}] Plugin is already running. Skipping load.`);
         return;
     }
 
@@ -1884,7 +1884,7 @@ export async function executePluginV3(plugin:RisuPlugin){
         host
     });
     host.run(iframe, plugin.script);
-    console.log(`[RisuAI Plugin: ${plugin.name}] Loaded API V3 plugin.`);
+    console.log(`[RisuTanium Plugin: ${plugin.name}] Loaded API V3 plugin.`);
 }
 
 export function getV3PluginInstance(name: string) {

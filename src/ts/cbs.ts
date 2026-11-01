@@ -977,7 +977,7 @@ export function registerCBS(arg:CBSRegisterArg) {
             return `<img src="/logo2.png" style="height:${size}px;width:${size}px" />`
         },
         alias: [],
-        description: 'Displays the Risuai logo image with specified size in pixels. Default size is 45px if no argument provided. Returns HTML img element.\n\nUsage:: {{risu}} or {{risu::60}}',
+        description: 'Displays the RisuTanium logo image with specified size in pixels. Default size is 45px if no argument provided. Returns HTML img element.\n\nUsage:: {{risu}} or {{risu::60}}',
     });
 
     // Comparison functions

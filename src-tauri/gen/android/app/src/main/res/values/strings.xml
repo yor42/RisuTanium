@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">"Risutanium"</string>
-    <string name="main_activity_title">"Risutanium"</string>
+    <string name="app_name">"RisuTanium"</string>
+    <string name="main_activity_title">"RisuTanium"</string>
     <string name="keepalive_channel_name">Background work</string>
 </resources>
