@@ -297,28 +297,78 @@ export async function repairCharacterTree(tree: { characters?: unknown }, mode: 
     }
     return result
 }
+export interface PersonaRepair {
+    /** Entries that were not objects and were left out. */
+    dropped: number
+    /** 'empty': no usable persona was left, so the default one was made. 'buffer': the selected persona was missing, so one was made from the live buffer. */
+    added: 'none' | 'empty' | 'buffer'
+}
+
+export interface PersonaRepairTarget {
+    personas?: unknown
+    selectedPersona?: unknown
+    username?: string | null
+    userIcon?: string | null
+    personaPrompt?: string | null
+    userNote?: string | null
+}
+
+/** The selected index as an integer inside the list, or null when it names no entry. An integer string is what the readers already index with, so it counts as that number. */
+function selectedPersonaIndex(value: unknown, length: number): number | null {
+    const index = typeof value === 'string' && /^(0|[1-9][0-9]*)$/.test(value) ? Number(value) : value
+    return typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < length ? index : null
+}
+
 /**
- * Keeps only the personas that are objects, treating a missing or non-list
- * `personas` as empty, and re-resolves the selected persona by reference so
- * the same persona stays selected after earlier entries were dropped. Returns
- * how many entries were dropped (a non-list counts as none).
+ * Makes the persona list one the app can read: every entry is an object, the
+ * list is not empty and `selectedPersona` is an integer index into it. A missing
+ * or non-list `personas` is empty.
+ *
+ * - Nothing usable is left: the list becomes the default persona, as
+ *   `setDatabase` makes it (user name and icon; the prompt stays in the buffer).
+ * - The selected persona survived: it stays selected, by reference, even when
+ *   earlier entries were dropped.
+ * - The selected persona is missing (index out of range, not an integer, or its
+ *   entry was dropped): a persona built from the live buffer is appended and
+ *   selected. The buffer (`username`, `userIcon`, `personaPrompt`, `userNote`)
+ *   belongs to the selected persona, so a missing selection becomes an entry
+ *   instead of being attributed to persona 0, whose stored fields stay intact.
+ *
+ * The buffer fields and the existing entries are never written. Returns what was
+ * dropped and added.
  */
-export function repairPersonas(db: { personas?: unknown, selectedPersona?: unknown }): number {
-    if (!Array.isArray(db.personas)) {
-        db.personas = []
-        return 0
-    }
-    const personas: unknown[] = db.personas
-    const selected = typeof db.selectedPersona === 'number' ? personas[db.selectedPersona] : undefined
+export function repairPersonas(db: PersonaRepairTarget): PersonaRepair {
+    const personas: unknown[] = Array.isArray(db.personas) ? db.personas : []
+    const index = selectedPersonaIndex(db.selectedPersona, personas.length)
+    const selected = index === null ? undefined : personas[index]
     const kept = personas.filter((persona) => isCharacterEntry(persona))
     const dropped = personas.length - kept.length
-    if (dropped === 0) {
-        return 0
+    if (kept.length === 0) {
+        db.personas = [{
+            name: db.username ?? 'User',
+            personaPrompt: '',
+            icon: db.userIcon ?? '',
+            note: db.userNote ?? '',
+            largePortrait: false,
+        }]
+        db.selectedPersona = 0
+        return { dropped, added: 'empty' }
     }
-    db.personas = kept
-    if (typeof db.selectedPersona === 'number') {
-        const at = isCharacterEntry(selected) ? kept.indexOf(selected) : -1
-        db.selectedPersona = at >= 0 ? at : 0
+    const selectedAt = selected === undefined ? -1 : kept.findIndex((persona) => persona === selected)
+    if (selectedAt >= 0) {
+        if (dropped > 0) {
+            db.personas = kept
+        }
+        db.selectedPersona = selectedAt
+        return { dropped, added: 'none' }
     }
-    return dropped
+    db.personas = [...kept, {
+        name: db.username ?? 'User',
+        personaPrompt: db.personaPrompt ?? '',
+        icon: db.userIcon ?? '',
+        note: db.userNote ?? '',
+        largePortrait: false,
+    }]
+    db.selectedPersona = kept.length
+    return { dropped, added: 'buffer' }
 }

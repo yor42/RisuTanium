@@ -54,6 +54,9 @@ const getDbBackupsMock = vi.hoisted(() => vi.fn(async (): Promise<number[]> => [
 const noteMainFileBytesMock = vi.hoisted(() => vi.fn((_bytes: Uint8Array): void => { }))
 const characterURLImportMock = vi.hoisted(() => vi.fn((): void => { }))
 const setDatabaseMock = vi.hoisted(() => vi.fn((_data: Record<string, unknown>): void => { }))
+const saveDbMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
+const requestSaveNowMock = vi.hoisted(() => vi.fn((): void => { }))
+const markBootWriteMock = vi.hoisted(() => vi.fn((): void => { }))
 
 vi.mock('localforage', () => ({
     default: {
@@ -111,6 +114,11 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
     loadedStore: writable(false),
     alertStore: writable({ type: 'none', msg: 'n' }),
 }) as unknown as typeof import('src/ts/stores.svelte'))
+
+vi.mock(import('src/ts/bootWindow'), async (importOriginal) => ({
+    ...(await importOriginal()),
+    markBootWrite: markBootWriteMock,
+}))
 
 vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
     loadPlugins: vi.fn(async () => { }),
@@ -215,7 +223,8 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
         keys: vi.fn(async (): Promise<string[]> => []),
         removeItem: vi.fn(async () => { }),
     },
-    saveDb: vi.fn(async () => { }),
+    saveDb: saveDbMock,
+    requestSaveNow: requestSaveNowMock,
     getDbBackups: getDbBackupsMock,
     buildAssetKeepSet: vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })),
     getBasename: (p: string) => p.split('/').pop(),
@@ -262,7 +271,8 @@ function baseDb(extra: Record<string, unknown> = {}): Record<string, unknown> {
         formatversion: 999,
         characters: [{ chaId: 'a', name: 'A', type: 'character', chats: [] }],
         modules: [],
-        personas: [],
+        personas: [{ name: 'User', personaPrompt: '', icon: '', note: '', largePortrait: false, id: 'p0' }],
+        selectedPersona: 0,
         characterOrder: [],
         mainPrompt: 'fixture-main-prompt',
         loreBookToken: 8000,
@@ -359,6 +369,9 @@ beforeEach(() => {
     dbState.current = baseDb({ characters: [] })
     getDbBackupsMock.mockReset().mockResolvedValue([])
     noteMainFileBytesMock.mockClear()
+    saveDbMock.mockClear()
+    requestSaveNowMock.mockClear()
+    markBootWriteMock.mockClear()
     characterURLImportMock.mockReset().mockImplementation(() => { world.events.push('characterURLImport') })
     setDatabaseMock.mockReset().mockImplementation((data: Record<string, unknown>) => {
         world.events.push('setDatabase')
@@ -461,14 +474,137 @@ describe('loadData() repairs the persona list before the boot pass reads it (S13
         expect(tree.selectedPersona).toBe(0)
     })
 
-    test('(R) a personas value that is not a list becomes an empty list and the boot completes', async () => {
+    test('(R) a personas value that is not a list becomes the default persona and the boot completes', async () => {
         armLegacy(baseDb({ personas: {} }))
         const { loadData, loadedStore } = await freshLoadData()
+        const alerts = await import('src/ts/alert')
+        const toast = vi.spyOn(alerts, 'alertToast')
 
         await loadData()
 
+        const { language } = await import('src/lang')
+        const tree = lastInstalled()
+        expect(tree.personas).toHaveLength(1)
+        expect(tree.selectedPersona).toBe(0)
         expect(get(loadedStore)).toBe(true)
-        expect(lastInstalled().personas).toEqual([])
+        expect(toast.mock.calls.map((call) => call[0])).toEqual([language.personaListEmptyNotice])
+    })
+
+    test('(R) an empty persona list becomes one persona with an id, at index 0', async () => {
+        armLegacy(baseDb({ personas: [], username: 'Ann', userIcon: 'a.png', userNote: 'n' }))
+        const { loadData } = await freshLoadData()
+
+        await loadData()
+
+        const tree = lastInstalled()
+        const personas = tree.personas as Array<{ id: unknown, name: string, icon: string, note: string }>
+        expect(personas).toHaveLength(1)
+        expect(typeof personas[0].id).toBe('string')
+        expect(tree.selectedPersona).toBe(0)
+        expect([personas[0].name, personas[0].icon, personas[0].note]).toEqual(['Ann', 'a.png', 'n'])
+    })
+
+    test('(R) entries that are not objects leave the default persona and one joined notice', async () => {
+        armLegacy(baseDb({ personas: [null, 5], selectedPersona: 1 }))
+        const { loadData } = await freshLoadData()
+        const alerts = await import('src/ts/alert')
+        const toast = vi.spyOn(alerts, 'alertToast')
+
+        await loadData()
+
+        const { language } = await import('src/lang')
+        const tree = lastInstalled()
+        expect(tree.personas).toHaveLength(1)
+        expect(tree.selectedPersona).toBe(0)
+        expect(toast.mock.calls.map((call) => call[0])).toEqual([[language.personasRepairedNotice(2), language.personaListEmptyNotice].join(' ')])
+    })
+
+    test('(R) an index outside the list adds the buffer persona at the end and selects it', async () => {
+        armLegacy(baseDb({
+            personas: [{ name: 'one', id: 'p1' }, { name: 'two', id: 'p2' }],
+            selectedPersona: 7,
+            username: 'Buf',
+            userIcon: 'b.png',
+            personaPrompt: 'bp',
+            userNote: 'bn',
+        }))
+        const { loadData } = await freshLoadData()
+        const alerts = await import('src/ts/alert')
+        const toast = vi.spyOn(alerts, 'alertToast')
+
+        await loadData()
+
+        const { language } = await import('src/lang')
+        const tree = lastInstalled()
+        const personas = tree.personas as Array<{ id: unknown, name: string, personaPrompt: string }>
+        expect(personas).toHaveLength(3)
+        expect(personas.slice(0, 2).map((p) => p.id)).toEqual(['p1', 'p2'])
+        expect(personas[2].name).toBe('Buf')
+        expect(personas[2].personaPrompt).toBe('bp')
+        expect(typeof personas[2].id).toBe('string')
+        expect(tree.selectedPersona).toBe(2)
+        expect(toast.mock.calls.map((call) => call[0])).toEqual([language.personaSelectionMissingNotice])
+    })
+
+    test('(R) a dropped selected persona adds the buffer persona and one joined notice', async () => {
+        armLegacy(baseDb({ personas: [{ name: 'a', id: 'pa' }, null], selectedPersona: 1, username: 'Buf' }))
+        const { loadData } = await freshLoadData()
+        const alerts = await import('src/ts/alert')
+        const toast = vi.spyOn(alerts, 'alertToast')
+
+        await loadData()
+
+        const { language } = await import('src/lang')
+        const tree = lastInstalled()
+        expect((tree.personas as Array<{ name: string }>).map((p) => p.name)).toEqual(['a', 'Buf'])
+        expect(tree.selectedPersona).toBe(1)
+        expect(toast.mock.calls.map((call) => call[0])).toEqual([[language.personasRepairedNotice(1), language.personaSelectionMissingNotice].join(' ')])
+    })
+
+    test('(G) a partial drop that keeps the selected persona shows only the dropped notice and still marks the boot write', async () => {
+        armLegacy(baseDb({ personas: [null, 5, { name: 'chosen', id: 'pc' }], selectedPersona: 2 }))
+        const { loadData } = await freshLoadData()
+        const alerts = await import('src/ts/alert')
+        const toast = vi.spyOn(alerts, 'alertToast')
+
+        await loadData()
+
+        const { language } = await import('src/lang')
+        expect(toast.mock.calls.map((call) => call[0])).toEqual([language.personasRepairedNotice(2)])
+        expect(markBootWriteMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('(R) a repair marks the boot write once, and a clean boot does not', async () => {
+        armLegacy(baseDb({ personas: [] }))
+        const repaired = await freshLoadData()
+        await repaired.loadData()
+        expect(lastInstalled().personas).toHaveLength(1)
+        expect(markBootWriteMock).toHaveBeenCalledTimes(1)
+
+        markBootWriteMock.mockClear()
+        world.events.length = 0
+        vi.resetModules()
+        armLegacy(baseDb())
+        const clean = await freshLoadData()
+        await clean.loadData()
+        expect(markBootWriteMock).not.toHaveBeenCalled()
+    })
+
+    test('the repair asks for no save of its own: the save mock is called as often as on a clean boot (stops at its precondition before the fix)', async () => {
+        armLegacy(baseDb())
+        const clean = await freshLoadData()
+        await clean.loadData()
+        const cleanSaves = saveDbMock.mock.calls.length
+
+        saveDbMock.mockClear()
+        vi.resetModules()
+        armLegacy(baseDb({ personas: [] }))
+        const repaired = await freshLoadData()
+        await repaired.loadData()
+
+        expect(lastInstalled().personas).toHaveLength(1)
+        expect(saveDbMock.mock.calls.length).toBe(cleanSaves)
+        expect(requestSaveNowMock).not.toHaveBeenCalled()
     })
 
     test('(G) a clean persona list keeps its entries and ids', async () => {
@@ -480,5 +616,17 @@ describe('loadData() repairs the persona list before the boot pass reads it (S13
         const tree = lastInstalled()
         expect((tree.personas as Array<{ id: string }>).map((p) => p.id)).toEqual(['p1', 'p2'])
         expect(tree.selectedPersona).toBe(1)
+    })
+
+    test('(G) a clean persona list shows no notice and marks nothing', async () => {
+        armLegacy(baseDb())
+        const { loadData } = await freshLoadData()
+        const alerts = await import('src/ts/alert')
+        const toast = vi.spyOn(alerts, 'alertToast')
+
+        await loadData()
+
+        expect(toast).not.toHaveBeenCalled()
+        expect(markBootWriteMock).not.toHaveBeenCalled()
     })
 })

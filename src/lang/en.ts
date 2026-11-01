@@ -2388,6 +2388,8 @@ export const languageEnglish = {
         `RisuAI cannot save ${name} at all: it has never been saved, and its data is not valid (a plugin may have changed it). It is not being saved, so it will be lost if the tab closes or reloads before it is fixed. Everything else is still saved, and RisuAI keeps trying quietly.`,
     personasRepairedNotice: (count: number) =>
         `RisuAI left out ${count} persona${count === 1 ? '' : 's'} that ${count === 1 ? 'was' : 'were'} not valid data. A plugin may have written ${count === 1 ? 'it' : 'them'}.`,
+    personaListEmptyNotice: `No usable persona was left in the persona list, so RisuTanium added one from your user name and icon and selected it.`,
+    personaSelectionMissingNotice: `The selected persona was missing from the persona list, so RisuTanium added one from your current user name, icon, persona prompt and note and selected it.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `The backup was loaded after RisuAI repaired its character list: ${[
             dropped > 0 ? `${dropped} entr${dropped === 1 ? 'y that is' : 'ies that are'} not a character ${dropped === 1 ? 'was' : 'were'} left out` : '',

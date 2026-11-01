@@ -2247,6 +2247,8 @@ export const languageChinese = {
         `RisuAI 完全无法保存 ${name}：它从未被保存过，且数据无效（可能是插件修改了它）。它没有被保存，因此如果在问题解决之前关闭或刷新标签页，它将丢失。其他所有内容仍会正常保存，RisuAI 会在后台持续重试。`,
     "personasRepairedNotice": (count: number) =>
         `RisuAI 排除了 ${count} 个不是有效数据的人设。这可能是插件写入的。`,
+    "personaListEmptyNotice": `人设列表中没有剩余的可用人设，因此 RisuTanium 根据你的用户名和图标添加了一个人设并将其选中。`,
+    "personaSelectionMissingNotice": `所选人设不在人设列表中，因此 RisuTanium 根据你当前的用户名、图标、人设提示词和备注添加了一个人设并将其选中。`,
     "restoreRepairedNotice": (dropped: number, changed: number, recovered: number) =>
         `RisuAI 修复角色列表后已加载此备份：${[
             dropped > 0 ? `${dropped} 个不是角色的条目已被排除` : '',

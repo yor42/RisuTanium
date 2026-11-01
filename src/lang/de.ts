@@ -2249,6 +2249,8 @@ export const languageGerman = {
         `RisuAI kann ${name} überhaupt nicht speichern: Es wurde noch nie gespeichert, und die Daten sind ungültig (möglicherweise hat ein Plugin sie verändert). Es wird nicht gespeichert und geht daher verloren, wenn der Tab geschlossen oder neu geladen wird, bevor das Problem behoben ist. Alles andere wird weiterhin gespeichert, und RisuAI versucht es still weiter.`,
     "personasRepairedNotice": (count: number) =>
         `RisuAI hat ${count} ${count === 1 ? 'Persona' : 'Personas'} ausgelassen, deren Daten ungültig waren. Möglicherweise hat ein Plugin sie geschrieben.`,
+    "personaListEmptyNotice": `In der Persona-Liste war keine verwendbare Persona mehr vorhanden, daher hat RisuTanium aus Ihrem Benutzernamen und Symbol eine hinzugefügt und ausgewählt.`,
+    "personaSelectionMissingNotice": `Die ausgewählte Persona fehlte in der Persona-Liste, daher hat RisuTanium aus Ihrem aktuellen Benutzernamen, Symbol, Persona-Prompt und Ihrer Notiz eine hinzugefügt und ausgewählt.`,
     "restoreRepairedNotice": (dropped: number, changed: number, recovered: number) =>
         `Das Backup wurde geladen, nachdem RisuAI seine Charakterliste repariert hat: ${[
             dropped > 0 ? `${dropped} ${dropped === 1 ? 'Eintrag, der kein Charakter ist, wurde' : 'Einträge, die keine Charaktere sind, wurden'} ausgelassen` : '',

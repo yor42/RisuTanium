@@ -2292,6 +2292,8 @@ export const languageChineseTraditional = {
         `RisuAI 完全無法儲存 ${name}：它從未被儲存過，且資料無效（可能是外掛修改了它）。它並未儲存，因此如果在問題解決之前關閉或重新整理分頁，它將遺失。其他所有內容仍會正常儲存，RisuAI 會在背景持續重試。`,
     "personasRepairedNotice": (count: number) =>
         `RisuAI 排除了 ${count} 個不是有效資料的使用者人設。這可能是外掛寫入的。`,
+    "personaListEmptyNotice": `使用者人設清單中沒有剩餘的可用人設，因此 RisuTanium 根據你的使用者名稱和圖示新增了一個人設並將其選取。`,
+    "personaSelectionMissingNotice": `所選的使用者人設不在人設清單中，因此 RisuTanium 根據你目前的使用者名稱、圖示、人設提示詞和備註新增了一個人設並將其選取。`,
     "restoreRepairedNotice": (dropped: number, changed: number, recovered: number) =>
         `RisuAI 修復角色列表後已載入此備份：${[
             dropped > 0 ? `${dropped} 個不是角色的項目已被排除` : '',
