@@ -20,8 +20,14 @@ import { previousFrom } from '../../store2/codec'
 import { encodeScoped } from '../../store2/codec/scoped'
 import type { EncodedTree } from '../../store2/codec'
 import { createSaveEncoder, type SaveEncoder, type SavePassRequest } from '../../store2/saveEncoder'
-import { setSplitClockForTest, startSavePass, type SavePassMeterHandle, type SavePassSplit } from '../../store2/savePassMeter'
+import {
+    beginSavePre, finishSavePass, noteLiveCheck, noteSavePre, setSplitClockForTest, startSavePass, type SavePassMeterHandle, type SavePassSplit,
+} from '../../store2/savePassMeter'
+import { runStore2SaveLoop, type Store2LoopPort } from '../../store2/saveLoop'
 import type { Database } from '../../database.svelte'
+import type { toSaveType } from '../../risuSave'
+import { until } from '../saveLoopWorld'
+import { startStore2 } from '../store2SaveKit'
 import { asDatabase, buildSmall, encodeWith, fakeLists, seededEnv, type Obj } from './codecFixtures'
 
 const NOW = 1_700_000_000_000
@@ -291,5 +297,160 @@ describe('the split of a module tick', () => {
         expect(second.seq).toBe((first.seq ?? 0) + 1)
         expect(first.crossOriginIsolated === null || typeof first.crossOriginIsolated === 'boolean').toBe(true)
         expect(first.retry).toBe(false)
+    })
+})
+
+describe('the pre-plan scans and the liveCheck tally (CHORE-17 stage 0)', () => {
+    const SPIN_MS = 4
+
+    function spin(ms: number): void {
+        const end = performance.now() + ms
+        while (performance.now() < end) {
+            // Busy wait: a span the meter must see.
+        }
+    }
+
+    interface LoopRig {
+        tracker: toSaveType
+        state: { due: boolean, dirty: boolean }
+        liveChecks: { calls: number }
+        stop(): void
+    }
+
+    /** The save loop over a real memory backend with a hand-built port; `snapshotTaken` and `liveCheck` each take SPIN_MS. */
+    async function startLoop(db: Database, idleNet: { intervalMs: number, moduleIntervalMs: number, backstopMs: number } | null): Promise<LoopRig> {
+        const kit = await startStore2({ db, idleNet })
+        const tracker: toSaveType = { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
+        const state = { due: false, dirty: false }
+        const liveChecks = { calls: 0 }
+        let stopped = false
+        let tail: Promise<void> = Promise.resolve()
+        const idle = () => new Promise<void>((resolve) => {
+            if (!stopped) {
+                setTimeout(resolve, 2)
+            }
+        })
+        const port: Store2LoopPort = {
+            tracker,
+            reloadFlag: { state: false },
+            getDatabase: () => db,
+            mergeBack(live, snapshot) {
+                live.modules ||= snapshot.modules
+            },
+            liveCheck: () => {
+                liveChecks.calls += 1
+                spin(SPIN_MS)
+            },
+            sweep: () => {},
+            isDue: () => state.due,
+            isDirty: () => state.dirty,
+            hasDrafts: () => false,
+            beginIteration() {
+                state.due = false
+            },
+            endIteration: () => {},
+            snapshotTaken() {
+                spin(SPIN_MS)
+                state.dirty = false
+            },
+            requestPass() {
+                state.dirty = true
+                state.due = true
+            },
+            unsavable: () => {},
+            saved: () => {},
+            broadcast: () => {},
+            peerHeard: () => false,
+            setStopped: () => {},
+            reportFailure: () => 1,
+            reportUncountedFailure: () => 1,
+            async withWriteLock(work) {
+                const before = tail
+                let release: () => void = () => {}
+                tail = new Promise<void>((resolve) => { release = resolve })
+                await before
+                try {
+                    return await work()
+                } finally {
+                    release()
+                }
+            },
+            wait: idle,
+            sleep: () => idle(),
+            sleepForever: () => new Promise<never>(() => {}),
+            now: () => Date.now(),
+            yieldNow: () => new Promise<void>((resolve) => setTimeout(resolve, 0)),
+        }
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+        runStore2SaveLoop(kit.context, port).catch(() => {})
+        const rig: LoopRig = { tracker, state, liveChecks, stop: () => { stopped = true } }
+        rigs.push(rig)
+        return rig
+    }
+
+    const rigs: LoopRig[] = []
+
+    // A stopped loop finishes its turn in flight and then waits forever; the pause lets it do so before the next test resets the meter.
+    afterEach(async () => {
+        for (const rig of rigs.splice(0)) {
+            rig.stop()
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 50))
+    })
+
+    test('a marked pass records the snapshot and the marks scans and no residents scan', async () => {
+        const db = buildSmall(3)
+        const rig = await startLoop(db, null)
+        rig.tracker.character.push(chaIdOf(db, 0))
+        rig.state.dirty = true
+        rig.state.due = true
+        await until(() => meterOf().all().some(record => record.pre !== undefined), 'the marked pass record', 4000)
+        const pre = meterOf().all().find(record => record.pre !== undefined)?.pre
+        expect(pre?.snapshotMs).toBeGreaterThanOrEqual(SPIN_MS - 1)
+        expect(typeof pre?.marksMs).toBe('number')
+        expect(pre?.residentsMs).toBeNull()
+    })
+
+    test('a tick pass records the residents scan and no snapshot or marks scan', async () => {
+        const db = buildSmall(3)
+        await startLoop(db, { intervalMs: 1, moduleIntervalMs: 1, backstopMs: 30_000 })
+        await until(() => meterOf().all().some(record => record.kind === 'tick'), 'a tick pass record', 4000)
+        const pre = meterOf().all().find(record => record.kind === 'tick')?.pre
+        expect(typeof pre?.residentsMs).toBe('number')
+        expect(pre?.snapshotMs).toBeNull()
+        expect(pre?.marksMs).toBeNull()
+    })
+
+    test('every loop turn counts one liveCheck, and the last turn\'s span is the call\'s own', async () => {
+        const db = buildSmall(2)
+        const rig = await startLoop(db, null)
+        await until(() => rig.liveChecks.calls >= 2, 'two loop turns', 4000)
+        const tally = meterOf().liveCheck()
+        expect(tally.n).toBe(rig.liveChecks.calls)
+        expect(tally.lastMs).toBeGreaterThanOrEqual(SPIN_MS - 1)
+        expect(tally.totalMs).toBeGreaterThanOrEqual(tally.n * (SPIN_MS - 1))
+    })
+
+    test('a scan noted outside an attempt, or with the switch off, leaves no pre and no tally', () => {
+        vi.stubGlobal('localStorage', { getItem: () => null })
+        beginSavePre()
+        noteSavePre('marksMs', 5)
+        noteLiveCheck(5)
+        const started = startSavePass()
+        expect(started).toBeNull()
+        finishSavePass(1, { whole: false }, false, 0)
+        expect(meterOf().all().every(record => record.pre === undefined)).toBe(true)
+        expect(meterOf().liveCheck()).toEqual({ n: 0, totalMs: 0, lastMs: 0 })
+    })
+
+    test('scans of an attempt that never reached the encoder do not leak into the next attempt\'s record', () => {
+        const target = {}
+        beginSavePre()
+        noteSavePre('marksMs', 9)
+        beginSavePre()
+        noteSavePre('snapshotMs', 2)
+        const started = startSavePass(target)
+        finishSavePass(started, { whole: false }, false, 0)
+        expect(meterOf().last()?.pre).toEqual({ snapshotMs: 2, marksMs: null, residentsMs: null })
     })
 })

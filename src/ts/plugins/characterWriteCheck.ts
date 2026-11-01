@@ -1,4 +1,5 @@
 import { isCharacterEntry, isMissingCharacterId, isUsableCharacterId } from '../storage/characterIds'
+import { isLightEntry, lightEntryRefusal, LIGHT_ENTRY_SINGLE_MESSAGE } from './lightCharacters'
 
 /**
  * What a plugin's write to the character list may not do: leave `characters`
@@ -80,6 +81,9 @@ export function moduleListProblem(incoming: unknown): string | null {
  * replaced character already has that same id.
  */
 export function singleCharacterProblem(incoming: unknown, replaced: unknown): string | null {
+    if (isLightEntry(incoming)) {
+        return LIGHT_ENTRY_SINGLE_MESSAGE
+    }
     if (!isCharacterEntry(incoming)) {
         return 'The character must be an object.'
     }
@@ -115,6 +119,15 @@ export function selectedCharacterMismatch(incoming: unknown, replaced: unknown):
 /** Why a write of the keys of `newDb` is refused, given the page's database. */
 export function databaseWriteProblem(live: { characters?: readonly unknown[] }, newDb: Record<string, unknown>): string | null {
     if (Object.hasOwn(newDb, 'characters')) {
+        if (Array.isArray(newDb.characters)) {
+            // Before the list check: a light entry that cannot be written is refused whole, whatever its id.
+            for (const entry of newDb.characters) {
+                const light = isLightEntry(entry) ? lightEntryRefusal(entry) : null
+                if (light !== null) {
+                    return light
+                }
+            }
+        }
         const problem = characterListProblem(live.characters, newDb.characters)
         if (problem !== null) {
             return problem

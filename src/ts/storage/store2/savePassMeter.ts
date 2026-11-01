@@ -110,6 +110,30 @@ export interface SavePassRecord {
     /** Null when the page does not report it. Without isolation timers resolve to about 100 microseconds. */
     crossOriginIsolated?: boolean | null
     split?: SavePassSplit
+    /** The loop's scans before the plan, noted since the attempt began. Present when the pass was metered. */
+    pre?: SavePassPre
+}
+
+/**
+ * The save loop's synchronous scans before the encoder plans (CHORE-17 stage 0). Each is null when the pass did not take
+ * that step: a tick takes no snapshot, a marked pass no residents scan.
+ */
+export interface SavePassPre {
+    /** `takeStore2Snapshot`. */
+    snapshotMs: number | null
+    /** `marksOf`: the present-id scan and the mark filter. */
+    marksMs: number | null
+    /** `residentChaIds`. */
+    residentsMs: number | null
+}
+
+export type SavePassPreField = keyof SavePassPre
+
+/** The loop's per-turn `liveCheck`, cumulative since the page started or the last `reset()`. */
+export interface LiveCheckTally {
+    n: number
+    totalMs: number
+    lastMs: number
 }
 
 export interface SplitCharacterRecord {
@@ -256,6 +280,7 @@ export interface SavePassMeterHandle {
     shadowSlots(): NetShadowSlot[]
     signalSlots(): SignalSlotRecord[]
     signalAcks(): SignalAckRecord[]
+    liveCheck(): LiveCheckTally
     /** The `read_range_text` invokes since the page started (the transport's counter; neither `reset()` nor an export's take clears it). */
     textReads(): number
     reset(): void
@@ -920,6 +945,49 @@ export function noteSignalAdopted(): void {
 let passSeq = 0
 let splitClock: (() => number) | null = null
 
+// Created on first use, for the same reason as the net-found state.
+let preStore: SavePassPre | null = null
+let liveCheckStore: LiveCheckTally | null = null
+
+function blankPre(): SavePassPre {
+    return { snapshotMs: null, marksMs: null, residentsMs: null }
+}
+
+/** The loop calls this when a pass attempt begins: scans noted before it belong to an earlier attempt that never reached the encoder. */
+export function beginSavePre(): void {
+    try {
+        preStore = switchedOn() ? blankPre() : null
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+/** The loop notes one scan before the plan; a scan noted twice in one attempt adds up. */
+export function noteSavePre(field: SavePassPreField, ms: number): void {
+    try {
+        if (preStore !== null) {
+            preStore[field] = (preStore[field] ?? 0) + ms
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
+/** The loop notes one `liveCheck` call, made every loop turn. */
+export function noteLiveCheck(ms: number): void {
+    try {
+        if (switchedOn()) {
+            installGlobal(globalThis)
+            liveCheckStore ??= { n: 0, totalMs: 0, lastMs: 0 }
+            liveCheckStore.n++
+            liveCheckStore.totalMs += ms
+            liveCheckStore.lastMs = ms
+        }
+    } catch {
+        // A measurement failure never reaches the save.
+    }
+}
+
 /** Replaces the split clock (a test's counting clock); null restores `performance.now()`. */
 export function setSplitClockForTest(clock: (() => number) | null): void {
     splitClock = clock
@@ -960,8 +1028,11 @@ const handle: SavePassMeterHandle = {
     shadowSlots: () => (shadowSlotStore ?? []).map(slot => ({ ...slot })),
     signalSlots: () => (signalSlotStore ?? []).map(slot => ({ ...slot })),
     signalAcks: () => (signalAckStore ?? []).map(entry => ({ ...entry, chaIds: [...entry.chaIds] })),
+    liveCheck: () => ({ ...(liveCheckStore ?? { n: 0, totalMs: 0, lastMs: 0 }) }),
     textReads: () => peekTextReadCount() ?? 0,
     reset: () => {
+        preStore = null
+        liveCheckStore = null
         verdictStore = null
         shadowStore = null
         shadowSlotStore = null
@@ -1251,6 +1322,10 @@ export function finishSavePass(
             record.retry = split.retry
             record.crossOriginIsolated = (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated ?? null
             record.split = split.summary()
+        }
+        if (preStore !== null) {
+            record.pre = preStore
+            preStore = null
         }
         pushLimited(passes, record)
         console.log('risu-measure-savepass', record)

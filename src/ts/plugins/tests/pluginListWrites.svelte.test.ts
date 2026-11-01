@@ -566,7 +566,7 @@ describe.each(SETTERS)('S2/S3 a plugin updates itself through %s', (kind) => {
         expect(confirms.texts[0]).toContain(A)
         expect(confirms.texts[0]).toContain('1.0.0')
         expect(confirms.texts[0]).toContain('1.1.0')
-        expect(result).toBeUndefined()
+        expect(result).toEqual({ lightKept: 0, lightLeftOut: 0 })
         expect(liveNames()).toEqual([A, B, U])
         expect(liveEntry(A).script).toBe(A_V2)
         expect(liveEntry(A).versionOfPlugin).toBe('1.1.0')

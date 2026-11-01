@@ -1,5 +1,6 @@
 import { allowedDbKeys, customProviderStore, getV2PluginAPIs, handlePluginInstallViaPlugin, pluginV2, type PluginV2ProviderArgument, type PluginV2ProviderOptions, type RisuPlugin } from "../plugins.svelte";
 import { SandboxHost } from "./factory";
+import { copyCharactersWithoutAlt, markPlainResult } from "./pluginCopy.svelte";
 import { acquireModule, ModuleAmbiguousError } from "src/ts/storage/store2/moduleAcquire";
 import { isModuleStub } from "src/ts/storage/moduleStub";
 import type { RisuModule } from "src/ts/process/modules";
@@ -30,8 +31,11 @@ import { registerMCPModule, registeredCustomPluginMCPs, unregisterMCPModule } fr
 import { setColdStorageItem, readColdStorageItem } from "src/ts/process/coldstorage.svelte";
 import { readArchivedCharacter, restoreArchivedForWrite } from "src/ts/process/coldCharacterAccess";
 import { captureChatAlt, keepCapturedChatAlt, keepLiveAlt, overwritesPlaceholder, placeholderAgainMessage, restoreArchivedTargets, withoutAlt, withoutAltChat, withoutAltIn } from "src/ts/plugins/chatAltBridge";
+import { MEASURE } from "src/ts/process/memory/measureFlag";
+import { startPluginRecord, type PluginRecordBuilder } from "../pluginCostMeter";
 import { incomingCharacterRefusal } from "../stubDowngrade";
 import { singleCharacterProblem } from "../characterWriteCheck";
+import { isLightEntry, lightCharacterEntries, LIGHT_ENTRY_SINGLE_MESSAGE, type LightWriteCounts } from "../lightCharacters";
 import { isColdChat } from "src/ts/process/coldstorageData";
 import { clearPluginStorageValues, readPluginStorageValue, readPluginUnitFromDb, removePluginStorageValue, writePluginStorageValue, writePluginUnitToDb } from "./pluginColdStorage";
 import { getResidency } from "src/ts/storage/store2/residencyActive";
@@ -783,6 +787,26 @@ async function setChatOfArchivedCharacter(chaId: string, chatIndex: number, chat
     setChatToIndexImpl(ready.index, chatIndex, chat, pluginName)
 }
 
+/** Measurement only: how many chats of the live characters hold `alt`, and how many alternative records they hold. Read after the copy, so the copy never reads `alt`. */
+function noteAltVolume(rec: PluginRecordBuilder, characters: readonly { chats?: readonly { alt?: readonly unknown[] }[] }[]): void {
+    try {
+        let altChats = 0
+        let altRecords = 0
+        for(const character of characters){
+            for(const chat of character?.chats ?? []){
+                if(chat !== null && typeof chat === 'object' && Array.isArray(chat.alt)){
+                    altChats++
+                    altRecords += chat.alt.length
+                }
+            }
+        }
+        rec.set('altChats', altChats)
+        rec.set('altRecords', altRecords)
+    } catch {
+        // A measurement failure never reaches the caller.
+    }
+}
+
 function snapshotChat(chats: Chat[] | undefined, chatIndex: number) {
     if(chats && chats[chatIndex]){
         return withoutAltChat($state.snapshot(chats[chatIndex]));
@@ -894,6 +918,10 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
     }
     const setGatedChar = async (char:any) => {
         await requireDatabasePermission('setChar')
+        // First, so a light entry never reaches the placeholder restore below.
+        if(isLightEntry(char)){
+            throw new Error(LIGHT_ENTRY_SINGLE_MESSAGE)
+        }
         // A full character over the selected archived-character placeholder restores it first.
         const selected = DBState.db.characters[get(selectedCharID)]
         if(overwritesPlaceholder(selected, char)){
@@ -1012,13 +1040,27 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             addPluginUnloadCallback(plugin.name, () => oldApis.removeRisuChatListener(mode, func as any));
         },
         removeRisuChatListener: oldApis.removeRisuChatListener,
-        setDatabaseLite: async (newDb:any) => {
+        // Fork-specific: both setters resolve how many light character entries were kept and left out
+        // (zeros when the write held none). Upstream resolves undefined.
+        setDatabaseLite: async (newDb:any): Promise<LightWriteCounts> => {
             await requireDatabasePermission('setDatabaseLite')
-            return oldApis.setDatabaseLite(newDb, plugin.name)
+            const counts: LightWriteCounts = { lightKept: 0, lightLeftOut: 0 }
+            await oldApis.setDatabaseLite(newDb, plugin.name, counts)
+            return counts
         },
-        setDatabase: async (newDb:any) => {
+        setDatabase: async (newDb:any): Promise<LightWriteCounts> => {
             await requireDatabasePermission('setDatabase')
-            return oldApis.setDatabase(newDb, plugin.name)
+            const counts: LightWriteCounts = { lightKept: 0, lightLeftOut: 0 }
+            await oldApis.setDatabase(newDb, plugin.name, counts)
+            return counts
+        },
+        // Fork-specific: the character list as light entries (no chats, lorebook, assets or messages), read from
+        // top-level fields only. Write them back through setDatabase; each is swapped for its live character.
+        getLightCharacters: async () => {
+            if(!await getPermission('db', 'periodically')){
+                return null
+            }
+            return lightCharacterEntries(DBState.db.characters)
         },
         loadPlugins: oldApis.loadPlugins,
         readImage: oldApis.readImage,
@@ -1032,8 +1074,11 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         saveAsset: oldApis.saveAsset,
         //Same functionality, but new implementation
         getDatabase: async (includeOnly:string[]|'all' = 'all') => {
+            const rec = MEASURE ? startPluginRecord('read') : null
             const conf = await getPermission('db', 'periodically');
+            rec?.lap('permissionMs')
             if(!conf){
+                rec?.finish()
                 return null;
             }
             const db = DBState.db
@@ -1042,20 +1087,34 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 if(includeOnly !== 'all' && !includeOnly.includes(key)){
                     continue;
                 }
-                (liteDB as any)[key] = $state.snapshot((db as any)[key]);
+                // The chats of the character list are copied without their
+                // alternatives; the live ones stay.
+                (liteDB as any)[key] = key === 'characters'
+                    ? copyCharactersWithoutAlt((db as any)[key])
+                    : $state.snapshot((db as any)[key]);
+                rec?.lap('snapshotMs', key)
             }
             // The chats of the copy lose their alternatives; the live ones stay.
             const copiedCharacters = (liteDB as { characters?: unknown }).characters
             if(Array.isArray(copiedCharacters)){
+                if(rec !== null){
+                    // The copy has no alternatives left to count, so the volume is read from the live list, after the copy.
+                    noteAltVolume(rec, db.characters)
+                    rec.restart()
+                }
                 withoutAltIn(copiedCharacters)
+                rec?.lap('withoutAltMs')
             }
             // A plugin only ever receives full modules: each module stub in the
             // live list is loaded and its body copied into the same index of the copy.
             const copiedModules = (liteDB as { modules?: RisuModule[] }).modules
             if(Array.isArray(copiedModules)){
                 await materialiseModuleStubs(db.modules, copiedModules)
+                rec?.lap('materialiseModulesMs')
             }
-            return liteDB;
+            rec?.finish()
+            // Persisted keys and module bodies, all copies: no stream, port or buffer to transfer.
+            return markPlainResult(liteDB);
         },
 
         installPlugin: (plugins: RisuPlugin[]) => handlePluginInstallViaPlugin(plugins, plugin.name),
@@ -1174,6 +1233,10 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         },
         setCharacterToIndex: async (index:number, char:any) => {
             await requireDatabasePermission('setCharacterToIndex')
+            // First, so a light entry never reaches the placeholder restore below.
+            if(isLightEntry(char)){
+                throw new Error(LIGHT_ENTRY_SINGLE_MESSAGE)
+            }
             // A full character over an archived-character placeholder restores it first; the slot is read
             // again afterwards, because the list may have changed while the restore waited.
             const slotBefore = DBState.db.characters[Object.keys(DBState.db.characters)[index]]

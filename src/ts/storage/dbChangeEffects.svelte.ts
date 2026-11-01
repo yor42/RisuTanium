@@ -4,6 +4,7 @@ import type { toSaveType } from "./risuSave"
 import { appendIfAbsent } from "./characterSaveMarks"
 import { MEASURE } from "../process/memory/measureFlag"
 import { classifyChange, ensureInstalled, noteIdentity, notePartitionTag, noteSignal } from "./netSignalMeter"
+import { startPluginRecord } from "../plugins/pluginCostMeter"
 
 export interface DbChangeEffectOptions {
     tracker: toSaveType
@@ -478,6 +479,8 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
     // needs out of `opts.seed` above, so release it here.
     opts.seed = undefined
     $effect(() => {
+        const identityRec = MEASURE ? startPluginRecord('identity') : null
+        let newMarks = 0
         const chars = DBState.db.characters
         const len = chars?.length ?? 0
         for (let i = 0; i < len; i++) {
@@ -494,6 +497,7 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
                         if (MEASURE) {
                             noteIdentity(chaId)
                         }
+                        newMarks++
                         opts.markChanged(true)
                     }
                 }
@@ -501,5 +505,10 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
             }
         }
         identityRanOnce = true
+        if (identityRec !== null) {
+            identityRec.set('newMarks', newMarks)
+            identityRec.set('characters', len)
+            identityRec.finish()
+        }
     })
 }

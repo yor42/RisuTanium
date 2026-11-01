@@ -14,8 +14,9 @@ import type { CommitKey } from './format'
 import type { Store2SaveContext } from './saveActive'
 import { createSaveEncoder, type SavePassRequest, type SavePlan } from './saveEncoder'
 import {
-    noteNetSlotBegin, noteNetSlotEnd, noteNetSlotMs, noteNetSlotPart, noteNetSlotPassMs, noteSignalAck, noteSignalAdopted, noteSignalKept,
-    noteSignalPassStart, noteSignalResidents, noteSignalSkipped, noteSignalSlotClock, noteSignalUnchanged, noteSignalVerdict, peekSaveMarks,
+    beginSavePre, noteLiveCheck, noteNetSlotBegin, noteNetSlotEnd, noteNetSlotMs, noteNetSlotPart, noteNetSlotPassMs, noteSavePre, noteSignalAck,
+    noteSignalAdopted, noteSignalKept, noteSignalPassStart, noteSignalResidents, noteSignalSkipped, noteSignalSlotClock, noteSignalUnchanged,
+    noteSignalVerdict, peekSaveMarks,
 } from './savePassMeter'
 import { startYieldGaps, type YieldGapRecorder } from './saveYieldMeter'
 import { tooLargeLabel } from './tooLargeLabel'
@@ -778,12 +779,16 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     }
 
     function marksOf(snapshot: Store2Snapshot, db: Database): Set<string> {
+        const startedAt = MEASURE ? performance.now() : 0
         const present = presentChaIds(db)
         const marked = new Set<string>()
         for (const chaId of snapshot.toSave.character) {
             if (typeof chaId === 'string' && present.has(chaId)) {
                 marked.add(chaId)
             }
+        }
+        if (MEASURE) {
+            noteSavePre('marksMs', performance.now() - startedAt)
         }
         return marked
     }
@@ -824,7 +829,11 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (modulesDue) {
             lastModuleNetAt = now
         }
+        const residentsStartedAt = MEASURE ? performance.now() : 0
         const residents = residentChaIds(db)
+        if (MEASURE) {
+            noteSavePre('residentsMs', performance.now() - residentsStartedAt)
+        }
         if (residents.length === 0) {
             return { marked: new Set(), modules: modulesDue, whole: false, net: { chaId: null, modules: modulesDue }, ...yielding }
         }
@@ -1072,7 +1081,14 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (MEASURE && !tick) {
             noteSignalPassStart()
         }
+        if (MEASURE) {
+            beginSavePre()
+        }
+        const snapshotStartedAt = MEASURE && !tick ? performance.now() : 0
         run.snapshot = tick ? null : takeStore2Snapshot(port)
+        if (MEASURE && !tick) {
+            noteSavePre('snapshotMs', performance.now() - snapshotStartedAt)
+        }
         const read = await committer.readCommit()
         peerSignal = false
         const judged = judge(read)
@@ -1624,7 +1640,16 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             if (port.peerHeard()) {
                 peerSignal = true
             }
-            port.liveCheck()
+            if (MEASURE) {
+                const liveCheckStartedAt = performance.now()
+                try {
+                    port.liveCheck()
+                } finally {
+                    noteLiveCheck(performance.now() - liveCheckStartedAt)
+                }
+            } else {
+                port.liveCheck()
+            }
             if (park !== null) {
                 // A refused bulk whose own-marker clear did not land would otherwise keep a marker standing for peers while parked.
                 if (markerPending) {

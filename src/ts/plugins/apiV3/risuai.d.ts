@@ -366,6 +366,46 @@ interface Persona {
 }
 
 /**
+ * Fork-specific (not upstream RisuAI): one character or group as
+ * `getLightCharacters` returns it. It carries what the character lists show and
+ * no chats, lorebook, assets or messages. Every object field is a fresh copy.
+ */
+interface PluginLightCharacter {
+    /** Always `true`; marks the entry as light so a write swaps it for the live character. */
+    lightEntry: true;
+    chaId: string;
+    name: string;
+    image?: string;
+    type: 'character' | 'group';
+    /** The description the character list shows, cut to a bounded length. */
+    creatorNotes: string;
+    /** Characters only. */
+    tags?: string[];
+    /** Characters only: the edited creator when set, else the card's creator. */
+    creator?: string;
+    /** Groups only: the member `chaId`s. */
+    characters?: string[];
+    lastInteraction?: number;
+    trashTime?: number;
+    /** The number of chats of the character, archived or not. */
+    chatCount: number;
+    /** Whether the character is archived (its data is held in cold storage). */
+    archived: boolean;
+}
+
+/**
+ * Fork-specific (not upstream RisuAI): what `setDatabase` and `setDatabaseLite`
+ * resolve to. Upstream RisuAI resolves `undefined`, so treat `undefined` as
+ * "no light entries".
+ */
+interface PluginLightWriteCounts {
+    /** Light entries swapped for the live character that holds their `chaId`. */
+    lightKept: number;
+    /** Light entries left out because no live character held their `chaId` (or not enough of them). */
+    lightLeftOut: number;
+}
+
+/**
  * Database subset with limited access to allowed keys only.
  * Plugins can only access these specific database properties for security.
  */
@@ -1669,6 +1709,32 @@ interface RisuaiPluginAPI {
     getDatabase(includeOnly:string[]|'all' = 'all'): Promise<DatabaseSubset|null>;
 
     /**
+     * **Fork-specific (not upstream RisuAI; on upstream the call rejects with
+     * "method not found").** The character list as light entries: for each
+     * character or group its `chaId`, name, image, type, shortened description,
+     * tags, creator, member list, `lastInteraction`, `trashTime`, chat count
+     * and whether it is archived. It reads no chats, lorebook, assets or
+     * messages, so it is far cheaper than `getDatabase(['characters'])`, and an
+     * archived character is not restored. Resolves `null` when the `'db'`
+     * permission is denied.
+     *
+     * Write the list back through `setDatabase` or `setDatabaseLite`. Each
+     * light entry is replaced by the live character with the same `chaId`
+     * (the k-th entry of an id by the k-th live holder), so the character's
+     * chats, lorebook, assets and alternatives are never taken from the
+     * plugin. Fields you edit on a light entry are ignored. The list may mix
+     * light entries with full characters, in any order; entries you drop are
+     * dropped. A light entry whose character is gone is left out. Both
+     * setters resolve `{ lightKept, lightLeftOut }`.
+     *
+     * A light entry with a `chats` key, or without a `chaId`, makes the whole
+     * call reject before anything is written. `setCharacter` and
+     * `setCharacterToIndex` reject a light entry; read the character with
+     * `getCharacterFromIndex` to edit it.
+     */
+    getLightCharacters(): Promise<PluginLightCharacter[]|null>;
+
+    /**
      * Sets the database (lightweight save)
      * @param db - DatabaseSubset object to save
      *
@@ -1729,8 +1795,14 @@ interface RisuaiPluginAPI {
      * that check and before its promise settles; when it is denied the
      * promise rejects with an `Error` naming the permission and nothing is
      * written.
+     *
+     * **Fork-specific note (not upstream RisuAI):** `characters` may hold
+     * light entries from `getLightCharacters`; see there. The promise resolves
+     * `{ lightKept, lightLeftOut }` (both 0 when the call held none). Upstream
+     * RisuAI resolves `undefined`, so a plugin that also runs there must treat
+     * `undefined` as no counts.
      */
-    setDatabaseLite(db: DatabaseSubset): Promise<void>;
+    setDatabaseLite(db: DatabaseSubset): Promise<PluginLightWriteCounts>;
 
     /**
      * Sets the database (full save with sync)
@@ -1784,8 +1856,14 @@ interface RisuaiPluginAPI {
      * that character. If a restore fails, or a target is archived again before
      * the write, the promise rejects and nothing is written, the plugin list
      * included.
+     *
+     * **Fork-specific note (not upstream RisuAI):** `characters` may hold
+     * light entries from `getLightCharacters`; see there. The promise resolves
+     * `{ lightKept, lightLeftOut }` (both 0 when the call held none). Upstream
+     * RisuAI resolves `undefined`, so a plugin that also runs there must treat
+     * `undefined` as no counts.
      */
-    setDatabase(db: DatabaseSubset): Promise<void>;
+    setDatabase(db: DatabaseSubset): Promise<PluginLightWriteCounts>;
 
     // ========== Color Scheme APIs ==========
 

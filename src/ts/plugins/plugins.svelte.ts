@@ -16,6 +16,7 @@ import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { incomingCharacterRefusal, withoutStubDowngrades } from "./stubDowngrade";
 import { withoutModuleStubDowngrades } from "./moduleStubGuard";
 import { databaseWriteProblem, selectedCharacterMismatch, singleCharacterProblem } from "./characterWriteCheck";
+import { hasLightEntry, LIGHT_ENTRY_WRAPPER_MESSAGE, swapLightEntries, type LightWriteCounts } from "./lightCharacters";
 import { keepLiveAlt, overwritesPlaceholder, placeholderAgainMessage, placeholderTargets, restoreArchivedTargets } from "./chatAltBridge";
 import { isCharacterEntry } from "../storage/characterIds";
 import { PLUGIN_STORAGE_INDEX_KEY, PLUGIN_STORAGE_LEGACY_MAP_KEY } from "../process/pluginStorageIndex";
@@ -38,6 +39,8 @@ import {
     type PreparedPlugin,
 } from "./pluginBatch";
 import { clearSupaMemoryIfEmptyIn } from "../process/memory/supaResume";
+import { MEASURE } from "../process/memory/measureFlag";
+import { startPluginRecord, type PluginRecordBuilder } from "./pluginCostMeter";
 import {
     fillMissingCharacterInstallIds,
     fillMissingDatabaseInstallIds,
@@ -607,19 +610,33 @@ function withHeldAssetLists(db: ReturnType<typeof getDatabase>, incoming: Return
  * `modules` are reconciled against the live lists at this moment, so a
  * character restored or a module loaded while a prompt was open is not
  * downgraded. Returns the object that was written, which is a copy when a
- * placeholder was swapped out.
+ * placeholder was swapped out. Each light character entry is replaced by its
+ * live holder before any key is written, so no light entry reaches the list;
+ * `lightCounts`, when given, receives how many were kept and left out.
  */
-function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginName: string | undefined) {
+function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginName: string | undefined, rec: PluginRecordBuilder | null = null, lightCounts?: LightWriteCounts) {
     db.pluginCustomStorage ??= {}
+    rec?.restart()
     newDb = withoutStubDowngrades(db.characters, newDb, pluginName)
     newDb = withoutModuleStubDowngrades(db.modules, newDb, pluginName)
+    rec?.lap('stubDowngradesMs')
     if (Array.isArray(newDb.characters)) {
         const beforeCharacters = db.characters
         fillMissingDatabaseInstallIds(newDb)
         warnDuplicatesInDatabaseInstall(newDb, beforeCharacters, pluginName)
+        rec?.lap('idsDuplicatesMs')
         // After the ids are filled and before any key is written: the live alternatives are read from the
         // live list as it is now, and the incoming characters carry them into the new list.
         keepLiveAlt(db.characters, newDb.characters)
+        rec?.lap('keepLiveAltMs')
+        // After keepLiveAlt, so a swapped-in live holder keeps its own alternatives untouched.
+        if (hasLightEntry(newDb.characters)) {
+            newDb = { ...newDb, characters: swapLightEntries(db.characters, newDb.characters, lightCounts ?? { lightKept: 0, lightLeftOut: 0 }) }
+        }
+        if (rec !== null) {
+            noteSameObject(rec, db.characters, newDb.characters)
+            rec.restart()
+        }
     }
     for (const key of Object.keys(newDb)) {
         if (key === 'plugins') {
@@ -638,12 +655,42 @@ function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginN
             db.pluginCustomStorage[key] = newDb[key];
         }
     }
+    rec?.lap('keyLoopMs')
     // Cleared through the live list: the reactive proxy's set trap does not write to the raw
     // object, so the stored chats are cleared through the stored reference.
     if (Array.isArray(newDb.characters)) {
         clearSupaMemoryIfEmptyIn(db.characters)
     }
+    rec?.lap('clearSupaMemoryMs')
     return newDb
+}
+
+/**
+ * Measurement only. How many incoming characters are `===` a live element of the list they are about to replace, and the
+ * first 50 chaIds. The identity tracker has already seen such an element, so only the setter's mark-all marks it.
+ */
+function noteSameObject(rec: PluginRecordBuilder, live: unknown, incoming: unknown): void {
+    try {
+        if (!Array.isArray(live) || !Array.isArray(incoming)) {
+            return
+        }
+        const held = new Set<unknown>(live)
+        let same = 0
+        const chaIds: string[] = []
+        for (const entry of incoming) {
+            if (entry !== null && typeof entry === 'object' && held.has(entry)) {
+                same++
+                const chaId = (entry as { chaId?: unknown }).chaId
+                if (chaIds.length < 50 && typeof chaId === 'string') {
+                    chaIds.push(chaId)
+                }
+            }
+        }
+        rec.set('sameObject', same)
+        rec.set('sameObjectChaIds', chaIds)
+    } catch {
+        // A measurement failure never reaches the caller.
+    }
 }
 
 /**
@@ -709,6 +756,15 @@ function markLiteCharacters(db: ReturnType<typeof getDatabase>, written: { chara
             markCharacterForSave(char?.chaId);
         }
     }
+}
+
+/** Measurement only: closes the mark-loop lap and notes how many `markCharacterForSave` calls the write made. */
+function noteMarkLoop(rec: PluginRecordBuilder | null, db: ReturnType<typeof getDatabase>, written: { characters?: unknown }): void {
+    if (rec === null) {
+        return
+    }
+    rec.lap('markLoopMs')
+    rec.set('marksRaised', Array.isArray(written.characters) ? (db.characters?.length ?? 0) : 0)
 }
 
 //#endregion
@@ -931,6 +987,10 @@ export const getV2PluginAPIs = () => {
                 },
                 set(target, prop, value) {
                     if (typeof prop === 'string' && allowedDbKeys.includes(prop)) {
+                        if (prop === 'characters' && hasLightEntry(value)) {
+                            // This assignment has no swap; light entries are written through setDatabase.
+                            throw new Error(LIGHT_ENTRY_WRAPPER_MESSAGE)
+                        }
                         if (prop === 'characters' || prop === 'modules') {
                             const problem = databaseWriteProblem(target, { [prop]: value })
                             if (problem !== null) {
@@ -1003,9 +1063,13 @@ export const getV2PluginAPIs = () => {
                 return Object.keys(db.pluginCustomStorage).length;
             }
         },
-        setDatabaseLite: (newDb: any, pluginName?: string): void | Promise<void> => {
+        setDatabaseLite: (newDb: any, pluginName?: string, lightCounts?: LightWriteCounts): void | Promise<void> => {
+            const rec = MEASURE ? startPluginRecord('write') : null
+            rec?.set('method', 'setDatabaseLite')
             const refusal = databaseWriteProblem(getDatabase(), newDb)
+            rec?.lap('writeProblemMs')
             if (refusal !== null) {
+                rec?.finish()
                 return Promise.reject(new Error(refusal))
             }
             const plan: PluginListPlan = Object.keys(newDb).includes('plugins')
@@ -1013,14 +1077,18 @@ export const getV2PluginAPIs = () => {
                 : { kind: 'idle' }
             // A full character written over an archived-character placeholder restores it first, which waits.
             const targets = placeholderTargets(getDatabase().characters, newDb.characters)
+            rec?.lap('placeholderTargetsMs')
             if (plan.kind !== 'changes' && targets.length === 0) {
                 // Nothing to ask: the other keys are written before this returns,
                 // and a plugin list that cannot be applied is a rejected promise,
                 // never a synchronous throw.
                 const db = getDatabase()
-                newDb = writeSetterKeys(db, newDb, pluginName)
+                newDb = writeSetterKeys(db, newDb, pluginName, rec, lightCounts)
                 DBState.db = db
+                rec?.lap('assignMs')
                 markLiteCharacters(db, newDb)
+                noteMarkLoop(rec, db, newDb)
+                rec?.finish()
                 return plan.kind === 'failed' ? Promise.reject(plan.error) : undefined
             }
             const classified = plan.kind === 'changes' ? plan.classified : null
@@ -1047,25 +1115,35 @@ export const getV2PluginAPIs = () => {
                 // From here to the key writes nothing awaits, so the list and the
                 // characters are checked and assigned against the same live state.
                 // A target put back into storage by a later restore refuses the whole write.
+                rec?.restart()
                 const placeholderAgain = placeholderTargets(getDatabase().characters, newDb.characters)[0]
+                rec?.lap('placeholderTargetsMs')
                 if (placeholderAgain !== undefined) {
+                    rec?.finish()
                     throw new Error(placeholderAgainMessage(placeholderAgain))
                 }
                 if (classified) {
                     failure ??= commitPluginChanges(classified)
                 }
                 const db = getDatabase()
-                newDb = writeSetterKeys(db, newDb, pluginName)
+                newDb = writeSetterKeys(db, newDb, pluginName, rec, lightCounts)
                 DBState.db = db
+                rec?.lap('assignMs')
                 markLiteCharacters(db, newDb)
+                noteMarkLoop(rec, db, newDb)
+                rec?.finish()
                 if (failure) {
                     throw failure
                 }
             })()
         },
-        setDatabase: async (newDb: any, pluginName?: string) => {
+        setDatabase: async (newDb: any, pluginName?: string, lightCounts?: LightWriteCounts) => {
+            const rec = MEASURE ? startPluginRecord('write') : null
+            rec?.set('method', 'setDatabase')
             const refusal = databaseWriteProblem(getDatabase(), newDb)
+            rec?.lap('writeProblemMs')
             if (refusal !== null) {
+                rec?.finish()
                 throw new Error(refusal)
             }
             const plan: PluginListPlan = Object.keys(newDb).includes('plugins')
@@ -1096,16 +1174,20 @@ export const getV2PluginAPIs = () => {
             // From here to the key writes nothing awaits, so the list and the
             // characters are checked and assigned against the same live state.
             // A target put back into storage by a later restore refuses the whole write.
+            rec?.restart()
             const placeholderAgain = placeholderTargets(getDatabase().characters, newDb.characters)[0]
+            rec?.lap('placeholderTargetsMs')
             if (placeholderAgain !== undefined) {
+                rec?.finish()
                 throw new Error(placeholderAgainMessage(placeholderAgain))
             }
             if (plan.kind === 'changes' && failure === null) {
                 failure = commitPluginChanges(plan.classified)
             }
             const db = getDatabase()
-            newDb = writeSetterKeys(db, newDb, pluginName)
+            newDb = writeSetterKeys(db, newDb, pluginName, rec, lightCounts)
             setDatabase(db);
+            rec?.lap('normalizerMs')
             // Same reasoning as markLiteCharacters -- this setter is shared by
             // both V2 (live wrapper, in-place edits) and V3 (getDatabase()
             // returns fresh snapshots; apiV3/v3.svelte.ts's makeRisuaiAPIV3()
@@ -1121,6 +1203,8 @@ export const getV2PluginAPIs = () => {
                     markCharacterForSave(char?.chaId);
                 }
             }
+            noteMarkLoop(rec, db, newDb)
+            rec?.finish()
             if (failure) {
                 throw failure
             }

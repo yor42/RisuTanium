@@ -196,6 +196,14 @@ describe('malformed whole-database writes are refused (S11)', () => {
         expect(liveIds()).toEqual(['a', 'b'])
     })
 
+    test('(R) T2-12 assigning a list that holds a light entry through the wrapper is refused, though the entry is valid', () => {
+        const wrapper = api().getDatabase() as unknown as Entry
+        const light = { lightEntry: true, chaId: 'a', name: 'A', type: 'character', creatorNotes: '', chatCount: 0, archived: false }
+        expect(() => { wrapper.characters = [light] }).toThrow(/setDatabase/)
+        expect(liveIds()).toEqual(['a', 'b'])
+        expect(live()[0].lightEntry).toBeUndefined()
+    })
+
     test('(R) setChar rejects an object that is not a character and an id that cannot be saved', () => {
         expect(() => api().setChar(5)).toThrow()
         expect(() => api().setChar({ chaId: 'preset', name: 'bad', type: 'character', chats: [] })).toThrow()

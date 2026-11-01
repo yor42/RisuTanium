@@ -16,6 +16,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database, character } from '../../../storage/database.svelte'
 import type { RisuPlugin } from '../../plugins.svelte'
+import type { LightWriteCounts } from '../../lightCharacters'
 
 //#region module mocks
 
@@ -403,7 +404,7 @@ describe('plugin reads never show a chat\'s alternatives', () => {
 
 describe('a plugin write that carries no alt keeps the live alternatives', () => {
     // regression reproducers: on the code that assigns the plugin's chats as they are, `alt` is gone
-    const writers: [string, () => Promise<void>][] = [
+    const writers: [string, () => Promise<void | LightWriteCounts>][] = [
         ['V3 setCharacter', () => api3().setCharacter(pluginCopy('a'))],
         ['V3 setChar', () => api3().setChar(pluginCopy('a'))],
         ['V3 setCharacterToIndex', () => api3().setCharacterToIndex(0, pluginCopy('a'))],
@@ -500,7 +501,7 @@ describe('a full character written over an archived placeholder restores it firs
         return copy
     }
 
-    const writers: [string, (copy: Entry) => Promise<void>][] = [
+    const writers: [string, (copy: Entry) => Promise<void | LightWriteCounts>][] = [
         ['V3 setCharacterToIndex', (copy) => api3().setCharacterToIndex(0, copy)],
         ['V3 setDatabase', (copy) => api3().setDatabase({ characters: [copy, DBState.db.characters[1]] })],
         ['V3 setDatabaseLite', (copy) => api3().setDatabaseLite({ characters: [copy, DBState.db.characters[1]] })],

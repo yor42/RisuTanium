@@ -1,5 +1,6 @@
 import { reattachOrphans } from "../process/chatTree";
 import type { Chat } from "../storage/database.svelte";
+import { isLightEntry } from "./lightCharacters";
 
 /**
  * A plugin never sees a chat's alternatives (`Chat.alt`) and never changes them:
@@ -78,7 +79,8 @@ export function overwritesPlaceholder(live: unknown, incoming: unknown): boolean
 
 /**
  * The `chaId` of every full character in `incoming` whose `chaId` a placeholder
- * of `live` holds, each once, in incoming order.
+ * of `live` holds, each once, in incoming order. A light entry is not a full
+ * character: the write swaps it for its live holder, so it never restores.
  */
 export function placeholderTargets(live: readonly unknown[] | undefined, incoming: unknown): string[] {
     if (!Array.isArray(incoming)) {
@@ -96,6 +98,9 @@ export function placeholderTargets(live: readonly unknown[] | undefined, incomin
     }
     const targets: string[] = [];
     for (const character of incoming) {
+        if (isLightEntry(character)) {
+            continue;
+        }
         const chaId = chaIdOf(character);
         if (chaId !== undefined && isFields(character) && !character.coldstorage && placeholders.has(chaId) && !targets.includes(chaId)) {
             targets.push(chaId);

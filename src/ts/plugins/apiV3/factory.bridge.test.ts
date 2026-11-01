@@ -34,6 +34,7 @@ vi.mock('src/ts/process/memory/busyActions', () => ({
 }))
 
 import { SandboxHost } from './factory'
+import { markPlainResult } from './pluginCopy.svelte'
 
 //#region host driver
 
@@ -43,6 +44,8 @@ type HostRig = {
     host: SandboxHost
     iframe: HTMLIFrameElement
     posted: Msg[]
+    /** The transfer list of each posted message, in step with `posted`. */
+    transfers: Transferable[][]
     /** Delivers one guest message to the host handler and lets it settle. */
     send: (data: Msg) => Promise<void>
     /** Sends a request and returns the RESPONSE with the same reqId. */
@@ -60,8 +63,10 @@ function makeHostRig(api: Record<string, unknown>): HostRig {
     const iframe = container.querySelector('iframe') as HTMLIFrameElement
     const win = iframe.contentWindow as Window
     const posted: Msg[] = []
-    vi.spyOn(win, 'postMessage').mockImplementation(((message: Msg) => {
+    const transfers: Transferable[][] = []
+    vi.spyOn(win, 'postMessage').mockImplementation(((message: Msg, _target: string, transfer?: Transferable[]) => {
         posted.push(message)
+        transfers.push(transfer ?? [])
     }) as unknown as typeof win.postMessage)
 
     const send = async (data: Msg) => {
@@ -77,7 +82,7 @@ function makeHostRig(api: Record<string, unknown>): HostRig {
         if (!response) throw new Error('no RESPONSE posted for ' + reqId)
         return response
     }
-    const rig = { host, iframe, posted, send, request }
+    const rig = { host, iframe, posted, transfers, send, request }
     rigs.push(rig)
     return rig
 }
@@ -206,6 +211,48 @@ describe('host bridge', () => {
         expect(invoke.args.slice(0, 3)).toEqual(['text', 5, { a: 1 }])
         expect(invoke.args[3]).toMatchObject({ __type: 'REMOTE_REF' })
         expect(invoke.args[3]).not.toHaveProperty('tag')
+    })
+
+    describe('response transfer walk and logging', () => {
+        const walkCount = () => vi.spyOn(
+            SandboxHost.prototype as unknown as { collectTransferables: (obj: unknown, into?: Transferable[]) => Transferable[] },
+            'collectTransferables',
+        )
+        const responseTransfer = (rig: HostRig, response: Msg) => rig.transfers[rig.posted.indexOf(response)]
+
+        test('R9: a marked plain result is posted with an empty transfer list, unwalked, and equal to the unmarked result', async () => {
+            const data = () => ({ characters: [{ chaId: 'a', chats: [{ id: 'c0', message: [{ data: 'hi' }] }] }], lineHeight: 1.5 })
+            const rig = makeHostRig({ marked: () => markPlainResult(data()), unmarked: () => data() })
+            const walk = walkCount()
+
+            const marked = await rig.request({ type: 'CALL_ROOT', method: 'marked', args: [] })
+            expect(walk).not.toHaveBeenCalled()
+            expect(responseTransfer(rig, marked)).toEqual([])
+
+            const unmarked = await rig.request({ type: 'CALL_ROOT', method: 'unmarked', args: [] })
+            expect(walk).toHaveBeenCalled()
+            expect(marked.result).toEqual(unmarked.result)
+            expect(marked.result).toEqual(data())
+        })
+
+        test('G-c: an unmarked result still transfers its buffers', async () => {
+            const buffer = new ArrayBuffer(8)
+            const rig = makeHostRig({ unmarked: () => ({ buf: buffer }) })
+
+            const response = await rig.request({ type: 'CALL_ROOT', method: 'unmarked', args: [] })
+
+            expect(responseTransfer(rig, response)).toEqual([buffer])
+        })
+
+        test('R10: the handler logs nothing for a request', async () => {
+            const rig = makeHostRig({ plain: () => ({ a: 1 }) })
+            vi.mocked(console.log).mockClear()
+
+            await rig.request({ type: 'CALL_ROOT', method: 'plain', args: [] })
+            await rig.request({ type: 'CALL_ROOT', method: 'missing', args: [] })
+
+            expect(console.log).not.toHaveBeenCalled()
+        })
     })
 })
 

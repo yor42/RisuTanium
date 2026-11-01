@@ -1,4 +1,7 @@
 import { beginChokePoint } from "src/ts/process/memory/busyActions";
+import { MEASURE } from "src/ts/process/memory/measureFlag";
+import { startPluginRecord } from "../pluginCostMeter";
+import { isPlainResult } from "./pluginCopy.svelte";
 
 type MsgType =
     | 'CALL_ROOT'
@@ -870,10 +873,13 @@ export class SandboxHost {
                     streamCleanups = [];
                 };
 
+                const rec = MEASURE ? startPluginRecord('bridge') : null;
+                rec?.set('method', String(data.method));
                 const endInFlight = beginChokePoint('pluginBridge');
                 try {
 
                     const args = this.deserializeArgs(data.args || [], usedAbortIds);
+                    rec?.lap('deserializeMs');
                     let result: any;
 
 
@@ -887,28 +893,45 @@ export class SandboxHost {
                         if (typeof instance[data.method!] !== 'function') throw new Error(`Method ${data.method} missing on instance`);
                         result = await instance[data.method!](...args);
                     }
+                    rec?.lap('fnMs');
 
 
+                    // Tested on the raw result: replaceStreamsWithPorts returns a new object for a plain result.
+                    const plainResult = isPlainResult(result);
                     response.result = this.serialize(result);
                     const { result: streamResult, ports: streamPorts, cleanups } = this.replaceStreamsWithPorts(response.result);
                     response.result = streamResult;
                     streamCleanups = cleanups;
-                    transferables = this.collectTransferables(response, streamPorts);
+                    rec?.lap('serializeMs');
+                    if (plainResult) {
+                        // Structured-clone data holds nothing to transfer but the stream ports.
+                        transferables = streamPorts;
+                    } else {
+                        transferables = this.collectTransferables(response, streamPorts);
+                        rec?.lap('collectTransferablesMs');
+                        rec?.add('collectTransferablesCalls');
+                    }
 
                 } catch (err: any) {
                     rollbackStreams();
                     delete response.result;
                     response.error = err?.message || String(err || "Host execution error");
+                    rec?.set('failed', true);
                 } finally {
                     endInFlight();
                     for (const id of usedAbortIds) this.abortControllers.delete(id);
                 }
 
-                console.log("Original request:", data);
-                console.log('Original response:', response, transferables);
+                rec?.restart();
                 try {
+                    // The structured-clone serialisation of the response runs inside this synchronous call.
                     this.iframe.contentWindow?.postMessage(response, '*', transferables);
+                    rec?.lap('postMessageMs');
+                    rec?.finish();
                 } catch (error) {
+                    rec?.lap('postMessageMs');
+                    rec?.set('postFailed', true);
+                    rec?.finish();
                     rollbackStreams();
                     try {
                         this.iframe.contentWindow?.postMessage({
