@@ -396,19 +396,48 @@ function Get-FaultFlagRefusal([hashtable]$BuildEnv) {
 # Runs the default release dist check on <Repo>\dist, the folder Tauri embeds in the APK. Returns the reason to refuse, or $null
 # when the check exits 0. A missing dist, a missing node or any other non-zero exit refuses, so the check cannot be skipped by
 # failing to run.
-function Get-ReleaseDistRefusal([string]$Repo) {
+function Get-ReleaseDistRefusal([string]$Repo, [switch]$FaultOnly) {
     $checker = Join-Path $Repo 'util\checkReleaseDist.mjs'
     $dist = Join-Path $Repo 'dist'
     $lines = @()
     $code = 1
+    # -FaultOnly is only for an explicit measurement build (build-apk.ps1 -Measure); sign-release.ps1 never passes it.
+    $checkerArgs = @(if ($FaultOnly) { '--fault-only', $dist } else { $dist })
     try {
-        $lines = @(& node $checker $dist 2>&1 | ForEach-Object { [string]$_ })
+        $lines = @(& node $checker @checkerArgs 2>&1 | ForEach-Object { [string]$_ })
         $code = $LASTEXITCODE
     } catch {
         $lines = @($_.Exception.Message)
     }
     if ($code -eq 0) { return $null }
     return ('the release dist check failed with exit ' + $code + ' for ' + $dist + ': ' + (($lines | Select-Object -First 20) -join ' | '))
+}
+
+# The label a -Measure build carries in its output and result.json. The APK has measurement code compiled in and is not meant for
+# the release key: build-apk.ps1 -Measure refuses a release signing source before building and accepts only a freshly written
+# unsigned APK, and a measurement build cannot pass sign-release.ps1 (full dist check).
+function Get-MeasureBuildLabel {
+    return 'MEASUREMENT build (VITE_RISU_MEASURE=1): not for the release key; built with no release signing source, and it cannot pass sign-release.ps1'
+}
+
+# Gradle signs a release build with the release key when keystore.properties exists or the RISU_ANDROID_* values are in the build
+# environment. A measurement build must not take that path, so -Measure refuses it before building. Existence only: the file
+# is never read, and only variable names are reported, never values. Returns the reason to refuse, or $null.
+function Get-MeasureSigningRefusal([string]$Repo, [hashtable]$BuildEnv) {
+    $why = 'a measurement build must not be signed with the release key'
+    if (Test-Path -LiteralPath (Join-Path $Repo 'src-tauri\gen\android\keystore.properties')) {
+        return ('refused: src-tauri/gen/android/keystore.properties exists, so Gradle would sign this build with the release key; ' + $why + '. Move that file out of the tree for the measurement build')
+    }
+    $fromMap = @()
+    if ($BuildEnv) { $fromMap = @($BuildEnv.Keys | Where-Object { $_ -like 'RISU_ANDROID_*' -and -not [string]::IsNullOrEmpty([string]$BuildEnv[$_]) }) }
+    $fromEnv = @(Get-ChildItem Env: | Where-Object { $_.Name -like 'RISU_ANDROID_*' -and -not [string]::IsNullOrEmpty($_.Value) } | ForEach-Object { $_.Name })
+    if ($fromMap.Count -gt 0) {
+        return ('refused: ' + ($fromMap -join ', ') + ' is set in the build environment map, so Gradle would sign this build with the release key; ' + $why + '. Remove it and build again')
+    }
+    if ($fromEnv.Count -gt 0) {
+        return ('refused: ' + ($fromEnv -join ', ') + ' is set in the process environment, so Gradle would sign this build with the release key; ' + $why + '. Remove it and build again')
+    }
+    return $null
 }
 
 # ---------- lock ----------

@@ -106,6 +106,33 @@ whose reason names the cause. After a build that exits 0 it runs `node util/chec
 mode; on a hit (or a missing `dist`, or any non-zero checker exit) it rewrites `result.json` to `verdict=fail`, prints
 `verdict=fail reason=...`, exits 1, and the reason names the APK path, which must not be used.
 
+### Measurement build (`-Measure`)
+
+A MEASURE build compiles the measurement code in when `import.meta.env.DEV || import.meta.env.VITE_RISU_MEASURE === '1'`
+(`src/ts/process/memory/measureFlag.ts`), so a release-kind build needs `VITE_RISU_MEASURE=1` (exactly `1`). The default
+release dist check rejects those markers, so a measurement build uses the explicit opt-in:
+
+```
+pwsh -NoProfile -File Agents\Tools\device\build-apk.ps1 -OutDir $env:TEMP\risu-b715\build-measure -Kind release -Measure
+```
+
+- `-Measure` sets `VITE_RISU_MEASURE=1` in the build environment itself (no `-BuildEnv` entry needed) and is accepted only
+  with `-Kind release`; with `-Kind debug` it is a recorded refusal.
+- The post-build check runs `node util/checkReleaseDist.mjs --fault-only <RepoRoot>\dist`: measurement markers pass, but the
+  fault markers still fail the run, and `VITE_RISU_MODULE_FAULT` is still refused before any prerequisite. A missing `dist`
+  still fails.
+- On a pass the output prints `label=MEASUREMENT build (VITE_RISU_MEASURE=1): not for the release key; ...` and
+  `result.json` gains `measure_build=true` and the same `label`. Install it with `sign-install.ps1` (the test key).
+- Keeping the release key off it: Gradle signs a release build with the release key when
+  `src-tauri/gen/android/keystore.properties` exists or `RISU_ANDROID_*` values are in the environment. With `-Measure`,
+  `build-apk.ps1` therefore refuses before building when that file exists (existence only, never read) or when any
+  `RISU_ANDROID_*` name is set in `-BuildEnv` or the process environment; the reason names the cause and the variable
+  names, never a value. After the build it accepts only an unsigned APK this run wrote: a stale one
+  (`artifactFresh` false) or a signed-name APK written by the run fails, and the result names the file not to use.
+- Without `-Measure` nothing changes: the full default check runs, and a build made with `VITE_RISU_MEASURE=1` in `-BuildEnv`
+  fails it. `sign-release.ps1` (the real release key) always runs the full default check and has no such switch, so a
+  measurement APK cannot pass it.
+
 ### Module fault switch build
 
 A debug-only build option that makes one chosen module fail to load, to check the load-failure path on a device. It is compiled
@@ -364,9 +391,9 @@ pwsh -NoProfile -File Agents\Tools\device\mock-reverse.ps1 -OutDir $env:TEMP\ris
 - **Debug vs release.** Snapshot, restore and import-bin need a debuggable (debug) build because they use `run-as`, which a
   release build refuses; they fail with `release-build`. cold-start works with either and records the kind. Any number from a
   check should name its build kind and device (the plan recommended this; TODO(evidence): the plan's Q3 answer is not in the
-  sources). import-bin additionally needs the MEASURE build; how the MEASURE flag is built in is TODO(evidence) (the hand-backs
-  name a "MEASURE debug APK" installed with `sign-install.ps1`; `build-apk.ps1` takes `-BuildEnv` and `-Config` but the
-  sources do not say which values make a MEASURE build).
+  sources). import-bin additionally needs the MEASURE build: the flag is built in by `VITE_RISU_MEASURE=1`
+  (`src/ts/process/memory/measureFlag.ts`). For a debug build pass it as `-BuildEnv @{ VITE_RISU_MEASURE = '1' }`; for a
+  release-kind timing build use `-Kind release -Measure` (see Measurement build above).
 - **Where APKs and keys live.** `build-apk.ps1` output:
   `src-tauri\gen\android\app\build\outputs\apk\universal\debug\app-universal-debug.apk` and
   `...\universal\release\app-universal-release-unsigned.apk`; `sign-install.ps1` writes a re-signed copy to

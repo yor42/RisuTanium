@@ -711,6 +711,116 @@ try {
         $distNone = Get-ReleaseDistRefusal (New-DistRepo 'dist-none' $null)
         Assert ($distNone -match 'exit 2') 'release guard: a missing dist is refused, never treated as a pass'
 
+        # -Measure (explicit measurement build): the post-build check is fault-only, labelled, and never reaches the release key
+        $measLabel = Get-MeasureBuildLabel
+        Assert ($null -eq (Get-ReleaseDistRefusal (New-DistRepo 'dist-measure-ok' 'globalThis.__risuGcNow = {}') -FaultOnly) -and $measLabel -match 'MEASUREMENT build' -and $measLabel -match 'not for the release key') 'measure build: measurement markers alone pass the fault-only check and the build is labelled a measurement build not for the release key'
+        $measFault = Get-ReleaseDistRefusal (New-DistRepo 'dist-measure-fault' 'globalThis.__risuGcNow = {}; throw new Error("module fault switch")') -FaultOnly
+        Assert ($measFault -match 'exit 1' -and $measFault -match 'module fault switch') 'measure build: a fault marker still fails the fault-only check'
+        Assert ((Get-ReleaseDistRefusal (New-DistRepo 'dist-measure-none' $null) -FaultOnly) -match 'exit 2') 'measure build: a missing dist still fails the fault-only check'
+        $measDefault = Get-ReleaseDistRefusal (New-DistRepo 'dist-measure-default' 'globalThis.__risuGcNow = {}')
+        Assert ($measDefault -match 'exit 1' -and $measDefault -match '__risuGcNow') 'measure build: without the switch a measurement marker still fails the full check'
+        $srAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $RunnerDir 'sign-release.ps1'), [ref]$null, [ref]$null)
+        $srChecks = @($srAst.FindAll({ param($n) $n -is [Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Get-ReleaseDistRefusal' }, $true))
+        $srSwitches = @($srChecks | ForEach-Object { $_.CommandElements } | Where-Object { $_ -is [Management.Automation.Language.CommandParameterAst] })
+        Assert ($srChecks.Count -ge 1 -and $srSwitches.Count -eq 0 -and $srAst.ParamBlock.Parameters.Name.VariablePath.UserPath -notcontains 'Measure') 'measure build: sign-release keeps the full dist check (no -FaultOnly on its call, no -Measure parameter)'
+
+        $mfOut = Join-Path $srDir 'ba-measure-fault'
+        $mfCmd = '& ''' + $baScript + ''' -OutDir ''' + $mfOut + ''' -Kind release -Measure -RepoRoot ''' + $srDir + ''' -ScratchRoot ''' + $srDir + ''' -BuildEnv @{ VITE_RISU_MODULE_FAULT = ''1'' }'
+        $null = (& pwsh -NoProfile -Command $mfCmd | Out-String)
+        $mfCode = $LASTEXITCODE
+        $mfRes = $null
+        if (Test-Path -LiteralPath (Join-Path $mfOut 'result.json')) { $mfRes = Get-Content -LiteralPath (Join-Path $mfOut 'result.json') -Raw | ConvertFrom-Json -AsHashtable }
+        Assert ($mfCode -eq 1 -and $mfRes -and $mfRes.verdict -eq 'fail' -and $mfRes.reason -match ('refused: ' + $faultName)) 'measure build: -Measure does not let the fault flag through a release build'
+        $mdOut = Join-Path $srDir 'ba-measure-debug'
+        $mdCmd = '& ''' + $baScript + ''' -OutDir ''' + $mdOut + ''' -Kind debug -Measure -RepoRoot ''' + $srDir + ''' -ScratchRoot ''' + $srDir + ''''
+        $null = (& pwsh -NoProfile -Command $mdCmd | Out-String)
+        $mdCode = $LASTEXITCODE
+        $mdRes = $null
+        if (Test-Path -LiteralPath (Join-Path $mdOut 'result.json')) { $mdRes = Get-Content -LiteralPath (Join-Path $mdOut 'result.json') -Raw | ConvertFrom-Json -AsHashtable }
+        Assert ($mdCode -eq 1 -and $mdRes -and $mdRes.reason -match 'refused: -Measure') 'measure build: -Measure is refused with a debug build'
+
+        # build-apk.ps1 end to end against a stub `pnpm tauri` (no Gradle, no signing): the stub writes dist from the environment and
+        # the APK file named by FAKE_APK (unsigned, signed, both or none), and records what it saw in obs.json. These cases run the
+        # build-apk call site of the dist check and the -Measure signing guard; keystore.properties here is a dummy in scratch.
+        $mbStubPath = Join-Path $work 'fake-tauri.cjs'
+        New-Cmd $mbStubPath @(
+            'const fs = require("fs"), path = require("path")',
+            'const env = process.env, root = process.cwd()',
+            'fs.mkdirSync(path.join(root, "dist"), { recursive: true })',
+            'let js = "console.log(1)\n"',
+            'if (env.VITE_RISU_MEASURE === "1") js += "globalThis.__risuGcNow = {}\n"',
+            'if (env.FAKE_FAULT) js += "module fault switch\n"',
+            'fs.writeFileSync(path.join(root, "dist", "x.js"), js)',
+            'const apkDir = path.join(root, "src-tauri", "gen", "android", "app", "build", "outputs", "apk", "universal", "release")',
+            'fs.mkdirSync(apkDir, { recursive: true })',
+            'const mode = env.FAKE_APK || "unsigned"',
+            'if (mode === "unsigned" || mode === "both") fs.writeFileSync(path.join(apkDir, "app-universal-release-unsigned.apk"), "apk")',
+            'if (mode === "signed" || mode === "both") fs.writeFileSync(path.join(apkDir, "app-universal-release.apk"), "apk")',
+            'fs.writeFileSync(path.join(root, "obs.json"), JSON.stringify({ measure: env.VITE_RISU_MEASURE === undefined ? null : env.VITE_RISU_MEASURE }))'
+        )
+        function Invoke-MeasureBuildCase([string]$Name, [string]$Extra, [switch]$Props, [switch]$StaleUnsigned) {
+            $mbRepo = Join-Path $srDir ('mb-' + $Name)
+            $mbGen = Join-Path $mbRepo 'src-tauri\gen\android'
+            New-Item -ItemType Directory -Force -Path (Join-Path $mbRepo 'util'), (Join-Path $mbGen 'app\src\main\java\x\generated') | Out-Null
+            Copy-Item -LiteralPath $realChecker -Destination (Join-Path $mbRepo 'util\checkReleaseDist.mjs')
+            Copy-Item -LiteralPath $mbStubPath -Destination (Join-Path $mbRepo 'fake-tauri.cjs')
+            [IO.File]::WriteAllText((Join-Path $mbRepo 'package.json'), '{"name":"fake","private":true,"scripts":{"tauri":"node fake-tauri.cjs"}}')
+            [IO.File]::WriteAllText((Join-Path $mbGen 'app\src\main\java\x\generated\TauriActivity.kt'), '')
+            [IO.File]::WriteAllText((Join-Path $mbGen 'app\proguard-tauri.pro'), '')
+            if ($Props) { [IO.File]::WriteAllText((Join-Path $mbGen 'keystore.properties'), '# dummy for the test, no secrets') }
+            if ($StaleUnsigned) {
+                $mbOld = Join-Path $mbGen 'app\build\outputs\apk\universal\release'
+                New-Item -ItemType Directory -Force -Path $mbOld | Out-Null
+                $mbOldFile = Join-Path $mbOld 'app-universal-release-unsigned.apk'
+                [IO.File]::WriteAllText($mbOldFile, 'stale')
+                (Get-Item -LiteralPath $mbOldFile).LastWriteTime = (Get-Date).AddHours(-3)
+            }
+            $mbOut = Join-Path $srDir ('mb-out-' + $Name)
+            $mbCmd = '& ''' + $baScript + ''' -OutDir ''' + $mbOut + ''' -Kind release -RepoRoot ''' + $mbRepo + ''' -ScratchRoot ''' + (Join-Path $srDir 'mb-scr') + ''' -MaxSeconds 120 ' + $Extra
+            $mbText = (& pwsh -NoProfile -Command $mbCmd 2>&1 | Out-String)
+            $mbCode = $LASTEXITCODE
+            $mbRes = $null
+            if (Test-Path -LiteralPath (Join-Path $mbOut 'result.json')) { $mbRes = Get-Content -LiteralPath (Join-Path $mbOut 'result.json') -Raw | ConvertFrom-Json -AsHashtable }
+            $mbObs = $null
+            if (Test-Path -LiteralPath (Join-Path $mbRepo 'obs.json')) { $mbObs = Get-Content -LiteralPath (Join-Path $mbRepo 'obs.json') -Raw | ConvertFrom-Json -AsHashtable }
+            return @{ Code = $mbCode; Text = $mbText; Res = $mbRes; Obs = $mbObs; Repo = $mbRepo }
+        }
+        $mbSavedNdk = $env:NDK_HOME
+        $mbSavedAlias = [Environment]::GetEnvironmentVariable('RISU_ANDROID_KEY_ALIAS')
+        $mbSentinel = 'sentinel-secret-value'
+        try {
+            $env:NDK_HOME = 'C:\fake-ndk'
+            foreach ($mbName in 'VITE_RISU_MEASURE', $faultName, 'RISU_ANDROID_KEY_ALIAS', 'FAKE_APK', 'FAKE_FAULT') { [Environment]::SetEnvironmentVariable($mbName, $null) }
+
+            $mbPlain = Invoke-MeasureBuildCase 'plain' '-BuildEnv @{ VITE_RISU_MEASURE = ''1'' }'
+            Assert ($mbPlain.Code -eq 1 -and $mbPlain.Res -and $mbPlain.Res.verdict -eq 'fail' -and $mbPlain.Res.reason -match '__risuGcNow') 'measure build: without -Measure a build with measurement code fails the full dist check at the build-apk call site'
+            $mbOk = Invoke-MeasureBuildCase 'ok' '-Measure -BuildEnv @{ VITE_RISU_MEASURE = ''0'' }'
+            Assert ($mbOk.Code -eq 0 -and $mbOk.Res -and $mbOk.Res.verdict -eq 'pass' -and $mbOk.Res.measure_build -eq $true -and $mbOk.Res.label -match 'MEASUREMENT build' -and $mbOk.Text -match 'label=MEASUREMENT build' -and $mbOk.Obs.measure -eq '1') 'measure build: -Measure passes the fault-only check, labels the result, and sets VITE_RISU_MEASURE=1 over a -BuildEnv value'
+            $mbFault = Invoke-MeasureBuildCase 'fault' '-Measure -BuildEnv @{ FAKE_FAULT = ''1'' }'
+            Assert ($mbFault.Code -eq 1 -and $mbFault.Res -and $mbFault.Res.verdict -eq 'fail' -and $mbFault.Res.reason -match 'module fault switch') 'measure build: -Measure still fails a build whose dist carries the fault marker'
+
+            $mbProps = Invoke-MeasureBuildCase 'props' '-Measure' -Props
+            Assert ($mbProps.Code -eq 1 -and $mbProps.Res -and $mbProps.Res.verdict -eq 'fail' -and $mbProps.Res.reason -match 'keystore\.properties' -and $mbProps.Res.reason -match 'release key' -and $null -eq $mbProps.Obs) 'measure build: -Measure is refused before building when keystore.properties exists'
+            $mbPropsPlain = Invoke-MeasureBuildCase 'props-plain' '' -Props
+            Assert ($mbPropsPlain.Code -eq 0 -and $mbPropsPlain.Res -and $mbPropsPlain.Res.verdict -eq 'pass' -and $mbPropsPlain.Text -match 'keystore\.properties exists') 'measure build: without -Measure keystore.properties is only reported, as before'
+            $mbMap = Invoke-MeasureBuildCase 'map' ('-Measure -BuildEnv @{ RISU_ANDROID_KEYSTORE_PASSWORD = ''' + $mbSentinel + ''' }')
+            Assert ($mbMap.Code -eq 1 -and $mbMap.Res -and $mbMap.Res.reason -match 'RISU_ANDROID_KEYSTORE_PASSWORD' -and $mbMap.Res.reason -match 'build environment map' -and $null -eq $mbMap.Obs -and $mbMap.Text -notmatch $mbSentinel -and $mbMap.Res.reason -notmatch $mbSentinel) 'measure build: -Measure is refused before building when an RISU_ANDROID_* name is in -BuildEnv, naming it and never its value'
+            [Environment]::SetEnvironmentVariable('RISU_ANDROID_KEY_ALIAS', $mbSentinel)
+            $mbInh = Invoke-MeasureBuildCase 'inherited' '-Measure'
+            [Environment]::SetEnvironmentVariable('RISU_ANDROID_KEY_ALIAS', $null)
+            Assert ($mbInh.Code -eq 1 -and $mbInh.Res -and $mbInh.Res.reason -match 'RISU_ANDROID_KEY_ALIAS' -and $mbInh.Res.reason -match 'process environment' -and $null -eq $mbInh.Obs -and $mbInh.Text -notmatch $mbSentinel -and $mbInh.Res.reason -notmatch $mbSentinel) 'measure build: -Measure is refused before building when an RISU_ANDROID_* name is inherited, naming it and never its value'
+
+            $mbStale = Invoke-MeasureBuildCase 'stale' '-Measure -BuildEnv @{ FAKE_APK = ''none'' }' -StaleUnsigned
+            Assert ($mbStale.Code -eq 1 -and $mbStale.Res -and $mbStale.Res.verdict -eq 'fail' -and $mbStale.Res.build.artifactFresh -eq $false -and $mbStale.Res.reason -match 'not rewritten' -and $mbStale.Res.reason -match 'Do not use' -and $mbStale.Res.reason -match 'app-universal-release-unsigned\.apk') 'measure build: -Measure fails a stale unsigned APK and names the file not to use'
+            $mbSigned = Invoke-MeasureBuildCase 'signed' '-Measure -BuildEnv @{ FAKE_APK = ''signed'' }'
+            Assert ($mbSigned.Code -eq 1 -and $mbSigned.Res -and $mbSigned.Res.verdict -eq 'fail' -and $mbSigned.Res.reason -match 'Do not use' -and $mbSigned.Res.reason -match 'app-universal-release\.apk') 'measure build: -Measure fails when the run wrote only a signed-name APK and names it'
+            $mbBoth = Invoke-MeasureBuildCase 'both' '-Measure -BuildEnv @{ FAKE_APK = ''both'' }'
+            Assert ($mbBoth.Code -eq 1 -and $mbBoth.Res -and $mbBoth.Res.verdict -eq 'fail' -and $mbBoth.Res.reason -match 'app-universal-release\.apk' -and $null -eq $mbBoth.Res.measure_build) 'measure build: -Measure fails when the run wrote a signed-name APK next to the unsigned one, and is not labelled a pass'
+        } finally {
+            $env:NDK_HOME = $mbSavedNdk
+            [Environment]::SetEnvironmentVariable('RISU_ANDROID_KEY_ALIAS', $mbSavedAlias)
+        }
+
         # the dist check runs after the signing variables are gone and before the APK is hashed, verified or installed
         $distFlags = @{ verified = $false; installed = $false; vars = $null }
         $distFail = Invoke-SignRelease -VaultName 'RisuSigning' -SecretNames $srNames -Reader $okReader -Preflight $noPre -Builder $okBuild `

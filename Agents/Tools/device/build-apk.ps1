@@ -4,6 +4,12 @@
 # A preflight fails early, naming the files, when the gitignored generated Android project files are missing from -RepoRoot.
 # -Kind release refuses VITE_RISU_MODULE_FAULT (in -BuildEnv or the environment) and -Config. After the build it checks
 # <RepoRoot>\dist with util/checkReleaseDist.mjs: a hit fails the run and rewrites result.json to fail.
+# -Measure (release only) is the explicit opt-in for a measurement build: it sets VITE_RISU_MEASURE=1 and the post-build check
+# runs --fault-only, so measurement markers pass while the fault switch is still refused. The output and result.json label the
+# APK as a measurement build that is not for the release key. To keep the release key off it, -Measure refuses before building
+# when keystore.properties exists or an RISU_ANDROID_* value is set (in -BuildEnv or the environment), and accepts only an
+# unsigned APK this run wrote: a stale one, or a signed-name APK written by the run, fails and names the file not to use.
+# sign-release.ps1 keeps the full check, so a measurement build cannot pass it.
 # Reads no signing material. A release build signs with src-tauri/gen/android/keystore.properties when that file exists
 # (existence is reported, the content is never read); sign-install.ps1 re-signs release output with the persistent test key.
 param(
@@ -11,6 +17,7 @@ param(
     [ValidateSet('debug', 'release')][string]$Kind = 'debug',
     [ValidateRange(1, 1800)][int]$MaxSeconds = 1500,
     [switch]$CleanBuild,
+    [switch]$Measure,
     [string]$Config,
     [string]$Target = 'aarch64',
     [hashtable]$BuildEnv = @{},
@@ -31,6 +38,11 @@ if ($Kind -eq 'release') {
     $releaseRefusal = Get-FaultFlagRefusal $BuildEnv
     if (-not $releaseRefusal -and $Config) { $releaseRefusal = 'refused: -Config is not accepted with -Kind release, because it can change the frontend folder the release dist check reads' }
 }
+if (-not $releaseRefusal -and $Measure -and $Kind -ne 'release') {
+    # A debug build is not measured through this switch: it is not release-checked, so -Measure would label nothing.
+    $releaseRefusal = 'refused: -Measure is only accepted with -Kind release'
+}
+if (-not $releaseRefusal -and $Measure) { $releaseRefusal = Get-MeasureSigningRefusal $RepoRoot $BuildEnv }
 if ($releaseRefusal) { $missing = $releaseRefusal }
 elseif (-not (Test-Path -LiteralPath (Join-Path $jdk 'bin\java.exe'))) { $missing = 'JDK 21 not found at ' + $jdk }
 elseif (-not $env:NDK_HOME) { $missing = 'NDK_HOME is not set' }
@@ -77,6 +89,10 @@ try {
 
     $envMap = @{ JAVA_HOME = $jdk; ANDROID_NDK_HOME = $env:NDK_HOME; CARGO_TARGET_DIR = $targetDir }
     foreach ($k in $BuildEnv.Keys) { $envMap[$k] = $BuildEnv[$k] }
+    if ($Measure) {
+        $envMap['VITE_RISU_MEASURE'] = '1'
+        Write-Output 'note: measurement build requested (VITE_RISU_MEASURE=1); the label is given only if the build passes'
+    }
 
     $pnpm = (Get-Command pnpm.cmd -CommandType Application | Select-Object -First 1).Source
     $argv = @('tauri', 'android', 'build')
@@ -87,6 +103,7 @@ try {
     $apkDir = Join-Path $RepoRoot ('src-tauri\gen\android\app\build\outputs\apk\universal\' + $Kind)
     $apkName = if ($Kind -eq 'debug') { 'app-universal-debug.apk' } else { 'app-universal-release-unsigned.apk' }
 
+    $measureStart = Get-Date
     $rc = Join-Path $PSScriptRoot 'Run-Check.ps1'
     & $rc -CheckId ('build-apk-' + $Kind) -OutDir $OutDir -MaxSeconds $MaxSeconds -FilePath $pnpm -ArgumentList $argv `
         -WorkingDirectory $RepoRoot -BuildKind $Kind -Environment $envMap -ArtifactPath (Join-Path $apkDir $apkName) -RepoRoot $RepoRoot
@@ -97,10 +114,39 @@ try {
 
 # The web output Tauri embedded is checked before the APK is accepted: a release build that carries the fault switch or the
 # measurement code fails here, and its result.json says so. The exit code and the result agree.
-if ($Kind -eq 'release' -and $code -eq 0) {
-    $distRefusal = Get-ReleaseDistRefusal $RepoRoot
+# A measurement build accepts only the unsigned APK this run wrote. A signed-name APK written by the run means Gradle found a
+# signing source, and an unsigned one that was not rewritten is an earlier build's file.
+$measureRefusal = $null
+if ($Kind -eq 'release' -and $Measure) {
+    $signedApk = Join-Path $apkDir 'app-universal-release.apk'
+    $signedItem = Get-Item -LiteralPath $signedApk -ErrorAction SilentlyContinue
+    if ($signedItem -and $signedItem.LastWriteTime -ge $measureStart.AddSeconds(-2)) {
+        $measureRefusal = 'a signed-name APK was written by this measurement build, so a release signing source was used. Do not use the APK at ' + $signedApk
+    } elseif ($code -eq 0) {
+        $freshResultPath = Join-Path $OutDir 'result.json'
+        $fresh = $false
+        if (Test-Path -LiteralPath $freshResultPath -PathType Leaf) {
+            $freshRes = Get-Content -LiteralPath $freshResultPath -Raw | ConvertFrom-Json -AsHashtable
+            $fresh = ($freshRes['build'] -and $freshRes['build']['artifactFresh'] -eq $true)
+        }
+        if (-not $fresh) { $measureRefusal = 'the unsigned APK was not rewritten by this measurement build. Do not use the APK at ' + (Join-Path $apkDir $apkName) }
+    }
+}
+if ($Kind -eq 'release' -and ($code -eq 0 -or $measureRefusal)) {
+    $distRefusal = $measureRefusal
+    if (-not $distRefusal) { $distRefusal = Get-ReleaseDistRefusal $RepoRoot -FaultOnly:$Measure }
+    if (-not $distRefusal -and $Measure) {
+        $resultPath = Join-Path $OutDir 'result.json'
+        if (Test-Path -LiteralPath $resultPath -PathType Leaf) {
+            $res = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json -AsHashtable
+            $res['measure_build'] = $true
+            $res['label'] = Get-MeasureBuildLabel
+            Write-JsonAtomic $resultPath $res
+        }
+        Write-Output ('label=' + (Get-MeasureBuildLabel) + ' apk=' + (Join-Path $apkDir $apkName))
+    }
     if ($distRefusal) {
-        $reason = $distRefusal + ' Do not use the APK at ' + (Join-Path $apkDir $apkName)
+        $reason = if ($measureRefusal) { $measureRefusal } else { $distRefusal + ' Do not use the APK at ' + (Join-Path $apkDir $apkName) }
         $resultPath = Join-Path $OutDir 'result.json'
         if (Test-Path -LiteralPath $resultPath -PathType Leaf) {
             $res = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json -AsHashtable
