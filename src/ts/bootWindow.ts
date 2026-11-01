@@ -31,6 +31,7 @@ let markUnsavedAfterWindow: (() => void) | null = null
 
 /**
  * Every import in characterCards.ts, modules.ts and dropImport.ts that is about to add a character, module or preset calls this,
+ * and so does the boot's persona repair in bootstrap.ts (a repaired persona list is a boot-time write to the database that only the normal save persists),
  * for the whole page life. Before the window closes the write is remembered for
  * the window's answer, because an effect's first run cannot tell it from the
  * state the effects started from. After the window closes the save loop is asked

@@ -186,30 +186,105 @@ describe('repairPersonas', () => {
     test('drops entries that are not objects and keeps the same persona selected', () => {
         const chosen = { name: 'chosen' }
         const db = { personas: [null, 5, { name: 'a' }, chosen] as unknown[], selectedPersona: 3 }
-        expect(repairPersonas(db)).toBe(2)
+        const report = repairPersonas(db)
         expect(db.personas).toEqual([{ name: 'a' }, chosen])
         expect(db.selectedPersona).toBe(1)
+        expect(report).toEqual({ dropped: 2, added: 'none' })
     })
 
-    test('falls back to the first persona when the selected one was dropped', () => {
-        const db = { personas: [{ name: 'a' }, null] as unknown[], selectedPersona: 1 }
-        repairPersonas(db)
+    test('(R) a list whose only entries are not objects becomes the default persona', () => {
+        const db = { personas: [null, 5] as unknown, selectedPersona: 1 as unknown, username: 'Ann', userIcon: 'a.png', personaPrompt: 'bp', userNote: 'n' }
+        const report = repairPersonas(db)
+        expect(db.personas).toEqual([{ name: 'Ann', personaPrompt: '', icon: 'a.png', note: 'n', largePortrait: false }])
         expect(db.selectedPersona).toBe(0)
+        expect(report).toEqual({ dropped: 2, added: 'empty' })
     })
 
-    test('a missing or non-list personas becomes an empty list', () => {
-        for (const value of [undefined, null, 5, {}]) {
-            const db = { personas: value as unknown, selectedPersona: 0 }
-            expect(repairPersonas(db)).toBe(0)
-            expect(db.personas).toEqual([])
+    test('(R) a selected persona that was dropped is replaced by a persona built from the buffer, and it is selected', () => {
+        const a = { name: 'a' }
+        const db = { personas: [a, null] as unknown, selectedPersona: 1 as unknown, username: 'Buf', userIcon: 'b.png', personaPrompt: 'bp', userNote: 'bn' }
+        const report = repairPersonas(db)
+        expect(db.personas).toEqual([{ name: 'a' }, { name: 'Buf', personaPrompt: 'bp', icon: 'b.png', note: 'bn', largePortrait: false }])
+        expect((db.personas as unknown[])[0]).toBe(a)
+        expect(db.selectedPersona).toBe(1)
+        expect(report).toEqual({ dropped: 1, added: 'buffer' })
+    })
+
+    test('(R) an empty list becomes the default persona, built from the user name and icon only', () => {
+        const db = { personas: [] as unknown, selectedPersona: 0 as unknown, username: 'Ann', userIcon: 'a.png', personaPrompt: 'bp', userNote: 'n' }
+        const report = repairPersonas(db)
+        expect(db.personas).toEqual([{ name: 'Ann', personaPrompt: '', icon: 'a.png', note: 'n', largePortrait: false }])
+        expect(db.selectedPersona).toBe(0)
+        expect(report).toEqual({ dropped: 0, added: 'empty' })
+        expect(db.personaPrompt).toBe('bp')
+    })
+
+    test('(R) a missing or non-list personas becomes the default persona', () => {
+        for (const value of [undefined, null, 5, {}, 'x']) {
+            const db = { personas: value as unknown, selectedPersona: 0 as unknown }
+            const report = repairPersonas(db)
+            expect(db.personas).toHaveLength(1)
+            expect(db.selectedPersona).toBe(0)
+            expect(report).toEqual({ dropped: 0, added: 'empty' })
         }
     })
 
-    test('a clean list is left alone', () => {
-        const personas = [{ name: 'a' }]
-        const db = { personas: personas as unknown, selectedPersona: 0 }
-        expect(repairPersonas(db)).toBe(0)
+    test('(R) an index outside the list keeps every entry and appends the buffer persona, which is selected', () => {
+        const p0 = Object.freeze({ name: 'p0', personaPrompt: 'x', icon: 'i0', note: 'n0', largePortrait: true })
+        const p1 = Object.freeze({ name: 'p1', personaPrompt: 'y', icon: 'i1', note: 'n1', largePortrait: false })
+        const db = { personas: [p0, p1] as unknown, selectedPersona: 5 as unknown, username: 'Buf', userIcon: 'b.png', personaPrompt: 'bp', userNote: 'bn' }
+        const report = repairPersonas(db)
+        const list = db.personas as unknown[]
+        expect(list).toHaveLength(3)
+        expect(list[0]).toBe(p0)
+        expect(list[1]).toBe(p1)
+        expect(list[2]).toEqual({ name: 'Buf', personaPrompt: 'bp', icon: 'b.png', note: 'bn', largePortrait: false })
+        expect(db.selectedPersona).toBe(2)
+        expect([db.username, db.userIcon, db.personaPrompt, db.userNote]).toEqual(['Buf', 'b.png', 'bp', 'bn'])
+        expect(report).toEqual({ dropped: 0, added: 'buffer' })
+    })
+
+    test('(R) a non-canonical numeric string is not coerced into an entry: the buffer is appended instead', () => {
+        // Readers index with the raw value, so '01' reads no entry; coercing it would attribute the buffer to persona 1.
+        for (const value of ['01', '00', '1.0', ' 1', '+1', '1e0', '0x1']) {
+            const personas = [{ name: 'p0' }, { name: 'p1' }]
+            const db = { personas: personas as unknown, selectedPersona: value as unknown }
+            const report = repairPersonas(db)
+            expect(db.personas).toHaveLength(3)
+            expect((db.personas as unknown[])[0]).toBe(personas[0])
+            expect((db.personas as unknown[])[1]).toBe(personas[1])
+            expect(db.selectedPersona).toBe(2)
+            expect(report.added).toBe('buffer')
+        }
+    })
+
+    test('(R) an index that is not an integer in range means the selection is missing', () => {
+        const unusable: unknown[] = [-1, 1.5, 0.5, NaN, '1', '-1', '0.5', '', 'x', null, undefined]
+        for (const value of unusable) {
+            const db = { personas: [{ name: 'p0' }] as unknown, selectedPersona: value }
+            const report = repairPersonas(db)
+            expect(db.personas).toHaveLength(2)
+            expect(db.selectedPersona).toBe(1)
+            expect(report.added).toBe('buffer')
+        }
+    })
+
+    test('an index that is an integer string in range is normalised to that number and nothing is added', () => {
+        const personas = [{ name: 'p0' }, { name: 'p1' }]
+        const db = { personas: personas as unknown, selectedPersona: '1' as unknown }
+        const report = repairPersonas(db)
         expect(db.personas).toBe(personas)
+        expect(db.selectedPersona).toBe(1)
+        expect(report).toEqual({ dropped: 0, added: 'none' })
+    })
+
+    test('a clean list is left alone (fails before the fix on the report shape)', () => {
+        const personas = [{ name: 'a' }]
+        const db = { personas: personas as unknown, selectedPersona: 0 as unknown }
+        const report = repairPersonas(db)
+        expect(db.personas).toBe(personas)
+        expect(db.selectedPersona).toBe(0)
+        expect(report).toEqual({ dropped: 0, added: 'none' })
     })
 })
 describe('repairCharacterTree: an export works on a copy and never touches the page\'s objects', () => {

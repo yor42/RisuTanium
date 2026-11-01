@@ -34,6 +34,7 @@ import { dropRisuSaveCache } from "./storage/risuSaveCacheDrop";
 import { updateAnimationSpeed } from "./gui/animation";
 import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
 import { language } from "src/lang";
+import { markBootWrite } from "./bootWindow";
 import { startObserveDom } from "./observer.svelte";
 import { updateGuisize } from "./gui/guisize";
 import { repairModuleListLorebooks } from "./process/moduleLorebookRepair";
@@ -1085,16 +1086,29 @@ async function checkNewFormat(): Promise<void> {
     // Sequential and live-list safe; see repairModuleListLorebooks.
     await repairModuleListLorebooks(db);
 
-    // Entries of the persona list that are not objects are left out and a
-    // list that is not a list is empty, so the pass below cannot throw and the
-    // selected persona stays the same persona.
-    const droppedPersonas = repairPersonas(db);
+    // Fork-specific: after the repair the list is a non-empty list of objects
+    // and the selected persona is an index into it, so the pass below cannot
+    // throw and every reader finds a selected persona. The repair runs before
+    // the id pass so a persona it adds gets an id. It changes only the in-memory
+    // database; the mark makes the boot's normal save write it, and a read-only
+    // page keeps it in memory.
+    const personaRepair = repairPersonas(db);
     db.personas = (db.personas ?? []).map((v) => {
         v.id ??= uuidv4()
         return v
     });
-    if (droppedPersonas > 0) {
-        alertToast(language.personasRepairedNotice(droppedPersonas))
+    const personaNotices: string[] = []
+    if (personaRepair.dropped > 0) {
+        personaNotices.push(language.personasRepairedNotice(personaRepair.dropped))
+    }
+    if (personaRepair.added === 'empty') {
+        personaNotices.push(language.personaListEmptyNotice)
+    } else if (personaRepair.added === 'buffer') {
+        personaNotices.push(language.personaSelectionMissingNotice)
+    }
+    if (personaNotices.length > 0) {
+        markBootWrite()
+        alertToast(personaNotices.join(' '))
     }
 
     if (!db.formatversion) {

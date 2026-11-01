@@ -2249,6 +2249,8 @@ export const languageSpanish = {
         `RisuAI no puede guardar a ${name} en absoluto: nunca se ha guardado y sus datos no son válidos (puede que un plugin los haya cambiado). No se está guardando, así que se perderá si la pestaña se cierra o se recarga antes de que se solucione. Todo lo demás se sigue guardando y RisuAI sigue intentándolo en silencio.`,
     personasRepairedNotice: (count: number) =>
         `RisuAI omitió ${count} ${count === 1 ? 'persona que no era un dato válido' : 'personas que no eran datos válidos'}. Puede que un plugin ${count === 1 ? 'la' : 'las'} haya escrito.`,
+    personaListEmptyNotice: `No quedó ninguna persona utilizable en la lista de personas, así que RisuTanium añadió una a partir de tu nombre de usuario e icono y la seleccionó.`,
+    personaSelectionMissingNotice: `La persona seleccionada faltaba en la lista de personas, así que RisuTanium añadió una a partir de tu nombre de usuario, icono, prompt de persona y nota actuales y la seleccionó.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `La copia de seguridad se cargó después de que RisuAI reparara su lista de personajes: ${[
             dropped > 0 ? `${dropped} ${dropped === 1 ? 'entrada que no es un personaje se omitió' : 'entradas que no son personajes se omitieron'}` : '',

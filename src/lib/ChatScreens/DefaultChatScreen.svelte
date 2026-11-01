@@ -386,7 +386,7 @@
         const bindedPersona = DBState?.db?.characters?.[$selectedCharID]?.chats?.[DBState?.db?.characters?.[$selectedCharID]?.chatPage]?.bindedPersona
 
         if(bindedPersona){
-            const persona = livePersona(DBState.db.personas.find((p) => p.id === bindedPersona))
+            const persona = Array.isArray(DBState.db.personas) ? livePersona(DBState.db.personas.find((p) => p?.id === bindedPersona)) : null
             if(persona){
                 return {
                     currentUsername: persona.name,
@@ -396,11 +396,11 @@
             }
         }
 
-        const selectedPersonaIndex = DBState.db.selectedPersona
+        const selected = DBState.db.personas?.[DBState.db.selectedPersona]
         return {
             currentUsername: DBState.db.username,
-            userIconPortrait: DBState.db.personas[selectedPersonaIndex].largePortrait,
-            userIcon: DBState.db.personas[selectedPersonaIndex].icon
+            userIconPortrait: selected?.largePortrait ?? false,
+            userIcon: selected?.icon ?? DBState.db.userIcon
         }
     })
 

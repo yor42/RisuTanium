@@ -2247,6 +2247,8 @@ export const languageVietnamese = {
         `RisuAI hoàn toàn không thể lưu ${name}: nhân vật này chưa từng được lưu và dữ liệu của nó không hợp lệ (có thể một plugin đã thay đổi nó). Nó không được lưu, nên sẽ bị mất nếu tab bị đóng hoặc tải lại trước khi sự cố được khắc phục. Mọi thứ khác vẫn được lưu, và RisuAI vẫn lặng lẽ tiếp tục thử lại.`,
     personasRepairedNotice: (count: number) =>
         `RisuAI đã loại bỏ ${count} persona không phải dữ liệu hợp lệ. Có thể một plugin đã ghi chúng.`,
+    personaListEmptyNotice: `Không còn persona nào dùng được trong danh sách persona, nên RisuTanium đã thêm một persona từ tên người dùng và biểu tượng của bạn rồi chọn nó.`,
+    personaSelectionMissingNotice: `Persona đã chọn không có trong danh sách persona, nên RisuTanium đã thêm một persona từ tên người dùng, biểu tượng, lời nhắc persona và ghi chú hiện tại của bạn rồi chọn nó.`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `Bản sao lưu đã được tải sau khi RisuAI sửa danh sách nhân vật: ${[
             dropped > 0 ? `${dropped} mục không phải nhân vật đã bị loại bỏ` : '',

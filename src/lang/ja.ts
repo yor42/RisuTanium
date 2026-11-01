@@ -2388,6 +2388,8 @@ export const languageJapanese = {
         `RisuAIは${name}をまったく保存できません：一度も保存されたことがなく、データが有効ではありません（プラグインによって変更された可能性があります）。保存が行われていないため、修正される前にタブを閉じたり再読み込みしたりすると失われます。他のデータはすべて保存されており、RisuAIはバックグラウンドで保存を再試行し続けます。`,
     personasRepairedNotice: (count: number) =>
         `RisuAIはデータが無効であった${count}件のペルソナを除外しました。プラグインによって書き込まれた可能性があります。`,
+    personaListEmptyNotice: `ペルソナリストに使用可能なペルソナが残っていなかったため、RisuTaniumがユーザー名とアイコンからペルソナを1つ追加して選択しました。`,
+    personaSelectionMissingNotice: `選択されていたペルソナがペルソナリストに存在しなかったため、RisuTaniumが現在のユーザー名、アイコン、ペルソナプロンプト、ノートからペルソナを1つ追加して選択しました。`,
     restoreRepairedNotice: (dropped: number, changed: number, recovered: number) =>
         `RisuAIがキャラクターリストを修復した後にバックアップが読み込まれました：${[
             dropped > 0 ? `キャラクターではない${dropped}件のエントリを除外` : '',

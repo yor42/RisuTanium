@@ -909,3 +909,164 @@ describe('a page that runs from OPFS this time', () => {
         expect(w.api.isSaveClean()).toBe(false)
     })
 })
+
+describe('the boot persona repair is saved by the normal save and never over a peer', () => {
+    const peerPersona = { name: 'User', personaPrompt: '', icon: '', note: '', largePortrait: false, id: 'peer-p' }
+
+    function withBrokenPersonas() {
+        h.db!.personas = []
+        h.db!.selectedPersona = 0
+    }
+
+    /** What the boot does to the loaded database, in its order: the repair, the id pass, then the mark. The mark is made in the world's own module graph. */
+    async function repairAndMark(mark = true): Promise<void> {
+        const { repairPersonas } = await import('src/ts/storage/characterTreeRepair')
+        const { markBootWrite } = await import('src/ts/bootWindow')
+        const db = h.db as unknown as Database
+        repairPersonas(db)
+        db.personas = db.personas.map((persona) => {
+            persona.id ??= 'page-p'
+            return persona
+        })
+        if (mark) {
+            markBootWrite()
+        }
+    }
+
+    async function storedPersonas(w: World): Promise<Array<{ id?: string }>> {
+        const { validateLoadedBlocks } = await import('src/ts/storage/blockProfileValidate')
+        const read = await w.owner.readCommitted({ validate: validateLoadedBlocks })
+        if (read.kind !== 'loaded') {
+            throw new Error(`the committed state did not read: ${read.kind}`)
+        }
+        return (read.tree as unknown as { personas: Array<{ id?: string }> }).personas
+    }
+
+    /** A peer converts the legacy profile to blocks with a repaired persona list: the other tab's boot. */
+    async function peerConverts(w: World): Promise<void> {
+        const { treeToBlockSet } = await import('src/ts/storage/treeToBlockSet')
+        const tree = structuredClone(h.db!) as unknown as Database
+        tree.personas = [{ ...peerPersona }]
+        tree.selectedPersona = 0
+        const converted = await makeOwner(w.store).owner.replaceWholeState(await treeToBlockSet(tree), { requireAbsentHead: true })
+        expect(converted.kind).toBe('won')
+    }
+
+    test('P2 (R): on a block page the repaired list is written once by the boot\'s save, and a later pass writes no root', async () => {
+        withBrokenPersonas()
+        const w = await startWorld({ startLoop: false })
+        await repairAndMark()
+        expect(h.db!.personas).toHaveLength(1)
+
+        w.start()
+        await settled(w)
+
+        const personas = await storedPersonas(w)
+        expect(personas).toHaveLength(1)
+        expect(personas[0].id).toBe('page-p')
+        expect(writesTo(w.store, isRootKey)).toHaveLength(1)
+
+        await nextCommit(w, mark(w))
+        expect(writesTo(w.store, isRootKey)).toHaveLength(1)
+    })
+
+    test('P2 (R): on a legacy page the conversion carries the repaired list', async () => {
+        withBrokenPersonas()
+        const w = await startWorld({ legacy: true, startLoop: false })
+        await repairAndMark()
+        expect(h.db!.personas).toHaveLength(1)
+
+        w.start()
+        await until(() => w.store.peek(HEAD_KEY) !== null, 'the conversion to land')
+        await settled(w)
+
+        const personas = await storedPersonas(w)
+        expect(personas).toHaveLength(1)
+        expect(personas[0].id).toBe('page-p')
+    })
+
+    test('D1 (diagnostic): without the mark a quiet block boot writes no root in this suite, whose change effects are mocked', async () => {
+        withBrokenPersonas()
+        const w = await startWorld({ startLoop: false })
+        await repairAndMark(false)
+        expect(h.db!.personas).toHaveLength(1)
+
+        w.start()
+        await sleepReal(600)
+
+        expect(writesTo(w.store, isRootKey)).toHaveLength(0)
+        expect(await storedPersonas(w)).toHaveLength(0)
+    })
+
+    test('P3 (G): a read-only page keeps the repair in memory and writes nothing', async () => {
+        withBrokenPersonas()
+        const w = await startWorld({ kind: 'opfs-transitional', startLoop: false })
+        await repairAndMark()
+        expect(h.db!.personas).toHaveLength(1)
+
+        w.start()
+        await sleepReal(600)
+
+        expect(w.store.mutating()).toEqual([])
+        expect(h.db!.personas).toHaveLength(1)
+    })
+
+    test('P5 (G): a block tab that loaded the broken profile after a peer repaired it is asked and writes nothing over the peer', async () => {
+        withBrokenPersonas()
+        h.selectAnswer = '1'
+        h.holdSelect = new Promise<void>(() => {})
+        const w = await startWorld({
+            startLoop: false,
+            boot: async (world) => {
+                await kit.seedBlockProfile(world)
+                await kit.bootBlockProfile(world)
+                const { treeToBlockSet } = await import('src/ts/storage/treeToBlockSet')
+                const peer = makeOwner(world.store).owner
+                const loaded = await peer.load()
+                if (loaded.kind !== 'loaded') {
+                    throw new Error('the peer could not load')
+                }
+                const tree = structuredClone(h.db!) as unknown as Database
+                tree.personas = [{ ...peerPersona }]
+                tree.selectedPersona = 0
+                const result = await peer.commitSave(await treeToBlockSet(tree))
+                if (result.kind !== 'committed') {
+                    throw new Error(`the peer's commit did not happen: ${result.kind}`)
+                }
+            },
+        })
+        await repairAndMark()
+        expect(h.db!.personas).toHaveLength(1)
+
+        w.start()
+        await until(async () => (await selectCalls()).length >= 1, 'the prompt about the refused commit')
+
+        const calls = await selectCalls()
+        expect(offersSaveMine(calls[0])).toBe(true)
+        expect((await storedPersonas(w))[0].id).toBe('peer-p')
+        expect(writesTo(w.store, isRootKey)).toEqual([])
+        expect(w.api.isSaveClean()).toBe(false)
+        expect(reload).not.toHaveBeenCalled()
+    })
+
+    test('P6 (G): a legacy tab whose profile a peer converted first is asked to reload or stay and writes no root', async () => {
+        withBrokenPersonas()
+        h.selectAnswer = '1'
+        h.holdSelect = new Promise<void>(() => {})
+        const w = await startWorld({ legacy: true, startLoop: false })
+        expect(w.pageMode.getPageStorageMode().kind).toBe('legacy')
+        await peerConverts(w)
+        const before = w.store.ops.length
+        await repairAndMark()
+        expect(h.db!.personas).toHaveLength(1)
+
+        w.start()
+        await until(async () => (await selectCalls()).length >= 1, 'the prompt about the converted profile')
+
+        const calls = await selectCalls()
+        expect(calls[0].options).toEqual([language.otherTabSavedConflictReload, language.otherTabSavedConflictStay])
+        expect((await storedPersonas(w))[0].id).toBe('peer-p')
+        expect(w.store.ops.slice(before).filter((op) => op.kind === 'write' && isRootKey(op.key))).toEqual([])
+        expect(reload).not.toHaveBeenCalled()
+    })
+})
