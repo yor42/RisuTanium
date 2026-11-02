@@ -407,6 +407,21 @@ Source: the [Roadmap](Roadmap.md) batch 34 section and rows. All device figures 
 - **Phone 2 privacy rule.** The Download folder on phone 2 is not synthetic: no picker or restore work there (`MC-971`).
 - **Candidates for the maintainer (not ticketed):** a CHORE-17 ticket (plugin `getDatabase(characters)` read cost, idle module tick scaling with resident modules); the Settings-return rebuild after CHORE-04; the CHORE-396 gap.
 
+## After records batch 35 (2026-11-02; CHORE-17, CHORE-623, CHORE-624, Settings-return stage 1, harvest batches U1 to U3b, CHORE-396 diagnosis, device batch 35)
+
+Source: the [Roadmap](Roadmap.md) batch 35 section and rows. Device figures are Note 9 only, PROPOSED or descriptive; the verifier's corrected figures govern.
+
+- **Dispatched, not returned:** device batch 36 (the CHORE-624 preempt case, a reply landing during a hidden tick; CHORE-17 S1-b on a profile with chats and `alt`, archive OFF) and the seven-locale reword of `translationJsonDownloaded`. Record the results in the next batch.
+- **CHORE-396 (MVP refresh gate, `MC-979`).** The +30.8 MiB gap is NOT attributed. Ruled out by verified evidence: merge gap 0 (no PSS gain, about 19 times the read cost), the picker pre-pass as the PSS-peak carrier, EntryBuffer and the asset-save route. Queued: a device forced garbage collection mid-import on M over CDP before any no-splice build; charx is NOT TESTED; a renderer-side lead from the desk check.
+- **Settings return.** Stage 1 is shipped; stage 2 (keep-mounted) is conditional on Q1 (scroll and pages against resident memory) after stage 1 Note 9 numbers; Q2 (a target time) is non-blocking and open. The light-profile gain (about 11%) is WEAK.
+- **CHORE-17 leaves.** The cheaper default copy was not testable on the device fixture; the S1-b case with chats and `alt` is in device batch 36. The V3 `setDatabase` mark-all stays until a "mark only changed" design returns with numbers (`MC-974`). The Q3 pass and fail criterion is open and non-blocking. A `setDatabase` result now carries `lightKept` and `lightLeftOut` counts, a fork-specific addition.
+- **CHORE-624 leaves.** The visible-jank criterion is a product question, not enforced. The hidden-page segment of about 800 ms stays (module encode units are not divisible). The page freezes about 63 s after a hide on every build; the cause (OS or WebView policy) is INFERRED. `build-one.ps1` does not pass `-Measure` to `build-apk.ps1`: a small tooling fix, and the batch 35 APKs are mislabelled measurement builds.
+- **CHORE-623 leaves.** The other-locale follow-up for `translationJsonDownloaded` (English-only reword shipped in U3; the reword dispatch is above). Whether `Legal.svelte` was touched is not in the queue.
+- **Harvest leaves.** U3b checks not run: the D200 live check, the D209 browser or TalkBack check, the D-S5 dev check; the inline `.bin` export harness is not covered. A stale `loreExt` key can survive on two other UI or import paths (low). Thrown speech-translation failures are silent in builds. No test on the Ollama cloud path. Unresolved upstream items needing other platforms or runs: #553 and #584 (Safari or macOS), #596 (a Note 9 run), #230, #681, #718. A `docs/wiki` page exists for the harvest (`MC-985` for the editing authority as relayed).
+- **Security.** Dismiss the 14 triaged `server.cjs` (13) and `multisend` (1) alerts (the triage report's "15" was a mis-sum) in GitHub if wanted (the dismissals are not recorded); `deepmerge` (low) has no patch; the maintainer runs `pnpm install` in the main checkout after the overrides.
+- **Rule for PC browser briefs (from the Settings-return stage 0 incident).** Block non-loopback hosts before the first navigation and keep a network log. Locale inserts: anchor on the following key or check that the predecessor key is a single line.
+- **Candidates for the maintainer (not ticketed):** Settings-return stage 2; the CHORE-396 fix once attributed; whether the web build is dropped (the proxy note, `MC-991`).
+
 ## Not scheduled
 
 - **Suspected by the Wiki session while documenting (2026-09-30, wiki `5b366746`); not verified

@@ -20314,3 +20314,366 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 - Notes, not the maintainer's words:
   - Consequence (lane A, relayed): after the decision, lane A applied the same purge to one further unfiltered listing from the later P6-retry agent (y5), so 15 files were deleted in total; no file name is recorded.
   - What lane A did, per the queue: deleted 15 files and redacted Hangul runs in about 64 scratch text files; screenshots were not inspected; a rule was added to the run brief. Counts are lane A's statement and were not re-derived.
+
+### MC-972 — Lane A, 2026-11-02: sizing and diagnosis start words, and the CHORE-624 ticket (batch 35)
+
+- Tag: decision (maintainer instructions, relayed by lane A). Date: 2026-11-02 (free-text messages read by lane A from the session; no UTC time is in the queue and there is no `answers.md` in the `b35\` folder: TODO(evidence)). Sweep ref: none.
+- Source: the queue, `%TEMP%\risu-b715\b35\records35-queue.md`, quoting the maintainer. Queue line 2: "start the C17 ticket sizing and settings-return rebuild." Queue line 3: "yes, start step 1 and 2." (CHORE-396 diagnosis). Queue line 4: "file a separate ticket for the module safety net." Queue line 12: "I think we should start the CHORE-623 sizing too". Queue line 23: "yes, start the read only sizing." (CHORE-624).
+- Alternatives rejected: not applicable (free text).
+- Related: CHORE-17, CHORE-396, CHORE-623, CHORE-624, `MC-949`, `MC-963`, `MC-979`.
+
+**What was decided (maintainer).**
+1. "start the C17 ticket sizing and settings-return rebuild."
+2. CHORE-396: "yes, start step 1 and 2." (step 1 on phone Z1, step 2 at the desk, per queue line 3).
+3. "file a separate ticket for the module safety net." (filed as CHORE-624).
+4. "I think we should start the CHORE-623 sizing too".
+5. CHORE-624: "yes, start the read only sizing."
+
+- Notes, not the maintainer's words:
+  - The queue's gloss for item 3: the scope is the idle net that re-serialises every resident module about every 30 s (devbatch33 C17-C: 1.57 to 1.91 s of planning at 169 resident modules on a Note 9, against about 0.1 to 0.2 s with stubs; the verification is `devbatch33\verify-ce`). It is separate from CHORE-17. The candidate corrections (a per-module verdict shadow, a longer module interval, running only when held asset lists could have changed) were NOT decided; each narrows the net that catches unnotified asset-list edits, which is a silent-loss risk, so the storage gate applies (`opus-reviewer`).
+  - The Settings-return rebuild has no CHORE number in the queue; it was a batch 34 candidate (Carry-Forward, batch 34 section).
+
+### MC-973 — Lane A, 2026-11-02: CHORE-17 plugin read copy "Allow a lazy view" (SUPERSEDED by MC-975)
+
+- Tag: decision, superseded. Date: 2026-11-02. Sweep ref: none.
+- Source: the queue (queue line 6): the maintainer chose "Allow a lazy view". The question's wording is not in the queue: TODO(evidence).
+- Alternatives rejected: "Same copy, cheaper (Recommended)" (named in queue line 6). Other offered options: not recorded.
+- Related: CHORE-17, `MC-175`, `MC-132`, `MC-136`, `MC-975`. **Superseded by `MC-975`**; this entry is kept as history and no longer governs.
+
+**What was decided (maintainer).**
+1. CHORE-17 plugin read copy: "Allow a lazy view" (over "Same copy, cheaper (Recommended)").
+
+- Notes, not the maintainer's words:
+  - The queue says the option text told the maintainer that this changes what a plugin can assume, needs a bridge protocol change, and that upstream plugins may break.
+  - Lane A's reading (queue line 6): it touches the plugin-compatibility rule (`AGENTS.md`, the `MC-175` line), so a senior-advisor feasibility pass ran before any plan. The advice is `b35\c17-lazy-advice\result.md`; its verification (`b35\c17-lazy-advice\verify\result.md`) is ACCEPT WITH CORRECTIONS (queue line 19): a lazy default contradicts `MC-132` item 1 and goes beyond `MC-136` item 3; load-on-access is not implementable; the V2 live-proxy `getDatabase` is not reachable by plugins (V3 never calls `oldApis.getDatabase`); the V3 `setDatabase` mark-all is "probably redundant, not provably"; archiving defaults to true by boot normalisation, with a caveat for a failed or skipped normalisation pass. The maintainer then re-decided (`MC-975`).
+
+### MC-974 — Lane A, 2026-11-02: CHORE-17 write marks "Measure first" and the 500-character target
+
+- Tag: decision (the maintainer's answers, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue. Queue line 7: "Measure first (Recommended)". Queue line 8: "500 on Note 9 (Recommended)". Question texts are not in the queue: TODO(evidence).
+- Alternatives rejected: not recorded.
+- Related: CHORE-17, `MC-949`, `MC-976`.
+
+**What was decided (maintainer).**
+1. CHORE-17 plugin write marks: "Measure first (Recommended)".
+2. CHORE-17 target: "500 on Note 9 (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss for item 1: Stage 0 counters split the read cost from the write cost on the phone; "mark all" stays until a "mark only changed" design comes back with numbers.
+  - The queue's gloss for item 2: about 500 resident characters on the Note 9; the freeze is reported against 100 and 250 ms, not gated.
+
+### MC-975 — Lane A, 2026-11-02: CHORE-17 read re-decision "Opt-in + cheaper copy" and the archiving-on profile (supersedes "Allow a lazy view")
+
+- Tag: decision (the maintainer's answers, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue. Queue line 20: "Opt-in + cheaper copy (Recommended)". Queue line 21: "Archiving on (default)". Question texts are not in the queue: TODO(evidence).
+- Alternatives rejected: for item 1, "Allow a lazy view" is the earlier answer this replaces (`MC-973`); the other options are not recorded.
+- Related: CHORE-17, `MC-973`, `MC-132`, `MC-136`. **Supersedes `MC-973`.**
+
+**What was decided (maintainer).**
+1. CHORE-17 read re-decision: "Opt-in + cheaper copy (Recommended)".
+2. CHORE-17 profile: "Archiving on (default)".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss for item 1: the default `getDatabase` stays unchanged in what it returns and is made cheaper (drop the console log of the whole response and the extra walk); an opt-in light read is added for plugins that ask. The lazy default is rejected.
+  - The queue's gloss for item 2: plugins run on the default profile; most characters are placeholders; the all-resident case (1.1 to 1.5 s) is not the usual one.
+  - Plan finding (queue line 24, not a decision): the bridge console logs are already stripped from every vite build, so removing them saves nothing on the phone (this explains the null X-B B1 result). The plan is `b35\c17-plan\plan.md`.
+
+### MC-976 — Lane A, 2026-11-02: CHORE-17 plan answers (light read form, write-back, result counts, light entries with chats)
+
+- Tag: decision (the maintainer's answers, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue. Queue line 25: "New method (Recommended)". Queue line 26: "Keep live, warn once (Recommended)". Queue line 40: Q2 re-confirmed after the Gate 1 round 1 finding F3: "Return a count (Recommended)". Queue line 41: "Refuse the call (Recommended)". Question texts are not in the queue: TODO(evidence); the first Q2 answer, before the re-confirmation, is not in the queue: TODO(evidence).
+- Alternatives rejected: not recorded.
+- Related: CHORE-17, `MC-974`, `MC-975`, `MC-175`.
+
+**What was decided (maintainer).**
+1. Light read form: "New method (Recommended)".
+2. Light write-back: "Keep live, warn once (Recommended)".
+3. Result form (Q2, re-confirmed after F3): "Return a count (Recommended)".
+4. A light entry that carries chats: "Refuse the call (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's glosses. Item 1: a method `getLightCharacters()` with the same `db` permission; upstream rejects it as method not found (a fork-specific API addition). Item 2: an edited light entry written back through `setDatabase` keeps the live character, with one warning; nothing is lost. Item 3: the `setDatabase` and `setDatabaseLite` result reports `lightKept` and `lightLeftOut` counts, fork-specific in the `.d.ts`; the console warning is stripped in builds (finding F3), which is why the count was asked again. Item 4: the whole `setDatabase` call is refused before any write, and the error names `getCharacterFromIndex`.
+  - Plan revision `b35\c17-plan\plan-r2.md` added that the V2 live-wrapper characters set refuses light entries (queue line 48); the Q3 pass and fail criterion stayed open and non-blocking.
+
+### MC-977 — Lane A, 2026-11-02: Settings return "Measure, then plan"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue (queue line 10): "Measure, then plan (Recommended)". The question text is not in the queue: TODO(evidence).
+- Alternatives rejected: not recorded.
+- Related: `MC-972`, `MC-979`, CHORE-04.
+
+**What was decided (maintainer).**
+1. Settings-return rebuild: "Measure, then plan (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss: stage 0 splits the parse from layout on one return; then plan "skip the re-parse when no display input changed" only if parse dominates. The PC trace found parse at about 5 to 9 percent (verified), so the plan took another route (see the Roadmap batch 35 section); that route was Gate 1 reviewed, not asked of the maintainer.
+
+### MC-978 — Lane A, 2026-11-02: CHORE-623 wording and name decisions
+
+- Tag: decision (the maintainer's answers, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue. Queue line 14: "Say 'upstream RisuAI' (Recommended)". Queue line 15: "Exported chat files (Recommended)", "Iris replies + identity (Recommended)" and "Console + MCP descriptions". Queue line 16: "Both" (over "Leave for now (Recommended)"). Queue line 17: "Chinese 'classic Risu' (Recommended)" and "Report file name". Question texts are not in the queue beyond the glosses: TODO(evidence).
+- Alternatives rejected: "Leave for now (Recommended)" for the app name (queue line 16). Others not recorded.
+- Related: CHORE-623, `MC-962`, `MC-963`, `MC-058`, `MC-979`.
+
+**What was decided (maintainer).**
+1. Upstream references: "Say 'upstream RisuAI' (Recommended)".
+2. Indirect uses: "Exported chat files (Recommended)", "Iris replies + identity (Recommended)" and "Console + MCP descriptions".
+3. App name: "Both" (over "Leave for now (Recommended)").
+4. Leftovers: "Chinese 'classic Risu' (Recommended)" and "Report file name".
+
+- Notes, not the maintainer's words:
+  - The queue's glosses. Item 1: preset, module and Realm descriptions and the old-save-file warning name upstream RisuAI explicitly. Item 2: all three become RisuTanium. Item 3: the desktop Tauri `productName` and `mainBinaryName` and the Android `app_name` become "RisuTanium"; the app ID and signing key are unchanged (the Android developer verification record); the plan must check the data directory is keyed by identifier, not `productName`. Item 4: the report file name becomes `risutanium-settings-report.json` and the `settingsExportKv` test is updated.
+  - Lane A rulings (queue line 22, not maintainer decisions): O1 Latin "RisuTanium" in the Korean Iris sample (the translator confirms); O2 the MCP `serverInfo.name` is kept (the decision covered descriptions); O3 `main_activity_title` follows `app_name`; O4 the translator relays through scratch; O5 `docs/wiki` is out of scope. The plan is `b35\c623-plan\plan.md`; its data-path check found no dependence on `productName`.
+
+### MC-979 — Lane A, 2026-11-02: one more MVP refresh after the performance work, and what gates it
+
+- Tag: decision (the maintainer's statements and answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue. Queue line 30: "My plan is to update my MVP once more with all the performance work before start tackling UI overhaul." Queue line 31: the maintainer selected CHORE-17 S0-S2, the Settings-return fix, the CHORE-396 fix and the CHORE-624 net, adding "We are under no deadline, so I can wait for all these to finish. as I said, I was just letting you know." Queue line 32: CHORE-623 rename rides the refresh: "Yes, include it (Recommended)". Question texts are not in the queue: TODO(evidence).
+- Alternatives rejected: not recorded.
+- Related: `MC-922` (the current MVP), `MC-350`, `MC-516`, CHORE-17, CHORE-396, CHORE-623, CHORE-624, `MC-984`.
+
+**What was decided (maintainer).**
+1. "My plan is to update my MVP once more with all the performance work before start tackling UI overhaul."
+2. The refresh waits for CHORE-17 S0 to S2, the Settings-return fix, the CHORE-396 fix and the CHORE-624 net; "We are under no deadline, so I can wait for all these to finish. as I said, I was just letting you know."
+3. CHORE-623: "Yes, include it (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss (line 30): one more MVP refresh after the perf work, the UI overhaul after it; the `MC-350` carry-forward applies to the refresh. This is a plan statement, not a build: the MVP stays `7928b5bb1` (`MC-922`) until a refresh is built and recorded.
+  - The CHORE-396 fix is not designed yet; see the Roadmap batch 35 section.
+
+### MC-980 — Lane A, 2026-11-02: CHORE-624 net scope, cost route and hide/Back force (cost route partly superseded by MC-981)
+
+- Tag: decision (the maintainer's answers, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue. Queue line 34: "Any missed edit (Recommended)". Queue line 35: "Measure, then A (Recommended)". Queue line 36: "No, keep as is (Recommended)". Question texts are not in the queue beyond the glosses: TODO(evidence).
+- Alternatives rejected: not recorded. The queue names the route labels A and C only through its gloss (queue line 35).
+- Related: CHORE-624, `MC-374`, `MC-372`, `MC-981`. Item 2 is **superseded for Stage A by `MC-981`**.
+
+**What was decided (maintainer).**
+1. Net scope: "Any missed edit (Recommended)".
+2. Cost route: "Measure, then A (Recommended)" (superseded for Stage A by `MC-981`; the Stage 0 counters part stands).
+3. Hide and Back force: "No, keep as is (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's glosses. Item 2: Stage 0 counters, then spread the module pass over 2 s slots; route C only if the Note 9 still needs it. Item 3: revisit if the counters find a missed edit.
+  - Sizing `b35\c624-size\result.md` (SIZED; no production in-place writer of installed module asset lists found by member-name grep, so the net looks purely defensive) was verified VERIFIED WITH CORRECTIONS (`b35\c624-size\verify\result.md`; an alias-aware search found 0 unmarked producers; "purely defensive today" stands).
+
+### MC-981 — Lane A, 2026-11-02: CHORE-624 route switch "Switch" (supersedes "Measure, then A" for Stage A)
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue (queue line 66): "Switch (Recommended)". The question text is not in the queue beyond the gloss: TODO(evidence).
+- Alternatives rejected: keeping the chosen route A (spreading the module pass over slots); the other options are not recorded.
+- Related: CHORE-624, `MC-980`. **Supersedes `MC-980` item 2 for Stage A.**
+
+**What was decided (maintainer).**
+1. CHORE-624 route: "Switch (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss: Stage 0 counters plus a hidden-Android tick that yields like a visible one, with the yield raced against the scheduler's request wake; the spreading design is dropped; the visible case is revisited only if the counters show stutter. The advice is `b35\c624-advice\result.md`; it needed the maintainer's OK because it replaced the chosen route A (queue line 64). The plan is `b35\c624-plan\plan-r3.md`.
+
+### MC-982 — Lane A, 2026-11-02: commit, merge and push authorizations of batch 35
+
+- Tag: decision (the maintainer's approvals, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue. Where the queue quotes a label it is shown; otherwise the queue says only "maintainer approved" and the label is not recorded: TODO(evidence). Hashes are from `git log --oneline -40` on `main` read at write time.
+- Alternatives rejected: not recorded.
+- Related: `MC-964`, `MC-966`, `MC-968`, the Roadmap batch 35 section.
+
+**What was decided (maintainer).** Each approval is scoped to the one change named.
+1. CHORE-623: "Commit + push (Recommended)" (queue line 47) — `621c220d2`.
+2. Settings-return stage 1: "Commit + push (Recommended)" (queue line 65) — `2eed2f84d`.
+3. CHORE-17: "Commit + push (Recommended)" (queue line 76) — `515025346`.
+4. CHORE-624: "Commit + push (Recommended)" (queue line 87) — `031bfddf1`.
+5. The upstream-harvest record and wiki page: "Maintainer approved commit+push" (queue line 102; the wording is the queue's) — `15bee8b96`.
+6. Harvest batch U1: maintainer approved, label not quoted (queue line 106) — `52987bd95`.
+7. Harvest batch U2: "maintainer approved commit+push" (queue line 121) — `f8f5007f1`.
+8. Docs commit 2: maintainer approved 2026-11-02 (queue line 126) — `ddc925edd`.
+9. CodeQL `paths-ignore` for `docs/design/**`: committed on the exclusion decision (`MC-992`; queue line 134) — `8c7a67e82`.
+10. Harvest batch U3b: maintainer approved 2026-11-02 (queue line 152) — `6bff60aad`.
+11. Harvest batch U3: maintainer approved 2026-11-02 (queue line 158) — `5e574e1dc`.
+12. Docs commit 3: maintainer approved 2026-11-02 (queue line 159) — `78ae04667`.
+13. Dependency overrides: maintainer approved (queue line 161) — `138ab8487`.
+
+- Notes, not the maintainer's words:
+  - Lane A's mechanics, per the queue: the CHORE-17 commit was rebased onto `2eed2f84d` before the fast-forward; the U1 branch was rebased onto `15bee8b96`; the U3 branch was squashed onto `main` by soft reset, so its work-in-progress and merge commits are unreferenced by design (queue line 158); worktrees were removed after each ship.
+
+### MC-983 — Lane A, 2026-11-02: the upstream issues and pull requests review
+
+- Tag: decision (the maintainer's statements, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue. Queue line 82: "your call, start the harvest." Queue line 83: "we've been actively merging upstream fixes into our own, but there are lots of old issues and PR which idea is sound, but never merged because either they were large modification made by AI or different from what upstream maintainer envisioned. so I think we should take that into account." Queue line 84: "data loss that is actually reachable in normal use would gate the MVP refresh. but other than that, It'd be okay even if it doesn't." Queue line 96 (lane A's paraphrase of the maintainer, not a quote): document the harvest funnel now; a dedicated wiki page later, which needs its own `docs/wiki` authorization when started.
+- Alternatives rejected: not applicable (free text).
+- Related: `MC-979`, `MC-984`, `MC-985`, the Roadmap batch 35 section.
+
+**What was decided (maintainer).**
+1. The review approach: "your call, start the harvest." (the funnel in the queue, line 82: harvest, batched triage, shortlist by impact, an investigator per cluster, CHORE tickets).
+2. Old unmerged ideas count: "we've been actively merging upstream fixes into our own, but there are lots of old issues and PR which idea is sound, but never merged because either they were large modification made by AI or different from what upstream maintainer envisioned. so I think we should take that into account."
+3. The MVP gate from this review: "data loss that is actually reachable in normal use would gate the MVP refresh. but other than that, It'd be okay even if it doesn't."
+
+- Notes, not the maintainer's words:
+  - Lane A's call on naming (queue line 101): the harvest batches U1, U2, U3 and U3b clash with the 10-21 merge stages U0 to U5, so records say "harvest batch" and carry CHORE IDs (CHORE-625 to CHORE-628, assigned in this batch by lane A as records owner).
+  - Lane A's check (queue line 101): `git fetch upstream` showed `main..upstream/main` at 0 commits; the fork is current with upstream `main` at `ea61945f9`; a new upstream branch `cubicj-fix-node-batch-remove` is not on `main`.
+
+### MC-984 — Lane A, 2026-11-02: harvest follow-up answers (Lua chatId, non-gating backlog, download notice, wiki page)
+
+- Tag: decision (the maintainer's answers to a multi-question prompt, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue (queue line 97): (1) "Add chatId now"; (2) "Before MVP refresh"; (3) "Reword the notice". Item 4's label is not quoted; the queue describes it: TODO(evidence) for the label. The question texts are not in the queue: TODO(evidence).
+- Alternatives rejected: not recorded.
+- Related: `MC-983`, `MC-985`, `MC-986`, `MC-987`, upstream issues 1611, 1564, 1667, 1387, 1426, 1495, 1327 and 843.
+
+**What was decided (maintainer).**
+1. Lua `chatId`: "Add chatId now".
+2. The non-gating harvest backlog: "Before MVP refresh".
+3. Issue 843: "Reword the notice".
+4. A wiki page "what changed from upstream" (label not quoted).
+
+- Notes, not the maintainer's words:
+  - The queue's glosses. Item 1: expose `chatId` in `getFullChat` and match by it in `setFullChat` (the upstream 1611 approach); a fork-only Lua API addition, planned and gated after harvest batch U1. Item 2: issues 1667, the 1387 residual, 1426 and 1495, and 1327 (after a runtime check). Item 3: on web builds "saved" becomes "download started". Item 4: a user-facing summary grouped by area with upstream links; fork ticket IDs only in a compact appendix.
+
+### MC-985 — Lane A, 2026-11-02: lane A may edit docs/wiki for its own shipped changes
+
+- Tag: decision (the maintainer's statements, relayed by lane A; the queue paraphrases and does not quote them). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue. Queue line 98: the wiki session is retired; lane A may edit `docs/wiki` for the "what changed from upstream" page (fixed bugs, merged tickets, rewritten systems). Queue line 122: a standing OK for lane A to edit `docs/wiki` pages documenting its own shipped changes; each edit gets an independent doc-verifier and the maintainer's commit approval. The maintainer's exact words are not in the queue: TODO(evidence).
+- Alternatives rejected: not recorded.
+- Related: `MC-984`, `MC-982`, `AGENTS.md` (the `docs/wiki/**` rule).
+
+**What was decided (maintainer).**
+1. The wiki session is retired; lane A may edit `docs/wiki` for the "what changed from upstream" page.
+2. A standing OK for lane A to edit `docs/wiki` pages that document its own shipped changes, each with an independent doc-verifier pass and the maintainer's commit approval.
+
+- Notes, not the maintainer's words:
+  - This entry records the maintainer's authorization as lane A relayed it. This batch did not edit `docs/wiki` and did not edit `AGENTS.md`; whether the working-instruction text needs amending is for lane A and the maintainer (not decided here).
+
+### MC-986 — Lane A, 2026-11-02: harvest batch U3 plan answers (download notices, preset repair, streaming translation, Ollama gate, settings export)
+
+- Tag: decision (the maintainer's answers, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue. Queue line 104 (U3 plan questions Q1 to Q5): Q1 split by platform (web "download started", Tauri keeps "saved"; a new en key, locales through the translator); Q2 an out-of-range `botPresetsId` on save appends the working settings as "New Preset" (the load-repair rule); Q4 strong streaming plus auto-translate: show the raw stream and translate once at the end; Q5 the local Ollama multibyte fix gates the MVP refresh. Queue line 115: for finding F4, include both (the backup and translation-cache notices get web-only "download started" wording). Queue line 118: Q6, `settingsExported` is included (a web-only "download started" key). Option labels are not quoted in the queue: TODO(evidence).
+- Alternatives rejected: not recorded.
+- Related: `MC-984`, `MC-091`, `MC-774`, the Roadmap batch 35 section.
+
+**What was decided (maintainer).**
+1. Q1 download notices: split by platform; web builds say "download started", Tauri keeps "saved".
+2. Q2 out-of-range `botPresetsId` on save: append the working settings as a "New Preset".
+3. Q4 strong streaming with auto-translate: show the raw stream and translate once at the end.
+4. Q5: the local Ollama multibyte fix gates the MVP refresh.
+5. F4: include the backup and translation-cache notices in the web-only wording.
+6. Q6: include the `settingsExported` notice in the web-only wording.
+
+- Notes, not the maintainer's words:
+  - Q3 (also reword `translationJsonDownloaded`, English only) was not asked separately: lane A adopted the plan's recommendation (yes). That is lane A's ruling, not a maintainer answer.
+  - Lane A's scope amendments under `MC-091`, recorded by the orchestrator (queue line 104): S1 (the external-list folder delete is not written back; a close-flag counter) and S4 (the chatML fold-in, a shared cause with the Thoughts block fix).
+
+### MC-987 — Lane A, 2026-11-02: harvest batch U2 plan answers (Lua chatId exposure)
+
+- Tag: decision (the maintainer's answers, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue (queue line 113): Q1 expose `chatId` in `getFullChat`, `getChat` and `getRecentChats` (read-only); Q2 an unknown or duplicate `chatId` is judged like an id-less entry (the U1 rule). Queue line 114 names them "Q1-A" and "Q2-B". The question texts and other options are not in the queue: TODO(evidence).
+- Alternatives rejected: not recorded.
+- Related: `MC-984`, harvest batch U2 (CHORE-626).
+
+**What was decided (maintainer).**
+1. Q1 (answer A): expose `chatId` in `getFullChat`, `getChat` and `getRecentChats`, read-only.
+2. Q2 (answer B): an unknown or duplicate `chatId` is judged like an id-less entry.
+
+- Notes, not the maintainer's words:
+  - The doc stage touches `docs/wiki/Lua-API-Reference.md`; lane A noted it would confirm the wiki scope with the maintainer at commit time (queue line 114). `MC-985` records a standing authorization; whether the commit used it is not in the queue: TODO(evidence).
+
+### MC-988 — Lane A, 2026-11-02: harvest batch U3b decisions (lorebook phrase match, spoken language, focus ring)
+
+- Tag: decision (the maintainer's answers, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue. Queue line 111: fold #340, #200, #209 and #662 into the pre-MVP U3 as extra stages (later split out as U3b, queue line 115). Queue line 119: the U3b answers. Queue line 133: "an empty key never matches in full-word mode (old split quirk dropped)". Option labels are not quoted: TODO(evidence).
+- Alternatives rejected: not recorded.
+- Related: `MC-983`, `MC-984`, `MC-989`, `MC-204`, `MC-774` (see `MC-989`).
+
+**What was decided (maintainer).**
+1. Issues #340, #200, #209 and #662 go into the pre-MVP harvest batch as extra stages.
+2. #340 (lorebook full-word match): multi-word full-word keys match as a phrase with boundaries at both ends; for Korean and CJK there is no in-word match by default, plus a NEW off-by-default SillyTavern-like boundary toggle beside "full word matching" in each character's lorebook settings and in module lorebooks (a fork-only setting). Narrowed by `MC-989` Q5: module lorebooks follow the character's option, with no module field and no module UI.
+3. #200: TTS speaks the shown (translated) language.
+4. #209: a keyboard-only focus ring (`focus-visible`).
+5. An empty key never matches in full-word mode (the old split quirk is dropped).
+
+- Notes, not the maintainer's words:
+  - Lane A's Decision-Index check (queue line 119): `MC-204` governs CBS parsing of spoken text, not translation; no conflict found.
+
+### MC-989 — Lane A, 2026-11-02: harvest batch U3b boundary option for module lorebooks and `.bin` round trip
+
+- Tag: decision (the maintainer's answers Q5 and Q6, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue (queue line 120): module lorebook entries follow the character's new SillyTavern-style boundary option (no module field or UI); the option (`loreSettings.fullWordAsciiBoundary`, card extensions `risu_fullWordAsciiBoundary`) rides along in `.bin` and cards. Option labels are not quoted: TODO(evidence).
+- Alternatives rejected: not recorded.
+- Related: `MC-988`, `MC-774`, `MC-175`.
+
+**What was decided (maintainer).**
+1. Q5: module lorebook entries follow the character's boundary option; no module field and no module UI. This narrows `MC-988` item 2, which named a toggle "in module lorebooks".
+2. Q6: the option rides along in `.bin` and cards.
+
+- Notes, not the maintainer's words:
+  - The queue's `MC-774` note: a nested key that upstream stores without reading is not "data upstream cannot hold".
+  - Later facts (queue lines 141 and 150, 151): the key is written only when the option is on (always-writing changed pinned export bytes in 14 tests); the Gate 2 remediation syncs `loreExt` on toggle (groups skipped); the remediation check says two other UI or import paths can still leave a stale `loreExt` key (low), so do not claim `loreExt` always equals the setting.
+  - Open item recorded in the queue (line 120): whether the translator role covers `ja`; the translations were applied for seven locales including `ja` (queue line 142).
+
+### MC-990 — Lane A, 2026-11-02: harvest batch U3b spoken-translation errors and cost
+
+- Tag: decision (the maintainer's answers Q7 and Q8, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue (queue line 127): Q7 (a) and Q8 (a). The question texts and option labels are not quoted: TODO(evidence).
+- Alternatives rejected: not recorded.
+- Related: `MC-988`, `MC-989`.
+
+**What was decided (maintainer).**
+1. Q7 (a): `ERR::` and LLM failures alert as today; thrown failures only `console.warn`; the original text is always spoken.
+2. Q8 (a): one request per spoken run; each continue or auto-continue part pays one.
+
+- Notes, not the maintainer's words:
+  - Gate 2 note N4 (queue line 148): `console.warn` is stripped from builds, so a thrown speech-translation failure is silent in builds; the Q7 alert paths hold.
+  - Plan history: the Gate 1 round 1 reject (queue line 125) found that the per-paragraph design cost one LLM request per paragraph; the revised plan is a single whole-text request per run (queue line 127).
+
+### MC-991 — Lane A, 2026-11-02: the static web build sends provider requests through upstream's proxy — "Note it, no change"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue (queue line 110): "Note it, no change" (record in the wiki page and in the pending drop-the-web-build decision). The question text is not in the queue: TODO(evidence).
+- Alternatives rejected: not recorded.
+- Related: `MC-983`, the "drop the web build" question (pending; the memory index records the maintainer weighing it on 2026-10-29).
+
+**What was decided (maintainer).**
+1. Static web build routes provider requests via upstream `sv.risuai.xyz/proxy2`: "Note it, no change".
+
+- Notes, not the maintainer's words:
+  - The finding behind it (queue line 109, cluster F, static trace, lane A confirmed the proxy URL selection in `globalApi.svelte.ts`): on a static web build (neither Tauri nor the Node server) every non-localhost API request goes through `${hubURL}/proxy2`, which is upstream `sv.risuai.xyz`, so `Authorization` headers transit upstream; Tauri native and the Node host use their own proxy. `usePlainFetch` exists in the db but no UI toggle was found (unconfirmed).
+  - The docs verification (queue line 124) found the web-proxy claim overstated (localhost is refused on web) and lane A applied the suggested wording; see the harvest record `Agents/Upstream-Harvest-2026-11-02.md`.
+
+### MC-992 — Lane A, 2026-11-02: CodeQL alerts — design mockups are ignorable, `server.cjs` needs attention
+
+- Tag: decision (the maintainer's statements, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue. Queue line 132: the weekly CodeQL run opened 34 alerts; the maintainer said the `docs/design` mockup alerts are ignorable and `server.cjs` needs attention (lane A's paraphrase, not a quote). Queue line 134: "exclude docs/design mockups from CodeQL" (lane A's paraphrase).
+- Alternatives rejected: not applicable.
+- Related: `MC-993`, `MC-982` item 9.
+
+**What was decided (maintainer).**
+1. The `docs/design` mockup alerts are ignorable; the `server.cjs` alerts get a triage.
+2. Exclude the `docs/design` mockups from CodeQL (committed as `8c7a67e82`, `paths-ignore` for `docs/design/**`).
+
+- Notes, not the maintainer's words:
+  - The triage `b35\sec\result.md` (investigator, static only, no server run; checkout `main` at `8c7a67e82`) reports all 14 shipped-code alerts (13 in `server.cjs` plus `multisend.ts`; 8 type-confusion, 1 SSRF, 4 path, 1 DOM; the report's own headline "15" was a mis-sum, which lane A repeated to the maintainer) as false positive or by design (alert #94 is "BY DESIGN (REAL-LOW if counted at all)"), none reachable without the password. Lane A spot-verified the chunk `Buffer.isBuffer` guard, the file-path hex validation, the outbound `/proxy2`-family request with its checked-lookup policy, and that `codeql.yml` loads `codeql-config.yml`; lane A did not re-check the `multisend` alert (queue line 138). The recommendation is to dismiss them in GitHub as false positive or used in tests; no code change. The dismissals themselves were not done by this batch: TODO(evidence).
+  - An independent verification of the triage is not in the queue: TODO(evidence).
+
+### MC-993 — Lane A, 2026-11-02: dependency alerts — "Override + test"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue (queue line 161): "Override + test (Recommended)". The question text is not in the queue beyond the audit summary in queue line 132: `pnpm audit` showed `sharp` three high (via `@huggingface/transformers` 3.8.1), `postcss-selector-parser` moderate, `qs` moderate (express) and `deepmerge` low.
+- Alternatives rejected: not recorded.
+- Related: `MC-992`, `MC-982` item 13.
+
+**What was decided (maintainer).**
+1. Dependency alerts: "Override + test (Recommended)".
+
+- Notes, not the maintainer's words:
+  - Result (queue line 161, coder report `b35\deps35\result.md`): overrides `@huggingface/transformers>sharp ^0.35.5`, `@tailwindcss/typography>postcss-selector-parser ^6.1.5` and `express>qs ~6.16.1`; the audit leaves only `deepmerge` low (no patch, build time); check 0, test 1309 files and 29153 tests, build 0; Gate 2 `[APPROVE]` (`b35\deps35-g2\result.md`); committed as `138ab8487`. The main checkout's `node_modules` needs `pnpm install`, left to the maintainer.
+
+### MC-994 — Lane A, 2026-11-02: start records batch 35 and run device batch 36 and the translation reword alongside it
+
+- Tag: decision (a maintainer instruction, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the queue (queue line 162), quoting the maintainer: "go ahead and do the record batch. and run device batch and translation alongside it."
+- Alternatives rejected: not applicable (free text).
+- Related: `MC-982`, the Roadmap batch 35 section.
+
+**What was decided (maintainer).**
+1. "go ahead and do the record batch. and run device batch and translation alongside it."
+
+- Notes, not the maintainer's words:
+  - Lane A dispatched device batch 36 (CHORE-624 preempt on a device; CHORE-17 S1-b with chats and `alt`, archive OFF) and the seven-locale reword of `translationJsonDownloaded`. Both were still running when this batch was written; no result is recorded here.
+  - Nothing in this entry authorizes a commit of these records.
