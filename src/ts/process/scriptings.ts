@@ -438,21 +438,22 @@ export async function runScripted(code:string, arg:{
                 }
 
                 // A rebuilt message at the same index with the same role and data is the same message: it keeps
-                // its id and time, so the alternatives that follow it stay attached.
+                // every field, so the alternatives that follow it stay attached and its metadata survives.
+                // An edited message is a new message and carries nothing.
                 const previousPath = target.message.slice()
                 target.message = realValue.map((v, index) => {
+                    const previous = previousPath[index]
+                    if(previous && previous.role === v.role && previous.data === v.data){
+                        const message:Message = {
+                            ...previous,
+                            role: v.role,
+                            data: v.data
+                        }
+                        return message
+                    }
                     const message:Message = {
                         role: v.role,
                         data: v.data
-                    }
-                    const previous = previousPath[index]
-                    if(previous && previous.role === v.role && previous.data === v.data){
-                        if(previous.chatId !== undefined){
-                            message.chatId = previous.chatId
-                        }
-                        if(previous.time !== undefined){
-                            message.time = previous.time
-                        }
                     }
                     return message
                 })

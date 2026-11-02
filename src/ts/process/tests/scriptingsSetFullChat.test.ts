@@ -120,6 +120,41 @@ describe('Lua setFullChat keeps the tree attached', () => {
         expect('alt' in chat).toBe(false)
     })
 
+    test('an identity round-trip through Lua keeps every field of every message', async () => {
+        const character: Message = {
+            ...msg('b', 'world', 20),
+            generationInfo: { model: 'm', generationId: 'g', inputTokens: 1, outputTokens: 2, maxContext: 3 },
+            promptInfo: { promptName: 'p', promptToggles: [{ key: 'k', value: 'v' }], promptText: [{ role: 'user', content: 'c' }] },
+            saying: 'npc',
+            name: 'Nameless',
+            otherUser: true,
+            disabled: true,
+            isComment: true,
+        }
+        const chat = chatOf([msg('a', 'hello', 10, 'user'), character])
+        const original = structuredClone(chat.message)
+        await runScripted('function onStart(id) setFullChat(id, getFullChat(id)) end', {
+            char: {} as never,
+            chat,
+            setVar: () => false,
+            getVar: () => 'null',
+            mode: 'start',
+        })
+        expect(chat.message).toEqual(original)
+    })
+
+    test('guard: an edited message at the same index and role carries no metadata', async () => {
+        const chat = chatOf([msg('a', 'hello', 10, 'user'), { ...msg('b', 'world', 20), disabled: true, isComment: true, saying: 'npc' }])
+        await setFullChat(chat, '{ {role="user", data="hello"}, {role="char", data="changed"} }')
+        expect(chat.message[1]).toEqual({ role: 'char', data: 'changed' })
+    })
+
+    test('guard: the same data under a different role is a new message', async () => {
+        const chat = chatOf([{ ...msg('a', 'x', 10), disabled: true }])
+        await setFullChat(chat, '{ {role="user", data="x"} }')
+        expect(chat.message[0]).toEqual({ role: 'user', data: 'x' })
+    })
+
     test('guard: a chat with no alternatives is rebuilt as before and gains none', async () => {
         const chat = chatOf([msg('a', 'one', 1, 'user')])
         await setFullChat(chat, '{ {role="user", data="one"}, {role="char", data="two"} }')

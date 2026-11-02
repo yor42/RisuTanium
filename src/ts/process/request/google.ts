@@ -1018,10 +1018,12 @@ function getTranStream(args:{
     saveSignature:boolean
 }):TransformStream<Uint8Array, StreamResponseChunk> {
     let buffer = '';
+    // One decoder per stream, so a character split across chunks is joined instead of replaced.
+    const decoder = new TextDecoder();
     const { modelInfo, saveSignature } = args
     return new TransformStream<Uint8Array, StreamResponseChunk>({
         transform(chunk, control) {
-            buffer += new TextDecoder().decode(chunk);
+            buffer += decoder.decode(chunk, {stream: true});
             const lines = buffer.split('\n');
 
             let readed = initStreamState();
@@ -1097,9 +1099,12 @@ function getTranStream(args:{
                     } 
                 }
                 control.enqueue(readed)
-            } catch (error) { 
+            } catch (error) {
 
             }
+        },
+        flush() {
+            buffer += decoder.decode();
         }
     });
 }

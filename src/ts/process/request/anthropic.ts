@@ -940,7 +940,7 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                 let text = ''
                 let reader = res.body.getReader()
                 let parserData = ''
-                const decoder = new TextDecoder()
+                let decoder = new TextDecoder()
                 const parseEvent = ((e:string) => {
                     try {               
                         const parsedData = JSON.parse(e)
@@ -1002,9 +1002,10 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                         }
                         const {done, value} = await reader.read() 
                         if(done){
+                            parserData += decoder.decode()
                             break
                         }
-                        parserData += (decoder.decode(value))
+                        parserData += decoder.decode(value, {stream: true})
                         let parts = parserData.split('\n')
                         for(;i<parts.length-1;i++){
                             prevText = text
@@ -1012,6 +1013,7 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                                 const d = await parseEvent(parts[i].slice(6))
                                 if(d === 'overload'){
                                     parserData = ''
+                                    decoder = new TextDecoder()
                                     prevText = ''
                                     text = ''
                                     reader.cancel()
