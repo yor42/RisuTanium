@@ -1562,6 +1562,8 @@ export interface loreSettings{
     scanDepth:number
     recursiveScanning: boolean
     fullWordMatching?: boolean
+    /** Fork-only. With full-word matching, only `[A-Za-z0-9_]` make up a word, as in SillyTavern. Absent reads as off. */
+    fullWordAsciiBoundary?: boolean
 }
 
 

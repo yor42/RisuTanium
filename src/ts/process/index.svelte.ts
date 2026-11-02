@@ -19,6 +19,9 @@ import { sayTTS } from "./tts";
 import { beginInFlight } from "./inFlightWork";
 import { isTTSVoiceMode } from "./ttsModes";
 import { ttsAddition } from "./ttsAddition";
+import { currentTTSSignal } from "./ttsPlayback";
+import { providerTranslatesItself } from "./ttsSpeechText";
+import { translateForSpeech } from "./ttsTranslate";
 import { buildDisplayParseOptions } from "./displayParseOptions";
 import { supaMemory } from "./memory/supaMemory";
 import { writeSupaMemoryData } from "./memory/supaResume";
@@ -2617,7 +2620,20 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 subject,
             })), !!currentChar.ttsReadOnlyQuoted)
             if(spoken.trim()){
-                await sayTTS(currentChar, spoken, { skipTextFilter: true })
+                // The spoken run is translated into the shown language, after the MC-204 diff, unless the display would
+                // not translate it either or the provider translates by itself.
+                const wantsTranslation = DBState.db.autoTranslate
+                    && !(DBState.db.translatorType === 'llm' && DBState.db.autoTranslateCachedOnly)
+                    && !providerTranslatesItself(currentChar)
+                let text: string | null = spoken
+                if(wantsTranslation){
+                    const note = ttsTarget.ctx.owner.type === 'character' ? ttsTarget.ctx.owner.translatorNote : undefined
+                    text = await translateForSpeech(spoken, [abortSignal, currentTTSSignal()], note)
+                }
+                // The reply can be deleted while the translation is pending; a Stop or a deleted chat ends the wait.
+                if(text !== null && !abortSignal.aborted && resolveReply()){
+                    await sayTTS(currentChar, text, { skipTextFilter: true })
+                }
             }
         }
     }

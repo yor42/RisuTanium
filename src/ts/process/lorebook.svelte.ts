@@ -19,6 +19,7 @@ import { beginBusy } from "./memory/busyActions";
 import { splitLoreKeys } from "./loreKeys";
 import { externalEntryDecorators, placeDisabledMarker } from "./lorebookImportDecorators";
 import { firstMessageIndexOf } from "./firstMessage";
+import { ASCII_WORD, fullWordIncludes, UNICODE_WORD } from "./lorebookWordMatch";
 
 /**
  * A fixed stand-in for `RunSubject` that always resolves to `ctx`, captured
@@ -152,6 +153,8 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
     const loreDepth = char?.loreSettings?.scanDepth ?? DBState.db.loreBookDepth
     const loreToken = char?.loreSettings?.tokenBudget ?? DBState.db.loreBookToken
     const fullWordMatchingSetting = char?.loreSettings?.fullWordMatching ?? false
+    //module and chat entries follow the character's option; no per-entry or per-module field exists
+    const fullWordWordChar = char?.loreSettings?.fullWordAsciiBoundary ? ASCII_WORD : UNICODE_WORD
     const chatLength = currentChat.length + 1 //includes first message
     const recursiveScanning = char?.loreSettings?.recursiveScanning ?? true
     let recursivePrompt:{
@@ -278,9 +281,8 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
         for(const m of mList){
             let mText = m.data
             if(arg.fullWordMatching){
-                const splited = mText.split(' ')
                 for(const key of arg.keys){
-                    if(splited.includes(plainKey(key))){
+                    if(fullWordIncludes(mText, plainKey(key), fullWordWordChar)){
                         matchLog.push({
                             prompt: m.prompt,
                             source: m.source,

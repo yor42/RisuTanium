@@ -157,6 +157,39 @@ async function runTranslatorUntracked(text:string, reverse:boolean, from:string,
 
 }
 
+/**
+ * Translates `text` into the display language with one translator request, for text that is spoken rather than shown.
+ * Unlike runTranslator it does not split on newlines and leaves the session cache alone. It returns `text` when the
+ * run stopped or produced nothing usable, and alerts on an ERR:: result as runTranslator does; a thrown failure is left
+ * to the caller.
+ */
+export function translateWholeText(text:string, opts:{translatorNote?:string} = {}):Promise<string> {
+    return withInFlight('translate', async () => {
+        const db = getDatabase()
+        const trimmed = text.trim()
+        if(trimmed.length === 0){
+            return text
+        }
+        const arg = {
+            from: db.translatorType === 'llm'
+                ? db.translatorInputLanguage
+                : (db.aiModel.startsWith('novellist') ? 'ja' : 'en'),
+            to: db.translator || 'en',
+            host: 'translate.googleapis.com',
+            translatorNote: opts.translatorNote
+        }
+        const result = await translateMain(trimmed, arg, { state: 'unchecked' })
+        if(result === TRANSLATE_STOPPED || typeof result !== 'string'){
+            return text
+        }
+        if(result.startsWith('ERR::')){
+            alertError(result)
+            return text
+        }
+        return result.trim().length > 0 ? result.trim() : text
+    })
+}
+
 async function translateMain(text:string, arg:{from:string, to:string, host:string, translatorNote?:string}, run:TranslateRun){
     let db = getDatabase()
     if(db.translatorType === 'llm'){

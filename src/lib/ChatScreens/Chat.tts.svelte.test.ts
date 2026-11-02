@@ -148,8 +148,20 @@ vi.mock(import('src/ts/characters'), () => ({
     getCharImage: vi.fn(() => ''),
 }) as unknown as typeof import('src/ts/characters'))
 
+// When `shown` is set the stub behaves like a ChatBody that translated its message: it sets the bindable `translated`
+// and renders the translation at its anchor.
+const chatBodyBox = vi.hoisted(() => ({ shown: null as null | string }))
+
 vi.mock('./ChatBody.svelte', () => ({
-    default: (_target: unknown) => ({ destroy: () => {} }),
+    default: (anchor: Comment, props: { translated?: boolean }) => {
+        if (chatBodyBox.shown !== null) {
+            props.translated = true
+            const paragraph = document.createElement('p')
+            paragraph.textContent = chatBodyBox.shown
+            anchor.before(paragraph)
+        }
+        return { destroy: () => {} }
+    },
 }))
 vi.mock('./PartialEditController.svelte', () => ({
     default: (_target: unknown) => ({ destroy: () => {} }),
@@ -254,6 +266,7 @@ beforeEach(() => {
     writeText.mockClear()
     Object.defineProperty(navigator, 'clipboard', { value: { writeText, write: vi.fn(async () => {}) }, configurable: true })
     vi.mocked(sayTTS).mockClear()
+    chatBodyBox.shown = null
 })
 
 afterEach(async () => {
@@ -348,6 +361,25 @@ describe('a tap on the speaker button', () => {
         speakerButton(root)!.click()
 
         expect(vi.mocked(sayTTS).mock.calls[0][1]).toBe('Streaming User answer')
+    })
+
+    test('regression reproducer: a bubble that shows a translation is spoken as the shown translation', async () => {
+        chatBodyBox.shown = '[T] Hallo'
+        const root = await mountChat({ message: 'Hello' })
+
+        speakerButton(root)!.click()
+
+        expect(vi.mocked(sayTTS).mock.calls[0][1]).toBe('[T] Hallo')
+    })
+
+    test('guard: a bubble that shows a translation is spoken as the original when the provider translates by itself', async () => {
+        chatBodyBox.shown = '[T] Hallo'
+        setupDb({ ttsMode: 'VOICEVOX' })
+        const root = await mountChat({ message: 'Hello' })
+
+        speakerButton(root)!.click()
+
+        expect(vi.mocked(sayTTS).mock.calls[0][1]).toBe('Hello')
     })
 })
 

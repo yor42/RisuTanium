@@ -558,6 +558,7 @@ export const languageJapanese = {
             "\n - `{{bg::<asset name>}}`: 背景をアセットとして挿入します",
         additionalText: "AIが必要と判断した場合にのみキャラクター説明に追加されるテキストです。長文をここに配置できます。2つの改行で区切ります。",
         charjs: "キャラクターとともに実行されるJavaScriptコードです。例として `https://github.com/yor42/RisuTanium/blob/2f8904e56736a904d3d7b3585a8b8402a61a1185/src/etc/example-char.js` を確認できます。セキュリティ上の理由により、現在は使用を推奨していません。エクスポートには含まれません。",
+        fullWordAsciiBoundary: "「完全単語一致」と併用します。SillyTavernと同様に、英字・数字・_だけが単語を構成し、韓国語・日本語・中国語の文字を含むそれ以外の文字はすべて単語の終わりとして扱われます。そのため、キーはより長い非英語の単語の内部でも一致することがあります。例：앨리스는 の中の 앨리스。スペースを含むキーは、これまでどおり語句全体としてのみ一致します。",
         lorePlus: "LoreBook+は、ボット作成体験の向上と一致性能の向上のため、単なる文字列一致の代わりにVector DBを使用する実験的機能です。",
         topP: "Top PはNucleusサンプリングの確率閾値です。モデルは累積確率がtop_pに達するトークンの結果を考慮します。",
         sayNothing: "有効にすると、文字列が入力されていない場合に「say nothing」を入力します。",
@@ -1464,6 +1465,7 @@ export const languageJapanese = {
         : `フォルダ「${name}」内の${count}体のキャラクターをゴミ箱に移動しますか？`)
         + ` 復元されたキャラクターはフォルダの外に戻ります。ゴミ箱は3日後に自動的に空になります。`,
     fullWordMatching: "完全単語一致",
+    fullWordAsciiBoundary: "SillyTavern方式の単語境界",
     botSettingAtStart: "起動時にボットメニューを表示",
     triggerStart: "チャット送信時",
     triggerInput: "ユーザー出力時",

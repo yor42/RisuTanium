@@ -522,6 +522,7 @@ export const languageKorean = {
         "backgroundHTML": "채팅 화면의 배경에 삽입 될 마크다운/HTML 데이터입니다.\n\n추가 에셋을 사용할 수도 있습니다. 예를 들어, 배경 음악에 `{{audio::<에셋 이름>}}`을 사용할 수 있습니다.\n\n또한 다음과 같은 추가 에셋을 사용할 수 있습니다:\n - `{{bg::<에셋 이름>}}`: 에셋으로 배경을 삽입합니다.",
         "additionalText": "AI가 필요한 경우에만 캐릭터 설명에 추가 될 텍스트입니다. 두 개의 새 줄로 구분합니다.",
         "charjs": "캐릭터와 함께 실행될 자바스크립트 코드입니다. 예를 들어, `https://github.com/yor42/RisuTanium/blob/2f8904e56736a904d3d7b3585a8b8402a61a1185/src/etc/example-char.js`를 확인할 수 있습니다. 현재 보안 문제로 인해 사용을 권장하지 않습니다. 내보내기에는 포함되지 않습니다.",
+        "fullWordAsciiBoundary": "단어 단위 매칭과 함께 사용합니다. SillyTavern과 같이 영문자, 숫자, _만 단어를 이루고, 한글·일본어·중국어 글자를 포함한 그 밖의 문자는 단어를 끝냅니다. 따라서 키가 더 긴 비영어 단어 안에서도 일치할 수 있습니다. 예: 앨리스는 안의 앨리스. 공백이 있는 키는 여전히 구절 전체로만 일치합니다.",
         "lorePlus": "LoreBook+는 더 나은 매칭 성능을 위해 벡터DB를 사용하는 실험적인 기능입니다.",
         "topP": "Top P는 뉴클레우스 샘플링을 위한 확률 임계값입니다. 모델은 top_p 확률 질량을 가진 토큰의 결과를 고려합니다.",
         "sayNothing": "활성화되면 문자열이 입력되지 않을 때 '아무 말도 하지 않음'을 입력합니다.",
@@ -1331,6 +1332,7 @@ export const languageKorean = {
     "deleteFolderTrashConfirm": (name: string, count: number) => `"${name}" 폴더에 있는 캐릭터 ${count}개를 휴지통으로 이동하시겠습니까?`
         + ` 복구된 캐릭터는 폴더 밖으로 돌아갑니다. 휴지통은 3일 후 자동으로 비워집니다.`,
     "fullWordMatching": "단어 단위 매칭",
+    "fullWordAsciiBoundary": "SillyTavern 방식 단어 경계",
     "botSettingAtStart": "실행 시 봇 설정으로 시작하기",
     "triggerStart": "채팅 보낼 시",
     "triggerInput": "유저 입력 시",

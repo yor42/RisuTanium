@@ -82,6 +82,21 @@
         <div class="flex items-center mt-4">
             <Check bind:check={DBState.db.characters[$selectedCharID].loreSettings.fullWordMatching} name={language.fullWordMatching}/>
         </div>
+        <div class="flex items-center mt-4">
+            <Check bind:check={DBState.db.characters[$selectedCharID].loreSettings.fullWordAsciiBoundary} onChange={(on) => {
+                // An upstream card export writes `loreExt` as the card extensions, so the stored copy follows the option.
+                const char = DBState.db.characters[$selectedCharID]
+                if(char.type === 'group'){
+                    return
+                }
+                if(on){
+                    char.loreExt = { ...char.loreExt, risu_fullWordAsciiBoundary: true }
+                }
+                else if(char.loreExt){
+                    delete char.loreExt.risu_fullWordAsciiBoundary
+                }
+            }} name={language.fullWordAsciiBoundary}><Help key="fullWordAsciiBoundary"/></Check>
+        </div>
         <span class="text-textcolor mt-4 mb-2">{language.loreBookDepth}</span>
         <NumberInput size="sm" min={0} max={20} bind:value={DBState.db.characters[$selectedCharID].loreSettings.scanDepth} />
         <span class="text-textcolor">{language.loreBookToken}</span>

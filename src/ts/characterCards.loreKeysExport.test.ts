@@ -215,6 +215,47 @@ describe('characterCards.ts -- lorebook keys in exported cards', () => {
         expect(v2.globalLore[0].key).toBe('/dragon{1,2}/, wolf')
     })
 
+    test('regression reproducer: the SillyTavern-style boundary option rides the CCv2 and CCv3 exports and re-imports', async () => {
+        const char = await charWith(regexBook('dragon'))
+        char.loreSettings = { tokenBudget: 100, scanDepth: 3, recursiveScanning: false, fullWordMatching: false, fullWordAsciiBoundary: true }
+        expect(createBaseV3(char).data.character_book.extensions.risu_fullWordAsciiBoundary).toBe(true)
+        downloaded.downloadFile.mockClear()
+        char.image = 'portrait'
+        expect(await exportCharacterCard(char, 'json', { spec: 'v2' })).toBe(true)
+        const v2 = JSON.parse(Buffer.from(downloaded.downloadFile.mock.calls[0][1]).toString('utf-8'))
+        expect(v2.data.character_book.extensions.risu_fullWordAsciiBoundary).toBe(true)
+        const v3Back = await importCard(JSON.parse(JSON.stringify(createBaseV3(char))))
+        expect(v3Back.loreSettings?.fullWordAsciiBoundary).toBe(true)
+        expect(v3Back.loreSettings?.fullWordMatching).toBe(false)
+        const v2Back = await importCard(v2)
+        expect(v2Back.loreSettings?.fullWordAsciiBoundary).toBe(true)
+    })
+
+    test('regression reproducer: turning the option off removes a stale key from both exports', async () => {
+        const char = await charWith(regexBook('dragon'))
+        char.loreExt = { risu_fullWordAsciiBoundary: true }
+        char.loreSettings = { tokenBudget: 100, scanDepth: 3, recursiveScanning: false, fullWordMatching: true, fullWordAsciiBoundary: false }
+        expect(createBaseV3(char).data.character_book.extensions).not.toHaveProperty('risu_fullWordAsciiBoundary')
+        char.loreExt = { risu_fullWordAsciiBoundary: true }
+        downloaded.downloadFile.mockClear()
+        char.image = 'portrait'
+        expect(await exportCharacterCard(char, 'json', { spec: 'v2' })).toBe(true)
+        const v2 = JSON.parse(Buffer.from(downloaded.downloadFile.mock.calls[0][1]).toString('utf-8'))
+        expect(v2.data.character_book.extensions).not.toHaveProperty('risu_fullWordAsciiBoundary')
+    })
+
+    test('guard: a character that never used the option exports no key', async () => {
+        const char = await charWith(regexBook('dragon'))
+        expect(createBaseV3(char).data.character_book.extensions).not.toHaveProperty('risu_fullWordAsciiBoundary')
+    })
+
+    test('guard: a card without the key imports with the option off', async () => {
+        const card = cardWith('chara_card_v3', [{ keys: ['seed'] }])
+        Object.assign(card.data.character_book, { scan_depth: 3, token_budget: 100, recursive_scanning: false })
+        const char = await importCard(card)
+        expect(char.loreSettings?.fullWordAsciiBoundary).toBeFalsy()
+    })
+
     test('guard: a non-regex entry is still split on every comma in both specs', async () => {
         const char = await charWith(regexBook('/a,b/, c', { useRegex: false }))
         expect(createBaseV3(char).data.character_book.entries[0].keys).toEqual(['/a', 'b/', 'c'])

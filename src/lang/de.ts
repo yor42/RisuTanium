@@ -522,6 +522,7 @@ export const languageGerman = {
         "backgroundHTML": "Ein Markdown/HTML-Datenblock, der im Backend der Chat-Ausgabe hinzugefügt wird.\n\n Sie können auch zusätzliche Assets verwenden. Zum Beispiel können Sie `{{audio::<Asset-Name}}` für Hintergrundmusik verwenden.\n\n Zusätzlich können Sie dies mit weiteren Assets verwenden:\n - `{{bg::<Asset-Name>}}`: Das Hintergrundbild als Asset einfügen",
         "additionalText": "Der Text, der nur dann zur Charakterbeschreibung hinzugefügt wird, wenn die KI dies für erforderlich hält. Sie können hier lange Texte einfügen. Trennen Sie diese durch doppelte Zeilenumbrüche.",
         "charjs": "Ein Javascript-Code, der mit dem Charakter ausgeführt wird. Sie können zum Beispiel `https://github.com/yor42/RisuTanium/blob/2f8904e56736a904d3d7b3585a8b8402a61a1185/src/etc/example-char.js` überprüfen. ZURZEIT AUS SICHERHEITSGRÜNDEN NICHT EMPFOHLEN. BEIM EXPORTIEREN WIRD DIES NICHT ENTHALTEN SEIN.",
+        "fullWordAsciiBoundary": "Wird zusammen mit „Vollständige Wortübereinstimmung“ verwendet. Wie bei SillyTavern bilden nur englische Buchstaben, Ziffern und _ ein Wort; jedes andere Zeichen beendet es, auch koreanische, japanische und chinesische Schriftzeichen. Ein Schlüssel kann dann innerhalb eines längeren nicht englischen Wortes übereinstimmen, zum Beispiel 앨리스 in 앨리스는. Ein Schlüssel mit Leerzeichen stimmt weiterhin nur als ganze Wortgruppe überein.",
         "lorePlus": "LoreBook+ ist ein experimentelles Feature, das Vektordatenbanken anstelle von bloßem String-Abgleich verwendet, um eine bessere Erfahrung bei der Bot-Erstellung und eine bessere Abgleichleistung zu erzielen.",
         "topP": "Top P ist ein Wahrscheinlichkeitsschwellenwert für das Nucleus-Sampling. Das Modell berücksichtigt die Ergebnisse der Tokens mit top_p Wahrscheinlichkeitsmasse.",
         "sayNothing": "Wenn aktiviert, wird 'sag nichts' eingegeben, wenn keine Zeichenfolge eingegeben wurde.",
@@ -1333,6 +1334,7 @@ export const languageGerman = {
         : `Die ${count} Charaktere im Ordner "${name}" in den Papierkorb verschieben?`)
         + ` Ein wiederhergestellter Charakter landet außerhalb jedes Ordners. Der Papierkorb wird nach 3 Tagen automatisch geleert.`,
     "fullWordMatching": "Vollständige Wortübereinstimmung",
+    "fullWordAsciiBoundary": "Wortgrenzen im SillyTavern-Stil",
     "botSettingAtStart": "Bot-Menü beim Start anzeigen",
     "triggerStart": "Beim Senden eines Chats",
     "triggerInput": "Beim Ausgeben eines Benutzers",

@@ -522,6 +522,7 @@ export const languageVietnamese = {
         "backgroundHTML": "Dữ liệu Markdown/HTML sẽ được đưa vào nền màn hình trò chuyện.\n\n bạn cũng có thể sử dụng tài sản bổ sung. ví dụ: bạn có thể sử dụng `{{audio::<asset name}}` cho nhạc nền.\n\n Ngoài ra, bạn có thể sử dụng những thứ này với các nội dung bổ sung:\n - `{{bg::<asset name>}}`: thêm nền làm nội dung",
         "additionalText": "Văn bản sẽ được thêm vào Mô tả nhân vật chỉ khi AI cho rằng cần thiết, vì vậy bạn có thể đặt văn bản dài ở đây. Phân tách bằng hai dòng mới.",
         "charjs": "Mã javascript sẽ chạy cùng với nhân vật. Ví dụ, bạn có thể kiểm tra `https://github.com/yor42/RisuTanium/blob/2f8904e56736a904d3d7b3585a8b8402a61a1185/src/etc/example-char.js`. HIỆN TẠI KHÔNG ĐƯỢC KHUYẾN NGHỊ SỬ DỤNG VÌ LÝ DO BẢO MẬT. VIỆC XUẤT SẼ KHÔNG BAO GỒM MÃ NÀY.",
+        "fullWordAsciiBoundary": "Dùng cùng với So khớp từ đầy đủ. Giống SillyTavern, chỉ chữ cái tiếng Anh, chữ số và _ tạo thành một từ, còn mọi ký tự khác đều kết thúc từ, kể cả chữ Hàn, Nhật và Trung. Khi đó một khóa có thể khớp bên trong một từ không phải tiếng Anh dài hơn, chẳng hạn 앨리스 trong 앨리스는. Khóa có khoảng trắng vẫn chỉ khớp khi là cả cụm từ.",
         "lorePlus": "LoreBook+ là tính năng thử nghiệm sử dụng vectordb thay vì chỉ khớp chuỗi để có trải nghiệm tạo bot tốt hơn và hiệu suất khớp tốt hơn.",
         "topP": "Top P là ngưỡng xác suất cho việc lấy mẫu hạt nhân. Mô hình xem xét kết quả của các token với khối lượng xác suất top_p.",
         "sayNothing": "Nếu được bật, nó sẽ nhập 'say nothing' khi không có chuỗi nào được nhập.",
@@ -1331,6 +1332,7 @@ export const languageVietnamese = {
     "deleteFolderTrashConfirm": (name: string, count: number) => `Chuyển ${count} nhân vật trong thư mục "${name}" vào thùng rác?`
         + ` Nhân vật được khôi phục sẽ quay lại bên ngoài mọi thư mục. Thùng rác sẽ tự động được dọn sạch sau 3 ngày.`,
     "fullWordMatching": "So khớp từ đầy đủ",
+    "fullWordAsciiBoundary": "Ranh giới từ kiểu SillyTavern",
     "botSettingAtStart": "Menu Bot khi khởi chạy",
     "triggerStart": "Đang trò chuyện Gửi",
     "triggerInput": "Trên đầu ra của người dùng",

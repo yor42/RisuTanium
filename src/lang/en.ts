@@ -558,6 +558,7 @@ export const languageEnglish = {
             "\n - `{{bg::<asset name>}}`: inject the background as asset",
         additionalText: "The text that would be added to Character Description only when AI thinks it's needed, so you can put long texts here. Separate with double newlines.",
         charjs: "A javascript code that would run with character. for example, you can check `https://github.com/yor42/RisuTanium/blob/2f8904e56736a904d3d7b3585a8b8402a61a1185/src/etc/example-char.js` CURRENTLY NOT RECOMMENDED FOR USE DUE TO SECURITY REASONS. EXPORTING WOULD NOT INCLUDE THIS.",
+        fullWordAsciiBoundary: "Used with Full Word Matching. Like SillyTavern, only English letters, digits and _ make up a word, and any other character ends one, including Korean, Japanese and Chinese letters. A key can then match inside a longer non-English word, such as 앨리스 in 앨리스는. A key with spaces still matches only as a whole phrase.",
         lorePlus: "LoreBook+ is a experimental feature that uses vectordb instead of just string matching for better bot making experience and better matching performace.",
         topP: "Top P is a probability threshold for nucleus sampling. Model considers the results of the tokens with top_p probability mass.",
         sayNothing: "If enabled, it will input 'say nothing' when no string inputed.",
@@ -1464,6 +1465,7 @@ export const languageEnglish = {
         : `Move the ${count} characters in the folder "${name}" to the trash?`)
         + ` A restored character returns outside any folder. The trash is emptied automatically after 3 days.`,
     fullWordMatching: "Full Word Matching",
+    fullWordAsciiBoundary: "SillyTavern-style Word Boundaries",
     botSettingAtStart: "Bot Menu when Launch",
     triggerStart: "On chat Send",
     triggerInput: "On user's output",

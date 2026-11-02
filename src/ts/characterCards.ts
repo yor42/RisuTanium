@@ -1726,6 +1726,20 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
 
 }
 
+/**
+ * The key is written only while the option is on and removed otherwise, so a card of a character that never used the
+ * option exports the same bytes as before, and a stale `true` kept from an import is not re-exported after the option is
+ * turned off. An absent key reads as off on import.
+ */
+function writeAsciiBoundaryExt(loreExt:Record<string, unknown>, on:boolean|undefined){
+    if(on){
+        loreExt.risu_fullWordAsciiBoundary = true
+    }
+    else{
+        delete loreExt.risu_fullWordAsciiBoundary
+    }
+}
+
 export function convertCharbook(arg:{
     lorebook:loreBook[]
     charbook:CharacterBook
@@ -1741,6 +1755,7 @@ export function convertCharbook(arg:{
             scanDepth:charbook.scan_depth,
             recursiveScanning: charbook.recursive_scanning,
             fullWordMatching: charbook?.extensions?.risu_fullWordMatching ?? false,
+            fullWordAsciiBoundary: charbook?.extensions?.risu_fullWordAsciiBoundary ?? false,
         }
     }
 
@@ -1881,6 +1896,7 @@ function createBaseV2(char:character) {
     char.loreExt ??= {}
 
     char.loreExt.risu_fullWordMatching = char.loreSettings?.fullWordMatching ?? false
+    writeAsciiBoundaryExt(char.loreExt, char.loreSettings?.fullWordAsciiBoundary)
 
     const card:CharacterCardV2Risu = {
         spec: "chara_card_v2",
@@ -2482,6 +2498,7 @@ export function createBaseV3(char:character){
     char.loreExt ??= {}
 
     char.loreExt.risu_fullWordMatching = char.loreSettings?.fullWordMatching ?? false
+    writeAsciiBoundaryExt(char.loreExt, char.loreSettings?.fullWordAsciiBoundary)
 
     const card:CharacterCardV3 = {
         spec: "chara_card_v3",

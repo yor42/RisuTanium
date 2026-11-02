@@ -141,12 +141,12 @@ class CriticalBlockError extends Error {}
 
 
 async function checkCompressionStreams(){
-    if(!CompressionStream){
+    if(typeof CompressionStream === 'undefined'){
         const {makeCompressionStream} = await import('compression-streams-polyfill/ponyfill');
         //@ts-expect-error polyfill CompressionStream type is incompatible with globalThis.CompressionStream
         globalThis.CompressionStream = makeCompressionStream(TransformStream);
     }
-    if(!DecompressionStream){
+    if(typeof DecompressionStream === 'undefined'){
         const {makeDecompressionStream} = await import('compression-streams-polyfill/ponyfill');
         //@ts-expect-error polyfill DecompressionStream type is incompatible with globalThis.DecompressionStream
         globalThis.DecompressionStream = makeDecompressionStream(TransformStream);

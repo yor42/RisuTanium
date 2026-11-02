@@ -522,6 +522,7 @@ export const languageChinese = {
         "backgroundHTML": "将 Markdown/HTML 注入到聊天画面的背景中。\n\n你也可以使用额外资源。例如，你可以使用 {{audio::<资源名称}} 作为背景音乐。\n\n此外，你还可以与额外资源搭配使用以下格式：\n - {{bg::<资源名称>}}：将资源设为背景。",
         "additionalText": "只有当 AI 认为有必要时，才会将该段文本添加到角色描述中。你可以在此处放置较长的文本。使用双换行进内联容分隔。",
         "charjs": "这是一段会与角色一同运行的 JavaScript。详情请查看：https://github.com/yor42/RisuTanium/blob/2f8904e56736a904d3d7b3585a8b8402a61a1185/src/etc/example-char.js\n**出于安全原因，目前不建议使用。这些代码不会被包含在导出中。**",
+        "fullWordAsciiBoundary": "与“完整单词匹配”配合使用。与 SillyTavern 一样，只有英文字母、数字和 _ 构成单词，其他任何字符都会结束单词，包括韩文、日文和中文字符。因此关键词可以在更长的非英文单词内部匹配，例如在 앨리스는 中匹配 앨리스。包含空格的关键词仍然只会作为完整短语匹配。",
         "lorePlus": "LoreBook+ 是一项实验性功能。使用向量数据库（VectorDB），而不仅是字符串匹配。目的在于提供更好的机器人创建体验和更好的匹配性能。",
         "topP": "Top P 是内核采样（Nucleus Sampling）的概率阈值，模型只会考虑总概率质量达到 top_p 的 Token 结果。",
         "sayNothing": "激活后，如果用户没有输入聊天内容，系统会自动填入 ’say nothing‘。",
@@ -1331,6 +1332,7 @@ export const languageChinese = {
     "deleteFolderTrashConfirm": (name: string, count: number) => `将文件夹“${name}”中的 ${count} 个角色移至垃圾桶吗？`
         + ` 还原的角色将回到文件夹之外。垃圾桶会在 3 天后自动清空。`,
     "fullWordMatching": "完整单词匹配",
+    "fullWordAsciiBoundary": "SillyTavern 式单词边界",
     "botSettingAtStart": "激活时显示机器人菜单",
     "triggerStart": "聊天发送时触发",
     "triggerInput": "用户输出时触发",

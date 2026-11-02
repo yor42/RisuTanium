@@ -52,6 +52,7 @@ vi.mock('../../storage/characterSaveMarks', () => ({ markCharacterForSave: vi.fn
 vi.mock('../memory/busyActions', () => ({ beginBusy: vi.fn() }))
 
 import { loadLoreBookV3Prompt } from '../lorebook.svelte'
+import { getModuleLorebooks } from '../modules'
 
 type Entry = Record<string, unknown>
 
@@ -206,6 +207,115 @@ describe('lorebook regex mode with a non-regex key', () => {
     test('guard: outside regex mode a slash key is split at its comma', async () => {
         expect(await activated([entry('/a,b/')], 'xb/y')).toHaveLength(1)
         expect(await activated([entry('/a,b/')], 'x/ay')).toHaveLength(1)
+    })
+})
+
+describe('lorebook full-word matching', () => {
+    const fullWord = { fullWordMatching: true }
+    const fullWordHits = async (key: string, said: string, extra: Entry = {}) =>
+        (await activated([entry(key, extra)], said, undefined, fullWord)).length
+
+    test.each([
+        'Hello alice, welcome',
+        'hi\nalice',
+        '*alice* waves',
+        '"alice"',
+    ])('regression reproducer: a key beside punctuation or a newline activates in %j', async (said) => {
+        expect(await fullWordHits('alice', said)).toBe(1)
+    })
+
+    test.each([
+        ['앨리스', '앨리스, 안녕'],
+        ['앨리스', '안녕 앨리스!'],
+        ['爱丽丝', '爱丽丝，你好'],
+    ])('regression reproducer: the key %j beside punctuation activates in %j', async (key, said) => {
+        expect(await fullWordHits(key, said)).toBe(1)
+    })
+
+    test('regression reproducer: a rejected in-word hit does not hide a later whole-word hit', async () => {
+        expect(await fullWordHits('cat', 'the scattered cat,')).toBe(1)
+    })
+
+    test('regression reproducer: the key is matched case-insensitively beside punctuation', async () => {
+        expect(await fullWordHits('Dragon', 'a DRAGON, here')).toBe(1)
+    })
+
+    test('regression reproducer: an exclude key beside punctuation suppresses the entry', async () => {
+        const content = '@@match_full_word\n@@exclude_keys wolf\nX'
+        expect(await activated([entry('dragon', { content })], 'dragon and wolf.')).toHaveLength(0)
+        expect(await activated([entry('dragon', { content })], 'dragon and cat.')).toHaveLength(1)
+    })
+
+    test('regression reproducer: a multi-word key matches as a phrase with a boundary at both ends', async () => {
+        expect(await fullWordHits('red dragon', 'a red dragon.')).toBe(1)
+        expect(await fullWordHits('red dragon', 'a red dragonfly')).toBe(0)
+        expect(await fullWordHits('red dragon', 'a scared dragon')).toBe(0)
+    })
+
+    test('regression reproducer: markup and CBS braces around a key are boundaries', async () => {
+        expect(await fullWordHits('status', '<div class="status-window">')).toBe(1)
+    })
+
+    test('guard: a key inside a longer Latin word does not activate', async () => {
+        expect(await fullWordHits('cat', 'cats')).toBe(0)
+        expect(await fullWordHits('cat', 'concat')).toBe(0)
+        expect(await fullWordHits('cat', 'concatenate')).toBe(0)
+    })
+
+    test('guard: a key between spaces and a key ending in punctuation still activate', async () => {
+        expect(await fullWordHits('dragon', 'a dragon here')).toBe(1)
+        expect(await fullWordHits('mr.', 'hi mr. smith')).toBe(1)
+    })
+
+    test('guard: a key inside a longer run of script letters, digits or underscores does not activate', async () => {
+        expect(await fullWordHits('앨리스', '앨리스는 웃었다')).toBe(0)
+        expect(await fullWordHits('爱丽丝', '我喜欢爱丽丝')).toBe(0)
+        expect(await fullWordHits('alice', 'alice_bob')).toBe(0)
+        expect(await fullWordHits('v2', 'v20')).toBe(0)
+    })
+
+    test('guard: partial-word mode still matches inside a word', async () => {
+        expect(await activated([entry('cat', { content: '@@match_partial_word\nX' })], 'concatenate', undefined, fullWord)).toHaveLength(1)
+        expect(await activated([entry('cat')], 'concatenate')).toHaveLength(1)
+    })
+})
+
+describe('lorebook SillyTavern-style word boundaries', () => {
+    const ascii = { fullWordMatching: true, fullWordAsciiBoundary: true }
+    const asciiHits = async (key: string, said: string, extra: Entry = {}, settings: Entry = ascii) =>
+        (await activated([entry(key, extra)], said, undefined, settings)).length
+
+    test('regression reproducer: with the option on a key inside a longer script word activates', async () => {
+        expect(await asciiHits('앨리스', '앨리스는 웃었다')).toBe(1)
+    })
+
+    test('regression reproducer: with the option on an accented letter ends a word', async () => {
+        expect(await asciiHits('caf', 'a café')).toBe(1)
+    })
+
+    test('regression reproducer: with the option on a module entry follows the character option', async () => {
+        vi.mocked(getModuleLorebooks).mockReturnValueOnce([entry('앨리스', { content: '@@match_full_word\nX' })] as never)
+        const settings = { fullWordMatching: false, fullWordAsciiBoundary: true }
+        expect(await activated([], '앨리스는', undefined, settings)).toHaveLength(1)
+    })
+
+    test('guard: with the option off a key inside a longer script word does not activate', async () => {
+        expect(await asciiHits('앨리스', '앨리스는 웃었다', {}, { fullWordMatching: true })).toBe(0)
+        expect(await asciiHits('앨리스', '앨리스는 웃었다', {}, { fullWordMatching: true, fullWordAsciiBoundary: false })).toBe(0)
+    })
+
+    test('guard: with the option on English letters, digits and underscores still make up a word', async () => {
+        expect(await asciiHits('cat', 'cats')).toBe(0)
+        expect(await asciiHits('cat', 'concat')).toBe(0)
+        expect(await asciiHits('v2', 'v20')).toBe(0)
+        expect(await asciiHits('alice', 'alice_bob')).toBe(0)
+    })
+
+    test('guard: with the option on partial-word mode and regex mode are unchanged', async () => {
+        const partial = { content: '@@match_partial_word\nX' }
+        expect(await asciiHits('cat', 'concatenate', partial)).toBe(1)
+        expect(await asciiHits('/dr.gon/', 'a dragon', { useRegex: true })).toBe(1)
+        expect(await asciiHits('dr.gon', 'a dragon', { useRegex: true })).toBe(0)
     })
 })
 

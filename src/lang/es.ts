@@ -522,6 +522,7 @@ export const languageSpanish = {
         "backgroundHTML": "Datos de Markdown/HTML que se inyectarán en el fondo de la pantalla de chat.\n\n También puedes usar activos adicionales. por ejemplo, puedes usar `{{audio::<nombre del activo}}` para música de fondo.\n\n Además, puedes usar estos con activos adicionales:\n - `{{bg::<nombre del activo>}}`: inyecta el fondo como activo",
         "additionalText": "El texto que se agregará a la Descripción del Personaje solo cuando la IA crea que es necesario, por lo que puedes poner textos largos aquí. Sepáralo con doble salto de línea.",
         "charjs": "Un código JavaScript que se ejecutará con el personaje. Por ejemplo, puedes consultar `https://github.com/yor42/RisuTanium/blob/2f8904e56736a904d3d7b3585a8b8402a61a1185/src/etc/example-char.js` ACTUALMENTE NO SE RECOMIENDA USAR DEBIDO A PROBLEMAS DE SEGURIDAD. EXPORTAR NO INCLUIRÁ ESTO.",
+        "fullWordAsciiBoundary": "Se usa junto con Coincidencia Completa de Palabras. Igual que SillyTavern, solo las letras inglesas, los dígitos y _ forman una palabra, y cualquier otro carácter la termina, incluidas las letras coreanas, japonesas y chinas. Así, una clave puede coincidir dentro de una palabra más larga que no sea inglesa, como 앨리스 en 앨리스는. Una clave con espacios sigue coincidiendo solo como frase completa.",
         "lorePlus": "LoreBook+ es una característica experimental que utiliza vectordb en lugar de solo coincidencia de cadenas para una mejor experiencia de creación de bots y un mejor rendimiento de coincidencia.",
         "topP": "Top P es un umbral de probabilidad para el muestreo de núcleo. El modelo considera los resultados de los tokens con la masa de probabilidad top_p.",
         "sayNothing": "Si está habilitado, ingresará 'no decir nada' cuando no se haya ingresado ninguna cadena.",
@@ -1333,6 +1334,7 @@ export const languageSpanish = {
         : `¿Mover a la papelera los ${count} personajes de la carpeta "${name}"?`)
         + ` Un personaje restaurado vuelve fuera de cualquier carpeta. La papelera se vacía automáticamente después de 3 días.`,
     "fullWordMatching": "Coincidencia Completa de Palabras",
+    "fullWordAsciiBoundary": "Límites de palabra al estilo SillyTavern",
     "botSettingAtStart": "Menú del Bot al Iniciar",
     "triggerStart": "Al enviar chat",
     "triggerInput": "Al enviar respuesta del usuario",

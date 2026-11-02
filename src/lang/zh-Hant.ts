@@ -545,6 +545,7 @@ export const languageChineseTraditional = {
             "\n - `{{bg::<asset name>}}`：將指定資源顯示為背景圖片",
         "additionalText": "系統會將內容依兩個換行分段，並根據目前對話進行相似度搜尋，選出最多 3 個最相關的段落加入角色描述。可在此放置較長內容",
         "charjs": "會隨角色一起執行的 JavaScript 程式碼。可參考 `https://github.com/yor42/RisuTanium/blob/2f8904e56736a904d3d7b3585a8b8402a61a1185/src/etc/example-char.js`。基於安全性，目前不建議使用；匯出時也不會包含此內容",
+        "fullWordAsciiBoundary": "與「完整單字比對」搭配使用。與 SillyTavern 相同，只有英文字母、數字和 _ 構成單字，其他任何字元都會結束單字，包括韓文、日文和中文字元。因此關鍵字可以在較長的非英文單字內部比對成功，例如在 앨리스는 中比對 앨리스。含有空格的關鍵字仍然只會以完整片語比對。",
         "lorePlus": "Lorebook+ 是使用向量資料庫取代單純字串比對的實驗性功能，可改善角色卡製作流程與 Lorebook 條目的比對效果",
         "topP": "Top P 是核取樣（nucleus sampling）的機率門檻。模型會依 Token 機率由高到低累加，取涵蓋至少 top_p 累積機率的最小 Token 集合，再從該集合中取樣",
         "sayNothing": "啟用後，若沒有輸入任何文字，會自動輸入「say nothing」",
@@ -1376,6 +1377,7 @@ export const languageChineseTraditional = {
     "deleteFolderTrashConfirm": (name: string, count: number) => `要將資料夾「${name}」中的 ${count} 個角色移至垃圾桶嗎？`
         + ` 還原的角色會回到資料夾之外。垃圾桶會在 3 天後自動清空。`,
     "fullWordMatching": "完整單字比對",
+    "fullWordAsciiBoundary": "SillyTavern 式單字邊界",
     "botSettingAtStart": "啟動時開啟 Bot 設定",
     "triggerStart": "送出對話時",
     "triggerInput": "使用者送出訊息時",

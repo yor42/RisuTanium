@@ -49,6 +49,7 @@ const requestChatDataMock = vi.hoisted(() => vi.fn())
 const alertErrorMock = vi.hoisted(() => vi.fn())
 const runTriggerMock = vi.hoisted(() => vi.fn())
 const sayTTSMock = vi.hoisted(() => vi.fn())
+const translateWholeTextMock = vi.hoisted(() => vi.fn())
 const parserSpy = vi.hoisted(() => vi.fn())
 const parserBox = vi.hoisted(() => ({ actual: null as null | ((...args: unknown[]) => string) }))
 const ttsBox = vi.hoisted(() => ({ useReal: false, real: null as null | ((...args: unknown[]) => Promise<void>) }))
@@ -299,6 +300,7 @@ vi.mock(import('../../translator/translator'), () => ({
     isExpTranslator: vi.fn(() => false),
     translate: vi.fn(async () => ''),
     runTranslator: vi.fn(async (text: string) => text),
+    translateWholeText: translateWholeTextMock,
     translateVox: vi.fn(async (text: string) => text),
     getLLMCache: vi.fn(),
     searchLLMCache: vi.fn(),
@@ -335,7 +337,7 @@ vi.mock('../coldMemberRestore', () => ({
 
 import { sendChat, doingChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
-import { writeAt } from '../chatOrigin'
+import { writeAt, stopWorkIn } from '../chatOrigin'
 import { stopTTS } from '../tts'
 import { getUserName } from '../../util'
 
@@ -534,6 +536,8 @@ beforeEach(() => {
     runTriggerMock.mockReset()
     runTriggerMock.mockResolvedValue(undefined)
     sayTTSMock.mockReset()
+    translateWholeTextMock.mockReset()
+    translateWholeTextMock.mockImplementation(async (text: string) => '[T]' + text)
     parserSpy.mockReset()
     parserSpy.mockImplementation(parserBox.actual!)
     ttsBox.useReal = false
@@ -1031,5 +1035,173 @@ describe('a Stop while a send waits on speech', () => {
         let released = false
         doingChat.subscribe((value) => { released = !value })()
         expect(released).toBe(true)
+    })
+})
+
+describe('auto speech in the shown, translated language', () => {
+    const translating = { autoTranslate: true, translatorType: 'google' }
+
+    /** Replaces the translator with one that answers only when `release` is called. */
+    function holdTranslation(): { release: () => void } {
+        let release: () => void = () => {}
+        translateWholeTextMock.mockImplementation((text: string) => new Promise<string>((resolve) => {
+            release = () => resolve('[T]' + text)
+        }))
+        return { release: () => release() }
+    }
+
+    function stillWaiting(outcome: Promise<boolean | Error>): Promise<boolean | Error | 'still waiting'> {
+        return Promise.race([
+            outcome,
+            new Promise<'still waiting'>((resolve) => setTimeout(() => resolve('still waiting'), 1500)),
+        ])
+    }
+
+    test('regression reproducer: a reply is spoken as its translation, with one translator call for the run', async () => {
+        installSingle({}, [msg('user', 'Hi')], translating)
+        mockReplyIn('non-streaming', 'P1.\n\nP2.\n\nP3.')
+
+        const result = await settled(() => sendChat())
+
+        expect(result).toBe(true)
+        expect(spoken()).toEqual(['[T]P1.\n\nP2.\n\nP3.'])
+        expect(translateWholeTextMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('regression reproducer: a continue translates only what it added, once, after the diff', async () => {
+        installSingle({}, [msg('user', 'Hi'), msg('char', 'Part one.', { chatId: 'reply-id', saying: 'char-0' })], translating)
+        mockReplyIn('non-streaming', ' Part two.')
+
+        const result = await settled(() => sendChat(-1, { continue: true }))
+
+        expect(result).toBe(true)
+        expect(translateWholeTextMock).toHaveBeenCalledTimes(1)
+        expect(translateWholeTextMock.mock.calls[0][0]).toBe(' Part two.')
+        expect(spoken()).toEqual(['[T] Part two.'])
+    })
+
+    test('regression reproducer: when a script rewrote earlier text, the translation covers the tail from the first difference', async () => {
+        installSingle({}, [msg('user', 'Hi'), msg('char', 'Hello brave world.', { chatId: 'reply-id', saying: 'char-0' })], translating)
+        processScriptFullMock.mockImplementation(async (_char: unknown, text: string) => ({ data: text.replace('brave', 'kind'), emoChanged: false }))
+        mockReplyIn('non-streaming', ' More.')
+
+        await settled(() => sendChat(-1, { continue: true }))
+
+        expect(translateWholeTextMock.mock.calls.map((call) => call[0])).toEqual(['kind world. More.'])
+        expect(spoken()).toEqual(['[T]kind world. More.'])
+    })
+
+    test.each([
+        ['auto-translate is off', {}, { autoTranslate: false, translatorType: 'google' }],
+        ['the provider is VOICEVOX', { ttsMode: 'VOICEVOX' }, translating],
+        ['Hugging Face speaks another language', { ttsMode: 'huggingface', hfTTS: { model: 'm/x', language: 'ko' } }, translating],
+        ['the LLM translator is cached-only', {}, { autoTranslate: true, translatorType: 'llm', autoTranslateCachedOnly: true }],
+    ] as const)('guard: the original is spoken without a translator call when %s', async (_title, extra, overrides) => {
+        installSingle(extra, [msg('user', 'Hi')], overrides)
+        mockReplyIn('non-streaming', 'Hello.')
+
+        const result = await settled(() => sendChat())
+
+        expect(result).toBe(true)
+        expect(spoken()).toEqual(['Hello.'])
+        expect(translateWholeTextMock).not.toHaveBeenCalled()
+    })
+
+    test('guard: a thrown translator failure speaks the original once, warns, and does not alert', async () => {
+        installSingle({}, [msg('user', 'Hi')], translating)
+        translateWholeTextMock.mockRejectedValue(new TypeError('offline'))
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        mockReplyIn('non-streaming', 'Hello.')
+
+        const result = await settled(() => sendChat())
+
+        expect(result).toBe(true)
+        expect(spoken()).toEqual(['Hello.'])
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(warn).toHaveBeenCalled()
+        warn.mockRestore()
+    })
+
+    test('guard: a generation Stop during the translation finishes the send promptly and speaks nothing', async () => {
+        installSingle({}, [msg('user', 'Hi')], translating)
+        const held = holdTranslation()
+        const controller = new AbortController()
+        mockReplyIn('non-streaming', 'Hello.')
+
+        const outcome = settled(() => sendChat(-1, { signal: controller.signal }))
+        await until(() => translateWholeTextMock.mock.calls.length > 0, 'the translation')
+        controller.abort()
+        const finished = await stillWaiting(outcome)
+        held.release()
+        await settle()
+
+        expect(finished).not.toBe('still waiting')
+        expect(sayTTSMock).not.toHaveBeenCalled()
+    })
+
+    test('guard: deleting the chat during the translation finishes the send promptly and speaks nothing', async () => {
+        installSingle({}, [msg('user', 'Hi')], translating)
+        const held = holdTranslation()
+        mockReplyIn('non-streaming', 'Hello.')
+
+        const outcome = settled(() => sendChat())
+        await until(() => translateWholeTextMock.mock.calls.length > 0, 'the translation')
+        stopWorkIn({ chaId: 'char-0', chatId: 'chat-origin' })
+        const finished = await stillWaiting(outcome)
+        held.release()
+        await settle()
+
+        expect(finished).not.toBe('still waiting')
+        expect(sayTTSMock).not.toHaveBeenCalled()
+    })
+
+    test('guard: deleting the reply during the translation finishes the send and speaks nothing', async () => {
+        installSingle({}, [msg('user', 'Hi')], translating)
+        const held = holdTranslation()
+        mockReplyIn('non-streaming', 'Hello.')
+
+        const outcome = settled(() => sendChat())
+        await until(() => translateWholeTextMock.mock.calls.length > 0, 'the translation')
+        writeAt({ chaId: 'char-0', chatId: 'chat-origin' }, (ctx) => { ctx.chat.message.pop() })
+        held.release()
+        const finished = await stillWaiting(outcome)
+        await settle()
+
+        expect(finished).not.toBe('still waiting')
+        expect(sayTTSMock).not.toHaveBeenCalled()
+    })
+
+    test('guard: a TTS Stop during the translation finishes the send promptly and speaks nothing', async () => {
+        installSingle({}, [msg('user', 'Hi')], translating)
+        const held = holdTranslation()
+        mockReplyIn('non-streaming', 'Hello.')
+
+        const outcome = settled(() => sendChat())
+        await until(() => translateWholeTextMock.mock.calls.length > 0, 'the translation')
+        stopTTS()
+        const finished = await stillWaiting(outcome)
+        held.release()
+        await settle()
+
+        expect(finished).not.toBe('still waiting')
+        expect(sayTTSMock).not.toHaveBeenCalled()
+    })
+
+    test('guard: the translator note is the send owner\'s, even after the screen switches to another character', async () => {
+        installDb([
+            makeCharacter('char-0', [makeChat('chat-origin', [msg('user', 'Hi')])], { translatorNote: 'NOTE-A' }),
+            makeCharacter('char-1', [makeChat('chat-other', [msg('user', 'Yo')])], { translatorNote: 'NOTE-B' }),
+        ], translating)
+        selectedCharID.set(0)
+        requestChatDataMock.mockImplementationOnce(async () => {
+            selectedCharID.set(1)
+            return { type: 'success', result: 'Hello.' }
+        })
+
+        const result = await settled(() => sendChat())
+
+        expect(result).toBe(true)
+        expect(translateWholeTextMock).toHaveBeenCalledTimes(1)
+        expect(translateWholeTextMock.mock.calls[0][1]).toEqual({ translatorNote: 'NOTE-A' })
     })
 })

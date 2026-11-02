@@ -21,6 +21,7 @@
     import { ensureModulesOrAlert } from 'src/ts/process/moduleEnsure'
     import { hasModuleStubs } from 'src/ts/process/moduleRefList'
     import { sayTTS } from "src/ts/process/tts"
+    import { speakerSpeechText } from "src/ts/process/ttsSpeechText"
     import { registerMessageRoot } from "src/ts/messageRootRegistry"
     import { buildDisplayParseOptions } from "src/ts/process/displayParseOptions"
     import { isTTSVoiceMode } from "src/ts/process/ttsModes"
@@ -1276,7 +1277,12 @@
 {/if}
 {#if speakerButtonShown()}
     <button class="flex items-center hover:text-blue-500 transition-colors button-icon-tts" onclick={()=>{
-        return sayTTS(null, stripThoughtsForCopy(currentCopyText()))
+        return sayTTS(null, speakerSpeechText({
+            translated,
+            shownRoot: bodyRoot,
+            original: stripThoughtsForCopy(currentCopyText()),
+            character: getCurrentCharacter()
+        }))
     }}>
         <Volume2Icon size={20}/>
         {#if showNames}

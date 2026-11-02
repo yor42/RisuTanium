@@ -562,7 +562,7 @@ export function toState<T>(t:T):Writable<T>{
 }
 
 export function BufferToText(data:Uint8Array){
-    if(!TextDecoder){
+    if(typeof TextDecoder === 'undefined'){
         return Buffer.from(data).toString('utf-8')
     }
     return new TextDecoder().decode(data)

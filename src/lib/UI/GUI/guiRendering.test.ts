@@ -219,6 +219,58 @@ describe('GUI rendering without a browser session', () => {
         expect(booleanButtons[1].classList.contains('text-textcolor2')).toBe(true)
     })
 
+    it('keeps the checkbox input focusable and visually hidden instead of display:none', () => {
+        const checkbox = renderGui(CheckInput, { check: false, name: 'Render checkbox' })
+        const input = checkbox.getBySelector<HTMLInputElement>('input[type="checkbox"]')
+
+        expect(input.classList.contains('sr-only')).toBe(true)
+        expect(input.classList.contains('hidden')).toBe(false)
+        expect(checkbox.getBySelector('label').classList.contains('relative')).toBe(true)
+    })
+
+    it('leaves no aria reference on a checkbox pointing at a missing id', () => {
+        const checkbox = renderGui(CheckInput, { check: true, name: 'Render checkbox' })
+
+        for (const element of Array.from(checkbox.target.querySelectorAll('label, label *'))) {
+            for (const attribute of ['aria-labelledby', 'aria-describedby']) {
+                const refs = (element.getAttribute(attribute) ?? '').split(/\s+/).filter(Boolean)
+                for (const ref of refs) {
+                    expect(document.getElementById(ref), `${attribute} "${ref}" on <${element.tagName.toLowerCase()}>`).not.toBeNull()
+                }
+            }
+        }
+    })
+
+    it('names a hidden-name checkbox through aria-label and adds none otherwise', () => {
+        const named = renderGui(CheckInput, { check: false, hiddenName: true, name: 'Toggle X' })
+        const unnamed = renderGui(CheckInput, { check: false, hiddenName: true })
+        const visible = renderGui(CheckInput, { check: false, name: 'Shown name' })
+
+        expect(named.getBySelector('input').getAttribute('aria-label')).toBe('Toggle X')
+        expect(unnamed.getBySelector('input').hasAttribute('aria-label')).toBe(false)
+        expect(visible.getBySelector('input').hasAttribute('aria-label')).toBe(false)
+    })
+
+    it('puts the peer input right before the ring-bearing box in both layouts and fires onChange once', async () => {
+        for (const reverse of [false, true]) {
+            const onChange = vi.fn()
+            const checkbox = renderGui(CheckInput, { check: false, name: 'Layout', reverse, onChange })
+            const input = checkbox.getBySelector<HTMLInputElement>('input[type="checkbox"]')
+            const box = input.nextElementSibling
+
+            expect(input.classList.contains('peer'), `peer (reverse=${reverse})`).toBe(true)
+            expect(box?.getAttribute('aria-hidden')).toBe('true')
+            expect(box?.classList.contains('peer-focus-visible:ring-2')).toBe(true)
+            expect(box?.classList.contains('peer-focus-visible:ring-textcolor2')).toBe(true)
+
+            input.click()
+            await tick()
+
+            expect(onChange).toHaveBeenCalledTimes(1)
+            expect(onChange).toHaveBeenCalledWith(true)
+        }
+    })
+
     it('renders select, option, and segmented selection controls', async () => {
         const onSelectChange = vi.fn()
 
