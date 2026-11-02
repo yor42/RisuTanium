@@ -220,7 +220,7 @@ export const languageVietnamese = {
         "changedToPreset": "Đã chuyển sang cài đặt trước: {name}",
         "translangContinue": "Tiếp tục dịch ngôn ngữ hiện có",
         "translangNew": "Tạo ngôn ngữ mới",
-        "translationJsonDownloaded": "Đã tải xuống JSON. Hãy dịch nó rồi gửi cho nhà phát triển qua tin nhắn riêng Discord và email. Tôi sẽ thêm nó vào phiên bản tiếp theo.",
+        "translationJsonDownloaded": "Đã bắt đầu tải xuống JSON. Hãy dịch nó rồi gửi cho nhà phát triển qua tin nhắn riêng Discord và email. Tôi sẽ thêm nó vào phiên bản tiếp theo.",
         "pythonAlreadyInstalled": "Python đã được cài đặt, bỏ qua",
         "installingPython": "Đang cài đặt Python",
         "installingPip": "Đang cài đặt Pip",

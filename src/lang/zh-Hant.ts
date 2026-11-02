@@ -220,7 +220,7 @@ export const languageChineseTraditional = {
         "changedToPreset": "已切換至預設集：{name}",
         "translangContinue": "繼續翻譯現有語言",
         "translangNew": "建立新語言",
-        "translationJsonDownloaded": "JSON 已下載。請翻譯後透過 Discord 私訊和電子郵件傳送給開發者，我會將其加入下一個版本。",
+        "translationJsonDownloaded": "JSON 已開始下載。請翻譯後透過 Discord 私訊和電子郵件傳送給開發者，我會將其加入下一個版本。",
         "pythonAlreadyInstalled": "Python 已安裝，略過",
         "installingPython": "正在安裝 Python",
         "installingPip": "正在安裝 Pip",

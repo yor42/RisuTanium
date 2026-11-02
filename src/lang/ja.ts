@@ -225,7 +225,7 @@ export const languageJapanese = {
         changedToPreset: "プリセットを変更しました：{name}",
         translangContinue: "既存の言語の翻訳を続ける",
         translangNew: "新しい言語を作成",
-        translationJsonDownloaded: "JSONをダウンロードしました。翻訳後、DiscordのDMやメールで開発者に送信してください。次のバージョンで追加します。",
+        translationJsonDownloaded: "JSONのダウンロードを開始しました。翻訳後、DiscordのDMやメールで開発者に送信してください。次のバージョンで追加します。",
         pythonAlreadyInstalled: "Pythonはすでにインストールされているため、スキップします",
         installingPython: "Pythonをインストール中",
         installingPip: "Pipをインストール中",

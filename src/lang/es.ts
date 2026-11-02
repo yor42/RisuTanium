@@ -220,7 +220,7 @@ export const languageSpanish = {
         "changedToPreset": "Se cambió al preset: {name}",
         "translangContinue": "Continuar traduciendo un idioma existente",
         "translangNew": "Crear un idioma nuevo",
-        "translationJsonDownloaded": "JSON descargado. Tradúcelo y envíaselo al desarrollador por DM de Discord y por correo electrónico. Lo añadiré a la próxima versión.",
+        "translationJsonDownloaded": "Se inició la descarga del JSON. Tradúcelo y envíaselo al desarrollador por DM de Discord y por correo electrónico. Lo añadiré a la próxima versión.",
         "pythonAlreadyInstalled": "Python ya está instalado, se omite",
         "installingPython": "Instalando Python",
         "installingPip": "Instalando Pip",

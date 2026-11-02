@@ -220,7 +220,7 @@ export const languageKorean = {
         "changedToPreset": "프리셋을 변경했습니다: {name}",
         "translangContinue": "기존 언어 번역 이어서 하기",
         "translangNew": "새 언어 만들기",
-        "translationJsonDownloaded": "JSON을 다운로드했습니다. 번역한 뒤 디스코드 DM과 이메일로 개발자에게 보내 주세요. 다음 버전에 반영하겠습니다.",
+        "translationJsonDownloaded": "JSON 다운로드를 시작했습니다. 번역한 뒤 디스코드 DM과 이메일로 개발자에게 보내 주세요. 다음 버전에 반영하겠습니다.",
         "pythonAlreadyInstalled": "Python이 이미 설치되어 있어 건너뜁니다",
         "installingPython": "Python 설치 중",
         "installingPip": "Pip 설치 중",

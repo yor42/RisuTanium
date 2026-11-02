@@ -220,7 +220,7 @@ export const languageGerman = {
         "changedToPreset": "Zur Voreinstellung gewechselt: {name}",
         "translangContinue": "Übersetzung einer vorhandenen Sprache fortsetzen",
         "translangNew": "Neue Sprache erstellen",
-        "translationJsonDownloaded": "JSON heruntergeladen. Übersetzen Sie sie und senden Sie sie per Discord-DM und E-Mail an den Entwickler. Ich nehme sie in die nächste Version auf.",
+        "translationJsonDownloaded": "Der JSON-Download wurde gestartet. Übersetzen Sie die Datei und senden Sie sie per Discord-DM und E-Mail an den Entwickler. Ich nehme sie in die nächste Version auf.",
         "pythonAlreadyInstalled": "Python ist bereits installiert, wird übersprungen",
         "installingPython": "Python wird installiert",
         "installingPip": "Pip wird installiert",
