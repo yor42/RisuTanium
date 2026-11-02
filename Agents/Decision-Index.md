@@ -902,3 +902,25 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-1005](Maintainer-Context.md#mc-1005--lane-a-2026-11-02-the-workspace-home-assumed-for-sizing-store2-record-first) | Lane A, 2026-11-02: the Workspace home assumed for sizing: "store2 record first" |
 | [MC-1006](Maintainer-Context.md#mc-1006--lane-a-2026-11-02-live-state-housekeeping-next-records-batch) | Lane A, 2026-11-02: Live-State housekeeping: "Next records batch" |
 | [MC-1007](Maintainer-Context.md#mc-1007--lane-a-2026-11-02-the-q1-finding-becomes-one-ticket-chore-629-file-one-ticket-3-parts) | Lane A, 2026-11-02: the Q1 finding becomes one ticket, CHORE-629: "File one ticket, 3 parts" |
+| [MC-1008](Maintainer-Context.md#mc-1008--lane-a-2026-11-02-chore-629-q1-refusing-an-unadvertised-tool_use-synthetic-not-available) | Lane A, 2026-11-02: CHORE-629 Q1, refusing an unadvertised `tool_use`: "Synthetic 'not available'" |
+| [MC-1009](Maintainer-Context.md#mc-1009--lane-a-2026-11-02-chore-629-q2-which-tool-loops-get-the-depth-cap-all-seven-loops) | Lane A, 2026-11-02: CHORE-629 Q2, which tool loops get the depth cap: "All seven loops" |
+| [MC-1010](Maintainer-Context.md#mc-1010--lane-a-2026-11-02-chore-629-q3-the-cap-value-fixed-25-rounds) | Lane A, 2026-11-02: CHORE-629 Q3, the cap value: "Fixed 25 rounds" |
+| [MC-1011](Maintainer-Context.md#mc-1011--lane-a-2026-11-02-chore-629-q4-what-the-user-sees-at-the-cap-turn-fails-names-cap) | Lane A, 2026-11-02: CHORE-629 Q4, what the user sees at the cap: "Turn fails, names cap" |
+| [MC-1012](Maintainer-Context.md#mc-1012--lane-a-2026-11-02-chore-629-q5-where-stop-is-honoured-yes-all-loops) | Lane A, 2026-11-02: CHORE-629 Q5, where Stop is honoured: "Yes, all loops" |
+| [MC-1013](Maintainer-Context.md#mc-1013--lane-a-2026-11-02-chore-629-q6-stop-while-a-tool-runs-finish-it-skip-the-rest) | Lane A, 2026-11-02: CHORE-629 Q6, Stop while a tool runs: "Finish it, skip the rest" |
+| [MC-1014](Maintainer-Context.md#mc-1014--lane-a-2026-11-02-chore-629-q7-staging-two-stages) | Lane A, 2026-11-02: CHORE-629 Q7, staging: "Two stages" |
+| [MC-1015](Maintainer-Context.md#mc-1015--lane-a-2026-11-02-chore-629-q8-the-live-check-stub-evidence--caveat) | Lane A, 2026-11-02: CHORE-629 Q8, the live check: "Stub evidence + caveat" |
+| [MC-1016](Maintainer-Context.md#mc-1016--lane-a-2026-11-02-device-batch-38-make-the-measure-hook-then-run) | Lane A, 2026-11-02: device batch 38: "Make the measure hook, then run" |
+| [MC-1017](Maintainer-Context.md#mc-1017--lane-a-2026-11-02-chore-629-a-nested-runllm-tool-call-share-the-outer-turn) | Lane A, 2026-11-02: CHORE-629, a nested `runLLM` tool call: "Share the outer turn" |
+| [MC-1018](Maintainer-Context.md#mc-1018--lane-a-2026-11-02-device-batch-38-build-main-2b4d242c9-for-all) | Lane A, 2026-11-02: device batch 38 build: "Main `2b4d242c9` for all" |
+| [MC-1019](Maintainer-Context.md#mc-1019--lane-a-2026-11-02-device-batch-38-forced-gc-offsets-6-s-only) | Lane A, 2026-11-02: device batch 38 forced-GC offsets: "6 s only" |
+| [MC-1020](Maintainer-Context.md#mc-1020--lane-a-2026-11-02-device-batch-38-run-window-prepare-then-run-now) | Lane A, 2026-11-02: device batch 38 run window: "Prepare, then run now" |
+| [MC-1021](Maintainer-Context.md#mc-1021--lane-a-2026-11-02-the-records-batch-38-block-mc-1010-to-mc-1039) | Lane A, 2026-11-02: the records batch 38 block: "MC-1010 to MC-1039" |
+| [MC-1022](Maintainer-Context.md#mc-1022--lane-a-2026-11-02-chore-205-device-ruling-bar-met-close-device-part) | Lane A, 2026-11-02: CHORE-205 device ruling: "Bar met, close device part" |
+| [MC-1023](Maintainer-Context.md#mc-1023--lane-a-2026-11-02-chore-396-and-the-mc-979-branch-accept-and-document) | Lane A, 2026-11-02: CHORE-396 and the `MC-979` branch: "Accept and document" |
+| [MC-1024](Maintainer-Context.md#mc-1024--lane-a-2026-11-02-chore-624-next-step-size-a-fix-for-the-tick-remainder) | Lane A, 2026-11-02: CHORE-624 next step: "Size a fix for the tick remainder" |
+| [MC-1025](Maintainer-Context.md#mc-1025--lane-a-2026-11-02-chore-624-approach-message-yield--end-tick-early) | Lane A, 2026-11-02: CHORE-624 approach: "Message yield + end tick early" |
+| [MC-1026](Maintainer-Context.md#mc-1026--lane-a-2026-11-02-chore-624-wait-target-within-one-unit-of-encode) | Lane A, 2026-11-02: CHORE-624 wait target: "Within one unit of encode" |
+| [MC-1027](Maintainer-Context.md#mc-1027--lane-a-2026-11-02-chore-624-abandoning-a-tick-yes-rerun-at-next-tick) | Lane A, 2026-11-02: CHORE-624, abandoning a tick: "Yes, rerun at next tick" |
+| [MC-1028](Maintainer-Context.md#mc-1028--lane-a-2026-11-02-chore-624-starvation-of-the-idle-net-finish-after-2-cut-ticks) | Lane A, 2026-11-02: CHORE-624, starvation of the idle net: "Finish after 2 cut ticks" |
+| [MC-1029](Maintainer-Context.md#mc-1029--lane-a-2026-11-02-chore-624-scope-latency-only) | Lane A, 2026-11-02: CHORE-624 scope: "Latency only" |

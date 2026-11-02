@@ -20682,6 +20682,8 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 
 ### MC-995 — Lane A, 2026-11-02: CHORE-624 next step "One device check first"
 
+*Amendment (2026-11-02, records batch 38; see `MC-1016`): the "no code change yet" below is amended for one measurement-only hook. The maintainer chose "Make the measure hook, then run (Recommended)": a page-side timestamp of the reply callback and of `requestNow` in MEASURE builds only, built under the normal gates (commit `3606f8dab`). Nothing else in this entry changes; no fix is authorised. The text below is kept as written.*
+
 - Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
 - Source: the batch 36 queue (`%TEMP%\risu-b715\b36\records36-queue.md`, line 12): chosen "One device check first (Recommended)" over "File a fix ticket now" and "Correct the claim only". The question text is not in the queue beyond the gloss: TODO(evidence). The follow-ups offered came from the device batch 36 verification (`b35\db36-verify\result.md`, "Follow-ups warranted", proposals only).
 - Alternatives rejected: "File a fix ticket now"; "Correct the claim only".
@@ -20845,6 +20847,8 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 
 ### MC-1007 — Lane A, 2026-11-02: the Q1 finding becomes one ticket, CHORE-629: "File one ticket, 3 parts"
 
+*Amendment (2026-11-02, records batch 38; see `MC-1009` and `MC-1012`): the scope of parts 2 and 3 below is widened as a shared-cause amendment under `MC-091`. The depth cap covers all seven tool-dispatching loops (`MC-1009`), and Stop is honoured in all of them, including the retry loops (`MC-1012`), not only the Anthropic recursion. Part 1 is refined by `MC-1008` (a synthetic "not available" result). Nothing else in this entry changes. The text below is kept as written.*
+
 - Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
 - Source: the batch 37 queue (line 16): chosen "File one ticket, 3 parts (Recommended)" over "Ticket the guard only" and "Record only". The question text is not in the queue: TODO(evidence). It followed the bounded investigation of `MC-997` (result `%TEMP%\risu-b715\rr\q1-invest\result.md`, independent review `rr\q1-verify\result.md`; both read by the records writer).
 - Alternatives rejected: "Ticket the guard only"; "Record only".
@@ -20858,3 +20862,301 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
   - What the investigation graded (DIAGNOSTIC experiments with a stubbed provider, fetch, spawn and prompts; 21 of 21 pass; the run exits 1 from one unrelated unhandled error in `parser.svelte.ts`; the reviewer re-ran 21 of 21 and a scratch mutant flipped 14 of 21): dispatch of an unadvertised `tool_use` on the non-streaming Anthropic path SUPPORTED; unprompted library-wide reads SUPPORTED (WEAK for three read tools whose fixture was empty; the write allow path untested); approved stdio spawned without a prompt and unapproved prompts SUPPORTED (approval store stubbed); no depth bound observed to the 50-round cap SUPPORTED; Stop does not abort the non-streaming request or tool loop (no abort signal reaches the fetch; 17 further rounds ran after Stop in the test) SUPPORTED; the plugin variant WEAK (a stand-in registration; the `replacer` grant gating was not exercised); OpenAI and Google do not dispatch an unmatched tool but also recurse without a depth bound (WEAK as a control; the reviewer notes that a guard copied from those sites leaves the depth and Stop parts open). No real provider was called. Whether RP chats with MCP tools share the same unadvertised-dispatch path is a static inference, not tested.
   - The investigation calls the abort-signal part independent of the guard, and the depth cap defence in depth that stays relevant for chats with tools advertised (its labelled opinion, not a finding). Option and scope choices beyond the three parts are the maintainer's.
   - Nothing here authorizes application code, a commit or a push.
+
+### MC-1008 — Lane A, 2026-11-02: CHORE-629 Q1, refusing an unadvertised `tool_use`: "Synthetic 'not available'"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (`%TEMP%\risu-b715\b38\records38-queue.md`, line 8): chosen "Synthetic 'not available' (Recommended)" over "End the turn with an error". The queue says the question stated that RP chats on Anthropic also lose unadvertised `risu-*` calls. The question text is not in the queue. Its likely source is item 1 of the final question list in the CHORE-629 grilling review (`b38\c629-grill\result.md`, ACCEPT WITH CORRECTIONS), which offers a third option, "drop the block" (marked there as breaking tool_use/tool_result pairing, not recommended); whether the maintainer saw that wording, or that third option, is not in the queue: TODO(evidence).
+- Alternatives rejected: "End the turn with an error".
+- Related: `MC-1007` (part 1), `MC-997`, `MC-933`, CHORE-629, `MC-091`.
+
+**What was decided (maintainer).**
+1. CHORE-629 Q1: "Synthetic 'not available' (Recommended)". As the grilling review words the option: a `tool_use` whose name is not in the request's advertised tools is answered with a synthetic `tool_result` saying the tool is not available, and the loop continues so the model replies in text (the shape the OpenAI, Google and Responses sites already have).
+
+- Notes, not the maintainer's words:
+  - Consequence the question stated (per the queue): an RP chat on Anthropic with MCP tools also loses calls to an unadvertised `risu-*` tool. That RP reaches the same Anthropic dispatch site was graded statically CONFIRMED by the grilling review, with the end-to-end path not run.
+  - Built in `2b4d242c9` (see `MC-1014`); the commit message says the follow-up request gets a paired synthetic "not available" `tool_result` and that no discovery, stdio consent, spawn or MCP client runs for the refused call.
+
+### MC-1009 — Lane A, 2026-11-02: CHORE-629 Q2, which tool loops get the depth cap: "All seven loops"
+
+- Tag: decision (the maintainer's answer, relayed by lane A); a scope amendment of `MC-1007` part 2. Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 9): chosen "All seven loops (Recommended)" over "Only the named recursions". The queue glosses it as a shared-cause amendment of `MC-1007` under `MC-091`. The question text is not in the queue; the grilling review's item 2 words it as: `MC-1007` names "Anthropic, OpenAI and Google tool-loop recursions", while the OpenAI Responses loops and the OpenAI and Google streaming loops are unbounded loops of the same shape (whether the maintainer saw this wording: TODO(evidence)).
+- Alternatives rejected: "Only the named recursions".
+- Related: `MC-1007`, `MC-091`, `MC-1012`, CHORE-629.
+
+**What was decided (maintainer).**
+1. CHORE-629 Q2: "All seven loops (Recommended)". The depth cap covers every tool-dispatching loop, not only the recursions `MC-1007` names.
+
+- Notes, not the maintainer's words:
+  - The count is seven, not eight: the grilling review corrected the sizing packet (A1 Anthropic, O1 and O2 OpenAI chat, R1 and R2 Responses, G1 and G2 Gemini). The commit message of `2b4d242c9` lists the same seven (Anthropic, OpenAI chat x2, Responses x2, Gemini x2).
+  - `MC-1007` carries a dated amendment line for this and for `MC-1012`.
+
+### MC-1010 — Lane A, 2026-11-02: CHORE-629 Q3, the cap value: "Fixed 25 rounds"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 10): chosen "Fixed 25 rounds (Recommended)" over "Fixed 10 rounds", "Fixed 50 rounds" and "User setting". The question text is not in the queue; the grilling review's item 3 words it as a fixed constant of 10, 25 or 50 rounds per turn, or a user setting (which would add a persisted database field with a save and `.bin` round trip, `MC-175` compatibility and an `opus-reviewer` class). The review's recommendation of 25 is labelled there as an opinion, unmeasured (whether the maintainer saw this wording: TODO(evidence)).
+- Alternatives rejected: "Fixed 10 rounds"; "Fixed 50 rounds"; "User setting".
+- Related: `MC-1007`, `MC-1009`, `MC-1011`, CHORE-629.
+
+**What was decided (maintainer).**
+1. CHORE-629 Q3: "Fixed 25 rounds (Recommended)". A fixed budget of 25 rounds per turn, not a setting.
+
+- Notes, not the maintainer's words:
+  - The value 25 was not measured against real chats; no measurement is claimed. The commit message of `2b4d242c9` says the budget is carried on the request argument and shared across recursion, retries, wrapper retries and fallbacks, so it never resets within a turn.
+
+### MC-1011 — Lane A, 2026-11-02: CHORE-629 Q4, what the user sees at the cap: "Turn fails, names cap"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 11): chosen "Turn fails, names cap (Recommended)" over "Partial reply plus a note" and "Silent truncation". The question text is not in the queue; the grilling review's item 4 words the options as the turn failing with an error naming the cap, a successful reply from the partial text plus a note, or silent truncation (whether the maintainer saw this wording: TODO(evidence)).
+- Alternatives rejected: "Partial reply plus a note"; "Silent truncation".
+- Related: `MC-1010`, `MC-1008`, CHORE-629.
+
+**What was decided (maintainer).**
+1. CHORE-629 Q4: "Turn fails, names cap (Recommended)". Reaching the cap fails the turn with an error that names the cap.
+
+- Notes, not the maintainer's words:
+  - Built as the locale key `errors.toolLoopLimit` (`2b4d242c9`): English from the coder, ko, cn, zh-Hant, vi, de and es from the translator, ja from the translator's relay through lane A (the translator guard excludes `ja.ts`; `b38\c629-tl\result.md`). Non-streaming loops end the turn; streaming loops error the stream (the commit message). The ko, vi, de and es terminology was not cross-checked (queue): see Carry-Forward.
+
+### MC-1012 — Lane A, 2026-11-02: CHORE-629 Q5, where Stop is honoured: "Yes, all loops"
+
+- Tag: decision (the maintainer's answer, relayed by lane A); a scope amendment of `MC-1007` part 3. Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 12): chosen "Yes, all loops (Recommended)" over "Anthropic only". The queue glosses it as amending the scope of `MC-1007` part 3 and including the retry loops. The question text is not in the queue; the grilling review's item 5 asks whether the abort check (skip the remaining tool blocks and the next round after Stop) should also be added to the six OpenAI, Google and Responses loops whose fetches already carry the signal (whether the maintainer saw this wording: TODO(evidence)).
+- Alternatives rejected: "Anthropic only".
+- Related: `MC-1007`, `MC-1009`, `MC-1013`, `MC-1017`, CHORE-629.
+
+**What was decided (maintainer).**
+1. CHORE-629 Q5: "Yes, all loops (Recommended)". Stop is honoured in every tool loop, including the retry loops.
+
+- Notes, not the maintainer's words:
+  - The grilling review found that the follow-up retry loops had no abort check either (whether `fetchNative` throws on an aborted signal was not read by it: UNKNOWN there). The commit message of `2b4d242c9` says Stop is checked per block, per round, per retry attempt and after each retry loop before its failure alert, so a Stop no longer shows "Failed to fetch model response after tool execution".
+
+### MC-1013 — Lane A, 2026-11-02: CHORE-629 Q6, Stop while a tool runs: "Finish it, skip the rest"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 13): chosen "Finish it, skip the rest (Recommended)" over "Also cancel in-flight". The question text is not in the queue; the grilling review's item 6 notes that cancelling an in-flight MCP call needs a signal in the MCP call context and touches `mcp.ts` and every client (whether the maintainer saw this wording: TODO(evidence)).
+- Alternatives rejected: "Also cancel in-flight".
+- Related: `MC-1012`, `MC-1017`, CHORE-629.
+
+**What was decided (maintainer).**
+1. CHORE-629 Q6: "Finish it, skip the rest (Recommended)". A tool already running finishes; the remaining tool calls and the next round are skipped.
+
+- Notes, not the maintainer's words:
+  - `MC-1017` refines this answer for the nested `runLLM` tool.
+
+### MC-1014 — Lane A, 2026-11-02: CHORE-629 Q7, staging: "Two stages"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 14): chosen "Two stages (Recommended)" over "One stage". The question text is not in the queue; the grilling review's item 7 words the split as stage 1 = test harness, part 1 and the Anthropic part 3 (the security-boundary point, Opus Gate 2 under `MC-912`), stage 2 = the depth cap and the other loops' abort checks (whether the maintainer saw this wording: TODO(evidence)).
+- Alternatives rejected: "One stage".
+- Related: `MC-912`, `MC-1007`, `MC-1009`, CHORE-629.
+
+**What was decided (maintainer).**
+1. CHORE-629 Q7: "Two stages (Recommended)".
+
+- Notes, not the maintainer's words:
+  - Both stages are in commit `2b4d242c9` (one commit; the commit message names Stage 1 and Stage 2). Gate record: Gate 1 (adversarial-reviewer) r1 `[REJECT]` (`b38\c629-g1\result.md`), r2 `[REJECT]` on a test fixture (`c629-g1r2`), r3 `[EDITORIAL]` (`c629-g1r3`); S1 Opus Gate 2 `[APPROVE]` (`c629-s1-g2`, `MC-912`); S2 `opus-reviewer` Gate 2 `[APPROVE]` (`c629-s2-g2`). Full checks on the final snapshot (`b38\c629-final\`): `pnpm check` 0 errors and 0 warnings; `pnpm test` 1314 files passed, 1 failed, 2 skipped, 29,238 tests passed and 24 skipped, the sole failure being the untracked root file `Chats.bodyReload.svelte.test.ts` ("No test suite found"); build and `checkReleaseDist` OK (453 files scanned). Execution result of the commands; the build log itself was not reopened by the records writer beyond its exit lines.
+
+### MC-1015 — Lane A, 2026-11-02: CHORE-629 Q8, the live check: "Stub evidence + caveat"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 15): chosen "Stub evidence + caveat (Recommended)" over "One live call". The question text is not in the queue; the grilling review's item 8 words it as the real-API caveat: whether the real Anthropic API or a proxy accepts a follow-up with `tool_use` and `tool_result` but no `tools` array cannot be proved with stubs (whether the maintainer saw this wording: TODO(evidence)).
+- Alternatives rejected: "One live call" (the review words it as one live call with a throwaway key before the stage 1 merge).
+- Related: `MC-1008`, CHORE-629.
+
+**What was decided (maintainer).**
+1. CHORE-629 Q8: "Stub evidence + caveat (Recommended)". The evidence for CHORE-629 is stubbed providers, with the caveat recorded.
+
+- Notes, not the maintainer's words:
+  - The caveat stays open: UNKNOWN whether the real provider accepts the follow-up shape the refusal produces. No real provider was called.
+
+### MC-1016 — Lane A, 2026-11-02: device batch 38: "Make the measure hook, then run"
+
+- Tag: decision (the maintainer's answer, relayed by lane A); an amendment of `MC-995`. Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 16): chosen "Make the measure hook, then run (Recommended)" over "Run without the hook" and "Not yet". The question text is not in the queue beyond the gloss: TODO(evidence).
+- Alternatives rejected: "Run without the hook"; "Not yet".
+- Related: `MC-995`, `MC-996`, `MC-999`, `MC-979`, CHORE-624, CHORE-205, CHORE-396, `MC-1018` to `MC-1020`.
+
+**What was decided (maintainer).**
+1. Device batch 38: "Make the measure hook, then run (Recommended)". As the queue glosses it: plan and build a measurement-only (MEASURE-build) page-side timestamp of the reply callback and of `requestNow` under the normal gates (save-loop code: `opus-reviewer`); add a message-mode device gate; then run the CHORE-396 forced-GC check, CHORE-205 item 6 and the CHORE-624 cause cell, with post-relaunch durability counts, in one session on a fresh measure build of main.
+
+- Notes, not the maintainer's words:
+  - Amends `MC-995`'s "no code change yet" for this measurement-only hook only (stated in the queue). The hook is commit `3606f8dab` (`saveRequestProbe.ts`; guarded by `MEASURE`; `checkReleaseDist` gains a marker so a release dist containing the probe fails). Gates: Gate 1 `opus-reviewer` r1 `[REJECT]`, r2 `[EDITORIAL]`; Gate 2 `opus-reviewer` `[EDITORIAL]`; full `pnpm test` 29,172 passed and 24 skipped with one failure, the same untracked root file `Chats.bodyReload.svelte.test.ts` (empty suite); build and `checkReleaseDist` OK (queue; `b38\mhook-final\` shows the same counts). The maintainer then chose "Commit and push (Recommended)" for it.
+  - The run itself is `MC-1018` to `MC-1020`; results are on the Roadmap batch 38 section and ledger rows.
+
+### MC-1017 — Lane A, 2026-11-02: CHORE-629, a nested `runLLM` tool call: "Share the outer turn"
+
+- Tag: decision (the maintainer's answer, relayed by lane A); a refinement of `MC-1013`. Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 18): chosen "Share the outer turn (Recommended)" over "Out of scope, documented" and "Shared budget, keep Stop as Q6". It arose from Gate 1 round 1 finding F1 (SUBSTANTIVE, `b38\c629-g1\result.md`): the `internal:aiaccess` client's `runLLM` tool calls `requestChatData` with no abort signal and no tools, so a nested turn would get a fresh budget and lose Stop. The question text is not in the queue: TODO(evidence).
+- Alternatives rejected: "Out of scope, documented"; "Shared budget, keep Stop as Q6".
+- Related: `MC-1013`, `MC-1012`, `MC-1010`, CHORE-629.
+
+**What was decided (maintainer).**
+1. A nested `internal:aiaccess` `runLLM` uses the outer turn's 25-round budget and Stop signal, carried through the MCP call context. This refines `MC-1013` for this tool: the running outer tool call is still not cancelled by the loop, but the nested request sees Stop.
+
+- Notes, not the maintainer's words:
+  - Built in `2b4d242c9` (commit message: a nested `internal:aiaccess` `runLLM` receives the outer turn's budget and abort signal through the MCP call context and never starts a fresh budget); test file `toolLoopNested` per the commit message.
+
+### MC-1018 — Lane A, 2026-11-02: device batch 38 build: "Main `2b4d242c9` for all"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 21): chosen "Main 2b4d242c9 for all (Recommended)" over "Main for 624, M/R for others". The question text is not in the queue: TODO(evidence).
+- Alternatives rejected: "Main for 624, M/R for others" (builds M and R from earlier batches).
+- Related: `MC-1016`, `MC-1019`, `MC-1020`, CHORE-396, CHORE-205, CHORE-624.
+
+**What was decided (maintainer).**
+1. One fresh `-Measure` build of main `2b4d242c9` serves the forced-GC check, item 6 and the CHORE-624 cell; M and R are not reused.
+
+- Notes, not the maintainer's words:
+  - Build X: `-Measure` build of main `2b4d242c9f715dd0fad24b1f17e1b5dc6b82fc52`, APK sha256 `77FDE6F79B65FADEEA657D115E341F4D0966C74D72379064D8627E4567337B23` (from `b38\db38\t1\result.md`, re-hashed at the start and before each install per that report).
+  - Consequence the Task 1 verification names: X is a `-Measure` build while the A1 comparison build is plain, so the X against A1 gap carries a measure-versus-plain and a commit-range confound; only X-GC against X (one build, one session) is a clean contrast.
+
+### MC-1019 — Lane A, 2026-11-02: device batch 38 forced-GC offsets: "6 s only"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 22): chosen "6 s only (Recommended)" over "6 s and 12 s". The question text is not in the queue: TODO(evidence).
+- Alternatives rejected: "6 s and 12 s".
+- Related: `MC-1016`, `MC-1018`, CHORE-396.
+
+**What was decided (maintainer).**
+1. The CHORE-396 forced garbage collection runs at one offset, 6 s after the import tap.
+
+- Notes, not the maintainer's words:
+  - Consequence: a GC at another offset (nearer the PSS peak, or several) was not tested; the Task 1 verification keeps the PSS-peak attribution open for that reason.
+
+### MC-1020 — Lane A, 2026-11-02: device batch 38 run window: "Prepare, then run now"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 23): chosen "Prepare, then run now (Recommended)" over "Prepare only, ask before run" and "Not today". The queue records the plan's limits: Note 9 spares only, synthetic data, Wi-Fi off for upstream builds, ports 6350 to 6399, mock endpoint 6310; ask again only if the run goes off-plan. The question text is not in the queue: TODO(evidence).
+- Alternatives rejected: "Prepare only, ask before run"; "Not today".
+- Related: `MC-1016`, `MC-1018`, `MC-1019`, `MC-510`.
+
+**What was decided (maintainer).**
+1. Lane A prepares the batch and runs it in the same window, within the limits above, without asking again unless the run goes off-plan.
+
+- Notes, not the maintainer's words:
+  - The run happened 2026-11-02 (Task 1 on Note 9 phone 1 from 21:20 to 21:58 per its report). All three tasks used synthetic data on the Note 9 p1 spare; Wi-Fi read 0 in the verifiers' recount of the logs they opened (Task 1: 31 reads; Task 2: 13; Task 3: 43 lines in the `c624p` folders). Three of the build step's own Gradle processes were left running; lane A stopped them on the maintainer's word (queue).
+
+### MC-1021 — Lane A, 2026-11-02: the records batch 38 block: "MC-1010 to MC-1039"
+
+- Tag: decision (the maintainer's answer, relayed by lane A); an allocation. Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 24): chosen "MC-1010 to MC-1039 (Recommended)" over "I'll allocate it". The queue states: the next 30 numbers go to lane A, recorded like `MC-980` to `MC-1009`. The question text is not in the queue: TODO(evidence).
+- Alternatives rejected: "I'll allocate it" (the maintainer allocates the block).
+- Related: `MC-995` and the batch 36 and 37 next-free lines (the earlier block `MC-980` to `MC-1009`, allocated by lane A on 2026-11-02).
+
+**What was decided (maintainer).**
+1. Lane A's new block is `MC-1010` to `MC-1039`.
+
+- Notes, not the maintainer's words:
+  - `MC-1008` and `MC-1009` finish the earlier block `MC-980` to `MC-1009`; `MC-1010` onward are in the new block. The entries are numbered in the order of the queue lines, so this allocation entry carries a later number than the first entries that already use the block.
+  - The ledger block (4700 to 4899) and the CHORE block (CHORE-620 to CHORE-669) are unchanged.
+
+### MC-1022 — Lane A, 2026-11-02: CHORE-205 device ruling: "Bar met, close device part"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 26): chosen "Bar met, close device part (Recommended)" over "Repeat item 6 once more" and "Not met". This is the ruling that `MC-999` ("Run export step, then rule") deferred until item 6 had run. The question text is not in the queue: TODO(evidence). The verifier's input to the ruling (`b38\db38-t2v\result.md`, ACCEPT WITH CORRECTIONS K1 to K5) lists four open questions (a) to (d) for lane A and the maintainer; whether the maintainer saw them is not in the queue: TODO(evidence).
+- Alternatives rejected: "Repeat item 6 once more"; "Not met".
+- Related: `MC-920`, `MC-957`, `MC-999`, `MC-516`, CHORE-205.
+
+**What was decided (maintainer).**
+1. CHORE-205: "Bar met, close device part (Recommended)". As the queue glosses it: the `MC-920` device-case bar is met with items 1 to 6 as they stand (the n noted), the accepted gaps are recorded, and CHORE-205's device work is done.
+
+- Notes, not the maintainer's words:
+  - What "as they stand" is, from the verifier's table (Note 9 phone 1, PROPOSED thresholds, best-case hardware): items 1 to 4 PASS at n=2 arm-distinct boots per arm on builds R/M (earlier batches, `devbatch33`); item 5 report-only; item 6 (export) PASS with the subject at n=1 on the `-Measure` build X (`MC-1018`): subject export 0 differences, modules 169/169; control export 3 differences, the same three as the earlier p1d run (an `archiveCharacters` toggle and two `bookVersion` stamps); dialogs clean at 5 s polling, which does not exclude a dialog shown and dismissed between polls. Accepted gaps named on the CHORE-205 Roadmap row (steps 12 and 13, `MC-670`, M9) are not re-examined here.
+  - Verifier corrections to the raw report that stand: K1 (the p1d "168/168" is the file without the duplicate id keyed apart, the same comparison as 169/169 with it), K2 (for the control the module line is 168 matched and 1 changed), K3 and K4 (the picker listing against the Download count of 4, and the 90 s `ctl-loaded` entry in `restore-times.txt`, are unreconciled), K5 (items 1 to 4 are n=2, not n=3). Export size: 39.4 MB for the subject against 21.5 MB for the control with the content matched (0 character, chat or asset differences) is unexplained by the report; the verifier agrees the S/C gap is stub-plus-unit form against inline form, and that is its inference.
+  - This entry rules on the CHORE-205 device bar only. It does not decide the other tickets of the `MC-920` gate list (CHORE-117, CHORE-03, CHORE-398), which are on their own rows, and it does not lift any gate by itself. The UI-S1 gate (`MC-516`, `MC-920`) is described on the Roadmap rows.
+
+### MC-1023 — Lane A, 2026-11-02: CHORE-396 and the `MC-979` branch: "Accept and document"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 27): chosen "Accept and document (Recommended)" over "Plan a GC-trigger fix" and "One more device cell first". The queue's gloss: the excess is transient collectible garbage, not a leak; the MVP refresh may carry it with a documented note; no fix now. The question text is not in the queue: TODO(evidence).
+- Alternatives rejected: "Plan a GC-trigger fix"; "One more device cell first".
+- Related: `MC-979` (items 2 and 3 name the CHORE-396 fix as an MVP refresh gate), `MC-972`, `MC-1016`, `MC-1019`, CHORE-396.
+
+**What was decided (maintainer).**
+1. CHORE-396: "Accept and document (Recommended)". No fix is planned now; the MVP refresh may carry the excess with a documented note.
+
+- Notes, not the maintainer's words:
+  - The evidence behind it (`b38\db38-t1v\result.md`, ACCEPT WITH CORRECTIONS; Note 9 phone 1, n=3 per arm, one fixture, one GC offset, best-case hardware, descriptive): the backing store is collectible at the 6 s instant in 3 of 3 X-GC runs (114.5 to 41.2, 95.8 to 42.3, 92.5 to 42.6 MiB). Peak PSS is INCONCLUSIVE: the single early GC left X-GC between X and A1 with ranges that overlap X's, and the backing store re-grew to 79.8 to 109.2 MiB after it. The premise that X is above A1 was reproduced (backing peak medians 126.8 against 76.4 MiB).
+  - Gaps that stay: no A1-with-GC control exists, so the drop shows X's backing store is mostly unreferenced at 6 s, not that X's excess over A1 alone is collectible; X is a `-Measure` build against a plain A1 (`MC-1018`); why X allocates about one extra file-sized buffer early (INFERRED from the 41,858,333 B fixture against an early step of about 30 to 40 MiB) was not source-traced; A1 here is about 10 MiB below the earlier z1 A1 value, unexplained.
+  - This changes how the `MC-979` gate list is read for the CHORE-396 fix. Reconciling `MC-979`, `MC-983`, `MC-984` and `MC-986` is owed (Carry-Forward); no amendment line is written on `MC-979` by this entry.
+
+### MC-1024 — Lane A, 2026-11-02: CHORE-624 next step: "Size a fix for the tick remainder"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 28): chosen "Size a fix for the tick remainder (Recommended)" over "Run follow-up cells first" and "Record and park". The queue's gloss: an investigator sizing (no code) of letting a mid-tick save request end or split the tick remainder, plus the reply-starvation part; then decide. The question text is not in the queue: TODO(evidence).
+- Alternatives rejected: "Run follow-up cells first"; "Record and park".
+- Related: `MC-995`, `MC-996`, `MC-981`, `MC-1016`, CHORE-624.
+
+**What was decided (maintainer).**
+1. CHORE-624: "Size a fix for the tick remainder (Recommended)". No fix, ticket change or code change is authorised by this entry; the decision on a fix follows the sizing.
+
+- Notes, not the maintainer's words:
+  - The evidence (`b38\db38-t3v\result.md`, ACCEPT WITH CORRECTIONS C1 to C5; Note 9 phone 1, build X, n=3 per arm, one profile, PROPOSED thresholds, best-case hardware): see the Roadmap batch 38 section.
+  - The sizing is `b38\c624-size\result.md` (investigator, source reading only, nothing executed), verified and grilled by `b38\c624-grill\result.md` (adversarial-reviewer, ACCEPT WITH CORRECTIONS), whose corrections and question wording govern. The answers to its questions are `MC-1025` to `MC-1029`.
+
+### MC-1025 — Lane A, 2026-11-02: CHORE-624 approach: "Message yield + end tick early"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 30): chosen "Message yield + end tick early (Recommended)" over "Send-time gate only" and "Both". The question text is not in the queue; the grilling review's new Q6 (`b38\c624-grill\result.md`, "required by C2") words the options as (a) a message yield in the hidden tick plus ending the tick at the first yield after a request (its option O-D, two stages), (b) a send-time gate only (no module tick starts, and a running one ends, while a hidden reply is outstanding), (c) both (whether the maintainer saw this wording: TODO(evidence)).
+- Alternatives rejected: "Send-time gate only"; "Both".
+- Related: `MC-1024`, `MC-995`, `MC-996`, `MC-981`, `MC-1026` to `MC-1029`, `MC-697`, CHORE-624.
+
+**What was decided (maintainer).**
+1. CHORE-624: "Message yield + end tick early (Recommended)". As the queue glosses it: a hidden Android tick yields through a message and ends at the first yield after a save request, its work redone later; two stages; save-loop production code, so `opus-reviewer`.
+
+- Notes, not the maintainer's words:
+  - The grill's corrections C1 to C6 govern the plan: the binding constraint is the single serial loop, not `dbWriteLock`, so an early end must return control to the loop (C1); the `deferred` outcome pattern must not be copied literally because it sets a deferral that blocks the marked pass (C4); the abort is necessarily a throw caught inside the attempt before the pass's failure counting (C5); an aborted character tick does not save that character until its round-robin turn (C6); with an abort check right after each yield the tick would end about 0 ms after `requestNow` rather than one segment later (C3). The existing frozen-page tests (TA-1 to TA-8 in `frozenSaveWake.test.ts`) are the primary seam, and TA-2 and TA-3 encode "finish the tick, then commit" today (C7).
+  - The grill's Q3, the scope of the yield primitive (the hidden Android tick's request race only, or every save, backup and asset yield, which changes backup export, asset hashing and old-data deletion timing), has no recorded answer; the label above says the hidden Android tick. The plan has to name the scope: TODO(evidence) for a maintainer answer. `scheduler.postTask` on WebView 155 is UNKNOWN and unsized.
+  - The sizing and the grill are reasoning from source, not executed. The cause in scheduler mode (that `scheduler.yield()` continuations outrank the reply task) is still INFERRED. Nothing here authorises a commit; the plan is in design (`b38\c624-plan`) and goes through Gate 1 first.
+
+### MC-1026 — Lane A, 2026-11-02: CHORE-624 wait target: "Within one unit of encode"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 31): chosen "Within one unit of encode (Recommended)" over "Within a few seconds" and "Leave as is". The grill rewrote this question because the sizing had mis-sized it (C3); its wording: "After a hidden reply-end save request, how soon must the save start?" with the options as the queue's labels (the first reads: within one unit of encode after the reply reaches the page, i.e. the tick ends at the first yield after the request). Whether the maintainer saw that wording: TODO(evidence).
+- Alternatives rejected: "Within a few seconds" (today's tick-remainder wait is acceptable and only the starved callback is fixed); "Leave as is" (latency, not loss, under the hold).
+- Related: `MC-1025`, `MC-1024`, CHORE-624.
+
+**What was decided (maintainer).**
+1. CHORE-624 wait target: "Within one unit of encode (Recommended)". This is a PROPOSED target, not a measured bound; it is judged on a device build whose message-yield switch is off, so the meter is not the variable under test (the grill's item 10).
+
+- Notes, not the maintainer's words:
+  - Observed baseline for comparison (`MC-1024` evidence): waits to the first edit of 2037, 2178 and 2074 ms in the message arm; in the scheduler arm the reply callback ran 2.09 to 2.13 s after the release (the wait to first edit is not separately stated), on one Note 9 cell whose tick was 2.2 to 2.4 s; the wait follows the tick length, so it is not a constant.
+
+### MC-1027 — Lane A, 2026-11-02: CHORE-624, abandoning a tick: "Yes, rerun at next tick"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 32): chosen "Yes, rerun at next tick (Recommended)" over "Yes, wait normal interval" and "No"; the queue adds "tick clock rolled back". The grill's Q2 wording: when a hidden reply-end request arrives mid-tick, may the tick stop and redo its work later; (a) yes, modules run again at the next tick with the clock rolled back, (b) yes, but modules wait their normal interval again, (c) no, a started tick always finishes (whether the maintainer saw this wording: TODO(evidence)).
+- Alternatives rejected: "Yes, wait normal interval"; "No".
+- Related: `MC-1025`, `MC-1028`, CHORE-624.
+
+**What was decided (maintainer).**
+1. CHORE-624: "Yes, rerun at next tick (Recommended)". A tick may be abandoned for a request, and its tick clock (the module clock) is rolled back so the work runs at the next tick.
+
+- Notes, not the maintainer's words:
+  - Open in the grill's list and not answered by the queue: which pass kinds may be aborted (a tick that resolves an unknown commit probably must not be), whether an abort after the plan but before the commit is allowed, and what happens to the other tick-side state (`netIndex`, `cleanVerdictAt`). These are plan items: TODO(evidence).
+
+### MC-1028 — Lane A, 2026-11-02: CHORE-624, starvation of the idle net: "Finish after 2 cut ticks"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 33): chosen "Finish after 2 cut ticks (Recommended)" over "No bound" and "Time bound". The grill's Q4 wording: if repeated save requests keep cutting ticks short, what guarantee should the idle net keep; (a) after 2 consecutive cut ticks the next tick finishes regardless, (b) no bound, (c) a module tick finishes if modules have not completed for N times the module interval (whether the maintainer saw this wording: TODO(evidence)).
+- Alternatives rejected: "No bound"; "Time bound".
+- Related: `MC-1027`, `MC-1025`, CHORE-624.
+
+**What was decided (maintainer).**
+1. CHORE-624: "Finish after 2 cut ticks (Recommended)". After two consecutive cut ticks the next tick runs to its end.
+
+- Notes, not the maintainer's words:
+  - The number 2 is the grill's proposal and has no measurement behind it.
+
+### MC-1029 — Lane A, 2026-11-02: CHORE-624 scope: "Latency only"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 38 queue (line 34): chosen "Latency only (Recommended)" over "Also extend the hold"; the queue adds "durability covered by the existing hold". The grill replaced the sizing's latency-or-loss question with a scope question: is CHORE-624 a latency fix only, with durability covered by the existing hold, or also extend the hold to start at send time (whether the maintainer saw this wording: TODO(evidence)).
+- Alternatives rejected: "Also extend the hold".
+- Related: `MC-996`, `MC-1025`, `MC-1024`, CHORE-624.
+
+**What was decided (maintainer).**
+1. CHORE-624 is a latency fix only: "Latency only (Recommended)".
+
+- Notes, not the maintainer's words:
+  - Basis: durability 6 of 6 on the device cell (`MC-1024` evidence) and the grill's reading of `holdHiddenReplySave` (no timer while hidden; released on a commit covering the marks, on saving stopped, or after 120 s of continuous visibility). Residual loss from an OS kill despite the foreground service is not changed by any option. Unverified: the hold starts at the flush, after the callback; coverage from native arrival to the callback rests on the chat's own in-flight token, which the grill did not trace (INFERRED).
