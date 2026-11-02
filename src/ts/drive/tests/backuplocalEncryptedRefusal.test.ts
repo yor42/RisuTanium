@@ -963,6 +963,7 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
         // and marks that reload app-initiated so the app's own "Leave site?"
         // guard lets it through.
         expect(alertMocks.alertNormal).not.toHaveBeenCalledWith('Success')
+        expect(alertMocks.alertNormal).not.toHaveBeenCalledWith(language.exportDownloadStarted)
         expect(isAppInitiatedReload()).toBe(true)
     })
 

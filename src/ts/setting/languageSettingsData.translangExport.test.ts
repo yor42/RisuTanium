@@ -14,10 +14,13 @@ const mocks = vi.hoisted(() => ({
     alertSelect: vi.fn(),
     alertNormal: vi.fn(),
     downloadFile: vi.fn(),
+    exportLLMCacheAsJSON: vi.fn(),
 }))
 
+const platformBox = vi.hoisted(() => ({ isTauri: false }))
+
 vi.mock(import('src/ts/platform'), () => ({
-    isTauri: false,
+    get isTauri() { return platformBox.isTauri },
 }) as unknown as typeof import('src/ts/platform'))
 
 vi.mock(import('src/ts/util'), () => ({
@@ -38,7 +41,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
 vi.mock(import('src/ts/translator/translator'), () => ({
-    exportLLMCacheAsJSON: vi.fn(),
+    exportLLMCacheAsJSON: mocks.exportLLMCacheAsJSON,
     importLLMCacheFromJSON: vi.fn(),
     clearLLMCache: vi.fn(),
 }) as unknown as typeof import('src/ts/translator/translator'))
@@ -74,9 +77,35 @@ beforeEach(() => {
     mocks.alertSelect.mockReset()
     mocks.alertNormal.mockReset()
     mocks.downloadFile.mockReset()
+    mocks.exportLLMCacheAsJSON.mockReset()
+    platformBox.isTauri = false
 })
 
 afterEach(() => changeLanguage('en'))
+
+describe('the translation-cache export notice', () => {
+    const exportCache = (languageSettingsItems.find((i) => i.id === 'lang.exportCache') as unknown as {
+        options: { onClick: () => Promise<void> }
+    }).options.onClick
+
+    test('regression reproducer: on the web the completion says the download started', async () => {
+        mocks.exportLLMCacheAsJSON.mockResolvedValue({ a: 'b' })
+        await exportCache()
+        const { language } = await import('src/lang')
+        expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+        expect(mocks.alertNormal).toHaveBeenCalledWith(language.exportDownloadStarted)
+        expect(mocks.alertNormal).not.toHaveBeenCalledWith(language.exportTranslationCacheSuccess)
+    })
+
+    test('compatibility guard: on desktop the completion keeps the exported text', async () => {
+        platformBox.isTauri = true
+        mocks.exportLLMCacheAsJSON.mockResolvedValue({ a: 'b' })
+        await exportCache()
+        const { language } = await import('src/lang')
+        expect(mocks.alertNormal).toHaveBeenCalledWith(language.exportTranslationCacheSuccess)
+        expect(mocks.alertNormal).not.toHaveBeenCalledWith(language.exportDownloadStarted)
+    })
+})
 
 describe('the UI-language select', () => {
     test('regression reproducer: offers Spanish', () => {

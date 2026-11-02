@@ -62,6 +62,11 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
     markCharacterForSave: markCharacterForSaveMock,
 }) as unknown as typeof import('src/ts/storage/characterSaveMarks'))
 
+vi.mock(import('src/ts/platform'), async (importOriginal) => ({
+    ...await importOriginal(),
+    isTauri: false,
+}))
+
 import { exportAsDataset } from 'src/ts/storage/exportAsDataset'
 import { buildColdStub } from 'src/ts/process/coldCharacter'
 import { DBState } from 'src/ts/stores.svelte'
@@ -159,7 +164,7 @@ describe('exportAsDataset with archived characters', () => {
         expect(exportedRows().map((r) => r.name)).toEqual(['Anna'])
         expect(readColdStorageItemMock.mock.calls.length).toBeLessThanOrEqual(1)
         expect(shownTexts().some((text) => text.includes('Guild'))).toBe(false)
-        expect(shownTexts()).toEqual([language.successExport])
+        expect(shownTexts()).toEqual([language.exportDownloadStarted])
     })
 
     test('an unreadable unit gives no rows, does not stop the export, and the end notice names the character', async () => {
@@ -229,8 +234,8 @@ describe('exportAsDataset with archived characters', () => {
         ])
         expect(readColdStorageItemMock).not.toHaveBeenCalled()
         expect(alertNormalMock).toHaveBeenCalledTimes(1)
-        expect(alertNormalMock).toHaveBeenCalledWith(language.successExport)
+        expect(alertNormalMock).toHaveBeenCalledWith(language.exportDownloadStarted)
         expect(alertErrorMock).not.toHaveBeenCalled()
-        expect(shownTexts()).toEqual([language.successExport])
+        expect(shownTexts()).toEqual([language.exportDownloadStarted])
     })
 })

@@ -110,6 +110,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 //#endregion
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
+import Sortable from 'sortablejs/modular/sortable.core.esm.js'
 import LoreBookList from './LoreBookList.svelte'
 
 //#region fixtures and helpers
@@ -514,10 +515,9 @@ describe('a lorebook folder whose key is missing or empty', () => {
         let target: HTMLElement
         if (branch === 'external') {
             const list = $state(fixture(keyKind))
-            const mountedTarget = mountList({ externalLoreBooks: list })
-            target = mountedTarget
-            // The external list is shown from the component's own copy once a folder is deleted, so read the rows.
-            names = () => Array.from(mountedTarget.querySelectorAll('[data-risu-idx] button.endflex span')).map((s) => s.textContent!.trim())
+            target = mountList({ externalLoreBooks: list })
+            // The owner's array is changed in place, so the owner's list is what persists.
+            names = () => list.map((l) => l.comment)
         } else if (branch === 'character') {
             installDb([character('c0', fixture(keyKind))])
             target = mountList({ submenu: 0 })
@@ -532,3 +532,273 @@ describe('a lorebook folder whose key is missing or empty', () => {
         expect(names()).toEqual(['top0', 'top1'])
     })
 })
+
+//#region folder subtree, derived drag state and stale rows
+
+/** The buttons of a row's own header (name, active toggle, delete), without those of lists nested in it. */
+function headerButtons(target: HTMLElement, title: string): HTMLButtonElement[] {
+    const span = Array.from(target.querySelectorAll('span')).find((s) => s.textContent?.trim() === title)
+    if (!span) throw new Error('row not found: ' + title)
+    const row = span.closest('[data-risu-idx]') as HTMLElement
+    return Array.from((row.firstElementChild as HTMLElement).querySelectorAll('button')) as HTMLButtonElement[]
+}
+
+async function toggleRow(target: HTMLElement, title: string): Promise<void> {
+    headerButtons(target, title)[0].click()
+    await settle()
+}
+
+async function deleteRow(target: HTMLElement, title: string): Promise<void> {
+    const buttons = headerButtons(target, title)
+    buttons[buttons.length - 1].click()
+    await settle()
+}
+
+async function answerEvery(): Promise<void> {
+    while (confirms.pending.length > 0) await answer(true)
+}
+
+function subtreeFixture(): loreBook[] {
+    return [
+        folder('outer', 'aaa'),
+        entry('inner', { mode: 'folder', key: 'folder:bbb', folder: 'folder:aaa' }),
+        entry('leaf', { folder: 'folder:bbb' }),
+        entry('keep'),
+    ]
+}
+
+function folderWithChild(): loreBook[] {
+    return [entry('top0'), folder('F1', 'aaa'), entry('a0', { folder: 'folder:aaa' }), entry('a1', { folder: 'folder:aaa' }), entry('top1')]
+}
+
+describe('deleting a folder that holds a folder', () => {
+    type Branch = 'character' | 'chat' | 'external'
+
+    test.each(['character', 'chat', 'external'] as Branch[])('removes every descendant on the %s list', async (branch) => {
+        let names: () => string[]
+        let target: HTMLElement
+        if (branch === 'external') {
+            const list = $state(subtreeFixture())
+            target = mountList({ externalLoreBooks: list })
+            names = () => list.map((l) => l.comment)
+        } else if (branch === 'character') {
+            installDb([character('c0', subtreeFixture())])
+            target = mountList({ submenu: 0 })
+            names = () => globalNames()
+        } else {
+            installDb([character('c0', [], subtreeFixture())])
+            target = mountList({ submenu: 1 })
+            names = () => localNames()
+        }
+        await deleteRow(target, 'outer')
+        await answerEvery()
+        expect(names()).toEqual(['keep'])
+    })
+
+    test.each(['character', 'chat'] as Branch[])('a nested folder deleted from inside its open parent is removed from the owner\'s array (%s list)', async (branch) => {
+        let names: () => string[]
+        let target: HTMLElement
+        if (branch === 'character') {
+            installDb([character('c0', subtreeFixture())])
+            target = mountList({ submenu: 0 })
+            names = () => globalNames()
+        } else {
+            installDb([character('c0', [], subtreeFixture())])
+            target = mountList({ submenu: 1 })
+            names = () => localNames()
+        }
+        await toggleRow(target, 'outer')
+        await deleteRow(target, 'inner')
+        await answerEvery()
+        expect(names()).toEqual(['outer', 'keep'])
+    })
+
+    test('a module lorebook folder with a nested folder persists the removal into the module\'s array', async () => {
+        const list = $state([folder('F', 'aaa'), entry('c', { folder: 'folder:aaa' }), entry('keep')])
+        const target = mountList({ externalLoreBooks: list })
+        await deleteRow(target, 'F')
+        await answerEvery()
+        expect(list.map((l) => l.comment)).toEqual(['keep'])
+    })
+
+    test('guard: cancelling either confirmation keeps a nested folder and its entries', async () => {
+        installDb([character('c0', subtreeFixture())])
+        const target = mountList({ submenu: 0 })
+        await toggleRow(target, 'outer')
+        await deleteRow(target, 'inner')
+        await answer(false)
+        expect(globalNames()).toEqual(['outer', 'inner', 'leaf', 'keep'])
+        await deleteRow(target, 'inner')
+        await answer(true)
+        await answer(false)
+        expect(globalNames()).toEqual(['outer', 'inner', 'leaf', 'keep'])
+    })
+})
+
+describe('the drag is re-created after a delete, however the removed row was open', () => {
+    let create: ReturnType<typeof vi.spyOn<typeof Sortable, 'create'>>
+
+    beforeEach(() => {
+        create = vi.spyOn(Sortable, 'create')
+    })
+    afterEach(() => {
+        create.mockRestore()
+    })
+
+    async function openAndClose(target: HTMLElement, title: string): Promise<void> {
+        await toggleRow(target, title)
+        await toggleRow(target, title)
+    }
+
+    test('after deleting a closed top-level entry, opening and closing another re-creates the drag', async () => {
+        installDb([character('c0', [entry('e0'), entry('e1'), entry('e2')])])
+        const target = mountList({ submenu: 0 })
+        await deleteRow(target, 'e1')
+        await answerEvery()
+        const before = create.mock.calls.length
+        await openAndClose(target, 'e0')
+        expect(create.mock.calls.length).toBeGreaterThan(before)
+    })
+
+    test('after deleting a closed top-level folder that holds a child, opening and closing an entry re-creates the drag', async () => {
+        installDb([character('c0', folderWithChild())])
+        const target = mountList({ submenu: 0 })
+        await deleteRow(target, 'F1')
+        await answerEvery()
+        expect(globalNames()).toEqual(['top0', 'top1'])
+        const before = create.mock.calls.length
+        await openAndClose(target, 'top0')
+        expect(create.mock.calls.length).toBeGreaterThan(before)
+    })
+
+    test('after deleting an open top-level folder, opening and closing an entry re-creates the drag', async () => {
+        installDb([character('c0', folderWithChild())])
+        const target = mountList({ submenu: 0 })
+        await toggleRow(target, 'F1')
+        await deleteRow(target, 'F1')
+        await answerEvery()
+        expect(globalNames()).toEqual(['top0', 'top1'])
+        const before = create.mock.calls.length
+        await openAndClose(target, 'top0')
+        expect(create.mock.calls.length).toBeGreaterThan(before)
+    })
+
+    test('after deleting an open entry inside an open folder, the nested list re-creates its drag on the next close', async () => {
+        installDb([character('c0', folderWithChild())])
+        const target = mountList({ submenu: 0 })
+        await toggleRow(target, 'F1')
+        await toggleRow(target, 'a0')
+        await deleteRow(target, 'a0')
+        await answerEvery()
+        expect(globalNames()).toEqual(['top0', 'F1', 'a1', 'top1'])
+        const before = create.mock.calls.length
+        await openAndClose(target, 'a1')
+        expect(create.mock.calls.length).toBeGreaterThan(before)
+    })
+
+    test('guard: after deleting an open top-level entry, opening and closing another re-creates the drag', async () => {
+        installDb([character('c0', [entry('e0'), entry('e1'), entry('e2')])])
+        const target = mountList({ submenu: 0 })
+        await toggleRow(target, 'e1')
+        await deleteRow(target, 'e1')
+        await answerEvery()
+        const before = create.mock.calls.length
+        await openAndClose(target, 'e0')
+        expect(create.mock.calls.length).toBeGreaterThan(before)
+    })
+
+    test('guard: opening a folder does not destroy the list\'s Sortable', async () => {
+        installDb([character('c0', folderWithChild())])
+        const target = mountList({ submenu: 0 })
+        const instance = create.mock.results[0].value as Sortable
+        const destroy = vi.spyOn(instance, 'destroy')
+        await toggleRow(target, 'F1')
+        expect(destroy).not.toHaveBeenCalled()
+    })
+
+    test('guard: an open entry keeps the drag disabled until it closes', async () => {
+        installDb([character('c0', [entry('e0'), entry('e1')])])
+        const target = mountList({ submenu: 0 })
+        await toggleRow(target, 'e0')
+        await toggleRow(target, 'e1')
+        const before = create.mock.calls.length
+        await toggleRow(target, 'e0')
+        expect(create.mock.calls.length).toBe(before)
+        await toggleRow(target, 'e1')
+        expect(create.mock.calls.length).toBe(before + 1)
+    })
+
+    test('an open and close inside the re-create wait after a drag leaves exactly one new Sortable', async () => {
+        installDb([character('c0', [entry('e0'), entry('e1'), entry('e2')])])
+        const held: FrameRequestCallback[] = []
+        vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { held.push(callback); return held.length })
+        try {
+            const target = mountList({ submenu: 0 })
+            const options = create.mock.calls[create.mock.calls.length - 1][1] as { onEnd: (evt: unknown) => Promise<void> }
+            const before = create.mock.calls.length
+            const container = target.querySelector('[data-show-folder]') as HTMLElement
+            // A drag that ends where it started takes the cancel branch, which re-creates the Sortable.
+            const ended = options.onEnd({ from: container, to: container, oldIndex: 0, newIndex: 0 })
+            await sleep(5)
+            expect(held.length).toBeGreaterThan(0)
+            await toggleRow(target, 'e0')
+            await toggleRow(target, 'e0')
+            for (const callback of held.splice(0)) callback(0)
+            await ended
+            await sleep(100)
+            expect(create.mock.calls.length - before).toBe(1)
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    })
+})
+
+describe('a row that is gone when its confirmation resolves', () => {
+    function mountTwo(a: loreBook[], b: loreBook[], chatA: loreBook[] = [], chatB: loreBook[] = [], submenu = 0): HTMLElement {
+        installDb([character('c0', a, chatA), character('c1', b, chatB)])
+        return mountList({ submenu })
+    }
+
+    test('a nested entry deleted after the selection moved leaves the old character untouched', async () => {
+        const target = mountTwo([entry('outer', { mode: 'folder', key: 'folder:aaa' }), entry('inner', { folder: 'folder:aaa' }), entry('keep')], [entry('f0'), entry('f1')])
+        await toggleRow(target, 'outer')
+        await deleteRow(target, 'inner')
+        expect(confirms.pending.length).toBe(1)
+        selectedCharID.set(1)
+        flushSync()
+        await settle()
+        await answer(true)
+        expect(globalNames(1)).toEqual(['f0', 'f1'])
+        expect(globalNames(0)).toEqual(['outer', 'inner', 'keep'])
+    })
+
+    test('guard: a nested folder deleted after the selection moved leaves the old character untouched', async () => {
+        const target = mountTwo([...subtreeFixture()], [entry('f0'), entry('f1')])
+        await toggleRow(target, 'outer')
+        await deleteRow(target, 'inner')
+        selectedCharID.set(1)
+        flushSync()
+        await settle()
+        await answerEvery()
+        expect(globalNames(1)).toEqual(['f0', 'f1'])
+        expect(globalNames(0)).toEqual(['outer', 'inner', 'leaf', 'keep'])
+    })
+
+    test('a child link inside a folder, deleted after the selection moved, leaves the old chat untouched', async () => {
+        // The drag write puts a child link into a folder by giving it the folder's key.
+        const link = child('G')
+        link.folder = 'folder:aaa'
+        const target = mountTwo([entry('g0', { id: 'G' })], [entry('h0')], [folder('F', 'aaa'), link], [entry('x0')], 1)
+        await toggleRow(target, 'F')
+        await deleteRow(target, 'g0')
+        expect(confirms.pending.length).toBe(1)
+        selectedCharID.set(1)
+        flushSync()
+        await settle()
+        await answer(true)
+        expect(localNames(1)).toEqual(['x0'])
+        expect(localNames(0)).toEqual(['F', '<child:G>'])
+    })
+})
+
+//#endregion

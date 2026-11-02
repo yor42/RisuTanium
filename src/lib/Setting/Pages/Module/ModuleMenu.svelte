@@ -1,5 +1,6 @@
 <script lang="ts">
     import { language } from "src/lang";
+    import { downloadNotice } from "src/ts/exportNotice";
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
     import type { loreBook } from "src/ts/storage/database.svelte";
     import LoreBookList from "src/lib/SideBars/LoreBook/LoreBookList.svelte";
@@ -155,7 +156,7 @@
 
             await downloadFile(`lorebook_export.json`, stringl)
 
-            alertNormal(language.successExport)
+            alertNormal(downloadNotice(language.successExport))
         } catch (error) {
             alertError(`${error}`)
         }

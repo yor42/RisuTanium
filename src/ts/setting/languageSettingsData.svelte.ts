@@ -8,6 +8,7 @@
 import type { SettingItem } from './types';
 import { isTauri } from '../platform';
 import { changeLanguage, language } from 'src/lang';
+import { downloadNotice } from 'src/ts/exportNotice';
 import { languageEnglish } from 'src/lang/en';
 import { sleep } from '../util';
 import { alertNormal, alertSelect, alertConfirm, alertError, alertWait } from '../alert';
@@ -285,7 +286,7 @@ export const languageSettingsItems: SettingItem[] = [
                     }
                     const json = JSON.stringify(cache, null, 2);
                     await downloadFile('translation_cache.json', new TextEncoder().encode(json));
-                    alertNormal(language.exportTranslationCacheSuccess);
+                    alertNormal(downloadNotice(language.exportTranslationCacheSuccess));
                 } catch (e: any) {
                     alertError(e.message);
                 }

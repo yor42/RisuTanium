@@ -1,6 +1,7 @@
 import { get } from 'svelte/store';
 import { checkNullish, decryptBuffer, encryptBuffer, selectSingleFile } from '../util';
 import { changeLanguage, language } from '../../lang';
+import { downloadNotice } from '../exportNotice';
 import type { RisuPlugin } from '../plugins/plugins.svelte';
 import type {triggerscript as triggerscriptMain} from '../process/triggers';
 import { downloadFile, saveAsset as saveImageGlobal } from '../globalApi.svelte';
@@ -2249,6 +2250,21 @@ export function presetFromWorkingSettings(db:Database, name:string, image:string
     }
 }
 
+/** What the appended preset is called: the name the "new preset" action gives one. */
+const APPENDED_PRESET_NAME = 'New Preset'
+
+/**
+ * Appends the working settings as a new preset and points `botPresetsId` at it,
+ * so no stored preset is overwritten and the working settings survive the next
+ * preset switch.
+ */
+export function appendWorkingSettingsPreset(db:Database){
+    const presets = Array.isArray(db.botPresets) ? db.botPresets : []
+    presets.push(presetFromWorkingSettings(db, APPENDED_PRESET_NAME, ''))
+    db.botPresets = presets
+    db.botPresetsId = presets.length - 1
+}
+
 export function saveCurrentPreset(){
     let db = DBState.db
     let pres = db.botPresets
@@ -2256,18 +2272,17 @@ export function saveCurrentPreset(){
     if(db.botPresetsId === -1){
         return
     }
-    const savedPreset:botPreset = presetFromWorkingSettings(db, pres[db.botPresetsId].name, pres?.[db.botPresetsId]?.image ?? '')
 
     if(!Array.isArray(pres)){
         pres = []
     }
-    //if out of bounds, create a new preset
-    if(db.botPresetsId >= pres.length){
-        pres.push(savedPreset)
+    //an id that names no preset (past the end, below -1, fractional, undefined, null) gets the working settings appended
+    if(!Number.isInteger(db.botPresetsId) || db.botPresetsId < 0 || db.botPresetsId >= pres.length){
+        db.botPresets = pres
+        appendWorkingSettingsPreset(db)
+        return
     }
-    else{
-        pres[db.botPresetsId] = savedPreset
-    }
+    pres[db.botPresetsId] = presetFromWorkingSettings(db, pres[db.botPresetsId].name, pres[db.botPresetsId].image ?? '')
     db.botPresets = pres
 }
 
@@ -2465,7 +2480,7 @@ export async function downloadPreset(id:number, type:'json'|'risupreset'|'return
 
     }
 
-    alertNormal(language.successExport)
+    alertNormal(downloadNotice(language.successExport))
 
 
     return {

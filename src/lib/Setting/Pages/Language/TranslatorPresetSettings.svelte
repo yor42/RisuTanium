@@ -19,6 +19,7 @@
     } from "src/ts/translator/presets";
     import { selectSingleFile } from "src/ts/util";
     import { language } from "src/lang";
+    import { downloadNotice } from "src/ts/exportNotice";
 
     function normalizeTranslatorPresets() {
         normalizeTranslatorPresetState(DBState.db);
@@ -128,7 +129,7 @@
                     getTranslatorPresetDownloadName(preset.name),
                     await encodeTranslatorPresetFile(preset)
                 );
-                alertNormal(language.successExport);
+                alertNormal(downloadNotice(language.successExport));
             } catch (error) {
                 alertError(`${error}`);
             }

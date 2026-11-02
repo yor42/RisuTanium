@@ -1094,6 +1094,7 @@ export const languageGerman = {
     "removeGroup": "Gruppe entfernen",
     "exportCharacter": "Charakter exportieren",
     "successExport": "Erfolgreich exportiert und in Ihrem Download-Verzeichnis gespeichert",
+    "exportDownloadStarted": "Download gestartet. Ihr Browser speichert die Datei in Ihren Downloads und fragt möglicherweise zuerst, ob Sie sie bestätigen oder behalten möchten.",
     "exportHeldInMemory": "Dieser Browser kann den Export nicht schon während der Erstellung speichern. Er wird daher im Arbeitsspeicher gehalten, bis er fertig ist, und erst dann heruntergeladen. Ein sehr großer Export kann fehlschlagen.",
     "exportHelperNotResponding": "Der Download-Helfer hat nicht geantwortet. Der Export wird daher im Arbeitsspeicher gehalten, bis er fertig ist, und erst dann heruntergeladen. Ein sehr großer Export kann fehlschlagen.",
     "backupCancelledFileIncomplete": "Backup abgebrochen. Falls Ihr Browser eine Datei gespeichert hat, ist sie unvollständig: Löschen Sie sie und verwenden Sie sie nicht.",
@@ -1866,6 +1867,7 @@ export const languageGerman = {
     "requestLocation": "Anfrageort",
     "newImageHandlingBeta": "Neue Bildverarbeitung (Beta)",
     "settingsExported": "Einstellungen für Fehlerbericht exportiert und in die Zwischenablage kopiert.",
+    "settingsReportDownloadStarted": "Der Download der Einstellungen für den Fehlerbericht wurde gestartet und die Einstellungen wurden in die Zwischenablage kopiert.",
     "bookmarks": "Lesezeichen",
     "noBookmarks": "Keine Lesezeichen",
     "bookmarkAskNameOrDefault": "Lesezeichennamen eingeben. Wenn nichts eingegeben wird, wird er automatisch zugewiesen.",
@@ -1971,6 +1973,9 @@ export const languageGerman = {
         `Der Server oder ein vorgeschalteter Proxy hat das Asset "${name}" als zu groß abgelehnt, daher wurde die Wiederherstellung abgebrochen. Möglicherweise wurden bereits einige Bilder oder Kaltlager-Einträge hinzugefügt oder ersetzt. Ihre aktuelle Datenbank wurde nicht verändert.`,
     "restoreAssetUploadStopped": (name: string) =>
         `Der Server hat den Upload des Assets "${name}" abgebrochen (der Upload ist abgelaufen, oder der Server hält zu viele nur teilweise hochgeladene Dateien), daher wurde die Wiederherstellung abgebrochen. Möglicherweise wurden bereits einige Bilder oder Kaltlager-Einträge hinzugefügt oder ersetzt. Ihre aktuelle Datenbank wurde nicht verändert.`,
+    "backupAssetsMissingSkipped": "Die folgenden Assets fehlten und wurden übersprungen:",
+    "backupDataLeftOut": "Einige Daten konnten nicht aufgenommen werden:",
+    "partialBackupImagesMissingSkipped": "Die folgenden Profilbilder fehlten und wurden übersprungen:",
     "partialBackupInlaysNotIncluded": "Inlays (Chat-Bilder, Videos, Audio und Signaturen) sind in einem Teil-Backup nicht enthalten.",
     "backupInlaysLeftOut": (count: number, names: string[]) =>
         `${count} Inlay(s) (Chat-Bilder, Videos, Audio oder Signaturen) konnten nicht gelesen werden oder werden nicht unterstützt und sind daher nicht im Backup enthalten. Ein Chat, der eines davon verwendet, zeigt es als fehlend an. Ausgelassen:\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,

@@ -1094,6 +1094,7 @@ export const languageSpanish = {
     "removeGroup": "Eliminar Grupo",
     "exportCharacter": "Exportar Personaje",
     "successExport": "Exportado y descargado exitosamente en tu directorio de descargas",
+    "exportDownloadStarted": "Descarga iniciada. Tu navegador guarda el archivo en tus descargas y puede pedirte primero que lo confirmes o lo conserves.",
     "exportHeldInMemory": "Este navegador no puede guardar la exportación a medida que se genera, por lo que se mantiene en memoria hasta que termine y luego se descarga. Una exportación muy grande puede fallar.",
     "exportHelperNotResponding": "El asistente de descarga no respondió, por lo que la exportación se mantiene en memoria hasta que termine y luego se descarga. Una exportación muy grande puede fallar.",
     "backupCancelledFileIncomplete": "Copia de seguridad cancelada. Si tu navegador guardó un archivo, está incompleto: elimínalo y no lo uses.",
@@ -1866,6 +1867,7 @@ export const languageSpanish = {
     "requestLocation": "Ubicación de Solicitud",
     "newImageHandlingBeta": "Nuevo Manejo de Imágenes (Beta)",
     "settingsExported": "Configuración para informe de errores exportada y copiada al portapapeles.",
+    "settingsReportDownloadStarted": "Se inició la descarga de la configuración para el informe de errores y se copió al portapapeles.",
     "bookmarks": "Marcadores",
     "noBookmarks": "Sin Marcadores",
     "bookmarkAskNameOrDefault": "Ingresa el nombre del marcador. Si no se ingresa, se asignará automáticamente.",
@@ -1971,6 +1973,9 @@ export const languageSpanish = {
         `El servidor, o un proxy delante de él, rechazó el recurso "${name}" por ser demasiado grande, por lo que la restauración se detuvo. Es posible que ya se hayan agregado o reemplazado algunas imágenes o entradas del almacenamiento frío. Tu base de datos actual no se modificó.`,
     "restoreAssetUploadStopped": (name: string) =>
         `El servidor detuvo la subida del recurso "${name}" (la subida caducó, o el servidor tiene demasiados archivos subidos solo en parte), por lo que la restauración se detuvo. Es posible que ya se hayan agregado o reemplazado algunas imágenes o entradas del almacenamiento frío. Tu base de datos actual no se modificó.`,
+    "backupAssetsMissingSkipped": "Los siguientes activos faltaban y se omitieron:",
+    "backupDataLeftOut": "No se pudieron incluir algunos datos:",
+    "partialBackupImagesMissingSkipped": "Las siguientes imágenes de perfil faltaban y se omitieron:",
     "partialBackupInlaysNotIncluded": "Los inlays (imágenes, vídeo, audio y firmas del chat) no se incluyen en una copia de seguridad parcial.",
     "backupInlaysLeftOut": (count: number, names: string[]) =>
         `${count} inlay(s) (imágenes, vídeo, audio o firmas del chat) no se pudieron leer o no son compatibles, por lo que no están incluidos en la copia de seguridad. Un chat que use alguno de ellos lo mostrará como faltante. Excluidos:\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,

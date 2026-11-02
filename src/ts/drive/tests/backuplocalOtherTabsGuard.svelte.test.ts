@@ -561,6 +561,7 @@ describe('J4: a successful restore reloads instead of showing Success', () => {
 
         expect(tabA.reloadGuard.isAppInitiatedReload()).toBe(true)
         expect(tabA.alertModule.alertNormal).not.toHaveBeenCalledWith('Success')
+        expect(tabA.alertModule.alertNormal).not.toHaveBeenCalledWith(language.exportDownloadStarted)
     })
 
     test('guard: a granted, uncontended restore completes without hanging', async () => {

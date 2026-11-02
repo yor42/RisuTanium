@@ -2,6 +2,7 @@
     import { warnOnReject } from "src/ts/warnOnReject";
     import Check from "src/lib/UI/GUI/CheckInput.svelte";
     import { language } from "src/lang";
+    import { downloadNotice } from "src/ts/exportNotice";
     import { fillLang } from "src/lang/fill";
     import Help from "src/lib/Others/Help.svelte";
     import { readPickedFileBytes, selectSingleFile, selectSingleFileObject } from "src/ts/util";
@@ -1189,7 +1190,7 @@
                         }), 'utf-8')
                         
                         await downloadFile(`hypaV3_export_${preset.name}.json`, bytesExport)
-                        alertNormal(language.successExport)
+                        alertNormal(downloadNotice(language.successExport))
                     } catch (error) {
                         alertError(`${error}`)
                     }

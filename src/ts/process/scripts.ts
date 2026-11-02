@@ -4,6 +4,7 @@ import { type character, type customscript, type groupChat, getDatabase, getCurr
 import { downloadFile } from "../globalApi.svelte";
 import { alertError, alertNormal } from "../alert";
 import { language } from "src/lang";
+import { downloadNotice } from "src/ts/exportNotice";
 import { selectSingleFile } from "../util";
 import { assetRegex, type CbsConditions, risuChatParser as risuChatParserOrg, type simpleCharacterArgument } from "../parser/parser.svelte";
 import type { PromptView } from "../cbs";
@@ -41,7 +42,7 @@ export function exportRegex(s?:customscript[]){
         data: script
     }), 'utf-8')
     downloadFile(`regexscript_export.json`,data)
-    alertNormal(language.successExport)
+    alertNormal(downloadNotice(language.successExport))
 }
 
 export async function importRegex(o?:customscript[]):Promise<customscript[]>{

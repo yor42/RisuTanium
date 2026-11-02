@@ -28,7 +28,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 
 import { repairBotPresetsId } from '../botPresetRepair'
 import { currentPresetOf, setCurrentPresetImage } from '../currentPreset'
-import { changeToPreset, setDatabase, type Database, type botPreset } from '../database.svelte'
+import { changeToPreset, saveCurrentPreset, setDatabase, type Database, type botPreset } from '../database.svelte'
 import { DBState } from '../../stores.svelte'
 import { makeLoadout } from '../../loadout'
 
@@ -131,6 +131,49 @@ describe('setDatabase is not a load path', () => {
         expect(db.botPresetsId).toBe(7)
         expect(db.botPresets).toBe(stored)
         expect(db.botPresets).toHaveLength(1)
+    })
+})
+
+describe('saveCurrentPreset with an id that names no preset', () => {
+    const NAMELESS_IDS: Array<[string, unknown]> = [...BAD_IDS, ['undefined', undefined], ['null', null]]
+
+    test.each(NAMELESS_IDS)('%s: a preset switch appends the working settings, overwrites no stored preset and does not throw', (_title, id) => {
+        DBState.db = databaseWith([preset('First', 'first prompt'), preset('Second', 'second prompt')], id)
+
+        expect(() => changeToPreset(0)).not.toThrow()
+
+        expect(DBState.db.botPresets).toHaveLength(3)
+        expect(DBState.db.botPresets[0]).toMatchObject({ name: 'First', mainPrompt: 'first prompt' })
+        expect(DBState.db.botPresets[1]).toMatchObject({ name: 'Second', mainPrompt: 'second prompt' })
+        expect(DBState.db.botPresets[2]).toMatchObject({ name: 'New Preset', mainPrompt: 'working prompt' })
+        expect(DBState.db.botPresetsId).toBe(0)
+    })
+
+    test('repeated saves at an id past the end append once and then overwrite the appended preset', () => {
+        DBState.db = databaseWith([preset('First', 'first prompt'), preset('Second', 'second prompt')], 40)
+
+        saveCurrentPreset()
+        DBState.db.mainPrompt = 'edited working prompt'
+        saveCurrentPreset()
+
+        expect(DBState.db.botPresets).toHaveLength(3)
+        expect(DBState.db.botPresetsId).toBe(2)
+        expect(DBState.db.botPresets[2]).toMatchObject({ name: 'New Preset', mainPrompt: 'edited working prompt' })
+    })
+
+    test('guard: a save at an in-range id overwrites that preset and keeps its name, and -1 saves nothing', () => {
+        DBState.db = databaseWith([preset('First', 'first prompt'), preset('Second', 'second prompt')], 1)
+
+        saveCurrentPreset()
+
+        expect(DBState.db.botPresets).toHaveLength(2)
+        expect(DBState.db.botPresets[0]).toMatchObject({ name: 'First', mainPrompt: 'first prompt' })
+        expect(DBState.db.botPresets[1]).toMatchObject({ name: 'Second', mainPrompt: 'working prompt' })
+
+        DBState.db.botPresetsId = -1
+        saveCurrentPreset()
+
+        expect(DBState.db.botPresets).toHaveLength(2)
     })
 })
 

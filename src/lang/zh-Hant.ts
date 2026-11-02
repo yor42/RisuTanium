@@ -1139,6 +1139,7 @@ export const languageChineseTraditional = {
     "removeGroup": "刪除群組",
     "exportCharacter": "匯出角色",
     "successExport": "匯出成功，檔案已下載至您的下載資料夾",
+    "exportDownloadStarted": "已開始下載。瀏覽器會將檔案儲存到下載資料夾，並可能先要求您確認或保留該檔案。",
     "exportHeldInMemory": "此瀏覽器無法在匯出的同時邊產生邊儲存，因此會先將匯出內容保存在記憶體中，待完成後再下載。體積非常大的匯出可能會失敗。",
     "exportHelperNotResponding": "下載輔助程式沒有回應，因此會先將匯出內容保存在記憶體中，待完成後再下載。體積非常大的匯出可能會失敗。",
     "backupCancelledFileIncomplete": "備份已取消。如果瀏覽器已儲存了檔案，該檔案不完整：請刪除它，不要使用。",
@@ -1910,6 +1911,7 @@ export const languageChineseTraditional = {
     "requestLocation": "請求位置",
     "newImageHandlingBeta": "新版圖片處理（Beta）",
     "settingsExported": "Bug 回報用設定已匯出並複製至剪貼簿",
+    "settingsReportDownloadStarted": "已開始下載用於錯誤回報的設定，並已將其複製到剪貼簿。",
     "bookmarks": "書籤",
     "noBookmarks": "沒有書籤",
     "bookmarkAskNameOrDefault": "輸入書籤名稱。若留空，系統會自動命名",
@@ -2014,6 +2016,9 @@ export const languageChineseTraditional = {
         `伺服器或其前端的代理以資源檔案「${name}」過大為由拒絕了它，因此復原已停止。部分圖片或冷儲存項目可能已被新增或取代。目前的資料庫未被變更。`,
     "restoreAssetUploadStopped": (name: string) =>
         `伺服器中止了資源檔案「${name}」的上傳（上傳已過期，或伺服器上部分上傳的檔案過多），因此復原已停止。部分圖片或冷儲存項目可能已被新增或取代。目前的資料庫未被變更。`,
+    "backupAssetsMissingSkipped": "以下資源遺失，已略過：",
+    "backupDataLeftOut": "部分資料無法納入：",
+    "partialBackupImagesMissingSkipped": "以下頭像圖片遺失，已略過：",
     "partialBackupInlaysNotIncluded": "內嵌檔案（聊天圖片、影片、音訊和簽名）不包含在部分備份中。",
     "backupInlaysLeftOut": (count: number, names: string[]) =>
         `有 ${count} 個內嵌檔案（聊天圖片、影片、音訊或簽名）無法讀取或不受支援，因此未包含在備份中。使用這些檔案的聊天會將其顯示為遺失。已遺漏的檔案：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,

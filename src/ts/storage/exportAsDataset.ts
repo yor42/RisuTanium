@@ -2,6 +2,7 @@ import { getDatabase } from "./database.svelte";
 import { downloadFile } from "../globalApi.svelte";
 import { alertNormal } from "../alert";
 import { language } from "src/lang";
+import { downloadNotice } from "src/ts/exportNotice";
 import { readColdCharacterCopy } from "../process/coldCharacterRestore";
 import { withBusy } from "../process/memory/busyActions";
 
@@ -54,7 +55,7 @@ async function writeDataset(){
     await downloadFile('dataset.json',Buffer.from(JSON.stringify(dataset, null,4), 'utf-8'))
 
     alertNormal(skipped.length > 0
-        ? `${language.successExport}\n\n${language.errors.coldStorageDatasetExportSkipped(skipped.join(', '))}`
-        : language.successExport)
+        ? `${downloadNotice(language.successExport)}\n\n${language.errors.coldStorageDatasetExportSkipped(skipped.join(', '))}`
+        : downloadNotice(language.successExport))
 
 }

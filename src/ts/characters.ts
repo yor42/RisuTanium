@@ -2,6 +2,7 @@ import { get, writable } from "svelte/store";
 import { saveImage, type character, type Chat, type folder, type groupChat, defaultSdDataFunc, type loreBook, getDatabase, getCharacterByIndex, setCharacterByIndex } from "./storage/database.svelte";
 import { alertAddCharacter, alertConfirm, alertError, alertNormal, alertSelect, alertStore, alertWait } from "./alert";
 import { language } from "../lang";
+import { downloadNotice } from "./exportNotice";
 import { checkNullish, findCharacterbyId, findCharacterIndexbyId, getUserName, readPickedFileBytes, selectMultipleFileObjects, selectSingleFile, selectSingleFileObject } from "./util";
 import { reportRefusedAssets, splitByAssetLimit, warnRefusedAssets } from "./storage/pickedAssetLimit";
 import { v4 as uuidv4, v4 } from 'uuid';
@@ -506,7 +507,7 @@ export async function exportChat(page:number){
             await downloadFile(`${char.name}_${date}_chat`.replace(/[<>:"/\\|?*\.\,]/g, "") + '.txt', Buffer.from(stringl, 'utf-8'))
 
         }
-        alertNormal(language.successExport)
+        alertNormal(downloadNotice(language.successExport))
     } catch (error) {
         alertError(error)
     }
@@ -781,7 +782,7 @@ export async function exportAllChats() {
             folders: allFolders
         }), 'utf-8')
         await downloadFile(`${char.name}_all_chats_${date}`.replace(/[<>:"/\\|?*.,]/g, "") + '.json', stringl)
-        alertNormal(language.successExport)
+        alertNormal(downloadNotice(language.successExport))
     } catch (error) {
         alertError(error)
     }

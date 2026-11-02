@@ -37,6 +37,8 @@ const h = vi.hoisted(() => ({
     hordeBody: null as null | Record<string, unknown>,
     transformerPrompt: null as null | string,
     ollamaBody: null as null | Record<string, unknown>,
+    /** When set, the local Ollama stub answers a request with these reads of one NDJSON body. */
+    ollamaReads: null as null | Uint8Array[],
     marks: [] as string[],
     counting: false,
     reads: [] as string[],
@@ -186,6 +188,17 @@ beforeAll(async () => {
         }
         if (String(url).includes('ollama.test')) {
             h.ollamaBody = JSON.parse(init?.body ?? '{}')
+            if (h.ollamaReads) {
+                const reads = h.ollamaReads
+                return new Response(new ReadableStream<Uint8Array>({
+                    start(controller) {
+                        for (const read of reads) {
+                            controller.enqueue(read)
+                        }
+                        controller.close()
+                    },
+                }), { status: 200, headers: { 'Content-Type': 'application/x-ndjson' } })
+            }
             return new Response(JSON.stringify({ model: 'llama', created_at: '', message: { role: 'assistant', content: h.reply }, done: true }), {
                 status: 200, headers: { 'Content-Type': 'application/json' },
             })
@@ -280,7 +293,7 @@ function messagesOf(n = -1): string[] {
 
 beforeEach(() => {
     h.fetches.length = 0; h.failNext = 0; h.afterFetch = null; h.hook = null; h.reply = 'ok'
-    h.hordeBody = null; h.transformerPrompt = null; h.ollamaBody = null; h.marks.length = 0; h.counting = false; h.reads.length = 0
+    h.hordeBody = null; h.transformerPrompt = null; h.ollamaBody = null; h.ollamaReads = null; h.marks.length = 0; h.counting = false; h.reads.length = 0
     pluginV2.replacerbeforeRequest.clear()
     pluginV2.replacerbeforeRequest.add(async (f) => { const run = h.hook; h.hook = null; run?.(); return f })
     pluginV2.providers.clear()
@@ -865,6 +878,67 @@ describe('a request with a subject reads the persona module of the subject\'s ch
 
         expect.soft(messagesOf()[1], 'the persona module of the selection\'s chat ran').not.toContain('PMOD-B')
         expect.soft(messagesOf()[1], 'the persona module of the subject\'s chat ran').toContain('PMOD-A')
+    })
+})
+
+describe('a local Ollama stream keeps a multibyte character that the network splits', () => {
+    const encoder = new TextEncoder()
+    const EXPECTED = 'A가😀 end'
+
+    /** The NDJSON a local server writes: one line per token. */
+    function ndjson(): Uint8Array {
+        const tokens = ['A가', '😀', ' end']
+        const lines = tokens.map((content, i) => JSON.stringify({ model: 'llama', created_at: '', message: { role: 'assistant', content }, done: i === tokens.length - 1 }) + '\n')
+        return encoder.encode(lines.join(''))
+    }
+
+    function cutAt(bytes: Uint8Array, offsets: number[]): Uint8Array[] {
+        const out: Uint8Array[] = []
+        let from = 0
+        for (const offset of [...offsets, bytes.length]) {
+            out.push(bytes.slice(from, offset))
+            from = offset
+        }
+        return out
+    }
+
+    /** The last text the stream carries after it is drained. */
+    async function drainedText(reads: Uint8Array[]): Promise<string> {
+        installDb([makeChar('a', 'AliceName', [chat('cA')])], { aiModel: 'ollama-hosted', useStreaming: true })
+        h.ollamaReads = reads
+        const out = await requestChatData({ formated: prompt(), bias: {}, useStreaming: true, noMultiGen: true }, 'model') as { type: string, result: ReadableStream<Record<string, string>> }
+        expect(out.type).toBe('streaming')
+        const reader = out.result.getReader()
+        let last = ''
+        for (;;) {
+            const { done, value } = await reader.read()
+            if (done) {
+                break
+            }
+            last = value['0']
+        }
+        return last
+    }
+
+    test('reads that end inside a three-byte and a four-byte character still give the whole text', async () => {
+        const bytes = ndjson()
+        const reads = cutAt(bytes, [bytes.indexOf(0xEA) + 1, bytes.indexOf(0xF0) + 2])
+
+        const text = await drainedText(reads)
+
+        expect(text).toBe(EXPECTED)
+    })
+
+    test('guard: the same stream in one read gives the same text and logs no invalid json warning', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        try {
+            const text = await drainedText([ndjson()])
+
+            expect(text).toBe(EXPECTED)
+            expect(warn).not.toHaveBeenCalled()
+        } finally {
+            warn.mockRestore()
+        }
     })
 })
 

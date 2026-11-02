@@ -4,6 +4,7 @@ import { askUpstreamAgreement, isUpstreamAccepted, publishUpstreamAccepted } fro
 import { defaultSdDataFunc, type character, setDatabase, type customscript, type loreSettings, type loreBook, type triggerscript, importPreset, type groupChat, getDatabase, setDatabaseLite, appVer } from "./storage/database.svelte"
 import { checkNullish, decryptBuffer, isKnownUri, selectFileByDom, sleep } from "./util"
 import { language } from "src/lang"
+import { downloadNotice } from "src/ts/exportNotice"
 import { fillLang } from "src/lang/fill"
 import { v4 as uuidv4, v4 } from 'uuid';
 import { changeChar, characterFormatUpdate } from "./characters"
@@ -2147,7 +2148,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             }
             if(type === 'json'){
                 await downloadFile(`${char.name.replace(/[<>:"/\\|?*\.\,]/g, "")}_export.json`, Buffer.from(JSON.stringify(card, null, 4), 'utf-8'))
-                alertNormal(language.successExport)
+                alertNormal(downloadNotice(language.successExport))
                 return true
             }
     
@@ -2318,7 +2319,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             }
             if(type === 'json'){
                 await downloadFile(`${char.name.replace(/[<>:"/\\|?*\.\,]/g, "")}_export.json`, Buffer.from(JSON.stringify(card, null, 4), 'utf-8'))
-                alertNormal(language.successExport)
+                alertNormal(downloadNotice(language.successExport))
                 return true
             }
 
@@ -2356,7 +2357,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
         await sleep(10)
 
         if(!arg.writer){
-            alertNormal(language.successExport)
+            alertNormal(downloadNotice(language.successExport))
         }
 
         return true

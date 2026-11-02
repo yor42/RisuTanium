@@ -21,6 +21,7 @@ import { createRunSubject, type RunSubject } from "../chatOrigin";
 import { moduleLoadFailedText, unloadedModulesOf } from "../moduleRefList";
 import { requestClaude } from './anthropic';
 import { requestGoogleCloudVertex } from './google';
+import { wholeCharacterStream } from './wholeCharacterStream';
 import { requestOpenAI, requestOpenAILegacyInstruct, requestOpenAIResponseAPI } from "./openAI/requests";
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters, type ModelModeExtended } from './shared';
 import { resolveRequestKey } from './secretKey';
@@ -146,6 +147,11 @@ async function ollamaCloudFetch(input: RequestInfo | URL, init: RequestInit = {}
     })
 
     return normalizeOllamaStreamResponse(response)
+}
+
+/** The local server's NDJSON is read by the SDK chunk by chunk; whole characters keep a split multibyte character intact. */
+async function ollamaLocalFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    return wholeCharacterStream(await globalThis.fetch(input, init))
 }
 
 function normalizeOllamaStreamResponse(response: Response): Response {
@@ -1269,7 +1275,7 @@ async function requestOllama(arg:RequestDataArgumentExtended):Promise<requestDat
     const ollama = new Ollama({
         host: isCloud ? 'https://ollama.com' : db.ollamaURL,
         headers: Object.keys(customHeaders).length > 0 ? customHeaders : undefined,
-        fetch: isCloud ? ollamaCloudFetch : undefined
+        fetch: isCloud ? ollamaCloudFetch : ollamaLocalFetch
     })
 
     if(!arg.useStreaming){

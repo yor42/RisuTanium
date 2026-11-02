@@ -15,6 +15,13 @@ const spies = vi.hoisted(() => ({
     init: vi.fn(async (_name: string, _ext: string[]) => true),
     exportCard: vi.fn(async (..._args: unknown[]) => true),
 }))
+const platformBox = vi.hoisted(() => ({ isTauri: false }))
+
+vi.mock(import('src/ts/platform'), () => ({
+    get isTauri() { return platformBox.isTauri },
+    isNodeServer: false,
+    isIOS: () => false,
+}) as unknown as typeof import('src/ts/platform'))
 
 vi.mock(import('src/ts/alert'), () => ({
     alertClear: vi.fn(),
@@ -83,13 +90,22 @@ beforeEach(() => {
     vi.clearAllMocks()
     spies.init.mockImplementation(async () => true)
     spies.exportCard.mockImplementation(async () => true)
+    platformBox.isTauri = false
 })
 
 describe('exportModule result handling', () => {
-    test('guard: a completed export shows the success message', async () => {
+    test('guard: a completed web export says the download started', async () => {
         await exportModule(module)
         expect(spies.exportCard).toHaveBeenCalledTimes(1)
+        expect(spies.alertNormal).toHaveBeenCalledWith(language.exportDownloadStarted)
+        expect(spies.alertNormal).not.toHaveBeenCalledWith(language.successExport)
+    })
+
+    test('guard: a completed desktop export keeps the saved message', async () => {
+        platformBox.isTauri = true
+        await exportModule(module)
         expect(spies.alertNormal).toHaveBeenCalledWith(language.successExport)
+        expect(spies.alertNormal).not.toHaveBeenCalledWith(language.exportDownloadStarted)
     })
 
     test('guard: alertEnd false keeps a completed export silent', async () => {

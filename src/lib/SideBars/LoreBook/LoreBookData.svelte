@@ -12,12 +12,13 @@
     import { tokenizeAccurate } from "src/ts/tokenizer";
     import { DBState } from "src/ts/stores.svelte";
     import LoreBookList from "./LoreBookList.svelte";
+    import { onDestroy } from "svelte";
 
     interface Props {
         value: loreBook;
         onRemove?: (target: loreBook) => void;
-        onClose?: (isDetail?: boolean) => void;
-        onOpen?: (isDetail?: boolean) => void;
+        onClose?: () => void;
+        onOpen?: () => void;
         lorePlus?: boolean;
         idx: number;
         externalLoreBooks?: loreBook[];
@@ -30,8 +31,8 @@
     let {
         value = $bindable(),
         onRemove = () => {},
-        onClose = (isDetail = true) => {},
-        onOpen = (isDetail = true) => {},
+        onClose = () => {},
+        onOpen = () => {},
         lorePlus = false,
         idx,
         externalLoreBooks = $bindable(),
@@ -42,6 +43,11 @@
     }: Props = $props();
     
     let open = $derived(isOpen)
+
+    // A confirmation can resolve after this row was destroyed (a nested row is destroyed when
+    // its folder closes, and then serves its last prop value); a destroyed row never writes.
+    let destroyed = false
+    onDestroy(() => { destroyed = true })
 
     async function getTokens(data:string){
         tokens = await tokenizeAccurate(data)
@@ -111,11 +117,11 @@
             value.secondkey = value.secondkey ?? ''
             if(!open){
                 open = true
-                onOpen(value.mode !== 'folder') // If not a folder, pass true
+                onOpen()
             }
             else{
                 open = false
-                onClose(value.mode !== 'folder') // If not a folder, pass true
+                onClose()
             }
         }}>
             {#if value.mode === 'folder'}
@@ -165,11 +171,8 @@
             if (shouldRemove) {
                 const secondConfirm = await alertConfirm(language.removeConfirm + (target.comment || language.sidebarUi.unnamedFolder));
                 if (secondConfirm) {
-                    if (!externalLoreBooks?.includes(target)) {
+                    if (destroyed || !externalLoreBooks?.includes(target)) {
                         return;
-                    }
-                    if (!open) {
-                        onClose();
                     }
                     if (getCurrentCharacter()?.globalLore?.includes(target)) {
                         deactivateLocally(target);
@@ -189,11 +192,8 @@
             const target = value
             const d = await alertConfirm(language.removeConfirm + getParentLoreName(target))
             if(d){
-                if(!externalLoreBooks?.includes(target)){
+                if(destroyed || !externalLoreBooks?.includes(target)){
                     return
-                }
-                if(!open){
-                    onClose()
                 }
                 onRemove(target)
             }

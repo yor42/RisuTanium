@@ -104,6 +104,11 @@ vi.mock('localforage', () => ({
     default: { createInstance: () => ({ setItem: vi.fn(), removeItem: vi.fn() }) },
 }))
 
+vi.mock(import('src/ts/platform'), async (importOriginal) => ({
+    ...await importOriginal(),
+    isTauri: false,
+}))
+
 import { exportAsDataset } from 'src/ts/storage/exportAsDataset'
 import { verifyAssetIntegrity } from 'src/ts/storage/storageMaintenance'
 import { buildColdStub } from 'src/ts/process/coldCharacter'
@@ -166,7 +171,7 @@ describe('exportAsDataset with an archived character that cannot be read', () =>
         expect(downloadFileMock).toHaveBeenCalledTimes(1)
         const rows = JSON.parse((downloadFileMock.mock.calls[0] as unknown as [string, Buffer])[1].toString('utf-8')) as Array<{ name: string }>
         expect(rows.map((row) => row.name)).toEqual(['Anna'])
-        expect(shownTexts()).toEqual([`${language.successExport}\n\n${language.errors.coldStorageDatasetExportSkipped('Bella')}`])
+        expect(shownTexts()).toEqual([`${language.exportDownloadStarted}\n\n${language.errors.coldStorageDatasetExportSkipped('Bella')}`])
         expect(DBState.db.characters[1]).toBe(stubB)
         expect(stubB.coldstorage).toBe('unit-b')
         expect(markCharacterForSaveMock).not.toHaveBeenCalled()

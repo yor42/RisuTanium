@@ -135,7 +135,14 @@
             // note is part of the hash, so removing the flag without touching the
             // text still re-mounts the message.
             const interrupted = message.interrupted === true && !isActiveStreamReply(message.chatId);
-            let hashd = hashMessageData + (message.chatId ?? '') + i.toString() + messageLargePortrait.toString() + message.disabled?.toString() + reloadPointer.toString() + (interrupted ? 'interrupted' : '');
+            // Only the registered reply at the last index defers its auto-translation. The same boolean is part of the
+            // hash and a mount-time prop, so an instance that defers is replaced when the stream ends. `autoTranslate`
+            // is read only for that row while it streams, so nothing else gains a dependency.
+            const deferAutoTranslate = currentChat?.isStreaming === true
+                && i === messages.length - 1
+                && isActiveStreamReply(message.chatId)
+                && DBState.db.autoTranslate === true;
+            let hashd = hashMessageData + (message.chatId ?? '') + i.toString() + messageLargePortrait.toString() + message.disabled?.toString() + reloadPointer.toString() + (interrupted ? 'interrupted' : '') + (deferAutoTranslate ? 'autotr' : '');
             const currentHash = hashCode(hashd);
             currentHashes.add(currentHash);
             if(!hashes.has(currentHash)){
@@ -162,6 +169,7 @@
                     streamingOptimizationMode: performanceMode,
                     rawStreamingText: message.data,
                     interrupted,
+                    deferAutoTranslate,
                     expectedId: message.chatId,
                     onStep: onStep,
                     onBranch: onBranch,

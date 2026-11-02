@@ -1,4 +1,5 @@
 import { language } from "src/lang"
+import { downloadNotice } from "src/ts/exportNotice"
 import { fillLang } from "src/lang/fill"
 import { alertClear, alertConfirm, alertModuleSelect, alertNormal, alertStore, alertWait } from "../alert"
 import { getCurrentCharacter, getDatabase, setCurrentCharacter, setDatabase, type customscript, type loreBook, type triggerscript } from "../storage/database.svelte"
@@ -93,7 +94,7 @@ async function writeModuleCard(module:RisuModule, arg:{
         return
     }
     if(alertEnd){
-        alertNormal(language.successExport)
+        alertNormal(downloadNotice(language.successExport))
     }
 }
 
@@ -157,7 +158,7 @@ export async function exportModuleLegacy(module:RisuModule, arg:{
         await downloadFile(module.name + '.risum', apb.buffer)
     }
     if(alertEnd){
-        alertNormal(language.successExport)
+        alertNormal(downloadNotice(language.successExport))
     }
 
     return apb.buffer

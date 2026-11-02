@@ -384,7 +384,7 @@ describe('a card export stalled mid-write', () => {
         expect(notice.type).toBe('normal')
         expect(notice.msg).toBe(language.exportCancelledFileIncomplete)
         expect(shown.filter((value) => value.msg === language.exportCancelledFileIncomplete)).toHaveLength(1)
-        expect(shown.filter((value) => value.msg === language.successExport)).toEqual([])
+        expect(shown.filter((value) => value.msg === language.successExport || value.msg === language.exportDownloadStarted)).toEqual([])
         expect(world.aborts).toBe(1)
         expect(world.closes).toBe(0)
         expect(busyKinds()).not.toContain('export')
@@ -425,7 +425,8 @@ describe('guards', () => {
 
         expect(world.closes).toBe(1)
         expect(world.aborts).toBe(0)
-        expect(shown.filter((value) => value.msg === language.successExport)).toHaveLength(1)
+        expect(shown.filter((value) => value.msg === language.exportDownloadStarted)).toHaveLength(1)
+        expect(shown.filter((value) => value.msg === language.successExport)).toEqual([])
     })
 
     test('(G) a JSON card export keeps its dialogs: nothing stalls, no Cancel is offered', async () => {

@@ -1225,6 +1225,7 @@ export const languageJapanese = {
     removeGroup: "グループ削除",
     exportCharacter: "キャラクターエクスポート",
     successExport: "正常にエクスポートされ、ダウンロードフォルダにダウンロードされました",
+    exportDownloadStarted: "ダウンロードを開始しました。ブラウザがファイルをダウンロードフォルダに保存します。先に確認または保持の操作を求められる場合があります。",
     exportHeldInMemory: "このブラウザはエクスポートの作成中に直接保存できないため、完了するまでメモリに保持してからダウンロードされます。サイズが非常に大きいエクスポートは失敗する可能性があります。",
     exportHelperNotResponding: "ダウンロードヘルパーが応答しなかったため、エクスポートは完了するまでメモリに保持されてからダウンロードされます。サイズが非常に大きいエクスポートは失敗する可能性があります。",
     backupCancelledFileIncomplete: "バックアップがキャンセルされました。ブラウザによって保存されたファイルがある場合、そのファイルは不完全です。使用せずに削除してください。",
@@ -2001,6 +2002,7 @@ export const languageJapanese = {
     requestLocation: "リクエスト位置",
     newImageHandlingBeta: "新しい画像処理 (Beta)",
     settingsExported: "バグ報告用の設定をエクスポートし、クリップボードにコピーしました。",
+    settingsReportDownloadStarted: "バグ報告用設定のダウンロードを開始し、設定をクリップボードにコピーしました。",
     bookmarks: "ブックマーク",
     noBookmarks: "ブックマークなし",
     bookmarkAskNameOrDefault: "ブックマーク名を入力してください。入力しない場合は自動的に割り当てられます。",
@@ -2107,6 +2109,9 @@ export const languageJapanese = {
         `サーバーまたはその前段のプロキシがアセット「${name}」を大きすぎるとして拒否したため、復元を中止しました。一部の画像やコールドストレージ項目が既に追加または置換されている可能性があります。現在のデータベースは変更されていません。`,
     restoreAssetUploadStopped: (name: string) =>
         `サーバーがアセット「${name}」のアップロードを停止したため（アップロードが期限切れになったか、サーバーに部分的にアップロードされたファイルが多すぎます）、復元を中止しました。一部の画像やコールドストレージ項目が既に追加または置換されている可能性があります。現在のデータベースは変更されていません。`,
+    backupAssetsMissingSkipped: "次のアセットが見つからなかったためスキップしました：",
+    backupDataLeftOut: "一部のデータを含められませんでした：",
+    partialBackupImagesMissingSkipped: "次のプロフィール画像が見つからなかったためスキップしました：",
     partialBackupInlaysNotIncluded: "インレイ（チャット画像、動画、音声、署名）は部分バックアップに含まれません。",
     backupInlaysLeftOut: (count: number, names: string[]) =>
         `${count}件のインレイ（チャット画像、動画、音声、署名）を読み取ることができないか、サポートされていないため、バックアップに含まれていません。該当するインレイを使用するチャットでは見つからない項目として表示されます。除外された項目：\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,

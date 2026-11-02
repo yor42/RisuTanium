@@ -1492,7 +1492,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
         let thoughts:string[] = []
         const maxThoughtDepth = DBState.db.promptSettings?.maxThoughtTagDepth ?? -1
-        formatedChat = formatedChat.replace(/<Thoughts>(.+)<\/Thoughts>/gms, (match, p1) => {
+        formatedChat = formatedChat.replace(/<Thoughts>(.+?)<\/Thoughts>/gms, (match, p1) => {
             if(maxThoughtDepth === -1 || (maxThoughtDepth - ms.length) <= index){
                 thoughts.push(p1)
             }

@@ -1094,6 +1094,7 @@ export const languageKorean = {
     "removeGroup": "그룹 삭제",
     "exportCharacter": "캐릭터 내보내기",
     "successExport": "성공적으로 내보내어 다운로드 경로에 다운로드했습니다.",
+    "exportDownloadStarted": "다운로드가 시작되었습니다. 브라우저가 파일을 다운로드 폴더에 저장하며, 먼저 확인 또는 보관 여부를 물을 수 있습니다.",
     "exportHeldInMemory": "이 브라우저는 내보내기를 만드는 도중에 저장할 수 없어서, 완료될 때까지 메모리에 보관했다가 다운로드합니다. 매우 큰 내보내기는 실패할 수 있습니다.",
     "exportHelperNotResponding": "다운로드 도우미가 응답하지 않아, 내보내기를 완료될 때까지 메모리에 보관했다가 다운로드합니다. 매우 큰 내보내기는 실패할 수 있습니다.",
     "backupCancelledFileIncomplete": "백업이 취소되었습니다. 다운로드된 파일이 있다면 불완전한 파일이니 사용하시지 마시고 삭제해 주세요.",
@@ -1865,6 +1866,7 @@ export const languageKorean = {
     "requestLocation": "리퀘스트 위치",
     "newImageHandlingBeta": "새로운 이미지 처리 (베타)",
     "settingsExported": "버그 리포트용 설정이 내보내지고 클립보드에 복사되었습니다.",
+    "settingsReportDownloadStarted": "버그 리포트용 설정 다운로드가 시작되었고, 설정이 클립보드에 복사되었습니다.",
     "bookmarks": "북마크",
     "noBookmarks": "북마크 없음",
     "bookmarkAskNameOrDefault": "북마크 이름을 입력하세요. 입력하지 않으면 자동으로 할당됩니다.",
@@ -1968,6 +1970,9 @@ export const languageKorean = {
         `서버 또는 서버 앞단의 프록시가 에셋 "${name}"이(가) 너무 크다며 거부하여 복원을 중단했습니다. 일부 이미지나 콜드 스토리지 항목이 이미 추가되었거나 교체되었을 수 있습니다. 현재 데이터베이스는 변경되지 않았습니다.`,
     "restoreAssetUploadStopped": (name: string) =>
         `서버가 에셋 "${name}"의 업로드를 중단하여(업로드 시간이 만료되었거나, 서버에 일부만 업로드된 파일이 너무 많습니다) 복원을 중단했습니다. 일부 이미지나 콜드 스토리지 항목이 이미 추가되었거나 교체되었을 수 있습니다. 현재 데이터베이스는 변경되지 않았습니다.`,
+    "backupAssetsMissingSkipped": "다음 에셋을 찾을 수 없어 건너뛰었습니다:",
+    "backupDataLeftOut": "일부 데이터를 포함하지 못했습니다:",
+    "partialBackupImagesMissingSkipped": "다음 프로필 이미지를 찾을 수 없어 건너뛰었습니다:",
     "partialBackupInlaysNotIncluded": "인레이(채팅 이미지, 영상, 오디오, 서명)는 부분 백업에 포함되지 않습니다.",
     "backupInlaysLeftOut": (count: number, names: string[]) =>
         `인레이(채팅 이미지, 영상, 오디오, 서명) ${count}개를 읽을 수 없거나 지원되지 않아 백업에 포함되지 않았습니다. 이 인레이를 사용하는 채팅에서는 해당 항목이 누락된 것으로 표시됩니다. 제외된 항목:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,

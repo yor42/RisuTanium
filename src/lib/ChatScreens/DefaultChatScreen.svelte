@@ -12,6 +12,7 @@
     import { firstMessageIndexOf, firstMessageOf, nextFirstMessageIndex } from "../../ts/process/firstMessage";
     import { findCharacterbyId, livePersona, sleep } from "../../ts/util";
     import { language } from "../../lang";
+    import { downloadNotice } from "src/ts/exportNotice";
     import { alertError, alertNormal, alertWait, showHypaV2Alert } from "../../ts/alert";
     import CreatorQuote from "./CreatorQuote.svelte";
     import { stopTTS } from "src/ts/process/tts";
@@ -498,7 +499,7 @@
                     await downloadFile(`chat-${v4()}.png`, Buffer.from(mergedCanvas.toDataURL('png').split(',').at(-1), 'base64'))
                     mergedCanvas.remove();
                 }
-                alertNormal(language.screenshotSaved)
+                alertNormal(downloadNotice(language.screenshotSaved))
             })
         } catch (error) {
             console.error(error)

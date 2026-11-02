@@ -51,7 +51,10 @@ export function applyLoadout(loadout: Loadout, apply:LoadoutApplyOption[] = [
     'persona'
 ]) {
     loadout.lastUsed = Date.now()
-    loadout.characterIds.push(getCurrentCharacter()?.chaId)
+    const chaId = getCurrentCharacter()?.chaId
+    if(chaId && !loadout.characterIds.includes(chaId)){
+        loadout.characterIds.push(chaId)
+    }
     if(apply.includes('persona')) {
         let personaIndex = DBState.db.personas?.findIndex(p => p.id === loadout.personaId)
         if(personaIndex !== -1){

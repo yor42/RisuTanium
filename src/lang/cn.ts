@@ -1094,6 +1094,7 @@ export const languageChinese = {
     "removeGroup": "删除群组",
     "exportCharacter": "导出角色",
     "successExport": "已成功导出并保存至你的下载数据夹",
+    "exportDownloadStarted": "已开始下载。浏览器会将文件保存到下载文件夹，并可能先要求您确认或保留该文件。",
     "exportHeldInMemory": "此浏览器无法在导出的同时边生成边保存，因此会先将导出内容保存在内存中，待完成后再下载。体积非常大的导出可能会失败。",
     "exportHelperNotResponding": "下载辅助程序没有响应，因此会先将导出内容保存在内存中，待完成后再下载。体积非常大的导出可能会失败。",
     "backupCancelledFileIncomplete": "备份已取消。如果浏览器已保存了文件，该文件不完整：请删除它，不要使用。",
@@ -1864,6 +1865,7 @@ export const languageChinese = {
     "requestLocation": "请求位置",
     "newImageHandlingBeta": "新图像处理 (Beta)",
     "settingsExported": "错误报告的设置已导出并复制到剪贴板。",
+    "settingsReportDownloadStarted": "已开始下载用于错误报告的设置，并已将其复制到剪贴板。",
     "bookmarks": "书签",
     "noBookmarks": "无书签",
     "bookmarkAskNameOrDefault": "输入书签名称。如果未输入，将自动分配。",
@@ -1969,6 +1971,9 @@ export const languageChinese = {
         `服务器或其前端的代理以资源文件“${name}”过大为由拒绝了它，因此恢复已停止。部分图片或冷存储条目可能已被添加或替换。当前数据库未被更改。`,
     "restoreAssetUploadStopped": (name: string) =>
         `服务器中止了资源文件“${name}”的上传（上传已过期，或服务器上部分上传的文件过多），因此恢复已停止。部分图片或冷存储条目可能已被添加或替换。当前数据库未被更改。`,
+    "backupAssetsMissingSkipped": "以下资源缺失，已跳过：",
+    "backupDataLeftOut": "部分数据无法包含在内：",
+    "partialBackupImagesMissingSkipped": "以下头像图片缺失，已跳过：",
     "partialBackupInlaysNotIncluded": "内嵌文件（聊天图片、视频、音频和签名）不包含在部分备份中。",
     "backupInlaysLeftOut": (count: number, names: string[]) =>
         `有 ${count} 个内嵌文件（聊天图片、视频、音频或签名）无法读取或不受支持，因此未包含在备份中。使用这些文件的聊天会将其显示为缺失。已遗漏的文件：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,

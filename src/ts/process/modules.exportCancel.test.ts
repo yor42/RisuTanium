@@ -325,7 +325,7 @@ describe('a module export stalled mid-write', () => {
         await done
 
         expect(world.errors).toEqual([])
-        expect(shown.filter((value) => value.msg === language.successExport)).toEqual([])
+        expect(shown.filter((value) => value.msg === language.successExport || value.msg === language.exportDownloadStarted)).toEqual([])
         expect(busyKinds()).not.toContain('export')
     })
 
@@ -351,7 +351,8 @@ describe('guards', () => {
         expect(world.closes).toBe(1)
         expect(world.aborts).toBe(0)
         expect(world.errors).toEqual([])
-        expect(shown.filter((value) => value.msg === language.successExport).length).toBeGreaterThan(0)
+        expect(shown.filter((value) => value.msg === language.exportDownloadStarted).length).toBeGreaterThan(0)
+        expect(shown.filter((value) => value.msg === language.successExport)).toEqual([])
     })
 
     test('(G) a desktop module export offers no Cancel', async () => {

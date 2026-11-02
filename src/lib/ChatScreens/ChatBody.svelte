@@ -33,6 +33,8 @@
         modelShortName: string
         renderRawStreaming?: boolean
         rawStreamingText?: string
+        /** Fixed at mount by Chats: true only while the tail's reply streams. The translation then waits for the re-mount at the stream end. */
+        deferAutoTranslate?: boolean
     }
 
     let {
@@ -49,6 +51,7 @@
         modelShortName = '',
         renderRawStreaming = false,
         rawStreamingText = '',
+        deferAutoTranslate = false,
     }: Props =  $props()
 
     const SPINNER_HTML = `<div style="display:flex;justify-content:center;align-items:center;height:48px;"><div style="animation: spin 1s linear infinite; border-radius: 50%; height: 32px; width: 32px; border: 2px solid #3b82f6; border-top: 2px solid transparent;"></div></div><style>@keyframes spin { to { transform: rotate(360deg); } }</style>`
@@ -89,12 +92,17 @@
 
     let shouldRenderRawStreaming = $derived(renderRawStreaming && !translated && !retranslate)
 
-    const markParsing = async (data: string, charArg: string | simpleCharacterArgument, chatID: number, requestedRevision: number, tries?:number) => {
+    const markParsing = async (data: string, charArg: string | simpleCharacterArgument, chatID: number, requestedRevision: number, deferTranslation: boolean, tries?:number) => {
         // track 'translated' and 'retranslate' state
         translated;
         retranslate;
         let mode = 'notrim' as const
         try {
+            if(deferTranslation){
+                // No decision, no cache lookup and no `lastCharArg`/`lastChatId` write: the instance mounted at the stream
+                // end makes the decision once and translates once.
+                return await ParseMarkdown(data, charArg, mode, chatID, getCbsCondition())
+            }
             if((!isEqual(lastCharArg, charArg)) || (chatID !== lastChatId)){
                 lastCharArg = charArg
                 lastChatId = chatID
@@ -200,7 +208,7 @@
                 alertError(wrapped)
                 return data
             }
-            return await markParsing(data, charArg, chatID, requestedRevision, (tries ?? 0) + 1)
+            return await markParsing(data, charArg, chatID, requestedRevision, deferTranslation, (tries ?? 0) + 1)
         }
         finally{
             lastRenderedRevision = requestedRevision
@@ -295,7 +303,7 @@
         return selectedModulesPending()
     })
 
-    // Untracked: the cache scope and the streaming-tail fact are captured per run and never re-run the parse.
+    // Untracked: the cache scope, the streaming-tail fact and the deferral are captured per run and never re-run the parse.
     const captureRunContext = () => untrack(() => {
         let scope: string | null = null
         let streamingTail = false
@@ -309,11 +317,11 @@
         } catch (error) {
             scope = null
         }
-        return { scope, streamingTail }
+        return { scope, streamingTail, deferTranslation: deferAutoTranslate === true }
     })
 
     const startRun = (data: string, charArg: simpleCharacterArgument|string|null, chatID: number, revision: number, gate: boolean) => {
-        const { scope, streamingTail } = captureRunContext()
+        const { scope, streamingTail, deferTranslation } = captureRunContext()
         const fingerprint: RenderFingerprint | null = scope === null ? null : untrack(() => ({
             scope,
             slot: slotKeyOf(firstMessage, chatID, charArg),
@@ -343,7 +351,7 @@
             shown,
             lookup: seen,
         })
-        currentRun = markParsing(data, charArg, chatID, revision)
+        currentRun = markParsing(data, charArg, chatID, revision, deferTranslation)
         return currentRun
     }
 

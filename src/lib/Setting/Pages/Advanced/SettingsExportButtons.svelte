@@ -1,5 +1,6 @@
 <script lang="ts">
     import { language } from "src/lang";
+    import { downloadNotice } from "src/ts/exportNotice";
     import Button from "src/lib/UI/GUI/Button.svelte";
     import { DBState } from 'src/ts/stores.svelte';
     import { alertMd, alertNormal } from "src/ts/alert";
@@ -68,7 +69,7 @@
         const json = JSON.stringify(db, null, 2)
         await downloadFile('risutanium-settings-report.json', new TextEncoder().encode(json))
         await navigator.clipboard.writeText(json)
-        alertNormal(language.settingsExported)
+        alertNormal(downloadNotice(language.settingsExported, language.settingsReportDownloadStarted))
         
 
     }}

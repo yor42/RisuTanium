@@ -1094,6 +1094,7 @@ export const languageVietnamese = {
     "removeGroup": "Xóa nhóm",
     "exportCharacter": "Xuất ký tự",
     "successExport": "Đã xuất thành công và tải xuống thư mục tải xuống của bạn",
+    "exportDownloadStarted": "Đã bắt đầu tải xuống. Trình duyệt sẽ lưu tệp vào thư mục tải xuống của bạn và có thể yêu cầu bạn xác nhận hoặc giữ tệp trước.",
     "exportHeldInMemory": "Trình duyệt này không thể lưu bản xuất ngay trong khi tạo, nên bản xuất được giữ trong bộ nhớ cho đến khi hoàn tất rồi mới tải xuống. Bản xuất rất lớn có thể thất bại.",
     "exportHelperNotResponding": "Trình hỗ trợ tải xuống không phản hồi, nên bản xuất được giữ trong bộ nhớ cho đến khi hoàn tất rồi mới tải xuống. Bản xuất rất lớn có thể thất bại.",
     "backupCancelledFileIncomplete": "Đã hủy sao lưu. Nếu trình duyệt đã lưu một tệp, tệp đó không đầy đủ: hãy xóa nó và không dùng nó.",
@@ -1864,6 +1865,7 @@ export const languageVietnamese = {
     "requestLocation": "Yêu cầu vị trí",
     "newImageHandlingBeta": "Xử lý hình ảnh mới (Beta)",
     "settingsExported": "Cài đặt báo cáo lỗi đã được xuất và sao chép vào bảng nhớ tạm.",
+    "settingsReportDownloadStarted": "Đã bắt đầu tải xuống cài đặt cho báo cáo lỗi và các cài đặt đó đã được sao chép vào khay nhớ tạm.",
     "bookmarks": "Dấu trang",
     "noBookmarks": "Không có dấu trang",
     "bookmarkAskNameOrDefault": "Nhập tên dấu trang. Nếu không nhập, nó sẽ được gán tự động.",
@@ -1969,6 +1971,9 @@ export const languageVietnamese = {
         `Máy chủ, hoặc proxy đặt trước nó, đã từ chối tệp tài nguyên (asset) "${name}" vì quá lớn nên việc khôi phục đã dừng lại. Một số hình ảnh hoặc mục bộ nhớ lạnh có thể đã được thêm hoặc thay thế. Cơ sở dữ liệu hiện tại của bạn không bị thay đổi.`,
     "restoreAssetUploadStopped": (name: string) =>
         `Máy chủ đã dừng việc tải lên tệp tài nguyên (asset) "${name}" (lượt tải lên đã hết hạn, hoặc máy chủ đang giữ quá nhiều tệp mới tải lên một phần) nên việc khôi phục đã dừng lại. Một số hình ảnh hoặc mục bộ nhớ lạnh có thể đã được thêm hoặc thay thế. Cơ sở dữ liệu hiện tại của bạn không bị thay đổi.`,
+    "backupAssetsMissingSkipped": "Các tài sản sau bị thiếu và đã được bỏ qua:",
+    "backupDataLeftOut": "Không thể đưa một số dữ liệu vào:",
+    "partialBackupImagesMissingSkipped": "Các hình ảnh hồ sơ sau bị thiếu và đã được bỏ qua:",
     "partialBackupInlaysNotIncluded": "Inlay (hình ảnh, video, âm thanh và chữ ký trong cuộc trò chuyện) không được đưa vào bản sao lưu một phần.",
     "backupInlaysLeftOut": (count: number, names: string[]) =>
         `Có ${count} inlay (hình ảnh, video, âm thanh hoặc chữ ký trong cuộc trò chuyện) không thể đọc được hoặc không được hỗ trợ nên không có trong bản sao lưu. Cuộc trò chuyện nào dùng một trong các inlay đó sẽ hiển thị inlay đó là bị thiếu. Các inlay bị bỏ sót:\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} inlay nữa` : ''}`,

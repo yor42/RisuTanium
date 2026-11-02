@@ -11,6 +11,8 @@
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { writable, get } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { addActiveStream, resetActiveStreamsForTest } from 'src/ts/process/activeStreams'
+import Chat from './Chat.svelte'
 import { DBState, ReloadChatPointer, ReloadGUIPointer, selIdState, selectedCharID } from 'src/ts/stores.svelte'
 import Chats from './Chats.svelte'
 import { clearChatBodyRenderCache } from './chatBodyRenderCache'
@@ -362,7 +364,7 @@ beforeEach(() => {
 
 //#endregion
 
-interface LiveMessage { role: 'user' | 'char', data: string, chatId?: string }
+interface LiveMessage { role: 'user' | 'char', data: string, chatId?: string, interrupted?: boolean }
 
 let stopGuiReset: () => void = () => {}
 
@@ -373,10 +375,11 @@ beforeEach(() => {
 
 afterEach(() => {
     stopGuiReset()
+    resetActiveStreamsForTest()
 })
 
-function mountChats(messages: LiveMessage[]) {
-    DBState.db = baseDb() as never
+function mountChats(messages: LiveMessage[], dbOverrides: Record<string, unknown> = {}) {
+    DBState.db = baseDb(dbOverrides) as never
     DBState.db.characters = [makeCharacter('a', [makeChat('cA', { message: messages })], { image: '' })] as never
     const live = (DBState.db.characters as unknown as Array<{ chats: Array<{ message: LiveMessage[], isStreaming?: boolean }> }>)[0]
     const target = document.createElement('div')
@@ -507,3 +510,240 @@ describe('S3 boundary: a source change plus a remount shows the indicator, never
         expect(held.indicators).toBeGreaterThan(0)
     })
 })
+
+//#region S5: the streaming tail waits for its reply to end before it auto-translates
+
+const AUTO_TRANSLATE = {
+    autoTranslate: true, translatorType: 'google', translator: 'ko', translatorInputLanguage: 'en',
+    showTranslationLoading: false,
+}
+
+type LiveChat = ReturnType<typeof mountChats>['chat']
+
+/** Answers every parse and translation asked so far, a few rounds, so a decision run, its rerun and the translation all land. */
+async function answerEverything(rounds = 4) {
+    for (let round = 0; round < rounds; round++) {
+        for (const parse of h.parses.slice()) {
+            parse.resolve(`P:${parse.args[0] as string}`)
+        }
+        for (const translation of h.translations.slice()) {
+            translation.resolve(`T:${translation.args[0] as string}`)
+        }
+        await wait(30)
+        await tick()
+    }
+}
+
+/** The producer's pair: the registry entry and `isStreaming` are written in the same synchronous block. */
+function startStream(chat: LiveChat, replyChatId: string) {
+    const remove = addActiveStream({ chaId: 'a', replyChatId })
+    chat.isStreaming = true
+    return remove
+}
+
+function endStream(chat: LiveChat, remove: () => void) {
+    remove()
+    chat.isStreaming = false
+}
+
+/** The mounted row containers by message index: the document lists the newest row first. */
+function rowNodes(target: HTMLElement) {
+    return [...target.querySelectorAll('.chat-message-container')].reverse()
+}
+
+/** The body texts by message index, from a `sampleBody` result. */
+const rowTexts = (held: { text: string }) => held.text.split('|').reverse()
+
+const replyPair = (): LiveMessage[] => [
+    { role: 'user', data: 'U', chatId: 'u1' },
+    { role: 'char', data: 'C', chatId: 'c1' },
+]
+
+describe('S5 the Chats tail defers auto-translate while its reply streams', () => {
+    test.each(['off', 'normal'] as const)('R T5.4 mode %s: no translation during the stream, exactly one after it, of the final text', async (mode) => {
+        const { target, chat } = mountChats(replyPair(), { ...AUTO_TRANSLATE, streamingDisplayOptimizationMode: mode })
+        await wait(20)
+        await answerEverything()
+        h.translations.length = 0
+
+        const remove = startStream(chat, 'c1')
+        for (const chunk of ['C a', 'C ab']) {
+            chat.message[1].data = chunk
+            await wait(40)
+            for (const parse of h.parses.slice()) {
+                parse.resolve(`P:${parse.args[0] as string}`)
+            }
+            await wait(40)
+        }
+        expect(h.translations).toHaveLength(0)
+
+        endStream(chat, remove)
+        await wait(40)
+        await answerEverything()
+        expect(h.translations).toHaveLength(1)
+        expect(h.translations[0].args[0]).toBe('P:C ab')
+        expect((await sampleBody(target)).text).toContain('T:P:C ab')
+    })
+
+    test('R T5.5 an aborted reply in mode off translates its partial text exactly once', async () => {
+        const { target, chat } = mountChats(replyPair(), { ...AUTO_TRANSLATE })
+        await wait(20)
+        await answerEverything()
+        h.translations.length = 0
+
+        const remove = startStream(chat, 'c1')
+        chat.message[1].data = 'C part'
+        await wait(40)
+        await answerEverything(2)
+        expect(h.translations).toHaveLength(0)
+
+        chat.message[1].interrupted = true
+        endStream(chat, remove)
+        await wait(40)
+        await answerEverything()
+        expect(h.translations).toHaveLength(1)
+        expect(h.translations[0].args[0]).toBe('P:C part')
+        expect((await sampleBody(target)).text).toContain('T:P:C part')
+    })
+
+    test('G T5.6 the row before the streaming tail keeps its translation and is not re-mounted', async () => {
+        const { target, chat } = mountChats(replyPair(), { ...AUTO_TRANSLATE })
+        await wait(20)
+        await answerEverything()
+        const first = rowNodes(target)[0]
+        expect(rowTexts(await sampleBody(target))[0]).toContain('T:P:U')
+
+        const remove = startStream(chat, 'c1')
+        for (const chunk of ['C a', 'C ab']) {
+            chat.message[1].data = chunk
+            await wait(40)
+            await answerEverything(2)
+        }
+        expect(rowNodes(target)[0]).toBe(first)
+        expect(rowTexts(await sampleBody(target))[0]).toContain('T:P:U')
+        endStream(chat, remove)
+    })
+
+    test('G T5.14 a registered reply that is not at the last index is never deferred or re-mounted', async () => {
+        const { target, chat } = mountChats([
+            { role: 'char', data: 'C', chatId: 'c1' },
+            { role: 'user', data: 'U', chatId: 'u1' },
+        ], { ...AUTO_TRANSLATE })
+        await wait(20)
+        await answerEverything()
+        const nodes = rowNodes(target)
+
+        const remove = startStream(chat, 'c1')
+        await wait(40)
+        expect(rowNodes(target)[0]).toBe(nodes[0])
+        endStream(chat, remove)
+        await wait(40)
+        expect(rowNodes(target)[0]).toBe(nodes[0])
+    })
+
+    test('G T5.8 auto-translate off: the stream start and end change no hash, no parse and no translation', async () => {
+        const { target, chat } = mountChats(replyPair(), { streamingDisplayOptimizationMode: 'off' })
+        await wait(20)
+        await answerEverything()
+        const tail = rowNodes(target)[1]
+        const parsesBefore = h.parses.length
+
+        const remove = startStream(chat, 'c1')
+        await wait(40)
+        expect(rowNodes(target)[1]).toBe(tail)
+        endStream(chat, remove)
+        await wait(40)
+        await answerEverything()
+        expect(rowNodes(target)[1]).toBe(tail)
+        expect(h.parses.length).toBe(parsesBefore)
+        expect(h.translations).toHaveLength(0)
+    })
+
+    test.each(['char', 'user'] as const)('G T5.12 a stream flag with no registered reply and a %s tail: no remount at the flip, no extra translation', async (tailRole) => {
+        const { target, chat } = mountChats([
+            { role: tailRole === 'char' ? 'user' : 'char', data: 'U', chatId: 'u1' },
+            { role: tailRole, data: 'C', chatId: 'c1' },
+        ], { ...AUTO_TRANSLATE })
+        await wait(20)
+        await answerEverything()
+        const tail = rowNodes(target)[1]
+        const translationsBefore = h.translations.length
+
+        chat.isStreaming = true
+        await wait(40)
+        expect(rowNodes(target)[1]).toBe(tail)
+        chat.isStreaming = false
+        await wait(40)
+        await answerEverything()
+        expect(rowNodes(target)[1]).toBe(tail)
+        expect(h.translations.length).toBe(translationsBefore)
+    })
+
+    test('G T5.13 a Chat mounted outside Chats with the bookmark list props translates the final text after the stream ends', async () => {
+        DBState.db = baseDb({ ...AUTO_TRANSLATE }) as never
+        DBState.db.characters = [makeCharacter('a', [makeChat('cA', { message: replyPair() })], { image: '' })] as never
+        const live = (DBState.db.characters as unknown as Array<{ chats: Array<{ message: LiveMessage[], isStreaming?: boolean }> }>)[0].chats[0]
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        mountedTargets.push(target)
+        const instance = mount(Chat, {
+            target,
+            props: {
+                idx: 1,
+                get message() { return live.message[1].data },
+                set message(_value: string) {},
+                name: 'A',
+                img: '',
+                role: 'char',
+                rerollIcon: false,
+                character: { name: 'A' },
+                isLastMemory: false,
+                expectedId: 'c1',
+            } as never,
+        })
+        mountedInstances.push(instance)
+        flushSync()
+        await wait(20)
+        await answerEverything()
+
+        const remove = startStream(live as never, 'c1')
+        live.message[1].data = 'C a'
+        await wait(40)
+        await answerEverything(2)
+        endStream(live as never, remove)
+        await wait(40)
+        await answerEverything()
+        expect((await sampleBody(target)).text).toContain('T:P:C a')
+    })
+
+    test('G SEED mode off, auto-translate on: the tail is replaced at the end and shows the parse until the translation lands', async () => {
+        const { target, chat } = mountChats(replyPair(), { ...AUTO_TRANSLATE, streamingDisplayOptimizationMode: 'off' })
+        await wait(20)
+        await answerEverything()
+        const remove = startStream(chat, 'c1')
+        chat.message[1].data = 'C ab'
+        await wait(40)
+        await answerEverything(2)
+        h.translations.length = 0
+        const tail = rowNodes(target)[1]
+
+        endStream(chat, remove)
+        const samples: Array<{ text: string, indicators: number }> = []
+        for (let i = 0; i < 6; i++) {
+            const held = await sampleBody(target)
+            samples.push({ text: rowTexts(held)[1] ?? '', indicators: held.indicators })
+            for (const parse of h.parses.slice()) {
+                parse.resolve(`P:${parse.args[0] as string}`)
+            }
+        }
+        expect(rowNodes(target)[1]).not.toBe(tail)
+        for (const sample of samples) {
+            expect(sample.indicators).toBe(0)
+            expect(sample.text).toContain('P:C ab')
+        }
+        await answerEverything()
+        expect((await sampleBody(target)).text).toContain('T:P:C ab')
+    })
+})
+
+//#endregion

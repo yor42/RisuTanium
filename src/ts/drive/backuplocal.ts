@@ -6,6 +6,7 @@ import { localBackupFileName } from "./backupFileName";
 import { LocalWriter, TauriWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri } from "src/ts/platform"
+import { backupNoticeHeader, downloadNotice } from "../exportNotice";
 import { decodeRisuSave, encodeRisuSaveStreamed, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock, type StreamedRisuSave } from "../storage/risuSave";
 import { writeRisuSaveV0 } from "../storage/risuSaveV0";
 import { assertNoModuleStubs } from "../storage/moduleStub";
@@ -1051,11 +1052,11 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         repaired: repairNotice,
     }
     if (missingAssets.length > 0 || lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted || repairNotice || leftOut.length > 0 || lateAlternatives.length > 0) {
-        let message = missingAssets.length > 0
-            ? 'Backup Successful, but the following assets were missing and skipped:\n\n'
+        let message = backupNoticeHeader('full', missingAssets.length > 0
+            ? 'missing'
             : (lateColdStorageReport || leftOutInlayNames.length > 0 || inlayResult.oldStoreUnlisted || leftOut.length > 0)
-                ? 'Backup Successful, but some data could not be included:\n\n'
-                : 'Backup Successful.\n\n'
+                ? 'leftOut'
+                : 'none')
         for (const key of missingAssets) {
             const assetInfo = assetMap.get(key)
             if (assetInfo) {
@@ -1092,7 +1093,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         alertMd(message)
         return { status: 'saved', notices: [message], omitted, inlays: inlayResult }
     }
-    alertNormal('Success')
+    alertNormal(downloadNotice('Success'))
     return { status: 'saved', notices: [], omitted, inlays: inlayResult }
 }
 
@@ -1328,11 +1329,11 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         repaired: repairNotice,
     }
     if (missingAssets.length > 0 || lateColdStorageReport || repairNotice || leftOut.length > 0 || lateAlternatives.length > 0) {
-        let message = missingAssets.length > 0
-            ? 'Partial backup successful, but the following profile images were missing and skipped:\n\n'
+        let message = backupNoticeHeader('partial', missingAssets.length > 0
+            ? 'missing'
             : (lateColdStorageReport || leftOut.length > 0)
-                ? 'Partial backup successful, but some data could not be included:\n\n'
-                : 'Partial backup successful.\n\n'
+                ? 'leftOut'
+                : 'none')
         for (const key of missingAssets) {
             const assetInfo = assetMap.get(key)
             if (assetInfo) {
@@ -1358,7 +1359,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         alertMd(message)
         return { status: 'saved', notices: [message], omitted, inlays: null }
     }
-    alertNormal(`Success\n\n${language.partialBackupInlaysNotIncluded}`)
+    alertNormal(`${downloadNotice('Success')}\n\n${language.partialBackupInlaysNotIncluded}`)
     return { status: 'saved', notices: [], omitted, inlays: null }
 }
 

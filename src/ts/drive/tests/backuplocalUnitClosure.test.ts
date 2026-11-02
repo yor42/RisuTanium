@@ -285,6 +285,7 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 
 //#endregion
 
+import { language } from 'src/lang'
 import { SaveLocalBackup, SavePartialLocalBackup, LoadLocalBackup } from 'src/ts/drive/backuplocal'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
@@ -715,7 +716,9 @@ describe('a plugin storage key created while the assets are copied reaches the b
         const reportWithAsset = reports.filter((r) => r.includes('gone.png'))
         expect(reportWithAsset).toHaveLength(1)
         expect(reportWithAsset[0]).toContain(NEW)
+        expect(reportWithAsset[0].startsWith(`${language.exportDownloadStarted}\n\n${language.backupAssetsMissingSkipped}`)).toBe(true)
         expect(alertNormalMock).not.toHaveBeenCalledWith('Success')
+        expect(alertNormalMock).not.toHaveBeenCalledWith(language.exportDownloadStarted)
     })
 })
 
@@ -979,7 +982,11 @@ describe.each(SAVES)('%s writes each unit exactly once', (_save, save) => {
         expect(readCount(ABSENT)).toBe(1)
         expect(alertMdMock).not.toHaveBeenCalled()
         // The partial backup's completion also says that inlays are not in it.
-        expect(alertNormalMock).toHaveBeenCalledWith(expect.stringMatching(/^Success/))
+        const started = _save === 'SavePartialLocalBackup'
+            ? `${language.exportDownloadStarted}\n\n${language.partialBackupInlaysNotIncluded}`
+            : language.exportDownloadStarted
+        expect(alertNormalMock).toHaveBeenCalledWith(started)
+        expect(alertNormalMock).not.toHaveBeenCalledWith(expect.stringMatching(/^Success/))
     })
 })
 
@@ -1025,7 +1032,9 @@ describe.each(SAVES)('%s completion message when only a unit created during the 
         expect(reports).toHaveLength(1)
         expect(reports[0]).toContain(NEW)
         expect(reports[0]).not.toMatch(/were missing/)
+        expect(reports[0].startsWith(`${language.exportDownloadStarted}\n\n${language.backupDataLeftOut}`)).toBe(true)
         expect(alertNormalMock).not.toHaveBeenCalledWith('Success')
+        expect(alertNormalMock).not.toHaveBeenCalledWith(language.exportDownloadStarted)
         expect(entryNames()).toContain('database.risudat')
     })
 })

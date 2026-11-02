@@ -397,7 +397,7 @@ describe('exportAsDataset over a real store2 world', () => {
         for (const row of stubRows) {
             expect(row.chats.some((message) => message.data !== '')).toBe(true)
         }
-        expect(notice()).toBe(language.successExport)
+        expect(notice()).toBe(language.exportDownloadStarted)
     })
 
     test('guard (G2): an entity that is not in the acknowledged tree, a damaged unit and a failing store each skip the character, name it, and keep the rest', async () => {
@@ -433,7 +433,7 @@ describe('exportAsDataset over a real store2 world', () => {
             expect(names.has(page.entries[0].name), breakIt).toBe(true)
             expect(names.has(victim.name), breakIt).toBe(false)
             expect(notice(), breakIt).toContain(victim.name)
-            expect(notice(), breakIt).toContain(language.successExport)
+            expect(notice(), breakIt).toContain(language.exportDownloadStarted)
             if (breakIt !== 'store-error') {
                 // One stub is read fine while the other fails; with the store down both are skipped.
                 expect(names.has(page.entries[1].name), breakIt).toBe(true)
@@ -454,7 +454,7 @@ describe('exportAsDataset over a real store2 world', () => {
         let rows = exportedRows()
         expect(rows.some((row) => row.name === 'Group One')).toBe(false)
         expect(rows.some((row) => row.name === page.entries[1].name)).toBe(true)
-        expect(notice()).toBe(language.successExport)
+        expect(notice()).toBe(language.exportDownloadStarted)
 
         // The placeholder another build writes for an archived group: typed as a character, the unit says group.
         stubAt(page, groupIndex).type = 'character'
@@ -465,7 +465,7 @@ describe('exportAsDataset over a real store2 world', () => {
 
         rows = exportedRows()
         expect(rows.some((row) => row.name === 'Group One')).toBe(false)
-        expect(notice()).toBe(language.successExport)
+        expect(notice()).toBe(language.exportDownloadStarted)
     })
 
     test('guard (G4): nothing is marked for save, the stubs stay in their slots, and reads go one entity at a time', async () => {

@@ -8,6 +8,7 @@ import { risuChatParser } from "../parser/parser.svelte";
 import { findCharacterbyId, pickHashRand, selectSingleFile } from "../util";
 import { alertError, alertNormal } from "../alert";
 import { language } from "../../lang";
+import { downloadNotice } from "../exportNotice";
 import { downloadFile } from "../globalApi.svelte";
 import { getModuleLorebooks } from "./modules";
 import { CCardLib } from "@risuai/ccardlib";
@@ -906,7 +907,7 @@ export async function exportLoreBook(mode:'global'|'local'){
 
         await downloadFile(`lorebook_export.json`, stringl)
 
-        alertNormal(language.successExport)
+        alertNormal(downloadNotice(language.successExport))
     } catch (error) {
         alertError(error)
     } finally {

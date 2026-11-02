@@ -4,6 +4,7 @@ import { alertError, alertNormal, alertStore } from "./alert"
 import { AppendableBuffer, downloadFile, pickedAssetLimitBytes, readImage, saveAssetFromBlob } from "./globalApi.svelte"
 import { reportRefusedAssets } from "./storage/pickedAssetLimit"
 import { language } from "src/lang"
+import { downloadNotice } from "src/ts/exportNotice"
 import { reencodeImage } from "./process/files/inlays"
 import { PngChunk } from "./pngChunk"
 import { v4 } from "uuid"
@@ -109,7 +110,7 @@ export async function exportUserPersona() {
     await sleep(10)
     await downloadFile(`${db.username.replace(/[<>:"/\\|?*\.\,]/g, "")}_export.png`, img)
 
-    alertNormal(language.successExport)
+    alertNormal(downloadNotice(language.successExport))
 }
 
 export async function importUserPersona() {

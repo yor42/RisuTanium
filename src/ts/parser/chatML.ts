@@ -53,7 +53,7 @@ export function parseChatML(data: string, subject?: RunSubject, promptView?: Pro
       }
 
       let thoughts: string[] = []
-      v = v.replace(/<Thoughts>(.+)<\/Thoughts>/gms, (_, p1) => {
+      v = v.replace(/<Thoughts>(.+?)<\/Thoughts>/gms, (_, p1) => {
         thoughts.push(p1)
         return ''
       })
