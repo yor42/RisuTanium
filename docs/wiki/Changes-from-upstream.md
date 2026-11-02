@@ -115,6 +115,7 @@ Upstream links appear only where the records name one. Fixes are on main; most a
 - Pages hiding or closing now save pending edits; finished replies save while hidden.
 - Auto-reload between tabs no longer destroys local drafts, and a cancelled reload no longer stops saving.
 - Preset renames and images were silently discarded; fixed. A corruption prompt could wipe a lorebook; fixed.
+- Saving or switching with an out-of-range preset id no longer throws: the working settings are kept as a new "New Preset". Applying a loadout no longer adds an empty entry ([upstream #1387](https://github.com/kwaroran/Risuai/pull/1387), the remaining small gaps after the reported scenario was fixed). Checked by tests.
 - A read failure in older archive storage never overwrites or deletes data.
 - A stuck module no longer blocks character and chat saves.
 - The Node server's password is now saved before it is accepted.
@@ -133,6 +134,7 @@ Upstream links appear only where the records name one. Fixes are on main; most a
 - Malformed or nameless cards are refused with a message before saving.
 - Chat import now works for characters saved before chat folders ([upstream #994](https://github.com/kwaroran/Risuai/pull/994), reported fixed).
 - A character whose id collides with an upstream data block gets a new id.
+- On the web build, the notices after an export, a backup, the bug-report settings export and the translation cache export say the download started, not that it was saved, because the browser may still ask whether to keep the file ([upstream #843](https://github.com/kwaroran/Risuai/issues/843), reported on Firefox on iOS; iOS was not tried here). The desktop and Android apps keep the "saved" wording. Checked by tests; the wording of the translation-JSON notice is English only.
 
 ### Chat
 
@@ -152,6 +154,9 @@ Upstream links appear only where the records name one. Fixes are on main; most a
 - Regex lorebook keys such as `/dragon/i` now activate ([upstream #1532](https://github.com/kwaroran/Risuai/pull/1532), merged from upstream). Invalid regex keys match nothing.
 - Lorebook scan depth beyond the chat length scans every message (the record notes upstream has this too).
 - A Lua-written lorebook entry no longer disappears in onStart/onOutput ([upstream #1041](https://github.com/kwaroran/Risuai/issues/1041), [#1042](https://github.com/kwaroran/Risuai/pull/1042), reported fixed).
+- Full Word Matching missed a key that was followed or preceded by punctuation, quotes, a line break, full-width punctuation or markup such as `*Alice*` ([upstream #340](https://github.com/kwaroran/Risuai/issues/340)). A key now matches in those cases, and a key with spaces matches as a whole phrase. Korean, Japanese and Chinese letters still count as word letters, so matching inside a word of those scripts is unchanged. An empty key never matches in this mode. Checked by tests.
+- **New, RisuTanium only: "SillyTavern-style Word Boundaries"**, a per-lorebook option next to Full Word Matching. It is off by default. When it is on, only English letters, digits and `_` count as word letters, so a key can match inside a longer word in another language (for example a key inside a Korean word). Module lorebook entries follow the character option; modules have no setting of their own. The option is saved in `.bin` backups. It is written into a character card (as the `risu_fullWordAsciiBoundary` extension) only when it is on, and a card that has it turns the option on when imported. Upstream has no such option. Two paths can still leave a stale copy of the extension in a card's stored extensions, which an upstream card export would then write: switching a lorebook to global settings and back, and importing a card that lacks the scan fields. This was traced in the code, not run.
+- Deleting a lorebook folder now removes everything inside it, nested folders included; before, the contents stayed stored and were exported ([upstream #1667](https://github.com/kwaroran/Risuai/pull/1667)). Drag and drop is available only while no entry is open in that list. Deleting a folder in a list that is not the character's own is not written back. Checked by tests.
 
 - Lua `setFullChat` dropped message details (generation info, prompt info, speaker, name, the disabled and comment flags) even on messages the script had not changed. Upstream: [issue #1564](https://github.com/kwaroran/Risuai/issues/1564), [PR #1611](https://github.com/kwaroran/Risuai/pull/1611). A message with the same position, role and text now keeps every field. On main since 2026-11-02, checked by tests.
 - **New, RisuTanium only:** Lua `getFullChat`, `getChat` and `getRecentChats` now return each message's read-only `chatId` (present only when the message has one), and `setFullChat` matches your entries to existing messages by that id first. A message the script edited, moved or gave a new role therefore keeps its fields and its alternatives. A script cannot create ids, and scripts that never send ids behave as before. Upstream RisuAI does not have this. See [[Lua API Reference]].
@@ -169,7 +174,11 @@ Upstream links appear only where the records name one. Fixes are on main; most a
 - HypaV3 re-roll Apply is re-enabled after an edit, and a HypaV3 `SystemMessageOrderError` was fixed ([upstream #1051](https://github.com/kwaroran/Risuai/issues/1051), reported fixed).
 - SupaMemory, HypaV2 and HypaV3 resume points, retries and hidden-message summaries were corrected. Reset SupaMemory data now asks first.
 - Hugging Face speech was repaired, and Stop now covers all text-to-speech voices.
+- With auto-translate on, text-to-speech now speaks the language you see instead of the original ([upstream #200](https://github.com/kwaroran/Risuai/issues/200)). Auto speech translates the whole reply in one translator request per spoken run (each continue part pays one request), then speaks it. The speaker button speaks the translation already shown in the bubble and makes no request. If the translation fails, the original text is spoken; translator error replies and AI-translator request failures show an alert as the translator does elsewhere. Stopping the reply, deleting the chat or deleting the reply ends the wait without speaking. Checked by tests with a mocked translator; the live check of one request per reply was not run.
+- With auto-translate on, the reply that is still streaming shows its raw text and is translated once when the stream ends, instead of being translated again and again while it streams ([upstream #1426](https://github.com/kwaroran/Risuai/issues/1426), [#1495](https://github.com/kwaroran/Risuai/pull/1495)). Only the chat list decides this; messages shown elsewhere (bookmarks and other views) behave as before. With auto-translate off nothing changes. Checked by tests.
+- A reply with several `<Thoughts>` blocks, as the Gemini streaming tool loop writes, kept only the text after the last block. The pattern is no longer greedy where messages are assembled and in the chat parser (which also feeds the translator and memory summaries) ([upstream #1327](https://github.com/kwaroran/Risuai/issues/1327)). A diagnostic test reproduced the loss with the real tool-loop output before the fix; it is kept as a guard.
 - Streamed Anthropic and Gemini replies could save broken text. A character split across two network chunks, such as Korean text or an emoji, turned into a replacement character (`�`) and stayed in the saved chat. Each stream is now decoded as one continuous stream. Upstream: [issue #1647](https://github.com/kwaroran/Risuai/issues/1647), [PR #1658](https://github.com/kwaroran/Risuai/pull/1658); Gemini had the same problem with no upstream number. On main since 2026-11-02, checked by tests that split a 3-byte character and an emoji across chunks; not tried against a live provider here.
+- Local Ollama replies had the same split-character problem, inside the Ollama library's own stream reader. The local request is now wrapped so a Korean character or an emoji is never cut between chunks. The Ollama cloud path is unchanged and has no test of its own. On main since 2026-11-02, checked by tests; not tried against a live Ollama server here.
 - Tauri timeouts: reported fixed for [upstream #1689](https://github.com/kwaroran/Risuai/issues/1689) and [#1694](https://github.com/kwaroran/Risuai/pull/1694); the Rust side was not re-read.
 
 ### Found fixed in the review of old upstream issues (#1 to #702)
@@ -198,21 +207,13 @@ Two reports did not hold in this fork: that backup data is sent to the upstream 
 - Dialogs no longer let keys or focus reach the page behind them.
 - Optional checkboxes missing from a settings page no longer write `false` on mount.
 - Card background and CSS no longer flicker while modules load the first time.
+- On/off toggles are now real native checkboxes named by their label, so screen readers and the keyboard can reach them, and a focus ring shows for keyboard focus only ([upstream #209](https://github.com/kwaroran/Risuai/issues/209)). Mouse and touch rendering is meant to be unchanged. Checked by tests in a simulated browser; not tried with a real screen reader.
+- On browsers without the compression streams (Safari older than 16.4 was reported), saving checked for them in a way that threw before the fallback could load. The checks now use a type test, so those browsers take the fallback ([upstream #662](https://github.com/kwaroran/Risuai/issues/662)). Checked by tests that remove the browser features; not tried on an old iPhone.
 - Many hard-coded alerts were moved into language files. Much of the interface is still English-only in other locales.
 
-## In progress (not yet released)
+## Planned, not shipped
 
-These are planned before the next release. They are **not fixed on main** and nothing here has been tested to pass yet.
-
-- **Found in the review of upstream issues #703 to #1712:** deleting a nested lorebook folder leaves its contents stored and exported ([upstream #1667](https://github.com/kwaroran/Risuai/pull/1667)); after a preset is deleted, two small guard gaps remain in saving a preset and applying a loadout; the reported scenario itself is fixed ([#1351](https://github.com/kwaroran/Risuai/issues/1351), [#1387](https://github.com/kwaroran/Risuai/pull/1387)); auto-translate hides streaming text until the stream ends ([#1426](https://github.com/kwaroran/Risuai/issues/1426), [#1495](https://github.com/kwaroran/Risuai/pull/1495)); a greedy `<Thoughts>` pattern may strip earlier history from prompts, to be checked at runtime first ([#1327](https://github.com/kwaroran/Risuai/issues/1327)); chat export on Firefox on iOS may say it saved when no file appears, by source similarity only and untested on iOS ([#843](https://github.com/kwaroran/Risuai/issues/843)).
-- **Found in the review of upstream issues #1 to #702:**
-  - Lorebook entries with Full Word Matching on miss a keyword that is followed by punctuation, a newline or markup such as `*Alice*` ([#340](https://github.com/kwaroran/Risuai/issues/340)). How it should behave for languages written without spaces needs a decision.
-  - Text-to-speech reads the original text, not the translation, when auto-translate is on ([#200](https://github.com/kwaroran/Risuai/issues/200)). This is a missing feature, not a defect, and needs a product decision.
-  - The on/off toggles are not reachable by screen readers or the keyboard ([#209](https://github.com/kwaroran/Risuai/issues/209)).
-  - On Safari older than 16.4, the code that checks for compression support throws before its fallback can load, so saving and loading fail there ([#662](https://github.com/kwaroran/Risuai/issues/662)). Reported only for old iPhones.
-- The planned items above are **unreleased**. The reports behind them are static code reading; most were not run.
-
-Also planned, not shipped: the new interface design (a hidden colour preset is all that exists), a new long-term memory engine (research only), and a fork-to-fork backup format.
+No fix planned from the upstream-issue reviews is still waiting. Also planned, not shipped: the new interface design (a hidden colour preset is all that exists), a new long-term memory engine (research only), and a fork-to-fork backup format.
 
 ## Appendix: area to ticket IDs
 
