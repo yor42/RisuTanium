@@ -19035,6 +19035,8 @@ Both phones were handed back to lane A on 2026-10-28 (phone 2 after item 9d, pho
 
 *Amendment (2026-10-31, records batch 29; see `MC-925`): the note below that "CHORE-03 STANDS (a restored character never enters `toSave.character`)" was stale for the restore button. `restoreCharacterFromTrash` has marked the character for save since commit `152cc5633` (2026-09-22), an ancestor of the first MVP `f0e397aae` (verified in `%TEMP%\risu-b715\gate03\verify\result.md`). The maintainer chose to add a store2 restore test and close CHORE-03. Answers 5 (30 days everywhere, CHORE-172) and the UI-S4 restore wiring are unchanged. The text below is kept as written.*
 
+*Amendment (2026-11-02, records batch 37; see `MC-1003`): the timing of item 3 (browser Back) is amended. The maintainer chose "At UI-S1 sizing (Recommended)" over "Keep at UI-S4": the one Back mechanism for all new screens and Android is decided at UI-S1 sizing, not UI-S4 sizing, because UI-S1 adds the first new screens. Nothing else in this entry changes. The text below is kept as written.*
+
 - Tag: decisions (`AskUserQuestion` answers; numbering as `answers-tickets.md`). Date: 2026-10-30. Sweep ref: none.
 - Source: `%TEMP%\risu-b715\ui-audit\answers-tickets.md`. Inputs: `ui-audit\tickets\result.md` (43 tickets), `ui-audit\engine-rows\result.md` (136 rows, T1 to T21), checked by `ui-audit\verify-inventories.md` (AI-authored; lane A applied the verifier's corrections listed in `answers-tickets.md`, which are not product calls). Answer 4 is recorded separately as `MC-893`.
 - Alternatives rejected: not recorded.
@@ -20704,3 +20706,155 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 
 - Notes, not the maintainer's words:
   - The queue's gloss: the next device run adds post-relaunch counts. Batch 36 records the durability check as not recorded: the raw files hold no post-relaunch reading (the verifier graded it UNSUPPORTED by the raw evidence).
+
+### MC-997 — Lane A, 2026-11-02: unadvertised Anthropic `tool_use` on the non-streaming path: "Bounded investigation"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 37 queue (`%TEMP%\risu-b715\b37\records37-queue.md`, line 4): chosen "Bounded investigation (Recommended)" over "Authorise the guard now" and "Defer to CHORE-617". The question is Q1 of the reconciliation package's `decisions.md` (`docs/planning/roadmap-reconciliation-2026-11-02-a/`, untracked, a proposal; "Q1" is that file's label, not an ID). Its text, as the package gives it: "what should happen now?" for a finding that `anthropic.ts` is the only one of seven `callTool`/`callMCPTool` sites with no requirement that the called tool was advertised. Whether the maintainer saw exactly that wording is not in the queue: TODO(evidence).
+- Alternatives rejected: "Authorise the guard now" (the package's option B: a guard in `anthropic.ts` that rejects a tool with no advertised match, which it says needs the independent review that `MC-912` requires); "Defer to CHORE-617" (option C: record the finding against CHORE-617 and act when tools are designed).
+- Related: `MC-933` (decision 1: Utility has no tools in the first slice), `MC-934`, `MC-937` (plugin model providers refused), `MC-912`, CHORE-616, CHORE-617, `MC-998`.
+
+**What was decided (maintainer).**
+1. Q1: "Bounded investigation (Recommended)". As the queue glosses it: synthetic input, stubbed fetch, scratch only; it confirms or refutes the dispatch, the read prompts, the loop bound, Stop behaviour and the plugin variant; the fix decision comes after the result.
+
+- Notes, not the maintainer's words:
+  - The finding is the package's, by static reading only: no code was executed and no live exploit is claimed (labels kept: static trace, no exploit run). The package states that Utility sends `tools: []`, that Utility is non-streaming on an Anthropic-format model unless Response Streaming is on, that `internal:risuai` read tools carry no confirmation while writes still prompt, and that a plugin holding only the `replacer` grant could rewrite a non-streaming Anthropic body to add `tools` (INFERRED, not executed; the package's a-verify N1). The package's verification (V1, ACCEPT WITH CORRECTIONS) is not an execution of any of it.
+  - The package records the underlying rule ("authorise tools at the execution boundary") as the external proposal's invariant 3, with no MC.
+  - No fix is authorised, no ticket changes and no code is changed by this entry. The investigation was a separate dispatch; its result and independent review are on ledger rows 4839 and 4840 and the maintainer's follow-on choice is `MC-1007`.
+
+### MC-998 — Lane A, 2026-11-02: V3 body interceptors and Utility: "No exemption; fix wording"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 37 queue (line 5): chosen "No exemption; fix wording (Recommended)" over "Exempt Utility" and "Exempt tool-loop follow-ups only". Question Q2 of the package's `decisions.md`: "Should a Utility run be exempt from V3 body interceptors?" Fact as the package states it: any installed, enabled V3 plugin holding the `replacer` grant and calling `registerBodyIntercepter` sees and can replace every provider request body, Utility included; the callback gets `(body, label)` and nothing marks the run as Utility. The queue does not give the question text: wording as the package gives it, TODO(evidence) for what the maintainer saw.
+- Alternatives rejected: "Exempt Utility" (package option B: a run type the callback can see or a flag that skips interceptors; adds plugin API surface and a compatibility question for upstream plugins, `MC-175`); "Exempt tool-loop follow-ups only" (option C: depends on `MC-997`'s result).
+- Related: `MC-934` (Q3 decided only the before and after request hooks), `MC-937` (plugin model providers), `MC-997`, `MC-175`, CHORE-616, CHORE-617.
+
+**What was decided (maintainer).**
+1. Q2: "No exemption; fix wording (Recommended)". As the queue glosses it: narrow the `utilityConversation` header comment and the user-facing wording to "no before/after hooks, no plugin model providers"; revisit with CHORE-617.
+
+- Notes, not the maintainer's words:
+  - This entry does not restate `MC-934` or `MC-937`; it adds that body interceptors are outside what those decided. The package says no MC mentions interceptors.
+  - The queue records the header comment in `utilityConversation.svelte.ts` as overstating isolation (a confirmed report-only observation, no work opened beyond this wording fix). The wording fix is owed under the normal gates; no code or comment is changed by this entry.
+
+### MC-999 — Lane A, 2026-11-02: CHORE-205 ruling: "Run export step, then rule"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 37 queue (line 6): chosen "Run export step, then rule (Recommended)" over "Rule met now" and "Re-scope the bar". Question Q3 of the package's `decisions.md`: "Who rules that CHORE-205's device evidence meets the MC-920 bar?" Fact as the package states it: `MC-920` defines "CHORE-205 done" as "device cases only"; items 1 to 4 of the adopted criterion passed at n=2, item 6 (export) NOT REACHED, steps 12, 13, `MC-670` and M9 are called accepted gaps in the CHORE-205 Roadmap row, and the row says the ruling is not decided (TODO(evidence)). The queue does not give the question text: TODO(evidence) for what the maintainer saw.
+- Alternatives rejected: "Rule met now" (package option B: rule that the current evidence meets the bar and name item 6 as an accepted gap); "Re-scope the bar" (option C: amends `MC-920`).
+- Related: `MC-920`, `MC-957`, `MC-516`, CHORE-205, CHORE-396, `MC-1005`.
+
+**What was decided (maintainer).**
+1. Q3: "Run export step, then rule (Recommended)". As the queue glosses it: item 6 runs in the next planned device session, together with the CHORE-396 forced-GC check.
+
+- Notes, not the maintainer's words:
+  - No ruling is made by this entry: CHORE-205 stays not COMPLETE and the `MC-920` bar is not judged met or unmet. `MC-920` is not amended (option C was not chosen).
+  - The next device session is not scheduled in the sources: TODO(evidence).
+
+### MC-1000 — Lane A, 2026-11-02: upstream #596 classification: "Only with a reproducer"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 37 queue (line 7): chosen "Only with a reproducer (Recommended)" over "Gating until a Note 9 run" and "All six items gate". Question Q4 of the package's `decisions.md`: how to classify the #596 hang among the unresolved harvest items #553, #584, #596, #230, #681 and #718, under `MC-983` item 3 (data loss "actually reachable in normal use" gates the MVP refresh). The package applies `MC-983` item 3 to the other five without asking (classify when a reproducer exists). The queue does not give the question text: TODO(evidence) for what the maintainer saw.
+- Alternatives rejected: "Gating until a Note 9 run" (package option B: treat #596 as gating until a Note 9 run classifies it); "All six items gate" (option C: likely stalls the refresh with no deadline pressure, `MC-979`).
+- Related: `MC-983`, `MC-979`, `MC-984`, CHORE-627, CHORE-628, the Roadmap batch 35 section (harvest) and batch 37 section.
+
+**What was decided (maintainer).**
+1. Q4: "Only with a reproducer (Recommended)". As the package states the effect: each unresolved item is classified only when a reproducer exists, #596 included; only a reproduced normal-use loss gates the MVP refresh; the rest are recorded as non-gating with the missing observation named.
+
+- Notes, not the maintainer's words:
+  - #596 stays "an Android chat hang with HypaV2 or Hanurai; needs a Note 9 run" as the Roadmap batch 35 section records it. No item is classified as loss or non-loss by this entry, and no run is scheduled.
+
+### MC-1001 — Lane A, 2026-11-02: Utility work against the UI stages: "Analysis now, UI after S4"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 37 queue (line 8): chosen "Analysis now, UI after S4 (Recommended)" over "Nothing until UI-S6" and "No linkage". Question Q5 of the package's `decisions.md`: "When may Utility work resume relative to the UI stages?" Fact as the package states it: no record ties Utility to UI-S6 or UI-S4; CHORE-616 S2 is merged; CHORE-617 waits on the maintainer's answers to sizing decisions 5, 8 and 9, not on a UI stage. The queue does not give the question text: TODO(evidence) for what the maintainer saw.
+- Alternatives rejected: "Nothing until UI-S6" (package option B); "No linkage" (option C: Utility proceeds in parallel under the one-writer rule; the package names rework risk for the UI-S4 Home Utility card).
+- Related: `MC-890` (item 4: each surface batch migrates its own call sites), `MC-933`, `MC-934`, CHORE-616, CHORE-617, UI-S4, UI-S5, UI-S6.
+
+**What was decided (maintainer).**
+1. Q5: "Analysis now, UI after S4 (Recommended)". As the package states the effect: analysis, diagnostics and CHORE-617 sizing may proceed now; Utility implementation that touches UI starts after UI-S4 acceptance; UI-S5 and UI-S6 proceed separately.
+
+- Notes, not the maintainer's words:
+  - This is a scheduling rule; the package says no existing policy set it. It does not answer CHORE-617's sizing decisions 5, 8 and 9, which stay open.
+
+### MC-1002 — Lane A, 2026-11-02: cross-mode seam note before UI-S1 sizing: "One bounded note"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 37 queue (line 9): chosen "One bounded note (Recommended)" over "No note" and "Full cross-mode contract". Question Q6 of the package's `decisions.md`: "Is a bounded cross-mode seam note required before UI-S1 sizing?" The note covers six seams only, as the package lists them: navigation ownership, renderer and composer, status and approval containers, extension parts, platform capability reporting, persistence ownership (the package's `proposal.md` section 5). The queue does not give the question text: TODO(evidence) for what the maintainer saw.
+- Alternatives rejected: "No note" (package option B: UI-S1 sizing raises seams as they appear); "Full cross-mode contract" (option C: the external proposal's wording).
+- Related: `MC-890`, `MC-920`, UI-S1, CHORE-205, `MC-1003`.
+
+**What was decided (maintainer).**
+1. Q6: "One bounded note (Recommended)". As the package states the effect: questions and constraints only, no new design package, produced as input to UI-S1 sizing.
+
+- Notes, not the maintainer's words:
+  - The note is owed before UI-S1 sizing and is not written by this entry. UI-S1 stays gated by CHORE-205 (the package's reading of `MC-516` and `MC-920`).
+
+### MC-1003 — Lane A, 2026-11-02: the Back mechanism is decided at UI-S1 sizing (amends the timing of `MC-892` item 3)
+
+- Tag: decision (the maintainer's answer, relayed by lane A); an amendment of timing. Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 37 queue (line 10): chosen "At UI-S1 sizing (Recommended)" over "Keep at UI-S4". Question Q7 of the package's `decisions.md`: "When is the Back mechanism decided?" Fact as the package states it: `MC-892` item 3 decides one Back mechanism for all new screens and Android at UI-S4 sizing; UI-S1 to S3 add screens before that, and whether they may ship first is UNKNOWN (the package's d-queue). The package also listed "Block new screens before UI-S4" (option C, "not workable: S1 to S3 are screens"); the queue names only "Keep at UI-S4" as the rejected alternative. The queue does not give the question text: TODO(evidence) for what the maintainer saw.
+- Alternatives rejected: "Keep at UI-S4" (package option B: S1 to S3 use the existing per-screen behaviour and S4 migrates; no amendment, possible rework in S4); the package's option C was not chosen.
+- Related: `MC-892` (item 3 amended in timing; marked there), `MC-278` (item 4, the Android-first Back decision), `MC-890`, UI-S1, UI-S4.
+
+**What was decided (maintainer).**
+1. Q7: "At UI-S1 sizing (Recommended)". This amends only the timing of `MC-892` item 3: one Back mechanism for all new screens and Android is decided as one of UI-S1's sizing questions, not at UI-S4 sizing. Nothing else in `MC-892` changes.
+
+- Notes, not the maintainer's words:
+  - The DD-207 and `MC-278` item 4 tension that `MC-892` recorded stays recorded and is not resolved here.
+  - Nothing here authorizes application code.
+
+### MC-1004 — Lane A, 2026-11-02: tickets whose consumer comes before the setter or host: "Consumer plan names default"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 37 queue (line 11): chosen "Consumer plan names default (Recommended)" over "Re-stage setters first" and "Leave to each sizing". Question Q8 of the package's `decisions.md`: the rule for tickets whose consumer comes in an earlier stage than the setter or host. Examples as the package gives them (its d-queue): CHORE-568 (set in Studio S3, read in chat S1), CHORE-572 toast host (stage S3 row, consumers in S0, S2, S3), CHORE-573 (S2 row, chip in S1), CHORE-584 (S2 fields, Home in S4). The queue does not give the question text: TODO(evidence) for what the maintainer saw.
+- Alternatives rejected: "Re-stage setters first" (package option B: changes the stage rows); "Leave to each sizing" (option C: the risk is found late).
+- Related: `MC-890`, `MC-892`, CHORE-568, CHORE-572, CHORE-573, CHORE-584, UI-S1 to UI-S4.
+
+**What was decided (maintainer).**
+1. Q8: "Consumer plan names default (Recommended)". As the package states the effect: the stage plan for the consumer names the default when the setter does not exist yet (for CHORE-568: field absent means off), and a host ticket (CHORE-572) is staged with its first consumer; the stage rows are not re-staged.
+
+- Notes, not the maintainer's words:
+  - The defaults are plan items for each stage's sizing; none is set by this entry. The package's example default for CHORE-568 ("field absent means off") is the package's, not a recorded product decision beyond this rule.
+
+### MC-1005 — Lane A, 2026-11-02: the Workspace home assumed for sizing: "store2 record first"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 37 queue (line 12): chosen "store2 record first (Recommended)" over "Filesystem folder first" and "Staged hybrid" (an assumption for sizing only, no schema). Question Q9 of the package's `decisions.md`: "Which home should Workspace sizing assume?" Fact as the package states it: no MC settles any Workspace persistence rule (`MC-933` chose ephemeral conversations first); `internal:fs` is Chromium only (`showDirectoryPicker`), the Tauri fs scope excludes project folders, and a character-free persistent chat would need a new shard type (the CHORE-617 row and the package's c-gates). The queue does not give the question text: TODO(evidence) for what the maintainer saw.
+- Alternatives rejected: "Filesystem folder first" (package option B: desktop-only at first; external file lifecycle becomes the main risk); "Staged hybrid" (option C).
+- Related: `MC-933`, `MC-774` (fork-only data stays in store2/`.rtb`, left out of `.bin` with a warning naming it), `MC-685`, `MC-350`, CHORE-617.
+
+**What was decided (maintainer).**
+1. Q9: "store2 record first (Recommended)". As the package states the effect: size a record in the existing store2 world first (shape not designed, no schema); fork-only data follows `MC-774`.
+
+- Notes, not the maintainer's words:
+  - This is an assumption for sizing only. Platform reach stays open (`MC-933` decision 2 is desktop first; whether Workspace exists on Android is an open question in the package's `proposal.md` section 8.2). Backup, trash and Android forward-migration rules (`MC-350`) still need their own answers in sizing.
+
+### MC-1006 — Lane A, 2026-11-02: Live-State housekeeping: "Next records batch"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 37 queue (line 13): chosen "Next records batch (Recommended)" over "Not now". The package's `decisions.md` carries this as a note, formerly its Q10, not a question: `Agents/Live-State.md` does not follow `MC-321` item 4 (`docs/workflow/records.md`), about 114 KB at the packet snapshot and 117,465 bytes at `ea14314bd` (`git cat-file -s`, the package's figure); the count method for its "Superseded" bullets is not stated. The queue does not give the question text: TODO(evidence) for what the maintainer saw.
+- Alternatives rejected: "Not now".
+- Related: `MC-321` (item 4), `MC-479` (an earlier Live-State archive move), records batch 37.
+
+**What was decided (maintainer).**
+1. Live-State housekeeping: "Next records batch (Recommended)". As the queue glosses it: archive the superseded bullets byte-preserved per `MC-321` item 4, fix the line-7 pointer, measure size and read cost before and after.
+
+- Notes, not the maintainer's words:
+  - Done in records batch 37 (ledger row 4841): the superseded bullets moved to `Agents/Archive/Live-State-history-2026-11-02.md`; the byte sizes before and after are on that row. No read-cost (token) measurement is recorded, and no savings are claimed beyond the measured byte sizes: TODO(evidence) for a read-cost figure.
+  - The package's three smaller governance clarifications (a combined-Gate-1 sentence in `routing.md`, a label in `review-change/SKILL.md`, a device-check-owed sentence in `records.md`) were not asked and are not decided here.
+
+### MC-1007 — Lane A, 2026-11-02: the Q1 finding becomes one ticket, CHORE-629: "File one ticket, 3 parts"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 37 queue (line 16): chosen "File one ticket, 3 parts (Recommended)" over "Ticket the guard only" and "Record only". The question text is not in the queue: TODO(evidence). It followed the bounded investigation of `MC-997` (result `%TEMP%\risu-b715\rr\q1-invest\result.md`, independent review `rr\q1-verify\result.md`; both read by the records writer).
+- Alternatives rejected: "Ticket the guard only"; "Record only".
+- Related: `MC-997`, `MC-998`, `MC-912` (a change to a single point that enforces a security boundary gets an Opus Gate 2), `MC-933`, `MC-934`, `MC-937`, CHORE-616, CHORE-617, CHORE-629.
+
+**What was decided (maintainer).**
+1. File one ticket with three parts: "File one ticket, 3 parts (Recommended)". As the queue records the scope (CHORE-629, the next free number in lane A's block CHORE-620 to CHORE-669): (1) refuse a `tool_use` whose name is not in `arg.tools` at the Anthropic non-streaming dispatch site; (2) a shared depth cap for the Anthropic, OpenAI and Google tool-loop recursions; (3) pass the abort signal to the non-streaming Anthropic `globalFetch` and check abort before each recursion.
+
+- Notes, not the maintainer's words:
+  - Status: filed, not started. Route as the queue gives it: sizing, a designer plan and tests, Gate 1, an independent security-boundary review, Gate 2. The queue gives the regression-reproducer shape as the diagnostic's Q1, Q2 and Q4 assertions inverted (the review's guard-options section).
+  - What the investigation graded (DIAGNOSTIC experiments with a stubbed provider, fetch, spawn and prompts; 21 of 21 pass; the run exits 1 from one unrelated unhandled error in `parser.svelte.ts`; the reviewer re-ran 21 of 21 and a scratch mutant flipped 14 of 21): dispatch of an unadvertised `tool_use` on the non-streaming Anthropic path SUPPORTED; unprompted library-wide reads SUPPORTED (WEAK for three read tools whose fixture was empty; the write allow path untested); approved stdio spawned without a prompt and unapproved prompts SUPPORTED (approval store stubbed); no depth bound observed to the 50-round cap SUPPORTED; Stop does not abort the non-streaming request or tool loop (no abort signal reaches the fetch; 17 further rounds ran after Stop in the test) SUPPORTED; the plugin variant WEAK (a stand-in registration; the `replacer` grant gating was not exercised); OpenAI and Google do not dispatch an unmatched tool but also recurse without a depth bound (WEAK as a control; the reviewer notes that a guard copied from those sites leaves the depth and Stop parts open). No real provider was called. Whether RP chats with MCP tools share the same unadvertised-dispatch path is a static inference, not tested.
+  - The investigation calls the abort-signal part independent of the guard, and the depth cap defence in depth that stays relevant for chats with tools advertised (its labelled opinion, not a finding). Option and scope choices beyond the three parts are the maintainer's.
+  - Nothing here authorizes application code, a commit or a push.

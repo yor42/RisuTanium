@@ -432,6 +432,22 @@ Source: the [Roadmap](Roadmap.md) batch 36 section and rows. Device figures are 
 - **Tooling.** The `build-one.ps1` `-Measure` fix was not exercised in device batch 36 (APKs reused) and stays unverified.
 - **`cb841556f`.** The parity-test run is not saved: TODO(evidence).
 
+## After records batch 37 (2026-11-02; the roadmap reconciliation answers `MC-997` to `MC-1007`, the Q1 investigation, CHORE-629, the Live-State archive move)
+
+Source: the [Roadmap](Roadmap.md) batch 37 section and rows. The reconciliation package (`docs/planning/roadmap-reconciliation-2026-11-02-a/`) is untracked and a proposal; its findings keep their labels (static trace, no exploit run, UNKNOWN, INFERRED).
+
+- **Q1 investigation: done; CHORE-629 filed, not started (`MC-997`, `MC-1007`).** DIAGNOSTIC experiments with a stubbed provider (21 of 21 pass; a fresh reviewer re-ran them and a scratch mutant flipped 14 of 21). Still not tested: a real provider or proxy returning an unadvertised `tool_use`; the real `replacer` grant gating of the plugin variant (stand-in registration only); the write-prompt allow path and the module read tools; whether RP chats with MCP tools share the path (static inference). Next: sizing and a designer plan when scheduled (guard at the Anthropic non-streaming site, a shared depth cap, the abort signal on that fetch), then the independent security-boundary review and Gate 2. The review's note: a guard copied from the OpenAI and Google sites would leave the depth and Stop parts open.
+- **Q2 wording fix owed under the normal gates (`MC-998`).** Narrow the `utilityConversation` header comment and any user-facing wording to "no before/after hooks, no plugin model providers"; V3 body interceptors still see Utility bodies. Revisit with CHORE-617.
+- **Q3 export step owed in the next device session (`MC-999`).** CHORE-205 item 6 (export) runs together with the CHORE-396 forced-GC check, then the ruling against the `MC-920` bar. No session is scheduled in the sources: TODO(evidence). CHORE-624's one device check and the durability re-log (`MC-995`, `MC-996`) are owed to the same next run.
+- **Q4 (`MC-1000`).** The unresolved harvest items (#553, #584, #596, #230, #681, #718) are classified only when a reproducer exists; nothing was classified or scheduled.
+- **Q5 (`MC-1001`).** Utility analysis and CHORE-617 sizing may proceed; UI-touching Utility implementation waits for UI-S4 acceptance. CHORE-617's sizing decisions 5, 8 and 9 stay open.
+- **Q6 seam note owed before UI-S1 sizing (`MC-1002`).** One bounded note on six seams (navigation ownership, renderer and composer, status and approval containers, extension parts, platform capability reporting, persistence ownership): questions and constraints only. Not written.
+- **Q7 and Q8 (`MC-1003`, `MC-1004`).** The Back mechanism is decided at UI-S1 sizing (not UI-S4), amending the timing of `MC-892` item 3. Each consumer-before-setter plan (CHORE-568, CHORE-572, CHORE-573, CHORE-584 are the package's examples) names its default or stages the host with its first consumer.
+- **Q9 (`MC-1005`).** Workspace sizing assumes a store2 record first, an assumption only with no schema; platform reach (Android), backup, trash and the `MC-350` migration rules still need their own answers.
+- **Report-only observation, no work opened.** `decodeToolCall` in `mcp.ts` uses `slice('<tool_call>'.length, 0)`, which returns an empty string; impact UNCERTAIN (callers not traced).
+- **Live-State archive move (`MC-1006`).** Done; sizes and the check are on ledger row 4841. A read-cost (token) measurement was not taken: TODO(evidence). Lane A converted the working copies of the new Live-State and archive files to CRLF to match the other records (git's committed form is LF).
+- **Candidates for the maintainer (not ticketed):** none new beyond CHORE-629.
+
 ## Not scheduled
 
 - **Suspected by the Wiki session while documenting (2026-09-30, wiki `5b366746`); not verified
