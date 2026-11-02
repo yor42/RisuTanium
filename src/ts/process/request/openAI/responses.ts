@@ -15,6 +15,7 @@ import { applyAdditionalParameters, applyParameters, getAdditionalParameters, is
 import type { OpenAIChatExtra, ResponseFunctionCallItem, ResponseInputItem, ResponseItem, ResponseOutputItem } from './types'
 import { getLocalNetworkRequestOptions, type LocalNetworkRequestOptions } from './shared'
 import { resolveRequestKey } from '../secretKey'
+import { beginToolRound, endStreamForGate, gateResult, toolBlockGate } from '../toolLoop'
 
 function responseTextContentToString(content:any):string{
     if(typeof content === 'string'){
@@ -482,6 +483,10 @@ async function appendResponsesToolOutputs(body:any, calls:ResponseFunctionCallIt
 
     const callCodes:string[] = []
     for(const toolCall of calls){
+        // The caller sees the same gate before it sends the follow-up, so it ends the turn; nothing more is dispatched.
+        if(toolBlockGate(arg) !== 'go'){
+            break
+        }
         let output = 'Tool call failed with no text response'
         try{
             const parsed = toolCall.arguments ? JSON.parse(toolCall.arguments) : {}
@@ -490,7 +495,7 @@ async function appendResponsesToolOutputs(body:any, calls:ResponseFunctionCallIt
                 output = 'No tool found with name: ' + toolCall.name
             }
             else{
-                const used = (await callTool(tool.name, parsed, {subject: arg.subject, mcpURL: tool.mcpURL})).filter((m) => m.type === 'text')
+                const used = (await callTool(tool.name, parsed, {subject: arg.subject, mcpURL: tool.mcpURL, toolLoop: arg.toolLoop})).filter((m) => m.type === 'text')
                 if(used.length > 0){
                     output = used[0].text
                     if(arg.rememberToolUsage){
@@ -551,6 +556,10 @@ async function requestHTTPResponsesAPI(requestURL:string, body:any, headers:Reco
 
     const calls = extractResponsesFunctionCalls(data)
     if(calls.length > 0){
+        const round = beginToolRound(arg)
+        if(round !== 'go'){
+            return gateResult(round)
+        }
         body.__lastOutput = data.output ?? []
         const assistantText = extractResponsesText(data, arg)
         const prefix = await appendResponsesToolOutputs(body, calls, arg, assistantText)
@@ -559,12 +568,22 @@ async function requestHTTPResponsesAPI(requestURL:string, body:any, headers:Reco
         let resRec:requestDataResponse
         let attempt = 0
         do{
+            // The first attempt is also the gate before the follow-up request itself.
+            if(toolBlockGate(arg) !== 'go'){
+                break
+            }
             attempt++
             resRec = await requestHTTPResponsesAPI(requestURL, body, headers, arg, networkOptions)
-            if(resRec.type !== 'fail'){
+            if(resRec.type !== 'fail' || resRec.endsTurn){
                 break
             }
         } while(attempt <= db.requestRetrys)
+
+        // A Stop that landed during the last attempt, or a spent budget, must not reach the failure below.
+        const afterRetries = toolBlockGate(arg)
+        if(afterRetries !== 'go'){
+            return gateResult(afterRetries)
+        }
 
         if(resRec.type === 'success'){
             return { type: 'success', result: prefix ? prefix + '\n\n' + resRec.result : resRec.result }
@@ -745,6 +764,11 @@ function wrapResponsesToolStream(stream:ReadableStream<StreamResponseChunk>, bod
                     return
                 }
 
+                const round = beginToolRound(arg)
+                if(round !== 'go'){
+                    return endStreamForGate(controller, round)
+                }
+
                 body.__lastOutput = calls.map((call) => ({
                     type: 'function_call',
                     call_id: call.call_id,
@@ -754,6 +778,10 @@ function wrapResponsesToolStream(stream:ReadableStream<StreamResponseChunk>, bod
                 }))
                 const callPrefix = await appendResponsesToolOutputs(body, calls, arg, lastValue?.["0"] ?? '')
                 delete body.__lastOutput
+                const blocksGate = toolBlockGate(arg)
+                if(blocksGate !== 'go'){
+                    return endStreamForGate(controller, blocksGate)
+                }
                 prefix += (prefix && callPrefix ? '\n\n' : '') + callPrefix
                 if(prefix){
                     controller.enqueue({ "0": prefix })
@@ -763,6 +791,10 @@ function wrapResponsesToolStream(stream:ReadableStream<StreamResponseChunk>, bod
                 let attempt = 0
                 let ok = false
                 do{
+                    // The first attempt is also the gate before the follow-up request itself.
+                    if(toolBlockGate(arg) !== 'go'){
+                        break
+                    }
                     attempt++
                     resRec = await fetchNative(requestURL, {
                         body: JSON.stringify(toExternalResponsesBody(body)),
@@ -776,6 +808,12 @@ function wrapResponsesToolStream(stream:ReadableStream<StreamResponseChunk>, bod
                     })
                     ok = resRec.status === 200 && resRec.headers.get('Content-Type')?.includes('text/event-stream')
                 } while(!ok && attempt <= db.requestRetrys)
+
+                // A Stop that landed during the last attempt, or a spent budget, must not reach the alert below.
+                const afterRetries = toolBlockGate(arg)
+                if(afterRetries !== 'go'){
+                    return endStreamForGate(controller, afterRetries)
+                }
 
                 if(!ok){
                     alertError(`Failed to fetch model response after tool execution`)

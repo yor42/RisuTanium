@@ -18,6 +18,7 @@ export const languageSpanish = {
     "errors": {
         "toomuchtoken": "Error: El mínimo requerido de tokens es mayor que el Tamaño Máximo del Contexto.",
         "unknownModel": "Error: Modelo seleccionado desconocido",
+        "toolLoopLimit": "El modelo siguió llamando a herramientas durante {rounds} rondas en una misma respuesta (el máximo permitido), por lo que la respuesta se detuvo.",
         "httpError": "Error: error en la solicitud:",
         "noData": "Ese archivo no parece válido o sus datos están dañados.",
         "onlyOneChat": "Debe haber al menos un chat",

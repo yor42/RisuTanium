@@ -15,6 +15,7 @@ import { applyAdditionalParameters, applyParameters, getAdditionalParameters, ty
 import { bodyIntercepterStore } from "src/ts/stores.svelte"
 import { isSecretRef, registerSensitive, resolveSecret } from "src/ts/secretRef"
 import { resolveRequestKey } from "./secretKey"
+import { beginToolRound, endStreamForGate, gateResult, toolBlockGate } from "./toolLoop"
 import { isAndroidTransport } from "src/ts/storage/tauriByteTransport"
 import { parseJsonBody, readBodyText } from "src/ts/network/frozenBody"
 
@@ -843,6 +844,10 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
 
     // If there are function calls, handle calls and send next request
     if(calls.length > 0){
+        const round = beginToolRound(arg)
+        if(round !== 'go'){
+            return gateResult(round)
+        }
         const chat = body.contents as GeminiChat[]
 
         // Add the model response part to the request content (only function calls if simplifiedToolUse is enabled)
@@ -878,12 +883,16 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
         
         // Handle tool calls
         for(const call of calls){
+            const blockGate = toolBlockGate(arg)
+            if(blockGate !== 'go'){
+                return gateResult(blockGate)
+            }
             const functionName = call.name
             const functionArgs = call.args
-            
+
             const tool = tools.find((t) => t.name === functionName)
             if(tool){
-                const result = (await callTool(tool.name, functionArgs, {subject: arg.subject, mcpURL: tool.mcpURL})).filter((r) => {
+                const result = (await callTool(tool.name, functionArgs, {subject: arg.subject, mcpURL: tool.mcpURL, toolLoop: arg.toolLoop})).filter((r) => {
                     return r.type === 'text'
                 })
                 if(result.length === 0){
@@ -948,14 +957,27 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
         let resRec
         let attempt = 0
         do {
+            // The first attempt is also the gate before the follow-up request itself.
+            if (toolBlockGate(arg) !== 'go') {
+                break
+            }
             attempt++
             resRec = await requestGoogle(url, body, headers, arg)
-            
-            if (resRec.type != 'fail') {
+
+            if (resRec.type != 'fail' || resRec.endsTurn) {
                 break
             }
         } while (attempt <= db.requestRetrys) // Retry up to db.requestRetrys times
-        
+
+        // A Stop that landed during the last attempt, or a spent budget, must not reach the alert below.
+        const afterRetries = toolBlockGate(arg)
+        if(afterRetries !== 'go'){
+            return gateResult(afterRetries)
+        }
+        if(resRec.type === 'fail' && resRec.endsTurn){
+            return resRec
+        }
+
         // Does not include the text response if simplifiedToolUse is enabled
         const result = (db.simplifiedToolUse ? '' : processTextResponse(rDatas) + '\n\n') + callCodes.join('\n\n')
 
@@ -1152,6 +1174,10 @@ function wrapToolStream(
 
                     const calls = JSON.parse(value["__tool_calls"]) as GeminiFunctionCall[]
                     if(calls && calls.length > 0){
+                        const round = beginToolRound(arg)
+                        if(round !== 'go'){
+                            return endStreamForGate(controller, round)
+                        }
                         const chat = body.contents as GeminiChat[]
 
                         // Add the model response part to the request content (only function calls if simplifiedToolUse is enabled)
@@ -1197,11 +1223,15 @@ function wrapToolStream(
                         const tools = arg?.tools ?? []
                         // Handle tool calls
                         for(const call of calls){
+                            const blockGate = toolBlockGate(arg)
+                            if(blockGate !== 'go'){
+                                return endStreamForGate(controller, blockGate)
+                            }
                             const functionName = call.name
                             const functionArgs = call.args
                             const tool = tools.find((t) => t.name === functionName)
                             if(tool){
-                                const result = (await callTool(tool.name, functionArgs, {subject: arg.subject, mcpURL: tool.mcpURL})).filter((r) => {
+                                const result = (await callTool(tool.name, functionArgs, {subject: arg.subject, mcpURL: tool.mcpURL, toolLoop: arg.toolLoop})).filter((r) => {
                                     return r.type === 'text'
                                 })
                                 if(result.length === 0){
@@ -1266,6 +1296,10 @@ function wrapToolStream(
                         let errorFlag = true
                         
                         do {
+                            // The first attempt is also the gate before the follow-up request itself.
+                            if(toolBlockGate(arg) !== 'go'){
+                                break
+                            }
                             attempt++
                             resRec = await fetchNative(url, {
                                 headers: headers,
@@ -1289,6 +1323,12 @@ function wrapToolStream(
                                 break
                             }
                         } while (attempt <= db.requestRetrys) // Retry up to db.requestRetrys times
+
+                        // A Stop that landed during the last attempt, or a spent budget, must not reach the alert below.
+                        const afterRetries = toolBlockGate(arg)
+                        if(afterRetries !== 'go'){
+                            return endStreamForGate(controller, afterRetries)
+                        }
 
                         if(errorFlag){
                             alertError(`Failed to fetch model response after tool execution`)

@@ -12,6 +12,7 @@ import { extractJSON, getOpenAIJSONSchema } from "../../templates/jsonSchema"
 import { applyChatTemplate } from "../../templates/chatTemplate"
 import { supportsInlayImage } from "../../files/inlays"
 import { callTool, decodeToolCall, encodeToolCall } from "../../mcp/mcp"
+import { beginToolRound, endStreamForGate, gateResult, toolBlockGate } from '../toolLoop'
 import type { RequestDataArgumentExtended, requestDataResponse, StreamResponseChunk } from '../request'
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters } from '../shared'
 
@@ -755,8 +756,13 @@ export async function requestHTTPOpenAI(
             if(dat.choices?.[0]?.message?.tool_calls && dat.choices[0].message.tool_calls.length > 0){
                 const toolCalls = dat.choices[0].message.tool_calls as ToolCall[]
 
+                const round = beginToolRound(arg)
+                if(round !== 'go'){
+                    return gateResult(round)
+                }
+
                 const messages = body.messages as OpenAIChatExtra[]
-                
+
                 messages.push(dat.choices[0].message)
 
                 // Remove the last message content if simplifiedToolUse is enabled
@@ -767,6 +773,10 @@ export async function requestHTTPOpenAI(
                 const callCodes: string[] = []
 
                 for(const toolCall of toolCalls){
+                    const blockGate = toolBlockGate(arg)
+                    if(blockGate !== 'go'){
+                        return gateResult(blockGate)
+                    }
                     if(!toolCall.function || !toolCall.function.name || toolCall.function.arguments === undefined || toolCall.function.arguments === null){
                         continue
                     }
@@ -783,7 +793,7 @@ export async function requestHTTPOpenAI(
                             }
                             else{
                                 const parsed = functionArgs
-                                const x = (await callTool(tool.name, parsed, {subject: arg.subject, mcpURL: tool.mcpURL})).filter(m => m.type === 'text')
+                                const x = (await callTool(tool.name, parsed, {subject: arg.subject, mcpURL: tool.mcpURL, toolLoop: arg.toolLoop})).filter(m => m.type === 'text')
                                 if(x.length > 0){
                                     messages.push({
                                         role: 'tool',
@@ -826,13 +836,26 @@ export async function requestHTTPOpenAI(
                 let attempt = 0
                 
                 do {
+                    // The first attempt is also the gate before the follow-up request itself.
+                    if (toolBlockGate(arg) !== 'go') {
+                        break
+                    }
                     attempt++
                     resRec = await requestHTTPOpenAI(replacerURL, body, headers, arg, networkOptions)
-                    
-                    if (resRec.type != 'fail') {
+
+                    if (resRec.type != 'fail' || resRec.endsTurn) {
                         break
                     }
                 } while (attempt <= db.requestRetrys) // Retry up to db.requestRetrys times
+
+                // A Stop that landed during the last attempt, or a spent budget, must not reach the alert below.
+                const afterRetries = toolBlockGate(arg)
+                if(afterRetries !== 'go'){
+                    return gateResult(afterRetries)
+                }
+                if(resRec.type === 'fail' && resRec.endsTurn){
+                    return resRec
+                }
 
                 const callCode = callCodes.join('\n\n')
 
@@ -1181,6 +1204,10 @@ function wrapToolStream(
                     
                     const toolCalls = Object.values(JSON.parse(value?.['__tool_calls'] || '{}') || {}) as ToolCall[]; 
                     if(toolCalls && toolCalls.length > 0){
+                        const round = beginToolRound(arg)
+                        if(round !== 'go'){
+                            return endStreamForGate(controller, round)
+                        }
                         const messages = body.messages as OpenAIChatExtra[]
                         let assistantContent = content
                         let assistantReasoningContent = ''
@@ -1214,6 +1241,10 @@ function wrapToolStream(
                         const callCodes: string[] = []
                     
                         for(const toolCall of toolCalls){
+                            const blockGate = toolBlockGate(arg)
+                            if(blockGate !== 'go'){
+                                return endStreamForGate(controller, blockGate)
+                            }
                             if(!toolCall.function || !toolCall.function.name || !toolCall.function.arguments){
                                 continue
                             }
@@ -1230,7 +1261,7 @@ function wrapToolStream(
                                     }
                                     else{
                                         const parsed = functionArgs
-                                        const x = (await callTool(tool.name, parsed, {subject: arg.subject, mcpURL: tool.mcpURL})).filter(m => m.type === 'text')
+                                        const x = (await callTool(tool.name, parsed, {subject: arg.subject, mcpURL: tool.mcpURL, toolLoop: arg.toolLoop})).filter(m => m.type === 'text')
                                         if(x.length > 0){
                                             messages.push({
                                                 role: 'tool',
@@ -1273,6 +1304,10 @@ function wrapToolStream(
                         let errorFlag = true
                         
                         do {
+                            // The first attempt is also the gate before the follow-up request itself.
+                            if(toolBlockGate(arg) !== 'go'){
+                                break
+                            }
                             attempt++
                             resRec = await fetchNative(replacerURL, {
                                 body: JSON.stringify(body),
@@ -1298,12 +1333,18 @@ function wrapToolStream(
                                 break
                             }     
                         } while (attempt <= db.requestRetrys) // Retry up to db.requestRetrys times
-                        
+
+                        // A Stop that landed during the last attempt, or a spent budget, must not reach the alert below.
+                        const afterRetries = toolBlockGate(arg)
+                        if(afterRetries !== 'go'){
+                            return endStreamForGate(controller, afterRetries)
+                        }
+
                         if(errorFlag){
                             alertError(`Failed to fetch model response after tool execution`)
                             return controller.close()
                         }
-                        
+
                         const transtream = getTranStream(arg)                    
                         resRec.body.pipeTo(transtream.writable).catch(() => {})
                         

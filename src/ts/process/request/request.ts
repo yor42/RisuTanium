@@ -20,6 +20,7 @@ import { runTrigger } from "../triggers";
 import { createRunSubject, type RunSubject } from "../chatOrigin";
 import { moduleLoadFailedText, unloadedModulesOf } from "../moduleRefList";
 import { requestClaude } from './anthropic';
+import { newToolLoop, type ToolLoopState } from './toolLoop';
 import { requestGoogleCloudVertex } from './google';
 import { wholeCharacterStream } from './wholeCharacterStream';
 import { requestOpenAI, requestOpenAILegacyInstruct, requestOpenAIResponseAPI } from "./openAI/requests";
@@ -66,6 +67,9 @@ interface requestDataArgument{
     temperatureOverride?: number
     // Set only by a Utility run. Keeps the global JSON schema out of the request body.
     noJsonSchema?: boolean
+    // One per user turn: shared by every tool round, retry, fallback and nested internal:aiaccess call of the turn.
+    // Never cloned and never handed to a plugin: the plugin provider builds its own argument.
+    toolLoop?: ToolLoopState
 }
 
 export interface RequestDataArgumentExtended extends requestDataArgument{
@@ -85,6 +89,8 @@ export type requestDataResponse = {
     result: string
     noRetry?: boolean,
     failByServerError?: boolean
+    // The turn is over (its tool budget is spent, or it was stopped): no retry and no fallback model follows.
+    endsTurn?: boolean
     model?: string
 }|{
     type: "streaming",
@@ -227,6 +233,7 @@ export async function requestChatData(arg:requestDataArgument, model:ModelModeEx
     }
     const db = getDatabase()
     const fallBackModels:string[] = safeStructuredClone(db?.fallbackModels?.[model] ?? [])
+    arg.toolLoop ??= newToolLoop(abortSignal)
     const tools = arg.tools ?? (await getTools(arg.subject))
     // The selected model is attempt 0 (the blank name); the list follows it.
     fallBackModels.unshift('')
@@ -334,6 +341,10 @@ export async function requestChatData(arg:requestDataArgument, model:ModelModeEx
                     type: 'fail',
                     result: 'Aborted'
                 }
+            }
+
+            if(da.type === 'fail' && da.endsTurn){
+                return da
             }
 
             if(da.type === 'success' && arg.escape){
@@ -546,6 +557,7 @@ async function requestChatDataByFormat(arg:requestDataArgument, model:ModelModeE
     targ.biasString = arg.biasString ?? []
     targ.multiGen = ((db.genTime > 1 && targ.aiModel.startsWith('gpt') && (!arg.continue)) && (!arg.noMultiGen))
     targ.abortSignal = abortSignal
+    targ.toolLoop ??= newToolLoop(abortSignal)
     targ.mode = model
     targ.extractJson = arg.extractJson ?? db.extractJson
     if(targ.aiModel === 'reverse_proxy'){

@@ -12,7 +12,9 @@ import { language } from "src/lang"
 import type { MultiModal } from "../index.svelte"
 import { extractJSON } from "../templates/jsonSchema"
 import { callTool, decodeToolCall, encodeToolCall } from "../mcp/mcp"
+import type { RPCToolCallContent } from "../mcp/mcplib"
 import type { RequestDataArgumentExtended, requestDataResponse, StreamResponseChunk } from './request'
+import { abortedResult, beginToolRound, gateResult, refusedToolContent, runAborted, toolBlockGate } from './toolLoop'
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters } from './shared'
 import { resolveRequestKey } from './secretKey'
 import { isSecretRef } from 'src/ts/secretRef'
@@ -1081,9 +1083,13 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
         method: "POST",
         chatId: arg.chatId,
         interceptor: 'anthropic_http',
-        deliverWhileFrozen: true
+        deliverWhileFrozen: true,
+        abortSignal: arg.abortSignal
     })
 
+    if(runAborted(arg)){
+        return abortedResult()
+    }
     if(!res.ok){
         const stringlified = JSON.stringify(res.data)
         return {
@@ -1114,6 +1120,11 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
 
     if(hasToolUse){
 
+        const round = beginToolRound(arg)
+        if(round !== 'go'){
+            return gateResult(round)
+        }
+
         const messages:Claude3ExtendedChat[] = body.messages
         const response:Claude3Chat = {
             role: 'user',
@@ -1135,8 +1146,15 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
             }
 
             if(content.type === 'tool_use'){
+                const blockGate = toolBlockGate(arg)
+                if(blockGate !== 'go'){
+                    return gateResult(blockGate)
+                }
                 const listed = arg.tools?.find((t) => t.name === content.name)
-                const used = await callTool(content.name, content.input, {subject: arg.subject, mcpURL: listed?.mcpURL})
+                // A name the request did not advertise is answered, not routed: routing could start a client for it.
+                const used:RPCToolCallContent[] = listed
+                    ? await callTool(content.name, content.input, {subject: arg.subject, mcpURL: listed.mcpURL, toolLoop: arg.toolLoop})
+                    : refusedToolContent(content.name)
                 const r:Claude3ToolResponseBlock = {
                     type: 'tool_result',
                     tool_use_id: content.id,
@@ -1168,7 +1186,7 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                     })
                 }
                 response.content.push(r)
-                if(arg.rememberToolUsage){
+                if(listed && arg.rememberToolUsage){
                     arg.additionalOutput ??= ''
                     arg.additionalOutput += await encodeToolCall({
                         call: {
@@ -1182,6 +1200,11 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
             }
 
             (messages[messages.length-1] as Claude3Chat).content.push(content)
+        }
+
+        const followUpGate = toolBlockGate(arg)
+        if(followUpGate !== 'go'){
+            return gateResult(followUpGate)
         }
 
         messages.push(response)

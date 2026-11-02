@@ -18,6 +18,7 @@ export const languageKorean = {
     "errors": {
         "toomuchtoken": "에러: 요청에 필요한 최소 토큰이 최대 토큰보다 큽니다.",
         "unknownModel": "에러: 알수없는 모델 선택됨",
+        "toolLoopLimit": "모델이 한 번의 응답에서 도구를 {rounds}회 연속 호출하여(허용 최대치) 응답이 중단되었습니다.",
         "httpError": "요청 에러:",
         "noData": "올바른 파일이 아니거나 데이터가 손상됐습니다.",
         "onlyOneChat": "채팅이 하나 이상 필요합니다",

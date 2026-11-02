@@ -18,6 +18,7 @@ export const languageChineseTraditional = {
     "errors": {
         "toomuchtoken": "錯誤：最低所需 Token 數已超過最大上下文長度",
         "unknownModel": "錯誤：無法識別所選的模型",
+        "toolLoopLimit": "模型在一次回覆中連續呼叫工具達 {rounds} 輪（已達允許上限），因此回覆已被停止。",
         "httpError": "錯誤：請求發生錯誤：",
         "noData": "檔案格式錯誤或資料已損毀",
         "onlyOneChat": "至少需要保留一個對話",

@@ -18,6 +18,7 @@ export const languageVietnamese = {
     "errors": {
         "toomuchtoken": "Lỗi: Mã thông báo bắt buộc tối thiểu lớn hơn Kích thước ngữ cảnh tối đa.",
         "unknownModel": "Lỗi: Đã chọn mô hình không xác định",
+        "toolLoopLimit": "Mô hình liên tục gọi công cụ trong {rounds} lượt ở một phản hồi (mức tối đa cho phép), nên phản hồi đã bị dừng.",
         "httpError": "Lỗi: lỗi trong yêu cầu:",
         "noData": "Tệp này có vẻ không hợp lệ hoặc dữ liệu đã bị hỏng.",
         "onlyOneChat": "Phải có ít nhất một cuộc trò chuyện",

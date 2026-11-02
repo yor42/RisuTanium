@@ -18,6 +18,7 @@ export const languageGerman = {
     "errors": {
         "toomuchtoken": "Fehler: Die Mindestgröße für die Antwort der KI in Tokens, die Sie angegeben haben, übersteigt die maximale Kontextgröße des Modells",
         "unknownModel": "Fehler: Unbekanntes Modell ausgewählt",
+        "toolLoopLimit": "Das Modell hat in einer Antwort {rounds} Runden lang Werkzeuge aufgerufen (das erlaubte Maximum), daher wurde die Antwort gestoppt.",
         "httpError": "Fehler: Es ist ein Fehler bei der Anfrage aufgetreten:",
         "noData": "Die Datei scheint nicht gültig zu sein oder die Daten sind beschädigt.",
         "onlyOneChat": "Es muss mindestens ein Chat vorhanden sein",

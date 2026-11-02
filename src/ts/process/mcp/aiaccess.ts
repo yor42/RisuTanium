@@ -4,6 +4,7 @@ import { requestChatData } from "../request/request";
 import { MCPClientLike } from "./internalmcp";
 import type { MCPTool, RPCToolCallContent } from "./mcplib";
 import type { RunSubject } from "../chatOrigin";
+import type { ToolLoopState } from "../request/toolLoop";
 
 export class AIAccessClient extends MCPClientLike {
     private directoryHandle: FileSystemDirectoryHandle | null = null;
@@ -51,7 +52,7 @@ export class AIAccessClient extends MCPClientLike {
         }]
     }
 
-    async callTool(methodName: string, args: any, ctx?: { subject?: RunSubject }): Promise<RPCToolCallContent[]> {
+    async callTool(methodName: string, args: any, ctx?: { subject?: RunSubject, toolLoop?: ToolLoopState }): Promise<RPCToolCallContent[]> {
         if (methodName === 'runLLM') {
             const { model, messages } = args;
             if (!model || !messages || !Array.isArray(messages)) {
@@ -66,8 +67,10 @@ export class AIAccessClient extends MCPClientLike {
                     content: msg.content
                 })),
                 bias: {},
-                subject: ctx?.subject
-            }, model === 'lite' ? 'otherAx' : 'model')
+                subject: ctx?.subject,
+                // The turn's state, not a new one: the nested model spends the outer turn's budget and stops with it.
+                toolLoop: ctx?.toolLoop
+            }, model === 'lite' ? 'otherAx' : 'model', ctx?.toolLoop?.signal ?? null)
 
             return [{
                 type: 'text',

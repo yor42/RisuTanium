@@ -18,6 +18,7 @@ export const languageEnglish = {
     errors: {
         toomuchtoken: "Error: The minimum required token is greater than the Max Context Size.",
         unknownModel: "Error: Unknown model selected",
+        toolLoopLimit: "The model kept calling tools for {rounds} rounds in one reply, the most allowed, so the reply was stopped.",
         httpError: "Error: error in request:",
         noData: "The file is invalid, or it's data is corrupted.",
         onlyOneChat: "There must be least one chat",

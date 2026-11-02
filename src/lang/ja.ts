@@ -18,6 +18,7 @@ export const languageJapanese = {
     errors: {
         toomuchtoken: "エラー：必要最小トークン数が最大コンテキストサイズを超えています。",
         unknownModel: "エラー：不明なモデルが選択されました。",
+        toolLoopLimit: "モデルが1回の返信でツールを{rounds}回連続して呼び出し、許可された上限に達したため、返信を停止しました。",
         httpError: "エラー：リクエストでエラーが発生しました：",
         noData: "ファイルが無効であるか、データが破損しています。",
         onlyOneChat: "少なくとも1つのチャットが必要です。",

@@ -15,6 +15,7 @@ import { isAndroidTransport } from "src/ts/storage/tauriByteTransport";
 import { sleep } from "src/ts/util";
 import { registeredCustomPluginMCPs } from "./pluginmcp";
 import type { RunSubject } from "../chatOrigin";
+import type { ToolLoopState } from "../request/toolLoop";
 
 export type MCPToolWithURL = MCPTool & {
     mcpURL: string;
@@ -28,6 +29,8 @@ export type MCPToolWithURL = MCPTool & {
 export type MCPCallContext = {
     subject?: RunSubject;
     mcpURL?: string;
+    /** The calling turn's tool-loop state, which a client that runs a model of its own shares instead of starting a new one. */
+    toolLoop?: ToolLoopState;
 };
 
 type MCPClientInstance = MCPClient | MCPClientLike;
@@ -399,12 +402,12 @@ export async function getMCPMeta(additionalMCPs?:string[], subject?:RunSubject, 
     return meta;
 }
 
-/** A client's `callTool`, which takes the subject as an optional third argument that most clients ignore. */
+/** A client's `callTool`, which takes the subject and the turn's tool-loop state as an optional third argument that most clients ignore. */
 type SubjectAwareClient = {
-    callTool(toolName:string, args:any, ctx?:{ subject?: RunSubject }):Promise<RPCToolCallContent[]>;
+    callTool(toolName:string, args:any, ctx?:{ subject?: RunSubject, toolLoop?: ToolLoopState }):Promise<RPCToolCallContent[]>;
 };
 
-async function callOnClient(url:string, client:MCPClientInstance, methodName:string, args:any, subject?:RunSubject) {
+async function callOnClient(url:string, client:MCPClientInstance, methodName:string, args:any, callCtx:{ subject?: RunSubject, toolLoop?: ToolLoopState }) {
     const entry = registry.get(url);
     if(entry) {
         entry.inFlight++;
@@ -412,7 +415,7 @@ async function callOnClient(url:string, client:MCPClientInstance, methodName:str
     }
     try {
         const target:SubjectAwareClient = client;
-        return await target.callTool(methodName, args, { subject });
+        return await target.callTool(methodName, args, callCtx);
     } finally {
         if(entry) {
             entry.inFlight--;
@@ -429,7 +432,7 @@ export async function callMCPTool(methodName:string, args:any, ctx?:MCPCallConte
     if(mcpURL) {
         const routed = ensured.find(([url]) => url === mcpURL);
         if(routed) {
-            return await callOnClient(mcpURL, routed[1], methodName, args, subject);
+            return await callOnClient(mcpURL, routed[1], methodName, args, { subject, toolLoop: ctx?.toolLoop });
         }
     }
     else {
@@ -438,7 +441,7 @@ export async function callMCPTool(methodName:string, args:any, ctx?:MCPCallConte
             const tools = await client.getToolList();
             const tool = tools.find(t => t.name === methodName);
             if(tool) {
-                return await callOnClient(url, client, methodName, args, subject);
+                return await callOnClient(url, client, methodName, args, { subject, toolLoop: ctx?.toolLoop });
             }
         }
     }
