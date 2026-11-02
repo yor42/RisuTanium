@@ -8,7 +8,11 @@
  * (it is mid-iteration, or in a wait that does not go through `wait`), the next
  * `wait` returns at once instead, exactly once. Waits that do not go through
  * `wait`, and a loop parked for good, are never touched.
+ *
+ * A measurement build notes each request before it changes anything; the note has no effect on the wake.
  */
+import { MEASURE } from '../process/memory/measureFlag'
+import { noteRequestNow } from './saveRequestProbe'
 
 export interface SaveSchedulerHooks {
     /** A save was requested: count it and, when `markDirty`, mark the page dirty. */
@@ -85,6 +89,9 @@ export function createSaveScheduler(options: SaveSchedulerOptions): SaveSchedule
             }, debounceMs)
         },
         requestNow() {
+            if (MEASURE) {
+                noteRequestNow(listeners.size > 0, wake !== null)
+            }
             if (timer) {
                 clearTimeout(timer)
                 timer = null

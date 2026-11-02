@@ -20,6 +20,8 @@ import { holdHiddenReplySave } from './hiddenReplySaveGuard'
 import { inFlightKinds, type InFlightKind } from './inFlightWork'
 import { hasUnsavedSaveMarks, requestNetSweep, requestSaveNow } from '../globalApi.svelte'
 import { markCharacterForSave } from '../storage/characterSaveMarks'
+import { noteReplyEnd } from '../storage/saveRequestProbe'
+import { MEASURE } from './memory/measureFlag'
 
 export interface SaveOnHideDeps {
     /** Where `visibilitychange` is heard and `visibilityState` is read. */
@@ -108,6 +110,9 @@ function pageIsHidden(): boolean {
  * entry point is touched; a failure of the flush never fails the send.
  */
 export function flushPageReplyEndWhenHidden(origin: ReplyEndOrigin): void {
+    if (MEASURE) {
+        noteReplyEnd(pageIsHidden())
+    }
     if (!pageIsHidden()) {
         return
     }

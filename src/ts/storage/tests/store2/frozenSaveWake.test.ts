@@ -123,7 +123,16 @@ afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     delete (globalThis as { __risuSavePassMeter?: SavePassMeterHandle }).__risuSavePassMeter
+    probeOf()?.reset()
+    delete (globalThis as ProbeGlobal).__risuSaveRequestProbe
 })
+
+type ProbeGlobal = { __risuSaveRequestProbe?: { all(): Array<{ kind: string, armed?: boolean, waiting?: boolean }>, reset(): void } }
+
+/** The request probe, read by name: absent until the first note. */
+function probeOf(): ProbeGlobal['__risuSaveRequestProbe'] {
+    return (globalThis as ProbeGlobal).__risuSaveRequestProbe
+}
 
 function mergeBack(live: toSaveType, snapshot: toSaveType): void {
     for (const chaId of snapshot.character) {
@@ -738,6 +747,65 @@ describe('a hidden Android tick yields, and a save request pre-empts it', () => 
         expect(loop.saved()).toBeGreaterThan(savedBefore)
         expect(loop.dirty()).toBe(false)
         expect(loop.yieldCalls()).toBe(0)
+        expect(loop.crashed).toEqual([])
+    })
+
+    // New-behaviour (a measurement that did not exist before; not a reproducer of a defect). Reads the probe global by name.
+    test('probe: a request while a hidden tick is parked in a yield reads armed and the yield-gap record is pre-empted', async () => {
+        measure.on = true
+        vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'risu-measure-savepass' ? 'on' : null })
+        vi.spyOn(console, 'log').mockImplementation(() => {})
+        startSavePass()
+        yieldGapMeterHandle.reset()
+        probeOf()?.reset()
+        const loop = await startWakeLoop({ idleNet: true })
+        loop.hide()
+        await reachBeforeModuleTick(loop)
+        loop.parkNextYield()
+        stepClock()
+        await vi.advanceTimersByTimeAsync(100)
+        await runMicrotasks(() => loop.yieldCalls() >= 1, 20_000)
+        loop.freeze()
+        const savedBefore = loop.saved()
+
+        loop.edit('edit made while frozen')
+        loop.scheduler.requestNow()
+        await runMicrotasks(() => loop.saved() > savedBefore && !loop.dirty())
+
+        const requests = probeOf()!.all().filter((record) => record.kind === 'requestNow')
+        const last = requests[requests.length - 1]
+        expect(last.kind === 'requestNow' && last.armed).toBe(true)
+        expect(last.kind === 'requestNow' && last.waiting).toBe(false)
+        const gap = yieldGapMeterHandle.all().find((entry) => entry.kind === 'tick' && entry.modules)
+        expect(gap).toBeDefined()
+        expect(gap!.preempted).toBe(true)
+        expect(loop.crashed).toEqual([])
+    })
+
+    // New-behaviour: a request that lands while the tick reads, before its first yield, finds no listener armed.
+    test('probe: a request while the tick reads, before its first yield, reads armed false and waiting false', async () => {
+        measure.on = true
+        probeOf()?.reset()
+        const loop = await startWakeLoop({ idleNet: true })
+        loop.hide()
+        await reachBeforeModuleTick(loop)
+        const held = loop.holdNextRead()
+        stepClock()
+        await vi.advanceTimersByTimeAsync(100)
+        await runMicrotasks(() => held.entered(), 20_000)
+        expect(held.entered()).toBe(true)
+        loop.freeze()
+        const savedBefore = loop.saved()
+
+        loop.edit('edit made while frozen')
+        loop.scheduler.requestNow()
+        held.release()
+        await runMicrotasks(() => loop.saved() > savedBefore && !loop.dirty())
+
+        const requests = probeOf()!.all().filter((record) => record.kind === 'requestNow')
+        const last = requests[requests.length - 1]
+        expect(last.kind === 'requestNow' && last.armed).toBe(false)
+        expect(last.kind === 'requestNow' && last.waiting).toBe(false)
         expect(loop.crashed).toEqual([])
     })
 

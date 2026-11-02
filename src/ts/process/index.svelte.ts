@@ -51,6 +51,8 @@ import { pluginV2 } from "../plugins/plugins.svelte";
 import { isColdChat } from "./coldstorageData";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { flushPageReplyEndWhenHidden } from "./saveOnHide";
+import { MEASURE } from "./memory/measureFlag";
+import { noteReplyArrived } from "../storage/saveRequestProbe";
 import { beginWork, createSendSubject, registerWork, resolveOriginWithHint, type Origin, type OriginContext, type SendSubject, type WorkHandle, type WorkStop } from "./chatOrigin";
 import { noteTurnReached, publishUnit, releaseUnit } from "./generationOwnership.svelte";
 import { addActiveStream } from "./activeStreams";
@@ -2176,6 +2178,10 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         subject,
         mainSend: true,
     }, 'model', abortSignal)
+    if (MEASURE) {
+        // A measurement build notes the reply's first turn after the response; nothing reads it back.
+        noteReplyArrived(req?.type)
+    }
 
     console.log(req)
     if(req.model){

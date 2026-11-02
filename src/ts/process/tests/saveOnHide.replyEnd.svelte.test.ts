@@ -784,3 +784,77 @@ describe('a reply that ends while the page is visible', () => {
         expect(requestSaveNowMock).not.toHaveBeenCalled()
     })
 })
+
+type ProbeRecord = { kind: string, seq: number, t: number, hidden?: boolean, response?: string | null }
+type ProbeGlobal = { __risuSaveRequestProbe?: { all(): ProbeRecord[], reset(): void } }
+
+/** The request probe, read by name: absent until the first note. */
+function probeRecords(): ProbeRecord[] {
+    return (globalThis as ProbeGlobal).__risuSaveRequestProbe?.all() ?? []
+}
+
+// New-behaviour (the measurement did not exist before; not a reproducer of a defect). Reads the probe global by name.
+describe('the reply arrival note', () => {
+    beforeEach(() => {
+        ;(globalThis as ProbeGlobal).__risuSaveRequestProbe?.reset()
+    })
+
+    afterEach(() => {
+        ;(globalThis as ProbeGlobal).__risuSaveRequestProbe?.reset()
+        delete (globalThis as ProbeGlobal).__risuSaveRequestProbe
+    })
+
+    test('streaming: the arrival is noted when the request resolves, before any chunk, and the reply end comes after', async () => {
+        installSingleChat()
+        let resolveReply: (value: unknown) => void = () => {}
+        const deferred = new Promise<unknown>((resolve) => { resolveReply = resolve })
+        requestChatDataMock.mockReturnValueOnce(deferred)
+        const controlled = controlledStream()
+
+        const outcome = settled(() => sendChat())
+        await until(() => requestChatDataMock.mock.calls.length > 0, 'the request')
+        await settle()
+        expect(probeRecords().filter((record) => record.kind === 'replyArrived')).toEqual([])
+
+        resolveReply({ type: 'streaming', result: controlled.stream })
+        await settle()
+        const arrivals = probeRecords().filter((record) => record.kind === 'replyArrived')
+        expect(arrivals).toHaveLength(1)
+        expect(arrivals[0].hidden).toBe(true)
+        expect(arrivals[0].response).toBe('streaming')
+        expect(probeRecords().filter((record) => record.kind === 'replyEnd')).toEqual([])
+
+        controlled.push('Hello.')
+        await settle()
+        expect(probeRecords().filter((record) => record.kind === 'replyEnd')).toEqual([])
+
+        controlled.close()
+        await until(() => requests.length > 0, 'the save request at the stream end')
+        const end = probeRecords().find((record) => record.kind === 'replyEnd')
+        expect(end).toBeDefined()
+        expect(end!.seq).toBeGreaterThan(arrivals[0].seq)
+        expect(end!.t).toBeGreaterThanOrEqual(arrivals[0].t)
+        expect(await outcome).toBe(true)
+    })
+
+    test('non-streaming: the arrival is the first record and a reply end follows', async () => {
+        installSingleChat()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'success', result: 'Done.' })
+
+        expect(await settled(() => sendChat())).toBe(true)
+
+        const records = probeRecords()
+        expect(records[0]).toMatchObject({ kind: 'replyArrived', response: 'success', hidden: true })
+        expect(records.some((record) => record.kind === 'replyEnd' && record.seq > records[0].seq)).toBe(true)
+    })
+
+    test('a visible page notes the arrival as not hidden', async () => {
+        setVisibility('visible')
+        installSingleChat()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'success', result: 'Done.' })
+
+        expect(await settled(() => sendChat())).toBe(true)
+
+        expect(probeRecords()[0]).toMatchObject({ kind: 'replyArrived', hidden: false })
+    })
+})
