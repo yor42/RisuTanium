@@ -20677,3 +20677,30 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 - Notes, not the maintainer's words:
   - Lane A dispatched device batch 36 (CHORE-624 preempt on a device; CHORE-17 S1-b with chats and `alt`, archive OFF) and the seven-locale reword of `translationJsonDownloaded`. Both were still running when this batch was written; no result is recorded here.
   - Nothing in this entry authorizes a commit of these records.
+
+### MC-995 — Lane A, 2026-11-02: CHORE-624 next step "One device check first"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 36 queue (`%TEMP%\risu-b715\b36\records36-queue.md`, line 12): chosen "One device check first (Recommended)" over "File a fix ticket now" and "Correct the claim only". The question text is not in the queue beyond the gloss: TODO(evidence). The follow-ups offered came from the device batch 36 verification (`b35\db36-verify\result.md`, "Follow-ups warranted", proposals only).
+- Alternatives rejected: "File a fix ticket now"; "Correct the claim only".
+- Related: CHORE-624, `MC-972`, `MC-980`, `MC-981`, `MC-996`.
+
+**What was decided (maintainer).**
+1. CHORE-624: "One device check first (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss: one Note 9 cell with the existing message-mode meter switch plus a page-side timestamp on the reply callback, to confirm the cause before any fix. No ticket is filed and no code change is made yet.
+  - The cause the check is meant to confirm is INFERRED, not tested: the device batch 36 verification (SUPPORTED by heartbeat gaps equal to tick length despite 82 to 84 yields) reasons from the scheduling specification that the tick's `scheduler.yield()` continuations run ahead of ordinary tasks, so the reply callback gets no turn until the tick ends. The verifier's smallest-scope idea (let a hidden Android tick yield through a `MessageChannel` or `setTimeout` primitive) is a proposal only and is not decided here.
+
+### MC-996 — Lane A, 2026-11-02: durability check "Re-log in next run"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
+- Source: the batch 36 queue (line 13): chosen "Re-log in next run (Recommended)" over "Drop it". The question text is not in the queue: TODO(evidence).
+- Alternatives rejected: "Drop it".
+- Related: `MC-995`, CHORE-624, device batch 36.
+
+**What was decided (maintainer).**
+1. Durability ("the reply survived force-stop and relaunch"): "Re-log in next run (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The queue's gloss: the next device run adds post-relaunch counts. Batch 36 records the durability check as not recorded: the raw files hold no post-relaunch reading (the verifier graded it UNSUPPORTED by the raw evidence).

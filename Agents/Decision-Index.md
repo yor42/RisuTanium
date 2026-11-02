@@ -889,3 +889,5 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-992](Maintainer-Context.md#mc-992--lane-a-2026-11-02-codeql-alerts--design-mockups-are-ignorable-servercjs-needs-attention) | Lane A, 2026-11-02: CodeQL alerts — design mockups are ignorable, `server.cjs` needs attention |
 | [MC-993](Maintainer-Context.md#mc-993--lane-a-2026-11-02-dependency-alerts--override--test) | Lane A, 2026-11-02: dependency alerts — "Override + test" |
 | [MC-994](Maintainer-Context.md#mc-994--lane-a-2026-11-02-start-records-batch-35-and-run-device-batch-36-and-the-translation-reword-alongside-it) | Lane A, 2026-11-02: start records batch 35 and run device batch 36 and the translation reword alongside it |
+| [MC-995](Maintainer-Context.md#mc-995--lane-a-2026-11-02-chore-624-next-step-one-device-check-first) | Lane A, 2026-11-02: CHORE-624 next step "One device check first" |
+| [MC-996](Maintainer-Context.md#mc-996--lane-a-2026-11-02-durability-check-re-log-in-next-run) | Lane A, 2026-11-02: durability check "Re-log in next run" |
