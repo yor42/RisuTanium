@@ -1,6 +1,6 @@
 import type { Database, character, groupChat } from '../database.svelte'
 import type { toSaveType } from '../risuSave'
-import { createYieldBudget, yieldToEventLoop } from '../saveYield'
+import { createYieldBudget, yieldByMessage, yieldToEventLoop } from '../saveYield'
 import { Store2PayloadTooLargeError, Store2StalePageError } from './backend/errors'
 import type { Store2Read } from './backend/types'
 import { isBusy } from '../../process/memory/busyActions'
@@ -266,9 +266,14 @@ export interface Store2LoopPort {
     /**
      * A one-shot listener for the next save request, released by the returned function. Timer-free, so a frozen page
      * delivers it. Present only where the page can freeze. With it, a tick pass on a page that asks to skip yields
-     * anyway, racing each yield against the next request and skipping every later yield once a pass is due.
+     * anyway, racing each message yield against the next request and skipping every later yield once a pass is due.
      */
     onRequest?(listener: () => void): () => void
+    /**
+     * True after a hidden tick was cut and its work waits for the redo; false once the redo has ended, whatever its
+     * outcome. Absent means no page holds anything for it.
+     */
+    tickRedoOwed?(owed: boolean): void
 }
 
 /** Takes the marks of a pass and trims the live tracker to its sticky front, before any await. */
@@ -392,6 +397,11 @@ type Outcome =
     | { kind: 'not-flushed' }
     /** A module's load is waiting for the person's answer: nothing was written, nothing is counted, and the loop makes no further pass until `settled`. */
     | { kind: 'deferred', settled: Promise<void> }
+    /**
+     * A full or module tick on a hidden Android page ended before its commit because a pass became due: nothing was
+     * written, counted or reported, and the next net slot redoes it.
+     */
+    | { kind: 'cut' }
 
 /**
  * Thrown by `planOf` when the module valve reports a load that waits for the person. `attemptRun` turns it into the
@@ -401,6 +411,17 @@ class ModuleLoadDeferred extends Error {
     constructor(public readonly settled: Promise<void>) {
         super('A module load is waiting for the person\'s answer.')
         this.name = 'ModuleLoadDeferred'
+    }
+}
+
+/**
+ * Thrown from a cuttable tick's yield when a pass is due on a hidden Android page. It rises out of `planOf` before any
+ * commit is built, and `attemptRun` turns it into the `cut` outcome, so it is never counted as a failure.
+ */
+class TickCut extends Error {
+    constructor() {
+        super('The tick ended at a yield because a pass became due.')
+        this.name = 'TickCut'
     }
 }
 
@@ -420,6 +441,9 @@ const REPLACED_REFUSALS: ReadonlySet<string> = new Set(['absent', 'no-current', 
 
 /** Consecutive retries the loop makes without a report; the next one goes through the failure path. */
 const QUIET_RETRIES = 2
+
+/** Consecutive cut ticks the loop allows; the next tick finishes whatever becomes due. */
+const CUT_TICKS_LIMIT = 2
 
 /** The longest wait the loop adds after repeated reports of a commit that lands but is not confirmed durable. */
 const NOT_FLUSHED_BACKOFF_MAX_MS = 60_000
@@ -495,6 +519,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let lastNetAt = port.now()
     /** When a tick last took module scope; the next such tick is `moduleMs` later, whatever the first one came to. */
     let lastModuleNetAt = port.now()
+    /** Consecutive cut ticks; above zero a redo is owed, and the next net slot is a full tick. */
+    let cutTicks = 0
+    /** The cut check of the attempt in flight; `null` when the attempt cannot be cut. One attempt runs at a time under the write lock. */
+    let activeCut: (() => void) | null = null
     /** The gap recorder of the attempt in flight, a measurement build only; one attempt runs at a time under the write lock. */
     let activeGaps: YieldGapRecorder | null = null
     /** Whether the current idle-net slot's base read and judgement finished, a measurement build only; it tells a failed read from a later fault. */
@@ -807,6 +835,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         const pageSkip = () => port.yieldImmediately?.() === true
         // `skip` sits in the budget, not in `yieldFn`, so a measurement build's replaced yield is bypassed too.
         // Once a pass is due the tick takes no further yield: it finishes as one task and the marked pass follows.
+        // The raced yield is a message, an ordinary task: `scheduler.yield()` continues ahead of the other tasks of
+        // the hidden page, so a request's callback (a task) would wait behind the whole tick. The unraced yield
+        // keeps the platform's default primitive.
         const skip = () => pageSkip() && (!requestHook || port.isDue())
         const yieldFn = (): Promise<void> => {
             if (!requestHook || !pageSkip()) {
@@ -816,12 +847,26 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             const requested = new Promise<void>((resolve) => {
                 release = port.onRequest?.(resolve) ?? release
             })
-            const yielded = gaps !== null ? gaps.yield(requested) : Promise.race([yieldToEventLoop(), requested])
+            const yielded = gaps !== null ? gaps.yield(requested, yieldByMessage) : Promise.race([yieldByMessage(), requested])
             return yielded.finally(release)
         }
         // A pass that neither measures nor races keeps the budget's own default yield.
         const budget = requestHook || (MEASURE && gaps !== null) ? createYieldBudget({ yieldFn, skip }) : createYieldBudget({ skip })
-        const request = shapeOf(snapshot, db, rewriteAll, netChaId, { yield: () => budget.maybeYield() })
+        // A full or module tick on a hidden Android page ends at the first yield after a pass becomes due, within the
+        // consecutive-cut limit. A verdict tick (it names a character) is never cut: its only yield sits after that
+        // character's unit, so a cut would save almost nothing. The check reads the page rule live, so a tick that has
+        // become visible is not cut.
+        const cuttable = requestHook && netChaId === null && cutTicks < CUT_TICKS_LIMIT
+        const cutNow = (): void => {
+            if (cuttable && pageSkip() && port.isDue()) {
+                throw new TickCut()
+            }
+        }
+        activeCut = cuttable ? cutNow : null
+        const yielding = cuttable
+            ? { yield: async (): Promise<void> => { await budget.maybeYield(); cutNow() } }
+            : { yield: () => budget.maybeYield() }
+        const request = shapeOf(snapshot, db, rewriteAll, netChaId, yielding)
         if (MEASURE) {
             activeGaps = gaps
             request.pageHidden = port.pageHidden?.() === true
@@ -1099,6 +1144,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 activeGaps?.finish()
                 activeGaps = null
             }
+            activeCut = null
         }
     }
 
@@ -1132,6 +1178,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         run.moduleScope = planRequest.whole || planRequest.rewriteAll === true || planRequest.modules || planRequest.net?.modules === true
         let plan: SavePlan
         try {
+            // A pass that became due while the base was read cuts the tick before it plans anything.
+            activeCut?.()
             const planned = await planOf(db, planRequest)
             plan = planned.plan
             if (planned.moduleRefusal !== null) {
@@ -1146,6 +1194,12 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         } catch (error) {
             if (error instanceof ModuleLoadDeferred) {
                 return { kind: 'deferred', settled: error.settled }
+            }
+            if (error instanceof TickCut) {
+                if (MEASURE) {
+                    activeGaps?.cut()
+                }
+                return { kind: 'cut' }
             }
             throw error
         }
@@ -1256,8 +1310,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
     }
 
-    async function pass(tick: boolean, netChaId: string | null = null): Promise<void> {
+    /** Runs one pass; resolves `true` when it was a tick cut at a yield (nothing written or counted), `false` otherwise. */
+    async function pass(tick: boolean, netChaId: string | null = null): Promise<boolean> {
         const run: PassRun = { snapshot: null, landed: false, plan: null, moduleRefusal: null, moduleScope: false }
+        let cut = false
         if (!tick) {
             port.beginIteration()
         }
@@ -1330,6 +1386,11 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     const notFlushedDelay = backedOffWait(port.reportFailure(new Store2NotFlushedError(), savetrys), savetrys)
                     await backOff(notFlushedDelay)
                     break
+                case 'cut':
+                    // A tick takes no snapshot, so this folds nothing; it is no failure, so no counter, report or wait.
+                    cut = true
+                    foldBack(run.snapshot)
+                    break
             }
         } catch (error) {
             retries = 0
@@ -1358,6 +1419,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 port.endIteration()
             }
         }
+        return cut
     }
 
     async function checkPeer(): Promise<void> {
@@ -1389,9 +1451,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
      */
     async function netDecision(): Promise<NetDecision> {
         const modulesDue = port.now() - lastModuleNetAt >= moduleMs
-        if (modulesDue || consent !== null) {
+        // A cut tick owes a redo: every slot until one ends is a full tick, so the redo cannot be replaced by a verdict.
+        if (modulesDue || consent !== null || cutTicks > 0) {
             if (MEASURE) {
-                noteNetSlotEnd(modulesDue ? 'modulesDue' : 'consent')
+                noteNetSlotEnd(modulesDue ? 'modulesDue' : consent !== null ? 'consent' : 'redo')
             }
             return { kind: 'full' }
         }
@@ -1638,10 +1701,23 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             noteNetSlotMs(decisionEndAt - decisionStartedAt)
         }
         const passStartedAt = MEASURE ? performance.now() : 0
+        // What `shapeOf` reads and advances for a tick; a cut tick puts it back so the redo takes the same scope and resident.
+        const roundRobin = { netIndex, lastModuleNetAt }
+        let cut = false
         if (decision.kind === 'full') {
-            await pass(true)
+            cut = await pass(true)
         } else if (decision.kind === 'character') {
             await pass(true, decision.chaId)
+        }
+        if (cut) {
+            netIndex = roundRobin.netIndex
+            lastModuleNetAt = roundRobin.lastModuleNetAt
+            cutTicks += 1
+            port.tickRedoOwed?.(true)
+        } else if (decision.kind !== 'none' && cutTicks > 0) {
+            // The redo has ended, whatever it came to.
+            cutTicks = 0
+            port.tickRedoOwed?.(false)
         }
         if (MEASURE && decision.kind !== 'none') {
             noteNetSlotPassMs(performance.now() - passStartedAt)

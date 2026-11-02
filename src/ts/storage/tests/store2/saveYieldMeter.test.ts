@@ -457,6 +457,33 @@ describe('the mode switch changes only the yield primitive', () => {
         expect(records()[0].mode).toBe('scheduler')
         expect(schedulerYield).toHaveBeenCalled()
     })
+
+    test('reproducer: a yield given its own primitive uses it whatever the switch says, and the record reads message', () => {
+        const schedulerYield = vi.fn(() => Promise.resolve())
+        vi.stubGlobal('scheduler', { yield: schedulerYield })
+        stubMode(null)
+        const own = vi.fn(() => Promise.resolve())
+        const recorder = startYieldGaps({})!
+        return recorder.yield(new Promise<void>(() => {}), own).then(() => {
+            recorder.finish()
+            const record = records()[records().length - 1]
+            expect(own).toHaveBeenCalledTimes(1)
+            expect(schedulerYield).not.toHaveBeenCalled()
+            expect(record.mode).toBe('message')
+            expect(record.yields).toBe(1)
+        })
+    })
+
+    test('guard: a yield without its own primitive keeps the switch\'s choice in the same recorder', async () => {
+        const schedulerYield = vi.fn(() => Promise.resolve())
+        vi.stubGlobal('scheduler', { yield: schedulerYield })
+        stubMode(null)
+        const recorder = startYieldGaps({})!
+        await recorder.yield()
+        recorder.finish()
+        expect(schedulerYield).toHaveBeenCalledTimes(1)
+        expect(records()[records().length - 1].mode).toBe('scheduler')
+    })
 })
 
 describe('a normal build installs nothing', () => {

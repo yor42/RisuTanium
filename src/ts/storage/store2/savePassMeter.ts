@@ -325,7 +325,7 @@ export interface NetShadowTally {
 
 /** What one idle-net slot ended in; every slot has exactly one. */
 export type NetSlotReason =
-    | 'modulesDue' | 'consent' | 'readFailed' | 'parked' | 'dueAfterRead' | 'pending' | 'unheld' | 'stub' | 'unsavableAbsent'
+    | 'modulesDue' | 'consent' | 'redo' | 'readFailed' | 'parked' | 'dueAfterRead' | 'pending' | 'unheld' | 'stub' | 'unsavableAbsent'
     | 'verdictClean' | 'verdictDirty' | 'verdictUnknown' | 'slotMissing' | 'guardThrow' | 'noResident'
     | 'dueAfterYield' | 'dbChanged' | 'verdictSkipped'
 
@@ -544,7 +544,7 @@ function netFoundNow(): NetFoundState {
 }
 
 const NET_SLOT_REASONS: readonly NetSlotReason[] = [
-    'modulesDue', 'consent', 'readFailed', 'parked', 'dueAfterRead', 'pending', 'unheld', 'stub', 'unsavableAbsent',
+    'modulesDue', 'consent', 'redo', 'readFailed', 'parked', 'dueAfterRead', 'pending', 'unheld', 'stub', 'unsavableAbsent',
     'verdictClean', 'verdictDirty', 'verdictUnknown', 'slotMissing', 'guardThrow', 'noResident', 'dueAfterYield', 'dbChanged', 'verdictSkipped',
 ]
 

@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, afterEach } from 'vitest'
 
-import { createYieldBudget, yieldToEventLoop } from '../saveYield'
+import { createYieldBudget, yieldByMessage, yieldToEventLoop } from '../saveYield'
 
 // `RisuSaveEncoder` holds one budget per instance and awaits `maybeYield()`
 // after every block it encodes. These tests exercise `createYieldBudget` on its own, with a fake clock and a spy
@@ -177,5 +177,48 @@ describe('yieldToEventLoop', () => {
         expect(setTimeoutSpy).toHaveBeenCalledTimes(1)
         expect(setTimeoutSpy.mock.calls[0][1]).toBe(0)
         setTimeoutSpy.mockRestore()
+    })
+})
+
+// Compatibility guard (the body moved from the yield-gap meter): a message yield ignores scheduler.yield.
+describe('yieldByMessage', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals()
+    })
+
+    test('resolves after the message is delivered, closes both ports and never calls scheduler.yield', async () => {
+        const schedulerYield = vi.fn(async () => {})
+        vi.stubGlobal('scheduler', { yield: schedulerYield })
+        const events: string[] = []
+        class FakeMessageChannel {
+            port1: { onmessage: (() => void) | null; close: () => void }
+            port2: { postMessage: (v: unknown) => void; close: () => void }
+            constructor() {
+                this.port1 = { onmessage: null, close: () => { events.push('close1') } }
+                this.port2 = {
+                    postMessage: () => {
+                        events.push('post')
+                        setTimeout(() => { events.push('deliver'); this.port1.onmessage?.() }, 0)
+                    },
+                    close: () => { events.push('close2') },
+                }
+            }
+        }
+        vi.stubGlobal('MessageChannel', FakeMessageChannel)
+
+        await yieldByMessage()
+
+        expect(events).toEqual(['post', 'deliver', 'close1', 'close2'])
+        expect(schedulerYield).not.toHaveBeenCalled()
+    })
+
+    test('falls back to the event-loop yield when MessageChannel is absent', async () => {
+        const schedulerYield = vi.fn(async () => {})
+        vi.stubGlobal('scheduler', { yield: schedulerYield })
+        vi.stubGlobal('MessageChannel', undefined)
+
+        await yieldByMessage()
+
+        expect(schedulerYield).toHaveBeenCalledTimes(1)
     })
 })

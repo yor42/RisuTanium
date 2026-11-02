@@ -2,7 +2,7 @@ import { BULK_UNIT_THRESHOLD } from './backend/types'
 import type { CommitRequest } from './commit'
 import type { SavePassRequest } from './saveEncoder'
 import { savePassKindOf, type SavePassKind } from './savePassMeter'
-import { yieldToEventLoop } from '../saveYield'
+import { yieldByMessage, yieldToEventLoop } from '../saveYield'
 
 /**
  * The yield-gap meter of a measurement build: per save pass, the longest stretch of synchronous work between two
@@ -26,7 +26,8 @@ import { yieldToEventLoop } from '../saveYield'
  *
  * Use: set localStorage `risu-measure-yield-mode` to `message` and reload to make the real yields use a
  * `MessageChannel` message instead of `scheduler.yield()`; any other value leaves the default primitive. The switch is
- * read once per pass. Read the records from the console of a store2 page with `__risuYieldGapMeter.last()`, `.all()`
+ * read once per pass and governs only the unraced yields: a yield the caller passes its own primitive for (the raced
+ * yield of a hidden Android tick) uses that one whatever the switch says. Read the records from the console of a store2 page with `__risuYieldGapMeter.last()`, `.all()`
  * and `.reset()`.
  *
  * The meter never throws into the save path: every entry point swallows its own failures.
@@ -34,7 +35,11 @@ import { yieldToEventLoop } from '../saveYield'
 
 export type YieldGapLabel = 'a' | 'b' | 'c' | 'd'
 
-/** Which primitive the pass's real yields used: the platform's `scheduler.yield()`, the message switch, or the fallback chain. */
+/**
+ * Which primitive the pass's real yields used: the platform's `scheduler.yield()`, a `MessageChannel` message (the
+ * switch, or a caller-supplied message yield; it reads `message` as soon as one yield of the pass used it), or the
+ * fallback chain. The localStorage switch governs only the unraced yields.
+ */
 export type YieldGapMode = 'scheduler' | 'message' | 'fallback'
 
 export interface YieldGapRecord {
@@ -65,16 +70,21 @@ export interface YieldGapRecord {
     pageSkip: boolean
     /** A save request ended one of the pass's yields before the yield itself resolved. */
     preempted: boolean
+    /** The pass was a tick that ended at a yield because a pass became due; it planned and committed nothing, so `planMs` stays null. */
+    cut: boolean
 }
 
 export interface YieldGapRecorder {
     /**
      * The budget's yield function: records the segment that ends here and the wait of the yield itself. With `preempt`,
-     * the yield ends when that promise settles first, which is recorded as `preempted`.
+     * the yield ends when that promise settles first, which is recorded as `preempted`. With `base`, that primitive
+     * replaces the one the switch would choose, and the pass's `mode` reads `message`.
      */
-    yield(preempt?: Promise<void>): Promise<void>
+    yield(preempt?: Promise<void>, base?: () => Promise<void>): Promise<void>
     /** Names the pass the recorder measures. */
     describe(request: SavePassRequest): void
+    /** The tick ended at a yield because a pass became due. */
+    cut(): void
     /** The planning pass returned. */
     planned(): void
     /** Closes the open segment before an I/O wait of the pass. */
@@ -122,22 +132,6 @@ function schedulerAvailable(): boolean {
     return typeof scheduler?.yield === 'function'
 }
 
-async function yieldByMessage(): Promise<void> {
-    if (typeof MessageChannel === 'undefined') {
-        await yieldToEventLoop()
-        return
-    }
-    await new Promise<void>((resolve) => {
-        const channel = new MessageChannel()
-        channel.port1.onmessage = () => {
-            channel.port1.close()
-            channel.port2.close()
-            resolve()
-        }
-        channel.port2.postMessage(undefined)
-    })
-}
-
 function pushLimited(record: YieldGapRecord): void {
     records.push(record)
     if (records.length > RECORD_LIMIT) {
@@ -150,7 +144,7 @@ export function startYieldGaps(target: object = globalThis): YieldGapRecorder | 
     try {
         ;(target as { __risuYieldGapMeter?: YieldGapMeterHandle }).__risuYieldGapMeter = yieldGapMeterHandle
         const message = messageModeOn()
-        const mode: YieldGapMode = message ? 'message' : (schedulerAvailable() ? 'scheduler' : 'fallback')
+        let mode: YieldGapMode = message ? 'message' : (schedulerAvailable() ? 'scheduler' : 'fallback')
         const startedAt = performance.now()
         const segmentMaxMs: Record<YieldGapLabel, number> = { a: 0, b: 0, c: 0, d: 0 }
         let kind: SavePassKind = 'edit'
@@ -158,6 +152,7 @@ export function startYieldGaps(target: object = globalThis): YieldGapRecorder | 
         let hidden = false
         let pageSkip = false
         let preempted = false
+        let cut = false
         let bulk = false
         let yields = 0
         let phase: 'planning' | 'planned' | 'committed' = 'planning'
@@ -262,7 +257,7 @@ export function startYieldGaps(target: object = globalThis): YieldGapRecorder | 
         }
 
         return {
-            async yield(preempt) {
+            async yield(preempt, supplied) {
                 let waitStart = 0
                 try {
                     pause()
@@ -272,7 +267,10 @@ export function startYieldGaps(target: object = globalThis): YieldGapRecorder | 
                     // A measurement failure never reaches the save.
                 }
                 try {
-                    const base = message ? yieldByMessage() : yieldToEventLoop()
+                    if (supplied !== undefined) {
+                        mode = 'message'
+                    }
+                    const base = supplied !== undefined ? supplied() : (message ? yieldByMessage() : yieldToEventLoop())
                     if (preempt === undefined) {
                         await base
                     } else if (await Promise.race([base.then(() => false), preempt.then(() => true)])) {
@@ -302,6 +300,9 @@ export function startYieldGaps(target: object = globalThis): YieldGapRecorder | 
                 } catch {
                     // A measurement failure never reaches the save.
                 }
+            },
+            cut() {
+                cut = true
             },
             planned() {
                 try {
@@ -343,7 +344,7 @@ export function startYieldGaps(target: object = globalThis): YieldGapRecorder | 
                     pushLimited({
                         kind, modules, bulk, yields, budgetMs: BUDGET_MS, mode, maxSegmentMs, maxSegmentLabel,
                         segmentMaxMs: { ...segmentMaxMs }, planMs, buildMs, yieldWaitSumMs, yieldWaitMaxMs,
-                        at: startedAt, hidden, pageSkip, preempted,
+                        at: startedAt, hidden, pageSkip, preempted, cut,
                     })
                 } catch {
                     // A measurement failure never reaches the save.

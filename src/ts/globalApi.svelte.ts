@@ -2065,6 +2065,14 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         }
     }
 
+    /** The loop-owned in-flight token held from a cut hidden tick until its redo ends; one token however many cuts in a row. */
+    let redoHold: (() => void) | null = null
+    const endRedoHold = (): void => {
+        const end = redoHold
+        redoHold = null
+        end?.()
+    }
+
     const changeTracker: toSaveType = {
         character: [],
         chat: [],
@@ -2209,6 +2217,10 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
             savingStoppedDetail = detail
             saving.state = false
             savingStoppedReason.set(reason)
+            // Only a real stop ends the token: the empty reason clears a park and the owed redo still runs.
+            if (reason) {
+                endRedoHold()
+            }
         },
         notifyTooLarge(label) {
             alertToast(language.savingStoppedTooLargeBlockMessage(label, NODE_BODY_LIMIT_BYTES, storeAssetLimitBytes()))
@@ -2235,6 +2247,14 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         rearmWait: isAndroidTransport() ? (ms) => scheduler.waitRearm(ms) : undefined,
         // Same transport choice: a hidden tick that yields can be parked across the freeze, and a save request ends that yield.
         onRequest: isAndroidTransport() ? (listener) => scheduler.onRequest(listener) : undefined,
+        // Keeps the keep-alive service up while a cut hidden tick's work waits for its redo.
+        tickRedoOwed(owed) {
+            if (owed) {
+                redoHold ??= beginInFlight('save')
+            } else {
+                endRedoHold()
+            }
+        },
         sleep,
         sleepForever,
         now: () => Date.now(),

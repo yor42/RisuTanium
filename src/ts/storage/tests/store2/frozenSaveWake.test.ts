@@ -30,6 +30,7 @@ import { createTauriBackend, type Store2Backend } from 'src/ts/storage/store2/ba
 import { Store2CommitConflictError } from 'src/ts/storage/store2/backend/errors'
 import { StubRefusedError } from 'src/ts/storage/store2/codec'
 import { createCommitter } from 'src/ts/storage/store2/commit'
+import { createSaveEncoder, type SaveEncoder } from 'src/ts/storage/store2/saveEncoder'
 import { previousFrom } from 'src/ts/storage/store2/codec'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
 import { backedOffWait, IDLE_NET_MODULE_INTERVAL_MS, runStore2SaveLoop, type Store2LoopPort } from 'src/ts/storage/store2/saveLoop'
@@ -65,8 +66,8 @@ interface WakeOptions {
     alwaysThrow?: boolean
     /** The commit lands and the broadcast after it throws, once. */
     landedThrow?: boolean
-    /** Idle-net slots run (interval 1 ms, no backstop). */
-    idleNet?: boolean
+    /** Idle-net slots run (interval 1 ms, no backstop by default); an object overrides those intervals. */
+    idleNet?: boolean | { intervalMs?: number, moduleIntervalMs?: number, backstopMs?: number }
     /** Replaces the page's `yieldImmediately`. */
     yieldImmediately?: () => boolean
     /** The port's injected idle-net yield; every call is counted. */
@@ -92,13 +93,33 @@ interface WakeLoop {
     markDue(): void
     commitBytes(): Promise<Uint8Array>
     failNextPeerRead(): void
-    holdNextCommit(): { entered(): boolean, release(): void }
+    holdNextCommit(options?: { land?: boolean }): { entered(): boolean, release(): void }
+    /** Changes a character (the first, unless named) with no mark and no dirty flag: only the idle net can find it. */
+    editUnmarked(value: string, chaId?: string): void
     /** The next read of the commit key waits for the release. */
     holdNextRead(): { entered(): boolean, release(): void }
-    /** The page is hidden but not frozen: `scheduler.yield` counts its calls and resolves. */
-    hide(): void
-    /** The next `scheduler.yield` call never resolves. */
+    /**
+     * The page is hidden but not frozen: `scheduler.yield` and a `MessageChannel` message count their calls and resolve.
+     * `scheduler.yield` resolves as a microtask. A message resolves as a microtask too, or with `messageAsTask` as a
+     * fake `setTimeout(0)` task, the way a real page runs it behind the tasks already queued.
+     */
+    hide(options?: { messageAsTask?: boolean }): void
+    /** The next yield call, on whichever primitive, never resolves. */
     parkNextYield(): void
+    /** The `nth` yield call from now (1-based), on whichever primitive, resolves only after `release`. */
+    holdNextYield(nth?: number): { entered(): boolean, release(): void }
+    /** The next read of the commit key throws; the peer check is not signalled, so the idle net's own read fails. */
+    failNextRead(): void
+    /**
+     * One ordered log of the loop's calls: `saved`, `redo:true`, `redo:false`, and the encoder's plans as
+     * `tick-start`, `tick-end`, `tick-abort`, `marked-start`, `marked-end`, `marked-abort`.
+     */
+    log: string[]
+    /** The scope of each tick plan that started: the resident it names and whether it takes module scope. */
+    ticks: Array<{ chaId: string | null, modules: boolean }>
+    /** Yields taken through `scheduler.yield`, and through a `MessageChannel` message. `yieldCalls` is their sum. */
+    schedulerYields(): number
+    messageYields(): number
     /** The page holds an edit that no commit has taken. */
     dirty(): boolean
     /** The module count the tick walks. */
@@ -163,14 +184,34 @@ async function startWakeLoop(options: WakeOptions = {}): Promise<WakeLoop> {
     const inner = await createTauriBackend(createTauriFilesStore({ platform: 'posix' }))
     const seeded = await seedTree(inner, seedDb, testEnv(clock, 4242), fakeLists)
     const faults = [...(options.faults ?? [])]
-    const counters = { attempts: 0, reads: 0, saved: 0, yieldCalls: 0, yieldNowCalls: 0 }
+    const counters = { attempts: 0, reads: 0, saved: 0, yieldCalls: 0, messageYields: 0, schedulerYields: 0, yieldNowCalls: 0 }
     const reports: unknown[] = []
     const crashed: unknown[] = []
     const trace: TraceEntry[] = []
     const peerRead = { fail: false }
-    const hold = { entered: false, released: false, release: () => {}, armed: false, gate: Promise.resolve() }
+    const hold = { entered: false, released: false, release: () => {}, armed: false, gate: Promise.resolve(), land: false }
     const readHold = { armed: false, entered: false, release: () => {}, gate: Promise.resolve() }
     const yieldPark = { next: false }
+    const yieldHold = { remaining: 0, entered: false, deliver: () => {} }
+    const readFault = { next: false }
+    const log: string[] = []
+    const ticks: Array<{ chaId: string | null, modules: boolean }> = []
+    /** The yield stubs' shared decision: a held yield enters and waits for its release; a parked one never resolves. */
+    const yieldMode = (deliver: () => void): 'park' | 'hold' | 'go' => {
+        if (yieldPark.next) {
+            yieldPark.next = false
+            return 'park'
+        }
+        if (yieldHold.remaining > 0) {
+            yieldHold.remaining -= 1
+            if (yieldHold.remaining === 0) {
+                yieldHold.entered = true
+                yieldHold.deliver = deliver
+                return 'hold'
+            }
+        }
+        return 'go'
+    }
     const landed = { throwOnce: options.landedThrow === true }
     const doc = { visibilityState: 'visible' }
     vi.stubGlobal('document', doc)
@@ -178,6 +219,10 @@ async function startWakeLoop(options: WakeOptions = {}): Promise<WakeLoop> {
     const backend: Store2Backend = Object.create(inner) as Store2Backend
     backend.readCommit = async () => {
         counters.reads += 1
+        if (readFault.next) {
+            readFault.next = false
+            throw new Error('the idle net read failed')
+        }
         if (readHold.armed) {
             readHold.armed = false
             readHold.entered = true
@@ -195,7 +240,10 @@ async function startWakeLoop(options: WakeOptions = {}): Promise<WakeLoop> {
             hold.armed = false
             hold.entered = true
             await hold.gate
-            throw new Error('the held commit write failed')
+            if (!hold.land) {
+                throw new Error('the held commit write failed')
+            }
+            return inner.commitOrdinary(expected, units, next)
         }
         if (options.alwaysThrow === true) {
             throw new Error('the commit write failed')
@@ -215,13 +263,36 @@ async function startWakeLoop(options: WakeOptions = {}): Promise<WakeLoop> {
         }
     }
 
+    const saveEnv = testEnv(clock, 99)
+    const previous = previousFrom(seeded.tree)
+    const innerEncoder = createSaveEncoder({ previous, lists: fakeLists, env: saveEnv })
+    // The real encoder behind a logging wrapper: it records where each plan starts and ends, and in which kind of pass.
+    const encoder: SaveEncoder = Object.create(innerEncoder) as SaveEncoder
+    encoder.plan = async (planDb, request) => {
+        const kind = request.net !== undefined ? 'tick' : 'marked'
+        if (request.net !== undefined) {
+            ticks.push({ chaId: request.net.chaId, modules: request.net.modules })
+        }
+        log.push(`${kind}-start`)
+        try {
+            const plan = await innerEncoder.plan(planDb, request)
+            log.push(`${kind}-end`)
+            return plan
+        } catch (error) {
+            log.push(`${kind}-abort`)
+            throw error
+        }
+    }
     const context: Store2SaveContext = {
         session: { kind: 'tauri', committer: createCommitter(backend, { owner: freshOwnerId(testEnv(clock, 778)), env: testEnv(clock, 777) }) },
-        previous: previousFrom(seeded.tree),
+        previous,
         lists: fakeLists,
-        env: testEnv(clock, 99),
+        env: saveEnv,
+        encoder,
         peer: createPeerDouble(),
-        idleNet: options.idleNet === true ? { intervalMs: 1, backstopMs: 0 } : null,
+        idleNet: options.idleNet === true
+            ? { intervalMs: 1, backstopMs: 0 }
+            : typeof options.idleNet === 'object' ? { intervalMs: 1, backstopMs: 0, ...options.idleNet } : null,
     }
     const tracker: toSaveType = { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
     const state = { due: false, dirty: false, peerHeard: false }
@@ -271,6 +342,10 @@ async function startWakeLoop(options: WakeOptions = {}): Promise<WakeLoop> {
         unsavable() {},
         saved() {
             counters.saved += 1
+            log.push('saved')
+        },
+        tickRedoOwed(owed) {
+            log.push(`redo:${owed}`)
         },
         broadcast() {
             if (landed.throwOnce) {
@@ -344,6 +419,8 @@ async function startWakeLoop(options: WakeOptions = {}): Promise<WakeLoop> {
         },
         readCommits: () => counters.reads,
         yieldCalls: () => counters.yieldCalls,
+        schedulerYields: () => counters.schedulerYields,
+        messageYields: () => counters.messageYields,
         yieldNowCalls: () => counters.yieldNowCalls,
         edit(value) {
             const character = db.characters[0] as unknown as Entry
@@ -364,8 +441,14 @@ async function startWakeLoop(options: WakeOptions = {}): Promise<WakeLoop> {
             peerRead.fail = true
             state.peerHeard = true
         },
-        holdNextCommit() {
+        editUnmarked(value, chaId) {
+            const entries = db.characters as unknown as Entry[]
+            const target = chaId === undefined ? entries[0] : entries.find((entry) => entry.chaId === chaId)
+            ;(target as Entry).personality = value
+        },
+        holdNextCommit(holdOptions) {
             hold.armed = true
+            hold.land = holdOptions?.land === true
             hold.entered = false
             hold.gate = new Promise<void>((resolve) => { hold.release = resolve })
             return { entered: () => hold.entered, release: () => hold.release() }
@@ -376,30 +459,64 @@ async function startWakeLoop(options: WakeOptions = {}): Promise<WakeLoop> {
             readHold.gate = new Promise<void>((resolve) => { readHold.release = resolve })
             return { entered: () => readHold.entered, release: () => readHold.release() }
         },
-        hide() {
+        hide(hideOptions) {
             doc.visibilityState = 'hidden'
             vi.stubGlobal('scheduler', {
                 yield: () => {
                     counters.yieldCalls += 1
-                    if (yieldPark.next) {
-                        yieldPark.next = false
+                    counters.schedulerYields += 1
+                    let resolveHeld = (): void => {}
+                    const held = new Promise<void>((resolve) => { resolveHeld = resolve })
+                    const mode = yieldMode(resolveHeld)
+                    if (mode === 'park') {
                         return new Promise<void>(() => {})
                     }
-                    return Promise.resolve()
+                    return mode === 'hold' ? held : Promise.resolve()
                 },
+            })
+            const asTask = hideOptions?.messageAsTask === true
+            vi.stubGlobal('MessageChannel', class {
+                port1 = { onmessage: null as ((event: unknown) => void) | null, close() {} }
+                port2 = {
+                    postMessage: () => {
+                        counters.yieldCalls += 1
+                        counters.messageYields += 1
+                        const deliver = (): void => { this.port1.onmessage?.({}) }
+                        const mode = yieldMode(deliver)
+                        if (mode !== 'go') {
+                            return
+                        }
+                        if (asTask) {
+                            setTimeout(deliver, 0)
+                        } else {
+                            queueMicrotask(deliver)
+                        }
+                    },
+                    close() {},
+                }
             })
         },
         parkNextYield() {
             yieldPark.next = true
         },
+        holdNextYield(nth = 1) {
+            yieldHold.remaining = nth
+            yieldHold.entered = false
+            return { entered: () => yieldHold.entered, release: () => yieldHold.deliver() }
+        },
+        failNextRead() {
+            readFault.next = true
+        },
+        log,
+        ticks,
         dirty: () => state.dirty,
         moduleCount: () => db.modules.length,
         freeze() {
             doc.visibilityState = 'hidden'
-            vi.stubGlobal('scheduler', { yield: () => { counters.yieldCalls += 1; return new Promise<void>(() => {}) } })
+            vi.stubGlobal('scheduler', { yield: () => { counters.yieldCalls += 1; counters.schedulerYields += 1; return new Promise<void>(() => {}) } })
             vi.stubGlobal('MessageChannel', class {
                 port1 = { onmessage: null as unknown, close() {} }
-                port2 = { postMessage() {}, close() {} }
+                port2 = { postMessage() { counters.yieldCalls += 1; counters.messageYields += 1 }, close() {} }
             })
             h.frozen.on = true
         },
@@ -701,6 +818,52 @@ describe('a hidden Android tick yields, and a save request pre-empts it', () => 
         expect(record!.preempted).toBe(false)
     })
 
+    // Reproducer: the raced yield of a hidden Android tick is a message, never `scheduler.yield`.
+    test('reproducer: T1.1 a hidden module tick takes its raced yields as messages and none through scheduler.yield (release build)', async () => {
+        const loop = await startWakeLoop({ idleNet: true })
+        loop.hide()
+        await reachBeforeModuleTick(loop)
+        stepClock()
+        await vi.advanceTimersByTimeAsync(1000)
+
+        expect(loop.messageYields()).toBeGreaterThanOrEqual(loop.moduleCount())
+        expect(loop.schedulerYields()).toBe(0)
+        expect(loop.crashed).toEqual([])
+    })
+
+    // Diagnostic under a stated platform model: a message is a task that queues behind the page's other tasks while
+    // `scheduler.yield` is a microtask here. The tick still ends once the page's tasks run, through messages only.
+    test('diagnostic: T1.2 a hidden module tick whose messages are tasks finishes through messages only', async () => {
+        const loop = await startWakeLoop({ idleNet: true })
+        loop.hide({ messageAsTask: true })
+        await reachBeforeModuleTick(loop)
+        stepClock()
+        await vi.advanceTimersByTimeAsync(1000)
+
+        expect(loop.messageYields()).toBeGreaterThanOrEqual(loop.moduleCount())
+        expect(loop.schedulerYields()).toBe(0)
+        expect(loop.crashed).toEqual([])
+    })
+
+    // Reproducer: the record of a hidden tick names the primitive it used, with the localStorage switch absent.
+    test('reproducer: T1.3 the yield-gap record of a hidden tick reads message mode with the switch absent (measurement build)', async () => {
+        measure.on = true
+        vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'risu-measure-savepass' ? 'on' : null })
+        vi.spyOn(console, 'log').mockImplementation(() => {})
+        startSavePass()
+        yieldGapMeterHandle.reset()
+        const loop = await startWakeLoop({ idleNet: true })
+        loop.hide()
+        await reachBeforeModuleTick(loop)
+        stepClock()
+        await vi.advanceTimersByTimeAsync(1000)
+
+        const record = yieldGapMeterHandle.all().find((entry) => entry.kind === 'tick' && entry.modules)
+        expect(record).toBeDefined()
+        expect(record!.mode).toBe('message')
+        expect(loop.schedulerYields()).toBe(0)
+    })
+
     // Reproducer of the pre-emption half. Base B- (scratch): no race and no `isDue` term; the parked yield is never resolved.
     test('reproducer: TA-2 a tick parked in a yield on a frozen page is pre-empted and the request commits', async () => {
         const loop = await startWakeLoop({ idleNet: true })
@@ -866,6 +1029,24 @@ describe('a hidden Android tick yields, and a save request pre-empts it', () => 
         expect(record!.yields).toBeGreaterThanOrEqual(loop.moduleCount())
     })
 
+    // Guard (passes before and after): a visible Android page is not raced, so its tick yields through scheduler.yield and no message.
+    test('guard: T1.4 a visible page takes its tick yields through scheduler.yield and none by message', async () => {
+        const loop = await startWakeLoop({ idleNet: true })
+        const counted = { scheduler: 0, message: 0 }
+        vi.stubGlobal('scheduler', { yield: () => { counted.scheduler += 1; return Promise.resolve() } })
+        vi.stubGlobal('MessageChannel', class {
+            port1 = { onmessage: null as unknown, close() {} }
+            port2 = { postMessage() { counted.message += 1 }, close() {} }
+        })
+        await reachBeforeModuleTick(loop)
+        stepClock()
+        await vi.advanceTimersByTimeAsync(1000)
+
+        expect(counted.scheduler).toBeGreaterThanOrEqual(loop.moduleCount())
+        expect(counted.message).toBe(0)
+        expect(loop.crashed).toEqual([])
+    })
+
     // Guard: a port without the request hook keeps today's skip on a hidden Android page.
     test('guard: TA-8 without the request hook a hidden tick takes no yield', async () => {
         const loop = await startWakeLoop({ idleNet: true, requestHook: false })
@@ -876,5 +1057,309 @@ describe('a hidden Android tick yields, and a save request pre-empts it', () => 
 
         expect(loop.yieldCalls()).toBe(0)
         expect(loop.crashed).toEqual([])
+    })
+})
+
+/** The page is hidden and the first module tick waits in its `nth` yield; resolves once it is there. */
+async function holdModuleTick(loop: WakeLoop, nth = 1): Promise<{ entered(): boolean, release(): void }> {
+    loop.hide()
+    await reachBeforeModuleTick(loop)
+    const held = loop.holdNextYield(nth)
+    stepClock()
+    await vi.advanceTimersByTimeAsync(100)
+    await runMicrotasks(() => held.entered(), 20_000)
+    expect(held.entered()).toBe(true)
+    return held
+}
+
+/** A mark and one save request while a tick waits in a yield; resolves once the marked pass has committed. */
+async function requestWhileHeld(loop: WakeLoop): Promise<void> {
+    const before = loop.saved()
+    loop.edit(`marked edit ${before}`)
+    loop.scheduler.requestNow()
+    await drive(() => loop.saved() > before && !loop.dirty(), 'the marked pass saved')
+}
+
+/** The log entries of the plans, the saves and the redo signal, in order. */
+function planLog(loop: WakeLoop, ...kinds: string[]): string[] {
+    return loop.log.filter((entry) => kinds.includes(entry))
+}
+
+/** The page is frozen in a held module tick, a request ends it, and the marked pass commits; the page is then thawed and hidden. */
+async function cutModuleTickFrozen(loop: WakeLoop): Promise<void> {
+    await holdModuleTick(loop)
+    loop.freeze()
+    const savedBefore = loop.saved()
+    loop.edit('edit made while frozen')
+    loop.scheduler.requestNow()
+    await runMicrotasks(() => loop.saved() > savedBefore && !loop.dirty())
+    h.frozen.on = false
+    loop.hide()
+}
+
+describe('a hidden full or module tick ends at the first yield after a pass is due, and its redo is owed', () => {
+    // Reproducer: the Stage 1 tick finishes under the page rule once a request arrives, so its plan ends before the marked pass starts.
+    test('reproducer: T2.1 a request in a hidden tick\'s yield cuts it; the marked pass commits next with microtasks only', async () => {
+        const loop = await startWakeLoop({ idleNet: true })
+        const held = await holdModuleTick(loop)
+        loop.freeze()
+        const savedBefore = loop.saved()
+        const before = await loop.commitBytes()
+
+        loop.edit('edit made while frozen')
+        loop.scheduler.requestNow()
+        await runMicrotasks(() => loop.saved() > savedBefore && !loop.dirty())
+
+        expect(held.entered()).toBe(true)
+        expect(loop.log).not.toContain('tick-end')
+        expect(loop.log.indexOf('tick-abort')).toBeGreaterThan(-1)
+        expect(loop.log.indexOf('tick-abort')).toBeLessThan(loop.log.indexOf('marked-start'))
+        expect(Array.from(await loop.commitBytes())).not.toEqual(Array.from(before))
+        expect(loop.dirty()).toBe(false)
+        // The cut is quiet: nothing is reported, no back-off waits, and only the marked pass counts as a save.
+        expect(loop.reports()).toEqual([])
+        expect(loop.trace.some((entry) => entry.kind !== 'wait')).toBe(false)
+        expect(planLog(loop, 'saved')).toHaveLength(1)
+        expect(loop.crashed).toEqual([])
+    })
+
+    // Reproducer: the cut tick's yield-gap record plans nothing and says it was cut.
+    test('reproducer: T2.2 the yield-gap record of a cut tick has a null planMs and cut true (measurement build)', async () => {
+        measure.on = true
+        vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'risu-measure-savepass' ? 'on' : null })
+        vi.spyOn(console, 'log').mockImplementation(() => {})
+        startSavePass()
+        yieldGapMeterHandle.reset()
+        const loop = await startWakeLoop({ idleNet: true })
+        await holdModuleTick(loop)
+        loop.freeze()
+        const savedBefore = loop.saved()
+
+        loop.edit('edit made while frozen')
+        loop.scheduler.requestNow()
+        await runMicrotasks(() => loop.saved() > savedBefore && !loop.dirty())
+
+        const record = yieldGapMeterHandle.all().find((entry) => entry.kind === 'tick' && entry.modules)
+        expect(record).toBeDefined()
+        expect(record!.planMs).toBeNull()
+        expect(record!.cut).toBe(true)
+        expect(record!.preempted).toBe(true)
+    })
+
+    // Reproducer: a request that landed while the tick read its base cuts it before it plans anything.
+    test('reproducer: T2.3 a request made while the tick reads cuts it before its plan starts', async () => {
+        const loop = await startWakeLoop({ idleNet: true })
+        loop.hide()
+        await reachBeforeModuleTick(loop)
+        const held = loop.holdNextRead()
+        stepClock()
+        await vi.advanceTimersByTimeAsync(100)
+        await runMicrotasks(() => held.entered(), 20_000)
+        expect(held.entered()).toBe(true)
+        loop.freeze()
+        const savedBefore = loop.saved()
+
+        loop.edit('edit made while frozen')
+        loop.scheduler.requestNow()
+        held.release()
+        await runMicrotasks(() => loop.saved() > savedBefore && !loop.dirty())
+
+        expect(loop.ticks).toEqual([])
+        expect(loop.log).not.toContain('tick-start')
+        expect(loop.log).toContain('marked-end')
+        expect(loop.reports()).toEqual([])
+    })
+
+    // Reproducer: ticks 1 and 2 are cut, tick 3 finishes whatever becomes due, tick 4 may be cut again.
+    test('reproducer: T2.4 two consecutive cuts, then a finished tick that ends the redo, then a fresh streak', async () => {
+        const loop = await startWakeLoop({ idleNet: { moduleIntervalMs: 1 } })
+        loop.hide()
+        for (let tick = 1; tick <= 4; tick++) {
+            const held = loop.holdNextYield()
+            stepClock()
+            await drive(() => held.entered(), `tick ${tick} in its first yield`)
+            await requestWhileHeld(loop)
+        }
+
+        expect(planLog(loop, 'tick-abort', 'tick-end').slice(0, 4)).toEqual(['tick-abort', 'tick-abort', 'tick-end', 'tick-abort'])
+        expect(planLog(loop, 'redo:true', 'redo:false').slice(0, 4)).toEqual(['redo:true', 'redo:true', 'redo:false', 'redo:true'])
+        expect(loop.reports()).toEqual([])
+        expect(loop.crashed).toEqual([])
+    })
+
+    // Guard (the base has no cut): the redo takes module scope again and names the same resident as the cut tick.
+    test('guard: T2.5/T2.6 the redo takes the cut tick\'s module scope and its resident', async () => {
+        const loop = await startWakeLoop({ idleNet: true })
+        await cutModuleTickFrozen(loop)
+
+        await drive(() => loop.ticks.length >= 2, 'the redo tick')
+
+        expect(loop.ticks[0].modules).toBe(true)
+        expect(loop.ticks[1]).toEqual(loop.ticks[0])
+        expect(loop.ticks[0].chaId).not.toBeNull()
+    })
+
+    // Guard: the redo's signal order. `redo:true` precedes the marked save; `redo:false` follows the redo's plan, and its save when it wrote.
+    test('guard: T2.16 redo:true precedes the marked save and redo:false follows the redo tick\'s own save', async () => {
+        const loop = await startWakeLoop({ idleNet: true })
+        await cutModuleTickFrozen(loop)
+        loop.editUnmarked('an unmarked edit the redo carries', loop.ticks[0].chaId!)
+
+        await drive(() => loop.log.includes('redo:false'), 'the redo ended')
+
+        expect(loop.log).toEqual([
+            'tick-start', 'tick-abort', 'redo:true', 'marked-start', 'marked-end', 'saved',
+            'tick-start', 'tick-end', 'saved', 'redo:false',
+        ])
+    })
+
+    // Guard: a redo that plans unchanged ends the owed state with no save of its own.
+    test('guard: T2.17 a redo that plans unchanged ends with redo:false and no save', async () => {
+        const loop = await startWakeLoop({ idleNet: true })
+        await cutModuleTickFrozen(loop)
+
+        await drive(() => loop.log.includes('redo:false'), 'the redo ended')
+
+        expect(loop.log.slice(loop.log.indexOf('marked-end'))).toEqual(['marked-end', 'saved', 'tick-start', 'tick-end', 'redo:false'])
+    })
+
+    // Guard: a request that arrives while the tick's own commit is under way does not cut it.
+    test('guard: T2.8 a request during the tick\'s commit does not cut it; both commits land', async () => {
+        const loop = await startWakeLoop({ idleNet: { moduleIntervalMs: 1 } })
+        loop.hide()
+        loop.editUnmarked('an unmarked edit the tick carries')
+        const held = loop.holdNextCommit({ land: true })
+        stepClock()
+        await drive(() => held.entered(), 'the tick\'s commit')
+
+        loop.edit('marked edit')
+        loop.scheduler.requestNow()
+        held.release()
+        await drive(() => planLog(loop, 'saved').length >= 2 && !loop.dirty(), 'both commits saved')
+
+        expect(loop.log.slice(0, 6)).toEqual(['tick-start', 'tick-end', 'saved', 'marked-start', 'marked-end', 'saved'])
+        expect(loop.reports()).toEqual([])
+    })
+
+    // Guard: a marked pass is never cut, even when another request becomes due during its read.
+    test('guard: T2.9 a request during a marked pass\'s read does not cut it', async () => {
+        const loop = await startWakeLoop({})
+        loop.hide()
+        const held = loop.holdNextRead()
+        loop.edit('edit 1')
+        loop.scheduler.requestNow()
+        stepClock()
+        await drive(() => held.entered(), 'the marked pass\'s read')
+
+        loop.edit('edit 2')
+        loop.scheduler.requestNow()
+        held.release()
+        await drive(() => planLog(loop, 'marked-end').length >= 2 && !loop.dirty(), 'both marked passes ended')
+
+        expect(loop.log).not.toContain('marked-abort')
+        expect(loop.reports()).toEqual([])
+    })
+
+    // Guard (passes before and after): a visible Android page is not cut; its tick finishes before the marked pass.
+    test('guard: T2.10 a request inside a visible tick\'s yield does not cut it', async () => {
+        const loop = await startWakeLoop({ idleNet: { moduleIntervalMs: 1 } })
+        let yields = 0
+        vi.stubGlobal('scheduler', {
+            yield: () => {
+                yields += 1
+                if (yields === 2) {
+                    loop.edit('edit inside the yield')
+                    loop.scheduler.requestNow()
+                }
+                return Promise.resolve()
+            },
+        })
+        stepClock()
+        await drive(() => loop.log.includes('marked-end'), 'the marked pass')
+
+        expect(loop.log).not.toContain('tick-abort')
+        expect(loop.log.indexOf('tick-end')).toBeGreaterThan(-1)
+        expect(loop.log.indexOf('tick-end')).toBeLessThan(loop.log.indexOf('marked-start'))
+    })
+
+    // Reproducer: a debounced edit's due flag, with no request listener fired, cuts the tick at its next yield.
+    test('reproducer: T2.12 a debounced edit that becomes due in a yield cuts the tick; the marked pass follows the 500 ms wait', async () => {
+        const loop = await startWakeLoop({ idleNet: { moduleIntervalMs: 1 } })
+        loop.hide()
+        const held = loop.holdNextYield()
+        stepClock()
+        await drive(() => held.entered(), 'the tick in its first yield')
+
+        loop.edit('a debounced edit')
+        loop.scheduler.schedule()
+        await vi.advanceTimersByTimeAsync(500)
+        held.release()
+        await runMicrotasks(() => loop.log.includes('tick-abort'), 20_000)
+
+        expect(loop.log).not.toContain('tick-end')
+        expect(loop.log).toContain('tick-abort')
+        expect(loop.log).not.toContain('marked-start')
+        await vi.advanceTimersByTimeAsync(600)
+        expect(loop.log).toContain('marked-start')
+    })
+
+    // Guard (passes before and after; red when the verdict exemption is removed): a verdict tick commits before the marked pass.
+    test('guard: T2.15 a hidden verdict tick with a request in its yield is not cut', async () => {
+        const loop = await startWakeLoop({ idleNet: { moduleIntervalMs: 1_000_000_000 } })
+        loop.hide()
+        loop.editUnmarked('an unmarked edit the verdict finds')
+        const held = loop.holdNextYield()
+        stepClock()
+        await drive(() => held.entered(), 'the verdict tick in its yield')
+        expect(loop.ticks[0].modules).toBe(false)
+        expect(loop.ticks[0].chaId).not.toBeNull()
+
+        loop.edit('marked edit')
+        loop.scheduler.requestNow()
+        await drive(() => loop.log.includes('marked-end'), 'the marked pass')
+
+        expect(loop.log).not.toContain('tick-abort')
+        expect(loop.log.indexOf('tick-end')).toBeLessThan(loop.log.indexOf('marked-start'))
+        expect(loop.log.indexOf('saved')).toBeLessThan(loop.log.indexOf('marked-start'))
+        expect(loop.log.some((entry) => entry.startsWith('redo'))).toBe(false)
+    })
+
+    // Guard: a cut full tick that was not module-scoped still owes a full redo, and the redo ends the owed state.
+    test('guard: T2.18 a read-fault full tick that is cut is followed by a full tick and redo:false', async () => {
+        const loop = await startWakeLoop({ idleNet: { moduleIntervalMs: 1_000_000_000 } })
+        loop.hide()
+        loop.failNextRead()
+        const held = loop.holdNextYield()
+        stepClock()
+        await drive(() => held.entered(), 'the full tick in its yield')
+        expect(loop.ticks[0].modules).toBe(false)
+        await requestWhileHeld(loop)
+
+        await drive(() => loop.log.includes('redo:false'), 'the redo ended')
+
+        expect(loop.ticks.length).toBeGreaterThanOrEqual(2)
+        expect(planLog(loop, 'redo:true', 'redo:false')).toEqual(['redo:true', 'redo:false'])
+    })
+
+    // Guard: the redo waits for the net interval after the cut and runs at the next slot after that.
+    test('guard: T2.19 the redo does not start before the net interval and starts at the slot after it', async () => {
+        const loop = await startWakeLoop({ idleNet: { intervalMs: 1000, moduleIntervalMs: 1 } })
+        loop.hide()
+        const held = loop.holdNextYield()
+        stepClock()
+        await drive(() => held.entered(), 'the tick in its first yield')
+        const cutAt = Date.now()
+        await requestWhileHeld(loop)
+
+        let redoAt = -1
+        for (let spent = 0; spent < 4000 && redoAt < 0; spent += 50) {
+            await vi.advanceTimersByTimeAsync(50)
+            if (loop.ticks.length >= 2) {
+                redoAt = Date.now()
+            }
+        }
+
+        expect(redoAt).toBeGreaterThanOrEqual(cutAt - 100 + 1000)
+        expect(redoAt).toBeLessThanOrEqual(cutAt + 1500 + 100)
     })
 })

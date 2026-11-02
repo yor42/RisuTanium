@@ -77,3 +77,25 @@ export async function yieldToEventLoop(): Promise<void> {
     }
     await new Promise<void>((resolve) => setTimeout(resolve, 0))
 }
+
+/**
+ * Yields one turn through a `MessageChannel` message and never through `scheduler.yield()`. A message is an ordinary
+ * task that waits its turn among the page's other tasks, whereas `scheduler.yield()` continues ahead of them; a pass
+ * that must let a pending request through cannot use the latter. Closes both ports once the message arrives. Falls back to
+ * `yieldToEventLoop` where `MessageChannel` is unavailable (read at call time).
+ */
+export async function yieldByMessage(): Promise<void> {
+    if (typeof MessageChannel === 'undefined') {
+        await yieldToEventLoop()
+        return
+    }
+    await new Promise<void>((resolve) => {
+        const channel = new MessageChannel()
+        channel.port1.onmessage = () => {
+            channel.port1.close()
+            channel.port2.close()
+            resolve()
+        }
+        channel.port2.postMessage(undefined)
+    })
+}
