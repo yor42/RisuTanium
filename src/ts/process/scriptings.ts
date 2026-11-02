@@ -297,7 +297,8 @@ export async function runScripted(code:string, arg:{
                 const data = {
                     role: chat.role,
                     data: chat.data,
-                    time: chat.time ?? 0
+                    time: chat.time ?? 0,
+                    ...(chat.chatId ? {chatId: chat.chatId} : {})
                 }
                 return JSON.stringify(data)
             })
@@ -320,6 +321,7 @@ export async function runScripted(code:string, arg:{
                     role: v.role,
                     data: v.data,
                     time: v.time ?? 0,
+                    ...(v.chatId ? {chatId: v.chatId} : {}),
                 })))
             })
 
@@ -406,7 +408,8 @@ export async function runScripted(code:string, arg:{
                     return {
                         role: v.role,
                         data: v.data,
-                        time: v.time ?? 0
+                        time: v.time ?? 0,
+                        ...(v.chatId ? {chatId: v.chatId} : {})
                     }
                 }))
                 return data
@@ -437,15 +440,46 @@ export async function runScripted(code:string, arg:{
                     return
                 }
 
-                // A rebuilt message at the same index with the same role and data is the same message: it keeps
-                // every field, so the alternatives that follow it stay attached and its metadata survives.
-                // An edited message is a new message and carries nothing.
+                // Each previous message is matched at most once, so no id is ever shared. A payload chatId claims
+                // the first previous message holding it, and only if that message is unclaimed (no later holder
+                // is tried); every other entry (no id, unknown, duplicate or already claimed) is judged by the
+                // same index, role and data against unclaimed previous messages, after all id claims. A matched
+                // message keeps every field with only role and data replaced, so the alternatives that follow it
+                // stay attached. The script never assigns an id, and nothing is searched in chat.alt. The list is
+                // built before target.message is assigned once, so a malformed entry throws with the chat untouched.
                 const previousPath = target.message.slice()
-                target.message = realValue.map((v, index) => {
+                const firstById = new Map<string, number>()
+                for(let k = 0; k < previousPath.length; k++){
+                    const previousId = previousPath[k].chatId
+                    if(previousId && !firstById.has(previousId)){
+                        firstById.set(previousId, k)
+                    }
+                }
+                const claimed = new Set<number>()
+                const matchedAt = new Map<number, number>()
+                for(let index = 0; index < realValue.length; index++){
+                    const wanted = realValue[index].chatId
+                    if(typeof wanted === 'string' && wanted){
+                        const k = firstById.get(wanted)
+                        if(k !== undefined && !claimed.has(k)){
+                            claimed.add(k)
+                            matchedAt.set(index, k)
+                        }
+                    }
+                }
+                for(let index = 0; index < realValue.length; index++){
                     const previous = previousPath[index]
-                    if(previous && previous.role === v.role && previous.data === v.data){
+                    if(!matchedAt.has(index) && previous && !claimed.has(index)
+                        && previous.role === realValue[index].role && previous.data === realValue[index].data){
+                        claimed.add(index)
+                        matchedAt.set(index, index)
+                    }
+                }
+                target.message = realValue.map((v, index) => {
+                    const k = matchedAt.get(index)
+                    if(k !== undefined){
                         const message:Message = {
-                            ...previous,
+                            ...previousPath[k],
                             role: v.role,
                             data: v.data
                         }

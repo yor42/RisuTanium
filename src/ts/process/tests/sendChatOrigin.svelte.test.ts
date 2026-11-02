@@ -1419,7 +1419,7 @@ describe('guard: a send with no switch and no edit', () => {
 })
 
 describe('an output trigger that rebuilds the chat without message ids', () => {
-    /** As a Lua `setFullChat` does: every message is rebuilt from its role and data alone. */
+    /** As an output script that rebuilds every message from literals does: no message keeps its id. */
     function rebuildChatWithoutIds(_char: unknown, mode: string, arg: { origin: Origin }) {
         if (mode === 'output') {
             writeAt(arg.origin, (ctx) => {
