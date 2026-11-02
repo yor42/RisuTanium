@@ -1,10 +1,12 @@
 name: RisuTanium CodeQL config
 
-# Scan only code that ships. Tests, their harnesses and fixtures, and the
-# campaign's dev tools under Agents/Tools are never built into the app or the
-# servers, and nothing outside a tests folder imports from one.
+# Scan only code that ships. Tests, their harnesses and fixtures, the
+# campaign's dev tools under Agents/Tools and the design mockups under
+# docs/design are never built into the app or the servers, and nothing outside
+# a tests folder imports from one.
 paths-ignore:
   - '**/*.test.ts'
   - '**/*.test.svelte.ts'
   - '**/tests/**'
   - 'Agents/Tools/**'
+  - 'docs/design/**'
