@@ -1,5 +1,24 @@
 # Roadmap reconciliation, 2026-11-02, run a
 
+> **Historical snapshot.** This package records the state before the maintainer's answers of 2026-11-02 (committed as `8015ba56e`, after the answer records `bf491be02`). It is not an execution handoff. Its queue, schedule and Q1 to Q9 text are dated evidence. Do not re-ask the questions, rerun the finished Q1 investigation, or take the Back timing or the Utility schedule from `proposal.md` or `ticket-matrix.md`. Use the table below, the original MC entries in `Agents/Maintainer-Context.md`, the batch 37 section of `Agents/Carry-Forward.md` ("After records batch 37") and the CHORE-629 row in `Agents/Roadmap.md`.
+
+## Current disposition (overlay, records as of `bf491be02`)
+
+| Item | Decision (few words) | MC | Current state |
+|---|---|---|---|
+| Q1 | Bounded investigation of unadvertised `tool_use` | MC-997 (ticket: MC-1007) | Investigated (stubbed-provider diagnostic); CHORE-629 filed, not started |
+| Q2 | No exemption for V3 body interceptors; fix Utility wording | MC-998 | Wording fix owed under the normal gates |
+| Q3 | CHORE-205 item 6 in next device session with CHORE-396 forced GC, then rule | MC-999 | Owed; no session scheduled in the sources (TODO(evidence)) |
+| Q4 | Classify unresolved harvest items only with a reproducer | MC-1000 | Nothing classified or scheduled |
+| Q5 | Utility analysis now; UI-touching implementation after UI-S4 | MC-1001 | Analysis and CHORE-617 sizing may proceed; implementation waits |
+| Q6 | One bounded six-seam note before UI-S1 sizing | MC-1002 | Not written |
+| Q7 | Back mechanism decided at UI-S1 sizing (amends MC-892 item 3 timing) | MC-1003 | Back decided at UI-S1 sizing; not UI-S4 |
+| Q8 | Consumer plan names the default for a missing setter | MC-1004 | Applies to each consumer-before-setter plan |
+| Q9 | Workspace sizing assumes a store2 record first, no schema | MC-1005 | Assumption only; no schema |
+| Live-State housekeeping | Archive move of superseded bullets | MC-1006 | Done in records batch 37 |
+
+Source: `Agents/Carry-Forward.md` (section "After records batch 37") and the original MC entries; the CHORE-629 Roadmap row in `Agents/Roadmap.md`. The table is a navigation overlay; the MC entries govern.
+
 Status: proposal documents only. This is not a maintainer decision and not a Gate verdict. No campaign record, MC entry, ticket or design file was amended. No application code was touched.
 
 Verification: Independently verified 2026-11-02 by two doc-verifiers (proposal/decisions/README; claim and ticket matrices), both ACCEPT WITH CORRECTIONS; corrections applied per lane A's arbitration. A fresh check of the remediation returned ACCEPT WITH CORRECTIONS (28 checked, 27 verified); its one correction (the gate list in the proposal's section 1) was applied by lane A. Remaining UNKNOWN and TODO(evidence) items are listed in the files.
@@ -54,7 +73,7 @@ Other inputs: the external proposal itself and the earlier fact-check (only to q
 - Nothing was executed. No build, test or diagnostic ran. Every code statement is a static reading by a packet author.
 - The author opened three things directly, only to settle a packet question: `git rev-parse` and `git diff --stat` (HEAD moved), a directory listing of `src/ts/process/utility` and `src/ts/process/memory` (both exist, so the external proposal's paths are right), and a listing of `docs/design` (nine top-level files, no README).
 - A lane A spot check was carried in: `useStreaming` is declared in `src/ts/storage/database.svelte.ts` with no default seeding found, and `request.ts` sets `targ.useStreaming = arg.forceStreaming ? true : db.useStreaming && arg.useStreaming`. So a Utility request is non-streaming unless the user turned streaming on.
-- Classification words: VERIFIED, WRONG, STALE, OVERSTATED, INCOMPLETE, PROPOSED, UNKNOWN. Evidence kinds: observed code, previously reported check (with its record), diagnostic run, recommendation. No diagnostic was run for this folder.
+- Classification words: VERIFIED, VERIFIED WITH LIMITS (added by the 2026-11-02 follow-up correction, C-069), WRONG, STALE, OVERSTATED, INCOMPLETE, PROPOSED, UNKNOWN. Evidence kinds: observed code, previously reported check (with its record), diagnostic run, recommendation. No diagnostic was run for this folder.
 - Every recommendation is tagged as one of: existing policy, proposed clarification, or amendment requiring approval.
 - Any U-, UI-B or Batch label in these files is a proposal label, not an allocated ticket ID. Real IDs come only from the Roadmap.
 

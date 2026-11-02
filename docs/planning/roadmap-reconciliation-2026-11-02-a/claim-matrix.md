@@ -9,6 +9,7 @@ Source of the claim list: `f-claims` (330 rows, numbered C-001 to C-330, line nu
 | Class | Meaning |
 |---|---|
 | VERIFIED | A packet found it true in code, records or primary documents. |
+| VERIFIED WITH LIMITS | True at the scope the claim states; named limits are separate caveats for a future use, not a refutation. |
 | WRONG | A packet found it false. |
 | STALE | True once, no longer. |
 | OVERSTATED | Partly true; the claim goes beyond the evidence. |
@@ -97,7 +98,7 @@ Total 330. The DECISION REQUEST ids are C-021, C-119, C-290, C-291, C-293, C-295
 | C-063 SupaMemory | exists | VERIFIED (existence only) | `src/ts/process/memory/supaMemory.ts` and `supaMemory.test.ts` exist; `supaMemoryKey` is read in `hypamemory.ts`, `hypamemoryv2.ts`, `hypav2.ts` and `hypav3.ts`. Behaviour not traced. | OC |
 | C-064, C-065, C-066, C-067 | HypaMemory, V2, V3, Hanurai exist | VERIFIED | As C-062. | OC |
 | C-068 | contextual embedding support | VERIFIED | voyage-context-3 in `contextualEmbedding.ts:27`, dispatched from `hypamemoryv2.ts:492-493`. | OC |
-| C-069 | `HypaProcessorV2<TMetadata>` gives reusable embedding and similarity-search primitives with metadata | OVERSTATED | Brute-force search returning every vector sorted; metadata returned, not queryable; instance `Map`; one global content-keyed cache; no namespace, no delete; one non-test consumer (`hypav3.ts:646`). The older `HypaProcesser` serves V2 and Hanurai. | OC |
+| C-069 | `HypaProcessorV2<TMetadata>` gives reusable embedding and similarity-search primitives with metadata | VERIFIED WITH LIMITS | The primitive claim holds: `EmbeddingText`/`EmbeddingResult` carry optional `metadata`, and `addTexts` and `similaritySearchScored` are public (`hypamemoryv2.ts:20-28,53-66`); the external text claims primitives only and recommends extraction only for a concrete Utility use case (external proposal lines 169-173), not a complete retrieval store. Limits, kept as separate future integration caveats and not a refutation: brute-force search returning every vector sorted; metadata returned, not queryable; instance `Map`; one global content-keyed cache; no namespace, no delete path, no cache invalidation or lifecycle; one non-test consumer (`hypav3.ts:646`). The older `HypaProcesser` serves V2 and Hanurai. Reclassified 2026-11-02 per the follow-up review F1 (`docs/planning/2026-11-02-roadmap-followup-review.md`); originally marked OVERSTATED. | OC |
 
 ### 2.5 Design and theme (13 rows: C-025, C-072 to C-082, C-173)
 
@@ -229,7 +230,7 @@ Rows in section 3 are a grouping by id range. A few ids may appear under two hea
 | 1 | a-isolation vs a-verify (interceptor label count 17 vs 20; reverse proxy reaching `mistral`/Responses; streaming default; stdio; read scope; module write prompts) | The verifier wins. Table in `proposal.md` section 4. |
 | 2 | a-isolation says the Utility comment's "V2-style" hooks; MC-934 Q3 says "V3 plugin before and after request hooks" | Same mechanism (`addRisuReplacer`, `v3.svelte.ts:1023-1030`); naming slip only (a-verify). Wording in this folder follows MC-934. |
 | 3 | c-gates marks the batch 36 CHORE-624 result UNVERIFIED and reports it contradicts the commit's flush claim | Replaced by the independently verified result carried in from lane A: ACCEPT WITH CORRECTIONS. See `proposal.md` section 2.2. |
-| 4 | b-reuse "R2/R3/R4" refute premises (per-run MCP scoping; `HypaProcessorV2` as a retrieval store; prefix handling) | No `f-claims` row states R2 as a fact. The nearest are recommendations C-149 and C-154. R3 maps to C-069 (OVERSTATED). R4 is an observation about the proposal's F-04 list, which `f-claims` splits into C-062 to C-068. |
+| 4 | b-reuse "R2/R3/R4" refute premises (per-run MCP scoping; `HypaProcessorV2` as a retrieval store; prefix handling) | No `f-claims` row states R2 as a fact. The nearest are recommendations C-149 and C-154. R3 maps to C-069 (VERIFIED WITH LIMITS, reclassified from OVERSTATED). R4 is an observation about the proposal's F-04 list, which `f-claims` splits into C-062 to C-068. |
 | 5 | `f-claims` numbers lines with ripgrep (1147 lines); `Measure-Object -Line` reports 702 for the same file | Verified: the file has 1147 physical lines (CRLF, 48,574 bytes, untracked so not at a pinned commit); 702 is the non-blank count, because `Measure-Object -Line` skips blank lines. The `f-claims` numbering is the physical line number and is correct for citing the file. |
 | 6 | a-isolation: `utilityGate.ts` is under `src/lib/Utility/`, "not process/utility" | Author check: `src/ts/process/utility/` exists and holds `utilityConversation.svelte.ts`. The remark concerns one file only; the external C-025 path is right. |
 | 7 | d-queue: the UI epic Roadmap row says "nothing implemented" | STALE for UI-S0; the UI-S0 row supersedes it. |

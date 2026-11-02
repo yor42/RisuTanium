@@ -199,7 +199,7 @@ Side observation, not traced: `decodeToolCall` in `mcp.ts:545` slices with `text
 
 ### 7.2 Memory (observed code, b-reuse; records for 619 to 621)
 
-- `HypaProcessorV2` has one non-test consumer (`hypav3.ts:646`). Vectors live in an instance `Map`. The only persistence is a global content-keyed embedding cache (localforage `hypaVector`), with no namespace, no access control and no delete path. Similarity search returns all vectors sorted, with no top-k and no metadata filter. So the external C-069 is OVERSTATED: primitives exist, a store does not.
+- `HypaProcessorV2` has one non-test consumer (`hypav3.ts:646`). Vectors live in an instance `Map`. The only persistence is a global content-keyed embedding cache (localforage `hypaVector`), with no namespace, no access control and no delete path. Similarity search returns all vectors sorted, with no top-k and no metadata filter. So the external C-069, which claims reusable primitives with metadata and not a store, is VERIFIED WITH LIMITS (reclassified from OVERSTATED per the follow-up review F1): the primitives exist; namespace, cache invalidation, deletion and lifecycle are future integration caveats, and a retrieval store does not yet exist.
 - Reuse means reusing the V3 summary-chunk embedder. The older `HypaProcesser` serves V2 and Hanurai.
 - CHORE-619 (pooling), CHORE-620 (model list) and CHORE-621 (prefixes) each change vectors. The cache key is `content|model[-custom][ctx]` with no version. A Utility index built first would be invalidated later. Whether Utility vectors live in a separate, rebuildable store is a design decision not made here. [C]
 - Hypa cache and backups: UNKNOWN (no trace of `hypaVector` in backup surfaces; IndexedDB handling not traced).
