@@ -12,7 +12,10 @@ import { abortUtilityRun, startUtilityRun, type UtilityRun } from './utilityRuns
 /**
  * The single in-memory Utility conversation. It is lost on reload and is never written to the database. A send builds
  * its request from the preset and the turns alone and calls `requestChatDataMain` with a pinned model, so no chat,
- * character, persona, lorebook, trigger, plugin hook or tool can reach the body.
+ * character, persona, lorebook or trigger can reach the body. Calling `requestChatDataMain` directly skips the before and
+ * after request hooks, and `blockPlugins` refuses plugin model providers. V3 body interceptors with the replacer grant
+ * still see and can replace the body. Tools are not advertised (`tools: []`), but on the non-streaming Anthropic path a
+ * tool result can still be appended to the body.
  */
 
 export type UtilityTurnState = 'streaming' | 'done' | 'stopped' | 'failed'
