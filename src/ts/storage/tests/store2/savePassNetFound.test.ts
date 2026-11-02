@@ -349,3 +349,55 @@ describe('ticks, sequence and build time', () => {
         expect([record.builds, record.commitBuildMs, record.acknowledgeMs]).toEqual([2, 2, 1])
     })
 })
+
+describe('the page state the request carried (CHORE-624 stage 0)', () => {
+    const moduleNet = (db: Database) => ({ chaId: chaIdOf(db), modules: true })
+
+    function moduleEdited(db: Database): Database {
+        const next = clone(db)
+        ;(next.modules as Obj[])[1].description = 'a module description no fixture holds'
+        return asDatabase(next)
+    }
+
+    test('hidden and pageSkip on a pass record follow pageHidden and pageSkip independently; an unset request reads false', async () => {
+        const original = buildSmall(4)
+        const encoder = encoderOf(original)
+        const combos: Array<[boolean | undefined, boolean | undefined]> = [[false, false], [true, false], [false, true], [true, true], [undefined, undefined]]
+        for (const [index, [hidden, skip]] of combos.entries()) {
+            await commitOf(encoder, renamed(original, index % 4), tick(chaIdOf(original, index % 4), { pageHidden: hidden, pageSkip: skip }))
+        }
+        expect(meterOf().all().map(pass => [pass.hidden, pass.pageSkip])).toEqual([[false, false], [true, false], [false, true], [true, true], [false, false]])
+        expect(meterOf().all().every(pass => typeof pass.at === 'number')).toBe(true)
+    })
+
+    test('moduleTicks counts module-scoped tick plans by page state; a tick without module scope counts in neither', async () => {
+        const original = buildSmall(4)
+        const encoder = encoderOf(original)
+        await encoder.plan(original, tick(chaIdOf(original), { net: moduleNet(original), pageHidden: true }))
+        await encoder.plan(original, tick(chaIdOf(original), { net: moduleNet(original), pageHidden: true }))
+        await encoder.plan(original, tick(chaIdOf(original), { net: moduleNet(original) }))
+        await encoder.plan(original, tick(chaIdOf(original), { pageHidden: true }))
+        expect(meterOf().netFound()).toMatchObject({ ticks: 4, moduleTicks: { visible: 1, hidden: 2 }, moduleTicksFound: { visible: 0, hidden: 0 } })
+    })
+
+    test('moduleTicksFound counts a committed module-scoped tick that wrote a module unit, by page state, and not one that wrote only a character', async () => {
+        const original = buildSmall(4)
+        const hiddenOnlyCharacter = await commitOf(encoderOf(original), renamed(original), tick(chaIdOf(original), { net: moduleNet(original), pageHidden: true }))
+        expect(findsOf(hiddenOnlyCharacter).some(find => find.kind === 'module')).toBe(false)
+        expect(meterOf().netFound()).toMatchObject({ moduleTicks: { visible: 0, hidden: 1 }, moduleTicksFound: { visible: 0, hidden: 0 } })
+
+        const edited = moduleEdited(original)
+        const hiddenModule = await commitOf(encoderOf(original), edited, tick(chaIdOf(edited), { net: moduleNet(edited), pageHidden: true }))
+        expect(findsOf(hiddenModule).some(find => find.kind === 'module')).toBe(true)
+        const visibleModule = await commitOf(encoderOf(original), edited, tick(chaIdOf(edited), { net: moduleNet(edited) }))
+        expect(findsOf(visibleModule).some(find => find.kind === 'module')).toBe(true)
+        expect(meterOf().netFound()).toMatchObject({ moduleTicks: { visible: 1, hidden: 2 }, moduleTicksFound: { visible: 1, hidden: 1 } })
+    })
+
+    test('reset clears the module tick counters', async () => {
+        const original = buildSmall(4)
+        await commitOf(encoderOf(original), moduleEdited(original), tick(chaIdOf(original), { net: moduleNet(original), pageHidden: true }))
+        meterOf().reset()
+        expect(meterOf().netFound()).toMatchObject({ moduleTicks: { visible: 0, hidden: 0 }, moduleTicksFound: { visible: 0, hidden: 0 } })
+    })
+})

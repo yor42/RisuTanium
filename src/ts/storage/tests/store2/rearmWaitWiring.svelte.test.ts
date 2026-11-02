@@ -75,6 +75,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    delete (document as { visibilityState?: unknown }).visibilityState
     worlds.parkAll()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
@@ -101,9 +102,9 @@ function failingCommit() {
     return fault
 }
 
-async function startPage(db: Database, hooks: Hooks): Promise<{ w: World, k: Store2Kit, db: Entry }> {
+async function startPage(db: Database, hooks: Hooks, idleNet?: Store2Kit['context']['idleNet']): Promise<{ w: World, k: Store2Kit, db: Entry }> {
     h.db = db as unknown as Entry
-    const k = await startStore2({ db, hooks })
+    const k = await startStore2({ db, hooks, idleNet })
     const w = await worlds.startWorld({ kind: 'tauri', startLoop: false, boot: store2Boot(k) })
     const stores = await import('src/ts/stores.svelte')
     ;(stores.DBState as { db: unknown }).db = h.db
@@ -133,6 +134,52 @@ async function pageInBackOff(): Promise<{ w: World, k: Store2Kit, db: Entry, fau
     fault.on = false
     return { ...page, fault }
 }
+
+/**
+ * The page is hidden and its first idle tick sits in a `scheduler.yield` that never resolves (a freeze inside the yield),
+ * with every clock read 10 ms apart so each budget check finds the budget spent. Resolves with the yield count.
+ */
+async function pageWithParkedTick(): Promise<{ w: World, k: Store2Kit, db: Entry, yields: () => number }> {
+    const counter = { yields: 0 }
+    const page = await startPage(buildSmall(4), {}, { intervalMs: 1, moduleIntervalMs: 1, backstopMs: 0 })
+    await settled(page.w)
+    vi.stubGlobal('scheduler', { yield: () => { counter.yields += 1; return new Promise<void>(() => {}) } })
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+    let ticks = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => (ticks += 10))
+    return { ...page, yields: () => counter.yields }
+}
+
+describe('the page port ends a yield of a hidden tick on a save request only on the Android transport', () => {
+    // Wiring reproducer: without `onRequest` on the page port a hidden Android tick takes no yield (the page rule skips them), or a parked one is never ended.
+    test('on the Android transport a hidden tick yields and one save request ends the yield and commits', async () => {
+        osBox.os = 'android'
+        const page = await pageWithParkedTick()
+        await until(() => page.yields() >= 1, 'a yield of the hidden tick', 6000)
+        h.parked.add(page.w.id)
+
+        characters(page.db)[2].personality = 'edit while the tick is parked'
+        page.w.marks.markCharacterForSave(characters(page.db)[2].chaId)
+        page.w.api.requestSaveNow()
+
+        await until(async () => (await savedPersonality(page.k, 2)) === 'edit while the tick is parked', 'the pass after the pre-empted tick', 3000)
+    })
+
+    // Guard: on every other transport the page rule never skips, so the tick yields unraced and a request does not end the yield.
+    test.each(['other', 'windows', 'linux', 'macos'])('guard: on the %s transport a hidden tick yields unraced and a save request does not end it', async (os) => {
+        osBox.os = os
+        const page = await pageWithParkedTick()
+        await until(() => page.yields() >= 1, 'a yield of the hidden tick', 6000)
+        h.parked.add(page.w.id)
+
+        characters(page.db)[2].personality = 'edit while the tick is parked'
+        page.w.marks.markCharacterForSave(characters(page.db)[2].chaId)
+        page.w.api.requestSaveNow()
+        await sleepReal(600)
+
+        expect(await savedPersonality(page.k, 2)).not.toBe('edit while the tick is parked')
+    })
+})
 
 describe('the page port ends a back-off on a save request only on the Android transport', () => {
     test('on the Android transport one save request ends the back-off and the next pass commits', async () => {

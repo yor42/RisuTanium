@@ -2233,6 +2233,8 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         wait: (ms) => scheduler.wait(ms),
         // Chosen once by transport: a back-off begun visible can span the freeze, so the page's hidden state is no basis.
         rearmWait: isAndroidTransport() ? (ms) => scheduler.waitRearm(ms) : undefined,
+        // Same transport choice: a hidden tick that yields can be parked across the freeze, and a save request ends that yield.
+        onRequest: isAndroidTransport() ? (listener) => scheduler.onRequest(listener) : undefined,
         sleep,
         sleepForever,
         now: () => Date.now(),

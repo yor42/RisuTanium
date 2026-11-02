@@ -40,6 +40,13 @@ export interface SaveScheduler {
     waitRearm(ms: number): Promise<void>
     /** True while a debounce is running. */
     debouncePending(): boolean
+    /**
+     * Registers a one-shot listener that the next `requestNow` calls, after its own wake and latch handling. Timer-free:
+     * a frozen page runs it. Returns the release, which a listener that has run or been released makes a no-op.
+     * Armed listeners mean the loop is inside a pass, where no scheduler wait is live, so any wake left over is stale:
+     * the request is then kept as the latch, and the wait after the pass returns at once.
+     */
+    onRequest(listener: () => void): () => void
 }
 
 export function createSaveScheduler(options: SaveSchedulerOptions): SaveScheduler {
@@ -49,6 +56,7 @@ export function createSaveScheduler(options: SaveSchedulerOptions): SaveSchedule
     let latch = false
     let wake: (() => void) | null = null
     let wakeRearms = false
+    const listeners = new Set<() => void>()
 
     function sleepWake(ms: number, rearms: boolean): Promise<void> {
         return new Promise<void>((resolve) => {
@@ -93,6 +101,18 @@ export function createSaveScheduler(options: SaveSchedulerOptions): SaveSchedule
             } else {
                 latch = true
             }
+            if (listeners.size > 0) {
+                latch = true
+                const armed = [...listeners]
+                listeners.clear()
+                for (const listener of armed) {
+                    try {
+                        listener()
+                    } catch (error) {
+                        console.error(error)
+                    }
+                }
+            }
         },
         wait(ms) {
             if (latch) {
@@ -109,6 +129,14 @@ export function createSaveScheduler(options: SaveSchedulerOptions): SaveSchedule
         },
         debouncePending() {
             return pending
+        },
+        onRequest(listener) {
+            // Each registration is its own entry, so a release never removes another caller's listener.
+            const entry = () => listener()
+            listeners.add(entry)
+            return () => {
+                listeners.delete(entry)
+            }
         },
     }
 }

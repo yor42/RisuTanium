@@ -60,6 +60,14 @@ export interface SavePassRequest {
     peekMarks?: () => SaveMarkPeek
     /** Measurement builds only: this plan is the second one of a tick, made after a stub was loaded. */
     retry?: boolean
+    /** Measurement builds only: the page was hidden when the loop made this request. Only the meters read it. */
+    pageHidden?: boolean
+    /**
+     * Measurement builds only: the page rule (`yieldImmediately`) asked the pass's yields to be skipped when the loop
+     * made this request. It is the page's ask, not proof that the pass skipped: `yields` in the yield-gap record is the
+     * authority. Only the meters read it.
+     */
+    pageSkip?: boolean
 }
 
 export interface SavePlan {

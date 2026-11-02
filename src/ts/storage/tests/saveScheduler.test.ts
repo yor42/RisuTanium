@@ -41,6 +41,95 @@ afterEach(() => {
     vi.useRealTimers()
 })
 
+describe('onRequest (CHORE-624)', () => {
+    test('spec guard: TA-6(a) a listener runs once, at the next request, after the request hook', () => {
+        const { state, scheduler } = setup()
+        const seen: number[] = []
+
+        scheduler.onRequest(() => { seen.push(state.now) })
+        scheduler.requestNow()
+        scheduler.requestNow()
+
+        expect(seen).toEqual([1])
+    })
+
+    test('spec guard: TA-6(b) with a listener armed and no wake the request is kept as the latch, exactly once', async () => {
+        const { scheduler } = setup()
+
+        scheduler.onRequest(() => {})
+        scheduler.requestNow()
+
+        const first = track(scheduler.wait(500))
+        await vi.advanceTimersByTimeAsync(0)
+        expect(first.settled()).toBe(true)
+        const second = track(scheduler.wait(500))
+        await vi.advanceTimersByTimeAsync(499)
+        expect(second.settled()).toBe(false)
+    })
+
+    // Compatibility guard of the latch semantics: a request that wakes a live wait leaves no latch when no listener is armed.
+    test('guard: TA-6(b) with a wake pending and no listener armed the wake resolves and no latch is left', async () => {
+        const { scheduler } = setup()
+        const waiting = track(scheduler.wait(500))
+
+        scheduler.requestNow()
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect(waiting.settled()).toBe(true)
+        const next = track(scheduler.wait(500))
+        await vi.advanceTimersByTimeAsync(499)
+        expect(next.settled()).toBe(false)
+    })
+
+    test('spec guard: TA-6(c) a released listener is not called, and a release does not remove another listener', () => {
+        const { scheduler } = setup()
+        const calls: string[] = []
+
+        const releaseFirst = scheduler.onRequest(() => { calls.push('first') })
+        scheduler.onRequest(() => { calls.push('second') })
+        releaseFirst()
+        scheduler.requestNow()
+
+        expect(calls).toEqual(['second'])
+    })
+
+    test('spec guard: TA-6(c) a throwing listener does not stop the others or the request', () => {
+        const { state, scheduler } = setup()
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+        const calls: string[] = []
+
+        scheduler.onRequest(() => { throw new Error('listener failed') })
+        scheduler.onRequest(() => { calls.push('second') })
+        scheduler.requestNow()
+
+        expect(calls).toEqual(['second'])
+        expect(state.due).toBe(1)
+        error.mockRestore()
+    })
+
+    test('spec guard: TA-6(d) registering and releasing leaves no timer pending', () => {
+        const { scheduler } = setup()
+
+        const release = scheduler.onRequest(() => {})
+        release()
+
+        expect(vi.getTimerCount()).toBe(0)
+    })
+
+    // A wait the loop abandoned (its deferral race) leaves a wake that the next request would spend without a latch.
+    test('spec guard: TA-6(e) a stale wake and an armed listener: the request is kept for the next wait', async () => {
+        const { scheduler } = setup()
+        await Promise.race([Promise.resolve(), scheduler.wait(500)])
+
+        scheduler.onRequest(() => {})
+        scheduler.requestNow()
+
+        const next = track(scheduler.wait(500))
+        await vi.advanceTimersByTimeAsync(0)
+        expect(next.settled()).toBe(true)
+    })
+})
+
 describe('schedule', () => {
     test('guard: a request becomes due after the debounce and a newer one restarts it', async () => {
         const { state, scheduler } = setup()

@@ -57,11 +57,22 @@ export interface YieldGapRecord {
     /** The sum and the maximum of the time each real yield itself waited. */
     yieldWaitSumMs: number
     yieldWaitMaxMs: number
+    /** `performance.now()` at the recorder's start, the same clock as `SavePassRecord.at`, so a record pairs with its pass and with probe timestamps. */
+    at: number
+    /** The page was hidden when the pass's request was made. */
+    hidden: boolean
+    /** The page rule asked to skip yields at request time; `yields` says whether the pass really yielded. */
+    pageSkip: boolean
+    /** A save request ended one of the pass's yields before the yield itself resolved. */
+    preempted: boolean
 }
 
 export interface YieldGapRecorder {
-    /** The budget's yield function: records the segment that ends here and the wait of the yield itself. */
-    yield(): Promise<void>
+    /**
+     * The budget's yield function: records the segment that ends here and the wait of the yield itself. With `preempt`,
+     * the yield ends when that promise settles first, which is recorded as `preempted`.
+     */
+    yield(preempt?: Promise<void>): Promise<void>
     /** Names the pass the recorder measures. */
     describe(request: SavePassRequest): void
     /** The planning pass returned. */
@@ -144,6 +155,9 @@ export function startYieldGaps(target: object = globalThis): YieldGapRecorder | 
         const segmentMaxMs: Record<YieldGapLabel, number> = { a: 0, b: 0, c: 0, d: 0 }
         let kind: SavePassKind = 'edit'
         let modules = false
+        let hidden = false
+        let pageSkip = false
+        let preempted = false
         let bulk = false
         let yields = 0
         let phase: 'planning' | 'planned' | 'committed' = 'planning'
@@ -248,7 +262,7 @@ export function startYieldGaps(target: object = globalThis): YieldGapRecorder | 
         }
 
         return {
-            async yield() {
+            async yield(preempt) {
                 let waitStart = 0
                 try {
                     pause()
@@ -258,7 +272,14 @@ export function startYieldGaps(target: object = globalThis): YieldGapRecorder | 
                     // A measurement failure never reaches the save.
                 }
                 try {
-                    await (message ? yieldByMessage() : yieldToEventLoop())
+                    const base = message ? yieldByMessage() : yieldToEventLoop()
+                    if (preempt === undefined) {
+                        await base
+                    } else if (await Promise.race([base.then(() => false), preempt.then(() => true)])) {
+                        // The request won: the wait ends here and the segment resumes at once. The lost yield is not
+                        // awaited, so its later settle reaches neither the wait sums nor the segment.
+                        preempted = true
+                    }
                 } finally {
                     try {
                         const waited = performance.now() - waitStart
@@ -276,6 +297,8 @@ export function startYieldGaps(target: object = globalThis): YieldGapRecorder | 
                 try {
                     kind = savePassKindOf(request)
                     modules = request.whole || request.rewriteAll === true || request.modules || request.net?.modules === true
+                    hidden = request.pageHidden === true
+                    pageSkip = request.pageSkip === true
                 } catch {
                     // A measurement failure never reaches the save.
                 }
@@ -320,6 +343,7 @@ export function startYieldGaps(target: object = globalThis): YieldGapRecorder | 
                     pushLimited({
                         kind, modules, bulk, yields, budgetMs: BUDGET_MS, mode, maxSegmentMs, maxSegmentLabel,
                         segmentMaxMs: { ...segmentMaxMs }, planMs, buildMs, yieldWaitSumMs, yieldWaitMaxMs,
+                        at: startedAt, hidden, pageSkip, preempted,
                     })
                 } catch {
                     // A measurement failure never reaches the save.

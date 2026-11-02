@@ -263,6 +263,12 @@ export interface Store2LoopPort {
      * the back-offs are the plain timed `sleep`.
      */
     rearmWait?(ms: number): Promise<void>
+    /**
+     * A one-shot listener for the next save request, released by the returned function. Timer-free, so a frozen page
+     * delivers it. Present only where the page can freeze. With it, a tick pass on a page that asks to skip yields
+     * anyway, racing each yield against the next request and skipping every later yield once a pass is due.
+     */
+    onRequest?(listener: () => void): () => void
 }
 
 /** Takes the marks of a pass and trims the live tracker to its sticky front, before any await. */
@@ -795,12 +801,31 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
 
     function requestOf(snapshot: Store2Snapshot | null, db: Database, rewriteAll: boolean, netChaId: string | null): SavePassRequest {
         const gaps = MEASURE ? startYieldGaps() : null
+        // Only a tick (no snapshot, not Save mine) may yield on a page that asks to skip, and only through the request hook.
+        // Marked and Save-mine passes keep the page rule, so a frozen page's marked pass never waits in a yield.
+        const requestHook = snapshot === null && !rewriteAll && port.onRequest !== undefined
+        const pageSkip = () => port.yieldImmediately?.() === true
         // `skip` sits in the budget, not in `yieldFn`, so a measurement build's replaced yield is bypassed too.
-        const skip = () => port.yieldImmediately?.() === true
-        const budget = MEASURE && gaps !== null ? createYieldBudget({ yieldFn: () => gaps.yield(), skip }) : createYieldBudget({ skip })
+        // Once a pass is due the tick takes no further yield: it finishes as one task and the marked pass follows.
+        const skip = () => pageSkip() && (!requestHook || port.isDue())
+        const yieldFn = (): Promise<void> => {
+            if (!requestHook || !pageSkip()) {
+                return gaps !== null ? gaps.yield() : yieldToEventLoop()
+            }
+            let release = (): void => {}
+            const requested = new Promise<void>((resolve) => {
+                release = port.onRequest?.(resolve) ?? release
+            })
+            const yielded = gaps !== null ? gaps.yield(requested) : Promise.race([yieldToEventLoop(), requested])
+            return yielded.finally(release)
+        }
+        // A pass that neither measures nor races keeps the budget's own default yield.
+        const budget = requestHook || (MEASURE && gaps !== null) ? createYieldBudget({ yieldFn, skip }) : createYieldBudget({ skip })
         const request = shapeOf(snapshot, db, rewriteAll, netChaId, { yield: () => budget.maybeYield() })
         if (MEASURE) {
             activeGaps = gaps
+            request.pageHidden = port.pageHidden?.() === true
+            request.pageSkip = pageSkip()
             gaps?.describe(request)
             if (snapshot === null) {
                 request.peekMarks = () => peekSaveMarks(port)

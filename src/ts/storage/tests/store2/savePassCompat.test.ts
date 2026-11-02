@@ -169,6 +169,19 @@ describe('compatibility guard: the hooks change nothing that is encoded', () => 
         expect(on).toEqual(off)
     })
 
+    test('the page flags of a request (pageHidden, pageSkip) change no plan and no unit in any arm', async () => {
+        const flagged = (db: Database): SavePassRequest[] => SHAPES(db).map(request => ({ ...request, pageHidden: true, pageSkip: true }))
+        const control = await threeArms(() => unitsOf(SHAPES))
+        const withFlags = await threeArms(() => unitsOf(flagged))
+        expect(withFlags.off).toEqual(control.off)
+        expect(withFlags.switchedOff).toEqual(control.off)
+        expect(withFlags.on).toEqual(control.off)
+        const planned = await threeArms(() => scenario(flagged))
+        const plannedControl = await threeArms(() => scenario(SHAPES))
+        expect(planned.on).toEqual(plannedControl.off)
+        expect(planned.off).toEqual(plannedControl.off)
+    })
+
     test('a new character mints a fresh entity id and fresh keys from the same random sequence in all three arms', async () => {
         function withNewCharacter(): Database {
             const next = clone(edited())

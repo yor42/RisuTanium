@@ -32,7 +32,8 @@ import { StubRefusedError } from 'src/ts/storage/store2/codec'
 import { createCommitter } from 'src/ts/storage/store2/commit'
 import { previousFrom } from 'src/ts/storage/store2/codec'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
-import { backedOffWait, runStore2SaveLoop, type Store2LoopPort } from 'src/ts/storage/store2/saveLoop'
+import { backedOffWait, IDLE_NET_MODULE_INTERVAL_MS, runStore2SaveLoop, type Store2LoopPort } from 'src/ts/storage/store2/saveLoop'
+import { yieldGapMeterHandle } from 'src/ts/storage/store2/saveYieldMeter'
 import { startSavePass, type SavePassMeterHandle } from 'src/ts/storage/store2/savePassMeter'
 import type { Store2SaveContext } from 'src/ts/storage/store2/saveActive'
 import { createSaveScheduler } from 'src/ts/storage/saveScheduler'
@@ -70,6 +71,8 @@ interface WakeOptions {
     yieldImmediately?: () => boolean
     /** The port's injected idle-net yield; every call is counted. */
     countYieldNow?: boolean
+    /** The port carries `onRequest` (the Android transport's page port) whenever it carries `rearmWait`. Default true. */
+    requestHook?: boolean
 }
 
 interface WakeLoop {
@@ -90,6 +93,16 @@ interface WakeLoop {
     commitBytes(): Promise<Uint8Array>
     failNextPeerRead(): void
     holdNextCommit(): { entered(): boolean, release(): void }
+    /** The next read of the commit key waits for the release. */
+    holdNextRead(): { entered(): boolean, release(): void }
+    /** The page is hidden but not frozen: `scheduler.yield` counts its calls and resolves. */
+    hide(): void
+    /** The next `scheduler.yield` call never resolves. */
+    parkNextYield(): void
+    /** The page holds an edit that no commit has taken. */
+    dirty(): boolean
+    /** The module count the tick walks. */
+    moduleCount(): number
     freeze(): void
     stop(): void
 }
@@ -147,6 +160,8 @@ async function startWakeLoop(options: WakeOptions = {}): Promise<WakeLoop> {
     const trace: TraceEntry[] = []
     const peerRead = { fail: false }
     const hold = { entered: false, released: false, release: () => {}, armed: false, gate: Promise.resolve() }
+    const readHold = { armed: false, entered: false, release: () => {}, gate: Promise.resolve() }
+    const yieldPark = { next: false }
     const landed = { throwOnce: options.landedThrow === true }
     const doc = { visibilityState: 'visible' }
     vi.stubGlobal('document', doc)
@@ -154,6 +169,11 @@ async function startWakeLoop(options: WakeOptions = {}): Promise<WakeLoop> {
     const backend: Store2Backend = Object.create(inner) as Store2Backend
     backend.readCommit = async () => {
         counters.reads += 1
+        if (readHold.armed) {
+            readHold.armed = false
+            readHold.entered = true
+            await readHold.gate
+        }
         if (peerRead.fail) {
             peerRead.fail = false
             throw new Error('the peer check read failed')
@@ -284,6 +304,9 @@ async function startWakeLoop(options: WakeOptions = {}): Promise<WakeLoop> {
     }
     if (options.rearm !== false) {
         port.rearmWait = (ms) => traced('rearm', ms, () => scheduler.waitRearm(ms))
+        if (options.requestHook !== false) {
+            port.onRequest = (listener) => scheduler.onRequest(listener)
+        }
     }
     if (options.countYieldNow === true) {
         port.yieldNow = async () => {
@@ -338,6 +361,30 @@ async function startWakeLoop(options: WakeOptions = {}): Promise<WakeLoop> {
             hold.gate = new Promise<void>((resolve) => { hold.release = resolve })
             return { entered: () => hold.entered, release: () => hold.release() }
         },
+        holdNextRead() {
+            readHold.armed = true
+            readHold.entered = false
+            readHold.gate = new Promise<void>((resolve) => { readHold.release = resolve })
+            return { entered: () => readHold.entered, release: () => readHold.release() }
+        },
+        hide() {
+            doc.visibilityState = 'hidden'
+            vi.stubGlobal('scheduler', {
+                yield: () => {
+                    counters.yieldCalls += 1
+                    if (yieldPark.next) {
+                        yieldPark.next = false
+                        return new Promise<void>(() => {})
+                    }
+                    return Promise.resolve()
+                },
+            })
+        },
+        parkNextYield() {
+            yieldPark.next = true
+        },
+        dirty: () => state.dirty,
+        moduleCount: () => db.modules.length,
         freeze() {
             doc.visibilityState = 'hidden'
             vi.stubGlobal('scheduler', { yield: () => { counters.yieldCalls += 1; return new Promise<void>(() => {}) } })
@@ -596,5 +643,170 @@ describe('guards of the wake', () => {
         expect(timing.findMs).not.toBeNull()
         expect(timing.findMs!).toBeLessThan(1000)
         expect(timing.checksMs!).toBeLessThan(1000)
+    })
+})
+
+/** Every clock read advances 10 ms, so each budget check finds the 8 ms budget spent. */
+function stepClock(): void {
+    let ticks = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => (ticks += 10))
+}
+
+/** The loop's first module-scoped tick runs at the turn `moduleMs` after the loop started; this stops 100 ms short of it. */
+async function reachBeforeModuleTick(loop: WakeLoop): Promise<void> {
+    await vi.advanceTimersByTimeAsync(IDLE_NET_MODULE_INTERVAL_MS - 100)
+    expect(loop.crashed).toEqual([])
+}
+
+describe('a hidden Android tick yields, and a save request pre-empts it', () => {
+    // Reproducer: on the code before the change the page's skip rule removes every yield of a tick on a hidden Android page.
+    test('reproducer: TA-1 a hidden module tick takes its budgeted yields (release build)', async () => {
+        const loop = await startWakeLoop({ idleNet: true })
+        loop.hide()
+        await reachBeforeModuleTick(loop)
+        stepClock()
+        await vi.advanceTimersByTimeAsync(1000)
+
+        expect(loop.yieldCalls()).toBeGreaterThanOrEqual(loop.moduleCount())
+        expect(loop.crashed).toEqual([])
+    })
+
+    // Reproducer: the same in a measurement build, read from the pass's yield-gap record.
+    test('reproducer: TA-1 a hidden module tick takes its budgeted yields (measurement build)', async () => {
+        measure.on = true
+        vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'risu-measure-savepass' ? 'on' : null })
+        vi.spyOn(console, 'log').mockImplementation(() => {})
+        startSavePass()
+        yieldGapMeterHandle.reset()
+        const loop = await startWakeLoop({ idleNet: true })
+        loop.hide()
+        await reachBeforeModuleTick(loop)
+        stepClock()
+        await vi.advanceTimersByTimeAsync(1000)
+
+        const record = yieldGapMeterHandle.all().find((entry) => entry.kind === 'tick' && entry.modules)
+        expect(record).toBeDefined()
+        expect(record!.yields).toBeGreaterThanOrEqual(loop.moduleCount())
+        expect(record!.hidden).toBe(true)
+        expect(record!.pageSkip).toBe(true)
+        expect(record!.preempted).toBe(false)
+    })
+
+    // Reproducer of the pre-emption half. Base B- (scratch): no race and no `isDue` term; the parked yield is never resolved.
+    test('reproducer: TA-2 a tick parked in a yield on a frozen page is pre-empted and the request commits', async () => {
+        const loop = await startWakeLoop({ idleNet: true })
+        loop.hide()
+        await reachBeforeModuleTick(loop)
+        loop.parkNextYield()
+        stepClock()
+        await vi.advanceTimersByTimeAsync(100)
+        await runMicrotasks(() => loop.yieldCalls() >= 1, 20_000)
+        loop.freeze()
+        expect(loop.yieldCalls()).toBe(1)
+        const savedBefore = loop.saved()
+        const before = await loop.commitBytes()
+
+        loop.edit('edit made while frozen')
+        loop.scheduler.requestNow()
+        await runMicrotasks(() => loop.saved() > savedBefore && !loop.dirty())
+
+        expect(loop.saved()).toBeGreaterThan(savedBefore)
+        expect(Array.from(await loop.commitBytes())).not.toEqual(Array.from(before))
+        expect(loop.dirty()).toBe(false)
+        expect(loop.yieldCalls()).toBe(1)
+        expect(loop.crashed).toEqual([])
+    })
+
+    // Reproducer of the `isDue` term: a request that lands before the tick's first yield leaves no race to win.
+    test('reproducer: TA-3 a request made while the tick reads, before its first yield, takes no yield', async () => {
+        const loop = await startWakeLoop({ idleNet: true })
+        loop.hide()
+        await reachBeforeModuleTick(loop)
+        const held = loop.holdNextRead()
+        stepClock()
+        await vi.advanceTimersByTimeAsync(100)
+        await runMicrotasks(() => held.entered(), 20_000)
+        expect(held.entered()).toBe(true)
+        loop.freeze()
+        const savedBefore = loop.saved()
+
+        loop.edit('edit made while frozen')
+        loop.scheduler.requestNow()
+        held.release()
+        await runMicrotasks(() => loop.saved() > savedBefore && !loop.dirty())
+
+        expect(loop.saved()).toBeGreaterThan(savedBefore)
+        expect(loop.dirty()).toBe(false)
+        expect(loop.yieldCalls()).toBe(0)
+        expect(loop.crashed).toEqual([])
+    })
+
+    // Guard: a marked pass keeps the page's skip on a frozen hidden Android page, whatever the hook says. Save mine reaches the
+    // loop as a marked pass (its answer requests a pass first), so this also pins the Save-mine exclusion in reachable states.
+    test('guard: TA-4 a marked pass on a frozen page with the request hook commits without yielding', async () => {
+        const loop = await startWakeLoop({})
+        loop.freeze()
+        stepClock()
+
+        loop.edit('edit made while frozen')
+        loop.scheduler.requestNow()
+        await runMicrotasks(() => loop.saved() >= 1)
+
+        expect(loop.saved()).toBeGreaterThanOrEqual(1)
+        expect(loop.yieldCalls()).toBe(0)
+        expect(loop.crashed).toEqual([])
+    })
+
+    // Reproducer of the release rule: a listener that a finished yield leaves armed turns the next idle request into a latch.
+    test('reproducer: TA-6(c) a finished hidden tick leaves no listener armed, so an idle request leaves no latch', async () => {
+        const loop = await startWakeLoop({ idleNet: true })
+        loop.hide()
+        await reachBeforeModuleTick(loop)
+        stepClock()
+        await vi.advanceTimersByTimeAsync(1000)
+        expect(loop.yieldCalls()).toBeGreaterThanOrEqual(loop.moduleCount())
+        const savedBefore = loop.saved()
+
+        loop.edit('edit made while idle')
+        loop.scheduler.requestNow()
+        await runMicrotasks(() => loop.saved() > savedBefore)
+        const saved = loop.saved()
+        expect(saved).toBeGreaterThan(savedBefore)
+
+        loop.markDue()
+        loop.edit('a second edit, nothing asked for a save')
+        await runMicrotasks(() => false, 60_000)
+        expect(loop.saved()).toBe(saved)
+    })
+
+    // Guard: a visible page yields in a tick as before (passes before and after from the Stage 0 snapshot on; the `hidden` field is new).
+    test('guard: TA-8 a visible page takes the tick yields (measurement build)', async () => {
+        measure.on = true
+        vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'risu-measure-savepass' ? 'on' : null })
+        vi.spyOn(console, 'log').mockImplementation(() => {})
+        startSavePass()
+        yieldGapMeterHandle.reset()
+        const loop = await startWakeLoop({ idleNet: true })
+        vi.stubGlobal('scheduler', { yield: () => Promise.resolve() })
+        await reachBeforeModuleTick(loop)
+        stepClock()
+        await vi.advanceTimersByTimeAsync(1000)
+
+        const record = yieldGapMeterHandle.all().find((entry) => entry.kind === 'tick' && entry.modules)
+        expect(record).toBeDefined()
+        expect(record!.hidden).toBe(false)
+        expect(record!.yields).toBeGreaterThanOrEqual(loop.moduleCount())
+    })
+
+    // Guard: a port without the request hook keeps today's skip on a hidden Android page.
+    test('guard: TA-8 without the request hook a hidden tick takes no yield', async () => {
+        const loop = await startWakeLoop({ idleNet: true, requestHook: false })
+        loop.hide()
+        await reachBeforeModuleTick(loop)
+        stepClock()
+        await vi.advanceTimersByTimeAsync(1000)
+
+        expect(loop.yieldCalls()).toBe(0)
+        expect(loop.crashed).toEqual([])
     })
 })

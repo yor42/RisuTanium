@@ -127,6 +127,8 @@ interface Delays {
 
 interface Extra {
     configure?: (kit: Store2Kit, db: Database) => void
+    /** What the page port reports; absent members are not on the port at all. */
+    page?: { hidden?: boolean, skip?: boolean }
 }
 
 interface Run {
@@ -263,6 +265,13 @@ async function startRun(delays: Partial<Delays> = {}, edit: (db: Database) => vo
         sleep: () => idle(),
         sleepForever: () => new Promise<never>(() => {}),
         now: () => Date.now(),
+    }
+    const page = extra.page
+    if (page?.hidden !== undefined) {
+        port.pageHidden = () => page.hidden === true
+    }
+    if (page?.skip !== undefined) {
+        port.yieldImmediately = () => page.skip === true
     }
     runStore2SaveLoop(kit.context, port).catch((error: unknown) => {
         run.crashed.push(error)
@@ -467,6 +476,120 @@ describe('a normal build installs nothing', () => {
         expect(budget.options.every(options => options !== undefined && Object.keys(options).join() === 'skip' && typeof options.skip === 'function')).toBe(true)
         // The default primitive ran: the real yields went through scheduler.yield.
         expect(schedulerYield).toHaveBeenCalled()
+    })
+})
+
+describe('the page state of the request (CHORE-624 stage 0)', () => {
+    test('spec guard: the record carries hidden and pageSkip from the page port independently, and an `at` on the pass clock', async () => {
+        const seen: Array<[boolean, boolean]> = []
+        for (const [hidden, skip] of [[false, false], [true, false], [false, true], [true, true]] as const) {
+            yieldGapMeterHandle.reset()
+            const run = await startRun({}, undefined, { page: { hidden, skip } })
+            const before = performance.now()
+            run.whole()
+            await until(() => run.saved() >= 1, 'the metered whole pass to save', 8000)
+            const record = records()[0]
+            expect(record.at).toBeGreaterThanOrEqual(before)
+            expect(record.at).toBeLessThanOrEqual(performance.now())
+            seen.push([record.hidden, record.pageSkip])
+            expect(run.crashed).toEqual([])
+        }
+        expect(seen).toEqual([[false, false], [true, false], [false, true], [true, true]])
+    })
+
+    test('spec guard: a port with neither member records false for both', async () => {
+        const run = await startRun()
+        run.whole()
+        await until(() => run.saved() >= 1, 'the metered whole pass to save', 8000)
+        expect([records()[0].hidden, records()[0].pageSkip]).toEqual([false, false])
+    })
+
+    test('spec guard: describe copies the request flags, and an unset request reads false', () => {
+        const recorder = startYieldGaps({})
+        recorder?.describe({ marked: new Set(), modules: false, whole: false, net: { chaId: null, modules: true }, pageHidden: true, pageSkip: false })
+        recorder?.finish()
+        const second = startYieldGaps({})
+        second?.describe({ marked: new Set(), modules: false, whole: false })
+        second?.finish()
+        const [first, other] = records().slice(-2)
+        expect([first.hidden, first.pageSkip, first.kind, first.modules]).toEqual([true, false, 'tick', true])
+        expect([other.hidden, other.pageSkip]).toEqual([false, false])
+    })
+})
+
+describe('a yield that a save request pre-empts (CHORE-624 stage A)', () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    /** One pass on a hand clock: a yield at 100 ms, the request at 150 ms, the commit at 300 ms, the finish at 400 ms. */
+    async function preemptedRecord(lostYield: 'never' | 'before-commit' | 'after-finish'): Promise<YieldGapRecord> {
+        const hand = { now: 0 }
+        vi.spyOn(performance, 'now').mockImplementation(() => hand.now)
+        let settleBase: () => void = () => {}
+        const base = new Promise<void>((resolve) => { settleBase = resolve })
+        vi.stubGlobal('scheduler', { yield: () => base })
+        const settle = async (): Promise<void> => { await new Promise<void>((resolve) => setTimeout(resolve, 0)) }
+        yieldGapMeterHandle.reset()
+        const recorder = startYieldGaps({})!
+        let request: () => void = () => {}
+        const requested = new Promise<void>((resolve) => { request = resolve })
+
+        hand.now = 100
+        const yielded = recorder.yield(requested)
+        hand.now = 150
+        request()
+        await yielded
+        if (lostYield === 'before-commit') {
+            hand.now = 200
+            settleBase()
+            await settle()
+        }
+        hand.now = 300
+        recorder.committed()
+        hand.now = 400
+        recorder.finish()
+        if (lostYield === 'after-finish') {
+            settleBase()
+            await settle()
+        }
+        return records()[records().length - 1]
+    }
+
+    test('spec guard: TA-7 a yield won by the request records one yield, `preempted`, and counts the finishing stretch', async () => {
+        const record = await preemptedRecord('never')
+
+        expect(record.yields).toBe(1)
+        expect(record.preempted).toBe(true)
+        expect(record.yieldWaitSumMs).toBe(50)
+        expect(record.yieldWaitMaxMs).toBe(50)
+        expect(record.segmentMaxMs.a).toBe(100)
+        expect(record.segmentMaxMs.b).toBe(150)
+        expect(record.segmentMaxMs.d).toBe(100)
+        expect(record.maxSegmentMs).toBe(150)
+    })
+
+    test('spec guard: TA-7 a yield the request did not pre-empt records `preempted` false', async () => {
+        const hand = { now: 0 }
+        vi.spyOn(performance, 'now').mockImplementation(() => hand.now)
+        vi.stubGlobal('scheduler', { yield: () => Promise.resolve() })
+        yieldGapMeterHandle.reset()
+        const recorder = startYieldGaps({})!
+        hand.now = 100
+        await recorder.yield(new Promise<void>(() => {}))
+        recorder.finish()
+
+        expect(records()[records().length - 1].yields).toBe(1)
+        expect(records()[records().length - 1].preempted).toBe(false)
+    })
+
+    test('spec guard: TA-7 a lost yield that settles before the commit or after the finish changes nothing in the record', async () => {
+        const never = await preemptedRecord('never')
+        const before = await preemptedRecord('before-commit')
+        const after = await preemptedRecord('after-finish')
+
+        expect(before).toEqual(never)
+        expect(after).toEqual(never)
     })
 })
 

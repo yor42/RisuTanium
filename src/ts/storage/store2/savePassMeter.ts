@@ -107,6 +107,10 @@ export interface SavePassRecord {
     at?: number
     /** The second plan of one tick after a stub was loaded. */
     retry?: boolean
+    /** The page was hidden when the pass's request was made. Present when the split was taken. */
+    hidden?: boolean
+    /** The page rule asked to skip yields at request time; the yield-gap record's `yields` says whether the pass really yielded. */
+    pageSkip?: boolean
     /** Null when the page does not report it. Without isolation timers resolve to about 100 microseconds. */
     crossOriginIsolated?: boolean | null
     split?: SavePassSplit
@@ -256,9 +260,19 @@ export interface NetFoundRecent {
     frontChanged?: boolean
 }
 
+/** A count split by the page state when the pass's request was made. */
+export interface VisibleHiddenCounts {
+    visible: number
+    hidden: number
+}
+
 export interface NetFoundSummary {
     ticks: number
     ticksCommitted: number
+    /** Tick plans with module scope (a pass that encoded the modules), by page state. */
+    moduleTicks: VisibleHiddenCounts
+    /** Committed module-scoped ticks that wrote at least one `module:`, `al:module:` or `il:module:` unit, by page state. */
+    moduleTicksFound: VisibleHiddenCounts
     units: SavePassUnitCounts
     entities: {
         /** By summary reason; `net` is the U1 count. */
@@ -450,6 +464,8 @@ export interface SavePassSplitShape extends SavePassShape {
     net?: { chaId?: string | null }
     peekMarks?: () => SaveMarkPeek
     retry?: boolean
+    pageHidden?: boolean
+    pageSkip?: boolean
 }
 
 /** What the save encoder keeps of a pass and hands back at acknowledge. */
@@ -502,6 +518,8 @@ function emptyUnitCounts(): SavePassUnitCounts {
 interface NetFoundState {
     ticks: number
     ticksCommitted: number
+    moduleTicks: VisibleHiddenCounts
+    moduleTicksFound: VisibleHiddenCounts
     units: SavePassUnitCounts
     character: Record<FindSummaryReason, MarkCounts>
     module: MarkCounts
@@ -514,7 +532,7 @@ function freshNetFound(): NetFoundState {
     for (const reason of REASONS) {
         character[reason] = emptyMarkCounts()
     }
-    return { ticks: 0, ticksCommitted: 0, units: emptyUnitCounts(), character, module: emptyMarkCounts(), fixed: {}, recent: [] }
+    return { ticks: 0, ticksCommitted: 0, moduleTicks: { visible: 0, hidden: 0 }, moduleTicksFound: { visible: 0, hidden: 0 }, units: emptyUnitCounts(), character, module: emptyMarkCounts(), fixed: {}, recent: [] }
 }
 
 // Created on first use, not at module load: a top-level call is a side effect that keeps this module in a normal build.
@@ -1012,6 +1030,8 @@ function netFoundSummary(): NetFoundSummary {
     return {
         ticks: netFoundNow().ticks,
         ticksCommitted: netFoundNow().ticksCommitted,
+        moduleTicks: { ...netFoundNow().moduleTicks },
+        moduleTicksFound: { ...netFoundNow().moduleTicksFound },
         units: { ...netFoundNow().units },
         entities: { character, module: copyCounts(netFoundNow().module), fixed },
         recent: netFoundNow().recent.map(entry => ({ ...entry })),
@@ -1086,7 +1106,7 @@ class SplitState implements SavePassSplitRecorder {
     private charactersCount = 0
     private charactersMs = 0
 
-    constructor(seq: number, at: number, readonly retry: boolean) {
+    constructor(seq: number, at: number, readonly retry: boolean, readonly pageHidden: boolean = false, readonly pageSkip: boolean = false) {
         this.seq = seq
         this.at = at
     }
@@ -1297,7 +1317,7 @@ export function startSplit(request: SavePassSplitShape, target: object = globalT
         }
         installGlobal(target)
         passSeq++
-        const split = new SplitState(passSeq, performance.now(), request.retry === true)
+        const split = new SplitState(passSeq, performance.now(), request.retry === true, request.pageHidden === true, request.pageSkip === true)
         split.marksAtStart = peekOf(request)
         return split
     } catch {
@@ -1315,11 +1335,16 @@ export function finishSavePass(
         const record: SavePassRecord = { kind: savePassKindOf(request), modules, characters, ms: performance.now() - started }
         if (record.kind === 'tick') {
             netFoundNow().ticks++
+            if (modules) {
+                netFoundNow().moduleTicks[split instanceof SplitState && split.pageHidden ? 'hidden' : 'visible']++
+            }
         }
         if (split instanceof SplitState) {
             record.seq = split.seq
             record.at = split.at
             record.retry = split.retry
+            record.hidden = split.pageHidden
+            record.pageSkip = split.pageSkip
             record.crossOriginIsolated = (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated ?? null
             record.split = split.summary()
         }
@@ -1543,6 +1568,10 @@ export function noteSavePassCommit(request: SavePassShape, units: readonly Meter
                     const finds = recordFinds(request, written, extra, split)
                     record.found = finds.found
                     record.unitCounts = finds.unitCounts
+                    // A tick that wrote a module unit is module-scoped by construction; the module index alone has no handle and does not count.
+                    if (finds.found.some(find => find.kind === 'module')) {
+                        netFoundNow().moduleTicksFound[split.pageHidden ? 'hidden' : 'visible']++
+                    }
                 } catch {
                     // The grouping failed; the commit record without it still stands.
                 }
