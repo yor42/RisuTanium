@@ -461,6 +461,27 @@ Source: the [Roadmap](Roadmap.md) batch 38 section and rows. Device figures are 
 - **CHORE-629 residuals.** No real provider was called (`MC-1015`); whether the real Anthropic API accepts the follow-up shape with a synthetic `tool_result` and no `tools` array is UNKNOWN. The end-to-end RP-on-Anthropic path is statically CONFIRMED, not run. The report-only `decodeToolCall` observation in `mcp.ts` is untouched.
 - **Run hygiene.** The idle-whitelist preparation reported fail in all of Task 1's runs; port 6360 reported "owner pid 0" on many lines. Neither changed a verdict.
 
+## After records batch 39 (2026-11-03; CHORE-624 shipped as `0af68d6e7`, `MC-1030` to `MC-1035`)
+
+Source: the [Roadmap](Roadmap.md) batch 39 section and the CHORE-624 row; the plan `b38\c624-rev3\plan.md` (Device gate, Risks), the Gate 2 verdict `b38\c624-g2\result.md` and the coder reports `b38\c624-s1`, `b38\c624-s2`. The shipped tests stub task ordering: nothing below has run on a device.
+
+- **CHORE-624 device gate (owed; run db39 was in progress when this was written, no result recorded).** Per the plan, one session after Stage 2 (`MC-330`), on a fresh `-Measure` build of the fixed main with the meter switch OFF, a Note 9 spare, the synthetic c624p fixture, the Wi-Fi rule and the ports of the run window. Reader preparation: accept a cut record (`planMs: null`, `cut: true`), the redo tick after it and the slot reason `redo`; apply the db38-t3v follow-up 4 (the second `replyEnd` flush after one arrival is a paired flush, not a failed pairing). Cells:
+  - **Cell A** (repeat of db38 Task 3, n=3, switch off): `replyArrived` inside the tick; `requestNow` to the first edit pass start at most one unit segment (target: at most the record's pre-request `maxSegmentMs`; PROPOSED); the tick record has `cut: true`, `planMs: null`, `mode: 'message'`.
+  - **Cell B** (reply released late in the tick, T0 + 1.5 s): the same rule.
+  - **Cell C** (durability, `MC-996`): the post-relaunch reply-marker count rises by one and is unchanged across force-stop and relaunch in every attempt; a later record with `modules: true`, `planMs` non-null and `cut: false` (the redo) at the next normal slot.
+  - **Optional Cell D** (token): with the net-signals switch on, the redo slot's record lists `'save'` in `inFlightKinds`. **Optional Cell E**: hide the app during a module tick with no reply and read the keep-alive notification (`MC-1035`); observation only, and it shows the label only.
+- **Android 12+ background-start limit: cannot be observed on a Note 9.** A hidden-page cut with no reply now begins a `'save'` token, which starts the keep-alive service from the background. On Android 12 and later the system may refuse that start; the bridge logs the refusal and the app continues (Gate 1 round 3 read `KeepAliveBridge.kt` and `KeepAliveService.kt`: VERIFIED for the handling; whether the system exempts the moments right after leaving the foreground is UNKNOWN, not checked). When refused, the cut tick's unmarked work waits for a timer-driven net slot on a page that may freeze (only unmarked edits; the marked pass still commits). The Note 9 spares run Android 10, so Cell E cannot show this; the device where it applies is the maintainer's daily phone, which runs the MVP (`MC-350`). No check is planned or claimed: TODO(evidence) if the maintainer wants one on an Android 12+ phone.
+- **G3 advisory (Gate 2, optional, not a finding).** No module-tick test pins "the first boundary after due": under the reviewer's own mutant G3 (the cut check before the yield instead of after), T2.1 and TP1 still pass and only T2.18 kills it. The reviewer suggests T2.1 optionally assert that no yield is taken after the held one. Not done.
+- **Carried from batch 38 and still owed** (not changed by batch 39; the batch 38 section above holds the detail):
+  - CHORE-624: the cause-cell proposals (1) to (5) remain proposals; `scheduler.postTask` on WebView 155 UNKNOWN; the `inFlightWork` chat-token coverage between native arrival and the reply callback (not traced by the grill); the scheduler-arm cause stays INFERRED.
+  - CHORE-396: the documented note for the MVP refresh (`MC-1023`), wording not drafted; no A1-with-GC control; the source trace of the charx read path.
+  - CHORE-205: the unexplained 21.5 MB against 39.4 MB export sizes; the picker listing against the Download count of 4 and the 90 s `ctl-loaded` entry (K3, K4).
+  - The reconciliation of the gate lists of `MC-979`, `MC-983`, `MC-984` and `MC-986` against `MC-1022` and `MC-1023`.
+  - The ko, vi, de and es wording of `errors.toolLoopLimit` (translator follow-up).
+  - CHORE-629: no real provider was called (`MC-1015`); the real Anthropic API's acceptance of the follow-up shape is UNKNOWN; the report-only `decodeToolCall` observation in `mcp.ts` is untouched.
+  - The question texts the maintainer saw for `MC-1008` to `MC-1035`; the date and wording of the authorisation to commit `0af68d6e7`.
+- **Gate 2 editorials.** E1 (the `yieldByMessage` doc overstated the platform task ordering) and E2 (two `as unknown as` casts in TP1 and TP2) are both applied (VERIFIED by reading `0af68d6e7`): the `yieldByMessage` doc now says a message waits its turn among the page's other tasks, and TP1 and TP2 use holder objects. The file's remaining `as unknown as` casts are the fixture casts Gate 2 excluded from E2.
+
 ## Not scheduled
 
 - **Suspected by the Wiki session while documenting (2026-09-30, wiki `5b366746`); not verified

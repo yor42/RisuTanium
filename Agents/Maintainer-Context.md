@@ -21150,6 +21150,8 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 
 ### MC-1029 — Lane A, 2026-11-02: CHORE-624 scope: "Latency only"
 
+*Amendment (2026-11-03, records batch 39; see `MC-1032` and `MC-1034`): "latency only" is amended to include one hold extension. The maintainer chose "Keep hold until redo commits (Recommended)": the hidden-reply keep-alive hold stays on until a cut tick's redone work commits. `MC-1034` later replaced the mechanism that carries that extension. Nothing else in this entry changes. The text below is kept as written.*
+
 - Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
 - Source: the batch 38 queue (line 34): chosen "Latency only (Recommended)" over "Also extend the hold"; the queue adds "durability covered by the existing hold". The grill replaced the sizing's latency-or-loss question with a scope question: is CHORE-624 a latency fix only, with durability covered by the existing hold, or also extend the hold to start at send time (whether the maintainer saw this wording: TODO(evidence)).
 - Alternatives rejected: "Also extend the hold".
@@ -21160,3 +21162,83 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 
 - Notes, not the maintainer's words:
   - Basis: durability 6 of 6 on the device cell (`MC-1024` evidence) and the grill's reading of `holdHiddenReplySave` (no timer while hidden; released on a commit covering the marks, on saving stopped, or after 120 s of continuous visibility). Residual loss from an OS kill despite the foreground service is not changed by any option. Unverified: the hold starts at the flush, after the callback; coverage from native arrival to the callback rests on the chat's own in-flight token, which the grill did not trace (INFERRED).
+
+### MC-1030 — Lane A, 2026-11-03: CHORE-624 cut trigger (plan OQ1): "Any due pass"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; the answer was relayed during the 2026-11-02 to 2026-11-03 plan rounds, exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue `b38\records38-queue.md` (line 35, marked batch 39): chosen "Any due pass (Recommended)" over "Explicit requests only" and "Reply-end only". The queue's gloss: a reply-end, hide or Back request, or a debounced edit (the existing `isDue` meaning), cuts a hidden Android idle tick. The question text the maintainer saw is not in the queue; the designer's plan `b38\c624-plan\plan.md` words it as OQ1: "On a hidden Android page, which due saves may cut a running idle tick?" with (a) any pass that becomes due, the existing `isDue` meaning that `skip` already uses and the smallest change (Recommended), (b) only an explicit save request (`requestNow`), not a debounced edit, (c) only a reply-end request, which needs a new request-source field (whether the maintainer saw this wording: TODO(evidence)).
+- Alternatives rejected: "Explicit requests only"; "Reply-end only".
+- Related: `MC-1025`, `MC-1027`, `MC-1031`, CHORE-624.
+
+**What was decided (maintainer).**
+1. CHORE-624 cut trigger: "Any due pass (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The plan's reproducer for this answer (T2.12, a debounced `onDue` cutting the tick) was shown by Gate 1 round 1 as unable to fail on the base as first specified (finding F2; `b38\c624-g1\result.md`), and was respecified in the revised plan. The coder's report records it failing on its named assertion on the Stage 1 base (`b38\c624-s2\result.md`).
+
+### MC-1031 — Lane A, 2026-11-03: CHORE-624 redo timing (plan OI2): "Next normal net slot"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time of the answer not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (line 36, marked batch 39): chosen "Next normal net slot (Recommended)" over "Right after the save". The queue's gloss: roll back `lastModuleNetAt` and `netIndex` only, not the 2 s slot clock `lastNetAt`. The designer's plan words it as OI2 (an interpretation to confirm): "tick clock rolled back" is read as the module clock plus the round-robin position, so the redo happens at the next normal net slot rather than right after the marked pass; the alternative also rolls back `lastNetAt` and redoes it right after the marked pass (whether the maintainer saw this wording: TODO(evidence)).
+- Alternatives rejected: "Right after the save".
+- Related: `MC-1027` (this entry refines what "tick clock rolled back" covers), `MC-1030`, CHORE-624.
+
+**What was decided (maintainer).**
+1. CHORE-624 redo timing: "Next normal net slot (Recommended)". A cut tick's redo runs at the next normal net slot; only `lastModuleNetAt` and `netIndex` are rolled back.
+
+- Notes, not the maintainer's words:
+  - The shipped code restores those two values and not `lastNetAt` (Gate 2 reading, `b38\c624-g2\result.md`, the rollback row; the commit message states the same).
+
+### MC-1032 — Lane A, 2026-11-03: CHORE-624 cut tick and the hidden-reply hold: "Keep hold until redo commits"
+
+- Tag: decision (the maintainer's answer, relayed by lane A; amends `MC-1029`). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (line 38, marked batch 39): chosen "Keep hold until redo commits (Recommended)" over "Accept the window" and "Don't cut module ticks". The queue's gloss: the hidden-reply hold stays on until a cut tick's redone work commits; this amends `MC-1029` "latency only" to include this hold extension. It answers finding F1 of Gate 1 round 1 (`b38\c624-g1\result.md`, [REJECT]): a cut tick's unmarked work, including a character the idle net had just judged dirty, would land after the hidden-reply hold releases, where today it lands under the hold (INFERRED from source, high confidence, by that reviewer). That review's smallest-fix step 3 words the question as: "A cut module tick's own unmarked work lands after the reply's keep-alive hold releases (about 2 s or more later): accept, or keep finishing module ticks whose work is unchanged?" with a recommended option. The three labels above are the queue's; whether the maintainer saw the review's wording: TODO(evidence).
+- Alternatives rejected: "Accept the window"; "Don't cut module ticks".
+- Related: `MC-1029` (amended, an amendment line is on it), `MC-1034` (replaces this entry's mechanism), `MC-1027`, `MC-996`, CHORE-624.
+
+**What was decided (maintainer).**
+1. CHORE-624: "Keep hold until redo commits (Recommended)". The hidden-reply hold stays on until a cut tick's redone work commits.
+
+- Notes, not the maintainer's words:
+  - The plan's first mechanism for this (revision 1: a loop flag, a settle-subscriber set and two optional guard dependencies) was rejected at Gate 1 round 2 on a test-fixture finding (S1; `b38\c624-g1r2\result.md`) and replaced under `MC-1034`. The decision itself (keep the hold through the redo) is unchanged by that replacement.
+  - Verdict-slot ticks (one named character) are never cut in the shipped code, which also answers the review's point that a verdict-tick cut gains almost nothing (commit message and `b38\c624-g2\result.md`).
+
+### MC-1033 — Lane A, 2026-11-03: CHORE-624 failed redo (plan OQ-A): "Release at the redo's end"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (line 39, marked batch 39): chosen "Release at the redo's end (Recommended)" over "Only a landed redo releases". The designer's plan revision 1 words it as OQ-A: "If the redo of a cut tick fails (commit refused, a write error, a park), when does the reply's keep-alive hold end?" with (a) when the redo's attempt ends, whatever its outcome, the smallest change (Recommended), (b) only when a redo actually lands, so a failed redo keeps its rolled-back clocks and the token can stay up until the page is visible for 2 minutes or saving stops (whether the maintainer saw this wording: TODO(evidence)).
+- Alternatives rejected: "Only a landed redo releases".
+- Related: `MC-1032`, `MC-1034`, CHORE-624.
+
+**What was decided (maintainer).**
+1. CHORE-624: "Release at the redo's end (Recommended)". The hold ends when the redo's attempt ends, whatever its outcome.
+
+- Notes, not the maintainer's words:
+  - The shipped commit message lists the ending outcomes as landed, nothing to write, failed, deferred or parked, plus a stop (replaced or too large). What a failed redo leaves written is not restated here; the plan's own account is in `b38\c624-rev3\plan.md` (the failed-redo and "not covered, as today" lines).
+
+### MC-1034 — Lane A, 2026-11-03: CHORE-624 hold mechanism after the second reject: "Use the loop-owned token"
+
+- Tag: decision (the maintainer's answer, relayed by lane A; replaces the mechanism of `MC-1032`). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (line 41, marked batch 39): chosen "Use the loop-owned token (Recommended)" over "Keep the current design". The queue's gloss: the page port holds one `'save'` in-flight token from a cut until its redo ends (any cut, reply or not); `hiddenReplySaveGuard` is untouched; this replaces the guard-flag and settle-set design. It follows Gate 1 round 2 [REJECT] (`b38\c624-g1r2\result.md`), whose advisory "simpler path" section proposed it and noted three differences: it also holds the keep-alive for hide, Back and debounce cuts with no reply; it lacks the guard's 120 s visible bound; a park still holds it. The question text the maintainer saw is not in the queue: TODO(evidence).
+- Alternatives rejected: "Keep the current design".
+- Related: `MC-1032` (its mechanism is replaced here), `MC-1033`, `MC-1035`, `MC-1029`, `MC-1025`, `MC-777` (the advisory path), CHORE-624.
+
+**What was decided (maintainer).**
+1. CHORE-624: "Use the loop-owned token (Recommended)". The page port begins one `'save'` keep-alive token at the first cut of a streak and ends it at the end of the redo; `hiddenReplySaveGuard.ts` is not changed.
+
+- Notes, not the maintainer's words:
+  - Consequences the Gate 1 round 3 review asked to be stated (`b38\c624-g1r3\result.md`, E2, E4), carried into the plan's Risks: on Android 12+ the system may refuse a background start of the keep-alive service; the bridge catches the refusal and the app continues, so a no-reply cut's hold is best effort there, and the tick's unmarked work then waits for a timer-driven net slot on a page that may freeze (only unmarked edits are affected; the marked pass still commits with microtasks only). Whether the system exempts the moments right after leaving the foreground: UNKNOWN, not checked. The maintainer's daily phone runs the MVP (`MC-350`); a Note 9 (Android 10) cannot observe that rule.
+  - The token has no visible bound: a park or a module-load deferral while visible keeps the notification until resolved (accepted by the plan under this choice). "Same resident" holds only while the resident list is unchanged between the cut and the redo (not a loss path: the work stays in page memory and the idle net backstops it).
+
+### MC-1035 — Lane A, 2026-11-03: CHORE-624 keep-alive label for a no-reply cut (plan OQ-B): "Accept as is"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (line 42, marked batch 39): chosen "Accept as is (Recommended)" over "Reword reply-neutral" and "Separate label". The queue's gloss: the existing 'Reply ready. Open the app to finish saving.' label may show for a no-reply cut. The designer's plan revision 2 words it as OQ-B: "A cut with no reply in flight, mostly the app hidden during a module tick, now starts the keep-alive notification. While only a 'save' is held, it reads 'Reply ready. Open the app to finish saving.', then 'Finishing up…' for 10 s. With a reply, the same label also stays up from the reply's commit until the redo ends. What should it say?" (whether the maintainer saw this wording: TODO(evidence)).
+- Alternatives rejected: "Reword reply-neutral"; "Separate label".
+- Related: `MC-1034`, CHORE-624, `MC-058` (locales belong to the Translator; none changed here).
+
+**What was decided (maintainer).**
+1. CHORE-624: "Accept as is (Recommended)". No string or logic change for the label; no locale file is touched.
+
+- Notes, not the maintainer's words:
+  - The plan's optional device Cell E (hide the app during a module tick with no reply on the Note 9 and read the notification) is observation only and shows the label only (Carry-Forward).

@@ -924,3 +924,9 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-1027](Maintainer-Context.md#mc-1027--lane-a-2026-11-02-chore-624-abandoning-a-tick-yes-rerun-at-next-tick) | Lane A, 2026-11-02: CHORE-624, abandoning a tick: "Yes, rerun at next tick" |
 | [MC-1028](Maintainer-Context.md#mc-1028--lane-a-2026-11-02-chore-624-starvation-of-the-idle-net-finish-after-2-cut-ticks) | Lane A, 2026-11-02: CHORE-624, starvation of the idle net: "Finish after 2 cut ticks" |
 | [MC-1029](Maintainer-Context.md#mc-1029--lane-a-2026-11-02-chore-624-scope-latency-only) | Lane A, 2026-11-02: CHORE-624 scope: "Latency only" |
+| [MC-1030](Maintainer-Context.md#mc-1030--lane-a-2026-11-03-chore-624-cut-trigger-plan-oq1-any-due-pass) | Lane A, 2026-11-03: CHORE-624 cut trigger (plan OQ1): "Any due pass" |
+| [MC-1031](Maintainer-Context.md#mc-1031--lane-a-2026-11-03-chore-624-redo-timing-plan-oi2-next-normal-net-slot) | Lane A, 2026-11-03: CHORE-624 redo timing (plan OI2): "Next normal net slot" |
+| [MC-1032](Maintainer-Context.md#mc-1032--lane-a-2026-11-03-chore-624-cut-tick-and-the-hidden-reply-hold-keep-hold-until-redo-commits) | Lane A, 2026-11-03: CHORE-624 cut tick and the hidden-reply hold: "Keep hold until redo commits" |
+| [MC-1033](Maintainer-Context.md#mc-1033--lane-a-2026-11-03-chore-624-failed-redo-plan-oq-a-release-at-the-redos-end) | Lane A, 2026-11-03: CHORE-624 failed redo (plan OQ-A): "Release at the redo's end" |
+| [MC-1034](Maintainer-Context.md#mc-1034--lane-a-2026-11-03-chore-624-hold-mechanism-after-the-second-reject-use-the-loop-owned-token) | Lane A, 2026-11-03: CHORE-624 hold mechanism after the second reject: "Use the loop-owned token" |
+| [MC-1035](Maintainer-Context.md#mc-1035--lane-a-2026-11-03-chore-624-keep-alive-label-for-a-no-reply-cut-plan-oq-b-accept-as-is) | Lane A, 2026-11-03: CHORE-624 keep-alive label for a no-reply cut (plan OQ-B): "Accept as is" |
