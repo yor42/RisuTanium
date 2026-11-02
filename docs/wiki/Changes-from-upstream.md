@@ -13,6 +13,10 @@ RisuTanium has **not had a public release**. This page describes what the code o
 - **One exception:** full backups saved on `risuai.xyz` are encrypted by upstream, and only that site can read them. RisuTanium refuses them and imports nothing. See [[Migrating from upstream]] for this, for the routes out, and for the services that were removed.
 - **Names:** the product is shown as "RisuTanium". Upstream is "RisuAI".
 
+## Where your API key goes on a web build
+
+On a static web build of RisuTanium (not the desktop app, not Android, and not the Node server), requests to AI providers (other than localhost addresses, which a web build refuses anyway) go through upstream RisuAI's proxy at `sv.risuai.xyz` (`/proxy2`), the same as upstream's own hosted build. Your API key travels with the request, so it passes through upstream's server. The desktop app and Android send requests directly from the device. The Node server uses its own `/proxy2`. The maintainer decided on 2026-11-02 to document this and change nothing. The code has a plain-fetch setting that skips the proxy; no toggle for it was found in the settings screens (not fully checked).
+
 ## Rewritten systems
 
 ### Saving and storage
@@ -149,6 +153,9 @@ Upstream links appear only where the records name one. Fixes are on main; most a
 - Lorebook scan depth beyond the chat length scans every message (the record notes upstream has this too).
 - A Lua-written lorebook entry no longer disappears in onStart/onOutput ([upstream #1041](https://github.com/kwaroran/Risuai/issues/1041), [#1042](https://github.com/kwaroran/Risuai/pull/1042), reported fixed).
 
+- Lua `setFullChat` dropped message details (generation info, prompt info, speaker, name, the disabled and comment flags) even on messages the script had not changed. Upstream: [issue #1564](https://github.com/kwaroran/Risuai/issues/1564), [PR #1611](https://github.com/kwaroran/Risuai/pull/1611). A message with the same position, role and text now keeps every field. On main since 2026-11-02, checked by tests.
+- **New, RisuTanium only:** Lua `getFullChat`, `getChat` and `getRecentChats` now return each message's read-only `chatId` (present only when the message has one), and `setFullChat` matches your entries to existing messages by that id first. A message the script edited, moved or gave a new role therefore keeps its fields and its alternatives. A script cannot create ids, and scripts that never send ids behave as before. Upstream RisuAI does not have this. See [[Lua API Reference]].
+
 ### Plugins
 
 - A plugin write to the plugin list could delete plugins; updates now keep saved settings.
@@ -162,7 +169,22 @@ Upstream links appear only where the records name one. Fixes are on main; most a
 - HypaV3 re-roll Apply is re-enabled after an edit, and a HypaV3 `SystemMessageOrderError` was fixed ([upstream #1051](https://github.com/kwaroran/Risuai/issues/1051), reported fixed).
 - SupaMemory, HypaV2 and HypaV3 resume points, retries and hidden-message summaries were corrected. Reset SupaMemory data now asks first.
 - Hugging Face speech was repaired, and Stop now covers all text-to-speech voices.
+- Streamed Anthropic and Gemini replies could save broken text. A character split across two network chunks, such as Korean text or an emoji, turned into a replacement character (`�`) and stayed in the saved chat. Each stream is now decoded as one continuous stream. Upstream: [issue #1647](https://github.com/kwaroran/Risuai/issues/1647), [PR #1658](https://github.com/kwaroran/Risuai/pull/1658); Gemini had the same problem with no upstream number. On main since 2026-11-02, checked by tests that split a 3-byte character and an emoji across chunks; not tried against a live provider here.
 - Tauri timeouts: reported fixed for [upstream #1689](https://github.com/kwaroran/Risuai/issues/1689) and [#1694](https://github.com/kwaroran/Risuai/pull/1694); the Rust side was not re-read.
+
+### Found fixed in the review of old upstream issues (#1 to #702)
+
+A review of upstream issues and unmerged pull requests numbered #1 to #702 checked whether each reported problem still applies here. These came back as already fixed, by reading the code only (nothing was run):
+
+- Trigger scripts were left out of an exported character card ([upstream #248](https://github.com/kwaroran/Risuai/issues/248), reported fixed).
+- Loading a local backup decoded and re-stored data wrongly ([upstream #475](https://github.com/kwaroran/Risuai/issues/475), reported fixed because the restore code was rewritten).
+- A save error "body stream already read" ([upstream #658](https://github.com/kwaroran/Risuai/issues/658), reported fixed).
+- Deleting the first preset overwrote the shifted one ([upstream #184](https://github.com/kwaroran/Risuai/issues/184), reported fixed).
+- A regex script with a missing flag threw an error ([upstream #205](https://github.com/kwaroran/Risuai/issues/205), reported fixed; a missing input or output pattern was not checked).
+- In group chats, `{{char}}` showed the room name ([upstream #190](https://github.com/kwaroran/Risuai/issues/190), reported fixed; callers were assumed to pass the speaking character).
+- Kobold requests left out `max_length` ([upstream #175](https://github.com/kwaroran/Risuai/issues/175), reported fixed).
+
+Two reports did not hold in this fork: that backup data is sent to the upstream hub for a validity check ([#698](https://github.com/kwaroran/Risuai/issues/698); the backup code makes no network calls), and that one API key is sent to another model's proxy ([#185](https://github.com/kwaroran/Risuai/issues/185); keys are kept per provider). See "Where your API key goes on a web build" above for the web-build proxy.
 
 ### Android and desktop
 
@@ -180,12 +202,15 @@ Upstream links appear only where the records name one. Fixes are on main; most a
 
 ## In progress (not yet released)
 
-These are being worked on now. They are **not fixed on main** and nothing here has been tested to pass yet.
+These are planned before the next release. They are **not fixed on main** and nothing here has been tested to pass yet.
 
-- **Garbled non-ASCII text in streamed Anthropic and Gemini replies.** Each streamed chunk is decoded on its own, so a multi-byte character split across two chunks can be saved as a replacement character (permanently). Upstream: [issue #1647](https://github.com/kwaroran/Risuai/issues/1647), [PR #1658](https://github.com/kwaroran/Risuai/pull/1658). Gemini has the same problem with no upstream number. The plan is a single decoder per stream.
-- **Lua `setFullChat` drops message metadata.** Upstream: [issue #1564](https://github.com/kwaroran/Risuai/issues/1564), [PR #1611](https://github.com/kwaroran/Risuai/pull/1611). The plan keeps metadata on messages whose index, role and text are unchanged; edited messages would still lose it until a stable message identity exists. Whether Lua should see a chat id is undecided.
-- **Follow-ups planned before the next release (not yet fixed):** deleting a nested lorebook folder leaves its contents stored and exported ([upstream #1667](https://github.com/kwaroran/Risuai/pull/1667)); auto-translate hides streaming text until the stream ends ([#1426](https://github.com/kwaroran/Risuai/issues/1426), [#1495](https://github.com/kwaroran/Risuai/pull/1495)); a greedy `<Thoughts>` pattern may strip earlier history from prompts, to be checked at runtime first ([#1327](https://github.com/kwaroran/Risuai/issues/1327)).
-- Upstream issues and PRs numbered below #703 have not been reviewed yet.
+- **Found in the review of upstream issues #703 to #1712:** deleting a nested lorebook folder leaves its contents stored and exported ([upstream #1667](https://github.com/kwaroran/Risuai/pull/1667)); after a preset is deleted, two small guard gaps remain in saving a preset and applying a loadout; the reported scenario itself is fixed ([#1351](https://github.com/kwaroran/Risuai/issues/1351), [#1387](https://github.com/kwaroran/Risuai/pull/1387)); auto-translate hides streaming text until the stream ends ([#1426](https://github.com/kwaroran/Risuai/issues/1426), [#1495](https://github.com/kwaroran/Risuai/pull/1495)); a greedy `<Thoughts>` pattern may strip earlier history from prompts, to be checked at runtime first ([#1327](https://github.com/kwaroran/Risuai/issues/1327)); chat export on Firefox on iOS may say it saved when no file appears, by source similarity only and untested on iOS ([#843](https://github.com/kwaroran/Risuai/issues/843)).
+- **Found in the review of upstream issues #1 to #702:**
+  - Lorebook entries with Full Word Matching on miss a keyword that is followed by punctuation, a newline or markup such as `*Alice*` ([#340](https://github.com/kwaroran/Risuai/issues/340)). How it should behave for languages written without spaces needs a decision.
+  - Text-to-speech reads the original text, not the translation, when auto-translate is on ([#200](https://github.com/kwaroran/Risuai/issues/200)). This is a missing feature, not a defect, and needs a product decision.
+  - The on/off toggles are not reachable by screen readers or the keyboard ([#209](https://github.com/kwaroran/Risuai/issues/209)).
+  - On Safari older than 16.4, the code that checks for compression support throws before its fallback can load, so saving and loading fail there ([#662](https://github.com/kwaroran/Risuai/issues/662)). Reported only for old iPhones.
+- The planned items above are **unreleased**. The reports behind them are static code reading; most were not run.
 
 Also planned, not shipped: the new interface design (a hidden colour preset is all that exists), a new long-term memory engine (research only), and a fork-to-fork backup format.
 

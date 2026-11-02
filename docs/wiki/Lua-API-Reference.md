@@ -25,12 +25,12 @@ Access levels, from the "permission tiers" section on [[Lua Scripting]]:
 
 | Call it as | Args | Returns | Access |
 |---|---|---|---|
-| `getChat(id, index)` *(shim)* | index: number (supports negative/`.at()` indexing) | table `{role, data, time}` or `nil` | None |
+| `getChat(id, index)` *(shim)* | index: number (supports negative/`.at()` indexing) | table `{role, data, time, chatId?}` or `nil`. `chatId` is read-only and present only when the message has one, see [Message ids and `setFullChat`](#message-ids-and-setfullchat) | None |
 | `getChatData(id, index)` | index: number | message text, or `''` | None |
 | `getChatRole(id, index)` | index: number | `'user'`/`'char'`, or `''` | None |
-| `getRecentChats(id, count)` *(shim)* | count: number | table array of the last `count` messages, `{role, data, time}` each | None |
-| `getFullChat(id)` *(shim)* | — | table array of every message | None |
-| `setFullChat(id, value)` *(shim)* | value: table array of `{role, data}` | replaces the whole chat message list. **Fork difference:** an empty list also clears the chat's [[SupaMemory]] data <!-- src/ts/process/scriptings.ts:437-443 --> | Safe |
+| `getRecentChats(id, count)` *(shim)* | count: number | table array of the last `count` messages, `{role, data, time, chatId?}` each; `chatId` is read-only and present only when the message has one | None |
+| `getFullChat(id)` *(shim)* | — | table array of every message, `{role, data, time, chatId?}` each; `chatId` is read-only and present only when the message has one | None |
+| `setFullChat(id, value)` *(shim)* | value: table array of `{role, data}`, each optionally carrying the `chatId` that `getFullChat` returned | replaces the whole chat message list. Messages are matched to the old ones so unchanged or edited messages keep their stored fields, see [Message ids and `setFullChat`](#message-ids-and-setfullchat). **Fork difference:** an empty list also clears the chat's [[SupaMemory]] data <!-- src/ts/process/scriptings.ts:433-502 --> | Safe |
 | `getChatLength(id)` | — | number of messages | None |
 | `setChat(id, index, value)` | index: number, value: string | overwrites message text at index | Safe |
 | `setChatRole(id, index, value)` | index, value (`'user'` else treated as `'char'`) | — | Safe |
@@ -41,7 +41,33 @@ Access levels, from the "permission tiers" section on [[Lua Scripting]]:
 | `getCharacterLastMessage(id)` | — | text of the most recent `char`-role message in the call's chat, falling back to that chat's owner's first message. Inside a trigger run or `editInput`, "the call's chat" is the run's own chat, re-read fresh on every call (not held from when the call began); outside a run it's the selected character's chat | None |
 | `getUserLastMessage(id)` | — | text of the most recent `user`-role message, or `''` | None |
 | `getAuthorsNote(id)` | — | the chat's author's note, or `''` | None |
-<!-- src/ts/process/scriptings.ts:52-57, 288-404, 882-884, 1149-1192 -->
+<!-- src/ts/process/scriptings.ts:52-57, 288-404, 406-416, 433-502, 882-884, 1149-1192, 1483-1497 -->
+
+### Message ids and `setFullChat`
+
+**Fork difference (RisuTanium addition):** `chatId` and the matching rule below do not exist in upstream RisuAI. The commit that added them notes that upstream pull request #1611 proposes the same idea and is unmerged.
+
+`getChat`, `getRecentChats` and `getFullChat` return a `chatId` string on a message when the message has one. Some messages have none, for example older ones, so check for `nil`. A script cannot set, change or create a `chatId`. It is readable in every mode, like the other fields these getters return.
+
+`setFullChat` replaces the message list with the table you pass. For each entry it decides which existing message the entry stands for, in two passes:
+
+1. **By id.** An entry with a `chatId` takes the first existing message that holds that id, unless an earlier entry already took that message.
+2. **By position.** Every other entry (no id, an unknown id, a duplicate id, or an id already taken) takes the existing message at the same position, but only if that message has the same role and the same text and no other entry has taken it.
+
+A message matched by either pass keeps every field it had (generation info, prompt info, speaker, name, the disabled and comment flags, its `chatId` and its `time`). Only its role and text are replaced with yours, and the alternatives (rerolls) that follow it stay attached. An entry that matches nothing becomes a new message with only a role and text, and no `chatId`. In your table, `chatId` is used only as a lookup key: an id you invent, or a `time` you add, is not stored.
+
+```lua
+-- append text to the last message and keep its stored fields
+local chat = getFullChat(id)
+chat[#chat].data = chat[#chat].data .. ' (edited)'
+setFullChat(id, chat)
+```
+
+Edge cases:
+- A script that never sends ids (for example one written for upstream) is matched by position, role and text only. An unchanged message keeps its fields. An edited or moved message with no id counts as new and keeps none. In the example above, a last message that has no `chatId` would lose its fields because its text changed.
+- If the table holds the same `chatId` twice, only the first entry claims the message. The second is matched by position, role and text like an entry with no id.
+- A stale table whose ids are no longer known falls back to position, role and text. If those happen to match an unrelated message, that message's fields are kept.
+- Each existing message is matched at most once.
 
 ## Character & persona
 

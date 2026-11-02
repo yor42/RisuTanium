@@ -1,6 +1,6 @@
 # Upstream harvest 2026-11-02 (kwaroran/Risuai issues and unmerged PRs)
 
-Status: lane A draft, NOT independently verified (no doc-verifier pass). Uncommitted. Partial: upstream #1-#702 are not yet fetched or triaged, so this records the funnel result for #703-#1712 only. Fork state was read at `main` `031bfddf1`. Every per-item verdict below is an investigator's report from static source reading and is "reported", unless section 3 says lane A confirmed it directly. Working files live under `%TEMP%\risu-b715\b35\` (`upstream\`, `u1-plan\`); they are scratch, not records.
+Status: lane A draft, NOT independently verified (no doc-verifier pass). Part 1 was committed in `15bee8b96`; the part 2 edits are uncommitted. Updated 2026-11-02 with part 2: sections 1 to 7 record part 1 (#703-#1712, fork state read at `main` `031bfddf1`); section 8 records part 2 (#1-#702, fork state read at `52987bd95`). Sections 4 to 6 are updated for both parts. "Harvest batch U1/U2/U3/U3b" names the batches of this harvest only; they are not the older project record names. Every per-item verdict below is an investigator's report from static source reading and is "reported", unless section 3 says lane A confirmed it directly. Working files live under `%TEMP%\risu-b715\b35\` (`upstream\`, `u1-plan\`); they are scratch, not records.
 
 ## 1. Purpose and method
 
@@ -13,7 +13,7 @@ Funnel stages:
 3. Triage the unmerged items with Haiku (class, area, value, reachability, one-line summary). Triage read only the first 700 characters of each body.
 4. Shortlist, rule given by lane A: triaged value `high`, OR triaged class `data-loss` or `security`. This is why #1058 (class security, value med) and #1582 (class data-loss, value low) joined the 45 `high` items.
 5. Per-cluster investigation (clusters A to E): does the defect still exist in the fork, and is it reachable in normal use. Static source reading only.
-6. Batch U1: a plan for the two defects lane A confirmed, now being implemented.
+6. Harvest batch U1: a plan for the two defects lane A confirmed (shipped, see section 4).
 
 MVP rule, maintainer direction 2026-11-02: reachable data loss in normal use gates the MVP refresh; nothing else does. Everything outside U1 is therefore non-gating backlog.
 
@@ -139,13 +139,25 @@ This tally is the writer's count from the tables, not an investigator's figure.
 
 ## 4. Actions
 
-U1, in progress (plan `u1-plan\plan.md`, now being implemented as batch U1; this document does not claim it is merged or tested). These are the only items the MVP rule gates:
+Shipped on main (hashes from `git show --stat`; commit messages read, tests named there; this document does not re-run them):
+
+- Harvest batch U1, `52987bd95` (2026-11-02): U1a, Anthropic and Gemini streams keep multibyte text whole (one `TextDecoder` per stream, `{stream:true}`, flushed at stream end; the Anthropic overload retry starts a fresh decoder; upstream #1647, #1658). U1b, `setFullChat` keeps every field on a message with the same index, role and data (upstream #1564, #1611). Its commit message names new `streamMultibyte` tests through the real Anthropic and Gemini parse paths, and a `setFullChat` identity round-trip test with guards for edited messages and role changes.
+- Harvest batch U2, `f8f5007f1` (2026-11-02): Lua `getFullChat`, `getChat` and `getRecentChats` expose a read-only `chatId`; `setFullChat` matches by id first, then by index, role and data. This answers the maintainer question recorded under the old "Maintainer question" heading below: the plan's recommendation to defer was not followed and the API addition shipped. Fork-only; upstream PR #1611 proposes the same idea and is unmerged (per the commit message).
+- Documentation for both: the Lua API reference and the "Changes from upstream" wiki page (maintainer standing OK 2026-11-02 for wiki pages documenting lane A's own shipped changes).
+
+The original U1 plan text follows, kept as history. These were the only items the MVP rule gates:
 
 - U1a, multibyte stream decoding. Anthropic (`anthropic.ts`) and Gemini (`google.ts`) readers. Plan: one `TextDecoder` per byte stream, `{stream:true}` on each chunk, plus an end flush. The plan's survey of other readers found no other chat-reply reader with the defect; its own coverage label is PARTIAL (`Buffer#toString` decoding was checked only in one file). The end flush and fresh retry decoder are described by the plan as hygiene with no observable test.
 - U1b, `setFullChat` metadata. Plan: in `setFullChatMain`, a message with the same index, role and data starts from a shallow copy of the previous message, so all fields survive. An edited message still carries nothing (index alone cannot tell an edit from a shift, so carrying fields by index could attach them to the wrong message). Edited messages keep losing metadata until a real identity exists.
 - The plan's tests (two reproducers and two guards for U1a, one reproducer and two guards for U1b, plus mutants) are DESIGNED, NOT DEMONSTRATED. The plan's gate route skips Gate 1 and sends Gate 2 to opus-reviewer, on the condition that the review brief includes the edited-message decision and the shared reactive-proxy point.
 
-Non-gating backlog (not scheduled):
+Planned, not shipped (maintainer decisions 2026-11-02; both batches are before the next release; only the local Ollama item gates the MVP refresh):
+
+- Harvest batch U3 (earlier follow-ups): #1667, #1387 residuals, #843, #1327, #1426/#1495, and a local Ollama item. The Ollama item is the same multibyte split as U1a, inside the `ollama` SDK's stream reader for local Ollama replies; U1's Gate 2 reported it, and the U3 plan covers it as stage 6. The maintainer ruled that it gates the MVP refresh (2026-11-02).
+- Harvest batch U3b (part 2 findings): #340, #200, #209, #662 (section 8).
+- Maintainer decision, static web build: provider requests go through upstream's `sv.risuai.xyz/proxy2`, so API keys pass through upstream's server. Decision: note it, no change. Tauri (including Android) goes direct; the Node self-host uses its own `/proxy2`. Lane A confirmed the proxy URL selection in `globalApi.svelte.ts` (the part 2 investigator cites `:3208`, `:3403`, `:3580`, `:3355`; those lines were not re-read by this writer).
+
+Earlier backlog list (kept as history; now folded into U3):
 
 - #1667: nested lorebook folder delete (small).
 - #1387 residual guards: `saveCurrentPreset` out-of-range id, `applyLoadout` pushing `undefined` (tiny).
@@ -158,24 +170,27 @@ Leads, not verified:
 
 - The Anthropic overload retry resets `parserData` but not the line index (`i`), so the new response's first lines may be skipped. The plan calls this probably harmless preamble and unverified. Plan cites `anthropic.ts` lines 1014-1040 at `031bfddf1`.
 
-Maintainer question (non-blocking):
+Maintainer question (non-blocking), now answered by shipping harvest batch U2 (`f8f5007f1`):
 
-- Should Lua `getFullChat` expose `chatId`, so `setFullChat` can match by identity and keep metadata on edited messages (upstream #1611's approach)? It is a Lua API addition. The plan recommends deferring it. Not decided.
+- Should Lua `getFullChat` expose `chatId`, so `setFullChat` can match by identity and keep metadata on edited messages (upstream #1611's approach)? It is a Lua API addition. The plan recommended deferring it. The maintainer chose "add chatId now" on 2026-11-02, then ruled that chatId is read-only in getFullChat, getChat and getRecentChats, and that an unknown or duplicate id is judged like an id-less entry. These answers will be recorded as an MC entry in records batch 35. Shipped as harvest batch U2.
 
 ## 5. Limits
 
 - Triage read only the first 700 characters of each body. It is Haiku output and unverified.
 - The investigations were static source reading only. No runtime probe, device run or test was executed for any verdict here. Several investigators flag specific unrun checks (jsdom sanitizer for #1628, 400 MB scale for #804, iOS for #843, a mount test for #1586).
-- Issues #1-#702 are not yet triaged; the fetch is pending or partial. This document covers only the 1000 items seen (#703-#1712, 10 numbers in that range absent, cause unconfirmed).
+- Issues and PRs #1-#1712 are now covered: part 1 holds 1000 items (#703-#1712, 10 numbers in that range absent) and part 2 holds 697 items (#1-#702, 5 numbers absent: #14, #197, #262, #561, #562). The cause of the 15 absent numbers is unconfirmed (see section 2 for the guess).
+- Part 2 triage, like part 1, read only the first 700 characters of each body (`tri-in-3.jsonl` and `tri-in-4.jsonl`: 110 and 109 lines, longest body 700 characters) and is unverified model output. The part 2 investigators ran about 5 minutes per item, source only, and cluster G is a shallow pass: items marked "shallow" were not traced end to end.
 - The 571 merged PRs were assumed to be already in the fork. That was not checked.
 - Cluster A to E investigators read upstream items from the GitHub web pages or the local raw dump; the #1351 body was not parsed.
 - This document is to be updated when the remaining pages are fetched and triaged.
 
 ## 6. Open items
 
-- Pending: fetch and triage of #1-#702; then update this file.
-- Pending: U1 implementation, review and verification results; record them separately once they exist.
-- Unconfirmed: why 10 numbers in #703-#1712 are absent (see section 2).
+- Done in section 8: fetch, triage and investigation of #1-#702.
+- Pending: harvest batches U3 and U3b (planned, not implemented).
+- Pending: independent verification of this document, and of the shipped batches' own review and verification results beyond what the commit messages state; record them separately once they exist.
+- Unconfirmed: why 10 numbers in #703-#1712 and 5 in #1-#702 are absent (see sections 2 and 8).
+- Open (part 2): #662's Safari support floor was not checked; #553/#584 need a macOS Safari or Tauri run; #596 needs one Android device run; #230 and #681 are unclear.
 
 ## 7. Citation and consistency notes
 
@@ -184,3 +199,92 @@ Maintainer question (non-blocking):
 - Triage rated #1667 `normal-use`; the cluster B investigator reports `edge`. The investigator's reading is used above.
 - Triage rated #706 `normal-use` and #1582 `unclear`; the cluster C investigator reports #706 moot/unclear and #1582 fixed.
 - Cluster D reports #1327 as present but only from the regex and the append logic; it did not verify the stored-message shape at runtime.
+
+## 8. Part 2: upstream #1-#702
+
+### 8.1 Method change
+
+Part 1 fetched `sort=created&direction=desc` pages 1-10. GitHub refuses page-number pagination past page 10 (maintainer-lane statement in the brief; the 11-18 desc fetch script `fetchrest-b35.ps1` is in the scratch folder, and no desc page file beyond 010 exists). Part 2 therefore fetched `direction=asc`, 7 pages of 100 (`upstream\raw\issues-asc-001..007.json`), from the oldest item. The 700 items returned cover #1 to #702 (5 absent) plus 3 items numbered above #702, which are left out because part 1 covers that range. Everything else follows part 1: merged PRs set aside, Haiku triage, same shortlist rule (value `high`, or class `data-loss` or `security`), then investigation per cluster. Fork state for part 2 was read at `main` `52987bd95` (the investigators' stated HEAD).
+
+### 8.2 Funnel numbers
+
+Recomputed on 2026-11-02 by a PowerShell script over `issues-asc-*.json`, `merged-prs-old.csv`, `tri-out-3.csv` and `tri-out-4.csv` (script `wiki\count-docs2.ps1` in the scratch folder). Issue versus PR comes from the raw `pull_request` field.
+
+| Stage | Count | Note |
+|---|---|---|
+| Raw items fetched | 700 | 7 files of 100, 700 unique numbers |
+| Items numbered below 703 | 697 | lowest #1, highest #702 |
+| Numbers in #1-#702 not seen | 5 | #14, #197, #262, #561, #562. Cause not established (see section 2 for the part 1 guess; same UNCONFIRMED status) |
+| Of the 697: issues | 189 | 12 open, 177 closed |
+| Of the 697: PRs | 508 | 478 merged, 30 closed unmerged, 0 open |
+| Merged PRs set aside | 478 | `merged-prs-old.csv` has 478 data rows; the numbers equal the raw merged set (0 differences each way). Not checked against the fork, as in part 1 |
+| Unmerged items triaged | 219 | 189 issues + 30 PRs; `tri-out-3.csv` 110 rows + `tri-out-4.csv` 109 rows, 219 unique numbers, every unmerged raw number present |
+| Triaged `high` value | 25 | 20 `bug`, 4 `data-loss`, 1 `security` |
+| Shortlist: `high` OR class `data-loss`/`security` | 27 | the 25 `high` items plus #662 (data-loss, value med) and #698 (security, value med) |
+| Investigated | 27 | the whole shortlist: cluster F 11 items, cluster G 16 items |
+
+Triage kind (rows): issue-closed 170, issue-open 12, pr-closed 30, wontfix 7 (these 7 are issues; their labels are the triage's own). Total 219.
+
+Triage class (Haiku, unverified): bug 99, feature 58, question 21, other 12, ui 9, data-loss 5, docs 4, retired 4, perf 3, i18n 2, security 2 (total 219). The 5 `data-loss` items are #191, #248, #475, #658 (all `high`) and #662 (med); the 2 `security` items are #185 (high) and #698 (med).
+
+Triage value: high 25, med 51, low 105, none 38 (total 219).
+
+Upstream link kinds: all 27 shortlisted numbers have no `pull_request` field in the raw JSON, so every link below is `/issues/`.
+
+### 8.3 Results per cluster
+
+Same conventions as section 3. Citations are the investigators' at `52987bd95`, were not re-read by the writer, and the investigators' own hedges are kept. Upstream issue bodies were read from public github.com issue pages (no RisuAI or Realm service contacted).
+
+#### Cluster F: backup, network, save, misc (report: `inv-F\result.md`; 11 items, source only)
+
+| Upstream | One line | Verdict | Data loss / reach | Fix route |
+|---|---|---|---|---|
+| [#248](https://github.com/kwaroran/Risuai/issues/248) | Trigger scripts omitted from an exported bot card | fixed (`characterCards.ts` writes `triggerscript` on export at the two export sites and reads it on import) | no | none |
+| [#475](https://github.com/kwaroran/Risuai/issues/475) | Local backup load decodes then re-stores wrongly | fixed / moot (the upstream code path is gone; the fork's restore was rewritten). Observation only from reading the decode site; no restore was run | no | none |
+| [#553](https://github.com/kwaroran/Risuai/issues/553) | macOS Tauri "Load Backup Locally" shows no picker | unclear. The picker uses a detached input clicked after two awaited confirm dialogs; WebKit may no longer count that as a user gesture. Not the display:none cause of #584 | no; edge for this fork (Safari/macOS not a target) | small. Settle by running restore on macOS Tauri or Safari. Idea: click synchronously from the last confirm handler, or use the Tauri dialog plugin on desktop |
+| [#584](https://github.com/kwaroran/Risuai/issues/584) | Import character / load backup picker on Safari/Tauri macOS | unclear. Import uses `selectFileByDom` (appends the input, clicks, then hides it), which differs from upstream; restore uses the #553 path | no; edge | small; same settling run as #553 |
+| [#698](https://github.com/kwaroran/Risuai/issues/698) | Backup data sent to the hub for a validity check | fixed (premise refuted): the backup code makes no network calls (no fetch/hub/risuai match in `backuplocal.ts`; the only fetch under `src/ts/drive/` is in a test). Fork network destinations listed from source; no backup bytes go to any of them | no | none |
+| [#185](https://github.com/kwaroran/Risuai/issues/185) | Main API key sent to the secondary-model proxy | fixed (premise refuted): keys are per provider. Network note: on the hosted web build (not Tauri, not node), `globalFetch` routes non-localhost API calls through `${hubURL}/proxy2` (sv.risuai.xyz), with the Authorization header in the `risu-header`, unless `db.usePlainFetch`/`plainFetchForce`. The investigator found no `usePlainFetch` toggle under `src/lib` (UNCERTAIN, to settle by grepping settings labels) | no | none; maintainer decision 2026-11-02: note it, no change (section 4) |
+| [#191](https://github.com/kwaroran/Risuai/issues/191) | Characters and chats missing after login | moot (account sync retired; cause was browser storage eviction; the fork requests persistent storage). Not reproducible from source | historically yes; not reproducible | none |
+| [#658](https://github.com/kwaroran/Risuai/issues/658) | DBSaveError "body stream already read" | fixed (no such string in `src`; `nodeStorage.ts` reads each response body once per branch) | no | none |
+| [#662](https://github.com/kwaroran/Risuai/issues/662) | iPhone Safari "save file corrupted" | present (edge). `checkCompressionStreams` tests `!CompressionStream` on bare identifiers, which throws a ReferenceError on Safari older than 16.4 before the polyfill import; every call site calls it first. Reachable only on iOS 16.3 and older; outcome is save/load failing, no silent corruption seen. Whether the fork's build target supports such Safari: UNCERTAIN, not checked | no silent loss seen; edge | tiny: `typeof CompressionStream === 'undefined'`. Planned in harvest batch U3b |
+| [#184](https://github.com/kwaroran/Risuai/issues/184) | Deleting preset index 0 | fixed (`botpreset.svelte` reloads without saving over the shifted preset; id bounds guarded) | no | none |
+| [#205](https://github.com/kwaroran/Risuai/issues/205) | Global regex null flag `trim` TypeError | fixed (`script.flag || 'g'` before `.trim()`). Residual not checked: null `script.in`/`out` | no | none |
+
+#### Cluster G: lorebook, TTS, accessibility, misc (report: `inv-G\result.md`; 16 items, shallow pass per its brief)
+
+The investigator marks several verdicts "shallow" (the subsystem was replaced; the old path was not traced end to end). Those are weaker than a traced fixed.
+
+| Upstream | One line | Verdict | Data loss / reach | Fix route |
+|---|---|---|---|---|
+| [#340](https://github.com/kwaroran/Risuai/issues/340) | Lorebook word-unit matching misses a keyword | present (narrow). `lorebook.svelte.ts` splits the message on a single space and tests token equality, so a keyword followed by punctuation, a newline or markup such as `*Alice*` is missed | no; normal use for entries with Full Word Matching on | small: split on non-letter/number boundaries (Unicode-aware) or per-key regex with lookarounds, keep multi-word keys working. Needs a maintainer call on languages without spaces. Planned in harvest batch U3b |
+| [#200](https://github.com/kwaroran/Risuai/issues/200) | TTS reads the original text, not the translation | present (feature gap, not a defect). Auto speech speaks the stored reply after CBS parse; translation is a display-layer cache never consulted | no; only auto-translate plus TTS users | small to medium; product decision needed. Planned in harvest batch U3b |
+| [#209](https://github.com/kwaroran/Risuai/issues/209) | Toggle checkboxes inaccessible to screen readers | present. `CheckInput.svelte`: the real input has `class="hidden"` (display:none), the visible box is aria-hidden, and `aria-labelledby` names ids that do not exist | no; edge (screen-reader users) | tiny to small: one component, wide visual blast radius; test in jsdom. Planned in harvest batch U3b |
+| [#230](https://github.com/kwaroran/Risuai/issues/230) | iPhone VoiceOver cannot focus chat text fields | unclear / likely moot (iOS is not shipped). Settle with TalkBack on the chat textarea; not investigated further | no | none |
+| [#190](https://github.com/kwaroran/Risuai/issues/190) | Group chat `{{char}}` resolves to the room name | fixed (shallow): `cbs.ts` skips group-type cards and falls back to the speaking character. Assumed callers pass `chara` in group sends | no | none |
+| [#175](https://github.com/kwaroran/Risuai/issues/175) | Kobold omits `max_length` | fixed (`request.ts` sends `max_length`, `max_context_length`, `n` and mapped samplers) | no | none |
+| [#587](https://github.com/kwaroran/Risuai/issues/587) | Ollama stream shows only the last chunk | moot (shallow): the Ollama path was rewritten on the `ollama` SDK. Not run against a live Ollama | no | none |
+| [#208](https://github.com/kwaroran/Risuai/issues/208) | Create-bot-from-AI rejects prompts containing "risu" | moot: grep finds no such keyword check or feature in `src` | no | none |
+| [#121](https://github.com/kwaroran/Risuai/issues/121) | Linux AppImage rejects image imports (fs scope) | moot (shallow): imports use the web view's DOM chooser. The fs scope list is `$APPDATA` only, so a direct arbitrary-path read would fail, but no picker path does | no | none |
+| [#390](https://github.com/kwaroran/Risuai/issues/390) | Character card import from disk broken on macOS 1.95.0 | moot (shallow): import was reworked; no macOS build in the fork's target set | no | none |
+| [#122](https://github.com/kwaroran/Risuai/issues/122) | New group chat needs a refresh (web) | fixed / moot (shallow, untraced). Settle by creating a group in `pnpm dev` once | no | none |
+| [#259](https://github.com/kwaroran/Risuai/issues/259) | Switching character cards gives a null map parse error | fixed / moot (shallow, untraced). The exact old `.map` of null could not be mapped; UNCLEAR on the line, low risk | no | none |
+| [#384](https://github.com/kwaroran/Risuai/issues/384) | First-run blank screen, `chaId` TypeError | fixed / moot (shallow, untraced). Settle by a fresh-profile boot | no | none |
+| [#681](https://github.com/kwaroran/Risuai/issues/681) | "Cannot read properties of undefined (reading 'data')" on every send | unclear. Cause never identified upstream; the fork send path uses `.data` 24 times and the investigator could not isolate which. Needs a stack trace; not actionable | no | none |
+| [#596](https://github.com/kwaroran/Risuai/issues/596) | Android chats hang with SupaMemory/HypaV2/Hanurai | unclear (likely moot): the memory pipeline was reworked, but the reported cause (local embedding model download/WASM on Android) was not re-tested | no; normal use on Android if present | one Note 9 run with HypaV2 on a synthetic chat (a spare device exists, per the investigator) |
+| [#51](https://github.com/kwaroran/Risuai/issues/51) | Create Character button unresponsive | moot (shallow): 2023 UI, creation flow rewritten, no repro path found; not traced | no | none |
+
+### 8.4 Tally of the 27 investigated items
+
+The writer's count from the tables above (not an investigator's figure):
+
+- present: #662, #340, #200, #209 (4).
+- unclear: #553, #584, #230, #681, #596 (5).
+- fixed, moot or premise refuted: the other 18 (#248, #475, #698, #185, #191, #658, #184, #205, #190, #175, #587, #208, #121, #390, #122, #259, #384, #51). Of these, the investigators mark #190, #587, #121, #390, #122, #259, #384 and #51 as shallow or untraced.
+- Data loss: none of the 27 was reported present as silent data loss. The MVP rule therefore gates nothing from part 2.
+
+### 8.5 Part 2 notes
+
+- Cluster F's summary calls #698 and #185 refuted premises and #662 the only live defect, with #553/#584 unclear. Its table and the tally above agree.
+- The investigators' headline ranking put #596 first (needs a device run), then #340, #200, #209. The maintainer then planned #340, #200, #209 and #662 as harvest batch U3b; the evidence for this update does not list #596 among the planned items.
+- By the investigators' static reading, part 2 found no reachable silent data loss in the fork, so nothing from it meets part 1's MVP gating rule. This is a reported result, not a tested one.
