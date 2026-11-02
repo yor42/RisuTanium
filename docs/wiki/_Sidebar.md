@@ -4,6 +4,7 @@
 - [[RisuAI Basics]]
 - [[Creating a Basic Bot]]
 - Coming from upstream RisuAI? [[Migrating from upstream]]
+- What changed from upstream? [[Changes from upstream]]
 
 **Syntax**
 - [[Markdown Syntaxes]]
