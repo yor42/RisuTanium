@@ -21591,3 +21591,28 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
   - Lane A's new block, allocated under this grant, is `MC-1040` to `MC-1239` (it covers `MC-1040` to `MC-1059`, already used past the old block `MC-1010` to `MC-1039`; the next free MC is MC-1063 after `MC-1060` to `MC-1062`).
   - The grant names MC blocks: the ledger-row block (4700 to 4899, four rows left) and the CHORE block (CHORE-620 to CHORE-669) are unchanged.
   - The reason the maintainer gave (blocks existed for sessions working alongside each other) means blocks per session return if more than one orchestrator works again.
+
+### MC-1063 — Lane A, 2026-11-03: the MVP version is now main `f12ea30f9` (inferred; supersedes `MC-922` as the current MVP version; `MC-475` stays the first baseline)
+
+- Tag: statements (the maintainer's messages relayed by lane A, 2026-11-03). Date: 2026-11-03. Sweep ref: none. Exact times of the messages: TODO(evidence).
+- Source: the maintainer's messages in the lane A chat, relayed by lane A in the records brief (`%TEMP%\risu-b715\b40\rec45\brief.md`). The quoted words are the maintainer's. No `AskUserQuestion` was used.
+- Alternatives rejected: none offered.
+- Related: `MC-922`, `MC-475`, `MC-350`, `MC-979`, `MC-1039`, `MC-1051`, `MC-1059`, `MC-1060`.
+
+**What the maintainer said (verbatim).**
+1. "MVP has been updated with current main."
+2. "app was built on 2026-11-03 11:01PM KST and was installed at 11:04PM of the same day."
+3. "apkSha256=024c1ece0b3300dcc1e97183da27eaa6560e325bcb754aa5b2e812414cbd247c"
+
+**Recorded version (lane A's recording).**
+- Date: 2026-11-03 (built 11:01 PM KST, installed 11:04 PM KST).
+- Source: main `f12ea30f9` (INFERRED, see notes).
+- APK sha256 as the maintainer gave it (64 lowercase hex characters, format checked by the host; not recomputed from the APK file: TODO(evidence)).
+- Installed on the maintainer's phone. `MC-475` stays the first baseline; the `MC-350` carry-forward applies to this install as to the earlier ones.
+
+- Notes, not the maintainer's words:
+  - (1) Why `f12ea30f9`: the maintainer wrote "current main"; main was `f12ea30f9` (committed 2026-11-03 22:56:19 KST and pushed to origin/main right after) at 11:01 PM KST, and no later commit existed. The build's own commit stamp was not seen: TODO(evidence); the maintainer may confirm.
+  - (2) The maintainer's checkout also held uncommitted edits to `src-tauri/Cargo.toml` and the Android manifest at that time; a build from that checkout would include them. Which checkout and tree were used is not stated: TODO(evidence).
+  - (3) App code against `bc383c59f`: one line (`src/lang/de.ts`).
+  - (4) Not stated by the maintainer: whether the pre-update `.bin` was exported first, and whether counts matched after a relaunch (`MC-922` recorded both).
+  - (5) No update-safety check (source reading plus tests, as for `MC-922`) was run for this refresh: offered, not done.
