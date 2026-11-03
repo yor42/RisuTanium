@@ -21616,3 +21616,24 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
   - (3) App code against `bc383c59f`: one line (`src/lang/de.ts`).
   - (4) Not stated by the maintainer: whether the pre-update `.bin` was exported first, and whether counts matched after a relaunch (`MC-922` recorded both).
   - (5) No update-safety check (source reading plus tests, as for `MC-922`) was run for this refresh: offered, not done.
+
+### MC-1064 — Lane A, 2026-11-03: the trigger/regex CSS popup flickers after a cold restart: the report
+
+- Tag: statements (the maintainer's messages relayed by lane A in the records brief for batch 45). Date: 2026-11-03. Sweep ref: none. Exact times of the messages: TODO(evidence).
+- Source: the maintainer's messages in the lane A chat, relayed in the brief `%TEMP%\risu-b715\b40\rec46\brief.md`. The quoted words are the maintainer's. No `AskUserQuestion` was used.
+- Alternatives rejected: none offered.
+- Related: `MC-945` (CHORE-609, card and plugin CSS flicker), `MC-1063`, `MC-1051`, `MC-1060`.
+
+**What the maintainer said (verbatim).**
+1. "another potential bug found: just like CSS and chat content flicker that was tackled previously, content rendered by trigger and lua script also flickers/repetitively closed after cold restart multiple times, presumably until every module is refreshed and loaded."
+2. "it was a CSS popup added by module via trigger/regex script."
+
+**Answers.** The maintainer answered "yes, let's do all three" to: record it as a new ticket (`CHORE-631`), run a further code-reading scout, and commit batch 44 (done as `4b53dba5f`).
+
+**Recorded.** Recorded as `CHORE-631` (OPEN; not reproduced; no device run; no fix designed). Decision recorded: only "recorded as CHORE-631, scouts run". No fix, no scope change and no severity decision is recorded here.
+
+**Scout summaries (both unverified by a second reader; ledger rows 4897 and 4898).**
+- Scout 1 (`trigflicker-scout2`, partial; correction of `trigflicker-scout1`, which failed on a relative path; Codex read-only; report `b40\trigflicker\result.md`): VERIFIED that a non-held ReloadGUIPointer change changes the ChatBody key, and so replaces each visible message body, when no surface epoch is held and the computed key changes; with a surface epoch the key uses held surface values (Chat.svelte:1204-1223); the boot batch of N stubs ends in at most one coalesced bump. VERIFIED that reloadDisplay (scriptings.ts:508-513), v2UpdateGUI (triggers.ts:2573-2575) and trigger completion with varChanged (triggers.ts:3008-3010) bump the pointer without a hold; nothing shows they run automatically at startup (UNKNOWN).
+- Scout 2 (`trigflicker-scout3`, complete; Codex read-only; report `b40\trigflicker2\result.md`): VERIFIED each hydration calls refreshModules then bumpModuleGui (moduleLoader.ts:181-187); the boot hold makes the batch contribute 0 or 1 bump regardless of N (moduleEnsure.ts:287-307, moduleGuiBump.ts); holds are global and a release flushes even while another hold is open, so overlapping batches can each flush (moduleGuiBump.ts:30-43). Whether more than one batch runs in a cold start is UNKNOWN (boot background batch plus ensureModulesForOrigin, moduleEnsure.ts:34-58; Chat trigger and form paths, Chat.svelte:917-920, 989-994). INFERRED: stub-to-body hydration alone adds no second bump. Not inspected: parser internals (regex-to-popup transformation); plugin/lazy ensure frequency.
+
+**Candidates (not established).** (1) the one end-of-batch remount; (2) overlapping batches each flushing; (3) script/trigger GUI-update calls (reloadDisplay, v2UpdateGUI, trigger completion with varChanged) at startup, which is UNKNOWN. Net status: NOT reproduced; no total bump count per N stubs is derivable. Whether this shares a cause with CHORE-609 or the chat-body module-load work is NOT established.
