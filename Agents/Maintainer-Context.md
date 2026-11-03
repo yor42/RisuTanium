@@ -21690,3 +21690,28 @@ Limits (as recorded): the ReloadGUIPointer counter is not exposed, so bumps are 
 ### Decision-Index note for the parent
 
 Literal heading above is authoritative. Regenerate with `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1` after applying, and check with `-Check`. Not run by this clerk.
+
+### MC-1067 — Lane A, 2026-11-04: the next phase is CHORE-205's memory work, small owed items run in parallel, the ledger block 4900 to 4999 and the CHORE-205 reconciliation
+
+- Tag: statements (the maintainer's AskUserQuestion answers, 2026-11-04, relayed by the parent in the records brief for batch 48). Date: 2026-11-04. Sweep ref: none. Exact times of the answers: TODO(evidence).
+- Source: the maintainer's answers in the lane A chat, relayed in the brief `%TEMP%\risu-b715\b40\rec49\brief.md`. Scout reports: `%TEMP%\risu-b715\b40\c205size\result.md` (`c205-size1`, unverified by a second reader), `%TEMP%\risu-b715\b40\updsafe\result.md` (`updsafe-rev2`, PARTIAL, unverified by a second reader). The Dependabot trace is lane A's `gh api` and `pnpm why deepmerge` run (no dispatch).
+- Related: `MC-1066` (CHORE-631 park), `MC-1022` (CHORE-205 device part), `MC-920` (UI-S1 gate list), `MC-516` (UI gate), `MC-1063` (MVP refresh), `MC-350` (carry-forward), `MC-1061` (watch item).
+
+**Question and options (AskUserQuestion, "Which should I queue first?").** Options: "Finish CHORE-205 memory work"; "Start the UI overhaul (UI-S0)"; "Close out MVP loose ends"; "Upstream harvest next batch". Answer: "Finish CHORE-205 memory work". Option wording as relayed: TODO(evidence) for exact option text beyond the relayed labels.
+
+**What the maintainer said (verbatim).**
+1. "Finish CHORE-205 memory work" (the AskUserQuestion answer above).
+2. "can we run small owed items in parallel?"
+3. To "Should I write the Roadmap/ruling reconciliation for CHORE-205 next, as a records batch? And may I extend the ledger block (4700-4899 is used up) so these runs get ledger rows?": "yes to both".
+
+**Decided.**
+- The next phase is CHORE-205's memory work (the `MC-516` UI-overhaul gate is named as the next phase's gate context in the Roadmap queue; the maintainer chose the CHORE-205 memory work first).
+- Small owed items may run in parallel with the code and device tracks.
+- Ledger block 4900 to 4999 is allocated to lane A as records owner at this grant. Rows 4900 and 4901 are used in batch 48. Next row 4902.
+
+**Not decided (unchanged).**
+- No ticket status changed. CHORE-205 stays NOT COMPLETE; nothing is COMPLETE.
+- The CHORE-205 reconciliation of the accepted gaps against the stale NOT COMPLETE status is a records draft only; its ruling belongs to the orchestrator and maintainer.
+- Dependabot alert 174 dismissal (PROPOSED, dismiss as not used) is not decided; a GitHub dismissal needs the maintainer's word.
+- The device update-safety check of the MVP refresh `7928b5bb1` to `f12ea30f9` is not decided and not run; whether the pre-update `.bin` was exported is not stated (`MC-1063`).
+- CHORE-632 stays free; no CHORE is filed by this batch.

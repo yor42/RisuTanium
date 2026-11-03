@@ -49,10 +49,33 @@ No fix is planned. If imports on a low-memory phone start failing, reopen CHORE-
 ## Carry-forward and what was not checked
 
 - `MC-350` applies: a storage-format change ships an automatic forward migration; data a build cannot read is kept, never overwritten.
-- No update-safety check was run for this refresh. `MC-922`'s check was source reading plus tests.
+- No device update-safety check was run for this refresh. A partial read-only source review ran on 2026-11-04 (batch 48, `MC-1067`); see section 'Update-safety review (2026-11-04)' below. `MC-922`'s check was source reading plus tests.
 - The maintainer has not said whether he exported the pre-update `.bin`.
 - Many storage-touching commits are in the range (for example CHORE-117 stage 2, CHORE-622, CHORE-616 S2).
-- A read-only update-safety check is offered and not done.
+- The device check the review lists is offered and not done.
+
+## Update-safety review (2026-11-04)
+
+Status: PARTIAL; overall UNKNOWN; unverified by a second reader. Source: `b40\updsafe\result.md` (`updsafe-rev2`, Codex gpt-6-sol medium, read-only; `updsafe-rev1` failed on directory readScope). Range `7928b5bb1` to `f12ea30f9`. Recorded in the ledger as row 4901 (`MC-1067`).
+
+| Commit | Verdict (as reported) | Note |
+|---|---|---|
+| `1cdfb1a5b` | SAFE or SAFE WITH NOTE | no persisted format change in the storage diff |
+| `0af68d6e7` | SAFE or SAFE WITH NOTE | hidden-page save ticks cut before commit and retried; commit still follows planning |
+| `3606f8dab` | SAFE or SAFE WITH NOTE | in-memory timing probe |
+| `6bff60aad` | SAFE or SAFE WITH NOTE | optional `fullWordAsciiBoundary` defaults off |
+| `031bfddf1` | SAFE or SAFE WITH NOTE | yield and timing only |
+| `621c220d2` | SAFE or SAFE WITH NOTE | no persisted brand key |
+| `905719247` | SAFE or SAFE WITH NOTE | persona repair normalizes the selection and adds a default or buffer-derived persona; rewrites the saved list on a later save; usable entries kept, invalid entries dropped |
+| `6f514e48e`, `4f986561d`, `f75d5e0c6` | SAFE or SAFE WITH NOTE (test-only) | test-only |
+| `8c8211de2` | SAFE WITH NOTE, one-way change | Utility-mode presets use type-26 units and a task-presets requirement token; an older build rejects the unknown requirement as too new and boot enters read-only mode; a deliberate one-way store2 change; no evidence of an older-build overwrite on that path; `.bin` export omits Utility presets after confirmation |
+| `444894bd8` | SAFE WITH NOTE, intentional saved-data deletion | CHORE-117 stage 2: folder references to absent characters and empty folders are pruned on save; deserves an on-device check for this profile |
+| `5e574e1dc` | UNKNOWN | preset, lorebook and other harvest behavior cannot be fully reviewed from the permitted files; the supplied diff shows no persisted-format change |
+| `515025346` | UNKNOWN | the plugin read implementation is outside the read scope; preservation of fields through plugin writes is not established |
+| `5ac387c37`, `bebbe2e0d` | UNKNOWN | restore and file-handler lifecycle outside the read scope |
+| `db8782d89` | UNKNOWN | merge, no separate hunk |
+
+Not read: the Rust-backed storage, the actual APKs, the phone's data, and several import and UI callers. Device check listed by the review (not done): keep an independent copy of the phone's data (pre-update `.bin`); update the `7928b5bb1` profile in place; verify characters, chats, persona selection, folder order, presets, plugins and assets before and after a save and restart; exercise a restore/import collision; if Utility presets are created, verify the older APK opens that copy read-only without writing. Whether the pre-update `.bin` was exported is not stated (`MC-1063`).
 
 ## What this record does not claim
 
