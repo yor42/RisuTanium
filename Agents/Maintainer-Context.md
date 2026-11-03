@@ -21637,3 +21637,21 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 - Scout 2 (`trigflicker-scout3`, complete; Codex read-only; report `b40\trigflicker2\result.md`): VERIFIED each hydration calls refreshModules then bumpModuleGui (moduleLoader.ts:181-187); the boot hold makes the batch contribute 0 or 1 bump regardless of N (moduleEnsure.ts:287-307, moduleGuiBump.ts); holds are global and a release flushes even while another hold is open, so overlapping batches can each flush (moduleGuiBump.ts:30-43). Whether more than one batch runs in a cold start is UNKNOWN (boot background batch plus ensureModulesForOrigin, moduleEnsure.ts:34-58; Chat trigger and form paths, Chat.svelte:917-920, 989-994). INFERRED: stub-to-body hydration alone adds no second bump. Not inspected: parser internals (regex-to-popup transformation); plugin/lazy ensure frequency.
 
 **Candidates (not established).** (1) the one end-of-batch remount; (2) overlapping batches each flushing; (3) script/trigger GUI-update calls (reloadDisplay, v2UpdateGUI, trigger completion with varChanged) at startup, which is UNKNOWN. Net status: NOT reproduced; no total bump count per N stubs is derivable. Whether this shares a cause with CHORE-609 or the chat-body module-load work is NOT established.
+
+### MC-1065 — Lane A, 2026-11-04: the maintainer's suspect module CSS for CHORE-631 and the approval of the device retry
+
+- Tag: statements (the maintainer's messages relayed by lane A in the records brief for batch 46). Date: 2026-11-04. Sweep ref: none. Exact times of the messages: TODO(evidence).
+- Source: the maintainer's messages in the lane A chat, relayed in the brief `%TEMP%\risu-b715\b40\rec47\brief.md`. The quoted words are the maintainer's. The two module stylesheets are the maintainer's pasted regex-script CSS; the abridged copy is `%TEMP%\risu-b715\b40\trigflick-device2\lb-mini-abridged.css`. No `AskUserQuestion` was used.
+- Alternatives rejected: none offered.
+- Related: `MC-1064` (CHORE-631 report), `MC-945` (CHORE-609, card and plugin CSS flicker), `MC-1063`, `MC-1060`.
+
+**What the maintainer said (verbatim).**
+1. "I think one of these are the likely cause behind this issue. both are regex script, and I am new to CSS so it need to be treated as suspect rather than confirmed culprit."
+2. "approved. go ahead." (approval of the device retry)
+3. "those are module toggles, defined as select." with the toggle definitions `lb-mini.darkness=Brightness=select=☀️,🌙` and `lb-mini.theme=Theme=select=♦️,💎,✨,🌳`.
+
+**Content recorded.** Two module regex-script stylesheets (a "lb-common" layer and a "lb-mini" sheet) were pasted by the maintainer. They contain CBS macros inside the CSS (`--darkness: {{getglobalvar::toggle_lb-mini.darkness}}`, `--theme: {{#if_pure {{? {{getglobalvar::toggle_lb-mini.theme}}=N }} }}...{{/if}}`), `@container style(--theme: ...) and style(--darkness: ...)` rules, an HTML popover (`.lb-mini-dialog:popover-open`) and `details` with `::details-content` transitions. These are recorded as SUSPECT, not confirmed culprits; the maintainer said they need to be treated as suspect.
+
+**Answers.** The maintainer approved the device retry ("approved. go ahead."). The retry is recorded as device run 2 (see the ledger row for the run results).
+
+**Recorded.** Suspect CSS recorded; retry approved; both device runs not reproduced (run 1: 6 cold starts plus a warm Settings round trip, 0 popup replacements; run 2: 3 cold starts per variant with the abridged suspect CSS, no popover, details or body replacement). CHORE-631 stays OPEN. The device claim `chore631-regex-popup-coldstart` is INCONCLUSIVE and PARKED after two attempts. No fix, no scope change, no severity decision and no mechanism decision is recorded here.
