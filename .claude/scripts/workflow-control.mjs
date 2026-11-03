@@ -164,6 +164,10 @@ export async function selectRoute({ root = defaultRoot, jobId, mode, role, workC
     if (role && role !== 'record-clerk' || changedContracts.length) throw Error('Records primary cannot perform substantive design, code or review');
     routes = [p.scheduling.recordsPrimary];
   }
+  if (!legacy && mode === 'implement' && workClass === 'device') {
+    if (role && role !== p.scheduling.devicePrimary.role || changedContracts.length) throw Error('Device primary cannot perform substantive design, code or review');
+    routes = [p.scheduling.devicePrimary];
+  }
   for (const route of routes) {
     const key = route.provider;
     if (!available(s, key, now)) { blocked.push(`${key}: cached unavailable`); continue; }

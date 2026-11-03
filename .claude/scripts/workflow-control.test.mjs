@@ -87,3 +87,11 @@ test('low-tier scout effort and native subscription exhaustion park correctly', 
   mutateState(root, null, s => { for (const provider of ['agy', 'codex', 'claude']) s.routeHealth[provider] = { reason: 'quota', resetAt: null }; });
   assert.equal((await selectRoute({ root, jobId: 'all-empty', mode: 'implement' })).status, 'parked');
 });
+test('device class routes straight to the native device primary without a Codex attempt; other roles are refused', async t => {
+  const root = fixture(t);
+  const route = await selectRoute({ root, jobId: 'dev-1', mode: 'implement', workClass: 'device' });
+  assert.equal(route.provider, 'claude'); assert.equal(route.role, 'sonnet-coder'); assert.equal(route.model, 'sonnet');
+  await assert.rejects(selectRoute({ root, jobId: 'dev-2', mode: 'implement', workClass: 'device', role: 'designer' }), /Device primary/);
+  await assert.rejects(selectRoute({ root, jobId: 'dev-3', mode: 'implement', workClass: 'device', changedContracts: ['dirty-dependencies'] }), /Device primary/);
+  assert.equal((await selectRoute({ root, jobId: 'code-1', mode: 'implement' })).provider, 'codex');
+});

@@ -10,7 +10,8 @@
     "authority": "docs/workflow/2026-11-03-parallel-tracks.md",
     "maxRecordsTracks": 1,
     "maxDeviceTracks": 1,
-    "recordsPrimary": { "provider": "claude", "role": "record-clerk", "model": "haiku", "effort": "low" }
+    "recordsPrimary": { "provider": "claude", "role": "record-clerk", "model": "haiku", "effort": "low" },
+    "devicePrimary": { "provider": "claude", "role": "sonnet-coder", "model": "sonnet", "effort": "medium" }
   },
   "timeouts": { "scout": 8, "implement": 20, "review": 12, "maximum": 30 },
   "routes": {
