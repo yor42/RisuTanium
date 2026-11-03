@@ -21655,3 +21655,38 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 **Answers.** The maintainer approved the device retry ("approved. go ahead."). The retry is recorded as device run 2 (see the ledger row for the run results).
 
 **Recorded.** Suspect CSS recorded; retry approved; both device runs not reproduced (run 1: 6 cold starts plus a warm Settings round trip, 0 popup replacements; run 2: 3 cold starts per variant with the abridged suspect CSS, no popover, details or body replacement). CHORE-631 stays OPEN. The device claim `chore631-regex-popup-coldstart` is INCONCLUSIVE and PARKED after two attempts. No fix, no scope change, no severity decision and no mechanism decision is recorded here.
+
+---
+Scratch packet for the parent. Not applied. Apply to Agents/Maintainer-Context.md by the existing helper, after the MC-1065 entry block (append-only; insert at the end of the lane A MC-1040 to MC-1239 run, after the last existing entry).
+---
+
+### MC-1066 — Lane A, 2026-11-04: CHORE-631: the maintainer's module count, the overlap-theory test and the decision to park it with a capture recipe
+
+- Tag: statements (the maintainer's messages and one AskUserQuestion answer, relayed by lane A in the records brief for batch 47). Date: 2026-11-04. Sweep ref: none. Exact times of the messages: TODO(evidence).
+- Source: the maintainer's messages in the lane A chat, relayed in the brief `%TEMP%\risu-b715\b40\rec48\brief.md`. The device run report is `%TEMP%\risu-b715\b40\trigflick-device3\result.md` (dispatch `trig-device3`). The three offered options are listed below as recorded in the brief; the exact AskUserQuestion option wording is TODO(evidence).
+- Alternatives rejected: "test the real module" and "test send-trigger during load" were offered and not chosen.
+- Related: `MC-1065` (suspect CSS and device retry), `MC-1064` (CHORE-631 report), `MC-945` (CHORE-609, card and plugin CSS flicker), `MC-1063`, `MC-1060`.
+
+**What the maintainer said (verbatim).**
+1. "can we test theboverlapping-load-batches theory? I'd like to fix this potential issue before moving onto the next phase of roadmap."
+2. "I have lots of modules enabled in a 1 chat. around 10."
+3. "commit those in multiple separate batches." (about batch 46 `12c8e2933` and the device-route change `5d5ca359f`)
+
+**Options offered (AskUserQuestion, after device run 3).** Exact option wording: TODO(evidence).
+- test the real module
+- park with a capture recipe
+- test send-trigger during load
+
+**Answer.** "Park it with a capture recipe" (the other two options were not chosen).
+
+**Device run 3 (`trig-device3`, native sonnet-coder under the device route; phone 1; APK R `bc383c59f`, test-key signed, uninstalled afterwards).** Hypothesis: overlapping module-load batches each flush a GUI bump and close the popup. Fixtures: 10 stub modules, each padded with 2500 lorebook entries; module 2 is the popup module (abridged suspect CSS, popover, 3 details); module 5 holds the two select toggles; globals saved. OVL fixture: global enabled modules 0,1,3,4,6; chat modules 2,5,7,8,9. ONE control: all 10 chat modules. Runs: OVL early x3; OVL late x1 (chat opened at 8 s); ONE early x3; one discarded preliminary 6000-entry OVL run. Every run showed one transition (bodies, then all popovers, details and styles within about 10 ms); no popover or details replacement; no non-probe popover close; one style text. Body-to-popover span about 3.5 s (OVL) and 5.0 s (ONE). Status: VERIFIED from the run logs.
+
+Limits (as recorded): the ReloadGUIPointer counter is not exposed, so bumps are INFERRED; module acquire time derived about 0.5 to 0.7 s per module (above the 150 to 400 ms target); whether the global batch was still running when the chat opened in OVL early is not observable; not covered: real touch, send or trigger ensure during the load, real module sizes and counts, trigger or Lua scripts, the maintainer's real non-abridged CSS.
+
+**Device claims.** `chore631-overlap-batches` recorded as result `fail`, not required (the theory was not supported on this fixture). `chore631-regex-popup-coldstart` stays INCONCLUSIVE and PARKED.
+
+**Recorded.** The overlapping-batches theory is NOT supported by run 3 on this fixture (limits above). CHORE-631 stays OPEN and PARKED, not reproduced in three device runs (about 20 cold starts). The maintainer chose to park it with a capture recipe (`Agents/CHORE-631-capture-recipe.md`). The maintainer's wish to fix it before the next roadmap phase is recorded as stated; it is not a decision to block the roadmap. The maintainer has about 10 modules enabled in the one chat. No fix designed; no severity, scope or mechanism decision is recorded here. The ledger block 4700 to 4899 is exhausted: no ledger row is written in batch 47; the extension needs the maintainer's word (`TODO(evidence)` for the request record).
+
+### Decision-Index note for the parent
+
+Literal heading above is authoritative. Regenerate with `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1` after applying, and check with `-Check`. Not run by this clerk.
