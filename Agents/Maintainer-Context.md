@@ -21070,7 +21070,8 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 - Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-02. Sweep ref: none.
 - Source: the batch 38 queue (line 27): chosen "Accept and document (Recommended)" over "Plan a GC-trigger fix" and "One more device cell first". The queue's gloss: the excess is transient collectible garbage, not a leak; the MVP refresh may carry it with a documented note; no fix now. The question text is not in the queue: TODO(evidence).
 - Alternatives rejected: "Plan a GC-trigger fix"; "One more device cell first".
-- Related: `MC-979` (items 2 and 3 name the CHORE-396 fix as an MVP refresh gate), `MC-972`, `MC-1016`, `MC-1019`, CHORE-396.
+- Related: `MC-979` (item 2 names the CHORE-396 fix as an MVP refresh gate), `MC-972`, `MC-1016`, `MC-1019`, CHORE-396.
+- *Correction (2026-11-03, records batch 40): this Related line read "items 2 and 3"; item 3 of `MC-979` is CHORE-623, so it now reads "item 2". The other text of this entry is unchanged.*
 
 **What was decided (maintainer).**
 1. CHORE-396: "Accept and document (Recommended)". No fix is planned now; the MVP refresh may carry the excess with a documented note.
@@ -21242,3 +21243,245 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 
 - Notes, not the maintainer's words:
   - The plan's optional device Cell E (hide the app during a module tick with no reply on the Note 9 and read the notification) is observation only and shows the label only (Carry-Forward).
+
+### MC-1036 — Lane A, 2026-11-03: subscription-first workflow overhaul and bounded OpenRouter fallback authorised for cutover after SR2
+
+- Tag: decision (direct maintainer instructions in the Codex workflow-review chat, 2026-11-03; earlier choices in that same chat).
+- Source: maintainer: "it is now safe to implement those proposed changes to the actual workflow" after the pause in `Agents/Handoff-2026-11-02-laneA.md`; requested a fresh-context initiation prompt. Earlier answers named weekly Claude quota as the bottleneck, approved lower-tier external scouting/coding and risk-based batch review, and set fallback spending at "$5/day and $30/month" with the $0.50 logical-job cap retained.
+- Related: MC-785, MC-888, MC-894, MC-895, MC-896, MC-899, MC-912; this explicitly amends conflicting standing routing/review wording at the scope below. Application compatibility and product decisions are unchanged.
+
+**What was decided.**
+1. Implement the reviewed overhaul after the current Claude session reaches its safe handoff. SR2 is paused after pushed `1cdfb1a5b`; no application task, historical TODO cleanup, device re-run, commit or push is authorised by this workflow cutover alone.
+2. Use Sonnet as the project parent. Route ordinary scouting to Gemini 3.8 Flash low/medium, then signed-in Codex gpt-6-luna low/medium. Route routine code, tests, documentation and independent review to signed-in Codex gpt-6-sol medium. External execution is direct from the parent, not through a Claude relay worker. Retain Opus design and actual critical-contract review and the existing mandatory advisor role. No automatic upgrade to larger external models.
+3. After eligible subscription routes exhaust, allow OpenRouter `deepseek/deepseek-v4.1-flash`, then the designated native Claude subscription role; otherwise park. Cache host-observed quota/unavailability until provider reset or explicit refresh. A demonstrated external failure permits one bounded correction across the logical-stage lineage before fallback. Native fallback never enables extra usage or API billing.
+4. Paid fallback is capped at $0.50 per logical job, $5 per KST day and $30 per KST calendar month across retries, continuations, restarts, local processes and worktrees. Require atomic shared reservations, conservative complete-request bounds and actual-cost reconciliation. Unknown bounds or charges block paid dispatch. No hidden model fallback, auto-recharge or automatic key change. Keep paid activation off until its accounting and provider constraints are verified. Cheap Agent is optional and is not activated unchanged; its stock autoland/review suppression/escalation is not adopted.
+5. Keep fresh independent application-code review and combined coherent-batch Gate 1/Gate 2. Trigger Opus for a changed save-format, durability/commit-order, dirty-dependency, persisted read/write/GC, asset-lifecycle, migration or security-boundary contract, not file adjacency. Consume independent evidence where it is needed; do not require blanket reports-of-reports or a duplicate Claude investigation of adequate external work. Ordinary combined review is external-first; high-risk required claims retain independent scrutiny.
+6. Preserve accepted scoped evidence, limitations, pending claims and parked checks in durable workflow state. Invalidate affected claims when their read/dependency/runtime/configuration inputs change; an unrelated HEAD or document change alone does not reopen gates. A planned device check gets one targeted diagnostic retry, then is parked; an explicitly required unmet claim blocks only its affected scope.
+7. Add bounded dispatch/state guards and isolated sanitized worker snapshots, actual host delta inspection and journaled integration recovery. These are workflow checks, not an OS or universal shell sandbox. Provider changes checkpoint verified partial work rather than restarting whole tasks or reopening accepted gates. Keep one app writer per checkout, at most two explicitly disjoint isolated tracks, and one integration owner.
+8. Resume from the latest lane-A handoff and its ordered queue after context clear, under the new policy/state. Preserve original reports and all unowned changes. Validate governance scripts/hooks/configuration independently; documentation-only cutover does not trigger full application tests. Measured quota/speed savings remain unknown until real work supplies evidence.
+
+### MC-1037 — Lane A, 2026-11-03: CHORE-396 note location: "In the refresh record"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue `b38\records38-queue.md` (the line marked batch 40, "CHORE-396 note location"): chosen "In the refresh record (Recommended)" over "Records + in-app hint" and "Records + docs page". The queue's gloss: lane A drafts, the maintainer approves; a short paragraph in the Roadmap CHORE-396 row and in the MVP-refresh record; nothing user-facing. The question text the maintainer saw is not in the queue: TODO(evidence). The same queue records that the maintainer approved the drafted note on 2026-11-03 ("draft looks fine to me"; text `b38\c396-note\draft.md`), to go verbatim into the Roadmap CHORE-396 row and the MVP-refresh record.
+- Alternatives rejected: "Records + in-app hint"; "Records + docs page".
+- Related: `MC-1023` (accept and document), `MC-979` (item 2 names the CHORE-396 fix as an MVP refresh gate), CHORE-396.
+
+**What was decided (maintainer).**
+1. CHORE-396 note location: "In the refresh record (Recommended)". The documented note lives in the Roadmap CHORE-396 row and in the MVP-refresh record; no in-app hint, no docs page.
+
+- Notes, not the maintainer's words:
+  - The approved text is on the Roadmap CHORE-396 row. The MVP-refresh record does not exist yet; the text goes into it verbatim when it is written (Live-State, Roadmap).
+
+### MC-1038 — Lane A, 2026-11-03: CHORE-624 latency fix as an MVP gate: "Yes, gate met"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "CHORE-624 latency fix as gate"): chosen "Yes, gate met (Recommended)" over "No, it rides along". The queue's gloss: `0af68d6e7` counts as part of the `MC-979` CHORE-624 gate, and the db39 Cells A to D are its device evidence. The question was raised by the MVP-gate reconciliation (`b38\mvp-recon`, verified `b38\mvp-recon-v`, ACCEPT WITH CORRECTIONS), which found that `MC-979` names only "the CHORE-624 net" and does not say whether the later latency fix gates the refresh. The question text the maintainer saw is not in the queue: TODO(evidence).
+- Alternatives rejected: "No, it rides along".
+- Related: `MC-979`, `MC-980`, `MC-981`, `MC-1024` to `MC-1035`, CHORE-624.
+
+**What was decided (maintainer).**
+1. CHORE-624: "Yes, gate met (Recommended)". The latency fix `0af68d6e7` counts as part of the `MC-979` CHORE-624 gate, with the db39 Cells A to D as its device evidence.
+
+- Notes, not the maintainer's words:
+  - The db39 evidence is one Note 9, n=3 per cell, PROPOSED thresholds, best-case hardware (ledger row 4868). Cell E was not reached and is recorded as a known unknown (`MC-1040`).
+
+### MC-1039 — Lane A, 2026-11-03: Settings-return gate for the MVP refresh: "Require stage 2"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "Settings-return gate"): chosen "Require stage 2" over "Stage 1 is enough (Recommended)" and "Set a target first". The queue marks this as NOT the recommended option. The queue's gloss: keep-mounted Settings (stage 2) must ship before the MVP refresh; stage 1 (`2eed2f84d`) alone does not meet `MC-979` "the Settings-return fix". The question text the maintainer saw is not in the queue: TODO(evidence).
+- Alternatives rejected: "Stage 1 is enough (Recommended)"; "Set a target first".
+- Related: `MC-979` (item 2 names the Settings-return fix), `MC-977`, `MC-1041` to `MC-1048` (the stage 2 design answers), `MC-1054`.
+
+**What was decided (maintainer).**
+1. Settings-return: "Require stage 2". Keeping Settings-open chat mounted (stage 2) ships before the MVP refresh.
+
+- Notes, not the maintainer's words:
+  - Stage 2 shipped as `1cdfb1a5b` (Roadmap batch 40 section). Its S4 device gate passed in part and failed on the rebuild-return scroll, which the maintainer then decided to fix (`MC-1054`); the refresh is therefore not yet unblocked on this gate.
+
+### MC-1040 — Lane A, 2026-11-03: Android 12+ keep-alive start and the unreached Cell E: "Accept as unknown"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "Android 12+ keep-alive start / Cell E"): chosen "Accept as unknown (Recommended)" over "Observe on my Fold 7" and "Design a Cell E retry". The queue's gloss: recorded as a known unknown; no extra run before the refresh. The question text the maintainer saw is not in the queue: TODO(evidence).
+- Alternatives rejected: "Observe on my Fold 7"; "Design a Cell E retry".
+- Related: `MC-1034`, `MC-1035`, `MC-1038`, CHORE-624.
+
+**What was decided (maintainer).**
+1. Cell E and the Android 12+ background start of the keep-alive service: "Accept as unknown (Recommended)". It stays a known unknown; no extra run is made before the refresh.
+
+- Notes, not the maintainer's words:
+  - Basis: Cell E was not reached in 2 attempts (the page's visibility change reached JS only at the tick's end), and a Note 9 (Android 10) cannot show an Android 12+ rule (Carry-Forward batch 39; ledger row 4868).
+
+### MC-1041 — Lane A, 2026-11-03: Settings-return stage 2 memory: "Measure, then I set a cap"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "SR2 memory"): chosen "Measure, then I set a cap (Recommended)" over "Accept without a number". The queue's gloss: one Note 9 PSS sample with the heavy chat kept mounted (a throwaway build) plus PC scroll, streaming and module-toggle probes; the maintainer then sets a PSS ceiling; over it the design falls back to keeping the chat shell only. It followed the sizing `b38\sr2-size` and its grill `b38\sr2-grill` (ACCEPT WITH CORRECTIONS). The question text the maintainer saw is not in the queue: TODO(evidence).
+- Alternatives rejected: "Accept without a number".
+- Related: `MC-1039`, `MC-1045` (the cap the maintainer then set), `MC-1042`.
+
+**What was decided (maintainer).**
+1. SR2 memory: "Measure, then I set a cap (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The measurement is `b38\sr2-meas` (verified `b38\sr2-meas-v`, ACCEPT WITH CORRECTIONS); see ledger row 4871.
+
+### MC-1042 — Lane A, 2026-11-03: Settings-return stage 2 kept pages: "Chat only"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "SR2 kept pages"): chosen "Chat only (Recommended)" over "Chat and sidebar". The queue's gloss: the sidebar and the grid rebuild as today; the beta MobileGUI shell keeps today's behaviour. The question text the maintainer saw is not in the queue: TODO(evidence).
+- Alternatives rejected: "Chat and sidebar".
+- Related: `MC-1039`, `MC-1041`.
+
+**What was decided (maintainer).**
+1. SR2 kept pages: "Chat only (Recommended)". Only the chat is kept mounted while Settings is open.
+
+### MC-1043 — Lane A, 2026-11-03: Settings-return stage 2 hidden rebuild: "On return, only if needed"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "SR2 hidden rebuild"): chosen "On return, only if needed (Recommended)" over "Live, while hidden". The queue's gloss: no rebuild while in Settings; on return a rebuild only if a reload signal fired while hidden; display scripts run at the same moment as today. The question text the maintainer saw is not in the queue: TODO(evidence).
+- Alternatives rejected: "Live, while hidden".
+- Related: `MC-1039`, `MC-1044`, `MC-1046`, `MC-1047`.
+
+**What was decided (maintainer).**
+1. SR2 hidden rebuild: "On return, only if needed (Recommended)".
+
+### MC-1044 — Lane A, 2026-11-03: Settings-return stage 2 on return: "Keep scroll, close popups"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "SR2 on return"): chosen "Keep scroll, close popups (Recommended)" over "Reset like today" and "Keep everything". The queue's gloss: keep the scroll and the loaded pages (reset the pages if the page-size setting changed); chat menus and open message editors close when Settings opens. The question text the maintainer saw is not in the queue: TODO(evidence).
+- Alternatives rejected: "Reset like today"; "Keep everything".
+- Related: `MC-1039`, `MC-1043`, `MC-1048`, `MC-1053`, `MC-1054`.
+
+**What was decided (maintainer).**
+1. SR2 on return: "Keep scroll, close popups (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The S4 device gate found the kept scroll lost after a rebuild return (`MC-1054`), and `MC-1053` is the language-change exception.
+
+### MC-1045 — Lane A, 2026-11-03: Settings-return stage 2 memory cap: "+30 MiB"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "SR2 memory cap"): chosen "+30 MiB (Recommended)" over "+15 MiB", "+30 MiB, and test an image-heavy chat" and "No cap". The queue's gloss: the stage device gate fails if the keep-mounted build's total PSS with Settings open, after a forced GC, exceeds the plain build's by more than 30 MiB on the Note 9 heavy c04 chat. Longer image-heavy chats are not covered. The question text the maintainer saw is not in the queue: TODO(evidence).
+- Alternatives rejected: "+15 MiB"; "+30 MiB, and test an image-heavy chat"; "No cap".
+- Related: `MC-1041`, `MC-1039`.
+
+**What was decided (maintainer).**
+1. SR2 memory cap: "+30 MiB (Recommended)". Longer image-heavy chats are not covered by it.
+
+- Notes, not the maintainer's words:
+  - The S4 device gate measured +7.8 MiB at medians (one device, n=3 per build, synthetic heavy chat; ledger row 4875): under the cap.
+
+### MC-1046 — Lane A, 2026-11-03: Settings-return stage 2 streaming while hidden (plan Q1): "Defer until return"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "SR2 streaming while hidden, plan Q1"): chosen "Defer until return (Recommended)" over "Keep updating hidden". The queue's gloss: no chat DOM or display-script work while Settings is open; one catch-up on return; generation and saving unaffected. The question text the maintainer saw is not in the queue: TODO(evidence).
+- Alternatives rejected: "Keep updating hidden".
+- Related: `MC-1043`, `MC-1039`.
+
+**What was decided (maintainer).**
+1. SR2 streaming while hidden: "Defer until return (Recommended)".
+
+### MC-1047 — Lane A, 2026-11-03: Settings-return stage 2 render-affecting settings (plan Q2): "Any setting change rebuilds"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "SR2 render-affecting settings, plan Q2"): chosen "Any setting change rebuilds (Recommended)" over "Only reload signals". The queue's gloss: a change of any top-level setting during the visit counts as a rebuild trigger on return. The question text the maintainer saw is not in the queue: TODO(evidence).
+- Alternatives rejected: "Only reload signals".
+- Related: `MC-1043`, `MC-1039`.
+
+**What was decided (maintainer).**
+1. SR2 render-affecting settings: "Any setting change rebuilds (Recommended)".
+
+### MC-1048 — Lane A, 2026-11-03: Settings-return stage 2 page-size setting: "Yes, that one"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "SR2 page-size setting"): chosen "Yes, that one (Recommended)". The queue names the setting: `chatLoadInitialPages`. The question text and the other options are not in the queue: TODO(evidence).
+- Alternatives rejected: not recorded.
+- Related: `MC-1044`, `MC-1039`.
+
+**What was decided (maintainer).**
+1. SR2 page-size setting: "Yes, that one (Recommended)". The page-size setting is `chatLoadInitialPages`; a change to it resets the kept pages on return (`MC-1044`).
+
+### MC-1049 — Lane A, 2026-11-03: pre-existing stale text after a module enable: "Trace it and fold the fix in"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "SR2 pre-existing stale text"): chosen "Trace it and fold the fix in (Recommended)" over "Separate ticket" and "Separate ticket, gates the MVP". The queue's gloss: an investigator traces the cause, the designer adds the smallest fix to the SR2 plan before S2 (an `MC-091` shared-cause amendment). It followed the S0 diagnostics (`b38\sr2-s0`, verified `b38\sr2-s0v`): the stale text after enabling a stub-loading module is pre-existing on HEAD, cause then unknown. The question text the maintainer saw is not in the queue: TODO(evidence).
+- Alternatives rejected: "Separate ticket"; "Separate ticket, gates the MVP".
+- Related: `MC-091`, `MC-1050`, `MC-1051`, `MC-1039`.
+
+**What was decided (maintainer).**
+1. SR2 pre-existing stale text: "Trace it and fold the fix in (Recommended)".
+
+- Notes, not the maintainer's words:
+  - The trace is `b38\sr2-stale` (challenged by `b38\sr2-stale-v`, ACCEPT WITH CORRECTIONS); see ledger row 4873.
+
+### MC-1050 — Lane A, 2026-11-03: the stale-display freeze fix: "One-line fix now, Svelte bump next"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "SR2 freeze fix"): chosen "One-line fix now, Svelte bump next (Recommended)" over "One-line fix only" and "Svelte bump inside stage 2". The queue's gloss: fix F1 folds into SR2 with a regression test; a Svelte 5.57.1 or newer bump is its own item with full checks and a device run. The question text the maintainer saw is not in the queue: TODO(evidence).
+- Alternatives rejected: "One-line fix only"; "Svelte bump inside stage 2".
+- Related: `MC-1049`, `MC-1051`, CHORE-630.
+
+**What was decided (maintainer).**
+1. SR2 freeze fix: "One-line fix now, Svelte bump next (Recommended)". F1 (set `ReloadChatPointer` only when the map is non-empty) goes into SR2 with a regression test; the Svelte bump is a separate item with full checks and a device run.
+
+- Notes, not the maintainer's words:
+  - The Svelte bump is filed as CHORE-630. A device run of it has not been made (Roadmap).
+
+### MC-1051 — Lane A, 2026-11-03: the Svelte bump gates the MVP refresh: "Yes, before the MVP refresh"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "Svelte bump gate"): chosen "Yes, before the MVP refresh (Recommended)" over "No, after the refresh". The queue's gloss: the Svelte 5.57.1 or newer bump gates the MVP refresh, as a new CHORE at the next free number. The question text the maintainer saw is not in the queue: TODO(evidence).
+- Alternatives rejected: "No, after the refresh".
+- Related: `MC-1050`, `MC-1049`, `MC-979`, CHORE-630.
+
+**What was decided (maintainer).**
+1. Svelte bump: "Yes, before the MVP refresh (Recommended)". It gates the refresh.
+
+### MC-1052 — Lane A, 2026-11-03: WaveSpeed LoRA erase on an Other Bots visit (plan Q-W): "Fold the fix into this work"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not in the queue: TODO(evidence)). Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "SR2 Q-W"): chosen "Fold the fix into this work (Recommended)" over "Guard only + separate ticket" and "Guard only, no ticket". The queue's gloss: found by reading in `sr2-rev2` (upstream code); seed the LoRA slots from the stored list in S1b (an `MC-091` shared cause), with T34 and M40; the claim is "to be confirmed by Gate 1 r3". The question text the maintainer saw is not in the queue: TODO(evidence).
+- Alternatives rejected: "Guard only + separate ticket"; "Guard only, no ticket".
+- Related: `MC-091`, `MC-1039`.
+
+**What was decided (maintainer).**
+1. SR2 Q-W: "Fold the fix into this work (Recommended)". The LoRA slots are seeded from the stored list in S1b.
+
+- Notes, not the maintainer's words:
+  - The queue records Gate 1 r3 as EDITORIAL and the Gate 2 round 1 finding G2-2 as a LoRA edit test; whether Gate 1 r3 explicitly confirmed the claim is not stated in the queue: TODO(evidence).
+
+### MC-1053 — Lane A, 2026-11-03: Gate 2 finding G2-1, language change in the kept chat: remount on a language change
+
+- Tag: decision (the maintainer's choice, relayed by lane A). Date: 2026-11-03. Sweep ref: none.
+- Source: the records queue (the line marked batch 40, "SR2 Gate 2 r1 REJECT G2-1"): the maintainer chose remount-on-language-change, in which the scroll is lost in that case only, over restoring the scroll or accepting the limitation. The queue gives this as prose, not as quoted option labels; the labels the maintainer saw are not in the queue: TODO(evidence).
+- Alternatives rejected: restore the scroll; accept the limitation (descriptions from the queue, not quoted labels).
+- Related: `MC-1044`, `MC-1039`.
+
+**What was decided (maintainer).**
+1. G2-1: the kept chat remounts when the interface language changes. The scroll is lost in that case only.
+
+### MC-1054 — Lane A, 2026-11-03: S4 rebuild-return scroll: fix it
+
+- Tag: decision (the maintainer's direct answer, relayed by lane A). Date: 2026-11-03. Sweep ref: none.
+- Source: the maintainer, 2026-11-03: "yes, fix it", after lane A offered "fix now" or "accept for now" (the offered labels are not quoted in the sources: TODO(evidence)). The finding is the SR2 S4 Note 9 device gate: after a rebuild return (a module toggle in Settings) the kept scroll read -1771 against -3000 before, reproduced in two runs (`b40\sr2-s4`, ledger row 4875).
+- Alternatives rejected: accept for now.
+- Related: `MC-1044` (keep scroll), `MC-1039`, `MC-1045`, CHORE-630.
+
+**What was decided (maintainer).**
+1. The rebuild-return scroll defect is fixed, not accepted for now: "yes, fix it".
+
+- Notes, not the maintainer's words:
+  - A designer plan is in progress (`b40\sr2-scroll`); no plan result, code or gate is recorded here. Plan, Gate 1, implementation, Gate 2 and a repeat of the S4 scroll check follow under the normal gates. The S4 report's inference that the restore clamps to the list height before rows measure is INFERRED, not tested.
+
+### MC-1055 — Lane A, 2026-11-03: records batch 40 route: "try agy gemini 3.8 flash first, if not working use the doc writer"
+
+- Tag: decision (the maintainer's direct instruction, relayed by lane A). Date: 2026-11-03. Sweep ref: none.
+- Source: the maintainer, 2026-11-03: "try agy gemini 3.8 flash first, if not working use the doc writer". The agy route was attempted and refused for want of the isolation receipt; the native writer (dispatch `rec40-native`) then wrote the records. The two earlier Codex records dispatches are on ledger row 4877.
+- Alternatives rejected: none stated.
+- Related: `MC-1036`, ledger rows 4877 and 4879.
+
+**What was decided (maintainer).**
+1. Route for the batch 40 records: Gemini 3.8 Flash through agy first; the doc writer if that does not work.
+
+- Notes, not the maintainer's words:
+  - The independent documentation review of this batch is dispatched by the Orchestrator and had not run when this was written.
