@@ -21545,3 +21545,49 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 - Notes, not the maintainer's words:
   - The evidence behind the ruling: APK R was built with Svelte 5.57.3 (sha256 `67F55B19AED14FFA503D7BC6C0334BF2C52D891732AFF682BC1DB398EA89284C`) and ran on the Note 9 phone 1 with synthetic data: S2 checks 1 to 4 (ledger row 4886), the frame-gap, page-size and language checks (rows 4891 and 4893); in the c04-heavy120 module-toggle returns the text flipped between ALPHA 116 and alpha 116 as expected. One device, small n.
   - The ruling does not by itself close CHORE-630 and does not add anything to the MVP-refresh gates.
+
+### MC-1060 — Lane A, 2026-11-03: the MVP refresh comes after the maintainer updates the MVP on his phone to the latest main
+
+- Tag: decision (the maintainer's statement, relayed by lane A; stated from memory). Date: 2026-11-03. Sweep ref: none. Exact time: TODO(evidence).
+- Source: the maintainer wrote: "iirc MVP refresh comes after I update the MVP on my phone to latest main."
+- Alternatives rejected: none offered (a statement).
+- Related: `MC-979`, `MC-1039`, `MC-1051`, `MC-1059`, `MC-922`, `MC-475`.
+
+**What was decided (maintainer).**
+1. The maintainer will first update the MVP on his phone to the latest main; the MVP refresh follows.
+
+- Notes, not the maintainer's words:
+  - "iirc" marks it as his recollection of the order, recorded as stated.
+  - Lane A therefore does not write the MVP-refresh record until the maintainer has updated the MVP on his phone to the latest main and says so.
+  - Building and signing the release APK is the maintainer's (the signing script refuses agent shells).
+  - The gates recorded for the refresh stand as they are: CHORE-624 gate met (`MC-1038`), SR2 stage 2 shipped (`MC-1039`) and device-checked, CHORE-630 device run ruled met (`MC-1059`) and CHORE-630 COMPLETE, the CHORE-396 note approved (`MC-1037`, text in the Roadmap CHORE-396 row).
+
+### MC-1061 — Lane A, 2026-11-03: the idle-return drift needs no immediate attention; record it as a watch item
+
+- Tag: decision (the maintainer's instruction, relayed by lane A). Date: 2026-11-03. Sweep ref: none. Exact time: TODO(evidence).
+- Source: the maintainer wrote: "idle-return drift doesn't seem like it needs our immediate attention. but do record it just in case it returns."
+- Alternatives rejected: none offered.
+- Related: ledger rows 4893 and 4886, `MC-1044`.
+
+**What was decided (maintainer).**
+1. No investigation now; the idle-return drift is recorded as a watch item, not a ticket.
+
+- Notes, not the maintainer's words:
+  - The observation (ledger row 4893): on the Note 9 phone 1, APK R (`bc383c59f`), synthetic data, in one long session in which the UI language had been switched English to German and back and two number settings had been edited and restored, two idle Settings returns (no write by the chat list) moved the list scrollTop from -3000 to -8943 with the row count (31) and the scrollHeight (60436) unchanged; after a cold start two idle returns kept -3000 with zero writes.
+  - One device, small n, not reproduced, cause unknown.
+  - If it returns: record the build, the steps since the app started, and a probe read (scrollTop before and after, the writes, scrollHeight, rows); reopen only then or on a named hypothesis.
+
+### MC-1062 — Lane A, 2026-11-03: lane A may allocate MC blocks as it likes while it is the only orchestrator
+
+- Tag: decision (the maintainer's instruction, relayed by lane A). Date: 2026-11-03. Sweep ref: none. Exact time: TODO(evidence).
+- Source: the maintainer wrote: "MC block was for when there are multiple session working alongside eachother. since you are the only orchestrator right now, feel free to allocate as much mc blocks as you'd like."
+- Alternatives rejected: none offered.
+- Related: `MC-1021`, `MC-995`, `MC-1036`.
+
+**What was decided (maintainer).**
+1. While lane A is the only orchestrator it may allocate MC blocks as it sees fit.
+
+- Notes, not the maintainer's words:
+  - Lane A's new block, allocated under this grant, is `MC-1040` to `MC-1239` (it covers `MC-1040` to `MC-1059`, already used past the old block `MC-1010` to `MC-1039`; the next free MC is MC-1063 after `MC-1060` to `MC-1062`).
+  - The grant names MC blocks: the ledger-row block (4700 to 4899, four rows left) and the CHORE block (CHORE-620 to CHORE-669) are unchanged.
+  - The reason the maintainer gave (blocks existed for sessions working alongside each other) means blocks per session return if more than one orchestrator works again.
