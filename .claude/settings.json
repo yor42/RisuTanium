@@ -12,6 +12,13 @@
             "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\scripts\\subagent-identity.ps1\"; exit $LASTEXITCODE",
             "shell": "powershell",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "onFailure": "block",
+            "timeout": 10,
+            "shell": "powershell",
+            "command": "$ErrorActionPreference = \"Stop\"; & \"$env:CLAUDE_PROJECT_DIR\\.claude\\scripts\\workflow-hook.ps1\"; exit $LASTEXITCODE"
           }
         ]
       }
@@ -22,9 +29,35 @@
         "hooks": [
           {
             "type": "command",
-            "command": "& \"$env:CLAUDE_PROJECT_DIR\\.claude\\scripts\\guard-write.ps1\"; exit $LASTEXITCODE",
+            "command": "$ErrorActionPreference = \"Stop\"; & \"$env:CLAUDE_PROJECT_DIR\\.claude\\scripts\\guard-write.ps1\"; exit $LASTEXITCODE",
             "shell": "powershell",
-            "timeout": 10
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "onFailure": "block",
+            "timeout": 10,
+            "shell": "powershell",
+            "command": "$ErrorActionPreference = \"Stop\"; & \"$env:CLAUDE_PROJECT_DIR\\.claude\\scripts\\workflow-hook.ps1\"; exit $LASTEXITCODE"
+          }
+        ],
+        "matcher": "Agent"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "onFailure": "block",
+            "timeout": 10,
+            "shell": "powershell",
+            "command": "$ErrorActionPreference = \"Stop\"; & \"$env:CLAUDE_PROJECT_DIR\\.claude\\scripts\\workflow-hook.ps1\"; exit $LASTEXITCODE"
           }
         ]
       }
@@ -39,7 +72,8 @@
     "typescript-lsp@claude-plugins-official": true,
     "svelte-lsp@risutanium-lsp": true,
     "eli5@claude-community": false,
-    "mattpocock-skills@claude-plugins-official": false
+    "mattpocock-skills@claude-plugins-official": false,
+    "cheapag@cheapag": false
   },
   "extraKnownMarketplaces": {
     "claude-plugins-official": {
@@ -54,5 +88,6 @@
         "path": "C:\\Projects\\RisuAI\\.claude\\lsp-marketplace"
       }
     }
-  }
+  },
+  "model": "sonnet"
 }

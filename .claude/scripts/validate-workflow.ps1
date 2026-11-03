@@ -1,6 +1,7 @@
 #requires -Version 7.0
 param(
     [string]$Root = (Join-Path $PSScriptRoot '../..'),
+    [string]$SettingsFile,
     [switch]$SkipArchive,
     [switch]$SkipGitIgnore
 )
@@ -136,7 +137,8 @@ foreach ($roleName in $guardGranted) {
 }
 
 try {
-    $configText = [IO.File]::ReadAllText((Join-Path $taskRoot '.claude/settings.json'))
+    $configPath = if ($SettingsFile) { $SettingsFile } else { Join-Path $taskRoot '.claude/settings.json' }
+    $configText = [IO.File]::ReadAllText($configPath)
     $json = [Text.Json.JsonDocument]::Parse($configText)
     $json.Dispose()
     $config = $configText | ConvertFrom-Json -AsHashtable
@@ -153,11 +155,24 @@ try {
         }
         if ($groups.Count -ne 1) { Problem "Expected one project hook group: $event"; continue }
         $commands = $groups[0].hooks
-        if ($commands -isnot [array] -or $commands.Count -ne 1) { Problem "Expected one command hook: $event"; continue }
-        $hook = $commands[0]
+        $expectedCount = if ($event -eq 'SubagentStart' -and $config.model -eq 'sonnet') { 2 } else { 1 }
+        if ($commands -isnot [array] -or $commands.Count -ne $expectedCount) { Problem "Unexpected command-hook count: $event"; continue }
+        foreach ($hook in $commands) {
         if ($hook.type -cne 'command' -or $hook.shell -cne 'powershell' -or $hook.timeout -le 0) { Problem "Invalid PowerShell command hook: $event" }
-        if ($hook.command -notmatch '^& "\$env:CLAUDE_PROJECT_DIR\\\.claude\\scripts\\([a-z-]+\.ps1)"; exit \$LASTEXITCODE$') { Problem "Hook must use the quoted project script path and propagate its exit code: $event" }
+        if ($hook.command -notmatch '^(?:\$ErrorActionPreference = "Stop"; )?& "\$env:CLAUDE_PROJECT_DIR\\\.claude\\scripts\\([a-z-]+\.ps1)"; exit \$LASTEXITCODE$') { Problem "Hook must use the quoted project script path and propagate its exit code: $event" }
         elseif (-not (Test-Path -LiteralPath (Join-Path $taskRoot ('.claude/scripts/' + $Matches[1])) -PathType Leaf)) { Problem "Missing hook script: $event" }
+        }
+    }
+    if (Test-Path -LiteralPath (Join-Path $taskRoot '.claude/workflow-policy.json')) {
+        if ($config.model -cne 'sonnet') { Problem 'Subscription-first project model must be sonnet.' }
+        if ($config.enabledPlugins.'cheapag@cheapag' -cne $false) { Problem 'Stock cheapag must remain disabled for this project.' }
+        $agentGroups = @($config.hooks.PreToolUse | Where-Object { $_.matcher -ceq 'Agent' })
+        if ($agentGroups.Count -ne 1 -or $agentGroups[0].hooks.Count -ne 1 -or $agentGroups[0].hooks[0].onFailure -cne 'block' -or $agentGroups[0].hooks[0].command -notmatch 'workflow-hook\.ps1') { Problem 'Missing fail-closed registered Agent dispatch guard.' }
+        if (@($config.hooks.SessionStart).Count -ne 1 -or $config.hooks.SessionStart[0].hooks[0].command -notmatch 'workflow-hook\.ps1') { Problem 'Missing startup/resume/clear/compact workflow context.' }
+        $writeGuard = @($config.hooks.PreToolUse | Where-Object { $_.matcher -ceq 'Write|Edit' })
+        if ($writeGuard[0].hooks[0].onFailure -cne 'block') { Problem 'Write guard must fail closed on runtime errors.' }
+        $null = & node (Join-Path $taskRoot '.claude/scripts/workflow-control.mjs') status --root $taskRoot
+        if ($LASTEXITCODE -ne 0) { Problem 'Workflow policy/state contract failed.' }
     }
 } catch { Problem "Invalid settings JSON: $($_.Exception.Message)" }
 try { & (Join-Path $PSScriptRoot 'check-language-intelligence.ps1') -Root $taskRoot -MetadataOnly }

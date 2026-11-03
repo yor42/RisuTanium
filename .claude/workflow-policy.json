@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "revision": "2026-11-03.1",
+  "authority": "MC-1036",
+  "parentModel": "sonnet",
+  "maxCorrectionAttempts": 1,
+  "maxImplementationTracks": 2,
+  "scheduling": {
+    "amendment": "2026-11-03-parallel-records",
+    "authority": "docs/workflow/2026-11-03-parallel-tracks.md",
+    "maxRecordsTracks": 1,
+    "maxDeviceTracks": 1,
+    "recordsPrimary": { "provider": "claude", "role": "record-clerk", "model": "haiku", "effort": "low" }
+  },
+  "timeouts": { "scout": 8, "implement": 20, "review": 12, "maximum": 30 },
+  "routes": {
+    "scout": [
+      { "provider": "agy", "model": "gemini-3.8-flash-medium", "effort": "medium" },
+      { "provider": "codex", "model": "gpt-6-luna", "effort": "medium" },
+      { "provider": "openrouter", "model": "deepseek/deepseek-v4.1-flash", "effort": "medium" },
+      { "provider": "claude", "model": "sonnet", "role": "investigator", "effort": "medium" }
+    ],
+    "implement": [
+      { "provider": "codex", "model": "gpt-6-sol", "effort": "medium" },
+      { "provider": "openrouter", "model": "deepseek/deepseek-v4.1-flash", "effort": "medium" },
+      { "provider": "claude", "model": "sonnet", "role": "sonnet-coder", "effort": "medium" }
+    ],
+    "review": [
+      { "provider": "codex", "model": "gpt-6-sol", "effort": "medium" },
+      { "provider": "openrouter", "model": "deepseek/deepseek-v4.1-flash", "effort": "medium" },
+      { "provider": "claude", "model": "sonnet", "role": "adversarial-reviewer", "effort": "medium" }
+    ]
+  },
+  "criticalContracts": ["save-format", "durability-commit-order", "dirty-dependencies", "persisted-read-write-gc", "asset-lifecycle", "migration", "security-boundary"],
+  "nativeOnlyRoles": { "designer": "opus", "opus-reviewer": "opus", "deep-investigator": "opus", "senior-advisor": "fable" },
+  "nativeFallbackRoles": {
+    "scout": { "investigator": "sonnet", "code-reader": "sonnet", "code-searcher": "haiku", "haiku-triager": "haiku", "perf-analyzer": "sonnet" },
+    "implement": { "sonnet-coder": "sonnet", "haiku-editor": "haiku", "doc-writer": "sonnet", "record-clerk": "haiku", "translator": "sonnet", "test-warrior": "sonnet" },
+    "review": { "adversarial-reviewer": "sonnet", "doc-verifier": "sonnet", "test-warrior": "sonnet" }
+  },
+  "nativePaidUsage": false,
+  "deviceDiagnosticRetries": 1,
+  "openrouter": { "enabled": false, "model": "deepseek/deepseek-v4.1-flash", "perJobUSD": 0.5, "perDayUSD": 5, "perMonthUSD": 30, "timezone": "Asia/Seoul", "activationFile": ".claude/scratch/openrouter-activation.json", "ledgerFile": ".claude/scratch/budget/openrouter.json" },
+  "cheapAgentEnabled": false
+}

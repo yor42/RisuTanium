@@ -47,8 +47,8 @@ Sanitized-markup assertions run under jsdom with `// @vitest-environment jsdom` 
 
 Follow [Agents/Tools/README.md](../../Agents/Tools/README.md) for live measurement, fixtures and mutate/restore procedures. `$state.snapshot` cost follows node count, not simply serialized bytes. Harness and browser absolute timing may differ; do not extrapolate a ratio as universally hardware-independent. Name runtime, hardware, workload and limitations. Real frame-budget claims need measurements on the target hardware.
 
-## Optional Codex companion
+## External worker runtimes
 
-Codex is an optional independent toolchain, not an assumed installed dependency. Verify the plugin/runtime is actually installed and authenticated, inspect its current invocation help, and resolve the installed root through current runtime/plugin metadata. Do not copy a hardcoded external plugin path into workflow instructions.
+Codex and Antigravity are the primary ordinary routes under [subscription-first execution](subscription-first.md). Verify installed/authenticated runtime and current help; do not hardcode cache/plugin paths or infer working provider calls from configuration. The parent uses the checked-in exporter/runner directly. Codex writes only in a sanitized exported workspace; Antigravity remains read-only scouting. Routine independent review uses a fresh context, not the implementer.
 
-If available and authorized, `review` is implementation-focused; `adversarial-review` challenges design/assumptions; preserve focus text and review output. These modes are read-only. An explicitly authorized investigation/fix may use the runtime's task mode, choosing fresh versus resume based on the actual task. If unavailable, record the exact blocker; do not fabricate results or automatically install a plugin. Continue independent safe work while required escalation remains open.
+Use explicit approved model/effort and isolated instructions/configuration. Do not launch another Claude session merely to compare external output. Record exact host-observed failures, cache unavailable routes and use permitted fallbacks; no automatic installation or model upgrades. Independently verify consequential claims at their consuming gate without repeating adequate source checks.

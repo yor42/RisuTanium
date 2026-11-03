@@ -14,5 +14,6 @@ Write the handoff to `Agents/Handoff-<date>-<step>.md` (English, compact, under 
 6. Not yet verified: gates, checks and records still owed.
 7. Next concrete actions, in order, each with its owner.
 8. Uncertainty: assumptions, stale evidence and anything the next session must recheck.
+9. Durable workflow state: policy/state revision, accepted receipt references and applicability, correction/provider lineage, parked device attempts and required pending claims. Update through the parent-owned state helper; do not reset them because context is cleared.
 
 Then point the current-state section of `Agents/Live-State.md` at the new file with one line. Never invent a check, hash or verdict; missing evidence is `TODO(evidence)`. The next session first checks the handoff against `git status` and `git log` ([records](../../../docs/workflow/records.md)).

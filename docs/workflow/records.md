@@ -14,17 +14,27 @@ The orchestrator names a record owner and identifies applicable records in the i
 | Live-State / Carry-Forward | What remains now, who owns it, and durable dependencies left for later stages; avoid copying the full report. |
 | Investigation-Ledger | Actual dispatch/question/tier/outcome; observed usage or explicitly unavailable costs. |
 
-The record checker independently verifies the changed claims and pointers against the accepted evidence. Ordinary drafting uses record-clerk or doc-writer and independent verification under [routing](routing.md)/[gates](gates.md); governance and actual maintainer decisions stay outside routine clerk authority. A missing record is an administrative blocker, not a new behavior defect. Closing records is incremental claim/diff verification; it does not restart Gate 2 or rerun application tests unless it exposes a substantive defect or invalidates accepted evidence.
+The record checker independently verifies the changed claims and pointers against the accepted evidence. Routine supplied-evidence drafting uses the dedicated primary Haiku record-clerk directly, without agy/Codex/OpenRouter preflight. Independent consequential-claim verification occurs once under [routing](routing.md)/[gates](gates.md); governance and actual maintainer decisions stay outside routine clerk authority. A missing record is an administrative blocker, not a new behavior defect. Closing records is incremental claim/diff verification; it does not restart Gate 2 or rerun application tests unless it exposes a substantive defect or invalidates accepted evidence.
 
 When an item that changes user-visible behaviour lands on `main`, the same records pass updates the README's "What's different from upstream" list and its known problems, and `doc-verifier` checks that change (MC-332).
 
 The item owner records final closure against the accepted snapshot and the changed records, distinguishing optional improvements and unresolved work. Commit/push remains subject to the maintainer's actual authorization. Existing 2026-10-08 handoff backlog stays pending until separately reconciled; adopting this rule does not declare that backlog complete.
 
+## Separate records track
+
+One workClass records / mode implement Haiku drafter may run beside two disjoint code worktrees and one device run. Freeze its source/facts packet: exact quotations/reserved IDs, target anchors/schema, accepted gate/test provenance and limitations. Later code changes do not alter that historical batch's claims. Records completion is not a prerequisite for unrelated authorized code work.
+
+The guard remains unchanged. Ordinary explicitly granted Markdown may be edited. Maintainer-Context/governance/Decision-Index/state changes return as a scratch draft/patch packet for verified parent application through existing helpers. No shell workaround, unconfirmed ID allocation, confidence upgrade, invented decision or self-acceptance. Parent application is integration, not a second whole-batch rewrite.
+
+Missing/contradictory facts return in one exception packet with TODO(evidence). Substantive ambiguity goes to the responsible role. Haiku unavailability/exhaustion is reported or parked for an explicit parent fallback decision; no hidden stronger-model upgrade. Correctly scoped independent review still consumes consequential changed claims once.
+
+Earlier record failures included a forbidden AGENTS.md dependency and native Edit-tool/real-checkout instructions sent to an isolated CLI. These are packet/tool-contract mismatches, not proof that all external models are incapable of records work. Primary Haiku is the maintainer's chosen simpler clerical path.
+
 ## Batching and session discipline
 
 Records are batched per stage or batch where no maintainer decision is involved. MC entries are still recorded when the maintainer answers (MC-321 4). Live-State holds only current state plus a link to the current step handoff; superseded update paragraphs move to `Agents/Archive/`.
 
-Use one fresh orchestrator session per step, or start a fresh one at about 300K context, and write a step handoff with `/handoff` first. The next session first checks the handoff against `git status` and `git log` before relying on it.
+Preserve useful context and use a fresh Sonnet parent at a coherent handoff or when size, contamination or scope warrants it; do not reset per ticket or solely because a provider/stage changed. Write a factual `/handoff` first and retain workflow state/acceptance/parked-check lineage. The next session first checks the handoff against `git status` and `git log` before relying on it.
 
 ## Canonical reports and selected evidence
 

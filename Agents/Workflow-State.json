@@ -1,0 +1,1145 @@
+{
+  "version": 1,
+  "policyRevision": "2026-11-03.1",
+  "generation": 143,
+  "activation": "active",
+  "activeRevision": "2026-11-03.1",
+  "batch": "laneA-SR2-followup",
+  "stage": "batch-43-written-awaiting-commit-word",
+  "handoff": "Agents/Handoff-2026-11-02-laneA.md",
+  "applicationRevision": "1cdfb1a5b8b9b7d55b1e8595967ab63483209bef",
+  "queue": [
+    "Commit+push records batch 43 (maintainer word): MC-1060 to MC-1062, ledger row 4895, CHORE-630 COMPLETE, Roadmap/Live-State updates; commit draft b40/rec44/commit-draft.txt",
+    "MVP-refresh record: WAITS for the maintainer to update the MVP on his phone to the latest main and say so (MC-1060); the maintainer builds and signs the release APK",
+    "Separate workflow batch for the rest of the 2026-11-03 cutover tooling and governance files (maintainer decision)",
+    "Watch item only (MC-1061): idle-return drift -3000 to -8943, seen once; reopen only if it returns"
+  ],
+  "acceptedReceipts": [
+    {
+      "id": "SR2-PC-G2",
+      "evidence": "C:/Users/yor42/AppData/Local/Temp/risu-b715/b38/sr2-g2r3/result.md",
+      "sha256": "71a540447cf319c601ff1f2e7b6b8953d32f7ae753c9fee106b185a88422c965",
+      "bytes": 7780,
+      "scope": "Combined SR2 Gate2 before final timer remediation",
+      "applicationRevision": "1cdfb1a5b8b9b7d55b1e8595967ab63483209bef",
+      "limitations": [
+        "Native S4 pending; no new acceptance inferred by cutover"
+      ]
+    },
+    {
+      "id": "SR2-timer-remediation",
+      "evidence": "C:/Users/yor42/AppData/Local/Temp/risu-b715/b38/sr2-rem3v/result.md",
+      "sha256": "418832903fcc51a26dd6e9ada7d549f687153b2805910ba57247e09d428a89bc",
+      "bytes": 1982,
+      "scope": "Final partial-edit timer remediation, PC evidence only",
+      "applicationRevision": "1cdfb1a5b8b9b7d55b1e8595967ab63483209bef",
+      "limitations": [
+        "Native S4 pending; no new acceptance inferred by cutover"
+      ]
+    }
+  ],
+  "pendingClaims": [
+    "zoomsize device read of the amended S4(4) not performed (module-toggle liveness shown)"
+  ],
+  "parkedChecks": [
+    {
+      "claim": "SR2-S4-scroll-rebuild",
+      "required": true,
+      "evidence": "C:/Users/yor42/AppData/Local/Temp/risu-b715/b40/sr2-s4/result.md",
+      "reason": "Planned check and one diagnostic retry exhausted",
+      "reopened": "changed implementation bc383c59f (maintainer decision MC-1054); re-run as claim SR2-S2-scroll-fix: pass (ledger row 4886)"
+    },
+    {
+      "claim": "SR2-S2-page-size",
+      "required": true,
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/sr2-s4/dev/phases2h.out",
+      "reason": "Planned check and one diagnostic retry exhausted"
+    }
+  ],
+  "deviceAttempts": {
+    "SR2-S4-pss-hiddenstream": {
+      "attempts": 1,
+      "required": true,
+      "evidence": "C:/Users/yor42/AppData/Local/Temp/risu-b715/b40/sr2-s4/result.md",
+      "result": "pass",
+      "closed": true
+    },
+    "SR2-S4-first-enable": {
+      "attempts": 1,
+      "required": true,
+      "evidence": "C:/Users/yor42/AppData/Local/Temp/risu-b715/b40/sr2-s4/result.md",
+      "result": "pass",
+      "closed": true
+    },
+    "SR2-S4-scroll-rebuild": {
+      "attempts": 2,
+      "required": true,
+      "evidence": "C:/Users/yor42/AppData/Local/Temp/risu-b715/b40/sr2-s4/result.md",
+      "result": "fail",
+      "parked": true
+    },
+    "SR2-S2-scroll-fix": {
+      "attempts": 1,
+      "required": true,
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/sr2-s4/dev/phases2a.out",
+      "result": "pass",
+      "closed": true
+    },
+    "SR2-S2-page-size": {
+      "attempts": 2,
+      "required": true,
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/sr2-s4/dev/phases2h.out",
+      "result": "inconclusive",
+      "parked": true
+    },
+    "SR2-S2-language": {
+      "attempts": 1,
+      "required": false,
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/sr2-s4/dev/phases2c.out",
+      "result": "inconclusive"
+    },
+    "SR2-S2-frame-gap": {
+      "attempts": 1,
+      "required": false,
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/sr2-s4/dev/phases2c.out",
+      "result": "pass",
+      "closed": true
+    },
+    "SR2-S2-page-size-b": {
+      "attempts": 1,
+      "required": true,
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/sr2-s4/dev/phases2m.out",
+      "result": "pass",
+      "closed": true
+    },
+    "SR2-S2-language-b": {
+      "attempts": 1,
+      "required": false,
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/sr2-s4/dev/phases2m.out",
+      "result": "pass",
+      "closed": true
+    },
+    "BLANK-ADVANCED-SETTINGS": {
+      "attempts": 1,
+      "required": false,
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/sr2-s4/dev/phases2m.out",
+      "result": "pass",
+      "closed": true
+    }
+  },
+  "routeHealth": {
+    "agy": {
+      "reason": "unavailable",
+      "resetAt": null,
+      "evidence": "Agy ambient MCP/plugin isolation not yet independently verified for installed executable. Select next subscription route.",
+      "observedAt": "2026-11-03T08:58:40.162Z"
+    }
+  },
+  "jobs": {
+    "SVELTE-BUMP-REVIEW": {
+      "mode": "review",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "svelte-bump-rev1"
+      ],
+      "status": "completed"
+    },
+    "RECORDS-BATCH-40": {
+      "mode": "implement",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 1,
+      "failedRoutes": [
+        "codex"
+      ],
+      "attempts": [
+        "rec40-w1",
+        "rec40-w2",
+        "rec40-native"
+      ],
+      "status": "completed",
+      "needsCorrection": false
+    },
+    "SR2-SCROLL-FIX": {
+      "mode": "implement",
+      "role": "designer",
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "sr2-scroll-plan"
+      ],
+      "status": "completed"
+    },
+    "RECORDS-B40-AGY": {
+      "mode": "scout",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "rec40-agy1"
+      ],
+      "status": "failed",
+      "needsCorrection": false
+    },
+    "RECORDS-B40-VERIFY": {
+      "mode": "review",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "rec40-ver1"
+      ],
+      "status": "partial",
+      "needsCorrection": true
+    },
+    "SR2-SCROLL-G1": {
+      "mode": "review",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "sr2-scroll-g1-r1"
+      ],
+      "status": "completed"
+    },
+    "SR2-SCROLL-FIX-R2": {
+      "mode": "implement",
+      "role": "designer",
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "sr2-scroll-plan-r2"
+      ],
+      "status": "completed"
+    },
+    "SR2-SCROLL-G1-R2": {
+      "mode": "review",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "sr2-scroll-g1-r2"
+      ],
+      "status": "completed"
+    },
+    "SR2-SCROLL-FIX-R3": {
+      "mode": "implement",
+      "role": "designer",
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "sr2-scroll-plan-r3"
+      ],
+      "status": "completed"
+    },
+    "SR2-SCROLL-G1-R3": {
+      "mode": "review",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "sr2-scroll-g1-r3"
+      ],
+      "status": "completed"
+    },
+    "SR2-SCROLL-ADVISOR": {
+      "mode": "scout",
+      "role": "senior-advisor",
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "sr2-scroll-advisor"
+      ],
+      "status": "completed"
+    },
+    "SR2-SCROLL-FIX-R4": {
+      "mode": "implement",
+      "role": "designer",
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "sr2-scroll-plan-r4"
+      ],
+      "status": "completed"
+    },
+    "SR2-SCROLL-G1-R4": {
+      "mode": "review",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "sr2-scroll-g1-r4"
+      ],
+      "status": "completed"
+    },
+    "SR2-SCROLL-FIX-R5": {
+      "mode": "implement",
+      "role": "designer",
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "sr2-scroll-plan-r5"
+      ],
+      "status": "completed"
+    },
+    "SR2-SCROLL-G1-R5": {
+      "mode": "review",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "sr2-scroll-g1-r5"
+      ],
+      "status": "completed"
+    },
+    "SR2-SCROLL-S1": {
+      "mode": "implement",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 1,
+      "failedRoutes": [
+        "codex"
+      ],
+      "attempts": [
+        "sr2-scroll-s1-x1",
+        "sr2-scroll-s1-x2",
+        "sr2-scroll-s1-native"
+      ],
+      "status": "completed",
+      "needsCorrection": false
+    },
+    "SR2-SCROLL-G2": {
+      "mode": "review",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "sr2-scroll-g2-r1"
+      ],
+      "status": "completed"
+    },
+    "SR2-SCROLL-S1-REM": {
+      "mode": "implement",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 1,
+      "failedRoutes": [
+        "codex"
+      ],
+      "attempts": [
+        "sr2-rem-x1",
+        "sr2-rem-x2",
+        "sr2-rem-native"
+      ],
+      "status": "completed",
+      "needsCorrection": false
+    },
+    "SR2-SCROLL-G2R2": {
+      "mode": "review",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "sr2-scroll-g2-r2"
+      ],
+      "status": "completed"
+    },
+    "RECORDS-BATCH-41": {
+      "mode": "implement",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 1,
+      "failedRoutes": [
+        "codex"
+      ],
+      "attempts": [
+        "rec41-x1",
+        "rec41-x2",
+        "rec41-native"
+      ],
+      "status": "completed",
+      "needsCorrection": false
+    },
+    "RECORDS-B41-VERIFY": {
+      "mode": "review",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "rec41-ver1"
+      ],
+      "status": "partial",
+      "needsCorrection": true
+    },
+    "RECORDS-PACKET-42": {
+      "mode": "implement",
+      "role": "record-clerk",
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "rec42-clerk"
+      ],
+      "workClass": "records",
+      "status": "completed"
+    },
+    "LOCALE-DE-TOOLS": {
+      "mode": "implement",
+      "role": "translator",
+      "changedContracts": [],
+      "correctionCount": 1,
+      "failedRoutes": [
+        "codex"
+      ],
+      "attempts": [
+        "loc-x1",
+        "loc-x2",
+        "loc-native"
+      ],
+      "workClass": "code",
+      "status": "completed",
+      "needsCorrection": false
+    },
+    "LOCALE-DE-REVIEW": {
+      "mode": "review",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "loc-rev1"
+      ],
+      "workClass": "code",
+      "status": "completed"
+    },
+    "BLANK-ADVANCED-SETTINGS": {
+      "mode": "scout",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "blank-adv-scout1"
+      ],
+      "workClass": "documents",
+      "status": "completed"
+    },
+    "RUNNER-WRITE-PROBE2": {
+      "mode": "implement",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "runner-probe2"
+      ],
+      "workClass": "documents",
+      "status": "completed"
+    },
+    "RECORDS-PACKET-43": {
+      "mode": "implement",
+      "role": "record-clerk",
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "rec43-clerk"
+      ],
+      "workClass": "records",
+      "status": "completed"
+    },
+    "RECORDS-B43-VERIFY": {
+      "mode": "review",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "rec43-ver1"
+      ],
+      "workClass": "documents",
+      "status": "completed"
+    },
+    "RECORDS-PACKET-44": {
+      "mode": "implement",
+      "role": "record-clerk",
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "rec44-clerk"
+      ],
+      "workClass": "records",
+      "status": "completed"
+    },
+    "RECORDS-B44-VERIFY": {
+      "mode": "review",
+      "role": null,
+      "changedContracts": [],
+      "correctionCount": 0,
+      "failedRoutes": [],
+      "attempts": [
+        "rec44-ver1"
+      ],
+      "workClass": "documents",
+      "status": "completed"
+    }
+  },
+  "dispatches": {
+    "svelte-bump-rev1": {
+      "hash": "637174f33d0a5feb99364dab2f08c54b01e7f6c0528ff0758f58f327e78e1453",
+      "logicalJobId": "SVELTE-BUMP-REVIEW",
+      "mode": "review",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-review",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\svelte-review\\ws",
+      "allowedWrites": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\svelte-review\\result.md.host.json"
+    },
+    "rec40-w1": {
+      "hash": "948eaa76556c1762a3719be834b099ca335336086cef29274a7f226433c7fb38",
+      "logicalJobId": "RECORDS-BATCH-40",
+      "mode": "implement",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-rec40",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec40\\ws",
+      "allowedWrites": [
+        "Agents/Maintainer-Context.md",
+        "Agents/Investigation-Ledger.md",
+        "Agents/Roadmap.md",
+        "Agents/Live-State.md",
+        "Agents/Carry-Forward.md",
+        "Agents/Archive/Live-State-history-2026-11-02.md"
+      ],
+      "status": "failed",
+      "evidence": "C:/Users/yor42/AppData/Local/Temp/risu-b715/b40/rec40/fail-note.txt"
+    },
+    "rec40-w2": {
+      "hash": "a0d9bd243fa24f1929e0d741bbbca4423e2d1a61847d7fcdd5d20d8bced22b53",
+      "logicalJobId": "RECORDS-BATCH-40",
+      "mode": "implement",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-rec40",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec40\\ws",
+      "allowedWrites": [
+        "Agents/Maintainer-Context.md",
+        "Agents/Investigation-Ledger.md",
+        "Agents/Roadmap.md",
+        "Agents/Live-State.md",
+        "Agents/Carry-Forward.md",
+        "Agents/Archive/Live-State-history-2026-11-02.md"
+      ],
+      "status": "partial",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec40\\result.md.host.json"
+    },
+    "sr2-scroll-plan": {
+      "hash": "9510995c039347a83cc8508d37031c1ed10e668a8f01911882d5d46b2aec1951",
+      "logicalJobId": "SR2-SCROLL-FIX",
+      "mode": "implement",
+      "provider": "claude",
+      "model": "opus",
+      "role": "designer",
+      "owner": "lane-a-parent-sr2scroll",
+      "allowedWrites": [],
+      "status": "completed",
+      "evidence": "C:/Users/yor42/AppData/Local/Temp/risu-b715/b40/sr2-scroll/plan.md"
+    },
+    "rec40-agy1": {
+      "hash": "7c8a9fc5997c40bd9adaf3c2880716e22e0057656d2a3be62a74990ddb8657cf",
+      "logicalJobId": "RECORDS-B40-AGY",
+      "mode": "scout",
+      "provider": "agy",
+      "model": "gemini-3.8-flash-medium",
+      "owner": "lane-a-parent-rec40agy",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec40\\ws",
+      "allowedWrites": [],
+      "status": "failed",
+      "evidence": "Agy ambient MCP/plugin isolation not yet independently verified for installed executable. Select next subscription route."
+    },
+    "rec40-native": {
+      "hash": "cae5dcc3368ce7401a5f25d27a00a55f5acc239f597719b7065be3afce577021",
+      "logicalJobId": "RECORDS-BATCH-40",
+      "mode": "implement",
+      "provider": "claude",
+      "model": "sonnet",
+      "role": "sonnet-coder",
+      "owner": "lane-a-parent-rec40native",
+      "workdir": "C:/Projects/RisuAI",
+      "allowedWrites": [
+        "Agents/Maintainer-Context.md",
+        "Agents/Investigation-Ledger.md",
+        "Agents/Roadmap.md",
+        "Agents/Live-State.md",
+        "Agents/Carry-Forward.md",
+        "Agents/Archive/Live-State-history-2026-11-02.md"
+      ],
+      "status": "completed",
+      "evidence": "C:/Users/yor42/AppData/Local/Temp/risu-b715/b40/rec40/native-result.md"
+    },
+    "rec40-ver1": {
+      "hash": "b6f96b8c75328d98d2dfcbd4dfc4e8d20cbb2a44d76bb88a7dd72c139291c586",
+      "logicalJobId": "RECORDS-B40-VERIFY",
+      "mode": "review",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-rec40ver",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec40v\\ws",
+      "allowedWrites": [],
+      "status": "partial",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec40v\\result.md.host.json"
+    },
+    "sr2-scroll-g1-r1": {
+      "hash": "451dabd3e818b048a389158794ffbf75279cc74df0022d70c730737b34c263da",
+      "logicalJobId": "SR2-SCROLL-G1",
+      "mode": "review",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-scrollg1",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-g1\\ws",
+      "allowedWrites": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-g1\\result.md.host.json"
+    },
+    "sr2-scroll-plan-r2": {
+      "hash": "e07dadaee92aa1d17aae3dd496bf21941cdcb08bd6712db8073b34c5981624d3",
+      "logicalJobId": "SR2-SCROLL-FIX-R2",
+      "mode": "implement",
+      "provider": "claude",
+      "model": "opus",
+      "role": "designer",
+      "owner": "lane-a-parent-sr2scroll-r2",
+      "allowedWrites": [],
+      "status": "completed",
+      "evidence": "C:/Users/yor42/AppData/Local/Temp/risu-b715/b40/sr2-scroll/plan-r2.md"
+    },
+    "sr2-scroll-g1-r2": {
+      "hash": "5ecfa5bb2ba22985e077a8f8b107513097c3b03d8bff768bbb3e24fe8c72b469",
+      "logicalJobId": "SR2-SCROLL-G1-R2",
+      "mode": "review",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-scrollg1r2",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-g1r2\\ws",
+      "allowedWrites": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-g1r2\\result.md.host.json"
+    },
+    "sr2-scroll-plan-r3": {
+      "hash": "247b287e61a06eca216fcce2181ee7f721c01d2950431e4eae43a03d8a7f3827",
+      "logicalJobId": "SR2-SCROLL-FIX-R3",
+      "mode": "implement",
+      "provider": "claude",
+      "model": "opus",
+      "role": "designer",
+      "owner": "lane-a-parent-sr2scroll-r3",
+      "allowedWrites": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/sr2-scroll/plan-r3.md"
+    },
+    "sr2-scroll-g1-r3": {
+      "hash": "0c008491c1036f98d24516ef6ee6f459e7f07f002f06989485da6821efe110ac",
+      "logicalJobId": "SR2-SCROLL-G1-R3",
+      "mode": "review",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-scrollg1r3",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-g1r3\\ws",
+      "allowedWrites": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-g1r3\\result.md.host.json"
+    },
+    "sr2-scroll-advisor": {
+      "hash": "ee0e1a15e8ace719745e247142004237f972bd504a16c7d9aec4a8a93bac85aa",
+      "logicalJobId": "SR2-SCROLL-ADVISOR",
+      "mode": "scout",
+      "provider": "claude",
+      "model": "fable",
+      "role": "senior-advisor",
+      "owner": "lane-a-parent-sr2scroll-adv",
+      "allowedWrites": [],
+      "status": "completed",
+      "evidence": "C:/Users/yor42/AppData/Local/Temp/risu-b715/b40/sr2-scroll/advisor.md"
+    },
+    "sr2-scroll-plan-r4": {
+      "hash": "a23afa0f96de69e67ac3646e6190184ed18b11a2344bdd15749a63e18e5a2bd2",
+      "logicalJobId": "SR2-SCROLL-FIX-R4",
+      "mode": "implement",
+      "provider": "claude",
+      "model": "opus",
+      "role": "designer",
+      "owner": "lane-a-parent-sr2scroll-r4",
+      "allowedWrites": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/sr2-scroll/plan-r4.md"
+    },
+    "sr2-scroll-g1-r4": {
+      "hash": "7c1f93ad17d550224dfbc1718147a4961d8d9be8ae526157453817afac9ad186",
+      "logicalJobId": "SR2-SCROLL-G1-R4",
+      "mode": "review",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-scrollg1r4",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-g1r4\\ws",
+      "allowedWrites": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-g1r4\\result.md.host.json"
+    },
+    "sr2-scroll-plan-r5": {
+      "hash": "c19b12312ba2fef96cba9907cdb35f0129d234d3f2bd689bbe4dd29b4d6dc18d",
+      "logicalJobId": "SR2-SCROLL-FIX-R5",
+      "mode": "implement",
+      "provider": "claude",
+      "model": "opus",
+      "role": "designer",
+      "owner": "lane-a-parent-sr2scroll-r5",
+      "allowedWrites": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/sr2-scroll/plan-r5.md"
+    },
+    "sr2-scroll-g1-r5": {
+      "hash": "c814cc46613101719c9f19dd3b88a63ad97bcd9fa4862556abca1b2f9d78ebeb",
+      "logicalJobId": "SR2-SCROLL-G1-R5",
+      "mode": "review",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-scrollg1r5",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-g1r5\\ws",
+      "allowedWrites": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-g1r5\\result.md.host.json"
+    },
+    "sr2-scroll-s1-x1": {
+      "hash": "979019ffc129ae21f3439a8830e1fa020d3902e4f8ae85d1e1a4120391da39cd",
+      "logicalJobId": "SR2-SCROLL-S1",
+      "mode": "implement",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-scrolls1x",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-s1\\ws",
+      "allowedWrites": [
+        "src/lib/ChatScreens/chatSurface.svelte.ts",
+        "src/lib/ChatScreens/Chats.svelte",
+        "src/lib/ChatScreens/Chats.surfaceHold.svelte.test.ts",
+        "src/lib/ChatScreens/chatSurface.svelte.test.ts"
+      ],
+      "status": "partial",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-s1\\result-x1.md.host.json"
+    },
+    "sr2-scroll-s1-x2": {
+      "hash": "1698b8653830dff51bed243233c89e0c425421e273352774fe8633bd89629eb2",
+      "logicalJobId": "SR2-SCROLL-S1",
+      "mode": "implement",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-scrolls1x",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-s1\\ws",
+      "allowedWrites": [
+        "src/lib/ChatScreens/chatSurface.svelte.ts",
+        "src/lib/ChatScreens/Chats.svelte",
+        "src/lib/ChatScreens/Chats.surfaceHold.svelte.test.ts",
+        "src/lib/ChatScreens/chatSurface.svelte.test.ts"
+      ],
+      "status": "partial",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-s1\\result-x2.md.host.json"
+    },
+    "sr2-scroll-s1-native": {
+      "hash": "a28397f7f8b758e08e6ffdc1fd24d74f7af5203340c01ec19541a33bf9be531b",
+      "logicalJobId": "SR2-SCROLL-S1",
+      "mode": "implement",
+      "provider": "claude",
+      "model": "sonnet",
+      "role": "sonnet-coder",
+      "owner": "lane-a-parent-scrolls1n",
+      "workdir": "C:/Projects/RisuAI",
+      "allowedWrites": [
+        "src/lib/ChatScreens/chatSurface.svelte.ts",
+        "src/lib/ChatScreens/Chats.svelte",
+        "src/lib/ChatScreens/Chats.surfaceHold.svelte.test.ts",
+        "src/lib/ChatScreens/chatSurface.svelte.test.ts"
+      ],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/scroll-s1/result.md"
+    },
+    "sr2-scroll-g2-r1": {
+      "hash": "ccbc2ec62cdd4ce0d385f47ea298d030aaa1204d819ec8691d6548e5b3dbfff8",
+      "logicalJobId": "SR2-SCROLL-G2",
+      "mode": "review",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-scrollg2",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-g2\\ws",
+      "allowedWrites": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-g2\\result.md.host.json"
+    },
+    "sr2-rem-x1": {
+      "hash": "6334253ae46fa964cfdabab61d0c60d2c173e2a7594fcfbeae1968b300d2cf98",
+      "logicalJobId": "SR2-SCROLL-S1-REM",
+      "mode": "implement",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-scrollrem",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-rem\\ws",
+      "allowedWrites": [
+        "src/lib/ChatScreens/chatSurface.svelte.ts",
+        "src/lib/ChatScreens/chatSurface.svelte.test.ts",
+        "src/lib/ChatScreens/Chats.surfaceHold.svelte.test.ts"
+      ],
+      "status": "partial",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-rem\\result-sr2-rem-x1.md.host.json"
+    },
+    "sr2-rem-x2": {
+      "hash": "5853f578c49c1fda5848f20b34b726e243be40c5b9c3baecedd19e13bd33dec3",
+      "logicalJobId": "SR2-SCROLL-S1-REM",
+      "mode": "implement",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-scrollrem",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-rem\\ws",
+      "allowedWrites": [
+        "src/lib/ChatScreens/chatSurface.svelte.ts",
+        "src/lib/ChatScreens/chatSurface.svelte.test.ts",
+        "src/lib/ChatScreens/Chats.surfaceHold.svelte.test.ts"
+      ],
+      "status": "partial",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-rem\\result-sr2-rem-x2.md.host.json"
+    },
+    "sr2-rem-native": {
+      "hash": "b9a766712c38798aba8e29f623da2cc22cebe110b45bb3d54ba9dc44a377e1d2",
+      "logicalJobId": "SR2-SCROLL-S1-REM",
+      "mode": "implement",
+      "provider": "claude",
+      "model": "sonnet",
+      "role": "sonnet-coder",
+      "owner": "lane-a-parent-scrollremn",
+      "workdir": "C:/Projects/RisuAI",
+      "allowedWrites": [
+        "src/lib/ChatScreens/chatSurface.svelte.ts",
+        "src/lib/ChatScreens/chatSurface.svelte.test.ts",
+        "src/lib/ChatScreens/Chats.surfaceHold.svelte.test.ts"
+      ],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/scroll-rem/result.md"
+    },
+    "sr2-scroll-g2-r2": {
+      "hash": "ce2afbdd07c8b39f2f5df63693820184062b71ef3c9c62b9981775ce8eab773c",
+      "logicalJobId": "SR2-SCROLL-G2R2",
+      "mode": "review",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-scrollg2r2",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-g2r2\\ws",
+      "allowedWrites": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\scroll-g2r2\\result.md.host.json"
+    },
+    "rec41-x1": {
+      "hash": "39377b5dd8f84485fd03d35e87253dd73a19361687c15b3f3487494799683787",
+      "logicalJobId": "RECORDS-BATCH-41",
+      "mode": "implement",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-rec41",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec41\\ws",
+      "allowedWrites": [
+        "Agents/Maintainer-Context.md",
+        "Agents/Investigation-Ledger.md",
+        "Agents/Roadmap.md",
+        "Agents/Live-State.md",
+        "Agents/Carry-Forward.md",
+        "Agents/Archive/Live-State-history-2026-11-02.md"
+      ],
+      "status": "partial",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec41\\result-rec41-x1.md.host.json"
+    },
+    "rec41-x2": {
+      "hash": "92a8655c1da2ecc2ab36ad5baa18d7d32c7a9ab5b71d1eee37f455aeba5e68fc",
+      "logicalJobId": "RECORDS-BATCH-41",
+      "mode": "implement",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-rec41",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec41\\ws",
+      "allowedWrites": [
+        "Agents/Maintainer-Context.md",
+        "Agents/Investigation-Ledger.md",
+        "Agents/Roadmap.md",
+        "Agents/Live-State.md",
+        "Agents/Carry-Forward.md",
+        "Agents/Archive/Live-State-history-2026-11-02.md"
+      ],
+      "status": "partial",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec41\\result-rec41-x2.md.host.json"
+    },
+    "rec41-native": {
+      "hash": "32c083d504af33f214b3f9e7e08e0bd028e79fe8591da64c8153505f37c7842f",
+      "logicalJobId": "RECORDS-BATCH-41",
+      "mode": "implement",
+      "provider": "claude",
+      "model": "sonnet",
+      "role": "sonnet-coder",
+      "owner": "lane-a-parent-rec41n",
+      "workdir": "C:/Projects/RisuAI",
+      "allowedWrites": [
+        "Agents/Maintainer-Context.md",
+        "Agents/Investigation-Ledger.md",
+        "Agents/Roadmap.md",
+        "Agents/Live-State.md",
+        "Agents/Carry-Forward.md",
+        "Agents/Archive/Live-State-history-2026-11-02.md"
+      ],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/rec41/native-result.md"
+    },
+    "rec41-ver1": {
+      "hash": "fd0efb6700cfb199b6b64b0783a2a20592d26d746e07b0e565ff6cb671c8da96",
+      "logicalJobId": "RECORDS-B41-VERIFY",
+      "mode": "review",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-rec41ver",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec41v\\ws",
+      "allowedWrites": [],
+      "status": "partial",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec41v\\result.md.host.json"
+    },
+    "rec42-clerk": {
+      "hash": "09b01b974178d5e35dd96d55a7aa866ba80b7e35768fe7001bd6c4f7419b4e5e",
+      "logicalJobId": "RECORDS-PACKET-42",
+      "mode": "implement",
+      "provider": "claude",
+      "model": "haiku",
+      "role": "record-clerk",
+      "owner": "lane-a-parent-rec42",
+      "workdir": "C:/Projects/RisuAI",
+      "repoRoot": "C:\\Projects\\RisuAI",
+      "allowedWrites": [
+        "Agents/Investigation-Ledger.md"
+      ],
+      "workClass": "records",
+      "resources": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/rec42/result.md"
+    },
+    "loc-x1": {
+      "hash": "254f1702608517588fee23df435cc094cf68c593983b75039c82b25fbcb0a4cb",
+      "logicalJobId": "LOCALE-DE-TOOLS",
+      "mode": "implement",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "role": "translator",
+      "owner": "lane-a-parent-locde",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\loc-de\\ws",
+      "repoRoot": "C:\\Projects\\RisuAI",
+      "allowedWrites": [
+        "src/lang/de.ts"
+      ],
+      "workClass": "code",
+      "resources": [
+        "checkout:c:\\projects\\risuai"
+      ],
+      "status": "partial",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\loc-de\\result-loc-x1.md.host.json"
+    },
+    "loc-x2": {
+      "hash": "85544b5e0864d6a54eeeb29e106e54c4d3fec08919060d5443705a656c1a4a06",
+      "logicalJobId": "LOCALE-DE-TOOLS",
+      "mode": "implement",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "role": "translator",
+      "owner": "lane-a-parent-locde",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\loc-de\\ws",
+      "repoRoot": "C:\\Projects\\RisuAI",
+      "allowedWrites": [
+        "src/lang/de.ts"
+      ],
+      "workClass": "code",
+      "resources": [
+        "checkout:c:\\projects\\risuai"
+      ],
+      "status": "partial",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\loc-de\\result-loc-x2.md.host.json"
+    },
+    "loc-native": {
+      "hash": "5ea8f06f5bde0565832d2075e604434df737aad988899071a6e8fd4a43c46117",
+      "logicalJobId": "LOCALE-DE-TOOLS",
+      "mode": "implement",
+      "provider": "claude",
+      "model": "sonnet",
+      "role": "translator",
+      "owner": "lane-a-parent-locdenative",
+      "workdir": "C:/Projects/RisuAI",
+      "repoRoot": "C:\\Projects\\RisuAI",
+      "allowedWrites": [
+        "src/lang/de.ts"
+      ],
+      "workClass": "code",
+      "resources": [
+        "checkout:c:\\projects\\risuai"
+      ],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40/loc-de/result.md"
+    },
+    "loc-rev1": {
+      "hash": "7b9584d81a19a909c7d46e6473675d7831db83a07393c785209290895a66f2fa",
+      "logicalJobId": "LOCALE-DE-REVIEW",
+      "mode": "review",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-locrev",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\loc-rev\\ws",
+      "repoRoot": "C:\\Projects\\RisuAI",
+      "allowedWrites": [],
+      "workClass": "code",
+      "resources": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\loc-rev\\result.md.host.json"
+    },
+    "blank-adv-scout1": {
+      "hash": "270189015f2dd6702359a557ff2b82f04d7b83e467126ef7d886b7c328680bf2",
+      "logicalJobId": "BLANK-ADVANCED-SETTINGS",
+      "mode": "scout",
+      "provider": "codex",
+      "model": "gpt-6-luna",
+      "owner": "lane-a-parent-blankadv",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\blank-adv\\ws",
+      "repoRoot": "C:\\Projects\\RisuAI",
+      "allowedWrites": [],
+      "workClass": "documents",
+      "resources": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\blank-adv\\result.md.host.json"
+    },
+    "runner-probe2": {
+      "hash": "7eac585e3052d62b79fb9d0ad2b8088862f9783fd690d4dc50c305fa2fdb0a2e",
+      "logicalJobId": "RUNNER-WRITE-PROBE2",
+      "mode": "implement",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-runnerprobe",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\runner-probe\\ws",
+      "repoRoot": "C:\\Projects\\RisuAI",
+      "allowedWrites": [
+        "Agents/Carry-Forward.md"
+      ],
+      "workClass": "documents",
+      "resources": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\runner-probe\\result2.md.host.json"
+    },
+    "rec43-clerk": {
+      "hash": "9a186dcba198028ca9c6490ab0c515c309e86444f0b8ff0ac2d9005af14e41db",
+      "logicalJobId": "RECORDS-PACKET-43",
+      "mode": "implement",
+      "provider": "claude",
+      "model": "haiku",
+      "role": "record-clerk",
+      "owner": "lane-a-parent-rec43",
+      "workdir": "C:/Projects/RisuAI",
+      "repoRoot": "C:\\Projects\\RisuAI",
+      "allowedWrites": [
+        "Agents/Investigation-Ledger.md",
+        "Agents/Roadmap.md",
+        "Agents/Live-State.md"
+      ],
+      "workClass": "records",
+      "resources": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec43/result.md"
+    },
+    "rec43-ver1": {
+      "hash": "458b75668f14b987e996f19ee5f13ce4f0b8a31b72ed76b41166dde15e6e0b01",
+      "logicalJobId": "RECORDS-B43-VERIFY",
+      "mode": "review",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-rec43ver",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec43v\\ws",
+      "repoRoot": "C:\\Projects\\RisuAI",
+      "allowedWrites": [],
+      "workClass": "documents",
+      "resources": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec43v\\result.md.host.json"
+    },
+    "rec44-clerk": {
+      "hash": "4103635cbd1e0172e6fdd9bda9e09c9a5b42eda056daaf90df16b0a98fc43a72",
+      "logicalJobId": "RECORDS-PACKET-44",
+      "mode": "implement",
+      "provider": "claude",
+      "model": "haiku",
+      "role": "record-clerk",
+      "owner": "lane-a-parent-rec44",
+      "workdir": "C:/Projects/RisuAI",
+      "repoRoot": "C:\\Projects\\RisuAI",
+      "allowedWrites": [
+        "Agents/Investigation-Ledger.md",
+        "Agents/Roadmap.md",
+        "Agents/Live-State.md"
+      ],
+      "workClass": "records",
+      "resources": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec44/result.md"
+    },
+    "rec44-ver1": {
+      "hash": "8b69e142c5ab8de9505b2522b10fc7b714fdc119334ac3ee6f8df20fe748a1ef",
+      "logicalJobId": "RECORDS-B44-VERIFY",
+      "mode": "review",
+      "provider": "codex",
+      "model": "gpt-6-sol",
+      "owner": "lane-a-parent-rec44ver",
+      "workdir": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec44v\\ws",
+      "repoRoot": "C:\\Projects\\RisuAI",
+      "allowedWrites": [],
+      "workClass": "documents",
+      "resources": [],
+      "status": "completed",
+      "evidence": "C:\\Users\\yor42\\AppData\\Local\\Temp\\risu-b715\\b40\\rec44v\\result.md.host.json"
+    }
+  },
+  "integrations": [],
+  "cutoverEvidence": [
+    {
+      "report": "docs/workflow/reviews/2026-11-03-cutover.md",
+      "sha256": "f23a3ec753d598bcf9558caf8adfe246b8cc767e2c35cd45ffe415449b702f06",
+      "bytes": 10622,
+      "status": "APPROVE",
+      "settingsSHA256": "4fd7962813bb11c476f5cb0826e7ca109e0598839f09d6575fcc7bb619ac30f6",
+      "checks": [
+        "42-case governance suite plus later worker quota regression and integration recovery recheck",
+        "157 existing guard checks; no skipped groups",
+        "Installed Claude CLI synthetic API hook allow/deny/failure smoke",
+        "Candidate and active workflow validation"
+      ],
+      "limits": [
+        "No live worker inference, paid API request, Desktop UI, or device acceptance",
+        "Agy isolation and paid provider proof remain unavailable"
+      ]
+    }
+  ]
+}

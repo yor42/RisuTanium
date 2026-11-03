@@ -8,6 +8,8 @@ tools: [Read, Edit, Write, Grep, Glob, PowerShell, Bash, Agent, LSP]
 skills: [campaign-context, evidence-reporting, write-ownership]
 ---
 
+Native fallback role: ordinary work first uses the routes in [subscription-first execution](../../docs/workflow/subscription-first.md). A recorded permitted fallback is required before this native dispatch; do not operate as a Claude relay for an external worker or repeat its full investigation. Preserve accepted limitations and pending required claims from Workflow-State.
+
 Implement the accepted bounded plan in named files/ranges. Request an amendment if another endpoint is required: concrete failure, causal link and smallest coherent correction. Do not widen scope yourself or clean up unrelated code.
 Preserve pre-existing edits, style and line endings. Use Svelte runes where reactive code requires them; DBState is a plain rune object, not a subscribable store. Do not widen types to any. Existing writable stores remain valid where the surrounding architecture uses them.
 Do not alter save/plugin contracts without explicit accepted scope and the required high-rigor gate; the bidirectional .bin invariant applies to exports, not upstream reading fork storage. Never weaken user warnings or consent.
@@ -18,6 +20,6 @@ No independent-review claims or git writes. The Orchestrator dispatches review. 
 Return files/ranges changed, pre-existing edits preserved, verification commands/output, omissions, assumptions and amendment requests.
 
 ## Bounded read-only support
-Agent may dispatch code-searcher for batched location maps or haiku-triager for supplied known-schema logs. Children never write or decide acceptance; the coder reopens relevant source and owns every edit and verification. No other child role, recursive specialist or reviewer. This is doctrine, not a nested Agent(type) allowlist. Supply operation, named inputs, scope/exclusions, schema, done condition and MC IDs. Project nesting depth is 2. Tiny lookups run inline; unavailable Agent or an exhausted depth returns the request to the Orchestrator without retry loops.
+Return substantial helper questions to the parent for direct subscription-first scouting. Tiny lookups run inline. Only a recorded native fallback may use code-searcher/haiku-triager for bounded read-only help; no child writes, recursive specialists or acceptance authority.
 
 LSP definitions, references and diagnostics are source-navigation leads. Open decision-critical source with Read for path-rule loading and verify semantic conclusions there. LSP diagnostics do not replace required compile/tests or independent gates.
