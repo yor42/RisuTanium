@@ -11,15 +11,28 @@
     import BackgroundDom from "./BackgroundDom.svelte";
     import SideBarArrow from "../UI/GUI/SideBarArrow.svelte";
     import ModuleChatMenu from "../Setting/Pages/Module/ModuleChatMenu.svelte";
+    import { chatSurface } from "./chatSurface.svelte";
     let openChatList = $state(false)
     let openModuleList = $state(false)
 
+    // Opening Settings closes the chat and module menus.
+    let seenCloseEpoch = chatSurface.closeEpoch
+    $effect(() => {
+        const epoch = chatSurface.closeEpoch
+        if(epoch === seenCloseEpoch){
+            return
+        }
+        seenCloseEpoch = epoch
+        openChatList = false
+        openModuleList = false
+    })
+
     const wallPaper = `background: url(${defaultWallpaper})`
-    const externalStyles = 
+    const externalStyles = $derived(
             ("background: " + (DBState.db.textScreenColor ? (DBState.db.textScreenColor + '80') : "rgba(0,0,0,0.8)") + ';\n')
         +   (DBState.db.textBorder ? "text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;" : '')
         +   (DBState.db.textScreenRounded ? "border-radius: 2rem; padding: 1rem;" : '')
-        +   (DBState.db.textScreenBorder ? `border: 0.3rem solid ${DBState.db.textScreenBorder};` : '')
+        +   (DBState.db.textScreenBorder ? `border: 0.3rem solid ${DBState.db.textScreenBorder};` : ''))
     let bgImg= $state('')
     let lastBg = $state('')
     $effect.pre(() => {

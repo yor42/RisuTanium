@@ -11,7 +11,8 @@
     import { alertConfirm } from "src/ts/alert";
     import { language } from "src/lang";
     import { getUserName, replacePlaceholders } from "../../ts/util";
-    import { onDestroy } from 'svelte';
+    import { onDestroy, untrack } from 'svelte';
+    import { chatSurface } from "./chatSurface.svelte";
     import { ParseMarkdown } from "src/ts/parser/parser.svelte";
     import {defaultAutoSuggestPrompt} from "../../ts/storage/defaultPrompts.js";
 
@@ -163,6 +164,27 @@
         updateSuggestions()
     });
     $effect.pre(() => {translateSuggest(toggleTranslate, suggestMessages)});
+
+    // The toggle is seeded from the setting at mount; a setting changed during a Settings visit
+    // is taken up on release, while a toggle the user set by hand otherwise stays.
+    let autoTranslateAtHide = DBState.db.autoTranslate
+    let wasSurfaceHidden = false
+    $effect(() => {
+        if(chatSurface.hidden){
+            wasSurfaceHidden = true
+            autoTranslateAtHide = untrack(() => DBState.db.autoTranslate)
+            return
+        }
+        if(!wasSurfaceHidden){
+            return
+        }
+        wasSurfaceHidden = false
+        untrack(() => {
+            if(DBState.db.autoTranslate !== autoTranslateAtHide){
+                toggleTranslate = DBState.db.autoTranslate
+            }
+        })
+    });
 </script>
 
 <div class="ml-4 flex flex-wrap">

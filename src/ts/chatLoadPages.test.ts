@@ -5,6 +5,7 @@ import {
     getAdditionalChatLoadPages,
     getInitialChatLoadPages,
     normalizeChatLoadPages,
+    pagesOnReturn,
 } from './chatLoadPages'
 
 describe('normalizeChatLoadPages', () => {
@@ -26,5 +27,20 @@ describe('normalizeChatLoadPages', () => {
         expect(getInitialChatLoadPages({ chatLoadInitialPages: 12 })).toBe(12)
         expect(getAdditionalChatLoadPages({})).toBe(DEFAULT_CHAT_LOAD_ADDITIONAL_PAGES)
         expect(getAdditionalChatLoadPages({ chatLoadAdditionalPages: 8 })).toBe(8)
+    })
+})
+
+describe('pagesOnReturn', () => {
+    it('keeps the loaded pages when the page size is unchanged', () => {
+        expect(pagesOnReturn(60, 30, 30)).toEqual({ next: 60, lowered: false })
+    })
+
+    it('resets to a lowered page size and reports the lowering', () => {
+        expect(pagesOnReturn(30, 30, 20)).toEqual({ next: 20, lowered: true })
+        expect(pagesOnReturn(60, 30, 20)).toEqual({ next: 20, lowered: true })
+    })
+
+    it('resets to a raised page size without reporting a lowering', () => {
+        expect(pagesOnReturn(30, 30, 50)).toEqual({ next: 50, lowered: false })
     })
 })

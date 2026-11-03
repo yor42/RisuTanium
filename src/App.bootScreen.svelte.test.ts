@@ -54,6 +54,8 @@ vi.mock('./ts/stores.svelte', async () => {
         openPresetList: writable(false),
         openPersonaList: writable(false),
         MobileGUI: writable(false),
+        ReloadGUIPointer: writable(0),
+        ReloadChatPointer: writable({}),
         CustomGUISettingMenuStore: writable(false),
         loadedStore: writable(false),
         alertStore: writable({ type: 'none', msg: '' }),

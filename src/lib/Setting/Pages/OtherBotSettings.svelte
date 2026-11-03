@@ -10,6 +10,7 @@
     import { DBState, selectedCharID } from 'src/ts/stores.svelte';
     import { saveAsset, downloadFile, pickedAssetLimitBytes } from "src/ts/globalApi.svelte";
     import { requestWavespeedModels } from "src/ts/process/wavespeedModels";
+    import { wavespeedLorasToWrite } from "src/ts/process/wavespeedLoraSync";
     import { SecretRefError } from "src/ts/secretRef";
     import { beginBusy } from "src/ts/process/memory/busyActions";
     import { isTauri } from "src/ts/platform"
@@ -101,11 +102,22 @@
     let wavespeedModels = $state<WavespeedModel[]>([]);
     let isWavespeedLoading = $state(false);
     let wavespeedSearchQuery = $state("");
-    let wavespeedLoras = $state<LoraItem[]>([
-        { path: "", scale: 1.0 },
-        { path: "", scale: 1.0 },
-        { path: "", scale: 1.0 }
-    ]);
+    const MIN_LORA_SLOTS = 3;
+
+    // Seeds the editable slots from the stored list, as fresh objects, padded with empty slots, so a visit that
+    // edits nothing syncs back exactly what is stored.
+    function seedWavespeedLoras(): LoraItem[] {
+        const seeded: LoraItem[] = (DBState.db.wavespeedImage?.loras ?? []).map(item => ({
+            path: item.path,
+            scale: item.scale
+        }));
+        while (seeded.length < MIN_LORA_SLOTS) {
+            seeded.push({ path: "", scale: 1.0 });
+        }
+        return seeded;
+    }
+
+    let wavespeedLoras = $state<LoraItem[]>(seedWavespeedLoras());
 
     /**
      * Fetch models from WaveSpeed API dynamically
@@ -224,12 +236,10 @@
     $effect(() => {
         // Sync loras to DB, filtering out empty URLs
         if (DBState.db.wavespeedImage) {
-            DBState.db.wavespeedImage.loras = wavespeedLoras
-              .filter(item => item.path && item.path.trim() !== "")
-              .map(item => ({
-                  path: item.path,
-                  scale: item.scale
-              }));
+            const toWrite = wavespeedLorasToWrite(wavespeedLoras, untrack(() => DBState.db.wavespeedImage.loras));
+            if (toWrite !== null) {
+                DBState.db.wavespeedImage.loras = toWrite;
+            }
         }
     });
     // End wavespeed

@@ -1,10 +1,11 @@
 <script lang="ts">
     import { CheckIcon, XIcon } from '@lucide/svelte';
-    import { createEventDispatcher, onDestroy } from 'svelte';
+    import { createEventDispatcher, onDestroy, untrack } from 'svelte';
     import { DBState } from 'src/ts/stores.svelte';
     import { language } from 'src/lang';
     import { registerDraft, unregisterDraft } from 'src/ts/localDrafts';
     import { v4 } from 'uuid';
+    import { chatSurface } from './chatSurface.svelte';
     import { 
         findAllOriginalRangesFromHtml,
         findAllOriginalRangesFromText,
@@ -333,7 +334,7 @@
                 textareaRef.focus();
                 adjustHeight();
                 setTimeout(() => {
-                    const buttonsEl = textareaRef.closest('.partial-edit-modal')?.querySelector('.partial-edit-buttons');
+                    const buttonsEl = textareaRef?.closest('.partial-edit-modal')?.querySelector('.partial-edit-buttons');
                     if (buttonsEl) {
                         (buttonsEl as HTMLElement).scrollIntoView({ behavior: 'instant', block: 'nearest' });
                     }
@@ -424,6 +425,24 @@
         isConfirmingDelete = false;
         resetMatchingState();
     }
+
+    // Opening Settings cancels an open partial edit and hides the buttons. The button
+    // wrappers live on document.body, outside the hidden chat surface, so they would
+    // otherwise stay on screen over Settings.
+    let seenCloseEpoch = chatSurface.closeEpoch;
+    $effect(() => {
+        const epoch = chatSurface.closeEpoch;
+        if (epoch === seenCloseEpoch) {
+            return;
+        }
+        seenCloseEpoch = epoch;
+        untrack(() => {
+            handleCancel();
+            isConfirmingDelete = false;
+            hideBlockButton();
+            hideDragButton();
+        });
+    });
 
     function handleKeydown(e: KeyboardEvent) {
         if (e.key === 'Escape') {

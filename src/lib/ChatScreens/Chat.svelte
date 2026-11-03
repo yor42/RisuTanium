@@ -32,7 +32,7 @@
     import { formatDraftAge } from "src/ts/draftAge"
     import { chatWindowKey } from "src/ts/chatWindowPolicy"
     import { capitalize, getUserIcon, getUserName, sleep } from "src/ts/util"
-    import { onDestroy, onMount } from "svelte"
+    import { onDestroy, onMount, untrack } from "svelte"
     import { fade } from "svelte/transition"
     import { type Unsubscriber } from "svelte/store"
     import { v4 as uuidv4, v4 } from 'uuid'
@@ -48,6 +48,7 @@
     import PopupButton from "../UI/PopupButton.svelte";
     import PartialEditController from './PartialEditController.svelte';
     import { getLLMCache, setLLMCache } from "../../ts/translator/translator"
+    import { chatSurface, isChatSurfaceInstalled } from "./chatSurface.svelte"
 
     let translating = $state(false)
     let editMode = $state(false)
@@ -96,6 +97,8 @@
         getTreeView?: () => TreeView | null;
         /** True while a generation or a composer action runs. */
         getBusy?: () => boolean;
+        /** A row of the kept-mounted chat surface: it holds its parsing while Settings covers the chat and dies on a rebuild return. */
+        surface?: boolean;
     }
 
     let {
@@ -128,7 +131,16 @@
         onBranch = undefined,
         getTreeView = undefined,
         getBusy = undefined,
+        surface = false,
     }: Props = $props();
+
+    // A surface row without an installed surface behaves as any other row. Otherwise it records the rebuild epoch it
+    // was created under: after a rebuild return every older row (and the bodies inside it) is dead and never parses,
+    // whatever order the flush visits the roots in.
+    const surfaceEpoch: number | null = untrack(() => surface) && isChatSurfaceInstalled()
+        ? untrack(() => chatSurface.rebuildEpoch)
+        : null
+    const surfaceDead = () => surfaceEpoch !== null && surfaceEpoch !== chatSurface.rebuildEpoch
 
     // The tree controls read the live chat, never the mount-time props: `totalLength` and the sibling view
     // are fixed or shared, and a row must not remount when a send or a switch changes them.
@@ -201,6 +213,25 @@
     // the source text).
     let frozenTranslationIdentity: TranslationIdentity | null = null
     let frozenTranslationSeed = ''
+
+    // Opening Settings closes both editors without discarding anything: the stored
+    // draft records stay in `draftContentOrphanGate` and are offered again on the next
+    // open, and the registered-draft effects above release their registrations.
+    let seenCloseEpoch = chatSurface.closeEpoch
+    $effect(() => {
+        const epoch = chatSurface.closeEpoch
+        if (epoch === seenCloseEpoch) {
+            return
+        }
+        seenCloseEpoch = epoch
+        editMode = false
+        editTranslationMode = false
+        discardConfirmOpen = false
+        frozenMessageIdentity = null
+        frozenTranslationIdentity = null
+        restoredMessageRecord = null
+        restoredTranslationRecord = null
+    })
 
     // The restore marker's fade-in (MC-068: "about 150ms", none under
     // prefers-reduced-motion). Copied from `SourceDisclosure.svelte`'s guard:
@@ -799,7 +830,19 @@
         displaya(displayMessage)
     }
 
+    // A surface row does not track `hidden` while it runs normally, so an idle visit runs nothing. A dependency
+    // change while hidden runs the effect once, which skips and subscribes to `hidden`; the release then parses once.
+    // A dead row never parses.
     $effect.pre(() => {
+        if(surfaceEpoch !== null){
+            if(untrack(() => chatSurface.hidden)){
+                void chatSurface.hidden
+                return
+            }
+            if(untrack(surfaceDead)){
+                return
+            }
+        }
         updateDisplayedMessage()
     });
 
@@ -814,6 +857,9 @@
     onMount(()=>{
         queueMicrotask(() => { iconMounted = true })
         unsubscribers.push(ReloadGUIPointer.subscribe((v) => {
+            if(surfaceEpoch !== null && (chatSurface.hidden || surfaceDead())){
+                return
+            }
             updateDisplayedMessage()
         }))
     })
@@ -1155,7 +1201,9 @@
             {language.noMessage}
         </div>
     {:else}
-        {@const chatReloadPointer = $ReloadGUIPointer + ($ReloadChatPointer[idx] ?? 0)}
+        {@const chatReloadPointer = surfaceEpoch !== null
+            ? chatSurface.heldGui + (chatSurface.heldChat[idx] ?? 0)
+            : $ReloadGUIPointer + ($ReloadChatPointer[idx] ?? 0)}
         {@const totalLengthPointer = (idx > totalLength - 6) ? totalLength : 0}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1189,6 +1237,7 @@
                     bind:retranslate={retranslate}
                     {renderRawStreaming}
                     {deferAutoTranslate}
+                    {surfaceEpoch}
                     {rawStreamingText} />
             {/key}
         </span>

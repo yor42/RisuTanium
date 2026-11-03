@@ -9,6 +9,7 @@
     import { isActiveStreamReply } from 'src/ts/process/activeStreams';
     import { createMountHolders, type MountHolderRun } from './chatMountHolders';
     import { treeView } from 'src/ts/process/chatTreeView';
+    import { chatSurface, isChatSurfaceInstalled } from './chatSurface.svelte';
 
     const getCurrentChatRoomId = () => {
         const charId = get(selectedCharID);
@@ -64,6 +65,11 @@
     // (e.g. after a cold-storage switch destroys the old one) never replays a
     // stale scroll for a token bump it wasn't present for.
     let lastHandledResetToken = untrack(() => windowResetToken);
+
+    // Without an installed surface this list behaves as it always did. With one, the rows are surface rows, the
+    // effect below does no row work while Settings covers the chat, and a rebuild return replaces every row.
+    const surfaceInstalled = isChatSurfaceInstalled();
+    let lastRebuildEpoch = surfaceInstalled ? untrack(() => chatSurface.rebuildEpoch) : 0;
 
     let chatBody: HTMLDivElement;
     let hashes: Set<number> = new Set();
@@ -175,6 +181,7 @@
                     onBranch: onBranch,
                     getTreeView: getTreeView,
                     getBusy: getBusy,
+                    surface: true,
                 }
                 const previousHash = nextHash;
                 pendingMounts.push((run) => {
@@ -245,6 +252,19 @@
         mountHolders.destroyAll();
     })
 
+    // Drops every row so the next update mounts them all afresh from the current state.
+    function unmountAllRows() {
+        mountInstances.forEach((inst) => {
+            unmount(inst);
+        });
+        mountInstances.clear();
+        mountHolders.destroyAll();
+        chatBody.querySelectorAll('[x-hashed]').forEach((element) => {
+            element.remove();
+        });
+        hashes = new Set();
+    }
+
     function checkIfAtBottom() {
         if (!chatBody || !chatBody.parentElement) return true;
         const sc = chatBody.parentElement;
@@ -270,8 +290,25 @@
     $effect(() => {
         console.log('Updating Chats');
         void $ReloadChatPointer; // Make $effect track ReloadChatPointer changes
+        let rebuilding = false;
+        if(surfaceInstalled){
+            // Streaming and every other update wait for the return; the release re-runs this effect once.
+            if(chatSurface.hidden){
+                return
+            }
+            rebuilding = chatSurface.rebuildEpoch !== lastRebuildEpoch;
+        }
         const wasAtBottom = checkIfAtBottom();
+        const scrollHost = chatBody?.parentElement ?? null;
+        const savedScrollTop = scrollHost ? scrollHost.scrollTop : 0;
+        if(rebuilding){
+            lastRebuildEpoch = chatSurface.rebuildEpoch;
+            unmountAllRows();
+        }
         updateChatBody()
+        if(rebuilding && scrollHost){
+            scrollHost.scrollTop = savedScrollTop;
+        }
 
         // Scroll-to-bottom after a window reset that actually lowered
         // loadPages (Stage A, A-lite). Reading windowResetToken here makes it

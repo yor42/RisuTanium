@@ -5,6 +5,7 @@ import { appendIfAbsent } from "./characterSaveMarks"
 import { MEASURE } from "../process/memory/measureFlag"
 import { classifyChange, ensureInstalled, noteIdentity, notePartitionTag, noteSignal } from "./netSignalMeter"
 import { startPluginRecord } from "../plugins/pluginCostMeter"
+import { noteTopLevelChange } from "./topLevelChanges"
 
 export interface DbChangeEffectOptions {
     tracker: toSaveType
@@ -83,6 +84,15 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
         }
     }
 
+    // The settings-level effects below (everything except the character partitions and the identity tracker)
+    // count a change on every run after their first, which is exactly when they pass `true`.
+    const markSettingsChanged = (markDirty: boolean): void => {
+        if (markDirty) {
+            noteTopLevelChange()
+        }
+        opts.markChanged(markDirty)
+    }
+
     let ranOnce = false
     // Deep-read, like the sibling effects below. A shallow id/length read misses
     // every in-place preset mutation -- rename, preset image, and most importantly
@@ -94,7 +104,7 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
         $state.snapshot(DBState.db.botPresets)
         DBState.db.botPresetsId
         opts.tracker.botPreset = true
-        opts.markChanged(ranOnce)
+        markSettingsChanged(ranOnce)
         ranOnce = true
     })
     let modulesRanOnce = false
@@ -130,33 +140,33 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
             $effect(() => {
                 $state.snapshot(m)             // deep-read THIS element only
                 opts.tracker.modules = true
-                opts.markChanged(childRanOnce)
+                markSettingsChanged(childRanOnce)
                 childRanOnce = true
             })
         }
         opts.tracker.modules = true
-        opts.markChanged(modulesRanOnce)
+        markSettingsChanged(modulesRanOnce)
         modulesRanOnce = true
     })
     let ranOnce3 = false
     $effect(() => {
         $state.snapshot(DBState.db.loadouts)
         opts.tracker.loadouts = true
-        opts.markChanged(ranOnce3)
+        markSettingsChanged(ranOnce3)
         ranOnce3 = true
     })
     let ranOnce4 = false
     $effect(() => {
         $state.snapshot(DBState.db.plugins)
         opts.tracker.plugins = true
-        opts.markChanged(ranOnce4)
+        markSettingsChanged(ranOnce4)
         ranOnce4 = true
     })
     let ranOnce5 = false
     $effect(() => {
         $state.snapshot(DBState.db.pluginCustomStorage)
         opts.tracker.pluginCustomStorage = true
-        opts.markChanged(ranOnce5)
+        markSettingsChanged(ranOnce5)
         ranOnce5 = true
     })
     // 6a -- the generic top-level loop. Deep-reads every top-level
@@ -171,7 +181,7 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
                 $state.snapshot(DBState.db[key])
             }
         }
-        opts.markChanged(ranOnce6a)
+        markSettingsChanged(ranOnce6a)
         ranOnce6a = true
     })
 

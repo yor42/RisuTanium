@@ -31,7 +31,7 @@
     import Chats from './Chats.svelte';
     import Button from '../UI/GUI/Button.svelte';
     import PluginDefinedIcon from '../Others/PluginDefinedIcon.svelte';
-    import { getAdditionalChatLoadPages, getInitialChatLoadPages } from 'src/ts/chatLoadPages';
+    import { getAdditionalChatLoadPages, getInitialChatLoadPages, pagesOnReturn } from 'src/ts/chatLoadPages';
     import { COMPOSER_DRAFT_KIND, hasMessageEditorDrafts, onDraftsChanged, registerDraft, unregisterDraft } from 'src/ts/localDrafts';
     import { chatWindowKey, createChatWindowPolicy, runWithFullWindow } from 'src/ts/chatWindowPolicy';
     import {
@@ -52,6 +52,7 @@
     import { beginWork, type OriginHint } from 'src/ts/process/chatOrigin';
     import * as composerDrafts from 'src/ts/process/composerDrafts.svelte';
     import type { ComposerDraftKey, ComposerDraftRecord } from 'src/ts/process/composerDrafts.svelte';
+    import { chatSurface } from './chatSurface.svelte';
 
     const loadPlaygroundMenu = () => import('../Playground/PlaygroundMenu.svelte').then(m => m.default);
     
@@ -78,6 +79,18 @@
     let chatsInstance: any = $state()
     let isScrollingToMessage = $state(false)
     let { openModuleList = $bindable(false), openChatList = $bindable(false), customStyle = '' }: Props = $props();
+
+    // Opening Settings closes the composer menu and the sticker row.
+    let seenCloseEpoch = chatSurface.closeEpoch
+    $effect(() => {
+        const epoch = chatSurface.closeEpoch
+        if(epoch === seenCloseEpoch){
+            return
+        }
+        seenCloseEpoch = epoch
+        openMenu = false
+        toggleStickers = false
+    })
     let currentCharacter = $derived(DBState.db.characters[$selectedCharID])
     let currentChatObj = $derived(currentCharacter?.chats?.[currentCharacter.chatPage])
     let currentChat = $derived(currentChatObj?.message ?? [])
@@ -274,6 +287,10 @@
         chatsInstance?.scrollToLatestMessage();
     }
     $effect(() => {
+        // A bookmark jump chosen while Settings is open waits for the return: the rows are not laid out before then.
+        if(chatSurface.hidden){
+            return
+        }
         if(ScrollToMessageStore.value !== -1){
             const index = ScrollToMessageStore.value
             ScrollToMessageStore.value = -1
@@ -443,6 +460,33 @@
         updateInputSizeAll()
     });
 
+    // A hidden textarea measures zero, so the sizes are taken again once on release. The page
+    // size read at the hide is compared with the one at the release: an unchanged setting keeps
+    // the pages the user scrolled to, a changed one resets them.
+    let initialPagesAtHide = getInitialChatLoadPages(DBState.db)
+    let wasSurfaceHidden = false
+    $effect(() => {
+        if(chatSurface.hidden){
+            wasSurfaceHidden = true
+            initialPagesAtHide = untrack(() => getInitialChatLoadPages(DBState.db))
+            return
+        }
+        if(!wasSurfaceHidden){
+            return
+        }
+        wasSurfaceHidden = false
+        untrack(() => {
+            const { next, lowered } = pagesOnReturn(loadPages, initialPagesAtHide, getInitialChatLoadPages(DBState.db))
+            if(next !== loadPages){
+                loadPages = next
+            }
+            if(lowered){
+                windowResetToken += 1
+            }
+            updateInputSizeAll()
+        })
+    });
+
     async function updateInputTransateMessage(reverse: boolean) {
         const key = resolveDraftKeyForWrite()
         if(!key){
@@ -579,6 +623,10 @@
         {/if}
     {:else}
         <div class="h-full w-full flex flex-col-reverse overflow-y-auto relative default-chat-screen" onscroll={(e) => {
+            // A hidden list reports zero metrics, which would read as scrolled to the top and grow the loaded pages.
+            if(chatSurface.hidden){
+                return
+            }
             //@ts-expect-error scrollHeight/clientHeight/scrollTop don't exist on EventTarget, but target is HTMLElement here
             const scrolled = (e.target.scrollHeight - e.target.clientHeight + e.target.scrollTop)
             if(scrolled < 100 && DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message.length > loadPages){
@@ -913,7 +961,9 @@
 
             {#if DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message.length <= loadPages}
                 {#if DBState.db.characters[$selectedCharID].type !== 'group' }
+                    {#key chatSurface.rebuildEpoch}
                     <Chat
+                        surface={true}
                         character={createSimpleCharacter(DBState.db.characters[$selectedCharID])}
                         name={DBState.db.characters[$selectedCharID].name}
                         message={firstMessageOf(DBState.db.characters[$selectedCharID], DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage])}
@@ -944,6 +994,7 @@
                         totalPages={DBState.db.characters[$selectedCharID].alternateGreetings.length + 1}
 
                     />
+                    {/key}
                     {#if (aiLawApplies() && DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message.length === 0)}
                         <div class="ml-auto mr-auto mt-4 text-textcolor2 italic max-w-2/3 wrap-break-word text-center">
                             {language.aiGenerationWarning}

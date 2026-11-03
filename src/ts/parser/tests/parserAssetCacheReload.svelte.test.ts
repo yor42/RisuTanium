@@ -216,6 +216,8 @@ describe('the pointer subscriber and the hook registry, real stores', () => {
     const { registerGuiReloadHook } = await loadGuiReloadHooks()
     const order: string[] = []
     const unregister = registerGuiReloadHook(() => { order.push('hook') })
+    // The pointer subscriber resets the chat map only when it is non-empty, so seed it to make the reload observable.
+    ReloadChatPointer.set({ 0: 1 })
     let chatReloadSeen = false
     const stopChat = ReloadChatPointer.subscribe(() => {
       if (chatReloadSeen) order.push('chat')

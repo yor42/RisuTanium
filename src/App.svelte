@@ -37,6 +37,9 @@
     import { isAndroidTransport } from './ts/storage/tauriByteTransport';
     import BootScreen from './lib/Others/BootScreen.svelte';
     import { getBootScreen } from './ts/storage/store2/ui/bootScreen.svelte';
+    import { chatSurface, installChatSurface } from './lib/ChatScreens/chatSurface.svelte';
+
+    installChatSurface()
 
 
   
@@ -206,7 +209,7 @@
         <CustomGUISettingMenu />
     {:else if !didFirstSetup}
         <WelcomeRisu />
-    {:else if $settingsOpen}
+    {:else if $settingsOpen && $MobileGUI}
         <Settings />
     {:else if $MobileGUI}
         <div class="w-full h-full flex flex-col">
@@ -215,21 +218,33 @@
             <MobileFooter />
         </div>
     {:else}
+        {#if $settingsOpen}
+            <Settings />
+        {/if}
         {#if gridOpen}
-            <GridChars endGrid={() => {gridOpen = false}} />
-        {:else}
-            {#if (!$DynamicGUI)}
-                <Sidebar openGrid={() => {gridOpen = true}} hidden={!$sideBarStore} />
-            {:else}
-                <div class="top-0 w-full h-full left-0 z-30 flex flex-row items-center" class:fixed={$sideBarStore} class:hidden={!$sideBarStore} >
-                    <!-- svelte-ignore a11y_click_events_have_key_events -->
-                    <Sidebar openGrid={() => {gridOpen = true}}  hidden={false} />
-
-
-
-                </div>
+            {#if !$settingsOpen}
+                <GridChars endGrid={() => {gridOpen = false}} />
             {/if}
-            <ChatScreen />
+        {:else}
+            {#if !$settingsOpen}
+                {#if (!$DynamicGUI)}
+                    <Sidebar openGrid={() => {gridOpen = true}} hidden={!$sideBarStore} />
+                {:else}
+                    <div class="top-0 w-full h-full left-0 z-30 flex flex-row items-center" class:fixed={$sideBarStore} class:hidden={!$sideBarStore} >
+                        <!-- svelte-ignore a11y_click_events_have_key_events -->
+                        <Sidebar openGrid={() => {gridOpen = true}}  hidden={false} />
+
+
+
+                    </div>
+                {/if}
+            {/if}
+            <!-- The chat stays mounted while Settings is open; display:contents keeps its layout as a direct flex child of main. -->
+            <div data-chat-surface style:display={$settingsOpen ? 'none' : 'contents'} inert={$settingsOpen}>
+                {#key chatSurface.remountEpoch}
+                    <ChatScreen />
+                {/key}
+            </div>
         {/if}
     {/if}
     </AlertInertScope>

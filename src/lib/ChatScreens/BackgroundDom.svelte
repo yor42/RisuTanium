@@ -6,6 +6,7 @@
     import { moduleBackgroundEmbedding, ReloadGUIPointer, selIdState } from "src/ts/stores.svelte";
     import { moduleRunVersion, selectedModulesPending } from "src/ts/process/moduleEnsure";
     import { BACKGROUND_SLOT, lookup, record, scopeOf, type RenderFingerprint } from "./chatBodyRenderCache";
+    import { chatSurface, isChatSurfaceInstalled } from "./chatSurface.svelte";
 
     let backgroundHTML = $derived(DBState.db?.characters?.[selIdState.selId]?.backgroundHTML)
     let currentChar:character|groupChat = $derived(DBState.db?.characters?.[selIdState.selId])
@@ -34,14 +35,31 @@
         return null
     })
 
+    // Without an installed surface the background follows the raw reload pointer and never holds, as it always did.
+    const surfaceInstalled = isChatSurfaceInstalled()
+
     $effect(() => {
-        $ReloadGUIPointer
+        if(surfaceInstalled){
+            void chatSurface.heldGui
+            // A rebuild return runs this once even when no input differs, like the rows.
+            void chatSurface.rebuildEpoch
+        }
+        else{
+            $ReloadGUIPointer
+        }
         const pending = gatePending
         const source = backgroundHTML
         const embedding = $moduleBackgroundEmbedding
         const chara = currentChar
         const selId = selIdState.selId
         const scope = captureScope()
+
+        // The normal branch does not track `hidden`, so an idle visit runs nothing. An input change while Settings is
+        // open runs the effect once, which skips and subscribes to `hidden`; the release then parses once.
+        if(surfaceInstalled && untrack(() => chatSurface.hidden)){
+            void chatSurface.hidden
+            return
+        }
 
         if((!source && !embedding) || selId <= -1){
             shown = null

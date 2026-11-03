@@ -14,6 +14,16 @@ import { isEnterActivatedControl, shouldYieldToFocusedControl } from "./hotkeyYi
 import { changeChar } from "./characters"
 import { isHiddenSystemCharacter } from "./hiddenCharacters"
 
+// Shortcuts that act on the chat screen. Settings keeps the chat mounted but hidden, so
+// these must not reach its buttons while Settings is open.
+export const CHAT_HOTKEY_ACTIONS: ReadonlySet<string> = new Set([
+    'send', 'reroll', 'unreroll', 'remove', 'edit', 'copy', 'focusInput', 'translate',
+])
+
+export function chatHotkeyMayAct(action: string, settingsIsOpen: boolean): boolean {
+    return !(settingsIsOpen && CHAT_HOTKEY_ACTIONS.has(action))
+}
+
 // The one predicate for every key path: a prompt is waiting, or an alert covers the page.
 function keysBlocked(): boolean {
     return pageCovered()
@@ -128,6 +138,14 @@ export function initHotkey(){
                 action()
             }
         }
+        // A chat shortcut is consumed but does nothing while Settings is open.
+        const chatAct = (name: string, action: () => void) => {
+            act(() => {
+                if(chatHotkeyMayAct(name, get(settingsOpen))){
+                    action()
+                }
+            })
+        }
         // A control that natively activates on this key (a button, select,
         // etc.) and currently holds keyboard focus should get to handle it
         // instead of a hotkey match stealing it via preventDefault below.
@@ -140,23 +158,23 @@ export function initHotkey(){
             }
             switch(hotkey.action){
                 case 'reroll':{
-                    act(() => clickQuery('.button-icon-reroll'))
+                    chatAct('reroll', () => clickQuery('.button-icon-reroll'))
                     break
                 }
                 case 'unreroll':{
-                    act(() => clickQuery('.button-icon-unreroll'))
+                    chatAct('unreroll', () => clickQuery('.button-icon-unreroll'))
                     break
                 }
                 case 'translate':{
-                    act(() => clickQuery('.button-icon-translate'))
+                    chatAct('translate', () => clickQuery('.button-icon-translate'))
                     break
                 }
                 case 'remove':{
-                    act(() => clickQuery('.button-icon-remove'))
+                    chatAct('remove', () => clickQuery('.button-icon-remove'))
                     break
                 }
                 case 'edit':{
-                    act(() => {
+                    chatAct('edit', () => {
                         clickQuery('.button-icon-edit')
                         setTimeout(() => {
                             focusQuery('.message-edit-area')
@@ -165,15 +183,15 @@ export function initHotkey(){
                     break
                 }
                 case 'copy':{
-                    act(() => clickQuery('.button-icon-copy'))
+                    chatAct('copy', () => clickQuery('.button-icon-copy'))
                     break
                 }
                 case 'focusInput':{
-                    act(() => focusQuery('.text-input-area'))
+                    chatAct('focusInput', () => focusQuery('.text-input-area'))
                     break
                 }
                 case 'send':{
-                    act(() => clickQuery('.button-icon-send'))
+                    chatAct('send', () => clickQuery('.button-icon-send'))
                     break
                 }
                 case 'settings':{

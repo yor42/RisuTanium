@@ -1,4 +1,4 @@
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import type { character, Database, groupChat } from "./storage/database.svelte";
 import { type simpleCharacterArgument } from "./parser/parser.svelte";
 import type { alertData } from "./alert";
@@ -187,7 +187,10 @@ export const hotReloading = $state<string[]>([])
 // at no selection. A hook must not read any binding of this module declared below this call.
 ReloadGUIPointer.subscribe(() => {
     runGuiReloadHooks()
-    ReloadChatPointer.set({})
+    // An empty map needs no reset, and setting it anyway notifies the chat rows from inside another effect's flush.
+    if (Object.keys(get(ReloadChatPointer)).length > 0) {
+        ReloadChatPointer.set({})
+    }
     resetScriptCache()
 })
 

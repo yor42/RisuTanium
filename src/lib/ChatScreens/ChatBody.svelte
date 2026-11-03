@@ -1,3 +1,9 @@
+<script lang="ts" module>
+    // What a held evaluation returns when a surface body has no run yet. It is never assigned to `currentRun`, so
+    // `commitRun` rejects it and `resolution` stays as it was.
+    const HELD = Promise.resolve<string | undefined>(undefined)
+</script>
+
 <script lang="ts">
     import { onDestroy, untrack } from "svelte"
     import isEqual from "lodash/isEqual"
@@ -12,6 +18,7 @@
     import { getCurrentChat, getCurrentCharacter } from "src/ts/storage/database.svelte";
     import { getFileSrc } from "src/ts/globalApi.svelte";
     import { moduleRunVersion, selectedModulesPending } from "src/ts/process/moduleEnsure";
+    import { chatSurface } from "./chatSurface.svelte";
     import { UNRESOLVED_IMAGE_SELECTOR } from "./imageRepairSelector";
     import {
         AWAITING, lookup, pendingDisplay, record, runShowsSpinner, scopeOf, slotKeyOf,
@@ -35,6 +42,8 @@
         rawStreamingText?: string
         /** Fixed at mount by Chats: true only while the tail's reply streams. The translation then waits for the re-mount at the stream end. */
         deferAutoTranslate?: boolean
+        /** The rebuild epoch of the enclosing surface row, fixed when that row was created; null outside the chat surface. */
+        surfaceEpoch?: number | null
     }
 
     let {
@@ -52,6 +61,7 @@
         renderRawStreaming = false,
         rawStreamingText = '',
         deferAutoTranslate = false,
+        surfaceEpoch = null,
     }: Props =  $props()
 
     const SPINNER_HTML = `<div style="display:flex;justify-content:center;align-items:center;height:48px;"><div style="animation: spin 1s linear infinite; border-radius: 50%; height: 32px; width: 32px; border: 2px solid #3b82f6; border-top: 2px solid transparent;"></div></div><style>@keyframes spin { to { transform: rotate(360deg); } }</style>`
@@ -388,7 +398,48 @@
         return display.kind === 'spinner' ? SPINNER_HTML : ''
     }
 
-    let markParsingResult = $derived.by(() => startRun(msgDisplay, character, idx, renderRevision, gatePending))
+    // Surface bodies only: the inputs of the latest run, and whether the last evaluation was held.
+    type RunInputs = {
+        data: string | undefined
+        character: simpleCharacterArgument | string | null
+        idx: number
+        revision: number
+        gate: boolean
+        translated: boolean
+        retranslate: boolean
+    }
+    let lastRunInputs: RunInputs | null = null
+    let heldSinceLastRun = false
+
+    const sameInputs = (a: RunInputs, b: RunInputs) => a.data === b.data && a.idx === b.idx && a.revision === b.revision
+        && a.gate === b.gate && a.translated === b.translated && a.retranslate === b.retranslate
+        && isEqual(a.character, b.character)
+
+    // Outside the surface this is the plain start of a run. Inside it the inputs are read first, so the derived keeps
+    // its dependencies, and then: a dead body (its row predates a rebuild) never starts a run; while hidden nothing
+    // starts; the first evaluation after a hold starts a run only if an input changed since the latest run. Both held
+    // paths return the latest run, so the display stays as it was.
+    let markParsingResult = $derived.by(() => {
+        if(surfaceEpoch === null){
+            return startRun(msgDisplay, character, idx, renderRevision, gatePending)
+        }
+        const inputs: RunInputs = { data: msgDisplay, character, idx, revision: renderRevision, gate: gatePending, translated, retranslate }
+        if(surfaceEpoch !== chatSurface.rebuildEpoch){
+            return currentRun ?? HELD
+        }
+        if(chatSurface.hidden){
+            heldSinceLastRun = true
+            return currentRun ?? HELD
+        }
+        if(heldSinceLastRun){
+            heldSinceLastRun = false
+            if(currentRun !== null && lastRunInputs !== null && sameInputs(lastRunInputs, inputs)){
+                return currentRun
+            }
+        }
+        lastRunInputs = inputs
+        return startRun(msgDisplay, character, idx, renderRevision, gatePending)
+    })
 
     // The latest run is read before the pending display: starting the run sets the plain facts displayNow() reads. A
     // string result of the latest run is shown as is; any other state (unresolved, undefined, superseded) shows the
