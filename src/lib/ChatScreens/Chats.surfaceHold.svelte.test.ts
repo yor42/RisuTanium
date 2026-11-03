@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import Chats from './Chats.svelte'
 import { DBState, ReloadChatPointer, ReloadGUIPointer, selIdState, selectedCharID, settingsOpen } from 'src/ts/stores.svelte'
 import { clearChatBodyRenderCache } from './chatBodyRenderCache'
-import { installChatSurface, resetChatSurfaceForTests } from './chatSurface.svelte'
+import { chatSurface, installChatSurface, resetChatSurfaceForTests } from './chatSurface.svelte'
 import { registerDbChangeEffects } from 'src/ts/storage/dbChangeEffects.svelte'
 import { resetTopLevelChangesForTests, topLevelChangeCount } from 'src/ts/storage/topLevelChanges'
 import { risuChatParser } from 'src/ts/process/scripts'
@@ -32,6 +32,8 @@ const h = vi.hoisted(() => ({
     parses: [] as Held[],
     // Reads a database value the way a CBS macro such as {{user}} does, so a row's display effect depends on it.
     readDatabaseValue: (() => {}) as () => void,
+    // The text a macro such as {{user}} turns a message into; the identity unless a test installs a substitution.
+    substitute: ((text: string) => text) as (text: string) => string,
 }))
 
 vi.mock(import('src/ts/parser/parser.svelte'), () => ({
@@ -134,7 +136,7 @@ vi.mock(import('src/ts/translator/translator'), () => ({
 }) as unknown as typeof import('src/ts/translator/translator'))
 
 vi.mock(import('src/ts/process/scripts'), () => ({
-    risuChatParser: vi.fn((text: string) => { h.readDatabaseValue(); return text ?? '' }),
+    risuChatParser: vi.fn((text: string) => { h.readDatabaseValue(); return h.substitute(text ?? '') }),
 }) as unknown as typeof import('src/ts/process/scripts'))
 
 vi.mock(import('src/ts/process/tts'), () => ({
@@ -299,10 +301,10 @@ async function wait(ms = 0) {
     flushSync()
 }
 
-function messagesOf(count: number): LiveMessage[] {
+function messagesOf(count: number, dataOf: (index: number) => string = (i) => `M${i}`): LiveMessage[] {
     return Array.from({ length: count }, (_, i) => ({
         role: i % 2 === 0 ? 'user' : 'char',
-        data: `M${i}`,
+        data: dataOf(i),
         chatId: `id${i}`,
     }))
 }
@@ -332,10 +334,10 @@ function fontSizes(target: HTMLElement) {
     return [...target.querySelectorAll('.chattext')].map((e) => (e as HTMLElement).style.fontSize)
 }
 
-async function mountSettledChats(count: number, reactiveProps: { currentUsername: string } = { currentUsername: 'User' }) {
+async function mountSettledChats(count: number, reactiveProps: { currentUsername: string } = { currentUsername: 'User' }, dataOf?: (index: number) => string) {
     DBState.db = baseDb() as never
-    DBState.db.characters = [makeCharacter([makeChat(messagesOf(count))])] as never
-    const live = (DBState.db.characters as unknown as Array<{ chats: Array<{ message: LiveMessage[] }> }>)[0]
+    DBState.db.characters = [makeCharacter([makeChat(messagesOf(count, dataOf))])] as never
+    const live = (DBState.db.characters as unknown as Array<{ chatPage: number, chats: Array<{ id: string, message: LiveMessage[] }> }>)[0]
     selectedCharID.set(0)
     selIdState.selId = 0
     const props = $state({
@@ -346,6 +348,7 @@ async function mountSettledChats(count: number, reactiveProps: { currentUsername
         currentUsername: reactiveProps.currentUsername,
         userIcon: '',
         loadPages: 20,
+        windowResetToken: 0,
     })
     stopEffects = $effect.root(() => {
         registerDbChangeEffects({
@@ -362,7 +365,7 @@ async function mountSettledChats(count: number, reactiveProps: { currentUsername
     await wait(20)
     await answerAll()
     expect(rowNodes(target)).toHaveLength(count)
-    return { target, chat: live.chats[0], props }
+    return { target, chat: live.chats[0], char: live, props }
 }
 
 async function openSettings() {
@@ -386,6 +389,7 @@ beforeEach(() => {
     window.innerWidth = 1024
     h.parses.length = 0
     h.readDatabaseValue = () => { void DBState.db?.username }
+    h.substitute = (text) => text
     ReloadGUIPointer.set(0)
     ReloadChatPointer.set({})
     settingsOpen.set(false)
@@ -549,6 +553,172 @@ describe('the scroll position of the list', () => {
         await closeSettingsAndSettle()
 
         expect(writes).toEqual([])
+    })
+})
+
+describe('the scroll position of a rebuild return, with the layout clamp emulated', () => {
+    const CLIENT_HEIGHT = 50
+    const DEEP = -1500
+
+    interface RigWrite { value: number, readBack: number, texts: string[] }
+
+    let stopRig: (() => void) | null = null
+
+    /**
+     * Emulates the clamp a browser applies to a column-reverse list: a row whose text starts with `P:` is 100 high and any
+     * other row 10, the scroll height is the sum of the rows, and every `scrollTop` get or set and every rect read inside the
+     * list first clamps the stored offset to what the current rows allow. While the surface is hidden the get answers 0 and
+     * the offset is kept, as `display: none` does.
+     */
+    function installClampRig(target: HTMLElement, initial: number) {
+        let stored = initial
+        const writes: RigWrite[] = []
+        const texts = () => [...target.querySelectorAll('.chattext')].map((e) => e.textContent?.trim() ?? '')
+        const scrollHeight = () => [...target.querySelectorAll('.chat-message-container')].reduce((sum, row) => {
+            const text = row.querySelector('.chattext')?.textContent?.trim() ?? ''
+            return sum + (text.startsWith('P:') ? 100 : 10)
+        }, 0)
+        const layout = () => {
+            stored = Math.min(0, Math.max(stored, -Math.max(scrollHeight() - CLIENT_HEIGHT, 0)))
+        }
+        Object.defineProperty(target, 'scrollTop', {
+            configurable: true,
+            get: () => {
+                if (chatSurface.hidden) {
+                    return 0
+                }
+                layout()
+                return stored
+            },
+            set: (value: number) => {
+                stored = value
+                layout()
+                writes.push({ value, readBack: stored, texts: texts() })
+            },
+        })
+        const original = Element.prototype.getBoundingClientRect
+        const spy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+            if (!chatSurface.hidden && (this === target || target.contains(this))) {
+                layout()
+            }
+            return original.call(this)
+        })
+        stopRig = () => { spy.mockRestore() }
+        return writes
+    }
+
+    afterEach(() => {
+        stopRig?.()
+        stopRig = null
+    })
+
+    async function mountRigged(dataOf?: (index: number) => string) {
+        const mounted = await mountSettledChats(20, undefined, dataOf)
+        const writes = installClampRig(mounted.target, DEEP)
+        return { ...mounted, writes }
+    }
+
+    const valuesOf = (writes: RigWrite[]) => writes.map((w) => w.value)
+
+    test('R C-R1 a GUI-bump rebuild return writes the position captured at open, once, onto full rows', async () => {
+        const { target, writes } = await mountRigged()
+
+        await openSettings()
+        ReloadGUIPointer.update((v) => v + 1)
+        await closeSettingsAndSettle()
+        await wait(30)
+
+        expect(valuesOf(writes)).toEqual([DEEP])
+        expect(writes[0].readBack).toBe(DEEP)
+        expect(writes[0].texts.every((t) => t.startsWith('P:'))).toBe(true)
+        expect(target.scrollTop).toBe(DEEP)
+        expect(valuesOf(writes)).toEqual([DEEP])
+    })
+
+    test('R C-R2 a second rebuild before the rows settle keeps the captured position', async () => {
+        const { writes } = await mountRigged()
+
+        await openSettings()
+        ReloadGUIPointer.update((v) => v + 1)
+        settingsOpen.set(false)
+        await tick()
+        await tick()
+        await openSettings()
+        ReloadGUIPointer.update((v) => v + 1)
+        const writesBeforeSecondReturn = writes.length
+        await closeSettingsAndSettle()
+
+        expect(writes.length).toBe(writesBeforeSecondReturn + 1)
+        expect(writes[writesBeforeSecondReturn].value).toBe(DEEP)
+        expect(new Set(valuesOf(writes))).toEqual(new Set([DEEP]))
+    })
+
+    test('R C-R3 rows with no cached rendering at the write still get the captured position written', async () => {
+        h.substitute = (text) => text.replace(/\{\{user\}\}/g, String(DBState.db.username))
+        const { writes } = await mountRigged((i) => `{{user}} M${i}`)
+
+        await openSettings()
+        DBState.db.username = 'Renamed'
+        ReloadGUIPointer.update((v) => v + 1)
+        await closeSettingsAndSettle()
+
+        // The read-back of this write is the accepted limitation of rows still pending; only the value is the rule.
+        expect(writes.length).toBeGreaterThan(0)
+        expect(writes[0].value).toBe(DEEP)
+        expect(writes[0].texts.some((t) => !t.startsWith('P:'))).toBe(true)
+    })
+
+    test('R C-R4 a reopen before the release keeps the first capture', async () => {
+        const { writes } = await mountRigged()
+
+        await openSettings()
+        ReloadGUIPointer.update((v) => v + 1)
+        settingsOpen.set(false)
+        settingsOpen.set(true)
+        await tick()
+        await tick()
+        await closeSettingsAndSettle()
+
+        expect(valuesOf(writes)).toEqual([DEEP])
+        expect(writes[0].readBack).toBe(DEEP)
+    })
+
+    test('R C-G5 a chat switch during the visit gets no restore write', async () => {
+        const { char, props, writes } = await mountRigged()
+        const second = makeChat(messagesOf(20))
+        second.id = 'chat1'
+
+        await openSettings()
+        char.chats.push(second as never)
+        char.chatPage = 1
+        props.messages = char.chats[1].message as never
+        ReloadGUIPointer.update((v) => v + 1)
+        await closeSettingsAndSettle()
+
+        expect(writes).toEqual([])
+    })
+
+    test('G C-Gz a rebuild without a GUI bump keeps the rows full and writes the position back', async () => {
+        const { writes } = await mountRigged()
+
+        await openSettings()
+        DBState.db.zoomsize = 120
+        await closeSettingsAndSettle()
+
+        expect(valuesOf(writes)).toEqual([DEEP])
+        expect(writes[0].readBack).toBe(DEEP)
+    })
+
+    test('G C-G4 a window reset during the visit ends at 0 after the restore', async () => {
+        const { target, props, writes } = await mountRigged()
+
+        await openSettings()
+        props.windowResetToken = 1
+        ReloadGUIPointer.update((v) => v + 1)
+        await closeSettingsAndSettle()
+
+        expect(writes.at(-1)?.value).toBe(0)
+        expect(target.scrollTop).toBe(0)
     })
 })
 

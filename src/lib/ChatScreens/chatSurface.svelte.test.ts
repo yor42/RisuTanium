@@ -25,7 +25,7 @@ vi.mock('../../ts/stores.svelte', () => ({
 import { MobileGUI, ReloadChatPointer, ReloadGUIPointer, settingsOpen } from '../../ts/stores.svelte'
 import { noteTopLevelChange, resetTopLevelChangesForTests } from '../../ts/storage/topLevelChanges'
 import { changeLanguage } from '../../lang'
-import { chatSurface, installChatSurface, isChatSurfaceInstalled, resetChatSurfaceForTests } from './chatSurface.svelte'
+import { chatSurface, installChatSurface, isChatSurfaceInstalled, onSurfaceHiding, resetChatSurfaceForTests } from './chatSurface.svelte'
 
 let stopTeardownStandIn: (() => void) | null = null
 
@@ -218,6 +218,92 @@ describe('release decision', () => {
         await settle()
 
         expect(chatSurface.hidden).toBe(false)
+    })
+})
+
+describe('hiding hook', () => {
+    test('SEAM U1 the callback runs once, synchronously, while the surface is still visible', async () => {
+        const seen: boolean[] = []
+        onSurfaceHiding(() => { seen.push(chatSurface.hidden) })
+
+        settingsOpen.set(true)
+        expect(seen).toEqual([false])
+
+        await settle()
+        expect(chatSurface.hidden).toBe(true)
+        expect(seen).toEqual([false])
+    })
+
+    test('SEAM U2 a reopen while hidden, a MobileGUI open, an unregistered callback and a reset surface call nothing', async () => {
+        let calls = 0
+        const unregister = onSurfaceHiding(() => { calls += 1 })
+
+        settingsOpen.set(true)
+        await settle()
+        expect(calls).toBe(1)
+        settingsOpen.set(false)
+        settingsOpen.set(true)
+        await settle()
+        expect(calls).toBe(1)
+        settingsOpen.set(false)
+        await settle()
+
+        MobileGUI.set(true)
+        settingsOpen.set(true)
+        await settle()
+        expect(calls).toBe(1)
+        settingsOpen.set(false)
+        await settle()
+        MobileGUI.set(false)
+
+        unregister()
+        settingsOpen.set(true)
+        await settle()
+        expect(calls).toBe(1)
+        settingsOpen.set(false)
+        await settle()
+
+        onSurfaceHiding(() => { calls += 1 })
+        resetChatSurfaceForTests()
+        installChatSurface()
+        settingsOpen.set(true)
+        await settle()
+        expect(calls).toBe(1)
+    })
+
+    test('SEAM U4 a throwing callback neither stops the hide nor the callbacks after it', async () => {
+        const failure = vi.spyOn(console, 'error').mockImplementation(() => {})
+        let later = 0
+        onSurfaceHiding(() => { throw new Error('capture failed') })
+        onSurfaceHiding(() => { later += 1 })
+
+        settingsOpen.set(true)
+        await settle()
+
+        expect(chatSurface.hidden).toBe(true)
+        expect(later).toBe(1)
+        expect(failure).toHaveBeenCalledTimes(1)
+        failure.mockRestore()
+    })
+
+    test('CG U3 the hide and release baselines are unchanged with a callback registered', async () => {
+        onSurfaceHiding(() => {})
+
+        settingsOpen.set(true)
+        await settle()
+        ReloadGUIPointer.update((value) => value + 1)
+        settingsOpen.set(false)
+        await settle()
+        expect(chatSurface.rebuildEpoch).toBe(1)
+        expect(chatSurface.heldGui).toBe(1)
+        expect(chatSurface.hidden).toBe(false)
+
+        settingsOpen.set(true)
+        await settle()
+        settingsOpen.set(false)
+        await settle()
+        expect(chatSurface.rebuildEpoch).toBe(1)
+        expect(chatSurface.closeEpoch).toBe(2)
     })
 })
 

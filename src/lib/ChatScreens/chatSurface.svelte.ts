@@ -43,6 +43,20 @@ let changesAtHide = 0
 // different one at the release means the UI language changed during the visit.
 let languageAtHide = language
 
+const hidingCallbacks = new Set<() => void>()
+
+/**
+ * Registers a callback that runs synchronously when Settings opens over a visible chat, while the surface is still laid out:
+ * before the hide's DOM change and before any release. A reopen before the release does not call it again, so the first
+ * capture stays, like the other baselines. Returns the unregister function.
+ */
+export function onSurfaceHiding(callback: () => void): () => void {
+    hidingCallbacks.add(callback)
+    return () => {
+        hidingCallbacks.delete(callback)
+    }
+}
+
 function onSettingsOpened(){
     visit += 1
     chatSurface.closeEpoch += 1
@@ -55,6 +69,15 @@ function onSettingsOpened(){
         missedSignal = false
         changesAtHide = topLevelChangeCount()
         languageAtHide = language
+        // A failing capture only loses its own baseline; the hide and the other callbacks still happen.
+        for(const callback of hidingCallbacks){
+            try{
+                callback()
+            }
+            catch(error){
+                console.error('A surface hiding callback failed; the surface is hidden anyway', error)
+            }
+        }
         chatSurface.hidden = true
     }
 }
@@ -128,6 +151,7 @@ export function installChatSurface(){
 export function resetChatSurfaceForTests(){
     stopWatching?.()
     stopWatching = null
+    hidingCallbacks.clear()
     visit = 0
     missedSignal = false
     changesAtHide = 0

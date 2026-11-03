@@ -9,7 +9,8 @@
     import { isActiveStreamReply } from 'src/ts/process/activeStreams';
     import { createMountHolders, type MountHolderRun } from './chatMountHolders';
     import { treeView } from 'src/ts/process/chatTreeView';
-    import { chatSurface, isChatSurfaceInstalled } from './chatSurface.svelte';
+    import { chatSurface, isChatSurfaceInstalled, onSurfaceHiding } from './chatSurface.svelte';
+    import { scopeOf } from './chatBodyRenderCache';
 
     const getCurrentChatRoomId = () => {
         const charId = get(selectedCharID);
@@ -72,6 +73,28 @@
     let lastRebuildEpoch = surfaceInstalled ? untrack(() => chatSurface.rebuildEpoch) : 0;
 
     let chatBody: HTMLDivElement;
+
+    // The same identity the render cache scopes a chat by; null when no chat is selected.
+    const ownerKey = (): string | null => {
+        const charId = get(selectedCharID);
+        if (charId < 0) return null;
+        const char = DBState.db.characters[charId];
+        if (!char) return null;
+        return scopeOf(char.chaId, char.chats?.[char.chatPage]?.id, char.chatPage);
+    };
+
+    // The list's position and owner as Settings hid the chat, while it was still laid out. The first visible run after
+    // the hide takes and clears it; a rebuild return restores only this value, and only for the same owner, because
+    // anything read later sees rows the release flush has already changed.
+    let hideCapture: { top: number, owner: string | null } | null = null;
+    if(surfaceInstalled){
+        const stopCapturing = onSurfaceHiding(() => {
+            const host = chatBody?.parentElement ?? null;
+            hideCapture = host ? { top: host.scrollTop, owner: ownerKey() } : null;
+        });
+        onDestroy(stopCapturing);
+    }
+
     let hashes: Set<number> = new Set();
     type ChatInstance = {
         updateStreamingDisplay?: (state: {
@@ -291,23 +314,29 @@
         console.log('Updating Chats');
         void $ReloadChatPointer; // Make $effect track ReloadChatPointer changes
         let rebuilding = false;
+        let restoreTop: number | null = null;
         if(surfaceInstalled){
             // Streaming and every other update wait for the return; the release re-runs this effect once.
             if(chatSurface.hidden){
                 return
             }
             rebuilding = chatSurface.rebuildEpoch !== lastRebuildEpoch;
+            const capture = hideCapture;
+            hideCapture = null;
+            // A chat switched during the visit has no position to restore; the owner is read untracked so it adds no dependency.
+            if(rebuilding && capture !== null && capture.owner === untrack(ownerKey)){
+                restoreTop = capture.top;
+            }
         }
         const wasAtBottom = checkIfAtBottom();
         const scrollHost = chatBody?.parentElement ?? null;
-        const savedScrollTop = scrollHost ? scrollHost.scrollTop : 0;
         if(rebuilding){
             lastRebuildEpoch = chatSurface.rebuildEpoch;
             unmountAllRows();
         }
         updateChatBody()
-        if(rebuilding && scrollHost){
-            scrollHost.scrollTop = savedScrollTop;
+        if(restoreTop !== null && scrollHost){
+            scrollHost.scrollTop = restoreTop;
         }
 
         // Scroll-to-bottom after a window reset that actually lowered
