@@ -21715,3 +21715,64 @@ Literal heading above is authoritative. Regenerate with `pwsh -NoProfile -File .
 - Dependabot alert 174 dismissal (PROPOSED, dismiss as not used) is not decided; a GitHub dismissal needs the maintainer's word.
 - The device update-safety check of the MVP refresh `7928b5bb1` to `f12ea30f9` is not decided and not run; whether the pre-update `.bin` was exported is not stated (`MC-1063`).
 - CHORE-632 stays free; no CHORE is filed by this batch.
+
+### MC-1068 — Lane A, 2026-11-04: CHORE-415: on a failed module wait the translation editor does not open; CHORE-413: no-selection Playground requests load the globally enabled module stubs first, and stop with an error if that load fails; the sizing scouts for CHORE-413, 415 and the CHORE-205 gaps
+
+- Tag: statements (the maintainer's answers, 2026-11-04, and the maintainer's instruction in the lane A chat, relayed by the parent in the records brief for batch 49). Date: 2026-11-04. Sweep ref: none. Exact times of the answers: TODO(evidence).
+- Source: the maintainer's answers in the lane A chat, relayed in the brief `C:\Users\yor42\AppData\Local\Temp\risu-b715\b40\rec50\brief.md`. Scout reports (unverified by a second reader, except where noted): `b40\par3\c415-size2\result.md` (`C415-CHAT-KEY-READ`, complete; the second pass of `c415-size1`), `b40\par3\c413-size1\result.md` and `c413-size2` (partial), `b40\par3\c205gap-size1\result.md` and `c205gap-size2` (partial). All scouts: Codex gpt-6-luna medium, read-only, dispatch ids as named. The first passes of `c413`, `c415` and `c205gap` omitted `request.ts`, `PlaygroundSubtitle.svelte`, `Chat.svelte` and the P3 plan lines; the second passes added them.
+- Related: `MC-1067` (CHORE-205 next phase), `MC-1022` (CHORE-205 device part), `MC-920` (UI-S1 gate list), `MC-516` (UI gate), `MC-670` and `MC-673` (CHORE-205 device gaps), `MC-668` (filing of CHORE-413 to 415), `MC-1061` (watch item).
+
+**Question and options (AskUserQuestion, header "CHORE-415").** Question as asked: "CHORE-415 (translation editor opens before module regexes load, so it saves your edit under a key the chat later doesn't look up) is small: one file, `Chat.svelte`. The fix makes the editor wait for the same module load as the chat body. The one open product decision: what should the editor do if that module load FAILS (an error alert already appears)?" Options: "Don't open the editor (Recommended)" (the module-load error alert is already shown; the editor stays closed so nothing is saved under a wrong key; the user retries after the modules load); "Open with the incomplete key" (same as today after a failure); "Open read-only until retry". Answer: "Don't open the editor (Recommended)".
+
+**What the maintainer said (verbatim).**
+1. "run three in parallel" (after lane A offered: size CHORE-413 and CHORE-415, or look at the CHORE-205 device gaps first).
+2. "it seems like codex has stopped?" (it had not: the three scouts finished in 46, 56 and 50 s).
+3. "both in parallel" (the records batch and the CHORE-415 plan and review, offered as the next two steps).
+
+**Question and options (AskUserQuestion, header "CHORE-413 a", 2026-11-04).** Question: "CHORE-413, decision 1: the Playground's Subtitle and ImageTrans tools can run with no character selected. Their module wait does nothing in that case, so globally enabled modules that are still stubs are not loaded before the request. Should those no-selection Playground requests load the globally enabled module stubs first?" Options: "Yes, load them first (Recommended)"; "No, leave as is"; "Block the tools with no character". Answer: "Yes, load them first (Recommended)".
+
+**Question and options (AskUserQuestion, header "CHORE-413 b", 2026-11-04).** Question: "CHORE-413, decision 2: if the wait is added and loading the stubs FAILS, what should the Playground tool do? (An error alert for the failed load appears either way.)" Options: "Stop with an error (Recommended)"; "Continue without them". Answer: "Stop with an error (Recommended)".
+
+**Decided.**
+- CHORE-413 decision 1: no-selection Playground requests (Subtitle and ImageTrans) load the globally enabled module stubs first (`MC-1068`).
+- CHORE-413 decision 2: if that load fails, the Playground tool stops with an error (`MC-1068`). No plan or code exists yet; the CHORE-413 plan follows the CHORE-415 plan.
+- CHORE-415 failure behavior (`MC-1068`, the maintainer's AskUserQuestion answer above): if the module wait fails, the translation editor does not open. The user retries after the modules load. The answer decides only this behavior.
+- The maintainer ordered the CHORE-415 plan and its review in parallel with this records batch (status only: no code exists and no implementation is authorized by this entry beyond the plan gates).
+
+**Not decided (open; not decided here).**
+- CHORE-413: both decisions are now settled (see Decided and the two AskUserQuestion answers above).
+- CHORE-205 gaps: which individual gap cases the UI-S1 gate needs (the 100+ stub case, step 7, steps 12 to 14, `MC-673`); the P3 plan notes that define steps 7 and 12 to 14 are not in the records read.
+- Module-load timeout behavior, and whether the draft-gate backend persists across restart (UNKNOWN in the scout report).
+
+**Scout results and limits (all unverified by a second reader unless stated).**
+
+CHORE-415 (`c415-size1` complete but could not read `Chat.svelte`; `c415-size2` complete, logical job `C415-CHAT-KEY-READ`):
+- VERIFIED: `getTranslationCacheKey()` is at `Chat.svelte:575-583`. It returns `msgDisplay` directly when `translateBeforeHTMLFormatting` is on; otherwise it awaits `ParseMarkdown(msgDisplay, character, 'pretranslate', idx, getCbsCondition())` (non-legacy) or `'notrim'` (legacy).
+- VERIFIED: callers are `getTranslationPartialEditContext()` and `loadTranslationForEdit()` (`Chat.svelte:542-557, 585-592`). The editor freezes the key as `editTranslationKey`, seeds from `getLLMCache(key)`, and saves to the same key with `setLLMCache` (`Chat.svelte:590-600, 631-644`; `translator.ts:709-725`).
+- VERIFIED: the cache is the `localforage` instance `LLMTranslateCache`, so a wrong-key write is persisted.
+- VERIFIED: `getModuleRegexScripts()` skips stub modules (`modules.ts:806-817`). `ChatBody` awaits `waitForTranslatorModules()` before its post-load lookup and before pretranslate parsing (`ChatBody.svelte:121-137, 170-197`) but not on the before-HTML branch (`ChatBody.svelte:124-126, 161-168`).
+- VERIFIED: `waitForTranslatorModules()` yields once, then awaits `ensureCurrentModules({ memory })` and discards the boolean (`translator.ts:694-707`). A load failure alerts once and returns false; a repeat is remembered and silent (`moduleEnsure.ts:108-150`).
+- INFERRED: during the load window an opened editor can seed empty, save under the pre-load key, and not show its edit afterwards. No source chat message is mutated. Existing wrong-key cache entries would not be migrated.
+- UNKNOWN: the parser's exact contribution of module regexes to the key; whether the draft-gate backend persists across restart; any module-load timeout.
+- Size: small (one component plus tests).
+
+CHORE-413 (`c413-size1` and `c413-size2`, both PARTIAL):
+- VERIFIED: ImageTrans calls `ensureCurrentModulesOrAlert()` only when `hasModuleStubs()` is true, then calls `requestChatData` without a subject (`PlaygroundImageTrans.svelte:7-15, 55-56, 165-169, 224-226, 237-250`).
+- VERIFIED: `ensureCurrentModules` returns true before resolving an origin when no character is selected, so that wait loads no stub (`moduleEnsure.ts:34-46, 118-137`).
+- VERIFIED: `requestChatData` returns a failure naming unloaded referenced modules when `mainSend` is true, driven by the supplied subject (`request.ts:222-232`).
+- VERIFIED (Roadmap, not re-read in the scout): default Subtitle prompts do not use `{{moduleassetlist::ns}}`; the exposure needs a hand-edited prompt (`Roadmap.md:2905-2907`).
+- UNKNOWN (second-pass tool excerpts failed): exact no-character behavior of the other Playground screens, and which stubs are read.
+- INFERRED: latent impact only; no saved-data or dirty-tracking effect seen. Size: medium, provisional.
+
+CHORE-205 device gaps (`c205gap-size1` and `c205gap-size2`, both PARTIAL):
+- VERIFIED: `MC-1022` records "Bar met, close device part" and names steps 12 and 13, `MC-670` and M9 as accepted gaps, "not re-examined here". It is silent on the 100+ stub case, step 7, step 14 and `MC-673`.
+- VERIFIED definitions: `MC-670` ("during a backup, a stub slot whose marker is not the recorded one, or that has no stored entry, stops the export with the existing named 'unreadable' failure naming the module ... not the generic refusal"). `MC-673` ("single-module export (.risum), Realm share and apply keep installing the module as today; only full, partial and rescue backups read the stored copy").
+- VERIFIED: M9 is defined only as "the MVP stamps `bookVersion` first" (`Roadmap.md:2547`).
+- VERIFIED: `MC-920` says CHORE-205 is done when the uncovered P3 device cases have run on phone 1, and that an M9 generator and a store-level damage tool are needed (`Maintainer-Context.md:19505-19507`).
+- UNKNOWN: the records read do not define step 7, steps 12 to 14, or the 100+ stub case's measure or criterion.
+- VERIFIED: `Agents/Tools/save-gen` has no README; the device README says the fixture scripts do not generate synthetic `.bin` fixtures, so the M9 and damage fixtures would have to be written.
+- VERIFIED: device tool defaults: fixture ceiling 600 MiB (above it `-AllowLarge` and a reason); fixture-push cap 1200 s; import-bin cap 1500 s and needs a debuggable MEASURE build.
+- UNKNOWN: no sizes can be given from the records.
+- Open: the maintainer's word on which gap cases matter, or the P3 plan notes that define steps 7 and 12 to 14.
+
+**Limits.** This entry records a maintainer answer on one failure behavior and sizing scouts. It does not accept any scout report, does not change any ticket status to COMPLETE, does not authorize implementation, and does not decide CHORE-413's two decisions or which CHORE-205 gap cases the UI gate needs. Nothing here is COMPLETE.
