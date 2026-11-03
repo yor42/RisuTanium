@@ -953,3 +953,4 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-1056](Maintainer-Context.md#mc-1056--lane-a-2026-11-03-s4-rebuild-return-scroll-fix-accepted-limitations-l1-to-l3-a-accept-all-three-now) | Lane A, 2026-11-03: S4 rebuild-return scroll fix, accepted limitations L1 to L3: "A, accept all three now" |
 | [MC-1057](Maintainer-Context.md#mc-1057--lane-a-2026-11-03-s4-rebuild-return-scroll-fix-limitation-l4-a-accept-as-a-fourth-limitation) | Lane A, 2026-11-03: S4 rebuild-return scroll fix, limitation L4: "A, accept as a fourth limitation" |
 | [MC-1058](Maintainer-Context.md#mc-1058--lane-a-2026-11-03-scheduling-amendment-2026-11-03-parallel-records) | Lane A, 2026-11-03: scheduling amendment 2026-11-03-parallel-records |
+| [MC-1059](Maintainer-Context.md#mc-1059--lane-a-2026-11-03-the-apk-r-run-counts-as-the-device-run-mc-1050-requires) | Lane A, 2026-11-03: the APK R run counts as the device run MC-1050 requires |

@@ -21530,3 +21530,18 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 - Notes, not the maintainer's words:
   - The amendment is an instruction, not a question; no alternatives were offered.
   - Current progress reconciliation is recorded in ledger row 4888.
+
+### MC-1059 — Lane A, 2026-11-03: the APK R run counts as the device run MC-1050 requires
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03. Sweep ref: none. Exact time: TODO(evidence).
+- Source: lane A asked, in prose, with no options listed: "Please decide whether the APK R run on Svelte 5.57.3 counts as the device run that MC-1050 requires. That question also gates the MVP-refresh record." The maintainer answered: "APK R run on Svelte 5.57.3 does count as the device run that MC-1050 requires." and added: "commit+push records correction with next records pass."
+- Alternatives rejected: none offered.
+- Related: `MC-1050`, `MC-1051`, `MC-1039`, `MC-1056`, `MC-1057`, CHORE-630.
+
+**What was decided (maintainer).**
+1. The APK R run on Svelte 5.57.3 (commit `bc383c59f`) counts as the device run that `MC-1050` requires of the Svelte >=5.57.1 bump (CHORE-630).
+2. Authorization: commit and push the records correction (ledger row 4893 and the superseded note on row 4892, with the Roadmap and Live-State counters) with the next records pass.
+
+- Notes, not the maintainer's words:
+  - The evidence behind the ruling: APK R was built with Svelte 5.57.3 (sha256 `67F55B19AED14FFA503D7BC6C0334BF2C52D891732AFF682BC1DB398EA89284C`) and ran on the Note 9 phone 1 with synthetic data: S2 checks 1 to 4 (ledger row 4886), the frame-gap, page-size and language checks (rows 4891 and 4893); in the c04-heavy120 module-toggle returns the text flipped between ALPHA 116 and alpha 116 as expected. One device, small n.
+  - The ruling does not by itself close CHORE-630 and does not add anything to the MVP-refresh gates.
