@@ -21485,3 +21485,48 @@ Not asked (the verifier found them already answered or design matters): Q5 (`MC-
 
 - Notes, not the maintainer's words:
   - The independent documentation review of this batch is dispatched by the Orchestrator and had not run when this was written.
+
+### MC-1056 — Lane A, 2026-11-03: S4 rebuild-return scroll fix, accepted limitations L1 to L3: "A, accept all three now"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not recorded: TODO(evidence)). Sweep ref: none.
+- Source: the ask-tool question lane A put to the maintainer in this conversation (the question and options are those of `b40\sr2-scroll\brief-r4.md`); the maintainer chose option A. Question as lane A asked it: the rebuild-return scroll fix restores the exact position whenever the rebuilt text is as tall as before; three bounded cases would still land lower: (1) the content got shorter so the saved position no longer exists (nearest reachable spot; the list may load one more page as it does today at the top end); (2) a fully loaded chat (at most the page size, e.g. a new chat) scrolled within the first message's height of the very top; (3) rows with images, when the saved position is within those images' height of the top. Options as offered: A accept all three now (recommended; smallest change; the MVP refresh is waiting; case 2 becomes a follow-up item); B accept 1 and 3 and fix 2 now (a host-side change; one more plan and gate round); C fix 2 and 3 now (an observer-based hold, the shape Gate 1 rejected twice).
+- Alternatives rejected: B; C.
+- Related: `MC-1054`, `MC-1044`, `MC-1039`, `MC-091`.
+
+**What was decided (maintainer).**
+1. Option A: the three bounded cases (L1 content shorter, L2 a fully loaded chat near the very top, L3 rows with images near the top) are accepted now. Case 2 becomes a follow-up item (a candidate, not a ticket).
+
+- Notes, not the maintainer's words:
+  - The limitations came out of the senior-advisor escalation after the third consecutive Gate 1 `[REJECT]` (ledger row 4880). The exact time of the answer is not recorded: TODO(evidence).
+
+### MC-1057 — Lane A, 2026-11-03: S4 rebuild-return scroll fix, limitation L4: "A, accept as a fourth limitation"
+
+- Tag: decision (the maintainer's answer, relayed by lane A). Date: 2026-11-03 (recorded; exact time not recorded: TODO(evidence)). Sweep ref: none.
+- Source: the second ask-tool question, `b40\sr2-scroll\plan-r5.md` "Q1"; the maintainer chose option A. Question as lane A asked it: after the D1 diagnostic found the real cause (ledger row 4881), the fix now saves the position when Settings opens and restores it after a rebuild. It is exact whenever the rebuilt messages have a cached rendering (module toggles including display regexes, page size, zoom). A message whose shown text itself changed during the visit (a `{{user}}` message after a rename, or more than 200 loaded messages) can still land the list lower, only when the saved position lies within those messages' loading height of the very top, and the list may load one more page. Options as offered: A accept as a fourth limitation beside L1 to L3, no extra mechanism (recommended); B also hold the list's pre-Settings height until those messages finish rendering (r4's floor with the height saved at open; about three more files and the settle counter that Gate 1 needed four rounds for).
+- Alternatives rejected: B.
+- Related: `MC-1056`, `MC-1054`.
+
+**What was decided (maintainer).**
+1. Option A: limitation L4 (a message whose shown text changed during the visit, within its loading height of the very top) is accepted as a fourth limitation beside L1 to L3, with no extra mechanism.
+
+- Notes, not the maintainer's words:
+  - The exact time of the answer is not recorded: TODO(evidence).
+
+### MC-1058 — Lane A, 2026-11-03: scheduling amendment 2026-11-03-parallel-records
+
+- Tag: decision (the maintainer's direct instruction, relayed by lane A). Date: 2026-11-03. Sweep ref: none. Exact time: TODO(evidence).
+- Source: the maintainer, 2026-11-03: "Apply scheduling amendment 2026-11-03-parallel-records. Read docs/workflow/2026-11-03-parallel-tracks.md and the updated resume-main-campaign.md. Reconcile current progress and preserve active workers and accepted evidence. Keep up to two ready authorized code tracks progressing in separate Git worktrees. Run the device track and primary Haiku records-drafting track alongside them. Wait only on actual dependencies, file ownership or shared resources. Use registered record-clerk/Haiku low directly for routine records. Supply frozen facts and exact targets; return protected authoritative changes as a parent-applied scratch packet." Earlier the same day: "start note 9 device gate and record batch. keep in mind that device run and record batch is separate from code, and it does not interfere with tickets."
+- Alternatives rejected: none offered.
+- Related: `MC-1036`, `MC-785`, `MC-1054`, `MC-1055`.
+- Source document: `docs/workflow/2026-11-03-parallel-tracks.md` (scheduling ID `2026-11-03-parallel-records`, compatible policy revision `2026-11-03.1`). The document amends the conflicting fallback-only and global-serialization wording of the `MC-1036` implementation, allocates no MC block and overwrites no original decision.
+
+**What was decided (maintainer).**
+1. Apply scheduling amendment `2026-11-03-parallel-records` (document `docs/workflow/2026-11-03-parallel-tracks.md`, workflow revision `2026-11-03.1`).
+2. Up to two ready authorized code tracks progress in separate Git worktrees.
+3. One device track and one primary Haiku `record-clerk` records track run alongside the code tracks.
+4. Wait only on actual dependencies, file ownership or shared resources.
+5. Protected authoritative records (Maintainer-Context, governance, Decision-Index, state) return as scratch packets for parent application.
+
+- Notes, not the maintainer's words:
+  - The amendment is an instruction, not a question; no alternatives were offered.
+  - Current progress reconciliation is recorded in ledger row 4888.
