@@ -87,3 +87,7 @@ Write boundaries and checkout concurrency follow [ownership](ownership.md). Item
 ## Parallel options for the maintainer (MC-1069)
 
 At the start of a task, at each completion and whenever a code, device or records track is free, list the open tickets that could run in parallel with the current work (disjoint files and resources, already authorized or ready to size; the Roadmap and Live-State name them) and offer them to the maintainer as options with the AskUserQuestion tool (multiSelect), each with its blocker or decision need in one line. Do not start an unapproved ticket on the strength of being parallel-safe, and do not leave a free track idle without having offered. Every maintainer decision, approval and confirmation goes through AskUserQuestion, never a prose question.
+
+## Completion notification for external runners (MC-1069)
+
+Native Claude subagents wake the orchestrator when they finish; an external process does not. Start each external runner (Invoke-ExtModel.ps1) and each long host job with the Bash or PowerShell tool's run_in_background option, so the harness re-invokes the orchestrator at exit and lists the job as a background task. Do not use a hidden Start-Process for these. When several jobs run at once, a wake for one is also the moment to read every other finished result file.
