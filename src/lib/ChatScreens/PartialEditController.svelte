@@ -22,7 +22,7 @@
         blockEditEnabled?: boolean;
         dragEditEnabled?: boolean;
         translatedView?: boolean;
-        getTranslationEditContext?: () => Promise<{ key: string; data: string } | null>;
+        getTranslationEditContext?: () => Promise<{ key: string; data: string } | null | 'unavailable'>;
     }
 
     let {
@@ -252,6 +252,7 @@
         if (!elementOrText || !messageData) return;
 
         const requestId = ++matchingRequestId;
+        const startedTranslated = translatedView;
 
         // Set matching options based on mode
         const options = mode === 'edit' 
@@ -260,6 +261,10 @@
 
         const translationContext = await getTranslationContextIfNeeded();
         if (requestId !== matchingRequestId) return;
+        // A request started in one view never opens an edit in the other.
+        if (startedTranslated !== translatedView) return;
+        // An unavailable translation context cannot fall back to the original text.
+        if (translationContext === 'unavailable') return;
 
         const sourceType: PartialEditTarget = translationContext ? 'translation' : 'original';
         const sourceData = translationContext?.data ?? messageData;

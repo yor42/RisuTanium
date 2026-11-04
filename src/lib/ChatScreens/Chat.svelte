@@ -18,7 +18,7 @@
     import { noteEditConfirm } from "src/ts/process/chatPhaseRing"
     import { runTrigger } from 'src/ts/process/triggers'
     import { beginWork, originStatus } from 'src/ts/process/chatOrigin'
-    import { ensureModulesOrAlert } from 'src/ts/process/moduleEnsure'
+    import { ensureCurrentModulesOrAlert, ensureModulesOrAlert } from 'src/ts/process/moduleEnsure'
     import { hasModuleStubs } from 'src/ts/process/moduleRefList'
     import { sayTTS } from "src/ts/process/tts"
     import { speakerSpeechText } from "src/ts/process/ttsSpeechText"
@@ -28,7 +28,7 @@
     import { DBState, ReloadChatPointer, CurrentTriggerIdStore, popupStore } from 'src/ts/stores.svelte'
     import { registerDraft, unregisterDraft } from "src/ts/localDrafts"
     import { draftContentOrphanGate } from "src/ts/draftContentOrphanGate"
-    import { type MessageIdentity, type TranslationIdentity, type DraftRecord, isDraftRestore } from "src/ts/draftContents"
+    import { type MessageIdentity, type TranslationIdentity, type DraftRecord, draftIdentityKey, isDraftRestore } from "src/ts/draftContents"
     import { formatDraftAge } from "src/ts/draftAge"
     import { chatWindowKey } from "src/ts/chatWindowPolicy"
     import { capitalize, getUserIcon, getUserName, sleep } from "src/ts/util"
@@ -40,7 +40,7 @@
     import { alertConfirm, alertError, alertInput, alertRequestData, alertSelect } from "../../ts/alert"
     import { markCharacterForSave } from "../../ts/storage/characterSaveMarks"
     import { ParseMarkdown, type CbsConditions, type simpleCharacterArgument } from "../../ts/parser/parser.svelte"
-    import { getCurrentCharacter, getCurrentChat, type MessageGenerationInfo, type StreamingDisplayOptimizationMode } from "../../ts/storage/database.svelte"
+    import { getCurrentCharacter, getCurrentChat, type Message, type MessageGenerationInfo, type StreamingDisplayOptimizationMode } from "../../ts/storage/database.svelte"
     import { selectedCharID } from "../../ts/stores.svelte"
     import { HideIconStore, ReloadGUIPointer, selIdState } from "../../ts/stores.svelte"
     import AutoresizeArea from "../UI/GUI/TextAreaResizable.svelte"
@@ -277,6 +277,26 @@
             chatId: chat?.message?.[idx]?.chatId,
             index: idx,
         }
+    }
+
+    function translationOpenToken(): { identity: string; row: Message | undefined; data: string | undefined; closeEpoch: number } {
+        const character = DBState.db.characters[selIdState.selId]
+        const row = character?.chats?.[character.chatPage]?.message?.[idx]
+        return {
+            identity: draftIdentityKey(currentMessageIdentity()),
+            row,
+            data: row?.data,
+            closeEpoch: chatSurface.closeEpoch,
+        }
+    }
+
+    function translationOpenCurrent(token: ReturnType<typeof translationOpenToken>): boolean {
+        const character = DBState.db.characters[selIdState.selId]
+        return !destroyed
+            && token.closeEpoch === chatSurface.closeEpoch
+            && token.identity === draftIdentityKey(currentMessageIdentity())
+            && token.row === character?.chats?.[character.chatPage]?.message?.[idx]
+            && token.data === token.row?.data
     }
 
     // Capture. Called from the original-text editor's `oninput` (never
@@ -539,16 +559,20 @@
         chatBodyRevision += 1
     }
 
-    async function getTranslationPartialEditContext() {
+    async function getTranslationPartialEditContext(): Promise<{ key: string; data: string } | null | 'unavailable'> {
         if (!translated || DBState.db.translatorType !== 'llm') {
             return null
         }
 
+        const token = translationOpenToken()
         const key = await getTranslationCacheKey()
+        if (!translationOpenCurrent(token)) return 'unavailable'
+        if (key === null) return 'unavailable'
         if (!key) {
             return null
         }
         const data = await getLLMCache(key)
+        if (!translationOpenCurrent(token)) return 'unavailable'
         if (data === null) {
             return null
         }
@@ -572,10 +596,12 @@
         }
     }
 
-    async function getTranslationCacheKey(): Promise<string> {
+    async function getTranslationCacheKey(): Promise<string | null> {
         if(DBState.db.translateBeforeHTMLFormatting){
             return msgDisplay
         }
+        // A key built from a stub cannot match the translator's key after that module loads.
+        if (hasModuleStubs() && !(await ensureCurrentModulesOrAlert())) return null
         if(!DBState.db.legacyTranslation){
             return await ParseMarkdown(msgDisplay, character, 'pretranslate', idx, getCbsCondition())
         }
@@ -586,9 +612,12 @@
         if (translationViewControlsDisabled) return
 
         loadingTranslationEdit = true
+        const token = translationOpenToken()
         try {
             const key = await getTranslationCacheKey()
+            if (key === null || !translationOpenCurrent(token)) return
             const cached = await getLLMCache(key)
+            if (!translationOpenCurrent(token)) return
             const seed = cached ?? ''
             editTranslationKey = key
             // Freeze the translation identity/seed now, for the buffer's
