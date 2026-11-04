@@ -1917,6 +1917,7 @@ export const languageKorean = {
     "pluginDevelopMode": "플러그인 개발 모드",
     "fetchLogConsent": "플러그인 {}이(가) 로그를 가져오려고 합니다. 이는 민감한 정보를 노출할 수 있습니다. 허용하시겠습니까?",
     "getFullDatabaseConsent": "플러그인 {}이(가) 전체 데이터베이스에 접근하려고 합니다. 이는 민감한 정보를 노출할 수 있습니다. 허용하시겠습니까?",
+    "dbWriteConsent": "플러그인 {}이(가) 캐릭터, 채팅, 모듈, 설정 등 데이터베이스를 수정할 권한을 요청하고 있습니다. 허용하시겠습니까?",
     "mainDomAccessConsent": "플러그인 {}이(가) 메인 Document에 접근하려고 합니다. 이는 민감한 정보를 노출할 수 있습니다. 허용하시겠습니까?",
     "replacerPermissionConsent": "플러그인 {}이(가) 채팅 내용을 대체할 수 있는 권한을 요청하고 있습니다. 이는 대화 내용을 조작하는 데 사용될 수 있습니다. 허용하시겠습니까?",
     "providerPermissionConsent": "플러그인 {}이(가) 제공자에 접근할 수 있는 권한을 요청하고 있습니다. 이는 무단 API 호출을 가능하게 할 수 있습니다. 허용하시겠습니까?",

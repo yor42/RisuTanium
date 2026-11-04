@@ -1933,6 +1933,7 @@ export const languageChinese = {
     "newMessageButtonRightCenter": "右中",
     "mainDomAccessConsent": "插件 {} 正在请求访问主文档，这可能会泄露敏感信息。是否允许？",
     "getFullDatabaseConsent": "插件 {} 正在请求访问完整数据库，这可能会泄露敏感信息。是否允许？",
+    "dbWriteConsent": "插件 {} 正在请求修改您的数据库，包括角色、聊天、模块和设置。是否允许？",
     "fetchLogConsent": "插件 {} 正在请求获取日志，这可能会泄露敏感信息。是否允许？",
     "replacerPermissionConsent": "插件 {} 正在请求替换聊天中内容的权限，这可能被用于操纵对话内容。是否允许？",
     "providerPermissionConsent": "插件 {} 正在请求访问提供商（Provider）的权限，这可能允许其发起未经授权的 API 调用。是否允许？",

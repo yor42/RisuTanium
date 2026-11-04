@@ -39,6 +39,8 @@ vi.mock('localforage', () => ({
                 if (options?.name === 'plugin_permissions') {
                     if (key.endsWith('_db_lastGrantTime')) return Date.now()
                     if (key.endsWith('_db')) return true
+                    if (key.endsWith('_dbWrite_lastGrantTime')) return Date.now()
+                    if (key.endsWith('_dbWrite')) return true
                 }
                 return null
             }),

@@ -1935,6 +1935,7 @@ export const languageSpanish = {
     "newMessageButtonRightCenter": "Centro derecha",
     "trimStartNewChat": "Recortar mensajes de «Iniciar nuevo chat»",
     "getFullDatabaseConsent": "El plugin {} está solicitando acceso a la base de datos completa, lo que podría exponer información confidencial. ¿Deseas permitir esto?",
+    "dbWriteConsent": "El plugin {} está solicitando permiso para modificar tu base de datos, incluidos personajes, chats, módulos y ajustes. ¿Deseas permitir esto?",
     "fetchLogConsent": "El complemento {} está solicitando obtener registros, lo cual podría exponer información confidencial. ¿Deseas permitir esto?",
     "mainDomAccessConsent": "El plugin {} está solicitando acceso al Documento principal, lo que podría exponer información confidencial. ¿Quieres permitir esto?",
     "replacerPermissionConsent": "El plugin {} está solicitando permiso para reemplazar contenido en el chat, lo que podría usarse para manipular la conversación. ¿Quieres permitir esto?",

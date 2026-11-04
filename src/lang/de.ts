@@ -1934,6 +1934,7 @@ export const languageGerman = {
     "newMessageButtonTopBar": "Obere Leiste",
     "fetchLogConsent": "Plugin {} möchte Protokolle abrufen, was sensible Informationen offenlegen könnte. Möchten Sie dies zulassen?",
     "getFullDatabaseConsent": "Das Plugin {} möchte auf die gesamte Datenbank zugreifen, was zur Offenlegung sensibler Informationen führen kann. Möchten Sie dies zulassen?",
+    "dbWriteConsent": "Das Plugin {} bittet um die Berechtigung, Ihre Datenbank einschließlich Charakteren, Chats, Modulen und Einstellungen zu ändern. Möchten Sie dies zulassen?",
     "mainDomAccessConsent": "Plugin {} möchte auf das Hauptdokument zugreifen, wodurch sensible Informationen offengelegt werden könnten. Möchten Sie dies zulassen?",
     "enableScrollToActiveChar": "Scrollen zum aktiven Charakter aktivieren",
     "newMessageButtonRightCenter": "Mitte rechts",

@@ -27,8 +27,8 @@ import type { RisuPlugin } from '../../plugins.svelte'
 const alertConfirmMock = vi.hoisted(() => vi.fn(async () => true))
 const hasherMock = vi.hoisted(() => vi.fn(async (data: Uint8Array) => `hash:${new TextDecoder().decode(data)}`))
 const readColdStorageItemMock = vi.hoisted(() => vi.fn())
-/** Whether the stored `'db'` grant exists; the prompt answer is `alertConfirmMock`. */
-const grant = vi.hoisted(() => ({ db: true }))
+/** Whether the stored `'db'` and `'dbWrite'` grants exist; the prompt answer is `alertConfirmMock`. */
+const grant = vi.hoisted(() => ({ db: true, dbWrite: true }))
 /** Calls of the archived-character restore, which a light entry must never trigger. */
 const restores = vi.hoisted(() => ({ calls: 0 }))
 const busy = vi.hoisted(() => ({ begun: 0, ended: 0 }))
@@ -40,6 +40,10 @@ vi.mock('localforage', () => ({
                 if (options?.name === 'plugin_permissions' && grant.db) {
                     if (key.endsWith('_db_lastGrantTime')) return Date.now()
                     if (key.endsWith('_db')) return true
+                }
+                if (options?.name === 'plugin_permissions' && grant.dbWrite) {
+                    if (key.endsWith('_dbWrite_lastGrantTime')) return Date.now()
+                    if (key.endsWith('_dbWrite')) return true
                 }
                 return null
             }),
@@ -328,6 +332,7 @@ beforeEach(() => {
     alertConfirmMock.mockReset()
     alertConfirmMock.mockImplementation(async () => true)
     grant.db = true
+    grant.dbWrite = true
     restores.calls = 0
     busy.begun = 0
     busy.ended = 0

@@ -1980,6 +1980,7 @@ export const languageChineseTraditional = {
     "pluginDevelopMode": "外掛開發模式",
     "fetchLogConsent": "外掛 {} 正要求讀取記錄，其中可能包含敏感資訊。要允許嗎？",
     "getFullDatabaseConsent": "外掛 {} 正要求存取完整資料庫，其中可能包含敏感資訊。要允許嗎？",
+    "dbWriteConsent": "外掛 {} 正要求修改您的資料庫，包括角色、聊天、模組和設定。要允許嗎？",
     "mainDomAccessConsent": "外掛 {} 正要求存取 RisuTanium 主介面的 DOM，其中可能包含敏感資訊。要允許嗎？",
     "replacerPermissionConsent": "外掛 {} 正要求替換對話內容的權限，這可能被用來操控對話。要允許嗎？",
     "providerPermissionConsent": "外掛 {} 正要求使用模型供應商功能，這可能讓它發出未經授權的 API 請求。要允許嗎？",

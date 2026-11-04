@@ -633,6 +633,28 @@ const unloadV3Plugin = async (pluginName: string) => {
     }
 }
 
+const permissionConsentTexts: Record<PluginPermission, () => string> = {
+    fetchLogs: () => language.fetchLogConsent,
+    db: () => language.getFullDatabaseConsent,
+    dbWrite: () => language.dbWriteConsent,
+    mainDom: () => language.mainDomAccessConsent,
+    replacer: () => language.replacerPermissionConsent,
+    provider: () => language.providerPermissionConsent,
+    sendChat: () => language.sendChatConsent,
+    inlay: () => language.inlayPermissionConsent,
+};
+const permissionReconfirm: Record<PluginPermission, boolean | 'periodically'> = {
+    fetchLogs: false,
+    db: 'periodically',
+    dbWrite: 'periodically',
+    mainDom: false,
+    replacer: 'periodically',
+    provider: 'periodically',
+    sendChat: false,
+    inlay: 'periodically',
+};
+const isPluginPermission = (s: string): s is PluginPermission =>
+    typeof s === 'string' && Object.hasOwn(permissionReconfirm, s);
 const permissionSessionCache = new PluginPermissionSessionCache();
 const permissionForage = localforage.createInstance({
     name: 'plugin_permissions',
@@ -651,7 +673,7 @@ export const customV3ProviderMetaStore:LLMModel[] = []
  */
 const permissionRequestsInFlight = new Map<string, Promise<boolean>>()
 
-const getPluginPermission = (pluginName: string, scriptHash: string, permissionDesc: PluginPermission, reconfirm: boolean|'periodically' = false): Promise<boolean> => {
+const getPluginPermission = (pluginName: string, scriptHash: string, permissionDesc: PluginPermission): Promise<boolean> => {
     const cachedPermission = permissionSessionCache.get(scriptHash, permissionDesc)
     if(cachedPermission !== undefined){
         return Promise.resolve(cachedPermission)
@@ -664,7 +686,7 @@ const getPluginPermission = (pluginName: string, scriptHash: string, permissionD
     if(inFlight){
         return inFlight
     }
-    const request = requestPluginPermission(pluginName, scriptHash, permissionDesc, reconfirm)
+    const request = requestPluginPermission(pluginName, scriptHash, permissionDesc)
     permissionRequestsInFlight.set(permissionKey, request)
     const forget = () => {
         if(permissionRequestsInFlight.get(permissionKey) === request){
@@ -675,7 +697,8 @@ const getPluginPermission = (pluginName: string, scriptHash: string, permissionD
     return request
 }
 
-const requestPluginPermission = async (pluginName: string, scriptHash: string, permissionDesc: PluginPermission, reconfirm: boolean|'periodically'): Promise<boolean> => {
+const requestPluginPermission = async (pluginName: string, scriptHash: string, permissionDesc: PluginPermission): Promise<boolean> => {
+    const reconfirm = permissionReconfirm[permissionDesc]
     const permissionKey = getPluginPermissionKey(scriptHash, permissionDesc)
 
     let requiresReconfirm = false;
@@ -697,18 +720,7 @@ const requestPluginPermission = async (pluginName: string, scriptHash: string, p
     }
 
 
-    let alertTitle =
-        permissionDesc === 'fetchLogs' ? language.fetchLogConsent.replace("{}", pluginName)
-        : permissionDesc === 'db' ? language.getFullDatabaseConsent.replace("{}", pluginName)
-        : permissionDesc === 'mainDom' ? language.mainDomAccessConsent.replace("{}", pluginName)
-        : permissionDesc === 'replacer' ? language.replacerPermissionConsent.replace("{}", pluginName)
-        : permissionDesc === 'provider' ? language.providerPermissionConsent.replace("{}", pluginName)
-        : permissionDesc === 'sendChat' ? language.sendChatConsent.replace("{}", pluginName)
-        : permissionDesc === 'inlay' ? language.inlayPermissionConsent.replace("{}", pluginName)
-        : `Error`
-    if(alertTitle === 'Error'){
-        return false;
-    }
+    const alertTitle = permissionConsentTexts[permissionDesc]().replace('{}', pluginName)
     const conf = await alertConfirm(alertTitle)
     if(conf && permissionKey){
         permissionSessionCache.set(scriptHash, permissionDesc, true)
@@ -898,26 +910,32 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         }
     }
     const getPluginScriptHash = createPluginScriptHashGetter(plugin.script, hasher)
-    const getPermission = async (permissionDesc: PluginPermission, reconfirm: boolean|'periodically' = false) => {
-        return getPluginPermission(plugin.name, await getPluginScriptHash(), permissionDesc, reconfirm)
+    const getPermission = async (permissionDesc: PluginPermission) => {
+        return getPluginPermission(plugin.name, await getPluginScriptHash(), permissionDesc)
     }
-    // Fork-specific: the character, chat and database APIs need the 'db'
-    // permission. A getter resolves null when it is denied; a setter rejects
-    // and writes nothing. No live state is read before the permission settles.
+    // Database getters need 'db'; setters need 'db' and then 'dbWrite'.
+    // A denied getter resolves null; a denied setter rejects without writing.
+    // Live state and archived targets are read or restored only after both setter checks.
     const requireDatabasePermission = async (apiName:string) => {
-        if(!await getPermission('db', 'periodically')){
+        if(!await getPermission('db')){
             throw new Error(`${apiName} needs the 'db' permission, which was not granted.`)
         }
     }
+    const requireDatabaseWritePermission = async (apiName:string) => {
+        await requireDatabasePermission(apiName)
+        if(!await getPermission('dbWrite')){
+            throw new Error(`${apiName} needs the 'dbWrite' permission, which was not granted.`)
+        }
+    }
     const getGatedChar = async () => {
-        if(!await getPermission('db', 'periodically')){
+        if(!await getPermission('db')){
             return null
         }
         const current = oldApis.getChar()
         return current ? withoutAlt(current) : current
     }
     const setGatedChar = async (char:any) => {
-        await requireDatabasePermission('setChar')
+        await requireDatabaseWritePermission('setChar')
         // First, so a light entry never reaches the placeholder restore below.
         if(isLightEntry(char)){
             throw new Error(LIGHT_ENTRY_SINGLE_MESSAGE)
@@ -976,7 +994,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             provs.push(name)
             pluginV2.providers.set(name, (arg, abortSignal) => {
                 return runWithPluginPermission(
-                    () => getPermission('provider', 'periodically'),
+                    () => getPermission('provider'),
                     async () => {
                         //mode is overridden to v3, due to vulnerabilities using mode.
                         //Alternative to mode will be added in future
@@ -1022,7 +1040,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         removeRisuScriptHandler: oldApis.removeRisuScriptHandler,
         addRisuReplacer: async (name:string,func:Function) => {
             //permission check for replacer
-            const conf = await getPermission('replacer', 'periodically');
+            const conf = await getPermission('replacer');
             if(!conf || pluginUnloaded){
                 return;
             }
@@ -1032,7 +1050,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         removeRisuReplacer: oldApis.removeRisuReplacer,
         addRisuChatListener: async (mode:'output', func:Function) => {
             //permission check, lets use same as replacer
-            const conf = await getPermission('replacer', 'periodically');
+            const conf = await getPermission('replacer');
             if(!conf || pluginUnloaded){
                 return;
             }
@@ -1043,13 +1061,13 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         // Fork-specific: both setters resolve how many light character entries were kept and left out
         // (zeros when the write held none). Upstream resolves undefined.
         setDatabaseLite: async (newDb:any): Promise<LightWriteCounts> => {
-            await requireDatabasePermission('setDatabaseLite')
+            await requireDatabaseWritePermission('setDatabaseLite')
             const counts: LightWriteCounts = { lightKept: 0, lightLeftOut: 0 }
             await oldApis.setDatabaseLite(newDb, plugin.name, counts)
             return counts
         },
         setDatabase: async (newDb:any): Promise<LightWriteCounts> => {
-            await requireDatabasePermission('setDatabase')
+            await requireDatabaseWritePermission('setDatabase')
             const counts: LightWriteCounts = { lightKept: 0, lightLeftOut: 0 }
             await oldApis.setDatabase(newDb, plugin.name, counts)
             return counts
@@ -1057,7 +1075,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         // Fork-specific: the character list as light entries (no chats, lorebook, assets or messages), read from
         // top-level fields only. Write them back through setDatabase; each is swapped for its live character.
         getLightCharacters: async () => {
-            if(!await getPermission('db', 'periodically')){
+            if(!await getPermission('db')){
                 return null
             }
             return lightCharacterEntries(DBState.db.characters)
@@ -1065,7 +1083,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         loadPlugins: oldApis.loadPlugins,
         readImage: oldApis.readImage,
         readInlay: async (id: string) => {
-            const conf = await getPermission('inlay', 'periodically');
+            const conf = await getPermission('inlay');
             if(!conf){
                 return null;
             }
@@ -1075,7 +1093,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         //Same functionality, but new implementation
         getDatabase: async (includeOnly:string[]|'all' = 'all') => {
             const rec = MEASURE ? startPluginRecord('read') : null
-            const conf = await getPermission('db', 'periodically');
+            const conf = await getPermission('db');
             rec?.lap('permissionMs')
             if(!conf){
                 rec?.finish()
@@ -1212,7 +1230,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             }
         },
         getCharacterFromIndex: async (index:number) => {
-            if(!await getPermission('db', 'periodically')){
+            if(!await getPermission('db')){
                 return null
             }
             const db = DBState.db
@@ -1232,7 +1250,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             return null;
         },
         setCharacterToIndex: async (index:number, char:any) => {
-            await requireDatabasePermission('setCharacterToIndex')
+            await requireDatabaseWritePermission('setCharacterToIndex')
             // First, so a light entry never reaches the placeholder restore below.
             if(isLightEntry(char)){
                 throw new Error(LIGHT_ENTRY_SINGLE_MESSAGE)
@@ -1274,7 +1292,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             }
         },
         getChatFromIndex: async (characterIndex:number, chatIndex:number) => {
-            if(!await getPermission('db', 'periodically')){
+            if(!await getPermission('db')){
                 return null
             }
             const db = DBState.db
@@ -1335,7 +1353,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             return (await processScriptFull(char, parsed, 'editprocess', chatID, cbsConditions)).data;
         },
         setChatToIndex: async (characterIndex:number, chatIndex:number, chat:any) => {
-            await requireDatabasePermission('setChatToIndex')
+            await requireDatabaseWritePermission('setChatToIndex')
             // Fork-specific: a write to an archived character restores it
             // first and lands on the restored character, found again by its
             // chaId because the list may change during the read. A failed
@@ -1697,9 +1715,9 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             return new SafeLocalPluginStorage()
         },
         checkCharOrder: checkCharOrder,
-        requestPluginPermission: (permission:string) => {
-            return getPermission(permission as PluginPermission);
-        },
+        requestPluginPermission: (permission:string) => isPluginPermission(permission)
+            ? getPermission(permission)
+            : Promise.resolve(false),
         //Internal use APIs
         _getOldKeys: () => {
             return Object.keys(oldApis)

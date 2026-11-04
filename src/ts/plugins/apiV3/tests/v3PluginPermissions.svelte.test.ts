@@ -57,11 +57,17 @@ const alertConfirmMock = vi.hoisted(() => vi.fn(async () => true))
 const hasherMock = vi.hoisted(() => vi.fn(async (data: Uint8Array) => `hash:${new TextDecoder().decode(data)}`))
 
 const memStore = new Map<string, unknown>()
+/** Every key the permission store was asked to read, in order. */
+const readKeys: string[] = []
+const addRisuReplacerMock = vi.hoisted(() => vi.fn())
 
 vi.mock('localforage', () => ({
     default: {
         createInstance: () => ({
-            getItem: vi.fn(async (key: string) => memStore.get(key) ?? null),
+            getItem: vi.fn(async (key: string) => {
+                readKeys.push(key)
+                return memStore.get(key) ?? null
+            }),
             setItem: vi.fn(async (key: string, value: unknown) => {
                 memStore.set(key, value)
             }),
@@ -76,6 +82,7 @@ vi.mock(import('../../plugins.svelte'), () => ({
     allowedDbKeys: [],
     customProviderStore: writable([] as string[]),
     getV2PluginAPIs: () => ({
+        addRisuReplacer: addRisuReplacerMock,
         safeLocalStorage: {
             getItem: vi.fn(),
             setItem: vi.fn(),
@@ -218,7 +225,7 @@ vi.mock(import('../../../process/ttsHooks'), () => ({
 //#endregion
 
 import { makeRisuaiAPIV3 } from '../v3.svelte'
-import { DBState } from '../../../stores.svelte'
+import { DBState, bodyIntercepterStore } from '../../../stores.svelte'
 import { pluginV2 } from '../../plugins.svelte'
 
 //#region fixtures
@@ -261,8 +268,37 @@ function makeProviderArg(): PluginV2ProviderArgument {
     }
 }
 
+/** Makes the next confirm stay open until `answer` is called with the user's choice. */
+function heldConfirm(): { answer: (granted: boolean) => void } {
+    let release: (granted: boolean) => void = () => {}
+    alertConfirmMock.mockImplementationOnce(() => new Promise<boolean>((resolve) => { release = resolve }))
+    return { answer: (granted) => release(granted) }
+}
+
+/** Lets every request that can reach its confirm do so. */
+function letRequestsReachTheirConfirm(): Promise<void> {
+    return new Promise<void>((resolve) => setTimeout(resolve, 30))
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Stores a grant as an earlier session left it: the grant under the script
+ * hash, and when `ageMs` is given, its time under the plugin NAME.
+ */
+async function seedStoredGrant(pluginName: string, script: string, permission: string, ageMs?: number): Promise<void> {
+    const scriptHash = await hasherMock(new TextEncoder().encode(script))
+    memStore.set(`${scriptHash}_${permission}`, true)
+    if (ageMs !== undefined) {
+        memStore.set(`${pluginName}_${permission}_lastGrantTime`, Date.now() - ageMs)
+    }
+}
+
 beforeEach(() => {
     memStore.clear()
+    readKeys.length = 0
+    addRisuReplacerMock.mockReset()
+    bodyIntercepterStore.length = 0
     alertConfirmMock.mockReset()
     alertConfirmMock.mockImplementation(async () => true)
     hasherMock.mockClear()
@@ -426,18 +462,6 @@ describe('permission requests made at the same time for one plugin script and pe
     // permission layer asks for and that one answer reaches every caller, and
     // say nothing about how the real alert queue shows or answers them.
 
-    /** Makes the next confirm stay open until `answer` is called with the user's choice. */
-    function heldConfirm(): { answer: (granted: boolean) => void } {
-        let release: (granted: boolean) => void = () => {}
-        alertConfirmMock.mockImplementationOnce(() => new Promise<boolean>((resolve) => { release = resolve }))
-        return { answer: (granted) => release(granted) }
-    }
-
-    /** Lets every request that can reach its confirm do so. */
-    function letRequestsReachTheirConfirm(): Promise<void> {
-        return new Promise<void>((resolve) => setTimeout(resolve, 30))
-    }
-
     test.each([
         ['granted', true, 'script-shared-grant'],
         ['denied', false, 'script-shared-deny'],
@@ -556,5 +580,144 @@ describe('permission requests made at the same time for one plugin script and pe
 
         expect.soft(alertConfirmMock, 'confirms asked in all').toHaveBeenCalledTimes(2)
         expect.soft(later).not.toBeNull()
+    })
+})
+
+// One re-ask mode per permission applies to every caller of that permission, `requestPluginPermission` included.
+const reconfirmedConsentKeys = {
+    db: 'getFullDatabaseConsent',
+    dbWrite: 'dbWriteConsent',
+    replacer: 'replacerPermissionConsent',
+    provider: 'providerPermissionConsent',
+    inlay: 'inlayPermissionConsent',
+} as const
+
+describe('a stored grant older than 3 days is asked again, also by requestPluginPermission', () => {
+    test('D7e: a stale stored "db" grant is asked again by requestPluginPermission, and a no holds for getDatabase', async () => {
+        const name = 'stale-db-request-plugin'
+        const script = 'script-stale-db-request'
+        installDb([{ name, script }])
+        await seedStoredGrant(name, script, 'db', 4 * DAY_MS)
+        const api = makeApi(name)
+        alertConfirmMock.mockResolvedValueOnce(false)
+
+        const granted = await api.requestPluginPermission('db')
+
+        expect(alertConfirmMock).toHaveBeenCalledTimes(1)
+        expect(language).toHaveProperty('getFullDatabaseConsent')
+        expect(alertConfirmMock).toHaveBeenNthCalledWith(1, language.getFullDatabaseConsent.replace('{}', name))
+        expect(granted).toBe(false)
+        expect(await api.getDatabase()).toBeNull()
+        expect(alertConfirmMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('D7e-c: a requestPluginPermission and a getDatabase started together share one prompt and one answer', async () => {
+        const name = 'stale-db-concurrent-plugin'
+        const script = 'script-stale-db-concurrent'
+        installDb([{ name, script }])
+        await seedStoredGrant(name, script, 'db', 4 * DAY_MS)
+        const api = makeApi(name)
+        const held = heldConfirm()
+
+        const both = Promise.all([api.requestPluginPermission('db'), api.getDatabase()])
+        await letRequestsReachTheirConfirm()
+
+        expect(alertConfirmMock).toHaveBeenCalledTimes(1)
+        held.answer(false)
+        expect(await both).toEqual([false, null])
+    })
+
+    test.each(Object.keys(reconfirmedConsentKeys) as Array<keyof typeof reconfirmedConsentKeys>)('D13: a stale stored "%s" grant is asked again by requestPluginPermission', async (permission) => {
+        const name = `stale-request-${permission}-plugin`
+        const script = `script-stale-request-${permission}`
+        installDb([{ name, script }])
+        await seedStoredGrant(name, script, permission, 4 * DAY_MS)
+        const api = makeApi(name)
+        alertConfirmMock.mockResolvedValueOnce(false)
+
+        const granted = await api.requestPluginPermission(permission)
+
+        expect(alertConfirmMock).toHaveBeenCalledTimes(1)
+        const key = reconfirmedConsentKeys[permission]
+        expect(language).toHaveProperty(key)
+        expect(alertConfirmMock).toHaveBeenNthCalledWith(1, language[key].replace('{}', name))
+        expect(granted).toBe(false)
+    })
+
+    test('D14: a stored "replacer" grant without a time is asked again by registerBodyIntercepter, and a no registers nothing for addRisuReplacer either', async () => {
+        const name = 'timeless-replacer-plugin'
+        const script = 'script-timeless-replacer'
+        installDb([{ name, script }])
+        await seedStoredGrant(name, script, 'replacer')
+        const api = makeApi(name)
+        alertConfirmMock.mockResolvedValueOnce(false)
+
+        const id = await api.registerBodyIntercepter(() => ({}))
+
+        expect(alertConfirmMock).toHaveBeenCalledTimes(1)
+        expect(language).toHaveProperty('replacerPermissionConsent')
+        expect(alertConfirmMock).toHaveBeenNthCalledWith(1, language.replacerPermissionConsent.replace('{}', name))
+        expect(id).toBeNull()
+        expect(bodyIntercepterStore).toHaveLength(0)
+
+        await api.addRisuReplacer('replace-name', () => '')
+
+        expect(alertConfirmMock).toHaveBeenCalledTimes(1)
+        expect(addRisuReplacerMock).not.toHaveBeenCalled()
+    })
+
+    test.each([
+        ['db', 'requestPluginPermission'],
+        ['dbWrite', 'requestPluginPermission'],
+        ['replacer', 'requestPluginPermission'],
+        ['provider', 'requestPluginPermission'],
+        ['inlay', 'requestPluginPermission'],
+        ['replacer', 'registerBodyIntercepter'],
+    ] as const)('D15: a granted "%s" through %s stores the time of the grant under the plugin name', async (permission, caller) => {
+        const name = `grant-time-${permission}-${caller}-plugin`
+        installDb([{ name, script: `script-grant-time-${permission}-${caller}` }])
+        const api = makeApi(name)
+
+        if (caller === 'registerBodyIntercepter') {
+            await api.registerBodyIntercepter(() => ({}))
+        } else {
+            await api.requestPluginPermission(permission)
+        }
+
+        expect(alertConfirmMock).toHaveBeenCalledTimes(1)
+        expect(memStore.get(`${name}_${permission}_lastGrantTime`)).toEqual(expect.any(Number))
+    })
+
+    test.each(['fetchLogs', 'mainDom', 'sendChat'] as const)('guard (D16): a stored "%s" grant without a time is honored by requestPluginPermission without asking', async (permission) => {
+        const name = `once-only-${permission}-plugin`
+        const script = `script-once-only-${permission}`
+        installDb([{ name, script }])
+        await seedStoredGrant(name, script, permission)
+        const api = makeApi(name)
+
+        const granted = await api.requestPluginPermission(permission)
+
+        expect(alertConfirmMock).not.toHaveBeenCalled()
+        expect(granted).toBe(true)
+    })
+})
+
+describe('requestPluginPermission refuses a string that is not a permission', () => {
+    // A plugin controls this argument; the sandbox bridge hands any structured-clone value through.
+    test.each([
+        ['bogus', 'bogus'],
+        ['constructor', 'constructor'],
+        ['__proto__', '__proto__'],
+        ['an array holding a permission', ['db']],
+    ])('D9b: %s resolves false with no prompt and no stored read', async (label, value) => {
+        const name = `unknown-permission-plugin-${label}`
+        installDb([{ name, script: `script-unknown-permission-${label}` }])
+        const api = makeApi(name)
+
+        const granted = await api.requestPluginPermission(value as string)
+
+        expect(granted).toBe(false)
+        expect(alertConfirmMock).not.toHaveBeenCalled()
+        expect(readKeys).toEqual([])
     })
 })

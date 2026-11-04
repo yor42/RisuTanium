@@ -1933,6 +1933,7 @@ export const languageVietnamese = {
     "pluginDevelopMode": "Chế độ phát triển Plugin",
     "mainDomAccessConsent": "Plugin {} đang yêu cầu truy cập vào Tài liệu chính, điều này có thể làm lộ thông tin nhạy cảm. Bạn có muốn cho phép không?",
     "getFullDatabaseConsent": "Plugin {} đang yêu cầu truy cập vào toàn bộ cơ sở dữ liệu, điều này có thể làm lộ thông tin nhạy cảm. Bạn có muốn cho phép điều này không?",
+    "dbWriteConsent": "Plugin {} đang yêu cầu quyền sửa đổi cơ sở dữ liệu của bạn, bao gồm nhân vật, cuộc trò chuyện, mô-đun và cài đặt. Bạn có muốn cho phép điều này không?",
     "replacerPermissionConsent": "Plugin {} đang yêu cầu quyền thay thế nội dung trong cuộc trò chuyện, điều này có thể được dùng để thao túng cuộc trò chuyện. Bạn có muốn cho phép điều này không?",
     "providerPermissionConsent": "Plugin {} đang yêu cầu quyền truy cập nhà cung cấp, điều này có thể cho phép nó thực hiện các lệnh gọi API trái phép. Bạn có muốn cho phép điều này không?",
     "providerPermissionDenied": "Người dùng đã từ chối quyền truy cập nhà cung cấp của plugin.",

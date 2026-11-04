@@ -40,8 +40,8 @@ const readColdStorageItemMock = vi.hoisted(() => vi.fn())
 /** Every text shown to the user, except progress notices. */
 const notices = vi.hoisted(() => ({ texts: [] as string[] }))
 
-/** Whether the stored recent 'db' grant exists; off, the 'db' check prompts. */
-const permissionGrants = vi.hoisted(() => ({ db: true }))
+/** Whether the stored recent 'db' and 'dbWrite' grants exist; off, that check prompts. */
+const permissionGrants = vi.hoisted(() => ({ db: true, dbWrite: true }))
 
 vi.mock('localforage', () => ({
     default: {
@@ -52,6 +52,10 @@ vi.mock('localforage', () => ({
                 if (permissionGrants.db && options?.name === 'plugin_permissions') {
                     if (key.endsWith('_db_lastGrantTime')) return Date.now()
                     if (key.endsWith('_db')) return true
+                }
+                if (permissionGrants.dbWrite && options?.name === 'plugin_permissions') {
+                    if (key.endsWith('_dbWrite_lastGrantTime')) return Date.now()
+                    if (key.endsWith('_dbWrite')) return true
                 }
                 return null
             }),
@@ -390,6 +394,7 @@ function warnedAbout(chaId: string): boolean {
 
 beforeEach(() => {
     permissionGrants.db = true
+    permissionGrants.dbWrite = true
     units.clear()
     notices.texts.length = 0
     readColdStorageItemMock.mockReset()
@@ -740,6 +745,25 @@ describe('plugin setters and incoming stubs: the refusal rule by chaId', () => {
         expect(liveOf('hero').name).toBe('hero renamed by plugin')
     })
 
+    test.each([
+        ['setChar', 1, (api: ReturnType<typeof makeRisuaiAPIV3>, char: CharacterFixture) => api.setChar(char)],
+        ['setCharacterToIndex', 0, (api: ReturnType<typeof makeRisuaiAPIV3>, char: CharacterFixture) => api.setCharacterToIndex(1, char)],
+    ])('a denied "dbWrite" prompt stops %s before the archived character is read or restored', async (label, selected, call) => {
+        const full = fullCharacter('hero')
+        putUnit('unit-hero', full)
+        installDb([fullCharacter('warm'), stubOf(full, 'unit-hero')])
+        selectedCharID.set(selected)
+        permissionGrants.dbWrite = false
+        alertConfirmMock.mockImplementation(async () => false)
+        const api = makeRisuaiAPIV3({} as HTMLIFrameElement, { ...makePlugin(), script: `d1c-${label}` })
+
+        await expect(settled(() => call(api, fullCharacter('hero', { desc: 'written by the plugin' }) as CharacterFixture))).rejects.toThrow(/'dbWrite'/)
+
+        expect(alertConfirmMock).toHaveBeenCalledTimes(1)
+        expect(readColdStorageItemMock).not.toHaveBeenCalled()
+        expect(liveOf('hero').coldstorage).toBeTruthy()
+    })
+
     test('guard: an incoming full character replaces a live stub', async () => {
         const full = fullCharacter('hero')
         putUnit('unit-hero', full)
@@ -807,6 +831,49 @@ describe('V3 setChatToIndex on an archived character', () => {
         expect(liveOf('hero').chats[1].message[0].data).toBe('written by the plugin')
         expect(liveOf('inserted').chats[1].message[0].data).toBe('second')
         expect(liveOf('warm').chats[1].message[0].data).toBe('second')
+    })
+
+    test('a denied "dbWrite" prompt stops setChatToIndex before the archived character is read or restored', async () => {
+        const full = fullCharacter('hero')
+        putUnit('unit-hero', full)
+        installDb([fullCharacter('warm'), stubOf(full, 'unit-hero')])
+        permissionGrants.dbWrite = false
+        alertConfirmMock.mockImplementation(async () => false)
+        const api = makeRisuaiAPIV3({} as HTMLIFrameElement, { ...makePlugin(), script: 'd1b-dbwrite-denied' })
+
+        await expect(settled(() => api.setChatToIndex(1, 1, makeChat('hero-chat-1', 'written by the plugin')))).rejects.toThrow(/'dbWrite'/)
+
+        expect(alertConfirmMock).toHaveBeenCalledTimes(1)
+        expect(readColdStorageItemMock).not.toHaveBeenCalled()
+        expect(liveOf('hero').coldstorage).toBe('unit-hero')
+    })
+
+    test.each([
+        ['setChatToIndex', 0, (api: ReturnType<typeof makeRisuaiAPIV3>) => api.setChatToIndex(1, 1, makeChat('hero-chat-1', 'written by the plugin')), (hero: ColdCharacter) => hero.chats[1].message[0].data],
+        ['setCharacterToIndex', 0, (api: ReturnType<typeof makeRisuaiAPIV3>) => api.setCharacterToIndex(1, fullCharacter('hero', { desc: 'written by the plugin' }) as CharacterFixture), (hero: ColdCharacter) => hero.desc],
+        ['setChar', 1, (api: ReturnType<typeof makeRisuaiAPIV3>) => api.setChar(fullCharacter('hero', { desc: 'written by the plugin' }) as CharacterFixture), (hero: ColdCharacter) => hero.desc],
+    ])('guard: %s reads the live list only after the open "dbWrite" prompt is answered, so a restore needed by then is not missed', async (label, selected, call, written) => {
+        const full = fullCharacter('hero')
+        putUnit('unit-hero', full)
+        installDb([fullCharacter('warm'), fullCharacter('hero')])
+        selectedCharID.set(selected)
+        permissionGrants.dbWrite = false
+        let answerDbWritePrompt!: (granted: boolean) => void
+        alertConfirmMock.mockImplementationOnce(() => new Promise<boolean>((resolve) => { answerDbWritePrompt = resolve }))
+        const api = makeRisuaiAPIV3({} as HTMLIFrameElement, { ...makePlugin(), script: `d6-${label}` })
+
+        const pending = call(api)
+        for (let i = 0; i < 50 && alertConfirmMock.mock.calls.length === 0; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 0))
+        }
+        expect(alertConfirmMock).toHaveBeenCalledTimes(1)
+        installDb([fullCharacter('warm'), stubOf(full, 'unit-hero')])
+        answerDbWritePrompt(true)
+        await pending
+
+        expect(readColdStorageItemMock).toHaveBeenCalledWith('unit-hero')
+        expect(liveOf('hero').coldstorage).toBeUndefined()
+        expect(written(liveOf('hero'))).toBe('written by the plugin')
     })
 
     test('guard: the live list is read only after the open "db" prompt is answered, so a restore needed by then is not missed', async () => {

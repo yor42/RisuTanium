@@ -2073,6 +2073,7 @@ export const languageJapanese = {
     pluginDevelopMode: "プラグイン開発モード",
     fetchLogConsent: "プラグイン {} がログの取得を要求しています。機密情報が漏洩する可能性があります。許可しますか？", 
     getFullDatabaseConsent: "プラグイン {} がデータベース全体へのアクセスを要求しています。機密情報が漏洩する可能性があります。許可しますか？",
+    dbWriteConsent: "プラグイン {} がキャラクター、チャット、モジュール、設定を含むデータベースの変更許可を要求しています。許可しますか？",
     mainDomAccessConsent: "プラグイン {} がメインDocumentへのアクセスを要求しています。機密情報が漏洩する可能性があります。許可しますか？",
     replacerPermissionConsent: "プラグイン {} がチャット内容を置換する権限を要求しています。これは会話の改ざんに使用される可能性があります。許可しますか？",
     providerPermissionConsent: "プラグイン {} がプロバイダへのアクセス権限を要求しています。これにより不正なAPI呼び出しが行われる可能性があります。許可しますか？",

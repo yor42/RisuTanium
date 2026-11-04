@@ -1396,11 +1396,11 @@ interface RisuaiPluginAPI {
      * switched characters). A `character` with no `chaId` still replaces the
      * selected character.
      *
-     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
-     * permission (asked as for `getCharacter`). The call writes only after
-     * that check and before its promise settles; when it is denied the
-     * promise rejects with an `Error` naming the permission and nothing is
-     * written.
+     * **Fork-specific note (not upstream RisuAI):** needs both `'db'`
+     * and `'dbWrite'` permissions, checked in that order. The call
+     * writes only after both checks and before its promise settles; when
+     * either is denied the promise rejects with an `Error`
+     * naming that permission and nothing is written.
      *
      * **Fork-specific note (not upstream RisuAI):** a chat's alternative
      * replies (this fork's `alt` field) are never returned by the character,
@@ -1440,11 +1440,11 @@ interface RisuaiPluginAPI {
      * character. It also rejects when no character is selected or when
      * `character.chaId` differs from the selected character's.
      *
-     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
-     * permission (asked as for `getCharacter`). The call writes only after
-     * that check and before its promise settles; when it is denied the
-     * promise rejects with an `Error` naming the permission and nothing is
-     * written.
+     * **Fork-specific note (not upstream RisuAI):** needs both `'db'`
+     * and `'dbWrite'` permissions, checked in that order. The call
+     * writes only after both checks and before its promise settles; when
+     * either is denied the promise rejects with an `Error`
+     * naming that permission and nothing is written.
      */
     setChar(character: any): Promise<void>;
 
@@ -1481,11 +1481,11 @@ interface RisuaiPluginAPI {
      * under that unit, and so is a full character. An out-of-range `index` does
      * nothing and does not reject.
      *
-     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
-     * permission (asked as for `getCharacter`). The call writes only after
-     * that check and before its promise settles; when it is denied the
-     * promise rejects with an `Error` naming the permission and nothing is
-     * written.
+     * **Fork-specific note (not upstream RisuAI):** needs both `'db'`
+     * and `'dbWrite'` permissions, checked in that order. The call
+     * writes only after both checks and before its promise settles; when
+     * either is denied the promise rejects with an `Error`
+     * naming that permission and nothing is written.
      *
      * **Fork-specific note (not upstream RisuAI):** the alternative replies of
      * the chats are kept as for `setCharacter`. When the character at `index`
@@ -1573,11 +1573,11 @@ interface RisuaiPluginAPI {
      * chat index does nothing, so a call that resolves does not guarantee the
      * write.
      *
-     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
-     * permission (asked as for `getCharacter`). The call writes only after
-     * that check and before its promise settles; when it is denied the
-     * promise rejects with an `Error` naming the permission and nothing is
-     * written.
+     * **Fork-specific note (not upstream RisuAI):** needs both `'db'`
+     * and `'dbWrite'` permissions, checked in that order. The call
+     * writes only after both checks and before its promise settles; when
+     * either is denied the promise rejects with an `Error`
+     * naming that permission and nothing is written.
      */
     setChatToIndex(characterIndex: number, chatIndex: number, chat: any): Promise<void>;
 
@@ -1782,19 +1782,20 @@ interface RisuaiPluginAPI {
      * again before the write, the promise rejects and nothing is written,
      * the plugin list included.
      *
-     * `setDatabaseLite` saves the call's data only after the `'db'` permission
-     * check: right after it when nothing else needs asking, and after the
-     * plugin-list prompts otherwise, in either case before its promise
+     * `setDatabaseLite` saves the call's data only after the
+     * `'db'` and `'dbWrite'` permission checks: right after them
+     * when nothing else needs asking, and after the plugin-list prompts
+     * otherwise, in either case before its promise
      * settles. It never saves before it returns and never throws
      * synchronously; a refusal is a rejected promise. (The V2 plugin API's
      * `setDatabaseLite` saves before it returns when nothing needs asking;
      * that order does not apply here.)
      *
-     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
-     * permission (asked as for `getCharacter`). The call writes only after
-     * that check and before its promise settles; when it is denied the
-     * promise rejects with an `Error` naming the permission and nothing is
-     * written.
+     * **Fork-specific note (not upstream RisuAI):** needs both `'db'`
+     * and `'dbWrite'` permissions, checked in that order. The call
+     * writes only after both checks and before its promise settles; when
+     * either is denied the promise rejects with an `Error`
+     * naming that permission and nothing is written.
      *
      * **Fork-specific note (not upstream RisuAI):** `characters` may hold
      * light entries from `getLightCharacters`; see there. The promise resolves
@@ -1844,11 +1845,11 @@ interface RisuaiPluginAPI {
      *   message names the plugin and the reason. A `plugins` value that is not
      *   an array is handled the same way.
      *
-     * **Fork-specific note (not upstream RisuAI):** needs the `'db'`
-     * permission (asked as for `getCharacter`). The call writes only after
-     * that check and before its promise settles; when it is denied the
-     * promise rejects with an `Error` naming the permission and nothing is
-     * written.
+     * **Fork-specific note (not upstream RisuAI):** needs both `'db'`
+     * and `'dbWrite'` permissions, checked in that order. The call
+     * writes only after both checks and before its promise settles; when
+     * either is denied the promise rejects with an `Error`
+     * naming that permission and nothing is written.
      *
      * **Fork-specific note (not upstream RisuAI):** the alternative replies of
      * every chat are kept as for `setCharacter`. A full character in `characters`
@@ -2423,8 +2424,10 @@ interface RisuaiPluginAPI {
 
     /**
      * Requests permission for a specific action
-     * @param permission - Permission string (e.g. 'fetchLogs'|'db'|'mainDom')
+     * @param permission - Permission string (e.g. 'fetchLogs'|'db'|'dbWrite'|'mainDom')
      * @returns True if permission granted, false otherwise
+     * **Fork-specific note (not upstream RisuAI):** applies the same re-ask
+     * rule as the API calls that use the requested permission.
      */
     requestPluginPermission(permission: string): Promise<boolean>;
 
