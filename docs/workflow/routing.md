@@ -83,3 +83,7 @@ The advisor gets attempted approaches, observations, competing positions and con
 Record investigations and gate dispatches in the ledger from real evidence. Unknown costs stay unknown; no fabricated estimates. Budgets are reassessment checkpoints, not acceptance shortcuts. Each new dispatch must answer a distinct question or supply independent verification.
 
 Write boundaries and checkout concurrency follow [ownership](ownership.md). Item COMPLETE requires [applicable record closeout](records.md). Doc-verifier is the ordinary Sonnet documentation checker; the Haiku review pilot was retired (MC-321 7).
+
+## Parallel options for the maintainer (MC-1069)
+
+At the start of a task, at each completion and whenever a code, device or records track is free, list the open tickets that could run in parallel with the current work (disjoint files and resources, already authorized or ready to size; the Roadmap and Live-State name them) and offer them to the maintainer as options with the AskUserQuestion tool (multiSelect), each with its blocker or decision need in one line. Do not start an unapproved ticket on the strength of being parallel-safe, and do not leave a free track idle without having offered. Every maintainer decision, approval and confirmation goes through AskUserQuestion, never a prose question.
