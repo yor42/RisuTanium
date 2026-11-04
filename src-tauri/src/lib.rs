@@ -860,6 +860,12 @@ fn cancel_streamed_fetch(id: String, registry: tauri::State<'_, streamed_fetch::
     registry.cancel(&id);
 }
 
+// This app has one window; another webview's load would cancel its live streams.
+#[tauri::command]
+fn cancel_all_streamed_fetch(registry: tauri::State<'_, streamed_fetch::FetchRegistry>) {
+    registry.cancel_all();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // The command line is consumed once per process chain: a relaunch finds the
@@ -951,7 +957,8 @@ pub fn run() {
             run_py_server,
             install_py_dependencies,
             streamed_fetch,
-            cancel_streamed_fetch
+            cancel_streamed_fetch,
+            cancel_all_streamed_fetch
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -368,12 +368,12 @@ describe('the native timeout key', () => {
         expect('timeout_secs' in call).toBe(false)
     })
 
-    test('a setting below 240 s now cuts the native request sooner than the 240 s default did', async () => {
+    test('a setting of 90 s is sent as a 90 s total limit instead of the idle limit (no data for 600 s)', async () => {
         const call = await nativeCall(90000)
         expect(call.timeoutSecs).toBe(90)
     })
 
-    test('fetchNative with no timeout sends an undefined timeoutSecs (the Rust 240 s default applies)', async () => {
+    test('fetchNative with no timeout sends an undefined timeoutSecs (the idle limit (no data for 600 s) applies)', async () => {
         const call = await nativeCall(undefined)
         expect(call.timeoutSecs).toBeUndefined()
     })

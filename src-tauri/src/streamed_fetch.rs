@@ -6,6 +6,8 @@
 // - After the response head has been emitted, the terminal event is `error` or
 //   `end`, never both; the first terminal signal wins.
 // - A cancelled request drops its reqwest future, which closes the socket.
+// - A live id never starts a second request; its original abort handle stays registered.
+// - Without a requested total limit, only a gap in native activity ends a request.
 
 use base64::{engine::general_purpose, Engine as _};
 use crate::net_policy::{
@@ -21,7 +23,7 @@ use std::time::{Duration, Instant};
 
 pub const TOMBSTONE_CAP: usize = 64;
 pub const TOMBSTONE_TTL: Duration = Duration::from_secs(10);
-const DEFAULT_TIMEOUT_SECS: u64 = 240;
+pub const IDLE_TIMEOUT: Duration = Duration::from_secs(600);
 const MAX_REDIRECTS: usize = 10;
 
 struct RegistryState {
@@ -40,6 +42,7 @@ pub struct FetchRegistry {
 
 pub enum Registration {
     AlreadyCancelled,
+    Duplicate,
     Live(RegistrationGuard, AbortRegistration),
 }
 
@@ -92,6 +95,10 @@ impl FetchRegistry {
         if state.tombstones.remove(id).is_some() {
             return Registration::AlreadyCancelled;
         }
+        // A live id has one request and keeps its abort handle until it ends or is cancelled.
+        if state.live.contains_key(id) {
+            return Registration::Duplicate;
+        }
         state.next_serial += 1;
         let serial = state.next_serial;
         let (handle, registration) = AbortHandle::new_pair();
@@ -108,6 +115,14 @@ impl FetchRegistry {
 
     pub fn cancel(&self, id: &str) {
         self.cancel_at(id, Instant::now());
+    }
+
+    /// Aborts entries live at this instant; drained ids may register again.
+    pub fn cancel_all(&self) {
+        let mut state = self.lock();
+        for (_, (_, handle)) in state.live.drain() {
+            handle.abort();
+        }
     }
 
     pub fn cancel_at(&self, id: &str, now: Instant) {
@@ -209,12 +224,21 @@ fn build_request(
         _ => return Err("Invalid method".to_string()),
     };
     let builder = builder.headers(headers);
-    // Zero is the caller's explicit "no limit"; an absent value keeps the default.
+    // Zero and an absent value have no total limit; only absence arms the idle limit.
     Ok(match request.timeout_secs {
         Some(0) => builder,
         Some(secs) => builder.timeout(Duration::from_secs(secs)),
-        None => builder.timeout(Duration::from_secs(DEFAULT_TIMEOUT_SECS)),
+        None => builder,
     })
+}
+
+fn idle_for(timeout_secs: Option<u64>, idle: Duration) -> Option<Duration> {
+    if timeout_secs.is_none() { Some(idle) } else { None }
+}
+
+fn idle_message(is_timeout: bool, since_activity: Duration, idle: Option<Duration>) -> Option<String> {
+    idle.filter(|limit| is_timeout && since_activity >= *limit)
+        .map(|limit| format!("No data received for {} seconds", limit.as_secs()))
 }
 
 fn decode_body(body: &str) -> Result<Vec<u8>, String> {
@@ -226,11 +250,15 @@ fn decode_body(body: &str) -> Result<Vec<u8>, String> {
 /// With a policy the client ignores system proxies (a proxy would resolve and
 /// dial on its own), resolves names through the checking resolver and refuses
 /// redirects to disallowed IP literals; without one it is the plain client.
-fn build_client(policy: Option<&NetPolicy>, lookup: Lookup) -> reqwest::Result<reqwest::Client> {
-    let Some(policy) = policy.copied() else {
-        return reqwest::Client::builder().build();
+fn build_client(policy: Option<&NetPolicy>, lookup: Lookup, idle: Option<Duration>) -> reqwest::Result<reqwest::Client> {
+    let with_idle = |builder: reqwest::ClientBuilder| match idle {
+        Some(duration) => builder.read_timeout(duration),
+        None => builder,
     };
-    reqwest::Client::builder()
+    let Some(policy) = policy.copied() else {
+        return with_idle(reqwest::Client::builder()).build();
+    };
+    with_idle(reqwest::Client::builder())
         .no_proxy()
         .dns_resolver(Arc::new(CheckedResolver { policy, lookup }))
         .redirect(reqwest::redirect::Policy::custom(move |attempt| {
@@ -249,10 +277,10 @@ async fn run_fetch<F>(request: &FetchRequest, emit: &F) -> String
 where
     F: Fn(String) -> Result<(), String>,
 {
-    run_fetch_with(request, emit, system_lookup()).await
+    run_fetch_with(request, emit, system_lookup(), IDLE_TIMEOUT).await
 }
 
-async fn run_fetch_with<F>(request: &FetchRequest, emit: &F, lookup: Lookup) -> String
+async fn run_fetch_with<F>(request: &FetchRequest, emit: &F, lookup: Lookup, idle: Duration) -> String
 where
     F: Fn(String) -> Result<(), String>,
 {
@@ -264,7 +292,8 @@ where
             }
         }
     }
-    let client = match build_client(request.policy.as_ref(), lookup) {
+    let idle = idle_for(request.timeout_secs, idle);
+    let client = match build_client(request.policy.as_ref(), lookup, idle) {
         Ok(client) => client,
         Err(e) => return failure(&error_text(e)),
     };
@@ -272,10 +301,16 @@ where
         Ok(builder) => builder,
         Err(message) => return failure(&message),
     };
+    let mut last_activity = Instant::now();
     let mut response = match builder.send().await {
         Ok(response) => response,
-        Err(e) => return failure(&error_text(e)),
+        Err(e) => {
+            let message = idle_message(e.is_timeout(), last_activity.elapsed(), idle)
+                .unwrap_or_else(|| error_text(e));
+            return failure(&message);
+        }
     };
+    last_activity = Instant::now();
 
     let head = json!({
         "type": "headers",
@@ -290,6 +325,7 @@ where
     loop {
         match response.chunk().await {
             Ok(Some(chunk)) => {
+                last_activity = Instant::now();
                 let event = json!({
                     "type": "chunk",
                     "body": general_purpose::STANDARD.encode(chunk),
@@ -301,7 +337,8 @@ where
             }
             Ok(None) => break,
             Err(e) => {
-                let message = error_text(e);
+                let message = idle_message(e.is_timeout(), last_activity.elapsed(), idle)
+                    .unwrap_or_else(|| error_text(e));
                 let event = json!({ "type": "error", "body": message, "id": request.id });
                 // The failure result below carries the same text if this emit fails.
                 let _ = emit(event.to_string());
@@ -326,6 +363,7 @@ where
 {
     let (_guard, abort_registration) = match registry.register(&request.id) {
         Registration::AlreadyCancelled => return cancelled(),
+        Registration::Duplicate => return cancelled(),
         Registration::Live(guard, abort_registration) => (guard, abort_registration),
     };
     match Abortable::new(run_fetch(&request, &emit), abort_registration).await {
@@ -344,12 +382,12 @@ mod tests {
     use std::thread;
 
     fn bind_stub() -> (TcpListener, u16) {
-        for port in 6330..=6349u16 {
+        for port in 6330..=6399u16 {
             if let Ok(listener) = TcpListener::bind(("127.0.0.1", port)) {
                 return (listener, port);
             }
         }
-        panic!("no free port in 6330-6349");
+        panic!("no free port in 6330-6399");
     }
 
     fn read_request(stream: &mut TcpStream) {
@@ -466,8 +504,8 @@ mod tests {
     }
 
     #[test]
-    fn missing_timeout_keeps_the_default_deadline() {
-        assert_eq!(built_timeout(None), Some(Duration::from_secs(DEFAULT_TIMEOUT_SECS)));
+    fn missing_timeout_sets_no_total_deadline() {
+        assert_eq!(built_timeout(None), None);
     }
 
     #[test]
@@ -678,6 +716,7 @@ mod tests {
         let (guard, abort_registration) = match registry.register("live") {
             Registration::Live(guard, abort_registration) => (guard, abort_registration),
             Registration::AlreadyCancelled => panic!("unexpected tombstone"),
+            Registration::Duplicate => panic!("unexpected duplicate"),
         };
         assert_eq!(registry.live_len(), 1);
         registry.cancel("live");
@@ -704,6 +743,7 @@ mod tests {
         match registry.register_at("t", after) {
             Registration::Live(_guard, _) => {}
             Registration::AlreadyCancelled => panic!("expired tombstone was honoured"),
+            Registration::Duplicate => panic!("expired tombstone id was live"),
         }
         assert_eq!(registry.tombstone_len(), 1);
         assert!(TOMBSTONE_TTL <= Duration::from_secs(10));
@@ -721,10 +761,11 @@ mod tests {
         match registry.register_at("id0", now) {
             Registration::Live(_guard, _) => {}
             Registration::AlreadyCancelled => panic!("oldest tombstone should be evicted"),
+            Registration::Duplicate => panic!("evicted tombstone id was live"),
         }
         match registry.register_at(&format!("id{}", TOMBSTONE_CAP + 5), now) {
             Registration::AlreadyCancelled => {}
-            Registration::Live(..) => panic!("newest tombstone should remain"),
+            Registration::Live(..) | Registration::Duplicate => panic!("newest tombstone should remain"),
         }
     }
 
@@ -790,7 +831,7 @@ mod tests {
 
     fn run_with_lookup(req: FetchRequest, lookup: Lookup) -> (String, Events) {
         let (events, emit) = collector();
-        let result = tauri::async_runtime::block_on(run_fetch_with(&req, &emit, lookup));
+        let result = tauri::async_runtime::block_on(run_fetch_with(&req, &emit, lookup, IDLE_TIMEOUT));
         (result, events)
     }
 
@@ -966,12 +1007,244 @@ mod tests {
     fn guard_removes_only_its_own_registration() {
         let registry = FetchRegistry::new();
         let first = registry.register("reuse");
+        assert!(matches!(&first, Registration::Live(..)));
         assert_eq!(registry.live_len(), 1);
         let second = registry.register("reuse");
+        assert!(matches!(&second, Registration::Duplicate));
         assert_eq!(registry.live_len(), 1);
+        drop(second);
+        assert_eq!(registry.live_len(), 1);
+        drop(first);
+        assert_eq!(registry.live_len(), 0);
+        let after = registry.register("reuse");
+        assert!(matches!(&after, Registration::Live(..)));
+        drop(after);
+
+        let first = registry.register("again");
+        assert!(matches!(&first, Registration::Live(..)));
+        registry.cancel("again");
+        assert_eq!(registry.live_len(), 0);
+        assert_eq!(registry.tombstone_len(), 0);
+        let second = registry.register("again");
+        assert!(matches!(&second, Registration::Live(..)));
         drop(first);
         assert_eq!(registry.live_len(), 1, "stale guard removed the newer entry");
         drop(second);
         assert_eq!(registry.live_len(), 0);
+    }
+
+    #[test]
+    fn idle_for_table() {
+        let idle = Duration::from_secs(1);
+        assert_eq!(idle_for(None, idle), Some(idle));
+        assert_eq!(idle_for(Some(0), idle), None);
+        assert_eq!(idle_for(Some(10), idle), None);
+    }
+
+    #[test]
+    fn idle_message_table() {
+        let idle = Duration::from_secs(1);
+        assert_eq!(idle_message(true, idle, Some(idle)).as_deref(), Some("No data received for 1 seconds"));
+        assert_eq!(idle_message(true, idle - Duration::from_millis(1), Some(idle)), None);
+        assert_eq!(idle_message(true, idle, None), None);
+        assert_eq!(idle_message(false, idle, Some(idle)), None);
+    }
+
+    fn run_with_idle(req: FetchRequest, idle: Duration) -> (String, Events) {
+        let (events, emit) = collector();
+        let result = tauri::async_runtime::block_on(run_fetch_with(&req, &emit, system_lookup(), idle));
+        (result, events)
+    }
+
+    #[test]
+    fn idle_gap_before_head_fails_with_the_idle_message() {
+        for policy in [false, true] {
+            let (port, join) = serve_once(|_stream| thread::sleep(Duration::from_secs(2)));
+            let mut req = request("idle-head", format!("http://127.0.0.1:{}/", port));
+            req.timeout_secs = None;
+            if policy { req = with_policy(true, req); }
+            let started = Instant::now();
+            let (result, events) = run_with_idle(req, Duration::from_secs(1));
+            assert!(started.elapsed() < Duration::from_secs(5));
+            assert_eq!(parse(&result)["body"], json!("No data received for 1 seconds"));
+            assert!(events.lock().unwrap().is_empty());
+            join.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn idle_gap_mid_body_emits_one_error_and_no_end() {
+        let (port, join) = serve_once(|mut stream| {
+            write_head(&mut stream);
+            write_chunk(&mut stream, b"first");
+            thread::sleep(Duration::from_secs(2));
+        });
+        let mut req = request("idle-body", format!("http://127.0.0.1:{}/", port));
+        req.timeout_secs = None;
+        let (result, events) = run_with_idle(req, Duration::from_secs(1));
+        assert_eq!(types(&events), vec!["headers", "chunk", "error"]);
+        assert_eq!(parse(&result)["body"], json!("No data received for 1 seconds"));
+        assert_eq!(events.lock().unwrap()[2]["body"], parse(&result)["body"]);
+        join.join().unwrap();
+    }
+
+    fn gapped_stream(timeout_secs: Option<u64>, gap: Duration, count: usize) -> (String, Events) {
+        let (port, join) = serve_once(move |mut stream| {
+            write_head(&mut stream);
+            for _ in 0..count {
+                thread::sleep(gap);
+                write_chunk(&mut stream, b"x");
+            }
+            let _ = stream.write_all(b"0\r\n\r\n");
+        });
+        let mut req = request("gaps", format!("http://127.0.0.1:{}/", port));
+        req.timeout_secs = timeout_secs;
+        let result = run_with_idle(req, Duration::from_secs(1));
+        join.join().unwrap();
+        result
+    }
+
+    #[test]
+    fn steady_stream_longer_than_idle_completes() {
+        let (result, events) = gapped_stream(None, Duration::from_millis(400), 8);
+        assert_eq!(parse(&result), json!({"success": true}));
+        assert_eq!(types(&events).last().map(String::as_str), Some("end"));
+    }
+
+    #[test]
+    fn explicit_total_disables_idle() {
+        let (result, _) = gapped_stream(Some(10), Duration::from_secs(2), 2);
+        assert_eq!(parse(&result), json!({"success": true}));
+    }
+
+    #[test]
+    fn zero_stays_unlimited() {
+        let (result, _) = gapped_stream(Some(0), Duration::from_secs(2), 1);
+        assert_eq!(parse(&result), json!({"success": true}));
+    }
+
+    fn spawn_registered(
+        registry: FetchRegistry,
+        req: FetchRequest,
+        first_chunk: mpsc::Sender<()>,
+        result: mpsc::Sender<String>,
+    ) {
+        tauri::async_runtime::spawn(async move {
+            let emit = move |payload: String| {
+                if payload.contains("\"chunk\"") { let _ = first_chunk.send(()); }
+                Ok(())
+            };
+            let _ = result.send(run_registered(&registry, req, emit).await);
+        });
+    }
+
+    #[test]
+    fn duplicate_of_a_live_id_makes_no_request() {
+        let (listener, port) = bind_stub();
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        let (count_tx, count_rx) = mpsc::channel::<usize>();
+        let server = thread::spawn(move || {
+            let mut count = 0;
+            if let Some(mut stream) = accept_within(&listener, Duration::from_secs(5)) {
+                count += 1;
+                read_request(&mut stream);
+                write_head(&mut stream);
+                write_chunk(&mut stream, b"first");
+                let _ = release_rx.recv_timeout(Duration::from_secs(5));
+                let _ = stream.write_all(b"0\r\n\r\n");
+            }
+            if accept_within(&listener, Duration::from_millis(500)).is_some() { count += 1; }
+            let _ = count_tx.send(count);
+        });
+        let registry = FetchRegistry::new();
+        let url = format!("http://127.0.0.1:{}/", port);
+        let (chunk_tx, chunk_rx) = mpsc::channel();
+        let (first_tx, first_rx) = mpsc::channel();
+        spawn_registered(registry.clone(), request("dup", url.clone()), chunk_tx, first_tx);
+        chunk_rx.recv_timeout(Duration::from_secs(5)).expect("first chunk missing");
+        let (second_tx, second_rx) = mpsc::channel();
+        let (unused_tx, _) = mpsc::channel();
+        spawn_registered(registry.clone(), request("dup", url), unused_tx, second_tx);
+        let second = second_rx.recv_timeout(Duration::from_secs(2)).expect("duplicate waited for a request");
+        assert_eq!(parse(&second), json!({"success": true, "cancelled": true}));
+        assert_eq!(registry.live_len(), 1);
+        release_tx.send(()).unwrap();
+        assert_eq!(parse(&first_rx.recv_timeout(Duration::from_secs(5)).unwrap()), json!({"success": true}));
+        assert_eq!(count_rx.recv_timeout(Duration::from_secs(5)).unwrap(), 1);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn cancel_after_a_resend_aborts_the_original() {
+        let (port, server) = serve_once(|mut stream| {
+            write_head(&mut stream);
+            write_chunk(&mut stream, b"first");
+            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut byte = [0u8; 1];
+            let closed = match stream.read(&mut byte) {
+                Ok(0) => true,
+                Err(e) => e.kind() != io::ErrorKind::TimedOut && e.kind() != io::ErrorKind::WouldBlock,
+                Ok(_) => false,
+            };
+            assert!(closed, "socket remained open");
+        });
+        let registry = FetchRegistry::new();
+        let url = format!("http://127.0.0.1:{}/", port);
+        let (chunk_tx, chunk_rx) = mpsc::channel();
+        let (first_tx, first_rx) = mpsc::channel();
+        spawn_registered(registry.clone(), request("dup2", url.clone()), chunk_tx, first_tx);
+        chunk_rx.recv_timeout(Duration::from_secs(5)).expect("first chunk missing");
+        let (second_tx, second_rx) = mpsc::channel();
+        let (unused_tx, _) = mpsc::channel();
+        spawn_registered(registry.clone(), request("dup2", url), unused_tx, second_tx);
+        let second = second_rx.recv_timeout(Duration::from_secs(2)).expect("duplicate waited for a request");
+        assert_eq!(parse(&second), json!({"success": true, "cancelled": true}));
+        registry.cancel("dup2");
+        assert_eq!(parse(&first_rx.recv_timeout(Duration::from_secs(5)).expect("original was not aborted")), json!({"success": true, "cancelled": true}));
+        assert_eq!(registry.live_len(), 0);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn cancel_all_aborts_every_live_request() {
+        let (closed_tx, closed_rx) = mpsc::channel();
+        let mut servers = Vec::new();
+        let mut ports = Vec::new();
+        for _ in 0..2 {
+            let closed_tx = closed_tx.clone();
+            let (port, server) = serve_once(move |mut stream| {
+                write_head(&mut stream);
+                write_chunk(&mut stream, b"first");
+                stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                let mut byte = [0u8; 1];
+                let closed = match stream.read(&mut byte) {
+                    Ok(0) => true,
+                    Err(e) => e.kind() != io::ErrorKind::TimedOut && e.kind() != io::ErrorKind::WouldBlock,
+                    Ok(_) => false,
+                };
+                let _ = closed_tx.send(closed);
+            });
+            ports.push(port);
+            servers.push(server);
+        }
+        let registry = FetchRegistry::new();
+        let (chunk_tx, chunk_rx) = mpsc::channel();
+        let (result_tx, result_rx) = mpsc::channel();
+        for (id, port) in ["a1", "a2"].into_iter().zip(ports) {
+            spawn_registered(registry.clone(), request(id, format!("http://127.0.0.1:{}/", port)), chunk_tx.clone(), result_tx.clone());
+        }
+        for _ in 0..2 { chunk_rx.recv_timeout(Duration::from_secs(5)).expect("stream did not start"); }
+        registry.cancel_all();
+        for _ in 0..2 {
+            assert_eq!(parse(&result_rx.recv_timeout(Duration::from_secs(5)).expect("fetch was not aborted")), json!({"success": true, "cancelled": true}));
+            assert!(closed_rx.recv_timeout(Duration::from_secs(5)).expect("socket stayed open"));
+        }
+        assert_eq!(registry.live_len(), 0);
+        assert_eq!(registry.tombstone_len(), 0);
+        let drained = registry.register("a1");
+        assert!(matches!(drained, Registration::Live(..)));
+        let new_id = registry.register("b1");
+        assert!(matches!(new_id, Registration::Live(..)));
+        for server in servers { server.join().unwrap(); }
     }
 }

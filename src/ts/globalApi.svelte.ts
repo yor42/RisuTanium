@@ -4278,8 +4278,15 @@ if (isTauri) {
         } catch (error) {
             console.error(error)
         }
-    }).then((v) => {
-        streamedFetchListening = true
+    }).then(async () => {
+        try {
+            // Earlier page loads' native requests have no reader; finish cancelling before this page sends one.
+            await Promise.resolve(invoke('cancel_all_streamed_fetch')).catch(() => {})
+        } catch (error) {
+            console.error(error)
+        } finally {
+            streamedFetchListening = true
+        }
     })
 }
 
@@ -4515,7 +4522,7 @@ export async function fetchNative(url: string, arg: {
     logFetch?: boolean
     requestTimeoutMs?: number
     networkRoute?: 'auto' | 'local_network'
-    /** Sends the native no-limit sentinel instead of the 240 s default; a given `requestTimeoutMs` still wins. */
+    /** Sends the native no-limit sentinel instead of the idle limit (no data for 600 s); a given `requestTimeoutMs` still wins. */
     noNativeTimeout?: boolean
 }, internal?: NativeInternal): Promise<Response> {
 
@@ -4599,6 +4606,10 @@ export async function fetchNative(url: string, arg: {
         })
         }
         else if (isTauri) {
+        while (!streamedFetchListening) {
+            await sleep(100)
+        }
+        // Check after the wait so a Stop during listener setup sends no native request.
         fetchIndex++
         if (requestSignal && requestSignal.aborted) {
             throw new Error('aborted')
@@ -4619,10 +4630,6 @@ export async function fetchNative(url: string, arg: {
         // Settles when the response head is known, the stream ended or the request was aborted.
         let settleHeaders: () => void = () => {}
         const headersReady = new Promise<void>((resolve) => { settleHeaders = resolve })
-        while (!streamedFetchListening) {
-            await sleep(100)
-        }
-
         const failNative = (message: string) => {
             if (resolved) {
                 return
@@ -4669,7 +4676,7 @@ export async function fetchNative(url: string, arg: {
                 // Only `internal` carries a policy: it is never read from `arg`, so a plugin cannot set it.
                 policy: internal?.nativePolicy ?? null,
                 // Tauri names the Rust argument `timeout_secs` as `timeoutSecs`. The native limit covers the
-                // whole request, body included; 0 is no limit and an absent value is the 240 s default.
+                // whole request, body included; 0 is no limit and an absent value uses the idle limit (no data for 600 s).
                 timeoutSecs: arg.requestTimeoutMs
                     ? Math.max(1, Math.ceil(arg.requestTimeoutMs / 1000))
                     : (arg.noNativeTimeout ? 0 : undefined)

@@ -718,7 +718,7 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
     }
 
     // On Android the reply must arrive while a hidden page is frozen: no native time limit, and the body is
-    // read without the Body mixin. Web and desktop keep the 240 s native default and the mixin reads.
+    // read without the Body mixin. Desktop uses the idle limit (no data for 600 s); web and desktop use the mixin.
     const android = isAndroidTransport()
     const res = await fetchNative(url, {
         headers: headers,
