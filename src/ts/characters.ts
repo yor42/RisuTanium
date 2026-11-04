@@ -1,5 +1,5 @@
 import { get, writable } from "svelte/store";
-import { saveImage, type character, type Chat, type folder, type groupChat, defaultSdDataFunc, type loreBook, getDatabase, getCharacterByIndex, setCharacterByIndex } from "./storage/database.svelte";
+import { saveImage, type character, type Chat, type folder, type groupChat, defaultSdDataFunc, type loreBook, getDatabase, getCurrentChat, getCharacterByIndex, setCharacterByIndex } from "./storage/database.svelte";
 import { alertAddCharacter, alertConfirm, alertError, alertNormal, alertSelect, alertStore, alertWait } from "./alert";
 import { language } from "../lang";
 import { downloadNotice } from "./exportNotice";
@@ -11,6 +11,8 @@ import { CharEmotion, DBState, MobileGUIStack, OpenRealmStore, selectedCharID } 
 import { AppendableBuffer, changeChatTo, checkCharOrder, downloadFile, getFileSrc, pickedAssetLimitBytes, requiresFullEncoderReload } from "./globalApi.svelte";
 import { updateInlayScreen } from "./process/inlayScreen";
 import { firstMessageOf } from "./process/firstMessage";
+import { ensureCurrentModulesOrAlert } from "./process/moduleEnsure";
+import { hasModuleStubs, unloadedModulesOf } from "./process/moduleRefList";
 import { parseMarkdownSafe, sanitizeMarkdownSafe } from "./parser/parser.svelte";
 import { translateHTML } from "./translator/translator";
 import { doingChat } from "./process/index.svelte";
@@ -342,6 +344,21 @@ export async function exportChat(page:number){
         const db = DBState.db
         const chat = db.characters[selectedID].chats[page]
         const char = db.characters[selectedID]
+        if(doTranslate && db.translatorType !== 'llm' && hasModuleStubs()){
+            const passChat = getCurrentChat()
+            const unloadedBefore = new Set(unloadedModulesOf())
+            if(!(await ensureCurrentModulesOrAlert())){
+                return
+            }
+            // The file reflects a no-stub export started now for the same target and display pass.
+            // A newly unloaded reference would let that pass omit a module, so stop without writing.
+            if(getCurrentChat() !== passChat
+                || DBState.db.characters[selectedID] !== char
+                || DBState.db.characters[selectedID]?.chats?.[page] !== chat
+                || unloadedModulesOf().some(slot => !unloadedBefore.has(slot))){
+                return
+            }
+        }
         const date = new Date().toJSON();
         const htmlChatParse = async (v:string) => {
             v = parseMarkdownSafe(v)
