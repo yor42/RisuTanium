@@ -153,6 +153,10 @@ export class Encoder {
         return this.sink.put(identity, type, body, kind)
     }
 
+    putReusing(identity: string, type: UnitType, body: object, family: string): EncodedUnit {
+        return this.sink.putReusing(identity, type, body, family)
+    }
+
     /** `put` for a unit whose body holds Refs of other units. */
     putParent(identity: string, type: UnitType, body: object, kind: UnitKeyKind = 'unit'): EncodedUnit {
         this.parents.set(identity, { type, body })
@@ -315,7 +319,8 @@ export function emitCharacter(normalized: NormalizedCharacter, encoder: Encoder)
         }
         const coreUnit = encoder.put(`${IDENTITY.chat}${u}:${cid}:core`, UNIT_TYPE.chatCore, one.core)
         const chunks = one.chunks.map((chunk, k) => {
-            const unit = encoder.put(`${IDENTITY.chat}${u}:${cid}:chunk:${k}`, UNIT_TYPE.chatChunk, chunk)
+            const family = `${IDENTITY.chat}${u}:${cid}:chunk:`
+            const unit = encoder.putReusing(`${family}${k}`, UNIT_TYPE.chatChunk, chunk, family)
             return chunkRefTuple(unit.ref, chunk.msgs.length)
         })
         const entry: ChatEntry = { cid, core: refTuple(coreUnit.ref), chunks }

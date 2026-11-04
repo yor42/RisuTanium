@@ -1,6 +1,7 @@
 export * from './assemble'
 export * from './bodies'
 export * from './chat'
+export * from './chunkParams'
 export * from './manifest'
 export * from './modules'
 export * from './normalize'

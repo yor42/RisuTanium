@@ -599,6 +599,10 @@ class ReuseOnlyEncoder extends Encoder {
     override put(identity: string, type: UnitType, body: object, kind: UnitKeyKind = 'unit'): EncodedUnit {
         return this.checking.put(identity, type, body, kind)
     }
+
+    override putReusing(identity: string, type: UnitType, body: object, _family: string): EncodedUnit {
+        return this.checking.put(identity, type, body)
+    }
 }
 
 export function previousEntryOf(previous: PreviousEncoding, u: string): ShardEntry | undefined {

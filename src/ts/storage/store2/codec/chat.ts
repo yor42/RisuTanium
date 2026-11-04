@@ -1,5 +1,6 @@
-import type { JsonObject, JsonValue } from '../../blockFrame'
+import { crc32, type JsonObject, type JsonValue } from '../../blockFrame'
 import { canonicalJson, isAltRecord, type AltRecord, type ChatAltUnit, type ChatChunk, type ChatCore } from '../format'
+import { MESSAGE_CHUNKING } from './chunkParams'
 import { defineOwn, isJsonObject, listOrEmpty, omitFields, pickFields, utf8Length } from './normalize'
 import { CodecAssembleError, CodecInputError } from './types'
 
@@ -11,8 +12,10 @@ import { CodecAssembleError, CodecInputError } from './types'
  */
 
 /**
- * Writer parameter, not format: a chunk is sealed once adding the next message
- * would take the canonical JSON of its message list above this many bytes.
+ * Writer parameter, not format: the cap of an alternatives unit (and the default
+ * cap of `sealChunks`), sealed once adding the next record would take the
+ * canonical JSON of its list above this many bytes. Message chunks are sealed by
+ * `MESSAGE_CHUNKING`.
  */
 export const CHUNK_CAP_BYTES = 131_072
 
@@ -100,6 +103,39 @@ export function sealChunks(messages: readonly JsonObject[], cap: number = CHUNK_
     return chunks
 }
 
+/** A stable message stamp when present, otherwise the message's canonical content. */
+export function anchorKey(message: JsonObject): string {
+    return typeof message.chatId === 'string' && message.chatId.length > 0 ? message.chatId : canonicalJson(message)
+}
+
+/** Seal at size limits and at anchors after the minimum size. Every message stays whole. */
+export function sealAnchored(messages: readonly JsonObject[], p: { min: number, target: number, max: number }): JsonObject[][] {
+    const chunks: JsonObject[][] = []
+    let current: JsonObject[] = []
+    let size = 2
+    let sealNext = false
+    for (const message of messages) {
+        const length = utf8Length(canonicalJson(message))
+        if (current.length > 0 && size + length + 1 > p.max) {
+            chunks.push(current)
+            current = []
+            size = 2
+            sealNext = false
+        } else if (sealNext) {
+            chunks.push(current)
+            current = []
+            size = 2
+            sealNext = false
+        }
+        size += length + (current.length > 0 ? 1 : 0)
+        current.push(message)
+        sealNext = p.target > 0 && size >= p.min
+            && crc32(new TextEncoder().encode(anchorKey(message))) * p.target < length * 0x1_0000_0000
+    }
+    chunks.push(current)
+    return chunks
+}
+
 export interface SplitChat {
     core: ChatCore
     chunks: ChatChunk[]
@@ -108,8 +144,10 @@ export interface SplitChat {
 }
 
 /** The chat core, chunk bodies and alternatives units of `chat` (a plain JSON object). `st` is written in the last chunk only. */
-export function splitChat(chat: JsonObject, where: string, cap: number = CHUNK_CAP_BYTES): SplitChat {
-    const groups = sealChunks(chatMessages(chat, where), cap)
+export function splitChat(chat: JsonObject, where: string, cap?: number): SplitChat {
+    const groups = sealAnchored(chatMessages(chat, where), {
+        min: MESSAGE_CHUNKING.min, target: MESSAGE_CHUNKING.target, max: cap ?? MESSAGE_CHUNKING.max,
+    })
     const st = tailState(chat)
     const chunks: ChatChunk[] = groups.map((msgs, index) => {
         const body: ChatChunk = { v: 1, msgs }
@@ -118,7 +156,7 @@ export function splitChat(chat: JsonObject, where: string, cap: number = CHUNK_C
         }
         return body
     })
-    return { core: { v: 1, f: chatCoreFields(chat) }, chunks, alt: splitAlt(chat, cap) }
+    return { core: { v: 1, f: chatCoreFields(chat) }, chunks, alt: splitAlt(chat, cap ?? CHUNK_CAP_BYTES) }
 }
 
 /** The alternatives of `chat` sealed like its messages, in list order; a missing, empty or malformed `alt` gives none. */

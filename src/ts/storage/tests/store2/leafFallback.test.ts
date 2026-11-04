@@ -20,7 +20,7 @@ import { chat, dbWithCharacters, fakeLists, loreEntry, message, mulberry32, pros
  */
 
 const NOW = 1_800_000_000_000
-/** About 60 KB a message: two fit in one chunk of 128 KiB, a third opens the next, so five messages seal into three chunks. */
+/** About 60 KB a message: five of them always seal into at least three chunks, whatever the chunk parameters (the tests take the tail as the last chunk and the middle as chunk 1). */
 const BIG = 60_000
 const TAIL_FIELDS = ['lastMemory', 'scriptstate', 'suggestMessages', 'lastDate']
 const LORE_KEYS = ['globalLore']
@@ -236,9 +236,9 @@ const INSTANCES: [label: string, pick: (keys: Keys) => string[]][] = [
     ['chat X core', k => [k.xCore]],
     ['chat X first chunk', k => [k.xChunks[0]]],
     ['chat X middle chunk', k => [k.xChunks[1]]],
-    ['chat X tail chunk', k => [k.xChunks[2]]],
+    ['chat X tail chunk', k => [k.xChunks.at(-1) as string]],
     ['chat X core and middle chunk', k => [k.xCore, k.xChunks[1]]],
-    ['chat X first and tail chunks', k => [k.xChunks[0], k.xChunks[2]]],
+    ['chat X first and tail chunks', k => [k.xChunks[0], k.xChunks.at(-1) as string]],
     ['character core and lore', k => [k.core, k.lore]],
     ['chat X middle chunk and chat Y core', k => [k.xChunks[1], k.yCore]],
     ['chat Y core (stable id)', k => [k.yCore]],
@@ -246,11 +246,11 @@ const INSTANCES: [label: string, pick: (keys: Keys) => string[]][] = [
 ]
 
 describe('the fixture', () => {
-    test('chat X seals into three chunks with its per-send state on the tail, chat Z has a positional handle, the group sibling is a group', async () => {
+    test('chat X seals into at least three chunks with its per-send state on the tail, chat Z has a positional handle, the group sibling is a group', async () => {
         const world = await buildWorld()
         const a = world.entries.get(A_CHA_ID) as ShardEntry
         expect(a.chats.map(entry => entry.cid)).toEqual(['chat-x', 'chat-y', '~2'])
-        expect(a.chats[0].chunks).toHaveLength(3)
+        expect(a.chats[0].chunks.length).toBeGreaterThanOrEqual(3)
         expect(a.lore).not.toBeNull()
         expect(a.scripts).not.toBeNull()
         expect(a.il).not.toBeNull()
@@ -302,8 +302,9 @@ describe('new behaviour: what the table says about positions, state and ids', ()
         const intact = (world.intact[0].chats as Obj[])[0].message as Obj[]
         const message = chats[0].message as Obj[]
         const counts = (world.entries.get(A_CHA_ID) as ShardEntry).chats[0].chunks.map(ref => ref[3])
-        expect(counts).toEqual([2, 2, 1])
-        expect(message).toHaveLength(counts[0] + 1 + counts[2])
+        expect(counts.length).toBeGreaterThanOrEqual(3)
+        expect(counts.reduce((sum, count) => sum + count, 0)).toBe(intact.length)
+        expect(message).toHaveLength(counts[0] + 1 + counts.slice(2).reduce((sum, count) => sum + count, 0))
         expect(message.slice(0, counts[0])).toEqual(intact.slice(0, counts[0]))
         expect(message[counts[0]]).toEqual(loadError(world.keys.xChunks[1]))
         expect(message.slice(counts[0] + 1)).toEqual(intact.slice(counts[0] + counts[1]))
@@ -312,7 +313,7 @@ describe('new behaviour: what the table says about positions, state and ids', ()
 
     test('a damaged tail chunk takes the per-send state with it: the chat has none of it, and its other fields stay', async () => {
         const world = await buildWorld()
-        damage(world, [world.keys.xChunks[2]], 'flip')
+        damage(world, [world.keys.xChunks.at(-1) as string], 'flip')
         const read = await readOk(world)
         const chat = ((await assembled(read.flagged, read)).characters[0].chats as Obj[])[0]
         for (const name of TAIL_FIELDS) {
@@ -320,7 +321,7 @@ describe('new behaviour: what the table says about positions, state and ids', ()
         }
         expect(chat.id).toBe('chat-x')
         expect(chat.name).toBe('Chat 1')
-        expect((chat.message as Obj[]).at(-1)).toEqual(loadError(world.keys.xChunks[2]))
+        expect((chat.message as Obj[]).at(-1)).toEqual(loadError(world.keys.xChunks.at(-1) as string))
     })
 
     test('a damaged chat core keeps every chunk and the tail state, puts one load-error message first and keeps a stable id', async () => {

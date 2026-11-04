@@ -74,12 +74,15 @@ export interface UnitSinkOptions {
  * Collects the units of one encode. A unit whose bytes equal the previous
  * encoding's unit at the same identity keeps that unit's key and is flagged
  * `reused`, so a change that leaves a unit unchanged writes no bytes for it;
- * every other unit gets a fresh key.
+ * a chunk put through `putReusing` may also take the key of an unchanged
+ * prior unit of its family at another position, each prior key at most once
+ * per encode; every other unit gets a fresh key.
  */
 export class UnitSink {
     readonly units: EncodedUnit[] = []
     private readonly identities = new Set<string>()
     private readonly keys = new Set<string>()
+    private readonly claimedKeys = new Set<string>()
     private readonly reuseOnly: boolean
     private declare readonly split: SplitRecorder | undefined
 
@@ -122,13 +125,43 @@ export class UnitSink {
             this.split.splitUnitCost(framed - started, this.split.now() - framed)
         }
         const prior = this.previous?.units.get(identity)
-        if (prior !== undefined && isSameUnit(prior, type, bytes, digest)) {
+        if (prior !== undefined && !this.claimedKeys.has(prior.key) && isSameUnit(prior, type, bytes, digest)) {
             return this.record(identity, type, prior.key, bytes, digest, true)
         }
         if (this.reuseOnly) {
             throw new UnitNotReusedError(identity)
         }
         return this.record(identity, type, this.freshKey(kind), bytes, digest, false)
+    }
+
+    /** Reuse an unchanged unit at its identity or another position in the same family. */
+    putReusing(identity: string, type: UnitType, body: object, family: string): EncodedUnit {
+        const started = MEASURE && this.split !== undefined ? this.split.now() : 0
+        const bytes = encodeUnit(type, body)
+        const framed = MEASURE && this.split !== undefined ? this.split.now() : 0
+        const digest = unitDigest(bytes)
+        if (MEASURE && this.split !== undefined) {
+            this.split.splitUnitCost(framed - started, this.split.now() - framed)
+        }
+        const prior = this.previous?.units.get(identity)
+        if (prior !== undefined && !this.claimedKeys.has(prior.key) && isSameUnit(prior, type, bytes, digest)) {
+            return this.record(identity, type, prior.key, bytes, digest, true)
+        }
+        if (this.previous !== null) {
+            for (let index = 0; ; index++) {
+                const candidate = this.previous.units.get(`${family}${index}`)
+                if (candidate === undefined) {
+                    break
+                }
+                if (!this.claimedKeys.has(candidate.key) && isSameUnit(candidate, type, bytes, digest)) {
+                    return this.record(identity, type, candidate.key, bytes, digest, true)
+                }
+            }
+        }
+        if (this.reuseOnly) {
+            throw new UnitNotReusedError(identity)
+        }
+        return this.record(identity, type, this.freshKey('unit'), bytes, digest, false)
     }
 
     /** A write-once unit (the manifest): always a fresh key. */
@@ -152,6 +185,9 @@ export class UnitSink {
         }
         this.identities.add(identity)
         this.keys.add(key)
+        if (reused) {
+            this.claimedKeys.add(key)
+        }
         const ref = refOfFrame(key, bytes)
         // A reused unit drops the frame here: the tree outlives the pass's `put` calls and must not pin it.
         const unit: EncodedUnit = reused
