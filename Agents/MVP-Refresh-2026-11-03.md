@@ -52,7 +52,7 @@ No fix is planned. If imports on a low-memory phone start failing, reopen CHORE-
 - No device update-safety check was run for this refresh. A partial read-only source review ran on 2026-11-04 (batch 48, `MC-1067`); see section 'Update-safety review (2026-11-04)' below. `MC-922`'s check was source reading plus tests.
 - The maintainer has not said whether he exported the pre-update `.bin`.
 - Many storage-touching commits are in the range (for example CHORE-117 stage 2, CHORE-622, CHORE-616 S2).
-- The device check the review lists is offered and not done.
+- The device check the review lists was run in part (see 'Device check (2026-11-04, batch 50)' below); the not-covered list there applies.
 
 ## Update-safety review (2026-11-04)
 
@@ -76,6 +76,12 @@ Status: PARTIAL; overall UNKNOWN; unverified by a second reader. Source: `b40\up
 | `db8782d89` | UNKNOWN | merge, no separate hunk |
 
 Not read: the Rust-backed storage, the actual APKs, the phone's data, and several import and UI callers. Device check listed by the review (not done): keep an independent copy of the phone's data (pre-update `.bin`); update the `7928b5bb1` profile in place; verify characters, chats, persona selection, folder order, presets, plugins and assets before and after a save and restart; exercise a restore/import collision; if Utility presets are created, verify the older APK opens that copy read-only without writing. Whether the pre-update `.bin` was exported is not stated (`MC-1063`).
+
+### Device check (2026-11-04, batch 50)
+
+Part of the device check listed above was run on phone 1 (Note 9, synthetic fixtures, throwaway keys): update in place from the OLD build (`7928b5bb1` profile; APK sha256 `E08266F32A9BFCEDD2D4ECCD0116DF878728D2234DF798684F3A4712810D40F4`, built with two generated glue files from the newer toolchain) to the NEW build (main `bc383c59f`, APK R sha256 `67F55B19AED14FFA503D7BC6C0334BF2C52D891732AFF682BC1DB398EA89284C`). Fixtures: `us-A.bin` sha256 `e6e13c33590da325721b68c7ff0ee135a271ddad0277584e1b5f1f06f318a4ec`; `us-B.bin` sha256 `49fe468b417669fdf5290b5873c78473896a72e42a1c4cdd0b580155b768688a`. Report: `%TEMP%\risu-b715\b40\updsafe-dev\run\result.md` (ledger row 4906). Status: VERIFIED in that run (the device report's own evidence; unverified by a second reader): in-place OLD to NEW lost no character, chat, asset, plugin, module or persona in either profile; the F2 persona repair (profile B, `selectedPersona` 7) errors on opening a chat in OLD, and NEW appends a persona, sets the selection to 2 and stays at 3 after a restart and a save; F1 folder pruning was NOT differentiated (OLD had already dropped the injected ghost id and the empty folder at import and boot; pruned members stayed pruned in NEW); after a NEW save `useStreaming` appears (undefined to false). The census is an in-app `.bin` export decoded on the PC.
+
+Not covered: presets; the Utility one-way note (no older-build check of the read-only path); a restore collision; large data; the maintainer's pre-update `.bin` (still not stated, `MC-1063`). The partial source review above stays overall UNKNOWN. The check does not change the MVP status; the maintainer builds the APK.
 
 ## What this record does not claim
 

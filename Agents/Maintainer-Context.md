@@ -21776,3 +21776,80 @@ CHORE-205 device gaps (`c205gap-size1` and `c205gap-size2`, both PARTIAL):
 - Open: the maintainer's word on which gap cases matter, or the P3 plan notes that define steps 7 and 12 to 14.
 
 **Limits.** This entry records a maintainer answer on one failure behavior and sizing scouts. It does not accept any scout report, does not change any ticket status to COMPLETE, does not authorize implementation, and does not decide CHORE-413's two decisions or which CHORE-205 gap cases the UI gate needs. Nothing here is COMPLETE.
+
+# MC packet for Agents/Maintainer-Context.md (records batch 50, scratch; parent applies with existing helpers)
+
+Status: DRAFT, not accepted. Entries MC-1069 to MC-1072, to be appended after the last MC entry in the same layout as `### MC-1068`. Quotations are exact as supplied in the frozen facts. No ticket is marked COMPLETE. Times of answers: TODO(evidence).
+
+---
+
+### MC-1069 — Lane A, 2026-11-04: governance rules: maintainer-authorized autonomy through Gate 2, the ask tool for decisions, parallel options presented to the maintainer, and the completion-notification rule for external runners
+
+- Tag: statements (the maintainer's instructions, 2026-11-04, relayed by lane A). Date: 2026-11-04. Sweep ref: none. Exact times: TODO(evidence).
+- Related: `MC-1070` (test routing and the runner notification rule), `MC-1061` (watch item; not affected), `MC-500` (gated batches).
+
+**What the maintainer said (verbatim).**
+1. "few adjustments on our governence: 1. always use the ask tool for decision and approval - it is faster and sends me push notification on mobile 2. on each approved ticket or task, you can go ahead and proceed until gate 2. no need to ask for approval until merge/push confirmation. 3. if there are open tickets that can run in parallel, present them to me as an option. you may edit the claude.md and other related md governence such as routing.md or roadmap.md accordingly so this change persists."
+2. "question: if codex runs as external process, does it invoke orchestrator(you) when it finishes? if not, wouldn't it need manual intervention from me? should I edit the governence to always monitor the codex process?"
+
+**What was decided.**
+- Decision requests and approvals use the ask tool (point 1). Each approved ticket or task proceeds through Gate 2 without asking again; approval is asked again only for merge or push confirmation (point 2). Parallel open tickets are presented to the maintainer as options (point 3).
+- Written into `CLAUDE.md`, `docs/workflow/gates.md` (section "Maintainer-authorized autonomy through Gate 2"), `docs/workflow/routing.md` ("Parallel options for the maintainer") and the Roadmap Now list; committed as `b8a110239` (pushed).
+- Completion notification: a hidden `Start-Process` gives no completion notification; native subagents and Bash or PowerShell calls with `run_in_background` do. Rule 4 added to `CLAUDE.md` and the `routing.md` section "Completion notification for external runners": launch external runners and long host jobs with `run_in_background`, and read all finished results on every wake. Committed as `542d185f2` (pushed), on the maintainer's AskUserQuestion answer "Commit and push (Recommended)". Runners are started staggered after a state-lock EEXIST collision (`Workflow-State.json.lock`) when three started at once.
+- Device route: the controller refused a native device agent because its route order needed two failed Codex attempts and Codex cannot run adb. AskUserQuestion answer "Add a device exemption". Implemented as `scheduling.devicePrimary` in `.claude/workflow-policy.json`, a `selectRoute` branch and a controller test, `5d5ca359f`; docs line `ba1c18905` (batch 48 pushed both).
+
+**Not decided.** Nothing about product behaviour. The rule text is in the committed files, and the parent verifies it there.
+
+---
+
+### MC-1070 — Lane A, 2026-11-04: test writing routed to the native test-warrior (Sonnet) instead of Codex; the Haiku question left as a possibility
+
+- Tag: statements (the maintainer's question and AskUserQuestion answer, 2026-11-04). Date: 2026-11-04. Sweep ref: none. Exact times: TODO(evidence).
+- Related: `MC-1069`, `MC-1068` (CHORE-413 to 415 scope), `MC-1071`.
+
+**What the maintainer said (verbatim).**
+1. "how about we use test warrior for writing test instead of codex? iirc that is sonnet, although I'd like to know if haiku could work there since test involves not much of reasoning."
+2. AskUserQuestion "Test routing": options "test-warrior (Sonnet) for tests (Recommended)", "Haiku trial for narrow additions only", "Keep Codex for tests". Chosen: "test-warrior (Sonnet) for tests (Recommended)".
+
+**What was decided.** Test-file dispatches route to the native `test-warrior` (Sonnet, medium): `scheduling.testPrimary` in `.claude/workflow-policy.json`; a `testOnly: true` dispatch field (implement, every write a test file, no critical contracts); CLI `--test-only true`; a controller test (12 of 12 pass, lane A's report, INFERRED from the session); paragraphs in `docs/workflow/routing.md` and `docs/workflow/subscription-first.md`. Committed as `0da711128` (pushed). Basis (INFERRED from this session, not a measurement): every Codex-written test file needed host-side repair (CHORE-415: a `$state` compile error and a wrong expectation; CHORE-413: a global stub restore error, a missing `readImage` mock, missing Syntax tests and one surviving mutant; CHORE-414: a `.test.ts` name that cannot compile runes, mock export gaps, a fixed-tick wait, and a `selectedCharID` leak).
+
+**Not decided.** Haiku for narrow test additions is recorded as a possibility copying a working pattern, NOT a route. No measurement of Haiku test writing exists.
+
+---
+
+### MC-1071 — Lane A, 2026-11-04: recorded decisions for CHORE-413, CHORE-414 and CHORE-415, and the shipped commits
+
+- Tag: statements (the maintainer's AskUserQuestion answers, 2026-11-04). Date: 2026-11-04. Sweep ref: none. Exact times: TODO(evidence).
+- Related: `MC-1068` (the decisions first recorded there), `MC-668` (filing), `MC-1067`, `MC-1072`.
+
+**Decisions as answered (recorded here; answers already in `MC-1068` are not repeated as new).**
+- CHORE-415 (translation editor): failure leaves the editor closed; Q1 "I'll pick B": no partial edit opens on a failed wait.
+- CHORE-413 (Playground no-selection): decision 1 "Yes, load them first (Recommended)"; decision 2 "Stop with an error (Recommended)"; scope "Add Translation, Parser and Syntax" (options offered: "Only Subtitle + ImageTrans (Recommended)", "Add Translation too", "Add Translation, Parser and Syntax"); leaving the screen mid-wait "Yes, send it as today (Recommended)"; Parser "Leave unchanged (Recommended)"; Syntax after a failed load "No reload, no alert (Recommended)". MCP and Docs: follow-up `CHORE-632`.
+- CHORE-414 (translated non-LLM chat export): scope "Export route only (Recommended)"; failure "Stop after the alert (Recommended)"; Q1 clipboard "Yes, copy nothing (Recommended)"; Q2 "Every translated non-LLM export with stubs (Recommended)"; Q3 "Stop silently, no file (Recommended)"; Q4 and Q5 "Accept both (Recommended)". Follow-up `CHORE-633`.
+
+**Shipped (on the maintainer's word; technically accepted; awaiting the independent review of this batch's records; NOT COMPLETE).**
+- CHORE-415 as `05bf36ba6` (pushed; AskUserQuestion answer "Commit both and push (Recommended)").
+- CHORE-413 as `81ec62109` (pushed).
+- CHORE-414 as `c6cef977f` (pushed).
+- Full checks on the CHORE-413 + CHORE-415 integration snapshot: `pnpm check` 0 errors (after two `as Database` casts were changed to `as unknown as Database` in the CHORE-415 tests), `pnpm test` 29,453 passed (1,337 files), `pnpm build` OK. The CHORE-414 snapshot: `pnpm check` 0 errors, `pnpm test` 29,479 passed, build OK.
+
+**Accepted limitations recorded.** CHORE-413 and CHORE-415 (shared): a group owner or id-less chat resolves ensure true without loading (`moduleEnsure.ts:106-129`). CHORE-414: Q4 and Q5 as answered above.
+
+**Not decided.** No ticket is COMPLETE. The CHORE-413 Subtitle failure drops the picked file (re-pick after the alert); the CHORE-413 Translation run with all chunks cached still waits and stops on a failed load (advisor note; not a decision).
+
+---
+
+### MC-1072 — Lane A, 2026-11-04: results of the update-safety device check, the CHORE-412 and CHORE-205 findings, the Dependabot alert 174 dismissal, and the next parallel items
+
+- Tag: statements (the maintainer's AskUserQuestion answers, 2026-11-04) and results (scout and device reports). Date: 2026-11-04. Sweep ref: none. Exact times: TODO(evidence).
+- Related: `MC-1067` (update-safety source review), `MC-1063` (pre-update `.bin` not stated), `MC-920` and `MC-1022` (CHORE-205 gate), `MC-1068`, `MC-1061`.
+
+**Results (the reports are unverified by a second reader unless stated).**
+- Update-safety device check, phone 1, synthetic fixtures (`us-A.bin`, `us-B.bin`), OLD `7928b5bb1` profile to NEW `bc383c59f` (app code equals `f12ea30f9` but for one German string): report `b40\updsafe-dev\run\result.md`. VERIFIED in that run: in-place OLD to NEW lost no character, chat, asset, plugin, module or persona in either profile; F2 persona repair differentiated (OLD errors on opening a chat; NEW repairs and stays at the selection after restart and save); F1 folder pruning NOT differentiated; `useStreaming` appears after a NEW save. Not covered: presets, the Utility one-way note, a restore collision, large data, the maintainer's pre-update `.bin`.
+- CHORE-412 sizing scouts (Codex gpt-6-luna medium, read-only, unverified): VERIFIED a chat message edit marks the character; the encoder writes chat core (type 7) and message chunks (type 8, canonical-JSON cap 131,072 bytes; codec/chat.ts); a module has its own unit plus an index (`moduleLoader.ts:181-187`). UNKNOWN: bytes written versus bytes changed for any family. The maintainer chose "Size three unit families (Recommended)". Granularity not decided.
+- CHORE-205 gap definitions scout (`b40\par4\c205defs-1`, `par3\c205gap-size1/2`, PARTIAL, unverified): VERIFIED the records do not define step 7, steps 12 to 14, M9 beyond `bookVersion` (`Roadmap.md:2547`), or the 100+ stub case; MC-673 is optional (ledger row 3392); no store-level damage tool was found; the `--p3-modules` generator exists (`Agents/Tools/save-gen/synth-bin-gen.mjs`).
+- Dependabot alert 174 (traced with `gh api` and `pnpm why deepmerge`): deepmerge 4.3.1, development scope, low, no patched version, reached only through `@sveltejs/vite-plugin-svelte@7.0.0`, not imported by the app. Maintainer approved the dismissal on 2026-11-04 (AskUserQuestion multiSelect "Dismiss Dependabot alert 174"). Lane A dismissed it on GitHub: state dismissed, reason not_used, 2026-11-04.
+
+**Decided (maintainer, AskUserQuestion multiSelect, 2026-11-04).** Dismiss Dependabot alert 174 (done, see above). Next parallel items: "CHORE-412: measure on PC"; "CHORE-632: MCP + Docs waits"; "CHORE-633: non-current chat export".
+
+**Not decided.** CHORE-412 granularity (for example a message per unit); which CHORE-205 gap cases the UI gate needs (the maintainer's word is open); the Haiku test role (`MC-1070`). CHORE-412, CHORE-205, CHORE-632 and CHORE-633 stay OPEN. No ticket is COMPLETE.
