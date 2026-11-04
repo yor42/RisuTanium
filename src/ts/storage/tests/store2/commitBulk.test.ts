@@ -466,3 +466,52 @@ describe.each(COMMIT_BACKENDS.map(fixture => [fixture.name, fixture] as const))(
         })
     })
 })
+
+describe('a bulk commit that never finishes after its marker (compatibility guard: the existing mechanism, passing before and after the shard-count change)', () => {
+    const memoryFixture = COMMIT_BACKENDS.find(fixture => fixture.name === 'memory')
+    if (memoryFixture === undefined) {
+        throw new Error('The memory commit backend fixture is missing.')
+    }
+
+    test('the same owner\'s ordinary commit carries the marker, its next bulk is refused marker-present, abandonClear clears it and the retry commits', async () => {
+        const entry = await memoryFixture.open()
+        opened.push(entry)
+        const clock = createClock()
+        await seedStore(entry.backend, testEnv(clock, 1))
+        let reachedUpload: () => void = () => { }
+        const reached = new Promise<void>(resolve => { reachedUpload = resolve })
+        const hooks: Hooks = {
+            before: (call) => {
+                if (call === 'putUnit') {
+                    reachedUpload()
+                    return new Promise<void>(() => { })
+                }
+            },
+        }
+        const wrapped = hooked(entry.backend, hooks)
+        const a = committerOf(wrapped.backend, clock, 100)
+        // A's bulk stands after its marker write and never settles: its first unit upload hangs.
+        void a.commit(await a.readCommit(), treeRequest(BULK_MIN))
+        await reached
+        const marked = await parsedCommit(entry.backend)
+        expect(marked.staging?.owner).toBe(a.owner)
+        const prefix = marked.staging?.prefix as string
+
+        const b = committerOf(entry.backend, clock, 101, { owner: a.owner })
+        const ordinary = expectCommitted(await b.commit(await b.readCommit(), treeRequest(0, { tag: 'ordinary' })))
+        expect(ordinary.mode).toBe('ordinary')
+        expect((await parsedCommit(entry.backend)).staging).toEqual(marked.staging)
+
+        const refused = await b.commit(await b.readCommit(), treeRequest(BULK_MIN, { tag: 'refused' }))
+        expect(refused.status === 'refused' && refused.reason).toBe('marker-present')
+
+        const cleared = await b.abandonClear(await b.readCommit(), a.owner, prefix)
+        expect(cleared.status).toBe('cleared')
+        expect((await parsedCommit(entry.backend)).staging).toBeNull()
+
+        const retry = expectCommitted(await b.commit(await b.readCommit(), treeRequest(BULK_MIN, { tag: 'retry' })))
+        expect(retry.mode).toBe('bulk')
+        expect((await parsedCommit(entry.backend)).staging).toBeNull()
+        await expectInvariant(entry.backend)
+    })
+})

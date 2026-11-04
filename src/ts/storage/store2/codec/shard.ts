@@ -1,8 +1,41 @@
 import { crc32 } from '../../blockFrame'
 import { carryUnknownFields, KNOWN_FIELDS, type ChunkRef, type ListRef, type Ref, type Shard, type ShardEntry } from '../format'
 
-/** Writer parameter, not format: the manifest carries its own `shardCount`. */
+/** Writer parameter, not format: the manifest carries its own shardCount. */
 export const SHARD_COUNT = 16
+
+/** Smallest and largest shard count a writer picks; a count change writes every shard, so the cap keeps that pass off the bulk path. */
+export const SHARD_COUNT_MIN = SHARD_COUNT
+export const SHARD_COUNT_MAX = 32
+
+function isWriterShardCount(count: number): boolean {
+    return count === SHARD_COUNT_MIN || count === SHARD_COUNT_MAX
+}
+
+/**
+ * Shard count for characters entries. With no usable previous count it is
+ * clamp(nextPow2(ceil(characters / 16)), MIN, MAX); otherwise the previous
+ * count is kept until the entries outgrow or undercut it by a wide margin, so a
+ * count near a boundary does not flip between passes. Passes with no previous
+ * (import, convert, recovery) and the pass after them agree: the result for
+ * (characters, shardCountFor(characters)) is itself.
+ */
+export function shardCountFor(characters: number, previous?: number): number {
+    if(previous === undefined || !isWriterShardCount(previous)){
+        let count = SHARD_COUNT_MIN
+        while(count < SHARD_COUNT_MAX && count * 16 < characters){
+            count *= 2
+        }
+        return count
+    }
+    if(previous < SHARD_COUNT_MAX && characters > previous * 16){
+        return previous * 2
+    }
+    if(previous > SHARD_COUNT_MIN && characters < previous * 2){
+        return previous / 2
+    }
+    return previous
+}
 
 /** Shard of a character: `crc32(utf8(u)) mod shardCount`. `u` is the minted entity id, never derived from `chaId`. */
 export function shardOfU(u: string, shardCount: number = SHARD_COUNT): number {

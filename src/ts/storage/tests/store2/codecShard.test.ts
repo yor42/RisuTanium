@@ -2,7 +2,7 @@ import { crc32 } from 'node:zlib'
 import { describe, expect, test } from 'vitest'
 import type { Shard, ShardEntry } from '../../store2/format'
 import { UNIT_TYPE } from '../../store2/format'
-import { groupIntoShards, SHARD_COUNT, shardOfU } from '../../store2/codec'
+import { groupIntoShards, SHARD_COUNT, SHARD_COUNT_MAX, SHARD_COUNT_MIN, shardCountFor, shardOfU } from '../../store2/codec'
 import {
     bodyIn, bodyOf, buildSmall, buildT4, dbWithCharacters, encodeWith, mulberry32, previousFrom, prosePool, roundTrip, seededEnv,
     sparseCharacter, unitOf, type Obj,
@@ -32,21 +32,39 @@ describe('shard placement', () => {
         expect(SHARD_COUNT).toBe(16)
     })
 
-    test('every entry sits in the shard its u names, entries are sorted by u, and all 16 shards exist', () => {
+    test('every entry sits in the shard its u names under the manifest\'s own count, entries are sorted by u, and all shardCount shards exist', () => {
         const tree = encodeWith(buildT4().db)
+        const shardCount = tree.manifest.shardCount
+        expect(shardCount).toBe(32)
         const shards = shardsOf(tree)
-        expect(shards.map(one => one.index).sort((a, b) => a - b)).toEqual(Array.from({ length: 16 }, (_, i) => i))
+        expect(shards.map(one => one.index).sort((a, b) => a - b)).toEqual(Array.from({ length: shardCount }, (_, i) => i))
         let total = 0
         for (const { index, shard } of shards) {
             const us = shard.entries.map(entry => entry.u)
             expect(us).toEqual([...us].sort())
             for (const u of us) {
-                expect(shardOfU(u)).toBe(index)
+                expect(shardOfU(u, shardCount)).toBe(index)
             }
             total += us.length
         }
         expect(total).toBe(1000)
-        expect(tree.manifest.shards).toHaveLength(16)
+        expect(tree.manifest.shards).toHaveLength(shardCount)
+    })
+
+    test.each([10, 256, 257, 1000])('compatibility guard: at %i characters the shard count follows the rule and every shard sits where its count says', (characters) => {
+        const slots = Array.from({ length: characters }, (_, i) => character(`id-${i}`))
+        const tree = encodeWith(dbWithCharacters(slots))
+        const expected = characters <= 256 ? SHARD_COUNT_MIN : SHARD_COUNT_MAX
+        expect(tree.manifest.shardCount).toBe(expected)
+        expect(tree.manifest.shards).toHaveLength(expected)
+        const shards = shardsOf(tree)
+        expect(shards).toHaveLength(expected)
+        for (const { index, shard } of shards) {
+            for (const entry of shard.entries) {
+                expect(shardOfU(entry.u, expected)).toBe(index)
+            }
+        }
+        expect(entriesOf(tree)).toHaveLength(characters)
     })
 
     test('placement follows u and not chaId', () => {
@@ -69,6 +87,54 @@ describe('shard placement', () => {
         for (const shard of shards) {
             expect(shard.entries.map(one => one.u)).toEqual(shard.entries.map(one => one.u).sort())
         }
+    })
+})
+
+describe('shardCountFor', () => {
+    // Compatibility guard: the rule is pure and the cases pass on the first implementation.
+    test.each([
+        [10, undefined, 16],
+        [0, undefined, 16],
+        [256, undefined, 16],
+        [257, undefined, 32],
+        [5000, undefined, 32],
+        [300, 16, 32],
+        [100, 32, 32],
+        [63, 32, 16],
+        [64, 32, 32],
+        [256, 16, 16],
+        [300, 64, 32],
+        [300, 24, 32],
+        [10, 24, 16],
+        [5000, 128, 32],
+    ])('(%i characters, previous %s) gives %i', (characters, previous, expected) => {
+        expect(shardCountFor(characters, previous)).toBe(expected)
+    })
+
+    test('a result computed with no previous count is a fixed point of the rule for every character count', () => {
+        for (let characters = 0; characters <= 3000; characters++) {
+            const first = shardCountFor(characters)
+            expect(shardCountFor(characters, first), `${characters} characters`).toBe(first)
+        }
+    })
+
+    test('the count stays within [SHARD_COUNT_MIN, SHARD_COUNT_MAX] and is a power of two for every input', () => {
+        for (const previous of [undefined, 1, 8, 16, 24, 32, 64, 128]) {
+            for (const characters of [0, 1, 63, 64, 255, 256, 257, 511, 512, 513, 5000]) {
+                const count = shardCountFor(characters, previous)
+                expect(count).toBeGreaterThanOrEqual(SHARD_COUNT_MIN)
+                expect(count).toBeLessThanOrEqual(SHARD_COUNT_MAX)
+                expect(Number.isInteger(Math.log2(count))).toBe(true)
+            }
+        }
+    })
+
+    test('the count keeps a boundary from flipping: it grows past 16 characters per shard and shrinks below 2 per shard', () => {
+        expect(shardCountFor(256, 16)).toBe(16)
+        expect(shardCountFor(257, 16)).toBe(32)
+        expect(shardCountFor(200, 32)).toBe(32)
+        expect(shardCountFor(65, 32)).toBe(32)
+        expect(shardCountFor(63, 32)).toBe(16)
     })
 })
 

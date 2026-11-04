@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { buildManifest, MANIFEST_REQ, PLUGIN_STORAGE_BUCKETS, SHARD_COUNT, type EncodedTree } from '../../store2/codec'
+import { buildManifest, MANIFEST_REQ, PLUGIN_STORAGE_BUCKETS, SHARD_COUNT, SHARD_COUNT_MAX, SHARD_COUNT_MIN, type EncodedTree } from '../../store2/codec'
 import { parseManifest, readUnit, refsOf, REQ_CHAT_ALT, UNIT_TYPE, type Manifest, type UnitType } from '../../store2/format'
 import type { Database } from '../../database.svelte'
 import {
@@ -64,12 +64,18 @@ describe('the manifest', () => {
     })
 
     test('its size does not depend on the number of characters, chats or modules', () => {
-        const few = manifestBytes(encodeWith(buildSmall(2)))
-        const many = manifestBytes(encodeWith(realCounts()))
-        const thousand = manifestBytes(encodeWith(buildT4().db))
-        const spread = Math.max(few, many, thousand) - Math.min(few, many, thousand)
-        // Only the digits of the Ref sizes and CRCs and the preset and plugin counts differ.
-        expect(spread).toBeLessThan(1024)
+        const fewTree = encodeWith(buildSmall(2))
+        const manyTree = encodeWith(realCounts())
+        const thousandTree = encodeWith(buildT4().db)
+        expect([fewTree, manyTree, thousandTree].map(tree => tree.manifest.shardCount)).toEqual([SHARD_COUNT_MIN, SHARD_COUNT_MAX, SHARD_COUNT_MAX])
+        const few = manifestBytes(fewTree)
+        const many = manifestBytes(manyTree)
+        const thousand = manifestBytes(thousandTree)
+        // Only the digits of the Ref sizes and CRCs and the preset and plugin counts differ among manifests of one shard count.
+        expect(Math.abs(many - thousand)).toBeLessThan(1024)
+        // The shard count is the one thing that scales a manifest, and it is capped: 16 more shard refs at most.
+        const SHARD_REF_BYTES = 100
+        expect(Math.abs(many - few)).toBeLessThan(1024 + (SHARD_COUNT_MAX - SHARD_COUNT_MIN) * SHARD_REF_BYTES)
     })
 
     test('it has room for a hundred presets and a hundred plugins', () => {
@@ -95,17 +101,25 @@ describe('the manifest', () => {
     test('buildManifest copies its parts and never shares the req list', () => {
         const ref: Manifest['fixed']['config'] = ['u-aaaaaaaaaaaaaaaaaaaaaaaaaa', 1, 2]
         const list: Manifest['fixed']['configAl'] = ['u-bbbbbbbbbbbbbbbbbbbbbbbbbb', 1, 2, 1]
-        const one = buildManifest({ chatAlt: false, seq: 1, createdAt: 2, shards: [], config: ref, configAl: list, il: list, statics: ref, order: ref, loadouts: ref, moduleIndex: ref, presets: [], plugins: [], pluginStorageRefs: [] })
+        const one = buildManifest({ chatAlt: false, seq: 1, createdAt: 2, shardCount: 16, shards: [], config: ref, configAl: list, il: list, statics: ref, order: ref, loadouts: ref, moduleIndex: ref, presets: [], plugins: [], pluginStorageRefs: [] })
         one.req.push('x')
-        expect(buildManifest({ chatAlt: false, seq: 1, createdAt: 2, shards: [], config: ref, configAl: list, il: list, statics: ref, order: ref, loadouts: ref, moduleIndex: ref, presets: [], plugins: [], pluginStorageRefs: [] }).req).toEqual([])
+        expect(buildManifest({ chatAlt: false, seq: 1, createdAt: 2, shardCount: 16, shards: [], config: ref, configAl: list, il: list, statics: ref, order: ref, loadouts: ref, moduleIndex: ref, presets: [], plugins: [], pluginStorageRefs: [] }).req).toEqual([])
     })
 
     test('the chat-alt token is written exactly when the parts say a chat has alternatives', () => {
         const ref: Manifest['fixed']['config'] = ['u-aaaaaaaaaaaaaaaaaaaaaaaaaa', 1, 2]
         const list: Manifest['fixed']['configAl'] = ['u-bbbbbbbbbbbbbbbbbbbbbbbbbb', 1, 2, 1]
-        const parts = { seq: 1, createdAt: 2, shards: [], config: ref, configAl: list, il: list, statics: ref, order: ref, loadouts: ref, moduleIndex: ref, presets: [], plugins: [], pluginStorageRefs: [] }
+        const parts = { seq: 1, createdAt: 2, shardCount: 16, shards: [], config: ref, configAl: list, il: list, statics: ref, order: ref, loadouts: ref, moduleIndex: ref, presets: [], plugins: [], pluginStorageRefs: [] }
         expect(buildManifest({ ...parts, chatAlt: true }).req).toEqual([REQ_CHAT_ALT])
         expect(buildManifest({ ...parts, chatAlt: false }).req).toEqual([])
+    })
+
+    test('buildManifest writes the shard count its parts carry, not the writer default', () => {
+        const ref: Manifest['fixed']['config'] = ['u-aaaaaaaaaaaaaaaaaaaaaaaaaa', 1, 2]
+        const list: Manifest['fixed']['configAl'] = ['u-bbbbbbbbbbbbbbbbbbbbbbbbbb', 1, 2, 1]
+        const parts = { chatAlt: false, seq: 1, createdAt: 2, shards: [], config: ref, configAl: list, il: list, statics: ref, order: ref, loadouts: ref, moduleIndex: ref, presets: [], plugins: [], pluginStorageRefs: [] }
+        expect(buildManifest({ ...parts, shardCount: SHARD_COUNT_MAX }).shardCount).toBe(SHARD_COUNT_MAX)
+        expect(buildManifest({ ...parts, shardCount: SHARD_COUNT_MIN }).shardCount).toBe(SHARD_COUNT_MIN)
     })
 })
 

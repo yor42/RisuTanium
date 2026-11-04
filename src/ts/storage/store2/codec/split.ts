@@ -17,7 +17,7 @@ import { carryModuleIndex, hasCurrentEntryFields, moduleBodyOf, moduleEntryField
 import { defineOwn, listOrEmpty, omitFields, pickFields, plainObject, toPlainJson } from './normalize'
 import { groupKeysIntoBuckets, PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 import { UnitSink, type UnitKeyKind } from './reuse'
-import { carryShards, chunkRefTuple, groupIntoShards, listRefTuple, refTuple, SHARD_COUNT } from './shard'
+import { carryShards, chunkRefTuple, groupIntoShards, listRefTuple, refTuple, shardCountFor } from './shard'
 import { assertChatNotPointer, assertNotStub } from './stub'
 import {
     CodecInputError, StubRefusedError, type ConfigOwner, type EncodedTree, type EncodedUnit, type EncodeOptions, type ListDerivation,
@@ -725,7 +725,8 @@ export function finishTree(
     }
     const shardsStarted = MEASURE && split !== undefined ? split.now() : 0
     const { presets, presetPlain, taskPresets, plugins, pluginStorage } = front
-    const shardBodies = carryShards(encoder.previous?.objects?.shards, groupIntoShards(entries, SHARD_COUNT), encoder.stableChats)
+    const shardCount = shardCountFor(entries.length, encoder.previous?.objects?.manifest?.shardCount)
+    const shardBodies = carryShards(encoder.previous?.objects?.shards, groupIntoShards(entries, shardCount), encoder.stableChats)
     const shards = shardBodies.map((shard, index) => refTuple(encoder.putParent(`shard:${index}`, UNIT_TYPE.shard, shard, 'shard').ref))
     const fixedStarted = MEASURE && split !== undefined ? split.now() : 0
     if (MEASURE && split !== undefined) {
@@ -770,6 +771,7 @@ export function finishTree(
         chatAlt: encoder.chatAlt,
         seq: options.seq,
         createdAt: options.createdAt,
+        shardCount,
         shards,
         config: refTuple(configUnit.ref),
         configAl,

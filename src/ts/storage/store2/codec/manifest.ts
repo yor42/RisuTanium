@@ -1,6 +1,5 @@
 import { carryUnknownFields, KNOWN_FIELDS, REQ_CHAT_ALT, REQ_TASK_PRESETS, unionReq, type ListRef, type Manifest, type Ref } from '../format'
 import { PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
-import { SHARD_COUNT } from './shard'
 
 /**
  * Manifest assembly. The manifest is write-once, names only fixed-size sets of
@@ -17,6 +16,7 @@ export interface ManifestParts {
     chatAlt: boolean
     seq: number
     createdAt: number
+    shardCount: number
     shards: Ref[]
     config: Ref
     configAl: ListRef
@@ -66,7 +66,7 @@ export function buildManifest(parts: ManifestParts): Manifest {
         req: unionReq(MANIFEST_REQ, parts.chatAlt ? [REQ_CHAT_ALT] : [], hasTaskPresets ? [REQ_TASK_PRESETS] : []),
         seq: parts.seq,
         createdAt: parts.createdAt,
-        shardCount: SHARD_COUNT,
+        shardCount: parts.shardCount,
         shards: parts.shards,
         fixed: {
             config: parts.config,
