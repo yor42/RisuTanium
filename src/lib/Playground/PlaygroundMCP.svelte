@@ -5,12 +5,25 @@
     import { alertMd } from "src/ts/alert";
     import { language } from "src/lang";
     import { fillLang } from "src/lang/fill";
+    import { hasModuleStubs } from "src/ts/process/moduleRefList";
+    import { ensurePlaygroundModulesOrAlert } from "src/ts/process/moduleEnsure";
 
     let metadatas = $state('')
     let tools:MCPToolWithURL[] = $state([]);
     let toolInputs:{[key:string]:string}= $state({});
+    let moduleWait: Promise<boolean> | null = null;
 
     async function refresh() {
+        // Clicks during one load share a single wait and alert; a failed load writes nothing, so the previous list stays.
+        if(hasModuleStubs()){
+            if(!moduleWait){
+                const wait = ensurePlaygroundModulesOrAlert()
+                moduleWait = wait.finally(() => { moduleWait = null })
+            }
+            if(!(await moduleWait)){
+                return
+            }
+        }
         await initializeMCPs()
         metadatas = JSON.stringify(await getMCPMeta(), null, 4);
         tools = await getMCPTools()
