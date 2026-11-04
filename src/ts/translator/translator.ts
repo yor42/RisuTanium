@@ -21,6 +21,7 @@ import { selectedCharID } from "../stores.svelte"
 import { getModuleRegexScripts } from "../process/modules"
 import { getNodetextToSentence, sleep } from "../util"
 import { processScriptFull } from "../process/scripts"
+import type { RunSubject } from "../process/chatOrigin"
 import localforage from "localforage"
 import sendSound from '../../etc/send.mp3'
 
@@ -344,8 +345,8 @@ export function isExpTranslator(){
     return db.translatorType === 'llm' || db.translatorType === 'deepl' || db.translatorType === 'deeplX'
 }
 
-export function translateHTML(html: string, reverse:boolean, charArg:simpleCharacterArgument|string = '', chatID:number, regenerate = false): Promise<string> {
-    return withInFlight('translate', () => translateHTMLUntracked(html, reverse, charArg, chatID, regenerate))
+export function translateHTML(html: string, reverse:boolean, charArg:simpleCharacterArgument|string = '', chatID:number, regenerate = false, subject?:RunSubject): Promise<string> {
+    return withInFlight('translate', () => translateHTMLUntracked(html, reverse, charArg, chatID, regenerate, subject))
 }
 
 // Translated text is literal text. Escaping only `&` and `<` keeps it text when the
@@ -356,7 +357,7 @@ function escapeTranslatedForMarkup(text: string): string {
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;")
 }
 
-async function translateHTMLUntracked(html: string, reverse:boolean, charArg:simpleCharacterArgument|string = '', chatID:number, regenerate = false): Promise<string> {
+async function translateHTMLUntracked(html: string, reverse:boolean, charArg:simpleCharacterArgument|string = '', chatID:number, regenerate = false, subject?:RunSubject): Promise<string> {
     if(!html){
         return html
     }
@@ -502,7 +503,10 @@ async function translateHTMLUntracked(html: string, reverse:boolean, charArg:sim
                 alwaysExistChar,
                 escapedTranslated,
                 "editdisplay",
-                chatID
+                chatID,
+                {},
+                undefined,
+                subject
             );
             // If the translation is the same, don't replace the node
             if (escapedTranslated == processedTranslated) {

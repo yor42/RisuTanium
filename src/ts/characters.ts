@@ -11,7 +11,7 @@ import { CharEmotion, DBState, MobileGUIStack, OpenRealmStore, selectedCharID } 
 import { AppendableBuffer, changeChatTo, checkCharOrder, downloadFile, getFileSrc, pickedAssetLimitBytes, requiresFullEncoderReload } from "./globalApi.svelte";
 import { updateInlayScreen } from "./process/inlayScreen";
 import { firstMessageOf } from "./process/firstMessage";
-import { ensureCurrentModulesOrAlert } from "./process/moduleEnsure";
+import { ensureCurrentModulesOrAlert, ensureModulesOrAlert } from "./process/moduleEnsure";
 import { hasModuleStubs, unloadedModulesOf } from "./process/moduleRefList";
 import { parseMarkdownSafe, sanitizeMarkdownSafe } from "./parser/parser.svelte";
 import { translateHTML } from "./translator/translator";
@@ -22,7 +22,7 @@ import { findChaIdHolders, restoreColdCharacter } from "./process/coldCharacterR
 import { getAvatarThumbSrc, isThumbEligible, THUMB_ABORTED, type ThumbAborted, type ThumbRequestOptions } from "./media/avatarThumb";
 import { markCharacterForSave } from "./storage/characterSaveMarks";
 import { applyCharacterDefaults } from "./storage/characterDefaults";
-import { hasWorkIn, stopWorkIn } from "./process/chatOrigin";
+import { createSendSubject, hasWorkIn, originOf, stopWorkIn } from "./process/chatOrigin";
 import { beginBusy } from "./process/memory/busyActions";
 import { queueInlayCleanupForChat, queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
 import { escapeHtmlText } from "./htmlEscape";
@@ -344,7 +344,30 @@ export async function exportChat(page:number){
         const db = DBState.db
         const chat = db.characters[selectedID].chats[page]
         const char = db.characters[selectedID]
-        if(doTranslate && db.translatorType !== 'llm' && hasModuleStubs()){
+        // The display pass reads the modules of the subject's chat. A chat with no id has no subject,
+        // so it can only be exported while it is the current chat: stop rather than read another chat's modules.
+        const hint = { owner: char, chat }
+        const origin = doTranslate ? originOf(char, chat) : null
+        const subject = origin ? createSendSubject(origin, hint) : undefined
+        if(doTranslate && db.translatorType !== 'llm' && !subject && chat !== getCurrentChat()){
+            return
+        }
+        if(doTranslate && db.translatorType !== 'llm' && hasModuleStubs() && origin && subject){
+            const passChat = getCurrentChat()
+            if(!(await ensureModulesOrAlert(origin, undefined, hint))){
+                return
+            }
+            // The file is built only while the pass still reads the exported chat and no module it reads is an unloaded stub.
+            const resolved = subject.resolve()
+            if(getCurrentChat() !== passChat
+                || DBState.db.characters[selectedID] !== char
+                || DBState.db.characters[selectedID]?.chats?.[page] !== chat
+                || !resolved || resolved.owner !== char || resolved.chat !== chat
+                || unloadedModulesOf(subject).length > 0){
+                return
+            }
+        }
+        else if(doTranslate && db.translatorType !== 'llm' && hasModuleStubs()){
             const passChat = getCurrentChat()
             const unloadedBefore = new Set(unloadedModulesOf())
             if(!(await ensureCurrentModulesOrAlert())){
@@ -366,7 +389,7 @@ export async function exportChat(page:number){
             if(doTranslate){
                 // Translator, LLM and display-script output is not trusted markup:
                 // the exported file must be exactly as strict as the untranslated one.
-                v = sanitizeMarkdownSafe(await translateHTML(v, false, '', -1))
+                v = sanitizeMarkdownSafe(await translateHTML(v, false, '', -1, false, subject))
             }
 
             if(anonymous){

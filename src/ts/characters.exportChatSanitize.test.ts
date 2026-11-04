@@ -92,7 +92,7 @@ vi.mock(import('./process/inlayScreen'), () => ({} as unknown as typeof import('
 vi.mock(import('./process/coldCharacterRestore'), () => ({} as unknown as typeof import('./process/coldCharacterRestore')))
 vi.mock(import('./media/avatarThumb'), () => ({} as unknown as typeof import('./media/avatarThumb')))
 vi.mock(import('./storage/characterSaveMarks'), () => ({} as unknown as typeof import('./storage/characterSaveMarks')))
-vi.mock(import('./process/chatOrigin'), () => ({} as unknown as typeof import('./process/chatOrigin')))
+vi.mock(import('./process/chatOrigin'), () => ({ originOf: () => ({}), createSendSubject: () => ({}) } as unknown as typeof import('./process/chatOrigin')))
 vi.mock(import('./process/memory/busyActions'), () => ({} as unknown as typeof import('./process/memory/busyActions')))
 vi.mock(import('./process/files/inlayCleanup'), () => ({} as unknown as typeof import('./process/files/inlayCleanup')))
 vi.mock(import('./media'), () => ({} as unknown as typeof import('./media')))

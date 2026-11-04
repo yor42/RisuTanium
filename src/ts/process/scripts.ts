@@ -278,7 +278,7 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
     const refPass = subject && messageRef !== undefined ? { subject, ref: messageRef } : undefined
     data = await runLuaEditTrigger(char, mode, data, { index:chatID }, origin, sendSubject)
 
-    if(mode === 'editdisplay'){
+    if(mode === 'editdisplay' && (!subject || subject.resolve()?.chat === getCurrentChat())){
         const currentChar = getCurrentCharacter()
         if(currentChar.type !== 'group'){
             try{

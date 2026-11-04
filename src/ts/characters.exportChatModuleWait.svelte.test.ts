@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { get, writable, type Writable } from 'svelte/store'
 import type { Database } from './storage/database.svelte'
+import type { RunSubject } from './process/chatOrigin'
 import { MODULE_STUB_KEY } from './storage/moduleStub'
 
 const h = vi.hoisted(() => ({
@@ -14,6 +15,7 @@ const h = vi.hoisted(() => ({
     waits: 0,
     translated: [] as string[],
     ensureCalls: 0,
+    targetEnsureCalls: 0,
     loaderCalls: [] as string[],
     menuAnswered: () => {},
 }))
@@ -72,10 +74,10 @@ vi.mock(import('./util'), async (importOriginal) => ({
 }))
 
 vi.mock(import('./translator/translator'), () => ({
-    translateHTML: async (v: string) => {
+    translateHTML: async (v: string, _reverse: boolean, _char: unknown, _chatID: number, _regenerate: boolean, subject?: RunSubject) => {
         h.translated.push(v)
         const { getModuleRegexScripts } = await import('./process/modules')
-        const resident = getModuleRegexScripts().some((script) => script.comment === 'm1 display marker')
+        const resident = getModuleRegexScripts(subject).some((script) => script.comment === 'm1 display marker')
         const display = document.createElement('div')
         display.innerHTML = v
         const textNodes = document.createTreeWalker(display, NodeFilter.SHOW_TEXT)
@@ -138,6 +140,10 @@ async function row(): Promise<Row> {
                 h.ensureCalls++
                 return actual.ensureCurrentModulesOrAlert(...args)
             },
+            ensureModulesOrAlert: (...args: Parameters<typeof actual.ensureModulesOrAlert>) => {
+                h.targetEnsureCalls++
+                return actual.ensureModulesOrAlert(...args)
+            },
         }
     })
     const { DBState, selectedCharID } = await import('./stores.svelte')
@@ -184,8 +190,8 @@ async function start(r: Row, answers: string[], page = 0) {
     await menu.promise
     // Let the export resume from its menu answers until it has taken its pre-wait captures and entered the ensure
     // (or has written without one) before a test mutates state.
-    const ensureBefore = h.ensureCalls, writesBefore = writes()
-    for(let i = 0; i < 400 && h.ensureCalls === ensureBefore && writes() === writesBefore; i++){ await Promise.resolve() }
+    const ensureBefore = h.ensureCalls + h.targetEnsureCalls, writesBefore = writes()
+    for(let i = 0; i < 400 && h.ensureCalls + h.targetEnsureCalls === ensureBefore && writes() === writesBefore; i++){ await Promise.resolve() }
     return { done }
 }
 
@@ -202,7 +208,7 @@ function noSideEffects() {
 const clipboardBefore = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
 beforeEach(() => {
     h.downloads.length = 0; h.clipboard.length = 0; h.clipboardHtml.length = 0; h.alerts.length = 0; h.notices.length = 0
-    h.translated.length = 0; h.loaderCalls.length = 0; h.waits = 0; h.ensureCalls = 0
+    h.translated.length = 0; h.loaderCalls.length = 0; h.waits = 0; h.ensureCalls = 0; h.targetEnsureCalls = 0
     vi.stubGlobal('ClipboardItem', class { constructor(public items: Record<string, Blob>) { h.clipboardHtml.push(items['text/html']) } })
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write: async (items: ClipboardItem[]) => { h.clipboard.push(items) } } })
 })
@@ -321,21 +327,31 @@ describe('exportChat module wait', () => {
         expect(output()).toContain('Changed+MOD')
     })
 
-    test('post-fix T9 non-current export ensures the current pass', async () => {
+    test('post-fix T9 non-current export loads the exported chat modules and stops on failure', async () => {
         const r = await row(); r.db.modules = [stub('m2', 'Beta')]; r.db.enabledModules = []
         r.db.characters[0].chats[1].modules = ['m2']; loader(r, 'failing')
         await (await start(r, ['2', '0', '0'], 1)).done
-        expect(h.ensureCalls).toBe(1)
-        expect(h.loaderCalls).toHaveLength(0)
-        expect(writes()).toBe(1)
-        expect(output()).toContain('Second+RAW')
-        expect(h.alerts).toHaveLength(0)
+        expect(h.targetEnsureCalls).toBe(1)
+        expect(h.ensureCalls).toBe(0)
+        expect(h.loaderCalls).toEqual(['m2'])
+        expect(writes()).toBe(0)
+        expect(h.alerts).toEqual([r.moduleLoadFailedText(['Beta'])])
     })
 
-    test.each(['group', 'idless'] as const)('post-fix T10 %s current chat keeps declined-load behavior', async (kind) => {
+    test('post-fix T10 group current chat loads its modules and stops on failure', async () => {
         const r = await row(); loader(r, 'failing')
-        if(kind === 'group'){ r.db.characters[0].type = 'group' }
-        else { delete r.db.characters[0].chats[0].id }
+        r.db.characters[0].type = 'group'
+        await (await start(r, ['2', '0', '0'])).done
+        expect(h.targetEnsureCalls).toBe(1)
+        expect(h.ensureCalls).toBe(0)
+        expect(h.loaderCalls).toEqual(['m1'])
+        expect(writes()).toBe(0)
+        expect(h.alerts).toEqual([r.moduleLoadFailedText(['Alpha'])])
+    })
+
+    test('post-fix T10 idless current chat keeps declined-load behavior', async () => {
+        const r = await row(); loader(r, 'failing')
+        delete r.db.characters[0].chats[0].id
         await (await start(r, ['2', '0', '0'])).done
         expect(h.ensureCalls).toBe(1)
         expect(h.loaderCalls).toHaveLength(0)
@@ -360,14 +376,22 @@ describe('exportChat module wait', () => {
         expect(h.downloads.every((file) => file.data.toString('utf-8').includes('Question+MOD'))).toBe(true)
     })
 
-    test.each(['enabled', 'currentChat', 'owner', 'row'] as const)('post-fix T14 new unloaded %s reference stops', async (change) => {
+    test('post-fix T14 a new unloaded reference of the open chat does not stop an export of another chat', async () => {
         const r = await row(), release = loader(r)
-        const page = change === 'currentChat' ? 1 : 0
+        const done = (await start(r, ['2', '0', '0'], 1)).done
+        expect(h.translated).toHaveLength(0)
+        r.db.characters[0].chats[0].modules?.push('m3')
+        release(); await done
+        expect(h.loaderCalls).toEqual(['m1'])
+        expect(output()).toContain('Second+MOD')
+    })
+
+    test.each(['enabled', 'owner', 'row'] as const)('post-fix T14 new unloaded %s reference stops', async (change) => {
+        const r = await row(), release = loader(r)
         if(change === 'row'){ r.db.modules.push(body('m4')); r.db.enabledModules.push('m4') }
-        const done = (await start(r, ['2', '0', '0'], page)).done
+        const done = (await start(r, ['2', '0', '0'], 0)).done
         expect(h.translated).toHaveLength(0)
         if(change === 'enabled'){ r.db.enabledModules.push('m3') }
-        if(change === 'currentChat'){ r.db.characters[0].chats[0].modules?.push('m3') }
         if(change === 'owner'){ r.db.characters[0].modules?.push('m3') }
         if(change === 'row'){ r.db.modules[r.db.modules.findIndex((m) => m.id === 'm4')] = stub('m4', 'Delta') }
         release(); await done
