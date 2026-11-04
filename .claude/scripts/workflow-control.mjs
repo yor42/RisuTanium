@@ -86,6 +86,7 @@ export function schedulingClass(d) {
   if (writes.length && writes.every(file => /^Agents\/(Maintainer-Context|Investigation-Ledger|Roadmap|Live-State|Carry-Forward)\.md$|^Agents\/Archive\/[^\r\n]+\.md$/i.test(file))) return 'records';
   return writes.some(file => !documentPath(file)) ? 'code' : 'documents';
 }
+function testPath(file) { return /(^|\/)(tests?|__tests__)\//.test(file) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(file) || /\.harness\.[jt]s$/.test(file); }
 function codeWriter(d) { return d.mode === 'implement' && (d.allowedWrites?.length ?? 0) > 0 && schedulingClass(d) === 'code'; }
 function clerkPath(file) {
   return documentPath(file) && !/^(AGENTS\.md|CLAUDE\.md|Agents\/(Maintainer-Context|README|Decision-Index)\.md)$/i.test(file)
@@ -122,6 +123,9 @@ function validateScheduling(d) {
   if (kind === 'records') {
     if (d.mode !== 'implement' || d.role !== 'record-clerk' || d.changedContracts.length || d.allowedWrites.some(file => !clerkPath(file))) throw Error('Records class is clerical Haiku authoring only; authoritative decisions/governance require a parent-applied scratch draft');
   }
+  if (d.testOnly === true) {
+    if (d.mode !== 'implement' || kind !== 'code' || !d.allowedWrites.length || d.allowedWrites.some(file => !testPath(file))) throw Error('Test-only dispatch is an implement dispatch whose every write is a test file');
+  }
   if (d.role === 'record-clerk' && kind !== 'records') throw Error('New record-clerk dispatch requires records class');
   if (kind === 'documents' && d.allowedWrites.some(file => !documentPath(file))) throw Error('Documents class cannot carry application/configuration writes');
   if (kind === 'device') {
@@ -132,7 +136,7 @@ function validateScheduling(d) {
     } else if (!/^[a-f0-9]{64}$/i.test(d.artifact?.sha256 ?? '') || !d.artifact?.sourceRevision) throw Error('Device run requires pinned artifact hash and source revision');
   }
 }
-export async function selectRoute({ root = defaultRoot, jobId, mode, role, workClass, legacy = false, escalation, gate, effortReason, changedContracts = [], scoutEffort = 'medium', now = Date.now() }) {
+export async function selectRoute({ root = defaultRoot, jobId, mode, role, workClass, testOnly = false, legacy = false, escalation, gate, effortReason, changedContracts = [], scoutEffort = 'medium', now = Date.now() }) {
   safeId(jobId); const p = loadPolicy(root); const s = loadState(root);
   if (!['scout', 'implement', 'review'].includes(mode)) throw Error('Invalid mode');
   if (changedContracts.some(c => !p.criticalContracts.includes(c))) throw Error('Unknown critical contract');
@@ -168,6 +172,10 @@ export async function selectRoute({ root = defaultRoot, jobId, mode, role, workC
     if (role && role !== p.scheduling.devicePrimary.role || changedContracts.length) throw Error('Device primary cannot perform substantive design, code or review');
     routes = [p.scheduling.devicePrimary];
   }
+  if (!legacy && mode === 'implement' && testOnly) {
+    if (role && role !== p.scheduling.testPrimary.role || changedContracts.length) throw Error('Test primary writes test files only and cannot carry critical contracts');
+    routes = [p.scheduling.testPrimary];
+  }
   for (const route of routes) {
     const key = route.provider;
     if (!available(s, key, now)) { blocked.push(`${key}: cached unavailable`); continue; }
@@ -194,7 +202,7 @@ export async function registerDispatch(input, { root = defaultRoot } = {}) {
   if (!input.question || !input.acceptance || !input.owner || !input.inputIdentity) throw Error('Dispatch needs question, acceptance, owner and inputIdentity');
   const changedContracts = input.changedContracts ?? [];
   const workClass = schedulingClass(input);
-  const route = await selectRoute({ root, jobId: input.logicalJobId, mode: input.mode, role: input.role, workClass, escalation: input.escalation, gate: input.gate, effortReason: input.effortReason, changedContracts, scoutEffort: input.effort ?? 'medium' });
+  const route = await selectRoute({ root, jobId: input.logicalJobId, mode: input.mode, role: input.role, workClass, testOnly: input.testOnly === true, escalation: input.escalation, gate: input.gate, effortReason: input.effortReason, changedContracts, scoutEffort: input.effort ?? 'medium' });
   if (!route.provider) throw Error(`No eligible route; park: ${route.blocked.join(', ')}`);
   if (input.provider && input.provider !== route.provider || input.model && input.model !== route.model || input.effort && input.effort !== route.effort) throw Error('Dispatch does not match eligible policy route');
   const d = { ...input, provider: route.provider, model: route.model, effort: route.effort, role: route.role ?? input.role, requestedRole: input.role ?? null, timeoutMinutes: input.timeoutMinutes ?? route.timeoutMinutes, changedContracts, workClass, schedulingAmendment: p.scheduling.amendment, policyRevision: p.revision, repoRoot: input.repoRoot ?? root, coordinatorRoot: root };
@@ -252,7 +260,7 @@ export async function validateDispatch(d, { root = defaultRoot, claim = false } 
   const p = loadPolicy(root); const s = loadState(root); const entry = s.dispatches[safeId(d.id)];
   if (s.activation !== 'active' || s.activeRevision !== p.revision) throw Error('Workflow frozen');
   if (!entry || entry.hash !== digest(d) || digest(savedDispatch(root, d.id)) !== entry.hash || d.policyRevision !== p.revision || entry.status !== 'registered') throw Error('Unregistered, changed, stale or already consumed dispatch');
-  const route = await selectRoute({ root, jobId: d.logicalJobId, mode: d.mode, role: d.requestedRole, workClass: d.workClass, legacy: !d.schedulingAmendment, escalation: d.escalation, gate: d.gate, effortReason: d.effortReason, changedContracts: d.changedContracts, scoutEffort: d.effort });
+  const route = await selectRoute({ root, jobId: d.logicalJobId, mode: d.mode, role: d.requestedRole, workClass: d.workClass, testOnly: d.testOnly === true, legacy: !d.schedulingAmendment, escalation: d.escalation, gate: d.gate, effortReason: d.effortReason, changedContracts: d.changedContracts, scoutEffort: d.effort });
   if (route.provider !== d.provider || route.model !== d.model) throw Error('Route changed before dispatch');
   if (claim) mutateState(root, s.generation, next => { if (next.dispatches[d.id].status !== 'registered') throw Error('Dispatch already claimed'); next.dispatches[d.id].status = 'running'; });
   return d;
@@ -309,7 +317,7 @@ export async function main(args = process.argv.slice(2)) {
     const { jobs, dispatches, ...summary } = s;
     return { ...summary, jobCount: Object.keys(jobs).length, dispatchCount: Object.keys(dispatches).length, liveDispatches: Object.entries(dispatches).filter(([, entry]) => active.has(entry.status)).map(([id, entry]) => ({ id, ...entry })) };
   }
-  if (command === 'route') return selectRoute({ root, jobId: a.job, mode: a.mode, role: a.role, workClass: a['work-class'], gate: a.gate, effortReason: a['effort-reason'], escalation: a.trigger ? { kind: a.trigger, evidence: a.evidence } : undefined, changedContracts: a.contracts?.split(',').filter(Boolean), scoutEffort: a.effort });
+  if (command === 'route') return selectRoute({ root, jobId: a.job, mode: a.mode, role: a.role, workClass: a['work-class'], testOnly: a['test-only'] === 'true', gate: a.gate, effortReason: a['effort-reason'], escalation: a.trigger ? { kind: a.trigger, evidence: a.evidence } : undefined, changedContracts: a.contracts?.split(',').filter(Boolean), scoutEffort: a.effort });
   if (command === 'register') return registerDispatch(read(a.file), { root });
   if (command === 'finish' || command === 'failure') return finishDispatch({ root, id: a.id, status: a.status ?? 'failed', reason: a.reason, resetAt: a.reset, evidence: a.evidence });
   if (command === 'refresh') return mutateState(root, null, s => { if (!['codex', 'agy', 'openrouter', 'claude'].includes(a.provider)) throw Error('Invalid provider'); delete s.routeHealth[a.provider]; return { refreshed: a.provider }; });

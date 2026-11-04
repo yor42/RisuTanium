@@ -95,3 +95,14 @@ test('device class routes straight to the native device primary without a Codex 
   await assert.rejects(selectRoute({ root, jobId: 'dev-3', mode: 'implement', workClass: 'device', changedContracts: ['dirty-dependencies'] }), /Device primary/);
   assert.equal((await selectRoute({ root, jobId: 'code-1', mode: 'implement' })).provider, 'codex');
 });
+test('test-only dispatches route straight to the native test primary; non-test writes and critical contracts are refused', async t => {
+  const root = fixture(t);
+  const route = await selectRoute({ root, jobId: 'tst-1', mode: 'implement', testOnly: true });
+  assert.equal(route.provider, 'claude'); assert.equal(route.role, 'test-warrior'); assert.equal(route.model, 'sonnet');
+  await assert.rejects(selectRoute({ root, jobId: 'tst-2', mode: 'implement', testOnly: true, role: 'designer' }), /Test primary/);
+  await assert.rejects(selectRoute({ root, jobId: 'tst-3', mode: 'implement', testOnly: true, changedContracts: ['dirty-dependencies'] }), /Test primary/);
+  await assert.rejects(registerDispatch(job({ id: 't-bad', logicalJobId: 'tst-4', testOnly: true, allowedWrites: ['src/ts/characters.ts'] }), { root }), /every write is a test file/);
+  const ok = await registerDispatch(job({ id: 't-ok', logicalJobId: 'tst-5', testOnly: true, allowedWrites: ['src/ts/tests/example.test.ts'] }), { root });
+  assert.equal(ok.provider, 'claude'); assert.equal(ok.role, 'test-warrior');
+  assert.equal((await selectRoute({ root, jobId: 'code-1', mode: 'implement' })).provider, 'codex');
+});
