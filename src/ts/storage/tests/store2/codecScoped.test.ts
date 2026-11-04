@@ -8,11 +8,12 @@ import {
 import { planWholeTreeInstall } from '../../store2/legacy/install'
 import { buildColdStub } from '../../../process/coldCharacter'
 import type { character, Database } from '../../database.svelte'
-import { UNIT_TYPE, type ShardEntry } from '../../store2/format'
+import { REQ_CHAT_ALT, REQ_MODULE_BUCKETS, UNIT_TYPE, type ShardEntry } from '../../store2/format'
 import {
     bodyIn, buildSmall, buildT3, buildT4, buildLegacyCases, buildT5Chat, dbWithCharacters, asDatabase, encodeWith,
     fakeLists, profileWithChats, seededEnv, sameBytes, storeOf, type Obj,
 } from './codecFixtures'
+import { MODULE_BUCKET_IDENTITY, moduleBucketIdentity } from './descentTable'
 
 const NOW = 1_700_000_000_000
 
@@ -241,11 +242,11 @@ describe('chat alternatives in a scoped encode', () => {
     test('a character that is carried keeps its alternatives units and the manifest keeps the chat-alt token (new-rule guard)', async () => {
         const { db } = withAlt()
         const first = encodeWith(db)
-        expect(first.manifest.req).toEqual(['chat-alt'])
+        expect(first.manifest.req).toEqual([REQ_CHAT_ALT, REQ_MODULE_BUCKETS])
         const tree = await encodeScoped(db, scopedOptions(2, first), { modules: false, characters: new Set() })
         expect(altIdentitiesOf(tree)).toEqual(altIdentitiesOf(first))
         expect(altIdentitiesOf(tree)).toHaveLength(1)
-        expect(tree.manifest.req).toEqual(['chat-alt'])
+        expect(tree.manifest.req).toEqual([REQ_CHAT_ALT, REQ_MODULE_BUCKETS])
         expect(written(tree).filter(identity => identity.includes(':alt:'))).toEqual([])
     })
 
@@ -314,7 +315,7 @@ describe('new behaviour: modules', () => {
         ;(next.modules as Obj[])[0].description = 'changed but not flagged'
         const tree = await encodeScoped(asDatabase(next), scopedOptions(2, first), { modules: false, characters: new Set() })
         expect(written(tree)).toEqual(['manifest'])
-        expect(tree.units.some(unit => unit.identity.startsWith(IDENTITY.module) || unit.identity === IDENTITY.moduleIndex)).toBe(false)
+        expect(tree.units.some(unit => unit.identity.startsWith(IDENTITY.module) || unit.identity.startsWith(MODULE_BUCKET_IDENTITY) || unit.identity === IDENTITY.moduleIndex)).toBe(false)
         expect(tree.manifest.fixed.moduleIndex).toEqual(first.manifest.fixed.moduleIndex)
         expect(tree.index.objects?.moduleIndex).toEqual(first.index.objects?.moduleIndex)
         for (const [identity, unit] of first.index.units) {
@@ -331,7 +332,7 @@ describe('new behaviour: modules', () => {
         const module = (next.modules as Obj[])[0]
         module.description = 'changed and flagged'
         const tree = await encodeScoped(asDatabase(next), scopedOptions(2, first), { modules: true, characters: new Set() })
-        expect(written(tree)).toEqual([`${IDENTITY.module}${module.id as string}#0`, IDENTITY.moduleIndex, 'manifest'].sort())
+        expect(written(tree)).toEqual([`${IDENTITY.module}${module.id as string}#0`, moduleBucketIdentity(first, module.id as string), 'manifest'].sort())
     })
 
     test('a deleted module leaves the next previous when flagged', async () => {
@@ -418,7 +419,7 @@ describe('guard: dependency closure, each field changes the expected units and n
         fixed('a plugin storage value', d => { ((d.pluginCustomStorage as Obj)['plugin-3'] as Obj).counter = 77 }, ['psv:plugin-3', `bucket:${bucketOfKey('plugin-3')}`]),
         fixed('a config field', d => { d.username = 'Someone Else' }, ['config']),
         { label: 'a module when flagged', mutate: d => { (d.modules as Obj[])[1].description = 'flagged edit' }, scope: { modules: true, characters: none },
-            expected: [`${IDENTITY.module}${moduleId(clone(db))}#0`, IDENTITY.moduleIndex, 'manifest'].sort(), fullAgrees: true },
+            expected: [`${IDENTITY.module}${moduleId(clone(db))}#0`, moduleBucketIdentity(first, moduleId(clone(db))), 'manifest'].sort(), fullAgrees: true },
         { label: 'a module when not flagged', mutate: d => { (d.modules as Obj[])[1].description = 'unflagged edit' }, scope: { modules: false, characters: none },
             expected: ['manifest'], fullAgrees: false },
         owned('a character core field', d => { slot(d).personality = 'new personality' }, [`${IDENTITY.char}${u}:core`]),

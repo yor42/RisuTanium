@@ -13,8 +13,8 @@
  * world's, so a conflict error thrown by the file-graph backend would not be recognised by the pass. The save loop is
  * therefore quiescent while the pass runs: no commit is in flight and the test awaits `settled` before the trigger.
  *
- * Rows of the reference table this database produces: the commit key's key positions and the manifest, shard, module index
- * and plugin-storage bucket positions below them, down to the units of a character's chats and a plugin value (the test
+ * Rows of the reference table this database produces: the commit key's key positions and the manifest, shard, module index,
+ * module bucket and plugin-storage bucket positions below them, down to the units of a character's chats and a plugin value (the test
  * asserts the unit types the named trees hold). `legacyKeep` cannot come from this encoder (it writes null), and
  * `gcMark.test.ts` covers that row. Mocked storage here says nothing about a native backend.
  */
@@ -26,10 +26,11 @@ import { peerPin, startStore2, store2Boot, type Store2Kit } from 'src/ts/storage
 import { stubFromEntry } from 'src/ts/storage/store2/codec'
 import { ADMISSION_INTERVAL_MS } from 'src/ts/storage/store2/commit'
 import { RETAINED_MAX } from 'src/ts/storage/store2/commitKey'
-import { encodeUnit, keyOfTail, newUnitKey, readUnit, refsOf, UNIT_TYPE, type UnitType } from 'src/ts/storage/store2/format'
+import { encodeUnit, keyOfTail, newUnitKey, readUnit, refsOf, UNIT_TYPE } from 'src/ts/storage/store2/format'
 import type { MemoryBackend } from 'src/ts/storage/store2/backend'
 import { readTree } from 'src/ts/storage/store2/tree'
 import type { Database } from 'src/ts/storage/database.svelte'
+import { TEST_DESCENT } from './descentTable'
 import { flushConfirming } from './flushConfirmBackend'
 
 vi.setConfig({ testTimeout: 60_000 })
@@ -140,12 +141,6 @@ async function startChain(): Promise<ChainWorld> {
     return { w, k, live: h.db, flush: flushSync }
 }
 
-const CHILD_TYPE: Readonly<Record<string, UnitType>> = {
-    'shards[]': UNIT_TYPE.shard,
-    'fixed.moduleIndex': UNIT_TYPE.moduleIndex,
-    'fixed.pluginStorage.refs[]': UNIT_TYPE.pluginStorageBucket,
-}
-
 const TYPE_NAME: ReadonlyMap<number, string> = new Map(Object.entries(UNIT_TYPE).map(([name, id]) => [id, name]))
 
 /** Every unit key a stored manifest names, by an independent walk over `refsOf` (not the collector's mark). */
@@ -159,7 +154,7 @@ async function treeKeys(memory: MemoryBackend, manifestKey: string): Promise<Set
     for (const target of refsOf(UNIT_TYPE.manifest, manifest.value.body)) {
         const key = keyOfTail(target.tail)
         keys.add(key)
-        const type = CHILD_TYPE[target.path]
+        const type = TEST_DESCENT[target.path]
         if (type === undefined) {
             continue
         }
@@ -249,7 +244,7 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
         for (const unit of namedKeys) {
             types.add(TYPE_NAME.get((snapshot.get(unit) as Uint8Array)[5]) ?? 'unknown')
         }
-        for (const type of ['manifest', 'shard', 'moduleIndex', 'pluginStorageBucket', 'pluginStorageValue']) {
+        for (const type of ['manifest', 'shard', 'moduleIndex', 'moduleBucket', 'module', 'pluginStorageBucket', 'pluginStorageValue']) {
             expect([...types], `precondition: the named trees hold a ${type} unit`).toContain(type)
         }
 

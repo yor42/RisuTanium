@@ -3,7 +3,7 @@ import fc from 'fast-check'
 import { describe, expect, test } from 'vitest'
 import {
     ASSET_REF_V, encodeUnit, IL_REF_V, keyOfRef, newUnitKey, readUnit, UNIT_TYPE,
-    type CommitKey, type Manifest, type ModuleEntry, type ModuleIndex, type Ref, type UnitType,
+    type CommitKey, type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndex, type ModuleIndexRoot, type Ref, type UnitType,
 } from '../../store2/format'
 import type { ListRef } from '../../store2/format'
 import { gcPass } from '../../store2/gc/pass'
@@ -11,7 +11,7 @@ import { markLiveKeys } from '../../store2/gc/mark'
 import { createListDerivation, deriveInlayList } from '../../store2/lists'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from '../../moduleStub'
 import { moduleStubOf } from '../../store2/moduleStubMatch'
-import { assembleDatabase, assembleModule } from '../../store2/codec'
+import { assembleDatabase, assembleModule, moduleIndexOfParts } from '../../store2/codec'
 import { StubRefusedError } from '../../store2/codec/types'
 import { residentModuleHandlesOf } from '../../store2/residencyPolicy'
 import type { SaveEncoder, SavePassRequest } from '../../store2/saveEncoder'
@@ -160,7 +160,7 @@ function reference(model: Model, moduleScope: boolean): Verdict {
 
 // ---- the presence-and-type check ----
 
-/** Throws unless every unit the committed module index names is in `snapshot` and decodes as the expected type. */
+/** Throws unless every unit the committed module index names, its buckets included, is in `snapshot` and decodes as the expected type. */
 function expectIndexUnitsPresent(snapshot: ReadonlyMap<string, Uint8Array>, commit: CommitKey): number {
     const manifestKey = (commit.current as { key: string }).key
     const manifestBytes = snapshot.get(manifestKey)
@@ -171,7 +171,8 @@ function expectIndexUnitsPresent(snapshot: ReadonlyMap<string, Uint8Array>, comm
     if (manifest.status !== 'ok') {
         throw new Error(`The current manifest is ${manifest.status}.`)
     }
-    const indexBytes = snapshot.get(keyOfRef((manifest.value.body as Manifest).fixed.moduleIndex))
+    const fixed = (manifest.value.body as Manifest).fixed
+    const indexBytes = snapshot.get(keyOfRef(fixed.moduleIndex))
     if (indexBytes === undefined) {
         throw new Error('The module index is not stored.')
     }
@@ -179,8 +180,19 @@ function expectIndexUnitsPresent(snapshot: ReadonlyMap<string, Uint8Array>, comm
     if (index.status !== 'ok') {
         throw new Error(`The module index is ${index.status}.`)
     }
+    const buckets = fixed.moduleBuckets?.map((ref, bucketPosition) => {
+        const bucketBytes = snapshot.get(keyOfRef(ref))
+        if (bucketBytes === undefined) {
+            throw new Error(`Module bucket ${bucketPosition} is named by the manifest and not stored.`)
+        }
+        const bucket = readUnit(bucketBytes, UNIT_TYPE.moduleBucket)
+        if (bucket.status !== 'ok') {
+            throw new Error(`Module bucket ${bucketPosition} is ${bucket.status}.`)
+        }
+        return bucket.value.body as ModuleBucket
+    })
     let checked = 0
-    for (const entry of (index.value.body as unknown as ModuleIndex).entries) {
+    for (const entry of moduleIndexOfParts(index.value.body as ModuleIndexRoot, buckets).entries) {
         const named: [string, Ref | ListRef | null, UnitType][] = [
             ['unit', entry.unit, UNIT_TYPE.module], ['al', entry.al, UNIT_TYPE.assetList], ['il', entry.il, UNIT_TYPE.inlayList],
         ]

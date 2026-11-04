@@ -38,6 +38,10 @@ const h = vi.hoisted(() => {
     }
 })
 
+/** The module index layout the writer uses; the default is the layout the build writes, and one test names the other. */
+const moduleIndexLayout = vi.hoisted(() => ({ MODULE_INDEX_LAYOUT: 2 }))
+vi.mock('src/ts/storage/store2/codec/moduleIndexParams', () => ({ MODULE_INDEX_PARAMS: moduleIndexLayout }))
+
 vi.mock('localforage', () => ({
     default: {
         createInstance: () => ({
@@ -180,6 +184,7 @@ import { runStore2SaveLoop, type Store2LoopPort } from 'src/ts/storage/store2/sa
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { bootThroughDispatch, countedBackend, createClock, peerCommit, savedDatabase, seedTree, startStore2, testEnv, type CountedBackend, type DispatchedBoot } from '../store2SaveKit'
 import { buildSmall, type Obj } from './codecFixtures'
+import { storedLogicalModuleIndex } from './descentTable'
 import { loadGolden, readerOver } from './legacyFixtures'
 
 type Plain = Record<string, unknown>
@@ -326,11 +331,7 @@ async function storedIndex(memory: MemoryBackend): Promise<ModuleIndex> {
     if (manifest.status !== 'ok') {
         throw new Error('The manifest does not parse.')
     }
-    const index = readUnit(entries.get(keyOfRef((manifest.value.body as Manifest).fixed.moduleIndex)) as Uint8Array, UNIT_TYPE.moduleIndex)
-    if (index.status !== 'ok') {
-        throw new Error('The module index does not parse.')
-    }
-    return index.value.body as ModuleIndex
+    return storedLogicalModuleIndex(key => entries.get(key), manifest.value.body as Manifest)
 }
 
 function copyOf(memory: MemoryBackend): Map<string, Uint8Array> {
@@ -432,7 +433,8 @@ async function exportedDatabase(): Promise<Plain> {
 
 //#endregion
 
-beforeEach(() => {
+/** A fresh page: the state a test starts from, which a test that runs two pages restores between them. */
+function preparePage(): void {
     vi.clearAllMocks()
     h.state.db = { characters: [], modules: [] }
     h.platform.isTauri = false
@@ -447,6 +449,11 @@ beforeEach(() => {
     vi.spyOn(console, 'log').mockImplementation(() => { })
     vi.spyOn(console, 'error').mockImplementation(() => { })
     vi.spyOn(dbWriteLock, 'acquire').mockResolvedValue(() => { })
+}
+
+beforeEach(() => {
+    moduleIndexLayout.MODULE_INDEX_LAYOUT = 2
+    preparePage()
 })
 
 afterEach(() => {
@@ -479,9 +486,10 @@ describe('the MVP upgrade: a profile written before the entry-fields tag', () =>
             expect(tagging.committed).toBe(true)
             const indexAfter = await storedIndex(memory)
             const written = newKeys(before, memory)
-            // The pass writes exactly a manifest, the rewritten module index and the config (which carries the setting): no
-            // module, asset list or inlay list unit, whatever its id. Every entry's units are the reused ones.
-            expect(writtenTypes(before, memory)).toEqual(['configRoot', 'manifest', 'moduleIndex'])
+            // The pass writes exactly a manifest, the module index (a bucketed root and its bucket, over the layout 1 profile) and
+            // the config (which carries the setting): no module, asset list or inlay list unit, whatever its id. Every entry's
+            // units are the reused ones.
+            expect(writtenTypes(before, memory)).toEqual(['configRoot', 'manifest', 'moduleBucket', 'moduleIndex'])
             expect(new Set(indexAfter.entries.flatMap(keysOf))).toEqual(moduleKeysBefore)
             expect(written).toContain(keyOfRef((await manifestFixed(memory)).moduleIndex))
             expect(indexAfter.entries.every(hasCurrentEntryFields)).toBe(true)
@@ -580,9 +588,9 @@ describe('what a pass and an edit write after a stubbed boot', () => {
                 expect(plain(entry), entry.id).toEqual(entriesBefore[position])
             }
         })
-        // Only the edited module's own unit is rewritten (one module-type unit), with the index and manifest that name it; no
+        // Only the edited module's own unit is rewritten (one module-type unit), with the bucket and manifest that name it (the root is unchanged); no
         // asset list or inlay list unit is written for any module.
-        expect(writtenTypes(before, memory)).toEqual(['manifest', 'module', 'moduleIndex'])
+        expect(writtenTypes(before, memory)).toEqual(['manifest', 'module', 'moduleBucket'])
         expect(newKeys(before, memory).filter(key => (memory.snapshot().get(key) as Uint8Array)[5] === UNIT_TYPE.module)).toHaveLength(1)
         // The stubs' units are still stored under the keys the entries name, and the edit reads back from the store.
         for (const entry of rig.entries.filter(candidate => UNREFERENCED.includes(candidate.id))) {
@@ -745,6 +753,49 @@ describe('M upstream-bin-import-then-stubbed-boot-then-export-equals-the-all-res
         expect(exported.modules).toEqual(controlExport.modules)
         expect(exported).toEqual(controlExport)
         expect((exported.modules as Plain[]).map(slot => ({ id: slot.id, name: slot.name }))).toEqual(importedModules.map(slot => ({ id: slot.id, name: slot.name })))
+    })
+})
+
+// The `.bin` export reads the logical module list, so the file does not depend on the layout the store holds the index in.
+describe('G the .bin export of an imported upstream file is the same under module index layout 1 and layout 2', () => {
+    async function importedThenExported(file: string, layoutNumber: 1 | 2): Promise<{ exported: Plain, bucketed: boolean }> {
+        preparePage()
+        moduleIndexLayout.MODULE_INDEX_LAYOUT = layoutNumber
+        const golden = await loadGolden(file)
+        const kit = await startStore2({ db: plain(buildSmall(1)), lists: createListDerivation() })
+        kit.clock.advance(1000)
+        const outcome = await importLegacyTree({
+            source: { tree: golden.tree },
+            reader: readerOver(golden.units),
+            committer: kit.committer,
+            backend: kit.counted.backend,
+            lists: createListDerivation(),
+            env: testEnv(kit.clock, 300),
+            resolve: { newId: () => 'placeholder-chat-id', now: () => 1_700_000_000_001 },
+        }, { async confirmIncomplete() { return true } })
+        expect(outcome.status).toBe('committed')
+        await boot(kit.memory)
+        return { exported: await exportedDatabase(), bucketed: (await manifestFixed(kit.memory)).moduleBuckets !== undefined }
+    }
+
+    /** The ids a boot generates for the chats an upstream file left without one differ from run to run, under any layout. */
+    function withoutGeneratedChatIds(database: Plain): Plain {
+        const copy = structuredClone(database) as { characters?: { chats?: { id?: string }[] }[] }
+        for (const slot of copy.characters ?? []) {
+            for (const chat of slot.chats ?? []) {
+                chat.id = ''
+            }
+        }
+        return copy as Plain
+    }
+
+    test.each([['upstream-full.bin'], ['fork-full.bin']])('%s', async (file) => {
+        const one = await importedThenExported(file, 1)
+        const two = await importedThenExported(file, 2)
+        expect(one.bucketed).toBe(false)
+        expect(two.bucketed).toBe(true)
+        expect((one.exported.modules as Plain[]).length).toBeGreaterThan(0)
+        expect(withoutGeneratedChatIds(two.exported)).toEqual(withoutGeneratedChatIds(one.exported))
     })
 })
 
@@ -911,9 +962,5 @@ async function storedIndexAt(memory: MemoryBackend, manifestKey: string): Promis
     if (manifest.status !== 'ok') {
         throw new Error('The manifest does not parse.')
     }
-    const index = readUnit(entries.get(keyOfRef((manifest.value.body as Manifest).fixed.moduleIndex)) as Uint8Array, UNIT_TYPE.moduleIndex)
-    if (index.status !== 'ok') {
-        throw new Error('The module index does not parse.')
-    }
-    return index.value.body as ModuleIndex
+    return storedLogicalModuleIndex(key => entries.get(key), manifest.value.body as Manifest)
 }

@@ -14,6 +14,7 @@ import type { character, Database } from '../../database.svelte'
 import {
     asDatabase, buildSmall, buildT3, bytesOf, encodeWith, fakeLists, seededEnv, type Obj,
 } from './codecFixtures'
+import { moduleBucketIdentity } from './descentTable'
 
 const NOW = 1_700_000_000_000
 
@@ -127,7 +128,7 @@ describe('guard: dependency closure through the encoder, each field changes the 
         fixed('a config field', d => { d.username = 'Someone Else' }, ['config']),
         {
             label: 'a module when flagged', mutate: d => { (d.modules as Obj[])[1].description = 'flagged edit' }, extra: { modules: true },
-            expected: [`${IDENTITY.module}${moduleId}#0`, IDENTITY.moduleIndex, 'manifest'].sort(), unchanged: false,
+            expected: [`${IDENTITY.module}${moduleId}#0`, moduleBucketIdentity(first, moduleId), 'manifest'].sort(), unchanged: false,
         },
         {
             label: 'a module when not flagged is carried', mutate: d => { (d.modules as Obj[])[1].description = 'unflagged edit' }, extra: {},
@@ -230,7 +231,9 @@ describe('new behaviour: the no-change pass', () => {
 
 describe('new behaviour: modules only when flagged', () => {
     const db = buildSmall(4)
-    const previous = previousFrom(encodeWith(db))
+    const firstTree = encodeWith(db)
+    const previous = previousFrom(firstTree)
+    const editedModuleId = (db.modules as unknown as { id: string }[])[2].id
     const edited = (): Database => {
         const next = clone(db)
         ;(next.modules as Obj[])[2].description = 'module edit'
@@ -250,7 +253,7 @@ describe('new behaviour: modules only when flagged', () => {
         ['save mine', { rewriteAll: true }],
     ] as const)('%s writes the edited module', async (_label, extra) => {
         const pass = await commitPass(encoderOf(previous), edited(), extra)
-        expect(moduleUnits(pass.written)).toContain(IDENTITY.moduleIndex)
+        expect(moduleUnits(pass.written)).toContain(moduleBucketIdentity(firstTree, editedModuleId))
         expect(moduleUnits(pass.written).some(identity => identity.startsWith(IDENTITY.module))).toBe(true)
     })
 

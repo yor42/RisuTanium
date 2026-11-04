@@ -2,12 +2,12 @@
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
-    planScopedEncode, previousFrom, unitsToWrite, carryModuleIndex, moduleHandles, moduleEntryFields,
+    planScopedEncode, previousFrom, unitsToWrite, carryModuleIndex, moduleHandles, moduleEntryFields, moduleIndexOfParts,
     type EncodedTree, type EncodeOptions, type EncodeScope, type PreviousEncoding,
 } from 'src/ts/storage/store2/codec'
 import { hasCurrentEntryFields } from 'src/ts/storage/store2/codec/modules'
 import { createKeyMint, type BuildContext } from 'src/ts/storage/store2/commit'
-import { encodeUnit, keyOfRef, parseModuleIndex, readUnit, UNIT_TYPE, type Manifest, type ModuleEntry, type ModuleIndex } from 'src/ts/storage/store2/format'
+import { encodeUnit, keyOfRef, parseModuleIndex, readUnit, UNIT_TYPE, type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndex, type ModuleIndexRoot } from 'src/ts/storage/store2/format'
 import { createListDerivation } from 'src/ts/storage/store2/lists/derive'
 import { previousOfTree } from 'src/ts/storage/store2/previousOfTree'
 import type { JsonObject } from 'src/ts/storage/blockFrame'
@@ -84,7 +84,7 @@ function indexOfTree(tree: EncodedTree): ModuleIndex {
     return index
 }
 
-/** The module index as the stored bytes decode, reached through the manifest of `tree`. */
+/** The logical module index as the stored bytes decode: the root and, under the bucketed layout, the buckets, reached through the manifest of `tree`. */
 function storedIndex(rig: Rig, tree: Pick<EncodedTree, 'manifestKey'>): ModuleIndex {
     const manifestBytes = rig.store.get(tree.manifestKey)
     if (manifestBytes === undefined) {
@@ -94,7 +94,8 @@ function storedIndex(rig: Rig, tree: Pick<EncodedTree, 'manifestKey'>): ModuleIn
     if (manifest.status !== 'ok') {
         throw new Error('The manifest does not parse.')
     }
-    const indexBytes = rig.store.get(keyOfRef((manifest.value.body as Manifest).fixed.moduleIndex))
+    const fixed = (manifest.value.body as Manifest).fixed
+    const indexBytes = rig.store.get(keyOfRef(fixed.moduleIndex))
     if (indexBytes === undefined) {
         throw new Error('The module index unit was not persisted.')
     }
@@ -102,7 +103,18 @@ function storedIndex(rig: Rig, tree: Pick<EncodedTree, 'manifestKey'>): ModuleIn
     if (index.status !== 'ok') {
         throw new Error('The module index does not parse.')
     }
-    return index.value.body as ModuleIndex
+    const buckets = fixed.moduleBuckets?.map((ref) => {
+        const bucketBytes = rig.store.get(keyOfRef(ref))
+        if (bucketBytes === undefined) {
+            throw new Error('A module bucket was not persisted.')
+        }
+        const bucket = readUnit(bucketBytes, UNIT_TYPE.moduleBucket)
+        if (bucket.status !== 'ok') {
+            throw new Error('A module bucket does not parse.')
+        }
+        return bucket.value.body as ModuleBucket
+    })
+    return moduleIndexOfParts(index.value.body as ModuleIndexRoot, buckets)
 }
 
 function unitHeadOf(tree: EncodedTree, identity: string): unknown[] {
@@ -190,7 +202,7 @@ describe('the frozen pre-tag fixture', () => {
         expect(moduleHandles(index.entries)).toContain('dup#1')
     })
 
-    test('entry-rewrite-adds-tag: reproducer, one module-flagged pass rewrites exactly the index and the manifest, then the next is unchanged', async () => {
+    test('entry-rewrite-adds-tag: reproducer, one module-flagged pass rewrites exactly the index root, its one bucket and the manifest, then the next is unchanged', async () => {
         const { rig, tree } = loaded()
         const previous = previousOfTree({ manifestKey: tree.manifestKey, manifest: tree.manifest, source: { get: key => rig.store.get(key) } })
         const database = asDatabase(JSON.parse(JSON.stringify(fixture.database)) as Obj)
@@ -198,7 +210,7 @@ describe('the frozen pre-tag fixture', () => {
 
         const stamping = await rig.pass(database, previous, MODS, 2)
         expect(stamping.plan.unchanged).toBe(false)
-        expect(unitsToWrite(stamping.tree).map(unit => unit.identity).sort()).toEqual(['manifest', 'moduleIndex'])
+        expect(unitsToWrite(stamping.tree).map(unit => unit.identity).sort()).toEqual(['manifest', 'moduleIndex', 'moduleIndex:bucket:0'])
         const index = indexOfTree(stamping.tree)
         expect(index.entries).toHaveLength(before.entries.length)
         index.entries.forEach((entry, position) => {

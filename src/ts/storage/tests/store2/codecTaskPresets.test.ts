@@ -6,7 +6,7 @@ import {
     assembleDatabase, CodecAssembleError, CodecInputError, previousFrom, unitMapSource, type UnitSource,
 } from '../../store2/codec'
 import {
-    encodeUnit, FRAME_HEADER_BYTES, keyOfRef, parseManifest, parseUnitBody, readUnit, refsOf, REQ_TASK_PRESETS, UNIT_TYPE, type Manifest,
+    encodeUnit, FRAME_HEADER_BYTES, keyOfRef, parseManifest, parseUnitBody, readUnit, refsOf, REQ_MODULE_BUCKETS, REQ_TASK_PRESETS, UNIT_TYPE, type Manifest,
 } from '../../store2/format'
 import { language } from 'src/lang'
 import { createMemoryBackend } from '../../store2/backend'
@@ -47,7 +47,7 @@ describe('task presets: encode', () => {
         for (const identity of ['taskPreset:0', 'taskPreset:1']) {
             expect(unitOf(tree, identity).type).toBe(26)
         }
-        expect(tree.manifest.req).toEqual(['task-presets'])
+        expect(tree.manifest.req).toEqual([REQ_MODULE_BUCKETS, 'task-presets'])
     })
 
     test('compatibility guard: the presets round trip deep-equal and an unchanged re-encode reuses every unit', () => {
@@ -66,17 +66,18 @@ describe('task presets: encode', () => {
         const emptied = withPresets([])
         const second = encodeWith(emptied, { previous: previousFrom(first), seq: 2, env: seededEnv(2) })
         expect(second.manifest.fixed.taskPresets).toBeUndefined()
-        expect(second.manifest.req).toEqual([REQ_TASK_PRESETS])
+        expect(second.manifest.req).toEqual([REQ_MODULE_BUCKETS, REQ_TASK_PRESETS])
         expect(identitiesWhere(second, 'taskPreset:')).toEqual([])
         expect(Object.hasOwn(assemble(second, first), 'taskPresets')).toBe(false)
         const absent = encodeWith(asDatabase({ ...buildSmall(2) as unknown as Obj }), { previous: previousFrom(first), seq: 2, env: seededEnv(2) })
         expect(absent.manifest.fixed.taskPresets).toBeUndefined()
-        expect(absent.manifest.req).toEqual([REQ_TASK_PRESETS])
+        expect(absent.manifest.req).toEqual([REQ_MODULE_BUCKETS, REQ_TASK_PRESETS])
     })
 
     test('compatibility guard: a store without task presets has no token, no field and no property after assembly', () => {
         const tree = encodeWith(buildSmall(2))
-        expect(tree.manifest.req).toEqual([])
+        // The small profile has modules, so the bucketed index's token is the only one: no task-presets token.
+        expect(tree.manifest.req).toEqual([REQ_MODULE_BUCKETS])
         expect(Object.hasOwn(tree.manifest.fixed, 'taskPresets')).toBe(false)
         expect(Object.hasOwn(assemble(tree), 'taskPresets')).toBe(false)
         expect(identitiesWhere(tree, 'taskPreset:')).toEqual([])
@@ -84,7 +85,7 @@ describe('task presets: encode', () => {
 
     test('an empty list encodes as no field and no token', () => {
         const tree = encodeWith(withPresets([]))
-        expect(tree.manifest.req).toEqual([])
+        expect(tree.manifest.req).toEqual([REQ_MODULE_BUCKETS])
         expect(Object.hasOwn(tree.manifest.fixed, 'taskPresets')).toBe(false)
     })
 

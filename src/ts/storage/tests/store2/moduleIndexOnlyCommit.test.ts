@@ -1,23 +1,24 @@
 // @vitest-environment node
 import { describe, expect, test } from 'vitest'
 import {
-    planScopedEncode, previousFrom, unitsToWrite, moduleHandles,
+    moduleIndexOfParts, planScopedEncode, previousFrom, unitsToWrite, moduleHandles,
     type EncodedTree, type EncodeOptions, type EncodeScope, type PreviousEncoding,
 } from 'src/ts/storage/store2/codec'
 import { hasCurrentEntryFields } from 'src/ts/storage/store2/codec/modules'
 import { createMemoryBackend } from 'src/ts/storage/store2/backend'
 import { createKeyMint, type BuildContext } from 'src/ts/storage/store2/commit'
-import { keyOfRef, readUnit, UNIT_TYPE, type Manifest, type ModuleIndex } from 'src/ts/storage/store2/format'
+import { keyOfRef, readUnit, UNIT_TYPE, type Manifest, type ModuleBucket, type ModuleIndexRoot } from 'src/ts/storage/store2/format'
 import { createListDerivation } from 'src/ts/storage/store2/lists/derive'
 import { previousOfTree } from 'src/ts/storage/store2/previousOfTree'
 import { installPick, pickCandidate } from 'src/ts/storage/store2/recoveryPick'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { asDatabase, buildSmall, seededEnv, type Obj } from 'src/ts/storage/tests/store2/codecFixtures'
 import { createClock, testEnv } from 'src/ts/storage/tests/store2/commitFixtures'
+import { moduleBucketIdentity } from 'src/ts/storage/tests/store2/descentTable'
 
 /**
  * After one module edit, the module-flagged passes settle: the edit pass writes exactly the new module unit, the index
- * and the manifest, and the next pass over an unedited profile writes nothing but the manifest it skips. The settle
+ * bucket that holds its entry and the manifest, and the next pass over an unedited profile writes nothing but the manifest it skips. The settle
  * holds for a previous taken from the acknowledged tree and for one rebuilt from stored bytes, and a recovery install
  * (which rewrites every key without changing content) keeps every entry's tag valid.
  *
@@ -71,14 +72,14 @@ const ways = [
 ] as const
 
 describe.each(ways)('the module-flagged passes after one edit, previous from %s', (_name, previousOf) => {
-    test('rows 1 and 2, guards: the edit pass writes the module unit, the index and the manifest; the next pass is unchanged', async () => {
+    test('rows 1 and 2, guards: the edit pass writes the module unit, its bucket and the manifest; the next pass is unchanged', async () => {
         const rig = makeRig(600, 8200)
         const imported = await rig.pass(profile(false), null, ALL, 1)
         rig.persist(imported.tree)
 
         const edit = await rig.pass(profile(true), previousOf(rig, imported.tree), MODS, 2)
         expect(edit.plan.unchanged).toBe(false)
-        expect(unitsToWrite(edit.tree).map(unit => unit.identity).sort()).toEqual(['manifest', 'module:uniq#0', 'moduleIndex'])
+        expect(unitsToWrite(edit.tree).map(unit => unit.identity).sort()).toEqual(['manifest', 'module:uniq#0', moduleBucketIdentity(imported.tree, 'uniq')])
         rig.persist(edit.tree)
 
         const settled = await rig.pass(profile(true), previousOf(rig, edit.tree), MODS, 3)
@@ -118,7 +119,7 @@ describe('row 3: a recovery install', () => {
             return
         }
 
-        const read = async (key: string, type: typeof UNIT_TYPE.manifest | typeof UNIT_TYPE.moduleIndex) => {
+        const read = async (key: string, type: typeof UNIT_TYPE.manifest | typeof UNIT_TYPE.moduleIndex | typeof UNIT_TYPE.moduleBucket) => {
             const bytes = (await backend.readUnits([key])).get(key)
             if (bytes === null || bytes === undefined) {
                 throw new Error(`${key} is not stored.`)
@@ -130,7 +131,9 @@ describe('row 3: a recovery install', () => {
             return parsed.value.body
         }
         const manifest = await read(installed.manifestKey, UNIT_TYPE.manifest) as Manifest
-        const index = await read(keyOfRef(manifest.fixed.moduleIndex), UNIT_TYPE.moduleIndex) as ModuleIndex
+        const root = await read(keyOfRef(manifest.fixed.moduleIndex), UNIT_TYPE.moduleIndex) as ModuleIndexRoot
+        const buckets = await Promise.all((manifest.fixed.moduleBuckets ?? []).map(async ref => await read(keyOfRef(ref), UNIT_TYPE.moduleBucket) as ModuleBucket))
+        const index = moduleIndexOfParts(root, buckets)
         expect(moduleHandles(index.entries)).toEqual(['uniq#0', 'dup#0', 'dup#1', 'plain#0'])
         const originalTails = new Set((edit.tree.index.objects?.moduleIndex?.entries ?? []).map(entry => entry.unit[0]))
         expect(originalTails.size).toBe(4)

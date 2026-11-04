@@ -13,6 +13,7 @@ import { moduleStubOf } from '../../store2/moduleStubMatch'
 import { buildColdStub } from '../../../process/coldCharacter'
 import type { character, Database } from '../../database.svelte'
 import { asDatabase, buildSmall, bytesOf, seededEnv, type Obj } from './codecFixtures'
+import { TEST_DESCENT } from './descentTable'
 
 /**
  * The invariant behind the carry rule: every unit key a commit's new units name is a key that commit writes, a key the
@@ -136,18 +137,9 @@ function passOf(over: Partial<SavePassRequest> = {}): SavePassRequest {
     return { marked: new Set(), modules: false, whole: false, ...over }
 }
 
-/** The unit type a reference at `path` of the manifest points at when that unit names further units; null for a leaf. */
+/** The unit type a reference at `path` of the manifest points at when that unit names further units, from the shared test table; null for a leaf. */
 function parentTypeAt(path: string): UnitType | null {
-    if (path.startsWith('shards[]')) {
-        return UNIT_TYPE.shard
-    }
-    if (path === 'fixed.moduleIndex') {
-        return UNIT_TYPE.moduleIndex
-    }
-    if (path.startsWith('fixed.pluginStorage.refs')) {
-        return UNIT_TYPE.pluginStorageBucket
-    }
-    return null
+    return TEST_DESCENT[path] ?? null
 }
 
 /** Every key the manifest tree names through the one reference table, descending through every parent unit, reused or not. */

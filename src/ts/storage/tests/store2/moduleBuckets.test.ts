@@ -294,6 +294,11 @@ describe('the layout 2 writer', () => {
         const passed = await rig.pass(profile(modules), previousFrom(tree), MODS, 2)
         expect(passed.plan.unchanged).toBe(true)
         expect(passed.tree.index.objects?.moduleIndex).toEqual(logical)
+        // The previous a boot builds names the bucket units by the same identities the encoder gives them, so a pass over it reuses them.
+        const rebooted = await rig.pass(profile(modules), rig.boot(tree), MODS, 3)
+        expect(rebooted.plan.unchanged).toBe(true)
+        expect(identitiesWritten(rebooted.tree)).toEqual(['manifest'])
+        expect(rebooted.tree.index.objects?.moduleIndex).toEqual(logical)
     })
 })
 

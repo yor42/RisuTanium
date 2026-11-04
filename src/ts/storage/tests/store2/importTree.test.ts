@@ -37,7 +37,7 @@ import type { Committer, CommitRequest } from 'src/ts/storage/store2/commit'
 import { createKeyMint, IMPORT_REPLACES_BASE } from 'src/ts/storage/store2/commit'
 import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import {
-    canonicalJson, encodeUnit, keyOfRef, newManifestKey, readUnit, refOfFrame, UNIT_TYPE, type LegacyList, type Manifest,
+    canonicalJson, encodeUnit, keyOfRef, newManifestKey, readUnit, refOfFrame, REQ_MODULE_BUCKETS, UNIT_TYPE, type LegacyList, type Manifest,
 } from 'src/ts/storage/store2/format'
 import { LegacyListBuilder } from 'src/ts/storage/store2/lists/legacyList'
 import {
@@ -54,6 +54,15 @@ import { ALL_GOLDENS, FULL_GOLDENS, loadGolden, readerOver, type Golden } from '
 
 const OPTIONS = { newId: () => 'placeholder-chat-id', now: () => 1_700_000_000_001 }
 const accept = { async confirmIncomplete() { return true } }
+
+/**
+ * The goldens whose import writes more than `BULK_UNIT_THRESHOLD` units, the bucket of the module index included, and so
+ * commits as a bulk commit; every other golden commits as an ordinary one.
+ */
+const BULK_GOLDENS: ReadonlySet<string> = new Set(['upstream-full.bin'])
+
+/** A full golden that stays an ordinary commit, for the tests that hook `commitOrdinary`. */
+const ORDINARY_GOLDEN = 'fork-full.bin'
 
 interface Rig {
     memory: MemoryBackend
@@ -178,7 +187,7 @@ describe('guard: a golden imports and assembles back to what the resolver gave',
             marked.characters[plain].futureCharacterField = { n: 1 }
         }
         const outcome = committedOf(await importLegacyTree(test.request(golden), accept))
-        expect(outcome.mode).toBe('ordinary')
+        expect(outcome.mode).toBe(BULK_GOLDENS.has(name) ? 'bulk' : 'ordinary')
 
         const expectedSource = await loadGolden(name)
         if (withUnknown) {
@@ -270,7 +279,7 @@ describe('new behaviour: the replaced state is always kept', () => {
         expect(m1.status).toBe('committed')
         const pre = (await parsedCommit(test.memory)).current!.key
         test.clock.advance(1000)
-        const outcome = committedOf(await importLegacyTree(test.request(await loadGolden('upstream-full.bin')), accept))
+        const outcome = committedOf(await importLegacyTree(test.request(await loadGolden(ORDINARY_GOLDEN)), accept))
         expect(outcome.mode).toBe('ordinary')
         const key = await parsedCommit(test.memory)
         expect(key.retained[0].key).toBe(pre)
@@ -348,7 +357,7 @@ describe('new behaviour: the replaced manifest\'s keep set travels with the impo
         base.req = ['zzz-future']
         const { mint } = createKeyMint(env, null)
         const built = await buildImport(plan, { base }).build({ mint, seq: 9, now: 10 })
-        expect(built.manifest.body.req).toEqual(['zzz-future'])
+        expect(built.manifest.body.req).toEqual([REQ_MODULE_BUCKETS, 'zzz-future'])
         expect(canonicalJson(built.manifest.body.fixed.legacyKeep)).toBe(canonicalJson(base.fixed.legacyKeep))
     })
 
@@ -533,7 +542,7 @@ describe('new behaviour: the commit outcomes are typed', () => {
                 await test.peer.commit(await test.peer.readCommit(), treeRequest(0, { tag: 'peer' }))
             }
         }
-        const outcome = await importLegacyTree(test.request(await loadGolden('upstream-full.bin')), accept)
+        const outcome = await importLegacyTree(test.request(await loadGolden(ORDINARY_GOLDEN)), accept)
         expect(outcome.status).toBe('conflict')
         expect((await parsedCommit(test.memory)).current?.key).not.toBe(test.m0)
     })
@@ -546,7 +555,7 @@ describe('new behaviour: the commit outcomes are typed', () => {
                 throw new Store2BackendFailureError('Injected failure.')
             }
         }
-        const outcome = await importLegacyTree(test.request(await loadGolden('upstream-full.bin')), accept)
+        const outcome = await importLegacyTree(test.request(await loadGolden(ORDINARY_GOLDEN)), accept)
         expect(outcome.status).toBe('failed')
         expect((await parsedCommit(test.memory)).current?.key).toBe(test.m0)
     })

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { buildManifest, MANIFEST_REQ, PLUGIN_STORAGE_BUCKETS, SHARD_COUNT, SHARD_COUNT_MAX, SHARD_COUNT_MIN, type EncodedTree } from '../../store2/codec'
-import { parseManifest, readUnit, refsOf, REQ_CHAT_ALT, UNIT_TYPE, type Manifest, type UnitType } from '../../store2/format'
+import { parseManifest, readUnit, refsOf, REQ_CHAT_ALT, REQ_MODULE_BUCKETS, UNIT_TYPE, type Manifest, type UnitType } from '../../store2/format'
 import type { Database } from '../../database.svelte'
 import {
     asDatabase, bodyOf, buildLegacyCases, buildSmall, buildT4, bytesOf, chat, dbWithCharacters, encodeWith, loreEntry, message, mulberry32,
@@ -85,12 +85,15 @@ describe('the manifest', () => {
         expect(manifestBytes(encodeWith(asDatabase(db)))).toBeLessThan(SIXTEEN_KIB)
     })
 
-    test('it carries the fixed shape: 16 shards, 16 buckets, no required feature, no legacy keep', () => {
+    test('it carries the fixed shape: 16 shards, 16 buckets, only the module-buckets feature, no legacy keep', () => {
         const tree = encodeWith(buildSmall(3), { seq: 7, createdAt: 123 })
         const parsed = parseManifest(bodyOf(unitOf(tree, 'manifest')) as never)
         expect(parsed.status).toBe('ok')
         const manifest = tree.manifest
-        expect(manifest).toMatchObject({ fmt: 1, req: [], seq: 7, createdAt: 123, shardCount: 16 })
+        expect(manifest).toMatchObject({ fmt: 1, seq: 7, createdAt: 123, shardCount: 16 })
+        // The small profile has modules, so the bucketed index sets the one required feature and no other.
+        expect(manifest.fixed.moduleBuckets?.length).toBeGreaterThan(0)
+        expect(manifest.req).toEqual([REQ_MODULE_BUCKETS])
         expect(manifest.shards).toHaveLength(SHARD_COUNT)
         expect(manifest.fixed.pluginStorage.buckets).toBe(PLUGIN_STORAGE_BUCKETS)
         expect(manifest.fixed.pluginStorage.refs).toHaveLength(16)

@@ -29,6 +29,7 @@ import type { toSaveType } from '../../risuSave'
 import { until } from '../saveLoopWorld'
 import { startStore2 } from '../store2SaveKit'
 import { asDatabase, buildSmall, encodeWith, fakeLists, seededEnv, type Obj } from './codecFixtures'
+import { MODULE_BUCKET_IDENTITY } from './descentTable'
 
 const NOW = 1_700_000_000_000
 
@@ -69,7 +70,7 @@ function groupOf(identity: string): Section {
     if (identity.startsWith('preset:') || identity.startsWith('plugin:') || identity.startsWith('psv:') || identity.startsWith('bucket:')) {
         return 'front'
     }
-    if (identity.startsWith('module:') || identity.startsWith('al:module:') || identity.startsWith('il:module:') || identity === 'moduleIndex') {
+    if (identity.startsWith('module:') || identity.startsWith('al:module:') || identity.startsWith('il:module:') || identity === 'moduleIndex' || identity.startsWith(MODULE_BUCKET_IDENTITY)) {
         return 'modules'
     }
     if (identity.startsWith('char:') || identity.startsWith('chat:') || identity.startsWith('al:char:') || identity.startsWith('il:char:')) {
@@ -108,6 +109,8 @@ function comparedOf(split: SavePassSplit): ComparedSplit {
 function expectationOf(tree: EncodedTree, characterCount: number, modulesScoped: boolean): Expectation {
     const puts: Record<Section, number> = { front: 0, modules: 0, characters: 0, finish: 0 }
     const shardPuts = tree.units.filter(unit => unit.identity.startsWith('shard:')).length
+    // Each bucket of the module index is one more put in the module section, beyond the root the base cost already holds.
+    const bucketPuts = tree.units.filter(unit => unit.identity.startsWith(MODULE_BUCKET_IDENTITY)).length
     const perCharacter = new Map<string, number>()
     const perModule = new Map<string, { puts: number, derived: boolean }>()
     for (const unit of tree.units) {
@@ -128,7 +131,7 @@ function expectationOf(tree: EncodedTree, characterCount: number, modulesScoped:
     let readMs = 0
     let listsMs = 0
     if (modulesScoped) {
-        modulesMs = 4
+        modulesMs = 4 + 3 * bucketPuts
         for (const row of perModule.values()) {
             modulesMs += 2 + 3 * row.puts + (row.derived ? 4 : 0)
             readMs += 1

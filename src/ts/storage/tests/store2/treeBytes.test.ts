@@ -7,12 +7,12 @@ import {
     type MemoryBackend, type Store2Backend,
 } from 'src/ts/storage/store2/backend'
 import {
-    assembleDatabase, assembleModule, CodecAssembleError, IDENTITY, moduleHandles, type EncodedTree, type EncodedUnit, type ListDerivation,
+    assembleDatabase, assembleModule, CodecAssembleError, IDENTITY, moduleHandles, moduleIndexOfParts, type EncodedTree, type EncodedUnit, type ListDerivation,
 } from 'src/ts/storage/store2/codec'
 import { classifyCommitRead, nextCommitKey } from 'src/ts/storage/store2/commitKey'
 import {
     ASSET_REF_V, encodeUnit, FRAME_HEADER_BYTES, FRAME_OVERHEAD, IL_REF_V, keyOfRef, readUnit, UNIT_TYPE,
-    type KeyEnv, type Manifest, type ModuleEntry, type ModuleIndex, type Ref, type Shard, type ShardEntry, type UnitType,
+    type KeyEnv, type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndexRoot, type Ref, type Shard, type ShardEntry, type UnitType,
 } from 'src/ts/storage/store2/format'
 import { COMMIT_KEY } from 'src/ts/storage/store2/format/keys'
 import { hydrateModuleDigests, previousOfTree } from 'src/ts/storage/store2/previousOfTree'
@@ -833,7 +833,10 @@ describe('new behaviour: readEntityBytes reads one entity under the damage rules
 
 describe('contract: readModuleBytes reads the units of one module, the module unit fatal and its lists not', () => {
     function moduleEntriesOf(source: World): ModuleEntry[] {
-        return bodyOfKey<ModuleIndex>(source, keyOfRef(source.tree.manifest.fixed.moduleIndex), UNIT_TYPE.moduleIndex).entries
+        const { moduleIndex, moduleBuckets } = source.tree.manifest.fixed
+        const root = bodyOfKey<ModuleIndexRoot>(source, keyOfRef(moduleIndex), UNIT_TYPE.moduleIndex)
+        const buckets = moduleBuckets?.map(ref => bodyOfKey<ModuleBucket>(source, keyOfRef(ref), UNIT_TYPE.moduleBucket))
+        return moduleIndexOfParts(root, buckets).entries
     }
 
     /** The key of each list the entry names. */

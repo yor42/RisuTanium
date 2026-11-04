@@ -5,6 +5,7 @@ import { UNIT_TYPE, type ModuleEntry, type ModuleIndex } from '../../store2/form
 import {
     asDatabase, bodyOf, buildSmall, encodeWith, previousFrom, roundTrip, seededEnv, unitOf, type Obj,
 } from './codecFixtures'
+import { logicalModuleIndex } from './descentTable'
 
 function withModules(modules: Obj[]) {
     return asDatabase({ ...(buildSmall(1) as unknown as Obj), modules })
@@ -15,7 +16,7 @@ const mod = (id: string, extra: JsonObject = {}): JsonObject => ({ name: `Module
 describe('module units', () => {
     test('each module is one unit of type 9 and the index lists them in order', () => {
         const tree = encodeWith(withModules([mod('b'), mod('a'), mod('c')]))
-        const index = bodyOf(unitOf(tree, 'moduleIndex')) as unknown as ModuleIndex
+        const index = logicalModuleIndex(tree)
         expect(index.entries.map(entry => entry.id)).toEqual(['b', 'a', 'c'])
         for (const entry of index.entries) {
             const unit = unitOf(tree, `module:${entry.id}#0`)
@@ -35,7 +36,7 @@ describe('module units', () => {
 
     test('asset and inlay lists of a module are units named by the index entry', () => {
         const tree = encodeWith(withModules([mod('m1', { assets: [['a', 'assets/AB.PNG', 'png']] })]))
-        const entry = (bodyOf(unitOf(tree, 'moduleIndex')) as unknown as ModuleIndex).entries[0] as ModuleEntry
+        const entry = logicalModuleIndex(tree).entries[0] as ModuleEntry
         const list = unitOf(tree, 'al:module:m1#0')
         expect(list.type).toBe(UNIT_TYPE.assetList)
         expect(entry.al.slice(0, 3)).toEqual(list.ref)
@@ -59,7 +60,8 @@ describe('module units', () => {
         const first = encodeWith(withModules([mod('a'), mod('b')]), { env: seededEnv(1) })
         const next = encodeWith(withModules([mod('a'), mod('b', { cjs: 'changed' })]), { env: seededEnv(2), previous: previousFrom(first) })
         const written = unitsToWrite(next).map(unit => unit.identity).sort()
-        expect(written).toEqual(['manifest', 'module:b#0', 'moduleIndex'].sort())
+        // Two modules share the one bucket of the bucketed index, so the changed entry rewrites that bucket and not the root.
+        expect(written).toEqual(['manifest', 'module:b#0', 'moduleIndex:bucket:0'].sort())
         expect(isUnchanged(encodeWith(withModules([mod('a'), mod('b')]), { env: seededEnv(3), previous: previousFrom(first) }))).toBe(true)
     })
 

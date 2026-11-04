@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'vitest'
 import { groupIntoShards, shardOfU, type EncodedTree, type EncodedUnit, type PreviousEncoding, type PreviousObjects } from '../../store2/codec'
 import type { Database } from '../../database.svelte'
-import { parseModuleIndex, parseShard, UNIT_TYPE, type ChatEntry, type ModuleIndex, type Shard } from '../../store2/format'
+import { parseModuleIndex, parseShard, REQ_MODULE_BUCKETS, UNIT_TYPE, type ChatEntry, type ModuleIndex, type Shard } from '../../store2/format'
 import { asDatabase, bodyIn, bodyOf, buildSmall, bytesIn, encodeWith, previousFrom, seededEnv, unitOf, type JsonObject, type Obj } from './codecFixtures'
+import { logicalModuleIndex } from './descentTable'
 
 const MARK = 'futureField'
 
@@ -67,12 +68,12 @@ describe('unknown fields of the format objects the codec writes are carried from
         expect(manifest[MARK]).toBe('manifest-top')
         expect((manifest.fixed as Obj)[MARK]).toBe('manifest-fixed')
         expect(((manifest.fixed as Obj).pluginStorage as Obj)[MARK]).toBe('manifest-plugin-storage')
-        expect(next.manifest.req).toEqual(['zzz-future'])
+        expect(next.manifest.req).toEqual([REQ_MODULE_BUCKETS, 'zzz-future'])
         const written = rawBody(unitOf(next, 'manifest')) as Obj
         expect(written[MARK]).toBe('manifest-top')
         expect((written.fixed as Obj)[MARK]).toBe('manifest-fixed')
         expect(((written.fixed as Obj).pluginStorage as Obj)[MARK]).toBe('manifest-plugin-storage')
-        expect(written.req).toEqual(['zzz-future'])
+        expect(written.req).toEqual([REQ_MODULE_BUCKETS, 'zzz-future'])
     })
 
     test('shard top level, each shard entry (by u) and each chat entry (by cid)', () => {
@@ -97,7 +98,7 @@ describe('unknown fields of the format objects the codec writes are carried from
     test('module index top level and each module entry (by handle)', () => {
         const { previous } = previousWithMarkers(first)
         const next = encodeWith(base, { env: seededEnv(2), previous })
-        const body = bodyOf(unitOf(next, 'moduleIndex')) as unknown as ModuleIndex & Obj
+        const body = logicalModuleIndex(next, first) as ModuleIndex & Obj
         expect(body[MARK]).toBe('modules-top')
         expect(body.entries.length).toBeGreaterThan(0)
         for (const entry of body.entries) {
@@ -137,7 +138,7 @@ describe('unknown fields of the format objects the codec writes are carried from
             }
             parsedShards[Number(unit.identity.split(':')[1])] = parsed.value
         }
-        const indexBody = JSON.parse(JSON.stringify(bodyOf(unitOf(first, 'moduleIndex')))) as JsonObject
+        const indexBody = JSON.parse(JSON.stringify(logicalModuleIndex(first))) as JsonObject
         indexBody[MARK] = 'parsed-modules'
         for (const entry of indexBody.entries as JsonObject[]) {
             entry[MARK] = 'parsed-module'
@@ -159,7 +160,7 @@ describe('unknown fields of the format objects the codec writes are carried from
                 }
             }
         }
-        const body = bodyOf(unitOf(next, 'moduleIndex')) as unknown as ModuleIndex & Obj
+        const body = logicalModuleIndex(next, first) as ModuleIndex & Obj
         expect(body[MARK]).toBe('parsed-modules')
         expect(body.entries.every(entry => (entry as unknown as Obj)[MARK] === 'parsed-module')).toBe(true)
     })
@@ -304,7 +305,7 @@ describe('a chat or module entry carries only when its handle is a unique, non-e
         const survivors = chatEntriesByChaId(next, prior).get(String(firstCharacter(current).chaId)) as ChatEntry[]
         expect(survivors.map(chat => chat.cid)).toEqual(['~0'])
         expect((survivors[0] as unknown as Obj)[MARK]).toBeUndefined()
-        const entries = (bodyOf(unitOf(next, 'moduleIndex')) as unknown as ModuleIndex).entries
+        const entries = logicalModuleIndex(next, prior).entries
         expect((entries[0] as unknown as Obj)[MARK]).toBeUndefined()
     })
 
@@ -337,9 +338,9 @@ describe('a chat or module entry carries only when its handle is a unique, non-e
         expect(modules.length).toBeGreaterThan(2)
         modules[0].id = 'shared-id'
         modules[1].id = 'shared-id'
-        const { previous } = marked(asDatabase(raw))
+        const { tree: prior, previous } = marked(asDatabase(raw))
         const next = encodeWith(asDatabase(raw), { env: seededEnv(2), previous })
-        const entries = (bodyOf(unitOf(next, 'moduleIndex')) as unknown as ModuleIndex).entries
+        const entries = logicalModuleIndex(next, prior).entries
         expect((entries[0] as unknown as Obj)[MARK]).toBeUndefined()
         expect((entries[1] as unknown as Obj)[MARK]).toBeUndefined()
         for (const entry of entries.slice(2)) {
@@ -351,13 +352,13 @@ describe('a chat or module entry carries only when its handle is a unique, non-e
         const raw = cloneDb(buildSmall(2))
         const modules = raw.modules as Obj[]
         modules[0].id = 'm'
-        const { previous } = marked(asDatabase(raw))
+        const { tree: prior, previous } = marked(asDatabase(raw))
         const next = cloneDb(asDatabase(raw))
         // A second module with id `m` is inserted before the first.
         const nextModules = next.modules as Obj[]
         nextModules.unshift(structuredClone(nextModules[0]))
         const result = encodeWith(asDatabase(next), { env: seededEnv(2), previous })
-        const entries = (bodyOf(unitOf(result, 'moduleIndex')) as unknown as ModuleIndex).entries
+        const entries = logicalModuleIndex(result, prior).entries
         expect(entries.filter(entry => entry.id === 'm')).toHaveLength(2)
         for (const entry of entries.filter(one => one.id === 'm')) {
             expect((entry as unknown as Obj)[MARK]).toBeUndefined()
@@ -369,10 +370,10 @@ describe('a chat or module entry carries only when its handle is a unique, non-e
         const modules = raw.modules as Obj[]
         modules[0].id = ''
         modules[1].id = ''
-        const { previous } = marked(asDatabase(raw))
+        const { tree: prior, previous } = marked(asDatabase(raw))
         modules.shift()
         const next = encodeWith(asDatabase(raw), { env: seededEnv(2), previous })
-        const entries = (bodyOf(unitOf(next, 'moduleIndex')) as unknown as ModuleIndex).entries
+        const entries = logicalModuleIndex(next, prior).entries
         expect((entries[0] as unknown as Obj)[MARK]).toBeUndefined()
     })
 })

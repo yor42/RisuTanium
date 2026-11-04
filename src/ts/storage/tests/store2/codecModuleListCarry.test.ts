@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'vitest'
 import {
     ASSET_REF_V, encodeUnit, IL_REF_V, keyOfRef, newUnitKey, readUnit, refOfFrame, UNIT_TYPE,
-    type AssetList, type InlayList, type ModuleIndex, type Ref,
+    type AssetList, type InlayList, type ModuleBucket, type ModuleIndex, type Ref,
 } from '../../store2/format'
 import { unitDigest, type ListDerivation, type PreviousEncoding } from '../../store2/codec'
 import { createKeyMint, type BuildContext } from '../../store2/commit'
@@ -608,17 +608,18 @@ describe('pending, adopt and a second finalize keep the carried units', () => {
         live.modules[1].description = 'edited'
         const plan = await kit.encoder.plan(live as unknown as Database, NOTHING_MARKED)
         const mintOf = (attempt: number): BuildContext => ({ mint: createKeyMint(seededEnv(900 + attempt), null).mint, seq: 2, now: 1_700_000_000_000 })
+        // The four modules share the one bucket of the bucketed index, and their ids sort in module order, so the entries of the
+        // rewritten bucket are the logical index in order; the edit leaves the type 10 root unwritten.
         const indexOfBuild = async (attempt: number): Promise<ModuleIndex> => {
             const built = await plan.commitRequest().build(mintOf(attempt))
-            const stored = built.units.find((unit) => {
-                const parsed = readUnit(unit.bytes)
-                return parsed.status === 'ok' && parsed.value.type === UNIT_TYPE.moduleIndex
-            })
-            const parsed = readUnit(stored!.bytes, UNIT_TYPE.moduleIndex)
+            const refs = built.manifest.body.fixed.moduleBuckets
+            expect(refs).toHaveLength(1)
+            const stored = built.units.find(unit => unit.key === keyOfRef(refs![0]))
+            const parsed = readUnit(stored!.bytes, UNIT_TYPE.moduleBucket)
             if (parsed.status !== 'ok') {
-                throw new Error('The module index does not parse.')
+                throw new Error('The module bucket does not parse.')
             }
-            return parsed.value.body as unknown as ModuleIndex
+            return { v: 1, entries: (parsed.value.body as unknown as ModuleBucket).entries }
         }
         const first = await indexOfBuild(1)
         const second = await indexOfBuild(2)

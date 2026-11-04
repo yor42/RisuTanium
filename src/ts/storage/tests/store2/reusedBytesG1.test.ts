@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto'
-import { describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { builtCommitOf, encodeDatabase, encodeScoped, planScopedEncode, previousFrom, type EncodedTree } from '../../store2/codec'
 import { createKeyMint } from '../../store2/commit'
 import { UNIT_TYPE } from '../../store2/format'
@@ -14,13 +14,21 @@ import { buildSmall, seededEnv, type Obj } from './codecFixtures'
  * (key, ref, digest and framed bytes, in order) and of its manifest's framed bytes. The profile, the key environments
  * and the key mint are seeded, so the output is a pure function of the codec. The digests were first generated before
  * reused units dropped their bytes, and re-pinned when module index entries gained the entry-fields tag; that changed
- * only the module index unit and the manifests that name it.
+ * only the module index unit and the manifests that name it. The layout 1 digests are the ones pinned before the bucketed
+ * module index existed; the layout 2 digests pin the bucketed writer from its first generation on.
  */
+
+const layout = vi.hoisted(() => ({ MODULE_INDEX_LAYOUT: 1 }))
+vi.mock('../../store2/codec/moduleIndexParams', () => ({ MODULE_INDEX_PARAMS: layout }))
+
+afterEach(() => {
+    layout.MODULE_INDEX_LAYOUT = 1
+})
 
 const NOW = 1_700_000_000_000
 const MODULE_COUNT = 12
 
-const PINNED: Record<string, string> = {
+const PINNED_LAYOUT_1: Record<string, string> = {
     'scoped module tick, one module edited': 'c2f0003f587182d1ec3311ebbcb6a494c3dd5a3725512c753982ec23c7a762ca',
     'scoped pass, one named character edited': '1125c9922107a37471cc6a4ab61ceb4343ca1cabd6211008f9b57b3ae3bee4a1',
     'full encode, one module and one character edited': '9c246af25901bcb0f5f73d8de89d87be4cebdb856aefa69df223e61f234d0ca4',
@@ -120,13 +128,21 @@ const CASES: Record<string, () => Promise<EncodedTree>> = {
     },
 }
 
-describe('the units a pass writes are unchanged by dropping reused units\' bytes', () => {
+const PINNED_LAYOUT_2: Record<string, string> = {
+    'scoped module tick, one module edited': '581ef0dbed93977e247b85b164a0499829c9504b15efde8e2ae017fdd98c1581',
+    'scoped pass, one named character edited': '5a5c9f59d6d995ea89a6572072aec74f1f11c13251bbe4c8a140ffcef2ab66f8',
+    'full encode, one module and one character edited': 'c396d0d4baaf33fe6f72a3f89a8fefc14410a89acb98defe19af3b07f2edb7eb',
+    'planned scoped pass, one module edited': '812d6e8ccfe2edd2e728037bde31c4128e9e97d31b791eacc0442238fea0c7ba',
+}
+
+describe.each([[1, PINNED_LAYOUT_1], [2, PINNED_LAYOUT_2]] as const)('the units a pass writes are unchanged by dropping reused units\' bytes, module index layout %i', (moduleIndexLayout, pinned) => {
     for (const label of Object.keys(CASES)) {
         test(label, async () => {
+            layout.MODULE_INDEX_LAYOUT = moduleIndexLayout
             const { digest, written } = digestOfWrites(await CASES[label]())
             // The edit must have written a non-manifest unit, or the digest would pin nothing but the manifest.
             expect(written).toBeGreaterThan(0)
-            expect(digest).toBe(PINNED[label])
+            expect(digest).toBe(pinned[label])
         })
     }
 })

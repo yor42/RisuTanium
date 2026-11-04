@@ -89,7 +89,7 @@ import { dispatchStore2Boot } from 'src/ts/storage/store2/bootDispatch'
 import { resetStore2BootForTest, type Store2BootResult } from 'src/ts/storage/store2/bootActive'
 import { assembleDatabase, moduleHandles, previousFrom } from 'src/ts/storage/store2/codec'
 import { classifyCommitRead, firstCommitKey } from 'src/ts/storage/store2/commitKey'
-import { ASSET_REF_V, encodeUnit, IL_REF_V, keyOfRef, readUnit, UNIT_TYPE, type Manifest, type ModuleEntry, type ModuleIndex } from 'src/ts/storage/store2/format'
+import { ASSET_REF_V, encodeUnit, IL_REF_V, keyOfRef, readUnit, UNIT_TYPE, type Manifest, type ModuleEntry } from 'src/ts/storage/store2/format'
 import { createListDerivation } from 'src/ts/storage/store2/lists/derive'
 import { acquireModule, ModuleLoadError } from 'src/ts/storage/store2/moduleAcquire'
 import { isRecordedStub } from 'src/ts/storage/store2/moduleStubMatch'
@@ -101,6 +101,7 @@ import { loadModule, loadModuleStubsOf } from 'src/ts/process/moduleLoader'
 import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { bootThroughDispatch, countedBackend, createClock, createPeerDouble, fakeLists, savedDatabase, seedTree, testEnv, type CountedBackend, type Hooks } from '../store2SaveKit'
 import { buildSmall, type Obj } from './codecFixtures'
+import { storedLogicalModuleIndex } from './descentTable'
 
 type Plain = Record<string, unknown>
 
@@ -218,11 +219,7 @@ async function storedModuleEntries(memory: MemoryBackend): Promise<ModuleEntry[]
     if (manifest.status !== 'ok') {
         throw new Error('The manifest does not parse.')
     }
-    const index = readUnit(stored.get(keyOfRef((manifest.value.body as Manifest).fixed.moduleIndex)) as Uint8Array, UNIT_TYPE.moduleIndex)
-    if (index.status !== 'ok') {
-        throw new Error('The module index does not parse.')
-    }
-    return (index.value.body as ModuleIndex).entries
+    return storedLogicalModuleIndex(key => stored.get(key), manifest.value.body as Manifest).entries
 }
 
 function resetPage(): void {

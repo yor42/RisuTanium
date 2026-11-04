@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto'
-import { describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { JsonObject } from '../../blockFrame'
 import type { Database } from '../../database.svelte'
 import { createMemoryBackend } from '../../store2/backend'
@@ -20,6 +20,17 @@ import {
     bodyIn, bodyOf, buildLegacyCases, buildSmall, bytesOf, chat, dbWithCharacters, differingIdentities, encodeWith, fakeLists, identitiesWhere,
     message, mulberry32, prosePool, seededEnv, sparseCharacter, unitOf, type Obj,
 } from './codecFixtures'
+
+/**
+ * The base digests and the `req` expectations below describe a store whose module index is the single type 10 unit
+ * (layout 1); the alternatives rule is independent of the module index layout, so the writer is pinned to layout 1 here.
+ */
+const layout = vi.hoisted(() => ({ MODULE_INDEX_LAYOUT: 1 }))
+vi.mock('../../store2/codec/moduleIndexParams', () => ({ MODULE_INDEX_PARAMS: layout }))
+
+beforeEach(() => {
+    layout.MODULE_INDEX_LAYOUT = 1
+})
 
 /**
  * Chat alternatives in the store2 format: the `alt` list of a chat is stored as type 25 units (`chatAlt`), the `chat-alt`

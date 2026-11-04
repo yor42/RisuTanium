@@ -20,7 +20,7 @@ import { startStore2, store2Boot, type Store2Kit } from 'src/ts/storage/tests/st
 import { FakeLockManagerCore, FakeTabLockManagerView } from 'src/ts/storage/tests/fakeWebLocks'
 import { language } from 'src/lang'
 import { COMMIT_KEY } from 'src/ts/storage/store2/format/keys'
-import { encodeUnit, UNIT_TYPE } from 'src/ts/storage/store2/format'
+import { encodeUnit, REQ_MODULE_BUCKETS, UNIT_TYPE } from 'src/ts/storage/store2/format'
 import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import { assembleDatabase } from 'src/ts/storage/store2/codec'
 import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
@@ -551,7 +551,8 @@ describe('task presets over the .bin import of a store2 page', () => {
         const manifestKey = await currentKey(page) as string
         expect(await storedPresets(page)).toEqual([])
         const read = await readTreeBytes(page.k.memory, manifestKey)
-        expect(read.status === 'ok' && read.tree.manifest.req).toEqual([])
+        // The page has modules, so the bucketed module index's token is the only one: no task-presets token.
+        expect(read.status === 'ok' && read.tree.manifest.req).toEqual([REQ_MODULE_BUCKETS])
     })
 })
 

@@ -500,7 +500,7 @@ describe('guard: dependency closure through the real loop, each field changes th
         ['loadouts', db => { db.loadouts = [{ name: 'one' }] }, ['loadouts', 'manifest']],
         ['a plugin storage value', db => { ((db.pluginCustomStorage as Entry)['plugin-3'] as Entry).counter = 77 }, ['manifest', 'pluginStorageBucket', 'pluginStorageValue']],
         ['a config field', db => { db.username = 'Someone Else' }, ['configRoot', 'manifest']],
-        ['a module (flagged by its effect)', db => { ((db.modules as Entry[])[1]).description = 'flagged edit' }, ['manifest', 'module', 'moduleIndex']],
+        ['a module (flagged by its effect)', db => { ((db.modules as Entry[])[1]).description = 'flagged edit' }, ['manifest', 'module', 'moduleBucket']],
     ]
     test.each(cases)('%s', async (_label, mutate, expected) => {
         const page = await startPage(small())
