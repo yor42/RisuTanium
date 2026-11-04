@@ -21902,3 +21902,77 @@ Status: DRAFT, not accepted. Entries MC-1069 to MC-1072, to be appended after th
 **CHORE-634 (filed 2026-11-04, OPEN, not scheduled).** Title: Web and Node hosts stall every later bulk save after an interrupted bulk commit. Source: CHORE-412 Gate 1 round 1 finding 2 (`b40\c412-g1\result.md`), INFERRED from source (`boot.ts:168-187`, `commitKey.ts:108`, `commit.ts:489-493,517-518`, `owner.ts:18-43`, `saveLoop.ts:1042-1043,1223-1228,1339-1349`, `bootDispatch.ts:632-648,683-684,725`): after an interrupted bulk commit on an ordinary save, the marker stays; Android/Tauri recovers; web and Node mint a fresh owner per page load and never clear the marker, so every later bulk save of that profile is refused and reported as a failed save. Any save over 59 new units can reach it today; CHORE-412 S2's one-time re-split makes it reachable with no user action. The maintainer accepted it for S2 only ("Accept (Recommended)") because the MVP is Android-only and the web build may be dropped. A fix is not decided.
 
 **Not decided.** Which CHORE-205 gap cases (if any) the UI gate ever needs beyond the maintainer's drop decision; the CHORE-634 fix; the Haiku test role (`MC-1070`). No ticket is COMPLETE.
+
+---
+
+### MC-1076 — Lane A, 2026-11-04: the upstream triage (31 commits) and the take or skip decisions
+
+- Tag: statements (the maintainer's quoted words, below) and results (lane A's triage of the upstream commits). Date: 2026-11-04. Sweep ref: none. Exact times: UNKNOWN.
+- Related: `MC-1077` and `MC-1078` (the two taken features), `MC-1079` (the upstream merge decision), `MC-175` (upstream compatibility), `MC-011` (the fork has never shipped).
+
+**Triage (lane A, facts of batch 52).** 31 upstream commits; merge-base `ea61945f9`; upstream/main `cb7f122d4`. TAKE: the streamed-fetch port (`MC-1078`, `aa1c1781c`) and the plugin dbWrite permission (`MC-1077`, `98e162f57`); both are committed on main. SKIP: `isHex` (the fork already fixed it), the alert z-index change, the shell-open removal, the module low-level-access prompt, pnpm 11, the Cloudflare and CI items, and version bumps. The Python backend removal is NOT taken: the maintainer's words were "keep it for now", given after lane A corrected a claim that the backend carries fork work. Security items: the maintainer's words were "review each, then take what fits"; their per-item outcome is not in the facts: UNKNOWN.
+
+**Not decided.** Whether each SKIP was a maintainer answer or a triage default: UNKNOWN. The per-item result of the security review: UNKNOWN. The Python backend stays in the fork until the maintainer decides otherwise.
+
+**Evidence sources (scratch; not re-read by the clerk; unverified by a second reader unless the parent verifies).** Triage folder `b40\up-triage`; verification folder `b40\up-verify`.
+
+---
+
+### MC-1077 — Lane A, 2026-11-04: the plugin dbWrite permission decisions and the one-table reconfirm correction
+
+- Tag: statements (the maintainer's answer to F1, below) and results (the plan, the Gate 1 and Gate 2 reports). Date: 2026-11-04. Sweep ref: none. Exact times: UNKNOWN.
+- Related: `MC-1076` (the upstream triage that took this feature), `MC-091` (scope may be amended for a shared-cause correction), `MC-349` and `MC-504` (V2.1 plugin execution is retired; this decision does not revive it).
+
+**Decided (plugin write permission, `98e162f57`).**
+- Q1: plugin setters that write the database, characters or chats need the 'db' grant and then a second 'dbWrite' grant.
+- Q2: a denial rejects with an Error that names 'dbWrite' (upstream skips the write silently).
+- Q3: each permission re-asks on a fixed schedule of every 3 days, with a session cache.
+- Q4: old 'db' grants do not carry over to the new scheme.
+- Q5: upstream scope: six setters only.
+- F1 (maintainer's answer, quoted in the facts): "fix for every permission (table)". One `permissionReconfirm` table replaces the per-call-site reconfirm argument, so `requestPluginPermission` cannot pre-empt the 3-day re-ask. This is a shared-cause correction under `MC-091`: a reviewer reproduced the bypass on HEAD for 'db'.
+- Q6: the 'replacer' option means 'periodically'.
+- Locale key `dbWriteConsent` is added to the 8 locales; the ko text is taken from upstream (translator rule `MC-058`: not reviewed by this clerk).
+
+**Answer source:** Q1 to Q6 and F1 were the maintainer's answers to AskUserQuestion prompts on 2026-11-04 (Q1 "Both, db first", Q2 "Reject with an error", Q3 "Every 3 days + per session", Q4 "Yes, ask again", F1 "Fix for every permission (table)", Q6 "Every 3 days"); Q5 took the plan's recommendation (upstream scope) without a separate question. Gate 1 reviewer: opus-reviewer both rounds; Gate 2: opus-reviewer, EDITORIAL.
+
+**Not decided.** Nothing further in the facts. Owed device checks: none listed in the facts.
+
+**Evidence sources (scratch).** Plan `b40\up-dbw-plan\plan-r2.md`; Gate 1: round 1 [REJECT], round 2 [EDITORIAL] (folder `b40\up-dbw-g1`, file name not in facts: UNKNOWN); Gate 2 `b40\up-dbw-g2\result.md` [EDITORIAL]; tests folder `b40\up-dbw-tests`; commit `98e162f57`. Gate 2 reviewer identity: UNKNOWN.
+
+---
+
+### MC-1078 — Lane A, 2026-11-04: the streamed-fetch decisions (600 s idle limit, resent-call rule, English text)
+
+- Tag: statements (the maintainer's answers recorded in the plan, see the note below) and results (plan, senior-advisor challenge, Gate 1 and Gate 2 reports). Date: 2026-11-04. Sweep ref: none. Exact times: UNKNOWN.
+- Related: `MC-1076` (taken upstream), `MC-091` (the page-prefix barrier was dropped as a complexity reduction).
+
+**Decided (desktop and Android native fetch, `aa1c1781c`).**
+- Q1: a native streamed request stops only after 600 s without data (previously cut at 240 s); there is no setting.
+- Q2: an explicit 0 means unlimited.
+- Q3: AMENDED after the senior-advisor challenge (verdict B, `b40\up-sf-adv\result.md`). The first answer, "a resent call joins the original", is superseded: a resent call of a LIVE id is ignored (returns cancelled); after the request finishes, a resent call is an ordinary request. A reload cancels leftover native requests.
+- Q4: the English text is "No data received for N seconds".
+- The page-prefix barrier is DROPPED (complexity reduction). Accepted residuals: late registration after `cancel_all`, a resend after finish, and a same-page id wrap.
+- Stub port range widened to 6330 to 6399. Rust tests 37 of 37 passed (cargo test --lib streamed_fetch::, re-run after the Gate 2 fix).
+
+**Answer source:** Q1 to Q4 were the maintainer's answers to AskUserQuestion prompts on 2026-11-04 ("600 s with no data", "No, keep unlimited", "Join the original", "No data received for N seconds"); the Q3 amendment was the maintainer's answer "Ignore while running (Recommended)" after the senior-advisor challenge; dropping the page-prefix barrier was the maintainer's answer "Drop the barrier (Recommended)".
+
+**Gate note.** The Gate 2 finding (a substantive test weakness, Codex [REJECT]) was fixed by a one-line change that had no second independent review; the maintainer was told so and chose "Commit and push" over the offered "Fresh review of the fix first". The Rust tests were re-run after the fix (37 of 37).
+
+**Owed device check.** Note 9: a long stream, reload and Stop (device track). No device evidence exists in the facts.
+
+**Evidence sources (scratch).** Plan `b40\up-sf-plan\plan-r4.md`; advisor `b40\up-sf-adv\result.md` (verdict B); Gate 1 rounds: r1 [REJECT] 5 findings, r2 [REJECT] 2 findings (the page-prefix barrier), r3 [REJECT] 1 finding, r4 [APPROVE] (folder `b40\up-sf-g1`); Gate 2 folder `b40\up-sf-g2` (the file present is `result5.md`; the facts' Gate 2 verdict is Codex [REJECT] 1 finding, fixed; the clerk did not read `result5.md`: UNKNOWN for the final verdict); tests `b40\up-sf-tests\result.md`.
+
+---
+
+### MC-1079 — Lane A, 2026-11-04: the upstream merge decision (upstream main merged into main as a real git merge)
+
+- Tag: statements (the maintainer's words and answer, below) and results (the trial merge). Date: 2026-11-04. Sweep ref: none. Exact times: UNKNOWN.
+- Related: `MC-1076` (the triage), `MC-1069` (AskUserQuestion for every decision and every commit or push), `MC-175` (upstream compatibility).
+
+**Decided (maintainer, 2026-11-04).** The maintainer's words: "when we commit, can we make it git merge so we can track the upstream changes easier?" The answer chosen: "Merge upstream/main into main".
+
+**Trial merge (lane A, facts).** 23 conflicted files. A resolution plan is being designed (`b40\up-merge\plan.md`); at the clerk's check this file did NOT exist yet (UNKNOWN: whether it is written later).
+
+**Not decided.** The merge commit and the push need the maintainer's confirmation (AskUserQuestion, `MC-1069`); the merge is not made by this packet. The resolution of the 23 conflicted files is not decided.
+
+**Evidence sources (scratch).** Merge folder `b40\up-merge` (`brief.md` present; `plan.md` absent at check time).
