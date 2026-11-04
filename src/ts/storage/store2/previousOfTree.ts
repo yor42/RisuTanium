@@ -1,11 +1,12 @@
 import {
     FRAME_OVERHEAD, keyOfRef, readUnit, refOfFrame, UNIT_TYPE,
-    type ContentBody, type Manifest, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType,
+    type ContentBody, type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndex, type ModuleIndexRoot, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType,
 } from './format'
 import {
     CodecAssembleError, IDENTITY, PLUGIN_LISTS, readStringListField, unitDigest,
     type PluginList, type PreviousEncoding, type PreviousObjects, type ReusableUnit, type UnitSource,
 } from './codec'
+import { moduleIndexOfParts } from './codec/modules'
 
 /**
  * The `previous` of a first pass after a boot: the encoding of a stored tree, built from the units the boot read.
@@ -167,7 +168,10 @@ export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions 
 
     const fixed = manifest.fixed
     const order = registerBody('order', UNIT_TYPE.order, fixed.order) as ContentBody
-    const moduleIndex = registerBody(IDENTITY.moduleIndex, UNIT_TYPE.moduleIndex, fixed.moduleIndex) as ModuleIndex
+    const root = registerBody(IDENTITY.moduleIndex, UNIT_TYPE.moduleIndex, fixed.moduleIndex) as ModuleIndexRoot
+    const moduleBuckets = fixed.moduleBuckets?.map((ref, bucket) =>
+        registerBody(`moduleIndex:bucket:${bucket}`, UNIT_TYPE.moduleBucket, ref) as ModuleBucket)
+    const moduleIndex = moduleIndexOfParts(root, moduleBuckets)
     register('config', UNIT_TYPE.configRoot, fixed.config)
     register('al:config', UNIT_TYPE.assetList, fixed.configAl)
     register('il:config', UNIT_TYPE.inlayList, fixed.il)

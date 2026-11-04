@@ -1383,7 +1383,7 @@ function ownerOfIdentity(identity: string): UnitOwner {
     if (identity.startsWith('al:char:') || identity.startsWith('il:char:')) {
         return { kind: 'character', u: identity.slice('al:char:'.length) }
     }
-    if (identity === 'moduleIndex') {
+    if (identity === 'moduleIndex' || identity.startsWith('moduleIndex:')) {
         return { kind: 'module', handle: null }
     }
     if (identity.startsWith('module:')) {

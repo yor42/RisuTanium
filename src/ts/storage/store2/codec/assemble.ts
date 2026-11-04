@@ -2,7 +2,7 @@ import type { JsonObject, JsonValue } from '../../blockFrame'
 import type { Database } from '../../database.svelte'
 import {
     FRAME_OVERHEAD, keyOfRef, readUnit, refOfFrame, UNIT_TYPE,
-    type ChatAltUnit, type ChatChunk, type ChatCore, type ContentBody, type Manifest, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard,
+    type ChatAltUnit, type ChatChunk, type ChatCore, type ContentBody, type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndexRoot, type PluginBucket, type Ref, type Shard,
     type ShardEntry, type UnitBody, type UnitType,
 } from '../format'
 import {
@@ -10,7 +10,7 @@ import {
     type PluginList,
 } from './bodies'
 import { assembleChat } from './chat'
-import { assembleModules } from './modules'
+import { assembleModules, moduleIndexOfParts } from './modules'
 import { defineOwn } from './normalize'
 import { bucketOfKey } from './pluginStorage'
 import { shardOfU } from './shard'
@@ -265,7 +265,10 @@ export function assembleDatabase(manifest: Manifest, source: UnitSource, options
         defineOwn(database, 'statics', statics.value)
     }
 
-    const index = readChecked(source, fixed.moduleIndex, UNIT_TYPE.moduleIndex, 'module index') as ModuleIndex
+    const root = readChecked(source, fixed.moduleIndex, UNIT_TYPE.moduleIndex, 'module index') as ModuleIndexRoot
+    const buckets = fixed.moduleBuckets?.map((ref, position) =>
+        readChecked(source, ref, UNIT_TYPE.moduleBucket, `module bucket ${position}`) as ModuleBucket)
+    const index = moduleIndexOfParts(root, buckets)
     defineOwn(database, 'modules', assembleModules(index, (entry, handle) => assembleOneModule(entry, source, handle)))
 
     const entries = new Map<string, ShardEntry>()

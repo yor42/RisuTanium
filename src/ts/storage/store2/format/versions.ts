@@ -28,10 +28,13 @@ export const BODY_V = 1
  * a build without the token goes read-only before it reads a unit, so it can neither drop nor garbage-collect them.
  *
  * `task-presets` marks a store that holds a task preset (type 26 units); an older build goes read-only on it for the same reason.
+ * `module-buckets` marks a manifest whose module entries live in type 27 units.
  */
 export const REQ_CHAT_ALT = 'chat-alt'
 export const REQ_TASK_PRESETS = 'task-presets'
-export const KNOWN_REQ: ReadonlySet<string> = new Set<string>([REQ_CHAT_ALT, REQ_TASK_PRESETS])
+export const REQ_MODULE_BUCKETS = 'module-buckets'
+export const MODULE_INDEX_V = 2
+export const KNOWN_REQ: ReadonlySet<string> = new Set<string>([REQ_CHAT_ALT, REQ_TASK_PRESETS, REQ_MODULE_BUCKETS])
 
 export const UNIT_TYPE = {
     commit: 1,
@@ -60,6 +63,7 @@ export const UNIT_TYPE = {
     deletionSnapshot: 24,
     chatAlt: 25,
     taskPreset: 26,
+    moduleBucket: 27,
 } as const
 
 export type UnitType = typeof UNIT_TYPE[keyof typeof UNIT_TYPE]

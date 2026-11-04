@@ -4,12 +4,12 @@ import { Store2BackendError } from './backend/errors'
 import type { Store2Backend } from './backend/types'
 import { bodyCountMismatch, checkUnit, type UnitCheck } from './codec/assemble'
 import type { ConfigBody, PluginBody } from './codec/bodies'
-import { moduleHandles } from './codec/modules'
+import { moduleHandles, moduleIndexOfParts } from './codec/modules'
 import type { UnitSource } from './codec/types'
 import { classifyCommitRead } from './commitKey'
 import {
     keyOfRef, readUnit, UNIT_TYPE,
-    type Manifest, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitBody, type UnitType,
+    type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndex, type ModuleIndexRoot, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitBody, type UnitType,
 } from './format'
 import type { StoredTree } from './previousOfTree'
 import { checkManifestKey, readBatch } from './tree'
@@ -253,6 +253,7 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
         { ref: manifest.fixed.order, type: UNIT_TYPE.order, role: fixed, count: null },
         { ref: manifest.fixed.loadouts, type: UNIT_TYPE.loadouts, role: fixed, count: null },
         { ref: manifest.fixed.moduleIndex, type: UNIT_TYPE.moduleIndex, role: fixed, count: null },
+        ...(manifest.fixed.moduleBuckets ?? []).map((ref): Wanted => ({ ref, type: UNIT_TYPE.moduleBucket, role: fixed, count: null })),
         ...manifest.fixed.presets.map((ref): Wanted => ({ ref, type: UNIT_TYPE.preset, role: fixed, count: null })),
         // A task preset is a leaf: a damaged one is dropped and named at open, not a reason to refuse the profile.
         ...(manifest.fixed.taskPresets ?? []).map((ref, position): Wanted => ({
@@ -270,7 +271,20 @@ export async function readTreeBytes(backend: Store2Backend, manifestKey: string,
 
     // The units the bodies of the first group name. A parent that did not check names nothing here: its own finding stands.
     const second: Wanted[] = []
-    const moduleIndex = first.bodies.get(keyOfRef(manifest.fixed.moduleIndex)) as ModuleIndex | undefined
+    const root = first.bodies.get(keyOfRef(manifest.fixed.moduleIndex)) as ModuleIndexRoot | undefined
+    let moduleIndex: ModuleIndex | undefined
+    if (root !== undefined) {
+        try {
+            const buckets = manifest.fixed.moduleBuckets?.map(ref => first.bodies.get(keyOfRef(ref)) as ModuleBucket | undefined)
+            if (buckets?.some(bucket => bucket === undefined) !== true) {
+                moduleIndex = moduleIndexOfParts(root, buckets as ModuleBucket[] | undefined)
+            }
+        } catch (error) {
+            findings.structure.push(keyOfRef(manifest.fixed.moduleIndex))
+            findings.structureReason ||= error instanceof Error ? error.message : 'The module index is damaged.'
+            findings.structureAllMissing = false
+        }
+    }
     for (const ref of manifest.fixed.pluginStorage.refs) {
         const bucket = first.bodies.get(keyOfRef(ref)) as PluginBucket | undefined
         for (const entry of bucket?.entries ?? []) {

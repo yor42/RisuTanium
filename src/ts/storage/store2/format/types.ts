@@ -65,6 +65,7 @@ export interface Manifest {
         order: Ref
         loadouts: Ref
         moduleIndex: Ref
+        moduleBuckets?: Ref[]
         presets: Ref[]
         /** Type 26 units, one per task preset. Present only when non-empty: an empty list is written as no field and read as none. */
         taskPresets?: Ref[]
@@ -168,6 +169,20 @@ export interface ModuleIndex {
     entries: ModuleEntry[]
 }
 
+/** Type 10 root whose entries live in the manifest's type 27 buckets. */
+export interface ModuleIndexV2 {
+    v: 2
+    handles: string[]
+}
+
+export type ModuleIndexRoot = ModuleIndex | ModuleIndexV2
+
+/** Type 27; the bucket position is supplied by the manifest. */
+export interface ModuleBucket {
+    v: 1
+    entries: ModuleEntry[]
+}
+
 /** Type 15: `h` concatenated 43-character base64url hash stems (sorted), `l` sorted unique lower-cased literal basenames. */
 export interface AssetList {
     v: number
@@ -253,5 +268,5 @@ export interface ContentBody {
 }
 
 export type UnitBody =
-    | CommitKey | Manifest | Shard | ChatCore | ChatChunk | ChatAltUnit | ModuleIndex | AssetList
+    | CommitKey | Manifest | Shard | ChatCore | ChatChunk | ChatAltUnit | ModuleIndexRoot | ModuleBucket | AssetList
     | LegacyList | InlayList | SweepRecord | FenceRecord | DeletionSnapshot | PluginBucket | ContentBody

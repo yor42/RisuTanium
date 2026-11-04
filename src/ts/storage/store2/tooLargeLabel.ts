@@ -25,6 +25,7 @@ const PART_OF_UNIT_TYPE: Record<UnitType, TooLargePart> = {
     [UNIT_TYPE.chatAlt]: 'chatAlternatives',
     [UNIT_TYPE.module]: 'module',
     [UNIT_TYPE.moduleIndex]: 'moduleList',
+    [UNIT_TYPE.moduleBucket]: 'moduleList',
     [UNIT_TYPE.configRoot]: 'settings',
     [UNIT_TYPE.preset]: 'preset',
     [UNIT_TYPE.plugin]: 'plugin',

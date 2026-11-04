@@ -1,11 +1,11 @@
-import { carryUnknownFields, KNOWN_FIELDS, REQ_CHAT_ALT, REQ_TASK_PRESETS, unionReq, type ListRef, type Manifest, type Ref } from '../format'
+import { carryUnknownFields, KNOWN_FIELDS, REQ_CHAT_ALT, REQ_MODULE_BUCKETS, REQ_TASK_PRESETS, unionReq, type ListRef, type Manifest, type Ref } from '../format'
 import { PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 
 /**
  * Manifest assembly. The manifest is write-once, names only fixed-size sets of
  * units (the shards, the fixed units, one Ref per preset, plugin and plugin
- * storage bucket) and never a per-character or per-module list, so its size does
- * not grow with the number of characters, chats or modules.
+ * storage bucket, and at most 16 module buckets) and never an unbounded per-module list,
+ * so its size does not grow with the number of characters, chats or modules.
  */
 
 /** A store with no feature a reader must know: the `req` of a manifest that needs none. */
@@ -25,6 +25,7 @@ export interface ManifestParts {
     order: Ref
     loadouts: Ref
     moduleIndex: Ref
+    moduleBuckets?: Ref[]
     presets: Ref[]
     /** One Ref per task preset; a non-empty list adds the `task-presets` token, which a later write never lowers. */
     taskPresets?: Ref[]
@@ -63,7 +64,7 @@ export function buildManifest(parts: ManifestParts): Manifest {
     const hasTaskPresets = parts.taskPresets !== undefined && parts.taskPresets.length > 0
     const manifest: Manifest = {
         fmt: 1,
-        req: unionReq(MANIFEST_REQ, parts.chatAlt ? [REQ_CHAT_ALT] : [], hasTaskPresets ? [REQ_TASK_PRESETS] : []),
+        req: unionReq(MANIFEST_REQ, parts.chatAlt ? [REQ_CHAT_ALT] : [], hasTaskPresets ? [REQ_TASK_PRESETS] : [], parts.moduleBuckets?.length ? [REQ_MODULE_BUCKETS] : []),
         seq: parts.seq,
         createdAt: parts.createdAt,
         shardCount: parts.shardCount,
@@ -84,6 +85,9 @@ export function buildManifest(parts: ManifestParts): Manifest {
     }
     if (hasTaskPresets && parts.taskPresets !== undefined) {
         manifest.fixed.taskPresets = parts.taskPresets
+    }
+    if (parts.moduleBuckets !== undefined && parts.moduleBuckets.length > 0) {
+        manifest.fixed.moduleBuckets = parts.moduleBuckets
     }
     return manifest
 }

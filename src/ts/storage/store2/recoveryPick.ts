@@ -47,7 +47,7 @@ const FINAL_ATTEMPTS = 3
  * reports. Paths are unique across parents: `entries[].al` is an asset list under
  * a shard and under the module index alike.
  */
-const PATH_TYPES: Readonly<Record<string, UnitType>> = {
+export const PATH_TYPES: Readonly<Record<string, UnitType>> = {
     'shards[]': UNIT_TYPE.shard,
     'fixed.config': UNIT_TYPE.configRoot,
     'fixed.configAl': UNIT_TYPE.assetList,
@@ -56,6 +56,7 @@ const PATH_TYPES: Readonly<Record<string, UnitType>> = {
     'fixed.order': UNIT_TYPE.order,
     'fixed.loadouts': UNIT_TYPE.loadouts,
     'fixed.moduleIndex': UNIT_TYPE.moduleIndex,
+    'fixed.moduleBuckets[]': UNIT_TYPE.moduleBucket,
     'fixed.presets[]': UNIT_TYPE.preset,
     'fixed.taskPresets[]': UNIT_TYPE.taskPreset,
     'fixed.plugins[]': UNIT_TYPE.plugin,
@@ -74,7 +75,7 @@ const PATH_TYPES: Readonly<Record<string, UnitType>> = {
 }
 
 /** The unit types whose bodies name further units: the walk descends into these and copies everything else as bytes. */
-const PARENT_TYPES: ReadonlySet<UnitType> = new Set<UnitType>([UNIT_TYPE.shard, UNIT_TYPE.moduleIndex, UNIT_TYPE.pluginStorageBucket])
+const PARENT_TYPES: ReadonlySet<UnitType> = new Set<UnitType>([UNIT_TYPE.shard, UNIT_TYPE.moduleIndex, UNIT_TYPE.moduleBucket, UNIT_TYPE.pluginStorageBucket])
 
 /** The `ref`-mode positions the walk must know a type for; a position `REFS_TABLE` gains without a row in `PATH_TYPES` fails here, not silently. */
 export function unmappedRefPaths(): string[] {

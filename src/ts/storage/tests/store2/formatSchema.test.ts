@@ -3,7 +3,7 @@ import type { JsonObject, JsonValue } from '../../blockFrame'
 import {
     ASSET_REF_V, carryUnknownFields, commitKeyReq, emptyChatChunk, encodeUnit, IL_REF_V, KNOWN_FIELDS, parseAssetList,
     parseChatChunk, parseChatCore, parseCommitKey, parseContentBody, parseFenceRecord, parseInlayList, parseLegacyList, parseManifest,
-    parseModuleIndex, parsePluginBucket, parseShard, parseSweepRecord, parseUnitBody, readUnit, reqIsSuperset, unionReq, UNIT_TYPE,
+    parseModuleBucket, parseModuleIndex, parsePluginBucket, parseShard, parseSweepRecord, parseUnitBody, readUnit, reqIsSuperset, unionReq, UNIT_TYPE,
     type CommitKey, type UnitType,
 } from '../../store2/format'
 import { GOLDEN_VECTORS, hexToBytes, oracleFrame } from './goldenVectors'
@@ -366,13 +366,26 @@ describe('other bodies', () => {
         expect(parsePluginBucket({ v: 1, entries: [{ k: 'a' }] }).status).toBe('damaged')
     })
 
-    test('chat core, module index and plugin bucket: a body v above 1 is too-new, below 1 is damaged', () => {
+    test('chat core, module bucket and plugin bucket: a body v above 1 is too-new, below 1 is damaged', () => {
         expect(parseChatCore({ v: 2, f: {} }).status).toBe('too-new')
         expect(parseChatCore({ v: 0, f: {} }).status).toBe('damaged')
-        expect(parseModuleIndex({ v: 2, entries: [] }).status).toBe('too-new')
-        expect(parseModuleIndex({ v: 0, entries: [] }).status).toBe('damaged')
+        expect(parseModuleBucket({ v: 2, entries: [] }).status).toBe('too-new')
+        expect(parseModuleBucket({ v: 0, entries: [] }).status).toBe('damaged')
         expect(parsePluginBucket({ v: 2, entries: [] }).status).toBe('too-new')
         expect(parsePluginBucket({ v: 0, entries: [] }).status).toBe('damaged')
+    })
+
+    test('module index: v1 reads entries, v2 reads handles, v3 is too-new, below 1 is damaged, and a root of the wrong shape is damaged', () => {
+        expect(parseModuleIndex({ v: 1, entries: [] }).status).toBe('ok')
+        const v2 = parseModuleIndex({ v: 2, handles: ['a', 'b'] })
+        expect(v2.status).toBe('ok')
+        expect(okValue(v2)).toMatchObject({ v: 2, handles: ['a', 'b'] })
+        expect(parseModuleIndex({ v: 3, handles: [] }).status).toBe('too-new')
+        expect(parseModuleIndex({ v: 3, entries: [] }).status).toBe('too-new')
+        expect(parseModuleIndex({ v: 0, entries: [] }).status).toBe('damaged')
+        expect(parseModuleIndex({ v: 2, entries: [] }).status).toBe('damaged')
+        expect(parseModuleIndex({ v: 1, handles: [] }).status).toBe('damaged')
+        expect(parseModuleIndex({ v: 2, handles: [1] }).status).toBe('damaged')
     })
 
     test.each([4, 5, 6, 9, 11, 12, 13, 14, 16, 17, 18])('content type %i is a plain object with a numeric v', (type) => {

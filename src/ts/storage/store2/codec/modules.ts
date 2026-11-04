@@ -1,8 +1,9 @@
 import type { JsonObject } from '../../blockFrame'
-import { carryUnknownFields, KNOWN_FIELDS, type ModuleEntry, type ModuleIndex, type Ref } from '../format'
+import { carryUnknownFields, KNOWN_FIELDS, type ModuleBucket, type ModuleEntry, type ModuleIndex, type ModuleIndexRoot, type Ref } from '../format'
 import type { ModuleBody } from './bodies'
 import { isModuleStub } from '../../moduleStub'
 import { CodecAssembleError, CodecInputError } from './types'
+import { bucketOfKey } from './pluginStorage'
 
 /**
  * Modules: one unit each (type 9), plus the module index (type 10) that lists
@@ -85,6 +86,45 @@ export function moduleHandles(entries: readonly Pick<ModuleEntry, 'id'>[]): stri
         seen.set(entry.id, occurrence + 1)
         return `${entry.id}#${occurrence}`
     })
+}
+
+/** A manifest and its type 10 root must name the same module-index layout. */
+export function moduleIndexLayoutMatches(root: ModuleIndexRoot, hasBuckets: boolean): boolean {
+    return (root.v === 2) === hasBuckets
+}
+
+/** Resolve a type 10 root and its manifest-ordered buckets to one logical index. */
+export function moduleIndexOfParts(root: ModuleIndexRoot, buckets: readonly ModuleBucket[] | undefined): ModuleIndex {
+    if (!moduleIndexLayoutMatches(root, buckets !== undefined)) {
+        throw new CodecAssembleError('The module index root and manifest buckets disagree.')
+    }
+    if (root.v === 1) {
+        return root
+    }
+    if (buckets === undefined || buckets.length === 0 || buckets.length > 16 || (buckets.length & (buckets.length - 1)) !== 0) {
+        throw new CodecAssembleError('The module index has an invalid bucket count.')
+    }
+    const entries = buckets.flatMap((bucket, position) => bucket.entries.map((entry) => {
+        if (bucketOfKey(entry.id, buckets.length) !== position) {
+            throw new CodecAssembleError(`Module ${entry.id} is in the wrong bucket.`)
+        }
+        return entry
+    }))
+    const byHandle = new Map(moduleHandles(entries).map((handle, index) => [handle, entries[index]]))
+    const seen = new Set<string>()
+    const ordered = root.handles.map((handle) => {
+        const entry = byHandle.get(handle)
+        if (entry === undefined || seen.has(handle)) {
+            throw new CodecAssembleError(`Module handle ${handle} is missing or repeated.`)
+        }
+        seen.add(handle)
+        return entry
+    })
+    if (seen.size !== entries.length) {
+        throw new CodecAssembleError('The module buckets contain an extra entry.')
+    }
+    const logical: ModuleIndex = { v: 1, entries: ordered }
+    return carryUnknownFields(root, logical, KNOWN_FIELDS.moduleIndex)
 }
 
 /** The handles of entries whose id is non-empty, does not start with `~` (the positional-handle prefix) and is held by exactly one entry of `entries`. */

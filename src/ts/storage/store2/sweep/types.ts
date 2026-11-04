@@ -1,4 +1,4 @@
-import type { AssetList, InlayList, LegacyList, ListRef, Manifest, Parsed, Ref, Shard, ModuleIndex } from '../format'
+import type { AssetList, InlayList, LegacyList, ListRef, Manifest, Parsed, Ref, Shard, ModuleBucket, ModuleIndexRoot } from '../format'
 
 /**
  * Shared types of the sweep decisions. Nothing here touches storage: a reader, a
@@ -22,7 +22,8 @@ export type NodeRead<T> = Parsed<T> | NodeFailure
 export interface ClosureReader {
     manifest(key: string): Promise<NodeRead<Manifest>>
     shard(ref: Ref): Promise<NodeRead<Shard>>
-    moduleIndex(ref: Ref): Promise<NodeRead<ModuleIndex>>
+    moduleIndex(ref: Ref): Promise<NodeRead<ModuleIndexRoot>>
+    moduleBucket(ref: Ref): Promise<NodeRead<ModuleBucket>>
     assetList(ref: ListRef): Promise<NodeRead<AssetList>>
     inlayList(ref: ListRef): Promise<NodeRead<InlayList>>
     legacyList(ref: Ref): Promise<NodeRead<LegacyList>>

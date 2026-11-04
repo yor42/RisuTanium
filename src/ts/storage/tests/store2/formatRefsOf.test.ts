@@ -43,7 +43,7 @@ const MANIFEST_SAMPLE: Sample = {
         shards: [ref('shard1'), ref('shard2')],
         fixed: {
             config: ref('config'), configAl: list('configal'), il: list('il'), statics: ref('statics'), order: ref('order'),
-            loadouts: ref('loadouts'), moduleIndex: ref('moduleindex'),
+            loadouts: ref('loadouts'), moduleIndex: ref('moduleindex'), moduleBuckets: [ref('mbucket1'), ref('mbucket2')],
             presets: [ref('preset1'), ref('preset2')], taskPresets: [ref('taskpreset1'), ref('taskpreset2')], plugins: [ref('plugin1'), ref('plugin2')],
             pluginStorage: { buckets: 2, refs: [ref('bucket1'), ref('bucket2')] },
             legacyKeep: { unit: ref('legacy'), v: 1, files: [{ key: 'database/database.bin', status: 'ok' }] },
@@ -52,6 +52,7 @@ const MANIFEST_SAMPLE: Sample = {
     expected: [
         ['shards[]', 'shard1'], ['shards[]', 'shard2'], ['fixed.config', 'config'], ['fixed.configAl', 'configal'], ['fixed.il', 'il'],
         ['fixed.statics', 'statics'], ['fixed.order', 'order'], ['fixed.loadouts', 'loadouts'], ['fixed.moduleIndex', 'moduleindex'],
+        ['fixed.moduleBuckets[]', 'mbucket1'], ['fixed.moduleBuckets[]', 'mbucket2'],
         ['fixed.presets[]', 'preset1'], ['fixed.presets[]', 'preset2'], ['fixed.taskPresets[]', 'taskpreset1'], ['fixed.taskPresets[]', 'taskpreset2'],
         ['fixed.plugins[]', 'plugin1'], ['fixed.plugins[]', 'plugin2'],
         ['fixed.pluginStorage.refs[]', 'bucket1'], ['fixed.pluginStorage.refs[]', 'bucket2'], ['fixed.legacyKeep.unit', 'legacy'],
@@ -92,13 +93,27 @@ const MODULE_INDEX_SAMPLE: Sample = {
     ].map(([path, name]) => `${path}:${tailOf(name)}`),
 }
 
+const MODULE_BUCKET_SAMPLE: Sample = {
+    type: UNIT_TYPE.moduleBucket,
+    body: {
+        v: 1,
+        entries: [1, 2].map(n => ({
+            id: `m${n}`, unit: ref(`bu${n}`), al: list(`bal${n}`), il: list(`bil${n}`), name: 'n', description: 'd', hasToggle: false, dsp: false,
+        })),
+    },
+    expected: [
+        ['entries[].unit', 'bu1'], ['entries[].al', 'bal1'], ['entries[].il', 'bil1'],
+        ['entries[].unit', 'bu2'], ['entries[].al', 'bal2'], ['entries[].il', 'bil2'],
+    ].map(([path, name]) => `${path}:${tailOf(name)}`),
+}
+
 const BUCKET_SAMPLE: Sample = {
     type: UNIT_TYPE.pluginStorageBucket,
     body: { v: 1, entries: [{ k: 'a', ref: ref('val1') }, { k: 'b', ref: ref('val2') }] },
     expected: [`entries[].ref:${tailOf('val1')}`, `entries[].ref:${tailOf('val2')}`],
 }
 
-const SAMPLES = [COMMIT_SAMPLE, MANIFEST_SAMPLE, SHARD_SAMPLE, MODULE_INDEX_SAMPLE, BUCKET_SAMPLE]
+const SAMPLES = [COMMIT_SAMPLE, MANIFEST_SAMPLE, SHARD_SAMPLE, MODULE_INDEX_SAMPLE, MODULE_BUCKET_SAMPLE, BUCKET_SAMPLE]
 
 /** The guard: what `table` finds in the sample against what the sample holds. Empty when they agree. */
 function guardDiff(table: readonly RefRow[], sample: Sample): string[] {
@@ -123,10 +138,11 @@ describe('refsOf guard', () => {
         const required: [UnitType, string[]][] = [
             [UNIT_TYPE.commit, ['current.key', 'retained[].key', 'pins[].key']],
             [UNIT_TYPE.manifest, ['shards[]', 'fixed.config', 'fixed.configAl', 'fixed.il', 'fixed.statics', 'fixed.order', 'fixed.loadouts',
-                'fixed.moduleIndex', 'fixed.presets[]', 'fixed.taskPresets[]', 'fixed.plugins[]', 'fixed.pluginStorage.refs[]', 'fixed.legacyKeep.unit']],
+                'fixed.moduleIndex', 'fixed.moduleBuckets[]', 'fixed.presets[]', 'fixed.taskPresets[]', 'fixed.plugins[]', 'fixed.pluginStorage.refs[]', 'fixed.legacyKeep.unit']],
             [UNIT_TYPE.shard, ['entries[].core', 'entries[].lore', 'entries[].scripts', 'entries[].al', 'entries[].il',
                 'entries[].chats[].core', 'entries[].chats[].chunks[]', 'entries[].chats[].alt[]']],
             [UNIT_TYPE.moduleIndex, ['entries[].unit', 'entries[].al', 'entries[].il']],
+            [UNIT_TYPE.moduleBucket, ['entries[].unit', 'entries[].al', 'entries[].il']],
             [UNIT_TYPE.pluginStorageBucket, ['entries[].ref']],
         ]
         for (const [type, paths] of required) {
@@ -136,7 +152,7 @@ describe('refsOf guard', () => {
         }
     })
 
-    test('rows are unique and the table or the no-refs list covers all 23 types exactly once', () => {
+    test('rows are unique and the table or the no-refs list covers every unit type exactly once', () => {
         expect(new Set(REFS_TABLE.map(row => `${row.type}:${row.path}`)).size).toBe(REFS_TABLE.length)
         const withRows = new Set(REFS_TABLE.map(row => row.type))
         for (const type of UNIT_TYPE_IDS) {

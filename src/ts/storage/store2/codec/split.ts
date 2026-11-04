@@ -2,7 +2,7 @@ import type { JsonObject, JsonValue } from '../../blockFrame'
 import type { Database, character, groupChat } from '../../database.svelte'
 import { characterCreator, stubDescription, stubTags } from '../../../process/coldCharacter'
 import {
-    randomId26, UNIT_TYPE,
+    carryUnknownFields, KNOWN_FIELDS, randomId26, UNIT_TYPE,
     type ChatEntry, type ListRef, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type ShardEntry, type UnitType,
 } from '../format'
 import {
@@ -14,8 +14,9 @@ import {
 import { assembleChat, splitChat } from './chat'
 import { buildManifest, carryManifest } from './manifest'
 import { carryModuleIndex, hasCurrentEntryFields, moduleBodyOf, moduleEntryFields, moduleHandles, taggedUnitRef, uniqueIdHandles } from './modules'
+import { MODULE_INDEX_PARAMS } from './moduleIndexParams'
 import { defineOwn, listOrEmpty, omitFields, pickFields, plainObject, toPlainJson } from './normalize'
-import { groupKeysIntoBuckets, PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
+import { bucketOfKey, groupKeysIntoBuckets, PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 import { UnitSink, type UnitKeyKind } from './reuse'
 import { carryShards, chunkRefTuple, groupIntoShards, listRefTuple, refTuple, shardCountFor } from './shard'
 import { assertChatNotPointer, assertNotStub } from './stub'
@@ -676,6 +677,7 @@ export function encodeFront(db: Database, encoder: Encoder): FrontParts {
 export interface ModuleSet {
     body: ModuleIndex
     ref: Ref
+    buckets: Ref[] | null
 }
 
 /** Encodes the modules and the module index. */
@@ -688,11 +690,29 @@ function finishModuleSet(moduleEntries: ModuleEntry[], encoder: Encoder): Module
     const split = MEASURE ? encoder.split : undefined
     const started = MEASURE && split !== undefined ? split.now() : 0
     const body = carryModuleIndex(encoder.previous?.objects?.moduleIndex, { v: 1, entries: moduleEntries })
+    if (MODULE_INDEX_PARAMS.MODULE_INDEX_LAYOUT === 2) {
+        const count = Math.min(16, 2 ** Math.ceil(Math.log2(Math.max(1, Math.ceil(body.entries.length / 16)))))
+        const grouped = Array.from({ length: count }, (): ModuleEntry[] => [])
+        for (const entry of body.entries) {
+            grouped[bucketOfKey(entry.id, count)].push(entry)
+        }
+        const buckets = grouped.map((entries, index) => {
+            entries.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+            return refTuple(encoder.putParent(`moduleIndex:bucket:${index}`, UNIT_TYPE.moduleBucket, { v: 1, entries }).ref)
+        })
+        const handles = moduleHandles(body.entries)
+        const root = carryUnknownFields(body, { v: 2 as const, handles }, KNOWN_FIELDS.moduleIndex)
+        const unit = encoder.put(IDENTITY.moduleIndex, UNIT_TYPE.moduleIndex, root)
+        if (MEASURE && split !== undefined) {
+            split.addMs('splitModulesMs', split.now() - started)
+        }
+        return { body, ref: refTuple(unit.ref), buckets }
+    }
     const unit = encoder.putParent(IDENTITY.moduleIndex, UNIT_TYPE.moduleIndex, body)
     if (MEASURE && split !== undefined) {
         split.addMs('splitModulesMs', split.now() - started)
     }
-    return { body, ref: refTuple(unit.ref) }
+    return { body, ref: refTuple(unit.ref), buckets: null }
 }
 
 /**
@@ -785,6 +805,7 @@ export function finishTree(
         order: refTuple(order.ref),
         loadouts: refTuple(loadouts.ref),
         moduleIndex: refTuple(moduleSet.ref),
+        moduleBuckets: moduleSet.buckets ?? undefined,
         presets,
         taskPresets,
         plugins: plugins.refs,

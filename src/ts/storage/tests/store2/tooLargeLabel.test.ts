@@ -21,6 +21,7 @@ describe('the part a refused body was', () => {
         ['chatAlt', UNIT_TYPE.chatAlt, 'chatAlternatives'],
         ['module', UNIT_TYPE.module, 'module'],
         ['moduleIndex', UNIT_TYPE.moduleIndex, 'moduleList'],
+        ['moduleBucket', UNIT_TYPE.moduleBucket, 'moduleList'],
         ['configRoot', UNIT_TYPE.configRoot, 'settings'],
         ['preset', UNIT_TYPE.preset, 'preset'],
         ['plugin', UNIT_TYPE.plugin, 'plugin'],
@@ -41,7 +42,7 @@ describe('the part a refused body was', () => {
     })
 
     test('the table above covers every unit type of the format', () => {
-        expect(UNIT_TYPE_IDS).toHaveLength(26)
+        expect(UNIT_TYPE_IDS).toHaveLength(27)
         for (const type of UNIT_TYPE_IDS) {
             expect(tooLargePartOf('store2/example', type)).toBeTypeOf('string')
         }

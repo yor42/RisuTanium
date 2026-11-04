@@ -1,8 +1,9 @@
 import {
     ASSET_REF_V, IL_REF_V, splitHashStems,
-    type AssetList, type CommitKey, type InlayList, type LegacyList, type Manifest, type ModuleEntry, type ShardEntry,
+    type AssetList, type CommitKey, type InlayList, type LegacyList, type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndex, type ShardEntry,
 } from '../format'
 import { AssetKeySet } from './assetKey'
+import { moduleIndexOfParts } from '../codec/modules'
 import {
     ownerLabel,
     type AssetKeepSet, type ClosureReader, type Incomplete, type IncompleteCode, type InlayKeepSet,
@@ -144,10 +145,30 @@ async function walkManifests(input: KeepSetInput, walk: Walk, sinks: Sinks): Pro
             }
         }
 
-        const index = walk.value(
+        const root = walk.value(
             await walk.read('moduleIndex', manifest.fixed.moduleIndex[0], () => reader.moduleIndex(manifest.fixed.moduleIndex)),
             `module index of ${key}`,
         )
+        const buckets: ModuleBucket[] | undefined = manifest.fixed.moduleBuckets === undefined ? undefined : []
+        if (manifest.fixed.moduleBuckets !== undefined) {
+            for (const [position, ref] of manifest.fixed.moduleBuckets.entries()) {
+                const bucket = walk.value(
+                    await walk.read('moduleBucket', ref[0], () => reader.moduleBucket(ref)),
+                    `module bucket ${position} of ${key}`,
+                )
+                if (bucket !== null) {
+                    buckets?.push(bucket)
+                }
+            }
+        }
+        let index: ModuleIndex | null = null
+        if (root !== null && (buckets === undefined || buckets.length === manifest.fixed.moduleBuckets?.length)) {
+            try {
+                index = moduleIndexOfParts(root, buckets)
+            } catch (error) {
+                walk.fail('node-damaged', `module index of ${key}: ${error instanceof Error ? error.message : 'invalid buckets'}`)
+            }
+        }
         for (const entry of index?.entries ?? []) {
             await sinks.module(entry, { kind: 'module', id: entry.id, manifest: key })
         }

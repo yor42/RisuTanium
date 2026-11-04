@@ -56,6 +56,8 @@ interface BuildOptions {
     tag: string
     shared?: Partial<Shared>
     configAlBody?: object
+    /** A v2 module index root whose one module entry lives in a type 27 bucket named by fixed.moduleBuckets. */
+    buckets?: boolean
     /** Receives the key reachable only through the row `${type}:${path}`. */
     track?: (type: UnitType, path: string, key: string) => void
 }
@@ -73,6 +75,7 @@ async function buildTree(fx: Fx, options: BuildOptions): Promise<BuiltTree> {
     const S = UNIT_TYPE.shard
     const I = UNIT_TYPE.moduleIndex
     const B = UNIT_TYPE.pluginStorageBucket
+    const K = UNIT_TYPE.moduleBucket
 
     const shardKey = newShardKey(fx.env)
     let shardRef = options.shared?.shard
@@ -99,6 +102,18 @@ async function buildTree(fx: Fx, options: BuildOptions): Promise<BuiltTree> {
     }
 
     let moduleRef = options.shared?.moduleIndex
+    let bucketRefs: Ref[] | undefined
+    if (moduleRef === undefined && options.buckets === true) {
+        const entry = {
+            id: `m-${tag}`,
+            unit: await put(K, 'entries[].unit', UNIT_TYPE.module),
+            al: asList(await put(K, 'entries[].al', UNIT_TYPE.assetList, { v: 1, h: '', l: [] })),
+            il: asList(await put(K, 'entries[].il', UNIT_TYPE.inlayList, { v: 1, u: [], h: '', o: [] })),
+            name: 'n', description: 'd', hasToggle: false, dsp: false,
+        }
+        bucketRefs = [await put(M, 'fixed.moduleBuckets[]', K, { v: 1, entries: [entry] })]
+        moduleRef = (await leaf(fx, UNIT_TYPE.moduleIndex, { v: 2, handles: [entry.id] })).ref
+    }
     if (moduleRef === undefined) {
         const index = {
             v: 1,
@@ -123,7 +138,7 @@ async function buildTree(fx: Fx, options: BuildOptions): Promise<BuiltTree> {
     const taskPreset = await put(M, 'fixed.taskPresets[]', UNIT_TYPE.taskPreset)
     const body: Manifest = {
         fmt: 1,
-        req: ['task-presets'],
+        req: bucketRefs === undefined ? ['task-presets'] : ['module-buckets', 'task-presets'],
         seq: 1,
         createdAt: 1,
         shardCount: 1,
@@ -136,6 +151,7 @@ async function buildTree(fx: Fx, options: BuildOptions): Promise<BuiltTree> {
             order: await put(M, 'fixed.order', UNIT_TYPE.order),
             loadouts: await put(M, 'fixed.loadouts', UNIT_TYPE.loadouts),
             moduleIndex: moduleRef,
+            ...(bucketRefs === undefined ? {} : { moduleBuckets: bucketRefs }),
             presets: [preset],
             taskPresets: [taskPreset],
             plugins: [await put(M, 'fixed.plugins[]', UNIT_TYPE.plugin)],
@@ -179,22 +195,34 @@ interface World {
     current: BuiltTree
     retained: BuiltTree
     pinned: BuiltTree
+    /** With the withBucketed option, a further retained manifest whose module entries live in a type 27 bucket; otherwise null. */
+    bucketed: BuiltTree | null
     /** The key reachable only through each reference row. */
     tracked: Map<string, string>
 }
 
 /** `current` is the full tree; `retained` and `pinned` each own a shard, chunk and preset, and share the other nodes with `current`. */
-async function buildWorld(seed: number): Promise<World> {
+async function buildWorld(seed: number, withBucketed = false): Promise<World> {
     const fx = newFx(seed)
     const tracked = new Map<string, string>()
     const current = await buildTree(fx, { tag: 'current', track: (type, path, key) => tracked.set(`${type}:${path}`, key) })
     const retained = await buildTree(fx, { tag: 'retained', shared: { moduleIndex: current.shared.moduleIndex, bucket: current.shared.bucket } })
     const pinned = await buildTree(fx, { tag: 'pinned' })
+    const bucketed = !withBucketed ? null : await buildTree(fx, {
+        tag: 'bucketed',
+        buckets: true,
+        shared: { bucket: current.shared.bucket },
+        track: (type, path, key) => {
+            if (type === UNIT_TYPE.moduleBucket || path === 'fixed.moduleBuckets[]') {
+                tracked.set(`${type}:${path}`, key)
+            }
+        },
+    })
     tracked.set(`${UNIT_TYPE.commit}:current.key`, current.manifestKey)
     tracked.set(`${UNIT_TYPE.commit}:retained[].key`, retained.manifestKey)
     tracked.set(`${UNIT_TYPE.commit}:pins[].key`, pinned.manifestKey)
-    const read = await publish(fx, { current: current.manifestKey, retained: [retained.manifestKey], pins: [pinned.manifestKey] })
-    return { fx, read, current, retained, pinned, tracked }
+    const read = await publish(fx, { current: current.manifestKey, retained: [retained.manifestKey, ...(bucketed === null ? [] : [bucketed.manifestKey])], pins: [pinned.manifestKey] })
+    return { fx, read, current, retained, pinned, bucketed, tracked }
 }
 
 function marked(result: MarkResult): Extract<MarkResult, { status: 'marked' }> {
@@ -218,7 +246,7 @@ async function withTable<T>(change: (table: RefRow[]) => void, body: () => Promi
 
 describe('live set', () => {
     test('every reference row has a unit reachable only through it', async () => {
-        const world = await buildWorld(1)
+        const world = await buildWorld(1, true)
         for (const row of REFS_TABLE) {
             expect(world.tracked.has(`${row.type}:${row.path}`), `${row.type}:${row.path}`).toBe(true)
         }
@@ -226,7 +254,7 @@ describe('live set', () => {
 
     describe('one generated mutant per reference row', () => {
         test.each(REFS_TABLE.map((row, index) => [`${row.type}:${row.path}`, index] as const))('the unit reached only through %s is live, and not live when the row is dropped', async (id, index) => {
-            const world = await buildWorld(2)
+            const world = await buildWorld(2, true)
             const target = world.tracked.get(id) as string
 
             const whole = marked(await markLiveKeys(world.fx.backend, world.read))

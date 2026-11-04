@@ -16,6 +16,7 @@ import {
     type CommitKey, type KeyEnv, type Manifest, type Ref, type UnitType,
 } from 'src/ts/storage/store2/format'
 import { freshOwnerId, type ForeignClearHook } from 'src/ts/storage/store2/owner'
+import { TEST_DESCENT } from './descentTable'
 
 export { FENCE_BACKENDS as COMMIT_BACKENDS, plantCommit, type OpenedBackend } from './fenceFixtures'
 
@@ -168,12 +169,6 @@ export async function peerWrite(backend: Store2Backend, env: KeyEnv, change: Par
     return next
 }
 
-const DESCENT: Readonly<Record<string, UnitType>> = {
-    'shards[]': UNIT_TYPE.shard,
-    'fixed.moduleIndex': UNIT_TYPE.moduleIndex,
-    'fixed.pluginStorage.refs[]': UNIT_TYPE.pluginStorageBucket,
-}
-
 /**
  * I1: every manifest the commit key names (`current`, `retained`, `pins`) has its
  * complete tree stored. The walk uses `refsOf` and a listing only.
@@ -198,7 +193,7 @@ export async function expectInvariant(backend: Store2Backend): Promise<void> {
         for (const target of refsOf(UNIT_TYPE.manifest, manifest.value.body)) {
             const named = `store2/${target.tail}`
             expect(listed.has(named), `${named} named by ${manifestKey} at ${target.path}`).toBe(true)
-            const type = DESCENT[target.path]
+            const type = TEST_DESCENT[target.path]
             if (type === undefined) {
                 continue
             }

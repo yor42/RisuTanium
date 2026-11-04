@@ -1,7 +1,7 @@
 import type { JsonValue } from '../../blockFrame'
 import {
     IL_REF_V, ASSET_REF_V,
-    parseAssetList, parseInlayList, parseLegacyList, parseManifest, parseModuleIndex, parseShard,
+    parseAssetList, parseInlayList, parseLegacyList, parseManifest, parseModuleBucket, parseModuleIndex, parseShard,
     type AssetList, type CommitKey, type InlayList, type LegacyList, type ListRef, type Manifest, type ModuleEntry, type Ref, type ShardEntry,
 } from '../../store2/format'
 import { AssetRefCollector, overflowInlayList } from '../../store2/lists'
@@ -174,6 +174,7 @@ export class Tree {
         manifest: key => this.serve(key, parseManifest),
         shard: ref => this.serve(ref[0], parseShard),
         moduleIndex: ref => this.serve(ref[0], parseModuleIndex),
+        moduleBucket: ref => this.serve(ref[0], parseModuleBucket),
         assetList: ref => this.serve(ref[0], parseAssetList),
         inlayList: ref => this.serve(ref[0], parseInlayList),
         legacyList: ref => this.serve(ref[0], parseLegacyList),

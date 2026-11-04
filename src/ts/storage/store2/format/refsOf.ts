@@ -46,6 +46,7 @@ export const REFS_TABLE: readonly RefRow[] = [
     { type: UNIT_TYPE.manifest, path: 'fixed.order', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.loadouts', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.moduleIndex', mode: 'ref' },
+    { type: UNIT_TYPE.manifest, path: 'fixed.moduleBuckets[]', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.presets[]', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.taskPresets[]', mode: 'ref' },
     { type: UNIT_TYPE.manifest, path: 'fixed.plugins[]', mode: 'ref' },
@@ -64,6 +65,9 @@ export const REFS_TABLE: readonly RefRow[] = [
     { type: UNIT_TYPE.moduleIndex, path: 'entries[].unit', mode: 'ref' },
     { type: UNIT_TYPE.moduleIndex, path: 'entries[].al', mode: 'ref' },
     { type: UNIT_TYPE.moduleIndex, path: 'entries[].il', mode: 'ref' },
+    { type: UNIT_TYPE.moduleBucket, path: 'entries[].unit', mode: 'ref' },
+    { type: UNIT_TYPE.moduleBucket, path: 'entries[].al', mode: 'ref' },
+    { type: UNIT_TYPE.moduleBucket, path: 'entries[].il', mode: 'ref' },
 
     { type: UNIT_TYPE.pluginStorageBucket, path: 'entries[].ref', mode: 'ref' },
 ]

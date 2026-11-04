@@ -3,7 +3,7 @@ import type { Database, character, groupChat } from '../../database.svelte'
 import { characterCreator, stubDescription, stubTags } from '../../../process/coldCharacter'
 import {
     encodeUnit, KEY_ALPHABET, keyOfTail, refOfFrame, tailOfKey, UNIT_TYPE,
-    type KeyEnv, type Manifest, type ModuleIndex, type Ref, type Shard, type ShardEntry, type UnitType,
+    type KeyEnv, type Manifest, type Ref, type Shard, type ShardEntry, type UnitType,
 } from '../format'
 import type { BuildContext, BuiltCommit, KeyMint } from '../commit'
 import { defineOwn } from './normalize'
@@ -101,7 +101,7 @@ function carriedModuleSet(previous: PreviousEncoding | null): ModuleSet {
     if (body === undefined || unit === undefined) {
         throw new CodecInputError('The modules are carried from the previous encoding, which does not hold a module index.')
     }
-    return { body, ref: [unit.ref[0], unit.ref[1], unit.ref[2]] }
+    return { body, ref: [unit.ref[0], unit.ref[1], unit.ref[2]], buckets: previous.objects?.manifest?.fixed.moduleBuckets ?? null }
 }
 
 /**
@@ -186,7 +186,7 @@ function ownerOf(identity: string): Owner {
         const start = IDENTITY.alChar.length
         return identity.length === start + ENTITY_ID_LENGTH ? { kind: 'character', u: identity.slice(start) } : null
     }
-    if (identity === IDENTITY.moduleIndex || identity.startsWith(IDENTITY.module)
+    if (identity === IDENTITY.moduleIndex || identity.startsWith('moduleIndex:') || identity.startsWith(IDENTITY.module)
         || identity.startsWith(IDENTITY.alModule) || identity.startsWith(IDENTITY.ilModule)) {
         return { kind: 'modules' }
     }
@@ -445,7 +445,7 @@ function rewriteValue(value: JsonValue, finalRefs: ReadonlyMap<string, Ref>): Js
 
 /**
  * A copy of the parent body with every Ref to a placeholder unit replaced by the
- * unit's final Ref. Only parent bodies are walked. Besides Refs they hold user
+ * unit's final Ref. Parent bodies and the logical module index are walked. Besides Refs they hold user
  * strings (names, descriptions, tags) and fields carried from earlier bodies;
  * those are scalars or arrays of strings, and a rewrite needs an array that
  * starts with a placeholder tail and continues with two numbers, which neither
@@ -510,7 +510,7 @@ function rekey(tree: EncodedTree, parents: ReadonlyMap<string, ParentBody>, cont
     const before = tree.index.objects
     const manifest = rewrittenOr('manifest', tree.manifest)
     const shards = (before?.shards ?? []).map((shard: Shard, index) => rewrittenOr(`shard:${index}`, shard))
-    const moduleIndex = before?.moduleIndex === undefined ? undefined : rewrittenOr<ModuleIndex>(IDENTITY.moduleIndex, before.moduleIndex)
+    const moduleIndex = before?.moduleIndex === undefined ? undefined : rewriteRefs(before.moduleIndex, finalRefs)
     const objects = moduleIndex === undefined ? { manifest, shards } : { manifest, shards, moduleIndex }
     return {
         manifestKey: units[units.length - 1].key,

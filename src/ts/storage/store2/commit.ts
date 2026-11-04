@@ -258,9 +258,10 @@ export function nextRetained(base: CommitKey, now: number, force: boolean, drop:
 }
 
 /** The manifest units a tree read descends into, by the path that names them in the manifest. */
-const DESCENT: Readonly<Record<string, UnitType>> = {
+export const DESCENT: Readonly<Record<string, UnitType>> = {
     'shards[]': UNIT_TYPE.shard,
     'fixed.moduleIndex': UNIT_TYPE.moduleIndex,
+    'fixed.moduleBuckets[]': UNIT_TYPE.moduleBucket,
     'fixed.pluginStorage.refs[]': UNIT_TYPE.pluginStorageBucket,
 }
 

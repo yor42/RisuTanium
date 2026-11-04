@@ -296,6 +296,6 @@ describe('tree read behaviour that does not depend on the backend', () => {
     })
 
     test('the positions it opens are positions the reference table names', () => {
-        expect(Object.keys(TREE_READ_TYPES).sort()).toEqual(['fixed.configAl', 'fixed.il', 'fixed.moduleIndex', 'fixed.pluginStorage.refs[]', 'shards[]'])
+        expect(Object.keys(TREE_READ_TYPES).sort()).toEqual(['fixed.configAl', 'fixed.il', 'fixed.moduleBuckets[]', 'fixed.moduleIndex', 'fixed.pluginStorage.refs[]', 'shards[]'])
     })
 })

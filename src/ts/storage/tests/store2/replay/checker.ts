@@ -113,6 +113,7 @@ import { keyOfTail, readUnit, refsOf, UNIT_TYPE, type CommitKey, type FenceRecor
 import { COMMIT_KEY, FENCE_KEY } from 'src/ts/storage/store2/format/keys'
 import type { NodeSemanticStore } from './nodeSemanticStore'
 import type { ActorContext, Expect, OperationKind, RawEntry, RawState, StepInfo } from './scheduler'
+import { TEST_DESCENT } from '../descentTable'
 
 // Whether the commit key, as it stood, allows any deleter to run: parsed and naming a current.
 function commitAllowsDeletion(bytes: Uint8Array | null): boolean {
@@ -231,13 +232,6 @@ function fenceViewOf(bytes: Uint8Array | null): FenceView {
     return { state: 'blocked' }
 }
 
-/** The manifest positions whose unit names further units that a refs walk must open. */
-const DESCENT: Readonly<Record<string, UnitType>> = {
-    'shards[]': UNIT_TYPE.shard,
-    'fixed.moduleIndex': UNIT_TYPE.moduleIndex,
-    'fixed.pluginStorage.refs[]': UNIT_TYPE.pluginStorageBucket,
-}
-
 interface Walk {
     /** Every key of the tree, the manifest first. */
     keys: string[]
@@ -269,7 +263,7 @@ function walkManifest(state: RawState, manifestKey: string): Walk {
     for (const target of refsOf(UNIT_TYPE.manifest, manifest.value.body)) {
         const key = keyOfTail(target.tail)
         note(key)
-        const type = DESCENT[target.path]
+        const type = TEST_DESCENT[target.path]
         const bytes = bytesOfKey(state, key)
         if (type === undefined || bytes === null) {
             continue

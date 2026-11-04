@@ -33,7 +33,10 @@ describe('golden vector set', () => {
         for (let n = 1; n <= 6; n++) {
             expect(ids.some(id => id.startsWith(`fence-F${n}-`))).toBe(true)
         }
-        for (const id of ['manifest-fmt-2', 'unit-frame-fmt-2', 'manifest-unknown-req', 'asset-list-v2']) {
+        for (const id of [
+            'manifest-fmt-2', 'unit-frame-fmt-2', 'manifest-unknown-req', 'asset-list-v2',
+            'module-index-v2-root', 'module-index-v3-too-new', 'manifest-module-buckets',
+        ]) {
             expect(ids).toContain(id)
         }
     })
@@ -182,6 +185,55 @@ describe('type 26, the task preset', () => {
         expect(manifest.req).toEqual(['task-presets'])
         expect(manifest.fixed.taskPresets).toHaveLength(1)
         expect(refsOf(UNIT_TYPE.manifest, manifest).filter(target => target.path === 'fixed.taskPresets[]')).toHaveLength(1)
+    })
+})
+
+describe('type 27 and the bucketed module index', () => {
+    test('compatibility guard: the v1 root and the v2 root both parse, and the v2 root holds only handles', () => {
+        const v1 = readUnit(hexToBytes(byId('type-10-module-index').hex), UNIT_TYPE.moduleIndex)
+        const v2 = readUnit(hexToBytes(byId('module-index-v2-root').hex), UNIT_TYPE.moduleIndex)
+        expect(v1.status).toBe('ok')
+        expect(v2.status).toBe('ok')
+        if (v1.status !== 'ok' || v2.status !== 'ok') {
+            return
+        }
+        expect(v1.value.body).toMatchObject({ v: 1 })
+        expect(JSON.parse(JSON.stringify(v2.value.body))).toEqual({ v: 2, handles: ['m'] })
+        expect(refsOf(UNIT_TYPE.moduleIndex, v2.value.body)).toEqual([])
+        expect(bytesToHex(encodeUnit(UNIT_TYPE.moduleIndex, v2.value.body))).toBe(byId('module-index-v2-root').hex)
+    })
+
+    test('compatibility guard: a root body version above 2 is too-new, never damaged; below 1 is damaged', () => {
+        expect(readUnit(hexToBytes(byId('module-index-v3-too-new').hex), UNIT_TYPE.moduleIndex).status).toBe('too-new')
+        expect(readUnit(oracleFrame(10, JSON.stringify({ v: 0, entries: [] })), UNIT_TYPE.moduleIndex).status).toBe('damaged')
+    })
+
+    test('compatibility guard: the bucket vector round trips to the committed bytes and names its module through three ref rows', () => {
+        const read = readUnit(hexToBytes(byId('type-27-module-bucket').hex), UNIT_TYPE.moduleBucket)
+        expect(read.status).toBe('ok')
+        if (read.status !== 'ok') {
+            return
+        }
+        expect(bytesToHex(encodeUnit(UNIT_TYPE.moduleBucket, read.value.body))).toBe(byId('type-27-module-bucket').hex)
+        expect(refsOf(UNIT_TYPE.moduleBucket, read.value.body).map(target => target.path).sort())
+            .toEqual(['entries[].al', 'entries[].unit'])
+    })
+
+    test('compatibility guard: a bucket body version above 1 is too-new, below 1 is damaged', () => {
+        expect(readUnit(oracleFrame(27, JSON.stringify({ v: 2, entries: [] })), UNIT_TYPE.moduleBucket).status).toBe('too-new')
+        expect(readUnit(oracleFrame(27, JSON.stringify({ v: 0, entries: [] })), UNIT_TYPE.moduleBucket).status).toBe('damaged')
+    })
+
+    test('compatibility guard: the manifest vector names its bucket by fixed.moduleBuckets and carries the token', () => {
+        const read = readUnit(hexToBytes(byId('manifest-module-buckets').hex), UNIT_TYPE.manifest)
+        expect(read.status).toBe('ok')
+        if (read.status !== 'ok') {
+            return
+        }
+        const manifest = read.value.body as { req: string[], fixed: { moduleBuckets?: unknown[] } }
+        expect(manifest.req).toEqual(['module-buckets'])
+        expect(manifest.fixed.moduleBuckets).toHaveLength(1)
+        expect(refsOf(UNIT_TYPE.manifest, manifest).filter(target => target.path === 'fixed.moduleBuckets[]')).toHaveLength(1)
     })
 })
 

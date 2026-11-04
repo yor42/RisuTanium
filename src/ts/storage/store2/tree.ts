@@ -2,8 +2,9 @@ import { Store2BackendError, Store2NotBinaryError } from './backend/errors'
 import type { Store2Backend } from './backend/types'
 import { isStore2Key } from '../store/keyRules'
 import {
-    keyOfTail, parseStore2Key, readUnit, refOfFrame, refsOf, UNIT_TYPE, type Manifest, type UnitType,
+    keyOfTail, parseStore2Key, readUnit, refOfFrame, refsOf, UNIT_TYPE, type Manifest, type ModuleIndexRoot, type UnitType,
 } from './format'
+import { moduleIndexLayoutMatches } from './codec/modules'
 
 /**
  * The read-only tree read: a manifest and the units a mark or a load of it needs
@@ -22,6 +23,7 @@ import {
 export const TREE_READ_TYPES: Readonly<Record<string, UnitType>> = {
     'shards[]': UNIT_TYPE.shard,
     'fixed.moduleIndex': UNIT_TYPE.moduleIndex,
+    'fixed.moduleBuckets[]': UNIT_TYPE.moduleBucket,
     'fixed.pluginStorage.refs[]': UNIT_TYPE.pluginStorageBucket,
     'fixed.configAl': UNIT_TYPE.assetList,
     'fixed.il': UNIT_TYPE.inlayList,
@@ -67,7 +69,7 @@ export interface ParentNode {
     body: object
 }
 
-const PARENT_TYPES: ReadonlySet<UnitType> = new Set<UnitType>([UNIT_TYPE.shard, UNIT_TYPE.moduleIndex, UNIT_TYPE.pluginStorageBucket])
+const PARENT_TYPES: ReadonlySet<UnitType> = new Set<UnitType>([UNIT_TYPE.shard, UNIT_TYPE.moduleIndex, UNIT_TYPE.moduleBucket, UNIT_TYPE.pluginStorageBucket])
 
 /** A parse of one unit under one expected type, shared by every manifest that names the unit. */
 export type ParseMemo = Map<string, ReturnType<typeof readUnit>>
@@ -181,6 +183,11 @@ export function judgeTree(
             if (unit.status === 'damaged' || unit.status === 'unreadable' || !lengthAndCrcMatch(key, bytes, expected)) {
                 damaged.push(key)
                 reason ||= unit.status === 'damaged' ? unit.reason : `${key} does not match the size or checksum its referrer holds.`
+                break
+            }
+            if (expected.type === UNIT_TYPE.moduleIndex && !moduleIndexLayoutMatches(unit.value.body as ModuleIndexRoot, manifest.fixed.moduleBuckets !== undefined)) {
+                damaged.push(key)
+                reason ||= 'The module index root and manifest buckets disagree.'
                 break
             }
             if (PARENT_TYPES.has(expected.type) && !parents.some(parent => parent.key === key)) {

@@ -89,6 +89,7 @@ export function createBackendClosureReader(backend: Store2Backend): BackendClosu
         },
         shard: ref => readRef(ref, UNIT_TYPE.shard),
         moduleIndex: ref => readRef(ref, UNIT_TYPE.moduleIndex),
+        moduleBucket: ref => readRef(ref, UNIT_TYPE.moduleBucket),
         assetList: ref => readRef(ref, UNIT_TYPE.assetList),
         inlayList: ref => readRef(ref, UNIT_TYPE.inlayList),
         legacyList: ref => readRef(ref, UNIT_TYPE.legacyList),

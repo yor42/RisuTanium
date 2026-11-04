@@ -143,8 +143,8 @@ describe('unknown fields of the format objects the codec writes are carried from
             entry[MARK] = 'parsed-module'
         }
         const parsedIndex = parseModuleIndex(indexBody)
-        if (parsedIndex.status !== 'ok') {
-            throw new Error('module index did not parse')
+        if (parsedIndex.status !== 'ok' || parsedIndex.value.v !== 1) {
+            throw new Error('module index did not parse as a v1 index')
         }
         const next = encodeWith(base, {
             env: seededEnv(2),

@@ -8,10 +8,10 @@ import {
     DELETION_SNAPSHOT_KINDS, STAGING_LABELS,
     type AltRecord, type AssetList, type ChatAltUnit, type ChatChunk, type ChatCore, type ChatEntry, type ChunkRef, type CommitKey, type ContentBody,
     type DeletionSnapshot, type DeletionSnapshotKind, type FenceRecord, type InlayList, type LegacyKeepFile, type LegacyList, type ListRef, type Manifest, type ModuleEntry,
-    type ModuleIndex, type PluginBucket, type Ref, type Shard, type SnapshotPointer, type ShardEntry, type StagingLabel, type SweepRecord,
+    type ModuleIndexRoot, type ModuleBucket, type PluginBucket, type Ref, type Shard, type SnapshotPointer, type ShardEntry, type StagingLabel, type SweepRecord,
     type UnitBody,
 } from './types'
-import { ASSET_REF_V, BODY_V, FRAME_FMT, IL_REF_V, KNOWN_REQ, UNIT_TYPE, type UnitType } from './versions'
+import { ASSET_REF_V, BODY_V, FRAME_FMT, IL_REF_V, KNOWN_REQ, MODULE_INDEX_V, UNIT_TYPE, type UnitType } from './versions'
 
 /**
  * Parsers of the unit bodies. Each returns `ok` with a typed value, `damaged`
@@ -70,7 +70,7 @@ export const KNOWN_FIELDS = {
     commitPin: ['key', 'reason'],
     commitStaging: ['owner', 'prefix', 'startedAt', 'label'],
     manifest: ['fmt', 'req', 'seq', 'createdAt', 'shardCount', 'shards', 'fixed'],
-    manifestFixed: ['config', 'configAl', 'il', 'statics', 'order', 'loadouts', 'moduleIndex', 'presets', 'taskPresets', 'plugins', 'pluginStorage', 'legacyKeep'],
+    manifestFixed: ['config', 'configAl', 'il', 'statics', 'order', 'loadouts', 'moduleIndex', 'moduleBuckets', 'presets', 'taskPresets', 'plugins', 'pluginStorage', 'legacyKeep'],
     manifestPluginStorage: ['buckets', 'refs'],
     manifestLegacyKeep: ['unit', 'v', 'files'],
     manifestLegacyKeepFile: ['key', 'status'],
@@ -80,7 +80,8 @@ export const KNOWN_FIELDS = {
         'firstMsgIndex', 'tags', 'creator', 'core', 'lore', 'scripts', 'al', 'il', 'dsp', 'chats',
     ],
     chatEntry: ['cid', 'core', 'chunks', 'alt'],
-    moduleIndex: ['v', 'entries'],
+    moduleIndex: ['v', 'entries', 'handles'],
+    moduleBucket: ['v', 'entries'],
     moduleEntry: ['id', 'unit', 'al', 'il', 'name', 'description', 'namespace', 'icon', 'hideIcon', 'lowLevelAccess', 'mcp', 'hasToggle', 'dsp'],
     fenceRecord: ['v', 'at', 'priorCommits', 'keys', 'priorFences'],
     deletionSnapshot: ['v', 'kind', 'upstream', 'keys'],
@@ -393,6 +394,13 @@ function readManifest(raw: JsonObject): Manifest {
             fixed.taskPresets = taskPresets
         }
     }
+    if (fixedRaw.moduleBuckets !== undefined) {
+        const moduleBuckets = arr(fixedRaw.moduleBuckets, 'fixed.moduleBuckets').map((value, index) => readTailedRef(value, `fixed.moduleBuckets[${index}]`))
+        if (moduleBuckets.length === 0) {
+            bad('fixed.moduleBuckets is empty.')
+        }
+        fixed.moduleBuckets = moduleBuckets
+    }
     return {
         ...extras(raw, KNOWN_FIELDS.manifest),
         fmt: 1,
@@ -581,12 +589,33 @@ function readModuleEntry(value: JsonValue, where: string): ModuleEntry {
     return entry
 }
 
-export function parseModuleIndex(value: JsonValue): Parsed<ModuleIndex> {
+export function parseModuleIndex(value: JsonValue): Parsed<ModuleIndexRoot> {
     return plain(() => {
         const raw = obj(value, 'module index')
-        gateV(raw, 'module index')
+        const v = int(raw.v, 'module index.v')
+        if (v > MODULE_INDEX_V) {
+            throw new SchemaError('too-new', `module index.v ${v} is above this build's ${MODULE_INDEX_V}.`)
+        }
+        if (v === MODULE_INDEX_V) {
+            return { ...extras(raw, KNOWN_FIELDS.moduleIndex), v: 2, handles: strList(raw.handles, 'handles') } satisfies ModuleIndexRoot
+        }
+        if (v !== 1) {
+            bad('module index.v is not 1 or 2.')
+        }
         return {
             ...extras(raw, KNOWN_FIELDS.moduleIndex),
+            v: 1,
+            entries: arr(raw.entries, 'entries').map((entry, index) => readModuleEntry(entry, `entries[${index}]`)),
+        } satisfies ModuleIndexRoot
+    })
+}
+
+export function parseModuleBucket(value: JsonValue): Parsed<ModuleBucket> {
+    return plain(() => {
+        const raw = obj(value, 'module bucket')
+        gateV(raw, 'module bucket')
+        return {
+            ...extras(raw, KNOWN_FIELDS.moduleBucket),
             v: 1,
             entries: arr(raw.entries, 'entries').map((entry, index) => readModuleEntry(entry, `entries[${index}]`)),
         }
@@ -797,6 +826,7 @@ export function parseUnitBody(type: UnitType, value: JsonValue): Parsed<UnitBody
         case UNIT_TYPE.chatChunk: return parseChatChunk(value)
         case UNIT_TYPE.chatAlt: return parseChatAlt(value)
         case UNIT_TYPE.moduleIndex: return parseModuleIndex(value)
+        case UNIT_TYPE.moduleBucket: return parseModuleBucket(value)
         case UNIT_TYPE.assetList: return parseAssetList(value)
         case UNIT_TYPE.legacyList: return parseLegacyList(value)
         case UNIT_TYPE.inlayList: return parseInlayList(value)

@@ -18,6 +18,7 @@ import {
     type Manifest, type Ref, type KeyEnv, type UnitType,
 } from 'src/ts/storage/store2/format'
 import { INLAY_META_PREFIX, encodeInlayId, inlayMetaKey } from 'src/ts/process/files/inlayKeys'
+import { TEST_DESCENT, TEST_PARENT_TYPES } from './descentTable'
 
 export const UUID_FIXED = '11111111-2222-3333-4444-555555555555'
 export const UUID_CHARACTER = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
@@ -269,12 +270,6 @@ export async function plantTree(backend: Store2Backend, env: KeyEnv, options: Pl
 
 // ---- Independent closure walk ----
 
-const DESCENT: Readonly<Record<string, UnitType>> = {
-    'shards[]': UNIT_TYPE.shard,
-    'fixed.moduleIndex': UNIT_TYPE.moduleIndex,
-    'fixed.pluginStorage.refs[]': UNIT_TYPE.pluginStorageBucket,
-}
-
 export interface Closure {
     /** Every key the walk reached, the manifest included. */
     keys: Set<string>
@@ -307,7 +302,7 @@ export async function closureOf(backend: Store2Backend, manifestKey: string): Pr
             if (length !== target.bytes || crc !== target.crc) {
                 problems.push(`${key} named by ${owner} at ${target.path} does not match its Ref`)
             }
-            const child = DESCENT[target.path]
+            const child = TEST_DESCENT[target.path]
             if (child !== undefined) {
                 const unit = readUnit(bytes, child)
                 if (unit.status === 'ok') {
@@ -397,8 +392,6 @@ export async function rebootDecision(backend: Store2Backend, ownerId = 'z'.repea
 
 // ---- Content fingerprint ----
 
-const PARENT_UNIT_TYPES: readonly UnitType[] = [UNIT_TYPE.manifest, UNIT_TYPE.shard, UNIT_TYPE.moduleIndex, UNIT_TYPE.pluginStorageBucket]
-
 function normalized(value: unknown): unknown {
     if (Array.isArray(value)) {
         if (typeof value[0] === 'string' && /^(?:[msu]-|g-)/.test(value[0]) && typeof value[1] === 'number' && typeof value[2] === 'number') {
@@ -424,7 +417,7 @@ export async function treeFingerprint(backend: Store2Backend, manifestKey: strin
     for (const key of closure.keys) {
         const bytes = (await backend.readUnits([key])).get(key) as Uint8Array
         const type = bytes[5]
-        if (!PARENT_UNIT_TYPES.includes(type as UnitType)) {
+        if (!TEST_PARENT_TYPES.has(type as UnitType)) {
             out.push(`leaf:${type}:${Buffer.from(bytes).toString('base64')}`)
             continue
         }

@@ -33,6 +33,7 @@ import { gcPass, type GcResult } from 'src/ts/storage/store2/gc/pass'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
 import { createReplyDropper, hexOfKey, type NodeServerFixture, type ReplyDropper } from './nodeServerFixture'
 import { seedStore, treeRequest } from './store2/commitFixtures'
+import { TEST_DESCENT } from './store2/descentTable'
 
 // ---- small utilities ----
 
@@ -173,12 +174,6 @@ export interface Observer {
 
 class Unavailable extends Error {}
 
-const DESCENT: Readonly<Record<string, UnitType>> = {
-    'shards[]': UNIT_TYPE.shard,
-    'fixed.moduleIndex': UNIT_TYPE.moduleIndex,
-    'fixed.pluginStorage.refs[]': UNIT_TYPE.pluginStorageBucket,
-}
-
 const SNAPSHOT_ATTEMPTS = 5
 
 function manifestsNamed(key: CommitKey): string[] {
@@ -223,7 +218,7 @@ export function createObserver(store: ByteStore, window: RetireWindow, tally: Ta
         for (const target of refsOf(UNIT_TYPE.manifest, manifest.value.body)) {
             const key = keyOfTail(target.tail)
             keys.push(key)
-            children.push({ key, type: DESCENT[target.path] })
+            children.push({ key, type: TEST_DESCENT[target.path] })
         }
         await Promise.all(children.map(async (child) => {
             if (child.type === undefined) {
