@@ -25,7 +25,7 @@ vi.mock(import('src/ts/process/moduleRefList'), () => ({
 }) as unknown as typeof import('src/ts/process/moduleRefList'))
 
 vi.mock(import('src/ts/process/moduleEnsure'), () => ({
-    ensureCurrentModulesOrAlert: h.ensure,
+    ensurePlaygroundModulesOrAlert: h.ensure,
 }) as unknown as typeof import('src/ts/process/moduleEnsure'))
 
 vi.mock(import('src/ts/util'), () => ({
@@ -98,7 +98,7 @@ describe('the image translation button in auto mode', () => {
 })
 
 /**
- * The module wait before the translation request. `hasModuleStubs` and `ensureCurrentModulesOrAlert` are mocks here (the
+ * The module wait before the translation request. `hasModuleStubs` and `ensurePlaygroundModulesOrAlert` are mocks here (the
  * helper has its own rows); the image decode and canvas are stand-ins because happy-dom draws nothing. The
  * `waits` and `does-not-request` rows fail against the component without the wait.
  */

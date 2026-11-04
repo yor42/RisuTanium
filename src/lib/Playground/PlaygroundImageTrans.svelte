@@ -6,7 +6,7 @@
     import { jsonOutputTrimmer, selectSingleFile } from "src/ts/util";
     import { requestChatData } from "src/ts/process/request/request";
     import { alertError } from "src/ts/alert";
-    import { ensureCurrentModulesOrAlert } from "src/ts/process/moduleEnsure";
+    import { ensurePlaygroundModulesOrAlert } from "src/ts/process/moduleEnsure";
     import { hasModuleStubs } from "src/ts/process/moduleRefList";
     import SelectInput from "../UI/GUI/SelectInput.svelte";
     import NumberInput from "../UI/GUI/NumberInput.svelte";
@@ -162,7 +162,7 @@
             }
     
 
-            if(hasModuleStubs() && !(await ensureCurrentModulesOrAlert())){
+            if(hasModuleStubs() && !(await ensurePlaygroundModulesOrAlert())){
                 return;
             }
 

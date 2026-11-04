@@ -35,6 +35,8 @@
     import { DBState } from "src/ts/stores.svelte";
     import { getModelInfo, LLMFlags } from "src/ts/model/modellist";
     import { requestSubtitleModel } from "src/ts/process/subtitleRequest";
+    import { ensurePlaygroundModulesOrAlert } from "src/ts/process/moduleEnsure";
+    import { hasModuleStubs } from "src/ts/process/moduleRefList";
     import { asBuffer, selectFileByDom, selectSingleFile, sleep } from "src/ts/util";
     import { alertError, alertSelect } from "src/ts/alert";
     import { risuChatParser } from "src/ts/parser/parser.svelte";
@@ -67,6 +69,11 @@
         ])
 
         if(!file){
+            outputText = ''
+            return
+        }
+
+        if(hasModuleStubs() && !(await ensurePlaygroundModulesOrAlert())){
             outputText = ''
             return
         }
@@ -170,6 +177,11 @@
             outputText = ''
             return
         }
+        if(hasModuleStubs() && !(await ensurePlaygroundModulesOrAlert())){
+            outputText = ''
+            return
+        }
+
         const videos = [
             'mp4', 'webm', 'mkv', 'avi', 'mov'
         ]

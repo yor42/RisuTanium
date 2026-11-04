@@ -155,6 +155,38 @@ export function ensureCurrentModulesOrAlert(signal?: AbortSignal): Promise<boole
     return ensureCurrentModules({ signal })
 }
 
+/**
+ * Playground-only wait for exactly the modules a run reads when nothing is selected.
+ * Each start retries without failure memory. Loaded slots stay installed after another slot fails,
+ * and the combined alert names only failed slots.
+ */
+export async function ensurePlaygroundModulesOrAlert(): Promise<boolean> {
+    if(!hasModuleStubs()){
+        return true
+    }
+    if(getCurrentCharacter()){
+        return ensureCurrentModulesOrAlert()
+    }
+    const names: string[] = []
+    const release = holdModuleGuiBumps()
+    try {
+        for(const slot of unloadedModulesOf()){
+            try {
+                await acquireModule(slot.id)
+            } catch {
+                names.push(slot.name)
+            }
+        }
+    } finally {
+        release()
+    }
+    if(names.length > 0){
+        alertError(moduleLoadFailedText(names))
+        return false
+    }
+    return true
+}
+
 async function ensureWithMemory(memory: ModuleFailureMemory, origin: Origin, hint: OriginHint): Promise<boolean> {
     const key = origin.chaId + ':' + origin.chatId
     if(memory.key !== key){

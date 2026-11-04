@@ -10,6 +10,9 @@
     import OptionInput from "../UI/GUI/OptionInput.svelte";
     import CheckInput from "../UI/GUI/CheckInput.svelte";
     import { tokenize } from "src/ts/tokenizer";
+    import { DBState } from "src/ts/stores.svelte";
+    import { hasModuleStubs } from "src/ts/process/moduleRefList";
+    import { ensurePlaygroundModulesOrAlert } from "src/ts/process/moduleEnsure";
 
 
     const userPreferedLang = navigator.language.split('-')[0]
@@ -78,6 +81,18 @@
             return
         }
         loading = true
+        if(DBState.db.translatorType === 'llm' && hasModuleStubs()){
+            let ready = false
+            try {
+                ready = await ensurePlaygroundModulesOrAlert()
+            } catch (error) {
+                console.error(error)
+            }
+            if(!ready){
+                loading = false
+                return
+            }
+        }
         try {
             const d = JSON.parse(r.trim())
             if(Array.isArray(d)){
@@ -140,6 +155,10 @@
             return
         }
         loading = true
+        if(DBState.db.translatorType === 'llm' && hasModuleStubs() && !(await ensurePlaygroundModulesOrAlert())){
+            loading = false
+            return
+        }
         output = await runTranslator(r, true, sourceLang, outputLang)   
         loading = false
     } catch (error) {

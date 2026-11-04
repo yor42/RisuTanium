@@ -8,11 +8,14 @@
  * Labels: every row is M except the G rows (`current-resolves-true-...`, `trigger-after-a-normal-boot-...` and the
  * type-level memory/signal guard), which
  * pass on any correct implementation. The symbols are new, so on the base the file fails at import; the evidence of an
- * M row is a named mutant.
+ * M row is a named mutant. The U rows (U1 to U7) cover nsurePlaygroundModulesOrAlert: they are rule tests of a new
+ * function, each tied to a mutant of that helper, and are not reproducers of the base behavior.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { get, writable } from 'svelte/store'
 import { MODULE_STUB_KEY } from '../../storage/moduleStub'
+import { ReloadGUIPointer } from '../../stores.svelte'
+import { bumpModuleGui } from '../moduleGuiBump'
 
 //#region module mocks
 
@@ -57,10 +60,10 @@ vi.mock(import('../../storage/database.svelte'), () => {
 //#endregion
 
 import {
-    createModuleFailureMemory, ensureCurrentModules, ensureCurrentModulesOrAlert, ensureModulesForOrigin,
+    createModuleFailureMemory, ensurePlaygroundModulesOrAlert, ensureCurrentModules, ensureCurrentModulesOrAlert, ensureModulesForOrigin,
     ensureModulesOrAlert, ensureSelectedModules, ModuleEnsureError, moduleRunVersion, selectedModulesPending,
 } from '../moduleEnsure'
-import { hasModuleStubs } from '../moduleRefList'
+import { hasModuleStubs, moduleLoadFailedText } from '../moduleRefList'
 import { ModuleLoadError, registerModuleLoader, unregisterModuleLoader } from '../../storage/store2/moduleAcquire'
 
 type Plain = Record<string, unknown>
@@ -108,6 +111,7 @@ function registerInstallingLoader(options: { fail?: (id: string) => Error | null
         }
         const index = slots().findIndex((m) => m.id === id)
         slots()[index] = { id, name: id, description: '', lorebook: [] }
+        bumpModuleGui()
         return slots()[index] as never
     })
 }
@@ -128,6 +132,80 @@ beforeEach(() => {
 
 afterEach(() => {
     unregisterModuleLoader()
+})
+
+describe('ensurePlaygroundModulesOrAlert', () => {
+    test('U1 loads referenced global and namespace stubs only', async () => {
+        installDb([stub('m1', 'Alpha'), stub('m2', 'Beta', { namespace: 'ns' }), stub('m3', 'Gamma')], { enabled: ['m1'], integration: 'ns' })
+        h.state.db.characters = []
+        registerInstallingLoader()
+        await expect(ensurePlaygroundModulesOrAlert()).resolves.toBe(true)
+        expect(calls).toEqual(['m1', 'm2'])
+        expect(slots()[2][MODULE_STUB_KEY]).toBe(1)
+    })
+
+    test('U2 collects every failed slot in one alert', async () => {
+        installDb([stub('m1', 'Alpha'), stub('m2', 'Beta')], { enabled: ['m1', 'm2'] })
+        h.state.db.characters = []
+        registerInstallingLoader({ fail: failingLoader() })
+        await expect(ensurePlaygroundModulesOrAlert()).resolves.toBe(false)
+        expect(calls).toEqual(['m1', 'm2'])
+        expect(h.alerts).toEqual([moduleLoadFailedText(['Alpha', 'Beta'])])
+    })
+
+    test('U3 retries a trigger failure on a new Playground start', async () => {
+        installDb([stub('m1', 'Alpha')], { enabled: ['m1'] })
+        registerInstallingLoader({ fail: failingLoader() })
+        ensureSelectedModules(true)
+        await settleTasks()
+        h.state.db.characters = []
+        const before = calls.length
+        await expect(ensurePlaygroundModulesOrAlert()).resolves.toBe(false)
+        expect(calls.length).toBe(before + 1)
+    })
+
+    test('U4 delegates a selected character and respects group owners', async () => {
+        installDb([stub('m1', 'Alpha')], { enabled: ['m1'] })
+        ;(h.state.db.characters as Plain[])[0].type = 'group'
+        registerInstallingLoader()
+        await expect(ensurePlaygroundModulesOrAlert()).resolves.toBe(true)
+        expect(calls).toEqual([])
+        installDb([stub('m1', 'Alpha')], { chatModules: ['m1'] })
+        await expect(ensurePlaygroundModulesOrAlert()).resolves.toBe(true)
+        expect(calls).toEqual(['m1'])
+    })
+
+    test('U6 keeps successful installs and alerts with failed names only', async () => {
+        installDb([stub('m1', 'Alpha'), stub('m2', 'Beta')], { enabled: ['m1', 'm2'] })
+        h.state.db.characters = []
+        registerInstallingLoader({ fail: (id) => id === 'm2' ? new ModuleLoadError('unreadable', id, id) : null })
+        await expect(ensurePlaygroundModulesOrAlert()).resolves.toBe(false)
+        expect(calls).toEqual(['m1', 'm2'])
+        expect(h.alerts).toEqual([moduleLoadFailedText(['Beta'])])
+        expect(slots()[0][MODULE_STUB_KEY]).toBeUndefined()
+        expect(slots()[1][MODULE_STUB_KEY]).toBe(1)
+    })
+
+    test('U7 releases the GUI bump hold: one coalesced bump after the installs, and later bumps are not suppressed', async () => {
+        installDb([stub('m1', 'Alpha'), stub('m2', 'Beta')], { enabled: ['m1', 'm2'] })
+        h.state.db.characters = []
+        registerInstallingLoader()
+        const before = get(ReloadGUIPointer)
+        await expect(ensurePlaygroundModulesOrAlert()).resolves.toBe(true)
+        expect(calls).toEqual(['m1', 'm2'])
+        expect(get(ReloadGUIPointer)).toBe(before + 1)
+        bumpModuleGui()
+        expect(get(ReloadGUIPointer)).toBe(before + 2)
+
+        installDb([stub('m3', 'Gamma'), stub('m4', 'Delta')], { enabled: ['m3', 'm4'] })
+        registerInstallingLoader({ fail: (id) => id === 'm4' ? new ModuleLoadError('unreadable', id, id) : null })
+        const beforeFailure = get(ReloadGUIPointer)
+        await expect(ensurePlaygroundModulesOrAlert()).resolves.toBe(false)
+        expect(calls).toEqual(['m1', 'm2', 'm3', 'm4'])
+        expect(get(ReloadGUIPointer)).toBe(beforeFailure + 1)
+        bumpModuleGui()
+        expect(get(ReloadGUIPointer)).toBe(beforeFailure + 2)
+    })
 })
 
 describe('ensureModulesForOrigin', () => {

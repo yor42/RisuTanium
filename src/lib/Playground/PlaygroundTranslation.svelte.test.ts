@@ -25,6 +25,19 @@ vi.mock(import('src/ts/translator/translator'), () => ({
     LLMCacheStorage: { clear: vi.fn() },
 }) as unknown as typeof import('src/ts/translator/translator'))
 
+vi.mock('src/ts/process/moduleRefList', () => ({
+    hasModuleStubs: () => false,
+}))
+
+vi.mock('src/ts/process/moduleEnsure', () => ({
+    ensurePlaygroundModulesOrAlert: vi.fn(async () => true),
+}))
+
+// The component reads the translator type from the database state; a non-LLM type keeps the module wait out of these tests.
+vi.mock('src/ts/stores.svelte', () => ({
+    DBState: { db: { translatorType: 'google' } },
+}))
+
 // The text area is a plain `<textarea>` that writes its text back to the bound `value`.
 vi.mock('../UI/GUI/TextAreaInput.svelte', () => ({
     default: (anchor: Comment, props: { value: string }) => {

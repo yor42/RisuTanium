@@ -3,11 +3,34 @@
     import { risuChatParser } from 'src/ts/parser/parser.svelte';
     import { language } from 'src/lang';
     import { sleep } from 'src/ts/util';
+    import { hasModuleStubs, unloadedModulesOf } from 'src/ts/process/moduleRefList';
+    import { ensurePlaygroundModulesOrAlert } from 'src/ts/process/moduleEnsure';
     let input = $state("");
     let output = $state("");
+    let moduleWait: Promise<boolean> | null = null;
+    let moduleWaitFailed = false;
     const onInput = async () => {
         try {
             await sleep(1)
+            // A failed wait suppresses parsing only while a referenced stub is unloaded; hasModuleStubs() also counts unreferenced rows.
+            if(moduleWaitFailed){
+                if(unloadedModulesOf().length > 0){
+                    output = ''
+                    return
+                }
+                moduleWaitFailed = false
+            }
+            if(hasModuleStubs()){
+                if(!moduleWait){
+                    const wait = ensurePlaygroundModulesOrAlert()
+                    moduleWait = wait.finally(() => { moduleWait = null })
+                }
+                if(!(await moduleWait)){
+                    moduleWaitFailed = true
+                    output = ''
+                    return
+                }
+            }
             output = risuChatParser(input, {
                 consistantChar: true,
             })
