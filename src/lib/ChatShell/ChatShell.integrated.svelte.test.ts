@@ -88,7 +88,7 @@ vi.mock('./ShellFloatingButtons.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../lang', () => ({ language: {
     chatShellMessages: 'Messages', chatShellMoreActions: 'More actions', chatShellBranch: 'Branch from here', chatShellNewReply: 'New reply',
     chatShellPreviousReply: 'Previous reply', chatShellNextReply: 'Next reply', chatShellFirstReply: 'First reply', chatShellLastReply: 'Last reply',
-    chatShellReply: 'Reply', chatShellOf: 'of', bookmark: 'Bookmark', remove: 'Delete', cancel: 'Cancel',
+    chatShellReplyOf: (index: number, total: number) => `Reply ${index} of ${total}`, chatShellFirstMessageOf: (index: number, total: number) => `First message ${index} of ${total}`, bookmark: 'Bookmark', remove: 'Delete', cancel: 'Cancel',
     chatShellReplyInProgress: 'Writing the reply', chatShellStopAndDelete: 'Stop and delete',
 } }))
 

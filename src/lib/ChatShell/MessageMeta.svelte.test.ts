@@ -20,7 +20,7 @@ describe('message meta actions', () => {
         const edit = target.querySelector<HTMLButtonElement>('[data-action="edit"]')!
         expect(edit.getAttribute('aria-label')).toBe('Edit')
         edit.click()
-        expect(onaction).toHaveBeenCalledWith('edit')
+        expect(onaction).toHaveBeenCalledWith('edit', false)
         const more = target.querySelector<HTMLButtonElement>('[aria-label="More actions"]')!
         more.click()
         expect(onmore).toHaveBeenCalledWith(more)
@@ -41,4 +41,25 @@ describe('message meta actions', () => {
         expect(generating.title).toBe('Stop and delete')
         expect(target.querySelector<HTMLButtonElement>('[data-action="edit"]')!.getAttribute('aria-label')).toBe('Edit')
     })
-})
+    test('a Shift click on Delete reports the modifier and a plain click does not', () => {
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        const onaction = vi.fn()
+        app = mount(MessageMeta, { target, props: { name: 'Ari', available: ['edit', 'delete'], onaction, onmore: vi.fn() } })
+        flushSync()
+        const remove = target.querySelector<HTMLButtonElement>('[data-action="delete"]')!
+        remove.click()
+        remove.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }))
+        expect(onaction).toHaveBeenNthCalledWith(1, 'delete', false)
+        expect(onaction).toHaveBeenNthCalledWith(2, 'delete', true)
+    })
+    test('every pinned action has its own glyph, not a shared bullet', () => {
+        localStorage.setItem('risuChatShell.actionSlots', JSON.stringify({ order: ['copy', 'bookmark', 'branch', 'hideAI', 'readAloud'], pinned: ['copy', 'bookmark', 'branch', 'hideAI', 'readAloud'] }))
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        app = mount(MessageMeta, { target, props: { name: 'Ari', available: ['copy', 'bookmark', 'branch', 'hideAI', 'readAloud', 'delete'], onaction: vi.fn(), onmore: vi.fn() } })
+        flushSync()
+        const glyphs = [...target.querySelectorAll<HTMLButtonElement>('[data-action]')].map((button) => button.textContent)
+        expect(glyphs).not.toContain('•')
+        expect(new Set(glyphs).size).toBe(glyphs.length)
+    })})

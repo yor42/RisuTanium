@@ -141,7 +141,7 @@ describe('modal semantics while overlaid', () => {
         expect(panel().getAttribute('role')).toBe('dialog')
         expect(panel().hasAttribute('aria-modal')).toBe(false)
         expect(container.querySelector('[data-rail-root]')?.hasAttribute('inert')).toBe(false)
-        expect(panel().getAttribute('aria-label')).toBe(language.menu)
+        expect(panel().getAttribute('aria-label')).toBe(language.chatShellSidebar)
         expect(chat.hasAttribute('inert')).toBe(true)
         expect(container.hasAttribute('inert')).toBe(false)
         expect(document.activeElement).toBe(panel())

@@ -380,7 +380,7 @@
   data-panel-surface
   bind:this={panelEl}
   role={followModal ? 'dialog' : undefined}
-  aria-label={followModal ? language.menu : undefined}
+  aria-label={followModal ? language.chatShellSidebar : undefined}
   tabindex={followModal ? -1 : undefined}
   style={panelStyle}
   class="setting-area h-full flex-col overflow-y-auto overflow-x-hidden bg-darkbg py-6 text-textcolor max-h-full"

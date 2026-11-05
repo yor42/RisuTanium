@@ -70,7 +70,7 @@ vi.mock('./StreamingView.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../lang', () => ({ language: {
     chatShellMoreActions: 'More actions', chatShellPreviousReply: 'Previous reply', chatShellNextReply: 'Next reply',
     chatShellFirstReply: 'First reply', chatShellLastReply: 'Last reply', chatShellNewReply: 'New reply',
-    chatShellReply: 'Reply', chatShellOf: 'of', chatShellFirstMessage: 'First message', noMessage: 'No message',
+    chatShellReplyOf: (index: number, total: number) => `Reply ${index} of ${total}`, chatShellFirstMessageOf: (index: number, total: number) => `First message ${index} of ${total}`, noMessage: 'No message',
 } }))
 
 import ShellMessageList from './ShellMessageList.svelte'
@@ -104,11 +104,11 @@ function fmIndex(): number { return DBState.db.characters[0].chats[0].fmIndex ??
 describe('first message alternatives', () => {
     test('the row shows the counter n / N from the stored greeting index', async () => {
         await show()
-        expect(counter()).toBe('First message 1 / 3')
+        expect(counter()).toBe('First message 1 of 3')
         DBState.db.characters[0].chats[0].fmIndex = 1
         flushSync()
         expect(firstMessageIndexOf(DBState.db.characters[0] as never, DBState.db.characters[0].chats[0])).toBe(1)
-        expect(counter()).toBe('First message 3 / 3')
+        expect(counter()).toBe('First message 3 of 3')
     })
 
     test('the next arrow steps fmIndex through the greetings, never touches the reply tree and never generates', async () => {
@@ -116,11 +116,11 @@ describe('first message alternatives', () => {
         button('Next reply').click()
         flushSync()
         expect(fmIndex()).toBe(0)
-        expect(counter()).toBe('First message 2 / 3')
+        expect(counter()).toBe('First message 2 of 3')
         button('Next reply').click()
         flushSync()
         expect(fmIndex()).toBe(1)
-        expect(counter()).toBe('First message 3 / 3')
+        expect(counter()).toBe('First message 3 of 3')
         expect(stepSibling).not.toHaveBeenCalled()
         expect(regenerateNewest).not.toHaveBeenCalled()
     })
@@ -134,7 +134,7 @@ describe('first message alternatives', () => {
         button('Previous reply').click()
         flushSync()
         expect(fmIndex()).toBe(-1)
-        expect(counter()).toBe('First message 1 / 3')
+        expect(counter()).toBe('First message 1 of 3')
         expect(stepSibling).not.toHaveBeenCalled()
     })
 

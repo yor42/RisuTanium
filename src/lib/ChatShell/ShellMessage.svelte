@@ -31,15 +31,15 @@
     import { createMessageEditorController } from '../../ts/process/messageEditorController.svelte'
     import { handleButtonTriggerWithin, handleFormTriggerWithin, playMessageTTS, requestRemove, deleteNow, type DeleteMode, copyMessageText, copyMessageAsCard, branchMessage, toggleMessageDisabled, toggleBookmark } from '../../ts/process/messageActions.svelte'
     import { stopTTS } from '../../ts/process/tts'
-    import { stepSibling } from '../../ts/process/composerActions.svelte'
+    import { stepSibling, regenerateNewest } from '../../ts/process/composerActions.svelte'
     import { originOf, isWriting } from '../../ts/process/chatOrigin'
     import { doingChat } from '../../ts/process/index.svelte'
     import { get } from 'svelte/store'
     import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopDelete.svelte'
     import type { CopyOutcome } from '../../ts/chatCopy'
     import { CARD_DEADLINE_MS, CARD_PENDING_MARGIN_MS, type CardReport } from '../../ts/chatCard'
-    import { createSwipeGesture, createWheelSteps, type SwipeResult } from '../../ts/chatShell/swipeGesture'
-    import { classifyEdge } from '../../ts/chatShell/edgeZones'
+    import { createSwipeGesture, createWheelSteps, ARM_HOLD_MS, RUBBER_BAND_PX, type SwipeResult } from '../../ts/chatShell/swipeGesture'
+    import { classifyEdge, EDGE_ZONE_DP } from '../../ts/chatShell/edgeZones'
     import { tickHaptic, readHaptics } from '../../ts/chatShell/haptics'
     import { createMessageKeys } from '../../ts/chatShell/messageKeys'
     import { ACTION_IDS, type ActionId } from '../../ts/chatShell/actionSlots'
@@ -64,7 +64,7 @@
     import { language } from '../../lang'
     import { getCharImage } from '../../ts/characters'
     import { getModelInfo } from '../../ts/model/modellist'
-    import { onDestroy, onMount, untrack } from 'svelte'
+    import { onDestroy, onMount, tick, untrack } from 'svelte'
 
     interface Props {
         idx: number
@@ -128,10 +128,18 @@
     let swipeProgress = $state(0)
     let dragX = $state(0)
     let armed = $state(false)
+    let swipeLocked = $state(false)
+    let spring = $state(false)
+    let commitDirection = $state<'back' | 'forward' | null>(null)
+    let commitTimer: ReturnType<typeof setTimeout> | undefined
+    let armTimer: ReturnType<typeof setTimeout> | undefined
+    let lastSampleAt = { time: 0, wall: 0 }
+    let article = $state<HTMLElement | null>(null)
+    let lastGenerate = -Infinity
     const keys = createMessageKeys()
     let destroyed = false
     onMount(() => { queueMicrotask(() => { if (!destroyed) iconMounted = true }) })
-    onDestroy(() => { destroyed = true; clearTimeout(longPressTimer); clearTimeout(statusTimer); unregisterEditorBack(); editor.dispose() })
+    onDestroy(() => { destroyed = true; clearTimeout(longPressTimer); clearTimeout(armTimer); clearTimeout(commitTimer); clearTimeout(statusTimer); unregisterEditorBack(); editor.dispose() })
     $effect(() => {
         let live = true
         avatar = null
@@ -156,6 +164,7 @@
     let canSpeak = $derived(idx > -1 && owner?.type !== 'group' && isTTSVoiceMode(owner?.ttsMode))
     let position = $derived(getTreeView?.()?.at(idx) ?? { index: 1, count: 1 })
     let newestCharacter = $derived(message.role === 'char' && idx >= 0 && idx === (chat?.message?.length ?? 0) - 1)
+    let userLast = $derived(message.role === 'user' && idx >= 0 && idx === (chat?.message?.length ?? 0) - 1)
     let actions = $derived(ACTION_IDS.filter((id) => id !== 'deleteAfter').filter((id) => idx >= 0 || id === 'copy' || id === 'selectText' || id === 'stepPrev' || id === 'stepNext' || id === 'customizeButtons').filter((id) => id !== 'readAloud' || canSpeak).filter((id) => id !== 'translate' || DBState.db.translator !== '').filter((id) => id !== 'newReply' || newestCharacter).filter((id) => !['stepPrev', 'stepNext'].includes(id) || newestCharacter || firstMessage).filter((id) => id !== 'branch' || onBranch !== undefined))
     let sheetActions = $derived<SheetAction[]>([...actions, 'copyCard', ...(idx >= 0 ? ['hideAbove', 'deleteAfter'] as SheetAction[] : []), ...(idx >= 0 && !streaming && DBState.db.translatorType === 'llm' ? ['retranslate', 'editTranslation'] as SheetAction[] : []), ...(idx >= 0 && !streaming && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit) ? ['partialEdit'] as SheetAction[] : [])])
     let unavailable = $derived(ACTION_IDS.filter((id) => streaming && ['edit', 'translate', 'readAloud', 'branch', 'newReply'].includes(id) || stopDeletePending && (id === 'delete' || id === 'deleteAfter') || getBusy?.() === true && ['stepPrev', 'stepNext', 'newReply'].includes(id)))
@@ -228,13 +237,34 @@
         await stepSibling(source, liveIndex(), chatId, direction, { generate: false })
         alternatives?.markPageChange()
     }
-    // The shared counter row steps through the tree; on the first message its two arrows are routed to the greeting steps instead.
-    function browseFirstMessage(event: MouseEvent): void {
-        const button = (event.target as HTMLElement).closest('button')
-        const direction = button?.classList.contains('button-icon-unreroll') ? 'stepPrev' : button?.classList.contains('button-icon-reroll') ? 'stepNext' : null
-        if (!direction) return
-        event.stopPropagation()
-        void act(direction)
+    // The reply list is rendered newest first, so the message above a row is the later element.
+    function messageRows(): HTMLElement[] {
+        const list = article?.closest('[data-part="chat-message-list"]')
+        return list ? [...list.querySelectorAll<HTMLElement>('article[data-part="chat-message"]')] : []
+    }
+    function moveFocus(action: 'focusPrev' | 'focusNext' | 'focusFirst' | 'focusLast'): void {
+        const rows = messageRows()
+        const at = article ? rows.indexOf(article) : -1
+        if (at < 0) return
+        const target = action === 'focusPrev' ? rows[at + 1] : action === 'focusNext' ? rows[at - 1] : action === 'focusFirst' ? rows[rows.length - 1] : rows[0]
+        target?.focus()
+    }
+    // After a delete the focus stays in the transcript: on the message that follows, or the one before when this was the newest or a range.
+    async function removeAndRefocus(mode: DeleteMode): Promise<void> {
+        const rows = messageRows()
+        const at = article ? rows.indexOf(article) : -1
+        const neighbour = at < 0 ? null : mode === 'one' ? rows[at - 1] ?? rows[at + 1] ?? null : rows[at + 1] ?? null
+        const mine = article
+        await removeMessage(mode)
+        await tick()
+        const active = document.activeElement
+        if (mine && !mine.isConnected && neighbour?.isConnected && (!active || active === document.body || !document.contains(active))) neighbour.focus()
+    }
+    function generateAfterUser(): void {
+        const now = performance.now()
+        if (getBusy?.() === true || now - lastGenerate < 500) return
+        lastGenerate = now
+        void regenerateNewest(source)
     }
     async function act(id: SheetAction): Promise<void> {
         if ((unavailable as readonly SheetAction[]).includes(id)) return
@@ -261,8 +291,8 @@
             case 'bookmark': await toggleBookmark(liveIndex(), name); break
             case 'hideAI': await toggleMessageDisabled(liveIndex, 'one'); break
             case 'hideAbove': await toggleMessageDisabled(liveIndex, 'above'); break
-            case 'delete': await removeMessage('one'); break
-            case 'deleteAfter': await removeMessage('from'); break
+            case 'delete': await removeAndRefocus('one'); break
+            case 'deleteAfter': await removeAndRefocus('from'); break
             case 'stepPrev': await browse('back'); break
             case 'stepNext': await browse('forward'); break
             case 'newReply': alternatives?.requestNewReply(); break
@@ -275,58 +305,107 @@
         close: () => { if (editor.editTranslationMode) editor.closeTranslationKeep(); else void editor.requestDiscardOriginalEdit() },
     }))
     const HOST_INSET_PROBE_PX = 64
+    // The host reports one inset and the edge zones apply it on both sides, so it is read near either edge.
     function readHostInset(xPx: number): number {
-        if (xPx > HOST_INSET_PROBE_PX) return 0
+        const reach = HOST_INSET_PROBE_PX + EDGE_ZONE_DP
+        if (xPx > reach && xPx < window.innerWidth - reach) return 0
         try {
             const value: unknown = gestureInsetLeft()
             return typeof value === 'number' && Number.isFinite(value) ? Math.min(Math.max(value, 0), HOST_INSET_PROBE_PX) : 0
         } catch { return 0 }
     }
+    // A wide table or code block scrolls sideways by itself: a drag that starts inside one belongs to it, not to the swipe.
+    function startsInHorizontalScroller(target: HTMLElement): boolean {
+        const body = target.closest<HTMLElement>('[data-part="chat-message-body"]')
+        for (let node: HTMLElement | null = target; node && node !== body; node = node.parentElement) {
+            if (node.scrollWidth > node.clientWidth) return true
+        }
+        return false
+    }
     function sample(event: PointerEvent) { return { x: event.clientX, y: event.clientY, time: event.timeStamp } }
     function onPointerDown(event: PointerEvent): void {
         if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return
-        if ((event.target as HTMLElement).closest('button, a, input, textarea, [contenteditable]')) return
+        const target = event.target as HTMLElement
+        if (target.closest('button, a, input, textarea, [contenteditable]')) return
         pointerType = event.pointerType
         pointerStart = { x: event.clientX, y: event.clientY }
-        const horizontalChild = (event.target as HTMLElement).closest('[data-part="chat-message-body"]')?.querySelector<HTMLElement>('*')
+        spring = false
         const edge = classifyEdge({ xPx: event.clientX, viewportWidthPx: window.innerWidth, dpPerPx: 1, hostInsetDp: readHostInset(event.clientX), rtl: document.dir === 'rtl' }) === 'edge'
-        swipe = createSwipeGesture({ widthPx: bodyRoot?.clientWidth ?? 320, dpPerPx: 1, index: position.index - 1, count: position.count, edge: edge || !!horizontalChild && horizontalChild.scrollWidth > horizontalChild.clientWidth, streaming, firstMessage, enabled: DBState.db.swipe, pointerType: event.pointerType })
+        swipe = createSwipeGesture({ widthPx: bodyRoot?.clientWidth ?? 320, dpPerPx: 1, index: position.index - 1, count: position.count, edge: edge || startsInHorizontalScroller(target), streaming, firstMessage, canGenerate: newestCharacter, enabled: DBState.db.swipe, pointerType: event.pointerType })
         swipe.down(sample(event))
         clearTimeout(longPressTimer)
         const opener = event.currentTarget as HTMLElement
         longPressTimer = setTimeout(() => { if (swipe) { swipe.cancel(); longPressRing = false; openActions(opener, pointerStart) } }, 500)
         setTimeout(() => { if (longPressTimer) longPressRing = true }, 200)
     }
+    // The body follows the finger one to one where a reply exists, pulls with resistance toward a new reply, and stops at a rubber band where nothing can happen.
+    function dragFor(delta: number): number {
+        const distance = Math.abs(delta)
+        const hasTarget = delta > 0 ? position.index > 1 : position.index < position.count
+        const pulls = delta < 0 && position.index >= position.count && newestCharacter && !firstMessage
+        if (streaming || !(hasTarget || pulls)) return Math.sign(delta) * RUBBER_BAND_PX * (1 - Math.exp(-distance / (RUBBER_BAND_PX * 4)))
+        const easy = (bodyRoot?.clientWidth ?? 320) * 0.4
+        return Math.sign(delta) * (Math.min(distance, easy) + Math.max(0, distance - easy) * 0.35)
+    }
     function onPointerMove(event: PointerEvent): void {
         if (!swipe) return
+        spring = false
         if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 10) { clearTimeout(longPressTimer); longPressTimer = undefined; longPressRing = false }
-        const result = swipe.move(sample(event))
+        const stamp = sample(event)
+        lastSampleAt = { time: stamp.time, wall: performance.now() }
+        const result = swipe.move(stamp)
         swipeProgress = result.progress
+        swipeLocked = result.locked
         armed = result.event === 'arm' || armed && result.progress >= 1
-        if (result.locked) {
-            const delta = event.clientX - pointerStart.x
-            const width = bodyRoot?.clientWidth ?? 320
-            const easy = width * 0.4
-            dragX = Math.sign(delta) * (Math.min(Math.abs(delta), easy) + Math.max(0, Math.abs(delta) - easy) * 0.35)
-        }
+        if (result.locked) dragX = dragFor(event.clientX - pointerStart.x)
         if (result.event === 'arm') tickHaptic('arm', pointerType, readHaptics())
+        // A finger that holds still sends no more events, so the arm is re-evaluated when the hold time has passed.
+        clearTimeout(armTimer)
+        armTimer = setTimeout(onArmTimer, ARM_HOLD_MS)
+    }
+    function onArmTimer(): void {
+        armTimer = undefined
+        if (!swipe) return
+        const result = swipe.tick(lastSampleAt.time + (performance.now() - lastSampleAt.wall))
+        swipeProgress = result.progress
+        if (result.event === 'arm') {
+            armed = true
+            tickHaptic('arm', pointerType, readHaptics())
+        }
+    }
+    // The new content slides in from the side the swipe came from; a release that commits nothing springs back.
+    function commitSlide(direction: 'back' | 'forward'): void {
+        clearTimeout(commitTimer)
+        commitDirection = direction
+        commitTimer = setTimeout(() => { commitDirection = null }, 1000)
     }
     function finishSwipe(result: SwipeResult): void {
-        clearTimeout(longPressTimer); longPressTimer = undefined; longPressRing = false; swipe = null; swipeProgress = 0; dragX = 0; armed = false
-        if (result.event === 'stepPrev' || result.event === 'stepNext') { tickHaptic('commit', pointerType, readHaptics()); void act(result.event === 'stepPrev' ? 'stepPrev' : 'stepNext') }
-        if (result.event === 'generate') alternatives?.requestNewReply()
+        clearTimeout(longPressTimer); longPressTimer = undefined; longPressRing = false
+        clearTimeout(armTimer); armTimer = undefined
+        swipe = null; swipeProgress = 0; dragX = 0; armed = false; swipeLocked = false
+        if (result.event === 'stepPrev' || result.event === 'stepNext') {
+            commitSlide(result.event === 'stepPrev' ? 'back' : 'forward')
+            tickHaptic('commit', pointerType, readHaptics())
+            void act(result.event === 'stepPrev' ? 'stepPrev' : 'stepNext')
+        } else if (result.event === 'generate') {
+            commitSlide('forward')
+            alternatives?.requestNewReply()
+        } else spring = true
     }
     function onWheel(event: WheelEvent): void {
         const result = wheel({ dx: event.deltaX, dy: event.deltaY, time: event.timeStamp, shiftKey: event.shiftKey })
         if (result === 'stepPrev' || result === 'stepNext') { event.preventDefault(); void act(result === 'stepPrev' ? 'stepPrev' : 'stepNext') }
     }
     function onMessageKey(event: KeyboardEvent): void {
-        if (event.target !== event.currentTarget && !(event.ctrlKey && event.altKey && event.key.toLowerCase() === 'r')) return
+        const reroll = event.ctrlKey && event.altKey && event.key.toLowerCase() === 'r'
+        if (event.target !== event.currentTarget && !reroll) return
         const action = keys.handle(event, { focus: 'message', index: position.index - 1, count: position.count, newestCharacter, firstMessage, now: performance.now() })
+        // The newest reply owns Ctrl+Alt+R, whether or not the press acts, so the global hotkey does not click a second control.
+        if (reroll && (newestCharacter || firstMessage)) { event.preventDefault(); event.stopPropagation() }
         if (action === 'openActions') { event.preventDefault(); openActions(event.currentTarget as HTMLElement) }
+        else if (action === 'focusPrev' || action === 'focusNext' || action === 'focusFirst' || action === 'focusLast') { event.preventDefault(); moveFocus(action) }
         else if (ACTION_IDS.some((id) => id === action)) { event.preventDefault(); void act(action as ActionId) }
-    }
-    $effect.pre(() => {
+    }    $effect.pre(() => {
         if (surfaceEpoch !== null && chatSurface.hidden) return
         if (streaming) return
         void guiRevision
@@ -396,9 +475,9 @@
     }
 </script>
 
-<!-- The article keeps the transcript semantics and is the focus target of roving message focus (tabindex -1), so its key and context-menu events and the captured clicks and submits of rich message content must reach it; the swipe gesture listens on the body. -->
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta="shown" data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="-1" onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
+<!-- The article keeps the transcript semantics and is a tab stop and the focus target of message navigation, so its key and context-menu events and the captured clicks and submits of rich message content must reach it; the swipe gesture listens on the body. -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
+<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta="shown" data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="0" bind:this={article} onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
     {#if disabled === true}<div data-part="chat-message-divider" data-kind="disabled"></div>{/if}
     <div data-part="chat-message-name-row">
         <div data-part="chat-message-meta">
@@ -408,7 +487,7 @@
             {/if}
             <span data-part="chat-message-name" id={labelId}>{name}</span>
             {#if isBookmarked}<span data-part="chat-message-badges" aria-label={language.bookmark}>★</span>{/if}
-            <MessageMeta bind:this={meta} {name} time={message.time} model={modelShortName} available={actions} disabled={unavailable} generating={streaming} onaction={(id) => { void act(id) }} onmore={openActions} />
+            <MessageMeta bind:this={meta} {name} time={message.time} model={modelShortName} available={actions} disabled={unavailable} generating={streaming} onaction={(id, shiftKey) => { void act(id === 'delete' && shiftKey ? 'deleteAfter' : id) }} onmore={openActions} />
         </div>
     </div>
     {#if (messageGenerationInfo ?? message.generationInfo) && (DBState.db.requestInfoInsideChat || aiLawApplies())}
@@ -426,7 +505,7 @@
     <TranslationEditor {editor} />
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div data-part="chat-message-body" class="text chat-width chattext prose minw-0" class:prose-invert={$ColorSchemeTypeStore} style:font-size={`${0.875 * ((DBState.db.zoomsize ?? 100) / 100)}rem`} style:line-height={`${(DBState.db.lineHeight ?? 1.25) * ((DBState.db.zoomsize ?? 100) / 100)}rem`} bind:this={bodyRoot} style:transform={`translateX(${dragX}px)`} onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={(event) => { if (swipe) finishSwipe(swipe.up(sample(event))) }} onpointercancel={() => { if (swipe) finishSwipe(swipe.cancel()) }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
+    <div data-part="chat-message-body" class="text chat-width chattext prose minw-0" class:prose-invert={$ColorSchemeTypeStore} style:font-size={`${0.875 * ((DBState.db.zoomsize ?? 100) / 100)}rem`} style:line-height={`${(DBState.db.lineHeight ?? 1.25) * ((DBState.db.zoomsize ?? 100) / 100)}rem`} bind:this={bodyRoot} style:transform={`translateX(${dragX}px)`} style:touch-action="pan-y" data-spring={spring ? '' : undefined} data-commit={commitDirection ?? undefined} onanimationend={() => { commitDirection = null }} ontransitionend={() => { spring = false }} onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={(event) => { if (swipe) finishSwipe(swipe.up(sample(event))) }} onpointercancel={() => { if (swipe) finishSwipe(swipe.cancel()) }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
         {#if editor.editMode || editor.editTranslationMode}<!-- the editors replace the body while open -->
         {:else if message.isComment}
             {#if msgDisplay.startsWith('{{specialcomment') && msgDisplay.split('::')[1] === 'branchedfrom'}
@@ -445,13 +524,11 @@
         {/if}
     </div>
     {#if longPressRing}<span data-part="chat-long-press-ring" aria-hidden="true">◌</span>{/if}
-    {#if swipeProgress > 0}<span data-part="chat-swipe-arm" role="status" style:opacity={swipeProgress}>{armed ? language.chatShellReleaseNewReply : language.chatShellNoSavedReplies}</span>{/if}
+    {#if swipeLocked && streaming}<span data-part="chat-swipe-arm" role="status">{language.chatShellStillWriting}</span>
+    {:else if swipeProgress > 0}<span data-part="chat-swipe-arm" role="status" style:opacity={swipeProgress}>{armed ? language.chatShellReleaseNewReply : language.chatShellNoSavedReplies}</span>{/if}
+    {#if userLast && !streaming}<button type="button" data-part="chat-generate-reply" disabled={getBusy?.() === true} onclick={generateAfterUser}>⟳ {language.chatShellGenerateReply}</button>{/if}
     {#if (newestCharacter || firstMessage) && (position.count > 1 || newestCharacter)}
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div data-part="chat-alternatives-host" onclickcapture={firstMessage ? browseFirstMessage : undefined}>
-            <AlternativesRow bind:this={alternatives} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} busy={getBusy?.() ?? false} />
-        </div>
+        <AlternativesRow bind:this={alternatives} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} busy={getBusy?.() ?? false} onStep={firstMessage ? (direction) => { void browse(direction) } : undefined} />
     {/if}
     {#if statusMessage}<span data-part="chat-message-status" role="status" aria-live="polite">{statusMessage}</span>{/if}
     {#if idx >= 0 && !streaming && !editor.editMode && !editor.editTranslationMode && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit)}
@@ -471,9 +548,23 @@
     [data-part="chat-message-avatar"] { display: inline-flex; align-items: center; justify-content: center; width: var(--size-avatar-sm); height: var(--size-avatar-sm); border-radius: var(--radius-circle); background: var(--nexus-surface-raised); }
     [data-part="chat-message-avatar"]:not([data-round]) { border-radius: var(--radius-4); }
     [data-part="chat-message-body"] { max-width: var(--thread-max-width); width: 100%; overflow-wrap: anywhere; }
-    [data-part="chat-message"].user { border-left: var(--stroke-bold) solid var(--nexus-surface-raised); }
+    [data-part="chat-message"].user { border-left: var(--stroke-bold) solid var(--nexus-edge-strong); }
+    [data-part="chat-message-body"][data-spring] { transition: transform var(--chat-dur-slow) var(--chat-ease-spring); }
+    [data-part="chat-message-body"][data-commit="forward"] { animation: commit-in-forward var(--chat-dur-base) var(--chat-ease-out) both; }
+    [data-part="chat-message-body"][data-commit="back"] { animation: commit-in-back var(--chat-dur-base) var(--chat-ease-out) both; }
+    [data-part="chat-swipe-arm"], [data-part="chat-generate-reply"] { color: var(--nexus-text-secondary); font-size: var(--font-size-xs); }
+    @keyframes commit-in-forward { from { transform: translateX(var(--swipe-nudge)); opacity: var(--opacity-half); } }
+    @keyframes commit-in-back { from { transform: translateX(calc(-1 * var(--swipe-nudge))); opacity: var(--opacity-half); } }
+    @keyframes commit-fade { from { opacity: var(--opacity-half); } }
+    @media (prefers-reduced-motion: reduce) {
+        [data-part="chat-message-body"][data-spring] { transition: none; }
+        [data-part="chat-message-body"][data-commit] { animation: commit-fade var(--chat-dur-fast) var(--chat-ease-out) both; }
+    }
+    :global(html.rm) [data-part="chat-message-body"][data-spring] { transition: none; }
+    :global(html.rm) [data-part="chat-message-body"][data-commit] { animation: commit-fade var(--chat-dur-fast) var(--chat-ease-out) both; }
+    :global(html[data-low-power]) [data-part="chat-message-body"][data-spring] { transition-duration: var(--dur-lowpower-cap); }
+    :global(html[data-low-power]) [data-part="chat-message-body"][data-commit] { animation-duration: var(--dur-lowpower-cap); }
     [data-part="chat-message-interrupted"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
-    [data-part="chat-alternatives-host"] { display: contents; }
     [data-part="chat-message-status"] { color: var(--nexus-text-secondary); font-size: var(--font-size-xs); }
     [data-part="chat-message-delete-pending"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
     [data-part="chat-message-render-failed"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }

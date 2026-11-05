@@ -70,7 +70,7 @@ vi.mock('../../lang', () => ({ language: {
     chatShellDeleteRangeConfirm: (count: number, excerpt: string) => `range:${count}:${excerpt}`,
     chatShellDeleteRangeButton: (count: number) => `Delete ${count}`,
     chatShellStopDeleteConfirm: (count: number) => `stop:${count}`,
-    chatShellReply: 'Reply', chatShellOf: 'of', chatShellPreviousReply: 'Previous', chatShellNextReply: 'Next', chatShellNewReply: 'New reply',
+    chatShellReplyOf: (index: number, total: number) => `Reply ${index} of ${total}`, chatShellFirstMessageOf: (index: number, total: number) => `First message ${index} of ${total}`, chatShellPreviousReply: 'Previous', chatShellNextReply: 'Next', chatShellNewReply: 'New reply',
 } }))
 
 import ShellMessage, { type ActionRequest } from './ShellMessage.svelte'

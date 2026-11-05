@@ -7,12 +7,13 @@ export const ARM_DISTANCE_DP = 160
 export const ARM_HOLD_MS = 300
 export const ARM_STILL_PX_MS = 0.15
 export const WHEEL_DISTANCE_PX = 40
+export const RUBBER_BAND_PX = 24
 export const WHEEL_GAP_MS = 160
 export const WHEEL_LOCK_MS = 450
 
 export type SwipeEvent = 'none' | 'stepPrev' | 'stepNext' | 'arm' | 'generate'
 export interface PointerSample { x: number; y: number; time: number }
-export interface SwipeOptions { widthPx: number; dpPerPx: number; index: number; count: number; edge?: boolean; streaming?: boolean; firstMessage?: boolean; enabled?: boolean; pointerType?: 'touch' | 'pen' | 'mouse' }
+export interface SwipeOptions { widthPx: number; dpPerPx: number; index: number; count: number; edge?: boolean; streaming?: boolean; firstMessage?: boolean; canGenerate?: boolean; enabled?: boolean; pointerType?: 'touch' | 'pen' | 'mouse' }
 export interface SwipeResult { event: SwipeEvent; progress: number; locked: boolean }
 
 export function createSwipeGesture(options: SwipeOptions) {
@@ -37,6 +38,11 @@ export function createSwipeGesture(options: SwipeOptions) {
         lastVelocity = 0
     }
 
+    // A pull past the last alternative can only generate on a row that owns the newest reply.
+    function reachesEnd(dx: number): boolean {
+        return dx < 0 && options.index >= options.count - 1 && !options.firstMessage && !options.streaming && options.canGenerate !== false
+    }
+
     function down(sample: PointerSample): SwipeResult {
         clear()
         if (usable) start = previous = sample
@@ -55,8 +61,7 @@ export function createSwipeGesture(options: SwipeOptions) {
             axis = Math.abs(dx) > SWIPE_SLOP_PX && Math.abs(dx) > SWIPE_AXIS_RATIO * Math.abs(dy) ? 'horizontal' : 'vertical'
         }
         if (axis !== 'horizontal') return result()
-        const pastLast = dx < 0 && options.index >= options.count - 1 && !options.firstMessage && !options.streaming
-        if (!pastLast) {
+        if (!reachesEnd(dx)) {
             armed = false
             holdStart = null
             progress = 0
@@ -80,6 +85,20 @@ export function createSwipeGesture(options: SwipeOptions) {
         return result()
     }
 
+    // A finger that stays still sends no pointer events, so the host calls this from a timer: stillness is measured from the last sample.
+    function tick(now: number): SwipeResult {
+        if (!start || !previous || axis !== 'horizontal' || armed) return result()
+        const dx = previous.x - start.x
+        if (!reachesEnd(dx) || -dx * scale < ARM_DISTANCE_DP) return result()
+        if (holdStart === null) holdStart = previous.time
+        progress = 0.7 + 0.3 * Math.min(1, Math.max(0, now - holdStart) / ARM_HOLD_MS)
+        if (now - holdStart >= ARM_HOLD_MS) {
+            armed = true
+            progress = 1
+            return result('arm')
+        }
+        return result()
+    }
     function up(sample: PointerSample): SwipeResult {
         if (!start || axis !== 'horizontal') { clear(); return result() }
         const dx = sample.x - start.x
@@ -97,7 +116,7 @@ export function createSwipeGesture(options: SwipeOptions) {
     }
 
     function cancel(): SwipeResult { clear(); return result() }
-    return { down, move, up, cancel }
+    return { down, move, tick, up, cancel }
 }
 
 export interface WheelSample { dx: number; dy: number; time: number; shiftKey?: boolean }

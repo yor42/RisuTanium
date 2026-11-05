@@ -9,7 +9,7 @@
         available: readonly ActionId[]
         disabled?: readonly ActionId[]
         generating?: boolean
-        onaction: (id: ActionId) => void
+        onaction: (id: ActionId, shiftKey: boolean) => void
         onmore: (opener: HTMLElement) => void
     }
     let { name, time, model, available, disabled = [], generating = false, onaction, onmore }: Props = $props()
@@ -32,6 +32,10 @@
         selectText: language.chatShellSelectText, deleteAfter: language.removeThisAndFollowingMessages,
         customizeButtons: language.chatShellCustomizeButtons,
     }
+    const glyphs: Record<string, string> = {
+        copy: '⧉', edit: '✎', translate: '文', readAloud: '♪', delete: '×', branch: '⑂', bookmark: '☆',
+        hideAI: '◐', newReply: '⟳', stepPrev: '‹', stepNext: '›', selectText: 'T', deleteAfter: '⌫', customizeButtons: '⚙',
+    }
     // A generating reply is stopped before it is deleted, so its pinned Delete says so as the action sheet does.
     function labelOf(id: ActionId): string { return id === 'delete' && generating ? language.chatShellStopAndDelete : labels[id] ?? id }
     let pinned = $derived(partition(layout, available, wide ? 6 : 3).pinned)
@@ -43,7 +47,7 @@
     {#if model}<span>{model}</span>{/if}
     <span class="spacer"></span>
     {#each pinned as id (id)}
-        <button type="button" data-action={id} data-part={id === 'readAloud' ? 'chat-message-tts' : undefined} aria-label={labelOf(id)} title={labelOf(id)} disabled={disabled.includes(id)} onclick={() => onaction(id)}>{id === 'edit' ? '✎' : id === 'delete' ? '×' : '•'}</button>
+        <button type="button" data-action={id} data-part={id === 'readAloud' ? 'chat-message-tts' : undefined} aria-label={labelOf(id)} title={labelOf(id)} disabled={disabled.includes(id)} onclick={(event) => onaction(id, event.shiftKey)}>{glyphs[id] ?? '•'}</button>
     {/each}
     <button type="button" aria-label={language.chatShellMoreActions} title={language.chatShellMoreActions} onclick={(event) => onmore(event.currentTarget)}>⋯</button>
 </div>

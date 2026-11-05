@@ -47,7 +47,7 @@ vi.mock('./StreamingView.svelte', () => ({ default: () => ({}) }))
 vi.mock('../ChatScreens/chatSurface.svelte', () => ({ chatSurface: { rebuildEpoch: 0, closeEpoch: 0 }, isChatSurfaceInstalled: () => false }))
 vi.mock('../../ts/characters', () => ({ getCharImage: async () => null }))
 vi.mock('../../ts/model/modellist', () => ({ getModelInfo: () => ({ shortName: 'model' }) }))
-vi.mock('../../lang', () => ({ language: { chatShellMoreActions: 'More actions', chatShellNewReply: 'New reply', bookmark: 'Bookmark' } }))
+vi.mock('../../lang', () => ({ language: { chatShellMoreActions: 'More actions', chatShellNewReply: 'New reply', bookmark: 'Bookmark', chatShellReplyOf: (index: number, total: number) => `Reply ${index} of ${total}`, chatShellFirstMessageOf: (index: number, total: number) => `First message ${index} of ${total}` } }))
 
 import ShellMessage, { type ActionRequest } from './ShellMessage.svelte'
 import ActionSheet from './ActionSheet.svelte'

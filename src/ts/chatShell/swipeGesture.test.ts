@@ -77,6 +77,37 @@ describe('T10 swipe gesture', () => {
         streaming.down(p(200, 0, 0)); streaming.move(p(100, 0, 100))
         expect(streaming.up(p(0, 0, 200)).event).toBe('none')
     })
+    it('arms from the hold timer when the finger stops without another pointer event, and generates on release', () => {
+        const swipe = createSwipeGesture({ ...base, index: 2 })
+        swipe.down(p(300, 0, 0))
+        expect(swipe.move(p(100, 0, 100)).event).toBe('none')
+        expect(swipe.tick(399).event).toBe('none')
+        const armed = swipe.tick(400)
+        expect(armed.event).toBe('arm')
+        expect(armed.progress).toBe(1)
+        expect(swipe.up(p(100, 0, 700)).event).toBe('generate')
+    })
+    it('does not arm from the timer before the distance, after a cancel, or where the pull cannot generate', () => {
+        const short = createSwipeGesture({ ...base, index: 2 })
+        short.down(p(300, 0, 0)); short.move(p(200, 0, 100))
+        expect(short.tick(2000).event).toBe('none')
+        const cancelled = createSwipeGesture({ ...base, index: 2 })
+        cancelled.down(p(300, 0, 0)); cancelled.move(p(100, 0, 100)); cancelled.cancel()
+        expect(cancelled.tick(2000).event).toBe('none')
+        for (const option of [{ canGenerate: false }, { firstMessage: true }, { streaming: true }, { edge: true }]) {
+            const blocked = createSwipeGesture({ ...base, index: 2, ...option })
+            blocked.down(p(300, 0, 0)); blocked.move(p(100, 0, 100))
+            expect(blocked.tick(2000).event).toBe('none')
+            expect(blocked.up(p(100, 0, 2100)).event).toBe('none')
+        }
+    })
+    it('a timer arm followed by a fling release still does not generate', () => {
+        const swipe = createSwipeGesture({ ...base, index: 2 })
+        swipe.down(p(300, 0, 0)); swipe.move(p(100, 0, 100))
+        expect(swipe.tick(500).event).toBe('arm')
+        swipe.move(p(-60, 0, 505))
+        expect(swipe.up(p(-100, 0, 510)).event).toBe('none')
+    })
     it('wheel accumulation steps once per gesture and never generates at N/N', () => {
         const wheel = createWheelSteps(1, 3)
         expect(wheel({ dx: -20, dy: 0, time: 0 })).toBe('none')
