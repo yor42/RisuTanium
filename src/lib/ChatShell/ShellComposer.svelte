@@ -8,7 +8,8 @@
     import * as composerDrafts from '../../ts/process/composerDrafts.svelte'
     import { COMPOSER_DRAFT_KIND, registerDraft, unregisterDraft } from '../../ts/localDrafts'
     import { postChatFile } from '../../ts/process/files/multisend'
-    import type { OriginHint } from '../../ts/process/chatOrigin'
+    import { originOf, type OriginHint } from '../../ts/process/chatOrigin'
+    import { isStopDeletePending } from '../../ts/chatShell/stopDelete.svelte'
     import { language } from '../../lang'
     import Suggestion from '../ChatScreens/Suggestion.svelte'
     import ExtrasStrip from './ExtrasStrip.svelte'
@@ -29,6 +30,8 @@
         const bound = DBState.db.personas?.find((persona) => persona?.id === chat?.bindedPersona)
         return bound?.name ?? DBState.db.personas?.[DBState.db.selectedPersona]?.name ?? DBState.db.username
     })
+    // A send while a stop-and-delete waits would build its prompt from the reply about to be removed.
+    let sendWaitsForDelete = $derived(character?.chaId && chat?.id ? isStopDeletePending(originOf(character, chat)) : false)
     const surface = createComposerSurface({ character: () => character, chat: () => chat })
     let shownDraft = $derived(surface.shownDraft)
     let enterMode: EnterMode = $state(readEnterMode(DBState.db.sendWithEnter))
@@ -151,7 +154,7 @@
         }
         if (enter.shouldSend(event, enterMode)) {
             event.preventDefault()
-            void sendMain(source, false)
+            if (!sendWaitsForDelete) void sendMain(source, false)
         }
     }
 
@@ -184,7 +187,7 @@
         <Suggestion messageInput={(message) => surface.writeDraft((record) => { record.messageInput = (
             (DBState.db.subModel === 'textgen_webui' || DBState.db.subModel === 'mancer' || DBState.db.subModel.startsWith('local_')) && DBState.db.autoSuggestClean
                 ? message.replace(/ +\(.+?\) *$| - [^"'*]*?$/, '') : message
-        ) })} send={() => sendMain(source, false)} />
+        ) })} send={() => sendWaitsForDelete ? undefined : sendMain(source, false)} />
     </ExtrasStrip>
     {#if DBState.db.useAutoTranslateInput && DBState.db.translator}
         <textarea bind:this={translateInput} data-part="chat-composer-translate" data-kind="field" aria-label={language.enterMessageForTranslateToEnglish} placeholder={language.enterMessageForTranslateToEnglish} value={shownDraft.messageInputTranslate} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInputTranslate = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, true) }} onkeydown={keydown} oncompositionstart={() => enter.compositionStart()} oncompositionend={() => enter.compositionEnd()}></textarea>
@@ -196,7 +199,7 @@
         {#if $doingChat || isComposerBusy()}
             <button data-part="chat-composer-stop" data-kind="icon-button" aria-label={language.chatShellStop} onclick={abortChat}><span data-part="chat-composer-progress" data-stage={$chatProcessStage}></span>■</button>
         {:else}
-            <button data-part="chat-send" data-kind="icon-button" aria-label={language.chatShellSend} onclick={() => void sendMain(source, false)}>➤</button>
+            <button data-part="chat-send" data-kind="icon-button" aria-label={language.chatShellSend} disabled={sendWaitsForDelete} title={sendWaitsForDelete ? language.chatShellSendWaitsForDelete : undefined} onclick={() => { if (!sendWaitsForDelete) void sendMain(source, false) }}>➤</button>
         {/if}
     </div>
     <div data-part="chat-composer-tools">

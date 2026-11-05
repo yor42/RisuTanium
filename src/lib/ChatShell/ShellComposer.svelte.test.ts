@@ -21,7 +21,11 @@ const postChatFile = vi.fn(async () => [{ type: 'asset' as const, data: 'asset-i
 vi.mock('../../ts/stores.svelte', () => ({ DBState: state, selIdState: selection, popUpEditorStore: popup }))
 vi.mock('../../ts/process/index.svelte', () => ({ doingChat: busy, chatProcessStage: stage }))
 vi.mock('../../ts/process/composerActions.svelte', () => ({ sendMain, abortChat, isComposerBusy: () => false, isComposerLocked: () => false, reroll: vi.fn(), updateInputTransateMessage: vi.fn() }))
-vi.mock('../../ts/process/chatOrigin', () => ({ beginWork: vi.fn() }))
+const pendingDelete = $state({ chatId: null as string | null })
+vi.mock('../../ts/process/chatOrigin', () => ({ beginWork: vi.fn(), originOf: (owner: { chaId: string }, chat: { id: string }) => ({ chaId: owner.chaId, chatId: chat.id }) }))
+vi.mock('../../ts/chatShell/stopDelete.svelte', () => ({
+    isStopDeletePending: (origin?: { chaId: string, chatId: string } | null) => origin ? origin.chatId === pendingDelete.chatId : pendingDelete.chatId !== null,
+}))
 vi.mock('../../ts/process/files/multisend', () => ({ postChatFile }))
 vi.mock('../../ts/parser/parser.svelte', () => ({ hasher: (value: string) => value, risuChatParser: (value: string) => value, assetRegex: /{{asset:[^}]+}}/g }))
 vi.mock('../../ts/parser/chatML', () => ({ parseChatML: () => [] }))
@@ -29,7 +33,7 @@ vi.mock('../ChatScreens/Suggestion.svelte', () => ({ default: () => ({}) }))
 vi.mock('../ChatScreens/AssetInput.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../lang', () => ({ language: {
     chatShellMessage: 'Message', chatShellMoreActions: 'More actions', chatShellChoosePersona: 'Choose persona',
-    asPersona: (name: string) => `as ${name}`, chatShellStop: 'Stop', chatShellSend: 'Send',
+    asPersona: (name: string) => `as ${name}`, chatShellStop: 'Stop', chatShellSend: 'Send', chatShellSendWaitsForDelete: 'Waiting for the reply to be deleted…',
     chatShellRemoveAttachment: 'Remove attachment', enterKey: 'Enter key',
     chatShellStickers: 'Stickers', chatShellOnThisDevice: 'On this device',
     chatShellEnterAutomatic: 'Automatic', chatShellEnterSend: 'Send', chatShellEnterNewline: 'New line', postFile: 'Post File',
@@ -43,6 +47,7 @@ afterEach(async () => {
     app = null; target = null
     resetLocalDraftsForTest()
     drafts.resetComposerDraftsForTests()
+    pendingDelete.chatId = null
     sendMain.mockClear(); abortChat.mockClear(); postChatFile.mockClear()
     vi.unstubAllGlobals()
 })
@@ -72,6 +77,49 @@ describe('ShellComposer draft and actions', () => {
         if (app) await unmount(app)
         app = null
         expect(hasLocalDrafts()).toBe(false)
+    })
+
+    test('Send is disabled with the reason while a stop-and-delete is pending for this chat, enabled for another chat and after it clears', async () => {
+        const node = await show()
+        const send = () => node.querySelector<HTMLButtonElement>('[data-part="chat-send"]')!
+        expect(send().disabled).toBe(false)
+        pendingDelete.chatId = 'other-chat'
+        flushSync()
+        expect(send().disabled).toBe(false)
+        send().click()
+        expect(sendMain).toHaveBeenCalledTimes(1)
+        sendMain.mockClear()
+        pendingDelete.chatId = 'chat'
+        flushSync()
+        expect(send().disabled).toBe(true)
+        expect(send().title).toBe('Waiting for the reply to be deleted…')
+        send().click()
+        expect(sendMain).not.toHaveBeenCalled()
+        pendingDelete.chatId = null
+        flushSync()
+        expect(send().disabled).toBe(false)
+        expect(send().hasAttribute('title')).toBe(false)
+        send().click()
+        expect(sendMain).toHaveBeenCalledTimes(1)
+    })
+
+    test('Enter does not send while a stop-and-delete is pending for this chat, and sends once it clears', async () => {
+        const node = await show()
+        const input = node.querySelector<HTMLTextAreaElement>('[data-part="chat-composer-input"]')!
+        const mode = node.querySelector<HTMLSelectElement>('[data-part="chat-composer-tools"] select')!
+        mode.value = 'send'
+        mode.dispatchEvent(new Event('change', { bubbles: true }))
+        flushSync()
+        const enterKey = () => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+        pendingDelete.chatId = 'chat'
+        flushSync()
+        enterKey()
+        expect(sendMain).not.toHaveBeenCalled()
+        pendingDelete.chatId = null
+        flushSync()
+        enterKey()
+        expect(sendMain).toHaveBeenCalledTimes(1)
+        localStorage.clear()
     })
 
     test('the Enter key selector says it is a setting of this device', async () => {
