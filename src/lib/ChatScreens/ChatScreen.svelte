@@ -73,7 +73,7 @@
                 {/if}
             {/if}
             {#if shellEligible()}
-                <ChatShell />
+                <ChatShell bind:openChatList bind:openModuleList />
             {:else}
                 <DefaultChatScreen customStyle={bgImg.length > 2 ? `${externalStyles}`: ''} bind:openChatList bind:openModuleList/>
             {/if}

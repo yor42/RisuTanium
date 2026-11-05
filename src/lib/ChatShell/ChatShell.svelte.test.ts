@@ -19,6 +19,7 @@ vi.mock('./ShellHeader.svelte', () => ({ default: () => ({}) }))
 vi.mock('./ShellComposer.svelte', () => ({ default: () => ({}) }))
 vi.mock('./ShellSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('./PersonaSheet.svelte', () => ({ default: () => ({}) }))
+vi.mock('./ShellMessageList.svelte', () => ({ default: () => ({}) }))
 
 describe('ChatShell Stage 2a layout', () => {
     test('mounts header and composer hosts around the empty list placeholder', async () => {

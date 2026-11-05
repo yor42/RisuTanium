@@ -8,6 +8,7 @@
     import type PlusSheetComponent from './PlusSheet.svelte'
     import type ShellNoticesComponent from './ShellNotices.svelte'
     import type ShellFloatingButtonsComponent from './ShellFloatingButtons.svelte'
+    import type ShellMessageListComponent from './ShellMessageList.svelte'
 
     interface Props {
         openChatList?: boolean
@@ -21,12 +22,15 @@
     let PlusSheet: typeof PlusSheetComponent | null = $state(null)
     let ShellNotices: typeof ShellNoticesComponent | null = $state(null)
     let ShellFloatingButtons: typeof ShellFloatingButtonsComponent | null = $state(null)
+    let ShellMessageList: typeof ShellMessageListComponent | null = $state(null)
+    let messageList: ReturnType<typeof ShellMessageListComponent> | undefined = $state()
+    let unread = $state(false)
+    let atBottom = $state(true)
     let surface = $state<{ hidden: boolean; closeEpoch: number } | null>(null)
     let surfaceHidden = $state(false)
     let busy = $state(false)
 
     let character = $derived(DBState.db.characters[selIdState.selId])
-    let chat = $derived(character?.chats?.[character.chatPage])
     let headerHidden = $state(false)
     let hardwareKeyboardSeen = $state(false)
     let personaOpen = $state(false)
@@ -53,8 +57,7 @@
     })
 
     onMount(() => {
-        // The lightweight branch remains mountable while a chat fixture has no message list.
-        if (!chat?.message || character?.type !== 'character') return
+        if (character?.type !== 'character') return
         let live = true
         let unsubscribe = () => {}
         void Promise.all([
@@ -66,7 +69,8 @@
             import('./ShellFloatingButtons.svelte'),
             import('../ChatScreens/chatSurface.svelte'),
             import('../../ts/process/index.svelte'),
-        ]).then(([headerModule, composerModule, personaModule, plusModule, noticesModule, floatingModule, surfaceModule, processModule]) => {
+            import('./ShellMessageList.svelte'),
+        ]).then(([headerModule, composerModule, personaModule, plusModule, noticesModule, floatingModule, surfaceModule, processModule, listModule]) => {
             if (!live) return
             ShellHeader = headerModule.default
             ShellComposer = composerModule.default
@@ -74,6 +78,7 @@
             PlusSheet = plusModule.default
             ShellNotices = noticesModule.default
             ShellFloatingButtons = floatingModule.default
+            ShellMessageList = listModule.default
             surface = surfaceModule.chatSurface
             unsubscribe = processModule.doingChat.subscribe((value) => {
                 busy = value
@@ -85,6 +90,7 @@
     })
 
     function scroll(event: Event): void {
+        messageList?.onScroll?.()
         const target = event.currentTarget as HTMLElement
         const movement = lastScrollTop - target.scrollTop
         lastScrollTop = target.scrollTop
@@ -117,8 +123,9 @@
     </div>
     <main bind:this={list} data-part="chat-list-placeholder" aria-label={language.chatShellMessages} onscroll={scroll}>
         {#if ShellNotices && character?.type === 'character'}<ShellNotices />{/if}
+        {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom />{/if}
     </main>
-    {#if ShellFloatingButtons}<ShellFloatingButtons visible={false} onclick={() => list?.scrollTo({ top: list.scrollHeight, behavior: 'smooth' })} />{/if}
+    {#if ShellFloatingButtons}<ShellFloatingButtons visible={unread && !atBottom} onclick={() => messageList?.scrollToLatestMessage?.()} />{/if}
     <div bind:this={composer} data-part="chat-shell-composer-host">
         {#if ShellComposer}<ShellComposer onplus={openPlus} onpersona={openPersona} bind:stickersOpen onhardwarechange={(seen) => { hardwareKeyboardSeen = seen; if (seen) headerHidden = false }} />{/if}
     </div>

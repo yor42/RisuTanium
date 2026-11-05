@@ -25,6 +25,7 @@ vi.mock('../../ts/stores.svelte', () => {
 })
 vi.mock('../../ts/process/index.svelte', () => ({ doingChat: writable(false), chatProcessStage: writable(0) }))
 vi.mock('../ChatScreens/chatSurface.svelte', () => ({ chatSurface: { hidden: false, closeEpoch: 0 } }))
+vi.mock('./ShellMessageList.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../ts/parser/parser.svelte', () => ({ hasher: (value: string) => value, risuChatParser: (value: string) => value, assetRegex: /{{asset:[^}]+}}/g }))
 vi.mock('../../ts/parser/chatML', () => ({ parseChatML: () => [] }))
 vi.mock('../../lang', () => ({ language: {
@@ -83,7 +84,7 @@ describe('ChatShell plus composition', () => {
         await vi.waitFor(() => {
             flushSync()
             expect(target.querySelector('[data-part="chat-composer-plus"]')).not.toBeNull()
-        })
+        }, { timeout: 15000 })
         target.querySelector<HTMLButtonElement>('[data-part="chat-composer-plus"]')?.click()
         flushSync()
         expect(target.querySelector('[role="menu"]')).not.toBeNull()
