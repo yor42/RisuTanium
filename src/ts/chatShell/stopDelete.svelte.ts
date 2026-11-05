@@ -2,7 +2,7 @@ import { get } from 'svelte/store'
 import { doingChat } from '../process/index.svelte'
 import { abortChat } from '../process/composerActions.svelte'
 import { deleteAtSettle, freezeDeleteIds, type DeleteMode, type FrozenDeleteIds } from '../process/messageActions.svelte'
-import { originOf, type Origin } from '../process/chatOrigin'
+import { isWriting, originOf, type Origin } from '../process/chatOrigin'
 import type { character, groupChat, Chat, Message } from '../storage/database.svelte'
 import { alertNormal } from '../alert'
 import { language } from '../../lang'
@@ -17,6 +17,9 @@ interface PendingStopDelete {
 // At most one request at a time: while it waits, every delete of its chat is disabled, so a
 // second request or an ordinary delete cannot change what the frozen ids describe.
 let pendingStopDelete = $state.raw<PendingStopDelete | null>(null)
+
+/** How often a settle that found the origin's work still registered looks again. */
+const RECHECK_MS = 25
 
 /** True while a stop-and-delete waits for a generation to settle, for one chat when `origin` is given. */
 export function isStopDeletePending(origin?: Origin | null): boolean {
@@ -36,11 +39,14 @@ function resolve(request: PendingStopDelete): void {
 
 /**
  * Stops the running generation, then removes the frozen reply (or range) once it has settled.
- * The delete runs in a microtask queued from the first `doingChat` false: a synchronous
- * subscriber would delete while the stopped send's work is still registered and before its
- * settle mark, whereas the microtask runs after the send's outer `finally` completes.
- * There is no timeout; the wait ends when the generation settles. Returns false when a
- * request is already pending or the target cannot be frozen.
+ * The delete is written only when the origin has no registered work: the target-absent save
+ * mark must come after the stopped send's settle mark, and the composer ends its own work
+ * registration only after the send returns, later than the first `doingChat` false. So the
+ * settle starts from a macrotask queued at that transition and re-checks `isWriting(origin)`,
+ * re-queueing at a short interval while the work stays registered. It never runs inside the
+ * flag subscriber. There is no timeout: the wait ends when the origin's work ends (or a new
+ * generation takes the flag, which the frozen-id check then refuses and announces). Returns
+ * false when a request is already pending or the target cannot be frozen.
  */
 export function requestStopDelete(owner: character | groupChat, chat: Chat, target: Message, mode: DeleteMode): boolean {
     if (pendingStopDelete) return false
@@ -49,7 +55,17 @@ export function requestStopDelete(owner: character | groupChat, chat: Chat, targ
     if (!origin || !ids) return false
     const request: PendingStopDelete = Object.freeze({ origin, ids, mode })
     pendingStopDelete = request
-    const settle = () => queueMicrotask(() => resolve(request))
+    const settle = () => {
+        const check = () => {
+            if (pendingStopDelete !== request) return
+            if (isWriting(request.origin) && !get(doingChat)) {
+                setTimeout(check, RECHECK_MS)
+                return
+            }
+            resolve(request)
+        }
+        setTimeout(check, 0)
+    }
     try {
         abortChat()
     } catch (error) {

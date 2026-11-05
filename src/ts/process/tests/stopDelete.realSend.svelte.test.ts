@@ -525,10 +525,9 @@ describe('guard: stop-and-delete on the real send', () => {
         expect(liveChat().message.map((message) => message.data)).toEqual(['Hi'])
     })
 
-    // Open finding: through the composer's `send` the composer still holds its own work registration for the origin
-    // when the delete runs (its registration ends in `sendMain`'s outer finally, after `sendChat` returned), so the
-    // delete mark is written while `isWriting(origin)` is true. Flip this to a plain test once the delete waits for it.
-    test.fails('reproducer: through the composer send the delete mark is written when the origin has no work registered', async () => {
+    // Through the composer's `send` the composer holds its own work registration for the origin until `sendMain`'s
+    // outer finally, after `sendChat` returned; the delete waits for that registration to end.
+    test('through the composer send the delete mark is written when the origin has no work registered', async () => {
         const running = await startStreamingSend('hello', 'Short')
         watched = { chatId: running.reply.chatId! }
 

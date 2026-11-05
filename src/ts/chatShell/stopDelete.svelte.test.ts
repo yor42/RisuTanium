@@ -61,6 +61,9 @@ function setup() {
     return { owner: live, chat: live.chats[0], origin: { chaId: 'owner-a', chatId: 'chat-a' } }
 }
 
+/** One macrotask: the settle's first check was queued before it, so it has run when this resolves. */
+const macrotask = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
+
 /** The tail of the real send: the flag is released first, then its work ends and the settle mark is written. */
 function settleSend(handle: WorkHandle, chaId: string): void {
     doingChat.set(false)
@@ -91,7 +94,7 @@ afterEach(async () => {
 })
 
 describe('T24 stop and delete', () => {
-    it('deletes in a microtask after the send has fully settled, never inside the flag subscriber', async () => {
+    it('deletes in a macrotask after the send has fully settled, never inside the flag subscriber', async () => {
         const { owner, chat, origin } = setup()
         doingChat.set(true)
         const handle = registerWork(origin)
@@ -112,7 +115,7 @@ describe('T24 stop and delete', () => {
         schedule.mockClear()
         let writingAtDelete: boolean | undefined
         schedule.mockImplementation(() => { writingAtDelete = isWriting(origin); expect(chat.message.includes(target)).toBe(false) })
-        await Promise.resolve()
+        await macrotask()
         expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'c2', 'u3'])
         expect(writingAtDelete).toBe(false)
         expect(tracker.character).toEqual([owner.chaId])
@@ -129,19 +132,37 @@ describe('T24 stop and delete', () => {
         expect(chat.message).toHaveLength(4)
         tracker.character.length = 0
         schedule.mockClear()
-        await Promise.resolve()
+        await macrotask()
         expect(chat.message).toHaveLength(3)
         expect(tracker.character).toEqual([owner.chaId])
         expect(schedule).toHaveBeenCalledTimes(1)
     })
 
-    it('a request made while no send is running aborts, then deletes in a microtask', async () => {
+    it('does not delete while a registered unit for the origin is open, and deletes once it ends', async () => {
+        const { owner, chat, origin } = setup()
+        doingChat.set(true)
+        const handle = registerWork(origin)
+        requestStopDelete(owner, chat, chat.message[3], 'one')
+        doingChat.set(false)
+        await new Promise<void>((resolve) => setTimeout(resolve, 80))
+        expect(isWriting(origin)).toBe(true)
+        expect(chat.message).toHaveLength(4)
+        expect(isStopDeletePending(origin)).toBe(true)
+        expect(alertNormal).not.toHaveBeenCalled()
+
+        handle.end()
+        await vi.waitFor(() => expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'c2', 'u3']))
+        expect(isStopDeletePending(origin)).toBe(false)
+        expect(alertNormal).not.toHaveBeenCalled()
+    })
+
+    it('a request made while no send is running aborts, then deletes in a macrotask', async () => {
         const { owner, chat } = setup()
         expect(requestStopDelete(owner, chat, chat.message[1], 'one')).toBe(true)
         expect(flag.abortChat).toHaveBeenCalledTimes(1)
         expect(chat.message).toHaveLength(4)
         expect(isStopDeletePending()).toBe(true)
-        await Promise.resolve()
+        await macrotask()
         expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'u3', 'c4'])
         expect(isStopDeletePending()).toBe(false)
         expect(flag.subscribers).toBe(0)
@@ -158,7 +179,7 @@ describe('T24 stop and delete', () => {
         settleSend(handle, owner.chaId)
         tracker.character.length = 0
         schedule.mockClear()
-        await Promise.resolve()
+        await macrotask()
         expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'c2', 'u3'])
         expect(other.chats[0].message).toHaveLength(1)
         expect(tracker.character).toEqual([owner.chaId])
@@ -171,7 +192,7 @@ describe('T24 stop and delete', () => {
         const handle = registerWork(origin)
         requestStopDelete(owner, chat, chat.message[2], 'from')
         settleSend(handle, owner.chaId)
-        await Promise.resolve()
+        await macrotask()
         expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'c2'])
     })
 
@@ -182,7 +203,7 @@ describe('T24 stop and delete', () => {
         requestStopDelete(owner, chat, chat.message[2], 'from')
         chat.message.push(message('late'))
         settleSend(handle, owner.chaId)
-        await Promise.resolve()
+        await macrotask()
         expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'c2', 'u3', 'c4', 'late'])
         expect(alertNormal).toHaveBeenCalledWith('changed')
         expect(isStopDeletePending()).toBe(false)
@@ -195,7 +216,7 @@ describe('T24 stop and delete', () => {
         requestStopDelete(owner, chat, chat.message[3], 'one')
         chat.message[3] = message('replacement')
         settleSend(handle, owner.chaId)
-        await Promise.resolve()
+        await macrotask()
         expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'c2', 'u3', 'replacement'])
         expect(alertNormal).toHaveBeenCalledWith('changed')
     })
@@ -206,7 +227,7 @@ describe('T24 stop and delete', () => {
         requestStopDelete(owner, chat, chat.message[3], 'one')
         owner.chats.splice(0, 1)
         doingChat.set(false)
-        await Promise.resolve()
+        await macrotask()
         expect(alertNormal).toHaveBeenCalledWith('changed')
         expect(isStopDeletePending()).toBe(false)
         expect(flag.subscribers).toBe(0)
@@ -233,7 +254,7 @@ describe('T24 stop and delete', () => {
         expect(isStopDeletePending(null)).toBe(false)
         settleSend(handle, owner.chaId)
         expect(isStopDeletePending(origin)).toBe(true)
-        await Promise.resolve()
+        await macrotask()
         expect(isStopDeletePending(origin)).toBe(false)
     })
 
@@ -245,10 +266,10 @@ describe('T24 stop and delete', () => {
         expect(requestStopDelete(owner, chat, chat.message[1], 'one')).toBe(false)
         expect(flag.abortChat).toHaveBeenCalledTimes(1)
         settleSend(handle, owner.chaId)
-        await Promise.resolve()
+        await macrotask()
         expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'c2', 'u3'])
         expect(requestStopDelete(owner, chat, chat.message[1], 'one')).toBe(true)
-        await Promise.resolve()
+        await macrotask()
         expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'u3'])
     })
 
@@ -260,12 +281,12 @@ describe('T24 stop and delete', () => {
         expect(flag.subscribers).toBe(1)
         settleSend(handle, owner.chaId)
         expect(flag.subscribers).toBe(0)
-        await Promise.resolve()
+        await macrotask()
         expect(isStopDeletePending()).toBe(false)
         // A later flag change does not delete again.
         doingChat.set(true)
         doingChat.set(false)
-        await Promise.resolve()
+        await macrotask()
         expect(chat.message).toHaveLength(3)
     })
 })
