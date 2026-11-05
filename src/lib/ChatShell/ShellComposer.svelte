@@ -155,6 +155,8 @@
         if (enter.shouldSend(event, enterMode)) {
             event.preventDefault()
             if (!sendWaitsForDelete) void sendMain(source, false)
+        } else if (enter.isStrayAfterComposition(event)) {
+            event.preventDefault()
         }
     }
 

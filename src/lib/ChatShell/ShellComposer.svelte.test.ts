@@ -122,6 +122,68 @@ describe('ShellComposer draft and actions', () => {
         localStorage.clear()
     })
 
+    describe('Enter right after IME composition end', () => {
+        let clock = 1000
+        async function composed(mode: 'send' | 'newline' | 'auto') {
+            localStorage.clear()
+            vi.spyOn(performance, 'now').mockImplementation(() => clock)
+            const node = await show()
+            const input = node.querySelector<HTMLTextAreaElement>('[data-part="chat-composer-input"]')!
+            const select = node.querySelector<HTMLSelectElement>('[data-part="chat-composer-tools"] select')!
+            select.value = mode
+            select.dispatchEvent(new Event('change', { bubbles: true }))
+            flushSync()
+            clock = 1000
+            input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+            input.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
+            return input
+        }
+        const enter = (input: HTMLTextAreaElement, init: KeyboardEventInit = {}) => {
+            const event = new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true, cancelable: true, ...init })
+            input.dispatchEvent(event)
+            return event
+        }
+        afterEach(() => { vi.restoreAllMocks(); localStorage.clear() })
+
+        for (const mode of ['send', 'newline', 'auto'] as const) {
+            test(`${mode} mode: the real Enter 2 ms after compositionend is consumed and does not send`, async () => {
+                const input = await composed(mode)
+                clock = 1002
+                const event = enter(input)
+                expect(event.defaultPrevented).toBe(true)
+                expect(sendMain).not.toHaveBeenCalled()
+            })
+        }
+
+        test('100 ms later Enter behaves as before: send mode sends, newline mode inserts a newline', async () => {
+            const sendInput = await composed('send')
+            clock = 1100
+            const sent = enter(sendInput)
+            expect(sent.defaultPrevented).toBe(true)
+            expect(sendMain).toHaveBeenCalledTimes(1)
+            if (app) await unmount(app)
+            target?.remove()
+            app = null; target = null
+            sendMain.mockClear()
+            clock = 1000
+            const newlineInput = await composed('newline')
+            clock = 1100
+            const newline = enter(newlineInput)
+            expect(newline.defaultPrevented).toBe(false)
+            expect(sendMain).not.toHaveBeenCalled()
+        })
+
+        test('Shift+Enter inside the window and Enter while composing are left alone', async () => {
+            const input = await composed('send')
+            clock = 1002
+            expect(enter(input, { shiftKey: true }).defaultPrevented).toBe(false)
+            input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+            expect(enter(input).defaultPrevented).toBe(false)
+            expect(enter(input, { isComposing: true, keyCode: 229 }).defaultPrevented).toBe(false)
+            expect(sendMain).not.toHaveBeenCalled()
+        })
+    })
+
     test('the Enter key selector says it is a setting of this device', async () => {
         const node = await show()
         const tools = node.querySelector('[data-part="chat-composer-tools"]')!

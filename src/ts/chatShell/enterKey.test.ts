@@ -42,6 +42,27 @@ describe('T11 Enter detection', () => {
     })
 })
 
+describe('stray Enter after composition end', () => {
+    test('a real Enter inside the 30 ms tail is stray; outside, composing, 229, shift and active composition are not', () => {
+        const controller = createEnterKeyController()
+        controller.compositionStart()
+        expect(controller.isStrayAfterComposition(plainEnter, 100)).toBe(false)
+        controller.compositionEnd(100)
+        expect(controller.isStrayAfterComposition(plainEnter, 102)).toBe(true)
+        expect(controller.isStrayAfterComposition(plainEnter, 129)).toBe(true)
+        expect(controller.isStrayAfterComposition(plainEnter, 130)).toBe(false)
+        expect(controller.isStrayAfterComposition({ ...plainEnter, shiftKey: true }, 102)).toBe(false)
+        expect(controller.isStrayAfterComposition({ ...plainEnter, isComposing: true }, 102)).toBe(false)
+        expect(controller.isStrayAfterComposition({ ...plainEnter, keyCode: 229 }, 102)).toBe(false)
+        expect(controller.isStrayAfterComposition({ ...plainEnter, key: 'a' }, 102)).toBe(false)
+    })
+
+    test('an Enter keydown before any composition is never stray', () => {
+        const controller = createEnterKeyController()
+        expect(controller.isStrayAfterComposition(plainEnter, 0)).toBe(false)
+    })
+})
+
 describe('T4 IME keyCode', () => {
     test('229 never sends even when isComposing is false', () => {
         const controller = createEnterKeyController()
