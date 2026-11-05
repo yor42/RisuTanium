@@ -22037,3 +22037,27 @@ Status: DRAFT, not accepted. Entries MC-1069 to MC-1072, to be appended after th
 
 **Evidence sources.** `git log --graph` at `31523ffa8`; `git diff HEAD...upstream/main --stat` before the port.
 
+---
+
+### MC-1082 — Lane A, 2026-11-05: the new MVP APK (main `a3b5d706e`) built and installed by the maintainer; CI and docker-check results for `dfcc3515c`
+
+- Tag: statements (the maintainer's words, quoted below) and results (the build's `result.json`, the CI runs). Date: 2026-11-05. Sweep ref: none. Exact times: as stated below, otherwise UNKNOWN.
+- Related: `MC-475` (the first MVP baseline), `MC-922` (the 2026-10-31 baseline `7928b5bb1`), `MC-350` (carry-forward: later builds read the saved data in place), `MC-1074` (the update analysis, D2), `MC-1080` (the dependency bump; its CI line is completed below).
+
+**Decided / stated (maintainer, 2026-11-05).**
+- The maintainer built the release-signed APK themselves: "yeah, it requires real android signing and it needs my password, so it is something that I need to do myself." (`sign-release.ps1` refuses agent shells; lane A did not run it and did not read any signing material.)
+- Their report: "apk is built on latest main and is now installed on my device. no data loss." and "apkSha256=4716857a605c614beebe0888e3e67291006de53112313317102b470c29f30cc4 built and installed on 2026-11-05 14:39 KST". The `.bin` export had been made beforehand (their message earlier the same day: "Export done").
+- This is the new MVP baseline. It supersedes `7928b5bb1` (`MC-922`); `MC-475` stays the first baseline.
+
+**Results (lane A, facts).**
+- `build\result.json` (`%TEMP%\risu-mvp-a3b5d706e\build\result.json`, check `sign-release`): commit head `a3b5d706e892b1c71fff614606e586f4187ac355`, branch `main`, `dirty: true`; verdict `pass`, child exit 0; started 13:06:02 and ended 13:13:11 KST (428 s); `apkSha256` `4716857A…9CC4` (upper case), equal to the hash the maintainer typed once case is ignored; `artifactFresh: true`; no device phase ran (`device` fields null, `versionName` null).
+- `verify\apksigner.out`: V2 signer certificate DN CN=Chae ho Yoon, O=RisuTanium; certificate SHA-256 `cd07b257360e9cab7c7f536a9b49412a29a8e5fe3bb1fca7dbd975726d9ccf1f`. Whether this equals the key of the earlier baselines is UNKNOWN (lane A did not compare it with an earlier record; the install succeeded as an update, per the maintainer).
+- Dirty tree at the time (same list as the session's git status): `.claude/launch.json`, `Agents/Handoff-2026-10-23-laneA.md`, `Agents/Workflow-State.json`, `docs/branding/RisuTanium_Gradient.svg`, `src-tauri/Cargo.toml` (eol churn only) and the existing `AndroidManifest.xml` edits, plus untracked files. Only the manifest and Cargo.toml are build inputs among them (INFERRED); whether the build used the manifest edit is UNKNOWN.
+- CI for `dfcc3515c` (read by lane A, 2026-11-05): docker-check run 41959182735 succeeded (job "Build image (no push)"); CI run 41959156880 succeeded (Check/test/build, Hono server type check, Node server smoke test). The logs show pnpm v11.28.10 and "Lockfile is up to date". This completes the open CI line in `MC-1080`.
+
+**Not decided / open.**
+- "No data loss" is the maintainer's statement; no device check or data inspection was run by lane A. Which build was installed before this one stays UNKNOWN in the records (the Live-State said `f12ea30f9`, INFERRED; `MC-1074` analysed `7928b5bb1`).
+- CHORE-412 layout 2 is now live on the maintainer's phone. By the `MC-1074` analysis an older MVP build cannot read the store after this update; the way back is the pre-update `.bin`. `MC-350` carry-forward starts from this build.
+- Still owed: the Note 9 device check of the streamed-fetch port (`MC-1078`); the Android debug and desktop builds for dependency stage D were not run separately (the release build above compiled them as part of the APK, INFERRED, no log read); the independent review of records batches 53 and 54.
+
+**Evidence sources.** `%TEMP%\risu-mvp-a3b5d706e\build\result.json` and `verify\apksigner.out`; GitHub Actions runs 41959182735 and 41959156880; the maintainer's messages above.
