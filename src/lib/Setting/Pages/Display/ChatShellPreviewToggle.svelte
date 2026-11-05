@@ -43,14 +43,15 @@
     <span>{language.chatShellOnThisDeviceHelp}</span>
 </div>
 
+{#if hapticsAvailable}
 <div class="flex items-center mt-2 gap-2" data-part="chat-shell-device-settings">
     <label class="flex items-center gap-2">
-        <input type="checkbox" data-setting="haptics" checked={haptics && hapticsAvailable} disabled={!hapticsAvailable} onchange={toggleHaptics} />
+        <input type="checkbox" data-setting="haptics" checked={haptics} onchange={toggleHaptics} />
         <span>{language.chatShellHaptics}</span>
     </label>
     <span>{language.chatShellOnThisDevice}</span>
-    {#if !hapticsAvailable}<span>{language.chatShellHapticsUnavailable}</span>{/if}
 </div>
+{/if}
 
 <div class="flex items-center mt-2 gap-2">
     <button type="button" class="px-2 py-1 rounded-md bg-darkbutton text-textcolor" data-setting="customize-buttons" onclick={openCustomize}>{language.chatShellCustomizeButtons}</button>

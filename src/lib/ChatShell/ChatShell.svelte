@@ -162,6 +162,11 @@
         actionOpen = true
     }
 
+    // The sheet belongs to the row that opened it: when that row goes away the sheet closes with it.
+    function closeActions(request: ActionRequest): void {
+        if (actionRequest === request) actionOpen = false
+    }
+
     function openCustomize(request: CustomizeRequest): void {
         if (surfaceHidden) return
         customizeRequest = request
@@ -189,7 +194,7 @@
     </div>
     <main bind:this={list} data-part="chat-transcript" aria-label={language.chatShellMessages} onscroll={scroll}>
         {#if ShellNotices && character?.type === 'character'}<ShellNotices />{/if}
-        {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onOpenCustomize={openCustomize} />{/if}
+        {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onCloseActions={closeActions} onOpenCustomize={openCustomize} />{/if}
     </main>
     {#if ShellFloatingButtons}<ShellFloatingButtons visible={unread && !atBottom} onclick={() => messageList?.scrollToLatestMessage?.()} />{/if}
     <div bind:this={composer} data-part="chat-composer-host">

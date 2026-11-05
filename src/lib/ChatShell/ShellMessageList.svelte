@@ -27,9 +27,16 @@
         onReroll?: () => void
         unReroll?: () => void
         onOpenActions?: (request: ActionRequest) => void
+        onCloseActions?: (request: ActionRequest) => void
         onOpenCustomize?: (request: CustomizeRequest) => void
     }
-    let { character, host, unread = $bindable(false), atBottom = $bindable(true), onStep, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onOpenCustomize }: Props = $props()
+    let { character, host, unread = $bindable(false), atBottom = $bindable(true), onStep, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize }: Props = $props()
+    // Rows with a modal layer open (the partial-edit overlays are fixed-position inside the row) leave content-visibility so the layer is not clipped to the row.
+    let overlayRows = $state<Record<string, true>>({})
+    function setOverlay(key: string, open: boolean): void {
+        if (open) overlayRows[key] = true
+        else delete overlayRows[key]
+    }
     let chat = $derived(character.chats?.[character.chatPage])
     // The first message browses the character's stored greetings (fmIndex); it never reaches the reply tree and never generates.
     function firstMessageTreeView(): TreeView {
@@ -186,7 +193,7 @@
 <div data-part="chat-message-list" class="flex flex-col-reverse" role="log" aria-live="off" bind:this={rows}>
     {#key rebuildEpoch}
         {#each renderRows as row (row.key)}
-            <div class="chat-message-container" class:older={row.idx < messages.length - 3} data-part="chat-message-container">
+            <div class="chat-message-container" class:older={row.idx < messages.length - 3 && !overlayRows[row.key]} data-part="chat-message-container">
                 <svelte:boundary onerror={(error) => recordCaughtError('chat.message', error)}>
                     <ShellMessage idx={row.idx} message={row.message} chatId={row.message.chatId} name={row.message.role === 'user' ? DBState.db.username : character.name}
                         img={row.message.role === 'user' ? DBState.db.userIcon : character.image}
@@ -199,7 +206,7 @@
                         streaming={chat?.isStreaming === true && row.idx === messages.length - 1 && row.message.role === 'char' && isActiveStreamReply(row.message.chatId)}
                         interrupted={row.message.interrupted === true && !isActiveStreamReply(row.message.chatId)}
                         deferAutoTranslate={chat?.isStreaming === true && row.idx === messages.length - 1 && isActiveStreamReply(row.message.chatId) && DBState.db.autoTranslate === true}
-                        guiRevision={guiPointer + (rowPointers[row.idx] ?? 0)} {onStep} {onBranch} {getTreeView} {getBusy} {onReroll} {unReroll} {onOpenActions} {onOpenCustomize} />
+                        guiRevision={guiPointer + (rowPointers[row.idx] ?? 0)} {onStep} {onBranch} {getTreeView} {getBusy} {onReroll} {unReroll} {onOpenActions} {onCloseActions} {onOpenCustomize} onOverlay={(open) => setOverlay(row.key, open)} />
                     {#snippet failed(_error, reset)}
                         <div data-part="chat-message-failed" role="note">{row.message.data}<p>{language.messageRenderFailed}</p><button onclick={reset}>{language.messageRenderRetry}</button></div>
                     {/snippet}
@@ -209,7 +216,7 @@
         {#if chat && messages.length <= loadPages && character.type === 'character'}
             <div data-part="chat-first-message">
                 <svelte:boundary onerror={(error) => recordCaughtError('chat.message', error)}>
-                    <ShellMessage idx={-1} message={{ role: 'char', data: firstMessageOf(character, chat) }} name={character.name} img={character.image} character={createSimpleCharacter(character)} firstMessage getTreeView={firstMessageTreeView} onReroll={() => stepFirstMessage(1)} unReroll={() => stepFirstMessage(-1)} {onOpenActions} {onOpenCustomize} />
+                    <ShellMessage idx={-1} message={{ role: 'char', data: firstMessageOf(character, chat) }} name={character.name} img={character.image} character={createSimpleCharacter(character)} firstMessage getTreeView={firstMessageTreeView} onReroll={() => stepFirstMessage(1)} unReroll={() => stepFirstMessage(-1)} {onOpenActions} {onCloseActions} {onOpenCustomize} />
                     {#snippet failed(_error, reset)}<div role="note">{language.messageRenderFailed}<button onclick={reset}>{language.messageRenderRetry}</button></div>{/snippet}
                 </svelte:boundary>
             </div>

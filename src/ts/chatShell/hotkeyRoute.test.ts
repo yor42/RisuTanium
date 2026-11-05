@@ -88,11 +88,16 @@ function show(index: number, count: number): HTMLElement {
     flushSync()
     return target.querySelector<HTMLElement>('article')!
 }
-function press(node: Element): KeyboardEvent {
-    const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'r', ctrlKey: true, altKey: true })
+function press(node: Element, repeat = false): KeyboardEvent {
+    const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'r', ctrlKey: true, altKey: true, repeat })
     node.dispatchEvent(event)
     flushSync()
     return event
+}
+function unmountRow(): void {
+    void unmount(app!)
+    app = undefined
+    target.remove()
 }
 afterEach(async () => {
     if (app) await unmount(app)
@@ -114,6 +119,21 @@ describe('Ctrl+Alt+R takes one route through the real hotkey listener', () => {
         press(document.body)
         expect(regenerateNewest).toHaveBeenCalledTimes(1)
         expect(stepSibling).not.toHaveBeenCalled()
+    })
+    test('holding the keys with no message focused starts at most one step or reply: a repeating keydown does nothing', () => {
+        show(1, 2)
+        press(document.body)
+        expect(stepSibling).toHaveBeenCalledTimes(1)
+        press(document.body, true)
+        press(document.body, true)
+        expect(stepSibling).toHaveBeenCalledTimes(1)
+        expect(regenerateNewest).not.toHaveBeenCalled()
+        unmountRow()
+        show(2, 2)
+        press(document.body, true)
+        expect(regenerateNewest).not.toHaveBeenCalled()
+        press(document.body)
+        expect(regenerateNewest).toHaveBeenCalledTimes(1)
     })
     test('with the newest message focused an alternative ahead steps once, not twice', () => {
         const article = show(1, 2)

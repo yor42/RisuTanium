@@ -11,6 +11,7 @@ export const languageEnglish = {
     chatShellNextReply: 'Next reply',
     chatShellFirstReply: 'First reply',
     chatShellLastReply: 'Last reply',
+    chatShellEndControl: (count: number) => count === 1 ? 'Bring back the continuation that was set aside' : `Bring back the latest of the ${count} continuations that were set aside`,
     chatShellFirstMessage: 'First message',
     chatShellReplyOf: (index: number, total: number) => `Reply ${index} of ${total}`,
     chatShellFirstMessageOf: (index: number, total: number) => `First message ${index} of ${total}`,

@@ -203,6 +203,7 @@
         <button onclick={() => void postFile()}>{language.postFile}</button>
         {#if DBState.db.useChatSticker}<button onclick={() => stickersOpen = !stickersOpen}>{language.chatShellStickers}</button>{/if}
         <label>{language.enterKey}<select value={enterMode} onchange={setMode}><option value="auto">{language.chatShellEnterAutomatic}</option><option value="send">{language.chatShellEnterSend}</option><option value="newline">{language.chatShellEnterNewline}</option></select></label>
+        <span data-part="chat-composer-enter-scope">{language.chatShellOnThisDevice}</span>
     </div>
 </div>
 

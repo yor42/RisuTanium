@@ -85,15 +85,18 @@ vi.mock('../ChatScreens/chatSurface.svelte', () => {
 })
 vi.mock('../../ts/characters', () => ({ getCharImage: async () => null }))
 vi.mock('../../ts/model/modellist', () => ({ getModelInfo: () => ({ shortName: 'Model' }) }))
-vi.mock('../../lang', () => ({ language: { chatShellMoreActions: 'More actions', bookmark: 'Bookmark', copied: 'Copied', copyFailed: 'Copy failed', loading: 'Loading', copiedSimpleCard: 'Copied simple card', copiedAsText: 'Copied as text' } }))
+vi.mock('../../lang', () => ({ language: { chatShellMoreActions: 'More actions', bookmark: 'Bookmark', copied: 'Copied', copyFailed: 'Copy failed', loading: 'Loading', copiedSimpleCard: 'Copied simple card', copiedAsText: 'Copied as text', chatShellReplyOf: (index: number, total: number) => `Reply ${index} of ${total}` } }))
 
 import ShellMessage, { type ActionRequest } from './ShellMessage.svelte'
+import { DBState } from '../../ts/stores.svelte'
 
 let app: ReturnType<typeof ShellMessage> | undefined
 let target: HTMLElement
 const message: Message = { role: 'char', data: 'Reply', chatId: 'm' }
 const opened = { request: null as ActionRequest | null }
 async function show() {
+    // The row's message is part of the chat, as in the shell; an action on a message that left the chat is refused.
+    DBState.db.characters[0].chats[0].message = [message]
     target = document.createElement('div')
     document.body.appendChild(target)
     app = mount(ShellMessage, { target, props: { idx: 0, chatId: 'm', name: 'Ari', message, onOpenActions: (request: ActionRequest) => { opened.request = request } } })

@@ -14,7 +14,7 @@ export const WHEEL_LOCK_MS = 450
 export type SwipeEvent = 'none' | 'stepPrev' | 'stepNext' | 'arm' | 'generate'
 export interface PointerSample { x: number; y: number; time: number }
 export interface SwipeOptions { widthPx: number; dpPerPx: number; index: number; count: number; edge?: boolean; streaming?: boolean; firstMessage?: boolean; canGenerate?: boolean; enabled?: boolean; pointerType?: 'touch' | 'pen' | 'mouse' }
-export interface SwipeResult { event: SwipeEvent; progress: number; locked: boolean }
+export interface SwipeResult { event: SwipeEvent; progress: number; locked: boolean; armed: boolean }
 
 export function createSwipeGesture(options: SwipeOptions) {
     let start: PointerSample | null = null
@@ -26,7 +26,7 @@ export function createSwipeGesture(options: SwipeOptions) {
     let lastVelocity = 0
     const scale = options.dpPerPx > 0 ? options.dpPerPx : 1
     const usable = options.enabled !== false && !options.edge && options.pointerType !== 'mouse'
-    const result = (event: SwipeEvent = 'none'): SwipeResult => ({ event, progress, locked: axis === 'horizontal' })
+    const result = (event: SwipeEvent = 'none'): SwipeResult => ({ event, progress, locked: axis === 'horizontal', armed })
 
     function clear(): void {
         start = null
@@ -74,6 +74,8 @@ export function createSwipeGesture(options: SwipeOptions) {
             progress = Math.max(0, 0.7 * distanceDp / ARM_DISTANCE_DP)
             return result()
         }
+        // Once armed, jitter of the finger cannot lower the cue: the release generates exactly as the armed cue says.
+        if (armed) { progress = 1; return result() }
         if (Math.abs(velocity) >= ARM_STILL_PX_MS) holdStart = null
         else if (holdStart === null) holdStart = sample.time
         progress = 0.7 + (holdStart === null ? 0 : 0.3 * Math.min(1, (sample.time - holdStart) / ARM_HOLD_MS))

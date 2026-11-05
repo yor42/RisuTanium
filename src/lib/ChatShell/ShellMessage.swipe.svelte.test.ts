@@ -84,7 +84,7 @@ function pointer(kind: string, x: number, time: number, on: Element = body, y = 
 }
 function dragged(): number {
     const match = /translateX\((-?[\d.]+)px\)/.exec(body.style.transform)
-    return match ? Number(match[1]) : NaN
+    return match ? Number(match[1]) : 0
 }
 beforeEach(() => {
     hostInset.value = 0
@@ -139,6 +139,98 @@ describe('C1 the pull arms from the hold timer', () => {
         vi.advanceTimersByTime(2000)
         expect(regenerateNewest).not.toHaveBeenCalled()
         expect(tickHaptic).not.toHaveBeenCalledWith('arm', 'touch', true)
+    })
+})
+
+describe('R5 the armed cue holds through finger jitter', () => {
+    const chip = () => target.querySelector('[data-part="chat-swipe-arm"]')?.textContent
+    test('after arming, a small fast move keeps the chip on the generate cue, and letting go generates exactly as it says', () => {
+        vi.useFakeTimers()
+        show()
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 200, 100)
+        vi.advanceTimersByTime(300)
+        flushSync()
+        expect(chip()).toBe('Let go to generate a new reply')
+        pointer('pointermove', 202, 108)
+        expect(chip()).toBe('Let go to generate a new reply')
+        pointer('pointermove', 198, 116)
+        expect(chip()).toBe('Let go to generate a new reply')
+        pointer('pointerup', 198, 900)
+        expect(regenerateNewest).toHaveBeenCalledTimes(1)
+    })
+    test('sliding back under the distance withdraws the cue and the release generates nothing', () => {
+        vi.useFakeTimers()
+        show()
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 200, 100)
+        vi.advanceTimersByTime(300)
+        flushSync()
+        pointer('pointermove', 330, 400)
+        expect(chip()).toBe('No more saved replies')
+        pointer('pointerup', 330, 900)
+        expect(regenerateNewest).not.toHaveBeenCalled()
+    })
+    test('a hold timer that fires a hair early looks again instead of leaving a still finger unarmed', () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        let now = 1000
+        const clock = vi.spyOn(performance, 'now').mockImplementation(() => now)
+        try {
+            show()
+            pointer('pointerdown', 400, 0)
+            pointer('pointermove', 200, 100)
+            now = 1299.5
+            vi.advanceTimersByTime(300)
+            flushSync()
+            expect(chip()).not.toBe('Let go to generate a new reply')
+            now = 1312
+            vi.advanceTimersByTime(20)
+            flushSync()
+            expect(chip()).toBe('Let go to generate a new reply')
+            expect(tickHaptic).toHaveBeenCalledWith('arm', 'touch', true)
+            pointer('pointerup', 200, 900)
+            expect(regenerateNewest).toHaveBeenCalledTimes(1)
+        } finally {
+            clock.mockRestore()
+        }
+    })
+    test('an armed release springs back to the centre instead of sliding the body in', () => {
+        vi.useFakeTimers()
+        show()
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 200, 100)
+        vi.advanceTimersByTime(300)
+        flushSync()
+        pointer('pointerup', 200, 900)
+        expect(regenerateNewest).toHaveBeenCalledTimes(1)
+        expect(body.hasAttribute('data-spring')).toBe(true)
+        expect(body.hasAttribute('data-commit')).toBe(false)
+        expect(dragged()).toBe(0)
+    })
+})
+
+describe('R5 the message body carries a transform only while it moves', () => {
+    test('no transform at rest, one while dragged, translateX(0px) only for the spring back, none again after it ends', () => {
+        show({ index: 2, count: 3 })
+        expect(body.style.transform).toBe('')
+        pointer('pointerdown', 100, 0)
+        pointer('pointermove', 160, 100)
+        expect(body.style.transform).toBe('translateX(60px)')
+        pointer('pointerup', 160, 200)
+        expect(body.style.transform).toBe('translateX(0px)')
+        body.dispatchEvent(new Event('transitionend', { bubbles: true }))
+        flushSync()
+        expect(body.style.transform).toBe('')
+    })
+    test('a gesture that never leaves the slop leaves no transform behind', () => {
+        show({ index: 2, count: 3 })
+        pointer('pointerdown', 100, 0)
+        pointer('pointermove', 104, 50)
+        pointer('pointerup', 104, 100)
+        expect(body.style.transform).toBe('translateX(0px)')
+        body.dispatchEvent(new Event('transitionend', { bubbles: true }))
+        flushSync()
+        expect(body.style.transform).toBe('')
     })
 })
 

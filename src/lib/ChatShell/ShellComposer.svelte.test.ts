@@ -31,7 +31,7 @@ vi.mock('../../lang', () => ({ language: {
     chatShellMessage: 'Message', chatShellMoreActions: 'More actions', chatShellChoosePersona: 'Choose persona',
     asPersona: (name: string) => `as ${name}`, chatShellStop: 'Stop', chatShellSend: 'Send',
     chatShellRemoveAttachment: 'Remove attachment', enterKey: 'Enter key',
-    chatShellStickers: 'Stickers',
+    chatShellStickers: 'Stickers', chatShellOnThisDevice: 'On this device',
     chatShellEnterAutomatic: 'Automatic', chatShellEnterSend: 'Send', chatShellEnterNewline: 'New line', postFile: 'Post File',
 } }))
 
@@ -72,6 +72,13 @@ describe('ShellComposer draft and actions', () => {
         if (app) await unmount(app)
         app = null
         expect(hasLocalDrafts()).toBe(false)
+    })
+
+    test('the Enter key selector says it is a setting of this device', async () => {
+        const node = await show()
+        const tools = node.querySelector('[data-part="chat-composer-tools"]')!
+        expect(tools.querySelector('select')).not.toBeNull()
+        expect(tools.querySelector('[data-part="chat-composer-enter-scope"]')?.textContent).toBe('On this device')
     })
 
     test('busy state shows Stop and calls abortChat', async () => {

@@ -77,7 +77,9 @@ import ShellMessage, { type ActionRequest } from './ShellMessage.svelte'
 import ActionSheet from './ActionSheet.svelte'
 import { DBState } from '../../ts/stores.svelte'
 import { doingChat } from '../../ts/process/index.svelte'
+import { addActiveStream } from '../../ts/process/activeStreams'
 
+let stopStream: (() => void) | undefined
 let target: HTMLElement
 let app: ReturnType<typeof ShellMessage> | undefined
 let sheetApp: ReturnType<typeof ActionSheet> | undefined
@@ -117,6 +119,8 @@ async function pendingFlag() {
     return (await import('../../ts/chatShell/stopDelete.svelte') as unknown as { pendingForTest: { value: boolean } }).pendingForTest
 }
 afterEach(async () => {
+    stopStream?.()
+    stopStream = undefined
     if (sheetApp) await unmount(sheetApp)
     sheetApp = undefined
     hostedOpen = false
@@ -212,6 +216,7 @@ describe('range delete', () => {
     test('a range that reaches the running send stops it first instead of deleting at once', async () => {
         writing.value = true
         doingChat.set(true)
+        stopStream = addActiveStream({ chaId: 'c', replyChatId: 'm' })
         show(0)
         openSheet().querySelector<HTMLButtonElement>('[data-action="deleteAfter"]')!.click()
         await vi.waitFor(() => expect(stop.requestStopDelete).toHaveBeenCalledTimes(1), { timeout: 5000 })
@@ -230,6 +235,28 @@ describe('range delete', () => {
         expect(alerts.alertConfirm).not.toHaveBeenCalled()
         expect(stop.requestStopDelete).not.toHaveBeenCalled()
         expect(abortChat).not.toHaveBeenCalled()
+    })
+    test('a generation in another chat plus work registered here takes the ordinary range confirm: no abort, the range is deleted', async () => {
+        writing.value = true
+        doingChat.set(true)
+        stopStream = addActiveStream({ chaId: 'other', replyChatId: 'reply-in-another-chat' })
+        show(0)
+        openSheet().querySelector<HTMLButtonElement>('[data-action="deleteAfter"]')!.click()
+        await vi.waitFor(() => expect(messageActions.deleteNow).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(alerts.alertSelect).toHaveBeenCalledWith(['Cancel', 'Delete 3'], 'range:3:Hi')
+        expect(alerts.alertConfirm).not.toHaveBeenCalled()
+        expect(stop.requestStopDelete).not.toHaveBeenCalled()
+        expect(abortChat).not.toHaveBeenCalled()
+    })
+    test('a reply being written after the target, in this chat, is inside the range: stop first even when the target itself is settled', async () => {
+        writing.value = true
+        doingChat.set(true)
+        stopStream = addActiveStream({ chaId: 'c', replyChatId: 'n' })
+        show(1)
+        openSheet().querySelector<HTMLButtonElement>('[data-action="deleteAfter"]')!.click()
+        await vi.waitFor(() => expect(stop.requestStopDelete).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(alerts.alertConfirm).toHaveBeenCalledWith('stop:1')
+        expect(messageActions.deleteNow).not.toHaveBeenCalled()
     })
     test('a refused freeze says the reply cannot be deleted, not that it changed', async () => {
         stop.requestStopDelete.mockReturnValueOnce(false)

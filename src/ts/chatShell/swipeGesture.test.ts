@@ -101,6 +101,22 @@ describe('T10 swipe gesture', () => {
             expect(blocked.up(p(100, 0, 2100)).event).toBe('none')
         }
     })
+    it('reports the armed state and keeps the cue at full progress through finger jitter, so the release matches the cue', () => {
+        const swipe = createSwipeGesture({ ...base, index: 2 })
+        swipe.down(p(300, 0, 0)); swipe.move(p(100, 0, 100))
+        const armed = swipe.tick(400)
+        expect(armed).toMatchObject({ event: 'arm', armed: true, progress: 1 })
+        for (const jitter of [p(102, 0, 408), p(98, 0, 416), p(101, 0, 420)]) {
+            expect(swipe.move(jitter)).toMatchObject({ event: 'none', armed: true, progress: 1 })
+        }
+        expect(swipe.up(p(101, 0, 900)).event).toBe('generate')
+    })
+    it('drops the armed state when the finger slides back under the distance', () => {
+        const swipe = createSwipeGesture({ ...base, index: 2 })
+        swipe.down(p(300, 0, 0)); swipe.move(p(100, 0, 100)); swipe.tick(400)
+        expect(swipe.move(p(200, 0, 600))).toMatchObject({ armed: false })
+        expect(swipe.up(p(200, 0, 900)).event).toBe('none')
+    })
     it('a timer arm followed by a fling release still does not generate', () => {
         const swipe = createSwipeGesture({ ...base, index: 2 })
         swipe.down(p(300, 0, 0)); swipe.move(p(100, 0, 100))

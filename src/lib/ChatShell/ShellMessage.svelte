@@ -33,8 +33,7 @@
     import { stopTTS } from '../../ts/process/tts'
     import { stepSibling, regenerateNewest } from '../../ts/process/composerActions.svelte'
     import { originOf, isWriting } from '../../ts/process/chatOrigin'
-    import { doingChat } from '../../ts/process/index.svelte'
-    import { get } from 'svelte/store'
+    import { isActiveStreamReply } from '../../ts/process/activeStreams'
     import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopDelete.svelte'
     import type { CopyOutcome } from '../../ts/chatCopy'
     import { CARD_DEADLINE_MS, CARD_PENDING_MARGIN_MS, type CardReport } from '../../ts/chatCard'
@@ -99,9 +98,13 @@
         getTreeView?: () => TreeView | null
         getBusy?: () => boolean
         onOpenActions?: (request: ActionRequest) => void
+        // Called when this row goes away while its own action request may still be shown by the host.
+        onCloseActions?: (request: ActionRequest) => void
         onOpenCustomize?: (request: CustomizeRequest) => void
+        // Reports whether a modal layer of the row (the partial-edit overlays) is open, so the list can lift the row's containment.
+        onOverlay?: (open: boolean) => void
     }
-    let { idx, message, chatId, name, img = '', character = null, firstMessage = false, expectedId, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onOpenCustomize,
+    let { idx, message, chatId, name, img = '', character = null, firstMessage = false, expectedId, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize, onOverlay,
         isLastMemory = false, messageGenerationInfo, interrupted = message.interrupted === true,
         deferAutoTranslate = false, streaming = false, run = 'single', disabled = false, guiRevision = 0 }: Props = $props()
     let translated = $state(false)
@@ -136,10 +139,32 @@
     let lastSampleAt = { time: 0, wall: 0 }
     let article = $state<HTMLElement | null>(null)
     let lastGenerate = -Infinity
+    const ARM_RETRY_MS = 10
     const keys = createMessageKeys()
     let destroyed = false
+    let hostedRequest: ActionRequest | null = null
+    let overlayOpen = false
     onMount(() => { queueMicrotask(() => { if (!destroyed) iconMounted = true }) })
-    onDestroy(() => { destroyed = true; clearTimeout(longPressTimer); clearTimeout(armTimer); clearTimeout(commitTimer); clearTimeout(statusTimer); unregisterEditorBack(); editor.dispose() })
+    // A modal layer of the row (the partial-edit overlays are position: fixed inside the row) must not be clipped by the row's own containment, so the list is told while one is open.
+    onMount(() => {
+        if (!article || typeof MutationObserver === 'undefined') return
+        const root = article
+        const observer = new MutationObserver(() => {
+            const open = root.querySelector('.partial-edit-overlay') !== null
+            if (open === overlayOpen) return
+            overlayOpen = open
+            onOverlay?.(open)
+        })
+        observer.observe(root, { childList: true, subtree: true })
+        return () => observer.disconnect()
+    })
+    onDestroy(() => {
+        destroyed = true; clearTimeout(longPressTimer); clearTimeout(armTimer); clearTimeout(commitTimer); clearTimeout(statusTimer); unregisterEditorBack(); editor.dispose()
+        if (hostedRequest) onCloseActions?.(hostedRequest)
+        hostedRequest = null
+        if (overlayOpen) onOverlay?.(false)
+        overlayOpen = false
+    })
     $effect(() => {
         let live = true
         avatar = null
@@ -165,16 +190,22 @@
     let position = $derived(getTreeView?.()?.at(idx) ?? { index: 1, count: 1 })
     let newestCharacter = $derived(message.role === 'char' && idx >= 0 && idx === (chat?.message?.length ?? 0) - 1)
     let userLast = $derived(message.role === 'user' && idx >= 0 && idx === (chat?.message?.length ?? 0) - 1)
-    let actions = $derived(ACTION_IDS.filter((id) => id !== 'deleteAfter').filter((id) => idx >= 0 || id === 'copy' || id === 'selectText' || id === 'stepPrev' || id === 'stepNext' || id === 'customizeButtons').filter((id) => id !== 'readAloud' || canSpeak).filter((id) => id !== 'translate' || DBState.db.translator !== '').filter((id) => id !== 'newReply' || newestCharacter).filter((id) => !['stepPrev', 'stepNext'].includes(id) || newestCharacter || firstMessage).filter((id) => id !== 'branch' || onBranch !== undefined))
+    // Every row with more than one alternative shows the pager (older rows only browse); the newest reply keeps its pager and New reply button. Swipe, wheel and the arrow keys act only where a pager is shown.
+    let showPager = $derived(idx >= 0 ? newestCharacter || position.count > 1 : firstMessage && position.count > 1)
+    // The end control of the last row brings back a continuation that "Branch here" set aside.
+    let continuation = $derived(idx >= 0 && idx === (chat?.message?.length ?? 0) - 1 ? getTreeView?.()?.continuation ?? 0 : 0)
+    let actions = $derived(ACTION_IDS.filter((id) => id !== 'deleteAfter').filter((id) => idx >= 0 || id === 'copy' || id === 'selectText' || id === 'stepPrev' || id === 'stepNext' || id === 'customizeButtons').filter((id) => id !== 'readAloud' || canSpeak).filter((id) => id !== 'translate' || DBState.db.translator !== '').filter((id) => id !== 'newReply' || newestCharacter).filter((id) => !['stepPrev', 'stepNext'].includes(id) || showPager).filter((id) => id !== 'branch' || onBranch !== undefined))
     let sheetActions = $derived<SheetAction[]>([...actions, 'copyCard', ...(idx >= 0 ? ['hideAbove', 'deleteAfter'] as SheetAction[] : []), ...(idx >= 0 && !streaming && DBState.db.translatorType === 'llm' ? ['retranslate', 'editTranslation'] as SheetAction[] : []), ...(idx >= 0 && !streaming && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit) ? ['partialEdit'] as SheetAction[] : [])])
     let unavailable = $derived(ACTION_IDS.filter((id) => streaming && ['edit', 'translate', 'readAloud', 'branch', 'newReply'].includes(id) || stopDeletePending && (id === 'delete' || id === 'deleteAfter') || getBusy?.() === true && ['stepPrev', 'stepNext', 'newReply'].includes(id)))
-    $effect(() => { wheel = createWheelSteps(position.index - 1, position.count) })
+    $effect(() => { wheel = createWheelSteps(position.index - 1, showPager ? position.count : 1) })
     const source = { closeMenu: () => {} }
     function liveIndex(): number { return chatId ? (chat?.message.findIndex((item) => item.chatId === chatId) ?? idx) : idx }
     // The hosting shell shows the sheet outside the transcript; the request keeps every action on this row's live index.
     function openActions(opener: HTMLElement, point?: { x: number; y: number }): void {
         actionOpener = opener
-        onOpenActions?.({ index: idx, opener, anchor: point, available: () => sheetActions, disabled: () => unavailable, generating: () => streaming, run: (id) => { void act(id) } })
+        const request: ActionRequest = { index: idx, opener, anchor: point, available: () => sheetActions, disabled: () => unavailable, generating: () => streaming, run: (id) => { void act(id) } }
+        hostedRequest = request
+        onOpenActions?.(request)
     }
     // The row's own status line: a copy outcome stays visible for a while and only clears the text it was started for.
     function setStatusMessage(text: string, timeout: number): void {
@@ -204,8 +235,10 @@
                 break
         }
     }
+    // alertSelect joins its display text and its buttons with "||" and the dialog splits on it again, so message text shown in the
+    // display must never carry a "|": a "||" in the excerpt would turn its tail into a button and shift the answer indexes.
     function excerptOf(text: string): string {
-        const flat = text.replace(/\s+/g, ' ').trim()
+        const flat = text.replace(/\s+/g, ' ').trim().replace(/\|/g, '¦')
         return flat.length > 60 ? `${flat.slice(0, 60).trimEnd()}…` : flat
     }
     // A generating reply, or a range that reaches the running send, is stopped first and removed once the send has settled.
@@ -216,8 +249,8 @@
         const origin = originOf(owner, chat)
         if (origin && isStopDeletePending(origin)) return
         const after = mode === 'from' ? chat.message.length - chat.message.indexOf(target) - 1 : 0
-        // Registered trigger, button or tree work is not a generation: only a running send that writes to this chat is stopped.
-        const sendReachesRange = mode === 'from' && origin !== null && get(doingChat) && isWriting(origin)
+        // Registered trigger, button or tree work is not a generation, and a generation in another chat is not this chat's: only a reply being written inside the range, in this chat, is stopped.
+        const sendReachesRange = mode === 'from' && origin !== null && isWriting(origin) && chat.message.slice(chat.message.indexOf(target)).some((item) => isActiveStreamReply(item.chatId))
         if (streaming || sendReachesRange) {
             if (!await alertConfirm(language.chatShellStopDeleteConfirm(after))) return
             if (!requestStopDelete(owner, chat, target, mode) && !isStopDeletePending()) alertNormal(language.chatShellStopDeleteCannot)
@@ -267,6 +300,8 @@
         void regenerateNewest(source)
     }
     async function act(id: SheetAction): Promise<void> {
+        // A row that is gone, or whose message left the chat while the sheet stayed open, has nothing left to act on.
+        if (destroyed || (idx >= 0 && liveIndex() < 0)) return
         if ((unavailable as readonly SheetAction[]).includes(id)) return
         switch (id) {
             case 'copy': {
@@ -331,7 +366,7 @@
         pointerStart = { x: event.clientX, y: event.clientY }
         spring = false
         const edge = classifyEdge({ xPx: event.clientX, viewportWidthPx: window.innerWidth, dpPerPx: 1, hostInsetDp: readHostInset(event.clientX), rtl: document.dir === 'rtl' }) === 'edge'
-        swipe = createSwipeGesture({ widthPx: bodyRoot?.clientWidth ?? 320, dpPerPx: 1, index: position.index - 1, count: position.count, edge: edge || startsInHorizontalScroller(target), streaming, firstMessage, canGenerate: newestCharacter, enabled: DBState.db.swipe, pointerType: event.pointerType })
+        swipe = createSwipeGesture({ widthPx: bodyRoot?.clientWidth ?? 320, dpPerPx: 1, index: position.index - 1, count: position.count, edge: edge || startsInHorizontalScroller(target), streaming, firstMessage, canGenerate: newestCharacter, enabled: DBState.db.swipe && showPager, pointerType: event.pointerType })
         swipe.down(sample(event))
         clearTimeout(longPressTimer)
         const opener = event.currentTarget as HTMLElement
@@ -356,7 +391,7 @@
         const result = swipe.move(stamp)
         swipeProgress = result.progress
         swipeLocked = result.locked
-        armed = result.event === 'arm' || armed && result.progress >= 1
+        armed = result.armed
         if (result.locked) dragX = dragFor(event.clientX - pointerStart.x)
         if (result.event === 'arm') tickHaptic('arm', pointerType, readHaptics())
         // A finger that holds still sends no more events, so the arm is re-evaluated when the hold time has passed.
@@ -368,10 +403,10 @@
         if (!swipe) return
         const result = swipe.tick(lastSampleAt.time + (performance.now() - lastSampleAt.wall))
         swipeProgress = result.progress
-        if (result.event === 'arm') {
-            armed = true
-            tickHaptic('arm', pointerType, readHaptics())
-        }
+        armed = result.armed
+        if (result.event === 'arm') tickHaptic('arm', pointerType, readHaptics())
+        // A timer that fires a hair before the hold has fully passed looks again shortly instead of leaving a still finger unarmed.
+        else if (!result.armed && result.progress >= 0.7) armTimer = setTimeout(onArmTimer, ARM_RETRY_MS)
     }
     // The new content slides in from the side the swipe came from; a release that commits nothing springs back.
     function commitSlide(direction: 'back' | 'forward'): void {
@@ -388,24 +423,27 @@
             tickHaptic('commit', pointerType, readHaptics())
             void act(result.event === 'stepPrev' ? 'stepPrev' : 'stepNext')
         } else if (result.event === 'generate') {
-            commitSlide('forward')
+            // The pulled body springs back to the centre while the new reply starts.
+            spring = true
             alternatives?.requestNewReply()
         } else spring = true
     }
     function onWheel(event: WheelEvent): void {
+        if (!showPager) return
         const result = wheel({ dx: event.deltaX, dy: event.deltaY, time: event.timeStamp, shiftKey: event.shiftKey })
         if (result === 'stepPrev' || result === 'stepNext') { event.preventDefault(); void act(result === 'stepPrev' ? 'stepPrev' : 'stepNext') }
     }
     function onMessageKey(event: KeyboardEvent): void {
         const reroll = event.ctrlKey && event.altKey && event.key.toLowerCase() === 'r'
         if (event.target !== event.currentTarget && !reroll) return
-        const action = keys.handle(event, { focus: 'message', index: position.index - 1, count: position.count, newestCharacter, firstMessage, now: performance.now() })
+        const action = keys.handle(event, { focus: 'message', index: position.index - 1, count: showPager ? position.count : 1, newestCharacter, firstMessage, now: performance.now() })
         // The newest reply owns Ctrl+Alt+R, whether or not the press acts, so the global hotkey does not click a second control.
         if (reroll && (newestCharacter || firstMessage)) { event.preventDefault(); event.stopPropagation() }
         if (action === 'openActions') { event.preventDefault(); openActions(event.currentTarget as HTMLElement) }
         else if (action === 'focusPrev' || action === 'focusNext' || action === 'focusFirst' || action === 'focusLast') { event.preventDefault(); moveFocus(action) }
         else if (ACTION_IDS.some((id) => id === action)) { event.preventDefault(); void act(action as ActionId) }
-    }    $effect.pre(() => {
+    }
+    $effect.pre(() => {
         if (surfaceEpoch !== null && chatSurface.hidden) return
         if (streaming) return
         void guiRevision
@@ -505,7 +543,7 @@
     <TranslationEditor {editor} />
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div data-part="chat-message-body" class="text chat-width chattext prose minw-0" class:prose-invert={$ColorSchemeTypeStore} style:font-size={`${0.875 * ((DBState.db.zoomsize ?? 100) / 100)}rem`} style:line-height={`${(DBState.db.lineHeight ?? 1.25) * ((DBState.db.zoomsize ?? 100) / 100)}rem`} bind:this={bodyRoot} style:transform={`translateX(${dragX}px)`} style:touch-action="pan-y" data-spring={spring ? '' : undefined} data-commit={commitDirection ?? undefined} onanimationend={() => { commitDirection = null }} ontransitionend={() => { spring = false }} onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={(event) => { if (swipe) finishSwipe(swipe.up(sample(event))) }} onpointercancel={() => { if (swipe) finishSwipe(swipe.cancel()) }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
+    <div data-part="chat-message-body" class="text chat-width chattext prose minw-0" class:prose-invert={$ColorSchemeTypeStore} style:font-size={`${0.875 * ((DBState.db.zoomsize ?? 100) / 100)}rem`} style:line-height={`${(DBState.db.lineHeight ?? 1.25) * ((DBState.db.zoomsize ?? 100) / 100)}rem`} bind:this={bodyRoot} style:transform={dragX !== 0 || spring ? `translateX(${dragX}px)` : undefined} style:touch-action="pan-y" data-spring={spring ? '' : undefined} data-commit={commitDirection ?? undefined} onanimationend={() => { commitDirection = null }} ontransitionend={() => { spring = false }} onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={(event) => { if (swipe) finishSwipe(swipe.up(sample(event))) }} onpointercancel={() => { if (swipe) finishSwipe(swipe.cancel()) }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
         {#if editor.editMode || editor.editTranslationMode}<!-- the editors replace the body while open -->
         {:else if message.isComment}
             {#if msgDisplay.startsWith('{{specialcomment') && msgDisplay.split('::')[1] === 'branchedfrom'}
@@ -527,8 +565,8 @@
     {#if swipeLocked && streaming}<span data-part="chat-swipe-arm" role="status">{language.chatShellStillWriting}</span>
     {:else if swipeProgress > 0}<span data-part="chat-swipe-arm" role="status" style:opacity={swipeProgress}>{armed ? language.chatShellReleaseNewReply : language.chatShellNoSavedReplies}</span>{/if}
     {#if userLast && !streaming}<button type="button" data-part="chat-generate-reply" disabled={getBusy?.() === true} onclick={generateAfterUser}>⟳ {language.chatShellGenerateReply}</button>{/if}
-    {#if (newestCharacter || firstMessage) && (position.count > 1 || newestCharacter)}
-        <AlternativesRow bind:this={alternatives} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} busy={getBusy?.() ?? false} onStep={firstMessage ? (direction) => { void browse(direction) } : undefined} />
+    {#if showPager || continuation > 0}
+        <AlternativesRow bind:this={alternatives} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} pager={showPager} browseOnly={!newestCharacter && !firstMessage} {continuation} busy={getBusy?.() ?? false} onStep={firstMessage ? (direction) => { void browse(direction) } : undefined} />
     {/if}
     {#if statusMessage}<span data-part="chat-status-row" role="status" aria-live="polite">{statusMessage}</span>{/if}
     {#if idx >= 0 && !streaming && !editor.editMode && !editor.editTranslationMode && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit)}

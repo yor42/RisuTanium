@@ -158,10 +158,17 @@ export function initHotkey(){
             }
             switch(hotkey.action){
                 case 'reroll':{
+                    // A held key repeats: only the first press may step or start a reply.
+                    if(ev.repeat){
+                        break
+                    }
                     chatAct('reroll', () => clickQuery('.button-icon-reroll'))
                     break
                 }
                 case 'unreroll':{
+                    if(ev.repeat){
+                        break
+                    }
                     chatAct('unreroll', () => clickQuery('.button-icon-unreroll'))
                     break
                 }

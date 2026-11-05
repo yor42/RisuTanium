@@ -111,11 +111,13 @@ describe('device-local chat settings', () => {
         await show()
         expect(hapticsBox().checked).toBe(false)
     })
-    test('without vibration support the switch is disabled and says so', async () => {
+    test('without vibration support there is no haptics control at all', async () => {
         Reflect.deleteProperty(navigator, 'vibrate')
         await show()
-        expect(hapticsBox().disabled).toBe(true)
-        expect(target.textContent).toContain('This device cannot vibrate.')
+        expect(target.querySelector('[data-setting="haptics"]')).toBeNull()
+        expect(target.querySelector('[data-part="chat-shell-device-settings"]')).toBeNull()
+        expect(target.textContent).not.toContain('Vibrate on swipe actions')
+        expect(target.querySelector('[data-setting="customize-buttons"]')).not.toBeNull()
     })
     test('the Customize buttons line opens the sheet', async () => {
         await show()

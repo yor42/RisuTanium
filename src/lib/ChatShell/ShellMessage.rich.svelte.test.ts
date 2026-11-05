@@ -51,9 +51,10 @@ vi.mock('../ChatScreens/chatSurface.svelte', () => {
 })
 vi.mock('../../ts/characters', () => ({ getCharImage: async (source: string) => source === 'bad' ? Promise.reject(new Error('image')) : source }))
 vi.mock('../../ts/model/modellist', () => ({ getModelInfo: () => ({ shortName: 'Model' }) }))
-vi.mock('../../lang', () => ({ language: { bookmark: 'Bookmark', messageInterrupted: 'Interrupted', messageRenderFailed: 'Failed', edit: 'Edit', chatShellMoreActions: 'More actions', chatShellReadAloud: 'Read aloud' } }))
+vi.mock('../../lang', () => ({ language: { bookmark: 'Bookmark', messageInterrupted: 'Interrupted', messageRenderFailed: 'Failed', edit: 'Edit', chatShellMoreActions: 'More actions', chatShellReadAloud: 'Read aloud', chatShellReplyOf: (index: number, total: number) => `Reply ${index} of ${total}` } }))
 
 import ShellMessage, { type ActionRequest } from './ShellMessage.svelte'
+import { DBState } from '../../ts/stores.svelte'
 import ActionSheet from './ActionSheet.svelte'
 
 let app: ReturnType<typeof ShellMessage> | undefined
@@ -63,6 +64,8 @@ let hostedOpen = $state(false)
 let target: HTMLElement
 // The shell hosts one sheet outside the rows; the test hosts the real sheet next to the mounted row the same way.
 async function show(message: Message, props: { disabled?: boolean | 'allBefore'; isLastMemory?: boolean; img?: string } = {}) {
+    // The row's message is part of the chat, as in the shell; an action on a message that left the chat is refused.
+    DBState.db.characters[0].chats[0].message = [message]
     target = document.createElement('div')
     document.body.appendChild(target)
     app = mount(ShellMessage, { target, props: { idx: 0, chatId: message.chatId, name: 'Ari', message, onOpenActions: (request: ActionRequest) => { hostedRequest = request; hostedOpen = true }, ...props } })

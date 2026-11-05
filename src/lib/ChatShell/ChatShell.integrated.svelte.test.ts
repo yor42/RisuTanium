@@ -94,6 +94,7 @@ vi.mock('../../lang', () => ({ language: {
 
 import ChatShell from './ChatShell.svelte'
 import { doingChat } from '../../ts/process/index.svelte'
+import { DBState } from '../../ts/stores.svelte'
 
 let app: ReturnType<typeof ChatShell> | undefined
 let target: HTMLElement
@@ -180,6 +181,23 @@ describe('the action sheet is hosted outside the transcript', () => {
         await tick()
         expect(target.querySelector('[data-part="chat-sheet"]')).toBeNull()
         expect(transcript.hasAttribute('inert')).toBe(false)
+    })
+
+    test('the sheet closes with the row that opened it when that row is removed from the chat', async () => {
+        await show()
+        openNewestActions()
+        expect(target.querySelector('[data-part="chat-sheet"]')).not.toBeNull()
+        const list = DBState.db.characters[0].chats[0].message
+        const removed = list.splice(1, 1)
+        try {
+            flushSync()
+            await tick()
+            flushSync()
+            expect(target.querySelector('article[data-chat-id="m"]')).toBeNull()
+            expect(target.querySelector('[data-part="chat-sheet"]')).toBeNull()
+        } finally {
+            list.push(...removed)
+        }
     })
 
     test('the customize sheet is hosted there too and opens from the action sheet', async () => {
