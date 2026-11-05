@@ -3,7 +3,7 @@
   One shared file; each lane aliases what it needs. Needs nexus-tokens.css first (channels, ease-out, exit and scrim tokens).
   Rules: every colour is derived from a --nexus-*-rgb channel, so a pack states each colour once; every duration, distance and size is a token.
   Three groups: --pattern-* (look), --warning-* (warning motion) and --task-* (task motion). The motion groups live only here; stylesheets read them.
-  A component uses calc(var(--token) * var(--risu-animation-speed, 1)) where speed applies.
+  A component uses calc(var(--token) * var(--chat-motion, 1)) where speed applies (--chat-motion is the unitless factor; --risu-animation-speed is a time in seconds).
 */
 :root {
   --pattern-ease: var(--nexus-ease);

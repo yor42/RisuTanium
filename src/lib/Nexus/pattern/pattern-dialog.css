@@ -97,13 +97,13 @@
 }
 
 :where([data-part="pattern-layer"], [data-part="pattern-layer"] [data-part^="pattern-"]) {
-  --d-enter: calc(min(var(--nexus-duration-enter), var(--pm-cap)) * var(--risu-animation-speed, 1));
-  --d-scrim: calc(min(var(--nexus-scrim-duration), var(--pm-cap)) * var(--risu-animation-speed, 1));
-  --d-glyph: calc(min(var(--warning-glyph-dur), var(--pm-cap)) * var(--risu-animation-speed, 1));
-  --d-bullet: calc(min(var(--warning-bullet-dur), var(--pm-cap)) * var(--risu-animation-speed, 1));
-  --d-detail: calc(min(var(--warning-detail-dur), var(--pm-cap)) * var(--pm-detail-on) * var(--risu-animation-speed, 1));
-  --d-press: calc(min(var(--warning-press-dur), var(--pm-cap)) * var(--risu-animation-speed, 1));
-  --d-state: calc(min(var(--task-state-dur), var(--pm-cap)) * var(--risu-animation-speed, 1));
+  --d-enter: calc(min(var(--nexus-duration-enter), var(--pm-cap)) * var(--chat-motion, 1));
+  --d-scrim: calc(min(var(--nexus-scrim-duration), var(--pm-cap)) * var(--chat-motion, 1));
+  --d-glyph: calc(min(var(--warning-glyph-dur), var(--pm-cap)) * var(--chat-motion, 1));
+  --d-bullet: calc(min(var(--warning-bullet-dur), var(--pm-cap)) * var(--chat-motion, 1));
+  --d-detail: calc(min(var(--warning-detail-dur), var(--pm-cap)) * var(--pm-detail-on) * var(--chat-motion, 1));
+  --d-press: calc(min(var(--warning-press-dur), var(--pm-cap)) * var(--chat-motion, 1));
+  --d-state: calc(min(var(--task-state-dur), var(--pm-cap)) * var(--chat-motion, 1));
   --l-glyph: calc(var(--warning-glyph-delay) * var(--pm-stagger));
   --l-bullet: calc((var(--warning-bullet-delay) + var(--i, 0) * var(--warning-bullet-stagger)) * var(--pm-stagger));
   --m-dialog: calc(var(--nexus-dialog-enter-distance) * var(--pm-move));

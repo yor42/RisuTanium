@@ -449,10 +449,9 @@
         return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
     }
     function springDurationMs(): number {
-        const raw = bodyRoot ? getComputedStyle(bodyRoot).transitionDuration.split(',')[0].trim() : ''
-        const value = parseFloat(raw)
-        if (!Number.isFinite(value) || value <= 0) return SPRING_DEFAULT_MS
-        return raw.endsWith('ms') ? value : value * 1000
+        // The nominal slow duration times the unitless motion factor the page sets on the root; the same product the CSS token computes.
+        const factor = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--chat-motion'))
+        return SPRING_DEFAULT_MS * (Number.isFinite(factor) ? Math.min(10, Math.max(0, factor)) : 1)
     }
     function onWheel(event: WheelEvent): void {
         if (!showPager) return

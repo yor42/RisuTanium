@@ -4,18 +4,18 @@
    (chat/themes/*.css, loaded by theme.js from ?theme=). Load order: nexus-tokens.css, this file, the slice stylesheets, the theme. */
 :root {
   /* ---- shared names that already existed (moved here from slice1/3/4.css) ---- */
-  --risu-animation-speed: 1;
-  --color-scheme: dark;                      /* light packs set light; the native controls follow */
+  --chat-motion: 1;                          /* unitless factor: 1 = nominal durations, 0 = none; animation.ts derives it from the app's seconds-valued --risu-animation-speed */
+  --color-scheme: dark;                     /* light packs set light; the native controls follow */
   color-scheme: var(--color-scheme);
   --danger: var(--nexus-danger);              /* (the solid and its channels live in ../theme/nexus-tokens.css) */
   --mono: ui-monospace, "Cascadia Mono", Consolas, "D2Coding", monospace;
   --chat-speaker-0: #ffb38a; --chat-speaker-1: #9bbcff; --chat-speaker-2: #7fe3b3; --chat-speaker-3: #ffd27a; --chat-speaker-4: #c9a9ff; --chat-speaker-5: #ff9db3; --chat-speaker-6: #7fe9ff; --chat-speaker-7: #e3b3ff;
 
   /* ---- motion: durations and easing ---- */
-  --dur-fast-nominal: 120ms; --dur-base-nominal: 200ms; --dur-slow-nominal: 260ms;   /* x --risu-animation-speed = the --chat-dur-* the components read */
-  --chat-dur-fast: calc(var(--dur-fast-nominal) * var(--risu-animation-speed));
-  --chat-dur-base: calc(var(--dur-base-nominal) * var(--risu-animation-speed));
-  --chat-dur-slow: calc(var(--dur-slow-nominal) * var(--risu-animation-speed));
+  --dur-fast-nominal: 120ms; --dur-base-nominal: 200ms; --dur-slow-nominal: 260ms;   /* x --chat-motion = the --chat-dur-* the components read */
+  --chat-dur-fast: calc(var(--dur-fast-nominal) * var(--chat-motion));
+  --chat-dur-base: calc(var(--dur-base-nominal) * var(--chat-motion));
+  --chat-dur-slow: calc(var(--dur-slow-nominal) * var(--chat-motion));
   --dur-lowpower-cap: 120ms;                 /* low power caps base and slow at this */
   --chat-ease-out: cubic-bezier(0.2, 0, 0, 1);
   --chat-ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);

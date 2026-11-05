@@ -280,6 +280,41 @@ describe('R5 the message body carries a transform only while it moves', () => {
     })
 })
 
+describe('R5b the spring fallback timer follows the page motion factor', () => {
+    function springEndsAfter(factor: string | null): number {
+        vi.useFakeTimers()
+        if (factor !== null) document.documentElement.style.setProperty('--chat-motion', factor)
+        try {
+            show({ index: 2, count: 3 })
+            pointer('pointerdown', 100, 0)
+            pointer('pointermove', 160, 100)
+            pointer('pointerup', 160, 200)
+            expect(body.hasAttribute('data-spring')).toBe(true)
+            for (let elapsed = 1; elapsed <= 3000; elapsed++) {
+                vi.advanceTimersByTime(1)
+                flushSync()
+                if (!body.hasAttribute('data-spring')) return elapsed
+            }
+            return Infinity
+        } finally {
+            document.documentElement.style.removeProperty('--chat-motion')
+            if (app) void unmount(app)
+            app = undefined
+            target.remove()
+        }
+    }
+    test('the nominal 260 ms plus the margin without a factor, shorter at 0.5 and longer at 2', () => {
+        const nominal = springEndsAfter(null)
+        expect(nominal).toBe(410)
+        expect(springEndsAfter('0.5')).toBe(280)
+        expect(springEndsAfter('2')).toBe(670)
+    })
+    test('a missing or non-numeric factor falls back to nominal and an oversized one is clamped to 10', () => {
+        expect(springEndsAfter('nonsense')).toBe(410)
+        expect(springEndsAfter('50')).toBe(2750)
+    })
+})
+
 describe('C2 vertical scroll stays with the browser', () => {
     test('the message body asks for vertical panning only', () => {
         show()
