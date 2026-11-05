@@ -7,6 +7,7 @@
     import { draftIdentityKey } from '../../ts/draftContents'
     import { chatWindowKey } from '../../ts/chatWindowPolicy'
     import { DBState, selIdState, HideIconStore } from '../../ts/stores.svelte'
+    import { ColorSchemeTypeStore } from '../../ts/gui/colorscheme'
     import { aiLawApplies, changeChatTo, foldChatToMessage } from '../../ts/globalApi.svelte'
     import { createMessageEditorController } from '../../ts/process/messageEditorController.svelte'
     import { handleButtonTriggerWithin, handleFormTriggerWithin, playMessageTTS, requestRemove, deleteNow, type DeleteMode, copyMessageText, copyMessageAsCard, branchMessage, toggleMessageDisabled, toggleBookmark } from '../../ts/process/messageActions.svelte'
@@ -324,8 +325,8 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
     <div data-part="chat-message-name-row">
         <div data-part="chat-message-meta">
             {#if !$HideIconStore && iconMounted}
-                {#if avatar}<img data-part="chat-message-avatar" src={avatar} alt="" onerror={() => { avatar = null }} />
-                {:else}<span data-part="chat-message-avatar" aria-hidden="true">{name.slice(0, 1)}</span>{/if}
+                {#if avatar}<img data-part="chat-message-avatar" data-round={DBState.db.roundIcons ? '' : undefined} src={avatar} alt="" onerror={() => { avatar = null }} />
+                {:else}<span data-part="chat-message-avatar" data-round={DBState.db.roundIcons ? '' : undefined} aria-hidden="true">{name.slice(0, 1)}</span>{/if}
             {/if}
             <span data-part="chat-message-name" id={labelId}>{name}</span>
             {#if isBookmarked}<span data-part="chat-message-badges" aria-label={language.bookmark}>★</span>{/if}
@@ -347,7 +348,7 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
     <TranslationEditor {editor} />
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div data-part="chat-message-body" class="prose" bind:this={bodyRoot} style:transform={`translateX(${dragX}px)`} onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={(event) => { if (swipe) finishSwipe(swipe.up(sample(event))) }} onpointercancel={() => { if (swipe) finishSwipe(swipe.cancel()) }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
+    <div data-part="chat-message-body" class="text chat-width chattext prose minw-0" class:prose-invert={$ColorSchemeTypeStore} style:font-size={`${0.875 * ((DBState.db.zoomsize ?? 100) / 100)}rem`} style:line-height={`${(DBState.db.lineHeight ?? 1.25) * ((DBState.db.zoomsize ?? 100) / 100)}rem`} bind:this={bodyRoot} style:transform={`translateX(${dragX}px)`} onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={(event) => { if (swipe) finishSwipe(swipe.up(sample(event))) }} onpointercancel={() => { if (swipe) finishSwipe(swipe.cancel()) }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
         {#if editor.editMode || editor.editTranslationMode}<!-- the editors replace the body while open -->
         {:else if message.isComment}
             {#if msgDisplay.startsWith('{{specialcomment') && msgDisplay.split('::')[1] === 'branchedfrom'}
@@ -358,7 +359,7 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
         {:else if firstMessage && (message.data === '' || message.data === '{{blank}}' || message.data === '{{none}}')}
             {language.noMessage}
         {:else if streaming}
-            <StreamingView text={message.data} {modelShortName} {character} />
+            <StreamingView text={message.data} {modelShortName} {character} parseContext={{ chatID: idx, cbsConditions: cbsConditions(), displayOptions: buildDisplayParseOptions({ chara: name, chatID: idx, firstmsg: firstMessage, chatRole: chat?.message?.[idx]?.role ?? null }) }} />
         {:else}
             <ChatBody {character} {firstMessage} {idx} {msgDisplay} {name} role={message.role}
                 {bodyRoot} {modelShortName} renderRevision={guiRevision + bodyRevision} {deferAutoTranslate}
@@ -387,6 +388,7 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
     [data-part="chat-message-name-row"] { min-height: var(--message-name-row-height); }
     [data-part="chat-message-meta"] { display: flex; align-items: center; gap: var(--message-meta-gap); color: var(--nexus-text-secondary); }
     [data-part="chat-message-avatar"] { display: inline-flex; align-items: center; justify-content: center; width: var(--size-avatar-sm); height: var(--size-avatar-sm); border-radius: var(--radius-circle); background: var(--nexus-surface-raised); }
+    [data-part="chat-message-avatar"]:not([data-round]) { border-radius: var(--radius-4); }
     [data-part="chat-message-body"] { max-width: var(--thread-max-width); width: 100%; overflow-wrap: anywhere; }
     [data-part="chat-message"].user { border-left: var(--stroke-bold) solid var(--nexus-surface-raised); }
     [data-part="chat-message-interrupted"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }

@@ -1,3 +1,6 @@
+import type { CbsConditions } from '../parser/parser.svelte'
+import type { DisplayParseOptions } from '../process/displayParseOptions'
+
 export interface StreamingSplit {
     finished: string[]
     open: string
@@ -30,7 +33,6 @@ function openConstruct(text: string): boolean {
 export function splitStreamingText(text: string): StreamingSplit {
     const finished: string[] = []
     let start = 0
-    let candidate = 0
     for (let i = 0; i < text.length; i++) {
         if (text[i] !== '\n') continue
         const blank = text[i + 1] === '\n'
@@ -39,12 +41,11 @@ export function splitStreamingText(text: string): StreamingSplit {
         const boundary = blank || blockStart.test(nextLine) || /^\s{0,3}~~~\s*$/.test(currentLine)
         if (!boundary) continue
         const end = i + (blank ? 2 : 1)
-        const block = text.slice(candidate, end)
+        const block = text.slice(start, end)
         if (openConstruct(block)) continue
         // Finished blocks are emitted only after a complete boundary and never change as text grows.
-        finished.push(text.slice(start, end))
+        finished.push(block)
         start = end
-        candidate = end
         if (blank) i++
     }
     return { finished, open: text.slice(start) }
@@ -96,15 +97,35 @@ export interface SafeHtmlDependencies {
 export function toSafeHtml(source: string, deps: SafeHtmlDependencies): string {
     const displayed = deps.display(source)
     const sanitized = deps.sanitize(displayed)
-    const watermarked = deps.watermark(sanitized)
-    // I7: the last transform before {@html} is the same sanitizer used by completed messages.
-    return deps.sanitize(watermarked)
+    // The chain is the completed-message chain (watermark of the sanitized markup). The watermark only appends
+    // zero-width text, and a second sanitize here would re-parse decoded <risu-style> CSS as HTML and drop it.
+    return deps.watermark(sanitized)
 }
 
-export async function createToSafeHtml(modelShortName: string, charArg: Parameters<typeof import('../parser/parser.svelte').ParseMarkdown>[1] = null, chatID = -1): Promise<(source: string) => Promise<string>> {
+// The word count of a Thoughts block that has opened and not yet closed in the open source, or null when none is open.
+export function openThoughtsWordCount(open: string): number | null {
+    const thoughts = open.lastIndexOf('<Thoughts>')
+    if (thoughts < 0 || open.indexOf('</Thoughts>', thoughts) >= 0) return null
+    const words = open.slice(thoughts + '<Thoughts>'.length).trim()
+    return words === '' ? 0 : words.split(/\s+/).length
+}
+
+export interface StreamingParseContext {
+    chatID?: number
+    cbsConditions?: CbsConditions
+    displayOptions?: DisplayParseOptions
+}
+
+export async function createToSafeHtml(modelShortName: string, charArg: Parameters<typeof import('../parser/parser.svelte').ParseMarkdown>[1] = null, context: StreamingParseContext = {}): Promise<(source: string) => Promise<string>> {
     const parser = await import('../parser/parser.svelte')
+    const scripts = await import('../process/scripts')
+    const { chatID = -1, cbsConditions, displayOptions } = context
     return async (source: string) => {
-        const displayed = await parser.ParseMarkdown(source, charArg, 'notrim', chatID)
+        let parsed = source
+        if (displayOptions) {
+            try { parsed = scripts.risuChatParser(source, displayOptions) } catch { parsed = source }
+        }
+        const displayed = await parser.ParseMarkdown(parsed, charArg, 'notrim', chatID, cbsConditions)
         return toSafeHtml(source, {
             display: () => displayed,
             sanitize: parser.trimMarkdown,

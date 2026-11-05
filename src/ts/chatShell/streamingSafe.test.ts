@@ -1,5 +1,17 @@
 import { describe, expect, test } from 'vitest'
-import { renderOpenParagraphSource, splitStreamingText } from './streamingSafe'
+import { openThoughtsWordCount, renderOpenParagraphSource, splitStreamingText } from './streamingSafe'
+
+describe('openThoughtsWordCount', () => {
+    test.each([
+        ['no thoughts', 'plain text', null],
+        ['open and empty', 'before <Thoughts>', 0],
+        ['open with words', '<Thoughts>one two\n\nthree', 3],
+        ['closed', '<Thoughts>one two</Thoughts>\n\nafter', null],
+        ['a later block opens again', '<Thoughts>a</Thoughts> text <Thoughts>b c', 2],
+    ])('%s', (_label, open, expected) => {
+        expect(openThoughtsWordCount(open)).toBe(expected)
+    })
+})
 
 describe('T13 streaming-safe blocks', () => {
     test.each([

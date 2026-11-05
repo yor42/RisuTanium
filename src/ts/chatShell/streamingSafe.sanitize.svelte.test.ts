@@ -64,7 +64,30 @@ describe('T12 / MC-239 streaming sanitizer', () => {
         expect(unsafe).not.toBe(parser.trimMarkdown(unsafe))
     })
 
-    test('watermark follows first sanitize and final sanitize runs last', () => {
+    test.each([
+        ['a data: svg url', '<style>.a{background:url("data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\'></svg>")}</style>\n\nhi'],
+        ['a markup-like content string', '<style>.a::before{content:"<3"}</style>\n\nhi'],
+    ])('a card style with < in %s survives the streaming chain exactly as in the completed chain', async (_label, source) => {
+        law.applies = true
+        try {
+            const displayed = await parser.ParseMarkdown(source, null, 'notrim')
+            const completed = parser.addMetadataToElement(parser.trimMarkdown(displayed), 'model')
+            const streaming = toSafeHtml(source, {
+                display: () => displayed,
+                sanitize: parser.trimMarkdown,
+                watermark: (html) => parser.addMetadataToElement(html, 'model'),
+            })
+            expect(completed).toContain('<style')
+            expect(streaming).toBe(completed)
+            // The superseded chain sanitized again after the watermark and lost the style.
+            const doubleSanitized = parser.trimMarkdown(streaming)
+            expect(doubleSanitized).not.toContain('<style')
+        } finally {
+            law.applies = false
+        }
+    })
+
+    test('the watermark is the last step and the markup is sanitized once before it', () => {
         law.applies = true
         const log: string[] = []
         const sanitize = vi.fn((html: string) => {
@@ -81,7 +104,7 @@ describe('T12 / MC-239 streaming sanitizer', () => {
         })
         try {
             const result = toSafeHtml('<p>Hello</p>', { display, sanitize, watermark })
-            expect(log).toEqual(['display', 'sanitize', 'watermark', 'sanitize'])
+            expect(log).toEqual(['display', 'sanitize', 'watermark'])
             expect(result).toContain('<p>')
             expect(result.length).toBeGreaterThan('<p>Hello</p>'.length)
         } finally {

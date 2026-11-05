@@ -30,6 +30,7 @@ export const languageEnglish = {
     chatShellNoSavedReplies: 'No more saved replies',
     chatShellReleaseNewReply: 'Let go to generate a new reply',
     chatShellMessages: 'Messages',
+    chatShellThinking: (words: number) => `Thinking… ${words} ${words === 1 ? 'word' : 'words'}`,
     chatShellMessage: 'Message',
     chatShellRemoveAttachment: 'Remove attachment',
     chatShellSend: 'Send',

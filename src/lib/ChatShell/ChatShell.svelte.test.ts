@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import postcss from 'postcss'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { describe, expect, test, vi } from 'vitest'
@@ -36,5 +40,15 @@ describe('ChatShell Stage 2a layout', () => {
         expect(root?.querySelector('[data-part="chat-composer-host"]')).not.toBeNull()
         await unmount(app)
         target.remove()
+    })
+
+    test('the shell canvas is transparent so the shared background shows through', () => {
+        const source = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'ChatShell.svelte'), 'utf8')
+        const style = /<style>([\s\S]*?)<\/style>/.exec(source)?.[1] ?? ''
+        let background: string | undefined
+        postcss.parse(style).walkRules('[data-part="chat-shell"]', (rule) => {
+            rule.walkDecls('background', (decl) => { background = decl.value })
+        })
+        expect(background).toBe('transparent')
     })
 })

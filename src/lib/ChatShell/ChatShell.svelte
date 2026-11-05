@@ -154,7 +154,7 @@
 </div>
 
 <style>
-    [data-part="chat-shell"] { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; background: var(--nexus-canvas); color: var(--nexus-text); }
+    [data-part="chat-shell"] { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; background: transparent; color: var(--nexus-text); }
     [data-part="chat-header-host"], [data-part="chat-composer-host"] { flex: none; }
     [data-part="chat-transcript"] { flex: 1; min-height: 0; overflow-y: auto; }
 </style>

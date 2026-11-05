@@ -73,9 +73,13 @@
         return before ? (after ? 'middle' : 'last') : (after ? 'first' : 'single')
     }
     $effect(() => {
-        if (installed && chatSurface.hidden) return
-        // The visible snapshot holds raw streaming text while Settings covers the surface.
-        renderRows = visibleRows.map((row) => ({ ...row, message: { ...row.message } }))
+        if (installed && chatSurface.hidden) {
+            // The snapshot taken once at hide time holds raw streaming text while Settings covers the surface.
+            untrack(() => { renderRows = renderRows.map((row) => ({ ...row, message: { ...row.message } })) })
+            return
+        }
+        // Shown rows carry the live messages, so a stream chunk re-renders only the row whose data changed.
+        renderRows = visibleRows
     })
 
     $effect.pre(() => {
