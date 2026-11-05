@@ -12,11 +12,12 @@
         label: string
         opener?: HTMLElement | null
         background?: readonly HTMLElement[]
+        inertOutside?: boolean
         onclose: () => void
         children: Snippet
     }
 
-    let { open, kind, mode = 'bottom', anchor, label, opener = null, background = [], onclose, children }: Props = $props()
+    let { open, kind, mode = 'bottom', anchor, label, opener = null, background = [], inertOutside = false, onclose, children }: Props = $props()
     let panel = $state<HTMLElement>()
     let popupPosition = $state({ left: 0, top: 0 })
     const token = {}
@@ -33,6 +34,21 @@
         }
     })
 
+    // Everything that shares an ancestor with the layer but is not on its path, so a sheet hosted where the caller has no list stays modal.
+    function outsideLayer(shell: HTMLElement): HTMLElement[] {
+        const outside: HTMLElement[] = []
+        let node: HTMLElement | null = shell.parentElement
+        while (node && node !== document.body) {
+            const parent: HTMLElement | null = node.parentElement
+            if (!parent) break
+            for (const sibling of Array.from(parent.children)) {
+                if (sibling !== node && sibling instanceof HTMLElement && !['SCRIPT', 'STYLE', 'LINK', 'TEMPLATE'].includes(sibling.tagName)) outside.push(sibling)
+            }
+            node = parent
+        }
+        return outside
+    }
+
     function close(): void {
         if (!open || closing) return
         closing = true
@@ -44,7 +60,7 @@
         if (!shell) return
         closing = false
         const savedOpener = untrack(() => opener)
-        const restoreInert = makeInert(untrack(() => background))
+        const restoreInert = makeInert(untrack(() => inertOutside ? outsideLayer(shell) : background))
         const unregisterShell = registerShell(token)
         const unregisterBack = registerBackHandler(backCloseHandler({
             isOpen: () => open && !closing,

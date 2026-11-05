@@ -123,7 +123,7 @@ describe('T24 stop and delete', () => {
         expect(alertNormal).not.toHaveBeenCalled()
     })
 
-    it('settles through the real order: flag, work end, settle mark, then the delete', async () => {
+    it('a hand-written send tail (flag false, work end, settle mark) is followed by the delete in a macrotask', async () => {
         const { owner, chat, origin } = setup()
         doingChat.set(true)
         const handle = registerWork(origin)
@@ -156,6 +156,42 @@ describe('T24 stop and delete', () => {
         expect(alertNormal).not.toHaveBeenCalled()
     })
 
+    it('keeps waiting while the origin is writing even though another unit holds the global flag', async () => {
+        const { owner, chat, origin } = setup()
+        doingChat.set(true)
+        const handle = registerWork(origin)
+        requestStopDelete(owner, chat, chat.message[3], 'one')
+        doingChat.set(false)
+        const second = registerWork(origin)
+        doingChat.set(true)
+        await new Promise<void>((resolve) => setTimeout(resolve, 80))
+        expect(isWriting(origin)).toBe(true)
+        expect(chat.message).toHaveLength(4)
+        expect(isStopDeletePending(origin)).toBe(true)
+
+        handle.end()
+        await new Promise<void>((resolve) => setTimeout(resolve, 80))
+        expect(chat.message).toHaveLength(4)
+
+        second.end()
+        doingChat.set(false)
+        await vi.waitFor(() => expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'c2', 'u3']))
+        expect(isStopDeletePending(origin)).toBe(false)
+    })
+
+    it('a generation of another chat holding the global flag does not hold the delete', async () => {
+        const { owner, chat, origin } = setup()
+        doingChat.set(true)
+        const handle = registerWork(origin)
+        requestStopDelete(owner, chat, chat.message[3], 'one')
+        doingChat.set(false)
+        handle.end()
+        doingChat.set(true)
+        await macrotask()
+        expect(isWriting(origin)).toBe(false)
+        expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'c2', 'u3'])
+        expect(isStopDeletePending(origin)).toBe(false)
+    })
     it('a request made while no send is running aborts, then deletes in a macrotask', async () => {
         const { owner, chat } = setup()
         expect(requestStopDelete(owner, chat, chat.message[1], 'one')).toBe(true)

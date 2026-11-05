@@ -1,5 +1,6 @@
 import type { CbsConditions } from '../parser/parser.svelte'
 import type { DisplayParseOptions } from '../process/displayParseOptions'
+import { recordCaughtError } from '../caughtErrors'
 
 export interface StreamingSplit {
     finished: string[]
@@ -123,7 +124,7 @@ export async function createToSafeHtml(modelShortName: string, charArg: Paramete
     return async (source: string) => {
         let parsed = source
         if (displayOptions) {
-            try { parsed = scripts.risuChatParser(source, displayOptions) } catch { parsed = source }
+            try { parsed = scripts.risuChatParser(source, displayOptions) } catch (error) { recordCaughtError('chat.parse', error); parsed = source }
         }
         const displayed = await parser.ParseMarkdown(parsed, charArg, 'notrim', chatID, cbsConditions)
         return toSafeHtml(source, {

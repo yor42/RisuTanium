@@ -10,7 +10,7 @@
  * Tests whose title starts with `guard:` pin behaviour that must be preserved.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import type { Database, Chat, Message } from '../../storage/database.svelte'
 import type { toSaveType } from '../../storage/risuSave'
 // Installs the real `globalThis.safeStructuredClone`, the same way `src/main.ts` does.
@@ -313,9 +313,9 @@ vi.mock('../../chatCard', () => ({ captureCardTheme: vi.fn(), noteNewerPlainCopy
 
 import { doingChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
-import { send, sendChatMain, resetComposerActionsForTests } from '../composerActions.svelte'
+import { abortChat, send, sendChatMain, resetComposerActionsForTests } from '../composerActions.svelte'
 import * as composerDrafts from '../composerDrafts.svelte'
-import { isWriting, originOf } from '../chatOrigin'
+import { isWriting, originOf, registerWork } from '../chatOrigin'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from '../../storage/characterSaveMarks'
 import { isStopDeletePending, requestStopDelete } from '../../chatShell/stopDelete.svelte'
 import { language } from '../../../lang'
@@ -452,7 +452,7 @@ async function startStreamingSend(text: string, chunk: string): Promise<Running>
     return { sending, reply: liveChat().message[2], provider }
 }
 
-/** The bounded tail a settled send needs: the send's promise, then the microtask the stop-and-delete runs in. */
+/** The bounded tail a settled send needs: the send's promise, then the macrotasks the stop-and-delete settle runs in. */
 async function settleAll(running: Running): Promise<void> {
     await running.sending
     await turn()
@@ -565,5 +565,39 @@ describe('guard: stop-and-delete on the real send', () => {
 
         expect(alertNormalMock).toHaveBeenCalledWith(language.chatShellStopDeleteChanged)
         expect(liveChat().message.map((message) => message.data)).toEqual(['Hi', 'hello', 'Short'])
+    })
+
+    test('a second generation taking the global flag while other work keeps the origin writing does not run the delete inside it', async () => {
+        const trigger = registerWork(KEY)
+        const running = await startStreamingDirect('Short')
+        const stoppedId = running.reply.chatId!
+        watched = { chatId: stoppedId }
+        expect(requestStopDelete(liveOwner(), liveChat(), running.reply, 'one')).toBe(true)
+        await running.sending
+        for (let i = 0; i < 5; i++) await turn()
+        expect(get(doingChat)).toBe(false)
+        expect(isStopDeletePending()).toBe(true)
+
+        const secondProvider = { cancelled: false }
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: waitingStream('Second', secondProvider) })
+        const origin = originOf(liveOwner(), liveChat())!
+        const second = sendChatMain({ origin, originHint: { owner: liveOwner(), chat: liveChat() } })
+        await until(() => requestChatDataMock.mock.calls.length === 2, 'the second generation requested')
+        await new Promise<void>((resolve) => setTimeout(resolve, 120))
+        expect(isWriting(KEY)).toBe(true)
+        expect(liveChat().message.some((message) => message.chatId === stoppedId)).toBe(true)
+        expect(isStopDeletePending()).toBe(true)
+
+        abortChat()
+        await second
+        await new Promise<void>((resolve) => setTimeout(resolve, 120))
+        expect(isWriting(KEY)).toBe(true)
+        expect(liveChat().message.some((message) => message.chatId === stoppedId)).toBe(true)
+
+        trigger.end()
+        await until(() => !liveChat().message.some((message) => message.chatId === stoppedId), 'the stopped reply is deleted once the origin stopped writing')
+        const firstAbsent = log.findIndex((entry) => !entry.replyPresent)
+        expect(log[firstAbsent].writing).toBe(false)
+        expect(isStopDeletePending()).toBe(false)
     })
 })

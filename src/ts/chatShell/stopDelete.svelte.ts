@@ -44,8 +44,10 @@ function resolve(request: PendingStopDelete): void {
  * registration only after the send returns, later than the first `doingChat` false. So the
  * settle starts from a macrotask queued at that transition and re-checks `isWriting(origin)`,
  * re-queueing at a short interval while the work stays registered. It never runs inside the
- * flag subscriber. There is no timeout: the wait ends when the origin's work ends (or a new
- * generation takes the flag, which the frozen-id check then refuses and announces). Returns
+ * flag subscriber. The wait follows the origin's registered work only, never the global flag: a
+ * later generation (of this chat or another) that takes the flag keeps the delete waiting while the
+ * origin still writes. There is no timeout: the wait ends when the origin's work ends, and the
+ * frozen-id check then refuses and announces a range that a later send appended to. Returns
  * false when a request is already pending or the target cannot be frozen.
  */
 export function requestStopDelete(owner: character | groupChat, chat: Chat, target: Message, mode: DeleteMode): boolean {
@@ -58,7 +60,7 @@ export function requestStopDelete(owner: character | groupChat, chat: Chat, targ
     const settle = () => {
         const check = () => {
             if (pendingStopDelete !== request) return
-            if (isWriting(request.origin) && !get(doingChat)) {
+            if (isWriting(request.origin)) {
                 setTimeout(check, RECHECK_MS)
                 return
             }

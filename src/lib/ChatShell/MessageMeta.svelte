@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { partition, readSlots, ACTION_IDS, type ActionId } from '../../ts/chatShell/actionSlots'
+    import { partition, type ActionId } from '../../ts/chatShell/actionSlots'
+    import { currentSlots, syncSlots } from '../../ts/chatShell/slotsStore.svelte'
     import { language } from '../../lang'
 
     interface Props {
@@ -13,7 +14,8 @@
         onmore: (opener: HTMLElement) => void
     }
     let { name, time, model, available, disabled = [], generating = false, onaction, onmore }: Props = $props()
-    let layout = $state(readSlots())
+    syncSlots()
+    let layout = $derived(currentSlots())
     let wide = $state(false)
     $effect(() => {
         if (typeof matchMedia !== 'function') return
@@ -39,7 +41,7 @@
     // A generating reply is stopped before it is deleted, so its pinned Delete says so as the action sheet does.
     function labelOf(id: ActionId): string { return id === 'delete' && generating ? language.chatShellStopAndDelete : labels[id] ?? id }
     let pinned = $derived(partition(layout, available, wide ? 6 : 3).pinned)
-    export function refresh(): void { layout = readSlots() }
+    export function refresh(): void { syncSlots() }
 </script>
 
 <div data-part="chat-message-actions">

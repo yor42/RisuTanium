@@ -85,6 +85,33 @@ describe('T14 ShellSheet Back and focus', () => {
         opener.remove(); background.remove()
     })
 
+    test('inertOutside makes everything beside the sheet path inert, spares the sheet and restores on close', async () => {
+        const { default: ShellSheet } = await import('./ShellSheet.svelte')
+        const page = document.createElement('div')
+        const main = document.createElement('main')
+        const sidebar = document.createElement('aside')
+        const host = document.createElement('section')
+        page.append(main, host, sidebar)
+        const elsewhere = document.createElement('nav')
+        document.body.append(page, elsewhere)
+        const open = $state({ value: true })
+        const app = mount(ShellSheet, { target: host, props: { get open() { return open.value }, kind: 'sheet', label: 'Sheet', inertOutside: true, onclose: () => { open.value = false }, children } })
+        flushSync()
+        expect(main.hasAttribute('inert')).toBe(true)
+        expect(sidebar.hasAttribute('inert')).toBe(true)
+        expect(elsewhere.hasAttribute('inert')).toBe(true)
+        expect(page.hasAttribute('inert')).toBe(false)
+        expect(host.hasAttribute('inert')).toBe(false)
+        expect(host.querySelector('[data-part="chat-sheet-scrim"]')?.closest('[inert]')).toBeNull()
+        expect(host.querySelector('[data-part="chat-sheet"]')?.closest('[inert]')).toBeNull()
+        open.value = false
+        flushSync()
+        expect(main.hasAttribute('inert')).toBe(false)
+        expect(elsewhere.hasAttribute('inert')).toBe(false)
+        await unmount(app)
+        page.remove(); elsewhere.remove()
+    })
+
     test('destroy unregisters Back; Escape capture closes and emits one close event after focus return', async () => {
         const opener = document.createElement('button')
         const background = document.createElement('main')

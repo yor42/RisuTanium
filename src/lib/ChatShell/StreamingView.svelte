@@ -21,28 +21,44 @@
     let disposed = false
     let safeHtml: Promise<(source: string) => Promise<string>> | null = null
     let serial = 0
+    let inFlight = false
+    let renderedText: string | null = null
 
+    // Single-flight: a chunk that arrives while a render converts only updates `pending`; the render that ends
+    // schedules one more pass for the latest text, so a conversion slower than the cadence still commits.
     async function render() {
         timer = null
+        inFlight = true
         const started = performance.now()
-        const version = ++serial
-        const split = splitStreamingText(pending)
-        const convert = await (safeHtml ??= createToSafeHtml(modelShortName, character, untrack(() => parseContext)))
-        const additions: { source: string, html: string }[] = []
-        for (let i = finished.length; i < split.finished.length; i++) {
-            additions.push({ source: split.finished[i], html: await convert(split.finished[i]) })
+        const version = serial
+        const source = pending
+        let committed = false
+        try {
+            const split = splitStreamingText(source)
+            const convert = await (safeHtml ??= createToSafeHtml(modelShortName, character, untrack(() => parseContext)))
+            const additions: { source: string, html: string }[] = []
+            for (let i = finished.length; i < split.finished.length; i++) {
+                if (disposed || version !== serial) break
+                additions.push({ source: split.finished[i], html: await convert(split.finished[i]) })
+            }
+            const nextOpen = await convert(renderOpenParagraphSource(split.open))
+            if (disposed || version !== serial) return
+            if (additions.length) finished = [...finished, ...additions]
+            openHtml = nextOpen
+            thinkingWords = openThoughtsWordCount(split.open)
+            committed = true
+        } finally {
+            cadence.record(performance.now() - started)
+            inFlight = false
+            // A failed or superseded pass is not retried on its own text; only newer text schedules another pass.
+            renderedText = committed || version === serial ? source : null
+            if (!disposed && pending !== renderedText) schedule(pending)
         }
-        const nextOpen = await convert(renderOpenParagraphSource(split.open))
-        if (disposed || version !== serial) return
-        if (additions.length) finished = [...finished, ...additions]
-        openHtml = nextOpen
-        thinkingWords = openThoughtsWordCount(split.open)
-        cadence.record(performance.now() - started)
     }
 
     function schedule(value: string) {
         pending = value
-        if (timer !== null) return
+        if (timer !== null || inFlight) return
         timer = setTimeout(() => {
             if (typeof requestAnimationFrame === 'function') {
                 frame = requestAnimationFrame(() => { frame = null; void render() })

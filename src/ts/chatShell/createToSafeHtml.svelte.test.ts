@@ -2,7 +2,7 @@
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 
 const law = vi.hoisted(() => ({ applies: false }))
-const mutant = vi.hoisted(() => ({ identitySanitize: false, dropWatermark: false }))
+const mutant = vi.hoisted(() => ({ identitySanitize: false, dropWatermark: false, throwDisplay: false }))
 const calls = vi.hoisted(() => ({ markdown: [] as unknown[][], display: [] as unknown[][] }))
 
 vi.mock('src/ts/stores.svelte', async () => {
@@ -51,6 +51,7 @@ vi.mock('../parser/parser.svelte', async (importOriginal) => {
 vi.mock('../process/scripts', () => ({
     risuChatParser: (text: string, options: unknown) => {
         calls.display.push([text, options])
+        if (mutant.throwDisplay) throw new Error('display parse failed')
         return text.replace('{{user}}', 'Ari')
     },
 }))
@@ -63,6 +64,7 @@ afterEach(() => {
     law.applies = false
     mutant.identitySanitize = false
     mutant.dropWatermark = false
+    mutant.throwDisplay = false
     calls.markdown = []
     calls.display = []
 })
@@ -121,5 +123,15 @@ describe('createToSafeHtml production wiring (MC-239)', () => {
         expect(html).toContain('hello Ari')
         expect(calls.display).toEqual([['hello {{user}}', displayOptions]])
         expect(calls.markdown[0].slice(2)).toEqual(['notrim', 7, cbsConditions])
+    })
+
+    test('a failing display parse falls back to the source and is recorded like a completed row', async () => {
+        mutant.throwDisplay = true
+        const displayOptions = { chara: 'Ari', chatID: 7, rmVar: true, visualize: true }
+        const convert = await createToSafeHtml('model', null, { chatID: 7, displayOptions })
+        const html = await convert('plain words')
+        expect(html).toContain('plain words')
+        const recorded = (window.__risuTaniumErrors ?? []).filter((record) => record.site === 'chat.parse' && record.message === 'display parse failed')
+        expect(recorded.length).toBeGreaterThan(0)
     })
 })
