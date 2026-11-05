@@ -41,7 +41,7 @@
     <p>{language.chatShellOnThisDevice}</p>
     {#each slots.order.filter((id) => ACTION_IDS.includes(id as typeof ACTION_IDS[number]) && id !== 'deleteAfter' && id !== 'customizeButtons') as id}
         <div data-part="chat-customize-action">
-            <label><input type="checkbox" checked={slots.pinned.includes(id)} onchange={() => pin(id)} />{labelOf(id)}</label>
+            <label style:min-height="var(--size-touch)"><input type="checkbox" style:width="var(--space-12)" style:height="var(--space-12)" checked={slots.pinned.includes(id)} onchange={() => pin(id)} />{labelOf(id)}</label>
             <button type="button" aria-label={`${language.chatShellMoveUp} ${labelOf(id)}`} onclick={() => move(id, -1)}>{language.chatShellMoveUp}</button>
             <button type="button" aria-label={`${language.chatShellMoveDown} ${labelOf(id)}`} onclick={() => move(id, 1)}>{language.chatShellMoveDown}</button>
         </div>
@@ -52,6 +52,7 @@
 
 <style>
     [data-part="chat-customize-action"] { display: flex; align-items: center; gap: var(--space-7); }
-    [data-part="chat-customize-action"] label { flex: 1; }
+    [data-part="chat-customize-action"] label { flex: 1; display: flex; align-items: center; gap: var(--space-7); }
+    [data-part="chat-customize-action"] input[type="checkbox"] { flex: none; }
     button { min-height: var(--size-21); color: var(--nexus-text); }
 </style>

@@ -20,7 +20,7 @@
     }
 </script>
 
-<header data-part="chat-header" data-hidden={hidden && !hardwareKeyboardSeen && !focused ? '' : undefined} onfocusin={() => focused = true} onfocusout={(event) => focused = event.currentTarget.contains(event.relatedTarget as Node)}>
+<header data-part="chat-header" data-toggle-inset={$MobileGUI ? undefined : ''} style:padding-left={$MobileGUI ? undefined : 'calc(var(--size-touch-lg) + var(--space-7))'} data-hidden={hidden && !hardwareKeyboardSeen && !focused ? '' : undefined} onfocusin={() => focused = true} onfocusout={(event) => focused = event.currentTarget.contains(event.relatedTarget as Node)}>
     <button data-part="chat-header-back" data-kind="icon-button" aria-label={language.chatShellBack} onclick={back}>‹</button>
     <span data-part="chat-header-title">{name}</span>
     <button data-part="chat-header-menu" data-kind="icon-button" aria-label={language.chatShellChoosePersona} onclick={(event) => onpersona(event.currentTarget)}>◉</button>
