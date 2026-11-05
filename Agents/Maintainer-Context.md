@@ -22061,3 +22061,43 @@ Status: DRAFT, not accepted. Entries MC-1069 to MC-1072, to be appended after th
 - Still owed: the Note 9 device check of the streamed-fetch port (`MC-1078`); the Android debug and desktop builds for dependency stage D were not run separately (the release build above compiled them as part of the APK, INFERRED, no log read); the independent review of records batches 53 and 54.
 
 **Evidence sources.** `%TEMP%\risu-mvp-a3b5d706e\build\result.json` and `verify\apksigner.out`; GitHub Actions runs 41959182735 and 41959156880; the maintainer's messages above.
+---
+
+### MC-1083 — Lane A, 2026-11-05: CHORE-205 is closed out; lane A reads that as S5 (unload) not built and J1 not built (INFERRED); the first closeout answers rested on lane A's wrong claim
+
+- Tag: statements (the maintainer's AskUserQuestion answers and chat words, quoted below) and results (lane A's reading of the records and source; the scout report is unverified by a second reader, its decision-critical claims were checked by lane A as stated). Date: 2026-11-05. Sweep ref: none. Exact times of the answers: UNKNOWN.
+- Related: `MC-920` (what "CHORE-205 done" means: device cases only; S5, J1, CHORE-225 and CHORE-223 become non-gating), `MC-1022` (device bar met, device part closed), `MC-1075` (gap cases dropped from the UI gate), `MC-677` (S4d-1c, streaming the export's module reads, is not built), `MC-644` (always-resident characters' modules are never unloaded), `MC-494` (try L3 with a throwaway phone diagnostic first), `MC-1068` and `MC-1071` (CHORE-413 and CHORE-415), `MC-516` (UI gate).
+
+**Lane A's error, stated first.** Lane A told the maintainer that S5 and J1 "are not defined anywhere in the records". That was wrong: both are defined in `Agents/Lanes/L3-plan.md` (stage table row S5 and section "S5 Unload"; section "A1, A2, J1"); lane A's search had not covered `Agents/Lanes/`. The maintainer's first two answers below were given on that claim. An independent records check (`b55\c205-close\result.md`, Codex gpt-6-sol, `[EDITORIAL]`) found the error; lane A reverted its uncommitted closeout records and asked again with the real definitions.
+
+**Question 1 (lane A, AskUserQuestion, header "Items").** Whether to take CHORE-415 and CHORE-413 through plan, Gate 1, code and Gate 2. Both had already shipped on 2026-11-04 (`81ec62109`, `05bf36ba6`); lane A had read a stale Roadmap line. Answer as given: "CHORE-415 (Recommended),CHORE-413". Not acted on.
+
+**Question 2 (header "S5 and J1").** "S5 and J1 are not defined anywhere in the records I can read; they are only named as non-gating. How should I treat them?" Options: "You point me to them"; "Drop them"; "Scout the old logs". Answer: "Drop them" (given on the wrong claim; superseded by the answers below).
+
+**Question 3 (header "CHORE-205").** "... With S5/J1 dropped, nothing code-side is left on CHORE-205. Close it out as COMPLETE?" Options: "Close out CHORE-205 (Recommended)"; "Keep it open". Answer: "Close out CHORE-205 (Recommended)" (given on the wrong claim; superseded).
+
+**Question 4 (header "S5 and J1", after lane A's correction).** "... What should CHORE-205 do about them?" Options: "Keep both open, size them (Recommended)"; "Drop both, close out anyway"; "Size S5 only, drop J1". Answer: "Keep both open, size them (Recommended)". Lane A sized them (below).
+
+**Question 5 (header "S5 and J1", after the sizing).** Options offered: "Skip both, close out (Recommended)"; "Measure on a Note 9 first"; "Plan S5 now". The maintainer interrupted the tool call and did not pick an option; their next chat message was: "you can close it out". Lane A took that as the choice "Skip both, close out" (INFERRED: the exact scope the maintainer meant is not stated; the option was the one recommended in the question they were answering).
+
+**Decided (maintainer, 2026-11-05).**
+- CHORE-205 is closed out (the maintainer's words "you can close it out", Question 5). Nothing more is stated by the maintainer.
+
+**Lane A's reading (INFERRED, not the maintainer's words).** The maintainer answered after lane A's sizing summary and the "Skip both, close out" option, so lane A records S5 (live module unload) and J1 as not built and not planned. If the maintainer meant something narrower, this reading is wrong and the Roadmap status should be corrected.
+
+**Results (lane A, facts, main `a9c3354d5`).**
+- Sizing scout `c205-s5j1-size-r2` (Codex gpt-6-luna medium, read-only; report `b55\s5j1-size\result.md`; the first attempt `c205-s5j1-size` failed because its read scope named a directory, which the runner refuses). Lane A checked three claims against source: a grep of `src` for `stubFromModuleEntry`, `unloadModule`, `releaseModule` and `swapToStub` found 0 matches, and a second grep of non-test `src/ts` for `unload`, `evictModule`, `dropModule`, `releaseModules`, `swapBack` and `restubModule` found only character residency unload, readers of unloaded module stubs (`unloadedModulesOf`), the block store owner state and browser `beforeunload` code (VERIFIED as search results; the conclusion that no live module unload exists is INFERRED from them, not from reading every module path); `exportCopyOf` and `snapshotModuleList` in `drive/backuplocal.ts` and `drive/exportModules.ts` still read all modules before writing (VERIFIED); `MC-677` and `MC-644` say what the scout cites (VERIFIED).
+- S5 per the plan: Unload with the keep-set by `matchesModuleRef`, an `archiveCharacters !== false` gate, and a swap deferred while a save plan is in flight; plan baseline 6 non-test and 4 test files, Opus review plus advisor. Lane A's reading of the scout (INFERRED): it touches the save loop and module residency, so a release before a pending edit is written can lose that edit; it only frees memory, and skipping it costs no correctness; memory stays held by the resident `db.modules` entries and by export snapshots. P4 (the phone check after S5) and the `MC-494` throwaway diagnostic have not run.
+- J1 per the plan: streamed export with stubs, owner lane B, reproducers `streamed-export-with-stubs-unpacks-equal` and `peak-holds-one-module`. It is the same idea as the S4d-1c that `MC-677` decided not to build (INFERRED from the two descriptions; `MC-677` says 1c would have saved about 35 MiB, about 13%, of a 265 MiB PC peak that occurs in the character cold collection).
+- CHORE-413 (`81ec62109`) and CHORE-415 (`05bf36ba6`) are on main; final Gate 2 dispositions from the gate files: CHORE-413 `[EDITORIAL]` (round 2, `b40\c413-g2r2\result.md`), CHORE-415 `[APPROVE]` (round 4, `b40\c415-g2r4\result.md`). Their Roadmap rows still say NOT COMPLETE, awaiting the independent review of batch 50's records; this entry does not change that.
+- CHORE-412 stages S1 to S3b are on main (`03b1ca1bf`, `4a3f42dbf`, `1d40f9ab2`, `8c9b33d7e`) and live on the maintainer's phone (`MC-1082`); CHORE-412, CHORE-225, CHORE-223 and CHORE-227 keep their own rows.
+
+**Accepted limitations (not resolved by this entry).**
+- No live module unload: a module loaded in a session stays resident until restart (`MC-644` already says so for always-resident characters' modules). Whether that matters on a Note 9 with the maintainer's module sizes is unmeasured.
+- The export reads all modules first (`MC-677`).
+- The accepted device gaps (steps 12 and 13, `MC-670`, M9), the dropped gap cases (`MC-1075`), and the 6a evidence at n=2 and n=1 against the adopted n=3 (accepted by `MC-1022`).
+
+**Not decided.**
+- Whether a later item should build module unload; this would need the `MC-494` phone diagnostic first.
+- This entry does not lift the UI-S1 gate: it removes CHORE-205 from the `MC-920` list; CHORE-117, CHORE-03 and CHORE-398 remain.
+- Nothing is committed or pushed by this entry. The independent check of these records (`b55\c205-close2\result.md`, Codex gpt-6-sol medium) returned [REJECT] on wording: the scope of "you can close it out" (now marked as lane A's inference), the strength of "no live module unload exists" (now an inference from two greps), and the J1 and S4d-1c comparison (now INFERRED everywhere). Lane A applied the three fixes as specified; they were not re-checked by a second reader.
