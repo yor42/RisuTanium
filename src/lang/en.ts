@@ -1813,6 +1813,7 @@ export const languageEnglish = {
     retranslate: "Retranslate",
     editTranslation: "Edit Translation",
     editTranslationSave: "Save Translation",
+    chatShellTranslationClose: "Close translation editor",
     draftRestored: "Unsaved edit restored",
     draftRevert: "Revert",
     exportTranslationCache: "Export Translation Cache",

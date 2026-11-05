@@ -11,24 +11,44 @@ vi.mock('../../ts/stores.svelte', async () => {
     const ReloadChatPointer = writable<Record<number, number>>({})
     const ReloadGUIPointer = writable(0)
     const ScrollToMessageStore = $state({ value: -1 })
-    return { DBState, ReloadChatPointer, ReloadGUIPointer, ScrollToMessageStore, createSimpleCharacter: () => null }
+    const selIdState = $state({ selId: 0 })
+    return { DBState, selIdState, HideIconStore: writable(false), ReloadChatPointer, ReloadGUIPointer, ScrollToMessageStore, createSimpleCharacter: () => null }
 })
 vi.mock('../../ts/globalApi.svelte', () => {
     const chatFoldedState = $state<{ data: null }>({ data: null })
     const chatFoldedStateMessageIndex = $state({ index: -1 })
-    return { chatFoldedState, chatFoldedStateMessageIndex }
+    return { chatFoldedState, chatFoldedStateMessageIndex, aiLawApplies: () => false }
 })
 vi.mock('../../ts/process/firstMessage', () => ({ firstMessageOf: () => 'Greeting' }))
 vi.mock('../../ts/process/activeStreams', () => ({ isActiveStreamReply: (id: string | undefined) => id === 'stream' }))
 vi.mock('../../ts/localDrafts', () => ({ hasMessageEditorDrafts: () => false, onDraftsChanged: () => () => {} }))
 vi.mock('../ChatScreens/chatSurface.svelte', () => {
-    const chatSurface = $state({ hidden: false, rebuildEpoch: 0, heldGui: 0, heldChat: {} as Record<number, number> })
+    const chatSurface = $state({ hidden: false, rebuildEpoch: 0, closeEpoch: 0, heldGui: 0, heldChat: {} as Record<number, number> })
     return { chatSurface, isChatSurfaceInstalled: () => true, onSurfaceHiding: () => () => {} }
 })
 vi.mock('../../ts/caughtErrors', () => ({ recordCaughtError: vi.fn() }))
 vi.mock('../../lang', () => ({ language: { loadMore: 'Load more', messageRenderFailed: 'Failed', messageRenderRetry: 'Retry', messageInterrupted: 'Interrupted' } }))
 vi.mock('../../ts/characters', () => ({ getCharImage: async () => null }))
 vi.mock('../../ts/model/modellist', () => ({ getModelInfo: () => ({ shortName: 'model' }) }))
+vi.mock('../../ts/storage/database.svelte', () => ({ getCurrentCharacter: () => null }))
+vi.mock('../../ts/parser/parser.svelte', () => ({ ParseMarkdown: async (text: string) => text }))
+vi.mock('../../ts/parser/chatML', () => ({}))
+vi.mock('../../ts/process/moduleRefList', () => ({ hasModuleStubs: () => false }))
+vi.mock('../../ts/process/moduleEnsure', () => ({ ensureCurrentModulesOrAlert: async () => true }))
+vi.mock('../../ts/translator/translator', () => ({ getLLMCache: async () => null }))
+vi.mock('../../ts/process/ttsModes', () => ({ isTTSVoiceMode: () => false }))
+vi.mock('../../ts/process/scripts', () => ({ risuChatParser: (text: string) => text }))
+vi.mock('../../ts/process/displayParseOptions', () => ({ buildDisplayParseOptions: () => ({}) }))
+vi.mock('../../ts/alert', () => ({ alertError: vi.fn(), alertRequestData: vi.fn() }))
+vi.mock('../../ts/process/messageActions.svelte', () => ({ handleButtonTriggerWithin: vi.fn(), handleFormTriggerWithin: vi.fn(), playMessageTTS: vi.fn() }))
+vi.mock('../../ts/process/messageEditorController.svelte', () => ({ createMessageEditorController: () => ({
+    editMode: false, editTranslationMode: false, translationViewControlsDisabled: false,
+    translationEditControlDisabled: false, originalEditControlDisabled: false,
+    dispose: () => {},
+}) }))
+vi.mock('../ChatScreens/PartialEditController.svelte', () => ({ default: () => ({}) }))
+vi.mock('./MessageEditor.svelte', () => ({ default: () => ({}) }))
+vi.mock('./TranslationEditor.svelte', () => ({ default: () => ({}) }))
 vi.mock('../ChatScreens/ChatBody.svelte', () => ({ default: (anchor: Comment, props: { msgDisplay?: string, renderRevision?: number }) => {
     if (props.msgDisplay === 'bad') throw new Error('row failed')
     const node = document.createElement('div')

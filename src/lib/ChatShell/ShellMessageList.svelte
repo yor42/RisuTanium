@@ -168,7 +168,7 @@
     }
 </script>
 
-<div data-part="chat-message-list" class="flex flex-col-reverse" bind:this={rows}>
+<div data-part="chat-message-list" class="flex flex-col-reverse" role="log" aria-live="off" bind:this={rows}>
     {#key rebuildEpoch}
         {#each renderRows as row (row.key)}
             <div class="chat-message-container" class:older={row.idx < messages.length - 3} data-part="chat-message-container">

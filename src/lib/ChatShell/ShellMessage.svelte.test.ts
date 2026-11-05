@@ -19,14 +19,37 @@ vi.mock('./StreamingView.svelte', () => ({ default: (anchor: Comment) => {
     anchor.before(node)
     return {}
 } }))
-vi.mock('../../ts/stores.svelte', () => {
+vi.mock('../../ts/stores.svelte', async () => {
+    const { writable } = await import('svelte/store')
     const DBState = $state({ db: {} })
-    return { DBState }
+    const selIdState = $state({ selId: 0 })
+    return { DBState, selIdState, HideIconStore: writable(false) }
 })
 vi.mock('../ChatScreens/chatSurface.svelte', () => {
-    const chatSurface = $state({ rebuildEpoch: 0 })
+    const chatSurface = $state({ rebuildEpoch: 0, closeEpoch: 0 })
     return { chatSurface, isChatSurfaceInstalled: () => false }
 })
+vi.mock('../../ts/globalApi.svelte', () => ({ aiLawApplies: () => false }))
+vi.mock('../../ts/storage/database.svelte', () => ({ getCurrentCharacter: () => null }))
+vi.mock('../../ts/parser/parser.svelte', () => ({ ParseMarkdown: async (text: string) => text }))
+vi.mock('../../ts/parser/chatML', () => ({}))
+vi.mock('../../ts/process/moduleRefList', () => ({ hasModuleStubs: () => false }))
+vi.mock('../../ts/process/moduleEnsure', () => ({ ensureCurrentModulesOrAlert: async () => true }))
+vi.mock('../../ts/translator/translator', () => ({ getLLMCache: async () => null }))
+vi.mock('../../ts/process/ttsModes', () => ({ isTTSVoiceMode: () => false }))
+vi.mock('../../ts/process/scripts', () => ({ risuChatParser: (text: string) => text }))
+vi.mock('../../ts/process/displayParseOptions', () => ({ buildDisplayParseOptions: () => ({}) }))
+vi.mock('../../ts/caughtErrors', () => ({ recordCaughtError: vi.fn() }))
+vi.mock('../../ts/alert', () => ({ alertError: vi.fn(), alertRequestData: vi.fn() }))
+vi.mock('../../ts/process/messageActions.svelte', () => ({ handleButtonTriggerWithin: vi.fn(), handleFormTriggerWithin: vi.fn(), playMessageTTS: vi.fn() }))
+vi.mock('../../ts/process/messageEditorController.svelte', () => ({ createMessageEditorController: () => ({
+    editMode: false, editTranslationMode: false, translationViewControlsDisabled: false,
+    translationEditControlDisabled: false, originalEditControlDisabled: false,
+    dispose: () => {},
+}) }))
+vi.mock('../ChatScreens/PartialEditController.svelte', () => ({ default: () => ({}) }))
+vi.mock('./MessageEditor.svelte', () => ({ default: () => ({}) }))
+vi.mock('./TranslationEditor.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../ts/characters', () => ({ getCharImage: async () => null }))
 vi.mock('../../ts/model/modellist', () => ({ getModelInfo: () => ({ shortName: 'model' }) }))
 vi.mock('../../lang', () => ({ language: { messageInterrupted: 'Interrupted' } }))
