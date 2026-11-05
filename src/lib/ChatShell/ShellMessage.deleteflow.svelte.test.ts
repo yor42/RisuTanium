@@ -273,7 +273,7 @@ describe('alternatives row', () => {
         const state = $state({ count: 2 })
         DBState.db.characters[0].chats[0].message.splice(2, 1)
         show(1, false, { getTreeView: () => ({ at: () => ({ index: 1, count: state.count }), continuation: 0 }) })
-        const label = () => target.querySelector('[data-part="chat-alternatives"] span[aria-live]')?.textContent
+        const label = () => target.querySelector('[data-part="chat-message-alts"] span[aria-live]')?.textContent
         expect(label()).toBe('1 / 2')
         state.count = 3
         flushSync()
@@ -281,7 +281,7 @@ describe('alternatives row', () => {
         openSheet().querySelector<HTMLButtonElement>('[data-action="stepNext"]')!.click()
         await vi.waitFor(() => expect(stepSibling).toHaveBeenCalledTimes(1), { timeout: 5000 })
         await Promise.resolve()
-        target.querySelector<HTMLButtonElement>('[data-part="chat-alternatives"] [data-action="newReply"]')!.click()
+        target.querySelector<HTMLButtonElement>('[data-part="chat-message-alts"] [data-action="newReply"]')!.click()
         expect(regenerateNewest).not.toHaveBeenCalled()
     })
 })

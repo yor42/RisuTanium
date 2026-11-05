@@ -297,7 +297,7 @@ function replyWith(text: string): void {
 
 function newInput(): HTMLTextAreaElement | null { return target.querySelector<HTMLTextAreaElement>('[data-part="chat-composer-input"]') }
 function arrow(label: string): HTMLButtonElement {
-    return target.querySelector<HTMLButtonElement>(`[data-part="chat-alternatives"] [aria-label="${label}"]`)!
+    return target.querySelector<HTMLButtonElement>(`[data-part="chat-message-alts"] [aria-label="${label}"]`)!
 }
 
 /** Sends one user message, then regenerates the reply through the row's "new reply" control, which leaves two sibling replies. */

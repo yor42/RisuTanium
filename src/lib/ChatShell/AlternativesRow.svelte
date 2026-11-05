@@ -34,7 +34,7 @@
     let counterName = $derived(firstMessage ? language.chatShellFirstMessageOf(index, count) : language.chatShellReplyOf(index, count))
 </script>
 
-<div data-part="chat-alternatives" role="group" aria-label={counterName}>
+<div data-part="chat-message-alts" role="group" aria-label={counterName}>
     <button type="button" data-step="prev" class:button-icon-unreroll={!firstMessage} aria-label={language.chatShellPreviousReply} aria-disabled={index <= 1} title={index <= 1 ? language.chatShellFirstReply : language.chatShellPreviousReply} disabled={busy || index <= 1} onclick={() => step('back')}>‹</button>
     <span aria-live="polite">{firstMessage ? language.chatShellFirstMessageOf(index, count) : `${index} / ${count}`}</span>
     <button type="button" data-step="next" class:button-icon-reroll={!firstMessage && !atEnd} aria-label={language.chatShellNextReply} aria-disabled={atEnd} title={atEnd ? language.chatShellLastReply : language.chatShellNextReply} disabled={busy || atEnd} onclick={() => step('forward')}>›</button>
@@ -43,7 +43,7 @@
 </div>
 
 <style>
-    [data-part="chat-alternatives"] { display: flex; align-items: center; gap: var(--space-7); }
+    [data-part="chat-message-alts"] { display: flex; align-items: center; gap: var(--space-7); }
     button { min-width: var(--size-21); min-height: var(--size-21); color: var(--nexus-text); }
     .space { flex: 1; min-width: var(--size-14); }
 </style>

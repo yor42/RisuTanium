@@ -42,7 +42,7 @@
     export function refresh(): void { layout = readSlots() }
 </script>
 
-<div data-part="chat-message-meta-actions">
+<div data-part="chat-message-actions">
     {#if time}<time datetime={new Date(time).toISOString()}>{new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(time)}</time>{/if}
     {#if model}<span>{model}</span>{/if}
     <span class="spacer"></span>
@@ -53,7 +53,7 @@
 </div>
 
 <style>
-    [data-part="chat-message-meta-actions"] { display: flex; align-items: center; gap: var(--message-meta-gap); width: 100%; color: var(--nexus-text-secondary); }
+    [data-part="chat-message-actions"] { display: flex; align-items: center; gap: var(--message-meta-gap); width: 100%; color: var(--nexus-text-secondary); }
     .spacer { flex: 1; }
     button { min-width: var(--size-21); min-height: var(--size-21); color: var(--nexus-text-secondary); }
 </style>

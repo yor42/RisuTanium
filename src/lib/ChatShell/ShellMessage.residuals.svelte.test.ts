@@ -169,13 +169,13 @@ describe('sheet action outcomes stay visible on the row', () => {
         await tick()
         flushSync()
     }
-    const status = () => target.querySelector('[data-part="chat-message-status"]')?.textContent
+    const status = () => target.querySelector('[data-part="chat-status-row"]')?.textContent
 
     test('a refused clipboard is announced on the row with the error name', async () => {
         copy.plain.mockImplementation((_text: string, report: (outcome: { ok: false, errorName: string }) => void) => report({ ok: false, errorName: 'NotAllowedError' }))
         await runAction('copy')
         expect(status()).toBe('NotAllowedError: Copy failed')
-        expect(target.querySelector('[data-part="chat-message-status"]')?.getAttribute('role')).toBe('status')
+        expect(target.querySelector('[data-part="chat-status-row"]')?.getAttribute('role')).toBe('status')
     })
     test('a successful copy says Copied and the text clears after its time', async () => {
         vi.useFakeTimers()

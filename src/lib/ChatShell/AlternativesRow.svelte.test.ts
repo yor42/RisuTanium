@@ -70,11 +70,11 @@ describe('T3 alternatives controls', () => {
         expect(regenerateNewest).not.toHaveBeenCalled()
     })
     test('the counter names are interpolated keys for replies and for the first message', () => {
-        expect(show(2, 3).querySelector('[data-part="chat-alternatives"]')!.getAttribute('aria-label')).toBe('Reply 2 of 3')
+        expect(show(2, 3).querySelector('[data-part="chat-message-alts"]')!.getAttribute('aria-label')).toBe('Reply 2 of 3')
         expect(target.querySelector('span[aria-live]')!.textContent).toBe('2 / 3')
         unmount(app!); target.remove()
         const row = show(2, 3, true)
-        expect(row.querySelector('[data-part="chat-alternatives"]')!.getAttribute('aria-label')).toBe('First message 2 of 3')
+        expect(row.querySelector('[data-part="chat-message-alts"]')!.getAttribute('aria-label')).toBe('First message 2 of 3')
         expect(row.querySelector('span[aria-live]')!.textContent).toBe('First message 2 of 3')
     })
     test('exactly one control of the newest reply carries the reroll hotkey class: the next arrow, then new reply at the end', () => {

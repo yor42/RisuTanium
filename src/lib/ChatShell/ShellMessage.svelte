@@ -530,7 +530,7 @@
     {#if (newestCharacter || firstMessage) && (position.count > 1 || newestCharacter)}
         <AlternativesRow bind:this={alternatives} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} busy={getBusy?.() ?? false} onStep={firstMessage ? (direction) => { void browse(direction) } : undefined} />
     {/if}
-    {#if statusMessage}<span data-part="chat-message-status" role="status" aria-live="polite">{statusMessage}</span>{/if}
+    {#if statusMessage}<span data-part="chat-status-row" role="status" aria-live="polite">{statusMessage}</span>{/if}
     {#if idx >= 0 && !streaming && !editor.editMode && !editor.editTranslationMode && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit)}
         <PartialEditController messageData={message.data} chatIndex={idx} {bodyRoot} blockEditEnabled={DBState.db.enableBlockPartialEdit} dragEditEnabled={DBState.db.enableDragPartialEdit} translatedView={translated} getTranslationEditContext={getTranslationPartialEditContext} on:save={handlePartialEditSave} />
     {/if}
@@ -565,7 +565,7 @@
     :global(html[data-low-power]) [data-part="chat-message-body"][data-spring] { transition-duration: var(--dur-lowpower-cap); }
     :global(html[data-low-power]) [data-part="chat-message-body"][data-commit] { animation-duration: var(--dur-lowpower-cap); }
     [data-part="chat-message-interrupted"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
-    [data-part="chat-message-status"] { color: var(--nexus-text-secondary); font-size: var(--font-size-xs); }
+    [data-part="chat-status-row"] { color: var(--nexus-text-secondary); font-size: var(--font-size-xs); }
     [data-part="chat-message-delete-pending"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
     [data-part="chat-message-render-failed"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
     [data-part="chat-message-divider"] { border-top: var(--stroke-bold) dashed var(--color-warning); }

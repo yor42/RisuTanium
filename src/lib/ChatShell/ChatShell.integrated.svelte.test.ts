@@ -103,7 +103,7 @@ async function show(): Promise<void> {
     app = mount(ChatShell, { target })
     await vi.waitFor(() => {
         flushSync()
-        expect(target.querySelector('[data-part="chat-alternatives"]')).not.toBeNull()
+        expect(target.querySelector('[data-part="chat-message-alts"]')).not.toBeNull()
     }, { timeout: 15000 })
 }
 afterEach(async () => {
@@ -114,7 +114,7 @@ afterEach(async () => {
     composer.busy = false
     for (const fn of [composer.branchAt, composer.stepSibling, composer.regenerateNewest]) fn.mockClear()
 })
-function counter(): string | null | undefined { return target.querySelector('[data-part="chat-alternatives"] span[aria-live]')?.textContent }
+function counter(): string | null | undefined { return target.querySelector('[data-part="chat-message-alts"] span[aria-live]')?.textContent }
 function openNewestActions(): void {
     target.querySelector<HTMLButtonElement>('article[data-chat-id="m"] [aria-label="More actions"]')!.click()
     flushSync()
@@ -124,8 +124,8 @@ describe('ChatShell wires the reply tree into the rows', () => {
     test('a message with two alternatives shows 1 / 2 with an enabled next arrow', async () => {
         await show()
         expect(counter()).toBe('1 / 2')
-        expect(target.querySelector<HTMLButtonElement>('[data-part="chat-alternatives"] [aria-label="Next reply"]')!.disabled).toBe(false)
-        expect(target.querySelector<HTMLButtonElement>('[data-part="chat-alternatives"] [aria-label="Previous reply"]')!.disabled).toBe(true)
+        expect(target.querySelector<HTMLButtonElement>('[data-part="chat-message-alts"] [aria-label="Next reply"]')!.disabled).toBe(false)
+        expect(target.querySelector<HTMLButtonElement>('[data-part="chat-message-alts"] [aria-label="Previous reply"]')!.disabled).toBe(true)
     })
 
     test('the action sheet offers Branch enabled and routes it to branchAt with the live index and expected id', async () => {
@@ -144,7 +144,7 @@ describe('ChatShell wires the reply tree into the rows', () => {
         doingChat.set(true)
         flushSync()
         await tick()
-        const row = target.querySelector('[data-part="chat-alternatives"]')!
+        const row = target.querySelector('[data-part="chat-message-alts"]')!
         expect(row.querySelector<HTMLButtonElement>('[aria-label="Next reply"]')!.disabled).toBe(true)
         const generate = row.querySelector<HTMLButtonElement>('[data-action="newReply"]')!
         expect(generate.disabled).toBe(true)
@@ -160,7 +160,7 @@ describe('ChatShell wires the reply tree into the rows', () => {
         doingChat.set(false)
         flushSync()
         await tick()
-        expect(target.querySelector<HTMLButtonElement>('[data-part="chat-alternatives"] [aria-label="Next reply"]')!.disabled).toBe(true)
+        expect(target.querySelector<HTMLButtonElement>('[data-part="chat-message-alts"] [aria-label="Next reply"]')!.disabled).toBe(true)
     })
 })
 

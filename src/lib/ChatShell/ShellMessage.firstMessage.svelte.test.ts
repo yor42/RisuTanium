@@ -97,8 +97,8 @@ afterEach(async () => {
     regenerateNewest.mockClear()
 })
 function row(): HTMLElement { return target.querySelector<HTMLElement>('[data-part="chat-first-message"]')! }
-function counter(): string | null | undefined { return row().querySelector('[data-part="chat-alternatives"] span[aria-live]')?.textContent }
-function button(label: string): HTMLButtonElement { return row().querySelector<HTMLButtonElement>(`[data-part="chat-alternatives"] [aria-label="${label}"]`)! }
+function counter(): string | null | undefined { return row().querySelector('[data-part="chat-message-alts"] span[aria-live]')?.textContent }
+function button(label: string): HTMLButtonElement { return row().querySelector<HTMLButtonElement>(`[data-part="chat-message-alts"] [aria-label="${label}"]`)! }
 function fmIndex(): number { return DBState.db.characters[0].chats[0].fmIndex ?? -1 }
 
 describe('first message alternatives', () => {
@@ -164,7 +164,7 @@ describe('first message alternatives', () => {
         const original = DBState.db.characters[0].alternateGreetings
         DBState.db.characters[0].alternateGreetings = []
         await show()
-        expect(row().querySelector('[data-part="chat-alternatives"]')).toBeNull()
+        expect(row().querySelector('[data-part="chat-message-alts"]')).toBeNull()
         DBState.db.characters[0].alternateGreetings = original
     })
 })
