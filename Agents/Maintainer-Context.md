@@ -22142,3 +22142,41 @@ Status: DRAFT, not accepted. Entries MC-1069 to MC-1072, to be appended after th
 **Decided (lane A, under the device stop rule; the maintainer's answer set the run, not the parking).** D2 "Saving" is parked as NOT REACHED after three attempts (devbatch31, devbatch32, this run); it reopens only on a changed setup, such as a slow commit (a character with a large chat or a large module change) or a debug pause hook, which needs the maintainer's word because it is app code in a restore path. D4 is closed as "premise refuted" (devbatch32: refusal at 3.9 s, before the body is read; the decline-the-confirm variant was not run). Both stay accepted observations, not passed checks.
 
 **Not decided.** Whether to build a debug pause hook; nothing is committed by this entry. The records were not independently checked by a second reader when written.
+---
+
+### MC-1086 — Lane A, 2026-11-05: UI-S1 sizing: S1a first, Back option A, chat-specific renderer, nexus preset at acceptance, parity kept, idle-only switch flip, device-local settings, default theme only, no Undo; the S1a plan passed Gate 1 at round 3 `[EDITORIAL]`
+
+- Tag: statements (the maintainer's AskUserQuestion answers, quoted below) and results (scout reports, the designer's plans and the Gate 1 verdicts; the scout reports are unverified by a second reader, the Gate 1 reviews are independent). Date: 2026-11-05. Sweep ref: none. Exact times of the answers: UNKNOWN.
+- Related: `MC-516` and `MC-920` (the UI gate; all four tickets of the list are closed, `MC-1084`), `MC-1003` (Back decided at UI-S1 sizing), `MC-1002`, `MC-1004`, `MC-1005`, `MC-890` (per-surface switch, at most 10 questions per batch), `MC-892`, `MC-921` (UI-S0 carried checks), `MC-774`, `MC-350`, `MC-697` (bounded rewrite allowed under the gates), `MC-058`.
+
+**What the maintainer said (verbatim).** "UI gate tickets" (the wrap-up choice), then the AskUserQuestion answers below. The chosen option for "what next" after the CHORE-398 device retry was "Start UI-S1 sizing (Recommended)".
+
+**Question 1 (header "First batch").** Which batch the first plan covers: S1a = slice 1 shell, composer, gestures, actions plus the hooks needed to mount it; S1b = This chat sheet and toggles, groups, long chats. Answer: "S1a only (Recommended)".
+
+**Question 2 (header "Back").** The Back mechanism for all new screens and Android (`MC-1003`). Options: A keep the handler stack; B add browser history for web; C Android-only layer stack. Answer: "A: keep the handler stack (Recommended)". DD-207 then needs amending (not done; `docs/design` is not edited by this entry).
+
+**Question 3 (header "Renderer").** Shared with Utility, or chat-specific. Answer: "Chat-specific (Recommended)".
+
+**Question 4 (header "Nexus preset").** When the hidden `nexus` colour-scheme preset appears in the Settings picker. Answer: "At UI-S1 acceptance (Recommended)".
+
+**Question 5 (header "Missing parts").** What S1a does about today's translation controls, TTS, emotion box, suggestions, creator quote, inlays/assets, plugin panels and the Utility entry. Answer: "Keep them reachable (Recommended)" (the alternative was an escape hatch to the old shell).
+
+**Question 6 (header "Flip while busy").** What the preview switch does while a draft is written, a message edited or a reply generating. Answer: "Refuse with a reason (Recommended)".
+
+**Question 7 (header "Storage").** Where the switch, pin layout, Enter-key mode and haptics live. Answer: "Device-local, labelled 'On this device' (Recommended)" (the alternative was profile fields).
+
+**Question 8 (header "Defaults").** Accept: the failed-reply card waits for S1b; undo after the chat changed commits the delete; stop-and-delete with an unacknowledged stop waits for the generation to settle with no timeout; low power counts as off until CHORE-585; the first message is browse-only; CHORE-135 closes when the follow-finger sidebar ships behind the switch. Answer: "Accept all (Recommended)". (The undo default became moot, see Question 10.)
+
+**Question 9 (header "Themes", after Gate 1 round 1).** Which themes get the new shell in S1a. Answer: "Default theme only (Recommended)": waifu, mobilechat, cardboard and customHTML keep the old shell for now; groups, the playground and the no-character screen also keep the old shell.
+
+**Question 10 (header "Undo", after Gate 1 round 2).** What S1a does about the in-memory Undo row for deleted messages. Answer: "No Undo in S1a (Recommended)". Delete works as in the old shell (the existing confirm and instant-remove settings are honoured), stop-and-delete stays, and the spec's Undo (SLICE1_SPEC §5.6) waits for CHORE-574.
+
+**Results (lane A, facts; evidence in the session scratch `%TEMP%\risu-b715\b58\uis1\`).**
+- Sizing scouts (Codex gpt-6-luna medium, read-only): A `A\result.md` (current chat shell code; lane A verified the `ChatScreen` mount at `src/App.svelte:245`, no Back handler in `src/lib/Utility`, and about 6.1 to 6.4k lines in 20 files); B `B\result.md` (design specs and the ticket matrix: slice 1 changes behaviour, several slices add persisted fields).
+- Designer plans (native Opus): revision 1 `plan\result.md` (with packet `plan\packet.md`); the independent grilling review `grill\result.md` (Codex gpt-6-sol medium, 13 items); revision 2 `plan2\result.md`; revision 3 `plan3\result.md`; revision 4 `plan4\result.md` (the Gate 1 passing plan; it holds revisions 1 to 3 by reference).
+- Gate 1 (native `opus-reviewer`, fresh each round): round 1 `g1\result.md` `[REJECT]` (6 substantive: undo against `withSupaRepoint` side effects; stop-and-delete origin not frozen; parity inventory too narrow; theme decision missing; editor component mechanism; translation-editor Back undefined); round 2 `g1r2\result.md` `[REJECT]` (3 substantive: undo against inlay cleanup, non-discriminating save-mark tests, T29 narrower than the parity row definition); round 3 `g1r3\result.md` `[EDITORIAL]` (7 editorial findings, no substantive one). Gate 1 is PASSED at round 3. The advisor-escalation rule (three consecutive substantive rejects) was not reached.
+- The plan, as passed: seven stages in one gated batch, one coder per stage, serial in one worktree, with an extra `opus-reviewer` checkpoint after the Stage 1 extraction and one combined Gate 2; a new presentation layer in `src/lib/ChatShell/**` and `src/ts/chatShell/**` beside the old shell, chosen per device by a localStorage switch (default off) through one `shellEligible()` predicate; no database, character or chat field is added, so `.bin` is unchanged; changed critical contracts: dirty tracking and save marks, draft durability, generation-target identity, sanitizer enforcement; Gate 2 goes to `opus-reviewer`; seven named Note 9 device claims. The seven editorial findings of round 3 are binding amendments for the coder briefs (assertion wording for T24(f) and T24(b), the `deleteAtSettle` return flag, a rule for a second stop-and-delete while one is pending, a pinned regex per T29 row, dangling undo text, and `abortChat` side effects on a finished reply). For a second stop-and-delete while one is pending (round-3 E4) the reviewer recommends disabling delete actions on that origin while one is pending; that is a recommendation, not a maintainer answer, and the coder brief carries it as an open point for the maintainer's word if it changes visible behaviour.
+
+**Records still owed from the plan.** The DD-207 amendment (Back option A); the reconciliation of "absorbs CHORE-154 item 5" with `Roadmap-parked.md` (the plan re-decides item 5 at UI-S3); the Undo row and CHORE-574; the name of the old-shell retirement batch (MC-890 "no long-lived branch").
+
+**Not decided.** Starting the S1a implementation (this entry authorizes no application code, no worktree and no commit of code); the old-shell retirement batch; S1b sizing; any Pi 3 or Tab S9 device availability for the optional checks.
