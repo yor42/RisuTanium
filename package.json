@@ -2,10 +2,10 @@
   "name": "risutanium",
   "private": true,
   "version": "0.1.0",
-  "packageManager": "pnpm@10.34.1",
+  "packageManager": "pnpm@11.28.10",
   "type": "module",
   "engines": {
-    "node": "^20.19.0 || >=22.12.0"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "dev": "vite",
@@ -122,22 +122,5 @@
     "vite": "~8.1.6",
     "vite-plugin-wasm": "3.6.0",
     "vitest": "^4.1.12"
-  },
-  "pnpm": {
-    "neverBuiltDependencies": [
-      "sharp"
-    ],
-    "overrides": {
-      "@huggingface/transformers>sharp": "^0.35.5",
-      "@tailwindcss/typography>postcss-selector-parser": "^6.1.5",
-      "express>body-parser": "~1.20.9",
-      "express>qs": "~6.16.1",
-      "express-rate-limit>ip-address": "^10.7.4",
-      "jsdom>undici": "^7.30.1",
-      "monaco-editor>dompurify": "^3.4.17"
-    },
-    "patchedDependencies": {
-      "monaco-editor@0.57.0": "patches/monaco-editor@0.57.0.patch"
-    }
   }
 }

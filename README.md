@@ -58,8 +58,8 @@ This is a short list of changes you will notice. See [Migrating from upstream](d
 
 Prerequisites:
 
-- Node.js 20.19+ or 22.12+.
-- pnpm 10.34.1. `package.json` pins it, so `corepack enable` is enough.
+- Node.js 22.13+.
+- pnpm 11.28.10. `package.json` pins it, so `corepack enable` is enough.
 - For the desktop build only: Rust and Cargo, plus the platform prerequisites in the [Tauri guide](https://tauri.app/start/prerequisites/).
 
 ```

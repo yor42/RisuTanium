@@ -1,0 +1,25 @@
+sideEffectsCache: false
+ignoreScripts: false
+minimumReleaseAge: 4320
+verifyDepsBeforeRun: false
+
+allowBuilds:
+  '@swc/core': true
+  core-js: true
+  esbuild: true
+  msgpackr-extract: true
+  onnxruntime-node: true
+  protobufjs: true
+  sharp: false
+
+overrides:
+  '@huggingface/transformers>sharp': ^0.35.5
+  '@tailwindcss/typography>postcss-selector-parser': ^6.1.5
+  'express>body-parser': ~1.20.9
+  'express>qs': ~6.16.1
+  'express-rate-limit>ip-address': ^10.7.4
+  'jsdom>undici': ^7.30.1
+  'monaco-editor>dompurify': ^3.4.17
+
+patchedDependencies:
+  monaco-editor@0.57.0: patches/monaco-editor@0.57.0.patch
