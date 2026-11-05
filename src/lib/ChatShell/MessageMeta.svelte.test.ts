@@ -62,4 +62,16 @@ describe('message meta actions', () => {
         const glyphs = [...target.querySelectorAll<HTMLButtonElement>('[data-action]')].map((button) => button.textContent)
         expect(glyphs).not.toContain('•')
         expect(new Set(glyphs).size).toBe(glyphs.length)
-    })})
+    })
+    test('the time and the model name carry the single-line classes, the long model name is also the tooltip', () => {
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        app = mount(MessageMeta, { target, props: { name: 'Ari', time: 1_700_000_000_000, model: 'Custom-mock-model-with-a-long-name', available: ['edit'], onaction: vi.fn(), onmore: vi.fn() } })
+        flushSync()
+        const time = target.querySelector<HTMLElement>('time')!
+        const model = target.querySelector<HTMLElement>('.model')!
+        expect(time.classList.contains('time')).toBe(true)
+        expect(model.textContent).toBe('Custom-mock-model-with-a-long-name')
+        expect(model.title).toBe('Custom-mock-model-with-a-long-name')
+    })
+})

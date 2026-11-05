@@ -188,6 +188,8 @@
         const shortName = getModelInfo(model).shortName
         return shortName.charAt(0).toUpperCase() + shortName.slice(1)
     })
+    // The request-info badge carries the model name on its own line, so the meta row does not repeat it.
+    let generationBadgeShown = $derived(Boolean((messageGenerationInfo ?? message.generationInfo) && (DBState.db.requestInfoInsideChat || aiLawApplies())))
     let owner = $derived(DBState.db.characters?.[selIdState.selId])
     let chat = $derived(owner?.chats?.[owner.chatPage])
     let rowOrigin = $derived(owner?.chaId && chat?.id ? originOf(owner, chat) : null)
@@ -550,10 +552,10 @@
             {/if}
             <span data-part="chat-message-name" id={labelId}>{name}</span>
             {#if isBookmarked}<span data-part="chat-message-badges" aria-label={language.bookmark}>★</span>{/if}
-            <MessageMeta bind:this={meta} {name} time={message.time} model={modelShortName} available={actions} disabled={unavailable} generating={streaming} onaction={(id, shiftKey) => { void act(id === 'delete' && shiftKey ? 'deleteAfter' : id) }} onmore={openActions} />
+            <MessageMeta bind:this={meta} {name} time={message.time} model={generationBadgeShown ? '' : modelShortName} available={actions} disabled={unavailable} generating={streaming} onaction={(id, shiftKey) => { void act(id === 'delete' && shiftKey ? 'deleteAfter' : id) }} onmore={openActions} />
         </div>
     </div>
-    {#if (messageGenerationInfo ?? message.generationInfo) && (DBState.db.requestInfoInsideChat || aiLawApplies())}
+    {#if generationBadgeShown}
         <button type="button" data-part="chat-message-generation-info" onclick={() => alertRequestData({ genInfo: chat?.message?.[idx]?.generationInfo ?? messageGenerationInfo ?? message.generationInfo, idx })}>{modelShortName}</button>
     {/if}
     {#if DBState.db.translator !== '' && !streaming && idx >= 0}
@@ -608,6 +610,8 @@
     [data-part="chat-message"] { width: 100%; padding: var(--space-8) var(--space-12); color: var(--nexus-text); }
     [data-part="chat-message-name-row"] { min-height: var(--message-name-row-height); }
     [data-part="chat-message-meta"] { display: flex; align-items: center; gap: var(--message-meta-gap); color: var(--nexus-text-secondary); }
+    [data-part="chat-message-name"] { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    [data-part="chat-message-generation-info"] { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     [data-part="chat-message-avatar"] { display: inline-flex; align-items: center; justify-content: center; width: var(--size-avatar-sm); height: var(--size-avatar-sm); border-radius: var(--radius-circle); background: var(--nexus-surface-raised); }
     [data-part="chat-message-avatar"]:not([data-round]) { border-radius: var(--radius-4); }
     [data-part="chat-message-body"] { max-width: var(--thread-max-width); width: 100%; overflow-wrap: anywhere; }

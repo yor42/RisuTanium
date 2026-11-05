@@ -45,8 +45,8 @@
 </script>
 
 <div data-part="chat-message-actions">
-    {#if time}<time datetime={new Date(time).toISOString()}>{new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(time)}</time>{/if}
-    {#if model}<span>{model}</span>{/if}
+    {#if time}<time class="time" datetime={new Date(time).toISOString()}>{new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(time)}</time>{/if}
+    {#if model}<span class="model" title={model}>{model}</span>{/if}
     <span class="spacer"></span>
     {#each pinned as id (id)}
         <button type="button" data-action={id} data-part={id === 'readAloud' ? 'chat-message-tts' : undefined} aria-label={labelOf(id)} title={labelOf(id)} disabled={disabled.includes(id)} onclick={(event) => onaction(id, event.shiftKey)}>{glyphs[id] ?? '•'}</button>
@@ -55,7 +55,10 @@
 </div>
 
 <style>
-    [data-part="chat-message-actions"] { display: flex; align-items: center; gap: var(--message-meta-gap); width: 100%; color: var(--nexus-text-secondary); }
+    [data-part="chat-message-actions"] { display: flex; align-items: center; gap: var(--message-meta-gap); width: 100%; min-width: 0; color: var(--nexus-text-secondary); }
     .spacer { flex: 1; }
+    /* The row stays one line at phone width: the time never wraps and the model name gives way with an ellipsis. */
+    .time { flex: none; white-space: nowrap; }
+    .model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     button { min-width: var(--size-21); min-height: var(--size-21); color: var(--nexus-text-secondary); }
 </style>

@@ -55,10 +55,36 @@
         onclose()
     }
 
+    // A long press opens the sheet under the finger: the click the browser synthesises when that touch lifts lands on the scrim and must not close it.
+    // Only a touch that began before the sheet opened is the opener's; a later tap on the scrim is a deliberate dismissal.
+    const SCRIM_TOUCH_GRACE_MS = 400
+    let touchActive = false
+    let touchStartedAt = -Infinity
+    let touchEndedAt = -Infinity
+    let openedAt = Infinity
+    $effect(() => {
+        const isTouch = (event: PointerEvent) => event.pointerType === 'touch' || event.pointerType === 'pen'
+        const down = (event: PointerEvent) => { if (isTouch(event)) { touchActive = true; touchStartedAt = performance.now() } }
+        const up = (event: PointerEvent) => { if (isTouch(event)) { touchActive = false; touchEndedAt = performance.now() } }
+        document.addEventListener('pointerdown', down, true)
+        document.addEventListener('pointerup', up, true)
+        document.addEventListener('pointercancel', up, true)
+        return () => {
+            document.removeEventListener('pointerdown', down, true)
+            document.removeEventListener('pointerup', up, true)
+            document.removeEventListener('pointercancel', up, true)
+        }
+    })
+    function scrimClick(): void {
+        const fromOpeningTouch = touchStartedAt <= openedAt && (touchActive || performance.now() - touchEndedAt < SCRIM_TOUCH_GRACE_MS)
+        if (!fromOpeningTouch) close()
+    }
+
     $effect(() => {
         const shell = open ? panel : undefined
         if (!shell) return
         closing = false
+        openedAt = performance.now()
         const savedOpener = untrack(() => opener)
         const restoreInert = makeInert(untrack(() => inertOutside ? outsideLayer(shell) : background))
         const unregisterShell = registerShell(token)
@@ -95,7 +121,7 @@
 
 {#if open}
     <div data-part="chat-sheet-layer" data-mode={mode}>
-        <button data-part="chat-sheet-scrim" aria-label={language.cancel} onclick={close}></button>
+        <button data-part="chat-sheet-scrim" aria-label={language.cancel} onclick={scrimClick}></button>
         <section bind:this={panel} data-part="chat-sheet" data-mode={mode} style:left={mode === 'wide-menu' ? `${popupPosition.left}px` : undefined} style:top={mode === 'wide-menu' ? `${popupPosition.top}px` : undefined} role={kind === 'menu' ? 'menu' : 'dialog'} aria-label={label} aria-modal={kind === 'menu' ? undefined : 'true'} tabindex="-1">
             {@render children()}
         </section>

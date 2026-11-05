@@ -97,6 +97,21 @@ describe('ShellMessage rich states', () => {
         expect(article?.querySelector('[data-part="chat-message-generation-info"]')?.textContent).toBe('Model')
     })
 
+    test('the model name is shown once: in the meta row without the badge, in the badge alone with it', async () => {
+        const message: Message = { role: 'char', data: 'Hi', chatId: 'm', generationInfo: { model: 'test' } }
+        let article = await show(message)
+        expect(article?.querySelector('[data-part="chat-message-generation-info"]')).toBeNull()
+        expect(article?.querySelectorAll('.model')).toHaveLength(1)
+        if (app) await unmount(app)
+        app = undefined
+        target.remove()
+        law.applies = true
+        article = await show(message)
+        expect(article?.querySelector('[data-part="chat-message-generation-info"]')?.textContent).toBe('Model')
+        expect(article?.querySelectorAll('.model')).toHaveLength(0)
+        expect(article?.querySelector('[data-part="chat-message-meta"]')?.textContent).not.toContain('Model')
+    })
+
     test('bookmark, dividers and memory boundary carry distinct row states', async () => {
         const article = await show({ role: 'char', data: 'Hi', chatId: 'm' }, { disabled: 'allBefore', isLastMemory: true })
         expect(article?.hasAttribute('data-bookmarked')).toBe(true)
