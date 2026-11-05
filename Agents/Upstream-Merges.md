@@ -400,3 +400,30 @@ Targeted, at `9755ce9f7` (Gate 2): `pnpm vitest run src/ts/plugins` 36 files, 65
 - **CHORE-590** (open, optional hardening): `addRisuReplacer` and `addRisuChatListener` await a permission prompt and register the unload callback afterwards, so an unload while the prompt is open leaves a replacer pointing at a terminated iframe. No reproducer (Gate 1 F6; upstream has the same code). Also carries the Gate 2 editorial: the `WeakMap` and `void proxy` hunks have no pinning test.
 - **Decisions:** `MC-901` (Q1 to Q4 and the merge confirmation). Ledger rows 4629 to 4631 (triage and verification; Gate 1, implementation and Gate 2; trial and merge `9755ce9f7`).
 - **Next merge:** use `git log --no-merges ea61945f9..upstream/main`. Move the version suffix again (Q4) in `appSubVer`, `version.json` and README line 33.
+
+## 2026-11-04 and 2026-11-05 — merges of upstream/main `cb7f122d4` and `39f1ac147`
+
+Merge commits: `84315bfdf` ("Merge upstream cb7f122d4: keep the fork's tree, record upstream as merged, version suffix up2026.10.294"; parents `065a9c5c2` and `cb7f122d4`; pushed 2026-11-04) and `31523ffa8` ("Merge upstream 39f1ac147: keep the fork's tree, record upstream as merged"; parents `b66f41a99` and `39f1ac147`; pushed 2026-11-05). Both are `git merge -s ours`: the tree is the fork's, and the merge only records upstream as merged. After `31523ffa8`, `git rev-list --count HEAD..upstream/main` is 0.
+
+**Upstream range:** `ea61945f9..cb7f122d4`: 31 commits (`MC-1076`, triage `b40\up-triage` and `b40\up-verify`), then `cb7f122d4..39f1ac147`: 3 docs-only commits (`7550a60bf`, `6982d982e`, `39f1ac147`).
+
+**Why.** The maintainer's words, 2026-11-04: "when we commit, can we make it git merge so we can track the upstream changes easier?" (`MC-1079`), and again on 2026-11-05 for the three docs commits (`MC-1081`). The trial of a content merge (23 conflicted files) was not used; the taken changes were ported by hand and the merge records the rest.
+
+### Disposition
+
+| Upstream change | Disposition | Where |
+|---|---|---|
+| Tauri streamed fetch (600 s idle limit and related) | TAKEN by hand (adapted to the fork's transport) | `aa1c1781c`, `MC-1078` |
+| Plugin `dbWrite` permission | TAKEN by hand (one reconfirm table, fork additions) | `98e162f57`, `MC-1077` |
+| `isHex`, alert z-index, shell-open removal, module low-level-access prompt, Cloudflare and CI items, version bumps | SKIPPED (the fork already has the fix or the maintainer's triage default; per-item origin UNKNOWN) | `MC-1076` |
+| pnpm 11 (skipped in the triage) | LATER TAKEN by hand with the fork's own settings and the dependency ranges | `a5508eac0` and `dfcc3515c`, `MC-1080` |
+| Python backend removal | NOT TAKEN ("keep it for now") | `MC-1076` |
+| Security items | Per-item outcome UNKNOWN | `MC-1076` |
+| Docs: missing `await` in the V3 plugin API examples (3 commits) | TAKEN by hand; the diff stat equals upstream's final commit (+70/−70 on `plugins.md` and `migrationGuide.md`) | `b66f41a99`, `MC-1081` |
+| Version | Suffix moved to `up2026.10.294` (from the merge commit message) | `84315bfdf` |
+
+### Follow-ups
+
+- **Next merge:** use `git log --no-merges 39f1ac147..upstream/main`. Skipped upstream changes cannot be re-merged by `git merge`; port them by hand and give the port commit a message that names the upstream hashes.
+- Move the version suffix again in `appSubVer`, `version.json` and README, as for the earlier merges.
+- The pnpm 11 and dependency decisions that came from this range are in `MC-1080`.

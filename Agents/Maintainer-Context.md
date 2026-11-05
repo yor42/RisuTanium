@@ -21976,3 +21976,64 @@ Status: DRAFT, not accepted. Entries MC-1069 to MC-1072, to be appended after th
 **Not decided.** The merge commit and the push need the maintainer's confirmation (AskUserQuestion, `MC-1069`); the merge is not made by this packet. The resolution of the 23 conflicted files is not decided.
 
 **Evidence sources (scratch).** Merge folder `b40\up-merge` (`brief.md` present; `plan.md` absent at check time).
+---
+
+### MC-1080 — Lane A, 2026-11-04 and 2026-11-05: the dependency bump with pnpm 11 (stage P and stage D) and the shared node_modules switch
+
+- Tag: statements (the maintainer's AskUserQuestion answers, quoted below) and results (plan, gates, checks, commits). Date: 2026-11-04 to 2026-11-05. Sweep ref: none. Exact times: UNKNOWN.
+- Related: `MC-1076` (the triage that SKIPPED pnpm 11; reversed below), `MC-335` (vite stays on the tilde range), `MC-1072` (Dependabot alert 174 dismissed), `MC-1069` (AskUserQuestion for every decision and commit).
+
+**Decided (maintainer, 2026-11-04, AskUserQuestion answers recorded in the lane A handoff `Agents/Handoff-2026-11-04-laneA.md`; the wording of each option is UNKNOWN).**
+- pnpm 11 yes, which reverses the earlier "keep pnpm 10" and the SKIP of pnpm 11 in `MC-1076`.
+- Q1: take upstream's range only where upstream is ahead; never downgrade; keep the fork's pins and removals.
+- Q2: jsdom stays at 28.1.0.
+- Q3: `engines` node `>=22.13.0`.
+- Q4: `verifyDepsBeforeRun: false` in both workspace yaml files.
+- Q5: `minimumReleaseAge: 4320`, strict.
+- Docker is verified by the CI docker-check after the push (the workflow only builds the image).
+- highlight.js follows plan-r3's decision (taken at 11.12.0 with the executed escaping evidence HL-1).
+- Two commits: stage P (pnpm 11, no range change), then stage D (the ranges).
+
+**Decided (maintainer, 2026-11-05, AskUserQuestion answers in this session).**
+- The mutant battery: "Reduced set (Recommended)" (clean-tree frozen install V1, the unpatched-install demonstration V2/MP2b, the Dockerfile reproducer T1 and substitute RT-P, the Hono install and tsc V3, the Q4 probe V8). MP1, MP3, MP4, MP5, MP6, MP7, MP9 and MP10 were not run by the lane (the stage P reviewer ran MP3 and MP9 himself, both killed).
+- Stage P: "Commit and push (Recommended)". Stage D: "Commit and push (Recommended)". The shared node_modules switch: "Yes, switch now (Recommended)". The docker-check trigger: "Yes, trigger it (Recommended)".
+- The maintainer's words: "you can finish the dependency bump before my APK build. .bin exports takes long time." The maintainer was creating a `.bin` backup at that time and will say when the new MVP APK is made.
+
+**Results (lane A, facts).**
+- Stage P `a5508eac0` (pushed): `packageManager` pnpm@11.28.10, `engines` node `>=22.13.0`, the package.json `pnpm` field and `.npmrc` removed; new `pnpm-workspace.yaml` (root and `server/hono`) holding the seven security overrides, the monaco-editor DOMPurify patch, `allowBuilds` (six allowed, sharp false), `minimumReleaseAge` and `verifyDepsBeforeRun`; Dockerfile copies `pnpm-workspace.yaml` and `patches` in `base`; server.sh, server.bat, ci.yml, docker-check.yml paths and README updated. `pnpm-lock.yaml` byte-identical to the base.
+- Stage P checks (scratch worktree `%TEMP%\risu-deps-wt`): frozen install, `pnpm check` 0 errors, full `pnpm test` 29,749 passed, build, 0 hits of DOMPurify 3.4.15 in dist. Reduced battery `b40\up-deps\g2p\battery.out`: 19 of 19 pass. T1 reproduced the defect on the base Dockerfile COPY set (pnpm 10.34.1: ENOENT on `patches/monaco-editor@0.57.0.patch`). RT-P served `GET /` 200 from a Dockerfile-derived production install.
+- Gate 1: plan r3 `[EDITORIAL]` (`b40\up-deps\plan-r3.md`; reviews `up-deps-g1\result.md`, `result2.md`, `result3.md`). Gate 2 stage P: `opus-reviewer` `[APPROVE]`, no findings (`b40\up-deps\g2p\result.md`, dispatch `up-deps-g2p`).
+- Stage D `dfcc3515c` (pushed): 31 range raises in `package.json` (all equal upstream `39f1ac147` except vite `~8.3.5`, the `MC-335` tilde) and the regenerated `pnpm-lock.yaml` (pnpm 11 rewrote the `patchedDependencies` entry to the short form with the same hash `c58c7b88…`). highlight.js 11.12.0, postcss-selector-parser 7.1.7, express-rate-limit 8.7.2 and ws 8.22.1 are the attributed security-adjacent changes; the storage and sanitizer packages (msgpackr, fflate, localforage, yaml, dompurify 3.4.17, markdown-it, monaco-editor 0.57.0, svelte, jsdom, katex, diff, uuid) did not move.
+- Stage D checks: lockfile change bound (`lockbound.cjs`): 319 changed keys, 0 unexplained, 1 flag (the `patchedDependencies` format, verified equivalent); `pnpm check` 0 errors and 2 warnings; full `pnpm test` 1351 files, 29,749 passed, 24 skipped; build, buildsite, hono:build and check:dist exit 0; dist has 0 hits of `3.4.15`.
+- Gate 2 stage D: `opus-reviewer` `[EDITORIAL]` (`b40\up-deps\g2d\result.md`, dispatch `up-deps-g2d`), chosen by the plan's own escalation trigger (highlight.js core change, unsanitized splice). The reviewer re-ran the highlight.js and selector-containment probes (extra corpus 0 failures; unescape and no-prefix mutants killed), and a frozen offline install accepting the short patch form.
+- Shared node_modules switch (E5, 2026-11-05): `pnpm install --frozen-lockfile --config.confirmModulesPurge=false` in `C:\Projects\RisuAI`, exit 0 in 19.3 s; `.modules.yaml` shows packageManager pnpm@11.28.10 and storeDir `...\pnpm\store\v11`. Smoke: `pnpm test src/ts/parser` 24 files, 232 passed.
+- CI: run for `a5508eac0` succeeded. The docker-check run for `dfcc3515c` (run 41959182735) and the CI run for `dfcc3515c` were in progress when this was written; their results are not recorded here.
+
+**Not decided / open.**
+- The two new `pnpm check` warnings (`tsconfig.json`: "Cannot write file ... would overwrite input file" for `public/sw.js` and `src/ts/rpack/rpack_js.js`) appear under svelte-check 4.7.8; stage P had 0 warnings. Upstream's tsconfig is identical but its lockfile resolves svelte-check 4.7.7, which was not checked. No CI job fails on warnings.
+- Not run: the Android debug APK build (V6) and the desktop build for stage D, any device check of core-js, pyodide 0.27.8 or web-llm, and a GET of the pyodide v0.27.8 CDN path (the loader and CDN version move together). The Linux container start and the first CI run with `pnpm/action-setup` on pnpm 11 were not executed before the push.
+- N8 (reviewer note, pre-existing, not from this bump): `renderHighlightableMarkdown` splices with `String.replace` and a string replacement (parser.svelte.ts), so a code block containing `$&` garbles the output. The chat route sanitizes afterwards, so it is a correctness defect, not an injection. Unfiled; a replacer function would fix it.
+- The scratch worktree `%TEMP%\risu-code-track-c412` (detached at `03b1ca1bf`, a junction to the shared node_modules) still has uncommitted edits (six store2 codec and test files modified, `chunkParams.ts` and `pristine/` untracked); it was not removed. `%TEMP%\risu-deps-wt` and `%TEMP%\risu-deps-wt2` (real node_modules) were not removed either.
+- Not accepted by this entry: no ticket is marked COMPLETE; the independent review of these records is pending.
+
+**Evidence sources (scratch).** `b40\up-deps` (plan, gate reports, `g2p`, `g2d`, `stageD`, `runs`, `lockbound.cjs`); reduced battery script `run-p-reduced.ps1` (session scratchpad, copied to `g2p`).
+
+---
+
+### MC-1081 — Lane A, 2026-11-05: the second upstream merge commit and the hand port of three upstream docs commits
+
+- Tag: statements (the maintainer's words and answers, below) and results (the commits). Date: 2026-11-05. Sweep ref: none. Exact times: UNKNOWN.
+- Related: `MC-1079` (the merge decision, superseded in status below), `MC-1076` (the triage), `MC-175` (upstream compatibility).
+
+**Decided (maintainer, 2026-11-05).** After lane A fetched upstream and found three new commits, the maintainer asked: "can we make git merge commit, so we can track the upstream changes easier?". The answers: the docs port "Commit and push (Recommended)", and the merge commit "Commit and push (Recommended)".
+
+**Results (lane A, facts).**
+- `MC-1079` status correction: the merge it decided was made and pushed as `84315bfdf` ("Merge upstream cb7f122d4: keep the fork's tree, record upstream as merged, version suffix up2026.10.294"); parents `065a9c5c2` and `cb7f122d4`; strategy ours, 31 upstream commits recorded, the only change is the version suffix. Skipped upstream changes cannot be re-merged; they are ported by hand.
+- Three new upstream commits `7550a60bf`, `6982d982e` and `39f1ac147` only add missing `await` calls to the V3 plugin API examples in `plugins.md` and `src/ts/plugins/migrationGuide.md`. They were ported by hand as `b66f41a99` (stat +70/−70 on the two files, equal to upstream's `39f1ac147`; CRLF kept; one `plugins.md` hunk applied manually because the fork's file had diverged).
+- Merge commit `31523ffa8` ("Merge upstream 39f1ac147: keep the fork's tree, record upstream as merged"): `git merge -s ours`, parents `b66f41a99` and `39f1ac147`; the tree is unchanged; `git rev-list --count HEAD..upstream/main` is 0. Pushed.
+- The upstream-merge log entry for both merges is in `Agents/Upstream-Merges.md` (2026-11-04 section).
+
+**Not decided.** Nothing further. The documentation port is a fork-side copy of upstream text; the V3 plugin API's own typings in `risuai.d.ts` were not changed by this work.
+
+**Evidence sources.** `git log --graph` at `31523ffa8`; `git diff HEAD...upstream/main --stat` before the port.
+
