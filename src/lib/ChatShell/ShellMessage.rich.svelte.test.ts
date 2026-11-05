@@ -6,6 +6,8 @@ import type { Message } from '../../ts/storage/database.svelte'
 const law = vi.hoisted(() => ({ applies: false }))
 const voice = vi.hoisted(() => ({ enabled: false }))
 const playMessageTTS = vi.hoisted(() => vi.fn())
+const stopTTS = vi.hoisted(() => vi.fn())
+vi.mock('../../ts/process/tts', () => ({ stopTTS }))
 vi.mock('../../ts/stores.svelte', async () => {
     const { writable } = await import('svelte/store')
     const DBState = $state({ db: { requestInfoInsideChat: false, translator: '', characters: [{ chaId: 'c', chatPage: 0,
@@ -49,7 +51,7 @@ vi.mock('../ChatScreens/chatSurface.svelte', () => {
 })
 vi.mock('../../ts/characters', () => ({ getCharImage: async (source: string) => source === 'bad' ? Promise.reject(new Error('image')) : source }))
 vi.mock('../../ts/model/modellist', () => ({ getModelInfo: () => ({ shortName: 'Model' }) }))
-vi.mock('../../lang', () => ({ language: { bookmark: 'Bookmark', messageInterrupted: 'Interrupted', messageRenderFailed: 'Failed', edit: 'Edit' } }))
+vi.mock('../../lang', () => ({ language: { bookmark: 'Bookmark', messageInterrupted: 'Interrupted', messageRenderFailed: 'Failed', edit: 'Edit', chatShellMoreActions: 'More actions', chatShellReadAloud: 'Read aloud' } }))
 
 import ShellMessage from './ShellMessage.svelte'
 
@@ -63,7 +65,7 @@ async function show(message: Message, props: { disabled?: boolean | 'allBefore';
     await tick()
     return target.querySelector('article')
 }
-afterEach(async () => { if (app) await unmount(app); app = undefined; target?.remove(); law.applies = false; voice.enabled = false; playMessageTTS.mockClear() })
+afterEach(async () => { if (app) await unmount(app); app = undefined; target?.remove(); law.applies = false; voice.enabled = false; playMessageTTS.mockReset(); stopTTS.mockClear() })
 
 describe('ShellMessage rich states', () => {
     test('legal badge ignores the request-info setting only while the law applies', async () => {
@@ -96,12 +98,25 @@ describe('ShellMessage rich states', () => {
         expect(article?.querySelector('[data-part="chat-message-body"]')?.textContent).toContain('bad parse')
     })
 
-    test('TTS control appears only with an available voice and delegates playback', async () => {
+    test('TTS action appears only with an available voice and delegates playback', async () => {
         voice.enabled = true
         const article = await show({ role: 'char', data: 'Say this', chatId: 'm' })
-        const button = article?.querySelector<HTMLButtonElement>('[data-part="chat-message-tts"]')
+        article?.querySelector<HTMLButtonElement>('[aria-label="More actions"]')?.click()
+        flushSync()
+        const button = target.querySelector<HTMLButtonElement>('[data-action="readAloud"]')
         expect(button).not.toBeNull()
         button?.click()
         expect(playMessageTTS).toHaveBeenCalledWith(false, expect.any(HTMLElement), 'Say this', null)
+    })
+    test('a playing row offers Stop TTS', async () => {
+        voice.enabled = true
+        playMessageTTS.mockReturnValue(new Promise<void>(() => {}))
+        const article = await show({ role: 'char', data: 'Speak', chatId: 'm' })
+        article?.querySelector<HTMLButtonElement>('[aria-label="More actions"]')?.click()
+        flushSync()
+        target.querySelector<HTMLButtonElement>('[data-action="readAloud"]')?.click()
+        flushSync()
+        article?.querySelector<HTMLButtonElement>('[data-part="chat-message-stop-tts"]')?.click()
+        expect(stopTTS).toHaveBeenCalledOnce()
     })
 })

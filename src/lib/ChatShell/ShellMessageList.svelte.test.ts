@@ -86,6 +86,7 @@ afterEach(async () => {
     app = undefined
     target?.remove()
     character.chats[0].message = []
+    delete character.chats[0].supaMemoryCoveredId
     character.chats[0].isStreaming = false
     folded.index = -1
     bookmark.value = -1
@@ -95,6 +96,13 @@ afterEach(async () => {
 })
 
 describe('ShellMessageList row identity and window', () => {
+    test('memory boundary marks the covered reply', async () => {
+        character.chats[0].message = [row('covered'), row('newer')]
+        character.chats[0].supaMemoryCoveredId = 'covered'
+        await show()
+        expect(find('covered')?.querySelector('[data-part="chat-message-memory-limit"]')).not.toBeNull()
+        expect(find('newer')?.querySelector('[data-part="chat-message-memory-limit"]')).toBeNull()
+    })
     test('T1: a stream chunk keeps the streaming article and completed rows mounted', async () => {
         character.chats[0].message = [row('done'), row('stream')]
         character.chats[0].isStreaming = true

@@ -175,7 +175,7 @@
                 <svelte:boundary onerror={(error) => recordCaughtError('chat.message', error)}>
                     <ShellMessage idx={row.idx} message={row.message} chatId={row.message.chatId} name={row.message.role === 'user' ? DBState.db.username : character.name}
                         img={row.message.role === 'user' ? DBState.db.userIcon : character.image}
-                        character={createSimpleCharacter(character)} totalLength={messages.length} isLastMemory={false}
+                        character={createSimpleCharacter(character)} totalLength={messages.length} isLastMemory={Boolean(row.message.chatId && row.message.chatId === chat?.supaMemoryCoveredId)}
                         rerollIcon="dynamic" largePortrait={row.message.role === 'user' ? false : character.largePortrait ?? false}
                         messageGenerationInfo={row.message.generationInfo} role={row.message.role} isComment={row.message.isComment ?? false}
                         disabled={row.message.disabled ?? false} run={runAt(row.idx)} expectedId={row.message.chatId} surface={true}

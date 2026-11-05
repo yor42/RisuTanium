@@ -9,7 +9,16 @@
     import { DBState, selIdState, HideIconStore } from '../../ts/stores.svelte'
     import { aiLawApplies, changeChatTo, foldChatToMessage } from '../../ts/globalApi.svelte'
     import { createMessageEditorController } from '../../ts/process/messageEditorController.svelte'
-    import { handleButtonTriggerWithin, handleFormTriggerWithin, playMessageTTS } from '../../ts/process/messageActions.svelte'
+    import { handleButtonTriggerWithin, handleFormTriggerWithin, playMessageTTS, requestRemove, copyMessageText, copyMessageAsCard, branchMessage, toggleMessageDisabled, toggleBookmark } from '../../ts/process/messageActions.svelte'
+    import { stopTTS } from '../../ts/process/tts'
+    import { stepSibling } from '../../ts/process/composerActions.svelte'
+    import { createSwipeGesture, createWheelSteps, type SwipeResult } from '../../ts/chatShell/swipeGesture'
+    import { classifyEdge } from '../../ts/chatShell/edgeZones'
+    import { tickHaptic, readHaptics } from '../../ts/chatShell/haptics'
+    import { createMessageKeys } from '../../ts/chatShell/messageKeys'
+    import { ACTION_IDS, type ActionId } from '../../ts/chatShell/actionSlots'
+    import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
+    import { gestureInsetLeft } from '../../ts/android/hostBridge'
     import { hasModuleStubs } from '../../ts/process/moduleRefList'
     import { ensureCurrentModulesOrAlert } from '../../ts/process/moduleEnsure'
     import { getLLMCache } from '../../ts/translator/translator'
@@ -23,11 +32,16 @@
     import StreamingView from './StreamingView.svelte'
     import MessageEditor from './MessageEditor.svelte'
     import TranslationEditor from './TranslationEditor.svelte'
+    import MessageMeta from './MessageMeta.svelte'
+    import ActionSheet from './ActionSheet.svelte'
+    import CustomizeButtonsSheet from './CustomizeButtonsSheet.svelte'
+    import AlternativesRow from './AlternativesRow.svelte'
     import { chatSurface, isChatSurfaceInstalled } from '../ChatScreens/chatSurface.svelte'
     import { language } from '../../lang'
     import { getCharImage } from '../../ts/characters'
     import { getModelInfo } from '../../ts/model/modellist'
     import { onDestroy, onMount, untrack } from 'svelte'
+    type SheetAction = ActionId | 'copyCard' | 'retranslate' | 'editTranslation' | 'partialEdit' | 'hideAbove'
 
     interface Props {
         idx: number
@@ -62,7 +76,7 @@
         getTreeView?: () => TreeView | null
         getBusy?: () => boolean
     }
-    let { idx, message, chatId, name, img = '', character = null, firstMessage = false,
+    let { idx, message, chatId, name, img = '', character = null, firstMessage = false, expectedId, onBranch, getTreeView, getBusy,
         isLastMemory = false, messageGenerationInfo, interrupted = message.interrupted === true,
         deferAutoTranslate = false, streaming = false, run = 'single', disabled = false, guiRevision = 0 }: Props = $props()
     let translated = $state(false)
@@ -74,9 +88,26 @@
     let bodyRevision = $state(0)
     let msgDisplay = $state(message.data)
     let renderFailed = $state(false)
+    let actionOpen = $state(false)
+    let customizeOpen = $state(false)
+    let actionOpener = $state<HTMLElement | null>(null)
+    let anchor = $state<{ x: number; y: number }>()
+    let meta: ReturnType<typeof MessageMeta> | undefined
+    let alternatives: ReturnType<typeof AlternativesRow> | undefined
+    let speaking = $state(false)
+    let swipe = $state<ReturnType<typeof createSwipeGesture> | null>(null)
+    let wheel = createWheelSteps(0, 1)
+    let pointerType = ''
+    let pointerStart = { x: 0, y: 0 }
+    let longPressTimer: ReturnType<typeof setTimeout> | undefined
+    let longPressRing = $state(false)
+    let swipeProgress = $state(0)
+    let dragX = $state(0)
+    let armed = $state(false)
+    const keys = createMessageKeys()
     let destroyed = false
     onMount(() => { queueMicrotask(() => { if (!destroyed) iconMounted = true }) })
-    onDestroy(() => { destroyed = true; editor.dispose() })
+    onDestroy(() => { destroyed = true; clearTimeout(longPressTimer); unregisterEditorBack(); editor.dispose() })
     $effect(() => {
         let live = true
         avatar = null
@@ -97,6 +128,104 @@
     let chat = $derived(owner?.chats?.[owner.chatPage])
     let isBookmarked = $derived(Boolean(chatId && chat?.bookmarks?.includes(chatId)))
     let canSpeak = $derived(idx > -1 && owner?.type !== 'group' && isTTSVoiceMode(owner?.ttsMode))
+    let position = $derived(getTreeView?.()?.at(idx) ?? { index: 1, count: 1 })
+    let newestCharacter = $derived(message.role === 'char' && idx >= 0 && idx === (chat?.message?.length ?? 0) - 1)
+    let actions = $derived(ACTION_IDS.filter((id) => id !== 'deleteAfter').filter((id) => idx >= 0 || id === 'copy' || id === 'selectText' || id === 'stepPrev' || id === 'stepNext' || id === 'customizeButtons').filter((id) => id !== 'readAloud' || canSpeak).filter((id) => id !== 'translate' || DBState.db.translator !== '').filter((id) => id !== 'newReply' || newestCharacter).filter((id) => !['stepPrev', 'stepNext'].includes(id) || newestCharacter || firstMessage).filter((id) => id !== 'branch' || onBranch !== undefined))
+    let sheetActions = $derived<SheetAction[]>([...actions, 'copyCard', ...(idx >= 0 ? ['hideAbove'] as SheetAction[] : []), ...(idx >= 0 && !streaming && DBState.db.translatorType === 'llm' ? ['retranslate', 'editTranslation'] as SheetAction[] : []), ...(idx >= 0 && !streaming && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit) ? ['partialEdit'] as SheetAction[] : [])])
+    let unavailable = $derived(ACTION_IDS.filter((id) => streaming && ['edit', 'translate', 'readAloud', 'branch', 'newReply', 'delete', 'deleteAfter'].includes(id) || getBusy?.() === true && ['stepPrev', 'stepNext', 'newReply'].includes(id)))
+    $effect(() => { wheel = createWheelSteps(position.index - 1, position.count) })
+    const source = { closeMenu: () => {} }
+    function liveIndex(): number { return chatId ? (chat?.message.findIndex((item) => item.chatId === chatId) ?? idx) : idx }
+    function openActions(opener: HTMLElement, point?: { x: number; y: number }): void { actionOpener = opener; anchor = point; actionOpen = true }
+    async function act(id: SheetAction): Promise<void> {
+        if ((unavailable as readonly SheetAction[]).includes(id)) return
+        switch (id) {
+            case 'copy': {
+                const selection = window.getSelection()
+                const selected = selection && bodyRoot?.contains(selection.anchorNode) && bodyRoot?.contains(selection.focusNode) ? selection.toString() : ''
+                copyMessageText(selected || (streaming ? message.data : msgDisplay), () => {})
+                break
+            }
+            case 'copyCard': copyMessageAsCard({ owner: message, captureText: () => streaming ? message.data : msgDisplay, report: () => {}, role: () => message.role, name: () => name, messageGenerationInfo: () => message.generationInfo ?? null, idx: liveIndex, getCbsCondition: cbsConditions }); break
+            case 'selectText': bodyRoot?.focus(); break
+            case 'edit': editor.toggleOriginalEdit(); break
+            case 'translate': translated = !translated; break
+            case 'retranslate': retranslate = true; translated = true; break
+            case 'editTranslation': await editor.loadTranslationForEdit(); break
+            case 'partialEdit': bodyRoot?.focus(); break
+            case 'readAloud':
+                speaking = true
+                try { await playMessageTTS(translated, bodyRoot, msgDisplay, getCurrentCharacter()) }
+                finally { speaking = false }
+                break
+            case 'branch': await branchMessage(liveIndex, chatId, onBranch); break
+            case 'bookmark': await toggleBookmark(liveIndex(), name); break
+            case 'hideAI': await toggleMessageDisabled(liveIndex, 'one'); break
+            case 'hideAbove': await toggleMessageDisabled(liveIndex, 'above'); break
+            case 'delete': if (owner && chat && idx >= 0) await requestRemove(owner, chat, chat.message[liveIndex()]); break
+            case 'stepPrev': await stepSibling(source, liveIndex(), chatId, 'back', { generate: false }); alternatives?.markPageChange(); break
+            case 'stepNext': await stepSibling(source, liveIndex(), chatId, 'forward', { generate: false }); alternatives?.markPageChange(); break
+            case 'newReply': alternatives?.requestNewReply(); break
+            case 'customizeButtons': customizeOpen = true; break
+        }
+    }
+    const unregisterEditorBack = registerBackHandler(backCloseHandler({
+        isOpen: () => editor.editMode || editor.editTranslationMode,
+        snapshot: () => `${editor.editMode}:${editor.editTranslationMode}:${editor.discardConfirmOpen}`,
+        close: () => { if (editor.editTranslationMode) editor.closeTranslationKeep(); else void editor.requestDiscardOriginalEdit() },
+    }))
+    const HOST_INSET_PROBE_PX = 64
+    function readHostInset(xPx: number): number {
+        if (xPx > HOST_INSET_PROBE_PX) return 0
+        try {
+            const value: unknown = gestureInsetLeft()
+            return typeof value === 'number' && Number.isFinite(value) ? Math.min(Math.max(value, 0), HOST_INSET_PROBE_PX) : 0
+        } catch { return 0 }
+    }
+    function sample(event: PointerEvent) { return { x: event.clientX, y: event.clientY, time: event.timeStamp } }
+    function onPointerDown(event: PointerEvent): void {
+        if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return
+        if ((event.target as HTMLElement).closest('button, a, input, textarea, [contenteditable]')) return
+        pointerType = event.pointerType
+        pointerStart = { x: event.clientX, y: event.clientY }
+        const horizontalChild = (event.target as HTMLElement).closest('[data-part="chat-message-body"]')?.querySelector<HTMLElement>('*')
+        const edge = classifyEdge({ xPx: event.clientX, viewportWidthPx: window.innerWidth, dpPerPx: 1, hostInsetDp: readHostInset(event.clientX), rtl: document.dir === 'rtl' }) === 'edge'
+        swipe = createSwipeGesture({ widthPx: bodyRoot?.clientWidth ?? 320, dpPerPx: 1, index: position.index - 1, count: position.count, edge: edge || !!horizontalChild && horizontalChild.scrollWidth > horizontalChild.clientWidth, streaming, firstMessage, enabled: DBState.db.swipe, pointerType: event.pointerType })
+        swipe.down(sample(event))
+        clearTimeout(longPressTimer)
+        const opener = event.currentTarget as HTMLElement
+        longPressTimer = setTimeout(() => { if (swipe) { swipe.cancel(); longPressRing = false; openActions(opener, pointerStart) } }, 500)
+        setTimeout(() => { if (longPressTimer) longPressRing = true }, 200)
+    }
+    function onPointerMove(event: PointerEvent): void {
+        if (!swipe) return
+        if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 10) { clearTimeout(longPressTimer); longPressTimer = undefined; longPressRing = false }
+        const result = swipe.move(sample(event))
+        swipeProgress = result.progress
+        armed = result.event === 'arm' || armed && result.progress >= 1
+        if (result.locked) {
+            const delta = event.clientX - pointerStart.x
+            const width = bodyRoot?.clientWidth ?? 320
+            const easy = width * 0.4
+            dragX = Math.sign(delta) * (Math.min(Math.abs(delta), easy) + Math.max(0, Math.abs(delta) - easy) * 0.35)
+        }
+        if (result.event === 'arm') tickHaptic('arm', pointerType, readHaptics())
+    }
+    function finishSwipe(result: SwipeResult): void {
+        clearTimeout(longPressTimer); longPressTimer = undefined; longPressRing = false; swipe = null; swipeProgress = 0; dragX = 0; armed = false
+        if (result.event === 'stepPrev' || result.event === 'stepNext') { tickHaptic('commit', pointerType, readHaptics()); void act(result.event === 'stepPrev' ? 'stepPrev' : 'stepNext') }
+        if (result.event === 'generate') alternatives?.requestNewReply()
+    }
+    function onWheel(event: WheelEvent): void {
+        const result = wheel({ dx: event.deltaX, dy: event.deltaY, time: event.timeStamp, shiftKey: event.shiftKey })
+        if (result === 'stepPrev' || result === 'stepNext') { event.preventDefault(); void act(result === 'stepPrev' ? 'stepPrev' : 'stepNext') }
+    }
+    function onMessageKey(event: KeyboardEvent): void {
+        if (event.target !== event.currentTarget && !(event.ctrlKey && event.altKey && event.key.toLowerCase() === 'r')) return
+        const action = keys.handle(event, { focus: 'message', index: position.index - 1, count: position.count, newestCharacter, firstMessage, now: performance.now() })
+        if (action === 'openActions') { event.preventDefault(); openActions(event.currentTarget as HTMLElement) }
+        else if (ACTION_IDS.some((id) => id === action)) { event.preventDefault(); void act(action as ActionId) }
+    }
     $effect.pre(() => {
         if (surfaceEpoch !== null && chatSurface.hidden) return
         if (streaming) return
@@ -167,7 +296,7 @@
     }
 </script>
 
-<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta="shown" data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} onclickcapture={(event) => handleButtonTriggerWithin(event, () => idx)} onsubmitcapture={(event) => handleFormTriggerWithin(event, () => idx)}>
+<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta="shown" data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="-1" onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
     {#if disabled === true}<div data-part="chat-message-divider" data-kind="disabled"></div>{/if}
     <div data-part="chat-message-name-row">
         <div data-part="chat-message-meta">
@@ -177,6 +306,7 @@
             {/if}
             <span data-part="chat-message-name" id={labelId}>{name}</span>
             {#if isBookmarked}<span data-part="chat-message-badges" aria-label={language.bookmark}>★</span>{/if}
+            <MessageMeta bind:this={meta} {name} time={message.time} model={modelShortName} available={actions} disabled={unavailable} onaction={(id) => { void act(id) }} onmore={openActions} />
         </div>
     </div>
     {#if (messageGenerationInfo ?? message.generationInfo) && (DBState.db.requestInfoInsideChat || aiLawApplies())}
@@ -189,13 +319,12 @@
             <button type="button" data-part="chat-message-translation-edit" disabled={editor.translationEditControlDisabled} onclick={() => { if (editor.editTranslationMode) editor.saveTranslationEdit().catch(alertError); else editor.loadTranslationForEdit().catch(alertError) }}>{editor.editTranslationMode ? language.editTranslationSave : language.editTranslation}</button>
         {/if}
     {/if}
-    {#if idx >= 0 && !streaming}<button type="button" data-part="chat-message-edit" disabled={editor.originalEditControlDisabled} onclick={editor.toggleOriginalEdit}>{language.edit}</button>{/if}
-    {#if canSpeak && !streaming}<button type="button" data-part="chat-message-tts" onclick={() => playMessageTTS(translated, bodyRoot, msgDisplay, getCurrentCharacter())}>TTS</button>{/if}
+    {#if speaking}<button type="button" data-part="chat-message-stop-tts" onclick={() => { stopTTS(); speaking = false }}>{language.ttsStop}</button>{/if}
     <MessageEditor {editor} />
     <TranslationEditor {editor} />
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div data-part="chat-message-body" class="prose" bind:this={bodyRoot} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
+    <div data-part="chat-message-body" class="prose" bind:this={bodyRoot} style:transform={`translateX(${dragX}px)`} onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={(event) => { if (swipe) finishSwipe(swipe.up(sample(event))) }} onpointercancel={() => { if (swipe) finishSwipe(swipe.cancel()) }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
         {#if editor.editMode || editor.editTranslationMode}
         {:else if message.isComment}
             {#if msgDisplay.startsWith('{{specialcomment') && msgDisplay.split('::')[1] === 'branchedfrom'}
@@ -213,12 +342,18 @@
                 {surfaceEpoch} bind:translated bind:translating bind:retranslate />
         {/if}
     </div>
+    {#if longPressRing}<span data-part="chat-long-press-ring" aria-hidden="true">◌</span>{/if}
+    {#if swipeProgress > 0}<span data-part="chat-swipe-arm" role="status" style:opacity={swipeProgress}>{armed ? language.chatShellReleaseNewReply : language.chatShellNoSavedReplies}</span>{/if}
+    {#if (newestCharacter || firstMessage) && (position.count > 1 || newestCharacter)}
+        <AlternativesRow bind:this={alternatives} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} busy={getBusy?.() ?? false} />
+    {/if}
+    <ActionSheet open={actionOpen} opener={actionOpener} {anchor} available={sheetActions} disabled={unavailable} onaction={(id) => { void act(id) }} onclose={() => { actionOpen = false }} />
+    <CustomizeButtonsSheet open={customizeOpen} opener={actionOpener} onclose={() => { customizeOpen = false }} onchange={() => meta?.refresh()} />
     {#if idx >= 0 && !streaming && !editor.editMode && !editor.editTranslationMode && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit)}
         <PartialEditController messageData={message.data} chatIndex={idx} {bodyRoot} blockEditEnabled={DBState.db.enableBlockPartialEdit} dragEditEnabled={DBState.db.enableDragPartialEdit} translatedView={translated} getTranslationEditContext={getTranslationPartialEditContext} on:save={handlePartialEditSave} />
     {/if}
     {#if renderFailed}<div data-part="chat-message-render-failed" role="note">{language.messageRenderFailed}</div>{/if}
     {#if interrupted && !streaming}<div data-part="chat-message-interrupted" role="note">{language.messageInterrupted}</div>{/if}
-    {#if message.time}<time data-part="chat-message-timestamp" datetime={new Date(message.time).toISOString()}>{new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', month: '2-digit', day: '2-digit', hour12: false }).format(message.time)}</time>{/if}
     {#if isLastMemory}<div data-part="chat-message-memory-limit" style:border-top-width={`${DBState.db.memoryLimitThickness}px`}></div>{/if}
     {#if disabled}<div data-part="chat-message-divider" data-kind={disabled === 'allBefore' ? 'all-before' : 'disabled'}></div>{/if}
 </article>
