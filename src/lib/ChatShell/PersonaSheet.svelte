@@ -21,20 +21,20 @@
     }
 </script>
 
-<ShellSheet {open} kind="sheet" label={language.chatShellChoosePersona} {opener} {background} {onclose}>
-    <h2 data-part="chat-persona-title">{language.chatShellChoosePersona}</h2>
-    <button data-part="chat-persona-row" data-sheet-initial aria-pressed={!chat?.bindedPersona} onclick={() => choose(null)}>
+<ShellSheet {open} kind="sheet" mode={typeof window !== 'undefined' && window.innerWidth >= 900 ? 'wide-menu' : 'bottom'} label={language.chatShellChoosePersona} {opener} {background} {onclose}>
+    <h2 data-part="chat-sheet-title">{language.chatShellChoosePersona}</h2>
+    <button data-part="chat-sheet-item" data-kind="button" data-sheet-initial aria-pressed={!chat?.bindedPersona} onclick={() => choose(null)}>
         {DBState.db.username}
     </button>
     {#each DBState.db.personas ?? [] as persona (persona.id)}
-        <button data-part="chat-persona-row" aria-pressed={chat?.bindedPersona === persona.id || (!chat?.bindedPersona && DBState.db.personas?.[DBState.db.selectedPersona]?.id === persona.id)} onclick={() => choose(persona.id)}>
+        <button data-part="chat-sheet-item" data-kind="button" aria-pressed={chat?.bindedPersona === persona.id || (!chat?.bindedPersona && DBState.db.personas?.[DBState.db.selectedPersona]?.id === persona.id)} onclick={() => choose(persona.id)}>
             {persona.name}
         </button>
     {/each}
 </ShellSheet>
 
 <style>
-    [data-part="chat-persona-title"] { margin: 0 0 8px; font-size: 1.1rem; }
-    [data-part="chat-persona-row"] { display: block; width: 100%; min-height: 44px; padding: 8px 12px; text-align: left; color: var(--color-textcolor); border-bottom: 1px solid var(--color-darkborderc); }
-    [data-part="chat-persona-row"][aria-pressed="true"] { background: var(--color-selected); }
+    [data-part="chat-sheet-title"] { margin: 0 0 var(--space-7); font-size: var(--font-size-xl); }
+    [data-part="chat-sheet-item"] { display: block; width: 100%; min-height: var(--size-touch); padding: var(--space-7) var(--space-10); text-align: left; color: var(--nexus-text); border-bottom: 1px solid var(--nexus-edge); }
+    [data-part="chat-sheet-item"][aria-pressed="true"] { background: var(--nexus-surface-raised); }
 </style>

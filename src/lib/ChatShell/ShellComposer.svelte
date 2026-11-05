@@ -179,7 +179,7 @@
     }
 </script>
 
-<div data-part="chat-composer" data-part-critical>
+<div data-part="chat-composer">
     <ExtrasStrip files={shownDraft.fileInput} currentCharacter={character} {stickersOpen} showSuggestions={DBState.db.useAutoSuggestions} translatePreview={shownDraft.messageInputTranslate} onremove={(index) => surface.writeDraft((record) => { record.fileInput.splice(index, 1) })} onselect={selectSticker}>
         <Suggestion messageInput={(message) => surface.writeDraft((record) => { record.messageInput = (
             (DBState.db.subModel === 'textgen_webui' || DBState.db.subModel === 'mancer' || DBState.db.subModel.startsWith('local_')) && DBState.db.autoSuggestClean
@@ -187,16 +187,16 @@
         ) })} send={() => sendMain(source, false)} />
     </ExtrasStrip>
     {#if DBState.db.useAutoTranslateInput && DBState.db.translator}
-        <textarea bind:this={translateInput} data-part="chat-composer-translate" aria-label={language.enterMessageForTranslateToEnglish} placeholder={language.enterMessageForTranslateToEnglish} value={shownDraft.messageInputTranslate} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInputTranslate = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, true) }} onkeydown={keydown} oncompositionstart={() => enter.compositionStart()} oncompositionend={() => enter.compositionEnd()}></textarea>
+        <textarea bind:this={translateInput} data-part="chat-composer-translate" data-kind="field" aria-label={language.enterMessageForTranslateToEnglish} placeholder={language.enterMessageForTranslateToEnglish} value={shownDraft.messageInputTranslate} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInputTranslate = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, true) }} onkeydown={keydown} oncompositionstart={() => enter.compositionStart()} oncompositionend={() => enter.compositionEnd()}></textarea>
     {/if}
     <div data-part="chat-composer-row">
-        <button data-part="chat-composer-plus" aria-label={language.chatShellMoreActions} onclick={(event) => onplus(event.currentTarget)}>+</button>
-        <button data-part="chat-composer-persona" aria-label={language.chatShellChoosePersona} onclick={(event) => onpersona(event.currentTarget)}>{language.asPersona(personaName)}</button>
-        <textarea bind:this={input} data-part="chat-composer-input" aria-label={language.chatShellMessage} placeholder={language.chatShellMessage} value={shownDraft.messageInput} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInput = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, false) }} onpaste={paste} onkeydown={keydown} oncompositionstart={() => enter.compositionStart()} oncompositionend={() => enter.compositionEnd()} oncontextmenu={openPopup}></textarea>
+        <button data-part="chat-composer-plus" data-kind="icon-button" aria-label={language.chatShellMoreActions} onclick={(event) => onplus(event.currentTarget)}>+</button>
+        <button data-part="chat-composer-persona" data-kind="chip" aria-label={language.chatShellChoosePersona} onclick={(event) => onpersona(event.currentTarget)}>{language.asPersona(personaName)}</button>
+        <textarea bind:this={input} data-part="chat-composer-input" data-kind="field" aria-label={language.chatShellMessage} placeholder={language.chatShellMessage} value={shownDraft.messageInput} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInput = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, false) }} onpaste={paste} onkeydown={keydown} oncompositionstart={() => enter.compositionStart()} oncompositionend={() => enter.compositionEnd()} oncontextmenu={openPopup}></textarea>
         {#if $doingChat || isComposerBusy()}
-            <button data-part="chat-composer-stop" aria-label={language.chatShellStop} onclick={abortChat}><span data-part="chat-composer-progress" data-stage={$chatProcessStage}></span>■</button>
+            <button data-part="chat-composer-stop" data-kind="icon-button" aria-label={language.chatShellStop} onclick={abortChat}><span data-part="chat-composer-progress" data-stage={$chatProcessStage}></span>■</button>
         {:else}
-            <button data-part="chat-composer-send" aria-label={language.chatShellSend} onclick={() => void sendMain(source, false)}>➤</button>
+            <button data-part="chat-send" data-kind="icon-button" aria-label={language.chatShellSend} onclick={() => void sendMain(source, false)}>➤</button>
         {/if}
     </div>
     <div data-part="chat-composer-tools">
@@ -207,19 +207,20 @@
 </div>
 
 <style>
-    [data-part="chat-composer"] { flex: none; padding: 4px 8px max(8px, env(safe-area-inset-bottom)); background: var(--color-bgcolor); color: var(--color-textcolor); border-top: 1px solid var(--color-darkborderc); }
-    [data-part="chat-composer-row"] { display: flex; align-items: end; gap: 4px; }
-    [data-part="chat-composer-row"] > button { min-width: 44px; min-height: 44px; color: inherit; }
-    [data-part="chat-composer-input"], [data-part="chat-composer-translate"] { min-width: 0; min-height: 44px; max-height: min(7.5em, 30dvh); resize: none; overflow-y: auto; padding: 8px; background: var(--color-selected); color: var(--color-textcolor); border: 1px solid var(--color-darkborderc); border-radius: 8px; }
+    [data-part="chat-composer"] { flex: none; padding: var(--space-3) var(--space-7) max(var(--space-7), env(safe-area-inset-bottom)); background: var(--nexus-canvas); color: var(--nexus-text); border-top: 1px solid var(--nexus-edge); }
+    [data-part="chat-composer-row"] { display: flex; align-items: end; gap: var(--space-3); }
+    [data-part="chat-composer-row"] > button { min-width: var(--size-touch); min-height: var(--size-touch); color: inherit; }
+    [data-part="chat-composer-input"], [data-part="chat-composer-translate"] { min-width: 0; min-height: var(--size-touch); max-height: calc(5 * var(--leading-field-22) + 2 * var(--composer-field-padding-y)); resize: none; overflow-y: auto; padding: var(--composer-field-padding-y) var(--composer-field-padding-x); line-height: var(--leading-field-22); background: var(--nexus-surface-raised); color: var(--nexus-text); border: 1px solid var(--nexus-edge); border-radius: var(--radius-field); }
     [data-part="chat-composer-input"] { flex: 1; }
-    [data-part="chat-composer-translate"] { display: block; width: 100%; margin-bottom: 4px; }
-    [data-part="chat-composer-extras"] { display: flex; overflow-x: auto; gap: 4px; }
-    [data-part="chat-attachment-chip"] { display: inline-flex; align-items: center; min-height: 44px; white-space: nowrap; }
-    [data-part="chat-attachment-chip"] button { min-width: 44px; min-height: 44px; }
-    [data-part="chat-composer-tools"] { display: flex; justify-content: space-between; font-size: .75rem; }
-    [data-part="chat-composer-tools"] button, [data-part="chat-composer-tools"] select { min-height: 28px; color: inherit; }
-    [data-part="chat-composer-stickers"], [data-part="chat-composer-suggestions"] { max-height: 20dvh; overflow: auto; }
-    [data-part="chat-composer-progress"] { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-radius: 50%; }
-    @media (prefers-reduced-motion: no-preference) { [data-part="chat-composer-progress"] { animation: progress 1200ms linear infinite; } }
-    @keyframes progress { to { transform: rotate(360deg); } }
+    [data-part="chat-composer-translate"] { display: block; width: 100%; margin-bottom: var(--space-3); }
+    [data-part="chat-composer-extras"] { display: flex; overflow-x: auto; gap: var(--space-3); }
+    [data-part="chat-attachment-chip"] { display: inline-flex; align-items: center; min-height: var(--size-touch); white-space: nowrap; }
+    [data-part="chat-attachment-chip"] button { min-width: var(--size-touch); min-height: var(--size-touch); }
+    [data-part="chat-composer-tools"] { display: flex; justify-content: space-between; font-size: var(--font-size-xs); }
+    [data-part="chat-composer-tools"] button, [data-part="chat-composer-tools"] select { min-height: var(--size-14); color: inherit; }
+    [data-part="chat-composer-stickers"], [data-part="chat-composer-suggestions"] { max-height: var(--size-rel-20); overflow: auto; }
+    [data-part="chat-composer-progress"] { display: inline-block; width: var(--size-7); height: var(--size-7); border: var(--stroke-bold) solid currentColor; border-radius: var(--radius-circle); }
+    @media (prefers-reduced-motion: no-preference) { [data-part="chat-composer-progress"] { animation: progress var(--dur-spin) var(--ease-linear) infinite; } }
+    :global(html.rm) [data-part="chat-composer-progress"], :global(html[data-low-power]) [data-part="chat-composer-progress"], :global(html.nexus-low-power) [data-part="chat-composer-progress"] { animation: none; }
+    @keyframes progress { to { transform: rotate(var(--angle-turn)); } }
 </style>

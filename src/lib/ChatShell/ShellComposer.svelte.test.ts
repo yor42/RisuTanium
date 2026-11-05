@@ -67,7 +67,7 @@ describe('ShellComposer draft and actions', () => {
         flushSync()
         expect(drafts.peek({ chaId: 'c', chatId: 'chat' }).messageInput).toBe('hello')
         expect(hasLocalDrafts()).toBe(true)
-        node.querySelector<HTMLButtonElement>('[data-part="chat-composer-send"]')?.click()
+        node.querySelector<HTMLButtonElement>('[data-part="chat-send"]')?.click()
         expect(sendMain).toHaveBeenCalledWith(expect.objectContaining({ closeMenu: expect.any(Function) }), false)
         if (app) await unmount(app)
         app = null

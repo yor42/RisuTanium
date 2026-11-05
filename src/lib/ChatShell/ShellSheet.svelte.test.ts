@@ -20,17 +20,32 @@ afterEach(async () => {
     resetBackHandlersForTests()
 })
 
-async function show(open: { value: boolean }, opener: HTMLElement, background: HTMLElement) {
+async function show(open: { value: boolean }, opener: HTMLElement, background: HTMLElement, mode: 'bottom' | 'action' | 'wide-menu' = 'bottom', anchor?: { x: number; y: number }) {
     const { default: ShellSheet } = await import('./ShellSheet.svelte')
     const target = document.createElement('div')
     document.body.appendChild(target)
-    const app = mount(ShellSheet, { target, props: { get open() { return open.value }, kind: 'menu', label: 'Actions', opener, background: [background], onclose: () => { open.value = false }, children } })
+    const app = mount(ShellSheet, { target, props: { get open() { return open.value }, kind: 'menu', mode, anchor, label: 'Actions', opener, background: [background], onclose: () => { open.value = false }, children } })
     mounted.push({ app, target })
     flushSync()
     return target
 }
 
 describe('T14 ShellSheet Back and focus', () => {
+    test('action and wide menu modes expose their size and on-screen anchor state', async () => {
+        const opener = document.createElement('button')
+        const background = document.createElement('main')
+        document.body.append(opener, background)
+        const action = $state({ value: true })
+        const actionTarget = await show(action, opener, background, 'action')
+        expect(actionTarget.querySelector('[data-part="chat-sheet"]')?.getAttribute('data-mode')).toBe('action')
+        const wide = $state({ value: true })
+        const target = await show(wide, opener, background, 'wide-menu', { x: window.innerWidth + 40, y: window.innerHeight + 40 })
+        const menu = target.querySelector<HTMLElement>('[data-part="chat-sheet"]')
+        expect(menu?.getAttribute('data-mode')).toBe('wide-menu')
+        expect(Number.parseFloat(menu?.style.left ?? '')).toBeLessThanOrEqual(window.innerWidth)
+        expect(Number.parseFloat(menu?.style.top ?? '')).toBeLessThanOrEqual(window.innerHeight)
+        opener.remove(); background.remove()
+    })
     test('alert consumes Back first, then only top sheet closes, focus returns and inert restores', async () => {
         const opener = document.createElement('button')
         const background = document.createElement('main')

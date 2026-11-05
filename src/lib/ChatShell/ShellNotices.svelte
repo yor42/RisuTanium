@@ -56,6 +56,6 @@
 {/if}
 
 <style>
-    [data-part="chat-cold-loading"], [data-part="chat-cold-notice"], [data-part="chat-legacy-cold-notice"], [data-part="chat-ai-law-notice"] { margin: 16px auto; padding: 8px 16px; max-width: 40rem; text-align: center; color: var(--color-textcolor2); }
-    [data-part="chat-legacy-cold-notice"] button { min-height: 44px; color: var(--color-textcolor); }
+    [data-part="chat-cold-loading"], [data-part="chat-cold-notice"], [data-part="chat-legacy-cold-notice"], [data-part="chat-ai-law-notice"] { margin: var(--space-12) auto; padding: var(--space-7) var(--space-12); max-width: var(--sheet-width-wide); text-align: center; color: var(--nexus-text-secondary); }
+    [data-part="chat-legacy-cold-notice"] button { min-height: var(--size-touch); color: var(--nexus-text); }
 </style>

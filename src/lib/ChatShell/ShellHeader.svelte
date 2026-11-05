@@ -20,17 +20,20 @@
     }
 </script>
 
-<header data-part="chat-header" data-part-critical data-hidden={hidden && !hardwareKeyboardSeen && !focused ? '' : undefined} onfocusin={() => focused = true} onfocusout={(event) => focused = event.currentTarget.contains(event.relatedTarget as Node)}>
-    <button data-part="chat-header-back" aria-label={language.chatShellBack} onclick={back}>‹</button>
+<header data-part="chat-header" data-hidden={hidden && !hardwareKeyboardSeen && !focused ? '' : undefined} onfocusin={() => focused = true} onfocusout={(event) => focused = event.currentTarget.contains(event.relatedTarget as Node)}>
+    <button data-part="chat-header-back" data-kind="icon-button" aria-label={language.chatShellBack} onclick={back}>‹</button>
     <span data-part="chat-header-title">{name}</span>
-    <button data-part="chat-header-persona" aria-label={language.chatShellChoosePersona} onclick={(event) => onpersona(event.currentTarget)}>◉</button>
+    <button data-part="chat-header-menu" data-kind="icon-button" aria-label={language.chatShellChoosePersona} onclick={(event) => onpersona(event.currentTarget)}>◉</button>
 </header>
 
 <style>
-    [data-part="chat-header"] { height: 48px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 8px; background: var(--color-bgcolor); color: var(--color-textcolor); border-bottom: 1px solid var(--color-darkborderc); transition: transform 200ms ease, opacity 200ms ease, visibility 200ms ease; }
-    [data-part="chat-header"][data-hidden] { transform: translateY(-100%); opacity: 0; visibility: hidden; margin-bottom: -48px; }
+    [data-part="chat-header"] { height: var(--header-height); flex: none; display: flex; align-items: center; gap: var(--space-7); padding: 0 var(--space-7); background: var(--nexus-canvas); color: var(--nexus-text); border-bottom: 1px solid var(--nexus-edge); transition: transform var(--chat-dur-base) var(--chat-ease-out), opacity var(--chat-dur-base) var(--chat-ease-out), visibility var(--chat-dur-base) var(--chat-ease-out); }
+    [data-part="chat-header"][data-hidden] { transform: translateY(-100%); opacity: 0; visibility: hidden; margin-bottom: calc(-1 * var(--header-height)); }
     [data-part="chat-header-title"] { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    [data-part="chat-header-back"], [data-part="chat-header-persona"] { width: 44px; height: 44px; flex: none; color: inherit; }
+    [data-part="chat-header-back"], [data-part="chat-header-menu"] { width: var(--size-touch); height: var(--size-touch); flex: none; color: inherit; }
     @media (min-width: 900px) { [data-part="chat-header"][data-hidden] { transform: none; opacity: 1; visibility: visible; margin-bottom: 0; } }
-    @media (prefers-reduced-motion: reduce) { [data-part="chat-header"] { transition: opacity 120ms ease, visibility 120ms ease; } [data-part="chat-header"][data-hidden] { transform: none; } }
+    @media (prefers-reduced-motion: reduce) { [data-part="chat-header"] { transition: opacity var(--chat-dur-fast) var(--chat-ease-out), visibility var(--chat-dur-fast) var(--chat-ease-out); } [data-part="chat-header"][data-hidden] { transform: none; } }
+    :global(html.rm) [data-part="chat-header"] { transition: opacity var(--chat-dur-fast) var(--chat-ease-out), visibility var(--chat-dur-fast) var(--chat-ease-out); }
+    :global(html[data-low-power]) [data-part="chat-header"], :global(html.nexus-low-power) [data-part="chat-header"] { transition-duration: var(--dur-lowpower-cap); }
+    :global(html.rm[data-low-power]) [data-part="chat-header"] { transition: opacity var(--chat-dur-fast) var(--chat-ease-out), visibility var(--chat-dur-fast) var(--chat-ease-out); }
 </style>

@@ -66,6 +66,12 @@
         return result
     })
     let renderRows = $state<{ idx: number, message: Message, key: string }[]>([])
+    function runAt(index: number): 'first' | 'middle' | 'last' | 'single' {
+        const role = messages[index]?.role
+        const before = index > 0 && messages[index - 1]?.role === role
+        const after = index + 1 < messages.length && messages[index + 1]?.role === role
+        return before ? (after ? 'middle' : 'last') : (after ? 'first' : 'single')
+    }
     $effect(() => {
         if (installed && chatSurface.hidden) return
         // The visible snapshot holds raw streaming text while Settings covers the surface.
@@ -148,6 +154,11 @@
         rows?.firstElementChild?.scrollIntoView({ behavior: 'instant', block: 'start' })
     }
 
+    export function anchorNewestBottom() {
+        if (installed && chatSurface.hidden) return
+        rows?.firstElementChild?.scrollIntoView({ behavior: 'instant', block: 'end' })
+    }
+
     export function onScroll() {
         if (!host || (installed && chatSurface.hidden)) return
         if (host.scrollHeight - host.clientHeight + host.scrollTop < 100 && messages.length > loadPages) loadPages += getAdditionalChatLoadPages(DBState.db)
@@ -167,7 +178,7 @@
                         character={createSimpleCharacter(character)} totalLength={messages.length} isLastMemory={false}
                         rerollIcon="dynamic" largePortrait={row.message.role === 'user' ? false : character.largePortrait ?? false}
                         messageGenerationInfo={row.message.generationInfo} role={row.message.role} isComment={row.message.isComment ?? false}
-                        disabled={row.message.disabled ?? false} expectedId={row.message.chatId} surface={true}
+                        disabled={row.message.disabled ?? false} run={runAt(row.idx)} expectedId={row.message.chatId} surface={true}
                         streamingOptimizationMode={chat?.activeStreamingDisplayOptimizationMode ?? DBState.db.streamingDisplayOptimizationMode ?? 'off'}
                         rawStreamingText={row.message.data} isOptimizedStreamingMessage={chat?.isStreaming === true && row.idx === messages.length - 1 && row.message.role === 'char'}
                         streaming={chat?.isStreaming === true && row.idx === messages.length - 1 && row.message.role === 'char' && isActiveStreamReply(row.message.chatId)}
@@ -195,5 +206,5 @@
 </div>
 
 <style>
-    [data-part="chat-message-container"].older { content-visibility: auto; contain-intrinsic-size: auto 240px; }
+    [data-part="chat-message-container"].older { content-visibility: auto; contain-intrinsic-size: auto var(--size-39); }
 </style>

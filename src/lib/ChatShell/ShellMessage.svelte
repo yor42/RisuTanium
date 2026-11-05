@@ -34,6 +34,7 @@
         interrupted?: boolean
         deferAutoTranslate?: boolean
         streaming?: boolean
+        run?: 'first' | 'middle' | 'last' | 'single'
         guiRevision?: number
         onReroll?: () => void
         unReroll?: () => void
@@ -43,7 +44,7 @@
         getBusy?: () => boolean
     }
     let { idx, message, chatId, name, img = '', character = null, firstMessage = false,
-        interrupted = message.interrupted === true, deferAutoTranslate = false, streaming = false, guiRevision = 0 }: Props = $props()
+        interrupted = message.interrupted === true, deferAutoTranslate = false, streaming = false, run = 'single', disabled = false, guiRevision = 0 }: Props = $props()
     let translated = $state(false)
     let translating = $state(false)
     let retranslate = $state(false)
@@ -59,10 +60,12 @@
     let modelShortName = $derived(message.generationInfo?.model ? getModelInfo(message.generationInfo.model).shortName : '')
 </script>
 
-<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId}>
-    <div data-part="chat-message-meta">
-        {#if avatar}<img src={avatar} alt="" width="24" height="24" />{/if}
-        <span id={labelId}>{name}</span>
+<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta="shown" data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId}>
+    <div data-part="chat-message-name-row">
+        <div data-part="chat-message-meta">
+            {#if avatar}<img data-part="chat-message-avatar" src={avatar} alt="" width="24" height="24" />{/if}
+            <span data-part="chat-message-name" id={labelId}>{name}</span>
+        </div>
     </div>
     <div data-part="chat-message-body" class="prose" bind:this={bodyRoot}>
         {#if streaming}
@@ -77,10 +80,11 @@
 </article>
 
 <style>
-    [data-part="chat-message"] { width: 100%; padding: 10px 16px; color: var(--color-textcolor); }
-    [data-part="chat-message-meta"] { display: flex; align-items: center; gap: 8px; color: var(--color-textcolor2); }
-    [data-part="chat-message-meta"] img { width: 24px; height: 24px; border-radius: 50%; }
-    [data-part="chat-message-body"] { max-width: 72ch; width: 100%; overflow-wrap: anywhere; }
-    [data-part="chat-message"].user { border-left: 2px solid var(--color-selected); }
-    [data-part="chat-message-interrupted"] { color: var(--color-textcolor2); font-style: italic; font-size: 0.75rem; }
+    [data-part="chat-message"] { width: 100%; padding: var(--space-8) var(--space-12); color: var(--nexus-text); }
+    [data-part="chat-message-name-row"] { min-height: var(--message-name-row-height); }
+    [data-part="chat-message-meta"] { display: flex; align-items: center; gap: var(--message-meta-gap); color: var(--nexus-text-secondary); }
+    [data-part="chat-message-meta"] img { width: var(--size-12); height: var(--size-12); border-radius: var(--radius-circle); }
+    [data-part="chat-message-body"] { max-width: var(--thread-max-width); width: 100%; overflow-wrap: anywhere; }
+    [data-part="chat-message"].user { border-left: var(--stroke-bold) solid var(--nexus-surface-raised); }
+    [data-part="chat-message-interrupted"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
 </style>

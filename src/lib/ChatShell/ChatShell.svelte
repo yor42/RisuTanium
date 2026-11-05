@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte'
+    import '../../styles/chat-tokens.css'
     import { DBState, selIdState } from '../../ts/stores.svelte'
     import { language } from '../../lang'
     import type ShellHeaderComponent from './ShellHeader.svelte'
@@ -9,6 +10,7 @@
     import type ShellNoticesComponent from './ShellNotices.svelte'
     import type ShellFloatingButtonsComponent from './ShellFloatingButtons.svelte'
     import type ShellMessageListComponent from './ShellMessageList.svelte'
+    import { shouldAnchorBottom } from '../../ts/chatShell/bottomAnchor'
 
     interface Props {
         openChatList?: boolean
@@ -44,6 +46,8 @@
     let olderDistance = 0
     let previousBusy = false
     let seenCloseEpoch = 0
+    let layout = $state<'phone' | 'mid' | 'wide'>('phone')
+    let inputMode = $state<'touch' | 'hover'>('touch')
 
     $effect(() => {
         if (!surface) return
@@ -57,7 +61,23 @@
     })
 
     onMount(() => {
-        if (character?.type !== 'character') return
+        const updateRootState = () => {
+            layout = window.innerWidth >= 900 ? 'wide' : window.innerWidth >= 600 ? 'mid' : 'phone'
+            inputMode = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches ? 'hover' : 'touch'
+        }
+        updateRootState()
+        window.addEventListener('resize', updateRootState)
+        const viewport = window.visualViewport
+        let previousHeight = viewport?.height ?? 0
+        const anchor = () => {
+            const nextHeight = viewport?.height ?? 0
+            if (shouldAnchorBottom({ wasAtBottom: atBottom, surfaceHidden, previousHeight, nextHeight })) {
+                requestAnimationFrame(() => messageList?.anchorNewestBottom?.())
+            }
+            previousHeight = nextHeight
+        }
+        viewport?.addEventListener('resize', anchor)
+        if (character?.type !== 'character') return () => { window.removeEventListener('resize', updateRootState); viewport?.removeEventListener('resize', anchor) }
         let live = true
         let unsubscribe = () => {}
         void Promise.all([
@@ -86,7 +106,7 @@
                 previousBusy = value
             })
         })
-        return () => { live = false; unsubscribe() }
+        return () => { live = false; unsubscribe(); window.removeEventListener('resize', updateRootState); viewport?.removeEventListener('resize', anchor) }
     })
 
     function scroll(event: Event): void {
@@ -117,16 +137,16 @@
 
 </script>
 
-<div class="default-chat-screen" data-part="chat-shell" data-part-critical data-testid="chat-shell-stub">
-    <div bind:this={header} data-part="chat-shell-header-host">
+<div class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub">
+    <div bind:this={header} data-part="chat-header-host">
         {#if ShellHeader}<ShellHeader name={character?.name ?? ''} hidden={headerHidden} {hardwareKeyboardSeen} onpersona={openPersona} />{/if}
     </div>
-    <main bind:this={list} data-part="chat-list-placeholder" aria-label={language.chatShellMessages} onscroll={scroll}>
+    <main bind:this={list} data-part="chat-transcript" aria-label={language.chatShellMessages} onscroll={scroll}>
         {#if ShellNotices && character?.type === 'character'}<ShellNotices />{/if}
         {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom />{/if}
     </main>
     {#if ShellFloatingButtons}<ShellFloatingButtons visible={unread && !atBottom} onclick={() => messageList?.scrollToLatestMessage?.()} />{/if}
-    <div bind:this={composer} data-part="chat-shell-composer-host">
+    <div bind:this={composer} data-part="chat-composer-host">
         {#if ShellComposer}<ShellComposer onplus={openPlus} onpersona={openPersona} bind:stickersOpen onhardwarechange={(seen) => { hardwareKeyboardSeen = seen; if (seen) headerHidden = false }} />{/if}
     </div>
     {#if PersonaSheet}<PersonaSheet open={personaOpen} {opener} background={[header, list, composer].filter((element): element is HTMLElement => !!element)} onclose={() => personaOpen = false} />{/if}
@@ -134,7 +154,7 @@
 </div>
 
 <style>
-    [data-part="chat-shell"] { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; background: var(--color-bgcolor); color: var(--color-textcolor); }
-    [data-part="chat-shell-header-host"], [data-part="chat-shell-composer-host"] { flex: none; }
-    [data-part="chat-list-placeholder"] { flex: 1; min-height: 0; overflow-y: auto; }
+    [data-part="chat-shell"] { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; background: var(--nexus-canvas); color: var(--nexus-text); }
+    [data-part="chat-header-host"], [data-part="chat-composer-host"] { flex: none; }
+    [data-part="chat-transcript"] { flex: 1; min-height: 0; overflow-y: auto; }
 </style>

@@ -97,48 +97,48 @@
     }
 </script>
 
-<ShellSheet {open} kind="menu" label={language.chatShellMoreActions} {opener} {background} {onclose}>
-    <div data-part="chat-plus-menu" onkeydown={menuKey}>
-        <button role="menuitem" data-sheet-initial disabled={!canContinue()} onclick={() => { if (canContinue()) activate(() => { void sendContinue(source) }) }}>{language.continueResponse}</button>
+<ShellSheet {open} kind="menu" mode={typeof window !== 'undefined' && window.innerWidth >= 900 ? 'wide-menu' : 'bottom'} label={language.chatShellMoreActions} {opener} {background} {onclose}>
+    <div data-part="chat-sheet-body" onkeydown={menuKey}>
+        <button data-part="chat-sheet-item" data-kind="button" role="menuitem" data-sheet-initial disabled={!canContinue()} onclick={() => { if (canContinue()) activate(() => { void sendContinue(source) }) }}>{language.continueResponse}</button>
         {#if character && canChatSpeak(character, (id) => findCharacterbyId(id))}
-            <button role="menuitem" onclick={() => activate(stopTTS)}>{language.ttsStop}</button>
+            <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(stopTTS)}>{language.ttsStop}</button>
         {/if}
         {#if DBState.db.useChatSticker && character?.type !== 'group'}
-            <button role="menuitem" onclick={() => activate(onstickers)}>{language.chatShellStickers}</button>
+            <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(onstickers)}>{language.chatShellStickers}</button>
         {/if}
         {#if DBState.db.showMenuChatList}
-            <button role="menuitem" onclick={() => activate(onchatlist)}>{language.chatList}</button>
+            <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(onchatlist)}>{language.chatList}</button>
         {/if}
         {#if DBState.db.enableRisuaiProTools}
-            <button role="menuitem" onclick={() => activate(() => { easyPanelStore.open = !easyPanelStore.open })}>{language.easyPanel}</button>
+            <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(() => { easyPanelStore.open = !easyPanelStore.open })}>{language.easyPanel}</button>
         {/if}
         {#each additionalChatMenu as menu (menu.id)}
-            <button role="menuitem" onclick={() => activate(menu.callback)}><PluginDefinedIcon ico={menu} />{menu.name}</button>
+            <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(menu.callback)}><PluginDefinedIcon ico={menu} />{menu.name}</button>
         {/each}
         {#if DBState.db.showMenuHypaMemoryModal && ((DBState.db.supaModelType !== 'none' && DBState.db.hypav2) || DBState.db.hypaV3)}
-            <button role="menuitem" onclick={() => activate(() => {
+            <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(() => {
                 if (DBState.db.hypav2 && chat) {
                     chat.hypaV2Data ??= { lastMainChunkID: 0, mainChunks: [], chunks: [] }
                     showHypaV2Alert()
                 } else if (DBState.db.hypaV3) hypaV3ModalOpen.set(true)
             })}>{DBState.db.hypav2 ? language.hypaMemoryV2Modal : language.hypaMemoryV3Modal}</button>
         {/if}
-        <button role="menuitem" onclick={() => activate(() => { void screenshot() })}>{language.screenshot}</button>
+        <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(() => { void screenshot() })}>{language.screenshot}</button>
         {#if DBState.db.showMenuChatList}
-            <button role="menuitem" onclick={() => activate(() => { if (chat) chat.modules ??= []; onmodules() })}>{language.modules}</button>
+            <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(() => { if (chat) chat.modules ??= []; onmodules() })}>{language.modules}</button>
         {/if}
         {#if DBState.db.sideMenuRerollButton}
-            <button role="menuitem" onclick={() => activate(() => { void reroll(source) })}>{language.reroll}</button>
+            <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(() => { void reroll(source) })}>{language.reroll}</button>
         {/if}
         {#if utilityVisible($pageStorageModeStore)}
-            <button role="menuitem" onclick={() => activate(() => { selectedCharID.set(-1); utilityOpen.set(true) })}>{language.chatShellUtility}</button>
+            <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(() => { selectedCharID.set(-1); utilityOpen.set(true) })}>{language.chatShellUtility}</button>
         {/if}
     </div>
 </ShellSheet>
 
 <style>
-    [data-part="chat-plus-menu"] { display: flex; flex-direction: column; }
-    [data-part="chat-plus-menu"] button { min-height: 44px; text-align: left; padding: 8px 12px; color: var(--color-textcolor); border-bottom: 1px solid var(--color-darkborderc); }
-    [data-part="chat-plus-menu"] button:focus-visible { outline: 2px solid var(--color-textcolor); }
-    [data-part="chat-plus-menu"] button:disabled { opacity: .5; }
+    [data-part="chat-sheet-body"] { display: flex; flex-direction: column; }
+    [data-part="chat-sheet-body"] button { min-height: var(--size-touch); text-align: left; padding: var(--space-7) var(--space-10); color: var(--nexus-text); border-bottom: 1px solid var(--nexus-edge); }
+    [data-part="chat-sheet-body"] button:focus-visible { outline: var(--stroke-bold) solid var(--nexus-text); }
+    [data-part="chat-sheet-body"] button:disabled { opacity: var(--opacity-half); }
 </style>

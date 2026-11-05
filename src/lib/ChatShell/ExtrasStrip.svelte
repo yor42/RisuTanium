@@ -18,7 +18,7 @@
 </script>
 
 {#if files.length > 0 || (stickersOpen && currentCharacter) || showSuggestions || translatePreview}
-    <div data-part="chat-extras-strip" data-part-critical>
+    <div data-part="chat-extras-strip">
         {#each files as file, index}
             <span data-part="chat-attachment-chip"><span>{file}</span><button aria-label={`${language.chatShellRemoveAttachment}: ${file}`} onclick={() => onremove(index)}>×</button></span>
         {/each}
@@ -31,10 +31,10 @@
 {/if}
 
 <style>
-    [data-part="chat-extras-strip"] { display: flex; gap: 4px; overflow-x: auto; align-items: center; min-height: 44px; }
-    [data-part="chat-attachment-chip"] { display: inline-flex; align-items: center; height: 44px; white-space: nowrap; padding-left: 8px; background: var(--color-selected); border: 1px solid var(--color-darkborderc); border-radius: 8px; }
-    [data-part="chat-attachment-chip"] button { width: 44px; height: 44px; color: var(--color-textcolor); }
-    [data-part="chat-sticker-assets"] { display: flex; max-height: 20dvh; overflow: auto; }
-    [data-part="chat-translate-preview"] { display: inline-flex; align-items: center; height: 44px; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 8px; background: var(--color-selected); color: var(--color-textcolor); }
+    [data-part="chat-extras-strip"] { display: flex; gap: var(--space-3); overflow-x: auto; align-items: center; min-height: var(--size-touch); }
+    [data-part="chat-attachment-chip"] { display: inline-flex; align-items: center; height: var(--size-touch); white-space: nowrap; padding-left: var(--space-7); background: var(--nexus-surface-raised); border: 1px solid var(--nexus-edge); border-radius: var(--radius-5); }
+    [data-part="chat-attachment-chip"] button { width: var(--size-touch); height: var(--size-touch); color: var(--nexus-text); }
+    [data-part="chat-sticker-assets"] { display: flex; max-height: var(--size-rel-20); overflow: auto; }
+    [data-part="chat-translate-preview"] { display: inline-flex; align-items: center; height: var(--size-touch); max-width: var(--size-38); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 var(--space-7); background: var(--nexus-surface-raised); color: var(--nexus-text); }
     [data-part="chat-suggestions"] { flex: none; }
 </style>
