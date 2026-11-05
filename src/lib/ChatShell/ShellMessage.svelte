@@ -9,9 +9,11 @@
     import { DBState, selIdState, HideIconStore } from '../../ts/stores.svelte'
     import { aiLawApplies, changeChatTo, foldChatToMessage } from '../../ts/globalApi.svelte'
     import { createMessageEditorController } from '../../ts/process/messageEditorController.svelte'
-    import { handleButtonTriggerWithin, handleFormTriggerWithin, playMessageTTS, requestRemove, copyMessageText, copyMessageAsCard, branchMessage, toggleMessageDisabled, toggleBookmark } from '../../ts/process/messageActions.svelte'
+    import { handleButtonTriggerWithin, handleFormTriggerWithin, playMessageTTS, requestRemove, deleteNow, type DeleteMode, copyMessageText, copyMessageAsCard, branchMessage, toggleMessageDisabled, toggleBookmark } from '../../ts/process/messageActions.svelte'
     import { stopTTS } from '../../ts/process/tts'
     import { stepSibling } from '../../ts/process/composerActions.svelte'
+import { originOf, isWriting } from '../../ts/process/chatOrigin'
+import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopDelete.svelte'
     import { createSwipeGesture, createWheelSteps, type SwipeResult } from '../../ts/chatShell/swipeGesture'
     import { classifyEdge } from '../../ts/chatShell/edgeZones'
     import { tickHaptic, readHaptics } from '../../ts/chatShell/haptics'
@@ -23,7 +25,7 @@
     import { ensureCurrentModulesOrAlert } from '../../ts/process/moduleEnsure'
     import { getLLMCache } from '../../ts/translator/translator'
     import { isTTSVoiceMode } from '../../ts/process/ttsModes'
-    import { alertError, alertRequestData } from '../../ts/alert'
+    import { alertConfirm, alertError, alertNormal, alertRequestData } from '../../ts/alert'
     import { risuChatParser } from '../../ts/process/scripts'
     import { buildDisplayParseOptions } from '../../ts/process/displayParseOptions'
     import { recordCaughtError } from '../../ts/caughtErrors'
@@ -86,14 +88,14 @@
     let avatar = $state<string | null>(null)
     let iconMounted = $state(false)
     let bodyRevision = $state(0)
-    let msgDisplay = $state(message.data)
+    let msgDisplay = $state(untrack(() => message.data))
     let renderFailed = $state(false)
     let actionOpen = $state(false)
     let customizeOpen = $state(false)
     let actionOpener = $state<HTMLElement | null>(null)
     let anchor = $state<{ x: number; y: number }>()
     let meta: ReturnType<typeof MessageMeta> | undefined
-    let alternatives: ReturnType<typeof AlternativesRow> | undefined
+    let alternatives = $state<ReturnType<typeof AlternativesRow>>()
     let speaking = $state(false)
     let swipe = $state<ReturnType<typeof createSwipeGesture> | null>(null)
     let wheel = createWheelSteps(0, 1)
@@ -126,17 +128,35 @@
     })
     let owner = $derived(DBState.db.characters?.[selIdState.selId])
     let chat = $derived(owner?.chats?.[owner.chatPage])
+    let rowOrigin = $derived(owner?.chaId && chat?.id ? originOf(owner, chat) : null)
+    let stopDeletePending = $derived(isStopDeletePending(rowOrigin))
     let isBookmarked = $derived(Boolean(chatId && chat?.bookmarks?.includes(chatId)))
     let canSpeak = $derived(idx > -1 && owner?.type !== 'group' && isTTSVoiceMode(owner?.ttsMode))
     let position = $derived(getTreeView?.()?.at(idx) ?? { index: 1, count: 1 })
     let newestCharacter = $derived(message.role === 'char' && idx >= 0 && idx === (chat?.message?.length ?? 0) - 1)
     let actions = $derived(ACTION_IDS.filter((id) => id !== 'deleteAfter').filter((id) => idx >= 0 || id === 'copy' || id === 'selectText' || id === 'stepPrev' || id === 'stepNext' || id === 'customizeButtons').filter((id) => id !== 'readAloud' || canSpeak).filter((id) => id !== 'translate' || DBState.db.translator !== '').filter((id) => id !== 'newReply' || newestCharacter).filter((id) => !['stepPrev', 'stepNext'].includes(id) || newestCharacter || firstMessage).filter((id) => id !== 'branch' || onBranch !== undefined))
-    let sheetActions = $derived<SheetAction[]>([...actions, 'copyCard', ...(idx >= 0 ? ['hideAbove'] as SheetAction[] : []), ...(idx >= 0 && !streaming && DBState.db.translatorType === 'llm' ? ['retranslate', 'editTranslation'] as SheetAction[] : []), ...(idx >= 0 && !streaming && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit) ? ['partialEdit'] as SheetAction[] : [])])
-    let unavailable = $derived(ACTION_IDS.filter((id) => streaming && ['edit', 'translate', 'readAloud', 'branch', 'newReply', 'delete', 'deleteAfter'].includes(id) || getBusy?.() === true && ['stepPrev', 'stepNext', 'newReply'].includes(id)))
+    let sheetActions = $derived<SheetAction[]>([...actions, 'copyCard', ...(idx >= 0 ? ['hideAbove', 'deleteAfter'] as SheetAction[] : []), ...(idx >= 0 && !streaming && DBState.db.translatorType === 'llm' ? ['retranslate', 'editTranslation'] as SheetAction[] : []), ...(idx >= 0 && !streaming && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit) ? ['partialEdit'] as SheetAction[] : [])])
+    let unavailable = $derived(ACTION_IDS.filter((id) => streaming && ['edit', 'translate', 'readAloud', 'branch', 'newReply'].includes(id) || stopDeletePending && (id === 'delete' || id === 'deleteAfter') || getBusy?.() === true && ['stepPrev', 'stepNext', 'newReply'].includes(id)))
     $effect(() => { wheel = createWheelSteps(position.index - 1, position.count) })
     const source = { closeMenu: () => {} }
     function liveIndex(): number { return chatId ? (chat?.message.findIndex((item) => item.chatId === chatId) ?? idx) : idx }
     function openActions(opener: HTMLElement, point?: { x: number; y: number }): void { actionOpener = opener; anchor = point; actionOpen = true }
+    // A generating reply, or a range that reaches the running send, is stopped first and removed once the send has settled.
+    async function removeMessage(mode: DeleteMode): Promise<void> {
+        if (!owner || !chat || idx < 0) return
+        const target = chat.message[liveIndex()]
+        if (!target) return
+        const origin = originOf(owner, chat)
+        if (origin && isStopDeletePending(origin)) return
+        const after = mode === 'from' ? chat.message.length - chat.message.indexOf(target) - 1 : 0
+        if (streaming || mode === 'from' && origin !== null && isWriting(origin)) {
+            if (!await alertConfirm(language.chatShellStopDeleteConfirm(after))) return
+            if (!requestStopDelete(owner, chat, target, mode) && !isStopDeletePending()) alertNormal(language.chatShellStopDeleteChanged)
+        } else if (mode === 'from') {
+            if (!await alertConfirm(language.chatShellDeleteFromHereConfirm(after))) return
+            deleteNow(owner, chat, target, 'from')
+        } else await requestRemove(owner, chat, target)
+    }
     async function act(id: SheetAction): Promise<void> {
         if ((unavailable as readonly SheetAction[]).includes(id)) return
         switch (id) {
@@ -162,7 +182,8 @@
             case 'bookmark': await toggleBookmark(liveIndex(), name); break
             case 'hideAI': await toggleMessageDisabled(liveIndex, 'one'); break
             case 'hideAbove': await toggleMessageDisabled(liveIndex, 'above'); break
-            case 'delete': if (owner && chat && idx >= 0) await requestRemove(owner, chat, chat.message[liveIndex()]); break
+            case 'delete': await removeMessage('one'); break
+            case 'deleteAfter': await removeMessage('from'); break
             case 'stepPrev': await stepSibling(source, liveIndex(), chatId, 'back', { generate: false }); alternatives?.markPageChange(); break
             case 'stepNext': await stepSibling(source, liveIndex(), chatId, 'forward', { generate: false }); alternatives?.markPageChange(); break
             case 'newReply': alternatives?.requestNewReply(); break
@@ -296,6 +317,8 @@
     }
 </script>
 
+<!-- The article keeps the transcript semantics and is the focus target of roving message focus (tabindex -1), so its key and context-menu events and the captured clicks and submits of rich message content must reach it; the swipe gesture listens on the body. -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta="shown" data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="-1" onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
     {#if disabled === true}<div data-part="chat-message-divider" data-kind="disabled"></div>{/if}
     <div data-part="chat-message-name-row">
@@ -325,7 +348,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div data-part="chat-message-body" class="prose" bind:this={bodyRoot} style:transform={`translateX(${dragX}px)`} onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={(event) => { if (swipe) finishSwipe(swipe.up(sample(event))) }} onpointercancel={() => { if (swipe) finishSwipe(swipe.cancel()) }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
-        {#if editor.editMode || editor.editTranslationMode}
+        {#if editor.editMode || editor.editTranslationMode}<!-- the editors replace the body while open -->
         {:else if message.isComment}
             {#if msgDisplay.startsWith('{{specialcomment') && msgDisplay.split('::')[1] === 'branchedfrom'}
                 <button type="button" data-part="chat-message-branch-origin" onclick={() => { const parts = msgDisplay.split('::'); changeChatTo(parts[2] ?? ''); foldChatToMessage(parts[4]) }}>{language.branchedText.replace('{}', msgDisplay.split('::')[3] ?? '')}</button>
@@ -347,11 +370,12 @@
     {#if (newestCharacter || firstMessage) && (position.count > 1 || newestCharacter)}
         <AlternativesRow bind:this={alternatives} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} busy={getBusy?.() ?? false} />
     {/if}
-    <ActionSheet open={actionOpen} opener={actionOpener} {anchor} available={sheetActions} disabled={unavailable} onaction={(id) => { void act(id) }} onclose={() => { actionOpen = false }} />
+    <ActionSheet open={actionOpen} opener={actionOpener} {anchor} available={sheetActions} disabled={unavailable} generating={streaming} onaction={(id) => { void act(id) }} onclose={() => { actionOpen = false }} />
     <CustomizeButtonsSheet open={customizeOpen} opener={actionOpener} onclose={() => { customizeOpen = false }} onchange={() => meta?.refresh()} />
     {#if idx >= 0 && !streaming && !editor.editMode && !editor.editTranslationMode && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit)}
         <PartialEditController messageData={message.data} chatIndex={idx} {bodyRoot} blockEditEnabled={DBState.db.enableBlockPartialEdit} dragEditEnabled={DBState.db.enableDragPartialEdit} translatedView={translated} getTranslationEditContext={getTranslationPartialEditContext} on:save={handlePartialEditSave} />
     {/if}
+    {#if stopDeletePending}<div data-part="chat-message-delete-pending" role="status">{language.chatShellDeletePendingStop}</div>{/if}
     {#if renderFailed}<div data-part="chat-message-render-failed" role="note">{language.messageRenderFailed}</div>{/if}
     {#if interrupted && !streaming}<div data-part="chat-message-interrupted" role="note">{language.messageInterrupted}</div>{/if}
     {#if isLastMemory}<div data-part="chat-message-memory-limit" style:border-top-width={`${DBState.db.memoryLimitThickness}px`}></div>{/if}
@@ -366,6 +390,7 @@
     [data-part="chat-message-body"] { max-width: var(--thread-max-width); width: 100%; overflow-wrap: anywhere; }
     [data-part="chat-message"].user { border-left: var(--stroke-bold) solid var(--nexus-surface-raised); }
     [data-part="chat-message-interrupted"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
+    [data-part="chat-message-delete-pending"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
     [data-part="chat-message-render-failed"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
     [data-part="chat-message-divider"] { border-top: var(--stroke-bold) dashed var(--color-warning); }
     [data-part="chat-message-divider"][data-kind="disabled"] { border-top-color: var(--color-accent); }

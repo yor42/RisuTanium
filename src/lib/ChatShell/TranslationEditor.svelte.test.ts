@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi, type Mock } from 'vitest'
 import { flushSync, mount, unmount } from 'svelte'
 import { draftContentOrphanGate } from '../../ts/draftContentOrphanGate'
 import { resetLocalDraftsForTest } from '../../ts/localDrafts'
@@ -27,7 +27,7 @@ import TranslationEditor from './TranslationEditor.svelte'
 let target: HTMLElement
 let app: ReturnType<typeof TranslationEditor> | undefined
 let destroyRoot: (() => void) | undefined
-let written: ReturnType<typeof vi.fn>
+let written: Mock<() => void>
 async function show() {
     const deps: MessageEditorDeps = {
         getMessage: () => 'base', setMessage: () => {}, getIdx: () => 0,
@@ -62,7 +62,7 @@ describe('TranslationEditor surface', () => {
         textarea.value = 'translated'
         textarea.dispatchEvent(new Event('input', { bubbles: true }))
         flushSync()
-        target.querySelector('button:last-child')?.click()
+        target.querySelector<HTMLButtonElement>('button:last-child')?.click()
         await vi.waitFor(() => expect(setLLMCache).toHaveBeenCalledWith('source', 'translated'), { timeout: 3000 })
         expect(written).toHaveBeenCalledTimes(1)
     })

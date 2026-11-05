@@ -45,7 +45,7 @@ describe('ShellNotices', () => {
 
     test('Retry starts the legacy cold loader', async () => {
         const { DBState } = await import('../../ts/stores.svelte')
-        DBState.db.characters[0].chats[0].message = [{ data: 'ERROR:old' }]
+        DBState.db.characters[0].chats[0].message = [{ role: 'char', data: 'ERROR:old' }]
         const { default: ShellNotices } = await import('./ShellNotices.svelte')
         const target = document.createElement('div')
         const app = mount(ShellNotices, { target })

@@ -54,6 +54,7 @@ vi.mock('../../ts/process/scriptings', () => ({ runLuaButtonTrigger: vi.fn(), ru
 vi.mock('../../ts/process/triggers', () => ({ runTrigger: trigger.runTrigger }))
 vi.mock('../../ts/process/chatOrigin', () => ({
     beginWork: () => ({ origin: {}, end: trigger.end }), originStatus: () => 'live', writeAt: vi.fn(),
+    originOf: () => null, isWriting: () => false,
 }))
 vi.mock('../../ts/process/memory/supaResume', () => ({ withSupaRepoint: vi.fn() }))
 vi.mock('../../ts/process/chatTree', () => ({ siblingsAt: vi.fn(() => []) }))

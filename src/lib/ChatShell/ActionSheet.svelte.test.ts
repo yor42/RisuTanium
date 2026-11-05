@@ -11,6 +11,7 @@ vi.mock('../../lang', () => ({ language: {
     chatShellBranch: 'Branch', bookmark: 'Bookmark', disableMessage: 'Hide from AI', disableAbove: 'Hide above from AI',
     remove: 'Delete', removeThisAndFollowingMessages: 'Delete after',
     chatShellCustomizeButtons: 'Customize buttons', chatShellReplyInProgress: 'Writing reply',
+    chatShellStopAndDelete: 'Stop and delete', chatShellDeleteFromHere: 'Delete from here',
 } }))
 
 vi.mock(import('src/ts/parser/parser.svelte'), () => ({
@@ -42,6 +43,19 @@ describe('action sheet', () => {
         expect(remove.disabled).toBe(true)
         remove.click()
         expect(onaction).not.toHaveBeenCalled()
+    })
+    test('a generating reply labels Delete as Stop and delete, and the range entry reads Delete from here', () => {
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        const onaction = vi.fn()
+        app = mount(ActionSheet, { target, props: { open: true, available: ['delete', 'deleteAfter'], generating: true, onaction, onclose: vi.fn() } })
+        flushSync()
+        const remove = target.querySelector<HTMLButtonElement>('[data-action="delete"]')!
+        expect(remove.textContent).toBe('Stop and delete')
+        expect(remove.disabled).toBe(false)
+        expect(target.querySelector('[data-action="deleteAfter"]')?.textContent).toBe('Delete from here')
+        remove.click()
+        expect(onaction).toHaveBeenCalledWith('delete')
     })
     test('an enabled entry closes the sheet and reports its id; Escape closes only the sheet', () => {
         target = document.createElement('div')

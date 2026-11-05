@@ -10,10 +10,11 @@
         anchor?: { x: number; y: number }
         available: readonly SheetAction[]
         disabled?: readonly SheetAction[]
+        generating?: boolean
         onaction: (id: SheetAction) => void
         onclose: () => void
     }
-    let { open, opener = null, anchor, available, disabled = [], onaction, onclose }: Props = $props()
+    let { open, opener = null, anchor, available, disabled = [], generating = false, onaction, onclose }: Props = $props()
     let wide = $state(false)
     $effect(() => {
         if (typeof matchMedia !== 'function') return
@@ -38,9 +39,11 @@
         newReply: language.chatShellNewReply, branch: language.chatShellBranch,
         bookmark: language.bookmark, hideAI: language.disableMessage,
         hideAbove: language.disableAbove,
-        delete: language.remove, deleteAfter: language.removeThisAndFollowingMessages,
+        delete: language.remove, deleteAfter: language.chatShellDeleteFromHere,
         customizeButtons: language.chatShellCustomizeButtons,
     }
+    // A generating reply is stopped before it is deleted, so its Delete says so.
+    function labelOf(id: SheetAction): string { return id === 'delete' && generating ? language.chatShellStopAndDelete : labels[id] ?? id }
     function activate(id: SheetAction): void { if (!disabled.includes(id)) { onclose(); onaction(id) } }
 </script>
 
@@ -49,8 +52,8 @@
         <div data-part="chat-action-group" data-destructive-group={groupIndex === 3 ? '' : undefined}>
             {#each group.filter((id) => available.includes(id)) as id}
                 <button type="button" role="menuitem" data-action={id} data-sheet-initial={groupIndex === 0 && id === 'copy' ? '' : undefined}
-                    disabled={disabled.includes(id)} title={disabled.includes(id) ? language.chatShellReplyInProgress : labels[id] ?? id}
-                    onclick={() => activate(id)}>{labels[id] ?? id}</button>
+                    disabled={disabled.includes(id)} title={disabled.includes(id) ? language.chatShellReplyInProgress : labelOf(id)}
+                    onclick={() => activate(id)}>{labelOf(id)}</button>
             {/each}
         </div>
     {/each}
