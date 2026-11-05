@@ -83,6 +83,7 @@ function show(index: number, count: number): HTMLElement {
     state.index = index
     state.count = count
     target = document.createElement('div')
+    target.setAttribute('data-part', 'chat-shell')
     document.body.appendChild(target)
     app = mount(ShellMessage, { target, props: { idx: 1, chatId: 'm', expectedId: 'm', name: 'Ari', message: DBState.db.characters[0].chats[0].message[1], getTreeView: () => ({ at: () => ({ index: state.index, count: state.count }), continuation: 0 }) } })
     flushSync()
@@ -134,6 +135,40 @@ describe('Ctrl+Alt+R takes one route through the real hotkey listener', () => {
         expect(regenerateNewest).not.toHaveBeenCalled()
         press(document.body)
         expect(regenerateNewest).toHaveBeenCalledTimes(1)
+    })
+    test('inside the new shell a repeating Ctrl+Alt+F steps back once for the whole hold', () => {
+        show(2, 2)
+        const hold = (repeat: boolean) => { document.body.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'f', ctrlKey: true, altKey: true, repeat })); flushSync() }
+        hold(false)
+        hold(true)
+        hold(true)
+        expect(stepSibling).toHaveBeenCalledTimes(1)
+        expect(stepSibling).toHaveBeenCalledWith(expect.anything(), 1, 'm', 'back', { generate: false })
+    })
+    test('the classic screen has no chat shell root: a repeating keydown still clicks the reroll and unreroll controls every time', () => {
+        expect(document.querySelector('[data-part="chat-shell"]')).toBeNull()
+        const reroll = document.createElement('button')
+        reroll.className = 'button-icon-reroll'
+        const unreroll = document.createElement('button')
+        unreroll.className = 'button-icon-unreroll'
+        const rerollClick = vi.fn()
+        const unrerollClick = vi.fn()
+        reroll.addEventListener('click', rerollClick)
+        unreroll.addEventListener('click', unrerollClick)
+        document.body.append(reroll, unreroll)
+        try {
+            press(document.body)
+            press(document.body, true)
+            press(document.body, true)
+            expect(rerollClick).toHaveBeenCalledTimes(3)
+            const keyboard = (key: string) => { document.body.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key, ctrlKey: true, altKey: true, repeat: true })); flushSync() }
+            keyboard('f')
+            keyboard('f')
+            expect(unrerollClick).toHaveBeenCalledTimes(2)
+        } finally {
+            reroll.remove()
+            unreroll.remove()
+        }
     })
     test('with the newest message focused an alternative ahead steps once, not twice', () => {
         const article = show(1, 2)

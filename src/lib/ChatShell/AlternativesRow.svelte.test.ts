@@ -8,7 +8,7 @@ vi.mock('../../ts/process/composerActions.svelte', () => ({ stepSibling, regener
 vi.mock('../../lang', () => ({ language: {
     chatShellReplyOf: (index: number, total: number) => `Reply ${index} of ${total}`, chatShellFirstMessageOf: (index: number, total: number) => `First message ${index} of ${total}`, chatShellPreviousReply: 'Previous reply',
     chatShellNextReply: 'Next reply', chatShellFirstReply: 'First reply',
-    chatShellLastReply: 'Last reply', chatShellFirstMessage: 'First message', chatShellNewReply: 'New reply',
+    chatShellLastReply: 'Last reply', chatShellNewReply: 'New reply',
 } }))
 
 import AlternativesRow from './AlternativesRow.svelte'

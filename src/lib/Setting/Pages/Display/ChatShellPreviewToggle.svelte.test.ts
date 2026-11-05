@@ -12,7 +12,6 @@ vi.mock('src/lang', () => ({ language: {
     chatShellOnThisDeviceHelp: 'Other devices keep their own setting.',
     chatShellFlipRefusedEditing: 'Save or discard the message you are editing before switching the chat screen.',
     chatShellHaptics: 'Vibrate on swipe actions',
-    chatShellHapticsUnavailable: 'This device cannot vibrate.',
     chatShellCustomizeButtons: 'Customize buttons',
 } }))
 vi.mock('src/ts/alert', () => ({ alertNormal: alerts }))

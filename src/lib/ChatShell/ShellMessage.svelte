@@ -135,6 +135,9 @@
     let spring = $state(false)
     let commitDirection = $state<'back' | 'forward' | null>(null)
     let commitTimer: ReturnType<typeof setTimeout> | undefined
+    let springTimer: ReturnType<typeof setTimeout> | undefined
+    const SPRING_DEFAULT_MS = 260
+    const SPRING_MARGIN_MS = 150
     let armTimer: ReturnType<typeof setTimeout> | undefined
     let lastSampleAt = { time: 0, wall: 0 }
     let article = $state<HTMLElement | null>(null)
@@ -146,8 +149,9 @@
     let overlayOpen = false
     onMount(() => { queueMicrotask(() => { if (!destroyed) iconMounted = true }) })
     // A modal layer of the row (the partial-edit overlays are position: fixed inside the row) must not be clipped by the row's own containment, so the list is told while one is open.
-    onMount(() => {
-        if (!article || typeof MutationObserver === 'undefined') return
+    $effect(() => {
+        const partialEditOn = DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit
+        if (!partialEditOn || !article || typeof MutationObserver === 'undefined') return
         const root = article
         const observer = new MutationObserver(() => {
             const open = root.querySelector('.partial-edit-overlay') !== null
@@ -156,10 +160,13 @@
             onOverlay?.(open)
         })
         observer.observe(root, { childList: true, subtree: true })
-        return () => observer.disconnect()
+        return () => {
+            observer.disconnect()
+            if (overlayOpen) { overlayOpen = false; onOverlay?.(false) }
+        }
     })
     onDestroy(() => {
-        destroyed = true; clearTimeout(longPressTimer); clearTimeout(armTimer); clearTimeout(commitTimer); clearTimeout(statusTimer); unregisterEditorBack(); editor.dispose()
+        destroyed = true; clearTimeout(longPressTimer); clearTimeout(armTimer); clearTimeout(commitTimer); clearTimeout(springTimer); clearTimeout(statusTimer); unregisterEditorBack(); editor.dispose()
         if (hostedRequest) onCloseActions?.(hostedRequest)
         hostedRequest = null
         if (overlayOpen) onOverlay?.(false)
@@ -253,7 +260,7 @@
         const sendReachesRange = mode === 'from' && origin !== null && isWriting(origin) && chat.message.slice(chat.message.indexOf(target)).some((item) => isActiveStreamReply(item.chatId))
         if (streaming || sendReachesRange) {
             if (!await alertConfirm(language.chatShellStopDeleteConfirm(after))) return
-            if (!requestStopDelete(owner, chat, target, mode) && !isStopDeletePending()) alertNormal(language.chatShellStopDeleteCannot)
+            if (!requestStopDelete(owner, chat, target, mode)) alertNormal(language.chatShellStopDeleteCannot)
         } else if (mode === 'from') {
             const count = after + 1
             const choice = await alertSelect([language.cancel, language.chatShellDeleteRangeButton(count)], language.chatShellDeleteRangeConfirm(count, excerptOf(target.data)))
@@ -364,6 +371,7 @@
         if (target.closest('button, a, input, textarea, [contenteditable]')) return
         pointerType = event.pointerType
         pointerStart = { x: event.clientX, y: event.clientY }
+        clearTimeout(springTimer)
         spring = false
         const edge = classifyEdge({ xPx: event.clientX, viewportWidthPx: window.innerWidth, dpPerPx: 1, hostInsetDp: readHostInset(event.clientX), rtl: document.dir === 'rtl' }) === 'edge'
         swipe = createSwipeGesture({ widthPx: bodyRoot?.clientWidth ?? 320, dpPerPx: 1, index: position.index - 1, count: position.count, edge: edge || startsInHorizontalScroller(target), streaming, firstMessage, canGenerate: newestCharacter, enabled: DBState.db.swipe && showPager, pointerType: event.pointerType })
@@ -417,6 +425,7 @@
     function finishSwipe(result: SwipeResult): void {
         clearTimeout(longPressTimer); longPressTimer = undefined; longPressRing = false
         clearTimeout(armTimer); armTimer = undefined
+        const wasDragged = dragX !== 0
         swipe = null; swipeProgress = 0; dragX = 0; armed = false; swipeLocked = false
         if (result.event === 'stepPrev' || result.event === 'stepNext') {
             commitSlide(result.event === 'stepPrev' ? 'back' : 'forward')
@@ -424,9 +433,26 @@
             void act(result.event === 'stepPrev' ? 'stepPrev' : 'stepNext')
         } else if (result.event === 'generate') {
             // The pulled body springs back to the centre while the new reply starts.
-            spring = true
+            startSpring(wasDragged)
             alternatives?.requestNewReply()
-        } else spring = true
+        } else startSpring(wasDragged)
+    }
+    // The spring exists only for a body that was displaced and only where motion is allowed; a timer owns its end so a missing transitionend never leaves a transform behind.
+    function startSpring(wasDragged: boolean): void {
+        clearTimeout(springTimer)
+        if (!wasDragged || motionReduced()) { spring = false; return }
+        spring = true
+        springTimer = setTimeout(() => { spring = false }, springDurationMs() + SPRING_MARGIN_MS)
+    }
+    function motionReduced(): boolean {
+        if (document.documentElement.classList.contains('rm')) return true
+        return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    }
+    function springDurationMs(): number {
+        const raw = bodyRoot ? getComputedStyle(bodyRoot).transitionDuration.split(',')[0].trim() : ''
+        const value = parseFloat(raw)
+        if (!Number.isFinite(value) || value <= 0) return SPRING_DEFAULT_MS
+        return raw.endsWith('ms') ? value : value * 1000
     }
     function onWheel(event: WheelEvent): void {
         if (!showPager) return

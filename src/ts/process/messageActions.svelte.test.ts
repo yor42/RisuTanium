@@ -32,7 +32,7 @@ vi.mock('../parser/parser.svelte', () => ({ ParseMarkdown: vi.fn() }))
 import { alertConfirm, alertSelect } from '../alert'
 import { getCurrentCharacter, getCurrentChat } from '../storage/database.svelte'
 import { runTrigger } from './triggers'
-import { runLuaInteractionTrigger } from './scriptings'
+import { runLuaButtonTrigger, runLuaInteractionTrigger } from './scriptings'
 
 const message = (id: string, role: 'user' | 'char' = 'char') => ({ role, data: id, chatId: id })
 
@@ -102,6 +102,54 @@ describe('live message index after asynchronous actions', () => {
         expect(get(ReloadChatPointer)).not.toHaveProperty('1')
     })
 
+    it('runs a risu-trigger button with the origin of its work handle', async () => {
+        const { owner, chat } = setup()
+        vi.mocked(getCurrentCharacter).mockReturnValue(owner as never)
+        vi.mocked(getCurrentChat).mockReturnValue(chat as never)
+        vi.mocked(runTrigger).mockClear()
+        vi.mocked(runTrigger).mockResolvedValueOnce(true as never)
+        const button = document.createElement('button')
+        button.setAttribute('risu-trigger', 'manual')
+        document.body.append(button)
+        let event!: UIEvent
+        button.addEventListener('click', (clicked) => { event = clicked })
+        button.click()
+        await handleButtonTriggerWithin(event, () => 1)
+        expect(runTrigger).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(runTrigger).mock.calls[0][2]).toMatchObject({ origin: { chaId: 'owner-a', chatId: 'chat-a' } })
+    })
+
+    it('runs a risu-btn button with the origin of its work handle as the third argument', async () => {
+        const { owner, chat } = setup()
+        vi.mocked(getCurrentCharacter).mockReturnValue(owner as never)
+        vi.mocked(getCurrentChat).mockReturnValue(chat as never)
+        vi.mocked(runLuaButtonTrigger).mockClear()
+        vi.mocked(runLuaButtonTrigger).mockResolvedValueOnce(true as never)
+        const button = document.createElement('button')
+        button.setAttribute('risu-btn', 'press')
+        document.body.append(button)
+        let event!: UIEvent
+        button.addEventListener('click', (clicked) => { event = clicked })
+        button.click()
+        await handleButtonTriggerWithin(event, () => 1)
+        expect(runLuaButtonTrigger).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(runLuaButtonTrigger).mock.calls[0][2]).toEqual({ chaId: 'owner-a', chatId: 'chat-a' })
+    })
+
+    it('runs a form trigger with the origin of its work handle as the fifth argument', async () => {
+        const { owner, chat } = setup()
+        vi.mocked(getCurrentCharacter).mockReturnValue(owner as never)
+        vi.mocked(getCurrentChat).mockReturnValue(chat as never)
+        vi.mocked(runLuaInteractionTrigger).mockClear()
+        vi.mocked(runLuaInteractionTrigger).mockResolvedValueOnce(true as never)
+        const form = document.createElement('form')
+        form.setAttribute('risu-form', 'answer')
+        const event = new SubmitEvent('submit', { cancelable: true })
+        Object.defineProperty(event, 'target', { value: form })
+        await handleFormTriggerWithin(event, () => 1)
+        expect(runLuaInteractionTrigger).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(runLuaInteractionTrigger).mock.calls[0][4]).toEqual({ chaId: 'owner-a', chatId: 'chat-a' })
+    })
     it('bumps the index current when a form trigger finishes', async () => {
         const { owner, chat } = setup()
         vi.mocked(getCurrentCharacter).mockReturnValue(owner as never)
@@ -245,6 +293,21 @@ describe('T24 settled delete', () => {
         expect(schedule).toHaveBeenCalledTimes(1)
     })
 
+    it('reparents children and repoints memory when a settled delete removes a middle reply', () => {
+        const { owner, chat } = setup()
+        detachTail(chat, 2)
+        writeSupaMemoryData(chat, 'c2\nsummary')
+        const target = chat.message[1]
+        const ids = freezeDeleteIds(chat, target, 'one')!
+        tracker.character.length = 0
+        schedule.mockClear()
+        expect(deleteAtSettle({ chaId: owner.chaId, chatId: chat.id! }, ids, 'one')).toBe(true)
+        expect(chat.message.map((item) => item.chatId)).toEqual(['u1'])
+        expect(chat.alt?.[0].p).toBe('u1')
+        expect(chat.supaMemoryData).not.toBe('c2\nsummary')
+        expect(tracker.character).toEqual([owner.chaId])
+        expect(schedule).toHaveBeenCalledTimes(1)
+    })
     it('returns false for a gone origin, missing target, or changed sibling ids', () => {
         const { owner, chat } = setup()
         detachTail(chat, 3)

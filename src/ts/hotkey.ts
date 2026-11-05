@@ -158,15 +158,15 @@ export function initHotkey(){
             }
             switch(hotkey.action){
                 case 'reroll':{
-                    // A held key repeats: only the first press may step or start a reply.
-                    if(ev.repeat){
+                    // In the new chat shell a held key repeats: only the first press may step or start a reply. The classic screen keeps hold-to-repeat.
+                    if(ev.repeat && document.querySelector('[data-part="chat-shell"]')){
                         break
                     }
                     chatAct('reroll', () => clickQuery('.button-icon-reroll'))
                     break
                 }
                 case 'unreroll':{
-                    if(ev.repeat){
+                    if(ev.repeat && document.querySelector('[data-part="chat-shell"]')){
                         break
                     }
                     chatAct('unreroll', () => clickQuery('.button-icon-unreroll'))

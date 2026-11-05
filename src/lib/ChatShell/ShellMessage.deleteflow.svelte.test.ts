@@ -18,7 +18,8 @@ vi.mock('../../ts/stores.svelte', async () => {
 })
 vi.mock('../../ts/chatShell/stopDelete.svelte', () => {
     const pending = $state({ value: false })
-    return { requestStopDelete: stop.requestStopDelete, isStopDeletePending: () => pending.value, pendingForTest: pending }
+    const elsewhere = $state({ value: false })
+    return { requestStopDelete: stop.requestStopDelete, isStopDeletePending: (origin?: unknown) => origin === undefined ? pending.value || elsewhere.value : pending.value, pendingForTest: pending, elsewhereForTest: elsewhere }
 })
 vi.mock('../../ts/process/chatOrigin', () => ({
     originOf: (owner: { chaId: string }, chat: { id: string }) => ({ chaId: owner.chaId, chatId: chat.id }),
@@ -264,6 +265,18 @@ describe('range delete', () => {
         openSheet().querySelector<HTMLButtonElement>('[data-action="delete"]')!.click()
         await vi.waitFor(() => expect(alerts.alertNormal).toHaveBeenCalledTimes(1), { timeout: 5000 })
         expect(alerts.alertNormal).toHaveBeenCalledWith('cannot')
+    })
+    test('a confirmed stop-and-delete while another chat waits is refused out loud, not dropped', async () => {
+        const module = await import('../../ts/chatShell/stopDelete.svelte') as unknown as { elsewhereForTest: { value: boolean } }
+        module.elsewhereForTest.value = true
+        stop.requestStopDelete.mockReturnValueOnce(false)
+        show(1, true)
+        openSheet().querySelector<HTMLButtonElement>('[data-action="delete"]')!.click()
+        await vi.waitFor(() => expect(alerts.alertNormal).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(alerts.alertConfirm).toHaveBeenCalledTimes(1)
+        expect(stop.requestStopDelete).toHaveBeenCalledTimes(1)
+        expect(alerts.alertNormal).toHaveBeenCalledWith('cannot')
+        module.elsewhereForTest.value = false
     })
     test('the Shift+Delete key takes the same range path', async () => {
         show(0)

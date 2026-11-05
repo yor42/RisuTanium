@@ -210,7 +210,12 @@ describe('R5 the armed cue holds through finger jitter', () => {
 })
 
 describe('R5 the message body carries a transform only while it moves', () => {
-    test('no transform at rest, one while dragged, translateX(0px) only for the spring back, none again after it ends', () => {
+    function expectAtRest() {
+        expect(body.style.transform).toBe('')
+        expect(body.hasAttribute('data-spring')).toBe(false)
+    }
+    test('no transform at rest, one while dragged, translateX(0px) for the spring back, none again once its timer ends', () => {
+        vi.useFakeTimers()
         show({ index: 2, count: 3 })
         expect(body.style.transform).toBe('')
         pointer('pointerdown', 100, 0)
@@ -218,19 +223,60 @@ describe('R5 the message body carries a transform only while it moves', () => {
         expect(body.style.transform).toBe('translateX(60px)')
         pointer('pointerup', 160, 200)
         expect(body.style.transform).toBe('translateX(0px)')
-        body.dispatchEvent(new Event('transitionend', { bubbles: true }))
+        expect(body.hasAttribute('data-spring')).toBe(true)
+        vi.advanceTimersByTime(2000)
         flushSync()
-        expect(body.style.transform).toBe('')
+        expectAtRest()
     })
-    test('a gesture that never leaves the slop leaves no transform behind', () => {
+    test('a gesture that never leaves the slop leaves no transform and no spring behind', () => {
         show({ index: 2, count: 3 })
         pointer('pointerdown', 100, 0)
         pointer('pointermove', 104, 50)
         pointer('pointerup', 104, 100)
-        expect(body.style.transform).toBe('translateX(0px)')
-        body.dispatchEvent(new Event('transitionend', { bubbles: true }))
         flushSync()
-        expect(body.style.transform).toBe('')
+        expectAtRest()
+    })
+    test('a tap leaves no transform and no spring behind', () => {
+        show({ index: 2, count: 3 })
+        pointer('pointerdown', 100, 0)
+        pointer('pointerup', 100, 40)
+        flushSync()
+        expectAtRest()
+    })
+    test('a cancelled touch that never moved leaves no transform and no spring behind', () => {
+        show({ index: 2, count: 3 })
+        pointer('pointerdown', 100, 0)
+        pointer('pointercancel', 100, 40)
+        flushSync()
+        expectAtRest()
+    })
+    test('a release under reduced motion returns at once: no transform and no spring', () => {
+        const original = window.matchMedia
+        window.matchMedia = ((query: string) => ({ matches: query.includes('prefers-reduced-motion'), media: query, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false, onchange: null })) as typeof window.matchMedia
+        try {
+            show({ index: 2, count: 3 })
+            pointer('pointerdown', 100, 0)
+            pointer('pointermove', 160, 100)
+            expect(body.style.transform).toBe('translateX(60px)')
+            pointer('pointerup', 160, 200)
+            flushSync()
+            expectAtRest()
+        } finally {
+            window.matchMedia = original
+        }
+    })
+    test('the next touch cancels the pending spring timer', () => {
+        vi.useFakeTimers()
+        show({ index: 2, count: 3 })
+        pointer('pointerdown', 100, 0)
+        pointer('pointermove', 160, 100)
+        pointer('pointerup', 160, 200)
+        pointer('pointerdown', 100, 300)
+        pointer('pointermove', 140, 350)
+        vi.advanceTimersByTime(2000)
+        flushSync()
+        expect(body.style.transform).toBe('translateX(40px)')
+        expect(body.hasAttribute('data-spring')).toBe(false)
     })
 })
 

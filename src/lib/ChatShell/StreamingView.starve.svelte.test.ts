@@ -39,21 +39,28 @@ async function stream(conversionMs: number, finishedBlocks: number, chunkGapMs: 
     document.body.appendChild(target)
     app = mount(StreamingView, { target, props: state })
     let chunks = 0
+    const samples: { finished: number, open: string }[] = []
     for (let elapsed = 0; elapsed < totalMs; elapsed += chunkGapMs) {
         await vi.advanceTimersByTimeAsync(chunkGapMs)
         state.text += ` w${chunks++}`
         flushSync()
         await tick()
+        samples.push({ finished: target.querySelectorAll('[data-part="chat-stream-finished"]').length, open: target.querySelector('[data-part="chat-stream-open"]')?.textContent ?? '' })
     }
     await vi.advanceTimersByTimeAsync(2000)
     await tick()
-    return { chunks }
+    return { chunks, samples }
 }
 
 describe('StreamingView with a conversion slower than the cadence', () => {
     test('finished blocks commit and the open paragraph grows while chunks keep arriving', async () => {
-        const { chunks } = await stream(15, 40, 60, 4000)
+        const { chunks, samples } = await stream(15, 40, 60, 4000)
         expect(chunks).toBeGreaterThan(60)
+        expect(samples[30].finished).toBe(40)
+        expect(samples[60].finished).toBe(40)
+        const lastWord = (open: string) => Number(open.match(/w(\d+)\s*$/)?.[1] ?? -1)
+        expect(lastWord(samples[30].open)).toBeGreaterThanOrEqual(20)
+        expect(lastWord(samples[60].open)).toBeGreaterThanOrEqual(50)
         expect(target.querySelectorAll('[data-part="chat-stream-finished"]').length).toBe(40)
         expect(target.querySelector('[data-part="chat-stream-open"]')?.textContent).toContain(`w${chunks - 1}`)
     })

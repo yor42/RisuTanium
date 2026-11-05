@@ -98,7 +98,7 @@
 </script>
 
 <ShellSheet {open} kind="menu" mode={typeof window !== 'undefined' && window.innerWidth >= 900 ? 'wide-menu' : 'bottom'} label={language.chatShellMoreActions} {opener} {background} {onclose}>
-    <div data-part="chat-sheet-body" onkeydown={menuKey}>
+    <div data-part="chat-sheet-body" role="none" onkeydown={menuKey}>
         <button data-part="chat-sheet-item" data-kind="button" role="menuitem" data-sheet-initial disabled={!canContinue()} onclick={() => { if (canContinue()) activate(() => { void sendContinue(source) }) }}>{language.continueResponse}</button>
         {#if character && canChatSpeak(character, (id) => findCharacterbyId(id))}
             <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(stopTTS)}>{language.ttsStop}</button>

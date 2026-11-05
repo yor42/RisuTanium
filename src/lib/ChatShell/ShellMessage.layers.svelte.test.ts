@@ -9,7 +9,7 @@ vi.mock('../../ts/stores.svelte', async () => {
     const { writable } = await import('svelte/store')
     const DBState = $state({ db: { username: 'User', userIcon: '', autoTranslate: false,
         autoScrollToNewMessage: false, alwaysScrollToNewMessage: false,
-        chatLoadInitialPages: 20, chatLoadAdditionalPages: 2 } })
+        chatLoadInitialPages: 20, chatLoadAdditionalPages: 2, enableBlockPartialEdit: true, enableDragPartialEdit: false } })
     const ReloadChatPointer = writable<Record<number, number>>({})
     const ReloadGUIPointer = writable(0)
     const ScrollToMessageStore = $state({ value: -1 })
@@ -55,6 +55,7 @@ vi.mock('../ChatScreens/ChatBody.svelte', () => ({ default: () => ({}) }))
 vi.mock('./StreamingView.svelte', () => ({ default: () => ({}) }))
 
 import ShellMessageList from './ShellMessageList.svelte'
+import { DBState } from '../../ts/stores.svelte'
 
 let app: ReturnType<typeof ShellMessageList> | undefined
 let target: HTMLElement
@@ -90,6 +91,8 @@ afterEach(async () => {
     app = undefined
     target?.remove()
     character.chats[0].message = []
+    DBState.db.enableBlockPartialEdit = true
+    DBState.db.enableDragPartialEdit = false
 })
 
 describe('layers inside a row', () => {
@@ -134,5 +137,38 @@ describe('layers inside a row', () => {
             const body = article(id).querySelector<HTMLElement>('[data-part="chat-message-body"]')!
             expect(body.style.transform).toBe('')
         }
+    })
+    test('with both partial-edit settings off the row watches for no overlay at all', async () => {
+        DBState.db.enableBlockPartialEdit = false
+        DBState.db.enableDragPartialEdit = false
+        await show()
+        await openOverlay('m0')
+        expect(container('m0').classList.contains('older')).toBe(true)
+    })
+    test('the drag-only partial-edit setting also watches for the overlay', async () => {
+        DBState.db.enableBlockPartialEdit = false
+        DBState.db.enableDragPartialEdit = true
+        await show()
+        await openOverlay('m0')
+        expect(container('m0').classList.contains('older')).toBe(false)
+    })
+    test('after a touch tap, a cancelled touch and a slop-only release no body carries a transform or a spring', async () => {
+        await show()
+        const body = article('m5').querySelector<HTMLElement>('[data-part="chat-message-body"]')!
+        const touch = (kind: string, x: number) => {
+            const event = new MouseEvent(kind, { bubbles: true, clientX: x, clientY: 100 })
+            Object.defineProperties(event, { pointerType: { value: 'touch' }, pointerId: { value: 1 } })
+            body.dispatchEvent(event)
+            flushSync()
+        }
+        touch('pointerdown', 200); touch('pointerup', 200)
+        expect(body.style.transform).toBe('')
+        expect(body.hasAttribute('data-spring')).toBe(false)
+        touch('pointerdown', 200); touch('pointercancel', 200)
+        expect(body.style.transform).toBe('')
+        expect(body.hasAttribute('data-spring')).toBe(false)
+        touch('pointerdown', 200); touch('pointermove', 204); touch('pointerup', 204)
+        expect(body.style.transform).toBe('')
+        expect(body.hasAttribute('data-spring')).toBe(false)
     })
 })
