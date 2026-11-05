@@ -45,6 +45,13 @@ export const accessibilitySettingsItems: SettingItem[] = [
         keywords: ['send', 'enter', 'keyboard', 'submit']
     },
     {
+        id: 'acc.chatShellPreview',
+        type: 'custom',
+        componentId: 'ChatShellPreviewToggle',
+        labelKey: 'chatShellPreviewLabel',
+        keywords: ['chat', 'screen', 'preview', 'device']
+    },
+    {
         id: 'acc.fixedChatTextarea',
         type: 'check',
         labelKey: 'fixedChatTextarea',

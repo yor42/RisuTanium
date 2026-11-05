@@ -1,6 +1,20 @@
 import { formatByteLimit } from './formatByteLimit'
 
 export const languageEnglish = {
+    chatShellFlipRefusedGenerating: 'Wait for the reply to finish, or stop it, before switching the chat screen.',
+    chatShellFlipRefusedWorking: 'A trigger or button action is still running in this chat. Try again when it finishes.',
+    chatShellFlipRefusedEditing: 'Save or discard the message you are editing before switching the chat screen.',
+    chatShellFlipRefusedAttachment: 'Send or remove the attached file before switching the chat screen.',
+    chatShellFlipRefusedUploading: 'A file is still uploading. Try again when it finishes.',
+    chatShellPreviewLabel: 'New chat screen (preview)',
+    chatShellOnThisDevice: 'On this device',
+    chatShellOnThisDeviceHelp: 'Other devices keep their own setting.',
+    patternPromptCancel: 'Cancel',
+    patternPromptOk: 'OK',
+    patternWarningDetails: 'Details',
+    patternWarningMore: (count: number) => `${count} more`,
+    patternWarningNeedsCancelAndPrimary: (severity: string) => `A ${severity} warning needs cancel and primary actions`,
+    patternWarningNeedsAction: 'A warning sheet needs at least one action',
     formating: {
         main: "Main Prompt",
         jailbreak: "Jailbreak Prompt",

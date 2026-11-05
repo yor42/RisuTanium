@@ -1,4 +1,5 @@
 /** The warning sheet's definition, its action rules and the pure helpers its component uses. */
+import { language } from '../../../lang'
 
 export type PatternSeverity = 'notice' | 'caution' | 'confirm' | 'danger' | 'blocked'
 
@@ -46,12 +47,12 @@ export function assertWarningActions(def: PatternWarningDef): void {
     const actions: PatternActionLabels = def.actions
     if (def.severity === 'confirm' || def.severity === 'danger') {
         if (!actions.cancel || !actions.primary) {
-            throw new Error(`A ${def.severity} warning needs cancel and primary actions`)
+            throw new Error(language.patternWarningNeedsCancelAndPrimary(def.severity))
         }
         return
     }
     if (!actions.cancel && !actions.secondary && !actions.primary) {
-        throw new Error('A warning sheet needs at least one action')
+        throw new Error(language.patternWarningNeedsAction)
     }
 }
 

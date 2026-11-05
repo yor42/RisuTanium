@@ -1,5 +1,6 @@
 <script lang="ts">
     import PatternDialog from './PatternDialog.svelte'
+    import { language } from '../../../lang'
     import { encodeChoice, encodeText, PATTERN_PROMPT_CANCEL } from '../../../ts/patternPromptAnswer'
 
     interface Props {
@@ -82,9 +83,9 @@
         {/if}
 
         <div data-part="pattern-prompt-actions" data-part-critical>
-            <button type="button" class="pattern-button" data-part="pattern-prompt-cancel" data-part-critical onclick={() => answer(PATTERN_PROMPT_CANCEL)}>{labels.cancel ?? 'Cancel'}</button>
+            <button type="button" class="pattern-button" data-part="pattern-prompt-cancel" data-part-critical onclick={() => answer(PATTERN_PROMPT_CANCEL)}>{labels.cancel ?? language.patternPromptCancel}</button>
             {#if kind === 'input'}
-                <button type="button" class="pattern-button" data-part="pattern-prompt-ok" data-part-critical data-variant="confirm" onclick={() => answer(encodeText(text))}>{labels.ok ?? 'OK'}</button>
+                <button type="button" class="pattern-button" data-part="pattern-prompt-ok" data-part-critical data-variant="confirm" onclick={() => answer(encodeText(text))}>{labels.ok ?? language.patternPromptOk}</button>
             {/if}
         </div>
     </div>

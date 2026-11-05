@@ -5,6 +5,8 @@
     import { CharEmotion, selectedCharID } from "../../ts/stores.svelte";
     import ResizeBox from './ResizeBox.svelte'
     import DefaultChatScreen from "./DefaultChatScreen.svelte";
+    import ChatShell from '../ChatShell/ChatShell.svelte';
+    import { shellEligible } from '../../ts/chatShell/shellSwitch.svelte';
     import defaultWallpaper from '../../etc/bg.jpg'
     import ChatList from "../Others/ChatList.svelte";
     import TransitionImage from "./TransitionImage.svelte";
@@ -70,7 +72,11 @@
                     <ResizeBox />
                 {/if}
             {/if}
-            <DefaultChatScreen customStyle={bgImg.length > 2 ? `${externalStyles}`: ''} bind:openChatList bind:openModuleList/>
+            {#if shellEligible()}
+                <ChatShell />
+            {:else}
+                <DefaultChatScreen customStyle={bgImg.length > 2 ? `${externalStyles}`: ''} bind:openChatList bind:openModuleList/>
+            {/if}
         </div>
     </div>
 {/if}
