@@ -30,6 +30,15 @@ vi.mock('src/ts/stores.svelte', () => ({
 }))
 vi.mock('../../ts/util', () => ({ getCustomBackground: async () => '', getEmotion: () => '' }))
 vi.mock('./DefaultChatScreen.svelte', () => ({ default: oldMount }))
+// The branch test only needs to know which side mounted; the real shell has its own tests.
+vi.mock('../ChatShell/ChatShell.svelte', () => ({
+    default: (anchor: Comment) => {
+        const marker = document.createElement('div')
+        marker.setAttribute('data-testid', 'chat-shell-stub')
+        anchor.before(marker)
+        return {}
+    },
+}))
 vi.mock('./ResizeBox.svelte', () => ({ default: () => ({}) }))
 vi.mock('./TransitionImage.svelte', () => ({ default: () => ({}) }))
 vi.mock('./BackgroundDom.svelte', () => ({ default: () => ({}) }))

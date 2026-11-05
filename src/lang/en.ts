@@ -1,6 +1,21 @@
 import { formatByteLimit } from './formatByteLimit'
 
 export const languageEnglish = {
+    chatShellBack: 'Back',
+    chatShellChoosePersona: 'Choose persona',
+    chatShellMoreActions: 'More actions',
+    chatShellMessages: 'Messages',
+    chatShellMessage: 'Message',
+    chatShellRemoveAttachment: 'Remove attachment',
+    chatShellSend: 'Send',
+    chatShellStop: 'Stop',
+    enterKey: 'Enter key',
+    chatShellEnterAutomatic: 'Automatic',
+    chatShellEnterSend: 'Send',
+    chatShellEnterNewline: 'New line',
+    chatShellStickers: 'Stickers',
+    chatShellUtility: 'Utility',
+    asPersona: (name: string) => `as ${name}`,
     chatShellFlipRefusedGenerating: 'Wait for the reply to finish, or stop it, before switching the chat screen.',
     chatShellFlipRefusedWorking: 'A trigger or button action is still running in this chat. Try again when it finishes.',
     chatShellFlipRefusedEditing: 'Save or discard the message you are editing before switching the chat screen.',
