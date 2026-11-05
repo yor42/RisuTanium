@@ -19,23 +19,46 @@ export function isScrolledToBottom(host: Pick<HTMLElement, 'scrollHeight' | 'cli
 }
 
 export interface BottomFollower {
-    // Re-reads the reader's position; call from the scroll handler and after a programmatic scroll.
+    // Re-reads the reader's position from a scroll event or after a programmatic scroll.
     sync: () => void
     dispose: () => void
 }
 
+// Direct reader input on the scroller; a scroll that follows one is the reader's own.
+const READER_INPUT_EVENTS = ['wheel', 'touchstart', 'touchmove', 'pointerdown', 'keydown'] as const
+
 // Keeps a reader who rests at the bottom there while the list content settles to its final height.
 // It writes scrollTop at most once per observed size change and never when the reader has scrolled away.
+// The reader leaves the bottom only by evidence of a reader action: a scroll that moved scrollTop up, or a
+// scroll that follows direct input and ends away from the bottom. A scroll event delivered late for our own
+// write is judged by direction, never by a position that content growth has made stale.
 export function createBottomFollower(host: HTMLElement, content: Element, canFollow: () => boolean = () => true): BottomFollower {
-    let following = true
+    let following = isScrolledToBottom(host)
+    let lastTop = host.scrollTop
+    let readerInput = false
+    const onReaderInput = () => { readerInput = true }
+    for (const name of READER_INPUT_EVENTS) host.addEventListener?.(name, onReaderInput, { passive: true })
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
+        readerInput = false
         if (!following || !canFollow()) return
         const target = host.scrollHeight - host.clientHeight
-        if (target - host.scrollTop > BOTTOM_EPSILON) host.scrollTop = target
+        if (target - host.scrollTop > BOTTOM_EPSILON) {
+            host.scrollTop = target
+            lastTop = host.scrollTop
+        }
     })
     observer?.observe(content)
     return {
-        sync: () => { following = isScrolledToBottom(host) },
-        dispose: () => observer?.disconnect(),
+        sync: () => {
+            const top = host.scrollTop
+            if (isScrolledToBottom(host)) following = true
+            else if (top < lastTop || readerInput) following = false
+            lastTop = top
+            readerInput = false
+        },
+        dispose: () => {
+            observer?.disconnect()
+            for (const name of READER_INPUT_EVENTS) host.removeEventListener?.(name, onReaderInput)
+        },
     }
 }

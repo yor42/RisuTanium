@@ -110,4 +110,16 @@ describe('message list keeps a bottom reader at the bottom', () => {
         fire()
         expect(writes).toEqual([254])
     })
+    test('a late scroll event after the content grew again still follows the next growth to the true bottom', async () => {
+        await show()
+        app!.onScroll()
+        height = 354
+        fire()
+        height = 400
+        app!.onScroll()
+        height = 460
+        fire()
+        expect(writes).toEqual([254, 360])
+        expect(top).toBe(height - 100)
+    })
 })
