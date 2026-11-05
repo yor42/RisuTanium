@@ -17,6 +17,7 @@ vi.mock('../../ts/chatShell/streamingSafe', async (importOriginal) => {
         },
     }
 })
+vi.mock('../../ts/chatShell/yieldToEventLoop', () => ({ yieldToEventLoop: async () => {} }))
 vi.mock('../../lang', () => ({ language: { chatShellThinking: (words: number) => `Thinking… ${words}` } }))
 
 import StreamingView from './StreamingView.svelte'

@@ -2,6 +2,7 @@
     import { onDestroy, untrack } from 'svelte'
     import { splitStreamingText, renderOpenParagraphSource, openThoughtsWordCount, createToSafeHtml, type StreamingParseContext } from '../../ts/chatShell/streamingSafe'
     import { createStreamCadence } from '../../ts/chatShell/streamCadence'
+    import { yieldToEventLoop } from '../../ts/chatShell/yieldToEventLoop'
     import { language } from '../../lang'
 
     interface Props {
@@ -29,26 +30,44 @@
     async function render() {
         timer = null
         inFlight = true
-        const started = performance.now()
+        // The cadence measures the work of a pass; time spent waiting in yields is not conversion cost.
+        let busyMs = 0
+        let mark = performance.now()
+        const pause = async () => {
+            busyMs += performance.now() - mark
+            await yieldToEventLoop()
+            mark = performance.now()
+        }
         const version = serial
         const source = pending
         let committed = false
         try {
-            const split = splitStreamingText(source)
+            // Only the not-yet-finished tail is split when the text still starts with the finished prefix.
+            const prefix = finished.map((block) => block.source).join('')
+            const incremental = prefix.length > 0 && source.startsWith(prefix)
+            const split = splitStreamingText(source, incremental ? prefix.length : 0)
+            const fresh = incremental ? split.finished : split.finished.slice(finished.length)
+            // Each yield is a macrotask so the work of one pass is not one long task; a stale pass stops at the next check.
+            await pause()
+            if (disposed || version !== serial) return
             const convert = await (safeHtml ??= createToSafeHtml(modelShortName, character, untrack(() => parseContext)))
             const additions: { source: string, html: string }[] = []
-            for (let i = finished.length; i < split.finished.length; i++) {
-                if (disposed || version !== serial) break
-                additions.push({ source: split.finished[i], html: await convert(split.finished[i]) })
+            for (const blockSource of fresh) {
+                if (disposed || version !== serial) return
+                additions.push({ source: blockSource, html: await convert(blockSource) })
+                await pause()
             }
+            if (disposed || version !== serial) return
             const nextOpen = await convert(renderOpenParagraphSource(split.open))
+            await pause()
             if (disposed || version !== serial) return
             if (additions.length) finished = [...finished, ...additions]
             openHtml = nextOpen
             thinkingWords = openThoughtsWordCount(split.open)
             committed = true
         } finally {
-            cadence.record(performance.now() - started)
+            busyMs += performance.now() - mark
+            cadence.record(busyMs)
             inFlight = false
             // A failed or superseded pass is not retried on its own text; only newer text schedules another pass.
             renderedText = committed || version === serial ? source : null

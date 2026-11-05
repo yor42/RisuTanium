@@ -69,3 +69,46 @@ describe('T13 streaming-safe blocks', () => {
         }
     })
 })
+
+describe('splitStreamingText from a finished prefix', () => {
+    const pieces = ['word ', 'more words ', '\n', '\n\n', '- item', '# Title', '1. one', '> quote', '```js\n', '```\n', '~~~\n', '<Thoughts>', '</Thoughts>', '<style>', '.a{color:red}', '</style>', '{{user', '}}', '<div cla', '>', 'p{color:red']
+
+    function generated(count: number): string[] {
+        let seed = 91
+        const next = (limit: number) => { seed = (seed * 48271) % 2147483647; return seed % limit }
+        return Array.from({ length: count }, () => Array.from({ length: 3 + next(40) }, () => pieces[next(pieces.length)]).join(''))
+    }
+
+    test('starting at the end of any finished block equals the tail of the full split', () => {
+        for (const text of generated(300)) {
+            const full = splitStreamingText(text)
+            let offset = 0
+            for (let k = 0; k <= full.finished.length; k++) {
+                const tail = splitStreamingText(text, offset)
+                expect(tail.finished).toEqual(full.finished.slice(k))
+                expect(tail.open).toBe(full.open)
+                offset += full.finished[k]?.length ?? 0
+            }
+        }
+    })
+
+    test('a stream split only from its growing finished prefix equals the full split at every step', () => {
+        for (const text of generated(60)) {
+            let finished: string[] = []
+            for (let end = 1; end <= text.length; end += 3) {
+                const source = text.slice(0, end)
+                const prefix = finished.join('')
+                const tail = splitStreamingText(source, prefix.length)
+                finished = [...finished, ...tail.finished]
+                const full = splitStreamingText(source)
+                expect({ finished, open: tail.open }).toEqual(full)
+            }
+        }
+    })
+
+    test('an index outside the text is a full split', () => {
+        const text = 'one\n\ntwo\n\nthree'
+        expect(splitStreamingText(text, 999)).toEqual(splitStreamingText(text))
+        expect(splitStreamingText(text, -4)).toEqual(splitStreamingText(text))
+    })
+})

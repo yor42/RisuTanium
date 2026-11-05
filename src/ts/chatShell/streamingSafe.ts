@@ -31,10 +31,13 @@ function openConstruct(text: string): boolean {
     return false
 }
 
-export function splitStreamingText(text: string): StreamingSplit {
+// `fromIndex` must be the end of a finished block of the full split (the length of an already finished prefix);
+// the result then lists only the blocks after it, identical to the tail of the full split. A value outside the
+// text is treated as a full split; the caller owns the check that the text still starts with its finished prefix.
+export function splitStreamingText(text: string, fromIndex = 0): StreamingSplit {
     const finished: string[] = []
-    let start = 0
-    for (let i = 0; i < text.length; i++) {
+    let start = Number.isInteger(fromIndex) && fromIndex > 0 && fromIndex <= text.length ? fromIndex : 0
+    for (let i = start; i < text.length; i++) {
         if (text[i] !== '\n') continue
         const blank = text[i + 1] === '\n'
         const nextLine = text.slice(i + (blank ? 2 : 1))
