@@ -22101,3 +22101,22 @@ Status: DRAFT, not accepted. Entries MC-1069 to MC-1072, to be appended after th
 - Whether a later item should build module unload; this would need the `MC-494` phone diagnostic first.
 - This entry does not lift the UI-S1 gate: it removes CHORE-205 from the `MC-920` list; CHORE-117, CHORE-03 and CHORE-398 remain.
 - Nothing is committed or pushed by this entry. The independent check of these records (`b55\c205-close2\result.md`, Codex gpt-6-sol medium) returned [REJECT] on wording: the scope of "you can close it out" (now marked as lane A's inference), the strength of "no live module unload exists" (now an inference from two greps), and the J1 and S4d-1c comparison (now INFERRED everywhere). Lane A applied the three fixes as specified; they were not re-checked by a second reader.
+---
+
+### MC-1084 — Lane A, 2026-11-05: correction to `MC-1083`: CHORE-117, CHORE-03 and CHORE-398 were already closed as `MC-516` gate tickets; the four-ticket gate list of `MC-920` is closed
+
+- Tag: statements (the maintainer's chat words, quoted below) and results (lane A's reading of the Roadmap rows and `MC-` entries). Date: 2026-11-05. Sweep ref: none. Exact times: UNKNOWN.
+- Related: `MC-1083` (corrected here), `MC-920` (the gate list), `MC-516` (the UI gate), `MC-923` and `MC-924` (CHORE-117), `MC-925` (CHORE-03), `MC-926` (CHORE-398), `MC-1022` and `MC-1075` (CHORE-205 device bar, gap cases).
+
+**What the maintainer said (verbatim).** After lane A's wrap-up of the CHORE-205 closeout offered next steps, the maintainer chose "UI gate tickets".
+
+**Lane A's error.** `MC-1083`, the Roadmap CHORE-205 row and the Live-State bullet of records batch 55 said CHORE-117, CHORE-03 and CHORE-398 still gate UI-S1. That was lane A's repetition of an older line (the Roadmap UI-gate row of batch 28 and the workflow queue text), without reading the three tickets' own rows. Their rows say they were closed on 2026-10-31.
+
+**Results (lane A, facts read from the Roadmap rows and entries, 2026-11-05, main `77a3fba9b`).**
+- CHORE-117: stage 1b merged to main as `95d68c29b`; "CLOSED as an `MC-516` gate ticket" (`MC-888` tracks: closed); stage 1c deferred as its own row (`MC-924`); answers `MC-923`. Gates: Gate 1 r1 and r2 `[REJECT]`, r3 `[EDITORIAL]`; Gate 2 r1 `[EDITORIAL]`, r2 `[APPROVE]`.
+- CHORE-03: "CLOSED" (`MC-925`): the premise was refuted (`restoreCharacterFromTrash` marked the character for save since `152cc5633`); the maintainer chose "Add a test, then close"; test commit `4f986561d`, merge `f4f2e2c0f`. Items the verifier left open and not part of that closure: the boot purge of expired trash on the legacy path, the in-flight `removeChar('permanent')` case, the restore position and folder-memory question.
+- CHORE-398: merged as `7a94a7b30`; "CLOSED as an `MC-516` gate ticket" (`MC-888` tracks: closed); answers `MC-926`. Device checks still owed per its row: the D2 "Saving" sub-case, and D4's decline-the-confirm variant. Those are device observations, not part of the closure.
+- CHORE-205: closed out by `MC-1083` (administrative closeout).
+- Therefore the four tickets of the `MC-920` list (CHORE-205, 117, 03, 398) are all closed on their own rows. The UI-S1 row still says the gate is unchanged and does not say it is lifted; whether the maintainer wants to declare the `MC-516` gate lifted is not recorded: UNKNOWN. UI-S1 sizing has not started.
+
+**Not decided.** Starting UI-S1 sizing (needs the maintainer's word; the Back mechanism is decided at UI-S1 sizing per `MC-1003`). The remaining owed items listed above. `MC-1083` itself stays as written (append-only); its sentence that CHORE-117, CHORE-03 and CHORE-398 remain is corrected here. Nothing is committed or pushed by this entry. The correction was not independently checked by a second reader when written.
