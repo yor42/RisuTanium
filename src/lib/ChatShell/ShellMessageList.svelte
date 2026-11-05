@@ -10,7 +10,8 @@
     import { getAdditionalChatLoadPages, getInitialChatLoadPages, pagesOnReturn } from '../../ts/chatLoadPages'
     import { chatWindowKey, createChatWindowPolicy } from '../../ts/chatWindowPolicy'
     import { hasMessageEditorDrafts, onDraftsChanged } from '../../ts/localDrafts'
-    import { chatSurface, isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
+    import { createBottomFollower, type BottomFollower } from '../../ts/chatShell/bottomAnchor'
+    import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { language } from '../../lang'
     import ShellMessage, { type ActionRequest, type CustomizeRequest } from './ShellMessage.svelte'
@@ -169,20 +170,32 @@
         previousRoom = room
     })
 
+    // A reader resting at the bottom stays there while the newest row reaches its final height (a reroll swaps the streaming body for the final one and adds the alternatives row after the scroll ran).
+    let follower: BottomFollower | undefined
+    $effect(() => {
+        if (!host || !rows) return
+        const made = createBottomFollower(host, rows, () => DBState.db.autoScrollToNewMessage !== false && !(installed && chatSurface.hidden))
+        follower = made
+        return () => { made.dispose(); if (follower === made) follower = undefined }
+    })
+
     export function scrollToLatestMessage() {
         if (installed && chatSurface.hidden) return
         unread = false
         atBottom = true
         rows?.firstElementChild?.scrollIntoView({ behavior: 'instant', block: 'start' })
+        follower?.sync()
     }
 
     export function anchorNewestBottom() {
         if (installed && chatSurface.hidden) return
         rows?.firstElementChild?.scrollIntoView({ behavior: 'instant', block: 'end' })
+        follower?.sync()
     }
 
     export function onScroll() {
         if (!host || (installed && chatSurface.hidden)) return
+        follower?.sync()
         if (host.scrollHeight - host.clientHeight + host.scrollTop < 100 && messages.length > loadPages) loadPages += getAdditionalChatLoadPages(DBState.db)
         const newest = rows?.firstElementChild
         atBottom = !newest || newest.getBoundingClientRect().top <= host.getBoundingClientRect().bottom + 100

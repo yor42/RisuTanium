@@ -1,6 +1,6 @@
 <script lang="ts">
     import { get } from 'svelte/store'
-    import { MobileGUI, MobileSideBar } from '../../ts/stores.svelte'
+    import { DynamicGUI, MobileGUI, sideBarClosing, sideBarStore } from '../../ts/stores.svelte'
     import { closeShellChat } from '../Mobile/mobileBack'
     import { language } from '../../lang'
 
@@ -16,7 +16,12 @@
 
     function back(): void {
         if (get(MobileGUI)) closeShellChat()
-        else MobileSideBar.set(1)
+        else if (get(sideBarStore) && !get(DynamicGUI)) sideBarClosing.set(true)
+        else {
+            // The classic layout has no mobile stack; Back drives the same open/close pair as the sidebar toggle.
+            sideBarClosing.set(false)
+            sideBarStore.set(true)
+        }
     }
 </script>
 
