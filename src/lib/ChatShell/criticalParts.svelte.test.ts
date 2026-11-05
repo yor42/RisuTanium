@@ -1,12 +1,14 @@
 // @vitest-environment node
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse } from 'svelte/compiler'
 import { describe, expect, test } from 'vitest'
 
 const root = path.resolve(fileURLToPath(new URL('../../../', import.meta.url)))
-const components = ['ChatShell', 'ShellHeader', 'ShellComposer', 'ShellSheet', 'PlusSheet', 'PersonaSheet', 'ExtrasStrip', 'ShellNotices', 'ShellFloatingButtons', 'ShellMessageList', 'ShellMessage', 'StreamingView']
+const shellDir = path.join(root, 'src/lib/ChatShell')
+// Every component in the directory is scanned, so a new one cannot carry an unlisted protected part.
+const components = readdirSync(shellDir).filter((name) => name.endsWith('.svelte')).map((name) => name.slice(0, -'.svelte'.length))
 // Navigation, input, and ordinary menus are reachable surfaces; none here is a protected prompt.
 const criticalParts = new Set<string>()
 
@@ -37,7 +39,11 @@ function markedParts(source: string): string[] {
 }
 
 describe('T protected chat parts', () => {
+    test('a marked element is detected by the scan', () => {
+        expect(markedParts('<div data-part="x" data-part-critical></div>')).toEqual(['x'])
+    })
     test('only explicitly protected parts carry data-part-critical', () => {
+        expect(components).toEqual(expect.arrayContaining(['ActionSheet', 'AlternativesRow', 'CustomizeButtonsSheet', 'MessageEditor', 'MessageMeta', 'TranslationEditor']))
         const found = components.flatMap((component) => markedParts(readFileSync(path.join(root, 'src/lib/ChatShell', `${component}.svelte`), 'utf8')))
         expect(found.filter((part) => !criticalParts.has(part))).toEqual([])
     })

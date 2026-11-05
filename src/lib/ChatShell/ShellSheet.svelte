@@ -1,5 +1,6 @@
 <script lang="ts">
     import { untrack, type Snippet } from 'svelte'
+    import { language } from 'src/lang'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
     import { isTopmostShell, makeInert, registerShell, returnFocus, trapTab, watchFocus } from '../Nexus/pattern/patternFocus'
 
@@ -78,8 +79,8 @@
 
 {#if open}
     <div data-part="chat-sheet-layer" data-mode={mode}>
-        <button data-part="chat-sheet-scrim" aria-label={label} onclick={close}></button>
-        <section bind:this={panel} data-part="chat-sheet" data-mode={mode} style:left={mode === 'wide-menu' ? `${popupPosition.left}px` : undefined} style:top={mode === 'wide-menu' ? `${popupPosition.top}px` : undefined} role={kind === 'menu' ? 'menu' : 'dialog'} aria-label={label} aria-modal="true" tabindex="-1">
+        <button data-part="chat-sheet-scrim" aria-label={language.cancel} onclick={close}></button>
+        <section bind:this={panel} data-part="chat-sheet" data-mode={mode} style:left={mode === 'wide-menu' ? `${popupPosition.left}px` : undefined} style:top={mode === 'wide-menu' ? `${popupPosition.top}px` : undefined} role={kind === 'menu' ? 'menu' : 'dialog'} aria-label={label} aria-modal={kind === 'menu' ? undefined : 'true'} tabindex="-1">
             {@render children()}
         </section>
     </div>

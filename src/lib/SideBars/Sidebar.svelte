@@ -380,7 +380,6 @@
   data-panel-surface
   bind:this={panelEl}
   role={followModal ? 'dialog' : undefined}
-  aria-modal={followModal ? 'true' : undefined}
   aria-label={followModal ? language.menu : undefined}
   tabindex={followModal ? -1 : undefined}
   style={panelStyle}

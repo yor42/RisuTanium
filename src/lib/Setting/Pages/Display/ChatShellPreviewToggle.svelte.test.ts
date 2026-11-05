@@ -62,4 +62,18 @@ describe('S0 preview toggle', () => {
         expect(writes).toHaveBeenCalledExactlyOnceWith(true)
         expect(target.textContent).toContain('On this device')
     })
+
+    test('only a refused click is cancelled; an accepted click keeps the native toggle', async () => {
+        const checkbox = await show()
+        const refused = new MouseEvent('click', { bubbles: true, cancelable: true })
+        checkbox.dispatchEvent(refused)
+        flushSync()
+        expect(refused.defaultPrevented).toBe(true)
+        state.refused = false
+        const accepted = new MouseEvent('click', { bubbles: true, cancelable: true })
+        checkbox.dispatchEvent(accepted)
+        flushSync()
+        expect(accepted.defaultPrevented).toBe(false)
+        expect(writes).toHaveBeenCalledExactlyOnceWith(true)
+    })
 })

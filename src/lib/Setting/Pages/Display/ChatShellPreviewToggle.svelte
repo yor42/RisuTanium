@@ -5,9 +5,9 @@
     import { shellFlipBlocker } from 'src/ts/chatShell/flipBlocker'
 
     function toggle(event: MouseEvent): void {
-        event.preventDefault()
         const block = shellFlipBlocker()
         if (block) {
+            event.preventDefault()
             alertNormal(language[block.reasonKey])
             return
         }

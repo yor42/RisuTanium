@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { createRawSnippet, flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, test, vi } from 'vitest'
+import { language } from 'src/lang'
 import { dispatchBack, resetBackHandlersForTests } from '../../ts/backHandlers'
 
 let covered = false
@@ -44,6 +45,18 @@ describe('T14 ShellSheet Back and focus', () => {
         expect(menu?.getAttribute('data-mode')).toBe('wide-menu')
         expect(Number.parseFloat(menu?.style.left ?? '')).toBeLessThanOrEqual(window.innerWidth)
         expect(Number.parseFloat(menu?.style.top ?? '')).toBeLessThanOrEqual(window.innerHeight)
+        opener.remove(); background.remove()
+    })
+    test('aria-modal sits only on a dialog and the scrim is named as a close action', async () => {
+        const opener = document.createElement('button')
+        const background = document.createElement('main')
+        document.body.append(opener, background)
+        const open = $state({ value: true })
+        const target = await show(open, opener, background)
+        const menu = target.querySelector<HTMLElement>('[data-part="chat-sheet"]')!
+        expect(menu.getAttribute('role')).toBe('menu')
+        expect(menu.hasAttribute('aria-modal')).toBe(false)
+        expect(target.querySelector('[data-part="chat-sheet-scrim"]')?.getAttribute('aria-label')).toBe(language.cancel)
         opener.remove(); background.remove()
     })
     test('alert consumes Back first, then only top sheet closes, focus returns and inert restores', async () => {

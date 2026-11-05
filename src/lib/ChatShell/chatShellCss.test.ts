@@ -1,12 +1,14 @@
 // @vitest-environment node
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import postcss from 'postcss'
 import { describe, expect, test } from 'vitest'
 
 const root = path.resolve(fileURLToPath(new URL('../../../', import.meta.url)))
-const components = ['ChatShell', 'ShellHeader', 'ShellComposer', 'ShellSheet', 'PlusSheet', 'PersonaSheet', 'ExtrasStrip', 'ShellNotices', 'ShellFloatingButtons', 'ShellMessageList', 'ShellMessage', 'StreamingView']
+const shellDir = path.join(root, 'src/lib/ChatShell')
+// Every component in the directory is scanned, so a new one cannot escape the token rule.
+const components = readdirSync(shellDir).filter((name) => name.endsWith('.svelte')).map((name) => name.slice(0, -'.svelte'.length))
 
 const namedColours = 'aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen'.split(' ');
 const named = new RegExp('(?<![\\w-])(?:' + namedColours.join('|') + ')(?![\\w-])', 'i')
@@ -25,6 +27,7 @@ function literals(css: string): string[] {
 
 describe('T ChatShell CSS literals', () => {
     test('style blocks use tokens for colours, pixel font sizes and durations', () => {
+        expect(components).toEqual(expect.arrayContaining(['ActionSheet', 'AlternativesRow', 'CustomizeButtonsSheet', 'MessageEditor', 'MessageMeta', 'TranslationEditor']))
         for (const component of components) {
             const source = readFileSync(path.join(root, 'src/lib/ChatShell', `${component}.svelte`), 'utf8')
             const styles = [...source.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((match) => match[1])
