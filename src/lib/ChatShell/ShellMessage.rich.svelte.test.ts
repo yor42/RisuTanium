@@ -53,19 +53,33 @@ vi.mock('../../ts/characters', () => ({ getCharImage: async (source: string) => 
 vi.mock('../../ts/model/modellist', () => ({ getModelInfo: () => ({ shortName: 'Model' }) }))
 vi.mock('../../lang', () => ({ language: { bookmark: 'Bookmark', messageInterrupted: 'Interrupted', messageRenderFailed: 'Failed', edit: 'Edit', chatShellMoreActions: 'More actions', chatShellReadAloud: 'Read aloud' } }))
 
-import ShellMessage from './ShellMessage.svelte'
+import ShellMessage, { type ActionRequest } from './ShellMessage.svelte'
+import ActionSheet from './ActionSheet.svelte'
 
 let app: ReturnType<typeof ShellMessage> | undefined
+let sheetApp: ReturnType<typeof ActionSheet> | undefined
+let hostedRequest: ActionRequest | null = $state.raw(null)
+let hostedOpen = $state(false)
 let target: HTMLElement
+// The shell hosts one sheet outside the rows; the test hosts the real sheet next to the mounted row the same way.
 async function show(message: Message, props: { disabled?: boolean | 'allBefore'; isLastMemory?: boolean; img?: string } = {}) {
     target = document.createElement('div')
     document.body.appendChild(target)
-    app = mount(ShellMessage, { target, props: { idx: 0, chatId: message.chatId, name: 'Ari', message, ...props } })
+    app = mount(ShellMessage, { target, props: { idx: 0, chatId: message.chatId, name: 'Ari', message, onOpenActions: (request: ActionRequest) => { hostedRequest = request; hostedOpen = true }, ...props } })
+    sheetApp = mount(ActionSheet, { target, props: {
+        get open() { return hostedOpen },
+        get opener() { return hostedRequest?.opener ?? null },
+        get available() { return hostedOpen ? hostedRequest?.available() ?? [] : [] },
+        get disabled() { return hostedOpen ? hostedRequest?.disabled() ?? [] : [] },
+        get generating() { return hostedOpen && hostedRequest?.generating() === true },
+        onaction: (id) => hostedRequest?.run(id),
+        onclose: () => { hostedOpen = false },
+    } })
     flushSync()
     await tick()
     return target.querySelector('article')
 }
-afterEach(async () => { if (app) await unmount(app); app = undefined; target?.remove(); law.applies = false; voice.enabled = false; playMessageTTS.mockReset(); stopTTS.mockClear() })
+afterEach(async () => { if (sheetApp) await unmount(sheetApp); sheetApp = undefined; hostedOpen = false; hostedRequest = null; if (app) await unmount(app); app = undefined; target?.remove(); law.applies = false; voice.enabled = false; playMessageTTS.mockReset(); stopTTS.mockClear() })
 
 describe('ShellMessage rich states', () => {
     test('legal badge ignores the request-info setting only while the law applies', async () => {

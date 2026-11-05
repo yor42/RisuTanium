@@ -1,3 +1,22 @@
+<script lang="ts" module>
+    import type { ActionId as ShellActionId } from '../../ts/chatShell/actionSlots'
+    export type SheetAction = ShellActionId | 'copyCard' | 'retranslate' | 'editTranslation' | 'partialEdit' | 'hideAbove'
+    // What the hosting shell needs to show one row's action sheet outside the transcript; every getter reads the row's live state.
+    export interface ActionRequest {
+        index: number
+        opener: HTMLElement | null
+        anchor?: { x: number; y: number }
+        available: () => readonly SheetAction[]
+        disabled: () => readonly SheetAction[]
+        generating: () => boolean
+        run: (id: SheetAction) => void
+    }
+    export interface CustomizeRequest {
+        opener: HTMLElement | null
+        onchange: () => void
+    }
+</script>
+
 <script lang="ts">
     import type { Message, StreamingDisplayOptimizationMode } from '../../ts/storage/database.svelte'
     import { getCurrentCharacter } from '../../ts/storage/database.svelte'
@@ -13,8 +32,12 @@
     import { handleButtonTriggerWithin, handleFormTriggerWithin, playMessageTTS, requestRemove, deleteNow, type DeleteMode, copyMessageText, copyMessageAsCard, branchMessage, toggleMessageDisabled, toggleBookmark } from '../../ts/process/messageActions.svelte'
     import { stopTTS } from '../../ts/process/tts'
     import { stepSibling } from '../../ts/process/composerActions.svelte'
-import { originOf, isWriting } from '../../ts/process/chatOrigin'
-import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopDelete.svelte'
+    import { originOf, isWriting } from '../../ts/process/chatOrigin'
+    import { doingChat } from '../../ts/process/index.svelte'
+    import { get } from 'svelte/store'
+    import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopDelete.svelte'
+    import type { CopyOutcome } from '../../ts/chatCopy'
+    import { CARD_DEADLINE_MS, CARD_PENDING_MARGIN_MS, type CardReport } from '../../ts/chatCard'
     import { createSwipeGesture, createWheelSteps, type SwipeResult } from '../../ts/chatShell/swipeGesture'
     import { classifyEdge } from '../../ts/chatShell/edgeZones'
     import { tickHaptic, readHaptics } from '../../ts/chatShell/haptics'
@@ -26,7 +49,7 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
     import { ensureCurrentModulesOrAlert } from '../../ts/process/moduleEnsure'
     import { getLLMCache } from '../../ts/translator/translator'
     import { isTTSVoiceMode } from '../../ts/process/ttsModes'
-    import { alertConfirm, alertError, alertNormal, alertRequestData } from '../../ts/alert'
+    import { alertConfirm, alertError, alertNormal, alertRequestData, alertSelect } from '../../ts/alert'
     import { risuChatParser } from '../../ts/process/scripts'
     import { buildDisplayParseOptions } from '../../ts/process/displayParseOptions'
     import { recordCaughtError } from '../../ts/caughtErrors'
@@ -36,15 +59,12 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
     import MessageEditor from './MessageEditor.svelte'
     import TranslationEditor from './TranslationEditor.svelte'
     import MessageMeta from './MessageMeta.svelte'
-    import ActionSheet from './ActionSheet.svelte'
-    import CustomizeButtonsSheet from './CustomizeButtonsSheet.svelte'
     import AlternativesRow from './AlternativesRow.svelte'
     import { chatSurface, isChatSurfaceInstalled } from '../ChatScreens/chatSurface.svelte'
     import { language } from '../../lang'
     import { getCharImage } from '../../ts/characters'
     import { getModelInfo } from '../../ts/model/modellist'
     import { onDestroy, onMount, untrack } from 'svelte'
-    type SheetAction = ActionId | 'copyCard' | 'retranslate' | 'editTranslation' | 'partialEdit' | 'hideAbove'
 
     interface Props {
         idx: number
@@ -78,8 +98,10 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
         onBranch?: (index: number, expectedId: string | undefined) => void
         getTreeView?: () => TreeView | null
         getBusy?: () => boolean
+        onOpenActions?: (request: ActionRequest) => void
+        onOpenCustomize?: (request: CustomizeRequest) => void
     }
-    let { idx, message, chatId, name, img = '', character = null, firstMessage = false, expectedId, onBranch, getTreeView, getBusy,
+    let { idx, message, chatId, name, img = '', character = null, firstMessage = false, expectedId, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onOpenCustomize,
         isLastMemory = false, messageGenerationInfo, interrupted = message.interrupted === true,
         deferAutoTranslate = false, streaming = false, run = 'single', disabled = false, guiRevision = 0 }: Props = $props()
     let translated = $state(false)
@@ -91,10 +113,9 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
     let bodyRevision = $state(0)
     let msgDisplay = $state(untrack(() => message.data))
     let renderFailed = $state(false)
-    let actionOpen = $state(false)
-    let customizeOpen = $state(false)
-    let actionOpener = $state<HTMLElement | null>(null)
-    let anchor = $state<{ x: number; y: number }>()
+    let actionOpener: HTMLElement | null = null
+    let statusMessage = $state('')
+    let statusTimer: ReturnType<typeof setTimeout> | undefined
     let meta: ReturnType<typeof MessageMeta> | undefined
     let alternatives = $state<ReturnType<typeof AlternativesRow>>()
     let speaking = $state(false)
@@ -110,7 +131,7 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
     const keys = createMessageKeys()
     let destroyed = false
     onMount(() => { queueMicrotask(() => { if (!destroyed) iconMounted = true }) })
-    onDestroy(() => { destroyed = true; clearTimeout(longPressTimer); unregisterEditorBack(); editor.dispose() })
+    onDestroy(() => { destroyed = true; clearTimeout(longPressTimer); clearTimeout(statusTimer); unregisterEditorBack(); editor.dispose() })
     $effect(() => {
         let live = true
         avatar = null
@@ -141,7 +162,43 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
     $effect(() => { wheel = createWheelSteps(position.index - 1, position.count) })
     const source = { closeMenu: () => {} }
     function liveIndex(): number { return chatId ? (chat?.message.findIndex((item) => item.chatId === chatId) ?? idx) : idx }
-    function openActions(opener: HTMLElement, point?: { x: number; y: number }): void { actionOpener = opener; anchor = point; actionOpen = true }
+    // The hosting shell shows the sheet outside the transcript; the request keeps every action on this row's live index.
+    function openActions(opener: HTMLElement, point?: { x: number; y: number }): void {
+        actionOpener = opener
+        onOpenActions?.({ index: idx, opener, anchor: point, available: () => sheetActions, disabled: () => unavailable, generating: () => streaming, run: (id) => { void act(id) } })
+    }
+    // The row's own status line: a copy outcome stays visible for a while and only clears the text it was started for.
+    function setStatusMessage(text: string, timeout: number): void {
+        clearTimeout(statusTimer)
+        statusMessage = text
+        statusTimer = setTimeout(() => {
+            statusTimer = undefined
+            if (statusMessage === text) statusMessage = ''
+        }, timeout)
+    }
+    function reportCopy(outcome: CopyOutcome): void {
+        if (destroyed) return
+        if ('errorName' in outcome) setStatusMessage(`${outcome.errorName}: ${language.copyFailed}`, 10000)
+        else setStatusMessage(language.copied, 3000)
+    }
+    function reportCard(report: CardReport): void {
+        if (destroyed) return
+        switch (report.kind) {
+            case 'loading': setStatusMessage(language.loading, CARD_DEADLINE_MS + CARD_PENDING_MARGIN_MS); break
+            case 'copied': setStatusMessage(language.copied, 3000); break
+            case 'simple': setStatusMessage(language.copiedSimpleCard, 5000); break
+            case 'text': setStatusMessage(language.copiedAsText, 5000); break
+            case 'failed': setStatusMessage(`${report.errorName}: ${language.copyFailed}`, 10000); break
+            case 'superseded':
+                // A newer copy owns the status; only this card's own loading text is cleared.
+                if (statusMessage === language.loading) { clearTimeout(statusTimer); statusTimer = undefined; statusMessage = '' }
+                break
+        }
+    }
+    function excerptOf(text: string): string {
+        const flat = text.replace(/\s+/g, ' ').trim()
+        return flat.length > 60 ? `${flat.slice(0, 60).trimEnd()}…` : flat
+    }
     // A generating reply, or a range that reaches the running send, is stopped first and removed once the send has settled.
     async function removeMessage(mode: DeleteMode): Promise<void> {
         if (!owner || !chat || idx < 0) return
@@ -150,13 +207,34 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
         const origin = originOf(owner, chat)
         if (origin && isStopDeletePending(origin)) return
         const after = mode === 'from' ? chat.message.length - chat.message.indexOf(target) - 1 : 0
-        if (streaming || mode === 'from' && origin !== null && isWriting(origin)) {
+        // Registered trigger, button or tree work is not a generation: only a running send that writes to this chat is stopped.
+        const sendReachesRange = mode === 'from' && origin !== null && get(doingChat) && isWriting(origin)
+        if (streaming || sendReachesRange) {
             if (!await alertConfirm(language.chatShellStopDeleteConfirm(after))) return
-            if (!requestStopDelete(owner, chat, target, mode) && !isStopDeletePending()) alertNormal(language.chatShellStopDeleteChanged)
+            if (!requestStopDelete(owner, chat, target, mode) && !isStopDeletePending()) alertNormal(language.chatShellStopDeleteCannot)
         } else if (mode === 'from') {
-            if (!await alertConfirm(language.chatShellDeleteFromHereConfirm(after))) return
+            const count = after + 1
+            const choice = await alertSelect([language.cancel, language.chatShellDeleteRangeButton(count)], language.chatShellDeleteRangeConfirm(count, excerptOf(target.data)))
+            if (choice !== '1') return
             deleteNow(owner, chat, target, 'from')
         } else await requestRemove(owner, chat, target)
+    }
+    // The first message browses its stored greetings and never generates, and it stops at both ends like the counter does; every other row steps its siblings.
+    async function browse(direction: 'back' | 'forward'): Promise<void> {
+        if (firstMessage) {
+            if (direction === 'back' ? position.index > 1 : position.index < position.count) (direction === 'back' ? unReroll : onReroll)?.()
+            return
+        }
+        await stepSibling(source, liveIndex(), chatId, direction, { generate: false })
+        alternatives?.markPageChange()
+    }
+    // The shared counter row steps through the tree; on the first message its two arrows are routed to the greeting steps instead.
+    function browseFirstMessage(event: MouseEvent): void {
+        const button = (event.target as HTMLElement).closest('button')
+        const direction = button?.classList.contains('button-icon-unreroll') ? 'stepPrev' : button?.classList.contains('button-icon-reroll') ? 'stepNext' : null
+        if (!direction) return
+        event.stopPropagation()
+        void act(direction)
     }
     async function act(id: SheetAction): Promise<void> {
         if ((unavailable as readonly SheetAction[]).includes(id)) return
@@ -164,15 +242,15 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
             case 'copy': {
                 const selection = window.getSelection()
                 const selected = selection && bodyRoot?.contains(selection.anchorNode) && bodyRoot?.contains(selection.focusNode) ? selection.toString() : ''
-                copyMessageText(selected || (streaming ? message.data : msgDisplay), () => {})
+                copyMessageText(selected || (streaming ? message.data : msgDisplay), reportCopy)
                 break
             }
-            case 'copyCard': copyMessageAsCard({ owner: message, captureText: () => streaming ? message.data : msgDisplay, report: () => {}, role: () => message.role, name: () => name, messageGenerationInfo: () => message.generationInfo ?? null, idx: liveIndex, getCbsCondition: cbsConditions }); break
+            case 'copyCard': copyMessageAsCard({ owner: message, captureText: () => streaming ? message.data : msgDisplay, report: reportCard, role: () => message.role, name: () => name, messageGenerationInfo: () => message.generationInfo ?? null, idx: liveIndex, getCbsCondition: cbsConditions }); break
             case 'selectText': bodyRoot?.focus(); break
             case 'edit': editor.toggleOriginalEdit(); break
             case 'translate': translated = !translated; break
             case 'retranslate': retranslate = true; translated = true; break
-            case 'editTranslation': await editor.loadTranslationForEdit(); break
+            case 'editTranslation': await editor.loadTranslationForEdit().catch(alertError); break
             case 'partialEdit': bodyRoot?.focus(); break
             case 'readAloud':
                 speaking = true
@@ -185,10 +263,10 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
             case 'hideAbove': await toggleMessageDisabled(liveIndex, 'above'); break
             case 'delete': await removeMessage('one'); break
             case 'deleteAfter': await removeMessage('from'); break
-            case 'stepPrev': await stepSibling(source, liveIndex(), chatId, 'back', { generate: false }); alternatives?.markPageChange(); break
-            case 'stepNext': await stepSibling(source, liveIndex(), chatId, 'forward', { generate: false }); alternatives?.markPageChange(); break
+            case 'stepPrev': await browse('back'); break
+            case 'stepNext': await browse('forward'); break
             case 'newReply': alternatives?.requestNewReply(); break
-            case 'customizeButtons': customizeOpen = true; break
+            case 'customizeButtons': onOpenCustomize?.({ opener: actionOpener, onchange: () => meta?.refresh() }); break
         }
     }
     const unregisterEditorBack = registerBackHandler(backCloseHandler({
@@ -330,7 +408,7 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
             {/if}
             <span data-part="chat-message-name" id={labelId}>{name}</span>
             {#if isBookmarked}<span data-part="chat-message-badges" aria-label={language.bookmark}>★</span>{/if}
-            <MessageMeta bind:this={meta} {name} time={message.time} model={modelShortName} available={actions} disabled={unavailable} onaction={(id) => { void act(id) }} onmore={openActions} />
+            <MessageMeta bind:this={meta} {name} time={message.time} model={modelShortName} available={actions} disabled={unavailable} generating={streaming} onaction={(id) => { void act(id) }} onmore={openActions} />
         </div>
     </div>
     {#if (messageGenerationInfo ?? message.generationInfo) && (DBState.db.requestInfoInsideChat || aiLawApplies())}
@@ -369,10 +447,13 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
     {#if longPressRing}<span data-part="chat-long-press-ring" aria-hidden="true">◌</span>{/if}
     {#if swipeProgress > 0}<span data-part="chat-swipe-arm" role="status" style:opacity={swipeProgress}>{armed ? language.chatShellReleaseNewReply : language.chatShellNoSavedReplies}</span>{/if}
     {#if (newestCharacter || firstMessage) && (position.count > 1 || newestCharacter)}
-        <AlternativesRow bind:this={alternatives} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} busy={getBusy?.() ?? false} />
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div data-part="chat-alternatives-host" onclickcapture={firstMessage ? browseFirstMessage : undefined}>
+            <AlternativesRow bind:this={alternatives} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} busy={getBusy?.() ?? false} />
+        </div>
     {/if}
-    <ActionSheet open={actionOpen} opener={actionOpener} {anchor} available={sheetActions} disabled={unavailable} generating={streaming} onaction={(id) => { void act(id) }} onclose={() => { actionOpen = false }} />
-    <CustomizeButtonsSheet open={customizeOpen} opener={actionOpener} onclose={() => { customizeOpen = false }} onchange={() => meta?.refresh()} />
+    {#if statusMessage}<span data-part="chat-message-status" role="status" aria-live="polite">{statusMessage}</span>{/if}
     {#if idx >= 0 && !streaming && !editor.editMode && !editor.editTranslationMode && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit)}
         <PartialEditController messageData={message.data} chatIndex={idx} {bodyRoot} blockEditEnabled={DBState.db.enableBlockPartialEdit} dragEditEnabled={DBState.db.enableDragPartialEdit} translatedView={translated} getTranslationEditContext={getTranslationPartialEditContext} on:save={handlePartialEditSave} />
     {/if}
@@ -392,6 +473,8 @@ import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopD
     [data-part="chat-message-body"] { max-width: var(--thread-max-width); width: 100%; overflow-wrap: anywhere; }
     [data-part="chat-message"].user { border-left: var(--stroke-bold) solid var(--nexus-surface-raised); }
     [data-part="chat-message-interrupted"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
+    [data-part="chat-alternatives-host"] { display: contents; }
+    [data-part="chat-message-status"] { color: var(--nexus-text-secondary); font-size: var(--font-size-xs); }
     [data-part="chat-message-delete-pending"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
     [data-part="chat-message-render-failed"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
     [data-part="chat-message-divider"] { border-top: var(--stroke-bold) dashed var(--color-warning); }

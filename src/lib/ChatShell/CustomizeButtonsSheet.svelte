@@ -3,8 +3,8 @@
     import { ACTION_IDS, DEFAULT_PINNED, readSlots, writeSlots, type ActionId } from '../../ts/chatShell/actionSlots'
     import { language } from '../../lang'
 
-    interface Props { open: boolean; opener?: HTMLElement | null; onclose: () => void; onchange?: () => void }
-    let { open, opener = null, onclose, onchange }: Props = $props()
+    interface Props { open: boolean; opener?: HTMLElement | null; background?: readonly HTMLElement[]; onclose: () => void; onchange?: () => void }
+    let { open, opener = null, background = [], onclose, onchange }: Props = $props()
     let slots = $state(readSlots())
     function save(): void { writeSlots(slots); onchange?.() }
     function pin(id: ActionId): void {
@@ -23,7 +23,7 @@
     function defaults(): void { slots = { order: [...ACTION_IDS], pinned: [...DEFAULT_PINNED] }; save() }
 </script>
 
-<ShellSheet {open} kind="sheet" label={language.chatShellCustomizeButtons} {opener} {onclose}>
+<ShellSheet {open} kind="sheet" label={language.chatShellCustomizeButtons} {opener} {background} {onclose}>
     <h2>{language.chatShellCustomizeButtons}</h2>
     <p>{language.chatShellOnThisDevice}</p>
     {#each slots.order.filter((id) => ACTION_IDS.includes(id as typeof ACTION_IDS[number]) && id !== 'deleteAfter' && id !== 'customizeButtons') as id}

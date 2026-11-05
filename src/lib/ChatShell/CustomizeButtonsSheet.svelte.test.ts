@@ -35,4 +35,17 @@ describe('device-local pinned buttons', () => {
         flushSync()
         expect(JSON.parse(localStorage.getItem('risuChatShell.actionSlots')!).pinned).toEqual(['edit', 'delete'])
     })
+    test('the background it is given is inert while the sheet is open', () => {
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        const background = document.createElement('main')
+        target.appendChild(background)
+        const state = $state({ open: true })
+        app = mount(CustomizeButtonsSheet, { target, props: { get open() { return state.open }, background: [background], onclose: vi.fn() } })
+        flushSync()
+        expect(background.hasAttribute('inert')).toBe(true)
+        state.open = false
+        flushSync()
+        expect(background.hasAttribute('inert')).toBe(false)
+    })
 })

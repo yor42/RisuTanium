@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import { registerDraft, resetLocalDraftsForTest } from '../localDrafts'
 import { resetComposerDraftsForTests, write } from '../process/composerDrafts.svelte'
-import { beginChatFileUpload } from '../process/composerSurface.svelte'
+import { beginChatFileUpload, createComposerSurface } from '../process/composerSurface.svelte'
+import { effect_root } from 'svelte/internal/client'
 
 const fixture = {
     db: { db: { characters: [{ chaId: 'char', chatPage: 0, chats: [{ id: 'chat' }] }] } },
@@ -76,4 +77,23 @@ describe('S0 flip blocker', () => {
         expect(shellFlipBlocker()).toBeNull()
     })
 
+    test('any text or attachment in the unkeyed fallback record blocks the flip, an empty record does not', async () => {
+        const { shellFlipBlocker } = await import('./flipBlocker')
+        const character = fixture.db.db.characters[0]
+        const chat = {} as typeof character.chats[0]
+        character.chats[0] = chat
+        let surface!: ReturnType<typeof createComposerSurface>
+        const destroy = effect_root(() => { surface = createComposerSurface({ character: () => character as never, chat: () => chat as never }) })
+        surface.writeDraftAt(null, () => {})
+        expect(shellFlipBlocker()).toBeNull()
+        surface.writeDraftAt(null, (record) => { record.messageInput = 'typed' })
+        expect(shellFlipBlocker()).toEqual({ kind: 'draft', reasonKey: 'chatShellFlipRefusedDraft' })
+        surface.writeDraftAt(null, (record) => { record.messageInput = ''; record.messageInputTranslate = 'translated' })
+        expect(shellFlipBlocker()?.reasonKey).toBe('chatShellFlipRefusedDraft')
+        surface.writeDraftAt(null, (record) => { record.messageInputTranslate = ''; record.fileInput = ['file'] })
+        expect(shellFlipBlocker()?.reasonKey).toBe('chatShellFlipRefusedAttachment')
+        surface.writeDraftAt(null, (record) => { record.fileInput = [] })
+        expect(shellFlipBlocker()).toBeNull()
+        destroy()
+    })
 })

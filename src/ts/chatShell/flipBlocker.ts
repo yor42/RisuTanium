@@ -13,6 +13,7 @@ export type FlipBlock =
     | { kind: 'working', reasonKey: 'chatShellFlipRefusedWorking' }
     | { kind: 'editing', reasonKey: 'chatShellFlipRefusedEditing' }
     | { kind: 'attachment', reasonKey: 'chatShellFlipRefusedAttachment' }
+    | { kind: 'draft', reasonKey: 'chatShellFlipRefusedDraft' }
     | { kind: 'uploading', reasonKey: 'chatShellFlipRefusedUploading' }
 
 export function shellFlipBlocker(): FlipBlock | null {
@@ -27,9 +28,14 @@ export function shellFlipBlocker(): FlipBlock | null {
     if (hasMessageEditorDrafts() || translationEditLoading() > 0) {
         return { kind: 'editing', reasonKey: 'chatShellFlipRefusedEditing' }
     }
+    const fallback = fallbackDraftForChat(chat)
     if ((character && chat?.id && peek({ chaId: character.chaId, chatId: chat.id }).fileInput.length > 0)
-        || (fallbackDraftForChat(chat)?.fileInput.length ?? 0) > 0) {
+        || (fallback?.fileInput.length ?? 0) > 0) {
         return { kind: 'attachment', reasonKey: 'chatShellFlipRefusedAttachment' }
+    }
+    // The unkeyed record is what a chat without an id types into; a pending text there is unsaved work the user would not expect to lose track of.
+    if (fallback && (fallback.messageInput !== '' || fallback.messageInputTranslate !== '')) {
+        return { kind: 'draft', reasonKey: 'chatShellFlipRefusedDraft' }
     }
     if (pendingChatFileUploads() > 0) {
         return { kind: 'uploading', reasonKey: 'chatShellFlipRefusedUploading' }

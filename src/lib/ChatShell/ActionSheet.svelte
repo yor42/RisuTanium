@@ -11,10 +11,11 @@
         available: readonly SheetAction[]
         disabled?: readonly SheetAction[]
         generating?: boolean
+        background?: readonly HTMLElement[]
         onaction: (id: SheetAction) => void
         onclose: () => void
     }
-    let { open, opener = null, anchor, available, disabled = [], generating = false, onaction, onclose }: Props = $props()
+    let { open, opener = null, anchor, available, disabled = [], generating = false, background = [], onaction, onclose }: Props = $props()
     let wide = $state(false)
     $effect(() => {
         if (typeof matchMedia !== 'function') return
@@ -47,7 +48,7 @@
     function activate(id: SheetAction): void { if (!disabled.includes(id)) { onclose(); onaction(id) } }
 </script>
 
-<ShellSheet {open} kind="menu" mode={wide ? 'wide-menu' : 'action'} {anchor} label={language.chatShellMoreActions} {opener} {onclose}>
+<ShellSheet {open} kind="menu" mode={wide ? 'wide-menu' : 'action'} {anchor} label={language.chatShellMoreActions} {opener} {background} {onclose}>
     {#each groups as group, groupIndex}
         <div data-part="chat-action-group" data-destructive-group={groupIndex === 3 ? '' : undefined}>
             {#each group.filter((id) => available.includes(id)) as id}

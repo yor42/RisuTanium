@@ -5,7 +5,7 @@
     import type { TreeView } from '../../ts/process/chatTreeView'
     import { DBState, ReloadChatPointer, ReloadGUIPointer, ScrollToMessageStore, createSimpleCharacter } from '../../ts/stores.svelte'
     import { chatFoldedState, chatFoldedStateMessageIndex } from '../../ts/globalApi.svelte'
-    import { firstMessageOf } from '../../ts/process/firstMessage'
+    import { firstMessageIndexOf, firstMessageOf, nextFirstMessageIndex } from '../../ts/process/firstMessage'
     import { isActiveStreamReply } from '../../ts/process/activeStreams'
     import { getAdditionalChatLoadPages, getInitialChatLoadPages, pagesOnReturn } from '../../ts/chatLoadPages'
     import { chatWindowKey, createChatWindowPolicy } from '../../ts/chatWindowPolicy'
@@ -13,7 +13,7 @@
     import { chatSurface, isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { language } from '../../lang'
-    import ShellMessage from './ShellMessage.svelte'
+    import ShellMessage, { type ActionRequest, type CustomizeRequest } from './ShellMessage.svelte'
 
     interface Props {
         character: Character
@@ -26,9 +26,20 @@
         getBusy?: () => boolean
         onReroll?: () => void
         unReroll?: () => void
+        onOpenActions?: (request: ActionRequest) => void
+        onOpenCustomize?: (request: CustomizeRequest) => void
     }
-    let { character, host, unread = $bindable(false), atBottom = $bindable(true), onStep, onBranch, getTreeView, getBusy, onReroll, unReroll }: Props = $props()
+    let { character, host, unread = $bindable(false), atBottom = $bindable(true), onStep, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onOpenCustomize }: Props = $props()
     let chat = $derived(character.chats?.[character.chatPage])
+    // The first message browses the character's stored greetings (fmIndex); it never reaches the reply tree and never generates.
+    function firstMessageTreeView(): TreeView {
+        const count = (character.alternateGreetings?.length ?? 0) + 1
+        const index = chat ? firstMessageIndexOf(character, chat) + 2 : 1
+        return { at: (position) => position === -1 ? { index, count } : null, continuation: 0 }
+    }
+    function stepFirstMessage(step: 1 | -1): void {
+        if (chat) chat.fmIndex = nextFirstMessageIndex(character, chat, step)
+    }
     let messages = $derived(chat?.message ?? [])
     let loadPages = $state(getInitialChatLoadPages(DBState.db))
     let windowResetToken = $state(0)
@@ -188,7 +199,7 @@
                         streaming={chat?.isStreaming === true && row.idx === messages.length - 1 && row.message.role === 'char' && isActiveStreamReply(row.message.chatId)}
                         interrupted={row.message.interrupted === true && !isActiveStreamReply(row.message.chatId)}
                         deferAutoTranslate={chat?.isStreaming === true && row.idx === messages.length - 1 && isActiveStreamReply(row.message.chatId) && DBState.db.autoTranslate === true}
-                        guiRevision={guiPointer + (rowPointers[row.idx] ?? 0)} {onStep} {onBranch} {getTreeView} {getBusy} {onReroll} {unReroll} />
+                        guiRevision={guiPointer + (rowPointers[row.idx] ?? 0)} {onStep} {onBranch} {getTreeView} {getBusy} {onReroll} {unReroll} {onOpenActions} {onOpenCustomize} />
                     {#snippet failed(_error, reset)}
                         <div data-part="chat-message-failed" role="note">{row.message.data}<p>{language.messageRenderFailed}</p><button onclick={reset}>{language.messageRenderRetry}</button></div>
                     {/snippet}
@@ -198,7 +209,7 @@
         {#if chat && messages.length <= loadPages && character.type === 'character'}
             <div data-part="chat-first-message">
                 <svelte:boundary onerror={(error) => recordCaughtError('chat.message', error)}>
-                    <ShellMessage idx={-1} message={{ role: 'char', data: firstMessageOf(character, chat) }} name={character.name} img={character.image} character={createSimpleCharacter(character)} firstMessage />
+                    <ShellMessage idx={-1} message={{ role: 'char', data: firstMessageOf(character, chat) }} name={character.name} img={character.image} character={createSimpleCharacter(character)} firstMessage getTreeView={firstMessageTreeView} onReroll={() => stepFirstMessage(1)} unReroll={() => stepFirstMessage(-1)} {onOpenActions} {onOpenCustomize} />
                     {#snippet failed(_error, reset)}<div role="note">{language.messageRenderFailed}<button onclick={reset}>{language.messageRenderRetry}</button></div>{/snippet}
                 </svelte:boundary>
             </div>

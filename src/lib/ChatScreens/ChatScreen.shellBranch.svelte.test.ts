@@ -21,6 +21,7 @@ const selection = $state({ selId: 0 })
 const selectedCharID = writable(0)
 selectedCharID.subscribe((value) => { selection.selId = value })
 const oldMount = vi.fn(() => ({}))
+const shell = vi.hoisted(() => ({ props: null as null | { customStyle?: string }, background: '' }))
 
 vi.mock('src/ts/stores.svelte', () => ({
     DBState: state,
@@ -28,11 +29,12 @@ vi.mock('src/ts/stores.svelte', () => ({
     selectedCharID,
     CharEmotion: writable({}),
 }))
-vi.mock('../../ts/util', () => ({ getCustomBackground: async () => '', getEmotion: () => '' }))
+vi.mock('../../ts/util', () => ({ getCustomBackground: async () => shell.background, getEmotion: () => '' }))
 vi.mock('./DefaultChatScreen.svelte', () => ({ default: oldMount }))
 // The branch test only needs to know which side mounted; the real shell has its own tests.
 vi.mock('../ChatShell/ChatShell.svelte', () => ({
-    default: (anchor: Comment) => {
+    default: (anchor: Comment, props: { customStyle?: string }) => {
+        shell.props = props
         const marker = document.createElement('div')
         marker.setAttribute('data-testid', 'chat-shell-stub')
         anchor.before(marker)
@@ -55,6 +57,10 @@ afterEach(async () => {
     target?.remove()
     oldMount.mockClear()
     localStorage.clear()
+    shell.props = null
+    shell.background = ''
+    state.db.customBackground = ''
+    state.db.textBorder = false
 })
 
 async function show() {
@@ -105,5 +111,32 @@ describe('S0 ChatScreen branch', () => {
         selectedCharID.set(0)
         flushSync()
         expect(target.querySelector('[data-testid="chat-shell-stub"]')).not.toBeNull()
+    })
+
+    test('the text-screen overlay reaches the shell only with a custom background, as the old screen gets it', async () => {
+        state.db.theme = ''
+        state.db.textBorder = true
+        state.db.characters = [{ chaId: 'char', type: 'character', chatPage: 0, chats: [{ id: 'chat' }], viewScreen: 'none', inlayViewScreen: false }]
+        selectedCharID.set(0)
+        const switcher = await show()
+        switcher.setShellEnabled(true)
+        flushSync()
+        expect(shell.props?.customStyle).toBe('')
+    })
+
+    test('a custom background passes the overlay colour and text border to the shell', async () => {
+        state.db.theme = ''
+        state.db.textBorder = true
+        state.db.customBackground = 'wallpaper.png'
+        shell.background = 'background: url(wallpaper.png)'
+        state.db.characters = [{ chaId: 'char', type: 'character', chatPage: 0, chats: [{ id: 'chat' }], viewScreen: 'none', inlayViewScreen: false }]
+        selectedCharID.set(0)
+        const switcher = await show()
+        switcher.setShellEnabled(true)
+        await vi.waitFor(() => {
+            flushSync()
+            expect(shell.props?.customStyle).toContain('background: rgba(0,0,0,0.8);')
+        }, { timeout: 5000 })
+        expect(shell.props?.customStyle).toContain('text-shadow:')
     })
 })

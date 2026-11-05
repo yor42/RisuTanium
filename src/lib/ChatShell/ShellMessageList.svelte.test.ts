@@ -19,7 +19,7 @@ vi.mock('../../ts/globalApi.svelte', () => {
     const chatFoldedStateMessageIndex = $state({ index: -1 })
     return { chatFoldedState, chatFoldedStateMessageIndex, aiLawApplies: () => false }
 })
-vi.mock('../../ts/process/firstMessage', () => ({ firstMessageOf: () => 'Greeting' }))
+vi.mock('../../ts/process/firstMessage', () => ({ firstMessageOf: () => 'Greeting', firstMessageIndexOf: () => -1, nextFirstMessageIndex: () => -1 }))
 vi.mock('../../ts/process/activeStreams', () => ({ isActiveStreamReply: (id: string | undefined) => id === 'stream' }))
 vi.mock('../../ts/localDrafts', () => ({ hasMessageEditorDrafts: () => false, onDraftsChanged: () => () => {} }))
 vi.mock('../ChatScreens/chatSurface.svelte', () => {

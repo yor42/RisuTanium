@@ -57,6 +57,19 @@ describe('action sheet', () => {
         remove.click()
         expect(onaction).toHaveBeenCalledWith('delete')
     })
+    test('the background it is given is inert while the sheet is open', async () => {
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        const background = document.createElement('main')
+        target.appendChild(background)
+        const state = $state({ open: true })
+        app = mount(ActionSheet, { target, props: { get open() { return state.open }, available: ['copy'], background: [background], onaction: vi.fn(), onclose: vi.fn() } })
+        flushSync()
+        expect(background.hasAttribute('inert')).toBe(true)
+        state.open = false
+        flushSync()
+        expect(background.hasAttribute('inert')).toBe(false)
+    })
     test('an enabled entry closes the sheet and reports its id; Escape closes only the sheet', () => {
         target = document.createElement('div')
         document.body.appendChild(target)

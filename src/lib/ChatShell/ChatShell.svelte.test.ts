@@ -24,6 +24,9 @@ vi.mock('./ShellComposer.svelte', () => ({ default: () => ({}) }))
 vi.mock('./ShellSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('./PersonaSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('./ShellMessageList.svelte', () => ({ default: () => ({}) }))
+vi.mock('./ActionSheet.svelte', () => ({ default: () => ({}) }))
+vi.mock('./CustomizeButtonsSheet.svelte', () => ({ default: () => ({}) }))
+vi.mock('../../ts/process/composerActions.svelte', () => ({ isComposerBusy: () => false, branchAt: vi.fn() }))
 
 describe('ChatShell Stage 2a layout', () => {
     test('mounts header and composer hosts around the empty list placeholder', async () => {

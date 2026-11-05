@@ -6,7 +6,8 @@ import type { Message } from '../../ts/storage/database.svelte'
 const stepSibling = vi.hoisted(() => vi.fn())
 const regenerateNewest = vi.hoisted(() => vi.fn())
 const db = vi.hoisted(() => ({ message: [] as Message[] }))
-const alerts = vi.hoisted(() => ({ alertConfirm: vi.fn(async (_text: string) => true), alertNormal: vi.fn(), alertError: vi.fn(), alertRequestData: vi.fn() }))
+const alerts = vi.hoisted(() => ({ alertConfirm: vi.fn(async (_text: string) => true), alertSelect: vi.fn(async (_labels: string[], _text?: string) => '1'), alertNormal: vi.fn(), alertError: vi.fn(), alertRequestData: vi.fn() }))
+const abortChat = vi.hoisted(() => vi.fn())
 const writing = vi.hoisted(() => ({ value: false }))
 const stop = vi.hoisted(() => ({ requestStopDelete: vi.fn(() => true) }))
 vi.mock('../../ts/stores.svelte', async () => {
@@ -23,7 +24,11 @@ vi.mock('../../ts/process/chatOrigin', () => ({
     originOf: (owner: { chaId: string }, chat: { id: string }) => ({ chaId: owner.chaId, chatId: chat.id }),
     isWriting: () => writing.value,
 }))
-vi.mock('../../ts/process/composerActions.svelte', () => ({ stepSibling, regenerateNewest }))
+vi.mock('../../ts/process/composerActions.svelte', () => ({ stepSibling, regenerateNewest, abortChat }))
+vi.mock('../../ts/process/index.svelte', async () => {
+    const { writable } = await import('svelte/store')
+    return { doingChat: writable(false) }
+})
 vi.mock('../../ts/chatShell/haptics', () => ({ tickHaptic: vi.fn(), readHaptics: () => true }))
 vi.mock('../../ts/backHandlers', () => ({ registerBackHandler: () => () => {}, backCloseHandler: () => () => false }))
 vi.mock('../../ts/globalApi.svelte', () => ({ aiLawApplies: () => false }))
@@ -61,27 +66,46 @@ vi.mock('../../lang', () => ({ language: {
     chatShellMoreActions: 'More actions', bookmark: 'Bookmark', remove: 'Delete', chatShellStopAndDelete: 'Stop and delete',
     chatShellDeleteFromHere: 'Delete from here', chatShellDeletePendingStop: 'Stopping, then deleting...',
     chatShellStopDeleteChanged: 'changed', chatShellReplyInProgress: 'Writing the reply',
-    chatShellDeleteFromHereConfirm: (count: number) => `range:${count}`,
+    cancel: 'Cancel', chatShellStopDeleteCannot: 'cannot',
+    chatShellDeleteRangeConfirm: (count: number, excerpt: string) => `range:${count}:${excerpt}`,
+    chatShellDeleteRangeButton: (count: number) => `Delete ${count}`,
     chatShellStopDeleteConfirm: (count: number) => `stop:${count}`,
     chatShellReply: 'Reply', chatShellOf: 'of', chatShellPreviousReply: 'Previous', chatShellNextReply: 'Next', chatShellNewReply: 'New reply',
 } }))
 
-import ShellMessage from './ShellMessage.svelte'
+import ShellMessage, { type ActionRequest } from './ShellMessage.svelte'
+import ActionSheet from './ActionSheet.svelte'
 import { DBState } from '../../ts/stores.svelte'
+import { doingChat } from '../../ts/process/index.svelte'
 
 let target: HTMLElement
 let app: ReturnType<typeof ShellMessage> | undefined
+let sheetApp: ReturnType<typeof ActionSheet> | undefined
+let hostedRequest: ActionRequest | null = $state.raw(null)
+let hostedOpen = $state(false)
 beforeEach(() => {
     const list = DBState.db.characters[0].chats[0].message
     list.splice(0, list.length, { role: 'user', data: 'Hi', chatId: 'u' }, { role: 'char', data: 'Reply', chatId: 'm' }, { role: 'user', data: 'More', chatId: 'n' })
     writing.value = false
+    doingChat.set(false)
     alerts.alertConfirm.mockReset().mockResolvedValue(true)
+    alerts.alertSelect.mockReset().mockResolvedValue('1')
 })
+// The shell hosts one sheet outside the rows; the test hosts the real sheet next to the mounted row the same way.
 function show(idx: number, streaming = false, extra: Record<string, unknown> = {}) {
     target = document.createElement('div')
     document.body.appendChild(target)
     const message = DBState.db.characters[0].chats[0].message[idx]
-    app = mount(ShellMessage, { target, props: { idx, chatId: message.chatId, name: 'Ari', message, streaming, ...extra } })
+    app = mount(ShellMessage, { target, props: { idx, chatId: message.chatId, name: 'Ari', message, streaming, onOpenActions: (request: ActionRequest) => { hostedRequest = request; hostedOpen = true }, ...extra } })
+    sheetApp = mount(ActionSheet, { target, props: {
+        get open() { return hostedOpen },
+        get opener() { return hostedRequest?.opener ?? null },
+        get available() { return hostedOpen ? hostedRequest?.available() ?? [] : [] },
+        get disabled() { return hostedOpen ? hostedRequest?.disabled() ?? [] : [] },
+        get generating() { return hostedOpen && hostedRequest?.generating() === true },
+        onaction: (id) => hostedRequest?.run(id),
+        onclose: () => { hostedOpen = false },
+    } })
     flushSync()
 }
 function openSheet(): HTMLElement {
@@ -93,11 +117,15 @@ async function pendingFlag() {
     return (await import('../../ts/chatShell/stopDelete.svelte') as unknown as { pendingForTest: { value: boolean } }).pendingForTest
 }
 afterEach(async () => {
+    if (sheetApp) await unmount(sheetApp)
+    sheetApp = undefined
+    hostedOpen = false
+    hostedRequest = null
     if (app) await unmount(app)
     app = undefined
     target?.remove();
     (await pendingFlag()).value = false
-    for (const fn of [stepSibling, regenerateNewest, stop.requestStopDelete, alerts.alertNormal, ...Object.values(messageActions)]) fn.mockClear()
+    for (const fn of [stepSibling, regenerateNewest, abortChat, stop.requestStopDelete, alerts.alertNormal, ...Object.values(messageActions)]) fn.mockClear()
 })
 
 describe('delete labels', () => {
@@ -112,7 +140,7 @@ describe('delete labels', () => {
         expect(remove.closest('[data-destructive-group]')).not.toBeNull()
     })
 })
-function unmountApp() { void unmount(app!); app = undefined; target.remove() }
+function unmountApp() { void unmount(sheetApp!); sheetApp = undefined; hostedOpen = false; void unmount(app!); app = undefined; target.remove() }
 
 describe('single delete', () => {
     test('a settled message goes through the existing removal dialogs', async () => {
@@ -146,37 +174,69 @@ describe('single delete', () => {
 })
 
 describe('range delete', () => {
-    test('Delete from here confirms with the count after it, then deletes the range from the target', async () => {
+    test('Delete from here asks with an excerpt of the first deleted message, Cancel first and a Delete n button, then deletes the range from the target', async () => {
         show(0)
         openSheet().querySelector<HTMLButtonElement>('[data-action="deleteAfter"]')!.click()
         await vi.waitFor(() => expect(messageActions.deleteNow).toHaveBeenCalledTimes(1), { timeout: 5000 })
-        expect(alerts.alertConfirm).toHaveBeenCalledWith('range:2')
+        expect(alerts.alertSelect).toHaveBeenCalledWith(['Cancel', 'Delete 3'], 'range:3:Hi')
+        expect(alerts.alertConfirm).not.toHaveBeenCalled()
         const call = messageActions.deleteNow.mock.calls[0] as unknown[]
         expect(call[2]).toMatchObject({ chatId: 'u' })
         expect(call[3]).toBe('from')
         expect(messageActions.requestRemove).not.toHaveBeenCalled()
     })
+    test('a long first message is cut to a short single-line excerpt', async () => {
+        DBState.db.characters[0].chats[0].message[0].data = `${'word '.repeat(40)}\nsecond line`
+        show(0)
+        openSheet().querySelector<HTMLButtonElement>('[data-action="deleteAfter"]')!.click()
+        await vi.waitFor(() => expect(alerts.alertSelect).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        const text = alerts.alertSelect.mock.calls[0][1] as string
+        expect(text.startsWith('range:3:word word')).toBe(true)
+        expect(text.endsWith('…')).toBe(true)
+        expect(text).not.toContain('\n')
+        expect(text.length).toBeLessThan(90)
+    })
     test('labels the range entry Delete from here', () => {
         show(0)
         expect(openSheet().querySelector('[data-action="deleteAfter"]')?.textContent).toBe('Delete from here')
     })
-    test('declining the range confirm deletes nothing', async () => {
-        alerts.alertConfirm.mockResolvedValue(false)
+    test('choosing Cancel deletes nothing', async () => {
+        alerts.alertSelect.mockResolvedValue('0')
         show(0)
         openSheet().querySelector<HTMLButtonElement>('[data-action="deleteAfter"]')!.click()
-        await vi.waitFor(() => expect(alerts.alertConfirm).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        await vi.waitFor(() => expect(alerts.alertSelect).toHaveBeenCalledTimes(1), { timeout: 5000 })
         await Promise.resolve()
         expect(messageActions.deleteNow).not.toHaveBeenCalled()
         expect(stop.requestStopDelete).not.toHaveBeenCalled()
     })
     test('a range that reaches the running send stops it first instead of deleting at once', async () => {
         writing.value = true
+        doingChat.set(true)
         show(0)
         openSheet().querySelector<HTMLButtonElement>('[data-action="deleteAfter"]')!.click()
         await vi.waitFor(() => expect(stop.requestStopDelete).toHaveBeenCalledTimes(1), { timeout: 5000 })
         expect(alerts.alertConfirm).toHaveBeenCalledWith('stop:2')
         expect((stop.requestStopDelete.mock.calls[0] as unknown[])[3]).toBe('from')
         expect(messageActions.deleteNow).not.toHaveBeenCalled()
+        expect(alerts.alertSelect).not.toHaveBeenCalled()
+    })
+    test('registered trigger work without a running generation takes the ordinary range confirm and deletes without any abort', async () => {
+        writing.value = true
+        doingChat.set(false)
+        show(0)
+        openSheet().querySelector<HTMLButtonElement>('[data-action="deleteAfter"]')!.click()
+        await vi.waitFor(() => expect(messageActions.deleteNow).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(alerts.alertSelect).toHaveBeenCalledWith(['Cancel', 'Delete 3'], 'range:3:Hi')
+        expect(alerts.alertConfirm).not.toHaveBeenCalled()
+        expect(stop.requestStopDelete).not.toHaveBeenCalled()
+        expect(abortChat).not.toHaveBeenCalled()
+    })
+    test('a refused freeze says the reply cannot be deleted, not that it changed', async () => {
+        stop.requestStopDelete.mockReturnValueOnce(false)
+        show(1, true)
+        openSheet().querySelector<HTMLButtonElement>('[data-action="delete"]')!.click()
+        await vi.waitFor(() => expect(alerts.alertNormal).toHaveBeenCalledTimes(1), { timeout: 5000 })
+        expect(alerts.alertNormal).toHaveBeenCalledWith('cannot')
     })
     test('the Shift+Delete key takes the same range path', async () => {
         show(0)

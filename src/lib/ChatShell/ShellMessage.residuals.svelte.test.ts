@@ -10,8 +10,9 @@ const back = vi.hoisted(() => ({
 const controller = vi.hoisted(() => ({
     editMode: false, editTranslationMode: false, discardConfirmOpen: false, translationViewControlsDisabled: false,
     translationEditControlDisabled: false, originalEditControlDisabled: false, dispose: () => {},
-    requestDiscardOriginalEdit: vi.fn(async () => {}), closeTranslationKeep: vi.fn(),
+    requestDiscardOriginalEdit: vi.fn(async () => {}), closeTranslationKeep: vi.fn(), loadTranslationForEdit: vi.fn(async () => {}),
 }))
+const copy = vi.hoisted(() => ({ plain: vi.fn(), card: vi.fn() }))
 const trigger = vi.hoisted(() => ({
     ensureModulesOrAlert: vi.fn(async () => false),
     alertError: vi.fn(),
@@ -60,8 +61,8 @@ vi.mock('../../ts/process/memory/supaResume', () => ({ withSupaRepoint: vi.fn() 
 vi.mock('../../ts/process/chatTree', () => ({ siblingsAt: vi.fn(() => []) }))
 vi.mock('../../ts/storage/characterSaveMarks', () => ({ markCharacterForSave: vi.fn() }))
 vi.mock('../../ts/util', () => ({ capitalize: (value: string) => value, getUserIcon: () => '', getUserName: () => 'User', sleep: async () => {} }))
-vi.mock('../../ts/chatCopy', () => ({ copyPlainText: vi.fn(), stripThoughtsForCopy: (text: string) => text }))
-vi.mock('../../ts/chatCard', () => ({ captureCardTheme: vi.fn(), noteNewerPlainCopy: vi.fn(), startCardCopy: vi.fn() }))
+vi.mock('../../ts/chatCopy', () => ({ copyPlainText: copy.plain, stripThoughtsForCopy: (text: string) => text }))
+vi.mock('../../ts/chatCard', () => ({ captureCardTheme: vi.fn(), noteNewerPlainCopy: vi.fn(), startCardCopy: copy.card, CARD_DEADLINE_MS: 3000, CARD_PENDING_MARGIN_MS: 2000 }))
 vi.mock('../../ts/process/messageActions.svelte', async () => {
     const actual = await vi.importActual<typeof import('../../ts/process/messageActions.svelte')>('../../ts/process/messageActions.svelte')
     return { ...actual, handleFormTriggerWithin: vi.fn() }
@@ -84,17 +85,18 @@ vi.mock('../ChatScreens/chatSurface.svelte', () => {
 })
 vi.mock('../../ts/characters', () => ({ getCharImage: async () => null }))
 vi.mock('../../ts/model/modellist', () => ({ getModelInfo: () => ({ shortName: 'Model' }) }))
-vi.mock('../../lang', () => ({ language: { chatShellMoreActions: 'More actions', bookmark: 'Bookmark' } }))
+vi.mock('../../lang', () => ({ language: { chatShellMoreActions: 'More actions', bookmark: 'Bookmark', copied: 'Copied', copyFailed: 'Copy failed', loading: 'Loading', copiedSimpleCard: 'Copied simple card', copiedAsText: 'Copied as text' } }))
 
-import ShellMessage from './ShellMessage.svelte'
+import ShellMessage, { type ActionRequest } from './ShellMessage.svelte'
 
 let app: ReturnType<typeof ShellMessage> | undefined
 let target: HTMLElement
 const message: Message = { role: 'char', data: 'Reply', chatId: 'm' }
+const opened = { request: null as ActionRequest | null }
 async function show() {
     target = document.createElement('div')
     document.body.appendChild(target)
-    app = mount(ShellMessage, { target, props: { idx: 0, chatId: 'm', name: 'Ari', message } })
+    app = mount(ShellMessage, { target, props: { idx: 0, chatId: 'm', name: 'Ari', message, onOpenActions: (request: ActionRequest) => { opened.request = request } } })
     flushSync()
     await tick()
 }
@@ -113,6 +115,11 @@ afterEach(async () => {
     trigger.end.mockClear()
     trigger.update.mockClear()
     trigger.ensureModulesOrAlert.mockClear()
+    copy.plain.mockReset()
+    copy.card.mockReset()
+    controller.loadTranslationForEdit.mockReset().mockResolvedValue(undefined)
+    opened.request = null
+    vi.useRealTimers()
 })
 
 describe('editor Back handling', () => {
@@ -151,5 +158,55 @@ describe('trigger module-ensure failure', () => {
         expect(trigger.alertError).toHaveBeenCalledWith('modules failed')
         expect(trigger.runTrigger).not.toHaveBeenCalled()
         expect(trigger.update).not.toHaveBeenCalled()
+    })
+})
+
+describe('sheet action outcomes stay visible on the row', () => {
+    async function runAction(id: Parameters<ActionRequest['run']>[0]): Promise<void> {
+        await show()
+        target.querySelector<HTMLButtonElement>('[aria-label="More actions"]')!.click()
+        opened.request!.run(id)
+        await tick()
+        flushSync()
+    }
+    const status = () => target.querySelector('[data-part="chat-message-status"]')?.textContent
+
+    test('a refused clipboard is announced on the row with the error name', async () => {
+        copy.plain.mockImplementation((_text: string, report: (outcome: { ok: false, errorName: string }) => void) => report({ ok: false, errorName: 'NotAllowedError' }))
+        await runAction('copy')
+        expect(status()).toBe('NotAllowedError: Copy failed')
+        expect(target.querySelector('[data-part="chat-message-status"]')?.getAttribute('role')).toBe('status')
+    })
+    test('a successful copy says Copied and the text clears after its time', async () => {
+        vi.useFakeTimers()
+        copy.plain.mockImplementation((_text: string, report: (outcome: { ok: true }) => void) => report({ ok: true }))
+        await show()
+        target.querySelector<HTMLButtonElement>('[aria-label="More actions"]')!.click()
+        opened.request!.run('copy')
+        flushSync()
+        expect(status()).toBe('Copied')
+        vi.advanceTimersByTime(3001)
+        flushSync()
+        expect(status()).toBeUndefined()
+    })
+    test('a card copy reports loading, then the failure, through the same line', async () => {
+        copy.card.mockImplementation((request: { report: (report: { kind: 'loading' } | { kind: 'failed', errorName: string }) => void }) => {
+            request.report({ kind: 'loading' })
+            request.report({ kind: 'failed', errorName: 'SecurityError' })
+        })
+        await runAction('copyCard')
+        expect(status()).toBe('SecurityError: Copy failed')
+    })
+    test('a card copy that is still loading says Loading', async () => {
+        copy.card.mockImplementation((request: { report: (report: { kind: 'loading' }) => void }) => request.report({ kind: 'loading' }))
+        await runAction('copyCard')
+        expect(status()).toBe('Loading')
+    })
+    test('a rejected translation load is alerted, not left as an unhandled rejection', async () => {
+        const failure = new Error('translation load failed')
+        controller.loadTranslationForEdit.mockRejectedValueOnce(failure)
+        await runAction('editTranslation')
+        expect(controller.loadTranslationForEdit).toHaveBeenCalledTimes(1)
+        expect(trigger.alertError).toHaveBeenCalledWith(failure)
     })
 })

@@ -49,15 +49,29 @@ vi.mock('../../ts/characters', () => ({ getCharImage: async () => null }))
 vi.mock('../../ts/model/modellist', () => ({ getModelInfo: () => ({ shortName: 'model' }) }))
 vi.mock('../../lang', () => ({ language: { chatShellMoreActions: 'More actions', chatShellNewReply: 'New reply', bookmark: 'Bookmark' } }))
 
-import ShellMessage from './ShellMessage.svelte'
+import ShellMessage, { type ActionRequest } from './ShellMessage.svelte'
+import ActionSheet from './ActionSheet.svelte'
 
 let target: HTMLElement
 let app: ReturnType<typeof ShellMessage> | undefined
+let sheetApp: ReturnType<typeof ActionSheet> | undefined
+let hostedRequest: ActionRequest | null = $state.raw(null)
+let hostedOpen = $state(false)
 let body: HTMLElement
+// The shell hosts one sheet outside the rows; the test hosts the real sheet next to the mounted row the same way.
 function show() {
     target = document.createElement('div')
     document.body.appendChild(target)
-    app = mount(ShellMessage, { target, props: { idx: 0, chatId: 'm', name: 'Ari', message: db.message[0], getTreeView: () => ({ at: () => ({ index: 2, count: 2 }), continuation: 0 }) } })
+    app = mount(ShellMessage, { target, props: { idx: 0, chatId: 'm', name: 'Ari', message: db.message[0], getTreeView: () => ({ at: () => ({ index: 2, count: 2 }), continuation: 0 }), onOpenActions: (request: ActionRequest) => { hostedRequest = request; hostedOpen = true } } })
+    sheetApp = mount(ActionSheet, { target, props: {
+        get open() { return hostedOpen },
+        get opener() { return hostedRequest?.opener ?? null },
+        get available() { return hostedOpen ? hostedRequest?.available() ?? [] : [] },
+        get disabled() { return hostedOpen ? hostedRequest?.disabled() ?? [] : [] },
+        get generating() { return hostedOpen && hostedRequest?.generating() === true },
+        onaction: (id) => hostedRequest?.run(id),
+        onclose: () => { hostedOpen = false },
+    } })
     flushSync()
     body = target.querySelector<HTMLElement>('[data-part="chat-message-body"]')!
     Object.defineProperty(body, 'clientWidth', { value: 300 })
@@ -68,7 +82,7 @@ function pointer(kind: string, x: number, time: number) {
     body.dispatchEvent(event)
     flushSync()
 }
-afterEach(async () => { if (app) await unmount(app); app = undefined; target?.remove(); stepSibling.mockClear(); regenerateNewest.mockClear(); tickHaptic.mockClear(); for (const fn of Object.values(messageActions)) fn.mockClear() })
+afterEach(async () => { if (sheetApp) await unmount(sheetApp); sheetApp = undefined; hostedOpen = false; hostedRequest = null; if (app) await unmount(app); app = undefined; target?.remove(); stepSibling.mockClear(); regenerateNewest.mockClear(); tickHaptic.mockClear(); for (const fn of Object.values(messageActions)) fn.mockClear() })
 
 function openSheet(): HTMLElement {
     target.querySelector<HTMLButtonElement>('[aria-label="More actions"]')!.click()
