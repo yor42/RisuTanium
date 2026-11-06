@@ -416,7 +416,8 @@ describe('host gesture inset over the host channel', () => {
 
     test('(R) the host is asked for the inset once the gesture is installed, before any touch; a pushed value moves the zone', () => {
         mountSidebar()
-        expect(fake.posted()).toEqual([{ bridge: 'gestureInset', method: 'subscribe', args: [] }])
+        // The channel bind also subscribes the keyboard report; only the gesture inset's own messages are asserted here.
+        expect(fake.posted().filter((message) => message.bridge === 'gestureInset')).toEqual([{ bridge: 'gestureInset', method: 'subscribe', args: [] }])
 
         fake.deliver('{"event":"gestureInset","value":40}')
         expect(strokeOpens(10)).toBe(false)

@@ -39,8 +39,11 @@ const MESSAGE_ROW_SELECTOR = 'article[data-part="chat-message"][data-chat-index]
 // The reader leaves by input only: an older-direction intent, or a user focus into a row that is not the newest. A scroll
 // position never decides departure, because the browser moves scrollTop for its own reasons (anchoring, clamps, settling).
 // Arriving at the bottom (a position read) re-enters following.
-export function createBottomFollower(host: HTMLElement, content: Element, canFollow: () => boolean, intent: ReaderIntentSource, newestIndex: () => number): BottomFollower {
+// While `held` is true an alternative-step hold owns the position: the follower neither writes nor re-enters following from
+// the transient layout the step leaves behind. A size change it skipped is applied by the first `sync` after the hold ends.
+export function createBottomFollower(host: HTMLElement, content: Element, canFollow: () => boolean, intent: ReaderIntentSource, newestIndex: () => number, held: () => boolean = () => false): BottomFollower {
     let following = isScrolledToBottom(host)
+    let skippedResize = false
     const stopIntent = intent.subscribe((event) => { if (event.direction === 'older') following = false })
 
     // A window regaining focus re-fires focusin on the element that had it; that is not the reader choosing a row.
@@ -65,15 +68,24 @@ export function createBottomFollower(host: HTMLElement, content: Element, canFol
         window.addEventListener('focus', onWindowFocus)
     }
 
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
-        if (!following || !canFollow()) return
+    const toBottom = () => {
         const target = host.scrollHeight - host.clientHeight
         if (target - host.scrollTop > BOTTOM_EPSILON) host.scrollTop = target
+    }
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
+        if (!following || !canFollow()) return
+        if (held()) { skippedResize = true; return }
+        toBottom()
     })
     observer?.observe(content)
     return {
         sync: () => {
+            if (held()) return
             if (isScrolledToBottom(host)) following = true
+            if (skippedResize) {
+                skippedResize = false
+                if (following && canFollow()) toBottom()
+            }
         },
         follow: () => {
             if (!canFollow()) return

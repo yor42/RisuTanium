@@ -36,38 +36,80 @@ export function isTextField(node: EventTarget | null): boolean {
     return node.isContentEditable === true || (attribute !== null && attribute !== 'false')
 }
 
+// The host reports a close before the window resizes (2 to 46 ms earlier on devices), and a rotation sends a close followed
+// by a visible report again about 170 ms later. A host close of an open keyboard therefore waits for the next resize: a
+// resize at the same width is the keyboard closing and settles it at once; a resize at another width is a rotation, which
+// settles only once no resize has come for the quiet period, long enough to span that second report. A visible report
+// arriving first cancels the close. Without any resize the close settles after the settle delay.
+export const SOFT_KEYBOARD_CLOSE_SETTLE_MS = 100
+export const SOFT_KEYBOARD_ROTATION_QUIET_MS = 300
+
 // Reports open/close transitions of the soft keyboard for text fields inside `root`. The state is recomputed from the
-// current inputs on every event and keeps nothing between them, so a window resize leaves no residue.
+// current inputs on every event; the only thing kept between events is a host close that is waiting to settle.
 export function watchSoftKeyboard(root: HTMLElement, win: Window, onchange: (open: boolean) => void, ime: HostIme | null = null): () => void {
     const viewport = win.visualViewport
     if (!viewport && !ime) return () => {}
     const active = root.ownerDocument.activeElement
     let textFocused = !!active && root.contains(active) && isTextField(active)
     let open = false
-    const evaluate = () => {
+    // A host close of an open keyboard that is waiting for the size to settle.
+    let closing = false
+    let widthAtClose = 0
+    let widthChanged = false
+    let settleTimer: number | null = null
+    const widthNow = () => viewport?.width ?? win.innerWidth
+    const clearClosing = () => {
+        closing = false
+        widthChanged = false
+        if (settleTimer !== null) { win.clearTimeout(settleTimer); settleTimer = null }
+    }
+    const compute = (commitClose: boolean) => {
+        const host = ime?.read() ?? null
         const next = isSoftKeyboardOpen({
             textFocused,
-            host: ime?.read() ?? null,
+            host,
             windowHeight: win.innerHeight,
             viewportHeight: viewport?.height ?? Number.NaN,
             scale: viewport?.scale ?? 1,
         })
-        if (next === open) return
+        if (next === open) { clearClosing(); return }
+        if (!commitClose && !next && textFocused && host && !host.visible) {
+            if (closing) return
+            closing = true
+            widthAtClose = widthNow()
+            settleTimer = win.setTimeout(settle, SOFT_KEYBOARD_CLOSE_SETTLE_MS)
+            return
+        }
+        clearClosing()
         open = next
         onchange(open)
+    }
+    const evaluate = () => compute(false)
+    // The deferred close is committed from the inputs as they are now, so a report that changed meanwhile wins.
+    function settle(): void {
+        clearClosing()
+        compute(true)
+    }
+    const onResize = () => {
+        if (!closing) { evaluate(); return }
+        if (settleTimer !== null) { win.clearTimeout(settleTimer); settleTimer = null }
+        if (widthNow() !== widthAtClose) widthChanged = true
+        if (!widthChanged) { settle(); return }
+        settleTimer = win.setTimeout(settle, SOFT_KEYBOARD_ROTATION_QUIET_MS)
     }
     const insideRoot = (node: EventTarget | null) => node instanceof Node && root.contains(node)
     const onFocusIn = (event: FocusEvent) => { textFocused = isTextField(event.target); evaluate() }
     const onFocusOut = (event: FocusEvent) => { textFocused = insideRoot(event.relatedTarget) && isTextField(event.relatedTarget); evaluate() }
     root.addEventListener('focusin', onFocusIn)
     root.addEventListener('focusout', onFocusOut)
-    viewport?.addEventListener('resize', evaluate)
+    viewport?.addEventListener('resize', onResize)
     const unsubscribe = ime ? ime.subscribe(evaluate) : () => {}
     evaluate()
     return () => {
         root.removeEventListener('focusin', onFocusIn)
         root.removeEventListener('focusout', onFocusOut)
-        viewport?.removeEventListener('resize', evaluate)
+        viewport?.removeEventListener('resize', onResize)
         unsubscribe()
+        clearClosing()
     }
 }

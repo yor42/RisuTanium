@@ -84,6 +84,7 @@
         host: () => host,
         active: () => !(installed && chatSurface.hidden),
         follower: () => follower,
+        content: () => rows,
         newestIndex: () => messages.length - 1,
         pin: () => pin,
         setPin: (value) => {
@@ -203,7 +204,7 @@
         const room = chat?.id ?? null
         const length = messages.length
         const same = room === previousRoom
-        if (!same) { hold.cancel(); unread = false; atBottom = true; restAtNewest(room) }
+        if (!same) { unread = false; atBottom = true; restAtNewest(room) }
         if (same && length > previousLength && messages[length - 1]?.role === 'char' && DBState.db.autoScrollToNewMessage) {
             if (atBottom || DBState.db.alwaysScrollToNewMessage) void tick().then(scrollToLatestMessage)
             else unread = true
@@ -225,7 +226,7 @@
             source = own
         }
         const stopIntentCount = source.subscribe(() => { intentSeq += 1 })
-        const made = createBottomFollower(host, rows, () => DBState.db.autoScrollToNewMessage !== false && !(installed && chatSurface.hidden), source, () => messages.length - 1)
+        const made = createBottomFollower(host, rows, () => DBState.db.autoScrollToNewMessage !== false && !(installed && chatSurface.hidden), source, () => messages.length - 1, () => hold.isInFlight())
         follower = made
         return () => { made.dispose(); stopIntentCount(); unbind(); if (follower === made) follower = undefined }
     })

@@ -69,7 +69,13 @@ function rig(options: RigOptions = {}) {
     document.body.appendChild(host)
     let scrollTop = 0
     const writes: number[] = []
-    Object.defineProperty(host, 'scrollTop', { get: () => scrollTop, set: (value: number) => { writes.push(value); scrollTop = value }, configurable: true })
+    // The largest scrollTop the layout allows right now; a write beyond it is clamped like the browser does.
+    const limit = { max: Infinity }
+    Object.defineProperty(host, 'scrollTop', { get: () => scrollTop, set: (value: number) => { writes.push(value); scrollTop = Math.min(value, limit.max) }, configurable: true })
+    Object.defineProperty(host, 'scrollHeight', { value: 5000, configurable: true })
+    const content = document.createElement('div')
+    host.appendChild(content)
+    const order: string[] = []
     host.getBoundingClientRect = () => rectAt(0)
     // The row's on-screen top is its content offset minus scrollTop, so a correction moves it.
     const layout = { content: 100, row: document.createElement('article') as HTMLElement | null }
@@ -81,13 +87,14 @@ function rig(options: RigOptions = {}) {
     const committed: number[] = []
     const follower = {
         isFollowing: vi.fn(() => state.following),
-        release: vi.fn(() => { state.following = false }),
+        release: vi.fn(() => { state.following = false; order.push('release') }),
         sync: vi.fn(),
     }
     const hold = createStepHold({
         host: () => host,
         active: () => state.active,
         follower: () => follower,
+        content: () => content,
         newestIndex: () => state.newest,
         pin: () => state.pin,
         setPin: (value) => { state.pin = value },
@@ -95,7 +102,7 @@ function rig(options: RigOptions = {}) {
         commitPin: (held) => { committed.push(held); state.pin = null },
         row: () => layout.row,
         intentSeq: () => state.intents,
-        tick: () => Promise.resolve(),
+        tick: () => { order.push('tick'); return Promise.resolve() },
         requestFrame: (callback) => { frameId += 1; frames.set(frameId, callback); return frameId },
         cancelFrame: (id) => { cancelled.push(id); frames.delete(id) },
     })
@@ -103,7 +110,8 @@ function rig(options: RigOptions = {}) {
         for (const [id, callback] of [...frames]) { frames.delete(id); callback() }
     }
     function anchor(): string { return host.style.getPropertyValue('overflow-anchor') }
-    return { host, hold, layout, state, writes, frames, cancelled, committed, follower, runFrames, anchor }
+    function reserve(): string { return content.style.getPropertyValue('padding-bottom') }
+    return { host, hold, layout, state, writes, frames, cancelled, committed, follower, runFrames, anchor, limit, content, order, reserve }
 }
 
 function deferred() {
@@ -218,6 +226,68 @@ describe('a step while the reader is following the newest message', () => {
         first.finish()
         await earlier
         expect(r.committed).toEqual([8])
+    })
+})
+
+describe('a write that the layout clamps before the frame', () => {
+    test('the scroll range of the content is kept from before the step until the frame pass, and given back after it', async () => {
+        const r = rig()
+        const pending = deferred()
+        const running = r.hold.run(9, () => pending.promise)
+        expect(r.reserve()).toBe('5000px')
+        pending.finish()
+        await running
+        expect(r.reserve()).toBe('5000px')
+        r.runFrames()
+        expect(r.reserve()).toBe('')
+    })
+    test('a clamped first write is re-applied by the frame pass until the row is back where it was', async () => {
+        const r = rig()
+        r.limit.max = 20
+        await r.hold.run(9, () => { r.layout.content = 160 })
+        expect(r.host.scrollTop).toBe(20)
+        r.limit.max = Infinity
+        r.runFrames()
+        expect(r.host.scrollTop).toBe(60)
+        expect(r.writes).toEqual([60, 60])
+    })
+    test('a rejected step, a cancel and a finished hold each give the scroll range back', async () => {
+        const failing = rig()
+        await expect(failing.hold.run(9, () => { throw new Error('step failed') })).rejects.toThrow('step failed')
+        expect(failing.reserve()).toBe('')
+        const cancelled = rig()
+        void cancelled.hold.run(9, () => deferred().promise)
+        expect(cancelled.reserve()).toBe('5000px')
+        cancelled.hold.cancel()
+        expect(cancelled.reserve()).toBe('')
+    })
+    test('a following reader on the newest row keeps no reserved range while the row stays the newest', async () => {
+        const r = rig({ following: true })
+        await r.hold.run(11, () => { r.layout.content = 200 })
+        expect(r.reserve()).toBe('')
+        expect(r.follower.release).not.toHaveBeenCalled()
+        expect(r.state.pin).toBeNull()
+    })
+})
+
+describe('a step that leaves newer messages after the stepped row', () => {
+    test('a following reader is released before the DOM update and the row is held', async () => {
+        const r = rig({ following: true })
+        await r.hold.run(11, () => { r.state.newest = 43; r.layout.content = 160 })
+        expect(r.follower.release).toHaveBeenCalledTimes(1)
+        expect(r.order).toEqual(['release', 'tick'])
+        expect(r.writes).toEqual([60])
+        expect(r.committed).toEqual([8])
+        expect(r.reserve()).toBe('5000px')
+        r.runFrames()
+        expect(r.reserve()).toBe('')
+        expect(r.follower.sync).toHaveBeenCalledTimes(1)
+    })
+    test('a step that keeps the row newest never releases the follower', async () => {
+        const r = rig({ following: true })
+        await r.hold.run(11, () => { r.state.newest = 11 })
+        expect(r.follower.release).not.toHaveBeenCalled()
+        expect(r.writes).toEqual([])
     })
 })
 

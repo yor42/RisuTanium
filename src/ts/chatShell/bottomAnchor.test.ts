@@ -72,6 +72,55 @@ describe('bottom follower', () => {
         fire()
         expect(writes).toEqual([254])
     })
+    describe('while a step hold is in flight', () => {
+        function heldFollower(host: HTMLElement) {
+            const state = { held: false }
+            const intent = fakeIntent()
+            return { state, follower: createBottomFollower(host, {} as Element, () => true, intent.source, newest, () => state.held) }
+        }
+        test('a resize writes nothing, and a reader off the bottom is not re-entered by the transient layout', () => {
+            const { host, writes, grow, land } = liveHost(300, 100)
+            const { state, follower } = heldFollower(host)
+            expect(follower.isFollowing()).toBe(false)
+            state.held = true
+            land(200)
+            follower.sync()
+            expect(follower.isFollowing()).toBe(false)
+            grow(354)
+            fire()
+            expect(writes).toEqual([])
+            state.held = false
+            land(100)
+            follower.sync()
+            expect(follower.isFollowing()).toBe(false)
+        })
+        test('a following reader gets the skipped size change applied by the first sync after the hold, once', () => {
+            const { host, writes, grow } = liveHost(300, 200)
+            const { state, follower } = heldFollower(host)
+            expect(follower.isFollowing()).toBe(true)
+            state.held = true
+            grow(354)
+            fire()
+            follower.sync()
+            expect(writes).toEqual([])
+            state.held = false
+            follower.sync()
+            expect(writes).toEqual([254])
+            follower.sync()
+            expect(writes).toEqual([254])
+        })
+        test('a reader released during the hold does not get the skipped size change applied', () => {
+            const { host, writes, grow } = liveHost(300, 200)
+            const { state, follower } = heldFollower(host)
+            state.held = true
+            grow(354)
+            fire()
+            follower.release()
+            state.held = false
+            follower.sync()
+            expect(writes).toEqual([])
+        })
+    })
     test('the follow gate and dispose are honoured', () => {
         const { host, writes, grow } = liveHost(300, 200)
         let allowed = false

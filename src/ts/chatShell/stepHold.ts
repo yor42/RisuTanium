@@ -40,6 +40,9 @@ export interface StepHoldDeps {
     // False while the chat surface is hidden: the step runs and nothing is held.
     active: () => boolean
     follower: () => Pick<BottomFollower, 'isFollowing' | 'release' | 'sync'> | undefined
+    // The element that holds the rows. While a hold runs it gets a bottom padding as large as the scrolled extent, so a step that
+    // briefly lays out fewer rows than before cannot clamp the correcting write; the padding leaves the rows' tops unchanged.
+    content?: () => HTMLElement | undefined
     newestIndex: () => number
     // The pin lives in the list's reactive state, so the rendered window follows it.
     pin: () => number | null
@@ -64,17 +67,20 @@ export interface StepHold {
 }
 
 const ANCHOR_PROPERTY = 'overflow-anchor'
+const RESERVE_PROPERTY = 'padding-bottom'
 
 // Holds the stepped row on screen. The step changes heights around the row; the hold measures the row's top before and after
-// and moves scrollTop by the difference, once after the step has rendered and once more in the next frame. While a hold runs
-// the transcript's native scroll anchoring is suppressed with an inline declaration, so the hold is the only owner of the
-// position; the declaration is removed on every exit. A reader who is following the newest message is not held: the follower
-// keeps the bottom and the browser clamps directly.
+// and moves scrollTop by the difference, once after the step has rendered (before the next paint) and once more in the next
+// frame. While a hold runs the transcript's native scroll anchoring is suppressed with an inline declaration and its scroll
+// range is kept, so the hold is the only owner of the position; both are removed on every exit. A reader who is following
+// the newest message is not held while the stepped row stays the newest: the follower keeps the bottom. A step that leaves
+// newer messages after the stepped row ends following and the hold owns the position from then on.
 export function createStepHold(deps: StepHoldDeps): StepHold {
     let generation = 0
     let pendingFrame: number | null = null
     let inFlight = false
     let suppressed: HTMLElement | null = null
+    let reserved: HTMLElement | null = null
 
     function suppress(host: HTMLElement): void {
         if (suppressed === host) return
@@ -82,9 +88,18 @@ export function createStepHold(deps: StepHoldDeps): StepHold {
         host.style.setProperty(ANCHOR_PROPERTY, 'none')
         suppressed = host
     }
+    function reserve(extent: number): void {
+        const content = deps.content?.()
+        if (!content || reserved === content) return
+        reserved?.style.removeProperty(RESERVE_PROPERTY)
+        content.style.setProperty(RESERVE_PROPERTY, `${extent}px`)
+        reserved = content
+    }
     function unsuppress(): void {
         suppressed?.style.removeProperty(ANCHOR_PROPERTY)
         suppressed = null
+        reserved?.style.removeProperty(RESERVE_PROPERTY)
+        reserved = null
     }
     function cancelPendingFrame(): void {
         if (pendingFrame === null) return
@@ -120,16 +135,27 @@ export function createStepHold(deps: StepHoldDeps): StepHold {
             const follower = deps.follower()
             // A step on a row that is not the newest holds that row even for a reader who was following.
             if (follower && follower.isFollowing() && idx < deps.newestIndex()) follower.release()
-            const following = follower?.isFollowing() ?? false
+            let following = follower?.isFollowing() ?? false
             inFlight = true
             suppress(host)
             const intentAtStart = deps.intentSeq()
-            let before: number | null = null
-            if (!following) {
-                if (deps.pin() === null) deps.setPin(deps.windowPin())
-                before = topOf(host, idx)
-            }
+            // The pin and the row's top are taken even for a following reader: the step may leave newer messages after the row.
+            const tookPin = deps.pin() === null
+            if (tookPin) deps.setPin(deps.windowPin())
+            const extent = host.scrollHeight
+            const before = topOf(host, idx)
+            if (!following) reserve(extent)
             await step()
+            if (following && mine === generation) {
+                if (follower && deps.newestIndex() > idx) {
+                    // Newer messages follow the stepped row now. The follower leaves before the DOM update so its resize write cannot move the row.
+                    follower.release()
+                    following = false
+                    reserve(extent)
+                } else if (tookPin) {
+                    deps.setPin(null)
+                }
+            }
             await deps.tick()
             // A later hold owns the pin, the suppression and the frame pass.
             if (mine !== generation) {

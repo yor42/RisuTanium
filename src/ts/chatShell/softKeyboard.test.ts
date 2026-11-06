@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { HostIme, ImeState } from '../android/hostBridge'
-import { isSoftKeyboardOpen, isTextField, SOFT_KEYBOARD_MIN_INSET, watchSoftKeyboard } from './softKeyboard'
+import { isSoftKeyboardOpen, isTextField, SOFT_KEYBOARD_CLOSE_SETTLE_MS, SOFT_KEYBOARD_MIN_INSET, SOFT_KEYBOARD_ROTATION_QUIET_MS, watchSoftKeyboard } from './softKeyboard'
 
 class ViewportStub extends EventTarget {
     height = 800
@@ -117,8 +117,10 @@ describe('watchSoftKeyboard', () => {
         return changes
     }
 
+    beforeEach(() => { vi.useFakeTimers() })
     afterEach(() => {
         stop()
+        vi.useRealTimers()
         document.body.replaceChildren()
         Reflect.deleteProperty(window, 'visualViewport')
     })
@@ -240,8 +242,93 @@ describe('watchSoftKeyboard', () => {
             resizeWindow(PORTRAIT - 288, 400)
             expect(changes).toHaveBeenCalledTimes(1)
             ime.report(false, 0)
+            vi.advanceTimersByTime(SOFT_KEYBOARD_CLOSE_SETTLE_MS)
             expect(changes).toHaveBeenCalledTimes(2)
             expect(changes).toHaveBeenLastCalledWith(false)
+        })
+
+        // Phone 1 event order: the host report leads the window resize by 2 to 46 ms.
+        test('a plain close settles at the first resize at the same width, with no timer needed', () => {
+            const ime = new HostImeStub()
+            const changes = setup(ime, PORTRAIT)
+            field.focus()
+            ime.report(true, PORTRAIT - GBOARD_VIEWPORT)
+            resizeWindow(GBOARD_VIEWPORT)
+            ime.report(false, 0)
+            expect(changes).toHaveBeenCalledTimes(1)
+            resizeWindow(PORTRAIT)
+            expect(changes).toHaveBeenCalledTimes(2)
+            expect(changes).toHaveBeenLastCalledWith(false)
+        })
+
+        test('a close with no resize settles after the settle delay and not before', () => {
+            const ime = new HostImeStub()
+            const changes = setup(ime, PORTRAIT)
+            field.focus()
+            ime.report(true, PORTRAIT - GBOARD_VIEWPORT)
+            ime.report(false, 0)
+            vi.advanceTimersByTime(SOFT_KEYBOARD_CLOSE_SETTLE_MS - 1)
+            expect(changes).toHaveBeenCalledTimes(1)
+            vi.advanceTimersByTime(1)
+            expect(changes).toHaveBeenLastCalledWith(false)
+            expect(changes).toHaveBeenCalledTimes(2)
+        })
+
+        test('a rotation close followed by a visible report again gives no change at all', () => {
+            const ime = new HostImeStub()
+            const changes = setup(ime, PORTRAIT)
+            field.focus()
+            ime.report(true, PORTRAIT - GBOARD_VIEWPORT)
+            resizeWindow(GBOARD_VIEWPORT)
+            expect(changes).toHaveBeenCalledTimes(1)
+            // The host reports the close before the first landscape resize, then the visible report follows the resizes.
+            ime.report(false, 0)
+            vi.advanceTimersByTime(8)
+            resizeWindow(ROTATION_TRANSIENT, 798)
+            vi.advanceTimersByTime(8)
+            resizeWindow(LANDSCAPE_WITH_KEYBOARD, 798)
+            vi.advanceTimersByTime(154)
+            ime.report(true, 200)
+            vi.advanceTimersByTime(1000)
+            expect(changes).toHaveBeenCalledTimes(1)
+        })
+
+        test('a width change that stays quiet with the host still closed commits the close after the quiet period from the last resize', () => {
+            const ime = new HostImeStub()
+            const changes = setup(ime, PORTRAIT)
+            field.focus()
+            ime.report(true, PORTRAIT - GBOARD_VIEWPORT)
+            ime.report(false, 0)
+            resizeWindow(ROTATION_TRANSIENT, 798)
+            vi.advanceTimersByTime(SOFT_KEYBOARD_ROTATION_QUIET_MS - 1)
+            resizeWindow(LANDSCAPE_WITH_KEYBOARD, 798)
+            vi.advanceTimersByTime(SOFT_KEYBOARD_ROTATION_QUIET_MS - 1)
+            expect(changes).toHaveBeenCalledTimes(1)
+            vi.advanceTimersByTime(1)
+            expect(changes).toHaveBeenCalledTimes(2)
+            expect(changes).toHaveBeenLastCalledWith(false)
+        })
+
+        test('focus leaving the field closes at once even while a host close is waiting', () => {
+            const ime = new HostImeStub()
+            const changes = setup(ime, PORTRAIT)
+            field.focus()
+            ime.report(true, PORTRAIT - GBOARD_VIEWPORT)
+            ime.report(false, 0)
+            outside.focus()
+            expect(changes).toHaveBeenLastCalledWith(false)
+            expect(changes).toHaveBeenCalledTimes(2)
+        })
+
+        test('after dispose, a waiting host close never fires', () => {
+            const ime = new HostImeStub()
+            const changes = setup(ime, PORTRAIT)
+            field.focus()
+            ime.report(true, PORTRAIT - GBOARD_VIEWPORT)
+            ime.report(false, 0)
+            stop()
+            vi.advanceTimersByTime(SOFT_KEYBOARD_CLOSE_SETTLE_MS * 5)
+            expect(changes).toHaveBeenCalledTimes(1)
         })
 
         test('the fallback is used before the first report; afterwards the host alone decides', () => {
@@ -251,6 +338,7 @@ describe('watchSoftKeyboard', () => {
             viewport.resize(450)
             expect(changes).toHaveBeenLastCalledWith(true)
             ime.report(false, 0)
+            vi.advanceTimersByTime(SOFT_KEYBOARD_CLOSE_SETTLE_MS)
             expect(changes).toHaveBeenLastCalledWith(false)
             viewport.resize(400)
             viewport.resize(450)
