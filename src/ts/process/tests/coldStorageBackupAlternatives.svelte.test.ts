@@ -369,7 +369,7 @@ describe('the cold-storage payloads of a .bin export carry no chat alternatives'
         expect(chats.every((chat) => !('alt' in chat))).toBe(true)
         expect(chats[0].message).toEqual([{ time: 1, data: 'First message', role: 'char' }])
         expect(new TextDecoder().decode(result.payloads[0].encoded)).not.toContain('ALTERNATIVE-REPLY-MARK')
-        expect(result.omittedAlternatives).toEqual([{ key: 'c:c1/id:id-First', text: 'Alice / First' }])
+        expect(result.omittedChatData).toEqual([{ key: 'c:c1/id:id-First', text: 'Alice / First', kinds: ['alternatives'] }])
     })
 
     test('reproducer: a chat unit that holds alt is carried without it', async () => {
@@ -381,7 +381,7 @@ describe('the cold-storage payloads of a .bin export carry no chat alternatives'
         const unit = parsedPayload(result, KEY)
         expect('alt' in unit).toBe(false)
         expect(unit.message).toEqual([{ time: 1, data: 'archived', role: 'user' }])
-        expect(result.omittedAlternatives).toEqual([{ key: `u:${KEY}`, text: 'Unknown Character / Loose' }])
+        expect(result.omittedChatData).toEqual([{ key: `u:${KEY}`, text: 'Unknown Character / Loose', kinds: ['alternatives'] }])
     })
 
     test('reproducer: the stored value is not changed by the strip', async () => {
@@ -403,7 +403,7 @@ describe('the cold-storage payloads of a .bin export carry no chat alternatives'
 
         const result = await collectColdStorageBackupPayloads(makeDb([stub('c1', 'Alice', KEY)]))
 
-        expect('omittedAlternatives' in result).toBe(false)
+        expect('omittedChatData' in result).toBe(false)
         expect(parsedPayload(result, KEY)).toEqual(original)
     })
 
@@ -414,6 +414,43 @@ describe('the cold-storage payloads of a .bin export carry no chat alternatives'
         const result = await collectColdStorageBackupPayloads(makeDb([stub('c1', 'Alice', KEY)]))
 
         expect('alt' in (parsedPayload(result, KEY).character as { chats: Record<string, unknown>[] }).chats[0]).toBe(false)
-        expect('omittedAlternatives' in result).toBe(false)
+        expect('omittedChatData' in result).toBe(false)
+    })
+
+    test('reproducer (R4): a character unit and a chat unit lose the interrupted flag and the coverage pointer, the units are named with their kinds, and the stored values keep both', async () => {
+        const CHARACTER_KEY = uid(6)
+        const UNIT_KEY = uid(7)
+        const chat = { ...chatWith('First'), supaMemoryData: 'LINE-ONE\nrest', supaMemoryCoveredId: 'LINE-ONE', message: [{ time: 1, data: 'cut off', role: 'char', interrupted: true }] }
+        await setColdStorageItem(CHARACTER_KEY, { character: { chaId: 'c1', name: 'Alice', type: 'character', chatPage: 0, chats: [chat] } })
+        await setColdStorageItem(UNIT_KEY, { message: [{ time: 1, data: 'cut off', role: 'char', interrupted: true }], name: 'Loose', supaMemoryData: 'LINE-ONE\nrest', supaMemoryCoveredId: 'LINE-ONE' })
+
+        const result = await collectColdStorageBackupPayloads(makeDb([stub('c1', 'Alice', CHARACTER_KEY), stub('c2', 'Bob', UNIT_KEY)]))
+
+        for (const key of [CHARACTER_KEY, UNIT_KEY]) {
+            const text = decoder.decode((result.payloads.find((payload) => payload.key === key) as { encoded: Uint8Array }).encoded)
+            expect(text, key).not.toContain('"interrupted"')
+            expect(text, key).not.toContain('"supaMemoryCoveredId"')
+            expect(text, key).toContain('LINE-ONE')
+        }
+        expect(result.omittedChatData).toEqual([
+            { key: 'c:c1/id:id-First', text: 'Alice / First', kinds: ['interruptedNote', 'memoryCoverage'] },
+            { key: `u:${UNIT_KEY}`, text: 'Unknown Character / Loose', kinds: ['interruptedNote', 'memoryCoverage'] },
+        ])
+        const stored = JSON.stringify([await readColdStorageItem(CHARACTER_KEY), await readColdStorageItem(UNIT_KEY)])
+        expect(stored.match(/"interrupted"/g)).toHaveLength(2)
+        expect(stored.match(/"supaMemoryCoveredId"/g)).toHaveLength(2)
+    })
+
+    test('guard: keys that mean nothing are removed from a unit and not named', async () => {
+        const KEY = uid(8)
+        const chat = { ...chatWith('First'), supaMemoryData: 'LINE-ONE\nrest', supaMemoryCoveredId: 'OTHER', message: [{ time: 1, data: 'whole', role: 'char', interrupted: false }] }
+        await setColdStorageItem(KEY, { character: { chaId: 'c1', name: 'Alice', type: 'character', chatPage: 0, chats: [chat] } })
+
+        const result = await collectColdStorageBackupPayloads(makeDb([stub('c1', 'Alice', KEY)]))
+
+        const text = decoder.decode(result.payloads[0].encoded)
+        expect(text).not.toContain('"interrupted"')
+        expect(text).not.toContain('"supaMemoryCoveredId"')
+        expect('omittedChatData' in result).toBe(false)
     })
 })

@@ -18,8 +18,9 @@ interface ChatAddress {
  * shown reply's, so the shown reply comes first among them.
  *
  * `startState` is the chat's branch state when the request started. Every
- * candidate carries its own copy as `mem`, with all six keys: a record without
- * one would remove the live script state on arrival.
+ * candidate carries its own copy as `mem`, with every branch key (see
+ * `BRANCH_FIELD_KEYS`): a record without one would remove the live script state
+ * on arrival.
  *
  * Nothing is written when the reply cannot be found exactly once, or when the
  * chat's `alt` cannot be read.

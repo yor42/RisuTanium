@@ -55,6 +55,7 @@
     import { handleButtonTriggerWithin, handleFormTriggerWithin, playMessageTTS, requestRemove, deleteNow, type DeleteMode, copyMessageText, copyMessageAsCard, branchMessage, toggleMessageDisabled, toggleBookmark } from '../../ts/process/messageActions.svelte'
     import { stopTTS } from '../../ts/process/tts'
     import { stepSibling, regenerateNewest } from '../../ts/process/composerActions.svelte'
+    import { shellGenerationSource } from '../../ts/chatShell/sendFailure.svelte'
     import { originOf, isWriting } from '../../ts/process/chatOrigin'
     import { isActiveStreamReply } from '../../ts/process/activeStreams'
     import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopDelete.svelte'
@@ -251,6 +252,8 @@
     let generationBadgeShown = $derived(Boolean((messageGenerationInfo ?? message.generationInfo) && (DBState.db.requestInfoInsideChat || aiLawApplies())))
     let owner = $derived(DBState.db.characters?.[selIdState.selId])
     let chat = $derived(owner?.chats?.[owner.chatPage])
+    // Hidden names drop the avatar and the visible name; the name stays in the tree so the row keeps its accessible name.
+    let namesHidden = $derived(chat?.hideNames === true)
     let rowOrigin = $derived(owner?.chaId && chat?.id ? originOf(owner, chat) : null)
     let stopDeletePending = $derived(isStopDeletePending(rowOrigin))
     let isBookmarked = $derived(Boolean(chatId && chat?.bookmarks?.includes(chatId)))
@@ -265,7 +268,7 @@
     let actions = $derived(ACTION_IDS.filter((id) => id !== 'deleteAfter').filter((id) => idx >= 0 || id === 'copy' || id === 'selectText' || id === 'stepPrev' || id === 'stepNext' || id === 'customizeButtons').filter((id) => id !== 'readAloud' || canSpeak).filter((id) => id !== 'translate' || DBState.db.translator !== '').filter((id) => id !== 'newReply' || newestCharacter).filter((id) => !['stepPrev', 'stepNext'].includes(id) || showPager).filter((id) => id !== 'branch' || onBranch !== undefined))
     let sheetActions = $derived<SheetAction[]>([...actions, 'copyCard', ...(idx >= 0 ? ['hideAbove', 'deleteAfter'] as SheetAction[] : []), ...(idx >= 0 && !streaming && DBState.db.translatorType === 'llm' ? ['retranslate', 'editTranslation'] as SheetAction[] : []), ...(idx >= 0 && !streaming && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit) ? ['partialEdit'] as SheetAction[] : [])])
     let unavailable = $derived(ACTION_IDS.filter((id) => streaming && ['edit', 'translate', 'readAloud', 'branch', 'newReply'].includes(id) || stopDeletePending && (id === 'delete' || id === 'deleteAfter') || getBusy?.() === true && ['stepPrev', 'stepNext', 'newReply'].includes(id)))
-    const source = { closeMenu: () => {} }
+    const source = shellGenerationSource(() => {})
     function liveIndex(): number { return chatId ? (chat?.message.findIndex((item) => item.chatId === chatId) ?? idx) : idx }
     // The hosting shell shows the sheet outside the transcript; the request keeps every action on this row's live index.
     function openActions(opener: HTMLElement, point?: { x: number; y: number }): void {
@@ -620,15 +623,15 @@
 
 <!-- The article keeps the transcript semantics and is a tab stop and the focus target of message navigation, so its key and context-menu events and the captured clicks and submits of rich message content must reach it; the swipe gesture listens on the body. -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
-<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta="shown" data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="0" bind:this={article} onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
+<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta={namesHidden ? 'hidden' : 'shown'} data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="0" bind:this={article} onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
     {#if disabled === true}<div data-part="chat-message-divider" data-kind="disabled"></div>{/if}
     <div data-part="chat-message-name-row">
         <div data-part="chat-message-meta">
-            {#if !$HideIconStore && iconMounted}
+            {#if !$HideIconStore && iconMounted && !namesHidden}
                 {#if avatar}<img data-part="chat-message-avatar" data-round={DBState.db.roundIcons ? '' : undefined} src={avatar} alt="" onerror={() => { avatar = null }} />
                 {:else}<span data-part="chat-message-avatar" data-round={DBState.db.roundIcons ? '' : undefined} aria-hidden="true">{name.slice(0, 1)}</span>{/if}
             {/if}
-            <span data-part="chat-message-name" id={labelId}>{name}</span>
+            <span data-part="chat-message-name" id={labelId} data-name-hidden={namesHidden ? '' : undefined}>{name}</span>
             {#if isBookmarked}<span data-part="chat-message-badges" aria-label={language.bookmark}>★</span>{/if}
             <MessageMeta bind:this={meta} {name} time={message.time} model={generationBadgeShown ? '' : modelShortName} available={actions} disabled={unavailable} generating={streaming} onaction={(id, shiftKey) => { void act(id === 'delete' && shiftKey ? 'deleteAfter' : id) }} onmore={openActions} />
         </div>
@@ -671,7 +674,7 @@
     {:else if swipeProgress > 0}<span data-part="chat-swipe-arm" role="status" style:opacity={swipeProgress}>{armed ? language.chatShellReleaseNewReply : language.chatShellNoSavedReplies}</span>{/if}
     {#if userLast && !streaming}<button type="button" data-part="chat-generate-reply" disabled={getBusy?.() === true} onclick={generateAfterUser}>⟳ {language.chatShellGenerateReply}</button>{/if}
     {#if showPager || continuation > 0}
-        <AlternativesRow bind:this={alternatives} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} pager={showPager} browseOnly={!newestCharacter && !firstMessage} {continuation} busy={getBusy?.() ?? false} onwheel={onWheel} onStep={(direction) => { void browse(direction) }} onEnd={() => { void bringBackContinuation() }} />
+        <AlternativesRow bind:this={alternatives} {source} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} pager={showPager} browseOnly={!newestCharacter && !firstMessage} {continuation} busy={getBusy?.() ?? false} onwheel={onWheel} onStep={(direction) => { void browse(direction) }} onEnd={() => { void bringBackContinuation() }} />
     {/if}
     {#if statusMessage}<span data-part="chat-status-row" role="status" aria-live="polite">{statusMessage}</span>{/if}
     {#if idx >= 0 && !streaming && !editor.editMode && !editor.editTranslationMode && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit)}
@@ -689,6 +692,7 @@
     [data-part="chat-message-name-row"] { min-height: var(--message-name-row-height); }
     [data-part="chat-message-meta"] { display: flex; align-items: center; gap: var(--message-meta-gap); color: var(--nexus-text-secondary); }
     [data-part="chat-message-name"] { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    [data-part="chat-message-name"][data-name-hidden] { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     [data-part="chat-message-generation-info"] { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     [data-part="chat-message-avatar"] { display: inline-flex; align-items: center; justify-content: center; width: var(--size-avatar-sm); height: var(--size-avatar-sm); border-radius: var(--radius-circle); background: var(--nexus-surface-raised); }
     [data-part="chat-message-avatar"]:not([data-round]) { border-radius: var(--radius-4); }

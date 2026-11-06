@@ -16,6 +16,7 @@ vi.mock(import('../../ts/stores.svelte'), () => ({
 
 import { MobileGUI, SettingsMenuIndex, settingsOpen } from '../../ts/stores.svelte'
 import { settingsBackClose } from './settingsBack'
+import { isReturnToChat, openSettingsForFix, resetSettingsRouteForTests } from './settingsRoute'
 
 function setWidth(width: number): void {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
@@ -24,6 +25,7 @@ function setWidth(width: number): void {
 const originalWidth = window.innerWidth
 
 beforeEach(() => {
+    resetSettingsRouteForTests()
     MobileGUI.set(false)
     SettingsMenuIndex.set(-1)
     settingsOpen.set(true)
@@ -47,6 +49,44 @@ describe('settingsBackClose', () => {
         settingsBackClose()
         expect(get(settingsOpen)).toBe(stillOpen)
         expect(get(SettingsMenuIndex)).toBe(indexAfter)
+    })
+
+    test('U4 narrow width: after the Fix route, Back closes Settings outright and the mark is gone', () => {
+        setWidth(500)
+        openSettingsForFix('botSettings')
+        expect(get(SettingsMenuIndex)).toBe(1)
+
+        settingsBackClose()
+
+        expect(get(settingsOpen)).toBe(false)
+        expect(isReturnToChat()).toBe(false)
+    })
+
+    test('U4 narrow width: a plain open afterwards still goes back to the list first', () => {
+        setWidth(500)
+        openSettingsForFix('botSettings')
+        settingsBackClose()
+        expect(get(settingsOpen)).toBe(false)
+
+        settingsOpen.set(true)
+        SettingsMenuIndex.set(3)
+        settingsBackClose()
+
+        expect(get(settingsOpen)).toBe(true)
+        expect(get(SettingsMenuIndex)).toBe(-1)
+    })
+
+    test('U4 narrow width: a close by another path (Escape, the sidebar) also clears the mark', () => {
+        setWidth(500)
+        openSettingsForFix('botSettings')
+
+        settingsOpen.set(false)
+        settingsOpen.set(true)
+        SettingsMenuIndex.set(3)
+        settingsBackClose()
+
+        expect(get(settingsOpen)).toBe(true)
+        expect(get(SettingsMenuIndex)).toBe(-1)
     })
 
     test('(G) the width is read when the function runs, not when it was imported', () => {

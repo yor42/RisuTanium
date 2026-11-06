@@ -104,6 +104,9 @@ export function setGLChatVar(key:string, value:string, subject?: RunSubject) {
     }
 }
 
+// A chat-local value that is empty or 'null' means "inherit": the shared value is read instead, whatever the chat's
+// useLocallySetGlobalVariables flag says. The chat-only toggle scope (parser/chatToggleScope.ts) relies on this, so
+// a cleared chat-only text shows the shared value again; do not treat an empty local value as a deliberate override.
 export function getGlobalChatVar(key:string, subject?: RunSubject): string {
     const vt = getGLChatVar(key, subject)
     if(vt !== 'null' && vt){

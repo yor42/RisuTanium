@@ -71,6 +71,72 @@ describe('makeInert', () => {
     })
 })
 
+describe('makeInert held by two layers', () => {
+    // Regression reproducer: the second layer recorded the first layer's flag as the element's own state.
+    test('releasing the first layer and then the second leaves nothing inert', () => {
+        const root = build('<main id="x"></main>')
+        const x = root.querySelector<HTMLElement>('#x')!
+        const releaseA = makeInert([x])
+        const releaseB = makeInert([x])
+        releaseA()
+        expect(x.hasAttribute('inert')).toBe(true)
+        releaseB()
+        expect(x.hasAttribute('inert')).toBe(false)
+    })
+
+    test('releasing the second layer first, then the first, leaves nothing inert', () => {
+        const root = build('<main id="x"></main>')
+        const x = root.querySelector<HTMLElement>('#x')!
+        const releaseA = makeInert([x])
+        const releaseB = makeInert([x])
+        releaseB()
+        expect(x.hasAttribute('inert')).toBe(true)
+        releaseA()
+        expect(x.hasAttribute('inert')).toBe(false)
+    })
+
+    test('an element that was inert before the first layer stays inert after every release', () => {
+        const root = build('<aside id="s" inert></aside>')
+        const s = root.querySelector<HTMLElement>('#s')!
+        const releaseA = makeInert([s])
+        const releaseB = makeInert([s])
+        releaseA()
+        releaseB()
+        expect(s.hasAttribute('inert')).toBe(true)
+    })
+
+    test('a layer that holds only part of the elements releases only those', () => {
+        const root = build('<main id="a"></main><main id="b"></main>')
+        const a = root.querySelector<HTMLElement>('#a')!
+        const b = root.querySelector<HTMLElement>('#b')!
+        const releaseAll = makeInert([a, b])
+        const releaseB = makeInert([b])
+        releaseAll()
+        expect(a.hasAttribute('inert')).toBe(false)
+        expect(b.hasAttribute('inert')).toBe(true)
+        releaseB()
+        expect(b.hasAttribute('inert')).toBe(false)
+    })
+
+    test('releasing the same layer twice does not release another layer\'s hold', () => {
+        const root = build('<main id="x"></main>')
+        const x = root.querySelector<HTMLElement>('#x')!
+        const releaseA = makeInert([x])
+        makeInert([x])
+        releaseA()
+        releaseA()
+        expect(x.hasAttribute('inert')).toBe(true)
+    })
+
+    test('an element listed twice in one layer is held once', () => {
+        const root = build('<main id="x"></main>')
+        const x = root.querySelector<HTMLElement>('#x')!
+        const release = makeInert([x, x])
+        release()
+        expect(x.hasAttribute('inert')).toBe(false)
+    })
+})
+
 describe('returnFocus', () => {
     test('focuses a connected trigger and refuses a detached or inert one', () => {
         const root = build('<button id="t">t</button><div inert><button id="i">i</button></div>')

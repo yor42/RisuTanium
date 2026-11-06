@@ -589,7 +589,7 @@ describe('branchAt', () => {
         expect(copyOf(chat)).toEqual(before)
     })
 
-    test('end control: arrives at the most recently left continuation and restores all six live fields', async () => {
+    test('end control: arrives at the most recently left continuation and restores every live branch field', async () => {
         const parkedHypaV2 = { lastMainChunkID: 3, chunks: [], mainChunks: [] }
         const parkedHypaV3 = { summaries: [], categories: [] }
         const chat = install([
@@ -737,7 +737,7 @@ describe('candidates of one generation', () => {
         expect(candidates[0].m.time).toBeGreaterThan(shown.time ?? 0)
         expect(candidates[1].m.time).toBeGreaterThan(candidates[0].m.time ?? 0)
         for (const record of candidates) {
-            expect(Object.keys(record.mem ?? {}).sort()).toEqual(['hypaV2Data', 'hypaV3Data', 'lastMemory', 'scriptstate', 'supaMemoryCoveredId', 'supaMemoryData'])
+            expect(Object.keys(record.mem ?? {}).sort()).toEqual(['hypaV2Data', 'hypaV3Data', 'lastMemory', 'scopedMemory', 'scriptstate', 'supaMemoryCoveredId', 'supaMemoryData'])
             expect(record.mem?.scriptstate).toEqual({ start: 1 })
             expect(record.mem?.lastMemory).toBe(chat.lastMemory)
             expect(record.mem?.supaMemoryData).toBeNull()
@@ -770,12 +770,30 @@ describe('candidates of one generation', () => {
         const candidates = chat.alt!.filter((record) => record.m.data === 'second')
         expect(candidates).toHaveLength(1)
         expect(chat.message[1].data).toBe('first')
-        expect(Object.keys(candidates[0].mem ?? {}).sort()).toEqual(['hypaV2Data', 'hypaV3Data', 'lastMemory', 'scriptstate', 'supaMemoryCoveredId', 'supaMemoryData'])
+        expect(Object.keys(candidates[0].mem ?? {}).sort()).toEqual(['hypaV2Data', 'hypaV3Data', 'lastMemory', 'scopedMemory', 'scriptstate', 'supaMemoryCoveredId', 'supaMemoryData'])
         expect(candidates[0].mem?.scriptstate).toEqual({ start: 1 })
 
         await reroll(source)
         expect(chat.message[1].data).toBe('second')
         expect(chat.scriptstate).toEqual({ start: 1 })
+    })
+
+    // C-T7d: a candidate is a sibling that restores the start state whole, the chat-only memory switch included
+    test('C-T7d: the candidates carry the start value of the chat-only memory switch and restore it on arrival', async () => {
+        const chat = simpleChat({ useLocallySetGlobalVariables: true, scopedMemory: true })
+        mockMultiline('first', 'second', 'third')
+
+        await reroll(source)
+        const candidates = chat.alt!.filter((record) => record.m.data === 'second' || record.m.data === 'third')
+        expect(candidates).toHaveLength(2)
+        for (const record of candidates) {
+            expect(record.mem?.scopedMemory).toBe(true)
+        }
+
+        chat.scopedMemory = false
+        await reroll(source)
+        expect(chat.message[1].data).toBe('second')
+        expect(chat.scopedMemory).toBe(true)
     })
 })
 

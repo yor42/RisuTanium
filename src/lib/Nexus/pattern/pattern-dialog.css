@@ -2,7 +2,8 @@
   Pattern dialog shell and warning sheet: layout, colour and type, then the motion of the same parts.
   Needs styles/nexus-tokens.css and styles/pattern-tokens.css. Every value comes from a token; a literal here is 0, a 1px hairline, a keyword or a percentage.
   There is no backdrop-filter: the dialog surface is opaque. State is data-* (data-pattern-severity, data-low-power, data-layout); parts carry data-part.
-  Layout is phone when the layer carries data-layout="phone" (the shell sets it from the viewport) or an ancestor does.
+  Layout is phone when the layer carries data-layout="phone" (the shell sets it from the viewport); a host's own data-layout does not reach the dialog.
+  Every rule keyed on data-layout, data-pattern-severity, data-form or aria-expanded names a pattern part in the same compound, so the sheet works inside any host.
 */
 [data-part="pattern-layer"] [data-part^="pattern-"][hidden] { display: none !important; }
 [data-part="pattern-layer"], [data-part="pattern-layer"] * { box-sizing: border-box; }
@@ -11,21 +12,21 @@
 [data-part="pattern-layer"] .pattern-icon { display: block; width: 100%; height: 100%; }
 
 /* ---- severity roles: edge colour and tint per level; the shape of the mark changes too ---- */
-[data-pattern-severity="notice"] { --p-edge: var(--pattern-warn-edge-notice); --p-tint: var(--pattern-tint-notice); }
-[data-pattern-severity="caution"] { --p-edge: var(--pattern-warn-edge-caution); --p-tint: var(--pattern-tint-caution); }
-[data-pattern-severity="confirm"] { --p-edge: var(--pattern-warn-edge-confirm); --p-tint: var(--pattern-tint-confirm); }
-[data-pattern-severity="danger"] { --p-edge: var(--pattern-warn-edge-danger); --p-tint: var(--pattern-tint-danger); }
-[data-pattern-severity="blocked"] { --p-edge: var(--pattern-warn-edge-blocked); --p-tint: var(--pattern-tint-blocked); }
+[data-part="pattern-warn-root"][data-pattern-severity="notice"] { --p-edge: var(--pattern-warn-edge-notice); --p-tint: var(--pattern-tint-notice); }
+[data-part="pattern-warn-root"][data-pattern-severity="caution"] { --p-edge: var(--pattern-warn-edge-caution); --p-tint: var(--pattern-tint-caution); }
+[data-part="pattern-warn-root"][data-pattern-severity="confirm"] { --p-edge: var(--pattern-warn-edge-confirm); --p-tint: var(--pattern-tint-confirm); }
+[data-part="pattern-warn-root"][data-pattern-severity="danger"] { --p-edge: var(--pattern-warn-edge-danger); --p-tint: var(--pattern-tint-danger); }
+[data-part="pattern-warn-root"][data-pattern-severity="blocked"] { --p-edge: var(--pattern-warn-edge-blocked); --p-tint: var(--pattern-tint-blocked); }
 
 /* ---- dialog layer: scrim + centred dialog, or a bottom sheet on a phone ---- */
 [data-part="pattern-layer"] { position: fixed; inset: 0; z-index: var(--pattern-z-layer); display: flex; align-items: center; justify-content: center; padding: var(--pattern-warn-padding); font-family: var(--font); color: var(--nexus-text); }
-[data-part="pattern-layer"][data-layout="phone"], [data-layout="phone"] [data-part="pattern-layer"] { align-items: flex-end; padding: 0; }
+[data-part="pattern-layer"][data-layout="phone"] { align-items: flex-end; padding: 0; }
 [data-part="pattern-scrim"] { position: absolute; inset: 0; background: var(--pattern-warn-scrim); }
 [data-part="pattern-dialog"] {
   position: relative; width: min(var(--pattern-warn-width), 100%); max-height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; outline: none;
   background: var(--pattern-surface); border: 1px solid var(--nexus-edge-strong); border-radius: var(--pattern-warn-radius); box-shadow: var(--pattern-warn-shadow);
 }
-[data-part="pattern-layer"][data-layout="phone"] [data-part="pattern-dialog"], [data-layout="phone"] [data-part="pattern-dialog"] { width: 100%; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; border-bottom-width: 0; padding-bottom: env(safe-area-inset-bottom); }
+[data-part="pattern-layer"][data-layout="phone"] [data-part="pattern-dialog"] { width: 100%; border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; border-bottom-width: 0; padding-bottom: env(safe-area-inset-bottom); }
 
 /* ---- buttons ---- */
 [data-part="pattern-layer"] .pattern-button {
@@ -121,12 +122,12 @@
 
 [data-part="pattern-scrim"] { animation: pattern-fade-in var(--d-scrim) var(--nexus-ease) both; }
 [data-part="pattern-dialog"] { animation: pattern-rise-dialog var(--d-enter) var(--nexus-ease-out) both; }
-[data-part="pattern-layer"][data-layout="phone"] [data-part="pattern-dialog"], [data-layout="phone"] [data-part="pattern-dialog"] { animation-name: pattern-rise-sheet; }
-[data-form="sheet"] > [data-part="pattern-warn-mark"] { animation: pattern-glyph var(--d-glyph) var(--nexus-ease-out) var(--l-glyph) both; }
-[data-form="sheet"][data-pattern-severity="danger"] > [data-part="pattern-warn-mark"]::after { animation: var(--pm-halo-anim) var(--warning-halo-dur) var(--nexus-ease-out) var(--warning-halo-delay) 1 forwards; }
-[data-form="sheet"] [data-part="pattern-warn-consequence"] { animation: pattern-rise-bullet var(--d-bullet) var(--nexus-ease-out) var(--l-bullet) both; }
+[data-part="pattern-layer"][data-layout="phone"] [data-part="pattern-dialog"] { animation-name: pattern-rise-sheet; }
+[data-part="pattern-warn-root"][data-form="sheet"] > [data-part="pattern-warn-mark"] { animation: pattern-glyph var(--d-glyph) var(--nexus-ease-out) var(--l-glyph) both; }
+[data-part="pattern-warn-root"][data-form="sheet"][data-pattern-severity="danger"] > [data-part="pattern-warn-mark"]::after { animation: var(--pm-halo-anim) var(--warning-halo-dur) var(--nexus-ease-out) var(--warning-halo-delay) 1 forwards; }
+[data-part="pattern-warn-root"][data-form="sheet"] [data-part="pattern-warn-consequence"] { animation: pattern-rise-bullet var(--d-bullet) var(--nexus-ease-out) var(--l-bullet) both; }
 [data-part="pattern-warn-detail"]:not([hidden]) { animation: pattern-fade-in var(--d-detail) var(--nexus-ease-out) both; }
 [data-part="pattern-warn-caret"] { transition: transform var(--d-detail) var(--nexus-ease); }
-[aria-expanded="true"] > [data-part="pattern-warn-caret"] { transform: rotate(var(--pm-caret-turn)); }
+[data-part="pattern-warn-detail-toggle"][aria-expanded="true"] > [data-part="pattern-warn-caret"] { transform: rotate(var(--pm-caret-turn)); }
 [data-part="pattern-layer"] .pattern-button { transition: transform var(--d-press) var(--nexus-ease), opacity var(--d-state) var(--nexus-ease); }
 [data-part="pattern-layer"] .pattern-button:active { transform: scale(var(--pm-press)); }

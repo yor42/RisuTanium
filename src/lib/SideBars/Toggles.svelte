@@ -14,6 +14,19 @@
     import CustomSideBar from "./CustomSidebar.svelte";
     import { getGlobalChatVar, isLocallyHandledGlobalChatVar, removeLocallyHandledGlobalChatVar, setGlobalChatVar } from "src/ts/parser/chatVar.svelte";
     import { PinIcon } from "@lucide/svelte";
+    import { onDestroy } from "svelte";
+    import {
+        currentScopeKeys,
+        disableChatScope,
+        effectiveJailbreak,
+        effectiveMemory,
+        enableChatScope,
+        restoreChatScope,
+        writeChatJailbreak,
+        writeChatMemory,
+        type ChatScopeSnapshot,
+        type ScopeTarget,
+    } from "src/ts/parser/chatToggleScope";
 
     interface Props {
         chara?: character|groupChat
@@ -92,6 +105,97 @@
             return acc
         }, [])
     })
+
+    // The chat-only scope switch: on copies the shared values, off discards them, and an Undo is offered for 10 s.
+    // The Undo belongs to the owner and chat captured when the values were discarded, not to the current selection,
+    // and it writes through the live owner and chat or is refused with a notice.
+    const scopeUndoMs = 10_000
+    let scopeOn = $state(false)
+    let undoRow = $state<'none' | 'undo' | 'refused'>('none')
+    let scopeSnapshot: ChatScopeSnapshot | undefined
+    let scopeDiscardedFrom: ScopeTarget | undefined
+    let undoTimer: ReturnType<typeof setTimeout> | undefined
+
+    $effect(() => {
+        scopeOn = getCurrentChat()?.useLocallySetGlobalVariables === true
+    })
+
+    onDestroy(() => clearTimeout(undoTimer))
+
+    const closeUndoRow = () => {
+        clearTimeout(undoTimer)
+        undoTimer = undefined
+        undoRow = 'none'
+        scopeSnapshot = undefined
+        scopeDiscardedFrom = undefined
+    }
+
+    const flipScope = () => {
+        const owner = DBState.db.characters[$selectedCharID]
+        const chat = owner?.chats[owner.chatPage]
+        if(!chat){
+            return
+        }
+        const target: ScopeTarget = { chaId: owner.chaId, chat }
+        if(chat.useLocallySetGlobalVariables === true){
+            const taken = disableChatScope(target)
+            if(taken){
+                closeUndoRow()
+                scopeSnapshot = taken
+                scopeDiscardedFrom = target
+                undoRow = 'undo'
+                undoTimer = setTimeout(closeUndoRow, scopeUndoMs)
+            }
+        }
+        else{
+            closeUndoRow()
+            enableChatScope(target, currentScopeKeys(owner as character), DBState.db.globalChatVariables, {
+                jailbreak: effectiveJailbreak(chat),
+                memory: effectiveMemory(owner, chat),
+            })
+        }
+        scopeOn = chat.useLocallySetGlobalVariables === true
+    }
+
+    const undoScope = () => {
+        if(!scopeSnapshot || !scopeDiscardedFrom){
+            return
+        }
+        if(restoreChatScope(scopeDiscardedFrom, scopeSnapshot)){
+            closeUndoRow()
+            scopeOn = true
+        }
+        else{
+            // The row time keeps running; the refusal replaces the Undo for the rest of it.
+            scopeSnapshot = undefined
+            scopeDiscardedFrom = undefined
+            undoRow = 'refused'
+        }
+    }
+
+    // The jailbreak and memory rows show and write the chat-only value of the character's current chat while that
+    // chat's scope is on, and the global or owner value otherwise. They act on this character's chat, not the selection.
+    let rowChat = $derived(chara?.chats?.[chara.chatPage])
+    let jailbreakOn = $derived(effectiveJailbreak(rowChat))
+    let memoryOn = $derived(chara ? effectiveMemory(chara, rowChat) : false)
+
+    const setJailbreak = (value: boolean) => {
+        if(chara && rowChat){
+            writeChatJailbreak(chara, rowChat, value)
+        }
+        else{
+            DBState.db.jailbreakToggle = value
+        }
+    }
+
+    const setMemory = (value: boolean) => {
+        if(chara && rowChat){
+            writeChatMemory(chara, rowChat, value)
+        }
+        else if(chara){
+            chara.supaMemory = value
+        }
+    }
 
     const getGlobalChatVarNH = (key: string) => {
         const value = getGlobalChatVar(key)
@@ -186,14 +290,14 @@
 
         {#if hasJailbreakPrompt}
             <div class="flex mt-2 items-center w-full" class:justify-end={$MobileGUI}>
-                <CheckInput bind:check={DBState.db.jailbreakToggle} name={language.jailbreakToggle} reverse />
+                <CheckInput check={jailbreakOn} onChange={setJailbreak} name={language.jailbreakToggle} reverse />
             </div>
         {/if}
 
         {@render toggles(groupedToggles, true)}
         {#if chara && (DBState.db.supaModelType !== 'none' || DBState.db.hanuraiEnable || DBState.db.hypav2 || DBState.db.hypaV3)}
             <div class="flex mt-2 items-center w-full" class:justify-end={$MobileGUI}>
-                <CheckInput bind:check={chara.supaMemory} reverse name={DBState.db.hanuraiEnable ? language.hanuraiMemory : (DBState.db.hypav2 || DBState.db.hypaV3 || DBState.db.hypaMemory) ? language.ToggleHypaMemory : language.ToggleSuperMemory}/>
+                <CheckInput check={memoryOn} onChange={setMemory} reverse name={DBState.db.hanuraiEnable ? language.hanuraiMemory : (DBState.db.hypav2 || DBState.db.hypaV3 || DBState.db.hypaMemory) ? language.ToggleHypaMemory : language.ToggleSuperMemory}/>
             </div>
         {/if}
     </div>
@@ -202,25 +306,27 @@
 
     {#if hasJailbreakPrompt}
         <div class="flex mt-2 items-center">
-            <CheckInput bind:check={DBState.db.jailbreakToggle} name={language.jailbreakToggle}/>
+            <CheckInput check={jailbreakOn} onChange={setJailbreak} name={language.jailbreakToggle}/>
         </div>
     {/if}
     {@render toggles(groupedToggles)}
     {#if chara && (DBState.db.supaModelType !== 'none' || DBState.db.hanuraiEnable || DBState.db.hypav2 || DBState.db.hypaV3)}
         <div class="flex mt-2 items-center">
-            <CheckInput bind:check={chara.supaMemory} name={DBState.db.hanuraiEnable ? language.hanuraiMemory : (DBState.db.hypav2 || DBState.db.hypaV3 || DBState.db.hypaMemory) ? language.ToggleHypaMemory : language.ToggleSuperMemory}/>
+            <CheckInput check={memoryOn} onChange={setMemory} name={DBState.db.hanuraiEnable ? language.hanuraiMemory : (DBState.db.hypav2 || DBState.db.hypaV3 || DBState.db.hypaMemory) ? language.ToggleHypaMemory : language.ToggleSuperMemory}/>
         </div>
     {/if}
     
     {#if chara}
         <div class="flex mt-2 items-center w-full" class:justify-end={$MobileGUI}>
-            <CheckInput check={getCurrentChat()?.useLocallySetGlobalVariables} name={language.localToggles} onChange={() => {
-                const chatIndx = DBState.db.characters[$selectedCharID].chatPage
-                const chat = DBState.db.characters[$selectedCharID].chats[chatIndx]
-                if(chat){
-                    chat.useLocallySetGlobalVariables = !chat.useLocallySetGlobalVariables
-                }
-            }} />
+            <CheckInput check={scopeOn} name={language.localToggles} onChange={flipScope} />
+        </div>
+        <div role="status" class="w-full text-xs text-textcolor2">
+            {#if undoRow === 'undo'}
+                <span>{language.chatShellTogglesDiscarded}</span>
+                <button type="button" class="ml-2 underline text-textcolor" onclick={undoScope}>{language.chatShellToggleScopeUndo}</button>
+            {:else if undoRow === 'refused'}
+                <span>{language.chatShellToggleScopeUndoRefused}</span>
+            {/if}
         </div>
     {/if}
 {/if}

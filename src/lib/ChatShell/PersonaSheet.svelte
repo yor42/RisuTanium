@@ -7,10 +7,12 @@
         open: boolean
         opener: HTMLElement | null
         background: readonly HTMLElement[]
+        // Set when the picker opens over another sheet, so everything beside its own layer, that sheet included, is inert.
+        inertOutside?: boolean
         onclose: () => void
     }
 
-    let { open, opener, background, onclose }: Props = $props()
+    let { open, opener, background, inertOutside = false, onclose }: Props = $props()
     let character = $derived(DBState.db.characters[selIdState.selId])
     let chat = $derived(character?.chats?.[character.chatPage])
 
@@ -21,7 +23,7 @@
     }
 </script>
 
-<ShellSheet {open} kind="sheet" mode={typeof window !== 'undefined' && window.innerWidth >= 900 ? 'wide-menu' : 'bottom'} label={language.chatShellChoosePersona} {opener} {background} {onclose}>
+<ShellSheet {open} kind="sheet" mode={typeof window !== 'undefined' && window.innerWidth >= 900 ? 'wide-menu' : 'bottom'} label={language.chatShellChoosePersona} {opener} {background} {inertOutside} {onclose}>
     <h2 data-part="chat-sheet-title">{language.chatShellChoosePersona}</h2>
     <button data-part="chat-sheet-item" data-kind="button" data-sheet-initial aria-pressed={!chat?.bindedPersona} onclick={() => choose(null)}>
         {DBState.db.username}

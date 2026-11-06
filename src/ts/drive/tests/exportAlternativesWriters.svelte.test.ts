@@ -399,7 +399,7 @@ interface Page {
  * A store2 page of four characters: the first resident, the other three stubs of their entities. `grow` makes the
  * first chat of a character at least that many bytes of JSON by repeating its first message (short strings only).
  */
-async function pageOf(grow: Record<number, number> = {}, withAlt = false): Promise<Page> {
+async function pageOf(grow: Record<number, number> = {}, withAlt = false, fork: 'none' | 'valid' | 'inert' = 'none'): Promise<Page> {
     const memory = createMemoryBackend()
     const clock = createClock()
     const env = testEnv(clock, 4242)
@@ -408,6 +408,11 @@ async function pageOf(grow: Record<number, number> = {}, withAlt = false): Promi
         for (const slot of fixture.characters) {
             const firstChat = (slot as unknown as Obj).chats as Obj[]
             firstChat[0].alt = [{ m: { time: 5, data: 'ALTMARK', role: 'char' }, p: null, a: 1 }]
+        }
+    }
+    if (fork !== 'none') {
+        for (const slot of fixture.characters) {
+            forkKeysOn(((slot as unknown as Obj).chats as Obj[])[0], fork === 'valid')
         }
     }
     for (const [index, bytes] of Object.entries(grow)) {
@@ -477,8 +482,8 @@ function watchStubStarts(): StartSeen[] {
 
 import { decodeRisuSave } from 'src/ts/storage/risuSave'
 import { setColdStorageItem } from 'src/ts/process/coldstorage.svelte'
-import { alternativeChatLabels } from 'src/ts/drive/exportAlternatives'
-import { exportAlternativeLabels } from 'src/ts/drive/exportInline'
+import { forkOnlyChatLabels } from 'src/ts/drive/exportAlternatives'
+import { exportForkOnlyLabels } from 'src/ts/drive/exportInline'
 
 //#region alternatives fixtures
 
@@ -497,6 +502,40 @@ function promptLabels(): string[] {
 }
 
 const altPrompts = (): string[] => alertConfirmMock.mock.calls.map((call) => String(call[0])).filter((message) => message.includes(ALT_PROMPT))
+
+// The fork-only chat keys (MC-774): matched as literals of the prompt text, never through `language`.
+const FORK_PROMPT = 'data that only this app uses'
+const FORK_NOTICE = 'had data that only this app uses'
+const COVERED_LINE = 'MEMLINE-ONE'
+const INTERRUPTED_KIND = 'interrupted-reply note'
+const COVERAGE_KIND = 'memory summary position'
+
+/** Puts the fork-only chat keys on `chat`: a coverage pointer and an interrupted reply, valid or inert. */
+function forkKeysOn(chat: Obj, valid: boolean): void {
+    chat.supaMemoryData = `${COVERED_LINE}\nsummary text`
+    chat.supaMemoryCoveredId = valid ? COVERED_LINE : 'SOMEOTHERID'
+    ;(chat.message as Obj[])[0].interrupted = valid
+}
+
+function chatHoldsForkKeys(chat: Obj): boolean {
+    return typeof chat.supaMemoryCoveredId === 'string' && (chat.message as Obj[]).some((message) => 'interrupted' in message)
+}
+
+/** A run that cannot see the keys on the page proves nothing about the file, so the fixture asserts them first. */
+function expectPageHoldsForkKeys(page: Page): void {
+    expect(chatHoldsForkKeys(((page.db.characters[0] as unknown as Obj).chats as Obj[])[0]), 'resident character').toBe(true)
+    for (const entry of page.entries.slice(1)) {
+        expect(chatHoldsForkKeys((wholeOf(page, entry) as unknown as { chats: Obj[] }).chats[0]), 'stub entity').toBe(true)
+    }
+}
+
+const forkPrompts = (): string[] => alertConfirmMock.mock.calls.map((call) => String(call[0])).filter((message) => message.includes(FORK_PROMPT))
+
+/** The lines the fork-data prompt lists, one per line after the blank line. */
+function forkPromptLines(): string[] {
+    const text = forkPrompts()[0] ?? ''
+    return text.split('\n\n').slice(1).join('\n\n').split('\n').filter((line) => line.length > 0)
+}
 
 /** Everything the file holds as text: unit entries as JSON, the database entry decoded and serialized. */
 async function fileText(): Promise<string> {
@@ -556,15 +595,25 @@ afterEach(() => {
     vi.restoreAllMocks()
 })
 
-describe('exportAlternativeLabels', () => {
+describe('exportForkOnlyLabels', () => {
     // T80 regression reproducer: the list counts chats, not texts
     test('reproducer: two characters with the same chat text give two labels, and one chat read through two sources gives one', () => {
         const alice = (chaId: string) => ({ chaId, name: 'Alice', chats: [{ id: `${chaId}-chat`, name: 'Chat 1', alt: [altRecord()] }] })
-        const cold = { collected: { omittedAlternatives: alternativeChatLabels(alice('one')) }, inlined: new Map([['k', alice('one')]]), stubEntries: new Map() } as unknown as BackupColdStorage
-        const labels = exportAlternativeLabels({ characters: [alice('one'), alice('two')] } as unknown as Pick<Database, 'characters'>, cold)
+        const cold = { collected: { omittedChatData: forkOnlyChatLabels(alice('one')) }, inlined: new Map([['k', alice('one')]]), stubEntries: new Map() } as unknown as BackupColdStorage
+        const labels = exportForkOnlyLabels({ characters: [alice('one'), alice('two')] } as unknown as Pick<Database, 'characters'>, cold)
         expect(labels).toHaveLength(2)
         expect(new Set(labels.map((label) => label.key)).size).toBe(2)
         expect(labels.map((label) => label.text)).toEqual(['Alice / Chat 1', 'Alice / Chat 1'])
+    })
+
+    test('guard (D1): one chat read through two sources holds the kinds of both, each once', () => {
+        const withKinds = (extra: Obj) => ({ chaId: 'one', name: 'Alice', chats: [{ id: 'one-chat', name: 'Chat 1', message: [{ data: 'x', interrupted: true }], ...extra }] })
+        const resident = withKinds({ alt: [altRecord()] })
+        const read = withKinds({ supaMemoryData: 'L\nrest', supaMemoryCoveredId: 'L' })
+        const cold = { collected: {}, inlined: new Map([['k', read]]), stubEntries: new Map() } as unknown as BackupColdStorage
+        const labels = exportForkOnlyLabels({ characters: [resident] } as unknown as Pick<Database, 'characters'>, cold)
+        expect(labels).toHaveLength(1)
+        expect([...labels[0].kinds].sort()).toEqual(['alternatives', 'interruptedNote', 'memoryCoverage'])
     })
 })
 
@@ -695,5 +744,153 @@ describe.each([
         expect(notice).toContain('ColdLate / Kept')
         expect(entriesOf(sink.closedFile as Uint8Array).map((entry) => entry.name)).toContain(`coldstorage_${KEY}.json`)
         expect(await fileText()).not.toContain(ALT_MARK)
+    }, 120_000)
+})
+
+describe.each([
+    ['SaveLocalBackup', SaveLocalBackup as Runner],
+    ['SavePartialLocalBackup', SavePartialLocalBackup as Runner],
+])('%s of a store2 page whose chats hold fork-only keys', (_name, run) => {
+    test.each([['stub', STUB], ['inline', { mode: 'inline' } as BackupExportOptions]])('reproducer (R1): in fork-only %s mode the file holds neither key, the summary text travels, and the live characters keep both keys', async (_mode, options) => {
+        const page = await pageOf({}, false, 'valid')
+        expectPageHoldsForkKeys(page)
+
+        const outcome = await run(options)
+
+        expect(outcome).toMatchObject({ status: 'saved' })
+        const text = await fileText()
+        expect(text).not.toContain('"interrupted"')
+        expect(text).not.toContain('"supaMemoryCoveredId"')
+        expect(text).toContain('"supaMemoryData"')
+        expect(text).toContain(COVERED_LINE)
+        expectPageHoldsForkKeys(page)
+        // The alternatives prompt is for chats with alternatives; these chats have none.
+        expect(altPrompts()).toEqual([])
+    }, 120_000)
+
+    test.each([['stub', STUB], ['inline', { mode: 'inline' } as BackupExportOptions]])('reproducer (R2): in fork-only %s mode one prompt names each chat with its kinds before the writer opens, and the alternatives prompt names alternatives only', async (_mode, options) => {
+        const page = await pageOf({}, true, 'valid')
+        let chunksAtPrompt = -1
+        alertConfirmMock.mockImplementation(async (message: string) => {
+            if (message.includes(FORK_PROMPT)) {
+                chunksAtPrompt = sink.chunks.length
+            }
+            return true
+        })
+
+        const outcome = await run(options)
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        expect(forkPrompts()).toHaveLength(1)
+        expect(chunksAtPrompt).toBe(0)
+        expect(forkPromptLines()).toHaveLength(4)
+        for (const slot of page.db.characters) {
+            const name = String((slot as unknown as Obj).name)
+            const line = forkPromptLines().find((entry) => entry.startsWith(`${name} / `)) ?? ''
+            expect(line, name).toContain(INTERRUPTED_KIND)
+            expect(line, name).toContain(COVERAGE_KIND)
+        }
+        // The alternatives prompt keeps its own wording and its own chats.
+        expect(altPrompts()).toHaveLength(1)
+        expect(promptLabels()).toHaveLength(4)
+        for (const line of promptLabels()) {
+            expect(line).not.toContain(INTERRUPTED_KIND)
+            expect(line).not.toContain(COVERAGE_KIND)
+        }
+        const order = alertConfirmMock.mock.calls.map((call) => String(call[0]))
+        expect(order.findIndex((message) => message.includes(ALT_PROMPT))).toBeLessThan(order.findIndex((message) => message.includes(FORK_PROMPT)))
+    }, 120_000)
+
+    test('reproducer (R3): declining the fork-only prompt ends the export as declined, with nothing written', async () => {
+        await pageOf({}, false, 'valid')
+        alertConfirmMock.mockImplementation(async (message: string) => !message.includes(FORK_PROMPT))
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toEqual({ status: 'declined', cause: 'incomplete-data-declined' })
+        expect(sink.chunks).toEqual([])
+        expect(sink.closedFile).toBeNull()
+        expect(alertErrorMock).not.toHaveBeenCalled()
+    }, 120_000)
+
+    test('guard (S7): a page with no fork-only keys gets no fork-only prompt and no such notice', async () => {
+        await pageOf({}, false, 'none')
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        expect(forkPrompts()).toEqual([])
+    }, 120_000)
+
+    test('reproducer (R4): a legacy cold character unit known before the prompt is carried without the keys and named with its kinds', async () => {
+        const KEY = '00000000-0000-4000-8000-0000000000cc'
+        await setColdStorageItem(KEY, { character: { chaId: 'cold-fork', name: 'ColdFork', type: 'character', chatPage: 0, chats: [{ id: 'k1', name: 'Kept', message: [{ time: 1, data: 'hello', role: 'char', interrupted: true }], note: '', localLore: [], supaMemoryData: `${COVERED_LINE}\nsummary`, supaMemoryCoveredId: COVERED_LINE }] } })
+        const page = await pageOf({}, false)
+        ;(page.db.characters as unknown[]).push({ chaId: 'cold-fork', name: 'ColdFork', type: 'character', chatPage: 0, coldstorage: KEY, chats: [] })
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        expect(forkPromptLines()).toHaveLength(1)
+        expect(forkPromptLines()[0]).toContain('ColdFork / Kept')
+        const unit = entriesOf(sink.closedFile as Uint8Array).find((entry) => entry.name === `coldstorage_${KEY}.json`)
+        expect(unit).toBeDefined()
+        const unitText = decoder.decode((unit as { data: Uint8Array }).data)
+        expect(unitText).toContain(COVERED_LINE)
+        expect(unitText).not.toContain('"interrupted"')
+        expect(unitText).not.toContain('"supaMemoryCoveredId"')
+    }, 120_000)
+
+    test('reproducer (R5): a character that gains the keys after the prompt is stripped and named in the notice', async () => {
+        const page = await pageOf({}, false)
+        captured.onOpen = () => {
+            const late = JSON.parse(JSON.stringify(page.db.characters[0])) as Obj
+            late.chaId = 'late-fork'
+            late.name = 'ForkLatecomer'
+            forkKeysOn((late.chats as Obj[])[0], true)
+            ;(page.db.characters as unknown[]).push(late)
+        }
+
+        const outcome = await run(STUB)
+
+        expect(forkPrompts()).toEqual([])
+        expect(outcome).toMatchObject({ status: 'saved' })
+        const notice = (outcome as { notices: string[] }).notices.join('\n')
+        expect(notice).toContain(FORK_NOTICE)
+        expect(notice).toContain('ForkLatecomer / ')
+        const text = await fileText()
+        expect(text).not.toContain('"interrupted"')
+        expect(text).not.toContain('"supaMemoryCoveredId"')
+    }, 120_000)
+
+    test('reproducer (R5): a chat the alternatives prompt named that gains an interrupted reply afterwards is still named in the notice', async () => {
+        const page = await pageOf({}, true)
+        captured.onOpen = () => {
+            ;(((page.db.characters[0] as unknown as Obj).chats as Obj[])[0].message as Obj[])[0].interrupted = true
+        }
+
+        const outcome = await run(STUB)
+
+        expect(altPrompts()).toHaveLength(1)
+        expect(forkPrompts()).toEqual([])
+        const notice = (outcome as { notices: string[] }).notices.join('\n')
+        expect(notice).toContain(FORK_NOTICE)
+        expect(notice).toContain(INTERRUPTED_KIND)
+        expect(await fileText()).not.toContain('"interrupted"')
+    }, 120_000)
+
+    test('reproducer (R6): keys that mean nothing are stripped and not named', async () => {
+        const page = await pageOf({}, false, 'inert')
+        // The coverage pointer is not the first line of the summary and the reply is not interrupted.
+        expect(((page.db.characters[0] as unknown as Obj).chats as Obj[])[0].supaMemoryCoveredId).toBe('SOMEOTHERID')
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        const text = await fileText()
+        expect(text).not.toContain('"supaMemoryCoveredId"')
+        expect(text).not.toContain('"interrupted"')
+        // guard: nothing was worth naming
+        expect(forkPrompts()).toEqual([])
     }, 120_000)
 })

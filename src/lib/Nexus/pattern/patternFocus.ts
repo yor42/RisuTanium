@@ -57,17 +57,33 @@ export function trapTab(event: KeyboardEvent, root: HTMLElement): boolean {
     return false
 }
 
+/** How many layers hold an element inert, and whether it was inert before the first of them. */
+const inertHolds = new WeakMap<HTMLElement, { count: number, wasInert: boolean }>()
+
 /**
- * Sets `inert` on each element and returns a function that puts every one back to exactly the
- * state it had before, including an element that was already inert.
+ * Sets `inert` on each element and returns a function that releases this call's hold. An element stays inert while any
+ * layer holds it, whatever order the layers release in; when the last hold goes, the element returns to exactly the
+ * state it had before the first one, including an element that was already inert. Releasing twice releases once.
  */
 export function makeInert(elements: readonly HTMLElement[]): () => void {
-    const previous = elements.map((element) => ({ element, wasInert: element.hasAttribute('inert') }))
-    for (const { element } of previous) element.setAttribute('inert', '')
+    const held = [...elements]
+    for (const element of held) {
+        const hold = inertHolds.get(element)
+        if (hold) hold.count++
+        else inertHolds.set(element, { count: 1, wasInert: element.hasAttribute('inert') })
+        element.setAttribute('inert', '')
+    }
+    let released = false
     return () => {
-        for (const { element, wasInert } of previous) {
-            if (wasInert) element.setAttribute('inert', '')
-            else element.removeAttribute('inert')
+        if (released) return
+        released = true
+        for (const element of held) {
+            const hold = inertHolds.get(element)
+            if (!hold) continue
+            hold.count--
+            if (hold.count > 0) continue
+            inertHolds.delete(element)
+            if (!hold.wasInert) element.removeAttribute('inert')
         }
     }
 }

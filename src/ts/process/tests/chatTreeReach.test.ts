@@ -4,7 +4,7 @@
  * `withSupaRepoint`. Three oracles after every tree operation:
  * - A: no token is lost unless it was created, or still live, while the chat ended at a message with children;
  * - B: no token at all is lost by any operation other than the end press;
- * - S: every record with `mem` holds the six branch keys and is a run head, and no arrived record keeps `mem`.
+ * - S: every record with `mem` holds every branch key and is a run head, and no arrived record keeps `mem`.
  * The delete removes the last message or a middle one. A SupaMemory token whose only holders point at a deleted
  * message would be a pair the delete failed to repoint, live or parked; it is counted and asserted to be zero.
  */
@@ -13,8 +13,9 @@ import type { Chat, ChatAlt } from '../../storage/database.svelte'
 import { detachTail, siblingsAt, switchTo } from '../chatTree'
 import { withSupaRepoint } from '../memory/supaResume'
 
+// The fields a token can live in, and the keys every parked `mem` holds: those and the chat-only memory switch.
 const FIELDS = ['supaMemoryData', 'supaMemoryCoveredId', 'lastMemory', 'scriptstate', 'hypaV2Data', 'hypaV3Data'] as const
-const SIX_KEYS = [...FIELDS].sort().join(',')
+const BRANCH_KEYS = [...FIELDS, 'scopedMemory'].sort().join(',')
 
 type Config = { endBias: number, endAnyChild: boolean, withDelete: 'off' | 'last' | 'middle' }
 type Outcome = {
@@ -35,7 +36,7 @@ function lcg(seed: number): () => number {
     }
 }
 
-/** Everything a token can live in: the six live fields and every parked `mem`. */
+/** Everything a token can live in: the live token fields and every parked `mem`. */
 function reachable(chat: Chat): string {
     return JSON.stringify([...FIELDS.map((field) => chat[field]), (chat.alt ?? []).map((record) => record.mem)])
 }
@@ -79,7 +80,7 @@ function structuralFailure(chat: Chat, arrived: readonly ChatAlt[]): string | nu
             continue
         }
         const keys = Object.keys(record.mem).sort().join(',')
-        if (keys !== SIX_KEYS) {
+        if (keys !== BRANCH_KEYS) {
             return `keys of ${record.m.chatId}: ${keys}`
         }
         if (alt.some((other) => other !== record && other.a === record.a && other.m.chatId === record.p)) {

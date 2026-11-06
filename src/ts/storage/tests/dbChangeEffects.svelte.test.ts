@@ -1989,6 +1989,40 @@ describe('registerDbChangeEffects — selected-character partition rebuild count
         expect(tracker.character[0]).toBe('char-1')
     })
 
+    // C-T14, a compatibility guard (the partition already deep-reads every non-message chat key): the chat-only
+    // switches are chat keys and a parked `scopedMemory` is a key of an alternative's `mem`; each write marks the character.
+    test.each([
+        ['scopedJailbreak', true],
+        ['scopedMemory', false],
+        ['hideNames', true],
+    ])('a write of the chat key %s: exactly one chat run with its index, no chats or char run, and the character is marked', (key, value) => {
+        const { markChanged, log } = setupWithLog()
+        markChanged.mockClear()
+
+        selectedChar().chats[0][key] = value
+        flushSync()
+
+        expect(log.filter((e) => e.kind === 'chat')).toEqual([{ kind: 'chat', index: 0 }])
+        expect(countKind(log, 'chats')).toBe(0)
+        expect(countKind(log, 'char')).toBe(0)
+        expect(markChanged.mock.calls.some((call) => call[0] === true)).toBe(true)
+    })
+
+    test("a write of the parked scopedMemory inside one alternative's mem: one 'alt' run, no chat run, and the character is marked", () => {
+        const { markChanged, log } = setupWithLog()
+        selectedChar().chats[0].alt = [altRecord(0), { ...altRecord(1), mem: { scopedMemory: true } }]
+        flushSync()
+        log.length = 0
+        markChanged.mockClear()
+
+        selectedChar().chats[0].alt[1].mem.scopedMemory = false
+        flushSync()
+
+        expect(log.filter((e) => e.kind === 'alt')).toEqual([{ kind: 'alt', index: 1 }])
+        expect(countKind(log, 'chat')).toBe(0)
+        expect(markChanged.mock.calls.some((call) => call[0] === true)).toBe(true)
+    })
+
     test("appending a record and giving a chat its first alternatives re-run that chat once and create the new 'alt' children", () => {
         const { markChanged, log } = setupWithLog()
 

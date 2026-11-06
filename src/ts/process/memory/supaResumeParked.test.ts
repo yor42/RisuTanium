@@ -41,7 +41,7 @@ describe('parked SupaMemory pairs follow a delete', () => {
         const mem = memOf(chat, 'm4')
         expect(mem.supaMemoryData).toBe(`m3\n${SUMMARY}`)
         expect(mem.supaMemoryCoveredId).toBe(null)
-        expect(Object.keys(mem).sort()).toEqual(['hypaV2Data', 'hypaV3Data', 'lastMemory', 'scriptstate', 'supaMemoryCoveredId', 'supaMemoryData'])
+        expect(Object.keys(mem).sort()).toEqual(['hypaV2Data', 'hypaV3Data', 'lastMemory', 'scopedMemory', 'scriptstate', 'supaMemoryCoveredId', 'supaMemoryData'])
 
         const target = endTarget(chat)
         expect(target).toBe('m4')

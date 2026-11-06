@@ -1,11 +1,12 @@
 <script lang="ts">
-    import { tick } from 'svelte'
+    import { tick, untrack } from 'svelte'
     import { v4 } from 'uuid'
     import { DBState, selIdState, selectedCharID, additionalChatMenu, easyPanelStore, hypaV3ModalOpen } from '../../ts/stores.svelte'
     import { pageStorageModeStore } from '../../ts/storage/pageStorageMode'
     import { utilityOpen, utilityVisible } from '../Utility/utilityGate'
     import { language } from '../../lang'
     import { sendContinue, reroll, type ComposerActionsSource } from '../../ts/process/composerActions.svelte'
+    import { shellGenerationSource } from '../../ts/chatShell/sendFailure.svelte'
     import { stopTTS } from '../../ts/process/tts'
     import { canChatSpeak } from '../../ts/process/ttsModes'
     import { findCharacterbyId } from '../../ts/util'
@@ -13,6 +14,10 @@
     import { downloadNotice } from '../../ts/exportNotice'
     import { downloadFile } from '../../ts/globalApi.svelte'
     import PluginDefinedIcon from '../Others/PluginDefinedIcon.svelte'
+    import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
+    import { buildPanelModel, isOn, selectedIndex, toggleVarKey, valueRowsOf } from '../../ts/chatShell/togglePanel'
+    import { favouriteRows, type FavouriteRow } from '../../ts/chatShell/toggleFavourites'
+    import { currentFavourites, syncFavourites } from '../../ts/chatShell/toggleFavouritesStore.svelte'
     import ShellSheet from './ShellSheet.svelte'
 
     interface Props {
@@ -23,11 +28,14 @@
         onstickers: () => void
         onchatlist: () => void
         onmodules: () => void
+        // The Toggles item, last in the menu: absent unless the shell can open the toggles panel.
+        ontoggles?: () => void
+        togglesSummary?: () => string | null
     }
-    let { open, opener, background, onclose, onstickers, onchatlist, onmodules }: Props = $props()
+    let { open, opener, background, onclose, onstickers, onchatlist, onmodules, ontoggles, togglesSummary }: Props = $props()
     let character = $derived(DBState.db.characters[selIdState.selId])
     let chat = $derived(character?.chats?.[character.chatPage])
-    const source: ComposerActionsSource = { closeMenu: onclose }
+    const source: ComposerActionsSource = shellGenerationSource(() => onclose())
 
     function canContinue(): boolean {
         const messages = chat?.message ?? []
@@ -38,6 +46,122 @@
         action()
         onclose()
     }
+
+    // Favourite chips (TOGGLES_SPEC §5): the toggle sources and the scope accessors load only once a star exists, so a menu without stars costs nothing.
+    type ChipSupport = {
+        sourcesOf: typeof import('./TogglesPanel.svelte').toggleSourcesOf
+        valueOf: typeof import('../../ts/parser/chatToggleScope').chatToggleValue
+        writeTo: typeof import('../../ts/parser/chatToggleScope').writeChatToggle
+    }
+    const MAX_CHIPS = 8
+    let support = $state.raw<ChipSupport | null>(null)
+    let loadingSupport = false
+    // Bumped after a write, so a chip shows the value even when the chat object is not reactive.
+    let edits = $state(0)
+    let picker = $state<FavouriteRow | null>(null)
+    let announce = $state('')
+    let body = $state<HTMLElement>()
+
+    // Every opening starts on the menu itself, with nothing announced.
+    $effect.pre(() => {
+        void open
+        untrack(() => {
+            picker = null
+            announce = ''
+        })
+    })
+
+    // Another tab's star is adopted when the menu opens.
+    $effect(() => {
+        if (open) untrack(() => syncFavourites())
+    })
+
+    // Loading starts when the first star exists, not when the menu opens, so the chips are there before the focus goes in.
+    $effect(() => {
+        if (!ontoggles || support || loadingSupport || currentFavourites().items.length === 0) return
+        loadingSupport = true
+        void Promise.all([import('./TogglesPanel.svelte'), import('../../ts/parser/chatToggleScope')]).then(([panel, scope]) => {
+            support = { sourcesOf: panel.toggleSourcesOf, valueOf: scope.chatToggleValue, writeTo: scope.writeChatToggle }
+        }).catch((error) => console.error('The favourite chips did not load:', error)).finally(() => { loadingSupport = false })
+    })
+
+    // Only a star whose source is in use and still has the key shows, in star order; the others stay in the store.
+    let chipRows = $derived.by((): FavouriteRow[] => {
+        void edits
+        if (!open || !ontoggles || !support || !character || !chat) return []
+        try {
+            const sources = buildPanelModel(support.sourcesOf(character)).sources.filter((source) => valueRowsOf(source).length > 0)
+            return favouriteRows(sources, currentFavourites().items)
+        } catch (error) {
+            console.error('The favourite chips could not be built:', error)
+            return []
+        }
+    })
+    let shownChips = $derived(chipRows.slice(0, MAX_CHIPS))
+    // With a star showing, the Toggles item and the chips lead the menu; without one the item stays last.
+    let chipsLead = $derived(shownChips.length > 0)
+
+    function chipValue(entry: FavouriteRow): string {
+        void edits
+        return support && chat ? support.valueOf(chat, toggleVarKey(entry.row.key)) : 'null'
+    }
+
+    function chipElement(uid: string): HTMLElement | null {
+        return Array.from(body?.querySelectorAll<HTMLElement>('[data-part="plus-chip"]') ?? []).find((element) => element.dataset.uid === uid) ?? null
+    }
+
+    // Chips write on the chat that is shown, through the scope accessors: its own value while its scope is on, else the shared one.
+    function writeChip(entry: FavouriteRow, value: string): void {
+        if (!support || !character || !chat) return
+        support.writeTo(character, chat, toggleVarKey(entry.row.key), value)
+        edits++
+    }
+
+    function flipChip(entry: FavouriteRow): void {
+        const on = isOn('check', chipValue(entry))
+        writeChip(entry, on ? '0' : '1')
+        announce = on ? language.chatShellTogglesOffA11y(entry.row.label) : language.chatShellTogglesOnA11y(entry.row.label)
+    }
+
+    async function openPicker(entry: FavouriteRow): Promise<void> {
+        picker = entry
+        await tick()
+        const options = Array.from(body?.querySelectorAll<HTMLElement>('[data-part="plus-chip-options"] [role="menuitemradio"]') ?? [])
+        const checked = options.find((option) => option.getAttribute('aria-checked') === 'true')
+        ;(checked ?? options[0])?.focus()
+    }
+
+    // Leaving the list returns to the menu with the focus on the chip that opened it.
+    async function leavePicker(): Promise<void> {
+        const uid = picker?.row.uid
+        picker = null
+        await tick()
+        if (uid) chipElement(uid)?.focus()
+    }
+
+    function pickOption(index: number): void {
+        const entry = picker
+        if (!entry) return
+        writeChip(entry, String(index))
+        announce = language.chatShellTogglesPicked(entry.row.label, entry.row.options[index] ?? '')
+        void leavePicker()
+    }
+
+    // Escape and Back leave the option list before they close the menu.
+    function innerEscape(): boolean {
+        if (!picker) return false
+        void leavePicker()
+        return true
+    }
+
+    $effect(() => {
+        if (!open || picker === null) return
+        return registerBackHandler(backCloseHandler({
+            isOpen: () => picker !== null,
+            snapshot: () => picker?.row.uid ?? '',
+            close: () => { void leavePicker() },
+        }))
+    })
 
     function menuKey(event: KeyboardEvent): void {
         if (event.key === 'Tab') {
@@ -97,9 +221,43 @@
     }
 </script>
 
-<ShellSheet {open} kind="menu" mode={typeof window !== 'undefined' && window.innerWidth >= 900 ? 'wide-menu' : 'bottom'} label={language.chatShellMoreActions} {opener} {background} {onclose}>
-    <div data-part="chat-sheet-body" role="none" onkeydown={menuKey}>
-        <button data-part="chat-sheet-item" data-kind="button" role="menuitem" data-sheet-initial disabled={!canContinue()} onclick={() => { if (canContinue()) activate(() => { void sendContinue(source) }) }}>{language.continueResponse}</button>
+{#snippet togglesItem(initial: boolean)}
+    <button data-part="chat-sheet-item" data-kind="button" data-item="toggles" role="menuitem" data-sheet-initial={initial ? '' : undefined} onclick={() => { if (ontoggles) activate(ontoggles) }}><span>{language.chatShellTogglesTitle}</span><span data-part="chat-sheet-item-value">{open ? togglesSummary?.() ?? '' : ''}</span></button>
+{/snippet}
+
+<ShellSheet {open} kind="menu" mode={typeof window !== 'undefined' && window.innerWidth >= 900 ? 'wide-menu' : chipsLead ? 'tall' : 'bottom'} label={language.chatShellMoreActions} {opener} {background} {onclose} innerescape={innerEscape}>
+    <div data-part="chat-sheet-body" role="none" onkeydown={menuKey} bind:this={body}>
+        {#if picker}
+            <div data-part="plus-chip-options" role="group" aria-label={language.chatShellTogglesPickTitle(picker.row.label)}>
+                <p data-part="plus-chip-options-head">{picker.row.label}</p>
+                {#each picker.row.options as option, index (index)}
+                    {@const checked = index === selectedIndex(chipValue(picker), picker.row.options)}
+                    <button data-part="chat-sheet-item" data-kind="button" role="menuitemradio" aria-checked={checked} onclick={() => pickOption(index)}><span>{option}</span>{#if checked}<span aria-hidden="true">✓</span>{/if}</button>
+                {/each}
+            </div>
+        {:else}
+        {#if chipsLead}
+            {@render togglesItem(true)}
+            <div data-part="plus-chips" role="group" aria-label={language.chatShellTogglesChipsHead}>
+                <p data-part="plus-chips-head" aria-hidden="true">{language.chatShellTogglesChipsHead}</p>
+                <div data-part="plus-chip-row">
+                    {#each shownChips as entry (entry.row.uid)}
+                        {#if entry.row.kind === 'check'}
+                            {@const on = isOn('check', chipValue(entry))}
+                            <button data-part="plus-chip" data-kind="check" data-uid={entry.row.uid} data-key={entry.row.key} data-on={on} role="menuitemcheckbox" aria-checked={on} aria-label={on ? language.chatShellTogglesOnA11y(entry.row.label) : language.chatShellTogglesOffA11y(entry.row.label)} onclick={() => flipChip(entry)}><span data-part="plus-chip-mark" aria-hidden="true">{#if on}✓{/if}</span><span data-part="plus-chip-label">{entry.row.label}</span></button>
+                        {:else if entry.row.kind === 'select'}
+                            <button data-part="plus-chip" data-kind="select" data-uid={entry.row.uid} data-key={entry.row.key} role="menuitem" aria-haspopup="menu" onclick={() => { void openPicker(entry) }}><span data-part="plus-chip-label">{entry.row.label}: {entry.row.options[selectedIndex(chipValue(entry), entry.row.options)] ?? ''}</span><span aria-hidden="true">▾</span></button>
+                        {:else}
+                            <button data-part="plus-chip" data-kind={entry.row.kind} data-uid={entry.row.uid} data-key={entry.row.key} role="menuitem" aria-haspopup="dialog" onclick={() => { if (ontoggles) activate(ontoggles) }}><span data-part="plus-chip-label">{entry.row.label}</span><span aria-hidden="true">✎</span></button>
+                        {/if}
+                    {/each}
+                    {#if chipRows.length > MAX_CHIPS}
+                        <button data-part="plus-chip-more" role="menuitem" onclick={() => { if (ontoggles) activate(ontoggles) }}><span data-part="plus-chip-label">{language.chatShellTogglesMore}</span><span aria-hidden="true">›</span></button>
+                    {/if}
+                </div>
+            </div>
+        {/if}
+        <button data-part="chat-sheet-item" data-kind="button" role="menuitem" data-sheet-initial={chipsLead ? undefined : ''} disabled={!canContinue()} onclick={() => { if (canContinue()) activate(() => { void sendContinue(source) }) }}>{language.continueResponse}</button>
         {#if character && canChatSpeak(character, (id) => findCharacterbyId(id))}
             <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(stopTTS)}>{language.ttsStop}</button>
         {/if}
@@ -133,6 +291,11 @@
         {#if utilityVisible($pageStorageModeStore)}
             <button data-part="chat-sheet-item" data-kind="button" role="menuitem" onclick={() => activate(() => { selectedCharID.set(-1); utilityOpen.set(true) })}>{language.chatShellUtility}</button>
         {/if}
+        {#if ontoggles && !chipsLead}
+            {@render togglesItem(false)}
+        {/if}
+        {/if}
+        <p role="status" aria-live="polite" data-part="plus-live">{announce}</p>
     </div>
 </ShellSheet>
 
@@ -141,4 +304,17 @@
     [data-part="chat-sheet-body"] button { min-height: var(--size-touch); text-align: left; padding: var(--space-7) var(--space-10); color: var(--nexus-text); border-bottom: 1px solid var(--nexus-edge); }
     [data-part="chat-sheet-body"] button:focus-visible { outline: var(--stroke-bold) solid var(--nexus-text); }
     [data-part="chat-sheet-body"] button:disabled { opacity: var(--opacity-half); }
+    [data-part="chat-sheet-body"] button[data-item="toggles"] { display: flex; align-items: center; justify-content: space-between; gap: var(--space-7); width: 100%; }
+    [data-part="chat-sheet-item-value"] { color: var(--nexus-text-secondary); font-size: var(--font-size-sm); }
+    [data-part="plus-chips"] { padding: var(--space-7) var(--space-5) var(--space-5); border-bottom: 1px solid var(--nexus-edge); }
+    [data-part="plus-chips-head"], [data-part="plus-chip-options-head"] { margin: 0; padding: 0 var(--space-3) var(--space-5); font-size: var(--font-size-xs); color: var(--nexus-text-secondary); }
+    [data-part="plus-chip-options-head"] { padding: var(--space-7) var(--space-10) var(--space-5); border-bottom: 1px solid var(--nexus-edge); }
+    [data-part="plus-chip-row"] { display: flex; flex-wrap: wrap; gap: var(--space-5); }
+    [data-part="chat-sheet-body"] button[data-part="plus-chip"], [data-part="chat-sheet-body"] button[data-part="plus-chip-more"] { display: inline-flex; align-items: center; gap: var(--space-5); width: auto; max-width: 100%; padding: 0 var(--space-10); border: 1px solid var(--nexus-edge-strong); border-radius: var(--radius-pill); font-size: var(--font-size-sm); }
+    [data-part="chat-sheet-body"] button[data-part="plus-chip"][data-on="true"] { border-color: var(--nexus-accent); background: var(--color-accent-tint-strong); }
+    [data-part="plus-chip-mark"] { display: inline-flex; width: var(--size-7); justify-content: center; color: var(--nexus-accent); }
+    [data-part="plus-chip-mark"]:empty { display: none; }
+    [data-part="plus-chip-label"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: var(--size-rel-18); }
+    [data-part="chat-sheet-body"] button[role="menuitemradio"] { display: flex; align-items: center; justify-content: space-between; gap: var(--space-7); width: 100%; }
+    [data-part="plus-live"] { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>

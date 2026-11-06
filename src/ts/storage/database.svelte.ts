@@ -1908,6 +1908,20 @@ export interface Chat{
     bookmarkNames?: { [chatId: string]: string };
     useLocallySetGlobalVariables?: boolean
     GLGlobalVariables?: { [key: string]: string }
+    /**
+     * The jailbreak switch of this chat alone. Read only while `useLocallySetGlobalVariables` is `true` and the value is a
+     * boolean; otherwise the global `jailbreakToggle` decides. Fork-only: a `.bin` export leaves it out, and absent means
+     * "use the global value".
+     */
+    scopedJailbreak?: boolean
+    /**
+     * The memory switch of this chat alone. Read only while `useLocallySetGlobalVariables` is `true` and the value is a
+     * boolean; otherwise the owner's `supaMemory` decides. Parked per branch like the memory it switches
+     * (`ChatAltMemory.scopedMemory`). Fork-only: a `.bin` export leaves it out, and absent means "use the owner's value".
+     */
+    scopedMemory?: boolean
+    /** Hides the avatar and the visible name of every message of this chat in the chat shell. Fork-only; absent means shown. */
+    hideNames?: boolean
     onboardingDone?: boolean
     /**
      * The messages that are not on the active path (`message`), oldest departure first. Absent when the chat has none;
@@ -1939,6 +1953,8 @@ export interface ChatAltMemory{
     scriptstate?: {[key:string]:string|number|boolean}|null
     hypaV2Data?: SerializableHypaV2Data|null
     hypaV3Data?: SerializableHypaV3Data|null
+    /** The chat's `scopedMemory` on that branch. A record without the key carries the live value; `null` parks "none". */
+    scopedMemory?: boolean|null
 }
 
 export interface OnboardingOption{

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
- * Guard (R7): the hide-names mode has no stored value to read in this slice, so the shell renders every name and offers no
- * control for it, in the transcript or in a row's action sheet. A later slice adds the setter and field together with the
- * control; until then a visible control would write nothing.
+ * Guard (R7): the only hide-names control is the This-chat sheet's row (mocked here, and closed), so the transcript and a
+ * row's action sheet carry none; a chat that does not hold the flag renders every name. The flag itself (`Chat.hideNames`)
+ * is read by the rows: see the second block. The sheet's own row is tested in ThisChatSheet.svelte.test.ts.
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { flushSync, mount, tick, unmount } from 'svelte'
@@ -84,6 +84,8 @@ vi.mock('./ShellHeader.svelte', () => ({ default: () => ({}) }))
 vi.mock('./ShellComposer.svelte', () => ({ default: () => ({}) }))
 vi.mock('./PersonaSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('./PlusSheet.svelte', () => ({ default: () => ({}) }))
+vi.mock('./ThisChatSheet.svelte', () => ({ default: () => ({}) }))
+vi.mock('./ChatDeleteConfirm.svelte', () => ({ default: () => ({}) }))
 vi.mock('./ShellNotices.svelte', () => ({ default: () => ({}) }))
 vi.mock('./ShellFloatingButtons.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../lang', () => ({ language: {
@@ -94,6 +96,7 @@ vi.mock('../../lang', () => ({ language: {
 } }))
 
 import ChatShell from './ChatShell.svelte'
+import { DBState } from '../../ts/stores.svelte'
 
 let app: ReturnType<typeof ChatShell> | undefined
 let target: HTMLElement
@@ -139,7 +142,7 @@ describe('guard: the hide-names mode renders off and has no control', () => {
         }
     })
 
-    test('the shell and the open action sheet carry no hide-names control', async () => {
+    test('outside the This-chat sheet, the shell and the open action sheet carry no hide-names control', async () => {
         await show()
         expect(hideNamesControls(target)).toEqual([])
         target.querySelector<HTMLButtonElement>('article[data-chat-id="m"] [aria-label="More actions"]')!.click()
@@ -153,5 +156,70 @@ describe('guard: the hide-names mode renders off and has no control', () => {
         const probe = document.createElement('div')
         probe.innerHTML = '<button data-action="hideNames">x</button><label>Hide names</label><div data-part="chat-name-hide"></div>'
         expect(hideNamesControls(probe)).toHaveLength(3)
+    })
+})
+
+// CHORE-565, PQ2(a): the chat's `hideNames` hides the avatar and the visible name but keeps the name row, so the
+// pins and the ellipsis stay in it, and the name stays in the tree for the row's accessible name.
+describe('the chat\'s hideNames hides the avatar and the visible name, not the row', () => {
+    const liveChat = () => (DBState.db.characters[0] as unknown as { chats: { hideNames?: boolean }[] }).chats[0]
+
+    afterEach(() => {
+        delete liveChat().hideNames
+    })
+
+    async function avatarsShown(): Promise<void> {
+        await vi.waitFor(() => {
+            flushSync()
+            expect(target.querySelector('[data-part="chat-message-avatar"]')).not.toBeNull()
+        })
+    }
+
+    // C-T9 guard: the default row keeps the avatar and shows the name
+    test('guard: without the flag the row shows an avatar and is marked shown', async () => {
+        await show()
+        await avatarsShown()
+        for (const article of Array.from(target.querySelectorAll('article[data-part="chat-message"]'))) {
+            expect(article.getAttribute('data-meta')).toBe('shown')
+        }
+        expect(target.querySelector('[data-part="chat-message-name"][data-name-hidden]')).toBeNull()
+    })
+
+    // C-T9 regression reproducer: the base renders the avatar whatever the chat holds
+    test('with the flag on no row renders an avatar, and every row is marked hidden', async () => {
+        liveChat().hideNames = true
+        await show()
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        flushSync()
+
+        const articles = Array.from(target.querySelectorAll('article[data-part="chat-message"]'))
+        expect(articles.length).toBeGreaterThanOrEqual(2)
+        for (const article of articles) {
+            expect(article.getAttribute('data-meta')).toBe('hidden')
+        }
+        expect(target.querySelector('[data-part="chat-message-avatar"]')).toBeNull()
+    })
+
+    test('with the flag on the name stays in the tree, unhidden, and names the row; the row keeps its actions', async () => {
+        liveChat().hideNames = true
+        await show()
+
+        const article = target.querySelector<HTMLElement>('article[data-chat-id="m"]')!
+        const name = article.querySelector<HTMLElement>('[data-part="chat-message-name"]')!
+        expect(name.textContent).toBe('Ari')
+        expect(name.hasAttribute('hidden')).toBe(false)
+        expect(name.getAttribute('aria-hidden')).not.toBe('true')
+        expect(name.hasAttribute('data-name-hidden')).toBe(true)
+        expect(article.getAttribute('aria-labelledby')).toBe(name.id)
+        expect(article.querySelector('[aria-label="More actions"]')).not.toBeNull()
+        expect(name.closest('[data-part="chat-message-name-row"]')).not.toBeNull()
+    })
+
+    test('guard: a false flag changes nothing', async () => {
+        liveChat().hideNames = false
+        await show()
+        await avatarsShown()
+
+        expect(target.querySelector('article[data-part="chat-message"]')!.getAttribute('data-meta')).toBe('shown')
     })
 })

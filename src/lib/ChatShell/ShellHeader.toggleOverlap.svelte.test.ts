@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 const mobile = writable(false)
 vi.mock('../../ts/stores.svelte', () => ({ MobileGUI: mobile, MobileSideBar: writable(0) }))
 vi.mock('../Mobile/mobileBack', () => ({ closeShellChat: vi.fn() }))
-vi.mock('../../lang', () => ({ language: { chatShellBack: 'Back', chatShellChoosePersona: 'Choose persona' } }))
+vi.mock('../../lang', () => ({ language: { chatShellBack: 'Back', chatShellChoosePersona: 'Choose persona', chatShellThisChat: 'This chat' } }))
 
 let target: HTMLElement
 let app: Record<string, unknown> | undefined
@@ -16,7 +16,7 @@ async function mountHeader(): Promise<HTMLElement> {
     const { default: ShellHeader } = await import('./ShellHeader.svelte')
     target = document.createElement('div')
     document.body.appendChild(target)
-    app = mount(ShellHeader, { target, props: { name: 'Seraphina', hidden: false, hardwareKeyboardSeen: false, onpersona: vi.fn() } })
+    app = mount(ShellHeader, { target, props: { name: 'Seraphina', hidden: false, hardwareKeyboardSeen: false, onthischat: vi.fn() } })
     flushSync()
     return target.querySelector('header')!
 }
