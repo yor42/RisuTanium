@@ -185,12 +185,14 @@
         atBottom = true
         rows?.firstElementChild?.scrollIntoView({ behavior: 'instant', block: 'start' })
         follower?.sync()
+        follower?.follow()
     }
 
     export function anchorNewestBottom() {
         if (installed && chatSurface.hidden) return
         rows?.firstElementChild?.scrollIntoView({ behavior: 'instant', block: 'end' })
         follower?.sync()
+        follower?.follow()
     }
 
     export function onScroll() {

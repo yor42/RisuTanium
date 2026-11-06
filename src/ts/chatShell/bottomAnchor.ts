@@ -21,6 +21,8 @@ export function isScrolledToBottom(host: Pick<HTMLElement, 'scrollHeight' | 'cli
 export interface BottomFollower {
     // Re-reads the reader's position from a scroll event or after a programmatic scroll.
     sync: () => void
+    // The app itself brought the reader to the newest message: later growth is followed from here on.
+    follow: () => void
     dispose: () => void
 }
 
@@ -54,6 +56,12 @@ export function createBottomFollower(host: HTMLElement, content: Element, canFol
             if (isScrolledToBottom(host)) following = true
             else if (top < lastTop || readerInput) following = false
             lastTop = top
+            readerInput = false
+        },
+        follow: () => {
+            if (!canFollow()) return
+            following = true
+            lastTop = host.scrollTop
             readerInput = false
         },
         dispose: () => {

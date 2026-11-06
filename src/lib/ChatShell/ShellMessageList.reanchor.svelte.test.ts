@@ -110,6 +110,49 @@ describe('message list keeps a bottom reader at the bottom', () => {
         fire()
         expect(writes).toEqual([254])
     })
+    test('the app jump to the latest message makes the list follow later growth from a not-at-bottom start', async () => {
+        vi.stubGlobal('ResizeObserver', FakeObserver)
+        const original = Element.prototype.scrollIntoView
+        Element.prototype.scrollIntoView = function () { top = 200 }
+        try {
+            top = 100
+            await show()
+            expect(writes).toEqual([])
+            height = 354
+            app!.scrollToLatestMessage()
+            expect(top).toBe(200)
+            fire()
+            height = 420
+            fire()
+            expect(writes).toEqual([254, 320])
+        } finally {
+            Element.prototype.scrollIntoView = original
+        }
+    })
+    test('without the jump the same start is not followed', async () => {
+        top = 100
+        await show()
+        app!.onScroll()
+        height = 354
+        fire()
+        expect(writes).toEqual([])
+    })
+    test('with the setting off the jump does not establish following', async () => {
+        const original = Element.prototype.scrollIntoView
+        Element.prototype.scrollIntoView = function () { top = 200 }
+        try {
+            top = 100
+            await show()
+            DBState.db.autoScrollToNewMessage = false
+            height = 354
+            app!.scrollToLatestMessage()
+            DBState.db.autoScrollToNewMessage = true
+            fire()
+            expect(writes).toEqual([])
+        } finally {
+            Element.prototype.scrollIntoView = original
+        }
+    })
     test('a late scroll event after the content grew again still follows the next growth to the true bottom', async () => {
         await show()
         app!.onScroll()
