@@ -7,6 +7,8 @@ declare global {
          * 0-255 channels. Absent elsewhere; absence or a throw means the bars keep their colour.
          */
         __risuTaniumSystemBars?: { setBackground?: (red: number, green: number, blue: number) => unknown }
+        /** Android host, separate-object path: the keyboard state. Absent elsewhere. */
+        __risuTaniumIme?: { visible?: () => unknown; height?: () => unknown }
     }
 }
 

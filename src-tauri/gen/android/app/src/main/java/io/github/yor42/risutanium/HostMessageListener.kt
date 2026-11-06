@@ -26,6 +26,7 @@ import org.json.JSONObject
 class HostMessageListener(
   private val appOrigin: String,
   private val gestureInsets: GestureInsetHolder,
+  private val ime: ImeStateHolder,
   private val systemBars: SystemBarsBridge,
   private val keepAlive: KeepAliveBridge,
   private val openedFiles: OpenedFilesBridge
@@ -37,6 +38,11 @@ class HostMessageListener(
   // value sent on it.
   private var insetReplyProxy: JavaScriptReplyProxy? = null
   private var lastPushedInset: Double? = null
+
+  // Main thread only. The latest main-frame channel that subscribed to the keyboard state, and the
+  // last height sent on it (the visible flag follows from the height).
+  private var imeReplyProxy: JavaScriptReplyProxy? = null
+  private var lastPushedIme: Double? = null
 
   override fun onPostMessage(
     view: WebView,
@@ -71,6 +77,24 @@ class HostMessageListener(
     }
   }
 
+  // The inset listener calls this after it updates the holder; the state is sent only when the
+  // height changed since the last send.
+  fun pushIme(heightDp: Double) {
+    val proxy = imeReplyProxy ?: return
+    if (lastPushedIme == heightDp) return
+    sendIme(proxy, heightDp)
+  }
+
+  private fun sendIme(proxy: JavaScriptReplyProxy, heightDp: Double) {
+    try {
+      proxy.postMessage(encodeImeEvent(heightDp > 0.0, heightDp))
+      lastPushedIme = heightDp
+    } catch (error: Exception) {
+      Log.w(TAG, "ime push failed", error)
+      if (imeReplyProxy === proxy) imeReplyProxy = null
+    }
+  }
+
   private fun dispatch(message: WebMessageCompat, replyProxy: JavaScriptReplyProxy) {
     if (message.type != WebMessageCompat.TYPE_STRING) return
     val text = message.data ?: return
@@ -98,6 +122,10 @@ class HostMessageListener(
       is BridgeCommand.SubscribeGestureInset -> {
         insetReplyProxy = replyProxy
         sendInset(replyProxy, gestureInsets.leftDp)
+      }
+      is BridgeCommand.SubscribeIme -> {
+        imeReplyProxy = replyProxy
+        sendIme(replyProxy, ime.heightDp)
       }
       is BridgeCommand.SetBackground -> systemBars.setBackground(command.red, command.green, command.blue)
       is BridgeCommand.KeepAliveStart -> keepAlive.start(command.title, command.stopLabel)

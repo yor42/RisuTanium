@@ -38,7 +38,9 @@
     import SideChatList from "./SideChatList.svelte";
     import QuickSettingsGui from "../Others/QuickSettingsGUI.svelte";
     import PluginDefinedIcon from "../Others/PluginDefinedIcon.svelte";
-    import { panelGestureAttachment } from "./panelGestureBinding";
+    import { panelFollowView, panelGestureAttachment } from "./panelGestureBinding";
+    import { followPanelWidth, WIDE_LAYOUT_MIN_PX } from "./panelGesture";
+    import { shellEligible } from "../../ts/chatShell/shellSwitch.svelte";
   let sideBarMode = $state(0);
   let editMode = $state(false);
   let menuMode = $state(0);
@@ -60,14 +62,111 @@
   let { openGrid = () => {}, hidden = false }: Props = $props();
 
   sideBarClosing.set(false)
+
+  // Follow-the-finger overlay: only in the narrow overlay layout while the new chat shell is the
+  // active surface. Everywhere else the panel keeps its width keyframes and the old behaviour.
+  const RAIL_WIDTH_PX = 80;
+  const FOLLOW_EASE = 'cubic-bezier(0.2, 0, 0, 1)';
+  let viewportWidth = $state(window.innerWidth);
+  let panelEl: HTMLDivElement | undefined = $state();
+  const followMode = $derived($DynamicGUI && viewportWidth < WIDE_LAYOUT_MIN_PX && shellEligible());
+  const followModal = $derived(followMode && $sideBarStore && !hidden);
+  const followDriven = $derived(followMode && $panelFollowView.phase !== 'idle');
+  const followEnter = $derived(followMode && !$sideBarClosing && !followDriven && !$panelFollowView.entered);
+  const followExit = $derived(followMode && $sideBarClosing && !followDriven);
+  const followWidth = $derived(followPanelWidth(viewportWidth));
+
+  function followTransform(): string {
+    const sign = document.documentElement.dir === 'rtl' ? 1 : -1;
+    return `transform: translateX(${sign * (1 - $panelFollowView.progress) * followWidth}px);`;
+  }
+
+  function followTransition(): string {
+    return $panelFollowView.phase === 'settling'
+      ? `transition: transform ${$panelFollowView.durationMs}ms ${FOLLOW_EASE};`
+      : 'transition: none;';
+  }
+
+  const railStyle = $derived(followDriven ? `${followTransform()} ${followTransition()} animation: none;` : undefined);
+  const panelStyle = $derived(
+    followMode
+      ? `width: ${Math.max(followWidth - RAIL_WIDTH_PX, 0)}px; min-width: 0;` +
+          (followDriven ? ` ${followTransform()} ${followTransition()} animation: none;` : '')
+      : undefined,
+  );
+  const backdropStyle = $derived(
+    followMode
+      ? followDriven
+        ? `background-color: rgb(0 0 0); opacity: ${0.5 * $panelFollowView.progress}; ${
+            $panelFollowView.phase === 'settling'
+              ? `transition: opacity ${$panelFollowView.durationMs}ms ${FOLLOW_EASE};`
+              : 'transition: none;'
+          } animation: none;`
+        : 'background-color: rgb(0 0 0); opacity: 0.5;'
+      : undefined,
+  );
+
+  function closeFollowPanel() {
+    if ($sideBarClosing || $panelFollowView.phase !== 'idle') {
+      return;
+    }
+    $sideBarClosing = true;
+  }
+
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (followModal && e.key === 'Escape' && !e.defaultPrevented) {
+      e.preventDefault();
+      closeFollowPanel();
+    }
+  }
+
+  function onWindowMouseup(e: MouseEvent) {
+    // The mouse's back button (button 3) closes the modal panel like Esc.
+    if (followModal && e.button === 3) {
+      e.preventDefault();
+      closeFollowPanel();
+    }
+  }
+
+  // While the panel is a modal overlay the rest of the page is inert, focus moves into the
+  // panel, and it returns to the opener when the modal ends.
+  $effect(() => {
+    if (!followModal || !panelEl) {
+      return;
+    }
+    const panel = panelEl;
+    const active = document.activeElement;
+    const opener = active instanceof HTMLElement && active !== document.body ? active : null;
+    const container = panel.parentElement;
+    const inerted: Element[] = [];
+    for (const sibling of Array.from(container?.parentElement?.children ?? [])) {
+      if (sibling !== container && !sibling.hasAttribute('inert')) {
+        sibling.setAttribute('inert', '');
+        inerted.push(sibling);
+      }
+    }
+    panel.focus();
+    return () => {
+      for (const element of inerted) {
+        element.removeAttribute('inert');
+      }
+      if (opener?.isConnected) {
+        opener.focus();
+      }
+    };
+  });
 </script>
+<svelte:window bind:innerWidth={viewportWidth} onkeydown={onWindowKeydown} onmouseup={onWindowMouseup} />
 {#if DBState.db.menuSideBar}
 <div
   data-rail-root
   class="h-full w-20 min-w-20 flex-col items-center bg-bgcolor text-textcolor shadow-lg relative rs-sidebar"
   class:editMode
-  class:risu-sub-sidebar={$sideBarClosing}
-  class:risu-sub-sidebar-close={$sideBarClosing}
+  class:risu-sub-sidebar={$sideBarClosing && !followMode}
+  class:risu-sub-sidebar-close={$sideBarClosing && !followMode}
+  class:follow-in={followEnter}
+  class:follow-out={followExit}
+  style={railStyle}
   class:hidden={hidden}
   class:flex={!hidden}
 >
@@ -139,8 +238,11 @@
   data-rail-root
   class="h-full w-20 min-w-20 flex-col items-center bg-bgcolor text-textcolor shadow-lg relative rs-sidebar"
   class:editMode
-  class:risu-sub-sidebar={$sideBarClosing}
-  class:risu-sub-sidebar-close={$sideBarClosing}
+  class:risu-sub-sidebar={$sideBarClosing && !followMode}
+  class:risu-sub-sidebar-close={$sideBarClosing && !followMode}
+  class:follow-in={followEnter}
+  class:follow-out={followExit}
+  style={railStyle}
   class:hidden={hidden}
   class:flex={!hidden}
 >
@@ -273,15 +375,24 @@
   {/if}
 </div>
 {/if}
+<!-- tabindex is -1 only while the panel is a modal dialog, so focus can move into it. -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   data-panel-surface
+  bind:this={panelEl}
+  role={followModal ? 'dialog' : undefined}
+  aria-label={followModal ? language.chatShellSidebar : undefined}
+  tabindex={followModal ? -1 : undefined}
+  style={panelStyle}
   class="setting-area h-full flex-col overflow-y-auto overflow-x-hidden bg-darkbg py-6 text-textcolor max-h-full"
-  class:risu-sidebar={!$sideBarClosing}
+  class:follow-in={followEnter}
+  class:follow-out={followExit}
+  class:risu-sidebar={!$sideBarClosing && !followMode}
   class:w-96={$sideBarSize === 0}
   class:w-110={$sideBarSize === 1}
   class:w-124={$sideBarSize === 2}
   class:w-138={$sideBarSize === 3}
-  class:risu-sidebar-close={$sideBarClosing}
+  class:risu-sidebar-close={$sideBarClosing && !followMode}
   class:min-w-96={!$DynamicGUI && $sideBarSize === 0}
   class:min-w-110={!$DynamicGUI && $sideBarSize === 1}
   class:min-w-124={!$DynamicGUI && $sideBarSize === 2}
@@ -364,8 +475,11 @@
             e.currentTarget.click()
         }
       }}
-      class:sidebar-dark-animation={!$sideBarClosing}
-      class:sidebar-dark-close-animation={$sideBarClosing}>
+      style={backdropStyle}
+      class:sidebar-dark-animation={!$sideBarClosing && !followMode}
+      class:sidebar-dark-close-animation={$sideBarClosing && !followMode}
+      class:follow-dark-in={followEnter}
+      class:follow-dark-out={followExit}>
 
     </div>
 
@@ -496,5 +610,54 @@
     animation-name: sidebar-dark-closing-animation;
     animation-duration: var(--risu-animation-speed);
     background-color: rgba(0,0,0,0)
+  }
+
+  /* Follow mode: transform and opacity only, no width keyframes. */
+  @keyframes follow-slide-in {
+    from { transform: translateX(calc(-1 * min(85vw, 360px))); }
+    to { transform: translateX(0); }
+  }
+  @keyframes follow-slide-out {
+    from { transform: translateX(0); }
+    to { transform: translateX(calc(-1 * min(85vw, 360px))); }
+  }
+  @keyframes follow-slide-in-rtl {
+    from { transform: translateX(min(85vw, 360px)); }
+    to { transform: translateX(0); }
+  }
+  @keyframes follow-slide-out-rtl {
+    from { transform: translateX(0); }
+    to { transform: translateX(min(85vw, 360px)); }
+  }
+  @keyframes follow-dark-in {
+    from { opacity: 0; }
+    to { opacity: 0.5; }
+  }
+  @keyframes follow-dark-out {
+    from { opacity: 0.5; }
+    to { opacity: 0; }
+  }
+  .follow-in {
+    animation: follow-slide-in var(--chat-dur-base, 200ms) var(--chat-ease-out, cubic-bezier(0.2, 0, 0, 1)) backwards;
+  }
+  .follow-out {
+    animation: follow-slide-out var(--chat-dur-base, 200ms) var(--chat-ease-out, cubic-bezier(0.2, 0, 0, 1)) both;
+  }
+  :global([dir='rtl']) .follow-in {
+    animation-name: follow-slide-in-rtl;
+  }
+  :global([dir='rtl']) .follow-out {
+    animation-name: follow-slide-out-rtl;
+  }
+  .follow-dark-in {
+    animation: follow-dark-in var(--chat-dur-base, 200ms) var(--chat-ease-out, cubic-bezier(0.2, 0, 0, 1)) backwards;
+  }
+  .follow-dark-out {
+    animation: follow-dark-out var(--chat-dur-base, 200ms) var(--chat-ease-out, cubic-bezier(0.2, 0, 0, 1)) both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .follow-in, .follow-out, .follow-dark-in, .follow-dark-out {
+      animation-duration: 120ms;
+    }
   }
 </style>

@@ -1,63 +1,49 @@
 <script lang="ts">
     import { ArrowLeft, ArrowLeftToLine, ArrowLeftRightIcon, ArrowRight, BookmarkIcon, BotIcon, CopyIcon, IdCardIcon, PowerOff, GitBranch, HamburgerIcon, History, LanguagesIcon, MenuIcon, PencilIcon, RefreshCcwIcon, RotateCcw, SplitIcon, TrashIcon, UserIcon, Volume2Icon, Scissors } from "@lucide/svelte"
-    import { aiLawApplies, changeChatTo, foldChatToMessage, getFileSrc } from "src/ts/globalApi.svelte"
-    import { copyPlainText, stripThoughtsForCopy, type CopyOutcome } from "src/ts/chatCopy"
-    import { CARD_DEADLINE_MS, CARD_PENDING_MARGIN_MS, captureCardTheme, noteNewerPlainCopy, startCardCopy, type CardReport } from "src/ts/chatCard"
+    import { aiLawApplies, changeChatTo, foldChatToMessage } from "src/ts/globalApi.svelte"
+    import { type CopyOutcome } from "src/ts/chatCopy"
+    import { CARD_DEADLINE_MS, CARD_PENDING_MARGIN_MS, type CardReport } from "src/ts/chatCard"
     import { ColorSchemeTypeStore } from "src/ts/gui/colorscheme"
     import { longpress } from "src/ts/gui/longtouch"
     import { LIGHT_SURFACE_STYLE } from "src/ts/gui/lightSurface"
     import { getModelInfo } from "src/ts/model/modellist"
-    import { runLuaButtonTrigger, runLuaInteractionTrigger } from 'src/ts/process/scriptings'
     import { risuChatParser } from "src/ts/process/scripts"
     import { recordCaughtError } from "src/ts/caughtErrors"
-    import { MEASURE } from "src/ts/process/memory/measureFlag"
     import { withSupaRepoint } from "src/ts/process/memory/supaResume"
+    import { requestRemove, handleButtonTriggerWithin as runButtonTriggerWithin, handleFormTriggerWithin as runFormTriggerWithin, toggleBookmark as toggleMessageBookmark, copyMessageText, copyMessageAsCard, playMessageTTS, branchMessage, toggleMessageDisabled } from "src/ts/process/messageActions.svelte"
     import { endTarget, siblingsAt } from "src/ts/process/chatTree"
     import { rerollBase } from "src/ts/process/rerollHistory"
     import type { TreeView } from "src/ts/process/chatTreeView"
-    import { noteEditConfirm } from "src/ts/process/chatPhaseRing"
-    import { runTrigger } from 'src/ts/process/triggers'
-    import { beginWork, originStatus } from 'src/ts/process/chatOrigin'
-    import { ensureCurrentModulesOrAlert, ensureModulesOrAlert } from 'src/ts/process/moduleEnsure'
+    import { ensureCurrentModulesOrAlert } from 'src/ts/process/moduleEnsure'
     import { hasModuleStubs } from 'src/ts/process/moduleRefList'
-    import { sayTTS } from "src/ts/process/tts"
-    import { speakerSpeechText } from "src/ts/process/ttsSpeechText"
     import { registerMessageRoot } from "src/ts/messageRootRegistry"
     import { buildDisplayParseOptions } from "src/ts/process/displayParseOptions"
     import { isTTSVoiceMode } from "src/ts/process/ttsModes"
-    import { DBState, ReloadChatPointer, CurrentTriggerIdStore, popupStore } from 'src/ts/stores.svelte'
-    import { registerDraft, unregisterDraft } from "src/ts/localDrafts"
-    import { draftContentOrphanGate } from "src/ts/draftContentOrphanGate"
-    import { type MessageIdentity, type TranslationIdentity, type DraftRecord, draftIdentityKey, isDraftRestore } from "src/ts/draftContents"
+    import { DBState, ReloadChatPointer, popupStore } from 'src/ts/stores.svelte'
+    import { type MessageIdentity, type DraftRecord, draftIdentityKey } from "src/ts/draftContents"
     import { formatDraftAge } from "src/ts/draftAge"
     import { chatWindowKey } from "src/ts/chatWindowPolicy"
-    import { capitalize, getUserIcon, getUserName, sleep } from "src/ts/util"
+    import { capitalize, sleep } from "src/ts/util"
     import { onDestroy, onMount, untrack } from "svelte"
     import { fade } from "svelte/transition"
     import { type Unsubscriber } from "svelte/store"
-    import { v4 as uuidv4, v4 } from 'uuid'
     import { language } from "../../lang"
-    import { alertConfirm, alertError, alertInput, alertRequestData, alertSelect } from "../../ts/alert"
-    import { markCharacterForSave } from "../../ts/storage/characterSaveMarks"
+    import { alertError, alertRequestData } from "../../ts/alert"
     import { ParseMarkdown, type CbsConditions, type simpleCharacterArgument } from "../../ts/parser/parser.svelte"
-    import { getCurrentCharacter, getCurrentChat, type Message, type MessageGenerationInfo, type StreamingDisplayOptimizationMode } from "../../ts/storage/database.svelte"
+    import { getCurrentCharacter, type Message, type MessageGenerationInfo, type StreamingDisplayOptimizationMode } from "../../ts/storage/database.svelte"
     import { selectedCharID } from "../../ts/stores.svelte"
     import { HideIconStore, ReloadGUIPointer, selIdState } from "../../ts/stores.svelte"
     import AutoresizeArea from "../UI/GUI/TextAreaResizable.svelte"
     import ChatBody from './ChatBody.svelte'
     import PopupButton from "../UI/PopupButton.svelte";
     import PartialEditController from './PartialEditController.svelte';
-    import { getLLMCache, setLLMCache } from "../../ts/translator/translator"
+    import { getLLMCache } from "../../ts/translator/translator"
     import { chatSurface, isChatSurfaceInstalled } from "./chatSurface.svelte"
+    import { createMessageEditorController } from "src/ts/process/messageEditorController.svelte"
 
     let translating = $state(false)
-    let editMode = $state(false)
     let statusMessage:string = $state('')
     let retranslate = $state(false)
-    let editTranslationMode = $state(false)
-    let loadingTranslationEdit = $state(false)
-    let editTranslationText = $state('')
-    let editTranslationKey: string | null = null
     let chatBodyRevision = $state(0)
     let bodyRoot:HTMLElement|null = $state(null)
     interface Props {
@@ -161,78 +147,17 @@
     let renderFailed = $state(false)
     let translated = $state(false)
     let partialEditEnabled = $state(true)
-    let translationViewControlsDisabled = $derived(editMode || editTranslationMode || loadingTranslationEdit)
-    let originalEditControlDisabled = $derived(editTranslationMode || loadingTranslationEdit)
-    let translationEditControlDisabled = $derived(editMode || loadingTranslationEdit)
-
-    // Two independent drafts can be in flight in this component at once (the
-    // original-message editor and the translation editor), so each gets its own
-    // per-instance key -- an index- or id-derived key would collide across a
-    // remount at the same index. Driven from `$effect` (not the handlers that flip
-    // `editMode`/`editTranslationMode`) so every exit path is covered, including
-    // `handleLongPress` clearing `editMode` with no commit call.
-    const editDraftKey = v4()
-    const translationEditDraftKey = v4()
-    $effect(() => {
-        if (editMode) {
-            registerDraft(editDraftKey)
-            return () => unregisterDraft(editDraftKey)
-        }
+    const editor = createMessageEditorController({
+        getMessage: () => message,
+        setMessage: (value) => { message = value },
+        getIdx: () => idx,
+        currentMessageIdentity,
+        getTranslationCacheKey,
+        translationOpenToken,
+        translationOpenCurrent,
+        isDestroyed: () => destroyed,
+        onTranslationCacheWritten: () => { chatBodyRevision += 1 },
     })
-    $effect(() => {
-        if (editTranslationMode) {
-            registerDraft(translationEditDraftKey)
-            return () => unregisterDraft(translationEditDraftKey)
-        }
-    })
-
-    // The original-text editor's edit target. `editBuffer` -- not the
-    // `$bindable` `message` prop -- is what both edit surfaces (`textBox()`'s
-    // AutoresizeArea and the cardboard theme's raw textarea) bind to, so a
-    // parent-driven prop reset (BookmarkList's own mechanism) can never
-    // clobber in-progress text. The identity is snapshotted at open time into
-    // `frozenMessageIdentity` and never re-derived from live props for the
-    // buffer's lifetime -- unlike `selId`/`chatPage`, which `edit()` below
-    // deliberately keeps reading live.
-    let editBuffer = $state('')
-    let frozenMessageIdentity: MessageIdentity | null = null
-    let frozenBaseData = ''
-
-    // MC-068: set only when the editor now open (or being typed in) was
-    // seeded from a stored draft rather than from `message`/the cached
-    // translation -- drives the restore marker's visibility on each surface.
-    // `null` means "no marker", regardless of `editMode`/`editTranslationMode`.
-    let restoredMessageRecord: DraftRecord | null = $state(null)
-    let restoredTranslationRecord: DraftRecord | null = $state(null)
-
-    // The translation editor's own identity/seed, frozen the same way as
-    // `frozenMessageIdentity`/`frozenBaseData` above -- never re-derived from
-    // live props for the buffer's lifetime. `frozenTranslationSeed` is the
-    // cached translation `loadTranslationForEdit` seeded at open, which a
-    // revert restores to (not `baseData`/the key, which for a `tr:` record is
-    // the source text).
-    let frozenTranslationIdentity: TranslationIdentity | null = null
-    let frozenTranslationSeed = ''
-
-    // Opening Settings closes both editors without discarding anything: the stored
-    // draft records stay in `draftContentOrphanGate` and are offered again on the next
-    // open, and the registered-draft effects above release their registrations.
-    let seenCloseEpoch = chatSurface.closeEpoch
-    $effect(() => {
-        const epoch = chatSurface.closeEpoch
-        if (epoch === seenCloseEpoch) {
-            return
-        }
-        seenCloseEpoch = epoch
-        editMode = false
-        editTranslationMode = false
-        discardConfirmOpen = false
-        frozenMessageIdentity = null
-        frozenTranslationIdentity = null
-        restoredMessageRecord = null
-        restoredTranslationRecord = null
-    })
-
     // The restore marker's fade-in (MC-068: "about 150ms", none under
     // prefers-reduced-motion). Copied from `SourceDisclosure.svelte`'s guard:
     // happy-dom (this component's own test environment) has no
@@ -299,45 +224,6 @@
             && token.data === token.row?.data
     }
 
-    // Capture. Called from the original-text editor's `oninput` (never
-    // from an `$effect` mirroring the buffer, and never on a programmatic
-    // assignment such as open or revert -- only a real `input` event on the
-    // textarea reaches this), with the value read directly off the DOM
-    // element that fired the event. Writes into the content store under the
-    // identity frozen at open time: a buffer that currently equals the base
-    // text (`frozenBaseData`, the message text at open) has nothing worth
-    // persisting and nothing to offer back on a later open, so the record is
-    // deleted instead of written -- this is also what removes a record when
-    // typing passes back through the base text mid-edit.
-    function captureMessageEdit(text: string) {
-        if (!frozenMessageIdentity) {
-            return
-        }
-        const identity = frozenMessageIdentity
-        if (text === frozenBaseData) {
-            draftContentOrphanGate.delete(identity)
-            return
-        }
-        draftContentOrphanGate.set(identity, text, frozenBaseData)
-    }
-
-    // Same capture, for the translation editor. The ground-truth comparison
-    // is `frozenTranslationSeed` (the cached translation seeded at open), NOT
-    // `baseData`/the key: a `tr:` record's `baseData` is categorically a
-    // different string from any translation.
-    function captureTranslationEdit(text: string) {
-        if (!frozenTranslationIdentity) {
-            return
-        }
-        const identity = frozenTranslationIdentity
-        const baseData = identity.key
-        if (text === frozenTranslationSeed) {
-            draftContentOrphanGate.delete(identity)
-            return
-        }
-        draftContentOrphanGate.set(identity, text, baseData)
-    }
-
     export function updateStreamingDisplay(state: {
         isOptimizedStreamingMessage: boolean
         streamingOptimizationMode: StreamingDisplayOptimizationMode
@@ -366,158 +252,16 @@
             return
         }
 
-        const confirmed = DBState.db.askRemoval ? await alertConfirm(language.removeChat) : true
-        if(!confirmed){
-            return
-        }
-        let removeFromHere = false
-        if(DBState.db.instantRemove || rec){
-            const choice = await alertSelect([
-                language.removeOnlyThisMessage,
-                language.cancel,
-                language.removeThisAndFollowingMessages,
-            ], language.removeMessageQuestion)
-            if(choice === '2'){
-                removeFromHere = true
-            }
-            else if(choice !== '0'){
-                return
-            }
-        }
-
-        if(!DBState.db.characters.includes(owner) || !owner.chats.includes(chat)){
-            return
-        }
-        const at = chat.message.indexOf(target)
-        if(at === -1){
-            return
-        }
-        withSupaRepoint(chat, () => {
-            if(removeFromHere){
-                chat.message.splice(at)
-            }
-            else{
-                chat.message.splice(at, 1)
-            }
-        })
-        markCharacterForSave(owner.chaId)
-    }
-
-    async function edit(){
-        // `selId`/`chatPage` are read live here, not frozen -- copy
-        // `unshift`s a new chat and `changeChatTo(0)` while reusing this
-        // mounted instance, so a frozen `chatPage` would write into
-        // whatever chat now sits at the old index instead of the one the
-        // user is looking at.
-        const newText = editBuffer
-        message = newText
-        const edited = DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx]
-        edited.data = newText
-        // Committing is a look at the text, changed or not.
-        delete edited.interrupted
-        // The draft is committed -- cleared only on a deliberate exit.
-        if (frozenMessageIdentity) {
-            draftContentOrphanGate.delete(frozenMessageIdentity)
-        }
-        frozenMessageIdentity = null
-        restoredMessageRecord = null
-    }
-
-    function startOriginalEdit() {
-        if (originalEditControlDisabled) return
-        // Snapshot the identity now and freeze it for the buffer's lifetime.
-        const identity = currentMessageIdentity()
-        frozenMessageIdentity = identity
-        frozenBaseData = message
-        // Seed from the draft only when its stored base text still matches;
-        // `draftContentOrphanGate.get` deletes a mismatched record itself.
-        const record = draftContentOrphanGate.get(identity, message)
-        // MC-068's surfaced rule: a matching-base record only counts as a
-        // restore when its text also differs from `message`. Capture
-        // never writes such a record for a `msg:` identity in the first
-        // place (its own equals-base branch deletes instead), so the
-        // `delete` here is a defensive check against a state the running app
-        // cannot currently produce, not a live path -- kept because the
-        // read-time rule should hold regardless of how a record got here
-        // (e.g. written directly, as some tests do).
-        if (record && isDraftRestore(record, message)) {
-            editBuffer = record.text
-            restoredMessageRecord = record
-        } else {
-            if (record) {
-                draftContentOrphanGate.delete(identity)
-            }
-            editBuffer = message
-            restoredMessageRecord = null
-        }
-        editMode = true
-    }
-
-    function revertOriginalEdit() {
-        // Replaces the buffer with the saved message text, deletes the
-        // stored record, and hides the marker -- the editor stays open. This
-        // is a programmatic assignment to `editBuffer`, not an `input`
-        // event, so it does not itself go through `captureMessageEdit`.
-        editBuffer = message
-        if (frozenMessageIdentity) {
-            draftContentOrphanGate.delete(frozenMessageIdentity)
-        }
-        restoredMessageRecord = null
-    }
-
-    function toggleOriginalEdit() {
-        if (originalEditControlDisabled) return
-
-        if (editMode) {
-            const confirmStartT = MEASURE ? performance.now() : 0
-            editMode = false
-            edit()
-            if (MEASURE) {
-                noteEditConfirm(confirmStartT)
-            }
-        } else {
-            startOriginalEdit()
-        }
-    }
-
-    // Deliberate exit without saving: the draft of `identity` is cleared rather
-    // than left to resurface later.
-    function discardOriginalEdit(identity: MessageIdentity | null) {
-        editMode = false
-        if (identity) {
-            draftContentOrphanGate.delete(identity)
-        }
-        frozenMessageIdentity = null
-        restoredMessageRecord = null
-    }
-
-    let discardConfirmOpen = $state(false)
-
-    // Asks only when leaving would drop a change. The answer acts only if the
-    // same edit session is still open, so it can never discard a newer one.
-    async function requestDiscardOriginalEdit() {
-        if (!editMode || discardConfirmOpen) return
-        const identity = frozenMessageIdentity
-        if (editBuffer !== frozenBaseData) {
-            discardConfirmOpen = true
-            let confirmed = false
-            try {
-                confirmed = await alertConfirm(language.messageEditDiscardConfirm)
-            } finally {
-                discardConfirmOpen = false
-            }
-            if (!confirmed || !editMode || frozenMessageIdentity !== identity) return
-        }
-        discardOriginalEdit(identity)
+        await requestRemove(owner, chat, target, { rec })
     }
 
     function toggleTranslation() {
-        if (translationViewControlsDisabled) return
+        if (editor.translationViewControlsDisabled) return
         translated = !translated
     }
 
     function requestRetranslation() {
-        if (translationViewControlsDisabled) return
+        if (editor.translationViewControlsDisabled) return
         retranslate = true
     }
 
@@ -530,7 +274,7 @@
             // The partial editor has already closed when this runs, so a failed
             // write is reported and the edited text is not recoverable from it.
             try {
-                await updateTranslationCache(e.detail.translationKey, e.detail.newData)
+                await editor.updateTranslationCache(e.detail.translationKey, e.detail.newData)
             } catch (error) {
                 alertError(error)
             }
@@ -542,21 +286,6 @@
         edited.data = e.detail.newData
         delete edited.interrupted
         displaya(e.detail.newData)
-    }
-
-    // Translation cache writes from this instance land in click order: each waits
-    // for the previous one to settle, whether it succeeded or failed, and every
-    // caller sees only its own outcome.
-    let translationWriteChain: Promise<void> = Promise.resolve()
-
-    // Translation saves clicked from this instance that have not settled yet.
-    let pendingTranslationSaves = 0
-
-    async function updateTranslationCache(key: string, data: string) {
-        const write = translationWriteChain.then(() => setLLMCache(key, data))
-        translationWriteChain = write.then(() => {}, () => {})
-        await write
-        chatBodyRevision += 1
     }
 
     async function getTranslationPartialEditContext(): Promise<{ key: string; data: string } | null | 'unavailable'> {
@@ -606,120 +335,6 @@
             return await ParseMarkdown(msgDisplay, character, 'pretranslate', idx, getCbsCondition())
         }
         return await ParseMarkdown(msgDisplay, character, 'notrim', idx, getCbsCondition())
-    }
-
-    async function loadTranslationForEdit() {
-        if (translationViewControlsDisabled) return
-
-        loadingTranslationEdit = true
-        const token = translationOpenToken()
-        try {
-            const key = await getTranslationCacheKey()
-            if (key === null || !translationOpenCurrent(token)) return
-            const cached = await getLLMCache(key)
-            if (!translationOpenCurrent(token)) return
-            const seed = cached ?? ''
-            editTranslationKey = key
-            // Freeze the translation identity/seed now, for the buffer's
-            // lifetime -- never re-derived from live props. `baseData` is the
-            // same key string (the parsed source text the translation was
-            // made from), not the cached translation.
-            const identity: TranslationIdentity = { kind: 'tr', key }
-            frozenTranslationIdentity = identity
-            frozenTranslationSeed = seed
-            const record = draftContentOrphanGate.get(identity, key)
-            // MC-068 applied to the translation editor: the seed to compare
-            // against is the cached translation, NOT `baseData` (which is the
-            // source text/key and can never equal a translation). Unlike the
-            // `msg:` case above, this delete IS reachable from the running
-            // app: it fires whenever
-            // the cached translation happens to equal the stored draft's
-            // text -- for example a retranslate that produces that exact
-            // text, or a partial-edit save on another message that shares
-            // this cache key.
-            if (record && isDraftRestore(record, seed)) {
-                editTranslationText = record.text
-                restoredTranslationRecord = record
-            } else {
-                if (record) {
-                    draftContentOrphanGate.delete(identity)
-                }
-                editTranslationText = seed
-                restoredTranslationRecord = null
-            }
-            editTranslationMode = true
-        } catch (error) {
-            editTranslationKey = null
-            frozenTranslationIdentity = null
-            throw error
-        } finally {
-            loadingTranslationEdit = false
-        }
-    }
-
-    async function saveTranslationEdit() {
-        if (editTranslationKey === null) return
-
-        // Long-press SAVES on this editor, and shares this same function
-        // with the Save button. The key, identity and text are taken at the click;
-        // a rejection propagates unchanged and leaves the editor, buffer, identity
-        // and record untouched.
-        const key = editTranslationKey
-        const identity = frozenTranslationIdentity
-        const text = editTranslationText
-        pendingTranslationSaves += 1
-        try {
-            await updateTranslationCache(key, text)
-        } finally {
-            pendingTranslationSaves -= 1
-        }
-        if (!identity) return
-
-        // The `tr:key` record is shared by every instance and session for this
-        // key, so a settle compares against the record itself: it deletes only a
-        // record holding the text it wrote. Only the settle that leaves no save
-        // from this instance pending may treat its text as final: while a later
-        // save is in flight, a record can hold the user's newest text, and a
-        // destroyed instance could never write it again.
-        if (pendingTranslationSaves === 0 && draftContentOrphanGate.get(identity, identity.key)?.text === text) {
-            draftContentOrphanGate.delete(identity)
-        }
-
-        // A destroyed instance, or one whose editor session differs from the
-        // clicked one, changes nothing beyond the cache and the record delete above.
-        if (destroyed || frozenTranslationIdentity !== identity || !editTranslationMode) return
-
-        if (editTranslationText === text && pendingTranslationSaves === 0) {
-            frozenTranslationIdentity = null
-            restoredTranslationRecord = null
-            editTranslationKey = null
-            editTranslationMode = false
-            return
-        }
-
-        // The editor stays open while the buffer differs from `text` or a later
-        // save from this instance is still pending. The cache holds `text`, so
-        // that is what Revert and "unchanged" compare against, and the buffer
-        // gets a record only when none exists (an existing record keeps its
-        // keystroke-time age) and the buffer differs from that seed.
-        frozenTranslationSeed = text
-        restoredTranslationRecord = null
-        if (editTranslationText !== text && !draftContentOrphanGate.get(identity, identity.key)) {
-            draftContentOrphanGate.set(identity, editTranslationText, identity.key)
-        }
-    }
-
-    function revertTranslationEdit() {
-        // Replaces the buffer with the cached translation seeded at open
-        // (not `baseData`/the key), deletes the stored record, and
-        // hides the marker -- the editor stays open. A programmatic
-        // assignment to `editTranslationText`, not an `input` event, so it
-        // does not itself go through `captureTranslationEdit`.
-        editTranslationText = frozenTranslationSeed
-        if (frozenTranslationIdentity) {
-            draftContentOrphanGate.delete(frozenTranslationIdentity)
-        }
-        restoredTranslationRecord = null
     }
 
     function displayParseOptions(){
@@ -810,29 +425,16 @@
 
     // Every input of the card is read here, at the click, so a later change of
     // the selected character, theme or message cannot alter a card in flight.
-    const copyAsCard = ()=>{
-        startCardCopy({
-            owner: cardOwner,
-            captureText: currentCopyText,
-            captureCard: (copyText:string) => {
-                const isUser = role === 'user'
-                const character = getCurrentCharacter()
-                const cbsConditions = getCbsCondition()
-                const messageIdx = idx
-                const root = document.documentElement
-                return {
-                    copyText,
-                    displayName: isUser ? getUserName() : name,
-                    badge: isUser ? null : (messageGenerationInfo ? capitalize(getModelInfo(messageGenerationInfo.model).shortName) : 'AI'),
-                    avatarPath: (isUser ? getUserIcon() : DBState.db.characters[selIdState.selId]?.image) ?? '',
-                    theme: captureCardTheme((property) => root.style.getPropertyValue(property)),
-                    parseBody: () => ParseMarkdown(copyText, character, 'normal', messageIdx, cbsConditions),
-                    resolveAvatarSrc: getFileSrc,
-                }
-            },
-            report: reportCard,
-        })
-    }
+    const copyAsCard = () => copyMessageAsCard({
+        owner: cardOwner,
+        captureText: currentCopyText,
+        report: reportCard,
+        role: () => role,
+        name: () => name,
+        messageGenerationInfo: () => messageGenerationInfo,
+        idx: () => idx,
+        getCbsCondition,
+    })
 
 
     let blankMessage = $derived((message === '{{none}}' || message === '{{blank}}' || message === '') && idx === -1 || isComment)
@@ -897,10 +499,8 @@
         destroyed = true
         clearTimeout(statusTimer)
         unsubscribers.forEach(u => u())
-        // Backstop alongside the `$effect` cleanups above -- `unregisterDraft` is a
-        // safe no-op if the key was already removed.
-        unregisterDraft(editDraftKey)
-        unregisterDraft(translationEditDraftKey)
+        // Dispose releases draft registrations even when teardown effects have not flushed.
+        editor.dispose()
     })
 
     function RenderGUIHtml(html:string){
@@ -914,124 +514,8 @@
         }
     }
 
-    async function handleButtonTriggerWithin(event: UIEvent) {
-        const currentChar = getCurrentCharacter()
-        if(!currentChar || currentChar.type === 'group'){
-            return
-        }
-
-        const target = event.target as HTMLElement
-        const origin = target.closest('[risu-trigger], [risu-btn]')
-        if (!origin) {
-            return
-        }
-
-        const triggerName = origin.getAttribute('risu-trigger')
-        const triggerId = origin.getAttribute('risu-id')
-        const btnEvent = origin.getAttribute('risu-btn')
-
-        const currentChat = getCurrentChat()
-        // Aborted only by a delete of the chat this run writes to: the registration's
-        // stop is the run's one cancel path, and the busy button does not reach it.
-        const runController = new AbortController()
-        const workHandle = beginWork(currentChar, currentChat, undefined, () => runController.abort())
-        if (!workHandle) {
-            return
-        }
-
-        let triggerResult
-        try {
-            // A click has no cancel of its own: a load that waits on a question waits until it is answered or the
-            // chat is deleted. A failed load shows its alert and the trigger does not run.
-            const modulesReady = !hasModuleStubs() || await ensureModulesOrAlert(workHandle.origin, runController.signal, { owner: currentChar, chat: currentChat })
-            triggerResult = !modulesReady ? undefined :
-                triggerName ?
-                    await runTrigger(currentChar, 'manual', {
-                        chat: currentChat,
-                        manualName: triggerName,
-                        triggerId: triggerId || undefined,
-                        origin: workHandle.origin,
-                        signal: runController.signal,
-                    }) :
-                btnEvent ?
-                    await runLuaButtonTrigger(currentChar, btnEvent, workHandle.origin) :
-                null
-        } finally {
-            workHandle.end()
-        }
-
-        // A gone origin skips the reload bump; an ambiguous one still gets
-        // it whenever a trigger ran, since its chat is still on screen.
-        if(triggerResult && originStatus(workHandle.origin) !== 'gone') {
-            ReloadChatPointer.update((v) => {
-                v[idx] = (v[idx] ?? 0) + 1
-                return v
-            })
-        }
-        
-        if(triggerName && triggerId) {
-            setTimeout(() => {
-                CurrentTriggerIdStore.set(null)
-            }, 100) // Small delay to allow display mode to complete
-        }
-    }
-
-    async function handleFormTriggerWithin(event: SubmitEvent) {
-        // Regardless of attribute presence, prevent undesirable site exits via form submission
-        event.preventDefault()
-
-        const currentChar = getCurrentCharacter()
-        if(!currentChar || currentChar.type === 'group'){
-            return
-        }
-
-        const target = event.target as HTMLFormElement
-        const formEvent = target.getAttribute('risu-form')
-
-        if (!formEvent) {
-            return
-        }
-
-        const data: Record<string, FormDataEntryValue | FormDataEntryValue[]> = Object.create(null)
-        for (const [key, value] of new FormData(target, event.submitter)) {
-            if (Object.hasOwn(data, key)) {
-                if (Array.isArray(data[key])) {
-                    data[key].push(value)
-                } else {
-                    data[key] = [data[key], value]
-                }
-            } else {
-                data[key] = value
-            }
-        }
-
-        // Same origin discipline as the button path: the run writes to the chat it
-        // started in, so a chat switch during the Lua await never replaces the
-        // chat on screen.
-        const currentChat = getCurrentChat()
-        const runController = new AbortController()
-        const workHandle = beginWork(currentChar, currentChat, undefined, () => runController.abort())
-        if (!workHandle) {
-            return
-        }
-
-        let triggerResult
-        try {
-            const modulesReady = !hasModuleStubs() || await ensureModulesOrAlert(workHandle.origin, runController.signal, { owner: currentChar, chat: currentChat })
-            if (modulesReady) {
-                triggerResult = await runLuaInteractionTrigger('form', currentChar, formEvent, { data }, workHandle.origin)
-            }
-        } finally {
-            workHandle.end()
-        }
-
-        if(triggerResult && originStatus(workHandle.origin) !== 'gone') {
-            ReloadChatPointer.update((v) => {
-                v[idx] = (v[idx] ?? 0) + 1
-                return v
-            })
-        }
-    }
+    const handleButtonTriggerWithin = (event: UIEvent) => runButtonTriggerWithin(event, () => idx)
+    const handleFormTriggerWithin = (event: SubmitEvent) => runFormTriggerWithin(event, () => idx)
 
     let isBookmarked = $derived(
         DBState.db.characters[selIdState.selId]
@@ -1039,56 +523,7 @@
             ?.bookmarks?.includes(DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx]?.chatId) ?? false
     );
 
-    async function toggleBookmark() {
-        const chat = DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage];
-        
-        if(!chat.message[idx]) return;
-
-        let messageId = chat.message[idx]?.chatId;
-        const messageContent = chat.message[idx]?.data;
-
-        if (!messageId) {
-            messageId = uuidv4();
-            chat.message[idx].chatId = messageId;
-        }
-
-        chat.bookmarks ??= [];
-        chat.bookmarkNames ??= {};
-
-        const bookmarkIndex = chat.bookmarks.indexOf(messageId);
-
-        if (bookmarkIndex > -1) {
-            chat.bookmarks.splice(bookmarkIndex, 1);
-            delete chat.bookmarkNames[messageId];
-        } else {
-            chat.bookmarks.push(messageId);
-
-            const msgSender = chat.message[idx]?.role === 'user' ? getUserName() : name;
-            const newName= await alertInput(language.bookmarkAskNameOrDefault, [], chat.bookmarkNames[messageId] || '');
-
-            if (newName && newName.trim() !== '') {
-                chat.bookmarkNames[messageId] = newName;
-            } else {
-                let defaultName;
-
-                const blacklist = ['!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', '-', '=', '[', ']', '{', '}', '|', ';', ':', '"', "'", ',', '.', '<', '>', '/', '?'];
-                let lines = messageContent.split('\n');
-                lines = lines.splice(Math.floor(lines.length * 0.5));
-                for (const line of lines) {
-                    if (line && !blacklist.some(char => line.startsWith(char))) {
-                        defaultName = line.trim().slice(0, 50) + '...';
-                        break;
-                    }
-                }
-                if (!defaultName) {
-                    defaultName = messageContent.slice(0, 50) + '...';
-                }
-                chat.bookmarkNames[messageId] = msgSender + '| ' + defaultName;
-            }
-        }
-
-        chat.bookmarks = [...chat.bookmarks];
-    }
+    const toggleBookmark = () => toggleMessageBookmark(idx, name)
 </script>
 
 
@@ -1115,8 +550,8 @@
             </button>
         {/if}
         {#if DBState.db.translatorType === 'llm' && translated}
-            <button class={"text-sm p-1 text-textcolor2 border-darkborderc float-end mr-2 my-1 rounded-md transition-all flex justify-center items-center " + (translationViewControlsDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:ring-darkbutton hover:ring-3 hover:text-textcolor')}
-                    disabled={translationViewControlsDisabled}
+            <button class={"text-sm p-1 text-textcolor2 border-darkborderc float-end mr-2 my-1 rounded-md transition-all flex justify-center items-center " + (editor.translationViewControlsDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:ring-darkbutton hover:ring-3 hover:text-textcolor')}
+                    disabled={editor.translationViewControlsDisabled}
                     onclick={requestRetranslation}
             >
                 <RefreshCcwIcon size={20} />
@@ -1124,19 +559,19 @@
                     {language.retranslate}
                 </span>
             </button>
-            <button class={"text-sm p-1 border-darkborderc float-end mr-2 my-1 rounded-md transition-all flex justify-center items-center " + (editTranslationMode ? 'text-blue-400 hover:ring-darkbutton hover:ring-3 hover:text-textcolor' : translationEditControlDisabled ? 'text-textcolor2 opacity-50 cursor-not-allowed' : 'text-textcolor2 hover:ring-darkbutton hover:ring-3 hover:text-textcolor')}
-                    disabled={translationEditControlDisabled}
+            <button class={"text-sm p-1 border-darkborderc float-end mr-2 my-1 rounded-md transition-all flex justify-center items-center " + (editor.editTranslationMode ? 'text-blue-400 hover:ring-darkbutton hover:ring-3 hover:text-textcolor' : editor.translationEditControlDisabled ? 'text-textcolor2 opacity-50 cursor-not-allowed' : 'text-textcolor2 hover:ring-darkbutton hover:ring-3 hover:text-textcolor')}
+                    disabled={editor.translationEditControlDisabled}
                     onclick={() => {
-                        if(editTranslationMode){
-                            saveTranslationEdit().catch((error) => alertError(error))
+                        if(editor.editTranslationMode){
+                            editor.saveTranslationEdit().catch((error) => alertError(error))
                         } else {
-                            loadTranslationForEdit().catch((error) => alertError(error))
+                            editor.loadTranslationForEdit().catch((error) => alertError(error))
                         }
                     }}
             >
                 <PencilIcon size={20} />
                 <span class="ml-1">
-                    {editTranslationMode ? language.editTranslationSave : language.editTranslation}
+                    {editor.editTranslationMode ? language.editTranslationSave : language.editTranslation}
                 </span>
             </button>
         {/if}
@@ -1186,21 +621,21 @@
 {/snippet}
 
 {#snippet textBox()}
-    {#if editTranslationMode}
-        {#if restoredTranslationRecord}
-            {@render draftRestoreMarker(restoredTranslationRecord, revertTranslationEdit, markerOnLightSurface)}
+    {#if editor.editTranslationMode}
+        {#if editor.restoredTranslationRecord}
+            {@render draftRestoreMarker(editor.restoredTranslationRecord, editor.revertTranslationEdit, markerOnLightSurface)}
         {/if}
-        <AutoresizeArea bind:value={editTranslationText} onUserEdit={captureTranslationEdit} handleLongPress={() => {
-            saveTranslationEdit().catch((error) => alertError(error))
+        <AutoresizeArea bind:value={editor.editTranslationText} onUserEdit={editor.captureTranslationEdit} handleLongPress={() => {
+            editor.saveTranslationEdit().catch((error) => alertError(error))
         }} />
     {/if}
-    {#if editMode}
-        {#if restoredMessageRecord}
-            {@render draftRestoreMarker(restoredMessageRecord, revertOriginalEdit, markerOnLightSurface)}
+    {#if editor.editMode}
+        {#if editor.restoredMessageRecord}
+            {@render draftRestoreMarker(editor.restoredMessageRecord, editor.revertOriginalEdit, markerOnLightSurface)}
         {/if}
-        <AutoresizeArea bind:value={editBuffer} onUserEdit={captureMessageEdit} lightSurface={DBState.db.theme === 'mobilechat'} handleLongPress={() => {
+        <AutoresizeArea bind:value={editor.editBuffer} onUserEdit={editor.captureMessageEdit} lightSurface={DBState.db.theme === 'mobilechat'} handleLongPress={() => {
             // Mouse long-press on the original-text editor discards without asking.
-            discardOriginalEdit(frozenMessageIdentity)
+            editor.discardOriginalEdit(editor.frozenMessageIdentity)
         }} />
     {:else if isComment}
         <div class="w-full flex justify-center text-textcolor2 italic mb-12">
@@ -1237,12 +672,12 @@
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <span class="text chat-width chattext prose minw-0"
-            class:hidden={editTranslationMode}
+            class:hidden={editor.editTranslationMode}
             class:prose-invert={$ColorSchemeTypeStore && !markerOnLightSurface}
             bind:this={bodyRoot}
             onclick={() => {
             if(DBState.db.clickToEdit && idx > -1 && !isOptimizedStreamingMessage){
-                startOriginalEdit()
+                editor.startOriginalEdit()
             }
         }}
             style:font-size="{0.875 * (DBState.db.zoomsize / 100)}rem"
@@ -1276,7 +711,7 @@
         {#if renderFailed}
             <div class="text-xs text-textcolor2 italic render-failed-note" role="note">{language.messageRenderFailed}</div>
         {/if}
-        {#if idx >= 0 && !editMode && !editTranslationMode && !isOptimizedStreamingMessage && partialEditEnabled && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit)}
+        {#if idx >= 0 && !editor.editMode && !editor.editTranslationMode && !isOptimizedStreamingMessage && partialEditEnabled && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit)}
             <PartialEditController
                 messageData={message}
                 chatIndex={idx}
@@ -1347,9 +782,7 @@
 {#snippet majorIconButtonsBody(showNames:boolean)}
     {#if copyButtonShown()}
     <button class="flex items-center hover:text-blue-500 transition-colors button-icon-copy" onclick={()=>{
-        const copyText = stripThoughtsForCopy(currentCopyText())
-        copyPlainText(copyText, reportCopy)
-        noteNewerPlainCopy(copyText, reportCopy)
+        copyMessageText(currentCopyText(), reportCopy)
     }}>
         <CopyIcon size={20}/>
         {#if showNames}
@@ -1359,12 +792,7 @@
 {/if}
 {#if speakerButtonShown()}
     <button class="flex items-center hover:text-blue-500 transition-colors button-icon-tts" onclick={()=>{
-        return sayTTS(null, speakerSpeechText({
-            translated,
-            shownRoot: bodyRoot,
-            original: stripThoughtsForCopy(currentCopyText()),
-            character: getCurrentCharacter()
-        }))
+        return playMessageTTS(translated, bodyRoot, currentCopyText(), getCurrentCharacter())
     }}>
         <Volume2Icon size={20}/>
         {#if showNames}
@@ -1386,9 +814,9 @@
 {#snippet translationButton(showNames = false)}
     {#if DBState.db.translator !== '' && !blankMessage && !isOptimizedStreamingMessage}
         <button
-            class={"flex items-center transition-colors button-icon-translate " + (translationViewControlsDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:text-blue-500') + (translated ? ' text-blue-400' : '')}
+            class={"flex items-center transition-colors button-icon-translate " + (editor.translationViewControlsDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:text-blue-500') + (translated ? ' text-blue-400' : '')}
             class:translating={translating}
-            disabled={translationViewControlsDisabled}
+            disabled={editor.translationViewControlsDisabled}
             onclick={toggleTranslation}
         >
             <LanguagesIcon />
@@ -1399,9 +827,9 @@
     {/if}
     {#if idx > -1 && !isOptimizedStreamingMessage}
         <button
-            class={"flex items-center transition-colors button-icon-edit " + (editMode ? 'text-blue-400 hover:text-blue-500' : originalEditControlDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:text-blue-500')}
-            disabled={originalEditControlDisabled}
-            onclick={toggleOriginalEdit}
+            class={"flex items-center transition-colors button-icon-edit " + (editor.editMode ? 'text-blue-400 hover:text-blue-500' : editor.originalEditControlDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:text-blue-500')}
+            disabled={editor.originalEditControlDisabled}
+            onclick={editor.toggleOriginalEdit}
         >
             <PencilIcon size={20}/>
 
@@ -1480,8 +908,7 @@
     {/if}
 
     <button class="flex items-center enabled:hover:text-blue-500 disabled:opacity-40 transition-colors button-icon-branch" disabled={onBranch === undefined || branchDisabled} onclick={async () => {
-        await sleep(1)
-        onBranch?.(idx, expectedId)
+        await branchMessage(() => idx, expectedId, onBranch)
     }}>
         <SplitIcon size={20}/>
         {#if showNames}
@@ -1490,9 +917,7 @@
     </button>
 
     <button class="flex items-center hover:text-blue-500 transition-colors" onclick={async () => {
-        await sleep(1)
-        const currentMessage = DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx]
-        DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx].disabled = !currentMessage.disabled
+        await toggleMessageDisabled(() => idx, 'one')
     }}>
         <PowerOff size={20}/>
         {#if showNames}
@@ -1501,9 +926,7 @@
     </button>
 
     <button class="flex items-center hover:text-blue-500 transition-colors" onclick={async () => {
-        await sleep(1)
-        const currentMessage = DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx]
-        DBState.db.characters[selIdState.selId].chats[DBState.db.characters[selIdState.selId].chatPage].message[idx].disabled = currentMessage.disabled === 'allBefore' ? false : 'allBefore'
+        await toggleMessageDisabled(() => idx, 'above')
     }}>
         <Scissors size={20}/>
         {#if showNames}
@@ -1722,18 +1145,18 @@
                     style={LIGHT_SURFACE_STYLE}
                 >
                     <p class="text-gray-800">{@render textBox()}</p>
-                    {#if editMode}
+                    {#if editor.editMode}
                         <div class="flex justify-end gap-2 mt-2">
                             <button
                                 type="button"
                                 class="rounded-md border border-gray-400 px-3 py-1 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-300/60 disabled:opacity-50 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600"
-                                disabled={discardConfirmOpen}
-                                onclick={requestDiscardOriginalEdit}
+                                disabled={editor.discardConfirmOpen}
+                                onclick={editor.requestDiscardOriginalEdit}
                             >{language.messageEditDiscard}</button>
                             <button
                                 type="button"
                                 class="rounded-md bg-gray-800 px-3 py-1 text-sm font-medium text-gray-100 transition-colors hover:bg-gray-700 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600"
-                                onclick={toggleOriginalEdit}
+                                onclick={editor.toggleOriginalEdit}
                             >{language.messageEditSave}</button>
                         </div>
                     {/if}
@@ -1765,7 +1188,7 @@
                             <h2 class="text-base font-bold text-gray-500 text-center mt-2 max-w-full text-ellipsis">{name}</h2>
 
                         </div>
-                        {#if editMode}
+                        {#if editor.editMode}
                             <!--
                               This wrapper carries the fixed height
                               (h-138/sm:h-96), not the textarea, so the
@@ -1775,10 +1198,10 @@
                               marker leaves within that fixed wrapper.
                             -->
                             <div class="grow h-138 sm:h-96 flex flex-col">
-                                {#if restoredMessageRecord}
-                                    {@render draftRestoreMarker(restoredMessageRecord, revertOriginalEdit, true)}
+                                {#if editor.restoredMessageRecord}
+                                    {@render draftRestoreMarker(editor.restoredMessageRecord, editor.revertOriginalEdit, true)}
                                 {/if}
-                                <textarea class="grow min-h-0 overflow-y-auto bg-transparent text-black p-2 mb-2 resize-none message-edit-area" bind:value={editBuffer} oninput={(e) => captureMessageEdit((e.currentTarget as HTMLTextAreaElement).value)}></textarea>
+                                <textarea class="grow min-h-0 overflow-y-auto bg-transparent text-black p-2 mb-2 resize-none message-edit-area" bind:value={editor.editBuffer} oninput={(e) => editor.captureMessageEdit((e.currentTarget as HTMLTextAreaElement).value)}></textarea>
                             </div>
                         {:else}
                             <div class="grow h-138 sm:h-96 overflow-y-auto p-2 mb-2 sm:mb-0" style={LIGHT_SURFACE_STYLE}>

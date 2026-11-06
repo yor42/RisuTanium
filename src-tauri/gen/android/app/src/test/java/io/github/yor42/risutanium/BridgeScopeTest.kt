@@ -149,6 +149,45 @@ class BridgeScopeTest {
   }
 
   @Test
+  fun theImeSubscribeTakesNoArguments() {
+    assertSame(BridgeCommand.SubscribeIme, toCommand("ime", "subscribe", emptyList(), null))
+    assertNull(toCommand("ime", "subscribe", listOf(1), null))
+    assertNull(toCommand("ime", "subscribe", listOf(null), null))
+    assertNull(toCommand("ime", "visible", emptyList(), null))
+  }
+
+  @Test
+  fun theImeEventHasTheAgreedShape() {
+    assertEquals("{\"event\":\"ime\",\"visible\":true,\"height\":288.0}", encodeImeEvent(true, 288.0))
+    assertEquals("{\"event\":\"ime\",\"visible\":false,\"height\":0.0}", encodeImeEvent(false, 0.0))
+  }
+
+  @Test
+  fun aNonFiniteImeHeightIsSentAsZeroAndNeverVisible() {
+    assertEquals("{\"event\":\"ime\",\"visible\":false,\"height\":0.0}", encodeImeEvent(true, Double.NaN))
+    assertEquals("{\"event\":\"ime\",\"visible\":false,\"height\":0.0}", encodeImeEvent(true, Double.POSITIVE_INFINITY))
+    assertEquals("{\"event\":\"ime\",\"visible\":false,\"height\":0.0}", encodeImeEvent(true, -5.0))
+  }
+
+  @Test
+  fun theImeSpaceIsWhatLiesAboveTheBars() {
+    assertEquals(0, imeSpacePx(0, 0))
+    assertEquals(0, imeSpacePx(120, 120))
+    assertEquals(0, imeSpacePx(50, 120))
+    assertEquals(600, imeSpacePx(768, 168))
+  }
+
+  @Test
+  fun theImeHolderIsVisibleOnlyWithAPositiveHeight() {
+    val holder = ImeStateHolder()
+    assertFalse(holder.visible)
+    holder.heightDp = 288.0
+    assertTrue(holder.visible)
+    holder.heightDp = 0.0
+    assertFalse(holder.visible)
+  }
+
+  @Test
   fun theTakeReplyEmbedsTheResultAndCarriesTheSequence() {
     val result = "[[{\"uri\":\"content://x/1\",\"name\":\"a.charx\"}]]"
     assertEquals(

@@ -1,7 +1,7 @@
 /**
- * The hidden Nexus preset must not leak into any colour-scheme listing, change the pinned
- * built-in presets or default, or give the plugin-reachable `changeColorScheme` a Nexus branch.
- * Compatibility guards: each passes with and without the preset file present.
+ * The listed Nexus preset is the 18th table entry after the pinned 17 built-ins, leaves those
+ * presets and the default unchanged, and is applied by the plugin-reachable `changeColorScheme`
+ * through the generic table path. The file keeps its historical name.
  */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -65,6 +65,8 @@ const PINNED_PRESETS = {
     'lite': { bgcolor: '#1f2937', darkbg: '#1C2533', borderc: '#475569', selected: '#475569', draculared: '#ff5555', textcolor: '#f8f8f2', textcolor2: '#64748b', darkBorderc: '#030712', darkbutton: '#374151', type: 'dark' },
 }
 
+const PINNED_NEXUS = { bgcolor: '#00011c', darkbg: '#0e0f2a', borderc: '#38d9ff', selected: '#19224a', draculared: '#ff6b81', textcolor: '#ebecff', textcolor2: '#9ca6c9', darkBorderc: '#5b6396', darkbutton: '#141738', type: 'dark' }
+
 const PROPERTY_BY_FIELD = {
     '--risu-theme-bgcolor': 'bgcolor',
     '--risu-theme-darkbg': 'darkbg',
@@ -92,19 +94,19 @@ beforeEach(() => {
     document.documentElement.removeAttribute('style')
 })
 
-describe('the hidden Nexus preset', () => {
-    test('T-PRESET-1 guard: the listing is the pinned 17 names and has no nexus key', () => {
-        expect([...colorSchemeList]).toEqual(Object.keys(PINNED_PRESETS))
-        expect(colorSchemeList).toHaveLength(17)
-        expect('nexus' in colorSchemePresets).toBe(false)
+describe('the listed Nexus preset', () => {
+    test('T-PRESET-1: the listing is the pinned 17 names in order followed by nexus', () => {
+        expect([...colorSchemeList]).toEqual([...Object.keys(PINNED_PRESETS), 'nexus'])
+        expect(colorSchemeList).toHaveLength(18)
+        expect('nexus' in colorSchemePresets).toBe(true)
     })
 
-    test('T-PRESET-2 guard: every preset and the default keep their pinned values', () => {
+    test('T-PRESET-2 guard: every built-in preset and the default keep their pinned values, and nexus has its own', () => {
         expect(defaultColorScheme).toEqual(PINNED_DEFAULT)
-        expect(colorSchemePresets).toEqual(PINNED_PRESETS)
+        expect(colorSchemePresets).toEqual({ ...PINNED_PRESETS, nexus: PINNED_NEXUS })
     })
 
-    test.each(Object.entries(PINNED_PRESETS))('T-PRESET-2 guard: applying %s sets the nine pinned theme properties', (_name, scheme) => {
+    test.each(Object.entries({ ...PINNED_PRESETS, nexus: PINNED_NEXUS }))('T-PRESET-2 guard: applying %s sets the nine pinned theme properties', (_name, scheme) => {
         h.db.colorScheme = structuredClone(scheme)
         updateColorScheme()
         const expected: Record<string, string> = {}
@@ -114,17 +116,15 @@ describe('the hidden Nexus preset', () => {
         expect(appliedProperties()).toEqual(expected)
     })
 
-    test('T-PRESET-5 guard: changeColorScheme with nexus acts like an unknown name', () => {
-        changeColorScheme('no-such-scheme')
-        const unknown = { scheme: structuredClone(h.db.colorScheme), name: h.db.colorSchemeName, css: appliedProperties() }
-
-        h.db.colorScheme = structuredClone(defaultColorScheme)
-        h.db.colorSchemeName = 'default'
-        document.documentElement.removeAttribute('style')
+    test('T-PRESET-5: changeColorScheme with nexus stores the nexus values and applies them', () => {
         changeColorScheme('nexus')
 
-        expect(h.db.colorScheme).toEqual(unknown.scheme)
-        expect(h.db.colorSchemeName === 'nexus' ? 'no-such-scheme' : h.db.colorSchemeName).toBe(unknown.name)
-        expect(appliedProperties()).toEqual(unknown.css)
+        expect(h.db.colorScheme).toEqual(PINNED_NEXUS)
+        expect(h.db.colorSchemeName).toBe('nexus')
+        const expected: Record<string, string> = {}
+        for (const [property, field] of Object.entries(PROPERTY_BY_FIELD)) {
+            expected[property] = PINNED_NEXUS[field]
+        }
+        expect(appliedProperties()).toEqual(expected)
     })
 })

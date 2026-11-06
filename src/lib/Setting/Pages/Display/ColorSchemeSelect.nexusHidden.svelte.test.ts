@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 
 /**
- * The colour-scheme picker offers the 17 built-in presets plus Custom and never the hidden
- * Nexus preset. Compatibility guard: passes with and without the preset file present.
+ * The colour-scheme picker offers the 17 built-in presets, Nexus and Custom; choosing Nexus
+ * applies it through changeColorScheme. The file keeps its historical name.
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -35,6 +35,7 @@ vi.mock(import('src/ts/gui/systemBars'), () => ({
 }) as unknown as typeof import('src/ts/gui/systemBars'))
 
 import { colorSchemePresets, defaultColorScheme } from 'src/ts/gui/colorscheme'
+import { nexusColorScheme } from 'src/ts/gui/nexusColorScheme'
 import ColorSchemeSelect from './ColorSchemeSelect.svelte'
 
 let target: HTMLElement
@@ -55,10 +56,18 @@ afterEach(async () => {
 })
 
 describe('ColorSchemeSelect', () => {
-    test('T-PRESET-4 guard: 18 buttons, one per built-in preset plus Custom, none titled Nexus', () => {
+    test('T-PRESET-4: 19 buttons, one per preset including one titled Nexus, plus Custom', () => {
         const titles = [...target.querySelectorAll('button')].map((b) => b.getAttribute('title') ?? '')
         expect(titles).toHaveLength(Object.keys(colorSchemePresets).length + 1)
-        expect(titles).toHaveLength(18)
-        expect(titles.some((t) => /nexus/i.test(t))).toBe(false)
+        expect(titles).toHaveLength(19)
+        expect(titles.filter((t) => t === 'Nexus')).toHaveLength(1)
+    })
+
+    test('T-PRESET-4 clicking Nexus stores the nexus values and name', () => {
+        const button = [...target.querySelectorAll('button')].find((b) => b.getAttribute('title') === 'Nexus')
+        button!.click()
+        flushSync()
+        expect(h.db.colorSchemeName).toBe('nexus')
+        expect(h.db.colorScheme).toEqual(nexusColorScheme)
     })
 })

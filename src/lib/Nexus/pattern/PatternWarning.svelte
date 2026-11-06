@@ -1,6 +1,7 @@
 <script lang="ts">
     import { untrack } from 'svelte'
     import PatternDialog from './PatternDialog.svelte'
+    import { language } from '../../../lang'
     import { armDelayMs, assertWarningActions, firstFocusAction, splitConsequences, type PatternAnswer, type PatternWarningDef } from './patternWarning'
 
     interface Props {
@@ -27,7 +28,7 @@
     const parts = $derived(splitConsequences(def.consequences))
     const detailLines = $derived(def.detail ?? [])
     const hasDisclosure = $derived(parts.folded.length > 0 || detailLines.length > 0)
-    const toggleLabel = $derived(parts.folded.length > 0 ? (labels.more ?? ((count: number) => `${count} more`))(parts.folded.length) : (labels.details ?? 'Details'))
+    const toggleLabel = $derived(parts.folded.length > 0 ? (labels.more ?? language.patternWarningMore)(parts.folded.length) : (labels.details ?? language.patternWarningDetails))
     const initialAction = $derived(firstFocusAction(def.actions))
     const actionCount = $derived([def.actions.cancel, def.actions.secondary, def.actions.primary].filter(Boolean).length)
 

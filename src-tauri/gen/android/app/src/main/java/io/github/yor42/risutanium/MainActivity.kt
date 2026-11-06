@@ -30,6 +30,7 @@ class MainActivity : TauriActivity() {
   private var backWebView: WebView? = null
   private val mainHandler = Handler(Looper.getMainLooper())
   private val gestureInsets = GestureInsetHolder()
+  private val imeState = ImeStateHolder()
   private var lastBarColor = DEFAULT_BAR_COLOR
 
   // The message channel's handler while the channel is in use; main thread only.
@@ -114,6 +115,10 @@ class MainActivity : TauriActivity() {
       val gestures = insets.getInsets(WindowInsetsCompat.Type.systemGestures())
       gestureInsets.leftDp = (maxOf(0, gestures.left - bars.left) / resources.displayMetrics.density).toDouble()
       hostListener?.pushGestureInset(gestureInsets.leftDp)
+      // The keyboard state is the space the padding above gave to the keyboard, so a floating
+      // keyboard, split screen and rotation do not read as an open keyboard.
+      imeState.heightDp = (imeSpacePx(ime.bottom, bars.bottom) / resources.displayMetrics.density).toDouble()
+      hostListener?.pushIme(imeState.heightDp)
       insets.inset(bars.left, bars.top, bars.right, bottom)
     }
     // Until the page reports its scheme the bars match the default dark scheme.
@@ -150,6 +155,7 @@ class MainActivity : TauriActivity() {
       val listener = HostMessageListener(
         APP_ORIGIN,
         gestureInsets,
+        imeState,
         SystemBarsBridge(::applyBarColor),
         KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce),
         OpenedFilesBridge(contentResolver)
@@ -173,6 +179,7 @@ class MainActivity : TauriActivity() {
   // is not available.
   private fun addSeparateHostObjects(webView: WebView) {
     webView.addJavascriptInterface(GestureInsetBridge(gestureInsets), "__risuTaniumGestureInset")
+    webView.addJavascriptInterface(ImeBridge(imeState), "__risuTaniumIme")
     webView.addJavascriptInterface(SystemBarsBridge(::applyBarColor), "__risuTaniumSystemBars")
     webView.addJavascriptInterface(
       KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce),

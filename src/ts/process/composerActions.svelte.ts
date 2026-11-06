@@ -555,7 +555,7 @@ function stepInTree(entry: TreeEntry, direction: 'back' | 'forward'): boolean {
     return direction === 'forward' && index === chat.message.length - 1 && rerollBase(chat.message) !== null
 }
 
-async function stepFrom(source: ComposerActionsSource, entry: TreeEntry, direction: 'back' | 'forward'): Promise<void> {
+async function stepFrom(source: ComposerActionsSource, entry: TreeEntry, direction: 'back' | 'forward', { generate = true }: { generate?: boolean } = {}): Promise<void> {
     let regenerates = false
     try {
         regenerates = stepInTree(entry, direction)
@@ -563,7 +563,7 @@ async function stepFrom(source: ComposerActionsSource, entry: TreeEntry, directi
     finally {
         entry.workHandle.end()
     }
-    if(regenerates){
+    if(regenerates && generate){
         return regenerate(source)
     }
 }
@@ -573,12 +573,12 @@ async function stepFrom(source: ComposerActionsSource, entry: TreeEntry, directi
  * press past the last sibling generates a new reply only on the last message;
  * on any other row it changes nothing.
  */
-export async function stepSibling(source: ComposerActionsSource, index: number, expectedId: string | undefined, direction: 'back' | 'forward'): Promise<void> {
+export async function stepSibling(source: ComposerActionsSource, index: number, expectedId: string | undefined, direction: 'back' | 'forward', options: { generate?: boolean } = {}): Promise<void> {
     const entry = enterTree({ index, expectedId })
     if(!entry){
         return
     }
-    return stepFrom(source, entry, direction)
+    return stepFrom(source, entry, direction, options)
 }
 
 /**
@@ -630,6 +630,11 @@ async function regenerate(source: ComposerActionsSource): Promise<void> {
         entry.workHandle.end()
         setComposerWindow(false)
     }
+}
+
+/** Regeneration keeps its enterTree('last') and rerollBase guards; it skips stepInTree's last-sibling check. */
+export async function regenerateNewest(source: ComposerActionsSource): Promise<void> {
+    return regenerate(source)
 }
 
 /** The forward press on the last message: the next sibling, else a new generation. */

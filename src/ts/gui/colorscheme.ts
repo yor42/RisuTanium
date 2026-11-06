@@ -7,6 +7,7 @@ import { language } from "../../lang";
 import { isLite } from "../lite";
 import { CustomCSSStore, DBState, SafeModeStore } from "../stores.svelte";
 import { syncSystemBars } from "./systemBars";
+import { nexusColorScheme } from "./nexusColorScheme";
 
 export interface ColorScheme{
     bgcolor: string;
@@ -228,7 +229,8 @@ const colorShemes = {
         darkBorderc: "#030712",
         darkbutton: "#374151",
         type:'dark'
-    }
+    },
+    "nexus": nexusColorScheme
 
 } as const
 

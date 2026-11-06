@@ -1,7 +1,8 @@
 import type { ColorScheme } from './colorscheme'
 
-// The Nexus preset ships as data only. It is not a key of `colorShemes` in colorscheme.ts,
-// so no colour-scheme listing or picker can offer it.
+// The Nexus preset data. It is the `nexus` key of `colorShemes` in colorscheme.ts, after the
+// original built-ins, so the picker lists it and `changeColorScheme` applies it through the
+// generic table path.
 export const nexusColorScheme = {
     bgcolor: '#00011c',
     darkbg: '#0e0f2a',

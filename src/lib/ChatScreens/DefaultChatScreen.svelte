@@ -49,9 +49,9 @@
         isAutoModeActive,
         type ComposerActionsSource
     } from 'src/ts/process/composerActions.svelte';
-    import { beginWork, type OriginHint } from 'src/ts/process/chatOrigin';
+    import type { OriginHint } from 'src/ts/process/chatOrigin';
     import * as composerDrafts from 'src/ts/process/composerDrafts.svelte';
-    import type { ComposerDraftKey, ComposerDraftRecord } from 'src/ts/process/composerDrafts.svelte';
+    import { beginChatFileUpload, createComposerSurface, trackChatFileUpload } from 'src/ts/process/composerSurface.svelte';
     import { chatSurface } from './chatSurface.svelte';
 
     const loadPlaygroundMenu = () => import('../Playground/PlaygroundMenu.svelte').then(m => m.default);
@@ -95,68 +95,8 @@
     let currentChatObj = $derived(currentCharacter?.chats?.[currentCharacter.chatPage])
     let currentChat = $derived(currentChatObj?.message ?? [])
 
-    // The owner's chaId plus the on-screen chat's own id, read-only (never
-    // fills a missing id -- filling is restricted to an event handler,
-    // below). Null with no chat object on screen, or while either id is
-    // still missing; shownDraft below falls back to the transient backstop
-    // or the shared empty view in that case.
-    let currentDraftKey: ComposerDraftKey | null = $derived(
-        (currentCharacter?.chaId && currentChatObj?.id)
-            ? { chaId: currentCharacter.chaId, chatId: currentChatObj.id }
-            : null
-    )
-
-    // A transient backstop: a record bound to the on-screen chat object by
-    // identity, used only while beginWork refuses to fill that chat's ids
-    // (not expected to be reachable -- the on-screen chat is always read
-    // through DBState, so it is always found there by identity). Never
-    // stored under a key, never shown under another chat, and replaced
-    // outright the moment a different chat object needs it.
-    let fallbackDraftChat: unknown = $state(null)
-    let fallbackDraft: ComposerDraftRecord = $state({ messageInput: '', messageInputTranslate: '', fileInput: [] })
-
-    // Showing a chat never creates or writes its record -- this only reads.
-    // Falls back to the transient record above only while it is already
-    // bound to the exact chat object on screen; otherwise the shared,
-    // frozen empty view.
-    let shownDraft: ComposerDraftRecord = $derived(
-        currentDraftKey
-            ? composerDrafts.peek(currentDraftKey)
-            : (currentChatObj && fallbackDraftChat === currentChatObj ? fallbackDraft : composerDrafts.EMPTY_DRAFT_VIEW)
-    )
-
-    // Protects the on-screen record from the store's own eviction. Plain
-    // bookkeeping, not a record write, so this is never mistaken for a
-    // write to the chat it names.
-    $effect(() => {
-        composerDrafts.setOnScreenKey(currentDraftKey)
-    })
-
-    /**
-     * The key a write from the on-screen composer should target, filling a
-     * missing chaId or chat id on the live objects first. Must only be
-     * called from an event handler (a setter Svelte calls from the `input`
-     * listener, an onclick, an onpaste, or the synchronous start of an
-     * async handler before its first await) -- never from `$derived` or
-     * `$effect`, which must not write to the live database.
-     */
-    function resolveDraftKeyForWrite(): ComposerDraftKey | null {
-        const char = currentCharacter
-        const chat = currentChatObj
-        if(!char || !chat){
-            return null
-        }
-        if(char.chaId && chat.id){
-            return { chaId: char.chaId, chatId: chat.id }
-        }
-        const handle = beginWork(char, chat)
-        if(!handle){
-            return null
-        }
-        const key: ComposerDraftKey = { chaId: handle.origin.chaId, chatId: handle.origin.chatId }
-        handle.end()
-        return key
-    }
+    const composerSurface = createComposerSurface({ character: () => currentCharacter, chat: () => currentChatObj })
+    let shownDraft = $derived(composerSurface.shownDraft)
 
     /**
      * The objects the on-screen chat is read through, for a job that goes on
@@ -169,23 +109,9 @@
         return char && chat ? { owner: char, chat } : null
     }
 
-    /** Writes to the record named by `key`, or the transient backstop when it is null. */
-    function writeDraftAt(key: ComposerDraftKey | null, update: (record: ComposerDraftRecord) => void): void {
-        if(key){
-            composerDrafts.write(key, update)
-            return
-        }
-        if(fallbackDraftChat !== currentChatObj){
-            fallbackDraftChat = currentChatObj
-            fallbackDraft = { messageInput: '', messageInputTranslate: '', fileInput: [] }
-        }
-        update(fallbackDraft)
-    }
-
-    /** A synchronous, on-screen write: resolves the key fresh each call. */
-    function writeDraft(update: (record: ComposerDraftRecord) => void): void {
-        writeDraftAt(resolveDraftKeyForWrite(), update)
-    }
+    const resolveDraftKeyForWrite = composerSurface.resolveDraftKeyForWrite
+    const writeDraftAt = composerSurface.writeDraftAt
+    const writeDraft = composerSurface.writeDraft
 
     // Reads the same currentCharacter/chatPage expressions as currentChat
     // above, so the key and the messages can never diverge. This effect's
@@ -704,26 +630,40 @@
                                     const key = resolveDraftKeyForWrite()
                                     const hint = resolveOriginHintForWrite()
                                     const reader = new FileReader()
+                                    const settleUpload = beginChatFileUpload()
                                     reader.onload = async (e) => {
-                                        const buf = e.target?.result as ArrayBuffer
-                                        const uint8 = new Uint8Array(buf)
-                                        const results = await postChatFile({
-                                            name: file.name,
-                                            data: uint8
-                                        }, key, hint)
-                                        if(!results) return
-                                        writeDraftAt(key, (record) => {
-                                            for(const res of results){
-                                                if(res?.type === 'asset'){
-                                                    record.fileInput.push(res.data)
+                                        try {
+                                            const buf = e.target?.result as ArrayBuffer
+                                            const uint8 = new Uint8Array(buf)
+                                            const results = await postChatFile({
+                                                name: file.name,
+                                                data: uint8
+                                            }, key, hint)
+                                            if(!results) return
+                                            writeDraftAt(key, (record) => {
+                                                for(const res of results){
+                                                    if(res?.type === 'asset'){
+                                                        record.fileInput.push(res.data)
+                                                    }
+                                                    if(res?.type === 'text'){
+                                                        record.messageInput += `{{file::${res.name}::${res.data}}}`
+                                                    }
                                                 }
-                                                if(res?.type === 'text'){
-                                                    record.messageInput += `{{file::${res.name}::${res.data}}}`
-                                                }
-                                            }
-                                        })
+                                            })
+                                        }
+                                        finally {
+                                            settleUpload()
+                                        }
                                     }
-                                    reader.readAsArrayBuffer(file)
+                                    reader.onerror = settleUpload
+                                    reader.onabort = settleUpload
+                                    try {
+                                        reader.readAsArrayBuffer(file)
+                                    }
+                                    catch (error) {
+                                        settleUpload()
+                                        throw error
+                                    }
                                 }
                             }
                         }
@@ -1135,7 +1075,7 @@
                         // screen before it resolves.
                         const key = resolveDraftKeyForWrite()
                         const hint = resolveOriginHintForWrite()
-                        const results = await postChatFile(composerDrafts.peek(key).messageInput, key, hint)
+                        const results = await trackChatFileUpload(() => postChatFile(composerDrafts.peek(key).messageInput, key, hint))
                         if(!results) return
                         writeDraftAt(key, (record) => {
                             for(const res of results){

@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createHostChannelFake } from './hostChannelFake'
-import { connectHostBridge, gestureInsetLeft, hasOpenedFilesHost, keepAliveHost, openedFilesTake, systemBarsHost } from './hostBridge'
+import { connectHostBridge, gestureInsetLeft, hasOpenedFilesHost, hostIme, keepAliveHost, openedFilesTake, systemBarsHost } from './hostBridge'
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
@@ -19,20 +19,25 @@ afterEach(() => {
     delete window.__risuTaniumKeepAlive
     delete window.__risuTaniumGestureInset
     delete window.__risuTaniumOpenedFilesHost
+    delete window.__risuTaniumIme
     // Lets go of the last channel so the next case starts unbound.
     connectHostBridge()
     vi.restoreAllMocks()
 })
 
 describe('binding the channel', () => {
-    test('the host is asked for the gesture inset once per channel object, however often the adapter is used', () => {
+    test('the host is asked for the gesture inset and the keyboard state once per channel object, however often the adapter is used', () => {
         const fake = createHostChannelFake()
         window.__risuTaniumHost = fake.channel
         connectHostBridge()
         connectHostBridge()
         systemBarsHost()
         gestureInsetLeft()
-        expect(fake.posted()).toEqual([{ bridge: 'gestureInset', method: 'subscribe', args: [] }])
+        hostIme()
+        expect(fake.posted()).toEqual([
+            { bridge: 'gestureInset', method: 'subscribe', args: [] },
+            { bridge: 'ime', method: 'subscribe', args: [] },
+        ])
         expect(fake.listeners()).toBe(1)
     })
 
@@ -155,6 +160,130 @@ describe('the gesture inset over the channel', () => {
         window.__risuTaniumGestureInset = { left }
         expect(gestureInsetLeft()).toBe(0)
         expect(left).not.toHaveBeenCalled()
+    })
+})
+
+describe('the keyboard state over the channel', () => {
+    test('it is unknown until the host pushes, then the latest valid state reaches the reader and every subscriber', () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        const ime = hostIme()!
+        const seen: Array<{ visible: boolean; height: number }> = []
+        ime.subscribe((state) => seen.push(state))
+        expect(ime.read()).toBeNull()
+        fake.deliver('{"event":"ime","visible":true,"height":288}')
+        expect(ime.read()).toEqual({ visible: true, height: 288 })
+        fake.deliver('{"event":"ime","visible":false,"height":0}')
+        expect(ime.read()).toEqual({ visible: false, height: 0 })
+        expect(seen).toEqual([{ visible: true, height: 288 }, { visible: false, height: 0 }])
+    })
+
+    test('a malformed event changes nothing and notifies nobody', () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        const ime = hostIme()!
+        const listener = vi.fn()
+        ime.subscribe(listener)
+        fake.deliver('{"event":"ime","visible":true,"height":288}')
+        listener.mockClear()
+        fake.deliver('{"event":"ime","visible":"yes","height":10}')
+        fake.deliver('{"event":"ime","visible":true,"height":"10"}')
+        fake.deliver('{"event":"ime","visible":true}')
+        fake.deliver('{"event":"ime","visible":true,"height":-3}')
+        fake.deliver('{"event":"ime","height":10}')
+        expect(listener).not.toHaveBeenCalled()
+        expect(ime.read()).toEqual({ visible: true, height: 288 })
+    })
+
+    test('an unsubscribed listener hears nothing further', () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        const ime = hostIme()!
+        const listener = vi.fn()
+        const stop = ime.subscribe(listener)
+        stop()
+        fake.deliver('{"event":"ime","visible":true,"height":288}')
+        expect(listener).not.toHaveBeenCalled()
+    })
+
+    test('a replaced or released channel clears the state, so the caller falls back', () => {
+        const first = createHostChannelFake()
+        window.__risuTaniumHost = first.channel
+        connectHostBridge()
+        first.deliver('{"event":"ime","visible":true,"height":288}')
+        expect(hostIme()!.read()).toEqual({ visible: true, height: 288 })
+
+        const second = createHostChannelFake()
+        window.__risuTaniumHost = second.channel
+        expect(hostIme()!.read()).toBeNull()
+        expect(second.postedTo('ime', 'subscribe')).toHaveLength(1)
+
+        const held = hostIme()!
+        second.deliver('{"event":"ime","visible":true,"height":100}')
+        expect(held.read()).toEqual({ visible: true, height: 100 })
+        delete window.__risuTaniumHost
+        connectHostBridge()
+        expect(held.read()).toBeNull()
+        expect(hostIme()).toBeNull()
+        window.__risuTaniumHost = second.channel
+        expect(hostIme()!.read()).toBeNull()
+    })
+
+    test('a subscribe that throws is swallowed and the state stays unknown', () => {
+        const fake = createHostChannelFake()
+        fake.channel.postMessage.mockImplementation(() => { throw new Error('host failed') })
+        window.__risuTaniumHost = fake.channel
+        expect(hostIme()!.read()).toBeNull()
+    })
+
+    test('the channel wins over the separate host object, which is never read', () => {
+        const fake = createHostChannelFake()
+        const visible = vi.fn(() => true)
+        window.__risuTaniumHost = fake.channel
+        window.__risuTaniumIme = { visible, height: () => 50 }
+        expect(hostIme()!.read()).toBeNull()
+        expect(visible).not.toHaveBeenCalled()
+    })
+})
+
+describe('the keyboard state without the channel', () => {
+    test('guard: nothing is handed back where there is no host, or the object lacks its methods', () => {
+        expect(hostIme()).toBeNull()
+        window.__risuTaniumIme = { visible: () => true }
+        expect(hostIme()).toBeNull()
+    })
+
+    test('the separate object is asked as methods, and a bad answer reads as unknown', () => {
+        const bridge = {
+            visible: vi.fn(function (this: unknown) { return this === bridge }),
+            height: vi.fn(function (this: unknown) { return this === bridge ? 288 : -1 }),
+        }
+        window.__risuTaniumIme = bridge
+        expect(hostIme()!.read()).toEqual({ visible: true, height: 288 })
+        window.__risuTaniumIme = { visible: () => 'yes', height: () => 10 }
+        expect(hostIme()!.read()).toBeNull()
+        window.__risuTaniumIme = { visible: () => { throw new Error('bridge gone') }, height: () => 10 }
+        expect(hostIme()!.read()).toBeNull()
+    })
+
+    test('a visual viewport resize re-reads the object and notifies, until unsubscribed', () => {
+        let height = 0
+        window.__risuTaniumIme = { visible: () => height > 0, height: () => height }
+        const target = new EventTarget()
+        Object.defineProperty(window, 'visualViewport', { value: target, configurable: true })
+        try {
+            const listener = vi.fn()
+            const stop = hostIme()!.subscribe(listener)
+            height = 288
+            target.dispatchEvent(new Event('resize'))
+            expect(listener).toHaveBeenCalledWith({ visible: true, height: 288 })
+            stop()
+            height = 0
+            target.dispatchEvent(new Event('resize'))
+            expect(listener).toHaveBeenCalledTimes(1)
+        } finally {
+            Reflect.deleteProperty(window, 'visualViewport')
+        }
     })
 })
 
