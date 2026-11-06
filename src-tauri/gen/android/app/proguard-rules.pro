@@ -25,6 +25,11 @@
     @android.webkit.JavascriptInterface public <methods>;
 }
 
+# The page reads the keyboard state bridge by name the same way.
+-keep class io.github.yor42.risutanium.ImeBridge {
+    @android.webkit.JavascriptInterface public <methods>;
+}
+
 # The page calls the system-bar colour bridge by name the same way.
 -keep class io.github.yor42.risutanium.SystemBarsBridge {
     @android.webkit.JavascriptInterface public <methods>;
