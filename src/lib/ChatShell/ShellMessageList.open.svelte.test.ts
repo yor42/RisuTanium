@@ -155,6 +155,21 @@ describe('older pages load from the top and keep the reader in place', () => {
         await frame()
         expect(top).toBe(1400 - (1000 - 50))
     })
+    test('a later scroll to the top loads the next older page after the first restore finished', async () => {
+        await show(0)
+        top = 50
+        app!.onScroll()
+        height = 1400
+        await tick()
+        await frame()
+        expect(top).toBe(1400 - (1000 - 50))
+        top = 50
+        app!.onScroll()
+        height = 1800
+        await tick()
+        await frame()
+        expect(top).toBe(1800 - (1400 - 50))
+    })
     test('a reader away from the top is not moved by scrolling', async () => {
         await show(0)
         writes.length = 0
