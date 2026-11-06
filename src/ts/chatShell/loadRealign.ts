@@ -3,9 +3,11 @@
 // short window after the restore this module holds that top row at the offset it had when the window began, but only while the
 // reader is still: it never writes against the reader.
 //
-// Reader motion and layout are told apart in the same synchronous check that would write. A reader's scroll moves every visible row,
-// while a layout change moves the rows it touches and native anchoring keeps the anchor row where it was. So when no visible row
-// kept its offset since the last reading, the motion is the reader's (or unexplained) and the window ends without a write.
+// Reader motion and layout are told apart in the same synchronous check that would write. Only a scroll changes the scroll position:
+// layout moves rows without moving it, unless native anchoring compensates, and then the anchor row keeps its offset. So a reading is
+// still when the position did not move since the last reading, or when some visible row kept its offset. Otherwise the motion is the
+// reader's (or unexplained) and the window ends without a write. For pure reader motion with no layout shift the effective threshold
+// is STILL_EPSILON, because every row then moves by the scroll and keeps its place only within that tolerance.
 
 // How long after the restore the top row is held.
 export const REALIGN_WINDOW_MS = 300
@@ -13,6 +15,8 @@ export const REALIGN_WINDOW_MS = 300
 export const WRITE_EPSILON = 0.5
 // A visible row that moved by no more than this since the last reading counts as having kept its place.
 export const STILL_EPSILON = 1
+// A scroll position that moved by no more than this has not scrolled: it is far above float storage rounding and below one device pixel.
+export const SCROLL_EPSILON = 0.1
 
 // A row whose top is within this of the host top still counts as inside the viewport.
 const EDGE_EPSILON = 0.5
@@ -89,6 +93,7 @@ export function viewportTopRow(host: HTMLElement, rows: HTMLElement): Element | 
     return (inside ?? readings[0])?.row ?? null
 }
 
+// Applies only when the scroll position moved; a row that kept its offset then identifies native anchoring.
 function keptPlace(before: Map<Element, number>, after: Map<Element, number>): boolean {
     for (const [row, offset] of after) {
         const earlier = before.get(row)
@@ -104,6 +109,8 @@ interface RealignWindow {
     offset: number
     // The offsets at the last reading; refreshed after every check so the module's own write is not compared next time.
     snapshot: Map<Element, number>
+    // The host scroll position at the last reading, re-read after the module's own write because a write may be clamped or stored at float32.
+    scroll: number
     intent: number
     disconnect: () => void
     frame: number | null
@@ -143,7 +150,8 @@ export function createLoadRealign(deps: LoadRealignDeps): LoadRealign {
             return
         }
         const now = readOffsets(state.host, state.rows)
-        if (!keptPlace(state.snapshot, now)) {
+        const scroll = state.host.scrollTop
+        if (Math.abs(scroll - state.scroll) > SCROLL_EPSILON && !keptPlace(state.snapshot, now)) {
             end()
             return
         }
@@ -151,8 +159,10 @@ export function createLoadRealign(deps: LoadRealignDeps): LoadRealign {
         if (Math.abs(delta) > WRITE_EPSILON) {
             state.host.scrollTop += delta
             state.snapshot = readOffsets(state.host, state.rows)
+            state.scroll = state.host.scrollTop
         } else {
             state.snapshot = now
+            state.scroll = scroll
         }
     }
 
@@ -178,6 +188,7 @@ export function createLoadRealign(deps: LoadRealignDeps): LoadRealign {
             top,
             offset: offsetOf(host, top),
             snapshot: readOffsets(host, rows),
+            scroll: host.scrollTop,
             intent: deps.intentSeq(),
             disconnect: () => {},
             frame: null,

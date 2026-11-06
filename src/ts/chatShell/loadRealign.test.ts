@@ -21,6 +21,7 @@ interface RigOptions {
     heights?: number[]
     scrollTop?: number
     firstMessage?: boolean
+    viewport?: number
 }
 
 interface ObserverRecord {
@@ -30,7 +31,7 @@ interface ObserverRecord {
 
 function rig(options: RigOptions = {}) {
     const heights = [...(options.heights ?? DEFAULT_HEIGHTS)]
-    const viewport = 800
+    const viewport = options.viewport ?? 800
     const host = document.createElement('main')
     document.body.appendChild(host)
     const rowsElement = document.createElement('div')
@@ -269,13 +270,114 @@ describe('the reader is never written against', () => {
         expect(live.realign.isActive()).toBe(false)
     })
 
-    test('a settle that no anchoring compensated moves every row, so the window ends without a write', () => {
+    test('a scroll that moves every row while the position moved ends the window, however much layout also shifted', () => {
+        const live = rig()
+        live.realign.start()
+        live.readerScroll(-40)
+        live.resize(0, -200)
+        live.fireResize()
+        expect(live.writes).toEqual([])
+        expect(live.realign.isActive()).toBe(false)
+        live.resize(1, -50)
+        live.runFrame()
+        live.fireResize()
+        expect(live.writes).toEqual([])
+    })
+
+    test.each([
+        { moved: 0.6, written: false },
+        { moved: 0.05, written: true },
+    ])('a position that moved $moved px alongside a shift of every row writes: $written', ({ moved, written }) => {
+        const live = rig()
+        live.realign.start()
+        live.readerScroll(moved)
+        live.resize(0, -100)
+        live.fireResize()
+        if (written) {
+            expect(live.writes.length).toBe(1)
+            expect(live.writes[0]).toBeCloseTo(400, 6)
+        } else {
+            expect(live.writes).toEqual([])
+            expect(live.realign.isActive()).toBe(false)
+        }
+    })
+})
+
+describe('layout that moves rows while the scroll position stays put', () => {
+    // The device shape: rows 90-99 at indices 1-10 in a 690 px viewport; row 91 (index 2) is the top row at 227.8 and row 90 straddles.
+    function deviceRig() {
+        return rig({ heights: [3647.99, 240, 240, 240, 240, 240, 240, 240, 240, 240, 240, 2000], scrollTop: 3660.19, viewport: 690 })
+    }
+    function anchoredFrame(live: ReturnType<typeof rig>): void {
+        live.resize(0, -693.23)
+        live.anchor(-693.33)
+        live.fireResize()
+    }
+    function slipResizes(live: ReturnType<typeof rig>): void {
+        live.resize(0, -394.9)
+        live.resize(1, -122.8)
+        live.resize(2, -149.2)
+        live.resize(3, -122.8)
+        live.resize(4, -149.2)
+        live.resize(5, -122.8)
+        live.resize(6, -149.2)
+        live.resize(7, -122.8)
+        live.resize(8, -149.2)
+    }
+
+    test('a settle that no anchoring compensated leaves the position unchanged, so the top row is corrected', () => {
         const live = rig({ heights: [1000, 933, 240, 300, 300, 240, 240, 240], scrollTop: 1713 })
         live.realign.start()
         live.resize(1, -693)
         live.fireResize()
+        expect(live.writes).toEqual([1020])
+        expect(live.realign.isActive()).toBe(true)
+    })
+
+    test('the device slip after an anchored frame is corrected once, with no overlap in the visible rows', () => {
+        const live = deviceRig()
+        live.realign.start()
+        anchoredFrame(live)
         expect(live.writes).toEqual([])
+        live.runFrame()
+        expect(live.writes).toEqual([])
+        slipResizes(live)
+        live.fireResize()
+        expect(live.writes.length).toBe(1)
+        expect(live.writes[0]).toBeCloseTo(2449.26, 1)
+        expect(live.rows[2].getBoundingClientRect().top).toBeCloseTo(227.8, 1)
+        expect(live.realign.isActive()).toBe(true)
+        live.resize(9, -149.2)
+        live.resize(10, -122.8)
+        live.fireResize()
+        live.runFrame()
+        expect(live.writes.length).toBe(1)
+        live.fireTimers()
         expect(live.realign.isActive()).toBe(false)
+    })
+
+    test('the anchored mixed frame, where one row kept its place and the top row moved, is corrected', () => {
+        const live = deviceRig()
+        live.realign.start()
+        anchoredFrame(live)
+        live.runFrame()
+        slipResizes(live)
+        live.anchor(-666.7)
+        live.fireResize()
+        expect(live.writes.length).toBe(1)
+        expect(live.writes[0]).toBeCloseTo(2449.26, 1)
+        expect(live.realign.isActive()).toBe(true)
+    })
+
+    test('a correction is followed by the next one, because the position is re-read after the write', () => {
+        const live = rig()
+        live.realign.start()
+        live.resize(0, -100)
+        live.fireResize()
+        expect(live.writes).toEqual([400])
+        live.resize(0, -50)
+        live.fireResize()
+        expect(live.writes).toEqual([400, 350])
     })
 })
 

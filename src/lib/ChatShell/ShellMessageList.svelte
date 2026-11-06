@@ -12,7 +12,7 @@
     import { hasMessageEditorDrafts, onDraftsChanged } from '../../ts/localDrafts'
     import { createBottomFollower, isScrolledToBottom, type BottomFollower } from '../../ts/chatShell/bottomAnchor'
     import { bindReaderIntent, canHostMove, createReaderIntent, type ReaderIntentSource } from '../../ts/chatShell/readerIntent'
-    import { createLoadRealign } from '../../ts/chatShell/loadRealign'
+    import { WRITE_EPSILON, createLoadRealign } from '../../ts/chatShell/loadRealign'
     import { createStepHold, firstMessageMounted, pagesForPin, windowEnd, windowPin, windowStart, type StepRowRunner } from '../../ts/chatShell/stepHold'
     import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
     import { recordCaughtError } from '../../ts/caughtErrors'
@@ -322,7 +322,8 @@
         const restore = () => {
             const target = Math.max(0, current.scrollHeight - (pendingBottomDistance ?? 0))
             // A step that started after the rows mounted owns the position: a restore from the old bottom distance would undo its correction.
-            const wrote = !hold.isInFlight() && current.scrollTop !== target
+            // The browser stores the scroll position at float precision, so a written target reads back within WRITE_EPSILON, not equal to it.
+            const wrote = !hold.isInFlight() && Math.abs(current.scrollTop - target) > WRITE_EPSILON
             if (wrote) current.scrollTop = target
             follower?.sync()
             return { target, wrote }
@@ -335,7 +336,7 @@
             // makes lands exactly on the first pass's position, and a second pass that ran after it would restore the old bottom distance over it.
             requestAnimationFrame(() => {
                 // A second pass that moved the position starts a new window there, so the window never pulls back to the first pass's position.
-                if (!destroyed && current.scrollTop === placed && restore().wrote) realign.start()
+                if (!destroyed && Math.abs(current.scrollTop - placed) <= WRITE_EPSILON && restore().wrote) realign.start()
                 pendingBottomDistance = null
             })
             realign.start()

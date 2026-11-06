@@ -61,6 +61,8 @@ let top = 0
 // Height overrides by position in the DOM, which is newest first; every other row is ROW tall.
 const heights = new Map<number, number>()
 const writes: number[] = []
+// A WebView stores the scroll position as a 32-bit float; `writes` keeps the value the list wrote, `top` the stored one.
+let float32 = false
 
 function messages(count: number): Message[] {
     return Array.from({ length: count }, (_, i) => ({ chatId: `m${i}`, role: i % 2 ? 'char' : 'user', data: String(i) }) as Message)
@@ -128,7 +130,7 @@ async function show(): Promise<void> {
     host = document.createElement('main')
     Object.defineProperty(host, 'scrollHeight', { get: () => contentHeight(), configurable: true })
     Object.defineProperty(host, 'clientHeight', { value: CLIENT, configurable: true })
-    Object.defineProperty(host, 'scrollTop', { get: () => top, set: (value: number) => { writes.push(value); top = value }, configurable: true })
+    Object.defineProperty(host, 'scrollTop', { get: () => top, set: (value: number) => { writes.push(value); top = float32 ? Math.fround(value) : value }, configurable: true })
     target.appendChild(host)
     document.body.appendChild(target)
     app = mount(ShellMessageList, { target: host, props: { character, host, readerIntent: intentSource } })
@@ -142,8 +144,8 @@ async function show(): Promise<void> {
     baseline = observers.length
 }
 // The reader pulled older (the follower leaves) and scrolled near the top: the page loads, the restore puts scrollTop at 2050 and the window opens.
-async function loadOlderPage(): Promise<void> {
-    top = 50
+async function loadOlderPage(at = 50): Promise<void> {
+    top = at
     app!.onScroll()
     await tick()
     await tick()
@@ -185,6 +187,7 @@ beforeEach(() => {
     intentListeners.clear()
     capturedStepRows.length = 0
     top = 0
+    float32 = false
     surface.hidden = false
     surface.rebuildEpoch = 0
     character.chatPage = 0
@@ -370,6 +373,62 @@ describe('the top row is held after a load-older restore', () => {
         fireWindowObservers()
         runFrame()
         expect(writes).toEqual([])
+    })
+})
+
+describe('layout that moves rows while the scroll position stays put', () => {
+    test('C17 a shrink above the top row that no anchoring followed is corrected', async () => {
+        await show()
+        await openWindow()
+        runFrame()
+        expect(writes).toEqual([])
+        // A row above the top row (position 9) shrinks 120 and anchoring follows: nothing to correct.
+        heights.set(12, 80)
+        top = 1930
+        fireWindowObservers()
+        expect(writes).toEqual([])
+        runFrame()
+        expect(writes).toEqual([])
+        // The next row above it shrinks 120 and the position stays: the top row moved up by 120.
+        heights.set(11, 80)
+        fireWindowObservers()
+        expect(writes).toEqual([1810])
+    })
+})
+
+describe('the second restore pass on a float32 scroll position', () => {
+    async function openFloat32Window(): Promise<void> {
+        await show()
+        float32 = true
+        emitIntent('older')
+        await loadOlderPage(50.19)
+        expect(writes).toHaveLength(1)
+        expect(writes[0]).toBeCloseTo(2050.19, 6)
+        writes.length = 0
+    }
+
+    test('C18 the pass runs when the stored position differs from the written one only by float precision, and writes when the content changed', async () => {
+        await openFloat32Window()
+        heights.set(0, 100)
+        runFrame()
+        expect(writes).toHaveLength(1)
+        expect(writes[0]).toBeCloseTo(1950.19, 6)
+    })
+
+    test('C19 the pass writes nothing when the content did not change, and the window stays', async () => {
+        await openFloat32Window()
+        runFrame()
+        expect(writes).toEqual([])
+        expect(windowObservers()).toHaveLength(1)
+        expect(windowObservers()[0].disconnected).toBe(false)
+    })
+
+    test('C20 the pass is skipped when the reader moved the position by 2 px', async () => {
+        await openFloat32Window()
+        top = 2048.19
+        runFrame()
+        expect(writes).toEqual([])
+        expectWindowEnded()
     })
 })
 
