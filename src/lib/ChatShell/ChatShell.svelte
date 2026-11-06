@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from 'svelte'
+    import { onMount, untrack } from 'svelte'
     import '../../styles/chat-tokens.css'
     import { DBState, selIdState } from '../../ts/stores.svelte'
     import { language } from '../../lang'
@@ -14,6 +14,7 @@
     import type CustomizeButtonsSheetComponent from './CustomizeButtonsSheet.svelte'
     import type { ActionRequest, CustomizeRequest } from './ShellMessage.svelte'
     import { shouldAnchorBottom } from '../../ts/chatShell/bottomAnchor'
+    import { watchSoftKeyboard } from '../../ts/chatShell/softKeyboard'
     import { treeView } from '../../ts/process/chatTreeView'
 
     interface Props {
@@ -48,10 +49,14 @@
     let character = $derived(DBState.db.characters[selIdState.selId])
     let headerHidden = $state(false)
     let hardwareKeyboardSeen = $state(false)
+    // The header hides while the soft keyboard is open; the scroll rule (headerHidden) keeps its own state underneath, so
+    // closing the keyboard returns to what the scroll rule wants.
+    let keyboardOpen = $state(false)
     let personaOpen = $state(false)
     let plusOpen = $state(false)
     let stickersOpen = $state(false)
     let opener = $state<HTMLElement | null>(null)
+    let shell = $state<HTMLElement>()
     let header = $state<HTMLElement>()
     let list = $state<HTMLElement>()
     let composer = $state<HTMLElement>()
@@ -61,6 +66,23 @@
     let seenCloseEpoch = 0
     let layout = $state<'phone' | 'mid' | 'wide'>('phone')
     let inputMode = $state<'touch' | 'hover'>('touch')
+    // The wide layout never hides the header; a hardware keyboard keeps it shown (ShellHeader applies that rule to the attribute).
+    let headerHiddenNow = $derived((headerHidden || keyboardOpen) && layout !== 'wide')
+    let headerCoveredBefore = false
+
+    // The header takes its row out of the flow, so the transcript grows or shrinks by its height; a reader resting at the
+    // newest message keeps the bottom across that change.
+    $effect(() => {
+        const covered = headerHiddenNow && !hardwareKeyboardSeen
+        if (covered === headerCoveredBefore) return
+        headerCoveredBefore = covered
+        if (untrack(() => atBottom && !surfaceHidden)) requestAnimationFrame(() => messageList?.anchorNewestBottom?.())
+    })
+
+    onMount(() => {
+        if (!shell) return
+        return watchSoftKeyboard(shell, window, (open) => { keyboardOpen = open })
+    })
 
     $effect(() => {
         if (!surface) return
@@ -188,9 +210,9 @@
 
 </script>
 
-<div class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub" style={customStyle}>
+<div bind:this={shell} class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub" style={customStyle}>
     <div bind:this={header} data-part="chat-header-host">
-        {#if ShellHeader}<ShellHeader name={character?.name ?? ''} hidden={headerHidden} {hardwareKeyboardSeen} onpersona={openPersona} />{/if}
+        {#if ShellHeader}<ShellHeader name={character?.name ?? ''} hidden={headerHiddenNow} {hardwareKeyboardSeen} onpersona={openPersona} />{/if}
     </div>
     <main bind:this={list} data-part="chat-transcript" aria-label={language.chatShellMessages} onscroll={scroll}>
         {#if ShellNotices && character?.type === 'character'}<ShellNotices />{/if}
