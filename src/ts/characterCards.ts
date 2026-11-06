@@ -2403,12 +2403,15 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
 /**
  * Whether an export gets a Cancel on its wait dialog. A web export through a browser download can stall behind the
  * browser's own prompt, so it always has one (a percentage as text stands in for the bar, which cannot show one). A
- * desktop or Android file export has one only for a CharX that streams a large asset, the only export long enough to
- * need it. A JSON card follows the same rule as the other types. A writer that is not a `LocalWriter` keeps the dialogs it always had.
+ * desktop or Android file export has one only for a CharX that streams a large asset, or a standalone `.risum` with at
+ * least one asset (`assetCount`): each of its assets is read and written one after another, so its length follows the
+ * asset count. A JSON card follows the same rule as the other types. A writer that is not a `LocalWriter` keeps the dialogs it always had.
  */
-export function exportOffersCancel(arg:{writer?:LocalWriter|VirtualWriter, type:'png'|'json'|'charx'|'charxJpeg', tauri:boolean, largeAssetCount:number}):boolean{
+export function exportOffersCancel(arg:{writer?:LocalWriter|VirtualWriter, type:'png'|'json'|'charx'|'charxJpeg'|'risum', tauri:boolean, largeAssetCount:number, assetCount?:number}):boolean{
     return (arg.writer === undefined || arg.writer instanceof LocalWriter)
-        && (!arg.tauri || ((arg.type === 'charx' || arg.type === 'charxJpeg') && arg.largeAssetCount > 0))
+        && (!arg.tauri
+            || ((arg.type === 'charx' || arg.type === 'charxJpeg') && arg.largeAssetCount > 0)
+            || (arg.type === 'risum' && (arg.assetCount ?? 0) > 0))
 }
 
 // Extended LorebookEntry with Risuai specific fields

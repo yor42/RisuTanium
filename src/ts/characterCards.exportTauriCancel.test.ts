@@ -470,6 +470,27 @@ describe('exportOffersCancel', () => {
         expect(exportOffersCancel({ ...base, writer: new VirtualWriter() })).toBe(false)
         expect(exportOffersCancel({ ...base, writer: new LocalWriter() })).toBe(true)
     })
+
+    test('(R) a .risum on Tauri offers Cancel when it holds at least one asset, and never without one', () => {
+        const risum = { writer: undefined, type: 'risum' as const, tauri: true, largeAssetCount: 0 }
+        expect(exportOffersCancel({ ...risum, assetCount: 1 })).toBe(true)
+        expect(exportOffersCancel({ ...risum, assetCount: 40 })).toBe(true)
+        expect(exportOffersCancel({ ...risum, assetCount: 0 })).toBe(false)
+        expect(exportOffersCancel(risum)).toBe(false)
+    })
+
+    test('(G) a .risum offers Cancel on the web whatever its asset count, and a foreign writer gets none', () => {
+        const risum = { writer: undefined, type: 'risum' as const, tauri: false, largeAssetCount: 0 }
+        expect(exportOffersCancel({ ...risum, assetCount: 0 })).toBe(true)
+        expect(exportOffersCancel({ ...risum, assetCount: 2 })).toBe(true)
+        expect(exportOffersCancel({ ...risum, tauri: true, assetCount: 2, writer: new VirtualWriter() })).toBe(false)
+    })
+
+    test('(G) the large-asset count never gives a .risum a Cancel on Tauri, and the asset count never gives a card one', () => {
+        expect(exportOffersCancel({ writer: undefined, type: 'risum', tauri: true, largeAssetCount: 3, assetCount: 0 })).toBe(false)
+        expect(exportOffersCancel({ ...base, largeAssetCount: 0, assetCount: 5 })).toBe(false)
+        expect(exportOffersCancel({ ...base, type: 'png', largeAssetCount: 0, assetCount: 5 })).toBe(false)
+    })
 })
 
 describe('no Cancel without a large asset', () => {
