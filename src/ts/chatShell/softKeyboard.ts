@@ -39,9 +39,10 @@ export function isTextField(node: EventTarget | null): boolean {
 // The host reports a close before the window resizes (2 to 46 ms earlier on devices), and a rotation sends a close followed
 // by a visible report again about 170 ms later. A host close of an open keyboard therefore waits for the next resize: a
 // resize at the same width is the keyboard closing and settles it at once; a resize at another width is a rotation, which
-// settles only once no resize has come for the quiet period, long enough to span that second report. A visible report
-// arriving first cancels the close. Without any resize the close settles after the settle delay.
-export const SOFT_KEYBOARD_CLOSE_SETTLE_MS = 100
+// settles only once no resize has come for the quiet period, long enough to span that second report. A width change that
+// came shortly before the host close (the window can turn before the host reports) counts as part of the same rotation.
+// A visible report arriving first cancels the close. Without any resize the close settles after the same quiet period,
+// because a rotation's first resize can arrive later than a shorter delay.
 export const SOFT_KEYBOARD_ROTATION_QUIET_MS = 300
 
 // Reports open/close transitions of the soft keyboard for text fields inside `root`. The state is recomputed from the
@@ -58,6 +59,23 @@ export function watchSoftKeyboard(root: HTMLElement, win: Window, onchange: (ope
     let widthChanged = false
     let settleTimer: number | null = null
     const widthNow = () => viewport?.width ?? win.innerWidth
+    // A width change seen while nothing was closing, remembered for the quiet period so a host close that follows it
+    // is judged as a rotation.
+    let lastWidth = widthNow()
+    let recentWidthChange = false
+    let recentTimer: number | null = null
+    const clearRecentWidthChange = () => {
+        recentWidthChange = false
+        if (recentTimer !== null) { win.clearTimeout(recentTimer); recentTimer = null }
+    }
+    const noteWidth = () => {
+        const width = widthNow()
+        if (width === lastWidth) return
+        lastWidth = width
+        recentWidthChange = true
+        if (recentTimer !== null) win.clearTimeout(recentTimer)
+        recentTimer = win.setTimeout(clearRecentWidthChange, SOFT_KEYBOARD_ROTATION_QUIET_MS)
+    }
     const clearClosing = () => {
         closing = false
         widthChanged = false
@@ -77,7 +95,8 @@ export function watchSoftKeyboard(root: HTMLElement, win: Window, onchange: (ope
             if (closing) return
             closing = true
             widthAtClose = widthNow()
-            settleTimer = win.setTimeout(settle, SOFT_KEYBOARD_CLOSE_SETTLE_MS)
+            widthChanged = recentWidthChange
+            settleTimer = win.setTimeout(settle, SOFT_KEYBOARD_ROTATION_QUIET_MS)
             return
         }
         clearClosing()
@@ -91,6 +110,7 @@ export function watchSoftKeyboard(root: HTMLElement, win: Window, onchange: (ope
         compute(true)
     }
     const onResize = () => {
+        noteWidth()
         if (!closing) { evaluate(); return }
         if (settleTimer !== null) { win.clearTimeout(settleTimer); settleTimer = null }
         if (widthNow() !== widthAtClose) widthChanged = true
@@ -111,5 +131,6 @@ export function watchSoftKeyboard(root: HTMLElement, win: Window, onchange: (ope
         viewport?.removeEventListener('resize', onResize)
         unsubscribe()
         clearClosing()
+        clearRecentWidthChange()
     }
 }

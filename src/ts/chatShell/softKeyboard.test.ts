@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { HostIme, ImeState } from '../android/hostBridge'
-import { isSoftKeyboardOpen, isTextField, SOFT_KEYBOARD_CLOSE_SETTLE_MS, SOFT_KEYBOARD_MIN_INSET, SOFT_KEYBOARD_ROTATION_QUIET_MS, watchSoftKeyboard } from './softKeyboard'
+import { isSoftKeyboardOpen, isTextField, SOFT_KEYBOARD_MIN_INSET, SOFT_KEYBOARD_ROTATION_QUIET_MS, watchSoftKeyboard } from './softKeyboard'
 
 class ViewportStub extends EventTarget {
     height = 800
@@ -242,7 +242,7 @@ describe('watchSoftKeyboard', () => {
             resizeWindow(PORTRAIT - 288, 400)
             expect(changes).toHaveBeenCalledTimes(1)
             ime.report(false, 0)
-            vi.advanceTimersByTime(SOFT_KEYBOARD_CLOSE_SETTLE_MS)
+            vi.advanceTimersByTime(SOFT_KEYBOARD_ROTATION_QUIET_MS)
             expect(changes).toHaveBeenCalledTimes(2)
             expect(changes).toHaveBeenLastCalledWith(false)
         })
@@ -267,11 +267,58 @@ describe('watchSoftKeyboard', () => {
             field.focus()
             ime.report(true, PORTRAIT - GBOARD_VIEWPORT)
             ime.report(false, 0)
-            vi.advanceTimersByTime(SOFT_KEYBOARD_CLOSE_SETTLE_MS - 1)
+            vi.advanceTimersByTime(SOFT_KEYBOARD_ROTATION_QUIET_MS - 1)
             expect(changes).toHaveBeenCalledTimes(1)
             vi.advanceTimersByTime(1)
             expect(changes).toHaveBeenLastCalledWith(false)
             expect(changes).toHaveBeenCalledTimes(2)
+        })
+
+        // Device order seen on Gboard and Honeyboard: the window turns before the host reports the close.
+        test('a width change before the host close still counts as a rotation', () => {
+            const ime = new HostImeStub()
+            const changes = setup(ime, PORTRAIT)
+            field.focus()
+            ime.report(true, PORTRAIT - GBOARD_VIEWPORT)
+            vi.advanceTimersByTime(80)
+            resizeWindow(ROTATION_TRANSIENT, 798)
+            vi.advanceTimersByTime(4)
+            ime.report(false, 0)
+            vi.advanceTimersByTime(74)
+            resizeWindow(LANDSCAPE_WITH_KEYBOARD, 798)
+            expect(changes).toHaveBeenCalledTimes(1)
+            vi.advanceTimersByTime(164)
+            ime.report(true, 200)
+            vi.advanceTimersByTime(1000)
+            expect(changes).toHaveBeenCalledTimes(1)
+        })
+
+        test('a host close whose first resize comes 116 ms later, followed by a visible report, gives no change', () => {
+            const ime = new HostImeStub()
+            const changes = setup(ime, PORTRAIT)
+            field.focus()
+            ime.report(true, PORTRAIT - GBOARD_VIEWPORT)
+            ime.report(false, 0)
+            vi.advanceTimersByTime(116)
+            resizeWindow(LANDSCAPE_WITH_KEYBOARD, 798)
+            vi.advanceTimersByTime(109)
+            ime.report(true, 200)
+            vi.advanceTimersByTime(1000)
+            expect(changes).toHaveBeenCalledTimes(1)
+        })
+
+        test('a plain close in landscape long after a rotation settles at the first resize at the same width', () => {
+            const ime = new HostImeStub()
+            const changes = setup(ime, PORTRAIT)
+            field.focus()
+            resizeWindow(LANDSCAPE_WITH_KEYBOARD, 798)
+            ime.report(true, 200)
+            vi.advanceTimersByTime(SOFT_KEYBOARD_ROTATION_QUIET_MS + 1)
+            expect(changes).toHaveBeenCalledTimes(1)
+            ime.report(false, 0)
+            resizeWindow(LANDSCAPE_WITH_KEYBOARD + 200, 798)
+            expect(changes).toHaveBeenCalledTimes(2)
+            expect(changes).toHaveBeenLastCalledWith(false)
         })
 
         test('a rotation close followed by a visible report again gives no change at all', () => {
@@ -327,8 +374,17 @@ describe('watchSoftKeyboard', () => {
             ime.report(true, PORTRAIT - GBOARD_VIEWPORT)
             ime.report(false, 0)
             stop()
-            vi.advanceTimersByTime(SOFT_KEYBOARD_CLOSE_SETTLE_MS * 5)
+            vi.advanceTimersByTime(SOFT_KEYBOARD_ROTATION_QUIET_MS * 5)
             expect(changes).toHaveBeenCalledTimes(1)
+        })
+
+        test('after dispose, no timer is left from a remembered width change', () => {
+            const ime = new HostImeStub()
+            setup(ime, PORTRAIT)
+            resizeWindow(LANDSCAPE_WITH_KEYBOARD, 798)
+            expect(vi.getTimerCount()).toBe(1)
+            stop()
+            expect(vi.getTimerCount()).toBe(0)
         })
 
         test('the fallback is used before the first report; afterwards the host alone decides', () => {
@@ -338,7 +394,7 @@ describe('watchSoftKeyboard', () => {
             viewport.resize(450)
             expect(changes).toHaveBeenLastCalledWith(true)
             ime.report(false, 0)
-            vi.advanceTimersByTime(SOFT_KEYBOARD_CLOSE_SETTLE_MS)
+            vi.advanceTimersByTime(SOFT_KEYBOARD_ROTATION_QUIET_MS)
             expect(changes).toHaveBeenLastCalledWith(false)
             viewport.resize(400)
             viewport.resize(450)
