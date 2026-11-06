@@ -12,7 +12,8 @@
     import { hasMessageEditorDrafts, onDraftsChanged } from '../../ts/localDrafts'
     import { createBottomFollower, isScrolledToBottom, type BottomFollower } from '../../ts/chatShell/bottomAnchor'
     import { bindReaderIntent, canHostMove, createReaderIntent, type ReaderIntentSource } from '../../ts/chatShell/readerIntent'
-    import { createStepHold, firstMessageMounted, pagesForPin, windowEnd, windowPin, windowStart } from '../../ts/chatShell/stepHold'
+    import { createLoadRealign } from '../../ts/chatShell/loadRealign'
+    import { createStepHold, firstMessageMounted, pagesForPin, windowEnd, windowPin, windowStart, type StepRowRunner } from '../../ts/chatShell/stepHold'
     import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { language } from '../../lang'
@@ -74,12 +75,15 @@
     const stopHiding = installed ? onSurfaceHiding(() => {
         hideTop = host?.scrollTop ?? null
         hideOwner = chatWindowKey(character.chaId, chat)
+        realign.cancel()
     }) : () => {}
     // While an alternative step runs, the oldest mounted position is frozen at this value (-1 is the first message); null means the window follows loadPages.
     let pin = $state<number | null>(null)
     // The page count when the pin was taken; a different count at commit time was written by someone else while the window was pinned.
     let pinnedLoadPages = 0
     let intentSeq = 0
+    const requestFrame = (callback: () => void): number => typeof requestAnimationFrame === 'function' ? requestAnimationFrame(callback) : window.setTimeout(callback, 16)
+    const cancelFrame = (id: number): void => { if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id); else window.clearTimeout(id) }
     const hold = createStepHold({
         host: () => host,
         active: () => !(installed && chatSurface.hidden),
@@ -103,10 +107,35 @@
         row: (idx) => rows?.querySelector<HTMLElement>(`article[data-chat-index="${idx}"]`) ?? null,
         intentSeq: () => intentSeq,
         tick,
-        requestFrame: (callback) => typeof requestAnimationFrame === 'function' ? requestAnimationFrame(callback) : window.setTimeout(callback, 16),
-        cancelFrame: (id) => { if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id); else window.clearTimeout(id) },
+        requestFrame,
+        cancelFrame,
     })
-    onDestroy(() => { stopDrafts(); stopHiding(); hold.cancel() })
+    // After a load-older restore the top row is held where the restore put it while the older rows' estimated heights resolve.
+    // Every dependency is read at check time, so a hold, a follower, a hidden surface or reader intent ends the window.
+    const realign = createLoadRealign({
+        host: () => host,
+        rows: () => rows,
+        active: () => !(installed && chatSurface.hidden),
+        intentSeq: () => intentSeq,
+        held: () => hold.isInFlight(),
+        following: () => follower?.isFollowing() ?? false,
+        setTimer: (callback, ms) => window.setTimeout(callback, ms),
+        clearTimer: (id) => window.clearTimeout(id),
+        observe: (observed, callback) => {
+            if (typeof ResizeObserver === 'undefined') return () => {}
+            const observer = new ResizeObserver(() => callback())
+            observer.observe(observed)
+            return () => observer.disconnect()
+        },
+        requestFrame,
+        cancelFrame,
+    })
+    // A step owns the position from its first call, so the window ends before the hold takes its measurements.
+    const runStep: StepRowRunner = (idx, step) => {
+        realign.cancel()
+        return hold.run(idx, step)
+    }
+    onDestroy(() => { stopDrafts(); stopHiding(); hold.cancel(); realign.cancel() })
 
     let visibleRows = $derived.by(() => {
         const start = windowStart(chatFoldedStateMessageIndex.index, messages.length)
@@ -140,7 +169,7 @@
         const key = chatWindowKey(character.chaId, chat)
         untrack(() => {
             // A hold pending across a chat change would commit the old chat's pin against the new chat's rows, so it is dropped before the new window renders.
-            if (heldKey !== undefined && key !== heldKey) hold.cancel()
+            if (heldKey !== undefined && key !== heldKey) { hold.cancel(); realign.cancel() }
             heldKey = key
             const next = windowPolicy.onKey(key, loadPages)
             if (next.next !== loadPages) loadPages = next.next
@@ -185,6 +214,7 @@
             if (installed && chatSurface.hidden) { ScrollToMessageStore.value = index; return }
             const target = rows?.querySelector(`[data-chat-index="${Math.max(0, index - 3)}"]`)
             if (!target) return
+            realign.cancel()
             target.scrollIntoView({ behavior: 'instant', block: 'start' })
             // The app moved the reader away from the newest message on purpose; arriving at the bottom re-enters following.
             follower?.release()
@@ -235,6 +265,7 @@
         if (installed && chatSurface.hidden) return
         unread = false
         atBottom = true
+        realign.cancel()
         rows?.firstElementChild?.scrollIntoView({ behavior: 'instant', block: 'start' })
         follower?.sync()
         follower?.follow()
@@ -242,6 +273,7 @@
 
     export function anchorNewestBottom() {
         if (installed && chatSurface.hidden) return
+        realign.cancel()
         rows?.firstElementChild?.scrollIntoView({ behavior: 'instant', block: 'end' })
         follower?.sync()
         follower?.follow()
@@ -290,18 +322,23 @@
         const restore = () => {
             const target = Math.max(0, current.scrollHeight - (pendingBottomDistance ?? 0))
             // A step that started after the rows mounted owns the position: a restore from the old bottom distance would undo its correction.
-            if (!hold.isInFlight() && current.scrollTop !== target) current.scrollTop = target
+            const wrote = !hold.isInFlight() && current.scrollTop !== target
+            if (wrote) current.scrollTop = target
             follower?.sync()
-            return target
+            return { target, wrote }
         }
         void tick().then(() => {
             if (destroyed) { pendingBottomDistance = null; return }
-            const placed = restore()
-            if (typeof requestAnimationFrame === 'undefined') { pendingBottomDistance = null; return }
+            const { target: placed } = restore()
+            if (typeof requestAnimationFrame === 'undefined') { pendingBottomDistance = null; realign.start(); return }
+            // The second pass is queued before the window's frame check, so it runs first in the next frame. A correction the window
+            // makes lands exactly on the first pass's position, and a second pass that ran after it would restore the old bottom distance over it.
             requestAnimationFrame(() => {
-                if (!destroyed && current.scrollTop === placed) restore()
+                // A second pass that moved the position starts a new window there, so the window never pulls back to the first pass's position.
+                if (!destroyed && current.scrollTop === placed && restore().wrote) realign.start()
                 pendingBottomDistance = null
             })
+            realign.start()
         })
     }
 
@@ -331,7 +368,7 @@
                         streaming={chat?.isStreaming === true && row.idx === messages.length - 1 && row.message.role === 'char' && isActiveStreamReply(row.message.chatId)}
                         interrupted={row.message.interrupted === true && !isActiveStreamReply(row.message.chatId)}
                         deferAutoTranslate={chat?.isStreaming === true && row.idx === messages.length - 1 && isActiveStreamReply(row.message.chatId) && DBState.db.autoTranslate === true}
-                        guiRevision={guiPointer + (rowPointers[row.idx] ?? 0)} stepRow={hold.run} {onBranch} {getTreeView} {getBusy} {onReroll} {unReroll} {onOpenActions} {onCloseActions} {onOpenCustomize} onOverlay={(open) => setOverlay(row.key, open)} />
+                        guiRevision={guiPointer + (rowPointers[row.idx] ?? 0)} stepRow={runStep} {onBranch} {getTreeView} {getBusy} {onReroll} {unReroll} {onOpenActions} {onCloseActions} {onOpenCustomize} onOverlay={(open) => setOverlay(row.key, open)} />
                     {#snippet failed(_error, reset)}
                         <div data-part="chat-message-failed" role="note">{row.message.data}<p>{language.messageRenderFailed}</p><button onclick={reset}>{language.messageRenderRetry}</button></div>
                     {/snippet}
@@ -341,7 +378,7 @@
         {#if chat && firstMessageMounted(messages.length, loadPages, pin) && character.type === 'character'}
             <div data-part="chat-first-message">
                 <svelte:boundary onerror={(error) => recordCaughtError('chat.message', error)}>
-                    <ShellMessage idx={-1} message={{ role: 'char', data: firstMessageOf(character, chat) }} name={character.name} img={character.image} character={createSimpleCharacter(character)} firstMessage getTreeView={firstMessageTreeView} onReroll={() => stepFirstMessage(1)} unReroll={() => stepFirstMessage(-1)} stepRow={hold.run} {onOpenActions} {onCloseActions} {onOpenCustomize} />
+                    <ShellMessage idx={-1} message={{ role: 'char', data: firstMessageOf(character, chat) }} name={character.name} img={character.image} character={createSimpleCharacter(character)} firstMessage getTreeView={firstMessageTreeView} onReroll={() => stepFirstMessage(1)} unReroll={() => stepFirstMessage(-1)} stepRow={runStep} {onOpenActions} {onCloseActions} {onOpenCustomize} />
                     {#snippet failed(_error, reset)}<div role="note">{language.messageRenderFailed}<button onclick={reset}>{language.messageRenderRetry}</button></div>{/snippet}
                 </svelte:boundary>
             </div>
