@@ -20,6 +20,14 @@
     // The row that held focus when it stepped hands the focus to its successor at the same position.
     const FOCUS_HANDOVER_MS = 2000
     let focusHandover: { idx: number; until: number } | null = null
+    // The successor of a stepped row has no rendered body yet; it keeps the predecessor's height until the body arrives or this many milliseconds pass, so the transcript never collapses under the reader.
+    const HEIGHT_FLOOR_MS = 1500
+    let heightHandover: { idx: number; chatId: string | undefined; height: number; until: number } | null = null
+    // The pending body is empty or a loading indicator; anything else is the rendered message.
+    function bodyRendered(body: HTMLElement): boolean {
+        if (body.querySelector('[role="status"]') !== null) return false
+        return (body.textContent ?? '').trim() !== '' || body.querySelector('*') !== null
+    }
 </script>
 
 <script lang="ts">
@@ -162,6 +170,25 @@
         const previousRow = active?.closest<HTMLElement>('article[data-part="chat-message"]')
         if (!active || active === document.body || (previousRow !== article && previousRow?.dataset.chatIndex === String(idx))) article.focus({ preventScroll: true })
     })
+    // A row that replaced a stepped sibling at the same position reserves the sibling's height until its own body has rendered.
+    onMount(() => {
+        const handover = heightHandover
+        if (!handover || handover.idx !== idx || handover.chatId === chatId || performance.now() > handover.until || !article || !bodyRoot) return
+        heightHandover = null
+        const row = article
+        const body = bodyRoot
+        if (bodyRendered(body)) return
+        let observer: MutationObserver | undefined
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const release = () => { observer?.disconnect(); clearTimeout(timer); row.style.minHeight = '' }
+        row.style.minHeight = `${handover.height}px`
+        if (typeof MutationObserver !== 'undefined') {
+            observer = new MutationObserver(() => { if (bodyRendered(body)) release() })
+            observer.observe(body, { childList: true, subtree: true, characterData: true })
+        }
+        timer = setTimeout(release, HEIGHT_FLOOR_MS)
+        return release
+    })
     // A modal layer of the row (the partial-edit overlays are position: fixed inside the row) must not be clipped by the row's own containment, so the list is told while one is open.
     $effect(() => {
         const partialEditOn = DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit
@@ -290,6 +317,8 @@
             return
         }
         if (article && article.contains(document.activeElement)) focusHandover = { idx, until: performance.now() + FOCUS_HANDOVER_MS }
+        const height = article?.getBoundingClientRect().height ?? 0
+        if (height > 0) heightHandover = { idx, chatId, height, until: performance.now() + FOCUS_HANDOVER_MS }
         await stepSibling(source, liveIndex(), chatId, direction, { generate: false })
         alternatives?.markPageChange()
     }
