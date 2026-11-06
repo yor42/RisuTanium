@@ -29,7 +29,7 @@ vi.mock('./ShellMessageList.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../ts/parser/parser.svelte', () => ({ hasher: (value: string) => value, risuChatParser: (value: string) => value, assetRegex: /{{asset:[^}]+}}/g }))
 vi.mock('../../ts/parser/chatML', () => ({ parseChatML: () => [] }))
 vi.mock('../../lang', () => ({ language: {
-    chatShellBack: 'Back', chatShellChoosePersona: 'Choose persona', chatShellMoreActions: 'More actions',
+    chatShellBack: 'Back', chatShellChoosePersona: 'Choose persona', chatShellThisChat: 'This chat', chatShellMoreActions: 'More actions',
     chatShellMessages: 'Messages', chatShellMessage: 'Message', chatShellSend: 'Send', chatShellStop: 'Stop',
     chatShellRemoveAttachment: 'Remove attachment', chatShellStickers: 'Stickers',
     chatShellEnterAutomatic: 'Automatic', chatShellEnterSend: 'Send', chatShellEnterNewline: 'New line',
@@ -51,6 +51,7 @@ vi.mock('../../ts/process/composerActions.svelte', () => ({
     sendMain: vi.fn(), sendContinue: vi.fn(), reroll: vi.fn(), abortChat: vi.fn(),
     isComposerBusy: () => false, isComposerLocked: () => false, updateInputTransateMessage: vi.fn(),
 }))
+vi.mock('../../ts/chatShell/sendFailure.svelte', () => ({ shellGenerationSource: (closeMenu: () => void) => ({ closeMenu }), failureOf: () => null, retrySendFailure: vi.fn() }))
 vi.mock('../../ts/chatShell/enterKey', () => ({ createEnterKeyController: () => ({
     hardwareSeen: false, observeViewport: vi.fn(), observeKey: vi.fn(), touch: vi.fn(), shouldSend: () => false,
     compositionStart: vi.fn(), compositionEnd: vi.fn(),

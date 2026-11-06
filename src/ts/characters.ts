@@ -1456,6 +1456,9 @@ export async function trashCharacters(picked: { characters: readonly (character 
     return doomed.length
 }
 
+/** A caller's own confirmation for `removeChatConfirmed`: it gets the chat and the advisory working flag. */
+export type ChatRemovalConfirm = (request: { chat: Chat, busy: boolean }) => Promise<boolean>
+
 /**
  * A chat list's delete button. Asks for confirmation -- with a warning line
  * when something is writing into the chat -- and then deletes the chat the
@@ -1465,15 +1468,22 @@ export async function trashCharacters(picked: { characters: readonly (character 
  * alone and nothing is stopped. Otherwise the work owned by that chat is
  * stopped in the same synchronous stretch as the removal, whether or not the
  * warning was shown. Returns whether the chat was removed.
+ *
+ * `confirm` replaces the default `alertConfirm` for a caller that shows its own
+ * confirmation. It gets the chat and the same advisory working flag, and everything
+ * after its answer is unchanged: the chat is still found again by reference, so
+ * the confirmation may stay open while the list changes.
  */
-export async function removeChatConfirmed(owner: character | groupChat, chat: Chat): Promise<boolean> {
+export async function removeChatConfirmed(owner: character | groupChat, chat: Chat, confirm?: ChatRemovalConfirm): Promise<boolean> {
     if(owner.chats.length === 1){
         alertError(language.errors.onlyOneChat)
         return false
     }
     // Advisory only: what is stopped is decided at the removal below.
     const busy = !!owner.chaId && !!chat.id && hasWorkIn({ chaId: owner.chaId, chatId: chat.id })
-    const conf = await alertConfirm(language.removeConfirm + chat.name + (busy ? '\n' + language.removeChatWhileWorking : ''))
+    const conf = confirm
+        ? await confirm({ chat, busy })
+        : await alertConfirm(language.removeConfirm + chat.name + (busy ? '\n' + language.removeChatWhileWorking : ''))
     if(!conf || owner.chats.length <= 1 || owner.chats.indexOf(chat) === -1){
         return false
     }

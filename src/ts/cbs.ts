@@ -790,11 +790,16 @@ export function registerCBS(arg:CBSRegisterArg) {
     registerFunction({
         name: 'jbtoggled',
         callback: (str, matcherArg, args, vars) => {
-            const db = getDatabase()
-            return db.jailbreakToggle ? '1' : '0'
+            // The rule of `effectiveJailbreak` (parser/chatToggleScope.ts), written out here because this module stays free
+            // of that module's imports. A subject whose chat is gone gives no chat, and the global value decides.
+            const chat = targetCtx(matcherArg).chat
+            const on = chat?.useLocallySetGlobalVariables === true && typeof chat.scopedJailbreak === 'boolean'
+                ? chat.scopedJailbreak
+                : getDatabase().jailbreakToggle
+            return on ? '1' : '0'
         },
         alias: [],
-        description: 'Returns "1" if the jailbreak prompt is currently enabled/toggled on, "0" if disabled. Reflects the global jailbreak toggle state.\n\nUsage:: {{jbtoggled}}',
+        description: 'Returns "1" if the jailbreak prompt is currently enabled/toggled on, "0" if disabled. Reflects the jailbreak toggle of the chat the text belongs to: the chat\'s own setting while that chat is set separately, otherwise the global toggle.\n\nUsage:: {{jbtoggled}}',
     });
 
     registerFunction({

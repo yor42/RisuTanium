@@ -156,7 +156,7 @@ function branchPath(
 /**
  * After a removal, repoint every parked plain pair that names a removed message, on the branch its
  * record would arrive at. Same rules as the live pair (MC-714/715), computed per branch; the parked
- * `mem` keeps all six keys, and the covered-ID field is `null` unless MC-715 names a survivor.
+ * `mem` keeps every branch key, and the covered-ID field is `null` unless MC-715 names a survivor.
  * Parked `hypa:` data is left alone, as live `hypa:` data is.
  */
 function repointParkedPairs(chat: Chat, previous: readonly Message[], parentsBefore: readonly (string | null)[]): void {

@@ -10,7 +10,7 @@ vi.mock('../../ts/stores.svelte', async () => {
     return { DynamicGUI: writable(false), MobileGUI: writable(false), sideBarClosing: writable(false), sideBarStore: writable(false) }
 })
 vi.mock('../Mobile/mobileBack', () => ({ closeShellChat: closeChat }))
-vi.mock('../../lang', () => ({ language: { chatShellBack: 'Back', chatShellChoosePersona: 'Choose persona' } }))
+vi.mock('../../lang', () => ({ language: { chatShellBack: 'Back', chatShellChoosePersona: 'Choose persona', chatShellThisChat: 'This chat' } }))
 
 import { DynamicGUI, MobileGUI, sideBarClosing, sideBarStore } from '../../ts/stores.svelte'
 import ShellHeader from './ShellHeader.svelte'
@@ -20,7 +20,7 @@ let app: Record<string, unknown> | undefined
 function mountBack(): HTMLButtonElement {
     target = document.createElement('div')
     document.body.appendChild(target)
-    app = mount(ShellHeader, { target, props: { name: 'Seraphina', hidden: false, hardwareKeyboardSeen: false, onpersona: vi.fn() } })
+    app = mount(ShellHeader, { target, props: { name: 'Seraphina', hidden: false, hardwareKeyboardSeen: false, onthischat: vi.fn() } })
     flushSync()
     return target.querySelector('[data-part="chat-header-back"]') as HTMLButtonElement
 }

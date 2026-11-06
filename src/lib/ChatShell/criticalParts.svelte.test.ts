@@ -9,8 +9,9 @@ const root = path.resolve(fileURLToPath(new URL('../../../', import.meta.url)))
 const shellDir = path.join(root, 'src/lib/ChatShell')
 // Every component in the directory is scanned, so a new one cannot carry an unlisted protected part.
 const components = readdirSync(shellDir).filter((name) => name.endsWith('.svelte')).map((name) => name.slice(0, -'.svelte'.length))
-// Navigation, input, and ordinary menus are reachable surfaces; none here is a protected prompt.
-const criticalParts = new Set<string>()
+// Navigation, input, and ordinary menus are reachable surfaces; the failed-send card and its lines and buttons are the
+// protected prompt (THEME_AUDIT critical surfaces).
+const criticalParts = new Set<string>(['chat-failed-card', 'chat-critical-body', 'chat-critical-action'])
 
 function object(value: unknown): Record<string, unknown> | null {
     return value !== null && typeof value === 'object' ? value as Record<string, unknown> : null
@@ -41,6 +42,11 @@ function markedParts(source: string): string[] {
 describe('T protected chat parts', () => {
     test('a marked element is detected by the scan', () => {
         expect(markedParts('<div data-part="x" data-part-critical></div>')).toEqual(['x'])
+    })
+    test('the failed-send card is scanned and marks exactly its card as protected', () => {
+        expect(components).toContain('SendFailureCard')
+        const source = readFileSync(path.join(root, 'src/lib/ChatShell/SendFailureCard.svelte'), 'utf8')
+        expect(markedParts(source)).toEqual(['chat-failed-card'])
     })
     test('only explicitly protected parts carry data-part-critical', () => {
         expect(components).toEqual(expect.arrayContaining(['ActionSheet', 'AlternativesRow', 'CustomizeButtonsSheet', 'MessageEditor', 'MessageMeta', 'TranslationEditor']))

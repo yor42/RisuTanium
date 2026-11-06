@@ -8,17 +8,22 @@
     interface Props {
         open: boolean
         kind: 'sheet' | 'menu'
-        mode?: 'bottom' | 'action' | 'wide-menu'
+        // `tall` fills 92 % of the height; `side` is a 380 px panel on the right from 900 px up and `tall` below it.
+        mode?: 'bottom' | 'action' | 'wide-menu' | 'tall' | 'side'
         anchor?: { x: number; y: number }
         label: string
         opener?: HTMLElement | null
         background?: readonly HTMLElement[]
         inertOutside?: boolean
+        // Asked before Escape closes the sheet: true means an inner layer (a field being edited) consumed the key.
+        innerescape?: () => boolean
+        // The sheet's layer element, for a caller that has to hold it inert behind a layer of its own.
+        layer?: HTMLElement
         onclose: () => void
         children: Snippet
     }
 
-    let { open, kind, mode = 'bottom', anchor, label, opener = null, background = [], inertOutside = false, onclose, children }: Props = $props()
+    let { open, kind, mode = 'bottom', anchor, label, opener = null, background = [], inertOutside = false, innerescape, layer = $bindable(), onclose, children }: Props = $props()
     let panel = $state<HTMLElement>()
     let popupPosition = $state({ left: 0, top: 0 })
     const token = {}
@@ -102,7 +107,7 @@
             if (event.key === 'Escape') {
                 event.preventDefault()
                 event.stopPropagation()
-                if (!event.repeat && !event.isComposing && event.keyCode !== 229) close()
+                if (!event.repeat && !event.isComposing && event.keyCode !== 229 && innerescape?.() !== true) close()
                 return
             }
             trapTab(event, shell)
@@ -121,7 +126,7 @@
 </script>
 
 {#if open}
-    <div data-part="chat-sheet-layer" data-mode={mode}>
+    <div bind:this={layer} data-part="chat-sheet-layer" data-mode={mode}>
         <button data-part="chat-sheet-scrim" aria-label={language.cancel} onclick={scrimClick}></button>
         <section bind:this={panel} data-part="chat-sheet" data-mode={mode} style:left={mode === 'wide-menu' ? `${popupPosition.left}px` : undefined} style:top={mode === 'wide-menu' ? `${popupPosition.top}px` : undefined} role={kind === 'menu' ? 'menu' : 'dialog'} aria-label={label} aria-modal={kind === 'menu' ? undefined : 'true'} tabindex="-1">
             {@render children()}
@@ -134,9 +139,11 @@
     [data-part="chat-sheet-scrim"] { position: absolute; inset: 0; width: 100%; background: var(--color-scrim); opacity: var(--opacity-scrim); border: 0; }
     [data-part="chat-sheet"] { position: relative; width: 100%; max-height: 100%; overflow: auto; padding: var(--sheet-padding-bottom) var(--sheet-padding-x); border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--color-surface-sheet); color: var(--nexus-text); border: 1px solid var(--nexus-edge); animation: sheet-in var(--chat-dur-base) var(--chat-ease-out) both; }
     [data-part="chat-sheet"][data-mode="action"] { max-height: 60%; }
+    [data-part="chat-sheet"][data-mode="tall"], [data-part="chat-sheet"][data-mode="side"] { height: 92%; max-height: 92%; }
     [data-part="chat-sheet"][data-mode="action"] :global([data-destructive-group]) { position: sticky; bottom: 0; background: var(--color-surface-sheet); }
     [data-part="chat-sheet"][data-mode="wide-menu"] { position: fixed; width: min(100%, var(--sheet-width-popup)); border-radius: var(--radius-popup); }
     @media (min-width: 900px) { [data-part="chat-sheet"] { max-width: var(--sheet-width-tall); border-radius: var(--radius-sheet); margin-bottom: var(--space-16); } [data-part="chat-sheet"][data-mode="wide-menu"] { margin-bottom: 0; } }
+    @media (min-width: 900px) { [data-part="chat-sheet-layer"][data-mode="side"] { justify-content: flex-end; align-items: stretch; } [data-part="chat-sheet"][data-mode="side"] { width: var(--sheet-width-panel); max-width: var(--sheet-width-panel); height: 100%; max-height: 100%; margin-bottom: 0; border-radius: var(--radius-sheet) 0 0 var(--radius-sheet); } }
     @keyframes sheet-in { from { transform: translateY(var(--space-16)); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
     @keyframes sheet-fade { from { opacity: 0; } to { opacity: 1; } }
     @media (prefers-reduced-motion: reduce) { [data-part="chat-sheet"] { animation: sheet-fade var(--chat-dur-fast) var(--chat-ease-out) both; } }

@@ -2069,6 +2069,232 @@ describe('composerActions: a switch around a reroll and around auto mode', () =>
 
 //#endregion
 
+//#region the pre-send refusal hook and the Continue fix
+
+type GenerationRequest = Parameters<NonNullable<ComposerActionsSource['refuseGeneration']>>[0]
+
+function makeRefusingSource(refuses: boolean | (() => boolean)): { source: ComposerActionsSource, requests: GenerationRequest[], closeMenuCalls: () => number } {
+    const requests: GenerationRequest[] = []
+    let closeMenuCalls = 0
+    const source: ComposerActionsSource = {
+        closeMenu: () => { closeMenuCalls++ },
+        refuseGeneration: (request) => {
+            requests.push(request)
+            return typeof refuses === 'function' ? refuses() : refuses
+        },
+    }
+    return { source, requests, closeMenuCalls: () => closeMenuCalls }
+}
+
+function userAndReply(chaId: string, overrides: Record<string, unknown> = {}): character {
+    return makeCharacter(chaId, {
+        chats: [makeChat(`${chaId}-chat-0`, {
+            message: [
+                { role: 'user', data: 'hi', time: 1 },
+                { role: 'char', data: 'reply', time: 2 },
+            ],
+        })],
+        ...overrides,
+    })
+}
+
+describe('R1 CHORE-168: Continue never appends the say-nothing message', () => {
+    test('R1 Continue with an empty draft and useSayNothing extends the reply and appends no message', async () => {
+        const char = userAndReply('c-continue-saynothing')
+        installDb([char], { useSayNothing: true })
+
+        const { source } = makeSource()
+        await sendContinue(source)
+
+        expect(char.chats[0].message.map((message) => message.role)).toEqual(['user', 'char'])
+        expect(sendChatMock).toHaveBeenCalledTimes(1)
+        expect(sendChatMock.mock.calls[0][1]).toMatchObject({ continue: true })
+    })
+
+    test('G1 guard: Send with an empty draft and useSayNothing still appends the say-nothing message', async () => {
+        const char = userAndReply('c-send-saynothing')
+        installDb([char], { useSayNothing: true })
+
+        const { source } = makeSource()
+        await send(source)
+
+        expect(char.chats[0].message.map((message) => message.role)).toEqual(['user', 'char', 'user'])
+        expect(char.chats[0].message[2].data).toBe('*says nothing*')
+        expect(sendChatMock.mock.calls[0][1]).toMatchObject({ continue: false })
+    })
+
+    test('guard: Continue with useSayNothing off appends nothing', async () => {
+        const char = userAndReply('c-continue-off')
+        installDb([char], { useSayNothing: false })
+
+        const { source } = makeSource()
+        await sendContinue(source)
+
+        expect(char.chats[0].message).toHaveLength(2)
+    })
+})
+
+describe('R2 CHORE-563: a refused generation changes nothing', () => {
+    test('R2 a refused Send takes nothing, appends nothing, requests nothing and keeps the draft', async () => {
+        const char = makeCharacter('c-refused-send')
+        installDb([char])
+        seedDraft(char, char.chats[0], { messageInput: 'keep me', messageInputTranslate: 'tr', fileInput: ['a.png'] })
+        const before = JSON.stringify(char.chats[0])
+
+        const { source, requests } = makeRefusingSource(true)
+        await send(source)
+
+        expect(requests).toEqual([{ origin: { chaId: 'c-refused-send', chatId: 'c-refused-send-chat-0' }, action: 'send' }])
+        expect(sendChatMock).not.toHaveBeenCalled()
+        expect(draftFor(char, char.chats[0])).toMatchObject({ messageInput: 'keep me', messageInputTranslate: 'tr', fileInput: ['a.png'] })
+        expect(JSON.stringify(char.chats[0])).toBe(before)
+    })
+
+    test('G3 guard: after a refusal nothing is busy, locked, registered or in flight', async () => {
+        const char = makeCharacter('c-refused-state')
+        installDb([char])
+        seedDraft(char, char.chats[0], { messageInput: 'keep me' })
+
+        const { source } = makeRefusingSource(true)
+        await send(source)
+
+        expect(isComposerBusy()).toBe(false)
+        expect(isComposerLocked()).toBe(false)
+        expect(get(doingChatMock)).toBe(false)
+        expect(isWriting({ chaId: char.chaId, chatId: char.chats[0].id })).toBe(false)
+        expect(hasLocalDrafts()).toBe(false)
+    })
+
+    test('a refused Send leaves the next Send able to run', async () => {
+        const char = makeCharacter('c-refused-then-pass')
+        installDb([char])
+        seedDraft(char, char.chats[0], { messageInput: 'first try' })
+        let refuse = true
+        const { source } = makeRefusingSource(() => refuse)
+
+        await send(source)
+        expect(sendChatMock).not.toHaveBeenCalled()
+
+        refuse = false
+        await send(source)
+        expect(sendChatMock).toHaveBeenCalledTimes(1)
+        expect(char.chats[0].message.map((message) => message.data)).toEqual(['first try'])
+        expect(draftFor(char, char.chats[0]).messageInput).toBe('')
+    })
+
+    test('a refused Continue reports the continue action and extends nothing', async () => {
+        const char = userAndReply('c-refused-continue')
+        installDb([char])
+
+        const { source, requests } = makeRefusingSource(true)
+        await sendContinue(source)
+
+        expect(requests.map((request) => request.action)).toEqual(['continue'])
+        expect(sendChatMock).not.toHaveBeenCalled()
+    })
+
+    test('a slash command is not a generation: the hook is not asked and the command runs', async () => {
+        const char = makeCharacter('c-refused-command')
+        installDb([char])
+        seedDraft(char, char.chats[0], { messageInput: '/help' })
+        processMultiCommandMock.mockResolvedValueOnce('')
+
+        const { source, requests } = makeRefusingSource(true)
+        await send(source)
+
+        expect(requests).toEqual([])
+        expect(processMultiCommandMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('a hook that throws ends the work registration and keeps the draft', async () => {
+        const char = makeCharacter('c-refused-throws')
+        installDb([char])
+        seedDraft(char, char.chats[0], { messageInput: 'keep me' })
+
+        const { source } = makeRefusingSource(() => { throw new Error('hook failed') })
+        await expect(send(source)).rejects.toThrow('hook failed')
+
+        expect(isWriting({ chaId: char.chaId, chatId: char.chats[0].id })).toBe(false)
+        expect(isComposerBusy()).toBe(false)
+        expect(draftFor(char, char.chats[0]).messageInput).toBe('keep me')
+    })
+
+    test('guard: a source without the hook sends as before', async () => {
+        const char = makeCharacter('c-no-hook')
+        installDb([char])
+        seedDraft(char, char.chats[0], { messageInput: 'hello' })
+
+        const { source } = makeSource()
+        await send(source)
+
+        expect(sendChatMock).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('R4 CHORE-563: New reply goes through the same gate', () => {
+    test('R4 a refused New reply cuts nothing, opens no window and requests nothing', async () => {
+        const char = userAndReply('c-refused-regenerate')
+        installDb([char])
+        const { regenerateNewest } = await import('../composerActions.svelte')
+
+        const { source, requests, closeMenuCalls } = makeRefusingSource(true)
+        await regenerateNewest(source)
+
+        expect(requests).toEqual([{ origin: { chaId: 'c-refused-regenerate', chatId: 'c-refused-regenerate-chat-0' }, action: 'regenerate' }])
+        expect(sendChatMock).not.toHaveBeenCalled()
+        expect(closeMenuCalls()).toBe(0)
+        expect(char.chats[0].message.map((message) => message.data)).toEqual(['hi', 'reply'])
+        expect(char.chats[0].message.map((message) => message.chatId).every((id) => typeof id === 'string')).toBe(true)
+        expect(isComposerBusy()).toBe(false)
+        expect(isWriting({ chaId: char.chaId, chatId: char.chats[0].id })).toBe(false)
+    })
+
+    test('a hook that throws in New reply ends the registration and closes the window', async () => {
+        const char = userAndReply('c-regenerate-throws')
+        installDb([char])
+        const { regenerateNewest } = await import('../composerActions.svelte')
+
+        const { source } = makeRefusingSource(() => { throw new Error('hook failed') })
+        await expect(regenerateNewest(source)).rejects.toThrow('hook failed')
+
+        expect(isWriting({ chaId: char.chaId, chatId: char.chats[0].id })).toBe(false)
+        expect(isComposerBusy()).toBe(false)
+        expect(char.chats[0].message).toHaveLength(2)
+    })
+
+    test('G4 guard: New reply with no reroll base asks no hook, shows nothing and leaves no handle', async () => {
+        const char = makeCharacter('c-regenerate-nobase', {
+            chats: [makeChat('c-regenerate-nobase-chat-0', { message: [{ role: 'char', data: 'only greeting', time: 1 }] })],
+        })
+        installDb([char])
+        const { regenerateNewest } = await import('../composerActions.svelte')
+
+        const { source, requests } = makeRefusingSource(true)
+        await regenerateNewest(source)
+
+        expect(requests).toEqual([])
+        expect(sendChatMock).not.toHaveBeenCalled()
+        expect(isComposerBusy()).toBe(false)
+        expect(isWriting({ chaId: char.chaId, chatId: char.chats[0].id })).toBe(false)
+    })
+
+    test('guard: New reply that passes the hook cuts the reply and generates', async () => {
+        const char = userAndReply('c-regenerate-passes')
+        installDb([char])
+        const { regenerateNewest } = await import('../composerActions.svelte')
+
+        const { source, requests, closeMenuCalls } = makeRefusingSource(false)
+        await regenerateNewest(source)
+
+        expect(requests.map((request) => request.action)).toEqual(['regenerate'])
+        expect(closeMenuCalls()).toBe(1)
+        expect(sendChatMock).toHaveBeenCalledTimes(1)
+        expect(char.chats[0].message.map((message) => message.data)).toEqual(['hi'])
+    })
+})
+
+//#endregion
+
 //#region helpers that must be declared after the mocked gate infrastructure above
 
 function interceptSleep(ms: number) {

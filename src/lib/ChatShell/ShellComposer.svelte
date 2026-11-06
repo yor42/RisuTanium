@@ -10,6 +10,7 @@
     import { postChatFile } from '../../ts/process/files/multisend'
     import { originOf, type OriginHint } from '../../ts/process/chatOrigin'
     import { isStopDeletePending } from '../../ts/chatShell/stopDelete.svelte'
+    import { shellGenerationSource } from '../../ts/chatShell/sendFailure.svelte'
     import { language } from '../../lang'
     import Suggestion from '../ChatScreens/Suggestion.svelte'
     import ExtrasStrip from './ExtrasStrip.svelte'
@@ -36,7 +37,7 @@
     let shownDraft = $derived(surface.shownDraft)
     let enterMode: EnterMode = $state(readEnterMode(DBState.db.sendWithEnter))
     const enter = createEnterKeyController()
-    const source: ComposerActionsSource = { closeMenu: () => {} }
+    const source: ComposerActionsSource = shellGenerationSource(() => {})
     const composerDraftKey = v4()
     let input = $state<HTMLTextAreaElement>()
     let translateInput = $state<HTMLTextAreaElement>()

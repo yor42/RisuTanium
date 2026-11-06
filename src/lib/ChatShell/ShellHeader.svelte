@@ -8,11 +8,11 @@
         name: string
         hidden: boolean
         hardwareKeyboardSeen: boolean
-        onpersona: (opener: HTMLElement) => void
+        onthischat: (opener: HTMLElement) => void
         onconcealed?: (concealed: boolean) => void
     }
 
-    let { name, hidden, hardwareKeyboardSeen, onpersona, onconcealed }: Props = $props()
+    let { name, hidden, hardwareKeyboardSeen, onthischat, onconcealed }: Props = $props()
     let focused = $state(false)
     // The one expression for "the header is out of view"; the shell's scroll padding reads it through onconcealed.
     let concealed = $derived(hidden && !hardwareKeyboardSeen && !focused)
@@ -35,7 +35,7 @@
 <header data-part="chat-header" data-toggle-inset={$MobileGUI ? undefined : ''} style:padding-left={$MobileGUI ? undefined : 'calc(var(--size-touch-lg) + var(--space-7))'} data-hidden={concealed ? '' : undefined} onfocusin={() => focused = true} onfocusout={(event) => focused = event.currentTarget.contains(event.relatedTarget as Node)}>
     <button data-part="chat-header-back" data-kind="icon-button" aria-label={language.chatShellBack} onclick={back}>‹</button>
     <span data-part="chat-header-title">{name}</span>
-    <button data-part="chat-header-menu" data-kind="icon-button" aria-label={language.chatShellChoosePersona} onclick={(event) => onpersona(event.currentTarget)}>◉</button>
+    <button data-part="chat-header-menu" data-kind="icon-button" aria-label={language.chatShellThisChat} title={language.chatShellThisChat} aria-haspopup="dialog" onclick={(event) => onthischat(event.currentTarget)}>⋮</button>
 </header>
 
 <style>

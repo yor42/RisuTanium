@@ -35,6 +35,9 @@ import { getInlayAsset } from "./files/inlays";
 import { getGenerationModelString } from "./models/modelString";
 import { runInlayScreen } from "./inlayScreen";
 import { addRerolls, renameContinuedMessage } from "./prereroll";
+import { branchStateOf } from "./chatTree";
+import { effectiveJailbreak, effectiveMemory } from "../parser/chatToggleScope";
+import { getGlobalChatVar } from "../parser/chatVar.svelte";
 import { runImageEmbedding } from "./transformers";
 import { hanuraiMemory } from "./memory/hanuraiMemory";
 import { hypaMemoryV2 } from "./memory/hypav2";
@@ -696,7 +699,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         initialPresetNameForPromptInfo = DBState.db.botPresets[DBState.db.botPresetsId]?.name ?? ''
         initialPromptTogglesForPromptInfo = parseToggleSyntax(DBState.db.customPromptTemplateToggle + getModuleToggles(subject))
             .flatMap(toggle => {
-                const raw = DBState.db.globalChatVariables[`toggle_${toggle.key}`]
+                const raw = getGlobalChatVar(`toggle_${toggle.key}`, subject)
                 if (toggle.type === 'select' || toggle.type === 'text') {
                     return [{ key: toggle.value, value: toggle.options[raw] }];
                 }
@@ -799,6 +802,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         return endGone()
     }
     let currentChat:Chat = parsedEntryChat
+    // The jailbreak switch is decided once for this send and from this send's chat, so the count of the cards and the
+    // text pushed for them agree and a selection move changes nothing.
+    const jailbreakOn = effectiveJailbreak(currentChat)
     let maxContextTokens = DBState.db.maxContext
 
     chatProcessStage.set(1)
@@ -889,7 +895,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
 
         unformated.main.push(...formatPrompt(risuChatParser(mainp + ((DBState.db.additionalPrompt === '' || (!DBState.db.promptPreprocess)) ? '' : `\n${DBState.db.additionalPrompt}`), {chara: currentChar, subject, promptView})))
     
-        if(DBState.db.jailbreakToggle){
+        if(jailbreakOn){
             unformated.jailbreak.push(...formatPrompt(risuChatParser(DBState.db.jailbreak, {chara: currentChar, subject, promptView})))
         }
     
@@ -1198,7 +1204,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 case 'plain':
                 case 'jailbreak':
                 case 'cot':{
-                    if((!DBState.db.jailbreakToggle) && (card.type === 'jailbreak')){
+                    if((!jailbreakOn) && (card.type === 'jailbreak')){
                         continue
                     }
                     if((!DBState.db.chainOfThought) && (card.type === 'cot')){
@@ -1377,7 +1383,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     // prompt is the same either way while the tokenizer settings stay unchanged
     // during the send. A message the trim drops without counting can no longer
     // fail the send through its count (tiktoken refuses special-token text).
-    const memoryTakesChats = () => nowChatroom.supaMemory && (DBState.db.supaModelType !== 'none' || DBState.db.hanuraiEnable || DBState.db.hypav2 || DBState.db.hypaV3)
+    const memoryTakesChats = () => effectiveMemory(nowChatroom, currentChat) && (DBState.db.supaModelType !== 'none' || DBState.db.hanuraiEnable || DBState.db.hypav2 || DBState.db.hypaV3)
     const countTokenizer = getModelInfo(DBState.db.aiModel)?.tokenizer
     const countVaries = (DBState.db.aiModel === 'custom' && pluginV2.providerOptions?.get(DBState.db.currentPluginProvider)?.tokenizer === 'custom')
         || countTokenizer === LLMTokenizer.GoogleCloud
@@ -1918,7 +1924,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 case 'plain':
                 case 'jailbreak':
                 case 'cot':{
-                    if((!DBState.db.jailbreakToggle) && (card.type === 'jailbreak')){
+                    if((!jailbreakOn) && (card.type === 'jailbreak')){
                         continue
                     }
                     if((!DBState.db.chainOfThought) && (card.type === 'cot')){
@@ -2152,15 +2158,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     }
     // The branch state of the chat as the request starts, with this send's own
     // memory already written: a candidate of this reply is a sibling that, once
-    // arrived at, restores it whole (all six fields, an absent one as null).
-    const candidateStartState: ChatAltMemory = $state.snapshot({
-        supaMemoryData: requestCtx.chat.supaMemoryData ?? null,
-        supaMemoryCoveredId: requestCtx.chat.supaMemoryCoveredId ?? null,
-        lastMemory: requestCtx.chat.lastMemory ?? null,
-        scriptstate: requestCtx.chat.scriptstate ?? null,
-        hypaV2Data: requestCtx.chat.hypaV2Data ?? null,
-        hypaV3Data: requestCtx.chat.hypaV3Data ?? null,
-    })
+    // arrived at, restores it whole (every branch field, an absent one as null). A scope flip while the request runs
+    // is not seen here: the candidates keep the value the request started with.
+    const candidateStartState: ChatAltMemory = branchStateOf(requestCtx.chat)
 
     const req = await requestChatData({
         formated: formated,

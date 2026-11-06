@@ -195,12 +195,20 @@ export function endTarget(chat: Chat): string | null {
     return best === -1 ? null : alt[best].m.chatId ?? null;
 }
 
-type BranchFields = Pick<Chat, "supaMemoryData" | "supaMemoryCoveredId" | "lastMemory" | "scriptstate" | "hypaV2Data" | "hypaV3Data">;
+/**
+ * The chat fields that follow a branch: a departure parks each of them on the departed head and an arrival restores
+ * them. Every record this build parks or seeds holds every key (an absent value as `null`), so this list is the one
+ * place that says which keys a parked `mem` carries.
+ */
+export const BRANCH_FIELD_KEYS = ["supaMemoryData", "supaMemoryCoveredId", "lastMemory", "scriptstate", "hypaV2Data", "hypaV3Data", "scopedMemory"] as const;
+
+type BranchKey = typeof BRANCH_FIELD_KEYS[number];
+type BranchFields = Pick<Chat, BranchKey>;
 
 export interface BranchStateResult {
     /** What the chat holds afterwards; `null` removes the field. */
     next: ChatAltMemory;
-    /** What the departing chain keeps: all six fields, a copy of the live values, an absent one as `null`. */
+    /** What the departing chain keeps: every branch field, a copy of the live values, an absent one as `null`. */
     park: ChatAltMemory;
 }
 
@@ -228,7 +236,29 @@ function pickBranchFields(chat: BranchFields): BranchFields {
         scriptstate: chat.scriptstate,
         hypaV2Data: chat.hypaV2Data,
         hypaV3Data: chat.hypaV3Data,
+        scopedMemory: chat.scopedMemory,
     };
+}
+
+function carryKey<K extends BranchKey>(to: ChatAltMemory, from: BranchFields, key: K): void {
+    to[key] = (from[key] ?? null) as ChatAltMemory[K];
+}
+
+/** `fields` as a parked record: every `BRANCH_FIELD_KEYS` key, an absent value as `null`. */
+function parkedRecordOf(fields: BranchFields): ChatAltMemory {
+    const record: ChatAltMemory = {};
+    for (const key of BRANCH_FIELD_KEYS) {
+        carryKey(record, fields, key);
+    }
+    return record;
+}
+
+/**
+ * The branch state of `chat` as a record a candidate or a departed head can carry: a deep copy of the live values
+ * that shares nothing with the chat, holding every `BRANCH_FIELD_KEYS` key. It reads through reactive proxies.
+ */
+export function branchStateOf(chat: BranchFields): ChatAltMemory {
+    return parkedRecordOf(deepCopy(pickBranchFields(chat)));
 }
 
 /**
@@ -311,16 +341,24 @@ function parkedObject<K extends "scriptstate" | "hypaV2Data" | "hypaV3Data">(mem
     return (value === null || isObjectValue(value) ? value : undefined) as ChatAltMemory[K];
 }
 
+function parkedFlag(mem: ChatAltMemory | undefined, key: "scopedMemory"): boolean | null | undefined {
+    const value: unknown = mem?.[key];
+    if (typeof value === "boolean") {
+        return value;
+    }
+    return value === null ? null : undefined;
+}
+
 /**
  * The state a chat holds after a switch, and the state the departing chain keeps. `departing` is the
  * set of chat ids of the departing chain, `arrivingPathIds` those of the path afterwards, `parked` the
  * state the arriving chain left behind (a field it lacks is carried instead of restored).
  *
- * Every departure parks all six fields as copies of the live values, an absent value as `null`, so no
+ * Every departure parks every branch field as a copy of the live value, an absent value as `null`, so no
  * parked branch shares a value with the live chat and a later change of the live store cannot alter
- * what a branch left. For data this module produces every head's `mem` carries all six keys, and only
+ * what a branch left. For data this module produces every head's `mem` carries every branch key, and only
  * run heads carry `mem`. A record without `mem`, or without a key (a never-shown sibling such as a
- * prereroll candidate, or an imported record), carries the live value as a copy instead: the pair
+ * prereroll candidate, an imported record or a record of an earlier build), carries the live value as a copy instead: the pair
  * only while `supaResumeResolvable` holds on the new path (otherwise both fields go), `lastMemory`
  * unless it names a departing message, `scriptstate` as it is when `keepLiveScriptState` and removed
  * otherwise, the summary stores minus what names a departing message. A restored pair that does not
@@ -336,14 +374,7 @@ export function branchState(
 ): BranchStateResult {
     const mine = deepCopy(pickBranchFields(live));
     const work = deepCopy(pickBranchFields(live));
-    const park: ChatAltMemory = {
-        supaMemoryData: mine.supaMemoryData ?? null,
-        supaMemoryCoveredId: mine.supaMemoryCoveredId ?? null,
-        lastMemory: mine.lastMemory ?? null,
-        scriptstate: mine.scriptstate ?? null,
-        hypaV2Data: mine.hypaV2Data ?? null,
-        hypaV3Data: mine.hypaV3Data ?? null,
-    };
+    const park = parkedRecordOf(mine);
 
     const parkedData = parkedText(parked, "supaMemoryData");
     let data = parkedData !== undefined ? parkedData : work.supaMemoryData ?? null;
@@ -366,8 +397,11 @@ export function branchState(
     const parkedV3 = parkedObject(parked, "hypaV3Data");
     const hypaV3Data = parkedV3 !== undefined ? deepCopy(parkedV3) : (work.hypaV3Data === undefined ? null : hypaV3WithoutMemos(work.hypaV3Data, departing));
 
+    const parkedScoped = parkedFlag(parked, "scopedMemory");
+    const scopedMemory = parkedScoped !== undefined ? parkedScoped : work.scopedMemory ?? null;
+
     return {
-        next: { supaMemoryData: data, supaMemoryCoveredId: covered, lastMemory, scriptstate, hypaV2Data, hypaV3Data },
+        next: { supaMemoryData: data, supaMemoryCoveredId: covered, lastMemory, scriptstate, hypaV2Data, hypaV3Data, scopedMemory },
         park,
     };
 }
@@ -388,7 +422,7 @@ function setBranchField<K extends keyof BranchFields>(chat: Chat, key: K, value:
  * Parks and restores the state of a branch around a switch. `departed` are the records now holding the
  * departed chain (the first one gets the parked state), `arrivedHead` the record the arriving chain's
  * first message came from, null when nothing arrives. Only that head's `mem` is restored, then deleted.
- * An arrival without departing messages (the end press) replaces all six live fields with the head's
+ * An arrival without departing messages (the end press) replaces every live branch field with the head's
  * copy and discards the live values: no message holds them. The suggestions never follow a branch.
  */
 function carryBranchState(chat: Chat, departed: readonly ChatAlt[], arrivedHead: ChatAlt | null, keepLiveScriptState: boolean): void {
@@ -419,6 +453,7 @@ function carryBranchState(chat: Chat, departed: readonly ChatAlt[], arrivedHead:
     setBranchField(chat, "scriptstate", next.scriptstate ?? null);
     setBranchField(chat, "hypaV2Data", next.hypaV2Data ?? null);
     setBranchField(chat, "hypaV3Data", next.hypaV3Data ?? null);
+    setBranchField(chat, "scopedMemory", next.scopedMemory ?? null);
     if (chat.suggestMessages !== undefined) {
         delete chat.suggestMessages;
     }

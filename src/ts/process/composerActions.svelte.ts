@@ -155,14 +155,29 @@ export function isAutoModeActive(): boolean {
     return autoModeRunning
 }
 
+/** Which generation entry point asks to run: the composer's Send, its Continue, or a new reply for the last message. */
+export type GenerationAction = 'send' | 'continue' | 'regenerate'
+
+/** What a source is asked before a generation takes anything: the chat the action addresses and the action. */
+export interface GenerationRequest {
+    origin: Origin
+    action: GenerationAction
+}
+
 /**
- * The composer's live state, reached through its hooks. Only the menu-close
- * hook remains here: the three text/file values are reached by key through
+ * The composer's live state, reached through its hooks. The menu-close hook
+ * is required: the three text/file values are reached by key through
  * `composerDrafts.svelte.ts`, and auto mode's running state and the current
  * generation's abort controller are this module's own state, not per instance.
+ *
+ * `refuseGeneration` is optional. It runs synchronously, before a Send or
+ * Continue takes the draft and before a new reply cuts the chat, and returns
+ * true when the caller refuses the action and has already shown why. A source
+ * without it never refuses.
  */
 export interface ComposerActionsSource {
     closeMenu(): void
+    refuseGeneration?(request: GenerationRequest): boolean
 }
 
 /**
@@ -221,6 +236,25 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
     const workHandle = beginWork(char, startChat, undefined, () => stopTake(controller))
     if(!workHandle){
         return
+    }
+
+    // The source may refuse before anything is taken: the draft, the window,
+    // the lock and the draft registration stay as they were. A slash command
+    // is not a generation, so it is never asked. The work registration ends on
+    // every exit of the check, including a hook that throws.
+    if(!composerDrafts.peek(workHandle.origin).messageInput.startsWith('/')){
+        let refused = true
+        try {
+            refused = source.refuseGeneration?.({ origin: workHandle.origin, action: continueResponse ? 'continue' : 'send' }) === true
+        }
+        finally {
+            if(refused){
+                workHandle.end()
+            }
+        }
+        if(refused){
+            return
+        }
     }
 
     // The take: the origin's per-chat record's three values move into the
@@ -323,7 +357,8 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
             if(status === 'gone'){
                 return
             }
-            if(char.type !== 'group' && DBState.db.useSayNothing){
+            // Continue extends the last message, so an appended message would become the continued one.
+            if(!continueResponse && char.type !== 'group' && DBState.db.useSayNothing){
                 const appendSayNothing = (chat: Chat) => {
                     if(chat.message.length === 0 || chat.message[chat.message.length - 1].role !== 'user'){
                         chat.message.push({ role: 'user', data: '*says nothing*' })
@@ -611,13 +646,28 @@ async function regenerate(source: ComposerActionsSource): Promise<void> {
     if(!entry){
         return
     }
+    // No base means nothing to regenerate: that ends here, before the source is asked and before the window opens,
+    // so a no-op never shows a refusal. The hook is synchronous, so the base stays valid for the cut below.
+    const base = rerollBase(entry.chat.message)
+    if(base === null){
+        entry.workHandle.end()
+        return
+    }
+    let refused = true
+    try {
+        refused = source.refuseGeneration?.({ origin: entry.workHandle.origin, action: 'regenerate' }) === true
+    }
+    finally {
+        if(refused){
+            entry.workHandle.end()
+        }
+    }
+    if(refused){
+        return
+    }
     setComposerWindow(true)
     try {
         const { char, chat, workHandle } = entry
-        const base = rerollBase(chat.message)
-        if(base === null){
-            return
-        }
         // Closed before the chat is cut: nothing between the cut and the
         // hand-off to generation may throw.
         source.closeMenu()

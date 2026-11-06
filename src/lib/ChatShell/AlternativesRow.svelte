@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { stepSibling, regenerateNewest } from '../../ts/process/composerActions.svelte'
+    import { stepSibling, regenerateNewest, type ComposerActionsSource } from '../../ts/process/composerActions.svelte'
     import { language } from '../../lang'
 
     interface Props {
@@ -21,9 +21,10 @@
         onEnd?: () => void
         // The row belongs to its message: a wheel over it is the message's wheel.
         onwheel?: (event: WheelEvent) => void
+        // The host shell's composer source: its pre-send gate refuses a new reply that cannot work and shows why. Without one the row never refuses.
+        source?: ComposerActionsSource
     }
-    let { idx, expectedId, index, count, firstMessage = false, busy = false, browseOnly = false, pager = true, continuation = 0, onStep, onEnd, onwheel }: Props = $props()
-    const source = { closeMenu: () => {} }
+    let { idx, expectedId, index, count, firstMessage = false, busy = false, browseOnly = false, pager = true, continuation = 0, onStep, onEnd, onwheel, source = { closeMenu: () => {} } }: Props = $props()
     let lastPage = -Infinity
     let lastGenerate = -Infinity
     function step(direction: 'back' | 'forward'): void {

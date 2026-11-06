@@ -1,6 +1,6 @@
 import fc from 'fast-check'
 import { writable } from 'svelte/store'
-import { beforeEach, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { DBState } from '../../stores.svelte'
 import { getChatVar, getGlobalChatVar, setChatVar } from '../chatVar.svelte'
 import { resetChatVariables } from './cbs/lib'
@@ -126,6 +126,27 @@ test('can get a global chat variable', () => {
       }
     )
   )
+})
+
+// B-T6, compatibility guard (passes before and after the scope work): an empty or 'null' chat-local value means
+// "inherit the shared value", which is what a cleared chat-only text relies on.
+describe('a chat-local toggle value that is empty or "null" inherits the shared value', () => {
+  const subjectOf = (local: string | undefined) => {
+    const chat = { GLGlobalVariables: local === undefined ? undefined : { toggle_k: local } }
+    return { origin: { chaId: 'c', chatId: 'x' }, resolve: () => ({ chat }), status: () => 'ok', memberStatus: () => null, mark: () => {} } as never
+  }
+
+  test.each([
+    { local: '', expected: 'shared' },
+    { local: 'null', expected: 'shared' },
+    { local: undefined, expected: 'shared' },
+    { local: '0', expected: '0' },
+    { local: 'mine', expected: 'mine' },
+  ])('local $local gives $expected', ({ local, expected }) => {
+    DBState.db.globalChatVariables.toggle_k = 'shared'
+
+    expect(getGlobalChatVar('toggle_k', subjectOf(local))).toBe(expected)
+  })
 })
 
 test('returns "null" for undefined variables', () => {

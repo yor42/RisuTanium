@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const captured = vi.hoisted(() => ({
     persona: null as null | { open: boolean },
+    thisChat: null as null | { open: boolean },
     alertNormal: [] as string[],
 }))
 
@@ -100,10 +101,11 @@ vi.mock('./ShellNotices.svelte', () => ({ default: () => ({}) }))
 vi.mock('./ShellFloatingButtons.svelte', () => ({ default: () => ({}) }))
 vi.mock('./CustomizeButtonsSheet.svelte', () => ({ default: () => ({}) }))
 vi.mock('./PersonaSheet.svelte', () => ({ default: (_anchor: Comment, props: { open: boolean }) => { captured.persona = props; return {} } }))
-vi.mock('./ShellHeader.svelte', () => ({ default: (anchor: Comment, props: { onpersona: (opener: HTMLElement) => void }) => {
+vi.mock('./ThisChatSheet.svelte', () => ({ default: (_anchor: Comment, props: { open: boolean }) => { captured.thisChat = props; return {} } }))
+vi.mock('./ShellHeader.svelte', () => ({ default: (anchor: Comment, props: { onthischat: (opener: HTMLElement) => void }) => {
     const button = document.createElement('button')
     button.setAttribute('data-test', 'persona-opener')
-    button.addEventListener('click', () => props.onpersona(button))
+    button.addEventListener('click', () => props.onthischat(button))
     anchor.before(button)
     return {}
 } }))
@@ -190,6 +192,7 @@ beforeEach(() => {
     scrollIntoView.mockClear()
     rectReads.mockClear()
     captured.persona = null
+    captured.thisChat = null
     captured.alertNormal.length = 0
     ScrollToMessageStore.value = -1
     chatSurface.hidden = false
@@ -213,7 +216,7 @@ afterEach(async () => {
 describe('guard: a hidden chat surface takes no focus, opens no sheet, reads no layout and scrolls nothing', () => {
     async function showShell(): Promise<HTMLElement> {
         const root = mountInto(ChatShell)
-        await until(() => root.querySelector('article[data-chat-id="chat-id-2"]') !== null && captured.persona !== null, 'the rows and the sheets')
+        await until(() => root.querySelector('article[data-chat-id="chat-id-2"]') !== null && captured.persona !== null && captured.thisChat !== null, 'the rows and the sheets')
         return root
     }
     const transcript = (root: HTMLElement) => root.querySelector<HTMLElement>('[data-part="chat-transcript"]')!
@@ -229,7 +232,7 @@ describe('guard: a hidden chat surface takes no focus, opens no sheet, reads no 
         opener(root).click()
         moreActions(root).click()
         await settle()
-        expect(captured.persona!.open).toBe(false)
+        expect(captured.thisChat!.open).toBe(false)
         expect(root.querySelector('[data-part="chat-sheet"]')).toBeNull()
         expect(document.activeElement).toBe(focusBefore)
 
@@ -238,7 +241,7 @@ describe('guard: a hidden chat surface takes no focus, opens no sheet, reads no 
         opener(root).click()
         moreActions(root).click()
         await settle()
-        expect(captured.persona!.open).toBe(true)
+        expect(captured.thisChat!.open).toBe(true)
         expect(root.querySelector('[data-part="chat-sheet"]')).not.toBeNull()
     })
 

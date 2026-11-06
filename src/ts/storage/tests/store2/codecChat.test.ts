@@ -118,6 +118,30 @@ describe('chat core and tail state', () => {
         expect(built).toEqual(kept)
     })
 
+    // C-T13, a compatibility guard (passes before and after): the chat-only switches are unknown keys to the codec, so they
+    // sit in the chat core and round-trip untouched, and a chat of an earlier build assembles without them.
+    test('the chat-only switches and a parked scopedMemory round-trip; a chat without them gains none', () => {
+        const withSwitches: JsonObject = {
+            ...chat(),
+            useLocallySetGlobalVariables: true, GLGlobalVariables: { toggle_a: '1' },
+            scopedJailbreak: true, scopedMemory: false, hideNames: true,
+            alt: [{ m: sized(3), p: null, a: 1, mem: { scopedMemory: true, lastMemory: null } }],
+        }
+        const split = splitChat(withSwitches, 'chat')
+        for (const key of ['scopedJailbreak', 'scopedMemory', 'hideNames']) {
+            expect(key in split.core.f).toBe(true)
+        }
+        expect('alt' in split.core.f).toBe(false)
+        const { isStreaming, activeStreamingDisplayOptimizationMode, ...kept } = withSwitches
+        expect(assembleChat(split.core, split.chunks, 'chat', split.alt)).toEqual(kept)
+
+        const earlier = splitChat(chat(), 'chat')
+        const built = assembleChat(earlier.core, earlier.chunks, 'chat')
+        for (const key of ['scopedJailbreak', 'scopedMemory', 'hideNames']) {
+            expect(key in built).toBe(false)
+        }
+    })
+
     test('state written in a chunk other than the last is refused on assemble', () => {
         const core: ChatCore = { v: 1, f: {} }
         const chunks: ChatChunk[] = [{ v: 1, msgs: [], st: { lastDate: 1 } }, { v: 1, msgs: [] }]

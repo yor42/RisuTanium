@@ -556,6 +556,29 @@ describe('task presets over the .bin import of a store2 page', () => {
     })
 })
 
+describe('fork-only chat keys over the .bin import of a store2 page', () => {
+    // Compatibility guard (passes before and after the export leave-out): an import changes nothing about these keys. A
+    // `.bin` an earlier fork build wrote still carries them, and they come back with the chat.
+    test('guard (G4): a fork .bin whose chat holds alt, a coverage pointer and an interrupted reply imports with all three kept', async () => {
+        const page = await openPage()
+        const source = makeDb('backup', ['alpha'])
+        const chat = ((source.characters as Record<string, unknown>[])[0].chats as Record<string, unknown>[])[0]
+        chat.message = [{ role: 'char', data: 'cut off', chatId: 'reply-1', interrupted: true }]
+        chat.supaMemoryData = 'FIRST\nrest'
+        chat.supaMemoryCoveredId = 'FIRST'
+        chat.alt = [{ m: { time: 5, data: 'ALT', role: 'char' }, p: null, a: 1 }]
+
+        await loadBin(page, binOf(binEntry('golden-avatar.png', AVATAR), binEntry('database.risudat', await blockFileBytes(page, source))))
+
+        const stored = await databaseOf(page, (await currentKey(page)) as string)
+        const kept = (stored.characters[0] as unknown as { chats: Record<string, unknown>[] }).chats[0]
+        expect(kept.supaMemoryCoveredId).toBe('FIRST')
+        expect(kept.alt).toEqual([{ m: { time: 5, data: 'ALT', role: 'char' }, p: null, a: 1 }])
+        expect((kept.message as Record<string, unknown>[])[0]).toMatchObject({ data: 'cut off', interrupted: true })
+        expect(alertErrorTexts(page)).toEqual([])
+    })
+})
+
 describe('the database is decoded and confirmed before the copy', () => {
     /** A block-format backup of three characters with its last block damaged: the intact blocks can be salvaged. */
     async function damagedBackup(page: Page): Promise<{ bytes: Uint8Array, lines: string[] }> {

@@ -187,6 +187,7 @@ describe('small fields are always parked', () => {
             scriptstate: null,
             hypaV2Data: null,
             hypaV3Data: null,
+            scopedMemory: null,
         })
     })
 
@@ -343,13 +344,13 @@ describe('summary stores are always parked', () => {
 })
 
 /**
- * Reach of a parked branch: every departure parks all six fields, an arrival follows the run that departed
+ * Reach of a parked branch: every departure parks all seven fields, an arrival follows the run that departed
  * together, and nothing a branch left is lost by an arrow, a reroll, a delete of the last message or the end
  * press. The end control arrives at the highest stamp after the last message; `endOf` is the same rule
  * written locally.
  */
 describe('park-always reach', () => {
-    const SIX_KEYS = ['hypaV2Data', 'hypaV3Data', 'lastMemory', 'scriptstate', 'supaMemoryCoveredId', 'supaMemoryData']
+    const BRANCH_KEYS = ['hypaV2Data', 'hypaV3Data', 'lastMemory', 'scopedMemory', 'scriptstate', 'supaMemoryCoveredId', 'supaMemoryData']
 
     function endOf(chat: Chat): string {
         const last = chat.message.length === 0 ? null : chat.message[chat.message.length - 1].chatId ?? null
@@ -381,13 +382,13 @@ describe('park-always reach', () => {
         return { role: 'char', data: `data ${chatId}`, chatId, time }
     }
 
-    /** I15' and I34 for a chat holding only producer data: six keys on each run head, no `mem` elsewhere, none on an arrived record. */
+    /** I15' and I34 for a chat holding only producer data: every branch key on each run head, no `mem` elsewhere, none on an arrived record. */
     function expectStructure(chat: Chat, arrived: readonly ChatAlt[], where: string): void {
         for (const record of chat.alt ?? []) {
             if (record.mem === undefined) {
                 continue
             }
-            expect(Object.keys(record.mem).sort(), `${where}: keys of ${record.m.chatId}`).toEqual(SIX_KEYS)
+            expect(Object.keys(record.mem).sort(), `${where}: keys of ${record.m.chatId}`).toEqual(BRANCH_KEYS)
             const runPredecessor = (chat.alt ?? []).some((other) => other !== record && other.a === record.a && other.m.chatId === record.p)
             expect(runPredecessor, `${where}: ${record.m.chatId} is a run head`).toBe(false)
         }
@@ -530,7 +531,7 @@ describe('park-always reach', () => {
     })
 
     // T86 regression reproducer of I15': a chat without hypaV2Data still parks null for it
-    it('T86 every record with mem holds all six keys and is a run head; an arrived record keeps none', () => {
+    it('T86 every record with mem holds every branch key and is a run head; an arrived record keeps none', () => {
         const chat = chatOf(numbered('m', 0, 3), { hypaV3Data: v3Of({ text: 'S-m0', memos: ['m0'] }), scriptstate: { n: 1 } })
         checkedDetach(chat, 3, 'Branch at m2')
         chat.message.push(msg('n3'))
@@ -570,6 +571,73 @@ describe('park-always reach', () => {
         expect(switchTo(chat, 1, 's')).toBe(true)
         expect(texts(chat)).toEqual(['shared'])
         expect(headOf(chat, 'a').mem?.hypaV3Data?.summaries.map((summary) => summary.text)).toEqual(['shared', 'tail'])
+    })
+})
+
+describe('the chat-only memory switch is a branch field', () => {
+    // C-T7a regression reproducer: the base parks only six keys, so the departed head has no `scopedMemory`
+    it('C-T7a a departure parks the live value on the departed head', () => {
+        const chat = chatOf(['a', 'b'], { scopedMemory: true })
+        detachTail(chat, 1)
+        expect(headOf(chat, 'b').mem?.scopedMemory).toBe(true)
+    })
+
+    it('a departure parks an absent value as null and a false value as false', () => {
+        const none = chatOf(['a', 'b'])
+        detachTail(none, 1)
+        expect(headOf(none, 'b').mem?.scopedMemory).toBeNull()
+        const off = chatOf(['a', 'b'], { scopedMemory: false })
+        detachTail(off, 1)
+        expect(headOf(off, 'b').mem?.scopedMemory).toBe(false)
+    })
+
+    // C-T7b regression reproducer: the base leaves the live value of the branch just left
+    it('C-T7b an arrival restores the value the branch left, and the other branch keeps its own', () => {
+        const chat = chatOf(['r', 'a'], { scopedMemory: true })
+        detachTail(chat, 1)
+        chat.message.push(msg('n'))
+        chat.scopedMemory = false
+        expect(switchTo(chat, 1, 'a')).toBe(true)
+        expect(chat.scopedMemory).toBe(true)
+        expect(switchTo(chat, 1, 'n')).toBe(true)
+        expect(chat.scopedMemory).toBe(false)
+    })
+
+    it('a parked null removes the live value on arrival', () => {
+        const chat = chatOf(['r', 'a'])
+        detachTail(chat, 1)
+        chat.message.push(msg('n'))
+        chat.scopedMemory = true
+        expect(switchTo(chat, 1, 'a')).toBe(true)
+        expect(chat.scopedMemory).toBeUndefined()
+        expect(switchTo(chat, 1, 'n')).toBe(true)
+        expect(chat.scopedMemory).toBe(true)
+    })
+
+    // C-T7c compatibility guard (passes before and after): a record of an earlier build has the six keys only
+    it('C-T7c a record whose mem lacks the key carries the live value', () => {
+        const chat = chatOf(['r', 'a'], { scopedMemory: true })
+        chat.alt = [{
+            m: msg('s'), p: 'r', a: 1,
+            mem: { supaMemoryData: null, supaMemoryCoveredId: null, lastMemory: null, scriptstate: null, hypaV2Data: null, hypaV3Data: null },
+        }]
+        expect(switchTo(chat, 1, 's')).toBe(true)
+        expect(chat.scopedMemory).toBe(true)
+    })
+
+    it('the end press replaces the live value with the one the head parked', () => {
+        const chat = chatOf(['r', 'a'], { scopedMemory: true })
+        detachTail(chat, 1)
+        chat.scopedMemory = false
+        expect(switchTo(chat, 1, 'a')).toBe(true)
+        expect(chat.scopedMemory).toBe(true)
+    })
+
+    it('branchState reads the parked flag and parks a copy of the live one', () => {
+        const { next, park } = branchState({ scopedMemory: false }, new Set(), new Set(), { scopedMemory: true }, false)
+        expect(next.scopedMemory).toBe(true)
+        expect(park.scopedMemory).toBe(false)
+        expect(branchState({ scopedMemory: true }, new Set(), new Set(), {}, false).next.scopedMemory).toBe(true)
     })
 })
 

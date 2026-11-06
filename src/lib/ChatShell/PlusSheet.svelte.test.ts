@@ -20,11 +20,12 @@ vi.mock('../../lang', () => ({ language: {
     chatShellMoreActions: 'More actions', continueResponse: 'Continue', ttsStop: 'Stop speech',
     chatShellStickers: 'Stickers', chatList: 'Chat list', easyPanel: 'Easy panel',
     hypaMemoryV2Modal: 'Hypa V2', hypaMemoryV3Modal: 'Hypa V3', screenshot: 'Screenshot',
-    modules: 'Modules', reroll: 'Reroll', chatShellUtility: 'Utility',
+    modules: 'Modules', reroll: 'Reroll', chatShellUtility: 'Utility', chatShellTogglesTitle: 'Toggles',
     alerts: { screenshotTaking: 'Taking screenshot', screenshotMerging: 'Merging' },
     screenshotSaved: 'Saved', errors: { screenshotFailed: 'Screenshot failed' },
 } }))
 vi.mock('../../ts/process/composerActions.svelte', () => ({ sendContinue: vi.fn(async () => {}), reroll: vi.fn(async () => {}) }))
+vi.mock('../../ts/chatShell/sendFailure.svelte', () => ({ shellGenerationSource: (closeMenu: () => void) => ({ closeMenu }) }))
 vi.mock('../../ts/process/tts', () => ({ stopTTS: vi.fn() }))
 vi.mock('../../ts/process/ttsModes', () => ({ canChatSpeak: vi.fn(() => false) }))
 vi.mock('../../ts/util', () => ({ findCharacterbyId: vi.fn() }))
@@ -132,6 +133,37 @@ describe('PlusSheet', () => {
         flushSync()
         expect(props.open).toBe(false)
         await unmount(app)
+        target.remove()
+    })
+
+    test('the Toggles item comes last with the summary and opens the panel; without a handler there is no item', async () => {
+        const { DBState } = await import('../../ts/stores.svelte')
+        const utility = await import('../Utility/utilityGate')
+        Object.assign(DBState.db, {
+            useChatSticker: true, showMenuChatList: true, enableRisuaiProTools: true,
+            showMenuHypaMemoryModal: true, supaModelType: 'hypav2', hypav2: true, sideMenuRerollButton: true,
+        })
+        vi.mocked(utility.utilityVisible).mockReturnValue(true)
+        const { default: PlusSheet } = await import('./PlusSheet.svelte')
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        const ontoggles = vi.fn()
+        const props = $state({ open: true, opener: null, background: [], onclose: () => { props.open = false }, onstickers: vi.fn(), onchatlist: vi.fn(), onmodules: vi.fn() })
+        const app = mount(PlusSheet, { target, props })
+        flushSync()
+        expect(target.querySelector('[data-item="toggles"]')).toBeNull()
+        await unmount(app)
+        const withToggles = $state({ open: true, opener: null, background: [], onclose: () => { withToggles.open = false }, onstickers: vi.fn(), onchatlist: vi.fn(), onmodules: vi.fn(), ontoggles, togglesSummary: () => '5 toggles · 2 on' })
+        const second = mount(PlusSheet, { target, props: withToggles })
+        flushSync()
+        const items = [...target.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+        expect(items.at(-1)?.getAttribute('data-item')).toBe('toggles')
+        expect(items.at(-1)?.textContent).toContain('Toggles')
+        expect(items.at(-1)?.textContent).toContain('5 toggles · 2 on')
+        items.at(-1)?.click()
+        expect(ontoggles).toHaveBeenCalledOnce()
+        expect(withToggles.open).toBe(false)
+        await unmount(second)
         target.remove()
     })
 
