@@ -26,7 +26,7 @@ Every result from this folder is labelled "desktop-emulated, diagnostic" unless 
 
 ## Safety rules
 
-- Start Chrome only through `launch-chrome.mjs`. It passes `--host-resolver-rules` from `lib.mjs` as one argument element: `mock.test` maps to 127.0.0.1; `*.risuai.xyz`, `risuai.xyz`, `*.risuai.net`, `risuai.net`, `discord.com`, `*.discord.com`, `discord.gg` and `*.discordapp.com` map to `~NOTFOUND`. It prints the arguments it used.
+- Start Chrome only through `launch-chrome.mjs`. It passes `--host-resolver-rules` from `lib.mjs` as one argument element: `mock.test` maps to 127.0.0.1; `*.risuai.xyz`, `risuai.xyz`, `*.risuai.net`, `risuai.net`, `discord.com`, `*.discord.com`, `discord.gg` and `*.discordapp.com` map to `~NOTFOUND`. It also turns off window-occlusion detection and background throttling, so a covered window still reports `visible` and runs rAF and timers. It prints the arguments it used.
 - Plain fetch (the setting 직접 요청 보내기) must be ON before any send, with the custom API at `http://mock.test:9471/v1/chat/completions`. Use throwaway keys only.
 - Never tap unscripted elements on the home page (MC-1092): a stray tap once opened the community links.
 - Diagnostic runs keep `netlog.mjs` attached for the whole session. Report any host other than 127.0.0.1, `mock.test` or `fonts.googleapis.com`.

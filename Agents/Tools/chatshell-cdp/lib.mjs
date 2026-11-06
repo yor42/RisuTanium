@@ -45,11 +45,15 @@ const BLOCKED_HOSTS = ['*.risuai.xyz', 'risuai.xyz', '*.risuai.net', 'risuai.net
 export const hostRules = () => ['MAP mock.test 127.0.0.1', ...BLOCKED_HOSTS.map(h => 'MAP ' + h + ' ~NOTFOUND')].join(', ')
 
 // Chrome arguments for a harness browser. The profile must be outside the checkout; it is not created here.
+// A covered or background window would otherwise report visibilityState hidden, which stops rAF and
+// throttles timers, so the harness hangs or measures a frozen page.
+export const KEEP_VISIBLE_ARGS = Object.freeze(['--disable-features=CalculateNativeWinOcclusion', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'])
+
 export function chromeArgs({ port = cdpPort(), profile } = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('bad debugging port: ' + port)
   const prof = path.resolve(profile || path.join(os.tmpdir(), 'chatshell-cdp', 'profile'))
   assertOutsideRepo(prof, 'profile dir')
-  return [`--remote-debugging-port=${port}`, `--user-data-dir=${prof}`, `--host-resolver-rules=${hostRules()}`, '--no-first-run', '--no-default-browser-check']
+  return [`--remote-debugging-port=${port}`, `--user-data-dir=${prof}`, `--host-resolver-rules=${hostRules()}`, '--no-first-run', '--no-default-browser-check', ...KEEP_VISIBLE_ARGS]
 }
 
 export async function connect({ port = cdpPort() } = {}) {

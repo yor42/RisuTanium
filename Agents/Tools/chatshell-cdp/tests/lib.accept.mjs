@@ -131,6 +131,8 @@ try {
   const prof = profileArg ? profileArg.slice('--user-data-dir='.length) : ''
   check(prof !== '' && inside(prof, TMPHOME) && !inside(prof, REPO) && !inside(prof, TOOL), 'T5 the default profile is outside the checkout and the tool folder', prof)
   check(args.includes('--no-first-run') && args.includes('--no-default-browser-check'), 'T5 chromeArgs skips first-run prompts')
+  const keepVisible = ['--disable-features=CalculateNativeWinOcclusion', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling']
+  check(keepVisible.every((a) => args.includes(a)), 'T5 chromeArgs keeps a covered window visible and unthrottled', JSON.stringify(keepVisible.filter((a) => !args.includes(a))))
   for (const [label, dir] of [['the checkout', path.join(REPO, 'Agents', 'chrome-profile-probe')], ['the tool folder', path.join(TOOL, 'chrome-profile-probe')]]) {
     let threw = false
     try { lib.chromeArgs({ port: 9999, profile: dir }) } catch { threw = true }
