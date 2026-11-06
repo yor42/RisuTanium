@@ -1,4 +1,6 @@
-# Risutanium (a fork of RisuAI)
+# RisuTanium (a fork of RisuAI)
+
+Originally a few small data-hardening fixes. I admit that things have escalated.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="public/logo_wordmark_bright.svg">
@@ -7,47 +9,204 @@
 
 [![Svelte](https://img.shields.io/badge/svelte-5-red?logo=svelte)](https://svelte.dev/) [![Typescript](https://img.shields.io/badge/typescript-5.9-blue?logo=typescript)](https://www.typescriptlang.org/) [![Tauri](https://img.shields.io/badge/tauri-2-%2324C8D8?logo=tauri)](https://tauri.app/) [![Vite](https://img.shields.io/badge/vite-8-%23646CFF?logo=vite)](https://vite.dev/) [![Tailwind CSS](https://img.shields.io/badge/tailwindcss-4-%2306B6D4?logo=tailwindcss)](https://tailwindcss.com/)
 
-Risutanium (also written RisuTanium, Risu-Tan or RT) is a fork of [RisuAI](https://github.com/kwaroran/RisuAI) (called "upstream" below), a cross platform AI chatting application (desktop, web and self-hosted). The fork is for stabilization and improvement: fixing data-loss and reliability problems, and making targeted improvements. Characters, modules, presets, `.bin` backups and plugins made for upstream RisuAI must keep working here.
+RisuTanium (also written Risutanium, Risu-Tan or RT) is a fork of [RisuAI](https://github.com/kwaroran/RisuAI), an AI character-chat app for desktop, web and self-hosting. We call it **upstream** below, mostly because "the application from which this increasingly ambitious situation originated" is too long.
 
-**Status: there are no releases yet. This fork is experimental and heavily work in progress.** There is nothing to download. You can build it from source or with Docker, as described below. Keep a `.bin` backup of anything you care about.
+The original mission was modest: stop losing data, make storage less fragile, and improve a few things along the way. Keeping upstream characters, modules, presets, `.bin` backups and plugins compatible remains a priority. The mission, meanwhile, has developed a worrying number of sub-missions.
+
+> **Status: experimental. No public releases yet.** There is nothing to download. You can build from source or with Docker, but expect unfinished edges and keep a `.bin` backup of anything you care about. Especially anything you *really* care about. This is not a promise of safety just because the project is about safety.
+
+## How did we get here?
+
+The maintainer had roughly **350 MB of application data** and **40 GB of assets**. The existing storage model was not especially thrilled about those numbers, and a browser-based workaround was an awkward home for tens of gigabytes of data on Android. It turns out Chrome and Firefox are not very happy when single page hosts 40gb of data.
+
+The plan was to harden storage and get a native Android build working. Then it turned out that fixing storage properly involved rather more than changing a few settings. And since much of the engine might be reusable for other things, the project is also growing beyond roleplay. I am fully aware that this is how scope creep works, but hey, more cool stuffs. for free.
+
+RisuAI itself is the result of years of work by a small number of contributors and a heavily burdened maintainer. This fork is not an invitation to dunk on them. Shipping and maintaining an app *and* the services around it is a lot of work, especially when done largely for free. Our different priorities, intrusive architectural changes and AI-assisted workflow made a separate fork a better fit than handing upstream an enormous PR to review.
+
+### Where this is heading (not a feature-completion checklist)
+
+The longer-term vision has three modes:
+
+- **RP:** Character-driven roleplay and storytelling, in the neighborhood of what RisuAI already does.
+- **Hybrid:** An assistant with a persona; useful when you want both a task done and a personality attached to it. or have your waifu crunching with you. Live2D or Holographic display not included.
+- **Utility:** A task-oriented assistant with specialized modules, because apparently an AI chat frontend wasn't a large enough project.
+
+**These are plans, not a claim that all three modes are available today.** The current feature list below describes existing Risu-derived functionality; consult the actual project status before assuming a planned feature works.
 
 ## Features
 
-- **Many AI providers**: OpenAI, Anthropic (Claude), Google (Gemini) and Vertex AI, Mistral, Cohere, NovelAI, NovelList, DeepSeek, DeepInfra, NanoGPT, AWS (Bedrock), AI Horde, Ollama, WebLLM (in-browser inference), OpenRouter and Ooba (Text Generation WebUI). Plugins can add more.
-- **Emotion Images**: Show the character image that matches the current expression.
-- **Additional Assets**: Embed images, audio and video in a character and show them in the chat or as the background.
-- **Group Chats**: Multiple characters in one chat.
-- **Plugins**: Add features and providers, and share them.
-- **Scripting**: Regex scripts, trigger scripts, Lua scripting and modules.
-- **Translators**: Translate input and output automatically.
-- **Lorebook**: Also known as world info or memory book. It gives a character more to remember.
-- **UI modes**: Standard Risu, Waifulike, Mobile Chat, CardBoard and Custom HTML, plus colour schemes.
-- **Prompting**: Change the prompt order, and use conditions and variables.
-- **TTS**: Read the output text aloud.
-- **Long-term memory**: HypaMemory V2 and V3, SupaMemory and Hanurai Memory.
+The existing engine already does quite a lot. This list is about the present Risu-derived feature set, not a promise that the future Utility framework has quietly shipped while nobody was looking.
+
+- Many AI providers: OpenAI, Anthropic (Claude), Google (Gemini) and Vertex AI, Mistral, Cohere, NovelAI, NovelList, DeepSeek, DeepInfra, NanoGPT, AWS (Bedrock), AI Horde, Ollama, WebLLM (runs the model in your browser), OpenRouter and Ooba (Text Generation WebUI). Plugins can add more.
+- Emotion Images: The app shows the character image that matches the current expression.
+- Additional Assets: You can embed images, audio and video in a character. The app shows them in the chat or as the background.
+- Group Chats: You can put many characters in one chat.
+- Plugins: Plugins add features and providers. You can share them.
+- Scripting: Regex scripts, trigger scripts, Lua scripting and modules.
+- Translators: The app can translate your input and the replies automatically.
+- Lorebook: Also called world info or memory book. It gives a character more to remember.
+- UI modes: Standard Risu, Waifulike, Mobile Chat, CardBoard and Custom HTML. Each mode has color schemes.
+- Prompting: You can change the prompt order, and you can use conditions and variables.
+- TTS (text to speech): The app reads the output text aloud.
+- Long-term memory: HypaMemory V2 and V3, SupaMemory and Hanurai Memory.
 
 ## What's different from upstream
 
-This is a short list of changes you will notice. See [Migrating from upstream](docs/wiki/Migrating-from-upstream.md) for moving your data.
+Short answer: mostly the parts that made the maintainer stare at their data and whisper *please don't disappear on the next boot*. Long answer: everything below. To move your data, start with [Migrating from upstream](docs/wiki/Migrating-from-upstream.md).
 
-- **A new identity.** The product is called Risutanium. The desktop app's identifier is `io.github.yor42.risutanium`, a fresh app-data folder on purpose. The version is SemVer from `0.1.0`, with the upstream version it is based on as a suffix: the home screen's Version line shows `0.1.0-up2026.10.294`. The desktop app registers two deep-link schemes, `risutaniumlocal` and `risuailocal`; the second stays so that upstream Realm's open-in-app links still reach the app. The in-app updater is switched off until the first release.
-- **The CBS version tags report this fork's version.** `{{version}}` returns `0.1.0` and `{{majorversion}}` returns `0`, so an upstream card that compares them against a 2026 version behaves differently.
-- **No RisuAccount and no Google Drive backup.** Account sign-in, sync and Drive backup are removed. RisuRealm still works, and the first time you use it the app asks you to accept upstream's Terms of Service and Privacy Policy. Move data with a local `.bin` backup. A `.bin` made while signed in to RisuAccount on `risuai.xyz` cannot be read here.
-- **Saving across tabs and devices.** A self-hosted Node server refuses a save from a stale tab instead of overwriting newer data. When another tab or device saves first, a tab that has fallen behind stops saving and asks what to do. With no unsaved edits it offers Reload or Keep reading, and it never reloads by itself. With unsaved edits it offers Reload, which loses them, and sometimes Save mine, which replaces the other change with this tab's version. Save mine is not offered on the Node server, after the profile was replaced, or when this tab holds characters that are not loaded yet; then Reload is the only choice. On the Node server, a tab with unsaved edits is also offered "Export this tab first, then reload": it writes a `.bin` of this tab and reloads once you confirm. That choice is not offered after the profile was replaced. This is traced in the code and has not been run against a real server.
-- **Restoring a backup is guarded.** Load Backup Locally and Load Internal Backup refuse to run on the web build while another tab of the app is open, and warn you if the browser cannot check. They also refuse while a reply is being written into a chat. Load Internal Backup is a picker of restore points, and loading a `.bin` from Settings keeps the data you had before as an earlier saved version.
-- **Local backups include every asset, not only `.png` files.** Audio, video, WebP, JPEG, font and CSS assets are included. Full `.bin` backups also include the inlay images, video and audio in chat messages; partial backups do not.
-- **A new storage format, and old files are cleaned up for you.** The first start of this build converts your existing save. A damaged or unreadable save shows a recovery screen with choices, and importing a `.bin` at startup or from Settings shows notices before the app reloads. There is no manual clean-up button on a normal page. The start after the conversion deletes the old-format files automatically once the app has been quiet (hidden after a save, or about 30 seconds without input), and it shows nothing while it does. There is no way yet to clear out unused data or assets by hand; the old "Clean Unused Archived Data and Assets" button stays only on pages that fall back to the older storage. This is traced in the code and has not been run.
-- **Characters start as stubs and load when you open them.** The automatic 10-day archiving of characters is gone. Instead, at startup characters are left as small stubs (except any with a missing, hidden or duplicated id), and a character loads when you open it; nothing is deleted. Once you move on to another character and the loaded one has not been edited, it goes back to its stub. A large one waits for a quiet moment, and this does not happen while a plugin that needs every character is on. It is on by default, and the app tells you once when it turns on. Turn it off in Settings > Advanced Settings > "Archive characters at startup", and on the next start every character loads in full.
-- **Work stays in the chat it started in.** A reply, and the memory summaries and variable writes that come with it, are written into the chat the message was sent from, even if you switch chats, add a branch or reorder chats while it generates.
-- **Deleting a chat or character stops the work in it.** Deleting a chat warns you if something is still writing into it, and deletes the chat you confirmed even if the list changed meanwhile.
-- **Escape no longer answers a prompt.** Escape does nothing on a confirm or input prompt that waits for an answer, instead of answering it with an empty answer. It still closes information alerts.
-- **A `.bin` made here warns you before leaving out huge items.** Before a backup is written, the app names each item of 4 GiB or more, which a backup entry cannot hold, and asks whether to create the backup without them; cancelling writes nothing, and the final summary repeats the names. That covers character data, and assets only where the app can list file sizes (the desktop app). Elsewhere, an asset that large stops the backup with a message when it is reached. This is traced in the code and not run against a real backup.
-- **`.bin` backups stay compatible with upstream.** Hand-made upstream backups were loaded here, exported again and loaded in upstream, and their characters, chats and messages were all there when the files were decoded. Only the in-progress streaming flag differs, on purpose. These were single runs on one PC with synthetic files, and not every character was opened in upstream's interface. Upstream's newer plugin-index format is read and converted. Its key-value data is kept and written back in upstream's format only when a backup has some; the values keep their content but not their key order. That was tested with hand-made files only, since upstream does not write it yet. On the Node server, restoring a backup asset of about 101 MiB or more is skipped after a warning that names it and asks you to confirm.
-- **Exports keep unloaded characters as stubs.** A `.bin` made here writes each character that is not loaded as a small stub plus a separate entry for its chats, instead of loading it first. A trashed character, and one whose chats name cold-storage data (a pointer, an error-text key or archived chats), is still written whole. With 500 synthetic characters on one fast PC (three runs each), the export's peak JavaScript heap fell from about 202 to 145 MiB, and the file grew from about 43 to 94 MB because the chat entries are not compressed. Upstream opened and re-exported a stub-form file in a single run with synthetic files. Nothing was measured on a phone.
-- **Cut-off card imports are refused before anything is saved.** A `.charx`, PNG or module (`.risum`) file that is cut short is refused with a message, and the card or module is not imported. The check looks at the file's structure. A file whose content is damaged inside can still fail partway, leaving the assets it had already saved unused. A `.jpg` card cut short cannot be told from a plain image. This is traced in the code and not run on real files.
-- **The model list uses online data.** Model data such as context size is downloaded from the public LiteLLM dataset and provider lists and cached, with a status line and a "Refresh model data" button in the bot settings. The model picker does not offer retired models, and a model you already use is tagged "retired", "now uses ..." or "retires" with a date. The download is not run here.
-- **A reply that is streaming when the app is hidden is saved.** Hiding the app or page mid-reply saves the text so far, and the message shows "Interrupted — the reply may be incomplete" when it reloads in that state. A reply that finishes while hidden shows no note. This is best effort: if the app is killed right away, the save may not finish. The save-on-hide trigger is traced in the code; the device behaviour is from the commit message.
-- **A reworked character list.** Search covers the name, the shown description, tags and creator, including characters that are not loaded (tags and creator for single characters, not groups). The Grid tab sorts by My order, Recent or Name, shows folders as tiles under My order, and remembers open folders on this device. Edit mode moves several characters to the trash, or groups them into a new folder, at once. Long descriptions have a "Show more" link. Traced in the code and lang strings, not run.
+**A note about evidence:** "traced in the code" means someone inspected the implementation, **not** that the behavior was exercised. "Not run" means exactly what it says. A review approval is not a test run, a test run is not an Android test, and an Android test on one cracked phone is not a universal compatibility guarantee.
+
+### Name and version
+
+A different name, a different app-data folder, and a sincere attempt not to accidentally step on your upstream installation.
+
+- The product name is Risutanium.
+- The identifier of the desktop app is `io.github.yor42.risutanium`. The app data folder is new on purpose.
+- The version follows SemVer and starts at `0.1.0`. The upstream version that this fork is based on is a suffix. For example, the Version line on the home screen shows `0.1.0-up2026.10.294`.
+- The desktop app registers two deep-link schemes: `risutaniumlocal` and `risuailocal`. The second scheme stays so that the open-in-app links from upstream Realm still reach the app.
+- The in-app updater is off until the first release.
+- The CBS version tags report the version of this fork. `{{version}}` returns `0.1.0` and `{{majorversion}}` returns `0`. An upstream card that compares them with a 2026 version behaves differently.
+
+### Accounts and backups
+
+Some upstream services are intentionally not part of this fork. Please read the migration caveats before discovering this at the worst possible time.
+
+- This fork has no RisuAccount and no Google Drive backup. The app removed account sign-in, sync and Drive backup. To move data, make a local `.bin` backup.
+- RisuRealm still works. The first time that you use it, the app asks you to accept the Terms of Service and the Privacy Policy of upstream.
+- This fork cannot read a `.bin` that was made while signed in to RisuAccount on `risuai.xyz`.
+- Local backups include every asset, not only `.png` files. The assets include audio, video, WebP, JPEG, font and CSS files.
+- Full `.bin` backups also include the inlay images, video and audio in chat messages. Partial backups do not include them.
+- `.bin` backups stay compatible with upstream. The authors loaded hand-made upstream backups here, exported them again and loaded them in upstream. After they decoded the files, all characters, chats and messages were there. Only the flag for a reply that is still streaming differs, on purpose.
+- That test used single runs on one PC with synthetic files. The authors did not open every character in the interface of upstream.
+- The app reads the newer plugin-index format of upstream and converts it. The app keeps the key-value data of upstream. If a backup has this data, the app writes it back in the upstream format. Otherwise it writes nothing. The values keep their content but not their key order. The authors tested this with hand-made files only, because upstream does not write this data yet.
+- On the Node server, a restore skips a backup asset of about 101 MiB or more. The app first shows a warning that names the asset and asks you to confirm.
+
+### Restoring a backup
+
+- On the web build, Load Backup Locally and Load Internal Backup refuse to run while another tab of the app is open. If the browser cannot make sure that no other tab is open, the app warns you.
+- Both actions also refuse to run while the app writes a reply into a chat.
+- Load Internal Backup is a picker of restore points.
+- When you load a `.bin` from Settings, the app keeps your earlier data as an earlier saved version.
+
+### Large items in a backup
+
+The file format has limits. Physics is not personally targeting you, although it may feel that way.
+
+- A backup entry cannot hold an item of 4 GiB or more. The app names each such item before it writes a `.bin`. It then asks if it must create the backup without them. If you cancel, the app writes nothing. The final summary repeats the names.
+- The check covers character data. It covers assets only where the app can list file sizes, which is the desktop app. On other platforms, the backup stops with a message when the app reaches an asset that large.
+- The authors traced this in the code. They did not run it against a real backup.
+
+### Exports of characters that are not loaded
+
+- A `.bin` made here writes each character that is not loaded as a small stub. The `.bin` also has a separate entry for the chats of that character. The app does not load the character first.
+- The app still writes the whole character in two cases: the character is in the trash, or its chats name cold-storage data. Cold-storage data is a pointer, an error-text key or archived chats.
+- The authors tested this with 500 synthetic characters on one fast PC, with three runs each. The peak JavaScript heap of the export fell from about 202 MiB to 145 MiB. The file grew from about 43 MB to 94 MB, because the chat entries are not compressed.
+- Upstream opened and re-exported a file in stub form in a single run with synthetic files. The authors did not measure anything on a phone.
+
+### Saving across tabs and devices
+
+Two tabs disagreeing about which save is newest should not resolve the argument by silently deleting your work.
+
+- A self-hosted Node server refuses a save from a stale tab. It does not overwrite newer data.
+- If another tab or device saves first, the tab that fell behind stops saving and asks what to do.
+- If the tab holds no unsaved edits, it offers Reload or Keep reading. It never reloads by itself.
+- If the tab holds unsaved edits, it offers Reload, which loses the edits. Sometimes it also offers Save mine, which replaces the other change with the version of this tab.
+- The app does not offer Save mine in three cases: you use the Node server, the profile was replaced, or the tab holds characters that are not loaded yet. In these cases, Reload is the only choice.
+- On the Node server, a tab that holds unsaved edits can also choose "Export this tab first, then reload". After you confirm, the app writes a `.bin` of this tab and reloads once. The app does not offer this choice after the profile was replaced.
+- The authors traced this in the code. They did not run it against a real server.
+
+### Storage format
+
+The storage backend is no longer content to treat your entire collection as one small, well-behaved object.
+
+- The first start of this build converts your existing save to a new storage format.
+- If the save is damaged or unreadable, the app shows a recovery screen with choices.
+- If you import a `.bin` at startup or from Settings, the app shows notices before it reloads.
+- The app deletes the old-format files by itself. This happens at the start after the conversion, after the app is quiet. The app is quiet when it is hidden after a save, or when it gets no input for about 30 seconds. The app shows nothing while it deletes.
+- A normal page has no button for manual clean-up. There is no way yet to clear out unused data or assets by hand. The old "Clean Unused Archived Data and Assets" button stays only on pages that fall back to the older storage.
+- The authors traced this in the code. They did not run it.
+
+### Characters load when you open them
+
+Opening one character should not require inviting the entire collection into memory.
+
+- The app no longer archives characters automatically after 10 days.
+- At startup, the app leaves characters as small stubs. It loads a character at the time that you open it. Nothing is deleted.
+- Characters with a missing, hidden or duplicated id are the exception. The app loads them at startup.
+- After you move to another character, the loaded character goes back to its stub if you did not edit it. A large character waits for a quiet moment. This does not happen while a plugin that needs every character is on.
+- This behavior is on by default. The app tells you once when it turns on.
+- To turn it off, go to Settings > Advanced Settings > "Archive characters at startup". On the next start, every character loads in full.
+
+### Work in progress and deletion
+
+A message should stay in the chat where it began. An operation should stop when its target gets deleted.
+
+- The app writes a reply into the chat that the message came from. This includes the memory summaries and the variable writes that come with the reply. It does this even if you switch chats, add a branch or reorder chats while the reply generates.
+- If you delete a chat while something still writes into it, the app warns you. The app deletes the chat that you confirmed, even if the list changed in the meantime.
+- Escape does nothing on a confirm prompt or an input prompt that waits for an answer. Before, Escape answered the prompt with an empty answer. Escape still closes information alerts.
+
+### Replies that stream while the app is hidden
+
+- If you hide the app or the page during a reply, the app saves the text so far.
+- When the chat reloads in that state, the message shows "Interrupted — the reply may be incomplete".
+- A reply that finishes while the app is hidden shows no note.
+- The save is best effort. If the system kills the app right away, the save can fail to finish.
+- The authors traced the save-on-hide trigger in the code. The device behavior comes from the commit message.
+
+### Card and module imports
+
+- If a `.charx`, PNG or module (`.risum`) file is cut short, the app refuses it with a message. The app does not import the card or the module, and it saves nothing.
+- The check looks at the structure of the file. A file with damage inside can still fail partway. Then the assets that the app already saved stay unused.
+- A cut-short `.jpg` card looks the same as a plain image, so the app cannot find it.
+- The authors traced this in the code. They did not run it on real files.
+
+### Model list
+
+Model catalogs change. Hardcoded assumptions age badly, occasionally before lunch.
+
+- The app downloads model data, for example the context size, from the public LiteLLM dataset and from provider lists. The app caches the data.
+- The bot settings show a status line and a "Refresh model data" button.
+- The model picker does not offer retired models. A model that you already use gets a tag: "retired", "now uses ..." or "retires" with a date.
+- The authors did not run the download here.
+
+### Character list
+
+- Search covers the name, the shown description, the tags and the creator. It also covers characters that are not loaded. Tags and creator work for single characters, not for groups.
+- The Grid tab sorts by My order, Recent or Name.
+- Under My order, the Grid tab shows folders as tiles. It remembers the open folders on this device.
+- Edit mode can move several characters to the trash at once. It can also group them into a new folder.
+- Long descriptions have a "Show more" link.
+- The authors traced this in the code and in the language strings. They did not run it.
+
+## Development process
+
+This project is developed with extensive AI assistance and two poor Galaxy Note 9s with cracked screens, because apparently ADB doesn't care about broken glass.
+
+The AI writes code. Other AI models review the code. Sometimes they disagree. Occasionally, all of them are wrong. Sometimes the human is wrong, too.
+
+The maintainer, who is not particularly fond of TypeScript or Rust, then tries their best to figure out which answer is least likely to delete 350 MB of irreplaceable yet deeply cringe roleplay/fanfic history that they honestly wouldn't wish upon anyone else.
+
+This process is repeated until morale improves or Gate 2 Claude Opus says **APPROVE**.
+
+Approval is not a guarantee that a feature has been tested. That's why this README keeps calling out the difference.
+
+## Privacy, security, and other regrettable decisions
+
+**Backups contain things that matter.** Your `.bin` archives may include chats, assets, and sensitive credentials such as API keys. The current upstream-compatible `.bin` format should **not** be treated as a secure encrypted vault. Protect copies of it accordingly.
+
+**Encrypted backups (planned, not shipped):** A separate RisuTanium-specific backup format is being designed around AES-256-GCM and password-based key derivation, with salts, nonces and authenticated data handling. Because the government uses strong cryptography to protect classified material, and apparently your fanfiction deserves a fighting chance too. The actual security guarantees depend on the implementation and testing, not on the number 256.
+
+**Lost your future encrypted-backup password?** Congratulations. The encryption is working exactly as intended. Your data is now safe from unauthorized access, including yours.
+
+The intended design has no password recovery, master key or maintainer backdoor. Use a password manager. Preferably a good one. These statements describe the planned format, **not** a current feature.
+
+**Third-party AI providers are a different privacy boundary.** Backup encryption does not encrypt prompts sent to your chosen provider. Providers may process or retain submissions under their own policies, including for safety investigations. RisuTanium cannot promise what another service does with what you send it. Read the provider's terms and privacy policy before submitting anything you would rather not explain to another human being.
+
+The project aims to avoid application telemetry; this is not a promise about your AI provider, hosting environment, or other services. The maintainer has enough problems with their own fanfiction.
+
+**Your dignity:** Best effort. No warranty expressed or implied.
+
+**Actually serious warning:** Exposed API keys can cost real money. and by money, I mean a LOT of money. Keep backups private, rotate any credentials you think were exposed, and do not treat encryption plans as protection already in place.
 
 ## Documentation
 
@@ -56,11 +215,15 @@ This is a short list of changes you will notice. See [Migrating from upstream](d
 
 ## Building from source
 
-Prerequisites:
+There is no download yet, so you're joining the construction crew. Hard hats are metaphorical; backups are not. last sentence is not part of the joke.
 
-- Node.js 22.13+.
-- pnpm 11.28.10. `package.json` pins it, so `corepack enable` is enough.
-- For the desktop build only: Rust and Cargo, plus the platform prerequisites in the [Tauri guide](https://tauri.app/start/prerequisites/).
+You need these tools:
+
+- Node.js 22.13 or newer.
+- pnpm 11.28.10. The file `package.json` pins this version, so `corepack enable` is enough.
+- For the desktop build only: Rust and Cargo, and the platform prerequisites in the [Tauri guide](https://tauri.app/start/prerequisites/).
+
+Run these commands from the root of the repository:
 
 ```
 pnpm install
@@ -72,51 +235,69 @@ pnpm check        # type checking
 pnpm test         # unit tests
 ```
 
-To run the self-hosted Node server, build the web app, then start the server from the repo root:
+To run the self-hosted Node server, build the web app. Then start the server from the root of the repository:
 
 ```
 pnpm build
 pnpm runserver
 ```
 
-It serves `dist/` and keeps its data in `save/`, both relative to the folder you start it from. It listens on port 6001, or on `PORT` if you set that.
+The server serves `dist/` and keeps its data in `save/`. Both folders are relative to the folder where you start the server. The server listens on port 6001, or on `PORT` if you set that variable.
 
 ### The legal-documents notice
 
-The frontend shows a "legal documents not configured" notice instead of the app when `VITE_RISU_LEGAL_CONFIGURED` is empty or unset at build time. In this repository it is on by default, because this fork has its own Terms of Service and Privacy Policy, linked from Settings. `.env.production` (read by `pnpm build`, `pnpm buildsite`, `pnpm tauribuild` and `pnpm hono:build`) and `.env.development` (read by `pnpm dev`) set it to `TRUE`, and the Docker build sets it too (see [Docker](#docker)). The unit tests do not load these files.
+If `VITE_RISU_LEGAL_CONFIGURED` is empty or unset at build time, the frontend shows a "legal documents not configured" notice instead of the app. In this repository, the variable is on by default, because this fork has its own Terms of Service and Privacy Policy. Settings links to both.
 
-To opt out and get the notice, set the variable to an empty value in the environment of the build command. Vite lets an existing environment variable, even an empty one, override the `.env.*` files. In bash:
+These files set the variable to `TRUE`:
+
+- `.env.production`. The commands `pnpm build`, `pnpm buildsite`, `pnpm tauribuild` and `pnpm hono:build` read it.
+- `.env.development`. The command `pnpm dev` reads it.
+- The Docker build. See [Docker](#docker).
+
+The unit tests do not load these files.
+
+To opt out and get the notice, set the variable to an empty value in the environment of the build command. Vite lets an existing environment variable override the `.env.*` files, even if the variable is empty. In bash:
 
 ```
 VITE_RISU_LEGAL_CONFIGURED= pnpm build
 ```
 
-Windows `cmd` cannot hold an empty variable. There, and in any shell, you can instead put the line `VITE_RISU_LEGAL_CONFIGURED=` in an untracked `.env.production.local` (or `.env.development.local` for `pnpm dev`). It loads after the committed file and wins, and `*.local` is in `.gitignore`.
+Windows `cmd` cannot hold an empty variable. In that shell, and in any other shell, you can put the line `VITE_RISU_LEGAL_CONFIGURED=` in an untracked `.env.production.local` file. For `pnpm dev`, use `.env.development.local`. Vite loads these files after the committed file, so they win. The `.gitignore` file lists `*.local`.
 
 ### Known problem with the Node server
 
-- **A plain-HTTP address other than localhost does not work at present.** Opening the server over a LAN or VPN address without HTTPS stops the boot with "Cannot read properties of undefined (reading 'generateKey')", because the browser does not offer `crypto.subtle` outside a secure context. localhost works. HTTPS has not been tested. The server's asset-by-URL route signs its read token in the browser the same way, so it needs the same secure context. This is tracked as CHORE-49 in `Agents/Roadmap.md`.
+This one is a genuine limitation, not an invitation to try increasingly creative browser flags.
+
+A plain-HTTP address other than localhost does not work at present. If you open the server over a LAN or VPN address without HTTPS, the boot stops with this error: "Cannot read properties of undefined (reading 'generateKey')". The reason is that the browser does not offer `crypto.subtle` outside a secure context.
+
+localhost works. The authors did not test HTTPS. The asset-by-URL route of the server signs its read token in the browser in the same way, so it also needs a secure context. The issue is CHORE-49 in `Agents/Roadmap.md`.
 
 ## Docker
 
-This fork builds from source with Docker. It uses its own project, container and volume names (`risutanium` and `risutanium-save`), so it does not touch an upstream Docker install. To bring your data over, make a `.bin` backup on upstream and load it here, as described in [Migrating from upstream](docs/wiki/Migrating-from-upstream.md).
+Containers are convenient. They do not exempt you from the backup warnings above.
+
+This fork builds from source with Docker. It uses its own project, container and volume names: `risutanium` and `risutanium-save`. It does not touch a Docker install of upstream. To bring your data over, make a `.bin` backup on upstream and load it here. See [Migrating from upstream](docs/wiki/Migrating-from-upstream.md).
 
 1. Clone this repository.
-2. From the repo root, build and start it:
+2. From the root of the repository, build and start the container:
    ```
    docker compose up -d --build
    ```
 3. Open `http://localhost:6001`.
 
-The image is built from the `Dockerfile` in this repo (base image `node:24-slim`). The build needs Docker with BuildKit, because the `Dockerfile` uses `RUN --mount=type=cache`. The save lives in the `risutanium-save` volume, which Docker names `risutanium_risutanium-save` (the project name plus the volume name). The Node server problem above applies to this container as well, so use `localhost`.
+The image comes from the `Dockerfile` in this repository. The base image is `node:24-slim`. The build needs Docker with BuildKit, because the `Dockerfile` uses `RUN --mount=type=cache`.
 
-Upstream's compose file also maps host port 6001, so this container and an upstream one cannot run at the same time. To run both, change the left-hand number of `6001:6001` under `ports:` in one of the two compose files.
+The save lives in the `risutanium-save` volume. Docker names this volume `risutanium_risutanium-save`, which is the project name plus the volume name.
+
+The Node server problem above also applies to this container. Use `localhost`.
+
+The compose file of upstream also maps host port 6001. For that reason, this container and a container of upstream cannot run at the same time. To run both, change the left-hand number of `6001:6001` under `ports:` in one of the two compose files.
 
 ### The legal-documents notice in a Docker build
 
-The Docker build has the flag on by default, so the image shows the app and not the [legal-documents notice](#the-legal-documents-notice). The default is `ARG VITE_RISU_LEGAL_CONFIGURED=TRUE` in the `Dockerfile`, because `.dockerignore` keeps the repository's `.env` files out of the build context. `docker-compose.yml` passes `${VITE_RISU_LEGAL_CONFIGURED-TRUE}`, so an unset variable becomes `TRUE`.
+The Docker build has the variable on by default, so the image shows the app and not the [legal-documents notice](#the-legal-documents-notice). The default is `ARG VITE_RISU_LEGAL_CONFIGURED=TRUE` in the `Dockerfile`. The `.dockerignore` file keeps the `.env` files of the repository out of the build context, so the `Dockerfile` must set the default. The file `docker-compose.yml` passes `${VITE_RISU_LEGAL_CONFIGURED-TRUE}`, so an unset variable becomes `TRUE`.
 
-The value is baked into the frontend when the image is built, so opting out has to happen at build time. Setting it on a running container does nothing. To opt out, set it to an empty value in the shell that runs `docker compose up -d --build` or `docker compose build`:
+The build bakes the value into the frontend. You must opt out at build time. If you set the variable on a running container, nothing changes. To opt out, set the variable to an empty value in the shell that runs `docker compose up -d --build` or `docker compose build`:
 
 ```
 # bash
@@ -126,10 +307,24 @@ VITE_RISU_LEGAL_CONFIGURED= docker compose up -d --build
 docker build --build-arg VITE_RISU_LEGAL_CONFIGURED= .
 ```
 
-Or put `VITE_RISU_LEGAL_CONFIGURED=` in your own `.env` file next to `docker-compose.yml`, which works from any shell. Compose reads that file, and `.env` is in `.gitignore`, so it stays yours. With an empty value the notice replaces the app.
+You can also put `VITE_RISU_LEGAL_CONFIGURED=` in your own `.env` file next to `docker-compose.yml`. This works from any shell. Compose reads that file, and `.gitignore` lists `.env`, so the file stays yours. With an empty value, the notice replaces the app.
+
+## Frequently asked questions
+
+**Why the name RisuTanium?** The original plan involved carbon: lightweight, strong, and black, which is an excellent color. The naming attempts did not stick, so titanium won. In retrospect, choosing a metal associated with surviving structural stress was oddly prophetic.
+
+**Why not just submit a PR upstream?** The changes grew large, intrusive, and heavily AI-assisted. Upstream already has a significant review and maintenance burden, and it has restrictions on large AI-written contributions. Maintaining a separate fork seemed the less inconsiderate option.
+
+**Is this production-ready?** There are no releases yet. That is the shortest answer in this README.
+
+**Why does the roadmap have so many review gates?** Data-loss bugs have an unfortunate habit of surviving confidence. The gates are there to catch mistakes; they cannot prove there are none.
+
+**Is the roleplay history really that important?** To their respective owners, yes. They would also prefer that nobody else read it. Both statements can be true.
 
 ## Credits
 
-The home-screen logo uses NanumSquare Neo by NAVER (designed by Sandoll), licensed under the SIL Open Font License 1.1. The font file and its full license are in [`src/etc/fonts/NanumSquareNeo/`](src/etc/fonts/NanumSquareNeo/).
+RisuTanium exists because [RisuAI](https://github.com/kwaroran/RisuAI) exists. Credit belongs to its maintainers and contributors for building and sustaining the upstream project. The fork's new problems belong to the fork. We are keeping the original GPLv3 licensing obligations; see [LICENSE](LICENSE) for the actual legal text, which is intentionally less entertaining than this README.
+
+The home-screen logo uses NanumSquare Neo by NAVER (designed by Sandoll). It has the SIL Open Font License 1.1. The font file and its full license are in [`src/etc/fonts/NanumSquareNeo/`](src/etc/fonts/NanumSquareNeo/).
 
 이 프로그램에는 네이버에서 제공한 나눔글꼴이 적용되어 있습니다.
