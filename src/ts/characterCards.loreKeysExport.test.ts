@@ -6,7 +6,7 @@
  * (`/dragon{1,2}/` is not rewritten to `/dragon{1, 2}/`); a non-regex entry is
  * still split on every comma. CCv3 is read from the exported `createBaseV3`;
  * CCv2 (`createBaseV2`, not exported) from the JSON `exportCharacterCard`
- * hands to `downloadFile`.
+ * writes to its `LocalWriter`.
  *
  * Mock scaffold copied from `characterCards.onboarding.test.ts`.
  *
@@ -17,7 +17,7 @@
 import { writable } from 'svelte/store'
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 
-const downloaded = vi.hoisted(() => ({ downloadFile: vi.fn(async (_name: string, _data: Uint8Array) => true) }))
+const exported = vi.hoisted(() => ({ chunks: [] as Uint8Array[] }))
 
 //#region module mocks -- copied from characterCards.onboarding.test.ts
 
@@ -65,11 +65,15 @@ vi.mock(import('src/ts/characters'), () => ({
 
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     AppendableBuffer: class {},
-    BlankWriter: class { async init() {} async write() {} },
-    LocalWriter: class {},
+    BlankWriter: class { async init() {} async write() {} async end() {} },
+    LocalWriter: class {
+        async init() { return true }
+        async write(data: Uint8Array) { exported.chunks.push(data) }
+        async close() {}
+        abort() {}
+    },
     VirtualWriter: class {},
     checkCharOrder: vi.fn(),
-    downloadFile: downloaded.downloadFile,
     forageStorage: { getItem: vi.fn(async () => null), setItem: vi.fn(async () => {}) },
     loadAsset: vi.fn(async () => new Uint8Array()),
     openURL: vi.fn(),
@@ -175,11 +179,16 @@ async function charWith(book: Book): Promise<character> {
     return char
 }
 
+/** The JSON the export wrote through the mocked `LocalWriter`, parsed from the concatenated chunks. */
+function exportedJson() {
+    return JSON.parse(Buffer.concat(exported.chunks).toString('utf-8'))
+}
+
 async function exportedV2Entry(char: character): Promise<CardEntry> {
-    downloaded.downloadFile.mockClear()
+    exported.chunks.length = 0
     char.image = 'portrait'
     expect(await exportCharacterCard(char, 'json', { spec: 'v2' })).toBe(true)
-    const card = JSON.parse(Buffer.from(downloaded.downloadFile.mock.calls[0][1]).toString('utf-8'))
+    const card = exportedJson()
     return card.data.character_book.entries[0]
 }
 
@@ -219,10 +228,10 @@ describe('characterCards.ts -- lorebook keys in exported cards', () => {
         const char = await charWith(regexBook('dragon'))
         char.loreSettings = { tokenBudget: 100, scanDepth: 3, recursiveScanning: false, fullWordMatching: false, fullWordAsciiBoundary: true }
         expect(createBaseV3(char).data.character_book.extensions.risu_fullWordAsciiBoundary).toBe(true)
-        downloaded.downloadFile.mockClear()
+        exported.chunks.length = 0
         char.image = 'portrait'
         expect(await exportCharacterCard(char, 'json', { spec: 'v2' })).toBe(true)
-        const v2 = JSON.parse(Buffer.from(downloaded.downloadFile.mock.calls[0][1]).toString('utf-8'))
+        const v2 = exportedJson()
         expect(v2.data.character_book.extensions.risu_fullWordAsciiBoundary).toBe(true)
         const v3Back = await importCard(JSON.parse(JSON.stringify(createBaseV3(char))))
         expect(v3Back.loreSettings?.fullWordAsciiBoundary).toBe(true)
@@ -237,10 +246,10 @@ describe('characterCards.ts -- lorebook keys in exported cards', () => {
         char.loreSettings = { tokenBudget: 100, scanDepth: 3, recursiveScanning: false, fullWordMatching: true, fullWordAsciiBoundary: false }
         expect(createBaseV3(char).data.character_book.extensions).not.toHaveProperty('risu_fullWordAsciiBoundary')
         char.loreExt = { risu_fullWordAsciiBoundary: true }
-        downloaded.downloadFile.mockClear()
+        exported.chunks.length = 0
         char.image = 'portrait'
         expect(await exportCharacterCard(char, 'json', { spec: 'v2' })).toBe(true)
-        const v2 = JSON.parse(Buffer.from(downloaded.downloadFile.mock.calls[0][1]).toString('utf-8'))
+        const v2 = exportedJson()
         expect(v2.data.character_book.extensions).not.toHaveProperty('risu_fullWordAsciiBoundary')
     })
 

@@ -218,7 +218,8 @@ vi.mock(import('src/ts/rpack/rpack_js'), () => ({
 
 //#endregion
 
-import { exportCharacterCard } from 'src/ts/characterCards'
+import { createBaseV3, exportCharacterCard } from 'src/ts/characterCards'
+import { compressImage } from 'src/ts/media'
 import { exportModule, exportModuleLegacy, readModule, type RisuModule } from 'src/ts/process/modules'
 import { CharXImporter, charxEncode } from 'src/ts/process/processzip'
 import { PngChunk } from 'src/ts/pngChunk'
@@ -575,6 +576,68 @@ describe('(G) card B comes back through its importer with its asset bytes', () =
         for (const [name, id] of module.assets ?? []) {
             expect(bytesEqual(h.saved.get(id), EXPECTED_BY_NAME[name]), name).toBe(true)
         }
+    })
+})
+
+//#endregion
+
+//#region JSON streamed against the whole-card reference
+
+const DATA_URI_PREFIX = 'data:application/octet-stream;base64,'
+
+/** Text a placeholder scheme could trip over: the placeholder token itself, the data-URI prefix, and characters JSON escapes. */
+const AWKWARD_TEXT = 'RISUJSONASSET0Z RISUJSONASSET1Z ' + DATA_URI_PREFIX + 'RISUJSONASSET0Z0_ \u0000 \u2028 \ud800 "quoted" back\\slash \uD55C\uAD6D\uC5B4 \u{1F600}'
+
+function awkwardCharacter(withUriEntries: boolean): character {
+    const char = syntheticCharacter(withUriEntries)
+    char.desc = AWKWARD_TEXT
+    char.firstMessage = AWKWARD_TEXT
+    char.creatorNotes = AWKWARD_TEXT
+    // Asset names serialize after the first asset's data URI, so they exercise non-ASCII text in the later pieces.
+    char.ccAssets = (char.ccAssets ?? []).map(asset => ({ ...asset, name: asset.name + ' 한글 \u{1F600}' }))
+    char.additionalAssets = (char.additionalAssets ?? []).map(([name, uri, ext]) => [name + ' 한글 \u{1F600}', uri, ext] as [string, string, string])
+    return char
+}
+
+/** The pre-streaming result: the card from `createBaseV3` with every read asset inlined in place, stringified whole. */
+async function wholeCardJson(char: character): Promise<Uint8Array> {
+    const card = createBaseV3(char)
+    for (const asset of card.data.assets) {
+        const key = asset.uri === 'ccdefault:' ? char.image : asset.uri
+        const known = asset.uri.startsWith('http://') || asset.uri.startsWith('https://') || asset.uri.startsWith('embeded://')
+        if (known) {
+            continue
+        }
+        const bytes = h.assets.get(key)
+        expect(bytes, key).toBeDefined()
+        asset.uri = DATA_URI_PREFIX + Buffer.from(await compressImage(bytes as Uint8Array)).toString('base64')
+    }
+    return Buffer.from(JSON.stringify(card, null, 4), 'utf-8')
+}
+
+describe('(G) the streamed JSON export equals the whole-card JSON', () => {
+    for (const compression of ['plain', 'lossy'] as const) {
+        for (const withUriEntries of [true, false]) {
+            test(`v3 ${compression}, ${withUriEntries ? 'with' : 'without'} known-URI entries, with awkward user text`, async () => {
+                h.db.imageCompression = compression === 'lossy'
+                const expected = await wholeCardJson(awkwardCharacter(withUriEntries))
+                const bytes = await written(() => exportCharacterCard(awkwardCharacter(withUriEntries), 'json', { spec: 'v3' }))
+                expect(Buffer.from(bytes).equals(Buffer.from(expected))).toBe(true)
+            })
+        }
+    }
+
+    test('v3 with no asset slots at all', async () => {
+        const bare = () => ({ ...syntheticCharacter(false), ccAssets: [], additionalAssets: [], emotionImages: [] }) as unknown as character
+        const expected = await wholeCardJson(bare())
+        const bytes = await written(() => exportCharacterCard(bare(), 'json', { spec: 'v3' }))
+        expect(Buffer.from(bytes).equals(Buffer.from(expected))).toBe(true)
+    })
+
+    test('v2 is the 4-space JSON of its card', async () => {
+        const bytes = await written(() => exportCharacterCard(awkwardCharacter(true), 'json', { spec: 'v2' }))
+        const text = Buffer.from(bytes).toString('utf-8')
+        expect(Buffer.from(JSON.stringify(JSON.parse(text), null, 4), 'utf-8').equals(Buffer.from(bytes))).toBe(true)
     })
 })
 

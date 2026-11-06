@@ -20,6 +20,7 @@ const h = vi.hoisted(() => ({
     writes: 0,
     writeSizes: [] as number[],
     downloads: [] as string[],
+    closes: 0,
     errors: [] as string[],
     stacks: [] as string[],
     notices: [] as string[],
@@ -172,7 +173,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
             h.writes++
             h.writeSizes.push(data.length)
         }
-        async close() { }
+        async close() { h.closes++ }
         useCancel() { }
         abort() { }
     }
@@ -391,6 +392,7 @@ beforeEach(() => {
     h.writes = 0
     h.writeSizes.length = 0
     h.downloads.length = 0
+    h.closes = 0
     h.errors.length = 0
     h.stacks.length = 0
     h.notices.length = 0
@@ -491,7 +493,9 @@ describe('PNG, JSON and .risum with a large asset', () => {
     test('(G) a card with only small assets exports as before', async () => {
         env.sizes.set(BIG, 1 * MIB)
         expect(await exportCharacterCard(card([BIG]), 'json', { spec: 'v3' })).toBe(true)
-        expect(h.downloads).toHaveLength(1)
+        expect(h.inits).toEqual(['JSON File'])
+        expect(h.downloads).toEqual([])
+        expect(h.closes).toBe(1)
         expect(h.notices).toEqual([])
     })
 })

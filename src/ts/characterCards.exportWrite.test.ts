@@ -1,5 +1,5 @@
 /**
- * PNG and CharX export through `exportCharacterCard` in `src/ts/characterCards.ts` onto a `TauriWriter`.
+ * PNG, CharX and JSON export through `exportCharacterCard` in `src/ts/characterCards.ts` onto a `TauriWriter`.
  *
  * The real `characterCards.ts`, `pngChunk.ts`, `processzip.ts` (the real `CharXWriter` on the real fflate) and the real
  * `TauriWriter` run against synthetic data. The Tauri file system is an in-memory recorder that can refuse a call, and
@@ -25,6 +25,12 @@ const h = vi.hoisted(() => ({
     failCall: null as null | (() => boolean),
     cleared: 0,
     download: vi.fn(),
+    initResult: true,
+    inits: [] as Array<{ name: string, ext: string[], file: string | undefined }>,
+    events: [] as string[],
+    path: 'synthetic/out',
+    android: false,
+    invoked: [] as Array<{ command: string, bytes: number, last: boolean }>,
 }))
 
 vi.mock('uuid', () => ({
@@ -35,6 +41,20 @@ vi.mock(import('src/ts/platform'), () => ({
     isTauri: true,
     isNodeServer: false,
 }) as unknown as typeof import('src/ts/platform'))
+
+vi.mock('@tauri-apps/api/core', () => ({
+    invoke: vi.fn(async (command: string, args: { data: string, last: boolean }) => {
+        const bytes = Buffer.from(args.data, 'base64').byteLength
+        h.invoked.push({ command, bytes, last: args.last })
+        return { written: bytes, synced: true }
+    }),
+}))
+
+// Only the Android check is steered, and read at call time so a test can switch it; the real base64 helper stays.
+vi.mock(import('src/ts/storage/tauriByteTransport'), async (importOriginal) => ({
+    ...await importOriginal(),
+    isAndroidTransport: () => h.android,
+}))
 
 vi.mock(import('src/ts/upstreamAgreement'), () => ({
     askUpstreamAgreement: vi.fn(async () => true),
@@ -51,7 +71,7 @@ vi.mock(import('src/ts/alert'), () => {
         alertError: vi.fn((msg: string | Error) => { h.errors.push(text(msg)); h.log.push('error:' + text(msg)) }),
         alertInput: vi.fn(async () => ''),
         alertMd: vi.fn(),
-        alertNormal: vi.fn((msg: string) => { h.log.push('normal:' + msg) }),
+        alertNormal: vi.fn((msg: string) => { h.log.push('normal:' + msg); h.events.push('notice') }),
         alertNormalWait: vi.fn(async () => { }),
         alertStore: { set: vi.fn(), subscribe: vi.fn(), update: vi.fn() },
         alertWait: vi.fn(),
@@ -87,13 +107,21 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
     const { AppendableBuffer } = await import('src/ts/byteBuffer')
     const { TauriWriter } = await import('src/ts/exportWriters')
     class LocalWriter {
-        private writer = new TauriWriter('synthetic/out')
-        async init() { return true }
+        private writer = new TauriWriter(h.path)
+        async init(name?: string, ext?: string[], file?: string) {
+            h.inits.push({ name: name ?? '', ext: ext ?? [], file })
+            h.events.push('init')
+            return h.initResult
+        }
         async write(data: Uint8Array) {
+            h.events.push('write:' + Buffer.from(data).toString('utf-8'))
             h.recorded.push(data.slice())
             await this.writer.write(data)
         }
-        async close() { await this.writer.close() }
+        async close() {
+            h.events.push('close')
+            await this.writer.close()
+        }
         abort(reason: unknown) { void this.writer.abort(reason) }
     }
     return {
@@ -209,6 +237,12 @@ beforeEach(() => {
     h.cleared = 0
     h.download.mockReset()
     h.download.mockResolvedValue(true)
+    h.initResult = true
+    h.inits.length = 0
+    h.events.length = 0
+    h.path = 'synthetic/out'
+    h.android = false
+    h.invoked.length = 0
     h.png = syntheticPng()
 })
 
@@ -313,15 +347,114 @@ describe('exportCharacterCard result for a caller that supplies its own writer',
         expect(h.cleared).toBe(0)
     })
 
-    test('(R) a cancelled json save clears the dialog, shows no success notice and resolves false, for both card specs', async () => {
-        h.download.mockResolvedValue(false)
+    test('(R) a dismissed json save dialog shows no notice, no error and resolves false, for both card specs', async () => {
+        // The JSON card saves through the writer's own dialog; a dismissal leaves nothing to clear or to say.
+        h.initResult = false
         expect(await exportCharacterCard(syntheticCharacter(), 'json', { spec: 'v2' })).toBe(false)
-        expect(h.cleared).toBe(1)
         expect(await exportCharacterCard(syntheticCharacter(), 'json', { spec: 'v3' })).toBe(false)
-        expect(h.cleared).toBe(2)
-        expect(h.download).toHaveBeenCalledTimes(2)
+        expect(h.inits).toHaveLength(2)
+        expect(h.download).not.toHaveBeenCalled()
         expect(h.errors).toEqual([])
         expect(h.log).toEqual([])
+    })
+})
+
+describe('JSON export onto a LocalWriter', () => {
+    const assetBytes = (index: number) => Buffer.from(`asset-${index}-` + String(index).repeat(40 + index))
+    const base64Of = (index: number) => assetBytes(index).toString('base64')
+
+    function characterWithAssets(count: number): character {
+        const char = syntheticCharacter()
+        char.ccAssets = Array.from({ length: count }, (_, index) => ({ type: 'x-risu-asset', uri: `synthetic-asset/a${index}`, name: `a${index}`, ext: 'png' }))
+        return char
+    }
+
+    function installReads(failOn?: string) {
+        vi.mocked(readImage).mockImplementation(async (key: string) => {
+            h.events.push('read:' + key)
+            if (key === failOn) {
+                throw new Error('synthetic read failure')
+            }
+            const match = /^synthetic-asset\/a(\d+)$/.exec(key)
+            return match ? new Uint8Array(assetBytes(Number(match[1]))) : h.png
+        })
+    }
+
+    afterEach(() => {
+        vi.mocked(readImage).mockImplementation(async () => h.png)
+    })
+
+    test('(R) each asset is written before the next is read, and no write holds two assets', async () => {
+        installReads()
+        expect(await exportCharacterCard(characterWithAssets(3), 'json', { spec: 'v3' })).toBe(true)
+        const firstWrite = (index: number) => h.events.findIndex(event => event.startsWith('write:') && event.includes(base64Of(index)))
+        expect(firstWrite(0)).toBeGreaterThan(-1)
+        expect(firstWrite(0)).toBeLessThan(h.events.indexOf('read:synthetic-asset/a1'))
+        expect(firstWrite(1)).toBeLessThan(h.events.indexOf('read:synthetic-asset/a2'))
+        for (const event of h.events.filter(entry => entry.startsWith('write:'))) {
+            expect([0, 1, 2].filter(index => event.includes(base64Of(index))).length).toBeLessThanOrEqual(1)
+        }
+        expect(h.events.slice(-2)).toEqual(['close', 'notice'])
+        expect(h.download).not.toHaveBeenCalled()
+        const card = JSON.parse(Buffer.concat(h.recorded).toString('utf-8'))
+        expect(card.data.assets.map((asset: { uri: string }) => asset.uri)).toEqual([0, 1, 2].map(index => 'data:application/octet-stream;base64,' + base64Of(index)))
+    })
+
+    test('(G) a v2 JSON card is written as one piece and then closed', async () => {
+        expect(await exportCharacterCard(characterWithAssets(2), 'json', { spec: 'v2' })).toBe(true)
+        expect(h.events.filter(event => event.startsWith('write:'))).toHaveLength(1)
+        expect(h.events.slice(-2)).toEqual(['close', 'notice'])
+        expect(h.download).not.toHaveBeenCalled()
+    })
+
+    test('(R) a dismissed save dialog reads no asset and says nothing', async () => {
+        installReads()
+        h.initResult = false
+        expect(await exportCharacterCard(characterWithAssets(3), 'json', { spec: 'v3' })).toBe(false)
+        expect(h.inits).toEqual([{ name: 'JSON File', ext: ['json'], file: 'Synthetic_export.json' }])
+        expect(h.events.filter(event => event.startsWith('read:synthetic-asset/'))).toEqual([])
+        expect(h.recorded).toEqual([])
+        expect(h.errors).toEqual([])
+        expect(h.log).toEqual([])
+    })
+
+    test('(G) a failing file write gives one error with the incomplete-file sentence and no success notice', async () => {
+        installReads()
+        h.failCall = () => true
+        expect(await exportCharacterCard(characterWithAssets(2), 'json', { spec: 'v3' })).toBe(false)
+        expect(h.errors).toEqual([failedWithFileKept])
+        expect(h.log).toEqual(['error:' + failedWithFileKept])
+    })
+
+    test('(G) a read failure on an Android document gives the incomplete-file sentence, since the document exists already', async () => {
+        installReads('synthetic-asset/a1')
+        h.path = 'content://synthetic/document'
+        h.android = true
+        expect(await exportCharacterCard(characterWithAssets(3), 'json', { spec: 'v3' })).toBe(false)
+        expect(h.errors).toEqual(['synthetic read failure\n' + language.exportFailedFileIncomplete])
+        expect(h.events).not.toContain('read:synthetic-asset/a2')
+        expect(h.events).not.toContain('close')
+    })
+
+    test('(G) a read failure on desktop before any flush gives the plain error', async () => {
+        installReads('synthetic-asset/a1')
+        expect(await exportCharacterCard(characterWithAssets(3), 'json', { spec: 'v3' })).toBe(false)
+        expect(h.errors).toEqual(['synthetic read failure'])
+        expect(h.log).toEqual(['error:synthetic read failure'])
+    })
+
+    test('(G) the success notice names the saved file on desktop and the chosen location on Android, once, after the close', async () => {
+        installReads()
+        expect(await exportCharacterCard(characterWithAssets(2), 'json', { spec: 'v3' })).toBe(true)
+        expect(h.log).toEqual(['normal:' + language.successExport])
+        expect(h.events.slice(-2)).toEqual(['close', 'notice'])
+        h.log.length = 0
+        h.path = 'content://synthetic/document'
+        h.android = true
+        expect(await exportCharacterCard(characterWithAssets(2), 'json', { spec: 'v3' })).toBe(true)
+        expect(h.log).toEqual(['normal:' + language.successExportChosenLocation])
+        expect(h.invoked.length).toBeGreaterThan(0)
+        expect(h.invoked[h.invoked.length - 1].last).toBe(true)
     })
 })
 

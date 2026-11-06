@@ -1,5 +1,5 @@
 import { writable, get, type Writable } from "svelte/store"
-import { alertCardExport, alertClear, alertConfirm, alertError, alertInput, alertNormal, alertStore, alertWait } from "./alert"
+import { alertCardExport, alertConfirm, alertError, alertInput, alertNormal, alertStore, alertWait } from "./alert"
 import { askUpstreamAgreement, isUpstreamAccepted, publishUpstreamAccepted } from "./upstreamAgreement"
 import { defaultSdDataFunc, type character, setDatabase, type customscript, type loreSettings, type loreBook, type triggerscript, importPreset, type groupChat, getDatabase, setDatabaseLite, appVer } from "./storage/database.svelte"
 import { checkNullish, decryptBuffer, isKnownUri, selectFileByDom, sleep } from "./util"
@@ -9,7 +9,8 @@ import { fillLang } from "src/lang/fill"
 import { v4 as uuidv4, v4 } from 'uuid';
 import { changeChar, characterFormatUpdate } from "./characters"
 import { ASSET_PIECE_SAVE_MIN_BYTES } from "./assetHash"
-import { AppendableBuffer, AssetSourceChangedError, BlankWriter, checkCharOrder, downloadFile, loadAsset, LocalWriter, readImage, saveAsset, saveAssetFromPieces, VirtualWriter } from "./globalApi.svelte"
+import { buildCardJsonTemplate, streamCardJson } from "./cardJsonStream"
+import { AppendableBuffer, AssetSourceChangedError, BlankWriter, checkCharOrder, loadAsset, LocalWriter, readImage, saveAsset, saveAssetFromPieces, VirtualWriter } from "./globalApi.svelte"
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { ExportCancelledError, ExportCancelToken, createExportWaitGate, type ExportWaitGate } from "./exportCancel"
 import { exportFileState, withFileIncompleteSentence } from "./exportWriters"
@@ -2088,7 +2089,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
         if(cancel && gate){
             showWriting()
         }
-        if(!arg.writer && type !== 'json'){
+        if(!arg.writer){
             const nameExt = {
                 'png': ['Image File', 'png'],
                 'json': ['JSON File', 'json'],
@@ -2096,7 +2097,9 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                 'charxJpeg': ['CharX Embedded Jpeg', 'jpeg']
             }
             const ext = nameExt[type]
-            if(!(await (localWriter as LocalWriter).init(ext[0], [ext[1]], undefined, cancel ?? undefined))){
+            // Only the JSON export names its file; the other types keep the writer's own default name.
+            const jsonFileName = type === 'json' ? `${char.name.replace(/[<>:"/\\|?*\.\,]/g, "")}_export.json` : undefined
+            if(!(await (localWriter as LocalWriter).init(ext[0], [ext[1]], jsonFileName, cancel ?? undefined))){
                 //the person dismissed the save dialog: nothing was exported, so nothing is said
                 gate?.clear()
                 return false
@@ -2146,27 +2149,43 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                     await writer.write("chara-ext-asset_:" + assetIndex, b64encoded)
                 }
             }
-            if(type === 'json'){
-                const saved = await downloadFile(`${char.name.replace(/[<>:"/\\|?*\.\,]/g, "")}_export.json`, Buffer.from(JSON.stringify(card, null, 4), 'utf-8'))
-                if(!saved){
-                    alertClear()
-                    return false
-                }
-                alertNormal(downloadNotice(language.successExport))
-                return true
-            }
-
             await sleep(10)
             showWriting()
-    
-            await writer.write("chara", Buffer.from(JSON.stringify(card)).toString('base64'))     
+
+            if(type === 'json'){
+                // The v2 JSON holds no asset data (assets are `__asset:N` references), so it is one piece; the close and the notice follow the shared tail.
+                await localWriter.write(Buffer.from(JSON.stringify(card, null, 4), 'utf-8'))
+                await localWriter.close()
+            }
+            else{
+                await writer.write("chara", Buffer.from(JSON.stringify(card)).toString('base64'))
+            }
         }
         else if(spec === 'v3'){
             const card = createBaseV3(char)
             const seenPaths = new Set<string>()
             // The assets the loop reads, by their position in `card.data.assets`; a position with no entry is a known URI.
             const entryAt = new Map(listExportAssets(char, 'v3', type, card.data.assets ?? []).map(entry => [entry.index, entry]))
-            if(card.data.assets && card.data.assets.length > 0){
+            if(type === 'json'){
+                // The card is written as a template split at one placeholder per asset slot, and each asset is read, compressed and written before the next is read.
+                const slots = [...entryAt.keys()].sort((a, b) => a - b)
+                const assets = card.data.assets ?? []
+                const template = buildCardJsonTemplate(card, assets, slots)
+                const sink = localWriter
+                await streamCardJson(template.pieces, async (slot) => {
+                    const index = slots[slot]
+                    const entry = entryAt.get(index)
+                    if(entry === undefined){
+                        throw new Error('A JSON card slot has no asset entry')
+                    }
+                    showProgress(language.alerts.addingCardAssets, (index / assets.length * 100).toFixed(2))
+                    const rData = entry.portrait ? img : await readImage(entry.key)
+                    return await compressImage(heldBytes(rData))
+                }, async (chunk) => {
+                    await sink.write(chunk)
+                })
+            }
+            else if(card.data.assets && card.data.assets.length > 0){
                 for(let i=0;i<card.data.assets.length;i++){
                     showProgress(language.alerts.addingCardAssets, (i / card.data.assets.length * 100).toFixed(2))
                     const entry = entryAt.get(i)
@@ -2192,10 +2211,6 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                         const b64encoded = Buffer.from(await compressImage(heldBytes(rData))).toString('base64')
                         card.data.assets[i].uri = `__asset:${assetIndex}`
                         await writer.write("chara-ext-asset_:" + assetIndex, b64encoded)
-                    }
-                    else if(type === 'json'){
-                        const b64encoded = Buffer.from(await compressImage(heldBytes(rData))).toString('base64')
-                        card.data.assets[i].uri = `data:application/octet-stream;base64,${b64encoded}`
                     }
                     else{
                         let type = 'other'
@@ -2321,20 +2336,14 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                     }
                 }
             }
-            if(type === 'json'){
-                const saved = await downloadFile(`${char.name.replace(/[<>:"/\\|?*\.\,]/g, "")}_export.json`, Buffer.from(JSON.stringify(card, null, 4), 'utf-8'))
-                if(!saved){
-                    alertClear()
-                    return false
-                }
-                alertNormal(downloadNotice(language.successExport))
-                return true
-            }
-
             await sleep(10)
             showWriting()
-    
-            if(type === 'charx' || type === 'charxJpeg'){
+
+            if(type === 'json'){
+                // BlankWriter.end() does nothing, so the file is completed here, before the shared tail posts the success notice.
+                await localWriter.close()
+            }
+            else if(type === 'charx' || type === 'charxJpeg'){
                 const md:RisuModule = {
                     name: `${char.name} Module`,
                     description: "Module for " + char.name,
@@ -2395,10 +2404,10 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
  * Whether an export gets a Cancel on its wait dialog. A web export through a browser download can stall behind the
  * browser's own prompt, so it always has one (a percentage as text stands in for the bar, which cannot show one). A
  * desktop or Android file export has one only for a CharX that streams a large asset, the only export long enough to
- * need it. A JSON card and a writer that is not a `LocalWriter` keep the dialogs they always had.
+ * need it. A JSON card follows the same rule as the other types. A writer that is not a `LocalWriter` keeps the dialogs it always had.
  */
 export function exportOffersCancel(arg:{writer?:LocalWriter|VirtualWriter, type:'png'|'json'|'charx'|'charxJpeg', tauri:boolean, largeAssetCount:number}):boolean{
-    return (arg.writer === undefined || arg.writer instanceof LocalWriter) && arg.type !== 'json'
+    return (arg.writer === undefined || arg.writer instanceof LocalWriter)
         && (!arg.tauri || ((arg.type === 'charx' || arg.type === 'charxJpeg') && arg.largeAssetCount > 0))
 }
 
