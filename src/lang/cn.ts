@@ -1095,6 +1095,7 @@ export const languageChinese = {
     "removeGroup": "删除群组",
     "exportCharacter": "导出角色",
     "successExport": "已成功导出并保存至你的下载数据夹",
+    "successExportChosenLocation": "已成功导出并保存至你选择的位置",
     "exportDownloadStarted": "已开始下载。浏览器会将文件保存到下载文件夹，并可能先要求您确认或保留该文件。",
     "exportHeldInMemory": "此浏览器无法在导出的同时边生成边保存，因此会先将导出内容保存在内存中，待完成后再下载。体积非常大的导出可能会失败。",
     "exportHelperNotResponding": "下载辅助程序没有响应，因此会先将导出内容保存在内存中，待完成后再下载。体积非常大的导出可能会失败。",

@@ -391,6 +391,30 @@ export class TauriWriter {
     }
 }
 
+/** One `Error` that carries the failure's own text, as `alertError` would show it, followed by the sentence that the file is incomplete. */
+export function withFileIncompleteSentence(e: unknown): Error {
+    let text: string
+    if (typeof e === 'string') {
+        text = e
+    }
+    else if (e instanceof Error) {
+        text = e.message
+    }
+    else {
+        try {
+            text = JSON.stringify(e) ?? `${e}`
+        }
+        catch {
+            text = `${e}`
+        }
+    }
+    const result = new Error(`${text.trim()}\n${language.exportFailedFileIncomplete}`)
+    if (e instanceof Error) {
+        result.stack = e.stack
+    }
+    return result
+}
+
 /**
  * Collects an export in memory and hands it to the browser as one download on `close`. Chunks passed to `write` are
  * kept as they are, so a caller must not change them afterwards.

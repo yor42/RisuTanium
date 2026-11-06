@@ -23,6 +23,8 @@ const h = vi.hoisted(() => ({
     files: new Map<string, Uint8Array>(),
     calls: [] as Array<{ append: boolean, length: number }>,
     failCall: null as null | (() => boolean),
+    cleared: 0,
+    download: vi.fn(),
 }))
 
 vi.mock('uuid', () => ({
@@ -44,6 +46,7 @@ vi.mock(import('src/ts/alert'), () => {
     const text = (msg: string | Error) => msg instanceof Error ? msg.message : String(msg)
     return {
         alertCardExport: vi.fn(),
+        alertClear: vi.fn(() => { h.cleared++ }),
         alertConfirm: vi.fn(async () => true),
         alertError: vi.fn((msg: string | Error) => { h.errors.push(text(msg)); h.log.push('error:' + text(msg)) }),
         alertInput: vi.fn(async () => ''),
@@ -103,7 +106,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
         LocalWriter,
         VirtualWriter: class { },
         checkCharOrder: vi.fn(),
-        downloadFile: vi.fn(async () => { }),
+        downloadFile: h.download,
         loadAsset: vi.fn(async () => new Uint8Array()),
         openURL: vi.fn(),
         readImage: vi.fn(async () => h.png),
@@ -203,6 +206,9 @@ beforeEach(() => {
     h.files.clear()
     h.calls.length = 0
     h.failCall = null
+    h.cleared = 0
+    h.download.mockReset()
+    h.download.mockResolvedValue(true)
     h.png = syntheticPng()
 })
 
@@ -304,6 +310,18 @@ describe('exportCharacterCard result for a caller that supplies its own writer',
         expect(await exportCharacterCard(syntheticCharacter(), 'json', { spec: 'v3' })).toBe(true)
         expect(h.errors).toEqual([])
         expect(h.log).toEqual(['normal:' + language.successExport, 'normal:' + language.successExport])
+        expect(h.cleared).toBe(0)
+    })
+
+    test('(R) a cancelled json save clears the dialog, shows no success notice and resolves false, for both card specs', async () => {
+        h.download.mockResolvedValue(false)
+        expect(await exportCharacterCard(syntheticCharacter(), 'json', { spec: 'v2' })).toBe(false)
+        expect(h.cleared).toBe(1)
+        expect(await exportCharacterCard(syntheticCharacter(), 'json', { spec: 'v3' })).toBe(false)
+        expect(h.cleared).toBe(2)
+        expect(h.download).toHaveBeenCalledTimes(2)
+        expect(h.errors).toEqual([])
+        expect(h.log).toEqual([])
     })
 })
 

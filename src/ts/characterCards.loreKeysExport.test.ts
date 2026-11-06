@@ -17,7 +17,7 @@
 import { writable } from 'svelte/store'
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 
-const downloaded = vi.hoisted(() => ({ downloadFile: vi.fn(async (_name: string, _data: Uint8Array) => {}) }))
+const downloaded = vi.hoisted(() => ({ downloadFile: vi.fn(async (_name: string, _data: Uint8Array) => true) }))
 
 //#region module mocks -- copied from characterCards.onboarding.test.ts
 

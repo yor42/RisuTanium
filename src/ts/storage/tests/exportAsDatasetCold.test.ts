@@ -22,7 +22,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 const readColdStorageItemMock = vi.hoisted(() => vi.fn())
-const downloadFileMock = vi.hoisted(() => vi.fn(async () => {}))
+const downloadFileMock = vi.hoisted(() => vi.fn(async () => true))
 const alertNormalMock = vi.hoisted(() => vi.fn())
 const alertErrorMock = vi.hoisted(() => vi.fn())
 const alertToastMock = vi.hoisted(() => vi.fn())
@@ -123,7 +123,7 @@ beforeEach(() => {
     for (const fn of [readColdStorageItemMock, downloadFileMock, alertNormalMock, alertErrorMock, alertToastMock, alertMdMock, alertStoreSetMock, markCharacterForSaveMock]) {
         fn.mockReset()
     }
-    downloadFileMock.mockResolvedValue(undefined)
+    downloadFileMock.mockResolvedValue(true)
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 

@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 const readColdStorageItemMock = vi.hoisted(() => vi.fn())
-const downloadFileMock = vi.hoisted(() => vi.fn(async () => {}))
+const downloadFileMock = vi.hoisted(() => vi.fn(async () => true))
 const alertNormalMock = vi.hoisted(() => vi.fn())
 const alertErrorMock = vi.hoisted(() => vi.fn())
 const alertToastMock = vi.hoisted(() => vi.fn())
@@ -150,7 +150,7 @@ beforeEach(() => {
     for (const fn of [readColdStorageItemMock, downloadFileMock, alertNormalMock, alertErrorMock, alertToastMock, alertMdMock, alertConfirmMock, alertStoreSetMock, markCharacterForSaveMock, scanAssetCacheIntegrityMock]) {
         fn.mockReset()
     }
-    downloadFileMock.mockResolvedValue(undefined)
+    downloadFileMock.mockResolvedValue(true)
     alertConfirmMock.mockResolvedValue(true)
     scanAssetCacheIntegrityMock.mockImplementation(async (targets: string[]) => ({ checked: targets.length, mismatches: [], notCached: 0, notContentAddressed: 0, unsupported: false }))
     vi.spyOn(console, 'error').mockImplementation(() => {})

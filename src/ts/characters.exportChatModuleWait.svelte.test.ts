@@ -52,7 +52,7 @@ vi.mock(import('./globalApi.svelte'), () => ({
     aiWatermarkingLawApplies: () => false,
     getFileSrc: () => Promise.resolve(''),
     readImage: () => Promise.resolve(undefined),
-    downloadFile: async (name: string, data: Buffer) => { h.downloads.push({ name, data }) },
+    downloadFile: async (name: string, data: Buffer) => { h.downloads.push({ name, data }); return true },
 }) as unknown as typeof import('./globalApi.svelte'))
 
 vi.mock(import('./alert'), () => ({

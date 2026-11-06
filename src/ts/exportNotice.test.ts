@@ -6,15 +6,22 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 const platformBox = vi.hoisted(() => ({ isTauri: false }))
 
+const osBox = vi.hoisted(() => ({ type: 'windows' }))
+
 vi.mock(import('src/ts/platform'), () => ({
     get isTauri() { return platformBox.isTauri },
 }) as unknown as typeof import('src/ts/platform'))
+
+vi.mock(import('@tauri-apps/plugin-os'), () => ({
+    type: () => osBox.type,
+}) as unknown as typeof import('@tauri-apps/plugin-os'))
 
 import { language } from 'src/lang'
 import { backupNoticeHeader, downloadNotice, type BackupNoticeKind, type BackupNoticeReason } from './exportNotice'
 
 beforeEach(() => {
     platformBox.isTauri = false
+    osBox.type = 'windows'
 })
 
 describe('downloadNotice', () => {
@@ -27,6 +34,25 @@ describe('downloadNotice', () => {
         platformBox.isTauri = true
         expect(downloadNotice(language.successExport)).toBe(language.successExport)
         expect(downloadNotice('Success')).toBe('Success')
+    })
+
+    test('on Android the saved-to-download-directory text becomes the chosen-location text', () => {
+        platformBox.isTauri = true
+        osBox.type = 'android'
+        expect(downloadNotice(language.successExport)).toBe(language.successExportChosenLocation)
+        expect(language.successExportChosenLocation).not.toBe(language.successExport)
+    })
+
+    test('on Android any other saved text is unchanged', () => {
+        platformBox.isTauri = true
+        osBox.type = 'android'
+        expect(downloadNotice('Success')).toBe('Success')
+        expect(downloadNotice(language.screenshotSaved)).toBe(language.screenshotSaved)
+    })
+
+    test('on the web under an Android user agent the web text still applies', () => {
+        osBox.type = 'android'
+        expect(downloadNotice(language.successExport)).toBe(language.exportDownloadStarted)
     })
 
     test('an explicit web text replaces the default and the desktop keeps the saved text', () => {

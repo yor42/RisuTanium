@@ -13,7 +13,7 @@
     import { findCharacterbyId, livePersona, sleep } from "../../ts/util";
     import { language } from "../../lang";
     import { downloadNotice } from "src/ts/exportNotice";
-    import { alertError, alertNormal, alertWait, showHypaV2Alert } from "../../ts/alert";
+    import { alertClear, alertError, alertNormal, alertWait, showHypaV2Alert } from "../../ts/alert";
     import CreatorQuote from "./CreatorQuote.svelte";
     import { stopTTS } from "src/ts/process/tts";
     import { canChatSpeak } from "src/ts/process/ttsModes";
@@ -540,8 +540,12 @@
                 }
 
                 if(mergedCanvas){
-                    await downloadFile(`chat-${v4()}.png`, Buffer.from(mergedCanvas.toDataURL('png').split(',').at(-1), 'base64'))
+                    const saved = await downloadFile(`chat-${v4()}.png`, Buffer.from(mergedCanvas.toDataURL('png').split(',').at(-1), 'base64'))
                     mergedCanvas.remove();
+                    if(!saved){
+                        alertClear()
+                        return
+                    }
                 }
                 alertNormal(downloadNotice(language.screenshotSaved))
             })

@@ -34,14 +34,17 @@ export async function processScript(char:character|groupChat, data:string, mode:
     return (await processScriptFull(char, data, mode, -1, cbsConditions, origin, subject, undefined, promptView)).data
 }
 
-export function exportRegex(s?:customscript[]){
+export async function exportRegex(s?:customscript[]){
     let db = getDatabase()
     const script = s ?? db.globalscript
     const data = Buffer.from(JSON.stringify({
         type: 'regex',
         data: script
     }), 'utf-8')
-    downloadFile(`regexscript_export.json`,data)
+    const saved = await downloadFile(`regexscript_export.json`,data)
+    if(!saved){
+        return
+    }
     alertNormal(downloadNotice(language.successExport))
 }
 

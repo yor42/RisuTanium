@@ -214,7 +214,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), async (importOriginal) => (
 
 vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => ({
     ...await importOriginal(),
-    downloadFile: async (name: string, data: Buffer) => { downloads.files.push({ name, data }) },
+    downloadFile: async (name: string, data: Buffer) => { downloads.files.push({ name, data }); return true },
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
 class MockNotFoundError extends Error {

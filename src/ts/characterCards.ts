@@ -1,5 +1,5 @@
 import { writable, get, type Writable } from "svelte/store"
-import { alertCardExport, alertConfirm, alertError, alertInput, alertNormal, alertStore, alertWait } from "./alert"
+import { alertCardExport, alertClear, alertConfirm, alertError, alertInput, alertNormal, alertStore, alertWait } from "./alert"
 import { askUpstreamAgreement, isUpstreamAccepted, publishUpstreamAccepted } from "./upstreamAgreement"
 import { defaultSdDataFunc, type character, setDatabase, type customscript, type loreSettings, type loreBook, type triggerscript, importPreset, type groupChat, getDatabase, setDatabaseLite, appVer } from "./storage/database.svelte"
 import { checkNullish, decryptBuffer, isKnownUri, selectFileByDom, sleep } from "./util"
@@ -12,7 +12,7 @@ import { ASSET_PIECE_SAVE_MIN_BYTES } from "./assetHash"
 import { AppendableBuffer, AssetSourceChangedError, BlankWriter, checkCharOrder, downloadFile, loadAsset, LocalWriter, readImage, saveAsset, saveAssetFromPieces, VirtualWriter } from "./globalApi.svelte"
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { ExportCancelledError, ExportCancelToken, createExportWaitGate, type ExportWaitGate } from "./exportCancel"
-import { exportFileState } from "./exportWriters"
+import { exportFileState, withFileIncompleteSentence } from "./exportWriters"
 import { compressImage, getImageType } from "./media"
 import { DBState, SettingsMenuIndex, ShowRealmFrameStore, selectedCharID, settingsOpen } from "./stores.svelte"
 import { hasher } from "./parser/parser.svelte"
@@ -2147,11 +2147,15 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                 }
             }
             if(type === 'json'){
-                await downloadFile(`${char.name.replace(/[<>:"/\\|?*\.\,]/g, "")}_export.json`, Buffer.from(JSON.stringify(card, null, 4), 'utf-8'))
+                const saved = await downloadFile(`${char.name.replace(/[<>:"/\\|?*\.\,]/g, "")}_export.json`, Buffer.from(JSON.stringify(card, null, 4), 'utf-8'))
+                if(!saved){
+                    alertClear()
+                    return false
+                }
                 alertNormal(downloadNotice(language.successExport))
                 return true
             }
-    
+
             await sleep(10)
             showWriting()
     
@@ -2318,7 +2322,11 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
                 }
             }
             if(type === 'json'){
-                await downloadFile(`${char.name.replace(/[<>:"/\\|?*\.\,]/g, "")}_export.json`, Buffer.from(JSON.stringify(card, null, 4), 'utf-8'))
+                const saved = await downloadFile(`${char.name.replace(/[<>:"/\\|?*\.\,]/g, "")}_export.json`, Buffer.from(JSON.stringify(card, null, 4), 'utf-8'))
+                if(!saved){
+                    alertClear()
+                    return false
+                }
                 alertNormal(downloadNotice(language.successExport))
                 return true
             }
@@ -2392,30 +2400,6 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
 export function exportOffersCancel(arg:{writer?:LocalWriter|VirtualWriter, type:'png'|'json'|'charx'|'charxJpeg', tauri:boolean, largeAssetCount:number}):boolean{
     return (arg.writer === undefined || arg.writer instanceof LocalWriter) && arg.type !== 'json'
         && (!arg.tauri || ((arg.type === 'charx' || arg.type === 'charxJpeg') && arg.largeAssetCount > 0))
-}
-
-/** One `Error` that carries the failure's own text, as `alertError` would show it, followed by the sentence that the file is incomplete. */
-function withFileIncompleteSentence(e:unknown):Error{
-    let text:string
-    if(typeof e === 'string'){
-        text = e
-    }
-    else if(e instanceof Error){
-        text = e.message
-    }
-    else{
-        try{
-            text = JSON.stringify(e) ?? `${e}`
-        }
-        catch{
-            text = `${e}`
-        }
-    }
-    const result = new Error(`${text.trim()}\n${language.exportFailedFileIncomplete}`)
-    if(e instanceof Error){
-        result.stack = e.stack
-    }
-    return result
 }
 
 // Extended LorebookEntry with Risuai specific fields

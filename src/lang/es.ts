@@ -1095,6 +1095,7 @@ export const languageSpanish = {
     "removeGroup": "Eliminar Grupo",
     "exportCharacter": "Exportar Personaje",
     "successExport": "Exportado y descargado exitosamente en tu directorio de descargas",
+    "successExportChosenLocation": "Exportado y guardado exitosamente en la ubicación que elegiste",
     "exportDownloadStarted": "Descarga iniciada. Tu navegador guarda el archivo en tus descargas y puede pedirte primero que lo confirmes o lo conserves.",
     "exportHeldInMemory": "Este navegador no puede guardar la exportación a medida que se genera, por lo que se mantiene en memoria hasta que termine y luego se descarga. Una exportación muy grande puede fallar.",
     "exportHelperNotResponding": "El asistente de descarga no respondió, por lo que la exportación se mantiene en memoria hasta que termine y luego se descarga. Una exportación muy grande puede fallar.",

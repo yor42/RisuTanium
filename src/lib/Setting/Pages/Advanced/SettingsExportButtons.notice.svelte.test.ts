@@ -10,7 +10,7 @@ import { flushSync, mount, unmount } from 'svelte'
 
 const mocks = vi.hoisted(() => ({
     alertNormal: vi.fn(),
-    downloadFile: vi.fn(async () => {}),
+    downloadFile: vi.fn(async () => true),
     writeText: vi.fn(async () => {}),
 }))
 const platformBox = vi.hoisted(() => ({ isTauri: false }))
@@ -59,7 +59,7 @@ afterEach(() => {
     vi.unstubAllGlobals()
 })
 
-async function clickBugReport(): Promise<void> {
+function pressBugReport(): void {
     const target = document.body.appendChild(document.createElement('div'))
     mounted = mount(SettingsExportButtons, { target }) as Record<string, unknown>
     flushSync()
@@ -67,6 +67,10 @@ async function clickBugReport(): Promise<void> {
         .find((candidate) => candidate.textContent?.includes(language.settingsPage.exportSettingsBugReport))
     expect(button).toBeDefined()
     button?.click()
+}
+
+async function clickBugReport(): Promise<void> {
+    pressBugReport()
     await vi.waitFor(() => expect(mocks.alertNormal).toHaveBeenCalled())
 }
 
@@ -86,5 +90,15 @@ describe('the bug-report settings export notice', () => {
 
         expect(mocks.alertNormal).toHaveBeenCalledWith(language.settingsExported)
         expect(mocks.alertNormal).not.toHaveBeenCalledWith(language.settingsReportDownloadStarted)
+    })
+
+    test('regression reproducer: a cancelled picker skips both the clipboard copy and the notice', async () => {
+        mocks.downloadFile.mockResolvedValueOnce(false)
+        pressBugReport()
+        await vi.waitFor(() => expect(mocks.downloadFile).toHaveBeenCalledTimes(1))
+        await new Promise((resolve) => setTimeout(resolve, 20))
+
+        expect(mocks.writeText).not.toHaveBeenCalled()
+        expect(mocks.alertNormal).not.toHaveBeenCalled()
     })
 })

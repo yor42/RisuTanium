@@ -67,7 +67,10 @@
         }
 
         const json = JSON.stringify(db, null, 2)
-        await downloadFile('risutanium-settings-report.json', new TextEncoder().encode(json))
+        const saved = await downloadFile('risutanium-settings-report.json', new TextEncoder().encode(json))
+        if(!saved){
+            return
+        }
         await navigator.clipboard.writeText(json)
         alertNormal(downloadNotice(language.settingsExported, language.settingsReportDownloadStarted))
         

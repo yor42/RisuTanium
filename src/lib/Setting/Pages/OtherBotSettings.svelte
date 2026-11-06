@@ -1199,7 +1199,10 @@
                             data: preset
                         }), 'utf-8')
                         
-                        await downloadFile(`hypaV3_export_${preset.name}.json`, bytesExport)
+                        const saved = await downloadFile(`hypaV3_export_${preset.name}.json`, bytesExport)
+                        if(!saved){
+                            return
+                        }
                         alertNormal(downloadNotice(language.successExport))
                     } catch (error) {
                         alertError(`${error}`)

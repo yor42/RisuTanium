@@ -155,7 +155,11 @@ export async function exportModuleLegacy(module:RisuModule, arg:{
     writeByte(0) //end of file
 
     if(saveData){
-        await downloadFile(module.name + '.risum', apb.buffer)
+        const saved = await downloadFile(module.name + '.risum', apb.buffer)
+        if(!saved){
+            alertClear()
+            return apb.buffer
+        }
     }
     if(alertEnd){
         alertNormal(downloadNotice(language.successExport))

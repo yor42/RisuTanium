@@ -187,7 +187,7 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
         LocalWriter,
         VirtualWriter,
         checkCharOrder: vi.fn(),
-        downloadFile: vi.fn(async (name: string) => { h.downloads.push(name) }),
+        downloadFile: vi.fn(async (name: string) => { h.downloads.push(name); return true }),
         forageStorage: {},
         loadAsset: vi.fn(async (key: string) => { h.reads.push(key); return h.png }),
         openURL: vi.fn(),

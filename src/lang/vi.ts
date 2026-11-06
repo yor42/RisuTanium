@@ -1095,6 +1095,7 @@ export const languageVietnamese = {
     "removeGroup": "Xóa nhóm",
     "exportCharacter": "Xuất ký tự",
     "successExport": "Đã xuất thành công và tải xuống thư mục tải xuống của bạn",
+    "successExportChosenLocation": "Đã xuất thành công và lưu vào vị trí bạn đã chọn",
     "exportDownloadStarted": "Đã bắt đầu tải xuống. Trình duyệt sẽ lưu tệp vào thư mục tải xuống của bạn và có thể yêu cầu bạn xác nhận hoặc giữ tệp trước.",
     "exportHeldInMemory": "Trình duyệt này không thể lưu bản xuất ngay trong khi tạo, nên bản xuất được giữ trong bộ nhớ cho đến khi hoàn tất rồi mới tải xuống. Bản xuất rất lớn có thể thất bại.",
     "exportHelperNotResponding": "Trình hỗ trợ tải xuống không phản hồi, nên bản xuất được giữ trong bộ nhớ cho đến khi hoàn tất rồi mới tải xuống. Bản xuất rất lớn có thể thất bại.",
