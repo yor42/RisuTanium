@@ -101,8 +101,8 @@ let mounted: ReturnType<typeof mount> | undefined
 let owner: Owner
 let chat: Chat
 let target: HTMLElement
-const view = $state<{ open: boolean, ontoggles: (() => void) | undefined }>({ open: true, ontoggles: undefined })
-let ontoggles: Mock<() => void>
+const view = $state<{ open: boolean, ontoggles: ((row?: FavouriteRef) => void) | undefined }>({ open: true, ontoggles: undefined })
+let ontoggles: Mock<(row?: FavouriteRef) => void>
 
 const sharedValues = () => h.db.globalChatVariables as Record<string, string>
 const ref = (s: string, k: string): FavouriteRef => ({ s, k })
@@ -173,7 +173,7 @@ beforeEach(() => {
     document.body.appendChild(target)
     ontoggles = vi.fn()
     view.open = true
-    view.ontoggles = () => { ontoggles() }
+    view.ontoggles = (row) => { ontoggles(row) }
     installAll()
     syncFavourites()
 })
@@ -360,6 +360,30 @@ describe('favourite chips in the + menu', () => {
         note.click()
         expect(ontoggles).toHaveBeenCalledOnce()
         expect(view.open).toBe(false)
+    })
+
+    test('a text chip hands its star to the panel; More and the Toggles item hand nothing', async () => {
+        const toggles = Array.from({ length: 11 }, (_, index) => `k${index}=Toggle ${index}`).join('\n') + '\nnote=Note=text'
+        install({ prompt: toggles })
+        seed([ref('prompt', 'note'), ...Array.from({ length: 10 }, (_, index) => ref('prompt', `k${index}`))])
+        await show()
+        chipOf('note')!.click()
+        expect(ontoggles).toHaveBeenCalledOnce()
+        expect(ontoggles.mock.calls[0][0]).toEqual({ s: 'prompt', k: 'note' })
+
+        ontoggles.mockClear()
+        view.open = true
+        await settle()
+        target.querySelector<HTMLElement>('[data-part="plus-chip-more"]')!.click()
+        expect(ontoggles).toHaveBeenCalledOnce()
+        expect(ontoggles.mock.calls[0][0]).toBeUndefined()
+
+        ontoggles.mockClear()
+        view.open = true
+        await settle()
+        target.querySelector<HTMLElement>('[data-item="toggles"]')!.click()
+        expect(ontoggles).toHaveBeenCalledOnce()
+        expect(ontoggles.mock.calls[0][0]).toBeUndefined()
     })
 
     test('the arrow keys walk the Toggles item and the chips, and Tab closes the menu', async () => {

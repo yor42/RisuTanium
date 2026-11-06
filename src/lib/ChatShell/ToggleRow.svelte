@@ -35,11 +35,13 @@
         canMoveDown?: boolean
         onstar?: () => void
         onmove?: (by: -1 | 1) => void
+        // The panel opened at this row: the text button takes the initial focus and the row is briefly outlined.
+        openedAt?: boolean
     }
 
     let {
         row, value, badges, chatOnly, menuOpen, editing, draft, onset, onpick, onedit, ondraft, oncommit, onmenu, onreset, onrevert,
-        starred = false, inFavourites = false, canMoveUp = false, canMoveDown = false, onstar, onmove,
+        starred = false, inFavourites = false, canMoveUp = false, canMoveDown = false, onstar, onmove, openedAt = false,
     }: Props = $props()
 
     let on = $derived(isOn(row.kind, value))
@@ -82,7 +84,7 @@
     }
 </script>
 
-<div data-part="toggle-row" data-uid={row.uid} data-key={row.key} data-kind={row.kind} data-on={on ? '' : undefined}>
+<div data-part="toggle-row" data-uid={row.uid} data-key={row.key} data-kind={row.kind} data-on={on ? '' : undefined} data-opened-at={openedAt ? '' : undefined}>
     <div data-part="toggle-row-line">
         {#if row.kind === 'check'}
             <label data-part="toggle-row-main">
@@ -109,7 +111,7 @@
                 {:else if row.kind === 'text' && editing}
                     <input bind:this={inputEl} data-part="toggle-text-input" aria-labelledby="toggle-label-{row.uid}" value={draft} oninput={(event) => ondraft(event.currentTarget.value)} onkeydown={onInputKey} onblur={oncommit} />
                 {:else if row.kind === 'text' || row.kind === 'textarea'}
-                    <button type="button" data-part="toggle-text-button" data-row-control data-textarea={row.kind === 'textarea' ? '' : undefined} aria-haspopup={row.kind === 'textarea' ? 'dialog' : undefined} aria-labelledby="toggle-label-{row.uid}" onclick={(event) => onedit(event.currentTarget)}>
+                    <button type="button" data-part="toggle-text-button" data-row-control data-sheet-initial={openedAt ? '' : undefined} data-textarea={row.kind === 'textarea' ? '' : undefined} aria-haspopup={row.kind === 'textarea' ? 'dialog' : undefined} aria-labelledby="toggle-label-{row.uid}" onclick={(event) => onedit(event.currentTarget)}>
                         <span data-part="toggle-preview" data-empty={preview === '' ? '' : undefined}>{preview === '' ? language.chatShellTogglesEmpty : preview}</span><span aria-hidden="true">✎</span>
                     </button>
                 {/if}
@@ -150,7 +152,11 @@
 </div>
 
 <style>
-    [data-part="toggle-row"] { display: flex; flex-direction: column; gap: var(--space-3); min-height: var(--size-touch); padding: var(--space-3) var(--space-10); border-bottom: 1px solid var(--nexus-edge); content-visibility: auto; contain-intrinsic-size: auto var(--size-touch); }
+    [data-part="toggle-row"] { display: flex; flex-direction: column; gap: var(--space-3); min-height: var(--size-touch); padding: var(--space-3) var(--space-10); border-bottom: 1px solid var(--nexus-edge); content-visibility: auto; contain-intrinsic-size: auto var(--size-touch); position: relative; }
+    [data-part="toggle-row"][data-opened-at]::after { content: ''; position: absolute; inset: 0; border: var(--stroke-bold) solid var(--nexus-accent); border-radius: var(--radius-control); pointer-events: none; opacity: 0; animation: toggle-opened var(--dur-highlight) var(--ease-linear) both; }
+    @keyframes toggle-opened { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { [data-part="toggle-row"][data-opened-at]::after { animation-timing-function: steps(1, end); } }
+    :global(html.rm) [data-part="toggle-row"][data-opened-at]::after, :global(html[data-low-power]) [data-part="toggle-row"][data-opened-at]::after, :global(html.nexus-low-power) [data-part="toggle-row"][data-opened-at]::after { animation-timing-function: steps(1, end); }
     [data-part="toggle-row-line"] { display: flex; align-items: center; gap: var(--space-5); }
     [data-part="toggle-row-main"] { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-7); min-height: var(--size-touch); }
     [data-part="toggle-label"] { flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
